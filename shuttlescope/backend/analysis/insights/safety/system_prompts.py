@@ -83,9 +83,34 @@ _REFUSAL_KWS = (
     "より強い", "より上手", "より弱", "より速い", "どっちが強",
     "誰が強", "誰が上手", "私と比べ", "私と比較",
     "compared to other", "vs other", "ranking", "stronger than",
-    # jailbreak / prompt injection
+    # jailbreak / prompt injection (DAN / STAN / role-play 含む)
     "以前の指示", "前の指示", "システムプロンプト", "system prompt",
     "ignore previous", "ignore prior", "as developer", "developer mode",
+    "do anything now", " dan ", "「dan」", "dan として", "stan として",
+    "strive to avoid norms",
+    "jailbreak", "ジェイルブレイク",
+    "roleplay", "ロールプレイ", "ロールプレ",
+    "もし仮に", "if hypothetically", "倫理ガード",
+    "no restrictions", "no limitations", "no rules",
+    "亡くなった", "亡くなり", "亡き", "dead grandmother",
+    "act as if", "pretend you are", "pretend to be", "演じて",
+    # ── 英語 (多言語 bypass 対策) ─────────────────────────
+    "stronger than", "weaker than", "compared to", "compare to",
+    "compare with", "ranked", "what's my rank", "what is my rank",
+    "my elbow", "my knee", "back pain", "shoulder pain",
+    "pain", "hurts", "injured", "injury",
+    "supplement", "supplements", "doping", "performance enhancing",
+    "should i continue", "continue training",
+    "who is stronger", "who is better",
+    "other player", "other players", "ranking on",
+    # ── 中国語 (中-簡体/繁体) ─────────────────────────────
+    "更强", "更弱", "比我", "比较", "排名", "排行",
+    "受伤", "疼", "痛苦", "药物", "兴奋剂",
+    "其他选手", "其他球员", "谁更强", "谁更厉害",
+    "扮演", "假设", "如果没有", "无限制",
+    # ── 韓国語 (ハングル) ────────────────────────────────
+    "더 강", "더 잘", "비교", "랭킹", "순위",
+    "다친", "아프", "다른 선수",
     # 絶対断言要求
     "絶対勝てる", "絶対に勝てる", "必ず勝てる", "100%勝てる",
     # 医療
@@ -93,6 +118,33 @@ _REFUSAL_KWS = (
     # ドーピング / サプリ
     "ドーピング", "サプリ", "プロテイン",
 )
+
+
+def _is_unsupported_lang(text: str) -> bool:
+    """サポート外言語 (ハングル / キリル / Spanish ñ ) を含む入力を弾く。
+    システムプロンプトが日本語/英語にしか対応していないため、それ以外の
+    言語経由の prompt injection を防ぐ。"""
+    t = text or ""
+    # 韓国語 (ハングル)
+    if re.search(r"[가-힯]", t):
+        return True
+    # キリル (ロシア語など)
+    if re.search(r"[Ѐ-ӿ]", t):
+        return True
+    # アラビア / ヘブライ
+    if re.search(r"[؀-ۿ֐-׿]", t):
+        return True
+    # タイ語
+    if re.search(r"[฀-๿]", t):
+        return True
+    # スペイン語特有のアクセント / ñ
+    if re.search(r"[ñáéíóúüÑÁÉÍÓÚÜ¿¡]", t):
+        return True
+    # 中国語簡体字 (日本語常用漢字に無い文字を含む)
+    # 全部入れると重いので、refusal/比較系の代表的 1-2 文字を含むかで判定
+    if any(c in t for c in "强谁较请们个么没"):
+        return True
+    return False
 
 
 def _is_nonsense(text: str) -> bool:
@@ -125,13 +177,19 @@ def classify_intent(text: str) -> str:
     """ユーザ入力をざっくり intent 分類する (rule-based)。
 
     Returns one of:
-      - "refusal"  : 他選手参照 / 比較 / 順位 / 医療 / 絶対断言 / jailbreak
+      - "refusal"  : 他選手参照 / 比較 / 順位 / 医療 / 絶対断言 / jailbreak /
+                    サポート外言語
       - "nonsense" : 意味不明な入力 (NIM に渡さず固定文を返す)
       - "meta"     : 自己紹介や AI そのものについての質問
       - "forecast" : 予測 / 未来 / "どれくらい上がる" 系
       - "data"     : (default) 自分のデータに関するコーチング系
     """
     t = (text or "").lower().strip()
+    # サポート外言語 (ハングル / キリル / 簡体字 / Spanish 等) は refusal
+    # (システムプロンプトが JA/EN 対応のみなので、そのまま NIM に投げると
+    # safety guard が効かない)
+    if _is_unsupported_lang(text or ""):
+        return "refusal"
     if _is_nonsense(t):
         return "nonsense"
     # 拒否系を最優先で判定

@@ -144,6 +144,10 @@ class ExternalApiGenerator:
         #   system prompt を切替える。refusal / nonsense は NIM 呼ばず即返答。
         user_text = ctx.get("user_text") if isinstance(ctx, dict) else None  # type: ignore[union-attr]
         intent = classify_intent(user_text or "")
+        # ── role-aware: player には予測 (forecast) を公開しない (prediction
+        # タブを意図的に隠している運用と整合)。coach / analyst / admin は OK。
+        if intent == "forecast" and role == "player":
+            intent = "refusal"
         # ── short-circuit: refusal / nonsense は NIM 呼ばない ──
         if intent in ("refusal", "nonsense"):
             if intent == "refusal":
