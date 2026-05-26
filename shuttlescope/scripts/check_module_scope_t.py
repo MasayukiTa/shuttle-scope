@@ -106,16 +106,93 @@ def find_bare_t_in_block(lines: list[str], start: int) -> int | None:
     return None
 
 
+# 2026-05-26: module-scope `function NAME(...) { ... }` helper も検出する。
+# 例えば `function EPVCard(...) { ...t(...)... }` が parent component の
+# useTranslation() の `t` を参照してしまうケース (MarkovEPV bug class)。
+# 検出条件:
+#   1. 行頭 (indent 0) で `function NAME(` で始まる
+#   2. その関数 body 内で `useTranslation()` を呼んでいない
+#   3. body 内に bare `t(` がある (string/comment 除く)
+TOP_LEVEL_FN = re.compile(r"^(?:export\s+(?:default\s+)?)?(?:async\s+)?function\s+\w+\s*\(")
+USE_TRANSLATION_CALL = re.compile(r"\buseTranslation\s*\(")
+# シグネチャ部分 (関数開始 `(` 〜 `)` まで) に `t` パラメータがある関数は
+# 引数経由で t を受け取っているので flag しない。
+#   match: `t:` `t,` `t)` `t =` `t}` (パラメータ宣言、destructure 終端含む)
+PARAM_T = re.compile(r"\bt\s*[}:,=)]")
+
+
+def find_bare_t_in_function(lines: list[str], start: int) -> int | None:
+    """module-scope `function NAME(...) { ... }` の body をスキャンし、
+    body 内に useTranslation() が無く bare t( がある場合に行番号を返す。
+
+    シグネチャ (function 〜 最初の `{` まで) に `t` パラメータがあれば
+    そもそも引数経由で受けているので flag しない。"""
+    depth = 0
+    in_body = False
+    has_use_translation = False
+    candidate: int | None = None
+    # ── まずシグネチャ部分 (関数の `(` 〜 対応する `)` まで) を取り出す ──
+    # destructuring 引数 `function Foo({a, t, b}: ...)` の `{` を body 開始と
+    # 誤認しないよう、まず `(` 〜 `)` をバランス取って読む。
+    sig_buf: list[str] = []
+    paren_depth = 0
+    sig_started = False
+    sig_complete = False
+    for ln in lines[start:]:
+        for ch in ln:
+            if ch == "(":
+                paren_depth += 1
+                sig_started = True
+            elif ch == ")":
+                paren_depth -= 1
+                if sig_started and paren_depth == 0:
+                    sig_complete = True
+                    break
+        sig_buf.append(ln)
+        if sig_complete:
+            break
+    sig_text = " ".join(sig_buf)
+    if PARAM_T.search(sig_text):
+        return None  # t は引数で受けている → 安全
+
+    for offset, line in enumerate(lines[start:], start=start):
+        for ch in line:
+            if ch == "{":
+                depth += 1
+                in_body = True
+            elif ch == "}":
+                depth -= 1
+        if not in_body:
+            continue
+        if USE_TRANSLATION_CALL.search(line):
+            has_use_translation = True
+        # bare t( を見つけたら候補として保存 (確定は body 終了時)
+        if candidate is None:
+            for m in BARE_T_CALL.finditer(line):
+                if not is_inside_string_or_comment(line, m.start()):
+                    candidate = offset
+                    break
+        if in_body and depth <= 0:
+            # body 抜けた
+            if candidate is not None and not has_use_translation:
+                return candidate
+            return None
+    return None
+
+
 def scan(path: pathlib.Path) -> list[tuple[int, str]]:
     text = path.read_text(encoding="utf-8", errors="replace")
     lines = text.split("\n")
     hits: list[tuple[int, str]] = []
     for i, ln in enumerate(lines):
-        if not TOP_LEVEL.match(ln):
-            continue
-        bad_line = find_bare_t_in_block(lines, i)
-        if bad_line is not None:
-            hits.append((bad_line + 1, lines[bad_line].strip()[:100]))
+        if TOP_LEVEL.match(ln):
+            bad_line = find_bare_t_in_block(lines, i)
+            if bad_line is not None:
+                hits.append((bad_line + 1, lines[bad_line].strip()[:100]))
+        elif TOP_LEVEL_FN.match(ln):
+            bad_line = find_bare_t_in_function(lines, i)
+            if bad_line is not None:
+                hits.append((bad_line + 1, lines[bad_line].strip()[:100]))
     return hits
 
 

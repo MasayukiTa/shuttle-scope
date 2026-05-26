@@ -166,6 +166,9 @@ export function ConditionGlossary({ open, onClose }: Props) {
  * ラベル横に置く「?」アイコンボタン。クリックで Glossary を開く。
  */
 export function GlossaryHint({ onOpen }: { onOpen: () => void }) {
+  // 2026-05-26: module-scope export helper。親の useTranslation の t は
+  // 見えないので自前で取得する。
+  const { t } = useTranslation()
   const isLight = useIsLightMode()
   return (
     <button
