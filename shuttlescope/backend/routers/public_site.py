@@ -825,186 +825,45 @@ def render_public_home(request: Request) -> HTMLResponse:
     return HTMLResponse(_V7_HOME_HTML)
 
 
-def _render_terms_str(request: Request) -> str:
-    login_href = _public_login_href(request)
-    body = f"""
-    <div class="shell legal">
-      {_public_nav(login_href, lang_href="/en/terms")}
-      <section class="panel">
-        <h1>ShuttleScope 利用規約</h1>
-        <p class="small">最終更新日: 2026-04-27</p>
-        <p>本規約は、ShuttleScope の提供条件および利用に関する基本事項を定めるものです。</p>
+def _render_terms_str(request: Request, *, preview: bool = False) -> str:
+    """PR2 (2026-05-26): Jinja2 テンプレートで /terms (JA) を描画する。
 
-        <h2>1. 適用</h2>
-        <p>本規約は、ShuttleScope のウェブサイト、アプリケーション、および関連機能の利用に適用されます。</p>
-
-        <h2>2. サービス内容</h2>
-        <p>
-          ShuttleScope は、バドミントンに関する試合レビュー、映像確認、選手情報整理、分析共有その他これらに関連する
-          機能を提供します。提供機能は、予告なく追加、変更、停止されることがあります。
-        </p>
-
-        <h2>3. 利用者の責任</h2>
-        <ul>
-          <li>利用者は、自己の責任においてアカウント情報および利用環境を適切に管理するものとします。</li>
-          <li>利用者は、法令、所属組織のルール、第三者との契約等を遵守したうえで本サービスを利用するものとします。</li>
-          <li>第三者の権利を侵害するデータ、またはそのおそれのあるデータを無断で取り扱ってはなりません。</li>
-        </ul>
-
-        <h2>4. 禁止事項</h2>
-        <ul>
-          <li>本サービスの運営を妨害する行為</li>
-          <li>不正アクセス、認証回避、脆弱性探索その他これらに類する行為</li>
-          <li>違法または公序良俗に反する目的での利用</li>
-          <li>第三者の個人情報、映像、記録等を不適切に共有または公開する行為</li>
-          <li>本サービスまたは関連資料を誤解を招く形で転載、再配布、営業利用する行為</li>
-        </ul>
-
-        <h2>5. データと権利</h2>
-        <p>
-          利用者が本サービスに入力、保存、またはアップロードしたデータに関する権利は、法令または別段の定めがない限り、
-          当該利用者または正当な権利者に帰属します。利用者は、本サービスの提供、保守、改善、障害対応その他合理的に必要な範囲で、
-          当該データが取り扱われることに同意するものとします。
-        </p>
-
-        <h2>6. 免責</h2>
-        <ul>
-          <li>本サービスは、特定の成果、成績向上、分析結果の完全性または正確性を保証するものではありません。</li>
-          <li>利用者は、表示内容や分析結果を最終判断の補助情報として利用するものとします。</li>
-          <li>通信障害、端末障害、外部サービス障害、保守作業等により本サービスが利用できない場合があります。</li>
-        </ul>
-
-        <h2>7. サービス変更・停止</h2>
-        <p>運営上または技術上必要がある場合、本サービスの全部または一部を変更、停止、終了することがあります。</p>
-
-        <h2>8. 規約変更</h2>
-        <p>本規約は必要に応じて改定されることがあります。改定後の規約は、本サイトまたは関連画面で公表された時点から適用されます。</p>
-
-        <h2 id="beta">9. β版提供期間中のデータ利用について（2026年）</h2>
-        <div class="notice" style="margin:18px 0;">
-          <strong>β版協力者の方への重要なご説明</strong>
-        </div>
-        <p>
-          ShuttleScope は 2026年中をβ版提供期間とし、この期間に限り、以下の条件でアノテーションデータを
-          AI モデルの研究・改善目的に利用させていただきます。
-        </p>
-
-        <h3>利用するデータの範囲</h3>
-        <ul>
-          <li>
-            <strong>対象</strong>:
-            本サービスでアノテーションされた試合クリップ（ラリー単位の映像断片、概ね 5〜60 秒）
-            および付随するラベルデータ（球種、コート位置、選手行動等）
-          </li>
-          <li>
-            <strong>対象外</strong>:
-            試合映像の全体ファイル、氏名・顔情報等の個人を直接特定できる情報
-          </li>
-        </ul>
-
-        <h3>利用目的</h3>
-        <ul>
-          <li>バドミントン特化の選手検出・球種分類 AI モデルの精度向上</li>
-          <li>ラケット・シャトル検出モデルの改善</li>
-          <li>自動アノテーション補助機能の開発</li>
-        </ul>
-
-        <h3>データの取扱い</h3>
-        <ul>
-          <li>β期間中に収集したデータは、β期間終了後も継続してモデル改善に利用することがあります。</li>
-          <li>クリップ映像は個人を直接特定できる情報を最小化した上で処理します。</li>
-          <li>収集したデータを第三者へ販売・提供することは行いません。</li>
-        </ul>
-
-        <h3>オプトアウト</h3>
-        <p>
-          データの利用を希望されない場合は、<a href="/contact">お問い合わせフォーム</a> よりお申し出ください。
-          合理的な範囲で個別に対応いたします。
-        </p>
-        <p class="small" style="color:var(--muted);">
-          β版への登録・継続利用をもって、本条（第9条）に同意いただいたものとみなします。
-          本条はβ期間（2026年中）に限り適用されます。
-        </p>
-
-        <h2>10. お問い合わせ</h2>
-        <p>本サービスに関するお問い合わせは、<a href="/contact">お問い合わせフォーム</a> から受け付けます。</p>
-      </section>
-    </div>
+    既存挙動を維持するため canonical_path はデフォルト /terms。
+    preview ルートは別途 _rewrite_preview_links で /public-preview/* に書き換えるため、
+    canonical 自体は本番パスのまま (PR1 contact は preview canonical を切り替えていたが、
+    既存の terms/privacy はそうしていなかったので無修正を選択)。
     """
-    return _base_layout_str("ShuttleScope | 利用規約", body, canonical_path="/terms")
+    canonical_path = '/terms'
+    context = {
+        'request': request,
+        'lang': 'ja',
+        'canonical_path': canonical_path,
+        'noindex': preview,
+        'login_href': _public_login_href(request),
+    }
+    resp = _public_templates.TemplateResponse('public/terms.html.j2', context)
+    return resp.body.decode('utf-8')
 
 
 def render_terms_page(request: Request) -> HTMLResponse:
     return HTMLResponse(_render_terms_str(request))
 
 
-def _render_privacy_str(request: Request) -> str:
-    login_href = _public_login_href(request)
-    body = f"""
-    <div class="shell legal">
-      {_public_nav(login_href, lang_href="/en/privacy")}
-      <section class="panel">
-        <h1>ShuttleScope プライバシーポリシー</h1>
-        <p class="small">最終更新日: 2026-04-27</p>
-        <p>本ポリシーは、ShuttleScope における情報の取扱いについて定めるものです。</p>
+def _render_privacy_str(request: Request, *, preview: bool = False) -> str:
+    """PR2 (2026-05-26): Jinja2 テンプレートで /privacy (JA) を描画する。
 
-        <h2>1. 取得する情報</h2>
-        <ul>
-          <li>アカウント識別情報、表示名、チーム関連情報など、利用に必要な情報</li>
-          <li>試合、映像、レビュー、観察メモ、コンディション入力等、利用者が入力またはアップロードする情報</li>
-          <li>利用ログ、アクセス時刻、IP アドレス、ブラウザまたは端末に関する基本情報</li>
-          <li>お問い合わせフォームを通じて送信された氏名、所属、連絡手段、本文その他の記載内容</li>
-        </ul>
-
-        <h2>2. 利用目的</h2>
-        <ul>
-          <li>本サービスの提供、認証、運用、保守のため</li>
-          <li>試合レビュー、分析共有、コンディション確認その他の機能提供のため</li>
-          <li>障害対応、セキュリティ確保、不正利用防止のため</li>
-          <li>お問い合わせへの対応および連絡のため</li>
-          <li>サービス改善、品質向上、機能検討のため</li>
-          <li>
-            <strong>β版期間中（2026年）</strong>:
-            アノテーション済みの試合クリップ（ラリー単位の映像断片）およびラベルデータを、
-            バドミントン特化 AI モデル（選手検出・球種分類等）の学習・改善のために利用する場合があります。
-            詳細は <a href="/terms#beta">利用規約 第9条</a> をご確認ください。
-          </li>
-        </ul>
-
-        <h2>3. 第三者提供</h2>
-        <p>法令に基づく場合、利用者の同意がある場合、または業務委託その他正当な理由がある場合を除き、取得した情報を第三者へ提供しません。</p>
-
-        <h2>4. 委託・外部サービス</h2>
-        <p>
-          本サービスでは、運用上必要な範囲でクラウド、トンネル、ホスティング、通知等の外部サービスを利用する場合があります。
-          その場合でも、必要最小限の範囲で情報を取り扱うよう努めます。
-        </p>
-
-        <h2>5. 保管と安全管理</h2>
-        <ul>
-          <li>認証、アクセス制御、運用管理その他合理的な安全管理措置を講じます。</li>
-          <li>保存期間は、利用目的、運用上の必要性、法令上の要請等を考慮して定めます。</li>
-          <li>不要となった情報は、合理的な方法で削除または匿名化するよう努めます。</li>
-        </ul>
-
-        <h2>6. お問い合わせ情報の取扱い</h2>
-        <p>
-          お問い合わせフォームから送信された情報は、問い合わせ対応、運用連絡、迷惑行為防止のために利用します。
-          返信のための連絡手段が記載されている場合、その内容を確認および回答の目的で利用することがあります。
-        </p>
-
-        <h2>7. 開示・訂正等</h2>
-        <p>保有情報の開示、訂正、削除その他の申出については、法令および合理的な運用範囲に従って対応を検討します。</p>
-
-        <h2>8. ポリシー変更</h2>
-        <p>本ポリシーは必要に応じて改定されることがあります。改定後の内容は、本サイトまたは関連画面に掲載した時点で効力を生じます。</p>
-
-        <h2>9. お問い合わせ窓口</h2>
-        <p>本ポリシーに関するお問い合わせは、<a href="/contact">お問い合わせフォーム</a> をご利用ください。</p>
-      </section>
-    </div>
+    canonical_path / preview の取扱いは _render_terms_str と同じ方針。
     """
-    return _base_layout_str("ShuttleScope | プライバシーポリシー", body, canonical_path="/privacy")
+    canonical_path = '/privacy'
+    context = {
+        'request': request,
+        'lang': 'ja',
+        'canonical_path': canonical_path,
+        'noindex': preview,
+        'login_href': _public_login_href(request),
+    }
+    resp = _public_templates.TemplateResponse('public/privacy.html.j2', context)
+    return resp.body.decode('utf-8')
 
 
 def render_privacy_page(request: Request) -> HTMLResponse:

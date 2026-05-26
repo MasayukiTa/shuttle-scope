@@ -1,0 +1,113 @@
+{# プライバシーポリシー (JA)。V7 の nav/footer を base から継承し、本文は legal 用の白カードで表示する。
+   PR2 (2026-05-26): _render_privacy_str を Jinja 化したもの。本文 (legal HTML) は従来の
+   _render_privacy_str 内 body 部を verbatim 移植している。 #}
+{% extends "public/base.html.j2" %}
+
+{% block title %}ShuttleScope | プライバシーポリシー{% endblock %}
+{% block meta_description %}ShuttleScope のプライバシーポリシー。取得情報、利用目的、第三者提供、保管・安全管理、お問い合わせ情報の取扱いなどを定めます。{% endblock %}
+{% block canonical %}https://shuttle-scope.com{{ canonical_path }}{% endblock %}
+{% block og_url %}https://shuttle-scope.com{{ canonical_path }}{% endblock %}
+{% block og_title %}ShuttleScope | プライバシーポリシー{% endblock %}
+{% block og_description %}ShuttleScope のプライバシーポリシー。{% endblock %}
+{% block robots %}{% if noindex %}<meta name="robots" content="noindex,nofollow">{% endif %}{% endblock %}
+
+{% block extra_styles %}
+<style>
+  /* legal ページ専用: terms.html.j2 と同じ白カードスタイル。
+     長文の読み物として、V7 hero グラデではなく落ち着いた淡背景を用いる。 */
+  body.public-legal-page {
+    color: #11314d;
+    font-family: "Segoe UI", "Hiragino Sans", "Yu Gothic UI", sans-serif;
+    background:
+      radial-gradient(circle at top right, rgba(13,123,131,.16), transparent 26%),
+      radial-gradient(circle at top left, rgba(15,94,168,.16), transparent 24%),
+      linear-gradient(180deg, #f9fbfe 0%, #f5f8fc 100%);
+  }
+  .public-legal-page a { color: #0f5ea8; text-decoration: none; }
+  .public-legal-page a:hover { text-decoration: underline; }
+  .public-legal-page .shell { max-width: 1120px; margin: 0 auto; padding: 32px 24px; }
+  .public-legal-page .panel {
+    background: rgba(255,255,255,.92);
+    border: 1px solid rgba(213, 227, 242, 0.9);
+    border-radius: 24px;
+    box-shadow: 0 20px 60px rgba(18, 54, 90, 0.10);
+    backdrop-filter: blur(14px);
+    padding: 28px;
+  }
+  .public-legal-page h1 { margin: 0 0 16px; font-size: clamp(1.8rem, 3.4vw, 2.6rem); line-height: 1.1; color: #11314d; }
+  .public-legal-page h2 { margin: 30px 0 14px; font-size: 1.35rem; color: #11314d; }
+  .public-legal-page h3 { margin: 22px 0 10px; font-size: 1.05rem; color: #11314d; }
+  .public-legal-page p, .public-legal-page li { color: #4f6478; line-height: 1.85; }
+  .public-legal-page .legal ul, .public-legal-page .legal ol { padding-left: 22px; }
+  .public-legal-page .small { font-size: .88rem; }
+  @media (max-width: 720px) {
+    .public-legal-page .shell { padding: 16px; }
+    .public-legal-page .panel { padding: 22px; border-radius: 20px; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<script>document.body.classList.add('public-legal-page');</script>
+<div class="shell legal">
+  <section class="panel">
+    <h1>ShuttleScope プライバシーポリシー</h1>
+    <p class="small">最終更新日: 2026-04-27</p>
+    <p>本ポリシーは、ShuttleScope における情報の取扱いについて定めるものです。</p>
+
+    <h2>1. 取得する情報</h2>
+    <ul>
+      <li>アカウント識別情報、表示名、チーム関連情報など、利用に必要な情報</li>
+      <li>試合、映像、レビュー、観察メモ、コンディション入力等、利用者が入力またはアップロードする情報</li>
+      <li>利用ログ、アクセス時刻、IP アドレス、ブラウザまたは端末に関する基本情報</li>
+      <li>お問い合わせフォームを通じて送信された氏名、所属、連絡手段、本文その他の記載内容</li>
+    </ul>
+
+    <h2>2. 利用目的</h2>
+    <ul>
+      <li>本サービスの提供、認証、運用、保守のため</li>
+      <li>試合レビュー、分析共有、コンディション確認その他の機能提供のため</li>
+      <li>障害対応、セキュリティ確保、不正利用防止のため</li>
+      <li>お問い合わせへの対応および連絡のため</li>
+      <li>サービス改善、品質向上、機能検討のため</li>
+      <li>
+        <strong>β版期間中（2026年）</strong>:
+        アノテーション済みの試合クリップ（ラリー単位の映像断片）およびラベルデータを、
+        バドミントン特化 AI モデル（選手検出・球種分類等）の学習・改善のために利用する場合があります。
+        詳細は <a href="/terms#beta">利用規約 第9条</a> をご確認ください。
+      </li>
+    </ul>
+
+    <h2>3. 第三者提供</h2>
+    <p>法令に基づく場合、利用者の同意がある場合、または業務委託その他正当な理由がある場合を除き、取得した情報を第三者へ提供しません。</p>
+
+    <h2>4. 委託・外部サービス</h2>
+    <p>
+      本サービスでは、運用上必要な範囲でクラウド、トンネル、ホスティング、通知等の外部サービスを利用する場合があります。
+      その場合でも、必要最小限の範囲で情報を取り扱うよう努めます。
+    </p>
+
+    <h2>5. 保管と安全管理</h2>
+    <ul>
+      <li>認証、アクセス制御、運用管理その他合理的な安全管理措置を講じます。</li>
+      <li>保存期間は、利用目的、運用上の必要性、法令上の要請等を考慮して定めます。</li>
+      <li>不要となった情報は、合理的な方法で削除または匿名化するよう努めます。</li>
+    </ul>
+
+    <h2>6. お問い合わせ情報の取扱い</h2>
+    <p>
+      お問い合わせフォームから送信された情報は、問い合わせ対応、運用連絡、迷惑行為防止のために利用します。
+      返信のための連絡手段が記載されている場合、その内容を確認および回答の目的で利用することがあります。
+    </p>
+
+    <h2>7. 開示・訂正等</h2>
+    <p>保有情報の開示、訂正、削除その他の申出については、法令および合理的な運用範囲に従って対応を検討します。</p>
+
+    <h2>8. ポリシー変更</h2>
+    <p>本ポリシーは必要に応じて改定されることがあります。改定後の内容は、本サイトまたは関連画面に掲載した時点で効力を生じます。</p>
+
+    <h2>9. お問い合わせ窓口</h2>
+    <p>本ポリシーに関するお問い合わせは、<a href="/contact">お問い合わせフォーム</a> をご利用ください。</p>
+  </section>
+</div>
+{% endblock %}

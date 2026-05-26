@@ -1,0 +1,161 @@
+{# 利用規約 (JA)。V7 の nav/footer を base から継承し、本文は legal 用の白カードで表示する。
+   PR2 (2026-05-26): _render_terms_str を Jinja 化したもの。本文 (legal HTML) は従来の
+   _render_terms_str 内 body 部を verbatim 移植している。 #}
+{% extends "public/base.html.j2" %}
+
+{% block title %}ShuttleScope | 利用規約{% endblock %}
+{% block meta_description %}ShuttleScope の利用規約。サービス提供条件、利用者の責任、データ取扱い、β版期間中のデータ利用条件などを定めます。{% endblock %}
+{% block canonical %}https://shuttle-scope.com{{ canonical_path }}{% endblock %}
+{% block og_url %}https://shuttle-scope.com{{ canonical_path }}{% endblock %}
+{% block og_title %}ShuttleScope | 利用規約{% endblock %}
+{% block og_description %}ShuttleScope の利用規約。{% endblock %}
+{% block robots %}{% if noindex %}<meta name="robots" content="noindex,nofollow">{% endif %}{% endblock %}
+
+{% block extra_styles %}
+<style>
+  /* legal ページ専用: 旧 _base_layout_str の legal 系 CSS を踏襲した白い読み物カード。
+     V7 hero グラデは長文ページの可読性を損なうので使わない。 */
+  body.public-legal-page {
+    color: #11314d;
+    font-family: "Segoe UI", "Hiragino Sans", "Yu Gothic UI", sans-serif;
+    background:
+      radial-gradient(circle at top right, rgba(13,123,131,.16), transparent 26%),
+      radial-gradient(circle at top left, rgba(15,94,168,.16), transparent 24%),
+      linear-gradient(180deg, #f9fbfe 0%, #f5f8fc 100%);
+  }
+  .public-legal-page a { color: #0f5ea8; text-decoration: none; }
+  .public-legal-page a:hover { text-decoration: underline; }
+  .public-legal-page .shell { max-width: 1120px; margin: 0 auto; padding: 32px 24px; }
+  .public-legal-page .panel {
+    background: rgba(255,255,255,.92);
+    border: 1px solid rgba(213, 227, 242, 0.9);
+    border-radius: 24px;
+    box-shadow: 0 20px 60px rgba(18, 54, 90, 0.10);
+    backdrop-filter: blur(14px);
+    padding: 28px;
+  }
+  .public-legal-page h1 { margin: 0 0 16px; font-size: clamp(1.8rem, 3.4vw, 2.6rem); line-height: 1.1; color: #11314d; }
+  .public-legal-page h2 { margin: 30px 0 14px; font-size: 1.35rem; color: #11314d; }
+  .public-legal-page h3 { margin: 22px 0 10px; font-size: 1.05rem; color: #11314d; }
+  .public-legal-page p, .public-legal-page li { color: #4f6478; line-height: 1.85; }
+  .public-legal-page .legal ul, .public-legal-page .legal ol { padding-left: 22px; }
+  .public-legal-page .small { font-size: .88rem; }
+  .public-legal-page .notice {
+    background: rgba(13,123,131,.10);
+    border: 1px solid rgba(13,123,131,.18);
+    padding: 14px 16px;
+    border-radius: 12px;
+    margin: 16px 0;
+    color: #4f6478;
+  }
+  @media (max-width: 720px) {
+    .public-legal-page .shell { padding: 16px; }
+    .public-legal-page .panel { padding: 22px; border-radius: 20px; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<script>document.body.classList.add('public-legal-page');</script>
+<div class="shell legal">
+  <section class="panel">
+    <h1>ShuttleScope 利用規約</h1>
+    <p class="small">最終更新日: 2026-04-27</p>
+    <p>本規約は、ShuttleScope の提供条件および利用に関する基本事項を定めるものです。</p>
+
+    <h2>1. 適用</h2>
+    <p>本規約は、ShuttleScope のウェブサイト、アプリケーション、および関連機能の利用に適用されます。</p>
+
+    <h2>2. サービス内容</h2>
+    <p>
+      ShuttleScope は、バドミントンに関する試合レビュー、映像確認、選手情報整理、分析共有その他これらに関連する
+      機能を提供します。提供機能は、予告なく追加、変更、停止されることがあります。
+    </p>
+
+    <h2>3. 利用者の責任</h2>
+    <ul>
+      <li>利用者は、自己の責任においてアカウント情報および利用環境を適切に管理するものとします。</li>
+      <li>利用者は、法令、所属組織のルール、第三者との契約等を遵守したうえで本サービスを利用するものとします。</li>
+      <li>第三者の権利を侵害するデータ、またはそのおそれのあるデータを無断で取り扱ってはなりません。</li>
+    </ul>
+
+    <h2>4. 禁止事項</h2>
+    <ul>
+      <li>本サービスの運営を妨害する行為</li>
+      <li>不正アクセス、認証回避、脆弱性探索その他これらに類する行為</li>
+      <li>違法または公序良俗に反する目的での利用</li>
+      <li>第三者の個人情報、映像、記録等を不適切に共有または公開する行為</li>
+      <li>本サービスまたは関連資料を誤解を招く形で転載、再配布、営業利用する行為</li>
+    </ul>
+
+    <h2>5. データと権利</h2>
+    <p>
+      利用者が本サービスに入力、保存、またはアップロードしたデータに関する権利は、法令または別段の定めがない限り、
+      当該利用者または正当な権利者に帰属します。利用者は、本サービスの提供、保守、改善、障害対応その他合理的に必要な範囲で、
+      当該データが取り扱われることに同意するものとします。
+    </p>
+
+    <h2>6. 免責</h2>
+    <ul>
+      <li>本サービスは、特定の成果、成績向上、分析結果の完全性または正確性を保証するものではありません。</li>
+      <li>利用者は、表示内容や分析結果を最終判断の補助情報として利用するものとします。</li>
+      <li>通信障害、端末障害、外部サービス障害、保守作業等により本サービスが利用できない場合があります。</li>
+    </ul>
+
+    <h2>7. サービス変更・停止</h2>
+    <p>運営上または技術上必要がある場合、本サービスの全部または一部を変更、停止、終了することがあります。</p>
+
+    <h2>8. 規約変更</h2>
+    <p>本規約は必要に応じて改定されることがあります。改定後の規約は、本サイトまたは関連画面で公表された時点から適用されます。</p>
+
+    <h2 id="beta">9. β版提供期間中のデータ利用について（2026年）</h2>
+    <div class="notice" style="margin:18px 0;">
+      <strong>β版協力者の方への重要なご説明</strong>
+    </div>
+    <p>
+      ShuttleScope は 2026年中をβ版提供期間とし、この期間に限り、以下の条件でアノテーションデータを
+      AI モデルの研究・改善目的に利用させていただきます。
+    </p>
+
+    <h3>利用するデータの範囲</h3>
+    <ul>
+      <li>
+        <strong>対象</strong>:
+        本サービスでアノテーションされた試合クリップ（ラリー単位の映像断片、概ね 5〜60 秒）
+        および付随するラベルデータ（球種、コート位置、選手行動等）
+      </li>
+      <li>
+        <strong>対象外</strong>:
+        試合映像の全体ファイル、氏名・顔情報等の個人を直接特定できる情報
+      </li>
+    </ul>
+
+    <h3>利用目的</h3>
+    <ul>
+      <li>バドミントン特化の選手検出・球種分類 AI モデルの精度向上</li>
+      <li>ラケット・シャトル検出モデルの改善</li>
+      <li>自動アノテーション補助機能の開発</li>
+    </ul>
+
+    <h3>データの取扱い</h3>
+    <ul>
+      <li>β期間中に収集したデータは、β期間終了後も継続してモデル改善に利用することがあります。</li>
+      <li>クリップ映像は個人を直接特定できる情報を最小化した上で処理します。</li>
+      <li>収集したデータを第三者へ販売・提供することは行いません。</li>
+    </ul>
+
+    <h3>オプトアウト</h3>
+    <p>
+      データの利用を希望されない場合は、<a href="/contact">お問い合わせフォーム</a> よりお申し出ください。
+      合理的な範囲で個別に対応いたします。
+    </p>
+    <p class="small" style="color:#7a8a9c;">
+      β版への登録・継続利用をもって、本条（第9条）に同意いただいたものとみなします。
+      本条はβ期間（2026年中）に限り適用されます。
+    </p>
+
+    <h2>10. お問い合わせ</h2>
+    <p>本サービスに関するお問い合わせは、<a href="/contact">お問い合わせフォーム</a> から受け付けます。</p>
+  </section>
+</div>
+{% endblock %}
