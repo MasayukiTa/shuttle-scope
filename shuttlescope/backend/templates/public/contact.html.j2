@@ -1,0 +1,173 @@
+{# 連絡フォーム (JA)。V7 の nav/footer を base から継承し、本文は従来の白カード/フォームを維持する。 #}
+{% extends "public/base.html.j2" %}
+
+{% block title %}ShuttleScope | お問い合わせ{% endblock %}
+{% block meta_description %}ShuttleScope に関するお問い合わせフォーム。導入相談・機能の質問・不具合報告などをお寄せください。{% endblock %}
+{% block canonical %}https://shuttle-scope.com{{ canonical_path }}{% endblock %}
+{% block og_url %}https://shuttle-scope.com{{ canonical_path }}{% endblock %}
+{% block og_title %}ShuttleScope | お問い合わせ{% endblock %}
+{% block og_description %}ShuttleScope へのお問い合わせフォーム。{% endblock %}
+{% block robots %}{% if noindex %}<meta name="robots" content="noindex,nofollow">{% endif %}{% endblock %}
+
+{% block extra_styles %}
+<style>
+  /* 既存 contact ページの白カード/フォーム CSS を維持。
+     body 背景は base の var(--bg) を上書きし、従来 contact の柔らかい青系グラデに戻す。 */
+  body.public-contact-page {
+    color: #11314d;
+    font-family: "Segoe UI", "Hiragino Sans", "Yu Gothic UI", sans-serif;
+    background:
+      radial-gradient(circle at top right, rgba(13,123,131,.16), transparent 26%),
+      radial-gradient(circle at top left, rgba(15,94,168,.16), transparent 24%),
+      linear-gradient(180deg, #f9fbfe 0%, #f5f8fc 100%);
+  }
+  .public-contact-page a { color: #0f5ea8; text-decoration: none; }
+  .public-contact-page a:hover { text-decoration: underline; }
+  .public-contact-page .shell { max-width: 1120px; margin: 0 auto; padding: 24px; }
+  .public-contact-page .panel {
+    background: rgba(255,255,255,.88);
+    border: 1px solid rgba(213, 227, 242, 0.9);
+    border-radius: 24px;
+    box-shadow: 0 20px 60px rgba(18, 54, 90, 0.10);
+    backdrop-filter: blur(14px);
+    padding: 28px;
+  }
+  .public-contact-page h1 { margin: 0 0 16px; font-size: clamp(2rem, 4vw, 3.3rem); line-height: 1.05; color: #11314d; }
+  .public-contact-page p, .public-contact-page li { color: #4f6478; line-height: 1.85; }
+  .public-contact-page .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-height: 44px; padding: 0 18px; border-radius: 999px; font-weight: 700;
+    border: 1px solid transparent;
+  }
+  .public-contact-page .btn-primary { background: linear-gradient(135deg, #0f5ea8, #1679d1); color: white; }
+  .public-contact-page .btn-secondary { background: white; border-color: #d5e3f2; color: #11314d; }
+  .public-contact-page .notice {
+    background: rgba(13,123,131,.10);
+    border: 1px solid rgba(13,123,131,.18);
+    padding: 14px 16px;
+    border-radius: 12px;
+    margin: 16px 0;
+    color: #4f6478;
+  }
+  .public-contact-page label { display: block; font-size: .92rem; font-weight: 700; margin-bottom: 8px; color: #11314d; }
+  .public-contact-page input,
+  .public-contact-page textarea,
+  .public-contact-page select {
+    width: 100%; border: 1px solid #d5e3f2; border-radius: 14px; background: white;
+    padding: 12px 14px; font: inherit; color: #11314d;
+  }
+  .public-contact-page textarea { min-height: 180px; resize: vertical; }
+  .public-contact-page .form-grid { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .public-contact-page .hidden-field { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+  .public-contact-page .result { margin-top: 16px; font-size: .95rem; }
+  /* contact page では V7 nav の下にある beta-banner と内容パネルが重ならないよう余白を追加 */
+  .public-contact-page .shell { padding-top: 32px; }
+  @media (max-width: 720px) {
+    .public-contact-page .shell { padding: 16px; }
+    .public-contact-page .panel { padding: 22px; border-radius: 20px; }
+  }
+</style>
+<script>document.body && document.body.classList.add('public-contact-page');</script>
+{% endblock %}
+
+{% block content %}
+<script>document.body.classList.add('public-contact-page');</script>
+<div class="shell">
+  <section class="panel" style="margin-bottom:20px;">
+    <h1>お問い合わせ</h1>
+    <p>
+      ShuttleScope に関するお問い合わせは、下記フォームよりご送信ください。
+      導入のご相談、機能に関するご質問、不具合のご報告、その他ご意見・ご要望を承ります。
+      ご返信をご希望の場合は、連絡先欄に希望される連絡手段をご記入ください。
+    </p>
+    <div class="notice">
+      現在 ShuttleScope はベータ版として限定提供を行っております。
+      お寄せいただいた内容を確認のうえ、必要に応じて担当よりご連絡いたします。
+      <br>本フォームはメール送信ではなく、管理画面にて受付・管理する形式となっております。
+    </div>
+    <div class="notice" style="margin-top:12px;background:rgba(15,94,168,.07);border-color:rgba(15,94,168,.18);">
+      <strong>β版データ利用について（2026年）</strong><br>
+      β版をご利用いただく場合、アノテーションされた試合クリップおよびラベルデータを
+      バドミントン特化 AI モデルの改善目的に利用させていただくことがあります。
+      詳細および利用を希望されない場合のオプトアウト方法は
+      <a href="/terms#beta">利用規約 第9条</a> をご確認ください。
+    </div>
+  </section>
+
+  <section class="panel">
+    <form id="contact-form">
+      <div class="form-grid">
+        <div>
+          <label for="name">お名前</label>
+          <input id="name" name="name" maxlength="120" required>
+        </div>
+        <div>
+          <label for="organization">所属・チーム名</label>
+          <input id="organization" name="organization" maxlength="160">
+        </div>
+        <div>
+          <label for="role">立場</label>
+          <select id="role" name="role">
+            <option value="">選択してください</option>
+            <option value="player">選手</option>
+            <option value="coach">コーチ</option>
+            <option value="analyst">分析担当</option>
+            <option value="team_staff">チームスタッフ</option>
+            <option value="other">その他</option>
+          </select>
+        </div>
+        <div>
+          <label for="contact_reference">返信先や連絡手段</label>
+          <input id="contact_reference" name="contact_reference" maxlength="200" placeholder="任意: 連絡先や希望する連絡手段">
+        </div>
+      </div>
+
+      <div style="margin-top:18px;">
+        <label for="message">お問い合わせ内容</label>
+        <textarea id="message" name="message" required minlength="10" maxlength="4000"></textarea>
+      </div>
+
+      <div class="hidden-field" aria-hidden="true">
+        <label for="website">website</label>
+        <input id="website" name="website" tabindex="-1" autocomplete="off">
+      </div>
+
+      <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
+        <button class="btn btn-primary" type="submit">送信する</button>
+        <a class="btn btn-secondary" href="/">トップへ戻る</a>
+      </div>
+      <div id="contact-result" class="result" aria-live="polite"></div>
+    </form>
+  </section>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  // 送信処理: JSON で /api/public/contact に POST。エンドポイント・挙動は従来どおり。
+  (function() {
+    const form = document.getElementById('contact-form');
+    const result = document.getElementById('contact-result');
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      result.textContent = '送信中です...';
+      const payload = Object.fromEntries(new FormData(form).entries());
+      try {
+        const res = await fetch({{ submit_path|tojson }}, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.detail || '送信に失敗しました。');
+        }
+        form.reset();
+        result.textContent = 'お問い合わせを受け付けました。内容を確認のうえ、必要に応じてご連絡いたします。';
+      } catch (error) {
+        result.textContent = error.message || '送信に失敗しました。時間をおいて再度お試しください。';
+      }
+    });
+  })();
+</script>
+{% endblock %}
