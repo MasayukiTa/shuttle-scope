@@ -121,8 +121,10 @@ def _is_nonsense(text: str) -> bool:
         most = Counter(t).most_common(1)[0][1]
         if most / len(t) >= 0.40:
             return True
-    # 意味のある日本語ひらがな/カタカナ/漢字 OR 英語アルファベット が殆ど無い
-    meaningful = re.findall(r"[ぁ-んァ-ヴ一-龥a-zA-Z]", t)
+    # 意味のあるアルファベット / 文字 (Unicode word chars) が殆ど無い
+    # JA / EN だけでなく Hangul / Arabic / Cyrillic / Devanagari / Thai 等も
+    # "意味あり" として扱う (multilingual ユーザを誤って弾かない)
+    meaningful = re.findall(r"\w", t, flags=re.UNICODE)
     if len(meaningful) < 3:
         return True
     # ASCII ランダムキー連打 (子音/母音バランス著しく低い)
