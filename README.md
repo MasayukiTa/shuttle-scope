@@ -122,6 +122,7 @@ Prediction, CV-assisted annotation, remote camera support, and research views ar
 - fatigue and hazard style research views
 - research cards for state / value / counterfactual-oriented analysis
 - promotion workflow and evidence metadata groundwork
+- conversational Advice Chat backed by NIM (NVIDIA Inference Microservices) and a safety harness (intent routing, role gating, refusal / nonsense short-circuits), with an explicit "AI may be wrong — ask an admin for an authoritative report" disclaimer on every response
 
 These areas are usable for internal exploration, but they are still a step behind the annotation / review core in real-world confidence.
 
