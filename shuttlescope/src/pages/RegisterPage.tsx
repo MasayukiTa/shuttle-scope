@@ -13,7 +13,6 @@ export default function RegisterPage() {
   const [password, setPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [dob, setDob] = useState('')  // yyyy-mm-dd
-  const [contactEmail, setContactEmail] = useState('')
   const [tsToken, setTsToken] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -36,7 +35,6 @@ export default function RegisterPage() {
         display_name: displayName || null,
         turnstile_token: tsToken || null,
         date_of_birth: dob || null,
-        contact_email: contactEmail || null,
       })
       setSuccess(true)
     } catch (err: unknown) {
@@ -131,20 +129,6 @@ export default function RegisterPage() {
           <p className="mt-1 text-xs text-gray-500">
             {t('auth.register.dob_hint') ||
               '任意入力。AI 学習・研究利用への同意 UI で未成年配慮（PRIVACY §IX-ter）を適用するために使用します。'}
-          </p>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium mb-1">
-            {t('auth.register.contact_email_label')}
-          </label>
-          <input type="email" value={contactEmail}
-                 onChange={(e) => setContactEmail(e.target.value)}
-                 maxLength={255}
-                 placeholder="your-name@example.com"
-                 className="w-full rounded border px-3 py-2 text-sm dark:bg-gray-700 dark:border-gray-600" />
-          <p className="mt-1 text-xs text-gray-500">
-            {t('auth.register.contact_email_hint')}
           </p>
         </div>
 
