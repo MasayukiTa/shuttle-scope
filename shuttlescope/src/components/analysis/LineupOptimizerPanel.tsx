@@ -184,6 +184,9 @@ function AnalystRankingView({
   result: LineupResult
   isLight: boolean
 }) {
+  // 2026-05-26: module-scope helper なので親の useTranslation の t は
+  // 見えない。自前で hook を呼ぶ (本関数も React コンポーネントなので OK)。
+  const { t } = useTranslation()
   const subText = isLight ? '#64748b' : '#9ca3af'
   const neutral = isLight ? '#334155' : '#d1d5db'
 
