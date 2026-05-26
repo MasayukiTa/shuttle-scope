@@ -258,9 +258,14 @@ def _notify_admin_webhook(content: str) -> None:
         import json as _json
         import urllib.request as _urlreq
         body = _json.dumps({"content": content[:1800]}, ensure_ascii=False).encode("utf-8")
+        # Discord blocks default Python-urllib User-Agent with 403. Set a
+        # generic UA so /api/webhooks/* accepts the POST.
         req = _urlreq.Request(
             url, data=body,
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "ShuttleScope-AdminNotify/1.0 (+https://shuttle-scope.com)",
+            },
             method="POST",
         )
         # nosec B310: scheme is https-guarded above, URL is operator-supplied secret.
