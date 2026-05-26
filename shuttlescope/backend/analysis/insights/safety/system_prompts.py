@@ -72,11 +72,17 @@ _REFUSAL_KWS = (
     # 他選手参照: 「田中選手」「○○選手」「○○さん」「player_id=」
     "選手の", "選手は", "選手より", "選手と", "選手を", "選手が",
     "player_id=", "player_id ", "player id", "playerid",
+    # 他選手呼称 "○○さん" + 比較助辞 (固有名を辞書に持たないので
+    # 助辞のパターンで近似)
+    "さんは私", "さんと私", "さんより", "さんに比べ", "さんは強",
+    "さんは上手", "さんは弱", "さんの戦", "さんのデータ", "さんの統計",
     # チーム内順位
-    "何位", "ランキング", "ランク", "順位",
-    # 他人と比較
+    "何位", "ランキング", "ランク", "順位", "席次",
+    # 他人と比較 / 優劣判定
     "他の選手", "ほかの選手", "他選手", "他者",
-    "compared to other", "vs other", "ranking",
+    "より強い", "より上手", "より弱", "より速い", "どっちが強",
+    "誰が強", "誰が上手", "私と比べ", "私と比較",
+    "compared to other", "vs other", "ranking", "stronger than",
     # jailbreak / prompt injection
     "以前の指示", "前の指示", "システムプロンプト", "system prompt",
     "ignore previous", "ignore prior", "as developer", "developer mode",
@@ -97,6 +103,12 @@ def _is_nonsense(text: str) -> bool:
     # 同じ文字 50% 以上 (e.g. "ぬるぽぽぽぽぽ")
     if len(set(t)) <= 2 and len(t) <= 12:
         return True
+    # 任意の 1 文字が全体の 40% 以上を占める (短い文 + 文字連打)
+    if len(t) <= 15:
+        from collections import Counter
+        most = Counter(t).most_common(1)[0][1]
+        if most / len(t) >= 0.40:
+            return True
     # 意味のある日本語ひらがな/カタカナ/漢字 OR 英語アルファベット が殆ど無い
     meaningful = re.findall(r"[ぁ-んァ-ヴ一-龥a-zA-Z]", t)
     if len(meaningful) < 3:
