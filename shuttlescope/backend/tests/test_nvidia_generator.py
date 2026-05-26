@@ -28,6 +28,9 @@ def _ctx(sample_n: int = 10) -> dict:
         "period_days": 30,
         "role": "player",
         "lang": "ja",
+        # 2026-05-25: ExternalApiGenerator が intent 分類するようになったので
+        # user_text を入れないと「nonsense (空入力)」で短絡され NIM が呼ばれない。
+        "user_text": "直近の伸びしろを教えて",
         "analytics": {
             "recent_form": {
                 "win_rate": 0.58,
