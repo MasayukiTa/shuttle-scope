@@ -65,15 +65,66 @@ Plain prose suitable for direct chat display. No JSON, no markdown headings, no 
 """
 
 
+import re
+
+# 2026-05-25: 拒否系キーワード (他選手参照 + 比較 + jailbreak + 順位)
+_REFUSAL_KWS = (
+    # 他選手参照: 「田中選手」「○○選手」「○○さん」「player_id=」
+    "選手の", "選手は", "選手より", "選手と", "選手を", "選手が",
+    "player_id=", "player_id ", "player id", "playerid",
+    # チーム内順位
+    "何位", "ランキング", "ランク", "順位",
+    # 他人と比較
+    "他の選手", "ほかの選手", "他選手", "他者",
+    "compared to other", "vs other", "ranking",
+    # jailbreak / prompt injection
+    "以前の指示", "前の指示", "システムプロンプト", "system prompt",
+    "ignore previous", "ignore prior", "as developer", "developer mode",
+    # 絶対断言要求
+    "絶対勝てる", "絶対に勝てる", "必ず勝てる", "100%勝てる",
+    # 医療
+    "痛い", "怪我", "ケガ", "肘", "肩痛", "膝痛", "腰痛", "病院",
+    # ドーピング / サプリ
+    "ドーピング", "サプリ", "プロテイン",
+)
+
+
+def _is_nonsense(text: str) -> bool:
+    """意味的に空っぽな入力を検出する。NIM に投げる前に弾く。"""
+    t = (text or "").strip()
+    if len(t) < 3:
+        return True
+    # 同じ文字 50% 以上 (e.g. "ぬるぽぽぽぽぽ")
+    if len(set(t)) <= 2 and len(t) <= 12:
+        return True
+    # 意味のある日本語ひらがな/カタカナ/漢字 OR 英語アルファベット が殆ど無い
+    meaningful = re.findall(r"[ぁ-んァ-ヴ一-龥a-zA-Z]", t)
+    if len(meaningful) < 3:
+        return True
+    # ASCII ランダムキー連打 (子音/母音バランス著しく低い)
+    if re.fullmatch(r"[a-z]+", t.lower()) and len(t) <= 20:
+        vowels = sum(c in "aeiou" for c in t.lower())
+        if vowels / max(1, len(t)) < 0.20:  # 通常英単語は ~38% 母音
+            return True
+    return False
+
+
 def classify_intent(text: str) -> str:
     """ユーザ入力をざっくり intent 分類する (rule-based)。
 
     Returns one of:
+      - "refusal"  : 他選手参照 / 比較 / 順位 / 医療 / 絶対断言 / jailbreak
+      - "nonsense" : 意味不明な入力 (NIM に渡さず固定文を返す)
       - "meta"     : 自己紹介や AI そのものについての質問
       - "forecast" : 予測 / 未来 / "どれくらい上がる" 系
       - "data"     : (default) 自分のデータに関するコーチング系
     """
     t = (text or "").lower().strip()
+    if _is_nonsense(t):
+        return "nonsense"
+    # 拒否系を最優先で判定
+    if any(k in t for k in _REFUSAL_KWS):
+        return "refusal"
     # ── meta: who-are-you etc. ──────────────────────────────────────
     meta_kws = (
         "あなたはだれ", "あなたは何", "あなたは誰", "君はだれ", "君は誰",
@@ -93,6 +144,30 @@ def classify_intent(text: str) -> str:
     if any(k in t for k in fc_kws):
         return "forecast"
     return "data"
+
+
+# 拒否系/nonsense は NIM を呼ばずに即返す固定文。
+REFUSAL_TEXT_JA = (
+    "ご質問のうち、他選手との比較・他選手のデータ閲覧・順位付け・"
+    "確実な勝敗予測・医療判断は提供できません。"
+    "あなた自身の試合データに基づく伸びしろ提案であれば対応可能です。"
+)
+REFUSAL_TEXT_EN = (
+    "I can't provide comparisons with other players, other players' data, "
+    "ranking, hard win/loss predictions, or medical advice. "
+    "I can suggest growth areas based on your own match data."
+)
+NONSENSE_TEXT_JA = (
+    "ご質問の意図が読み取れませんでした。「直近5試合の伸びしろは？」"
+    "「ネット前のショット選択は？」のように、ご自身の試合データへの"
+    "質問を具体的にお寄せください。"
+)
+NONSENSE_TEXT_EN = (
+    "I couldn't parse the question. Try something specific about your own "
+    "match data, e.g. 'What's my growth area in the last 5 matches?' or "
+    "'How should I pick net-front shots?'."
+)
+
 
 
 SYSTEM_PROMPT_META_JA = """あなたは ShuttleScope の「Growth Advisor」です。
