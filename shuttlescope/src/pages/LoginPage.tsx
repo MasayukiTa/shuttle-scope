@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import i18n from '@/i18n'
 import { useAuth } from '@/hooks/useAuth'
 import type { AuthSession } from '@/hooks/useAuth'
 import { useTheme } from '@/hooks/useTheme'
 import { UserRole } from '@/types'
 import { MIcon } from '@/components/common/MIcon'
+import { publicSiteUrl } from '@/utils/publicUrl'
 
 const BASE_URL = (() => {
   if (
@@ -402,7 +404,7 @@ export function LoginPage({ onLogin }: Props) {
         )}
         <div className="mt-6 text-center">
           <a
-            href="https://shuttle-scope.com"
+            href={publicSiteUrl('/', i18n.language)}
             className={`text-sm ${isLight ? 'text-gray-500 hover:text-gray-700' : 'text-gray-400 hover:text-gray-200'} transition-colors`}
           >
             {t('auto.LoginPage.back_to_site')}

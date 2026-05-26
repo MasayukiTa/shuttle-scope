@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import i18n from '@/i18n'
 import { apiPost } from '@/api/client'
 import { TurnstileWidget } from '@/components/auth/TurnstileWidget'
 import { errorMessage } from '@/utils/errors'
+import { publicSiteUrl } from '@/utils/publicUrl'
 
 export default function RegisterPage() {
   const { t } = useTranslation()
@@ -75,7 +77,7 @@ export default function RegisterPage() {
           <p className="text-xs text-blue-800 dark:text-blue-300 leading-relaxed">
             {t('auth.register.unavailable_banner_body')}
           </p>
-          <a href="https://shuttle-scope.com/contact"
+          <a href={publicSiteUrl('/contact', i18n.language)}
              target="_blank" rel="noopener noreferrer"
              className="inline-block text-xs text-blue-900 dark:text-blue-200 underline hover:no-underline">
             {t('auth.register.unavailable_banner_contact')} →
