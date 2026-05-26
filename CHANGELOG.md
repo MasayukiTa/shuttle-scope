@@ -442,7 +442,7 @@ Read it together with:
   The navigator uses the `localfile://` protocol for desktop local video access and ties clip boundaries to annotated rally records, turning annotation data into a navigation layer over existing video.
 - Added QuickSummaryCard with five rule-based coaching signals (momentum shift, serve pattern, unforced error rate, return pressure, fatigue indicator) targeted at between-set intervals.
   Cards are intentionally rule-based rather than model-driven so they surface reliably even when sample sizes are small enough to make statistical inference unreliable.
-  Growth-oriented framing is preserved throughout 窶・no direct weakness labels appear in any card.
+  Growth-oriented framing is preserved throughout — no direct weakness labels appear in any card.
 
 ### Data Asset Packaging
 - Added a JSON data package export / import workflow that bundles a match together with its linked players, sets, rallies, and strokes into a single portable file.
@@ -464,7 +464,7 @@ Read it together with:
 ### Cluster Infrastructure and Distributed Processing
 - Designed and implemented a two-node cluster architecture targeting Minisforum X1 AI (primary) and GMKtec K10 (worker).
   Network topology: 2.5GbE direct Ethernet as the primary cluster link (192.168.100.0/24), USB-C RNDIS as a fallback link (192.168.101.0/24), WiFi for client access.
-  USB-C is treated as fallback only 窶・the K10 does not have Thunderbolt, so USB networking tops out around 300窶・00 Mbps via RNDIS rather than full Thunderbolt speeds.
+  USB-C is treated as fallback only — the K10 does not have Thunderbolt, so USB networking tops out around 300— 00 Mbps via RNDIS rather than full Thunderbolt speeds.
   Traffic budget analysis confirmed the 2.5GbE link is sufficient: ~50 Mbps for PostgreSQL WAL replication plus ~200 Mbps for four cameras at compressed JPEG frame rates leaves substantial headroom under the 2.5 Gbps physical limit.
 - Added `cluster.config.yaml` as the user-facing cluster configuration file at the app root.
   Fields cover cluster mode (single / primary / worker), network interface assignment, Ray head address, PostgreSQL connection settings, camera inference limits, and per-node load thresholds.
@@ -488,7 +488,7 @@ Read it together with:
 - Added `scripts/cluster/pg_setup_primary.bat`: creates the `ss_user` database role, the `shuttlescope` database, and the `replicator` replication role, and configures PostgreSQL `wal_level`, `max_wal_senders`, `wal_keep_size`, and `listen_addresses` for streaming replication.
 - Added `scripts/cluster/pg_setup_standby.bat`: runs `pg_basebackup` from the primary and starts the standby in hot-standby mode via `standby.signal`.
 
-### SQLite 竊・PostgreSQL 18 Migration
+### SQLite → PostgreSQL 18 Migration
 - Migrated the operational database from SQLite to PostgreSQL 18.
   PostgreSQL 18 was installed via winget on the primary PC (`127.0.0.1:5432`, database `shuttlescope`, user `ss_user`).
   41,204 rows across 13 populated tables were migrated successfully (players 22, matches 62, sets 129, rallies 4,467, strokes 35,750, and supporting tables).
@@ -501,7 +501,7 @@ Read it together with:
 ### CV Inference Architecture Foundation
 
 - Added the CV inference factory (`backend/cv/factory.py`) as the single entry point for all CV backend selection.
-  Priority chain: `SS_CV_MOCK=1` 竊・Mock, `SS_USE_GPU=1` 竊・CUDA, fallback 竊・CPU, final fallback 竊・Mock.
+  Priority chain: `SS_CV_MOCK=1` → Mock, `SS_USE_GPU=1` → CUDA, fallback → CPU, final fallback → Mock.
   All routers and pipeline code use only `get_tracknet()` / `get_pose()` so backend selection stays in one place.
 - Added `CpuTrackNet` (`cv/tracknet_cpu.py`): classical CV shuttle detection using HSV color filter, MOG2 background subtraction, contour matching, and HoughCircles fallback.
   Missing frames are filled with linear interpolation so downstream consumers always receive a full-length sample list.
@@ -510,13 +510,13 @@ Read it together with:
 - Added `CudaPose` (`cv/pose_cuda.py`) and `CpuPose` (`cv/pose_cpu.py`): MediaPipe Pose inferencer pair.
   The CUDA variant uses MediaPipe Tasks GPU delegate; the CPU variant is the plain MediaPipe CPU path.
   Both satisfy the `PoseInferencer` Protocol so the factory can swap them without caller changes.
-- Added `backend/tracknet/inference.py`: TrackNet inference wrapper with OpenVINO (GPU-preferred) 竊・ONNX Runtime CPU 竊・TensorFlow CPU priority chain.
+- Added `backend/tracknet/inference.py`: TrackNet inference wrapper with OpenVINO (GPU-preferred) → ONNX Runtime CPU → TensorFlow CPU priority chain.
   Loads real badminton-tuned TrackNet checkpoint weights and exposes `predict_frames(frames)` returning per-frame zone / coordinate / confidence dicts.
-- Added `backend/yolo/inference.py`: YOLOv8 player detection wrapper with OpenVINO IR 竊・ultralytics PT 竊・custom ONNX CPU priority chain, per-frame court-side and depth-band assignment, and thread-safe locking for OpenVINO's stateful compiled model.
+- Added `backend/yolo/inference.py`: YOLOv8 player detection wrapper with OpenVINO IR → ultralytics PT → custom ONNX CPU priority chain, per-frame court-side and depth-band assignment, and thread-safe locking for OpenVINO's stateful compiled model.
 - Added Ray remote task structure (`backend/cluster/tasks.py`) with `_maybe_remote` decorator: GPU-intensive tasks (`run_tracknet`, `run_mediapipe`, `num_gpus=1`) target the X1 AI GPU node; CPU tasks (`extract_clips`, `run_statistics`, `calc_center_of_gravity`, `classify_shots`, `num_cpus=1`) target K10 worker nodes.
   Tasks degrade to synchronous execution when Ray is not initialized.
 - Added `backend/cluster/pipeline.py`: orchestration layer that calls tasks in parallel stages (TrackNet + MediaPipe concurrently, then clips, then statistics / CoG / shots concurrently) using Ray when live or sequential fallback otherwise.
-- Added `backend/pipeline/video_pipeline.py` and `backend/pipeline/jobs.py`: `run_pipeline()` and `execute_job()` coordinate full per-match analysis runs (TrackNet 竊・ShuttleTrack DB, Pose 竊・PoseFrame + CenterOfGravity DB, shot classification 竊・ShotInference DB), with `AnalysisJob` status tracking (running 竊・done / failed), error recording, and idempotent delete-before-insert.
+- Added `backend/pipeline/video_pipeline.py` and `backend/pipeline/jobs.py`: `run_pipeline()` and `execute_job()` coordinate full per-match analysis runs (TrackNet → ShuttleTrack DB, Pose → PoseFrame + CenterOfGravity DB, shot classification → ShotInference DB), with `AnalysisJob` status tracking (running → done / failed), error recording, and idempotent delete-before-insert.
 - Added `backend/benchmark/devices.py`: compute device probe layer (`probe_all()`) covering CPU (psutil), NVIDIA GPU (pynvml), OpenVINO devices (iGPU / dGPU), ONNX Runtime CUDA EP, and Ray worker nodes.
   Results are cached for 60 seconds to avoid repeated probe overhead during dashboard polling.
 - Added `scripts/setup_gpu.ps1` and `scripts/setup_gpu.sh`: GPU environment setup scripts that install PyTorch (CUDA 12.4 index), MediaPipe, and pynvml into the backend venv.
@@ -536,7 +536,7 @@ Read it together with:
 - Added QuickSummaryCard with five rule-based between-set coaching signals.
 - Added JSON match data package export and import workflow.
 - Extended camera model to four simultaneous cameras with oldest-handoff policy.
-- Fixed DeviceSelector CPU text color (blue-on-blue 竊・white).
+- Fixed DeviceSelector CPU text color (blue-on-blue → white).
 - Added PlayerPositionFrame model and Alembic migration 0007.
 - Designed two-node cluster topology (2.5GbE primary, USB-C fallback, WiFi clients).
 - Added cluster.config.yaml, topology.py, load_guard.py, and cluster router.
@@ -562,13 +562,13 @@ Read it together with:
   Single-monitor laptop setups (one external display) see no UI change; the dropdown only surfaces when a choice is meaningful.
   The `openVideoWindow` call now routes to the user-selected display ID, with a fallback to the first non-primary if the state is uninitialised.
 
-### GPU Inference Backend 窶・Missing Pieces Completed (RTX 5060 Ti Preparation)
+### GPU Inference Backend — Missing Pieces Completed (RTX 5060 Ti Preparation)
 
 - Added `backend/cv/tracknet_openvino.py`: OpenVINO backend wrapper that adapts `tracknet/inference.py`'s `TrackNetInference` to the `TrackNetInferencer` Protocol.
   Implements chunked frame processing (300-frame chunks with a 2-frame overlap) so 30-minute match videos are not loaded entirely into RAM before inference starts.
   Frame indices are accumulated with a global offset to produce correct absolute timestamps across chunk boundaries.
 - Extended `backend/cv/factory.py` with an OpenVINO intermediate tier.
-  The new priority order is: Mock 竊・CUDA (torch + RTX) 竊・OpenVINO (iGPU / CPU, also works on K10) 竊・CPU (classical CV) 竊・Mock.
+  The new priority order is: Mock → CUDA (torch + RTX) → OpenVINO (iGPU / CPU, also works on K10) → CPU (classical CV) → Mock.
   Previously the OpenVINO inference path in `tracknet/inference.py` was entirely disconnected from the factory used by the pipeline.
 - Added `backend/cv/tracknet_runner.py` and `backend/cv/mediapipe_runner.py`: thin runner modules that `cluster/tasks.py` was already referencing via `_safe_call` but which did not exist.
   Each module calls `factory.get_tracknet()` / `factory.get_pose()`, runs inference, and returns a status dict; the factory handles backend selection transparently so the same runner works on X1 AI (CUDA path) and K10 (CPU / OpenVINO path).
@@ -591,7 +591,7 @@ Read it together with:
 - Fixed Canvas DPI scaling in PlayerPositionOverlay and ShuttleTrackOverlay for high-DPI secondary monitors.
 - Added multi-monitor selection dropdown to video extension UI (shown only with 2+ non-primary displays).
 - Added tracknet_openvino.py with chunked frame processing and connected it to factory.py.
-- Extended factory.py with CUDA 竊・OpenVINO 竊・CPU 竊・Mock priority chain.
+- Extended factory.py with CUDA → OpenVINO → CPU → Mock priority chain.
 - Added tracknet_runner.py and mediapipe_runner.py to complete the cluster/tasks.py call chain.
 - Added pipeline/clips.py with automatic NVENC / libx264 selection.
 - Added pipeline/statistics.py, cog.py, and shot_classifier.py as K10-targeted pipeline stubs.
@@ -1184,7 +1184,7 @@ Three additional backend fixes shipped after the Round 200-226 batch.
 
 ### Validation
 
-- Round 229 post-deploy verification: 11/11 ✅. Match deletion with attached comments / bookmarks succeeds; bookmarks and comments are removed; subsequent GET / list / export return 404 / 422. User deletion (with the cleanup) succeeds for freshly-created users; the access token, refresh token, and login-after-delete all return 401. Player record survives user deletion (player_id was nulled on the user side via existing FK behaviour).
+- Round 229 post-deploy verification: 11/11. Match deletion with attached comments / bookmarks succeeds; bookmarks and comments are removed; subsequent GET / list / export return 404 / 422. User deletion (with the cleanup) succeeds for freshly-created users; the access token, refresh token, and login-after-delete all return 401. Player record survives user deletion (player_id was nulled on the user side via existing FK behaviour).
 - Round 230 (admin blast radius): admin rapid-create 30 users / 30 teams produces no 500 / no rate-limit hits — by design but worth flagging for guardrail review. Audit log spot-check confirmed 26 unique action types (login / login_failed / logout / token_refresh / user_created / user_updated / user_updated_high_risk / user_deleted / team_created / team_updated / match_updated / match_deleted / consents_submitted / consent_withdrawn / training_data_record_created / content_report_received / content_report_triaged / export_package_created / password_reset_by_admin / admin_reset_user_limits / account_locked / account_unlocked / access_denied / access_denied_write / access_denied_coach_scope / access_denied_research) over a 500-row sample.
 - Round 231 (legal / ops workflow drill): consent withdrawal correctly rejects contractual-basis types (`service_delivery`, `beta_agreement`) with 403 and accepts optional types (`ai_training`, `research_participation`) with 200, satisfying GDPR Article 7(3). Training-data records remain immutable (PUT / DELETE → 405). Self-delete is blocked (400). The Subject Access Request (SAR) and counter-notice routes are 404 / 405 / 401 — confirmed as known operational gaps tracked separately for Wave B / `SAR_PROCEDURE.md`.
 
@@ -1215,7 +1215,7 @@ Twenty-one attack-driven backend fixes shipped in two deploy batches.
 
 - Round 212 post-deploy verification confirmed all 13 directly-found issues resolved (display_name boundary, player.name BIDI / ZWSP / CRLF / control, bookmark.note BIDI, comment.text BIDI, comment.text obfuscated HTML strip clean, aliases item BIDI / control / over-length / over-count, team-name BIDI / 101-char / short_name 51-char, parallel user-create race, dominant_hand enum).
 - Round 211 race-suite re-run showed parallel team creation now produces `1×201 + 4×409` (previously `1×201 + 4×500`); user-creation race already converted in batch 1 produces the same shape.
-- Round 225 post-deploy verification of the second batch (court / cv float bounds) returned `422` for Point2D out-of-range, NaN/Inf, points-array length ≠ 6, container_width/height out-of-range, FrameDetectRequest.timestamp_sec out-of-range, and tracknet RoiRectModel out-of-range — 13/13 ✅.
+- Round 225 post-deploy verification of the second batch (court / cv float bounds) returned `422` for Point2D out-of-range, NaN/Inf, points-array length ≠ 6, container_width/height out-of-range, FrameDetectRequest.timestamp_sec out-of-range, and tracknet RoiRectModel out-of-range — 13/13.
 - Sweep rounds 213-218 (data_package signature, NFKC search, role matrix, GDPR consent lifecycle, JWT corner cases, cross-team isolation, expert-label boundaries, condition / condition_tag color, DoS / rapid-write / concurrent / 413, admin training_data / audit / cluster, security headers / CORS / timing) returned 0 critical findings.
 
 ### Documentation
@@ -1550,3 +1550,53 @@ Medium-term follow-ups (separate tasks):
 
 Lesson: a single "N% detection" scalar is ambiguous about what it measures. From here on we report both `frames-with-shuttle-marked / total` and `frames-where-mark-overlaps-ground-truth / total`, and gate any release on a visual audit step.
 
+
+## 2026-05-25
+
+### Advice Chat: NIM + Safety Harness
+
+The Research-tab Advice Chat moved from a templated stub to a NIM-backed surface (`deepseek-v4-flash`) wrapped in a safety harness. The chat now binds to the viewed player_id for admin/coach roles, refuses player-tier requests for raw weakness framing, and adds an explicit "AI may be wrong — ask an admin for an authoritative report" disclaimer at the top of every response. The empty-state palette dropped its rainbow gradient + bouncy animations in favor of a calm slate look and switched to honest fallback copy instead of a sparkle illustration. UTC timestamps were replaced with the browser's local time; light-mode now locks to the light palette across all chat sub-components.
+
+### Auth / MFA
+
+The `is_admin` predicate now honors `SS_REQUIRE_ADMIN_MFA=False` at property time so dev / CI runs do not have to enroll. Tests set the same env at conftest import time, register the new audit events, and the X-Role legacy fallback path grants `admin_mfa_ok` when MFA is disabled — admins keep their role but the gate stays cleanly toggleable per environment.
+
+### Security + i18n + CI
+
+Two HIGH ReDoS code-scanning alerts in the prompt-injection guard were closed. The `t()` module-scope guard caught a Markov-EPV helper that referenced `t` at module scope (production-bundle crash class) and was fixed in place. CI: MSDO was excluded from bandit and gained an `id-token` permission; TrackNet smoke pinned to Python 3.11; the frontend `HitZoneSelector` test was updated for the `MIcon name="check"` migration; the cv-assist test matches `MIcon name="check"` instead of the literal `✓` text.
+
+### CHANGELOG hygiene + PII redaction
+
+CHANGELOG daily entries 4/5–5/23 were filled in, the 5/24 entry was translated to English, and entries were sorted in chronological order (oldest at top). Real player names were aliased to Player A / B / C and the organization-named seeder script was untracked from the repo.
+
+## 2026-05-26
+
+### Stopgap signup: Discord webhook + manual admin email
+
+Automated outbound email is still not deployed (Cloudflare Worker + MailChannels), so the signup flow was re-enabled as a manual-admin operation. `/auth/register` is on (`SS_REGISTRATION_ENABLED=1`); the verify-email send is skipped; a Discord webhook fires to admin with the registrant's username, user_id, registered-email domain, and IP; the user receives a follow-up email from `shuttlescopecom@gmail.com` within roughly 12 hours. The frontend banner switched amber → blue (informational, not blocked) and the registration page no longer hard-disables the submit button. The Discord webhook helper also sets a non-default User-Agent so the Cloudflare-fronted call does not get filtered.
+
+### App-to-public language preservation
+
+Hardcoded links from the React app to the marketing site (`https://shuttle-scope.com/...`) dropped English users back into the Japanese pages because the public site routes language purely by URL prefix (`/en/...`) and ignores the `ss_lang` cookie. A new `src/utils/publicUrl.ts` helper rewrites those URLs based on `i18n.language`; the three known call sites (`RegisterPage` contact banner, `LoginPage` back-to-site, `OnboardingConsentPage` back-to-site) now go through it.
+
+### Public site → Jinja2 (PR1–PR4)
+
+The public site (`backend/routers/public_site.py`) was migrated from inline f-string HTML to Jinja2 templates over four PRs. PR1 introduced `base.html.j2` (shared V7 nav, footer, and head meta) and migrated `/contact`. PR2 added `/privacy` and `/terms` (JA). PR3 added the EN variants for all three under a shared `{% if lang == 'en' %}` switch. PR4 added the EN preview routes (`/public-preview/en/*`) and deleted the dead `_base_layout_str`, `_render_home_body`, and `*_en_legacy` functions. Net effect: the router shrank from 2386 lines to 1674, with 882 lines of HTML now sitting in 4 template files. Marketing-site pages now share the home page's nav and footer so users do not feel like they have left the site when clicking "Contact" or "Privacy".
+
+A Starlette breaking-change forced four follow-up commits: `Jinja2Templates(autoescape=True)` had to become `Jinja2Templates(env=Environment(autoescape=select_autoescape(...)))`, the `directory=` kwarg had to be dropped (Starlette enforces XOR with `env`), and all six `TemplateResponse(name, context)` callsites had to switch to the newer `TemplateResponse(request, name, context)` signature. Lesson logged: production Starlette version differs from local; future Jinja work runs a backend-import smoke against the prod venv before declaring done.
+
+### Person v2: court-area filter + tunable NMS
+
+`audit_pool_v2` of person detection surfaced three failure modes: (a) two overlapping players collapsed into one bbox, (b) referees / scoreboards / spectators in the bleachers picked up as players, (c) bbox drift on dynamic poses like smash. Two were addressed in this round: a post-detection court-area filter drops bboxes whose centre falls outside an expanded court polygon (env `SS_PERSON_COURT_FILTER=1`, `SS_PERSON_COURT_MARGIN=1.5`), and the YOLO NMS IoU threshold became env-tunable (`SS_PERSON_NMS_IOU`, default 0.45) so the "overlapping players merged" case can be relaxed without code changes. Matches without calibrated court points fall through as a no-op. 15 new unit tests pass; existing YOLO + court tests are regression-free. Pose-drift will need a fine-tune pass next.
+
+### Shuttle audit pool round 2
+
+A second audit pool (`audit_pool_r2`) generated 100 INT8 detections with `conf >= 0.8` — every one of the 100 visually landed on the shuttle. Combined with the round-1 audit (`conf >= 0.5`, ~50% precision), this confirms a clean precision-recall curve at the high-confidence end. The "tile inference" path landed last week as opt-in (`SS_WASB_TILE=1`) but a 12-sample comparison showed the tiled mode picking up shoelace-like noise; we are leaving it off by default and treating the high-confidence non-tiled path as the production line.
+
+### WASB tile inference (opt-in, default off)
+
+`backend/wasb/inference.py` gained `_predict_frames_tiled_gpu`, a 3×2 tiled inference path with 64 px overlap, picking the highest-sigmoid tile and back-translating the peak to full-frame normalized coordinates. Off by default behind `SS_WASB_TILE=1`. Reuses the existing motion-outlier filter and temporal smoother so post-processing stays on the same code path. VRAM-safe (catches OOM and halves the batch). Audit currently suggests the high-confidence non-tiled path is sufficient, so tile mode stays off pending a more challenging video.
+
+### Module-scope `t()` checker tightened
+
+`scripts/check_module_scope_t.py` was extended to catch the second-class form of the production-bundle crash: a top-level `function NAME(...) {}` helper that references the parent's `useTranslation` `t` without taking it as a parameter. Two latent bugs (`AnalystRankingView` and `GlossaryHint`) were caught and repaired in the same pass.
