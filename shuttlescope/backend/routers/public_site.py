@@ -858,7 +858,7 @@ def _render_contact_str_en(request: Request) -> str:
         'noindex': False,
         'login_href': _public_login_href(request, lang='en'),
     }
-    resp = _public_templates.TemplateResponse('public/contact.html.j2', context)
+    resp = _public_templates.TemplateResponse(request, 'public/contact.html.j2', context)
     return resp.body.decode('utf-8')
 
 
