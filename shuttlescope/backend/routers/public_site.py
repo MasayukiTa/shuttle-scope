@@ -32,9 +32,15 @@ _recent_contact_requests: dict[str, list[datetime]] = {}
 _PUBLIC_ASSETS_DIR = Path(__file__).resolve().parent.parent / "public"
 
 # PR1 (2026-05-26): public site の段階的 Jinja2 化用テンプレートディレクトリ。
-# autoescape=True を必須とし、テンプレ内変数による XSS を防ぐ。
+# autoescape は jinja2.Environment 経由で必ず有効化 (テンプレ内変数による XSS 防止)。
+# 旧 Starlette は Jinja2Templates(autoescape=...) を受け付けないため、env を組んで渡す。
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
-_public_templates = Jinja2Templates(directory=str(_TEMPLATES_DIR), autoescape=True)
+from jinja2 import Environment, FileSystemLoader, select_autoescape  # noqa: E402
+_jinja_env = Environment(
+    loader=FileSystemLoader(str(_TEMPLATES_DIR)),
+    autoescape=select_autoescape(["html", "htm", "xml", "j2"]),
+)
+_public_templates = Jinja2Templates(directory=str(_TEMPLATES_DIR), env=_jinja_env)
 
 
 class PublicInquiryCreate(BaseModel):
