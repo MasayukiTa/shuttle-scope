@@ -26,14 +26,25 @@ def _admin_auth_ctx():
 
 
 def _sample_analytics():
+    """2026-05-25: TemplateGenerator が build_player_summary の新スキーマを読む
+    ように書き換わったので、テスト fixture も同じ形に揃える
+    (sample / outcomes / shot_mix / zones / conditions / recent_trend)。"""
     return {
-        "shot_win_loss": [
-            {"shot": "smash", "win_rate": 0.6, "delta_pp": 3.0,
-             "sample_n": 100, "alt_shot": "drop"},
+        "player_id": 12,
+        "player_name": "テスト",
+        "sample": {"matches": 50, "rallies": 800, "strokes": 4500},
+        "outcomes": {"win_rate": 0.55, "set_win_rate": 0.52, "n": 50},
+        "shot_mix": [
+            {"shot_type": "smash", "count": 600, "share": 0.20},
+            {"shot_type": "clear", "count": 450, "share": 0.15},
         ],
-        "recent_form": {"win_rate": 0.55, "delta_pp": 4.0, "sample_n": 50},
-        "growth_timeline_delta": {
-            "metric": "serve_win_rate", "delta_pp": 2.0, "sample_n": 60,
+        "zones": {
+            "hit_top": [{"zone": "BC", "share": 0.30}],
+            "land_top": [{"zone": "MC", "share": 0.25}],
+        },
+        "conditions": {"avg_rpe": 6.0, "avg_hooper": 13.0, "n": 5},
+        "recent_trend": {
+            "last_5_match_win_rate": 0.6, "delta_vs_prior_5": 0.05,
         },
     }
 
