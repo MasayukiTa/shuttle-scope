@@ -637,7 +637,7 @@ def _render_terms_str(request: Request, *, preview: bool = False) -> str:
         'noindex': preview,
         'login_href': _public_login_href(request),
     }
-    resp = _public_templates.TemplateResponse('public/terms.html.j2', context)
+    resp = _public_templates.TemplateResponse(request, 'public/terms.html.j2', context)
     return resp.body.decode('utf-8')
 
 
@@ -658,7 +658,7 @@ def _render_privacy_str(request: Request, *, preview: bool = False) -> str:
         'noindex': preview,
         'login_href': _public_login_href(request),
     }
-    resp = _public_templates.TemplateResponse('public/privacy.html.j2', context)
+    resp = _public_templates.TemplateResponse(request, 'public/privacy.html.j2', context)
     return resp.body.decode('utf-8')
 
 
@@ -683,7 +683,7 @@ def _render_contact_str(request: Request, *, preview: bool = False) -> str:
     }
     # TemplateResponse は Response オブジェクトを返すので、body bytes を decode して
     # 既存の _rewrite_preview_links (str -> str) と互換にする。
-    resp = _public_templates.TemplateResponse("public/contact.html.j2", context)
+    resp = _public_templates.TemplateResponse(request, "public/contact.html.j2", context)
     return resp.body.decode("utf-8")
 
 
@@ -827,7 +827,7 @@ def _render_terms_str_en(request: Request) -> str:
         'noindex': False,
         'login_href': _public_login_href(request, lang='en'),
     }
-    resp = _public_templates.TemplateResponse('public/terms.html.j2', context)
+    resp = _public_templates.TemplateResponse(request, 'public/terms.html.j2', context)
     return resp.body.decode('utf-8')
 
 
@@ -842,7 +842,7 @@ def _render_privacy_str_en(request: Request) -> str:
         'noindex': False,
         'login_href': _public_login_href(request, lang='en'),
     }
-    resp = _public_templates.TemplateResponse('public/privacy.html.j2', context)
+    resp = _public_templates.TemplateResponse(request, 'public/privacy.html.j2', context)
     return resp.body.decode('utf-8')
 
 
