@@ -186,7 +186,20 @@ tbtn.addEventListener('click',()=>{
 const lbtn=document.getElementById('lang-btn');
 let lang=location.pathname.startsWith('/en')?'en':'ja';
 html.lang=lang;lbtn.textContent=lang==='ja'?'EN':'JA';
-lbtn.addEventListener('click',()=>{location.href=lang==='ja'?'/en':'/'});
+// 言語切替は現在のページパスを保持して /en プレフィックスを toggle する。
+// 例: /contact → /en/contact、/en/privacy → /privacy。
+// (2026-05-26 修正: 旧実装は hardcode で / または /en へ飛んでトップに戻ってしまっていた)
+lbtn.addEventListener('click',()=>{
+  const p=location.pathname;
+  let next;
+  if(lang==='ja'){
+    next=p==='/'?'/en':('/en'+p);
+  }else{
+    next=p.replace(/^\/en(\/|$)/,'/');
+    if(next==='') next='/';
+  }
+  location.href=next+location.search+location.hash;
+});
 if(lang==='en'){
   document.querySelectorAll('a[href="/terms"]').forEach(a=>a.setAttribute('href','/en/terms'));
   document.querySelectorAll('a[href="/privacy"]').forEach(a=>a.setAttribute('href','/en/privacy'));

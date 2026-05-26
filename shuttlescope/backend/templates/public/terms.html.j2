@@ -14,14 +14,19 @@
 {% block extra_styles %}
 <style>
   /* legal ページ専用: 旧 _base_layout_str の legal 系 CSS を踏襲した白い読み物カード。
-     V7 hero グラデは長文ページの可読性を損なうので使わない。 */
+     V7 hero グラデは長文ページの可読性を損なうので使わない。
+     重要: body 直下に color/font-family を当てない (V7 nav/footer/beta-banner の
+     白文字・MigMix 1P フォントを破壊するため)。.shell スコープに閉じ込める。
+     (2026-05-26 過去指摘の修正: 濃色背景に暗色文字問題の再発を防ぐ) */
   body.public-legal-page {
-    color: #11314d;
-    font-family: "Segoe UI", "Hiragino Sans", "Yu Gothic UI", sans-serif;
     background:
       radial-gradient(circle at top right, rgba(13,123,131,.16), transparent 26%),
       radial-gradient(circle at top left, rgba(15,94,168,.16), transparent 24%),
       linear-gradient(180deg, #f9fbfe 0%, #f5f8fc 100%);
+  }
+  .public-legal-page .shell {
+    color: #11314d;
+    font-family: "Segoe UI", "Hiragino Sans", "Yu Gothic UI", sans-serif;
   }
   .public-legal-page a { color: #0f5ea8; text-decoration: none; }
   .public-legal-page a:hover { text-decoration: underline; }
