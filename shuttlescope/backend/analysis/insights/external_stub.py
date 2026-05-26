@@ -22,6 +22,8 @@ from backend.analysis.insights.safety.system_prompts import (
     SYSTEM_PROMPT_META_EN,
     SYSTEM_PROMPT_FORECAST_JA,
     SYSTEM_PROMPT_FORECAST_EN,
+    REFUSAL_TEXT_JA, REFUSAL_TEXT_EN,
+    NONSENSE_TEXT_JA, NONSENSE_TEXT_EN,
     classify_intent,
 )
 from backend.analysis.insights.types import (
@@ -138,10 +140,38 @@ class ExternalApiGenerator:
         }.get(role, role) if lang == "ja" else role
 
         # 2026-05-25 intent routing: ユーザの入力テキストを intent 分類して
-        #   meta / forecast / data の 3 系統で system prompt を切替える。
-        #   ctx に user_text が無い場合は data intent (旧挙動) と同等。
+        #   meta / forecast / data / refusal / nonsense の 5 系統で
+        #   system prompt を切替える。refusal / nonsense は NIM 呼ばず即返答。
         user_text = ctx.get("user_text") if isinstance(ctx, dict) else None  # type: ignore[union-attr]
         intent = classify_intent(user_text or "")
+        # ── short-circuit: refusal / nonsense は NIM 呼ばない ──
+        if intent in ("refusal", "nonsense"):
+            if intent == "refusal":
+                fixed = REFUSAL_TEXT_JA if lang == "ja" else REFUSAL_TEXT_EN
+            else:
+                fixed = NONSENSE_TEXT_JA if lang == "ja" else NONSENSE_TEXT_EN
+            try:
+                log_llm_call(
+                    user_id=ctx.get("user_id") if isinstance(ctx, dict) else None,
+                    provider=f"{self.name}/short_circuit_{intent}",
+                    validation_result={"ok": True, "reason": f"intent_{intent}"},
+                    latency_ms=0,
+                )
+            except Exception:
+                pass
+            item = InsightItem(
+                id=f"intent_{intent}",
+                prose=fixed,
+                evidence_path="",
+                confidence=1.0,  # 固定回答なので信頼度 100%
+                metric={"intent": intent, "user_text_preview": (user_text or "")[:60]},
+            )
+            return InsightResult(
+                items=[item],
+                generator=f"{self.name}/short_circuit_{intent}",
+                generated_at=_now_iso(),
+                meta={"fallback_reason": None, "intent": intent},  # type: ignore[typeddict-unknown-key]
+            )
         if intent == "meta":
             base_prompt = SYSTEM_PROMPT_META_JA if lang == "ja" else SYSTEM_PROMPT_META_EN
         elif intent == "forecast":
