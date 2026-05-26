@@ -51,3 +51,8 @@ shuttlescope/test_dispatch_fixed.py
 
 # 2026-05-25 PII: company-named seeding script (Org A real-data dataset). Keep local for re-seeding but not in public repo.
 shuttlescope/scripts/create_resonac_dataset.py
+
+# 2026-05-26: 公開すべきでない運用ドキュメント (Cloudflare tunnel 設定手順 / 認証ハードニング計画)。
+# git history からは別途 filter-repo 等で除去が必要 (本コミットは HEAD から外すのみ)。
+2026-04-20_cluster_auth_hardening_execution_plan.md
+shuttlescope_cloudflare_tunnel_steps.md
