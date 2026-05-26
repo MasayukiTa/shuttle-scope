@@ -10,6 +10,8 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import i18n from '@/i18n'
+import { publicSiteUrl } from '@/utils/publicUrl'
 import {
   ConsentRecord,
   ConsentStateDTO,
@@ -455,7 +457,7 @@ export default function OnboardingConsentPage({
           </span>
           <div className="flex flex-wrap items-center gap-3">
             <a
-              href="https://shuttle-scope.com/"
+              href={publicSiteUrl('/', i18n.language)}
               className="underline text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100"
             >
               {t('onboarding.consent.back_to_site') || 'shuttle-scope.com に戻る'}
