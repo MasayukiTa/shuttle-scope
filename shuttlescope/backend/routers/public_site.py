@@ -1150,7 +1150,15 @@ def _enforce_contact_rate_limit(request: Request) -> None:
 
 
 def _notify_inquiry(inquiry: PublicInquiry) -> None:
+    # 優先順位:
+    #   1. SS_NOTIFY_WEBHOOK_URL (settings.ss_notify_webhook_url) — 専用設定
+    #   2. SS_ADMIN_NOTIFY_WEBHOOK_URL — 汎用 admin 通知 (auth_email と共用)
+    # 2026-05-26: 「A 案 = 全部同じ webhook に流す」運用のため fallback 追加。
+    # 別チャンネルに分けたくなったら SS_NOTIFY_WEBHOOK_URL を別途設定する。
+    import os
     webhook = (settings.ss_notify_webhook_url or "").strip()
+    if not webhook:
+        webhook = (os.environ.get("SS_ADMIN_NOTIFY_WEBHOOK_URL", "") or "").strip()
     if not webhook:
         return
     # SSRF 対策を `validate_external_url` で統一:
@@ -1217,10 +1225,14 @@ def _notify_inquiry(inquiry: PublicInquiry) -> None:
         )
     }
     try:
+        # Discord blocks the default Python-urllib User-Agent with 403.
         req = urllib.request.Request(
             webhook,
             data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "ShuttleScope-InquiryNotify/1.0 (+https://shuttle-scope.com)",
+            },
             method="POST",
         )
         urllib.request.urlopen(req, timeout=5).read()
