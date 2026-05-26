@@ -13,6 +13,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
@@ -29,6 +30,11 @@ _recent_contact_requests: dict[str, list[datetime]] = {}
 
 # サイトアイコン / OG 画像を backend/public/ から配信（shuttle-scope.com からも Electron SPA からも利用）
 _PUBLIC_ASSETS_DIR = Path(__file__).resolve().parent.parent / "public"
+
+# PR1 (2026-05-26): public site の段階的 Jinja2 化用テンプレートディレクトリ。
+# autoescape=True を必須とし、テンプレ内変数による XSS を防ぐ。
+_TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
+_public_templates = Jinja2Templates(directory=str(_TEMPLATES_DIR), autoescape=True)
 
 
 class PublicInquiryCreate(BaseModel):
@@ -1006,109 +1012,24 @@ def render_privacy_page(request: Request) -> HTMLResponse:
 
 
 def _render_contact_str(request: Request, *, preview: bool = False) -> str:
-    login_href = _public_login_href(request)
-    submit_path = "/api/public/contact"
-    body = f"""
-    <div class="shell">
-      {_public_nav(login_href, lang_href="/en/contact")}
-      <section class="panel" style="margin-bottom:20px;">
-        <h1>お問い合わせ</h1>
-        <p>
-          ShuttleScope に関するお問い合わせは、下記フォームよりご送信ください。
-          導入のご相談、機能に関するご質問、不具合のご報告、その他ご意見・ご要望を承ります。
-          ご返信をご希望の場合は、連絡先欄に希望される連絡手段をご記入ください。
-        </p>
-        <div class="notice">
-          現在 ShuttleScope はベータ版として限定提供を行っております。
-          お寄せいただいた内容を確認のうえ、必要に応じて担当よりご連絡いたします。
-          <br>本フォームはメール送信ではなく、管理画面にて受付・管理する形式となっております。
-        </div>
-        <div class="notice" style="margin-top:12px;background:rgba(15,94,168,.07);border-color:rgba(15,94,168,.18);">
-          <strong>β版データ利用について（2026年）</strong><br>
-          β版をご利用いただく場合、アノテーションされた試合クリップおよびラベルデータを
-          バドミントン特化 AI モデルの改善目的に利用させていただくことがあります。
-          詳細および利用を希望されない場合のオプトアウト方法は
-          <a href="/terms#beta">利用規約 第9条</a> をご確認ください。
-        </div>
-      </section>
+    """PR1 (2026-05-26): Jinja2 テンプレートで /contact (JA) を描画する。
 
-      <section class="panel">
-        <form id="contact-form">
-          <div class="form-grid">
-            <div>
-              <label for="name">お名前</label>
-              <input id="name" name="name" maxlength="120" required>
-            </div>
-            <div>
-              <label for="organization">所属・チーム名</label>
-              <input id="organization" name="organization" maxlength="160">
-            </div>
-            <div>
-              <label for="role">立場</label>
-              <select id="role" name="role">
-                <option value="">選択してください</option>
-                <option value="player">選手</option>
-                <option value="coach">コーチ</option>
-                <option value="analyst">分析担当</option>
-                <option value="team_staff">チームスタッフ</option>
-                <option value="other">その他</option>
-              </select>
-            </div>
-            <div>
-              <label for="contact_reference">返信先や連絡手段</label>
-              <input id="contact_reference" name="contact_reference" maxlength="200" placeholder="任意: 連絡先や希望する連絡手段">
-            </div>
-          </div>
-
-          <div style="margin-top:18px;">
-            <label for="message">お問い合わせ内容</label>
-            <textarea id="message" name="message" required minlength="10" maxlength="4000"></textarea>
-          </div>
-
-          <div class="hidden-field" aria-hidden="true">
-            <label for="website">website</label>
-            <input id="website" name="website" tabindex="-1" autocomplete="off">
-          </div>
-
-          <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
-            <button class="btn btn-primary" type="submit">送信する</button>
-            <a class="btn btn-secondary" href="/">トップへ戻る</a>
-          </div>
-          <div id="contact-result" class="result" aria-live="polite"></div>
-        </form>
-      </section>
-    </div>
-    <script>
-      const form = document.getElementById('contact-form');
-      const result = document.getElementById('contact-result');
-      form.addEventListener('submit', async (event) => {{
-        event.preventDefault();
-        result.textContent = '送信中です...';
-        const payload = Object.fromEntries(new FormData(form).entries());
-        try {{
-          const res = await fetch('{submit_path}', {{
-            method: 'POST',
-            headers: {{ 'Content-Type': 'application/json' }},
-            body: JSON.stringify(payload),
-          }});
-          const data = await res.json().catch(() => ({{}}));
-          if (!res.ok) {{
-            throw new Error(data.detail || '送信に失敗しました。');
-          }}
-          form.reset();
-          result.textContent = 'お問い合わせを受け付けました。内容を確認のうえ、必要に応じてご連絡いたします。';
-        }} catch (error) {{
-          result.textContent = error.message || '送信に失敗しました。時間をおいて再度お試しください。';
-        }}
-      }});
-    </script>
+    既存挙動を維持するため、preview=True 時の canonical/noindex 切替と、
+    submit_path (/api/public/contact) を context に渡す方式に置き換えた。
     """
-    return _base_layout_str(
-        "ShuttleScope | お問い合わせ",
-        body,
-        canonical_path="/contact" if not preview else "/public-preview/contact",
-        noindex=preview,
-    )
+    canonical_path = "/contact" if not preview else "/public-preview/contact"
+    context = {
+        "request": request,
+        "lang": "ja",
+        "submit_path": "/api/public/contact",
+        "canonical_path": canonical_path,
+        "noindex": preview,
+        "login_href": _public_login_href(request),
+    }
+    # TemplateResponse は Response オブジェクトを返すので、body bytes を decode して
+    # 既存の _rewrite_preview_links (str -> str) と互換にする。
+    resp = _public_templates.TemplateResponse("public/contact.html.j2", context)
+    return resp.body.decode("utf-8")
 
 
 def render_contact_page(request: Request, *, preview: bool = False) -> HTMLResponse:
