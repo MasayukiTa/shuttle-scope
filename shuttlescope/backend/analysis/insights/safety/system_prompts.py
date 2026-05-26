@@ -107,6 +107,42 @@ def _is_unsupported_lang(text: str) -> bool:
     return False
 
 
+def detect_input_language(text: str) -> str:
+    """ユーザ入力の言語を script ベースで検出し、英語名で返す。
+
+    NIM に「Reply in <lang>」を明示するために使う。NIM 自身に言語推測させる
+    と JA に引っ張られる傾向があるため、code 側で確定的に指示する。
+    """
+    t = text or ""
+    if re.search(r"[ぁ-んァ-ヴ]", t):  # ひらがな or カタカナ → 日本語
+        return "Japanese"
+    if re.search(r"[가-힯]", t):  # ハングル
+        return "Korean"
+    if re.search(r"[Ѐ-ӿ]", t):  # キリル
+        return "Russian"
+    if re.search(r"[֐-׿]", t):  # ヘブライ
+        return "Hebrew"
+    if re.search(r"[؀-ۿ]", t):  # アラビア
+        return "Arabic"
+    if re.search(r"[฀-๿]", t):  # タイ
+        return "Thai"
+    if re.search(r"[ऀ-ॿ]", t):  # デーヴァナーガリー (ヒンディー等)
+        return "Hindi"
+    if re.search(r"[一-龥]", t):  # CJK ideograph (kana 無し → 中国語)
+        return "Chinese"
+    # ラテン拡張 (ñ á é í ó ú ü) → スペイン語/フランス語/ドイツ語等
+    if re.search(r"[ñÑ¿¡]", t):
+        return "Spanish"
+    if re.search(r"[àâçéèêëîïôûùüÿœæÀÂÇÉÈÊËÎÏÔÛÙÜŸŒÆ]", t):
+        return "French"
+    if re.search(r"[äöüßÄÖÜ]", t):
+        return "German"
+    if re.search(r"[ãõçáéíóúÁÉÍÓÚ]", t):
+        return "Portuguese"
+    # その他: ASCII のみ → English と推定
+    return "English"
+
+
 def _is_nonsense(text: str) -> bool:
     """意味的に空っぽな入力を検出する。NIM に投げる前に弾く。"""
     t = (text or "").strip()

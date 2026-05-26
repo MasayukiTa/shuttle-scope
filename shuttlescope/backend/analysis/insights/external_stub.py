@@ -25,6 +25,7 @@ from backend.analysis.insights.safety.system_prompts import (
     REFUSAL_TEXT_JA, REFUSAL_TEXT_EN,
     NONSENSE_TEXT_JA, NONSENSE_TEXT_EN,
     classify_intent,
+    detect_input_language,
 )
 from backend.analysis.insights.types import (
     InsightContext,
@@ -190,35 +191,31 @@ class ExternalApiGenerator:
         # NOTE: prompt 本文に {count} {pct} 等の中括弧があるため .format は使えず replace で。
         system_prompt = base_prompt.replace("{role_label}", str(role_label))
 
+        detected_lang = detect_input_language(user_text or "")
+        lang_directive = (
+            f"CRITICAL: The user wrote in {detected_lang}. "
+            f"Reply EXCLUSIVELY in {detected_lang}. "
+            f"Do NOT switch to Japanese or English unless the user used those languages."
+        )
         if intent == "meta":
-            # meta は固定回答に近いので analytics を渡しても無視されてよい
-            if lang == "ja":
-                question_hint = "ユーザがアシスタント自身について質問しています。簡潔に自己紹介してください。"
-            else:
-                question_hint = "User asked about the assistant. Reply with a concise self-introduction."
+            question_hint = (
+                f"{lang_directive} "
+                f"User asked about the assistant — reply with a concise self-introduction."
+            )
         elif intent == "forecast":
-            if lang == "ja":
-                question_hint = (
-                    f"ユーザの質問: 「{(user_text or '')[:80]}」 — これは予測質問です。"
-                    "AI として確実な予測は提供できないことを明示し、過去データの傾向のみ示してください。"
-                )
-            else:
-                question_hint = (
-                    f"User question: \"{(user_text or '')[:80]}\" — this is a prediction question. "
-                    "State that an AI can't make hard predictions and describe trends from past data only."
-                )
+            question_hint = (
+                f"{lang_directive} "
+                f"User question: \"{(user_text or '')[:80]}\" — this is a prediction question. "
+                "State that an AI can't make hard predictions and describe trends from past data only."
+            )
         else:
-            if lang == "ja":
-                question_hint = (
-                    f"ユーザの質問: 「{(user_text or '直近の伸びしろは？')[:80]}」 — 成長アドバイスを 1 件、3 文以内・200 文字以内。"
-                    "N=<count> または信頼度 <pct>% を必ず含めてください。"
-                )
-            else:
-                question_hint = (
-                    f"User question: \"{(user_text or 'What is my next growth area?')[:80]}\". "
-                    "Generate 1 short growth insight (<=3 sentences, <=100 words). "
-                    "Include N=<count> or confidence percentage."
-                )
+            question_hint = (
+                f"{lang_directive} "
+                f"User question: \"{(user_text or 'next growth area?')[:80]}\". "
+                "Generate 1 short growth insight (<=3 sentences, <=100 words in English / "
+                "<=200 chars in Japanese / equivalent length in other languages). "
+                "Include N=<count> or confidence percentage."
+            )
 
         user_body = json.dumps(
             {"analytics": analytics, "question_hint": question_hint},
