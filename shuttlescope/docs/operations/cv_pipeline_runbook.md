@@ -42,6 +42,7 @@ INT8 は player_a/video-b/-d/-db の 4 映像で +22pt 安定改善 (overfit で
 | `SS_WASB_USE_INT8` | `0` (default) / `1` | INT8 QDQ ONNX (1.49 MB) を load。TRT EP の INT8 mode も有効化 | 検出率優先 (+22pt)、速度同等以上。**本番推奨** |
 | `SS_WASB_USE_NVDEC` | `0` (default) / `1` | `nvdec_pipe` で zero-copy GPU decode (cv2 をバイパス) | 速度優先 (decode 11.7× / e2e 1.49×)。失敗時 cv2 自動 fallback |
 | `SS_WASB_ROI_REFINE` | `0` (default) / `1` | 2nd-pass track-then-detect ROI re-inference | オフライン分析・精度極限のみ。**本番では OFF (17× 遅化、+0.9pt のみ)** |
+| `SS_WASB_TILE` | `0` (default) / `1` | 3×2 タイル分割で full-res フレームを 6 サブタイル推論。最大 conf タイルを採用 | オフライン専用 (推論コスト ~6×、リアルタイム不可)。1080p の小シャトル recall 改善を狙う opt-in。精度向上は未検証、recall vs FP のトレードオフは要人手判定 |
 | `SS_WASB_ONNX` | (abs path) | カスタム ONNX を強制指定 (INT8 env より優先) | A/B テスト・自前 fine-tune モデル投入時 |
 | `SS_SHUTTLE_IMPL` + load 失敗時 | — | factory が graceful に `get_tracknet()` へ fallback (`backend/cv/factory.py`) | 自動フォールバック確認 |
 | `SS_DISABLE_RELOAD` | `0` / `1` | uvicorn reload を無効化、prod の reload-loop 防止 | **本番では必ず `1`** (`deploy.ps1` で自動設定済) |
