@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db, SessionLocal
 from backend.db.models import Match, GameSet, Rally, MatchCVArtifact
-from backend.yolo.inference import get_yolo_inference
+from backend.yolo.inference import get_yolo_inference, filter_detections_by_court
 from backend.yolo.court_mapper import summarize_frame_positions, summarize_rally_positions
 from backend.yolo.cv_aligner import align_match
 from backend.analysis.doubles_cv_engine import compute_doubles_cv_analytics
@@ -719,6 +719,17 @@ def _run_batch(
         # バッチ開始時に ByteTrack をリセット（前のジョブの状態を引き継がない）
         inf.reset_tracker()
 
+        # person v2: コート 4 コーナー (動画全体正規化座標) を読み込む。
+        # キャリブレーション未設定の試合は court_polygon=None で filter no-op。
+        court_polygon: Optional[list[list[float]]] = None
+        try:
+            from backend.routers.court_calibration import load_calibration_from_db
+            _calib = load_calibration_from_db(match_id, db)
+            if _calib and isinstance(_calib.get("roi_polygon"), list):
+                court_polygon = [list(p) for p in _calib["roi_polygon"]]
+        except Exception as _e:
+            logger.info("YOLO batch: court polygon load skipped (%s)", _e)
+
         # 既存アーティファクト読み込み（再開・差分処理用）
         # 最新アーティファクトを取得するため created_at 降順
         existing_by_idx: dict[int, dict] = {}
@@ -836,6 +847,8 @@ def _run_batch(
                         cropped = _crop_roi(frame, droi)
                         detected = inf.predict_frame(cropped)
                         new_players.extend(_remap_player_coords(detected, droi))
+                    # person v2: 差分検出にもコート外フィルタを適用
+                    new_players = filter_detections_by_court(new_players, court_polygon)
                     merged = _merge_players(existing_by_idx[frame_idx]["players"], new_players)
                     frames_data.append({
                         "frame_idx": frame_idx,
@@ -849,6 +862,8 @@ def _run_batch(
                     players = inf.predict_frame(cropped)
                     if roi:
                         players = _remap_player_coords(players, roi)
+                    # person v2: コート外 (審判/掲示板/観客) を drop
+                    players = filter_detections_by_court(players, court_polygon)
                     frames_data.append({
                         "frame_idx": frame_idx,
                         "timestamp_sec": round(ts_sec, 3),
@@ -975,6 +990,16 @@ def detect_single_frame(
     players = inf.predict_frame(cropped)
     if roi:
         players = _remap_player_coords(players, roi)
+
+    # person v2: コート外検出を drop (キャリブレーション未設定なら no-op)
+    try:
+        from backend.routers.court_calibration import load_calibration_from_db
+        _calib = load_calibration_from_db(match_id, db)
+        _poly = _calib.get("roi_polygon") if _calib else None
+        if isinstance(_poly, list):
+            players = filter_detections_by_court(players, _poly)
+    except Exception as _e:
+        logger.info("frame_detect: court polygon load skipped (%s)", _e)
 
     # 外観特徴量を付与（seed 指定時にギャラリー登録に使う）
     _fh, _fw = frame.shape[:2]

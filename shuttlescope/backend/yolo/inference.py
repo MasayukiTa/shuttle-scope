@@ -53,6 +53,62 @@ DEPTH_BACK_Y = 0.65    # これより大きい y = back（ベースライン側�
 MIN_CONF = 0.15
 
 
+def _get_nms_iou_threshold() -> float:
+    """person v2: NMS IoU しきい値を env から取得。
+    デフォルト 0.45 (YOLO 標準)。SS_PERSON_NMS_IOU=0.30 にすると
+    重なり気味の 2 人 (スマッシュ時 attacker/blocker など) を別 bbox として残しやすくなる。
+    """
+    import os as _os
+    raw = _os.environ.get("SS_PERSON_NMS_IOU")
+    if raw is None:
+        return 0.45
+    try:
+        v = float(raw)
+    except (TypeError, ValueError):
+        return 0.45
+    # 安全域: [0.05, 0.95]
+    if v < 0.05 or v > 0.95:
+        return 0.45
+    return v
+
+
+def _court_filter_enabled() -> bool:
+    """person v2: court area filter の有効/無効。デフォルト ON。
+    SS_PERSON_COURT_FILTER=0 で完全無効化。
+    """
+    import os as _os
+    return _os.environ.get("SS_PERSON_COURT_FILTER", "1") != "0"
+
+
+def _expand_polygon(polygon: list[list[float]], scale: float) -> list[list[float]]:
+    """polygon の重心を中心に scale 倍に拡大する (margin 用)。
+    凸 4 角形を想定 (コート 4 コーナー)。scale=1.0 で変化なし。
+    """
+    if not polygon:
+        return polygon
+    cx = sum(p[0] for p in polygon) / len(polygon)
+    cy = sum(p[1] for p in polygon) / len(polygon)
+    return [[cx + (p[0] - cx) * scale, cy + (p[1] - cy) * scale] for p in polygon]
+
+
+def _point_in_polygon(x: float, y: float, polygon: list[list[float]]) -> bool:
+    """Ray casting で点 in 多角形判定 (court_calibration.is_inside_court と同じ)。
+    inference 側で court_calibration を import すると循環するため局所複製。
+    """
+    n = len(polygon)
+    if n < 3:
+        return False
+    inside = False
+    j = n - 1
+    for i in range(n):
+        xi, yi = polygon[i]
+        xj, yj = polygon[j]
+        if ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi + 1e-12) + xi):
+            inside = not inside
+        j = i
+    return inside
+
+
 class YOLOInference:
     """YOLO プレイヤー検出ラッパー"""
 
@@ -77,6 +133,18 @@ class YOLOInference:
         # Track A1: track_id → label の継続マップ。
         # ByteTrack 有効時に同一 track_id が次フレームでも同ラベルを引き継ぐ。
         self._prev_track_labels: dict[int, str] = {}
+        # person v2 court area filter: 試合ごとに 4 コーナー多角形を set すると、
+        # 各検出の foot_point が拡張多角形外なら drop する (審判/掲示板/観客対策)。
+        # None の場合は filter 無効 (キャリブ未設定試合の fail-safe)。
+        self._court_polygon: Optional[list[list[float]]] = None
+        # margin: court bbox を中心スケール (1.5x など) で拡張。スマッシュ後にライン
+        # ギリギリ外に出る選手を許容するため。env で上書き可能 (SS_PERSON_COURT_MARGIN)。
+        import os as _os2
+        try:
+            self._court_margin: float = float(_os2.environ.get("SS_PERSON_COURT_MARGIN", "1.5"))
+        except (TypeError, ValueError):
+            self._court_margin = 1.5
+        self._court_polygon_expanded: Optional[list[list[float]]] = None
 
     # ─── 可用性確認 ─────────────────────────────────────────────────────
 
@@ -281,6 +349,14 @@ class YOLOInference:
                     self._last_debug["error"] = f"不明なバックエンド: {self._backend}"
                     return []
                 result = self._assign_player_labels(detections)
+                # person v2: predict_frame は cropped 座標を返すため、ここでは
+                # ROI が無い (= 全画面) 場合に限り court filter を適用する。
+                # ROI crop 経由の呼び出しは router 側で remap 後に
+                # filter_detections_by_court() を呼ぶこと。
+                # _court_polygon は full-frame 正規化座標前提なので、
+                # crop 中は適用しない (router 経路で明示適用)。
+                if self._court_polygon_expanded is not None:
+                    result = self._apply_court_filter(result)
                 self._last_debug["detected"] = len(result)
                 return result
             except Exception as exc:
@@ -357,6 +433,9 @@ class YOLOInference:
                 candidates.append((conf, x1_n, y1_n, x2_n, y2_n))
 
         # 信頼度降順でグリーディ NMS
+        # person v2: SS_PERSON_NMS_IOU で IoU しきい値を緩められる (重なった 2 人保持)。
+        nms_iou = _get_nms_iou_threshold()
+        self._last_debug["nms_iou_threshold"] = nms_iou
         candidates.sort(key=lambda c: c[0], reverse=True)
         kept: list[tuple] = []
         for cand in candidates:
@@ -370,7 +449,7 @@ class YOLOInference:
                     a1 = (x2 - x1) * (y2 - y1)
                     a2 = (kx2 - kx1) * (ky2 - ky1)
                     iou = inter / (a1 + a2 - inter + 1e-6)
-                    if iou > 0.45:
+                    if iou > nms_iou:
                         overlap = True
                         break
             if not overlap:
@@ -391,13 +470,17 @@ class YOLOInference:
         """ultralytics YOLOv8 で person クラスのみ検出。
         SS_YOLO_BYTETRACK=1 の場合は ByteTrack で時系列 track_id を付与する。
         """
+        # person v2: SS_PERSON_NMS_IOU で IoU しきい値を緩められる (重なり 2 人を残す)
+        nms_iou = _get_nms_iou_threshold()
         if self._bt_enabled and self._BT_YAML.exists():
             results = self._model.track(
                 frame, verbose=False, classes=[0], device=self._ul_device,
-                persist=True, tracker=str(self._BT_YAML),
+                persist=True, tracker=str(self._BT_YAML), iou=nms_iou,
             )
         else:
-            results = self._model(frame, verbose=False, classes=[0], device=self._ul_device)
+            results = self._model(
+                frame, verbose=False, classes=[0], device=self._ul_device, iou=nms_iou,
+            )
         if not results:
             return []
 
@@ -594,6 +677,92 @@ class YOLOInference:
     def reset_label_continuity(self) -> None:
         """ByteTrack reset と組で呼ぶ: track_id 継続マップをクリア。"""
         self._prev_track_labels = {}
+
+    # ─── person v2 court area filter ────────────────────────────────────
+    def set_court_polygon(
+        self,
+        polygon: Optional[list[list[float]]],
+        margin: Optional[float] = None,
+    ) -> None:
+        """コート 4 コーナーの正規化座標多角形を設定。
+        margin: 重心を中心としたスケール倍率 (>=1.0)。None なら env / デフォルト維持。
+        polygon=None で filter を無効化する。
+        """
+        if polygon is None or len(polygon) < 3:
+            self._court_polygon = None
+            self._court_polygon_expanded = None
+            return
+        self._court_polygon = [list(p) for p in polygon]
+        if margin is not None and margin >= 1.0:
+            self._court_margin = float(margin)
+        self._court_polygon_expanded = _expand_polygon(
+            self._court_polygon, max(1.0, self._court_margin)
+        )
+
+    def clear_court_polygon(self) -> None:
+        """court area filter を解除 (バッチ終了時など)。"""
+        self._court_polygon = None
+        self._court_polygon_expanded = None
+
+    def _apply_court_filter(self, detections: list[dict]) -> list[dict]:
+        """foot_point (足元) が拡張コート多角形の外なら drop。
+        polygon 未設定 / env で無効化 / 多角形不正 のときは何もしない (fail-safe)。
+        """
+        if not _court_filter_enabled():
+            return detections
+        poly = self._court_polygon_expanded
+        if not poly or len(poly) < 3:
+            return detections
+        kept: list[dict] = []
+        dropped = 0
+        for d in detections:
+            # person 系のみフィルタ対象 (shuttle 等は素通し)
+            label = d.get("label", "")
+            if not (label.startswith("player_") or label == "person" or label == "player_other"):
+                kept.append(d)
+                continue
+            fp = d.get("foot_point") or d.get("centroid")
+            if not fp or len(fp) < 2:
+                kept.append(d)
+                continue
+            if _point_in_polygon(float(fp[0]), float(fp[1]), poly):
+                kept.append(d)
+            else:
+                dropped += 1
+        if dropped:
+            self._last_debug["court_filter_dropped"] = dropped
+        return kept
+
+
+# ─── 公開ヘルパー: full-frame 座標で court area filter ────────────────────
+
+def filter_detections_by_court(
+    detections: list[dict],
+    polygon: Optional[list[list[float]]],
+    margin: float = 1.5,
+) -> list[dict]:
+    """ROI remap 後の (= 動画全体正規化座標) detections に court filter を適用。
+    polygon=None / [] / 不正なら何もしない (fail-safe)。
+    env SS_PERSON_COURT_FILTER=0 でも完全 no-op。
+    """
+    if not _court_filter_enabled():
+        return detections
+    if not polygon or len(polygon) < 3:
+        return detections
+    expanded = _expand_polygon([list(p) for p in polygon], max(1.0, margin))
+    kept: list[dict] = []
+    for d in detections:
+        label = d.get("label", "")
+        if not (label.startswith("player_") or label == "person" or label == "player_other"):
+            kept.append(d)
+            continue
+        fp = d.get("foot_point") or d.get("centroid")
+        if not fp or len(fp) < 2:
+            kept.append(d)
+            continue
+        if _point_in_polygon(float(fp[0]), float(fp[1]), expanded):
+            kept.append(d)
+    return kept
 
 
 # ─── シングルトン ────────────────────────────────────────────────────────
