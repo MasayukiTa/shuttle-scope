@@ -111,13 +111,15 @@
       "dob_optional": "Date of birth (optional)",
       "dob_hint": "Optional. Used to apply minor-aware defaults on the consent UI (PRIVACY §IX-ter).",
       "submit": "Create account",
-      "success_title": "Verification email sent",
-      "success_body": "A verification link has been sent to your email address. Please click the link to complete the verification.",
+      "success_title": "Thanks for signing up",
+      "success_body": "An administrator will get back to you, typically within about 12 hours (longer during busy periods), at the contact email you provided. Please give it some time before trying to sign in.",
       "have_account": "Already have an account? Log in",
       "back_to_login": "Back to login",
-      "unavailable_banner_title": "Sign-up is currently unavailable",
-      "unavailable_banner_body": "This feature is temporarily disabled while the system is being prepared. If you wish to use ShuttleScope, please contact us via the official inquiry form. We will respond in due course.",
-      "unavailable_banner_contact": "Go to the contact form"
+      "unavailable_banner_title": "About signing up",
+      "unavailable_banner_body": "Automated confirmation emails are still being set up, so administrators currently review and respond to sign-ups directly. After you register, you should receive a message from a shuttle-scope.com administrator at your contact email within about 12 hours (longer during busy periods). Please try signing in once that message arrives.",
+      "unavailable_banner_contact": "Go to the contact form",
+      "contact_email_label": "Contact email (optional)",
+      "contact_email_hint": "Where the administrator will reach out. Feel free to reuse the email you registered with."
     },
     "verify": {
       "title": "Email Verification",
