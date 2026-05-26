@@ -1,12 +1,12 @@
 {# 連絡フォーム (JA)。V7 の nav/footer を base から継承し、本文は従来の白カード/フォームを維持する。 #}
 {% extends "public/base.html.j2" %}
 
-{% block title %}ShuttleScope | お問い合わせ{% endblock %}
-{% block meta_description %}ShuttleScope に関するお問い合わせフォーム。導入相談・機能の質問・不具合報告などをお寄せください。{% endblock %}
+{% block title %}{% if lang == 'en' %}ShuttleScope | Contact{% else %}ShuttleScope | お問い合わせ{% endif %}{% endblock %}
+{% block meta_description %}{% if lang == 'en' %}Contact form for ShuttleScope. Reach out about adoption, feature questions, bug reports, and feedback.{% else %}ShuttleScope に関するお問い合わせフォーム。導入相談・機能の質問・不具合報告などをお寄せください。{% endif %}{% endblock %}
 {% block canonical %}https://shuttle-scope.com{{ canonical_path }}{% endblock %}
 {% block og_url %}https://shuttle-scope.com{{ canonical_path }}{% endblock %}
-{% block og_title %}ShuttleScope | お問い合わせ{% endblock %}
-{% block og_description %}ShuttleScope へのお問い合わせフォーム。{% endblock %}
+{% block og_title %}{% if lang == 'en' %}ShuttleScope | Contact{% else %}ShuttleScope | お問い合わせ{% endif %}{% endblock %}
+{% block og_description %}{% if lang == 'en' %}Contact form for ShuttleScope.{% else %}ShuttleScope へのお問い合わせフォーム。{% endif %}{% endblock %}
 {% block robots %}{% if noindex %}<meta name="robots" content="noindex,nofollow">{% endif %}{% endblock %}
 
 {% block extra_styles %}
@@ -72,6 +72,78 @@
 
 {% block content %}
 <script>document.body.classList.add('public-contact-page');</script>
+{% if lang == 'en' %}
+<div class="shell">
+  <section class="panel" style="margin-bottom:20px;">
+    <h1>Contact</h1>
+    <p>
+      For inquiries regarding ShuttleScope, please submit your message via the form below.
+      We welcome consultations on adoption, questions about features, bug reports, and other
+      feedback or requests. If you require a reply, please indicate your preferred contact
+      method in the field below.
+    </p>
+    <div class="notice">
+      ShuttleScope is currently provided as a limited-availability beta release.
+      We will review your inquiry and, where appropriate, a team member will respond.
+      <br>This form does not send email directly; submissions are received and managed through
+      an internal administration interface.
+    </div>
+    <div class="notice" style="margin-top:12px;background:rgba(15,94,168,.07);border-color:rgba(15,94,168,.18);">
+      <strong>Beta Period Data Use (2026)</strong><br>
+      By participating in the beta programme, annotated match clips and label data you create
+      may be used to improve badminton-specific AI models.
+      For full details and opt-out instructions, see
+      <a href="/en/terms#beta">Terms of Use, Section 9</a>.
+    </div>
+  </section>
+
+  <section class="panel">
+    <form id="contact-form">
+      <div class="form-grid">
+        <div>
+          <label for="name">Name</label>
+          <input id="name" name="name" maxlength="120" required placeholder="Your name">
+        </div>
+        <div>
+          <label for="organization">Organization / Team</label>
+          <input id="organization" name="organization" maxlength="160" placeholder="Optional">
+        </div>
+        <div>
+          <label for="role">Role</label>
+          <select id="role" name="role">
+            <option value="">Select…</option>
+            <option value="player">Player</option>
+            <option value="coach">Coach</option>
+            <option value="analyst">Analyst</option>
+            <option value="team_staff">Team Staff</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div>
+          <label for="contact_reference">Preferred contact / reply method</label>
+          <input id="contact_reference" name="contact_reference" maxlength="200" placeholder="Optional: email, SNS handle, etc.">
+        </div>
+      </div>
+
+      <div style="margin-top:18px;">
+        <label for="message">Message</label>
+        <textarea id="message" name="message" required minlength="10" maxlength="4000" placeholder="Please describe your inquiry…"></textarea>
+      </div>
+
+      <div class="hidden-field" aria-hidden="true">
+        <label for="website">website</label>
+        <input id="website" name="website" tabindex="-1" autocomplete="off">
+      </div>
+
+      <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
+        <button class="btn btn-primary" type="submit">Send</button>
+        <a class="btn btn-secondary" href="/en">Back to top</a>
+      </div>
+      <div id="contact-result" class="result" aria-live="polite"></div>
+    </form>
+  </section>
+</div>
+{% else %}
 <div class="shell">
   <section class="panel" style="margin-bottom:20px;">
     <h1>お問い合わせ</h1>
@@ -140,6 +212,7 @@
     </form>
   </section>
 </div>
+{% endif %}
 {% endblock %}
 
 {% block extra_scripts %}
@@ -148,9 +221,10 @@
   (function() {
     const form = document.getElementById('contact-form');
     const result = document.getElementById('contact-result');
+    const lang = {{ lang|tojson }};
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
-      result.textContent = '送信中です...';
+      result.textContent = lang === 'en' ? 'Sending…' : '送信中です...';
       const payload = Object.fromEntries(new FormData(form).entries());
       try {
         const res = await fetch({{ submit_path|tojson }}, {
@@ -160,12 +234,16 @@
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          throw new Error(data.detail || '送信に失敗しました。');
+          throw new Error(data.detail || (lang === 'en' ? 'Submission failed.' : '送信に失敗しました。'));
         }
         form.reset();
-        result.textContent = 'お問い合わせを受け付けました。内容を確認のうえ、必要に応じてご連絡いたします。';
+        result.textContent = lang === 'en'
+          ? 'Your inquiry has been received. We will review it and follow up as needed.'
+          : 'お問い合わせを受け付けました。内容を確認のうえ、必要に応じてご連絡いたします。';
       } catch (error) {
-        result.textContent = error.message || '送信に失敗しました。時間をおいて再度お試しください。';
+        result.textContent = error.message || (lang === 'en'
+          ? 'Submission failed. Please try again later.'
+          : '送信に失敗しました。時間をおいて再度お試しください。');
       }
     });
   })();

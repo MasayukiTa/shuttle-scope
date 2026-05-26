@@ -3,12 +3,12 @@
    _render_terms_str 内 body 部を verbatim 移植している。 #}
 {% extends "public/base.html.j2" %}
 
-{% block title %}ShuttleScope | 利用規約{% endblock %}
-{% block meta_description %}ShuttleScope の利用規約。サービス提供条件、利用者の責任、データ取扱い、β版期間中のデータ利用条件などを定めます。{% endblock %}
+{% block title %}{% if lang == 'en' %}ShuttleScope | Terms of Use{% else %}ShuttleScope | 利用規約{% endif %}{% endblock %}
+{% block meta_description %}{% if lang == 'en' %}ShuttleScope Terms of Use. Conditions for service provision, user responsibilities, data handling, and beta-period data usage.{% else %}ShuttleScope の利用規約。サービス提供条件、利用者の責任、データ取扱い、β版期間中のデータ利用条件などを定めます。{% endif %}{% endblock %}
 {% block canonical %}https://shuttle-scope.com{{ canonical_path }}{% endblock %}
 {% block og_url %}https://shuttle-scope.com{{ canonical_path }}{% endblock %}
-{% block og_title %}ShuttleScope | 利用規約{% endblock %}
-{% block og_description %}ShuttleScope の利用規約。{% endblock %}
+{% block og_title %}{% if lang == 'en' %}ShuttleScope | Terms of Use{% else %}ShuttleScope | 利用規約{% endif %}{% endblock %}
+{% block og_description %}{% if lang == 'en' %}ShuttleScope Terms of Use.{% else %}ShuttleScope の利用規約。{% endif %}{% endblock %}
 {% block robots %}{% if noindex %}<meta name="robots" content="noindex,nofollow">{% endif %}{% endblock %}
 
 {% block extra_styles %}
@@ -59,6 +59,101 @@
 <script>document.body.classList.add('public-legal-page');</script>
 <div class="shell legal">
   <section class="panel">
+{% if lang == 'en' %}
+    <h1>ShuttleScope Terms of Use</h1>
+    <p class="small">Last updated: 2026-04-27</p>
+    <p>These Terms govern your use of ShuttleScope and its related features.</p>
+
+    <h2>1. Scope</h2>
+    <p>These Terms apply to all use of the ShuttleScope website, application, and associated features.</p>
+
+    <h2>2. Service Description</h2>
+    <p>ShuttleScope provides tools for badminton match review, video-based analysis, player data management, and team-level analysis sharing. Features may be added, modified, or discontinued without prior notice.</p>
+
+    <h2>3. User Responsibilities</h2>
+    <ul>
+      <li>You are responsible for maintaining the security of your account credentials and access environment.</li>
+      <li>You must comply with applicable laws, your organization's policies, and any third-party agreements when using this service.</li>
+      <li>You may not upload or process data that infringes on the rights of others without proper authorization.</li>
+    </ul>
+
+    <h2>4. Prohibited Use</h2>
+    <ul>
+      <li>Interfering with or disrupting the operation of the service</li>
+      <li>Unauthorized access, circumvention of authentication, or probing for vulnerabilities</li>
+      <li>Use for unlawful purposes or activities contrary to public order and morals</li>
+      <li>Sharing or publishing third-party personal information, videos, or records without proper authorization</li>
+      <li>Reproducing, redistributing, or commercially exploiting service content in a misleading manner</li>
+    </ul>
+
+    <h2>5. Data and Intellectual Property</h2>
+    <p>Data that you input, store, or upload to the service remains the property of you or the rightful owner, except as otherwise required by law. You agree that such data may be processed to the extent reasonably necessary for service provision, maintenance, improvement, and incident response.</p>
+
+    <h2>6. Disclaimer</h2>
+    <ul>
+      <li>ShuttleScope does not guarantee specific outcomes, performance improvements, or the completeness and accuracy of analysis results.</li>
+      <li>All displayed content and analysis should be used as supplementary information, not as the sole basis for decisions.</li>
+      <li>Service availability may be interrupted due to network issues, maintenance, or third-party service failures.</li>
+    </ul>
+
+    <h2>7. Service Changes and Termination</h2>
+    <p>We may modify, suspend, or terminate all or part of the service when operationally or technically necessary.</p>
+
+    <h2>8. Amendments</h2>
+    <p>These Terms may be revised as needed. Amended Terms become effective upon publication on this site or within the application.</p>
+
+    <h2 id="beta">9. Beta Period Data Use (2026)</h2>
+    <div class="notice" style="margin:18px 0;">
+      <strong>Important Notice for Beta Participants</strong>
+    </div>
+    <p>
+      During the 2026 beta period, ShuttleScope may use annotated data contributed by beta participants
+      for the purpose of improving badminton-specific AI models, subject to the conditions below.
+    </p>
+
+    <h3>Scope of Data</h3>
+    <ul>
+      <li>
+        <strong>Included:</strong>
+        Annotated match clips — short rally-level video segments (typically 5–60 seconds)
+        extracted from footage processed within the application — and associated label data
+        (shot type, court position, player action, formation, etc.)
+      </li>
+      <li>
+        <strong>Excluded:</strong>
+        Full match video files; directly identifying personal information such as full names
+        or facial recognition data
+      </li>
+    </ul>
+
+    <h3>Purposes</h3>
+    <ul>
+      <li>Improving badminton-specific player detection and shot-classification AI models</li>
+      <li>Enhancing racket and shuttle detection accuracy</li>
+      <li>Developing automated annotation assistance features within ShuttleScope</li>
+    </ul>
+
+    <h3>Data Handling</h3>
+    <ul>
+      <li>Data collected during the beta period may continue to be used for model improvement after the beta period ends.</li>
+      <li>Clips are processed to minimise the presence of directly identifying personal information before use in model training.</li>
+      <li>Data will not be sold or provided to third parties for commercial purposes unrelated to ShuttleScope's model development.</li>
+    </ul>
+
+    <h3>Opt-Out</h3>
+    <p>
+      If you do not wish your annotated clips and label data to be used under this section,
+      please notify us via the <a href="/en/contact">Contact form</a>.
+      Reasonable opt-out requests will be accommodated on an individual basis.
+    </p>
+    <p class="small" style="color:#7a8a9c;">
+      Continued registration and use of the beta service constitutes acceptance of this section (Article 9).
+      This section applies during the beta period (throughout 2026).
+    </p>
+
+    <h2>10. Contact</h2>
+    <p>For inquiries regarding this service, please use the <a href="/en/contact">Contact form</a>.</p>
+{% else %}
     <h1>ShuttleScope 利用規約</h1>
     <p class="small">最終更新日: 2026-04-27</p>
     <p>本規約は、ShuttleScope の提供条件および利用に関する基本事項を定めるものです。</p>
@@ -156,6 +251,7 @@
 
     <h2>10. お問い合わせ</h2>
     <p>本サービスに関するお問い合わせは、<a href="/contact">お問い合わせフォーム</a> から受け付けます。</p>
+{% endif %}
   </section>
 </div>
 {% endblock %}

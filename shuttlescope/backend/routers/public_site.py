@@ -1095,6 +1095,22 @@ def _base_layout_str_en(title: str, body: str, *, canonical_path: str = "/en", n
 
 
 def _render_terms_str_en(request: Request) -> str:
+    """PR3 (2026-05-26): Jinja 化。terms.html.j2 の lang='en' 分岐で描画。
+    旧 _base_layout_str_en 経由の f-string body は本ファイル末尾に残しているが、
+    実際の HTML 生成には使われない (PR4 で _base_layout_str_en と共に削除予定)。"""
+    canonical_path = '/en/terms'
+    context = {
+        'request': request,
+        'lang': 'en',
+        'canonical_path': canonical_path,
+        'noindex': False,
+        'login_href': _public_login_href(request, lang='en'),
+    }
+    resp = _public_templates.TemplateResponse('public/terms.html.j2', context)
+    return resp.body.decode('utf-8')
+
+
+def _render_terms_str_en_legacy(request: Request) -> str:
     login_href = _public_login_href(request, lang='en')
     body = f"""
     <div class="shell legal">
@@ -1204,6 +1220,20 @@ def _render_terms_str_en(request: Request) -> str:
 
 
 def _render_privacy_str_en(request: Request) -> str:
+    """PR3 (2026-05-26): Jinja 化。privacy.html.j2 の lang='en' 分岐で描画。"""
+    canonical_path = '/en/privacy'
+    context = {
+        'request': request,
+        'lang': 'en',
+        'canonical_path': canonical_path,
+        'noindex': False,
+        'login_href': _public_login_href(request, lang='en'),
+    }
+    resp = _public_templates.TemplateResponse('public/privacy.html.j2', context)
+    return resp.body.decode('utf-8')
+
+
+def _render_privacy_str_en_legacy(request: Request) -> str:
     login_href = _public_login_href(request, lang='en')
     body = f"""
     <div class="shell legal">
@@ -1268,6 +1298,21 @@ def _render_privacy_str_en(request: Request) -> str:
 
 
 def _render_contact_str_en(request: Request) -> str:
+    """PR3 (2026-05-26): Jinja 化。contact.html.j2 の lang='en' 分岐で描画。"""
+    canonical_path = '/en/contact'
+    context = {
+        'request': request,
+        'lang': 'en',
+        'submit_path': '/api/public/contact',
+        'canonical_path': canonical_path,
+        'noindex': False,
+        'login_href': _public_login_href(request, lang='en'),
+    }
+    resp = _public_templates.TemplateResponse('public/contact.html.j2', context)
+    return resp.body.decode('utf-8')
+
+
+def _render_contact_str_en_legacy(request: Request) -> str:
     login_href = _public_login_href(request, lang='en')
     submit_path = "/api/public/contact"
     body = f"""
