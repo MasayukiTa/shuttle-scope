@@ -17,7 +17,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { apiDelete, apiGet, apiPost } from '@/api/client'
+import { apiDelete, apiGet, apiPost, newIdempotencyKey } from '@/api/client'
 
 const STORAGE_KEY = 'growth_advisor_session_id'
 
@@ -252,7 +252,8 @@ export function useAdviceChat() {
     writeStoredSid(null)
     if (sid != null) {
       try {
-        await apiDelete(`/insights/chat/sessions/${sid}`)
+        await apiDelete(`/insights/chat/sessions/${sid}`,
+          { 'X-Idempotency-Key': newIdempotencyKey() })
       } catch {
         // best-effort: ローカル状態は既に消したので無視
       }
