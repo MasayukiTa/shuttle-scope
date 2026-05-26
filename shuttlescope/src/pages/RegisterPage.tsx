@@ -13,22 +13,18 @@ export default function RegisterPage() {
   const [password, setPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [dob, setDob] = useState('')  // yyyy-mm-dd
+  const [contactEmail, setContactEmail] = useState('')
   const [tsToken, setTsToken] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
-  // 現状 register API は無効化されている (SS_REGISTRATION_ENABLED=0 で 503 を返す)。
-  // フロントでも送信ボタンを disabled にして混乱を避ける。
-  // メール配信が整ったら DISABLED=false に切り替え可能。
-  const REGISTRATION_DISABLED = true
+  // 2026-05-26: 自動確認メールが整うまでの間は admin 手動承認 + 手動メール案内で運用。
+  // backend は webhook で admin に通知 → admin が contact_email へ手動でメール送信。
+  // mail backend が本実装に切り替わったら verify-mail フローを復活させる。
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (REGISTRATION_DISABLED) {
-      setError('現在、新規登録は受付を停止しております。')
-      return
-    }
     if (loading) return
     setLoading(true)
     setError(null)
@@ -40,6 +36,7 @@ export default function RegisterPage() {
         display_name: displayName || null,
         turnstile_token: tsToken || null,
         date_of_birth: dob || null,
+        contact_email: contactEmail || null,
       })
       setSuccess(true)
     } catch (err: unknown) {
@@ -71,17 +68,18 @@ export default function RegisterPage() {
             className="max-w-md w-full bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4">
         <h1 className="text-xl font-bold">{t('auth.register.title')}</h1>
 
-        {/* 一時的な利用不可バナー (M-B / M-C 完了まで) */}
-        <div className="rounded-md border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 p-4 space-y-2">
-          <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+        {/* 2026-05-26: 受付中 + 手動承認運用バナー (mail backend 整備までの暫定 UI)。
+            色は amber → blue 寄り (案内ニュアンス、停止ではない) */}
+        <div className="rounded-md border border-blue-300 bg-blue-50 dark:border-blue-700 dark:bg-blue-900/20 p-4 space-y-2">
+          <p className="text-sm font-semibold text-blue-900 dark:text-blue-200">
             {t('auth.register.unavailable_banner_title')}
           </p>
-          <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
+          <p className="text-xs text-blue-800 dark:text-blue-300 leading-relaxed">
             {t('auth.register.unavailable_banner_body')}
           </p>
           <a href="https://shuttle-scope.com/contact"
              target="_blank" rel="noopener noreferrer"
-             className="inline-block text-xs text-amber-900 dark:text-amber-200 underline hover:no-underline">
+             className="inline-block text-xs text-blue-900 dark:text-blue-200 underline hover:no-underline">
             {t('auth.register.unavailable_banner_contact')} →
           </a>
         </div>
@@ -136,11 +134,25 @@ export default function RegisterPage() {
           </p>
         </div>
 
+        <div>
+          <label className="block text-sm font-medium mb-1">
+            {t('auth.register.contact_email_label')}
+          </label>
+          <input type="email" value={contactEmail}
+                 onChange={(e) => setContactEmail(e.target.value)}
+                 maxLength={255}
+                 placeholder="your-name@example.com"
+                 className="w-full rounded border px-3 py-2 text-sm dark:bg-gray-700 dark:border-gray-600" />
+          <p className="mt-1 text-xs text-gray-500">
+            {t('auth.register.contact_email_hint')}
+          </p>
+        </div>
+
         <TurnstileWidget onToken={setTsToken} />
 
         {error && <div className="text-sm text-red-600">{error}</div>}
 
-        <button type="submit" disabled={loading || REGISTRATION_DISABLED}
+        <button type="submit" disabled={loading}
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded disabled:opacity-50">
           {loading ? t('app.loading') : t('auth.register.submit')}
         </button>

@@ -175,6 +175,10 @@ class RegisterRequest(BaseModel):
     # 任意入力。PRIVACY §IX-ter (未成年配慮) と AI 学習除外判定の根拠。
     # ISO 8601 yyyy-mm-dd。未入力 = NULL = 大人として扱われる。
     date_of_birth: Optional[str] = Field(None, max_length=10, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    # 「裏技」期間中: 自動確認メールが未配信のため、admin が手動で連絡するための
+    # 別途連絡用メールアドレス (任意)。register email と同じでも構わない。
+    # webhook 通知本文に含めて admin が手動でメール返信する運用。
+    contact_email: Optional[str] = Field(None, max_length=255)
 
 
 class PasswordResetRequest(BaseModel):
@@ -237,6 +241,33 @@ def _send_email_safe(to: str, subject: str, body: str, tag: str) -> None:
         mailer.send(MailMessage(to=[to], subject=subject, text_body=body, tags=[tag]))
     except Exception as exc:
         logger.error("[auth_email] mail send failed (%s): %s", tag, exc)
+
+
+def _notify_admin_webhook(content: str) -> None:
+    """admin 向け Discord/Slack webhook 通知 (2026-05-26 数日凌ぎ実装)。
+
+    SS_ADMIN_NOTIFY_WEBHOOK_URL が未設定なら no-op。
+    Discord/Slack の Incoming Webhook はどちらも `{"content": "..."}` 形式を受け付ける
+    (Slack は text key も受けるが content も互換扱い)。例外は吸収。
+    """
+    url = (os.environ.get("SS_ADMIN_NOTIFY_WEBHOOK_URL", "") or "").strip()
+    if not url or not url.startswith("https://"):
+        return
+    try:
+        import json as _json
+        import urllib.request as _urlreq
+        body = _json.dumps({"content": content[:1800]}, ensure_ascii=False).encode("utf-8")
+        req = _urlreq.Request(
+            url, data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        # nosec B310: scheme is https-guarded above, URL is operator-supplied secret.
+        with _urlreq.urlopen(req, timeout=10) as resp:  # nosec B310
+            if not (200 <= resp.status < 300):
+                logger.warning("[auth_email] webhook returned %d", resp.status)
+    except Exception as exc:
+        logger.error("[auth_email] webhook notify failed: %s", exc)
 
 
 # ─── 1. Register ─────────────────────────────────────────────────────────────
@@ -336,19 +367,26 @@ def register(body: RegisterRequest, request: Request, db: Session = Depends(get_
     db.commit()
     db.refresh(user)
 
-    # 検証トークン発行 + メール送信
-    token = issue_email_verification_token(db, user.id, body.email)
-    verify_url = f"{_app_base_url()}/verify?token={token}"
-    _send_email_safe(
-        body.email,
-        "ShuttleScope メールアドレス確認",
-        f"以下のリンクをクリックして、メールアドレスの確認を完了してください:\n\n{verify_url}\n\n"
-        f"このリンクは {15} 分間有効です。\n"
-        f"心当たりがない場合はこのメールを無視してください。",
-        tag="email_verify",
+    # 2026-05-26: 自動確認メール送信は SS_MAIL_BACKEND が console 状態のため
+    # 実送信されない。代わりに admin 向け webhook 通知のみ行い、admin が
+    # 手動で contact@shuttle-scope.com から連絡用メアドへ案内メールを送る運用。
+    # mail backend が本実装 (SES など) に置き換わったら verify メール送信を復活させる。
+    contact_email_safe = (body.contact_email or "").strip() or "(未入力)"
+    _notify_admin_webhook(
+        "**[ShuttleScope] 新規登録待機ユーザー**\n"
+        f"- username: `{user.username}`\n"
+        f"- user_id: `{user.id}`\n"
+        f"- register email domain: `{body.email.split('@')[-1]}`\n"
+        f"- contact email: `{contact_email_safe}`\n"
+        f"- registered at: `{datetime.utcnow().isoformat()}Z`\n"
+        f"- IP: `{ip or 'unknown'}`\n"
+        "→ 管理画面で承認 + contact email へ手動メール送信してください"
     )
     log_access(db, "register", user_id=user.id, ip_addr=ip,
-               details={"email_domain": body.email.split("@")[-1]})
+               details={
+                   "email_domain": body.email.split("@")[-1],
+                   "has_contact_email": bool(body.contact_email),
+               })
     return {"success": True, "data": {"user_id": user.id}}
 
 
