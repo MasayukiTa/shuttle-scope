@@ -3,12 +3,12 @@
    _render_privacy_str 内 body 部を verbatim 移植している。 #}
 {% extends "public/base.html.j2" %}
 
-{% block title %}ShuttleScope | プライバシーポリシー{% endblock %}
-{% block meta_description %}ShuttleScope のプライバシーポリシー。取得情報、利用目的、第三者提供、保管・安全管理、お問い合わせ情報の取扱いなどを定めます。{% endblock %}
+{% block title %}{% if lang == 'en' %}ShuttleScope | Privacy Policy{% else %}ShuttleScope | プライバシーポリシー{% endif %}{% endblock %}
+{% block meta_description %}{% if lang == 'en' %}ShuttleScope Privacy Policy. Information collected, purposes of use, third-party sharing, retention, security, and contact-form data handling.{% else %}ShuttleScope のプライバシーポリシー。取得情報、利用目的、第三者提供、保管・安全管理、お問い合わせ情報の取扱いなどを定めます。{% endif %}{% endblock %}
 {% block canonical %}https://shuttle-scope.com{{ canonical_path }}{% endblock %}
 {% block og_url %}https://shuttle-scope.com{{ canonical_path }}{% endblock %}
-{% block og_title %}ShuttleScope | プライバシーポリシー{% endblock %}
-{% block og_description %}ShuttleScope のプライバシーポリシー。{% endblock %}
+{% block og_title %}{% if lang == 'en' %}ShuttleScope | Privacy Policy{% else %}ShuttleScope | プライバシーポリシー{% endif %}{% endblock %}
+{% block og_description %}{% if lang == 'en' %}ShuttleScope Privacy Policy.{% else %}ShuttleScope のプライバシーポリシー。{% endif %}{% endblock %}
 {% block robots %}{% if noindex %}<meta name="robots" content="noindex,nofollow">{% endif %}{% endblock %}
 
 {% block extra_styles %}
@@ -51,6 +51,56 @@
 <script>document.body.classList.add('public-legal-page');</script>
 <div class="shell legal">
   <section class="panel">
+{% if lang == 'en' %}
+    <h1>ShuttleScope Privacy Policy</h1>
+    <p class="small">Last updated: 2026-04-27</p>
+    <p>This Privacy Policy describes how ShuttleScope handles information we collect.</p>
+
+    <h2>1. Information We Collect</h2>
+    <ul>
+      <li>Account identifiers, display names, team-related information, and other information necessary for service use</li>
+      <li>Match data, videos, review notes, observations, condition logs, and other content you input or upload</li>
+      <li>Usage logs, access timestamps, IP addresses, and basic browser or device information</li>
+      <li>Name, affiliation, contact details, and message content submitted through the contact form</li>
+    </ul>
+
+    <h2>2. Purposes of Use</h2>
+    <ul>
+      <li>Providing, authenticating, operating, and maintaining the service</li>
+      <li>Delivering features such as match review, analysis sharing, and condition tracking</li>
+      <li>Responding to incidents, ensuring security, and preventing unauthorized use</li>
+      <li>Responding to inquiries and communicating with users</li>
+      <li>Improving service quality and evaluating new features</li>
+      <li>
+        <strong>Beta period (2026):</strong>
+        Annotated match clips (short rally-level video segments) and associated label data
+        may be used to train and improve badminton-specific AI models (player detection,
+        shot classification, etc.). See <a href="/en/terms#beta">Terms of Use, Section 9</a>
+        for full details and opt-out information.
+      </li>
+    </ul>
+
+    <h2>3. Sharing with Third Parties</h2>
+    <p>We do not share collected information with third parties except as required by law, with your consent, or when necessary for legitimate purposes such as service outsourcing.</p>
+
+    <h2>4. Data Retention</h2>
+    <p>Data is retained for as long as necessary to fulfill the purposes described above or as required by applicable law. You may request deletion of your account data through the contact form.</p>
+
+    <h2>5. Security</h2>
+    <p>We implement reasonable technical and organizational measures to protect information from unauthorized access, loss, or disclosure. However, no method of transmission or storage is completely secure.</p>
+
+    <h2>6. Cookies and Local Storage</h2>
+    <p>ShuttleScope uses browser local storage and session storage to maintain authentication state and user preferences. No third-party tracking cookies are used.</p>
+
+    <h2>7. Children's Privacy</h2>
+    <p>ShuttleScope is not directed to children under 13. We do not knowingly collect personal information from children under 13 without parental consent.</p>
+
+    <h2>8. Changes to This Policy</h2>
+    <p>This Privacy Policy may be updated from time to time. Continued use of the service after changes are posted constitutes acceptance of the revised policy.</p>
+
+    <h2>9. Contact</h2>
+    <p>For questions about this policy or your data, please use the <a href="/en/contact">Contact form</a>.</p>
+{% else %}
     <h1>ShuttleScope プライバシーポリシー</h1>
     <p class="small">最終更新日: 2026-04-27</p>
     <p>本ポリシーは、ShuttleScope における情報の取扱いについて定めるものです。</p>
@@ -108,6 +158,7 @@
 
     <h2>9. お問い合わせ窓口</h2>
     <p>本ポリシーに関するお問い合わせは、<a href="/contact">お問い合わせフォーム</a> をご利用ください。</p>
+{% endif %}
   </section>
 </div>
 {% endblock %}
