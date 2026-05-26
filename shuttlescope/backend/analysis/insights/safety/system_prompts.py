@@ -86,14 +86,21 @@ _REFUSAL_KWS = (
     # jailbreak / prompt injection (DAN / STAN / role-play 含む)
     "以前の指示", "前の指示", "システムプロンプト", "system prompt",
     "ignore previous", "ignore prior", "as developer", "developer mode",
-    "do anything now", " dan ", "「dan」", "dan として", "stan として",
+    "do anything now", " dan ", " dan,", " dan.", "「dan」", "dan として",
+    "as dan", "as a dan", "be dan", "stan として", "as stan",
     "strive to avoid norms",
     "jailbreak", "ジェイルブレイク",
     "roleplay", "ロールプレイ", "ロールプレ",
     "もし仮に", "if hypothetically", "倫理ガード",
     "no restrictions", "no limitations", "no rules",
     "亡くなった", "亡くなり", "亡き", "dead grandmother",
-    "act as if", "pretend you are", "pretend to be", "演じて",
+    "act as if", "act as a", "act as dan", "act as stan",
+    "pretend you are", "pretend to be", "演じて",
+    # ── 日本語名 romaji bypass (一般的な姓のみ、白っぽい英単語と衝突しない範囲) ─
+    " senshu", " jakuten", " tsuyoi", " yowai",
+    " tanaka", " yamada", " suzuki", " sato ", " satou",
+    " hirota", " mizui", " ueda", " gotou", " hayashi",
+    "tanaka no", "tanaka san", "tanaka-san",
     # ── 英語 (多言語 bypass 対策) ─────────────────────────
     "stronger than", "weaker than", "compared to", "compare to",
     "compare with", "ranked", "what's my rank", "what is my rank",
