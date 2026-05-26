@@ -175,10 +175,6 @@ class RegisterRequest(BaseModel):
     # 任意入力。PRIVACY §IX-ter (未成年配慮) と AI 学習除外判定の根拠。
     # ISO 8601 yyyy-mm-dd。未入力 = NULL = 大人として扱われる。
     date_of_birth: Optional[str] = Field(None, max_length=10, pattern=r"^\d{4}-\d{2}-\d{2}$")
-    # 「裏技」期間中: 自動確認メールが未配信のため、admin が手動で連絡するための
-    # 別途連絡用メールアドレス (任意)。register email と同じでも構わない。
-    # webhook 通知本文に含めて admin が手動でメール返信する運用。
-    contact_email: Optional[str] = Field(None, max_length=255)
 
 
 class PasswordResetRequest(BaseModel):
@@ -369,24 +365,20 @@ def register(body: RegisterRequest, request: Request, db: Session = Depends(get_
 
     # 2026-05-26: 自動確認メール送信は SS_MAIL_BACKEND が console 状態のため
     # 実送信されない。代わりに admin 向け webhook 通知のみ行い、admin が
-    # 手動で contact@shuttle-scope.com から連絡用メアドへ案内メールを送る運用。
-    # mail backend が本実装 (SES など) に置き換わったら verify メール送信を復活させる。
-    contact_email_safe = (body.contact_email or "").strip() or "(未入力)"
+    # 管理画面で register email を確認し、shuttlescopecom@gmail.com から手動で
+    # 案内メールを送る運用。mail backend が本実装に切り替わったら verify
+    # メール送信を復活させる。
     _notify_admin_webhook(
         "**[ShuttleScope] 新規登録待機ユーザー**\n"
         f"- username: `{user.username}`\n"
         f"- user_id: `{user.id}`\n"
-        f"- register email domain: `{body.email.split('@')[-1]}`\n"
-        f"- contact email: `{contact_email_safe}`\n"
+        f"- email domain: `{body.email.split('@')[-1]}`\n"
         f"- registered at: `{datetime.utcnow().isoformat()}Z`\n"
         f"- IP: `{ip or 'unknown'}`\n"
-        "→ 管理画面で承認 + contact email へ手動メール送信してください"
+        "→ 管理画面で email を確認 → 承認 → shuttlescopecom@gmail.com から案内メール送信"
     )
     log_access(db, "register", user_id=user.id, ip_addr=ip,
-               details={
-                   "email_domain": body.email.split("@")[-1],
-                   "has_contact_email": bool(body.contact_email),
-               })
+               details={"email_domain": body.email.split("@")[-1]})
     return {"success": True, "data": {"user_id": user.id}}
 
 
