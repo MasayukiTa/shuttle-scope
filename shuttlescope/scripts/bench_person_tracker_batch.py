@@ -98,6 +98,34 @@ def bench_batch(frames: list, batch: int, match_id: int | None) -> tuple[float, 
     return len(frames) / dt, n_tracks_total
 
 
+def bench_native(frames: list, batch: int, match_id: int | None) -> tuple[float, int]:
+    """Phase A3: C++ pybind11 ext 経由の batch bench。"""
+    tracker = PersonTracker(match_type="doubles", match_id=match_id)
+    tracker._ensure_native_detector()
+    if getattr(tracker, "_native_detector", None) is None:
+        print(f"  native batch={batch}: ext unavailable, skip")
+        return 0.0, 0
+    # warmup
+    tracker.update_batch_native(frames[:batch], list(range(batch)))
+    try:
+        tracker._native_detector.reset_tracker()
+    except Exception:
+        pass
+
+    t0 = time.perf_counter()
+    n_tracks_total = 0
+    i = 0
+    while i < len(frames):
+        chunk = frames[i : i + batch]
+        idxs = list(range(i, i + len(chunk)))
+        out = tracker.update_batch_native(chunk, idxs)
+        for tracks in out:
+            n_tracks_total += len(tracks)
+        i += batch
+    dt = time.perf_counter() - t0
+    return len(frames) / dt, n_tracks_total
+
+
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--video", required=True, type=Path)
@@ -115,10 +143,15 @@ def main() -> int:
     fps, n_t = bench_single(frames, args.match_id)
     print(f"  update(frame) loop : {fps:6.1f} fps  ({n_t} total tracks)")
 
-    print("\n=== batch mode ===")
+    print("\n=== batch mode (Python ORT) ===")
     for b in [4, 8, 16, 32]:
         fps, n_t = bench_batch(frames, b, args.match_id)
         print(f"  update_batch({b:2d}) : {fps:6.1f} fps  ({n_t} total tracks)")
+
+    print("\n=== native mode (C++ pybind11 ext) ===")
+    for b in [8, 16, 32]:
+        fps, n_t = bench_native(frames, b, args.match_id)
+        print(f"  update_batch_native({b:2d}) : {fps:6.1f} fps  ({n_t} total tracks)")
     return 0
 
 
