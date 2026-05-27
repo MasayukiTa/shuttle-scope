@@ -57,7 +57,10 @@ shuttlescope/scripts/create_resonac_dataset.py
 2026-04-20_cluster_auth_hardening_execution_plan.md
 shuttlescope_cloudflare_tunnel_steps.md
 
-# 2026-05-27: 自前 fine-tune した WASB weights は公開リポに置かない
+# 2026-05-27: 自前 fine-tune した WASB / YOLO weights は公開リポに置かない
 # (学習データは試合動画のフレームで PII 含む可能性、また再現性の観点でも内部資産扱い)
+# 注: ONNX は >2GB 化を避けるため external data 形式で保存されることがあり、
+#     .onnx 本体 + .onnx.data + .onnx.sha256 の 3 ファイルセットになる。
 shuttlescope/backend/wasb/weights/wasb_v2_finetuned.onnx
-shuttlescope/backend/wasb/weights/wasb_*_finetuned*.onnx
+shuttlescope/backend/wasb/weights/wasb_*_finetuned*
+shuttlescope/backend/models/yolov8n_*_finetuned*
