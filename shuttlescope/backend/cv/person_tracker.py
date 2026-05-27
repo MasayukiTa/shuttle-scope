@@ -36,6 +36,11 @@ DEFAULT_MODEL_PATH = os.environ.get(
     "SS_PERSON_TRACKER_MODEL",
     "backend/models/yolov8n.onnx",  # 80-class COCO、person だけ拾う
 )
+# batch infer 用 dynamic-shape model (Phase 3.6 で追加、1-class fine-tuned 384×640 FP16)
+DEFAULT_BATCH_MODEL_PATH = os.environ.get(
+    "SS_PERSON_TRACKER_BATCH_MODEL",
+    "backend/models/yolov8n_v2_finetuned_dyn.onnx",
+)
 DEFAULT_CONF = float(os.environ.get("SS_PERSON_TRACKER_CONF", "0.25"))
 DEFAULT_IOU = float(os.environ.get("SS_PERSON_TRACKER_IOU", "0.45"))
 DEFAULT_TRACKER_YAML = os.environ.get("SS_PERSON_TRACKER_YAML", "bytetrack.yaml")
@@ -371,6 +376,182 @@ class PersonTracker:
 
         # Tier 3 (Phase 3 簡易): side swap 反映 + court_id → player_label マップ
         return [self._attach_player_label(t) for t in adjudicated]
+
+    # ─── Phase 3.6: batch 推論 (offline 用) ───────────────────────────────
+    # 検出を batch でまとめて投げる → ONNX/TRT が真の throughput を発揮 (1000+ fps)。
+    # ByteTracker は state machine なので frame ごとに直列処理 (CPU 軽量)。
+
+    def _ensure_batch_detector(self) -> None:
+        """batch ONNX session を遅延 init。CI 軽量 venv では skip 可能。"""
+        if getattr(self, "_batch_sess", None) is not None:
+            return
+        try:
+            # TRT lib path を ORT に見せる (bench script と同じパターン)
+            try:
+                import torch  # noqa: F401
+                os.add_dll_directory(
+                    os.path.join(os.path.dirname(__import__("torch").__file__), "lib")
+                )
+            except Exception:
+                pass
+            try:
+                import tensorrt_libs  # noqa: F401
+                os.add_dll_directory(os.path.dirname(tensorrt_libs.__file__))
+            except Exception:
+                pass
+            import onnxruntime as ort  # type: ignore
+        except Exception as exc:
+            logger.warning("batch detector: ORT import 失敗 — update_batch 無効: %s", exc)
+            self._batch_sess = None
+            return
+
+        # モデル path の解決: env 経由 or デフォルト相対path → repo root から
+        model_path = os.environ.get(
+            "SS_PERSON_TRACKER_BATCH_MODEL", DEFAULT_BATCH_MODEL_PATH
+        )
+        if not os.path.isabs(model_path):
+            # repo root を逆引き: backend/ の親が repo root
+            from pathlib import Path as _P
+            here = _P(__file__).resolve()
+            # cv/person_tracker.py → cv → backend → shuttlescope (= repo root にあたる)
+            for parent in here.parents:
+                cand = parent / model_path
+                if cand.exists():
+                    model_path = str(cand)
+                    break
+            else:
+                logger.warning("batch detector: model not found at %s", model_path)
+                self._batch_sess = None
+                return
+
+        # providers: TRT FP16 → CUDA → CPU
+        providers: list = []
+        avail = set(ort.get_available_providers())
+        if "TensorrtExecutionProvider" in avail:
+            trt_cache = os.path.join(
+                os.path.dirname(model_path), "trt_cache_person_batch"
+            )
+            os.makedirs(trt_cache, exist_ok=True)
+            providers.append(("TensorrtExecutionProvider", {
+                "device_id": 0,
+                "trt_engine_cache_enable": True,
+                "trt_engine_cache_path": trt_cache,
+                "trt_fp16_enable": True,
+            }))
+        if "CUDAExecutionProvider" in avail:
+            providers.append(("CUDAExecutionProvider", {"device_id": 0}))
+        providers.append("CPUExecutionProvider")
+
+        sess_opts = ort.SessionOptions()
+        sess_opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        try:
+            self._batch_sess = ort.InferenceSession(model_path, sess_opts, providers=providers)
+            self._batch_input_name = self._batch_sess.get_inputs()[0].name
+            self._batch_input_dtype = (
+                np.float16
+                if "float16" in self._batch_sess.get_inputs()[0].type
+                else np.float32
+            )
+            logger.info(
+                "PersonTracker batch detector loaded: %s providers=%s",
+                model_path, self._batch_sess.get_providers()[0],
+            )
+        except Exception as exc:
+            logger.error("batch detector: session create failed: %s", exc)
+            self._batch_sess = None
+
+    def _detect_batch(self, frames: list[np.ndarray]) -> list[list[tuple[float, float, float, float, float]]]:
+        """N frame をまとめて推論し、frame ごとの [(x1,y1,x2,y2,conf), ...] を返す。
+        座標は **入力 frame の pixel** (1920×1080 想定)。
+        """
+        import cv2  # type: ignore
+        self._ensure_batch_detector()
+        if self._batch_sess is None or not frames:
+            return [[] for _ in frames]
+
+        # 全 frame を 384×640 にリサイズ → stack
+        H_in, W_in = 384, 640
+        batch_arr = np.empty((len(frames), 3, H_in, W_in), dtype=self._batch_input_dtype)
+        src_shapes = []
+        for i, f in enumerate(frames):
+            src_shapes.append(f.shape[:2])  # (h, w)
+            r = cv2.resize(f, (W_in, H_in))
+            r = r[:, :, ::-1].transpose(2, 0, 1).astype(self._batch_input_dtype) / 255.0
+            batch_arr[i] = r
+
+        out = self._batch_sess.run(None, {self._batch_input_name: batch_arr})[0]
+        # out: (B, 5, A) for 1-class 384×640
+        if out.ndim != 3 or out.shape[1] not in (5, 84):
+            logger.warning("batch detector: unexpected output shape %s", out.shape)
+            return [[] for _ in frames]
+        n_ch = out.shape[1]
+        per_frame: list[list[tuple[float, float, float, float, float]]] = []
+        # 各 frame について parse
+        conf_min = float(os.environ.get("SS_PERSON_TRACKER_CONF", "0.25"))
+        for i in range(out.shape[0]):
+            arr = out[i].T  # (A, 5) or (A, 84)
+            src_h, src_w = src_shapes[i]
+            sx, sy = src_w / W_in, src_h / H_in
+            dets: list[tuple[float, float, float, float, float]] = []
+            for row in arr:
+                cx, cy, bw, bh = float(row[0]), float(row[1]), float(row[2]), float(row[3])
+                if n_ch == 5:
+                    conf = float(row[4])
+                else:
+                    # 80-class: class scores 始まり (COCO の 0 = person のみ拾う)
+                    conf = float(row[4])  # idx 0 = person
+                if conf < conf_min:
+                    continue
+                x1 = max(0.0, (cx - bw / 2) * sx)
+                y1 = max(0.0, (cy - bh / 2) * sy)
+                x2 = min(float(src_w), (cx + bw / 2) * sx)
+                y2 = min(float(src_h), (cy + bh / 2) * sy)
+                if x2 <= x1 or y2 <= y1:
+                    continue
+                dets.append((x1, y1, x2, y2, conf))
+            per_frame.append(dets)
+        return per_frame
+
+    def update_batch(
+        self,
+        frames: list[np.ndarray],
+        frame_idxs: list[int],
+    ) -> list[list[TrackedPerson]]:
+        """N frame をまとめて検出 → frame ごとに ByteTracker / court / label 順に処理。
+
+        Offline 用。realtime には latency が batch サイズに比例して増えるため不向き。
+        ByteTracker は state machine なので順序保持必須。
+        """
+        assert len(frames) == len(frame_idxs), "frames と frame_idxs の長さが不一致"
+        self._ensure_components()
+        from backend.cv.byte_tracker import Detection  # type: ignore
+
+        all_dets = self._detect_batch(frames)
+
+        results: list[list[TrackedPerson]] = []
+        for i, dets in enumerate(all_dets):
+            bt_dets = [
+                Detection(bbox=(d[0], d[1], d[2], d[3]), score=d[4]) for d in dets
+            ]
+            stracks = self._tracker.update(bt_dets, frame_id=frame_idxs[i])
+            raw_tracks: list[TrackedPerson] = []
+            for st in stracks:
+                x1, y1, x2, y2 = st.xyxy
+                raw_tracks.append(
+                    TrackedPerson(
+                        bbox=(float(x1), float(y1), float(x2), float(y2)),
+                        track_id=int(st.track_id),
+                        court_id=None,
+                        player_uuid=None,
+                        confidence=float(st.score),
+                    )
+                )
+            if self._adjudicator is None:
+                results.append(raw_tracks)
+                continue
+            adjudicated = adjudicate_court(raw_tracks, self._adjudicator, self.match_type)
+            results.append([self._attach_player_label(t) for t in adjudicated])
+        return results
 
     def _attach_player_label(self, t: TrackedPerson) -> TrackedPerson:
         """side swap を考慮して court_id を補正し、player_label を付ける。
