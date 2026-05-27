@@ -472,45 +472,52 @@ class PersonTracker:
         # 全 frame を 384×640 にリサイズ → stack
         H_in, W_in = 384, 640
         src_shapes = [f.shape[:2] for f in frames]
-        # 高速 path: torch GPU で resize + normalize (env SS_PERSON_TRACKER_GPU_PREPROC=1)
-        # CPU loop の cv2.resize + numpy.astype が host time の大半を占めるため。
+        # 高速 path: torch GPU で resize + normalize → ORT IObinding で CUDA buffer
+        # 直接渡し (GPU↔CPU copy を完全排除)
         use_gpu_preproc = os.environ.get("SS_PERSON_TRACKER_GPU_PREPROC", "1") != "0"
-        batch_arr = None
+        out = None
         if use_gpu_preproc:
             try:
                 import torch  # type: ignore
-                if torch.cuda.is_available():
-                    # まず CPU で raw stack → uint8 (B, H_src, W_src, 3)
-                    # 各 frame サイズが違う場合は resize するしかないので tensor の入口で 384×640 に揃える
-                    # → resize は torch GPU 側でやる: 各 frame まず CPU で (3, H_src, W_src) uint8 へ
-                    # → batch 不揃いなのでループは避けられない
-                    # 代替: 全 frame が同じサイズ前提なら 1 度 np.stack できる
-                    same_size = len({s for s in src_shapes}) == 1
-                    if same_size:
-                        # numpy stack 1 発 (B, H_src, W_src, 3)
-                        np_stack = np.stack(frames, axis=0)
-                        # to GPU as uint8 tensor (B, H, W, 3) → permute (B, 3, H, W) → float / 255
-                        t = torch.as_tensor(np_stack, device="cuda")
-                        t = t.permute(0, 3, 1, 2).contiguous()  # (B, 3, H_src, W_src)
-                        t = t[:, [2, 1, 0], :, :]  # BGR -> RGB
-                        t = torch.nn.functional.interpolate(
-                            t.float() / 255.0, size=(H_in, W_in), mode="bilinear", align_corners=False,
-                        )
-                        if self._batch_input_dtype == np.float16:
-                            t = t.half()
-                        batch_arr = t.cpu().numpy()
+                if torch.cuda.is_available() and len({s for s in src_shapes}) == 1:
+                    np_stack = np.stack(frames, axis=0)
+                    t = torch.as_tensor(np_stack, device="cuda")
+                    t = t.permute(0, 3, 1, 2).contiguous()
+                    t = t[:, [2, 1, 0], :, :]
+                    t = torch.nn.functional.interpolate(
+                        t.float() / 255.0, size=(H_in, W_in), mode="bilinear", align_corners=False,
+                    )
+                    if self._batch_input_dtype == np.float16:
+                        t = t.half().contiguous()
+                    else:
+                        t = t.contiguous()
+                    # ORT IObinding: CUDA buffer を直接 ORT に渡す (copy なし)
+                    io = self._batch_sess.io_binding()
+                    io.bind_input(
+                        name=self._batch_input_name,
+                        device_type="cuda",
+                        device_id=0,
+                        element_type=self._batch_input_dtype,
+                        shape=tuple(t.shape),
+                        buffer_ptr=t.data_ptr(),
+                    )
+                    out_name = self._batch_sess.get_outputs()[0].name
+                    io.bind_output(name=out_name, device_type="cuda", device_id=0)
+                    self._batch_sess.run_with_iobinding(io)
+                    out = io.get_outputs()[0].numpy()  # 出力だけ CPU に (小さい)
+                    # keep tensor alive until run done
+                    del t
             except Exception as exc:
-                logger.debug("GPU preproc fallback to CPU: %s", exc)
-                batch_arr = None
-        if batch_arr is None:
-            # CPU fallback
+                logger.debug("GPU preproc / IObinding fallback to CPU: %s", exc)
+                out = None
+        if out is None:
+            # CPU fallback path (cv2.resize loop)
             batch_arr = np.empty((len(frames), 3, H_in, W_in), dtype=self._batch_input_dtype)
             for i, f in enumerate(frames):
                 r = cv2.resize(f, (W_in, H_in))
                 r = r[:, :, ::-1].transpose(2, 0, 1).astype(self._batch_input_dtype) / 255.0
                 batch_arr[i] = r
-
-        out = self._batch_sess.run(None, {self._batch_input_name: batch_arr})[0]
+            out = self._batch_sess.run(None, {self._batch_input_name: batch_arr})[0]
         # out: (B, 5, A) for 1-class 384×640
         if out.ndim != 3 or out.shape[1] not in (5, 84):
             logger.warning("batch detector: unexpected output shape %s", out.shape)
