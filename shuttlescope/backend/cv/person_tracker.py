@@ -66,6 +66,10 @@ DEFAULT_TRACKER_YAML = os.environ.get("SS_PERSON_TRACKER_YAML", "bytetrack.yaml"
 DEFAULT_IMGSZ = int(os.environ.get("SS_PERSON_TRACKER_IMGSZ", "640"))
 PERSON_CLASS_ID = 0  # COCO の person
 
+# 短寿命 track filter: track_id が累積 N frame 以上現れたら出力に通す。
+# 0 = 無効 (default、完全互換)。観客/通行人/誤検出など瞬間的に出る track を抑制する。
+TRACK_MIN_LIFETIME_DEFAULT = int(os.environ.get("SS_PERSON_TRACK_MIN_LIFETIME", "0"))
+
 
 # ── 公開 dataclass ───────────────────────────────────────────────────────
 @dataclass
@@ -324,6 +328,11 @@ class PersonTracker:
         # 最近 lost した canonical track_id → embedding (LRU 上限 _merge_buffer_size)
         self._lost_track_buffer: "OrderedDict[int, np.ndarray]" = OrderedDict()
 
+        # 短寿命 track filter: track_id → 観測 frame 数。
+        # N 以上見えるまで出力に通さない (瞬間誤検出 / 通行人を抑制)。
+        self._track_lifetime: dict[int, int] = {}
+        self._track_min_lifetime: int = TRACK_MIN_LIFETIME_DEFAULT
+
     @staticmethod
     def _load_corners_from_db(
         match_id: int,
@@ -437,10 +446,10 @@ class PersonTracker:
         # Tier 2: court 象限割り当て
         if self._adjudicator is None:
             # passthrough、court_id はすべて None なので player_label も None
-            # ただし merge_ids は court 非依存なので適用してから返す。
+            # merge_ids は court 非依存なので先に適用
             if self._merge_ids_enabled:
                 raw_tracks = self._apply_track_id_merge(frame, raw_tracks, frame_idx)
-            return raw_tracks
+            return self._apply_lifetime_filter(raw_tracks)
         adjudicated = adjudicate_court(raw_tracks, self._adjudicator, self.match_type)
 
         # Tier 3 (Phase 4): ReID Recovery — orphan track の court_id を復帰
@@ -452,7 +461,9 @@ class PersonTracker:
             adjudicated = self._apply_track_id_merge(frame, adjudicated, frame_idx)
 
         # Phase 3 簡易: side swap 反映 + court_id → player_label マップ
-        return [self._attach_player_label(t) for t in adjudicated]
+        labeled = [self._attach_player_label(t) for t in adjudicated]
+        # 短寿命 track filter (env SS_PERSON_TRACK_MIN_LIFETIME>0 のときのみ作用)
+        return self._apply_lifetime_filter(labeled)
 
     # ─── Phase 3.6: batch 推論 (offline 用) ───────────────────────────────
     # 検出を batch でまとめて投げる → ONNX/TRT が真の throughput を発揮 (1000+ fps)。
@@ -675,10 +686,11 @@ class PersonTracker:
                     )
                 )
             if self._adjudicator is None:
-                results.append(raw_tracks)
+                results.append(self._apply_lifetime_filter(raw_tracks))
                 continue
             adjudicated = adjudicate_court(raw_tracks, self._adjudicator, self.match_type)
-            results.append([self._attach_player_label(t) for t in adjudicated])
+            labeled = [self._attach_player_label(t) for t in adjudicated]
+            results.append(self._apply_lifetime_filter(labeled))
         return results
 
     # ─── Phase 4 ReID Recovery ───────────────────────────────────────────
@@ -1032,6 +1044,25 @@ class PersonTracker:
             player_label=label,
         )
 
+    def _apply_lifetime_filter(self, tracks: list[TrackedPerson]) -> list[TrackedPerson]:
+        """短寿命 track filter。
+        track_id ごとに観測 frame 数を累積し、_track_min_lifetime 未満の track は
+        出力から除外する。lifetime<=0 (default) なら no-op で完全互換。
+        """
+        if self._track_min_lifetime <= 0:
+            return tracks
+        out: list[TrackedPerson] = []
+        for t in tracks:
+            tid = t.track_id
+            cur = self._track_lifetime.get(tid, 0) + 1
+            # cap (それ以上増やす意味なし、メモリ増大防止)
+            if cur > self._track_min_lifetime:
+                cur = self._track_min_lifetime + 1
+            self._track_lifetime[tid] = cur
+            if cur >= self._track_min_lifetime:
+                out.append(t)
+        return out
+
     def reset_for_new_set(self, set_idx: int) -> None:
         """セット間の side swap 対応。
 
@@ -1061,6 +1092,9 @@ class PersonTracker:
         self._prev_raw_track_ids.clear()
         self._track_id_embedding.clear()
         self._lost_track_buffer.clear()
+        # 短寿命 track filter の累積カウンタも set 境界でリセット
+        # (新セットで track_id 空間が完全に切り替わるため引き継ぎ意味なし)
+        self._track_lifetime.clear()
         logger.info(
             "PersonTracker reset for set %s (side_swapped=%s)",
             set_idx, self._side_swapped,

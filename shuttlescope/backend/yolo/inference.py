@@ -72,6 +72,74 @@ def _get_nms_iou_threshold() -> float:
     return v
 
 
+def _get_soft_nms_config() -> tuple[bool, float]:
+    """person v2: Soft-NMS 設定を env から取得。
+    - SS_PERSON_USE_SOFT_NMS=1 で有効 (default 0 = off)。
+    - SS_PERSON_SOFT_NMS_SIGMA=0.5 (default)。Gaussian penalty の幅。
+    Soft-NMS は重なった候補を drop せず score を IoU で減衰させる
+    (Bodla et al. 2017)。スマッシュ時の attacker/blocker 重なり 2 人問題に効く。
+    最終的に MIN_CONF 未満になった候補は除外する。
+    """
+    import os as _os
+    enabled = _os.environ.get("SS_PERSON_USE_SOFT_NMS", "0") == "1"
+    try:
+        sigma = float(_os.environ.get("SS_PERSON_SOFT_NMS_SIGMA", "0.5"))
+    except (TypeError, ValueError):
+        sigma = 0.5
+    if sigma <= 0.0:
+        sigma = 0.5
+    return enabled, sigma
+
+
+def _soft_nms(
+    candidates: list[tuple],
+    sigma: float,
+    score_thresh: float,
+) -> list[tuple]:
+    """Soft-NMS (Gaussian) 実装。
+    candidates: [(conf, x1, y1, x2, y2), ...] 信頼度降順想定なし。
+    重なる候補を drop せず、IoU に比例して score を Gaussian 減衰させる。
+    返り値: score >= score_thresh の候補リスト (元の信頼度降順)。
+    """
+    if not candidates:
+        return []
+    # mutable copy (score を更新するため list of list)
+    items = [list(c) for c in candidates]
+    out: list[tuple] = []
+    while items:
+        # 最大 score の候補を pick
+        max_i = 0
+        for i in range(1, len(items)):
+            if items[i][0] > items[max_i][0]:
+                max_i = i
+        m = items.pop(max_i)
+        mconf, mx1, my1, mx2, my2 = m
+        if mconf < score_thresh:
+            # 以降はすべてこれ以下 (= 候補は減衰のみで増えない) → 終了
+            break
+        out.append(tuple(m))
+        # 残りに対して IoU 計算 → Gaussian で score 減衰
+        ma = (mx2 - mx1) * (my2 - my1)
+        kept_remaining: list[list] = []
+        import math as _math
+        for it in items:
+            conf, x1, y1, x2, y2 = it
+            ix1, iy1 = max(x1, mx1), max(y1, my1)
+            ix2, iy2 = min(x2, mx2), min(y2, my2)
+            if ix2 > ix1 and iy2 > iy1:
+                inter = (ix2 - ix1) * (iy2 - iy1)
+                a = (x2 - x1) * (y2 - y1)
+                iou = inter / (a + ma - inter + 1e-6)
+            else:
+                iou = 0.0
+            new_conf = conf * _math.exp(-(iou * iou) / sigma)
+            if new_conf >= score_thresh:
+                it[0] = new_conf
+                kept_remaining.append(it)
+        items = kept_remaining
+    return out
+
+
 def _court_filter_enabled() -> bool:
     """person v2: court area filter の有効/無効。デフォルト ON。
     SS_PERSON_COURT_FILTER=0 で完全無効化。
@@ -486,8 +554,22 @@ class YOLOInference:
 
         # 信頼度降順でグリーディ NMS
         # person v2: SS_PERSON_NMS_IOU で IoU しきい値を緩められる (重なった 2 人保持)。
+        # SS_PERSON_USE_SOFT_NMS=1 なら Soft-NMS (Gaussian) に切替。
         nms_iou = _get_nms_iou_threshold()
         self._last_debug["nms_iou_threshold"] = nms_iou
+        soft_enabled, soft_sigma = _get_soft_nms_config()
+        if soft_enabled:
+            self._last_debug["soft_nms_sigma"] = soft_sigma
+            kept = _soft_nms(candidates, sigma=soft_sigma, score_thresh=MIN_CONF)
+            for conf, x1_n, y1_n, x2_n, y2_n in kept:
+                cx_n = (x1_n + x2_n) / 2
+                cy_n = (y1_n + y2_n) / 2
+                detections.append(self._make_entry(
+                    "person", conf,
+                    [x1_n, y1_n, x2_n, y2_n],
+                    cx_n, cy_n, cx_n, y2_n,
+                ))
+            return detections
         candidates.sort(key=lambda c: c[0], reverse=True)
         kept: list[tuple] = []
         for cand in candidates:
