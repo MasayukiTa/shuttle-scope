@@ -486,29 +486,42 @@ class PersonTracker:
             return [[] for _ in frames]
         n_ch = out.shape[1]
         per_frame: list[list[tuple[float, float, float, float, float]]] = []
-        # 各 frame について parse
+        # 各 frame について parse (numpy vectorize 版、Python for-row ループを排除)
         conf_min = float(os.environ.get("SS_PERSON_TRACKER_CONF", "0.25"))
-        for i in range(out.shape[0]):
-            arr = out[i].T  # (A, 5) or (A, 84)
+        # out: (B, 5, A) — を (B, A, 5) に転置
+        out_t = out.transpose(0, 2, 1).astype(np.float32, copy=False)
+        # 列定義: 0=cx, 1=cy, 2=bw, 3=bh, 4=conf (or class0)
+        cxs = out_t[:, :, 0]
+        cys = out_t[:, :, 1]
+        bws = out_t[:, :, 2]
+        bhs = out_t[:, :, 3]
+        confs = out_t[:, :, 4]
+        # x1/y1/x2/y2 を input scale (W_in, H_in) で先に計算
+        x1_in = cxs - bws / 2
+        y1_in = cys - bhs / 2
+        x2_in = cxs + bws / 2
+        y2_in = cys + bhs / 2
+
+        for i in range(out_t.shape[0]):
+            mask = confs[i] >= conf_min
+            if not np.any(mask):
+                per_frame.append([])
+                continue
             src_h, src_w = src_shapes[i]
             sx, sy = src_w / W_in, src_h / H_in
-            dets: list[tuple[float, float, float, float, float]] = []
-            for row in arr:
-                cx, cy, bw, bh = float(row[0]), float(row[1]), float(row[2]), float(row[3])
-                if n_ch == 5:
-                    conf = float(row[4])
-                else:
-                    # 80-class: class scores 始まり (COCO の 0 = person のみ拾う)
-                    conf = float(row[4])  # idx 0 = person
-                if conf < conf_min:
-                    continue
-                x1 = max(0.0, (cx - bw / 2) * sx)
-                y1 = max(0.0, (cy - bh / 2) * sy)
-                x2 = min(float(src_w), (cx + bw / 2) * sx)
-                y2 = min(float(src_h), (cy + bh / 2) * sy)
-                if x2 <= x1 or y2 <= y1:
-                    continue
-                dets.append((x1, y1, x2, y2, conf))
+            x1s = np.clip(x1_in[i][mask] * sx, 0.0, float(src_w))
+            y1s = np.clip(y1_in[i][mask] * sy, 0.0, float(src_h))
+            x2s = np.clip(x2_in[i][mask] * sx, 0.0, float(src_w))
+            y2s = np.clip(y2_in[i][mask] * sy, 0.0, float(src_h))
+            cs = confs[i][mask]
+            valid = (x2s > x1s) & (y2s > y1s)
+            dets = list(zip(
+                x1s[valid].tolist(),
+                y1s[valid].tolist(),
+                x2s[valid].tolist(),
+                y2s[valid].tolist(),
+                cs[valid].tolist(),
+            ))
             per_frame.append(dets)
         return per_frame
 
