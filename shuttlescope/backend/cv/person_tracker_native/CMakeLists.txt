@@ -90,6 +90,16 @@ if(WIN32)
     )
 endif()
 
+# --- byte_tracker_test.exe (A2) ----------------------------------------
+# A2 単体テスト。golden_byte_tracker.txt を読み込んで Python 版と数値比較。
+# byte_tracker.cpp が無い (A2 未配備) なら skip。
+set(_bt_test "${CMAKE_CURRENT_SOURCE_DIR}/src/byte_tracker_test.cpp")
+if(EXISTS "${_bt_test}" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/byte_tracker.cpp")
+    add_executable(byte_tracker_test src/byte_tracker_test.cpp)
+    target_link_libraries(byte_tracker_test PRIVATE person_tracker_core)
+    message(STATUS "person_tracker_native: byte_tracker_test enabled (A2)")
+endif()
+
 # --- pybind11 module (A3) -----------------------------------------------
 # bindings.cpp は A3 が書く。存在すれば pyd を build。
 set(BIND_SRC "${CMAKE_CURRENT_SOURCE_DIR}/src/bindings.cpp")
