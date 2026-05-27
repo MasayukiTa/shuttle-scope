@@ -74,6 +74,10 @@ def main() -> int:
                    help="DB の court_calibration から 4 隅を取得する。--court-corners 優先。")
     p.add_argument("--set-idx", type=int, default=0,
                    help="開始 set index。奇数なら side swap 有効。")
+    p.add_argument("--reid", choices=["on", "off"], default="on",
+                   help="Phase 4 ReID Tier 3 recovery を有効化 (default: on)")
+    p.add_argument("--reid-thresh", type=float, default=None,
+                   help="ReID cosine sim 閾値 (default: SS_PERSON_REID_THRESH or 0.85)")
     args = p.parse_args()
 
     cap = cv2.VideoCapture(args.video)
@@ -106,7 +110,10 @@ def main() -> int:
         device=args.device,
         match_id=match_id_arg,
         frame_size=(width, height),
+        use_reid=(args.reid == "on"),
+        reid_threshold=args.reid_thresh,
     )
+    logger.info("ReID Tier 3: %s (threshold=%s)", args.reid, args.reid_thresh or "default")
     # set_idx 反映 (side swap)
     if args.set_idx:
         tracker.reset_for_new_set(args.set_idx)
@@ -156,7 +163,8 @@ def main() -> int:
                 color = (160, 160, 160)
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, thickness)
             pl = t.player_label or "-"
-            label = f"ID:{t.track_id} Q:{t.court_id} {pl} c:{t.confidence:.2f}"
+            rec_tag = "*R" if t.is_recovered else ""
+            label = f"ID:{t.track_id}{rec_tag} Q:{t.court_id} {pl} c:{t.confidence:.2f}"
             cv2.putText(frame, label, (x1, max(y1 - 6, 12)),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
             # 足元 dot

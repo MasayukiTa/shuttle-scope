@@ -308,6 +308,95 @@ class TestPersonTrackerUpdateSmoke:
         assert out2[0].court_id == 0  # FL
         assert out2[0].player_label == "PlayerA"
 
+    def test_update_disables_reid_by_default_without_model(self, monkeypatch):
+        """ReID model 未配置 → ReIDEmbedder unavailable → Tier 3 自動 disable。
+        既存挙動が ReID 整合性で壊れないこと。
+        """
+        _install_fake_detector(monkeypatch, [
+            [("person", 0.9, 0.20, 0.10, 0.30, 0.30)],
+        ])
+        tracker = PersonTracker(
+            match_type="doubles", court_corners=SQUARE_CORNERS, use_reid=True,
+        )
+        # tmp path に何も置かないので embedder lazy init で disable される
+        out = tracker.update(np.zeros((100, 100, 3), dtype=np.uint8), 0)
+        # 検出はそのまま通る
+        assert len(out) == 1
+        # ReID Tier 3 は降格しているはず
+        assert tracker._reid_enabled is False
+
+    def test_reid_recovery_assigns_court_from_lost_history(self, monkeypatch):
+        """合成シナリオ: orphan track と lost court の embedding が一致 → 復帰。
+
+        ReIDEmbedder を fake で差し替え、court_id=0 の history に乗っている
+        embedding と同じ feature を orphan に返させて Tier 3 で復帰させる。
+        """
+        from backend.cv.person_tracker import TrackedPerson, adjudicate_court  # noqa
+        # ── fake embedder ─────────────────────────────────────────────
+        class _FakeEmbedder:
+            available = True
+            feature_dim = 512
+            provider = "fake"
+            # 呼ばれた crop の数だけ「同一の」 feature vector を返す
+            def embed_batch(self, crops):
+                if not crops:
+                    return np.zeros((0, 512), dtype=np.float32)
+                # 全 crop に同じ embedding を返す → confirmed と orphan で sim=1.0
+                f = np.zeros((512,), dtype=np.float32)
+                f[0] = 1.0
+                return np.tile(f, (len(crops), 1))
+        fake = _FakeEmbedder()
+        _install_fake_detector(monkeypatch, [[]])  # detector は今回使わない
+        tracker = PersonTracker(
+            match_type="doubles",
+            court_corners=SQUARE_CORNERS,
+            use_reid=True,
+            reid_embedder=fake,
+            reid_threshold=0.85,
+        )
+        # 内部の lazy init を skip させるため flag を立てておく
+        tracker._reid_embedder_init_tried = True
+        frame = np.zeros((100, 100, 3), dtype=np.uint8)
+        # frame 0: court_id=0 の確定 track (FL 象限、足元 25,25)
+        confirmed = TrackedPerson(
+            bbox=(20, 5, 30, 25), track_id=42,
+            court_id=0, player_uuid=None, confidence=0.9,
+        )
+        # _reid_recover 直接呼ぶ
+        out0 = tracker._reid_recover(frame, [confirmed], frame_idx=0)
+        assert out0[0].court_id == 0
+        assert 0 in tracker._reid_history
+        # frame 1: 確定 track が消えて、orphan (court_id=None) だけ存在
+        orphan = TrackedPerson(
+            bbox=(60, 60, 80, 90), track_id=99,  # 足元 70,90 → BR 象限のはず
+            court_id=None, player_uuid=None, confidence=0.7,
+        )
+        out1 = tracker._reid_recover(frame, [orphan], frame_idx=1)
+        # ReID で court_id=0 に復帰されるはず (sim=1.0 > 0.85)
+        assert out1[0].court_id == 0
+        assert out1[0].is_recovered is True
+        assert out1[0].track_id == 99
+
+    def test_reid_disabled_by_env(self, monkeypatch):
+        """use_reid=False で Tier 3 は完全に skip され、embedder は呼ばれない。"""
+        called = {"n": 0}
+        class _Spy:
+            available = True
+            feature_dim = 512
+            provider = "spy"
+            def embed_batch(self, crops):
+                called["n"] += 1
+                return np.zeros((len(crops), 512), dtype=np.float32)
+        _install_fake_detector(monkeypatch, [[("person", 0.9, 0.2, 0.1, 0.3, 0.3)]])
+        tracker = PersonTracker(
+            match_type="doubles",
+            court_corners=SQUARE_CORNERS,
+            use_reid=False,
+            reid_embedder=_Spy(),
+        )
+        tracker.update(np.zeros((100, 100, 3), dtype=np.uint8), 0)
+        assert called["n"] == 0
+
     def test_update_ignores_non_person_labels(self, monkeypatch):
         # shuttle / 非 person ラベルは ByteTracker に流さない
         _install_fake_detector(monkeypatch, [
