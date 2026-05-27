@@ -31,6 +31,18 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
+# ── native ext (C++ pybind11) を遅延 import ────────────────────────────
+# .pyd は build 後に backend/cv/ 直下 or sys.path 上にある想定。
+# 失敗時は Python 経路に fallback (CI 軽量 venv / Linux 環境)。
+_ext = None
+try:
+    from . import person_tracker_native_ext as _ext  # type: ignore
+except Exception:
+    try:
+        import person_tracker_native_ext as _ext  # type: ignore
+    except Exception:
+        _ext = None
+
 # ── 環境変数 ─────────────────────────────────────────────────────────────
 DEFAULT_MODEL_PATH = os.environ.get(
     "SS_PERSON_TRACKER_MODEL",
@@ -604,6 +616,107 @@ class PersonTracker:
             results.append([self._attach_player_label(t) for t in adjudicated])
         return results
 
+    # ─── Phase A3: native (C++) batch path ─────────────────────────────
+    def _ensure_native_detector(self) -> None:
+        """C++ pybind11 ext で BatchDetector を init。失敗時は self._native_detector=None。"""
+        if getattr(self, "_native_detector", None) is not None:
+            return
+        if _ext is None:
+            self._native_detector = None
+            return
+        if os.environ.get("SS_PERSON_TRACKER_USE_NATIVE", "1") == "0":
+            self._native_detector = None
+            return
+        # model path: batch model と同じものを使う
+        model_path = os.environ.get(
+            "SS_PERSON_TRACKER_BATCH_MODEL", DEFAULT_BATCH_MODEL_PATH
+        )
+        if not os.path.isabs(model_path):
+            from pathlib import Path as _P
+            here = _P(__file__).resolve()
+            for parent in here.parents:
+                cand = parent / model_path
+                if cand.exists():
+                    model_path = str(cand)
+                    break
+            else:
+                logger.warning("native detector: model not found at %s", model_path)
+                self._native_detector = None
+                return
+        try:
+            conf = float(os.environ.get("SS_PERSON_TRACKER_CONF", "0.25"))
+            self._native_detector = _ext.BatchDetector(
+                onnx_path=model_path,
+                max_batch=32,
+                use_fp16=True,
+                use_trt=True,
+                cuda_device=0,
+                h_dst=384,
+                w_dst=640,
+                conf_thresh=conf,
+            )
+            logger.info("PersonTracker native ext loaded: %s", model_path)
+        except Exception as exc:
+            logger.warning("native detector: init failed: %s", exc)
+            self._native_detector = None
+
+    def update_batch_native(
+        self,
+        frames: list[np.ndarray],
+        frame_idxs: list[int],
+    ) -> list[list[TrackedPerson]]:
+        """C++ pybind11 ext 経由の batch update。
+        ext 未配備 / SS_PERSON_TRACKER_USE_NATIVE=0 の場合は update_batch に fallback。
+
+        ext 側は preprocess (CUDA) + detector (ORT) + ByteTracker を一気通貫で
+        実行する。Python 側では court adjudication と player_label 付与のみ行う。
+        """
+        assert len(frames) == len(frame_idxs), "frames と frame_idxs の長さが不一致"
+        self._ensure_native_detector()
+        if getattr(self, "_native_detector", None) is None:
+            # Python fallback
+            return self.update_batch(frames, frame_idxs)
+        if not frames:
+            return []
+
+        # 全フレーム同一形状を仮定 (1080p)。違えば fallback。
+        shapes = {f.shape for f in frames}
+        if len(shapes) != 1 or frames[0].ndim != 3 or frames[0].shape[2] != 3:
+            logger.debug("native batch: frame shape mismatch, fallback to python")
+            return self.update_batch(frames, frame_idxs)
+
+        # numpy (B, H, W, 3) uint8 にスタック (contiguous)
+        np_stack = np.ascontiguousarray(np.stack(frames, axis=0), dtype=np.uint8)
+
+        try:
+            raw_results = self._native_detector.detect_and_track(np_stack, frame_idxs)
+        except Exception as exc:
+            logger.warning("native batch: detect_and_track failed (%s) — fallback", exc)
+            return self.update_batch(frames, frame_idxs)
+
+        # court adjudicator のためにのみ Python 経路を踏む
+        results: list[list[TrackedPerson]] = []
+        for raw in raw_results:
+            raw_tracks: list[TrackedPerson] = []
+            for tup in raw:
+                # (x1, y1, x2, y2, score, track_id)
+                x1, y1, x2, y2, score, tid = tup
+                raw_tracks.append(
+                    TrackedPerson(
+                        bbox=(float(x1), float(y1), float(x2), float(y2)),
+                        track_id=int(tid),
+                        court_id=None,
+                        player_uuid=None,
+                        confidence=float(score),
+                    )
+                )
+            if self._adjudicator is None:
+                results.append(raw_tracks)
+                continue
+            adjudicated = adjudicate_court(raw_tracks, self._adjudicator, self.match_type)
+            results.append([self._attach_player_label(t) for t in adjudicated])
+        return results
+
     def _attach_player_label(self, t: TrackedPerson) -> TrackedPerson:
         """side swap を考慮して court_id を補正し、player_label を付ける。
 
@@ -641,6 +754,13 @@ class PersonTracker:
                 self._tracker.reset()
             except Exception as exc:
                 logger.warning("reset_for_new_set: ByteTracker reset failed: %s", exc)
+        # Phase A3: native ext 内の ByteTracker も reset
+        native = getattr(self, "_native_detector", None)
+        if native is not None:
+            try:
+                native.reset_tracker()
+            except Exception as exc:
+                logger.warning("reset_for_new_set: native reset failed: %s", exc)
         logger.info(
             "PersonTracker reset for set %s (side_swapped=%s)",
             set_idx, self._side_swapped,
