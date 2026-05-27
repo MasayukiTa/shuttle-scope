@@ -24,12 +24,22 @@ from __future__ import annotations
 
 import logging
 import os
+from collections import deque
 from dataclasses import dataclass
 from typing import Literal, Optional
 
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+# ── Phase 4 ReID 既定値 ──────────────────────────────────────────────────
+# env 経由でも上書き可。テスト容易性のため module 定数として持つ。
+REID_ENABLED_DEFAULT = os.environ.get("SS_PERSON_REID_ENABLED", "1") != "0"
+REID_THRESH_DEFAULT = float(os.environ.get("SS_PERSON_REID_THRESH", "0.85"))
+REID_HISTORY_LEN = int(os.environ.get("SS_PERSON_REID_HISTORY", "30"))
+# 復帰猶予 (frame 数)。30 fps で 300 = 10 秒。設計書は 5 秒だがバドミントンの
+# rally 単位 occlusion (約 3-7 秒) を確実に救う安全側で 10 秒に振る。env で調整可。
+REID_LOST_GRACE_FRAMES = int(os.environ.get("SS_PERSON_REID_LOST_GRACE", "300"))
 
 # ── 環境変数 ─────────────────────────────────────────────────────────────
 DEFAULT_MODEL_PATH = os.environ.get(
@@ -221,6 +231,9 @@ class PersonTracker:
         device: Optional[str] = None,
         match_id: Optional[int] = None,
         frame_size: Optional[tuple[int, int]] = None,
+        use_reid: Optional[bool] = None,
+        reid_embedder=None,  # type: ignore[no-untyped-def]
+        reid_threshold: Optional[float] = None,
     ):
         """Person tracker.
 
@@ -257,6 +270,26 @@ class PersonTracker:
         # side swap 状態 (奇数 set で True)
         self._side_swapped: bool = False
         self._current_set_idx: int = 0
+
+        # ── Phase 4 ReID Recovery 用 state ───────────────────────────────
+        # use_reid 指定なし → env 既定値。reid_embedder 指定なら lazy load しない。
+        self._reid_enabled: bool = REID_ENABLED_DEFAULT if use_reid is None else bool(use_reid)
+        self._reid_threshold: float = (
+            REID_THRESH_DEFAULT if reid_threshold is None else float(reid_threshold)
+        )
+        self._reid_embedder = reid_embedder  # None なら _ensure_components で lazy
+        self._reid_embedder_init_tried = False
+        # court_id ごとの最近 N frame の embedding (deque[np.ndarray])
+        self._reid_history: dict[int, deque] = {}
+        # track_id → court_id (前 frame までに確定したもの)。lost 検知に使う。
+        self._track_to_court: dict[int, int] = {}
+        # 「失われた court_id」(直前まで埋まってたが今 frame で見えない)
+        # court_id → (last_seen_frame_idx, embedding_avg) を保持
+        self._lost_court: dict[int, tuple[int, np.ndarray]] = {}
+        # ReID 復帰で court_id を引き継いだ際の (track_id → recovered court_id) 上書き
+        self._reid_overrides: dict[int, int] = {}
+        # 観客/ref 候補 (grace 越え): track_id を drop 対象に
+        self._dropped_track_ids: set[int] = set()
 
     @staticmethod
     def _load_corners_from_db(
@@ -374,7 +407,11 @@ class PersonTracker:
             return raw_tracks
         adjudicated = adjudicate_court(raw_tracks, self._adjudicator, self.match_type)
 
-        # Tier 3 (Phase 3 簡易): side swap 反映 + court_id → player_label マップ
+        # Tier 3 (Phase 4): ReID Recovery — orphan track の court_id を復帰
+        if self._reid_enabled:
+            adjudicated = self._reid_recover(frame, adjudicated, frame_idx)
+
+        # Phase 3 簡易: side swap 反映 + court_id → player_label マップ
         return [self._attach_player_label(t) for t in adjudicated]
 
     # ─── Phase 3.6: batch 推論 (offline 用) ───────────────────────────────
@@ -604,6 +641,191 @@ class PersonTracker:
             results.append([self._attach_player_label(t) for t in adjudicated])
         return results
 
+    # ─── Phase 4 ReID Recovery ───────────────────────────────────────────
+    def _ensure_reid_embedder(self):
+        """ReID embedder を遅延 init。失敗時は _reid_enabled = False に降格。"""
+        if self._reid_embedder is not None or self._reid_embedder_init_tried:
+            return
+        self._reid_embedder_init_tried = True
+        try:
+            from backend.cv.reid_embedder import get_default_embedder  # type: ignore
+            emb = get_default_embedder()
+            if emb is None or not emb.available:
+                logger.info(
+                    "ReID: embedder unavailable (model not deployed?) — Tier 3 disabled"
+                )
+                self._reid_enabled = False
+                return
+            self._reid_embedder = emb
+            logger.info("ReID: Tier 3 recovery enabled (thresh=%.2f, history=%d, grace=%d frames)",
+                        self._reid_threshold, REID_HISTORY_LEN, REID_LOST_GRACE_FRAMES)
+        except Exception as exc:
+            logger.warning("ReID embedder init failed: %s — Tier 3 disabled", exc)
+            self._reid_enabled = False
+
+    @staticmethod
+    def _crop_bbox(frame: np.ndarray, bbox: tuple[float, float, float, float]) -> Optional[np.ndarray]:
+        """frame から bbox crop を返す。退化サイズは None。"""
+        h, w = frame.shape[:2]
+        x1 = max(0, int(bbox[0]))
+        y1 = max(0, int(bbox[1]))
+        x2 = min(w, int(bbox[2]))
+        y2 = min(h, int(bbox[3]))
+        if x2 - x1 < 8 or y2 - y1 < 16:
+            return None
+        return frame[y1:y2, x1:x2]
+
+    def _court_history_mean(self, court_id: int) -> Optional[np.ndarray]:
+        """court_id の history 内 embedding を平均 → L2 正規化したベクトル。空なら None。"""
+        h = self._reid_history.get(court_id)
+        if not h:
+            return None
+        arr = np.stack(list(h), axis=0)  # (N, 512)
+        mean = arr.mean(axis=0)
+        n = float(np.linalg.norm(mean))
+        if n < 1e-9:
+            return None
+        return (mean / n).astype(np.float32)
+
+    def _reid_recover(
+        self,
+        frame: np.ndarray,
+        tracks: list[TrackedPerson],
+        frame_idx: int,
+    ) -> list[TrackedPerson]:
+        """Tier 3: court_id None の track に対して、過去 court embedding と
+        cosine sim ≥ threshold で match すれば court_id を復帰する。
+
+        副作用: 確定 track の embedding を court_id ごとの history に追記、
+                lost court_id の avg を _lost_court に保存、grace 越えで drop。
+        """
+        self._ensure_reid_embedder()
+        if not self._reid_enabled or self._reid_embedder is None:
+            return tracks
+
+        from backend.cv.reid_embedder import cosine_similarity_matrix  # type: ignore
+
+        # 1) 確定 track (court_id 持ち) と orphan (court_id=None) を分離
+        confirmed_idx: list[int] = []
+        orphan_idx: list[int] = []
+        for i, t in enumerate(tracks):
+            if t.court_id is not None:
+                confirmed_idx.append(i)
+            else:
+                orphan_idx.append(i)
+
+        # 2) batch crop → embed (確定 + orphan まとめて 1 回の推論)
+        all_idx = confirmed_idx + orphan_idx
+        crops: list[np.ndarray] = []
+        crop_valid: list[bool] = []
+        for i in all_idx:
+            c = self._crop_bbox(frame, tracks[i].bbox)
+            if c is None:
+                crops.append(np.zeros((32, 16, 3), dtype=np.uint8))
+                crop_valid.append(False)
+            else:
+                crops.append(c)
+                crop_valid.append(True)
+
+        feats = self._reid_embedder.embed_batch(crops) if crops else np.zeros((0, 512), dtype=np.float32)
+
+        # 3) 確定 track の embedding を history に append
+        n_conf = len(confirmed_idx)
+        for k, i in enumerate(confirmed_idx):
+            if not crop_valid[k]:
+                continue
+            cid = tracks[i].court_id
+            if cid is None:
+                continue
+            hist = self._reid_history.setdefault(cid, deque(maxlen=REID_HISTORY_LEN))
+            hist.append(feats[k])
+            # track→court マップ更新
+            self._track_to_court[tracks[i].track_id] = cid
+
+        # 4) 「今 frame に居ない court_id」 を lost に積む (history が空でない court が対象)
+        present_courts = {tracks[i].court_id for i in confirmed_idx if tracks[i].court_id is not None}
+        for cid in list(self._reid_history.keys()):
+            if cid in present_courts:
+                # 復帰した → lost から除外
+                self._lost_court.pop(cid, None)
+                continue
+            # まだ lost に積んでない → 平均 embedding を保存
+            if cid not in self._lost_court:
+                mean = self._court_history_mean(cid)
+                if mean is not None:
+                    self._lost_court[cid] = (frame_idx, mean)
+
+        # 5) orphan の各 track と lost_court avg を cosine sim → match
+        recovered: dict[int, int] = {}  # orphan track index → court_id
+        if orphan_idx and self._lost_court:
+            lost_ids = list(self._lost_court.keys())
+            gallery = np.stack([self._lost_court[c][1] for c in lost_ids], axis=0)  # (L, 512)
+            orphan_feats = feats[n_conf:]
+            valid_mask = np.array([crop_valid[n_conf + k] for k in range(len(orphan_idx))], dtype=bool)
+            if valid_mask.any():
+                sim = cosine_similarity_matrix(orphan_feats[valid_mask], gallery)  # (M, L)
+                used_lost: set[int] = set()
+                valid_orphan_local_idx = [k for k, v in enumerate(valid_mask) if v]
+                # 貪欲: sim 降順でペア確定
+                pairs = []
+                for r_local in range(sim.shape[0]):
+                    for c_local in range(sim.shape[1]):
+                        pairs.append((sim[r_local, c_local], r_local, c_local))
+                pairs.sort(reverse=True, key=lambda p: p[0])
+                used_orphan_local: set[int] = set()
+                for s, r_local, c_local in pairs:
+                    if s < self._reid_threshold:
+                        break
+                    if r_local in used_orphan_local or c_local in used_lost:
+                        continue
+                    used_orphan_local.add(r_local)
+                    used_lost.add(c_local)
+                    orphan_local_idx = valid_orphan_local_idx[r_local]
+                    track_idx = orphan_idx[orphan_local_idx]
+                    cid = lost_ids[c_local]
+                    recovered[track_idx] = cid
+                    logger.debug(
+                        "ReID recovery: track_id %d → court_id %d (sim=%.3f, frame=%d)",
+                        tracks[track_idx].track_id, cid, s, frame_idx,
+                    )
+
+        # 6) grace 越えた lost を drop
+        expired = [
+            cid for cid, (last_f, _) in self._lost_court.items()
+            if frame_idx - last_f > REID_LOST_GRACE_FRAMES
+        ]
+        for cid in expired:
+            logger.info(
+                "ReID: court_id %d の復帰 grace (%d frames) 超過 → drop",
+                cid, REID_LOST_GRACE_FRAMES,
+            )
+            self._lost_court.pop(cid, None)
+            self._reid_history.pop(cid, None)
+
+        # 7) 復帰結果を tracks に反映
+        if not recovered:
+            return tracks
+        out: list[TrackedPerson] = []
+        for i, t in enumerate(tracks):
+            if i in recovered:
+                cid = recovered[i]
+                # history にも今 frame の embedding を append (復帰直後の安定化)
+                k = all_idx.index(i)
+                if crop_valid[k]:
+                    self._reid_history.setdefault(cid, deque(maxlen=REID_HISTORY_LEN)).append(feats[k])
+                self._track_to_court[t.track_id] = cid
+                out.append(TrackedPerson(
+                    bbox=t.bbox,
+                    track_id=t.track_id,
+                    court_id=cid,
+                    player_uuid=None,
+                    confidence=t.confidence,
+                    is_recovered=True,
+                ))
+            else:
+                out.append(t)
+        return out
+
     def _attach_player_label(self, t: TrackedPerson) -> TrackedPerson:
         """side swap を考慮して court_id を補正し、player_label を付ける。
 
@@ -641,6 +863,14 @@ class PersonTracker:
                 self._tracker.reset()
             except Exception as exc:
                 logger.warning("reset_for_new_set: ByteTracker reset failed: %s", exc)
+        # Phase 4: ReID 履歴も set 境界でクリア (player 同一性は維持されるが side swap で
+        # court_id ↔ player の対応が反転するため、古い embedding を court_id key で
+        # 引き継ぐと誤マッチを生む)
+        self._reid_history.clear()
+        self._track_to_court.clear()
+        self._lost_court.clear()
+        self._reid_overrides.clear()
+        self._dropped_track_ids.clear()
         logger.info(
             "PersonTracker reset for set %s (side_swapped=%s)",
             set_idx, self._side_swapped,
