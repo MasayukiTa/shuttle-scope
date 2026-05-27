@@ -112,8 +112,14 @@ set(BIND_SRC "${CMAKE_CURRENT_SOURCE_DIR}/src/bindings.cpp")
 if(EXISTS "${BIND_SRC}")
     find_package(pybind11 CONFIG)
     if(pybind11_FOUND)
-        pybind11_add_module(person_tracker_native_ext src/bindings.cpp)
-        target_link_libraries(person_tracker_native_ext PRIVATE person_tracker_core)
+        # preprocess.cu を ext target に直接含めて device-link 問題を回避
+        # (detector_test と同じ pattern、static lib 経由の __cudaRegisterLinkedBinary 解決失敗対策)
+        pybind11_add_module(person_tracker_native_ext src/bindings.cpp src/preprocess.cu)
+        target_link_libraries(person_tracker_native_ext PRIVATE person_tracker_core CUDA::cudart)
+        target_include_directories(person_tracker_native_ext PRIVATE include ${ORT_INCLUDE_DIR})
+        set_target_properties(person_tracker_native_ext PROPERTIES
+            CUDA_SEPARABLE_COMPILATION OFF
+        )
         message(STATUS "person_tracker_native: pybind11 module enabled (A3)")
     else()
         message(WARNING "bindings.cpp あるが pybind11 未検出。skip。")
