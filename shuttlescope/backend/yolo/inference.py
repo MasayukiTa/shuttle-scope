@@ -219,6 +219,53 @@ class YOLOInference:
         if self._loaded:
             return True
 
+        # 0. ONNX + TensorRT EP — Phase 3.5 で追加 (PersonTracker 高速化用)。
+        #    既存 OpenVINO/PT chain より優先。env SS_YOLO_USE_TRT=0 で無効化。
+        #    fallback chain: TRT → CUDA → CPU (CPU は事実上ここでは使わず後段に任せる)。
+        import os as _os_trt
+        use_trt = _os_trt.environ.get("SS_YOLO_USE_TRT", "1") != "0"
+        if use_trt and ONNX_MODEL.exists():
+            try:
+                import onnxruntime as ort
+                available = set(ort.get_available_providers())
+                if "TensorrtExecutionProvider" in available:
+                    # WASB inference と同じ cache 規約。yolo 専用 sub-dir に分ける。
+                    trt_cache = WEIGHTS_DIR / "trt_cache"
+                    trt_cache.mkdir(parents=True, exist_ok=True)
+                    trt_opts = {
+                        "device_id": self._cuda_device_index,
+                        "trt_engine_cache_enable": True,
+                        "trt_engine_cache_path": str(trt_cache),
+                        # fp16 は env で有効化可能 (デフォルト OFF — engine build 時間短縮優先)。
+                        # SS_YOLO_TRT_FP16=1 で fp16 enable。
+                    }
+                    if _os_trt.environ.get("SS_YOLO_TRT_FP16", "0") == "1":
+                        trt_opts["trt_fp16_enable"] = True
+                    providers = [
+                        ("TensorrtExecutionProvider", trt_opts),
+                        ("CUDAExecutionProvider", {"device_id": self._cuda_device_index}),
+                        "CPUExecutionProvider",
+                    ]
+                    sess_opts = ort.SessionOptions()
+                    sess_opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+                    self._model = ort.InferenceSession(
+                        str(ONNX_MODEL), sess_opts, providers=providers
+                    )
+                    self._ov_device = None
+                    self._backend = f"onnx_trt:{self._cuda_device_index}"
+                    self._loaded = True
+                    self._load_error = None
+                    logger.info(
+                        "YOLO loaded via ONNX Runtime TensorRT EP (cache=%s, fp16=%s)",
+                        trt_cache, trt_opts.get("trt_fp16_enable", False),
+                    )
+                    return True
+                else:
+                    logger.info("YOLO: TensorrtExecutionProvider 不在、TRT スキップ")
+            except Exception as exc:
+                logger.warning("YOLO TRT load failed: %s", exc)
+                self._load_error = f"TRT load failed: {exc}"
+
         # 1. OpenVINO 直接API — 設定デバイス優先
         ov_xml = OV_MODEL_DIR / "yolov8n.xml"
         if ov_xml.exists():

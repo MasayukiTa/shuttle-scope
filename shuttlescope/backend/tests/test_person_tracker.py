@@ -1,12 +1,13 @@
-"""PersonTracker (Phase 1+2) の unit test。
+"""PersonTracker (Phase 1+2+3 / Phase 3.5 refactor) の unit test。
 
-ultralytics 依存は遅延 import なので、quadrant adjudicator + dataclass
-レベルのテストはこの軽量 venv でも回る。PersonTracker.update の smoke は
-ultralytics が import できる時だけ実行する (skip if not available)。
+Phase 3.5: 検出 = backend.yolo.inference.get_yolo_inference()、
+追跡 = backend.cv.byte_tracker.ByteTracker の 2-stage 設計に変更。
+
+検出器は遅延 init なので、quadrant adjudicator / ByteTracker 単体テストは
+この軽量 venv でも回る。PersonTracker.update の smoke は detector を
+monkeypatch して回す (実モデル不要)。
 """
 from __future__ import annotations
-
-import importlib.util
 
 import numpy as np
 import pytest
@@ -17,6 +18,13 @@ from backend.cv.person_tracker import (
     _QuadrantAdjudicator,
     adjudicate_court,
     court_id_to_player_label,
+)
+from backend.cv.byte_tracker import (
+    ByteTracker,
+    Detection,
+    STrack,
+    _ious,
+    _linear_assignment,
 )
 
 
@@ -232,20 +240,164 @@ class TestSideSwap:
         assert out.player_label is None
 
 
-@pytest.mark.skipif(
-    importlib.util.find_spec("ultralytics") is None,
-    reason="ultralytics not installed",
-)
-def test_update_smoke_one_frame(tmp_path):
-    """ultralytics があれば 1 frame でクラッシュしないか確認。
+class _FakeDetector:
+    """get_yolo_inference() の代替。固定 detection list を返す。
 
-    本物のモデル load を伴うので、CI でモデルが無ければそもそも __init__ で
-    落ちる可能性がある。その場合は xfail 扱いにする (テスト失敗にしない)。
+    detections は (label, conf, x1n, y1n, x2n, y2n) の tuple list。
     """
-    try:
+
+    def __init__(self, detections_per_frame: list[list[tuple]]):
+        self._per_frame = detections_per_frame
+        self._idx = 0
+        self.backend = "fake"
+
+    def load(self) -> bool:
+        return True
+
+    def backend_name(self) -> str:
+        return self.backend
+
+    def predict_frame(self, frame) -> list[dict]:
+        if self._idx >= len(self._per_frame):
+            return []
+        out = []
+        for label, conf, x1n, y1n, x2n, y2n in self._per_frame[self._idx]:
+            out.append({
+                "label": label,
+                "confidence": conf,
+                "bbox": [x1n, y1n, x2n, y2n],
+                "centroid": [(x1n + x2n) / 2, (y1n + y2n) / 2],
+                "foot_point": [(x1n + x2n) / 2, y2n],
+            })
+        self._idx += 1
+        return out
+
+
+def _install_fake_detector(monkeypatch, detections_per_frame):
+    """backend.yolo.inference.get_yolo_inference を fake で差し替え。"""
+    fake = _FakeDetector(detections_per_frame)
+    import backend.yolo.inference as yi_mod
+    monkeypatch.setattr(yi_mod, "get_yolo_inference", lambda *a, **kw: fake, raising=True)
+    return fake
+
+
+class TestPersonTrackerUpdateSmoke:
+    """Phase 3.5 refactor 後の update() smoke。検出器は monkeypatch。"""
+
+    def test_update_empty_detections(self, monkeypatch):
+        _install_fake_detector(monkeypatch, [[]])
         tracker = PersonTracker(match_type="doubles", court_corners=SQUARE_CORNERS)
-        frame = np.zeros((480, 640, 3), dtype=np.uint8)
-        out = tracker.update(frame, 0)
-    except Exception as exc:
-        pytest.xfail(f"model load/inference 失敗 (環境依存): {exc}")
-    assert isinstance(out, list)
+        out = tracker.update(np.zeros((100, 100, 3), dtype=np.uint8), 0)
+        assert out == []
+
+    def test_update_single_detection_assigns_track_id(self, monkeypatch):
+        # frame 0/1 で同じ位置に person → ByteTracker が同じ track_id を継続するはず
+        det = ("person", 0.9, 0.20, 0.10, 0.30, 0.30)  # 足元 (25, 30) → FL
+        _install_fake_detector(monkeypatch, [[det], [det], [det]])
+        tracker = PersonTracker(
+            match_type="doubles", court_corners=SQUARE_CORNERS,
+        )
+        frame = np.zeros((100, 100, 3), dtype=np.uint8)
+        out0 = tracker.update(frame, 0)
+        out1 = tracker.update(frame, 1)
+        out2 = tracker.update(frame, 2)
+        # 2nd / 3rd フレームでは activated state、同一 track_id 維持
+        assert len(out2) == 1
+        assert out2[0].track_id >= 1
+        assert out2[0].track_id == out1[0].track_id if out1 else True
+        assert out2[0].court_id == 0  # FL
+        assert out2[0].player_label == "PlayerA"
+
+    def test_update_ignores_non_person_labels(self, monkeypatch):
+        # shuttle / 非 person ラベルは ByteTracker に流さない
+        _install_fake_detector(monkeypatch, [
+            [("shuttle", 0.9, 0.4, 0.4, 0.5, 0.5)],
+        ])
+        tracker = PersonTracker(match_type="doubles", court_corners=SQUARE_CORNERS)
+        out = tracker.update(np.zeros((100, 100, 3), dtype=np.uint8), 0)
+        assert out == []
+
+
+# ── ByteTracker 単体テスト ─────────────────────────────────────────────
+class TestByteTrackerCore:
+    def test_iou_matrix_basic(self):
+        a = STrack((0, 0, 10, 10), 0.9)
+        b = STrack((0, 0, 10, 10), 0.9)
+        m = _ious([a], [b])
+        # 同じ bbox → IoU=1
+        assert m.shape == (1, 1)
+        assert abs(m[0, 0] - 1.0) < 1e-6
+
+    def test_iou_disjoint(self):
+        a = STrack((0, 0, 10, 10), 0.9)
+        b = STrack((100, 100, 110, 110), 0.9)
+        m = _ious([a], [b])
+        assert m[0, 0] == 0.0
+
+    def test_linear_assignment_matches_low_cost(self):
+        cost = np.array([[0.0, 0.9], [0.9, 0.0]])
+        matches, ua, ub = _linear_assignment(cost, thresh=0.5)
+        assert sorted(matches) == [(0, 0), (1, 1)]
+        assert ua == [] and ub == []
+
+    def test_linear_assignment_rejects_high_cost(self):
+        cost = np.array([[0.95]])
+        matches, ua, ub = _linear_assignment(cost, thresh=0.5)
+        assert matches == []
+        assert ua == [0] and ub == [0]
+
+    def test_kalman_prediction_advances_position(self):
+        st = STrack((0, 0, 10, 20), 0.9)
+        st.activate(frame_id=0)
+        # 速度成分が 0 なら predict しても中心ほぼ変わらない
+        x0, y0, _, _ = st.xyxy
+        st.predict()
+        x1, y1, _, _ = st.xyxy
+        # 初期速度 0 なので大きく動かない (Kalman 過渡応答で多少のドリフトは許容)
+        assert abs(x1 - x0) < 5.0
+        assert abs(y1 - y0) < 5.0
+
+    def test_tracker_assigns_consistent_id_across_frames(self):
+        tracker = ByteTracker(track_high_thresh=0.3, new_track_thresh=0.3)
+        # 5 frame 連続で同位置に detection
+        d = Detection(bbox=(10, 10, 30, 50), score=0.9)
+        ids: list[int] = []
+        for f in range(1, 6):
+            out = tracker.update([d], frame_id=f)
+            if out:
+                ids.append(out[0].track_id)
+        # 2 フレーム目以降は activated。少なくとも 3 回は同じ id が見えるはず。
+        assert len(ids) >= 3
+        assert len(set(ids)) == 1, f"track_id ぶれた: {ids}"
+
+    def test_tracker_creates_new_id_for_distant_detection(self):
+        tracker = ByteTracker(track_high_thresh=0.3, new_track_thresh=0.3)
+        d1 = Detection(bbox=(10, 10, 30, 50), score=0.9)
+        d2 = Detection(bbox=(500, 500, 530, 550), score=0.9)
+        # 2 つを 4 frame ずつ
+        seen_ids: set[int] = set()
+        for f in range(1, 5):
+            out = tracker.update([d1, d2], frame_id=f)
+            for st in out:
+                seen_ids.add(st.track_id)
+        assert len(seen_ids) >= 2
+
+    def test_tracker_drops_low_confidence_below_low_thresh(self):
+        tracker = ByteTracker(
+            track_high_thresh=0.5, track_low_thresh=0.3, new_track_thresh=0.5,
+        )
+        # score=0.1 は high にも low にも入らない → 何も track 化されない
+        d = Detection(bbox=(10, 10, 30, 50), score=0.1)
+        for f in range(1, 4):
+            out = tracker.update([d], frame_id=f)
+        assert out == []
+
+    def test_tracker_reset_clears_state(self):
+        tracker = ByteTracker(track_high_thresh=0.3, new_track_thresh=0.3)
+        d = Detection(bbox=(10, 10, 30, 50), score=0.9)
+        for f in range(1, 4):
+            tracker.update([d], frame_id=f)
+        tracker.reset()
+        # reset 後は frame_id も track 状態もクリア
+        out = tracker.update([], frame_id=1)
+        assert out == []

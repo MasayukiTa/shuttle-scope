@@ -1,8 +1,14 @@
-"""Phase 1 + Phase 2 + Phase 3 (簡易版) の Person Tracker。
+"""Phase 1 + Phase 2 + Phase 3 (簡易版) + Phase 3.5 TRT refactor の Person Tracker。
 
 設計書: private_docs/2026-05-27_person_tracking_design.md
 
-- Tier 1: ultralytics ByteTrack (`model.track(...)` per-frame, persist=True)
+Phase 3.5 (2026-05-27): 検出と追跡を分離する 2-stage 設計に refactor。
+- 検出: backend.yolo.inference.get_yolo_inference().predict_frame()
+        (TRT / CUDA / OpenVINO / CPU 経路を自動選択、court filter 内包)
+- 追跡: backend.cv.byte_tracker.ByteTracker (scratch, MIT)
+これにより ultralytics の素 ONNX 経由 12 fps → TRT 経路で 1000+ fps を期待。
+
+- Tier 1: standalone ByteTracker (Kalman + IoU + 2-pass Hungarian)
 - Tier 2: Court 4 隅 → 4 象限 polygon を作って bbox 足元を象限テスト
 - Tier 3 (Phase 3 簡易版): court_id → player_label ("PlayerA".."PlayerD") の
   固定マップ。set 間 side swap 検知 (奇数 set で FL⇄BL / FR⇄BR)。
@@ -11,8 +17,8 @@
 match_id を渡すと DB の court_calibration から court 4 隅を取得する。
 渡さなければ court_corners 引数 fallback (テスト用)。
 
-ultralytics / torch が import できない実行環境 (CI 軽量 venv 等) でも
-quadrant adjudicator 単体をテストできるよう、依存は遅延 import する。
+検出 backend (get_yolo_inference) は遅延 import — CI 軽量 venv でも
+quadrant adjudicator / ByteTracker 単体テストが回る。
 """
 from __future__ import annotations
 
@@ -240,7 +246,9 @@ class PersonTracker:
         )
         self._model_path = model_path or DEFAULT_MODEL_PATH
         self._device = device
-        self._model = None  # 遅延 import
+        # Phase 3.5: 検出器は backend.yolo.inference の singleton、追跡器は scratch ByteTracker
+        self._detector = None  # YOLOInference singleton、遅延 init
+        self._tracker = None   # ByteTracker、遅延 init
         # side swap 状態 (奇数 set で True)
         self._side_swapped: bool = False
         self._current_set_idx: int = 0
@@ -278,53 +286,80 @@ class PersonTracker:
         w, h = frame_size
         return [(float(p[0]) * w, float(p[1]) * h) for p in roi]
 
-    def _ensure_model(self):
-        if self._model is not None:
-            return
-        # ultralytics は torch / opencv の重い依存を引き、CI 軽量 venv では import エラー。
-        # update() が呼ばれた時のみロードする。
-        from ultralytics import YOLO  # type: ignore
-        self._model = YOLO(self._model_path)
-        logger.info("PersonTracker: loaded model %s", self._model_path)
+    def _ensure_components(self):
+        """Phase 3.5: 検出器と追跡器を遅延 init。"""
+        if self._detector is None:
+            # backend.yolo.inference の singleton を使う。
+            # SS_PERSON_TRACKER_MODEL は debugging 用に保持するが、実際は
+            # YOLOInference 内部の backend 自動選択 (OpenVINO → ultralytics PT → ONNX (TRT/CUDA))
+            # が走るため、ここでは model_path を渡せない。代わりに env で制御:
+            #   SS_YOLO_USE_TRT=0 で TRT スキップ等。
+            from backend.yolo.inference import get_yolo_inference  # type: ignore
+            self._detector = get_yolo_inference()
+            # 明示 load — 失敗時は update() で空 list を返す挙動になる
+            if not self._detector.load():
+                logger.warning(
+                    "PersonTracker: YOLO detector load 失敗、空 detection で動作"
+                )
+            else:
+                logger.info(
+                    "PersonTracker: detector backend=%s, model_path_hint=%s",
+                    self._detector.backend_name(), self._model_path,
+                )
+        if self._tracker is None:
+            from backend.cv.byte_tracker import ByteTracker  # type: ignore
+            self._tracker = ByteTracker(
+                track_high_thresh=DEFAULT_CONF,
+                track_low_thresh=max(0.05, DEFAULT_CONF * 0.4),
+                new_track_thresh=DEFAULT_CONF,
+                track_buffer=120,
+                match_thresh_high=0.8,
+                match_thresh_low=0.5,
+                match_thresh_unconfirmed=0.7,
+            )
+            logger.info("PersonTracker: standalone ByteTracker 初期化")
 
     def update(self, frame: np.ndarray, frame_idx: int) -> list[TrackedPerson]:
-        """1 frame 処理。ByteTrack persist=True で frame またぎ ID を維持する。"""
-        self._ensure_model()
-        # ultralytics の track API — persist=True で内部 tracker state を保持
-        kwargs = dict(
-            source=frame,
-            persist=True,
-            tracker=DEFAULT_TRACKER_YAML,
-            conf=DEFAULT_CONF,
-            iou=DEFAULT_IOU,
-            imgsz=DEFAULT_IMGSZ,
-            classes=[PERSON_CLASS_ID],
-            verbose=False,
-        )
-        if self._device:
-            kwargs["device"] = self._device
-        results = self._model.track(**kwargs)
-        if not results:
-            return []
-        r = results[0]
-        boxes = getattr(r, "boxes", None)
-        if boxes is None or len(boxes) == 0:
-            return []
+        """1 frame 処理。検出 (YOLOInference) + 追跡 (ByteTracker) の 2-stage。"""
+        self._ensure_components()
 
-        xyxy = boxes.xyxy.cpu().numpy()
-        confs = boxes.conf.cpu().numpy() if boxes.conf is not None else np.ones(len(xyxy))
-        ids = boxes.id.cpu().numpy().astype(int) if boxes.id is not None else np.full(len(xyxy), -1, dtype=int)
+        # 検出: full-frame 推論。predict_frame は **正規化座標** で返るので pixel に戻す。
+        h, w = frame.shape[:2]
+        detections_n = self._detector.predict_frame(frame) if self._detector is not None else []
+
+        # ByteTracker は pixel 座標 + score を受け取る。
+        # YOLOInference の出力は person / player_a..d / player_other 等の混在ラベル。
+        # ここでは person 系全部を検出として扱う (court filter は YOLOInference 側で
+        # 適用済み = 二重適用しない)。
+        from backend.cv.byte_tracker import Detection  # type: ignore
+        bt_dets: list[Detection] = []
+        for d in detections_n:
+            label = d.get("label", "")
+            if not (label == "person" or label.startswith("player_")):
+                continue
+            bb = d.get("bbox") or []
+            if len(bb) != 4:
+                continue
+            x1 = float(bb[0]) * w
+            y1 = float(bb[1]) * h
+            x2 = float(bb[2]) * w
+            y2 = float(bb[3]) * h
+            score = float(d.get("confidence", 0.0))
+            bt_dets.append(Detection(bbox=(x1, y1, x2, y2), score=score))
+
+        # 追跡: ByteTracker.update — Kalman 予測 + 2-pass Hungarian
+        stracks = self._tracker.update(bt_dets, frame_id=frame_idx)
 
         raw_tracks: list[TrackedPerson] = []
-        for i in range(len(xyxy)):
-            x1, y1, x2, y2 = [float(v) for v in xyxy[i]]
+        for st in stracks:
+            x1, y1, x2, y2 = st.xyxy
             raw_tracks.append(
                 TrackedPerson(
-                    bbox=(x1, y1, x2, y2),
-                    track_id=int(ids[i]),
+                    bbox=(float(x1), float(y1), float(x2), float(y2)),
+                    track_id=int(st.track_id),
                     court_id=None,
                     player_uuid=None,
-                    confidence=float(confs[i]),
+                    confidence=float(st.score),
                 )
             )
 
@@ -368,16 +403,12 @@ class PersonTracker:
         """
         self._current_set_idx = int(set_idx)
         self._side_swapped = (self._current_set_idx % 2 == 1)
-        if self._model is not None:
-            # ultralytics の track state は predictor.trackers に乗っている。
+        # Phase 3.5: standalone ByteTracker の内部 state を完全リセット
+        if self._tracker is not None:
             try:
-                trackers = getattr(self._model.predictor, "trackers", None)
-                if trackers:
-                    for tr in trackers:
-                        if hasattr(tr, "reset"):
-                            tr.reset()
+                self._tracker.reset()
             except Exception as exc:
-                logger.warning("reset_for_new_set: tracker reset failed: %s", exc)
+                logger.warning("reset_for_new_set: ByteTracker reset failed: %s", exc)
         logger.info(
             "PersonTracker reset for set %s (side_swapped=%s)",
             set_idx, self._side_swapped,
