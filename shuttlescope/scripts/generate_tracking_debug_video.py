@@ -70,6 +70,10 @@ def main() -> int:
     p.add_argument("--court-corners", default=None, help='JSON: [[x,y],...] TL,TR,BR,BL pixel')
     p.add_argument("--model", default=None, help="YOLO model path (default: env or yolov8n.onnx)")
     p.add_argument("--device", default=None)
+    p.add_argument("--match-id", type=int, default=None,
+                   help="DB の court_calibration から 4 隅を取得する。--court-corners 優先。")
+    p.add_argument("--set-idx", type=int, default=0,
+                   help="開始 set index。奇数なら side swap 有効。")
     args = p.parse_args()
 
     cap = cv2.VideoCapture(args.video)
@@ -84,13 +88,34 @@ def main() -> int:
     cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
     logger.info("動画 %dx%d @ %.2f fps、frame %d → %d 処理", width, height, fps, start_frame, end_frame)
 
-    corners = _parse_corners(args.court_corners, width, height)
+    # 優先順: --court-corners (明示) > --match-id (DB) > 画面全体 fallback
+    if args.court_corners is not None:
+        corners = _parse_corners(args.court_corners, width, height)
+        match_id_arg = None
+    elif args.match_id is not None:
+        corners = None  # PersonTracker が DB から取る
+        match_id_arg = args.match_id
+    else:
+        corners = _parse_corners(None, width, height)  # 画面 4 隅 fallback
+        match_id_arg = None
+
     tracker = PersonTracker(
         match_type=args.match_type,
         court_corners=corners,
         model_path=args.model,
         device=args.device,
+        match_id=match_id_arg,
+        frame_size=(width, height),
     )
+    # set_idx 反映 (side swap)
+    if args.set_idx:
+        tracker.reset_for_new_set(args.set_idx)
+    # 描画用に実コート 4 隅を取り出す (HUD 用)
+    if tracker._adjudicator is not None:
+        # 内部の court polygon を取り出す
+        drawn_corners = tracker._adjudicator._court_polygon
+    else:
+        drawn_corners = corners
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)) or ".", exist_ok=True)
     # mp4v fallback。XVID は mp4 拡張子と相性悪い
@@ -104,6 +129,8 @@ def main() -> int:
     id_first_seen: dict[int, int] = {}
     id_last_seen: dict[int, int] = {}
     total_unique_ids: set[int] = set()
+    # court_id (in-court 採用後) ごとの track_id 集計
+    per_court_ids: dict[int, set[int]] = {0: set(), 1: set(), 2: set(), 3: set()}
 
     frame_idx = start_frame
     processed = 0
@@ -116,8 +143,8 @@ def main() -> int:
 
         tracks = tracker.update(frame, frame_idx)
         # コート (corners) を薄く描画
-        if corners is not None:
-            pts = np.array(corners, dtype=np.int32).reshape(-1, 1, 2)
+        if drawn_corners is not None:
+            pts = np.array(drawn_corners, dtype=np.int32).reshape(-1, 1, 2)
             cv2.polylines(frame, [pts], isClosed=True, color=(80, 80, 80), thickness=1)
 
         for t in tracks:
@@ -128,7 +155,8 @@ def main() -> int:
             if not in_court:
                 color = (160, 160, 160)
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, thickness)
-            label = f"ID:{t.track_id} Q:{t.court_id} c:{t.confidence:.2f}"
+            pl = t.player_label or "-"
+            label = f"ID:{t.track_id} Q:{t.court_id} {pl} c:{t.confidence:.2f}"
             cv2.putText(frame, label, (x1, max(y1 - 6, 12)),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
             # 足元 dot
@@ -139,6 +167,8 @@ def main() -> int:
                 total_unique_ids.add(t.track_id)
                 id_first_seen.setdefault(t.track_id, frame_idx)
                 id_last_seen[t.track_id] = frame_idx
+                if t.court_id is not None and t.court_id in per_court_ids:
+                    per_court_ids[t.court_id].add(t.track_id)
 
         # HUD
         elapsed = (frame_idx - start_frame) / fps
@@ -164,6 +194,12 @@ def main() -> int:
     )
     for tid, span in lifespans[:20]:
         logger.info("  track_id %d: %d frames (%.1f s)", tid, span, span / fps)
+    label_map = {0: "FL/PlayerA", 1: "FR/PlayerB", 2: "BL/PlayerC", 3: "BR/PlayerD"}
+    for cid in (0, 1, 2, 3):
+        logger.info(
+            "  court_id %d (%s): %d unique track_ids %s",
+            cid, label_map[cid], len(per_court_ids[cid]), sorted(per_court_ids[cid])[:8],
+        )
     logger.info("出力: %s", args.out)
     return 0
 

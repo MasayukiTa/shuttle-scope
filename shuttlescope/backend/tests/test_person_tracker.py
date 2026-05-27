@@ -16,6 +16,7 @@ from backend.cv.person_tracker import (
     TrackedPerson,
     _QuadrantAdjudicator,
     adjudicate_court,
+    court_id_to_player_label,
 )
 
 
@@ -110,6 +111,125 @@ class TestPersonTrackerInit:
         # adjudicator 無しでも構築できる
         t = PersonTracker(match_type="singles", court_corners=None)
         assert t._adjudicator is None
+
+    def test_match_id_loads_corners_from_db(self, monkeypatch):
+        # DB load を mock。frame_size を渡して pixel に戻る経路を確認。
+        fake_data = {
+            "roi_polygon": [
+                [0.0, 0.0],
+                [1.0, 0.0],
+                [1.0, 1.0],
+                [0.0, 1.0],
+            ],
+        }
+
+        def fake_loader(match_id):
+            assert match_id == 42
+            return fake_data
+
+        import backend.routers.court_calibration as cc_mod
+        monkeypatch.setattr(
+            cc_mod, "load_calibration_standalone", fake_loader, raising=True,
+        )
+        t = PersonTracker(
+            match_type="doubles",
+            match_id=42,
+            frame_size=(1920, 1080),
+        )
+        assert t._adjudicator is not None
+        # 1920x1080 にスケールされていれば classify が動く
+        assert t._adjudicator.classify((0.0, 0.0, 100.0, 100.0)) == 0
+
+    def test_match_id_degenerate_roi_falls_back_to_none(self, monkeypatch):
+        # roi_polygon が全点 (0.5, 0.5) の退化キャリブは無視されること
+        fake_data = {"roi_polygon": [[0.5, 0.5]] * 4}
+        import backend.routers.court_calibration as cc_mod
+        monkeypatch.setattr(
+            cc_mod, "load_calibration_standalone", lambda mid: fake_data,
+            raising=True,
+        )
+        t = PersonTracker(match_type="doubles", match_id=99, frame_size=(1920, 1080))
+        assert t._adjudicator is None
+
+
+class TestPlayerLabel:
+    def test_court_id_to_label_map(self):
+        assert court_id_to_player_label(0) == "PlayerA"
+        assert court_id_to_player_label(1) == "PlayerB"
+        assert court_id_to_player_label(2) == "PlayerC"
+        assert court_id_to_player_label(3) == "PlayerD"
+        assert court_id_to_player_label(None) is None
+
+
+class TestSideSwap:
+    """reset_for_new_set で side swap が反映されること。"""
+
+    def setup_method(self):
+        self.tracker = PersonTracker(
+            match_type="doubles",
+            court_corners=SQUARE_CORNERS,
+        )
+
+    def _fake_track(self, foot, tid, conf):
+        return TrackedPerson(
+            bbox=_bbox_with_foot(*foot),
+            track_id=tid,
+            court_id=None,
+            player_uuid=None,
+            confidence=conf,
+        )
+
+    def test_no_swap_on_even_set(self):
+        self.tracker.reset_for_new_set(0)
+        assert self.tracker._side_swapped is False
+        self.tracker.reset_for_new_set(2)
+        assert self.tracker._side_swapped is False
+
+    def test_swap_on_odd_set(self):
+        self.tracker.reset_for_new_set(1)
+        assert self.tracker._side_swapped is True
+        self.tracker.reset_for_new_set(3)
+        assert self.tracker._side_swapped is True
+
+    def test_attach_player_label_no_swap(self):
+        # FL (court_id=0) は PlayerA
+        raw = TrackedPerson(
+            bbox=_bbox_with_foot(25, 25),
+            track_id=1,
+            court_id=0,
+            player_uuid=None,
+            confidence=0.9,
+        )
+        self.tracker._side_swapped = False
+        out = self.tracker._attach_player_label(raw)
+        assert out.court_id == 0
+        assert out.player_label == "PlayerA"
+
+    def test_attach_player_label_with_swap(self):
+        # FL (0) は swap 中は BL (2) → PlayerC 扱い
+        raw = TrackedPerson(
+            bbox=_bbox_with_foot(25, 25),
+            track_id=1,
+            court_id=0,
+            player_uuid=None,
+            confidence=0.9,
+        )
+        self.tracker._side_swapped = True
+        out = self.tracker._attach_player_label(raw)
+        assert out.court_id == 2
+        assert out.player_label == "PlayerC"
+
+    def test_attach_label_passthrough_for_none_court(self):
+        raw = TrackedPerson(
+            bbox=(0, 0, 1, 1),
+            track_id=1,
+            court_id=None,
+            player_uuid=None,
+            confidence=0.5,
+        )
+        out = self.tracker._attach_player_label(raw)
+        assert out.court_id is None
+        assert out.player_label is None
 
 
 @pytest.mark.skipif(
