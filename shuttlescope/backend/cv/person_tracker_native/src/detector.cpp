@@ -128,11 +128,22 @@ DetectorHandle* detector_create(const char* onnx_path,
         }
     }
 
-    // CUDA EP は常に追加 (TRT が attach できなかった subgraph の fallback)
-    {
-        OrtCUDAProviderOptions cuda_opts{};
-        cuda_opts.device_id = cuda_device;
-        so.AppendExecutionProvider_CUDA(cuda_opts);
+    // CUDA EP は TRT が成功 した場合 skip 可能 (env SS_PT_NATIVE_NO_CUDA_FALLBACK=1)。
+    // Python から .pyd 経由で load する場合、CUDA EP は cuDNN を要求し、
+    // torch の cudnn 9 と ORT 1.24 の cudnn 期待 ABI が衝突して fail することがある。
+    // TRT-only で済む model (yolov8n 等) なら CUDA EP skip で安全。
+    const char* no_cuda = std::getenv("SS_PT_NATIVE_NO_CUDA_FALLBACK");
+    bool skip_cuda = (no_cuda && std::string(no_cuda) != "0") && trt_appended;
+    if (!skip_cuda) {
+        try {
+            OrtCUDAProviderOptions cuda_opts{};
+            cuda_opts.device_id = cuda_device;
+            so.AppendExecutionProvider_CUDA(cuda_opts);
+        } catch (const std::exception& e) {
+            std::fprintf(stderr, "[detector] CUDA EP append failed (TRT will be sole EP): %s\n", e.what());
+        }
+    } else {
+        std::fprintf(stderr, "[detector] CUDA EP skipped (TRT-only mode)\n");
     }
 
 #ifdef _WIN32
