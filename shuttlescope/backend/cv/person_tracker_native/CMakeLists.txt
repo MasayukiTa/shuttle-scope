@@ -76,8 +76,14 @@ set_target_properties(person_tracker_core PROPERTIES
 
 # --- detector_test.exe --------------------------------------------------
 add_executable(detector_test src/detector_test.cpp)
-target_link_libraries(detector_test PRIVATE person_tracker_core)
+target_link_libraries(detector_test PRIVATE person_tracker_core CUDA::cudart)
 target_include_directories(detector_test PRIVATE ${ORT_INCLUDE_DIR})
+# CUDA device-side symbol resolution (preprocess.cu の __cudaRegisterLinkedBinary
+# が detector_test exe の link 時に必要)
+set_target_properties(detector_test PROPERTIES
+    CUDA_RESOLVE_DEVICE_SYMBOLS ON
+    LINKER_LANGUAGE CUDA
+)
 
 # DLL を実行 dir に copy (Windows)
 if(WIN32)
