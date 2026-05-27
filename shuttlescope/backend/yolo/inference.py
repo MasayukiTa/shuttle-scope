@@ -222,9 +222,14 @@ class YOLOInference:
         # 0. ONNX + TensorRT EP — Phase 3.5 で追加 (PersonTracker 高速化用)。
         #    既存 OpenVINO/PT chain より優先。env SS_YOLO_USE_TRT=0 で無効化。
         #    fallback chain: TRT → CUDA → CPU (CPU は事実上ここでは使わず後段に任せる)。
+        # 2026-05-27 修正: SS_YOLO_MODEL_PATH env (PersonTracker 用 finetuned model 指定) を
+        # 認識して TRT に渡す。なければ default の ONNX_MODEL。
         import os as _os_trt
+        from pathlib import Path as _Path_trt
         use_trt = _os_trt.environ.get("SS_YOLO_USE_TRT", "1") != "0"
-        if use_trt and ONNX_MODEL.exists():
+        _trt_model_env = _os_trt.environ.get("SS_YOLO_MODEL_PATH", "").strip()
+        _trt_model_path = _Path_trt(_trt_model_env) if _trt_model_env else ONNX_MODEL
+        if use_trt and _trt_model_path.exists():
             try:
                 import onnxruntime as ort
                 available = set(ort.get_available_providers())
@@ -249,7 +254,7 @@ class YOLOInference:
                     sess_opts = ort.SessionOptions()
                     sess_opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
                     self._model = ort.InferenceSession(
-                        str(ONNX_MODEL), sess_opts, providers=providers
+                        str(_trt_model_path), sess_opts, providers=providers
                     )
                     self._ov_device = None
                     self._backend = f"onnx_trt:{self._cuda_device_index}"
