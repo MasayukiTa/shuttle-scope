@@ -75,14 +75,14 @@ set_target_properties(person_tracker_core PROPERTIES
 )
 
 # --- detector_test.exe --------------------------------------------------
-add_executable(detector_test src/detector_test.cpp)
+# preprocess.cu を直接 detector_test target に含めて、static lib 経由の
+# device-side symbol 解決問題 (LNK2019 __cudaRegisterLinkedBinary) を回避。
+# core lib 側の preprocess.obj は使わず、ここで再コンパイルする。
+add_executable(detector_test src/detector_test.cpp src/preprocess.cu)
 target_link_libraries(detector_test PRIVATE person_tracker_core CUDA::cudart)
-target_include_directories(detector_test PRIVATE ${ORT_INCLUDE_DIR})
-# CUDA device-side symbol resolution (preprocess.cu の __cudaRegisterLinkedBinary
-# が detector_test exe の link 時に必要)
+target_include_directories(detector_test PRIVATE ${ORT_INCLUDE_DIR} include)
 set_target_properties(detector_test PROPERTIES
-    CUDA_RESOLVE_DEVICE_SYMBOLS ON
-    LINKER_LANGUAGE CUDA
+    CUDA_SEPARABLE_COMPILATION OFF
 )
 
 # DLL を実行 dir に copy (Windows)
