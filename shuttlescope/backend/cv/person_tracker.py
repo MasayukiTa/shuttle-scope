@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import logging
 import os
-from collections import deque
+from collections import OrderedDict, deque
 from dataclasses import dataclass
 from typing import Literal, Optional
 
@@ -40,6 +40,15 @@ REID_HISTORY_LEN = int(os.environ.get("SS_PERSON_REID_HISTORY", "30"))
 # 復帰猶予 (frame 数)。30 fps で 300 = 10 秒。設計書は 5 秒だがバドミントンの
 # rally 単位 occlusion (約 3-7 秒) を確実に救う安全側で 10 秒に振る。env で調整可。
 REID_LOST_GRACE_FRAMES = int(os.environ.get("SS_PERSON_REID_LOST_GRACE", "300"))
+
+# ── Task #40: ReID-based track_id merging (opt-in) ──────────────────────
+# court_id 復帰 (Tier 3) とは独立のレイヤ。lost track_id の embedding を
+# 小さなリングバッファに保持し、新規 track_id 出現時に cosine sim ≥ threshold
+# なら過去 track_id を引き継ぐ (alias map で post-process)。
+# ByteTracker の内部 state は触らず、emit 時に track_id を書き換えるだけ。
+REID_MERGE_IDS_DEFAULT = os.environ.get("SS_PERSON_REID_MERGE_IDS", "0") == "1"
+REID_MERGE_SIM_DEFAULT = float(os.environ.get("SS_PERSON_REID_MERGE_SIM", "0.85"))
+REID_MERGE_BUFFER_DEFAULT = int(os.environ.get("SS_PERSON_REID_MERGE_BUFFER", "32"))
 
 # ── 環境変数 ─────────────────────────────────────────────────────────────
 DEFAULT_MODEL_PATH = os.environ.get(
@@ -234,6 +243,9 @@ class PersonTracker:
         use_reid: Optional[bool] = None,
         reid_embedder=None,  # type: ignore[no-untyped-def]
         reid_threshold: Optional[float] = None,
+        merge_ids: Optional[bool] = None,
+        merge_sim_threshold: Optional[float] = None,
+        merge_buffer_size: Optional[int] = None,
     ):
         """Person tracker.
 
@@ -290,6 +302,27 @@ class PersonTracker:
         self._reid_overrides: dict[int, int] = {}
         # 観客/ref 候補 (grace 越え): track_id を drop 対象に
         self._dropped_track_ids: set[int] = set()
+
+        # ── Task #40: ReID-based track_id merging state ───────────────────
+        self._merge_ids_enabled: bool = (
+            REID_MERGE_IDS_DEFAULT if merge_ids is None else bool(merge_ids)
+        )
+        self._merge_sim_threshold: float = (
+            REID_MERGE_SIM_DEFAULT if merge_sim_threshold is None
+            else float(merge_sim_threshold)
+        )
+        self._merge_buffer_size: int = (
+            REID_MERGE_BUFFER_DEFAULT if merge_buffer_size is None
+            else int(merge_buffer_size)
+        )
+        # track_id (raw from ByteTracker) → canonical track_id (after merge)
+        self._track_id_alias: dict[int, int] = {}
+        # 直近 frame で見えた raw track_id (lost 検知用)
+        self._prev_raw_track_ids: set[int] = set()
+        # raw track_id → 最新 L2-normalized embedding (まだ alive な track 用)
+        self._track_id_embedding: dict[int, np.ndarray] = {}
+        # 最近 lost した canonical track_id → embedding (LRU 上限 _merge_buffer_size)
+        self._lost_track_buffer: "OrderedDict[int, np.ndarray]" = OrderedDict()
 
     @staticmethod
     def _load_corners_from_db(
@@ -404,12 +437,19 @@ class PersonTracker:
         # Tier 2: court 象限割り当て
         if self._adjudicator is None:
             # passthrough、court_id はすべて None なので player_label も None
+            # ただし merge_ids は court 非依存なので適用してから返す。
+            if self._merge_ids_enabled:
+                raw_tracks = self._apply_track_id_merge(frame, raw_tracks, frame_idx)
             return raw_tracks
         adjudicated = adjudicate_court(raw_tracks, self._adjudicator, self.match_type)
 
         # Tier 3 (Phase 4): ReID Recovery — orphan track の court_id を復帰
         if self._reid_enabled:
             adjudicated = self._reid_recover(frame, adjudicated, frame_idx)
+
+        # Task #40: ReID-based track_id merging (opt-in, court 非依存)
+        if self._merge_ids_enabled:
+            adjudicated = self._apply_track_id_merge(frame, adjudicated, frame_idx)
 
         # Phase 3 簡易: side swap 反映 + court_id → player_label マップ
         return [self._attach_player_label(t) for t in adjudicated]
@@ -826,6 +866,151 @@ class PersonTracker:
                 out.append(t)
         return out
 
+    # ─── Task #40: ReID-based track_id merging ──────────────────────────
+    def _embed_tracks(
+        self,
+        frame: np.ndarray,
+        tracks: list[TrackedPerson],
+    ) -> dict[int, np.ndarray]:
+        """各 track の L2-normalized embedding を返す。
+        embedder 未init/利用不可なら空 dict (= merge を no-op に降格)。
+        """
+        self._ensure_reid_embedder()
+        if self._reid_embedder is None:
+            return {}
+        crops: list[np.ndarray] = []
+        valid_track_ids: list[int] = []
+        for t in tracks:
+            c = self._crop_bbox(frame, t.bbox)
+            if c is None:
+                continue
+            crops.append(c)
+            valid_track_ids.append(t.track_id)
+        if not crops:
+            return {}
+        try:
+            feats = self._reid_embedder.embed_batch(crops)
+        except Exception as exc:
+            logger.debug("merge_ids: embed_batch failed: %s", exc)
+            return {}
+        out: dict[int, np.ndarray] = {}
+        for tid, f in zip(valid_track_ids, feats):
+            # embed_batch は既に L2 正規化済みだが安全側で再正規化
+            n = float(np.linalg.norm(f))
+            if n < 1e-9:
+                continue
+            out[tid] = (f / n).astype(np.float32)
+        return out
+
+    def _apply_track_id_merge(
+        self,
+        frame: np.ndarray,
+        tracks: list[TrackedPerson],
+        frame_idx: int,
+    ) -> list[TrackedPerson]:
+        """post-process: 新規に出現した raw track_id を、最近 lost した track_id の
+        embedding と cosine sim ≥ threshold で match できれば、過去 track_id を
+        引き継ぐ。ByteTracker 内部 state には触れず alias map で出力を書き換える。
+        """
+        # 現 frame に登場した raw track_id
+        current_raw = {t.track_id for t in tracks}
+
+        # 1) 直前 frame で見えていたが今回見えない track_id を lost に積む。
+        #    canonical id (alias 適用後) で保存する — 復帰時に再利用するため。
+        newly_lost = self._prev_raw_track_ids - current_raw
+        for raw_tid in newly_lost:
+            emb = self._track_id_embedding.pop(raw_tid, None)
+            if emb is None:
+                continue
+            canonical = self._track_id_alias.get(raw_tid, raw_tid)
+            # 既存エントリがあれば更新 (LRU re-insert)
+            if canonical in self._lost_track_buffer:
+                self._lost_track_buffer.pop(canonical)
+            self._lost_track_buffer[canonical] = emb
+            # LRU 上限
+            while len(self._lost_track_buffer) > self._merge_buffer_size:
+                self._lost_track_buffer.popitem(last=False)
+
+        # 2) embedding を計算する必要があるのは「新規 raw track_id」のみ。
+        #    既知 (alive) track の embedding 更新も兼ねるので結局全部 embed する。
+        feats_by_tid = self._embed_tracks(frame, tracks)
+        if not feats_by_tid:
+            # embedder 利用不可 → 何もしない (alias map は維持)
+            self._prev_raw_track_ids = current_raw
+            return tracks
+
+        # 3) 新規 raw track_id を抽出 (alias 未登録 & 直前 frame に居なかった)
+        from backend.cv.reid_embedder import cosine_similarity_matrix  # type: ignore
+        new_candidates: list[int] = []
+        for raw_tid in current_raw:
+            if raw_tid in self._track_id_alias:
+                continue
+            if raw_tid in self._prev_raw_track_ids:
+                # 継続 track。embedding は更新するが merge 判定はしない
+                continue
+            if raw_tid not in feats_by_tid:
+                continue
+            new_candidates.append(raw_tid)
+
+        # 4) 新規候補 × lost_buffer の cosine sim → 貪欲ペアリング
+        if new_candidates and self._lost_track_buffer:
+            lost_ids = list(self._lost_track_buffer.keys())
+            lost_mat = np.stack(
+                [self._lost_track_buffer[c] for c in lost_ids], axis=0
+            )  # (L, D)
+            cand_mat = np.stack(
+                [feats_by_tid[r] for r in new_candidates], axis=0
+            )  # (M, D)
+            sim = cosine_similarity_matrix(cand_mat, lost_mat)  # (M, L)
+            pairs = []
+            for r in range(sim.shape[0]):
+                for c in range(sim.shape[1]):
+                    pairs.append((float(sim[r, c]), r, c))
+            pairs.sort(reverse=True, key=lambda p: p[0])
+            used_r: set[int] = set()
+            used_c: set[int] = set()
+            for s, r, c in pairs:
+                if s < self._merge_sim_threshold:
+                    break
+                if r in used_r or c in used_c:
+                    continue
+                used_r.add(r)
+                used_c.add(c)
+                raw_tid = new_candidates[r]
+                canonical = lost_ids[c]
+                self._track_id_alias[raw_tid] = canonical
+                # lost_buffer から消費 (同じ canonical を別 raw に重複付与しない)
+                self._lost_track_buffer.pop(canonical, None)
+                logger.debug(
+                    "merge_ids: raw track_id %d → canonical %d (sim=%.3f, frame=%d)",
+                    raw_tid, canonical, s, frame_idx,
+                )
+
+        # 5) 現 frame の embedding を per-raw_tid に保存 (alive track 用)
+        for raw_tid, f in feats_by_tid.items():
+            self._track_id_embedding[raw_tid] = f
+        self._prev_raw_track_ids = current_raw
+
+        # 6) alias を適用して出力を書き換える
+        if not self._track_id_alias:
+            return tracks
+        out: list[TrackedPerson] = []
+        for t in tracks:
+            canonical = self._track_id_alias.get(t.track_id, t.track_id)
+            if canonical == t.track_id:
+                out.append(t)
+            else:
+                out.append(TrackedPerson(
+                    bbox=t.bbox,
+                    track_id=canonical,
+                    court_id=t.court_id,
+                    player_uuid=t.player_uuid,
+                    confidence=t.confidence,
+                    is_recovered=t.is_recovered,
+                    player_label=t.player_label,
+                ))
+        return out
+
     def _attach_player_label(self, t: TrackedPerson) -> TrackedPerson:
         """side swap を考慮して court_id を補正し、player_label を付ける。
 
@@ -871,6 +1056,11 @@ class PersonTracker:
         self._lost_court.clear()
         self._reid_overrides.clear()
         self._dropped_track_ids.clear()
+        # Task #40: merge_ids state も set 境界でクリア
+        self._track_id_alias.clear()
+        self._prev_raw_track_ids.clear()
+        self._track_id_embedding.clear()
+        self._lost_track_buffer.clear()
         logger.info(
             "PersonTracker reset for set %s (side_swapped=%s)",
             set_idx, self._side_swapped,
