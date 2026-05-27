@@ -490,3 +490,144 @@ class TestByteTrackerCore:
         # reset 後は frame_id も track 状態もクリア
         out = tracker.update([], frame_id=1)
         assert out == []
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# 短寿命 track filter (SS_PERSON_TRACK_MIN_LIFETIME) のテスト
+# ─────────────────────────────────────────────────────────────────────────
+class TestTrackLifetimeFilter:
+    """track_id が累積 N frame 以上現れたら出力に通す filter のテスト。
+    PersonTracker._apply_lifetime_filter を直接叩いて挙動を確認する
+    (検出器/追跡器は init 不要)。
+    """
+
+    def _mk_track(self, tid: int) -> TrackedPerson:
+        return TrackedPerson(
+            bbox=(0.0, 0.0, 10.0, 20.0),
+            track_id=tid,
+            court_id=None,
+            player_uuid=None,
+            confidence=0.9,
+        )
+
+    def test_lifetime_disabled_default(self):
+        # default (0) なら全 track 素通し
+        pt = PersonTracker(match_type="singles")
+        assert pt._track_min_lifetime == 0
+        out = pt._apply_lifetime_filter([self._mk_track(1), self._mk_track(2)])
+        assert len(out) == 2
+
+    def test_lifetime_5_filters_short_tracks(self):
+        # min_lifetime=5: 4 frame の track は出力されず、5 frame で出力されること
+        pt = PersonTracker(match_type="singles")
+        pt._track_min_lifetime = 5
+
+        track = self._mk_track(1)
+        # 4 frame 連続では出力 0
+        for _ in range(4):
+            out = pt._apply_lifetime_filter([track])
+            assert out == [], f"4 frame 時点では空であるべき、got {len(out)}"
+
+        # 5 frame 目で出力されること
+        out = pt._apply_lifetime_filter([track])
+        assert len(out) == 1
+        assert out[0].track_id == 1
+
+    def test_lifetime_continues_after_threshold(self):
+        # 一度しきい値超えたら以降も出力される
+        pt = PersonTracker(match_type="singles")
+        pt._track_min_lifetime = 3
+        track = self._mk_track(7)
+        for i in range(10):
+            out = pt._apply_lifetime_filter([track])
+            if i + 1 >= 3:
+                assert len(out) == 1
+            else:
+                assert out == []
+
+    def test_lifetime_independent_per_track_id(self):
+        # 別 track_id は別カウンタ
+        pt = PersonTracker(match_type="singles")
+        pt._track_min_lifetime = 3
+        # track 1 を 3 frame、track 2 を 1 frame
+        for _ in range(3):
+            pt._apply_lifetime_filter([self._mk_track(1)])
+        out = pt._apply_lifetime_filter([self._mk_track(1), self._mk_track(2)])
+        ids = {t.track_id for t in out}
+        # track 1 (4 回目) は通る、track 2 (1 回目) は通らない
+        assert 1 in ids
+        assert 2 not in ids
+
+    def test_reset_for_new_set_clears_lifetime(self):
+        # set 境界で累積がクリアされること
+        pt = PersonTracker(match_type="singles")
+        pt._track_min_lifetime = 3
+        for _ in range(3):
+            pt._apply_lifetime_filter([self._mk_track(1)])
+        pt.reset_for_new_set(1)
+        # 再カウントになるので 1 回目は通らない
+        out = pt._apply_lifetime_filter([self._mk_track(1)])
+        assert out == []
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Soft-NMS (SS_PERSON_USE_SOFT_NMS) のテスト
+# ─────────────────────────────────────────────────────────────────────────
+class TestSoftNMS:
+    """重なった 2 bbox に対し soft-nms は両方残すこと (Gaussian 減衰のみ、
+    drop しない)。従来の greedy NMS では 1 つだけ残るケースとの対比。
+    """
+
+    def test_overlapping_bboxes_both_kept(self):
+        from backend.yolo.inference import _soft_nms
+        # 大きく重なる 2 bbox (IoU 約 0.45)
+        cands = [
+            (0.9, 0.10, 0.10, 0.40, 0.50),
+            (0.85, 0.20, 0.10, 0.50, 0.50),
+        ]
+        kept = _soft_nms(cands, sigma=0.5, score_thresh=0.15)
+        # Soft-NMS は両方残す (score 減衰後も threshold 超え)
+        assert len(kept) == 2
+        # 最大 score は元の最大値以下
+        assert kept[0][0] == 0.9
+
+    def test_far_apart_unchanged(self):
+        from backend.yolo.inference import _soft_nms
+        # 非重複 2 bbox
+        cands = [
+            (0.9, 0.0, 0.0, 0.2, 0.2),
+            (0.8, 0.5, 0.5, 0.7, 0.7),
+        ]
+        kept = _soft_nms(cands, sigma=0.5, score_thresh=0.15)
+        assert len(kept) == 2
+        # 非重複なので score は変化なし
+        scores = sorted([k[0] for k in kept], reverse=True)
+        assert abs(scores[0] - 0.9) < 1e-6
+        assert abs(scores[1] - 0.8) < 1e-6
+
+    def test_low_score_after_decay_dropped(self):
+        from backend.yolo.inference import _soft_nms
+        # 完全重複に近い + 低 score → 減衰で threshold 割り → drop
+        cands = [
+            (0.9, 0.10, 0.10, 0.50, 0.50),
+            (0.20, 0.10, 0.10, 0.50, 0.50),  # 完全一致、IoU=1.0
+        ]
+        kept = _soft_nms(cands, sigma=0.5, score_thresh=0.15)
+        # 0.20 * exp(-1/0.5) = 0.20 * 0.135 = 0.027 < 0.15 → drop
+        assert len(kept) == 1
+        assert kept[0][0] == 0.9
+
+    def test_env_toggle_config(self, monkeypatch):
+        # env 未設定 → disabled, sigma=0.5
+        from backend.yolo.inference import _get_soft_nms_config
+        monkeypatch.delenv("SS_PERSON_USE_SOFT_NMS", raising=False)
+        monkeypatch.delenv("SS_PERSON_SOFT_NMS_SIGMA", raising=False)
+        enabled, sigma = _get_soft_nms_config()
+        assert enabled is False
+        assert sigma == 0.5
+        # enable + custom sigma
+        monkeypatch.setenv("SS_PERSON_USE_SOFT_NMS", "1")
+        monkeypatch.setenv("SS_PERSON_SOFT_NMS_SIGMA", "0.7")
+        enabled, sigma = _get_soft_nms_config()
+        assert enabled is True
+        assert abs(sigma - 0.7) < 1e-6
