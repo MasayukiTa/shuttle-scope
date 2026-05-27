@@ -64,3 +64,7 @@ shuttlescope_cloudflare_tunnel_steps.md
 shuttlescope/backend/wasb/weights/wasb_v2_finetuned.onnx
 shuttlescope/backend/wasb/weights/wasb_*_finetuned*
 shuttlescope/backend/models/yolov8n_*_finetuned*
+
+# Phase 3.6: dynamic-batch fine-tuned weights (TRT 1500 fps target)
+shuttlescope/backend/models/yolov8n_*_dyn*.onnx
+shuttlescope/backend/models/yolov8n_*_dyn*
