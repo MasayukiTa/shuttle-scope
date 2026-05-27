@@ -1,10 +1,15 @@
-"""Phase 1 + Phase 2 の Person Tracker。
+"""Phase 1 + Phase 2 + Phase 3 (簡易版) の Person Tracker。
 
 設計書: private_docs/2026-05-27_person_tracking_design.md
 
 - Tier 1: ultralytics ByteTrack (`model.track(...)` per-frame, persist=True)
 - Tier 2: Court 4 隅 → 4 象限 polygon を作って bbox 足元を象限テスト
-- Tier 3 / Player labeler は本 phase ではスコープ外 (player_uuid は常に None)
+- Tier 3 (Phase 3 簡易版): court_id → player_label ("PlayerA".."PlayerD") の
+  固定マップ。set 間 side swap 検知 (奇数 set で FL⇄BL / FR⇄BR)。
+  DB の player_uuid bind は Phase 4 で。本 phase では player_uuid は常に None。
+
+match_id を渡すと DB の court_calibration から court 4 隅を取得する。
+渡さなければ court_corners 引数 fallback (テスト用)。
 
 ultralytics / torch が import できない実行環境 (CI 軽量 venv 等) でも
 quadrant adjudicator 単体をテストできるよう、依存は遅延 import する。
@@ -38,9 +43,32 @@ class TrackedPerson:
     bbox: tuple[float, float, float, float]  # x1, y1, x2, y2 (pixel)
     track_id: int            # raw ByteTrack ID。未付与時は -1
     court_id: Optional[int]  # 0=FL, 1=FR, 2=BL, 3=BR、コート外は None
-    player_uuid: Optional[str]  # Phase 3 で bind 予定、本 phase では常に None
+    player_uuid: Optional[str]  # Phase 4 で bind 予定、本 phase では常に None
     confidence: float
     is_recovered: bool = False  # Tier 3 (Phase 4) 用、本 phase では常に False
+    player_label: Optional[str] = None  # Phase 3 簡易: "PlayerA"/"B"/"C"/"D"
+
+
+# court_id → 簡易 player_label の固定マップ
+# 0=FL → PlayerA, 1=FR → PlayerB, 2=BL → PlayerC, 3=BR → PlayerD
+_COURT_TO_LABEL: dict[int, str] = {
+    0: "PlayerA",
+    1: "PlayerB",
+    2: "PlayerC",
+    3: "PlayerD",
+}
+
+# side swap 時の court_id 入れ替えマップ (奇数 set で適用)
+# FL(0) ⇄ BL(2)、FR(1) ⇄ BR(3) — 同サイドの前後を入れ替えるのではなく
+# 「コートサイドが入れ替わる」= front/back が反転するため。
+_SIDE_SWAP_MAP: dict[int, int] = {0: 2, 1: 3, 2: 0, 3: 1}
+
+
+def court_id_to_player_label(court_id: Optional[int]) -> Optional[str]:
+    """court_id (0..3) → 簡易 player_label。コート外 (None) は None。"""
+    if court_id is None:
+        return None
+    return _COURT_TO_LABEL.get(court_id)
 
 
 # ── Court Quadrant Adjudicator ───────────────────────────────────────────
@@ -180,16 +208,75 @@ class PersonTracker:
         court_corners: Optional[list[tuple[float, float]]] = None,
         model_path: Optional[str] = None,
         device: Optional[str] = None,
+        match_id: Optional[int] = None,
+        frame_size: Optional[tuple[int, int]] = None,
     ):
+        """Person tracker.
+
+        Args:
+            match_type: "singles" / "doubles"
+            court_corners: pixel 座標で TL,TR,BR,BL の 4 隅。match_id 優先。
+            model_path: YOLO model path。env SS_PERSON_TRACKER_MODEL fallback。
+            device: torch device 名 (例 "cuda:0")。None なら ultralytics 任せ。
+            match_id: 指定時は DB の court_calibration から 4 隅を取得して
+                court_corners を上書きする。frame_size (w,h) が必要 (roi_polygon は
+                正規化座標で保存されているため pixel に戻すのに使う)。
+            frame_size: (width, height) pixel。match_id を使う場合は必須。
+        """
         if match_type not in ("singles", "doubles"):
             raise ValueError(f"match_type は singles/doubles、got {match_type}")
         self.match_type = match_type
+        self.match_id = match_id
+        self._frame_size = frame_size
+
+        resolved_corners: Optional[list[tuple[float, float]]] = court_corners
+        if match_id is not None:
+            db_corners = self._load_corners_from_db(match_id, frame_size)
+            if db_corners is not None:
+                resolved_corners = db_corners
+
         self._adjudicator: Optional[_QuadrantAdjudicator] = (
-            _QuadrantAdjudicator(court_corners) if court_corners else None
+            _QuadrantAdjudicator(resolved_corners) if resolved_corners else None
         )
         self._model_path = model_path or DEFAULT_MODEL_PATH
         self._device = device
         self._model = None  # 遅延 import
+        # side swap 状態 (奇数 set で True)
+        self._side_swapped: bool = False
+        self._current_set_idx: int = 0
+
+    @staticmethod
+    def _load_corners_from_db(
+        match_id: int,
+        frame_size: Optional[tuple[int, int]],
+    ) -> Optional[list[tuple[float, float]]]:
+        """DB の court_calibration から 4 隅 pixel 座標を取得する。
+
+        court_calibration.roi_polygon は **正規化座標** (0-1) で保存されている。
+        frame_size=(w,h) で pixel に戻す。frame_size が None なら正規化のまま返す
+        (テスト用)。失敗時は None。
+        """
+        try:
+            from backend.routers.court_calibration import load_calibration_standalone
+            data = load_calibration_standalone(match_id)
+        except Exception as exc:
+            logger.warning("court_calibration load failed (match_id=%s): %s", match_id, exc)
+            return None
+        if not data:
+            return None
+        roi = data.get("roi_polygon")
+        if not roi or len(roi) != 4:
+            return None
+        # 退化キャリブ (全点が 0.5,0.5 等) を弾く
+        xs = {round(float(p[0]), 4) for p in roi}
+        ys = {round(float(p[1]), 4) for p in roi}
+        if len(xs) < 2 or len(ys) < 2:
+            logger.warning("court_calibration roi_polygon is degenerate (match_id=%s)", match_id)
+            return None
+        if frame_size is None:
+            return [(float(p[0]), float(p[1])) for p in roi]
+        w, h = frame_size
+        return [(float(p[0]) * w, float(p[1]) * h) for p in roi]
 
     def _ensure_model(self):
         if self._model is not None:
@@ -243,17 +330,46 @@ class PersonTracker:
 
         # Tier 2: court 象限割り当て
         if self._adjudicator is None:
-            return raw_tracks  # passthrough、court_id はすべて None
-        return adjudicate_court(raw_tracks, self._adjudicator, self.match_type)
+            # passthrough、court_id はすべて None なので player_label も None
+            return raw_tracks
+        adjudicated = adjudicate_court(raw_tracks, self._adjudicator, self.match_type)
+
+        # Tier 3 (Phase 3 簡易): side swap 反映 + court_id → player_label マップ
+        return [self._attach_player_label(t) for t in adjudicated]
+
+    def _attach_player_label(self, t: TrackedPerson) -> TrackedPerson:
+        """side swap を考慮して court_id を補正し、player_label を付ける。
+
+        side swap 中は player 視点での court_id を返す (例: FL の人物は side swap
+        中の set では PlayerC として扱う = FL→BL に swap)。返却 court_id 自体も
+        swap 後の値に揃え、下流の player_label と一致させる。
+        """
+        if t.court_id is None:
+            return t
+        effective_cid = _SIDE_SWAP_MAP[t.court_id] if self._side_swapped else t.court_id
+        label = court_id_to_player_label(effective_cid)
+        return TrackedPerson(
+            bbox=t.bbox,
+            track_id=t.track_id,
+            court_id=effective_cid,
+            player_uuid=None,
+            confidence=t.confidence,
+            is_recovered=t.is_recovered,
+            player_label=label,
+        )
 
     def reset_for_new_set(self, set_idx: int) -> None:
-        """セット間の side swap 対応 (Phase 3 で利用)。
+        """セット間の side swap 対応。
 
-        本 phase ではトラッカ内部 state を破棄するだけ。
+        - set_idx 偶数 (0, 2, 4 ...) → side swap 無し (1st, 3rd, 5th set)
+        - set_idx 奇数 (1, 3 ...)    → side swap 有り (2nd, 4th set)
+        - ByteTrack 内部 state はリセット (set 間で人物が完全に入れ替わるため
+          ID 継続させると誤マッピングが残る)
         """
+        self._current_set_idx = int(set_idx)
+        self._side_swapped = (self._current_set_idx % 2 == 1)
         if self._model is not None:
             # ultralytics の track state は predictor.trackers に乗っている。
-            # 一旦 None にして次回 _ensure_model でリロード。
             try:
                 trackers = getattr(self._model.predictor, "trackers", None)
                 if trackers:
@@ -262,4 +378,7 @@ class PersonTracker:
                             tr.reset()
             except Exception as exc:
                 logger.warning("reset_for_new_set: tracker reset failed: %s", exc)
-        logger.info("PersonTracker reset for set %s", set_idx)
+        logger.info(
+            "PersonTracker reset for set %s (side_swapped=%s)",
+            set_idx, self._side_swapped,
+        )

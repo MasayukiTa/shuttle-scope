@@ -539,7 +539,15 @@ class YOLOInference:
             logger.warning("YOLO ByteTrack reset failed: %s", exc)
 
     def _predict_onnx(self, frame) -> list[dict]:
-        """カスタム ONNX（YOLOv5/v8 形式）で検出"""
+        """カスタム ONNX（YOLOv5/v8 形式）で検出。
+
+        YOLOv8 ONNX export の出力 shape は次のどちらか:
+          - [1, 4+C, 8400]  (C = クラス数。例: COCO 80 → 84、1-class fine-tuned → 5)
+          - [1, N, 4+C+1]   (YOLOv5 形式、最後の +1 は obj_conf)
+
+        ここでは shape を見て自動判別する。1-class モデル (yolov8n_v2_finetuned)
+        と従来の COCO/3-class カスタムモデルの両方に対応。
+        """
         import cv2
         import numpy as np
 
@@ -550,23 +558,55 @@ class YOLOInference:
 
         input_name = self._model.get_inputs()[0].name
         raw = self._model.run(None, {input_name: img})[0]
+        # raw shape を [N, ch] に正規化
+        arr = raw
+        while arr.ndim > 2:
+            arr = arr[0]
+        # YOLOv8 export は (4+C, 8400) → 転置して (8400, 4+C) に。
+        # 8400 が大きい side。
+        if arr.ndim == 2 and arr.shape[0] < arr.shape[1] and arr.shape[0] <= 128:
+            arr = arr.T
 
+        if arr.ndim != 2 or arr.shape[1] < 5:
+            logger.warning("YOLO ONNX: unexpected output shape %s", arr.shape)
+            return []
+
+        cls_map = {0: "player_a", 1: "player_b", 2: "shuttle"}
+        n_ch = arr.shape[1]
+        # 判別:
+        #   - v8 1-class:   ch=5   (cx,cy,w,h,conf)         → cls=0 固定、person
+        #   - v8 multi-cls: ch=4+C (cx,cy,w,h,c0,c1,...)    → class score max
+        #   - v5 形式:      ch=5+C (cx,cy,w,h,obj_conf,c..)
         detections: list[dict] = []
-        for row in raw[0]:
-            if len(row) < 5:
-                continue
-            conf = float(row[4])
+        for row in arr:
+            cx640, cy640, bw640, bh640 = row[:4]
+            if n_ch == 5:
+                conf = float(row[4])
+                cls_idx = 0
+                label = "person"  # 1-class fine-tuned → 全部 person
+            elif n_ch == 5 + 3 or (n_ch >= 6 and n_ch <= 8):
+                # v5 形式: obj_conf * max(class_score)
+                obj_conf = float(row[4])
+                class_scores = row[5:]
+                cls_idx = int(np.argmax(class_scores))
+                conf = obj_conf * float(class_scores[cls_idx])
+                label = cls_map.get(cls_idx, "person")
+            else:
+                # v8 multi-class: 4 + C
+                class_scores = row[4:]
+                cls_idx = int(np.argmax(class_scores))
+                conf = float(class_scores[cls_idx])
+                label = cls_map.get(cls_idx, "person")
+
             if conf < MIN_CONF:
                 continue
-            cls_idx = int(row[5]) if len(row) > 5 else 0
-            cls_map = {0: "player_a", 1: "player_b", 2: "shuttle"}
-            label = cls_map.get(cls_idx, "person")
 
-            cx640, cy640, bw640, bh640 = row[:4]
-            x1_n = max(0.0, (cx640 - bw640 / 2) / 640)
-            y1_n = max(0.0, (cy640 - bh640 / 2) / 640)
-            x2_n = min(1.0, (cx640 + bw640 / 2) / 640)
-            y2_n = min(1.0, (cy640 + bh640 / 2) / 640)
+            x1_n = max(0.0, float((cx640 - bw640 / 2) / 640))
+            y1_n = max(0.0, float((cy640 - bh640 / 2) / 640))
+            x2_n = min(1.0, float((cx640 + bw640 / 2) / 640))
+            y2_n = min(1.0, float((cy640 + bh640 / 2) / 640))
+            if x2_n <= x1_n or y2_n <= y1_n:
+                continue
             cx_n = (x1_n + x2_n) / 2
             cy_n = (y1_n + y2_n) / 2
             detections.append(self._make_entry(
