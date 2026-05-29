@@ -1,0 +1,28 @@
+{
+ "per_stage": {
+  "encoder": {
+   "med_ms": 190.79,
+   "n": 8
+  },
+  "transformer_encoder": {
+   "med_ms": 11.89,
+   "n": 8
+  },
+  "transformer_decoder": {
+   "med_ms": 49.1,
+   "n": 8
+  },
+  "seg_head": {
+   "med_ms": 5.0,
+   "n": 8
+  },
+  "forward_grounding_total": {
+   "med_ms": 66.19,
+   "n": 8
+  },
+  "full_predict_total": {
+   "med_ms": 326.12,
+   "n": 8
+  }
+ }
+}

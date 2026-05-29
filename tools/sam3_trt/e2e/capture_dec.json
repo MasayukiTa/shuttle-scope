@@ -1,0 +1,91 @@
+{
+ "decoder_inputs": {
+  "tgt": {
+   "shape": [
+    200,
+    1,
+    256
+   ],
+   "dtype": "torch.float32",
+   "dev": "cuda:0"
+  },
+  "memory": {
+   "shape": [
+    1369,
+    1,
+    256
+   ],
+   "dtype": "torch.float32",
+   "dev": "cuda:0"
+  },
+  "memory_key_padding_mask": null,
+  "pos": {
+   "shape": [
+    1369,
+    1,
+    256
+   ],
+   "dtype": "torch.float32",
+   "dev": "cuda:0"
+  },
+  "reference_boxes": null,
+  "spatial_shapes": {
+   "shape": [
+    1,
+    2
+   ],
+   "dtype": "torch.int64",
+   "dev": "cuda:0"
+  },
+  "valid_ratios": {
+   "shape": [
+    1,
+    1,
+    2
+   ],
+   "dtype": "torch.float32",
+   "dev": "cuda:0"
+  },
+  "tgt_mask": null,
+  "memory_text": {
+   "shape": [
+    32,
+    1,
+    256
+   ],
+   "dtype": "torch.float32",
+   "dev": "cuda:0"
+  },
+  "text_attention_mask": {
+   "shape": [
+    1,
+    32
+   ],
+   "dtype": "torch.bool",
+   "dev": "cuda:0"
+  },
+  "apply_dac": false,
+  "_n_positional": 0
+ },
+ "decoder_cfg": {
+  "num_queries": 200,
+  "num_o2m_queries": 200,
+  "dac": true,
+  "box_refine": true,
+  "boxRPB": "log",
+  "num_layers": 6,
+  "d_model": 256,
+  "use_normed_output_consistently": true,
+  "compile_mode": null,
+  "clamp_presence_logits": true
+ },
+ "saved_tensor_keys": [
+  "tgt",
+  "memory",
+  "pos",
+  "spatial_shapes",
+  "valid_ratios",
+  "memory_text",
+  "text_attention_mask"
+ ]
+}

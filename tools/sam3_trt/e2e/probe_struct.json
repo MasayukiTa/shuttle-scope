@@ -1,0 +1,32 @@
+{
+ "model_type": "SAM3SemanticModel",
+ "children": [
+  [
+   "backbone",
+   "SAM3VLBackbone"
+  ],
+  [
+   "geometry_encoder",
+   "SequenceGeometryEncoder"
+  ],
+  [
+   "transformer",
+   "TransformerWrapper"
+  ],
+  [
+   "segmentation_head",
+   "UniversalSegmentationHead"
+  ],
+  [
+   "dot_prod_scoring",
+   "DotProductScoring"
+  ]
+ ],
+ "param_counts": {
+  "backbone": 815566592,
+  "geometry_encoder": 8083456,
+  "transformer": 21047605,
+  "segmentation_head": 2298881,
+  "dot_prod_scoring": 1182976
+ }
+}

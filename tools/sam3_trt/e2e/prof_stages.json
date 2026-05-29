@@ -1,0 +1,59 @@
+{
+ "per_stage_med_ms": {
+  "dot_prod_scoring": {
+   "med_ms": 1.09,
+   "n_calls": 6,
+   "calls_per_frame": 1.0
+  },
+  "segmentation_head": {
+   "med_ms": 5.03,
+   "n_calls": 6,
+   "calls_per_frame": 1.0
+  }
+ },
+ "shapes": {
+  "dot_prod_scoring": {
+   "in": [
+    [
+     6,
+     1,
+     200,
+     256
+    ],
+    [
+     32,
+     1,
+     256
+    ],
+    [
+     1,
+     32
+    ]
+   ],
+   "out": [
+    6,
+    1,
+    200,
+    1
+   ]
+  },
+  "segmentation_head": {
+   "in": [],
+   "out": {
+    "pred_masks": [
+     1,
+     200,
+     148,
+     148
+    ],
+    "semantic_seg": [
+     1,
+     1,
+     148,
+     148
+    ],
+    "presence_logit": "NoneType"
+   }
+  }
+ }
+}

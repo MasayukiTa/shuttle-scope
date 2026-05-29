@@ -1,0 +1,36 @@
+{
+ "per_stage": {
+  "preprocess": {
+   "med_ms": 2.99,
+   "n": 8
+  },
+  "encoder_trt": {
+   "med_ms": 139.38,
+   "n": 8
+  },
+  "transformer_encoder": {
+   "med_ms": 11.0,
+   "n": 8
+  },
+  "decoder_trt": {
+   "med_ms": 6.01,
+   "n": 8
+  },
+  "seg_head": {
+   "med_ms": 4.75,
+   "n": 8
+  },
+  "forward_grounding": {
+   "med_ms": 22.5,
+   "n": 8
+  },
+  "postprocess": {
+   "med_ms": 5.0,
+   "n": 8
+  },
+  "full_total": {
+   "med_ms": 224.87,
+   "n": 8
+  }
+ }
+}
