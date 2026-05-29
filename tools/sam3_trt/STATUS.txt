@@ -29,8 +29,28 @@ VERIFIED ENGINES (verify_trt.py vs enc_ref.npz, target rel<1e-2):
      the brief's "2.5x FP16" engine was doubly wrong (graph bug + tactic bug + FP16).
      The correct production engine is FP32 + noTactic. Trying bf16+noTactic for speed.
 
-PENDING (in progress): bf16+noTactic build & verify; then hybrid_bench (mask IoU
-  + fps + VRAM) on the CORRECT engine; INT8 only if a correct fast engine exists.
+END-TO-END VERIFICATION (hybrid_fix_result.json, FP32+noTactic engine):
+  frame0 mask IoU vs stock PyTorch:  mean=0.999  min=0.976  (71 masks)  >> target 0.9
+  mask counts match PyTorch across all 30 frames (e.g. 71 vs 71 frame0).
+  fps: PyTorch 3.5 -> hybrid(TRT enc) 4.02  (1.15x; modest because FP32 not FP16
+       and encoder is one stage of the pipeline).
+  VRAM: PyTorch 4794 MB -> hybrid 4885 MB.
+  Samples: trt_samples/ (frame0_pt_vs_trt.png, sample0..3_*_pt_vs_trt.png,
+           frame0_diff.png) -- PT(green) vs TRT-hybrid(orange) overlays;
+           296009 agree px vs 50 disagree px on frame0.
+
+bf16+noTactic: BUILD FAILED (ConvTranspose unsupported in bf16 on this TRT) -> dropped.
+
+INT8: NOT attempted. INT8 only adds value with a fast correct base, but FP16 is
+  numerically unusable here and INT8 (lower precision than FP16) would be far
+  worse for this 32-block transformer; it would not pass IoU>0.9. Skipped honestly
+  rather than ship a failing engine.
+
+BOTTOM LINE: encoder numerically CORRECT in TRT (rel 3.5e-4, IoU 0.999). The
+  2.5x FP16 speedup is NOT achievable -- FP16 breaks this encoder regardless of
+  the fixes. Correct engine = sam3_enc_518_fix_notactic.plan (FP32 + noTactic),
+  ~1.15x end-to-end. To regain speed, a human would need a TRT/driver update that
+  fixes the sm_120 cuBLAS tactic so FP16/default tactics become usable.
 
 git branch feat/sam3-trt commits: 43e7172 9eda6ee 73a2f9b 3331e37 805cfd8
   b0abc3b 3df22b2 5e30b93   (scripts under tools/sam3_trt/)
