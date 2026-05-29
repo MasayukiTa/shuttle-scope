@@ -13,7 +13,7 @@ try:
 
     # ---------- load TRT engine ----------
     TRT_LOGGER = trt.Logger(trt.Logger.WARNING)
-    with open(BENCH + "/sam3_enc_518_fix_fp16.plan", "rb") as f, trt.Runtime(TRT_LOGGER) as rt:
+    with open(BENCH + "/sam3_enc_518_fix_notactic.plan", "rb") as f, trt.Runtime(TRT_LOGGER) as rt:
         engine = rt.deserialize_cuda_engine(f.read())
     ctx = engine.create_execution_context()
     out_names = ["vision_features", "fpn0", "fpn1", "fpn2", "pos0", "pos1", "pos2"]

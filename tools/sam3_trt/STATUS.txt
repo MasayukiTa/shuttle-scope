@@ -1,0 +1,36 @@
+SAM3 encoder -> TensorRT : STATUS (autonomous overnight run, 2026-05-30) -- SOLVED (correctness)
+================================================================================================
+
+RESULT: Encoder is FIXED and VERIFIED correct in TensorRT.
+  Two independent root causes, both resolved:
+
+ROOT CAUSE #1 (ONNX graph shape bug -- the reported wall):
+  utils.py get_abs_pos() tiling branch (L424-427), called from vitdet.py
+  ViT.forward L511. torch.tile() traced into a dynamic If/Tile whose repeats
+  Concat was 5-elt vs 4D tensor -> ORT "merging shape info '/trunk/Concat'
+  source:{4} target:{5}". FIX: monkey-patch get_abs_pos with STATIC ints for
+  518x518 (h=w=37, pretrain grid 24) and replace torch.tile with static
+  torch.cat. -> 0 ORT shape-merge warnings; ONNX corr=1.0 vs enc_ref (rel 3.5e-4).
+
+ROOT CAUSE #2 (TensorRT execution -- why FP32 TRT was still 0.94):
+  TRT's default cuBLAS/cuBLAS_LT/cuDNN MatMul tactics MIS-EXECUTE on RTX 5060 Ti
+  (Blackwell sm_120), producing a uniform ~5-8% per-block dampening that
+  compounds across 32 blocks (final corr 0.46). Proven graph-independent:
+  TorchScript and dynamo ONNX gave BYTE-IDENTICAL wrong FP16 output.
+  FIX: build with  --tacticSources=-CUBLAS,-CUBLAS_LT,-CUDNN
+  (forces TRT's own correct kernels).
+
+VERIFIED ENGINES (verify_trt.py vs enc_ref.npz, target rel<1e-2):
+  sam3_enc_518_fix_notactic.plan  (FP32, noTactic):  corr=1.0  worst rel=0.00035  PASS  <<< CORRECT
+  sam3_enc_518_fix_fp16_notactic.plan (FP16, noTactic): corr=0.11 FAIL  (FP16 accumulation breaks 32-block trunk)
+  all default-tactic engines (fp16/fp32/notf32/opt0): corr 0.11-0.46  FAIL
+
+  => FP16 is numerically UNUSABLE for this encoder (independent of the tactic bug);
+     the brief's "2.5x FP16" engine was doubly wrong (graph bug + tactic bug + FP16).
+     The correct production engine is FP32 + noTactic. Trying bf16+noTactic for speed.
+
+PENDING (in progress): bf16+noTactic build & verify; then hybrid_bench (mask IoU
+  + fps + VRAM) on the CORRECT engine; INT8 only if a correct fast engine exists.
+
+git branch feat/sam3-trt commits: 43e7172 9eda6ee 73a2f9b 3331e37 805cfd8
+  b0abc3b 3df22b2 5e30b93   (scripts under tools/sam3_trt/)
