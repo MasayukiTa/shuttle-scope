@@ -1,0 +1,56 @@
+{
+ "plan": "C:/Users/kiyus/Desktop/sam3_bench/bf16/sam3_enc_linfp16.plan",
+ "tag": "linfp16",
+ "compare": {
+  "vision_features": {
+   "shape": [
+    1,
+    256,
+    37,
+    37
+   ],
+   "rel_mean": 0.00647,
+   "rel_max": 0.06468,
+   "corr": 0.99993,
+   "max_abs": 0.536
+  },
+  "fpn0": {
+   "shape": [
+    1,
+    256,
+    148,
+    148
+   ],
+   "rel_mean": 0.00384,
+   "rel_max": 0.03957,
+   "corr": 0.99997,
+   "max_abs": 0.0135
+  },
+  "fpn1": {
+   "shape": [
+    1,
+    256,
+    74,
+    74
+   ],
+   "rel_mean": 0.00542,
+   "rel_max": 0.08477,
+   "corr": 0.99995,
+   "max_abs": 1.0099
+  },
+  "fpn2": {
+   "shape": [
+    1,
+    256,
+    37,
+    37
+   ],
+   "rel_mean": 0.00647,
+   "rel_max": 0.06468,
+   "corr": 0.99993,
+   "max_abs": 0.536
+  }
+ },
+ "worst_rel_mean": 0.00647,
+ "PASS": true
+}
