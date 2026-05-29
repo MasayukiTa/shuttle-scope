@@ -1,0 +1,48 @@
+{
+  "frame": "C:/Users/kiyus/Desktop/github/shuttle-scope/shuttlescope/backend/.venv/Lib/site-packages/ultralytics/assets/bus.jpg",
+  "img": 518,
+  "N": 20,
+  "total_ms_med": 278.56,
+  "stage_sum_ms": 265.0,
+  "unaccounted_ms": 13.56,
+  "fps_med": 3.59,
+  "stages": {
+    "preprocess": {
+      "ms": 2.9,
+      "pct_of_total": 1.0
+    },
+    "image_encoder": {
+      "ms": 191.02,
+      "pct_of_total": 68.6
+    },
+    "text_encoder": {
+      "ms": 0.0,
+      "pct_of_total": 0.0
+    },
+    "geometry_encoder": {
+      "ms": 0.0,
+      "pct_of_total": 0.0
+    },
+    "transformer.encoder": {
+      "ms": 11.75,
+      "pct_of_total": 4.2
+    },
+    "transformer.decoder": {
+      "ms": 50.61,
+      "pct_of_total": 18.2
+    },
+    "dot_prod_scoring": {
+      "ms": 0.99,
+      "pct_of_total": 0.4
+    },
+    "segmentation_head": {
+      "ms": 5.06,
+      "pct_of_total": 1.8
+    },
+    "postprocess": {
+      "ms": 2.67,
+      "pct_of_total": 1.0
+    }
+  },
+  "n_masks_frame": 5
+}
