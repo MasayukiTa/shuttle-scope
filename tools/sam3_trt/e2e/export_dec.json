@@ -1,0 +1,23 @@
+{
+ "ref_shapes": {
+  "hs": [
+   6,
+   200,
+   1,
+   256
+  ],
+  "ref": [
+   6,
+   200,
+   1,
+   4
+  ],
+  "pres": [
+   6,
+   1,
+   1
+  ]
+ },
+ "onnx_exported": true,
+ "onnx_size_mb": 46.8
+}
