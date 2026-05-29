@@ -1,0 +1,7 @@
+{
+  "backend": "cudagraphs",
+  "N": 20,
+  "eager_ms_med": 273.75,
+  "eager_fps": 3.65,
+  "err": "rch\\nn\\modules\\module.py\", line 1790, in _call_impl\n    return forward_call(*args, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<eval_with_key>.23 from C:\\Users\\kiyus\\Desktop\\github\\shuttle-scope\\shuttlescope\\backend\\.venv\\Lib\\site-packages\\torch\\fx\\experimental\\proxy_tensor.py:1580 in wrapped\", line 30, in forward\n    view = torch.ops.aten.view.default(arg1_1, [1, -1, 1]);  arg1_1 = None\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\kiyus\\Desktop\\github\\shuttle-scope\\shuttlescope\\backend\\.venv\\Lib\\site-packages\\torch\\_ops.py\", line 865, in __call__\n    return self._op(*args, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: Error: accessing tensor output of CUDAGraphs that has been overwritten by a subsequent run. Stack trace: File \"C:\\Users\\kiyus\\Desktop\\github\\shuttle-scope\\shuttlescope\\backend\\.venv\\Lib\\site-packages\\ultralytics\\models\\sam\\sam3\\decoder.py\", line 310, in torch_dynamo_resume_in__get_coords_at_310\n    coords_h = torch.arange(0, H, dtype=dtype, device=device) / H. To prevent overwriting, clone the tensor outside of torch.compile() or call torch.compiler.cudagraph_mark_step_begin() before each model invocation.\n"
+}
