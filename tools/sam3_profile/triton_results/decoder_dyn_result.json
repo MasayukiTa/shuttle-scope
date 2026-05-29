@@ -1,0 +1,13 @@
+{
+  "N": 20,
+  "config": "decoder-only inductor default dynamic=True no-cudagraphs",
+  "eager_ms_med": 181.39,
+  "eager_fps": 5.51,
+  "eager_nmasks": 5,
+  "compiled_ms_med": 168.1,
+  "compiled_fps": 5.95,
+  "speedup_x": 1.079,
+  "mask_iou_mean": 0.9999,
+  "mask_iou_min": 0.9996,
+  "recompiles": 0
+}

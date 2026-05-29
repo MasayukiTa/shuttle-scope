@@ -1,0 +1,5 @@
+C:\Users\kiyus\Desktop\github\shuttle-scope\shuttlescope\backend\.venv\Lib\site-packages\torch\_inductor\compile_fx.py:322: UserWarning: TensorFloat32 tensor cores for float32 matrix multiplication available but not enabled. Consider setting `torch.set_float32_matmul_precision('high')` for better performance.
+  warnings.warn(
+W0530 04:34:27.033000 128328 Lib\site-packages\torch\_inductor\utils.py:1731] [0/0] Not enough SMs to use max_autotune_gemm mode
+torch 2.11.0+cu128
+INDUCTOR_COMPILE_OK max_err 4.76837158203125e-07

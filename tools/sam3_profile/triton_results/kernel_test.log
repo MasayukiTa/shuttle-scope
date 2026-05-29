@@ -1,0 +1,4 @@
+torch 2.11.0+cu128 cuda 12.8 cap (12, 0)
+triton 3.5.1
+KERNEL_MAX_ERR 0.0
+KERNEL_OK
