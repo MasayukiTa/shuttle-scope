@@ -1,0 +1,45 @@
+SAM3 encoder TRT speedup via BF16 / mixed precision -- autonomous run 2026-05-30 (agent: bf16)
+=============================================================================================
+GOAL: faster-than-FP32 encoder engine keeping rel-err<1e-2 vs enc_ref AND mask IoU>0.9.
+
+BASELINE (isolated trtexec, 1x3x518x518, noTactic): FP32 = 141.9ms GPU compute.
+  (brief's "25ms" not reproduced in isolation; relative comparison used throughout.)
+  FP32 e2e hybrid: 249.1ms/4.02fps, mask IoU mean 0.999 / min 0.976 (71/71 masks).
+
+PER-CONFIG TABLE (rel-err vs enc_ref; PASS = rel<1e-2):
+  config                         rel_mean  corr      build    verify   latency
+  bf16 (plain, noTactic)         --        --        FAIL     --       --      ConvTranspose unsupported in bf16
+  bf16 + ConvTranspose:fp32      2.007     0.113     OK       FAIL     --      same collapse as fp16
+  fp16 all-layers->fp32 (ctrl)   0.0066    0.99993   OK       PASS     --      proves precisionConstraints honored
+  fp16, all MatMul->fp32         2.008     0.113     OK       FAIL     --      fp16 elementwise/RoPE poison
+  fp16, attn+LN+softmax->fp32    2.008     0.113     OK       FAIL     --      (matmuls still fp16) poison
+  fp16, fp32 EXCEPT mlp fc1/fc2  0.0066    0.99993   OK       PASS     118.2ms 1.20x
+  fp16, fp32 EXCEPT qkv+proj+mlp 0.0065    0.99993   OK       PASS     118.3ms 1.20x  <-- best correct (encoder)
+  fp16, attn-core+RoPE->fp32     0.0102    0.99989   OK       FAIL     --      LN in fp16 just over 1e-2
+
+ROOT CAUSE OF FP16/BF16 COLLAPSE:
+  Catastrophic (corr 0.11 = noise), byte-identical across plain-fp16, bf16, and
+  every "matmul-fp32 but elementwise-fp16" variant. The poison is the ATTENTION
+  QK/AV score matmuls + RoPE rotation in reduced precision. bf16's wider exponent
+  did NOT help. ALL dense linear projections (qkv, proj, mlp fc1/fc2) tolerate fp16
+  perfectly (rel 0.0065). Only attention-core scores + RoPE + LN must stay fp32.
+
+BEST FAST+NUMERICALLY-CORRECT ENGINE: bf16/sam3_enc_linfp16.plan
+  encoder rel 0.0065, corr 0.99993, 118.3ms (1.20x vs 141.9ms FP32). 883 MB. VRAM e2e 4852MB.
+
+BUT END-TO-END MASK IoU FAILS THE SPIRIT OF THE TARGET:
+  linfp16 hybrid frame0: 71 PT masks vs 67 hybrid (4 DROPPED).
+  mean best-IoU 0.929 (>0.9) BUT min 0.172. Several small/marginal person masks
+  badly degraded (0.17, 0.41, 0.53...). The 0.65% encoder perturbation is amplified
+  by the SAM3 mask decoder on borderline detections -> dropped/degraded masks.
+  FP32 baseline on same harness: min IoU 0.976, no dropped masks.
+
+HONEST BOTTOM LINE:
+  A 1.20x-faster encoder (linfp16) exists that passes rel-err<1e-2 AND mean IoU>0.9,
+  but it drops/degrades small-object masks (min IoU 0.172) -> NOT production-safe for
+  person tracking where small/distant detections matter. FP32+noTactic
+  (sam3_enc_518_fix_notactic.plan) remains the correct production engine.
+  fp16 is only acceptable if reduced small-object mask recall is tolerable.
+  No correct config beats FP32 while preserving full mask quality on this Blackwell sm_120.
+
+Engines in C:/Users/kiyus/Desktop/sam3_bench/bf16/. Scripts+results committed to feat/sam3-bf16.
