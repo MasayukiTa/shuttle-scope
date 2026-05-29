@@ -31,17 +31,6 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-# ── native ext (C++ pybind11) を遅延 import ────────────────────────────
-# .pyd は build 後に backend/cv/ 直下 or sys.path 上にある想定。
-# 失敗時は Python 経路に fallback (CI 軽量 venv / Linux 環境)。
-_ext = None
-try:
-    from . import person_tracker_native_ext as _ext  # type: ignore
-except Exception:
-    try:
-        import person_tracker_native_ext as _ext  # type: ignore
-    except Exception:
-        _ext = None
 
 # ── 環境変数 ─────────────────────────────────────────────────────────────
 DEFAULT_MODEL_PATH = os.environ.get(
@@ -58,6 +47,73 @@ DEFAULT_IOU = float(os.environ.get("SS_PERSON_TRACKER_IOU", "0.45"))
 DEFAULT_TRACKER_YAML = os.environ.get("SS_PERSON_TRACKER_YAML", "bytetrack.yaml")
 DEFAULT_IMGSZ = int(os.environ.get("SS_PERSON_TRACKER_IMGSZ", "640"))
 PERSON_CLASS_ID = 0  # COCO の person
+
+# ── Native fast path (person_tracker_native_ext .pyd) ────────────────
+# OPT-IN: SS_PERSON_USE_NATIVE=1 で C++/ONNXRuntime+TensorRT の batch detector を
+# 使う。既定 OFF → 既存 Python ONNX 経路で完全に同一振る舞い (ゼロ behavior change)。
+# .pyd / DLL が無い dev/CI 機ではどんな理由で失敗しても Python 経路へ fallback。
+PERSON_USE_NATIVE = os.environ.get("SS_PERSON_USE_NATIVE", "0") != "0"
+# DLL 探索 dir は env で上書き可 (prod path を hardcode しない)。
+# test_native_import.py と同じ load 順序 (ORT → CUDA → TRT → build/Release)。
+_NATIVE_ORT_LIB = os.environ.get(
+    "SS_NATIVE_ORT_LIB", r"C:/onnxruntime/onnxruntime-win-x64-gpu-1.24.4/lib"
+)
+_NATIVE_CUDA_BIN = os.environ.get(
+    "SS_NATIVE_CUDA_BIN",
+    r"C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.8/bin",
+)
+_NATIVE_TRT_BIN = os.environ.get(
+    "SS_NATIVE_TRT_BIN", r"C:/TensorRT/TensorRT-10.16.1.11/bin"
+)
+# build/Release dir (.pyd 本体)。既定はこの module からの相対。
+_NATIVE_PYD_DIR = os.environ.get(
+    "SS_NATIVE_PYD_DIR",
+    os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "person_tracker_native", "build", "Release",
+    ),
+)
+# 1-class fine-tuned model path env (SS_PT_MODEL 優先)。
+_NATIVE_MODEL_ENV = "SS_PT_MODEL"
+# 入力解像度 / conf。native constructor 引数。
+_NATIVE_IN_H = int(os.environ.get("SS_NATIVE_IN_H", "384"))
+_NATIVE_IN_W = int(os.environ.get("SS_NATIVE_IN_W", "640"))
+
+# module 級 cache: 一度だけ import を試みる。失敗は None で記憶し再試行しない。
+_native_ext = None  # type: ignore
+_native_import_tried = False
+
+
+def _load_native_ext():
+    """person_tracker_native_ext を遅延 import。DLL 探索 dir を test_native_import.py
+    と同じ順序で追加してから import する。失敗時は None を返し warning を出す。"""
+    global _native_ext, _native_import_tried
+    if _native_import_tried:
+        return _native_ext
+    _native_import_tried = True
+    try:
+        try:
+            import torch  # noqa: F401
+        except Exception:
+            pass
+        for d in (_NATIVE_ORT_LIB, _NATIVE_CUDA_BIN, _NATIVE_TRT_BIN, _NATIVE_PYD_DIR):
+            try:
+                if d and os.path.isdir(d):
+                    os.add_dll_directory(d)
+            except Exception as exc:
+                logger.debug("native: add_dll_directory(%s) skip: %s", d, exc)
+        import sys as _sys
+        if _NATIVE_PYD_DIR and _NATIVE_PYD_DIR not in _sys.path:
+            _sys.path.insert(0, _NATIVE_PYD_DIR)
+        import person_tracker_native_ext as ext  # type: ignore
+        _native_ext = ext
+        logger.info("PersonTracker native ext loaded: %s", getattr(ext, "__file__", "?"))
+    except Exception as exc:
+        logger.warning(
+            "PersonTracker native ext unavailable (%s) — Python 経路へ fallback", exc
+        )
+        _native_ext = None
+    return _native_ext
 
 
 # ── 公開 dataclass ───────────────────────────────────────────────────────
@@ -580,6 +636,22 @@ class PersonTracker:
         frames: list[np.ndarray],
         frame_idxs: list[int],
     ) -> list[list[TrackedPerson]]:
+        """N frame batch update の公開 entrypoint。
+
+        SS_PERSON_USE_NATIVE=1 のときだけ C++ native fast path
+        (update_batch_native) を試す。native が使えなければ自動で Python 経路
+        (_update_batch_python) へ fallback する。既定 (env unset) では native を
+        一切触らず Python 経路のみ — ゼロ behavior change。
+        """
+        if PERSON_USE_NATIVE:
+            return self.update_batch_native(frames, frame_idxs)
+        return self._update_batch_python(frames, frame_idxs)
+
+    def _update_batch_python(
+        self,
+        frames: list[np.ndarray],
+        frame_idxs: list[int],
+    ) -> list[list[TrackedPerson]]:
         """N frame をまとめて検出 → frame ごとに ByteTracker / court / label 順に処理。
 
         Offline 用。realtime には latency が batch サイズに比例して増えるため不向き。
@@ -616,20 +688,25 @@ class PersonTracker:
             results.append([self._attach_player_label(t) for t in adjudicated])
         return results
 
-    # ─── Phase A3: native (C++) batch path ─────────────────────────────
+    # ─── Native (C++) batch path ───────────────────────────────────────
     def _ensure_native_detector(self) -> None:
-        """C++ pybind11 ext で BatchDetector を init。失敗時は self._native_detector=None。"""
-        if getattr(self, "_native_detector", None) is not None:
-            return
-        if _ext is None:
+        """C++ pybind11 ext (person_tracker_native_ext.BatchDetector) を init。
+        OPT-IN: PERSON_USE_NATIVE が False なら何もしない (Python 経路維持)。
+        .pyd import / session 作成がどんな理由で失敗しても self._native_detector
+        は None のままにし、呼び出し側で Python 経路へ fallback させる。"""
+        if getattr(self, "_native_detector", "unset") != "unset":
+            return  # 既に init 済 (None も含む)。再試行しない。
+        if not PERSON_USE_NATIVE:
             self._native_detector = None
             return
-        if os.environ.get("SS_PERSON_TRACKER_USE_NATIVE", "1") == "0":
+        ext = _load_native_ext()
+        if ext is None:
             self._native_detector = None
             return
-        # model path: batch model と同じものを使う
+        # model path: SS_PT_MODEL > batch model env > default。相対なら repo root 解決。
         model_path = os.environ.get(
-            "SS_PERSON_TRACKER_BATCH_MODEL", DEFAULT_BATCH_MODEL_PATH
+            _NATIVE_MODEL_ENV,
+            os.environ.get("SS_PERSON_TRACKER_BATCH_MODEL", DEFAULT_BATCH_MODEL_PATH),
         )
         if not os.path.isabs(model_path):
             from pathlib import Path as _P
@@ -640,24 +717,23 @@ class PersonTracker:
                     model_path = str(cand)
                     break
             else:
-                logger.warning("native detector: model not found at %s", model_path)
+                logger.warning("native detector: model not found at %s — fallback", model_path)
                 self._native_detector = None
                 return
         try:
             conf = float(os.environ.get("SS_PERSON_TRACKER_CONF", "0.25"))
-            self._native_detector = _ext.BatchDetector(
-                onnx_path=model_path,
-                max_batch=32,
-                use_fp16=True,
-                use_trt=True,
-                cuda_device=0,
-                h_dst=384,
-                w_dst=640,
-                conf_thresh=conf,
+            use_trt = os.environ.get("SS_PT_NATIVE_NO_TRT", "0") == "0"
+            # 実 .pyd の binding は positional:
+            #   BatchDetector(model_path, batch, use_trt, use_cuda, device_id,
+            #                 in_h, in_w, conf_thresh)
+            self._native_detector = ext.BatchDetector(
+                model_path, 32, use_trt, True, 0,
+                _NATIVE_IN_H, _NATIVE_IN_W, conf,
             )
-            logger.info("PersonTracker native ext loaded: %s", model_path)
+            logger.info("PersonTracker native BatchDetector ready: %s (trt=%s)",
+                        model_path, use_trt)
         except Exception as exc:
-            logger.warning("native detector: init failed: %s", exc)
+            logger.warning("native detector: init failed (%s) — Python 経路へ fallback", exc)
             self._native_detector = None
 
     def update_batch_native(
@@ -665,8 +741,8 @@ class PersonTracker:
         frames: list[np.ndarray],
         frame_idxs: list[int],
     ) -> list[list[TrackedPerson]]:
-        """C++ pybind11 ext 経由の batch update。
-        ext 未配備 / SS_PERSON_TRACKER_USE_NATIVE=0 の場合は update_batch に fallback。
+        """C++ pybind11 ext 経由の batch update (native fast path)。
+        ext 未配備 / SS_PERSON_USE_NATIVE 未設定の場合は Python core に fallback。
 
         ext 側は preprocess (CUDA) + detector (ORT) + ByteTracker を一気通貫で
         実行する。Python 側では court adjudication と player_label 付与のみ行う。
@@ -674,8 +750,8 @@ class PersonTracker:
         assert len(frames) == len(frame_idxs), "frames と frame_idxs の長さが不一致"
         self._ensure_native_detector()
         if getattr(self, "_native_detector", None) is None:
-            # Python fallback
-            return self.update_batch(frames, frame_idxs)
+            # native 不在 / init 失敗 → Python core へ fallback (dispatcher は呼ばない)
+            return self._update_batch_python(frames, frame_idxs)
         if not frames:
             return []
 
@@ -683,7 +759,7 @@ class PersonTracker:
         shapes = {f.shape for f in frames}
         if len(shapes) != 1 or frames[0].ndim != 3 or frames[0].shape[2] != 3:
             logger.debug("native batch: frame shape mismatch, fallback to python")
-            return self.update_batch(frames, frame_idxs)
+            return self._update_batch_python(frames, frame_idxs)
 
         # numpy (B, H, W, 3) uint8 にスタック (contiguous)
         np_stack = np.ascontiguousarray(np.stack(frames, axis=0), dtype=np.uint8)
@@ -692,7 +768,7 @@ class PersonTracker:
             raw_results = self._native_detector.detect_and_track(np_stack, frame_idxs)
         except Exception as exc:
             logger.warning("native batch: detect_and_track failed (%s) — fallback", exc)
-            return self.update_batch(frames, frame_idxs)
+            return self._update_batch_python(frames, frame_idxs)
 
         # court adjudicator のためにのみ Python 経路を踏む
         results: list[list[TrackedPerson]] = []
