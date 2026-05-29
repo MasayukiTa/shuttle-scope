@@ -1,0 +1,8 @@
+{
+  "mode": "reduce-overhead",
+  "N": 20,
+  "eager_ms_med": 328.55,
+  "eager_fps": 3.04,
+  "eager_nmasks": 5,
+  "bench_err": "rence\n    features = self.get_im_features(im) if self.features is None else self.features\n               ^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\kiyus\\Desktop\\github\\shuttle-scope\\shuttlescope\\backend\\.venv\\Lib\\site-packages\\torch\\utils\\_contextlib.py\", line 124, in decorate_context\n    return func(*args, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\kiyus\\Desktop\\github\\shuttle-scope\\shuttlescope\\backend\\.venv\\Lib\\site-packages\\ultralytics\\models\\sam\\predict.py\", line 2224, in get_im_features\n    return self.model.backbone.forward_image(im)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\kiyus\\Desktop\\github\\shuttle-scope\\shuttlescope\\backend\\.venv\\Lib\\site-packages\\torch\\_dynamo\\eval_frame.py\", line 1038, in compile_wrapper\n    raise e.remove_dynamo_frames() from None  # see TORCHDYNAMO_VERBOSE=1\n    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\kiyus\\Desktop\\github\\shuttle-scope\\shuttlescope\\backend\\.venv\\Lib\\site-packages\\torch\\_inductor\\scheduler.py\", line 5908, in create_backend\n    raise TritonMissing(inspect.currentframe())\ntorch._inductor.exc.TritonMissing: Cannot find a working triton installation. Either the package is not installed or it is too old. More information on installing Triton can be found at: https://github.com/triton-lang/triton\n\nSet TORCHDYNAMO_VERBOSE=1 for the internal stack trace (please do this especially if you're reporting a bug to PyTorch). For even more developer context, set TORCH_LOGS=\"+dynamo\"\n\n"
+}

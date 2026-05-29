@@ -1,0 +1,12 @@
+{
+  "backend": "aot_eager",
+  "target": "backbone_only",
+  "N": 15,
+  "eager_ms_med": 261.2,
+  "eager_fps": 3.83,
+  "compiled_ms_med": 269.33,
+  "compiled_fps": 3.71,
+  "speedup_x": 0.97,
+  "mask_iou_mean": 1.0,
+  "mask_iou_min": 1.0
+}

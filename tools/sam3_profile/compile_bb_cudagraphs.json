@@ -1,0 +1,12 @@
+{
+  "backend": "cudagraphs",
+  "target": "backbone_only",
+  "N": 20,
+  "eager_ms_med": 243.9,
+  "eager_fps": 4.1,
+  "compiled_ms_med": 258.09,
+  "compiled_fps": 3.87,
+  "speedup_x": 0.945,
+  "mask_iou_mean": 1.0,
+  "mask_iou_min": 1.0
+}
