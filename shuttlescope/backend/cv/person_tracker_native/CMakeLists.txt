@@ -86,12 +86,21 @@ set_target_properties(detector_test PROPERTIES
 )
 
 # DLL を実行 dir に copy (Windows)
+# ORT GPU は provider DLL を runtime に dynamic load する:
+#   onnxruntime_providers_shared.dll  (TRT/CUDA EP 双方の前提)
+#   onnxruntime_providers_tensorrt.dll
+#   onnxruntime_providers_cuda.dll
+# これらが実行 dir / DLL search path に無いと EP 生成が失敗し、
+# ORT は無言で CPU EP に fallback → CUDA 入力テンソルとの間で
+# "no data transfer registered ... Device:1 -> Device:0" になる。
+# よって onnxruntime.dll だけでなく lib/*.dll を全部 copy する。
 if(WIN32)
     set(ORT_DLLS_DIR "${ORT_ROOT}/lib")
+    file(GLOB ORT_RUNTIME_DLLS "${ORT_DLLS_DIR}/*.dll")
     add_custom_command(TARGET detector_test POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E echo "Copying ORT DLLs from ${ORT_DLLS_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E echo "Copying ORT runtime DLLs from ${ORT_DLLS_DIR}"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${ORT_DLLS_DIR}/onnxruntime.dll"
+            ${ORT_RUNTIME_DLLS}
             "$<TARGET_FILE_DIR:detector_test>"
     )
 endif()
@@ -120,6 +129,19 @@ if(EXISTS "${BIND_SRC}")
         set_target_properties(person_tracker_native_ext PROPERTIES
             CUDA_SEPARABLE_COMPILATION OFF
         )
+        # detector_test と同様、ORT provider DLL 群を .pyd の隣に copy する。
+        # Python から import される際、これらが .pyd の dir (os.add_dll_directory
+        # 済み) から解決され、TRT/CUDA EP が正しく load される。無いと CPU EP
+        # fallback → CUDA tensor 転送エラーになる。
+        if(WIN32)
+            file(GLOB ORT_RUNTIME_DLLS "${ORT_ROOT}/lib/*.dll")
+            add_custom_command(TARGET person_tracker_native_ext POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E echo "Copying ORT runtime DLLs next to .pyd"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    ${ORT_RUNTIME_DLLS}
+                    "$<TARGET_FILE_DIR:person_tracker_native_ext>"
+            )
+        endif()
         message(STATUS "person_tracker_native: pybind11 module enabled (A3)")
     else()
         message(WARNING "bindings.cpp あるが pybind11 未検出。skip。")
