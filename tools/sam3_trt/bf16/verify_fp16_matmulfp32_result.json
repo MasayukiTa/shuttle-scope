@@ -1,0 +1,56 @@
+{
+ "plan": "C:/Users/kiyus/Desktop/sam3_bench/bf16/sam3_enc_fp16_matmulfp32.plan",
+ "tag": "fp16_matmulfp32",
+ "compare": {
+  "vision_features": {
+   "shape": [
+    1,
+    256,
+    37,
+    37
+   ],
+   "rel_mean": 2.00039,
+   "rel_max": 1.46045,
+   "corr": 0.11262,
+   "max_abs": 12.1028
+  },
+  "fpn0": {
+   "shape": [
+    1,
+    256,
+    148,
+    148
+   ],
+   "rel_mean": 1.5486,
+   "rel_max": 1.66504,
+   "corr": 0.16982,
+   "max_abs": 0.5696
+  },
+  "fpn1": {
+   "shape": [
+    1,
+    256,
+    74,
+    74
+   ],
+   "rel_mean": 2.00817,
+   "rel_max": 2.3207,
+   "corr": 0.13527,
+   "max_abs": 27.6454
+  },
+  "fpn2": {
+   "shape": [
+    1,
+    256,
+    37,
+    37
+   ],
+   "rel_mean": 2.00039,
+   "rel_max": 1.46045,
+   "corr": 0.11262,
+   "max_abs": 12.1028
+  }
+ },
+ "worst_rel_mean": 2.00817,
+ "PASS": false
+}
