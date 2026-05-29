@@ -37,7 +37,10 @@ try:
     # Original tiling path traced `[x // y + 1 for x,y in zip((h,w), shape)]` as
     # data-dependent If/Tile-repeats Concat -> mistraced 5-elt shape vector.
     # For 518x518: pretrain grid size=24 (577=1+24*24), target h=w=37, tile factor=2.
+    _GAP = {"n": 0}
     def get_abs_pos_static(abs_pos, has_cls_token, hw, retain_cls_token=False, tiling=False):
+        _GAP["n"] += 1
+        print("GAP_STATIC_CALLED", _GAP["n"], "tiling=", tiling, flush=True)
         # hw arrives as TRACED symbolic ints (from x.shape[1:3]); force STATIC python
         # ints for fixed 518x518 -> 37x37 token grid so tile/slice are constant-folded.
         h, w = 37, 37
@@ -50,10 +53,15 @@ try:
             C = abs_pos.shape[-1]
             new_abs_pos = abs_pos.reshape(1, size, size, -1).permute(0, 3, 1, 2)
             if tiling:
-                # static repeat factors computed from python ints, not traced shapes
+                # static repeat factors computed from python ints, not traced shapes.
+                # AVOID torch.tile/repeat: the tracer wraps them in a dynamic If/Concat
+                # (mistraced 5-elt repeats vector -> ORT shape-merge error). Build the
+                # tiled grid with explicit static torch.cat instead.
                 rh = h // size + 1
                 rw = w // size + 1
-                new_abs_pos = new_abs_pos.tile([1, 1, rh, rw])[:, :, :h, :w]
+                new_abs_pos = torch.cat([new_abs_pos] * rh, dim=2)
+                new_abs_pos = torch.cat([new_abs_pos] * rw, dim=3)
+                new_abs_pos = new_abs_pos[:, :, :h, :w]
             else:
                 new_abs_pos = F.interpolate(new_abs_pos, size=(h, w), mode="bicubic", align_corners=False)
             if not retain_cls_token:
@@ -125,6 +133,7 @@ try:
             input_names=["pixel_values"], output_names=names,
             opset_version=17, do_constant_folding=True, dynamo=False)
     out["export_s"] = round(time.time() - t0, 1)
+    out["gap_static_calls_total"] = _GAP["n"]
     out["onnx_path"] = onnx_path
     out["onnx_mb"] = round(os.path.getsize(onnx_path) / 1e6, 1)
 
