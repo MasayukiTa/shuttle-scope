@@ -43,7 +43,7 @@ Build: `--fp8 --noTF32 --tacticSources=-CUBLAS,-CUBLAS_LT,-CUDNN`
 | --builderOptimizationLevel=5 | 141.8 ms         | ~0 (noise)  | 2.7 ms  |
 | --memPoolSize=workspace:8192 | 146.2 ms         | ~0 (noise)  | 2.5 ms  |
 | --useCudaGraph (runtime)   | 144.6 ms           | ~0 compute  | **0.16 ms** (16x less) |
-| --best                     | TBD                | TBD         | TBD     |
+| --best                     | **37.8 ms (26 qps)** | **3.8x FASTER** but **ACCURACY BROKEN** (corr 0.44, rel_mean 1.03, PASS=false) | 2.8 ms |
 
 - builderOptimizationLevel=5: no measurable speedup (compute-bound model, opt3 already
   finds good tactics given the tactic exclusion).
@@ -51,6 +51,10 @@ Build: `--fp8 --noTF32 --tacticSources=-CUBLAS,-CUBLAS_LT,-CUDNN`
 - useCudaGraph: no GPU-compute change (model is GPU-bound at 142ms), BUT cuts CPU enqueue
   overhead 2.55ms -> 0.16ms. Worth enabling in the hybrid pipeline since the CPU is busy
   with detection/tracking concurrently — frees CPU launch budget at zero accuracy cost.
+- --best: 3.8x faster (37.8ms, plan shrinks 1740MB->488MB) by selecting FP16/INT8/FP8
+  tactics, but accuracy is DESTROYED (corr 0.44) — same failure mode as plain-FP32+tactics
+  and FP16 on this sm_120 build. Confirms that on TRT 10.16 the 142ms FP32 cost and
+  correctness are inseparable from the tactic exclusion; any lower-precision path breaks.
 
 ## Best config found
 The existing baseline (`--noTF32 --tacticSources=-CUBLAS,-CUBLAS_LT,-CUDNN`) remains
