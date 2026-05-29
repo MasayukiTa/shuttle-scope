@@ -21,20 +21,30 @@ try:
         for o in n.output:
             by_out[o] = n
     # collect a handful
-    picks = []
-    for o in by_out:
-        if o == "/trunk/Add_output_0":
-            picks.append(o)
-    # block residual outputs: nodes whose name endswith Add and are direct block children
     import re
-    blk_add = [o for o in by_out if re.match(r"^/trunk/blocks\.[0-2]/Add(_1)?_output_0$", o)]
-    picks += blk_add[:6]
-    picks = list(dict.fromkeys(picks))
+    from onnx import TensorProto, shape_inference
+    # infer dtypes/shapes
+    im = shape_inference.infer_shapes(m)
+    vi_dtype = {}
+    for vi in list(im.graph.value_info) + list(im.graph.output):
+        vi_dtype[vi.name] = vi.type.tensor_type.elem_type
+    FLOAT = TensorProto.FLOAT
+    def is_float(name):
+        return vi_dtype.get(name) == FLOAT
+    # the LayerNormalization outputs are reliable float per-block markers
+    ln = sorted([o for o in by_out if re.match(r"^/trunk/blocks\.[0-5]/.*$", o) and by_out[o].op_type=="LayerNormalization" and is_float(o)])
+    picks = []
+    if is_float("/trunk/Add_output_0"):
+        picks.append("/trunk/Add_output_0")
+    # residual adds that are float
+    fadd = sorted([o for o in by_out if re.match(r"^/trunk/blocks\.[0-3]/Add", o) and is_float(o)])
+    picks += fadd
+    picks += ln[:8]
+    picks = list(dict.fromkeys(picks))[:14]
     out["probe_tensors"] = picks
-    # Build a sub-model exposing these as outputs
     for p in picks:
         if p not in existing_out:
-            g.output.append(helper.make_empty_tensor_value_info(p))
+            g.output.append(helper.make_tensor_value_info(p, FLOAT, None))
     sub_path = BENCH + "/sam3_enc_fix_probed.onnx"
     onnx.save(m, sub_path, save_as_external_data=False)
     out["sub_saved"] = True
