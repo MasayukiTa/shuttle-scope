@@ -7,30 +7,30 @@ out = {}
 try:
     import ultralytics.models.sam.modules.utils as U
 
-    # --- Real-arithmetic RoPE replacement (KEEP from prior working exporter) ---
+    # --- Real-arithmetic RoPE replacement (TRT-robust: slice even/odd via step-2
+    #     Slice instead of reshape(...,2)+Gather, which TRT mis-fuses) ---
     def apply_rotary_enc_real(xq, xk, freqs_cis, repeat_freqs_k=False):
         fc_r = torch.view_as_real(freqs_cis)
-        cos = fc_r[..., 0]; sin = fc_r[..., 1]
-        def rope(x):
-            xr = x.reshape(*x.shape[:-1], -1, 2)
-            x1 = xr[..., 0]; x2 = xr[..., 1]
-            sh = [1] * (xr.ndim - 3) + list(cos.shape)
-            c = cos.view(*sh); s = sin.view(*sh)
-            return torch.stack((x1 * c - x2 * s, x1 * s + x2 * c), dim=-1).flatten(-2)
-        xq_out = rope(xq)
+        cos = fc_r[..., 0]; sin = fc_r[..., 1]  # [S, D/2]
+        def rope(x, c0, s0):
+            # x: [..., S, D]; even/odd interleaved pairs are (real, imag)
+            x1 = x[..., 0::2]  # even -> real part
+            x2 = x[..., 1::2]  # odd  -> imag part
+            sh = [1] * (x.ndim - 2) + list(c0.shape)
+            c = c0.view(*sh); s = s0.view(*sh)
+            o1 = x1 * c - x2 * s
+            o2 = x1 * s + x2 * c
+            # re-interleave o1,o2 -> [...,D]
+            out = torch.stack((o1, o2), dim=-1).flatten(-2)
+            return out
+        xq_out = rope(xq, cos, sin)
         if xk.shape[-2] == 0:
             return xq_out.type_as(xq), xk
         if repeat_freqs_k and (r := xk.shape[-2] // xq.shape[-2]) > 1:
             cos2 = cos.repeat(r, 1); sin2 = sin.repeat(r, 1)
         else:
             cos2, sin2 = cos, sin
-        def rope_k(x, c0, s0):
-            xr = x.reshape(*x.shape[:-1], -1, 2)
-            x1 = xr[..., 0]; x2 = xr[..., 1]
-            sh = [1] * (xr.ndim - 3) + list(c0.shape)
-            c = c0.view(*sh); s = s0.view(*sh)
-            return torch.stack((x1 * c - x2 * s, x1 * s + x2 * c), dim=-1).flatten(-2)
-        xk_out = rope_k(xk, cos2, sin2)
+        xk_out = rope(xk, cos2, sin2)
         return xq_out.type_as(xq), xk_out.type_as(xk)
 
     # --- STATIC get_abs_pos for fixed 518x518 (THE BUG FIX) ---
