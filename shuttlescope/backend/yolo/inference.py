@@ -130,6 +130,16 @@ class YOLOInference:
         # 理由: フレーム間 ID 一貫性 = ラベル swap 削減、IdentityGraph の前提整備。
         import os as _os
         self._bt_enabled: bool = _os.environ.get("SS_YOLO_BYTETRACK", "1") != "0"
+        # Opt-in Hybrid-SORT association (SS_PERSON_TRACKER=hybrid). Default
+        # 'bytetrack' keeps the exact prior behavior (zero change). When hybrid
+        # is selected we run plain YOLO detection and feed pixel boxes to the
+        # vendored appearance-free Hybrid-SORT, matching its track_ids back to
+        # detections by IoU. Built lazily on first frame; falls back to
+        # ByteTrack if filterpy is missing so the backend never crashes.
+        from backend.cv.person_tracker import hybrid_enabled as _hybrid_enabled
+        self._hybrid_enabled: bool = _hybrid_enabled()
+        self._hybrid_tracker = None  # built lazily on first predict frame
+        self._hybrid_failed: bool = False
         # Track A1: track_id → label の継続マップ。
         # ByteTrack 有効時に同一 track_id が次フレームでも同ラベルを引き継ぐ。
         self._prev_track_labels: dict[int, str] = {}
@@ -524,6 +534,10 @@ class YOLOInference:
         """
         # person v2: SS_PERSON_NMS_IOU で IoU しきい値を緩められる (重なり 2 人を残す)
         nms_iou = _get_nms_iou_threshold()
+        # Hybrid-SORT opt-in path: detection-only inference, association done
+        # by the vendored Hybrid_Sort (bypasses ultralytics ByteTrack).
+        if self._hybrid_enabled and not self._hybrid_failed:
+            return self._predict_ultralytics_hybrid(frame, nms_iou)
         if self._bt_enabled and self._BT_YAML.exists():
             results = self._model.track(
                 frame, verbose=False, classes=[0], device=self._ul_device,
@@ -577,10 +591,87 @@ class YOLOInference:
 
         return detections
 
+    def _predict_ultralytics_hybrid(self, frame, nms_iou: float) -> list[dict]:
+        """Hybrid-SORT path: ultralytics detection-only, then appearance-free
+        Hybrid-SORT association assigns track_ids. Pixel boxes are fed to the
+        tracker; returned ids are matched back to detections by IoU.
+        """
+        import numpy as np
+        # Build the tracker lazily; on failure disable hybrid for this run and
+        # fall back to the standard ByteTrack path next call.
+        if self._hybrid_tracker is None:
+            from backend.cv.person_tracker import try_build_hybrid_tracker
+            self._hybrid_tracker = try_build_hybrid_tracker()
+            if self._hybrid_tracker is None:
+                self._hybrid_failed = True
+                logger.warning("Hybrid tracker build failed; using ByteTrack fallback")
+                return self._predict_ultralytics(frame)
+
+        results = self._model(
+            frame, verbose=False, classes=[0], device=self._ul_device, iou=nms_iou,
+        )
+        h, w = frame.shape[:2]
+        self._last_debug.update({"tracker_mode": "hybrid"})
+        if not results:
+            self._hybrid_tracker.update(np.empty((0, 5), np.float32), h, w)
+            return []
+        result = results[0]
+
+        dets_px = []          # (x1,y1,x2,y2,score) pixel
+        det_entries = []      # parallel detection dicts (normalized)
+        for box in result.boxes:
+            conf = float(box.conf[0])
+            if conf < MIN_CONF:
+                continue
+            x1, y1, x2, y2 = box.xyxy[0].tolist()
+            dets_px.append([x1, y1, x2, y2, conf])
+            x1_n, y1_n = x1 / w, y1 / h
+            x2_n, y2_n = x2 / w, y2 / h
+            cx_n = (x1_n + x2_n) / 2
+            cy_n = (y1_n + y2_n) / 2
+            det_entries.append(self._make_entry(
+                "person", conf, [x1_n, y1_n, x2_n, y2_n], cx_n, cy_n, cx_n, y2_n,
+            ))
+
+        dets_arr = np.array(dets_px, dtype=np.float32) if dets_px else np.empty((0, 5), np.float32)
+        tracks = self._hybrid_tracker.update(dets_arr, h, w)  # (M,5) x1,y1,x2,y2,id px
+
+        # Match each track back to the nearest detection by IoU; attach track_id.
+        for trow in np.asarray(tracks).reshape(-1, 5):
+            tx1, ty1, tx2, ty2, tid = trow
+            best_i, best_iou = -1, 0.0
+            for i, (dx1, dy1, dx2, dy2, _) in enumerate(dets_px):
+                ix1, iy1 = max(tx1, dx1), max(ty1, dy1)
+                ix2, iy2 = min(tx2, dx2), min(ty2, dy2)
+                if ix2 <= ix1 or iy2 <= iy1:
+                    continue
+                inter = (ix2 - ix1) * (iy2 - iy1)
+                a1 = (tx2 - tx1) * (ty2 - ty1)
+                a2 = (dx2 - dx1) * (dy2 - dy1)
+                iou = inter / (a1 + a2 - inter + 1e-6)
+                if iou > best_iou:
+                    best_iou, best_i = iou, i
+            if best_i >= 0 and best_iou > 0.3 and "track_id" not in det_entries[best_i]:
+                det_entries[best_i]["track_id"] = int(tid)
+
+        self._last_debug.update({
+            "total_raw_boxes": len(dets_px),
+            "detected": len(det_entries),
+            "hybrid_tracks": int(np.asarray(tracks).reshape(-1, 5).shape[0]),
+        })
+        return det_entries
+
     def reset_tracker(self) -> None:
         """ByteTrack の状態をリセットする（バッチ処理開始時に呼び出す）。"""
         # Track A1: track_id 継続マップも合わせてクリア
         self.reset_label_continuity()
+        # Hybrid-SORT path: reset the vendored tracker too.
+        if self._hybrid_enabled and self._hybrid_tracker is not None:
+            try:
+                self._hybrid_tracker.reset()
+                logger.info("Hybrid tracker reset")
+            except Exception as exc:
+                logger.warning("Hybrid tracker reset failed: %s", exc)
         if not self._bt_enabled:
             return
         try:
