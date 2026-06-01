@@ -68,3 +68,8 @@ shuttlescope/backend/models/yolov8n_*_finetuned*
 # Phase 3.6: dynamic-batch fine-tuned weights (TRT 1500 fps target)
 shuttlescope/backend/models/yolov8n_*_dyn*.onnx
 shuttlescope/backend/models/yolov8n_*_dyn*
+
+# Phase A (2026-05-27): person_tracker_native C++ runtime build artifacts
+shuttlescope/backend/cv/person_tracker_native/build/
+shuttlescope/backend/cv/*.pyd
+shuttlescope/backend/cv/person_tracker_native/*.pyd
