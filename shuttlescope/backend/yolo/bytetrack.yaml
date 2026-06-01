@@ -4,3 +4,8 @@ track_low_thresh: 0.10
 new_track_thresh: 0.25
 track_buffer: 120
 match_thresh: 0.8
+# fuse_score is required by ultralytics 8.4.x BYTETracker.get_dists().
+# The tracker yaml is NOT merged with ultralytics defaults (track.py loads
+# only this file via IterableSimpleNamespace), so every field the tracker
+# reads must be present here or .track() raises AttributeError on frame 0.
+fuse_score: true
