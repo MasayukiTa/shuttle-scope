@@ -1,0 +1,20 @@
+DanceTrack val (25 seq) — detector: ultralytics YOLOv8x COCO person cls0,
+imgsz1280 conf0.10 NMS-IoU0.70, cached once and shared by ALL trackers
+(metric diffs = association only). Metrics: TrackEval HOTA/CLEAR/Identity.
+
+tracker                          | HOTA  | DetA  | AssA  | IDF1  | IDSW | MOTA
+bytetrack (ours, config-F)       | 35.26 | 62.58 | 20.09 | 35.23 | 4265 | 72.94
+OC-SORT                          | 45.72 | 70.11 | 29.99 | 45.77 | 2151 | 77.97
+Hybrid-SORT (non-ReID)           | 46.22 | 69.49 | 30.92 | 45.88 | 2072 | 77.35
+ensemble_swaponly                | 45.36 | 69.20 | 29.92 | 45.10 | 2144 | 77.30
+ensemble_stitchonly (default)    | 46.62 | 69.20 | 31.58 | 48.48 | 1914 | 77.42
+ENSEMBLE (Hybrid + tuned stitch) | 47.00 | 68.82 | 32.26 | 50.38 | 1879 | 77.44
+oc_ensemble (OC + tuned stitch)  | 46.33 | 69.67 | 30.96 | 49.10 | 2022 | 78.03
+
+Ensemble = Hybrid-SORT association core + offline motion tracklet-stitcher
+(generalized from ShuttleScope cv/tracklet_stitcher.py: court priors + hard-cap
+removed, motion-only greedy gap-bridge, frame-unique-id dedup; tuned
+max_gap=180f max_jump=350px jump_per_gap=4.0).
+Swap-guard (cv/person_tracker._apply_swap_guard) ABLATED OUT — it hurt on
+DanceTrack crowds (HOTA 46.22->45.36). Honest negative result.
+Net ensemble vs best single (Hybrid): +0.78 HOTA, +1.34 AssA, +4.5 IDF1, -193 IDSW.
