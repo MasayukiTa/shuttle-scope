@@ -91,6 +91,32 @@ BT_MATCH_LOW = float(os.environ.get("SS_PERSON_BT_MATCH_LOW", "0.5"))
 BT_MATCH_UNCONF = float(os.environ.get("SS_PERSON_BT_MATCH_UNCONF", "0.7"))
 PERSON_CLASS_ID = 0  # COCO の person
 
+
+# ── Hybrid-SORT opt-in selector (SS_PERSON_TRACKER=hybrid) ────────────────
+# 既定は "bytetrack"（挙動完全不変）。"hybrid" を選ぶと yolo/inference.py が
+# vendored Hybrid-SORT 経路を使う。association の実配線は未完のため、現状
+# try_build_hybrid_tracker は None を返し、inference.py 側は安全に ByteTrack へ
+# フォールバックする（クラッシュさせない）。hybrid_sort パッケージ自体は
+# backend/cv/hybrid_sort に vendored 済み。
+def hybrid_enabled() -> bool:
+    """SS_PERSON_TRACKER=hybrid のとき True。未設定/その他は False（=ByteTrack）。"""
+    return os.environ.get("SS_PERSON_TRACKER", "bytetrack").strip().lower() == "hybrid"
+
+
+def try_build_hybrid_tracker():
+    """vendored Hybrid-SORT tracker を構築して返す。
+
+    返り値は yolo/inference.py が期待する API
+    (`update(dets(N,5), h, w) -> (M,5)[x1,y1,x2,y2,id]`, `reset()`) を満たす
+    オブジェクト。現状その adapter は未実装なので None を返し、呼び出し側を
+    ByteTrack フォールバックさせる。
+    """
+    logger.info(
+        "SS_PERSON_TRACKER=hybrid requested but live wiring is deferred; "
+        "falling back to ByteTrack"
+    )
+    return None
+
 # ── Native fast path (person_tracker_native_ext .pyd) ────────────────
 # OPT-IN: SS_PERSON_USE_NATIVE=1 で C++/ONNXRuntime+TensorRT の batch detector を
 # 使う。既定 OFF → 既存 Python ONNX 経路で完全に同一振る舞い (ゼロ behavior change)。
