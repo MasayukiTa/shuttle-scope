@@ -57,6 +57,8 @@ backend/db/*.db.sqlite-backup-*
 backend/models/rtmpose*.onnx
 backend/models/rtmpose*.pt
 backend/models/trt_cache/
+backend/models/osnet_x0_25_reid.onnx
+backend/models/osnet_x0_25.onnx
 
 # Pytest / hypothesis caches in inner repo
 .hypothesis/
