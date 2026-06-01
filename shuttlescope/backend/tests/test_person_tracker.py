@@ -407,6 +407,113 @@ class TestPersonTrackerUpdateSmoke:
         assert out == []
 
 
+class TestSwapGuard:
+    """同ユニフォーム teammate の track_id 取り違え (crossover swap) 補正。
+
+    ByteTrack が crossover 後に 2 人の track_id を取り違えたシナリオを合成し、
+    motion-only swap guard が一貫した ID に戻すことを assert する。
+    GPU/model 不要 (純ロジック)。
+    """
+
+    def _mk(self, cx, cy, tid, w=10.0, h=20.0):
+        return TrackedPerson(
+            bbox=(cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2),
+            track_id=tid,
+            court_id=None,
+            player_uuid=None,
+            confidence=0.9,
+        )
+
+    def _tracker(self):
+        t = PersonTracker(match_type="doubles", court_corners=None)
+        t._swap_guard_enabled = True
+        return t
+
+    def test_off_by_default_is_noop(self):
+        t = PersonTracker(match_type="doubles", court_corners=None)
+        assert t._swap_guard_enabled is False
+        # OFF なら apply は呼ばれず ID 不変 (update 経路相当)
+        tracks = [self._mk(10, 10, 1), self._mk(90, 10, 2)]
+        # 直接 apply を呼んでも壊れないが、enabled=False なら update が呼ばない
+        # ここでは guard を通さず恒等であることだけ確認
+        assert [x.track_id for x in tracks] == [1, 2]
+
+    def test_no_swap_when_paths_separate(self):
+        """十分離れて平行移動 → swap は起きない (誤補正しない)。"""
+        t = self._tracker()
+        # track1 は x=10 付近、track2 は x=200 付近で右に移動
+        for f in range(4):
+            out = t._apply_swap_guard([
+                self._mk(10 + f, 10, 1),
+                self._mk(200 + f, 10, 2),
+            ])
+        ids = {x.track_id for x in out}
+        assert ids == {1, 2}
+
+    def _id_at(self, out, x):
+        """出力 out のうち中心 x が x に近い track の出力 track_id を返す。"""
+        best = min(out, key=lambda o: abs((o.bbox[0] + o.bbox[2]) / 2 - x))
+        return best.track_id
+
+    def test_crossover_swap_is_corrected(self):
+        """2 track が交差し、交差後 ByteTrack が ID を取り違えても、guard は
+        各軌跡 (左→右 / 右→左) に一貫した track_id を割り当て続ける。
+
+        左→右に進む実体 (E_LR) と右→左に進む実体 (E_RL) を用意。
+        ByteTrack は交差点まで正しい ID を付けるが、交差後は近接で取り違える
+        (右側観測に左実体の元 ID、左側観測に右実体の元 ID を付ける)。
+        guard は等速予測でこれを検知・補正し、E_LR と E_RL がそれぞれ
+        全フレームで安定した (= 一貫した) 出力 ID を保つことを確認する。
+        """
+        t = self._tracker()
+        # frame 0-2: 交差前。ByteTrack は正しく id=1=E_LR(左), id=2=E_RL(右)。
+        t._apply_swap_guard([self._mk(20, 50, 1), self._mk(180, 50, 2)])
+        t._apply_swap_guard([self._mk(50, 50, 1), self._mk(150, 50, 2)])
+        out2 = t._apply_swap_guard([self._mk(80, 50, 1), self._mk(120, 50, 2)])
+        # 交差前: E_LR (左, x=80) は id=1、E_RL (右, x=120) は id=2
+        id_lr = self._id_at(out2, 80)
+        id_rl = self._id_at(out2, 120)
+        assert id_lr == 1 and id_rl == 2
+        # frame 3: 交差直後。E_LR は右 (x=120)、E_RL は左 (x=80) へ抜けた。
+        # ByteTrack が取り違え: 左観測 (E_RL) に *依然 id=1*、右観測 (E_LR) に
+        # *依然 id=2* を付けてしまった (= 物理的には逆)。guard が swap で補正する。
+        out3 = t._apply_swap_guard([self._mk(80, 50, 1), self._mk(120, 50, 2)])
+        # guard 補正後: 右側 (E_LR) は元の id_lr=1、左側 (E_RL) は元の id_rl=2
+        assert self._id_at(out3, 120) == id_lr, "E_LR の出力 ID が交差で復元されない"
+        assert self._id_at(out3, 80) == id_rl, "E_RL の出力 ID が交差で復元されない"
+        # alias が張られたことを確認 (実際に swap 補正が走った証拠)
+        assert t._swap_alias == {1: 2, 2: 1}, f"alias 未確立: {t._swap_alias}"
+        # frame 4: さらに進む。ByteTrack も取り違えたまま (右=id2, 左=id1)。
+        out4 = t._apply_swap_guard([self._mk(60, 50, 1), self._mk(140, 50, 2)])
+        assert self._id_at(out4, 140) == id_lr, "E_LR の ID が後続 frame で不安定"
+        assert self._id_at(out4, 60) == id_rl, "E_RL の ID が後続 frame で不安定"
+
+    def test_alias_persists_across_frames(self):
+        """一度確立した alias 補正が以後のフレームでも安定して維持される。"""
+        t = self._tracker()
+        t._apply_swap_guard([self._mk(20, 50, 1), self._mk(180, 50, 2)])
+        t._apply_swap_guard([self._mk(50, 50, 1), self._mk(150, 50, 2)])
+        out2 = t._apply_swap_guard([self._mk(80, 50, 1), self._mk(120, 50, 2)])
+        id_lr = self._id_at(out2, 80)
+        id_rl = self._id_at(out2, 120)
+        # 交差後 ByteTrack 取り違え (右観測=id2/左観測=id1 のまま) を 3 frame 連続
+        t._apply_swap_guard([self._mk(80, 50, 1), self._mk(120, 50, 2)])
+        assert t._swap_alias == {1: 2, 2: 1}
+        t._apply_swap_guard([self._mk(60, 50, 1), self._mk(140, 50, 2)])
+        out = t._apply_swap_guard([self._mk(40, 50, 1), self._mk(160, 50, 2)])
+        # E_LR (右へ進み x=160)、E_RL (左へ進み x=40) の ID が初期と一致
+        assert self._id_at(out, 160) == id_lr
+        assert self._id_at(out, 40) == id_rl
+
+    def test_reset_clears_swap_state(self):
+        t = self._tracker()
+        t._apply_swap_guard([self._mk(20, 50, 1), self._mk(180, 50, 2)])
+        t._swap_alias[1] = 2  # 何か入れておく
+        t.reset_for_new_set(1)
+        assert t._swap_alias == {}
+        assert t._swap_centroid_hist == {}
+
+
 # ── ByteTracker 単体テスト ─────────────────────────────────────────────
 class TestByteTrackerCore:
     def test_iou_matrix_basic(self):
