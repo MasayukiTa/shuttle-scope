@@ -41,6 +41,20 @@ REID_HISTORY_LEN = int(os.environ.get("SS_PERSON_REID_HISTORY", "30"))
 # rally 単位 occlusion (約 3-7 秒) を確実に救う安全側で 10 秒に振る。env で調整可。
 REID_LOST_GRACE_FRAMES = int(os.environ.get("SS_PERSON_REID_LOST_GRACE", "300"))
 
+# ── Swap Guard 既定値 (同ユニフォーム teammate の track_id 入れ替わり防止) ──
+# 既定 OFF (env 未設定で挙動完全不変)。SS_PERSON_SWAP_GUARD=1 で有効化。
+# motion-only: 各 track_id の直近 K centroid から等速予測し、近接ペアについて
+# 「現状の ID 割当」 vs 「swap 後の割当」の予測誤差合計を比較。swap の方が
+# margin 以上小さければ ByteTrack が crossover で取り違えたと判断し alias で補正。
+SWAP_GUARD_ENABLED_DEFAULT = os.environ.get("SS_PERSON_SWAP_GUARD", "0") == "1"
+# swap を採用する相対マージン: swapped_err < current_err * (1 - margin) で発火。
+SWAP_GUARD_MARGIN = float(os.environ.get("SS_PERSON_SWAP_GUARD_MARGIN", "0.30"))
+# 等速予測に使う直近 centroid 数。
+SWAP_GUARD_HISTORY = int(os.environ.get("SS_PERSON_SWAP_GUARD_HISTORY", "5"))
+# ペアを「近接 (= swap 候補)」と見なす最大予測位置間距離 (pixel)。これ以上
+# 離れていれば crossover の可能性が無いので評価しない (誤補正防止)。
+SWAP_GUARD_MAX_PAIR_DIST = float(os.environ.get("SS_PERSON_SWAP_GUARD_MAX_DIST", "250.0"))
+
 # ── 環境変数 ─────────────────────────────────────────────────────────────
 DEFAULT_MODEL_PATH = os.environ.get(
     "SS_PERSON_TRACKER_MODEL",
@@ -55,6 +69,26 @@ DEFAULT_CONF = float(os.environ.get("SS_PERSON_TRACKER_CONF", "0.25"))
 DEFAULT_IOU = float(os.environ.get("SS_PERSON_TRACKER_IOU", "0.45"))
 DEFAULT_TRACKER_YAML = os.environ.get("SS_PERSON_TRACKER_YAML", "bytetrack.yaml")
 DEFAULT_IMGSZ = int(os.environ.get("SS_PERSON_TRACKER_IMGSZ", "640"))
+
+# ── ByteTracker churn-tuning knobs (env-overridable) ─────────────────────
+# 旧ハードコード値: high=DEFAULT_CONF(0.25) low=max(0.05,CONF*0.4) new=DEFAULT_CONF
+#   buffer=120 match_high=0.8 match_low=0.5 match_unconf=0.7
+# match_thresh_* は cost=1-IoU に対する受理 IoU 下限。0.8 は IoU>=0.8 を要求し、
+# 高速移動する badminton 選手では再関連付けに失敗 → track_id 乱立の主因だった。
+# これを緩めて IoU>=BT_MATCH_HIGH で再関連付けする。
+# churn-tuning 2026-05-29 winning config "F" を新既定値に採用。
+# match33 30s/4players: unique track_id 363 -> 47 (per-court 48/52/58/55 -> 2/5/5/5)。
+# 旧既定値 (env で復元可): TRACK_HIGH=DEFAULT_CONF(0.25) NEW_TRACK=DEFAULT_CONF(0.25)
+#                          MATCH_HIGH=0.8 TRACK_BUFFER=120
+# 主因は MATCH_HIGH=0.8 (IoU>=0.8 を要求) で高速移動選手の再関連付けが失敗し
+# track_id が乱立していたこと。MATCH_HIGH=0.3 へ緩和が最大効果。
+BT_TRACK_HIGH = float(os.environ.get("SS_PERSON_BT_TRACK_HIGH", "0.20"))
+BT_TRACK_LOW = float(os.environ.get("SS_PERSON_BT_TRACK_LOW", str(max(0.05, DEFAULT_CONF * 0.4))))
+BT_NEW_TRACK = float(os.environ.get("SS_PERSON_BT_NEW_TRACK", "0.30"))
+BT_TRACK_BUFFER = int(os.environ.get("SS_PERSON_BT_TRACK_BUFFER", "150"))
+BT_MATCH_HIGH = float(os.environ.get("SS_PERSON_BT_MATCH_HIGH", "0.3"))
+BT_MATCH_LOW = float(os.environ.get("SS_PERSON_BT_MATCH_LOW", "0.5"))
+BT_MATCH_UNCONF = float(os.environ.get("SS_PERSON_BT_MATCH_UNCONF", "0.7"))
 PERSON_CLASS_ID = 0  # COCO の person
 
 # ── Native fast path (person_tracker_native_ext .pyd) ────────────────
@@ -358,6 +392,16 @@ class PersonTracker:
         # 観客/ref 候補 (grace 越え): track_id を drop 対象に
         self._dropped_track_ids: set[int] = set()
 
+        # ── Swap Guard 用 state ──────────────────────────────────────────
+        self._swap_guard_enabled: bool = SWAP_GUARD_ENABLED_DEFAULT
+        self._swap_guard_margin: float = SWAP_GUARD_MARGIN
+        # 出力 track_id ごとの直近 centroid 履歴 (deque[(cx, cy)])。
+        # ここで言う「出力 track_id」は alias 適用後の安定 ID。
+        self._swap_centroid_hist: dict[int, deque] = {}
+        # ByteTrack raw track_id → 出力 track_id の alias map。
+        # crossover を検知したら 2 つの raw id を相互に張り替える。
+        self._swap_alias: dict[int, int] = {}
+
     @staticmethod
     def _load_corners_from_db(
         match_id: int,
@@ -414,13 +458,13 @@ class PersonTracker:
         if self._tracker is None:
             from backend.cv.byte_tracker import ByteTracker  # type: ignore
             self._tracker = ByteTracker(
-                track_high_thresh=DEFAULT_CONF,
-                track_low_thresh=max(0.05, DEFAULT_CONF * 0.4),
-                new_track_thresh=DEFAULT_CONF,
-                track_buffer=120,
-                match_thresh_high=0.8,
-                match_thresh_low=0.5,
-                match_thresh_unconfirmed=0.7,
+                track_high_thresh=BT_TRACK_HIGH,
+                track_low_thresh=BT_TRACK_LOW,
+                new_track_thresh=BT_NEW_TRACK,
+                track_buffer=BT_TRACK_BUFFER,
+                match_thresh_high=BT_MATCH_HIGH,
+                match_thresh_low=BT_MATCH_LOW,
+                match_thresh_unconfirmed=BT_MATCH_UNCONF,
             )
             logger.info("PersonTracker: standalone ByteTracker 初期化")
 
@@ -467,6 +511,10 @@ class PersonTracker:
                     confidence=float(st.score),
                 )
             )
+
+        # Swap Guard: ByteTrack 付与後・court 割当前に motion-only で取り違え補正
+        if self._swap_guard_enabled:
+            raw_tracks = self._apply_swap_guard(raw_tracks)
 
         # Tier 2: court 象限割り当て
         if self._adjudicator is None:
@@ -717,6 +765,9 @@ class PersonTracker:
                         confidence=float(st.score),
                     )
                 )
+            # Swap Guard: online と同じく court 割当前に補正 (batch でも一貫適用)
+            if self._swap_guard_enabled:
+                raw_tracks = self._apply_swap_guard(raw_tracks)
             if self._adjudicator is None:
                 results.append(raw_tracks)
                 continue
@@ -1034,6 +1085,141 @@ class PersonTracker:
             player_label=label,
         )
 
+    # ─── Swap Guard (motion-only, 同ユニフォーム teammate 取り違え防止) ────
+    @staticmethod
+    def _centroid(bbox: tuple[float, float, float, float]) -> tuple[float, float]:
+        x1, y1, x2, y2 = bbox
+        return ((x1 + x2) / 2.0, (y1 + y2) / 2.0)
+
+    @staticmethod
+    def _predict_centroid(hist: "deque") -> Optional[tuple[float, float]]:
+        """直近 centroid 履歴から等速 (constant-velocity) で次位置を予測。
+
+        履歴 1 点 → その点をそのまま返す (速度不明)。
+        2 点以上 → 直近 2 点の差分を速度として外挿。
+        空 → None。
+        """
+        if not hist:
+            return None
+        pts = list(hist)
+        if len(pts) == 1:
+            return pts[-1]
+        (px, py), (cx, cy) = pts[-2], pts[-1]
+        return (cx + (cx - px), cy + (cy - py))
+
+    def _apply_swap_guard(
+        self, raw_tracks: list[TrackedPerson]
+    ) -> list[TrackedPerson]:
+        """ByteTrack 付与済みの track_id を motion-only で検証し、crossover で
+        取り違えられた同サイド teammate ペアを alias で相互補正する。
+
+        手順:
+          1. alias map を適用して各 track の「出力 track_id」を決める。
+          2. 出力 track_id ごとの予測 centroid (等速外挿) を計算。
+          3. 近接ペアについて、現状割当 vs swap 後割当の予測誤差合計を比較。
+             swap が margin 以上小さければ alias を張り替える (= 取り違え補正)。
+          4. 補正後の track_id で centroid 履歴を更新。
+
+        OFF 時は呼ばれない (= 既定挙動不変)。
+        """
+        if not raw_tracks:
+            return raw_tracks
+
+        def out_id(raw_id: int) -> int:
+            return self._swap_alias.get(raw_id, raw_id)
+
+        tracks = list(raw_tracks)
+        cur_centroids: dict[int, tuple[float, float]] = {}
+        for t in tracks:
+            cur_centroids[out_id(t.track_id)] = self._centroid(t.bbox)
+
+        # 各出力 ID の予測位置 (履歴ベース、今 frame の観測は使わない)
+        preds: dict[int, Optional[tuple[float, float]]] = {
+            oid: self._predict_centroid(self._swap_centroid_hist.get(oid))
+            for oid in cur_centroids
+        }
+
+        oids = list(cur_centroids.keys())
+
+        def dist(a: tuple[float, float], b: tuple[float, float]) -> float:
+            return float(np.hypot(a[0] - b[0], a[1] - b[1]))
+
+        # 近接ペアの swap 判定
+        for i in range(len(oids)):
+            for j in range(i + 1, len(oids)):
+                a, b = oids[i], oids[j]
+                pa, pb = preds[a], preds[b]
+                # 両者とも予測 (履歴 >=2) が無いと crossover 判定不能
+                if pa is None or pb is None:
+                    continue
+                ca, cb = cur_centroids[a], cur_centroids[b]
+                # 予測同士が十分近い = 経路交差の可能性があるペアのみ評価
+                if dist(pa, pb) > SWAP_GUARD_MAX_PAIR_DIST:
+                    continue
+                # 現状割当の誤差: a の観測 ↔ a の予測、b ↔ b
+                err_cur = dist(ca, pa) + dist(cb, pb)
+                # swap 後: a の観測 ↔ b の予測、b ↔ a
+                err_swap = dist(ca, pb) + dist(cb, pa)
+                if err_swap < err_cur * (1.0 - self._swap_guard_margin):
+                    self._swap_two(a, b)
+                    logger.debug(
+                        "swap guard: out_id %d <-> %d 補正 "
+                        "(err_cur=%.1f err_swap=%.1f)",
+                        a, b, err_cur, err_swap,
+                    )
+
+        # alias 再適用 (張り替え反映) して最終 track を構築 + 履歴更新
+        out: list[TrackedPerson] = []
+        for t in tracks:
+            oid = out_id(t.track_id)
+            c = self._centroid(t.bbox)
+            hist = self._swap_centroid_hist.setdefault(
+                oid, deque(maxlen=SWAP_GUARD_HISTORY)
+            )
+            hist.append(c)
+            if oid == t.track_id:
+                out.append(t)
+            else:
+                out.append(TrackedPerson(
+                    bbox=t.bbox,
+                    track_id=oid,
+                    court_id=t.court_id,
+                    player_uuid=t.player_uuid,
+                    confidence=t.confidence,
+                    is_recovered=t.is_recovered,
+                    player_label=t.player_label,
+                ))
+        return out
+
+    def _swap_two(self, oid_a: int, oid_b: int) -> None:
+        """出力 ID a と b を相互に張り替える。
+
+        alias map は raw_id → out_id。a / b に解決される raw_id 群を入れ替え、
+        centroid 履歴も同時に swap して予測の連続性を保つ。
+        """
+        raws_to_a = [r for r, o in self._swap_alias.items() if o == oid_a]
+        raws_to_b = [r for r, o in self._swap_alias.items() if o == oid_b]
+        # 恒等 (alias 未登録で raw==out のまま) も拾う
+        if self._swap_alias.get(oid_a, oid_a) == oid_a:
+            raws_to_a.append(oid_a)
+        if self._swap_alias.get(oid_b, oid_b) == oid_b:
+            raws_to_b.append(oid_b)
+        for r in raws_to_a:
+            self._swap_alias[r] = oid_b
+        for r in raws_to_b:
+            self._swap_alias[r] = oid_a
+        # 履歴を入れ替え
+        ha = self._swap_centroid_hist.get(oid_a)
+        hb = self._swap_centroid_hist.get(oid_b)
+        if ha is not None:
+            self._swap_centroid_hist[oid_b] = ha
+        else:
+            self._swap_centroid_hist.pop(oid_b, None)
+        if hb is not None:
+            self._swap_centroid_hist[oid_a] = hb
+        else:
+            self._swap_centroid_hist.pop(oid_a, None)
+
     def reset_for_new_set(self, set_idx: int) -> None:
         """セット間の side swap 対応。
 
@@ -1065,6 +1251,9 @@ class PersonTracker:
         self._lost_court.clear()
         self._reid_overrides.clear()
         self._dropped_track_ids.clear()
+        # Swap Guard 履歴/alias も set 境界でクリア (人物配置が入れ替わるため)
+        self._swap_centroid_hist.clear()
+        self._swap_alias.clear()
         logger.info(
             "PersonTracker reset for set %s (side_swapped=%s)",
             set_idx, self._side_swapped,
