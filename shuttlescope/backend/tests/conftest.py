@@ -11,6 +11,20 @@
 import os  # noqa: E402
 os.environ.setdefault("SS_REQUIRE_ADMIN_MFA", "0")
 
+# xdist 並列 (CI Linux: -n auto --dist loadfile) では複数 worker が同一 file SQLite を
+# 共有し、各テストの drop_all/create_all が交錯して "table X already exists" で落ちる
+# (Windows は serial なので無衝突)。backend.db.database の engine 生成より前に、
+# worker ごとに別 DB ファイルへ振り分けて隔離する。
+_xw = os.environ.get("PYTEST_XDIST_WORKER")
+if _xw:
+    _durl = os.environ.get("DATABASE_URL", "")
+    if _durl.startswith("sqlite:///") and ":memory:" not in _durl:
+        os.environ["DATABASE_URL"] = (
+            _durl[:-3] if _durl.endswith(".db") else _durl
+        ) + f"_{_xw}.db"
+    elif not _durl:
+        os.environ["DATABASE_URL"] = f"sqlite:///./backend/db/_pytest_{_xw}.db"
+
 import pytest  # noqa: E402
 from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
