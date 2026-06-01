@@ -57,7 +57,9 @@ def test_bytetracker_update_without_attr_error():
     import numpy as np
     from ultralytics.trackers.byte_tracker import BYTETracker
 
-    tracker = BYTETracker(args=_load_cfg(), frame_rate=30)
+    import inspect as _inspect
+    _kw = {"frame_rate": 30} if "frame_rate" in _inspect.signature(BYTETracker.__init__).parameters else {}
+    tracker = BYTETracker(args=_load_cfg(), **_kw)
     img = np.zeros((64, 64, 3), dtype=np.uint8)
 
     det = _DetSlice(conf=[0.9], xywh=[[32, 32, 20, 40]], cls=[0], xyxy=[[22, 12, 42, 52]])
@@ -72,7 +74,9 @@ def test_bytetracker_empty_frame_no_crash():
     import numpy as np
     from ultralytics.trackers.byte_tracker import BYTETracker
 
-    tracker = BYTETracker(args=_load_cfg(), frame_rate=30)
+    import inspect as _inspect
+    _kw = {"frame_rate": 30} if "frame_rate" in _inspect.signature(BYTETracker.__init__).parameters else {}
+    tracker = BYTETracker(args=_load_cfg(), **_kw)
     img = np.zeros((64, 64, 3), dtype=np.uint8)
     empty = _DetSlice(
         conf=np.empty((0,)), xywh=np.empty((0, 4)),

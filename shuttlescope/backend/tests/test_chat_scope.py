@@ -53,20 +53,30 @@ def _send(sid: int, content: str, **extra) -> dict:
 
 
 def test_scope_persists_across_turns():
+    from datetime import date
+
     sid = _new_session()
+
+    # 「先月」は実行日基準で相対計算されるため、期待値も today から求める
+    # (ハードコードすると月替わりで CI が落ちる)。date_from = 先月 1 日。
+    _t = date.today()
+    if _t.month == 1:
+        _expected_from = date(_t.year - 1, 12, 1).isoformat()
+    else:
+        _expected_from = date(_t.year, _t.month - 1, 1).isoformat()
 
     # Turn 1: 先月のスマッシュ
     r1 = _send(sid, "先月のスマッシュは?")
     sc1 = r1["applied_scope"]
     assert sc1["period"] is not None
-    assert sc1["period"]["date_from"] == "2026-04-01"
+    assert sc1["period"]["date_from"] == _expected_from
     assert sc1["shot_type"]["code"] == "smash"
     assert sc1["zone"] is None
 
     # Turn 2: zone のみ追加 → period/shot_type は維持
     r2 = _send(sid, "バック奥では?")
     sc2 = r2["applied_scope"]
-    assert sc2["period"]["date_from"] == "2026-04-01"  # 維持
+    assert sc2["period"]["date_from"] == _expected_from  # 維持
     assert sc2["shot_type"]["code"] == "smash"          # 維持
     assert sc2["zone"]["code"] == "BR"                   # 追加
 
