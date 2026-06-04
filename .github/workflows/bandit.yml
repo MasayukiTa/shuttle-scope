@@ -53,7 +53,11 @@ jobs:
           # Exclude tests and maintenance scripts (false-positive heavy)
           excluded_paths: shuttlescope/backend/tests,shuttlescope/backend/.venv,shuttlescope/node_modules,shuttlescope/scripts/security_ci
           # Skip note-tier rules that are FP for this prototype (see docs/validation/security-code-scanning-2026-04-23.md)
-          skips: B101,B110,B311,B603,B404,B607,B105,B112
+          # B608: telemetry.py の SQL 断片補間は _prop_get の許可リスト検証 (^[a-z0-9_]+$) で
+          #       インジェクション構造上不可能 (値は全てリテラル literal)。検証済み FP。
+          # B406: reports.py は xml.sax.saxutils.escape を「出力エスケープ」用途のみで使用し、
+          #       未信頼 XML の parse はしない。検証済み FP。
+          skips: B101,B110,B311,B603,B404,B607,B105,B112,B608,B406
           # path to a .bandit file that supplies command line arguments
           # ini_path: # optional, default is DEFAULT
 
