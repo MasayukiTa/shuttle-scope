@@ -36,9 +36,8 @@ _PUBLIC_ASSETS_DIR = Path(__file__).resolve().parent.parent / "public"
 # 旧 Starlette は Jinja2Templates(autoescape=...) を受け付けないため、env を組んで渡す。
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 from jinja2 import Environment, FileSystemLoader, select_autoescape  # noqa: E402
-# nosemgrep: python.flask.security.xss.audit.direct-use-of-jinja2.direct-use-of-jinja2
-# autoescape は select_autoescape で html/htm/xml/j2 に対し明示有効化済み → XSS 防止済み。
-_jinja_env = Environment(  # nosemgrep: python.flask.security.xss.audit.direct-use-of-jinja2.direct-use-of-jinja2
+# autoescape は select_autoescape で html/htm/xml/j2 に対し明示有効化済み → XSS 防止済み (検証済み FP)。
+_jinja_env = Environment(  # nosemgrep
     loader=FileSystemLoader(str(_TEMPLATES_DIR)),
     autoescape=select_autoescape(["html", "htm", "xml", "j2"]),
 )

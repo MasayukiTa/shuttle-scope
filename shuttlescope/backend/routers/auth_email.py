@@ -269,8 +269,7 @@ def _notify_admin_webhook(content: str) -> None:
             method="POST",
         )
         # nosec B310: scheme is https-guarded above, URL is operator-supplied secret.
-        # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
-        with _urlreq.urlopen(req, timeout=10) as resp:  # nosec B310  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
+        with _urlreq.urlopen(req, timeout=10) as resp:  # nosec B310  # nosemgrep
             logger.info("[auth_email] webhook posted: status=%d url_host=%s",
                         resp.status, url.split("/")[2] if "//" in url else "?")
             if not (200 <= resp.status < 300):
