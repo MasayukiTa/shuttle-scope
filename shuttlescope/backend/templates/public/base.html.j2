@@ -160,6 +160,9 @@ footer{background:var(--footer-bg);padding:24px 40px;display:flex;align-items:ce
   </div>
 </div>
 
+{# 公開ステータスバナー: 障害/メンテ時のみ JS で表示。/status 自体では空ブロックで抑止する。 #}
+{% block status_banner %}{% include "public/_status_banner.html.j2" %}{% endblock %}
+
 {% block content %}{% endblock %}
 
 <footer>
@@ -168,6 +171,7 @@ footer{background:var(--footer-bg);padding:24px 40px;display:flex;align-items:ce
     <li><a href="/terms"><span class="ja">利用規約</span><span class="en">Terms</span></a></li>
     <li><a href="/privacy"><span class="ja">プライバシーポリシー</span><span class="en">Privacy Policy</span></a></li>
     <li><a href="/contact"><span class="ja">お問い合わせ</span><span class="en">Contact</span></a></li>
+    <li><a href="/status"><span class="ja">稼働状況</span><span class="en">Status</span></a></li>
     <li><a href="https://app.shuttle-scope.com/#/register"><span class="ja">新規登録</span><span class="en">Register</span></a></li>
   </ul>
   <span class="footer-copy">© 2026 ShuttleScope</span>
@@ -204,6 +208,7 @@ if(lang==='en'){
   document.querySelectorAll('a[href="/terms"]').forEach(a=>a.setAttribute('href','/en/terms'));
   document.querySelectorAll('a[href="/privacy"]').forEach(a=>a.setAttribute('href','/en/privacy'));
   document.querySelectorAll('a[href="/contact"]').forEach(a=>a.setAttribute('href','/en/contact'));
+  document.querySelectorAll('a[href="/status"]').forEach(a=>a.setAttribute('href','/en/status'));
   document.querySelectorAll('a.logo, a.footer-logo, a.brand').forEach(a=>{
     if(a.getAttribute('href')==='/') a.setAttribute('href','/en');
   });

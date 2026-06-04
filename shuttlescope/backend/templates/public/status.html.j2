@@ -1,0 +1,205 @@
+{# 公開ステータス/メンテナンスページ。base から nav/footer を継承し、本文は
+   compute_public_status(db) が返す status dict をサーバサイドレンダリングする。
+   - JS 無効でも現在状態が読める（progressive enhancement）。
+   - {% block status_banner %} を空で上書きし、ページ自身ではバナーを出さない。
+   - 障害理由/タイトルは運用者入力なので autoescape に任せる（XSS 防止）。 #}
+{% extends "public/base.html.j2" %}
+
+{% set _is_en = (lang == 'en') %}
+{% set overall = status.overall|default('operational') %}
+
+{% block title %}{% if _is_en %}ShuttleScope | Status{% else %}ShuttleScope | 稼働状況{% endif %}{% endblock %}
+{% block meta_description %}{% if _is_en %}Current operational status, scheduled maintenance and incident history for ShuttleScope.{% else %}ShuttleScope の稼働状況・予定メンテナンス・障害履歴をお知らせします。{% endif %}{% endblock %}
+{% block canonical %}https://shuttle-scope.com{{ canonical_path }}{% endblock %}
+{% block og_url %}https://shuttle-scope.com{{ canonical_path }}{% endblock %}
+{% block og_title %}{% if _is_en %}ShuttleScope | Status{% else %}ShuttleScope | 稼働状況{% endif %}{% endblock %}
+{% block og_description %}{% if _is_en %}Current operational status and maintenance information.{% else %}現在の稼働状況とメンテナンス情報。{% endif %}{% endblock %}
+{% block robots %}{% if noindex %}<meta name="robots" content="noindex,nofollow">{% endif %}{% endblock %}
+
+{# ステータスページ自身ではトップバナーを出さない（全文を表示しているため）。 #}
+{% block status_banner %}{% endblock %}
+
+{% block extra_styles %}
+<style>
+  body.public-status-page{
+    background:
+      radial-gradient(circle at top right, rgba(13,123,131,.14), transparent 26%),
+      radial-gradient(circle at top left, rgba(15,94,168,.14), transparent 24%),
+      linear-gradient(180deg, #f9fbfe 0%, #f5f8fc 100%);
+  }
+  .public-status-page .shell{max-width:920px;margin:0 auto;padding:32px 24px 56px;
+    color:#11314d;font-family:"Segoe UI","Hiragino Sans","Yu Gothic UI",sans-serif;}
+  .public-status-page h1{margin:0 0 6px;font-size:clamp(1.6rem,3vw,2.2rem);line-height:1.15;color:#11314d;}
+  .public-status-page .sub{color:#5d728a;font-size:.92rem;margin-bottom:22px;}
+  /* 全体ステータス見出しパネル */
+  .ss-hero{display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+    border-radius:18px;padding:22px 24px;margin-bottom:26px;color:#fff;
+    box-shadow:0 16px 44px rgba(18,54,90,.14);}
+  .ss-hero[data-sev="operational"]{background:linear-gradient(135deg,#0f7a52 0%,#0c8f6a 100%)}
+  .ss-hero[data-sev="degraded"]{background:linear-gradient(135deg,#9a3412 0%,#b45309 100%)}
+  .ss-hero[data-sev="down"]{background:linear-gradient(135deg,#9f1239 0%,#b91c1c 100%)}
+  .ss-hero .ss-bigdot{width:16px;height:16px;border-radius:50%;background:#fff;flex-shrink:0;
+    box-shadow:0 0 0 6px rgba(255,255,255,.20)}
+  .ss-hero .ss-htxt{display:flex;flex-direction:column;gap:2px}
+  .ss-hero .ss-htitle{font-size:1.25rem;font-weight:700;color:#fff;line-height:1.3}
+  .ss-hero .ss-hsub{font-size:.85rem;color:rgba(255,255,255,.86)}
+  .public-status-page h2{font-size:1.12rem;color:#11314d;margin:28px 0 12px;
+    display:flex;align-items:center;gap:9px}
+  .public-status-page h2 .cnt{font-size:.78rem;font-weight:700;color:#5d728a;
+    background:#e7eef7;border-radius:999px;padding:2px 9px}
+  /* カード */
+  .ss-card{background:rgba(255,255,255,.95);border:1px solid #dce7f2;border-radius:14px;
+    padding:16px 18px;margin-bottom:12px;box-shadow:0 6px 18px rgba(18,54,90,.06)}
+  .ss-card .ss-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .ss-card .ss-title{font-weight:700;color:#11314d;font-size:1.02rem}
+  .ss-card .ss-reason{color:#4f6478;line-height:1.7;margin-top:7px;font-size:.94rem}
+  .ss-card .ss-meta{color:#7a8a9c;font-size:.82rem;margin-top:8px;display:flex;gap:14px;flex-wrap:wrap}
+  /* バッジ */
+  .ss-badge{font-size:.72rem;font-weight:700;letter-spacing:.02em;border-radius:6px;
+    padding:3px 9px;color:#fff;white-space:nowrap}
+  .ss-badge.sev-critical{background:#b91c1c}
+  .ss-badge.sev-major{background:#b45309}
+  .ss-badge.sev-minor{background:#0f6f8c}
+  .ss-badge.st-investigating{background:#9a3412}
+  .ss-badge.st-identified{background:#7c3aed}
+  .ss-badge.st-monitoring{background:#0f6f8c}
+  .ss-badge.st-resolved{background:#0f7a52}
+  .ss-badge.mt-scheduled{background:#1059c8}
+  .ss-badge.mt-in_progress{background:#9a3412}
+  .ss-badge.outline{background:transparent;color:#5d728a;border:1px solid #c8d4e6}
+  .ss-empty{color:#5d728a;font-size:.92rem;background:rgba(255,255,255,.7);
+    border:1px dashed #c8d4e6;border-radius:12px;padding:16px 18px}
+  .ss-checked{margin-top:26px;color:#7a8a9c;font-size:.82rem;text-align:center}
+  .ss-checked .ss-refresh-note{display:block;margin-top:4px;color:#9aa9bb}
+  @media(max-width:720px){
+    .public-status-page .shell{padding:18px 14px 44px}
+    .ss-hero{padding:18px}
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<script>document.body.classList.add('public-status-page');</script>
+{% set sev_label = {'critical': ('重大','Critical'), 'major': ('重度','Major'), 'minor': ('軽微','Minor')} %}
+{% set inc_st_label = {'investigating': ('調査中','Investigating'), 'identified': ('原因特定','Identified'), 'monitoring': ('経過観察','Monitoring'), 'resolved': ('解決済み','Resolved')} %}
+{% set mnt_st_label = {'scheduled': ('予定','Scheduled'), 'in_progress': ('実施中','In progress'), 'completed': ('完了','Completed'), 'canceled': ('中止','Canceled')} %}
+{% set overall_label = {'operational': ('全システム正常稼働中','All systems operational'), 'degraded': ('一部機能が不安定です','Partial degradation'), 'down': ('障害が発生しています','Service disruption')} %}
+
+<div class="shell"
+     data-overall="{{ overall }}"
+     data-active="{{ status.active_incidents|length }}"
+     data-maint="{{ status.maintenance|length }}">
+
+  <h1>{% if _is_en %}System Status{% else %}稼働状況{% endif %}</h1>
+  <p class="sub">{% if _is_en %}Current operational status, planned maintenance and recent incidents.{% else %}現在の稼働状況・予定メンテナンス・直近の障害履歴をお知らせします。{% endif %}</p>
+
+  <div class="ss-hero" data-sev="{{ overall }}">
+    <span class="ss-bigdot"></span>
+    <div class="ss-htxt">
+      <span class="ss-htitle">{{ overall_label.get(overall, ('',''))[1 if _is_en else 0] }}</span>
+      <span class="ss-hsub">{% if _is_en %}Last checked: {% else %}最終確認: {% endif %}<time class="ss-time" datetime="{{ status.checked_at }}">{{ status.checked_at }}</time></span>
+    </div>
+  </div>
+
+  {# 予定メンテナンス #}
+  {% if status.maintenance %}
+  <h2>{% if _is_en %}Scheduled maintenance{% else %}予定メンテナンス{% endif %}<span class="cnt">{{ status.maintenance|length }}</span></h2>
+  {% for m in status.maintenance %}
+  <div class="ss-card">
+    <div class="ss-row">
+      <span class="ss-title">{{ m.title }}</span>
+      <span class="ss-badge mt-{{ m.status }}">{{ mnt_st_label.get(m.status, (m.status, m.status))[1 if _is_en else 0] }}</span>
+    </div>
+    {% if m.body %}<div class="ss-reason">{{ m.body }}</div>{% endif %}
+    <div class="ss-meta">
+      {% if m.scheduled_start %}<span>{% if _is_en %}From{% else %}開始{% endif %}: <time class="ss-time" datetime="{{ m.scheduled_start }}">{{ m.scheduled_start }}</time></span>{% endif %}
+      {% if m.scheduled_end %}<span>{% if _is_en %}To{% else %}終了{% endif %}: <time class="ss-time" datetime="{{ m.scheduled_end }}">{{ m.scheduled_end }}</time></span>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {# 進行中の障害 #}
+  <h2>{% if _is_en %}Active incidents{% else %}進行中の障害{% endif %}<span class="cnt">{{ status.active_incidents|length }}</span></h2>
+  {% if status.active_incidents %}
+  {% for i in status.active_incidents %}
+  <div class="ss-card">
+    <div class="ss-row">
+      <span class="ss-title">{{ i.title }}</span>
+      <span class="ss-badge sev-{{ i.severity }}">{{ sev_label.get(i.severity, (i.severity, i.severity))[1 if _is_en else 0] }}</span>
+      <span class="ss-badge st-{{ i.status }}">{{ inc_st_label.get(i.status, (i.status, i.status))[1 if _is_en else 0] }}</span>
+      {% if i.component %}<span class="ss-badge outline">{{ i.component }}</span>{% endif %}
+    </div>
+    {% if i.reason %}<div class="ss-reason">{{ i.reason }}</div>{% endif %}
+    <div class="ss-meta">
+      {% if i.began_at %}<span>{% if _is_en %}Started{% else %}発生{% endif %}: <time class="ss-time" datetime="{{ i.began_at }}">{{ i.began_at }}</time></span>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+  {% else %}
+  <div class="ss-empty">{% if _is_en %}No active incidents. All monitored services are operating normally.{% else %}進行中の障害はありません。監視中のサービスは正常に稼働しています。{% endif %}</div>
+  {% endif %}
+
+  {# 障害履歴 (解決済み含む直近) #}
+  {% set history = status.recent_incidents | rejectattr('status', 'equalto', 'resolved') | list %}
+  {% set resolved_hist = status.recent_incidents | selectattr('status', 'equalto', 'resolved') | list %}
+  {% if resolved_hist %}
+  <h2>{% if _is_en %}Recent history{% else %}障害履歴{% endif %}<span class="cnt">{{ resolved_hist|length }}</span></h2>
+  {% for i in resolved_hist %}
+  <div class="ss-card">
+    <div class="ss-row">
+      <span class="ss-title">{{ i.title }}</span>
+      <span class="ss-badge sev-{{ i.severity }}">{{ sev_label.get(i.severity, (i.severity, i.severity))[1 if _is_en else 0] }}</span>
+      <span class="ss-badge st-resolved">{{ inc_st_label['resolved'][1 if _is_en else 0] }}</span>
+      {% if i.component %}<span class="ss-badge outline">{{ i.component }}</span>{% endif %}
+    </div>
+    {% if i.reason %}<div class="ss-reason">{{ i.reason }}</div>{% endif %}
+    <div class="ss-meta">
+      {% if i.began_at %}<span>{% if _is_en %}Started{% else %}発生{% endif %}: <time class="ss-time" datetime="{{ i.began_at }}">{{ i.began_at }}</time></span>{% endif %}
+      {% if i.resolved_at %}<span>{% if _is_en %}Resolved{% else %}復旧{% endif %}: <time class="ss-time" datetime="{{ i.resolved_at }}">{{ i.resolved_at }}</time></span>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  <p class="ss-checked">
+    <span>{% if _is_en %}Times are shown in your local timezone.{% else %}時刻はお使いの環境のタイムゾーンで表示されます。{% endif %}</span>
+    <span class="ss-refresh-note">{% if _is_en %}This page refreshes automatically when the status changes.{% else %}状況が変化すると自動的に再読み込みされます。{% endif %}</span>
+  </p>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// ISO 時刻をローカルタイムゾーンの読みやすい表記に変換（サーバは UTC ISO 文字列を出力）。
+(function(){
+  function fmt(iso){
+    if(!iso) return '';
+    var d=new Date(iso);
+    if(isNaN(d.getTime())) return iso;
+    try{return d.toLocaleString(document.documentElement.lang==='en'?'en-US':'ja-JP',
+      {year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});}
+    catch(e){return iso;}
+  }
+  document.querySelectorAll('time.ss-time').forEach(function(t){
+    var iso=t.getAttribute('datetime');var s=fmt(iso);if(s)t.textContent=s;
+  });
+  // 状況が初期レンダリング時と変わったら自動再読み込み（手動 DOM 構築を避け XSS 余地を作らない）。
+  var shell=document.querySelector('.shell');
+  if(!shell) return;
+  var init={o:shell.getAttribute('data-overall'),a:shell.getAttribute('data-active'),m:shell.getAttribute('data-maint')};
+  function poll(){
+    fetch('/api/public/status',{headers:{'Accept':'application/json'}}).then(function(r){
+      return r.ok?r.json():null;
+    }).then(function(d){
+      if(!d) return;
+      var changed=(d.overall||'operational')!==init.o
+        || String((d.active_incidents||[]).length)!==init.a
+        || String((d.maintenance||[]).length)!==init.m;
+      if(changed){location.reload();}
+    }).catch(function(){});
+  }
+  setInterval(poll,60000);
+})();
+</script>
+{% endblock %}
