@@ -21,8 +21,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
-from backend.db.models import Match, Recording
-from backend.utils.auth import get_auth
+from backend.db.models import Recording
+from backend.utils.auth import get_auth, require_match_access_or_404
 
 router = APIRouter()
 
@@ -80,8 +80,8 @@ def create_recording(match_id: int, body: RecordingCreate, request: Request, db:
     _require_privileged(request)
     if body.kind not in _VALID_KIND:
         raise HTTPException(status_code=422, detail=f"invalid kind: {body.kind!r}")
-    if not db.get(Match, match_id):
-        raise HTTPException(status_code=404, detail="match not found")
+    # team 境界を強制 (アクセス不可 match は 404 で隠蔽。IDOR 防止)
+    require_match_access_or_404(match_id, request, db)
     # 枝番を採番 (match 内 max+1, 1 始まり)
     max_branch = (
         db.query(func.max(Recording.branch_no)).filter(Recording.match_id == match_id).scalar()
@@ -107,9 +107,8 @@ def create_recording(match_id: int, body: RecordingCreate, request: Request, db:
 
 @router.get("/matches/{match_id}/recordings")
 def list_recordings(match_id: int, request: Request, db: Session = Depends(get_db)):
-    get_auth(request)  # 認証は GlobalAuthMiddleware で担保。ここは存在のみ確認。
-    if not db.get(Match, match_id):
-        raise HTTPException(status_code=404, detail="match not found")
+    # team 境界を強制: アクセス不可 match の video_token を収集されないよう 404 隠蔽。
+    require_match_access_or_404(match_id, request, db)
     rows = (
         db.query(Recording)
         .filter(Recording.match_id == match_id)
@@ -125,6 +124,8 @@ def patch_recording(rec_id: int, body: RecordingPatch, request: Request, db: Ses
     rec = db.get(Recording, rec_id)
     if not rec:
         raise HTTPException(status_code=404, detail="recording not found")
+    # team 境界を強制: 他チームの match に属する recording を更新できないよう 404 隠蔽。
+    require_match_access_or_404(rec.match_id, request, db)
     if body.status is not None:
         if body.status not in _VALID_STATUS:
             raise HTTPException(status_code=422, detail=f"invalid status: {body.status!r}")

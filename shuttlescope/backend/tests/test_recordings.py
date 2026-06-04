@@ -12,7 +12,8 @@ from backend.db.models import Match, Player
 from backend.utils.jwt_utils import create_access_token
 
 
-def _bearer(role: str = "analyst", user_id: int = 1) -> dict:
+def _bearer(role: str = "admin", user_id: int = 1) -> dict:
+    # admin は team 境界を素通しできる (テスト用 match は owner team 無しのため)。
     return {"Authorization": f"Bearer {create_access_token(user_id=user_id, role=role, minutes=10)}"}
 
 
@@ -95,3 +96,12 @@ def test_non_privileged_rejected(match_id):
     with TestClient(app) as client:
         r = client.post(f"/api/matches/{match_id}/recordings", json={"kind": "upload"}, headers=_bearer("player", 77))
         assert r.status_code in (401, 403)
+
+
+def test_no_match_access_is_404_idor_guard(match_id):
+    # IDOR ガード: team 境界外 (owner team 無し match に、team 無し analyst) は
+    # video_token を収集できないよう 404 で隠蔽される。
+    with TestClient(app) as client:
+        # 別チームの動画を列挙して token を盗む経路を塞ぐ
+        r = client.get(f"/api/matches/{match_id}/recordings", headers=_bearer("analyst", 88))
+        assert r.status_code == 404
