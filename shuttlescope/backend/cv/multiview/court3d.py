@@ -61,14 +61,23 @@ def calibrate_camera_from_court(
         K = estimate_intrinsics(width, height)
     if dist is None:
         dist = np.zeros((4, 1), dtype=np.float64)
-    ok, rvec, tvec = cv2.solvePnP(
+    # IPPE は平面で 2 解 (ambiguity) を返す。両方を取り、入力4隅への再投影誤差が
+    # 最小の解を選ぶ (悪い方の解だと巨大な reprojection になるため必須)。
+    retval, rvecs, tvecs, _ = cv2.solvePnPGeneric(
         COURT_CORNERS_3D, image_corners_px, K, dist, flags=cv2.SOLVEPNP_IPPE
     )
-    if not ok:
+    if not retval or not len(rvecs):
         raise RuntimeError("solvePnP failed for court corners")
-    R, _ = cv2.Rodrigues(rvec)
-    Rt = np.hstack([R, tvec.reshape(3, 1)])
-    P = K @ Rt
+
+    def _P_of(rv, tv):
+        R, _ = cv2.Rodrigues(rv)
+        return K @ np.hstack([R, tv.reshape(3, 1)])
+
+    errs = [reprojection_error(_P_of(rv, tv), COURT_CORNERS_3D, image_corners_px)
+            for rv, tv in zip(rvecs, tvecs)]
+    best = int(np.argmin(errs))
+    rvec, tvec = rvecs[best], tvecs[best]
+    P = _P_of(rvec, tvec)
     return rvec, tvec, K, P
 
 
