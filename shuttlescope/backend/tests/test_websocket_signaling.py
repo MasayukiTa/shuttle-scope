@@ -636,3 +636,89 @@ class TestCameraSignalingManagerUnit:
             await mgr.relay_to_viewer("NO_SUCH", "no-viewer", {"type": "test"})
 
         anyio.run(_run)
+
+
+class _FakeWS:
+    """CameraSignalingManager 単体テスト用の最小 WebSocket ダブル (非 threading)。"""
+
+    def __init__(self):
+        self.accepted = False
+        self.closed = None  # (code, reason) | None
+        self.sent: list = []
+
+    async def accept(self):
+        self.accepted = True
+
+    async def close(self, code=1000, reason=""):
+        self.closed = (code, reason)
+
+    async def send_json(self, obj):
+        self.sent.append(obj)
+
+    async def send_text(self, s):
+        self.sent.append(s)
+
+
+class TestMultiDeviceManagerUnit:
+    """複数台 (iOS/Android) 同時共有のシグナリング不変条件を、threading/TestClient を
+    使わず CameraSignalingManager へ直接 (anyio.run) 当てて検証する。
+    Linux 並列 CI でフレーキーな WS-threading テストを増やさずに多デバイス挙動を担保する。"""
+
+    def _mgr_with_operator(self, code: str):
+        import anyio
+        from backend.ws.camera import CameraSignalingManager
+        mgr = CameraSignalingManager()
+        mgr._ensure_session(code)
+        op = _FakeWS()
+        mgr._sessions[code]["operator"] = op
+        return mgr, op, anyio
+
+    def test_three_devices_registered_and_listed(self):
+        code = "MDU_3DEV"
+        mgr, op, anyio = self._mgr_with_operator(code)
+        for pid in ("d1", "d2", "d3"):
+            anyio.run(mgr.connect_device, code, pid, _FakeWS())
+        devices = mgr._sessions[code]["devices"]
+        assert set(devices.keys()) == {"d1", "d2", "d3"}
+        # operator は接続ごとに device_list_update を受信している
+        # (_send_to_operator は send_text(json 文字列) で送るため parse する)
+        op_msgs = [json.loads(s) for s in op.sent if isinstance(s, str)]
+        list_updates = [m for m in op_msgs if m.get("type") == "device_list_update"]
+        assert list_updates, "operator should receive device_list_update"
+        last_pids = {d["participant_id"] for d in list_updates[-1].get("devices", [])}
+        assert {"d1", "d2", "d3"} <= last_pids
+
+    def test_device_per_session_cap_enforced(self):
+        code = "MDU_CAP"
+        mgr, op, anyio = self._mgr_with_operator(code)
+        cap = mgr.MAX_DEVICES_PER_SESSION
+        for i in range(cap):
+            anyio.run(mgr.connect_device, code, f"d{i}", _FakeWS())
+        assert len(mgr._sessions[code]["devices"]) == cap
+        # cap+1 台目は accept されず close(1013)
+        overflow = _FakeWS()
+        anyio.run(mgr.connect_device, code, "overflow", overflow)
+        assert overflow.accepted is False
+        assert overflow.closed is not None and overflow.closed[0] == 1013
+        assert len(mgr._sessions[code]["devices"]) == cap
+
+    def test_devices_and_viewers_coexist(self):
+        code = "MDU_COEX"
+        mgr, op, anyio = self._mgr_with_operator(code)
+        anyio.run(mgr.connect_device, code, "dev1", _FakeWS())
+        anyio.run(mgr.connect_device, code, "dev2", _FakeWS())
+        anyio.run(mgr.connect_viewer, code, "view1", _FakeWS())
+        assert len(mgr._sessions[code]["devices"]) == 2
+        assert len(mgr._sessions[code]["viewers"]) == 1
+        # viewer 参加は operator に viewer_joined で通知される (send_text JSON を parse)
+        op_msgs = [json.loads(s) for s in op.sent if isinstance(s, str)]
+        assert any(m.get("type") == "viewer_joined" and m.get("viewer_id") == "view1" for m in op_msgs)
+
+    def test_device_disconnect_removes_from_list(self):
+        code = "MDU_DISC"
+        mgr, op, anyio = self._mgr_with_operator(code)
+        anyio.run(mgr.connect_device, code, "a", _FakeWS())
+        anyio.run(mgr.connect_device, code, "b", _FakeWS())
+        anyio.run(mgr.disconnect_device, code, "a")
+        devices = mgr._sessions[code]["devices"]
+        assert set(devices.keys()) == {"b"}
