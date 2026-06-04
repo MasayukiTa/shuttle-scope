@@ -611,6 +611,44 @@ class LiveSource(Base):
     )
 
 
+class Recording(Base):
+    """試合(match)に紐づく動画。
+
+    設計意図: 試合枠を先に作成 → match_id が確定 → その match の **枝番(branch_no)** に
+    複数の動画(upload / live)が結びつく。1 match → N recordings。
+    live は録画ファイルが GPU 機(Z8) の HDD に落ちる想定。
+    動画パスは生で露出せず video_token 経由で配信する (Match と同方針)。
+    """
+    __tablename__ = "recordings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    match_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("matches.id"), nullable=False, index=True
+    )
+    # 枝番: match 内の連番 (1 始まり)。(match_id, branch_no) で一意。
+    branch_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False, default="upload")  # upload/live
+    # iphone_webrtc/usb_camera/builtin_camera/pc_local/rtmp (live 時)
+    source_kind: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")  # pending/recording/ready/failed
+    # 内部パスは露出させない。配信は video_token 経由。
+    video_local_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    video_token: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, unique=True, index=True)
+    resolution: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # "1280x720"
+    fps: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    label: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint("match_id", "branch_no", name="uq_recording_match_branch"),
+    )
+
+
 # ─── S-003: コメント・タグ ────────────────────────────────────────────────────
 
 class Comment(Base):
