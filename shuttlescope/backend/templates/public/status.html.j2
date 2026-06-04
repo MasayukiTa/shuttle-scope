@@ -140,6 +140,23 @@
   <div class="ss-empty">{% if _is_en %}No active incidents. All monitored services are operating normally.{% else %}進行中の障害はありません。監視中のサービスは正常に稼働しています。{% endif %}</div>
   {% endif %}
 
+  {# 更新情報 / お知らせ (運用者がキュレーションした公開フィード) #}
+  {% if status.announcements %}
+  <h2>{% if _is_en %}Updates{% else %}更新情報{% endif %}<span class="cnt">{{ status.announcements|length }}</span></h2>
+  {% for a in status.announcements %}
+  <div class="ss-card">
+    <div class="ss-row">
+      {% if a.pinned %}<span class="ss-badge mt-scheduled">{% if _is_en %}Pinned{% else %}固定{% endif %}</span>{% endif %}
+      <span class="ss-title">{{ a.title }}</span>
+    </div>
+    {% if a.body %}<div class="ss-reason">{{ a.body }}</div>{% endif %}
+    <div class="ss-meta">
+      {% if a.published_at %}<span><time class="ss-time" datetime="{{ a.published_at }}">{{ a.published_at }}</time></span>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+  {% endif %}
+
   {# 障害履歴 (解決済み含む直近) #}
   {% set history = status.recent_incidents | rejectattr('status', 'equalto', 'resolved') | list %}
   {% set resolved_hist = status.recent_incidents | selectattr('status', 'equalto', 'resolved') | list %}

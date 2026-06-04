@@ -61,3 +61,34 @@ def test_invalid_severity_422():
     with TestClient(app) as client:
         r = client.post("/api/status/incidents", json={"title": "x", "severity": "boom"}, headers=_admin())
     assert r.status_code == 422
+
+
+def test_announcement_appears_in_public():
+    with TestClient(app) as client:
+        c = client.post("/api/status/announcements",
+                        json={"title": "新機能を追加しました", "body": "公開更新情報のテスト", "pinned": True},
+                        headers=_admin())
+        assert c.status_code == 201, c.text
+        aid = c.json()["id"]
+        assert c.json()["pinned"] is True
+        s = client.get("/api/public/status").json()
+        assert "announcements" in s
+        assert any(a["id"] == aid and a["title"] == "新機能を追加しました" for a in s["announcements"])
+
+
+def test_draft_announcement_hidden_from_public():
+    with TestClient(app) as client:
+        c = client.post("/api/status/announcements", json={"title": "下書き"}, headers=_admin())
+        aid = c.json()["id"]
+        # draft 化 → 公開フィードから消える
+        p = client.patch(f"/api/status/announcements/{aid}", json={"status": "draft"}, headers=_admin())
+        assert p.status_code == 200 and p.json()["status"] == "draft"
+        s = client.get("/api/public/status").json()
+        assert all(a["id"] != aid for a in s["announcements"])
+
+
+def test_non_admin_cannot_create_announcement():
+    with TestClient(app) as client:
+        r = client.post("/api/status/announcements", json={"title": "x"},
+                        headers={"Authorization": f"Bearer {create_access_token(user_id=7, role='coach', minutes=10)}"})
+    assert r.status_code in (401, 403)

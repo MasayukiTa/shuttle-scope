@@ -685,6 +685,26 @@ class StatusIncident(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class Announcement(Base):
+    """公開更新情報 / お知らせ (トップページ・ステータスページに掲示)。
+
+    運用者がキュレーションした「公開して良い」更新のみを掲載する公開フィード。
+    内部の dev CHANGELOG (security/attack/CV 詳細を含む) は公開しない方針のため、
+    本テーブルに運用者が手動で公開可の項目だけを登録する。
+    """
+    __tablename__ = "announcements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    body: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # published / draft (draft は公開フィードに出さない)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="published")
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="0")
+    published_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 # ─── S-003: コメント・タグ ────────────────────────────────────────────────────
 
 class Comment(Base):
