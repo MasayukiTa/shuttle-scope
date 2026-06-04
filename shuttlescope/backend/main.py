@@ -2528,6 +2528,8 @@ app.include_router(_decoy_maze_router.router)
 app.include_router(players.router, prefix="/api")
 from backend.routers import media as _media_router  # noqa: E402
 app.include_router(_media_router.router, prefix="/api")
+from backend.routers import recordings as _recordings_router  # noqa: E402
+app.include_router(_recordings_router.router, prefix="/api")
 app.include_router(matches.router, prefix="/api")
 app.include_router(rallies.router, prefix="/api")
 app.include_router(strokes.router, prefix="/api")
