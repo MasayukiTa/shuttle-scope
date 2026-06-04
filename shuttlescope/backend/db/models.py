@@ -649,6 +649,42 @@ class Recording(Base):
     )
 
 
+class MaintenanceWindow(Base):
+    """予定メンテナンス告知 (トップページ/ステータスページに掲示)。"""
+    __tablename__ = "maintenance_windows"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    body: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    scheduled_start: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    scheduled_end: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # scheduled / in_progress / completed / canceled
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="scheduled")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class StatusIncident(Base):
+    """障害インシデント記録 (いつ落ち/復旧したか + 理由)。
+
+    「死活時刻」は began_at/resolved_at、「理由」は reason に運用者が記す。
+    """
+    __tablename__ = "status_incidents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # minor / major / critical
+    severity: Mapped[str] = mapped_column(String(20), nullable=False, default="minor")
+    component: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # tunnel/backend/gpu 等
+    # investigating / identified / monitoring / resolved
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="investigating")
+    began_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 # ─── S-003: コメント・タグ ────────────────────────────────────────────────────
 
 class Comment(Base):
