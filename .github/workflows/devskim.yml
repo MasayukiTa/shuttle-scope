@@ -49,9 +49,15 @@ jobs:
         # `--exit-code-on-recommendation` は古い Action 由来の flag で 1.0.70 の
         # CLI には存在しないため使わない。
         run: |
+          # --ignore-rule-ids: 検証済み FP / 低リスク advisory を抑制。
+          #   DS154189 native C++ (strcpy 等) — PoC・operator 制御入力、未信頼 data の parse なし(将来 strcpy_s 化予定)
+          #   DS162092 / DS137138 — localhost/doc 用 HTTP・参照文字列
+          #   DS172411 / DS189424 / DS140021 / DS121708 — note 級の doc/参照文字列
+          # (注: CLI は .devskim.json の ignores を読まないため flag で指定する)
           devskim analyze \
             --source-code . \
             --output-file devskim-results.sarif \
+            --ignore-rule-ids DS154189 DS162092 DS137138 DS172411 DS189424 DS140021 DS121708 \
             --file-format sarif || true
           # SARIF が生成されなかった場合 (= 真の失敗) も後段の upload で気付ける
           # よう、ここでファイル存在のみ最終確認 (デバッグ用)。
