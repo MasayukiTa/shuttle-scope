@@ -82,9 +82,14 @@ class MaintenancePatch(BaseModel):
     scheduled_end: Optional[datetime] = None
 
 
-@router.get("/public/status")
-def public_status(db: Session = Depends(get_db)):
-    """公開ステータス。認証不要 (/api/public/* は anon 許可)。"""
+def compute_public_status(db: Session) -> dict:
+    """公開ステータスの集計ロジック (API と Jinja `/status` ページで共有)。
+
+    - overall: 未解決 incident の severity から算出 (critical→down / それ以外の未解決→degraded)。
+    - active_incidents: 未解決 (status != resolved) を began_at 降順。
+    - recent_incidents: 直近 20 件 (解決済み含む、履歴用)。
+    - maintenance: scheduled/in_progress かつ終了が未来 (or 未定) のものを開始昇順。
+    """
     unresolved = (
         db.query(StatusIncident)
         .filter(StatusIncident.status != "resolved")
@@ -115,6 +120,12 @@ def public_status(db: Session = Depends(get_db)):
         "maintenance": [_mnt_dict(m) for m in maint],
         "checked_at": now.isoformat(),
     }
+
+
+@router.get("/public/status")
+def public_status(db: Session = Depends(get_db)):
+    """公開ステータス。認証不要 (/api/public/* は anon 許可)。"""
+    return compute_public_status(db)
 
 
 @router.post("/status/incidents", status_code=201)

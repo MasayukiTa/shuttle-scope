@@ -1,0 +1,65 @@
+{# ShuttleScope 公開ステータスバナー（単一ソース）。
+   - base.html.j2 が {% block status_banner %} 経由で全公開ページに include する。
+   - トップページ (_V7_HOME_HTML) には public_site.render_public_home が本パーシャルを
+     レンダリングして beta-banner 直後へ注入する（重複定義を避けるための単一ソース）。
+   - /api/public/status（同一オリジン・anon 可）を読み、overall != operational もしくは
+     予定メンテがある時のみ表示する。平常時は display:none のまま場所を取らない。
+   - 動的テキストは textContent で挿入（XSS 安全）。濃色背景なので文字は #fff 固定。
+   - 本文は CSS/JS の波括弧 (例: @media{#id) が Jinja の {# と衝突するため {% raw %} で囲う。
+     Jinja 変数は使わない（動的値は全てクライアント側 fetch）。 #}
+{% raw %}
+<style>
+#ss-status-banner{display:none;padding:12px 40px}
+#ss-status-banner .ssb-link{display:flex;align-items:center;justify-content:center;gap:11px;flex-wrap:wrap;
+  max-width:1160px;margin:0 auto;text-decoration:none;color:#fff}
+#ss-status-banner .ssb-dot{width:9px;height:9px;border-radius:50%;background:#fff;flex-shrink:0;
+  box-shadow:0 0 0 4px rgba(255,255,255,.22)}
+#ss-status-banner .ssb-msg{font-size:13.5px;font-weight:700;color:#fff;line-height:1.5}
+#ss-status-banner .ssb-cta{font-size:12.5px;color:#fff;opacity:.94;border-bottom:1px solid rgba(255,255,255,.55);
+  padding-bottom:1px;white-space:nowrap;transition:opacity .15s}
+#ss-status-banner .ssb-link:hover .ssb-cta{opacity:1}
+#ss-status-banner[data-sev="down"]{background:linear-gradient(135deg,#9f1239 0%,#b91c1c 100%)}
+#ss-status-banner[data-sev="degraded"]{background:linear-gradient(135deg,#9a3412 0%,#b45309 100%)}
+#ss-status-banner[data-sev="maintenance"]{background:linear-gradient(135deg,#0a4d8c 0%,#1059c8 100%)}
+html[lang="en"] #ss-status-banner .ja{display:none}
+html[lang="ja"] #ss-status-banner .en{display:none}
+@media(max-width:767px){#ss-status-banner{padding:11px 16px}#ss-status-banner .ssb-msg{font-size:12.5px}}
+</style>
+<div id="ss-status-banner" role="status" aria-live="polite">
+  <a class="ssb-link" href="/status">
+    <span class="ssb-dot"></span>
+    <span class="ssb-msg">
+      <span class="ja" data-down="現在、一部サービスで障害が発生しています" data-degraded="現在、一部機能が不安定です" data-maintenance="メンテナンスの予定があります"></span>
+      <span class="en" data-down="We are currently experiencing a service disruption" data-degraded="Some features are currently degraded" data-maintenance="Scheduled maintenance is planned"></span>
+    </span>
+    <span class="ssb-cta"><span class="ja">稼働状況を確認 →</span><span class="en">View status →</span></span>
+  </a>
+</div>
+<script>
+(function(){
+  var el=document.getElementById('ss-status-banner');
+  if(!el) return;
+  var link=el.querySelector('.ssb-link');
+  function show(sev){
+    el.setAttribute('data-sev',sev);
+    var spans=el.querySelectorAll('.ssb-msg .ja, .ssb-msg .en');
+    for(var i=0;i<spans.length;i++){spans[i].textContent=spans[i].getAttribute('data-'+sev)||'';}
+    if(link){link.setAttribute('href',document.documentElement.lang==='en'?'/en/status':'/status');}
+    el.style.display='block';
+  }
+  try{
+    fetch('/api/public/status',{headers:{'Accept':'application/json'}}).then(function(r){
+      return r.ok?r.json():null;
+    }).then(function(d){
+      if(!d) return;
+      var overall=d.overall||'operational';
+      var hasMaint=Array.isArray(d.maintenance)&&d.maintenance.length>0;
+      if(overall==='down'){show('down');}
+      else if(overall==='degraded'){show('degraded');}
+      else if(hasMaint){show('maintenance');}
+      // operational かつメンテ無し → 非表示のまま
+    }).catch(function(){/* ステータス取得失敗時は何も出さない（フェイルクローズ） */});
+  }catch(e){}
+})();
+</script>
+{% endraw %}

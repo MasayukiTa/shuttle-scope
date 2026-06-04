@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from backend.config import settings
 from backend.db.database import get_db
 from backend.db.models import PublicInquiry, ContentReport
+from backend.routers.status_page import compute_public_status
 from backend.utils.auth import get_auth
 
 logger = logging.getLogger(__name__)
@@ -554,6 +555,7 @@ footer{background:var(--footer-bg);padding:24px 40px;display:flex;align-items:ce
     <li><a href="/terms"><span class="ja">利用規約</span><span class="en">Terms</span></a></li>
     <li><a href="/privacy"><span class="ja">プライバシーポリシー</span><span class="en">Privacy Policy</span></a></li>
     <li><a href="/contact"><span class="ja">お問い合わせ</span><span class="en">Contact</span></a></li>
+    <li><a href="/status"><span class="ja">稼働状況</span><span class="en">Status</span></a></li>
     <li><a href="https://app.shuttle-scope.com/#/register"><span class="ja">新規登録</span><span class="en">Register</span></a></li>
   </ul>
   <span class="footer-copy">© 2026 ShuttleScope</span>
@@ -586,6 +588,7 @@ if(lang==='en'){
   document.querySelectorAll('a[href="/terms"]').forEach(a=>a.setAttribute('href','/en/terms'));
   document.querySelectorAll('a[href="/privacy"]').forEach(a=>a.setAttribute('href','/en/privacy'));
   document.querySelectorAll('a[href="/contact"]').forEach(a=>a.setAttribute('href','/en/contact'));
+  document.querySelectorAll('a[href="/status"]').forEach(a=>a.setAttribute('href','/en/status'));
   // ブランド/ロゴ link を EN home (/en) に書き換える。
   // (デフォルトは / = JA home なので、EN モードのまま戻ると JA 側に飛んでしまう)
   document.querySelectorAll('a.logo, a.footer-logo, a.brand').forEach(a=>{
@@ -618,8 +621,50 @@ document.querySelectorAll('.reveal').forEach(el=>obs.observe(el));
 </html>"""
 
 
+def _inject_status_banner(home_html: str) -> str:
+    """トップページ (_V7_HOME_HTML) の beta-banner 直後 (hero の直前) に
+    公開ステータスバナー partial を注入する。partial は base.html.j2 と共有の単一ソース。
+    バナー描画失敗時はトップページが 500 にならないよう、無注入で返す (fail-open)。"""
+    try:
+        banner = _jinja_env.get_template("public/_status_banner.html.j2").render()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("status banner render failed: %s", exc)
+        return home_html
+    return home_html.replace('<section class="hero">', banner + '\n<section class="hero">', 1)
+
+
 def render_public_home(request: Request) -> HTMLResponse:
-    return HTMLResponse(_V7_HOME_HTML)
+    return HTMLResponse(_inject_status_banner(_V7_HOME_HTML))
+
+
+def _render_status_str(request: Request, *, lang: str = "ja", preview: bool = False,
+                       db: Optional[Session] = None) -> str:
+    """公開ステータスページ (/status) を Jinja でレンダリングする。
+
+    status dict は compute_public_status(db) を共有 (API /api/public/status と同一ロジック)。
+    db 未指定 (プレビュー等) 時は operational の空状態でフォールバックする。"""
+    if db is not None:
+        status = compute_public_status(db)
+    else:
+        status = {
+            "overall": "operational", "active_incidents": [],
+            "recent_incidents": [], "maintenance": [], "checked_at": "",
+        }
+    canonical_path = "/en/status" if lang == "en" else "/status"
+    context = {
+        "request": request,
+        "lang": lang,
+        "canonical_path": canonical_path,
+        "noindex": preview,
+        "login_href": _public_login_href(request, lang=lang),
+        "status": status,
+    }
+    resp = _public_templates.TemplateResponse(request, "public/status.html.j2", context)
+    return resp.body.decode("utf-8")
+
+
+def render_status_page(request: Request, db: Session, *, lang: str = "ja") -> HTMLResponse:
+    return HTMLResponse(_render_status_str(request, lang=lang, db=db))
 
 
 def _render_terms_str(request: Request, *, preview: bool = False) -> str:
@@ -949,6 +994,11 @@ async def public_preview_contact(request: Request):
     return HTMLResponse(_rewrite_preview_links(_render_contact_str(request, preview=True)))
 
 
+@router.get("/public-preview/status")
+async def public_preview_status(request: Request, db: Session = Depends(get_db)):
+    return HTMLResponse(_rewrite_preview_links(_render_status_str(request, lang="ja", preview=True, db=db)))
+
+
 # EN プレビュールート (PR4): 既存 JA preview と同様 noindex + リンクを /public-preview/en/* に書き換える。
 @router.get("/public-preview/en")
 async def public_preview_en_home(request: Request):
@@ -970,6 +1020,11 @@ async def public_preview_en_contact(request: Request):
     return HTMLResponse(_rewrite_preview_links_en(_render_contact_str_en(request)))
 
 
+@router.get("/public-preview/en/status")
+async def public_preview_en_status(request: Request, db: Session = Depends(get_db)):
+    return HTMLResponse(_rewrite_preview_links_en(_render_status_str(request, lang="en", preview=True, db=db)))
+
+
 @router.get("/terms")
 async def terms_page(request: Request):
     return render_terms_page(request)
@@ -983,6 +1038,11 @@ async def privacy_page(request: Request):
 @router.get("/contact")
 async def contact_page(request: Request):
     return render_contact_page(request)
+
+
+@router.get("/status")
+async def status_page_route(request: Request, db: Session = Depends(get_db)):
+    return render_status_page(request, db, lang="ja")
 
 
 # 英語ページ（ホームは同一HTML、URLが /en のまま残るのでJS側が英語モードで起動）
@@ -1004,6 +1064,11 @@ async def en_privacy_page(request: Request):
 @router.get("/en/contact")
 async def en_contact_page(request: Request):
     return HTMLResponse(_render_contact_str_en(request))
+
+
+@router.get("/en/status")
+async def en_status_page_route(request: Request, db: Session = Depends(get_db)):
+    return render_status_page(request, db, lang="en")
 
 
 # /jp → / にリダイレクト
