@@ -661,7 +661,7 @@ function HistoryView({ list, isLight, canDelete, onSelect }: HistoryViewProps) {
   return (
     <div className="space-y-3 max-w-4xl">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex gap-1">
+        <div className="flex flex-wrap gap-1">
           {filterOpts.map((opt) => (
             <button
               key={opt.key}
