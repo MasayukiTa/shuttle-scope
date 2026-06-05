@@ -2546,6 +2546,9 @@ from backend.routers import recordings as _recordings_router  # noqa: E402
 app.include_router(_recordings_router.router, prefix="/api")
 from backend.routers import status_page as _status_router  # noqa: E402
 app.include_router(_status_router.router, prefix="/api")
+
+from backend.routers import llm_chat as _llm_chat_router  # noqa: E402
+app.include_router(_llm_chat_router.router, prefix="/api")
 app.include_router(matches.router, prefix="/api")
 app.include_router(rallies.router, prefix="/api")
 app.include_router(strokes.router, prefix="/api")
