@@ -650,6 +650,16 @@ def _render_status_str(request: Request, *, lang: str = "ja", preview: bool = Fa
     db 未指定 (プレビュー等) 時は operational の空状態でフォールバックする。"""
     if db is not None:
         status = compute_public_status(db)
+        # 日次稼働履歴 (claude status 風バー) は重いので /status ページ描画時のみ付与する。
+        try:
+            from backend.services.status_monitor import compute_component_history
+            hist = compute_component_history(db)
+            for c in status.get("components", []):
+                h = hist.get(c.get("key")) or {}
+                c["history"] = h.get("days", [])
+                c["uptime_pct"] = h.get("uptime_pct")
+        except Exception:  # noqa: BLE001
+            pass
     else:
         status = {
             "overall": "operational", "components": [], "active_incidents": [],
