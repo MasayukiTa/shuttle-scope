@@ -30,6 +30,7 @@ from backend.db.models import LlmConversation, LlmTurn, PlayerPageAccess
 from backend.services.llm import get_provider
 from backend.services.llm.base import ChatMessage
 from backend.services.llm.registry import provider_configured
+from backend.utils.access_log import log_access
 from backend.utils.auth import get_auth
 
 logger = logging.getLogger(__name__)
@@ -89,11 +90,13 @@ def _sse(obj: dict) -> str:
 
 
 class ConversationCreate(BaseModel):
+    model_config = {"extra": "forbid"}  # mass-assignment 防止
     title: Optional[str] = Field(default=None, max_length=200)
     system_prompt: Optional[str] = Field(default=None, max_length=8000)
 
 
 class MessageCreate(BaseModel):
+    model_config = {"extra": "forbid"}  # mass-assignment 防止
     content: str = Field(min_length=1, max_length=16000)
 
 
@@ -126,6 +129,8 @@ def create_conversation(body: ConversationCreate, request: Request, db: Session 
         provider=pr.name.split(":")[0], model=pr.model, system_prompt=body.system_prompt,
     )
     db.add(c); db.commit(); db.refresh(c)
+    log_access(db, "llm_conversation_create", user_id=ctx.user_id,
+               resource_type="llm_conversation", resource_id=c.id)
     return _conv_dict(c)
 
 
@@ -134,6 +139,8 @@ def delete_conversation(cid: int, request: Request, db: Session = Depends(get_db
     ctx = require_llm_access(request, db)
     c = _own_conversation(cid, ctx, db)
     c.deleted_at = datetime.utcnow(); db.commit()
+    log_access(db, "llm_conversation_delete", user_id=ctx.user_id,
+               resource_type="llm_conversation", resource_id=c.id)
     return {"success": True}
 
 
@@ -161,6 +168,9 @@ def post_message(cid: int, body: MessageCreate, request: Request, db: Session = 
     db.add(LlmTurn(conversation_id=c.id, seq=last_seq + 1, role="user", content=body.content))
     c.last_used_at = datetime.utcnow()
     db.commit()
+    log_access(db, "llm_message", user_id=ctx.user_id,
+               resource_type="llm_conversation", resource_id=c.id,
+               details={"chars": len(body.content)})
 
     turns = db.query(LlmTurn).filter(LlmTurn.conversation_id == c.id).order_by(LlmTurn.seq.asc()).all()
     history = [ChatMessage(role=t.role, content=t.content)
