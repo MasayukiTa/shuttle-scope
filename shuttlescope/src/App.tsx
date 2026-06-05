@@ -19,6 +19,7 @@ import { ViewerPage } from '@/pages/ViewerPage'
 import { PredictionPage } from '@/pages/PredictionPage'
 import { ExpertLabelerPage } from '@/pages/ExpertLabelerPage'
 import { ExpertLabelerAnnotatePage } from '@/pages/ExpertLabelerAnnotatePage'
+import LlmChatPage from '@/pages/LlmChatPage'
 import { useAuth } from '@/hooks/useAuth'
 import { useIdleLogout } from '@/hooks/useIdleLogout'
 import { LoginPage } from '@/pages/LoginPage'
@@ -113,24 +114,29 @@ function Sidebar() {
   })
   const unreadCount = unreadCountQuery.data?.data?.count ?? 0
 
+  // LLM 専用ユーザ (バドミントン role を持たない = 'llm' 等) はバドミントン系ナビを出さない。
+  const llmOnly = !!role && !['admin', 'analyst', 'coach', 'player', 'demo'].includes(role)
   const navItems: NavItem[] = [
-    { to: '/matches', label: t('nav.matches'), icon: 'list' },
-    { to: '/condition', label: t('nav.condition'), icon: 'favorite' },
-    // 解析タブ: 全ロールが /dashboard にアクセス可。player には
-    // DashboardTopNav 側で overview / growth のみ表示し、review / advanced /
-    // research は個別 route で /dashboard/overview に redirect する。
-    // CLAUDE.md non-negotiable rule (確信が持てない解析は player に出さない)
-    // は dashboard 内部で守られる。
-    { to: '/dashboard', label: t('nav.dashboard'), icon: 'bar_chart' },
-    // prediction / expert_labeler は引き続き player 非表示。
-    // - prediction: 絶対勝率 = CLAUDE.md "Never show player-facing screens
-    //   raw absolute win-rate style judgments" 違反。
-    // - expert_labeler: 専門ラベラー、player 業務外。
-    ...(role !== 'player' && hasPageAccess('prediction')
+    ...(!llmOnly
+      ? [
+          { to: '/matches', label: t('nav.matches'), icon: 'list' },
+          { to: '/condition', label: t('nav.condition'), icon: 'favorite' },
+          // 解析タブ: 全ロールが /dashboard にアクセス可。player には
+          // DashboardTopNav 側で overview / growth のみ表示し、review / advanced /
+          // research は個別 route で /dashboard/overview に redirect する。
+          { to: '/dashboard', label: t('nav.dashboard'), icon: 'bar_chart' },
+        ]
+      : []),
+    // prediction / expert_labeler は引き続き player / LLM 専用 非表示。
+    ...(!llmOnly && role !== 'player' && hasPageAccess('prediction')
       ? [{ to: '/prediction', label: t('nav.prediction'), icon: 'trending_up' }]
       : []),
-    ...(role !== 'player' && hasPageAccess('expert_labeler')
+    ...(!llmOnly && role !== 'player' && hasPageAccess('expert_labeler')
       ? [{ to: '/expert-labeler', label: t('nav.expert'), icon: 'assignment_turned_in' }]
+      : []),
+    // 汎用 LLM チャット: llm grant を持つユーザ (admin/analyst/coach 自動 or LLM 専用)。
+    ...(hasPageAccess('llm')
+      ? [{ to: '/llm', label: t('nav.llm'), icon: 'forum' }]
       : []),
     ...(role === 'admin'
       ? [
@@ -344,6 +350,7 @@ function MainLayout() {
             <Route path="/prediction" element={<PageAccessRoute pageKey="prediction"><PredictionPage /></PageAccessRoute>} />
             <Route path="/expert-labeler" element={<PageAccessRoute pageKey="expert_labeler"><ExpertLabelerPage /></PageAccessRoute>} />
             <Route path="/expert-labeler/:matchId" element={<PageAccessRoute pageKey="expert_labeler"><ExpertLabelerAnnotatePage /></PageAccessRoute>} />
+            <Route path="/llm" element={<PageAccessRoute pageKey="llm"><LlmChatPage /></PageAccessRoute>} />
 <Route path="/notifications" element={<AdminRoute><NotificationInboxPage /></AdminRoute>} />
             <Route path="/users" element={<AdminRoute><UserManagementPage /></AdminRoute>} />
             <Route path="/users/pending" element={<AdminRoute><PendingUsersPage /></AdminRoute>} />
@@ -466,7 +473,15 @@ function ProtectedMainRoute() {
   }
 
   if (!token || !role) {
-    return <LoginPage onLogin={() => { window.location.hash = '/matches' }} />
+    return <LoginPage onLogin={() => {
+      // LLM 専用ユーザ (バドミントン role を持たない) はログイン後 /#/llm へ直行。
+      let dest = '/matches'
+      try {
+        const r = sessionStorage.getItem('shuttlescope_role')
+        if (r && !['admin', 'analyst', 'coach', 'player', 'demo'].includes(r)) dest = '/llm'
+      } catch { /* ignore */ }
+      window.location.hash = dest
+    }} />
   }
 
   // 同意未取得 → 必須同意取得画面 (フェーズ 1 / GDPR Article 7)。
