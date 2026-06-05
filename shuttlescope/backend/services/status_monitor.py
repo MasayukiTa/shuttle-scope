@@ -339,11 +339,27 @@ def _tick_blocking() -> None:
             raise
 
 
+def _seconds_to_next_boundary(now: Optional[datetime] = None) -> float:
+    """次の壁時計 10 分境界 (:00/:10/:20/:30/:40/:50) までの秒数を返す。
+    sampled_at は UTC (datetime.utcnow) なので UTC 壁時計に揃える。
+    境界ちょうどの場合は次の境界 (= SAMPLE_INTERVAL_SEC 後) を返し、二重発火を避ける。"""
+    now = now or datetime.utcnow()
+    step = SAMPLE_INTERVAL_SEC
+    # 当日 0:00(UTC) からの経過秒で計算し、次の step 倍数までの残りを求める。
+    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    elapsed = (now - midnight).total_seconds()
+    remainder = elapsed % step
+    wait = step - remainder if remainder > 0 else step
+    return wait
+
+
 async def _monitor_loop() -> None:
-    # 起動直後は sleep してから開始 (テストの短命 lifespan では 1 度も tick しない = 副作用なし)。
+    # 各 tick の前に次の壁時計 10 分境界まで sleep する。毎回再計算してドリフトを防ぐ
+    # (固定 600s sleep はしない)。起動直後も境界まで待ってから開始するため、
+    # テストの短命 lifespan では 1 度も tick しない = 副作用なし。
     while True:
         try:
-            await asyncio.sleep(SAMPLE_INTERVAL_SEC)
+            await asyncio.sleep(_seconds_to_next_boundary())
             await asyncio.get_event_loop().run_in_executor(None, _tick_blocking)
         except asyncio.CancelledError:
             raise
