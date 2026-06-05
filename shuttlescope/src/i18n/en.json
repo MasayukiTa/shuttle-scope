@@ -4,6 +4,8 @@
     "new_chat": "New chat",
     "conversations": "Conversations",
     "open_conversations": "Open conversations",
+    "collapse_conversations": "Collapse conversations",
+    "expand_conversations": "Expand conversations",
     "close": "Close",
     "delete": "Delete",
     "placeholder": "Type a message… (Enter to send / Shift+Enter for newline)",

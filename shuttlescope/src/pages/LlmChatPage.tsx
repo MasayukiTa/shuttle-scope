@@ -23,9 +23,20 @@ const SCROLL_BOTTOM_THRESHOLD = 80
 // 「じっくり考える」(deep thinking) トグルの永続化キー。
 const THINKING_STORAGE_KEY = 'ss.llm.thinking'
 
+// デスクトップ会話リスト (aside) の折りたたみ状態の永続化キー。
+const CONVLIST_COLLAPSED_KEY = 'ss.llm.convlist.collapsed'
+
 function readThinkingPref(): boolean {
   try {
     return localStorage.getItem(THINKING_STORAGE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function readConvListCollapsed(): boolean {
+  try {
+    return localStorage.getItem(CONVLIST_COLLAPSED_KEY) === '1'
   } catch {
     return false
   }
@@ -48,6 +59,7 @@ export default function LlmChatPage() {
   const [renamingId, setRenamingId] = useState<number | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
   const [drawerOpen, setDrawerOpen] = useState(false) // モバイル会話ドロワー (<md)
+  const [convListCollapsed, setConvListCollapsed] = useState(readConvListCollapsed) // デスクトップ会話リスト折りたたみ (md+, localStorage 永続)
   const [messagesLoading, setMessagesLoading] = useState(false) // 会話切替時のメッセージ取得中
   const [showScrollDown, setShowScrollDown] = useState(false) // 上にスクロール中の「最新へ」ボタン
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null) // 削除確認中の会話
@@ -83,6 +95,15 @@ export default function LlmChatPage() {
       /* ignore */
     }
   }, [thinking])
+
+  // デスクトップ会話リストの折りたたみ状態を localStorage に永続化。
+  useEffect(() => {
+    try {
+      localStorage.setItem(CONVLIST_COLLAPSED_KEY, convListCollapsed ? '1' : '0')
+    } catch {
+      /* ignore */
+    }
+  }, [convListCollapsed])
 
   const reasoningAvailable = config?.reasoning_available === true
 
@@ -132,11 +153,13 @@ export default function LlmChatPage() {
   }, [])
 
   // 入力 textarea の自動高さ調整 (1 行〜最大 ~6 行 = 160px、超過分はスクロール)。
+  // 下限 44px: 絶対配置の送信/停止ボタン (h-11=44px) が入力枠内に収まるよう、
+  // 1 行時でもボタン高さ以上を確保する (枠外にはみ出すのを防ぐ)。
   useEffect(() => {
     const ta = taRef.current
     if (!ta) return
     ta.style.height = 'auto'
-    ta.style.height = `${Math.min(ta.scrollHeight, 160)}px`
+    ta.style.height = `${Math.min(Math.max(ta.scrollHeight, 44), 160)}px`
   }, [input])
 
   // ドロワーを開いている間は背面スクロールをロック + Esc で閉じる + Tab フォーカストラップ。
@@ -420,10 +443,24 @@ export default function LlmChatPage() {
 
   return (
     <div className="flex h-full bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
-      {/* 会話サイドバー (デスクトップ) */}
-      <aside className="hidden md:flex w-64 shrink-0 flex-col border-r border-slate-200 dark:border-slate-700">
-        <ConversationList {...listProps} />
-      </aside>
+      {/* 会話サイドバー (デスクトップ md+)。折りたたみ時は非表示にして本体へ幅を譲る。 */}
+      {!convListCollapsed && (
+        <aside className="hidden md:flex w-64 shrink-0 flex-col border-r border-slate-200 dark:border-slate-700">
+          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 px-3 py-2">
+            <span className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">{t('llm.conversations')}</span>
+            <button
+              type="button"
+              onClick={() => setConvListCollapsed(true)}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+              aria-label={t('llm.collapse_conversations')}
+              title={t('llm.collapse_conversations')}
+            >
+              <MIcon name="chevron_left" size={20} ariaHidden />
+            </button>
+          </div>
+          <ConversationList {...listProps} />
+        </aside>
+      )}
 
       {/* 会話ドロワー (モバイル <md): 左スライドイン + 暗転バックドロップ */}
       {drawerOpen && (
@@ -463,6 +500,18 @@ export default function LlmChatPage() {
           >
             <MIcon name="menu" size={22} ariaHidden />
           </button>
+          {/* 会話リストを折りたたんだとき (md+) のみ表示する再展開ボタン。<md のドロワー導線には影響しない。 */}
+          {convListCollapsed && (
+            <button
+              type="button"
+              onClick={() => setConvListCollapsed(false)}
+              className="hidden md:inline-flex h-11 w-11 -ml-2 items-center justify-center rounded-md text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+              aria-label={t('llm.expand_conversations')}
+              title={t('llm.expand_conversations')}
+            >
+              <MIcon name="chevron_right" size={22} ariaHidden />
+            </button>
+          )}
           <MIcon name="smart_toy" size={20} ariaHidden className="text-blue-600" />
           <span className="font-bold">{t('llm.title')}</span>
         </header>
@@ -565,7 +614,7 @@ export default function LlmChatPage() {
               onKeyDown={onKeyDown}
               rows={1}
               placeholder={notConfigured ? t('llm.not_configured_hint') : t('llm.placeholder')}
-              className="block w-full resize-none rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 pr-14 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-500 max-h-40 overflow-y-auto"
+              className="block w-full resize-none rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2.5 pr-14 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px] max-h-40 overflow-y-auto"
             />
             {streaming ? (
               <button
