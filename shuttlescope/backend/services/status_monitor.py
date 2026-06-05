@@ -301,10 +301,13 @@ def compute_component_history(db, days: int = UPTIME_WINDOW_DAYS, now: Optional[
             .all()
         )
         buckets: dict = {}
+        up_samples = 0
         for ts, st in rows:
             buckets.setdefault(ts.date(), set()).add(st)
+            if st == OPERATIONAL:
+                up_samples += 1
+        total_samples = len(rows)
         day_list = []
-        up_days = counted = 0
         for i in range(days):
             d = (start + timedelta(days=i)).date()
             sts = buckets.get(d)
@@ -316,14 +319,15 @@ def compute_component_history(db, days: int = UPTIME_WINDOW_DAYS, now: Optional[
                 day_status = "degraded"
             else:
                 day_status = "operational"
-            if day_status != "nodata":
-                counted += 1
-                if day_status == "operational":
-                    up_days += 1
+            # バーの色は「その日の最悪ステータス」で表現する (claude status 同様)。
             day_list.append({"d": d.isoformat(), "st": day_status})
         out[key] = {
             "days": day_list,
-            "uptime_pct": round(100.0 * up_days / counted, 2) if counted else None,
+            # 稼働率は「日数」ではなく「サンプル比」で算出する。
+            # 旧実装は 1 日に 144 サンプルあるうち 1 回でも down だとその日を丸ごと
+            # 非稼働扱いし、観測日数が少ないと 0.00% になっていた (過度に厳しい)。
+            # サンプル比なら 144 中 1 回 down は ~99.3% と妥当な値になる。
+            "uptime_pct": round(100.0 * up_samples / total_samples, 2) if total_samples else None,
         }
     return out
 
