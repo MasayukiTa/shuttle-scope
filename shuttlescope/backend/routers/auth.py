@@ -1159,7 +1159,10 @@ def me(request: Request, db: Session = Depends(get_db)):
     user_id = getattr(ctx, "user_id", None)
     user = db.get(User, user_id) if user_id else None
 
-    if ctx.role == "player" and user_id and user:
+    # player と llm は「実際に付与された grant のみ」。admin/analyst/coach は従来どおり
+    # GRANTABLE_PAGES 全付与 (信頼ロール)。llm 専用ユーザに badminton 系ページを
+    # frontend で見せない/到達させないため、player と同じ扱いにする。
+    if ctx.role in ("player", "llm") and user_id and user:
         page_access = _get_page_access(user_id, user, db)
     else:
         page_access = list(GRANTABLE_PAGES)
