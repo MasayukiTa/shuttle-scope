@@ -29,6 +29,7 @@ export default function LlmChatPage() {
   const [error, setError] = useState<string | null>(null)
   const [renamingId, setRenamingId] = useState<number | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
+  const [drawerOpen, setDrawerOpen] = useState(false) // モバイル会話ドロワー (<md)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const refreshConversations = useCallback(async () => {
@@ -59,11 +60,32 @@ export default function LlmChatPage() {
     if (el) el.scrollTop = el.scrollHeight
   }, [messages, streamText, streaming])
 
+  // ドロワーを開いている間は背面スクロールをロック + Esc で閉じる。
+  useEffect(() => {
+    if (!drawerOpen) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape') setDrawerOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.body.style.overflow = prev
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [drawerOpen])
+
   const onNewChat = useCallback(async () => {
     setActiveId(null)
     setMessages([])
     setInput('')
     setError(null)
+    setDrawerOpen(false)
+  }, [])
+
+  const onSelectConversation = useCallback((id: number) => {
+    setActiveId(id)
+    setDrawerOpen(false)
   }, [])
 
   const onSend = useCallback(async () => {
@@ -170,85 +192,65 @@ export default function LlmChatPage() {
     }
   }
 
+  // デスクトップ aside とモバイルドロワーで同じ状態/ハンドラを共有 (state はフォークしない)。
+  const listProps = {
+    conversations,
+    activeId,
+    renamingId,
+    renameDraft,
+    onNewChat,
+    onSelectConversation,
+    onDelete,
+    startRename,
+    cancelRename,
+    commitRename,
+    setRenameDraft,
+  }
+
   return (
-    <div className="flex h-[calc(100vh-3.5rem)] bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
-      {/* 会話サイドバー */}
+    <div className="flex h-full bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
+      {/* 会話サイドバー (デスクトップ) */}
       <aside className="hidden md:flex w-64 shrink-0 flex-col border-r border-slate-200 dark:border-slate-700">
-        <button
-          onClick={onNewChat}
-          className="m-3 inline-flex items-center justify-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-bold text-white hover:bg-blue-700"
-        >
-          <MIcon name="add" size={18} ariaHidden className="text-white" />
-          {t('llm.new_chat')}
-        </button>
-        <div className="flex-1 overflow-y-auto px-2 pb-3">
-          {conversations.map((c) => (
-            <div
-              key={c.id}
-              className={`group flex items-center gap-1 rounded-md px-2 py-2 text-sm ${
-                renamingId === c.id ? '' : 'cursor-pointer'
-              } ${
-                c.id === activeId
-                  ? 'bg-slate-100 dark:bg-slate-800'
-                  : 'hover:bg-slate-50 dark:hover:bg-slate-800/60'
-              }`}
-              onClick={() => { if (renamingId !== c.id) setActiveId(c.id) }}
-            >
-              <MIcon name="forum" size={16} ariaHidden className="text-slate-400 shrink-0" />
-              {renamingId === c.id ? (
-                <input
-                  autoFocus
-                  value={renameDraft}
-                  onChange={(e) => setRenameDraft(e.target.value)}
-                  onClick={(e) => e.stopPropagation()}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') { e.preventDefault(); commitRename(c.id) }
-                    else if (e.key === 'Escape') { e.preventDefault(); cancelRename() }
-                  }}
-                  onBlur={() => commitRename(c.id)}
-                  maxLength={200}
-                  placeholder={t('llm.rename_placeholder')}
-                  aria-label={t('llm.rename')}
-                  className="flex-1 min-w-0 rounded border border-blue-500 bg-white dark:bg-slate-900 px-1.5 py-0.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              ) : (
-                <span className="flex-1 truncate">{c.title}</span>
-              )}
-              {renamingId === c.id ? (
-                <button
-                  onClick={(e) => { e.stopPropagation(); commitRename(c.id) }}
-                  className="text-slate-400 hover:text-blue-600 dark:hover:text-blue-400"
-                  aria-label={t('llm.save')}
-                  title={t('llm.save')}
-                >
-                  <MIcon name="check" size={16} ariaHidden />
-                </button>
-              ) : (
-                <button
-                  onClick={(e) => { e.stopPropagation(); startRename(c) }}
-                  className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400"
-                  aria-label={t('llm.rename')}
-                  title={t('llm.rename')}
-                >
-                  <MIcon name="edit" size={16} ariaHidden />
-                </button>
-              )}
+        <ConversationList {...listProps} />
+      </aside>
+
+      {/* 会話ドロワー (モバイル <md): 左スライドイン + 暗転バックドロップ */}
+      {drawerOpen && (
+        <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true" aria-label={t('llm.conversations')}>
+          <button
+            type="button"
+            aria-label={t('llm.close')}
+            onClick={() => setDrawerOpen(false)}
+            className="absolute inset-0 bg-black/40"
+          />
+          <div className="absolute inset-y-0 left-0 flex w-72 max-w-[80%] flex-col bg-white dark:bg-slate-900 shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 px-3 py-2.5">
+              <span className="font-bold text-sm">{t('llm.conversations')}</span>
               <button
-                onClick={(e) => { e.stopPropagation(); onDelete(c.id) }}
-                className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500"
-                aria-label={t('llm.delete')}
-                title={t('llm.delete')}
+                onClick={() => setDrawerOpen(false)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                aria-label={t('llm.close')}
+                title={t('llm.close')}
               >
-                <MIcon name="delete" size={16} ariaHidden />
+                <MIcon name="close" size={20} ariaHidden />
               </button>
             </div>
-          ))}
+            <ConversationList {...listProps} />
+          </div>
         </div>
-      </aside>
+      )}
 
       {/* チャット本体 */}
       <main className="flex flex-1 flex-col min-w-0">
         <header className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-700 px-4 py-2.5">
+          <button
+            onClick={() => setDrawerOpen(true)}
+            className="md:hidden inline-flex h-10 w-10 -ml-2 items-center justify-center rounded-md text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+            aria-label={t('llm.open_conversations')}
+            title={t('llm.open_conversations')}
+          >
+            <MIcon name="menu" size={22} ariaHidden />
+          </button>
           <MIcon name="smart_toy" size={20} ariaHidden className="text-blue-600" />
           <span className="font-bold">{t('llm.title')}</span>
           {config?.model && (
@@ -256,7 +258,7 @@ export default function LlmChatPage() {
           )}
         </header>
 
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+        <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-3">
           {messages.length === 0 && !streamText && !streaming && (
             <div className="flex h-full flex-col items-center justify-center text-center text-slate-400">
               <MIcon name="smart_toy" size={40} ariaHidden className="mb-2" />
@@ -290,12 +292,12 @@ export default function LlmChatPage() {
               rows={1}
               placeholder={t('llm.placeholder')}
               disabled={sending}
-              className="w-full resize-none rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 pr-12 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
+              className="w-full resize-none rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 pr-14 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
             />
             <button
               onClick={onSend}
               disabled={sending || !input.trim()}
-              className="absolute right-2 bottom-2 inline-flex h-9 w-9 items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+              className="absolute right-1.5 bottom-1.5 inline-flex h-10 w-10 items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
               aria-label={t('llm.send')}
               title={t('llm.send')}
             >
@@ -305,6 +307,111 @@ export default function LlmChatPage() {
         </div>
       </main>
     </div>
+  )
+}
+
+// 会話リスト本体 (new-chat ボタン + 会話行)。デスクトップ aside とモバイルドロワーで共有。
+interface ConversationListProps {
+  conversations: LlmConversation[]
+  activeId: number | null
+  renamingId: number | null
+  renameDraft: string
+  onNewChat: () => void
+  onSelectConversation: (id: number) => void
+  onDelete: (id: number) => void
+  startRename: (c: LlmConversation) => void
+  cancelRename: () => void
+  commitRename: (id: number) => void
+  setRenameDraft: (v: string) => void
+}
+
+function ConversationList({
+  conversations,
+  activeId,
+  renamingId,
+  renameDraft,
+  onNewChat,
+  onSelectConversation,
+  onDelete,
+  startRename,
+  cancelRename,
+  commitRename,
+  setRenameDraft,
+}: ConversationListProps) {
+  const { t } = useTranslation()
+  return (
+    <>
+      <button
+        onClick={onNewChat}
+        className="m-3 inline-flex min-h-[44px] items-center justify-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-bold text-white hover:bg-blue-700"
+      >
+        <MIcon name="add" size={18} ariaHidden className="text-white" />
+        {t('llm.new_chat')}
+      </button>
+      <div className="flex-1 overflow-y-auto px-2 pb-3">
+        {conversations.map((c) => (
+          <div
+            key={c.id}
+            className={`group flex items-center gap-1 rounded-md px-2 py-2 text-sm ${
+              renamingId === c.id ? '' : 'cursor-pointer'
+            } ${
+              c.id === activeId
+                ? 'bg-slate-100 dark:bg-slate-800'
+                : 'hover:bg-slate-50 dark:hover:bg-slate-800/60'
+            }`}
+            onClick={() => { if (renamingId !== c.id) onSelectConversation(c.id) }}
+          >
+            <MIcon name="forum" size={16} ariaHidden className="text-slate-400 shrink-0" />
+            {renamingId === c.id ? (
+              <input
+                autoFocus
+                value={renameDraft}
+                onChange={(e) => setRenameDraft(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); commitRename(c.id) }
+                  else if (e.key === 'Escape') { e.preventDefault(); cancelRename() }
+                }}
+                onBlur={() => commitRename(c.id)}
+                maxLength={200}
+                placeholder={t('llm.rename_placeholder')}
+                aria-label={t('llm.rename')}
+                className="flex-1 min-w-0 rounded border border-blue-500 bg-white dark:bg-slate-900 px-1.5 py-0.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            ) : (
+              <span className="flex-1 truncate">{c.title}</span>
+            )}
+            {renamingId === c.id ? (
+              <button
+                onClick={(e) => { e.stopPropagation(); commitRename(c.id) }}
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center text-slate-400 hover:text-blue-600 dark:hover:text-blue-400"
+                aria-label={t('llm.save')}
+                title={t('llm.save')}
+              >
+                <MIcon name="check" size={16} ariaHidden />
+              </button>
+            ) : (
+              <button
+                onClick={(e) => { e.stopPropagation(); startRename(c) }}
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 opacity-100 md:opacity-0 md:group-hover:opacity-100"
+                aria-label={t('llm.rename')}
+                title={t('llm.rename')}
+              >
+                <MIcon name="edit" size={16} ariaHidden />
+              </button>
+            )}
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete(c.id) }}
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center text-slate-400 hover:text-red-500 opacity-100 md:opacity-0 md:group-hover:opacity-100"
+              aria-label={t('llm.delete')}
+              title={t('llm.delete')}
+            >
+              <MIcon name="delete" size={16} ariaHidden />
+            </button>
+          </div>
+        ))}
+      </div>
+    </>
   )
 }
 

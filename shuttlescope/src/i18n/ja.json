@@ -2,6 +2,9 @@
   "llm": {
     "title": "LLM チャット",
     "new_chat": "新しいチャット",
+    "conversations": "会話一覧",
+    "open_conversations": "会話一覧を開く",
+    "close": "閉じる",
     "delete": "削除",
     "placeholder": "メッセージを入力… (Enter で送信 / Shift+Enter で改行)",
     "send": "送信",
