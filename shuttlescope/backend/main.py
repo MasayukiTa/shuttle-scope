@@ -1883,8 +1883,12 @@ class GlobalAuthMiddleware(BaseHTTPMiddleware):
                     media_type="application/json",
                 )
             # mfa/* パスは継続。MFA 自体のチェックはハンドラに任せる。
-        elif token_role not in ("admin", "analyst", "coach", "player", "demo"):
+        elif token_role not in ("admin", "analyst", "coach", "player", "demo", "llm"):
             # 想定外 role (壊れた JWT 等) は拒否
+            # NOTE: 新しい role を追加したら必ずこの whitelist にも追加すること。
+            # loopback 直結リクエストは上の ALLOW_LOOPBACK_NO_AUTH 分岐で本 middleware を
+            # バイパスするため、ここの抜けは「localhost では 200 / nginx 経由では 401」
+            # という再現しづらい形 (= LLM role login loop, 2026-06-05) で露見する。
             return StarletteResponse(
                 '{"detail":"トークンの role が不正です"}',
                 status_code=401,
