@@ -1535,7 +1535,7 @@ def create_user(body: UserCreate, request: Request, db: Session = Depends(get_db
     ctx = get_auth(request)
     if not (ctx.is_admin or ctx.is_analyst):
         raise HTTPException(status_code=403, detail="ユーザー作成は admin / analyst のみ可能です")
-    allowed_roles = {"admin", "analyst", "coach", "player", "demo"}
+    allowed_roles = {"admin", "analyst", "coach", "player", "demo", "llm"}
     # role は string の完全一致のみ許可（list/空白混入/enum-bypass を遮断）
     if not isinstance(body.role, str) or body.role not in allowed_roles:
         raise HTTPException(status_code=422, detail=f"invalid role: {body.role!r}")
@@ -1760,7 +1760,7 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
         user.username = login_id
     # role は admin のみ書換可能 (上で既にガード済なのでここでは admin 限定で適用)
     if body.role is not None and ctx.is_admin:
-        if body.role not in ("admin", "analyst", "coach", "player", "demo"):
+        if body.role not in ("admin", "analyst", "coach", "player", "demo", "llm"):
             raise HTTPException(status_code=422, detail=f"invalid role: {body.role}")
         user.role = body.role
     # team_name / player_id は admin のみ書換可能 (上でガード済)
