@@ -5,8 +5,6 @@ import { API_BASE_URL, apiGet, apiPost, apiPatch, apiDelete } from './client'
 export interface LlmConversation {
   id: number
   title: string
-  provider?: string | null
-  model?: string | null
   created_at?: string | null
   last_used_at?: string | null
 }
@@ -20,17 +18,17 @@ export interface LlmMessage {
 }
 
 export interface LlmConfig {
-  provider: string
-  model: string
   configured: boolean
   streaming: boolean
+  reasoning_available: boolean
 }
 
+// SSE イベント種別。reasoning は推論モデルの思考過程 (chain-of-thought) をライブ配信する (永続化されない)。
 export type StreamEvent = {
-  type: 'start' | 'delta' | 'done' | 'error'
+  type: 'start' | 'delta' | 'reasoning' | 'done' | 'error'
   content?: string
   message?: string
-  model?: string
+  thinking?: boolean
 }
 
 // client.ts の authHeaders と同等 (token 優先、無ければ X-Role フォールバック)。
@@ -84,13 +82,14 @@ export async function streamMessage(
   content: string,
   onEvent: (e: StreamEvent) => void,
   signal?: AbortSignal,
+  thinking = false,
 ): Promise<void> {
   let resp: Response
   try {
     resp = await fetch(`${API_BASE_URL}/llm/conversations/${conversationId}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ content, thinking }),
       signal,
     })
   } catch (e) {

@@ -23,6 +23,8 @@
     "cancel": "Cancel",
     "copy": "Copy",
     "copied": "Copied",
+    "think_deeply": "Think deeply",
+    "thinking_process": "Thinking",
     "error": {
       "create": "Failed to create the conversation.",
       "generate": "Failed to generate a response.",
