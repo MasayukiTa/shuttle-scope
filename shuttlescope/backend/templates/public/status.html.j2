@@ -75,6 +75,25 @@
     .public-status-page .shell{padding:18px 14px 44px}
     .ss-hero{padding:18px}
   }
+  /* コンポーネント一覧 (claude status 風) */
+  .ss-components{background:rgba(255,255,255,.95);border:1px solid #dce7f2;border-radius:14px;overflow:hidden;box-shadow:0 6px 18px rgba(18,54,90,.06)}
+  .ss-comp{display:flex;align-items:center;gap:12px;padding:13px 18px;border-top:1px solid #eef3f9}
+  .ss-comp:first-child{border-top:none}
+  .ss-comp-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;background:#9aa9bb}
+  .ss-comp[data-st="operational"] .ss-comp-dot{background:#0f9d6b;box-shadow:0 0 0 3px rgba(15,157,107,.18)}
+  .ss-comp[data-st="degraded"] .ss-comp-dot{background:#d97706;box-shadow:0 0 0 3px rgba(217,119,6,.18)}
+  .ss-comp[data-st="down"] .ss-comp-dot{background:#dc2626;box-shadow:0 0 0 3px rgba(220,38,38,.18)}
+  .ss-comp-name{font-weight:700;color:#11314d;font-size:.98rem}
+  .ss-comp-detail{color:#5d728a;font-size:.82rem;font-variant-numeric:tabular-nums}
+  .ss-comp-right{margin-left:auto;display:flex;align-items:center;gap:12px}
+  .ss-comp-uptime{color:#5d728a;font-size:.8rem;font-variant-numeric:tabular-nums}
+  .ss-comp-badge{font-size:.72rem;font-weight:700;border-radius:6px;padding:3px 9px;color:#fff;white-space:nowrap}
+  .ss-comp-badge.st-operational{background:#0f9d6b}
+  .ss-comp-badge.st-degraded{background:#d97706}
+  .ss-comp-badge.st-down{background:#dc2626}
+  .ss-comp-badge.st-unknown{background:#7a8a9c}
+  .ss-comp-note{color:#7a8a9c;font-size:.8rem;margin:8px 2px 0}
+  @media(max-width:600px){.ss-comp{flex-wrap:wrap;gap:8px}.ss-comp-detail{width:100%;order:3;padding-left:22px}}
 </style>
 {% endblock %}
 
@@ -100,6 +119,26 @@
       <span class="ss-hsub">{% if _is_en %}Last checked: {% else %}最終確認: {% endif %}<time class="ss-time" datetime="{{ status.checked_at }}">{{ status.checked_at }}</time></span>
     </div>
   </div>
+
+  {# システム構成コンポーネント (status.claude.com 風: 現在状態 + 負荷 + 24h 稼働率) #}
+  {% if status.components %}
+  {% set comp_label = {'operational': ('正常','Operational'), 'degraded': ('低下','Degraded'), 'down': ('停止','Down'), 'unknown': ('不明','Unknown')} %}
+  <h2>{% if _is_en %}Components{% else %}システム構成{% endif %}</h2>
+  <div class="ss-components">
+    {% for c in status.components %}
+    <div class="ss-comp" data-st="{{ c.status }}">
+      <span class="ss-comp-dot"></span>
+      <span class="ss-comp-name">{{ c.name_en if _is_en else c.name_ja }}</span>
+      {% if c.detail %}<span class="ss-comp-detail">{{ c.detail }}</span>{% endif %}
+      <span class="ss-comp-right">
+        {% if c.uptime_24h is not none %}<span class="ss-comp-uptime" title="{% if _is_en %}24h uptime{% else %}24時間稼働率{% endif %}">{{ '%.1f'|format(c.uptime_24h) }}%</span>{% endif %}
+        <span class="ss-comp-badge st-{{ c.status }}">{{ comp_label.get(c.status, (c.status, c.status))[1 if _is_en else 0] }}</span>
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+  <p class="ss-comp-note">{% if _is_en %}Load metrics are sampled about once a minute. Uptime is over the last 24h.{% else %}負荷は約1分ごとに自動サンプリングしています。稼働率は直近24時間の割合です。{% endif %}</p>
+  {% endif %}
 
   {# 予定メンテナンス #}
   {% if status.maintenance %}
@@ -129,6 +168,7 @@
       <span class="ss-badge sev-{{ i.severity }}">{{ sev_label.get(i.severity, (i.severity, i.severity))[1 if _is_en else 0] }}</span>
       <span class="ss-badge st-{{ i.status }}">{{ inc_st_label.get(i.status, (i.status, i.status))[1 if _is_en else 0] }}</span>
       {% if i.component %}<span class="ss-badge outline">{{ i.component }}</span>{% endif %}
+      {% if i.source == 'auto' %}<span class="ss-badge outline">{% if _is_en %}auto-detected{% else %}自動検知{% endif %}</span>{% endif %}
     </div>
     {% if i.reason %}<div class="ss-reason">{{ i.reason }}</div>{% endif %}
     <div class="ss-meta">

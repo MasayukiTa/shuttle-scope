@@ -652,7 +652,7 @@ def _render_status_str(request: Request, *, lang: str = "ja", preview: bool = Fa
         status = compute_public_status(db)
     else:
         status = {
-            "overall": "operational", "active_incidents": [],
+            "overall": "operational", "components": [], "active_incidents": [],
             "recent_incidents": [], "maintenance": [], "announcements": [], "checked_at": "",
         }
     canonical_path = "/en/status" if lang == "en" else "/status"
