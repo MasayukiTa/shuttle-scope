@@ -180,7 +180,7 @@
   {% endif %}
 
   <p class="ss-checked">
-    <span>{% if _is_en %}Times are shown in your local timezone.{% else %}時刻はお使いの環境のタイムゾーンで表示されます。{% endif %}</span>
+    <span>{% if _is_en %}All times are shown in Japan Standard Time (JST).{% else %}時刻はすべて日本標準時 (JST) で表示しています。{% endif %}</span>
     <span class="ss-refresh-note">{% if _is_en %}This page refreshes automatically when the status changes.{% else %}状況が変化すると自動的に再読み込みされます。{% endif %}</span>
   </p>
 </div>
@@ -188,15 +188,23 @@
 
 {% block extra_scripts %}
 <script>
-// ISO 時刻をローカルタイムゾーンの読みやすい表記に変換（サーバは UTC ISO 文字列を出力）。
+// サーバは naive UTC の ISO 文字列 (例 "2026-06-05T01:23:45", オフセット無し) を出力する。
+// これを必ず JST (Asia/Tokyo) の "yyyy-MM-dd HH:mm:ss (JST)" で表示する。
+// 注意: オフセット無し ISO を new Date() に渡すとブラウザのローカル時刻と解釈されるため、
+// タイムゾーン指定が無い場合は 'Z' を付けて UTC として解釈させる。
 (function(){
   function fmt(iso){
     if(!iso) return '';
-    var d=new Date(iso);
+    var s=(/[zZ]$|[+-]\d\d:?\d\d$/.test(iso)) ? iso : iso+'Z';  // naive は UTC とみなす
+    var d=new Date(s);
     if(isNaN(d.getTime())) return iso;
-    try{return d.toLocaleString(document.documentElement.lang==='en'?'en-US':'ja-JP',
-      {year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});}
-    catch(e){return iso;}
+    try{
+      var parts=new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',
+        year:'numeric',month:'2-digit',day:'2-digit',
+        hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).formatToParts(d);
+      var m={};parts.forEach(function(p){m[p.type]=p.value;});
+      return m.year+'-'+m.month+'-'+m.day+' '+m.hour+':'+m.minute+':'+m.second+' (JST)';
+    }catch(e){return iso;}
   }
   document.querySelectorAll('time.ss-time').forEach(function(t){
     var iso=t.getAttribute('datetime');var s=fmt(iso);if(s)t.textContent=s;
