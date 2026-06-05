@@ -96,6 +96,24 @@ type NavItem = {
   badge?: number | null
 }
 
+// サイドバー折りたたみ状態の localStorage キー。
+// 値は 'true' / 'false' の文字列。未保存 (=null) のときは未設定扱いとし、
+// 「/llm 初回はデフォルト折りたたみ」のヒューリスティックを適用する。
+const SIDEBAR_COLLAPSED_KEY = 'ss.sidebar.collapsed'
+
+function readStoredSidebarCollapsed(): boolean | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY)
+    if (raw === 'true') return true
+    if (raw === 'false') return false
+    return null
+  } catch {
+    // localStorage が使えない (プライベートモード等) 場合は未設定扱い。
+    return null
+  }
+}
+
 function Sidebar() {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -106,6 +124,44 @@ function Sidebar() {
   const isAnnotatorPage = location.pathname.startsWith('/annotator')
   // Phase C LiveInputPage もフルブリード扱い (サイドバー/ボトムナビ非表示)
   const isFullBleedPage = isAnnotatorPage || location.pathname.startsWith('/live')
+  const isLlmPage = location.pathname === '/llm' || location.pathname.startsWith('/llm/')
+
+  // ユーザが明示的にトグルしたか (= localStorage に保存値があるか)。
+  // 明示選択があるとそれが最優先で、ルート依存の自動デフォルトは適用しない。
+  const [hasExplicitChoice, setHasExplicitChoice] = useState<boolean>(
+    () => readStoredSidebarCollapsed() !== null,
+  )
+
+  // 折りたたみ状態。デスクトップ (md+) でのみ意味を持つ。
+  // 初期値: 保存値があればそれを優先。未保存なら /llm のときだけデフォルト折りたたみ
+  // (チャットに全幅を割り当てるため)。それ以外のルートは従来通り展開。
+  // 一度ユーザがトグルすると localStorage に永続化され、以後は保存値が優先される。
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    const stored = readStoredSidebarCollapsed()
+    if (stored !== null) return stored
+    return isLlmPage
+  })
+
+  // 明示選択がまだ無い間は、ルートに応じてデフォルトを追従させる:
+  // /llm に入ったら自動で折りたたみ、出たら展開に戻す。
+  // ユーザが一度でもトグルしたら (hasExplicitChoice=true) この自動制御は止まる。
+  useEffect(() => {
+    if (hasExplicitChoice) return
+    setCollapsed(isLlmPage)
+  }, [isLlmPage, hasExplicitChoice])
+
+  const toggleCollapsed = () => {
+    setHasExplicitChoice(true)
+    setCollapsed((prev) => {
+      const next = !prev
+      try {
+        window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next))
+      } catch {
+        // 永続化に失敗してもセッション内の動作は維持する。
+      }
+      return next
+    })
+  }
   const unreadCountQuery = useQuery({
     queryKey: ['public-inquiries-unread-count'],
     queryFn: publicInquiryUnreadCount,
@@ -149,6 +205,23 @@ function Sidebar() {
 
   const sidebarBg = isLight ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'
 
+  // 折りたたみ時はあらゆるブレークポイントでアイコンのみのスリムレール (w-16) に固定し、
+  // lg+ のラベル展開 (w-56) を抑止する。展開時は従来のレスポンシブ挙動を完全維持する。
+  //   - railWidthCls : コンテナ幅
+  //   - rowLayoutCls : nav/ボタン 1 行のレイアウト (アイコン中央 or アイコン+ラベル横並び)
+  //   - logoBarCls   : ロゴ帯の整列
+  //   - showFullLabel: lg+ フルラベル span を出すか
+  //   - showShortLabel: md 短縮ラベル span を出すか
+  const railWidthCls = collapsed ? 'w-16' : 'w-16 lg:w-56'
+  const rowLayoutCls = collapsed
+    ? 'flex-col justify-center'
+    : 'flex-col lg:flex-row lg:gap-3 lg:px-3 lg:text-sm'
+  const logoBarCls = collapsed
+    ? 'justify-center'
+    : 'justify-center lg:justify-start lg:px-3 lg:gap-2'
+  const showFullLabel = !collapsed
+  const showShortLabel = !collapsed
+
   const handleLogout = async () => {
     try {
       await authLogout()
@@ -168,21 +241,44 @@ function Sidebar() {
        *
        * 全幅 56 (~224px) は SPEC が想定していた iPad 横持ち向け labeled sidebar の幅。
        */}
-      <div className={clsx('hidden md:flex w-16 lg:w-56 flex-col border-r', sidebarBg, isFullBleedPage && 'md:hidden')}>
+      <div className={clsx('hidden md:flex flex-col border-r transition-[width] duration-150', railWidthCls, sidebarBg, isFullBleedPage && 'md:hidden')}>
         {/* ロゴ帯: theme に応じて bg と text を切り替える。
            ダークモードでフレームだけ白く残るバグ修正 (2026-05-19)。
-           favicon が白背景でも、コンテナ側を theme に合わせ、画像はそのまま乗せる。 */}
+           favicon が白背景でも、コンテナ側を theme に合わせ、画像はそのまま乗せる。
+           折りたたみ時 (collapsed) はロゴ中央寄せ・アプリ名非表示。 */}
         <div className={clsx(
-          'w-full flex items-center justify-center lg:justify-start lg:px-3 lg:gap-2 py-2 border-b',
+          'w-full flex items-center py-2 border-b',
+          logoBarCls,
           isLight ? 'bg-white border-gray-200' : 'bg-gray-900 border-gray-700',
         )}>
           <img src="/favicon.png" alt="ShuttleScope" className="w-10 h-10 object-contain" />
-          <span className={clsx(
-            'hidden lg:inline text-sm font-bold truncate',
-            isLight ? 'text-gray-900' : 'text-gray-100',
-          )}>{t('app.name')}</span>
+          {showFullLabel && (
+            <span className={clsx(
+              'hidden lg:inline text-sm font-bold truncate',
+              isLight ? 'text-gray-900' : 'text-gray-100',
+            )}>{t('app.name')}</span>
+          )}
         </div>
-        <div className="pt-4" />
+
+        {/* 折りたたみ/展開トグル。Claude/ChatGPT 風。MIcon のみ (emoji/SVG 不使用)。
+           collapsed: menu (≡) を出して「開く」を示す / expanded: menu_open を出して「閉じる」。
+           aria-label は i18n キー未整備のため当面は素の文字列 (英語固定) を使用。 */}
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-expanded={!collapsed}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          className={clsx(
+            'mx-2 mt-2 flex items-center gap-1 p-2 rounded text-xs transition-colors',
+            collapsed ? 'justify-center' : 'justify-center lg:justify-start lg:gap-3 lg:px-3',
+            isLight ? 'text-gray-500 hover:text-gray-800 hover:bg-gray-100' : 'text-gray-400 hover:text-white hover:bg-gray-700',
+          )}
+        >
+          <MIcon name={collapsed ? 'menu' : 'menu_open'} size={20} className="shrink-0" />
+        </button>
+
+        <div className="pt-2" />
         {navItems.map(({ to, label, shortLabel, icon, badge }) => (
           <NavLink
             key={to}
@@ -190,9 +286,10 @@ function Sidebar() {
             title={label}
             className={({ isActive }) =>
               clsx(
-                // md は icon+短縮ラベル縦積み、lg+ は icon+フルラベル横並び
+                // 展開時: md は icon+短縮ラベル縦積み、lg+ は icon+フルラベル横並び。
+                // 折りたたみ時: 全幅でアイコン中央のみ。
                 'flex items-center gap-1 p-2 rounded text-xs w-full',
-                'flex-col lg:flex-row lg:gap-3 lg:px-3 lg:text-sm',
+                rowLayoutCls,
                 isActive
                   ? (isLight ? 'text-blue-600 bg-blue-50' : 'text-blue-400 bg-blue-900/30')
                   : (isLight ? 'text-gray-500 hover:text-gray-800 hover:bg-gray-100' : 'text-gray-400 hover:text-white hover:bg-gray-700')
@@ -207,9 +304,13 @@ function Sidebar() {
                 </span>
               ) : null}
             </div>
-            {/* md: 短縮 / lg+: フルラベル */}
-            <span className="text-[9px] leading-none lg:hidden">{shortLabel ?? label.slice(0, 4)}</span>
-            <span className="hidden lg:inline truncate">{label}</span>
+            {/* md: 短縮 / lg+: フルラベル (折りたたみ時はどちらも非表示) */}
+            {showShortLabel && (
+              <span className="text-[9px] leading-none lg:hidden">{shortLabel ?? label.slice(0, 4)}</span>
+            )}
+            {showFullLabel && (
+              <span className="hidden lg:inline truncate">{label}</span>
+            )}
           </NavLink>
         ))}
 
@@ -219,26 +320,34 @@ function Sidebar() {
             title={t('auth.logout')}
             className={clsx(
               'mb-2 flex items-center gap-1 p-2 rounded text-xs w-full transition-colors',
-              'flex-col lg:flex-row lg:gap-3 lg:px-3 lg:text-sm',
+              rowLayoutCls,
               isLight ? 'text-gray-500 hover:text-red-700 hover:bg-red-50' : 'text-gray-400 hover:text-red-300 hover:bg-gray-700',
             )}
           >
             <MIcon name="logout" size={18} className="shrink-0" />
-            <span className="text-[9px] leading-none lg:hidden">{t('auth.logout')}</span>
-            <span className="hidden lg:inline">{t('auth.logout')}</span>
+            {showShortLabel && (
+              <span className="text-[9px] leading-none lg:hidden">{t('auth.logout')}</span>
+            )}
+            {showFullLabel && (
+              <span className="hidden lg:inline">{t('auth.logout')}</span>
+            )}
           </button>
           <button
             onClick={toggleTheme}
             title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
             className={clsx(
               'flex items-center gap-1 p-2 rounded text-xs w-full transition-colors',
-              'flex-col lg:flex-row lg:gap-3 lg:px-3 lg:text-sm',
+              rowLayoutCls,
               isLight ? 'text-gray-500 hover:text-gray-800 hover:bg-gray-100' : 'text-gray-400 hover:text-white hover:bg-gray-700',
             )}
           >
             {theme === 'dark' ? <MIcon name="light_mode" size={18} className="shrink-0" /> : <MIcon name="dark_mode" size={18} className="shrink-0" />}
-            <span className="text-[9px] leading-none lg:hidden">{theme === 'dark' ? 'Light' : 'Dark'}</span>
-            <span className="hidden lg:inline">{theme === 'dark' ? 'Light' : 'Dark'}</span>
+            {showShortLabel && (
+              <span className="text-[9px] leading-none lg:hidden">{theme === 'dark' ? 'Light' : 'Dark'}</span>
+            )}
+            {showFullLabel && (
+              <span className="hidden lg:inline">{theme === 'dark' ? 'Light' : 'Dark'}</span>
+            )}
           </button>
         </div>
 
