@@ -2640,9 +2640,9 @@ export function SettingsPage() {
               <p className={`text-xs ${textMuted} mb-3`}>{t('settings.ui.theme_hint')}</p>
               <div className="flex gap-3">
                 {([
-                  { mode: 'dark' as const, label: t('settings.ui.dark'), Icon: Moon },
-                  { mode: 'light' as const, label: t('settings.ui.light'), Icon: Sun },
-                ]).map(({ mode, label, Icon }) => (
+                  { mode: 'dark' as const, label: t('settings.ui.dark'), icon: 'dark_mode' },
+                  { mode: 'light' as const, label: t('settings.ui.light'), icon: 'light_mode' },
+                ]).map(({ mode, label, icon }) => (
                   <button
                     key={mode}
                     onClick={() => setTheme(mode)}
@@ -2654,7 +2654,7 @@ export function SettingsPage() {
                           : 'border-gray-600 bg-gray-800 text-gray-300 hover:border-gray-500'
                     }`}
                   >
-                    <Icon size={16} />
+                    <MIcon name={icon} size={16} />
                     <span className="font-medium text-sm">{label}</span>
                     {theme === mode && <MIcon name="check_circle" size={14} className="text-blue-400 ml-auto" />}
                   </button>
