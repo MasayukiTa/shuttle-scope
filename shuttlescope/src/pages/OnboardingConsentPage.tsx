@@ -180,7 +180,7 @@ export default function OnboardingConsentPage({
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="min-h-[100svh] flex items-center justify-center bg-gray-50 dark:bg-gray-900 px-4">
         <div className="text-gray-700 dark:text-gray-200">{t('common.loading') || 'Loading...'}</div>
       </div>
     )
@@ -188,7 +188,7 @@ export default function OnboardingConsentPage({
 
   if (!state) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="min-h-[100svh] flex items-center justify-center bg-gray-50 dark:bg-gray-900 px-4">
         <div className="text-red-600">{error || 'Failed to load consent state'}</div>
       </div>
     )
@@ -198,7 +198,10 @@ export default function OnboardingConsentPage({
   const tv = state.current_versions.terms
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8 px-4">
+    <div
+      className="min-h-[100svh] bg-gray-50 dark:bg-gray-900 py-8 px-4"
+      style={{ paddingBottom: 'max(2rem, env(safe-area-inset-bottom))' }}
+    >
       <div className="max-w-3xl mx-auto bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-6">
         <header className="border-b border-gray-200 dark:border-gray-700 pb-4">
           <div className="flex items-start justify-between gap-3">

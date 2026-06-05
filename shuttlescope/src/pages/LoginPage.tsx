@@ -241,11 +241,14 @@ export function LoginPage({ onLogin }: Props) {
     : 'border-gray-600 bg-gray-700 text-white'
   const labelCls = isLight ? 'text-gray-700' : 'text-gray-300'
   const mutedCls = isLight ? 'text-gray-500' : 'text-gray-400'
-  const fieldCls = `w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${inputCls}`
+  const fieldCls = `w-full border rounded-lg px-3 py-2.5 text-base min-h-[44px] focus:outline-none focus:ring-2 focus:ring-blue-500 ${inputCls}`
 
   return (
-    <div className={`min-h-screen flex items-center justify-center p-4 ${isLight ? 'bg-gray-100' : 'bg-gray-900'}`}>
-      <div className={`rounded-xl shadow-lg w-full max-w-md p-8 ${isLight ? 'bg-white' : 'bg-gray-800'}`}>
+    <div
+      className={`min-h-[100svh] flex items-center justify-center p-4 ${isLight ? 'bg-gray-100' : 'bg-gray-900'}`}
+      style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+    >
+      <div className={`rounded-xl shadow-lg w-full max-w-md p-6 sm:p-8 ${isLight ? 'bg-white' : 'bg-gray-800'}`}>
         <div className="text-center mb-6">
           <h1 className={`text-2xl font-bold ${isLight ? 'text-gray-800' : 'text-white'}`}>{t('app.name')}</h1>
           <p className={`text-sm mt-1 ${mutedCls}`}>{t('auth.subtitle')}</p>

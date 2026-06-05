@@ -48,7 +48,10 @@ export default function RegisterPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
+      <div
+        className="min-h-[100svh] flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4"
+        style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+      >
         <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4">
           <h1 className="text-xl font-bold">{t('auth.register.success_title')}</h1>
           <p className="text-sm text-gray-600 dark:text-gray-300">
@@ -63,7 +66,10 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
+    <div
+      className="min-h-[100svh] flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4"
+      style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+    >
       <form onSubmit={handleSubmit}
             className="max-w-md w-full bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4">
         <h1 className="text-xl font-bold">{t('auth.register.title')}</h1>
@@ -90,7 +96,8 @@ export default function RegisterPage() {
           </label>
           <input type="text" value={username} onChange={(e) => setUsername(e.target.value)}
                  required minLength={3} maxLength={64}
-                 className="w-full rounded border px-3 py-2 text-sm dark:bg-gray-700 dark:border-gray-600" />
+                 autoComplete="username" autoCapitalize="none" autoCorrect="off"
+                 className="w-full rounded border px-3 py-2.5 text-base min-h-[44px] dark:bg-gray-700 dark:border-gray-600" />
         </div>
 
         <div>
@@ -99,7 +106,8 @@ export default function RegisterPage() {
           </label>
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
                  required maxLength={255}
-                 className="w-full rounded border px-3 py-2 text-sm dark:bg-gray-700 dark:border-gray-600" />
+                 inputMode="email" autoComplete="email" autoCapitalize="none" autoCorrect="off"
+                 className="w-full rounded border px-3 py-2.5 text-base min-h-[44px] dark:bg-gray-700 dark:border-gray-600" />
         </div>
 
         <div>
@@ -108,7 +116,8 @@ export default function RegisterPage() {
           </label>
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
                  required minLength={8} maxLength={128}
-                 className="w-full rounded border px-3 py-2 text-sm dark:bg-gray-700 dark:border-gray-600" />
+                 autoComplete="new-password"
+                 className="w-full rounded border px-3 py-2.5 text-base min-h-[44px] dark:bg-gray-700 dark:border-gray-600" />
           <p className="mt-1 text-xs text-gray-500">{t('auth.register.password_hint')}</p>
         </div>
 
@@ -118,7 +127,8 @@ export default function RegisterPage() {
           </label>
           <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)}
                  maxLength={100}
-                 className="w-full rounded border px-3 py-2 text-sm dark:bg-gray-700 dark:border-gray-600" />
+                 autoComplete="name"
+                 className="w-full rounded border px-3 py-2.5 text-base min-h-[44px] dark:bg-gray-700 dark:border-gray-600" />
         </div>
 
         <div>
@@ -127,7 +137,8 @@ export default function RegisterPage() {
           </label>
           <input type="date" value={dob} onChange={(e) => setDob(e.target.value)}
                  max={new Date().toISOString().slice(0, 10)}
-                 className="w-full rounded border px-3 py-2 text-sm dark:bg-gray-700 dark:border-gray-600" />
+                 autoComplete="bday"
+                 className="w-full rounded border px-3 py-2.5 text-base min-h-[44px] dark:bg-gray-700 dark:border-gray-600" />
           <p className="mt-1 text-xs text-gray-500">
             {t('auth.register.dob_hint') ||
               '任意入力。AI 学習・研究利用への同意 UI で未成年配慮（PRIVACY §IX-ter）を適用するために使用します。'}
