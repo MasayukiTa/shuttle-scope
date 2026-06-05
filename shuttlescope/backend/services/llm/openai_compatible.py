@@ -29,6 +29,8 @@ def parse_sse_line(raw: str) -> Optional[Delta]:
     tool_calls = delta.get("tool_calls") or []
     return Delta(
         content=delta.get("content") or "",
+        # reasoning モデルは思考過程を reasoning_content (一部実装は reasoning) で返す。
+        reasoning=delta.get("reasoning_content") or delta.get("reasoning") or "",
         tool_call=tool_calls[0] if tool_calls else None,
         finish_reason=ch.get("finish_reason"),
     )
@@ -74,6 +76,6 @@ class OpenAICompatibleProvider(LLMProvider):
                     d = parse_sse_line(raw)
                     if d is None:
                         continue
-                    if d.finish_reason == "stop" and not d.content and not d.tool_call:
+                    if d.finish_reason == "stop" and not d.content and not d.tool_call and not d.reasoning:
                         break
                     yield d
