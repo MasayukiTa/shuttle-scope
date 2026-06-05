@@ -30,7 +30,7 @@ from backend.db.database import SessionLocal, get_db
 from backend.db.models import LlmConversation, LlmTurn, PlayerPageAccess
 from backend.services.llm import get_provider
 from backend.services.llm.base import ChatMessage
-from backend.services.llm.registry import provider_configured
+from backend.services.llm.registry import provider_configured, reasoning_available, reasoning_model
 from backend.utils.access_log import log_access
 from backend.utils.auth import get_auth
 
@@ -98,8 +98,9 @@ def _own_conversation(cid: int, ctx, db: Session) -> LlmConversation:
 
 
 def _conv_dict(c: LlmConversation) -> dict:
+    # provider / model は非開示: UI にも API レスポンスにも出さない (DB 列としては保持)。
     return {
-        "id": c.id, "title": c.title, "provider": c.provider, "model": c.model,
+        "id": c.id, "title": c.title,
         "created_at": c.created_at.isoformat() if c.created_at else None,
         "last_used_at": c.last_used_at.isoformat() if c.last_used_at else None,
     }
@@ -123,6 +124,8 @@ class ConversationCreate(BaseModel):
 class MessageCreate(BaseModel):
     model_config = {"extra": "forbid"}  # mass-assignment 防止
     content: str = Field(min_length=1, max_length=16000)
+    # 『深く考えるモード』: True なら reasoning モデル (LLM_REASONING_MODEL) で応答する。
+    thinking: bool = False
 
 
 class ConversationRename(BaseModel):
@@ -133,9 +136,9 @@ class ConversationRename(BaseModel):
 @router.get("/llm/config")
 def llm_config(request: Request, db: Session = Depends(get_db)):
     require_llm_access(request, db)
-    pr = get_provider()
-    return {"provider": pr.name.split(":")[0], "model": pr.model,
-            "configured": provider_configured(), "streaming": True}
+    # モデル/プロバイダ名は非開示。利用可否と reasoning トグルの可否のみ返す。
+    return {"configured": provider_configured(), "streaming": True,
+            "reasoning_available": reasoning_available()}
 
 
 @router.get("/llm/conversations")
@@ -220,14 +223,23 @@ def post_message(cid: int, body: MessageCreate, request: Request, db: Session = 
     turns = db.query(LlmTurn).filter(LlmTurn.conversation_id == c.id).order_by(LlmTurn.seq.asc()).all()
     history = _windowed_history(turns)
     system_prompt = c.system_prompt
-    provider_name, model, conv_id, assistant_seq = c.provider, c.model, c.id, last_seq + 2
+    # 『深く考えるモード』: thinking 指定かつ reasoning モデルが設定済みなら、会話の通常
+    # モデルではなく reasoning モデル (LLM_REASONING_MODEL) を使う。未設定なら通常モデル。
+    use_reasoning = bool(body.thinking) and reasoning_available()
+    model = reasoning_model() if use_reasoning else c.model
+    provider_name, conv_id, assistant_seq = c.provider, c.id, last_seq + 2
 
     def gen():
         acc = []
         try:
             pr = get_provider(provider=provider_name, model=model)
-            yield _sse({"type": "start", "model": pr.model})
+            # start: モデル名は非開示。reasoning モードか否かだけを伝える。
+            yield _sse({"type": "start", "thinking": use_reasoning})
             for d in pr.stream_chat(history, system=system_prompt, max_tokens=MAX_TOKENS):
+                # reasoning モデルの思考過程 (CoT) はライブ表示のみ。履歴には保存しない
+                # (DeepSeek 等は reasoning_content を後続リクエストに含めてはならない仕様)。
+                if d.reasoning:
+                    yield _sse({"type": "reasoning", "content": d.reasoning})
                 if d.content:
                     acc.append(d.content)
                     yield _sse({"type": "delta", "content": d.content})

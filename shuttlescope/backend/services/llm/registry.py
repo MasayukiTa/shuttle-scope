@@ -49,3 +49,14 @@ def provider_configured(provider: Optional[str] = None) -> bool:
     if provider == "local":
         return True
     return bool(_env("LLM_API_KEY", "NVIDIA_API_KEY", "OPENAI_API_KEY"))
+
+
+def reasoning_model() -> Optional[str]:
+    """『深く考えるモード』用の reasoning モデル名 (例: deepseek-reasoner)。
+    LLM_REASONING_MODEL 未設定なら None (= トグルは出さない / 通常モデルで応答)。"""
+    return _env("LLM_REASONING_MODEL")
+
+
+def reasoning_available(provider: Optional[str] = None) -> bool:
+    """reasoning モデルが設定済みかつプロバイダが利用可能なら True (UI トグル表示条件)。"""
+    return bool(reasoning_model()) and provider_configured(provider)

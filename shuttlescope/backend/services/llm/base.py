@@ -29,6 +29,9 @@ class ChatMessage:
 class Delta:
     """ストリーミングの増分トークン/イベント。"""
     content: str = ""
+    # reasoning モデル (DeepSeek-R1 / deepseek-reasoner 等) の思考過程 (chain-of-thought)。
+    # OpenAI 互換 delta の `reasoning_content` フィールド。回答 (content) とは別系統で届く。
+    reasoning: str = ""
     tool_call: Optional[Dict[str, Any]] = None
     finish_reason: Optional[str] = None
 
