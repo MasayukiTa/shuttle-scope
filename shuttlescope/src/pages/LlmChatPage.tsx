@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { MIcon } from '../components/common/MIcon'
+import { ChatMarkdown } from '../components/common/ChatMarkdown'
 import {
   createConversation,
   deleteConversation,
@@ -416,6 +417,8 @@ function ConversationList({
 }
 
 function Bubble({ role, content, pending }: { role: string; content: string; pending?: boolean }) {
+  const { t } = useTranslation()
+  const [copied, setCopied] = useState(false)
   const isUser = role === 'user'
   if (isUser) {
     return (
@@ -426,16 +429,35 @@ function Bubble({ role, content, pending }: { role: string; content: string; pen
       </div>
     )
   }
+  const onCopy = () => {
+    try {
+      navigator.clipboard?.writeText(content)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1500)
+    } catch { /* clipboard 非対応環境 (http 等) は無視 */ }
+  }
+  // assistant: 確定メッセージは Markdown 描画 (コードブロック/箇条書き等)。
+  // ストリーミング中 (pending) は再レイアウトのちらつきを避け素のテキスト + カーソル。
   return (
-    <div className="flex justify-start">
-      <div
-        className={`max-w-[85%] rounded-2xl rounded-tl-sm bg-slate-100 dark:bg-slate-800 px-3.5 py-2 text-sm leading-relaxed whitespace-pre-wrap break-words ${
-          pending ? 'opacity-90' : ''
-        }`}
-      >
-        {content}
-        {pending && <span className="ml-1 inline-block animate-pulse">▌</span>}
+    <div className="group flex flex-col items-start">
+      <div className={`max-w-[85%] rounded-2xl rounded-tl-sm bg-slate-100 dark:bg-slate-800 px-3.5 py-2 text-sm leading-relaxed break-words ${pending ? 'opacity-90' : ''}`}>
+        {pending ? (
+          <span className="whitespace-pre-wrap">{content}<span className="ml-1 inline-block animate-pulse">▌</span></span>
+        ) : (
+          <ChatMarkdown content={content} />
+        )}
       </div>
+      {!pending && content && (
+        <button
+          onClick={onCopy}
+          className="mt-1 inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs text-slate-400 transition-opacity hover:text-slate-600 dark:hover:text-slate-300 opacity-100 md:opacity-0 md:group-hover:opacity-100"
+          aria-label={t('llm.copy')}
+          title={t('llm.copy')}
+        >
+          <MIcon name={copied ? 'check' : 'content_copy'} size={14} ariaHidden />
+          {copied ? t('llm.copied') : t('llm.copy')}
+        </button>
+      )}
     </div>
   )
 }
