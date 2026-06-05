@@ -450,7 +450,7 @@ function MainLayout() {
   }
 
   return (
-    <div className="flex h-screen">
+    <div className="flex ss-app-shell">
       <Sidebar />
       <div className="flex-1 overflow-hidden ss-main-shell">
         <ErrorBoundary>
@@ -587,7 +587,7 @@ function ProtectedMainRoute() {
 
   if (checkingAuth) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--ss-bg-app, #111827)' }}>
+      <div className="min-h-[100svh] flex items-center justify-center" style={{ backgroundColor: 'var(--ss-bg-app, #111827)' }}>
         <div className="text-center space-y-3">
           <div className="text-2xl font-bold" style={{ color: 'var(--ss-text-primary, #f9fafb)' }}>{t('app.name')}</div>
           <p className="text-sm" style={{ color: 'var(--ss-text-muted, #9ca3af)' }}>{t('auto.App.k1')}</p>
@@ -657,7 +657,7 @@ function App() {
 
   if (!ready) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--ss-bg-app, #111827)' }}>
+      <div className="min-h-[100svh] flex items-center justify-center" style={{ backgroundColor: 'var(--ss-bg-app, #111827)' }}>
         <div className="text-center">
           <div className="text-3xl font-bold" style={{ color: 'var(--ss-text-primary, #f9fafb)' }}>{t('app.name')}</div>
           <div className="mt-6 flex items-center justify-center gap-2">
