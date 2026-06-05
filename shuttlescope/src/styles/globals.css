@@ -1065,6 +1065,15 @@ html[data-theme="light"] .ss-overlay-chip {
  *   - mobile (< 768px): pb = nav 56px + env(safe-area-inset-bottom)
  *   - md+: pb = 0 (デスクトップサイドバーで bottom nav 無し)
  */
+/* アプリ全体のルートシェル高さ。
+   100vh はモバイルブラウザ (iOS Safari / Android Chrome) で URL バー領域を含むため、
+   最下部の UI (例: LLM チャット入力欄) がブラウザ chrome の裏に隠れて操作不能になる。
+   100dvh (動的ビューポート高さ) は URL バー表示状態に追従し最下部が常に見える。
+   dvh 非対応の古いブラウザ向けに 100vh を先に宣言してフォールバックする。 */
+.ss-app-shell {
+  height: 100vh;
+  height: 100dvh;
+}
 .ss-main-shell {
   padding-top: env(safe-area-inset-top, 0px);
   padding-bottom: 0;
