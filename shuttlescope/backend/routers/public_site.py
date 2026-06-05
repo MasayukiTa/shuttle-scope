@@ -1103,7 +1103,7 @@ _ST_RANK = {_ST_DOWN: 3, _ST_DEGRADED: 2, _ST_OPERATIONAL: 1}
 
 
 def _compute_status_day_detail(db: Session, day: str, component: Optional[str] = None) -> dict:
-    """指定日 (YYYY-MM-DD, サーバ基準の naive UTC 日付) の health_samples を
+    """指定日 (YYYY-MM-DD, JST 暦日) の health_samples を
     10 分スロット (1 日 144 個) へバケットし、各スロットの公開ステータス
     (operational/degraded/down/nodata) を返す。
 
@@ -1111,8 +1111,9 @@ def _compute_status_day_detail(db: Session, day: str, component: Optional[str] =
       未指定なら全コンポーネントを「悪い方優先」で合成する (= 90日バー全体相当)。
       公開ページの各バーは component 別なので、クリックされたバーの component を渡す。
     - HealthSample.sampled_at は naive UTC (status_monitor が datetime.utcnow() で記録)。
-      日跨ぎ判定/スロット割り当ては UTC のまま行い、表示の JST 変換はフロント側で行う
-      (既存 status.html.j2 の time フォーマッタと同方針)。
+      day は JST 暦日として解釈し、JST 00:00 を UTC に直した窓でスロット割り当てを行う
+      (90 日バー compute_component_history と同じ JST 基準)。slot の時刻は UTC ISO で返し、
+      表示の JST 変換はフロント側で行う (既存 status.html.j2 の time フォーマッタと同方針)。
     - 1 スロットに複数サンプルが入る場合は「悪い方優先」で集約する
       (日次バー compute_component_history と同じ方針)。
     - metric / detail は内部負荷情報なので返さない (公開は粗い状態のみ)。
@@ -1123,11 +1124,14 @@ def _compute_status_day_detail(db: Session, day: str, component: Optional[str] =
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="invalid date") from exc
 
-    start = datetime(d.year, d.month, d.day)
-    end = start + timedelta(days=1)
+    # day は JST 暦日。JST 00:00 を UTC に変換した窓 [start_utc, end_utc) で取得する。
+    # (health_samples.sampled_at は naive UTC。90 日バー compute_component_history と同じ JST 基準。)
+    jst = timedelta(hours=9)
+    start_utc = datetime(d.year, d.month, d.day) - jst
+    end_utc = start_utc + timedelta(days=1)
     q = (
         db.query(HealthSample.sampled_at, HealthSample.status)
-        .filter(HealthSample.sampled_at >= start, HealthSample.sampled_at < end)
+        .filter(HealthSample.sampled_at >= start_utc, HealthSample.sampled_at < end_utc)
     )
     if component is not None:
         q = q.filter(HealthSample.component == component)
@@ -1139,7 +1143,8 @@ def _compute_status_day_detail(db: Session, day: str, component: Optional[str] =
         if st not in _ST_RANK:
             # 想定外の値は operational 相当の最弱として扱わず無視 (公開語彙のみ採用)。
             continue
-        idx = (ts.hour * 60 + ts.minute) // _SLOT_MINUTES
+        # JST 暦日の開始 (start_utc) からの経過分で 10 分スロットへ割り当てる (ts は naive UTC)。
+        idx = int((ts - start_utc).total_seconds() // 60) // _SLOT_MINUTES
         if idx < 0 or idx >= _SLOTS_PER_DAY:
             continue
         cur = slot_status[idx]
@@ -1151,7 +1156,7 @@ def _compute_status_day_detail(db: Session, day: str, component: Optional[str] =
     for i in range(_SLOTS_PER_DAY):
         st = slot_status[i] or _ST_NODATA
         counts[st] += 1
-        slot_start = start + timedelta(minutes=i * _SLOT_MINUTES)
+        slot_start = start_utc + timedelta(minutes=i * _SLOT_MINUTES)
         slots.append({
             # naive UTC ISO (オフセット無し)。フロントが既存フォーマッタで JST 表示する。
             "t": slot_start.isoformat(),
