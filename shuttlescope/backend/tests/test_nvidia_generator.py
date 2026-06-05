@@ -16,7 +16,10 @@ from backend.analysis.insights.external_stub import (
 
 @pytest.fixture
 def env_key(monkeypatch):
-    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test-key")
+    # ダミー鍵。先頭を実鍵プレフィックス (nvapi-) にすると secret スキャナ
+    # (Trivy secret / Gitleaks の nvidia-nim-api-key ルール) が誤検知するため、
+    # プレフィックスを避けた固定文字列を使う。生成器は鍵の「存在」のみ確認する。
+    monkeypatch.setenv("NVIDIA_API_KEY", "DUMMY_NVIDIA_KEY_FOR_TESTS")
     monkeypatch.setenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
     monkeypatch.setenv("NVIDIA_MODEL", "meta/llama-3.3-70b-instruct")
     yield

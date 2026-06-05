@@ -1,0 +1,19 @@
+# Gitleaks configuration.
+# The Gitleaks CI workflow scans the FULL git history (fetch-depth: 0), so a
+# confirmed false-positive that exists in past commits cannot be cleared by only
+# editing the current file — it must be allowlisted here.
+#
+# `useDefault = true` keeps the entire built-in Gitleaks ruleset; we ONLY add a
+# narrow allowlist for specific, verified-synthetic test fixtures.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Verified false positives (synthetic test fixtures, never real secrets)"
+regexes = [
+  # backend/tests/test_nvidia_generator.py historically used this literal dummy as the
+  # NVIDIA_API_KEY env value in a pytest fixture. It is never a live key (the HTTP call is
+  # mocked in every test). Current code uses a non-matching placeholder; this entry covers
+  # the value still present in older commits scanned by the full-history Gitleaks run.
+  '''nvapi-test-key''',
+]
