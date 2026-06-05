@@ -1,4 +1,23 @@
 {
+  "llm": {
+    "title": "LLM Chat",
+    "new_chat": "New chat",
+    "delete": "Delete",
+    "placeholder": "Type a message… (Enter to send / Shift+Enter for newline)",
+    "send": "Send",
+    "empty": "Send a message to start the conversation.",
+    "not_configured": "The LLM provider is not configured. Please contact an administrator.",
+    "generating": "Generating",
+    "rename": "Rename",
+    "rename_placeholder": "Conversation name",
+    "save": "Save",
+    "cancel": "Cancel",
+    "error": {
+      "create": "Failed to create the conversation.",
+      "generate": "Failed to generate a response.",
+      "rename": "Failed to rename the conversation."
+    }
+  },
   "demo": {
     "banner": "Showing demo data (read-only)",
     "banner_player": "({{name}})",

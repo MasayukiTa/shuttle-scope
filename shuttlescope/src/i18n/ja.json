@@ -7,9 +7,15 @@
     "send": "送信",
     "empty": "メッセージを送って会話を始めましょう。",
     "not_configured": "LLM プロバイダが未設定です。管理者にお問い合わせください。",
+    "generating": "生成中",
+    "rename": "名前を変更",
+    "rename_placeholder": "会話の名前",
+    "save": "保存",
+    "cancel": "キャンセル",
     "error": {
       "create": "会話の作成に失敗しました。",
-      "generate": "応答の生成に失敗しました。"
+      "generate": "応答の生成に失敗しました。",
+      "rename": "名前の変更に失敗しました。"
     }
   },
   "demo": {
