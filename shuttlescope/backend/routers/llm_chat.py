@@ -68,8 +68,10 @@ def require_llm_access(request: Request, db: Session):
     ctx = get_auth(request)
     if ctx.role is None or ctx.user_id is None:
         raise HTTPException(status_code=401, detail="authentication required")
-    if ctx.is_admin:
+    # admin と 'llm' ロールは LLM アクセスを role で事前付与 (per-user grant 不要)。
+    if ctx.is_admin or ctx.role == "llm":
         return ctx
+    # それ以外のロール (analyst/coach 等) は admin が付与した 'llm' page grant が必要。
     # user 単位 grant は user_id 一致のみ。team 単位 grant は本人が team を持つ時だけ評価する。
     # (team_name==None の OR で全 user-level grant に当たる NULL マッチ漏洩を防ぐ)
     conds = [PlayerPageAccess.user_id == ctx.user_id]
