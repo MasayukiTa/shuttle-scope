@@ -19,7 +19,7 @@ export const DEFAULT_FILTERS: AnalysisFilters = {
 // GlobalAuthMiddleware は demo を許可している。frontend で UserRole から漏れて
 // いたため getStoredRole の whitelist で demo が null 化され、demo user
 // (例: testtest) は login 直後に /#/login へ戻されていた。
-export type UserRole = 'admin' | 'analyst' | 'coach' | 'player' | 'demo'
+export type UserRole = 'admin' | 'analyst' | 'coach' | 'player' | 'demo' | 'llm'
 
 export type DominantHand = 'R' | 'L' | 'unknown'
 
