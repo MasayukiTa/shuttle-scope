@@ -20,6 +20,7 @@ import {
   submitConsents,
 } from '@/api/client'
 import { MIcon } from '@/components/common/MIcon'
+import { useAuth } from '@/hooks/useAuth'
 
 // 必須項目は GDPR Article 6(1)(b) (契約履行) / APPI 第18条 を法的根拠とし、
 // 「同意」ではなく「契約条項の確認」として扱う。撤回はサービス利用終了と等価。
@@ -51,6 +52,18 @@ export default function OnboardingConsentPage({
   onCompleted, optionalOnly, onDeferred,
 }: OnboardingConsentPageProps) {
   const { t, i18n } = useTranslation()
+  const { role } = useAuth()
+  // role='llm' (汎用 LLM チャット専用) は badminton 機能を持たないため、
+  // badminton 固有の任意同意 (体組成開示 / AI 学習 / 学術研究 等 = OPTIONAL) を
+  // 一切提示・送信しない。必須同意 (service_delivery / beta_agreement) のみ取得する。
+  // backend (/api/auth/me) も llm には optional_consent_pending を立てないため、
+  // 「あとで」で先送りされた optional の再促し popup も出ない。
+  const llmOnly = role === 'llm'
+  // 実際に UI 提示 / 送信対象とする任意同意リスト。llm-only では空。
+  const effectiveOptional = useMemo<ConsentType[]>(
+    () => (llmOnly ? [] : OPTIONAL),
+    [llmOnly]
+  )
   const [state, setState] = useState<ConsentStateDTO | null>(null)
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -146,7 +159,8 @@ export default function OnboardingConsentPage({
     setError(null)
     try {
       // optionalOnly: optional のみ submit (必須は既に backend にある)。
-      const types = optionalOnly ? OPTIONAL : [...REQUIRED, ...OPTIONAL]
+      // llm-only では effectiveOptional=[] なので optional は一切送信しない。
+      const types = optionalOnly ? effectiveOptional : [...REQUIRED, ...effectiveOptional]
       const consents = types.map((t) => ({
         consent_type: t,
         consent_given: !!given[t],
@@ -291,7 +305,9 @@ export default function OnboardingConsentPage({
           />
         </section>
 
-        <section className="space-y-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+        {/* 任意同意セクションは badminton 固有 (体組成開示 / AI 学習 / 学術研究)。
+           role='llm' の汎用チャット専用ユーザには無関係なので丸ごと hide する。 */}
+        <section className={`space-y-4 border-t border-gray-200 dark:border-gray-700 pt-4 ${llmOnly ? 'hidden' : ''}`}>
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
             {t('onboarding.consent.optional_section') || '任意同意事項（チェックしなくても本サービスは使えます）'}
           </h2>
