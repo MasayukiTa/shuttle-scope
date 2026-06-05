@@ -88,10 +88,13 @@
   .ss-comp-badge.st-degraded{background:#d97706}
   .ss-comp-badge.st-down{background:#dc2626}
   .ss-comp-badge.st-unknown{background:var(--t3)}
-  /* 90日稼働履歴バー (1 セグメント = 1 日) */
+  /* 90日稼働履歴バー (1 セグメント = 1 日)。各セグメントは <button> で、
+     クリック/Enter/Space でその日の 10分刻み詳細モーダルを開く。 */
   .ss-bar{display:flex;gap:2px;margin-top:12px;height:30px;align-items:stretch}
-  .ss-bar-seg{flex:1 1 0;min-width:1px;border-radius:1px;background:var(--bdr2);transition:opacity .1s}
+  .ss-bar-seg{flex:1 1 0;min-width:1px;border:none;padding:0;border-radius:1px;
+    background:var(--bdr2);cursor:pointer;transition:opacity .1s,transform .1s;-webkit-appearance:none;appearance:none}
   .ss-bar-seg:hover{opacity:.6}
+  .ss-bar-seg:focus-visible{outline:2px solid var(--blue);outline-offset:1px;opacity:.6}
   .ss-bar-seg[data-st="operational"]{background:#0f9d6b}
   .ss-bar-seg[data-st="degraded"]{background:#d97706}
   .ss-bar-seg[data-st="down"]{background:#dc2626}
@@ -105,6 +108,50 @@
   .ss-legend i[data-st="nodata"]{background:var(--bdr2)}
   .ss-comp-note{color:var(--t3);font-size:.8rem;margin:6px 2px 0}
   @media(max-width:600px){.ss-comp-head{flex-wrap:wrap;gap:8px}.ss-comp-detail{width:100%;order:3}}
+
+  /* ── 日次ドリルダウン モーダル (10分スロット詳細) ── */
+  .ss-modal{position:fixed;inset:0;z-index:1000;display:none;align-items:flex-start;justify-content:center;
+    padding:5vh 16px 24px;background:rgba(8,15,28,.55);overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .ss-modal.open{display:flex}
+  .ss-modal-box{background:var(--surface);border:1px solid var(--bdr);border-radius:12px;
+    width:100%;max-width:560px;box-shadow:0 18px 48px rgba(0,0,0,.34);overflow:hidden}
+  /* ヘッダは飽和色背景なので文字は常に #fff (light/dark とも物理的可読性のため固定) */
+  .ss-modal-head{display:flex;align-items:center;gap:10px;padding:16px 18px;color:#fff;
+    background:linear-gradient(135deg,#0f3a6e 0%,#155a9c 100%)}
+  .ss-modal-head .ss-mh-dot{width:11px;height:11px;border-radius:50%;flex-shrink:0;background:#fff;
+    box-shadow:0 0 0 4px rgba(255,255,255,.18)}
+  .ss-modal-head .ss-mh-txt{display:flex;flex-direction:column;gap:2px;min-width:0}
+  .ss-modal-head .ss-mh-title{font-size:1.02rem;font-weight:700;color:#fff;line-height:1.25}
+  .ss-modal-head .ss-mh-sub{font-size:.8rem;color:rgba(255,255,255,.86);font-variant-numeric:tabular-nums}
+  .ss-modal-head .ss-mh-close{margin-left:auto;flex-shrink:0;width:32px;height:32px;border:none;cursor:pointer;
+    border-radius:7px;background:rgba(255,255,255,.16);color:#fff;display:flex;align-items:center;justify-content:center;
+    transition:background .15s}
+  .ss-modal-head .ss-mh-close:hover{background:rgba(255,255,255,.30)}
+  .ss-modal-head .ss-mh-close:focus-visible{outline:2px solid #fff;outline-offset:1px}
+  .ss-modal-head .ss-mh-close svg{width:18px;height:18px;display:block}
+  .ss-modal-body{padding:16px 18px 18px}
+  .ss-modal-summary{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+  .ss-sum-chip{font-size:.76rem;font-weight:700;color:var(--t2);background:var(--surf2);
+    border:1px solid var(--bdr);border-radius:999px;padding:3px 10px;font-variant-numeric:tabular-nums}
+  .ss-sum-chip i{display:inline-block;width:9px;height:9px;border-radius:2px;vertical-align:middle;margin-right:5px}
+  .ss-sum-chip i[data-st="operational"]{background:#0f9d6b}
+  .ss-sum-chip i[data-st="degraded"]{background:#d97706}
+  .ss-sum-chip i[data-st="down"]{background:#dc2626}
+  .ss-sum-chip i[data-st="nodata"]{background:var(--bdr2)}
+  /* 144 スロット (10分×24h) を 12列グリッドで。各セルは色 + ホバー/フォーカスで時刻 tooltip */
+  .ss-slot-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:3px}
+  .ss-slot{position:relative;aspect-ratio:1/1;min-height:14px;border-radius:2px;background:var(--bdr2)}
+  .ss-slot[data-st="operational"]{background:#0f9d6b}
+  .ss-slot[data-st="degraded"]{background:#d97706}
+  .ss-slot[data-st="down"]{background:#dc2626}
+  .ss-slot[data-st="nodata"]{background:var(--bdr2);opacity:.5}
+  .ss-slot:hover,.ss-slot:focus-visible{outline:2px solid var(--t1);outline-offset:1px;z-index:2}
+  .ss-modal-state{color:var(--t2);font-size:.86rem;padding:18px 2px;text-align:center}
+  .ss-modal-foot{color:var(--t3);font-size:.75rem;margin-top:14px;line-height:1.6}
+  @media(max-width:480px){
+    .ss-slot-grid{grid-template-columns:repeat(8,1fr)}
+    .ss-modal{padding:2vh 10px 18px}
+  }
 </style>
 {% endblock %}
 
@@ -148,8 +195,10 @@
         </span>
       </div>
       {% if c.history %}
-      <div class="ss-bar" role="img" aria-label="{% if _is_en %}90-day uptime{% else %}直近90日の稼働履歴{% endif %}">
-        {% for d in c.history %}<span class="ss-bar-seg" data-st="{{ d.st }}" title="{{ d.d }}"></span>{% endfor %}
+      <div class="ss-bar" role="group" aria-label="{% if _is_en %}90-day uptime, select a day for 10-minute detail{% else %}直近90日の稼働履歴。日を選ぶと10分刻みの詳細を表示{% endif %}">
+        {% for d in c.history %}<button type="button" class="ss-bar-seg" data-st="{{ d.st }}"
+          data-day="{{ d.d }}" data-comp="{{ c.key }}" data-comp-name="{{ c.name_en if _is_en else c.name_ja }}"
+          title="{{ d.d }}" aria-label="{{ c.name_en if _is_en else c.name_ja }} {{ d.d }}"></button>{% endfor %}
       </div>
       <div class="ss-bar-axis"><span>{% if _is_en %}90 days ago{% else %}90日前{% endif %}</span><span>{% if _is_en %}Today{% else %}本日{% endif %}</span></div>
       {% endif %}
@@ -249,6 +298,30 @@
     <span class="ss-refresh-note">{% if _is_en %}This page refreshes automatically when the status changes.{% else %}状況が変化すると自動的に再読み込みされます。{% endif %}</span>
   </p>
 </div>
+
+{# 日次ドリルダウン用モーダル (10分スロット詳細)。中身は JS が安全に構築する
+   (textContent / dataset のみ。サーバ文字列の innerHTML 挿入はしない)。 #}
+<div class="ss-modal" id="ss-day-modal" role="dialog" aria-modal="true" aria-labelledby="ss-mh-title" hidden>
+  <div class="ss-modal-box">
+    <div class="ss-modal-head">
+      <span class="ss-mh-dot"></span>
+      <div class="ss-mh-txt">
+        <span class="ss-mh-title" id="ss-mh-title"></span>
+        <span class="ss-mh-sub" id="ss-mh-sub"></span>
+      </div>
+      <button type="button" class="ss-mh-close" id="ss-mh-close"
+        aria-label="{% if _is_en %}Close{% else %}閉じる{% endif %}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div class="ss-modal-body">
+      <div class="ss-modal-summary" id="ss-modal-summary"></div>
+      <div class="ss-modal-state" id="ss-modal-state"></div>
+      <div class="ss-slot-grid" id="ss-slot-grid" role="img"></div>
+      <p class="ss-modal-foot" id="ss-modal-foot"></p>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_scripts %}
@@ -290,6 +363,136 @@
     }).catch(function(){});
   }
   setInterval(poll,60000);
+})();
+
+// ── 日次バーのドリルダウン: クリックでその日の 10分刻み詳細を取得して表示 ──
+// セキュリティ: API は粗い状態 (operational/degraded/down/nodata) のみ返す。
+// DOM は textContent / setAttribute のみで構築し、サーバ文字列を innerHTML に流さない。
+(function(){
+  var EN = (document.documentElement.lang === 'en');
+  var L = EN ? {
+    op:'Operational', dg:'Degraded', dn:'Outage', nd:'No data',
+    loading:'Loading…', failed:'Could not load detail. Please try again later.',
+    noData:'No samples were recorded on this day.',
+    foot:'Each cell is a 10-minute window (144 per day). Hover or focus a cell to see its time. Times are JST.',
+    subFmt:function(d){return d;}
+  } : {
+    op:'正常', dg:'低下', dn:'停止', nd:'データなし',
+    loading:'読み込み中…', failed:'詳細を取得できませんでした。時間をおいて再度お試しください。',
+    noData:'この日に記録されたサンプルはありません。',
+    foot:'1 マスは 10 分間 (1 日 144 マス)。マスにカーソルを合わせる/フォーカスすると時刻を表示します。時刻は JST です。',
+    subFmt:function(d){return d;}
+  };
+  var ST_LABEL={operational:L.op,degraded:L.dg,down:L.dn,nodata:L.nd};
+
+  var modal=document.getElementById('ss-day-modal');
+  if(!modal) return;
+  var box=modal.querySelector('.ss-modal-box');
+  var elTitle=document.getElementById('ss-mh-title');
+  var elSub=document.getElementById('ss-mh-sub');
+  var elSummary=document.getElementById('ss-modal-summary');
+  var elState=document.getElementById('ss-modal-state');
+  var elGrid=document.getElementById('ss-slot-grid');
+  var elFoot=document.getElementById('ss-modal-foot');
+  var btnClose=document.getElementById('ss-mh-close');
+  var lastFocus=null, reqSeq=0;
+
+  // naive UTC ISO ("2026-06-05T01:20:00", オフセット無し) を JST "HH:mm" に変換。
+  function jstHM(iso){
+    if(!iso) return '';
+    var s=(/[zZ]$|[+-]\d\d:?\d\d$/.test(iso))?iso:iso+'Z';
+    var d=new Date(s);
+    if(isNaN(d.getTime())) return '';
+    try{
+      var p=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Tokyo',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(d);
+      var m={};p.forEach(function(x){m[x.type]=x.value;});
+      return m.hour+':'+m.minute;
+    }catch(e){return '';}
+  }
+  function clear(el){while(el.firstChild)el.removeChild(el.firstChild);}
+
+  function openModal(){
+    lastFocus=document.activeElement;
+    modal.hidden=false; modal.classList.add('open');
+    document.body.style.overflow='hidden';
+    btnClose.focus();
+  }
+  function closeModal(){
+    modal.classList.remove('open'); modal.hidden=true;
+    document.body.style.overflow='';
+    if(lastFocus && lastFocus.focus) lastFocus.focus();
+  }
+
+  function renderSummary(summary){
+    clear(elSummary);
+    [['operational',summary.operational],['degraded',summary.degraded],['down',summary.down],['nodata',summary.nodata]]
+      .forEach(function(pair){
+        var st=pair[0], n=pair[1]||0;
+        if(!n) return; // 0 件のカテゴリは出さない
+        var chip=document.createElement('span'); chip.className='ss-sum-chip';
+        var sw=document.createElement('i'); sw.setAttribute('data-st',st); chip.appendChild(sw);
+        chip.appendChild(document.createTextNode((ST_LABEL[st]||st)+' '+n));
+        elSummary.appendChild(chip);
+      });
+  }
+
+  function renderSlots(slots){
+    clear(elGrid);
+    var frag=document.createDocumentFragment();
+    slots.forEach(function(s){
+      var cell=document.createElement('span');
+      cell.className='ss-slot';
+      cell.setAttribute('data-st', s.st);
+      cell.setAttribute('tabindex','0');
+      var hm=jstHM(s.t);
+      var lbl=hm+' '+(ST_LABEL[s.st]||s.st);
+      cell.setAttribute('title', lbl);
+      cell.setAttribute('aria-label', lbl);
+      frag.appendChild(cell);
+    });
+    elGrid.appendChild(frag);
+  }
+
+  function loadDay(day, comp, compName){
+    var mySeq=++reqSeq;
+    // ヘッダ: コンポーネント名 + 日付。compName/day はクリックされた要素の dataset
+    // (サーバが autoescape 済みで描画した属性値) を textContent で入れる。
+    elTitle.textContent=compName||'';
+    elSub.textContent=L.subFmt(day);
+    elGrid.setAttribute('aria-label', (compName||'')+' '+day);
+    clear(elSummary); clear(elGrid); elFoot.textContent='';
+    elState.textContent=L.loading;
+    openModal();
+    // クリックされたバーの component に絞って取得する (各バーは component 別)。
+    var url='/api/public/status/day?day='+encodeURIComponent(day);
+    if(comp) url+='&component='+encodeURIComponent(comp);
+    fetch(url,{headers:{'Accept':'application/json'}})
+      .then(function(r){return r.ok?r.json():null;})
+      .then(function(d){
+        if(mySeq!==reqSeq) return; // 連打: 最新リクエストのみ反映
+        if(!d || !d.slots){elState.textContent=L.failed; return;}
+        renderSummary(d.summary||{});
+        renderSlots(d.slots);
+        elState.textContent = d.has_data ? '' : L.noData;
+        elFoot.textContent=L.foot;
+      })
+      .catch(function(){ if(mySeq===reqSeq) elState.textContent=L.failed; });
+  }
+
+  // 各セグメント (button.ss-bar-seg) のクリック。data-* から日付/コンポーネントを取得。
+  document.querySelectorAll('.ss-bar-seg').forEach(function(seg){
+    seg.addEventListener('click', function(){
+      loadDay(seg.getAttribute('data-day'), seg.getAttribute('data-comp'),
+              seg.getAttribute('data-comp-name'));
+    });
+  });
+
+  btnClose.addEventListener('click', closeModal);
+  // 背景クリックで閉じる (ボックス内クリックは無視)
+  modal.addEventListener('click', function(e){ if(e.target===modal) closeModal(); });
+  document.addEventListener('keydown', function(e){
+    if(e.key==='Escape' && modal.classList.contains('open')) closeModal();
+  });
 })();
 </script>
 {% endblock %}

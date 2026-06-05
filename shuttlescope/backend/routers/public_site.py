@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from backend.config import settings
 from backend.db.database import get_db
-from backend.db.models import PublicInquiry, ContentReport
+from backend.db.models import PublicInquiry, ContentReport, HealthSample
 from backend.routers.status_page import compute_public_status
 from backend.utils.auth import get_auth
 
@@ -1084,6 +1084,116 @@ async def en_contact_page(request: Request):
 @router.get("/en/status")
 async def en_status_page_route(request: Request, db: Session = Depends(get_db)):
     return render_status_page(request, db, lang="en")
+
+
+# ─── 稼働状況: 日次バーのドリルダウン (10分スロット詳細) ──────────────────────
+# 公開ステータスページの 90 日バー (1 セグメント=1 日) をクリックした際に、その日の
+# 10 分刻みの状態を返す公開エンドポイント。/api/public/* は anon 許可 (status と同様)。
+# 公開してよい粗い up/down のみを返し、内部ホスト名/IP/メトリクス文言は一切出さない
+# (HealthSample.metric / detail には CPU%/応答ms 等が入るため返却しない)。
+
+_DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_SLOT_MINUTES = 10
+_SLOTS_PER_DAY = 24 * 60 // _SLOT_MINUTES  # 144
+
+# status_monitor と同じ語彙 (operational/degraded/down)。公開語彙はこの 4 値のみ。
+_ST_OPERATIONAL, _ST_DEGRADED, _ST_DOWN, _ST_NODATA = "operational", "degraded", "down", "nodata"
+# 日次バーと同じ「悪い方優先」の集約順位。1 スロット内に複数サンプルがある場合に使う。
+_ST_RANK = {_ST_DOWN: 3, _ST_DEGRADED: 2, _ST_OPERATIONAL: 1}
+
+
+def _compute_status_day_detail(db: Session, day: str, component: Optional[str] = None) -> dict:
+    """指定日 (YYYY-MM-DD, サーバ基準の naive UTC 日付) の health_samples を
+    10 分スロット (1 日 144 個) へバケットし、各スロットの公開ステータス
+    (operational/degraded/down/nodata) を返す。
+
+    - component を指定するとそのコンポーネント (api/database/tunnel/gpu/worker) のみ。
+      未指定なら全コンポーネントを「悪い方優先」で合成する (= 90日バー全体相当)。
+      公開ページの各バーは component 別なので、クリックされたバーの component を渡す。
+    - HealthSample.sampled_at は naive UTC (status_monitor が datetime.utcnow() で記録)。
+      日跨ぎ判定/スロット割り当ては UTC のまま行い、表示の JST 変換はフロント側で行う
+      (既存 status.html.j2 の time フォーマッタと同方針)。
+    - 1 スロットに複数サンプルが入る場合は「悪い方優先」で集約する
+      (日次バー compute_component_history と同じ方針)。
+    - metric / detail は内部負荷情報なので返さない (公開は粗い状態のみ)。
+    """
+    # day は事前に正規表現で形式検証済みだが、2026-13-40 等の不正値を弾くため strptime で実在性も検証。
+    try:
+        d = datetime.strptime(day, "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid date") from exc
+
+    start = datetime(d.year, d.month, d.day)
+    end = start + timedelta(days=1)
+    q = (
+        db.query(HealthSample.sampled_at, HealthSample.status)
+        .filter(HealthSample.sampled_at >= start, HealthSample.sampled_at < end)
+    )
+    if component is not None:
+        q = q.filter(HealthSample.component == component)
+    rows = q.all()
+
+    # スロット index -> 集約済みステータス (悪い方優先)。未観測スロットは nodata。
+    slot_status: list[Optional[str]] = [None] * _SLOTS_PER_DAY
+    for ts, st in rows:
+        if st not in _ST_RANK:
+            # 想定外の値は operational 相当の最弱として扱わず無視 (公開語彙のみ採用)。
+            continue
+        idx = (ts.hour * 60 + ts.minute) // _SLOT_MINUTES
+        if idx < 0 or idx >= _SLOTS_PER_DAY:
+            continue
+        cur = slot_status[idx]
+        if cur is None or _ST_RANK[st] > _ST_RANK[cur]:
+            slot_status[idx] = st
+
+    slots = []
+    counts = {_ST_OPERATIONAL: 0, _ST_DEGRADED: 0, _ST_DOWN: 0, _ST_NODATA: 0}
+    for i in range(_SLOTS_PER_DAY):
+        st = slot_status[i] or _ST_NODATA
+        counts[st] += 1
+        slot_start = start + timedelta(minutes=i * _SLOT_MINUTES)
+        slots.append({
+            # naive UTC ISO (オフセット無し)。フロントが既存フォーマッタで JST 表示する。
+            "t": slot_start.isoformat(),
+            "st": st,
+        })
+    # 未来日 / 未到来スロットの nodata は「障害」ではないことをフロントが区別できるよう、
+    # 観測サンプルが 1 件も無い日は has_data=False を立てる。
+    has_data = (counts[_ST_NODATA] < _SLOTS_PER_DAY)
+    return {
+        "day": d.isoformat(),
+        "component": component,  # None = 全コンポーネント合成
+        "slot_minutes": _SLOT_MINUTES,
+        "slots": slots,
+        "summary": counts,
+        "has_data": has_data,
+    }
+
+
+@router.get("/api/public/status/day")
+async def public_status_day(day: str, component: Optional[str] = None,
+                            db: Session = Depends(get_db)):
+    """公開ステータス: 指定日の 10 分刻み稼働詳細 (90 日バーのドリルダウン用)。
+
+    認証不要 (/api/public/* は anon 許可)。
+    - `day`: YYYY-MM-DD。形式不正/非実在日は 400。
+    - `component`: 任意。api/database/tunnel/gpu/worker のいずれか。
+      未知の値は 400 (列挙 probe 防止 + 不正フィルタ拒否)。未指定なら全合成。
+    返すのは粗い状態 (operational/degraded/down/nodata) のみで、
+    内部ホスト名/IP/負荷メトリクスは含めない。
+    """
+    if not isinstance(day, str) or not _DAY_RE.match(day):
+        raise HTTPException(status_code=400, detail="invalid date format (expected YYYY-MM-DD)")
+    if component is not None:
+        # 既知のコンポーネントキーのみ許可 (status_monitor の定義に追従)。
+        try:
+            from backend.services.status_monitor import COMPONENT_KEYS
+            allowed = set(COMPONENT_KEYS)
+        except Exception:  # noqa: BLE001 — 監視未初期化でも公開ページは壊さない
+            allowed = {"api", "database", "tunnel", "gpu", "worker"}
+        if component not in allowed:
+            raise HTTPException(status_code=400, detail="unknown component")
+    return _compute_status_day_detail(db, day, component=component)
 
 
 # /jp → / にリダイレクト
