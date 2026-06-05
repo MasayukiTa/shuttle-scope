@@ -118,9 +118,12 @@ function LanUrlCard({ url, hint }: { url: string; hint: string }) {
 
 export function SettingsPage() {
   const { t, i18n } = useTranslation()
-  useAutoTutorial('settings_tour')
   const queryClient = useQueryClient()
   const { role, teamName, displayName, userId, clearRole } = useAuth()
+  // LLM 専用ユーザ (バドミントン role を持たない) には、データ管理/インポート等の
+  // バドミントン向け機能とそのチュートリアルを出さない (アカウント設定タブのみ表示)。
+  const llmOnly = !!role && !['admin', 'analyst', 'coach', 'player', 'demo'].includes(role)
+  useAutoTutorial('settings_tour', !llmOnly)
 
   const { data: healthData } = useQuery<{ public_mode?: boolean }>({
     queryKey: ['health'],
@@ -155,13 +158,18 @@ export function SettingsPage() {
   // ロール切替用モーダル
   // ロール変更で閲覧権限が失われた場合はタブを退避
   useEffect(() => {
+    // LLM 専用ユーザはアカウント設定タブのみ (data 等は非表示) なので常に account へ退避。
+    if (llmOnly && activeTab !== 'account') {
+      setActiveTab('account')
+      return
+    }
     if (!canManagePlayers && (activeTab === 'players' || activeTab === 'review')) {
       setActiveTab('account')
     }
     if (role !== 'admin' && (activeTab === 'tracknet' || activeTab === 'sharing' || activeTab === 'cluster')) {
       setActiveTab('data')
     }
-  }, [canManagePlayers, role, activeTab])
+  }, [llmOnly, canManagePlayers, role, activeTab])
 
   // 選手リスト: 検索・ソート（クライアントサイド、端末ごとに独立）
   const playerSearchRef = useRef<HTMLInputElement>(null)
@@ -893,7 +901,7 @@ export function SettingsPage() {
               { key: 'tracknet' as const, label: t('tracknet.tab_label') },
               { key: 'sharing' as const, label: t('sharing.tab_label') },
             ] : []),
-            { key: 'data' as const, label: t('auto.SettingsPage.k32') },
+            ...(!llmOnly ? [{ key: 'data' as const, label: t('auto.SettingsPage.k32') }] : []),
             ...(role === 'admin' && !isPublicMode ? [
               { key: 'cluster' as const, label: t('cluster.tab') },
             ] : []),
