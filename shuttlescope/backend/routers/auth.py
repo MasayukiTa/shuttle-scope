@@ -24,7 +24,9 @@ from backend.config import settings
 from backend.db.database import get_db
 from backend.db.models import Player, PlayerPageAccess, Team, User, UserConsent
 
-GRANTABLE_PAGES = {"prediction", "expert_labeler"}
+# llm = 汎用 LLM チャット (/#/llm)、badminton = バドミントン解析アプリ。
+# admin が player_page_access 経由でユーザ単位に付与する (自己付与不可)。
+GRANTABLE_PAGES = {"prediction", "expert_labeler", "llm", "badminton"}
 
 _MAX_FAILED_ATTEMPTS = 3
 _LOCKOUT_MINUTES = 30
