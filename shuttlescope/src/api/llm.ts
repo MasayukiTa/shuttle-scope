@@ -1,6 +1,6 @@
 // 汎用 LLM チャット (/#/llm) の API クライアント。
 // 会話 CRUD は通常の apiGet/apiPost、メッセージ送信のみ SSE ストリーミングを生 fetch で扱う。
-import { API_BASE_URL, apiGet, apiPost, apiDelete } from './client'
+import { API_BASE_URL, apiGet, apiPost, apiPatch, apiDelete } from './client'
 
 export interface LlmConversation {
   id: number
@@ -64,6 +64,10 @@ export function listConversations() {
 
 export function createConversation(body: { title?: string; system_prompt?: string } = {}) {
   return apiPost<LlmConversation>('/llm/conversations', body)
+}
+
+export function renameConversation(id: number, title: string) {
+  return apiPatch<LlmConversation>(`/llm/conversations/${id}`, { title })
 }
 
 export function deleteConversation(id: number) {

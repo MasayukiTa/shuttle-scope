@@ -7,6 +7,7 @@ insights chat (insights_chat.py) とは完全に別系統。
 - GET    /api/llm/config                       : プロバイダ/モデル + 利用可否
 - GET    /api/llm/conversations                : 自分の会話一覧
 - POST   /api/llm/conversations                : 会話作成
+- PATCH  /api/llm/conversations/{cid}          : 会話タイトル変更 (所有者のみ)
 - DELETE /api/llm/conversations/{cid}          : 会話削除 (soft)
 - GET    /api/llm/conversations/{cid}/messages : ターン一覧
 - POST   /api/llm/conversations/{cid}/messages : 送信 + SSE ストリーミング応答
@@ -124,6 +125,11 @@ class MessageCreate(BaseModel):
     content: str = Field(min_length=1, max_length=16000)
 
 
+class ConversationRename(BaseModel):
+    model_config = {"extra": "forbid"}  # mass-assignment 防止
+    title: str = Field(min_length=1, max_length=200)
+
+
 @router.get("/llm/config")
 def llm_config(request: Request, db: Session = Depends(get_db)):
     require_llm_access(request, db)
@@ -154,6 +160,17 @@ def create_conversation(body: ConversationCreate, request: Request, db: Session 
     )
     db.add(c); db.commit(); db.refresh(c)
     log_access(db, "llm_conversation_create", user_id=ctx.user_id,
+               resource_type="llm_conversation", resource_id=c.id)
+    return _conv_dict(c)
+
+
+@router.patch("/llm/conversations/{cid}")
+def rename_conversation(cid: int, body: ConversationRename, request: Request, db: Session = Depends(get_db)):
+    ctx = require_llm_access(request, db)
+    c = _own_conversation(cid, ctx, db)  # 所有者限定 (IDOR 防止)
+    c.title = body.title.strip()[:200]
+    db.commit(); db.refresh(c)
+    log_access(db, "llm_conversation_rename", user_id=ctx.user_id,
                resource_type="llm_conversation", resource_id=c.id)
     return _conv_dict(c)
 

@@ -9,6 +9,7 @@ import {
   getLlmConfig,
   getMessages,
   listConversations,
+  renameConversation,
   streamMessage,
   type LlmConfig,
   type LlmConversation,
@@ -24,7 +25,10 @@ export default function LlmChatPage() {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [streamText, setStreamText] = useState('')
+  const [streaming, setStreaming] = useState(false) // SSE start〜done/error の生成中フラグ
   const [error, setError] = useState<string | null>(null)
+  const [renamingId, setRenamingId] = useState<number | null>(null)
+  const [renameDraft, setRenameDraft] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const refreshConversations = useCallback(async () => {
@@ -53,7 +57,7 @@ export default function LlmChatPage() {
   useEffect(() => {
     const el = scrollRef.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [messages, streamText])
+  }, [messages, streamText, streaming])
 
   const onNewChat = useCallback(async () => {
     setActiveId(null)
@@ -88,18 +92,26 @@ export default function LlmChatPage() {
     const optimistic: LlmMessage = { id: -Date.now(), seq: messages.length + 1, role: 'user', content }
     setMessages((prev) => [...prev, optimistic])
     setStreamText('')
+    setStreaming(true) // start/delta 前から「生成中」を表示 (応答までの空白時間も可視化)
 
     let acc = ''
     await streamMessage(convId, content, (e) => {
-      if (e.type === 'delta' && e.content) {
+      if (e.type === 'start') {
+        setStreaming(true)
+      } else if (e.type === 'delta' && e.content) {
         acc += e.content
+        setStreaming(true)
         setStreamText(acc)
+      } else if (e.type === 'done') {
+        setStreaming(false)
       } else if (e.type === 'error') {
+        setStreaming(false)
         setError(e.message || t('llm.error.generate'))
       }
     })
 
     // ストリーム完了 → サーバの確定状態で再同期
+    setStreaming(false)
     setStreamText('')
     try {
       const r = await getMessages(convId)
@@ -126,6 +138,31 @@ export default function LlmChatPage() {
     }
   }, [activeId])
 
+  const startRename = useCallback((c: LlmConversation) => {
+    setRenamingId(c.id)
+    setRenameDraft(c.title)
+  }, [])
+
+  const cancelRename = useCallback(() => {
+    setRenamingId(null)
+    setRenameDraft('')
+  }, [])
+
+  const commitRename = useCallback(async (id: number) => {
+    const title = renameDraft.trim()
+    if (!title) { cancelRename(); return }
+    // 即時反映 (失敗時はサーバ状態で巻き戻し)
+    setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, title } : c)))
+    setRenamingId(null)
+    setRenameDraft('')
+    try {
+      await renameConversation(id, title)
+    } catch {
+      setError(t('llm.error.rename'))
+    }
+    refreshConversations()
+  }, [renameDraft, cancelRename, refreshConversations, t])
+
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -148,15 +185,54 @@ export default function LlmChatPage() {
           {conversations.map((c) => (
             <div
               key={c.id}
-              className={`group flex items-center gap-1 rounded-md px-2 py-2 text-sm cursor-pointer ${
+              className={`group flex items-center gap-1 rounded-md px-2 py-2 text-sm ${
+                renamingId === c.id ? '' : 'cursor-pointer'
+              } ${
                 c.id === activeId
                   ? 'bg-slate-100 dark:bg-slate-800'
                   : 'hover:bg-slate-50 dark:hover:bg-slate-800/60'
               }`}
-              onClick={() => setActiveId(c.id)}
+              onClick={() => { if (renamingId !== c.id) setActiveId(c.id) }}
             >
               <MIcon name="forum" size={16} ariaHidden className="text-slate-400 shrink-0" />
-              <span className="flex-1 truncate">{c.title}</span>
+              {renamingId === c.id ? (
+                <input
+                  autoFocus
+                  value={renameDraft}
+                  onChange={(e) => setRenameDraft(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); commitRename(c.id) }
+                    else if (e.key === 'Escape') { e.preventDefault(); cancelRename() }
+                  }}
+                  onBlur={() => commitRename(c.id)}
+                  maxLength={200}
+                  placeholder={t('llm.rename_placeholder')}
+                  aria-label={t('llm.rename')}
+                  className="flex-1 min-w-0 rounded border border-blue-500 bg-white dark:bg-slate-900 px-1.5 py-0.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              ) : (
+                <span className="flex-1 truncate">{c.title}</span>
+              )}
+              {renamingId === c.id ? (
+                <button
+                  onClick={(e) => { e.stopPropagation(); commitRename(c.id) }}
+                  className="text-slate-400 hover:text-blue-600 dark:hover:text-blue-400"
+                  aria-label={t('llm.save')}
+                  title={t('llm.save')}
+                >
+                  <MIcon name="check" size={16} ariaHidden />
+                </button>
+              ) : (
+                <button
+                  onClick={(e) => { e.stopPropagation(); startRename(c) }}
+                  className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400"
+                  aria-label={t('llm.rename')}
+                  title={t('llm.rename')}
+                >
+                  <MIcon name="edit" size={16} ariaHidden />
+                </button>
+              )}
               <button
                 onClick={(e) => { e.stopPropagation(); onDelete(c.id) }}
                 className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500"
@@ -181,7 +257,7 @@ export default function LlmChatPage() {
         </header>
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-          {messages.length === 0 && !streamText && (
+          {messages.length === 0 && !streamText && !streaming && (
             <div className="flex h-full flex-col items-center justify-center text-center text-slate-400">
               <MIcon name="smart_toy" size={40} ariaHidden className="mb-2" />
               <p className="text-sm">{t('llm.empty')}</p>
@@ -191,6 +267,7 @@ export default function LlmChatPage() {
             <Bubble key={m.id} role={m.role} content={m.content} />
           ))}
           {streamText && <Bubble role="assistant" content={streamText} pending />}
+          {streaming && !streamText && <TypingIndicator label={t('llm.generating')} />}
         </div>
 
         {error && (
@@ -251,6 +328,23 @@ function Bubble({ role, content, pending }: { role: string; content: string; pen
       >
         {content}
         {pending && <span className="ml-1 inline-block animate-pulse">▌</span>}
+      </div>
+    </div>
+  )
+}
+
+// 応答生成中インジケータ: assistant 吹き出し風に波打つ 3 点 + 「生成中」ラベル。
+// SSE の start〜最初の delta が来るまでの空白時間を可視化する (streaming && !streamText のとき表示)。
+function TypingIndicator({ label }: { label: string }) {
+  return (
+    <div className="flex justify-start" role="status" aria-live="polite">
+      <div className="flex items-center gap-2 rounded-2xl rounded-tl-sm bg-slate-100 dark:bg-slate-800 px-3.5 py-2.5">
+        <span className="flex gap-1" aria-hidden>
+          <span className="h-2 w-2 rounded-full bg-slate-400 dark:bg-slate-500 animate-bounce" style={{ animationDelay: '0ms' }} />
+          <span className="h-2 w-2 rounded-full bg-slate-400 dark:bg-slate-500 animate-bounce" style={{ animationDelay: '150ms' }} />
+          <span className="h-2 w-2 rounded-full bg-slate-400 dark:bg-slate-500 animate-bounce" style={{ animationDelay: '300ms' }} />
+        </span>
+        <span className="text-xs text-slate-400 dark:text-slate-500">{label}</span>
       </div>
     </div>
   )
