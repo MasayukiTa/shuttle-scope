@@ -1278,7 +1278,7 @@ export function SettingsPage() {
                 <MIcon name="memory" size={14} />
                 {t('tracknet.backend_label')}
               </h3>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {([
                   { value: 'auto',           label: 'Auto (CUDA → DML → OpenVINO → ONNX → TF)' },
                   { value: 'cuda',           label: 'CUDA (NVIDIA)' },
@@ -2535,7 +2535,7 @@ export function SettingsPage() {
 
               {/* DB 状態 */}
               {dbStats?.supported && (
-                <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
                   <div className="flex justify-between">
                     <span className={textSecondary}>{t('settings.ui.db_size')}</span>
                     <span className="font-mono">{dbStats.file_size_mb} MB</span>
@@ -2767,12 +2767,12 @@ export function SettingsPage() {
       {/* 選手フォームモーダル */}
       {showPlayerForm && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className={`${card} rounded-lg w-full max-w-lg`}>
-            <div className={`flex items-center justify-between px-6 py-4 border-b ${borderLine}`}>
+          <div className={`${card} rounded-lg w-full max-w-lg max-h-[90dvh] overflow-y-auto`}>
+            <div className={`flex items-center justify-between px-4 sm:px-6 py-4 border-b ${borderLine}`}>
               <h2 className={`text-lg font-semibold ${textHeading}`}>{editingPlayer ? '選手編集' : '選手追加'}</h2>
               <button onClick={() => { setShowPlayerForm(false); setEditingPlayer(null) }} className={`${textMuted} ${isLight ? 'hover:text-gray-900' : 'hover:text-white'}`}><MIcon name="close" size={14} /></button>
             </div>
-            <form onSubmit={handlePlayerSubmit} className="p-6 flex flex-col gap-3">
+            <form onSubmit={handlePlayerSubmit} className="p-4 sm:p-6 flex flex-col gap-3">
               <div>
                 <label className={`block text-sm ${textSecondary} mb-1`}>{t('player.name')} *</label>
                 <input
