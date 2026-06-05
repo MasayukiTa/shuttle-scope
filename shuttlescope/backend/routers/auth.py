@@ -1170,8 +1170,14 @@ def me(request: Request, db: Session = Depends(get_db)):
     # 任意同意の未回答検出: 必須同意 (consent_required) が落ちていても、optional
     # 同意で 1 度も回答していない type があれば popup を再表示する。
     # 「あとで」を押したユーザの再促し用 (実装方針: optional は record 無し=未回答)。
+    #
+    # role='llm' (汎用 LLM チャット専用ユーザ) は badminton 機能を一切持たず、
+    # _OPTIONAL_CONSENT_TYPES は全て badminton 固有の任意同意
+    # (体組成開示 / AI 学習 / 学術研究 等) なので、これらの未回答で popup を
+    # 再促すのは無意味かつ不適切。llm-only には optional 同意を要求しない
+    # (必須同意 service_delivery / beta_agreement は引き続き必要)。
     optional_pending = False
-    if user is not None:
+    if user is not None and ctx.role != "llm":
         recorded_optional_types = {
             row[0]
             for row in db.query(UserConsent.consent_type)
