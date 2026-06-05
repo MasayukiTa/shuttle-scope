@@ -58,14 +58,17 @@ export default function InvitationAcceptPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-[100svh] flex items-center justify-center">
         <p>{t('app.loading')}</p>
       </div>
     )
   }
   if (!info) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
+      <div
+        className="min-h-[100svh] flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4"
+        style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+      >
         <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-lg shadow p-6 text-center space-y-4">
           <p className="text-red-600">{error ?? t('auth.invitation.invalid')}</p>
           <Link to="/login" className="block text-blue-600 hover:underline text-sm">
@@ -77,7 +80,10 @@ export default function InvitationAcceptPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
+    <div
+      className="min-h-[100svh] flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4"
+      style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+    >
       <form onSubmit={handleSubmit}
             className="max-w-md w-full bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4">
         <h1 className="text-xl font-bold">{t('auth.invitation.title')}</h1>
@@ -91,21 +97,24 @@ export default function InvitationAcceptPage() {
           <label className="block text-sm font-medium mb-1">{t('auth.register.username')}</label>
           <input type="text" value={username} onChange={(e) => setUsername(e.target.value)}
                  required minLength={3} maxLength={64}
-                 className="w-full rounded border px-3 py-2 text-sm dark:bg-gray-700 dark:border-gray-600" />
+                 autoComplete="username" autoCapitalize="none" autoCorrect="off"
+                 className="w-full rounded border px-3 py-2.5 text-base min-h-[44px] dark:bg-gray-700 dark:border-gray-600" />
         </div>
 
         <div>
           <label className="block text-sm font-medium mb-1">{t('auth.register.password')}</label>
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
                  required minLength={8} maxLength={128}
-                 className="w-full rounded border px-3 py-2 text-sm dark:bg-gray-700 dark:border-gray-600" />
+                 autoComplete="new-password"
+                 className="w-full rounded border px-3 py-2.5 text-base min-h-[44px] dark:bg-gray-700 dark:border-gray-600" />
         </div>
 
         <div>
           <label className="block text-sm font-medium mb-1">{t('auth.register.display_name_optional')}</label>
           <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)}
                  maxLength={100}
-                 className="w-full rounded border px-3 py-2 text-sm dark:bg-gray-700 dark:border-gray-600" />
+                 autoComplete="name"
+                 className="w-full rounded border px-3 py-2.5 text-base min-h-[44px] dark:bg-gray-700 dark:border-gray-600" />
         </div>
 
         {error && <div className="text-sm text-red-600">{error}</div>}

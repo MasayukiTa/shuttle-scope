@@ -17,7 +17,10 @@ export default function PasswordResetConfirmPage() {
 
   if (!token) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
+      <div
+        className="min-h-[100svh] flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4"
+        style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+      >
         <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-lg shadow p-6 text-center">
           <p className="text-red-600">{t('auth.verify.missing_token')}</p>
           <Link to="/login" className="block mt-4 text-blue-600 hover:underline text-sm">
@@ -50,7 +53,10 @@ export default function PasswordResetConfirmPage() {
 
   if (done) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
+      <div
+        className="min-h-[100svh] flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4"
+        style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+      >
         <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-lg shadow p-6 text-center space-y-4">
           <p className="text-green-700 dark:text-green-400">
             {t('auto.PasswordResetConfirmPage.check_mark')} {t('auth.password_reset_confirm.done')}
@@ -64,7 +70,10 @@ export default function PasswordResetConfirmPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
+    <div
+      className="min-h-[100svh] flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4"
+      style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+    >
       <form onSubmit={handleSubmit}
             className="max-w-md w-full bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4">
         <h1 className="text-xl font-bold">{t('auth.password_reset_confirm.title')}</h1>
@@ -75,7 +84,8 @@ export default function PasswordResetConfirmPage() {
           </label>
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
                  required minLength={8} maxLength={128}
-                 className="w-full rounded border px-3 py-2 text-sm dark:bg-gray-700 dark:border-gray-600" />
+                 autoComplete="new-password"
+                 className="w-full rounded border px-3 py-2.5 text-base min-h-[44px] dark:bg-gray-700 dark:border-gray-600" />
         </div>
 
         <div>
@@ -84,7 +94,8 @@ export default function PasswordResetConfirmPage() {
           </label>
           <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)}
                  required minLength={8} maxLength={128}
-                 className="w-full rounded border px-3 py-2 text-sm dark:bg-gray-700 dark:border-gray-600" />
+                 autoComplete="new-password"
+                 className="w-full rounded border px-3 py-2.5 text-base min-h-[44px] dark:bg-gray-700 dark:border-gray-600" />
         </div>
 
         {error && <div className="text-sm text-red-600">{error}</div>}

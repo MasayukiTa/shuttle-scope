@@ -39,7 +39,10 @@ export default function PasswordResetRequestPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
+    <div
+      className="min-h-[100svh] flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4"
+      style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+    >
       <form onSubmit={handleSubmit}
             className="max-w-md w-full bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4">
         <h1 className="text-xl font-bold">{t('auth.password_reset_request.title')}</h1>
@@ -52,7 +55,8 @@ export default function PasswordResetRequestPage() {
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
                  required maxLength={255}
                  disabled={done}
-                 className="w-full rounded border px-3 py-2 text-sm dark:bg-gray-700 dark:border-gray-600" />
+                 inputMode="email" autoComplete="email" autoCapitalize="none" autoCorrect="off"
+                 className="w-full rounded border px-3 py-2.5 text-base min-h-[44px] disabled:opacity-60 dark:bg-gray-700 dark:border-gray-600" />
         </div>
 
         {!done && <TurnstileWidget onToken={setTsToken} />}

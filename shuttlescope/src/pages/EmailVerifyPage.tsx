@@ -29,7 +29,10 @@ export default function EmailVerifyPage() {
   }, [params, t])
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
+    <div
+      className="min-h-[100svh] flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4"
+      style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+    >
       <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4 text-center">
         <h1 className="text-xl font-bold">{t('auth.verify.title')}</h1>
         {status === 'loading' && <p>{t('app.loading')}</p>}
