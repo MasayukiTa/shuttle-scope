@@ -36,10 +36,30 @@ from backend.utils.auth import get_auth
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-MAX_CONTEXT_TURNS = 30
+MAX_CONTEXT_TURNS = 40
 MAX_TOKENS = 2048
+CONTEXT_TOKEN_BUDGET = 8000      # 履歴に使うトークン上限 (context rot / 上限超過回避)
 _RATE_LIMIT_SEC = 1.0
 _last_req: dict = {}
+
+
+def _est_tokens(s: str) -> int:
+    return max(1, len(s or "") // 4)
+
+
+def _windowed_history(turns) -> list:
+    """会話メモリ: その会話のターンのみを、直近からトークン予算/件数上限まで詰める。
+    他ユーザ・他会話のメッセージは構造上一切混入しない (turns は conversation_id 固定)。"""
+    msgs = [ChatMessage(role=t.role, content=t.content)
+            for t in turns if t.role in ("user", "assistant", "system")]
+    out, used = [], 0
+    for m in reversed(msgs):
+        tok = _est_tokens(m.content)
+        if out and (used + tok > CONTEXT_TOKEN_BUDGET or len(out) >= MAX_CONTEXT_TURNS):
+            break
+        out.append(m); used += tok
+    out.reverse()
+    return out
 
 
 def require_llm_access(request: Request, db: Session):
@@ -66,8 +86,10 @@ def require_llm_access(request: Request, db: Session):
 
 
 def _own_conversation(cid: int, ctx, db: Session) -> LlmConversation:
+    # 厳格な所有者限定: 会話の中身は本人のみ (admin でも他人のチャットは読めない=混在/privacy 防止)。
+    # admin は user/grant 管理はできるが、ユーザの会話内容にはアクセスしない。
     c = db.get(LlmConversation, cid)
-    if not c or c.deleted_at is not None or (c.user_id != ctx.user_id and not ctx.is_admin):
+    if not c or c.deleted_at is not None or c.user_id != ctx.user_id:
         raise HTTPException(status_code=404, detail="conversation not found")
     return c
 
@@ -167,14 +189,17 @@ def post_message(cid: int, body: MessageCreate, request: Request, db: Session = 
     last_seq = db.query(func.max(LlmTurn.seq)).filter(LlmTurn.conversation_id == c.id).scalar() or 0
     db.add(LlmTurn(conversation_id=c.id, seq=last_seq + 1, role="user", content=body.content))
     c.last_used_at = datetime.utcnow()
+    # 自動タイトル: 最初のユーザ発言から (既存製品同様)。
+    if last_seq == 0 and (not c.title or c.title == "新しいチャット"):
+        c.title = (body.content.strip()[:40] or "新しいチャット")
     db.commit()
     log_access(db, "llm_message", user_id=ctx.user_id,
                resource_type="llm_conversation", resource_id=c.id,
                details={"chars": len(body.content)})
 
+    # メモリ: この会話のターンのみをトークン予算でウィンドウ化 (他会話/他ユーザは構造上混入しない)。
     turns = db.query(LlmTurn).filter(LlmTurn.conversation_id == c.id).order_by(LlmTurn.seq.asc()).all()
-    history = [ChatMessage(role=t.role, content=t.content)
-               for t in turns if t.role in ("user", "assistant", "system")][-MAX_CONTEXT_TURNS:]
+    history = _windowed_history(turns)
     system_prompt = c.system_prompt
     provider_name, model, conv_id, assistant_seq = c.provider, c.model, c.id, last_seq + 2
 
