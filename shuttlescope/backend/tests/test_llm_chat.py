@@ -1,9 +1,12 @@
 """LLM チャット API のアクセス制御テスト (権限上昇/横移動が起きないことの検証)。"""
+from types import SimpleNamespace
+
 from fastapi.testclient import TestClient
 
 from backend.main import app
 from backend.db.database import SessionLocal
 from backend.db.models import PlayerPageAccess
+from backend.routers.llm_chat import _windowed_history, MAX_CONTEXT_TURNS, CONTEXT_TOKEN_BUDGET
 from backend.utils.jwt_utils import create_access_token
 
 
@@ -57,6 +60,26 @@ def test_idor_other_users_conversation_is_404():
         # 別ユーザ (granted) でも他人の会話は 404
         r = client.get(f"/api/llm/conversations/{cid}/messages", headers=_hdr(9006))
     assert r.status_code == 404
+
+
+def test_admin_cannot_read_other_users_conversation():
+    """会話内容は所有者のみ。admin でも他人のチャットは 404 (混在/privacy 防止)。"""
+    _grant_user(9008)
+    with TestClient(app) as client:
+        c = client.post("/api/llm/conversations", json={}, headers=_hdr(9008))
+        cid = c.json()["id"]
+        r = client.get(f"/api/llm/conversations/{cid}/messages", headers=_hdr(1, role="admin"))
+    assert r.status_code == 404
+
+
+def test_windowed_history_token_and_count_bounded():
+    turns = [SimpleNamespace(role=("user" if i % 2 == 0 else "assistant"), content="x" * 400)
+             for i in range(200)]
+    out = _windowed_history(turns)
+    assert len(out) <= MAX_CONTEXT_TURNS
+    assert out[-1].content == turns[-1].content          # 最新ターンを保持し順序維持
+    tot = sum(max(1, len(m.content) // 4) for m in out)
+    assert tot <= CONTEXT_TOKEN_BUDGET + 200             # トークン予算内
 
 
 def test_message_requires_provider_configured():
