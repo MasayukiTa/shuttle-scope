@@ -69,8 +69,10 @@ export async function replayTutorial(id: string): Promise<void> {
  * page に入ったら、その tutorial が未完なら自動起動。
  * 既に completed / skipped の場合は何もしない。
  */
-export function useAutoTutorial(id: string): void {
+export function useAutoTutorial(id: string, enabled: boolean = true): void {
   useEffect(() => {
+    // enabled=false の呼び出し側 (例: LLM 専用ユーザ) にはチュートリアルを出さない。
+    if (!enabled) return
     let cancelled = false
     apiGet<{ data: TutorialStateEntry[] }>('/tutorials/state')
       .then((r) => {
@@ -82,5 +84,5 @@ export function useAutoTutorial(id: string): void {
       })
       .catch(() => { /* 失敗時は黙って何もしない */ })
     return () => { cancelled = true }
-  }, [id])
+  }, [id, enabled])
 }
