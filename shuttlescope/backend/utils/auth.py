@@ -26,6 +26,9 @@ class UserRole(str, Enum):
     PLAYER = "player"
     # demo: チュートリアル用デモ口座ロール（最小権限・read-only）。
     DEMO = "demo"
+    # llm: 汎用 LLM チャット (/#/llm) 専用ロール。analyst/coach/player の role 判定に
+    # 一致しないためバドミントン機能には到達できない (LLM 専用ユーザ)。
+    LLM = "llm"
 
 
 def is_demo_read(request: Request) -> bool:
