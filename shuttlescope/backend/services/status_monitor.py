@@ -291,25 +291,30 @@ def compute_component_history(db, days: int = UPTIME_WINDOW_DAYS, now: Optional[
     重い集計なので /status ページのサーバ描画時のみ呼ぶ (公開 JSON /api/public/status には含めない)。
     日跨ぎ集計は DB 関数の方言差を避けるため Python 側でバケットする。"""
     now = now or datetime.utcnow()
-    start = (now - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    # バー/稼働率は JST (UTC+9, DST 無し) の暦日で集計する (日本のユーザ基準で「今日」の
+    # 境界を合わせる)。health_samples.sampled_at は naive UTC なので +9h して JST 日付化する。
+    jst = timedelta(hours=9)
+    now_jst = now + jst
+    start_jst = (now_jst - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    start_utc = start_jst - jst  # DB フィルタは UTC のまま行う (sampled_at は naive UTC)
     out = {}
     for comp in COMPONENTS:
         key = comp["key"]
         rows = (
             db.query(HealthSample.sampled_at, HealthSample.status)
-            .filter(HealthSample.component == key, HealthSample.sampled_at >= start)
+            .filter(HealthSample.component == key, HealthSample.sampled_at >= start_utc)
             .all()
         )
         buckets: dict = {}
         up_samples = 0
         for ts, st in rows:
-            buckets.setdefault(ts.date(), set()).add(st)
+            buckets.setdefault((ts + jst).date(), set()).add(st)
             if st == OPERATIONAL:
                 up_samples += 1
         total_samples = len(rows)
         day_list = []
         for i in range(days):
-            d = (start + timedelta(days=i)).date()
+            d = (start_jst + timedelta(days=i)).date()
             sts = buckets.get(d)
             if not sts:
                 day_status = "nodata"
