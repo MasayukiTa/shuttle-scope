@@ -47,6 +47,7 @@ def _inc_dict(i: StatusIncident) -> dict:
     return {
         "id": i.id, "title": i.title, "reason": i.reason, "severity": i.severity,
         "component": i.component, "status": i.status,
+        "source": getattr(i, "source", "manual"),
         "began_at": i.began_at.isoformat() if i.began_at else None,
         "resolved_at": i.resolved_at.isoformat() if i.resolved_at else None,
     }
@@ -148,8 +149,14 @@ def compute_public_status(db: Session) -> dict:
         .limit(10)
         .all()
     )
+    try:
+        from backend.services.status_monitor import compute_components
+        components = compute_components(db, now)
+    except Exception:  # noqa: BLE001 — 監視未初期化でも公開ステータスは返す
+        components = []
     return {
         "overall": overall,
+        "components": components,
         "active_incidents": [_inc_dict(i) for i in unresolved],
         "recent_incidents": [_inc_dict(i) for i in recent],
         "maintenance": [_mnt_dict(m) for m in maint],

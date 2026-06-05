@@ -681,8 +681,27 @@ class StatusIncident(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="investigating")
     began_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # manual = 運用者が記録 / auto = status_monitor が自動記録
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="manual", server_default="manual")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class HealthSample(Base):
+    """コンポーネント別ヘルスサンプル。status_monitor が定期的に記録し、
+    稼働状況ページの「現在状態・負荷メトリクス・稼働率(uptime)」の集計元になる。
+
+    component: api/database/tunnel/gpu/worker。status: operational/degraded/down。
+    metric: 主要負荷指標 (例: GPU util%, CPU%, DB 応答ms)。detail: 表示用短文。
+    """
+    __tablename__ = "health_samples"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    component: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    metric: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    detail: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    sampled_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow, index=True)
 
 
 class Announcement(Base):

@@ -438,6 +438,14 @@ async def lifespan(app: FastAPI):
 
     cleanup_task = asyncio.create_task(_stale_device_cleanup())
 
+    # 稼働状況の自動監視 (コンポーネント別死活/負荷を定期サンプリングし障害区間を自動記録)
+    try:
+        from backend.services.status_monitor import start_status_monitor
+        status_monitor_task = start_status_monitor()
+    except Exception as exc:
+        logger.debug("status_monitor scheduling skipped: %s", exc)
+        status_monitor_task = None
+
     # 分割アップロードのアイドル GC
     try:
         from backend.routers.uploads import gc_loop as _uploads_gc_loop
@@ -502,6 +510,12 @@ async def lifespan(app: FastAPI):
         await cleanup_task
     except asyncio.CancelledError:
         pass
+    if status_monitor_task is not None:
+        status_monitor_task.cancel()
+        try:
+            await status_monitor_task
+        except asyncio.CancelledError:
+            pass
     if uploads_gc_task is not None:
         uploads_gc_task.cancel()
         try:
