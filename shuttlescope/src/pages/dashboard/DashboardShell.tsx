@@ -334,7 +334,9 @@ export function DashboardShell() {
               emptyLabel={t('common.select_player', 'Select player')}
               placeholder={t('auto.DashboardShell.k3')}
               loading={loadingPlayers}
-              className="min-w-[280px]"
+              // モバイルでは横幅いっぱい、xs(480px)以上で固定 280px。
+              // 固定 min-w-[280px] のままだと 360px 端末で icon+label と並んで枠を圧迫する。
+              className="w-full xs:w-auto xs:min-w-[280px]"
             />
           </div>
         </div>

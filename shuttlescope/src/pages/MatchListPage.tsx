@@ -544,9 +544,9 @@ export function MatchListPage() {
     // ※ 並んで sticky にすべき要素 (header) があれば後で position:sticky で対処。
     <div className={`h-full overflow-y-auto flex flex-col ${bodyBg} ${isLight ? 'text-gray-900' : 'text-white'}`}>
       {/* ヘッダー */}
-      <div className={`flex items-center justify-between px-6 py-4 border-b ${borderLine}`}>
+      <div className={`flex items-center justify-between gap-2 flex-wrap px-6 py-4 border-b ${borderLine}`}>
         <h1 className={`text-xl font-semibold ${textHeading}`}>{t('nav.matches')}</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => setShowQuickStart(true)}
             className="flex items-center gap-2 px-4 py-2 bg-yellow-600 hover:bg-yellow-500 text-white font-semibold rounded text-sm"
@@ -688,7 +688,7 @@ export function MatchListPage() {
 
       {/* 一括選択バー（選択時のみ表示） */}
       {selectedMatchIds.size > 0 && (
-        <div className="flex items-center gap-3 px-6 py-2 bg-blue-600 text-white text-sm shrink-0">
+        <div className="flex items-center gap-3 flex-wrap gap-y-2 px-6 py-2 bg-blue-600 text-white text-sm shrink-0">
           <span className="font-medium">{t('auto.MatchListPage.k34', { n: selectedMatchIds.size })}</span>
           <button
             onClick={() => {
@@ -956,15 +956,15 @@ export function MatchListPage() {
       {/* 試合登録モーダル */}
       {showForm && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className={`${card} rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto`}>
+          <div className={`${card} rounded-lg w-full max-w-2xl max-h-[90dvh] overflow-y-auto`}>
             <div className={`flex items-center justify-between px-6 py-4 border-b ${borderLine}`}>
               <h2 className={`text-lg font-semibold ${textHeading}`}>{editingMatchId !== null ? t('auto.MatchListPage.k42') : t('auto.MatchListPage.k29')}</h2>
               <button onClick={() => { setShowForm(false); setEditingMatchId(null); setForm(defaultForm()); resetPlayerFields() }} className={`${textMuted} ${isLight ? 'hover:text-gray-900' : 'hover:text-white'}`}><MIcon name="close" size={12} /></button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 flex flex-col gap-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* 大会名 */}
-                <div className="col-span-2">
+                <div className="col-span-1 sm:col-span-2">
                   <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.tournament')} *</label>
                   <input
                     value={form.tournament}
@@ -1157,7 +1157,7 @@ export function MatchListPage() {
                 </div>
 
                 {/* 動画 */}
-                <div className="col-span-2">
+                <div className="col-span-1 sm:col-span-2">
                   <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.list.video_optional')}</label>
                   <div className="flex gap-2 items-center">
                     {typeof window.shuttlescope?.openVideoFile === 'function' && (
@@ -1363,7 +1363,7 @@ export function MatchListPage() {
                 </div>
 
                 {/* メモ */}
-                <div className="col-span-2">
+                <div className="col-span-1 sm:col-span-2">
                   <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.notes')}</label>
                   <textarea
                     value={form.notes}
@@ -1375,7 +1375,7 @@ export function MatchListPage() {
 
                 {/* Phase B-13: 公開プール（admin 限定）— 全チーム閲覧可能 */}
                 {role === 'admin' && (
-                  <div className="col-span-2">
+                  <div className="col-span-1 sm:col-span-2">
                     <label className="flex items-center gap-2 text-sm">
                       <input
                         type="checkbox"

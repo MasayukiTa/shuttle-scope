@@ -94,7 +94,8 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
     <button
       onClick={onClick}
       title={t('auto.DashboardOverviewPage.k18')}
-      className={`shrink-0 ${textMuted} hover:${textHeading} transition-colors p-1 rounded ${isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-700'}`}
+      // モバイルはタップしやすいよう padding を厚く (>=44px相当)、md 以上は従来の密配置。
+      className={`shrink-0 ${textMuted} hover:${textHeading} transition-colors p-2.5 md:p-1 rounded ${isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-700'}`}
     >
       <MIcon name="fullscreen" size={13} />
     </button>
@@ -314,7 +315,8 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                     key={n ?? 'all'}
                     onClick={() => { setHeatmapLastN(n); setHeatmapMatchId(null) }}
                     disabled={heatmapMatchId != null}
-                    className={`text-[11px] px-2 py-0.5 rounded border transition-colors ${heatmapMatchId == null && heatmapLastN === n ? (isLight ? 'bg-gray-400 border-gray-300 text-white' : 'bg-gray-500 border-gray-400 text-white') : (isLight ? 'bg-white border-gray-300 text-gray-500 hover:bg-gray-100 disabled:opacity-40' : 'bg-gray-700 border-gray-600 text-gray-400 hover:bg-gray-600 disabled:opacity-40')}`}
+                    // モバイルは tap しやすいよう縦 padding を厚めに、sm 以上は従来の密配置
+                    className={`text-[11px] px-2 py-1.5 sm:py-0.5 rounded border transition-colors ${heatmapMatchId == null && heatmapLastN === n ? (isLight ? 'bg-gray-400 border-gray-300 text-white' : 'bg-gray-500 border-gray-400 text-white') : (isLight ? 'bg-white border-gray-300 text-gray-500 hover:bg-gray-100 disabled:opacity-40' : 'bg-gray-700 border-gray-600 text-gray-400 hover:bg-gray-600 disabled:opacity-40')}`}
                   >
                     {n == null ? t('common.all_time', 'All time') : t('common.recent_n_matches', { count: n, defaultValue: 'Recent {{count}} matches' })}
                   </button>
@@ -397,14 +399,14 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
       {/* スコア推移 / インターバルレポート 共通試合選択 */}
       <div className={`${card} rounded-lg p-4`}>
         {/* 試合セレクタ（前後ナビ付き） */}
-        <div className="flex items-center justify-between gap-2 mb-1">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
           <SectionTitle>{t('analysis.score_progression.title')}</SectionTitle>
           <div className="flex items-center gap-1 shrink-0">
             <button
               onClick={() => setSelectedMatchId(matchOptions[matchNavIdx - 1].value as number)}
               disabled={!canGoPrev}
               title={t('auto.DashboardOverviewPage.k19')}
-              className={`p-1 rounded transition-colors disabled:opacity-30 ${isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-700'}`}
+              className={`p-1.5 md:p-1 rounded transition-colors disabled:opacity-30 ${isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-700'}`}
             >
               <MIcon name="chevron_left" size={14} className={textMuted} />
             </button>
@@ -415,13 +417,14 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
               emptyLabel={t('common.select_match', 'Select match')}
               placeholder={t('auto.DashboardOverviewPage.k21')}
               dropdownAlign="right"
-              className="w-[210px]"
+              // 360px 端末では w-[210px] + 前後ボタンでタイトルが潰れるため可変幅に。
+              className="w-[150px] sm:w-[210px]"
             />
             <button
               onClick={() => setSelectedMatchId(matchOptions[matchNavIdx + 1].value as number)}
               disabled={!canGoNext}
               title={t('auto.DashboardOverviewPage.k20')}
-              className={`p-1 rounded transition-colors disabled:opacity-30 ${isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-700'}`}
+              className={`p-1.5 md:p-1 rounded transition-colors disabled:opacity-30 ${isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-700'}`}
             >
               <MIcon name="chevron_right" size={14} className={textMuted} />
             </button>
