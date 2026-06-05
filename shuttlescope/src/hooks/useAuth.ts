@@ -52,7 +52,9 @@ function getStoredRole(): UserRole | null {
   // setSession で setRoleState('demo') 直後に AUTH_CHANGED_EVENT リスナーが
   // getStoredRole() を呼び role を null に上書きする → App が LoginPage を
   // 描画して login 画面に戻ってしまう (testtest login で再現)。
-  if (v === 'admin' || v === 'analyst' || v === 'coach' || v === 'player' || v === 'demo') {
+  // 2026-06-05 fix: 同型の不具合が 'llm' role でも再発 (LLM 専用ユーザがログイン直後に
+  // login 画面へ戻る)。新しい role を追加したら必ず本 whitelist にも追加すること。
+  if (v === 'admin' || v === 'analyst' || v === 'coach' || v === 'player' || v === 'demo' || v === 'llm') {
     return v as UserRole
   }
   return null
