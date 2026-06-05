@@ -20,6 +20,17 @@ import {
 // 「最下部付近」判定のしきい値 (px)。これより上にスクロールしていれば自動追従しない。
 const SCROLL_BOTTOM_THRESHOLD = 80
 
+// 「じっくり考える」(deep thinking) トグルの永続化キー。
+const THINKING_STORAGE_KEY = 'ss.llm.thinking'
+
+function readThinkingPref(): boolean {
+  try {
+    return localStorage.getItem(THINKING_STORAGE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
 export default function LlmChatPage() {
   const { t } = useTranslation()
   const [config, setConfig] = useState<LlmConfig | null>(null)
@@ -30,6 +41,8 @@ export default function LlmChatPage() {
   const [sending, setSending] = useState(false)
   const [streamText, setStreamText] = useState('')
   const [streaming, setStreaming] = useState(false) // SSE start〜done/error の生成中フラグ
+  const [reasoningText, setReasoningText] = useState('') // 推論モデルの思考過程 (ライブのみ、永続化されない)
+  const [thinking, setThinking] = useState(readThinkingPref) // 「じっくり考える」トグル (localStorage 永続)
   const [error, setError] = useState<string | null>(null)
   const [retryPrompt, setRetryPrompt] = useState<string | null>(null) // 送信失敗したプロンプト (再試行用)
   const [renamingId, setRenamingId] = useState<number | null>(null)
@@ -62,6 +75,17 @@ export default function LlmChatPage() {
     refreshConversations()
   }, [refreshConversations])
 
+  // 「じっくり考える」トグル状態を localStorage に永続化。
+  useEffect(() => {
+    try {
+      localStorage.setItem(THINKING_STORAGE_KEY, thinking ? '1' : '0')
+    } catch {
+      /* ignore */
+    }
+  }, [thinking])
+
+  const reasoningAvailable = config?.reasoning_available === true
+
   useEffect(() => {
     forceScrollRef.current = true // 会話を切り替えたら次回描画で最下部へ
     if (activeId == null) {
@@ -87,7 +111,7 @@ export default function LlmChatPage() {
       el.scrollTop = el.scrollHeight
       forceScrollRef.current = false
     }
-  }, [messages, streamText, streaming])
+  }, [messages, streamText, streaming, reasoningText])
 
   // スクロール位置を監視して「最新へ」ボタンの表示を切り替える。
   useEffect(() => {
@@ -219,13 +243,18 @@ export default function LlmChatPage() {
     const optimistic: LlmMessage = { id: -Date.now(), seq: messages.length + 1, role: 'user', content }
     setMessages((prev) => [...prev, optimistic])
     setStreamText('')
+    setReasoningText('') // 新規送信ごとに前回の思考過程をクリア (ライブのみ表示)
     setStreaming(true) // start/delta 前から「生成中」を表示 (応答までの空白時間も可視化)
+
+    // この送信時点のトグル値を確定 (送信中にトグルが変わっても影響させない)。
+    const useThinking = thinking
 
     // 中断用 AbortController を都度生成。
     const controller = new AbortController()
     abortRef.current = controller
 
     let acc = ''
+    let reasoningAcc = ''
     let aborted = false
     let errored = false
     try {
@@ -236,6 +265,11 @@ export default function LlmChatPage() {
           acc += e.content
           setStreaming(true)
           setStreamText(acc)
+        } else if (e.type === 'reasoning' && e.content) {
+          // 推論モデルの思考過程をライブ蓄積 (確定メッセージには残さない)。
+          reasoningAcc += e.content
+          setStreaming(true)
+          setReasoningText(reasoningAcc)
         } else if (e.type === 'done') {
           setStreaming(false)
         } else if (e.type === 'error') {
@@ -249,7 +283,7 @@ export default function LlmChatPage() {
           // ミッドストリームエラー: 既出のストリームテキストは消さず確定バブル + エラー注記にする。
           setError(e.message || t('llm.error.generate'))
         }
-      }, controller.signal)
+      }, controller.signal, useThinking)
     } catch {
       // reader.read() が中断/失敗で reject した場合 (llm.ts の loop は try/catch を持たない)。
       // 中断ならエラー扱いせず、それ以外は通常エラーとして部分テキストを保持する。
@@ -264,6 +298,8 @@ export default function LlmChatPage() {
     abortRef.current = null
     setStreaming(false)
     setSending(false)
+    // 思考過程はライブのみ (永続化されない)。中断/エラー/正常完了いずれの終了時もクリアし、確定メッセージには残さない。
+    setReasoningText('')
 
     // ユーザ中断: 部分テキストを assistant バブルとして残し、エラーは出さない。再同期もしない。
     if (aborted || controller.signal.aborted) {
@@ -295,7 +331,7 @@ export default function LlmChatPage() {
       }
     }
     refreshConversations()
-  }, [input, sending, notConfigured, activeId, messages.length, refreshConversations, t])
+  }, [input, sending, notConfigured, activeId, messages.length, refreshConversations, thinking, t])
 
   // 生成停止 (STOP ボタン)。signal.abort() でストリームを打ち切る。後処理は onSend 側で行う。
   const onStop = useCallback(() => {
@@ -429,11 +465,6 @@ export default function LlmChatPage() {
           </button>
           <MIcon name="smart_toy" size={20} ariaHidden className="text-blue-600" />
           <span className="font-bold">{t('llm.title')}</span>
-          {config?.model && (
-            <span className="ml-2 text-xs text-slate-500 dark:text-slate-400 truncate" title={`${config.provider} · ${config.model}`}>
-              {config.provider} · {config.model}
-            </span>
-          )}
         </header>
 
         <div className="relative flex-1 min-h-0">
@@ -460,6 +491,10 @@ export default function LlmChatPage() {
             ))}
             {/* ストリーミング中の応答領域: スクリーンリーダーへ読み上げ (aria-live) + 生成中は aria-busy。 */}
             <div aria-live="polite" aria-busy={streaming || undefined}>
+              {/* 思考過程 (推論モデルの chain-of-thought): 回答バブルの上に折りたたみ表示。ライブのみ (確定時にクリア)。 */}
+              {reasoningText && (
+                <ReasoningBlock content={reasoningText} label={t('llm.thinking_process')} />
+              )}
               {streamText && <Bubble role="assistant" content={streamText} pending />}
               {streaming && !streamText && <TypingIndicator label={t('llm.generating')} />}
             </div>
@@ -503,6 +538,25 @@ export default function LlmChatPage() {
         )}
 
         <div className="border-t border-slate-200 dark:border-slate-700 p-3">
+          {/* 「じっくり考える」(deep thinking) トグル: reasoning 対応時のみ表示。状態を localStorage に永続化。 */}
+          {reasoningAvailable && (
+            <div className="mb-2 flex">
+              <button
+                type="button"
+                onClick={() => setThinking((v) => !v)}
+                aria-pressed={thinking}
+                title={t('llm.think_deeply')}
+                className={`inline-flex min-h-[36px] items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                  thinking
+                    ? 'bg-blue-600 text-white hover:bg-blue-700'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                }`}
+              >
+                <MIcon name="lightbulb" size={16} fill={thinking ? 1 : 0} ariaHidden className={thinking ? 'text-white' : undefined} />
+                {t('llm.think_deeply')}
+              </button>
+            </div>
+          )}
           <div className="relative">
             <textarea
               ref={taRef}
@@ -736,5 +790,24 @@ function TypingIndicator({ label }: { label: string }) {
         <span className="text-xs text-slate-500 dark:text-slate-500">{label}</span>
       </div>
     </div>
+  )
+}
+
+// 思考プロセス (推論モデルの chain-of-thought) を回答バブルの上に折りたたみ表示する。
+// ストリーミング中はデフォルト展開 (open)。muted で小さめのテキスト。ライブのみで永続化されない。
+function ReasoningBlock({ content, label }: { content: string; label: string }) {
+  return (
+    <details
+      open
+      className="mb-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 px-3 py-2 text-slate-500 dark:text-slate-400"
+    >
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs font-medium select-none">
+        <MIcon name="lightbulb" size={14} ariaHidden />
+        {label}
+      </summary>
+      <div className="mt-1.5 whitespace-pre-wrap break-words text-xs leading-relaxed opacity-90">
+        {content}
+      </div>
+    </details>
   )
 }

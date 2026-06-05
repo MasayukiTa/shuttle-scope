@@ -23,6 +23,8 @@
     "cancel": "キャンセル",
     "copy": "コピー",
     "copied": "コピーしました",
+    "think_deeply": "じっくり考える",
+    "thinking_process": "思考プロセス",
     "error": {
       "create": "会話の作成に失敗しました。",
       "generate": "応答の生成に失敗しました。",
