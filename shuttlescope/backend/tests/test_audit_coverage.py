@@ -91,6 +91,7 @@ def test_no_orphan_event_names():
         # 汎用 LLM チャット (/#/llm)
         "llm_conversation_create",
         "llm_conversation_delete",
+        "llm_conversation_rename",
         "llm_message",
         # Phase C2: 緊急失効
         "emergency_revoke_all_tokens",
