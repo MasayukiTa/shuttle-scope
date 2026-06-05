@@ -15,6 +15,8 @@
     "rename_placeholder": "会話の名前",
     "save": "保存",
     "cancel": "キャンセル",
+    "copy": "コピー",
+    "copied": "コピーしました",
     "error": {
       "create": "会話の作成に失敗しました。",
       "generate": "応答の生成に失敗しました。",
