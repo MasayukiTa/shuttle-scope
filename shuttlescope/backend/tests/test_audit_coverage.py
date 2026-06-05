@@ -88,6 +88,10 @@ def test_no_orphan_event_names():
     新規イベントを追加したら EXPECTED_EVENTS か _ALLOWED_EXTRAS に登録する運用。
     """
     _ALLOWED_EXTRAS = {
+        # 汎用 LLM チャット (/#/llm)
+        "llm_conversation_create",
+        "llm_conversation_delete",
+        "llm_message",
         # Phase C2: 緊急失効
         "emergency_revoke_all_tokens",
         "emergency_reissue_all_video_tokens",
