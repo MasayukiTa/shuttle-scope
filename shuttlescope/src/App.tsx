@@ -324,6 +324,21 @@ function AnnotatorOrMobileAnnotate() {
 
 
 function MainLayout() {
+  const { role } = useAuth()
+  const location = useLocation()
+  // LLM 専用ロール (バドミントン権限を持たない = 'llm' 等) を badminton 系ページに
+  // 入らせない。nav では既に隠しているが、初期ルート '/' (→ /matches へ redirect) や
+  // 直接 URL / bookmark 経由で到達し得るため、許可パス以外は /llm へ送る。
+  // 2026-06-05: LLM 専用ユーザがログイン後 /#/matches に着地する不具合の対策。
+  const llmOnly = !!role && !['admin', 'analyst', 'coach', 'player', 'demo'].includes(role)
+  if (llmOnly) {
+    const p = location.pathname
+    const allowed =
+      p === '/llm' || p.startsWith('/llm/') ||
+      p === '/settings' || p.startsWith('/settings/') ||
+      p.startsWith('/legal') || p.startsWith('/account')
+    if (!allowed) return <Navigate to="/llm" replace />
+  }
 
   return (
     <div className="flex h-screen">
