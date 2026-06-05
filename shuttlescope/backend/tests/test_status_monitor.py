@@ -86,7 +86,10 @@ def test_component_history_daily_buckets():
     assert g["days"][-1]["st"] == "operational"   # 今日
     assert g["days"][-2]["st"] == "down"          # 昨日 (down 優先)
     assert g["days"][0]["st"] == "nodata"         # 90日前はデータ無し
-    assert abs(g["uptime_pct"] - 50.0) < 0.1      # counted=2, up=1
+    # uptime はサンプル比で算出 (日数ベースではない): 2 operational / 3 total = 66.67%。
+    # (旧実装は日数ベースで 50.0% = 2日中1日up だったが、1サンプルの down で
+    #  その日を丸ごと非稼働扱いするのは過度に厳しいためサンプル比に是正済み。)
+    assert abs(g["uptime_pct"] - 66.67) < 0.1
 
 
 def test_evaluate_and_record_writes_and_prunes():
