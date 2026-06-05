@@ -2,6 +2,9 @@
   "llm": {
     "title": "LLM Chat",
     "new_chat": "New chat",
+    "conversations": "Conversations",
+    "open_conversations": "Open conversations",
+    "close": "Close",
     "delete": "Delete",
     "placeholder": "Type a message… (Enter to send / Shift+Enter for newline)",
     "send": "Send",
