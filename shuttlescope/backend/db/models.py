@@ -724,6 +724,36 @@ class Announcement(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class LlmConversation(Base):
+    """汎用 LLM チャット (/#/llm) の会話。バドミントン特化 insights chat とは別系統。
+    所有者 (user_id) のみ閲覧可。provider/model は会話ごとに固定し再現性を持たせる。"""
+    __tablename__ = "llm_conversations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False, default="新しいチャット")
+    provider: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    model: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    system_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    last_used_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class LlmTurn(Base):
+    """LLM 会話の 1 ターン (メッセージ)。role = user|assistant|system|tool。"""
+    __tablename__ = "llm_turns"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    conversation_id: Mapped[int] = mapped_column(Integer, ForeignKey("llm_conversations.id"), nullable=False, index=True)
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    tool_calls: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    tokens: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
 # ─── S-003: コメント・タグ ────────────────────────────────────────────────────
 
 class Comment(Base):
