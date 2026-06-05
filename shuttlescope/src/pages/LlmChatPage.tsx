@@ -32,6 +32,7 @@ export default function LlmChatPage() {
   const [renameDraft, setRenameDraft] = useState('')
   const [drawerOpen, setDrawerOpen] = useState(false) // モバイル会話ドロワー (<md)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const taRef = useRef<HTMLTextAreaElement>(null)
 
   const refreshConversations = useCallback(async () => {
     try {
@@ -60,6 +61,14 @@ export default function LlmChatPage() {
     const el = scrollRef.current
     if (el) el.scrollTop = el.scrollHeight
   }, [messages, streamText, streaming])
+
+  // 入力 textarea の自動高さ調整 (1 行〜最大 ~6 行 = 160px、超過分はスクロール)。
+  useEffect(() => {
+    const ta = taRef.current
+    if (!ta) return
+    ta.style.height = 'auto'
+    ta.style.height = `${Math.min(ta.scrollHeight, 160)}px`
+  }, [input])
 
   // ドロワーを開いている間は背面スクロールをロック + Esc で閉じる。
   useEffect(() => {
@@ -287,13 +296,14 @@ export default function LlmChatPage() {
         <div className="border-t border-slate-200 dark:border-slate-700 p-3">
           <div className="relative">
             <textarea
+              ref={taRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={onKeyDown}
               rows={1}
               placeholder={t('llm.placeholder')}
               disabled={sending}
-              className="w-full resize-none rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 pr-14 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
+              className="block w-full resize-none rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 pr-14 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 max-h-40 overflow-y-auto"
             />
             <button
               onClick={onSend}
