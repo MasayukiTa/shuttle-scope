@@ -74,6 +74,21 @@ def test_compute_components_uptime_and_latest():
     assert comps["worker"]["uptime_24h"] is None
 
 
+def test_component_history_daily_buckets():
+    db = _db()
+    now = datetime(2026, 6, 5, 12, 0, 0)
+    _add(db, "gpu", sm.OPERATIONAL, now)
+    _add(db, "gpu", sm.OPERATIONAL, now - timedelta(days=1, hours=2))
+    _add(db, "gpu", sm.DOWN, now - timedelta(days=1, hours=1))  # 昨日は down 混在
+    hist = sm.compute_component_history(db, days=90, now=now)
+    g = hist["gpu"]
+    assert len(g["days"]) == 90
+    assert g["days"][-1]["st"] == "operational"   # 今日
+    assert g["days"][-2]["st"] == "down"          # 昨日 (down 優先)
+    assert g["days"][0]["st"] == "nodata"         # 90日前はデータ無し
+    assert abs(g["uptime_pct"] - 50.0) < 0.1      # counted=2, up=1
+
+
 def test_evaluate_and_record_writes_and_prunes():
     db = _db()
     now = datetime(2026, 6, 5, 0, 0, 0)

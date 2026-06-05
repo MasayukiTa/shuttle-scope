@@ -29,8 +29,7 @@
   .public-status-page .sub{color:var(--t2);font-size:.92rem;margin-bottom:22px;}
   /* 全体ステータス見出しパネル */
   .ss-hero{display:flex;align-items:center;gap:16px;flex-wrap:wrap;
-    border-radius:18px;padding:22px 24px;margin-bottom:26px;color:#fff;
-    box-shadow:0 16px 44px rgba(18,54,90,.14);}
+    border-radius:10px;padding:20px 22px;margin-bottom:24px;color:#fff;}
   .ss-hero[data-sev="operational"]{background:linear-gradient(135deg,#0f7a52 0%,#0c8f6a 100%)}
   .ss-hero[data-sev="degraded"]{background:linear-gradient(135deg,#9a3412 0%,#b45309 100%)}
   .ss-hero[data-sev="down"]{background:linear-gradient(135deg,#9f1239 0%,#b91c1c 100%)}
@@ -44,8 +43,8 @@
   .public-status-page h2 .cnt{font-size:.78rem;font-weight:700;color:var(--t2);
     background:var(--surf3);border-radius:999px;padding:2px 9px}
   /* カード */
-  .ss-card{background:var(--surface);border:1px solid var(--bdr);border-radius:14px;
-    padding:16px 18px;margin-bottom:12px;box-shadow:0 6px 18px rgba(18,54,90,.06)}
+  .ss-card{background:var(--surface);border:1px solid var(--bdr);border-radius:8px;
+    padding:16px 18px;margin-bottom:10px}
   .ss-card .ss-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .ss-card .ss-title{font-weight:700;color:var(--t1);font-size:1.02rem}
   .ss-card .ss-reason{color:var(--t2);line-height:1.7;margin-top:7px;font-size:.94rem}
@@ -71,25 +70,41 @@
     .public-status-page .shell{padding:18px 14px 44px}
     .ss-hero{padding:18px}
   }
-  /* コンポーネント一覧 (claude status 風) */
-  .ss-components{background:var(--surface);border:1px solid var(--bdr);border-radius:14px;overflow:hidden;box-shadow:0 6px 18px rgba(18,54,90,.06)}
-  .ss-comp{display:flex;align-items:center;gap:12px;padding:13px 18px;border-top:1px solid var(--bdr)}
+  /* コンポーネント一覧 (claude status 風: 控えめな角丸 / 余白重視) */
+  .ss-components{background:var(--surface);border:1px solid var(--bdr);border-radius:8px;overflow:hidden}
+  .ss-comp{padding:15px 18px;border-top:1px solid var(--bdr)}
   .ss-comp:first-child{border-top:none}
-  .ss-comp-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;background:var(--t3)}
-  .ss-comp[data-st="operational"] .ss-comp-dot{background:#0f9d6b;box-shadow:0 0 0 3px rgba(15,157,107,.18)}
-  .ss-comp[data-st="degraded"] .ss-comp-dot{background:#d97706;box-shadow:0 0 0 3px rgba(217,119,6,.18)}
-  .ss-comp[data-st="down"] .ss-comp-dot{background:#dc2626;box-shadow:0 0 0 3px rgba(220,38,38,.18)}
-  .ss-comp-name{font-weight:700;color:var(--t1);font-size:.98rem}
+  .ss-comp-head{display:flex;align-items:center;gap:12px}
+  .ss-comp-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;background:var(--t3)}
+  .ss-comp[data-st="operational"] .ss-comp-dot{background:#0f9d6b}
+  .ss-comp[data-st="degraded"] .ss-comp-dot{background:#d97706}
+  .ss-comp[data-st="down"] .ss-comp-dot{background:#dc2626}
+  .ss-comp-name{font-weight:700;color:var(--t1);font-size:.96rem}
   .ss-comp-detail{color:var(--t2);font-size:.82rem;font-variant-numeric:tabular-nums}
   .ss-comp-right{margin-left:auto;display:flex;align-items:center;gap:12px}
   .ss-comp-uptime{color:var(--t2);font-size:.8rem;font-variant-numeric:tabular-nums}
-  .ss-comp-badge{font-size:.72rem;font-weight:700;border-radius:6px;padding:3px 9px;color:#fff;white-space:nowrap}
+  .ss-comp-badge{font-size:.72rem;font-weight:700;border-radius:4px;padding:3px 9px;color:#fff;white-space:nowrap}
   .ss-comp-badge.st-operational{background:#0f9d6b}
   .ss-comp-badge.st-degraded{background:#d97706}
   .ss-comp-badge.st-down{background:#dc2626}
   .ss-comp-badge.st-unknown{background:var(--t3)}
-  .ss-comp-note{color:var(--t3);font-size:.8rem;margin:8px 2px 0}
-  @media(max-width:600px){.ss-comp{flex-wrap:wrap;gap:8px}.ss-comp-detail{width:100%;order:3;padding-left:22px}}
+  /* 90日稼働履歴バー (1 セグメント = 1 日) */
+  .ss-bar{display:flex;gap:2px;margin-top:12px;height:30px;align-items:stretch}
+  .ss-bar-seg{flex:1 1 0;min-width:1px;border-radius:1px;background:var(--bdr2);transition:opacity .1s}
+  .ss-bar-seg:hover{opacity:.6}
+  .ss-bar-seg[data-st="operational"]{background:#0f9d6b}
+  .ss-bar-seg[data-st="degraded"]{background:#d97706}
+  .ss-bar-seg[data-st="down"]{background:#dc2626}
+  .ss-bar-seg[data-st="nodata"]{background:var(--bdr2)}
+  .ss-bar-axis{display:flex;justify-content:space-between;margin-top:6px;color:var(--t3);font-size:.72rem}
+  .ss-legend{display:flex;gap:16px;flex-wrap:wrap;margin:16px 2px 4px;color:var(--t2);font-size:.78rem}
+  .ss-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:middle;margin-right:5px}
+  .ss-legend i[data-st="operational"]{background:#0f9d6b}
+  .ss-legend i[data-st="degraded"]{background:#d97706}
+  .ss-legend i[data-st="down"]{background:#dc2626}
+  .ss-legend i[data-st="nodata"]{background:var(--bdr2)}
+  .ss-comp-note{color:var(--t3);font-size:.8rem;margin:6px 2px 0}
+  @media(max-width:600px){.ss-comp-head{flex-wrap:wrap;gap:8px}.ss-comp-detail{width:100%;order:3}}
 </style>
 {% endblock %}
 
@@ -116,24 +131,38 @@
     </div>
   </div>
 
-  {# システム構成コンポーネント (status.claude.com 風: 現在状態 + 負荷 + 24h 稼働率) #}
+  {# システム構成コンポーネント (status.claude.com 風: 状態 + 負荷 + 90日稼働履歴バー) #}
   {% if status.components %}
   {% set comp_label = {'operational': ('正常','Operational'), 'degraded': ('低下','Degraded'), 'down': ('停止','Down'), 'unknown': ('不明','Unknown')} %}
   <h2>{% if _is_en %}Components{% else %}システム構成{% endif %}</h2>
   <div class="ss-components">
     {% for c in status.components %}
     <div class="ss-comp" data-st="{{ c.status }}">
-      <span class="ss-comp-dot"></span>
-      <span class="ss-comp-name">{{ c.name_en if _is_en else c.name_ja }}</span>
-      {% if c.detail %}<span class="ss-comp-detail">{{ c.detail }}</span>{% endif %}
-      <span class="ss-comp-right">
-        {% if c.uptime_24h is not none %}<span class="ss-comp-uptime" title="{% if _is_en %}24h uptime{% else %}24時間稼働率{% endif %}">{{ '%.1f'|format(c.uptime_24h) }}%</span>{% endif %}
-        <span class="ss-comp-badge st-{{ c.status }}">{{ comp_label.get(c.status, (c.status, c.status))[1 if _is_en else 0] }}</span>
-      </span>
+      <div class="ss-comp-head">
+        <span class="ss-comp-dot"></span>
+        <span class="ss-comp-name">{{ c.name_en if _is_en else c.name_ja }}</span>
+        {% if c.detail %}<span class="ss-comp-detail">{{ c.detail }}</span>{% endif %}
+        <span class="ss-comp-right">
+          {% if c.uptime_pct is not none %}<span class="ss-comp-uptime">{{ '%.2f'|format(c.uptime_pct) }}%{% if not _is_en %} 稼働{% else %} uptime{% endif %}</span>{% endif %}
+          <span class="ss-comp-badge st-{{ c.status }}">{{ comp_label.get(c.status, (c.status, c.status))[1 if _is_en else 0] }}</span>
+        </span>
+      </div>
+      {% if c.history %}
+      <div class="ss-bar" role="img" aria-label="{% if _is_en %}90-day uptime{% else %}直近90日の稼働履歴{% endif %}">
+        {% for d in c.history %}<span class="ss-bar-seg" data-st="{{ d.st }}" title="{{ d.d }}"></span>{% endfor %}
+      </div>
+      <div class="ss-bar-axis"><span>{% if _is_en %}90 days ago{% else %}90日前{% endif %}</span><span>{% if _is_en %}Today{% else %}本日{% endif %}</span></div>
+      {% endif %}
     </div>
     {% endfor %}
   </div>
-  <p class="ss-comp-note">{% if _is_en %}Load metrics are sampled about once a minute. Uptime is over the last 24h.{% else %}負荷は約1分ごとに自動サンプリングしています。稼働率は直近24時間の割合です。{% endif %}</p>
+  <div class="ss-legend">
+    <span><i data-st="operational"></i>{% if _is_en %}Operational{% else %}正常{% endif %}</span>
+    <span><i data-st="degraded"></i>{% if _is_en %}Degraded{% else %}低下{% endif %}</span>
+    <span><i data-st="down"></i>{% if _is_en %}Outage{% else %}停止{% endif %}</span>
+    <span><i data-st="nodata"></i>{% if _is_en %}No data{% else %}データなし{% endif %}</span>
+  </div>
+  <p class="ss-comp-note">{% if _is_en %}Sampled about every 10 minutes; uptime is over the last 90 days.{% else %}約10分ごとに自動サンプリング。稼働率は直近90日の割合です。{% endif %}</p>
   {% endif %}
 
   {# 予定メンテナンス #}

@@ -26,10 +26,11 @@ from backend.db.models import HealthSample, StatusIncident
 
 logger = logging.getLogger(__name__)
 
-SAMPLE_INTERVAL_SEC = 60
-SAMPLE_RETENTION_DAYS = 14
-CONSECUTIVE_TO_OPEN = 2      # 連続 N 回 劣化/停止 で incident 自動 open
-CONSECUTIVE_TO_RESOLVE = 2   # 連続 N 回 operational で自動 resolve
+SAMPLE_INTERVAL_SEC = 600        # 10 分ごと (1 分は過剰なので緩和)
+SAMPLE_RETENTION_DAYS = 95       # status.claude.com 風の 90 日バー + 余裕
+UPTIME_WINDOW_DAYS = 90          # 稼働率/履歴バーの表示日数
+CONSECUTIVE_TO_OPEN = 2          # 連続 N 回 劣化/停止 で incident 自動 open
+CONSECUTIVE_TO_RESOLVE = 2       # 連続 N 回 operational で自動 resolve
 
 OPERATIONAL, DEGRADED, DOWN = "operational", "degraded", "down"
 
@@ -280,6 +281,50 @@ def compute_components(db, now: Optional[datetime] = None) -> list[dict]:
             "uptime_24h": uptime,
             "sampled_at": latest.sampled_at.isoformat() if latest and latest.sampled_at else None,
         })
+    return out
+
+
+def compute_component_history(db, days: int = UPTIME_WINDOW_DAYS, now: Optional[datetime] = None) -> dict:
+    """status.claude.com 風の日次稼働履歴。コンポーネント毎に直近 `days` 日の
+    日別ステータス (operational/degraded/down/nodata) と稼働率% を返す。
+
+    重い集計なので /status ページのサーバ描画時のみ呼ぶ (公開 JSON /api/public/status には含めない)。
+    日跨ぎ集計は DB 関数の方言差を避けるため Python 側でバケットする。"""
+    now = now or datetime.utcnow()
+    start = (now - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    out = {}
+    for comp in COMPONENTS:
+        key = comp["key"]
+        rows = (
+            db.query(HealthSample.sampled_at, HealthSample.status)
+            .filter(HealthSample.component == key, HealthSample.sampled_at >= start)
+            .all()
+        )
+        buckets: dict = {}
+        for ts, st in rows:
+            buckets.setdefault(ts.date(), set()).add(st)
+        day_list = []
+        up_days = counted = 0
+        for i in range(days):
+            d = (start + timedelta(days=i)).date()
+            sts = buckets.get(d)
+            if not sts:
+                day_status = "nodata"
+            elif DOWN in sts:
+                day_status = "down"
+            elif DEGRADED in sts:
+                day_status = "degraded"
+            else:
+                day_status = "operational"
+            if day_status != "nodata":
+                counted += 1
+                if day_status == "operational":
+                    up_days += 1
+            day_list.append({"d": d.isoformat(), "st": day_status})
+        out[key] = {
+            "days": day_list,
+            "uptime_pct": round(100.0 * up_days / counted, 2) if counted else None,
+        }
     return out
 
 
