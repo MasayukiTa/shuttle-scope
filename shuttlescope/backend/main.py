@@ -1605,6 +1605,35 @@ class TeamScopeAccessControlMiddleware(BaseHTTPMiddleware):
 app.add_middleware(TeamScopeAccessControlMiddleware)
 
 
+# ─── LLM 専用ロールのチョークポイント ────────────────────────────────────────
+# role='llm' (汎用 LLM チャット専用アカウント) は /api/llm/* と auth/public/health
+# 以外の /api/* に一切アクセスさせない。個別エンドポイントの role ガード漏れ
+# (例: /api/players が「認証済みなら誰でも 200」でプレイヤー一覧を漏洩) による
+# 権限上昇/データ漏洩を、エンドポイント実装に依存せず一箇所で遮断する。
+# PathNormalizationMiddleware より内側 (= 正規化済み path) で動くよう、ここで登録する。
+class LlmOnlyRoleMiddleware(BaseHTTPMiddleware):
+    _ALLOWED = ("/api/llm/", "/api/auth/", "/api/public/")
+
+    async def dispatch(self, request: StarletteRequest, call_next):
+        path = request.url.path
+        if (path.startswith("/api/") and path != "/api/health"
+                and not path.startswith(self._ALLOWED)):
+            auth_header = request.headers.get("Authorization", "")
+            if auth_header.startswith("Bearer "):
+                from backend.utils.jwt_utils import verify_token
+                payload = verify_token(auth_header[7:])
+                if payload and payload.get("role") == "llm":
+                    from fastapi.responses import JSONResponse
+                    return JSONResponse(
+                        status_code=403,
+                        content={"detail": "LLM-only account: this resource is not accessible"},
+                    )
+        return await call_next(request)
+
+
+app.add_middleware(LlmOnlyRoleMiddleware)
+
+
 # ─── /api/analysis/* GET レスポンスキャッシュミドルウェア ────────────────────
 # 読み専用エンドポイントをプロセス内メモリにキャッシュし、解析タブの
 # 再描画を高速化する。認証ヘッダ（X-Role / X-Player-Id / X-Team-Name）を

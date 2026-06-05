@@ -63,6 +63,17 @@ def test_admin_cannot_read_other_users_conversation():
     assert r.status_code == 404
 
 
+def test_llm_role_blocked_from_badminton_endpoints():
+    """LLM 専用ロールは /api/llm/* 以外のバドミントン系 /api/* に到達できない
+    (LlmOnlyRoleMiddleware チョークポイント)。/api/players 漏洩の回帰テスト。"""
+    with TestClient(app) as client:
+        for path in ("/api/players", "/api/matches", "/api/reports", "/api/analysis/heatmap"):
+            r = client.get(path, headers=_hdr(9108, "llm"))
+            assert r.status_code == 403, f"{path} -> {r.status_code} (LLM ロールが到達できてはいけない)"
+        # LLM 自身のエンドポイントは許可
+        assert client.get("/api/llm/conversations", headers=_hdr(9108, "llm")).status_code == 200
+
+
 def test_message_requires_provider_configured():
     """プロバイダ未設定 (テスト環境に API キー無し) なら送信は 503。ネットワークは張らない。"""
     with TestClient(app) as client:
