@@ -16,57 +16,45 @@
      白文字・MigMix 1P フォントを破壊するため)。背景グラデのみ body に許可し、
      文字色・フォント上書きは .shell スコープに閉じ込める。
      (2026-05-26 過去指摘の修正: 濃色背景に暗色文字問題の再発を防ぐ) */
-  body.public-contact-page {
-    background:
-      radial-gradient(circle at top right, rgba(13,123,131,.16), transparent 26%),
-      radial-gradient(circle at top left, rgba(15,94,168,.16), transparent 24%),
-      linear-gradient(180deg, #f9fbfe 0%, #f5f8fc 100%);
-  }
+  /* テーマ変数 (base.html.j2 の :root / [data-theme=dark]) を使い light/dark 両対応。
+     文字色・フォント・フォーム配色は必ず .shell スコープに閉じ込め、nav/footer/beta-banner の
+     白文字を壊さない (以前 .public-contact-page p が beta-banner の <p> に漏れて読めなかった修正)。 */
+  body.public-contact-page { background: var(--bg); }
   .public-contact-page .shell {
-    color: #11314d;
+    color: var(--t1);
     font-family: "Segoe UI", "Hiragino Sans", "Yu Gothic UI", sans-serif;
+    max-width: 1120px; margin: 0 auto; padding: 32px 24px;
   }
-  .public-contact-page a { color: #0f5ea8; text-decoration: none; }
-  .public-contact-page a:hover { text-decoration: underline; }
-  .public-contact-page .shell { max-width: 1120px; margin: 0 auto; padding: 24px; }
   .public-contact-page .panel {
-    background: rgba(255,255,255,.88);
-    border: 1px solid rgba(213, 227, 242, 0.9);
+    background: var(--surface);
+    border: 1px solid var(--bdr);
     border-radius: 24px;
     box-shadow: 0 20px 60px rgba(18, 54, 90, 0.10);
-    backdrop-filter: blur(14px);
     padding: 28px;
   }
-  .public-contact-page h1 { margin: 0 0 16px; font-size: clamp(2rem, 4vw, 3.3rem); line-height: 1.05; color: #11314d; }
-  .public-contact-page p, .public-contact-page li { color: #4f6478; line-height: 1.85; }
+  .public-contact-page .shell a { color: var(--blue); text-decoration: none; }
+  .public-contact-page .shell a:hover { text-decoration: underline; }
+  .public-contact-page .shell h1 { margin: 0 0 16px; font-size: clamp(2rem, 4vw, 3.3rem); line-height: 1.05; color: var(--t1); }
+  .public-contact-page .shell p, .public-contact-page .shell li { color: var(--t2); line-height: 1.85; }
   .public-contact-page .btn {
     display: inline-flex; align-items: center; justify-content: center;
     min-height: 44px; padding: 0 18px; border-radius: 999px; font-weight: 700;
     border: 1px solid transparent;
   }
-  .public-contact-page .btn-primary { background: linear-gradient(135deg, #0f5ea8, #1679d1); color: white; }
-  .public-contact-page .btn-secondary { background: white; border-color: #d5e3f2; color: #11314d; }
-  .public-contact-page .notice {
-    background: rgba(13,123,131,.10);
-    border: 1px solid rgba(13,123,131,.18);
-    padding: 14px 16px;
-    border-radius: 12px;
-    margin: 16px 0;
-    color: #4f6478;
+  .public-contact-page .btn-primary { background: linear-gradient(135deg, #0f5ea8, #1679d1); color: #fff; }
+  .public-contact-page .btn-secondary { background: var(--surface); border-color: var(--bdr2); color: var(--t1); }
+  .public-contact-page .shell .notice { background: var(--blue-md); border: 1px solid var(--bdr2); padding: 14px 16px; border-radius: 12px; margin: 16px 0; color: var(--t2); }
+  .public-contact-page .shell label { display: block; font-size: .92rem; font-weight: 700; margin-bottom: 8px; color: var(--t1); }
+  .public-contact-page .shell input,
+  .public-contact-page .shell textarea,
+  .public-contact-page .shell select {
+    width: 100%; border: 1px solid var(--bdr2); border-radius: 14px; background: var(--surf2);
+    padding: 12px 14px; font: inherit; color: var(--t1);
   }
-  .public-contact-page label { display: block; font-size: .92rem; font-weight: 700; margin-bottom: 8px; color: #11314d; }
-  .public-contact-page input,
-  .public-contact-page textarea,
-  .public-contact-page select {
-    width: 100%; border: 1px solid #d5e3f2; border-radius: 14px; background: white;
-    padding: 12px 14px; font: inherit; color: #11314d;
-  }
-  .public-contact-page textarea { min-height: 180px; resize: vertical; }
+  .public-contact-page .shell textarea { min-height: 180px; resize: vertical; }
   .public-contact-page .form-grid { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
   .public-contact-page .hidden-field { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
   .public-contact-page .result { margin-top: 16px; font-size: .95rem; }
-  /* contact page では V7 nav の下にある beta-banner と内容パネルが重ならないよう余白を追加 */
-  .public-contact-page .shell { padding-top: 32px; }
   @media (max-width: 720px) {
     .public-contact-page .shell { padding: 16px; }
     .public-contact-page .panel { padding: 22px; border-radius: 20px; }

@@ -21,16 +21,12 @@
 
 {% block extra_styles %}
 <style>
-  body.public-status-page{
-    background:
-      radial-gradient(circle at top right, rgba(13,123,131,.14), transparent 26%),
-      radial-gradient(circle at top left, rgba(15,94,168,.14), transparent 24%),
-      linear-gradient(180deg, #f9fbfe 0%, #f5f8fc 100%);
-  }
+  /* テーマ変数で light/dark 両対応 (base.html.j2 の :root / [data-theme=dark]) */
+  body.public-status-page{ background: var(--bg); }
   .public-status-page .shell{max-width:920px;margin:0 auto;padding:32px 24px 56px;
-    color:#11314d;font-family:"Segoe UI","Hiragino Sans","Yu Gothic UI",sans-serif;}
-  .public-status-page h1{margin:0 0 6px;font-size:clamp(1.6rem,3vw,2.2rem);line-height:1.15;color:#11314d;}
-  .public-status-page .sub{color:#5d728a;font-size:.92rem;margin-bottom:22px;}
+    color:var(--t1);font-family:"Segoe UI","Hiragino Sans","Yu Gothic UI",sans-serif;}
+  .public-status-page h1{margin:0 0 6px;font-size:clamp(1.6rem,3vw,2.2rem);line-height:1.15;color:var(--t1);}
+  .public-status-page .sub{color:var(--t2);font-size:.92rem;margin-bottom:22px;}
   /* 全体ステータス見出しパネル */
   .ss-hero{display:flex;align-items:center;gap:16px;flex-wrap:wrap;
     border-radius:18px;padding:22px 24px;margin-bottom:26px;color:#fff;
@@ -43,17 +39,17 @@
   .ss-hero .ss-htxt{display:flex;flex-direction:column;gap:2px}
   .ss-hero .ss-htitle{font-size:1.25rem;font-weight:700;color:#fff;line-height:1.3}
   .ss-hero .ss-hsub{font-size:.85rem;color:rgba(255,255,255,.86)}
-  .public-status-page h2{font-size:1.12rem;color:#11314d;margin:28px 0 12px;
+  .public-status-page h2{font-size:1.12rem;color:var(--t1);margin:28px 0 12px;
     display:flex;align-items:center;gap:9px}
-  .public-status-page h2 .cnt{font-size:.78rem;font-weight:700;color:#5d728a;
-    background:#e7eef7;border-radius:999px;padding:2px 9px}
+  .public-status-page h2 .cnt{font-size:.78rem;font-weight:700;color:var(--t2);
+    background:var(--surf3);border-radius:999px;padding:2px 9px}
   /* カード */
-  .ss-card{background:rgba(255,255,255,.95);border:1px solid #dce7f2;border-radius:14px;
+  .ss-card{background:var(--surface);border:1px solid var(--bdr);border-radius:14px;
     padding:16px 18px;margin-bottom:12px;box-shadow:0 6px 18px rgba(18,54,90,.06)}
   .ss-card .ss-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-  .ss-card .ss-title{font-weight:700;color:#11314d;font-size:1.02rem}
-  .ss-card .ss-reason{color:#4f6478;line-height:1.7;margin-top:7px;font-size:.94rem}
-  .ss-card .ss-meta{color:#7a8a9c;font-size:.82rem;margin-top:8px;display:flex;gap:14px;flex-wrap:wrap}
+  .ss-card .ss-title{font-weight:700;color:var(--t1);font-size:1.02rem}
+  .ss-card .ss-reason{color:var(--t2);line-height:1.7;margin-top:7px;font-size:.94rem}
+  .ss-card .ss-meta{color:var(--t3);font-size:.82rem;margin-top:8px;display:flex;gap:14px;flex-wrap:wrap}
   /* バッジ */
   .ss-badge{font-size:.72rem;font-weight:700;letter-spacing:.02em;border-radius:6px;
     padding:3px 9px;color:#fff;white-space:nowrap}
@@ -66,33 +62,33 @@
   .ss-badge.st-resolved{background:#0f7a52}
   .ss-badge.mt-scheduled{background:#1059c8}
   .ss-badge.mt-in_progress{background:#9a3412}
-  .ss-badge.outline{background:transparent;color:#5d728a;border:1px solid #c8d4e6}
-  .ss-empty{color:#5d728a;font-size:.92rem;background:rgba(255,255,255,.7);
-    border:1px dashed #c8d4e6;border-radius:12px;padding:16px 18px}
-  .ss-checked{margin-top:26px;color:#7a8a9c;font-size:.82rem;text-align:center}
-  .ss-checked .ss-refresh-note{display:block;margin-top:4px;color:#9aa9bb}
+  .ss-badge.outline{background:transparent;color:var(--t2);border:1px solid var(--bdr2)}
+  .ss-empty{color:var(--t2);font-size:.92rem;background:var(--surf2);
+    border:1px dashed var(--bdr2);border-radius:12px;padding:16px 18px}
+  .ss-checked{margin-top:26px;color:var(--t3);font-size:.82rem;text-align:center}
+  .ss-checked .ss-refresh-note{display:block;margin-top:4px;color:var(--t3)}
   @media(max-width:720px){
     .public-status-page .shell{padding:18px 14px 44px}
     .ss-hero{padding:18px}
   }
   /* コンポーネント一覧 (claude status 風) */
-  .ss-components{background:rgba(255,255,255,.95);border:1px solid #dce7f2;border-radius:14px;overflow:hidden;box-shadow:0 6px 18px rgba(18,54,90,.06)}
-  .ss-comp{display:flex;align-items:center;gap:12px;padding:13px 18px;border-top:1px solid #eef3f9}
+  .ss-components{background:var(--surface);border:1px solid var(--bdr);border-radius:14px;overflow:hidden;box-shadow:0 6px 18px rgba(18,54,90,.06)}
+  .ss-comp{display:flex;align-items:center;gap:12px;padding:13px 18px;border-top:1px solid var(--bdr)}
   .ss-comp:first-child{border-top:none}
-  .ss-comp-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;background:#9aa9bb}
+  .ss-comp-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;background:var(--t3)}
   .ss-comp[data-st="operational"] .ss-comp-dot{background:#0f9d6b;box-shadow:0 0 0 3px rgba(15,157,107,.18)}
   .ss-comp[data-st="degraded"] .ss-comp-dot{background:#d97706;box-shadow:0 0 0 3px rgba(217,119,6,.18)}
   .ss-comp[data-st="down"] .ss-comp-dot{background:#dc2626;box-shadow:0 0 0 3px rgba(220,38,38,.18)}
-  .ss-comp-name{font-weight:700;color:#11314d;font-size:.98rem}
-  .ss-comp-detail{color:#5d728a;font-size:.82rem;font-variant-numeric:tabular-nums}
+  .ss-comp-name{font-weight:700;color:var(--t1);font-size:.98rem}
+  .ss-comp-detail{color:var(--t2);font-size:.82rem;font-variant-numeric:tabular-nums}
   .ss-comp-right{margin-left:auto;display:flex;align-items:center;gap:12px}
-  .ss-comp-uptime{color:#5d728a;font-size:.8rem;font-variant-numeric:tabular-nums}
+  .ss-comp-uptime{color:var(--t2);font-size:.8rem;font-variant-numeric:tabular-nums}
   .ss-comp-badge{font-size:.72rem;font-weight:700;border-radius:6px;padding:3px 9px;color:#fff;white-space:nowrap}
   .ss-comp-badge.st-operational{background:#0f9d6b}
   .ss-comp-badge.st-degraded{background:#d97706}
   .ss-comp-badge.st-down{background:#dc2626}
-  .ss-comp-badge.st-unknown{background:#7a8a9c}
-  .ss-comp-note{color:#7a8a9c;font-size:.8rem;margin:8px 2px 0}
+  .ss-comp-badge.st-unknown{background:var(--t3)}
+  .ss-comp-note{color:var(--t3);font-size:.8rem;margin:8px 2px 0}
   @media(max-width:600px){.ss-comp{flex-wrap:wrap;gap:8px}.ss-comp-detail{width:100%;order:3;padding-left:22px}}
 </style>
 {% endblock %}
