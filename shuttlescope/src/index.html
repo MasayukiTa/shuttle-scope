@@ -7,8 +7,11 @@
          アプリは Electron / モバイル Web 両対応で、モバイル時のみ意味を持つ。 -->
     <!-- viewport-fit=cover: iOS のノッチ / ホームインジケータ領域を扱えるよう拡張 -->
     <!-- interactive-widget=resizes-content: オンスクリーンキーボード表示時に layout viewport を
-         縮めて、フォーカス中の入力欄 (LLM チャット等) がキーボードに隠れないようにする。 -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
+         縮めて、フォーカス中の入力欄 (LLM チャット等) がキーボードに隠れないようにする。
+         a11y (WCAG 1.4.4 Resize Text): maximum-scale / user-scalable=no は付けない
+         (ピンチズーム禁止は低視力ユーザに有害)。iOS のフォーカス時オートズームは
+         input font-size:16px ルール (globals.css) で別途防止済みのため、ズーム禁止は不要。 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <!-- iOS Safari でホーム画面追加時に standalone モード (URL/タブバー無し)。
          /m/annotate のフルスクリーン的 UX に効く。 -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
