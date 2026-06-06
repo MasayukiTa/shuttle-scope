@@ -153,13 +153,13 @@ export default function LlmChatPage() {
   }, [])
 
   // 入力 textarea の自動高さ調整 (1 行〜最大 ~6 行 = 160px、超過分はスクロール)。
-  // 下限 44px: 絶対配置の送信/停止ボタン (h-11=44px) が入力枠内に収まるよう、
-  // 1 行時でもボタン高さ以上を確保する (枠外にはみ出すのを防ぐ)。
+  // 下限 36px: flex の兄弟である送信/停止ボタン (h-9=36px) と高さを揃え、1 行時の段差を防ぐ。
+  // ボタンは入力枠 (flex) の子なので、はみ出しは構造的に発生しない。
   useEffect(() => {
     const ta = taRef.current
     if (!ta) return
     ta.style.height = 'auto'
-    ta.style.height = `${Math.min(Math.max(ta.scrollHeight, 44), 160)}px`
+    ta.style.height = `${Math.min(Math.max(ta.scrollHeight, 36), 160)}px`
   }, [input])
 
   // ドロワーを開いている間は背面スクロールをロック + Esc で閉じる + Tab フォーカストラップ。
@@ -606,7 +606,11 @@ export default function LlmChatPage() {
               </button>
             </div>
           )}
-          <div className="relative">
+          {/* 入力枠を flex コンテナにし、textarea と送信/停止ボタンをその「子」として並べる。
+              ボタンを絶対配置にしない = 枠から構造的にはみ出さない。items-end でボタンは
+              常に最下行に揃い、textarea が伸びても枠内に収まる (ChatGPT/Claude 風)。
+              枠 (border/rounded/focus-within ring) はこの div が持ち、textarea は borderless。 */}
+          <div className="flex items-end gap-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5 focus-within:ring-2 focus-within:ring-blue-500">
             <textarea
               ref={taRef}
               value={input}
@@ -614,12 +618,12 @@ export default function LlmChatPage() {
               onKeyDown={onKeyDown}
               rows={1}
               placeholder={notConfigured ? t('llm.not_configured_hint') : t('llm.placeholder')}
-              className="block w-full resize-none rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2.5 pr-14 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px] max-h-40 overflow-y-auto"
+              className="flex-1 min-w-0 resize-none border-0 bg-transparent px-1 py-1.5 text-sm leading-relaxed focus:outline-none focus:ring-0 max-h-40 overflow-y-auto"
             />
             {streaming ? (
               <button
                 onClick={onStop}
-                className="absolute right-1.5 bottom-1.5 inline-flex h-11 w-11 items-center justify-center rounded-md bg-rose-600 text-white hover:bg-rose-700"
+                className="shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-md bg-rose-600 text-white hover:bg-rose-700"
                 aria-label={t('llm.stop')}
                 title={t('llm.stop')}
               >
@@ -629,7 +633,7 @@ export default function LlmChatPage() {
               <button
                 onClick={() => onSend()}
                 disabled={composerDisabled || !input.trim()}
-                className="absolute right-1.5 bottom-1.5 inline-flex h-11 w-11 items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                className="shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
                 aria-label={t('llm.send')}
                 title={t('llm.send')}
               >
