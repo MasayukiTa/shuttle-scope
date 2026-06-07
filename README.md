@@ -97,6 +97,7 @@ Prediction, CV-assisted annotation, remote camera support, and research views ar
 - normalized team records with team ID ownership for users, players, and matches
 - user management for role-aware local access control
 - match editing after creation
+- auto-fetch a video's title from a streaming URL when registering a match (SSRF-guarded yt-dlp metadata probe, multi-language titles preserved)
 - player deletion guard when the player is still referenced by matches
 - player team history support at the data model and settings level
 
@@ -147,6 +148,8 @@ These areas are usable for internal exploration, but they are still a step behin
 - Ray / worker-aware benchmark routing for cluster environments
 - person-tracking through ByteTrack with court adapter, identity / occlusion / rally modules
 - pose estimation via `RTMPoseEngine` (17 keypoints), `SwingDetector` driven by wrist velocity + elbow angle, 3-stage hitter attribution, and `NetAwareDetector` + `CourtBoundedFilter`
+- opt-in tracker upgrades for same-uniform doubles: an OSNet ReID identity-recovery tier, a vendored Hybrid-SORT path with a DanceTrack / badminton eval harness, an env-gated track-swap guard, offline tracklet stitching, and a native C++ tracker runtime (pybind11) as a high-throughput proof of concept
+- multi-view 3D groundwork: court-plane PnP calibration, 2-camera triangulation, and audio-free motion-energy temporal sync (no clapperboard) feeding a 2-camera 3D pose driver
 
 ### Streaming Capture and Download
 
@@ -169,6 +172,7 @@ These areas are useful for development and internal testing, but CV quality stil
 - access logging groundwork for auth and sensitive data access
 - condition views filtered by audience and field sensitivity
 - public landing site at shuttle-scope.com with v7 design and light / dark theme toggle
+- public `/status` page with automatic per-component health monitoring, 90-day uptime bars (10-minute sampling, bucketed in JST), an announcements feed, and a clickable day that drills into the 10-minute detail
 - admin notification inbox for contact-form inquiries
 - comments and bookmarks
 - QR-based join flow
@@ -178,6 +182,8 @@ These areas are useful for development and internal testing, but CV quality stil
 - public hosting via the configured tunnel for unattended remote access
 - email-based authentication (register / verify / password reset / invitation); admin approval gates self-registered users
 - sender-side server recording so phone / tablet camera senders persist video to the server rather than only producing a peer-to-peer stream
+- match-scoped recordings API: each recording is tied to a match with an auto-assigned branch number (枝番) and a stream token, with match team-scope enforced so tokens cannot be harvested across teams
+- LiveKit SFU media-plane groundwork (Phase 1): auth-gated, operator-only access-token issuance with match-room mapping and role grants, for self-hosted remote-camera transport
 - LAN-first endpoint resolution so devices on the same Wi-Fi take a direct path instead of round-tripping through the public tunnel
 - supervisor + Scheduled Task + tunnel-as-Windows-service stack for unattended operation across long absences
 - admin visibility into per-user usage limits (lock / failed-attempts / upload-saturation indicators) with category-scoped reset, plus an audit log surface
@@ -204,6 +210,7 @@ Remote and browser-based video workflows exist, but they should still be treated
 - `User Management`
 - `Notification Inbox` (admin)
 - `Video Only`
+- `Status` (public)
 
 ## Current Product Shape
 
