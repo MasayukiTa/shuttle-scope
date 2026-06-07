@@ -14,6 +14,9 @@ export interface LlmMessage {
   seq: number
   role: string
   content: string
+  // 添付画像 (data URL "data:image/...;base64,..." の配列)。user メッセージのみ。
+  // backend が返さない場合もあるため optional。
+  images?: string[] | null
   created_at?: string | null
 }
 
@@ -83,13 +86,15 @@ export async function streamMessage(
   onEvent: (e: StreamEvent) => void,
   signal?: AbortSignal,
   thinking = false,
+  images: string[] = [],
 ): Promise<void> {
   let resp: Response
   try {
     resp = await fetch(`${API_BASE_URL}/llm/conversations/${conversationId}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ content, thinking }),
+      // images: data URL の配列 (空なら省略)。backend の MessageCreate.images に対応。
+      body: JSON.stringify(images.length > 0 ? { content, thinking, images } : { content, thinking }),
       signal,
     })
   } catch (e) {

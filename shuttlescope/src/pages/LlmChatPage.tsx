@@ -20,6 +20,47 @@ import {
 // 「最下部付近」判定のしきい値 (px)。これより上にスクロールしていれば自動追従しない。
 const SCROLL_BOTTOM_THRESHOLD = 80
 
+// 添付画像の上限枚数 / 1 枚あたりの最大サイズ (data URL 文字列ではなく元ファイルの byte 数で判定)。
+const MAX_IMAGES = 4
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024 // 5MB
+
+// 添付画像の内部表現 (送信前プレビュー用)。dataUrl が POST body の images[] に入る値。
+interface AttachedImage {
+  id: string
+  dataUrl: string
+}
+
+// Web Speech API の最小型定義 (lib.dom.d.ts に未収載のブラウザ実装向け)。
+// runtime には影響しない型のみ。window.SpeechRecognition / webkitSpeechRecognition を扱う。
+interface SpeechRecognitionResultLike {
+  readonly [index: number]: { readonly transcript: string }
+}
+interface SpeechRecognitionEventLike {
+  readonly results: ArrayLike<SpeechRecognitionResultLike>
+}
+interface SpeechRecognitionErrorLike {
+  readonly error: string
+}
+interface SpeechRecognitionLike {
+  lang: string
+  interimResults: boolean
+  continuous: boolean
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null
+  onerror: ((event: SpeechRecognitionErrorLike) => void) | null
+  onend: (() => void) | null
+  start(): void
+  stop(): void
+  abort?(): void
+}
+type SpeechRecognitionCtor = new () => SpeechRecognitionLike
+
+declare global {
+  interface Window {
+    SpeechRecognition?: SpeechRecognitionCtor
+    webkitSpeechRecognition?: SpeechRecognitionCtor
+  }
+}
+
 // 「じっくり考える」(deep thinking) トグルの永続化キー。
 const THINKING_STORAGE_KEY = 'ss.llm.thinking'
 
@@ -63,9 +104,16 @@ export default function LlmChatPage() {
   const [messagesLoading, setMessagesLoading] = useState(false) // 会話切替時のメッセージ取得中
   const [showScrollDown, setShowScrollDown] = useState(false) // 上にスクロール中の「最新へ」ボタン
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null) // 削除確認中の会話
+  const [images, setImages] = useState<AttachedImage[]>([]) // 送信前の添付画像 (data URL)
+  const [listening, setListening] = useState(false) // 音声入力 (Web Speech API) の録音中フラグ
+  const [voiceSupported, setVoiceSupported] = useState(false) // Web Speech API 利用可否 (非対応ならマイクボタンを隠す)
   const scrollRef = useRef<HTMLDivElement>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
-  const forceScrollRef = useRef(true) // 会話切替直後は閾値に関係なく最下部へ寄せる
+  const fileInputRef = useRef<HTMLInputElement>(null) // 画像ピッカー (隠し input[type=file])
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null) // 進行中の音声認識インスタンス
+  const voiceBaseRef = useRef('') // 録音開始時点の入力欄テキスト (確定済み transcript を後ろに足す)
+  const stickToBottomRef = useRef(true) // 「最下部に追従」状態。最下部付近に居る間 true、上にスクロールしたら false
+  const forceScrollRef = useRef(true) // 会話切替/送信直後は閾値に関係なく最下部へ寄せる
   const abortRef = useRef<AbortController | null>(null) // 進行中ストリームの中断用
   const drawerRef = useRef<HTMLDivElement>(null) // フォーカストラップ対象 (ドロワー内)
   const menuBtnRef = useRef<HTMLButtonElement>(null) // ドロワーを開いたハンバーガー (閉じたらここへ復帰)
@@ -109,6 +157,7 @@ export default function LlmChatPage() {
 
   useEffect(() => {
     forceScrollRef.current = true // 会話を切り替えたら次回描画で最下部へ
+    stickToBottomRef.current = true // 切替直後は最下部追従を有効化
     if (activeId == null) {
       setMessages([])
       return
@@ -122,25 +171,37 @@ export default function LlmChatPage() {
     return () => { cancelled = true }
   }, [activeId])
 
-  // 自動スクロール: ユーザが最下部付近にいるときだけ追従。上に戻していれば位置を保持。
-  // ただし会話切替直後 (forceScrollRef) は無条件で最下部へ。
+  // 自動スクロール: ユーザが最下部付近にいるとき (stickToBottomRef) だけ追従。
+  // ただし会話切替/送信直後 (forceScrollRef) は無条件で最下部へ。
+  //
+  // 重要 (first-message reasoning auto-scroll bug 対策):
+  //   ReasoningBlock や streamText は逐次伸長し、子要素の reflow が effect 実行後に
+  //   起きるため、effect 同期内の 1 回の scrollTop 代入では「伸びる前の高さ」で止まり、
+  //   結果的に最新コンテンツより上に取り残される (= ユーザが押し上げられたように見える)。
+  //   requestAnimationFrame で「レイアウト確定後」にもう一度最下部へ寄せて確実に追従する。
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
-    const distance = el.scrollHeight - el.scrollTop - el.clientHeight
-    if (forceScrollRef.current || distance <= SCROLL_BOTTOM_THRESHOLD) {
-      el.scrollTop = el.scrollHeight
-      forceScrollRef.current = false
+    if (!forceScrollRef.current && !stickToBottomRef.current) return
+    const pin = () => {
+      const e = scrollRef.current
+      if (e) e.scrollTop = e.scrollHeight
     }
+    pin() // 同期で 1 回
+    const raf = window.requestAnimationFrame(pin) // reflow 後にもう 1 回 (これが効く)
+    forceScrollRef.current = false
+    return () => window.cancelAnimationFrame(raf)
   }, [messages, streamText, streaming, reasoningText])
 
-  // スクロール位置を監視して「最新へ」ボタンの表示を切り替える。
+  // スクロール位置を監視: 最下部付近なら追従を有効化、上へ離れたら追従解除 + 「最新へ」ボタン表示。
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
     const onScroll = () => {
       const distance = el.scrollHeight - el.scrollTop - el.clientHeight
-      setShowScrollDown(distance > SCROLL_BOTTOM_THRESHOLD)
+      const atBottom = distance <= SCROLL_BOTTOM_THRESHOLD
+      stickToBottomRef.current = atBottom
+      setShowScrollDown(!atBottom)
     }
     onScroll()
     el.addEventListener('scroll', onScroll, { passive: true })
@@ -149,7 +210,10 @@ export default function LlmChatPage() {
 
   const scrollToBottom = useCallback(() => {
     const el = scrollRef.current
-    if (el) el.scrollTop = el.scrollHeight
+    if (el) {
+      stickToBottomRef.current = true
+      el.scrollTop = el.scrollHeight
+    }
   }, [])
 
   // 入力 textarea の自動高さ調整 (1 行〜最大 ~6 行 = 160px、超過分はスクロール)。
@@ -217,8 +281,16 @@ export default function LlmChatPage() {
     }
   }, [drawerOpen])
 
-  // アンマウント時に進行中ストリームを中断 (リーク防止)。
-  useEffect(() => () => abortRef.current?.abort(), [])
+  // Web Speech API 利用可否を判定 (非対応ブラウザではマイクボタンを隠す = graceful degradation)。
+  useEffect(() => {
+    setVoiceSupported(!!(window.SpeechRecognition || window.webkitSpeechRecognition))
+  }, [])
+
+  // アンマウント時に進行中ストリームを中断 + 音声認識を停止 (リーク防止)。
+  useEffect(() => () => {
+    abortRef.current?.abort()
+    recognitionRef.current?.abort?.()
+  }, [])
 
   const onNewChat = useCallback(async () => {
     setActiveId(null)
@@ -237,12 +309,21 @@ export default function LlmChatPage() {
   // メッセージ送信。retry から呼ぶ場合は overrideContent を渡す (入力欄の値ではなく失敗プロンプトを再送)。
   const onSend = useCallback(async (overrideContent?: string) => {
     const content = (overrideContent ?? input).trim()
-    if (!content || sending || notConfigured) return
+    // 添付画像はこの送信時点で確定 (retry 時は画像を伴わない素のテキスト再送)。
+    const sendImages = overrideContent == null ? images.map((im) => im.dataUrl) : []
+    // テキストが空でも画像のみの送信は許可する。
+    if ((!content && sendImages.length === 0) || sending || notConfigured) return
     setError(null)
     setRetryPrompt(null)
     setSending(true)
+    // 送信したら最下部追従を強制 ON (上にスクロールしていても自分の発言は見せる)。
+    forceScrollRef.current = true
+    stickToBottomRef.current = true
     // 入力欄からの送信時のみクリア (retry は入力欄に触れない)。
-    if (overrideContent == null) setInput('')
+    if (overrideContent == null) {
+      setInput('')
+      setImages([])
+    }
 
     // 会話が無ければ作成
     let convId = activeId
@@ -262,8 +343,14 @@ export default function LlmChatPage() {
       return
     }
 
-    // ユーザ発言を即時表示 (失敗しても残す)
-    const optimistic: LlmMessage = { id: -Date.now(), seq: messages.length + 1, role: 'user', content }
+    // ユーザ発言を即時表示 (失敗しても残す)。添付画像もバブルに含める。
+    const optimistic: LlmMessage = {
+      id: -Date.now(),
+      seq: messages.length + 1,
+      role: 'user',
+      content,
+      images: sendImages.length > 0 ? sendImages : undefined,
+    }
     setMessages((prev) => [...prev, optimistic])
     setStreamText('')
     setReasoningText('') // 新規送信ごとに前回の思考過程をクリア (ライブのみ表示)
@@ -306,7 +393,7 @@ export default function LlmChatPage() {
           // ミッドストリームエラー: 既出のストリームテキストは消さず確定バブル + エラー注記にする。
           setError(e.message || t('llm.error.generate'))
         }
-      }, controller.signal, useThinking)
+      }, controller.signal, useThinking, sendImages)
     } catch {
       // reader.read() が中断/失敗で reject した場合 (llm.ts の loop は try/catch を持たない)。
       // 中断ならエラー扱いせず、それ以外は通常エラーとして部分テキストを保持する。
@@ -354,12 +441,118 @@ export default function LlmChatPage() {
       }
     }
     refreshConversations()
-  }, [input, sending, notConfigured, activeId, messages.length, refreshConversations, thinking, t])
+  }, [input, images, sending, notConfigured, activeId, messages.length, refreshConversations, thinking, t])
 
   // 生成停止 (STOP ボタン)。signal.abort() でストリームを打ち切る。後処理は onSend 側で行う。
   const onStop = useCallback(() => {
     abortRef.current?.abort()
   }, [])
+
+  // 画像添付: 隠し input[type=file] を開く。
+  const onPickImage = useCallback(() => {
+    fileInputRef.current?.click()
+  }, [])
+
+  // 選択された画像ファイルを data URL 化して images state に追加する。
+  // - 上限枚数 (MAX_IMAGES) を超える分は無視 + 注意表示
+  // - サイズ超過 (MAX_IMAGE_BYTES) は弾く
+  const onFilesSelected = useCallback(async (fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return
+    const files = Array.from(fileList).filter((f) => f.type.startsWith('image/'))
+    if (files.length === 0) return
+
+    let remaining = MAX_IMAGES - images.length
+    if (remaining <= 0) {
+      setError(t('llm.error.image_too_many', { max: MAX_IMAGES }))
+      return
+    }
+    const next: AttachedImage[] = []
+    for (const file of files) {
+      if (remaining <= 0) {
+        setError(t('llm.error.image_too_many', { max: MAX_IMAGES }))
+        break
+      }
+      if (file.size > MAX_IMAGE_BYTES) {
+        setError(t('llm.error.image_too_large'))
+        continue
+      }
+      try {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(String(reader.result))
+          reader.onerror = () => reject(reader.error)
+          reader.readAsDataURL(file)
+        })
+        next.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, dataUrl })
+        remaining -= 1
+      } catch {
+        setError(t('llm.error.image_read'))
+      }
+    }
+    if (next.length > 0) setImages((prev) => [...prev, ...next].slice(0, MAX_IMAGES))
+  }, [images.length, t])
+
+  const onRemoveImage = useCallback((id: string) => {
+    setImages((prev) => prev.filter((im) => im.id !== id))
+  }, [])
+
+  // 音声入力 (Web Speech API)。録音中の transcript を入力欄へ流し込み、自動送信はしない。
+  const onToggleVoice = useCallback(() => {
+    // 録音中なら停止。
+    if (listening) {
+      recognitionRef.current?.stop()
+      return
+    }
+    const Ctor: SpeechRecognitionCtor | undefined =
+      window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!Ctor) {
+      setError(t('llm.error.voice_unavailable'))
+      return
+    }
+    let rec: SpeechRecognitionLike
+    try {
+      rec = new Ctor()
+    } catch {
+      setError(t('llm.error.voice_failed'))
+      return
+    }
+    rec.lang = 'ja-JP'
+    rec.interimResults = true
+    rec.continuous = true
+    // 録音開始時点の入力テキストを基準に、認識結果を後ろへ追記する。
+    voiceBaseRef.current = input
+    rec.onresult = (event: SpeechRecognitionEventLike) => {
+      let transcript = ''
+      for (let i = 0; i < event.results.length; i += 1) {
+        transcript += event.results[i][0]?.transcript ?? ''
+      }
+      const base = voiceBaseRef.current
+      setInput(base ? `${base}${transcript}` : transcript)
+    }
+    rec.onerror = (event: SpeechRecognitionErrorLike) => {
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        setError(t('llm.error.voice_permission'))
+      } else if (event.error !== 'aborted' && event.error !== 'no-speech') {
+        setError(t('llm.error.voice_failed'))
+      }
+      setListening(false)
+    }
+    rec.onend = () => {
+      setListening(false)
+      recognitionRef.current = null
+      taRef.current?.focus()
+    }
+    recognitionRef.current = rec
+    try {
+      rec.start()
+      setListening(true)
+      setError(null)
+    } catch {
+      setError(t('llm.error.voice_failed'))
+      setListening(false)
+      recognitionRef.current = null
+    }
+  }, [listening, input, t])
 
   const onDelete = useCallback(async (id: number) => {
     try {
@@ -536,7 +729,7 @@ export default function LlmChatPage() {
               )
             )}
             {messages.map((m) => (
-              <Bubble key={m.id} role={m.role} content={m.content} />
+              <Bubble key={m.id} role={m.role} content={m.content} images={m.images ?? undefined} />
             ))}
             {/* ストリーミング中の応答領域: スクリーンリーダーへ読み上げ (aria-live) + 生成中は aria-busy。 */}
             <div aria-live="polite" aria-busy={streaming || undefined}>
@@ -606,18 +799,75 @@ export default function LlmChatPage() {
               </button>
             </div>
           )}
-          {/* 入力枠を flex コンテナにし、textarea と送信/停止ボタンをその「子」として並べる。
+          {/* 添付画像のサムネイルプレビュー (送信前)。各サムネに × の削除ボタン。 */}
+          {images.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-2">
+              {images.map((im) => (
+                <div key={im.id} className="relative h-16 w-16 overflow-hidden rounded-md border border-slate-300 dark:border-slate-600">
+                  <img src={im.dataUrl} alt={t('llm.attached_image')} className="h-full w-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => onRemoveImage(im.id)}
+                    className="absolute right-0.5 top-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-900/70 text-white hover:bg-slate-900"
+                    aria-label={t('llm.remove_image')}
+                    title={t('llm.remove_image')}
+                  >
+                    <MIcon name="close" size={14} ariaHidden className="text-white" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          {/* 隠し file input: 画像のみ・複数選択可。値は毎回リセットして同じファイルの再選択も拾えるようにする。 */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => { onFilesSelected(e.target.files); e.target.value = '' }}
+          />
+          {/* 入力枠を flex コンテナにし、textarea と各ボタンをその「子」として並べる。
               ボタンを絶対配置にしない = 枠から構造的にはみ出さない。items-end でボタンは
               常に最下行に揃い、textarea が伸びても枠内に収まる (ChatGPT/Claude 風)。
               枠 (border/rounded/focus-within ring) はこの div が持ち、textarea は borderless。 */}
-          <div className="flex items-end gap-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5 focus-within:ring-2 focus-within:ring-blue-500">
+          <div className="flex items-end gap-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5 focus-within:ring-2 focus-within:ring-blue-500">
+            {/* 画像添付ボタン: 上限到達 or 設定未完了で無効化。 */}
+            <button
+              type="button"
+              onClick={onPickImage}
+              disabled={composerDisabled || images.length >= MAX_IMAGES}
+              className="shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700 disabled:opacity-40"
+              aria-label={t('llm.attach_image')}
+              title={t('llm.attach_image')}
+            >
+              <MIcon name="add_photo_alternate" size={20} ariaHidden />
+            </button>
+            {/* マイクボタン: Web Speech API 対応時のみ表示。録音中は色を変えて状態を示す。 */}
+            {voiceSupported && (
+              <button
+                type="button"
+                onClick={onToggleVoice}
+                disabled={composerDisabled}
+                aria-pressed={listening}
+                className={`shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-md disabled:opacity-40 ${
+                  listening
+                    ? 'bg-rose-600 text-white hover:bg-rose-700 animate-pulse'
+                    : 'text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700'
+                }`}
+                aria-label={listening ? t('llm.voice_stop') : t('llm.voice_input')}
+                title={listening ? t('llm.voice_stop') : t('llm.voice_input')}
+              >
+                <MIcon name={listening ? 'mic' : 'mic_none'} size={20} ariaHidden className={listening ? 'text-white' : undefined} />
+              </button>
+            )}
             <textarea
               ref={taRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={onKeyDown}
               rows={1}
-              placeholder={notConfigured ? t('llm.not_configured_hint') : t('llm.placeholder')}
+              placeholder={listening ? t('llm.voice_listening') : notConfigured ? t('llm.not_configured_hint') : t('llm.placeholder')}
               className="flex-1 min-w-0 resize-none border-0 bg-transparent px-1 py-1.5 text-sm leading-relaxed focus:outline-none focus:ring-0 max-h-40 overflow-y-auto"
             />
             {streaming ? (
@@ -632,7 +882,7 @@ export default function LlmChatPage() {
             ) : (
               <button
                 onClick={() => onSend()}
-                disabled={composerDisabled || !input.trim()}
+                disabled={composerDisabled || (!input.trim() && images.length === 0)}
                 className="shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
                 aria-label={t('llm.send')}
                 title={t('llm.send')}
@@ -782,15 +1032,32 @@ function ConversationList({
   )
 }
 
-function Bubble({ role, content, pending }: { role: string; content: string; pending?: boolean }) {
+function Bubble({ role, content, images, pending }: { role: string; content: string; images?: string[]; pending?: boolean }) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
   const isUser = role === 'user'
   if (isUser) {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[78%] rounded-2xl rounded-tr-sm bg-blue-600 px-3.5 py-2 text-sm leading-relaxed text-white whitespace-pre-wrap break-words">
-          {content}
+        <div className="flex max-w-[78%] flex-col items-end gap-1.5">
+          {/* 添付画像: テキストバブルの上に並べて表示。 */}
+          {images && images.length > 0 && (
+            <div className="flex flex-wrap justify-end gap-1.5">
+              {images.map((src, i) => (
+                <img
+                  key={i}
+                  src={src}
+                  alt={t('llm.attached_image')}
+                  className="max-h-48 max-w-[12rem] rounded-lg border border-blue-300 object-contain"
+                />
+              ))}
+            </div>
+          )}
+          {content && (
+            <div className="rounded-2xl rounded-tr-sm bg-blue-600 px-3.5 py-2 text-sm leading-relaxed text-white whitespace-pre-wrap break-words">
+              {content}
+            </div>
+          )}
         </div>
       </div>
     )

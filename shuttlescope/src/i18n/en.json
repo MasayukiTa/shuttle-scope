@@ -27,10 +27,22 @@
     "copied": "Copied",
     "think_deeply": "Think deeply",
     "thinking_process": "Thinking",
+    "attach_image": "Attach image",
+    "remove_image": "Remove image",
+    "attached_image": "Attached image",
+    "voice_input": "Voice input",
+    "voice_stop": "Stop voice input",
+    "voice_listening": "Listening…",
     "error": {
       "create": "Failed to create the conversation.",
       "generate": "Failed to generate a response.",
-      "rename": "Failed to rename the conversation."
+      "rename": "Failed to rename the conversation.",
+      "image_too_large": "Image is too large (max 5MB).",
+      "image_too_many": "You can attach up to {{max}} images.",
+      "image_read": "Failed to read the image.",
+      "voice_unavailable": "This browser does not support voice input.",
+      "voice_permission": "Microphone access is not allowed.",
+      "voice_failed": "Voice input failed."
     }
   },
   "demo": {

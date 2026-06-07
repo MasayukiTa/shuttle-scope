@@ -27,10 +27,22 @@
     "copied": "コピーしました",
     "think_deeply": "じっくり考える",
     "thinking_process": "思考プロセス",
+    "attach_image": "画像を添付",
+    "remove_image": "画像を削除",
+    "attached_image": "添付画像",
+    "voice_input": "音声入力",
+    "voice_stop": "音声入力を停止",
+    "voice_listening": "聞き取り中…",
     "error": {
       "create": "会話の作成に失敗しました。",
       "generate": "応答の生成に失敗しました。",
-      "rename": "名前の変更に失敗しました。"
+      "rename": "名前の変更に失敗しました。",
+      "image_too_large": "画像が大きすぎます（最大 5MB）。",
+      "image_too_many": "添付できる画像は最大 {{max}} 枚です。",
+      "image_read": "画像の読み込みに失敗しました。",
+      "voice_unavailable": "このブラウザは音声入力に対応していません。",
+      "voice_permission": "マイクの使用が許可されていません。",
+      "voice_failed": "音声入力に失敗しました。"
     }
   },
   "demo": {
