@@ -2,14 +2,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Dict, Iterator, List, Optional, Union
+
+# OpenAI 互換の content は文字列、またはマルチモーダル content part の配列を取れる
+# (例: [{"type":"text","text":...}, {"type":"image_url","image_url":{"url": dataurl}}]).
+ContentType = Union[str, List[Dict[str, Any]]]
 
 
 @dataclass
 class ChatMessage:
-    """1 つの会話メッセージ。role = system|user|assistant|tool。"""
+    """1 つの会話メッセージ。role = system|user|assistant|tool。
+
+    content は通常は文字列だが、vision (マルチモーダル) 入力時は OpenAI 互換の
+    content part 配列 (text / image_url) も保持できる。"""
     role: str
-    content: str = ""
+    content: ContentType = ""
     name: Optional[str] = None
     tool_call_id: Optional[str] = None
     tool_calls: Optional[List[Dict[str, Any]]] = None
