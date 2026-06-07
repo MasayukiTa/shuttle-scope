@@ -647,3 +647,71 @@ class VideoDownloader:
 
 # シングルトン
 video_downloader = VideoDownloader()
+
+
+def fetch_video_metadata(url: str, timeout: int = 20) -> dict:
+    """配信 URL のメタデータ（タイトル等）を yt-dlp で取得する（ダウンロードはしない）。
+
+    試合登録フォームの「URL からタイトル自動取得」用。多言語タイトル
+    （日本語 / 韓国語 / 中国語 / 絵文字等）を Unicode のまま返す。
+    呼び出し側で JSON 応答 → SQLite 保存まで UTF-8 一貫のため文字化けしない。
+
+    SSRF 対策（loopback / 内部 IP / 非 http(s) スキーム拒否）は呼び出し側ルータの
+    `validate_external_url` で実施済みであることを前提とする。
+
+    返り値:
+      成功: {"ok": True, "title", "duration", "uploader", "thumbnail",
+             "upload_date", "width", "height"}
+      失敗: {"ok": False, "error": "..."}
+    """
+    if not YT_DLP_AVAILABLE:
+        return {"ok": False, "error": "yt-dlp がインストールされていません"}
+
+    opts: dict = {
+        "skip_download": True,
+        "quiet": True,
+        "no_warnings": True,
+        "logger": _YtDlpLogger(),
+        "socket_timeout": timeout,
+        # プレイリスト URL でも先頭 1 本のみ対象にする（無限取得・DoS 防止）
+        "noplaylist": True,
+        "playlist_items": "1",
+        "extract_flat": False,
+    }
+    # JS ランタイム（YouTube 抽出に必要）。deno が PATH 解決できない環境向けに明示。
+    if _DENO_PATH:
+        opts["js_runtimes"] = {"deno": {"path": _DENO_PATH}}
+
+    def _extract(o: dict) -> dict:
+        with yt_dlp.YoutubeDL(o) as ydl:
+            return ydl.extract_info(url, download=False)
+
+    try:
+        info = _extract(opts)
+    except Exception as e:
+        # 企業プロキシ等の SSL 証明書エラー → 検証スキップで一度だけ再試行
+        if VideoDownloader._is_ssl_error(str(e)):
+            try:
+                info = _extract({**opts, "nocheckcertificate": True})
+            except Exception as e2:
+                return {"ok": False, "error": str(e2)[:300]}
+        else:
+            return {"ok": False, "error": str(e)[:300]}
+
+    # プレイリストが返った場合は先頭エントリを採用
+    if isinstance(info, dict) and info.get("_type") == "playlist":
+        entries = info.get("entries") or []
+        if not entries:
+            return {"ok": False, "error": "no entries"}
+        info = entries[0]
+
+    return {
+        "ok": True,
+        "title": info.get("title"),
+        "duration": info.get("duration"),
+        "uploader": info.get("uploader") or info.get("channel"),
+        "thumbnail": info.get("thumbnail"),
+        "upload_date": info.get("upload_date"),
+        "width": info.get("width"),
+        "height": info.get("height"),
+    }
