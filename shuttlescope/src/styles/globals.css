@@ -625,6 +625,13 @@ html[data-theme="light"] .text-gray-300 { color: #334155 !important; }
 html[data-theme="light"] .text-gray-400 { color: #475569 !important; }
 html[data-theme="light"] .text-gray-500 { color: #64748b !important; }
 
+/* 飽和色 (rose/blue/slate-700 等) 背景の上に乗る白文字/白アイコンは、ライト
+   モードでも白を維持する。上の「.text-white→濃色化」が色付きボタンや青バブルの
+   白文字まで黒くしてしまう問題への例外。memory: 濃色背景には #fff 白文字 (例外なし)。
+   この規則は上書きルールより後に置くこと (同 specificity で後勝ちさせるため)。 */
+.ss-on-accent,
+html[data-theme="light"] .ss-on-accent { color: #fff !important; }
+
 /* ─── 9a. ライトモード: hover:text-white も暗色に統一 ────────────── */
 /*
  * hover:text-white はライトモードでグレー背景上で白文字になってしまう。

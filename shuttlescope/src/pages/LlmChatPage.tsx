@@ -747,11 +747,11 @@ export default function LlmChatPage() {
             <button
               type="button"
               onClick={scrollToBottom}
-              className="absolute bottom-3 left-1/2 -translate-x-1/2 inline-flex h-10 items-center gap-1 rounded-full bg-slate-700 dark:bg-slate-600 px-3 text-xs font-medium text-white shadow-lg hover:bg-slate-800 dark:hover:bg-slate-500"
+              className="absolute bottom-3 left-1/2 -translate-x-1/2 inline-flex h-10 items-center gap-1 rounded-full bg-slate-700 dark:bg-slate-600 px-3 text-xs font-medium text-white ss-on-accent shadow-lg hover:bg-slate-800 dark:hover:bg-slate-500"
               aria-label={t('llm.scroll_to_latest')}
               title={t('llm.scroll_to_latest')}
             >
-              <MIcon name="arrow_downward" size={16} ariaHidden className="text-white" />
+              <MIcon name="arrow_downward" size={16} ariaHidden className="ss-on-accent" />
               {t('llm.scroll_to_latest')}
             </button>
           )}
@@ -794,7 +794,7 @@ export default function LlmChatPage() {
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                 }`}
               >
-                <MIcon name="lightbulb" size={16} fill={thinking ? 1 : 0} ariaHidden className={thinking ? 'text-white' : undefined} />
+                <MIcon name="lightbulb" size={16} fill={thinking ? 1 : 0} ariaHidden className={thinking ? 'ss-on-accent' : undefined} />
                 {t('llm.think_deeply')}
               </button>
             </div>
@@ -812,7 +812,7 @@ export default function LlmChatPage() {
                     aria-label={t('llm.remove_image')}
                     title={t('llm.remove_image')}
                   >
-                    <MIcon name="close" size={14} ariaHidden className="text-white" />
+                    <MIcon name="close" size={14} ariaHidden className="ss-on-accent" />
                   </button>
                 </div>
               ))}
@@ -858,7 +858,7 @@ export default function LlmChatPage() {
                 aria-label={listening ? t('llm.voice_stop') : t('llm.voice_input')}
                 title={listening ? t('llm.voice_stop') : t('llm.voice_input')}
               >
-                <MIcon name={listening ? 'mic' : 'mic_none'} size={20} ariaHidden className={listening ? 'text-white' : undefined} />
+                <MIcon name={listening ? 'mic' : 'mic_none'} size={20} ariaHidden className={listening ? 'ss-on-accent' : undefined} />
               </button>
             )}
             <textarea
@@ -877,7 +877,7 @@ export default function LlmChatPage() {
                 aria-label={t('llm.stop')}
                 title={t('llm.stop')}
               >
-                <MIcon name="stop" size={20} ariaHidden className="text-white" />
+                <MIcon name="stop" size={20} ariaHidden className="ss-on-accent" />
               </button>
             ) : (
               <button
@@ -887,7 +887,7 @@ export default function LlmChatPage() {
                 aria-label={t('llm.send')}
                 title={t('llm.send')}
               >
-                <MIcon name="send" size={18} ariaHidden className="text-white" />
+                <MIcon name="send" size={18} ariaHidden className="ss-on-accent" />
               </button>
             )}
           </div>
@@ -936,9 +936,9 @@ function ConversationList({
     <>
       <button
         onClick={onNewChat}
-        className="m-3 inline-flex min-h-[44px] items-center justify-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-bold text-white hover:bg-blue-700"
+        className="m-3 inline-flex min-h-[44px] items-center justify-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-bold text-white ss-on-accent hover:bg-blue-700"
       >
-        <MIcon name="add" size={18} ariaHidden className="text-white" />
+        <MIcon name="add" size={18} ariaHidden className="ss-on-accent" />
         {t('llm.new_chat')}
       </button>
       <div className="flex-1 overflow-y-auto px-2 pb-3">
@@ -1054,7 +1054,7 @@ function Bubble({ role, content, images, pending }: { role: string; content: str
             </div>
           )}
           {content && (
-            <div className="rounded-2xl rounded-tr-sm bg-blue-600 px-3.5 py-2 text-sm leading-relaxed text-white whitespace-pre-wrap break-words">
+            <div className="rounded-2xl rounded-tr-sm bg-blue-600 px-3.5 py-2 text-sm leading-relaxed text-white ss-on-accent whitespace-pre-wrap break-words">
               {content}
             </div>
           )}
