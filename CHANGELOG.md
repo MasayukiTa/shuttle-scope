@@ -1600,3 +1600,101 @@ A second audit pool (`audit_pool_r2`) generated 100 INT8 detections with `conf >
 ### Module-scope `t()` checker tightened
 
 `scripts/check_module_scope_t.py` was extended to catch the second-class form of the production-bundle crash: a top-level `function NAME(...) {}` helper that references the parent's `useTranslation` `t` without taking it as a parameter. Two latent bugs (`AnalystRankingView` and `GlossaryHint`) were caught and repaired in the same pass.
+
+## 2026-05-27
+
+### Person tracker: ByteTrack to a court-aware multi-phase pipeline
+
+Player tracking grew from a single-shot detector into a staged pipeline. Phase 1+2 added ByteTrack association with a court-quadrant adjudicator so each track is bound to a court region instead of floating freely. Phase 3 layered court calibration, player labelling, and same-side swap handling on top; phase 3.5 split the path into a 2-stage detect-then-track flow on the TensorRT execution provider. `SS_YOLO_MODEL_PATH` is now honored in the TRT EP path so a fine-tuned weight can be swapped in without code changes.
+
+### GPU batch detector throughput
+
+A batch inference path for the person detector targets 1000+ fps via TRT FP16. Supporting work: a GPU preprocess path (torch CUDA resize + normalize), a vectorized batch-output parser that drops the per-row Python loop, and ORT IOBinding with a CUDA buffer to skip the double GPU/CPU copy.
+
+### Native C++ tracker runtime (opt-in)
+
+A native person-tracker runtime was brought up in phases — A1 (CUDA preprocess + ORT detector), A2 (ByteTracker test wiring), A3 (pybind11 bindings + a Python wrapper). Several CUDA build issues were resolved: `CUDA_RESOLVE_DEVICE_SYMBOLS` and an LNK2019 on the test target, and compiling `preprocess.cu` directly into both the test target and the pybind11 module.
+
+### Phase 4 ReID (Tier 3 recovery)
+
+An OSNet appearance embedder was integrated into PersonTracker as a Tier-3 identity-recovery stage for tracks that motion and IoU alone lose.
+
+### Repo hygiene
+
+`.gitignore` was broadened to exclude self-trained WASB ONNX weights, model sidecars, and YOLO weights so large local training artifacts stay out of version control.
+
+## 2026-05-29
+
+### Native detector fast path
+
+The native detector was wired in as an opt-in fast path for the PersonTracker batch flow, with a validation note recorded. A `.pyd` GPU-load failure was fixed by copying all ONNX Runtime provider DLLs next to the extension so the CUDA provider resolves at import time.
+
+## 2026-06-01
+
+### Tracking Tier-3: Hybrid-SORT, stitching, swap-guard
+
+Several association-quality experiments landed as opt-in paths. A vendored Hybrid-SORT package plus Soft-NMS arrived with a DanceTrack / badminton evaluation harness (eval-only; the live selector wiring was deliberately deferred). An offline tracklet-stitching pass (motion-only + court-quadrant) reconnects fragments after the fact. Churn-reduction ByteTrack parameters and an env-gated track-swap guard target the same-uniform doubles crossover problem. A missing `fuse_score` key in `bytetrack.yaml` that crashed ultralytics' `.track()` was fixed, and a dangling import that had broken the YOLO inference path was restored.
+
+The Phase-4 ReID (OSNet) Tier-3 recovery and the C++ native person-tracker runtime (opt-in, ~632 fps proof-of-concept) were merged to `main`.
+
+### Dependency
+
+`tmp` was pinned to 0.2.6 to patch a path-traversal advisory (GHSA-ph9p-34f9-6g65).
+
+## 2026-06-02
+
+### Overlap diagnostic + CI stability
+
+An `nms_overlap_diagnostic` was added to triage the "two overlapping players collapse into one box" failure — separating whether it is an NMS-tuning issue or a hard detector limit — with investigation notes. CI was stabilized on Linux parallel runs by isolating the SQLite database per xdist worker (stopping a "table already exists" race) and by making the BYTETracker constructor version-agnostic with a dynamic-date fixture.
+
+## 2026-06-04
+
+### Code-scanning: full clearance
+
+All 245 open code-scanning alerts were triaged to zero: ESLint style noise quieted, DevSkim ignore-rule-ids set, Bandit B608/B406 verified false positives skipped, and Semgrep findings annotated with scoped `nosemgrep`. `react-router` was bumped to 6.30.4 for CVE-2026-40181.
+
+### Media plane: LiveKit SFU (Phase 1)
+
+A LiveKit SFU integration landed for the remote-camera media plane: access-token issuance, match-room mapping, and role grants, with an auth-gated `POST /api/media/token` endpoint (operator-privileged only, active session required) and its gate tests. Two design docs were added — a concrete 3-host deployment topology (DMZ SFU / GPU+storage / control, 2.5 GbE, VLAN isolation) and a self-host SFU port-forward hardening runbook. Multi-device signaling unit tests (3+ devices, per-session cap, viewer coexistence, disconnect) were consolidated with a video-sharing state doc.
+
+### Match-scoped recordings API
+
+A `Recording` model (migration 0038) ties recordings to a match with an auto-assigned branch number (枝番), an upload/live origin, and a `video_token`. The recordings API auto-assigns the branch number and supports upload/live registration and status patches. A cross-team IDOR was closed: recordings endpoints now enforce match team-scope (`require_match_access_or_404`) so a `video_token` cannot be harvested across teams, with a regression test.
+
+### Multi-view 3D analysis core
+
+A 3D analysis core was added: court-plane PnP calibration, triangulation, and an audio-free motion-energy temporal sync that aligns two cameras without a clapperboard, with deterministic tests. On top of it sits a 2-camera 3D pose driver (dual court calibration + YOLO/RTMPose 2D joints triangulated to 3D, single/multi selectable). A planar 2-solution IPPE ambiguity in court calibration was fixed by picking the lowest-reprojection solution; the synthetic round-trip test was relaxed to a smoke check because OpenCV's planar IPPE is environment-sensitive (real accuracy is validated on prod with court footage).
+
+### Status / maintenance backend
+
+A server-status and maintenance/incident backend was added (public `GET /api/public/status` read, admin write API, models + migration 0039) with tests, a feature guide, and a recorded incident report for a 2026-06-04 Cloudflare tunnel outage.
+
+## 2026-06-05
+
+### Public status page
+
+A public `/status` page and a site-wide status banner were added, backed by automatic per-component health monitoring. The page shows 90-day uptime bars built from 10-minute samples (the public uptime figure is no longer rounded up to a flattering 100%), an 更新情報 (announcements) feed, and a clickable day that drills into the 10-minute detail for that date. Sampling was aligned to wall-clock :00/:10 boundaries. The marketing / legal pages (contact / terms / privacy / status) were made readable and dark-mode aware, with a readable mobile menu, JST timestamps, and status surfaced in the nav.
+
+### Mobile responsive sweep
+
+A broad mobile pass made the app usable at phone / tablet widths: the app shell switched to dynamic viewport height (dvh) so content is not hidden behind the browser URL bar; Match List, Condition, and Dashboard had responsive gaps closed; Settings overflow and touch targets were fixed; and the auth / onboarding pages got `svh` sizing, 16px inputs (no iOS auto-zoom), and autocomplete hints. Pinch-zoom was re-enabled for accessibility (dropping `user-scalable=no`, WCAG 1.4.4). The main sidebar became collapsible. A `Moon is not defined` crash in Settings (a leftover lucide import) was fixed by moving to `MIcon`.
+
+### Assistant chat surface
+
+An in-app assistant chat surface was introduced for assistant-only accounts.
+
+### Security
+
+A NVIDIA test dummy key that tripped secret scanning was de-flagged with a gitleaks allowlist entry.
+
+## 2026-06-06
+
+### Status bars in JST
+
+The status page's uptime bars and day drill-down were re-bucketed by JST instead of UTC, so the per-day columns line up with the Japanese calendar day rather than ending nine hours early.
+
+## 2026-06-07
+
+### Match registration: auto-fetch title from a video URL
+
+Match registration can now pull a video's title (and basic metadata) straight from a streaming URL. A new `POST /matches/probe-url` endpoint fetches the title via yt-dlp without downloading, guarded by the same SSRF validator used for downloads (loopback / internal IP / non-http(s) rejected) and limited to authenticated non-player roles. A "fetch title from URL" button in the match form fills the tournament field; multi-language titles are stored as UTF-8 end to end.
