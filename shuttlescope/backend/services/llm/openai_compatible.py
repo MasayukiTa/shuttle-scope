@@ -31,9 +31,40 @@ def parse_sse_line(raw: str) -> Optional[Delta]:
         content=delta.get("content") or "",
         # reasoning モデルは思考過程を reasoning_content (一部実装は reasoning) で返す。
         reasoning=delta.get("reasoning_content") or delta.get("reasoning") or "",
+        # tool_call は index/id/function(name,arguments) を含む raw delta をそのまま保持。
+        # 引数はストリームで分割されて届くため、accumulate_tool_calls() で index ごとに結合する。
         tool_call=tool_calls[0] if tool_calls else None,
         finish_reason=ch.get("finish_reason"),
     )
+
+
+def accumulate_tool_calls(deltas: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """ストリームで分割された tool_call フラグメントを index ごとに 1 つへ結合する。
+
+    OpenAI 互換ストリームでは tool_call の function.arguments が複数 delta に
+    分かれて届く。各 delta は同じ index を共有するので、index をキーに id/name を
+    確定し arguments 文字列を連結する。tool 実行ループ (将来) の土台。"""
+    by_index: Dict[int, Dict[str, Any]] = {}
+    order: List[int] = []
+    for tc in deltas:
+        if not tc:
+            continue
+        idx = tc.get("index", 0) or 0
+        if idx not in by_index:
+            by_index[idx] = {"id": None, "type": "function",
+                             "function": {"name": "", "arguments": ""}}
+            order.append(idx)
+        slot = by_index[idx]
+        if tc.get("id"):
+            slot["id"] = tc["id"]
+        if tc.get("type"):
+            slot["type"] = tc["type"]
+        fn = tc.get("function") or {}
+        if fn.get("name"):
+            slot["function"]["name"] += fn["name"]
+        if fn.get("arguments"):
+            slot["function"]["arguments"] += fn["arguments"]
+    return [by_index[i] for i in order]
 
 
 class OpenAICompatibleProvider(LLMProvider):

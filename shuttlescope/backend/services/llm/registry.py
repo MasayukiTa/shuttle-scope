@@ -60,3 +60,26 @@ def reasoning_model() -> Optional[str]:
 def reasoning_available(provider: Optional[str] = None) -> bool:
     """reasoning モデルが設定済みかつプロバイダが利用可能なら True (UI トグル表示条件)。"""
     return bool(reasoning_model()) and provider_configured(provider)
+
+
+def vision_available(provider: Optional[str] = None) -> bool:
+    """画像 (マルチモーダル) 入力が使えるか。
+
+    env LLM_VISION ("1"/"true" 等) が立ち、かつプロバイダが利用可能な時のみ True。
+    既定は OFF。現行の NIM 上 deepseek-v4-flash は vision 非対応の可能性が高いため、
+    明示的に opt-in しない限り画像は受け付けない (送られても 422 で弾く)。
+    vision 対応モデルへ差し替えたら env を立てるだけで有効化できる。"""
+    flag = os.environ.get("LLM_VISION") in ("1", "true", "True", "yes", "on")
+    return flag and provider_configured(provider)
+
+
+def tools_available(provider: Optional[str] = None) -> bool:
+    """tool / function-calling 機構が使えるか。
+
+    env LLM_TOOLS が立ち、かつプロバイダが利用可能で、実際に enabled なツールが
+    1 つ以上ある時のみ True。既定は OFF (NIM/deepseek が tool_calls を出さなくても無害)。"""
+    # 循環 import を避けるため遅延 import (tools.py は registry に依存しない)。
+    from backend.services.llm.tools import enabled_tools, tools_enabled
+    if not (tools_enabled() and provider_configured(provider)):
+        return False
+    return len(enabled_tools()) > 0

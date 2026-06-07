@@ -7,5 +7,18 @@ OpenAI 互換エンドポイント (NVIDIA NIM / LM Studio / llama.cpp / OpenAI)
 from backend.services.llm.base import ChatMessage, Delta, LLMProvider
 from backend.services.llm.openai_compatible import OpenAICompatibleProvider
 from backend.services.llm.registry import get_provider
+from backend.services.llm.tools import (
+    Tool,
+    ToolResult,
+    WebSearchTool,
+    enabled_tools,
+    execute_tool_call,
+    tool_definitions,
+    tools_enabled,
+)
 
-__all__ = ["ChatMessage", "Delta", "LLMProvider", "OpenAICompatibleProvider", "get_provider"]
+__all__ = [
+    "ChatMessage", "Delta", "LLMProvider", "OpenAICompatibleProvider", "get_provider",
+    "Tool", "ToolResult", "WebSearchTool",
+    "tool_definitions", "enabled_tools", "execute_tool_call", "tools_enabled",
+]
