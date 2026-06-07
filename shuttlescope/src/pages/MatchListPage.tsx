@@ -420,6 +420,31 @@ export function MatchListPage() {
     setForm((f) => ({ ...f, video_local_path: fileUrl, video_url: '' }))
   }
 
+  // 配信 URL からタイトルを自動取得して大会名に反映（多言語対応）
+  const [fetchingTitle, setFetchingTitle] = useState(false)
+  const handleFetchTitle = async () => {
+    const url = form.video_url.trim()
+    if (!/^https?:\/\//i.test(url)) return
+    setFetchingTitle(true)
+    try {
+      const r = await apiPost<{ success: boolean; data: { title?: string | null } }>(
+        '/matches/probe-url',
+        { url },
+      )
+      const title = (r.data?.title ?? '').trim()
+      if (title) {
+        // 明示クリックなので大会名へ反映（既存入力があっても上書き）
+        setForm((f) => ({ ...f, tournament: title }))
+      } else {
+        alert(t('match.list.fetch_title_empty'))
+      }
+    } catch (err) {
+      alert(t('match.list.fetch_title_failed') + ': ' + errorMessage(err, ''))
+    } finally {
+      setFetchingTitle(false)
+    }
+  }
+
   const allMatches = useMemo(() => matchesData?.data ?? [], [matchesData?.data])
   const players = playersData?.data ?? []
 
@@ -1177,6 +1202,18 @@ export function MatchListPage() {
                       className={`flex-1 ${inputClass} min-w-0`}
                       placeholder={t('auto.MatchListPage.k19')}
                     />
+                    {!form.video_local_path && /^https?:\/\//i.test(form.video_url.trim()) && (
+                      <button
+                        type="button"
+                        onClick={handleFetchTitle}
+                        disabled={fetchingTitle}
+                        className={`flex items-center gap-1 px-2 py-2 ${isLight ? 'bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200' : 'bg-blue-900/30 hover:bg-blue-900/50 text-blue-200 border-blue-800'} rounded text-xs whitespace-nowrap border disabled:opacity-50`}
+                        title={t('match.list.fetch_title')}
+                      >
+                        <MIcon name="auto_awesome" size={13} />
+                        {fetchingTitle ? t('match.list.fetch_title_loading') : t('match.list.fetch_title')}
+                      </button>
+                    )}
                     {form.video_local_path && (
                       <button
                         type="button"

@@ -1188,6 +1188,63 @@ def get_match_rallies(match_id: int, request: Request, db: Session = Depends(get
     return {"success": True, "data": result}
 
 
+# ─── 配信 URL メタデータ probe（試合登録フォームの自動タイトル取得） ─────────────
+class ProbeUrlRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+    # DB の video_url カラムが varchar(500) のため上限を揃える
+    url: str = Field(..., max_length=500)
+
+
+_probe_semaphore: Optional[asyncio.Semaphore] = None
+
+
+def _get_probe_semaphore() -> asyncio.Semaphore:
+    global _probe_semaphore
+    if _probe_semaphore is None:
+        _probe_semaphore = asyncio.Semaphore(2)
+    return _probe_semaphore
+
+
+@router.post("/matches/probe-url")
+async def probe_video_url(body: ProbeUrlRequest, request: Request):
+    """配信 URL からタイトル等のメタデータを取得する（試合登録フォームの自動入力用）。
+
+    - 認証必須（player は不可。試合登録は analyst/coach/admin の操作のため）。
+    - `validate_external_url` で SSRF 対策（loopback / 内部 IP / 非 http(s) を拒否）。
+    - yt-dlp の extract_info はブロッキングのためスレッドで実行しイベントループを塞がない。
+    - 同時実行は semaphore で 2 までに制限（外部 fetch の濫用防止）。
+    - 多言語タイトルは Unicode のまま JSON で返す（UTF-8 一貫で文字化けしない）。
+    """
+    ctx = get_auth(request)
+    if ctx.role is None or ctx.is_player:
+        raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
+
+    from backend.utils.safe_path import validate_external_url
+    validated = validate_external_url(body.url, field_name="url")
+
+    from backend.utils.video_downloader import fetch_video_metadata
+    async with _get_probe_semaphore():
+        meta = await asyncio.to_thread(fetch_video_metadata, validated)
+
+    if not meta.get("ok"):
+        raise HTTPException(
+            status_code=502,
+            detail=f"メタデータの取得に失敗しました: {meta.get('error', 'unknown')}",
+        )
+    return {
+        "success": True,
+        "data": {
+            "title": meta.get("title"),
+            "duration": meta.get("duration"),
+            "uploader": meta.get("uploader"),
+            "thumbnail": meta.get("thumbnail"),
+            "upload_date": meta.get("upload_date"),
+            "width": meta.get("width"),
+            "height": meta.get("height"),
+        },
+    }
+
+
 class DownloadRequest(BaseModel):
     model_config = {"extra": "forbid"}
     # YouTube DL は 4K (2160) でハードキャップ。配信側 (mobile annotate / web) も
