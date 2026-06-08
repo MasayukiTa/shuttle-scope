@@ -8,6 +8,7 @@ import {
   createConversation,
   deleteConversation,
   getLlmConfig,
+  getLlmModels,
   getMessages,
   listConversations,
   renameConversation,
@@ -15,6 +16,7 @@ import {
   type LlmConfig,
   type LlmConversation,
   type LlmMessage,
+  type LlmModel,
 } from '../api/llm'
 
 // 「最下部付近」判定のしきい値 (px)。これより上にスクロールしていれば自動追従しない。
@@ -61,17 +63,17 @@ declare global {
   }
 }
 
-// 「じっくり考える」(deep thinking) トグルの永続化キー。
-const THINKING_STORAGE_KEY = 'ss.llm.thinking'
+// 選択中チャットモデル ID の永続化キー。
+const MODEL_STORAGE_KEY = 'ss.llm.model'
 
 // デスクトップ会話リスト (aside) の折りたたみ状態の永続化キー。
 const CONVLIST_COLLAPSED_KEY = 'ss.llm.convlist.collapsed'
 
-function readThinkingPref(): boolean {
+function readModelPref(): string | null {
   try {
-    return localStorage.getItem(THINKING_STORAGE_KEY) === '1'
+    return localStorage.getItem(MODEL_STORAGE_KEY)
   } catch {
-    return false
+    return null
   }
 }
 
@@ -94,7 +96,8 @@ export default function LlmChatPage() {
   const [streamText, setStreamText] = useState('')
   const [streaming, setStreaming] = useState(false) // SSE start〜done/error の生成中フラグ
   const [reasoningText, setReasoningText] = useState('') // 推論モデルの思考過程 (ライブのみ、永続化されない)
-  const [thinking, setThinking] = useState(readThinkingPref) // 「じっくり考える」トグル (localStorage 永続)
+  const [models, setModels] = useState<LlmModel[]>([]) // ピッカー用モデル一覧 (backend allowlist)
+  const [selectedModel, setSelectedModel] = useState<string>('') // 選択中モデル ID (localStorage 永続)
   const [error, setError] = useState<string | null>(null)
   const [retryPrompt, setRetryPrompt] = useState<string | null>(null) // 送信失敗したプロンプト (再試行用)
   const [renamingId, setRenamingId] = useState<number | null>(null)
@@ -137,16 +140,30 @@ export default function LlmChatPage() {
   useEffect(() => {
     getLlmConfig().then(setConfig).catch(() => setConfig(null))
     refreshConversations()
+    // モデル一覧を取得し、選択中モデルを決める:
+    // localStorage の値が allowlist 内ならそれを、無ければ backend 既定を使う。
+    getLlmModels()
+      .then(({ models: list, default: def }) => {
+        setModels(list)
+        const saved = readModelPref()
+        const valid = saved && list.some((m) => m.id === saved) ? saved : def
+        setSelectedModel(valid)
+      })
+      .catch(() => {
+        setModels([])
+        setSelectedModel('')
+      })
   }, [refreshConversations])
 
-  // 「じっくり考える」トグル状態を localStorage に永続化。
+  // 選択中モデルを localStorage に永続化 (未確定の空文字は保存しない)。
   useEffect(() => {
+    if (!selectedModel) return
     try {
-      localStorage.setItem(THINKING_STORAGE_KEY, thinking ? '1' : '0')
+      localStorage.setItem(MODEL_STORAGE_KEY, selectedModel)
     } catch {
       /* ignore */
     }
-  }, [thinking])
+  }, [selectedModel])
 
   // デスクトップ会話リストの折りたたみ状態を localStorage に永続化。
   useEffect(() => {
@@ -156,8 +173,6 @@ export default function LlmChatPage() {
       /* ignore */
     }
   }, [convListCollapsed])
-
-  const reasoningAvailable = config?.reasoning_available === true
 
   useEffect(() => {
     forceScrollRef.current = true // 会話を切り替えたら次回描画で最下部へ
@@ -368,8 +383,8 @@ export default function LlmChatPage() {
     setReasoningText('') // 新規送信ごとに前回の思考過程をクリア (ライブのみ表示)
     setStreaming(true) // start/delta 前から「生成中」を表示 (応答までの空白時間も可視化)
 
-    // この送信時点のトグル値を確定 (送信中にトグルが変わっても影響させない)。
-    const useThinking = thinking
+    // この送信時点のモデル選択を確定 (送信中に変更されても今回の送信には影響させない)。
+    const useModel = selectedModel || undefined
 
     // 中断用 AbortController を都度生成。
     const controller = new AbortController()
@@ -405,7 +420,7 @@ export default function LlmChatPage() {
           // ミッドストリームエラー: 既出のストリームテキストは消さず確定バブル + エラー注記にする。
           setError(e.message || t('llm.error.generate'))
         }
-      }, controller.signal, useThinking, sendImages)
+      }, controller.signal, useModel, sendImages)
     } catch {
       // reader.read() が中断/失敗で reject した場合 (llm.ts の loop は try/catch を持たない)。
       // 中断ならエラー扱いせず、それ以外は通常エラーとして部分テキストを保持する。
@@ -453,7 +468,7 @@ export default function LlmChatPage() {
       }
     }
     refreshConversations()
-  }, [input, images, sending, notConfigured, activeId, messages.length, refreshConversations, thinking, t])
+  }, [input, images, sending, notConfigured, activeId, messages.length, refreshConversations, selectedModel, t])
 
   // 生成停止 (STOP ボタン)。signal.abort() でストリームを打ち切る。後処理は onSend 側で行う。
   const onStop = useCallback(() => {
@@ -792,23 +807,39 @@ export default function LlmChatPage() {
         )}
 
         <div className="border-t border-slate-200 dark:border-slate-700 p-3">
-          {/* 「じっくり考える」(deep thinking) トグル: reasoning 対応時のみ表示。状態を localStorage に永続化。 */}
-          {reasoningAvailable && (
+          {/* モデルピッカー: NIM の各チャットモデルを切り替える (高速/高精度はモデル選択で表現)。
+              選択肢の label は backend (allowlist) が返す値で、ハードコードしない。
+              native <select> でキーボード操作 / テーマ追従。状態は localStorage 永続。 */}
+          {models.length > 0 && (
             <div className="mb-2 flex">
-              <button
-                type="button"
-                onClick={() => setThinking((v) => !v)}
-                aria-pressed={thinking}
-                title={t('llm.think_deeply')}
-                className={`inline-flex min-h-[36px] items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                  thinking
-                    ? 'bg-blue-600 text-white hover:bg-blue-700'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                }`}
-              >
-                <MIcon name="lightbulb" size={16} fill={thinking ? 1 : 0} ariaHidden className={thinking ? 'ss-on-accent' : undefined} />
-                {t('llm.think_deeply')}
-              </button>
+              <div className="relative inline-flex items-center">
+                <MIcon
+                  name="smart_toy"
+                  size={16}
+                  ariaHidden
+                  className="pointer-events-none absolute left-2.5 text-slate-500 dark:text-slate-400"
+                />
+                <select
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  disabled={composerDisabled}
+                  aria-label={t('llm.model_picker_label')}
+                  title={t('llm.model_picker_label')}
+                  className="min-h-[36px] appearance-none rounded-full border border-slate-300 bg-slate-100 py-1.5 pl-8 pr-8 text-xs font-medium text-slate-700 hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                >
+                  {models.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+                <MIcon
+                  name="expand_more"
+                  size={16}
+                  ariaHidden
+                  className="pointer-events-none absolute right-2 text-slate-500 dark:text-slate-400"
+                />
+              </div>
             </div>
           )}
           {/* 添付画像のサムネイルプレビュー (送信前)。各サムネに × の削除ボタン。 */}

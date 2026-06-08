@@ -26,6 +26,13 @@ export interface LlmConfig {
   reasoning_available: boolean
 }
 
+// モデルピッカーの 1 選択肢。label は backend (registry の curated allowlist) が返す
+// 表示名で、UI 側ではハードコードしない (i18n もしない)。
+export interface LlmModel {
+  id: string
+  label: string
+}
+
 // SSE イベント種別。reasoning は推論モデルの思考過程 (chain-of-thought) をライブ配信する (永続化されない)。
 export type StreamEvent = {
   type: 'start' | 'delta' | 'reasoning' | 'done' | 'error'
@@ -59,6 +66,15 @@ export function getLlmConfig() {
   return apiGet<LlmConfig>('/llm/config')
 }
 
+// ピッカー用のチャットモデル一覧 + 既定 ID。backend は {success, data:{models, default}}
+// 形で返すため data を取り出して返す。
+export async function getLlmModels(): Promise<{ models: LlmModel[]; default: string }> {
+  const r = await apiGet<{ success: boolean; data: { models: LlmModel[]; default: string } }>(
+    '/llm/models',
+  )
+  return r.data
+}
+
 export function listConversations() {
   return apiGet<{ conversations: LlmConversation[] }>('/llm/conversations')
 }
@@ -80,21 +96,26 @@ export function getMessages(id: number) {
 }
 
 // SSE ストリーミング送信。data: {json}\n\n を逐次パースして onEvent に流す。
+// model: ピッカーで選んだモデル ID (backend の MessageCreate.model)。allowlist 検証は
+// backend 側 (allowlist 外は 422)。reasoning 表示はモデルが reasoning_content を出すと自動。
 export async function streamMessage(
   conversationId: number,
   content: string,
   onEvent: (e: StreamEvent) => void,
   signal?: AbortSignal,
-  thinking = false,
+  model?: string,
   images: string[] = [],
 ): Promise<void> {
   let resp: Response
   try {
+    // body: content は必須。model / images は値がある時のみ含める (省略時は backend の既定)。
+    const payload: { content: string; model?: string; images?: string[] } = { content }
+    if (model) payload.model = model
+    if (images.length > 0) payload.images = images
     resp = await fetch(`${API_BASE_URL}/llm/conversations/${conversationId}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      // images: data URL の配列 (空なら省略)。backend の MessageCreate.images に対応。
-      body: JSON.stringify(images.length > 0 ? { content, thinking, images } : { content, thinking }),
+      body: JSON.stringify(payload),
       signal,
     })
   } catch (e) {

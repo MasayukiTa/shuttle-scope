@@ -17,6 +17,24 @@ _NIM_DEFAULT_MODEL = "meta/llama-3.3-70b-instruct"
 _LOCAL_DEFAULT_BASE = "http://127.0.0.1:1234/v1"   # LM Studio 既定
 _OPENAI_DEFAULT_BASE = "https://api.openai.com/v1"
 
+# ── チャット用モデルのキュレーション済み allowlist ────────────────────────────
+# NIM は 1 鍵で多数のモデルを呼べる OpenAI 互換エンドポイント。任意のモデル ID を
+# プロバイダへ素通しすると課金/コスト面で無制限になるため、UI のモデルピッカーは
+# ここに列挙した ID だけを許可する (それ以外は router 側で 422)。
+# "高速"/"高精度" の区別はモデル選択で表現する (reasoning 表示は reasoning 対応
+# モデルが reasoning_content を出すと自動で出る = フラグ不要)。
+# label は表示用 (i18n せず backend が返す。UI 側でハードコードしない)。
+LLM_CHAT_MODELS = [
+    {"id": "openai/gpt-oss-20b", "label": "GPT-OSS 20B (高速)"},
+    {"id": "openai/gpt-oss-120b", "label": "GPT-OSS 120B (高精度)"},
+    {"id": "deepseek-ai/deepseek-v4-flash", "label": "DeepSeek V4 Flash (高速)"},
+    {"id": "deepseek-ai/deepseek-v4-pro", "label": "DeepSeek V4 Pro (高精度)"},
+    {"id": "meta/llama-3.3-70b-instruct", "label": "Llama 3.3 70B"},
+    {"id": "meta/llama-4-maverick-17b-128e-instruct", "label": "Llama 4 Maverick"},
+    {"id": "mistralai/mistral-large-3-675b-instruct-2512", "label": "Mistral Large 3"},
+]
+DEFAULT_CHAT_MODEL = "openai/gpt-oss-20b"
+
 
 def _env(*keys: str, default: Optional[str] = None) -> Optional[str]:
     for k in keys:
@@ -49,6 +67,28 @@ def provider_configured(provider: Optional[str] = None) -> bool:
     if provider == "local":
         return True
     return bool(_env("LLM_API_KEY", "NVIDIA_API_KEY", "OPENAI_API_KEY"))
+
+
+def chat_models() -> list[dict]:
+    """ピッカーに出すチャットモデル一覧 (id + 表示 label)。
+
+    呼び出し側が中身を書き換えても元の定数に影響しないよう浅いコピーを返す。"""
+    return [dict(m) for m in LLM_CHAT_MODELS]
+
+
+def allowed_chat_model_ids() -> set[str]:
+    """ピッカーで選択を許可するモデル ID の集合 (router の検証に使う)。"""
+    return {m["id"] for m in LLM_CHAT_MODELS}
+
+
+def default_chat_model() -> str:
+    """既定のチャットモデル ID。
+
+    env LLM_DEFAULT_MODEL が allowlist 内なら優先、そうでなければ DEFAULT_CHAT_MODEL。"""
+    override = os.environ.get("LLM_DEFAULT_MODEL")
+    if override and override in allowed_chat_model_ids():
+        return override
+    return DEFAULT_CHAT_MODEL
 
 
 def reasoning_model() -> Optional[str]:
