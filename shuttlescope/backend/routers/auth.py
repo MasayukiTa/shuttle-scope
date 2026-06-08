@@ -2866,6 +2866,16 @@ def get_my_consents(request: Request, db: Session = Depends(get_db)):
             viewer_is_minor = age < 18
     except Exception:
         viewer_is_minor = False
+    # role='llm' (汎用 LLM チャット専用) は badminton 固有の任意同意 (体組成開示 /
+    # AI 学習 / 学術研究 / 越境移転) を一切持たない。カタログからも撤回 UI からも除外し、
+    # 既に記録があっても表示しない。必須同意 (service_delivery / beta_agreement) は汎用
+    # なので残す。
+    _is_llm_only = (getattr(ctx, "role", None) == "llm")
+    _shown_optional = set() if _is_llm_only else _OPTIONAL_CONSENT_TYPES
+    _shown_consents = [
+        c for c in latest.values()
+        if not (_is_llm_only and c["consent_type"] in _OPTIONAL_CONSENT_TYPES)
+    ]
     return {
         "success": True,
         "data": {
@@ -2876,8 +2886,8 @@ def get_my_consents(request: Request, db: Session = Depends(get_db)):
                 "data_contribution": CURRENT_DCT_VERSION,
             },
             "required_types": sorted(_REQUIRED_CONSENT_TYPES),
-            "optional_types": sorted(_OPTIONAL_CONSENT_TYPES),
-            "consents": list(latest.values()),
+            "optional_types": sorted(_shown_optional),
+            "consents": _shown_consents,
             "viewer_is_minor": viewer_is_minor,
         },
     }
