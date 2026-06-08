@@ -5,6 +5,7 @@
 insights chat (insights_chat.py) とは完全に別系統。
 
 - GET    /api/llm/config                       : プロバイダ/モデル + 利用可否
+- GET    /api/llm/models                        : ピッカー用チャットモデル一覧 + 既定
 - GET    /api/llm/conversations                : 自分の会話一覧
 - POST   /api/llm/conversations                : 会話作成
 - PATCH  /api/llm/conversations/{cid}          : 会話タイトル変更 (所有者のみ)
@@ -34,9 +35,11 @@ from backend.db.models import LlmConversation, LlmTurn, PlayerPageAccess
 from backend.services.llm import get_provider
 from backend.services.llm.base import ChatMessage
 from backend.services.llm.registry import (
+    allowed_chat_model_ids,
+    chat_models,
+    default_chat_model,
     provider_configured,
     reasoning_available,
-    reasoning_model,
     tools_available,
     vision_available,
 )
@@ -201,7 +204,12 @@ class ConversationCreate(BaseModel):
 class MessageCreate(BaseModel):
     model_config = {"extra": "forbid"}  # mass-assignment 防止
     content: str = Field(min_length=1, max_length=16000)
-    # 『深く考えるモード』: True なら reasoning モデル (LLM_REASONING_MODEL) で応答する。
+    # ピッカーで選んだチャットモデル ID。allowlist (allowed_chat_model_ids) 内のみ許可。
+    # None なら既定モデル。allowlist 外を渡した場合は 422 (任意の ID をプロバイダへ
+    # 素通ししない = コスト/セキュリティ境界)。reasoning 表示はモデルが reasoning_content
+    # を出すと自動で出るため、旧 thinking フラグでのゲートは廃止 (モデル選択が駆動)。
+    model: Optional[str] = None
+    # 後方互換: 旧クライアントが送ってきても無害に受理する (応答内容には影響しない)。
     thinking: bool = False
     # マルチモーダル: 各要素は base64 data URL ("data:image/png;base64,...")。
     # 枚数/サイズ/mime は _validate_images で検証。vision 未対応モデルでは送信を拒否。
@@ -221,6 +229,17 @@ def llm_config(request: Request, db: Session = Depends(get_db)):
             "reasoning_available": reasoning_available(),
             "vision_available": vision_available(),
             "tools_available": tools_available()}
+
+
+@router.get("/llm/models")
+def llm_models(request: Request, db: Session = Depends(get_db)):
+    """ピッカー用のチャットモデル一覧 + 既定 ID。
+
+    認証は他の /llm 系と同一 (admin + 'llm' grant)。返すのは UI 選択肢として開示して
+    よい curated allowlist のみ (会話単位で実際にどのモデルを使ったかは非開示のまま)。"""
+    require_llm_access(request, db)
+    return {"success": True, "data": {"models": chat_models(),
+                                      "default": default_chat_model()}}
 
 
 @router.get("/llm/conversations")
@@ -283,6 +302,13 @@ def post_message(cid: int, body: MessageCreate, request: Request, db: Session = 
     ctx = require_llm_access(request, db)
     c = _own_conversation(cid, ctx, db)
 
+    # モデル選択: 指定があれば allowlist 内のみ許可。allowlist 外の ID は 422 で弾く
+    # (任意文字列をプロバイダへ素通ししない = コスト/セキュリティ境界)。未指定は既定。
+    # 副作用 (rate-limit / DB 書き込み) より前に検証して不正は即返す。
+    if body.model is not None and body.model not in allowed_chat_model_ids():
+        raise HTTPException(status_code=422, detail="未対応のモデルが指定されました")
+    chosen_model = body.model if body.model in allowed_chat_model_ids() else default_chat_model()
+
     # 画像検証は副作用 (rate-limit / DB 書き込み) より前に行い、不正なら 422 で即返す。
     image_metas = _validate_images(body.images)
     if image_metas and not vision_available():
@@ -329,10 +355,10 @@ def post_message(cid: int, body: MessageCreate, request: Request, db: Session = 
                 m.content = _build_multimodal_content(body.content, body.images)
                 break
     system_prompt = c.system_prompt
-    # 『深く考えるモード』: thinking 指定かつ reasoning モデルが設定済みなら、会話の通常
-    # モデルではなく reasoning モデル (LLM_REASONING_MODEL) を使う。未設定なら通常モデル。
-    use_reasoning = bool(body.thinking) and reasoning_available()
-    model = reasoning_model() if use_reasoning else c.model
+    # モデルはピッカーの選択 (allowlist 検証済み chosen_model) を使う。reasoning 対応
+    # モデルなら provider が reasoning_content を出し、SSE 'reasoning' で自動表示される
+    # (旧 thinking フラグでのモデル切替は廃止 = モデル選択が応答品質/推論可否を駆動)。
+    model = chosen_model
     provider_name, conv_id, assistant_seq = c.provider, c.id, last_seq + 2
     # tools: 機構が無効/有効ツール無しなら None → payload に tools を入れない (既存挙動と同一)。
     tools = tool_definitions()
@@ -341,8 +367,8 @@ def post_message(cid: int, body: MessageCreate, request: Request, db: Session = 
         acc = []
         try:
             pr = get_provider(provider=provider_name, model=model)
-            # start: モデル名は非開示。reasoning モードか否かだけを伝える。
-            yield _sse({"type": "start", "thinking": use_reasoning})
+            # start: モデル名は非開示 (従来どおり)。
+            yield _sse({"type": "start"})
             for d in pr.stream_chat(history, system=system_prompt, tools=tools,
                                     max_tokens=MAX_TOKENS):
                 # reasoning モデルの思考過程 (CoT) はライブ表示のみ。履歴には保存しない
