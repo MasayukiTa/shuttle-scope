@@ -115,6 +115,10 @@ export default function LlmChatPage() {
   const stickToBottomRef = useRef(true) // 「最下部に追従」状態。最下部付近に居る間 true、上にスクロールしたら false
   const forceScrollRef = useRef(true) // 会話切替/送信直後は閾値に関係なく最下部へ寄せる
   const abortRef = useRef<AbortController | null>(null) // 進行中ストリームの中断用
+  // onSend が新規作成した会話の activeId について、監視 effect の getMessages を 1 回だけ
+  // スキップする。新規会話はサーバ上まだ空なので、取得結果 [] が optimistic なユーザ発言を
+  // 上書き消去してしまう (= 1 通目が送信直後に消え、応答開始時に再出現する不具合) のを防ぐ。
+  const skipNextFetchRef = useRef<number | null>(null)
   const drawerRef = useRef<HTMLDivElement>(null) // フォーカストラップ対象 (ドロワー内)
   const menuBtnRef = useRef<HTMLButtonElement>(null) // ドロワーを開いたハンバーガー (閉じたらここへ復帰)
 
@@ -160,6 +164,12 @@ export default function LlmChatPage() {
     stickToBottomRef.current = true // 切替直後は最下部追従を有効化
     if (activeId == null) {
       setMessages([])
+      return
+    }
+    // onSend が今作ったばかりの空の会話なら再取得しない (空配列で楽観表示の
+    // ユーザ発言を消さないため)。通常の会話切替では従来どおり取得する。
+    if (skipNextFetchRef.current === activeId) {
+      skipNextFetchRef.current = null
       return
     }
     let cancelled = false
@@ -331,6 +341,8 @@ export default function LlmChatPage() {
       if (convId == null) {
         const c = await createConversation({})
         convId = c.id
+        // 今作った空の会話。activeId 変更で走る getMessages が optimistic を消すのを防ぐ。
+        skipNextFetchRef.current = c.id
         setActiveId(c.id)
         setConversations((prev) => [c, ...prev])
       }
