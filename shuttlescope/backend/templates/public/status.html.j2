@@ -445,6 +445,7 @@
       var cell=document.createElement('span');
       cell.className='ss-slot';
       cell.setAttribute('data-st', s.st);
+      if(s.color){ cell.style.background=s.color; }
       cell.setAttribute('tabindex','0');
       var hm=jstHM(s.t);
       var lbl=hm+' '+(ST_LABEL[s.st]||s.st);
