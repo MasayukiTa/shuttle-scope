@@ -34,6 +34,42 @@ CONSECUTIVE_TO_RESOLVE = 2       # 連続 N 回 operational で自動 resolve
 
 OPERATIONAL, DEGRADED, DOWN = "operational", "degraded", "down"
 
+# ── 90日バーの連続グラデーション (Atlassian Statuspage 準拠) ──────────────────
+# Statuspage の稼働履歴バーは離散色ではなく、その日のダウンタイム深刻度を
+# green→yellow→orange→red の 4 アンカー間で線形補間して fill 色を決めている。
+# アンカー HEX は status.claude.com のバー SVG から実測した値:
+#   green #76AD2A → yellow #FAA72A → orange #E86235 → red #E04343
+# 深刻度スコア = その日のサンプルを重み付けした平均 (down=1.0 / degraded=0.5 /
+# operational=0.0)。0=完全正常→緑、1=終日ダウン→赤。
+_BAR_SEVERITY_WEIGHT = {OPERATIONAL: 0.0, DEGRADED: 0.5, DOWN: 1.0}
+_BAR_ANCHORS = (
+    (0.0,        (0x76, 0xAD, 0x2A)),
+    (1.0 / 3.0,  (0xFA, 0xA7, 0x2A)),
+    (2.0 / 3.0,  (0xE8, 0x62, 0x35)),
+    (1.0,        (0xE0, 0x43, 0x43)),
+)
+_RANK = {OPERATIONAL: 0, DEGRADED: 1, DOWN: 2}
+_RANK_ST = {0: OPERATIONAL, 1: DEGRADED, 2: DOWN}
+
+
+def severity_to_hex(sev: float) -> str:
+    """深刻度スコア [0,1] を 4 アンカー線形補間で '#RRGGBB' に変換する。"""
+    if sev <= 0.0:
+        return "#%02X%02X%02X" % _BAR_ANCHORS[0][1]
+    if sev >= 1.0:
+        return "#%02X%02X%02X" % _BAR_ANCHORS[-1][1]
+    for i in range(len(_BAR_ANCHORS) - 1):
+        s0, c0 = _BAR_ANCHORS[i]
+        s1, c1 = _BAR_ANCHORS[i + 1]
+        if sev <= s1:
+            t = (sev - s0) / (s1 - s0) if s1 > s0 else 0.0
+            return "#%02X%02X%02X" % (
+                round(c0[0] + (c1[0] - c0[0]) * t),
+                round(c0[1] + (c1[1] - c0[1]) * t),
+                round(c0[2] + (c1[2] - c0[2]) * t),
+            )
+    return "#%02X%02X%02X" % _BAR_ANCHORS[-1][1]
+
 # component 定義: key -> 表示名 + 自動 incident の severity (down/degraded 時)
 COMPONENTS = [
     {"key": "api",      "ja": "バックエンドAPI", "en": "Backend API",      "sev_down": "critical", "sev_degraded": "minor"},
@@ -305,27 +341,36 @@ def compute_component_history(db, days: int = UPTIME_WINDOW_DAYS, now: Optional[
             .filter(HealthSample.component == key, HealthSample.sampled_at >= start_utc)
             .all()
         )
+        # 日ごとに [深刻度重みの合計, サンプル数, 最悪ステータスrank] を集計する。
         buckets: dict = {}
         up_samples = 0
         for ts, st in rows:
-            buckets.setdefault((ts + jst).date(), set()).add(st)
+            b = buckets.setdefault((ts + jst).date(), [0.0, 0, 0])
+            b[0] += _BAR_SEVERITY_WEIGHT.get(st, 0.0)
+            b[1] += 1
+            r = _RANK.get(st, 0)
+            if r > b[2]:
+                b[2] = r
             if st == OPERATIONAL:
                 up_samples += 1
         total_samples = len(rows)
         day_list = []
         for i in range(days):
             d = (start_jst + timedelta(days=i)).date()
-            sts = buckets.get(d)
-            if not sts:
-                day_status = "nodata"
-            elif DOWN in sts:
-                day_status = "down"
-            elif DEGRADED in sts:
-                day_status = "degraded"
-            else:
-                day_status = "operational"
-            # バーの色は「その日の最悪ステータス」で表現する (claude status 同様)。
-            day_list.append({"d": d.isoformat(), "st": day_status})
+            b = buckets.get(d)
+            if not b or b[1] == 0:
+                day_list.append({"d": d.isoformat(), "st": "nodata", "sev": None, "color": None})
+                continue
+            # 連続グラデーション: その日のダウンタイム深刻度 [0,1] を色に補間する
+            # (Statuspage 同様に「離散の最悪色」ではなく downtime 比例の連続色)。
+            # st は tooltip/凡例用に最悪ステータスも併記する。
+            sev = b[0] / b[1]
+            day_list.append({
+                "d": d.isoformat(),
+                "st": _RANK_ST[b[2]],
+                "sev": round(sev, 4),
+                "color": severity_to_hex(sev),
+            })
         out[key] = {
             "days": day_list,
             # 稼働率は「日数」ではなく「サンプル比」で算出する。
