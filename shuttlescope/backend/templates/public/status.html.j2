@@ -106,6 +106,9 @@
   .ss-legend i[data-st="degraded"]{background:#d97706}
   .ss-legend i[data-st="down"]{background:#dc2626}
   .ss-legend i[data-st="nodata"]{background:var(--bdr2)}
+  .ss-legend .ss-legend-scale{display:inline-flex;align-items:center;gap:6px}
+  .ss-legend .ss-grad{width:96px;height:10px;border-radius:2px;margin:0;
+    background:linear-gradient(90deg,#76AD2A 0%,#FAA72A 33%,#E86235 66%,#E04343 100%)}
   .ss-comp-note{color:var(--t3);font-size:.8rem;margin:6px 2px 0}
   @media(max-width:600px){.ss-comp-head{flex-wrap:wrap;gap:8px}.ss-comp-detail{width:100%;order:3}}
 
@@ -197,6 +200,7 @@
       {% if c.history %}
       <div class="ss-bar" role="group" aria-label="{% if _is_en %}90-day uptime, select a day for 10-minute detail{% else %}直近90日の稼働履歴。日を選ぶと10分刻みの詳細を表示{% endif %}">
         {% for d in c.history %}<button type="button" class="ss-bar-seg" data-st="{{ d.st }}"
+          {% if d.color %}style="background:{{ d.color }}"{% endif %}
           data-day="{{ d.d }}" data-comp="{{ c.key }}" data-comp-name="{{ c.name_en if _is_en else c.name_ja }}"
           title="{{ d.d }}" aria-label="{{ c.name_en if _is_en else c.name_ja }} {{ d.d }}"></button>{% endfor %}
       </div>
@@ -206,9 +210,7 @@
     {% endfor %}
   </div>
   <div class="ss-legend">
-    <span><i data-st="operational"></i>{% if _is_en %}Operational{% else %}正常{% endif %}</span>
-    <span><i data-st="degraded"></i>{% if _is_en %}Degraded{% else %}低下{% endif %}</span>
-    <span><i data-st="down"></i>{% if _is_en %}Outage{% else %}停止{% endif %}</span>
+    <span class="ss-legend-scale">{% if _is_en %}Operational{% else %}正常{% endif %}<i class="ss-grad"></i>{% if _is_en %}Outage{% else %}停止{% endif %}</span>
     <span><i data-st="nodata"></i>{% if _is_en %}No data{% else %}データなし{% endif %}</span>
   </div>
   <p class="ss-comp-note">{% if _is_en %}Sampled about every 10 minutes; uptime is over the last 90 days.{% else %}約10分ごとに自動サンプリング。稼働率は直近90日の割合です。{% endif %}</p>
