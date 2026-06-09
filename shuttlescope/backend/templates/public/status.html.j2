@@ -81,6 +81,15 @@
   .ss-more>summary::-webkit-details-marker{display:none}
   .ss-more[open]>summary{color:var(--t2)}
   .ss-more .ss-item:first-child{border-top:none}
+  /* スマホ: 日時を1段目・本文を2段目に積む (横並びだと本文が潰れて読めないため) */
+  @media(max-width:600px){
+    .ss-item{flex-direction:column;gap:3px}
+    .ss-item .ss-when{flex:none}
+    .ss-item .ss-d{display:block;-webkit-line-clamp:unset;overflow:visible}
+  }
+  /* 10分スロットをタップ/フォーカスした時の読み出し (モバイルは hover が無いため) */
+  .ss-slot-readout{min-height:1.2em;margin:8px 2px 2px;font-size:.86rem;color:var(--t1);font-weight:600}
+  .ss-slot-readout:empty{display:none}
   .ss-checked{margin-top:26px;color:var(--t3);font-size:.82rem;text-align:center}
   .ss-checked .ss-refresh-note{display:block;margin-top:4px;color:var(--t3)}
   @media(max-width:720px){
@@ -282,8 +291,8 @@
     <div class="ss-item">
       <span class="ss-when">{% if a.published_at %}<time class="ss-time" datetime="{{ a.published_at }}">{{ a.published_at }}</time>{% endif %}</span>
       <div class="ss-body">
-        <div class="ss-h">{% if a.pinned %}<span class="ss-badge mt-scheduled">{% if _is_en %}Pinned{% else %}固定{% endif %}</span>{% endif %}<span class="t">{{ a.title }}</span></div>
-        {% if a.body %}<div class="ss-d">{{ a.body }}</div>{% endif %}
+        <div class="ss-h">{% if a.pinned %}<span class="ss-badge mt-scheduled">{% if _is_en %}Pinned{% else %}固定{% endif %}</span>{% endif %}<span class="t">{{ (a.title_en if _is_en and a.title_en else a.title) }}</span></div>
+        {% set _abody = (a.body_en if _is_en and a.body_en else a.body) %}{% if _abody %}<div class="ss-d">{{ _abody }}</div>{% endif %}
       </div>
     </div>
     {% if loop.last and status.announcements|length > 5 %}</details>{% endif %}
@@ -336,6 +345,7 @@
       <div class="ss-modal-summary" id="ss-modal-summary"></div>
       <div class="ss-modal-state" id="ss-modal-state"></div>
       <div class="ss-slot-grid" id="ss-slot-grid" role="img"></div>
+      <div class="ss-slot-readout" id="ss-slot-readout" aria-live="polite"></div>
       <p class="ss-modal-foot" id="ss-modal-foot"></p>
     </div>
   </div>
@@ -392,13 +402,13 @@
     op:'Operational', dg:'Degraded', dn:'Outage', nd:'No data',
     loading:'Loading…', failed:'Could not load detail. Please try again later.',
     noData:'No samples were recorded on this day.',
-    foot:'Each cell is a 10-minute window (144 per day). Hover or focus a cell to see its time. Times are JST.',
+    foot:'Each cell is a 10-minute window (144 per day). Tap or focus a cell to see its time and status. Times are JST.',
     subFmt:function(d){return d;}
   } : {
     op:'正常', dg:'低下', dn:'停止', nd:'データなし',
     loading:'読み込み中…', failed:'詳細を取得できませんでした。時間をおいて再度お試しください。',
     noData:'この日に記録されたサンプルはありません。',
-    foot:'1 マスは 10 分間 (1 日 144 マス)。マスにカーソルを合わせる/フォーカスすると時刻を表示します。時刻は JST です。',
+    foot:'1 マスは 10 分間 (1 日 144 マス)。マスをタップ/フォーカスすると時刻と状態を表示します。時刻は JST です。',
     subFmt:function(d){return d;}
   };
   var ST_LABEL={operational:L.op,degraded:L.dg,down:L.dn,nodata:L.nd};
@@ -412,6 +422,7 @@
   var elState=document.getElementById('ss-modal-state');
   var elGrid=document.getElementById('ss-slot-grid');
   var elFoot=document.getElementById('ss-modal-foot');
+  var elReadout=document.getElementById('ss-slot-readout');
   var btnClose=document.getElementById('ss-mh-close');
   var lastFocus=null, reqSeq=0;
 
@@ -467,6 +478,7 @@
       var lbl=hm+' '+(ST_LABEL[s.st]||s.st);
       cell.setAttribute('title', lbl);
       cell.setAttribute('aria-label', lbl);
+      cell.dataset.lbl = lbl;
       frag.appendChild(cell);
     });
     elGrid.appendChild(frag);
@@ -479,7 +491,7 @@
     elTitle.textContent=compName||'';
     elSub.textContent=L.subFmt(day);
     elGrid.setAttribute('aria-label', (compName||'')+' '+day);
-    clear(elSummary); clear(elGrid); elFoot.textContent='';
+    clear(elSummary); clear(elGrid); elFoot.textContent=''; elReadout.textContent='';
     elState.textContent=L.loading;
     openModal();
     // クリックされたバーの component に絞って取得する (各バーは component 別)。
@@ -505,6 +517,11 @@
               seg.getAttribute('data-comp-name'));
     });
   });
+
+  // 10分スロットをタップ/フォーカスすると時刻+状態を読み出し表示 (モバイルは hover 不可)。
+  function showSlot(e){ var c=e.target.closest('.ss-slot'); if(c && c.dataset.lbl) elReadout.textContent=c.dataset.lbl; }
+  elGrid.addEventListener('click', showSlot);
+  elGrid.addEventListener('focusin', showSlot);
 
   btnClose.addEventListener('click', closeModal);
   // 背景クリックで閉じる (ボックス内クリックは無視)

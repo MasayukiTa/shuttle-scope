@@ -64,6 +64,7 @@ def _mnt_dict(m: MaintenanceWindow) -> dict:
 def _ann_dict(a: Announcement) -> dict:
     return {
         "id": a.id, "title": a.title, "body": a.body, "status": a.status,
+        "title_en": a.title_en, "body_en": a.body_en,
         "pinned": bool(a.pinned),
         "published_at": a.published_at.isoformat() if a.published_at else None,
     }
