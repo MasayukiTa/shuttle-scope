@@ -30,7 +30,8 @@
   /* 全体ステータス見出しパネル */
   .ss-hero{display:flex;align-items:center;gap:16px;flex-wrap:wrap;
     border-radius:10px;padding:20px 22px;margin-bottom:24px;color:#fff;}
-  .ss-hero[data-sev="operational"]{background:linear-gradient(135deg,#0f7a52 0%,#0c8f6a 100%)}
+  /* バーの operational 緑 (#76AD2A) と色相を合わせる。白文字を載せるため彩度同系で暗め。 */
+  .ss-hero[data-sev="operational"]{background:linear-gradient(135deg,#467318 0%,#57881d 100%)}
   .ss-hero[data-sev="degraded"]{background:linear-gradient(135deg,#9a3412 0%,#b45309 100%)}
   .ss-hero[data-sev="down"]{background:linear-gradient(135deg,#9f1239 0%,#b91c1c 100%)}
   .ss-hero .ss-bigdot{width:16px;height:16px;border-radius:50%;background:#fff;flex-shrink:0;
@@ -102,7 +103,7 @@
   .ss-comp:first-child{border-top:none}
   .ss-comp-head{display:flex;align-items:center;gap:12px}
   .ss-comp-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;background:var(--t3)}
-  .ss-comp[data-st="operational"] .ss-comp-dot{background:#0f9d6b}
+  .ss-comp[data-st="operational"] .ss-comp-dot{background:#76AD2A}
   .ss-comp[data-st="degraded"] .ss-comp-dot{background:#d97706}
   .ss-comp[data-st="down"] .ss-comp-dot{background:#dc2626}
   .ss-comp-name{font-weight:700;color:var(--t1);font-size:.96rem}
@@ -110,7 +111,7 @@
   .ss-comp-right{margin-left:auto;display:flex;align-items:center;gap:12px}
   .ss-comp-uptime{color:var(--t2);font-size:.8rem;font-variant-numeric:tabular-nums}
   .ss-comp-badge{font-size:.72rem;font-weight:700;border-radius:4px;padding:3px 9px;color:#fff;white-space:nowrap}
-  .ss-comp-badge.st-operational{background:#0f9d6b}
+  .ss-comp-badge.st-operational{background:#4f7d1c}
   .ss-comp-badge.st-degraded{background:#d97706}
   .ss-comp-badge.st-down{background:#dc2626}
   .ss-comp-badge.st-unknown{background:var(--t3)}
@@ -121,14 +122,14 @@
     background:var(--bdr2);cursor:pointer;transition:opacity .1s,transform .1s;-webkit-appearance:none;appearance:none}
   .ss-bar-seg:hover{opacity:.6}
   .ss-bar-seg:focus-visible{outline:2px solid var(--blue);outline-offset:1px;opacity:.6}
-  .ss-bar-seg[data-st="operational"]{background:#0f9d6b}
+  .ss-bar-seg[data-st="operational"]{background:#76AD2A}
   .ss-bar-seg[data-st="degraded"]{background:#d97706}
   .ss-bar-seg[data-st="down"]{background:#dc2626}
   .ss-bar-seg[data-st="nodata"]{background:var(--bdr2)}
   .ss-bar-axis{display:flex;justify-content:space-between;margin-top:6px;color:var(--t3);font-size:.72rem}
   .ss-legend{display:flex;gap:16px;flex-wrap:wrap;margin:16px 2px 4px;color:var(--t2);font-size:.78rem}
   .ss-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:middle;margin-right:5px}
-  .ss-legend i[data-st="operational"]{background:#0f9d6b}
+  .ss-legend i[data-st="operational"]{background:#76AD2A}
   .ss-legend i[data-st="degraded"]{background:#d97706}
   .ss-legend i[data-st="down"]{background:#dc2626}
   .ss-legend i[data-st="nodata"]{background:var(--bdr2)}
@@ -163,14 +164,14 @@
   .ss-sum-chip{font-size:.76rem;font-weight:700;color:var(--t2);background:var(--surf2);
     border:1px solid var(--bdr);border-radius:999px;padding:3px 10px;font-variant-numeric:tabular-nums}
   .ss-sum-chip i{display:inline-block;width:9px;height:9px;border-radius:2px;vertical-align:middle;margin-right:5px}
-  .ss-sum-chip i[data-st="operational"]{background:#0f9d6b}
+  .ss-sum-chip i[data-st="operational"]{background:#76AD2A}
   .ss-sum-chip i[data-st="degraded"]{background:#d97706}
   .ss-sum-chip i[data-st="down"]{background:#dc2626}
   .ss-sum-chip i[data-st="nodata"]{background:var(--bdr2)}
   /* 144 スロット (10分×24h) を 12列グリッドで。各セルは色 + ホバー/フォーカスで時刻 tooltip */
   .ss-slot-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:3px}
   .ss-slot{position:relative;aspect-ratio:1/1;min-height:14px;border-radius:2px;background:var(--bdr2)}
-  .ss-slot[data-st="operational"]{background:#0f9d6b}
+  .ss-slot[data-st="operational"]{background:#76AD2A}
   .ss-slot[data-st="degraded"]{background:#d97706}
   .ss-slot[data-st="down"]{background:#dc2626}
   .ss-slot[data-st="nodata"]{background:var(--bdr2);opacity:.5}
