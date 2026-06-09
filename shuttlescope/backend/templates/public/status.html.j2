@@ -64,6 +64,23 @@
   .ss-badge.outline{background:transparent;color:var(--t2);border:1px solid var(--bdr2)}
   .ss-empty{color:var(--t2);font-size:.92rem;background:var(--surf2);
     border:1px dashed var(--bdr2);border-radius:12px;padding:16px 18px}
+  /* 障害履歴 / 更新情報: タイル乱立を避ける compact list (status.claude.com 風) */
+  .ss-list{background:var(--surface);border:1px solid var(--bdr);border-radius:8px;
+    padding:2px 16px;margin-bottom:10px}
+  .ss-item{display:flex;gap:14px;align-items:baseline;padding:11px 0;border-top:1px solid var(--bdr)}
+  .ss-item:first-child{border-top:none}
+  .ss-item .ss-when{color:var(--t3);font-size:.78rem;white-space:nowrap;flex:0 0 92px}
+  .ss-item .ss-body{flex:1 1 auto;min-width:0}
+  .ss-item .ss-h{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .ss-item .ss-h .t{font-weight:600;color:var(--t1);font-size:.95rem}
+  .ss-item .ss-d{color:var(--t2);font-size:.86rem;line-height:1.6;margin-top:3px;
+    overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .ss-more{border-top:1px solid var(--bdr)}
+  .ss-more>summary{cursor:pointer;color:var(--blue);font-size:.85rem;list-style:none;
+    padding:11px 0;user-select:none}
+  .ss-more>summary::-webkit-details-marker{display:none}
+  .ss-more[open]>summary{color:var(--t2)}
+  .ss-more .ss-item:first-child{border-top:none}
   .ss-checked{margin-top:26px;color:var(--t3);font-size:.82rem;text-align:center}
   .ss-checked .ss-refresh-note{display:block;margin-top:4px;color:var(--t3)}
   @media(max-width:720px){
@@ -259,18 +276,19 @@
   {# 更新情報 / お知らせ (運用者がキュレーションした公開フィード) #}
   {% if status.announcements %}
   <h2>{% if _is_en %}Updates{% else %}更新情報{% endif %}<span class="cnt">{{ status.announcements|length }}</span></h2>
-  {% for a in status.announcements %}
-  <div class="ss-card">
-    <div class="ss-row">
-      {% if a.pinned %}<span class="ss-badge mt-scheduled">{% if _is_en %}Pinned{% else %}固定{% endif %}</span>{% endif %}
-      <span class="ss-title">{{ a.title }}</span>
+  <div class="ss-list">
+    {% for a in status.announcements %}
+    {% if loop.index == 6 and status.announcements|length > 5 %}<details class="ss-more"><summary>{% if _is_en %}Show {{ status.announcements|length - 5 }} more{% else %}残り{{ status.announcements|length - 5 }}件を表示{% endif %}</summary>{% endif %}
+    <div class="ss-item">
+      <span class="ss-when">{% if a.published_at %}<time class="ss-time" datetime="{{ a.published_at }}">{{ a.published_at }}</time>{% endif %}</span>
+      <div class="ss-body">
+        <div class="ss-h">{% if a.pinned %}<span class="ss-badge mt-scheduled">{% if _is_en %}Pinned{% else %}固定{% endif %}</span>{% endif %}<span class="t">{{ a.title }}</span></div>
+        {% if a.body %}<div class="ss-d">{{ a.body }}</div>{% endif %}
+      </div>
     </div>
-    {% if a.body %}<div class="ss-reason">{{ a.body }}</div>{% endif %}
-    <div class="ss-meta">
-      {% if a.published_at %}<span><time class="ss-time" datetime="{{ a.published_at }}">{{ a.published_at }}</time></span>{% endif %}
-    </div>
+    {% if loop.last and status.announcements|length > 5 %}</details>{% endif %}
+    {% endfor %}
   </div>
-  {% endfor %}
   {% endif %}
 
   {# 障害履歴 (解決済み含む直近) #}
@@ -278,21 +296,19 @@
   {% set resolved_hist = status.recent_incidents | selectattr('status', 'equalto', 'resolved') | list %}
   {% if resolved_hist %}
   <h2>{% if _is_en %}Recent history{% else %}障害履歴{% endif %}<span class="cnt">{{ resolved_hist|length }}</span></h2>
-  {% for i in resolved_hist %}
-  <div class="ss-card">
-    <div class="ss-row">
-      <span class="ss-title">{{ i.title }}</span>
-      <span class="ss-badge sev-{{ i.severity }}">{{ sev_label.get(i.severity, (i.severity, i.severity))[1 if _is_en else 0] }}</span>
-      <span class="ss-badge st-resolved">{{ inc_st_label['resolved'][1 if _is_en else 0] }}</span>
-      {% if i.component %}<span class="ss-badge outline">{{ i.component }}</span>{% endif %}
+  <div class="ss-list">
+    {% for i in resolved_hist %}
+    {% if loop.index == 6 and resolved_hist|length > 5 %}<details class="ss-more"><summary>{% if _is_en %}Show {{ resolved_hist|length - 5 }} more{% else %}残り{{ resolved_hist|length - 5 }}件を表示{% endif %}</summary>{% endif %}
+    <div class="ss-item">
+      <span class="ss-when">{% if i.began_at %}<time class="ss-time" datetime="{{ i.began_at }}">{{ i.began_at }}</time>{% endif %}</span>
+      <div class="ss-body">
+        <div class="ss-h"><span class="t">{{ i.title }}</span><span class="ss-badge sev-{{ i.severity }}">{{ sev_label.get(i.severity, (i.severity, i.severity))[1 if _is_en else 0] }}</span>{% if i.component %}<span class="ss-badge outline">{{ i.component }}</span>{% endif %}</div>
+        {% if i.reason %}<div class="ss-d">{{ i.reason }}</div>{% endif %}
+      </div>
     </div>
-    {% if i.reason %}<div class="ss-reason">{{ i.reason }}</div>{% endif %}
-    <div class="ss-meta">
-      {% if i.began_at %}<span>{% if _is_en %}Started{% else %}発生{% endif %}: <time class="ss-time" datetime="{{ i.began_at }}">{{ i.began_at }}</time></span>{% endif %}
-      {% if i.resolved_at %}<span>{% if _is_en %}Resolved{% else %}復旧{% endif %}: <time class="ss-time" datetime="{{ i.resolved_at }}">{{ i.resolved_at }}</time></span>{% endif %}
-    </div>
+    {% if loop.last and resolved_hist|length > 5 %}</details>{% endif %}
+    {% endfor %}
   </div>
-  {% endfor %}
   {% endif %}
 
   <p class="ss-checked">
