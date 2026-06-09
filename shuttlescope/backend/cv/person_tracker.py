@@ -30,6 +30,16 @@ from typing import Literal, Optional
 
 import numpy as np
 
+# onnxruntime-gpu が CUDA/TensorRT EP の依存 DLL を見つけられるよう、
+# import 時に torch/lib・tensorrt_libs を DLL 検索パスへ登録する。
+# (ReID 等の ORT セッションが単体スクリプトでも CUDA を使えるようにする。)
+try:
+    from backend.cv.gpu_dll import ensure_gpu_dll_path
+
+    ensure_gpu_dll_path()
+except Exception:
+    pass
+
 logger = logging.getLogger(__name__)
 
 # ── Phase 4 ReID 既定値 ──────────────────────────────────────────────────
