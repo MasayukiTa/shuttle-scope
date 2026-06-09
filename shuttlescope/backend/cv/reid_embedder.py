@@ -69,7 +69,18 @@ class ReIDEmbedder:
         providers: list = []
         avail = set(ort.get_available_providers())
         if prefer_cuda and "CUDAExecutionProvider" in avail:
-            providers.append(("CUDAExecutionProvider", {"device_id": cuda_device}))
+            # embed_batch の入力は (N, 3, 256, 128) で N=crop数が毎フレーム変動する。
+            # CUDA EP の cudnn_conv_algo_search は既定 EXHAUSTIVE のため、新しい N を
+            # 見るたびに cuDNN アルゴリズム探索を数秒かけて再実行し、track 数が増減する
+            # フレームで数秒〜十数秒の停止を起こす。HEURISTIC にすると探索が即時になり、
+            # 動的バッチでも停止しない (OSNet のような conv 主体モデルでは推論速度の差は軽微)。
+            providers.append((
+                "CUDAExecutionProvider",
+                {
+                    "device_id": cuda_device,
+                    "cudnn_conv_algo_search": "HEURISTIC",
+                },
+            ))
         providers.append("CPUExecutionProvider")
 
         try:
