@@ -700,6 +700,9 @@ class HealthSample(Base):
     component: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     metric: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # 連続グラデーション用の深刻度 [0,1] (0=正常→緑, 1=最悪→赤)。生メトリクスから
+    # チェック時に算出して記録する。None の旧行は status から離散フォールバックする。
+    severity: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     detail: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     sampled_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow, index=True)
 

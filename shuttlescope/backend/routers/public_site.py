@@ -1129,17 +1129,21 @@ def _compute_status_day_detail(db: Session, day: str, component: Optional[str] =
     jst = timedelta(hours=9)
     start_utc = datetime(d.year, d.month, d.day) - jst
     end_utc = start_utc + timedelta(days=1)
+    from backend.services.status_monitor import severity_to_hex, _severity_from_status
     q = (
-        db.query(HealthSample.sampled_at, HealthSample.status)
+        db.query(HealthSample.sampled_at, HealthSample.status, HealthSample.severity)
         .filter(HealthSample.sampled_at >= start_utc, HealthSample.sampled_at < end_utc)
     )
     if component is not None:
         q = q.filter(HealthSample.component == component)
     rows = q.all()
 
-    # スロット index -> 集約済みステータス (悪い方優先)。未観測スロットは nodata。
+    # スロット index -> 集約済みステータス (悪い方優先) + 最悪 severity。未観測は nodata。
+    # 色は severity を補間する (90日バーと同じ連続グラデーション)。severity は内部の
+    # CPU%/ms 等そのものではなく [0,1] の正規化値なので、公開しても生メトリクスは漏れない。
     slot_status: list[Optional[str]] = [None] * _SLOTS_PER_DAY
-    for ts, st in rows:
+    slot_sev: list[float] = [0.0] * _SLOTS_PER_DAY
+    for ts, st, sv in rows:
         if st not in _ST_RANK:
             # 想定外の値は operational 相当の最弱として扱わず無視 (公開語彙のみ採用)。
             continue
@@ -1150,6 +1154,9 @@ def _compute_status_day_detail(db: Session, day: str, component: Optional[str] =
         cur = slot_status[idx]
         if cur is None or _ST_RANK[st] > _ST_RANK[cur]:
             slot_status[idx] = st
+        s = sv if sv is not None else _severity_from_status(st)
+        if s > slot_sev[idx]:
+            slot_sev[idx] = s
 
     slots = []
     counts = {_ST_OPERATIONAL: 0, _ST_DEGRADED: 0, _ST_DOWN: 0, _ST_NODATA: 0}
@@ -1157,11 +1164,15 @@ def _compute_status_day_detail(db: Session, day: str, component: Optional[str] =
         st = slot_status[i] or _ST_NODATA
         counts[st] += 1
         slot_start = start_utc + timedelta(minutes=i * _SLOT_MINUTES)
-        slots.append({
+        slot = {
             # naive UTC ISO (オフセット無し)。フロントが既存フォーマッタで JST 表示する。
             "t": slot_start.isoformat(),
             "st": st,
-        })
+        }
+        if slot_status[i] is not None:
+            slot["sev"] = round(slot_sev[i], 4)
+            slot["color"] = severity_to_hex(slot_sev[i])
+        slots.append(slot)
     # 未来日 / 未到来スロットの nodata は「障害」ではないことをフロントが区別できるよう、
     # 観測サンプルが 1 件も無い日は has_data=False を立てる。
     has_data = (counts[_ST_NODATA] < _SLOTS_PER_DAY)

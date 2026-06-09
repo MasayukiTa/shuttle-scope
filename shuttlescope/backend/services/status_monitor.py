@@ -39,9 +39,10 @@ OPERATIONAL, DEGRADED, DOWN = "operational", "degraded", "down"
 # green→yellow→orange→red の 4 アンカー間で線形補間して fill 色を決めている。
 # アンカー HEX は status.claude.com のバー SVG から実測した値:
 #   green #76AD2A → yellow #FAA72A → orange #E86235 → red #E04343
-# 深刻度スコア = その日のサンプルを重み付けした平均 (down=1.0 / degraded=0.5 /
-# operational=0.0)。0=完全正常→緑、1=終日ダウン→赤。
-_BAR_SEVERITY_WEIGHT = {OPERATIONAL: 0.0, DEGRADED: 0.5, DOWN: 1.0}
+# 深刻度 severity は各チェックが生メトリクス (CPU%/応答ms/VRAM使用率…) から連続値
+# [0,1] で算出して health_samples.severity に保存する。バー/スロットの色はこの severity を
+# 補間する (status の離散重みではない = degraded 内の「downしかけ」も色で表現できる)。
+# severity 不明の旧行のみ status から離散フォールバックする。
 _BAR_ANCHORS = (
     (0.0,        (0x76, 0xAD, 0x2A)),
     (1.0 / 3.0,  (0xFA, 0xA7, 0x2A)),
@@ -70,6 +71,30 @@ def severity_to_hex(sev: float) -> str:
             )
     return "#%02X%02X%02X" % _BAR_ANCHORS[-1][1]
 
+
+def _piecewise_severity(x, green, deg, crit) -> Optional[float]:
+    """生メトリクス x を区分線形で severity 化する。
+
+    green→0.0(緑) / deg→1/3(黄=degraded境界) / crit→1.0(赤=危機)。
+    deg〜crit を連続 ramp するため「degraded のままでも crit に近いほど橙→赤」になる。
+    x is None なら None (= severity 不明、status フォールバックに委ねる)。
+    """
+    if x is None:
+        return None
+    y = 1.0 / 3.0
+    if x <= green:
+        return 0.0
+    if x <= deg:
+        return y * (x - green) / (deg - green) if deg > green else y
+    if x <= crit:
+        return y + (1.0 - y) * (x - deg) / (crit - deg) if crit > deg else 1.0
+    return 1.0
+
+
+def _severity_from_status(status: str) -> float:
+    """severity 未記録の旧行用の離散フォールバック (operational=0 / degraded=1/3 / down=1)。"""
+    return {OPERATIONAL: 0.0, DEGRADED: 1.0 / 3.0, DOWN: 1.0}.get(status, 0.0)
+
 # component 定義: key -> 表示名 + 自動 incident の severity (down/degraded 時)
 COMPONENTS = [
     {"key": "api",      "ja": "バックエンドAPI", "en": "Backend API",      "sev_down": "critical", "sev_degraded": "minor"},
@@ -91,77 +116,88 @@ _AUTO_TEXT = {
 }
 
 
-# ── 個別チェック (status, metric, detail) を返す。例外は投げない。 ──────────────
+# ── 個別チェック (status, metric, detail, severity) を返す。例外は投げない。 ────
+# severity ∈[0,1] は生メトリクスから算出した連続深刻度。None = 不明 (status フォールバック)。
 
-def _check_api() -> tuple[str, Optional[float], Optional[str]]:
-    """API プロセス自身。レスポンスできている時点で生存。CPU/RAM 逼迫を degraded に。"""
+def _check_api() -> tuple[str, Optional[float], Optional[str], Optional[float]]:
+    """API プロセス自身。レスポンスできている時点で生存。CPU/RAM 逼迫を degraded に。
+    severity は CPU% と RAM% の悪い方を連続 ramp (緑70/黄92・94/赤99)。"""
     try:
         import psutil
         cpu = psutil.cpu_percent(interval=0.0)
         ram = psutil.virtual_memory().percent
     except Exception:
-        return OPERATIONAL, None, None
+        return OPERATIONAL, None, None, None
     status = DEGRADED if (cpu >= 92 or ram >= 94) else OPERATIONAL
-    return status, float(cpu), f"CPU {cpu:.0f}% / RAM {ram:.0f}%"
+    sev = max(_piecewise_severity(cpu, 70, 92, 99),
+              _piecewise_severity(ram, 75, 94, 99))
+    return status, float(cpu), f"CPU {cpu:.0f}% / RAM {ram:.0f}%", sev
 
 
-def _check_database(db) -> tuple[str, Optional[float], Optional[str]]:
+def _check_database(db) -> tuple[str, Optional[float], Optional[str], Optional[float]]:
     from sqlalchemy import text
     t0 = time.monotonic()
     try:
         db.execute(text("SELECT 1"))
         ms = (time.monotonic() - t0) * 1000.0
     except Exception:
-        return DOWN, None, "応答なし"
+        return DOWN, None, "応答なし", 1.0
     status = DEGRADED if ms >= 400 else OPERATIONAL
-    return status, float(ms), f"応答 {ms:.0f}ms"
+    sev = _piecewise_severity(ms, 50, 400, 1500)  # 緑50ms / 黄400ms / 赤1500ms
+    return status, float(ms), f"応答 {ms:.0f}ms", sev
 
 
-def _check_gpu() -> tuple[str, Optional[float], Optional[str]]:
-    """高負荷は正常 (解析中は当然) なので metric 表示のみ。
+def _check_gpu() -> tuple[str, Optional[float], Optional[str], Optional[float]]:
+    """高負荷は正常 (解析中は当然) なので util% は色に使わない。
+    severity は VRAM 使用率で算出 (緑90% / 黄97%=現degraded境界 / 赤99.5%)。
     probe 不可 = down、VRAM 枯渇 = degraded。"""
     try:
         from backend.services import gpu_health
         p = gpu_health.probe()
     except Exception:
-        return OPERATIONAL, None, None  # GPU 監視自体が無い環境では非対象扱い
+        return OPERATIONAL, None, None, None  # GPU 監視自体が無い環境では非対象扱い
     if not p.get("available"):
-        return DOWN, None, "利用不可"
+        return DOWN, None, "利用不可", 1.0
     devs = [d for d in p.get("devices", []) if "util_gpu_pct" in d]
     if not devs:
-        return DOWN, None, "デバイス情報なし"
+        return DOWN, None, "デバイス情報なし", 1.0
     util = max(int(d["util_gpu_pct"]) for d in devs)
     used = sum(int(d["vram_used_mb"]) for d in devs)
     total = sum(int(d["vram_total_mb"]) for d in devs)
     free_pct = 100.0 * (total - used) / total if total else 100.0
+    used_pct = 100.0 * used / total if total else 0.0
     status = DEGRADED if free_pct < 3.0 else OPERATIONAL  # VRAM ほぼ枯渇のみ degraded
+    # 色は VRAM 逼迫のみで動かす (util=混雑度は健全性ではないので severity に含めない)。
+    sev = _piecewise_severity(used_pct, 90, 97, 99.5)
     detail = f"GPU {util}% / VRAM {used // 1024}.{(used % 1024) * 10 // 1024}/{total // 1024}GB"
-    return status, float(util), detail
+    return status, float(util), detail, sev
 
 
 def _worker_lock_path() -> Path:
     return Path(__file__).resolve().parent.parent / "data" / "worker.lock"
 
 
-def _check_worker() -> tuple[str, Optional[float], Optional[str]]:
+def _check_worker() -> tuple[str, Optional[float], Optional[str], Optional[float]]:
     """lock があり pid 生存 = 稼働。lock はあるが pid 死亡 = degraded(クラッシュ)。
-    lock 無し = アイドル(operational 扱い: ワーカー常駐は必須ではないため誤報を避ける)。"""
+    lock 無し = アイドル(operational 扱い: ワーカー常駐は必須ではないため誤報を避ける)。
+    連続値が無いので severity は 2 値 (稼働/アイドル=0.0, クラッシュ=1.0)。"""
     lock = _worker_lock_path()
     try:
         if not lock.exists():
-            return OPERATIONAL, None, "アイドル"
+            return OPERATIONAL, None, "アイドル", 0.0
         from backend.pipeline.worker import _FileLock
         alive = _FileLock.is_pid_alive(str(lock))
         if alive:
-            return OPERATIONAL, None, "稼働中"
-        return DEGRADED, None, "応答なし"
+            return OPERATIONAL, None, "稼働中", 0.0
+        return DEGRADED, None, "応答なし", 1.0
     except Exception:
-        return OPERATIONAL, None, None
+        return OPERATIONAL, None, None, None
 
 
-def _check_tunnel() -> tuple[str, Optional[float], Optional[str]]:
+def _check_tunnel() -> tuple[str, Optional[float], Optional[str], Optional[float]]:
     """cloudflared プロセス生存で判定。metrics endpoint が env で指定されていれば
-    edge 接続数 (cloudflared_tunnel_ha_connections) も見る。"""
+    edge 接続数 (cloudflared_tunnel_ha_connections) も見る。
+    連続値が無いので severity は 2 値 (接続あり=0.0 / 切断=1.0)。"""
     url = os.environ.get("CLOUDFLARED_METRICS_URL")
     if url:
         try:
@@ -169,7 +205,8 @@ def _check_tunnel() -> tuple[str, Optional[float], Optional[str]]:
             txt = urllib.request.urlopen(url, timeout=3).read().decode("utf-8", "replace")
             conns = _parse_ha_connections(txt)
             if conns is not None:
-                return (OPERATIONAL, float(conns), f"edge 接続 {conns}") if conns > 0 else (DOWN, 0.0, "edge 切断")
+                return ((OPERATIONAL, float(conns), f"edge 接続 {conns}", 0.0) if conns > 0
+                        else (DOWN, 0.0, "edge 切断", 1.0))
         except Exception:
             pass  # metrics 取得失敗 → プロセス判定にフォールバック
     try:
@@ -177,12 +214,12 @@ def _check_tunnel() -> tuple[str, Optional[float], Optional[str]]:
         for p in psutil.process_iter(["name"]):
             try:
                 if "cloudflared" in (p.info.get("name") or "").lower():
-                    return OPERATIONAL, None, "稼働中"
+                    return OPERATIONAL, None, "稼働中", 0.0
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
     except Exception:
-        return OPERATIONAL, None, None  # psutil 不可環境では非対象
-    return DOWN, None, "プロセス停止"
+        return OPERATIONAL, None, None, None  # psutil 不可環境では非対象
+    return DOWN, None, "プロセス停止", 1.0
 
 
 def _parse_ha_connections(metrics_text: str) -> Optional[int]:
@@ -212,11 +249,12 @@ def sample_components(db) -> list[dict]:
     out = []
     for key in COMPONENT_KEYS:
         try:
-            status, metric, detail = _CHECKS[key](db)
+            status, metric, detail, severity = _CHECKS[key](db)
         except Exception as exc:  # noqa: BLE001
             logger.debug("health check %s failed: %s", key, exc)
-            status, metric, detail = OPERATIONAL, None, None
-        out.append({"component": key, "status": status, "metric": metric, "detail": detail})
+            status, metric, detail, severity = OPERATIONAL, None, None, None
+        out.append({"component": key, "status": status, "metric": metric,
+                    "detail": detail, "severity": severity})
     return out
 
 
@@ -278,7 +316,8 @@ def evaluate_and_record(db, now: Optional[datetime] = None) -> list[dict]:
     samples = sample_components(db)
     for s in samples:
         db.add(HealthSample(component=s["component"], status=s["status"],
-                            metric=s["metric"], detail=s["detail"], sampled_at=now))
+                            metric=s["metric"], severity=s.get("severity"),
+                            detail=s["detail"], sampled_at=now))
     db.flush()  # 直近サンプルを下の連続判定で参照できるように
     for s in samples:
         _manage_auto_incident(db, s["component"], now)
@@ -337,16 +376,17 @@ def compute_component_history(db, days: int = UPTIME_WINDOW_DAYS, now: Optional[
     for comp in COMPONENTS:
         key = comp["key"]
         rows = (
-            db.query(HealthSample.sampled_at, HealthSample.status)
+            db.query(HealthSample.sampled_at, HealthSample.status, HealthSample.severity)
             .filter(HealthSample.component == key, HealthSample.sampled_at >= start_utc)
             .all()
         )
-        # 日ごとに [深刻度重みの合計, サンプル数, 最悪ステータスrank] を集計する。
+        # 日ごとに [severityの合計, サンプル数, 最悪ステータスrank] を集計する。
+        # severity は記録値を使い、None の旧行は status から離散フォールバックする。
         buckets: dict = {}
         up_samples = 0
-        for ts, st in rows:
+        for ts, st, sv in rows:
             b = buckets.setdefault((ts + jst).date(), [0.0, 0, 0])
-            b[0] += _BAR_SEVERITY_WEIGHT.get(st, 0.0)
+            b[0] += sv if sv is not None else _severity_from_status(st)
             b[1] += 1
             r = _RANK.get(st, 0)
             if r > b[2]:
