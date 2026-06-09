@@ -21,6 +21,16 @@ from typing import Optional
 
 import numpy as np
 
+# onnxruntime-gpu が CUDA/TensorRT EP の依存 DLL を見つけられるよう、
+# import 時に torch/lib・tensorrt_libs を DLL 検索パスへ登録する。
+# (単体スクリプトでも CUDA EP が効くようにする。)
+try:
+    from backend.cv.gpu_dll import ensure_gpu_dll_path
+
+    ensure_gpu_dll_path()
+except Exception:
+    pass
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
