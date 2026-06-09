@@ -263,7 +263,7 @@ html[lang=ja] .en{display:none}
 /* mobile-menu は <nav> なので nav{} の backdrop-filter/半透明背景を継承する。
    開いた時に背景が透けて文字が読めない問題を防ぐため、不透明背景を明示し
    継承した backdrop-filter を打ち消す (light/dark それぞれ指定)。 */
-.mobile-menu{display:none;position:fixed;top:58px;left:0;right:0;z-index:190;background:#ffffff !important;backdrop-filter:none !important;-webkit-backdrop-filter:none !important;border-bottom:1px solid var(--bdr);flex-direction:column;box-shadow:0 10px 28px rgba(0,0,0,0.22)}
+.mobile-menu{display:none;position:fixed;top:58px;left:0;right:0;z-index:190;height:auto;max-height:calc(100vh - 58px);overflow-y:auto;padding:0;align-items:stretch;justify-content:flex-start;background:#ffffff !important;backdrop-filter:none !important;-webkit-backdrop-filter:none !important;border-bottom:1px solid var(--bdr);flex-direction:column;box-shadow:0 10px 28px rgba(0,0,0,0.22)}
 [data-theme="dark"] .mobile-menu{background:#0d1829 !important}
 .mobile-menu.open{display:flex}
 .mobile-menu a{font-size:14px;color:var(--t1);text-decoration:none;padding:14px 24px;border-bottom:1px solid var(--bdr);transition:color .15s,background .15s}

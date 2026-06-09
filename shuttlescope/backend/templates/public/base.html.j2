@@ -85,10 +85,11 @@ html[lang=ja] .en{display:none}
 .hamburger.open span:nth-child(1){transform:translateY(5.5px) rotate(45deg)}
 .hamburger.open span:nth-child(2){opacity:0}
 .hamburger.open span:nth-child(3){transform:translateY(-5.5px) rotate(-45deg)}
-/* mobile-menu は <nav> なので nav{} の backdrop-filter/半透明背景を継承する。
-   開いた時に背景が透けて文字が読めない問題を防ぐため、不透明背景を明示し
-   継承した backdrop-filter を打ち消す (light/dark それぞれ指定)。 */
-.mobile-menu{display:none;position:fixed;top:58px;left:0;right:0;z-index:190;background:#ffffff !important;backdrop-filter:none !important;-webkit-backdrop-filter:none !important;border-bottom:1px solid var(--bdr);flex-direction:column;box-shadow:0 10px 28px rgba(0,0,0,0.22)}
+/* mobile-menu は <nav> なので nav{} の element セレクタ (height:58px / align /
+   padding / backdrop-filter / 半透明背景) をすべて継承する。特に height:58px が効くと
+   白背景が 58px(≒1項目) しか覆わず、残りのリンクが背景なしでページ上に溢れて
+   「背景透明で文字が読めない」状態になる。height/padding/align/背景/filter を明示打ち消し。 */
+.mobile-menu{display:none;position:fixed;top:58px;left:0;right:0;z-index:190;height:auto;max-height:calc(100vh - 58px);overflow-y:auto;padding:0;align-items:stretch;justify-content:flex-start;background:#ffffff !important;backdrop-filter:none !important;-webkit-backdrop-filter:none !important;border-bottom:1px solid var(--bdr);flex-direction:column;box-shadow:0 10px 28px rgba(0,0,0,0.22)}
 [data-theme="dark"] .mobile-menu{background:#0d1829 !important}
 .mobile-menu.open{display:flex}
 .mobile-menu a{font-size:14px;color:var(--t1);text-decoration:none;padding:14px 24px;border-bottom:1px solid var(--bdr);transition:color .15s,background .15s}
