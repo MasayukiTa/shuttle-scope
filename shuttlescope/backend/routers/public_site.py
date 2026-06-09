@@ -354,8 +354,8 @@ h1.hero-h1{font-family:'MigMix 1P',sans-serif;font-size:clamp(28px,3.6vw,48px);f
 footer{background:var(--footer-bg);padding:24px 40px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;transition:background .25s}
 .footer-logo{font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:700;letter-spacing:.05em;color:var(--footer-t);text-decoration:none;display:flex;align-items:center;gap:8px}
 .footer-logo .logo-mark{background:rgba(255,255,255,0.12);font-size:12px}
-.footer-links{display:flex;gap:20px;list-style:none}
-.footer-links a{font-size:11px;color:var(--footer-lt);text-decoration:none}
+.footer-links{display:flex;flex-wrap:wrap;justify-content:center;gap:12px 20px;list-style:none}
+.footer-links a{font-size:11px;color:var(--footer-lt);text-decoration:none;white-space:nowrap}
 .footer-links a:hover{color:var(--footer-t)}
 .footer-copy{font-size:11px;color:var(--footer-cp)}
 

@@ -719,6 +719,10 @@ class Announcement(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     body: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # 英語版 (任意)。/en/status で title_en/body_en があれば優先、無ければ JA に
+    # フォールバックする。
+    title_en: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    body_en: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     # published / draft (draft は公開フィードに出さない)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="published")
     pinned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="0")
