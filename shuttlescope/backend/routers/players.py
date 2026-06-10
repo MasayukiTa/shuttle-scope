@@ -633,6 +633,18 @@ def get_player_matches(player_id: Annotated[int, Path(ge=1, le=2_147_483_647)], 
     player = db.get(Player, player_id)
     if not player:
         raise HTTPException(status_code=404, detail="選手が見つかりません")
+    # get_player と同一の object-level スコープ判定 (cross-team BOLA 防止)。
+    # player ロールは自分のレコードのみ。analyst/coach は自チームのみ。
+    from backend.utils.auth import get_auth as _ga, is_demo_read as _idr
+    ctx = _ga(request)
+    if _idr(request):
+        # 検証済み demo read: スコープ判定を bypass（対象は demo データ確定）
+        pass
+    elif ctx.is_player:
+        if not ctx.player_id or ctx.player_id != player_id:
+            raise HTTPException(status_code=404, detail="選手が見つかりません")
+    else:
+        _player_scope_check(request, player)
     matches = db.query(Match).filter(
         (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
     ).order_by(Match.date.desc()).all()
@@ -656,6 +668,18 @@ def get_player_stats(player_id: Annotated[int, Path(ge=1, le=2_147_483_647)], re
     player = db.get(Player, player_id)
     if not player:
         raise HTTPException(status_code=404, detail="選手が見つかりません")
+    # get_player と同一の object-level スコープ判定 (cross-team BOLA 防止)。
+    # player ロールは自分のレコードのみ。analyst/coach は自チームのみ。
+    from backend.utils.auth import get_auth as _ga, is_demo_read as _idr
+    ctx = _ga(request)
+    if _idr(request):
+        # 検証済み demo read: スコープ判定を bypass（対象は demo データ確定）
+        pass
+    elif ctx.is_player:
+        if not ctx.player_id or ctx.player_id != player_id:
+            raise HTTPException(status_code=404, detail="選手が見つかりません")
+    else:
+        _player_scope_check(request, player)
     total_matches = db.query(Match).filter(
         (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
     ).count()
