@@ -749,7 +749,8 @@ def get_correlation(
     db: Session = Depends(get_db),
 ):
     """x=condition 指標、y=condition or 試合指標（win_rate）の相関。"""
-    if not db.get(Player, player_id):
+    _player = db.get(Player, player_id)
+    if not _player:
         raise HTTPException(status_code=404, detail="選手が見つかりません")
     # R47: player は自分自身のみアクセス可。他選手は 403。
     from backend.utils.auth import get_auth
@@ -757,6 +758,11 @@ def get_correlation(
     if ctx.is_player:
         if not ctx.player_id or player_id != ctx.player_id:
             raise HTTPException(status_code=403, detail="他選手のコンディションは参照できません")
+    else:
+        # R282: analyst/coach の cross-team 集計漏洩を遮断。admin は bypass。
+        # players._player_scope_check と同一セマンティクス (自チームのみ・404)。
+        from backend.routers.players import _player_scope_check
+        _player_scope_check(request, _player)
     conds = _load_player_conditions(db, player_id, since)
     mts = _load_player_matches(db, player_id, since)
     series = correlation_series(conds, mts, x_key=x, y_key=y)
@@ -811,7 +817,8 @@ def get_best_profile(
     role: str = Depends(resolve_role),
     db: Session = Depends(get_db),
 ):
-    if not db.get(Player, player_id):
+    _player = db.get(Player, player_id)
+    if not _player:
         raise HTTPException(status_code=404, detail="選手が見つかりません")
     # R47: player ロールでも自分自身 (player_id == ctx.player_id) を見るときは
     # 同意書 第5条「本人=○」に従い coach 相当の top_profile/n_top/n_rest を返す。
@@ -821,6 +828,11 @@ def get_best_profile(
     if ctx.is_player:
         if not ctx.player_id or player_id != ctx.player_id:
             raise HTTPException(status_code=403, detail="他選手のコンディションは参照できません")
+    else:
+        # R282: analyst/coach の cross-team 集計漏洩を遮断。admin は bypass。
+        # players._player_scope_check と同一セマンティクス (自チームのみ・404)。
+        from backend.routers.players import _player_scope_check
+        _player_scope_check(request, _player)
     conds = _load_player_conditions(db, player_id, since)
     mts = _load_player_matches(db, player_id, since)
     profile = best_performance_profile(conds, mts)
@@ -864,6 +876,7 @@ def get_best_profile(
 
 @router.get("/discrepancy")
 def get_discrepancy(
+    request: Request,
     player_id: int = Query(...),
     limit: int = Query(50, ge=1, le=500),
     role: str = Depends(resolve_role),
@@ -872,8 +885,13 @@ def get_discrepancy(
     """InBody × メンタル 乖離フラグ一覧。coach / analyst のみ閲覧可。"""
     if role == "player":
         raise HTTPException(status_code=403, detail="選手ロールは閲覧できません")
-    if not db.get(Player, player_id):
+    _player = db.get(Player, player_id)
+    if not _player:
         raise HTTPException(status_code=404, detail="選手が見つかりません")
+    # R282: analyst/coach の cross-team 集計漏洩を遮断。admin は bypass。
+    # players._player_scope_check と同一セマンティクス (自チームのみ・404)。
+    from backend.routers.players import _player_scope_check
+    _player_scope_check(request, _player)
     rows = (
         db.query(Condition)
         .filter(Condition.player_id == player_id)
@@ -906,6 +924,7 @@ def get_discrepancy(
 
 @router.get("/insights")
 def get_insights(
+    request: Request,
     player_id: int = Query(...),
     since: Optional[_date] = Query(None),
     role: str = Depends(resolve_role),
@@ -914,8 +933,15 @@ def get_insights(
     """選手ロール: growth_cards + 個人 CCS トレンドのみ。
     coach/analyst: 上記 + raw factor trends + validity 要約。
     """
-    if not db.get(Player, player_id):
+    _player = db.get(Player, player_id)
+    if not _player:
         raise HTTPException(status_code=404, detail="選手が見つかりません")
+    # R282: analyst/coach の cross-team 集計漏洩を遮断。admin は bypass。
+    # player ロールは既存の role 分岐 (growth_cards 限定) で扱う。
+    from backend.utils.auth import get_auth
+    if not get_auth(request).is_player:
+        from backend.routers.players import _player_scope_check
+        _player_scope_check(request, _player)
     conds = _load_player_conditions(db, player_id, since)
     mts = _load_player_matches(db, player_id, since)
     insights = player_growth_insights(conds, mts)
