@@ -437,6 +437,39 @@ def create_player(
     return {"success": True, "data": player_to_dict(player)}
 
 
+def _log_scope_denial(request: Request, ctx, player, *, status: int, reason: str) -> None:
+    """analyst/coach の cross-team scope 違反を改竄検知付き監査ログ (AccessLog) に記録する。
+
+    R282 fix で router 層が analyst/coach の越境を遮断するようになったが、middleware
+    側の access_denied ログは player ロール専用で、analyst/coach の越境試行は無記録
+    だった。cross-team プロービングを admin/SOC が検知できるようここで記録する。
+    監査の副作用が業務応答を壊さないよう、書き込み失敗は握り潰す。"""
+    try:
+        from backend.utils.access_log import log_access
+        from backend.utils.client_ip import trusted_client_ip
+        from backend.db.database import SessionLocal
+        with SessionLocal() as _log_db:
+            log_access(
+                _log_db,
+                "access_denied_scope",
+                user_id=getattr(ctx, "user_id", None),
+                resource_type="player",
+                resource_id=getattr(player, "id", None),
+                details={
+                    "path": request.url.path,
+                    "method": request.method,
+                    "reason": reason,
+                    "actor_role": getattr(ctx, "role", None),
+                    "actor_team": (ctx.team_name or "").strip() or None,
+                    "target_player_team": (getattr(player, "team", None) or "").strip() or None,
+                    "status": status,
+                },
+                ip_addr=trusted_client_ip(request),
+            )
+    except Exception:
+        pass
+
+
 def _player_scope_check(request: Request, player) -> None:
     """analyst/coach は自チームの player のみ閲覧/編集可能 (cross-team 漏洩・改竄防止)。
     admin / player は呼び出し元のロジックで別途処理。"""
@@ -452,9 +485,11 @@ def _player_scope_check(request: Request, player) -> None:
         if not team:
             from backend.utils.control_plane import allow_legacy_header_auth
             if not allow_legacy_header_auth(request):
+                _log_scope_denial(request, ctx, player, status=403, reason="actor_team_unset")
                 raise HTTPException(status_code=403, detail="team_name 未設定")
             return
         if (player.team or "").strip() != team:
+            _log_scope_denial(request, ctx, player, status=404, reason="cross_team")
             raise HTTPException(status_code=404, detail="選手が見つかりません")
 
 
