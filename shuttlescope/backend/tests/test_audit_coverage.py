@@ -195,6 +195,13 @@ def test_no_orphan_event_names():
         # views sensitive lists. See backend/routers/auth.py.
         "admin_audit_logs_viewed",
         "admin_users_listed",
+        # 2026-06-10 R282/R283: cross-team object-level scope 拒否の監査。
+        # access_denied_scope は players._player_scope_check (router) が emit。
+        # access_denied_{coach,analyst}_scope は main.py の middleware が emit
+        # (routers glob 外なので scan されないが、記録のため登録)。
+        "access_denied_scope",
+        "access_denied_coach_scope",
+        "access_denied_analyst_scope",
     }
     idx = _all_routers_event_index()
     all_events = set()
