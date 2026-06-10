@@ -981,12 +981,19 @@ class PlayerAccessControlMiddleware(BaseHTTPMiddleware):
         # ロール階層の制限 (_PLAYER_FORBIDDEN_ANALYSIS_PATHS 等) は緩めない。
         _demo_read = _mark_demo_read(request, role, payload)
 
-        # ── coach: クエリ ?player_id= に対する team scope 強制 ──
+        # ── coach / analyst: クエリ ?player_id= に対する team scope 強制 ──
         # CLAUDE.md "coach: 自チーム所属選手" の原則を analysis / conditions /
         # reports / human_forecast / warmup に貫徹する。
         # round 4 の live attack で coach が他チーム player の EPV/heatmap/insights
         # を取得できる scope leak を確認したため middleware で塞ぐ。
-        if role == "coach" and not _demo_read:
+        # R283: analyst も同様に他チーム player_id で /api/analysis/* (heatmap /
+        # descriptive / shot_types 等) の戦術データを取得できる cross-team leak を
+        # live 実証したため、同じ team scope を analyst にも適用する。player_id は
+        # 解析対象 = 自チーム選手であり、対戦相手スカウトは opponent_id 経由で別途
+        # 許可されるためここでは遮断されない。
+        # 互換性: team 未設定の analyst は check_export_player_scope と同様に移行期
+        # 扱いで通す (coach は従来どおり team 未設定なら 403)。
+        if role in ("coach", "analyst") and not _demo_read:
             path_co = request.url.path
             if (
                 path_co.startswith("/api/analysis/")
@@ -998,35 +1005,39 @@ class PlayerAccessControlMiddleware(BaseHTTPMiddleware):
             ):
                 qp_pids = request.query_params.getlist("player_id")
                 if qp_pids:
-                    coach_team = (team_name or "").strip()
-                    if not coach_team:
+                    actor_team = (team_name or "").strip()
+                    if not actor_team and role == "coach":
                         return StarletteResponse(
                             "team_name 未設定の coach はこの解析にアクセスできません",
                             status_code=403,
                         )
-                    from backend.db.database import SessionLocal as _SL_co
-                    from backend.db.models import Player as _P_co
-                    with _SL_co() as _db_co:
-                        for qp_pid_raw in qp_pids:
-                            try:
-                                qp_pid = int(qp_pid_raw)
-                            except (ValueError, TypeError):
-                                continue
-                            if qp_pid <= 0:
-                                continue
-                            p = _db_co.get(_P_co, qp_pid)
-                            if p is None or (p.team or "").strip() != coach_team:
+                    # actor_team が設定済みのときのみ per-player の team 一致を検証。
+                    # (team 未設定 analyst は移行期扱いで素通り)
+                    if actor_team:
+                        from backend.db.database import SessionLocal as _SL_co
+                        from backend.db.models import Player as _P_co
+                        with _SL_co() as _db_co:
+                            for qp_pid_raw in qp_pids:
                                 try:
-                                    from backend.utils.access_log import log_access as _la
-                                    with _SL_co() as _log_db:
-                                        _la(_log_db, "access_denied_coach_scope",
-                                            details={"path": path_co, "player_id": qp_pid})
-                                except Exception:
-                                    pass
-                                return StarletteResponse(
-                                    "この選手データはあなたのチームに所属していません",
-                                    status_code=403,
-                                )
+                                    qp_pid = int(qp_pid_raw)
+                                except (ValueError, TypeError):
+                                    continue
+                                if qp_pid <= 0:
+                                    continue
+                                p = _db_co.get(_P_co, qp_pid)
+                                if p is None or (p.team or "").strip() != actor_team:
+                                    try:
+                                        from backend.utils.access_log import log_access as _la
+                                        with _SL_co() as _log_db:
+                                            _la(_log_db, f"access_denied_{role}_scope",
+                                                details={"path": path_co, "player_id": qp_pid,
+                                                         "actor_role": role, "actor_team": actor_team})
+                                    except Exception:
+                                        pass
+                                    return StarletteResponse(
+                                        "この選手データはあなたのチームに所属していません",
+                                        status_code=403,
+                                    )
 
         # X-Role ヘッダーによるフォールバックは削除（攻撃者が任意ロールを偽称できるため）
         # JWT にロールがない場合は player 制限を適用しない（非 player 扱い）
