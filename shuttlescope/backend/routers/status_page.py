@@ -20,6 +20,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
@@ -117,7 +118,10 @@ def compute_public_status(db: Session) -> dict:
     - overall: 未解決 incident の severity から算出 (critical→down / それ以外の未解決→degraded)。
     - active_incidents: 未解決 (status != resolved) を began_at 降順。
     - recent_incidents: 直近 20 件 (解決済み含む、履歴用)。
-    - maintenance: scheduled/in_progress かつ終了が未来 (or 未定) のものを開始昇順。
+    - maintenance: scheduled/in_progress かつ終了が未来 (or 未定) のものを開始昇順 (= 進行中/予定)。
+    - recent_maintenance: 終了済み (scheduled_end が過去) または completed/canceled の
+      メンテナンス枠を開始降順 (直近 10 件)。「メンテナンス履歴」セクション用。
+      終了時刻が過ぎたら maintenance(予定) から外れて自動的にこちらへ移る。
     - announcements: published のみ、pinned 優先 → published_at 降順 (直近 10 件)。
     """
     unresolved = (
@@ -143,6 +147,21 @@ def compute_public_status(db: Session) -> dict:
         .order_by(MaintenanceWindow.scheduled_start.asc())
         .all()
     )
+    # メンテナンス履歴: 終了済み (scheduled_end が過去) または completed/canceled。
+    # 進行中/予定 (上の maint) と重複しないよう scheduled_end < now を条件にする。
+    recent_maint = (
+        db.query(MaintenanceWindow)
+        .filter(
+            or_(
+                and_(MaintenanceWindow.scheduled_end != None,  # noqa: E711
+                     MaintenanceWindow.scheduled_end < now),
+                MaintenanceWindow.status.in_(["completed", "canceled"]),
+            )
+        )
+        .order_by(MaintenanceWindow.scheduled_start.desc())
+        .limit(10)
+        .all()
+    )
     announcements = (
         db.query(Announcement)
         .filter(Announcement.status == "published")
@@ -161,6 +180,7 @@ def compute_public_status(db: Session) -> dict:
         "active_incidents": [_inc_dict(i) for i in unresolved],
         "recent_incidents": [_inc_dict(i) for i in recent],
         "maintenance": [_mnt_dict(m) for m in maint],
+        "recent_maintenance": [_mnt_dict(m) for m in recent_maint],
         "announcements": [_ann_dict(a) for a in announcements],
         "checked_at": now.isoformat(),
     }

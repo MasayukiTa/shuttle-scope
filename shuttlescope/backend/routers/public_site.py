@@ -225,7 +225,8 @@ def _render_status_str(request: Request, *, lang: str = "ja", preview: bool = Fa
     else:
         status = {
             "overall": "operational", "components": [], "active_incidents": [],
-            "recent_incidents": [], "maintenance": [], "announcements": [], "checked_at": "",
+            "recent_incidents": [], "maintenance": [], "recent_maintenance": [],
+            "announcements": [], "checked_at": "",
         }
     canonical_path = "/en/status" if lang == "en" else "/status"
     context = {
