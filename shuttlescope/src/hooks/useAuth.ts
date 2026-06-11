@@ -120,10 +120,18 @@ export function useAuth() {
 
   const setSession = useCallback((session: AuthSession) => {
     writeStorage(STORAGE_KEY, session.token)
-    if (session.refreshToken) {
-      writeStorage(STORAGE_KEY_REFRESH, session.refreshToken)
-    } else {
-      removeStorage(STORAGE_KEY_REFRESH)
+    // refreshToken は「未指定(undefined)」と「明示クリア(null)」を区別する。
+    // ログイン (LoginPage) は文字列を渡して保存する。一方、ログイン直後に走る
+    // authMe() 再検証 (ProtectedMainRoute) は refreshToken を渡さず setSession を
+    // 呼ぶため、ここで無条件 remove していると保存直後の refresh token が即削除され、
+    // 15分後の access token 失効時に再取得できず強制ログアウトしていた。
+    // undefined のときは既存の refresh token をそのまま温存する。
+    if (session.refreshToken !== undefined) {
+      if (session.refreshToken) {
+        writeStorage(STORAGE_KEY_REFRESH, session.refreshToken)
+      } else {
+        removeStorage(STORAGE_KEY_REFRESH)
+      }
     }
     writeStorage(STORAGE_KEY_ROLE, session.role)
     writeStorage(STORAGE_KEY_USER_ID, String(session.userId))
