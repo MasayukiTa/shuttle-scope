@@ -554,9 +554,20 @@ function ProtectedMainRoute() {
         setConsentRequired(!!me.consent_required)
         setOptionalConsentPending(!!me.optional_consent_pending)
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         if (cancelled) return
-        clearRole()
+        // 401/403 (= トークン無効 / 失効 / 権限剥奪) のみ「認証無効」とみなして
+        // セッションを破棄する。429 (レート制限) / 503 / timeout / ネットワーク断
+        // などの一過性エラーで clearRole すると、ログイン直後にログイン画面へ
+        // 弾き返される (login→login bounce) 不具合になる。
+        // 再現経路: 試合一覧が match ごとに pipeline/jobs を多数並列発火して
+        // rate-limit を使い切ると、同時に走る /auth/me が 429 を返し、ここで
+        // 無条件 clearRole していた。一過性エラー時は login 時に保存済みの
+        // token/role をそのまま維持する (authMe は再検証にすぎない)。
+        const status = (err as { status?: number } | null)?.status
+        if (status === 401 || status === 403) {
+          clearRole()
+        }
       })
       .finally(() => {
         if (!cancelled) setCheckingAuth(false)
