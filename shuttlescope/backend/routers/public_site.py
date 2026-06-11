@@ -551,6 +551,27 @@ async def og_image_png():
     return _serve_public_asset("og-image.png", "image/png")
 
 
+# トップページ hero の実アプリスクリーンショット (テーマ別 + retina 用 @2x)
+@router.get("/hero-app-light.png")
+async def hero_app_light_png():
+    return _serve_public_asset("hero-app-light.png", "image/png")
+
+
+@router.get("/hero-app-light@2x.png")
+async def hero_app_light_2x_png():
+    return _serve_public_asset("hero-app-light@2x.png", "image/png")
+
+
+@router.get("/hero-app-dark.png")
+async def hero_app_dark_png():
+    return _serve_public_asset("hero-app-dark.png", "image/png")
+
+
+@router.get("/hero-app-dark@2x.png")
+async def hero_app_dark_2x_png():
+    return _serve_public_asset("hero-app-dark@2x.png", "image/png")
+
+
 @router.get("/public-preview")
 async def public_preview(request: Request):
     return render_public_preview_home(request)

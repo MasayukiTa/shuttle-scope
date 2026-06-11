@@ -92,8 +92,7 @@ html[lang=ja] .en{display:none}
 .hero{position:relative;background:var(--hero-bg);padding:60px 40px 80px;overflow:hidden}
 .hero::before{content:'';position:absolute;top:-100px;right:-100px;width:560px;height:560px;background:radial-gradient(circle,rgba(26,111,224,0.16) 0%,transparent 65%);pointer-events:none;z-index:0}
 .hero::after{content:'';position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,0.022) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.022) 1px,transparent 1px);background-size:52px 52px;pointer-events:none;z-index:0}
-.hero-inner{position:relative;z-index:1;max-width:1160px;margin:0 auto;display:grid;grid-template-columns:1fr 400px;gap:64px;align-items:center}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:0.25}}
+.hero-inner{position:relative;z-index:1;max-width:1160px;margin:0 auto;display:grid;grid-template-columns:1fr 520px;gap:56px;align-items:center}
 h1.hero-h1{font-family:'MigMix 1P',sans-serif;font-size:clamp(22px,2.6vw,34px);font-weight:700;line-height:1.2;color:var(--hero-t1);margin-bottom:12px;letter-spacing:.01em}
 .hero-tagline{font-size:clamp(18px,2vw,24px);font-weight:600;color:#6fb0ff;margin-bottom:20px}
 .hero-sub{font-size:14px;color:var(--hero-t2);line-height:1.9;max-width:480px;margin-bottom:28px}
@@ -105,30 +104,12 @@ h1.hero-h1{font-family:'MigMix 1P',sans-serif;font-size:clamp(22px,2.6vw,34px);f
 .btn-ghost{font-size:13px;color:var(--hero-t2);text-decoration:none;padding:6px 2px;border-bottom:1px solid rgba(138,170,207,0.3);transition:color .15s,border-color .15s}
 .btn-ghost:hover{color:var(--hero-t1);border-color:var(--hero-t2)}
 
+/* hero-panel: 実アプリ (解析ダッシュボード) のスクリーンショット。テーマに合わせて切替 */
 .hero-panel{background:var(--surface);border:1px solid var(--bdr);border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.1)}
-.panel-body{padding:14px 16px 16px}
-.p-match-label{font-size:10px;font-weight:600;letter-spacing:.10em;color:var(--t3);margin-bottom:10px}
-.p-score-row{display:flex;align-items:center;margin-bottom:14px}
-.p-team{flex:1}.p-team-name{font-size:11px;color:var(--t2);margin-bottom:3px}
-.p-team-score{font-size:38px;font-weight:800;color:var(--t1);line-height:1}
-.p-team-score.win{color:var(--blue)}
-.p-vs{font-size:14px;color:var(--t3);padding:0 10px}
-.p-divider{height:1px;background:var(--bdr);margin:0 0 12px}
-.p-kpi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px}
-.p-kpi{background:var(--surf2);border:1px solid var(--bdr);border-radius:6px;padding:9px 6px;text-align:center}
-.p-kpi-val{font-size:18px;font-weight:700;color:var(--t1);line-height:1;margin-bottom:3px}
-.p-kpi-lbl{font-size:9px;color:var(--t3);letter-spacing:.06em}
-.p-chart-head{font-size:10px;font-weight:600;letter-spacing:.09em;color:var(--t3);margin-bottom:8px}
-.bar-row{display:flex;align-items:center;gap:8px;margin-bottom:5px}
-.bar-name{font-size:10px;color:var(--t2);min-width:64px}
-.bar-track{flex:1;height:5px;background:var(--surf3);border-radius:3px;overflow:hidden}
-.bar-fill{height:100%;border-radius:3px;background:var(--blue);transition:background .25s}
-.bar-fill.lo{background:var(--bdr2)}
-.bar-pct{font-size:10px;color:var(--t2);min-width:28px;text-align:right}
-.panel-foot{padding:9px 14px;border-top:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;background:var(--surf2)}
-.panel-foot-txt{font-size:10px;color:var(--t3);letter-spacing:.05em}
-.panel-live{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--grn);font-weight:600}
-.panel-live::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--grn);animation:blink 1.8s ease infinite}
+.hero-shot{display:block;width:100%;height:auto}
+.hero-shot-dark{display:none}
+[data-theme="dark"] .hero-shot-light{display:none}
+[data-theme="dark"] .hero-shot-dark{display:block}
 
 .sec{padding:80px 40px}.sec-wrap{max-width:1160px;margin:0 auto}
 .sec-kicker{display:inline-flex;align-items:center;gap:8px;font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--blue);margin-bottom:10px}
@@ -182,7 +163,7 @@ footer{background:var(--footer-bg);padding:24px 40px;display:flex;align-items:ce
 @media(max-width:767px){
   .beta-banner{padding:12px 16px}.beta-text{font-size:12px}
   nav{padding:0 16px}.nav-links{display:none}.btn-login{display:none}.hamburger{display:flex}
-  .hero{padding:40px 20px 96px}.hero-inner{grid-template-columns:1fr;gap:0}.hero-panel{display:none}
+  .hero{padding:40px 20px 96px}.hero-inner{grid-template-columns:1fr;gap:0}.hero-panel{margin-top:32px}
   h1.hero-h1{font-size:clamp(26px,7.5vw,36px)}.hero-tagline{font-size:clamp(16px,5vw,22px)}
   .hero-sub{font-size:13px;margin-bottom:20px}.hero-actions{flex-direction:column;align-items:stretch}
   .hero-tags{margin-bottom:28px;gap:6px}.htag{font-size:10px;padding:3px 8px}
@@ -199,7 +180,7 @@ footer{background:var(--footer-bg);padding:24px 40px;display:flex;align-items:ce
 }
 @media(min-width:768px) and (max-width:1023px){
   nav{padding:0 28px}.nav-links{gap:18px}.nav-links li:nth-child(3){display:none}
-  .hero{padding:44px 28px 64px}.hero-inner{grid-template-columns:1fr 300px;gap:36px}
+  .hero{padding:44px 28px 64px}.hero-inner{grid-template-columns:1fr 380px;gap:36px}
   h1.hero-h1{font-size:clamp(26px,4vw,38px)}.sec{padding:64px 28px}
   .sec-data{padding:48px 28px}.sec-fcta{padding:64px 28px}footer{padding:22px 28px}
 }
@@ -265,28 +246,8 @@ footer{background:var(--footer-bg);padding:24px 40px;display:flex;align-items:ce
       </div>
     </div>
     <div class="hero-panel">
-      <div class="panel-body">
-        <div class="p-match-label">第13節 第2試合 — WD</div>
-        <div class="p-score-row">
-          <div class="p-team"><div class="p-team-name">自チーム</div><div class="p-team-score win">2</div></div>
-          <div class="p-vs">–</div>
-          <div class="p-team" style="text-align:right"><div class="p-team-name">相手チーム</div><div class="p-team-score">1</div></div>
-        </div>
-        <div class="p-divider"></div>
-        <div class="p-kpi-grid">
-          <div class="p-kpi"><div class="p-kpi-val">74%</div><div class="p-kpi-lbl">1ST SRV</div></div>
-          <div class="p-kpi"><div class="p-kpi-val">38</div><div class="p-kpi-lbl">RALLIES</div></div>
-          <div class="p-kpi"><div class="p-kpi-val" style="color:var(--grn)">+7</div><div class="p-kpi-lbl">PTS DIFF</div></div>
-        </div>
-        <div class="p-chart-head">Rally length distribution</div>
-        <div class="bar-row"><div class="bar-name">1–3 shots</div><div class="bar-track"><div class="bar-fill" style="width:72%"></div></div><div class="bar-pct">72%</div></div>
-        <div class="bar-row"><div class="bar-name">4–8 shots</div><div class="bar-track"><div class="bar-fill" style="width:20%"></div></div><div class="bar-pct">20%</div></div>
-        <div class="bar-row"><div class="bar-name">9+ shots</div><div class="bar-track"><div class="bar-fill lo" style="width:8%"></div></div><div class="bar-pct" style="color:var(--t3)">8%</div></div>
-      </div>
-      <div class="panel-foot">
-        <span class="panel-foot-txt">ShuttleScope / Analyst</span>
-        <span class="panel-live">LIVE SYNC</span>
-      </div>
+      <img class="hero-shot hero-shot-light" src="/hero-app-light.png" srcset="/hero-app-light.png 1x, /hero-app-light@2x.png 2x" width="1000" height="433" alt="ShuttleScope の解析ダッシュボード画面">
+      <img class="hero-shot hero-shot-dark" src="/hero-app-dark.png" srcset="/hero-app-dark.png 1x, /hero-app-dark@2x.png 2x" width="1000" height="433" alt="ShuttleScope の解析ダッシュボード画面 (ダークテーマ)" loading="lazy">
     </div>
   </div>
 </section>
