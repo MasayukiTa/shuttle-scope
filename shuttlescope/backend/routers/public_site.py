@@ -32,7 +32,8 @@ _recent_contact_requests: dict[str, list[datetime]] = {}
 # サイトアイコン / OG 画像を backend/public/ から配信（shuttle-scope.com からも Electron SPA からも利用）
 _PUBLIC_ASSETS_DIR = Path(__file__).resolve().parent.parent / "public"
 
-# PR1 (2026-05-26): public site の段階的 Jinja2 化用テンプレートディレクトリ。
+# public site の Jinja2 テンプレートディレクトリ。トップページ (home.html.j2) を含む
+# 公開ページ全てを backend/templates/public/*.html.j2 から描画する (旧 _V7_HOME_HTML 定数は廃止)。
 # autoescape は jinja2.Environment 経由で必ず有効化 (テンプレ内変数による XSS 防止)。
 # 旧 Starlette は Jinja2Templates(autoescape=...) を受け付けないため、env を組んで渡す。
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
@@ -178,425 +179,17 @@ def should_serve_public_site(request: Request) -> bool:
     return host in PUBLIC_HOSTS
 
 
-_V7_HOME_HTML = r"""<!DOCTYPE html>
-<html lang="ja" data-theme="light">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ShuttleScope — バドミントン試合分析プラットフォーム</title>
-<meta name="description" content="ストローク単位の記録から試合構造を統計的に可視化するバドミントン分析ワークベンチ。コーチ・アナリスト・選手それぞれの役割に応じた分析レイヤーを提供します。">
-<link rel="canonical" href="https://shuttle-scope.com/">
-<link rel="icon" type="image/png" href="/favicon.png">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<meta property="og:type" content="website">
-<meta property="og:url" content="https://shuttle-scope.com/">
-<meta property="og:title" content="ShuttleScope — バドミントン試合分析プラットフォーム">
-<meta property="og:description" content="ストローク単位の記録から試合構造を統計的に可視化するバドミントン分析ワークベンチ。">
-<meta property="og:image" content="https://shuttle-scope.com/og-image.png">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="ShuttleScope">
-<meta name="twitter:description" content="ストローク単位の記録から試合構造を統計的に可視化するバドミントン分析ワークベンチ。">
-<meta name="twitter:image" content="https://shuttle-scope.com/og-image.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=MigMix+1P:wght@400;700&display=swap" rel="stylesheet">
-<!-- Material Symbols CDN は廃止: theme トグルはインライン SVG に置換済み (外部依存/プライバシー/未ロード時の生テキスト化を排除) -->
-<style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+def _render_home_str() -> str:
+    """公開トップページ (旧 _V7_HOME_HTML) を Jinja テンプレートから描画する。
 
-:root,[data-theme="light"]{
-  --bg:#f0f3f8;--surface:#ffffff;--surf2:#f7f9fc;--surf3:#eef1f7;
-  --hero-bg:#0c1f3f;--hero-bg2:#102646;--hero-t1:#e8f0fb;--hero-t2:#c0d6ee;--hero-bdr:rgba(255,255,255,0.08);
-  --navy:#0c2555;--blue:#1059c8;--blue2:#1a6fe0;--blue-lt:#e8f0fd;--blue-md:rgba(16,89,200,0.10);--grn:#007a56;
-  --t1:#0b1929;--t2:#445e7a;--t3:#8fa5be;
-  --bdr:#dce4ef;--bdr2:#c8d4e6;
-  --nav-bg:rgba(255,255,255,0.96);--nav-bdr:#dce4ef;--nav-shadow:0 1px 0 #dce4ef;
-  --feat-bg:#ffffff;--feat-hover:#e8f0fd;
-  --card-bg:#ffffff;--card-bdr:#dce4ef;
-  --data-bg:#ffffff;--fcta-bg:#f0f3f8;
-  --footer-bg:#0c2555;--footer-t:#dae8f8;--footer-lt:rgba(255,255,255,0.65);--footer-cp:rgba(255,255,255,0.42);
-}
-
-[data-theme="dark"]{
-  --bg:#07101d;--surface:#0d1829;--surf2:#111f33;--surf3:#162840;
-  --hero-bg:#040d18;--hero-bg2:#07101d;--hero-t1:#daeafb;--hero-t2:#a8c4e0;--hero-bdr:rgba(255,255,255,0.07);
-  --navy:#0c2555;--blue:#3380ee;--blue2:#4490ff;--blue-lt:rgba(51,128,238,0.12);--blue-md:rgba(51,128,238,0.12);--grn:#00a874;
-  --t1:#d4e4f8;--t2:#6a8daf;--t3:#3d5a76;
-  --bdr:rgba(255,255,255,0.07);--bdr2:rgba(255,255,255,0.12);
-  --nav-bg:rgba(7,16,29,0.94);--nav-bdr:rgba(255,255,255,0.07);--nav-shadow:none;
-  --feat-bg:#0d1829;--feat-hover:#111f33;
-  --card-bg:#0d1829;--card-bdr:rgba(255,255,255,0.07);
-  --data-bg:#0d1829;--fcta-bg:#07101d;
-  --footer-bg:#040c17;--footer-t:#b0c8e4;--footer-lt:rgba(255,255,255,0.55);--footer-cp:rgba(255,255,255,0.36);
-}
-
-body,nav,.hero-panel,.feat-card,.uc-card,.sec-data,.sec-fcta{transition:background-color 0.25s ease,border-color 0.25s ease,color 0.2s ease}
-html{scroll-behavior:smooth}
-body{font-family:'MigMix 1P','Noto Sans JP',sans-serif;background:var(--bg);color:var(--t1);line-height:1.65;overflow-x:hidden;-webkit-font-smoothing:antialiased}
-::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--bdr2);border-radius:3px}
-
-nav{position:fixed;top:0;left:0;right:0;z-index:200;height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 40px;background:var(--nav-bg);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--nav-bdr);box-shadow:var(--nav-shadow)}
-.logo{font-size:20px;font-weight:700;letter-spacing:.06em;color:var(--t1);text-decoration:none;display:flex;align-items:center;gap:8px}
-.logo-mark{width:26px;height:26px;background:#fff;border-radius:5px;display:flex;align-items:center;justify-content:center;overflow:hidden;transition:background .25s}
-.logo-mark img{width:100%;height:100%;object-fit:contain;display:block}
-.nav-links{display:flex;align-items:center;gap:28px;list-style:none}
-.nav-links a{font-size:13px;color:var(--t2);text-decoration:none;transition:color .15s}
-.nav-links a:hover{color:var(--t1)}
-.nav-right{display:flex;align-items:center;gap:8px}
-.theme-toggle{width:34px;height:34px;border:1px solid var(--bdr2);border-radius:8px;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;line-height:1;transition:background .15s,border-color .15s;color:var(--t2)}
-.theme-toggle svg{width:17px;height:17px;display:block}
-/* light テーマ時は月(=dark へ切替), dark テーマ時は太陽(=light へ切替)を表示 */
-[data-theme="light"] .theme-toggle .ic-sun{display:none}
-[data-theme="dark"] .theme-toggle .ic-moon{display:none}
-.theme-toggle:hover{background:var(--blue-lt);border-color:var(--blue)}
-.lang-toggle{width:34px;height:34px;border:1px solid var(--bdr2);border-radius:8px;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--t2);transition:background .15s,border-color .15s,color .15s}
-.lang-toggle:hover{background:var(--blue-lt);border-color:var(--blue);color:var(--blue)}
-html[lang=en] .ja{display:none}
-html[lang=ja] .en{display:none}
-.btn-login{font-family:'MigMix 1P',sans-serif;font-size:12px;font-weight:700;padding:7px 18px;border:1px solid var(--bdr2);border-radius:8px;color:var(--t2);background:transparent;text-decoration:none;transition:all .15s}
-.btn-login:hover{color:var(--t1);border-color:var(--blue);background:var(--blue-lt)}
-.hamburger{display:none;flex-direction:column;justify-content:center;gap:4px;width:36px;height:36px;cursor:pointer;background:none;border:none;padding:4px}
-.hamburger span{display:block;height:1.5px;background:var(--t2);transition:transform .2s,opacity .2s;border-radius:2px}
-.hamburger.open span:nth-child(1){transform:translateY(5.5px) rotate(45deg)}
-.hamburger.open span:nth-child(2){opacity:0}
-.hamburger.open span:nth-child(3){transform:translateY(-5.5px) rotate(-45deg)}
-/* mobile-menu は <nav> なので nav{} の backdrop-filter/半透明背景を継承する。
-   開いた時に背景が透けて文字が読めない問題を防ぐため、不透明背景を明示し
-   継承した backdrop-filter を打ち消す (light/dark それぞれ指定)。 */
-.mobile-menu{display:none;position:fixed;top:58px;left:0;right:0;z-index:190;height:auto;max-height:calc(100vh - 58px);overflow-y:auto;padding:0;align-items:stretch;justify-content:flex-start;background:#ffffff !important;backdrop-filter:none !important;-webkit-backdrop-filter:none !important;border-bottom:1px solid var(--bdr);flex-direction:column;box-shadow:0 10px 28px rgba(0,0,0,0.22)}
-[data-theme="dark"] .mobile-menu{background:#0d1829 !important}
-.mobile-menu.open{display:flex}
-.mobile-menu a{font-size:14px;color:var(--t1);text-decoration:none;padding:14px 24px;border-bottom:1px solid var(--bdr);transition:color .15s,background .15s}
-.mobile-menu a:hover{color:var(--t1);background:var(--blue-lt)}
-
-.hero{position:relative;background:var(--hero-bg);padding:60px 40px 80px;overflow:hidden}
-.hero::before{content:'';position:absolute;top:-100px;right:-100px;width:560px;height:560px;background:radial-gradient(circle,rgba(26,111,224,0.16) 0%,transparent 65%);pointer-events:none;z-index:0}
-.hero::after{content:'';position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,0.022) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.022) 1px,transparent 1px);background-size:52px 52px;pointer-events:none;z-index:0}
-.hero-inner{position:relative;z-index:1;max-width:1160px;margin:0 auto;display:grid;grid-template-columns:1fr 400px;gap:64px;align-items:center}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:0.25}}
-h1.hero-h1{font-family:'MigMix 1P',sans-serif;font-size:clamp(22px,2.6vw,34px);font-weight:700;line-height:1.2;color:var(--hero-t1);margin-bottom:12px;letter-spacing:.01em}
-.hero-tagline{font-size:clamp(18px,2vw,24px);font-weight:600;color:#6fb0ff;margin-bottom:20px}
-.hero-sub{font-size:14px;color:var(--hero-t2);line-height:1.9;max-width:480px;margin-bottom:28px}
-.hero-tags{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:36px}
-.htag{font-family:'MigMix 1P',sans-serif;font-size:11px;color:rgba(220,235,255,0.92);border:1px solid rgba(255,255,255,0.18);background:rgba(255,255,255,0.07);padding:4px 10px;border-radius:3px;letter-spacing:.02em}
-.hero-actions{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
-.btn-cta{display:inline-flex;align-items:center;gap:10px;font-family:'MigMix 1P',sans-serif;font-size:15px;font-weight:700;padding:14px 32px;background:var(--blue2);color:#fff;border:none;border-radius:8px;text-decoration:none;cursor:pointer;letter-spacing:.03em;transition:background .15s}
-.btn-cta:hover{background:#1a78f5}
-.btn-ghost{font-size:13px;color:var(--hero-t2);text-decoration:none;padding:6px 2px;border-bottom:1px solid rgba(138,170,207,0.3);transition:color .15s,border-color .15s}
-.btn-ghost:hover{color:var(--hero-t1);border-color:var(--hero-t2)}
-
-.hero-panel{background:var(--surface);border:1px solid var(--bdr);border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.1)}
-.panel-body{padding:14px 16px 16px}
-.p-match-label{font-size:10px;font-weight:600;letter-spacing:.10em;color:var(--t3);margin-bottom:10px}
-.p-score-row{display:flex;align-items:center;margin-bottom:14px}
-.p-team{flex:1}.p-team-name{font-size:11px;color:var(--t2);margin-bottom:3px}
-.p-team-score{font-size:38px;font-weight:800;color:var(--t1);line-height:1}
-.p-team-score.win{color:var(--blue)}
-.p-vs{font-size:14px;color:var(--t3);padding:0 10px}
-.p-divider{height:1px;background:var(--bdr);margin:0 0 12px}
-.p-kpi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px}
-.p-kpi{background:var(--surf2);border:1px solid var(--bdr);border-radius:6px;padding:9px 6px;text-align:center}
-.p-kpi-val{font-size:18px;font-weight:700;color:var(--t1);line-height:1;margin-bottom:3px}
-.p-kpi-lbl{font-size:9px;color:var(--t3);letter-spacing:.06em}
-.p-chart-head{font-size:10px;font-weight:600;letter-spacing:.09em;color:var(--t3);margin-bottom:8px}
-.bar-row{display:flex;align-items:center;gap:8px;margin-bottom:5px}
-.bar-name{font-size:10px;color:var(--t2);min-width:64px}
-.bar-track{flex:1;height:5px;background:var(--surf3);border-radius:3px;overflow:hidden}
-.bar-fill{height:100%;border-radius:3px;background:var(--blue);transition:background .25s}
-.bar-fill.lo{background:var(--bdr2)}
-.bar-pct{font-size:10px;color:var(--t2);min-width:28px;text-align:right}
-.panel-foot{padding:9px 14px;border-top:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;background:var(--surf2)}
-.panel-foot-txt{font-size:10px;color:var(--t3);letter-spacing:.05em}
-.panel-live{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--grn);font-weight:600}
-.panel-live::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--grn);animation:blink 1.8s ease infinite}
-
-.sec{padding:80px 40px}.sec-wrap{max-width:1160px;margin:0 auto}
-.sec-kicker{display:inline-flex;align-items:center;gap:8px;font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--blue);margin-bottom:10px}
-.sec-kicker::before{content:'';width:18px;height:2px;background:var(--blue)}
-.sec-h2{font-family:'MigMix 1P',sans-serif;font-size:clamp(19px,2.2vw,26px);font-weight:700;color:var(--t1);line-height:1.3;margin-bottom:10px}
-.sec-sub{font-size:14px;color:var(--t2);line-height:1.85;max-width:520px;margin-bottom:48px}
-
-.sec-features{background:var(--feat-bg);border-top:1px solid var(--bdr);border-bottom:1px solid var(--bdr)}
-.feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--bdr);border:1px solid var(--bdr);border-radius:8px;overflow:hidden}
-.feat-card{background:var(--feat-bg);padding:28px 24px 24px;position:relative;overflow:hidden;transition:background .15s}
-.feat-card:hover{background:var(--feat-hover)}
-.feat-icon{width:38px;height:38px;border-radius:8px;background:var(--blue-md);border:1px solid rgba(16,89,200,0.15);display:flex;align-items:center;justify-content:center;margin-bottom:14px}
-.feat-icon svg{width:17px;height:17px}
-.feat-h{font-family:'MigMix 1P',sans-serif;font-size:15px;font-weight:700;color:var(--t1);margin-bottom:8px}
-.feat-p{font-size:13px;color:var(--t2);line-height:1.8}
-
-.sec-uc{background:var(--bg)}
-.uc-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
-.uc-card{background:var(--card-bg);border:1px solid var(--card-bdr);border-radius:8px;padding:24px;display:flex;gap:18px;transition:border-color .15s}
-.uc-card:hover{border-color:var(--blue2)}
-.uc-h{font-family:'MigMix 1P',sans-serif;font-size:14px;font-weight:700;color:var(--t1);margin-bottom:6px}
-.uc-p{font-size:12px;color:var(--t2);line-height:1.8}
-
-.sec-data{background:var(--data-bg);border-top:1px solid var(--bdr);border-bottom:1px solid var(--bdr);padding:56px 40px}
-.data-body{font-size:13px;color:var(--t2);line-height:1.85;max-width:640px}
-.data-body a{color:var(--blue);text-decoration:none}
-.data-body a:hover{text-decoration:underline}
-
-.sec-fcta{background:var(--fcta-bg);padding:88px 40px;text-align:center;border-top:1px solid var(--bdr)}
-.fcta-h{font-family:'MigMix 1P',sans-serif;font-size:clamp(19px,2.2vw,26px);font-weight:700;color:var(--t1);margin-bottom:12px}
-.fcta-sub{font-size:14px;color:var(--t2);margin-bottom:32px}
-
-footer{background:var(--footer-bg);padding:24px 40px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;transition:background .25s}
-.footer-logo{font-size:17px;font-weight:700;letter-spacing:.05em;color:var(--footer-t);text-decoration:none;display:flex;align-items:center;gap:8px}
-.footer-logo .logo-mark{background:rgba(255,255,255,0.12);font-size:12px}
-.footer-links{display:flex;flex-wrap:wrap;justify-content:center;gap:12px 20px;list-style:none}
-.footer-links a{font-size:11px;color:var(--footer-lt);text-decoration:none;white-space:nowrap}
-.footer-links a:hover{color:var(--footer-t)}
-.footer-copy{font-size:11px;color:var(--footer-cp)}
-
-.mob-bar{display:none}
-
-.beta-banner{background:#0a4d8c;padding:14px 40px;margin-top:58px}
-.beta-banner-inner{max-width:1160px;margin:0 auto;display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;text-align:center}
-.beta-badge{font-size:11px;font-weight:700;letter-spacing:.14em;color:rgba(255,255,255,0.92);background:rgba(255,255,255,0.14);border:1px solid rgba(255,255,255,0.24);border-radius:4px;padding:3px 10px;white-space:nowrap;flex-shrink:0}
-.beta-text{font-size:13px;color:rgba(255,255,255,0.86);line-height:1.7;margin:0}
-.beta-text strong{color:#ffffff;font-weight:700}
-.beta-text a{color:#a8d8f8;text-decoration:none;border-bottom:1px solid rgba(168,216,248,0.38);transition:color .15s,border-color .15s}
-.beta-text a:hover{color:#fff;border-bottom-color:rgba(255,255,255,0.55)}
-
-@media(max-width:767px){
-  .beta-banner{padding:12px 16px}.beta-text{font-size:12px}
-  nav{padding:0 16px}.nav-links{display:none}.btn-login{display:none}.hamburger{display:flex}
-  .hero{padding:40px 20px 96px}.hero-inner{grid-template-columns:1fr;gap:0}.hero-panel{display:none}
-  h1.hero-h1{font-size:clamp(26px,7.5vw,36px)}.hero-tagline{font-size:clamp(16px,5vw,22px)}
-  .hero-sub{font-size:13px;margin-bottom:20px}.hero-actions{flex-direction:column;align-items:stretch}
-  .hero-tags{margin-bottom:28px;gap:6px}.htag{font-size:10px;padding:3px 8px}
-  .btn-cta{width:100%;justify-content:center;font-size:15px;padding:15px}.btn-ghost{display:none}
-  .sec{padding:52px 20px}.sec-sub{margin-bottom:28px}.feat-grid{grid-template-columns:1fr}
-  .uc-grid{grid-template-columns:1fr}.uc-card{padding:18px 16px;gap:12px}
-  .sec-data{padding:44px 20px}.sec-fcta{padding:56px 20px 100px}
-  footer{padding:20px 16px;flex-direction:column;padding-bottom:84px}
-  .mob-bar{display:flex;position:fixed;bottom:0;left:0;right:0;z-index:300;padding:10px 14px;background:rgba(255,255,255,0.97);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid var(--bdr);box-shadow:0 -2px 12px rgba(0,0,0,0.08);gap:10px;align-items:center;transition:background .25s}
-  [data-theme="dark"] .mob-bar{background:rgba(7,16,29,0.97);box-shadow:0 -2px 12px rgba(0,0,0,0.32)}
-  .mob-bar .btn-cta{flex:1;justify-content:center;font-size:15px;padding:13px}
-  .mob-bar-login{font-family:'MigMix 1P',sans-serif;font-size:12px;font-weight:700;padding:12px 16px;border:1px solid var(--bdr2);border-radius:6px;color:var(--t2);background:var(--surface);text-decoration:none;white-space:nowrap;transition:all .15s}
-  .mob-bar-login:hover{color:var(--t1);border-color:var(--blue)}
-}
-@media(min-width:768px) and (max-width:1023px){
-  nav{padding:0 28px}.nav-links{gap:18px}.nav-links li:nth-child(3){display:none}
-  .hero{padding:44px 28px 64px}.hero-inner{grid-template-columns:1fr 300px;gap:36px}
-  h1.hero-h1{font-size:clamp(26px,4vw,38px)}.sec{padding:64px 28px}
-  .sec-data{padding:48px 28px}.sec-fcta{padding:64px 28px}footer{padding:22px 28px}
-}
-@media(min-width:1024px){
-  .hamburger{display:none}.mob-bar{display:none}.mobile-menu{display:none!important}
-}
-</style>
-</head>
-<body>
-
-<nav>
-  <a class="logo" href="/"><div class="logo-mark"><img src="/favicon.png" alt=""></div>ShuttleScope</a>
-  <ul class="nav-links">
-    <li><a href="#features"><span class="ja">機能</span><span class="en">Features</span></a></li>
-    <li><a href="#usecases"><span class="ja">利用シーン</span><span class="en">Use Cases</span></a></li>
-    <li><a href="/privacy"><span class="ja">プライバシーポリシー</span><span class="en">Privacy Policy</span></a></li>
-    <li><a href="/contact"><span class="ja">お問い合わせ</span><span class="en">Contact</span></a></li>
-    <li><a href="/status"><span class="ja">稼働状況</span><span class="en">Status</span></a></li>
-  </ul>
-  <div class="nav-right">
-    <button class="theme-toggle" id="theme-btn" title="テーマ切り替え" aria-label="テーマ切り替え"><svg class="ic-moon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.11-1.36a5.39 5.39 0 0 1-7.53-7.53A9.05 9.05 0 0 0 12 3z"/></svg><svg class="ic-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
-    <button class="lang-toggle" id="lang-btn">EN</button>
-    <a href="https://app.shuttle-scope.com/login" class="btn-login"><span class="ja">ログイン</span><span class="en">Login</span></a>
-    <button class="hamburger" id="ham" aria-label="メニュー"><span></span><span></span><span></span></button>
-  </div>
-</nav>
-
-<nav class="mobile-menu" id="mmenu">
-  <a href="#features"><span class="ja">機能</span><span class="en">Features</span></a>
-  <a href="#usecases"><span class="ja">利用シーン</span><span class="en">Use Cases</span></a>
-  <a href="/privacy"><span class="ja">プライバシーポリシー</span><span class="en">Privacy Policy</span></a>
-  <a href="/contact"><span class="ja">お問い合わせ</span><span class="en">Contact</span></a>
-  <a href="/status"><span class="ja">稼働状況</span><span class="en">Status</span></a>
-  <a href="https://app.shuttle-scope.com/#/register"><span class="ja">新規登録</span><span class="en">Register</span></a>
-  <a href="https://app.shuttle-scope.com/login" style="color:var(--blue);font-weight:700"><span class="ja">ログイン →</span><span class="en">Login →</span></a>
-</nav>
-
-<div class="beta-banner">
-  <div class="beta-banner-inner">
-    <span class="beta-badge"><span class="ja">β 版</span><span class="en">BETA</span></span>
-    <p class="beta-text">
-      <span class="ja">ShuttleScope は <strong>2026年中、無償</strong>にてご利用いただけます。現在、β版にご協力いただける方を募集しております。ご賛同いただける方は、<a href="/contact">お問い合わせフォーム</a>よりご連絡ください。</span>
-      <span class="en">ShuttleScope is available <strong>free of charge throughout 2026</strong>. We are currently seeking participants for our beta programme. If you are interested in joining, please reach out via the <a href="/en/contact">contact form</a>.</span>
-    </p>
-  </div>
-</div>
-
-<section class="hero">
-  <div class="hero-inner">
-    <div>
-      <h1 class="hero-h1"><span class="ja">試合をデータで説明する</span><span class="en">Explain the Match with Data</span></h1>
-      <p class="hero-tagline"><span class="ja">ラリーをストローク単位で記録し、配球・得点期待値・戦術傾向を統計モデルで数値化します。</span><span class="en">Record rallies stroke by stroke and quantify shot placement, scoring expectation, and tactical patterns with statistical models.</span></p>
-      <p class="hero-sub"><span class="ja">ストローク単位の記録から試合構造を統計的に可視化するバドミントン分析ワークベンチです。コーチ・アナリスト・選手それぞれの役割に応じた分析レイヤーを提供します。</span><span class="en">ShuttleScope is a sports data analysis platform for badminton match analysis. It provides statistical visualization and performance analysis tools for coaches, analysts, and players.</span></p>
-      <div class="hero-tags">
-        <span class="htag"><span class="ja">ストローク分析</span><span class="en">Stroke Analysis</span></span>
-        <span class="htag"><span class="ja">統計モデル</span><span class="en">Statistical Model</span></span>
-        <span class="htag"><span class="ja">戦術可視化</span><span class="en">Tactical Viz</span></span>
-        <span class="htag"><span class="ja">コンディション追跡</span><span class="en">Condition Tracking</span></span>
-      </div>
-      <div class="hero-actions">
-        <a href="https://app.shuttle-scope.com/login" class="btn-cta"><span class="ja">アプリに進む</span><span class="en">Open App</span></a>
-        <a href="/contact" class="btn-ghost"><span class="ja">お問い合わせ</span><span class="en">Contact</span></a>
-      </div>
-    </div>
-    <div class="hero-panel">
-      <div class="panel-body">
-        <div class="p-match-label">第13節 第2試合 — WD</div>
-        <div class="p-score-row">
-          <div class="p-team"><div class="p-team-name">自チーム</div><div class="p-team-score win">2</div></div>
-          <div class="p-vs">–</div>
-          <div class="p-team" style="text-align:right"><div class="p-team-name">相手チーム</div><div class="p-team-score">1</div></div>
-        </div>
-        <div class="p-divider"></div>
-        <div class="p-kpi-grid">
-          <div class="p-kpi"><div class="p-kpi-val">74%</div><div class="p-kpi-lbl">1ST SRV</div></div>
-          <div class="p-kpi"><div class="p-kpi-val">38</div><div class="p-kpi-lbl">RALLIES</div></div>
-          <div class="p-kpi"><div class="p-kpi-val" style="color:var(--grn)">+7</div><div class="p-kpi-lbl">PTS DIFF</div></div>
-        </div>
-        <div class="p-chart-head">Rally length distribution</div>
-        <div class="bar-row"><div class="bar-name">1–3 shots</div><div class="bar-track"><div class="bar-fill" style="width:72%"></div></div><div class="bar-pct">72%</div></div>
-        <div class="bar-row"><div class="bar-name">4–8 shots</div><div class="bar-track"><div class="bar-fill" style="width:20%"></div></div><div class="bar-pct">20%</div></div>
-        <div class="bar-row"><div class="bar-name">9+ shots</div><div class="bar-track"><div class="bar-fill lo" style="width:8%"></div></div><div class="bar-pct" style="color:var(--t3)">8%</div></div>
-      </div>
-      <div class="panel-foot">
-        <span class="panel-foot-txt">ShuttleScope / Analyst</span>
-        <span class="panel-live">LIVE SYNC</span>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="sec sec-features" id="features">
-  <div class="sec-wrap">
-    <div>
-      <div class="sec-kicker">Core Features</div>
-      <h2 class="sec-h2"><span class="ja">主な機能</span><span class="en">Features</span></h2>
-      <p class="sec-sub"><span class="ja">アノテーション・統計解析・役割別アクセスが一体になった設計です。</span><span class="en">Annotation, statistical analysis, and role-based access — unified in one platform.</span></p>
-    </div>
-    <div class="feat-grid">
-      <div class="feat-card">
-        <div class="feat-icon"><svg viewBox="0 0 17 17" fill="none" stroke="var(--blue)" stroke-width="1.6"><polygon points="3,2.5 13.5,8.5 3,14.5"/></svg></div>
-        <div class="feat-h"><span class="ja">ストローク単位のアノテーション</span><span class="en">Stroke-level Annotation</span></div>
-        <p class="feat-p"><span class="ja">ラリーをストローク単位で記録します。配球位置・球種・着地点を逐次入力することで、統計モデルの精度が上がります。</span><span class="en">Record each rally stroke by stroke. Logging shot position, type, and landing zone improves the accuracy of statistical models.</span></p>
-      </div>
-      <div class="feat-card">
-        <div class="feat-icon"><svg viewBox="0 0 17 17" fill="none" stroke="var(--blue)" stroke-width="1.6"><circle cx="8.5" cy="5.5" r="2.5"/><path d="M3 14.5c0-3.1 2.4-5.5 5.5-5.5s5.5 2.4 5.5 5.5"/></svg></div>
-        <div class="feat-h"><span class="ja">統計モデルによる試合解析</span><span class="en">Statistical Match Analysis</span></div>
-        <p class="feat-p"><span class="ja">Markov モデル・EPV・コートヒートマップ・疲労指標により試合構造を多角的に可視化します。記録が増えるほど分析の解像度が上がります。</span><span class="en">Markov models, EPV, court heatmaps, and fatigue indicators visualize match structure from multiple angles. Resolution improves as more data is recorded.</span></p>
-      </div>
-      <div class="feat-card">
-        <div class="feat-icon"><svg viewBox="0 0 17 17" fill="none" stroke="var(--blue)" stroke-width="1.6"><circle cx="3" cy="8.5" r="1.8"/><circle cx="14" cy="4" r="1.8"/><circle cx="14" cy="13" r="1.8"/><line x1="4.7" y1="7.6" x2="12.3" y2="4.9"/><line x1="4.7" y1="9.4" x2="12.3" y2="12.1"/></svg></div>
-        <div class="feat-h"><span class="ja">役割に応じた分析レイヤー</span><span class="en">Role-based Analysis Layers</span></div>
-        <p class="feat-p"><span class="ja">コーチ・アナリスト・選手で参照できる情報の粒度が異なります。それぞれの判断に必要なデータを、適切な形で届けます。</span><span class="en">Coaches, analysts, and players each see a different level of detail. The right data is delivered to the right person in the right form.</span></p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="sec sec-uc" id="usecases">
-  <div class="sec-wrap">
-    <div>
-      <div class="sec-kicker">Analysis Capabilities</div>
-      <h2 class="sec-h2"><span class="ja">試合から読み取れること</span><span class="en">What the Match Data Reveals</span></h2>
-      <p class="sec-sub"><span class="ja">ストロークを記録するたびに統計モデルが更新され、試合の構造が可視化されます。</span><span class="en">Every stroke recorded updates the statistical model and makes match structure more visible.</span></p>
-    </div>
-    <div class="uc-grid">
-      <div class="uc-card"><div><div class="uc-h"><span class="ja">ラリー構造の分析</span><span class="en">Rally Structure Analysis</span></div><p class="uc-p"><span class="ja">どのパターンで得点・失点しているかをラリー単位で可視化します。コートヒートマップと配球傾向から試合の構造が見えます。</span><span class="en">Visualize scoring and losing patterns at the rally level. Court heatmaps and shot tendency data reveal match structure.</span></p></div></div>
-      <div class="uc-card"><div><div class="uc-h"><span class="ja">得点期待値の算出</span><span class="en">Expected Score Calculation</span></div><p class="uc-p"><span class="ja">Markov モデルと EPV により各局面の優位性を数値化します。「なんとなく苦しかった」を統計的な根拠に変えます。</span><span class="en">Markov models and EPV quantify the advantage at each stage. Turn "it felt tough" into statistical evidence.</span></p></div></div>
-      <div class="uc-card"><div><div class="uc-h"><span class="ja">戦術傾向の可視化</span><span class="en">Tactical Pattern Visualization</span></div><p class="uc-p"><span class="ja">配球パターン・反実仮想分析・セット間比較により、勝敗に影響した戦術要因を特定します。</span><span class="en">Identify tactical factors that influenced the outcome through shot patterns, counterfactual analysis, and set comparisons.</span></p></div></div>
-      <div class="uc-card"><div><div class="uc-h"><span class="ja">コンディションとの相関</span><span class="en">Correlation with Physical Condition</span></div><p class="uc-p"><span class="ja">体調指標とパフォーマンスデータを重ねて分析します。疲労が試合展開に与える影響をシーズン単位で追跡できます。</span><span class="en">Overlay condition indicators with performance data. Track the impact of fatigue on match flow across an entire season.</span></p></div></div>
-    </div>
-  </div>
-</section>
-
-<section class="sec-data">
-  <div class="sec-wrap">
-    <div class="sec-kicker">Data Policy</div>
-    <p class="data-body"><span class="ja">ShuttleScope では利用目的に応じて試合映像・レビュー情報・選手に関する入力情報を扱う場合があります。具体的な取扱方針は <a href="/privacy">プライバシーポリシー</a> を、利用条件は <a href="/terms">利用規約</a> をご確認ください。</span><span class="en">ShuttleScope may handle match footage, review information, and player input data depending on the purpose of use. See our <a href="/privacy">Privacy Policy</a> and <a href="/terms">Terms of Use</a> for details.</span></p>
-  </div>
-</section>
-
-<section class="sec-fcta">
-  <div class="sec-kicker" style="justify-content:center">Get Started</div>
-  <h2 class="fcta-h"><span class="ja">利用を開始する</span><span class="en">Get started</span></h2>
-  <p class="fcta-sub"><span class="ja">アカウントをお持ちの方はそのままログインできます。</span><span class="en">Existing accounts can log in directly.</span></p>
-  <a href="https://app.shuttle-scope.com/login" class="btn-cta" style="font-size:16px;padding:16px 40px"><span class="ja">アプリを開く</span><span class="en">Open App</span></a>
-</section>
-
-<footer>
-  <a class="footer-logo" href="/"><div class="logo-mark"><img src="/favicon.png" alt=""></div>ShuttleScope</a>
-  <ul class="footer-links">
-    <li><a href="/terms"><span class="ja">利用規約</span><span class="en">Terms</span></a></li>
-    <li><a href="/privacy"><span class="ja">プライバシーポリシー</span><span class="en">Privacy Policy</span></a></li>
-    <li><a href="/contact"><span class="ja">お問い合わせ</span><span class="en">Contact</span></a></li>
-    <li><a href="/status"><span class="ja">稼働状況</span><span class="en">Status</span></a></li>
-    <li><a href="https://app.shuttle-scope.com/#/register"><span class="ja">新規登録</span><span class="en">Register</span></a></li>
-  </ul>
-  <span class="footer-copy">© 2026 ShuttleScope</span>
-</footer>
-
-<div class="mob-bar">
-  <a href="https://app.shuttle-scope.com/login" class="btn-cta"><span class="ja">アプリに進む</span><span class="en">Open App</span></a>
-  <a href="/contact" class="mob-bar-login"><span class="ja">お問い合わせ</span><span class="en">Contact</span></a>
-</div>
-
-<script>
-const html=document.documentElement;
-// theme
-const tbtn=document.getElementById('theme-btn');
-// アイコン表示は data-theme に応じた CSS (.ic-sun/.ic-moon) が制御するため JS は data-theme の切替のみ。
-const savedTheme=localStorage.getItem('ss-theme');
-if(savedTheme){html.dataset.theme=savedTheme}
-tbtn.addEventListener('click',()=>{
-  const next=html.dataset.theme==='dark'?'light':'dark';
-  html.dataset.theme=next;
-  localStorage.setItem('ss-theme',next);
-});
-// lang — URL-based: /en = English, / = Japanese
-const lbtn=document.getElementById('lang-btn');
-let lang=location.pathname.startsWith('/en')?'en':'ja';
-html.lang=lang;lbtn.textContent=lang==='ja'?'EN':'JA';
-lbtn.addEventListener('click',()=>{location.href=lang==='ja'?'/en':'/'});
-// Fix footer/nav links to language-appropriate equivalents
-if(lang==='en'){
-  document.querySelectorAll('a[href="/terms"]').forEach(a=>a.setAttribute('href','/en/terms'));
-  document.querySelectorAll('a[href="/privacy"]').forEach(a=>a.setAttribute('href','/en/privacy'));
-  document.querySelectorAll('a[href="/contact"]').forEach(a=>a.setAttribute('href','/en/contact'));
-  document.querySelectorAll('a[href="/status"]').forEach(a=>a.setAttribute('href','/en/status'));
-  // ブランド/ロゴ link を EN home (/en) に書き換える。
-  // (デフォルトは / = JA home なので、EN モードのまま戻ると JA 側に飛んでしまう)
-  document.querySelectorAll('a.logo, a.footer-logo, a.brand').forEach(a=>{
-    if(a.getAttribute('href')==='/') a.setAttribute('href','/en');
-  });
-  // SPA への遷移 link に ?lang=en を付けて、起動時の言語選択
-  // (i18n.detectInitialLang) で英語が選ばれるようにする。
-  // - https://app.shuttle-scope.com/#/register  ← hash 形式: そのまま lang 付与
-  // - https://app.shuttle-scope.com/login       ← path 形式: hash に変換 + lang 付与
-  //   (backend の spa_catch_all は /login を /#/login に redirect するが、その際
-  //    ?lang=en は脱落するので、最初から hash 形式に書き換えておく)
-  document.querySelectorAll('a[href^="https://app.shuttle-scope.com/"]').forEach(a=>{
-    const u=new URL(a.href);
-    if(u.pathname && u.pathname!=='/'){u.hash='#'+u.pathname;u.pathname='/';}
-    if(!u.searchParams.get('lang')){u.searchParams.set('lang','en');}
-    a.setAttribute('href',u.toString());
-  });
-}
-// hamburger
-const ham=document.getElementById('ham'),mm=document.getElementById('mmenu');
-ham.addEventListener('click',()=>{ham.classList.toggle('open');mm.classList.toggle('open')});
-mm.querySelectorAll('a').forEach(a=>a.addEventListener('click',()=>{ham.classList.remove('open');mm.classList.remove('open')}));
-</script>
-</body>
-</html>"""
+    内容は public/home.html.j2 に移管済み。変数注入はゼロのため全体を {% raw %} で
+    囲んでおり、render 結果は旧定数とバイト同一になる。FileSystemLoader のキャッシュに
+    任せ、起動時プリロードは行わない (テンプレ欠落時は get_template が分かりやすく送出)。"""
+    return _jinja_env.get_template("public/home.html.j2").render()
 
 
 def _inject_status_banner(home_html: str) -> str:
-    """トップページ (_V7_HOME_HTML) の beta-banner 直後 (hero の直前) に
+    """トップページ (public/home.html.j2) の beta-banner 直後 (hero の直前) に
     公開ステータスバナー partial を注入する。partial は base.html.j2 と共有の単一ソース。
     バナー描画失敗時はトップページが 500 にならないよう、無注入で返す (fail-open)。"""
     try:
@@ -608,7 +201,7 @@ def _inject_status_banner(home_html: str) -> str:
 
 
 def render_public_home(request: Request) -> HTMLResponse:
-    return HTMLResponse(_inject_status_banner(_V7_HOME_HTML))
+    return HTMLResponse(_inject_status_banner(_render_home_str()))
 
 
 def _render_status_str(request: Request, *, lang: str = "ja", preview: bool = False,
@@ -722,7 +315,7 @@ def render_contact_page(request: Request, *, preview: bool = False) -> HTMLRespo
 
 
 def render_public_preview_home(request: Request) -> HTMLResponse:
-    return HTMLResponse(_rewrite_preview_links(_V7_HOME_HTML))
+    return HTMLResponse(_rewrite_preview_links(_render_home_str()))
 
 
 def _require_admin(request: Request) -> None:
@@ -986,7 +579,7 @@ async def public_preview_status(request: Request, db: Session = Depends(get_db))
 # EN プレビュールート (PR4): 既存 JA preview と同様 noindex + リンクを /public-preview/en/* に書き換える。
 @router.get("/public-preview/en")
 async def public_preview_en_home(request: Request):
-    return HTMLResponse(_rewrite_preview_links_en(_V7_HOME_HTML))
+    return HTMLResponse(_rewrite_preview_links_en(_render_home_str()))
 
 
 @router.get("/public-preview/en/terms")
