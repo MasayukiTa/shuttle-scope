@@ -61,6 +61,8 @@
   .ss-badge.st-resolved{background:#0f7a52}
   .ss-badge.mt-scheduled{background:#1059c8}
   .ss-badge.mt-in_progress{background:#9a3412}
+  .ss-badge.mt-completed{background:#0f7a52}
+  .ss-badge.mt-canceled{background:var(--t3)}
   .ss-badge.outline{background:transparent;color:var(--t2);border:1px solid var(--bdr2)}
   .ss-empty{color:var(--t2);font-size:.92rem;background:var(--surf2);
     border:1px dashed var(--bdr2);border-radius:12px;padding:16px 18px}
@@ -193,7 +195,8 @@
 <div class="shell"
      data-overall="{{ overall }}"
      data-active="{{ status.active_incidents|length }}"
-     data-maint="{{ status.maintenance|length }}">
+     data-maint="{{ status.maintenance|length }}"
+     data-rmaint="{{ status.recent_maintenance|length }}">
 
   <h1>{% if _is_en %}System Status{% else %}稼働状況{% endif %}</h1>
   <p class="sub">{% if _is_en %}Current operational status, planned maintenance and recent incidents.{% else %}現在の稼働状況・予定メンテナンス・直近の障害履歴をお知らせします。{% endif %}</p>
@@ -319,6 +322,27 @@
   </div>
   {% endif %}
 
+  {# メンテナンス履歴 (終了済み・完了/中止のメンテナンス枠) #}
+  {% if status.recent_maintenance %}
+  <h2>{% if _is_en %}Maintenance history{% else %}メンテナンス履歴{% endif %}<span class="cnt">{{ status.recent_maintenance|length }}</span></h2>
+  <div class="ss-list">
+    {% for m in status.recent_maintenance %}
+    {% if loop.index == 6 and status.recent_maintenance|length > 5 %}<details class="ss-more"><summary>{% if _is_en %}Show {{ status.recent_maintenance|length - 5 }} more{% else %}残り{{ status.recent_maintenance|length - 5 }}件を表示{% endif %}</summary>{% endif %}
+    {# 終了済みの表示ラベル: canceled は中止、それ以外 (実施済/期限超過) は完了扱い #}
+    {% set _mst = 'canceled' if m.status == 'canceled' else 'completed' %}
+    <div class="ss-item">
+      <span class="ss-when">{% if m.scheduled_start %}<time class="ss-time" datetime="{{ m.scheduled_start }}">{{ m.scheduled_start }}</time>{% endif %}</span>
+      <div class="ss-body">
+        <div class="ss-h"><span class="t">{{ m.title }}</span><span class="ss-badge mt-{{ _mst }}">{{ mnt_st_label.get(_mst, (_mst, _mst))[1 if _is_en else 0] }}</span></div>
+        {% if m.body %}<div class="ss-d">{{ m.body }}</div>{% endif %}
+        <div class="ss-d">{% if _is_en %}Window{% else %}実施期間{% endif %}: <time class="ss-time" datetime="{{ m.scheduled_start }}">{{ m.scheduled_start }}</time>{% if m.scheduled_end %} – <time class="ss-time" datetime="{{ m.scheduled_end }}">{{ m.scheduled_end }}</time>{% endif %}</div>
+      </div>
+    </div>
+    {% if loop.last and status.recent_maintenance|length > 5 %}</details>{% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+
   <p class="ss-checked">
     <span>{% if _is_en %}All times are shown in Japan Standard Time (JST).{% else %}時刻はすべて日本標準時 (JST) で表示しています。{% endif %}</span>
     <span class="ss-refresh-note">{% if _is_en %}This page refreshes automatically when the status changes.{% else %}状況が変化すると自動的に再読み込みされます。{% endif %}</span>
@@ -377,7 +401,7 @@
   // 状況が初期レンダリング時と変わったら自動再読み込み（手動 DOM 構築を避け XSS 余地を作らない）。
   var shell=document.querySelector('.shell');
   if(!shell) return;
-  var init={o:shell.getAttribute('data-overall'),a:shell.getAttribute('data-active'),m:shell.getAttribute('data-maint')};
+  var init={o:shell.getAttribute('data-overall'),a:shell.getAttribute('data-active'),m:shell.getAttribute('data-maint'),rm:shell.getAttribute('data-rmaint')};
   function poll(){
     fetch('/api/public/status',{headers:{'Accept':'application/json'}}).then(function(r){
       return r.ok?r.json():null;
@@ -385,7 +409,8 @@
       if(!d) return;
       var changed=(d.overall||'operational')!==init.o
         || String((d.active_incidents||[]).length)!==init.a
-        || String((d.maintenance||[]).length)!==init.m;
+        || String((d.maintenance||[]).length)!==init.m
+        || String((d.recent_maintenance||[]).length)!==init.rm;
       if(changed){location.reload();}
     }).catch(function(){});
   }
