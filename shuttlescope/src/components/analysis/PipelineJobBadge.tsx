@@ -27,15 +27,22 @@ function statusClass(status?: string): string {
 
 export function PipelineJobBadge({ matchId, className }: Props) {
   const { t } = useTranslation()
+  // 旧実装は match ごとに `?match_id=N&limit=1` を発火していたため、試合一覧では
+  // 行数ぶん (約80本) のリクエストが並列発火し rate-limit を枯渇させていた
+  // (同時に走る /auth/me が 429 を受けて login へ弾かれる事故の引き金)。
+  // 全バッジで queryKey を共有し、最新ジョブ一覧 1 リクエストに集約する。
+  // 注意: enqueued_at 降順の先頭 500 件に乗らない古い match のジョブは
+  // 「未解析」表示になる (limit 上限は backend 仕様)。
   const { data } = useQuery<AnalysisJobDTO[]>({
-    queryKey: ['pipeline-jobs', matchId],
-    queryFn: () => pipelineJobs({ match_id: matchId, limit: 1 }),
+    queryKey: ['pipeline-jobs-all'],
+    queryFn: () => pipelineJobs({ limit: 500 }),
     staleTime: 15_000,
     // DB が空 / 未登録でも既存画面を壊さないため、エラーは握り潰す
     retry: false,
   })
 
-  const job = data && data.length > 0 ? data[0] : undefined
+  // 降順リストなので最初のヒットが当該 match の最新ジョブ
+  const job = data?.find((j) => j.match_id === matchId)
   const key = job ? `pipeline.status.${job.status}` : 'pipeline.status.none'
 
   return (
