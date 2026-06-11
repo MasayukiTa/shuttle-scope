@@ -19,6 +19,14 @@ export function useIdleLogout({ enabled, timeoutMs, onIdle }: UseIdleLogoutOptio
   useEffect(() => {
     if (!enabled) return
 
+    // 有効化された瞬間 (= ログイン直後) に活動時刻をリセットする。
+    // これが無いと lastActivityRef は ProtectedMainRoute の初回マウント時刻
+    // (ログイン画面表示時刻) のまま残る。ログイン画面を timeoutMs 以上
+    // 開いたまま放置してからログインすると、有効化直後の最初の interval tick で
+    // 「既に timeout 経過」と誤判定し、無操作でも即ログアウトされる
+    // (ログイン直後にログイン画面へ戻る症状の一因)。
+    lastActivityRef.current = Date.now()
+
     const bump = () => {
       lastActivityRef.current = Date.now()
     }
