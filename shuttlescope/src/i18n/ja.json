@@ -3185,7 +3185,10 @@
       "k1": "読み込み中...",
       "rally_count_label": "ラリー数:",
       "insufficient": "データ不足（アノテーション後に解析可能）",
-      "vs_normal": "通常比"
+      "vs_normal": "通常比",
+      "label_normal": "通常時",
+      "label_endgame": "終盤（17点以降）",
+      "label_deuce": "デュース時"
     },
     "PromotionStatusCard": {
       "k1": "アナリスト判断 Override",

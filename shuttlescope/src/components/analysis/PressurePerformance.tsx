@@ -13,8 +13,8 @@ interface PressurePerformanceProps {
 }
 
 interface PressureSegment {
-  label: string          // "通常時" / "終盤（17点以降）" / "デュース時"
   win_rate: number
+  // backend (_build_stat) は rally 数を rally_count として返す。
   rally_count: number
   sample_size: number
 }
@@ -36,12 +36,15 @@ function pctStr(v: number): string {
 }
 
 // 単一の圧力セグメントカード
+// label は backend が返さないため i18n から供給する (i18n 規約: 表示文言は ja/en.json)。
 function SegmentCard({
   segment,
+  label,
   highlight,
   isLight,
 }: {
   segment: PressureSegment
+  label: string
   highlight?: boolean
   isLight: boolean
 }) {
@@ -55,7 +58,7 @@ function SegmentCard({
         highlight ? 'bg-gray-700/60 border border-gray-600' : 'bg-gray-700/30'
       }`}
     >
-      <p className="text-xs text-gray-400 font-medium">{segment.label}</p>
+      <p className="text-xs text-gray-400 font-medium">{label}</p>
       <p className="text-2xl font-bold" style={{ color }}>
         {pctStr(segment.win_rate)}
       </p>
@@ -132,9 +135,9 @@ export function PressurePerformance({ playerId, filters = DEFAULT_FILTERS }: Pre
 
       {/* 3列カード */}
       <div className="grid grid-cols-3 gap-3">
-        <SegmentCard segment={normal} isLight={isLight} />
-        <SegmentCard segment={endgame} highlight isLight={isLight} />
-        <SegmentCard segment={deuce} highlight isLight={isLight} />
+        <SegmentCard segment={normal} label={t('auto.PressurePerformance.label_normal')} isLight={isLight} />
+        <SegmentCard segment={endgame} label={t('auto.PressurePerformance.label_endgame')} highlight isLight={isLight} />
+        <SegmentCard segment={deuce} label={t('auto.PressurePerformance.label_deuce')} highlight isLight={isLight} />
       </div>
 
       {/* 通常時からの変化 */}
