@@ -979,6 +979,7 @@
     "start_annotation": "アノテーション開始",
     "formats": {
       "singles": "シングルス",
+      "mens_doubles": "男子ダブルス",
       "womens_doubles": "女子ダブルス",
       "mixed_doubles": "混合ダブルス"
     },
@@ -986,7 +987,8 @@
       "win": "勝ち",
       "loss": "負け",
       "walkover": "不戦勝",
-      "unfinished": "未完了"
+      "unfinished": "未完了",
+      "unknown": "不明"
     },
     "statuses": {
       "pending": "未着手",
@@ -2625,6 +2627,9 @@
       "audit_logs_title": "監査ログ",
       "audit_logs_desc": "ログイン・ユーザ管理・データ変更などの操作履歴を確認します（admin のみ）。",
       "audit_logs_open": "監査ログを開く",
+      "analytics_title": "プロダクト分析",
+      "analytics_desc": "WAU/MAU、アノテーション完遂ファネル、分析画面の実需、学習曲線、体調入力品質。PRIVACY §IX-bis 仮名化テレメトリ。",
+      "analytics_open": "Analytics を開く",
       "export": "エクスポート",
       "import": "インポート",
       "backup": "バックアップ",
