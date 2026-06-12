@@ -3177,7 +3177,10 @@
       "k1": "Loading...",
       "rally_count_label": "Rallies:",
       "insufficient": "Insufficient data (available after annotation)",
-      "vs_normal": "vs normal"
+      "vs_normal": "vs normal",
+      "label_normal": "Normal",
+      "label_endgame": "Endgame (17+)",
+      "label_deuce": "Deuce"
     },
     "PromotionStatusCard": {
       "k1": "Analyst override",

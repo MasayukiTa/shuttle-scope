@@ -90,6 +90,9 @@ const OPPONENT_TYPE_LABELS: Record<string, string> = {
 }
 
 function pct(v: number) {
+  // win_rate 等が null / undefined / NaN (例: n=0 のゼロ除算) のとき "NaN%" と
+  // 表示されるのを防ぐ。値が無い場合は「計測不能」を意味する "—" を返す。
+  if (typeof v !== 'number' || !Number.isFinite(v)) return '—'
   return `${(v * 100).toFixed(1)}%`
 }
 

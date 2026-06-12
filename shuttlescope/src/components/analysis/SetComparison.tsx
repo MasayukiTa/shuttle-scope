@@ -44,8 +44,13 @@ function CustomTooltip({ active, payload, label }: import('@/utils/rechartsTypes
 
   const isLight = useIsLightMode()
   if (!active || !payload?.length) return null
-  const winRate = payload.find((p) => p.dataKey === 'win_rate_pct')?.value ?? 0
-  const avgRally = payload.find((p) => p.dataKey === 'avg_rally_length')?.value ?? 0
+  // avg_rally_length は Bar として描画していない (win_rate_pct のみ描画) ため
+  // payload には系列として現れない。dataKey 検索だと avgRally が常に 0 になり
+  // 「平均ラリー長 0.0」とカード値が食い違う。データ行全体 (payload[0].payload)
+  // から両値を読む。
+  const row = (payload[0]?.payload ?? {}) as { win_rate_pct?: number; avg_rally_length?: number }
+  const winRate = row.win_rate_pct ?? 0
+  const avgRally = row.avg_rally_length ?? 0
   const headingColor = isLight ? '#0f172a' : '#f9fafb'
   const subColor = isLight ? '#475569' : '#d1d5db'
   return (

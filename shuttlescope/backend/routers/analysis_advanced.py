@@ -298,7 +298,7 @@ def get_pressure_performance(
     matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
 
     empty_confidence = check_confidence("pressure_performance", 0)
-    empty_stat = {"total": 0, "win_rate": 0.0, "avg_rally_length": 0.0}
+    empty_stat = {"total": 0, "rally_count": 0, "sample_size": 0, "win_rate": 0.0, "avg_rally_length": 0.0}
     if not matches:
         return {
             "success": True,
@@ -352,7 +352,16 @@ def get_pressure_performance(
         total = s["total"]
         win_rate = round(s["wins"] / total, 3) if total else 0.0
         avg_rally_length = round(s["total_length"] / total, 3) if total else 0.0
-        return {"total": total, "win_rate": win_rate, "avg_rally_length": avg_rally_length}
+        # フロント (PressurePerformance.tsx) は segment.rally_count / sample_size を
+        # 参照する。旧実装は total のみ返しており rally_count が undefined =
+        # カードのラリー数が空表示になっていた。両名で返して契約を満たす。
+        return {
+            "total": total,
+            "rally_count": total,
+            "sample_size": total,
+            "win_rate": win_rate,
+            "avg_rally_length": avg_rally_length,
+        }
 
     total_all = sum(s["total"] for s in stats.values())
     confidence = check_confidence("pressure_performance", total_all)
