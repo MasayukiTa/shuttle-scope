@@ -971,6 +971,7 @@
     "start_annotation": "Start annotation",
     "formats": {
       "singles": "Singles",
+      "mens_doubles": "Men's doubles",
       "womens_doubles": "Women's doubles",
       "mixed_doubles": "Mixed doubles"
     },
@@ -978,7 +979,8 @@
       "win": "Win",
       "loss": "Loss",
       "walkover": "Walkover",
-      "unfinished": "Unfinished"
+      "unfinished": "Unfinished",
+      "unknown": "Unknown"
     },
     "statuses": {
       "pending": "Not started",
@@ -2593,6 +2595,9 @@
       "audit_logs_title": "Audit logs",
       "audit_logs_desc": "Review the history of logins, user management actions, and data changes (admin only).",
       "audit_logs_open": "Open audit logs",
+      "analytics_title": "Product Analytics",
+      "analytics_desc": "WAU/MAU, annotation completion funnel, analysis-view demand, learning curves, and condition-input quality. Pseudonymised telemetry per PRIVACY §IX-bis.",
+      "analytics_open": "Open Analytics",
       "export": "Export",
       "import": "Import",
       "backup": "Backup",
