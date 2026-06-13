@@ -4291,6 +4291,14 @@
       "pending": "pending",
       "add_stroke": "+ #{{n}} のストロークを追加 ({{player}})",
       "other_later": "その他 (後で詳細入力)",
+      "show_other": "その他の球種",
+      "pick_title": "#{{n}} のショット種別を選択 ({{player}})",
+      "edit_title": "#{{n}} のショット種別を変更",
+      "final_unclassified": "(決定打: 未分類)",
+      "prompt_hit_zone": "#{{n}} ({{shot}}) — 打点を選択",
+      "prompt_land_zone": "#{{n}} ({{shot}}) — 着地点を選択",
+      "next": "次へ",
+      "save": "保存",
       "cancel": "取消"
     },
     "PlayMode": {

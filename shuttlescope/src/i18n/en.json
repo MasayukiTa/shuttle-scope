@@ -4279,6 +4279,14 @@
       "pending": "pending",
       "add_stroke": "+ Add stroke #{{n}} ({{player}})",
       "other_later": "Other (fill in details later)",
+      "show_other": "Other shot types",
+      "pick_title": "Select shot type for #{{n}} ({{player}})",
+      "edit_title": "Change shot type for #{{n}}",
+      "final_unclassified": "(Finisher: unclassified)",
+      "prompt_hit_zone": "#{{n}} ({{shot}}) — Select hit point",
+      "prompt_land_zone": "#{{n}} ({{shot}}) — Select landing point",
+      "next": "Next",
+      "save": "Save",
       "cancel": "Cancel"
     },
     "PlayMode": {

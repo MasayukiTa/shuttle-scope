@@ -17,14 +17,23 @@
  *     (= ラリー中は交互打ち)。
  *   - 既存 stroke タップで shot_type だけ修正可。
  *
- * 注: shot_type 18 分類フル対応は backend / 既存 UI と整合する必要があるが
- *     スマホでは chip が多すぎると誤タップ多発する。よく使う 8 種に絞り、
- *     「その他」で詳細を後付け可能にする。
+ * 注: shot_type 18 分類フル対応は backend / 既存 UI と整合する必要がある。
+ *     スマホでは chip が多すぎると誤タップ多発するため、よく使う 8 種を
+ *     上部に固定表示し、残り (全 18 種のうちの 10 種) は「その他」折り畳みで
+ *     展開表示する。誤タップ回避のためタッチターゲットは 44px 以上を維持。
+ *
+ *   - 固定 8 種: smash / clear / drop / net / push / drive / lift / cross
+ *     (既存の保存値をそのまま踏襲。ラベルは auto.Pass3ShotDetail.k1..k8)
+ *   - 折り畳み 10 種: short_service / long_service / defensive / slice /
+ *     around_head / cant_reach / flick / half_smash / block / other
+ *     (ShotType 正規値。ラベルは既存 shot_types.* を流用)
+ *     ※ other は「後で詳細入力」ボタンとして提供 (保存値 'other')
  */
 import { useMemo, useState } from 'react'
 import { AnnotateOverlay, ZoneCode } from './AnnotateOverlay'
 import { enqueue } from '@/utils/mobileAnnotateQueue'
 import { useTranslation } from 'react-i18next'
+import { MIcon } from '@/components/common/MIcon'
 
 // Build inside the component via useMemo so t() is bound to the current
 // i18next instance. Defining this at module scope crashes the minified
@@ -32,7 +41,15 @@ import { useTranslation } from 'react-i18next'
 // useTranslation() hook context).
 const COMMON_SHOT_KEYS = ['smash','clear','drop','net','push','drive','lift','cross'] as const
 
-type ShotKey = typeof COMMON_SHOT_KEYS[number]
+// 「その他」展開で表示する残りの球種 (ShotType 正規値)。other は別途
+// 「後で詳細入力」ボタンで扱うため、グリッドには含めない (= 9 種)。
+// 8(固定) + 9(グリッド) + 1(other ボタン) = 18 種フルカバー。
+const OTHER_SHOT_KEYS = [
+  'short_service','long_service','defensive','slice','around_head',
+  'cant_reach','flick','half_smash','block',
+] as const
+
+type ShotKey = typeof COMMON_SHOT_KEYS[number] | typeof OTHER_SHOT_KEYS[number]
 
 interface StrokeLite {
   id?: number | null
@@ -67,10 +84,23 @@ export function Pass3ShotDetail({
   onClose,
 }: Props) {
   const { t } = useTranslation()
+  // 固定 8 種: 既存の保存値を維持しつつラベルは k1..k8 を流用。
   const COMMON_SHOTS = useMemo(
     () => COMMON_SHOT_KEYS.map((key, idx) => ({ key, label: t(`auto.Pass3ShotDetail.k${idx + 1}`) })),
     [t],
   )
+  // 折り畳み 10 種: 正規 ShotType 値。ラベルは既存 shot_types.* を流用。
+  const OTHER_SHOTS = useMemo(
+    () => OTHER_SHOT_KEYS.map((key) => ({ key, label: t(`shot_types.${key}`) })),
+    [t],
+  )
+  // 一覧表示でラベルを引く用の統合マップ (固定 + 折り畳み)。
+  const labelForShot = useMemo(() => {
+    const map = new Map<string, string>()
+    COMMON_SHOTS.forEach((c) => map.set(c.key, c.label))
+    OTHER_SHOTS.forEach((c) => map.set(c.key, c.label))
+    return map
+  }, [COMMON_SHOTS, OTHER_SHOTS])
   const sorted = useMemo(
     () => [...strokes].sort((a, b) => a.stroke_num - b.stroke_num),
     [strokes],
@@ -141,12 +171,16 @@ export function Pass3ShotDetail({
     setEditingStrokeNum(null)
   }
 
+  // overlay プロンプト用に shot キーを表示ラベルへ解決 (other は専用ラベル)。
+  const shotLabel = (k: ShotKey | 'other'): string =>
+    k === 'other' ? t('auto.Pass3ShotDetail.other_later') : (labelForShot.get(k) ?? k)
+
   // --- 追加 wizard 中の overlay 出し分け ---
   if (add.phase === 'hitZone') {
     return (
       <AnnotateOverlay
-        prompt={`#${nextStrokeNum} (${add.shot}) — 打点を選択`}
-        primaryLabel="次へ"
+        prompt={t('auto.Pass3ShotDetail.prompt_hit_zone', { n: nextStrokeNum, shot: shotLabel(add.shot) })}
+        primaryLabel={t('auto.Pass3ShotDetail.next')}
         onCommit={(z) => setAdd({ phase: 'landZone', shot: add.shot, hit: z })}
         onCancel={() => setAdd({ phase: 'idle' })}
       />
@@ -155,8 +189,8 @@ export function Pass3ShotDetail({
   if (add.phase === 'landZone') {
     return (
       <AnnotateOverlay
-        prompt={`#${nextStrokeNum} (${add.shot}) — 着地点を選択`}
-        primaryLabel="保存"
+        prompt={t('auto.Pass3ShotDetail.prompt_land_zone', { n: nextStrokeNum, shot: shotLabel(add.shot) })}
+        primaryLabel={t('auto.Pass3ShotDetail.save')}
         onCommit={(z) => void commitShot(add.shot, add.hit, z)}
         onCancel={() => setAdd({ phase: 'idle' })}
       />
@@ -165,7 +199,9 @@ export function Pass3ShotDetail({
   if (add.phase === 'pickShot') {
     return (
       <ShotChipPicker
-        title={`#${nextStrokeNum} のショット種別を選択 (${nextPlayer === 'player_a' ? 'A' : 'B'})`}
+        title={t('auto.Pass3ShotDetail.pick_title', { n: nextStrokeNum, player: nextPlayer === 'player_a' ? 'A' : 'B' })}
+        commonShots={COMMON_SHOTS}
+        otherShots={OTHER_SHOTS}
         onPick={(k) => setAdd({ phase: 'hitZone', shot: k })}
         onCancel={() => setAdd({ phase: 'idle' })}
       />
@@ -174,7 +210,9 @@ export function Pass3ShotDetail({
   if (editingStrokeNum != null) {
     return (
       <ShotChipPicker
-        title={`#${editingStrokeNum} のショット種別を変更`}
+        title={t('auto.Pass3ShotDetail.edit_title', { n: editingStrokeNum })}
+        commonShots={COMMON_SHOTS}
+        otherShots={OTHER_SHOTS}
         onPick={(k) => void editShot(editingStrokeNum, k)}
         onCancel={() => setEditingStrokeNum(null)}
       />
@@ -219,9 +257,9 @@ export function Pass3ShotDetail({
               {s.player === 'player_a' ? 'A' : 'B'}
             </span>
             <span className="text-xs">
-              {COMMON_SHOTS.find((c) => c.key === s.shot_type)?.label
-                ?? (s.shot_type === '__final_pending' ? '(決定打: 未分類)'
-                : s.shot_type === 'serve' ? 'サーブ'
+              {labelForShot.get(s.shot_type)
+                ?? (s.shot_type === '__final_pending' ? t('auto.Pass3ShotDetail.final_unclassified')
+                : s.shot_type === 'serve' ? t('shot_categories.serve')
                 : s.shot_type)}
             </span>
             <div className="flex-1" />
@@ -249,41 +287,85 @@ export function Pass3ShotDetail({
 }
 
 
+interface ShotOption {
+  key: ShotKey
+  label: string
+}
+
 function ShotChipPicker({
   title,
+  commonShots,
+  otherShots,
   onPick,
   onCancel,
 }: {
   title: string
+  /** 上部に常時表示する固定 8 種 */
+  commonShots: ShotOption[]
+  /** 「その他」展開で表示する残り 10 種 (other ボタンは別枠) */
+  otherShots: ShotOption[]
   onPick: (key: ShotKey | 'other') => void
   onCancel: () => void
 }) {
   const { t } = useTranslation()
+  const [showOther, setShowOther] = useState(false)
   return (
     <div className="absolute inset-0 bg-black/95 flex flex-col">
       <div className="px-3 py-2 border-b border-gray-800 text-xs text-yellow-200 font-bold">
         {title}
       </div>
-      <div className="flex-1 p-3 grid grid-cols-2 gap-2 content-start">
-        {COMMON_SHOTS.map((c) => (
-          <button
-            key={c.key}
-            type="button"
-            onClick={() => onPick(c.key)}
-            className="px-3 py-3 rounded-lg bg-gray-800 hover:bg-gray-700 text-white text-sm font-medium"
-            style={{ minHeight: '52px' }}
-          >
-            {c.label}
-          </button>
-        ))}
+      <div className="flex-1 overflow-y-auto p-3 content-start">
+        {/* 固定 8 種: 誤タップ回避で 52px 高・2 カラム */}
+        <div className="grid grid-cols-2 gap-2">
+          {commonShots.map((c) => (
+            <button
+              key={c.key}
+              type="button"
+              onClick={() => onPick(c.key)}
+              className="px-3 py-3 rounded-lg bg-gray-800 hover:bg-gray-700 text-white text-sm font-medium"
+              style={{ minHeight: '52px' }}
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
+
+        {/* 「その他」折り畳みトグル */}
         <button
           type="button"
-          onClick={() => onPick('other')}
-          className="col-span-2 px-3 py-2 rounded-lg bg-gray-700 text-gray-200 text-xs"
+          onClick={() => setShowOther((v) => !v)}
+          aria-expanded={showOther}
+          className="mt-3 w-full flex items-center justify-center gap-1 px-3 py-2 rounded-lg bg-gray-700/60 hover:bg-gray-700 text-gray-200 text-xs"
           style={{ minHeight: '44px' }}
         >
-          {t('auto.Pass3ShotDetail.other_later')}
+          <span>{t('auto.Pass3ShotDetail.show_other')}</span>
+          <MIcon name={showOther ? 'expand_less' : 'expand_more'} size={18} />
         </button>
+
+        {showOther && (
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            {otherShots.map((c) => (
+              <button
+                key={c.key}
+                type="button"
+                onClick={() => onPick(c.key)}
+                className="px-3 py-3 rounded-lg bg-gray-800 hover:bg-gray-700 text-white text-sm font-medium"
+                style={{ minHeight: '48px' }}
+              >
+                {c.label}
+              </button>
+            ))}
+            {/* other は「後で詳細入力」として全幅で提供 (保存値 'other') */}
+            <button
+              type="button"
+              onClick={() => onPick('other')}
+              className="col-span-2 px-3 py-2 rounded-lg bg-gray-700 text-gray-200 text-xs"
+              style={{ minHeight: '44px' }}
+            >
+              {t('auto.Pass3ShotDetail.other_later')}
+            </button>
+          </div>
+        )}
       </div>
       <div className="px-3 py-2 border-t border-gray-800">
         <button
