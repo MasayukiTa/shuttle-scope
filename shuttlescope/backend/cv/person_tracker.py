@@ -221,6 +221,15 @@ _COURT_TO_LABEL: dict[int, str] = {
 # 「コートサイドが入れ替わる」= front/back が反転するため。
 _SIDE_SWAP_MAP: dict[int, int] = {0: 2, 1: 3, 2: 0, 3: 1}
 
+# court_id → ロスター役割 (player_roster / Stroke.player と同じ語彙)。
+# _COURT_TO_LABEL (A/B/C/D) と整合: A=player_a, B=player_b, C=partner_a, D=partner_b。
+# Phase 4 (#2): 役割 → 登録 Player.uuid はロスターから一意。court_id → 役割 の対応自体は
+# court 位置ベースのヒューリスティックで doubles の前後ローテーション/serve では曖昧さを含む
+# (player_label と同じ近似)。曖昧な場合でも uuid は player_label と同じ確度しか主張しない。
+_COURT_TO_ROLE_DOUBLES: dict[int, str] = {0: "player_a", 1: "player_b", 2: "partner_a", 3: "partner_b"}
+# singles は 2 人: 左列 (FL/BL) = player_a、右列 (FR/BR) = player_b。
+_COURT_TO_ROLE_SINGLES: dict[int, str] = {0: "player_a", 1: "player_b", 2: "player_a", 3: "player_b"}
+
 
 def court_id_to_player_label(court_id: Optional[int]) -> Optional[str]:
     """court_id (0..3) → 簡易 player_label。コート外 (None) は None。"""
@@ -399,6 +408,22 @@ class PersonTracker:
         self._adjudicator: Optional[_QuadrantAdjudicator] = (
             _QuadrantAdjudicator(resolved_corners) if resolved_corners else None
         )
+        # Phase 4 (#2): court_id → 登録 Player.uuid。match_id があればロスターを引き、
+        # 役割マップ (singles/doubles) 経由で構築する。DB 不在 / 未登録役割は空のままで、
+        # player_uuid は None にフォールバック (挙動非破壊)。
+        self._court_to_uuid: dict[int, str] = {}
+        if match_id is not None:
+            try:
+                from backend.utils.player_roster import load_match_roster_uuids_standalone
+                roster = load_match_roster_uuids_standalone(match_id)
+                role_map = (
+                    _COURT_TO_ROLE_DOUBLES if match_type == "doubles" else _COURT_TO_ROLE_SINGLES
+                )
+                self._court_to_uuid = {
+                    cid: roster[role] for cid, role in role_map.items() if role in roster
+                }
+            except Exception:
+                logger.warning("PersonTracker: roster uuid load failed (match_id=%s)", match_id)
         self._model_path = model_path or DEFAULT_MODEL_PATH
         self._device = device
         # Phase 3.5: 検出器は backend.yolo.inference の singleton、追跡器は scratch ByteTracker
@@ -1118,11 +1143,14 @@ class PersonTracker:
             return t
         effective_cid = _SIDE_SWAP_MAP[t.court_id] if self._side_swapped else t.court_id
         label = court_id_to_player_label(effective_cid)
+        # Phase 4 (#2): side-swap 補正後の court_id から登録 Player.uuid を解決。
+        # ロスター未ロード / 未登録役割なら None (= player_label と同じ確度に留める)。
+        player_uuid = self._court_to_uuid.get(effective_cid)
         return TrackedPerson(
             bbox=t.bbox,
             track_id=t.track_id,
             court_id=effective_cid,
-            player_uuid=None,
+            player_uuid=player_uuid,
             confidence=t.confidence,
             is_recovered=t.is_recovered,
             player_label=label,

@@ -597,6 +597,22 @@ _YOLO_PARTIAL_SAVE_EVERY = 100  # 進捗 1% 単位で UI に反映させるた�
 _YOLO_TRACK_REAPPLY_EVERY = 1
 
 
+def _enrich_identity_track_uuids(db, match_id: int, tracked: list[dict]) -> None:
+    """Phase 4 (#2): identity-track の各 player に登録 Player.uuid を付与する。
+
+    player_key (アナリスト確定の役割) → Player.uuid はロスターから一意。'other' / 未登録は
+    None。tracked を in-place で書き換える。失敗しても追跡結果は壊さない (None フォールバック)。
+    """
+    try:
+        from backend.utils.player_roster import load_match_roster_uuids, resolve_player_uuid
+        roster = load_match_roster_uuids(db, match_id)
+        for f in tracked:
+            for p in f.get("players", []):
+                p["player_uuid"] = resolve_player_uuid(roster, p.get("player_key"))
+    except Exception:
+        logger.warning("identity_track: player_uuid enrich failed (match=%s)", match_id)
+
+
 def _reapply_identity_track(db, match_id: int, frames_data: list[dict]) -> None:
     """シード割り当てが保存済みなら識別トラックを現在のフレームセットで再生成する。
 
@@ -632,6 +648,8 @@ def _reapply_identity_track(db, match_id: int, frames_data: list[dict]) -> None:
         )
         if not re_tracked:
             return
+        # Phase 4 (#2): 再生成トラックにも登録 Player.uuid を同梱してから永続化。
+        _enrich_identity_track_uuids(db, match_id, re_tracked)
         re_track_json = json.dumps(re_tracked, ensure_ascii=False)
         existing_track = (
             db.query(MatchCVArtifact)
@@ -1178,6 +1196,9 @@ def assign_and_track(
         {k: len(v) for k, v in extra_galleries.items()},
     )
     tracked = _track_identities(yolo_frames, body.seed_timestamp_sec, assignments, extra_galleries, court_roi_dump)
+    # Phase 4 (#2): アナリスト確定の player_key を登録 Player.uuid に解決して各 player に同梱。
+    # 役割 → uuid はロスターから一意 ('other'/未登録は None)。保存前に付与して track に永続化。
+    _enrich_identity_track_uuids(db, match_id, tracked)
     logger.info(
         "assign_and_track: match=%d tracked=%d",
         match_id, len(tracked),

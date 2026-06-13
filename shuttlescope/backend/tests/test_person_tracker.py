@@ -514,6 +514,58 @@ class TestSwapGuard:
         assert t._swap_centroid_hist == {}
 
 
+# ── Phase 4 (#2) player_uuid binding ───────────────────────────────────
+class TestPlayerUuidBinding:
+    """court_id → 登録 Player.uuid 束ね (_attach_player_label のチョークポイント)。"""
+
+    def _mk(self, court_id):
+        return TrackedPerson(
+            bbox=(0.0, 0.0, 10.0, 20.0), track_id=1, court_id=court_id,
+            player_uuid=None, confidence=0.9,
+        )
+
+    def test_uuid_bound_from_court_map_doubles(self):
+        t = PersonTracker(match_type="doubles", court_corners=None)
+        t._court_to_uuid = {0: "ua", 1: "ub", 2: "upa", 3: "upb"}
+        out = t._attach_player_label(self._mk(2))
+        assert out.court_id == 2
+        assert out.player_label == "PlayerC"   # 2 = BL = PlayerC = partner_a
+        assert out.player_uuid == "upa"
+
+    def test_uuid_follows_side_swap(self):
+        t = PersonTracker(match_type="doubles", court_corners=None)
+        t._court_to_uuid = {0: "ua", 1: "ub", 2: "upa", 3: "upb"}
+        t._side_swapped = True
+        # side swap: court 0 → effective 2 → PlayerC → upa (label と uuid が一致して反転)
+        out = t._attach_player_label(self._mk(0))
+        assert out.court_id == 2
+        assert out.player_label == "PlayerC"
+        assert out.player_uuid == "upa"
+
+    def test_uuid_none_when_no_roster(self):
+        # match_id 無し = _court_to_uuid 空 → player_uuid は None (挙動非破壊)
+        t = PersonTracker(match_type="doubles", court_corners=None)
+        assert t._court_to_uuid == {}
+        out = t._attach_player_label(self._mk(0))
+        assert out.player_label == "PlayerA"
+        assert out.player_uuid is None
+
+    def test_uuid_none_when_role_unregistered(self):
+        # singles などで partner uuid が無い court は None
+        t = PersonTracker(match_type="doubles", court_corners=None)
+        t._court_to_uuid = {0: "ua", 1: "ub"}  # 2,3 未登録
+        assert t._attach_player_label(self._mk(0)).player_uuid == "ua"
+        assert t._attach_player_label(self._mk(3)).player_uuid is None
+
+    def test_court_none_returns_unchanged(self):
+        t = PersonTracker(match_type="doubles", court_corners=None)
+        t._court_to_uuid = {0: "ua"}
+        tp = self._mk(None)
+        out = t._attach_player_label(tp)
+        assert out.player_uuid is None
+        assert out.player_label is None
+
+
 # ── ByteTracker 単体テスト ─────────────────────────────────────────────
 class TestByteTrackerCore:
     def test_iou_matrix_basic(self):
