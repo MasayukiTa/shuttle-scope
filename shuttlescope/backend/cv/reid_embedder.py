@@ -34,6 +34,14 @@ _INPUT_H = 256
 _INPUT_W = 128
 _FEATURE_DIM = 512
 
+# 固定推論バッチサイズ。embed_batch は入力を常にこの N へ pad/chunk して shape を
+# 一定化し、CUDA EP が batch 次元の変動ごとに数秒〜十数秒かけて cuDNN/カーネル探索を
+# 再実行する (track 数が増減する frame で毎回 ~12s 停止する) 問題を回避する。env で上書き可。
+try:
+    _REID_BATCH = max(1, int(os.environ.get("SS_REID_BATCH", "32")))
+except (TypeError, ValueError):
+    _REID_BATCH = 32
+
 
 class ReIDEmbedder:
     """OSNet ONNX を使った batch ReID embedder。
@@ -141,14 +149,29 @@ class ReIDEmbedder:
         if self._sess is None or self._input_name is None:
             return np.zeros((n, _FEATURE_DIM), dtype=np.float32)
 
-        batch = self._preprocess(crops)
+        batch = self._preprocess(crops)  # (n, 3, H, W)
+        # 固定バッチサイズで chunk 推論する (動的 N を session に渡さない)。
+        # 入力を常に (_REID_BATCH, 3, H, W) に pad/分割すると ONNX Runtime/CUDA EP が
+        # 見る shape が一定になり、初回 1 回だけコンパイルして以降は常時高速 (~20ms) になる。
+        # OSNet は batch 独立 (推論時 BatchNorm は running 統計) なので pad 行 (zeros) を
+        # 足して valid 分のみ slice しても valid 出力は不変。2026-06-13 prod 実測で
+        # 動的 N の ~12s/frame 停止が解消することを確認済み。
+        bs = _REID_BATCH
+        outs: list[np.ndarray] = []
         with self._lock:
-            try:
-                out = self._sess.run(None, {self._input_name: batch})[0]
-            except Exception as exc:
-                logger.error("ReIDEmbedder inference failed: %s", exc)
-                return np.zeros((n, _FEATURE_DIM), dtype=np.float32)
-        feats = np.asarray(out, dtype=np.float32).reshape(n, -1)
+            for start in range(0, n, bs):
+                chunk = batch[start:start + bs]
+                m = chunk.shape[0]
+                if m < bs:
+                    pad = np.zeros((bs - m, 3, _INPUT_H, _INPUT_W), dtype=chunk.dtype)
+                    chunk = np.concatenate([chunk, pad], axis=0)
+                try:
+                    out = self._sess.run(None, {self._input_name: chunk})[0]
+                except Exception as exc:
+                    logger.error("ReIDEmbedder inference failed: %s", exc)
+                    return np.zeros((n, _FEATURE_DIM), dtype=np.float32)
+                outs.append(np.asarray(out, dtype=np.float32).reshape(bs, -1)[:m])
+        feats = np.concatenate(outs, axis=0)
         # L2 正規化
         norms = np.linalg.norm(feats, axis=1, keepdims=True)
         norms = np.where(norms > 1e-9, norms, 1.0)
