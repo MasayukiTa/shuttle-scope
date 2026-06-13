@@ -437,6 +437,13 @@ class PersonTracker:
         # ByteTrack raw track_id → 出力 track_id の alias map。
         # crossover を検知したら 2 つの raw id を相互に張り替える。
         self._swap_alias: dict[int, int] = {}
+        # ── Swap Guard 計測フック (追跡ロジックには影響しない純カウンタ) ──
+        # _swap_detected: swap 条件を満たす近接ペアを検知した回数 (発火判定の数)。
+        # _swap_applied:  実際に alias 張り替え (_swap_two) を行った回数。
+        # 両者は通常一致するが、計測の意味として「検知」と「適用」を分けて持つ。
+        # OFF 時 (_swap_guard_enabled=False) は _apply_swap_guard が呼ばれないため 0 のまま。
+        self._swap_detected: int = 0
+        self._swap_applied: int = 0
 
     @staticmethod
     def _load_corners_from_db(
@@ -1197,7 +1204,11 @@ class PersonTracker:
                 # swap 後: a の観測 ↔ b の予測、b ↔ a
                 err_swap = dist(ca, pb) + dist(cb, pa)
                 if err_swap < err_cur * (1.0 - self._swap_guard_margin):
+                    # 計測フック: 検知 (条件成立) と適用 (alias 張り替え) を計上。
+                    # 追跡挙動には一切影響しないカウンタのみ。
+                    self._swap_detected += 1
                     self._swap_two(a, b)
+                    self._swap_applied += 1
                     logger.debug(
                         "swap guard: out_id %d <-> %d 補正 "
                         "(err_cur=%.1f err_swap=%.1f)",
@@ -1255,6 +1266,19 @@ class PersonTracker:
             self._swap_centroid_hist[oid_a] = hb
         else:
             self._swap_centroid_hist.pop(oid_a, None)
+
+    def swap_guard_stats(self) -> dict[str, int]:
+        """Swap Guard の計測フック値を返す (評価ツール用)。
+
+        - swap_detected: swap 条件成立を検知した累積回数
+        - swap_applied:  実際に alias 補正を適用した累積回数
+        OFF (既定) では両方 0。reset_for_new_set では意図的にリセットしないため、
+        動画全体 (複数 set 跨ぎ) の累積値となる。
+        """
+        return {
+            "swap_detected": int(self._swap_detected),
+            "swap_applied": int(self._swap_applied),
+        }
 
     def reset_for_new_set(self, set_idx: int) -> None:
         """セット間の side swap 対応。
