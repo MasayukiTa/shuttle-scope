@@ -411,21 +411,39 @@ function PageAccessRoute({ pageKey, children }: { pageKey: string; children: Rea
 }
 
 /**
- * `/annotator/:matchId` を viewport 幅で振り分けるラッパ。
- * 768px 未満 (= ほぼスマホ) なら MobileAnnotatePage を内部 redirect で開く。
- * ブラウザ width を監視するので、横向き iPad などで分岐が変わっても追従する。
+ * `/annotator/:matchId` を端末種別で振り分けるラッパ。
+ * スマホなら MobileAnnotatePage へ内部 redirect。
+ *
+ * 旧実装は `window.innerWidth < 768` で判定していたが、MobileAnnotatePage は
+ * 横向き必須 (LandscapeGuard) なのに対し、最近のスマホは横向きにすると
+ * innerWidth が長辺 (iPhone14=844, Pixel=915 …) となり 768 を超えるため、
+ * 「縦→モバイル誘導→横にする→768超で AnnotatorPage に戻される」という
+ * ループでほとんどのスマホが専用ページに到達できなかった。
+ * → 向きに依存しない「画面の物理短辺 < 768」かつ「タッチ端末 (pointer:coarse)」
+ *   で判定し、横向きでもスマホは MobileAnnotatePage に留まるようにする。
  */
+function detectPhone(): boolean {
+  if (typeof window === 'undefined') return false
+  const sw = window.screen?.width ?? window.innerWidth
+  const sh = window.screen?.height ?? window.innerHeight
+  const shortEdge = Math.min(sw, sh)            // 向きに依存しない短辺
+  const coarse = window.matchMedia?.('(pointer: coarse)')?.matches ?? false
+  return shortEdge < 768 && coarse
+}
+
 function AnnotatorOrMobileAnnotate() {
   const { matchId } = useParams<{ matchId: string }>()
-  const [isSmall, setIsSmall] = useState<boolean>(() =>
-    typeof window !== 'undefined' ? window.innerWidth < 768 : false,
-  )
+  const [isPhone, setIsPhone] = useState<boolean>(() => detectPhone())
   useEffect(() => {
-    const onResize = () => setIsSmall(window.innerWidth < 768)
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
+    const onChange = () => setIsPhone(detectPhone())
+    window.addEventListener('resize', onChange)
+    window.addEventListener('orientationchange', onChange)
+    return () => {
+      window.removeEventListener('resize', onChange)
+      window.removeEventListener('orientationchange', onChange)
+    }
   }, [])
-  if (isSmall && matchId) {
+  if (isPhone && matchId) {
     return <Navigate to={`/m/annotate/${matchId}`} replace />
   }
   return <AnnotatorPage />
