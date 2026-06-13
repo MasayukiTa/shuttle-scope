@@ -125,6 +125,20 @@ def build_candidates(
             court_adapter = CourtAdapter.for_match(match_id)
         except Exception:
             court_adapter = None
+
+    # A0: シャトル検出 信頼度の正直化（quality-gate）。
+    # raw confidence は過大申告しがちなので、peak鋭さ + 動き整合で減衰させ、
+    # 着地ゾーン/打者推定が gated_conf を見るようにする。
+    # SS_SHUTTLE_QUALITY_GATE=0 で無効化すると従来挙動（無改変）に戻る。
+    gate_active = False
+    try:
+        from backend.cv.shuttle_quality_gate import gate_enabled, gate_frames
+        if gate_enabled() and tracknet_frames:
+            tracknet_frames = gate_frames(tracknet_frames)
+            gate_active = True
+    except Exception as e:  # gate は best-effort: 失敗しても従来挙動で継続
+        logger.warning("shuttle quality-gate skip: %s", e)
+
     # タイムスタンプ索引を事前構築
     tracknet_ts = [f.get("timestamp_sec", 0.0) for f in tracknet_frames]
     yolo_ts     = [f.get("timestamp_sec", 0.0) for f in yolo_frames]
@@ -222,7 +236,11 @@ def build_candidates(
             "cv_confidence_summary": {
                 "land_zone_fill_rate": round(lz_fill, 3),
                 "hitter_fill_rate":    round(h_fill, 3),
+                # A0: avg_confidence は gated_conf 由来の実効値（gate ON 時）。
+                # quality_gated フラグで「生の検出率%ではなく減衰後の実効値」だと
+                # UI が判別できるようにする（誤解を招く生%との取り違え防止）。
                 "avg_confidence":      round(avg_conf, 3),
+                "quality_gated":       gate_active,
             },
             "front_back_role_signal": fb_role,
             "review_reason_codes":    reason_codes,

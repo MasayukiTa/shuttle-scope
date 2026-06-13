@@ -225,6 +225,37 @@ class ApplyRequest(BaseModel):
     mode: str = "auto_filled"  # "auto_filled" | "suggested" | "all"
     fields: list[str] = ["land_zone", "hitter"]  # 適用するフィールド
 
+    # A1-2: レビュー一括適用フィルタ（すべて任意。未指定時は従来挙動を完全維持）
+    min_confidence: Optional[float] = None      # この値未満の候補は適用しない
+    max_confidence: Optional[float] = None      # この値超の候補は適用しない
+    exclude_reason_codes: Optional[list[str]] = None  # この reason_code を持つ候補を除外
+    rally_ids: Optional[list[int]] = None       # 対象ラリーを限定
+
+
+def _field_passes_filters(
+    cand: Optional[dict],
+    body: ApplyRequest,
+    apply_modes: set[str],
+) -> bool:
+    """候補フィールド（land_zone / hitter）が apply 条件 + A1-2 フィルタを満たすか。"""
+    if not cand:
+        return False
+    if cand.get("decision_mode") not in apply_modes:
+        return False
+
+    conf = cand.get("confidence_score")
+    if body.min_confidence is not None and (conf is None or conf < body.min_confidence):
+        return False
+    if body.max_confidence is not None and (conf is None or conf > body.max_confidence):
+        return False
+
+    if body.exclude_reason_codes:
+        codes = set(cand.get("reason_codes") or [])
+        if codes & set(body.exclude_reason_codes):
+            return False
+
+    return True
+
 
 @router.post("/cv-candidates/apply/{match_id}")
 def apply_cv_candidates(
@@ -240,6 +271,9 @@ def apply_cv_candidates(
     - mode="auto_filled": decision_mode=="auto_filled" の候補のみ適用
     - mode="suggested": auto_filled + suggested を適用
     - mode="all": 全候補を適用（確認なし）
+
+    A1-2: 任意の絞り込みフィルタ（min/max_confidence, exclude_reason_codes,
+    fields, rally_ids）と併用可能。フィルタ未指定時の挙動は従来どおり。
     """
     artifact = _latest_artifact(db, match_id, ARTIFACT_TYPE_CANDIDATES)
     if not artifact or not artifact.data:
@@ -257,11 +291,25 @@ def apply_cv_candidates(
     if body.mode == "all":
         apply_modes.add("review_required")
 
+    rally_filter: Optional[set[int]] = (
+        set(body.rally_ids) if body.rally_ids else None
+    )
+
     updated_count = 0
     land_zone_count = 0
     hitter_count = 0
+    skipped_count = 0  # フィルタや条件で適用しなかったフィールド数
 
-    for rally_cand in candidates.get("rallies", {}).values():
+    for rally_id_str, rally_cand in candidates.get("rallies", {}).items():
+        # A1-2: rally_ids フィルタ
+        if rally_filter is not None:
+            try:
+                rid = int(rally_id_str)
+            except (TypeError, ValueError):
+                rid = rally_cand.get("rally_id")
+            if rid not in rally_filter:
+                continue
+
         for sc in rally_cand.get("strokes", []):
             stroke_id = sc.get("stroke_id")
             if not stroke_id:
@@ -276,21 +324,25 @@ def apply_cv_candidates(
             # 着地ゾーン書き戻し
             if "land_zone" in body.fields:
                 lz = sc.get("land_zone")
-                if lz and lz.get("decision_mode") in apply_modes:
+                if _field_passes_filters(lz, body, apply_modes):
                     if stroke.land_zone != lz["value"]:
                         stroke.land_zone = lz["value"]
                         land_zone_count += 1
                         changed = True
+                elif lz:
+                    skipped_count += 1
 
             # 打者書き戻し
             if "hitter" in body.fields:
                 ht = sc.get("hitter")
-                if ht and ht.get("decision_mode") in apply_modes:
+                if _field_passes_filters(ht, body, apply_modes):
                     # player フィールドに書き戻す
                     if stroke.player != ht["value"]:
                         stroke.player = ht["value"]
                         hitter_count += 1
                         changed = True
+                elif ht:
+                    skipped_count += 1
 
             if changed:
                 stroke.source_method = "assisted"
@@ -304,8 +356,15 @@ def apply_cv_candidates(
             "updated_strokes": updated_count,
             "land_zone_count": land_zone_count,
             "hitter_count":    hitter_count,
+            "skipped_count":   skipped_count,
             "applied_by_mode": body.mode,
             "applied_fields":  list(body.fields),
+            "filters": {
+                "min_confidence":       body.min_confidence,
+                "max_confidence":       body.max_confidence,
+                "exclude_reason_codes": body.exclude_reason_codes or [],
+                "rally_ids":            body.rally_ids or [],
+            },
         },
     }
 
