@@ -12,6 +12,17 @@ interface RecommendationRankingProps {
   playerId: number
 }
 
+// player ロール表示時の fail-closed フィルタ用 denylist。
+// 固定文字列の置換 (改善余地→伸びしろ 等) は未知の弱点語を素通りさせるため、
+// 置換後のテキストにこれらの語が残っていた項目自体を非表示にする
+// (製品ルール: player に直接的な弱点表現を見せない)。i18n 不要のコンポーネント定数。
+const PLAYER_WEAKNESS_DENYLIST = ['弱点', '苦手', '劣って', '負けパターン', '欠点']
+
+/** player 表示用テキストに弱点語が残っていれば true（= その項目は表示しない）。 */
+function hasWeaknessLanguage(...texts: string[]): boolean {
+  return texts.some((text) => PLAYER_WEAKNESS_DENYLIST.some((w) => text.includes(w)))
+}
+
 interface RankItem {
   rank: number
   category: string
@@ -42,6 +53,12 @@ function RankCard({ item, isPlayer }: { item: RankItem; isPlayer: boolean }) {
   const displayBody = isPlayer
     ? item.body.replace('勝率', '活躍率').replace('弱点', '伸びしろ')
     : item.body
+
+  // fail-closed: player 表示時、固定置換でも消えなかった弱点語が残っていたら
+  // この項目自体を描画しない (素通り防止)。coach/analyst には影響しない。
+  if (isPlayer && hasWeaknessLanguage(displayTitle, displayBody)) {
+    return null
+  }
 
   // Design Language v1.2 §12.4: rank 1 は title weight と badge 色で強調する。
   // **左罫線で色を立てるデザインは禁止** (詐欺サイト感が出るため)。

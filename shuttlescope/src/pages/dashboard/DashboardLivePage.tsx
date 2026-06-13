@@ -178,8 +178,10 @@ export function DashboardLivePage({ playerId, matches }: Props) {
             </div>
           </div>
 
-          {/* コーチ向け一言カード（試合選択後に常時表示） */}
-          {flashMatchId && (
+          {/* コーチ向け一言カード（試合選択後に表示）。
+              製品ルール: player ロールには弱点表現・コーチ向け指示を見せない。
+              バックエンド /api/review/quick_summary も player を 403 でゲート済み。 */}
+          {flashMatchId && isCoachish && (
             <QuickSummaryCard
               matchId={flashMatchId}
               asOfSet={flashSet}

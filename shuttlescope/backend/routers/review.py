@@ -11,11 +11,12 @@ D — セット間・試合中支援:
 from __future__ import annotations
 
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import Match, GameSet, Rally, Stroke
+from backend.utils.auth import get_auth
 
 router = APIRouter()
 
@@ -123,6 +124,7 @@ _FORCED_ERROR_THRESHOLD = 3
 
 @router.get("/review/quick_summary")
 def get_quick_summary(
+    request: Request,
     match_id: int,
     as_of_set: int = 1,
     as_of_rally: Optional[int] = None,   # None = セット全体
@@ -140,6 +142,17 @@ def get_quick_summary(
           "total_rallies": int
         }
     """
+    # 製品ルール (CLAUDE.md "Non-Negotiable Product Rules"): player ロールに
+    # 直接的な弱点表現・コーチ向け指示を見せてはならない。このサマリーは
+    # 「連続失点」「タイムアウトを検討」「強制エラー多発」等のコーチ向け
+    # 戦術指示を返すため、player ロールには 403 でゲートする。
+    ctx = get_auth(request)
+    if ctx.is_player:
+        raise HTTPException(
+            status_code=403,
+            detail="このサマリーはコーチ・アナリスト向けです",
+        )
+
     match = db.get(Match, match_id)
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
