@@ -153,6 +153,58 @@ export function Pass3ShotDetail({
     setAdd({ phase: 'idle' })
   }
 
+  /**
+   * sentinel(9999) の最終打点 stroke を「中間 stroke の最大番号 + 1」へ再採番する (5b 対応)。
+   *
+   * Pass2 は最終打点を stroke_num=9999 の sentinel として作る (Pass3 で中間 stroke を
+   * 挿入する余地を空けるため)。中間 stroke 挿入後、この sentinel を詰めて連番化しないと
+   * stroke_num に 9999 の巨大ギャップが残り、rally 内のストローク順序が壊れる。
+   * backend には renumber 処理が無い (POST/PUT は stroke_num を verbatim 保存) ため、
+   * フロントで Pass3 完了時に明示的に補正する。
+   *
+   * 条件:
+   *   - sentinel が存在し、サーバ id を持つ (PUT には id が必須。未 flush の pending は
+   *     id 未確定なので renumber できない → スキップ。次回 Pass3 を開いた際に id が
+   *     付いた状態で再実行される)。
+   *   - sentinel が未採番 (stroke_num >= 9000)。既に詰め済みなら二重処理しない。
+   *   - 目標番号が現在値と異なる。
+   *
+   * 併せて rally.rally_length を実数 (= 最終 stroke_num) に更新する。
+   * stroke_type / データモデルは変更しない (stroke_num のみ補正)。
+   */
+  const renumberSentinelAndFinalize = async () => {
+    if (!finalSentinel) return
+    // サーバ id が無い (= まだ flush 前の pending) 場合は renumber 不可。
+    if (!finalSentinel.id) return
+    // 既に詰め済み (< 9000) なら何もしない。
+    if (finalSentinel.stroke_num < 9000) return
+    // 中間 stroke の最大番号 + 1。中間が無ければ 1 (= serve のみ → final が 1 番)。
+    const maxIntermediate = intermediates.length > 0
+      ? intermediates[intermediates.length - 1].stroke_num
+      : 0
+    const targetNum = maxIntermediate + 1
+    if (targetNum === finalSentinel.stroke_num) return
+    // sentinel を targetNum へ再採番 (PUT は full body 要求)。
+    await enqueue('PUT /api/strokes/:id', {
+      stroke_num: targetNum,
+      player: finalSentinel.player,
+      shot_type: finalSentinel.shot_type,
+      hit_zone: finalSentinel.hit_zone,
+      land_zone: finalSentinel.land_zone,
+    }, { id: finalSentinel.id })
+    onStrokeUpdated({ ...finalSentinel, stroke_num: targetNum })
+    // rally_length を実数 (= 最終 stroke の番号 = targetNum) に更新。
+    await enqueue('PUT /api/rallies/:id', { rally_length: targetNum }, { id: rally.id })
+  }
+
+  const handleClose = async () => {
+    try {
+      await renumberSentinelAndFinalize()
+    } finally {
+      onClose()
+    }
+  }
+
   const editShot = async (strokeNum: number, shotKey: ShotKey | 'other') => {
     const s = strokes.find((x) => x.stroke_num === strokeNum)
     if (!s || !s.id) {
@@ -230,7 +282,7 @@ export function Pass3ShotDetail({
         <div className="text-gray-400">{t('auto.Pass3ShotDetail.stroke_count', { n: sorted.length })}</div>
         <button
           type="button"
-          onClick={onClose}
+          onClick={() => void handleClose()}
           className="px-2 py-1 rounded bg-gray-700 text-white text-[10px]"
         >
           {t('auto.Pass3ShotDetail.close')}
