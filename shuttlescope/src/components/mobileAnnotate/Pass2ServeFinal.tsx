@@ -23,19 +23,13 @@
  *   - キャンセル: その段階の入力だけ破棄 (累積した step は維持)、または
  *     最初に戻る選択肢
  */
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AnnotateOverlay, ZoneCode } from './AnnotateOverlay'
 import { enqueue } from '@/utils/mobileAnnotateQueue'
 
 type Step = 'serve_hit' | 'serve_land' | 'final_hit' | 'final_land'
 const STEP_ORDER: Step[] = ['serve_hit', 'serve_land', 'final_hit', 'final_land']
-const STEP_PROMPT: Record<Step, string> = {
-  serve_hit: 'サーブ打点を選択',
-  serve_land: 'サーブ着地を選択',
-  final_hit: '決まった一打の打点を選択',
-  final_land: '決まった一打の着地を選択',
-}
 
 interface RallyTarget {
   id: number
@@ -57,6 +51,13 @@ export function Pass2ServeFinal({ rally, onCompleted, onCancel }: Props) {
   const [zones, setZones] = useState<Partial<Record<Step, ZoneCode>>>({})
   const [submitting, setSubmitting] = useState(false)
   const step = STEP_ORDER[stepIdx]
+  // 各 step のプロンプト文。t() はコンポーネント内のみで参照する規約。
+  const STEP_PROMPT = useMemo<Record<Step, string>>(() => ({
+    serve_hit: t('auto.Pass2ServeFinal.prompt_serve_hit'),
+    serve_land: t('auto.Pass2ServeFinal.prompt_serve_land'),
+    final_hit: t('auto.Pass2ServeFinal.prompt_final_hit'),
+    final_land: t('auto.Pass2ServeFinal.prompt_final_land'),
+  }), [t])
 
   const handleCommit = async (zone: ZoneCode) => {
     const next = { ...zones, [step]: zone }
@@ -126,8 +127,8 @@ export function Pass2ServeFinal({ rally, onCompleted, onCancel }: Props) {
       <div className="relative flex-1" data-tutorial="mobileAnnotate.zonePicker">
         <AnnotateOverlay
           prompt={STEP_PROMPT[step]}
-          primaryLabel={stepIdx === STEP_ORDER.length - 1 ? '送信' : '次へ'}
-          cancelLabel="やり直す"
+          primaryLabel={stepIdx === STEP_ORDER.length - 1 ? t('auto.Pass2ServeFinal.primary_submit') : t('auto.Pass2ServeFinal.primary_next')}
+          cancelLabel={t('auto.Pass2ServeFinal.cancel_retry')}
           onCommit={(z) => {
             if (submitting) return
             void handleCommit(z)

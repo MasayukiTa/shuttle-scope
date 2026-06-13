@@ -13,7 +13,7 @@
  *   - POST /api/matches/{id}/court_calibration  (失敗しても localStorage は保存)
  *   - localStorage `court-calib-{matchId}` (desktop と共有)
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { apiPost } from '@/api/client'
 import { MIcon } from '@/components/common/MIcon'
 import { useAutoTutorial } from '@/components/tutorial/useTutorial'
@@ -31,12 +31,19 @@ interface Props {
   snapshot?: string | null             // ルーペ表示用 dataURL (動画 frame)
 }
 
-// 順番ラベル (TL, TR, BR, BL, NL, NR)
-const STEP_LABELS = ['TL 左上', 'TR 右上', 'BR 右下', 'BL 左下', 'NL ネット左', 'NR ネット右']
 const HANDLE_R = 18  // タッチ判定半径 (px)
 
 export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, onClose, onSaved, snapshot }: Props) {
   const { t } = useTranslation()
+  // 順番ラベル (TL, TR, BR, BL, NL, NR)。t() はコンポーネント内のみで参照する規約。
+  const STEP_LABELS = useMemo(() => [
+    t('auto.MobileCourtCalib.step_tl'),
+    t('auto.MobileCourtCalib.step_tr'),
+    t('auto.MobileCourtCalib.step_br'),
+    t('auto.MobileCourtCalib.step_bl'),
+    t('auto.MobileCourtCalib.step_nl'),
+    t('auto.MobileCourtCalib.step_nr'),
+  ], [t])
   // 初回キャリブ起動時にチュートリアルを自動再生 (指ルーペ操作・点位置の解説)
   useAutoTutorial('mobile_court_calibration')
   // 既存 6 点があれば初期表示、なければ空配列

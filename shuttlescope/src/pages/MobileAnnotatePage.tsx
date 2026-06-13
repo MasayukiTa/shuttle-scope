@@ -82,6 +82,39 @@ interface SetInfo {
 
 export type AnnotatePass = 'rally' | 'serve_final' | 'detail'
 
+// 多段レベル: 入力者が「どこまで作るか」を選ぶ。データモデルは不変で、
+// どの Pass タブを表示するかの表示制御のみに使う (= バックエンド変更不要)。
+//   1 = ラリーのみ (Pass1)
+//   2 = +サーブ・最終打点 (Pass1,2)
+//   3 = +全ストローク (Pass1,2,3)
+export type AnnotateLevel = 1 | 2 | 3
+
+// level ごとに表示する Pass の集合 (順序は Pass の自然順)。
+const PASSES_FOR_LEVEL: Record<AnnotateLevel, AnnotatePass[]> = {
+  1: ['rally'],
+  2: ['rally', 'serve_final'],
+  3: ['rally', 'serve_final', 'detail'],
+}
+
+const LEVEL_STORAGE_PREFIX = 'ss.mobileAnnotate.level.'
+
+function loadLevel(matchId: string | undefined): AnnotateLevel {
+  if (!matchId) return 1
+  try {
+    const raw = localStorage.getItem(`${LEVEL_STORAGE_PREFIX}${matchId}`)
+    const n = raw ? Number(raw) : 1
+    if (n === 1 || n === 2 || n === 3) return n
+  } catch { /* ignore */ }
+  return 1 // 既定 Lv1 (最軽量 = 最初の体験を軽く)
+}
+
+function saveLevel(matchId: string | undefined, level: AnnotateLevel): void {
+  if (!matchId) return
+  try {
+    localStorage.setItem(`${LEVEL_STORAGE_PREFIX}${matchId}`, String(level))
+  } catch { /* ignore */ }
+}
+
 const PASS_LABELS: Record<AnnotatePass, string> = {
   rally: 'Pass 1: 得点',
   serve_final: 'Pass 2: サーブ・決定打',
@@ -159,6 +192,17 @@ export function MobileAnnotatePage() {
   // 初回 mount でモバイルアノテーションのチュートリアル自動起動 (未完なら)
   useAutoTutorial('mobile_annotate_pass')
   const [pass, setPass] = useState<AnnotatePass>('rally')
+  // 多段レベル: localStorage (match 単位) に保持。既定 Lv1。
+  const [level, setLevelState] = useState<AnnotateLevel>(() => loadLevel(matchId))
+  // 「レベル選択 picker を開いているか」。初回 mount で開いて軽い体験を案内する。
+  const [levelPickerOpen, setLevelPickerOpen] = useState(false)
+  const visiblePasses = useMemo(() => PASSES_FOR_LEVEL[level], [level])
+  const setLevel = (lv: AnnotateLevel) => {
+    setLevelState(lv)
+    saveLevel(matchId, lv)
+    // 選択レベルで非表示になる Pass に居たら Pass1 に戻す (= 表示制御の整合)。
+    setPass((cur) => (PASSES_FOR_LEVEL[lv].includes(cur) ? cur : 'rally'))
+  }
   const [screen, setScreen] = useState<ScreenMode>('play')
   const [pausedAtSec, setPausedAtSec] = useState<number>(0)
   // 配信画質: モバイル既定は 'hd' (720p) → 帯域節約。fhd/source へユーザが任意切替可。
@@ -473,6 +517,7 @@ export function MobileAnnotatePage() {
               onQualityChange={(q) => setVideoQuality(q as 'source' | 'uhd' | 'fhd' | 'hd')}
               cvCandidateTimestamps={cvCandidateTimestamps}
               resumeFromSec={resumeFromSec}
+              onRetryVideo={() => { void matchQuery.refetch() }}
               onCalibEditingChange={(v) => {
                 setCalibEditingTop(v)
                 // calib 開始時は screen を 'play' に強制 → annotate モードで
@@ -654,7 +699,7 @@ export function MobileAnnotatePage() {
             </div>
           )}
 
-          {!calibEditingTop && screen === 'annotate' && !matchQuery.isLoading && !matchQuery.error && pass === 'serve_final' && (
+          {!calibEditingTop && screen === 'annotate' && !matchQuery.isLoading && !matchQuery.error && pass === 'serve_final' && visiblePasses.includes('serve_final') && (
             <div className="absolute inset-0 z-40 bg-black/85">
               <Pass2RallyPicker
                 rallies={mergedRallies}
@@ -665,7 +710,7 @@ export function MobileAnnotatePage() {
             </div>
           )}
 
-          {!calibEditingTop && screen === 'annotate' && !matchQuery.isLoading && !matchQuery.error && pass === 'detail' && (
+          {!calibEditingTop && screen === 'annotate' && !matchQuery.isLoading && !matchQuery.error && pass === 'detail' && visiblePasses.includes('detail') && (
             <div className="absolute inset-0 z-40 bg-black/85">
               <Pass3RallyPicker
                 matchId={matchId ?? ''}
@@ -692,7 +737,7 @@ export function MobileAnnotatePage() {
             onClick={() => {
               // window.confirm はネイティブダイアログで PWA/iOS でも確実に動く。
               // OK = navigate, Cancel = 留まる。
-              if (window.confirm('試合一覧に戻りますか？\n未送信のアノテーションは送信キュー (cloud_off) に残ります。')) {
+              if (window.confirm(t('auto.MobileAnnotatePage.leave_confirm'))) {
                 navigate('/matches')
               }
             }}
@@ -737,12 +782,26 @@ export function MobileAnnotatePage() {
           style={{ top: '50%', transform: 'translateY(-50%)', zIndex: 45 }}
           data-tutorial="mobileAnnotate.passSwitch"
         >
-          {(Object.keys(PASS_LABELS) as AnnotatePass[]).map((p) => (
+          {/* レベル変更ボタン: 現在レベルを表示し、タップで picker を開く。 */}
+          <button
+            type="button"
+            onClick={() => setLevelPickerOpen(true)}
+            className="flex items-center gap-1 px-2 rounded text-[10px] font-medium shadow ss-overlay-chip"
+            style={{ minHeight: 44 }}
+            title={t('auto.MobileAnnotatePage.level_change')}
+          >
+            <MIcon name="tune" size={14} />
+            <span>{t('auto.MobileAnnotatePage.level_badge', { n: level })}</span>
+          </button>
+          {/* level に応じて表示する Pass のみ描画 (= 表示制御のみ、保存ロジック不変) */}
+          {visiblePasses.map((p) => (
             <button
               key={p}
               type="button"
               onClick={() => setPass(p)}
-              className={`flex items-center gap-1 px-2 py-1.5 rounded text-[10px] font-medium shadow ${pass === p ? 'ss-overlay-chip-accent' : 'ss-overlay-chip'}`}
+              aria-current={pass === p ? 'true' : undefined}
+              className={`flex items-center gap-1 px-2 rounded text-[10px] font-medium shadow ${pass === p ? 'ss-overlay-chip-accent ring-2 ring-white/70' : 'ss-overlay-chip'}`}
+              style={{ minHeight: 44 }}
               title={PASS_LABELS[p]}
             >
               {PASS_ICONS[p]}
@@ -750,6 +809,59 @@ export function MobileAnnotatePage() {
             </button>
           ))}
         </div>
+        )}
+
+        {/* 入力レベル選択 picker: 入力者が「どこまで作るか」を選ぶ。
+            Pass の可視性のみを制御し、保存ロジック / API / データ型は不変。
+            calib 中は隠す。 */}
+        {!calibEditingTop && levelPickerOpen && (
+          <div
+            className="absolute inset-0 flex items-center justify-center px-4"
+            style={{ backgroundColor: 'rgba(0,0,0,0.92)', zIndex: 60, pointerEvents: 'auto', touchAction: 'manipulation' }}
+            onClick={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+          >
+            <div className="w-full max-w-sm flex flex-col gap-2">
+              <div className="text-sm font-bold mb-1" style={{ color: '#ffffff' }}>
+                {t('auto.MobileAnnotatePage.level_picker_title')}
+              </div>
+              {([
+                { lv: 1 as AnnotateLevel, label: t('auto.MobileAnnotatePage.level_lv1_short'), desc: t('auto.MobileAnnotatePage.level_lv1_desc') },
+                { lv: 2 as AnnotateLevel, label: t('auto.MobileAnnotatePage.level_lv2_short'), desc: t('auto.MobileAnnotatePage.level_lv2_desc') },
+                { lv: 3 as AnnotateLevel, label: t('auto.MobileAnnotatePage.level_lv3_short'), desc: t('auto.MobileAnnotatePage.level_lv3_desc') },
+              ]).map((opt) => {
+                const active = level === opt.lv
+                return (
+                  <button
+                    key={opt.lv}
+                    type="button"
+                    onClick={() => { setLevel(opt.lv); setLevelPickerOpen(false) }}
+                    aria-current={active ? 'true' : undefined}
+                    className={`w-full text-left rounded px-3 py-2 shadow ${active ? 'ss-overlay-chip-accent ring-2 ring-white/70' : 'ss-overlay-chip'}`}
+                    style={{ minHeight: 44 }}
+                  >
+                    <div className="text-sm font-bold">{opt.label}</div>
+                    <div className="text-[11px] opacity-90 mt-0.5">{opt.desc}</div>
+                  </button>
+                )
+              })}
+              <div className="text-[11px] mt-1 flex items-center gap-1" style={{ color: 'rgba(255,255,255,0.75)' }}>
+                <MIcon name="info" size={13} style={{ color: 'rgba(255,255,255,0.75)' }} />
+                <span>{t('auto.MobileAnnotatePage.level_can_upgrade')}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLevelPickerOpen(false)}
+                className="mt-1 self-end px-3 rounded text-xs font-bold shadow ss-overlay-chip"
+                style={{ minHeight: 44 }}
+              >
+                <span className="inline-flex items-center gap-1">
+                  <MIcon name="arrow_back" size={14} />
+                  {t('auto.MobileAnnotatePage.back_to_video')}
+                </span>
+              </button>
+            </div>
+          </div>
         )}
       </div>
     </LandscapeGuard>
