@@ -11,6 +11,7 @@
  * すべてリアルタイム集計。重くなれば backend 側で MV 化すれば良い設計。
  */
 import { useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { MIcon } from '@/components/common/MIcon'
 
@@ -38,6 +39,7 @@ interface LearningSeries { [userKey: string]: { week: string; avg_input_ms: numb
 interface ConditionItem { question_id: string; n: number; avg_ms: number; avg_changes: number }
 
 export default function AdminAnalyticsPage() {
+  const { t } = useTranslation()
   const [overview, setOverview] = useState<Overview | null>(null)
   const [funnel, setFunnel] = useState<FunnelData | null>(null)
   const [dwell, setDwell] = useState<DwellItem[]>([])
@@ -80,22 +82,22 @@ export default function AdminAnalyticsPage() {
           Product Analytics
         </h1>
         <div className="flex items-center gap-2 text-sm">
-          <label className="text-gray-600 dark:text-gray-300">期間:</label>
+          <label className="text-gray-600 dark:text-gray-300">{t('admin.analytics.period')}</label>
           <select
             value={days}
             onChange={(e) => setDays(parseInt(e.target.value, 10))}
             className="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
           >
-            <option value={7}>7 日</option>
-            <option value={30}>30 日</option>
-            <option value={90}>90 日</option>
-            <option value={365}>365 日</option>
+            <option value={7}>{t('admin.analytics.days', { count: 7 })}</option>
+            <option value={30}>{t('admin.analytics.days', { count: 30 })}</option>
+            <option value={90}>{t('admin.analytics.days', { count: 90 })}</option>
+            <option value={365}>{t('admin.analytics.days', { count: 365 })}</option>
           </select>
           <button
             onClick={() => void reload()}
             className="px-3 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white inline-flex items-center gap-1"
           >
-            <MIcon name="refresh" size={16} /> 再集計
+            <MIcon name="refresh" size={16} /> {t('admin.analytics.reaggregate')}
           </button>
         </div>
       </header>
@@ -105,21 +107,21 @@ export default function AdminAnalyticsPage() {
           {err}
         </div>
       )}
-      {loading && !overview && <div className="text-gray-600 dark:text-gray-300">読み込み中…</div>}
+      {loading && !overview && <div className="text-gray-600 dark:text-gray-300">{t('admin.analytics.loading')}</div>}
 
       {/* A. 生存 */}
       {overview && (
         <section className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
-          <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">A. 生存 (Retention)</h2>
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">{t('admin.analytics.section_a_title')}</h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <Stat label="WAU (7d)" value={overview.wau} />
-            <Stat label="MAU (30d)" value={overview.mau} />
-            <Stat label="イベント数 (7d)" value={overview.total_events_7d} />
-            <Stat label="集計時刻" value={new Date(overview.as_of).toLocaleString('ja-JP')} small />
+            <Stat label={t('admin.analytics.stat_wau')} value={overview.wau} />
+            <Stat label={t('admin.analytics.stat_mau')} value={overview.mau} />
+            <Stat label={t('admin.analytics.stat_events_7d')} value={overview.total_events_7d} />
+            <Stat label={t('admin.analytics.stat_as_of')} value={new Date(overview.as_of).toLocaleString('ja-JP')} small />
           </div>
           <div className="mt-4 grid sm:grid-cols-2 gap-4">
-            <Kv title="WAU × role" data={overview.wau_by_role} />
-            <Kv title="WAU × platform" data={overview.wau_by_platform} />
+            <Kv title={t('admin.analytics.kv_wau_role')} data={overview.wau_by_role} />
+            <Kv title={t('admin.analytics.kv_wau_platform')} data={overview.wau_by_platform} />
           </div>
         </section>
       )}
@@ -128,18 +130,18 @@ export default function AdminAnalyticsPage() {
       {funnel && (
         <section className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
           <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">
-            B. アノテーション完遂ファネル ({funnel.days}d)
+            {t('admin.analytics.section_b_title', { days: funnel.days })}
           </h2>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-gray-600 dark:text-gray-300">
                 <tr>
-                  <th className="text-left py-1">platform / pass</th>
-                  <th className="text-right">開始</th>
-                  <th className="text-right">完了</th>
-                  <th className="text-right">離脱</th>
-                  <th className="text-right">完遂率</th>
-                  <th className="text-right">UU</th>
+                  <th className="text-left py-1">{t('admin.analytics.col_platform_pass')}</th>
+                  <th className="text-right">{t('admin.analytics.col_started')}</th>
+                  <th className="text-right">{t('admin.analytics.col_completed')}</th>
+                  <th className="text-right">{t('admin.analytics.col_abandoned')}</th>
+                  <th className="text-right">{t('admin.analytics.col_completion_rate')}</th>
+                  <th className="text-right">{t('admin.analytics.col_uu')}</th>
                 </tr>
               </thead>
               <tbody className="text-gray-900 dark:text-gray-100">
@@ -161,7 +163,7 @@ export default function AdminAnalyticsPage() {
             </table>
           </div>
           <div className="mt-4">
-            <div className="text-xs text-gray-600 dark:text-gray-300 mb-1">離脱直前 last_input_type Top:</div>
+            <div className="text-xs text-gray-600 dark:text-gray-300 mb-1">{t('admin.analytics.abandonment_top_label')}</div>
             <div className="flex flex-wrap gap-1">
               {funnel.abandonment_last_input_top.map((x) => (
                 <span
@@ -172,7 +174,7 @@ export default function AdminAnalyticsPage() {
                 </span>
               ))}
               {funnel.abandonment_last_input_top.length === 0 && (
-                <span className="text-xs text-gray-500">データなし</span>
+                <span className="text-xs text-gray-500">{t('admin.analytics.no_data')}</span>
               )}
             </div>
           </div>
@@ -182,17 +184,17 @@ export default function AdminAnalyticsPage() {
       {/* C. 機能の実需 */}
       <section className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
         <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">
-          C. 機能の実需 (analysis_dwell)
+          {t('admin.analytics.section_c_title')}
         </h2>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-gray-600 dark:text-gray-300">
               <tr>
-                <th className="text-left">view_id</th>
-                <th className="text-right">表示回数</th>
-                <th className="text-right">UU</th>
-                <th className="text-right">平均滞在</th>
-                <th className="text-right">合計滞在 (分)</th>
+                <th className="text-left">{t('admin.analytics.col_view_id')}</th>
+                <th className="text-right">{t('admin.analytics.col_view_count')}</th>
+                <th className="text-right">{t('admin.analytics.col_uu')}</th>
+                <th className="text-right">{t('admin.analytics.col_avg_dwell')}</th>
+                <th className="text-right">{t('admin.analytics.col_total_dwell_min')}</th>
               </tr>
             </thead>
             <tbody className="text-gray-900 dark:text-gray-100">
@@ -206,7 +208,7 @@ export default function AdminAnalyticsPage() {
                 </tr>
               ))}
               {dwell.length === 0 && (
-                <tr><td colSpan={5} className="py-2 text-center text-gray-500">データなし</td></tr>
+                <tr><td colSpan={5} className="py-2 text-center text-gray-500">{t('admin.analytics.no_data')}</td></tr>
               )}
             </tbody>
           </table>
@@ -216,12 +218,12 @@ export default function AdminAnalyticsPage() {
       {/* D. 学習曲線 */}
       <section className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
         <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">
-          D. 学習曲線 (週次 median time-per-input)
+          {t('admin.analytics.section_d_title')}
         </h2>
         <div className="overflow-x-auto text-xs">
           {Object.entries(learning).slice(0, 30).map(([uid, series]) => (
             <div key={uid} className="mb-2">
-              <div className="font-mono text-gray-700 dark:text-gray-300">user…{uid}</div>
+              <div className="font-mono text-gray-700 dark:text-gray-300">{t('admin.analytics.user_prefix', { uid })}</div>
               <div className="flex flex-wrap gap-1">
                 {series.map((s) => (
                   <span key={s.week} className="px-2 py-1 rounded bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200">
@@ -232,7 +234,7 @@ export default function AdminAnalyticsPage() {
             </div>
           ))}
           {Object.keys(learning).length === 0 && (
-            <div className="text-gray-500">データなし</div>
+            <div className="text-gray-500">{t('admin.analytics.no_data')}</div>
           )}
         </div>
       </section>
@@ -240,16 +242,16 @@ export default function AdminAnalyticsPage() {
       {/* E. 体調入力品質 */}
       <section className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
         <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">
-          E. 体調入力品質 (avg time / 変更回数)
+          {t('admin.analytics.section_e_title')}
         </h2>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-gray-600 dark:text-gray-300">
               <tr>
-                <th className="text-left">question_id</th>
-                <th className="text-right">n</th>
-                <th className="text-right">avg time</th>
-                <th className="text-right">avg 変更回数</th>
+                <th className="text-left">{t('admin.analytics.col_question_id')}</th>
+                <th className="text-right">{t('admin.analytics.col_n')}</th>
+                <th className="text-right">{t('admin.analytics.col_avg_time')}</th>
+                <th className="text-right">{t('admin.analytics.col_avg_changes')}</th>
               </tr>
             </thead>
             <tbody className="text-gray-900 dark:text-gray-100">
@@ -262,7 +264,7 @@ export default function AdminAnalyticsPage() {
                 </tr>
               ))}
               {condition.length === 0 && (
-                <tr><td colSpan={4} className="py-2 text-center text-gray-500">データなし</td></tr>
+                <tr><td colSpan={4} className="py-2 text-center text-gray-500">{t('admin.analytics.no_data')}</td></tr>
               )}
             </tbody>
           </table>
@@ -270,8 +272,7 @@ export default function AdminAnalyticsPage() {
       </section>
 
       <p className="text-xs text-gray-500 dark:text-gray-400">
-        本ページのデータは PRIVACY.md §IX-bis に基づく仮名化テレメトリから生成されています。
-        個人特定可能な raw user_id は保持していません (HMAC-SHA256 hash のみ)。
+        {t('admin.analytics.privacy_note')}
       </p>
     </div>
   )
@@ -287,6 +288,7 @@ function Stat({ label, value, small }: { label: string; value: number | string; 
 }
 
 function Kv({ title, data }: { title: string; data: Record<string, number> }) {
+  const { t } = useTranslation()
   const total = Object.values(data).reduce((a, b) => a + b, 0)
   return (
     <div>
@@ -305,7 +307,7 @@ function Kv({ title, data }: { title: string; data: Record<string, number> }) {
           </div>
         ))}
         {Object.keys(data).length === 0 && (
-          <div className="text-xs text-gray-500">データなし</div>
+          <div className="text-xs text-gray-500">{t('admin.analytics.no_data')}</div>
         )}
       </div>
     </div>

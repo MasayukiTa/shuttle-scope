@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { clsx } from 'clsx'
 import { MIcon } from '@/components/common/MIcon'
+import { useIsLightMode } from '@/hooks/useIsLightMode'
 
 /** N 個 filled star + (max-N) 個 outline star を MIcon で描画 */
 function StarLevel({ filled, max = 3, size = 12 }: { filled: number; max?: number; size?: number }) {
@@ -30,6 +31,7 @@ interface ConfidenceBadgeProps {
  */
 export function ConfidenceBadge({ sampleSize, compact = false, className }: ConfidenceBadgeProps) {
   const { t } = useTranslation()
+  const isLight = useIsLightMode()
 
   // undefined / null / NaN を 0 に正規化（バックエンドが sample_n を省略した場合の保険）
   const size = typeof sampleSize === 'number' && isFinite(sampleSize) ? sampleSize : 0
@@ -38,18 +40,26 @@ export function ConfidenceBadge({ sampleSize, compact = false, className }: Conf
   let label: string
   let colorClass: string
 
+  // tier の色分け（赤=低 / 黄=中 / 緑=高）は情報量なので維持。
+  // 背景/文字色のみテーマで分岐: ライトは明色背景+暗色文字、ダークは現行 bg-gray-800。
   if (size < 500) {
     filled = 1
     label = t('confidence.low_label')
-    colorClass = 'border-red-400 bg-gray-800 text-red-300'
+    colorClass = isLight
+      ? 'border-red-400 bg-red-50 text-red-700'
+      : 'border-red-400 bg-gray-800 text-red-300'
   } else if (size < 2000) {
     filled = 2
     label = t('confidence.medium_label')
-    colorClass = 'border-yellow-400 bg-gray-800 text-amber-400'
+    colorClass = isLight
+      ? 'border-yellow-400 bg-amber-50 text-amber-700'
+      : 'border-yellow-400 bg-gray-800 text-amber-400'
   } else {
     filled = 3
     label = t('confidence.high_label')
-    colorClass = 'border-green-400 bg-gray-800 text-blue-300'
+    colorClass = isLight
+      ? 'border-green-400 bg-blue-50 text-blue-700'
+      : 'border-green-400 bg-gray-800 text-blue-300'
   }
 
   if (compact) {
