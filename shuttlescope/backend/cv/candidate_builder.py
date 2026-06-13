@@ -104,6 +104,31 @@ logger.debug(
 )
 
 
+def _env_flag(name: str, default: bool) -> bool:
+    """env を bool として読む（shuttle_quality_gate と同じ規則）。"""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() not in ("0", "false", "no", "off", "")
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+def rally_boundary_detect_enabled() -> bool:
+    """ラリー境界の CV 自動検出が有効か（既定 ON）。
+
+    SS_RALLY_BOUNDARY_DETECT=0 で完全に無効化すると、build_candidates の戻り値に
+    rally_boundaries キーは入らず、従来の手動 video_timestamp_start/end のみ使用する
+    挙動に戻る（後方互換）。
+    """
+    return _env_flag("SS_RALLY_BOUNDARY_DETECT", True)
+
+
 def build_candidates(
     match_id: int,
     rallies_db: list[dict],      # DB から取得したラリー情報（id, video_timestamp_start/end）
@@ -112,11 +137,18 @@ def build_candidates(
     yolo_frames: list[dict],     # YOLO アーティファクト data（frame list）
     alignment_data: list[dict],  # アライメント結果（per-rally list）; 空可
     court_adapter=None,           # Track A2: CourtAdapter (None で従来通り)
+    fps: float = 60.0,            # A5: ラリー境界検出の秒→frame 換算に使う動画 FPS
 ) -> dict:
     """試合全体の CV 候補を生成して返す。
 
     Returns:
         候補辞書 (cv_candidates アーティファクトの data フィールドに保存する内容)
+
+    A5: SS_RALLY_BOUNDARY_DETECT が有効（既定 ON）なら、TrackNet シャトル軌跡
+    （gated_conf）と YOLO プレイヤー位置から RallyBoundaryDetector でラリー境界候補を
+    推定し、戻り値に `rally_boundaries` フィールドを追加する。既存 `rallies`
+    フィールドは一切変更しない（境界は suggested 中心の候補であり、自動でラリーを
+    切らない）。OFF のときは rally_boundaries キー自体を付けず従来挙動に戻る。
     """
     # Track A2: court_adapter 未指定時は match_id から自動ロード (フォールバック動作付)
     if court_adapter is None:
@@ -247,10 +279,152 @@ def build_candidates(
             "strokes": stroke_candidates,
         }
 
-    return {
+    out: dict = {
         "match_id":  match_id,
         "built_at":  datetime.utcnow().isoformat(),
         "rallies":   result_rallies,
+    }
+
+    # A5: ラリー境界の CV 自動検出（候補のみ。既存 rallies は不変）。
+    # ここでの tracknet_frames は quality-gate 適用後（gated_conf）。
+    if rally_boundary_detect_enabled():
+        try:
+            out["rally_boundaries"] = detect_rally_boundaries_from_cv(
+                match_id=match_id,
+                shuttle_frames=tracknet_frames,
+                player_frames=yolo_frames,
+                fps=fps,
+            )
+        except Exception as e:  # best-effort: 失敗しても候補生成全体は壊さない
+            logger.warning("rally boundary detect skip: %s", e)
+
+    return out
+
+
+# ── ラリー境界 CV 自動検出（A5 統合） ─────────────────────────────────────────
+
+def detect_rally_boundaries_from_cv(
+    match_id: int,
+    shuttle_frames: list[dict],
+    player_frames: list[dict],
+    *,
+    fps: float = 60.0,
+) -> dict:
+    """TrackNet シャトル軌跡 + YOLO プレイヤー位置から RallyBoundaryDetector で
+    ラリー境界候補を推定する。
+
+    Args:
+        match_id: 試合 ID（出力メタ用）
+        shuttle_frames: TrackNet アーティファクト data。各要素は
+            {"timestamp_sec", "confidence"(=gated_conf), "x_norm"?, "y_norm"?, ...}
+        player_frames: YOLO アーティファクト data。各要素は
+            {"timestamp_sec", "players": [{"label", "centroid":[x,y]}, ...]}
+        fps: 秒ベース閾値を frame ベースに換算する動画 FPS。
+
+    Returns:
+        {
+          "match_id": int,
+          "fps": float,
+          "thresholds": {...},          # 実際に使った env 上書き値
+          "boundary_count": int,
+          "boundaries": [BoundaryCandidate, ...]
+        }
+
+    BoundaryCandidate:
+        {
+          "kind": "start"|"end",
+          "frame_index": int,
+          "timestamp_sec": float,
+          "confidence": float,
+          "signals_fired": [str],
+          "decision_mode": "auto_filled"|"suggested"|"review_required",
+          "reason_codes": [str]
+        }
+
+    プレイヤー位置とシャトル信頼度は別アーティファクト（別 FPS / フレーム数の
+    可能性あり）なので、timestamp_sec を主キーにマージする。シャトル側のフレーム列
+    を時間軸の基準にし、各シャトルフレーム時刻に最近傍のプレイヤーフレームを当てる。
+    """
+    from backend.cv.rally_boundary import RallyBoundaryDetector
+
+    # env 上書き可能な閾値（rally_boundary.py のコンストラクタ引数に対応）
+    thresholds = {
+        "shuttle_missing_seconds": _env_float("SS_RALLY_SHUTTLE_MISSING_SEC", 0.5),
+        "shuttle_conf_thresh":     _env_float("SS_RALLY_SHUTTLE_CONF", 0.30),
+        "player_static_seconds":   _env_float("SS_RALLY_PLAYER_STATIC_SEC", 0.4),
+        "player_static_speed":     _env_float("SS_RALLY_PLAYER_STATIC_SPEED", 0.005),
+        "min_signals":             int(_env_float("SS_RALLY_MIN_SIGNALS", 2)),
+        "min_rally_seconds":       _env_float("SS_RALLY_MIN_RALLY_SEC", 0.5),
+    }
+
+    det = RallyBoundaryDetector(fps=fps, **thresholds)
+
+    if not shuttle_frames:
+        return {
+            "match_id":       match_id,
+            "fps":            fps,
+            "thresholds":     thresholds,
+            "boundary_count": 0,
+            "boundaries":     [],
+        }
+
+    # プレイヤーフレームを timestamp_sec 昇順に索引化（最近傍引き当て用）
+    player_sorted = sorted(player_frames, key=lambda f: f.get("timestamp_sec", 0.0))
+    player_ts = [f.get("timestamp_sec", 0.0) for f in player_sorted]
+
+    def _players_at(ts: float) -> list[dict]:
+        """timestamp ts に最近傍の YOLO フレームの players（label+centroid）を返す。"""
+        if not player_sorted:
+            return []
+        idx = bisect.bisect_left(player_ts, ts)
+        best = None
+        best_gap = float("inf")
+        for i in (idx - 1, idx):
+            if 0 <= i < len(player_sorted):
+                gap = abs(player_ts[i] - ts)
+                if gap < best_gap:
+                    best_gap = gap
+                    best = player_sorted[i]
+        if best is None:
+            return []
+        result: list[dict] = []
+        for p in best.get("players", []):
+            label = p.get("label")
+            centroid = p.get("centroid")
+            if label in ("player_a", "player_b") and centroid and len(centroid) >= 2:
+                result.append({"label": label, "centroid": [centroid[0], centroid[1]]})
+        return result
+
+    # シャトルフレームを時間軸基準に detector へ流す
+    shuttle_sorted = sorted(shuttle_frames, key=lambda f: f.get("timestamp_sec", 0.0))
+    boundaries: list[dict] = []
+    for frame_index, sf in enumerate(shuttle_sorted):
+        ts = float(sf.get("timestamp_sec", 0.0))
+        conf = sf.get("confidence")
+        ev = det.process_frame(
+            frame_index=frame_index,
+            timestamp_sec=ts,
+            shuttle_confidence=conf,
+            player_positions=_players_at(ts),
+        )
+        if ev is not None:
+            decision_mode, reason_codes = _conf_to_decision(ev.confidence)
+            boundaries.append({
+                "kind":          ev.kind,
+                "frame_index":   ev.frame_index,
+                "timestamp_sec": round(ev.timestamp_sec, 3),
+                "confidence":    round(ev.confidence, 3),
+                "signals_fired": list(ev.signals_fired),
+                "decision_mode": decision_mode,
+                "reason_codes":  reason_codes,
+            })
+
+    return {
+        "match_id":       match_id,
+        "fps":            fps,
+        "thresholds":     thresholds,
+        "boundary_count": len(boundaries),
+        "boundaries":     boundaries,
     }
 
 

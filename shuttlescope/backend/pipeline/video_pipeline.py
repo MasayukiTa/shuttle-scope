@@ -186,6 +186,15 @@ def run_pipeline(db: Session, match_id: int, *, use_gpu: bool = False) -> dict:
             stability_score=cog["stability_score"],
         ))
 
+    # 2.5) A5: ラリー境界の CV 自動検出（候補のみ。既存 Rally は不変）。
+    # シャトル軌跡(gated_conf)とプレイヤー位置(YOLO)が揃った後・ストローク分類前に
+    # 走らせる。SS_RALLY_BOUNDARY_DETECT=0 で完全に従来挙動（呼ばない）。
+    # アーティファクトが無い環境（mock 等）では best-effort で no-op。
+    try:
+        detect_and_store_rally_boundaries(db, match_id)
+    except Exception as exc:  # 候補生成失敗で本体パイプラインは止めない
+        logger.warning("rally boundary detect/store skip match_id=%d: %s", match_id, exc)
+
     # 3) ShotInference: ストロークを分類
     strokes = (
         db.query(Stroke)
@@ -233,6 +242,106 @@ def run_pipeline(db: Session, match_id: int, *, use_gpu: bool = False) -> dict:
     }
     logger.info("run_pipeline done match_id=%d counts=%s", match_id, counts)
     return counts
+
+
+def detect_and_store_rally_boundaries(db: Session, match_id: int) -> dict:
+    """A5: 保存済み TrackNet / YOLO アーティファクトからラリー境界候補を検出し、
+    `rally_boundaries` アーティファクトとして保存する（候補のみ・既存 Rally 不変）。
+
+    SS_RALLY_BOUNDARY_DETECT=0 のときは検出も保存も行わず空 dict を返す（後方互換）。
+    アーティファクトが無い / シャトル軌跡が空なら no-op（境界 0 件）。
+
+    Returns: detect_rally_boundaries_from_cv の戻り値（保存しなかった場合は空 dict）。
+    """
+    from backend.cv.candidate_builder import (
+        detect_rally_boundaries_from_cv,
+        rally_boundary_detect_enabled,
+    )
+
+    if not rally_boundary_detect_enabled():
+        return {}
+
+    from backend.db.models import MatchCVArtifact, Recording
+
+    def _latest(atype: str):
+        return (
+            db.query(MatchCVArtifact)
+            .filter(
+                MatchCVArtifact.match_id == match_id,
+                MatchCVArtifact.artifact_type == atype,
+            )
+            .order_by(MatchCVArtifact.created_at.desc())
+            .first()
+        )
+
+    tracknet_art = _latest("tracknet_shuttle_track")
+    yolo_art = _latest("yolo_player_detections")
+
+    shuttle_frames: list = []
+    player_frames: list = []
+    if tracknet_art and tracknet_art.data:
+        try:
+            shuttle_frames = json.loads(tracknet_art.data)
+        except Exception:
+            logger.warning("rally boundary: TrackNet artifact JSON 解析失敗 match_id=%d", match_id)
+    if yolo_art and yolo_art.data:
+        try:
+            player_frames = json.loads(yolo_art.data)
+        except Exception:
+            logger.warning("rally boundary: YOLO artifact JSON 解析失敗 match_id=%d", match_id)
+
+    if not shuttle_frames:
+        # シャトル軌跡が無ければ検出不能 → no-op
+        return {}
+
+    # FPS 解決（Recording.fps 優先・既定 60）
+    fps = 60.0
+    try:
+        rec = (
+            db.query(Recording)
+            .filter(Recording.match_id == match_id, Recording.fps != None)  # noqa: E711
+            .order_by(Recording.branch_no)
+            .first()
+        )
+        if rec and rec.fps and rec.fps > 0:
+            fps = float(rec.fps)
+    except Exception:
+        pass
+
+    result = detect_rally_boundaries_from_cv(
+        match_id=match_id,
+        shuttle_frames=shuttle_frames,
+        player_frames=player_frames,
+        fps=fps,
+    )
+
+    boundaries = result.get("boundaries", [])
+    data_json = json.dumps(result, ensure_ascii=False)
+    summary_json = json.dumps({
+        "boundary_count": result.get("boundary_count", len(boundaries)),
+        "fps":            result.get("fps"),
+    }, ensure_ascii=False)
+
+    existing = _latest("rally_boundaries")
+    if existing:
+        existing.data = data_json
+        existing.summary = summary_json
+        existing.frame_count = len(boundaries)
+        existing.updated_at = datetime.utcnow()
+    else:
+        db.add(MatchCVArtifact(
+            match_id=match_id,
+            artifact_type="rally_boundaries",
+            frame_count=len(boundaries),
+            summary=summary_json,
+            data=data_json,
+        ))
+    db.flush()
+    logger.info(
+        "rally boundary detect match_id=%d boundaries=%d fps=%.1f",
+        match_id, len(boundaries), fps,
+    )
+    return result
 
 
 def _pose_frames_near(

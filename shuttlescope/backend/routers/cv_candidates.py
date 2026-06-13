@@ -87,10 +87,12 @@ def _require_rally_team_scope(request: Request, db: Session, rally_id: int) -> R
     _require_match_team_scope(request, db, game_set.match_id)
     return rally
 
-ARTIFACT_TYPE_CANDIDATES = "cv_candidates"
-ARTIFACT_TYPE_TRACKNET   = "tracknet_shuttle_track"
-ARTIFACT_TYPE_YOLO       = "yolo_player_detections"
-ARTIFACT_TYPE_ALIGNMENT  = "cv_alignment"
+ARTIFACT_TYPE_CANDIDATES      = "cv_candidates"
+ARTIFACT_TYPE_TRACKNET        = "tracknet_shuttle_track"
+ARTIFACT_TYPE_YOLO            = "yolo_player_detections"
+ARTIFACT_TYPE_ALIGNMENT       = "cv_alignment"
+# A5: ラリー境界の CV 自動検出候補（suggested 中心。自動でラリーを切らない）
+ARTIFACT_TYPE_RALLY_BOUNDARIES = "rally_boundaries"
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -153,6 +155,7 @@ def build_cv_candidates(match_id: int, request: Request, db: Session = Depends(g
     strokes_db = _get_strokes_for_rallies(db, rally_ids)
 
     # ── 候補生成 ─────────────────────────────────────────────────────────────
+    fps = _resolve_match_fps(db, match_id)
     candidates = build_candidates(
         match_id=match_id,
         rallies_db=rallies_db,
@@ -160,9 +163,17 @@ def build_cv_candidates(match_id: int, request: Request, db: Session = Depends(g
         tracknet_frames=tracknet_frames,
         yolo_frames=yolo_frames,
         alignment_data=alignment_data,
+        fps=fps,
     )
 
     candidates_json = json.dumps(candidates, ensure_ascii=False)
+
+    # ── A5: ラリー境界候補を別アーティファクトとして保存 ──────────────────────
+    # SS_RALLY_BOUNDARY_DETECT が OFF のときは build_candidates が
+    # rally_boundaries キーを返さない → 保存もスキップ（従来挙動）。
+    rally_boundaries = candidates.get("rally_boundaries")
+    if rally_boundaries is not None:
+        _save_rally_boundaries_artifact(db, match_id, rally_boundaries)
 
     # ── アーティファクト保存（既存があれば上書き） ────────────────────────────
     existing = _latest_artifact(db, match_id, ARTIFACT_TYPE_CANDIDATES)
@@ -193,6 +204,10 @@ def build_cv_candidates(match_id: int, request: Request, db: Session = Depends(g
             "match_id":    match_id,
             "rally_count": len(candidates["rallies"]),
             "built_at":    candidates["built_at"],
+            # A5: ラリー境界候補数（rally_boundaries 検出 OFF 時は None）
+            "rally_boundary_count": (
+                rally_boundaries.get("boundary_count") if rally_boundaries else None
+            ),
         },
     }
 
@@ -480,6 +495,56 @@ def _latest_artifact(db: Session, match_id: int, artifact_type: str) -> Optional
         .order_by(MatchCVArtifact.created_at.desc())
         .first()
     )
+
+
+def _resolve_match_fps(db: Session, match_id: int, default: float = 60.0) -> float:
+    """ラリー境界検出の秒→frame 換算に使う FPS を解決する。
+
+    Recording.fps（試合に紐づく動画）があればそれを使い、無ければ default(60)。
+    """
+    try:
+        from backend.db.models import Recording
+        rec = (
+            db.query(Recording)
+            .filter(Recording.match_id == match_id, Recording.fps != None)  # noqa: E711
+            .order_by(Recording.branch_no)
+            .first()
+        )
+        if rec and rec.fps and rec.fps > 0:
+            return float(rec.fps)
+    except Exception:
+        pass
+    return default
+
+
+def _save_rally_boundaries_artifact(
+    db: Session, match_id: int, rally_boundaries: dict
+) -> None:
+    """A5: ラリー境界の CV 自動検出候補を MatchCVArtifact として保存（上書き）。
+
+    annotation truth には書かない（候補のみ）。既存の手動 Rally は不変。
+    """
+    boundaries = rally_boundaries.get("boundaries", []) if rally_boundaries else []
+    data_json = json.dumps(rally_boundaries, ensure_ascii=False)
+    summary_json = json.dumps({
+        "boundary_count": rally_boundaries.get("boundary_count", len(boundaries)),
+        "fps":            rally_boundaries.get("fps"),
+    }, ensure_ascii=False)
+
+    existing = _latest_artifact(db, match_id, ARTIFACT_TYPE_RALLY_BOUNDARIES)
+    if existing:
+        existing.data        = data_json
+        existing.summary     = summary_json
+        existing.frame_count = len(boundaries)
+        existing.updated_at  = datetime.utcnow()
+    else:
+        db.add(MatchCVArtifact(
+            match_id      = match_id,
+            artifact_type = ARTIFACT_TYPE_RALLY_BOUNDARIES,
+            frame_count   = len(boundaries),
+            summary       = summary_json,
+            data          = data_json,
+        ))
 
 
 def _get_rally_boundaries(db: Session, match_id: int) -> list[dict]:
