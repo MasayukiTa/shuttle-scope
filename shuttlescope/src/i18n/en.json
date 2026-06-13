@@ -4229,7 +4229,13 @@
       "restored_short": "(restored from previous session)",
       "k1": "Undo last point",
       "k2": "Clear all",
-      "k3": "Cancel"
+      "k3": "Cancel",
+      "step_tl": "TL top-left",
+      "step_tr": "TR top-right",
+      "step_br": "BR bottom-right",
+      "step_bl": "BL bottom-left",
+      "step_nl": "NL net-left",
+      "step_nr": "NR net-right"
     },
     "Pass1RallyEnd": {
       "k1": "Player A scored",
@@ -4248,7 +4254,14 @@
     "Pass2ServeFinal": {
       "header": "Pass 2 · Rally {{n}} (set {{m}})",
       "save_and_back": "Save and back",
-      "saving": "Saving ..."
+      "saving": "Saving ...",
+      "prompt_serve_hit": "Select the serve hit point",
+      "prompt_serve_land": "Select the serve landing point",
+      "prompt_final_hit": "Select the hit point of the deciding shot",
+      "prompt_final_land": "Select the landing point of the deciding shot",
+      "primary_next": "Next",
+      "primary_submit": "Submit",
+      "cancel_retry": "Redo"
     },
     "Pass3ShotDetail": {
       "k1": "Smash",
@@ -4289,6 +4302,9 @@
       "no_video_cause_1": "・No video has been registered for this match yet",
       "no_video_cause_2": "・No video token (video_token) has been issued",
       "no_video_cause_3": "・The video file cannot be fetched from the server",
+      "no_video_preparing": "The video may still be processing on the server.",
+      "no_video_retry": "Reload",
+      "no_video_retrying": "Retrying automatically…",
       "match_id": "match_id={{id}}",
       "crop_drag_hint": "Drag to set crop area → confirm with ✓ (bottom-right)",
       "resume_from": "▶ Resume from {{time}}",
@@ -4402,7 +4418,19 @@
       "rally_saving_pass3": "This rally is still being saved to the server. You can enter Pass 3 once the save completes.",
       "pass3_select_rally": "Select a rally for Pass 3 input",
       "set_rally_label": "S{{s}}-R{{r}}",
-      "pending": "pending"
+      "pending": "pending",
+      "leave_confirm": "Return to the match list?\nUnsent annotations remain in the send queue (cloud_off).",
+      "level_title": "Input level",
+      "level_lv1_short": "Lv1 Rally only",
+      "level_lv2_short": "Lv2 +serve/final hit",
+      "level_lv3_short": "Lv3 +all strokes",
+      "level_lv1_desc": "Records only rally win/loss and score.",
+      "level_lv2_desc": "Records rallies plus serve and final hit points.",
+      "level_lv3_desc": "Records full detail for every stroke.",
+      "level_picker_title": "How much do you want to enter?",
+      "level_can_upgrade": "You can raise the level and add more later.",
+      "level_change": "Change level",
+      "level_badge": "Lv{{n}}"
     },
     "OnboardingConsentPage": {
       "k1": "Japanese",

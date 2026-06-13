@@ -79,9 +79,11 @@ interface Props {
   resumeFromSec?: number
   /** calib 編集中フラグを親に伝える (= 親側の overlay / chip を隠すため) */
   onCalibEditingChange?: (editing: boolean) => void
+  /** videoSrc が無い / 失敗時の再取得トリガ (= 親の match query refetch)。 */
+  onRetryVideo?: () => void
 }
 
-export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities, currentQuality, onQualityChange, cvCandidateTimestamps, resumeFromSec, onCalibEditingChange }: Props) {
+export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities, currentQuality, onQualityChange, cvCandidateTimestamps, resumeFromSec, onCalibEditingChange, onRetryVideo }: Props) {
   const { t } = useTranslation()
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -213,6 +215,28 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
     }
     onQualityChange?.(q)
   }, [onQualityChange])
+
+  // 動画再読み込み: videoSrc がある場合は video element を load() し直し、
+  // 無い場合 (= サーバ準備中で URL 未発行) は親に match 再取得を促す。
+  const retryVideo = useCallback(() => {
+    setPlayError('')
+    onRetryVideo?.()
+    const v = videoRef.current
+    if (v && videoSrc) {
+      try { v.load() } catch { /* ignore */ }
+    }
+  }, [onRetryVideo, videoSrc])
+
+  // videoSrc が無い間は数秒ごとに自動で再取得を試みる (= サーバが準備完了したら
+  // 自動で再生に移行)。手動「再読み込み」ボタンと併用。
+  useEffect(() => {
+    if (videoSrc) return
+    if (!onRetryVideo) return
+    const id = window.setInterval(() => {
+      onRetryVideo()
+    }, 5000)
+    return () => window.clearInterval(id)
+  }, [videoSrc, onRetryVideo])
 
   // events
   useEffect(() => {
@@ -449,12 +473,25 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
           <div className="absolute inset-0 flex items-center justify-center text-white text-sm p-4">
             <div className="text-center max-w-md">
               <div className="text-base font-bold mb-2">{t('auto.PlayMode.k1')}</div>
+              <div className="text-xs text-white/80 mb-3">{t('auto.PlayMode.no_video_preparing')}</div>
               <div className="text-xs text-white/80 leading-relaxed">
                 {t('auto.PlayMode.no_video_cause_title')}<br />
                 {t('auto.PlayMode.no_video_cause_1')}<br />
                 {t('auto.PlayMode.no_video_cause_2')}<br />
                 {t('auto.PlayMode.no_video_cause_3')}
               </div>
+              {/* 再読み込みボタン (手動)。自動で 5 秒ごとにも再試行している。
+                  タッチターゲット 44px を確保。 */}
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); retryVideo() }}
+                className="mt-4 inline-flex items-center gap-1.5 rounded font-bold ss-overlay-chip-accent shadow"
+                style={{ minHeight: 44, padding: '0 1rem' }}
+              >
+                <MIcon name="refresh" size={18} />
+                {t('auto.PlayMode.no_video_retry')}
+              </button>
+              <div className="text-[10px] text-white/60 mt-2">{t('auto.PlayMode.no_video_retrying')}</div>
               <div className="text-[10px] text-white/50 mt-3 font-mono break-all">
                 {t('auto.PlayMode.match_id', { id: matchId })}
               </div>

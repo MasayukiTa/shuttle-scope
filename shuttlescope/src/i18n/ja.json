@@ -4241,7 +4241,13 @@
       "restored_short": "(前回セッションから復元)",
       "k1": "直前 1 点を戻す",
       "k2": "全消去",
-      "k3": "キャンセル"
+      "k3": "キャンセル",
+      "step_tl": "TL 左上",
+      "step_tr": "TR 右上",
+      "step_br": "BR 右下",
+      "step_bl": "BL 左下",
+      "step_nl": "NL ネット左",
+      "step_nr": "NR ネット右"
     },
     "Pass1RallyEnd": {
       "k1": "プレイヤーA 得点",
@@ -4260,7 +4266,14 @@
     "Pass2ServeFinal": {
       "header": "Pass 2 · ラリー {{n}} (set {{m}})",
       "save_and_back": "途中保存して戻る",
-      "saving": "保存中 ..."
+      "saving": "保存中 ...",
+      "prompt_serve_hit": "サーブ打点を選択",
+      "prompt_serve_land": "サーブ着地を選択",
+      "prompt_final_hit": "決まった一打の打点を選択",
+      "prompt_final_land": "決まった一打の着地を選択",
+      "primary_next": "次へ",
+      "primary_submit": "送信",
+      "cancel_retry": "やり直す"
     },
     "Pass3ShotDetail": {
       "k1": "スマッシュ",
@@ -4301,6 +4314,9 @@
       "no_video_cause_1": "・この試合にまだ動画が登録されていない",
       "no_video_cause_2": "・動画 token (video_token) が発行されていない",
       "no_video_cause_3": "・サーバから動画ファイルが取得できない",
+      "no_video_preparing": "サーバで動画を準備中の可能性があります。",
+      "no_video_retry": "再読み込み",
+      "no_video_retrying": "自動で再試行しています…",
       "match_id": "match_id={{id}}",
       "crop_drag_hint": "切り抜き範囲をドラッグで指定 → 右下 ✓ で確定",
       "resume_from": "▶ {{time}} から再開",
@@ -4415,7 +4431,19 @@
       "rally_saving_pass3": "このラリーはまだサーバ保存中です。送信完了後に Pass 3 入力を行えます。",
       "pass3_select_rally": "Pass 3 入力するラリーを選択",
       "set_rally_label": "S{{s}}-R{{r}}",
-      "pending": "pending"
+      "pending": "pending",
+      "leave_confirm": "試合一覧に戻りますか？\n未送信のアノテーションは送信キュー (cloud_off) に残ります。",
+      "level_title": "入力レベル",
+      "level_lv1_short": "Lv1 ラリーのみ",
+      "level_lv2_short": "Lv2 +サーブ・最終打点",
+      "level_lv3_short": "Lv3 +全ストローク",
+      "level_lv1_desc": "ラリーの勝敗とスコアだけ記録します。",
+      "level_lv2_desc": "ラリーに加え、サーブ・最終打点を記録します。",
+      "level_lv3_desc": "全ストロークの詳細まで記録します。",
+      "level_picker_title": "どこまで入力しますか",
+      "level_can_upgrade": "後からレベルを上げて追記できます。",
+      "level_change": "レベル変更",
+      "level_badge": "Lv{{n}}"
     },
     "OnboardingConsentPage": {
       "k1": "日本語",
