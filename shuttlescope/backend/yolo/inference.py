@@ -44,6 +44,13 @@ ONNX_MODEL = WEIGHTS_DIR / "yolo_badminton.onnx"
 PT_MODEL = WEIGHTS_DIR / "yolo_badminton.pt"
 OV_MODEL_DIR = WEIGHTS_DIR / "yolov8n_openvino"  # OpenVINO IR ディレクトリ
 
+# COCO 80-class の汎用 ONNX (整合性チェック済み・常設)。
+# yolo/weights/yolo_badminton.onnx が無い環境 (= 既定構成) でも
+# TensorRT/CUDA EP 経路を有効化するための fallback モデル。
+# backend/models/yolov8n.onnx は person(class 0) を含むので _predict_onnx の
+# multi-class 分岐でそのまま person を拾える。
+COCO_ONNX_MODEL = Path(__file__).resolve().parent.parent / "models" / "yolov8n.onnx"
+
 # コート座標分割しきい値（正規化 0-1）
 COURT_MID_X = 0.5
 DEPTH_FRONT_Y = 0.35   # これより小さい y = front（ネット側）
@@ -78,6 +85,64 @@ def _court_filter_enabled() -> bool:
     """
     import os as _os
     return _os.environ.get("SS_PERSON_COURT_FILTER", "1") != "0"
+
+
+def _yolo_backend_pref() -> str:
+    """検出バックエンドの明示指定を返す。
+
+    SS_YOLO_BACKEND:
+      ""(未設定) / "auto" — 従来の自動選択 (TRT→OpenVINO→PT→ONNX)。本番既定を変えない。
+      "trt"               — onnxruntime TensorRT EP を強制 (不可なら下流 fallback)。
+      "cuda"              — onnxruntime CUDA EP を強制 (OpenVINO iGPU を飛ばす)。
+      "openvino"          — OpenVINO 直接 API を強制 (TRT/CUDA を試さない)。
+    不明値は "auto" 扱い。
+    """
+    import os as _os
+    val = _os.environ.get("SS_YOLO_BACKEND", "").strip().lower()
+    if val in ("", "auto", "trt", "cuda", "openvino"):
+        return val if val else "auto"
+    return "auto"
+
+
+def _coco_fallback_allowed(backend_pref: str) -> bool:
+    """常設 COCO ONNX を TRT/CUDA fallback として使ってよいか。
+
+    本番の auto 既定挙動を勝手に変えないため、COCO fallback は **明示 opt-in 時のみ**:
+      - SS_YOLO_BACKEND=trt / cuda が指定された、または
+      - SS_YOLO_ALLOW_COCO_FALLBACK=1 が設定された。
+    auto (既定) かつ opt-in 無しの場合は False → 従来通り OpenVINO に流れる。
+    """
+    import os as _os
+    if backend_pref in ("trt", "cuda"):
+        return True
+    return _os.environ.get("SS_YOLO_ALLOW_COCO_FALLBACK", "0") == "1"
+
+
+def _resolve_onnx_model_path(backend_pref: str = "auto") -> "Optional[Path]":
+    """TensorRT/CUDA EP に渡す ONNX モデルを解決する。
+
+    優先順:
+      1. SS_YOLO_MODEL_PATH (PersonTracker 用 finetuned model 明示指定) — 存在すれば。
+      2. yolo/weights/yolo_badminton.onnx (従来の既定) — 存在すれば。
+      3. backend/models/yolov8n.onnx (COCO 汎用・常設) — **明示 opt-in 時のみ** fallback。
+
+    2026-06-13 修正: 既定構成では 1 も 2 も存在せず、step 0 (TRT/CUDA) が
+    丸ごとスキップされて OpenVINO(iGPU) に落ちていた (= 0.3fps の根因)。
+    常設の COCO ONNX を fallback に加えることで TRT/CUDA EP がある本番で高速経路が
+    起動するが、auto 既定挙動を保つため COCO fallback は opt-in でのみ有効化する。
+    解決できない場合は None を返す (= step 0 skip)。
+    """
+    import os as _os
+    env = _os.environ.get("SS_YOLO_MODEL_PATH", "").strip()
+    if env:
+        p = Path(env)
+        if p.exists():
+            return p
+    if ONNX_MODEL.exists():
+        return ONNX_MODEL
+    if _coco_fallback_allowed(backend_pref) and COCO_ONNX_MODEL.exists():
+        return COCO_ONNX_MODEL
+    return None
 
 
 def _expand_polygon(polygon: list[list[float]], scale: float) -> list[list[float]]:
@@ -229,21 +294,32 @@ class YOLOInference:
         if self._loaded:
             return True
 
-        # 0. ONNX + TensorRT EP — Phase 3.5 で追加 (PersonTracker 高速化用)。
-        #    既存 OpenVINO/PT chain より優先。env SS_YOLO_USE_TRT=0 で無効化。
-        #    fallback chain: TRT → CUDA → CPU (CPU は事実上ここでは使わず後段に任せる)。
-        # 2026-05-27 修正: SS_YOLO_MODEL_PATH env (PersonTracker 用 finetuned model 指定) を
-        # 認識して TRT に渡す。なければ default の ONNX_MODEL。
+        # 検出バックエンドの明示指定 (本番既定は "auto" = 従来挙動)。
+        backend_pref = _yolo_backend_pref()
+
+        # 0. ONNX + TensorRT / CUDA EP — Phase 3.5 で追加 (PersonTracker 高速化用)。
+        #    既存 OpenVINO/PT chain より優先。env SS_YOLO_USE_TRT=0 で TRT のみ無効化。
+        #    fallback chain: TRT → CUDA → CPU (CPU はここでは採用せず後段 OpenVINO に任せる)。
+        # 2026-06-13 修正: モデル解決を _resolve_onnx_model_path() に集約。
+        #   既定構成では yolo/weights/yolo_badminton.onnx が存在せず step 0 が丸ごと
+        #   skip → OpenVINO(iGPU) に落ちていた。常設 COCO ONNX を fallback に加え、
+        #   CUDA EP のみの環境 (TRT 不在) でも GPU 経路を起動できるようにした。
+        # SS_YOLO_BACKEND=cuda は CUDA EP を強制、=trt は TRT を優先、
+        # =openvino は本ブロックを丸ごと skip する。
         import os as _os_trt
-        from pathlib import Path as _Path_trt
         use_trt = _os_trt.environ.get("SS_YOLO_USE_TRT", "1") != "0"
-        _trt_model_env = _os_trt.environ.get("SS_YOLO_MODEL_PATH", "").strip()
-        _trt_model_path = _Path_trt(_trt_model_env) if _trt_model_env else ONNX_MODEL
-        if use_trt and _trt_model_path.exists():
+        if backend_pref == "cuda":
+            use_trt = False  # CUDA 強制時は TRT を試さない (CUDA EP に直行)
+        _onnx_model_path = _resolve_onnx_model_path(backend_pref)
+        if backend_pref != "openvino" and _onnx_model_path is not None and _onnx_model_path.exists():
             try:
                 import onnxruntime as ort
                 available = set(ort.get_available_providers())
-                if "TensorrtExecutionProvider" in available:
+                has_trt = "TensorrtExecutionProvider" in available
+                has_cuda = "CUDAExecutionProvider" in available
+                providers = None
+                ep_name = None
+                if use_trt and has_trt:
                     # WASB inference と同じ cache 規約。yolo 専用 sub-dir に分ける。
                     trt_cache = WEIGHTS_DIR / "trt_cache"
                     trt_cache.mkdir(parents=True, exist_ok=True)
@@ -261,27 +337,49 @@ class YOLOInference:
                         ("CUDAExecutionProvider", {"device_id": self._cuda_device_index}),
                         "CPUExecutionProvider",
                     ]
+                    ep_name = f"onnx_trt:{self._cuda_device_index}"
+                elif has_cuda:
+                    # TRT 不在 / SS_YOLO_USE_TRT=0 / SS_YOLO_BACKEND=cuda — CUDA EP 直行。
+                    providers = [
+                        ("CUDAExecutionProvider", {"device_id": self._cuda_device_index}),
+                        "CPUExecutionProvider",
+                    ]
+                    ep_name = f"onnx_cuda:{self._cuda_device_index}"
+
+                if providers is not None:
                     sess_opts = ort.SessionOptions()
                     sess_opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
                     self._model = ort.InferenceSession(
-                        str(_trt_model_path), sess_opts, providers=providers
+                        str(_onnx_model_path), sess_opts, providers=providers
                     )
                     self._ov_device = None
-                    self._backend = f"onnx_trt:{self._cuda_device_index}"
+                    self._backend = ep_name
                     self._loaded = True
                     self._load_error = None
                     logger.info(
-                        "YOLO loaded via ONNX Runtime TensorRT EP (cache=%s, fp16=%s)",
-                        trt_cache, trt_opts.get("trt_fp16_enable", False),
+                        "YOLO loaded via ONNX Runtime %s (model=%s, active_provider=%s)",
+                        ep_name, _onnx_model_path.name,
+                        self._model.get_providers()[0],
                     )
                     return True
                 else:
-                    logger.info("YOLO: TensorrtExecutionProvider 不在、TRT スキップ")
+                    # GPU EP が一切無い。auto では下流 OpenVINO に流す。
+                    # 明示 trt/cuda 指定なら警告して下流にも流す (壊さない方針)。
+                    msg = "YOLO: TRT/CUDA EP 不在 — GPU ONNX 経路スキップ"
+                    if backend_pref in ("trt", "cuda"):
+                        logger.warning(
+                            "%s (SS_YOLO_BACKEND=%s 指定だが利用不可、下流 fallback)",
+                            msg, backend_pref,
+                        )
+                    else:
+                        logger.info(msg)
             except Exception as exc:
-                logger.warning("YOLO TRT load failed: %s", exc)
-                self._load_error = f"TRT load failed: {exc}"
+                logger.warning("YOLO TRT/CUDA load failed: %s", exc)
+                self._load_error = f"TRT/CUDA load failed: {exc}"
 
-        # 1. OpenVINO 直接API — 設定デバイス優先
+        # 1. OpenVINO 直接API — 設定デバイス優先。
+        #    SS_YOLO_BACKEND=trt/cuda が指定されたのに GPU EP に失敗した場合でも、
+        #    本番を止めないため OpenVINO/PT/ONNX(CPU) の従来 fallback には流す。
         ov_xml = OV_MODEL_DIR / "yolov8n.xml"
         if ov_xml.exists():
             try:
@@ -440,14 +538,14 @@ class YOLOInference:
         # 84 = 4(box) + 80(classes), 8400 = anchors
         result = self._model([inp])[self._model.output(0)]
 
-        logger.info("YOLO OpenVINO raw result shape: %s dtype=%s", result.shape, result.dtype)
+        logger.debug("YOLO OpenVINO raw result shape: %s dtype=%s", result.shape, result.dtype)
 
         # バッチ次元を除去して [84, 8400] または [8400, 84] に統一
         raw = result
         while raw.ndim > 2:
             raw = raw[0]  # [1, 84, 8400] → [84, 8400]
 
-        logger.info("YOLO OpenVINO after squeeze shape: %s", raw.shape)
+        logger.debug("YOLO OpenVINO after squeeze shape: %s", raw.shape)
 
         # shape が (8400, 84) の場合は転置して (84, 8400) に統一
         if raw.ndim == 2 and raw.shape[0] != 84 and raw.shape[1] == 84:
@@ -455,7 +553,7 @@ class YOLOInference:
         elif raw.ndim == 2 and raw.shape[0] == 8400:
             raw = raw.T  # → (84, 8400)
 
-        logger.info("YOLO OpenVINO normalized shape: %s", raw.shape)
+        logger.debug("YOLO OpenVINO normalized shape: %s", raw.shape)
 
         if raw.ndim != 2 or raw.shape[0] < 5:
             logger.warning("YOLO OpenVINO: unexpected output shape %s — skipping", raw.shape)
@@ -469,7 +567,7 @@ class YOLOInference:
 
         top5 = sorted(person_scores.tolist(), reverse=True)[:5]
         above = int(_np.sum(person_scores >= MIN_CONF))
-        logger.info(
+        logger.debug(
             "YOLO OpenVINO person_scores: max=%.3f top5=%s anchors_above_threshold=%d (thresh=%.2f)",
             float(person_scores.max()),
             [round(v, 3) for v in top5],
@@ -716,10 +814,13 @@ class YOLOInference:
 
         cls_map = {0: "player_a", 1: "player_b", 2: "shuttle"}
         n_ch = arr.shape[1]
-        # 判別:
-        #   - v8 1-class:   ch=5   (cx,cy,w,h,conf)         → cls=0 固定、person
-        #   - v8 multi-cls: ch=4+C (cx,cy,w,h,c0,c1,...)    → class score max
-        #   - v5 形式:      ch=5+C (cx,cy,w,h,obj_conf,c..)
+        # COCO 80-class モデル (4 box + 80 cls = 84 ch) は person(class 0) のみ採用。
+        # backend/models/yolov8n.onnx を TRT/CUDA fallback に使う場合の経路。
+        # ここで person 限定にしないと、chair/bicycle 等の COCO クラスが argmax で
+        # cls_map に巻き込まれ player_b/shuttle に誤ラベルされてしまう (PersonTracker
+        # が person 系のみ拾うため最終的な追跡には person だけ残るが、検出段で
+        # 余計な box を生まないよう明示的に絞る)。
+        is_coco = n_ch >= 84
         detections: list[dict] = []
         for row in arr:
             cx640, cy640, bw640, bh640 = row[:4]
@@ -727,6 +828,11 @@ class YOLOInference:
                 conf = float(row[4])
                 cls_idx = 0
                 label = "person"  # 1-class fine-tuned → 全部 person
+            elif is_coco:
+                # COCO 80-class: person(index 0) のスコアのみを使う。
+                conf = float(row[4])  # row[4] = class 0 (person) score
+                cls_idx = 0
+                label = "person"
             elif n_ch == 5 + 3 or (n_ch >= 6 and n_ch <= 8):
                 # v5 形式: obj_conf * max(class_score)
                 obj_conf = float(row[4])
@@ -735,7 +841,7 @@ class YOLOInference:
                 conf = obj_conf * float(class_scores[cls_idx])
                 label = cls_map.get(cls_idx, "person")
             else:
-                # v8 multi-class: 4 + C
+                # v8 multi-class (少クラスのカスタムモデル): 4 + C
                 class_scores = row[4:]
                 cls_idx = int(np.argmax(class_scores))
                 conf = float(class_scores[cls_idx])
