@@ -318,18 +318,25 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
   }, [])
 
   /**
-   * クロップ表示: 動画を container いっぱいに伸ばしつつ、クロップ領域 (x,y,w,h)
-   * が container いっぱいに見えるように scale + translate する。
+   * クロップ transform: 動画を container いっぱいに伸ばしつつ、クロップ領域
+   * (x,y,w,h) が container いっぱいに見えるように scale + translate する。
    *  - scale = 1/w (横) / 1/h (縦) → fit-fill にはなるが、横と縦が違うと
-   *    アスペクト比歪み。簡易に max(1/w, 1/h) のみ採用 (一部見切れる)
+   *    アスペクト比歪み。簡易に min(1/w, 1/h) のみ採用 (一部見切れる)
    *  - 安全側で min(1/w, 1/h) を使うと余白が出る。今回は max-zoom で
    *    切り抜き優先 (どうせ余分な天井等を切るのが目的)。
+   *
+   * crop が full (= 既定) のときは transform 無し (= undefined)。
+   * この transform は <video> と CV オーバーレイ (grid/軌跡/bbox) の **両方** に
+   * 同一適用する。これにより crop を後から変更しても両者が同じだけ移動し、
+   * コートグリッドが動画とズレなくなる (5a 対応)。
+   *  - 注意: コートキャリブ点は「crop 適用後の見た目」基準で正規化されるため、
+   *    calib 時と display 時の crop が同一なら完全一致する。crop を変更した場合も
+   *    両者へ同じ transform を掛けるので、相対位置 (= 動画フレーム上の物理位置) は
+   *    保たれる。
    */
-  const cropStyle: React.CSSProperties = (() => {
+  const cropTransform = useMemo<{ transform: string; transformOrigin: string } | undefined>(() => {
     const { x, y, w, h } = crop
-    if (w >= 0.99 && h >= 0.99) {
-      return { width: '100%', height: '100%', objectFit: fitMode }
-    }
+    if (w >= 0.99 && h >= 0.99) return undefined
     const scale = Math.min(1 / w, 1 / h)
     // 中心オフセット
     const cx = x + w / 2
@@ -337,13 +344,17 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
     const translateX = (0.5 - cx) * 100 * scale
     const translateY = (0.5 - cy) * 100 * scale
     return {
-      width: '100%',
-      height: '100%',
-      objectFit: fitMode,
       transform: `translate(${translateX}%, ${translateY}%) scale(${scale})`,
       transformOrigin: 'center',
     }
-  })()
+  }, [crop])
+
+  const cropStyle: React.CSSProperties = {
+    width: '100%',
+    height: '100%',
+    objectFit: fitMode,
+    ...(cropTransform ?? {}),
+  }
 
   // フルスクリーン: **document.documentElement 全体** を全画面化することで
   // overlay (コートグリッド / シャトル / Pass ボタン / 右上 chip 等) を保ったまま
@@ -555,13 +566,14 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
             showCourt={showCourt}
             showShuttle={showShuttle}
             showPlayers={showPlayers}
-            // ⚠️ videoTransform は意図的に渡さない。
-            // calib 中の snapshot は cropStyle (transform) 適用、calib SVG は
-            // 非適用。なので点は "transform 後の見た目" 基準で norm 化される。
-            // 確定後の grid にも transform を適用すると二重適用となり横に
-            // 引き延ばされる。crop は calib 時と display 時で同一前提なので、
-            // 両方とも grid は素の座標で描く方が整合する。
-            // (crop を後から変更すると grid がズレるが、それは別途要対応)
+            // crop+zoom transform を <video> と同一値で渡す (5a 対応)。
+            // grid/軌跡/bbox は container 正規化座標で描かれるが、video には
+            // cropTransform (translate+scale) が掛かっている。同じ transform を
+            // overlay にも掛けることで、crop を後から変更しても両者が同じだけ
+            // 移動し、コートグリッドが動画とズレない。
+            // crop が full (= 既定) のときは cropTransform は undefined なので
+            // 従来どおり素の座標で描画され、挙動は変わらない。
+            videoTransform={cropTransform}
           />
         )}
 
