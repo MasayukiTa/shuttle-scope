@@ -200,8 +200,20 @@ def run_pipeline(db: Session, match_id: int, *, use_gpu: bool = False) -> dict:
         db.query(ShotInference).filter(ShotInference.stroke_id.in_(stroke_ids)).delete(
             synchronize_session=False
         )
+
+    # A1-1 (rule-v1): 打点近傍 PoseFrame をストローク毎に渡す。
+    # この試合の PoseFrame を一度だけ取得し ts_sec 昇順に並べておく。
+    pose_all = (
+        db.query(PoseFrame)
+        .filter(PoseFrame.match_id == match_id)
+        .order_by(PoseFrame.ts_sec)
+        .all()
+    )
+    pose_ts = [pf.ts_sec for pf in pose_all]
+
     for s in strokes:
-        res = classify_stroke(s)
+        nearby_pose = _pose_frames_near(pose_all, pose_ts, getattr(s, "timestamp_sec", None))
+        res = classify_stroke(s, pose_frames=nearby_pose)
         db.add(ShotInference(
             stroke_id=s.id,
             shot_type=res["shot_type"],
@@ -221,6 +233,25 @@ def run_pipeline(db: Session, match_id: int, *, use_gpu: bool = False) -> dict:
     }
     logger.info("run_pipeline done match_id=%d counts=%s", match_id, counts)
     return counts
+
+
+def _pose_frames_near(
+    pose_all: list,
+    pose_ts: list[float],
+    stroke_ts: Optional[float],
+    window_sec: float = 0.4,
+) -> list:
+    """打点タイムスタンプ ±window_sec 内の PoseFrame を返す（A1-1）。
+
+    pose_ts は ts_sec 昇順前提。stroke_ts が無い / 近傍が無ければ空リスト
+    （classify_stroke 側で rule-v0 にフォールバック）。
+    """
+    if stroke_ts is None or not pose_all:
+        return []
+    import bisect
+    lo = bisect.bisect_left(pose_ts, stroke_ts - window_sec)
+    hi = bisect.bisect_right(pose_ts, stroke_ts + window_sec)
+    return pose_all[lo:hi]
 
 
 def execute_job(db: Session, job: AnalysisJob) -> None:
