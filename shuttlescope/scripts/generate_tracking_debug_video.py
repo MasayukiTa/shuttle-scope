@@ -24,6 +24,12 @@ Swap Guard 評価 (ground-truth 不要 proxy 指標):
           (OFF 側は <out>.off.<ext> に出す)。
 --eval-metrics: proxy 指標 (per_court_unique_ids / swap events / proxy_idsw) を集計し
     --metrics-json (未指定なら <out>.metrics.json) に書き出す。
+
+--no-video (別名 --metrics-only): 動画の描画・エンコードを完全にスキップする高速モード。
+    推論 (YOLO/ByteTracker/ReID/quality-gate) はそのまま実行し、per-frame の
+    {frame, track_id, court_id} レコード収集と swap_guard_stats() のみ行う。
+    --eval-metrics 併用が主用途。--out は no-video 時は不要 (指定されても動画は書かない)。
+    1080p ラベル付きレンダリングを省くため metrics 検証が大幅に高速化する。
 """
 from __future__ import annotations
 
@@ -235,7 +241,9 @@ def main() -> int:
     p.add_argument("--start-sec", type=float, default=60.0)
     p.add_argument("--duration-sec", type=int, default=30)
     p.add_argument("--match-type", choices=["singles", "doubles"], required=True)
-    p.add_argument("--out", required=True)
+    p.add_argument("--out", default=None,
+                   help="出力 mp4 パス。--no-video/--metrics-only 時は不要 "
+                        "(指定されても動画は書かない)。")
     p.add_argument("--court-corners", default=None, help='JSON: [[x,y],...] TL,TR,BR,BL pixel')
     p.add_argument("--model", default=None, help="YOLO model path (default: env or yolov8n.onnx)")
     p.add_argument("--device", default=None)
@@ -250,11 +258,20 @@ def main() -> int:
     p.add_argument("--swap-guard", choices=["on", "off", "both"], default="off",
                    help="Swap Guard を on/off/both で実行。both は OFF→ON 両方走らせ "
                         "proxy 指標を比較 (default: off=既定挙動)")
+    p.add_argument("--no-video", "--metrics-only", dest="no_video",
+                   action="store_true",
+                   help="動画の描画・エンコードを完全にスキップする高速モード。"
+                        "推論と proxy 指標収集はそのまま実行する (--eval-metrics 併用が主用途)")
     p.add_argument("--eval-metrics", action="store_true",
                    help="ground-truth 不要の proxy 指標を集計し JSON 出力する")
     p.add_argument("--metrics-json", default=None,
                    help="proxy 指標 JSON の出力先 (未指定なら <out>.metrics.json)")
     args = p.parse_args()
+
+    # --no-video 無指定なら従来通り動画を書くため --out 必須 (後方互換)。
+    # --no-video 指定時は描画・エンコードを完全スキップするので --out は任意。
+    if not args.no_video and args.out is None:
+        p.error("--out is required unless --no-video/--metrics-only is set")
 
     # 動画メタを 1 回だけ覗く (fps / 解像度の確定)。pass 本体は _run_pass が
     # 自前で VideoCapture を開く (both で 2 回読むため)。
@@ -296,17 +313,20 @@ def main() -> int:
     # ── 実行する pass を決定 ──────────────────────────────────────────────
     # both: OFF を <out>.off.<ext>、ON を <out> に書き出す。
     # on/off: その 1 モードだけを <out> に書き出す。
+    # --no-video 時は out_path=None を渡して _run_pass の VideoWriter 生成・描画を
+    # 完全にスキップさせる (推論と records / swap_guard_stats 収集はそのまま行われる)。
     eval_results: dict[str, dict] = {}
     try:
         if args.swap_guard == "both":
-            off_out = _out_with_suffix(args.out, ".off")
-            logger.info("=== pass 1/2: Swap Guard OFF → %s ===", off_out)
+            off_out = None if args.no_video else _out_with_suffix(args.out, ".off")
+            on_out = None if args.no_video else args.out
+            logger.info("=== pass 1/2: Swap Guard OFF → %s ===", off_out or "(no-video)")
             off_res = _run_pass(args, swap_guard=False, out_path=off_out, fps=fps,
                                 width=width, height=height, corners=corners,
                                 match_id_arg=match_id_arg)
             _log_pass("OFF", off_res)
-            logger.info("=== pass 2/2: Swap Guard ON → %s ===", args.out)
-            on_res = _run_pass(args, swap_guard=True, out_path=args.out, fps=fps,
+            logger.info("=== pass 2/2: Swap Guard ON → %s ===", on_out or "(no-video)")
+            on_res = _run_pass(args, swap_guard=True, out_path=on_out, fps=fps,
                                width=width, height=height, corners=corners,
                                match_id_arg=match_id_arg)
             _log_pass("ON", on_res)
@@ -315,8 +335,9 @@ def main() -> int:
         else:
             sg_on = args.swap_guard == "on"
             tag = "ON" if sg_on else "OFF"
-            logger.info("=== pass: Swap Guard %s → %s ===", tag, args.out)
-            res = _run_pass(args, swap_guard=sg_on, out_path=args.out, fps=fps,
+            pass_out = None if args.no_video else args.out
+            logger.info("=== pass: Swap Guard %s → %s ===", tag, pass_out or "(no-video)")
+            res = _run_pass(args, swap_guard=sg_on, out_path=pass_out, fps=fps,
                             width=width, height=height, corners=corners,
                             match_id_arg=match_id_arg)
             _log_pass(tag, res)
@@ -325,7 +346,10 @@ def main() -> int:
         logger.error("%s", exc)
         return 3
 
-    logger.info("出力: %s", args.out)
+    if args.no_video:
+        logger.info("出力: (no-video モード、動画は書き出していません)")
+    else:
+        logger.info("出力: %s", args.out)
 
     # ── proxy 指標 (--eval-metrics) ──────────────────────────────────────
     if args.eval_metrics:
@@ -353,10 +377,15 @@ def main() -> int:
                 evals["off"], evals["on"]
             )
 
-        # 既定: <out のディレクトリ+stem>.metrics.json
-        metrics_json = args.metrics_json or (
-            os.path.splitext(args.out)[0] + ".metrics.json"
-        )
+        # 既定: <out のディレクトリ+stem>.metrics.json。--no-video で --out が
+        # 無い場合は --metrics-json を優先し、未指定なら動画 stem の代わりに
+        # 入力動画 stem を使う。
+        if args.metrics_json:
+            metrics_json = args.metrics_json
+        elif args.out:
+            metrics_json = os.path.splitext(args.out)[0] + ".metrics.json"
+        else:
+            metrics_json = os.path.splitext(args.video)[0] + ".metrics.json"
         os.makedirs(os.path.dirname(os.path.abspath(metrics_json)) or ".", exist_ok=True)
         with open(metrics_json, "w", encoding="utf-8") as f:
             json.dump(metrics, f, ensure_ascii=False, indent=2)
