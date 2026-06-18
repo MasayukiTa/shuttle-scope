@@ -56,19 +56,57 @@ EXPECTED_EXEMPT_REGEX_SUBSTRINGS = (
 )
 
 
-def _all_api_routes() -> Iterable[tuple[str, set[str]]]:
-    """app.router.routes から /api/* の (path, methods) を yield する。"""
-    from backend.main import app
+def _walk_routes(routes, prefix: str = "") -> Iterable[tuple[str, set[str]]]:
+    """FastAPI / Starlette の route ツリーを再帰 walk して (full_path, methods) を yield。
 
-    for route in app.router.routes:
-        path = getattr(route, "path", None)
-        if not path or not isinstance(path, str):
+    FastAPI 0.137 から、`include_router()` で登録したルートは `app.router.routes`
+    直下に APIRoute として平坦展開されなくなり、`_IncludedRouter` ラッパ
+    (path=None) の中に内包されるよう変わった。旧来の `app.router.routes` 直走査では
+    include_router 由来の全ルートを取りこぼし (got 7 のみ → CI 赤) になるため、
+    `_IncludedRouter` / `Mount` を再帰展開し prefix を合成しながら全ルートを列挙する。
+    0.136 以前の平坦構造でもそのまま動く (両対応)。
+
+    `app.openapi()` を使う案もあるが、それは `include_in_schema=False` の隠し
+    ルートを取りこぼす。本テストは「未分類の public ルートを検出する」セキュリティ
+    目的なので、隠しルートも漏らさず拾える route ツリー走査を採用する。
+    """
+    from starlette.routing import Mount
+
+    for route in routes:
+        # FastAPI >=0.137: include_router 由来は _IncludedRouter に内包される。
+        # `include_context.included_router` / `.prefix` 経由で実ルートへ降りる。
+        ctx = getattr(route, "include_context", None)
+        if ctx is not None:
+            sub = getattr(ctx, "included_router", None)
+            if sub is not None:
+                sub_prefix = getattr(ctx, "prefix", "") or ""
+                yield from _walk_routes(getattr(sub, "routes", []), prefix + sub_prefix)
+                continue
+        # Mount / サブアプリケーション
+        if isinstance(route, Mount):
+            yield from _walk_routes(
+                getattr(route, "routes", []), prefix + (getattr(route, "path", "") or "")
+            )
             continue
-        if not path.startswith("/api/"):
+        path = getattr(route, "path", None)
+        if not isinstance(path, str):
             continue
         methods = set(getattr(route, "methods", set()) or set())
         # OPTIONS は CORS preflight 用なので除外
         methods.discard("OPTIONS")
+        yield prefix + path, methods
+
+
+def _all_api_routes() -> Iterable[tuple[str, set[str]]]:
+    """app.router.routes から /api/* の (path, methods) を yield する。
+
+    include_router 由来 (FastAPI 0.137 の _IncludedRouter 内包) も含めて
+    再帰列挙する。詳細は `_walk_routes` を参照。"""
+    from backend.main import app
+
+    for path, methods in _walk_routes(app.router.routes):
+        if not path.startswith("/api/"):
+            continue
         if not methods:
             continue
         yield path, methods
