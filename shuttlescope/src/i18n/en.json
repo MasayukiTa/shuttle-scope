@@ -3666,10 +3666,10 @@
       "dot_running": "●",
       "paused_pct": "⏸ {{n}}%",
       "icon_trash": "🗑",
-      "seek_back_5s": "⏮-5s",
+      "seek_back_5s": "-5s",
       "step_back_1f": "-1f",
       "step_fwd_1f": "+1f",
-      "seek_fwd_5s": "+5s⏭",
+      "seek_fwd_5s": "+5s",
       "bbox_label": "BBOX",
       "net_lan": "LAN",
       "net_live": "● LIVE",
@@ -4235,7 +4235,11 @@
       "step_br": "BR bottom-right",
       "step_bl": "BL bottom-left",
       "step_nl": "NL net-left",
-      "step_nr": "NR net-right"
+      "step_nr": "NR net-right",
+      "err_need_6": "Place all 6 points before saving",
+      "err_server_failed_local_only": "Server save failed — saved locally only",
+      "save_title_ready": "Save (share with desktop)",
+      "save_title_need_6": "Place 6 points to enable"
     },
     "Pass1RallyEnd": {
       "k1": "Player A scored",
@@ -4287,7 +4291,16 @@
       "prompt_land_zone": "#{{n}} ({{shot}}) — Select landing point",
       "next": "Next",
       "save": "Save",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "dismiss": "Dismiss",
+      "err_cant_reach_land": "\"Couldn't reach\" cannot have a landing point (saving without one)",
+      "err_invalid_land": "That shot type cannot land in that zone. Pick another zone.",
+      "err_service_not_first": "A service can only be the first stroke of the rally"
+    },
+    "AnnotateOverlay": {
+      "confirm": "Confirm",
+      "cancel": "Cancel",
+      "tap": "Tap"
     },
     "PlayMode": {
       "k1": "Cannot play the video",

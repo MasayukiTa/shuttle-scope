@@ -160,25 +160,30 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
 
   const save = async () => {
     if (points.length !== 6) {
-      setErr('6 点全て設置してから保存できます')
+      setErr(t('auto.MobileCourtCalib.err_need_6'))
       return
     }
     setSaving(true)
     setErr('')
+    // close 判定は state(err) ではなくローカル変数で行う。setErr は非同期で、
+    // この closure の `err` は描画時の値('')のままなので、!err 判定だと
+    // サーバ保存失敗時もバナーを見せず即 close してしまう (失敗の無言化)。
+    let serverFailed = false
     try {
       const payload = { points: points.map((p) => [p.x, p.y] as [number, number]) }
       try {
         await apiPost(`/matches/${matchId}/court_calibration`, payload)
       } catch {
         // backend 失敗時も localStorage は保存して desktop と共有可能にする
-        setErr('サーバ保存失敗 — ローカルのみ保存しました')
+        serverFailed = true
+        setErr(t('auto.MobileCourtCalib.err_server_failed_local_only'))
       }
       try {
         localStorage.setItem(`court-calib-${matchId}`, JSON.stringify(points))
       } catch { /* ignore */ }
       onSaved(points)
-      // err が出てなければ close
-      if (!err) onClose()
+      // サーバ保存に失敗していなければ閉じる (失敗時はバナーを見せて開いたまま)。
+      if (!serverFailed) onClose()
     } finally {
       setSaving(false)
     }
@@ -380,7 +385,7 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
           type="button"
           onClick={save}
           disabled={points.length !== 6 || saving}
-          title={points.length === 6 ? '保存 (desktop と共有)' : '6 点設置で有効化'}
+          title={points.length === 6 ? t('auto.MobileCourtCalib.save_title_ready') : t('auto.MobileCourtCalib.save_title_need_6')}
           className="rounded-full"
           style={{
             width: 48, height: 48,

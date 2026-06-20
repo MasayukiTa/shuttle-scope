@@ -39,7 +39,11 @@ import { MIcon } from '@/components/common/MIcon'
 // i18next instance. Defining this at module scope crashes the minified
 // bundle with "ReferenceError: t is not defined" (t exists only in the
 // useTranslation() hook context).
-const COMMON_SHOT_KEYS = ['smash','clear','drop','net','push','drive','lift','cross'] as const
+// 固定 8 種は backend の canonical ShotType 値で保存する (net/push/lift/cross の
+// 非正規値だと個別 POST/PUT が canonicalize せず DB に生値が残り、desktop の
+// shot_types.* ラベル解決や分析と不整合になる)。ラベルは位置依存の k1..k8 を流用
+// するため key を canonical にしても表示文言は変わらない。
+const COMMON_SHOT_KEYS = ['smash','clear','drop','net_shot','push_rush','drive','lob','cross_net'] as const
 
 // 「その他」展開で表示する残りの球種 (ShotType 正規値)。other は別途
 // 「後で詳細入力」ボタンで扱うため、グリッドには含めない (= 9 種)。
@@ -50,6 +54,31 @@ const OTHER_SHOT_KEYS = [
 ] as const
 
 type ShotKey = typeof COMMON_SHOT_KEYS[number] | typeof OTHER_SHOT_KEYS[number]
+
+// backend/utils/validators.py と同じ整合性ルール。UI が出した値が必ず
+// validate_stroke を通る形で送られるようにし、422 → mobileAnnotateQueue の
+// manualRetry 化による「無言ドロップ (アノテ消失)」を根絶する。
+const SERVICE_TYPES: readonly string[] = ['short_service', 'long_service']
+// 各 shot_type が物理的に着地できないゾーン (INVALID_COMBINATIONS と一致)。
+const INVALID_LAND_ZONES: Record<string, readonly ZoneCode[]> = {
+  smash: ['NL', 'NC', 'NR'],          // スマッシュはネット前に落ちない
+  short_service: ['BL', 'BC', 'BR'],  // ショートサーブはバックへ届かない
+  net_shot: ['BL', 'BC', 'BR'],       // ネットショットはバックへ届かない
+}
+
+type StrokeValidationError = 'cant_reach_land' | 'invalid_land' | 'service_not_first'
+
+/** 送信前のクライアント検証。null なら OK。cant_reach は着地点を持てない。 */
+function strokeValidationError(
+  shot: string,
+  land: ZoneCode | null,
+  strokeNum: number,
+): StrokeValidationError | null {
+  if (shot === 'cant_reach') return land != null ? 'cant_reach_land' : null
+  if (land != null && INVALID_LAND_ZONES[shot]?.includes(land)) return 'invalid_land'
+  if (SERVICE_TYPES.includes(shot) && strokeNum !== 1) return 'service_not_first'
+  return null
+}
 
 interface StrokeLite {
   id?: number | null
@@ -116,6 +145,8 @@ export function Pass3ShotDetail({
 
   // shot_type 更新中の stroke (= 既存 chip タップ)
   const [editingStrokeNum, setEditingStrokeNum] = useState<number | null>(null)
+  // 送信前検証で弾いた場合のユーザー向けエラー (無言ドロップの代わりに明示表示)。
+  const [commitError, setCommitError] = useState<string | null>(null)
 
   // Pass 2 が "final" を sentinel 9999 で挿入するので、その手前に詰める。
   // sentinel 以外の中で最大 stroke_num + 1 を採用。
@@ -129,7 +160,16 @@ export function Pass3ShotDetail({
     return prev.player === 'player_a' ? 'player_b' : 'player_a'
   })()
 
-  const commitShot = async (shotKey: ShotKey | 'other', hit: ZoneCode, land: ZoneCode) => {
+  const commitShot = async (shotKey: ShotKey | 'other', hit: ZoneCode | null, land: ZoneCode | null) => {
+    // 送信前検証: backend validate_stroke を必ず通る形だけ送る。弾かれる組合せを
+    // そのまま POST すると 422 → queue が manualRetry 化し、入力が無言で失われるため。
+    const verr = strokeValidationError(shotKey, land, nextStrokeNum)
+    if (verr) {
+      setCommitError(t(`auto.Pass3ShotDetail.err_${verr}`))
+      setAdd({ phase: 'idle' })
+      return
+    }
+    setCommitError(null)
     const body = {
       stroke_num: nextStrokeNum,
       player: nextPlayer,
@@ -211,15 +251,24 @@ export function Pass3ShotDetail({
       setEditingStrokeNum(null)
       return
     }
+    // cant_reach は着地点を持てない → 既存 land_zone をクリアしてから送る。
+    const newLand = shotKey === 'cant_reach' ? null : (s.land_zone ?? null)
+    const verr = strokeValidationError(shotKey, newLand as ZoneCode | null, s.stroke_num)
+    if (verr) {
+      setCommitError(t(`auto.Pass3ShotDetail.err_${verr}`))
+      setEditingStrokeNum(null)
+      return
+    }
+    setCommitError(null)
     // PUT /api/strokes/:id は StrokeData full body を要求するため、現値で再送信
     await enqueue('PUT /api/strokes/:id', {
       stroke_num: s.stroke_num,
       player: s.player,
       shot_type: shotKey,
       hit_zone: s.hit_zone,
-      land_zone: s.land_zone,
+      land_zone: newLand,
     }, { id: s.id })
-    onStrokeUpdated({ ...s, shot_type: shotKey })
+    onStrokeUpdated({ ...s, shot_type: shotKey, land_zone: newLand })
     setEditingStrokeNum(null)
   }
 
@@ -254,7 +303,12 @@ export function Pass3ShotDetail({
         title={t('auto.Pass3ShotDetail.pick_title', { n: nextStrokeNum, player: nextPlayer === 'player_a' ? 'A' : 'B' })}
         commonShots={COMMON_SHOTS}
         otherShots={OTHER_SHOTS}
-        onPick={(k) => setAdd({ phase: 'hitZone', shot: k })}
+        allowServices={nextStrokeNum === 1}
+        onPick={(k) => {
+          // cant_reach (届かず) は着地点を持てない → zone wizard を飛ばして即確定。
+          if (k === 'cant_reach') { void commitShot('cant_reach', null, null); return }
+          setAdd({ phase: 'hitZone', shot: k })
+        }}
         onCancel={() => setAdd({ phase: 'idle' })}
       />
     )
@@ -265,6 +319,7 @@ export function Pass3ShotDetail({
         title={t('auto.Pass3ShotDetail.edit_title', { n: editingStrokeNum })}
         commonShots={COMMON_SHOTS}
         otherShots={OTHER_SHOTS}
+        allowServices={editingStrokeNum === 1}
         onPick={(k) => void editShot(editingStrokeNum, k)}
         onCancel={() => setEditingStrokeNum(null)}
       />
@@ -289,6 +344,16 @@ export function Pass3ShotDetail({
         </button>
       </div>
 
+      {commitError && (
+        <div className="bg-red-900/80 text-red-100 text-xs px-3 py-2 flex items-center gap-2 border-b border-red-700">
+          <MIcon name="error" size={14} />
+          <span className="flex-1">{commitError}</span>
+          <button type="button" onClick={() => setCommitError(null)} className="text-red-200 underline">
+            {t('auto.Pass3ShotDetail.dismiss')}
+          </button>
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto p-3 space-y-2" data-tutorial="mobileAnnotate.strokeChips">
         {sorted.length === 0 && (
           <div className="text-gray-500 text-sm text-center py-4">
@@ -297,7 +362,7 @@ export function Pass3ShotDetail({
         )}
         {sorted.map((s) => (
           <button
-            key={s.stroke_num}
+            key={s.id ?? `n${s.stroke_num}`}
             type="button"
             onClick={() => setEditingStrokeNum(s.stroke_num)}
             className="w-full flex items-center gap-3 px-3 py-2 rounded bg-gray-800 hover:bg-gray-700"
@@ -348,6 +413,7 @@ function ShotChipPicker({
   title,
   commonShots,
   otherShots,
+  allowServices,
   onPick,
   onCancel,
 }: {
@@ -356,11 +422,18 @@ function ShotChipPicker({
   commonShots: ShotOption[]
   /** 「その他」展開で表示する残り 10 種 (other ボタンは別枠) */
   otherShots: ShotOption[]
+  /** サーブ種別 (short/long_service) を出すか。ラリー1球目のみ true (validate_stroke 準拠)。 */
+  allowServices: boolean
   onPick: (key: ShotKey | 'other') => void
   onCancel: () => void
 }) {
   const { t } = useTranslation()
   const [showOther, setShowOther] = useState(false)
+  // 1球目以外ではサーブ種別を隠す (送っても 422 で無言ドロップするため)。
+  const visibleOther = useMemo(
+    () => (allowServices ? otherShots : otherShots.filter((o) => !SERVICE_TYPES.includes(o.key))),
+    [otherShots, allowServices],
+  )
   return (
     <div className="absolute inset-0 bg-black/95 flex flex-col">
       <div className="px-3 py-2 border-b border-gray-800 text-xs text-yellow-200 font-bold">
@@ -396,7 +469,7 @@ function ShotChipPicker({
 
         {showOther && (
           <div className="mt-2 grid grid-cols-2 gap-2">
-            {otherShots.map((c) => (
+            {visibleOther.map((c) => (
               <button
                 key={c.key}
                 type="button"

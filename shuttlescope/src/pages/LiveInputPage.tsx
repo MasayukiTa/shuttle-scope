@@ -109,6 +109,10 @@ export function LiveInputPage() {
     const rallyNum = store.currentRallyNum
     const newScoreA = winner === 'player_a' ? store.scoreA + 1 : store.scoreA
     const newScoreB = winner === 'player_b' ? store.scoreB + 1 : store.scoreB
+    // confirmRally は currentPlayer を勝者に書き換えるため、payload に使う値は
+    // 確定の「前」に capture する (空ラリーの server が勝者で汚染されるのを防ぐ)。
+    const server = store.currentPlayer
+    const rallyStart = store.rallyStartTimestamp
 
     store.confirmRally(winner, endType)
     store.incrementPending()
@@ -122,13 +126,13 @@ export function LiveInputPage() {
           strokes,
           scoreAAfter: newScoreA,
           scoreBAfter: newScoreB,
-          rallyStartTimestamp: store.rallyStartTimestamp,
+          rallyStartTimestamp: rallyStart,
           isBasicMode: true,  // LiveInputPage は basic mode 固定 (試合中の素早い入力前提)
         })
       : buildSkippedRallyPayload({
           setId: latestSet.id,
           rallyNum,
-          server: store.currentPlayer,
+          server,
           winner,
           scoreAAfter: newScoreA,
           scoreBAfter: newScoreB,

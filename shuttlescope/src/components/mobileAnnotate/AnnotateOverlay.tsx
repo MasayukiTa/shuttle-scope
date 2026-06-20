@@ -15,6 +15,7 @@
  *   実 DB 書き込みは親の Pass 別 step machine が enqueue する。
  */
 import { useRef, useState, useCallback, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { MIcon } from '@/components/common/MIcon'
 
 export type ZoneCode =
@@ -28,18 +29,12 @@ export const ZONE_GRID: ZoneCode[][] = [
   ['NL', 'NC', 'NR'],  // 手前 (net 側)
 ]
 
-const ZONE_LABEL_JP: Record<ZoneCode, string> = {
-  BL: '左奥', BC: '中央奥', BR: '右奥',
-  ML: '左中', MC: '中央', MR: '右中',
-  NL: '左手前', NC: '中央手前', NR: '右手前',
-}
-
 interface Props {
   /** プロンプト (例: "サーブ打点を選択") */
   prompt: string
-  /** [取消][次へ] の代わりにカスタムボタンを出すなら */
-  primaryLabel?: string  // 既定: '確定'
-  cancelLabel?: string   // 既定: '取消'
+  /** [取消][次へ] の代わりにカスタムボタンを出すなら (未指定は i18n の既定) */
+  primaryLabel?: string
+  cancelLabel?: string
   /** primary 押下時の callback。staged zone がない場合は呼ばれない */
   onCommit: (zone: ZoneCode) => void
   onCancel: () => void
@@ -50,12 +45,15 @@ interface Props {
 /** ベース台 (動画 pause 状態の) 上に重ねるコート + 9 zone + 入力 UI */
 export function AnnotateOverlay({
   prompt,
-  primaryLabel = '確定',
-  cancelLabel = '取消',
+  primaryLabel,
+  cancelLabel,
   onCommit,
   onCancel,
   courtRect = { x: 0.15, y: 0.10, w: 0.70, h: 0.70 },
 }: Props) {
+  const { t } = useTranslation()
+  const primaryText = primaryLabel ?? t('auto.AnnotateOverlay.confirm')
+  const cancelText = cancelLabel ?? t('auto.AnnotateOverlay.cancel')
   const courtRef = useRef<HTMLDivElement | null>(null)
   const [staged, setStaged] = useState<ZoneCode | null>(null)
   const [magnifier, setMagnifier] = useState<{ x: number; y: number } | null>(null)
@@ -144,7 +142,7 @@ export function AnnotateOverlay({
                   {isStaged && (
                     <span className="text-[11px] text-white font-bold inline-flex items-center gap-1">
                       <MIcon name="check" size={11} />
-                      {ZONE_LABEL_JP[z]}
+                      {t(`zones.${z}`)}
                     </span>
                   )}
                 </div>
@@ -184,10 +182,10 @@ export function AnnotateOverlay({
           onClick={onCancel}
           className="px-3 py-2 rounded bg-gray-700 text-white text-xs flex-1"
         >
-          {cancelLabel}
+          {cancelText}
         </button>
         <div className="text-xs text-gray-300 font-mono px-2 min-w-[60px] text-center">
-          {staged ? `→ ${staged}` : 'タップ'}
+          {staged ? `→ ${staged}` : t('auto.AnnotateOverlay.tap')}
         </div>
         <button
           type="button"
@@ -198,7 +196,7 @@ export function AnnotateOverlay({
           }`}
         >
           <span className="inline-flex items-center gap-1 justify-center">
-            {primaryLabel}
+            {primaryText}
             <MIcon name="play_arrow" size={14} />
           </span>
         </button>

@@ -56,32 +56,48 @@ function httpError(status: number, text: string): Error {
 }
 
 // ── Refresh token 自動更新（同時多発 401 を 1 本にまとめる） ─────────────
-let _refreshInflight: Promise<boolean> | null = null
+// refresh の結果は 3 値で区別する (login-bounce バグ class 対策):
+//   'ok'        … 新トークン取得済。再送可。
+//   'invalid'   … refresh token そのものが失効 (401/403) or 不在。ログアウトすべき。
+//   'transient' … 429/503/5xx/network/timeout 等の一過性失敗。トークンは温存し、
+//                 ログアウトしない (次回呼び出しで同じ refresh token を再利用)。
+// App.tsx の authMe ガードと同じ非対称性をここでも担保する。
+type RefreshResult = 'ok' | 'invalid' | 'transient'
+let _refreshInflight: Promise<RefreshResult> | null = null
 
-async function tryRefreshToken(): Promise<boolean> {
+async function tryRefreshToken(): Promise<RefreshResult> {
   if (_refreshInflight) return _refreshInflight
   _refreshInflight = (async () => {
     try {
       const rt = sessionStorage.getItem(REFRESH_KEY)
-      if (!rt) return false
-      const res = await fetch(`${BASE_URL}/auth/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: rt }),
-      })
-      if (!res.ok) {
+      if (!rt) return 'invalid'
+      let res: Response
+      try {
+        res = await fetch(`${BASE_URL}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: rt }),
+        })
+      } catch {
+        // network / timeout = 一過性。有効な refresh token を捨てない。
+        return 'transient'
+      }
+      if (res.ok) {
+        const data: { access_token: string; refresh_token: string } = await res.json()
+        sessionStorage.setItem(TOKEN_KEY, data.access_token)
+        sessionStorage.setItem(REFRESH_KEY, data.refresh_token)
+        try { window.dispatchEvent(new Event(AUTH_CHANGED_EVENT)) } catch {}
+        return 'ok'
+      }
+      // 401/403 のみ「refresh token 失効 = 本当の失効」とみなしクリアする。
+      if (res.status === 401 || res.status === 403) {
         sessionStorage.removeItem(TOKEN_KEY)
         sessionStorage.removeItem(REFRESH_KEY)
         try { window.dispatchEvent(new Event(AUTH_CHANGED_EVENT)) } catch {}
-        return false
+        return 'invalid'
       }
-      const data: { access_token: string; refresh_token: string } = await res.json()
-      sessionStorage.setItem(TOKEN_KEY, data.access_token)
-      sessionStorage.setItem(REFRESH_KEY, data.refresh_token)
-      try { window.dispatchEvent(new Event(AUTH_CHANGED_EVENT)) } catch {}
-      return true
-    } catch {
-      return false
+      // 429 / 503 / その他 5xx = 一過性。トークン温存。
+      return 'transient'
     } finally {
       // 次の 401 バッチに備えて解放（成功時の値は短命キャッシュしない）
       setTimeout(() => { _refreshInflight = null }, 0)
@@ -218,19 +234,30 @@ async function fetchWithAutoRefresh(input: string, init: RequestInit): Promise<R
   if (res.status !== 401) return res
   // /auth/refresh 自体が 401 の場合は再試行しない
   if (input.includes('/auth/refresh') || input.includes('/auth/login')) return res
-  const ok = await tryRefreshToken()
-  if (!ok) {
-    // refresh も失敗 = 完全失効 → 自動でログイン画面へ
+  const refresh = await tryRefreshToken()
+  if (refresh === 'invalid') {
+    // refresh token も失効 = 完全失効 → 自動でログイン画面へ
     _handleSessionExpired()
     return res
   }
-  // 新 access token で再送 (再送にもタイムアウトを掛ける)
+  if (refresh === 'transient') {
+    // 一過性の refresh 失敗 (429/503/network)。ログアウトせずトークンを温存し、
+    // 元の 401 を呼び出し側へ返す (retryable エラーとして扱われ、次回呼び出しで
+    // 同じ refresh token を使って再試行できる)。login-bounce を防ぐ。
+    return res
+  }
+  // refresh === 'ok' → 新 access token で再送 (再送にもタイムアウトを掛ける)
   const wrap2 = _withDefaultTimeout(input, {
     ...init,
     headers: { ...(init.headers as Record<string, string>), ...authHeaders() },
   })
   try {
-    return await fetch(input, wrap2.init)
+    const retryRes = await fetch(input, wrap2.init)
+    // refresh 直後の再送がなお 401/403 = role 剥奪 / 新トークン拒否 → 失効扱い。
+    if (retryRes.status === 401 || retryRes.status === 403) {
+      _handleSessionExpired()
+    }
+    return retryRes
   } catch (e) {
     if (wrap2.isTimeout()) {
       throw new Error(`API timeout (${DEFAULT_API_TIMEOUT_MS}ms after refresh): ${input}`, { cause: e })
@@ -266,9 +293,13 @@ export async function apiGet<T>(
 }
 
 export async function apiPost<T>(path: string, body: unknown, extraHeaders?: Record<string, string>): Promise<T> {
+  // 既定で安定 idempotency key を付与。fetchWithAutoRefresh の 401 再送は init.headers を
+  // 再利用するため、最初の試行とリフレッシュ後の再送が同一キーを共有し、最初の POST が
+  // commit 済 (応答だけ 401) でも backend が重複作成を dedup できる。caller (mobile queue 等)
+  // が明示キーを渡せば extraHeaders で上書きされる。
   const res = await fetchWithAutoRefresh(BASE_URL + path, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders(), ...(extraHeaders ?? {}) },
+    headers: { 'Content-Type': 'application/json', ...authHeaders(), 'X-Idempotency-Key': newIdempotencyKey(), ...(extraHeaders ?? {}) },
     body: JSON.stringify(body),
   })
   if (!res.ok) {
@@ -293,7 +324,7 @@ export function newIdempotencyKey(): string {
 export async function apiPut<T>(path: string, body: unknown): Promise<T> {
   const res = await fetchWithAutoRefresh(BASE_URL + path, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    headers: { 'Content-Type': 'application/json', ...authHeaders(), 'X-Idempotency-Key': newIdempotencyKey() },
     body: JSON.stringify(body),
   })
   if (!res.ok) {

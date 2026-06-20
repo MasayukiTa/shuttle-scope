@@ -169,15 +169,25 @@ const END_TYPES = [
 // cant_reach → 打者が勝つ（相手が取れない）
 // ace → 打者が勝つ（クリーンウィナー）
 // forced_error/unforced_error → 文脈依存のため手動選択
+// doubles では striker が partner_a/partner_b になり得る。勝者判定は team
+// (player_a/player_b) 単位なので、比較前に partner_* を所属チームへ正規化する。
+// これを欠くと doubles で partner が終端ミスした時にガード/サジェストが不発になる。
+function normalizeStrikerTeam(striker: string | undefined): 'player_a' | 'player_b' | undefined {
+  if (striker === 'player_a' || striker === 'partner_a') return 'player_a'
+  if (striker === 'player_b' || striker === 'partner_b') return 'player_b'
+  return undefined
+}
+
 function getSuggestedWinner(
   endType: string | null,
   lastStriker: string | undefined
 ): 'player_a' | 'player_b' | null {
-  if (!endType || !lastStriker) return null
-  if (lastStriker !== 'player_a' && lastStriker !== 'player_b') return null
-  const opponent = lastStriker === 'player_a' ? 'player_b' : 'player_a'
+  if (!endType) return null
+  const team = normalizeStrikerTeam(lastStriker)
+  if (!team) return null
+  const opponent = team === 'player_a' ? 'player_b' : 'player_a'
   if (endType === 'out' || endType === 'net') return opponent
-  if (endType === 'cant_reach' || endType === 'ace') return lastStriker
+  if (endType === 'cant_reach' || endType === 'ace') return team
   return null
 }
 
@@ -187,11 +197,13 @@ function isWinnerBlocked(
   endType: string | null,
   lastStriker: string | undefined
 ): boolean {
-  if (!endType || !lastStriker) return false
-  // 打者自身がアウト/ネット → 打者は勝てない
-  if ((endType === 'out' || endType === 'net') && winner === lastStriker) return true
+  if (!endType) return false
+  const team = normalizeStrikerTeam(lastStriker)
+  if (!team) return false
+  // 打者自身がアウト/ネット → 打者(チーム)は勝てない
+  if ((endType === 'out' || endType === 'net') && winner === team) return true
   // 相手が取れなかった → 相手は勝てない
-  if (endType === 'cant_reach' && winner !== lastStriker) return true
+  if (endType === 'cant_reach' && winner !== team) return true
   return false
 }
 
@@ -223,6 +235,10 @@ export function AnnotatorPage() {
   const isLight = useIsLightMode()
   const [initialized, setInitialized] = useState(false)
   const [initError, setInitError] = useState<string | null>(null)
+  // H14: init effect を明示再実行するための nonce。retry ボタンで bump する
+  // (effect deps が matchId/query data のみだと、initStartedRef を false に
+  // 戻しても deps 不変で doInit が再実行されずページが固まるため)。
+  const [initRetryNonce, setInitRetryNonce] = useState(0)
   const [urlInput, setUrlInput] = useState('')
   // DRM対応WebViewモード: yt-dlpでダウンロードできないDRM保護コンテンツに使用
   const [useWebView, setUseWebView] = useState(false)
@@ -502,7 +518,7 @@ export function AnnotatorPage() {
 
     doInit()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matchId, annotationStateData, setsData])
+  }, [matchId, annotationStateData, setsData, initRetryNonce])
 
   // M-001: 初期化完了後、?seek= パラメータでビデオをシーク
   useEffect(() => {
@@ -521,6 +537,10 @@ export function AnnotatorPage() {
   const handleConfirmRally = useCallback(
     (winner: 'player_a' | 'player_b', endType: string) => {
       const s = useAnnotationStore.getState()
+      // H7: 二重 confirm 防止。confirmRally は isRallyActive=false にするので、
+      // 高速ダブルクリック / ボタンとキーボードの競合等で 2 回目が走っても
+      // スコア二重加算・/strokes/batch 二重保存を起こさないよう冪等化する。
+      if (!s.isRallyActive) return
       const setId = s.currentSetId
       if (!setId) {
         showError(t('annotator.ui.set_id_missing', { defaultValue: 'セットIDが未設定です。再読み込みしてください。' }))
@@ -1720,11 +1740,11 @@ export function AnnotatorPage() {
           <div className="flex items-center justify-center gap-2">
             <button
               onClick={() => {
-                // initStartedRef は err 経路で false に戻されているため、
-                // setInitError(null) で再 mount せず effect 再実行されるよう
-                // 強制リトライする
+                // initStartedRef を戻すだけでは effect deps が不変で doInit が
+                // 再実行されない。initRetryNonce を bump して effect を確実に再発火させる。
                 setInitError(null)
                 initStartedRef.current = false
+                setInitRetryNonce((n) => n + 1)
               }}
               className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm"
               autoFocus
@@ -2144,7 +2164,7 @@ export function AnnotatorPage() {
                     }`}
                     title={t('auto.AnnotatorPage.k7')}
                   >
-                    {t('auto.AnnotatorPage.icon_trash')}
+                    <MIcon name="delete" size={11} />
                   </button>
                 </div>
               ) : yoloJob?.status === 'complete' ? (
@@ -2225,7 +2245,7 @@ export function AnnotatorPage() {
                       }`}
                       title={t('auto.AnnotatorPage.k7')}
                     >
-                      {t('auto.AnnotatorPage.icon_trash')}
+                      <MIcon name="delete" size={11} />
                     </button>
                   )}
                   {yoloArtifactExists && yoloRoiExpanded && (
@@ -2255,7 +2275,7 @@ export function AnnotatorPage() {
                       onClick={() => seekRel(-5)}
                       className={`px-1 py-0.5 rounded text-[10px] ${isLight ? 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300' : 'bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-600'}`}
                       title={t('auto.AnnotatorPage.k9')}
-                    >{t('auto.AnnotatorPage.seek_back_5s')}</button>
+                    ><span className="inline-flex items-center gap-0.5"><MIcon name="fast_rewind" size={10} />{t('auto.AnnotatorPage.seek_back_5s')}</span></button>
                     <button
                       onClick={() => stepFrame(-1)}
                       className={`px-1 py-0.5 rounded text-[10px] ${isLight ? 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300' : 'bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-600'}`}
@@ -2270,7 +2290,7 @@ export function AnnotatorPage() {
                       onClick={() => seekRel(5)}
                       className={`px-1 py-0.5 rounded text-[10px] ${isLight ? 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300' : 'bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-600'}`}
                       title={t('auto.AnnotatorPage.k12')}
-                    >{t('auto.AnnotatorPage.seek_fwd_5s')}</button>
+                    ><span className="inline-flex items-center gap-0.5">{t('auto.AnnotatorPage.seek_fwd_5s')}<MIcon name="fast_forward" size={10} /></span></button>
                     <span className={`mx-0.5 ${isLight ? 'text-gray-300' : 'text-gray-600'}`}>|</span>
                     <button
                       onClick={prevSample}
@@ -4316,8 +4336,19 @@ export function AnnotatorPage() {
                       videoTimestamp: videoRef.current?.currentTime ?? null,
                       savedAt: now,
                     }
-                    localStorage.setItem(autoSaveKey!, JSON.stringify(data))
-                    setLastAutoSaveTime(now)
+                    // 自動保存と同じく try/catch で quota/private-mode 失敗を握り、
+                    // 失敗を黙って成功表示しない (手動保存は「今すぐ保存」の明示操作)。
+                    try {
+                      localStorage.setItem(autoSaveKey!, JSON.stringify(data))
+                      setLastAutoSaveTime(now)
+                      if (autoSaveError) setAutoSaveError(null)
+                    } catch (err: unknown) {
+                      const msg = (err as { name?: string } | null)?.name === 'QuotaExceededError'
+                        ? t('annotator.ui.autosave_quota')
+                        : t('annotator.ui.autosave_failed', { defaultValue: '一時保存失敗' })
+                      setAutoSaveError(msg)
+                      console.warn('[manual-save] localStorage failed:', err)
+                    }
                   }}
                   className={clsx(
                     'w-full flex items-center justify-center gap-1.5 rounded font-medium',
