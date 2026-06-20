@@ -156,6 +156,16 @@ const emptyPending = (): PendingStroke => ({
   above_net: undefined,
 })
 
+// hitter id (player_a/partner_a/player_b/partner_b) → 所属チーム (player_a/player_b)。
+// 文字列 suffix `_a`/`_b` 判定だと将来 '_anchor' 等で壊れるため explicit map に統一し、
+// setHitter / undoLastStroke で共有する。
+const HITTER_TO_TEAM: Record<string, 'player_a' | 'player_b'> = {
+  player_a: 'player_a',
+  partner_a: 'player_a',
+  player_b: 'player_b',
+  partner_b: 'player_b',
+}
+
 export const useAnnotationStore = create<AnnotationState>((set, get) => ({
   matchId: null,
   currentSetId: null,
@@ -353,7 +363,16 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
     if (!state.pendingStroke.shot_type) return
 
     const prevStroke = state.currentStrokes[state.currentStrokes.length - 1]
-    const autoHitZone = prevStroke?.land_zone ?? state.pendingStroke.hit_zone
+    // selectLandZone と同じく、前ストロークの land_zone が OB_/NET_ の場合は
+    // 不正ゾーンなので hit_zone へ継承しない (継承すると Zone9 でない値が hit_zone に
+    // 入り空間分析データを壊す)。
+    const NET_ZONES: ZoneNet[] = ['NET_L', 'NET_C', 'NET_R']
+    const prevLandIsValid = prevStroke?.land_zone &&
+      !String(prevStroke.land_zone).startsWith('OB_') &&
+      !(NET_ZONES as string[]).includes(prevStroke.land_zone)
+    const autoHitZone = prevLandIsValid
+      ? (prevStroke!.land_zone as Zone9)
+      : state.pendingStroke.hit_zone
 
     const finalHitZone = state.pendingStroke.hit_zone_source === 'manual'
       ? (state.pendingStroke.hit_zone as Zone9 | undefined)
@@ -447,12 +466,6 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
   // 旧: 文字列 suffix `_a` / `_b` で判定していたが、将来 hitter id に '_a' を含む
   // 名前 (例: '_anchor' 等) が混入すると壊れるため、explicit map で対応する。
   setHitter: (h) => {
-    const HITTER_TO_TEAM: Record<string, 'player_a' | 'player_b'> = {
-      player_a: 'player_a',
-      partner_a: 'player_a',
-      player_b: 'player_b',
-      partner_b: 'player_b',
-    }
     const team = HITTER_TO_TEAM[h] ?? 'player_a'  // 未知 hitter はデフォルトで player_a 側
     set({ currentHitter: h, currentPlayer: team })
   },
@@ -509,10 +522,10 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
     if (currentStrokes.length === 0) return null
     const removedStroke = currentStrokes[currentStrokes.length - 1]
     const newStrokes = currentStrokes.slice(0, -1)
-    // 削除したストロークの player から前チーム・前ヒッターを復元
+    // 削除したストロークの player から前チーム・前ヒッターを復元。
+    // suffix 判定ではなく共有 HITTER_TO_TEAM マップで正確に解決する。
     const restoredHitter = removedStroke.player  // player_a/partner_a/player_b/partner_b
-    const restoredPlayer: 'player_a' | 'player_b' =
-      restoredHitter.includes('_a') ? 'player_a' : 'player_b'
+    const restoredPlayer: 'player_a' | 'player_b' = HITTER_TO_TEAM[restoredHitter] ?? 'player_a'
     set({
       currentStrokes: newStrokes,
       currentStrokeNum: Math.max(1, currentStrokeNum - 1),

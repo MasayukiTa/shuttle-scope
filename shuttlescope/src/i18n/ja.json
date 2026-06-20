@@ -3674,10 +3674,10 @@
       "dot_running": "●",
       "paused_pct": "⏸ {{n}}%",
       "icon_trash": "🗑",
-      "seek_back_5s": "⏮-5s",
+      "seek_back_5s": "-5s",
       "step_back_1f": "-1f",
       "step_fwd_1f": "+1f",
-      "seek_fwd_5s": "+5s⏭",
+      "seek_fwd_5s": "+5s",
       "bbox_label": "BBOX",
       "net_lan": "LAN",
       "net_live": "● LIVE",
@@ -4247,7 +4247,11 @@
       "step_br": "BR 右下",
       "step_bl": "BL 左下",
       "step_nl": "NL ネット左",
-      "step_nr": "NR ネット右"
+      "step_nr": "NR ネット右",
+      "err_need_6": "6 点全て設置してから保存できます",
+      "err_server_failed_local_only": "サーバ保存失敗 — ローカルのみ保存しました",
+      "save_title_ready": "保存 (desktop と共有)",
+      "save_title_need_6": "6 点設置で有効化"
     },
     "Pass1RallyEnd": {
       "k1": "プレイヤーA 得点",
@@ -4299,7 +4303,16 @@
       "prompt_land_zone": "#{{n}} ({{shot}}) — 着地点を選択",
       "next": "次へ",
       "save": "保存",
-      "cancel": "取消"
+      "cancel": "取消",
+      "dismiss": "閉じる",
+      "err_cant_reach_land": "「届かず」は着地点を設定できません（着地点なしで保存します）",
+      "err_invalid_land": "その球種はそのゾーンに着地できません。別のゾーンを選んでください",
+      "err_service_not_first": "サーブはラリーの1球目のみ指定できます"
+    },
+    "AnnotateOverlay": {
+      "confirm": "確定",
+      "cancel": "取消",
+      "tap": "タップ"
     },
     "PlayMode": {
       "k1": "動画が再生できません",
