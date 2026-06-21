@@ -56,7 +56,7 @@ export function HitZoneSelector({
             className="inline-flex items-center px-1 py-0.5 rounded border border-gray-700 bg-gray-800 text-xs text-amber-400 font-semibold leading-none"
             aria-label={t('annotator.hit_zone_overridden')}
           >
-            {t('auto.HitZoneSelector.pencil')} {t('annotator.hit_zone_overridden')}
+            <MIcon name="edit" size={11} aria-hidden /> {t('annotator.hit_zone_overridden')}
           </span>
         )}
       </div>

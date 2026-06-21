@@ -5,7 +5,7 @@
  *   tagging=false (通常): 識別済みトラックを bbox で表示。一時停止中はホバーで名前表示。
  *   tagging=true  (タグ付け): 1フレーム検出結果を表示し、クリックで選手を割り当てる。
  */
-import { useState, _useCallback } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { clsx } from 'clsx'
 import { MIcon } from '@/components/common/MIcon'

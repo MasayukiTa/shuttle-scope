@@ -37,7 +37,7 @@ function ConfidencePill({ value, label }: { value: number; label: string }) {
     <span
       className={clsx(
         'text-[9px] font-mono tabular-nums px-1 rounded',
-        pct >= 70 ? 'bg-gray-800 text-blue-300' :
+        pct >= 70 ? 'bg-gray-800 text-emerald-300' :
         pct >= 45 ? 'bg-gray-800 text-blue-300' : 'bg-gray-800 text-amber-400'
       )}
       title={`${label}: ${pct}%`}
