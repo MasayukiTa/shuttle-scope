@@ -161,7 +161,7 @@ export function VideoPlayer({
           <button
             onClick={togglePlay}
             className="p-2 rounded bg-blue-600 hover:bg-blue-500 text-white"
-            title={isPlaying ? '一時停止 (Space)' : '再生 (Space)'}
+            title={isPlaying ? t('auto.VideoPlayer.pause') : t('auto.VideoPlayer.play')}
           >
             {isPlaying ? <MIcon name="pause" size={18} /> : <MIcon name="play_arrow" size={18} />}
           </button>

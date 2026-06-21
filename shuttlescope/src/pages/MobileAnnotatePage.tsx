@@ -115,10 +115,11 @@ function saveLevel(matchId: string | undefined, level: AnnotateLevel): void {
   } catch { /* ignore */ }
 }
 
-const PASS_LABELS: Record<AnnotatePass, string> = {
-  rally: 'Pass 1: 得点',
-  serve_final: 'Pass 2: サーブ・決定打',
-  detail: 'Pass 3: 詳細',
+// i18n キー (component 内 useMemo([t]) で解決する。module-scope での t() 呼び出しは禁止)
+const PASS_LABEL_KEYS: Record<AnnotatePass, string> = {
+  rally: 'auto.MobileAnnotatePage.pass_rally',
+  serve_final: 'auto.MobileAnnotatePage.pass_serve_final',
+  detail: 'auto.MobileAnnotatePage.pass_detail',
 }
 
 const PASS_ICONS: Record<AnnotatePass, React.ReactNode> = {
@@ -197,6 +198,12 @@ export function MobileAnnotatePage() {
   // 「レベル選択 picker を開いているか」。初回 mount で開いて軽い体験を案内する。
   const [levelPickerOpen, setLevelPickerOpen] = useState(false)
   const visiblePasses = useMemo(() => PASSES_FOR_LEVEL[level], [level])
+  // Pass ラベルは t() で解決 (言語切替に追従)。module-scope では t() を呼べないため component 内で。
+  const PASS_LABELS = useMemo<Record<AnnotatePass, string>>(() => ({
+    rally: t(PASS_LABEL_KEYS.rally),
+    serve_final: t(PASS_LABEL_KEYS.serve_final),
+    detail: t(PASS_LABEL_KEYS.detail),
+  }), [t])
   const setLevel = (lv: AnnotateLevel) => {
     setLevelState(lv)
     saveLevel(matchId, lv)
@@ -419,7 +426,7 @@ export function MobileAnnotatePage() {
   const ensureSet = async (): Promise<SetInfo | null> => {
     if (currentSet) return currentSet
     if (!matchId) {
-      setEnsureSetState({ loading: false, error: 'matchId が未設定です' })
+      setEnsureSetState({ loading: false, error: t('auto.MobileAnnotatePage.err_no_match_id') })
       return null
     }
     setEnsureSetState({ loading: true, error: null })
@@ -764,7 +771,7 @@ export function MobileAnnotatePage() {
           {queueStatus.pending > 0 && (
             <span
               className="flex items-center gap-1 text-[10px] px-1.5 py-1 rounded shadow ss-overlay-chip-warning"
-              title={`未送信 ${queueStatus.pending} 件 (再送中)`}
+              title={t('auto.MobileAnnotatePage.queue_pending', { n: queueStatus.pending })}
             >
               <MIcon name="cloud_off" size={12} />
               {queueStatus.pending}
@@ -775,7 +782,7 @@ export function MobileAnnotatePage() {
               type="button"
               onClick={() => void retryAllManual()}
               className="flex items-center gap-1 text-[10px] px-1.5 py-1 rounded shadow ss-overlay-chip-danger"
-              title={`送信失敗 ${queueStatus.manualRetry} 件 — タップで再送`}
+              title={t('auto.MobileAnnotatePage.queue_failed', { n: queueStatus.manualRetry })}
             >
               <MIcon name="warning" size={12} />
               {queueStatus.manualRetry}

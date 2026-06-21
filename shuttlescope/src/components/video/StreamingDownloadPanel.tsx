@@ -128,7 +128,7 @@ export function StreamingDownloadPanel({
           case 'error':
             clearInterval(poll)
             setDlState('error')
-            setErrorMsg(d.error ?? '不明なエラー')
+            setErrorMsg(d.error ?? t('auto.StreamingDownloadPanel.err_unknown'))
             break
           case 'downloading':
             setDlState('downloading')
@@ -169,7 +169,7 @@ export function StreamingDownloadPanel({
       setDlState('downloading')
     } catch (err: unknown) {
       setDlState('error')
-      setErrorMsg(errorMessage(err, 'ダウンロード開始に失敗しました'))
+      setErrorMsg(errorMessage(err, t('auto.StreamingDownloadPanel.err_start_failed')))
     }
   }, [matchId, quality, cookieBrowser, cookiesTxt, videoPassword])
 
@@ -182,20 +182,20 @@ export function StreamingDownloadPanel({
       return
     }
     if (file.size > 1024 * 1024) {
-      setCookiesError('cookies.txt は 1MB 以下にしてください')
+      setCookiesError(t('auto.StreamingDownloadPanel.err_cookies_too_large'))
       return
     }
     try {
       const text = await file.text()
       // Netscape cookies.txt 形式の簡易チェック (backend と同じ条件)
       if (!/Netscape HTTP Cookie File/i.test(text) && !/^# /m.test(text)) {
-        setCookiesError('Netscape 形式の cookies.txt ではないようです')
+        setCookiesError(t('auto.StreamingDownloadPanel.err_cookies_not_netscape'))
         return
       }
       setCookiesTxt(text)
       setCookiesFileName(file.name)
     } catch (err: unknown) {
-      setCookiesError(errorMessage(err, 'ファイル読み込みに失敗しました'))
+      setCookiesError(errorMessage(err, t('auto.StreamingDownloadPanel.err_file_read_failed')))
     }
   }, [])
 
@@ -478,9 +478,9 @@ export function StreamingDownloadPanel({
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
                     className={`text-[10px] px-2 py-1 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-700' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
-                    aria-label={showPassword ? 'パスワードを隠す' : 'パスワードを表示'}
+                    aria-label={showPassword ? t('auto.StreamingDownloadPanel.pw_hide_aria') : t('auto.StreamingDownloadPanel.pw_show_aria')}
                   >
-                    {showPassword ? '隠す' : '表示'}
+                    {showPassword ? t('auto.StreamingDownloadPanel.pw_hide') : t('auto.StreamingDownloadPanel.pw_show')}
                   </button>
                 </div>
                 <div className={`text-[10px] ${isLight ? 'text-gray-500' : 'text-gray-500'}`}>

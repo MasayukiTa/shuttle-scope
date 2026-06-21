@@ -1411,14 +1411,16 @@
       "step_label_land": "Click landing zone ({{shot}})",
       "step_label_rally_end": "End rally — select scorer and end type",
       "player_other": "Other",
-      "streaming_web_video": "Web video"
+      "streaming_web_video": "Web video",
+      "undo_pending_label": "Cancel input",
+      "undo_pending_label_with_shortcut": "Cancel input (Ctrl+Z)"
     },
     "ux": {
       "menu_label": "Action menu",
       "settings_section_keyhints": "Key hints",
       "settings_force_keyhints_label": "Show key hints on mobile too",
       "settings_force_keyhints_hint": "For iPad bench use with a Bluetooth keyboard",
-      "score_aria": "Score {{a}} vs {{b}}",
+      "score_aria": "Score {{a}} to {{b}}",
       "mode_input": "Input",
       "mode_review": "Review",
       "mode_analysis": "Analysis",
@@ -1494,7 +1496,9 @@
       "overlay_pose": "Pose",
       "overlay_fullscreen": "Fullscreen",
       "bottom_sheet_aria": "Bottom sheet",
-      "bottom_sheet_close": "Close"
+      "bottom_sheet_close": "Close",
+      "score_aria_game": "Score {{a}} to {{b}} game {{n}}",
+      "menu_aria": "Menu"
     },
     "hit_zone_overridden": "Manual",
     "hit_zone_aria": "Hit zone selector",
@@ -3146,7 +3150,17 @@
       "k11": "Forward / backward",
       "k12": "Total distance",
       "k13": "Avg speed",
-      "k14": "Max instantaneous speed"
+      "k14": "Max instantaneous speed",
+      "no_tracks": "No player-identification tracks. Run tracking with the \"+ Identify\" button.",
+      "sync_in_progress": "Syncing to DB...",
+      "sync_done": "Synced to DB",
+      "sync_failed": "Failed ({{status}}): {{message}}",
+      "sync_network_error": "Network error: {{msg}}",
+      "syncing": "Syncing...",
+      "sync_click": "Click to sync to DB",
+      "dir_lateral_tip": "Lateral: {{m}}m ({{pct}}%)",
+      "dir_diagonal_tip": "Diagonal: {{m}}m ({{pct}}%)",
+      "dir_depth_tip": "Forward/backward: {{m}}m ({{pct}}%)"
     },
     "PostLongRallyStats": {
       "k1": "Win rate",
@@ -3562,7 +3576,13 @@
       "cancel": "Cancel",
       "copy": "Copy",
       "copy_error": "Copy error",
-      "dismiss": "Dismiss"
+      "dismiss": "Dismiss",
+      "pt_court_tl": "Court top-left",
+      "pt_court_tr": "Court top-right",
+      "pt_court_br": "Court bottom-right",
+      "pt_court_bl": "Court bottom-left",
+      "pt_net_left": "Net left post",
+      "pt_net_right": "Net right post"
     },
     "StreamingDownloadPanel": {
       "k1": "Stream URL",
@@ -3599,7 +3619,16 @@
       "k14": "✓ Set",
       "k15": "Clear cookies.txt",
       "k16": "Open advanced options (range / cookies.txt / video password)",
-      "k17": "Video password"
+      "k17": "Video password",
+      "err_unknown": "Unknown error",
+      "err_start_failed": "Failed to start download",
+      "err_cookies_too_large": "cookies.txt must be 1MB or less",
+      "err_cookies_not_netscape": "This does not look like a Netscape-format cookies.txt",
+      "err_file_read_failed": "Failed to read file",
+      "pw_hide": "Hide",
+      "pw_show": "Show",
+      "pw_hide_aria": "Hide password",
+      "pw_show_aria": "Show password"
     },
     "WebViewPlayer": {
       "k1": "Loading...",
@@ -3618,7 +3647,12 @@
       "k10": "Stop screen recording",
       "k11": "Start recording this screen (works for licensed DRM streams as well)",
       "k12": "Recording quality",
-      "k13": "Close warning"
+      "k13": "Close warning",
+      "load_error": "Load error ({{code}}): {{desc}}",
+      "record_failed": "Recording failed",
+      "electron_only": "Screen recording is only available in the Electron app (not supported on web)",
+      "stopping": "Stopping…",
+      "saving": "Saving…"
     },
     "WebViewPlayer_test": {},
     "AnnotatorPage": {
@@ -4139,7 +4173,12 @@
       "pencil": "✎"
     },
     "PlayerPositionOverlay": {
-      "assisted": "assisted"
+      "assisted": "assisted",
+      "depth_front": "F",
+      "depth_mid": "M",
+      "depth_back": "B",
+      "side_left": "L",
+      "side_right": "R"
     },
     "PlayerTrackingOverlay": {
       "k_backend": "backend: {{backend}}",
@@ -4224,7 +4263,11 @@
       "run_player_detection": "Run player detection",
       "yolo_done_zero": "YOLO finished (0 frames — check ROI / video range)",
       "yolo_running": "YOLO running… {{n}}%",
-      "yolo_error": "YOLO error: {{msg}}"
+      "yolo_error": "YOLO error: {{msg}}",
+      "tracknet_run_failed": "TrackNet run failed",
+      "yolo_run_failed": "YOLO run failed",
+      "tracknet_start_failed": "Failed to start TrackNet: {{msg}}",
+      "yolo_start_failed": "Failed to start YOLO: {{msg}}"
     },
     "MobileCourtCalib": {
       "tap_to_place_suffix": " — tap to place ({{n}}/6)",
@@ -4340,7 +4383,19 @@
       "confirm": "Confirm",
       "seek_back_5": "◀◀5",
       "seek_back_1": "◀1",
-      "speed_x": "{{n}}x"
+      "speed_x": "{{n}}x",
+      "seek_fwd_1": "1▶",
+      "seek_fwd_5": "5▶",
+      "fit_to_contain": "Switch to fit view (contain)",
+      "fit_to_cover": "Switch to full view (cover)",
+      "shuttle_toggle_analyzed": "Shuttle trajectory (analyzed, {{n}} frames)",
+      "shuttle_toggle_unanalyzed": "Toggle shuttle trajectory (not analyzed)",
+      "player_toggle_analyzed": "Player position (analyzed, {{n}} frames)",
+      "player_toggle_unanalyzed": "Toggle player bbox (not analyzed)",
+      "quality_chip": "Quality {{label}}",
+      "quality_chip_preparing": "Quality {{label}} (preparing)",
+      "cv_candidate_title": "Candidate #{{i}} @ {{t}}s",
+      "cv_candidate_aria": "Candidate {{i}}"
     },
     "TutorialOverlay": {
       "header": "{{title}} · {{n}} / {{total}}",
@@ -4355,14 +4410,20 @@
     "RoiRectOverlay": {
       "analysis_region": "Analysis region",
       "drag_hint": "Drag to set the analysis region",
-      "k1": "Reset analysis region"
+      "k1": "Reset analysis region",
+      "corner_tl": "Top-left",
+      "corner_tr": "Top-right",
+      "corner_br": "Bottom-right",
+      "corner_bl": "Bottom-left"
     },
     "VideoPlayer": {
       "speed": "{{rate}}x",
       "k1": "Back 10s (Shift+←)",
       "k2": "Back 1 frame (←)",
       "k3": "Forward 1 frame (→)",
-      "k4": "Forward 10s (Shift+→)"
+      "k4": "Forward 10s (Shift+→)",
+      "pause": "Pause (Space)",
+      "play": "Play (Space)"
     },
     "AccountOrdersPage": {
       "k1": "Purchase history",
@@ -4455,7 +4516,13 @@
       "level_picker_title": "How much do you want to enter?",
       "level_can_upgrade": "You can raise the level and add more later.",
       "level_change": "Change level",
-      "level_badge": "Lv{{n}}"
+      "level_badge": "Lv{{n}}",
+      "pass_rally": "Pass 1: Score",
+      "pass_serve_final": "Pass 2: Serve / final hit",
+      "pass_detail": "Pass 3: Detail",
+      "err_no_match_id": "matchId is not set",
+      "queue_pending": "{{n}} unsent (resending)",
+      "queue_failed": "{{n}} send failures — tap to resend"
     },
     "OnboardingConsentPage": {
       "k1": "Japanese",
@@ -4541,6 +4608,15 @@
       "k26": "EXFIL",
       "k27": "EX",
       "k28": "🔒"
+    },
+    "DownloadOptionsModal": {
+      "err_start_format": "Start time format is invalid",
+      "err_end_format": "End time format is invalid",
+      "err_start_lt_end": "Please set start < end",
+      "err_cookies_too_large": "cookies.txt must be 1MB or less",
+      "err_cookies_not_netscape": "This does not look like a Netscape-format cookies.txt",
+      "err_file_read_failed": "Failed to read file",
+      "err_start_failed": "Failed to start download"
     }
   },
   "onboarding": {

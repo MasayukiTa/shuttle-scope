@@ -13,6 +13,7 @@
  */
 import { ReactNode, useEffect, useRef, useState } from 'react'
 import { clsx } from 'clsx'
+import { useTranslation } from 'react-i18next'
 import { MIcon } from '@/components/common/MIcon'
 
 interface TopBarMenuProps {
@@ -22,7 +23,9 @@ interface TopBarMenuProps {
   className?: string
 }
 
-export function TopBarMenu({ children, ariaLabel = 'メニュー', className }: TopBarMenuProps) {
+export function TopBarMenu({ children, ariaLabel, className }: TopBarMenuProps) {
+  const { t } = useTranslation()
+  const resolvedAriaLabel = ariaLabel ?? t('annotator.ux.menu_aria', { defaultValue: 'Menu' })
   const [open, setOpen] = useState(false)
   const wrapperRef = useRef<HTMLDivElement>(null)
 
@@ -49,7 +52,7 @@ export function TopBarMenu({ children, ariaLabel = 'メニュー', className }: 
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        aria-label={ariaLabel}
+        aria-label={resolvedAriaLabel}
         aria-expanded={open}
         className="flex items-center justify-center w-8 h-8 rounded text-gray-300 hover:bg-gray-700 transition-colors"
       >

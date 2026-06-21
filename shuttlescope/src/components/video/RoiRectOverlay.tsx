@@ -248,7 +248,7 @@ export function RoiRectOverlay({ value, onChange, editing, containerRef }: Props
                 e.preventDefault()
                 setDraggingCorner(i)
               }}
-              title={['左上', '右上', '右下', '左下'][i]}
+              title={t(['auto.RoiRectOverlay.corner_tl', 'auto.RoiRectOverlay.corner_tr', 'auto.RoiRectOverlay.corner_br', 'auto.RoiRectOverlay.corner_bl'][i])}
             />
           ))}
         </>

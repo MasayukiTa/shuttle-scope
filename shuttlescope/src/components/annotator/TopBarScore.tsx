@@ -2,6 +2,7 @@
  * U1: 上バー中央のスコア表示。試合中遠目から確認できる大型表示。
  */
 import { clsx } from 'clsx'
+import { useTranslation } from 'react-i18next'
 
 interface TopBarScoreProps {
   scoreA: number
@@ -11,13 +12,16 @@ interface TopBarScoreProps {
 }
 
 export function TopBarScore({ scoreA, scoreB, setNum, isMobile }: TopBarScoreProps) {
+  const { t } = useTranslation()
   return (
     <div
       className={clsx(
         'flex items-baseline gap-1 font-mono font-bold tabular-nums select-none',
         isMobile ? 'text-base' : 'text-2xl',
       )}
-      aria-label={`スコア ${scoreA} 対 ${scoreB}${setNum ? ` ゲーム ${setNum}` : ''}`}
+      aria-label={setNum
+        ? t('annotator.ux.score_aria_game', { a: scoreA, b: scoreB, n: setNum })
+        : t('annotator.ux.score_aria', { a: scoreA, b: scoreB })}
     >
       <span className={scoreA >= scoreB ? 'text-white' : 'text-gray-300'}>{scoreA}</span>
       <span className="text-gray-500">-</span>

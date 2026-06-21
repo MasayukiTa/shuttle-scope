@@ -139,8 +139,8 @@ export function MobileCVOverlay({
 
   const isTracknetRunning = !!tracknetJob && (tracknetJob.status === 'pending' || tracknetJob.status === 'running')
   const isYoloRunning = !!yoloJob && (yoloJob.status === 'pending' || yoloJob.status === 'running')
-  const tracknetError = tracknetJob?.status === 'error' ? (tracknetJob.error || 'TrackNet 実行失敗') : null
-  const yoloError = yoloJob?.status === 'error' ? (yoloJob.error || 'YOLO 実行失敗') : null
+  const tracknetError = tracknetJob?.status === 'error' ? (tracknetJob.error || t('auto.MobileCVOverlay.tracknet_run_failed')) : null
+  const yoloError = yoloJob?.status === 'error' ? (yoloJob.error || t('auto.MobileCVOverlay.yolo_run_failed')) : null
   // ジョブが complete/stopped (= 正常終了したが結果が 0 frames だったケースを含む) を
   // 「実行履歴あり」chip として残すため、別途追跡。ユーザがタップで dismiss できる。
   const tracknetCompleted = tracknetJob?.status === 'complete' || tracknetJob?.status === 'stopped'
@@ -174,7 +174,7 @@ export function MobileCVOverlay({
         setTracknetJob({ status: 'running', progress: 0 })
         setJobErr('')  // 既存ジョブを引き継いだのでエラーは消す
       } else {
-        setJobErr('TrackNet 起動失敗: ' + msg.slice(0, 200))
+        setJobErr(t('auto.MobileCVOverlay.tracknet_start_failed', { msg: msg.slice(0, 200) }))
       }
     }
   }
@@ -199,7 +199,7 @@ export function MobileCVOverlay({
         setYoloJob({ status: 'running', progress: 0 })
         setJobErr('')
       } else {
-        setJobErr('YOLO 起動失敗: ' + msg.slice(0, 200))
+        setJobErr(t('auto.MobileCVOverlay.yolo_start_failed', { msg: msg.slice(0, 200) }))
       }
     }
   }
