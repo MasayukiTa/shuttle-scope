@@ -342,8 +342,14 @@ export function MobileAnnotatePage() {
   }, [ralliesQuery.data])
 
   const mergedRallies = useMemo(() => {
-    // server + local の合算、rally_num で順序
-    const all = [...serverRallies, ...localRallies]
+    // server + local の合算。ただし server に既に取り込まれた local (client_uuid 一致)
+    // は重複なので除外する。これを欠くと送信成功後の refetch で同一ラリーが
+    // 二重計上され、rally_num 衝突・running score の誤りを起こす。server コピーを優先。
+    const serverUuids = new Set(serverRallies.map((r) => r.client_uuid).filter(Boolean))
+    const localOnly = localRallies.filter(
+      (r) => !(r.client_uuid && serverUuids.has(r.client_uuid)),
+    )
+    const all = [...serverRallies, ...localOnly]
     return all.sort((a, b) => {
       if (a.set_id !== b.set_id) return a.set_id - b.set_id
       return a.rally_num - b.rally_num
@@ -385,6 +391,12 @@ export function MobileAnnotatePage() {
   // 正式 best-of は将来 match レコードに持たせるが、当面 3 固定。
   const bestOf = 3
   const matchOver = matchWinner({ completedSetWinners, bestOf })
+  // H20: 試合終了 overlay を閉じられるようにする。旧版は描画条件が screen 非依存で
+  // 閉じるボタンが setScreen('play') を呼ぶだけ=非表示にできず、誤タップで誤確定した
+  // 試合のラリーを修正できない全画面ブロックになっていた。
+  const [matchOverDismissed, setMatchOverDismissed] = useState(false)
+  // スコアが変わって matchOver でなくなったら dismiss フラグをリセット。
+  useEffect(() => { if (!matchOver) setMatchOverDismissed(false) }, [matchOver])
 
   // /annotation/state を読んで、PC 側で進行中の set_num に追従する。
   // PC で第2セット中盤までやって離脱 → mobile 起動時、ここで第2セットに自動 jump。
@@ -657,7 +669,7 @@ export function MobileAnnotatePage() {
 
           {/* 試合終了 overlay: best-of-N のセット先取が確定したら表示。
              共通 util の matchWinner で判定。tap で閉じて確認のみ。 */}
-          {!calibEditingTop && matchOver && (
+          {!calibEditingTop && matchOver && !matchOverDismissed && (
             <div
               className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-4 text-center"
               style={{
@@ -676,7 +688,7 @@ export function MobileAnnotatePage() {
               </div>
               <button
                 type="button"
-                onClick={() => setScreen('play')}
+                onClick={() => { setMatchOverDismissed(true); setScreen('play') }}
                 className="px-3 py-1.5 rounded text-xs font-bold"
                 style={{ backgroundColor: '#4b5563', color: '#ffffff' }}
               >

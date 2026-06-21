@@ -78,9 +78,12 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
     },
   })
 
-  // 相手選手の入力が変わったら選択をリセット
+  // 相手選手の入力が「手入力で」変わったら選択をリセット。
+  // selectCandidate は opponentQuery=選択名 にもするため、query が選択名と一致する
+  // (= programmatic 選択) 間は link を消さない。これを欠くと既存選手を選んだ直後に
+  // opponentId が null 化し、重複 provisional player が作られてチームも失われる。
   useEffect(() => {
-    if (opponentId !== null) {
+    if (opponentId !== null && opponentQuery !== opponentName) {
       setOpponentId(null)
       setOpponentName('')
       setOpponentTeam('')
