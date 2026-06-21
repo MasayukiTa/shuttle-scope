@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { _clsx } from 'clsx'
+import { MIcon } from '@/components/common/MIcon'
 
 interface RallyPanelProps {
   setNum: number
@@ -77,9 +77,9 @@ export function RallyPanel({
       <div className="flex gap-2">
         <button
           onClick={onCancelRally}
-          className="flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm"
+          className="flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm inline-flex items-center justify-center gap-1"
         >
-          ← {t('annotator.rally_cancel')}
+          <MIcon name="arrow_back" size={14} /> {t('annotator.rally_cancel')}
         </button>
       </div>
     </div>

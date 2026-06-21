@@ -725,7 +725,6 @@ export function MobileAnnotatePage() {
           {!calibEditingTop && screen === 'annotate' && !matchQuery.isLoading && !matchQuery.error && pass === 'detail' && visiblePasses.includes('detail') && (
             <div className="absolute inset-0 z-40 bg-black/85">
               <Pass3RallyPicker
-                matchId={matchId ?? ''}
                 rallies={mergedRallies}
                 sets={allSets}
                 pausedAtSec={pausedAtSec}
@@ -1006,13 +1005,11 @@ function Pass2RallyPicker({
  * Pass3ShotDetail を起動。
  */
 function Pass3RallyPicker({
-  _matchId,
   rallies,
   sets,
   pausedAtSec,
   onCancel,
 }: {
-  matchId: string
   rallies: RallyLite[]
   sets: SetInfo[]
   pausedAtSec: number
