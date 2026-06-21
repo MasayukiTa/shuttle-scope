@@ -1174,6 +1174,9 @@
     },
     "ux": {
       "menu_label": "操作メニュー",
+      "settings_section_keyhints": "キーヒント表示",
+      "settings_force_keyhints_label": "モバイルでもキーヒントを表示",
+      "settings_force_keyhints_hint": "BT キーボード接続の iPad ベンチ運用向け",
       "score_aria": "スコア {{a}} 対 {{b}}",
       "mode_input": "入力",
       "mode_review": "確認",

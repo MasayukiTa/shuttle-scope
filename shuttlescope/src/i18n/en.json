@@ -1415,6 +1415,9 @@
     },
     "ux": {
       "menu_label": "Action menu",
+      "settings_section_keyhints": "Key hints",
+      "settings_force_keyhints_label": "Show key hints on mobile too",
+      "settings_force_keyhints_hint": "For iPad bench use with a Bluetooth keyboard",
       "score_aria": "Score {{a}} vs {{b}}",
       "mode_input": "Input",
       "mode_review": "Review",
