@@ -2088,7 +2088,8 @@
     "team_a": "チームA",
     "team_b": "チームB",
     "saving": "保存中…",
-    "save_failed": "保存に失敗しました"
+    "save_failed": "保存に失敗しました",
+    "nothing_to_save": "保存する観察がありません"
   },
   "prediction": {
     "title": "試合予測",

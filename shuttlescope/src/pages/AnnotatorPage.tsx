@@ -101,9 +101,17 @@ function detectStreamingSite(url: string): string | null {
   } catch {
     // URL パース失敗は無視
   }
-  // 既知の配信サービスに一致するか確認
-  for (const [domain, name] of Object.entries(STREAMING_SITE_NAMES)) {
-    if (url.includes(domain)) return name
+  // 既知の配信サービスに一致するか確認。raw URL の substring 一致だと短いドメイン
+  // ('t.co','x.com' 等) が無関係 URL ('report.com' 等) に誤マッチするため、hostname を
+  // パースして完全一致 or サブドメイン一致で判定する。
+  try {
+    const host = new URL(url).hostname.toLowerCase().replace(/^www\./, '')
+    for (const [domain, name] of Object.entries(STREAMING_SITE_NAMES)) {
+      const d = domain.toLowerCase()
+      if (host === d || host.endsWith('.' + d)) return name
+    }
+  } catch {
+    // URL 不正なら配信判定はスキップ (下の http(s) フォールバックへ)
   }
   // 未知の http(s) URL も配信URLとして扱う（yt-dlp が対応している可能性がある）
   if (url.startsWith('http://') || url.startsWith('https://')) {
@@ -601,6 +609,9 @@ export function AnnotatorPage() {
         useAnnotationStore.getState().decrementPending()
         queryClient.invalidateQueries({ queryKey: ['annotation-state', matchId] })
         queryClient.invalidateQueries({ queryKey: ['sets', matchId] })
+        // annotation_progress は ['match'] クエリ由来。これも invalidate しないと
+        // ヘッダの進捗バーがラリー保存後も更新されず固まって見える。
+        queryClient.invalidateQueries({ queryKey: ['match', matchId] })
         if (res?.data?.rally_id) {
           setLastSavedRallyId(res.data.rally_id)
           setReviewLaterAdded(false)
@@ -689,6 +700,10 @@ export function AnnotatorPage() {
         prevSet.score_b ?? 0
       )
       queryClient.invalidateQueries({ queryKey: ['sets', matchId] })
+      // handleModalNextSet と同様、セット移動時は 11 点インターバル表示状態をリセット
+      // (前セットに戻った際に再度 11 点を跨いでもサマリーが出るようにする)。
+      setMidGameShown(false)
+      setShowMidGameSummary(false)
     } catch (err: unknown) {
       showError(`${t('annotator.ui.prev_set_error_prefix', { defaultValue: '前セット移行エラー:' })} ${errorMessage(err, t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' }))}`)
     }
@@ -2843,9 +2858,7 @@ export function AnnotatorPage() {
             loading={cvReviewQueueLoading}
             candidatesData={candidatesData}
             onMarkCompleted={markReviewCompleted}
-            onJumpToRally={(_rallyId, _rallyNum) => {
-              // ラリーへのジャンプは動画タイムスタンプが必要 — 将来拡張
-            }}
+            onJumpToRally={undefined}
           />
         </div>
       )}

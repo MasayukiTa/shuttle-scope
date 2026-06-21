@@ -44,7 +44,9 @@ export function ScoreboardCompact({
   className,
 }: ScoreboardCompactProps) {
   const { t } = useTranslation()
-  const isDoubles = match?.format !== 'singles'
+  // match 未ロード (null/undefined) 時に doubles レイアウトへ誤判定しないよう、
+  // match が存在する場合のみ doubles 判定する。
+  const isDoubles = !!match && match.format !== 'singles'
   const minWPlayer = useLargeTouch ? 'min-w-[80px]' : 'min-w-[60px]'
   const scoreSize = useLargeTouch ? 'text-4xl' : 'text-2xl'
   const playerLabelSize = useLargeTouch ? 'text-xs' : 'text-[10px]'

@@ -53,7 +53,8 @@ export function StrokeHistory({ strokes, playerAName = 'A', playerBName = 'B', p
       {recent.map((stroke, idx) => {
         const playerLabel = resolvePlayerLabel(stroke.player)
         const teamTooltip = resolveTeamTooltip(stroke.player)
-        const shotLabel = t(`shot_types.${stroke.shot_type}`)
+        // 未知 shot_type (legacy / 非正規値) でも生キー 'shot_types.xxx' を見せない。
+        const shotLabel = t(`shot_types.${stroke.shot_type}`, { defaultValue: stroke.shot_type })
         const landLabel = stroke.land_zone ? `→${stroke.land_zone}` : ''
         const missingLand = showLandZoneWarning && !stroke.land_zone
         const hitLabel = stroke.hit_zone ? `(${stroke.hit_zone})` : ''
