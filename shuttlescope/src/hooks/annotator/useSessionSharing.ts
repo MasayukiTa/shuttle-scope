@@ -153,18 +153,26 @@ export function useSessionSharing({
   const tunnelPending = tunnelRunning && !tunnelStatus?.data?.url && !namedReadyHost
   // 直近のエラーログ（タイムアウト・認証失敗などのエラーメッセージ）
   const tunnelLastError: string | null = (() => {
+    // トンネル URL が取得できている (= 健全) 場合は、過去の benign なログ行を
+    // エラーとして誤表示しない (URL あり + spurious error の同時表示を防ぐ)。
+    if (tunnelBase) return null
     const log = tunnelStatus?.data?.recent_log ?? []
     // エラー・失敗を示すログエントリを探す（最新から）
     for (let i = log.length - 1; i >= 0; i--) {
       const line = log[i]
+      const lower = line.toLowerCase()
+      // 'error-free' / 'failed=0' / '0 failed' 等の benign な部分一致を除外。
+      const benign =
+        lower.includes('error-free') || lower.includes('failed=0') || lower.includes('0 failed')
       if (
-        line.includes('取得できませんでした') ||
-        line.includes('終了しました') ||
-        line.includes('authtoken') ||
-        line.includes('ERR_NGROK') ||
-        line.includes('error') ||
-        line.includes('Error') ||
-        line.includes('failed')
+        !benign && (
+          line.includes('取得できませんでした') ||
+          line.includes('終了しました') ||
+          line.includes('authtoken') ||
+          line.includes('ERR_NGROK') ||
+          lower.includes('error') ||
+          line.includes('failed')
+        )
       ) {
         return line
       }

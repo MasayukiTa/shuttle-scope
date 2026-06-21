@@ -93,28 +93,31 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
     e.preventDefault()
     e.stopPropagation()
     const t = e.touches[0]
-    // 🩺 診断: タップ位置にスタックされている全 element を console に dump。
-    // 「中央が反応しない / 透明な何かが上に乗っている」疑惑を DOM レベルで検証する。
-    // PWA 実機で Safari Web Inspector に繋いで確認する。
-    try {
-      const stack = document.elementsFromPoint(t.clientX, t.clientY)
-      const desc = stack.slice(0, 5).map((el) => {
-        const tag = el.tagName
-        const cls = (el.className && typeof el.className === 'string')
-          ? el.className.slice(0, 30) : ''
-        const id = el.id ? `#${el.id}` : ''
-        const cs = window.getComputedStyle(el)
-        return `${tag}${id}.${cls}[z=${cs.zIndex},pe=${cs.pointerEvents}]`
-      })
-      // eslint-disable-next-line no-console
-      console.log('[calib-tap]', `(${Math.round(t.clientX)},${Math.round(t.clientY)})`, desc)
-      setDiag(
-        `TAP(${Math.round(t.clientX)},${Math.round(t.clientY)}) ` +
-        `pts=${points.length}/6 nextIdx=${nextIdx} ` +
-        `vw=${videoWidth} vh=${videoHeight} ` +
-        desc.slice(0, 2).join(' | '),
-      )
-    } catch { /* ignore */ }
+    // 🩺 診断: タップ位置の element stack を dump。getComputedStyle を毎 touch で
+    // 走らせると低スペック端末で同期レイアウトが発生し操作が重くなるため、本番では
+    // 走らせない (DEV ビルドのみ)。import.meta.env.DEV は本番ビルドで static に false
+    // となり、esbuild がブロックごと dead-code 除去する。
+    if (import.meta.env.DEV) {
+      try {
+        const stack = document.elementsFromPoint(t.clientX, t.clientY)
+        const desc = stack.slice(0, 5).map((el) => {
+          const tag = el.tagName
+          const cls = (el.className && typeof el.className === 'string')
+            ? el.className.slice(0, 30) : ''
+          const id = el.id ? `#${el.id}` : ''
+          const cs = window.getComputedStyle(el)
+          return `${tag}${id}.${cls}[z=${cs.zIndex},pe=${cs.pointerEvents}]`
+        })
+        // eslint-disable-next-line no-console
+        console.log('[calib-tap]', `(${Math.round(t.clientX)},${Math.round(t.clientY)})`, desc)
+        setDiag(
+          `TAP(${Math.round(t.clientX)},${Math.round(t.clientY)}) ` +
+          `pts=${points.length}/6 nextIdx=${nextIdx} ` +
+          `vw=${videoWidth} vh=${videoHeight} ` +
+          desc.slice(0, 2).join(' | '),
+        )
+      } catch { /* ignore */ }
+    }
     // ルーペ表示開始
     setLoupe({ x: t.clientX, y: t.clientY })
     const hit = hitHandle(t.clientX, t.clientY)
@@ -201,6 +204,7 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
   // pre-react レベルで止めている) か、(B) touch は来ているが calib container
   // 以外がターゲット (= 透明何かが上に乗ってる) のいずれか。これで切り分け。
   useEffect(() => {
+    if (!import.meta.env.DEV) return  // 本番ではデバッグ用 document リスナを張らない
     const onTouch = (ev: TouchEvent) => {
       const t = ev.touches[0]
       if (!t) return
@@ -223,6 +227,7 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
   // 🩺 診断: calib mount 直後に、viewport 中央/上下左右の各点に何が乗っているか
   // dump する。"透明な何かが center をブロック" 疑惑を即時確認する。
   useEffect(() => {
+    if (!import.meta.env.DEV) return  // 本番では mount 時 center-probe を行わない
     const dump = () => {
       const W = window.innerWidth
       const H = window.innerHeight
@@ -497,8 +502,8 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
         )
       })()}
 
-      {/* オンスクリーン診断 (中央 element stack / 最終 tap 位置の stack) */}
-      {diag && (
+      {/* オンスクリーン診断 (中央 element stack / 最終 tap 位置の stack)。本番では非表示。 */}
+      {import.meta.env.DEV && diag && (
         <div
           className="absolute z-10 px-2 py-1 rounded text-[9px] font-mono pointer-events-none"
           style={{

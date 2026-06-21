@@ -282,9 +282,12 @@ export function useCVJobs({
   // マウント時: 保存済みトラックを取得
   useEffect(() => {
     if (!matchId) return
+    // match 切替時に旧 match の遅延応答が新 match の overlay を上書きしないようガード。
+    let cancelled = false
     apiGet<{ success: boolean; data: TrackFrame[] }>(`/yolo/identity_track/${matchId}`)
-      .then(res => { if (res.success && res.data.length > 0) setTrackFrames(res.data) })
+      .then(res => { if (!cancelled && res.success && res.data.length > 0) setTrackFrames(res.data) })
       .catch(() => {})
+    return () => { cancelled = true }
   }, [matchId])
 
   // マウント時: YOLO モデルをバックグラウンドでウォームアップ（初回検出遅延の解消）
@@ -301,14 +304,17 @@ export function useCVJobs({
 
   useEffect(() => {
     if (!matchId) return
+    // match 切替時の遅延応答が新 match の状態を汚染しないようガード。
+    let cancelled = false
     apiGet<{ success: boolean; data: { frame_count: number } | null }>(`/yolo/results/${matchId}`)
-      .then(res => setYoloArtifactExists(!!(res.success && res.data)))
+      .then(res => { if (!cancelled) setYoloArtifactExists(!!(res.success && res.data)) })
       .catch(() => {})
     // shuttle_track を優先確認。なければ tracknet_resume_check（ストロークに land_zone が
     // 設定済みかどうか）で判定する。これにより旧バージョンで shuttle_track が保存されていない
     // 場合でも「再開」ボタンを表示できる。
     apiGet<{ success: boolean; data: unknown[] }>(`/tracknet/shuttle_track/${matchId}`)
       .then(res => {
+        if (cancelled) return
         if (res.success && Array.isArray(res.data) && res.data.length > 0) {
           setTracknetArtifactExists(true)
         } else {
@@ -316,11 +322,12 @@ export function useCVJobs({
           return apiGet<{ success: boolean; data: { has_land_zone: boolean } }>(
             `/tracknet/resume_check/${matchId}`
           ).then(r => {
-            if (r.success && r.data?.has_land_zone) setTracknetArtifactExists(true)
+            if (!cancelled && r.success && r.data?.has_land_zone) setTracknetArtifactExists(true)
           }).catch(() => {})
         }
       })
       .catch(() => {})
+    return () => { cancelled = true }
   }, [matchId])
 
   // ── P3: TrackNet バッチ起動（内部共通ハンドラ） ──────────────────────────
