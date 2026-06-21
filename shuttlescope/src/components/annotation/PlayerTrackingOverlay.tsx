@@ -256,13 +256,16 @@ export function PlayerTrackingOverlay({
       {nearestFrame.players.map((p, i) => {
         const [x1n, y1n, x2n, y2n] = p.bbox
         const color = KEY_COLORS[p.player_key] ?? '#6b7280'
-        const opacity = p.lost ? LOST_OPACITY : 0.9
+        // 検出信頼度を不透明度に反映 (不確実性開示=非交渉ルール)。lost は最も薄く、
+        // それ以外は conf に連動 (低信頼を高信頼と同じ濃さで見せて過信させない)。
+        const conf = typeof p.confidence === 'number' ? Math.max(0, Math.min(1, p.confidence)) : 1
+        const opacity = p.lost ? LOST_OPACITY : (0.4 + 0.5 * conf)
         const isHovered = hoveredIdx === i
         const displayName = playerOptions.find(o => o.key === p.player_key)?.name ?? p.player_key
 
         return (
           <div
-            key={i}
+            key={p.player_key || i}
             className="absolute transition-opacity"
             style={{
               left:   `${x1n * 100}%`,

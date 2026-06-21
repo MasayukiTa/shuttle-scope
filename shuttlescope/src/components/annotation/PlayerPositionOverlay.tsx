@@ -106,11 +106,16 @@ export function PlayerPositionOverlay({
       const y1 = y1n * h
       const bw = (x2n - x1n) * w
       const bh = (y2n - y1n) * h
+      // 検出信頼度を可視化する (不確実性の開示=非交渉ルール)。低信頼の検出を
+      // 高信頼と同じ濃さで描くと過信を招くため、bbox の不透明度を conf に連動させる。
+      const conf = typeof player.confidence === 'number'
+        ? Math.max(0, Math.min(1, player.confidence))
+        : 1
 
-      // bbox
+      // bbox (低信頼ほど薄く)
       ctx.strokeStyle = color
       ctx.lineWidth = 2
-      ctx.globalAlpha = 0.85
+      ctx.globalAlpha = 0.35 + 0.5 * conf
       ctx.strokeRect(x1, y1, bw, bh)
 
       // fill overlay (semi-transparent)
@@ -124,7 +129,7 @@ export function PlayerPositionOverlay({
       const depthKey = DEPTH_LABEL_KEYS[player.depth_band]
       const depthLabel = depthKey ? t(depthKey) : ''
       const sideLabel = player.court_side === 'left' ? t('auto.PlayerPositionOverlay.side_left') : t('auto.PlayerPositionOverlay.side_right')
-      const text = `${labelShort} (${depthLabel}/${sideLabel})`
+      const text = `${labelShort} (${depthLabel}/${sideLabel}) ${Math.round(conf * 100)}%`
 
       ctx.font = 'bold 11px system-ui, sans-serif'
       const metrics = ctx.measureText(text)
