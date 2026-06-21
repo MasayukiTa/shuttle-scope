@@ -142,9 +142,21 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
     })
   }
 
+  // Escape で閉じる (キーボード/AT のための基本的な dismiss 経路)。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-800 rounded-lg w-full max-w-lg">
+    <div
+      className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <div className="bg-gray-800 rounded-lg w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
         {/* ヘッダー */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
           <div className="flex items-center gap-2">

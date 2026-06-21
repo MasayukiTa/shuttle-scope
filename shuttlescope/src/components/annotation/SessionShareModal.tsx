@@ -132,8 +132,20 @@ export function SessionShareModal({
   const dividerColor = isLight ? 'border-gray-200' : 'border-gray-700'
   const sectionTitle = isLight ? 'text-gray-700 font-medium' : 'text-gray-300 font-medium'
 
+  // Escape で閉じる (backdrop クリックに加えキーボードでも dismiss できるように)。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
       <div
         className={`rounded-xl w-80 p-5 max-h-[90vh] overflow-y-auto ${panelBg}`}
         onClick={(e) => e.stopPropagation()}

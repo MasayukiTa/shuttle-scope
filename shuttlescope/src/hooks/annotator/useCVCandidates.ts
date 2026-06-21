@@ -92,7 +92,10 @@ export function useCVCandidates({ matchId }: Options): CVCandidatesResult {
         `/cv-candidates/review-queue/${matchId}`
       ),
     enabled: !!matchId,
-    refetchInterval: 30_000,
+    // build/apply/review の各 mutation が invalidate するため自動更新は補助的。
+    // タブ非表示中はポーリングしない (無駄な背景トラフィックを抑制)。
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
   })
   const reviewQueue = reviewQueueResponse?.data ?? []
 

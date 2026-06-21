@@ -497,6 +497,10 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       currentStrokeNum: 1,
       currentPlayer: winner,  // 勝者が次のサーバー（ラリーポイント制）
       currentHitter: winner,  // ダブルス: 勝者チームの主プレイヤーにリセット
+      // semi-auto bounce-revert 窓を次ラリーへ持ち越さない (持ち越すと次ラリー初手が
+      // 500ms 以内のとき前ラリーの playerBeforeFlip で誤って server を上書きする)。
+      lastFlipAt: null,
+      playerBeforeFlip: null,
     })
     return currentStrokes
   },
@@ -509,6 +513,8 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       pendingStroke: emptyPending(),
       inputStep: 'idle',
       currentStrokeNum: 1,
+      lastFlipAt: null,
+      playerBeforeFlip: null,
       // currentPlayer は変えない（キャンセルなのでサーバーは同じ）
     }),
 

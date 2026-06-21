@@ -141,7 +141,7 @@ export function Pass1RallyEnd({
         score_b_after: newB,
         video_timestamp_end: pausedAtSec,
         video_timestamp_start: lastRally?.video_timestamp_end ?? null,
-        is_deuce: newA >= 20 && newB >= 20,
+        is_deuce: isDeuce({ scoreA: newA, scoreB: newB }),  // 表示と同じ正準ルールで保存
       }
       const { clientUuid } = await enqueue('POST /api/rallies', body)
       const local: RallyLite = {

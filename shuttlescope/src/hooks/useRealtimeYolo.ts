@@ -45,6 +45,9 @@ export function useRealtimeYolo(
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const inflightRef = useRef(0)
+  // 一過性切断時の backoff 再接続用。nonce を bump して effect を再実行する。
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [reconnectNonce, setReconnectNonce] = useState(0)
 
   useEffect(() => {
     if (!enabled || !stream || !sessionCode) {
@@ -88,6 +91,8 @@ export function useRealtimeYolo(
     }
     wsRef.current = ws
     ws.binaryType = 'arraybuffer'
+    // cleanup 由来の close で再接続をスケジュールしないためのフラグ。
+    let cleanedUp = false
 
     ws.onopen = () => {
       setConnected(true)
@@ -101,6 +106,12 @@ export function useRealtimeYolo(
       setConnected(false)
       // ws #5 fix: close 時も明示的にリセット (次の reconnect で再増分されるため)
       inflightRef.current = 0
+      // 一過性切断 (tunnel 瞬断 / スリープ復帰 / AP roam) では overlay が無言で
+      // 死んだままになるため、cleanup 由来でなく enabled の間は backoff 再接続する。
+      if (!cleanedUp && enabled) {
+        if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
+        reconnectTimerRef.current = setTimeout(() => setReconnectNonce((n) => n + 1), 1500)
+      }
     }
     ws.onerror = () => {
       setError('WebSocket エラー')
@@ -149,6 +160,8 @@ export function useRealtimeYolo(
     }, intervalMs)
 
     return () => {
+      cleanedUp = true
+      if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null }
       if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
       try { ws.close() } catch { /* ignore */ }
       wsRef.current = null
@@ -159,7 +172,7 @@ export function useRealtimeYolo(
       setBoxes([])
       setConnected(false)
     }
-  }, [enabled, stream, sessionCode])
+  }, [enabled, stream, sessionCode, reconnectNonce])
 
   return { boxes, inferMs, connected, error }
 }
