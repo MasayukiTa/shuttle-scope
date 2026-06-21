@@ -7,6 +7,7 @@
  *   review_required → 黄「要確認」
  */
 import { clsx } from 'clsx'
+import { useTranslation } from 'react-i18next'
 import type { CVDecisionMode } from '@/types/cv'
 
 interface Props {
@@ -16,23 +17,27 @@ interface Props {
   compact?: boolean
 }
 
-const CONFIG: Record<CVDecisionMode, { label: string; cls: string }> = {
+// label は i18n キー (cv_assist.decision_*) で保持し component 内で t() 解決する。
+// module-scope で t() を呼ぶと本番 minified バンドルがクラッシュするため CONFIG には
+// 文字列キーのみを置く。
+const CONFIG: Record<CVDecisionMode, { labelKey: string; cls: string }> = {
   auto_filled: {
-    label: '自動入力',
+    labelKey: 'cv_assist.decision_auto_filled',
     cls: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40',
   },
   suggested: {
-    label: '候補',
+    labelKey: 'cv_assist.decision_suggested',
     cls: 'bg-blue-500/20 text-blue-300 border border-blue-500/40',
   },
   review_required: {
-    label: '要確認',
+    labelKey: 'cv_assist.decision_review_required',
     cls: 'bg-amber-500/20 text-amber-300 border border-amber-500/40',
   },
 }
 
 export function CVCandidateBadge({ mode, className, compact = false }: Props) {
-  const { label, cls } = CONFIG[mode]
+  const { t } = useTranslation()
+  const { labelKey, cls } = CONFIG[mode]
   return (
     <span
       className={clsx(
@@ -42,7 +47,7 @@ export function CVCandidateBadge({ mode, className, compact = false }: Props) {
         className
       )}
     >
-      {label}
+      {t(labelKey)}
     </span>
   )
 }

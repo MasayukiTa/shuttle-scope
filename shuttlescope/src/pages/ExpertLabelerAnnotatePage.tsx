@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { apiGet, apiPost } from '@/api/client'
+import { apiGet, apiPost, API_BASE_URL } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
 import { useTheme } from '@/hooks/useTheme'
 
@@ -322,29 +322,34 @@ function AnnotateContent() {
           e.preventDefault()
           togglePlay()
           break
+        // 1/2/3/Enter/s は labeling フォーム用。annotation (ショット種別) タブでは
+        // 誤って labeling フォームを編集/保存しないよう振り分ける。
         case '1':
-          setForm((f) => ({ ...f, confidence: 1 }))
+          if (activeTab === 'labeling') setForm((f) => ({ ...f, confidence: 1 }))
           break
         case '2':
-          setForm((f) => ({ ...f, confidence: 2 }))
+          if (activeTab === 'labeling') setForm((f) => ({ ...f, confidence: 2 }))
           break
         case '3':
-          setForm((f) => ({ ...f, confidence: 3 }))
+          if (activeTab === 'labeling') setForm((f) => ({ ...f, confidence: 3 }))
           break
         case 'Enter':
           e.preventDefault()
-          handleSave()
+          if (activeTab === 'annotation') handleSaveShot()
+          else handleSave()
           break
         case 's':
         case 'S':
-          e.preventDefault()
-          handleSkip()
+          if (activeTab === 'labeling') {
+            e.preventDefault()
+            handleSkip()
+          }
           break
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [goPrev, goNext, togglePlay, handleSave, handleSkip])
+  }, [goPrev, goNext, togglePlay, handleSave, handleSkip, handleSaveShot, activeTab])
 
   const bgBase = isLight ? 'bg-gray-50 text-gray-900' : 'bg-gray-900 text-gray-100'
   const panelBg = isLight ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'
@@ -429,7 +434,7 @@ function AnnotateContent() {
           {/* エクスポート */}
           <div className="flex gap-2 ml-auto">
             <a
-              href={`/api/v1/expert/export?match_id=${matchId}&fmt=json`}
+              href={`${API_BASE_URL}/v1/expert/export?match_id=${matchId}&fmt=json`}
               target="_blank"
               rel="noopener noreferrer"
               className={`text-xs px-3 py-2 rounded border transition-colors ${
@@ -441,7 +446,7 @@ function AnnotateContent() {
               {t('auto.ExpertLabelerAnnotatePage.json')}
             </a>
             <a
-              href={`/api/v1/expert/export?match_id=${matchId}&fmt=csv`}
+              href={`${API_BASE_URL}/v1/expert/export?match_id=${matchId}&fmt=csv`}
               target="_blank"
               rel="noopener noreferrer"
               className={`text-xs px-3 py-2 rounded border transition-colors ${
