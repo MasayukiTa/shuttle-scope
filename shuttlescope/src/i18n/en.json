@@ -2080,7 +2080,8 @@
     "team_a": "Team A",
     "team_b": "Team B",
     "saving": "Saving...",
-    "save_failed": "Save failed"
+    "save_failed": "Save failed",
+    "nothing_to_save": "No observations to save"
   },
   "prediction": {
     "title": "Match prediction",

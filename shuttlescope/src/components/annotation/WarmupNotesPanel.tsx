@@ -287,9 +287,14 @@ export function WarmupNotesPanel({
         ...(isDoubles && partnerAId ? buildSelfObs(selfObsPartnerA, partnerAId) : []),
       ]
 
-      if (allObs.length > 0) {
-        await apiPost(`/warmup/observations/${matchId}`, { observations: allObs })
+      if (allObs.length === 0) {
+        // 何も入力されていない: API を呼ばないので「保存済み」を見せず、
+        // 空である旨を伝えて開いたままにする (実際に保存していないのに成功表示しない)。
+        setError(t('warmup.nothing_to_save', { defaultValue: '保存する観察がありません' }))
+        setSaving(false)
+        return
       }
+      await apiPost(`/warmup/observations/${matchId}`, { observations: allObs })
       setSaved(true)
       setTimeout(() => onClose(), 800)
     } catch (err: unknown) {
