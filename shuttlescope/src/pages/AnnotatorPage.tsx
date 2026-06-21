@@ -3382,6 +3382,7 @@ export function AnnotatorPage() {
                   <button
                     onClick={() => setShowLegendOverlay(false)}
                     className="text-gray-500 hover:text-white text-lg leading-none"
+                    aria-label={t('auto.AnnotatorPage.k14')}
                   >
                     <MIcon name="close" size={12} />
                   </button>
@@ -4032,6 +4033,7 @@ export function AnnotatorPage() {
                 <button
                   onClick={() => { setShowCommentInput(false); setCommentText('') }}
                   className="px-2 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-400"
+                  aria-label={t('auto.AnnotatorPage.k14')}
                 >
                   <MIcon name="close" size={12} />
                 </button>
@@ -4079,6 +4081,7 @@ export function AnnotatorPage() {
                   <button
                     onClick={() => setShowCVAssistPanel(false)}
                     className="text-gray-500 hover:text-gray-300 text-xs px-1"
+                    aria-label={t('auto.AnnotatorPage.k14')}
                   >
                     <MIcon name="close" size={12} />
                   </button>
@@ -4516,6 +4519,7 @@ export function AnnotatorPage() {
             <button
               onClick={() => setShowInMatchPanel(false)}
               className="text-gray-400 hover:text-white text-xs"
+              aria-label={t('auto.AnnotatorPage.k14')}
             ><MIcon name="close" size={12} /></button>
           </div>
           <div className="p-4 flex flex-col gap-3">
