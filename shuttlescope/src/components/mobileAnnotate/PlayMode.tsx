@@ -738,7 +738,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                 onClick={(e) => { e.stopPropagation(); setShowShuttle(!showShuttle) }}
                 className={`relative p-2 rounded shadow ${showShuttle ? 'ss-overlay-chip-accent' : 'ss-overlay-chip'}`}
                 aria-label={t('auto.PlayMode.k11')}
-                title={shuttleFrameCount > 0 ? `シャトル軌跡 (解析済 ${shuttleFrameCount} frames)` : 'シャトル軌跡表示切替 (未解析)'}
+                title={shuttleFrameCount > 0 ? t('auto.PlayMode.shuttle_toggle_analyzed', { n: shuttleFrameCount }) : t('auto.PlayMode.shuttle_toggle_unanalyzed')}
               >
                 <MIcon name="my_location" size={16} />
                 {shuttleFrameCount > 0 && (
@@ -760,7 +760,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                 onClick={(e) => { e.stopPropagation(); setShowPlayers(!showPlayers) }}
                 className={`relative p-2 rounded shadow ${showPlayers ? 'ss-overlay-chip-accent' : 'ss-overlay-chip'}`}
                 aria-label={t('auto.PlayMode.k12')}
-                title={yoloFrameCount > 0 ? `プレイヤー位置 (解析済 ${yoloFrameCount} frames)` : 'プレイヤー位置 bbox 表示切替 (未解析)'}
+                title={yoloFrameCount > 0 ? t('auto.PlayMode.player_toggle_analyzed', { n: yoloFrameCount }) : t('auto.PlayMode.player_toggle_unanalyzed')}
               >
                 <MIcon name="group" size={16} />
                 {yoloFrameCount > 0 && (
@@ -781,7 +781,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                 onClick={(e) => { e.stopPropagation(); setFitMode(fitMode === 'cover' ? 'contain' : 'cover') }}
                 className="p-2 rounded shadow ss-overlay-chip"
                 aria-label={t('auto.PlayMode.k13')}
-                title={fitMode === 'cover' ? '全体表示 (contain) に切替' : 'フル表示 (cover) に切替'}
+                title={fitMode === 'cover' ? t('auto.PlayMode.fit_to_contain') : t('auto.PlayMode.fit_to_cover')}
               >
                 <MIcon name="crop_square" size={16} />
               </button>
@@ -855,9 +855,9 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
           {playing ? <MIcon name="pause" size={14} /> : <MIcon name="play_arrow" size={14} />}
         </button>
         <button type="button" onClick={() => seekBy(1)}
-                className="px-2 py-1 rounded shadow font-mono text-[11px] ss-overlay-chip">1▶</button>
+                className="px-2 py-1 rounded shadow font-mono text-[11px] ss-overlay-chip">{t('auto.PlayMode.seek_fwd_1')}</button>
         <button type="button" onClick={() => seekBy(5)}
-                className="px-2 py-1 rounded shadow font-mono text-[11px] ss-overlay-chip">5▶</button>
+                className="px-2 py-1 rounded shadow font-mono text-[11px] ss-overlay-chip">{t('auto.PlayMode.seek_fwd_5')}</button>
         <span className="font-mono text-[10px] mx-1 shrink-0 px-1.5 py-0.5 rounded ss-overlay-chip">
           {fmt(currentTime)} / {fmt(duration)}
         </span>
@@ -876,8 +876,8 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
           {/* CV candidate ドット: bar 上に分布。タップで video.currentTime にセット */}
           {duration > 0 && cvCandidateTimestamps && cvCandidateTimestamps.length > 0 && (
             <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 pointer-events-none" style={{ zIndex: 1, height: 6 }}>
-              {cvCandidateTimestamps.map((t, i) => {
-                const ratio = Math.max(0, Math.min(1, t / duration))
+              {cvCandidateTimestamps.map((ts, i) => {
+                const ratio = Math.max(0, Math.min(1, ts / duration))
                 return (
                   <button
                     key={i}
@@ -885,7 +885,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                     onClick={(e) => {
                       e.stopPropagation()
                       const v = videoRef.current
-                      if (v) v.currentTime = t
+                      if (v) v.currentTime = ts
                     }}
                     className="absolute -translate-x-1/2 rounded-full pointer-events-auto"
                     style={{
@@ -896,8 +896,8 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                       backgroundColor: 'rgba(245,158,11,0.9)',
                       border: '1px solid rgba(0,0,0,0.5)',
                     }}
-                    title={`候補 #${i + 1} @ ${t.toFixed(1)}s`}
-                    aria-label={`候補 ${i + 1}`}
+                    title={t('auto.PlayMode.cv_candidate_title', { i: i + 1, t: ts.toFixed(1) })}
+                    aria-label={t('auto.PlayMode.cv_candidate_aria', { i: i + 1 })}
                   />
                 )
               })}
@@ -938,7 +938,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                   disabled={!q.ready}
                   onClick={() => q.ready && requestQualityChange(q.quality)}
                   className={`px-1.5 py-1 rounded text-[10px] font-mono shadow ${isCurrent ? 'ss-overlay-chip-accent' : 'ss-overlay-chip'}`}
-                  title={q.ready ? `画質 ${label}` : `画質 ${label} (準備中)`}
+                  title={q.ready ? t('auto.PlayMode.quality_chip', { label }) : t('auto.PlayMode.quality_chip_preparing', { label })}
                   style={!q.ready ? { opacity: 0.5 } : undefined}
                 >
                   {label}

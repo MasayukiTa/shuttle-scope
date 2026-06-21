@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import i18n from '@/i18n'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 import { MIcon } from '@/components/common/MIcon'
@@ -163,13 +162,15 @@ function computePlayerASide(
 // B-1: ace はバドミントン用語として誤解を招くため UI 表示を「ウィナー」に変更
 // 内部コード値は backward-compat のため ace のまま維持
 
-const END_TYPES = [
-  { value: 'ace', label: i18n.t('auto.AnnotatorPage.k31') },
-  { value: 'forced_error', label: i18n.t('auto.AnnotatorPage.k32') },
-  { value: 'unforced_error', label: i18n.t('auto.AnnotatorPage.k33') },
-  { value: 'net', label: i18n.t('auto.AnnotatorPage.k34') },
-  { value: 'out', label: i18n.t('auto.AnnotatorPage.k35') },
-  { value: 'cant_reach', label: i18n.t('auto.AnnotatorPage.k36') },
+// ラベルは component 内 useMemo([t]) で解決する (言語切替に追従)。
+// module-scope での t() / i18n.t() 固定束縛を避けるため、ここでは value + key のみ保持。
+const END_TYPE_DEFS = [
+  { value: 'ace', labelKey: 'auto.AnnotatorPage.k31' },
+  { value: 'forced_error', labelKey: 'auto.AnnotatorPage.k32' },
+  { value: 'unforced_error', labelKey: 'auto.AnnotatorPage.k33' },
+  { value: 'net', labelKey: 'auto.AnnotatorPage.k34' },
+  { value: 'out', labelKey: 'auto.AnnotatorPage.k35' },
+  { value: 'cant_reach', labelKey: 'auto.AnnotatorPage.k36' },
 ]
 
 // B-2: エンドタイプと最終打者から勝者を推定
@@ -227,6 +228,11 @@ export function AnnotatorPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { t } = useTranslation()
+  // END_TYPES のラベルは t() で解決 (言語切替に追従)。module-scope で固定しない。
+  const END_TYPES = useMemo(
+    () => END_TYPE_DEFS.map(({ value, labelKey }) => ({ value, label: t(labelKey) })),
+    [t],
+  )
   const queryClient = useQueryClient()
   const videoRef = useRef<HTMLVideoElement>(null)
   // 動画＋オーバーレイの aspect-ratio 箱（別モニタ拡張のクロップ対象）
@@ -4283,7 +4289,9 @@ export function AnnotatorPage() {
                     useLargeTouch ? 'py-4 text-base' : 'py-2 text-sm'
                   )}
                 >
-                  {t('annotator.ui.rally_end_btn', { defaultValue: 'ラリー終了' })} {!isMobile && '(Enter)'}
+                  {isMobile
+                    ? t('annotator.ui.rally_end_btn', { defaultValue: 'ラリー終了' })
+                    : t('annotator.ui.rally_end_btn_with_enter', { defaultValue: 'ラリー終了 (Enter)' })}
                 </button>
               )}
 
@@ -4316,9 +4324,12 @@ export function AnnotatorPage() {
                 >
                   <MIcon name="restart_alt" size={useLargeTouch ? 16 : 14} />
                   {store.inputStep === 'land_zone'
-                    ? t('annotator.ui.undo_pending_label', { defaultValue: '入力をキャンセル' })
-                    : t('annotator.ui.undo_btn', { defaultValue: '戻す' })}
-                  {!isMobile && ' (Ctrl+Z)'}
+                    ? (isMobile
+                        ? t('annotator.ui.undo_pending_label', { defaultValue: '入力をキャンセル' })
+                        : t('annotator.ui.undo_pending_label_with_shortcut', { defaultValue: '入力をキャンセル (Ctrl+Z)' }))
+                    : (isMobile
+                        ? t('annotator.ui.undo_btn', { defaultValue: '戻す' })
+                        : t('annotator.ui.undo_btn_with_shortcut', { defaultValue: '戻す (Ctrl+Z)' }))}
                 </button>
               )}
 

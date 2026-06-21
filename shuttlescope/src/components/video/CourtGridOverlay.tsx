@@ -43,10 +43,11 @@ interface CourtGridOverlayProps {
 
 // ─── 定数 ────────────────────────────────────────────────────────────────────
 
-const POINT_LABELS = [
-  'コート左上', 'コート右上',
-  'コート右下', 'コート左下',
-  'ネット左支柱', 'ネット右支柱',
+// i18n キー (render 時に t() で解決する。module-scope での t() 呼び出しは禁止)
+const POINT_LABEL_KEYS = [
+  'auto.CourtGridOverlay.pt_court_tl', 'auto.CourtGridOverlay.pt_court_tr',
+  'auto.CourtGridOverlay.pt_court_br', 'auto.CourtGridOverlay.pt_court_bl',
+  'auto.CourtGridOverlay.pt_net_left', 'auto.CourtGridOverlay.pt_net_right',
 ]
 
 const TOTAL_POINTS = 6
@@ -428,7 +429,7 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
             stroke="#000" strokeWidth={3} paintOrder="stroke"
             style={{ pointerEvents: 'none', userSelect: 'none' }}
           >
-            {t('auto.CourtGridOverlay.click_point', { n: nextPointIdx + 1, total: TOTAL_POINTS, label: POINT_LABELS[nextPointIdx] })}
+            {t('auto.CourtGridOverlay.click_point', { n: nextPointIdx + 1, total: TOTAL_POINTS, label: t(POINT_LABEL_KEYS[nextPointIdx]) })}
           </text>
         )}
       </svg>

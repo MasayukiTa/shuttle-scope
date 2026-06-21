@@ -57,10 +57,11 @@ const PLAYER_COLORS: Record<string, string> = {
   player_other: '#6b7280', // gray-500
 }
 
-const DEPTH_LABELS: Record<string, string> = {
-  front: '前',
-  mid: '中',
-  back: '後',
+// i18n キー (描画時に t() で解決する。module-scope での t() 呼び出しは禁止)
+const DEPTH_LABEL_KEYS: Record<string, string> = {
+  front: 'auto.PlayerPositionOverlay.depth_front',
+  mid: 'auto.PlayerPositionOverlay.depth_mid',
+  back: 'auto.PlayerPositionOverlay.depth_back',
 }
 
 export function PlayerPositionOverlay({
@@ -120,8 +121,9 @@ export function PlayerPositionOverlay({
 
       // label background
       const labelShort = player.label === 'player_a' ? 'A' : player.label === 'player_b' ? 'B' : '?'
-      const depthLabel = DEPTH_LABELS[player.depth_band] ?? ''
-      const sideLabel = player.court_side === 'left' ? '左' : '右'
+      const depthKey = DEPTH_LABEL_KEYS[player.depth_band]
+      const depthLabel = depthKey ? t(depthKey) : ''
+      const sideLabel = player.court_side === 'left' ? t('auto.PlayerPositionOverlay.side_left') : t('auto.PlayerPositionOverlay.side_right')
       const text = `${labelShort} (${depthLabel}/${sideLabel})`
 
       ctx.font = 'bold 11px system-ui, sans-serif'
@@ -152,7 +154,7 @@ export function PlayerPositionOverlay({
       ctx.fill()
       ctx.globalAlpha = 1
     }
-  }, [nearestFrame, visible, videoWidth, videoHeight])
+  }, [nearestFrame, visible, videoWidth, videoHeight, t])
 
   if (!visible) return null
 

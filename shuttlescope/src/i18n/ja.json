@@ -1253,7 +1253,9 @@
       "overlay_pose": "ポーズ",
       "overlay_fullscreen": "全画面",
       "bottom_sheet_aria": "ボトムシート",
-      "bottom_sheet_close": "閉じる"
+      "bottom_sheet_close": "閉じる",
+      "score_aria_game": "スコア {{a}} 対 {{b}} ゲーム {{n}}",
+      "menu_aria": "メニュー"
     },
     "rally_start": "ラリー開始",
     "rally_confirm": "ラリー確定",
@@ -1513,7 +1515,9 @@
       "step_label_land": "着地ゾーンをクリック（{{shot}}）",
       "step_label_rally_end": "ラリー終了 — 得点者と終了種別を選択",
       "player_other": "その他",
-      "streaming_web_video": "Web動画"
+      "streaming_web_video": "Web動画",
+      "undo_pending_label": "入力をキャンセル",
+      "undo_pending_label_with_shortcut": "入力をキャンセル (Ctrl+Z)"
     }
   },
   "annotation": {
@@ -3154,7 +3158,17 @@
       "k11": "前後",
       "k12": "総移動距離",
       "k13": "平均速度",
-      "k14": "最大瞬間速度"
+      "k14": "最大瞬間速度",
+      "no_tracks": "選手識別トラックがありません。「+ 識別」でトラッキングを実行してください。",
+      "sync_in_progress": "DB へ同期中...",
+      "sync_done": "DB 同期完了",
+      "sync_failed": "失敗 ({{status}}): {{message}}",
+      "sync_network_error": "ネットワークエラー: {{msg}}",
+      "syncing": "同期中...",
+      "sync_click": "クリックして DB へ同期",
+      "dir_lateral_tip": "横方向: {{m}}m ({{pct}}%)",
+      "dir_diagonal_tip": "斜め: {{m}}m ({{pct}}%)",
+      "dir_depth_tip": "前後: {{m}}m ({{pct}}%)"
     },
     "PostLongRallyStats": {
       "long_rally_note": "※ 10打以上のラリーを長ラリーとして判定",
@@ -3570,7 +3584,13 @@
       "k3": "ローカルのみ保存（バックエンド未保存）。クリックしてDBに同期",
       "copy": "コピー",
       "copy_error": "エラーをコピー",
-      "dismiss": "閉じる"
+      "dismiss": "閉じる",
+      "pt_court_tl": "コート左上",
+      "pt_court_tr": "コート右上",
+      "pt_court_br": "コート右下",
+      "pt_court_bl": "コート左下",
+      "pt_net_left": "ネット左支柱",
+      "pt_net_right": "ネット右支柱"
     },
     "StreamingDownloadPanel": {
       "ffmpeg_warn1": " のため、画質が制限される場合があります。",
@@ -3607,7 +3627,16 @@
       "k14": "✓ 設定済",
       "k15": "cookies.txt をクリア",
       "k16": "区間指定 / cookies.txt / video password 等の詳細オプションを開く",
-      "k17": "動画パスワード"
+      "k17": "動画パスワード",
+      "err_unknown": "不明なエラー",
+      "err_start_failed": "ダウンロード開始に失敗しました",
+      "err_cookies_too_large": "cookies.txt は 1MB 以下にしてください",
+      "err_cookies_not_netscape": "Netscape 形式の cookies.txt ではないようです",
+      "err_file_read_failed": "ファイル読み込みに失敗しました",
+      "pw_hide": "隠す",
+      "pw_show": "表示",
+      "pw_hide_aria": "パスワードを隠す",
+      "pw_show_aria": "パスワードを表示"
     },
     "WebViewPlayer": {
       "saved": "✓ 保存済",
@@ -3626,7 +3655,12 @@
       "k10": "画面録画を停止",
       "k11": "この画面を録画開始 (会員限定 DRM 配信もライセンス済なら録画可能)",
       "k12": "録画画質",
-      "k13": "警告を閉じる"
+      "k13": "警告を閉じる",
+      "load_error": "読み込みエラー ({{code}}): {{desc}}",
+      "record_failed": "録画失敗",
+      "electron_only": "Electron アプリでのみ画面録画できます (Web 版では非対応)",
+      "stopping": "停止中…",
+      "saving": "保存中…"
     },
     "WebViewPlayer_test": {},
     "AnnotatorPage": {
@@ -4149,7 +4183,12 @@
       "pencil": "✎"
     },
     "PlayerPositionOverlay": {
-      "assisted": "assisted"
+      "assisted": "assisted",
+      "depth_front": "前",
+      "depth_mid": "中",
+      "depth_back": "後",
+      "side_left": "左",
+      "side_right": "右"
     },
     "PlayerTrackingOverlay": {
       "k_backend": "backend: {{backend}}",
@@ -4236,7 +4275,11 @@
       "run_player_detection": "プレイヤー検出を実行",
       "yolo_done_zero": "YOLO 完了 (0 frames — ROI / 動画範囲を確認)",
       "yolo_running": "YOLO 実行中… {{n}}%",
-      "yolo_error": "YOLO エラー: {{msg}}"
+      "yolo_error": "YOLO エラー: {{msg}}",
+      "tracknet_run_failed": "TrackNet 実行失敗",
+      "yolo_run_failed": "YOLO 実行失敗",
+      "tracknet_start_failed": "TrackNet 起動失敗: {{msg}}",
+      "yolo_start_failed": "YOLO 起動失敗: {{msg}}"
     },
     "MobileCourtCalib": {
       "tap_to_place_suffix": " をタップで設置 ({{n}}/6)",
@@ -4352,7 +4395,19 @@
       "confirm": "確定",
       "seek_back_5": "◀◀5",
       "seek_back_1": "◀1",
-      "speed_x": "{{n}}x"
+      "speed_x": "{{n}}x",
+      "seek_fwd_1": "1▶",
+      "seek_fwd_5": "5▶",
+      "fit_to_contain": "全体表示 (contain) に切替",
+      "fit_to_cover": "フル表示 (cover) に切替",
+      "shuttle_toggle_analyzed": "シャトル軌跡 (解析済 {{n}} frames)",
+      "shuttle_toggle_unanalyzed": "シャトル軌跡表示切替 (未解析)",
+      "player_toggle_analyzed": "プレイヤー位置 (解析済 {{n}} frames)",
+      "player_toggle_unanalyzed": "プレイヤー位置 bbox 表示切替 (未解析)",
+      "quality_chip": "画質 {{label}}",
+      "quality_chip_preparing": "画質 {{label}} (準備中)",
+      "cv_candidate_title": "候補 #{{i}} @ {{t}}s",
+      "cv_candidate_aria": "候補 {{i}}"
     },
     "TutorialOverlay": {
       "header": "{{title}} · {{n}} / {{total}}",
@@ -4367,14 +4422,20 @@
     "RoiRectOverlay": {
       "analysis_region": "解析領域",
       "drag_hint": "ドラッグして解析領域を指定",
-      "k1": "解析領域をリセット"
+      "k1": "解析領域をリセット",
+      "corner_tl": "左上",
+      "corner_tr": "右上",
+      "corner_br": "右下",
+      "corner_bl": "左下"
     },
     "VideoPlayer": {
       "speed": "{{rate}}x",
       "k1": "10秒戻し (Shift+←)",
       "k2": "1フレーム戻し (←)",
       "k3": "1フレーム進め (→)",
-      "k4": "10秒進め (Shift+→)"
+      "k4": "10秒進め (Shift+→)",
+      "pause": "一時停止 (Space)",
+      "play": "再生 (Space)"
     },
     "tunnelStatusDisplay_test": {},
     "AccountOrdersPage": {
@@ -4468,7 +4529,13 @@
       "level_picker_title": "どこまで入力しますか",
       "level_can_upgrade": "後からレベルを上げて追記できます。",
       "level_change": "レベル変更",
-      "level_badge": "Lv{{n}}"
+      "level_badge": "Lv{{n}}",
+      "pass_rally": "Pass 1: 得点",
+      "pass_serve_final": "Pass 2: サーブ・決定打",
+      "pass_detail": "Pass 3: 詳細",
+      "err_no_match_id": "matchId が未設定です",
+      "queue_pending": "未送信 {{n}} 件 (再送中)",
+      "queue_failed": "送信失敗 {{n}} 件 — タップで再送"
     },
     "OnboardingConsentPage": {
       "k1": "日本語",
@@ -4554,6 +4621,15 @@
       "k26": "EXFIL",
       "k27": "EX",
       "k28": "🔒"
+    },
+    "DownloadOptionsModal": {
+      "err_start_format": "開始時刻の形式が不正です",
+      "err_end_format": "終了時刻の形式が不正です",
+      "err_start_lt_end": "開始 < 終了になるよう指定してください",
+      "err_cookies_too_large": "cookies.txt は 1MB 以下にしてください",
+      "err_cookies_not_netscape": "Netscape 形式の cookies.txt ではないようです",
+      "err_file_read_failed": "ファイル読み込みに失敗しました",
+      "err_start_failed": "ダウンロード開始に失敗しました"
     }
   },
   "youtubeLive": {

@@ -152,13 +152,13 @@ export function DownloadOptionsModal({
 
   const rangeError = useMemo(() => {
     if (tab !== 'manual') return ''
-    if (startInput && startSec === null) return '開始時刻の形式が不正です'
-    if (endInput && endSec === null) return '終了時刻の形式が不正です'
+    if (startInput && startSec === null) return t('auto.DownloadOptionsModal.err_start_format')
+    if (endInput && endSec === null) return t('auto.DownloadOptionsModal.err_end_format')
     if (startSec !== null && endSec !== null && startSec >= endSec) {
-      return '開始 < 終了になるよう指定してください'
+      return t('auto.DownloadOptionsModal.err_start_lt_end')
     }
     return ''
-  }, [tab, startInput, endInput, startSec, endSec])
+  }, [tab, startInput, endInput, startSec, endSec, t])
 
   // ── ESC で閉じる ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -177,22 +177,22 @@ export function DownloadOptionsModal({
       return
     }
     if (file.size > 1024 * 1024) {
-      setCookiesError('cookies.txt は 1MB 以下にしてください')
+      setCookiesError(t('auto.DownloadOptionsModal.err_cookies_too_large'))
       return
     }
     try {
       const text = await file.text()
       if (!/Netscape HTTP Cookie File/i.test(text) && !/^# /m.test(text)) {
-        setCookiesError('Netscape 形式の cookies.txt ではないようです')
+        setCookiesError(t('auto.DownloadOptionsModal.err_cookies_not_netscape'))
         return
       }
       setCookiesTxt(text)
       setCookiesFileName(file.name)
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'ファイル読み込みに失敗しました'
+      const msg = err instanceof Error ? err.message : t('auto.DownloadOptionsModal.err_file_read_failed')
       setCookiesError(msg)
     }
-  }, [])
+  }, [t])
 
   // ── 送信 ──────────────────────────────────────────────────────────────────
   const handleSubmit = useCallback(async () => {
@@ -221,7 +221,7 @@ export function DownloadOptionsModal({
       onStarted?.(jobId)
       onClose()
     } catch (err: unknown) {
-      let msg = 'ダウンロード開始に失敗しました'
+      let msg = t('auto.DownloadOptionsModal.err_start_failed')
       if (err instanceof Error) {
         try {
           const parsed = JSON.parse(err.message)
@@ -239,7 +239,7 @@ export function DownloadOptionsModal({
     } finally {
       setSubmitting(false)
     }
-  }, [rangeError, quality, isElectronLocal, cookieBrowser, cookiesTxt, videoPassword, tab, startSec, endSec, matchId, onStarted, onClose])
+  }, [rangeError, quality, isElectronLocal, cookieBrowser, cookiesTxt, videoPassword, tab, startSec, endSec, matchId, onStarted, onClose, t])
 
   if (!open) return null
 

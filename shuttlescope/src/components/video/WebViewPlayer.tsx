@@ -106,7 +106,7 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
       // -3 は abort（リダイレクト中の正常キャンセル）なので無視
       if (_e.errorCode === -3) return
       setIsLoading(false)
-      setLoadError(`読み込みエラー (${_e.errorCode}): ${_e.errorDescription}`)
+      setLoadError(t('auto.WebViewPlayer.load_error', { code: _e.errorCode, desc: _e.errorDescription }))
     }
     const onPageTitleUpdated = (ev: Event) => {
       const e = ev as Event & WebViewTitleEvent
@@ -140,7 +140,7 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
       wv.removeEventListener('did-navigate', onDidNavigate)
       wv.removeEventListener('did-navigate-in-page', onDidNavigateInPage)
     }
-  }, [siteName])
+  }, [siteName, t])
 
   const handleNavigate = useCallback(() => {
     const wv = webviewRef.current as WebViewElement | null
@@ -242,7 +242,7 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
         } else if (res.status === 'error' || res.status === 'failed') {
           window.clearInterval(id)
           setRecordState('error')
-          setRecordError(res.error ?? '録画失敗')
+          setRecordError(res.error ?? t('auto.WebViewPlayer.record_failed'))
         } else if (res.status === 'remuxing' || res.status === 'archiving') {
           setRecordState('processing')
         }
@@ -251,11 +251,11 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
       }
     }, 2000)
     return () => window.clearInterval(id)
-  }, [recordJobId, recordState, onRecordingComplete, recordWarning])
+  }, [recordJobId, recordState, onRecordingComplete, recordWarning, t])
 
   const handleRecordStart = useCallback(async () => {
     if (!screenCaptureAvailable) {
-      setRecordError('Electron アプリでのみ画面録画できます (Web 版では非対応)')
+      setRecordError(t('auto.WebViewPlayer.electron_only'))
       setRecordState('error')
       return
     }
@@ -302,7 +302,7 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
       setRecordState('error')
       setRecordError(errorMessage(err))
     }
-  }, [currentUrl, matchId, electronApi, screenCaptureAvailable, quality])
+  }, [currentUrl, matchId, electronApi, screenCaptureAvailable, quality, t])
 
   const handleRecordStop = useCallback(async () => {
     if (!recordJobId) return
@@ -423,7 +423,7 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
               isLight ? 'bg-yellow-100 text-yellow-700' : 'bg-yellow-900/40 text-yellow-300'
             }`}>
               <MIcon name="restart_alt" size={10} className="animate-spin" />
-              {recordState === 'stopping' ? '停止中…' : '保存中…'}
+              {recordState === 'stopping' ? t('auto.WebViewPlayer.stopping') : t('auto.WebViewPlayer.saving')}
             </span>
           ) : recordState === 'complete' ? (
             <span className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium ${

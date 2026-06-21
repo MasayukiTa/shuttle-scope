@@ -336,7 +336,7 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
       <div className={`${card} rounded-lg p-4 space-y-1`}>
         <h3 className={`text-sm font-semibold ${textHeading}`}>{t('auto.PlayerMovementCard.k2')}</h3>
         <p className={`text-xs ${textMuted}`}>
-          {stats?.reason ?? '選手識別トラックがありません。「+ 識別」でトラッキングを実行してください。'}
+          {stats?.reason ?? t('auto.PlayerMovementCard.no_tracks')}
         </p>
       </div>
     )
@@ -387,16 +387,16 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
                       e.stopPropagation()
                       if (syncing) return
                       setSyncing(true)
-                      setSyncResult('DB へ同期中...')
+                      setSyncResult(t('auto.PlayerMovementCard.sync_in_progress'))
                       console.warn('[GridSync] start')
                       try {
                         const r = await onSyncGridFromLocal()
                         console.warn('[GridSync] result', r)
-                        if (r.ok) setSyncResult('DB 同期完了')
-                        else setSyncResult(`失敗 (${r.status ?? '?'}): ${r.message ?? ''}`)
+                        if (r.ok) setSyncResult(t('auto.PlayerMovementCard.sync_done'))
+                        else setSyncResult(t('auto.PlayerMovementCard.sync_failed', { status: r.status ?? '?', message: r.message ?? '' }))
                       } catch (err) {
                         console.warn('[GridSync] error', err)
-                        setSyncResult(`ネットワークエラー: ${err instanceof Error ? err.message : String(err)}`)
+                        setSyncResult(t('auto.PlayerMovementCard.sync_network_error', { msg: err instanceof Error ? err.message : String(err) }))
                       } finally {
                         setSyncing(false)
                         setTimeout(() => setSyncResult(null), 6000)
@@ -406,7 +406,7 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
                     disabled={syncing}
                     style={{ color: '#fff' }}
                   >
-                    {syncing ? '同期中...' : 'クリックして DB へ同期'}
+                    {syncing ? t('auto.PlayerMovementCard.syncing') : t('auto.PlayerMovementCard.sync_click')}
                   </button>
                 ) : canClick ? (
                   <span className="underline ml-1">{t('auto.PlayerMovementCard.k3')}</span>
@@ -468,21 +468,21 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
                     <div
                       className={DIR_COLORS.lateral.bar}
                       style={{ width: `${dir.lateral_pct}%` }}
-                      title={`横方向: ${fmt2(dir.lateral_m)}m (${fmt1(dir.lateral_pct)}%)`}
+                      title={t('auto.PlayerMovementCard.dir_lateral_tip', { m: fmt2(dir.lateral_m), pct: fmt1(dir.lateral_pct) })}
                     />
                   )}
                   {dir.diagonal_pct > 0 && (
                     <div
                       className={DIR_COLORS.diagonal.bar}
                       style={{ width: `${dir.diagonal_pct}%` }}
-                      title={`斜め: ${fmt2(dir.diagonal_m)}m (${fmt1(dir.diagonal_pct)}%)`}
+                      title={t('auto.PlayerMovementCard.dir_diagonal_tip', { m: fmt2(dir.diagonal_m), pct: fmt1(dir.diagonal_pct) })}
                     />
                   )}
                   {dir.depth_pct > 0 && (
                     <div
                       className={DIR_COLORS.depth.bar}
                       style={{ width: `${dir.depth_pct}%` }}
-                      title={`前後: ${fmt2(dir.depth_m)}m (${fmt1(dir.depth_pct)}%)`}
+                      title={t('auto.PlayerMovementCard.dir_depth_tip', { m: fmt2(dir.depth_m), pct: fmt1(dir.depth_pct) })}
                     />
                   )}
                 </div>
