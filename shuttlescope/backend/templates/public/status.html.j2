@@ -83,6 +83,31 @@
   .ss-more>summary::-webkit-details-marker{display:none}
   .ss-more[open]>summary{color:var(--t2)}
   .ss-more .ss-item:first-child{border-top:none}
+  /* 障害履歴: クリックで原因・対策(reason)を展開する disclosure */
+  .ss-inc{border-top:1px solid var(--bdr)}
+  .ss-inc:first-child,.ss-more .ss-inc:first-child{border-top:none}
+  .ss-inc-sum{display:flex;gap:14px;align-items:baseline;padding:11px 0;cursor:pointer;
+    list-style:none;user-select:none}
+  .ss-inc-sum::-webkit-details-marker{display:none}
+  .ss-inc-sum:focus-visible{outline:2px solid var(--blue);outline-offset:2px;border-radius:4px}
+  .ss-inc-sum .ss-when{color:var(--t3);font-size:.78rem;white-space:nowrap;flex:0 0 92px}
+  .ss-inc-sum .ss-body{flex:1 1 auto;min-width:0}
+  .ss-inc-sum .ss-h{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .ss-inc-sum .ss-h .t{font-weight:600;color:var(--t1);font-size:.95rem}
+  .ss-inc-toggle{margin-left:auto;color:var(--blue);font-size:.78rem;font-weight:600;
+    white-space:nowrap;display:inline-flex;align-items:center;gap:4px}
+  .ss-inc-toggle::after{content:"\25B8";transition:transform .15s}
+  .ss-inc[open] .ss-inc-toggle::after{transform:rotate(90deg)}
+  .ss-inc[open] .ss-inc-toggle .lbl-closed{display:none}
+  .ss-inc:not([open]) .ss-inc-toggle .lbl-open{display:none}
+  .ss-inc-detail{padding:2px 0 13px 106px;color:var(--t2);font-size:.9rem;line-height:1.75;
+    white-space:pre-line}
+  @media(max-width:600px){
+    .ss-inc-sum{flex-direction:column;gap:3px}
+    .ss-inc-sum .ss-when{flex:none}
+    .ss-inc-toggle{margin-left:0}
+    .ss-inc-detail{padding-left:0}
+  }
   /* スマホ: 日時を1段目・本文を2段目に積む (横並びだと本文が潰れて読めないため) */
   @media(max-width:600px){
     .ss-item{flex-direction:column;gap:3px}
@@ -310,13 +335,25 @@
   <div class="ss-list">
     {% for i in resolved_hist %}
     {% if loop.index == 6 and resolved_hist|length > 5 %}<details class="ss-more"><summary>{% if _is_en %}Show {{ resolved_hist|length - 5 }} more{% else %}残り{{ resolved_hist|length - 5 }}件を表示{% endif %}</summary>{% endif %}
+    {% if i.reason %}
+    {# reason がある履歴はクリックで原因・対策を展開 #}
+    <details class="ss-inc">
+      <summary class="ss-inc-sum">
+        <span class="ss-when">{% if i.began_at %}<time class="ss-time" datetime="{{ i.began_at }}">{{ i.began_at }}</time>{% endif %}</span>
+        <div class="ss-body">
+          <div class="ss-h"><span class="t">{{ i.title }}</span><span class="ss-badge sev-{{ i.severity }}">{{ sev_label.get(i.severity, (i.severity, i.severity))[1 if _is_en else 0] }}</span>{% if i.component %}<span class="ss-badge outline">{{ i.component }}</span>{% endif %}<span class="ss-inc-toggle"><span class="lbl-closed">{% if _is_en %}Details{% else %}詳細{% endif %}</span><span class="lbl-open">{% if _is_en %}Close{% else %}閉じる{% endif %}</span></span></div>
+        </div>
+      </summary>
+      <div class="ss-inc-detail">{{ i.reason }}</div>
+    </details>
+    {% else %}
     <div class="ss-item">
       <span class="ss-when">{% if i.began_at %}<time class="ss-time" datetime="{{ i.began_at }}">{{ i.began_at }}</time>{% endif %}</span>
       <div class="ss-body">
         <div class="ss-h"><span class="t">{{ i.title }}</span><span class="ss-badge sev-{{ i.severity }}">{{ sev_label.get(i.severity, (i.severity, i.severity))[1 if _is_en else 0] }}</span>{% if i.component %}<span class="ss-badge outline">{{ i.component }}</span>{% endif %}</div>
-        {% if i.reason %}<div class="ss-d">{{ i.reason }}</div>{% endif %}
       </div>
     </div>
+    {% endif %}
     {% if loop.last and resolved_hist|length > 5 %}</details>{% endif %}
     {% endfor %}
   </div>
