@@ -780,9 +780,13 @@ def check_export_player_scope(
     if ctx.is_admin:
         return
     if ctx.is_analyst:
-        # team_id 未設定（移行期のみ）は通す
+        # チーム未所属の analyst は他チーム選手を素通しでエクスポートできてしまうため拒否。
+        # (旧実装は移行期 carve-out で team_id is None を通していた = cross-team 漏洩)
         if ctx.team_id is None:
-            return
+            raise HTTPException(
+                status_code=403,
+                detail="チーム未所属のため選手データをエクスポートできません",
+            )
         p = db.get(Player, player_id)
         if not p:
             raise HTTPException(status_code=404, detail="選手が見つかりません")
