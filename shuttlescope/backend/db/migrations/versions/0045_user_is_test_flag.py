@@ -69,10 +69,13 @@ def upgrade() -> None:
     )
 
     # 3) 誤削除防止トリガ (PostgreSQL のみ。SQLite は PL/pgSQL 非対応のため skip)。
+    # nosemgrep 注記: PL/pgSQL のトリガ/関数生成は ORM では表現できず raw DDL が必須。
+    # 以下の f-string はモジュール定数 (_TRIGGER/_FUNC/_FUNC_SQL) のみを埋め込み、
+    # ユーザー入力は一切含まないため SQL インジェクションの余地はない (false positive)。
     if bind.dialect.name == "postgresql":
-        op.execute(_FUNC_SQL)
-        op.execute(f"DROP TRIGGER IF EXISTS {_TRIGGER} ON users;")
-        op.execute(
+        op.execute(_FUNC_SQL)  # nosemgrep
+        op.execute(f"DROP TRIGGER IF EXISTS {_TRIGGER} ON users;")  # nosemgrep
+        op.execute(  # nosemgrep
             f"CREATE TRIGGER {_TRIGGER} BEFORE DELETE ON users "
             f"FOR EACH ROW EXECUTE FUNCTION {_FUNC}();"
         )
@@ -84,8 +87,9 @@ def downgrade() -> None:
     if "users" not in insp.get_table_names():
         return
     if bind.dialect.name == "postgresql":
-        op.execute(f"DROP TRIGGER IF EXISTS {_TRIGGER} ON users;")
-        op.execute(f"DROP FUNCTION IF EXISTS {_FUNC}();")
+        # 定数のみ埋め込みの raw DDL (ユーザー入力なし)。上記 upgrade と同様 false positive。
+        op.execute(f"DROP TRIGGER IF EXISTS {_TRIGGER} ON users;")  # nosemgrep
+        op.execute(f"DROP FUNCTION IF EXISTS {_FUNC}();")  # nosemgrep
     cols = [c["name"] for c in insp.get_columns("users")]
     if "is_test" in cols:
         op.drop_column("users", "is_test")
