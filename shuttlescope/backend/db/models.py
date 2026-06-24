@@ -66,6 +66,14 @@ class User(Base):
     awaiting_admin_approval: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False, server_default="0"
     )
+    # 0045: 検証用に作成したユーザを実ユーザと区別するフラグ。
+    # False = 実ユーザ (= 保護対象)。公開 register 経由の新規は default False = 保護。
+    # True = 検証用 (削除可)。承認済みの実ユーザ (is_test=False かつ
+    # awaiting_admin_approval=False) は DB トリガで誤削除を防止する
+    # (override 時のみ削除可。migration 0045 参照)。
+    is_test: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="0"
+    )
     # GDPR Article 7 / APPI 第18条 準拠の同意取得 flag。
     # True なら未同意 = 必須同意 endpoint (`/api/auth/consents`) を経由しないと
     # 保護対象 API を呼べない。新規ユーザは default True、初回ログインで同意画面誘導。
