@@ -636,6 +636,7 @@ def _qs_int_values(request: Request, names, list_names) -> list[int]:
 def require_query_scope(
     request: Request,
     db: Session = Depends(get_db),
+    ctx: AuthCtx = Depends(get_auth),
 ) -> AuthCtx:
     """クエリパラメータの player/match/rally/set ID を team 境界で検証する依存性。
 
@@ -646,8 +647,10 @@ def require_query_scope(
       user_can_access_match が role 境界を内包)
     - coach / analyst: 自チーム所属 or 自チームから可視な選手・試合のみ
     存在しない ID は 404、権限外は 403。
+
+    ctx は Depends(get_auth) で受ける (テストの dependency_overrides[get_auth] を尊重し、
+    本番では実 JWT を解決する)。
     """
-    ctx = get_auth(request)
     if ctx.is_admin:
         return ctx
     if ctx.role is None:
