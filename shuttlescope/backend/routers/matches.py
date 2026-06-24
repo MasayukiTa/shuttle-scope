@@ -1325,6 +1325,10 @@ async def start_download(
     match = db.get(Match, match_id)
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
+    # cross-team 防止: 自チーム (admin は全) からアクセス可能な試合のみ DL 発火可。
+    # 自分が登録していない他チーム試合の DL を起動させない (存在オラクル回避で 404)。
+    if not ctx.is_admin and not user_can_access_match(ctx, match):
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
     if not match.video_url:
         raise HTTPException(status_code=400, detail="動画URLが設定されていません")
     from backend.utils.safe_path import validate_external_url
