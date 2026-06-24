@@ -22,6 +22,7 @@ import { ShotInfluenceV2Card } from '@/components/analysis/ShotInfluenceV2Card'
 import { PromotionStatusCard } from '@/components/analysis/PromotionStatusCard'
 import { YoloCVPositionCard } from '@/components/analysis/YoloCVPositionCard'
 import { ExploitabilityCard } from '@/components/analysis/ExploitabilityCard'
+import { ConformalCard } from '@/components/analysis/ConformalCard'
 import { useAnalysisMeta } from '@/hooks/useAnalysisMeta'
 import { useResearchBundle } from '@/hooks/useResearchBundle'
 import { ResearchBundleProvider } from '@/contexts/ResearchBundleContext'
@@ -209,6 +210,13 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
       <ErrorBoundary>
         <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
           <ExploitabilityCard playerId={playerId} />
+        </RoleGuard>
+      </ErrorBoundary>
+
+      {/* ── Research Spine: コンフォーマル予測（分布フリーカバレッジ保証） ── */}
+      <ErrorBoundary>
+        <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
+          <ConformalCard playerId={playerId} />
         </RoleGuard>
       </ErrorBoundary>
 
