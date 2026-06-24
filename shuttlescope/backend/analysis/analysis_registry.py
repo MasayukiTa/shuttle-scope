@@ -322,6 +322,28 @@ _RAW: list[dict] = [
         "page": "dashboard",
         "section": "research",
     },
+    {
+        "analysis_type": "exploitability",
+        "tier": "research",
+        "evidence_level": "exploratory",
+        "min_recommended_sample": 20,
+        "caution": (
+            "ナッシュ均衡推定は fictitious play による近似値です。"
+            "サンプルが少ない状態ではラプラス平滑化が強く効くため、"
+            "推定値の分散が大きくなります。"
+        ),
+        "assumptions": (
+            "各ゲーム状態を 2 人ゼロ和ゲームとして独立に扱います。"
+            "状態間の相関・相手の適応的戦術変化は考慮しません。"
+            "行動ラベルは 18 ショット種別を 7 バケットに粗化しています。"
+        ),
+        "promotion_criteria": (
+            "状態ごと N≥50 サンプル・Bootstrap CI 幅 0.1 以内・"
+            "クロス大会安定性確認・傾向スコアによる交絡制御導入"
+        ),
+        "page": "analyst",
+        "section": "research",
+    },
 
     # =========================================================================
     # research tier — analyst spine (RS-1〜RS-5)
