@@ -368,6 +368,57 @@ _RAW: list[dict] = [
         "page": "analyst",
         "section": "research",
     },
+    {
+        "analysis_type": "policy_eval",
+        "tier": "research",
+        "evidence_level": "exploratory",
+        "min_recommended_sample": 20,
+        "caution": (
+            "二重頑健 (DR) オフポリシー評価の推定値です。サンプルが少ない状態では "
+            "重要度重みの分散が大きく、bootstrap CI が広がります。"
+        ),
+        "assumptions": (
+            "各ラリーを単段の文脈付きバンディット (状態・行動・勝敗) として扱います。"
+            "対象方策は経験的勝率の softmax (高価値行動へのシフト) です。"
+        ),
+        "promotion_criteria": "状態ごと N≥50・CI 幅 0.1 以内・代替方策設計の妥当性検証",
+        "page": "analyst",
+        "section": "research",
+    },
+    {
+        "analysis_type": "style_distance",
+        "tier": "research",
+        "evidence_level": "exploratory",
+        "min_recommended_sample": 3,
+        "caution": (
+            "着地点分布間の最適輸送 (エントロピー正則化 Sinkhorn) 距離による棋風比較です。"
+            "試合数が少ない選手の分布は不安定なため、比較は試合数の十分な選手に限ります。"
+        ),
+        "assumptions": (
+            "9 ゾーンのコート重心座標を地点距離 (Euclidean) として使用します。"
+            "比較コホートは閲覧権限のある選手のみ (cross-team は除外)。"
+        ),
+        "promotion_criteria": "選手ごと N≥10 試合・ゾーン重心の実測校正・複数特徴量への拡張",
+        "page": "analyst",
+        "section": "research",
+    },
+    {
+        "analysis_type": "matchup_forecast",
+        "tier": "research",
+        "evidence_level": "exploratory",
+        "min_recommended_sample": 5,
+        "caution": (
+            "階層ベイズ Bradley-Terry による対戦勝率予測です。直接対戦が少ない組では "
+            "partial pooling で全体平均へ縮約され、CI が広くなります (過信を避けるため)。"
+        ),
+        "assumptions": (
+            "選手強度 θ_i ~ Normal(μ, τ²) の階層事前を仮定し MAP + Laplace 近似で推定。"
+            "P(i 勝ち)=σ(θ_i − θ_j)。コホートは閲覧権限のある選手のみ。"
+        ),
+        "promotion_criteria": "対戦ごと N≥5・予測較正 (reliability) 検証・共変量 (大会/コンディション) 導入",
+        "page": "analyst",
+        "section": "research",
+    },
 
     # =========================================================================
     # research tier — analyst spine (RS-1〜RS-5)

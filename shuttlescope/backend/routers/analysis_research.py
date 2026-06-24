@@ -7,12 +7,14 @@ from collections import defaultdict, Counter
 from datetime import date as DateType
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
-from backend.utils.auth import require_admin_or_analyst, require_query_scope
+from backend.utils.auth import (
+    require_admin_or_analyst, require_query_scope, get_auth, apply_match_team_scope,
+)
 from backend.db.models import Match, GameSet, Rally, Stroke, Player, PreMatchObservation
 from backend.utils.confidence import check_confidence
 from backend.analysis.router_helpers import (
@@ -55,6 +57,20 @@ from backend.analysis.conformal_engine import (
     evaluate_coverage,
 )
 from backend.analysis.conformal_loader import load_rally_outcome_samples
+# ② DR-OPE / ④ 最適輸送 / ③ 階層ベイズ
+from backend.analysis.dr_ope_engine import evaluate_state as _dr_evaluate_state
+from backend.analysis.dr_ope_loader import load_policy_records
+from backend.analysis.optimal_transport_engine import (
+    pairwise_distance_matrix as _ot_pairwise,
+    classical_mds as _ot_mds,
+)
+from backend.analysis.optimal_transport_loader import (
+    load_zone_histograms,
+    build_cost_matrix as _ot_build_cost_matrix,
+    ZONE_LABELS as _OT_ZONE_LABELS,
+)
+from backend.analysis.hier_bayes_engine import fit_bradley_terry, predict_matchup
+from backend.analysis.hier_bayes_loader import load_match_pairs
 
 # research tier は admin/analyst のみ。middleware (_PLAYER_FORBIDDEN_ANALYSIS_PATHS) は
 # import 失敗時に silent に空集合化するため、router-level dependency でも明示ガードする。
@@ -1685,4 +1701,200 @@ def get_conformal(
             "tier": "research",
             "evidence_level": "exploratory",
         },
+    }
+
+
+# ---------------------------------------------------------------------------
+# ② DR-OPE: 代替方策のオフポリシー価値評価 (POL-001)
+# ---------------------------------------------------------------------------
+
+@router.get("/analysis/policy_eval")
+def get_policy_eval(
+    player_id: int,
+    temp: float = Query(0.25, ge=0.01, le=2.0),
+    db: Session = Depends(get_db),
+):
+    """POL-001: 状態別に「高価値行動へシフトした方策」の価値を二重頑健 (DR) で
+    オフポリシー評価し、bootstrap 信頼区間付きで実方策との差 (uplift) を返す。
+    player_id は router の require_query_scope で team 検証済み。"""
+    try:
+        records_by_state = load_policy_records(db, player_id, coarse=True)
+    except Exception:
+        logger.exception("dr_ope_loader failed for player_id=%s", player_id)
+        records_by_state = {}
+
+    states_ok: list[dict] = []
+    states_insuf: list[dict] = []
+    total = 0
+    for sk, recs in records_by_state.items():
+        total += len(recs)
+        r = _dr_evaluate_state(recs, temp=temp)
+        if r is None:
+            states_insuf.append({"state_key": sk, "status": "insufficient", "n": len(recs)})
+        else:
+            states_ok.append({"state_key": sk, "status": "ok", **r})
+
+    mean_uplift = (
+        round(sum(s["uplift"] for s in states_ok) / len(states_ok), 4) if states_ok else None
+    )
+    best_state = max(states_ok, key=lambda s: s["uplift"]) if states_ok else None
+    confidence = check_confidence("descriptive_basic", total)
+    return {
+        "success": True,
+        "data": {
+            "states": states_ok + states_insuf,
+            "summary": {
+                "states_analyzed": len(states_ok),
+                "states_insufficient": len(states_insuf),
+                "mean_uplift": mean_uplift,
+                "best_state": (
+                    {"state_key": best_state["state_key"], "uplift": best_state["uplift"]}
+                    if best_state else None
+                ),
+            },
+        },
+        "meta": {
+            "sample_size": total, "confidence": confidence,
+            "analysis_type": "policy_eval", "tier": "research", "evidence_level": "exploratory",
+        },
+    }
+
+
+def _accessible_player_ids(request: Request, db: Session):
+    """比較コホートに含めてよい player_id 集合を返す (cross-team 漏洩防止)。
+    admin は None (無制限)。analyst/coach は自チーム所属 + 自チームから可視な試合に
+    登場する選手のみ。team 未所属は空集合。"""
+    ctx = get_auth(request)
+    if ctx.is_admin:
+        return None
+    if ctx.team_id is None:
+        return set()
+    ids = {pid for (pid,) in db.query(Player.id).filter(Player.team_id == ctx.team_id).all()}
+    try:
+        for m in apply_match_team_scope(db.query(Match), ctx).all():
+            for pid in (m.player_a_id, getattr(m, "partner_a_id", None),
+                        m.player_b_id, getattr(m, "partner_b_id", None)):
+                if pid:
+                    ids.add(pid)
+    except Exception:
+        logger.exception("accessible cohort match scan failed")
+    return ids
+
+
+# ---------------------------------------------------------------------------
+# ④ 最適輸送による棋風距離 (STYLE-001)
+# ---------------------------------------------------------------------------
+
+@router.get("/analysis/style_distance")
+def get_style_distance(player_id: int, request: Request, db: Session = Depends(get_db)):
+    """STYLE-001: 着地点分布間の Wasserstein (最適輸送) 距離で棋風の近さを測る。
+    比較コホートは team-scoped (自チーム + 自チーム可視選手のみ)。"""
+    allowed = _accessible_player_ids(request, db)
+    try:
+        hists = load_zone_histograms(db, player_id, allowed_player_ids=allowed, min_matches=3)
+    except Exception:
+        logger.exception("optimal_transport_loader failed for player_id=%s", player_id)
+        hists = {}
+
+    confidence = check_confidence("descriptive_basic", len(hists))
+    if player_id not in hists or len(hists) < 2:
+        return {
+            "success": True,
+            "data": {"reference_player": player_id, "cohort_size": max(0, len(hists) - 1),
+                     "zone_labels": list(_OT_ZONE_LABELS), "distances": [], "nearest": [], "style_map": []},
+            "meta": {"sample_size": len(hists), "confidence": confidence,
+                     "analysis_type": "style_distance", "tier": "research", "evidence_level": "exploratory"},
+        }
+
+    cost = _ot_build_cost_matrix(_OT_ZONE_LABELS)
+    ids, D = _ot_pairwise(hists, cost)
+    coords = _ot_mds(D, dims=2)
+    idx = {pid: i for i, pid in enumerate(ids)}
+    ref = idx[player_id]
+    name_map = {pid: nm for (pid, nm) in db.query(Player.id, Player.name).filter(Player.id.in_(ids)).all()}
+
+    distances = sorted(
+        ({"player_id": pid, "player_name": name_map.get(pid), "distance": round(float(D[ref][idx[pid]]), 4)}
+         for pid in ids if pid != player_id),
+        key=lambda d: d["distance"],
+    )
+    style_map = [
+        {"player_id": pid, "player_name": name_map.get(pid),
+         "x": round(float(coords[idx[pid]][0]), 4), "y": round(float(coords[idx[pid]][1]), 4)}
+        for pid in ids
+    ]
+    return {
+        "success": True,
+        "data": {
+            "reference_player": player_id, "cohort_size": len(ids) - 1,
+            "zone_labels": list(_OT_ZONE_LABELS),
+            "distances": distances,
+            "nearest": [d["player_id"] for d in distances[:3]],
+            "style_map": style_map,
+        },
+        "meta": {"sample_size": len(ids), "confidence": confidence,
+                 "analysis_type": "style_distance", "tier": "research", "evidence_level": "exploratory"},
+    }
+
+
+# ---------------------------------------------------------------------------
+# ③ 階層ベイズ対戦予測 (MATCHUP-001)
+# ---------------------------------------------------------------------------
+
+@router.get("/analysis/matchup_forecast")
+def get_matchup_forecast(
+    player_id: int,
+    request: Request,
+    opponent_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """MATCHUP-001: 階層ベイズ Bradley-Terry (partial pooling) で対戦勝率を
+    不確実性付きで予測。データが疎な対戦ほど CI が広がる。コホートは team-scoped。"""
+    allowed = _accessible_player_ids(request, db)
+    try:
+        ids, pairs = load_match_pairs(db, player_id, allowed_player_ids=allowed)
+    except Exception:
+        logger.exception("hier_bayes_loader failed for player_id=%s", player_id)
+        ids, pairs = [], []
+
+    confidence = check_confidence("descriptive_basic", len(pairs))
+    if player_id not in ids or len(ids) < 2 or not pairs:
+        return {
+            "success": True,
+            "data": {"player_id": player_id, "strength": None, "matchups": [],
+                     "n_players": len(ids), "n_matches": len(pairs)},
+            "meta": {"sample_size": len(pairs), "confidence": confidence,
+                     "analysis_type": "matchup_forecast", "tier": "research", "evidence_level": "exploratory"},
+        }
+
+    idx = {pid: i for i, pid in enumerate(ids)}
+    indexed = [(idx[w], idx[l]) for (w, l) in pairs if w in idx and l in idx]
+    fit = fit_bradley_terry(indexed, n_players=len(ids))
+    theta = fit["theta"]; var = fit["theta_var"]
+    ti = idx[player_id]
+    name_map = {pid: nm for (pid, nm) in db.query(Player.id, Player.name).filter(Player.id.in_(ids)).all()}
+
+    def _h2h(pid):
+        return sum(1 for (w, l) in pairs if {w, l} == {player_id, pid})
+
+    targets = [opponent_id] if opponent_id is not None else [pid for pid in ids if pid != player_id]
+    matchups = []
+    for pid in targets:
+        if pid not in idx or pid == player_id:
+            continue
+        pr = predict_matchup(float(theta[ti]), float(var[ti]), float(theta[idx[pid]]), float(var[idx[pid]]))
+        matchups.append({"opponent_id": pid, "opponent_name": name_map.get(pid),
+                         "n_h2h": _h2h(pid), **pr})
+    matchups.sort(key=lambda m: -m["p_win"])
+
+    _se = math.sqrt(max(0.0, float(var[ti])))
+    strength = {"value": round(float(theta[ti]), 4),
+                "ci_low": round(float(theta[ti]) - 1.645 * _se, 4),
+                "ci_high": round(float(theta[ti]) + 1.645 * _se, 4)}
+    return {
+        "success": True,
+        "data": {"player_id": player_id, "strength": strength, "matchups": matchups,
+                 "n_players": len(ids), "n_matches": len(pairs)},
+        "meta": {"sample_size": len(pairs), "confidence": confidence,
+                 "analysis_type": "matchup_forecast", "tier": "research", "evidence_level": "exploratory"},
     }
