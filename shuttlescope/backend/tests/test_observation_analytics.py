@@ -6,6 +6,12 @@ from datetime import date
 from backend.main import app
 from backend.db.database import get_db
 from backend.db.models import Player, Match, PreMatchObservation
+from backend.utils.auth import get_auth, AuthCtx
+
+
+def _obs_admin_ctx() -> AuthCtx:
+    """research/advanced router の require_query_scope を通すテスト用 admin ctx。"""
+    return AuthCtx(role="admin", player_id=None, user_id=1, team_name=None, team_id=None)
 
 
 def _make_player(db, name, hand="R"):
@@ -68,6 +74,7 @@ def obs_client(db_session):
     db_session.flush()
 
     app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[get_auth] = _obs_admin_ctx
     client = TestClient(app)
     yield client, player_a.id
     app.dependency_overrides.clear()
