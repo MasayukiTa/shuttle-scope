@@ -16,9 +16,9 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import Match, GameSet, Rally, Stroke
-from backend.utils.auth import get_auth
+from backend.utils.auth import get_auth, require_query_scope
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_query_scope)])
 
 
 # ─────────────────────────────────────────────────────────────────

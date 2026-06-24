@@ -42,7 +42,9 @@ from backend.analysis.doubles_role_inference import (
 )
 from backend.analysis.shot_influence_v2 import compute_shot_influence_v2
 
-router = APIRouter()
+from backend.utils.auth import require_query_scope  # cross-team IDOR ガード
+
+router = APIRouter(dependencies=[Depends(require_query_scope)])
 
 
 def _build_aux_maps(db: Session, matches: list, set_ids: list, rally_ids: list) -> tuple:

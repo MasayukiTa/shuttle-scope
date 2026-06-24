@@ -46,6 +46,7 @@ from backend.db.models import SyncConflict, Match, Player, User, UserConsent
 from backend.utils.auth import (
     get_auth,
     require_analyst,
+    require_admin,
     check_export_match_scope,
     check_export_player_scope,
 )
@@ -87,8 +88,10 @@ def consent_manifest(request: Request, db: Session = Depends(get_db)):
     ctx = get_auth(request)
     if not ctx.user_id:
         raise HTTPException(status_code=401, detail="認証が必要です")
-    if ctx.role not in ("admin", "analyst"):
-        raise HTTPException(status_code=403, detail="admin / analyst のみ取得可能")
+    # 全チームの player + 同意/身体開示フラグを返す ML パイプライン向け manifest。
+    # cross-team 漏洩防止のため admin 限定 (analyst には全チーム分を返さない)。
+    if not ctx.is_admin:
+        raise HTTPException(status_code=403, detail="admin のみ取得可能")
 
     # 全 player (delete されてないもの) を user join で取得
     rows = (
@@ -289,9 +292,12 @@ def export_change_set_endpoint(
     since: str = Query(..., description="ISO 8601 日時文字列 (例: 2026-04-01T00:00:00)"),
     device_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    _ctx=Depends(require_analyst),
+    _ctx=Depends(require_admin),
 ):
-    """since 以降に更新されたレコードをまとめて .sspkg としてダウンロード (analyst 限定)"""
+    """since 以降に更新されたレコードをまとめて .sspkg としてダウンロード。
+
+    全チームの DB delta をチーム境界なしで吐くため admin 限定 (cross-team 漏洩防止)。
+    analyst のチームスコープ済みエクスポートは /sync/export/match・/sync/export/player を使う。"""
     try:
         pkg_bytes = export_change_set(db, since, device_id=_get_device_id(db, device_id))
     except Exception as e:

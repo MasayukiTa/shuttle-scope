@@ -47,9 +47,11 @@ from backend.routers.analysis_spine import (
     _hazard_fatigue_impl,
 )
 
+from backend.utils.auth import require_query_scope  # cross-team IDOR ガード
+
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_query_scope)])
 
 
 @router.get("/analysis/bundle/review")
