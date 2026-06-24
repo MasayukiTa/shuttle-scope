@@ -78,6 +78,14 @@ jobs:
       - name: Frontend tests
         run: npx vitest run --config vitest.config.ts
 
+      - name: Install ffmpeg (Linux runners)
+        # ubuntu-latest ランナーイメージから ffmpeg がプリインストール対象外になったため
+        # 明示インストールする。benchmark の TrackNet ベンチ (_bench_tracknet) は
+        # SS_CV_MOCK でもフレーム生成に ffmpeg バイナリを要求するため、無いと
+        # RuntimeError("ffmpeg がインストールされていません") で落ちる。
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+
       - name: Backend tests (Linux — parallel)
         # 2026-05-08: pytest-xdist で並列化。45 分上限を 25 分台に短縮想定。
         # `-n auto` は CI runner の論理 CPU 数 (= 4 通常) で並列化。
