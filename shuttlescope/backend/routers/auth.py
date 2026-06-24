@@ -1923,7 +1923,7 @@ def unlock_user(target_id: int, request: Request, db: Session = Depends(get_db))
 
 
 @router.delete("/users/{target_id}")
-def delete_user(target_id: int, request: Request, db: Session = Depends(get_db)):
+def delete_user(target_id: int, request: Request, db: Session = Depends(get_db), force: bool = False):
     _require_admin(request)
     from backend.utils.auth import get_auth
     ctx = get_auth(request)
@@ -1932,6 +1932,16 @@ def delete_user(target_id: int, request: Request, db: Session = Depends(get_db))
     user = db.get(User, target_id)
     if not user:
         raise HTTPException(status_code=404, detail="user not found")
+    # 0045: 承認済みの実ユーザ (検証用でなく保留でもない) は誤削除防止。force 無しでは弾く。
+    # DB トリガ (migration 0045) が最終防衛線だが、ここで明確な 403 を返す。
+    is_protected = (not bool(getattr(user, "is_test", False))) and (
+        not bool(getattr(user, "awaiting_admin_approval", False))
+    )
+    if is_protected and not force:
+        raise HTTPException(
+            status_code=403,
+            detail="保護対象の実ユーザです。削除するには force=1 を指定してください。",
+        )
     # round229 A3: User には access_logs / refresh_tokens / shared_sessions /
     # matches.annotator_id / shot_annotations / user_invitations / billing_orders /
     # billing_entitlements 等の FK 子レコードが多数あり、生 db.delete(user) は
@@ -1995,6 +2005,14 @@ def delete_user(target_id: int, request: Request, db: Session = Depends(get_db))
             # nested rollback は外側 transaction を保つので safe
             cleanup_log.append(f"{label}=FAIL({type(exc).__name__})")
     try:
+        # 0045: force 削除時は、保護トリガを同一トランザクション内で override する。
+        # (SET LOCAL はこの transaction の終了まで有効。PostgreSQL のみ。)
+        if force:
+            try:
+                if db.get_bind().dialect.name == "postgresql":
+                    db.execute(_sa_text("SET LOCAL app.allow_protected_delete = 'on'"))
+            except Exception:
+                pass
         db.execute(_sa_text("DELETE FROM users WHERE id = :uid"), {"uid": target_id})
         db.commit()
     except Exception as exc:
