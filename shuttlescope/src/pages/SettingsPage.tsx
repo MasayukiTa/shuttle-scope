@@ -154,6 +154,9 @@ export function SettingsPage() {
   // コーチロールは自チーム選手のみ管理可能
   // adminロールは全選手を管理可能
   const canManagePlayers = role === 'analyst' || role === 'coach' || role === 'admin'
+  // 選手の新規登録は analyst / admin のみ (backend の require_analyst と一致)。
+  // coach は閲覧はできるが追加はできないため、追加ボタンは出さない。
+  const canCreatePlayers = role === 'analyst' || role === 'admin'
   const coachTeamFilter = role === 'coach' ? (teamName ?? '') : null
   // ロール切替用モーダル
   // ロール変更で閲覧権限が失われた場合はタブを退避
@@ -644,6 +647,22 @@ export function SettingsPage() {
       setShowPlayerForm(false)
       setPlayerForm(defaultPlayerForm())
     },
+    onError: (err: unknown) => {
+      // 権限不足 (403) は「Analyst ロールが必要」と具体的に案内する。
+      // それ以外は updatePlayer と同じくサーバ detail を表示する。
+      const status = errorStatus(err)
+      if (status === 403) {
+        alert(t('settings.ui.create_player_require_analyst'))
+        return
+      }
+      const msg = errorMessage(err)
+      let detail: string
+      try {
+        const parsed = JSON.parse(msg) as { detail?: unknown }
+        detail = typeof parsed?.detail === 'string' ? parsed.detail : ''
+      } catch { detail = msg }
+      alert(`保存に失敗しました (HTTP ${status ?? '?'}):\n${detail || '不明なエラー'}`)
+    },
   })
 
   // 選手更新
@@ -938,13 +957,15 @@ export function SettingsPage() {
             {/* ヘッダー行: タイトル＋追加ボタン */}
             <div className="flex items-center justify-between mb-3">
               <h2 className={`text-lg font-medium ${textHeading}`}>{t('settings.ui.player_list')}</h2>
-              <button
-                onClick={() => { setEditingPlayer(null); setPlayerForm(defaultPlayerForm()); setShowPlayerForm(true) }}
-                className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-sm"
-              >
-                <MIcon name="add" size={14} />
-                {t('settings.ui.add_player')}
-              </button>
+              {canCreatePlayers && (
+                <button
+                  onClick={() => { setEditingPlayer(null); setPlayerForm(defaultPlayerForm()); setShowPlayerForm(true) }}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-sm"
+                >
+                  <MIcon name="add" size={14} />
+                  {t('settings.ui.add_player')}
+                </button>
+              )}
             </div>
 
             {/* 検索・フィルタ行 */}

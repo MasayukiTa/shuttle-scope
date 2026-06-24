@@ -824,8 +824,15 @@ export function MatchListPage() {
         {isLoading ? (
           <div className={`text-center ${textMuted} py-8`}>{t('app.loading')}</div>
         ) : matches.length === 0 ? (
-          <div className={`text-center ${textMuted} py-8`}>
-            {t('auto.MatchListPage.k37')}
+          <div className={`text-center ${textMuted} py-10`}>
+            <p className="mb-4">{t('auto.MatchListPage.k37')}</p>
+            <button
+              onClick={() => navigate('/getting-started')}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm"
+            >
+              <MIcon name="menu_book" size={16} />
+              {t('getting_started.title')}
+            </button>
           </div>
         ) : (
           <>

@@ -7,6 +7,7 @@ import { MIcon } from '@/components/common/MIcon'
 
 import '@/i18n'
 import { MatchListPage } from '@/pages/MatchListPage'
+import { GettingStartedPage } from '@/pages/GettingStartedPage'
 import { AnnotatorPage } from '@/pages/AnnotatorPage'
 import { LiveInputPage } from '@/pages/LiveInputPage'
 import { DashboardShell } from '@/pages/dashboard/DashboardShell'
@@ -175,6 +176,7 @@ function Sidebar() {
   const navItems: NavItem[] = [
     ...(!llmOnly
       ? [
+          { to: '/getting-started', label: t('nav.getting_started'), icon: 'menu_book' },
           { to: '/matches', label: t('nav.matches'), icon: 'list' },
           { to: '/condition', label: t('nav.condition'), icon: 'favorite' },
           // 解析タブ: 全ロールが /dashboard にアクセス可。player には
@@ -474,6 +476,7 @@ function MainLayout() {
         <ErrorBoundary>
           <Routes>
             <Route path="/" element={<Navigate to="/matches" replace />} />
+            <Route path="/getting-started" element={<GettingStartedPage />} />
             <Route path="/matches" element={<MatchListPage />} />
             {/* R48: スマホからのアクセス時は MobileAnnotatePage に redirect。
                  既存の `navigate('/annotator/N')` 呼び出しを直接書き換えずに切替。

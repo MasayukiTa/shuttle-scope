@@ -65,8 +65,27 @@
     "yes": "Yes",
     "no": "No"
   },
+  "getting_started": {
+    "title": "Getting Started",
+    "intro": "Here is the basic flow for getting started with ShuttleScope. Register players and matches, load a video, and annotate (record rallies and shots) — then the analysis views become available. Follow the steps below.",
+    "role_note": "Creating players and matches requires the Analyst or Admin role. With your current role you can view only. Please ask an administrator to change your role.",
+    "step1_title": "Register players and a team",
+    "step1_body": "Go to Settings → Players and add the players you want to analyze. Enter a team name and the player is added under that team. Add opponents the same way.",
+    "step1_cta": "Open Settings",
+    "step2_title": "Create a match",
+    "step2_body": "From the match list, create a new match and set the two players, date, and so on. A match is the unit for annotation and analysis.",
+    "step2_cta": "Go to Matches",
+    "step3_title": "Load a video and annotate",
+    "step3_body": "Open the match you created and load the video. Recording rallies and shots (annotation) produces the source data for analysis. The annotation screen shows an interactive tutorial automatically.",
+    "step3_cta": "Pick a match to start",
+    "step4_title": "View the analysis",
+    "step4_body": "Once you have annotations, the Analysis tab shows tendencies such as shot placement, rally patterns, and growth. While data is sparse, accuracy caveats are shown.",
+    "step4_cta": "Open Analysis",
+    "back_to_matches": "Back to matches"
+  },
   "nav": {
     "matches": "Matches",
+    "getting_started": "Getting Started",
     "annotator": "Annotator",
     "condition": "Condition",
     "dashboard": "Analysis",
@@ -2585,6 +2604,7 @@
     "ui": {
       "player_list": "Player list",
       "add_player": "Add player",
+      "create_player_require_analyst": "Adding players requires the Analyst or Admin role. Please ask an administrator to change your role.",
       "hand": "Hand",
       "target": "Target",
       "operation": "Actions",
