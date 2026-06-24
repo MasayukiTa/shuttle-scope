@@ -47,6 +47,14 @@ from backend.analysis.epv_engine import (
 )
 from backend.analysis.exploitability_engine import analyze_state as _exploitability_analyze_state
 from backend.analysis.exploitability_loader import load_exploitability_records
+from backend.analysis.conformal_engine import (
+    fit_group_winrates,
+    predict_p_win,
+    split_conformal,
+    prediction_set as _conformal_prediction_set,
+    evaluate_coverage,
+)
+from backend.analysis.conformal_loader import load_rally_outcome_samples
 
 # research tier は admin/analyst のみ。middleware (_PLAYER_FORBIDDEN_ANALYSIS_PATHS) は
 # import 失敗時に silent に空集合化するため、router-level dependency でも明示ガードする。
@@ -1542,3 +1550,139 @@ def get_analysis_tiers():
     フロントエンドがこれを使い、デフォルト表示範囲・confidence 要件を制御する。
     """
     return {"success": True, "data": all_tiers_meta()}
+
+
+# ---------------------------------------------------------------------------
+# Research: コンフォーマル予測 (CP-001) — 分布フリー保証付き不確実性定量化
+# ---------------------------------------------------------------------------
+
+@router.get("/analysis/conformal")
+def get_conformal(
+    player_id: int,
+    alpha: float = Query(0.1, ge=0.01, le=0.5),
+    coarse: bool = Query(True),
+    db: Session = Depends(get_db),
+):
+    """CP-001: split-conformal 予測によるラリー勝敗の分布フリー被覆保証解析
+    （アナリスト専用 research tier）
+
+    決定論的 50/50 分割 (インデックス偶数 = 校正、奇数 = テスト) で
+    コンフォーマル分位点を推定し、テスト集合での経験的被覆率を検証する。
+    """
+    # ── データ収集 ──────────────────────────────────────────────────────────
+    try:
+        samples = load_rally_outcome_samples(db, player_id, coarse=coarse)
+    except Exception:
+        logger.exception("conformal_loader failed for player_id=%s", player_id)
+        samples = []
+
+    n_total = len(samples)
+    MIN_SAMPLES = 40  # 校正用 20 + テスト用 20 の最小要件
+
+    if n_total < MIN_SAMPLES:
+        confidence = check_confidence("descriptive_basic", n_total)
+        return {
+            "success": True,
+            "data": {
+                "status": "insufficient",
+                "alpha": alpha,
+                "target_coverage": round(1.0 - alpha, 4),
+                "n_total": n_total,
+                "n_calibration": 0,
+                "n_test": 0,
+                "empirical_coverage": None,
+                "avg_set_size": None,
+                "per_group": [],
+                "validation": {"coverage_guarantee_met": None},
+            },
+            "meta": {
+                "sample_size": n_total,
+                "confidence": confidence,
+                "analysis_type": "conformal",
+                "tier": "research",
+                "evidence_level": "exploratory",
+            },
+        }
+
+    # ── 決定論的分割: 偶数インデックス=校正、奇数インデックス=テスト ───────
+    cal_samples = [s for i, s in enumerate(samples) if i % 2 == 0]
+    test_samples = [s for i, s in enumerate(samples) if i % 2 == 1]
+
+    cal_groups = [s["group"] for s in cal_samples]
+    cal_wins = [s["win"] for s in cal_samples]
+    test_groups = [s["group"] for s in test_samples]
+    test_wins = [s["win"] for s in test_samples]
+
+    # ── ベーススコアラー: 校正集合で Laplace 平滑化勝率を推定 ───────────────
+    winrate_map = fit_group_winrates(cal_groups, cal_wins)
+
+    # 校正集合の P(win) 予測値
+    import numpy as _np
+    p_hat_cal = _np.array([predict_p_win(g, winrate_map) for g in cal_groups])
+    y_cal = _np.array(cal_wins, dtype=float)
+
+    # ── コンフォーマル分位点 q ──────────────────────────────────────────────
+    q = split_conformal(p_hat_cal, y_cal, alpha)
+
+    # ── テスト集合での被覆率検証 ────────────────────────────────────────────
+    p_hat_test = _np.array([predict_p_win(g, winrate_map) for g in test_groups])
+    y_test = _np.array(test_wins, dtype=float)
+
+    coverage_result = evaluate_coverage(p_hat_test, y_test, q)
+
+    target_coverage = round(1.0 - alpha, 4)
+    empirical_coverage = coverage_result["empirical_coverage"]
+    avg_set_size = coverage_result["avg_set_size"]
+
+    # 保証判定 (有限サンプルの揺らぎとして 0.05 のマージンを許容)
+    coverage_guarantee_met: Optional[bool] = None
+    if empirical_coverage is not None:
+        coverage_guarantee_met = bool(empirical_coverage >= target_coverage - 0.05)
+
+    # ── グループ別予測集合 (全サンプルのグループを対象) ────────────────────
+    # グループ別集計 (全サンプル)
+    group_counts: dict[str, int] = {}
+    group_wins: dict[str, int] = {}
+    for s in samples:
+        g = s["group"]
+        group_counts[g] = group_counts.get(g, 0) + 1
+        group_wins[g] = group_wins.get(g, 0) + s["win"]
+
+    per_group: list[dict] = []
+    for g in sorted(group_counts.keys()):
+        p_win = winrate_map.get(g, 0.5)
+        pset = _conformal_prediction_set(p_win, q)
+        per_group.append({
+            "group": g,
+            "p_win": round(p_win, 4),
+            "prediction_set": pset,
+            "n": group_counts[g],
+            "n_win": group_wins.get(g, 0),
+        })
+
+    confidence = check_confidence("descriptive_basic", n_total)
+
+    return {
+        "success": True,
+        "data": {
+            "alpha": alpha,
+            "target_coverage": target_coverage,
+            "n_total": n_total,
+            "n_calibration": len(cal_samples),
+            "n_test": len(test_samples),
+            "conformal_quantile": round(q, 4),
+            "empirical_coverage": empirical_coverage,
+            "avg_set_size": avg_set_size,
+            "per_group": per_group,
+            "validation": {
+                "coverage_guarantee_met": coverage_guarantee_met,
+            },
+        },
+        "meta": {
+            "sample_size": n_total,
+            "confidence": confidence,
+            "analysis_type": "conformal",
+            "tier": "research",
+            "evidence_level": "exploratory",
+        },
+    }

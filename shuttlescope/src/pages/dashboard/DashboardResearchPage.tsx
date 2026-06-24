@@ -21,6 +21,7 @@ import { DoublesRoleCard } from '@/components/analysis/DoublesRoleCard'
 import { ShotInfluenceV2Card } from '@/components/analysis/ShotInfluenceV2Card'
 import { PromotionStatusCard } from '@/components/analysis/PromotionStatusCard'
 import { YoloCVPositionCard } from '@/components/analysis/YoloCVPositionCard'
+import { ExploitabilityCard } from '@/components/analysis/ExploitabilityCard'
 import { useAnalysisMeta } from '@/hooks/useAnalysisMeta'
 import { useResearchBundle } from '@/hooks/useResearchBundle'
 import { ResearchBundleProvider } from '@/contexts/ResearchBundleContext'
@@ -201,6 +202,13 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
       <ErrorBoundary>
         <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
           <YoloCVPositionCard playerId={playerId} filters={filters} />
+        </RoleGuard>
+      </ErrorBoundary>
+
+      {/* ── Research Spine: 搾取可能性 / ナッシュ均衡 ── */}
+      <ErrorBoundary>
+        <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
+          <ExploitabilityCard playerId={playerId} />
         </RoleGuard>
       </ErrorBoundary>
 
