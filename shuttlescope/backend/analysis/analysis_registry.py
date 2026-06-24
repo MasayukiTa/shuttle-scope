@@ -344,6 +344,30 @@ _RAW: list[dict] = [
         "page": "analyst",
         "section": "research",
     },
+    {
+        "analysis_type": "conformal",
+        "tier": "research",
+        "evidence_level": "exploratory",
+        "min_recommended_sample": 40,
+        "caution": (
+            "split-conformal 法は周辺被覆保証を与えますが、"
+            "条件付き被覆（グループ別の保証）は与えません。"
+            "グループ別 P(win) はラプラス平滑化した経験的勝率であり、"
+            "サンプル数が少ないグループでは不確実性が大きくなります。"
+        ),
+        "assumptions": (
+            "校正点とテスト点が交換可能（独立同分布）であることを仮定します。"
+            "決定論的 50/50 分割（偶数インデックス=校正、奇数=テスト）を使用します。"
+            "ベーススコアラーはグループ別 Laplace 平滑化勝率です。"
+        ),
+        "promotion_criteria": (
+            "N≥200 ラリー・グループ別条件付き被覆率の検証・"
+            "より強力なベーススコアラー（ロジスティック回帰等）との比較・"
+            "クロス大会安定性確認"
+        ),
+        "page": "analyst",
+        "section": "research",
+    },
 
     # =========================================================================
     # research tier — analyst spine (RS-1〜RS-5)
