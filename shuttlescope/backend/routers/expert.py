@@ -39,9 +39,9 @@ from backend.services.clip_generator import (
     compute_frame_index,
     iter_miss_strokes,
 )
-from backend.utils.auth import AuthCtx, get_auth
+from backend.utils.auth import AuthCtx, get_auth, require_query_scope
 
-router = APIRouter(prefix="/v1/expert", tags=["expert-labeler"])
+router = APIRouter(prefix="/v1/expert", tags=["expert-labeler"], dependencies=[Depends(require_query_scope)])
 
 
 # ─── ロールガード ───────────────────────────────────────────────────────────

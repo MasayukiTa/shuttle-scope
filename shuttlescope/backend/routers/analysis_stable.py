@@ -17,7 +17,9 @@ from backend.analysis.router_helpers import (
 )
 from backend.analysis.analysis_config import AnalysisConfig
 
-router = APIRouter()
+from backend.utils.auth import require_query_scope  # cross-team IDOR ガード
+
+router = APIRouter(dependencies=[Depends(require_query_scope)])
 
 
 # ---------------------------------------------------------------------------

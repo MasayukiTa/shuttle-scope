@@ -588,6 +588,104 @@ def require_match_access(
     return m
 
 
+# ─── クエリパラメータ経由 ID の team 境界強制 ────────────────────────────────────
+# 解析系ルータ (analysis_*, reports, prediction, review, expert) は player_id /
+# match_id / rally_id / set_id を **クエリパラメータ** で受けるため、path ベースの
+# middleware では cross-team IDOR を捕捉できない。PlayerAccessControlMiddleware の
+# query 検証も role=player にしか効かない。この依存性を router-level dependency と
+# して付与し、analyst / coach / player すべてに team 境界を強制する (admin 素通り)。
+_QS_PLAYER_PARAMS = (
+    "player_id", "player_a_id", "player_b_id", "opponent_id",
+    "partner_id", "anchor_player_id", "player_id_1", "player_id_2",
+)
+_QS_PLAYER_LIST_PARAMS = ("player_ids",)
+_QS_MATCH_PARAMS = ("match_id",)
+_QS_MATCH_LIST_PARAMS = ("match_ids",)
+
+
+def _qs_int_values(request: Request, names, list_names) -> list[int]:
+    """指定クエリパラメータ群から正の整数 ID を全部 (HPP/カンマ区切り両対応) 抽出する。"""
+    out: list[int] = []
+    for n in names:
+        for raw in request.query_params.getlist(n):
+            if not raw:
+                continue
+            try:
+                v = int(raw)
+            except (ValueError, TypeError):
+                continue
+            if v > 0:
+                out.append(v)
+    for n in list_names:
+        for raw in request.query_params.getlist(n):
+            if not raw:
+                continue
+            for part in str(raw).split(","):
+                part = part.strip()
+                if not part:
+                    continue
+                try:
+                    v = int(part)
+                except (ValueError, TypeError):
+                    continue
+                if v > 0:
+                    out.append(v)
+    return out
+
+
+def require_query_scope(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> AuthCtx:
+    """クエリパラメータの player/match/rally/set ID を team 境界で検証する依存性。
+
+    使用例: `APIRouter(dependencies=[Depends(require_query_scope)])`。
+    - admin: 全通過
+    - role 未設定 (未認証): 401
+    - player: 自分の player_id / 自分が登場する試合のみ (can_access_player /
+      user_can_access_match が role 境界を内包)
+    - coach / analyst: 自チーム所属 or 自チームから可視な選手・試合のみ
+    存在しない ID は 404、権限外は 403。
+    """
+    ctx = get_auth(request)
+    if ctx.is_admin:
+        return ctx
+    if ctx.role is None:
+        raise HTTPException(status_code=401, detail="認証が必要です")
+
+    from backend.db.models import Match, Rally, GameSet  # noqa: F401
+
+    # player 系 ID (own team / 自分が登場する試合に出る player のみ可)
+    for pid in _qs_int_values(request, _QS_PLAYER_PARAMS, _QS_PLAYER_LIST_PARAMS):
+        if not can_access_player(ctx, pid, db):
+            raise HTTPException(status_code=403, detail="この選手データへのアクセス権限がありません")
+
+    # match 系 ID
+    for mid in _qs_int_values(request, _QS_MATCH_PARAMS, _QS_MATCH_LIST_PARAMS):
+        m = db.get(Match, mid)
+        if m is None:
+            raise HTTPException(status_code=404, detail="試合が見つかりません")
+        if not user_can_access_match(ctx, m):
+            raise HTTPException(status_code=403, detail="この試合へのアクセス権限がありません")
+
+    # rally_id → set → match
+    for rid in _qs_int_values(request, ("rally_id",), ()):
+        r = db.get(Rally, rid)
+        s = db.get(GameSet, r.set_id) if r is not None and getattr(r, "set_id", None) else None
+        m = db.get(Match, s.match_id) if s is not None and getattr(s, "match_id", None) else None
+        if m is None or not user_can_access_match(ctx, m):
+            raise HTTPException(status_code=403, detail="このラリーへのアクセス権限がありません")
+
+    # set_id → match
+    for sid in _qs_int_values(request, ("set_id",), ()):
+        s = db.get(GameSet, sid)
+        m = db.get(Match, s.match_id) if s is not None and getattr(s, "match_id", None) else None
+        if m is None or not user_can_access_match(ctx, m):
+            raise HTTPException(status_code=403, detail="このセットへのアクセス権限がありません")
+
+    return ctx
+
+
 # ─── エクスポート権限 ─────────────────────────────────────────────────────────
 
 def require_analyst(request: Request) -> AuthCtx:

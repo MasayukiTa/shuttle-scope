@@ -42,7 +42,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import Match, GameSet, Rally, Stroke, Player, Condition
-from backend.utils.auth import check_export_player_scope, get_auth
+from backend.utils.auth import check_export_player_scope, get_auth, require_query_scope
 from backend.utils.confidence import check_confidence
 
 # matplotlib は使用時に遅延ロード（起動時間短縮のため）
@@ -84,7 +84,7 @@ def _ensure_matplotlib() -> bool:
         _MATPLOTLIB_AVAILABLE = False
     return bool(_MATPLOTLIB_AVAILABLE)
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_query_scope)])
 
 # 禁止ワードと置換ワードのマッピング（選手向けテキスト用）
 FORBIDDEN_WORDS = {

@@ -438,6 +438,11 @@ def submit_questionnaire(body: QuestionnaireSubmit, request: Request, db: Sessio
     player = db.get(Player, body.player_id)
     if not player:
         raise HTTPException(status_code=404, detail="選手が見つかりません")
+    # cross-team 書き込み injection 防止: 認証済みロールは自分/自チームの選手のみ。
+    # (player_id は body 経由のため middleware/依存性では捕捉できない)
+    from backend.utils.auth import can_access_player as _cap_q
+    if _ctx_q.role is not None and not _cap_q(_ctx_q, body.player_id, db):
+        raise HTTPException(status_code=403, detail="この選手データへのアクセス権限がありません")
 
     # 必須 ID チェック
     required = (
@@ -460,8 +465,12 @@ def submit_questionnaire(body: QuestionnaireSubmit, request: Request, db: Sessio
 
     # match_id バリデーション
     if body.match_id is not None:
-        if not db.get(Match, body.match_id):
+        _m_q = db.get(Match, body.match_id)
+        if not _m_q:
             raise HTTPException(status_code=404, detail="試合が見つかりません")
+        from backend.utils.auth import user_can_access_match as _ucam_q
+        if _ctx_q.role is not None and not _ucam_q(_ctx_q, _m_q):
+            raise HTTPException(status_code=403, detail="この試合へのアクセス権限がありません")
 
     # 採点
     if body.condition_type == "weekly":
@@ -587,13 +596,24 @@ def create_condition(body: ConditionCreate, request: Request, db: Session = Depe
         target_player = db.get(Player, body.player_id)
         if not target_player or (target_player.team or "").strip() != team:
             raise HTTPException(status_code=403, detail="自チーム選手のみ登録できます")
-    # analyst / admin は全選手に登録可能
+    elif ctx.is_analyst:
+        # analyst も自チーム選手のみ (cross-team 偽データ injection 防止)
+        from backend.utils.auth import can_access_player as _cap_c
+        if not _cap_c(ctx, body.player_id, db):
+            raise HTTPException(status_code=403, detail="自チーム選手のみ登録できます")
+    # admin は全選手に登録可能
 
     player = db.get(Player, body.player_id)
     if not player:
         raise HTTPException(status_code=404, detail="選手が見つかりません")
-    if body.match_id is not None and not db.get(Match, body.match_id):
-        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    if body.match_id is not None:
+        _m_cc = db.get(Match, body.match_id)
+        if not _m_cc:
+            raise HTTPException(status_code=404, detail="試合が見つかりません")
+        if ctx.role is not None and not ctx.is_admin:
+            from backend.utils.auth import user_can_access_match as _ucam_cc
+            if not _ucam_cc(ctx, _m_cc):
+                raise HTTPException(status_code=403, detail="この試合へのアクセス権限がありません")
 
     data = body.model_dump()
     cond = Condition(**data)

@@ -9,7 +9,7 @@ from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
-from backend.utils.auth import require_non_player
+from backend.utils.auth import require_non_player, require_query_scope
 from backend.db.models import Match, GameSet, Rally, Stroke, Player, PreMatchObservation
 from backend.utils.confidence import check_confidence
 from backend.analysis.router_helpers import (
@@ -25,7 +25,7 @@ from backend.analysis.growth_engine import (
 
 # advanced tier は player 禁止 (PLAYER_SENSITIVE_KEYS を返すケースが多い)。
 # middleware が import 失敗時に空集合化するリスクをカバーするため router-level でガード。
-router = APIRouter(dependencies=[Depends(require_non_player)])
+router = APIRouter(dependencies=[Depends(require_non_player), Depends(require_query_scope)])
 
 
 # ---------------------------------------------------------------------------

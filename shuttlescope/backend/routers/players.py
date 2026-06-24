@@ -240,6 +240,34 @@ def list_players(request: Request, db: Session = Depends(get_db),
     return {"success": True, "data": result}
 
 
+def _scoped_player_query(db: Session, request: Request):
+    """list_players と同じ team 境界で Player クエリを絞る (cross-team 漏洩防止)。
+
+    - admin: 全選手
+    - player: 自分の Player レコードのみ
+    - coach / analyst: 自チームの選手のみ (team_name 一致)。team 未設定は loopback の
+      dev/test のみ全件、それ以外は空。
+    """
+    from backend.utils.auth import get_auth
+    ctx = get_auth(request)
+    query = db.query(Player)
+    if ctx.is_admin:
+        return query
+    if ctx.is_player:
+        return query.filter(Player.id == (ctx.player_id or -1))
+    # coach / analyst
+    team = (ctx.team_name or "").strip()
+    if not team:
+        from backend.utils.control_plane import allow_legacy_header_auth
+        if allow_legacy_header_auth(request):
+            return query
+        return query.filter(Player.id == -1)  # 空
+    from backend.db.models import Team as _Team
+    return query.join(_Team, _Team.id == Player.team_id).filter(
+        _Team.name == team, _Team.deleted_at.is_(None)
+    )
+
+
 @router.get("/players/search")
 def search_players(request: Request, q: str = Query(default="", max_length=100),
                    db: Session = Depends(get_db),
@@ -253,7 +281,8 @@ def search_players(request: Request, q: str = Query(default="", max_length=100),
     # 例: q="_" "%" "*" "<script>" 等の特殊記号のみのクエリによる全件露出を防ぐ。
     if len(q_norm) < 2:
         return {"success": True, "data": []}
-    all_players = db.query(Player).order_by(Player.name).all()
+    # cross-team 漏洩防止: 自チーム (admin は全件) に絞ってから名前マッチする。
+    all_players = _scoped_player_query(db, request).order_by(Player.name).all()
 
     exact: list[Player] = []
     prefix: list[Player] = []
@@ -304,7 +333,10 @@ def search_players(request: Request, q: str = Query(default="", max_length=100),
 def list_needs_review(request: Request, db: Session = Depends(get_db),
                       _auth: AuthCtx = Depends(_require_auth)):
     """要レビュー選手一覧（V4-U-003）"""
-    players = db.query(Player).filter(Player.needs_review == True).order_by(Player.created_at.desc()).all()  # noqa: E712
+    # cross-team 漏洩防止: 自チーム (admin は全件) に絞る。
+    players = _scoped_player_query(db, request).filter(
+        Player.needs_review == True  # noqa: E712
+    ).order_by(Player.created_at.desc()).all()
     result = []
     for p in players:
         cnt = db.query(Match).filter(

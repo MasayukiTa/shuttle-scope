@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 import json
 from backend.db.database import get_db
-from backend.utils.auth import require_non_player, get_auth
+from backend.utils.auth import require_non_player, get_auth, require_query_scope
 from backend.db.models import Player, Match, PrematchPrediction
 from backend.analysis.prediction_engine import (
     get_matches_for_player,
@@ -39,7 +39,7 @@ from backend.analysis.prediction_engine import (
 # PlayerAccessControlMiddleware._PLAYER_FORBIDDEN_ANALYSIS_PATHS は analysis_* ルーター
 # からしか自動収集されないため、prediction エンドポイントは middleware だけだと素通りする。
 # router-level dependency で確実にガードする。
-router = APIRouter(dependencies=[Depends(require_non_player)])
+router = APIRouter(dependencies=[Depends(require_non_player), Depends(require_query_scope)])
 
 
 @router.get("/prediction/match_preview")
