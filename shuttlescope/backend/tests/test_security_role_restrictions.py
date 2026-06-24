@@ -330,7 +330,9 @@ class TestConditionAuditLog:
         db_session.query(User).delete()
         db_session.query(_P).delete()
         db_session.query(_AL).delete()
-        db_session.add(_P(id=900, name="X", name_normalized="x"))
+        # analyst トークンの team (= _TEST_TEAM_ID) と一致させ、自チーム選手として
+        # 正規にコンディション登録できるようにする (cross-team injection ガード後の正仕様)。
+        db_session.add(_P(id=900, name="X", name_normalized="x", team_id=_TEST_TEAM_ID))
         db_session.add(User(id=900, username="analx", role="analyst",
                             display_name="A", hashed_credential=_hash_password("x")))
         db_session.commit()
