@@ -23,6 +23,9 @@ import { PromotionStatusCard } from '@/components/analysis/PromotionStatusCard'
 import { YoloCVPositionCard } from '@/components/analysis/YoloCVPositionCard'
 import { ExploitabilityCard } from '@/components/analysis/ExploitabilityCard'
 import { ConformalCard } from '@/components/analysis/ConformalCard'
+import { PolicyEvalCard } from '@/components/analysis/PolicyEvalCard'
+import { StyleDistanceCard } from '@/components/analysis/StyleDistanceCard'
+import { MatchupForecastCard } from '@/components/analysis/MatchupForecastCard'
 import { useAnalysisMeta } from '@/hooks/useAnalysisMeta'
 import { useResearchBundle } from '@/hooks/useResearchBundle'
 import { ResearchBundleProvider } from '@/contexts/ResearchBundleContext'
@@ -217,6 +220,27 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
       <ErrorBoundary>
         <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
           <ConformalCard playerId={playerId} />
+        </RoleGuard>
+      </ErrorBoundary>
+
+      {/* ── DR-OPE ポリシー評価 ── */}
+      <ErrorBoundary>
+        <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
+          <PolicyEvalCard playerId={playerId} />
+        </RoleGuard>
+      </ErrorBoundary>
+
+      {/* ── スタイル距離（最適輸送） ── */}
+      <ErrorBoundary>
+        <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
+          <StyleDistanceCard playerId={playerId} />
+        </RoleGuard>
+      </ErrorBoundary>
+
+      {/* ── 対戦予測（階層ベイズ） ── */}
+      <ErrorBoundary>
+        <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
+          <MatchupForecastCard playerId={playerId} />
         </RoleGuard>
       </ErrorBoundary>
 
