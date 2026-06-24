@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.utils.auth import (
-    require_admin_or_analyst, require_query_scope, get_auth, apply_match_team_scope,
+    require_admin_or_analyst, require_query_scope, get_auth, apply_match_team_scope, AuthCtx,
 )
 from backend.db.models import Match, GameSet, Rally, Stroke, Player, PreMatchObservation
 from backend.utils.confidence import check_confidence
@@ -1760,11 +1760,11 @@ def get_policy_eval(
     }
 
 
-def _accessible_player_ids(request: Request, db: Session):
+def _accessible_player_ids(ctx: AuthCtx, db: Session):
     """比較コホートに含めてよい player_id 集合を返す (cross-team 漏洩防止)。
     admin は None (無制限)。analyst/coach は自チーム所属 + 自チームから可視な試合に
-    登場する選手のみ。team 未所属は空集合。"""
-    ctx = get_auth(request)
+    登場する選手のみ。team 未所属は空集合。ctx は Depends(get_auth) で受けること
+    (テストの dependency_overrides[get_auth] と本番 JWT 両対応)。"""
     if ctx.is_admin:
         return None
     if ctx.team_id is None:
@@ -1786,10 +1786,14 @@ def _accessible_player_ids(request: Request, db: Session):
 # ---------------------------------------------------------------------------
 
 @router.get("/analysis/style_distance")
-def get_style_distance(player_id: int, request: Request, db: Session = Depends(get_db)):
+def get_style_distance(
+    player_id: int,
+    db: Session = Depends(get_db),
+    ctx: AuthCtx = Depends(get_auth),
+):
     """STYLE-001: 着地点分布間の Wasserstein (最適輸送) 距離で棋風の近さを測る。
     比較コホートは team-scoped (自チーム + 自チーム可視選手のみ)。"""
-    allowed = _accessible_player_ids(request, db)
+    allowed = _accessible_player_ids(ctx, db)
     try:
         hists = load_zone_histograms(db, player_id, allowed_player_ids=allowed, min_matches=3)
     except Exception:
@@ -1844,13 +1848,13 @@ def get_style_distance(player_id: int, request: Request, db: Session = Depends(g
 @router.get("/analysis/matchup_forecast")
 def get_matchup_forecast(
     player_id: int,
-    request: Request,
     opponent_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
+    ctx: AuthCtx = Depends(get_auth),
 ):
     """MATCHUP-001: 階層ベイズ Bradley-Terry (partial pooling) で対戦勝率を
     不確実性付きで予測。データが疎な対戦ほど CI が広がる。コホートは team-scoped。"""
-    allowed = _accessible_player_ids(request, db)
+    allowed = _accessible_player_ids(ctx, db)
     try:
         ids, pairs = load_match_pairs(db, player_id, allowed_player_ids=allowed)
     except Exception:
