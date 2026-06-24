@@ -19,14 +19,14 @@ import numpy as np
 # Sinkhorn エントロピー正則化 OT
 # ---------------------------------------------------------------------------
 
-def sinkhorn_distance(
+def _sinkhorn_raw(
     p: np.ndarray,
     q: np.ndarray,
     cost: np.ndarray,
     reg: float = 0.05,
     iters: int = 300,
 ) -> float:
-    """エントロピー正則化 OT 距離 (Sinkhorn) を計算する。
+    """エントロピー正則化 OT の生コスト <T*, C> (自己バイアスを含む)。
 
     p, q : 正規化済みヒストグラム (長さ K の 1D array、和 ≈ 1)
     cost : K×K コスト行列 (非負、対角 = 0)
@@ -74,6 +74,24 @@ def sinkhorn_distance(
 
     # スカラーコスト: <T, C> = Σ T_ij * C_ij
     return float(np.sum(T * C))
+
+
+def sinkhorn_distance(
+    p: np.ndarray,
+    q: np.ndarray,
+    cost: np.ndarray,
+    reg: float = 0.05,
+    iters: int = 300,
+) -> float:
+    """脱バイアス Sinkhorn ダイバージェンス S(p,q)=OT(p,q)−½OT(p,p)−½OT(q,q)。
+
+    エントロピー正則化 OT の自己バイアスを除去するため、同一分布で ≈0 になる
+    proper な距離になる (生 Sinkhorn コストは同一分布でも正の値を持つ)。
+    """
+    pq = _sinkhorn_raw(p, q, cost, reg, iters)
+    pp = _sinkhorn_raw(p, p, cost, reg, iters)
+    qq = _sinkhorn_raw(q, q, cost, reg, iters)
+    return max(0.0, float(pq - 0.5 * pp - 0.5 * qq))
 
 
 # ---------------------------------------------------------------------------
