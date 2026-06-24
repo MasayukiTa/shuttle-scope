@@ -45,6 +45,8 @@ from backend.analysis.epv_engine import (
     classify_score_state,
     classify_momentum,
 )
+from backend.analysis.exploitability_engine import analyze_state as _exploitability_analyze_state
+from backend.analysis.exploitability_loader import load_exploitability_records
 
 # research tier は admin/analyst のみ。middleware (_PLAYER_FORBIDDEN_ANALYSIS_PATHS) は
 # import 失敗時に silent に空集合化するため、router-level dependency でも明示ガードする。
@@ -1437,6 +1439,95 @@ def get_pair_synergy(
         "success": True,
         "data": {"player_avg_win_rate": player_avg_win_rate, "pairs": pairs},
         "meta": {"sample_size": total_matches, "confidence": check_confidence("descriptive_basic", total_matches)},
+    }
+
+
+# ---------------------------------------------------------------------------
+# Research: エクスプロイタビリティ / ナッシュ均衡 (NE-001)
+# ---------------------------------------------------------------------------
+
+@router.get("/analysis/exploitability")
+def get_exploitability(
+    player_id: int,
+    coarse: bool = Query(True),
+    db: Session = Depends(get_db),
+):
+    """NE-001: ゲーム状態別ナッシュ均衡・エクスプロイタビリティ解析（アナリスト専用 research tier）
+
+    各ゲーム状態を 2 人ゼロ和ゲームとして fictitious play で解き、
+    実戦略と均衡戦略のギャップ（エクスプロイタビリティ）を返す。
+    """
+    # レコードを状態別に収集
+    try:
+        records_by_state = load_exploitability_records(db, player_id, coarse=coarse)
+    except Exception:
+        logger.exception("exploitability_loader failed for player_id=%s", player_id)
+        records_by_state = {}
+
+    states_ok: list[dict] = []
+    states_insufficient: list[dict] = []
+    total_records = 0
+
+    for state_key, recs in records_by_state.items():
+        total_records += len(recs)
+        result = _exploitability_analyze_state(recs)
+        if result is None:
+            states_insufficient.append({
+                "state_key": state_key,
+                "status": "insufficient",
+                "n": len(recs),
+            })
+        else:
+            states_ok.append({
+                "state_key": state_key,
+                "status": "ok",
+                **result,
+            })
+
+    # サマリ計算
+    exploitability_values = [s["exploitability"] for s in states_ok]
+    mean_exploitability: Optional[float] = None
+    most_exploitable: Optional[dict] = None
+    top_prescription: Optional[dict] = None
+
+    if exploitability_values:
+        mean_exploitability = round(sum(exploitability_values) / len(exploitability_values), 4)
+        top_state = max(states_ok, key=lambda s: s["exploitability"])
+        most_exploitable = {
+            "state_key": top_state["state_key"],
+            "exploitability": top_state["exploitability"],
+        }
+        # top prescription: 最もエクスプロイタビリティが高い状態で最大シフトが必要な行動
+        best_shift = top_state.get("best_shift", {})
+        if best_shift:
+            top_action = max(best_shift, key=lambda a: abs(best_shift[a]))
+            top_prescription = {
+                "state_key": top_state["state_key"],
+                "action": top_action,
+                "shift": best_shift[top_action],
+            }
+
+    confidence = check_confidence("descriptive_basic", total_records)
+
+    return {
+        "success": True,
+        "data": {
+            "states": states_ok + states_insufficient,
+            "summary": {
+                "states_analyzed": len(states_ok),
+                "states_insufficient": len(states_insufficient),
+                "mean_exploitability": mean_exploitability,
+                "most_exploitable": most_exploitable,
+                "top_prescription": top_prescription,
+            },
+        },
+        "meta": {
+            "sample_size": total_records,
+            "confidence": confidence,
+            "analysis_type": "exploitability",
+            "tier": "research",
+            "evidence_level": "exploratory",
+        },
     }
 
 
