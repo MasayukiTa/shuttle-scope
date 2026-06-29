@@ -8,24 +8,24 @@
 # され、0.136.3→0.137.1 で include_router ルートが app.router.routes 上で Mount にネスト化
 # する挙動変化を踏み、ルート列挙テストが沈黙崩壊した (PR #90/#91)。以後のメジャー/マイナーは
 # Dependabot が明示 PR で提案 → CI レビュー経由にするため exact pin で固定する。
-fastapi==0.137.1
+fastapi==0.138.1
 starlette==1.3.1
-uvicorn[standard]==0.46.0
-python-multipart==0.0.31   # Dependabot #44-47 (querystring DoS / negative Content-Length / RFC2231 & semicolon parameter smuggling) 修正のため bump
+uvicorn[standard]==0.49.0
+python-multipart==0.0.32   # Dependabot #44-47 (querystring DoS / negative Content-Length / RFC2231 & semicolon parameter smuggling) 修正のため bump
 pydantic-settings==2.14.2   # GHSA-4xgf-cpjx-pc3j (NestedSecretsSettingsSource symlink read) 修正のため bump
 # pydantic.EmailStr 用バリデータ（pydantic[email] と同等）
 email-validator>=2.3.0
 
 # ── データベース ──────────────────────────────────────────────────
-sqlalchemy==2.0.49
-alembic==1.18.4
+sqlalchemy==2.0.51
+alembic==1.18.5
 mako>=1.3.12                 # CVE-2026-44307 (Windows path traversal in template lookup) 修正のため pin (alembic 経由)
 psycopg2-binary==2.9.12      # PostgreSQL ドライバ（SQLite → PG 移行後に使用）
 
 # ── データ分析 ────────────────────────────────────────────────────
-pandas==3.0.3
-numpy==2.4.4
-scipy==1.17.1
+pandas==3.0.4
+numpy==2.5.0
+scipy==1.18.0
 scikit-learn>=1.5.0          # CVE-2024-5206 修正
 matplotlib>=3.10.9
 polars>=1.40.1                # 高速 DataFrame（ベンチマーク・バルク集計で使用）
