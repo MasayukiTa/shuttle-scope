@@ -42,7 +42,11 @@ from backend.analysis.doubles_role_inference import (
 )
 from backend.analysis.shot_influence_v2 import compute_shot_influence_v2
 
-from backend.utils.auth import require_query_scope  # cross-team IDOR ガード
+from backend.utils.auth import (
+    require_query_scope,  # cross-team IDOR ガード
+    require_admin,  # 昇格 override の書込は admin 限定
+    require_admin_or_analyst,  # 昇格 override の閲覧は analyst/admin 限定
+)
 
 router = APIRouter(dependencies=[Depends(require_query_scope)])
 
@@ -691,7 +695,7 @@ def get_promotion_rules():
 # メタデータ: 昇格評価（player_id ごとの現在状況）
 # ---------------------------------------------------------------------------
 
-@router.get("/analysis/meta/promotion_evaluation")
+@router.get("/analysis/meta/promotion_evaluation", dependencies=[Depends(require_admin_or_analyst)])
 def get_promotion_evaluation(
     player_id: int,
     result: Optional[str] = Query(None),
@@ -891,16 +895,16 @@ class PromotionOverrideBody(BaseModel):
     analyst: str = "analyst"
 
 
-@router.get("/analysis/meta/promotion_overrides")
+@router.get("/analysis/meta/promotion_overrides", dependencies=[Depends(require_admin_or_analyst)])
 def get_promotion_overrides():
-    """現在の昇格 override 一覧を返す。"""
+    """現在の昇格 override 一覧を返す。(analyst/admin のみ — tier 統治情報)"""
     from backend.analysis.promotion_override_store import load_all_overrides
     return {"success": True, "data": load_all_overrides()}
 
 
-@router.post("/analysis/meta/promotion_override")
+@router.post("/analysis/meta/promotion_override", dependencies=[Depends(require_admin)])
 def set_promotion_override(body: PromotionOverrideBody):
-    """昇格 override を保存する（既存は上書き）。"""
+    """昇格 override を保存する（既存は上書き）。tier 昇格の統治操作のため admin 限定。"""
     from backend.analysis.promotion_override_store import save_override, VALID_STATUSES
     if body.status not in VALID_STATUSES:
         raise HTTPException(status_code=400, detail=f"Invalid status: {body.status}")
@@ -913,15 +917,15 @@ def set_promotion_override(body: PromotionOverrideBody):
     return {"success": True, "data": entry}
 
 
-@router.delete("/analysis/meta/promotion_override/{analysis_type}")
+@router.delete("/analysis/meta/promotion_override/{analysis_type}", dependencies=[Depends(require_admin)])
 def delete_promotion_override(analysis_type: str, analyst: str = Query(default="analyst")):
-    """昇格 override を削除する。analyst パラメータで操作者を記録。"""
+    """昇格 override を削除する。tier 統治操作のため admin 限定。analyst パラメータで操作者を記録。"""
     from backend.analysis.promotion_override_store import delete_override
     deleted = delete_override(analysis_type, analyst=analyst)
     return {"success": True, "deleted": deleted}
 
 
-@router.get("/analysis/meta/promotion_override/{analysis_type}/history")
+@router.get("/analysis/meta/promotion_override/{analysis_type}/history", dependencies=[Depends(require_admin_or_analyst)])
 def get_override_history(analysis_type: str):
     """
     指定 analysis_type の override 操作履歴を返す（新しい順）。
@@ -932,9 +936,9 @@ def get_override_history(analysis_type: str):
     return {"success": True, "data": history}
 
 
-@router.get("/analysis/meta/promotion_overrides/audit_log")
+@router.get("/analysis/meta/promotion_overrides/audit_log", dependencies=[Depends(require_admin_or_analyst)])
 def get_all_override_audit_log():
-    """全 override 操作の監査ログを返す（新しい順）。analyst/coach 向け。"""
+    """全 override 操作の監査ログを返す（新しい順）。analyst/admin のみ。"""
     from backend.analysis.promotion_override_store import get_audit_log
     history = get_audit_log()
     return {"success": True, "data": history}

@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import HumanForecast, Match, Player
-from backend.utils.auth import get_auth, AuthCtx
+from backend.utils.auth import get_auth, AuthCtx, require_non_player
 from fastapi import HTTPException as _HTTPException
 
 
@@ -34,7 +34,8 @@ from backend.analysis.prediction_engine import (
     _player_wins_match,
 )
 
-router = APIRouter()
+# 人間ベンチマーク予測はコーチ/アナリスト機能 (docstring 参照)。player には見せない。
+router = APIRouter(dependencies=[Depends(require_non_player)])
 
 
 # ── リクエストスキーマ ─────────────────────────────────────────────────────────
