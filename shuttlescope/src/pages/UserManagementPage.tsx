@@ -68,6 +68,8 @@ const ROLE_KEYS: Record<string, string> = {
   analyst: 'users.manage.role.analyst',
   coach: 'users.manage.role.coach',
   player: 'users.manage.role.player',
+  demo: 'users.manage.role.demo',
+  llm: 'users.manage.role.llm',
 }
 
 const ROLE_COLORS: Record<string, string> = {
@@ -200,6 +202,31 @@ export function UserManagementPage() {
     }
     return editId != null ? t('users.manage.credential_update') : t('users.manage.credential_new')
   }, [editId, isPlayerRole, t])
+
+  // ロール階層に応じた選択可能ロール一覧（operator の権限上限まで）
+  // admin(4) > analyst(3) > coach(2) > player(1)
+  // t() はコンポーネント内で呼ぶ必要があるため useMemo 内で参照する
+  const allowedRoleOptions = useMemo(() => {
+    if (myRole === 'admin') {
+      return ['admin', 'analyst', 'coach', 'player', 'demo', 'llm'].map((r) => ({
+        value: r,
+        label: t(ROLE_KEYS[r] ?? `users.manage.role.${r}`),
+      }))
+    }
+    if (myRole === 'analyst') {
+      return ['analyst', 'coach', 'player'].map((r) => ({
+        value: r,
+        label: t(ROLE_KEYS[r]),
+      }))
+    }
+    if (myRole === 'coach') {
+      return ['coach', 'player'].map((r) => ({
+        value: r,
+        label: t(ROLE_KEYS[r]),
+      }))
+    }
+    return []
+  }, [myRole, t])
 
   const filteredUsers = useMemo(() => {
     const keyword = searchTerm.trim().toLowerCase()
@@ -373,8 +400,12 @@ export function UserManagementPage() {
         if (myRole === 'admin' && form.team_id.trim()) {
           body.team_id = parseInt(form.team_id, 10)
         }
-        if (myRole === 'admin') {
+        // role: admin は全ロール設定可。analyst/coach も自チーム内・権限内で設定可（backend が追加検証）。
+        // is_test は admin 専用のまま。
+        if (myRole === 'admin' || myRole === 'analyst' || myRole === 'coach') {
           body.role = form.role
+        }
+        if (myRole === 'admin') {
           body.is_test = form.is_test
         }
         if (form.credential.trim()) body.password = form.credential.trim()
@@ -429,7 +460,11 @@ export function UserManagementPage() {
   const renderFormFields = () => (
     <>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {(editId == null && canCreate) || (editId != null && myRole === 'admin') ? (
+        {/* ロール選択:
+            - 新規作成: canCreate (admin/analyst) に表示
+            - 編集: admin/analyst/coach に表示（自分自身の編集は除く—backend も403を返す）
+        */}
+        {((editId == null && canCreate) || (editId != null && editId !== myUserId && (myRole === 'admin' || myRole === 'analyst' || myRole === 'coach'))) ? (
           <div>
             <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.role_label')}</label>
             <select
@@ -437,9 +472,9 @@ export function UserManagementPage() {
               onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
               className={inputCls}
             >
-              {['admin', 'analyst', 'coach', 'player'].map((r) => (
-                <option key={r} value={r}>
-                  {t(ROLE_KEYS[r])}
+              {allowedRoleOptions.map(({ value, label }) => (
+                <option key={value} value={value}>
+                  {label}
                 </option>
               ))}
             </select>

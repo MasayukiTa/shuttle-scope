@@ -2857,7 +2857,9 @@
         "admin": "管理者",
         "analyst": "アナリスト",
         "coach": "コーチ",
-        "player": "選手"
+        "player": "選手",
+        "demo": "デモ",
+        "llm": "LLM"
       }
     }
   },

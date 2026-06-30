@@ -1649,13 +1649,30 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
     #   - analyst が自分を admin に書換（自己昇格）
     #   - coach が自分や他人を analyst/admin に書換
     #   - player が自分を昇格
+    # ── role 書換の権限判定 ──────────────────────────────────────────────
+    # admin: 任意。analyst/coach: 自チーム所属ユーザを「自分の権限レベルまで」昇降格可。
+    # 制約: 自分自身は不可 / 対象も付与先も自レベル以下 / admin・demo・llm は対象にも
+    # 付与先にもできない（昇格経路の遮断: player→admin 等は不可）。player 等は role 変更不可。
     if body.role is not None and not ctx.is_admin:
-        raise HTTPException(
-            status_code=403,
-            detail="role の変更は admin のみ可能です",
-        )
+        if not (ctx.is_analyst or ctx.is_coach):
+            raise HTTPException(status_code=403, detail="role の変更権限がありません")
+        _ROLE_LEVEL = {"player": 1, "coach": 2, "analyst": 3}
+        _op_level = _ROLE_LEVEL[ctx.role]  # analyst=3 / coach=2
+        if ctx.user_id == target_id:
+            raise HTTPException(status_code=403, detail="自分自身の role は変更できません")
+        if ctx.team_id is None or user.team_id != ctx.team_id:
+            raise HTTPException(status_code=403, detail="自チームのユーザのみ role を変更できます")
+        _cur_level = _ROLE_LEVEL.get(user.role or "")
+        if _cur_level is None or _cur_level > _op_level:
+            raise HTTPException(status_code=403, detail="このユーザの role は変更できません")
+        _new_level = _ROLE_LEVEL.get(body.role)
+        if _new_level is None or _new_level > _op_level:
+            raise HTTPException(
+                status_code=403,
+                detail=f"付与できる role は自分の権限 ({ctx.role}) までです",
+            )
 
-    # is_test (検証用フラグ) も admin のみ変更可。実ユーザ保護の解除/付与に直結するため。
+    # is_test (検証用フラグ) は admin のみ変更可。実ユーザ保護の解除/付与に直結するため。
     if body.is_test is not None and not ctx.is_admin:
         raise HTTPException(
             status_code=403,
@@ -1775,11 +1792,19 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
         if existing:
             raise HTTPException(status_code=409, detail="login_id is already in use")
         user.username = login_id
-    # role は admin のみ書換可能 (上で既にガード済なのでここでは admin 限定で適用)
-    if body.role is not None and ctx.is_admin:
+    # role の適用 (権限判定は上のガードで実施済: admin=任意 / analyst・coach=自チーム・自レベルまで)
+    if body.role is not None and (ctx.is_admin or ctx.is_analyst or ctx.is_coach):
         if body.role not in ("admin", "analyst", "coach", "player", "demo", "llm"):
             raise HTTPException(status_code=422, detail=f"invalid role: {body.role}")
-        user.role = body.role
+        if user.role != body.role:
+            _old_role = user.role
+            user.role = body.role
+            log_access(
+                db, "user_role_changed", user_id=ctx.user_id,
+                resource_type="user", resource_id=user.id,
+                details={"actor_role": ctx.role, "from": _old_role, "to": body.role,
+                         "team_id": user.team_id},
+            )
     # is_test の切替 (admin のみ、上でガード済)。実ユーザ⇄検証用の付替え。
     if body.is_test is not None and ctx.is_admin:
         user.is_test = bool(body.is_test)
