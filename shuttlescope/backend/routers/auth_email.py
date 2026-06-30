@@ -732,10 +732,20 @@ def approve_pending_user(
 
     user.role = body.role
     user.awaiting_admin_approval = False
-    if body.team_id is not None:
-        user.team_id = body.team_id
-    if body.team_name is not None:
-        user.team_name = body.team_name.strip() or None
+    # チーム解決: 未存在の team_id をそのまま代入すると PostgreSQL(本番) では FK 違反で
+    # commit が 500、SQLite では dangling FK になる。POST /auth/users と同じ
+    # _resolve_team_for_user_create で team_id を存在検証し、team_name は lookup/作成する。
+    if body.team_id is not None or (body.team_name and body.team_name.strip()):
+        from backend.routers.auth import _resolve_team_for_user_create
+        team = _resolve_team_for_user_create(
+            db,
+            team_id=body.team_id,
+            independent=False,
+            team_name=body.team_name,
+            display_name_hint=getattr(user, "display_name", None),
+        )
+        user.team_id = team.id
+        user.team_name = team.name  # team_id 指定時も team_name を必ず補完
     db.commit()
     db.refresh(user)
 

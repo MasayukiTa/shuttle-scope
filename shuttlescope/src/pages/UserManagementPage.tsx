@@ -26,6 +26,9 @@ interface UserRow {
   player_name: string | null
   has_credential: boolean
   created_at: string | null
+  is_test: boolean
+  email: string | null
+  email_verified: boolean
 }
 
 interface PlayerOption {
@@ -57,6 +60,7 @@ interface FormState {
   player_id: string
   team_name: string
   team_id: string
+  is_test: boolean
 }
 
 const ROLE_KEYS: Record<string, string> = {
@@ -81,6 +85,7 @@ const emptyForm = (): FormState => ({
   player_id: '',
   team_name: '',
   team_id: '',
+  is_test: false,
 })
 
 function SecretField(props: {
@@ -316,6 +321,7 @@ export function UserManagementPage() {
       player_id: u.player_id ? String(u.player_id) : '',
       team_name: u.team_name ?? '',
       team_id: u.team_id ? String(u.team_id) : '',
+      is_test: u.is_test ?? false,
     })
     setEditId(u.id)
     setError(null)
@@ -366,6 +372,10 @@ export function UserManagementPage() {
         }
         if (myRole === 'admin' && form.team_id.trim()) {
           body.team_id = parseInt(form.team_id, 10)
+        }
+        if (myRole === 'admin') {
+          body.role = form.role
+          body.is_test = form.is_test
         }
         if (form.credential.trim()) body.password = form.credential.trim()
         await apiPut(`/auth/users/${editId}`, body)
@@ -419,7 +429,7 @@ export function UserManagementPage() {
   const renderFormFields = () => (
     <>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {editId == null && canCreate ? (
+        {(editId == null && canCreate) || (editId != null && myRole === 'admin') ? (
           <div>
             <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.role_label')}</label>
             <select
@@ -594,6 +604,19 @@ export function UserManagementPage() {
         </div>
       ) : null}
 
+      {myRole === 'admin' && (
+        <div className="mt-3">
+          <label className={`flex items-center gap-2 text-xs cursor-pointer ${textMuted}`}>
+            <input
+              type="checkbox"
+              checked={form.is_test}
+              onChange={(e) => setForm((f) => ({ ...f, is_test: e.target.checked }))}
+            />
+            {t('users.manage.is_test_label')}
+          </label>
+        </div>
+      )}
+
       {error ? (
         <div className="mt-3 bg-red-50 border border-red-200 text-red-600 text-xs rounded px-3 py-2">
           {error}
@@ -707,6 +730,9 @@ export function UserManagementPage() {
                   </th>
                   <th className={`px-4 py-2.5 text-xs font-medium ${textMuted} hidden sm:table-cell`}>{t('users.manage.col_credential')}</th>
                   {myRole === 'admin' && (
+                    <th className={`px-4 py-2.5 text-xs font-medium ${textMuted} hidden sm:table-cell`}>{t('users.manage.col_email')}</th>
+                  )}
+                  {myRole === 'admin' && (
                     <>
                       <th
                         className={`px-3 py-2.5 text-xs font-medium ${textMuted} hidden md:table-cell cursor-pointer select-none`}
@@ -756,6 +782,21 @@ export function UserManagementPage() {
                       <td className={`px-4 py-2.5 text-xs ${textMuted} hidden sm:table-cell`}>
                         {u.has_credential ? t('users.manage.credential_set') : t('users.manage.credential_unset')}
                       </td>
+                      {myRole === 'admin' && (
+                        <td className={`px-4 py-2.5 text-xs hidden sm:table-cell`}>
+                          <div className={textMuted}>
+                            {u.email ?? '—'}
+                            {u.email && (
+                              <span className={`ml-1 ${u.email_verified ? 'text-green-600' : 'text-amber-600'}`}>
+                                {u.email_verified ? t('users.manage.email_verified') : t('users.manage.email_unverified')}
+                              </span>
+                            )}
+                          </div>
+                          <span className={`inline-block mt-0.5 text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap ${u.is_test ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>
+                            {u.is_test ? t('users.manage.is_test_yes') : t('users.manage.is_test_no')}
+                          </span>
+                        </td>
+                      )}
                       {myRole === 'admin' && (
                         <>
                           <td className="px-3 py-2.5 hidden md:table-cell">
@@ -874,7 +915,7 @@ export function UserManagementPage() {
                     {/* インライン編集フォーム（行の直下に展開） */}
                     {editId === u.id && (
                       <tr key={`edit-${u.id}`}>
-                        <td colSpan={myRole === 'admin' ? 8 : 5} className={`px-4 py-4 border-b ${border} ${isLight ? 'bg-blue-50/60' : 'bg-blue-900/10'}`}>
+                        <td colSpan={myRole === 'admin' ? 9 : 5} className={`px-4 py-4 border-b ${border} ${isLight ? 'bg-blue-50/60' : 'bg-blue-900/10'}`}>
                           <div className="flex items-center justify-between mb-3">
                             <h3 className={`text-xs font-semibold ${textMain}`}>{t('users.manage.edit_title')}: {u.display_name || u.username}</h3>
                             <button onClick={closeAll} className={`${textMuted} hover:text-red-400`}>
@@ -889,7 +930,7 @@ export function UserManagementPage() {
                 ))}
                 {filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={myRole === 'admin' ? 8 : 5} className={`px-4 py-8 text-center ${textMuted} text-sm`}>
+                    <td colSpan={myRole === 'admin' ? 9 : 5} className={`px-4 py-8 text-center ${textMuted} text-sm`}>
                       {searchTerm.trim() ? t('users.manage.empty_search') : t('users.manage.empty_all')}
                     </td>
                   </tr>
