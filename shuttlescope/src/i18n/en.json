@@ -2849,7 +2849,9 @@
         "admin": "Admin",
         "analyst": "Analyst",
         "coach": "Coach",
-        "player": "Player"
+        "player": "Player",
+        "demo": "Demo",
+        "llm": "LLM"
       }
     }
   },
