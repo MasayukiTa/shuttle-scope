@@ -1397,6 +1397,8 @@ class UserUpdate(BaseModel):
     # 403 で明示拒否する（silent drop にするとサイレント昇格攻撃を検出困難にする）。
     role: Optional[str] = None
     team_id: Optional[int] = None  # admin のみ変更可
+    # is_test: 検証用ユーザ (True=削除可) / 実ユーザ (False=削除保護)。admin のみ変更可。
+    is_test: Optional[bool] = None
 
 
 def _user_to_dict(user: User, db: Session, *, for_admin: bool = False) -> dict:
@@ -1422,6 +1424,8 @@ def _user_to_dict(user: User, db: Session, *, for_admin: bool = False) -> dict:
         "email_verified": bool(getattr(user, "email_verified_at", None)),
         # M-A 承認待ちフラグ (admin の保留ユーザー一覧で利用)
         "awaiting_admin_approval": bool(getattr(user, "awaiting_admin_approval", False)),
+        # 検証用ユーザフラグ (True=削除可 / False=実ユーザで削除保護)。admin UI で表示・切替。
+        "is_test": bool(getattr(user, "is_test", False)),
     }
     if for_admin:
         out["team_display_id"] = team.display_id if team else None
@@ -1651,6 +1655,13 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
             detail="role の変更は admin のみ可能です",
         )
 
+    # is_test (検証用フラグ) も admin のみ変更可。実ユーザ保護の解除/付与に直結するため。
+    if body.is_test is not None and not ctx.is_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="is_test の変更は admin のみ可能です",
+        )
+
     # round174 U2: admin の self role 変更を禁止 (self-demote 不可)。
     # 自分を admin から降格させると system が admin を失う可能性があり、
     # 復旧には DB 直接介入が必要になる。role 変更は別 admin に依頼する運用に限定。
@@ -1769,6 +1780,9 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
         if body.role not in ("admin", "analyst", "coach", "player", "demo", "llm"):
             raise HTTPException(status_code=422, detail=f"invalid role: {body.role}")
         user.role = body.role
+    # is_test の切替 (admin のみ、上でガード済)。実ユーザ⇄検証用の付替え。
+    if body.is_test is not None and ctx.is_admin:
+        user.is_test = bool(body.is_test)
     # team_name / player_id は admin のみ書換可能 (上でガード済)
     # admin が team_name のみ送ってきた場合は teams テーブルで lookup or 自動作成して team_id も更新
     if body.team_name is not None and ctx.is_admin:
