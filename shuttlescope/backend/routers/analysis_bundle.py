@@ -47,7 +47,7 @@ from backend.routers.analysis_spine import (
     _hazard_fatigue_impl,
 )
 
-from backend.utils.auth import require_query_scope  # cross-team IDOR ガード
+from backend.utils.auth import require_query_scope, require_admin_or_analyst  # cross-team IDOR ガード
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +116,7 @@ def get_review_bundle(
     }
 
 
-@router.get("/analysis/bundle/research")
+@router.get("/analysis/bundle/research", dependencies=[Depends(require_admin_or_analyst)])
 def get_research_bundle(
     player_id: int,
     result: Optional[str] = Query(None),
