@@ -220,3 +220,12 @@ export const N_GRAY = {
  * 録画 indicator 専用 (業界慣習)。それ以外には使わない。
  */
 export const RECORDING_RED = '#dc2626'
+
+/**
+ * DESIGN_DIRECTION_v2 §2 — UI chrome のブランド/インタラクティブ色 (light既定値)。
+ * globals.css の --ss-brand (light: #2563eb) と一致させること。
+ * これは UI chrome 用のブリッジ定数であり、上記のデータ/チャート配色
+ * (A_GOOD / B_BAD / N_GRAY / coolwarm 等) とは独立して扱う。データ系列の色に
+ * BRAND を流用しない。
+ */
+export const BRAND = '#2563eb'

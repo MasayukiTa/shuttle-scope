@@ -3,12 +3,149 @@
 @tailwind utilities;
 
 /* ═══════════════════════════════════════════════════════════════════
-   ShuttleScope Global CSS  —  COLOR_SPEC_v1 準拠
+   ShuttleScope Global CSS  —  DESIGN_DIRECTION_v2 "Precision on Gray"
    セマンティックトークン + テーマ別明示ルール
+   仕様: docs/design/DESIGN_DIRECTION_v2.md §2–§5
+   LIGHT (soft gray canvas) が既定 (§10)。dark は calm charcoal トグル。
    ═══════════════════════════════════════════════════════════════════ */
 
-/* ─── 1. ダークテーマ セマンティックトークン（デフォルト） ─────── */
+/* ─── 1. ライトテーマ セマンティックトークン（デフォルト / :root） ───
+ * v2 §10: 既定テーマを light に反転。:root 自体を light 値にすることで
+ * React マウント前 (data-theme 未設定の瞬間) も gray canvas で初期描画され、
+ * 旧 dark-first :root によるダークフラッシュを防ぐ。
+ * 明示的に data-theme="light" が付与された場合も同じ値を適用する。 */
 :root,
+html[data-theme="light"] {
+  /* shadcn 互換 HSL 変数 */
+  --background: 210 40% 98%;
+  --foreground: 222.2 84% 4.9%;
+  --border: 214.3 31.8% 85%;
+  --input: 214.3 31.8% 85%;
+  --ring: 221.2 83.2% 53.3%;
+  --primary: 222.2 47.4% 11.2%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 210 40% 96.1%;
+  --secondary-foreground: 222.2 47.4% 11.2%;
+  --muted: 210 40% 96.1%;
+  --muted-foreground: 215.4 16.3% 46.9%;
+  --accent: 210 40% 96.1%;
+  --accent-foreground: 222.2 47.4% 11.2%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 210 40% 98%;
+  --radius: 0.5rem;
+
+  /* ── v2 §2 Light tokens (THE STAR) ── */
+  --ss-brand:         #2563eb;
+  --ss-brand-hover:   #1d4fd7;
+  --ss-brand-tint:    rgba(37, 99, 235, 0.08);
+  --ss-focus-ring:    rgba(37, 99, 235, 0.32);
+
+  --ss-good:          #1f6fe0;
+  --ss-bad:           #c2334a;
+  --ss-warn:          #b26a00;
+  --ss-success:       #197a48;
+  --ss-emphasis:      #e4610f;
+
+  /* ── v2 §4 Radius (crisp / minimal — same both themes) ── */
+  --r-sm:   3px;
+  --r-md:   5px;
+  --r-lg:   6px;
+  --r-xl:   8px;
+  --r-pill: 999px;
+
+  /* ── v2 §4 Elevation (light-tuned subtle shadows) ── */
+  --e0: none;
+  --e1: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --e2: 0 1px 3px rgba(16, 24, 40, 0.10), 0 1px 2px rgba(16, 24, 40, 0.06);
+  --e3: 0 10px 28px rgba(16, 24, 40, 0.14);
+
+  /* ── v2 §5 Motion ── */
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --dur-slow: 300ms;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* COLOR_SPEC_v1 Foundation Tokens — Light, retuned to v2 gray palette.
+   * 旧変数名は他コンポーネントから広く参照されているため名前は維持し、
+   * 値だけを v2 の soft-gray-canvas パレットへ移行する (エイリアス方針)。 */
+  --ss-bg-app:        #f5f6f8;   /* v2 --ss-bg-app: 紙のような soft gray canvas */
+  --ss-bg-page:       #f5f6f8;
+  --ss-bg-panel:      #ffffff;   /* = v2 surface-1 */
+  --ss-bg-panel-alt:  #eef1f5;   /* = v2 surface-2 */
+  --ss-bg-elevated:   #ffffff;
+  --ss-bg-overlay:    rgba(15, 23, 42, 0.28);
+
+  /* v2 surface aliases（新規コンポーネントはこちらを優先利用） */
+  --ss-surface-1: #ffffff;
+  --ss-surface-2: #eef1f5;
+  --ss-surface-3: #e4e8ee;
+
+  --ss-text-primary:  #1a2028;   /* = v2 --ss-t1 */
+  --ss-text-secondary:#55606e;   /* = v2 --ss-t2 */
+  --ss-text-muted:    #8892a0;   /* = v2 --ss-t3 */
+  --ss-text-disabled: #a7afb9;
+
+  --ss-t1: #1a2028;
+  --ss-t2: #55606e;
+  --ss-t3: #8892a0;
+
+  --ss-border-default:#e3e7ec;   /* = v2 --ss-border */
+  --ss-border-strong: #c9d1db;
+  --ss-border-subtle: rgba(15, 23, 42, 0.06);
+  --ss-border: #e3e7ec;
+
+  --ss-accent-primary:       #2563eb;  /* = v2 --ss-brand */
+  --ss-accent-primary-hover: #1d4fd7;
+  --ss-accent-primary-soft:  rgba(37, 99, 235, 0.08);
+
+  /* Form controls */
+  --ss-ctrl-bg:         #ffffff;
+  --ss-ctrl-text:       #1a2028;
+  --ss-ctrl-placeholder:#8892a0;
+  --ss-ctrl-border:     #c9d1db;
+  --ss-ctrl-border-hover:#8892a0;
+  --ss-ctrl-border-focus:#2563eb;
+  --ss-ctrl-focus-ring: rgba(37, 99, 235, 0.32);
+
+  /* Status: Success */
+  --ss-success-text:   #197a48;
+  --ss-success-bg:     #dcfce7;
+  --ss-success-border: #86efac;
+
+  /* Status: Warning */
+  --ss-warning-text:   #b26a00;
+  --ss-warning-bg:     #fef3c7;
+  --ss-warning-border: #fcd34d;
+
+  /* Status: Danger */
+  --ss-danger-text:    #c2334a;
+  --ss-danger-bg:      #fbe4e8;
+  --ss-danger-border:  #f0a8b4;
+
+  /* Status: Info */
+  --ss-info-text:      #1d4fd7;
+  --ss-info-bg:        #dbeafe;
+  --ss-info-border:    #93c5fd;
+
+  /* Status: Neutral advisory */
+  --ss-advisory-text:  #55606e;
+  --ss-advisory-bg:    #eef1f5;
+  --ss-advisory-border:#c9d1db;
+
+  /* Table */
+  --ss-table-header-bg:#eef1f5;
+  --ss-table-odd-bg:   #ffffff;
+  --ss-table-even-bg:  #fbfcfd;
+  --ss-table-hover-bg: #eff6ff;
+  --ss-table-divider:  #e3e7ec;
+
+  color-scheme: light;
+}
+
+/* ─── 2. ダークテーマ セマンティックトークン（calm charcoal トグル） ──
+ * v2 §2: pure black / neon 系ではなく暖かいチャコール。ブランド青は
+ * charcoal 上のコントラスト確保のため明るめにリフト。 */
 html[data-theme="dark"] {
   /* shadcn 互換 HSL 変数 */
   --background: 222.2 84% 4.9%;
@@ -28,41 +165,66 @@ html[data-theme="dark"] {
   --destructive-foreground: 210 40% 98%;
   --radius: 0.5rem;
 
-  /* COLOR_SPEC_v1 Foundation Tokens — Dark */
-  --ss-bg-app:        #111827;
-  --ss-bg-page:       #111827;
-  --ss-bg-panel:      #1f2937;
-  --ss-bg-panel-alt:  #243041;
-  --ss-bg-elevated:   #2b3648;
+  /* ── v2 §2 Dark tokens (calm charcoal, NOT black/neon) ── */
+  --ss-brand:         #5c9bff;
+  --ss-brand-hover:   #7fb0ff;
+  --ss-brand-tint:    rgba(92, 155, 255, 0.14);
+  --ss-focus-ring:    rgba(92, 155, 255, 0.35);
+
+  --ss-good:          #6aa6ff;
+  --ss-bad:           #f0808a;
+  --ss-warn:          #fcd34d;
+  --ss-success:       #4bae7a;
+  --ss-emphasis:      #f97316;
+
+  /* Radius / elevation / motion tokens are shared across themes (defined
+   * on :root above); dark leans on surface steps + hairline per §4, so no
+   * separate --e* overrides here (shadows are weak on dark by design). */
+
+  /* COLOR_SPEC_v1 Foundation Tokens — Dark, retuned to v2 calm charcoal. */
+  --ss-bg-app:        #1c1f24;   /* v2 warm charcoal, not pure black */
+  --ss-bg-page:       #1c1f24;
+  --ss-bg-panel:      #23272e;   /* = v2 surface-1 */
+  --ss-bg-panel-alt:  #2a2f37;   /* = v2 surface-2 */
+  --ss-bg-elevated:   #323842;   /* = v2 surface-3 */
   --ss-bg-overlay:    rgba(0, 0, 0, 0.55);
 
-  --ss-text-primary:  #f9fafb;
-  --ss-text-secondary:#d1d5db;
-  --ss-text-muted:    #9ca3af;
-  --ss-text-disabled: #6b7280;
+  /* v2 surface aliases */
+  --ss-surface-1: #23272e;
+  --ss-surface-2: #2a2f37;
+  --ss-surface-3: #323842;
 
-  --ss-border-default:#374151;
-  --ss-border-strong: #4b5563;
+  --ss-text-primary:  #e6e9ed;   /* soft, not pure #fff */
+  --ss-text-secondary:#a5aebb;
+  --ss-text-muted:    #727c89;
+  --ss-text-disabled: #565f6a;
+
+  --ss-t1: #e6e9ed;
+  --ss-t2: #a5aebb;
+  --ss-t3: #727c89;
+
+  --ss-border-default:#363c46;
+  --ss-border-strong: #454c58;
   --ss-border-subtle: rgba(255, 255, 255, 0.08);
+  --ss-border: #363c46;
 
-  --ss-accent-primary:       #3b82f6;
-  --ss-accent-primary-hover: #2563eb;
-  --ss-accent-primary-soft:  rgba(59, 130, 246, 0.18);
-  --ss-focus-ring:           #60a5fa;
+  --ss-accent-primary:       #5c9bff;  /* = v2 --ss-brand (dark) */
+  --ss-accent-primary-hover: #7fb0ff;
+  --ss-accent-primary-soft:  rgba(92, 155, 255, 0.18);
 
   /* Form controls */
-  --ss-ctrl-bg:         #243041;
-  --ss-ctrl-text:       #f9fafb;
-  --ss-ctrl-placeholder:#9ca3af;
-  --ss-ctrl-border:     #374151;
-  --ss-ctrl-border-hover:#4b5563;
-  --ss-ctrl-border-focus:#3b82f6;
-  --ss-ctrl-focus-ring: rgba(59, 130, 246, 0.25);
+  --ss-ctrl-bg:         #2a2f37;
+  --ss-ctrl-text:       #e6e9ed;
+  --ss-ctrl-placeholder:#727c89;
+  --ss-ctrl-border:     #363c46;
+  --ss-ctrl-border-hover:#454c58;
+  --ss-ctrl-border-focus:#5c9bff;
+  --ss-ctrl-focus-ring: rgba(92, 155, 255, 0.30);
 
   /* Status: Success */
-  --ss-success-text:   #86efac;
-  --ss-success-bg:     rgba(34, 197, 94, 0.16);
-  --ss-success-border: rgba(34, 197, 94, 0.35);
+  --ss-success-text:   #4bae7a;
+  --ss-success-bg:     rgba(75, 174, 122, 0.16);
+  --ss-success-border: rgba(75, 174, 122, 0.35);
 
   /* Status: Warning */
   --ss-warning-text:   #fcd34d;
@@ -70,113 +232,49 @@ html[data-theme="dark"] {
   --ss-warning-border: rgba(245, 158, 11, 0.35);
 
   /* Status: Danger */
-  --ss-danger-text:    #fca5a5;
-  --ss-danger-bg:      rgba(239, 68, 68, 0.16);
-  --ss-danger-border:  rgba(239, 68, 68, 0.35);
+  --ss-danger-text:    #f0808a;
+  --ss-danger-bg:      rgba(240, 128, 138, 0.16);
+  --ss-danger-border:  rgba(240, 128, 138, 0.35);
 
   /* Status: Info */
   --ss-info-text:      #93c5fd;
-  --ss-info-bg:        rgba(59, 130, 246, 0.16);
-  --ss-info-border:    rgba(59, 130, 246, 0.35);
+  --ss-info-bg:        rgba(92, 155, 255, 0.16);
+  --ss-info-border:    rgba(92, 155, 255, 0.35);
 
   /* Status: Neutral advisory */
-  --ss-advisory-text:  #d1d5db;
+  --ss-advisory-text:  #a5aebb;
   --ss-advisory-bg:    rgba(148, 163, 184, 0.14);
   --ss-advisory-border:rgba(148, 163, 184, 0.30);
 
   /* Table */
-  --ss-table-header-bg:#243041;
-  --ss-table-odd-bg:   #1f2937;
-  --ss-table-even-bg:  #1a2333;
-  --ss-table-hover-bg: rgba(59, 130, 246, 0.10);
-  --ss-table-divider:  #374151;
+  --ss-table-header-bg:#2a2f37;
+  --ss-table-odd-bg:   #23272e;
+  --ss-table-even-bg:  #1f2329;
+  --ss-table-hover-bg: rgba(92, 155, 255, 0.10);
+  --ss-table-divider:  #363c46;
 
   color-scheme: dark;
 }
 
-/* ─── 2. ライトテーマ セマンティックトークン ────────────────────── */
-html[data-theme="light"] {
-  /* shadcn 互換 HSL 変数 */
-  --background: 210 40% 98%;
-  --foreground: 222.2 84% 4.9%;
-  --border: 214.3 31.8% 85%;
-  --input: 214.3 31.8% 85%;
-  --ring: 221.2 83.2% 53.3%;
-  --primary: 222.2 47.4% 11.2%;
-  --primary-foreground: 210 40% 98%;
-  --secondary: 210 40% 96.1%;
-  --secondary-foreground: 222.2 47.4% 11.2%;
-  --muted: 210 40% 96.1%;
-  --muted-foreground: 215.4 16.3% 46.9%;
-  --accent: 210 40% 96.1%;
-  --accent-foreground: 222.2 47.4% 11.2%;
-  --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 210 40% 98%;
+/* ─── 2a. 数値ユーティリティ（v2 §3 "precise numerals are the signature"） ──
+ * すべての指標・スコア・軸ラベル・タイマー等の数値表示に適用する。
+ * tabular-nums で桁を揃え、slashed-zero で 0/O 誤読を防ぐ。 */
+.ss-num {
+  font-variant-numeric: tabular-nums slashed-zero;
+}
 
-  /* COLOR_SPEC_v1 Foundation Tokens — Light */
-  --ss-bg-app:        #f3f6fb;
-  --ss-bg-page:       #f7f9fc;
-  --ss-bg-panel:      #ffffff;
-  --ss-bg-panel-alt:  #eef3f9;
-  --ss-bg-elevated:   #ffffff;
-  --ss-bg-overlay:    rgba(15, 23, 42, 0.28);
-
-  --ss-text-primary:  #0f172a;
-  --ss-text-secondary:#334155;
-  --ss-text-muted:    #64748b;
-  --ss-text-disabled: #94a3b8;
-
-  --ss-border-default:#cbd5e1;
-  --ss-border-strong: #94a3b8;
-  --ss-border-subtle: rgba(15, 23, 42, 0.08);
-
-  --ss-accent-primary:       #2563eb;
-  --ss-accent-primary-hover: #1d4ed8;
-  --ss-accent-primary-soft:  rgba(37, 99, 235, 0.10);
-  --ss-focus-ring:           #3b82f6;
-
-  /* Form controls */
-  --ss-ctrl-bg:         #ffffff;
-  --ss-ctrl-text:       #0f172a;
-  --ss-ctrl-placeholder:#94a3b8;
-  --ss-ctrl-border:     #cbd5e1;
-  --ss-ctrl-border-hover:#94a3b8;
-  --ss-ctrl-border-focus:#2563eb;
-  --ss-ctrl-focus-ring: rgba(37, 99, 235, 0.18);
-
-  /* Status: Success */
-  --ss-success-text:   #166534;
-  --ss-success-bg:     #dcfce7;
-  --ss-success-border: #86efac;
-
-  /* Status: Warning */
-  --ss-warning-text:   #92400e;
-  --ss-warning-bg:     #fef3c7;
-  --ss-warning-border: #fcd34d;
-
-  /* Status: Danger */
-  --ss-danger-text:    #991b1b;
-  --ss-danger-bg:      #fee2e2;
-  --ss-danger-border:  #fca5a5;
-
-  /* Status: Info */
-  --ss-info-text:      #1d4ed8;
-  --ss-info-bg:        #dbeafe;
-  --ss-info-border:    #93c5fd;
-
-  /* Status: Neutral advisory */
-  --ss-advisory-text:  #334155;
-  --ss-advisory-bg:    #f1f5f9;
-  --ss-advisory-border:#cbd5e1;
-
-  /* Table */
-  --ss-table-header-bg:#eef3f9;
-  --ss-table-odd-bg:   #ffffff;
-  --ss-table-even-bg:  #fbfdff;
-  --ss-table-hover-bg: #eff6ff;
-  --ss-table-divider:  #e2e8f0;
-
-  color-scheme: light;
+/* ─── 2c. Reduced motion（v2 §5 必須） ───────────────────────────
+ * 非本質的な transition/animation を無効化する。annotate ホットパス
+ * (button[data-tile]) はそもそも motion 対象外だが、二重に安全側へ倒す。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* ─── 2b. モバイル・iOS 修正 ────────────────────────────────────── */
@@ -532,19 +630,19 @@ html[data-theme="light"] input,
 html[data-theme="light"] textarea,
 html[data-theme="light"] select {
   background-color: #ffffff;
-  color: #0f172a;
-  border-color: #cbd5e1;
+  color: #1a2028;
+  border-color: #c9d1db;
 }
 
 html[data-theme="light"] input::placeholder,
 html[data-theme="light"] textarea::placeholder {
-  color: #94a3b8;
+  color: #8892a0;
 }
 
 html[data-theme="light"] input:hover,
 html[data-theme="light"] textarea:hover,
 html[data-theme="light"] select:hover {
-  border-color: #94a3b8;
+  border-color: #8892a0;
 }
 
 html[data-theme="light"] input:focus,
@@ -552,15 +650,15 @@ html[data-theme="light"] textarea:focus,
 html[data-theme="light"] select:focus {
   border-color: #2563eb;
   outline: none;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.32);
 }
 
 html[data-theme="light"] input:disabled,
 html[data-theme="light"] textarea:disabled,
 html[data-theme="light"] select:disabled {
-  background-color: #f1f5f9;
-  color: #94a3b8;
-  border-color: #e2e8f0;
+  background-color: #eef1f5;
+  color: #8892a0;
+  border-color: #e3e7ec;
   cursor: not-allowed;
 }
 
@@ -568,62 +666,62 @@ html[data-theme="light"] select:disabled {
 html[data-theme="light"] select option,
 html[data-theme="light"] select optgroup {
   background-color: #ffffff;
-  color: #0f172a;
+  color: #1a2028;
 }
 
 html[data-theme="light"] select option:checked,
 html[data-theme="light"] select option:hover {
   background-color: #dbeafe;
-  color: #1d4ed8;
+  color: #1d4fd7;
 }
 
 /* ダークモード: select option */
 html[data-theme="dark"] select option,
 html[data-theme="dark"] select optgroup {
-  background-color: #1f2937;
-  color: #f9fafb;
+  background-color: #23272e;
+  color: #e6e9ed;
 }
 
 html[data-theme="dark"] select option:checked,
 html[data-theme="dark"] select option:hover {
-  background-color: rgba(59, 130, 246, 0.25);
+  background-color: rgba(92, 155, 255, 0.25);
   color: #93c5fd;
 }
 
 /* ─── 7. ライトモード: Tailwindグレー系 背景 ────────────────────── */
 html[data-theme="light"] .bg-gray-950,
-html[data-theme="light"] .bg-gray-900  { background-color: #f3f6fb !important; }
-html[data-theme="light"] .bg-gray-800  { background-color: #eef3f9 !important; }
-html[data-theme="light"] .bg-gray-750  { background-color: #f1f5f9 !important; }
-html[data-theme="light"] .bg-gray-700  { background-color: #e2e8f0 !important; }
-html[data-theme="light"] .bg-gray-600  { background-color: #cbd5e1 !important; }
+html[data-theme="light"] .bg-gray-900  { background-color: #f5f6f8 !important; }
+html[data-theme="light"] .bg-gray-800  { background-color: #eef1f5 !important; }
+html[data-theme="light"] .bg-gray-750  { background-color: #eef1f5 !important; }
+html[data-theme="light"] .bg-gray-700  { background-color: #e4e8ee !important; }
+html[data-theme="light"] .bg-gray-600  { background-color: #c9d1db !important; }
 
 /* パネル系（透明度を上げて明示的なパネルとして見えるようにする） */
-html[data-theme="light"] .bg-gray-800\/50 { background-color: #eef3f9 !important; }
-html[data-theme="light"] .bg-gray-800\/30 { background-color: #f4f7fb !important; }
-html[data-theme="light"] .bg-gray-800\/60 { background-color: #f1f5f9 !important; }
-html[data-theme="light"] .bg-gray-800\/90 { background-color: #eef3f9 !important; }
-html[data-theme="light"] .bg-gray-700\/30 { background-color: #eef3f9 !important; }
-html[data-theme="light"] .bg-gray-700\/50 { background-color: #e8edf5 !important; }
-html[data-theme="light"] .bg-gray-700\/60 { background-color: #e2e8f0 !important; }
-html[data-theme="light"] .bg-gray-900\/50 { background-color: #f3f6fb !important; }
-html[data-theme="light"] .bg-gray-900\/60 { background-color: #f1f5f9 !important; }
-html[data-theme="light"] .bg-gray-900\/80 { background-color: #eef3f9 !important; }
-html[data-theme="light"] .bg-gray-900\/90 { background-color: #e8edf5 !important; }
+html[data-theme="light"] .bg-gray-800\/50 { background-color: #eef1f5 !important; }
+html[data-theme="light"] .bg-gray-800\/30 { background-color: #f5f7f9 !important; }
+html[data-theme="light"] .bg-gray-800\/60 { background-color: #eef1f5 !important; }
+html[data-theme="light"] .bg-gray-800\/90 { background-color: #eef1f5 !important; }
+html[data-theme="light"] .bg-gray-700\/30 { background-color: #eef1f5 !important; }
+html[data-theme="light"] .bg-gray-700\/50 { background-color: #e9edf1 !important; }
+html[data-theme="light"] .bg-gray-700\/60 { background-color: #e4e8ee !important; }
+html[data-theme="light"] .bg-gray-900\/50 { background-color: #f5f6f8 !important; }
+html[data-theme="light"] .bg-gray-900\/60 { background-color: #eef1f5 !important; }
+html[data-theme="light"] .bg-gray-900\/80 { background-color: #eef1f5 !important; }
+html[data-theme="light"] .bg-gray-900\/90 { background-color: #e9edf1 !important; }
 
 /* ─── 8. ライトモード: ホバー ───────────────────────────────────── */
-html[data-theme="light"] .hover\:bg-gray-700:hover { background-color: #e2e8f0 !important; }
-html[data-theme="light"] .hover\:bg-gray-600:hover { background-color: #cbd5e1 !important; }
-html[data-theme="light"] .hover\:bg-gray-800:hover { background-color: #eef3f9 !important; }
-html[data-theme="light"] .hover\:bg-gray-750:hover { background-color: #e8edf5 !important; }
+html[data-theme="light"] .hover\:bg-gray-700:hover { background-color: #e4e8ee !important; }
+html[data-theme="light"] .hover\:bg-gray-600:hover { background-color: #c9d1db !important; }
+html[data-theme="light"] .hover\:bg-gray-800:hover { background-color: #eef1f5 !important; }
+html[data-theme="light"] .hover\:bg-gray-750:hover { background-color: #e9edf1 !important; }
 
 /* ─── 9. ライトモード: テキスト ─────────────────────────────────── */
-html[data-theme="light"] .text-white   { color: #0f172a !important; }
-html[data-theme="light"] .text-gray-100 { color: #0f172a !important; }
-html[data-theme="light"] .text-gray-200 { color: #1e293b !important; }
-html[data-theme="light"] .text-gray-300 { color: #334155 !important; }
-html[data-theme="light"] .text-gray-400 { color: #475569 !important; }
-html[data-theme="light"] .text-gray-500 { color: #64748b !important; }
+html[data-theme="light"] .text-white   { color: #1a2028 !important; }
+html[data-theme="light"] .text-gray-100 { color: #1a2028 !important; }
+html[data-theme="light"] .text-gray-200 { color: #1a2028 !important; }
+html[data-theme="light"] .text-gray-300 { color: #55606e !important; }
+html[data-theme="light"] .text-gray-400 { color: #55606e !important; }
+html[data-theme="light"] .text-gray-500 { color: #8892a0 !important; }
 
 /* 飽和色 (rose/blue/slate-700 等) 背景の上に乗る白文字/白アイコンは、ライト
    モードでも白を維持する。上の「.text-white→濃色化」が色付きボタンや青バブルの
@@ -638,13 +736,13 @@ html[data-theme="light"] .ss-on-accent { color: #fff !important; }
  * ホバー時も #1e293b（ダーク）に統一する。
  */
 html[data-theme="light"] .hover\:text-white:hover {
-  color: #1e293b !important;
+  color: #1a2028 !important;
 }
 
 /* ─── 9b. ライトモード: 実際に暗い背景のままの色付きクラスに限り白文字を維持 ── */
 /*
  * 前提: グレー系（bg-gray-900/800/700/600）はライトモードで明るい色に変換済み。
- *      → それらの上の text-white は #0f172a（上の一般ルール）で正しく暗くなる。
+ *      → それらの上の text-white は #1a2028（上の一般ルール）で正しく暗くなる。
  *      → bg-gray-900 などをここに含めてはならない。
  *
  * 対象: ライトモードでも暗い背景色を保つクラスのみ。
@@ -778,9 +876,9 @@ html[data-theme="light"] .hover\:bg-yellow-500.text-white:hover {
 
 /* ─── 10. ライトモード: ボーダー ────────────────────────────────── */
 html[data-theme="light"] .border-gray-700,
-html[data-theme="light"] .border-gray-700\/50 { border-color: #cbd5e1 !important; }
-html[data-theme="light"] .border-gray-600 { border-color: #e2e8f0 !important; }
-html[data-theme="light"] .border-gray-800 { border-color: #e2e8f0 !important; }
+html[data-theme="light"] .border-gray-700\/50 { border-color: #c9d1db !important; }
+html[data-theme="light"] .border-gray-600 { border-color: #e3e7ec !important; }
+html[data-theme="light"] .border-gray-800 { border-color: #e3e7ec !important; }
 
 /* ─── 11. ライトモード: ステータス / バッジ系 ───────────────────── */
 
@@ -883,8 +981,8 @@ html[data-theme="light"] .bg-emerald-500     { background-color: #059669 !import
 /* ─── 13. ライトモード: テーブル ───────────────────────────────── */
 html[data-theme="light"] table thead tr,
 html[data-theme="light"] .table-header-row {
-  background-color: #eef3f9 !important;
-  color: #334155 !important;
+  background-color: #eef1f5 !important;
+  color: #55606e !important;
 }
 
 html[data-theme="light"] table tbody tr:nth-child(odd) {
@@ -892,7 +990,7 @@ html[data-theme="light"] table tbody tr:nth-child(odd) {
 }
 
 html[data-theme="light"] table tbody tr:nth-child(even) {
-  background-color: #fbfdff;
+  background-color: #fbfcfd;
 }
 
 html[data-theme="light"] table tbody tr:hover,
@@ -901,14 +999,14 @@ html[data-theme="light"] .hover\:bg-gray-700\/50:hover {
 }
 
 html[data-theme="light"] table th {
-  background-color: #eef3f9;
-  color: #334155;
-  border-bottom-color: #cbd5e1;
+  background-color: #eef1f5;
+  color: #55606e;
+  border-bottom-color: #c9d1db;
 }
 
 html[data-theme="light"] table td {
-  border-bottom-color: #e2e8f0;
-  color: #0f172a;
+  border-bottom-color: #e3e7ec;
+  color: #1a2028;
 }
 
 /* ─── 14. ライトモード: モーダル・オーバーレイ ──────────────────── */
@@ -931,8 +1029,8 @@ html[data-theme="light"] .bg-gray-900.rounded-xl,
 html[data-theme="light"] .bg-gray-900.rounded-2xl,
 html[data-theme="light"] .bg-gray-900.rounded-lg {
   background-color: #ffffff !important;
-  border: 1px solid #cbd5e1 !important;
-  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.18), 0 4px 16px rgba(15, 23, 42, 0.10) !important;
+  border: 1px solid #e3e7ec !important;
+  box-shadow: var(--e3) !important;
 }
 
 /* ─── 15. ライトモード: ナビゲーション・タブ ────────────────────── */
@@ -959,8 +1057,8 @@ html[data-theme="light"] .dropdown-panel,
 html[data-theme="light"] .popover-panel,
 html[data-theme="light"] .command-panel {
   background-color: #ffffff;
-  border: 1px solid #cbd5e1;
-  box-shadow: 0 8px 32px rgba(15, 23, 42, 0.14), 0 2px 8px rgba(15, 23, 42, 0.08);
+  border: 1px solid #e3e7ec;
+  box-shadow: var(--e3);
 }
 
 /* ─── 17. ライトモード: Recharts SVG ────────────────────────────── */
@@ -968,31 +1066,31 @@ html[data-theme="light"] .command-panel {
 html[data-theme="light"] .recharts-rectangle[fill="#8db0fe"] { fill: #3b7ad4 !important; }
 html[data-theme="light"] .recharts-bar-background-rectangle[fill="#8db0fe"] { fill: #3b7ad4 !important; }
 /* グリッド線 */
-html[data-theme="light"] .recharts-cartesian-grid line { stroke: #e2e8f0 !important; }
+html[data-theme="light"] .recharts-cartesian-grid line { stroke: #e3e7ec !important; }
 /* y=0 基準線 (白) → 視認できる濃さ */
-html[data-theme="light"] .recharts-reference-line line[stroke="#ffffff"] { stroke: #475569 !important; }
+html[data-theme="light"] .recharts-reference-line line[stroke="#ffffff"] { stroke: #55606e !important; }
 /* 軸テキスト */
-html[data-theme="light"] .recharts-text.recharts-cartesian-axis-tick-value { fill: #475569 !important; }
-html[data-theme="light"] .recharts-label { fill: #64748b !important; }
+html[data-theme="light"] .recharts-text.recharts-cartesian-axis-tick-value { fill: #55606e !important; }
+html[data-theme="light"] .recharts-label { fill: #8892a0 !important; }
 
 /* ─── 18. スクロールバー（ダーク） ─────────────────────────────── */
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: #1f2937; }
-::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+::-webkit-scrollbar-track { background: #23272e; }
+::-webkit-scrollbar-thumb { background: #363c46; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #454c58; }
 
 /* スクロールバー（ライト） */
-html[data-theme="light"] ::-webkit-scrollbar-track { background: #f1f5f9; }
-html[data-theme="light"] ::-webkit-scrollbar-thumb { background: #cbd5e1; }
-html[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+html[data-theme="light"] ::-webkit-scrollbar-track { background: #eef1f5; }
+html[data-theme="light"] ::-webkit-scrollbar-thumb { background: #c9d1db; }
+html[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: #8892a0; }
 
 /* ─── 19. ライトモード: チェックボックス・トグル ────────────────── */
 html[data-theme="light"] input[type="checkbox"],
 html[data-theme="light"] input[type="radio"] {
   accent-color: #2563eb;
-  border-color: #cbd5e1;
+  border-color: #c9d1db;
 }
 
 /* ─── 20. ライトモード: ボタン上書き（特殊ケース） ─────────────── */
@@ -1010,17 +1108,17 @@ html[data-theme="light"] button.bg-green-600 {
 /* ─── 21. ライトモード: ツールチップ ───────────────────────────── */
 html[data-theme="light"] .recharts-tooltip-wrapper .recharts-default-tooltip {
   background-color: #ffffff !important;
-  border: 1px solid #cbd5e1 !important;
-  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.12) !important;
-  color: #0f172a !important;
+  border: 1px solid #e3e7ec !important;
+  box-shadow: var(--e2) !important;
+  color: #1a2028 !important;
 }
 
 html[data-theme="light"] .recharts-tooltip-label {
-  color: #334155 !important;
+  color: #55606e !important;
 }
 
 html[data-theme="light"] .recharts-tooltip-item {
-  color: #0f172a !important;
+  color: #1a2028 !important;
 }
 
 /* ─── 20. モバイルアノテ オーバーレイ chip (両テーマ対応) ─────────
@@ -1187,7 +1285,7 @@ video::-webkit-media-controls-play-button {
   filter: drop-shadow(0 -1px 0 rgba(0,0,0,0.15));
 }
 .dark .tutorial-tooltip-arrow-up {
-  border-bottom-color: #1f2937;
+  border-bottom-color: #23272e;
 }
 .tutorial-tooltip-arrow-down {
   bottom: -8px;
@@ -1199,7 +1297,7 @@ video::-webkit-media-controls-play-button {
   filter: drop-shadow(0 1px 0 rgba(0,0,0,0.15));
 }
 .dark .tutorial-tooltip-arrow-down {
-  border-top-color: #1f2937;
+  border-top-color: #23272e;
 }
 .tutorial-tooltip-arrow-left {
   left: -8px;
@@ -1210,7 +1308,7 @@ video::-webkit-media-controls-play-button {
   border-right: 8px solid #fff;
 }
 .dark .tutorial-tooltip-arrow-left {
-  border-right-color: #1f2937;
+  border-right-color: #23272e;
 }
 .tutorial-tooltip-arrow-right {
   right: -8px;
@@ -1221,7 +1319,7 @@ video::-webkit-media-controls-play-button {
   border-left: 8px solid #fff;
 }
 .dark .tutorial-tooltip-arrow-right {
-  border-left-color: #1f2937;
+  border-left-color: #23272e;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -1249,11 +1347,11 @@ video::-webkit-media-controls-play-button {
   width: 6px;
   height: 6px;
   border-radius: 9999px;
-  background-color: #6b7280;
+  background-color: #727c89;
   animation: chat-typing-bounce 1s ease-in-out infinite;
 }
 html[data-theme="light"] .chat-typing-dot {
-  background-color: #94a3b8;
+  background-color: #8892a0;
 }
 
 @keyframes chat-cursor-blink {
