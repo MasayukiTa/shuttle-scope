@@ -763,6 +763,26 @@ html[data-theme="light"] .hover\:text-white:hover {
  *   bg-yellow-{500-600}  lum 0.26–0.37 → 黒文字の方が優位
  *   bg-gray-{600-900}    すべてライトリマップ済み → 黒文字
  */
+/* v2 トークン塗りつぶし (bg-[var(--ss-*)]) は常に濃色 → 白文字を維持。
+ * 例外なし: 「色付きの塗りの中の文字は白」(ユーザー絶対則)。
+ * arbitrary-value クラスは属性セレクタで一括マッチさせる
+ * (brand は brand-hover も前方一致で拾う)。 */
+html[data-theme="light"] [class*="bg-[var(--ss-brand"].text-white,
+html[data-theme="light"] [class*="bg-[var(--ss-brand"] .text-white,
+html[data-theme="light"] [class*="bg-[var(--ss-accent-primary"].text-white,
+html[data-theme="light"] [class*="bg-[var(--ss-accent-primary"] .text-white,
+html[data-theme="light"] [class*="bg-[var(--ss-bad"].text-white,
+html[data-theme="light"] [class*="bg-[var(--ss-bad"] .text-white,
+html[data-theme="light"] [class*="bg-[var(--ss-good"].text-white,
+html[data-theme="light"] [class*="bg-[var(--ss-good"] .text-white,
+html[data-theme="light"] [class*="bg-[var(--ss-success"].text-white,
+html[data-theme="light"] [class*="bg-[var(--ss-success"] .text-white,
+html[data-theme="light"] [class*="bg-[var(--ss-warn"].text-white,
+html[data-theme="light"] [class*="bg-[var(--ss-warn"] .text-white,
+html[data-theme="light"] [class*="bg-[var(--ss-emphasis"].text-white,
+html[data-theme="light"] [class*="bg-[var(--ss-emphasis"] .text-white,
+html[data-theme="light"] [class*="bg-[var(--ss-danger-text"].text-white,
+html[data-theme="light"] [class*="bg-[var(--ss-danger-text"] .text-white,
 html[data-theme="light"] .bg-blue-400.text-white,
 html[data-theme="light"] .bg-blue-500.text-white,
 html[data-theme="light"] .bg-blue-600.text-white,
