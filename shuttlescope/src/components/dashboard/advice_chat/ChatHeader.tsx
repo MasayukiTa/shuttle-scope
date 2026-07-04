@@ -20,10 +20,10 @@ export function ChatHeader({ demoActive, isSending, onResetClick }: Props) {
   const [helpOpen, setHelpOpen] = useState(false)
 
   return (
-    <div className="rounded-t-xl border-b border-slate-200 bg-slate-50 px-3 py-3 md:px-4 md:py-3">
+    <div className="rounded-t-ss-lg border-b border-[color:var(--ss-border)] bg-[color:var(--ss-surface-2)] px-3 py-3 md:px-4 md:py-3">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-start gap-2 min-w-0">
-          <span className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-slate-200 shrink-0">
+          <span className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-[color:var(--ss-surface-3)] shrink-0">
             <MIcon
               name="forum"
               size={20}
@@ -42,7 +42,7 @@ export function ChatHeader({ demoActive, isSending, onResetClick }: Props) {
         </div>
         <div className="flex items-center gap-1 shrink-0">
           {demoActive && (
-            <span className="inline-flex items-center px-2 py-0.5 text-[10px] rounded bg-amber-100 text-amber-900 border border-amber-200 font-medium">
+            <span className="inline-flex items-center px-2 py-0.5 text-[10px] rounded-ss-sm bg-amber-100 text-amber-900 border border-amber-200 font-medium">
               {t('auto.AdviceChat.demo_chip')}
             </span>
           )}
@@ -53,14 +53,14 @@ export function ChatHeader({ demoActive, isSending, onResetClick }: Props) {
               onBlur={() => setHelpOpen(false)}
               aria-label={t('auto.AdviceChat.help_tooltip')}
               title={t('auto.AdviceChat.help_tooltip')}
-              className="inline-flex items-center justify-center w-8 h-8 rounded text-slate-600 hover:bg-slate-200"
+              className="inline-flex items-center justify-center w-8 h-8 rounded-ss-md text-slate-600 hover:bg-[color:var(--ss-surface-3)] transition-colors duration-fast"
             >
               <MIcon name="help" size={18} ariaHidden />
             </button>
             {helpOpen && (
               <div
                 role="tooltip"
-                className="absolute right-0 top-9 z-10 w-56 rounded bg-slate-900 text-white text-[11px] px-2 py-1.5 shadow-lg"
+                className="absolute right-0 top-9 z-10 w-56 rounded-ss-md bg-slate-900 text-white text-[11px] px-2 py-1.5 shadow-pop"
               >
                 {t('auto.AdviceChat.help_tooltip')}
               </div>
@@ -72,7 +72,7 @@ export function ChatHeader({ demoActive, isSending, onResetClick }: Props) {
             aria-label={t('auto.AdviceChat.reset')}
             title={t('auto.AdviceChat.reset')}
             disabled={isSending}
-            className="inline-flex items-center justify-center w-8 h-8 rounded text-slate-600 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center justify-center w-8 h-8 rounded-ss-md text-slate-600 hover:bg-[color:var(--ss-surface-3)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-fast"
           >
             <MIcon name="refresh" size={18} ariaHidden />
           </button>

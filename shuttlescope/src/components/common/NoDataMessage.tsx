@@ -44,8 +44,8 @@ export function NoDataMessage({ sampleSize, minRequired = 1, unit, loading }: No
   if (loading || !graceElapsed) {
     return (
       <div className="py-4 text-center">
-        <div className="inline-flex items-center gap-2 text-sm text-gray-500">
-          <span className="inline-block w-3 h-3 rounded-full bg-blue-400 animate-pulse" />
+        <div className="inline-flex items-center gap-2 text-sm text-[var(--ss-t3)]">
+          <span className="inline-block w-3 h-3 rounded-full bg-[var(--ss-brand)] animate-pulse" />
           <span>{t('no_data_message.loading') || 'データを取得しています…'}</span>
         </div>
       </div>
@@ -54,11 +54,11 @@ export function NoDataMessage({ sampleSize, minRequired = 1, unit, loading }: No
   const needed = Math.max(0, minRequired - sampleSize)
   return (
     <div className="py-4 text-center">
-      <p className="text-sm text-gray-500">
-        {t('no_data_message.prefix')}<span className="font-semibold text-gray-400 mx-0.5">{needed}</span>{u}{t('no_data_message.suffix')}
+      <p className="text-sm text-[var(--ss-t3)]">
+        {t('no_data_message.prefix')}<span className="ss-num font-semibold text-[var(--ss-t2)] mx-0.5">{needed}</span>{u}{t('no_data_message.suffix')}
       </p>
       {sampleSize > 0 && (
-        <p className="text-xs text-gray-600 mt-0.5">{t('no_data_message.current')} {sampleSize}{u}</p>
+        <p className="text-xs text-[var(--ss-t3)] mt-0.5">{t('no_data_message.current')} <span className="ss-num">{sampleSize}</span>{u}</p>
       )}
     </div>
   )

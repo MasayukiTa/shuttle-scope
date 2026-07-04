@@ -54,7 +54,7 @@ export function HazardFatigueCard({ playerId, filters }: Props) {
   const d = data?.data
 
   return (
-    <div className={`${card} rounded-lg p-4 space-y-3`}>
+    <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-3`}>
       <div className="flex items-center justify-between">
         <h3 className={`text-sm font-semibold ${textHeading}`}>{t('auto.HazardFatigueCard.k1')}</h3>
         <EvidenceBadge tier="research" evidenceLevel="exploratory" sampleSize={meta?.sample_size} recommendationAllowed={false} />

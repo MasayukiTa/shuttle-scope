@@ -49,7 +49,7 @@ export function PipelineJobBadge({ matchId, className }: Props) {
     <span
       title={t('pipeline.badge_title')}
       className={clsx(
-        'inline-block rounded border px-1.5 py-0 text-[10px]',
+        'inline-block rounded-ss-sm border px-1.5 py-0 text-[10px]',
         statusClass(job?.status),
         className,
       )}

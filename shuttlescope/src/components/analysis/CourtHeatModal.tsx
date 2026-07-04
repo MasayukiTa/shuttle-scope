@@ -173,30 +173,29 @@ export function CourtHeatModal({
   const detail = detailResp?.data
   const detailLand = detailLandResp?.data
   const isLight = useIsLightMode()
-
   const filterBarClass = (active: boolean) =>
-    `text-[11px] px-2 py-0.5 rounded border transition-colors ${
+    `text-[11px] px-2 py-0.5 rounded-ss-sm border transition-colors duration-base ease-out ${
       active
-        ? 'bg-gray-500 border-gray-400 text-white'
-        : 'bg-gray-700 border-gray-600 text-gray-400 hover:bg-gray-600'
+        ? `bg-[var(--ss-brand)] border-[var(--ss-brand)] text-white`
+        : `bg-[var(--ss-surface-2)] border-[var(--ss-border)] text-[var(--ss-t3)] hover:bg-[var(--ss-surface-3)]`
     }`
 
   return (
     <div className="fixed inset-0 z-50 bg-black/85 flex flex-col">
       {/* ヘッダー */}
-      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-700 bg-gray-900 shrink-0">
-        <span className="text-white font-semibold text-base">{t('court_heat_modal.title')}</span>
+      <div className="flex items-center justify-between px-6 py-3 border-b border-[var(--ss-border)] bg-[var(--ss-surface-2)] shrink-0">
+        <span className="text-[var(--ss-t1)] font-semibold text-base">{t('court_heat_modal.title')}</span>
         <div className="flex items-center gap-3">
           <button
             onClick={onClose}
-            className="flex items-center gap-1.5 text-xs text-gray-300 hover:text-white bg-gray-700 hover:bg-gray-600 transition-colors px-3 py-1.5 rounded"
+            className="flex items-center gap-1.5 text-xs text-[var(--ss-t2)] hover:text-[var(--ss-t1)] bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] transition-colors duration-base ease-out px-3 py-1.5 rounded-ss-md"
           >
             <MIcon name="dashboard" size={13} />
             {t('court_heat_modal.back_to_dashboard')}
           </button>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-white transition-colors p-1 rounded hover:bg-gray-700"
+            className="text-[var(--ss-t3)] hover:text-[var(--ss-t1)] transition-colors duration-base ease-out p-1 rounded-ss-md hover:bg-[var(--ss-surface-2)]"
             title={t('court_heat_modal.close_esc')}
           >
             <MIcon name="close" size={18} />
@@ -205,7 +204,7 @@ export function CourtHeatModal({
       </div>
 
       {/* コンテンツ */}
-      <div className="flex-1 overflow-auto bg-gray-900">
+      <div className="flex-1 overflow-auto bg-[var(--ss-bg-app)]">
         <div className="flex flex-col lg:flex-row gap-6 p-6 min-h-full">
 
           {/* 左：コート図 + フィルター */}
@@ -220,10 +219,10 @@ export function CourtHeatModal({
                 <button
                   key={tab.key}
                   onClick={() => { setMode(tab.key); setSelectedZone(null) }}
-                  className={`px-4 py-1.5 rounded text-sm font-medium transition-colors ${
+                  className={`px-4 py-1.5 rounded-ss-md text-sm font-medium transition-colors duration-base ease-out ${
                     mode === tab.key
-                      ? 'bg-gray-600 text-white'
-                      : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                      ? 'bg-[var(--ss-brand)] text-white'
+                      : `bg-[var(--ss-surface-2)] text-[var(--ss-t3)] hover:bg-[var(--ss-surface-3)]`
                   }`}
                 >
                   {t(tab.labelKey)}
@@ -233,9 +232,9 @@ export function CourtHeatModal({
 
             {/* 合成モード注意書き */}
             {mode === 'composite' && (
-              <div className="flex items-start gap-2 p-3 bg-amber-950/60 border border-amber-700/50 rounded-lg text-xs max-w-xs">
-                <MIcon name="warning" size={13} className="text-amber-400 mt-0.5 shrink-0" />
-                <div className="text-amber-300/80">
+              <div className="flex items-start gap-2 p-3 bg-[var(--ss-warn)]/10 border border-[var(--ss-warn)]/30 rounded-ss-lg text-xs max-w-xs">
+                <MIcon name="warning" size={13} className="text-[var(--ss-warn)] mt-0.5 shrink-0" />
+                <div className="text-[var(--ss-warn)]">
                   {t('court_heat_modal.composite_note')}
                 </div>
               </div>
@@ -280,18 +279,18 @@ export function CourtHeatModal({
             {/* サンプルサイズ */}
             <div className="flex items-center gap-2">
               {sampleSize > 0 && <ConfidenceBadge sampleSize={sampleSize} />}
-              <span className="text-[11px] text-gray-500">
+              <span className="text-[11px] text-[var(--ss-t3)]">
                 {t('court_heat_modal.stroke_count', { n: sampleSize })}
               </span>
             </div>
 
             {/* コート図（インタラクティブ） */}
             {loadingCurrent ? (
-              <div className="text-gray-500 text-sm py-8">{t('court_heat_modal.loading')}</div>
+              <div className="text-[var(--ss-t3)] text-sm py-8">{t('court_heat_modal.loading')}</div>
             ) : sampleSize === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
-                <p className="text-gray-500 text-sm">{t('court_heat_modal.no_data')}</p>
-                <p className="text-gray-600 text-xs mt-1">{t('court_heat_modal.no_data_hint')}</p>
+                <p className="text-[var(--ss-t3)] text-sm">{t('court_heat_modal.no_data')}</p>
+                <p className="text-[var(--ss-t3)] text-xs mt-1">{t('court_heat_modal.no_data_hint')}</p>
               </div>
             ) : (
               <CourtDiagram
@@ -311,7 +310,7 @@ export function CourtHeatModal({
 
             {/* 合成モード凡例 */}
             {mode === 'composite' && sampleSize > 0 && (
-              <div className="flex items-center gap-4 text-xs text-gray-400">
+              <div className="flex items-center gap-4 text-xs text-[var(--ss-t3)]">
                 <div className="flex items-center gap-1.5">
                   <div className="w-3 h-3 rounded" style={{ backgroundColor: 'rgba(59,130,246,0.85)' }} />
                   {t('court_heat_modal.legend_hit')}
@@ -323,7 +322,7 @@ export function CourtHeatModal({
               </div>
             )}
 
-            <p className="text-[10px] text-gray-600">
+            <p className="text-[10px] text-[var(--ss-t3)]">
               {t('court_heat_modal.click_zone_hint')}
             </p>
           </div>
@@ -332,25 +331,25 @@ export function CourtHeatModal({
           <div className="flex-1 min-w-0">
             {selectedZone == null ? (
               <div className="flex items-center justify-center h-full min-h-[200px]">
-                <p className="text-gray-600 text-sm text-center whitespace-pre-line">
+                <p className="text-[var(--ss-t3)] text-sm text-center whitespace-pre-line">
                   {t('court_heat_modal.click_zone_detail')}
                 </p>
               </div>
             ) : (loadingDetail || (mode === 'composite' && loadingDetailLand)) ? (
               <div className="flex items-center justify-center h-full min-h-[200px]">
-                <div className="text-gray-500 text-sm">{t('court_heat_modal.loading')}</div>
+                <div className="text-[var(--ss-t3)] text-sm">{t('court_heat_modal.loading')}</div>
               </div>
             ) : mode === 'composite' ? (
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                 {detail && (
                   <div>
-                    <p className="text-[11px] font-semibold text-blue-400 mb-2 px-1">{t('court_heat_modal.header_hit')}</p>
+                    <p className="text-[11px] font-semibold text-[var(--ss-good)] mb-2 px-1">{t('court_heat_modal.header_hit')}</p>
                     <ZoneDetailPanel detail={detail} mode="hit" t={t} isLight={isLight} />
                   </div>
                 )}
                 {detailLand && (
                   <div>
-                    <p className="text-[11px] font-semibold text-orange-400 mb-2 px-1">{t('court_heat_modal.header_land_transformed')}</p>
+                    <p className="text-[11px] font-semibold text-[var(--ss-emphasis)] mb-2 px-1">{t('court_heat_modal.header_land_transformed')}</p>
                     <ZoneDetailPanel detail={detailLand} mode="land" t={t} isLight={isLight} />
                   </div>
                 )}
@@ -395,37 +394,37 @@ function ZoneDetailPanel({
   return (
     <div className="space-y-5 max-w-sm">
       {/* ゾーン名・基本統計 */}
-      <div className="bg-gray-800 rounded-lg p-4">
+      <div className="bg-[var(--ss-surface-2)] rounded-ss-lg border border-[var(--ss-border)] p-4">
         <div className="flex items-baseline gap-2 mb-3">
-          <span className="text-lg font-bold text-gray-100">{zoneName}</span>
-          <span className="text-sm text-gray-500 font-mono">({detail.zone})</span>
-          <span className="text-xs text-gray-500 ml-auto">
+          <span className="text-lg font-bold text-[var(--ss-t1)]">{zoneName}</span>
+          <span className="text-sm text-[var(--ss-t3)] font-mono">({detail.zone})</span>
+          <span className="text-xs text-[var(--ss-t3)] ml-auto">
             {mode === 'hit' ? t('court_heat_modal.zone_mode_hit') : t('court_heat_modal.zone_mode_land')}
           </span>
         </div>
 
         <div className="grid grid-cols-3 gap-3 text-center">
           <div>
-            <p className="text-2xl font-bold text-gray-100">{detail.count}</p>
-            <p className="text-[11px] text-gray-500">{t('court_heat_modal.stat_strokes')}</p>
+            <p className="ss-num text-2xl font-bold text-[var(--ss-t1)]">{detail.count}</p>
+            <p className="text-[11px] text-[var(--ss-t3)]">{t('court_heat_modal.stat_strokes')}</p>
           </div>
           <div>
-            <p className="text-2xl font-bold" style={{ color: winRateColor }}>
+            <p className="ss-num text-2xl font-bold" style={{ color: winRateColor }}>
               {detail.win_rate != null ? `${(detail.win_rate * 100).toFixed(0)}%` : '—'}
             </p>
-            <p className="text-[11px] text-gray-500">{t('court_heat_modal.stat_win_rate')}</p>
+            <p className="text-[11px] text-[var(--ss-t3)]">{t('court_heat_modal.stat_win_rate')}</p>
           </div>
           <div>
-            <p className="text-2xl font-bold text-gray-100">{detail.wins}</p>
-            <p className="text-[11px] text-gray-500">{t('court_heat_modal.stat_wins')}</p>
+            <p className="ss-num text-2xl font-bold text-[var(--ss-t1)]">{detail.wins}</p>
+            <p className="text-[11px] text-[var(--ss-t3)]">{t('court_heat_modal.stat_wins')}</p>
           </div>
         </div>
       </div>
 
       {/* ショットタイプ分布 */}
       {detail.top_shot_types.length > 0 && (
-        <div className="bg-gray-800 rounded-lg p-4">
-          <p className="text-xs font-semibold text-gray-300 mb-3">
+        <div className="bg-[var(--ss-surface-2)] rounded-ss-lg border border-[var(--ss-border)] p-4">
+          <p className="text-xs font-semibold text-[var(--ss-t2)] mb-3">
             {mode === 'hit' ? t('court_heat_modal.section_shots_from') : t('court_heat_modal.section_shots_into')}
           </p>
           <div className="space-y-2">
@@ -434,14 +433,14 @@ function ZoneDetailPanel({
               const label = t(`shot_types.${shot_type}`, shot_type)
               return (
                 <div key={shot_type} className="flex items-center gap-2">
-                  <span className="text-[11px] text-gray-400 w-24 truncate">{label}</span>
-                  <div className="flex-1 bg-gray-700 rounded h-3 overflow-hidden">
+                  <span className="text-[11px] text-[var(--ss-t3)] w-24 truncate">{label}</span>
+                  <div className="flex-1 bg-[var(--ss-surface-3)] rounded-ss-sm h-3 overflow-hidden">
                     <div
-                      className="h-full rounded"
-                      style={{ width: `${ratio * 100}%`, backgroundColor: '#6b7280' }}
+                      className="h-full rounded-ss-sm"
+                      style={{ width: `${ratio * 100}%`, backgroundColor: 'var(--ss-brand)' }}
                     />
                   </div>
-                  <span className="text-[11px] text-gray-400 w-6 text-right">{count}</span>
+                  <span className="ss-num text-[11px] text-[var(--ss-t3)] w-6 text-right">{count}</span>
                 </div>
               )
             })}
@@ -451,8 +450,8 @@ function ZoneDetailPanel({
 
       {/* 着地点分布（mode=hit のみ） */}
       {mode === 'hit' && detail.transitions.length > 0 && (
-        <div className="bg-gray-800 rounded-lg p-4">
-          <p className="text-xs font-semibold text-gray-300 mb-3">
+        <div className="bg-[var(--ss-surface-2)] rounded-ss-lg border border-[var(--ss-border)] p-4">
+          <p className="text-xs font-semibold text-[var(--ss-t2)] mb-3">
             {t('court_heat_modal.section_transitions')}
           </p>
           <div className="space-y-2">
@@ -463,15 +462,15 @@ function ZoneDetailPanel({
                 : zone
               return (
                 <div key={zone} className="flex items-center gap-2">
-                  <span className="text-[11px] text-gray-400 w-20">{label}</span>
-                  <span className="text-[10px] text-gray-600 font-mono w-6">({zone})</span>
-                  <div className="flex-1 bg-gray-700 rounded h-3 overflow-hidden">
+                  <span className="text-[11px] text-[var(--ss-t3)] w-20">{label}</span>
+                  <span className="text-[10px] text-[var(--ss-t3)] font-mono w-6">({zone})</span>
+                  <div className="flex-1 bg-[var(--ss-surface-3)] rounded-ss-sm h-3 overflow-hidden">
                     <div
-                      className="h-full rounded"
-                      style={{ width: `${ratio * 100}%`, backgroundColor: '#6b7280' }}
+                      className="h-full rounded-ss-sm"
+                      style={{ width: `${ratio * 100}%`, backgroundColor: 'var(--ss-brand)' }}
                     />
                   </div>
-                  <span className="text-[11px] text-gray-400 w-6 text-right">{count}</span>
+                  <span className="ss-num text-[11px] text-[var(--ss-t3)] w-6 text-right">{count}</span>
                 </div>
               )
             })}
@@ -480,7 +479,7 @@ function ZoneDetailPanel({
       )}
 
       {detail.count === 0 && (
-        <p className="text-gray-600 text-sm text-center py-4">
+        <p className="text-[var(--ss-t3)] text-sm text-center py-4">
           {t('court_heat_modal.zone_empty')}
         </p>
       )}

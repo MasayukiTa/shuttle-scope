@@ -175,14 +175,14 @@ export function AdviceChatPanel({ viewedPlayerId = null }: AdviceChatPanelProps 
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden flex flex-col w-full">
+    <div className="rounded-ss-lg border border-[color:var(--ss-border)] bg-white shadow-card overflow-hidden flex flex-col w-full">
       {/* ── Header ────────────────────────────────────────── */}
       <ChatHeader demoActive={demoActive} isSending={isSending} onResetClick={onResetClick} />
 
       {/* ── AI disclaimer (admin-only feature; player-tier opt-in TBD) ── */}
       <div
         role="note"
-        className="border-b border-slate-200 bg-slate-100 px-3 py-2 text-[11px] leading-relaxed text-slate-700"
+        className="border-b border-[color:var(--ss-border)] bg-[color:var(--ss-surface-2)] px-3 py-2 text-[11px] leading-relaxed text-slate-700"
       >
         {t('auto.AdviceChat.disclaimer_banner')}
       </div>
@@ -220,7 +220,7 @@ export function AdviceChatPanel({ viewedPlayerId = null }: AdviceChatPanelProps 
       </div>
 
       {/* ── Composer ──────────────────────────────────────── */}
-      <div className="border-t border-gray-200 p-2 md:p-3 bg-white sticky bottom-0">
+      <div className="border-t border-[color:var(--ss-border)] p-2 md:p-3 bg-white sticky bottom-0">
         <ActiveScopeBar
           scope={appliedScope}
           onClearSlot={onClearSlot}
@@ -235,13 +235,13 @@ export function AdviceChatPanel({ viewedPlayerId = null }: AdviceChatPanelProps 
         />
         {/* Error 領域 */}
         {error && !dismissedError && (
-          <div className="mt-2 flex items-start justify-between gap-2 text-xs rounded border border-red-300 bg-red-50 px-3 py-2 text-red-700">
+          <div className="mt-2 flex items-start justify-between gap-2 text-xs rounded-ss-md border border-[color:var(--ss-danger-border)] bg-[color:var(--ss-danger-bg)] px-3 py-2 text-[color:var(--ss-danger-text)]">
             <span className="break-words">{t(error)}</span>
             <button
               type="button"
               onClick={() => setDismissedError(true)}
               aria-label={t('auto.AdviceChat.cancel')}
-              className="text-red-700 hover:opacity-75 text-sm leading-none"
+              className="text-[color:var(--ss-danger-text)] hover:opacity-75 text-sm leading-none"
             >
               ×
             </button>

@@ -55,14 +55,14 @@ export function TemporalPerformance({ playerId, chartHeight = 180, filters = DEF
   })
 
   if (isLoading) {
-    return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.loading')}</div>
+    return <div className="text-[var(--ss-t3)] text-sm py-4 text-center">{t('analysis.loading')}</div>
   }
 
   const phases = resp?.data?.phases ?? []
   const sampleSize = resp?.meta?.sample_size ?? 0
 
   if (phases.length === 0 || sampleSize === 0) {
-    return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.no_data')}</div>
+    return <div className="text-[var(--ss-t3)] text-sm py-4 text-center">{t('analysis.no_data')}</div>
   }
 
   const chartData = phases.map((p) => ({
@@ -81,12 +81,12 @@ export function TemporalPerformance({ playerId, chartHeight = 180, filters = DEF
         <BarChart data={chartData} margin={{ top: 5, right: 16, left: 0, bottom: 5 }}>
           <XAxis
             dataKey="name"
-            tick={{ fill: '#9ca3af', fontSize: 10 }}
+            tick={{ fill: 'var(--ss-t3)', fontSize: 10 }}
             interval={0}
             height={40}
           />
           <YAxis
-            tick={{ fill: '#9ca3af', fontSize: 10 }}
+            tick={{ fill: 'var(--ss-t3)', fontSize: 10 }}
             domain={[0, 100]}
             tickFormatter={(v) => `${v}%`}
           />
@@ -98,7 +98,7 @@ export function TemporalPerformance({ playerId, chartHeight = 180, filters = DEF
             ]}
           />
           {/* 50%の基準線 */}
-          <ReferenceLine y={50} stroke="#6b7280" strokeDasharray="4 2" />
+          <ReferenceLine y={50} stroke="var(--ss-border)" strokeDasharray="4 2" />
           <Bar
             dataKey="win_rate_pct"
             radius={[3, 3, 0, 0]}
@@ -121,8 +121,8 @@ export function TemporalPerformance({ playerId, chartHeight = 180, filters = DEF
             >
               {p.phase}
             </span>
-            <span className="text-gray-400">{t('auto._shared.n_rallies', { n: p.rally_count })}</span>
-            <span className="font-semibold" style={{ color: chartData[i]?.color }}>
+            <span className="text-[var(--ss-t3)] ss-num">{t('auto._shared.n_rallies', { n: p.rally_count })}</span>
+            <span className="font-semibold ss-num" style={{ color: chartData[i]?.color }}>
               {(p.win_rate * 100).toFixed(1)}%
             </span>
           </div>

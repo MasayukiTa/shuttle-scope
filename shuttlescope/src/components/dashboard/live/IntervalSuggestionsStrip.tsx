@@ -58,7 +58,7 @@ export function IntervalSuggestionsStrip({
   return (
     <div
       data-tutorial="dashboard.interval_suggestions"
-      className="rounded-lg border border-blue-400 bg-blue-50 text-blue-900 p-3"
+      className="rounded-ss-lg border border-[var(--ss-border)] bg-[var(--ss-surface-1)] text-[var(--ss-t1)] p-3 shadow-card"
     >
       <div className="flex items-center justify-between gap-3">
         <div className="font-semibold text-sm">
@@ -70,21 +70,21 @@ export function IntervalSuggestionsStrip({
             setForceShow(true)
             void refetch()
           }}
-          className="text-xs px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700"
+          className="text-xs px-3 py-1 rounded-ss-md bg-[var(--ss-brand)] text-white hover:bg-[var(--ss-brand-hover)] transition-colors duration-fast ease-out"
         >
           {t('auto.IntervalSuggestionsStrip.refresh_now')}
         </button>
       </div>
       {!visible && (
-        <div className="text-xs text-blue-800 mt-2">
+        <div className="text-xs text-[var(--ss-t3)] mt-2">
           {t('auto.IntervalSuggestionsStrip.idle_hint')}
         </div>
       )}
       {visible && isFetching && !data && (
-        <div className="text-xs mt-2">{t('auto.IntervalSuggestionsStrip.loading')}</div>
+        <div className="text-xs mt-2 text-[var(--ss-t2)]">{t('auto.IntervalSuggestionsStrip.loading')}</div>
       )}
       {visible && data && data.items.length === 0 && (
-        <div className="text-xs mt-2">{t('auto.IntervalSuggestionsStrip.empty')}</div>
+        <div className="text-xs mt-2 text-[var(--ss-t2)]">{t('auto.IntervalSuggestionsStrip.empty')}</div>
       )}
       {visible && data && data.items.length > 0 && (
         <ol className="mt-2 space-y-2">
@@ -93,15 +93,15 @@ export function IntervalSuggestionsStrip({
             const confPct = Math.round(it.confidence * 100)
             return (
               <li key={it.id} className="flex items-start gap-2 text-sm">
-                <span className="font-bold w-5">{idx + 1}.</span>
+                <span className="font-bold w-5 ss-num text-[var(--ss-t2)]">{idx + 1}.</span>
                 <div className="flex-1">
                   <div>{headline}</div>
                   <div className="text-xs mt-1 flex items-center gap-2">
-                    <span className="inline-flex items-center rounded border border-blue-500 bg-white px-2 py-0.5 font-medium text-blue-800">
+                    <span className="inline-flex items-center rounded-ss-sm border border-[var(--ss-border-strong)] bg-[var(--ss-surface-1)] px-2 py-0.5 font-medium text-[var(--ss-t2)] ss-num">
                       {t('auto.IntervalSuggestionsStrip.confidence', { pct: confPct })}
                     </span>
                     {it.evidence_path && (
-                      <span className="text-blue-700 text-xs">{it.evidence_path}</span>
+                      <span className="text-[var(--ss-t3)] text-xs">{it.evidence_path}</span>
                     )}
                   </div>
                 </div>

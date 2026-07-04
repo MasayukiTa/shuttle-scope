@@ -99,7 +99,7 @@ export function OpponentTypeAffinity({ playerId, filters = DEFAULT_FILTERS }: Op
           return (
             <div
               key={entry.opponent_type}
-              className="rounded-lg p-3"
+              className="rounded-ss-lg p-3"
               style={{ backgroundColor: rowBg, border: `1px solid ${rowBorder}` }}
             >
               <div className="flex items-center justify-between mb-1.5">
@@ -110,10 +110,10 @@ export function OpponentTypeAffinity({ playerId, filters = DEFAULT_FILTERS }: Op
                   </span>
                 </div>
                 <div className="text-right">
-                  <span className="text-base font-bold" style={{ color: wrText }}>
+                  <span className="text-base font-bold ss-num" style={{ color: wrText }}>
                     {(wr * 100).toFixed(0)}%
                   </span>
-                  <span className="text-xs ml-1.5" style={{ color: labelColor }}>
+                  <span className="text-xs ml-1.5 ss-num" style={{ color: labelColor }}>
                     {t('auto._shared.n_wins_losses', { w: entry.wins, l: entry.match_count - entry.wins })}
                   </span>
                 </div>

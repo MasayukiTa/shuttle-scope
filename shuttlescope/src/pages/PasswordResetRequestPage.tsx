@@ -40,41 +40,45 @@ export default function PasswordResetRequestPage() {
 
   return (
     <div
-      className="min-h-[100svh] flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4"
+      className="min-h-[100svh] flex items-center justify-center bg-[var(--ss-bg-app)] p-4"
       style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
     >
       <form onSubmit={handleSubmit}
-            className="max-w-md w-full bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4">
-        <h1 className="text-xl font-bold">{t('auth.password_reset_request.title')}</h1>
-        <p className="text-sm text-gray-600 dark:text-gray-300">
+            className="max-w-md w-full bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-lg shadow-card p-6 space-y-4">
+        <h1 className="text-xl font-semibold tracking-[-0.014em] text-[var(--ss-t1)]">{t('auth.password_reset_request.title')}</h1>
+        <p className="text-sm text-[var(--ss-t2)]">
           {t('auth.password_reset_request.description')}
         </p>
 
         <div>
-          <label className="block text-sm font-medium mb-1">{t('auth.email')}</label>
+          <label className="block text-sm font-medium mb-1 text-[var(--ss-t2)]">{t('auth.email')}</label>
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
                  required maxLength={255}
                  disabled={done}
                  inputMode="email" autoComplete="email" autoCapitalize="none" autoCorrect="off"
-                 className="w-full rounded border px-3 py-2.5 text-base min-h-[44px] disabled:opacity-60 dark:bg-gray-700 dark:border-gray-600" />
+                 className="w-full border border-[var(--ss-ctrl-border)] rounded-ss-md px-3 py-2.5 text-base min-h-[44px] bg-[var(--ss-ctrl-bg)] text-[var(--ss-ctrl-text)] outline-none disabled:opacity-60 transition-colors duration-fast ease-out" />
         </div>
 
         {!done && <TurnstileWidget onToken={setTsToken} />}
 
-        {error && <div className="text-sm text-red-600">{error}</div>}
+        {error && (
+          <div className="text-sm rounded-ss-md border px-3 py-2 bg-[var(--ss-danger-bg)] border-[var(--ss-danger-border)] text-[var(--ss-danger-text)]">
+            {error}
+          </div>
+        )}
 
         {done ? (
-          <div className="rounded bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 p-3 text-sm text-green-800 dark:text-green-300">
+          <div className="rounded-ss-md border p-3 text-sm bg-[var(--ss-success-bg)] border-[var(--ss-success-border)] text-[var(--ss-success-text)]">
             {t('auth.password_reset_request.sent_message')}
           </div>
         ) : (
           <button type="submit" disabled={loading || RESET_DISABLED}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded disabled:opacity-50">
+                  className="w-full bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white text-sm font-medium px-4 py-2 rounded-ss-md disabled:opacity-50 transition-colors duration-fast ease-out">
             {loading ? t('app.loading') : t('auth.password_reset_request.submit')}
           </button>
         )}
 
-        <Link to="/login" className="block text-center text-sm text-blue-600 hover:underline">
+        <Link to="/login" className="block text-center text-sm text-[var(--ss-brand)] hover:text-[var(--ss-brand-hover)] hover:underline">
           {t('auth.back_to_login')}
         </Link>
       </form>

@@ -29,10 +29,10 @@ export function DashboardTopNav() {
     : PAGES
 
   return (
-    <div className={clsx(
-      'border-b safe-area-top',
-      isLight ? 'border-gray-200 bg-white' : 'border-gray-700 bg-gray-900'
-    )}>
+    <div
+      className="border-b safe-area-top"
+      style={{ borderColor: 'var(--ss-border)', backgroundColor: 'var(--ss-surface-1)' }}
+    >
       <div className="relative">
         <div className="flex overflow-x-auto scrollbar-hide gap-1 px-2 py-2" data-tutorial="dashboard.topNav">
           {visiblePages.map(({ path, key }) => (
@@ -41,11 +41,16 @@ export function DashboardTopNav() {
               to={path}
               className={({ isActive }) =>
                 clsx(
-                  'flex-shrink-0 px-3 py-1.5 rounded text-xs font-medium transition-colors whitespace-nowrap',
+                  'flex-shrink-0 px-3 py-1.5 rounded-ss-md text-xs font-medium transition-colors duration-base ease-out whitespace-nowrap',
                   isActive
-                    ? 'bg-blue-600 text-white'
+                    ? 'font-semibold'
                     : (isLight ? 'text-gray-600 hover:bg-gray-100' : 'text-gray-400 hover:bg-gray-800')
                 )
+              }
+              style={({ isActive }) =>
+                isActive
+                  ? { backgroundColor: 'var(--ss-brand-tint)', color: 'var(--ss-brand)' }
+                  : undefined
               }
             >
               {t(`nav.dashboard_pages.${key}`)}

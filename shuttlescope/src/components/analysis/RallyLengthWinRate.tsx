@@ -73,8 +73,8 @@ function CustomTooltip({ active, payload, label }: import('@/utils/rechartsTypes
   return (
     <div style={getTooltipStyle(isLight)} className="px-3 py-2">
       <p className="font-semibold mb-1" style={{ color: headingColor }}>{label}</p>
-      <p style={{ color: BAR }}>{t('auto.RallyLengthWinRate.count', { n: count })}</p>
-      <p style={{ color: LINE }}>{t('auto.RallyLengthWinRate.win_rate', { v: typeof winRate === 'number' ? winRate.toFixed(1) : winRate })}</p>
+      <p className="ss-num" style={{ color: BAR }}>{t('auto.RallyLengthWinRate.count', { n: count })}</p>
+      <p className="ss-num" style={{ color: LINE }}>{t('auto.RallyLengthWinRate.win_rate', { v: typeof winRate === 'number' ? winRate.toFixed(1) : winRate })}</p>
     </div>
   )
 }
@@ -130,7 +130,7 @@ export function RallyLengthWinRate({ playerId, chartHeight = 220, filters = DEFA
         <ConfidenceBadge sampleSize={sampleSize} />
         {playerType && (
           <span
-            className={`inline-flex items-center px-2 py-1 rounded border text-xs font-medium ${playerTypeBadgeClass(
+            className={`inline-flex items-center px-2 py-1 rounded-ss-sm border text-xs font-medium ${playerTypeBadgeClass(
               playerType.type_key
             )}`}
           >
@@ -145,12 +145,12 @@ export function RallyLengthWinRate({ playerId, chartHeight = 220, filters = DEFA
           data={chartData}
           margin={{ top: 8, right: 40, left: 0, bottom: 0 }}
         >
-          <XAxis dataKey="name" tick={{ fill: '#9ca3af', fontSize: 11 }} />
+          <XAxis dataKey="name" tick={{ fill: 'var(--ss-t3)', fontSize: 11 }} />
           {/* 左 Y 軸: 件数 */}
           <YAxis
             yAxisId="count"
             orientation="left"
-            tick={{ fill: '#9ca3af', fontSize: 11 }}
+            tick={{ fill: 'var(--ss-t3)', fontSize: 11 }}
             allowDecimals={false}
           />
           {/* 右 Y 軸: 勝率 % */}
@@ -159,7 +159,7 @@ export function RallyLengthWinRate({ playerId, chartHeight = 220, filters = DEFA
             orientation="right"
             domain={[0, 100]}
             tickFormatter={(v) => `${v}%`}
-            tick={{ fill: '#9ca3af', fontSize: 11 }}
+            tick={{ fill: 'var(--ss-t3)', fontSize: 11 }}
           />
           <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
           <Bar

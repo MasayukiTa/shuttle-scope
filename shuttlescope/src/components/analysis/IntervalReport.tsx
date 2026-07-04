@@ -62,11 +62,11 @@ export function IntervalReport({ matchId, completedSet, onSetClick }: IntervalRe
   })
 
   if (isLoading) {
-    return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.loading')}</div>
+    return <div className="text-[var(--ss-t3)] text-sm py-4 text-center">{t('analysis.loading')}</div>
   }
 
   if (!resp?.success || !resp.data) {
-    return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.no_data')}</div>
+    return <div className="text-[var(--ss-t3)] text-sm py-4 text-center">{t('analysis.no_data')}</div>
   }
 
   const data = resp.data
@@ -82,19 +82,18 @@ export function IntervalReport({ matchId, completedSet, onSetClick }: IntervalRe
         const winColor =
           currentEst.mean >= 0.55 ? A_GOOD
           : currentEst.mean <= 0.45 ? B_BAD
-          : N_GRAY[100]
+          : 'var(--ss-t3)'
         return (
           <div
-            className="rounded-lg p-3 text-center"
-            style={{ backgroundColor: N_GRAY[800], border: `1px solid ${N_GRAY[700]}` }}
+            className="rounded-ss-lg p-3 text-center bg-[var(--ss-surface-1)] border border-[var(--ss-border)]"
           >
-            <p className="text-[10px] tracking-[0.18em] uppercase mb-1" style={{ color: N_GRAY[400] }}>
+            <p className="text-[10px] tracking-[0.18em] uppercase mb-1 text-[var(--ss-t3)]">
               {t('analysis.interval_report.current_estimate')}
             </p>
-            <p className="text-2xl font-bold tabular-nums" style={{ color: winColor }}>
+            <p className="text-2xl font-bold ss-num" style={{ color: winColor }}>
               {(currentEst.mean * 100).toFixed(1)}%
             </p>
-            <p className="text-[10px] mt-1 font-mono tabular-nums" style={{ color: N_GRAY[400] }}>
+            <p className="text-[10px] mt-1 font-mono ss-num text-[var(--ss-t3)]">
               {t('auto.IntervalReport.ci_interval', { lo: (currentEst.ci_low * 100).toFixed(1), hi: (currentEst.ci_high * 100).toFixed(1) })}
             </p>
           </div>
@@ -109,23 +108,23 @@ export function IntervalReport({ matchId, completedSet, onSetClick }: IntervalRe
             const Inner = (
               <>
                 <div>
-                  <span className="text-sm font-medium text-white">
+                  <span className="text-sm font-medium text-[var(--ss-t1)]">
                     {t('analysis.interval_report.set')} {setReport.set_num}
                   </span>
-                  <span className="text-xs text-gray-400 ml-2">
+                  <span className="text-xs text-[var(--ss-t3)] ml-2">
                     {setReport.wins}/{t('auto._shared.n_rallies', { n: setReport.rally_count })}
                   </span>
                 </div>
                 <div className="text-right flex items-center gap-2">
                   <div>
-                    <p className="text-sm font-semibold text-white">
+                    <p className="text-sm font-semibold ss-num text-[var(--ss-t1)]">
                       {(setReport.posterior_mean * 100).toFixed(1)}%
                     </p>
-                    <p className="text-[10px] text-gray-500">
+                    <p className="text-[10px] ss-num text-[var(--ss-t3)]">
                       [{(setReport.ci_low * 100).toFixed(1)}, {(setReport.ci_high * 100).toFixed(1)}]
                     </p>
                   </div>
-                  {clickable && <span className="text-blue-400 text-xs">{t('auto.IntervalReport.k1')}</span>}
+                  {clickable && <span className="text-[var(--ss-brand)] text-xs">{t('auto.IntervalReport.k1')}</span>}
                 </div>
               </>
             )
@@ -134,7 +133,7 @@ export function IntervalReport({ matchId, completedSet, onSetClick }: IntervalRe
                 key={setReport.set_num}
                 type="button"
                 onClick={() => onSetClick!(setReport.set_num)}
-                className="w-full bg-gray-700/50 hover:bg-gray-700 rounded-lg p-2.5 flex items-center justify-between text-left transition-colors"
+                className="w-full bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] rounded-ss-md p-2.5 flex items-center justify-between text-left transition-colors duration-base ease-out"
                 title={t('auto.IntervalReport.k2')}
               >
                 {Inner}
@@ -142,7 +141,7 @@ export function IntervalReport({ matchId, completedSet, onSetClick }: IntervalRe
             ) : (
               <div
                 key={setReport.set_num}
-                className="bg-gray-700/50 rounded-lg p-2.5 flex items-center justify-between"
+                className="bg-[var(--ss-surface-2)] rounded-ss-md p-2.5 flex items-center justify-between"
               >
                 {Inner}
               </div>
@@ -152,10 +151,10 @@ export function IntervalReport({ matchId, completedSet, onSetClick }: IntervalRe
       )}
 
       {data.sets.length === 0 && (
-        <p className="text-gray-500 text-sm text-center py-2">{t('analysis.no_data')}</p>
+        <p className="text-[var(--ss-t3)] text-sm text-center py-2">{t('analysis.no_data')}</p>
       )}
 
-      <p className="text-[10px] text-gray-600 text-center">
+      <p className="text-[10px] text-[var(--ss-t3)] text-center">
         {t('auto.IntervalReport.bayes_note')}
       </p>
     </div>

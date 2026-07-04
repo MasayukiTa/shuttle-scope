@@ -29,16 +29,18 @@ export function ResearchNotice({
 
   // bg / border は完全に N_GRAY (theme 連動)。
   // warning 意味は タイトル文字色 (amber) で運ぶ。
+  // v2: crisp corner + hairline (--ss-border) + amber アクセントは左罫線でなく
+  // タイトル文字色のみで運ぶ方針は維持。コンテナは token 直参照に統一。
   const containerClass = isLight
-    ? 'bg-white border border-gray-200'
-    : 'bg-gray-800 border border-gray-700'
+    ? 'bg-white border border-[color:var(--ss-border)]'
+    : 'bg-gray-800 border border-[color:var(--ss-border)]'
   const headingColor = isLight ? '#b45309' /* amber-700 */ : '#fbbf24' /* amber-400 */
   const cautionColor = isLight ? '#374151' /* gray-700 */ : '#e2e8f0' /* gray-200 */
   const subColor = isLight ? '#64748b' /* gray-500 */ : '#94a3b8' /* gray-400 */
   const faintColor = isLight ? '#94a3b8' /* gray-400 */ : '#64748b' /* gray-500 */
 
   return (
-    <div className={`rounded-lg px-4 py-3 space-y-1 ${containerClass} ${className}`}>
+    <div className={`rounded-ss-lg px-4 py-3 space-y-1 ${containerClass} ${className}`}>
       <p className="text-[11px] font-semibold flex items-center gap-1" style={{ color: headingColor }}>
         {t('auto.ResearchNotice.heading')}
       </p>

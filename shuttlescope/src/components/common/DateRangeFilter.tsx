@@ -59,16 +59,16 @@ export function DateRangeFilter({ from, to, onChange, className }: DateRangeFilt
 
   return (
     <div className={clsx('flex items-center gap-1.5 flex-wrap', className)}>
-      <MIcon name="calendar_month" size={13} className="text-gray-500 shrink-0" />
+      <MIcon name="calendar_month" size={13} className="text-[var(--ss-t3)] shrink-0" />
       {(Object.entries(PRESET_LABELS) as [Preset, string][]).map(([key, label]) => (
         <button
           key={key}
           onClick={() => handlePreset(key)}
           className={clsx(
-            'px-2 py-0.5 rounded text-xs transition-colors',
+            'px-2 py-0.5 rounded-ss-pill text-xs transition-colors duration-fast ease-out',
             activePreset === key && !showCustom
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-700 text-gray-400 hover:text-white hover:bg-gray-600',
+              ? 'bg-[var(--ss-brand)] text-white'
+              : 'bg-[var(--ss-surface-2)] text-[var(--ss-t2)] hover:text-[var(--ss-t1)] hover:bg-[var(--ss-surface-3)]',
           )}
         >
           {label}
@@ -77,10 +77,10 @@ export function DateRangeFilter({ from, to, onChange, className }: DateRangeFilt
       <button
         onClick={() => setShowCustom((v) => !v)}
         className={clsx(
-          'px-2 py-0.5 rounded text-xs transition-colors',
+          'px-2 py-0.5 rounded-ss-pill text-xs transition-colors duration-fast ease-out',
           showCustom
-            ? 'bg-blue-600 text-white'
-            : 'bg-gray-700 text-gray-400 hover:text-white hover:bg-gray-600',
+            ? 'bg-[var(--ss-brand)] text-white'
+            : 'bg-[var(--ss-surface-2)] text-[var(--ss-t2)] hover:text-[var(--ss-t1)] hover:bg-[var(--ss-surface-3)]',
         )}
       >
         {t('auto.DateRangeFilter.custom_range')}
@@ -91,14 +91,14 @@ export function DateRangeFilter({ from, to, onChange, className }: DateRangeFilt
             type="date"
             value={from}
             onChange={(e) => onChange(e.target.value, to)}
-            className="bg-gray-700 border border-gray-600 rounded px-1.5 py-0.5 text-xs text-white"
+            className="ss-num bg-[var(--ss-ctrl-bg)] border border-[var(--ss-ctrl-border)] rounded-ss-md px-1.5 py-0.5 text-xs text-[var(--ss-ctrl-text)]"
           />
-          <span className="text-gray-500">{t('auto.DateRangeFilter.range_sep')}</span>
+          <span className="text-[var(--ss-t3)]">{t('auto.DateRangeFilter.range_sep')}</span>
           <input
             type="date"
             value={to}
             onChange={(e) => onChange(from, e.target.value)}
-            className="bg-gray-700 border border-gray-600 rounded px-1.5 py-0.5 text-xs text-white"
+            className="ss-num bg-[var(--ss-ctrl-bg)] border border-[var(--ss-ctrl-border)] rounded-ss-md px-1.5 py-0.5 text-xs text-[var(--ss-ctrl-text)]"
           />
         </div>
       )}

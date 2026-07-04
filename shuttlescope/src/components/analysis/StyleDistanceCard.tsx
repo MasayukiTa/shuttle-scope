@@ -80,7 +80,7 @@ function DistanceRow({
   // 距離が小さい = 類似 → バーは「小さい距離 = 長いバー」に反転
   const barWidth = 1 - normalizedWidth
   return (
-    <div className={`rounded-lg p-2.5 border ${border} ${cardInner}`}>
+    <div className={`rounded-ss-md p-2.5 border ${border} ${cardInner}`}>
       <div className="flex items-center justify-between gap-2 mb-1">
         <div className="flex items-center gap-1.5">
           {isNearest && (
@@ -97,12 +97,12 @@ function DistanceRow({
         </span>
       </div>
       {/* 距離バー (小距離 = 長い類似バー) */}
-      <div className="h-1.5 w-full rounded-full bg-gray-700/40 overflow-hidden">
+      <div className="h-1.5 w-full rounded-full bg-[var(--ss-surface-2)] overflow-hidden">
         <div
           className="h-full rounded-full"
           style={{
             width: `${barWidth * 100}%`,
-            backgroundColor: isNearest ? '#34d399' : '#60a5fa',
+            backgroundColor: isNearest ? '#34d399' : 'var(--ss-brand)',
           }}
         />
       </div>
@@ -136,11 +136,11 @@ function StyleScatterSvg({
   return (
     <svg
       viewBox={`0 0 ${SVG_W} ${SVG_H}`}
-      className="w-full max-w-xs rounded-lg"
+      className="w-full max-w-xs rounded-ss-md"
       aria-hidden="true"
     >
       {/* 背景 */}
-      <rect width={SVG_W} height={SVG_H} rx={8} fill="rgba(30,30,40,0.5)" />
+      <rect width={SVG_W} height={SVG_H} rx={6} fill="var(--ss-surface-2)" opacity="0.5" />
 
       {styleMap.map((entry) => {
         const coords = normalized.get(entry.player_id)
@@ -218,7 +218,7 @@ export function StyleDistanceCard({ playerId }: Props) {
   const isEmpty = !distData || distData.cohort_size < 1 || sortedDistances.length === 0
 
   return (
-    <div className={`${card} rounded-lg p-4 space-y-3`}>
+    <div className={`${card} rounded-ss-lg p-4 space-y-3`}>
       {/* ─ ヘッダ ── */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <h3 className={`text-sm font-semibold ${textHeading} flex items-center gap-1.5`}>
@@ -249,7 +249,7 @@ export function StyleDistanceCard({ playerId }: Props) {
 
       {/* ─ エラー ── */}
       {isError && !isLoading && (
-        <p className="text-sm text-center py-4 text-red-400">
+        <p className="text-sm text-center py-4 text-[var(--ss-bad)]">
           {t('auto.StyleDistanceCard.error')}
         </p>
       )}
@@ -259,7 +259,7 @@ export function StyleDistanceCard({ playerId }: Props) {
         <>
           {/* コーホート不足 → graceful empty state */}
           {isEmpty ? (
-            <div className={`rounded-lg p-3 border ${border} ${cardInner} opacity-60`}>
+            <div className={`rounded-ss-md p-3 border ${border} ${cardInner} opacity-60`}>
               <div className="flex items-center gap-1.5">
                 <MIcon name="info" size={14} className="text-amber-400 shrink-0" />
                 <p className={`text-[11px] ${textMuted}`}>
@@ -270,7 +270,7 @@ export function StyleDistanceCard({ playerId }: Props) {
           ) : (
             <>
               {/* サマリ: コーホートサイズ + 信頼度 */}
-              <div className={`rounded-lg p-2.5 border ${border} ${cardInner}`}>
+              <div className={`rounded-ss-md p-2.5 border ${border} ${cardInner}`}>
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <span className={`text-[11px] ${textMuted}`}>
                     {t('auto.StyleDistanceCard.cohort_summary', {

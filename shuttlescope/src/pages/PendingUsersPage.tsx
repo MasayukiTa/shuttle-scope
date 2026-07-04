@@ -37,19 +37,21 @@ export default function PendingUsersPage() {
   const teams: TeamDTO[] = teamsData?.data ?? []
 
   return (
-    <div className="p-4 max-w-5xl mx-auto">
-      <h1 className="text-xl font-bold mb-2">{t('pendingUsers.title')}</h1>
-      <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+    <div className="p-4 max-w-5xl mx-auto bg-[var(--ss-bg-app)] min-h-full">
+      <h1 className="text-xl font-semibold tracking-[-0.014em] text-[var(--ss-t1)] mb-2">{t('pendingUsers.title')}</h1>
+      <p className="text-sm text-[var(--ss-t2)] mb-4">
         {t('pendingUsers.description')}
       </p>
 
-      {isLoading && <div className="text-sm">{t('app.loading')}</div>}
+      {isLoading && <div className="text-sm text-[var(--ss-t2)]">{t('app.loading')}</div>}
       {error && (
-        <div className="text-sm text-red-600">{(error as Error).message}</div>
+        <div className="text-sm rounded-ss-md border px-3 py-2 bg-[var(--ss-danger-bg)] border-[var(--ss-danger-border)] text-[var(--ss-danger-text)]">
+          {(error as Error).message}
+        </div>
       )}
 
       {data?.data?.length === 0 && (
-        <div className="rounded border border-gray-200 dark:border-gray-700 p-6 text-center text-sm text-gray-500">
+        <div className="rounded-ss-lg border border-[var(--ss-border)] bg-[var(--ss-surface-1)] p-6 text-center text-sm text-[var(--ss-t3)]">
           {t('pendingUsers.empty')}
         </div>
       )}
@@ -131,34 +133,34 @@ function PendingUserRow({
   }
 
   return (
-    <div className="rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 space-y-3">
+    <div className="rounded-ss-lg border border-[var(--ss-border)] bg-[var(--ss-surface-1)] shadow-card p-4 space-y-3">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
           <div className="font-medium text-sm">{user.username}</div>
           {user.display_name && (
-            <div className="text-xs text-gray-600 dark:text-gray-300">{user.display_name}</div>
+            <div className="text-xs text-[var(--ss-t2)]">{user.display_name}</div>
           )}
-          <div className="text-xs text-gray-500 dark:text-gray-400">
+          <div className="text-xs text-[var(--ss-t2)]">
             {user.email ?? '(no email)'}
             {user.email_verified ? (
-              <span className="ml-2 text-green-600">{t('auto.PendingUsersPage.verified')}</span>
+              <span className="ml-2 text-[var(--ss-success)]">{t('auto.PendingUsersPage.verified')}</span>
             ) : (
-              <span className="ml-2 text-amber-600">{t('auto.PendingUsersPage.unverified')}</span>
+              <span className="ml-2 text-[var(--ss-warn)]">{t('auto.PendingUsersPage.unverified')}</span>
             )}
           </div>
-          <div className="text-[10px] text-gray-400">{user.created_at}</div>
+          <div className="text-[10px] text-[var(--ss-t3)] ss-num">{user.created_at}</div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <div>
-          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+          <label className="block text-xs text-[var(--ss-t3)] mb-1">
             {t('users.manage.role_label')}
           </label>
           <select
             value={role}
             onChange={(e) => setRole(e.target.value as AssignableRole)}
-            className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-sm"
+            className="w-full rounded-ss-md border border-[var(--ss-ctrl-border)] bg-[var(--ss-ctrl-bg)] text-[var(--ss-ctrl-text)] px-2 py-1 text-sm"
           >
             <option value="player">{t('pendingUsers.role.player')}</option>
             <option value="coach">{t('pendingUsers.role.coach')}</option>
@@ -167,7 +169,7 @@ function PendingUserRow({
         </div>
 
         <div>
-          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+          <label className="block text-xs text-[var(--ss-t3)] mb-1">
             {t('pendingUsers.team_name_label')}
           </label>
           {/* datalist で既存チーム名をサジェスト。自由入力も可能（新規チーム作成） */}
@@ -177,7 +179,7 @@ function PendingUserRow({
             value={teamName}
             onChange={(e) => setTeamName(e.target.value)}
             placeholder={t('pendingUsers.team_name_placeholder')}
-            className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-sm"
+            className="w-full rounded-ss-md border border-[var(--ss-ctrl-border)] bg-[var(--ss-ctrl-bg)] text-[var(--ss-ctrl-text)] px-2 py-1 text-sm"
           />
           <datalist id={datalistId}>
             {teams.map((tm) => (
@@ -186,7 +188,7 @@ function PendingUserRow({
               </option>
             ))}
           </datalist>
-          <p className="mt-1 text-[10px] text-gray-400 dark:text-gray-500">
+          <p className="mt-1 text-[10px] text-[var(--ss-t3)]">
             {t('pendingUsers.team_name_hint')}
           </p>
         </div>
@@ -196,20 +198,20 @@ function PendingUserRow({
         <button
           onClick={handleApprove}
           disabled={submitting || !canApprove}
-          className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white text-sm disabled:opacity-50"
+          className="px-3 py-1.5 rounded-ss-md bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white text-sm transition-colors duration-base ease-out disabled:opacity-50"
         >
           {t('pendingUsers.approve')}
         </button>
         <button
           onClick={handleReject}
           disabled={submitting}
-          className="px-3 py-1.5 rounded border border-red-300 text-red-700 dark:border-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 text-sm disabled:opacity-50"
+          className="px-3 py-1.5 rounded-ss-md border border-[var(--ss-danger-border)] text-[var(--ss-danger-text)] hover:bg-[var(--ss-danger-bg)] text-sm transition-colors duration-base ease-out disabled:opacity-50"
         >
           {t('pendingUsers.reject')}
         </button>
       </div>
 
-      {msg && <div className="text-xs text-red-600">{msg}</div>}
+      {msg && <div className="text-xs text-[var(--ss-danger-text)]">{msg}</div>}
     </div>
   )
 }

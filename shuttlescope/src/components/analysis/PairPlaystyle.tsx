@@ -65,14 +65,14 @@ export function PairPlaystyle({ playerAId, playerBId, playerAName = 'A', playerB
   })
 
   if (isLoading) {
-    return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.loading')}</div>
+    return <div className="text-[var(--ss-t3)] text-sm py-4 text-center">{t('analysis.loading')}</div>
   }
 
   const sampleSize = resp?.meta?.sample_size ?? 0
   const d = resp?.data
 
   if (!d || sampleSize === 0) {
-    return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.no_data')}</div>
+    return <div className="text-[var(--ss-t3)] text-sm py-4 text-center">{t('analysis.no_data')}</div>
   }
 
   const styleKey = d.playstyle_en ?? 'unknown'
@@ -87,7 +87,7 @@ export function PairPlaystyle({ playerAId, playerBId, playerAName = 'A', playerB
 
       {/* プレースタイルバッジ */}
       <div
-        className="rounded-lg px-4 py-3 flex items-center gap-3"
+        className="rounded-ss-lg px-4 py-3 flex items-center gap-3"
         style={{ backgroundColor: styleConf.bg, border: `1.5px solid ${styleConf.border}` }}
       >
         <div>
@@ -99,7 +99,7 @@ export function PairPlaystyle({ playerAId, playerBId, playerAName = 'A', playerB
           </p>
         </div>
         <div className="ml-auto text-right">
-          <p className="text-xs" style={{ color: labelColor }}>
+          <p className="text-xs ss-num" style={{ color: labelColor }}>
             {t('auto._shared.n_matches', { n: d.metrics.match_count })}
           </p>
         </div>
@@ -113,13 +113,13 @@ export function PairPlaystyle({ playerAId, playerBId, playerAName = 'A', playerB
             <div key={key}>
               <div className="flex justify-between mb-0.5">
                 <span className="text-xs" style={{ color: labelColor }}>{label}</span>
-                <span className="text-xs font-mono" style={{ color: textColor }}>
+                <span className="text-xs font-mono ss-num" style={{ color: textColor }}>
                   {(val * 100).toFixed(1)}%
                 </span>
               </div>
               <div className="w-full rounded-full h-1.5 overflow-hidden" style={{ backgroundColor: trackBg }}>
                 <div
-                  className="h-1.5 rounded-full transition-all"
+                  className="h-1.5 rounded-full transition-all duration-base ease-out"
                   style={{ width: `${Math.min(val * 100, 100).toFixed(0)}%`, backgroundColor: styleConf.border }}
                 />
               </div>

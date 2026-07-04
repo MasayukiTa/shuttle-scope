@@ -1,6 +1,5 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useTheme } from '@/hooks/useTheme'
 import { apiGet } from '@/api/client'
 import { UserRole } from '@/types'
 
@@ -24,8 +23,6 @@ export function RolePicker({
   onCancel?: () => void
 }) {
   const { t } = useTranslation()
-  const { theme } = useTheme()
-  const isLight = theme === 'light'
   const [stage, setStage] = useState<RolePickerStage>(initialStage ?? { kind: 'roles' })
   const [players, setPlayers] = useState<Array<{ id: number; name: string; team: string | null }> | null>(null)
   const [loadErr, setLoadErr] = useState<string | null>(null)
@@ -61,32 +58,33 @@ export function RolePicker({
   }, [players, search])
 
   const wrapperCls = mode === 'initial'
-    ? `min-h-screen flex items-center justify-center ${isLight ? 'bg-gray-50' : 'bg-gray-900'}`
-    : `fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4`
+    ? 'min-h-screen flex items-center justify-center bg-[var(--ss-bg-app)]'
+    : 'fixed inset-0 bg-[var(--ss-bg-overlay)] flex items-center justify-center z-50 p-4'
 
-  const panelCls = `rounded-lg p-6 w-96 max-h-[80vh] flex flex-col ${isLight ? 'bg-white shadow-lg border border-gray-200' : 'bg-gray-800'}`
+  const panelCls = 'rounded-ss-lg p-6 w-96 max-h-[80vh] flex flex-col bg-[var(--ss-surface-1)] shadow-pop border border-[var(--ss-border)]'
+
+  // 選択肢ボタン (選手/チーム/ロール共通): crisp control surface + hover tint。
+  const optionBtnCls = 'w-full text-left px-3 py-2 rounded-ss-md text-sm transition-colors duration-fast ease-out bg-[var(--ss-surface-2)] hover:bg-[var(--ss-brand-tint)] text-[var(--ss-t1)]'
 
   if (stage.kind === 'player') {
     return (
       <div className={wrapperCls}>
         <div className={panelCls}>
           <div className="text-center mb-4">
-            <div className={`text-xl font-bold mb-1 ${isLight ? 'text-gray-900' : 'text-white'}`}>{t('auto.RolePicker.k1')}</div>
-            <div className={`text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>{t('auto.RolePicker.k2')}</div>
+            <div className="text-xl font-bold mb-1 text-[var(--ss-t1)]">{t('auto.RolePicker.k1')}</div>
+            <div className="text-xs text-[var(--ss-t3)]">{t('auto.RolePicker.k2')}</div>
           </div>
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={t('auto.RolePicker.k7')}
-            className={`w-full mb-3 px-3 py-2 rounded text-sm border ${
-              isLight ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-white'
-            }`}
+            className="w-full mb-3 px-3 py-2 rounded-ss-md text-sm border bg-[var(--ss-ctrl-bg)] border-[var(--ss-ctrl-border)] text-[var(--ss-ctrl-text)]"
           />
           <div className="flex-1 overflow-y-auto space-y-1">
-            {loadErr && <p className="text-red-400 text-xs">{loadErr}</p>}
-            {!loadErr && players === null && <p className={`text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>{t('auto.RolePicker.k3')}</p>}
+            {loadErr && <p className="text-[var(--ss-bad)] text-xs">{loadErr}</p>}
+            {!loadErr && players === null && <p className="text-xs text-[var(--ss-t3)]">{t('auto.RolePicker.k3')}</p>}
             {players !== null && filteredPlayers.length === 0 && (
-              <p className={`text-xs text-center py-4 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>
+              <p className="text-xs text-center py-4 text-[var(--ss-t3)]">
                 {players.length === 0 ? '登録選手がいません' : '該当する選手が見つかりません'}
               </p>
             )}
@@ -94,11 +92,7 @@ export function RolePicker({
               <button
                 key={p.id}
                 onClick={() => onSelect('player', p.id, null)}
-                className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
-                  isLight
-                    ? 'bg-gray-100 hover:bg-blue-600 text-gray-800 hover:text-white'
-                    : 'bg-gray-700 hover:bg-blue-700 text-white'
-                }`}
+                className={optionBtnCls}
               >
                 {p.name}
               </button>
@@ -107,7 +101,7 @@ export function RolePicker({
           <div className="flex items-center justify-between mt-3">
             <button
               onClick={() => mode === 'initial' ? setStage({ kind: 'roles' }) : onCancel?.()}
-              className={`text-xs underline ${isLight ? 'text-gray-500' : 'text-gray-400'}`}
+              className="text-xs underline text-[var(--ss-t3)]"
             >
               {mode === 'initial' ? t('auto.RolePicker.back_to_roles') : t('auto.RolePicker.cancel')}
             </button>
@@ -122,22 +116,20 @@ export function RolePicker({
       <div className={wrapperCls}>
         <div className={panelCls}>
           <div className="text-center mb-4">
-            <div className={`text-xl font-bold mb-1 ${isLight ? 'text-gray-900' : 'text-white'}`}>{t('auto.RolePicker.k4')}</div>
-            <div className={`text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>{t('auto.RolePicker.k5')}</div>
+            <div className="text-xl font-bold mb-1 text-[var(--ss-t1)]">{t('auto.RolePicker.k4')}</div>
+            <div className="text-xs text-[var(--ss-t3)]">{t('auto.RolePicker.k5')}</div>
           </div>
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={t('auto.RolePicker.k8')}
-            className={`w-full mb-3 px-3 py-2 rounded text-sm border ${
-              isLight ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-white'
-            }`}
+            className="w-full mb-3 px-3 py-2 rounded-ss-md text-sm border bg-[var(--ss-ctrl-bg)] border-[var(--ss-ctrl-border)] text-[var(--ss-ctrl-text)]"
           />
           <div className="flex-1 overflow-y-auto space-y-1">
-            {loadErr && <p className="text-red-400 text-xs">{loadErr}</p>}
-            {!loadErr && players === null && <p className={`text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>{t('auto.RolePicker.k3')}</p>}
+            {loadErr && <p className="text-[var(--ss-bad)] text-xs">{loadErr}</p>}
+            {!loadErr && players === null && <p className="text-xs text-[var(--ss-t3)]">{t('auto.RolePicker.k3')}</p>}
             {players !== null && teams.length === 0 && !search.trim() && (
-              <p className={`text-xs text-center py-4 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>
+              <p className="text-xs text-center py-4 text-[var(--ss-t3)]">
                 {t('auto.RolePicker.no_teams')}
               </p>
             )}
@@ -145,11 +137,7 @@ export function RolePicker({
               <button
                 key={name}
                 onClick={() => onSelect('coach', null, name)}
-                className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
-                  isLight
-                    ? 'bg-gray-100 hover:bg-blue-600 text-gray-800 hover:text-white'
-                    : 'bg-gray-700 hover:bg-blue-700 text-white'
-                }`}
+                className={optionBtnCls}
               >
                 {name}
               </button>
@@ -157,9 +145,7 @@ export function RolePicker({
             {search.trim() && !teams.includes(search.trim()) && (
               <button
                 onClick={() => onSelect('coach', null, search.trim())}
-                className={`w-full text-left px-3 py-2 rounded text-sm border border-dashed ${
-                  isLight ? 'border-gray-400 text-gray-700 hover:bg-blue-50' : 'border-gray-500 text-gray-300 hover:bg-gray-700'
-                }`}
+                className="w-full text-left px-3 py-2 rounded-ss-md text-sm border border-dashed border-[var(--ss-border-strong)] text-[var(--ss-t2)] hover:bg-[var(--ss-brand-tint)] transition-colors duration-fast ease-out"
               >
                 {t('auto.RolePicker.register_new_team', { name: search.trim() })}
               </button>
@@ -168,7 +154,7 @@ export function RolePicker({
           <div className="flex items-center justify-between mt-3">
             <button
               onClick={() => mode === 'initial' ? setStage({ kind: 'roles' }) : onCancel?.()}
-              className={`text-xs underline ${isLight ? 'text-gray-500' : 'text-gray-400'}`}
+              className="text-xs underline text-[var(--ss-t3)]"
             >
               {mode === 'initial' ? t('auto.RolePicker.back_to_roles') : t('auto.RolePicker.cancel')}
             </button>
@@ -181,10 +167,10 @@ export function RolePicker({
   // roles ステージ
   return (
     <div className={wrapperCls}>
-      <div className={`rounded-lg p-8 w-80 ${isLight ? 'bg-white shadow-lg border border-gray-200' : 'bg-gray-800'}`}>
+      <div className="rounded-ss-lg p-8 w-80 bg-[var(--ss-surface-1)] shadow-pop border border-[var(--ss-border)]">
         <div className="text-center mb-6">
-          <div className={`text-3xl font-bold mb-1 ${isLight ? 'text-gray-900' : 'text-white'}`}>{t('auto.RolePicker.app_name')}</div>
-          <div className={`text-sm ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>{t('auto.RolePicker.k6')}</div>
+          <div className="text-3xl font-bold mb-1 text-[var(--ss-t1)]">{t('auto.RolePicker.app_name')}</div>
+          <div className="text-sm text-[var(--ss-t3)]">{t('auto.RolePicker.k6')}</div>
         </div>
         <div className="flex flex-col gap-3">
           {(['analyst', 'coach', 'player'] as UserRole[]).map((r) => (
@@ -195,11 +181,7 @@ export function RolePicker({
                 else if (r === 'coach') setStage({ kind: 'team' })
                 else onSelect(r, null, null)
               }}
-              className={`py-3 px-4 rounded text-sm font-medium transition-colors ${
-                isLight
-                  ? 'bg-gray-100 hover:bg-blue-600 text-gray-800 hover:text-white'
-                  : 'bg-gray-700 hover:bg-blue-700 text-white'
-              }`}
+              className="py-3 px-4 rounded-ss-md text-sm font-medium transition-colors duration-fast ease-out bg-[var(--ss-surface-2)] hover:bg-[var(--ss-brand)] text-[var(--ss-t1)] hover:text-white"
             >
               {t(`roles.${r}`)}
             </button>
@@ -208,12 +190,12 @@ export function RolePicker({
         {mode === 'modal' && onCancel && (
           <button
             onClick={onCancel}
-            className={`mt-4 w-full text-xs underline ${isLight ? 'text-gray-500' : 'text-gray-400'}`}
+            className="mt-4 w-full text-xs underline text-[var(--ss-t3)]"
           >
             {t('auto.RolePicker.cancel')}
           </button>
         )}
-        <p className={`text-xs mt-4 text-center ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>
+        <p className="text-xs mt-4 text-center text-[var(--ss-t3)]">
           {t('auto.RolePicker.poc_note')}
         </p>
       </div>

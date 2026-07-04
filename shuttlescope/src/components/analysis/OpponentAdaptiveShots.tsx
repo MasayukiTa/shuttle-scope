@@ -43,19 +43,19 @@ function ShotBar({ label, winRate, lift, count }: { label: string; winRate: numb
   return (
     <div className="flex items-center gap-2 text-xs">
       <span className="w-28 text-right text-gray-300 truncate shrink-0">{label}</span>
-      <div className="flex-1 bg-gray-700 rounded h-4 relative overflow-hidden">
+      <div className="flex-1 bg-gray-700 rounded-ss-sm h-4 relative overflow-hidden">
         <div
-          className="h-full rounded transition-all"
+          className="h-full rounded-ss-sm transition-all duration-base ease-out"
           style={{ width: `${pct}%`, backgroundColor: perfColor(winRate) }}
         />
-        <span className="absolute inset-0 flex items-center justify-center text-white text-xs font-mono">
+        <span className="absolute inset-0 flex items-center justify-center text-white text-xs font-mono ss-num">
           {pct}%
         </span>
       </div>
-      <span className={`text-xs font-mono w-12 text-right ${liftPositive ? 'text-blue-400' : 'text-red-400'}`}>
+      <span className={`text-xs font-mono ss-num w-12 text-right ${liftPositive ? 'text-blue-400' : 'text-red-400'}`}>
         {liftPositive ? '+' : ''}{Math.round(lift * 100)}%
       </span>
-      <span className="text-gray-500 text-xs w-8 text-right">{count}</span>
+      <span className="text-gray-500 text-xs w-8 text-right ss-num">{count}</span>
     </div>
   )
 }
@@ -94,7 +94,7 @@ function Inner({ playerId }: { playerId: number }) {
           <button
             key={o.opponent_id}
             onClick={() => setSelected(o.opponent_id)}
-            className={`px-2 py-1 rounded text-xs transition-colors ${
+            className={`px-2 py-1 rounded-ss-sm text-xs transition-colors duration-fast ${
               (selected === null ? opponents[0].opponent_id : selected) === o.opponent_id
                 ? 'bg-blue-600 text-white'
                 : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
@@ -137,7 +137,7 @@ export function OpponentAdaptiveShots({ playerId }: OpponentAdaptiveShotsProps) 
 
   return (
     <RoleGuard allowedRoles={['analyst', 'coach']}>
-      <div className="bg-gray-800 rounded-lg p-4">
+      <div className="bg-gray-800 rounded-ss-lg shadow-card p-4">
         <h3 className="text-sm font-semibold text-gray-200 mb-3">{t('auto.OpponentAdaptiveShots.k3')}</h3>
         <Inner playerId={playerId} />
       </div>

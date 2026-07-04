@@ -52,8 +52,8 @@ function isOk(s: PolicyEvalState): s is PolicyEvalStateOk {
 function TinyBar({ value, color }: { value: number; color: string }) {
   const w = Math.max(0, Math.min(1, value))
   return (
-    <div className="h-1.5 w-full rounded-full bg-gray-700/40 overflow-hidden">
-      <div className="h-full rounded-full" style={{ width: `${w * 100}%`, backgroundColor: color }} />
+    <div className="h-1.5 w-full rounded-full bg-[var(--ss-surface-2)]/40 overflow-hidden">
+      <div className="h-full rounded-full transition-all duration-base ease-out" style={{ width: `${w * 100}%`, backgroundColor: color }} />
     </div>
   )
 }
@@ -90,21 +90,21 @@ function OkStateRow({
   const ciWidth = row.ci_high - row.ci_low
 
   return (
-    <div className={`rounded-lg p-3 space-y-2 border ${border} ${cardInner}`}>
+    <div className={`rounded-ss-lg p-3 space-y-2 border ${border} ${cardInner}`}>
       {/* ─ ヘッダ行: 状態 + アップリフト + N ── */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-1.5">
-          <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-500/15 text-blue-400">
+          <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-ss-sm bg-[rgba(37,99,235,0.15)] text-[var(--ss-brand)]">
             {phaseLabel}
           </span>
-          <span className={`text-[11px] px-1.5 py-0.5 rounded-full bg-gray-500/15 ${textFaint}`}>
+          <span className={`text-[11px] px-1.5 py-0.5 rounded-ss-sm bg-[var(--ss-surface-2)]/15 ${textFaint}`}>
             {roleLabel}
           </span>
         </div>
         <div className="flex items-center gap-3">
           {/* アップリフト（見出し数値） */}
           <span
-            className="text-base font-bold font-mono"
+            className="text-base font-bold font-mono ss-num"
             style={{ color: upliftColor }}
           >
             {signedPct(row.uplift)}
@@ -122,17 +122,17 @@ function OkStateRow({
       <div className="flex gap-4 text-[11px] flex-wrap">
         <span className={textMuted}>
           {t('auto.PolicyEvalCard.value_behavior_label')}
-          <span className={`ml-1 font-mono ${textSecondary}`}>{pct1(row.value_behavior)}</span>
+          <span className={`ml-1 font-mono ss-num ${textSecondary}`}>{pct1(row.value_behavior)}</span>
         </span>
         <MIcon name="arrow_forward" size={12} className={textFaint} />
         <span className={textMuted}>
           {t('auto.PolicyEvalCard.value_target_label')}
-          <span className={`ml-1 font-mono ${textHeading}`}>{pct1(row.value_target)}</span>
+          <span className={`ml-1 font-mono ss-num ${textHeading}`}>{pct1(row.value_target)}</span>
         </span>
       </div>
 
       {/* ─ CI 帯 ── */}
-      <p className={`text-[10px] ${textFaint}`}>
+      <p className={`text-[10px] ss-num ${textFaint}`}>
         {t('auto.PolicyEvalCard.ci_range', {
           low: signedPct(row.ci_low),
           high: signedPct(row.ci_high),
@@ -161,13 +161,13 @@ function InsufficientRow({
   border: string
 }) {
   return (
-    <div className={`rounded-lg p-2.5 border ${border} opacity-50`}>
+    <div className={`rounded-ss-lg p-2.5 border ${border} opacity-50`}>
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
-          <span className={`text-[10px] px-1.5 py-0.5 rounded-full bg-gray-500/10 ${textFaint}`}>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded-ss-sm bg-[var(--ss-surface-2)]/10 ${textFaint}`}>
             {phaseLabel}
           </span>
-          <span className={`text-[10px] px-1.5 py-0.5 rounded-full bg-gray-500/10 ${textFaint}`}>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded-ss-sm bg-[var(--ss-surface-2)]/10 ${textFaint}`}>
             {roleLabel}
           </span>
         </div>
@@ -234,7 +234,7 @@ export function PolicyEvalCard({ playerId }: Props) {
   }, [summary, PHASE_LABELS, ROLE_LABELS])
 
   return (
-    <div className={`${card} rounded-lg p-4 space-y-3`}>
+    <div className={`${card} rounded-ss-lg p-4 space-y-3`}>
       {/* ─ ヘッダ ── */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <h3 className={`text-sm font-semibold ${textHeading} flex items-center gap-1.5`}>
@@ -275,9 +275,9 @@ export function PolicyEvalCard({ playerId }: Props) {
         <>
           {/* サマリブロック */}
           {summary && (
-            <div className={`rounded-lg p-3 space-y-1.5 border ${border} ${cardInner}`}>
+            <div className={`rounded-ss-lg p-3 space-y-1.5 border ${border} ${cardInner}`}>
               <div className="flex items-center justify-between gap-2 flex-wrap">
-                <span className={`text-[11px] font-medium ${textMuted}`}>
+                <span className={`text-[11px] font-medium ss-num ${textMuted}`}>
                   {t('auto.PolicyEvalCard.summary_states', {
                     analyzed: summary.states_analyzed,
                     insufficient: summary.states_insufficient,
@@ -287,7 +287,7 @@ export function PolicyEvalCard({ playerId }: Props) {
               </div>
               {/* ベスト機会の強調表示 */}
               {bestStateLabel && summary.best_state && (
-                <p className="text-[11px] font-medium text-emerald-400">
+                <p className="text-[11px] font-medium text-[var(--ss-success)]">
                   <MIcon name="star" size={12} className="align-middle mr-0.5" />
                   {t('auto.PolicyEvalCard.best_opportunity', {
                     state: bestStateLabel,

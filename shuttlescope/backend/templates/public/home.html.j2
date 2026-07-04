@@ -17,171 +17,232 @@
 <meta name="twitter:title" content="ShuttleScope">
 <meta name="twitter:description" content="ストローク単位の記録から試合構造を統計的に可視化するバドミントン分析ワークベンチ。">
 <meta name="twitter:image" content="https://shuttle-scope.com/og-image.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=MigMix+1P:wght@400;700&display=swap" rel="stylesheet">
-<!-- Material Symbols CDN は廃止: theme トグルはインライン SVG に置換済み (外部依存/プライバシー/未ロード時の生テキスト化を排除) -->
+<!-- 外部フォント CDN 禁止 (企業 TLS でブロックされるため): system-ui スタックのみ使用。 -->
+<!-- Material Symbols CDN も廃止済み: theme トグルはインライン SVG に置換済み。 -->
 <style>
+/* ═══ design-tokens.css インライン (DESIGN_DIRECTION_v2.md §2/§4/§5/§7 準拠)。
+   home.html.j2 は base.html.j2 を継承しない単独ドキュメントのため、ここにも
+   同じトークンをインラインする。backend/public/design-tokens.css と値を同期させること。 ═══ */
+:root,
+[data-theme="light"] {
+  --ss-brand:         #2563eb;
+  --ss-brand-hover:   #1d4fd7;
+  --ss-brand-tint:    rgba(37, 99, 235, 0.08);
+  --ss-focus-ring:    rgba(37, 99, 235, 0.32);
+
+  --ss-bg-app:        #f5f6f8;
+  --ss-surface-1:     #ffffff;
+  --ss-surface-2:     #eef1f5;
+  --ss-surface-3:     #e4e8ee;
+
+  --ss-border:        #e3e7ec;
+  --ss-border-strong: #c9d1db;
+
+  --ss-t1: #1a2028;
+  --ss-t2: #55606e;
+  --ss-t3: #8892a0;
+
+  --ss-good:     #1f6fe0;
+  --ss-bad:      #c2334a;
+  --ss-warn:     #b26a00;
+  --ss-success:  #197a48;
+  --ss-emphasis: #e4610f;
+
+  --r-sm:   3px;
+  --r-md:   5px;
+  --r-lg:   6px;
+  --r-xl:   8px;
+  --r-pill: 999px;
+
+  --e0: none;
+  --e1: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --e2: 0 1px 3px rgba(16, 24, 40, 0.10), 0 1px 2px rgba(16, 24, 40, 0.06);
+  --e3: 0 10px 28px rgba(16, 24, 40, 0.14);
+
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --dur-slow: 300ms;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --ss-brand:         #5c9bff;
+  --ss-brand-hover:   #7fb0ff;
+  --ss-brand-tint:    rgba(92, 155, 255, 0.14);
+  --ss-focus-ring:    rgba(92, 155, 255, 0.35);
+
+  --ss-bg-app:        #1c1f24;
+  --ss-surface-1:     #23272e;
+  --ss-surface-2:     #2a2f37;
+  --ss-surface-3:     #323842;
+
+  --ss-border:        #363c46;
+  --ss-border-strong: #454c58;
+
+  --ss-t1: #e6e9ed;
+  --ss-t2: #a5aebb;
+  --ss-t3: #727c89;
+
+  --ss-good:     #6aa6ff;
+  --ss-bad:      #f0808a;
+  --ss-warn:     #fcd34d;
+  --ss-success:  #4bae7a;
+  --ss-emphasis: #f97316;
+
+  color-scheme: dark;
+}
+
+.ss-num { font-variant-numeric: tabular-nums slashed-zero; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 
-:root,[data-theme="light"]{
-  --bg:#f0f3f8;--surface:#ffffff;--surf2:#f7f9fc;--surf3:#eef1f7;
-  --hero-bg:#0c1f3f;--hero-bg2:#102646;--hero-t1:#e8f0fb;--hero-t2:#c0d6ee;--hero-bdr:rgba(255,255,255,0.08);
-  --navy:#0c2555;--blue:#1059c8;--blue2:#1a6fe0;--blue-lt:#e8f0fd;--blue-md:rgba(16,89,200,0.10);--grn:#007a56;
-  --t1:#0b1929;--t2:#445e7a;--t3:#8fa5be;
-  --bdr:#dce4ef;--bdr2:#c8d4e6;
-  --nav-bg:rgba(255,255,255,0.96);--nav-bdr:#dce4ef;--nav-shadow:0 1px 0 #dce4ef;
-  --feat-bg:#ffffff;--feat-hover:#e8f0fd;
-  --card-bg:#ffffff;--card-bdr:#dce4ef;
-  --data-bg:#ffffff;--fcta-bg:#f0f3f8;
-  --footer-bg:#0c2555;--footer-t:#dae8f8;--footer-lt:rgba(255,255,255,0.65);--footer-cp:rgba(255,255,255,0.42);
-}
-
-[data-theme="dark"]{
-  --bg:#07101d;--surface:#0d1829;--surf2:#111f33;--surf3:#162840;
-  --hero-bg:#040d18;--hero-bg2:#07101d;--hero-t1:#daeafb;--hero-t2:#a8c4e0;--hero-bdr:rgba(255,255,255,0.07);
-  --navy:#0c2555;--blue:#3380ee;--blue2:#4490ff;--blue-lt:rgba(51,128,238,0.12);--blue-md:rgba(51,128,238,0.12);--grn:#00a874;
-  --t1:#d4e4f8;--t2:#6a8daf;--t3:#3d5a76;
-  --bdr:rgba(255,255,255,0.07);--bdr2:rgba(255,255,255,0.12);
-  --nav-bg:rgba(7,16,29,0.94);--nav-bdr:rgba(255,255,255,0.07);--nav-shadow:none;
-  --feat-bg:#0d1829;--feat-hover:#111f33;
-  --card-bg:#0d1829;--card-bdr:rgba(255,255,255,0.07);
-  --data-bg:#0d1829;--fcta-bg:#07101d;
-  --footer-bg:#040c17;--footer-t:#b0c8e4;--footer-lt:rgba(255,255,255,0.55);--footer-cp:rgba(255,255,255,0.36);
-}
-
-body,nav,.hero-panel,.feat-card,.uc-card,.sec-data,.sec-fcta{transition:background-color 0.25s ease,border-color 0.25s ease,color 0.2s ease}
 html{scroll-behavior:smooth}
-body{font-family:'MigMix 1P','Noto Sans JP',sans-serif;background:var(--bg);color:var(--t1);line-height:1.65;overflow-x:hidden;-webkit-font-smoothing:antialiased}
-::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--bdr2);border-radius:3px}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans JP","Hiragino Sans","Yu Gothic UI",sans-serif;background:var(--ss-bg-app);color:var(--ss-t1);line-height:1.65;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:var(--ss-bg-app)}::-webkit-scrollbar-thumb{background:var(--ss-border-strong);border-radius:var(--r-sm)}
+body,nav,.hero-panel,.feat-card,.uc-card,.sec-data,.sec-fcta{transition:background-color var(--dur-base) var(--ease-out),border-color var(--dur-base) var(--ease-out),color var(--dur-fast) var(--ease-out)}
+:focus-visible{outline:2px solid var(--ss-brand);outline-offset:2px}
 
-nav{position:fixed;top:0;left:0;right:0;z-index:200;height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 40px;background:var(--nav-bg);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--nav-bdr);box-shadow:var(--nav-shadow)}
-.logo{font-size:20px;font-weight:700;letter-spacing:.06em;color:var(--t1);text-decoration:none;display:flex;align-items:center;gap:8px}
-.logo-mark{width:26px;height:26px;background:#fff;border-radius:5px;display:flex;align-items:center;justify-content:center;overflow:hidden;transition:background .25s}
+nav{position:fixed;top:0;left:0;right:0;z-index:200;height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 40px;background:rgba(245,246,248,0.92);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--ss-border)}
+[data-theme="dark"] nav{background:rgba(28,31,36,0.92)}
+.logo{font-size:18px;font-weight:600;letter-spacing:-.01em;color:var(--ss-t1);text-decoration:none;display:flex;align-items:center;gap:8px}
+.logo-mark{width:26px;height:26px;background:var(--ss-surface-1);border:1px solid var(--ss-border);border-radius:var(--r-sm);display:flex;align-items:center;justify-content:center;overflow:hidden}
 .logo-mark img{width:100%;height:100%;object-fit:contain;display:block}
 .nav-links{display:flex;align-items:center;gap:28px;list-style:none}
-.nav-links a{font-size:13px;color:var(--t2);text-decoration:none;transition:color .15s}
-.nav-links a:hover{color:var(--t1)}
+.nav-links a{font-size:13px;font-weight:500;color:var(--ss-t2);text-decoration:none;transition:color var(--dur-fast) var(--ease-out)}
+.nav-links a:hover{color:var(--ss-t1)}
 .nav-right{display:flex;align-items:center;gap:8px}
-.theme-toggle{width:34px;height:34px;border:1px solid var(--bdr2);border-radius:8px;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;line-height:1;transition:background .15s,border-color .15s;color:var(--t2)}
+.theme-toggle{width:34px;height:34px;border:1px solid var(--ss-border-strong);border-radius:var(--r-md);background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;line-height:1;transition:background var(--dur-fast) var(--ease-out),border-color var(--dur-fast) var(--ease-out);color:var(--ss-t2)}
 .theme-toggle svg{width:17px;height:17px;display:block}
 /* light テーマ時は月(=dark へ切替), dark テーマ時は太陽(=light へ切替)を表示 */
 [data-theme="light"] .theme-toggle .ic-sun{display:none}
 [data-theme="dark"] .theme-toggle .ic-moon{display:none}
-.theme-toggle:hover{background:var(--blue-lt);border-color:var(--blue)}
-.lang-toggle{width:34px;height:34px;border:1px solid var(--bdr2);border-radius:8px;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--t2);transition:background .15s,border-color .15s,color .15s}
-.lang-toggle:hover{background:var(--blue-lt);border-color:var(--blue);color:var(--blue)}
+.theme-toggle:hover{background:var(--ss-brand-tint);border-color:var(--ss-brand)}
+.lang-toggle{width:34px;height:34px;border:1px solid var(--ss-border-strong);border-radius:var(--r-md);background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:var(--ss-t2);transition:background var(--dur-fast) var(--ease-out),border-color var(--dur-fast) var(--ease-out),color var(--dur-fast) var(--ease-out)}
+.lang-toggle:hover{background:var(--ss-brand-tint);border-color:var(--ss-brand);color:var(--ss-brand)}
 html[lang=en] .ja{display:none}
 html[lang=ja] .en{display:none}
-.btn-login{font-family:'MigMix 1P',sans-serif;font-size:12px;font-weight:700;padding:7px 18px;border:1px solid var(--bdr2);border-radius:8px;color:var(--t2);background:transparent;text-decoration:none;transition:all .15s}
-.btn-login:hover{color:var(--t1);border-color:var(--blue);background:var(--blue-lt)}
+.btn-login{font-size:12px;font-weight:600;padding:7px 18px;border:1px solid var(--ss-border-strong);border-radius:var(--r-md);color:var(--ss-t2);background:transparent;text-decoration:none;transition:all var(--dur-fast) var(--ease-out)}
+.btn-login:hover{color:var(--ss-t1);border-color:var(--ss-brand);background:var(--ss-brand-tint)}
 .hamburger{display:none;flex-direction:column;justify-content:center;gap:4px;width:36px;height:36px;cursor:pointer;background:none;border:none;padding:4px}
-.hamburger span{display:block;height:1.5px;background:var(--t2);transition:transform .2s,opacity .2s;border-radius:2px}
+.hamburger span{display:block;height:1.5px;background:var(--ss-t2);transition:transform var(--dur-fast) var(--ease-out),opacity var(--dur-fast) var(--ease-out);border-radius:1px}
 .hamburger.open span:nth-child(1){transform:translateY(5.5px) rotate(45deg)}
 .hamburger.open span:nth-child(2){opacity:0}
 .hamburger.open span:nth-child(3){transform:translateY(-5.5px) rotate(-45deg)}
 /* mobile-menu は <nav> なので nav{} の backdrop-filter/半透明背景を継承する。
    開いた時に背景が透けて文字が読めない問題を防ぐため、不透明背景を明示し
-   継承した backdrop-filter を打ち消す (light/dark それぞれ指定)。 */
-.mobile-menu{display:none;position:fixed;top:58px;left:0;right:0;z-index:190;height:auto;max-height:calc(100vh - 58px);overflow-y:auto;padding:0;align-items:stretch;justify-content:flex-start;background:#ffffff !important;backdrop-filter:none !important;-webkit-backdrop-filter:none !important;border-bottom:1px solid var(--bdr);flex-direction:column;box-shadow:0 10px 28px rgba(0,0,0,0.22)}
-[data-theme="dark"] .mobile-menu{background:#0d1829 !important}
+   継承した backdrop-filter を打ち消す。 */
+.mobile-menu{display:none;position:fixed;top:58px;left:0;right:0;z-index:190;height:auto;max-height:calc(100vh - 58px);overflow-y:auto;padding:0;align-items:stretch;justify-content:flex-start;background:var(--ss-surface-1) !important;backdrop-filter:none !important;-webkit-backdrop-filter:none !important;border-bottom:1px solid var(--ss-border);flex-direction:column;box-shadow:var(--e3)}
 .mobile-menu.open{display:flex}
-.mobile-menu a{font-size:14px;color:var(--t1);text-decoration:none;padding:14px 24px;border-bottom:1px solid var(--bdr);transition:color .15s,background .15s}
-.mobile-menu a:hover{color:var(--t1);background:var(--blue-lt)}
+.mobile-menu a{font-size:14px;color:var(--ss-t1);text-decoration:none;padding:14px 24px;border-bottom:1px solid var(--ss-border);transition:color var(--dur-fast) var(--ease-out),background var(--dur-fast) var(--ease-out)}
+.mobile-menu a:hover{color:var(--ss-t1);background:var(--ss-brand-tint)}
 
-.hero{position:relative;background:var(--hero-bg);padding:60px 40px 80px;overflow:hidden}
-.hero::before{content:'';position:absolute;top:-100px;right:-100px;width:560px;height:560px;background:radial-gradient(circle,rgba(26,111,224,0.16) 0%,transparent 65%);pointer-events:none;z-index:0}
-.hero::after{content:'';position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,0.022) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.022) 1px,transparent 1px);background-size:52px 52px;pointer-events:none;z-index:0}
+/* ── Hero: 光量の高いネイビーではなく soft gray canvas + 極薄い hairline グリッド。
+   Precision on Gray の核心表現 (§0/§7)。 ── */
+.hero{position:relative;background:var(--ss-bg-app);padding:104px 40px 72px;overflow:hidden;border-bottom:1px solid var(--ss-border)}
+.hero::before{content:'';position:absolute;inset:0;background-image:linear-gradient(var(--ss-border) 1px,transparent 1px),linear-gradient(90deg,var(--ss-border) 1px,transparent 1px);background-size:56px 56px;opacity:.5;-webkit-mask-image:radial-gradient(ellipse 70% 60% at 50% 0%,#000 40%,transparent 100%);mask-image:radial-gradient(ellipse 70% 60% at 50% 0%,#000 40%,transparent 100%);pointer-events:none;z-index:0}
 .hero-inner{position:relative;z-index:1;max-width:1160px;margin:0 auto;display:grid;grid-template-columns:1fr 520px;gap:56px;align-items:center}
-h1.hero-h1{font-family:'MigMix 1P',sans-serif;font-size:clamp(22px,2.6vw,34px);font-weight:700;line-height:1.2;color:var(--hero-t1);margin-bottom:12px;letter-spacing:.01em}
-.hero-tagline{font-size:clamp(18px,2vw,24px);font-weight:600;color:#6fb0ff;margin-bottom:20px}
-.hero-sub{font-size:14px;color:var(--hero-t2);line-height:1.9;max-width:480px;margin-bottom:28px}
+.hero-kicker{display:inline-flex;align-items:center;gap:8px;font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--ss-brand);margin-bottom:16px;text-transform:uppercase}
+.hero-kicker::before{content:'';width:18px;height:2px;background:var(--ss-brand)}
+h1.hero-h1{font-size:clamp(26px,3.2vw,40px);font-weight:600;line-height:1.2;letter-spacing:-.014em;color:var(--ss-t1);margin-bottom:14px}
+.hero-tagline{font-size:clamp(16px,1.6vw,19px);font-weight:500;color:var(--ss-t2);line-height:1.7;margin-bottom:22px;max-width:520px}
+.hero-sub{font-size:14px;color:var(--ss-t2);line-height:1.9;max-width:480px;margin-bottom:28px}
 .hero-tags{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:36px}
-.htag{font-family:'MigMix 1P',sans-serif;font-size:11px;color:rgba(220,235,255,0.92);border:1px solid rgba(255,255,255,0.18);background:rgba(255,255,255,0.07);padding:4px 10px;border-radius:3px;letter-spacing:.02em}
-.hero-actions{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
-.btn-cta{display:inline-flex;align-items:center;gap:10px;font-family:'MigMix 1P',sans-serif;font-size:15px;font-weight:700;padding:14px 32px;background:var(--blue2);color:#fff;border:none;border-radius:8px;text-decoration:none;cursor:pointer;letter-spacing:.03em;transition:background .15s}
-.btn-cta:hover{background:#1a78f5}
-.btn-ghost{font-size:13px;color:var(--hero-t2);text-decoration:none;padding:6px 2px;border-bottom:1px solid rgba(138,170,207,0.3);transition:color .15s,border-color .15s}
-.btn-ghost:hover{color:var(--hero-t1);border-color:var(--hero-t2)}
+.htag{font-size:11px;font-weight:500;color:var(--ss-t2);border:1px solid var(--ss-border);background:var(--ss-surface-1);padding:4px 10px;border-radius:var(--r-sm);letter-spacing:.01em}
+.hero-actions{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.btn-cta{display:inline-flex;align-items:center;gap:10px;font-size:14px;font-weight:600;padding:12px 28px;background:var(--ss-brand);color:#fff;border:none;border-radius:var(--r-md);text-decoration:none;cursor:pointer;letter-spacing:.01em;transition:background var(--dur-fast) var(--ease-out)}
+.btn-cta:hover{background:var(--ss-brand-hover)}
+.btn-ghost{font-size:13px;font-weight:500;color:var(--ss-t2);text-decoration:none;padding:6px 2px;border-bottom:1px solid var(--ss-border-strong);transition:color var(--dur-fast) var(--ease-out),border-color var(--dur-fast) var(--ease-out)}
+.btn-ghost:hover{color:var(--ss-t1);border-color:var(--ss-t2)}
 
 /* hero-panel: 実アプリ (解析ダッシュボード) のスクリーンショット。テーマに合わせて切替 */
-.hero-panel{background:var(--surface);border:1px solid var(--bdr);border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+.hero-panel{background:var(--ss-surface-1);border:1px solid var(--ss-border);border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--e3)}
 .hero-shot{display:block;width:100%;height:auto}
 .hero-shot-dark{display:none}
 [data-theme="dark"] .hero-shot-light{display:none}
 [data-theme="dark"] .hero-shot-dark{display:block}
 
 .sec{padding:80px 40px}.sec-wrap{max-width:1160px;margin:0 auto}
-.sec-kicker{display:inline-flex;align-items:center;gap:8px;font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--blue);margin-bottom:10px}
-.sec-kicker::before{content:'';width:18px;height:2px;background:var(--blue)}
-.sec-h2{font-family:'MigMix 1P',sans-serif;font-size:clamp(19px,2.2vw,26px);font-weight:700;color:var(--t1);line-height:1.3;margin-bottom:10px}
-.sec-sub{font-size:14px;color:var(--t2);line-height:1.85;max-width:520px;margin-bottom:48px}
+.sec-kicker{display:inline-flex;align-items:center;gap:8px;font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--ss-brand);margin-bottom:10px;text-transform:uppercase}
+.sec-kicker::before{content:'';width:18px;height:2px;background:var(--ss-brand)}
+.sec-h2{font-size:clamp(19px,2.2vw,26px);font-weight:600;letter-spacing:-.014em;color:var(--ss-t1);line-height:1.3;margin-bottom:10px}
+.sec-sub{font-size:14px;color:var(--ss-t2);line-height:1.85;max-width:520px;margin-bottom:48px}
 
-.sec-features{background:var(--feat-bg);border-top:1px solid var(--bdr);border-bottom:1px solid var(--bdr)}
-.feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--bdr);border:1px solid var(--bdr);border-radius:8px;overflow:hidden}
-.feat-card{background:var(--feat-bg);padding:28px 24px 24px;position:relative;overflow:hidden;transition:background .15s}
-.feat-card:hover{background:var(--feat-hover)}
-.feat-icon{width:38px;height:38px;border-radius:8px;background:var(--blue-md);border:1px solid rgba(16,89,200,0.15);display:flex;align-items:center;justify-content:center;margin-bottom:14px}
+.sec-features{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);border-bottom:1px solid var(--ss-border)}
+.feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--ss-border);border:1px solid var(--ss-border);border-radius:var(--r-lg);overflow:hidden}
+.feat-card{background:var(--ss-surface-1);padding:28px 24px 24px;position:relative;overflow:hidden;transition:background var(--dur-fast) var(--ease-out)}
+.feat-card:hover{background:var(--ss-surface-2)}
+.feat-icon{width:36px;height:36px;border-radius:var(--r-md);background:var(--ss-brand-tint);border:1px solid var(--ss-border);display:flex;align-items:center;justify-content:center;margin-bottom:14px}
 .feat-icon svg{width:17px;height:17px}
-.feat-h{font-family:'MigMix 1P',sans-serif;font-size:15px;font-weight:700;color:var(--t1);margin-bottom:8px}
-.feat-p{font-size:13px;color:var(--t2);line-height:1.8}
+.feat-h{font-size:15px;font-weight:600;color:var(--ss-t1);margin-bottom:8px}
+.feat-p{font-size:13px;color:var(--ss-t2);line-height:1.8}
 
-.sec-uc{background:var(--bg)}
+.sec-uc{background:var(--ss-bg-app)}
 .uc-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
-.uc-card{background:var(--card-bg);border:1px solid var(--card-bdr);border-radius:8px;padding:24px;display:flex;gap:18px;transition:border-color .15s}
-.uc-card:hover{border-color:var(--blue2)}
-.uc-h{font-family:'MigMix 1P',sans-serif;font-size:14px;font-weight:700;color:var(--t1);margin-bottom:6px}
-.uc-p{font-size:12px;color:var(--t2);line-height:1.8}
+.uc-card{background:var(--ss-surface-1);border:1px solid var(--ss-border);border-radius:var(--r-lg);padding:24px;display:flex;gap:18px;box-shadow:var(--e1);transition:border-color var(--dur-fast) var(--ease-out),box-shadow var(--dur-fast) var(--ease-out),transform var(--dur-fast) var(--ease-out)}
+.uc-card:hover{border-color:var(--ss-border-strong);box-shadow:var(--e2);transform:translateY(-1px)}
+.uc-h{font-size:14px;font-weight:600;color:var(--ss-t1);margin-bottom:6px}
+.uc-p{font-size:12px;color:var(--ss-t2);line-height:1.8}
 
-.sec-data{background:var(--data-bg);border-top:1px solid var(--bdr);border-bottom:1px solid var(--bdr);padding:56px 40px}
-.data-body{font-size:13px;color:var(--t2);line-height:1.85;max-width:640px}
-.data-body a{color:var(--blue);text-decoration:none}
+.sec-data{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);border-bottom:1px solid var(--ss-border);padding:56px 40px}
+.data-body{font-size:13px;color:var(--ss-t2);line-height:1.85;max-width:640px}
+.data-body a{color:var(--ss-brand);text-decoration:none}
 .data-body a:hover{text-decoration:underline}
 
-.sec-fcta{background:var(--fcta-bg);padding:88px 40px;text-align:center;border-top:1px solid var(--bdr)}
-.fcta-h{font-family:'MigMix 1P',sans-serif;font-size:clamp(19px,2.2vw,26px);font-weight:700;color:var(--t1);margin-bottom:12px}
-.fcta-sub{font-size:14px;color:var(--t2);margin-bottom:32px}
+.sec-fcta{background:var(--ss-bg-app);padding:88px 40px;text-align:center;border-top:1px solid var(--ss-border)}
+.fcta-h{font-size:clamp(19px,2.2vw,26px);font-weight:600;letter-spacing:-.014em;color:var(--ss-t1);margin-bottom:12px}
+.fcta-sub{font-size:14px;color:var(--ss-t2);margin-bottom:32px}
 
-footer{background:var(--footer-bg);padding:24px 40px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;transition:background .25s}
-.footer-logo{font-size:17px;font-weight:700;letter-spacing:.05em;color:var(--footer-t);text-decoration:none;display:flex;align-items:center;gap:8px}
-.footer-logo .logo-mark{background:rgba(255,255,255,0.12);font-size:12px}
+footer{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);padding:24px 40px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;transition:background var(--dur-base) var(--ease-out)}
+.footer-logo{font-size:15px;font-weight:600;letter-spacing:-.01em;color:var(--ss-t1);text-decoration:none;display:flex;align-items:center;gap:8px}
 .footer-links{display:flex;flex-wrap:wrap;justify-content:center;gap:12px 20px;list-style:none}
-.footer-links a{font-size:11px;color:var(--footer-lt);text-decoration:none;white-space:nowrap}
-.footer-links a:hover{color:var(--footer-t)}
-.footer-copy{font-size:11px;color:var(--footer-cp)}
+.footer-links a{font-size:12px;color:var(--ss-t2);text-decoration:none;white-space:nowrap;transition:color var(--dur-fast) var(--ease-out)}
+.footer-links a:hover{color:var(--ss-t1)}
+.footer-copy{font-size:11px;color:var(--ss-t3)}
 
 .mob-bar{display:none}
 
-.beta-banner{background:#0a4d8c;padding:14px 40px;margin-top:58px}
+.beta-banner{background:var(--ss-brand-tint);border-bottom:1px solid var(--ss-border);padding:14px 40px;margin-top:58px}
 .beta-banner-inner{max-width:1160px;margin:0 auto;display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;text-align:center}
-.beta-badge{font-size:11px;font-weight:700;letter-spacing:.14em;color:rgba(255,255,255,0.92);background:rgba(255,255,255,0.14);border:1px solid rgba(255,255,255,0.24);border-radius:4px;padding:3px 10px;white-space:nowrap;flex-shrink:0}
-.beta-text{font-size:13px;color:rgba(255,255,255,0.86);line-height:1.7;margin:0}
-.beta-text strong{color:#ffffff;font-weight:700}
-.beta-text a{color:#a8d8f8;text-decoration:none;border-bottom:1px solid rgba(168,216,248,0.38);transition:color .15s,border-color .15s}
-.beta-text a:hover{color:#fff;border-bottom-color:rgba(255,255,255,0.55)}
+.beta-badge{font-size:11px;font-weight:700;letter-spacing:.14em;color:var(--ss-brand);background:transparent;border:1px solid var(--ss-brand);border-radius:var(--r-sm);padding:3px 10px;white-space:nowrap;flex-shrink:0}
+.beta-text{font-size:13px;color:var(--ss-t2);line-height:1.7;margin:0}
+.beta-text strong{color:var(--ss-t1);font-weight:600}
+.beta-text a{color:var(--ss-brand);text-decoration:none;border-bottom:1px solid var(--ss-brand);transition:border-color var(--dur-fast) var(--ease-out)}
+.beta-text a:hover{border-bottom-color:transparent}
 
 @media(max-width:767px){
   .beta-banner{padding:12px 16px}.beta-text{font-size:12px}
   nav{padding:0 16px}.nav-links{display:none}.btn-login{display:none}.hamburger{display:flex}
-  .hero{padding:40px 20px 96px}.hero-inner{grid-template-columns:1fr;gap:0}.hero-panel{margin-top:32px}
-  h1.hero-h1{font-size:clamp(26px,7.5vw,36px)}.hero-tagline{font-size:clamp(16px,5vw,22px)}
+  .hero{padding:48px 20px 88px}.hero-inner{grid-template-columns:1fr;gap:0}.hero-panel{margin-top:32px}
+  h1.hero-h1{font-size:clamp(24px,7vw,32px)}.hero-tagline{font-size:clamp(15px,4.5vw,18px)}
   .hero-sub{font-size:13px;margin-bottom:20px}.hero-actions{flex-direction:column;align-items:stretch}
   .hero-tags{margin-bottom:28px;gap:6px}.htag{font-size:10px;padding:3px 8px}
-  .btn-cta{width:100%;justify-content:center;font-size:15px;padding:15px}.btn-ghost{display:none}
+  .btn-cta{width:100%;justify-content:center;font-size:15px;padding:14px}.btn-ghost{display:none}
   .sec{padding:52px 20px}.sec-sub{margin-bottom:28px}.feat-grid{grid-template-columns:1fr}
   .uc-grid{grid-template-columns:1fr}.uc-card{padding:18px 16px;gap:12px}
   .sec-data{padding:44px 20px}.sec-fcta{padding:56px 20px 100px}
   footer{padding:20px 16px;flex-direction:column;padding-bottom:84px}
-  .mob-bar{display:flex;position:fixed;bottom:0;left:0;right:0;z-index:300;padding:10px 14px;background:rgba(255,255,255,0.97);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid var(--bdr);box-shadow:0 -2px 12px rgba(0,0,0,0.08);gap:10px;align-items:center;transition:background .25s}
-  [data-theme="dark"] .mob-bar{background:rgba(7,16,29,0.97);box-shadow:0 -2px 12px rgba(0,0,0,0.32)}
+  .mob-bar{display:flex;position:fixed;bottom:0;left:0;right:0;z-index:300;padding:10px 14px;background:rgba(245,246,248,0.96);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid var(--ss-border);box-shadow:0 -2px 12px rgba(16,24,40,.08);gap:10px;align-items:center;transition:background var(--dur-base) var(--ease-out)}
+  [data-theme="dark"] .mob-bar{background:rgba(28,31,36,0.96);box-shadow:0 -2px 12px rgba(0,0,0,.32)}
   .mob-bar .btn-cta{flex:1;justify-content:center;font-size:15px;padding:13px}
-  .mob-bar-login{font-family:'MigMix 1P',sans-serif;font-size:12px;font-weight:700;padding:12px 16px;border:1px solid var(--bdr2);border-radius:6px;color:var(--t2);background:var(--surface);text-decoration:none;white-space:nowrap;transition:all .15s}
-  .mob-bar-login:hover{color:var(--t1);border-color:var(--blue)}
+  .mob-bar-login{font-size:12px;font-weight:600;padding:12px 16px;border:1px solid var(--ss-border-strong);border-radius:var(--r-md);color:var(--ss-t2);background:var(--ss-surface-1);text-decoration:none;white-space:nowrap;transition:all var(--dur-fast) var(--ease-out)}
+  .mob-bar-login:hover{color:var(--ss-t1);border-color:var(--ss-brand)}
 }
 @media(min-width:768px) and (max-width:1023px){
   nav{padding:0 28px}.nav-links{gap:18px}.nav-links li:nth-child(3){display:none}
-  .hero{padding:44px 28px 64px}.hero-inner{grid-template-columns:1fr 380px;gap:36px}
-  h1.hero-h1{font-size:clamp(26px,4vw,38px)}.sec{padding:64px 28px}
+  .hero{padding:88px 28px 56px}.hero-inner{grid-template-columns:1fr 380px;gap:36px}
+  h1.hero-h1{font-size:clamp(26px,4vw,34px)}.sec{padding:64px 28px}
   .sec-data{padding:48px 28px}.sec-fcta{padding:64px 28px}footer{padding:22px 28px}
 }
 @media(min-width:1024px){
@@ -215,7 +276,7 @@ footer{background:var(--footer-bg);padding:24px 40px;display:flex;align-items:ce
   <a href="/contact"><span class="ja">お問い合わせ</span><span class="en">Contact</span></a>
   <a href="/status"><span class="ja">稼働状況</span><span class="en">Status</span></a>
   <a href="https://app.shuttle-scope.com/#/register"><span class="ja">新規登録</span><span class="en">Register</span></a>
-  <a href="https://app.shuttle-scope.com/login" style="color:var(--blue);font-weight:700"><span class="ja">ログイン →</span><span class="en">Login →</span></a>
+  <a href="https://app.shuttle-scope.com/login" style="color:var(--ss-brand);font-weight:600"><span class="ja">ログイン →</span><span class="en">Login →</span></a>
 </nav>
 
 <div class="beta-banner">
@@ -231,6 +292,7 @@ footer{background:var(--footer-bg);padding:24px 40px;display:flex;align-items:ce
 <section class="hero">
   <div class="hero-inner">
     <div>
+      <div class="hero-kicker"><span class="ja">バドミントン分析ワークベンチ</span><span class="en">Badminton Analysis Workbench</span></div>
       <h1 class="hero-h1"><span class="ja">試合をデータで説明する</span><span class="en">Explain the Match with Data</span></h1>
       <p class="hero-tagline"><span class="ja">ラリーをストローク単位で記録し、配球・得点期待値・戦術傾向を統計モデルで数値化します。</span><span class="en">Record rallies stroke by stroke and quantify shot placement, scoring expectation, and tactical patterns with statistical models.</span></p>
       <p class="hero-sub"><span class="ja">ストローク単位の記録から試合構造を統計的に可視化するバドミントン分析ワークベンチです。コーチ・アナリスト・選手それぞれの役割に応じた分析レイヤーを提供します。</span><span class="en">ShuttleScope is a sports data analysis platform for badminton match analysis. It provides statistical visualization and performance analysis tools for coaches, analysts, and players.</span></p>
@@ -261,17 +323,17 @@ footer{background:var(--footer-bg);padding:24px 40px;display:flex;align-items:ce
     </div>
     <div class="feat-grid">
       <div class="feat-card">
-        <div class="feat-icon"><svg viewBox="0 0 17 17" fill="none" stroke="var(--blue)" stroke-width="1.6"><polygon points="3,2.5 13.5,8.5 3,14.5"/></svg></div>
+        <div class="feat-icon"><svg viewBox="0 0 17 17" fill="none" stroke="var(--ss-brand)" stroke-width="1.6"><polygon points="3,2.5 13.5,8.5 3,14.5"/></svg></div>
         <div class="feat-h"><span class="ja">ストローク単位のアノテーション</span><span class="en">Stroke-level Annotation</span></div>
         <p class="feat-p"><span class="ja">ラリーをストローク単位で記録します。配球位置・球種・着地点を逐次入力することで、統計モデルの精度が上がります。</span><span class="en">Record each rally stroke by stroke. Logging shot position, type, and landing zone improves the accuracy of statistical models.</span></p>
       </div>
       <div class="feat-card">
-        <div class="feat-icon"><svg viewBox="0 0 17 17" fill="none" stroke="var(--blue)" stroke-width="1.6"><circle cx="8.5" cy="5.5" r="2.5"/><path d="M3 14.5c0-3.1 2.4-5.5 5.5-5.5s5.5 2.4 5.5 5.5"/></svg></div>
+        <div class="feat-icon"><svg viewBox="0 0 17 17" fill="none" stroke="var(--ss-brand)" stroke-width="1.6"><circle cx="8.5" cy="5.5" r="2.5"/><path d="M3 14.5c0-3.1 2.4-5.5 5.5-5.5s5.5 2.4 5.5 5.5"/></svg></div>
         <div class="feat-h"><span class="ja">統計モデルによる試合解析</span><span class="en">Statistical Match Analysis</span></div>
         <p class="feat-p"><span class="ja">Markov モデル・EPV・コートヒートマップ・疲労指標により試合構造を多角的に可視化します。記録が増えるほど分析の解像度が上がります。</span><span class="en">Markov models, EPV, court heatmaps, and fatigue indicators visualize match structure from multiple angles. Resolution improves as more data is recorded.</span></p>
       </div>
       <div class="feat-card">
-        <div class="feat-icon"><svg viewBox="0 0 17 17" fill="none" stroke="var(--blue)" stroke-width="1.6"><circle cx="3" cy="8.5" r="1.8"/><circle cx="14" cy="4" r="1.8"/><circle cx="14" cy="13" r="1.8"/><line x1="4.7" y1="7.6" x2="12.3" y2="4.9"/><line x1="4.7" y1="9.4" x2="12.3" y2="12.1"/></svg></div>
+        <div class="feat-icon"><svg viewBox="0 0 17 17" fill="none" stroke="var(--ss-brand)" stroke-width="1.6"><circle cx="3" cy="8.5" r="1.8"/><circle cx="14" cy="4" r="1.8"/><circle cx="14" cy="13" r="1.8"/><line x1="4.7" y1="7.6" x2="12.3" y2="4.9"/><line x1="4.7" y1="9.4" x2="12.3" y2="12.1"/></svg></div>
         <div class="feat-h"><span class="ja">役割に応じた分析レイヤー</span><span class="en">Role-based Analysis Layers</span></div>
         <p class="feat-p"><span class="ja">コーチ・アナリスト・選手で参照できる情報の粒度が異なります。それぞれの判断に必要なデータを、適切な形で届けます。</span><span class="en">Coaches, analysts, and players each see a different level of detail. The right data is delivered to the right person in the right form.</span></p>
       </div>
@@ -306,7 +368,7 @@ footer{background:var(--footer-bg);padding:24px 40px;display:flex;align-items:ce
   <div class="sec-kicker" style="justify-content:center">Get Started</div>
   <h2 class="fcta-h"><span class="ja">利用を開始する</span><span class="en">Get started</span></h2>
   <p class="fcta-sub"><span class="ja">アカウントをお持ちの方はそのままログインできます。</span><span class="en">Existing accounts can log in directly.</span></p>
-  <a href="https://app.shuttle-scope.com/login" class="btn-cta" style="font-size:16px;padding:16px 40px"><span class="ja">アプリを開く</span><span class="en">Open App</span></a>
+  <a href="https://app.shuttle-scope.com/login" class="btn-cta" style="font-size:15px;padding:14px 36px"><span class="ja">アプリを開く</span><span class="en">Open App</span></a>
 </section>
 
 <footer>

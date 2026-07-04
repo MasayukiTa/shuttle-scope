@@ -33,7 +33,7 @@ export function CoGTimeline({ points, side, width = 360, height = 140, className
     return (
       <div
         role="status"
-        className={`flex items-center justify-center rounded border border-slate-600 bg-slate-800/50 text-slate-300 text-sm ${className ?? ''}`}
+        className={`flex items-center justify-center rounded-ss-lg border border-[color:var(--ss-border)] bg-[var(--ss-surface-2)] text-[var(--ss-t2)] text-sm ${className ?? ''}`}
         style={{ width, height }}
       >
         {t('analysis.cog.empty')}
@@ -54,11 +54,11 @@ export function CoGTimeline({ points, side, width = 360, height = 140, className
   return (
     <figure className={className}>
       <div className="mb-1 flex items-center justify-between gap-2">
-        <figcaption className="text-sm text-slate-200">
+        <figcaption className="text-sm text-[var(--ss-t1)]">
           {t('analysis.cog.title')}
           {side ? ` (${side})` : null}
         </figcaption>
-        {/* サンプル数で信頼度表示（500/2000 球未満で警告） */}
+        {/* サンプル数で信頼度表示（500/2000 球未満で警告）— ConfidenceBadge 自体は不変 */}
         <ConfidenceBadge sampleSize={n} compact />
       </div>
       <svg
@@ -66,7 +66,7 @@ export function CoGTimeline({ points, side, width = 360, height = 140, className
         height={height}
         role="img"
         aria-label={t('analysis.cog.title')}
-        className="rounded border border-slate-600 bg-slate-900"
+        className="rounded-ss-lg border border-[color:var(--ss-border)] bg-[var(--ss-surface-2)]"
       >
         {/* 50% ライン */}
         <line
@@ -74,12 +74,12 @@ export function CoGTimeline({ points, side, width = 360, height = 140, className
           x2={width - 10}
           y1={height / 2}
           y2={height / 2}
-          stroke="#475569"
+          stroke="var(--ss-border-strong)"
           strokeDasharray="3 3"
         />
         <path d={path} stroke="#f59e0b" strokeWidth={2} fill="none" />
       </svg>
-      <p className="mt-1 text-xs text-slate-400">
+      <p className="ss-num mt-1 text-xs text-[var(--ss-t3)]">
         {t('analysis.cog.axis_hint')}
       </p>
     </figure>

@@ -47,7 +47,7 @@ export function StateActionValueCard({ playerId, filters }: Props) {
   const rows = (Array.isArray(data?.data) ? data.data : []).slice(0, 10)
 
   return (
-    <div className={`${card} rounded-lg p-4 space-y-3`}>
+    <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-3`}>
       <div className="flex items-center justify-between">
         <h3 className={`text-sm font-semibold ${textHeading}`}>{t('auto.StateActionValueCard.k1')}</h3>
         <EvidenceBadge tier="research" evidenceLevel="exploratory" sampleSize={meta?.sample_size} recommendationAllowed={false} />
@@ -74,19 +74,19 @@ export function StateActionValueCard({ playerId, filters }: Props) {
             </thead>
             <tbody>
               {rows.map((row, i) => (
-                <tr key={i} className={`${rowBorder} ${rowHover}`}>
+                <tr key={i} className={`${rowBorder} ${rowHover} transition-colors duration-fast`}>
                   <td className={`py-1.5 pr-2 whitespace-nowrap ${textMuted}`}>
                     {SCORE_PHASE_LABELS[row.state.score_phase] ?? row.state.score_phase}
                     /{RALLY_BUCKET_LABELS[row.state.rally_bucket] ?? row.state.rally_bucket}
                     /{ROLE_LABELS[row.state.player_role] ?? row.state.player_role}
                   </td>
                   <td className={`py-1.5 pr-2 font-medium ${textSecondary}`}>{row.best_action}</td>
-                  <td className="py-1.5 pr-2 text-right num-cell">
+                  <td className="py-1.5 pr-2 text-right num-cell ss-num">
                     <span className={row.best_q > 0 ? 'text-emerald-500' : 'text-orange-500'}>
                       {t('auto.StateActionValueCard.pp_value', { v: `${row.best_q > 0 ? '+' : ''}${(row.best_q * 100).toFixed(1)}` })}
                     </span>
                   </td>
-                  <td className={`py-1.5 text-right text-[10px] num-cell ${textFaint}`}>
+                  <td className={`py-1.5 text-right text-[10px] num-cell ss-num ${textFaint}`}>
                     [{(row.best_q_ci_low * 100).toFixed(1)}–{(row.best_q_ci_high * 100).toFixed(1)}]
                   </td>
                 </tr>

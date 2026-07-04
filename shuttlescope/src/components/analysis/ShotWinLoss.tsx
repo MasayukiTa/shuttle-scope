@@ -60,9 +60,9 @@ function CustomTooltip({ active, payload, label }: import('@/utils/rechartsTypes
   return (
     <div style={getTooltipStyle(isLight)} className="px-3 py-2">
       <p className="font-semibold mb-1" style={{ color: headingColor }}>{label}</p>
-      <p style={{ color: WIN }}>{t('auto.ShotWinLoss.points_won', { n: win })}</p>
-      <p style={{ color: LOSS }}>{t('auto.ShotWinLoss.points_lost', { n: lose })}</p>
-      <p style={{ color: subColor }}>{t('auto.ShotWinLoss.win_rate', { n: rate })}</p>
+      <p className="ss-num" style={{ color: WIN }}>{t('auto.ShotWinLoss.points_won', { n: win })}</p>
+      <p className="ss-num" style={{ color: LOSS }}>{t('auto.ShotWinLoss.points_lost', { n: lose })}</p>
+      <p className="ss-num" style={{ color: subColor }}>{t('auto.ShotWinLoss.win_rate', { n: rate })}</p>
     </div>
   )
 }
@@ -127,22 +127,22 @@ export function ShotWinLoss({ playerId, filters = DEFAULT_FILTERS }: ShotWinLoss
         >
           <XAxis
             type="number"
-            tick={{ fill: '#9ca3af', fontSize: 11 }}
+            tick={{ fill: 'var(--ss-t3)', fontSize: 11 }}
             allowDecimals={false}
           />
           <YAxis
             type="category"
             dataKey="name"
             width={88}
-            tick={{ fill: '#d1d5db', fontSize: 11 }}
+            tick={{ fill: 'var(--ss-t2)', fontSize: 11 }}
           />
           <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
           {/* 得点 (WIN=coolwarm低端青) */}
-          <Bar dataKey="win_count" stackId="wl" fill={WIN} name="得点" radius={[0, 0, 0, 0]}>
+          <Bar dataKey="win_count" stackId="wl" fill={WIN} name="得点" radius={[2, 0, 0, 2]}>
             {chartData.map((_, i) => <Cell key={i} fill={WIN} />)}
           </Bar>
           {/* 失点 (LOSS=coolwarm高端赤) */}
-          <Bar dataKey="lose_count" stackId="wl" fill={LOSS} name="失点" radius={[0, 3, 3, 0]}>
+          <Bar dataKey="lose_count" stackId="wl" fill={LOSS} name="失点" radius={[0, 2, 2, 0]}>
             {chartData.map((_, i) => <Cell key={i} fill={LOSS} />)}
           </Bar>
         </BarChart>
@@ -158,11 +158,11 @@ export function ShotWinLoss({ playerId, filters = DEFAULT_FILTERS }: ShotWinLoss
               <span className="w-[88px] shrink-0 text-gray-400 truncate">{d.name}</span>
               <div className="flex-1 bg-gray-700 rounded-full h-1.5 min-w-0">
                 <div
-                  className="h-1.5 rounded-full transition-all"
+                  className="h-1.5 rounded-full transition-all duration-base ease-out"
                   style={{ width: barWidth, backgroundColor: WIN }}
                 />
               </div>
-              <span className="w-10 text-right text-gray-300 shrink-0">{ratePct}%</span>
+              <span className="w-10 text-right text-gray-300 shrink-0 ss-num">{ratePct}%</span>
             </div>
           )
         })}

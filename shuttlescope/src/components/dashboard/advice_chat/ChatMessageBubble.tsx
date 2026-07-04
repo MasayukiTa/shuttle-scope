@@ -90,7 +90,7 @@ export function ChatMessageBubble({
         <div className="flex flex-col items-end max-w-[75%]">
           <div
             title={tsText || undefined}
-            className={`rounded-2xl rounded-tr-sm px-3 py-2 text-sm leading-relaxed bg-blue-600 text-white ${
+            className={`rounded-2xl rounded-tr-sm px-3 py-2 text-sm leading-relaxed bg-[color:var(--ss-brand)] text-white ${
               msg._pending ? 'opacity-70' : ''
             }`}
           >

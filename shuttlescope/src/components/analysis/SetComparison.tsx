@@ -51,13 +51,13 @@ function CustomTooltip({ active, payload, label }: import('@/utils/rechartsTypes
   const row = (payload[0]?.payload ?? {}) as { win_rate_pct?: number; avg_rally_length?: number }
   const winRate = row.win_rate_pct ?? 0
   const avgRally = row.avg_rally_length ?? 0
-  const headingColor = isLight ? '#0f172a' : '#f9fafb'
-  const subColor = isLight ? '#475569' : '#d1d5db'
+  const headingColor = isLight ? 'var(--ss-t1)' : 'var(--ss-t1)'
+  const subColor = isLight ? 'var(--ss-t2)' : 'var(--ss-t2)'
   return (
     <div style={getTooltipStyle(isLight)} className="px-3 py-2">
       <p className="font-semibold mb-1" style={{ color: headingColor }}>{label}</p>
-      <p style={{ color: WIN }}>{t('auto.SetComparison.win_rate', { v: typeof winRate === 'number' ? winRate.toFixed(1) : winRate })}</p>
-      <p style={{ color: subColor }}>{t('auto.SetComparison.avg_rally', { v: typeof avgRally === 'number' ? avgRally.toFixed(1) : avgRally })}</p>
+      <p style={{ color: WIN }} className="ss-num">{t('auto.SetComparison.win_rate', { v: typeof winRate === 'number' ? winRate.toFixed(1) : winRate })}</p>
+      <p style={{ color: subColor }} className="ss-num">{t('auto.SetComparison.avg_rally', { v: typeof avgRally === 'number' ? avgRally.toFixed(1) : avgRally })}</p>
     </div>
   )
 }
@@ -90,7 +90,7 @@ export function SetComparison({ playerId, chartHeight = 200, filters = DEFAULT_F
 
   if (isLoading) {
     return (
-      <div className="text-gray-500 text-sm py-8 text-center">{t('auto.SetComparison.k1')}</div>
+      <div className="text-[var(--ss-t3)] text-sm py-8 text-center">{t('auto.SetComparison.k1')}</div>
     )
   }
 
@@ -99,7 +99,7 @@ export function SetComparison({ playerId, chartHeight = 200, filters = DEFAULT_F
 
   if (sets.length === 0 || sampleSize === 0) {
     return (
-      <div className="text-gray-500 text-sm py-4 text-center">
+      <div className="text-[var(--ss-t3)] text-sm py-4 text-center">
         {t('auto.SetComparison.insufficient')}
       </div>
     )
@@ -124,11 +124,11 @@ export function SetComparison({ playerId, chartHeight = 200, filters = DEFAULT_F
           margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
           barCategoryGap="35%"
         >
-          <XAxis dataKey="name" tick={{ fill: '#9ca3af', fontSize: 12 }} />
+          <XAxis dataKey="name" tick={{ fill: 'var(--ss-t3)', fontSize: 12 }} />
           <YAxis
             domain={[0, 100]}
             tickFormatter={(v) => `${v}%`}
-            tick={{ fill: '#9ca3af', fontSize: 11 }}
+            tick={{ fill: 'var(--ss-t3)', fontSize: 11 }}
           />
           <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
           <Bar dataKey="win_rate_pct" radius={[4, 4, 0, 0]} name="勝率">
@@ -144,21 +144,21 @@ export function SetComparison({ playerId, chartHeight = 200, filters = DEFAULT_F
         {sets.map((s, _i) => (
           <div
             key={s.set_number}
-            className="bg-gray-700/30 rounded-lg px-3 py-2 text-center"
+            className="bg-[var(--ss-surface-2)] border border-[var(--ss-border)] rounded-ss-md px-3 py-2 text-center"
           >
-            <p className="text-xs text-gray-400 mb-1">
+            <p className="text-xs text-[var(--ss-t3)] mb-1">
               {s.label || `第${s.set_number}セット`}
             </p>
             <p
-              className="text-lg font-bold"
+              className="text-lg font-bold ss-num"
               style={{ color: lightSafe(perfColor(s.win_rate), !isLight) }}
             >
               {(s.win_rate * 100).toFixed(1)}%
             </p>
-            <p className="text-xs text-gray-500 mt-0.5">
+            <p className="text-xs text-[var(--ss-t3)] mt-0.5">
               {t('auto.SetComparison.avg_strokes', { v: s.avg_rally_length.toFixed(1) })}
             </p>
-            <p className="text-xs text-gray-600">
+            <p className="text-xs text-[var(--ss-t3)]">
               {t('auto.SetComparison.n_rallies', { n: s.total_rallies })}
             </p>
           </div>

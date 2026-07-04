@@ -76,7 +76,7 @@ export function GrowthJudgmentCard({ playerId, minMatches = 5 }: GrowthJudgmentC
     <div className="space-y-3">
       {/* 総合判定バッジ */}
       <div
-        className="flex items-center gap-3 rounded-lg px-4 py-3"
+        className="flex items-center gap-3 rounded-ss-lg px-4 py-3"
         style={{ backgroundColor: style.bg, border: `1.5px solid ${style.border}` }}
       >
         <span className="text-2xl font-bold" style={{ color: textColor }}>
@@ -89,11 +89,11 @@ export function GrowthJudgmentCard({ playerId, minMatches = 5 }: GrowthJudgmentC
           </p>
         </div>
         <div className="ml-auto text-right">
-          <p className="text-xs" style={{ color: mutedColor }}>
+          <p className="text-xs ss-num" style={{ color: mutedColor }}>
             {t('auto._shared.n_matches', { n: data.annotated_match_count ?? data.match_count })}{t('auto.GrowthJudgmentCard.analyzed')}
           </p>
           {data.judgment === 'pending' && (
-            <p className="text-[10px]" style={{ color: mutedColor }}>
+            <p className="text-[10px] ss-num" style={{ color: mutedColor }}>
               {(data.annotated_match_count ?? 0) < data.min_matches_required
                 ? `判定に${t('auto._shared.n_matches', { n: data.min_matches_required })}以上のアノテーションが必要`
                 : 'データ蓄積中（傾向算出に時間が必要）'}
@@ -112,7 +112,7 @@ export function GrowthJudgmentCard({ playerId, minMatches = 5 }: GrowthJudgmentC
             return (
               <div
                 key={key}
-                className="flex items-center justify-between px-3 py-1.5 rounded"
+                className="flex items-center justify-between px-3 py-1.5 rounded-ss-sm"
                 style={{ backgroundColor: ms.bg }}
               >
                 <span className="text-xs" style={{ color: isLight ? '#1e293b' : '#d1d5db' }}>
@@ -120,7 +120,7 @@ export function GrowthJudgmentCard({ playerId, minMatches = 5 }: GrowthJudgmentC
                 </span>
                 <div className="flex items-center gap-2">
                   <span className="text-xs" style={{ color: mText }}>{ms.icon}</span>
-                  <span className="text-xs font-mono" style={{ color: mText }}>{deltaStr}</span>
+                  <span className="text-xs font-mono ss-num" style={{ color: mText }}>{deltaStr}</span>
                 </div>
               </div>
             )

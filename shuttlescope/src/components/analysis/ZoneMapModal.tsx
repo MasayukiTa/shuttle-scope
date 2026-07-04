@@ -190,14 +190,14 @@ export function ZoneMapModal({
   return (
     <div className="fixed inset-0 z-50 bg-black/85 flex flex-col">
       {/* ヘッダー */}
-      <div className={`flex items-center justify-between px-6 py-3 border-b shrink-0 ${isLight ? 'bg-white border-gray-200' : 'bg-gray-900 border-gray-700'}`}>
+      <div className={`flex items-center justify-between px-6 py-3 border-b shrink-0 bg-[var(--ss-surface-1)] border-[var(--ss-border)]`}>
         <div>
           <span className={`font-semibold text-base ${textHeading}`}>{title}</span>
           <span className={`ml-3 text-xs ${textMuted}`}>{t('auto.ZoneMapModal.n_only', { n: sampleSize })}</span>
         </div>
         <button
           onClick={onClose}
-          className={`p-1.5 rounded transition-colors ${isLight ? 'text-gray-500 hover:bg-gray-100 hover:text-gray-700' : 'text-gray-400 hover:bg-gray-700 hover:text-white'}`}
+          className="p-1.5 rounded-ss-md duration-base ease-out text-[var(--ss-t3)] hover:bg-[var(--ss-surface-2)] hover:text-[var(--ss-t1)]"
           title={t('auto.ZoneMapModal.k5')}
         >
           <MIcon name="close" size={18} />
@@ -205,7 +205,7 @@ export function ZoneMapModal({
       </div>
 
       {/* コンテンツ */}
-      <div className={`flex-1 overflow-auto ${isLight ? 'bg-gray-50' : 'bg-gray-900'}`}>
+      <div className="flex-1 overflow-auto bg-[var(--ss-bg-app)]">
         <div className="flex flex-col lg:flex-row gap-6 p-6 min-h-full max-w-4xl mx-auto">
 
           {/* 左: ゾーングリッド */}
@@ -221,19 +221,19 @@ export function ZoneMapModal({
                       <button
                         key={zone}
                         onClick={() => setSelectedZone(zone === selectedZone ? null : zone)}
-                        className="flex-1 rounded-lg p-2 text-center transition-all cursor-pointer focus:outline-none"
+                        className="flex-1 rounded-ss-md p-2 text-center duration-base ease-out cursor-pointer focus:outline-none"
                         style={{
                           backgroundColor: getZoneBg(zone),
                           border: isSelected
                             ? `2px solid ${accentColor}`
                             : isHighlight
                             ? `1.5px solid ${accentColor}`
-                            : `1px solid ${isLight ? '#e2e8f0' : 'transparent'}`,
+                            : `1px solid var(--ss-border)`,
                           minHeight: '72px',
                           boxShadow: isSelected ? `0 0 0 2px ${accentColor}40` : undefined,
                         }}
                       >
-                        <p className="text-xs font-semibold mb-1" style={{ color: isLight ? '#1e293b' : '#ffffff' }}>
+                        <p className="text-xs font-semibold mb-1" style={{ color: 'var(--ss-t1)' }}>
                           {ZONE_LABELS[zone]}
                         </p>
                         {getZoneLabel(zone)}
@@ -252,13 +252,13 @@ export function ZoneMapModal({
           {/* 右: ゾーン詳細パネル */}
           <div className="flex-1 min-w-0">
             {selectedZone == null ? (
-              <div className={`flex items-center justify-center h-full min-h-[200px] rounded-lg ${isLight ? 'bg-gray-100' : 'bg-gray-800'}`}>
+              <div className="flex items-center justify-center h-full min-h-[200px] rounded-ss-md bg-[var(--ss-surface-2)]">
                 <p className={`text-sm text-center ${textMuted}`}>
                   {t('auto.ZoneMapModal.click_zone_hint')}
                 </p>
               </div>
             ) : loadingDetail ? (
-              <div className={`flex items-center justify-center h-full min-h-[200px] rounded-lg ${isLight ? 'bg-gray-100' : 'bg-gray-800'}`}>
+              <div className="flex items-center justify-center h-full min-h-[200px] rounded-ss-md bg-[var(--ss-surface-2)]">
                 <p className={`text-sm ${textMuted}`}>{t('auto.ZoneMapModal.k2')}</p>
               </div>
             ) : detailData ? (
@@ -320,24 +320,24 @@ function ZoneDetailPanel({ type, data, isLight, card, textHeading, textMuted, te
   return (
     <div className="space-y-4">
       {/* 基本統計 */}
-      <div className={`${card} rounded-lg p-4`}>
+      <div className={`${card} rounded-ss-lg p-4`}>
         <div className="flex items-baseline gap-2 mb-3">
           <span className={`text-lg font-bold ${textHeading}`}>{zoneName}</span>
           <span className={`text-sm font-mono ${textMuted}`}>({data.zone})</span>
         </div>
         <div className="grid grid-cols-3 gap-3 text-center">
           <div>
-            <p className={`text-2xl font-bold ${textHeading}`}>{data.total_count}</p>
+            <p className={`text-2xl font-bold ss-num ${textHeading}`}>{data.total_count}</p>
             <p className={`text-[11px] ${textMuted}`}>{t('auto.ZoneMapModal.k3')}</p>
           </div>
           <div>
-            <p className="text-2xl font-bold" style={{ color: accentColor }}>
+            <p className="text-2xl font-bold ss-num" style={{ color: accentColor }}>
               {rateValue != null ? `${(rateValue * 100).toFixed(0)}%` : '—'}
             </p>
             <p className={`text-[11px] ${textMuted}`}>{rateLabel}</p>
           </div>
           <div>
-            <p className="text-2xl font-bold" style={{ color: accentColor }}>{countValue ?? 0}</p>
+            <p className="text-2xl font-bold ss-num" style={{ color: accentColor }}>{countValue ?? 0}</p>
             <p className={`text-[11px] ${textMuted}`}>{countLabel}</p>
           </div>
         </div>
@@ -345,7 +345,7 @@ function ZoneDetailPanel({ type, data, isLight, card, textHeading, textMuted, te
 
       {/* ショット種別分布 */}
       {data.top_shot_types.length > 0 && (
-        <div className={`${card} rounded-lg p-4`}>
+        <div className={`${card} rounded-ss-lg p-4`}>
           <p className={`text-xs font-semibold ${textHeading} mb-3`}>{shotLabel}</p>
           <div className="space-y-2">
             {data.top_shot_types.map(({ shot_type, count }) => {
@@ -354,13 +354,13 @@ function ZoneDetailPanel({ type, data, isLight, card, textHeading, textMuted, te
               return (
                 <div key={shot_type} className="flex items-center gap-2">
                   <span className={`text-[11px] ${textMuted} w-28 truncate`}>{label}</span>
-                  <div className="flex-1 rounded h-3 overflow-hidden" style={{ backgroundColor: barBg }}>
+                  <div className="flex-1 rounded-ss-sm h-3 overflow-hidden" style={{ backgroundColor: barBg }}>
                     <div
-                      className="h-full rounded"
+                      className="h-full rounded-ss-sm"
                       style={{ width: `${ratio * 100}%`, backgroundColor: accentColor, opacity: 0.75 }}
                     />
                   </div>
-                  <span className={`text-[11px] ${textFaint} w-6 text-right`}>{count}</span>
+                  <span className={`text-[11px] ss-num ${textFaint} w-6 text-right`}>{count}</span>
                 </div>
               )
             })}
@@ -370,7 +370,7 @@ function ZoneDetailPanel({ type, data, isLight, card, textHeading, textMuted, te
 
       {/* 打点分布（どこから打ったか） */}
       {data.hit_zones.length > 0 && (
-        <div className={`${card} rounded-lg p-4`}>
+        <div className={`${card} rounded-ss-lg p-4`}>
           <p className={`text-xs font-semibold ${textHeading} mb-3`}>{hitZoneLabel}</p>
           <div className="space-y-1.5">
             {data.hit_zones.map(({ zone, count }) => {
@@ -380,13 +380,13 @@ function ZoneDetailPanel({ type, data, isLight, card, textHeading, textMuted, te
                 <div key={zone} className="flex items-center gap-2">
                   <span className={`text-[11px] ${textMuted} w-12`}>{label}</span>
                   <span className={`text-[10px] font-mono ${textFaint} w-8`}>({zone})</span>
-                  <div className="flex-1 rounded h-3 overflow-hidden" style={{ backgroundColor: barBg }}>
+                  <div className="flex-1 rounded-ss-sm h-3 overflow-hidden" style={{ backgroundColor: barBg }}>
                     <div
-                      className="h-full rounded"
-                      style={{ width: `${ratio * 100}%`, backgroundColor: isLight ? '#64748b' : '#6b7280' }}
+                      className="h-full rounded-ss-sm"
+                      style={{ width: `${ratio * 100}%`, backgroundColor: 'var(--ss-t3)' }}
                     />
                   </div>
-                  <span className={`text-[11px] ${textFaint} w-6 text-right`}>{count}</span>
+                  <span className={`text-[11px] ss-num ${textFaint} w-6 text-right`}>{count}</span>
                 </div>
               )
             })}

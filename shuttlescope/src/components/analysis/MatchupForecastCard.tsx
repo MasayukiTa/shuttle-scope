@@ -56,7 +56,7 @@ function MatchupRow({
   const isSparse = ciWidth > 0.3
 
   return (
-    <div className={`rounded-lg p-3 space-y-2 border ${border} ${cardInner}`}>
+    <div className={`rounded-ss-md p-3 space-y-2 border ${border} ${cardInner}`}>
       {/* ─ ヘッダ: 対戦相手名 + p_win + n_h2h ── */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <span className={`text-[11px] font-medium ${textMuted} truncate max-w-[120px]`}>
@@ -64,18 +64,18 @@ function MatchupRow({
         </span>
         <div className="flex items-center gap-3 shrink-0">
           <span
-            className="text-base font-bold font-mono"
+            className="text-base font-bold font-mono ss-num"
             style={{ color: barColor }}
           >
             {pct1(pWin)}
           </span>
-          <span className={`text-[10px] ${textFaint}`}>
+          <span className={`text-[10px] ${textFaint} ss-num`}>
             {t('auto.MatchupForecastCard.n_h2h', { n: entry.n_h2h })}
           </span>
         </div>
       </div>
 
-      {/* ─ p_win バー + CI 帯 ── */}
+      {/* ─ p_win バー + CI 帯 (真の pill 進捗バーなので rounded-full 維持) ── */}
       <div className="relative h-3 w-full rounded-full bg-gray-700/40 overflow-hidden">
         {/* p_win バー */}
         <div
@@ -100,13 +100,13 @@ function MatchupRow({
 
       {/* ─ CI テキスト ── */}
       <div className="flex items-center justify-between gap-2">
-        <p className={`text-[10px] ${textFaint}`}>
+        <p className={`text-[10px] ${textFaint} ss-num`}>
           {t('auto.MatchupForecastCard.ci_range', {
             low: pct1(ciLow),
             high: pct1(ciHigh),
           })}
         </p>
-        {/* 疎データ警告 */}
+        {/* 疎データ警告（真のバッジ chip なので rounded-full 維持） */}
         {isSparse && (
           <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 shrink-0">
             <MIcon name="warning" size={9} />
@@ -150,7 +150,7 @@ export function MatchupForecastCard({ playerId }: Props) {
   const isEmpty = !forecastData || sortedMatchups.length === 0
 
   return (
-    <div className={`${card} rounded-lg p-4 space-y-3`}>
+    <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-3`}>
       {/* ─ ヘッダ ── */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <h3 className={`text-sm font-semibold ${textHeading} flex items-center gap-1.5`}>
@@ -191,15 +191,15 @@ export function MatchupForecastCard({ playerId }: Props) {
         <>
           {/* 全体強度推定（strength が null でない場合のみ） */}
           {forecastData?.strength && (
-            <div className={`rounded-lg p-2.5 border ${border} ${cardInner}`}>
+            <div className={`rounded-ss-md p-2.5 border ${border} ${cardInner}`}>
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <span className={`text-[11px] ${textMuted}`}>
                   {t('auto.MatchupForecastCard.strength_label')}
-                  <span className="ml-1 font-mono font-semibold text-blue-400">
+                  <span className="ml-1 font-mono font-semibold text-blue-400 ss-num">
                     {forecastData.strength.value.toFixed(3)}
                   </span>
                 </span>
-                <span className={`text-[10px] ${textFaint}`}>
+                <span className={`text-[10px] ${textFaint} ss-num`}>
                   {t('auto.MatchupForecastCard.strength_ci', {
                     low: forecastData.strength.ci_low.toFixed(3),
                     high: forecastData.strength.ci_high.toFixed(3),
@@ -212,7 +212,7 @@ export function MatchupForecastCard({ playerId }: Props) {
 
           {/* データなし / 対戦なし → graceful empty state */}
           {isEmpty ? (
-            <div className={`rounded-lg p-3 border ${border} ${cardInner} opacity-60`}>
+            <div className={`rounded-ss-md p-3 border ${border} ${cardInner} opacity-60`}>
               <div className="flex items-center gap-1.5">
                 <MIcon name="info" size={14} className="text-amber-400 shrink-0" />
                 <p className={`text-[11px] ${textMuted}`}>

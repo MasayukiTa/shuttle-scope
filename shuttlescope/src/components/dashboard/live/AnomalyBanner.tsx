@@ -61,14 +61,14 @@ export function AnomalyBanner({ playerId, matchId, windowSize = 5 }: Props) {
   return (
     <div
       data-tutorial="dashboard.anomaly"
-      className="rounded-lg border border-amber-500 bg-amber-50 text-amber-900 p-3 flex items-start gap-3"
+      className="rounded-ss-lg border border-[var(--ss-warning-border)] bg-[var(--ss-warning-bg)] text-[var(--ss-warning-text)] p-3 flex items-start gap-3"
     >
       <MIcon name="warning" size={24} aria-hidden />
       <div className="flex-1">
         <div className="font-semibold text-sm">{t('auto.AnomalyBanner.title')}</div>
         <div className="text-sm mt-1 whitespace-pre-wrap">{headline}</div>
         <div className="mt-2 flex items-center gap-2 text-xs">
-          <span className="inline-flex items-center rounded border border-amber-500 bg-white px-2 py-0.5 font-medium">
+          <span className="inline-flex items-center rounded-ss-sm border border-[var(--ss-warning-border)] bg-[var(--ss-surface-1)] px-2 py-0.5 font-medium ss-num">
             {t('auto.AnomalyBanner.confidence', { pct: confPct })}
           </span>
           <button
@@ -84,29 +84,29 @@ export function AnomalyBanner({ playerId, matchId, windowSize = 5 }: Props) {
         type="button"
         aria-label={t('auto.AnomalyBanner.dismiss')}
         onClick={() => setDismissed(true)}
-        className="text-amber-900 hover:text-amber-700 px-2"
+        className="text-[var(--ss-warning-text)] hover:opacity-70 transition-opacity duration-fast ease-out px-2"
       >
         ×
       </button>
 
       {detailOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--ss-bg-overlay)]"
           onClick={() => setDetailOpen(false)}
         >
           <div
-            className="bg-white text-gray-900 rounded-lg p-4 max-w-md w-[90%] shadow-xl"
+            className="bg-[var(--ss-surface-1)] text-[var(--ss-t1)] border border-[var(--ss-border)] rounded-ss-lg p-4 max-w-md w-[90%] shadow-pop"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="font-semibold mb-2">{t('auto.AnomalyBanner.detail_title')}</div>
-            <div className="text-xs mb-2 text-gray-600">
+            <div className="text-xs mb-2 text-[var(--ss-t3)] ss-num">
               KL={data.evidence?.kl ?? '-'} / threshold={data.evidence?.threshold ?? '-'} / N={data.evidence?.recent_strokes ?? 0}
             </div>
             <ul className="text-sm space-y-1">
               {(data.evidence?.shot_diffs_pp ?? []).map((d) => (
                 <li key={d.shot_type} className="flex justify-between">
                   <span>{d.shot_type}</span>
-                  <span className={d.delta_pp >= 0 ? 'text-amber-700' : 'text-blue-700'}>
+                  <span className={`ss-num ${d.delta_pp >= 0 ? 'text-[var(--ss-warning-text)]' : 'text-[var(--ss-brand)]'}`}>
                     {d.delta_pp >= 0 ? '+' : ''}
                     {d.delta_pp}pp (N={d.recent_n})
                   </span>
@@ -116,7 +116,7 @@ export function AnomalyBanner({ playerId, matchId, windowSize = 5 }: Props) {
             <button
               type="button"
               onClick={() => setDetailOpen(false)}
-              className="mt-3 px-3 py-1 rounded bg-gray-100 hover:bg-gray-200 text-sm"
+              className="mt-3 px-3 py-1 rounded-ss-md bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] transition-colors duration-fast ease-out text-sm"
             >
               {t('auto.AnomalyBanner.close')}
             </button>

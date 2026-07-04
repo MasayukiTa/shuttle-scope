@@ -50,8 +50,8 @@ export function BenchModeToggle({ active, onToggle }: Props) {
       aria-pressed={active}
       className={
         active
-          ? 'inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-gray-900 text-white text-sm font-semibold border border-gray-700'
-          : 'inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-gray-100 text-gray-800 text-sm font-medium border border-gray-300 hover:bg-gray-200'
+          ? 'inline-flex items-center gap-2 px-3 py-1.5 rounded-ss-pill bg-[var(--ss-brand)] text-white text-sm font-semibold border border-[var(--ss-brand-hover)] transition-colors duration-fast ease-out'
+          : 'inline-flex items-center gap-2 px-3 py-1.5 rounded-ss-pill bg-[var(--ss-surface-2)] text-[var(--ss-t1)] text-sm font-medium border border-[var(--ss-border-strong)] hover:bg-[var(--ss-surface-3)] transition-colors duration-fast ease-out'
       }
     >
       <span aria-hidden="true">{active ? '●' : '○'}</span>

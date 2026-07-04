@@ -205,7 +205,11 @@ function Sidebar() {
     { to: '/settings', label: t('nav.settings'), icon: 'settings' },
   ]
 
+  // v2 §6 サイドバー: 白 surface-1 + hairline border（ライト既定）。ダークは surface-1/border 継続。
   const sidebarBg = isLight ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'
+  // アクティブ項目: brand-tint 背景 + brand テキスト + 2px 左レール（v2 §6 sidebar nav recipe）。
+  const navActiveCls = isLight ? 'text-[var(--ss-brand)] font-medium' : 'text-blue-400 bg-blue-900/30'
+  const navInactiveCls = isLight ? 'text-gray-500 hover:text-gray-800 hover:bg-gray-100' : 'text-gray-400 hover:text-white hover:bg-gray-700'
 
   // 折りたたみ時はあらゆるブレークポイントでアイコンのみのスリムレール (w-16) に固定し、
   // lg+ のラベル展開 (w-56) を抑止する。展開時は従来のレスポンシブ挙動を完全維持する。
@@ -272,7 +276,7 @@ function Sidebar() {
           aria-expanded={!collapsed}
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           className={clsx(
-            'mx-2 mt-2 flex items-center gap-1 p-2 rounded text-xs transition-colors',
+            'mx-2 mt-2 flex items-center gap-1 p-2 rounded-ss-md text-xs transition-colors duration-base ease-out',
             collapsed ? 'justify-center' : 'justify-center lg:justify-start lg:gap-3 lg:px-3',
             isLight ? 'text-gray-500 hover:text-gray-800 hover:bg-gray-100' : 'text-gray-400 hover:text-white hover:bg-gray-700',
           )}
@@ -290,28 +294,41 @@ function Sidebar() {
               clsx(
                 // 展開時: md は icon+短縮ラベル縦積み、lg+ は icon+フルラベル横並び。
                 // 折りたたみ時: 全幅でアイコン中央のみ。
-                'flex items-center gap-1 p-2 rounded text-xs w-full',
+                // v2 §6: アクティブは brand-tint 背景 + 2px brand 左レール。crisp radius。
+                'relative flex items-center gap-1 p-2 rounded-ss-md text-xs w-full transition-colors duration-base ease-out',
                 rowLayoutCls,
-                isActive
-                  ? (isLight ? 'text-blue-600 bg-blue-50' : 'text-blue-400 bg-blue-900/30')
-                  : (isLight ? 'text-gray-500 hover:text-gray-800 hover:bg-gray-100' : 'text-gray-400 hover:text-white hover:bg-gray-700')
+                isActive ? navActiveCls : navInactiveCls,
               )
             }
+            style={({ isActive }) =>
+              isActive ? { backgroundColor: 'var(--ss-brand-tint)' } : undefined
+            }
           >
-            <div className="relative shrink-0">
-              <MIcon name={icon} size={20} />
-              {badge ? (
-                <span className="absolute -top-2 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] leading-4 text-center">
-                  {badge > 99 ? '99+' : badge}
-                </span>
-              ) : null}
-            </div>
-            {/* md: 短縮 / lg+: フルラベル (折りたたみ時はどちらも非表示) */}
-            {showShortLabel && (
-              <span className="text-[9px] leading-none lg:hidden">{shortLabel ?? label.slice(0, 4)}</span>
-            )}
-            {showFullLabel && (
-              <span className="hidden lg:inline truncate">{label}</span>
+            {({ isActive }) => (
+              <>
+                {isActive && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute left-0 top-1 bottom-1 w-[2px] rounded-full"
+                    style={{ backgroundColor: 'var(--ss-brand)' }}
+                  />
+                )}
+                <div className="relative shrink-0">
+                  <MIcon name={icon} size={20} />
+                  {badge ? (
+                    <span className="absolute -top-2 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] leading-4 text-center">
+                      {badge > 99 ? '99+' : badge}
+                    </span>
+                  ) : null}
+                </div>
+                {/* md: 短縮 / lg+: フルラベル (折りたたみ時はどちらも非表示) */}
+                {showShortLabel && (
+                  <span className="text-[9px] leading-none lg:hidden">{shortLabel ?? label.slice(0, 4)}</span>
+                )}
+                {showFullLabel && (
+                  <span className="hidden lg:inline truncate">{label}</span>
+                )}
+              </>
             )}
           </NavLink>
         ))}
@@ -321,7 +338,7 @@ function Sidebar() {
             onClick={handleLogout}
             title={t('auth.logout')}
             className={clsx(
-              'mb-2 flex items-center gap-1 p-2 rounded text-xs w-full transition-colors',
+              'mb-2 flex items-center gap-1 p-2 rounded-ss-md text-xs w-full transition-colors duration-base ease-out',
               rowLayoutCls,
               isLight ? 'text-gray-500 hover:text-red-700 hover:bg-red-50' : 'text-gray-400 hover:text-red-300 hover:bg-gray-700',
             )}
@@ -338,7 +355,7 @@ function Sidebar() {
             onClick={toggleTheme}
             title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
             className={clsx(
-              'flex items-center gap-1 p-2 rounded text-xs w-full transition-colors',
+              'flex items-center gap-1 p-2 rounded-ss-md text-xs w-full transition-colors duration-base ease-out',
               rowLayoutCls,
               isLight ? 'text-gray-500 hover:text-gray-800 hover:bg-gray-100' : 'text-gray-400 hover:text-white hover:bg-gray-700',
             )}
@@ -374,9 +391,9 @@ function Sidebar() {
               to={to}
               className={({ isActive }) =>
                 clsx(
-                  'flex flex-col items-center gap-0.5 py-2 px-4 text-[10px] min-w-0',
+                  'flex flex-col items-center gap-0.5 py-2 px-4 text-[10px] min-w-0 transition-colors duration-base ease-out',
                   isActive
-                    ? (isLight ? 'text-blue-600' : 'text-blue-400')
+                    ? (isLight ? 'text-[var(--ss-brand)]' : 'text-blue-400')
                     : (isLight ? 'text-gray-500' : 'text-gray-400')
                 )
               }

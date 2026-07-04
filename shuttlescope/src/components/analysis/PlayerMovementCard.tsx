@@ -247,9 +247,9 @@ function CumulativeDistanceChart({
         return (
           <g key={i}>
             <line x1={PAD.l} y1={y} x2={PAD.l + innerW} y2={y}
-              stroke={isLight ? '#e5e7eb' : '#374151'} strokeWidth={0.5} strokeDasharray="2 2" />
+              stroke="var(--ss-border)" strokeWidth={0.5} strokeDasharray="2 2" />
             <text x={PAD.l - 3} y={y + 3} textAnchor="end" fontSize={8}
-              fill={isLight ? '#9ca3af' : '#6b7280'}>
+              fill="var(--ss-t3)" className="ss-num">
               {d >= 1000 ? `${(d / 1000).toFixed(1)}k` : Math.round(d)}
             </text>
           </g>
@@ -263,7 +263,7 @@ function CumulativeDistanceChart({
         return (
           <g key={i}>
             <text x={x} y={H - 3} textAnchor="middle" fontSize={8}
-              fill={isLight ? '#9ca3af' : '#6b7280'}>
+              fill="var(--ss-t3)" className="ss-num">
               {t >= 60 ? `${Math.round(t / 60)}m` : `${Math.round(t)}s`}
             </text>
           </g>
@@ -272,15 +272,15 @@ function CumulativeDistanceChart({
 
       {/* 軸 */}
       <line x1={PAD.l} y1={PAD.t} x2={PAD.l} y2={PAD.t + innerH}
-        stroke={isLight ? '#d1d5db' : '#4b5563'} strokeWidth={1} />
+        stroke="var(--ss-border-strong)" strokeWidth={1} />
       <line x1={PAD.l} y1={PAD.t + innerH} x2={PAD.l + innerW} y2={PAD.t + innerH}
-        stroke={isLight ? '#d1d5db' : '#4b5563'} strokeWidth={1} />
+        stroke="var(--ss-border-strong)" strokeWidth={1} />
 
       {/* Y軸ラベル */}
       <text
         x={8} y={PAD.t + innerH / 2}
         textAnchor="middle" fontSize={8}
-        fill={isLight ? '#9ca3af' : '#6b7280'}
+        fill="var(--ss-t3)"
         transform={`rotate(-90, 8, ${PAD.t + innerH / 2})`}
       >
         m
@@ -324,7 +324,7 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
   // ── ローディング ──────────────────────────────────────────────────────────
   if (isLoading) {
     return (
-      <div className={`${card} rounded-lg p-4`}>
+      <div className={`${card} rounded-ss-lg shadow-card p-4`}>
         <div className={`text-xs ${textMuted} animate-pulse`}>{t('auto.PlayerMovementCard.k1')}</div>
       </div>
     )
@@ -333,7 +333,7 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
   // ── データなし ───────────────────────────────────────────────────────────
   if (!stats?.available) {
     return (
-      <div className={`${card} rounded-lg p-4 space-y-1`}>
+      <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-1`}>
         <h3 className={`text-sm font-semibold ${textHeading}`}>{t('auto.PlayerMovementCard.k2')}</h3>
         <p className={`text-xs ${textMuted}`}>
           {stats?.reason ?? t('auto.PlayerMovementCard.no_tracks')}
@@ -347,7 +347,7 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
   const conf = stats.confidence
 
   return (
-    <div className={`${card} rounded-lg p-4 space-y-4`}>
+    <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-4`}>
       {/* ── ヘッダー ─────────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between">
         <div>
@@ -372,8 +372,8 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
             {...(canClick ? { onClick: onOpenGrid, type: 'button' } : {})}
             className={[
               'w-full text-left text-xs',
-              'bg-yellow-600/80 border border-yellow-400/60 rounded px-3 py-2',
-              canClick ? 'cursor-pointer hover:bg-yellow-500/80 active:bg-yellow-700/80 transition-colors' : '',
+              'bg-yellow-600/80 border border-yellow-400/60 rounded-ss-md px-3 py-2',
+              canClick ? 'cursor-pointer hover:bg-yellow-500/80 active:bg-yellow-700/80 transition-colors duration-fast' : '',
             ].join(' ')}
             style={{ color: '#fff' }}
           >
@@ -434,14 +434,14 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
           const dir = p.direction_breakdown
 
           return (
-            <div key={key} className={`${cardInner} rounded p-3 space-y-2`}>
+            <div key={key} className={`${cardInner} rounded-ss-md p-3 space-y-2`}>
               {/* 名前 + 主要数値 */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className={`w-2 h-2 rounded-full ${col.bg}`} />
                   <span className={`text-xs font-semibold ${textHeading}`}>{name}</span>
                 </div>
-                <span className={`text-[10px] ${textFaint}`}>{t('movement.n_frames', { n: p.frames_tracked, defaultValue: '{{n}} frames' })}</span>
+                <span className={`text-[10px] ${textFaint} ss-num`}>{t('movement.n_frames', { n: p.frames_tracked, defaultValue: '{{n}} frames' })}</span>
               </div>
 
               {/* 3指標グリッド */}
@@ -453,9 +453,9 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
                   { label: t('auto.PlayerMovementCard.k13'), value: `${speedKmh(p.avg_speed_m_per_s)}km/h` },
                   { label: t('auto.PlayerMovementCard.k14'), value: `${speedKmh(p.max_speed_m_per_s)}km/h` },
                 ].map(({ label, value }) => (
-                  <div key={label} className={`${isLight ? 'bg-gray-100' : 'bg-gray-800'} rounded p-1.5 text-center`}>
+                  <div key={label} className={`${isLight ? 'bg-gray-100' : 'bg-gray-800'} rounded-ss-sm p-1.5 text-center`}>
                     <div className={`text-[9px] ${textFaint} leading-none mb-0.5`}>{label}</div>
-                    <div className={`text-xs font-bold ${col.text}`}>{value}</div>
+                    <div className={`text-xs font-bold ss-num ${col.text}`}>{value}</div>
                   </div>
                 ))}
               </div>
@@ -463,7 +463,7 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
               {/* 方向内訳バー */}
               <div>
                 <div className={`text-[9px] ${textFaint} mb-1`}>{t('auto.PlayerMovementCard.k5')}</div>
-                <div className="flex h-2 w-full rounded overflow-hidden gap-px">
+                <div className="flex h-2 w-full rounded-ss-sm overflow-hidden gap-px">
                   {dir.lateral_pct > 0 && (
                     <div
                       className={DIR_COLORS.lateral.bar}
@@ -499,7 +499,7 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
 
       {/* ── 累積距離チャート ─────────────────────────────────────────────── */}
       {playerKeys.length > 0 && (
-        <div className={`${cardInner} rounded p-3 space-y-2`}>
+        <div className={`${cardInner} rounded-ss-md p-3 space-y-2`}>
           <div className="flex items-center justify-between">
             <span className={`text-xs font-medium ${textSecondary}`}>{t('auto.PlayerMovementCard.k6')}</span>
             <div className="flex gap-2">
@@ -524,7 +524,7 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
 
       {/* ── ゾーンヒートマップ ───────────────────────────────────────────── */}
       {playerKeys.length > 0 && (
-        <div className={`${cardInner} rounded p-3 space-y-2`}>
+        <div className={`${cardInner} rounded-ss-md p-3 space-y-2`}>
           <span className={`text-xs font-medium ${textSecondary}`}>{t('auto.PlayerMovementCard.k7')}</span>
           <div className="flex flex-wrap gap-4">
             {playerKeys.map((key) => {

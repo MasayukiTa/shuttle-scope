@@ -129,13 +129,13 @@ export function SetIntervalSummary({
       onClick={onClose}
     >
       <div
-        className="bg-gray-800 rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-700"
+        className="bg-[var(--ss-surface-1)] rounded-ss-lg w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-pop border border-[var(--ss-border)]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* ヘッダー */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--ss-border)]">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-bold text-white">
+            <span className="text-sm font-bold text-[var(--ss-t1)]">
               {titleOverride
                 ? titleOverride
                 : isMidGame
@@ -143,20 +143,20 @@ export function SetIntervalSummary({
                 : data ? `Set ${data.set_num} 終了` : 'セット終了サマリー'}
             </span>
             {isMidGame && midGameScoreA !== undefined && midGameScoreB !== undefined ? (
-              <span className="text-xs text-gray-400">
-                {playerAName} <span className="font-bold text-white">{midGameScoreA}</span>
+              <span className="text-xs text-[var(--ss-t2)]">
+                {playerAName} <span className="font-bold text-[var(--ss-t1)] ss-num">{midGameScoreA}</span>
                 {' — '}
-                <span className="font-bold text-white">{midGameScoreB}</span> {playerBName}
+                <span className="font-bold text-[var(--ss-t1)] ss-num">{midGameScoreB}</span> {playerBName}
               </span>
             ) : data && !isMidGame ? (
-              <span className="text-xs text-gray-400">
-                {playerAName} <span style={{ color: data.winner === 'player_a' ? WIN : LOSS }} className="font-bold">{data.score_a}</span>
+              <span className="text-xs text-[var(--ss-t2)]">
+                {playerAName} <span style={{ color: data.winner === 'player_a' ? WIN : LOSS }} className="font-bold ss-num">{data.score_a}</span>
                 {' — '}
-                <span style={{ color: data.winner === 'player_b' ? WIN : LOSS }} className="font-bold">{data.score_b}</span> {playerBName}
+                <span style={{ color: data.winner === 'player_b' ? WIN : LOSS }} className="font-bold ss-num">{data.score_b}</span> {playerBName}
               </span>
             ) : null}
           </div>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-300">
+          <button onClick={onClose} className="text-[var(--ss-t3)] hover:text-[var(--ss-t2)]">
             <MIcon name="close" size={16} />
           </button>
         </div>
@@ -168,10 +168,10 @@ export function SetIntervalSummary({
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
-                className={`px-3 py-1 text-xs rounded font-medium transition-colors ${
+                className={`px-3 py-1 text-xs rounded-ss-md font-medium duration-base ease-out ${
                   activeTab === tab.key
                     ? ''
-                    : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                    : 'bg-[var(--ss-surface-2)] text-[var(--ss-t3)] hover:bg-[var(--ss-surface-3)]'
                 }`}
                 style={activeTab === tab.key ? { backgroundColor: BAR, color: '#ffffff' } : {}}
               >
@@ -183,11 +183,11 @@ export function SetIntervalSummary({
 
         <div className="p-4 space-y-4">
           {isLoading && (
-            <p className="text-gray-500 text-sm text-center py-4">{t('analysis.loading')}</p>
+            <p className="text-[var(--ss-t3)] text-sm text-center py-4">{t('analysis.loading')}</p>
           )}
 
           {!isLoading && !data && (
-            <p className="text-gray-500 text-sm text-center py-4">{t('analysis.no_data')}</p>
+            <p className="text-[var(--ss-t3)] text-sm text-center py-4">{t('analysis.no_data')}</p>
           )}
 
           {/* ラリー詳細バナー（チャートでクリックされたラリー） */}
@@ -209,17 +209,17 @@ export function SetIntervalSummary({
               {/* ── 概要タブ ── */}
               {activeTab === 'overview' && (
                 <div className="grid grid-cols-3 gap-2 text-center">
-                  <div className="bg-gray-700/50 rounded p-2">
-                    <div className="text-[10px] text-gray-500 mb-0.5">{t('auto.SetIntervalSummary.k1')}</div>
-                    <div className="text-lg font-bold text-white">{data.total_rallies}</div>
+                  <div className="bg-[var(--ss-surface-2)] border border-[var(--ss-border)] rounded-ss-md p-2">
+                    <div className="text-[10px] text-[var(--ss-t3)] mb-0.5">{t('auto.SetIntervalSummary.k1')}</div>
+                    <div className="text-lg font-bold text-[var(--ss-t1)] ss-num">{data.total_rallies}</div>
                   </div>
-                  <div className="bg-gray-700/50 rounded p-2">
-                    <div className="text-[10px] text-gray-500 mb-0.5">{t('auto.SetIntervalSummary.k2')}</div>
-                    <div className="text-lg font-bold text-white">{data.avg_rally_length}</div>
+                  <div className="bg-[var(--ss-surface-2)] border border-[var(--ss-border)] rounded-ss-md p-2">
+                    <div className="text-[10px] text-[var(--ss-t3)] mb-0.5">{t('auto.SetIntervalSummary.k2')}</div>
+                    <div className="text-lg font-bold text-[var(--ss-t1)] ss-num">{data.avg_rally_length}</div>
                   </div>
-                  <div className="bg-gray-700/50 rounded p-2">
-                    <div className="text-[10px] text-gray-500 mb-0.5">{t('auto.SetIntervalSummary.k3')}</div>
-                    <div className="text-xs font-semibold text-white">{TREND_LABEL[data.rally_length_trend]?.split('（')[0]}</div>
+                  <div className="bg-[var(--ss-surface-2)] border border-[var(--ss-border)] rounded-ss-md p-2">
+                    <div className="text-[10px] text-[var(--ss-t3)] mb-0.5">{t('auto.SetIntervalSummary.k3')}</div>
+                    <div className="text-xs font-semibold text-[var(--ss-t1)]">{TREND_LABEL[data.rally_length_trend]?.split('（')[0]}</div>
                   </div>
                 </div>
               )}
@@ -230,15 +230,15 @@ export function SetIntervalSummary({
                   allowedRoles={['analyst', 'coach']}
                   fallback={
                     <div className="space-y-2">
-                      <p className="text-xs text-gray-400 font-medium">{t('analysis.set_summary.growth_area')}</p>
+                      <p className="text-xs text-[var(--ss-t2)] font-medium">{t('analysis.set_summary.growth_area')}</p>
                       {data.risky_shots.length === 0 ? (
-                        <p className="text-xs text-gray-500">{t('analysis.no_data')}</p>
+                        <p className="text-xs text-[var(--ss-t3)]">{t('analysis.no_data')}</p>
                       ) : (
                         <div className="space-y-1.5">
                           {data.risky_shots.map((s, i) => (
                             <div key={i} className="flex items-center gap-2 text-xs">
                               <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: LINE }} />
-                              <span className="text-gray-300">{s.shot_type_ja} — {t('analysis.set_summary.growth_hint')}</span>
+                              <span className="text-[var(--ss-t2)]">{s.shot_type_ja} — {t('analysis.set_summary.growth_hint')}</span>
                             </div>
                           ))}
                         </div>
@@ -248,27 +248,27 @@ export function SetIntervalSummary({
                 >
                   {data.recent_loss_patterns.length > 0 ? (
                     <div>
-                      <p className="text-xs font-semibold text-gray-400 mb-2 flex items-center gap-1">
+                      <p className="text-xs font-semibold text-[var(--ss-t3)] mb-2 flex items-center gap-1">
                         <MIcon name="warning" size={12} style={{ color: LOSS }} />
                         {t('analysis.set_summary.recent_loss_patterns')}{t('auto.SetIntervalSummary.recent_loss_paren')}
                       </p>
                       <div className="space-y-1.5">
                         {data.recent_loss_patterns.slice(0, 3).map((p, i) => (
                           <div key={i} className="flex items-center gap-2 text-xs">
-                            <span className="text-gray-500 font-mono w-3 shrink-0">{i + 1}</span>
-                            <span className="flex-1 text-gray-300 truncate">{p.label}</span>
+                            <span className="text-[var(--ss-t3)] font-mono w-3 shrink-0 ss-num">{i + 1}</span>
+                            <span className="flex-1 text-[var(--ss-t2)] truncate">{p.label}</span>
                             <div className="flex items-center gap-1.5 shrink-0">
-                              <div className="w-16 bg-gray-700 rounded-full h-1.5">
+                              <div className="w-16 bg-[var(--ss-surface-2)] rounded-full h-1.5">
                                 <div className="h-1.5 rounded-full" style={{ width: `${(p.pct * 100).toFixed(0)}%`, backgroundColor: LOSS }} />
                               </div>
-                              <span className="text-gray-400 w-8 text-right">{t('auto._shared.n_times', { n: p.count })}</span>
+                              <span className="text-[var(--ss-t3)] w-8 text-right ss-num">{t('auto._shared.n_times', { n: p.count })}</span>
                             </div>
                           </div>
                         ))}
                       </div>
                     </div>
                   ) : (
-                    <p className="text-xs text-gray-500 text-center py-3">{t('analysis.no_data')}</p>
+                    <p className="text-xs text-[var(--ss-t3)] text-center py-3">{t('analysis.no_data')}</p>
                   )}
                 </RoleGuard>
               )}
@@ -279,15 +279,15 @@ export function SetIntervalSummary({
                   allowedRoles={['analyst', 'coach']}
                   fallback={
                     <div className="space-y-2">
-                      <p className="text-xs text-gray-400 font-medium">{t('analysis.set_summary.growth_area')}</p>
+                      <p className="text-xs text-[var(--ss-t2)] font-medium">{t('analysis.set_summary.growth_area')}</p>
                       {data.risky_shots.length === 0 ? (
-                        <p className="text-xs text-gray-500">{t('analysis.no_data')}</p>
+                        <p className="text-xs text-[var(--ss-t3)]">{t('analysis.no_data')}</p>
                       ) : (
                         <div className="space-y-1.5">
                           {data.risky_shots.map((s, i) => (
                             <div key={i} className="flex items-center gap-2 text-xs">
                               <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: LINE }} />
-                              <span className="text-gray-300">{s.shot_type_ja} — {t('analysis.set_summary.growth_hint')}</span>
+                              <span className="text-[var(--ss-t2)]">{s.shot_type_ja} — {t('analysis.set_summary.growth_hint')}</span>
                             </div>
                           ))}
                         </div>
@@ -301,13 +301,13 @@ export function SetIntervalSummary({
                         {t('analysis.set_summary.effective_shots')}
                       </p>
                       {data.effective_shots.length === 0 ? (
-                        <p className="text-xs text-gray-600">{t('analysis.no_data')}</p>
+                        <p className="text-xs text-[var(--ss-t3)]">{t('analysis.no_data')}</p>
                       ) : (
                         <div className="space-y-1">
                           {data.effective_shots.map((s, i) => (
                             <div key={i} className="flex items-center justify-between text-xs">
-                              <span className="text-gray-300 truncate flex-1">{s.shot_type_ja}</span>
-                              <span className="font-semibold ml-2 shrink-0" style={{ color: WIN }}>
+                              <span className="text-[var(--ss-t2)] truncate flex-1">{s.shot_type_ja}</span>
+                              <span className="font-semibold ml-2 shrink-0 ss-num" style={{ color: WIN }}>
                                 {s.win_rate !== undefined ? `${(s.win_rate * 100).toFixed(0)}%` : '-'}
                               </span>
                             </div>
@@ -320,13 +320,13 @@ export function SetIntervalSummary({
                         {t('analysis.set_summary.risky_shots')}
                       </p>
                       {data.risky_shots.length === 0 ? (
-                        <p className="text-xs text-gray-600">{t('analysis.no_data')}</p>
+                        <p className="text-xs text-[var(--ss-t3)]">{t('analysis.no_data')}</p>
                       ) : (
                         <div className="space-y-1">
                           {data.risky_shots.map((s, i) => (
                             <div key={i} className="flex items-center justify-between text-xs">
-                              <span className="text-gray-300 truncate flex-1">{s.shot_type_ja}</span>
-                              <span className="font-semibold ml-2 shrink-0" style={{ color: LINE }}>
+                              <span className="text-[var(--ss-t2)] truncate flex-1">{s.shot_type_ja}</span>
+                              <span className="font-semibold ml-2 shrink-0 ss-num" style={{ color: LINE }}>
                                 {s.loss_rate !== undefined ? `失${(s.loss_rate * 100).toFixed(0)}%` : '-'}
                               </span>
                             </div>
@@ -344,14 +344,14 @@ export function SetIntervalSummary({
           <div className="flex gap-2 pt-1">
             <button
               onClick={onClose}
-              className="flex-1 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm"
+              className="flex-1 py-2 bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t2)] rounded-ss-md text-sm duration-base ease-out"
             >
               {closeLabel ?? (isMidGame ? t('analysis.set_summary.resume') : t('analysis.set_summary.skip'))}
             </button>
             {!isMidGame && (
               <button
                 onClick={onNextSet}
-                className="flex-1 py-2 rounded text-sm font-medium flex items-center justify-center gap-1"
+                className="flex-1 py-2 rounded-ss-md text-sm font-medium flex items-center justify-center gap-1 duration-base ease-out"
                 style={{ backgroundColor: WIN, color: '#ffffff' }}
               >
                 {t('analysis.set_summary.next_set')}

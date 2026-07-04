@@ -48,7 +48,7 @@ export function FirstReturnAnalysis({ playerId, filters = DEFAULT_FILTERS }: Fir
   })
 
   if (isLoading) {
-    return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.loading')}</div>
+    return <div className="text-[var(--ss-t3)] text-sm py-4 text-center">{t('analysis.loading')}</div>
   }
 
   const zones = resp?.data?.zones ?? []
@@ -64,7 +64,7 @@ export function FirstReturnAnalysis({ playerId, filters = DEFAULT_FILTERS }: Fir
       <ConfidenceBadge sampleSize={sampleSize} />
 
       {topZones.length > 0 && (
-        <div className="text-xs text-gray-400">
+        <div className="text-xs text-[var(--ss-t3)]">
           {t('analysis.first_return.top_zones')}:
           <span className="ml-2 font-semibold" style={{ color: BAR }}>
             {topZones.map((z) => t(`zones.${z}`, z)).join('・')}
@@ -75,7 +75,7 @@ export function FirstReturnAnalysis({ playerId, filters = DEFAULT_FILTERS }: Fir
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
-            <tr className="text-gray-400 border-b border-gray-700">
+            <tr className="text-[var(--ss-t3)] border-b border-[color:var(--ss-border)]">
               <th className="text-left py-1.5 pr-3">{t('analysis.first_return.zone')}</th>
               <th className="text-center py-1.5 pr-3">{t('auto.FirstReturnAnalysis.k1')}</th>
               <th className="text-center py-1.5 pr-3">{t('analysis.first_return.freq_rate')}</th>
@@ -86,15 +86,15 @@ export function FirstReturnAnalysis({ playerId, filters = DEFAULT_FILTERS }: Fir
             {zones
               .sort((a, b) => b.count - a.count)
               .map((z) => (
-                <tr key={z.zone} className="border-b border-gray-700/40 hover:bg-gray-700/20">
-                  <td className="py-1.5 pr-3 font-semibold text-white">
+                <tr key={z.zone} className="border-b border-[color:var(--ss-border)]/40 hover:bg-[var(--ss-surface-2)] transition-colors duration-fast">
+                  <td className="py-1.5 pr-3 font-semibold text-[var(--ss-t1)]">
                     {t(`zones.${z.zone}`, z.zone)}
                   </td>
-                  <td className="py-1.5 pr-3 text-center text-gray-300 num-cell">{z.count}</td>
-                  <td className="py-1.5 pr-3 text-center text-gray-300 num-cell">
+                  <td className="py-1.5 pr-3 text-center text-[var(--ss-t2)] num-cell ss-num">{z.count}</td>
+                  <td className="py-1.5 pr-3 text-center text-[var(--ss-t2)] num-cell ss-num">
                     {(z.freq_rate * 100).toFixed(1)}%
                   </td>
-                  <td className="py-1.5 pr-2 text-right num-cell">
+                  <td className="py-1.5 pr-2 text-right num-cell ss-num">
                     <span
                       className="font-semibold"
                       style={{ color: lightSafe(perfColor(z.win_rate), !isLight) }}

@@ -88,15 +88,11 @@ function RankCard({ item, isPlayer }: { item: RankItem; isPlayer: boolean }) {
 
   return (
     <div
-      className="flex gap-3 items-start rounded p-3"
-      style={{
-        backgroundColor: tokens.bg,
-        border: `1px solid ${tokens.border}`,
-      }}
+      className="flex gap-3 items-start rounded-ss-md p-3 bg-[var(--ss-surface-2)] border border-[var(--ss-border)]"
     >
       {/* ランクバッジ: rank 1 だけ A_GOOD、それ以外は無彩色 */}
       <div
-        className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 tabular-nums"
+        className="w-7 h-7 rounded-ss-md flex items-center justify-center text-xs font-bold shrink-0 ss-num"
         style={{ backgroundColor: badgeBg, color: '#ffffff' }}
       >
         {item.rank}
@@ -121,11 +117,11 @@ function RankCard({ item, isPlayer }: { item: RankItem; isPlayer: boolean }) {
         {/* 優先度バー: 長さで読む。色は perfColor (coolwarm 連続) のみ許可 */}
         <div className="mt-2 flex items-center gap-2">
           <div
-            className="flex-1 rounded h-1.5"
+            className="flex-1 rounded-ss-md h-1.5"
             style={{ backgroundColor: tokens.barTrack }}
           >
             <div
-              className="h-full rounded"
+              className="h-full rounded-ss-md duration-base ease-out"
               style={{
                 width: `${Math.round(item.priority_score * 100)}%`,
                 backgroundColor: perfColor(item.win_rate),
@@ -133,7 +129,7 @@ function RankCard({ item, isPlayer }: { item: RankItem; isPlayer: boolean }) {
             />
           </div>
           <span
-            className="text-xs font-mono tabular-nums"
+            className="text-xs font-mono ss-num"
             style={{ color: tokens.textMuted }}
           >
             {Math.round(item.priority_score * 100)}pt
@@ -163,8 +159,7 @@ export function RecommendationRanking({ playerId }: RecommendationRankingProps) 
   if (isLoading) {
     return (
       <div
-        className="rounded-lg p-4"
-        style={{ backgroundColor: outerTokens.bg, border: `1px solid ${outerTokens.border}` }}
+        className="rounded-ss-lg p-4 bg-[var(--ss-surface-1)] border border-[var(--ss-border)]"
       >
         <h3 className="text-sm font-semibold mb-3" style={{ color: outerTokens.title }}>
           {t('auto.RecommendationRanking.k1')}
@@ -181,8 +176,7 @@ export function RecommendationRanking({ playerId }: RecommendationRankingProps) 
 
   return (
     <div
-      className="rounded-lg p-4"
-      style={{ backgroundColor: outerTokens.bg, border: `1px solid ${outerTokens.border}` }}
+      className="rounded-ss-lg p-4 bg-[var(--ss-surface-1)] border border-[var(--ss-border)]"
     >
       <h3 className="text-sm font-semibold mb-3" style={{ color: outerTokens.title }}>
         {isPlayer ? '今週の成長ポイント' : '推奨アドバイスランキング'}

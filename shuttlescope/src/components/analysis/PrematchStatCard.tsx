@@ -85,14 +85,10 @@ export function PrematchStatCard({ matchId, playerId, playerName }: Props) {
     <div className="space-y-3">
       {/* カットオフ表示バー */}
       <div
-        className="flex items-center gap-2 px-3 py-2 rounded text-[11px]"
-        style={{
-          background: isLight ? '#f0f9ff' : '#0c1a2e',
-          border: `1px solid ${isLight ? '#bae6fd' : '#1e3a5f'}`,
-        }}
+        className="flex items-center gap-2 px-3 py-2 rounded-ss-md text-[11px] bg-[var(--ss-brand-tint)] border border-[var(--ss-brand)]"
       >
-        <MIcon name="database" size={11} style={{ color: '#3b82f6', flexShrink: 0 }} />
-        <span className="flex-1" style={{ color: isLight ? '#1d4ed8' : '#93c5fd' }}>
+        <MIcon name="database" size={11} style={{ color: 'var(--ss-brand)', flexShrink: 0 }} />
+        <span className="flex-1" style={{ color: 'var(--ss-brand)' }}>
           {t('auto.PrematchStatCard.stat_pred', { date: d.cutoff_date })}
           {d.h2h_count > 0
             ? t('auto.PrematchStatCard.h2h_count', { n: d.h2h_count })
@@ -107,7 +103,7 @@ export function PrematchStatCard({ matchId, playerId, playerName }: Props) {
           onClick={handleForceRecalc}
           disabled={isFetching}
           title={t('auto.PrematchStatCard.k2')}
-          className="shrink-0 p-1 rounded hover:opacity-70 transition-opacity disabled:opacity-40"
+          className="shrink-0 p-1 rounded-ss-md hover:opacity-70 duration-base ease-out disabled:opacity-40"
         >
           <MIcon name="refresh" size={11} style={{ color: subText }} className={isFetching ? 'animate-spin' : ''} />
         </button>
@@ -116,8 +112,8 @@ export function PrematchStatCard({ matchId, playerId, playerName }: Props) {
       {/* データなし */}
       {d.sample_size === 0 && (
         <div
-          className="px-4 py-3 rounded text-xs text-center"
-          style={{ background: cardBg, border: `1px solid ${cardBorder}`, color: subText }}
+          className="px-4 py-3 rounded-ss-lg text-xs text-center bg-[var(--ss-surface-1)] border border-[var(--ss-border)]"
+          style={{ color: subText }}
         >
           {t('auto.PrematchStatCard.no_prior_data')}
         </div>
@@ -135,14 +131,13 @@ export function PrematchStatCard({ matchId, playerId, playerName }: Props) {
       {/* サマリー: 勝率 + セット分布 */}
       {d.win_probability !== null && d.sample_size > 0 && (
         <div
-          className="rounded-lg px-4 py-3 space-y-3"
-          style={{ background: cardBg, border: `1px solid ${cardBorder}` }}
+          className="rounded-ss-lg px-4 py-3 space-y-3 bg-[var(--ss-surface-1)] border border-[var(--ss-border)]"
         >
           {/* 勝率 + サンプル数 */}
           <div className="flex items-center gap-4">
             <div>
               <p
-                className="text-3xl font-bold"
+                className="text-3xl font-bold ss-num"
                 style={{
                   color: d.win_probability >= 0.55 ? WIN
                     : d.win_probability <= 0.45 ? LOSS
@@ -155,7 +150,7 @@ export function PrematchStatCard({ matchId, playerId, playerName }: Props) {
             </div>
             <div className="flex flex-col gap-1 text-[11px]" style={{ color: subText }}>
               {d.confidence_meta && (
-                <span className="font-semibold text-sm" style={{ color: neutral }}>
+                <span className="font-semibold text-sm ss-num" style={{ color: neutral }}>
                   {d.confidence_meta.stars}
                 </span>
               )}
@@ -168,7 +163,7 @@ export function PrematchStatCard({ matchId, playerId, playerName }: Props) {
 
           {/* 最有力スコアライン */}
           {d.most_likely_scorelines.length > 0 && (
-            <div className="border-t pt-2" style={{ borderColor: cardBorder }}>
+            <div className="border-t border-[var(--ss-border)] pt-2">
               <p className="text-[10px] font-semibold mb-1.5" style={{ color: subText }}>
                 {t('auto.PrematchStatCard.top_script')}
               </p>
@@ -176,13 +171,13 @@ export function PrematchStatCard({ matchId, playerId, playerName }: Props) {
                 {d.most_likely_scorelines.slice(0, 3).map((sl, i) => (
                   <div key={i} className="flex items-center gap-2 text-xs">
                     <span
-                      className="font-bold w-8 shrink-0 num-cell"
+                      className="font-bold w-8 shrink-0 ss-num"
                       style={{ color: sl.outcome.startsWith('2') ? WIN : LOSS }}
                     >
                       {sl.outcome}
                     </span>
                     <span
-                      className="num-cell flex-1 min-w-0 truncate"
+                      className="ss-num flex-1 min-w-0 truncate"
                       style={{ color: neutral }}
                       title={[sl.set1_score, sl.set2_score, sl.set3_score].filter(Boolean).join(' / ')}
                     >
@@ -190,7 +185,7 @@ export function PrematchStatCard({ matchId, playerId, playerName }: Props) {
                         .filter(Boolean)
                         .join(' / ')}
                     </span>
-                    <span className="num-cell shrink-0" style={{ color: subText }}>
+                    <span className="ss-num shrink-0" style={{ color: subText }}>
                       {Math.round(sl.probability * 100)}%
                     </span>
                   </div>

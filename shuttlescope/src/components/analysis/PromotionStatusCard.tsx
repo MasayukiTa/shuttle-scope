@@ -166,7 +166,7 @@ function ChecklistBullet({ item, isLight }: { item: ChecklistItem; isLight: bool
       <span className={`${color} shrink-0 font-bold mt-px`}><MIcon name={iconName} size={11} /></span>
       <span className={textColor}>{item.item}</span>
       {item.current !== null && (
-        <span className={`${subColor} ml-auto shrink-0`}>{item.current} / {item.required}</span>
+        <span className={`${subColor} ml-auto shrink-0 ss-num`}>{item.current} / {item.required}</span>
       )}
     </li>
   )
@@ -201,6 +201,7 @@ function OverrideForm({
   const btnDanger = isLight
     ? 'text-red-600 hover:text-red-700'
     : 'text-red-400 hover:text-red-300'
+  const transDur = 'transition-colors duration-fast'
 
   const handleSave = async () => {
     setSaving(true)
@@ -230,13 +231,13 @@ function OverrideForm({
   }
 
   return (
-    <div className={`mt-2 p-2 rounded border ${border} ${cardInner} space-y-2`}>
+    <div className={`mt-2 p-2 rounded-ss-md border ${border} ${cardInner} space-y-2`}>
       <div className="flex items-center justify-between">
         <p className={`text-[10px] font-semibold ${textHeading}`}>{t('auto.PromotionStatusCard.k1')}</p>
         <span className={`text-[9px] ${isLight ? 'text-gray-400' : 'text-gray-600'}`}>{t('auto.PromotionStatusCard.k2')}</span>
       </div>
       <select
-        className={`w-full text-xs rounded px-2 py-1 ${inputClass}`}
+        className={`w-full text-xs rounded-ss-md px-2 py-1 ${inputClass}`}
         value={status}
         onChange={(e) => setStatus(e.target.value)}
       >
@@ -246,7 +247,7 @@ function OverrideForm({
       </select>
       <div>
         <textarea
-          className={`w-full text-xs rounded px-2 py-1 resize-none ${inputClass} ${holdNoteRequired ? (isLight ? 'border-orange-400' : 'border-orange-600') : ''}`}
+          className={`w-full text-xs rounded-ss-md px-2 py-1 resize-none ${inputClass} ${holdNoteRequired ? (isLight ? 'border-orange-400' : 'border-orange-600') : ''}`}
           rows={2}
           placeholder={status === 'hold' ? t('auto.PromotionStatusCard.ph_hold_required') : t('auto.PromotionStatusCard.ph_note')}
           value={note}
@@ -261,7 +262,7 @@ function OverrideForm({
       <div className="flex items-center gap-2 justify-end">
         {currentOverride && (
           <button
-            className={`text-[10px] ${btnDanger} transition-colors`}
+            className={`text-[10px] ${btnDanger} ${transDur}`}
             onClick={handleDelete}
             disabled={saving}
           >
@@ -269,14 +270,14 @@ function OverrideForm({
           </button>
         )}
         <button
-          className={`text-[10px] ${textMuted} hover:${textHeading}`}
+          className={`text-[10px] ${textMuted} hover:${textHeading} ${transDur}`}
           onClick={onClose}
           disabled={saving}
         >
           {t('auto.PromotionStatusCard.cancel')}
         </button>
         <button
-          className={`text-[10px] px-2 py-0.5 rounded ${btnPrimary} transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
+          className={`text-[10px] px-2 py-0.5 rounded-ss-md ${btnPrimary} ${transDur} disabled:opacity-50 disabled:cursor-not-allowed`}
           onClick={handleSave}
           disabled={saving || holdNoteRequired}
           title={holdNoteRequired ? t('auto.PromotionStatusCard.hold_required_title') : undefined}
@@ -314,23 +315,23 @@ function EvaluationRow({
   const statusCfg = statusConfig[effectiveStatus as keyof typeof statusConfig] ?? statusConfig.requires_review
 
   return (
-    <div className={`border ${border} rounded-lg overflow-hidden`}>
+    <div className={`border ${border} rounded-ss-lg overflow-hidden`}>
       <button
-        className={`w-full flex items-center gap-2 px-3 py-2 text-left ${hoverBg} transition-colors`}
+        className={`w-full flex items-center gap-2 px-3 py-2 text-left ${hoverBg} transition-colors duration-fast`}
         onClick={() => setExpanded((v) => !v)}
       >
         <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusCfg.dot}`} />
         <span className={`text-xs flex-1 text-left ${textHeading}`}>{entry.analysis_type}</span>
         {override && (
-          <span className={`text-[9px] px-1 py-0.5 rounded ${isLight ? 'bg-white text-blue-700 border border-gray-200' : 'bg-gray-800 text-blue-300 border border-gray-700'}`}>
+          <span className={`text-[9px] px-1 py-0.5 rounded-ss-sm ${isLight ? 'bg-white text-blue-700 border border-gray-200' : 'bg-gray-800 text-blue-300 border border-gray-700'}`}>
             {t('auto.PromotionStatusCard.override_label')}
           </span>
         )}
-        <span className={`text-[9px] border rounded px-1 py-0.5 shrink-0 ${tierColors[entry.from_tier] ?? (isLight ? 'text-gray-500 border-gray-300' : 'text-gray-500 border-gray-600')}`}>
+        <span className={`text-[9px] border rounded-ss-sm px-1 py-0.5 shrink-0 ${tierColors[entry.from_tier] ?? (isLight ? 'text-gray-500 border-gray-300' : 'text-gray-500 border-gray-600')}`}>
           {TIER_LABELS[entry.from_tier] ?? entry.from_tier}
         </span>
         <span className={`text-[10px] ${textFaint}`}>→</span>
-        <span className={`text-[9px] border rounded px-1 py-0.5 shrink-0 ${tierColors[entry.to_tier] ?? (isLight ? 'text-gray-500 border-gray-300' : 'text-gray-500 border-gray-600')}`}>
+        <span className={`text-[9px] border rounded-ss-sm px-1 py-0.5 shrink-0 ${tierColors[entry.to_tier] ?? (isLight ? 'text-gray-500 border-gray-300' : 'text-gray-500 border-gray-600')}`}>
           {TIER_LABELS[entry.to_tier] ?? entry.to_tier}
         </span>
         <span className={`text-[10px] font-medium shrink-0 ${statusCfg.color}`}>{statusCfg.label}</span>
@@ -379,7 +380,7 @@ function EvaluationRow({
           {isAnalyst && (
             <>
               <button
-                className={`text-[10px] underline ${isLight ? 'text-gray-500 hover:text-gray-700' : 'text-gray-500 hover:text-gray-300'}`}
+                className={`text-[10px] underline transition-colors duration-fast ${isLight ? 'text-gray-500 hover:text-gray-700' : 'text-gray-500 hover:text-gray-300'}`}
                 onClick={() => setShowOverride((v) => !v)}
               >
                 {showOverride ? 'Override フォームを閉じる' : (override ? 'Override を編集' : '+ Override を追加')}
@@ -439,10 +440,10 @@ export function PromotionStatusCard({ playerId, filters }: Props) {
   const theme: ThemeProps = { isLight, textHeading, textSecondary, textMuted, textFaint, cardInner, cardInnerAlt, border }
 
   return (
-    <div className={`${card} rounded-lg p-4 space-y-3`}>
+    <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-3`}>
       <div className="flex items-center justify-between">
         <h3 className={`text-sm font-semibold ${textHeading}`}>{t('auto.PromotionStatusCard.k4')}</h3>
-        <span className={`text-[9px] rounded px-1.5 py-0.5 ${badge}`}>{t('auto.PromotionStatusCard.analyst_coach')}</span>
+        <span className={`text-[9px] rounded-ss-sm px-1.5 py-0.5 ${badge}`}>{t('auto.PromotionStatusCard.analyst_coach')}</span>
       </div>
 
       <p className={`text-[10px] ${textMuted}`}>
@@ -457,22 +458,22 @@ export function PromotionStatusCard({ playerId, filters }: Props) {
           {/* サマリー */}
           {summary && (
             <div className="grid grid-cols-3 gap-2">
-              <div className={`${cardInner} rounded px-2 py-1.5 text-center`}>
-                <div className={`text-sm font-bold ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>{summary.promotion_ready_count}</div>
+              <div className={`${cardInner} rounded-ss-md px-2 py-1.5 text-center`}>
+                <div className={`text-sm font-bold ss-num ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>{summary.promotion_ready_count}</div>
                 <div className={`text-[10px] ${textMuted}`}>{t('auto.PromotionStatusCard.k6')}</div>
               </div>
-              <div className={`${cardInner} rounded px-2 py-1.5 text-center`}>
-                <div className={`text-sm font-bold ${isLight ? 'text-amber-600' : 'text-yellow-400'}`}>{summary.requires_review_count}</div>
+              <div className={`${cardInner} rounded-ss-md px-2 py-1.5 text-center`}>
+                <div className={`text-sm font-bold ss-num ${isLight ? 'text-amber-600' : 'text-yellow-400'}`}>{summary.requires_review_count}</div>
                 <div className={`text-[10px] ${textMuted}`}>{t('auto.PromotionStatusCard.k7')}</div>
               </div>
-              <div className={`${cardInner} rounded px-2 py-1.5 text-center`}>
-                <div className={`text-sm font-bold ${textSecondary}`}>{summary.insufficient_data_count}</div>
+              <div className={`${cardInner} rounded-ss-md px-2 py-1.5 text-center`}>
+                <div className={`text-sm font-bold ss-num ${textSecondary}`}>{summary.insufficient_data_count}</div>
                 <div className={`text-[10px] ${textMuted}`}>{t('auto.PromotionStatusCard.k8')}</div>
               </div>
             </div>
           )}
 
-          <div className={`text-[10px] ${textFaint}`}>
+          <div className={`text-[10px] ${textFaint} ss-num`}>
             {summary && t('auto.PromotionStatusCard.summary_counts', { rallies: summary.n_rallies, matches: summary.n_matches, opponents: summary.n_opponents })}
           </div>
 
@@ -493,14 +494,14 @@ export function PromotionStatusCard({ playerId, filters }: Props) {
           {demotionConditions && (
             <div>
               <button
-                className={`text-[10px] underline ${isLight ? 'text-gray-500 hover:text-gray-700' : 'text-gray-500 hover:text-gray-400'}`}
+                className={`text-[10px] underline transition-colors duration-fast ${isLight ? 'text-gray-500 hover:text-gray-700' : 'text-gray-500 hover:text-gray-400'}`}
                 onClick={() => setShowDemotion((v) => !v)}
               >
                 {showDemotion ? t('auto.PromotionStatusCard.hide_demotion') : t('auto.PromotionStatusCard.show_demotion')}
               </button>
               {showDemotion && (
                 <div className="mt-2 space-y-2">
-                  <div className={`${cardInner} rounded px-2 py-2`}>
+                  <div className={`${cardInner} rounded-ss-md px-2 py-2`}>
                     <p className={`text-[10px] font-medium mb-1 ${textSecondary}`}>{t('auto.PromotionStatusCard.k9')}</p>
                     <ul className="space-y-0.5">
                       {(demotionConditions.general ?? []).map((cond, i) => (
@@ -514,7 +515,7 @@ export function PromotionStatusCard({ playerId, filters }: Props) {
                   {Object.entries(demotionConditions)
                     .filter(([k]) => k !== 'general')
                     .map(([type, conds]) => (
-                      <div key={type} className={`${cardInnerAlt} rounded px-2 py-1.5`}>
+                      <div key={type} className={`${cardInnerAlt} rounded-ss-md px-2 py-1.5`}>
                         <p className={`text-[10px] font-medium mb-0.5 ${textMuted}`}>{type}</p>
                         <ul>
                           {conds.map((c, i) => (

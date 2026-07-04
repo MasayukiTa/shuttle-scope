@@ -68,7 +68,7 @@ export function PreMatchObservationAnalytics({ playerId }: PreMatchObservationAn
   const textMain   = isLight ? '#1e293b' : '#e2e8f0'
 
   if (isLoading) {
-    return <div className="text-gray-500 text-sm py-3 text-center">{t('analysis.loading')}</div>
+    return <div className="text-[var(--ss-t3)] text-sm py-3 text-center">{t('analysis.loading')}</div>
   }
 
   const splits = resp?.data?.splits ?? []
@@ -124,35 +124,33 @@ export function PreMatchObservationAnalytics({ playerId }: PreMatchObservationAn
               return (
                 <div
                   key={entry.observation_value}
-                  className="rounded p-2"
-                  style={{ backgroundColor: rowBg, border: `1px solid ${rowBorder}` }}
+                  className="rounded-ss-md p-2 bg-[var(--ss-surface-2)] border border-[var(--ss-border)]"
                 >
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-1.5">
                       <span className="text-xs" style={{ color: textMain }}>{valueLabel}</span>
                       <span
-                        className="text-[9px] px-1 rounded"
+                        className="text-[9px] px-1 rounded-ss-sm"
                         style={{ color: confColor, border: `1px solid ${confColor}`, opacity: 0.85 }}
                       >
                         {CONF_LABEL[entry.confidence] ?? entry.confidence}
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-semibold" style={{ color: barColor }}>
+                      <span className="text-xs font-semibold ss-num" style={{ color: barColor }}>
                         {(wr * 100).toFixed(0)}%
                       </span>
-                      <span className="text-[10px]" style={{ color: labelColor }}>
+                      <span className="text-[10px] ss-num" style={{ color: labelColor }}>
                         {t('auto.PreMatchObservationAnalytics.win_loss', { w: entry.wins, l: entry.match_count - entry.wins })}
                       </span>
                     </div>
                   </div>
                   {/* 勝率バー */}
                   <div
-                    className="w-full rounded-full h-1 overflow-hidden"
-                    style={{ backgroundColor: isLight ? '#e2e8f0' : '#374151' }}
+                    className="w-full rounded-ss-md h-1 overflow-hidden bg-[var(--ss-surface-3)]"
                   >
                     <div
-                      className="h-1 rounded-full"
+                      className="h-1 rounded-ss-md duration-base ease-out"
                       style={{ width: `${(wr * 100).toFixed(0)}%`, backgroundColor: barColor }}
                     />
                   </div>
@@ -165,7 +163,7 @@ export function PreMatchObservationAnalytics({ playerId }: PreMatchObservationAn
 
       {/* 自コンディション分析 */}
       {selfObs.length > 0 && (
-        <div className="border-t pt-3" style={{ borderColor: isLight ? '#e2e8f0' : '#374151' }}>
+        <div className="border-t border-[var(--ss-border)] pt-3">
           <p className="text-xs font-semibold mb-2" style={{ color: textMain }}>
             {t('observation_analytics.self_section', '自コンディション条件別傾向')}
           </p>
@@ -188,16 +186,15 @@ export function PreMatchObservationAnalytics({ playerId }: PreMatchObservationAn
                       : `warmup.value_self_timing_${entry.observation_value}`
                     return (
                       <div key={entry.observation_value}
-                        className="flex items-center gap-2 rounded p-1.5"
-                        style={{ backgroundColor: isLight ? '#f8fafc' : '#1f2937', border: `1px solid ${isLight ? '#e2e8f0' : '#374151'}` }}
+                        className="flex items-center gap-2 rounded-ss-md p-1.5 bg-[var(--ss-surface-2)] border border-[var(--ss-border)]"
                       >
                         <span className="text-[11px] flex-1" style={{ color: textMain }}>
                           {t(labelKey, entry.observation_value)}
                         </span>
-                        <span className="text-[11px] font-semibold" style={{ color: barColor }}>
+                        <span className="text-[11px] font-semibold ss-num" style={{ color: barColor }}>
                           {(wr * 100).toFixed(0)}%
                         </span>
-                        <span className="text-[10px]" style={{ color: labelColor }}>
+                        <span className="text-[10px] ss-num" style={{ color: labelColor }}>
                           {t('auto.PreMatchObservationAnalytics.win_loss', { w: entry.wins, l: entry.match_count - entry.wins })}
                         </span>
                       </div>

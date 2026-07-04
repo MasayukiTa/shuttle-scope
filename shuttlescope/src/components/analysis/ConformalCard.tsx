@@ -64,7 +64,7 @@ function CoverageHeadline({
   cardInner: string
 }) {
   return (
-    <div className={`rounded-lg p-3 space-y-2 border ${border} ${cardInner}`}>
+    <div className={`rounded-ss-md p-3 space-y-2 border ${border} ${cardInner}`}>
       {/* 保証ラベル */}
       <p className={`text-[10px] font-medium uppercase tracking-wider ${textFaint}`}>
         {t('auto.ConformalCard.coverage_section_label')}
@@ -75,7 +75,7 @@ function CoverageHeadline({
         {/* 目標カバレッジ */}
         <div className="flex flex-col items-center gap-0.5">
           <span className={`text-[10px] ${textFaint}`}>{t('auto.ConformalCard.target_label')}</span>
-          <span className={`text-lg font-bold font-mono ${textMuted}`}>{pct1(targetCoverage)}</span>
+          <span className={`text-lg font-bold font-mono ss-num ${textMuted}`}>{pct1(targetCoverage)}</span>
         </div>
 
         {/* 矢印区切り */}
@@ -85,7 +85,7 @@ function CoverageHeadline({
         <div className="flex flex-col items-center gap-0.5">
           <span className={`text-[10px] ${textFaint}`}>{t('auto.ConformalCard.empirical_label')}</span>
           <span
-            className={`text-lg font-bold font-mono`}
+            className={`text-lg font-bold font-mono ss-num`}
             style={{ color: met ? '#34d399' : '#f87171' }}
           >
             {pct1(empiricalCoverage)}
@@ -111,7 +111,7 @@ function CoverageHeadline({
       </div>
 
       {/* 平均セットサイズ */}
-      <p className={`text-[11px] ${textMuted}`}>
+      <p className={`text-[11px] ss-num ${textMuted}`}>
         {t('auto.ConformalCard.avg_set_size', { v: avgSetSize.toFixed(2) })}
       </p>
 
@@ -138,7 +138,7 @@ function PredictionSetChips({
 
   if (isAbstain) {
     return (
-      <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-gray-500/20 text-gray-400">
+      <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-ss-pill bg-gray-500/20 text-gray-400">
         <MIcon name="help_outline" size={10} />
         {t('auto.ConformalCard.set_abstain')}
       </span>
@@ -146,7 +146,7 @@ function PredictionSetChips({
   }
   if (isWin) {
     return (
-      <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400">
+      <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-ss-pill bg-emerald-500/15 text-emerald-400">
         <MIcon name="trending_up" size={10} />
         {t('auto.ConformalCard.set_win')}
       </span>
@@ -154,7 +154,7 @@ function PredictionSetChips({
   }
   if (isLoss) {
     return (
-      <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-red-500/15 text-red-400">
+      <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-ss-pill bg-red-500/15 text-red-400">
         <MIcon name="trending_down" size={10} />
         {t('auto.ConformalCard.set_loss')}
       </span>
@@ -187,27 +187,27 @@ function GroupRow({
   cardInner: string
 }) {
   return (
-    <div className={`rounded-lg p-2.5 border ${border} ${cardInner}`}>
+    <div className={`rounded-ss-md p-2.5 border ${border} ${cardInner}`}>
       <div className="flex items-center justify-between gap-2 flex-wrap">
         {/* ラベル群 */}
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-500/15 text-blue-400">
+          <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-ss-pill bg-blue-500/15 text-blue-400">
             {phaseLabel}
           </span>
-          <span className={`text-[11px] px-1.5 py-0.5 rounded-full bg-gray-500/15 ${textFaint}`}>
+          <span className={`text-[11px] px-1.5 py-0.5 rounded-ss-pill bg-gray-500/15 ${textFaint}`}>
             {roleLabel}
           </span>
-          <span className={`text-[11px] px-1.5 py-0.5 rounded-full bg-purple-500/10 text-purple-400`}>
+          <span className={`text-[11px] px-1.5 py-0.5 rounded-ss-pill bg-purple-500/10 text-purple-400`}>
             {shotLabel}
           </span>
         </div>
 
         {/* 右側: p_win + N */}
         <div className="flex items-center gap-3">
-          <span className={`text-[11px] font-mono font-semibold ${textMuted}`}>
+          <span className={`text-[11px] font-mono font-semibold ss-num ${textMuted}`}>
             {pct1(row.p_win)}
           </span>
-          <span className={`text-[10px] ${textFaint}`}>
+          <span className={`text-[10px] ss-num ${textFaint}`}>
             {t('auto.ConformalCard.n_only', { n: row.n })}
           </span>
         </div>
@@ -238,7 +238,7 @@ function AlphaToggle({
         <button
           key={a}
           onClick={() => onChange(a)}
-          className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
+          className={`text-[10px] px-2 py-0.5 rounded-ss-pill border transition-colors duration-fast ${
             value === a
               ? 'border-blue-500 bg-blue-500/15 text-blue-400'
               : `border-transparent bg-gray-500/10 ${textFaint} hover:bg-gray-500/20`
@@ -316,7 +316,7 @@ export function ConformalCard({ playerId }: Props) {
   const groups = confData?.per_group ?? []
 
   return (
-    <div className={`${card} rounded-lg p-4 space-y-3`}>
+    <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-3`}>
       {/* ─ ヘッダ ── */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <h3 className={`text-sm font-semibold ${textHeading} flex items-center gap-1.5`}>
@@ -365,10 +365,10 @@ export function ConformalCard({ playerId }: Props) {
         <>
           {/* ─ データ不足 ── */}
           {isInsufficient ? (
-            <div className={`rounded-lg p-3 border ${border} ${cardInner} opacity-60`}>
+            <div className={`rounded-ss-md p-3 border ${border} ${cardInner} opacity-60`}>
               <div className="flex items-center gap-1.5">
                 <MIcon name="info" size={14} className="text-amber-400 shrink-0" />
-                <p className={`text-[11px] ${textMuted}`}>
+                <p className={`text-[11px] ss-num ${textMuted}`}>
                   {t('auto.ConformalCard.insufficient', {
                     n: confData?.n_total ?? 0,
                   })}
@@ -392,9 +392,9 @@ export function ConformalCard({ playerId }: Props) {
               />
 
               {/* ─ サマリ行 (サンプル数 / 信頼度) ── */}
-              <div className={`rounded-lg p-2.5 border ${border} ${cardInner}`}>
+              <div className={`rounded-ss-md p-2.5 border ${border} ${cardInner}`}>
                 <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <span className={`text-[11px] ${textMuted}`}>
+                  <span className={`text-[11px] ss-num ${textMuted}`}>
                     {t('auto.ConformalCard.sample_summary', {
                       total: confData!.n_total,
                       calib: confData!.n_calibration,

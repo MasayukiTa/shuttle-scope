@@ -80,11 +80,7 @@ function PartnerRankingSection({
   const [level, setLevel] = useState('')
   const [run, setRun] = useState(false)
 
-  const selectClass = `text-xs rounded px-2 py-1.5 focus:outline-none ${
-    isLight
-      ? 'bg-white border border-gray-300 text-gray-800'
-      : 'bg-gray-700 border border-gray-600 text-gray-200'
-  }`
+  const selectClass = `text-xs rounded-ss-md px-2 py-1.5 focus:outline-none bg-[var(--ss-surface-1)] border border-[var(--ss-border-strong)] text-[var(--ss-t1)]`
 
   const { data: resp, isLoading } = useQuery({
     queryKey: ['pair-ranking', anchorId, level],
@@ -107,16 +103,12 @@ function PartnerRankingSection({
 
   return (
     <div
-      className="space-y-3 rounded-lg p-4 mt-4"
-      style={{
-        background: isLight ? '#f0f9ff' : '#0c1a2e',
-        border: `1px solid ${isLight ? '#bae6fd' : '#1e3a5f'}`,
-      }}
+      className="space-y-3 rounded-ss-lg p-4 mt-4 bg-[rgba(37,99,235,0.08)] border border-[var(--ss-brand)]"
     >
       {/* ヘッダー */}
       <div className="flex items-center gap-2">
-        <MIcon name="military_tech" size={14} style={{ color: '#3b82f6' }} />
-        <span className="text-xs font-semibold" style={{ color: '#3b82f6' }}>
+        <MIcon name="military_tech" size={14} style={{ color: 'var(--ss-brand)' }} />
+        <span className="text-xs font-semibold" style={{ color: 'var(--ss-brand)' }}>
           {t('pair.title', 'Analyst only — partner candidate ranking (record-based)')}
         </span>
       </div>
@@ -184,17 +176,16 @@ function PartnerRankingSection({
               return (
                 <div
                   key={r.partner_id}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded"
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-ss-md bg-[var(--ss-surface-1)]"
                   style={{
-                    background: isLight ? '#ffffff' : '#1e293b',
                     border: rank <= 3
-                      ? `1px solid ${rank === 1 ? WIN + '80' : '#93c5fd40'}`
+                      ? `1px solid ${rank === 1 ? WIN : 'var(--ss-brand)'}40`
                       : `1px solid transparent`,
                   }}
                 >
                   <span
                     className="text-xs font-bold w-5 text-center shrink-0"
-                    style={{ color: rank === 1 ? WIN : rank <= 3 ? '#60a5fa' : subText }}
+                    style={{ color: rank === 1 ? WIN : rank <= 3 ? 'var(--ss-brand)' : subText }}
                   >
                     {rank}
                   </span>
@@ -210,18 +201,18 @@ function PartnerRankingSection({
                   </span>
                   {/* xs: ConfidenceBadge と試合数を hide して名前領域を確保 */}
                   <span className="hidden sm:inline-flex"><ConfidenceBadge sampleSize={r.sample_size} /></span>
-                  <span className="hidden sm:inline text-[10px] shrink-0 num-cell" style={{ color: subText }}>
+                  <span className="hidden sm:inline text-[10px] shrink-0 ss-num" style={{ color: subText }}>
                     {t('lineup.n_matches', { n: r.sample_size, defaultValue: '{{n}} matches' })}
                   </span>
                   <div className="flex items-center gap-1 shrink-0">
-                    <div className="w-14 h-1.5 rounded-full overflow-hidden" style={{ background: isLight ? '#e2e8f0' : '#374151' }}>
+                    <div className="w-14 h-1.5 rounded-full overflow-hidden bg-[var(--ss-surface-2)]">
                       <div
-                        className="h-full rounded-full"
+                        className="h-full rounded-full transition-all duration-base ease-out"
                         style={{ width: `${pct}%`, background: pct >= 55 ? WIN : pct <= 45 ? LOSS : '#d97706' }}
                       />
                     </div>
                     <span
-                      className="text-xs font-bold w-9 text-right shrink-0 num-cell"
+                      className="text-xs font-bold w-9 text-right shrink-0 ss-num"
                       style={{ color: pct >= 55 ? WIN : pct <= 45 ? LOSS : neutral }}
                     >
                       {pct}%
@@ -245,11 +236,7 @@ function PartnerRankingSection({
                 {noData.map((r) => (
                   <div
                     key={r.partner_id}
-                    className="flex items-center gap-2 px-3 py-1 rounded"
-                    style={{
-                      background: isLight ? '#f8fafc' : '#0f172a',
-                      border: `1px solid transparent`,
-                    }}
+                    className="flex items-center gap-2 px-3 py-1 rounded-ss-md bg-[var(--ss-surface-2)] border border-transparent"
                   >
                     <span className="text-[10px] w-5 text-center shrink-0" style={{ color: subText }}>—</span>
                     <span className="flex-1 text-xs truncate" style={{ color: subText }}>
@@ -303,11 +290,7 @@ export function PairSimulationPanel({ players }: PairSimulationPanelProps) {
     enabled: run && pid1 != null && pid2 != null && pid1 !== pid2,
   })
 
-  const selectClass = `text-xs rounded px-2 py-1.5 focus:outline-none ${
-    isLight
-      ? 'bg-white border border-gray-300 text-gray-800'
-      : 'bg-gray-700 border border-gray-600 text-gray-200'
-  }`
+  const selectClass = `text-xs rounded-ss-md px-2 py-1.5 focus:outline-none bg-[var(--ss-surface-1)] border border-[var(--ss-border-strong)] text-[var(--ss-t1)]`
 
   const d = resp?.data
 
@@ -370,19 +353,19 @@ export function PairSimulationPanel({ players }: PairSimulationPanelProps) {
       </div>
 
       {isLoading && (
-        <div className="text-gray-500 text-sm py-4 text-center">{t('prediction.loading')}</div>
+        <div className="text-[var(--ss-t3)] text-sm py-4 text-center">{t('prediction.loading')}</div>
       )}
 
       {d && (
-        <div className="bg-gray-800 rounded-lg p-4 space-y-4">
+        <div className="bg-[var(--ss-surface-2)] rounded-ss-lg p-4 space-y-4">
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-sm font-semibold min-w-0 truncate max-w-full" style={{ color: neutral }} title={d.pair_name}>{d.pair_name}</span>
             <ConfidenceBadge sampleSize={d.sample_size} />
-            <span className="text-xs num-cell" style={{ color: subText }}>{t('lineup.n_matches', { n: d.sample_size, defaultValue: '{{n}} matches' })}</span>
+            <span className="text-xs ss-num" style={{ color: subText }}>{t('lineup.n_matches', { n: d.sample_size, defaultValue: '{{n}} matches' })}</span>
           </div>
 
           <div className="text-center">
-            <p className="text-4xl font-bold" style={{ color: winProbColor(d.win_probability, isLight) }}>
+            <p className="text-4xl font-bold ss-num" style={{ color: winProbColor(d.win_probability, isLight) }}>
               {Math.round(d.win_probability * 100)}%
             </p>
             <p className="text-xs mt-1" style={{ color: subText }}>{t('prediction.win_probability')}</p>

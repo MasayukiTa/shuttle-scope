@@ -84,8 +84,8 @@ function drawMatrix(
     svg.append('rect')
       .attr('width', w)
       .attr('height', h)
-      .attr('fill', '#f7f9fc')
-      .attr('rx', 4)
+      .attr('fill', 'var(--ss-surface-2)')
+      .attr('rx', 6)
   }
 
   const g = svg.append('g')
@@ -112,12 +112,12 @@ function drawMatrix(
     .attr('id', 'transition-matrix-tooltip')
     .style('position', 'fixed')
     .style('visibility', 'hidden')
-    .style('background', isLight ? '#ffffff' : '#111827')
-    .style('border', `1px solid ${isLight ? '#cbd5e1' : '#374151'}`)
+    .style('background', isLight ? 'var(--ss-surface-1)' : 'var(--ss-surface-1)')
+    .style('border', `1px solid var(--ss-border)`)
     .style('border-radius', '6px')
     .style('padding', '8px 12px')
     .style('font-size', '12px')
-    .style('color', isLight ? '#0f172a' : '#f9fafb')
+    .style('color', 'var(--ss-t1)')
     .style('box-shadow', isLight ? '0 2px 8px rgba(0,0,0,0.08)' : 'none')
     .style('pointer-events', 'none')
     .style('z-index', '9999')
@@ -162,8 +162,8 @@ function drawMatrix(
   })
 
   // テーマ別テキスト色
-  const labelColor  = isLight ? '#334155' : '#9ca3af'
-  const titleColor  = isLight ? '#475569' : '#6b7280'
+  const labelColor  = 'var(--ss-t2)'
+  const titleColor  = 'var(--ss-t3)'
 
   // ── X 軸ラベル（下部） ──
   const xLabelY = n * CELL + 8
@@ -261,13 +261,13 @@ export function TransitionMatrix({ playerId, filters = DEFAULT_FILTERS }: Transi
 
   if (isLoading) {
     return (
-      <div className="text-gray-500 text-sm py-8 text-center">{t('auto.TransitionMatrix.k1')}</div>
+      <div className="text-[var(--ss-t3)] text-sm py-8 text-center">{t('auto.TransitionMatrix.k1')}</div>
     )
   }
 
   if (!matrixData || !matrixData.matrix?.length || sampleSize === 0) {
     return (
-      <div className="text-gray-500 text-sm py-4 text-center">
+      <div className="text-[var(--ss-t3)] text-sm py-4 text-center">
         {t('auto.TransitionMatrix.insufficient')}
       </div>
     )
@@ -289,7 +289,7 @@ export function TransitionMatrix({ playerId, filters = DEFAULT_FILTERS }: Transi
       {/* ヘッダー行 */}
       <div className="flex flex-wrap items-center gap-3">
         <ConfidenceBadge sampleSize={sampleSize} compact />
-        <span className="text-xs text-gray-500">
+        <span className="text-xs text-[var(--ss-t3)] ss-num">
           {t('auto.TransitionMatrix.total_transitions', { n: matrixData.total_transitions.toLocaleString() })}
         </span>
       </div>
@@ -297,20 +297,20 @@ export function TransitionMatrix({ playerId, filters = DEFAULT_FILTERS }: Transi
       {/* ── モバイル: 上位10サマリー ────────────────────────────────── */}
       {matrixData.top_sequences?.length > 0 && (
         <div className="md:hidden">
-          <p className="text-xs text-gray-500 mb-2">{t('auto.TransitionMatrix.k2')}</p>
+          <p className="text-xs text-[var(--ss-t3)] mb-2">{t('auto.TransitionMatrix.k2')}</p>
           <div className="space-y-0">
             {matrixData.top_sequences.slice(0, 10).map((seq, i) => (
-              <div key={i} className="flex items-center gap-2 py-2 border-b border-gray-700/50">
-                <span className="text-xs w-4 text-gray-500 shrink-0">{i + 1}</span>
+              <div key={i} className="flex items-center gap-2 py-2 border-b border-[var(--ss-border)]/50">
+                <span className="text-xs w-4 text-[var(--ss-t3)] shrink-0 ss-num">{i + 1}</span>
                 <div className="flex items-center gap-1 flex-1 min-w-0">
-                  <span className="text-xs text-gray-300 shrink-0" title={resolveLabel(seq.from)}>{resolveAbbr(seq.from)}</span>
-                  <span className="text-gray-600 shrink-0">→</span>
-                  <span className="text-xs text-gray-300 shrink-0" title={resolveLabel(seq.to)}>{resolveAbbr(seq.to)}</span>
+                  <span className="text-xs text-[var(--ss-t2)] shrink-0" title={resolveLabel(seq.from)}>{resolveAbbr(seq.from)}</span>
+                  <span className="text-[var(--ss-t3)] shrink-0">→</span>
+                  <span className="text-xs text-[var(--ss-t2)] shrink-0" title={resolveLabel(seq.to)}>{resolveAbbr(seq.to)}</span>
                 </div>
-                <span className="text-xs font-medium text-gray-400 shrink-0">
+                <span className="text-xs font-medium text-[var(--ss-t3)] shrink-0 ss-num">
                   {(seq.probability * 100).toFixed(1)}%
                 </span>
-                <span className="text-xs text-gray-600 shrink-0">{t('auto.TransitionMatrix.n_times', { n: seq.count })}</span>
+                <span className="text-xs text-[var(--ss-t3)] shrink-0 ss-num">{t('auto.TransitionMatrix.n_times', { n: seq.count })}</span>
               </div>
             ))}
           </div>
@@ -319,7 +319,7 @@ export function TransitionMatrix({ playerId, filters = DEFAULT_FILTERS }: Transi
               const el = document.getElementById('transition-matrix-full')
               if (el) el.scrollIntoView({ behavior: 'smooth' })
             }}
-            className="mt-3 w-full text-xs text-blue-500 py-2 border border-blue-800/40 rounded-lg"
+            className="mt-3 w-full text-xs text-[var(--ss-brand)] py-2 border border-[var(--ss-brand-tint)] rounded-ss-md duration-base ease-out"
           >
             {t('auto.TransitionMatrix.show_full_matrix')}
           </button>
@@ -334,32 +334,32 @@ export function TransitionMatrix({ playerId, filters = DEFAULT_FILTERS }: Transi
         </div>
 
         {/* 凡例: 白→深青（密度スケール） */}
-        <div className="flex items-center gap-2 text-xs text-gray-400 mt-2">
+        <div className="flex items-center gap-2 text-xs text-[var(--ss-t3)] mt-2">
           <span>{t('auto.TransitionMatrix.k3')}</span>
           <div
-            className="h-3 w-32 rounded"
+            className="h-3 w-32 rounded-ss-sm"
             style={{
               background: 'linear-gradient(to right, rgb(240,244,255), rgb(59,76,192))',
             }}
           />
           <span>{t('auto.TransitionMatrix.k4')}</span>
-          <span className="ml-2 text-gray-600 hidden md:inline">{t('auto.TransitionMatrix.k5')}</span>
+          <span className="ml-2 text-[var(--ss-t3)] hidden md:inline">{t('auto.TransitionMatrix.k5')}</span>
         </div>
       </div>
 
       {/* デスクトップ用: 主要遷移パターン Top 5 */}
       {matrixData.top_sequences?.length > 0 && (
         <div className="hidden md:block">
-          <p className="text-xs font-semibold text-gray-400 mb-2">
+          <p className="text-xs font-semibold text-[var(--ss-t3)] mb-2">
             {t('auto.TransitionMatrix.top_patterns')}
           </p>
           <div className="space-y-1.5">
             {matrixData.top_sequences.slice(0, 5).map((seq, i) => (
               <div key={i} className="flex items-center gap-1.5 text-xs">
-                <span className="text-gray-600 shrink-0 w-4 text-right">{i + 1}.</span>
-                <span className="text-gray-300">{resolveLabel(seq.from)} → {resolveLabel(seq.to)}</span>
-                <span className="text-gray-500 shrink-0">{t('auto.TransitionMatrix.n_times', { n: seq.count })}</span>
-                <span className="text-gray-600 shrink-0 font-mono">
+                <span className="text-[var(--ss-t3)] shrink-0 w-4 text-right ss-num">{i + 1}.</span>
+                <span className="text-[var(--ss-t2)]">{resolveLabel(seq.from)} → {resolveLabel(seq.to)}</span>
+                <span className="text-[var(--ss-t3)] shrink-0 ss-num">{t('auto.TransitionMatrix.n_times', { n: seq.count })}</span>
+                <span className="text-[var(--ss-t3)] shrink-0 font-mono ss-num">
                   ({(seq.probability * 100).toFixed(1)}%)
                 </span>
               </div>

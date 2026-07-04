@@ -54,21 +54,21 @@ function OpponentTable({ playerId }: { playerId: number }) {
       {/* モバイル: カードリスト (md 未満)。情報量を維持しつつ縦並びで横スクロール回避 */}
       <ul className="md:hidden space-y-1.5">
         {sorted.map((opp) => (
-          <li key={opp.opponent_id} className="rounded border border-gray-700 bg-gray-800/40 p-2">
+          <li key={opp.opponent_id} className="rounded-ss-md border border-gray-700 bg-gray-800/40 p-2">
             <div className="flex items-baseline justify-between gap-2">
               <span className="text-sm text-white font-medium truncate" title={opp.opponent_name}>
                 {opp.opponent_name}
               </span>
               <span
                 className={
-                  'text-sm font-semibold num-cell shrink-0 ' +
+                  'text-sm font-semibold num-cell ss-num shrink-0 ' +
                   (opp.win_rate >= 0.6 ? 'text-blue-300' : opp.win_rate <= 0.4 ? 'text-red-300' : 'text-gray-300')
                 }
               >
                 {(opp.win_rate * 100).toFixed(1)}%
               </span>
             </div>
-            <div className="flex justify-between text-[11px] text-gray-400 num-cell mt-0.5">
+            <div className="flex justify-between text-[11px] text-gray-400 num-cell ss-num mt-0.5">
               <span>{t('analysis.opponent_stats.match_count')} {opp.match_count}</span>
               <span>{t('analysis.opponent_stats.avg_rally')} {opp.avg_rally_length.toFixed(1)}</span>
             </div>
@@ -96,11 +96,11 @@ function OpponentTable({ playerId }: { playerId: number }) {
                 <td className="py-1.5 pr-3 text-white font-medium">
                   <span className="cell-name-clip" title={opp.opponent_name}>{opp.opponent_name}</span>
                 </td>
-                <td className="py-1.5 pr-3 text-center text-gray-300 num-cell">{opp.match_count}</td>
+                <td className="py-1.5 pr-3 text-center text-gray-300 num-cell ss-num">{opp.match_count}</td>
                 <td className="py-1.5 pr-3 text-center">
                   <span
                     className={
-                      'num-cell ' +
+                      'num-cell ss-num ' +
                       (opp.win_rate >= 0.6
                         ? 'text-blue-300 font-semibold'
                         : opp.win_rate <= 0.4
@@ -111,7 +111,7 @@ function OpponentTable({ playerId }: { playerId: number }) {
                     {(opp.win_rate * 100).toFixed(1)}%
                   </span>
                 </td>
-                <td className="py-1.5 pr-2 text-right text-gray-300 num-cell">{opp.avg_rally_length.toFixed(1)}</td>
+                <td className="py-1.5 pr-2 text-right text-gray-300 num-cell ss-num">{opp.avg_rally_length.toFixed(1)}</td>
               </tr>
             ))}
           </tbody>

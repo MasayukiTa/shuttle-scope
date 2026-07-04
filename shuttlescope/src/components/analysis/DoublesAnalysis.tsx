@@ -60,7 +60,7 @@ function PartnerComparison({ playerId }: { playerId: number }) {
     enabled: !!playerId,
   })
 
-  if (isLoading) return <p className="text-gray-500 text-xs py-3 text-center">{t('doubles_analysis.loading')}</p>
+  if (isLoading) return <p className="text-[var(--ss-t3)] text-xs py-3 text-center">{t('doubles_analysis.loading')}</p>
 
   const partners = resp?.data?.partners ?? []
   const sampleSize = resp?.meta?.sample_size ?? 0
@@ -76,28 +76,27 @@ function PartnerComparison({ playerId }: { playerId: number }) {
         {partners.map((p) => (
           <div
             key={p.partner_id}
-            className="rounded-lg p-3"
+            className="rounded-ss-lg p-3 border border-[var(--ss-border)]"
             style={{
-              backgroundColor: isLight ? '#f8fafc' : '#1f2937',
-              border: `1px solid ${isLight ? '#e2e8f0' : '#374151'}`,
+              backgroundColor: `var(--ss-surface-2)`,
             }}
           >
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium" style={{ color: isLight ? '#1e293b' : '#ffffff' }}>{p.partner_name}</span>
-              <span className="text-xs text-gray-400">{t('doubles_analysis.match_count', { n: p.match_count })}</span>
+              <span className="text-sm font-medium text-[var(--ss-t1)]">{p.partner_name}</span>
+              <span className="text-xs text-[var(--ss-t3)]">{t('doubles_analysis.match_count', { n: p.match_count })}</span>
             </div>
             <div className="grid grid-cols-3 gap-2 text-center">
               <div>
-                <p className="text-lg font-bold" style={{ color: isLight ? '#1d4ed8' : '#93c5fd' }}>{(p.win_rate * 100).toFixed(0)}%</p>
-                <p className="text-[10px] text-gray-500">{t('doubles_analysis.win_rate')}</p>
+                <p className="ss-num text-lg font-bold text-[var(--ss-good)]">{(p.win_rate * 100).toFixed(0)}%</p>
+                <p className="text-[10px] text-[var(--ss-t3)]">{t('doubles_analysis.win_rate')}</p>
               </div>
               <div>
-                <p className="text-lg font-bold" style={{ color: isLight ? '#b45309' : '#fcd34d' }}>{(p.synergy_score * 100).toFixed(0)}</p>
-                <p className="text-[10px] text-gray-500">{t('doubles_analysis.synergy')}</p>
+                <p className="ss-num text-lg font-bold text-[var(--ss-emphasis)]">{(p.synergy_score * 100).toFixed(0)}</p>
+                <p className="text-[10px] text-[var(--ss-t3)]">{t('doubles_analysis.synergy')}</p>
               </div>
               <div>
-                <p className="text-lg font-bold" style={{ color: isLight ? '#0e7490' : '#67e8f9' }}>{p.avg_rally_length.toFixed(1)}</p>
-                <p className="text-[10px] text-gray-500">{t('doubles_analysis.avg_rally')}</p>
+                <p className="ss-num text-lg font-bold text-[var(--ss-brand)]">{p.avg_rally_length.toFixed(1)}</p>
+                <p className="text-[10px] text-[var(--ss-t3)]">{t('doubles_analysis.avg_rally')}</p>
               </div>
             </div>
           </div>
@@ -129,7 +128,7 @@ function ServeReceiveStats({ playerId }: { playerId: number }) {
     enabled: !!playerId,
   })
 
-  if (isLoading) return <p className="text-gray-500 text-xs py-3 text-center">{t('doubles_analysis.loading')}</p>
+  if (isLoading) return <p className="text-[var(--ss-t3)] text-xs py-3 text-center">{t('doubles_analysis.loading')}</p>
 
   const d = resp?.data
   const sampleSize = resp?.meta?.sample_size ?? 0
@@ -154,7 +153,7 @@ function ServeReceiveStats({ playerId }: { playerId: number }) {
       <ResponsiveContainer width="100%" height={100}>
         <BarChart data={srData} layout="vertical" margin={{ top: 0, right: 40, left: 8, bottom: 0 }}>
           <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fill: isLight ? AXIS_TICK_LIGHT : AXIS_TICK, fontSize: 10 }} />
-          <YAxis type="category" dataKey="name" width={72} tick={{ fill: isLight ? AXIS_TICK_LIGHT : '#d1d5db', fontSize: 11 }} />
+          <YAxis type="category" dataKey="name" width={72} tick={{ fill: isLight ? AXIS_TICK_LIGHT : 'var(--ss-t3)', fontSize: 11 }} />
           <Tooltip
             contentStyle={getTooltipStyle(isLight)}
             formatter={(v: number) => [`${v.toFixed(1)}%`, t('doubles_analysis.win_rate')]}
@@ -168,19 +167,18 @@ function ServeReceiveStats({ playerId }: { playerId: number }) {
       {/* サーブ種別比率 */}
       {serveStyleEntries.length > 0 && (
         <div>
-          <p className="text-xs text-gray-500 mb-1.5">{t('doubles_analysis.serve_style_title')}</p>
+          <p className="text-xs text-[var(--ss-t3)] mb-1.5">{t('doubles_analysis.serve_style_title')}</p>
           <div className="flex gap-3">
             {serveStyleEntries.map(([st, rate]) => (
               <div
                 key={st}
-                className="flex-1 rounded p-2 text-center"
+                className="flex-1 rounded-ss-md p-2 text-center border border-[var(--ss-border)]"
                 style={{
-                  backgroundColor: isLight ? '#f8fafc' : '#1f2937',
-                  border: `1px solid ${isLight ? '#e2e8f0' : '#374151'}`,
+                  backgroundColor: `var(--ss-surface-2)`,
                 }}
               >
-                <p className="text-sm font-bold" style={{ color: isLight ? '#1e293b' : '#ffffff' }}>{(rate * 100).toFixed(0)}%</p>
-                <p className="text-[10px] text-gray-400">
+                <p className="ss-num text-sm font-bold text-[var(--ss-t1)]">{(rate * 100).toFixed(0)}%</p>
+                <p className="text-[10px] text-[var(--ss-t3)]">
                   {st === 'short_service' ? t('doubles_analysis.serve_short') : t('doubles_analysis.serve_long')}{t('doubles_analysis.serve_suffix')}
                 </p>
               </div>
@@ -192,17 +190,17 @@ function ServeReceiveStats({ playerId }: { playerId: number }) {
       {/* レシーブゾーン勝率 */}
       {d.receive_zones.length > 0 && (
         <div>
-          <p className="text-xs text-gray-500 mb-1.5">{t('doubles_analysis.receive_zone_title')}</p>
+          <p className="text-xs text-[var(--ss-t3)] mb-1.5">{t('doubles_analysis.receive_zone_title')}</p>
           <div className="grid grid-cols-3 gap-1">
             {d.receive_zones.slice(0, 9).map((z) => (
               <div
                 key={z.zone}
-                className="rounded p-1.5 text-center text-xs"
+                className="rounded-ss-sm p-1.5 text-center text-xs border border-[var(--ss-border)]"
                 style={{ backgroundColor: perfColor(z.win_rate, 0.6) }}
               >
-                <p className="font-medium" style={{ color: isLight ? '#1e293b' : '#ffffff' }}>{z.zone}</p>
-                <p style={{ color: isLight ? '#334155' : '#d1d5db' }}>{(z.win_rate * 100).toFixed(0)}%</p>
-                <p className="text-[10px]" style={{ color: isLight ? '#64748b' : '#9ca3af' }}>{z.count}{t('doubles_analysis.count_suffix')}</p>
+                <p className="font-medium text-[var(--ss-t1)]">{z.zone}</p>
+                <p className="ss-num text-[var(--ss-t2)]">{(z.win_rate * 100).toFixed(0)}%</p>
+                <p className="ss-num text-[10px] text-[var(--ss-t3)]">{z.count}{t('doubles_analysis.count_suffix')}</p>
               </div>
             ))}
           </div>
@@ -235,7 +233,7 @@ function StrokeSharing({ playerId }: { playerId: number }) {
     enabled: !!playerId,
   })
 
-  if (isLoading) return <p className="text-gray-500 text-xs py-3 text-center">{t('doubles_analysis.loading')}</p>
+  if (isLoading) return <p className="text-[var(--ss-t3)] text-xs py-3 text-center">{t('doubles_analysis.loading')}</p>
 
   const d = resp?.data
   const sampleSize = resp?.meta?.sample_size ?? 0
@@ -257,23 +255,22 @@ function StrokeSharing({ playerId }: { playerId: number }) {
 
       {/* 平均バランス比率メーター */}
       <div
-        className="rounded-lg p-3"
+        className="rounded-ss-lg p-3 border border-[var(--ss-border)]"
         style={{
-          backgroundColor: isLight ? '#f8fafc' : '#1f2937',
-          border: `1px solid ${isLight ? '#e2e8f0' : '#374151'}`,
+          backgroundColor: `var(--ss-surface-2)`,
         }}
       >
-        <p className="text-xs text-gray-400 mb-2">{t('doubles_analysis.avg_balance_title')}</p>
-        <div className="relative h-4 bg-gray-700 rounded-full overflow-hidden">
+        <p className="text-xs text-[var(--ss-t3)] mb-2">{t('doubles_analysis.avg_balance_title')}</p>
+        <div className="relative h-4 bg-[var(--ss-surface-3)] rounded-ss-full overflow-hidden">
           <div
-            className="absolute left-0 top-0 h-full rounded-full bg-gradient-to-r from-orange-500 via-green-400 to-orange-500"
+            className="absolute left-0 top-0 h-full rounded-ss-full bg-gradient-to-r from-orange-500 via-green-400 to-orange-500"
             style={{ width: `${balancePct}%` }}
           />
           <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-xs font-bold drop-shadow" style={{ color: '#ffffff' }}>{balancePct}%</span>
+            <span className="ss-num text-xs font-bold drop-shadow text-white">{balancePct}%</span>
           </div>
         </div>
-        <div className="flex justify-between text-[10px] text-gray-600 mt-0.5">
+        <div className="flex justify-between text-[10px] text-[var(--ss-t3)] mt-0.5">
           <span>{t('doubles_analysis.imbalanced')}</span><span>{t('doubles_analysis.balance_equilibrium')}</span>
         </div>
       </div>
@@ -282,7 +279,7 @@ function StrokeSharing({ playerId }: { playerId: number }) {
       <ResponsiveContainer width="100%" height={90}>
         <BarChart data={shareData} layout="vertical" margin={{ top: 0, right: 40, left: 8, bottom: 0 }}>
           <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fill: isLight ? AXIS_TICK_LIGHT : AXIS_TICK, fontSize: 10 }} />
-          <YAxis type="category" dataKey="name" width={60} tick={{ fill: isLight ? AXIS_TICK_LIGHT : '#d1d5db', fontSize: 11 }} />
+          <YAxis type="category" dataKey="name" width={60} tick={{ fill: isLight ? AXIS_TICK_LIGHT : 'var(--ss-t3)', fontSize: 11 }} />
           <Tooltip
             contentStyle={getTooltipStyle(isLight)}
             formatter={(v: number, _: string, entry: { payload?: { count?: number } }) =>
@@ -319,7 +316,7 @@ function CourtCoverage({ matchId }: { matchId: number }) {
     enabled: !!matchId,
   })
 
-  if (isLoading) return <p className="text-gray-500 text-xs py-3 text-center">{t('doubles_analysis.loading')}</p>
+  if (isLoading) return <p className="text-[var(--ss-t3)] text-xs py-3 text-center">{t('doubles_analysis.loading')}</p>
 
   const d = resp?.data
   if (!d) return <p className="text-gray-500 text-sm py-3 text-center">{t('doubles_analysis.no_data')}</p>
@@ -329,7 +326,7 @@ function CourtCoverage({ matchId }: { matchId: number }) {
     { label: t('doubles_analysis.partner'), data: d.partner_a },
   ].filter((p) => p.data)
 
-  if (players.length === 0) return <p className="text-gray-500 text-sm py-3">{t('doubles_analysis.no_court_data')}</p>
+  if (players.length === 0) return <p className="text-[var(--ss-t3)] text-sm py-3">{t('doubles_analysis.no_court_data')}</p>
 
   const radarData = [
     { area: t('doubles_analysis.area_front'), ...Object.fromEntries(players.map((p) => [p.label, +(p.data!.front_rate * 100).toFixed(1)])) },
@@ -342,15 +339,15 @@ function CourtCoverage({ matchId }: { matchId: number }) {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
-        <span className="text-xs text-gray-400">{t('doubles_analysis.balance_score')}:</span>
+        <span className="text-xs text-[var(--ss-t3)]">{t('doubles_analysis.balance_score')}:</span>
         <span
-          className="text-sm font-bold"
+          className="ss-num text-sm font-bold"
           style={{
             color: d.balance_score >= 0.8
-              ? (isLight ? '#15803d' : '#4ade80')
+              ? 'var(--ss-success)'
               : d.balance_score >= 0.6
-              ? (isLight ? '#b45309' : '#fbbf24')
-              : (isLight ? '#b91c1c' : '#f87171'),
+              ? 'var(--ss-warn)'
+              : 'var(--ss-bad)',
           }}
         >
           {(d.balance_score * 100).toFixed(0)}
@@ -359,7 +356,7 @@ function CourtCoverage({ matchId }: { matchId: number }) {
 
       <ResponsiveContainer width="100%" height={200}>
         <RadarChart data={radarData}>
-          <PolarGrid stroke={isLight ? '#cbd5e1' : '#374151'} />
+          <PolarGrid stroke={isLight ? 'var(--ss-border)' : 'var(--ss-border)'} />
           <PolarAngleAxis dataKey="area" tick={{ fill: isLight ? AXIS_TICK_LIGHT : AXIS_TICK, fontSize: 11 }} />
           {players.map((p, i) => (
             <Radar
@@ -377,9 +374,9 @@ function CourtCoverage({ matchId }: { matchId: number }) {
       <div className="flex gap-3">
         {players.map((p, i) => (
           <div key={p.label} className="flex items-center gap-1.5 text-xs">
-            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[i] }} />
-            <span className="text-gray-400">{p.label}</span>
-            <span style={{ color: isLight ? '#475569' : '#d1d5db' }}>{p.data!.total_strokes}{t('doubles_analysis.strokes_suffix')}</span>
+            <span className="w-2 h-2 rounded-ss-full" style={{ backgroundColor: COLORS[i] }} />
+            <span className="text-[var(--ss-t3)]">{p.label}</span>
+            <span className="ss-num text-[var(--ss-t2)]">{p.data!.total_strokes}{t('doubles_analysis.strokes_suffix')}</span>
           </div>
         ))}
       </div>
@@ -400,26 +397,26 @@ export function DoublesAnalysis({ playerId, allMatches }: DoublesAnalysisProps) 
     <div className="space-y-5">
       {/* パートナー比較 + サーブ受け */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-        <div className="bg-gray-800 rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-gray-200 mb-3">{t('doubles_analysis.section_partner')}</h3>
+        <div className="bg-[var(--ss-surface-1)] rounded-ss-lg border border-[var(--ss-border)] p-4">
+          <h3 className="text-sm font-semibold text-[var(--ss-t1)] mb-3">{t('doubles_analysis.section_partner')}</h3>
           <PartnerComparison playerId={playerId} />
         </div>
-        <div className="bg-gray-800 rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-gray-200 mb-3">{t('doubles_analysis.section_serve_receive')}</h3>
+        <div className="bg-[var(--ss-surface-1)] rounded-ss-lg border border-[var(--ss-border)] p-4">
+          <h3 className="text-sm font-semibold text-[var(--ss-t1)] mb-3">{t('doubles_analysis.section_serve_receive')}</h3>
           <ServeReceiveStats playerId={playerId} />
         </div>
       </div>
 
       {/* 打球分担 + コートカバレッジ */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-        <div className="bg-gray-800 rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-gray-200 mb-3">{t('doubles_analysis.section_sharing')}</h3>
+        <div className="bg-[var(--ss-surface-1)] rounded-ss-lg border border-[var(--ss-border)] p-4">
+          <h3 className="text-sm font-semibold text-[var(--ss-t1)] mb-3">{t('doubles_analysis.section_sharing')}</h3>
           <StrokeSharing playerId={playerId} />
         </div>
 
-        <div className="bg-gray-800 rounded-lg p-4">
+        <div className="bg-[var(--ss-surface-1)] rounded-ss-lg border border-[var(--ss-border)] p-4">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-gray-200">{t('doubles_analysis.section_coverage')}</h3>
+            <h3 className="text-sm font-semibold text-[var(--ss-t1)]">{t('doubles_analysis.section_coverage')}</h3>
             {doublesMatches.length > 0 && (
               <SearchableSelect
                 options={doublesMatches.map((m) => ({
@@ -439,7 +436,7 @@ export function DoublesAnalysis({ playerId, allMatches }: DoublesAnalysisProps) 
           {selectedDoubleMatchId ? (
             <CourtCoverage matchId={selectedDoubleMatchId} />
           ) : (
-            <p className="text-gray-500 text-sm text-center py-4">
+            <p className="text-[var(--ss-t3)] text-sm text-center py-4">
               {t('doubles_analysis.no_match_selected')}
             </p>
           )}

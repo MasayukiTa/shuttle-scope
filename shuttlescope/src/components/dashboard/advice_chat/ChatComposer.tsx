@@ -180,7 +180,7 @@ export const ChatComposer = forwardRef<HTMLTextAreaElement, Props>(
       <div className="flex flex-col gap-1.5">
         {activePeriod && (
           <div
-            className="flex items-center flex-wrap gap-1.5 text-[11px] bg-indigo-50 border border-indigo-200 rounded-md px-2 py-1"
+            className="flex items-center flex-wrap gap-1.5 text-[11px] bg-indigo-50 border border-indigo-200 rounded-ss-md px-2 py-1"
             aria-label={t('auto.AdviceChat.period.chipLabel')}
           >
             <MIcon name="event" size={14} ariaHidden className="text-indigo-700" />
@@ -188,7 +188,7 @@ export const ChatComposer = forwardRef<HTMLTextAreaElement, Props>(
               {activePeriod.label}
             </span>
             <span
-              className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] ${badgeClass}`}
+              className={`inline-flex items-center px-1.5 py-0.5 rounded-ss-pill text-[10px] ${badgeClass}`}
             >
               {t('auto.AdviceChat.period.estimated')}
             </span>
@@ -214,13 +214,13 @@ export const ChatComposer = forwardRef<HTMLTextAreaElement, Props>(
         {(parsedShot || parsedZone) && (
           <div className="flex items-center flex-wrap gap-1.5 text-[11px]">
             {parsedShot && (
-              <span className="inline-flex items-center gap-1 bg-emerald-50 border border-emerald-200 text-emerald-900 px-2 py-0.5 rounded-full">
+              <span className="inline-flex items-center gap-1 bg-emerald-50 border border-emerald-200 text-emerald-900 px-2 py-0.5 rounded-ss-pill">
                 <MIcon name="sports_tennis" size={12} ariaHidden />
                 <span>{parsedShot.label}</span>
               </span>
             )}
             {parsedZone && (
-              <span className="inline-flex items-center gap-1 bg-amber-50 border border-amber-200 text-amber-900 px-2 py-0.5 rounded-full">
+              <span className="inline-flex items-center gap-1 bg-amber-50 border border-amber-200 text-amber-900 px-2 py-0.5 rounded-ss-pill">
                 <MIcon name="place" size={12} ariaHidden />
                 <span>{parsedZone.label}</span>
               </span>
@@ -229,7 +229,7 @@ export const ChatComposer = forwardRef<HTMLTextAreaElement, Props>(
         )}
 
         {editorOpen && (
-          <div className="flex items-center flex-wrap gap-2 text-[11px] bg-white border border-gray-300 rounded-md px-2 py-2 shadow-sm">
+          <div className="flex items-center flex-wrap gap-2 text-[11px] bg-white border border-[color:var(--ss-border-strong)] rounded-ss-md px-2 py-2 shadow-card">
             <label className="flex items-center gap-1">
               <span className="text-gray-700">
                 {t('auto.AdviceChat.period.popoverFrom')}
@@ -238,7 +238,7 @@ export const ChatComposer = forwardRef<HTMLTextAreaElement, Props>(
                 type="date"
                 value={draftFrom}
                 onChange={(e) => setDraftFrom(e.target.value)}
-                className="border border-gray-300 bg-white rounded px-1 py-0.5"
+                className="border border-[color:var(--ss-border-strong)] bg-white rounded-ss-md px-1 py-0.5"
               />
             </label>
             <label className="flex items-center gap-1">
@@ -249,13 +249,13 @@ export const ChatComposer = forwardRef<HTMLTextAreaElement, Props>(
                 type="date"
                 value={draftTo}
                 onChange={(e) => setDraftTo(e.target.value)}
-                className="border border-gray-300 bg-white rounded px-1 py-0.5"
+                className="border border-[color:var(--ss-border-strong)] bg-white rounded-ss-md px-1 py-0.5"
               />
             </label>
             <button
               type="button"
               onClick={applyEditor}
-              className="px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
+              className="px-2 py-0.5 rounded-ss-md bg-[color:var(--ss-brand)] hover:bg-[color:var(--ss-brand-hover)] text-white transition-colors duration-fast"
             >
               {t('auto.AdviceChat.period.popoverApply')}
             </button>
@@ -274,11 +274,11 @@ export const ChatComposer = forwardRef<HTMLTextAreaElement, Props>(
               placeholder={t('auto.AdviceChat.placeholder')}
               disabled={isSending}
               aria-label={t('auto.AdviceChat.placeholder')}
-              className="w-full resize-none rounded-lg border border-gray-300 bg-white px-3 py-2 pr-14 text-sm leading-relaxed text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-60"
+              className="w-full resize-none rounded-ss-md border border-[color:var(--ss-border-strong)] bg-white px-3 py-2 pr-14 text-sm leading-relaxed text-gray-900 focus:outline-none focus:ring-[3px] focus:ring-[color:var(--ss-focus-ring)] focus:border-[color:var(--ss-brand)] transition-colors duration-fast disabled:opacity-60"
             />
             {showCounter && (
               <span
-                className={`absolute top-1 right-2 text-[10px] tabular-nums ${counterClass}`}
+                className={`absolute top-1 right-2 text-[10px] ss-num ${counterClass}`}
                 aria-live="polite"
               >
                 {t('auto.AdviceChat.char_counter', { n })}
@@ -291,7 +291,7 @@ export const ChatComposer = forwardRef<HTMLTextAreaElement, Props>(
             disabled={disabled}
             aria-label={t('auto.AdviceChat.send')}
             title={t('auto.AdviceChat.send')}
-            className="inline-flex items-center justify-center w-10 h-10 rounded bg-slate-800 hover:bg-slate-900 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center justify-center w-10 h-10 rounded-ss-md bg-slate-800 hover:bg-slate-900 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-fast"
           >
             <MIcon name="send" size={18} ariaHidden className="text-white" />
           </button>

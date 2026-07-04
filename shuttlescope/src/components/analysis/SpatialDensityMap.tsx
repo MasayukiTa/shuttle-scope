@@ -36,9 +36,9 @@ export function SpatialDensityMap({ playerId }: SpatialDensityMapProps) {
 
   if (isLoading) {
     return (
-      <div className="bg-gray-800 rounded-lg p-4">
-        <h3 className="text-sm font-semibold text-gray-200 mb-3">{t('auto.SpatialDensityMap.k1')}</h3>
-        <div className="text-gray-500 text-sm py-4 text-center">{t('auto.SpatialDensityMap.k2')}</div>
+      <div className="bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-lg p-4">
+        <h3 className="text-sm font-semibold text-[var(--ss-t1)] mb-3">{t('auto.SpatialDensityMap.k1')}</h3>
+        <div className="text-[var(--ss-t3)] text-sm py-4 text-center">{t('auto.SpatialDensityMap.k2')}</div>
       </div>
     )
   }
@@ -48,8 +48,8 @@ export function SpatialDensityMap({ playerId }: SpatialDensityMapProps) {
 
   if (!d || sampleSize === 0) {
     return (
-      <div className="bg-gray-800 rounded-lg p-4">
-        <h3 className="text-sm font-semibold text-gray-200 mb-3">{t('auto.SpatialDensityMap.k1')}</h3>
+      <div className="bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-lg p-4">
+        <h3 className="text-sm font-semibold text-[var(--ss-t1)] mb-3">{t('auto.SpatialDensityMap.k1')}</h3>
         <NoDataMessage sampleSize={sampleSize} minRequired={5} unit="ストローク" />
       </div>
     )
@@ -73,8 +73,8 @@ export function SpatialDensityMap({ playerId }: SpatialDensityMapProps) {
   const totalZoneCount = Object.values(zone_counts).reduce((a, b) => a + b, 0)
 
   return (
-    <div className="bg-gray-800 rounded-lg p-4">
-      <h3 className="text-sm font-semibold text-gray-200 mb-3">{t('auto.SpatialDensityMap.k1')}</h3>
+    <div className="bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-lg p-4">
+      <h3 className="text-sm font-semibold text-[var(--ss-t1)] mb-3">{t('auto.SpatialDensityMap.k1')}</h3>
       <ConfidenceBadge sampleSize={sampleSize} />
 
       <div className="mt-3 flex gap-4 items-start">
@@ -84,7 +84,7 @@ export function SpatialDensityMap({ playerId }: SpatialDensityMapProps) {
             width={SVG_W}
             height={SVG_H}
             viewBox={`0 0 ${SVG_W} ${SVG_H}`}
-            className="rounded border border-gray-600"
+            className="rounded-ss-md border border-[var(--ss-border)]"
           >
             {/* コート背景 */}
             <rect width={SVG_W} height={SVG_H} fill="#1a2533" />
@@ -103,25 +103,25 @@ export function SpatialDensityMap({ playerId }: SpatialDensityMapProps) {
             ))}
 
             {/* コートライン */}
-            <rect x={0} y={0} width={SVG_W} height={SVG_H} fill="none" stroke="#4b5563" strokeWidth={1} />
+            <rect x={0} y={0} width={SVG_W} height={SVG_H} fill="none" stroke="var(--ss-border)" strokeWidth={1} />
             {/* ネット */}
-            <line x1={0} y1={SVG_H / 2} x2={SVG_W} y2={SVG_H / 2} stroke="#9ca3af" strokeWidth={1.5} />
+            <line x1={0} y1={SVG_H / 2} x2={SVG_W} y2={SVG_H / 2} stroke="var(--ss-t3)" strokeWidth={1.5} />
             {/* 1/3ライン */}
-            <line x1={0} y1={SVG_H / 3} x2={SVG_W} y2={SVG_H / 3} stroke="#374151" strokeWidth={0.5} strokeDasharray="4,4" />
-            <line x1={0} y1={SVG_H * 2 / 3} x2={SVG_W} y2={SVG_H * 2 / 3} stroke="#374151" strokeWidth={0.5} strokeDasharray="4,4" />
+            <line x1={0} y1={SVG_H / 3} x2={SVG_W} y2={SVG_H / 3} stroke="var(--ss-border)" strokeWidth={0.5} strokeDasharray="4,4" />
+            <line x1={0} y1={SVG_H * 2 / 3} x2={SVG_W} y2={SVG_H * 2 / 3} stroke="var(--ss-border)" strokeWidth={0.5} strokeDasharray="4,4" />
             {/* 縦分割 */}
-            <line x1={SVG_W / 3} y1={0} x2={SVG_W / 3} y2={SVG_H} stroke="#374151" strokeWidth={0.5} strokeDasharray="4,4" />
-            <line x1={SVG_W * 2 / 3} y1={0} x2={SVG_W * 2 / 3} y2={SVG_H} stroke="#374151" strokeWidth={0.5} strokeDasharray="4,4" />
+            <line x1={SVG_W / 3} y1={0} x2={SVG_W / 3} y2={SVG_H} stroke="var(--ss-border)" strokeWidth={0.5} strokeDasharray="4,4" />
+            <line x1={SVG_W * 2 / 3} y1={0} x2={SVG_W * 2 / 3} y2={SVG_H} stroke="var(--ss-border)" strokeWidth={0.5} strokeDasharray="4,4" />
 
             {/* ラベル */}
-            <text x={SVG_W / 2} y={SVG_H / 4} textAnchor="middle" fill="#6b7280" fontSize={9}>{t('auto.SpatialDensityMap.k3')}</text>
-            <text x={SVG_W / 2} y={SVG_H * 3 / 4} textAnchor="middle" fill="#6b7280" fontSize={9}>{t('auto.SpatialDensityMap.k4')}</text>
+            <text x={SVG_W / 2} y={SVG_H / 4} textAnchor="middle" fill="var(--ss-t3)" fontSize={9}>{t('auto.SpatialDensityMap.k3')}</text>
+            <text x={SVG_W / 2} y={SVG_H * 3 / 4} textAnchor="middle" fill="var(--ss-t3)" fontSize={9}>{t('auto.SpatialDensityMap.k4')}</text>
           </svg>
         </div>
 
         {/* ゾーン別カウント */}
         <div className="flex-1 min-w-0">
-          <p className="text-xs text-gray-400 mb-2">{t('auto.SpatialDensityMap.k5')}</p>
+          <p className="text-xs text-[var(--ss-t3)] mb-2">{t('auto.SpatialDensityMap.k5')}</p>
           <div className="space-y-1">
             {Object.entries(zone_counts)
               .sort(([, a], [, b]) => b - a)
@@ -129,14 +129,14 @@ export function SpatialDensityMap({ playerId }: SpatialDensityMapProps) {
                 const ratio = totalZoneCount > 0 ? count / totalZoneCount : 0
                 return (
                   <div key={zone} className="flex items-center gap-2 text-xs">
-                    <span className="w-8 text-gray-400 font-mono">{zone}</span>
-                    <div className="flex-1 bg-gray-700 rounded h-3 overflow-hidden">
+                    <span className="w-8 text-[var(--ss-t3)] font-mono ss-num">{zone}</span>
+                    <div className="flex-1 bg-[var(--ss-surface-2)] rounded-ss-sm h-3 overflow-hidden">
                       <div
-                        className="h-full rounded"
+                        className="h-full rounded-ss-sm"
                         style={{ width: `${ratio * 100}%`, backgroundColor: seqBlue(ratio * 3) }}
                       />
                     </div>
-                    <span className="text-gray-400 w-6 text-right">{count}</span>
+                    <span className="text-[var(--ss-t3)] w-6 text-right ss-num">{count}</span>
                   </div>
                 )
               })}
@@ -146,14 +146,14 @@ export function SpatialDensityMap({ playerId }: SpatialDensityMapProps) {
 
       {/* カラースケール凡例 */}
       <div className="mt-3 flex items-center gap-2">
-        <span className="text-xs text-gray-500">{t('auto.SpatialDensityMap.k6')}</span>
+        <span className="text-xs text-[var(--ss-t3)]">{t('auto.SpatialDensityMap.k6')}</span>
         <div
-          className="flex-1 h-2 rounded"
+          className="flex-1 h-2 rounded-ss-sm"
           style={{
             background: `linear-gradient(to right, ${seqBlue(0)}, ${seqBlue(0.5)}, ${seqBlue(1)})`,
           }}
         />
-        <span className="text-xs text-gray-500">{t('auto.SpatialDensityMap.k7')}</span>
+        <span className="text-xs text-[var(--ss-t3)]">{t('auto.SpatialDensityMap.k7')}</span>
       </div>
     </div>
   )

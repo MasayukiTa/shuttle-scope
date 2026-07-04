@@ -79,8 +79,7 @@ function CardItem({ card, tokens }: { card: SummaryCard; tokens: Tokens }) {
   //   - 背景は完全無彩色、罫線も全周 1px 均等。
   return (
     <div
-      className="flex items-start gap-2.5 rounded px-3 py-2.5"
-      style={{ backgroundColor: tokens.bgRow }}
+      className="flex items-start gap-2.5 rounded-ss-md px-3 py-2.5 bg-[var(--ss-surface-2)] border border-[var(--ss-border)]"
     >
       <MIcon
         name={iconName}
@@ -133,25 +132,22 @@ export function QuickSummaryCard({ matchId, asOfSet, asOfRally, playerSide = 'pl
 
   return (
     <section
-      className="rounded-md border"
-      style={{ backgroundColor: tokens.bgPanel, borderColor: tokens.border }}
+      className="rounded-ss-lg border bg-[var(--ss-surface-1)] border-[var(--ss-border)]"
     >
       {/* ヘッダ */}
       <header
-        className="flex items-center justify-between px-4 py-2 border-b"
-        style={{ borderColor: tokens.divider }}
+        className="flex items-center justify-between px-4 py-2 border-b border-[var(--ss-border)]"
       >
         <div className="flex items-center gap-2">
           <span
-            className="text-[10px] font-semibold tracking-[0.18em] uppercase"
-            style={{ color: tokens.textMuted }}
+            className="text-[10px] font-semibold tracking-[0.06em] uppercase text-[var(--ss-t3)]"
           >
             {t('auto.QuickSummaryCard.coach_summary')}
           </span>
           {/* 警告件数バッジ: 件数だけ示す、色は B_BAD 文字のみ (背景なし) */}
           {warnCount > 0 && (
             <span
-              className="text-[10px] font-semibold tabular-nums inline-flex items-center gap-0.5"
+              className="text-[10px] font-semibold ss-num inline-flex items-center gap-0.5"
               style={{ color: B_BAD }}
               title={t('auto.QuickSummaryCard.k3')}
             >
@@ -159,7 +155,7 @@ export function QuickSummaryCard({ matchId, asOfSet, asOfRally, playerSide = 'pl
             </span>
           )}
           {data && (
-            <span className="text-[10px]" style={{ color: tokens.textFaint }}>
+            <span className="text-[10px] text-[var(--ss-t3)]">
               {t('auto.QuickSummaryCard.recent_total', { window: data.window, total: data.total_rallies })}
             </span>
           )}
@@ -168,8 +164,7 @@ export function QuickSummaryCard({ matchId, asOfSet, asOfRally, playerSide = 'pl
           onClick={() => refetch()}
           disabled={isFetching}
           title={t('auto.QuickSummaryCard.k2')}
-          className="p-1 rounded disabled:opacity-40"
-          style={{ color: tokens.textMuted }}
+          className="p-1 rounded-ss-md duration-base ease-out disabled:opacity-40 text-[var(--ss-t3)]"
         >
           <MIcon name="refresh" size={12} className={isFetching ? 'animate-spin' : ''} />
         </button>
@@ -177,16 +172,14 @@ export function QuickSummaryCard({ matchId, asOfSet, asOfRally, playerSide = 'pl
       <div className="px-3 py-3 space-y-2">
         {isLoading && (
           <p
-            className="text-xs text-center py-2"
-            style={{ color: tokens.textFaint }}
+            className="text-xs text-center py-2 text-[var(--ss-t3)]"
           >
             {t('auto.QuickSummaryCard.k1')}
           </p>
         )}
         {!isLoading && cards.length === 0 && (
           <p
-            className="text-xs text-center py-2"
-            style={{ color: tokens.textFaint }}
+            className="text-xs text-center py-2 text-[var(--ss-t3)]"
           >
             {t('auto.QuickSummaryCard.observing')}
           </p>

@@ -36,7 +36,7 @@ function SequencePill({ labels, winRate }: { labels: string[]; winRate: number }
       {labels.map((label, i) => (
         <span key={i} className="flex items-center gap-1">
           <span
-            className="px-2 py-0.5 rounded text-xs font-medium"
+            className="px-2 py-0.5 rounded-ss-sm text-xs font-medium"
             style={{ backgroundColor: perfColor(winRate, 0.85), color: '#ffffff' }}
           >
             {label}
@@ -66,8 +66,8 @@ function SequenceList({ sequences, accent, title }: { sequences: SequenceEntry[]
             <div key={i} className="space-y-1">
               <SequencePill labels={s.labels} winRate={s.win_rate} />
               <div className="flex gap-3 text-xs text-gray-400 pl-1">
-                <span>{t('auto._shared.n_times', { n: s.count })}</span>
-                <span className="font-mono">{Math.round(s.win_rate * 100)}%</span>
+                <span className="ss-num">{t('auto._shared.n_times', { n: s.count })}</span>
+                <span className="font-mono ss-num">{Math.round(s.win_rate * 100)}%</span>
               </div>
             </div>
           ))}
@@ -101,7 +101,7 @@ export function RallySequencePatterns({ playerId }: RallySequencePatternsProps) 
 
   if (winSeqs.length === 0 && lossSeqs.length === 0) {
     return (
-      <div className="bg-gray-800 rounded-lg p-4">
+      <div className="bg-gray-800 rounded-ss-lg shadow-card p-4">
         <h3 className="text-sm font-semibold text-gray-200 mb-3">{t('auto.RallySequencePatterns.k3')}</h3>
         <NoDataMessage sampleSize={totalRallies} minRequired={20} unit="ラリー" />
       </div>
@@ -109,9 +109,9 @@ export function RallySequencePatterns({ playerId }: RallySequencePatternsProps) 
   }
 
   return (
-    <div className="bg-gray-800 rounded-lg p-4">
+    <div className="bg-gray-800 rounded-ss-lg shadow-card p-4">
       <h3 className="text-sm font-semibold text-gray-200 mb-1">{t('auto.RallySequencePatterns.k3')}</h3>
-      <p className="text-xs text-gray-500 mb-3">{t('auto.RallySequencePatterns.analyzed_rallies', { n: totalRallies })}</p>
+      <p className="text-xs text-gray-500 mb-3 ss-num">{t('auto.RallySequencePatterns.analyzed_rallies', { n: totalRallies })}</p>
       <ConfidenceBadge sampleSize={sampleSize} />
       <div className="flex gap-4 mt-3">
         <SequenceList sequences={winSeqs} accent={WIN} title={t('auto.RallySequencePatterns.k4')} />

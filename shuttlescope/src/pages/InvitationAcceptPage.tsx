@@ -56,22 +56,26 @@ export default function InvitationAcceptPage() {
     }
   }
 
+  const fieldCls =
+    'w-full border border-[var(--ss-ctrl-border)] rounded-ss-md px-3 py-2.5 text-base min-h-[44px] ' +
+    'bg-[var(--ss-ctrl-bg)] text-[var(--ss-ctrl-text)] outline-none transition-colors duration-fast ease-out'
+
   if (loading) {
     return (
-      <div className="min-h-[100svh] flex items-center justify-center">
-        <p>{t('app.loading')}</p>
+      <div className="min-h-[100svh] flex items-center justify-center bg-[var(--ss-bg-app)]">
+        <p className="text-[var(--ss-t2)]">{t('app.loading')}</p>
       </div>
     )
   }
   if (!info) {
     return (
       <div
-        className="min-h-[100svh] flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4"
+        className="min-h-[100svh] flex items-center justify-center bg-[var(--ss-bg-app)] p-4"
         style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
       >
-        <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-lg shadow p-6 text-center space-y-4">
-          <p className="text-red-600">{error ?? t('auth.invitation.invalid')}</p>
-          <Link to="/login" className="block text-blue-600 hover:underline text-sm">
+        <div className="max-w-md w-full bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-lg shadow-card p-6 text-center space-y-4">
+          <p className="text-[var(--ss-bad)]">{error ?? t('auth.invitation.invalid')}</p>
+          <Link to="/login" className="block text-[var(--ss-brand)] hover:text-[var(--ss-brand-hover)] hover:underline text-sm">
             {t('auth.back_to_login')}
           </Link>
         </div>
@@ -81,46 +85,50 @@ export default function InvitationAcceptPage() {
 
   return (
     <div
-      className="min-h-[100svh] flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4"
+      className="min-h-[100svh] flex items-center justify-center bg-[var(--ss-bg-app)] p-4"
       style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
     >
       <form onSubmit={handleSubmit}
-            className="max-w-md w-full bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4">
-        <h1 className="text-xl font-bold">{t('auth.invitation.title')}</h1>
+            className="max-w-md w-full bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-lg shadow-card p-6 space-y-4">
+        <h1 className="text-xl font-semibold tracking-[-0.014em] text-[var(--ss-t1)]">{t('auth.invitation.title')}</h1>
 
-        <div className="rounded bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-3 text-sm space-y-1">
+        <div className="rounded-ss-md bg-[var(--ss-info-bg)] border border-[var(--ss-info-border)] p-3 text-sm space-y-1 text-[var(--ss-info-text)]">
           <div><span className="font-medium">{t('auth.email')}:</span> {info.email}</div>
           <div><span className="font-medium">{t('auth.invitation.role')}:</span> {info.role}</div>
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1">{t('auth.register.username')}</label>
+          <label className="block text-sm font-medium mb-1 text-[var(--ss-t2)]">{t('auth.register.username')}</label>
           <input type="text" value={username} onChange={(e) => setUsername(e.target.value)}
                  required minLength={3} maxLength={64}
                  autoComplete="username" autoCapitalize="none" autoCorrect="off"
-                 className="w-full rounded border px-3 py-2.5 text-base min-h-[44px] dark:bg-gray-700 dark:border-gray-600" />
+                 className={fieldCls} />
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1">{t('auth.register.password')}</label>
+          <label className="block text-sm font-medium mb-1 text-[var(--ss-t2)]">{t('auth.register.password')}</label>
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
                  required minLength={8} maxLength={128}
                  autoComplete="new-password"
-                 className="w-full rounded border px-3 py-2.5 text-base min-h-[44px] dark:bg-gray-700 dark:border-gray-600" />
+                 className={fieldCls} />
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1">{t('auth.register.display_name_optional')}</label>
+          <label className="block text-sm font-medium mb-1 text-[var(--ss-t2)]">{t('auth.register.display_name_optional')}</label>
           <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)}
                  maxLength={100}
                  autoComplete="name"
-                 className="w-full rounded border px-3 py-2.5 text-base min-h-[44px] dark:bg-gray-700 dark:border-gray-600" />
+                 className={fieldCls} />
         </div>
 
-        {error && <div className="text-sm text-red-600">{error}</div>}
+        {error && (
+          <div className="text-sm rounded-ss-md border px-3 py-2 bg-[var(--ss-danger-bg)] border-[var(--ss-danger-border)] text-[var(--ss-danger-text)]">
+            {error}
+          </div>
+        )}
 
         <button type="submit" disabled={submitting}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded disabled:opacity-50">
+                className="w-full bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white text-sm font-medium px-4 py-2 rounded-ss-md disabled:opacity-50 transition-colors duration-fast ease-out">
           {submitting ? t('app.loading') : t('auth.invitation.accept')}
         </button>
       </form>

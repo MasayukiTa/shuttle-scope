@@ -73,14 +73,10 @@ function CoachCandidateView({
     <div className="space-y-3">
       {/* 注釈バナー */}
       <div
-        className="flex items-start gap-2 px-3 py-2 rounded"
-        style={{
-          background: isLight ? '#f0fdf4' : '#14532d22',
-          border: `1px solid #16a34a40`,
-        }}
+        className="flex items-start gap-2 px-3 py-2 rounded-ss-md bg-[rgba(31,111,224,0.08)] border border-[var(--ss-brand)]"
       >
-        <MIcon name="error" size={13} className="shrink-0 mt-0.5" style={{ color: '#16a34a' }} />
-        <p className="text-[11px]" style={{ color: isLight ? '#15803d' : '#86efac' }}>
+        <MIcon name="error" size={13} className="shrink-0 mt-0.5" style={{ color: 'var(--ss-brand)' }} />
+        <p className="text-[11px] text-[var(--ss-brand)]">
           {t('lineup.candidate_disclaimer', 'Candidate generation (reference) — not an automatic decision. Do not decide a lineup on this alone.')}
         </p>
       </div>
@@ -107,20 +103,12 @@ function CoachCandidateView({
           return (
             <div
               key={rp.player_id}
-              className="px-3 py-2.5 rounded"
-              style={{
-                background: isLight ? '#f8fafc' : '#1e293b',
-                border: `1px solid ${isLight ? '#e2e8f0' : '#334155'}`,
-              }}
+              className="px-3 py-2.5 rounded-ss-md bg-[var(--ss-surface-1)] border border-[var(--ss-border)]"
             >
               {/* プラン名 + 選手名 */}
               <div className="flex items-center gap-2 mb-1.5">
                 <span
-                  className="text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0"
-                  style={{
-                    background: isLight ? '#dbeafe' : '#1d4ed820',
-                    color: isLight ? '#1d4ed8' : '#93c5fd',
-                  }}
+                  className="text-[10px] font-bold px-1.5 py-0.5 rounded-ss-sm shrink-0 bg-[rgba(37,99,235,0.08)] text-[var(--ss-brand)]"
                 >
                   {PLAN_LABELS[idx]}
                 </span>
@@ -129,11 +117,7 @@ function CoachCandidateView({
                 </span>
                 {rp.h2h_available && (
                   <span
-                    className="text-[10px] px-1 rounded shrink-0"
-                    style={{
-                      color: isLight ? '#1d4ed8' : '#93c5fd',
-                      background: isLight ? '#dbeafe' : '#1d4ed820',
-                    }}
+                    className="text-[10px] px-1 rounded-ss-sm shrink-0 text-[var(--ss-brand)] bg-[rgba(37,99,235,0.08)]"
                   >
                     H2H
                   </span>
@@ -144,7 +128,7 @@ function CoachCandidateView({
               <div className="flex items-center gap-3 flex-wrap">
                 <div className="flex items-center gap-1">
                   <span className="text-[10px]" style={{ color: subText }}>{t('auto.LineupOptimizerPanel.k1')}</span>
-                  <span className="text-sm font-bold" style={{ color: neutral }}>
+                  <span className="text-sm font-bold ss-num" style={{ color: neutral }}>
                     {lo}–{hi}%
                   </span>
                   {rp.sample_size < 10 && (
@@ -223,23 +207,19 @@ function AnalystRankingView({
         {/* xs: バッジ群を隠して名前領域を確保。sm+ で表示 */}
         {rp.h2h_available && (
           <span
-            className="hidden sm:inline-flex text-[10px] px-1 rounded shrink-0"
-            style={{
-              color: isLight ? '#1d4ed8' : '#93c5fd',
-              background: isLight ? '#dbeafe' : '#1d4ed820',
-            }}
+            className="hidden sm:inline-flex text-[10px] px-1 rounded-ss-sm shrink-0 text-[var(--ss-brand)] bg-[rgba(37,99,235,0.08)]"
           >
             H2H
           </span>
         )}
-        <span className="hidden sm:inline text-[11px] shrink-0 num-cell" style={{ color: subText }}>
+        <span className="hidden sm:inline text-[11px] shrink-0 ss-num" style={{ color: subText }}>
           {rp.sample_size > 0 ? t('lineup.n_matches', { n: rp.sample_size, defaultValue: '{{n}} matches' }) : t('lineup.no_data', 'No data')}
         </span>
         {rp.sample_size > 0 && (
           <div className="flex items-center gap-1.5 shrink-0">
-            <div className="w-16 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+            <div className="w-16 h-1.5 bg-[var(--ss-surface-2)] rounded-full overflow-hidden">
               <div
-                className="h-full rounded-full transition-all"
+                className="h-full rounded-full transition-all duration-base ease-out"
                 style={{
                   width: `${pct}%`,
                   background: pct >= 55 ? WIN : pct <= 45 ? LOSS : '#d97706',
@@ -247,7 +227,7 @@ function AnalystRankingView({
               />
             </div>
             <span
-              className="text-sm font-bold w-10 text-right shrink-0 num-cell"
+              className="text-sm font-bold w-10 text-right shrink-0 ss-num"
               style={{ color: pct >= 55 ? WIN : pct <= 45 ? LOSS : neutral }}
             >
               {pct}%
@@ -290,11 +270,7 @@ export function LineupOptimizerPanel({ players, role }: Props) {
   const { t } = useTranslation()
   const isLight = useIsLightMode()
   const subText = isLight ? '#64748b' : '#9ca3af'
-  const inputClass = `text-sm rounded px-2 py-1.5 focus:outline-none ${
-    isLight
-      ? 'bg-white border border-gray-300 text-gray-800'
-      : 'bg-gray-700 border border-gray-600 text-gray-200'
-  }`
+  const inputClass = `text-sm rounded-ss-md px-2 py-1.5 focus:outline-none bg-[var(--ss-surface-1)] border border-[var(--ss-border-strong)] text-[var(--ss-t1)]`
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [opponentId, setOpponentId] = useState<number | null>(null)
@@ -421,11 +397,7 @@ export function LineupOptimizerPanel({ players, role }: Props) {
         <div className="flex gap-1.5 flex-wrap items-center">
           {/* 名前検索 */}
           <div
-            className="flex items-center gap-1 flex-1 min-w-[140px] rounded px-2 py-1"
-            style={{
-              background: isLight ? '#f1f5f9' : '#374151',
-              border: `1px solid ${isLight ? '#e2e8f0' : '#4b5563'}`,
-            }}
+            className="flex items-center gap-1 flex-1 min-w-[140px] rounded-ss-md px-2 py-1 bg-[var(--ss-surface-2)] border border-[var(--ss-border)]"
           >
             <MIcon name="search" size={11} style={{ color: subText }} className="shrink-0" />
             <input
@@ -433,8 +405,7 @@ export function LineupOptimizerPanel({ players, role }: Props) {
               value={nameFilter}
               onChange={(e) => setNameFilter(e.target.value)}
               placeholder={t('auto.LineupOptimizerPanel.k6')}
-              className="flex-1 bg-transparent text-xs outline-none min-w-0"
-              style={{ color: isLight ? '#1e293b' : '#e2e8f0' }}
+              className="flex-1 bg-transparent text-xs outline-none min-w-0 text-[var(--ss-t1)]"
             />
             {nameFilter && (
               <button onClick={() => setNameFilter('')}>
@@ -448,12 +419,7 @@ export function LineupOptimizerPanel({ players, role }: Props) {
             <select
               value={teamFilter}
               onChange={(e) => setTeamFilter(e.target.value)}
-              className="text-xs rounded px-2 py-1 focus:outline-none"
-              style={{
-                background: isLight ? '#f1f5f9' : '#374151',
-                border: `1px solid ${isLight ? '#e2e8f0' : '#4b5563'}`,
-                color: isLight ? '#1e293b' : '#e2e8f0',
-              }}
+              className="text-xs rounded-ss-md px-2 py-1 focus:outline-none bg-[var(--ss-surface-2)] border border-[var(--ss-border)] text-[var(--ss-t1)]"
             >
               <option value="">{t('auto.LineupOptimizerPanel.k3')}</option>
               {teamOptions.map((t) => (
@@ -466,12 +432,8 @@ export function LineupOptimizerPanel({ players, role }: Props) {
           {filteredPlayers.length > 0 && (
             <button
               onClick={toggleAllFiltered}
-              className="flex items-center gap-1 text-[10px] px-2 py-1 rounded transition-colors"
-              style={{
-                background: isLight ? '#f1f5f9' : '#374151',
-                border: `1px solid ${isLight ? '#e2e8f0' : '#4b5563'}`,
-                color: subText,
-              }}
+              className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-ss-md bg-[var(--ss-surface-2)] border border-[var(--ss-border)] transition-colors duration-base ease-out"
+              style={{ color: subText }}
             >
               {allFilteredSelected
                 ? <><MIcon name="check_box" size={11} /> {t('auto.LineupOptimizerPanel.k4')}</>
@@ -497,14 +459,10 @@ export function LineupOptimizerPanel({ players, role }: Props) {
           {filteredPlayers.map((p) => (
             <label
               key={p.id}
-              className={`flex items-center gap-2 text-xs px-2 py-1.5 rounded cursor-pointer transition-colors ${
+              className={`flex items-center gap-2 text-xs px-2 py-1.5 rounded-ss-md cursor-pointer transition-colors duration-base ease-out ${
                 selectedIds.has(p.id)
-                  ? isLight
-                    ? 'bg-white border border-gray-200 text-blue-700'
-                    : 'bg-gray-800 border border-gray-700 text-blue-300'
-                  : isLight
-                  ? 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
-                  : 'bg-gray-700 border border-gray-600 text-gray-300 hover:bg-gray-600'
+                  ? 'bg-[var(--ss-surface-1)] border border-[var(--ss-brand)] text-[var(--ss-brand)]'
+                  : 'bg-[var(--ss-surface-1)] border border-[var(--ss-border)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]'
               }`}
             >
               <input
@@ -565,7 +523,7 @@ export function LineupOptimizerPanel({ players, role }: Props) {
       <button
         onClick={() => { if (canRun) setEnabled(true) }}
         disabled={!canRun || isLoading || isFetching}
-        className="w-full py-2 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-sm font-medium text-white transition-colors"
+        className="w-full py-2 rounded-ss-md bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-40 text-sm font-medium text-white transition-colors duration-base ease-out"
       >
         {isLoading || isFetching ? '計算中...' : t('prediction.lineup_run')}
       </button>

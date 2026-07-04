@@ -156,7 +156,7 @@ export function YoloCVPositionCard({ playerId, filters }: Props) {
   // ─── ローディング ────────────────────────────────────────────────────────────
   if (isLoading) {
     return (
-      <div className={`${card} rounded-lg p-4`}>
+      <div className={`${card} rounded-ss-lg shadow-card p-4`}>
         <div className={`text-xs ${textMuted} animate-pulse`}>{t('auto.YoloCVPositionCard.k1')}</div>
       </div>
     )
@@ -165,7 +165,7 @@ export function YoloCVPositionCard({ playerId, filters }: Props) {
   // ─── 試合なし ────────────────────────────────────────────────────────────────
   if (!recentMatch) {
     return (
-      <div className={`${card} rounded-lg p-4`}>
+      <div className={`${card} rounded-ss-lg shadow-card p-4`}>
         <p className={`text-xs ${textMuted}`}>{t('auto.YoloCVPositionCard.k2')}</p>
       </div>
     )
@@ -174,7 +174,7 @@ export function YoloCVPositionCard({ playerId, filters }: Props) {
   // ─── YOLO データなし ─────────────────────────────────────────────────────────
   if (!cv?.available) {
     return (
-      <div className={`${card} rounded-lg p-4 space-y-2`}>
+      <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-2`}>
         <h3 className={`text-sm font-semibold ${textHeading}`}>{t('auto.YoloCVPositionCard.k3')}</h3>
         <p className={`text-xs ${textMuted}`}>
           {t('auto.YoloCVPositionCard.no_yolo', { id: recentMatch.id })}
@@ -194,12 +194,12 @@ export function YoloCVPositionCard({ playerId, filters }: Props) {
   const pm = cv.pressure_map ?? {}
 
   return (
-    <div className={`${card} rounded-lg p-4 space-y-4`}>
+    <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-4`}>
       {/* ヘッダー */}
       <div className="flex items-center justify-between">
         <div>
           <h3 className={`text-sm font-semibold ${textHeading}`}>{t('auto.YoloCVPositionCard.k3')}</h3>
-          <p className={`text-[10px] ${textFaint}`}>
+          <p className={`text-[10px] ${textFaint} ss-num`}>
             {t('auto.YoloCVPositionCard.match_meta', {
               id: recentMatch.id,
               date: recentMatch.match_date ? ` · ${recentMatch.match_date}` : '',
@@ -218,7 +218,7 @@ export function YoloCVPositionCard({ playerId, filters }: Props) {
 
       {/* 陣形傾向 */}
       {ft && (
-        <div className={`${cardInner} rounded p-3 space-y-2`}>
+        <div className={`${cardInner} rounded-ss-md p-3 space-y-2`}>
           <div className="flex items-center justify-between">
             <span className={`text-xs font-medium ${textSecondary}`}>{t('auto.YoloCVPositionCard.k4')}</span>
             <span className={`text-xs font-bold ${textHeading}`}>{ft.style_label}</span>
@@ -230,14 +230,14 @@ export function YoloCVPositionCard({ playerId, filters }: Props) {
             {Object.entries(ft.breakdown).map(([k, v]) => (
               <div key={k} className="flex items-center justify-between">
                 <span>{FORMATION_LABELS[k] ?? k}</span>
-                <span className={textFaint}>{pct(v.ratio)} ({v.count})</span>
+                <span className={`${textFaint} ss-num`}>{pct(v.ratio)} ({v.count})</span>
               </div>
             ))}
           </div>
           {cv.rotation_transitions !== undefined && (
             <div className={`flex items-center justify-between text-[11px] ${textMuted} pt-1 border-t ${isLight ? 'border-gray-200' : 'border-gray-700'}`}>
               <span>{t('auto.YoloCVPositionCard.k5')}</span>
-              <span className={`font-bold ${textHeading}`}>{t('auto.YoloCVPositionCard.rotations', { n: cv.rotation_transitions })}</span>
+              <span className={`font-bold ${textHeading} ss-num`}>{t('auto.YoloCVPositionCard.rotations', { n: cv.rotation_transitions })}</span>
             </div>
           )}
         </div>
@@ -245,7 +245,7 @@ export function YoloCVPositionCard({ playerId, filters }: Props) {
 
       {/* ヒッター候補分布（アライメントがある場合） */}
       {hd && (
-        <div className={`${cardInner} rounded p-3 space-y-2`}>
+        <div className={`${cardInner} rounded-ss-md p-3 space-y-2`}>
           <span className={`text-xs font-medium ${textSecondary}`}>{t('auto.YoloCVPositionCard.k6')}</span>
           <div className="flex h-2.5 w-full rounded-full overflow-hidden gap-px">
             <div
@@ -259,7 +259,7 @@ export function YoloCVPositionCard({ playerId, filters }: Props) {
               title={`Player B: ${pct(hd.hitter_b_ratio)}`}
             />
           </div>
-          <div className={`grid grid-cols-2 text-[10px] ${textMuted}`}>
+          <div className={`grid grid-cols-2 text-[10px] ${textMuted} ss-num`}>
             <div>
               <span className="text-blue-400">A</span>{t('auto.YoloCVPositionCard.hitter_count', { n: hd.hitter_a_count, pct: pct(hd.hitter_a_ratio) })}
             </div>
@@ -267,7 +267,7 @@ export function YoloCVPositionCard({ playerId, filters }: Props) {
               <span className="text-amber-400">B</span>{t('auto.YoloCVPositionCard.hitter_count', { n: hd.hitter_b_count, pct: pct(hd.hitter_b_ratio) })}
             </div>
           </div>
-          <div className={`flex gap-3 text-[10px] ${textFaint}`}>
+          <div className={`flex gap-3 text-[10px] ${textFaint} ss-num`}>
             <span>{t('auto.YoloCVPositionCard.rally_dominant', { a: hd.rally_dominant['player_a'] ?? 0, b: hd.rally_dominant['player_b'] ?? 0, c: hd.rally_dominant['balanced'] ?? 0 })}</span>
           </div>
           <p className={`text-[9px] ${textFaint} italic`}>{hd.note}</p>
@@ -276,7 +276,7 @@ export function YoloCVPositionCard({ playerId, filters }: Props) {
 
       {/* 圧力マップ（ゾーン別） */}
       {Object.keys(pm).length > 0 && (
-        <div className={`${cardInner} rounded p-3 space-y-2`}>
+        <div className={`${cardInner} rounded-ss-md p-3 space-y-2`}>
           <span className={`text-xs font-medium ${textSecondary}`}>{t('auto.YoloCVPositionCard.k7')}</span>
           <div className="grid grid-cols-2 gap-1">
             {Object.entries(pm)
@@ -285,10 +285,10 @@ export function YoloCVPositionCard({ playerId, filters }: Props) {
               .map(([zone, zd]) => (
                 <div
                   key={zone}
-                  className={`flex items-center justify-between text-[10px] ${textMuted} px-1.5 py-0.5 rounded ${isLight ? 'bg-gray-100' : 'bg-gray-800'}`}
+                  className={`flex items-center justify-between text-[10px] ${textMuted} px-1.5 py-0.5 rounded-ss-sm ${isLight ? 'bg-gray-100' : 'bg-gray-800'}`}
                 >
                   <span className={`font-mono font-bold ${textSecondary}`}>{zone}</span>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 ss-num">
                     <div className={`h-1 rounded-full bg-sky-500`} style={{ width: `${Math.round(zd.receiver_front_ratio * 32)}px`, minWidth: '2px' }} />
                     <span>{pct(zd.receiver_front_ratio)}</span>
                     <span className={textFaint}>{t('auto.YoloCVPositionCard.n_lower', { n: zd.sample_count })}</span>

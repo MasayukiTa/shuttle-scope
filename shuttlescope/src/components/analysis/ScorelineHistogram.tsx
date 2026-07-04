@@ -24,7 +24,7 @@ export function ScorelineHistogram({ data }: ScorelineHistogramProps) {
 
   return (
     <div className="space-y-1.5">
-      <p className="text-xs font-medium text-gray-400 mb-2">
+      <p className="text-xs font-medium text-[var(--ss-t2)] mb-2">
         {t('prediction.scoreline_histogram')}
       </p>
       {data.map((entry, i) => {
@@ -35,15 +35,15 @@ export function ScorelineHistogram({ data }: ScorelineHistogramProps) {
           <div key={i} className="flex items-center gap-2 text-xs py-0.5">
             {/* 結果バッジ（固定幅） */}
             <span
-              className="font-bold w-8 shrink-0 text-right"
+              className="ss-num font-bold w-8 shrink-0 text-right"
               style={{ color: isWin ? WIN : LOSS }}
             >
               {entry.outcome}
             </span>
             {/* バー（スコアラベルなし） */}
-            <div className="flex-1 bg-gray-700 rounded h-4 relative overflow-hidden">
+            <div className="flex-1 bg-gray-700 rounded-ss-sm h-4 relative overflow-hidden">
               <div
-                className="h-full rounded"
+                className="h-full rounded-ss-sm transition-all duration-base ease-out"
                 style={{
                   width: `${barWidth}%`,
                   backgroundColor: isWin ? WIN : LOSS,
@@ -52,17 +52,17 @@ export function ScorelineHistogram({ data }: ScorelineHistogramProps) {
               />
             </div>
             {/* %と回数 */}
-            <span className="text-gray-500 w-8 text-right font-mono shrink-0">{pct}%</span>
-            <span className="text-gray-600 w-6 text-right shrink-0">{entry.count}</span>
+            <span className="ss-num text-[var(--ss-t3)] w-8 text-right font-mono shrink-0">{pct}%</span>
+            <span className="ss-num text-[var(--ss-t3)] w-6 text-right shrink-0">{entry.count}</span>
             {/* セットスコア: details で折り畳み */}
             <details className="shrink-0">
-              <summary className="text-blue-500 cursor-pointer list-none text-[10px] leading-none">{t('auto.ScorelineHistogram.k1')}</summary>
-              <div className="text-gray-500 text-[10px] mt-0.5 whitespace-nowrap">{entry.scoreline}</div>
+              <summary className="text-[var(--ss-brand)] cursor-pointer list-none text-[10px] leading-none">{t('auto.ScorelineHistogram.k1')}</summary>
+              <div className="ss-num text-[var(--ss-t3)] text-[10px] mt-0.5 whitespace-nowrap">{entry.scoreline}</div>
             </details>
           </div>
         )
       })}
-      <p className="text-[10px] text-gray-600 mt-1">
+      <p className="text-[10px] text-[var(--ss-t3)] mt-1">
         {t('prediction.frequency')}{t('auto.ScorelineHistogram.freq_note')}
       </p>
     </div>

@@ -62,7 +62,7 @@ export function EffectiveDistributionMap({ playerId, filters = DEFAULT_FILTERS }
   const isLoading = provided ? bundleLoading : indiv.isLoading
 
   if (isLoading) {
-    return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.loading')}</div>
+    return <div className="text-[var(--ss-t3)] text-sm py-4 text-center">{t('analysis.loading')}</div>
   }
 
   const sampleSize = resp?.meta?.sample_size ?? 0
@@ -70,7 +70,7 @@ export function EffectiveDistributionMap({ playerId, filters = DEFAULT_FILTERS }
   const topZones = resp?.data?.top_zones ?? []
 
   if (sampleSize === 0 || Object.keys(zoneData).length === 0) {
-    return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.no_data')}</div>
+    return <div className="text-[var(--ss-t3)] text-sm py-4 text-center">{t('analysis.no_data')}</div>
   }
 
   const maxEffectiveness = Math.max(...Object.values(zoneData).map((z) => z.effectiveness), 0.001)
@@ -88,14 +88,14 @@ export function EffectiveDistributionMap({ playerId, filters = DEFAULT_FILTERS }
           <button
             onClick={() => { setInitialZone(null); setModalOpen(true) }}
             title={t('auto.EffectiveDistributionMap.k4')}
-            className={`p-1 rounded transition-colors ${isLight ? 'text-gray-400 hover:bg-gray-100 hover:text-gray-600' : 'text-gray-500 hover:bg-gray-700 hover:text-gray-300'}`}
+            className={`p-1 rounded-ss-md transition-colors duration-base ease-out text-[var(--ss-t3)] hover:bg-[var(--ss-surface-2)] hover:text-[var(--ss-t2)]`}
           >
             <MIcon name="fullscreen" size={14} />
           </button>
         </div>
 
         {topZones.length > 0 && (
-          <div className="text-xs text-gray-400">
+          <div className="text-xs text-[var(--ss-t3)]">
             {t('analysis.review.top_zone_label')}:
             <span className="ml-1 font-semibold" style={{ color: WIN }}>
               {topZones.map((z) => ZONE_LABELS[z] ?? z).join('・')}
@@ -105,7 +105,7 @@ export function EffectiveDistributionMap({ playerId, filters = DEFAULT_FILTERS }
 
         {/* ゾーングリッド（クリック可能） */}
         <div className="space-y-0.5">
-          <p className="text-[10px] text-gray-500 text-center mb-1">{t('auto.EffectiveDistributionMap.k1')}</p>
+          <p className="text-[10px] text-[var(--ss-t3)] text-center mb-1">{t('auto.EffectiveDistributionMap.k1')}</p>
           {ZONE_GRID.map((row, ri) => (
             <div key={ri} className="flex gap-0.5">
               {row.map((zone) => {
@@ -114,42 +114,43 @@ export function EffectiveDistributionMap({ playerId, filters = DEFAULT_FILTERS }
                 const isTop = topZones.includes(zone)
                 const bgColor = d
                   ? `rgba(${parseInt(WIN.slice(1, 3), 16)}, ${parseInt(WIN.slice(3, 5), 16)}, ${parseInt(WIN.slice(5, 7), 16)}, ${(intensity * 0.7).toFixed(2)})`
-                  : (isLight ? '#f1f5f9' : '#374151')
+                  : `var(--ss-surface-2)`
 
                 return (
                   <button
                     key={zone}
                     onClick={() => handleZoneClick(zone)}
-                    className="flex-1 rounded p-1.5 text-center text-xs transition-all cursor-pointer focus:outline-none hover:ring-2 hover:ring-offset-0"
+                    className="flex-1 rounded-ss-md p-1.5 text-center text-xs transition-all duration-base ease-out cursor-pointer focus:outline-none hover:ring-2 hover:ring-offset-0 border"
                     style={{
                       backgroundColor: bgColor,
-                      border: isTop ? `1.5px solid ${WIN}` : `1px solid ${isLight ? '#e2e8f0' : 'transparent'}`,
+                      borderColor: isTop ? WIN : 'var(--ss-border)',
+                      borderWidth: isTop ? '1.5px' : '1px',
                       minHeight: '48px',
                       // @ts-expect-error CSS custom property not in React.CSSProperties type
                       '--tw-ring-color': WIN,
                     }}
                   >
-                    <p className="text-[10px] font-medium" style={{ color: isLight ? '#1e293b' : '#ffffff' }}>
+                    <p className="text-[10px] font-medium text-[var(--ss-t1)]">
                       {ZONE_LABELS[zone]}
                     </p>
                     {d ? (
                       <>
-                        <p className="font-bold text-xs" style={{ color: WIN }}>
+                        <p className="ss-num font-bold text-xs" style={{ color: WIN }}>
                           {(d.win_rate * 100).toFixed(0)}%
                         </p>
-                        <p className="text-[9px]" style={{ color: isLight ? '#475569' : '#9ca3af' }}>
+                        <p className="ss-num text-[9px] text-[var(--ss-t3)]">
                           {t('auto._shared.n_points', { n: d.win_count })}
                         </p>
                       </>
                     ) : (
-                      <p className="text-[10px]" style={{ color: isLight ? '#94a3b8' : '#6b7280' }}>—</p>
+                      <p className="text-[10px] text-[var(--ss-t3)]">—</p>
                     )}
                   </button>
                 )
               })}
             </div>
           ))}
-          <p className="text-[10px] text-gray-500 text-center mt-1">
+          <p className="text-[10px] text-[var(--ss-t3)] text-center mt-1">
             {t('auto.EffectiveDistributionMap.own_court')}<span className="opacity-60">{t('auto.EffectiveDistributionMap.k2')}</span>
           </p>
         </div>
@@ -159,7 +160,7 @@ export function EffectiveDistributionMap({ playerId, filters = DEFAULT_FILTERS }
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="text-gray-400 border-b border-gray-700">
+                <tr className="text-[var(--ss-t3)] border-b border-[var(--ss-border)]">
                   <th className="text-left py-1.5 pr-3">{t('analysis.effective_map.zone')}</th>
                   <th className="text-center py-1.5 pr-3">{t('auto.EffectiveDistributionMap.k3')}</th>
                   <th className="text-center py-1.5 pr-3">{t('analysis.effective_map.win_rate')}</th>
@@ -173,18 +174,18 @@ export function EffectiveDistributionMap({ playerId, filters = DEFAULT_FILTERS }
                   .map(([zone, d]) => (
                     <tr
                       key={zone}
-                      className="border-b border-gray-700/40 hover:bg-gray-700/20 cursor-pointer"
+                      className="border-b border-[var(--ss-border)]/40 hover:bg-[var(--ss-surface-2)] cursor-pointer transition-colors duration-base ease-out"
                       onClick={() => handleZoneClick(zone)}
                     >
                       <td className="py-1.5 pr-3 font-semibold" style={{ color: topZones.includes(zone) ? WIN : undefined }}>
                         {ZONE_LABELS[zone] ?? zone}
                         {topZones.includes(zone) && <MIcon name="star" size={9} className="ml-1" />}
                       </td>
-                      <td className="py-1.5 pr-3 text-center text-gray-300 num-cell">{d.win_count}</td>
-                      <td className="py-1.5 pr-3 text-center num-cell">
+                      <td className="py-1.5 pr-3 text-center text-[var(--ss-t2)] ss-num">{d.win_count}</td>
+                      <td className="py-1.5 pr-3 text-center ss-num">
                         <span className="font-semibold" style={{ color: WIN }}>{(d.win_rate * 100).toFixed(1)}%</span>
                       </td>
-                      <td className="py-1.5 text-right text-gray-400 num-cell">{(d.effectiveness * 100).toFixed(1)}</td>
+                      <td className="py-1.5 text-right text-[var(--ss-t3)] ss-num">{(d.effectiveness * 100).toFixed(1)}</td>
                     </tr>
                   ))}
               </tbody>
