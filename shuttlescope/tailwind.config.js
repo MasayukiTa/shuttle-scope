@@ -42,9 +42,33 @@ export default {
         },
       },
       borderRadius: {
+        // 旧 shadcn 互換 (--radius ベース) は既存クラスのため維持。
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
+        // DESIGN_DIRECTION_v2 §4: crisp / minimal radius scale。
+        // 新規コンポーネントは rounded-ss-* を使う (bubbly な既定 rounded-* と分離)。
+        'ss-sm': 'var(--r-sm)',
+        'ss-md': 'var(--r-md)',
+        'ss-lg': 'var(--r-lg)',
+        'ss-xl': 'var(--r-xl)',
+        'ss-pill': 'var(--r-pill)',
+      },
+      boxShadow: {
+        // DESIGN_DIRECTION_v2 §4 elevation scale (light-tuned subtle shadows).
+        card: 'var(--e1)',
+        'card-hover': 'var(--e2)',
+        pop: 'var(--e3)',
+        flat: 'var(--e0)',
+      },
+      transitionDuration: {
+        fast: 'var(--dur-fast)',
+        base: 'var(--dur-base)',
+        slow: 'var(--dur-slow)',
+      },
+      transitionTimingFunction: {
+        out: 'var(--ease-out)',
+        'in-out': 'var(--ease-in-out)',
       },
     },
   },
