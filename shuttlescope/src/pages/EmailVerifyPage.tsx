@@ -30,29 +30,29 @@ export default function EmailVerifyPage() {
 
   return (
     <div
-      className="min-h-[100svh] flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4"
+      className="min-h-[100svh] flex items-center justify-center bg-[var(--ss-bg-app)] p-4"
       style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
     >
-      <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4 text-center">
-        <h1 className="text-xl font-bold">{t('auth.verify.title')}</h1>
-        {status === 'loading' && <p>{t('app.loading')}</p>}
+      <div className="max-w-md w-full bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-lg shadow-card p-6 space-y-4 text-center">
+        <h1 className="text-xl font-semibold tracking-[-0.014em] text-[var(--ss-t1)]">{t('auth.verify.title')}</h1>
+        {status === 'loading' && <p className="text-[var(--ss-t2)]">{t('app.loading')}</p>}
         {status === 'ok' && (
           <>
-            <p className="text-green-700 dark:text-green-400">
+            <p className="text-[var(--ss-success)]">
               {t('auto.EmailVerifyPage.check_mark')} {t('auth.verify.success')}
             </p>
             {verifiedEmail && (
-              <p className="text-sm text-gray-600 dark:text-gray-300">{verifiedEmail}</p>
+              <p className="text-sm text-[var(--ss-t2)]">{verifiedEmail}</p>
             )}
-            <Link to="/login" className="block text-blue-600 hover:underline text-sm">
+            <Link to="/login" className="block text-[var(--ss-brand)] hover:text-[var(--ss-brand-hover)] hover:underline text-sm">
               {t('auth.verify.go_login')}
             </Link>
           </>
         )}
         {status === 'error' && (
           <>
-            <p className="text-red-600">{t('auto.EmailVerifyPage.cross_mark')} {errorMsg ?? t('auth.verify.failed')}</p>
-            <Link to="/login" className="block text-blue-600 hover:underline text-sm">
+            <p className="text-[var(--ss-bad)]">{t('auto.EmailVerifyPage.cross_mark')} {errorMsg ?? t('auth.verify.failed')}</p>
+            <Link to="/login" className="block text-[var(--ss-brand)] hover:text-[var(--ss-brand-hover)] hover:underline text-sm">
               {t('auth.verify.go_login')}
             </Link>
           </>

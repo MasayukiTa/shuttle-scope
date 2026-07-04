@@ -159,15 +159,17 @@ export function DateRangeSlider({
     [posA, posB, totalDays, baseTs, onChange]
   )
 
-  // ─── スタイル定数 ───────────────────────────────────────────────────────────
-  const trackBg  = isLight ? '#e2e8f0' : '#374151'
-  const fillBg   = isLight ? '#3b82f6' : '#2563eb'
-  const thumbBg  = isLight ? '#3b82f6' : '#60a5fa'
-  const thumbBdr = isLight ? '#ffffff' : '#111827'
-  const barFill  = isLight ? 'rgba(59,130,246,0.35)' : 'rgba(96,165,250,0.30)'
-  const barFillSel = isLight ? 'rgba(59,130,246,0.75)' : 'rgba(96,165,250,0.65)'
-  const tickCol  = isLight ? '#94a3b8' : '#6b7280'
-  const labelCol = isLight ? '#64748b' : '#9ca3af'
+  // ─── スタイル定数 (v2 §2 token 準拠) ─────────────────────────────────────────
+  // isLight は呼び出し側から渡される既存 prop (テーマ実値と同期済み) を維持しつつ、
+  // 色そのものは globals.css の v2 セマンティックトークンへ合わせる。
+  const trackBg  = isLight ? '#e4e8ee' : '#363c46'   // --ss-surface-3 / --ss-border
+  const fillBg   = isLight ? '#2563eb' : '#5c9bff'   // --ss-brand
+  const thumbBg  = isLight ? '#2563eb' : '#5c9bff'   // --ss-brand
+  const thumbBdr = isLight ? '#ffffff' : '#23272e'   // --ss-surface-1
+  const barFill  = isLight ? 'rgba(37,99,235,0.22)' : 'rgba(92,155,255,0.28)'
+  const barFillSel = isLight ? 'rgba(37,99,235,0.65)' : 'rgba(92,155,255,0.62)'
+  const tickCol  = isLight ? '#8892a0' : '#727c89'   // --ss-t3
+  const labelCol = isLight ? '#55606e' : '#a5aebb'   // --ss-t2
 
   const DENSITY_H = 24  // 密度バーエリアの高さ px
   const TRACK_H   = 16  // トラックエリアの高さ px
@@ -272,9 +274,10 @@ export function DateRangeSlider({
                 bottom: THUMB_R * 2 + 4,
                 left: '50%',
                 transform: 'translateX(-50%)',
-                backgroundColor: isLight ? '#1e293b' : '#374151',
+                backgroundColor: isLight ? '#1a2028' : '#0f1216',
                 color: '#ffffff',
                 fontSize: 10,
+                fontVariantNumeric: 'tabular-nums',
                 padding: '2px 5px',
                 borderRadius: 3,
                 whiteSpace: 'nowrap',
@@ -311,9 +314,10 @@ export function DateRangeSlider({
                 bottom: THUMB_R * 2 + 4,
                 left: '50%',
                 transform: 'translateX(-50%)',
-                backgroundColor: isLight ? '#1e293b' : '#374151',
+                backgroundColor: isLight ? '#1a2028' : '#0f1216',
                 color: '#ffffff',
                 fontSize: 10,
+                fontVariantNumeric: 'tabular-nums',
                 padding: '2px 5px',
                 borderRadius: 3,
                 whiteSpace: 'nowrap',
@@ -349,6 +353,7 @@ export function DateRangeSlider({
 
       {/* 選択期間テキスト */}
       <span
+        className="ss-num"
         style={{ fontSize: 10, color: labelCol, minWidth: 88, lineHeight: 1.3, whiteSpace: 'nowrap' }}
       >
         {fromDay(selMin, baseTs).slice(0, 7)}

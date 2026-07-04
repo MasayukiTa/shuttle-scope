@@ -42,16 +42,16 @@ interface FatigueRiskCardProps {
 function RiskBar({ value, label }: { value: number; label: string }) {
 
   const pct = Math.min(100, Math.round(value * 100))
-  const color = pct >= 12 ? LOSS : pct >= 6 ? '#f59e0b' : '#6b7280'
+  const color = pct >= 12 ? LOSS : pct >= 6 ? 'var(--ss-warn)' : 'var(--ss-border)'
   return (
     <div className="space-y-0.5">
-      <div className="flex justify-between text-xs" style={{ color: '#9ca3af' }}>
+      <div className="flex justify-between text-xs text-[var(--ss-t3)]">
         <span>{label}</span>
-        <span className="font-mono">{pct}%</span>
+        <span className="ss-num font-mono">{pct}%</span>
       </div>
-      <div className="h-2 bg-gray-700 rounded overflow-hidden">
+      <div className="h-2 bg-[var(--ss-surface-3)] rounded-ss-full overflow-hidden">
         <div
-          className="h-full rounded transition-all"
+          className="h-full rounded-ss-full transition-all duration-base ease-out"
           style={{ width: `${pct}%`, backgroundColor: color }}
         />
       </div>
@@ -62,8 +62,6 @@ function RiskBar({ value, label }: { value: number; label: string }) {
 function Inner({ playerId, tournamentLevel }: FatigueRiskCardProps) {
   const { t } = useTranslation()
   const isLight = useIsLightMode()
-  const subText = isLight ? '#64748b' : '#9ca3af'
-  const neutral = isLight ? '#334155' : '#d1d5db'
 
   const { data: resp, isLoading } = useQuery({
     queryKey: ['prediction-fatigue-risk', playerId, tournamentLevel],
@@ -76,7 +74,7 @@ function Inner({ playerId, tournamentLevel }: FatigueRiskCardProps) {
   })
 
   if (isLoading) {
-    return <div className="text-gray-500 text-sm py-4 text-center">{t('prediction.loading')}</div>
+    return <div className="text-[var(--ss-t3)] text-sm py-4 text-center">{t('prediction.loading')}</div>
   }
 
   const d = resp?.data
@@ -85,23 +83,23 @@ function Inner({ playerId, tournamentLevel }: FatigueRiskCardProps) {
   }
 
   const riskPct = Math.round(d.risk_score * 100)
-  const riskColor = riskPct >= 12 ? LOSS : riskPct >= 6 ? '#f59e0b' : '#6b7280'
+  const riskColor = riskPct >= 12 ? LOSS : riskPct >= 6 ? 'var(--ss-warn)' : 'var(--ss-border)'
 
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3 flex-wrap">
         <ConfidenceBadge sampleSize={d.breakdown.total_rallies} />
-        <span className="text-xs" style={{ color: subText }}>
+        <span className="text-xs text-[var(--ss-t3)]">
           {t('auto._shared.n_rallies', { n: d.breakdown.total_rallies })}
         </span>
       </div>
 
       {/* リスクスコア大表示 */}
       <div className="text-center">
-        <p className="text-4xl font-bold" style={{ color: riskColor }}>
+        <p className="ss-num text-4xl font-bold" style={{ color: riskColor }}>
           {riskPct}%
         </p>
-        <p className="text-[11px] mt-1" style={{ color: subText }}>
+        <p className="text-[11px] mt-1 text-[var(--ss-t3)]">
           {t('prediction.fatigue_risk_score')}
         </p>
       </div>
@@ -119,24 +117,24 @@ function Inner({ playerId, tournamentLevel }: FatigueRiskCardProps) {
       )}
 
       {d.risk_signals.length === 0 && (
-        <p className="text-xs" style={{ color: subText }}>{t('auto.FatigueRiskCard.k1')}</p>
+        <p className="text-xs text-[var(--ss-t3)]">{t('auto.FatigueRiskCard.k1')}</p>
       )}
 
       {/* 推奨 */}
       {d.recommendation && (
-        <div className="border-t border-gray-700 pt-3">
-          <p className="text-xs font-medium mb-1" style={{ color: subText }}>
+        <div className="border-t border-[var(--ss-border)] pt-3">
+          <p className="text-xs font-medium mb-1 text-[var(--ss-t3)]">
             {t('prediction.recommendation')}
           </p>
-          <p className="text-xs" style={{ color: neutral }}>
+          <p className="text-xs text-[var(--ss-t2)]">
             {d.recommendation}
           </p>
         </div>
       )}
 
       {/* 内訳バー */}
-      <div className="border-t border-gray-700 pt-3 space-y-2">
-        <p className="text-xs font-medium" style={{ color: subText }}>
+      <div className="border-t border-[var(--ss-border)] pt-3 space-y-2">
+        <p className="text-xs font-medium text-[var(--ss-t3)]">
           {t('prediction.fatigue_breakdown')}
         </p>
         <RiskBar value={d.breakdown.temporal_drop} label={t('prediction.temporal_drop')} />
@@ -152,8 +150,8 @@ export function FatigueRiskCard({ playerId, tournamentLevel }: FatigueRiskCardPr
 
   return (
     <RoleGuard allowedRoles={['analyst', 'coach']}>
-      <div className="bg-gray-800 rounded-lg p-4">
-        <h3 className="text-sm font-semibold text-gray-200 mb-3">{t('auto.FatigueRiskCard.k2')}</h3>
+      <div className="bg-[var(--ss-surface-1)] rounded-ss-lg border border-[var(--ss-border)] p-4">
+        <h3 className="text-sm font-semibold text-[var(--ss-t1)] mb-3">{t('auto.FatigueRiskCard.k2')}</h3>
         <Inner playerId={playerId} tournamentLevel={tournamentLevel} />
       </div>
     </RoleGuard>

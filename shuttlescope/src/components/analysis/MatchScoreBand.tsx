@@ -28,7 +28,7 @@ export function MatchScoreBand({ scoreBands, _playerName, _opponentName }: Match
 
   if (entries.length === 0) {
     return (
-      <p className="text-xs text-gray-500 text-center py-2">
+      <p className="text-xs text-[var(--ss-t3)] text-center py-2">
         {t('auto.MatchScoreBand.no_score_data')}
       </p>
     )
@@ -36,7 +36,7 @@ export function MatchScoreBand({ scoreBands, _playerName, _opponentName }: Match
 
   return (
     <div className="space-y-2">
-      <div className="grid grid-cols-4 gap-2 text-[10px] font-medium pb-1 border-b border-gray-700">
+      <div className="grid grid-cols-4 gap-2 text-[10px] font-medium pb-1 border-b border-[color:var(--ss-border)]">
         <span style={{ color: subColor }}>{t('auto.MatchScoreBand.k1')}</span>
         <span className="text-center" style={{ color: subColor }}>{t('prediction.my_score')}</span>
         <span className="text-center" style={{ color: subColor }}>{t('prediction.opp_score')}</span>
@@ -47,19 +47,19 @@ export function MatchScoreBand({ scoreBands, _playerName, _opponentName }: Match
         return (
           <div key={key} className="grid grid-cols-4 gap-2 text-xs items-center">
             <span className="font-medium" style={{ color: textColor }}>{t('auto.MatchScoreBand.set_n', { n: setNum })}</span>
-            <span className="text-center font-mono" style={{ color: textColor }}>
+            <span className="ss-num text-center font-mono" style={{ color: textColor }}>
               {band.my_low}–{band.my_high}
             </span>
-            <span className="text-center font-mono" style={{ color: subColor }}>
+            <span className="ss-num text-center font-mono" style={{ color: subColor }}>
               {band.opp_low}–{band.opp_high}
             </span>
-            <span className="text-right text-[10px]" style={{ color: subColor }}>
+            <span className="ss-num text-right text-[10px]" style={{ color: subColor }}>
               {band.sample}
             </span>
           </div>
         )
       })}
-      <p className="text-[10px] text-gray-600 pt-1">
+      <p className="text-[10px] text-[var(--ss-t3)] pt-1">
         {t('auto.MatchScoreBand.percentile_band')}
       </p>
     </div>

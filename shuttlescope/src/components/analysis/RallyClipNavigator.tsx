@@ -122,48 +122,46 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
   const setNums = [...new Set(rallies.map((r) => r.set_num))].sort((a, b) => a - b)
 
   return (
-    <div className={`rounded-lg border ${isLight ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'}`}>
+    <div className={`rounded-ss-lg border bg-[var(--ss-surface-1)] border-[var(--ss-border)]`}>
       {/* ヘッダー */}
-      <div className={`flex items-center justify-between px-4 py-3 border-b ${border}`}>
+      <div className={`flex items-center justify-between px-4 py-3 border-b border-[var(--ss-border)]`}>
         <div className="flex items-center gap-2">
-          <MIcon name="play_arrow" size={14} className="text-blue-500" />
-          <span className={`text-sm font-semibold ${textPrimary}`}>{t('auto.RallyClipNavigator.k1')}</span>
+          <MIcon name="play_arrow" size={14} className="text-[var(--ss-brand)]" />
+          <span className={`text-sm font-semibold text-[var(--ss-t1)]`}>{t('auto.RallyClipNavigator.k1')}</span>
           {!hasVideo && (
             // Design Language v1.2: 警告状態は B_BAD 文字色 + 無彩色 bg (同色相重ね禁止)
             <span
-              className={`text-xs px-2 py-0.5 rounded border ${isLight ? 'bg-gray-50 border-gray-200' : 'bg-gray-800 border-gray-700'}`}
+              className={`text-xs px-2 py-0.5 rounded-ss-sm border bg-[var(--ss-surface-2)] border-[var(--ss-border)]`}
               style={{ color: '#b40426' /* B_BAD */ }}
             >
               {t('rally.no_video', 'Video not saved')}
             </span>
           )}
           {hasVideo && !hasTimestamps && (
-            <span className={`text-xs px-2 py-0.5 rounded ${isLight ? 'bg-gray-100 text-gray-500' : 'bg-gray-700 text-gray-400'}`}>
+            <span className={`text-xs px-2 py-0.5 rounded-ss-sm bg-[var(--ss-surface-2)] text-[var(--ss-t3)]`}>
               {t('rally.no_timestamps', 'No timestamps')}
             </span>
           )}
         </div>
         <button
           onClick={() => setShowFilters(!showFilters)}
-          className={`flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors ${
-            isLight ? 'text-gray-600 hover:bg-gray-100' : 'text-gray-400 hover:bg-gray-700'
-          }`}
+          className={`flex items-center gap-1 text-xs px-2 py-1 rounded-ss-md duration-base ease-out text-[var(--ss-t3)] hover:bg-[var(--ss-surface-2)]`}
         >
           <MIcon name="filter_alt" size={12} />
           {t('common.filter', 'Filter')}
-          <MIcon name="expand_more" size={12} className={`transition-transform ${showFilters ? 'rotate-180' : ''}`} />
+          <MIcon name="expand_more" size={12} className={`duration-base ease-out ${showFilters ? 'rotate-180' : ''}`} />
         </button>
       </div>
 
       {/* フィルターパネル */}
       {showFilters && (
-        <div className={`flex flex-wrap gap-3 px-4 py-3 border-b ${border} ${isLight ? 'bg-gray-50' : 'bg-gray-700/20'}`}>
+        <div className={`flex flex-wrap gap-3 px-4 py-3 border-b border-[var(--ss-border)] bg-[var(--ss-surface-2)]`}>
           <div className="flex flex-col gap-1">
-            <label className={`text-[10px] font-medium ${textMuted}`}>{t('auto.RallyClipNavigator.k2')}</label>
+            <label className={`text-[10px] font-medium text-[var(--ss-t3)]`}>{t('auto.RallyClipNavigator.k2')}</label>
             <select
               value={filterWinner}
               onChange={(e) => setFilterWinner(e.target.value)}
-              className={`text-xs px-2 py-1 rounded border ${isLight ? 'bg-white border-gray-300 text-gray-700' : 'bg-gray-700 border-gray-600 text-gray-200'}`}
+              className={`text-xs px-2 py-1 rounded-ss-md border bg-[var(--ss-surface-1)] border-[var(--ss-border)] text-[var(--ss-t1)]`}
             >
               <option value="">{t('auto.RallyClipNavigator.k3')}</option>
               <option value="player_a">{playerAName}</option>
@@ -171,11 +169,11 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
             </select>
           </div>
           <div className="flex flex-col gap-1">
-            <label className={`text-[10px] font-medium ${textMuted}`}>{t('auto.RallyClipNavigator.k4')}</label>
+            <label className={`text-[10px] font-medium text-[var(--ss-t3)]`}>{t('auto.RallyClipNavigator.k4')}</label>
             <select
               value={filterEndType}
               onChange={(e) => setFilterEndType(e.target.value)}
-              className={`text-xs px-2 py-1 rounded border ${isLight ? 'bg-white border-gray-300 text-gray-700' : 'bg-gray-700 border-gray-600 text-gray-200'}`}
+              className={`text-xs px-2 py-1 rounded-ss-md border bg-[var(--ss-surface-1)] border-[var(--ss-border)] text-[var(--ss-t1)]`}
             >
               <option value="">{t('auto.RallyClipNavigator.k3')}</option>
               {Object.entries(END_TYPE_LABELS).map(([v, l]) => (
@@ -185,11 +183,11 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
           </div>
           {setNums.length > 1 && (
             <div className="flex flex-col gap-1">
-              <label className={`text-[10px] font-medium ${textMuted}`}>{t('auto.RallyClipNavigator.k5')}</label>
+              <label className={`text-[10px] font-medium text-[var(--ss-t3)]`}>{t('auto.RallyClipNavigator.k5')}</label>
               <select
                 value={filterSetNum}
                 onChange={(e) => setFilterSetNum(e.target.value)}
-                className={`text-xs px-2 py-1 rounded border ${isLight ? 'bg-white border-gray-300 text-gray-700' : 'bg-gray-700 border-gray-600 text-gray-200'}`}
+                className={`text-xs px-2 py-1 rounded-ss-md border bg-[var(--ss-surface-1)] border-[var(--ss-border)] text-[var(--ss-t1)]`}
               >
                 <option value="">{t('auto.RallyClipNavigator.k6')}</option>
                 {setNums.map((n) => (
@@ -201,7 +199,7 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
           <div className="flex items-end">
             <button
               onClick={() => { setFilterWinner(''); setFilterEndType(''); setFilterSetNum('') }}
-              className={`text-xs px-2 py-1 rounded border transition-colors ${isLight ? 'border-gray-300 text-gray-500 hover:bg-gray-100' : 'border-gray-600 text-gray-400 hover:bg-gray-700'}`}
+              className={`text-xs px-2 py-1 rounded-ss-md border border-[var(--ss-border)] text-[var(--ss-t3)] duration-base ease-out hover:bg-[var(--ss-surface-3)]`}
             >
               {t('common.clear', 'Clear')}
             </button>
@@ -226,10 +224,10 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
       {/* ラリーリスト */}
       <div className="overflow-y-auto" style={{ maxHeight: '320px' }}>
         {isLoading && (
-          <div className={`px-4 py-6 text-center text-sm ${textMuted}`}>{t('auto.RallyClipNavigator.k7')}</div>
+          <div className={`px-4 py-6 text-center text-sm text-[var(--ss-t3)]`}>{t('auto.RallyClipNavigator.k7')}</div>
         )}
         {!isLoading && rallies.length === 0 && (
-          <div className={`px-4 py-6 text-center text-sm ${textMuted}`}>
+          <div className={`px-4 py-6 text-center text-sm text-[var(--ss-t3)]`}>
             {t('rally.no_rallies', 'No matching rallies')}
           </div>
         )}
@@ -245,10 +243,10 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
               type="button"
               disabled={!hasVideo || !hasTs}
               onClick={() => jumpTo(r)}
-              className={`w-full text-left flex items-center gap-3 px-4 py-2.5 border-b transition-colors
+              className={`w-full text-left flex items-center gap-3 px-4 py-2.5 border-b border-[var(--ss-border)] duration-base ease-out
                 ${isActive
-                  ? (isLight ? 'bg-gray-50' : 'bg-gray-700')
-                  : `${border} ${rowHover}`
+                  ? 'bg-[var(--ss-surface-2)]'
+                  : 'hover:bg-[var(--ss-surface-2)]'
                 }
                 ${(!hasVideo || !hasTs) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
               `}
@@ -257,15 +255,11 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
             >
               {/* ジャンプアイコン: active のみ A_GOOD 色、それ以外無彩色 */}
               <div
-                className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center ${
-                  hasTs
-                    ? (isLight ? 'bg-gray-200' : 'bg-gray-700')
-                    : (isLight ? 'bg-gray-100' : 'bg-gray-800')
-                }`}
+                className={`shrink-0 w-6 h-6 rounded-ss-md flex items-center justify-center bg-[var(--ss-surface-2)]`}
                 style={{
                   color: isActive
                     ? '#3b4cc0' /* A_GOOD */
-                    : (isLight ? '#64748b' : '#94a3b8') /* N_GRAY[500]/[400] */,
+                    : 'var(--ss-t3)',
                 }}
               >
                 {hasTs ? <MIcon name="play_arrow" size={10} /> : <MIcon name="schedule" size={10} />}
@@ -273,10 +267,10 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
 
               {/* セット / ラリー番号 */}
               <div className="shrink-0 w-20">
-                <span className={`text-xs font-medium ${isActive ? 'text-blue-400' : textSecondary}`}>
+                <span className={`text-xs font-medium ss-num ${isActive ? 'text-[var(--ss-brand)]' : 'text-[var(--ss-t2)]'}`}>
                   {t('rally.s_r', { s: r.set_num, r: r.rally_num, defaultValue: 'S{{s}} R.{{r}}' })}
                 </span>
-                <div className={`text-[10px] ${textMuted}`}>
+                <div className={`text-[10px] text-[var(--ss-t3)] ss-num`}>
                   {r.score_a_before}–{r.score_b_before}
                 </div>
               </div>
@@ -284,25 +278,25 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
               {/* タイムスタンプ */}
               <div className="shrink-0 w-14">
                 {hasTs ? (
-                  <span className={`text-[11px] font-mono ${isActive ? 'text-blue-400' : 'text-blue-500'}`}>
+                  <span className={`text-[11px] font-mono ss-num ${isActive ? 'text-[var(--ss-brand)]' : 'text-[var(--ss-brand)]'}`}>
                     {fmtTime(r.video_timestamp_start!)}
                   </span>
                 ) : (
-                  <span className={`text-[10px] ${textMuted}`}>—</span>
+                  <span className={`text-[10px] text-[var(--ss-t3)]`}>—</span>
                 )}
               </div>
 
               {/* 終了種別 + 勝者 */}
               <div className="flex-1 min-w-0">
-                <span className={`text-xs ${textPrimary}`}>{endLabel}</span>
-                <div className={`text-[10px] truncate ${textMuted}`}>
+                <span className={`text-xs text-[var(--ss-t1)]`}>{endLabel}</span>
+                <div className={`text-[10px] truncate text-[var(--ss-t3)]`}>
                   {t('rally.winner_strokes', { winner, len: r.rally_length, defaultValue: 'Winner: {{winner}} · {{len}} strokes' })}
                 </div>
               </div>
 
               {/* 継続時間 */}
               {r.duration_sec != null && (
-                <div className={`shrink-0 text-[10px] ${textMuted}`}>
+                <div className={`shrink-0 text-[10px] text-[var(--ss-t3)] ss-num`}>
                   {r.duration_sec.toFixed(1)}s
                 </div>
               )}
@@ -312,10 +306,10 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
       </div>
 
       {/* フッター */}
-      <div className={`px-4 py-2 text-[10px] ${textMuted} flex justify-between`}>
-        <span>{t('rally.n_rallies', { n: rallies.length, defaultValue: '{{n}} rallies' })}</span>
+      <div className={`px-4 py-2 text-[10px] text-[var(--ss-t3)] flex justify-between border-t border-[var(--ss-border)]`}>
+        <span className="ss-num">{t('rally.n_rallies', { n: rallies.length, defaultValue: '{{n}} rallies' })}</span>
         {hasTimestamps && (
-          <span>{t('rally.n_with_timestamps', { n: rallies.filter((r) => r.video_timestamp_start != null).length, defaultValue: '{{n}} with timestamps' })}</span>
+          <span className="ss-num">{t('rally.n_with_timestamps', { n: rallies.filter((r) => r.video_timestamp_start != null).length, defaultValue: '{{n}} with timestamps' })}</span>
         )}
       </div>
 

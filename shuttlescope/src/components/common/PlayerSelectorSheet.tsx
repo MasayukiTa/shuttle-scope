@@ -96,55 +96,55 @@ export function PlayerSelectorSheet({
       }}
     >
       {/* バックドロップ */}
-      <div className="absolute inset-0 bg-black/40" />
+      <div className="absolute inset-0 bg-[var(--ss-bg-overlay)]" />
 
       <div
         onClick={(e) => e.stopPropagation()}
         className={clsx(
-          'absolute bg-gray-900 text-gray-100 shadow-2xl border-gray-700 flex flex-col',
+          'absolute bg-[var(--ss-surface-1)] text-[var(--ss-t1)] shadow-pop border-[var(--ss-border)] flex flex-col',
           isDesktop
-            ? 'left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[480px] max-h-[70vh] rounded-lg border'
-            : 'left-0 right-0 bottom-0 max-h-[80vh] rounded-t-lg border-t',
+            ? 'left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[480px] max-h-[70vh] rounded-ss-lg border'
+            : 'left-0 right-0 bottom-0 max-h-[80vh] rounded-t-ss-lg border-t',
         )}
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       >
         {/* drag handle (モバイルのみ) */}
         {!isDesktop && (
           <div className="flex justify-center pt-2">
-            <span className="block w-10 h-1 rounded bg-gray-600" aria-hidden />
+            <span className="block w-10 h-1 rounded-ss-pill bg-[var(--ss-border-strong)]" aria-hidden />
           </div>
         )}
 
-        <header className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
+        <header className="flex items-center justify-between px-4 py-3 border-b border-[var(--ss-border)]">
           <h2 className="text-sm font-medium">{headerLabel}</h2>
           <button
             type="button"
             onClick={onClose}
             aria-label={t('common.close', { defaultValue: '閉じる' })}
-            className="text-gray-400 hover:text-white text-lg leading-none px-2"
+            className="text-[var(--ss-t3)] hover:text-[var(--ss-t1)] text-lg leading-none px-2 transition-colors duration-fast ease-out"
           >
             ×
           </button>
         </header>
 
-        <div className="px-4 py-2 border-b border-gray-700">
+        <div className="px-4 py-2 border-b border-[var(--ss-border)]">
           <input
             ref={inputRef}
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t('common.player_selector_search', { defaultValue: '名前またはチームで検索' })}
-            className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full bg-[var(--ss-ctrl-bg)] border border-[var(--ss-ctrl-border)] rounded-ss-md px-3 py-2 text-sm text-[var(--ss-ctrl-text)] focus:outline-none focus:border-[var(--ss-ctrl-border-focus)] focus:ring-[3px] focus:ring-[var(--ss-focus-ring)]"
           />
         </div>
 
         <div className="overflow-y-auto flex-1">
           {filtered.length === 0 ? (
-            <div className="px-4 py-8 text-center text-sm text-gray-500">
+            <div className="px-4 py-8 text-center text-sm text-[var(--ss-t3)]">
               {t('common.player_selector_empty', { defaultValue: '該当する選手がいません' })}
             </div>
           ) : (
-            <ul className="divide-y divide-gray-800">
+            <ul className="divide-y divide-[var(--ss-border)]">
               {filtered.map((p) => {
                 const isSelected = selectedId === p.id
                 return (
@@ -156,14 +156,14 @@ export function PlayerSelectorSheet({
                         onClose()
                       }}
                       className={clsx(
-                        'w-full text-left px-4 py-3 hover:bg-gray-800 active:bg-gray-700 flex flex-col gap-0.5',
-                        isSelected && 'bg-blue-900/40',
+                        'w-full text-left px-4 py-3 hover:bg-[var(--ss-surface-2)] active:bg-[var(--ss-surface-3)] flex flex-col gap-0.5 transition-colors duration-fast ease-out',
+                        isSelected && 'bg-[var(--ss-brand-tint)]',
                       )}
                       aria-pressed={isSelected}
                     >
                       <span className="text-sm font-medium">{p.name}</span>
                       {showTeam && p.team && (
-                        <span className="text-xs text-gray-400">{p.team}</span>
+                        <span className="text-xs text-[var(--ss-t3)]">{p.team}</span>
                       )}
                     </button>
                   </li>

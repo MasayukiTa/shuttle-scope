@@ -14,38 +14,38 @@
 {% block extra_styles %}
 <style>
   /* legal ページ専用: terms.html.j2 と同じ白カードスタイル。
-     長文の読み物として、V7 hero グラデではなく落ち着いた淡背景を用いる。
-     重要: body 直下に color/font-family を当てない (V7 nav/footer/beta-banner の
-     白文字・MigMix 1P フォントを破壊するため)。.shell スコープに閉じ込める。
+     長文の読み物として、落ち着いた淡背景を用いる。
+     重要: body 直下に color/font-family を当てない (nav/footer/beta-banner の
+     白文字を破壊するため)。.shell スコープに閉じ込める。
      (2026-05-26 過去指摘の修正: 濃色背景に暗色文字問題の再発を防ぐ) */
-  /* テーマ変数 (base.html.j2 の :root / [data-theme=dark]) を使い light/dark 両対応。
+  /* テーマ変数 (base.html.j2 の :root / [data-theme=dark] — v2 tokens) を使い light/dark 両対応。
      文字色等は必ず .shell スコープに閉じ込め、nav/footer/beta-banner の白文字を壊さない
      (以前 .public-legal-page p が beta-banner の <p> に漏れて暗色化し読めなかった不具合の修正)。 */
-  body.public-legal-page { background: var(--bg); }
+  body.public-legal-page { background: var(--ss-bg-app); }
   .public-legal-page .shell {
-    color: var(--t1);
-    font-family: "Segoe UI", "Hiragino Sans", "Yu Gothic UI", sans-serif;
+    color: var(--ss-t1);
+    font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Hiragino Sans","Yu Gothic UI",sans-serif;
     max-width: 1120px; margin: 0 auto; padding: 32px 24px;
   }
   .public-legal-page .panel {
-    background: var(--surface);
-    border: 1px solid var(--bdr);
-    border-radius: 10px;
-    box-shadow: 0 1px 3px rgba(18, 54, 90, 0.05);
+    background: var(--ss-surface-1);
+    border: 1px solid var(--ss-border);
+    border-radius: var(--r-lg);
+    box-shadow: var(--e1);
     padding: 36px 40px;
   }
-  .public-legal-page .shell a { color: var(--blue); text-decoration: none; }
+  .public-legal-page .shell a { color: var(--ss-brand); text-decoration: none; }
   .public-legal-page .shell a:hover { text-decoration: underline; }
-  .public-legal-page .shell h1 { margin: 0 0 16px; font-size: clamp(1.8rem, 3.4vw, 2.6rem); line-height: 1.1; color: var(--t1); }
-  .public-legal-page .shell h2 { margin: 30px 0 14px; font-size: 1.35rem; color: var(--t1); }
-  .public-legal-page .shell h3 { margin: 22px 0 10px; font-size: 1.05rem; color: var(--t1); }
-  .public-legal-page .shell p, .public-legal-page .shell li { color: var(--t2); line-height: 1.85; }
+  .public-legal-page .shell h1 { margin: 0 0 16px; font-size: clamp(1.8rem, 3.4vw, 2.6rem); font-weight: 600; letter-spacing: -.014em; line-height: 1.15; color: var(--ss-t1); }
+  .public-legal-page .shell h2 { margin: 30px 0 14px; font-size: 1.375rem; font-weight: 600; color: var(--ss-t1); }
+  .public-legal-page .shell h3 { margin: 22px 0 10px; font-size: 1.05rem; font-weight: 600; color: var(--ss-t1); }
+  .public-legal-page .shell p, .public-legal-page .shell li { color: var(--ss-t2); line-height: 1.85; }
   .public-legal-page .shell .legal ul, .public-legal-page .shell .legal ol { padding-left: 22px; }
   .public-legal-page .shell .small { font-size: .88rem; }
-  .public-legal-page .shell .notice { background: var(--blue-md); border: 1px solid var(--bdr2); padding: 14px 16px; border-radius: 12px; margin: 16px 0; color: var(--t2); }
+  .public-legal-page .shell .notice { background: var(--ss-brand-tint); border: 1px solid var(--ss-border-strong); padding: 14px 16px; border-radius: var(--r-lg); margin: 16px 0; color: var(--ss-t2); }
   @media (max-width: 720px) {
     .public-legal-page .shell { padding: 16px; }
-    .public-legal-page .panel { padding: 22px; border-radius: 10px; }
+    .public-legal-page .panel { padding: 22px; border-radius: var(--r-lg); }
   }
 </style>
 {% endblock %}

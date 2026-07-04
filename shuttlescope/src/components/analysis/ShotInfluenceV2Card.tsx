@@ -62,7 +62,7 @@ function InfluenceBar({ value, max = 1, isLight }: { value: number; max?: number
           style={{ width: `${ratio * 100}%` }}
         />
       </div>
-      <span className={`text-[10px] tabular-nums ${isLight ? 'text-gray-500' : 'text-gray-500'}`}>{value.toFixed(3)}</span>
+      <span className={`text-[10px] tabular-nums ss-num ${isLight ? 'text-gray-500' : 'text-gray-500'}`}>{value.toFixed(3)}</span>
     </div>
   )
 }
@@ -102,7 +102,7 @@ export function ShotInfluenceV2Card({ playerId, filters }: Props) {
   const stateBreakdown = (influenceData?.state_breakdown ?? []).slice(0, 6)
 
   return (
-    <div className={`${card} rounded-lg p-4 space-y-3`}>
+    <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-3`}>
       <div className="flex items-center justify-between">
         <h3 className={`text-sm font-semibold ${textHeading}`}>{t('auto.ShotInfluenceV2Card.k1')}</h3>
         <EvidenceBadge
@@ -136,10 +136,10 @@ export function ShotInfluenceV2Card({ playerId, filters }: Props) {
             <div className="space-y-1">
               {topShots.map(([shotType, stat], i) => (
                 <div key={shotType} className="flex items-center gap-2">
-                  <span className={`text-[10px] w-4 text-right ${textFaint}`}>{i + 1}</span>
+                  <span className={`text-[10px] w-4 text-right ${textFaint} ss-num`}>{i + 1}</span>
                   <span className={`text-xs w-24 truncate ${textSecondary}`}>{shotType}</span>
                   <InfluenceBar value={stat.avg} max={maxInfluence} isLight={isLight} />
-                  <span className={`text-[10px] shrink-0 ${textFaint}`}>
+                  <span className={`text-[10px] shrink-0 ${textFaint} ss-num`}>
                     [{stat.ci_low.toFixed(3)}–{stat.ci_high.toFixed(3)}]
                   </span>
                 </div>
@@ -153,10 +153,10 @@ export function ShotInfluenceV2Card({ playerId, filters }: Props) {
               <p className={`text-[10px] ${textMuted} mb-1.5`}>{t('auto.ShotInfluenceV2Card.k5')}</p>
               <div className="space-y-2">
                 {stateBreakdown.map((sb) => (
-                  <div key={sb.state_key} className={`${cardInnerAlt} rounded px-2 py-1.5`}>
+                  <div key={sb.state_key} className={`${cardInnerAlt} rounded-ss-sm px-2 py-1.5`}>
                     <div className="flex items-center justify-between mb-1">
                       <span className={`text-[10px] font-mono ${textSecondary}`}>{sb.state_key}</span>
-                      <span className={`text-[10px] ${textFaint}`}>
+                      <span className={`text-[10px] ${textFaint} ss-num`}>
                         {t('auto.ShotInfluenceV2Card.epv_n', { epv: `${(sb.state_epv * 100).toFixed(1)}%`, n: sb.n_rallies })}
                       </span>
                     </div>
@@ -164,7 +164,7 @@ export function ShotInfluenceV2Card({ playerId, filters }: Props) {
                       {sb.top_shots.slice(0, 3).map((ts) => (
                         <span key={ts.shot_type} className="text-[10px]">
                           <span className={textSecondary}>{ts.shot_type}</span>
-                          <span className={`ml-0.5 ${textFaint}`}>({ts.avg_influence.toFixed(3)})</span>
+                          <span className={`ml-0.5 ${textFaint} ss-num`}>({ts.avg_influence.toFixed(3)})</span>
                         </span>
                       ))}
                     </div>

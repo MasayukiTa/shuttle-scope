@@ -177,7 +177,7 @@ export function OpponentPolicyCard({ playerId, filters }: Props) {
   const errorKind = isError ? classifyError(error) : null
 
   return (
-    <div className={`${card} rounded-lg p-4 space-y-3`} data-testid="opponent-policy-card">
+    <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-3`} data-testid="opponent-policy-card">
       {/* ヘッダー */}
       <div className="flex items-center justify-between">
         <h3 className={`text-sm font-semibold ${textHeading}`}>{t('auto.OpponentPolicyCard.k1')}</h3>
@@ -193,7 +193,7 @@ export function OpponentPolicyCard({ playerId, filters }: Props) {
             disabled={isFetching}
             title={t('auto.OpponentPolicyCard.k10')}
             data-testid="refetch-button"
-            className={`p-1 rounded transition-colors disabled:opacity-40 ${isLight ? 'hover:bg-gray-100 text-gray-500' : 'hover:bg-gray-700 text-gray-500'}`}
+            className={`p-1 rounded-ss-sm transition-colors duration-fast disabled:opacity-40 ${isLight ? 'hover:bg-gray-100 text-gray-500' : 'hover:bg-gray-700 text-gray-500'}`}
           >
             <MIcon name="refresh" size={12} className={isFetching ? 'animate-spin' : ''} />
           </button>
@@ -202,7 +202,7 @@ export function OpponentPolicyCard({ playerId, filters }: Props) {
 
       {/* 最終取得時刻 */}
       {dataUpdatedAt > 0 && !isError && (
-        <p className={`text-[10px] ${textFaint}`} data-testid="last-fetched">
+        <p className={`text-[10px] ${textFaint} ss-num`} data-testid="last-fetched">
           {t('auto.OpponentPolicyCard.last_fetched', { ts: formatUpdatedAt(dataUpdatedAt) })}
         </p>
       )}
@@ -210,7 +210,7 @@ export function OpponentPolicyCard({ playerId, filters }: Props) {
       {/* エラー状態（分類別） */}
       {isError && errorKind && (
         <div
-          className={`flex items-start gap-2 rounded-md px-3 py-2 text-xs ${
+          className={`flex items-start gap-2 rounded-ss-md px-3 py-2 text-xs ${
             isLight ? 'bg-white text-red-700 border border-gray-200' : 'bg-gray-800 text-red-300 border border-gray-700'
           }`}
           data-testid={`error-state-${errorKind}`}

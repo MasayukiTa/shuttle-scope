@@ -46,7 +46,7 @@ export function PartnerTimeline({ playerId, partnerId, partnerName }: PartnerTim
   })
 
   if (isLoading) {
-    return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.loading')}</div>
+    return <div className="text-[var(--ss-t3)] text-sm py-4 text-center">{t('analysis.loading')}</div>
   }
 
   const sampleSize = resp?.meta?.sample_size ?? 0
@@ -54,7 +54,7 @@ export function PartnerTimeline({ playerId, partnerId, partnerName }: PartnerTim
   const overallWinRate = resp?.data?.overall_win_rate
 
   if (sampleSize === 0 || points.length === 0) {
-    return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.no_data')}</div>
+    return <div className="text-[var(--ss-t3)] text-sm py-4 text-center">{t('analysis.no_data')}</div>
   }
 
   const chartData = points.map((p) => ({
@@ -66,9 +66,9 @@ export function PartnerTimeline({ playerId, partnerId, partnerName }: PartnerTim
 
   const axisTick = isLight ? '#64748b' : '#9ca3af'
   const tooltipStyle = {
-    backgroundColor: isLight ? '#ffffff' : '#1f2937',
-    border: `1px solid ${isLight ? '#e2e8f0' : '#374151'}`,
-    color: isLight ? '#1e293b' : '#f1f5f9',
+    backgroundColor: 'var(--ss-surface-1)',
+    border: `1px solid var(--ss-border)`,
+    color: 'var(--ss-t1)',
     borderRadius: '6px',
     fontSize: '11px',
   }
@@ -78,11 +78,11 @@ export function PartnerTimeline({ playerId, partnerId, partnerName }: PartnerTim
       <ConfidenceBadge sampleSize={sampleSize} />
 
       <div className="flex items-center justify-between">
-        <span className="text-xs text-gray-400">
+        <span className="text-xs text-[var(--ss-t3)]">
           {partnerName ? `${partnerName}とのペア勝率推移` : 'ペア勝率推移'}
         </span>
         {overallWinRate != null && (
-          <span className="text-xs font-semibold text-blue-400">
+          <span className="text-xs font-semibold ss-num text-[var(--ss-brand)]">
             {t('auto.PartnerTimeline.overall', { pct: (overallWinRate * 100).toFixed(0) })} ({t('auto._shared.n_matches', { n: sampleSize })})
           </span>
         )}
@@ -109,9 +109,9 @@ export function PartnerTimeline({ playerId, partnerId, partnerName }: PartnerTim
           <Line
             type="monotone"
             dataKey="cumulative"
-            stroke="#06b6d4"
+            stroke="var(--ss-brand)"
             strokeWidth={2}
-            dot={{ r: 3, fill: '#06b6d4' }}
+            dot={{ r: 3, fill: 'var(--ss-brand)' }}
           />
         </LineChart>
       </ResponsiveContainer>
@@ -122,8 +122,8 @@ export function PartnerTimeline({ playerId, partnerId, partnerName }: PartnerTim
           <div
             key={p.match_id}
             title={`${p.date} ${p.tournament} ${p.result === 'win' ? '勝' : '負'}`}
-            className="w-2.5 h-2.5 rounded-sm"
-            style={{ backgroundColor: p.result === 'win' ? '#3b82f6' : '#ef4444', opacity: 0.8 }}
+            className="w-2.5 h-2.5 rounded-ss-sm"
+            style={{ backgroundColor: p.result === 'win' ? 'var(--ss-good)' : 'var(--ss-bad)', opacity: 0.8 }}
           />
         ))}
       </div>

@@ -44,7 +44,7 @@ export function MatchNarrativeCard({ narrative, playerName, opponentName }: Prop
 
   return (
     <div
-      className="rounded-xl overflow-hidden"
+      className="rounded-ss-lg overflow-hidden shadow-card"
       style={{ background: cardBg, border: `1px solid ${cardBorder}` }}
     >
       {/* ── ヘッダー: 判定バナー ── */}
@@ -75,7 +75,7 @@ export function MatchNarrativeCard({ narrative, playerName, opponentName }: Prop
         </div>
         <div className="shrink-0 text-right">
           <p className="text-[10px]" style={{ color: subText }}>{t('auto.MatchNarrativeCard.k1')}</p>
-          <p className="text-xs font-mono font-semibold" style={{ color: neutral }}>
+          <p className="text-xs font-mono font-semibold ss-num" style={{ color: neutral }}>
             {narrative.likely_score}
           </p>
         </div>
@@ -128,7 +128,7 @@ export function MatchNarrativeCard({ narrative, playerName, opponentName }: Prop
               {narrative.knowns.map((k, i) => (
                 <span
                   key={i}
-                  className="text-[10px] px-1.5 py-0.5 rounded"
+                  className="text-[10px] px-1.5 py-0.5 rounded-ss-sm"
                   style={{
                     background: isLight ? '#e2e8f0' : '#334155',
                     color: isLight ? '#475569' : '#94a3b8',

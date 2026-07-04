@@ -42,13 +42,13 @@ function PatternList({ patterns }: { patterns: ShotPattern[] }) {
       {patterns.slice(0, 8).map((p) => (
         <div key={p.shot_type} className="flex items-center gap-2">
           <span className="w-28 shrink-0 text-xs text-gray-300 truncate">{p.shot_type_ja}</span>
-          <div className="flex-1 bg-gray-700 rounded-full h-1.5">
+          <div className="flex-1 bg-gray-700 rounded-ss-pill h-1.5">
             <div
-              className="h-1.5 rounded-full transition-all"
+              className="h-1.5 rounded-ss-pill transition-all duration-base ease-out"
               style={{ width: `${Math.min(p.rate * 100, 100).toFixed(1)}%`, backgroundColor: WIN }}
             />
           </div>
-          <span className="w-10 text-right text-xs text-gray-400 shrink-0">
+          <span className="w-10 text-right text-xs text-gray-400 shrink-0 ss-num">
             {(p.rate * 100).toFixed(1)}%
           </span>
         </div>
@@ -105,7 +105,7 @@ export function PreWinPatterns({ playerId, filters = DEFAULT_FILTERS }: PreWinPa
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`px-3 py-1 text-xs rounded font-medium transition-colors ${
+            className={`px-3 py-1 text-xs rounded-ss-sm font-medium transition-colors duration-fast ease-out ${
               activeTab === tab.key
                 ? ''
                 : 'bg-gray-700 text-gray-400 hover:bg-gray-600'

@@ -14,7 +14,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
-import { WIN, LOSS } from '@/styles/colors'
+import { WIN, LOSS, getTooltipStyle } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { catColor } from '@/styles/categoricalPalette'
 import { MIcon } from '@/components/common/MIcon'
@@ -78,13 +78,11 @@ function CustomTooltip({ active, payload }: import('@/utils/rechartsTypes').Rech
   if (!active || !payload?.length) return null
   const d = payload[0]?.payload as RallyPoint
   if (!d) return null
-  const style = isLight
-    ? { backgroundColor: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '6px', color: '#0f172a', fontSize: 12 }
-    : { backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '6px', color: '#f9fafb', fontSize: 12 }
+  const style = getTooltipStyle(isLight)
   const headingColor = isLight ? '#0f172a' : '#f9fafb'
   const subColor = isLight ? '#475569' : '#d1d5db'
   return (
-    <div style={style} className="px-3 py-2">
+    <div style={style} className="px-3 py-2 ss-num">
       <p className="font-semibold mb-1" style={{ color: headingColor }}>{t('auto.ScoreProgression.rally_n', { n: d.rally_num })}</p>
       <p style={{ color: WIN }}>{t('auto.ScoreProgression.score_a', { n: d.score_a })}</p>
       <p style={{ color: LOSS }}>{t('auto.ScoreProgression.score_b', { n: d.score_b })}</p>
@@ -123,7 +121,7 @@ export function RallyDetailBanner({
   const endTypeLabel = t(`end_types.${rally.end_type}`, rally.end_type)
 
   return (
-    <div className="rounded-lg border border-gray-600 bg-gray-700/50 p-3 text-xs relative">
+    <div className="rounded-ss-lg border border-gray-600 bg-gray-700/50 p-3 text-xs relative">
       {/* 右上コントロール: ×ボタン + ←→ナビ */}
       <div className="absolute top-1 right-1 flex flex-col items-end gap-0.5">
         {onClose && (
@@ -137,13 +135,13 @@ export function RallyDetailBanner({
           <button
             onClick={onPrev}
             disabled={!hasPrev}
-            className="px-1.5 py-0.5 rounded text-[11px] leading-none transition-colors disabled:opacity-30 disabled:cursor-not-allowed bg-gray-600 hover:bg-gray-500 text-gray-200"
+            className="px-1.5 py-0.5 rounded-ss-sm text-[11px] leading-none transition-colors duration-fast disabled:opacity-30 disabled:cursor-not-allowed bg-gray-600 hover:bg-gray-500 text-gray-200"
             title={t('auto.ScoreProgression.k6')}
           >←</button>
           <button
             onClick={onNext}
             disabled={!hasNext}
-            className="px-1.5 py-0.5 rounded text-[11px] leading-none transition-colors disabled:opacity-30 disabled:cursor-not-allowed bg-gray-600 hover:bg-gray-500 text-gray-200"
+            className="px-1.5 py-0.5 rounded-ss-sm text-[11px] leading-none transition-colors duration-fast disabled:opacity-30 disabled:cursor-not-allowed bg-gray-600 hover:bg-gray-500 text-gray-200"
             title={t('auto.ScoreProgression.k7')}
           >→</button>
         </div>
@@ -151,16 +149,16 @@ export function RallyDetailBanner({
 
       {/* ヘッダー */}
       <div className="flex items-center flex-wrap gap-x-2 gap-y-1 mb-2 pr-16">
-        <span className="font-semibold text-white">
+        <span className="font-semibold text-white ss-num">
           {t('auto.ScoreProgression.set_rally', { set: rally.set_num, rally: rally.rally_num })}
         </span>
         <span className="text-gray-500 text-[10px]">{t('auto.ScoreProgression.server_serve', { label: serverLabel })}</span>
-        <span className="text-gray-500 text-[10px]">{t('auto.ScoreProgression.rally_strokes', { n: rally.rally_length })}</span>
+        <span className="text-gray-500 text-[10px] ss-num">{t('auto.ScoreProgression.rally_strokes', { n: rally.rally_length })}</span>
         <span className="text-gray-500 text-[10px]">{endTypeLabel}</span>
         <span style={{ color: rally.winner === 'player_a' ? WIN : LOSS }} className="font-medium">
           {t('auto.ScoreProgression.winner_point', { label: winnerLabel })}
         </span>
-        <span className="ml-auto text-gray-400 text-[10px]">
+        <span className="ml-auto text-gray-400 text-[10px] ss-num">
           {rally.score_a} – {rally.score_b}
         </span>
       </div>
@@ -182,7 +180,7 @@ export function RallyDetailBanner({
               return (
                 <span key={s.stroke_num} className="flex items-center gap-1 shrink-0">
                   <span
-                    className="px-1.5 py-0.5 rounded font-medium"
+                    className="px-1.5 py-0.5 rounded-ss-sm font-medium"
                     style={{
                       backgroundColor: isA ? 'rgba(59,130,246,0.6)' : 'rgba(239,68,68,0.6)',
                       color: '#ffffff',
@@ -243,7 +241,7 @@ export function ScoreProgression({ matchId, onSetPointClick, initialSet }: Score
             <button
               key={s.set_num}
               onClick={() => setSelectedSet(s.set_num)}
-              className={`px-3 py-1 text-xs rounded font-medium transition-colors ${
+              className={`px-3 py-1 text-xs rounded-ss-md font-medium transition-colors duration-fast ss-num ${
                 selectedSet === s.set_num
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
@@ -272,22 +270,22 @@ export function ScoreProgression({ matchId, onSetPointClick, initialSet }: Score
               }
             }}
           >
-            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+            <CartesianGrid strokeDasharray="3 3" stroke={isLight ? 'var(--ss-border)' : '#374151'} />
             <XAxis
               dataKey="rally_num"
-              tick={{ fill: '#9ca3af', fontSize: 10 }}
+              tick={{ fill: isLight ? 'var(--ss-t3)' : '#9ca3af', fontSize: 10 }}
               label={{
                 value: t('analysis.score_progression.rally_num'),
                 position: 'insideBottomRight',
                 offset: -4,
-                fill: '#6b7280',
+                fill: isLight ? 'var(--ss-t3)' : '#6b7280',
                 fontSize: 10,
               }}
             />
-            <YAxis tick={{ fill: '#9ca3af', fontSize: 10 }} />
+            <YAxis tick={{ fill: isLight ? 'var(--ss-t3)' : '#9ca3af', fontSize: 10 }} />
             <Tooltip content={<CustomTooltip />} />
             {/* 0点ライン — 中間グレーで明暗どちらの背景でも視認できる */}
-            <ReferenceLine y={0} stroke="#6b7280" strokeWidth={2} strokeDasharray="none" />
+            <ReferenceLine y={0} stroke={isLight ? 'var(--ss-t2)' : '#6b7280'} strokeWidth={2} strokeDasharray="none" />
             {/* モメンタム変化点 — Amber (caution-ish reference line) */}
             {currentSet.momentum_changes.map((rallyNum) => (
               <ReferenceLine

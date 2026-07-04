@@ -56,19 +56,19 @@ export function EvidenceBadge({
 
   return (
     <div className={`inline-flex flex-wrap items-center gap-1 ${className}`}>
-      <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-medium ${tierColors[tier]}`}>
+      <span className={`inline-flex items-center px-1.5 py-0.5 rounded-ss-sm border text-[10px] font-medium ${tierColors[tier]}`}>
         {TIER_LABELS[tier]}
       </span>
       {evidenceLevel && (
-        <span className={`text-[10px] rounded px-1.5 py-0.5 ${metaText}`}>
+        <span className={`text-[10px] rounded-ss-sm px-1.5 py-0.5 ${metaText}`}>
           {EVIDENCE_LABELS[evidenceLevel]}
         </span>
       )}
       {sampleSize != null && (
-        <span className={`text-[10px] ${sampleText}`}>{t('auto.EvidenceBadge.n_eq', { n: sampleSize.toLocaleString() })}</span>
+        <span className={`text-[10px] ss-num ${sampleText}`}>{t('auto.EvidenceBadge.n_eq', { n: sampleSize.toLocaleString() })}</span>
       )}
       {confidenceLevel != null && (
-        <span className={`text-[10px] ${sampleText}`}>{(confidenceLevel * 100).toFixed(0)}%</span>
+        <span className={`text-[10px] ss-num ${sampleText}`}>{(confidenceLevel * 100).toFixed(0)}%</span>
       )}
       {recommendationAllowed === false && (
         <span className={`text-[10px] ${warnText}`}>{t('auto.EvidenceBadge.k1')}</span>

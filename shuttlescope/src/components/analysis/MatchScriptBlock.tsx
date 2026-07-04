@@ -90,7 +90,7 @@ export function MatchScriptBlock({ winProbability, fatigueBreakdown }: MatchScri
           {signals.map((s, i) => (
             <span
               key={i}
-              className="text-[10px] px-1.5 py-0.5 rounded border"
+              className="text-[10px] px-1.5 py-0.5 rounded-ss-sm border ss-num"
               style={{ color: LOSS, borderColor: LOSS + '66', backgroundColor: LOSS + '18' }}
             >
               {s}

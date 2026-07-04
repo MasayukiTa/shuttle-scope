@@ -28,13 +28,18 @@ export function DashboardSectionNav({ active, onChange }: DashboardSectionNavPro
             key={key}
             onClick={() => onChange(key)}
             className={[
-              'flex-shrink-0 px-3 py-1 rounded text-xs font-medium transition-colors whitespace-nowrap',
+              'flex-shrink-0 px-3 py-1 rounded-ss-md text-xs font-medium transition-colors duration-base ease-out whitespace-nowrap',
               active === key
-                ? 'bg-gray-600 text-white'
+                ? 'font-semibold'
                 : isLight
                 ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 : 'bg-gray-800 text-gray-400 hover:bg-gray-700',
             ].join(' ')}
+            style={
+              active === key
+                ? { backgroundColor: 'var(--ss-brand-tint)', color: 'var(--ss-brand)' }
+                : undefined
+            }
           >
             {label}
           </button>

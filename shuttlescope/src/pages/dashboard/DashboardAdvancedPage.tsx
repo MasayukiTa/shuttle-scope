@@ -88,7 +88,7 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
   const pairSynergyMeta = getMeta('pair_synergy')
 
   const restrictedFallback = (
-    <div className={`${card} rounded-lg p-6 text-center text-sm ${textMuted}`}>{t('analysis.restricted')}</div>
+    <div className={`${card} rounded-ss-lg shadow-card p-6 text-center text-sm ${textMuted}`}>{t('analysis.restricted')}</div>
   )
 
   const SectionTitle = ({ children }: { children: React.ReactNode }) => (
@@ -98,8 +98,8 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
   return (
     <div className="space-y-4">
       {/* セクションナビ: スクロールで上へ流れる */}
-      <div className={`-mx-6 px-6 py-2 flex items-center justify-between ${
-        isLight ? 'bg-white border-b border-gray-200' : 'bg-gray-900 border-b border-gray-700/60'
+      <div className={`-mx-6 px-6 py-2 flex items-center justify-between border-b border-[color:var(--ss-border)] ${
+        isLight ? 'bg-white' : 'bg-gray-900'
       }`}>
         <div className="min-w-0 flex-1 overflow-hidden mr-2">
           <DashboardSectionNav active={section} onChange={setSection} />
@@ -111,7 +111,7 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
          Design Language v1.2 §12: bg は neutral、警告意味は文字色 + warning icon で運ぶ
          (装飾 amber bg + 左罫線縦バーは禁止) */}
       {activeOverrides.length > 0 && (role === 'admin' || role === 'analyst' || role === 'coach') && (
-        <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs ${
+        <div className={`flex items-center gap-2 px-3 py-2 rounded-ss-lg shadow-card border text-xs ${
           isLight
             ? 'bg-white border-gray-200'
             : 'bg-gray-800 border-gray-700'
@@ -123,7 +123,7 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
             <MIcon name="warning" size={12} />{t('advanced.manual_override_notice', { count: activeOverrides.length, defaultValue: 'Manual Override is set on {{count}} analyses' })}
           </span>
           {holdCount > 0 && (
-            <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold border ${
+            <span className={`shrink-0 px-1.5 py-0.5 rounded-ss-sm text-[10px] font-semibold border ss-num ${
               isLight ? 'bg-white border-gray-300 text-gray-700' : 'bg-gray-800 border-gray-600 text-gray-200'
             }`}>
               {t('advanced.hold_count', { count: holdCount, defaultValue: 'Hold: {{count}}' })}
@@ -141,16 +141,16 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
           <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
             <div className="space-y-5">
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-                <div className={`${card} rounded-lg p-4`} data-tutorial="dashboard.shotWinLoss">
+                <div className={`${card} rounded-ss-lg shadow-card p-4`} data-tutorial="dashboard.shotWinLoss">
                   <SectionTitle>{t('auto.DashboardAdvancedPage.k1')}</SectionTitle>
                   <ShotWinLoss playerId={playerId} filters={filters} />
                 </div>
-                <div className={`${card} rounded-lg p-4`}>
+                <div className={`${card} rounded-ss-lg shadow-card p-4`}>
                   <SectionTitle>{t('auto.DashboardAdvancedPage.k2')}</SectionTitle>
                   <WinLossComparison playerId={playerId} filters={filters} />
                 </div>
               </div>
-              <div className={`${card} rounded-lg p-4`}>
+              <div className={`${card} rounded-ss-lg shadow-card p-4`}>
                 <SectionTitle>{t('auto.DashboardAdvancedPage.k3')}</SectionTitle>
                 <TournamentComparison playerId={playerId} filters={filters} />
               </div>
@@ -171,11 +171,11 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
               />
             )}
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-              <div className={`${card} rounded-lg p-4`}>
+              <div className={`${card} rounded-ss-lg shadow-card p-4`}>
                 <SectionTitle>{t('auto.DashboardAdvancedPage.k4')}</SectionTitle>
                 <RallyLengthWinRate playerId={playerId} filters={filters} />
               </div>
-              <div className={`${card} rounded-lg p-4 space-y-2`}>
+              <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-2`}>
                 <div className="flex items-center justify-between">
                   <SectionTitle>{t('auto.DashboardAdvancedPage.k5')}</SectionTitle>
                   <EvidenceBadge
@@ -195,7 +195,7 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
       {section === 'transition' && (
         <ErrorBoundary>
           <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
-            <div className={`${card} rounded-lg p-4 space-y-2`}>
+            <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-2`}>
               <div className="flex items-center justify-between">
                 <SectionTitle>{t('auto.DashboardAdvancedPage.k6')}</SectionTitle>
                 <EvidenceBadge
@@ -229,7 +229,7 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
               />
             )}
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-              <div className={`${card} rounded-lg p-4 space-y-2`}>
+              <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-2`}>
                 <div className="flex items-center justify-between">
                   <SectionTitle>{t('analysis.pre_loss.title')}</SectionTitle>
                   <EvidenceBadge
@@ -240,7 +240,7 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                 </div>
                 <PreLossPatterns playerId={playerId} filters={filters} />
               </div>
-              <div className={`${card} rounded-lg p-4 space-y-2`}>
+              <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-2`}>
                 <div className="flex items-center justify-between">
                   <SectionTitle>{t('analysis.first_return.title')}</SectionTitle>
                   <EvidenceBadge
@@ -278,7 +278,7 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
               />
             )}
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-              <div className={`${card} rounded-lg p-4 space-y-2`}>
+              <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-2`}>
                 <div className="flex items-center justify-between">
                   <SectionTitle>{t('analysis.temporal.title')}</SectionTitle>
                   <EvidenceBadge
@@ -289,7 +289,7 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                 </div>
                 <TemporalPerformance playerId={playerId} filters={filters} />
               </div>
-              <div className={`${card} rounded-lg p-4 space-y-2`}>
+              <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-2`}>
                 <div className="flex items-center justify-between">
                   <SectionTitle>{t('analysis.post_long_rally.title')}</SectionTitle>
                   <EvidenceBadge
@@ -317,11 +317,11 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                   promotionCriteria={opponentAffinityMeta.promotion_criteria ?? undefined}
                 />
               )}
-              <div className={`${card} rounded-lg p-4`}>
+              <div className={`${card} rounded-ss-lg shadow-card p-4`}>
                 <SectionTitle>{t('analysis.opponent_stats.title')}</SectionTitle>
                 <OpponentStats playerId={playerId} />
               </div>
-              <div className={`${card} rounded-lg p-4 space-y-2`}>
+              <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-2`}>
                 <div className="flex items-center justify-between">
                   <SectionTitle>{t('analysis.opponent_type_affinity.title')}</SectionTitle>
                   <EvidenceBadge
@@ -334,10 +334,10 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                 <OpponentTypeAffinity playerId={playerId} filters={filters} />
               </div>
               <OpponentAdaptiveShots playerId={playerId} />
-              <div className={`${card} rounded-lg p-4`}>
+              <div className={`${card} rounded-ss-lg shadow-card p-4`}>
                 <div className="flex items-center justify-between mb-3">
                   <SectionTitle>{t('observation_analytics.title', '補助観察インサイト')}</SectionTitle>
-                  <span className={`text-[9px] border rounded px-1.5 py-0.5 ${badge}`}>{t('auto.DashboardAdvancedPage.k7')}</span>
+                  <span className={`text-[9px] border rounded-ss-sm px-1.5 py-0.5 ${badge}`}>{t('auto.DashboardAdvancedPage.k7')}</span>
                 </div>
                 <PreMatchObservationAnalytics playerId={playerId} />
               </div>
@@ -354,17 +354,17 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
 
             {/* ペアモードトグル */}
             {sortedPlayers.filter((p) => p.is_target).length >= 2 && (
-              <div className={`flex items-center gap-3 ${card} rounded-lg px-4 py-3`}>
+              <div className={`flex items-center gap-3 ${card} rounded-ss-lg shadow-card px-4 py-3`}>
                 <span className={`text-xs ${textSecondary}`}>{t('auto.DashboardAdvancedPage.k8')}</span>
                 <button
                   onClick={() => { setPairMode((v) => !v); setPartnerPlayerId(null) }}
-                  className={`relative w-10 h-5 rounded-full transition-colors ${pairMode ? 'bg-blue-500' : (isLight ? 'bg-gray-300' : 'bg-gray-600')}`}
+                  className={`relative w-10 h-5 rounded-full transition-colors duration-fast ease-out ${pairMode ? 'bg-blue-500' : (isLight ? 'bg-gray-300' : 'bg-gray-600')}`}
                 >
-                  <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${pairMode ? 'translate-x-5' : ''}`} />
+                  <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-fast ease-out ${pairMode ? 'translate-x-5' : ''}`} />
                 </button>
                 {pairMode && (
                   <select
-                    className={`border text-xs rounded px-2 py-1 ${isLight ? 'bg-white border-gray-300 text-gray-700' : 'bg-gray-700 border-gray-600 text-white'}`}
+                    className={`border text-xs rounded-ss-md px-2 py-1 ${isLight ? 'bg-white border-gray-300 text-gray-700' : 'bg-gray-700 border-gray-600 text-white'}`}
                     value={partnerPlayerId ?? ''}
                     onChange={(e) => setPartnerPlayerId(e.target.value ? Number(e.target.value) : null)}
                   >
@@ -378,7 +378,7 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
             )}
 
             {pairMode && partnerPlayerId && (
-              <div className={`${card} rounded-lg p-4`}>
+              <div className={`${card} rounded-ss-lg shadow-card p-4`}>
                 <SectionTitle>{t('analysis.pair_playstyle.title')}</SectionTitle>
                 <p className={`text-xs mb-3 ${textMuted}`}>{t('analysis.pair_playstyle.subtitle')}</p>
                 <PairPlaystyle

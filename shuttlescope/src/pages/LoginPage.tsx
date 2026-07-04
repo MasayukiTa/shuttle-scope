@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 import { useAuth } from '@/hooks/useAuth'
 import type { AuthSession } from '@/hooks/useAuth'
-import { useTheme } from '@/hooks/useTheme'
 import { UserRole } from '@/types'
 import { MIcon } from '@/components/common/MIcon'
 import { publicSiteUrl } from '@/utils/publicUrl'
@@ -142,8 +141,6 @@ interface Props {
 export function LoginPage({ onLogin }: Props) {
   const { t } = useTranslation()
   const { setSession } = useAuth()
-  const { theme } = useTheme()
-  const isLight = theme === 'light'
 
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
@@ -236,34 +233,32 @@ export function LoginPage({ onLogin }: Props) {
     setError(null)
   }
 
-  const inputCls = isLight
-    ? 'border-gray-300 bg-white text-gray-900'
-    : 'border-gray-600 bg-gray-700 text-white'
-  const labelCls = isLight ? 'text-gray-700' : 'text-gray-300'
-  const mutedCls = isLight ? 'text-gray-500' : 'text-gray-400'
-  const fieldCls = `w-full border rounded-lg px-3 py-2.5 text-base min-h-[44px] focus:outline-none focus:ring-2 focus:ring-blue-500 ${inputCls}`
+  // v2 "Precision on Gray": ctrl トークンは globals.css の input/select/textarea
+  // 共通ルールで自動適用されるため、境界線色は border-[var(--ss-ctrl-border)] のみ
+  // 明示すれば足りる。focus リングも globals.css 側で処理済み。
+  const labelCls = 'text-[var(--ss-t2)]'
+  const mutedCls = 'text-[var(--ss-t3)]'
+  const fieldCls =
+    'w-full border border-[var(--ss-ctrl-border)] rounded-ss-md px-3 py-2.5 text-base min-h-[44px] ' +
+    'bg-[var(--ss-ctrl-bg)] text-[var(--ss-ctrl-text)] outline-none transition-colors duration-fast ease-out'
 
   return (
     <div
-      className={`min-h-[100svh] flex items-center justify-center p-4 ${isLight ? 'bg-gray-100' : 'bg-gray-900'}`}
+      className="min-h-[100svh] flex items-center justify-center p-4 bg-[var(--ss-bg-app)]"
       style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
     >
-      <div className={`rounded-xl shadow-lg w-full max-w-md p-6 sm:p-8 ${isLight ? 'bg-white' : 'bg-gray-800'}`}>
+      <div className="rounded-ss-lg shadow-card border border-[var(--ss-border)] bg-[var(--ss-surface-1)] w-full max-w-md p-6 sm:p-8">
         <div className="text-center mb-6">
-          <h1 className={`text-2xl font-bold ${isLight ? 'text-gray-800' : 'text-white'}`}>{t('app.name')}</h1>
+          <h1 className="text-2xl font-semibold tracking-[-0.014em] text-[var(--ss-t1)]">{t('app.name')}</h1>
           <p className={`text-sm mt-1 ${mutedCls}`}>{t('auth.subtitle')}</p>
         </div>
 
         {bootstrapStatus && !bootstrapStatus.has_admin && (
           <div
-            className={`mb-4 border text-sm rounded-lg px-3 py-2 ${
+            className={`mb-4 border text-sm rounded-ss-md px-3 py-2 ${
               bootstrapStatus.bootstrap_configured
-                ? (isLight
-                    ? 'bg-amber-50 border-amber-200 text-amber-700'
-                    : 'bg-amber-900/30 border-amber-700 text-amber-300')
-                : (isLight
-                    ? 'bg-red-50 border-red-200 text-red-600'
-                    : 'bg-red-900/30 border-red-700 text-red-400')
+                ? 'bg-[var(--ss-warning-bg)] border-[var(--ss-warning-border)] text-[var(--ss-warning-text)]'
+                : 'bg-[var(--ss-danger-bg)] border-[var(--ss-danger-border)] text-[var(--ss-danger-text)]'
             }`}
           >
             {bootstrapStatus.bootstrap_configured
@@ -273,11 +268,7 @@ export function LoginPage({ onLogin }: Props) {
         )}
 
         {sessionExpired && (
-          <div className={`mb-4 px-4 py-3 rounded text-sm ${
-            isLight
-              ? 'bg-amber-50 border border-amber-200 text-amber-800'
-              : 'bg-amber-900/20 border border-amber-800 text-amber-200'
-          }`}>
+          <div className="mb-4 px-4 py-3 rounded-ss-md text-sm border bg-[var(--ss-warning-bg)] border-[var(--ss-warning-border)] text-[var(--ss-warning-text)]">
             {t('auto.LoginPage.session_expired')}
           </div>
         )}
@@ -300,35 +291,27 @@ export function LoginPage({ onLogin }: Props) {
                 value={mfaCode}
                 onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                 onKeyDown={(e) => e.key === 'Enter' && handleMfaSubmit()}
-                className={`${fieldCls} text-center tracking-widest text-lg font-mono`}
+                className={`${fieldCls} ss-num text-center tracking-widest text-lg`}
                 placeholder="000000"
                 autoFocus
               />
             </div>
             {error && (
-              <div
-                className={`border text-sm rounded-lg px-3 py-2 ${
-                  isLight ? 'bg-red-50 border-red-200 text-red-600' : 'bg-red-900/30 border-red-700 text-red-400'
-                }`}
-              >
+              <div className="border text-sm rounded-ss-md px-3 py-2 bg-[var(--ss-danger-bg)] border-[var(--ss-danger-border)] text-[var(--ss-danger-text)]">
                 {error}
               </div>
             )}
             <button
               onClick={handleMfaSubmit}
               disabled={loading || mfaCode.length !== 6}
-              className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors"
+              className="w-full bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-50 text-white font-medium py-2 px-4 rounded-ss-md text-sm transition-colors duration-fast ease-out"
             >
               {loading ? t('auth.logging_in') : t('auto.LoginPage.mfa_submit')}
             </button>
             <button
               onClick={handleMfaCancel}
               disabled={loading}
-              className={`w-full text-sm py-2 px-4 rounded-lg transition-colors ${
-                isLight
-                  ? 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                  : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'
-              }`}
+              className="w-full text-sm py-2 px-4 rounded-ss-md transition-colors duration-fast ease-out text-[var(--ss-t2)] hover:text-[var(--ss-t1)] hover:bg-[var(--ss-surface-2)]"
             >
               {t('auto.LoginPage.mfa_cancel')}
             </button>
@@ -363,9 +346,7 @@ export function LoginPage({ onLogin }: Props) {
               <button
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
-                className={`absolute inset-y-0 right-0 flex items-center px-3 ${
-                  isLight ? 'text-gray-500 hover:text-gray-700' : 'text-gray-400 hover:text-gray-200'
-                }`}
+                className="absolute inset-y-0 right-0 flex items-center px-3 text-[var(--ss-t3)] hover:text-[var(--ss-t2)] transition-colors duration-fast ease-out"
                 title={showPassword ? '非表示' : '表示'}
                 aria-label={showPassword ? 'パスワードを隠す' : 'パスワードを表示'}
               >
@@ -375,11 +356,7 @@ export function LoginPage({ onLogin }: Props) {
           </div>
 
           {error && (
-            <div
-              className={`border text-sm rounded-lg px-3 py-2 ${
-                isLight ? 'bg-red-50 border-red-200 text-red-600' : 'bg-red-900/30 border-red-700 text-red-400'
-              }`}
-            >
+            <div className="border text-sm rounded-ss-md px-3 py-2 bg-[var(--ss-danger-bg)] border-[var(--ss-danger-border)] text-[var(--ss-danger-text)]">
               {error}
             </div>
           )}
@@ -387,7 +364,7 @@ export function LoginPage({ onLogin }: Props) {
           <button
             onClick={handleLogin}
             disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors"
+            className="w-full bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-50 text-white font-medium py-2 px-4 rounded-ss-md text-sm transition-colors duration-fast ease-out"
           >
             {loading ? t('auth.logging_in') : t('auth.login_button')}
           </button>
@@ -395,11 +372,11 @@ export function LoginPage({ onLogin }: Props) {
           {/* M-A6: 自己サービス導線 */}
           <div className="flex flex-col sm:flex-row sm:justify-between gap-2 text-xs pt-2">
             <a href="#/register"
-               className={`${isLight ? 'text-blue-600 hover:text-blue-800' : 'text-blue-400 hover:text-blue-300'} hover:underline`}>
+               className="text-[var(--ss-brand)] hover:text-[var(--ss-brand-hover)] hover:underline">
               {t('auth.register.title')}
             </a>
             <a href="#/password/reset"
-               className={`${isLight ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-gray-200'} hover:underline`}>
+               className="text-[var(--ss-t2)] hover:text-[var(--ss-t1)] hover:underline">
               {t('auth.password_reset_request.title')}
             </a>
           </div>
@@ -408,7 +385,7 @@ export function LoginPage({ onLogin }: Props) {
         <div className="mt-6 text-center">
           <a
             href={publicSiteUrl('/', i18n.language)}
-            className={`text-sm ${isLight ? 'text-gray-500 hover:text-gray-700' : 'text-gray-400 hover:text-gray-200'} transition-colors`}
+            className="text-sm text-[var(--ss-t3)] hover:text-[var(--ss-t2)] transition-colors duration-fast ease-out"
           >
             {t('auto.LoginPage.back_to_site')}
           </a>

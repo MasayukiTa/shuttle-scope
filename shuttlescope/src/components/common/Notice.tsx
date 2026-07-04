@@ -51,11 +51,12 @@ export function NoticeBanner({ notice, onDismiss }: NoticeBannerProps) {
 
   if (!notice) return null
 
+  // 半透明の飽和塗りではなく、白/サーフェス地 + hairline + 左アクセントで意味を運ぶ。
   const palette = notice.kind === 'error'
-    ? 'bg-gray-800 border-gray-700 text-red-100'
+    ? 'bg-[var(--ss-danger-bg)] border-[var(--ss-danger-border)] text-[var(--ss-danger-text)]'
     : notice.kind === 'warn'
-      ? 'bg-gray-800 border-gray-700 text-amber-100'
-      : 'bg-gray-800 border-gray-700 text-blue-100'
+      ? 'bg-[var(--ss-warning-bg)] border-[var(--ss-warning-border)] text-[var(--ss-warning-text)]'
+      : 'bg-[var(--ss-info-bg)] border-[var(--ss-info-border)] text-[var(--ss-info-text)]'
 
   return (
     <div
@@ -64,7 +65,7 @@ export function NoticeBanner({ notice, onDismiss }: NoticeBannerProps) {
       className="fixed left-1/2 -translate-x-1/2 bottom-6 z-[200] max-w-[min(90vw,520px)] px-2"
       style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
-      <div className={clsx('flex items-start gap-3 px-4 py-3 rounded-lg border shadow-2xl', palette)}>
+      <div className={clsx('flex items-start gap-3 px-4 py-3 rounded-ss-lg border shadow-pop transition-opacity duration-base ease-out', palette)}>
         <span className="shrink-0 text-base leading-none">
           <MIcon name={notice.kind === 'error' ? 'error' : notice.kind === 'warn' ? 'warning' : 'info'} size={18} />
         </span>
@@ -133,23 +134,23 @@ export function ConfirmDialog({ pending, onClose }: ConfirmDialogProps) {
       role="dialog"
       aria-modal="true"
       aria-label={pending.title ?? '確認'}
-      className="fixed inset-0 z-[210] flex items-center justify-center bg-black/60 backdrop-blur-sm px-3"
+      className="fixed inset-0 z-[210] flex items-center justify-center bg-[var(--ss-bg-overlay)] px-3"
       onClick={(e) => { if (e.currentTarget === e.target) cancel() }}
     >
-      <div className="bg-gray-900 border border-gray-700 rounded-lg shadow-2xl max-w-md w-full">
+      <div className="bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-lg shadow-pop max-w-md w-full">
         {pending.title && (
-          <header className="px-4 py-3 border-b border-gray-700 text-sm font-medium text-gray-100">
+          <header className="px-4 py-3 border-b border-[var(--ss-border)] text-sm font-medium text-[var(--ss-t1)]">
             {pending.title}
           </header>
         )}
-        <div className="px-4 py-4 text-sm text-gray-200 whitespace-pre-line break-words">
+        <div className="px-4 py-4 text-sm text-[var(--ss-t2)] whitespace-pre-line break-words">
           {pending.message}
         </div>
-        <footer className="flex items-center justify-end gap-2 px-4 py-3 border-t border-gray-700">
+        <footer className="flex items-center justify-end gap-2 px-4 py-3 border-t border-[var(--ss-border)]">
           <button
             type="button"
             onClick={cancel}
-            className="px-3 py-1.5 rounded text-sm bg-gray-700 hover:bg-gray-600 text-gray-200"
+            className="px-3 py-1.5 rounded-ss-md text-sm bg-[var(--ss-surface-1)] border border-[var(--ss-border-strong)] hover:bg-[var(--ss-surface-2)] text-[var(--ss-t1)] transition-colors duration-fast ease-out"
           >
             {pending.cancelLabel ?? 'キャンセル'}
           </button>
@@ -158,10 +159,10 @@ export function ConfirmDialog({ pending, onClose }: ConfirmDialogProps) {
             onClick={confirm}
             autoFocus
             className={clsx(
-              'px-3 py-1.5 rounded text-sm font-medium',
+              'px-3 py-1.5 rounded-ss-md text-sm font-medium transition-colors duration-fast ease-out',
               pending.destructive
-                ? 'bg-red-700 hover:bg-red-600 text-white'
-                : 'bg-blue-600 hover:bg-blue-500 text-white',
+                ? 'bg-[var(--ss-bad)] hover:opacity-90 text-white'
+                : 'bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white',
             )}
           >
             {pending.confirmLabel ?? 'OK'}

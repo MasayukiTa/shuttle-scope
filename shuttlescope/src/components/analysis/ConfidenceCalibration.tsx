@@ -49,7 +49,7 @@ export function ConfidenceCalibration({ playerId }: ConfidenceCalibrationProps) 
 
   if (isLoading) {
     return (
-      <div className="bg-gray-800 rounded-lg p-4">
+      <div className="bg-gray-800 rounded-ss-lg shadow-card p-4">
         <h3 className="text-sm font-semibold text-gray-200 mb-2">{t('auto.ConfidenceCalibration.k1')}</h3>
         <div className="text-gray-500 text-sm py-2 text-center">{t('auto.ConfidenceCalibration.k2')}</div>
       </div>
@@ -61,7 +61,7 @@ export function ConfidenceCalibration({ playerId }: ConfidenceCalibrationProps) 
   const dist = d?.distribution ?? []
 
   return (
-    <div className="bg-gray-800 rounded-lg p-4">
+    <div className="bg-gray-800 rounded-ss-lg shadow-card p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-gray-200">{t('auto.ConfidenceCalibration.k1')}</h3>
         {d && (
@@ -76,7 +76,7 @@ export function ConfidenceCalibration({ playerId }: ConfidenceCalibrationProps) 
       {d && (
         <>
           {/* 品質バー */}
-          <div className="mt-3 flex gap-0.5 h-4 rounded overflow-hidden">
+          <div className="mt-3 flex gap-0.5 h-4 rounded-ss-sm overflow-hidden">
             {dist.map(t => (
               t.ratio > 0 && (
                 <div
@@ -97,10 +97,10 @@ export function ConfidenceCalibration({ playerId }: ConfidenceCalibrationProps) 
             {dist.map(t => (
               <div
                 key={t.label_en}
-                className={`flex items-center gap-1.5 px-2 py-0.5 rounded border text-xs ${TIER_COLORS[t.label_en] ?? ''}`}
+                className={`flex items-center gap-1.5 px-2 py-0.5 rounded-ss-sm border text-xs ${TIER_COLORS[t.label_en] ?? ''}`}
               >
                 <span>{t.tier}</span>
-                <span className="font-mono font-semibold">{t.count}</span>
+                <span className="font-mono font-semibold ss-num">{t.count}</span>
               </div>
             ))}
           </div>
@@ -109,7 +109,7 @@ export function ConfidenceCalibration({ playerId }: ConfidenceCalibrationProps) 
           {d.current_match_count < d.min_matches_for_high && (
             <p className="mt-2 text-xs text-gray-400">
               {t('auto.ConfidenceCalibration.need_more_pre')}
-              <span className="mx-1 font-semibold text-gray-200">
+              <span className="mx-1 font-semibold text-gray-200 ss-num">
                 {t('auto.ConfidenceCalibration.n_matches', { n: d.min_matches_for_high - d.current_match_count })}
               </span>
               {t('auto.ConfidenceCalibration.need_more_post', { m: d.current_match_count })}

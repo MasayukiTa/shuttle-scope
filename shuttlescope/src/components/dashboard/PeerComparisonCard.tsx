@@ -89,7 +89,7 @@ export function PeerComparisonCard() {
   }
 
   return (
-    <div className={`${card} rounded-lg p-4 space-y-3`}>
+    <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-3`}>
       <div className="flex items-center justify-between">
         <h2 className={`text-sm font-semibold ${textHeading}`}>
           {t('auto.PeerComparisonCard.title')}
@@ -106,7 +106,7 @@ export function PeerComparisonCard() {
           <label className="text-xs space-y-1">
             <span className={textMuted}>{t('auto.PeerComparisonCard.age_bucket')}</span>
             <select
-              className="w-full border rounded px-2 py-1"
+              className="w-full border border-[color:var(--ss-border-strong)] rounded-ss-md px-2 py-1 transition-colors duration-fast"
               value={cohort.age_bucket ?? ''}
               onChange={(e) => update('age_bucket', e.target.value)}
             >
@@ -119,7 +119,7 @@ export function PeerComparisonCard() {
           <label className="text-xs space-y-1">
             <span className={textMuted}>{t('auto.PeerComparisonCard.level')}</span>
             <select
-              className="w-full border rounded px-2 py-1"
+              className="w-full border border-[color:var(--ss-border-strong)] rounded-ss-md px-2 py-1 transition-colors duration-fast"
               value={cohort.level ?? ''}
               onChange={(e) => update('level', e.target.value)}
             >
@@ -134,7 +134,7 @@ export function PeerComparisonCard() {
           <label className="text-xs space-y-1">
             <span className={textMuted}>{t('auto.PeerComparisonCard.handedness')}</span>
             <select
-              className="w-full border rounded px-2 py-1"
+              className="w-full border border-[color:var(--ss-border-strong)] rounded-ss-md px-2 py-1 transition-colors duration-fast"
               value={cohort.handedness ?? ''}
               onChange={(e) => update('handedness', e.target.value)}
             >
@@ -146,7 +146,7 @@ export function PeerComparisonCard() {
           <label className="text-xs space-y-1">
             <span className={textMuted}>{t('auto.PeerComparisonCard.gender')}</span>
             <select
-              className="w-full border rounded px-2 py-1"
+              className="w-full border border-[color:var(--ss-border-strong)] rounded-ss-md px-2 py-1 transition-colors duration-fast"
               value={cohort.gender ?? ''}
               onChange={(e) => update('gender', e.target.value)}
             >
@@ -159,7 +159,7 @@ export function PeerComparisonCard() {
           <label className="text-xs space-y-1">
             <span className={textMuted}>{t('auto.PeerComparisonCard.singles_doubles')}</span>
             <select
-              className="w-full border rounded px-2 py-1"
+              className="w-full border border-[color:var(--ss-border-strong)] rounded-ss-md px-2 py-1 transition-colors duration-fast"
               value={cohort.singles_doubles ?? ''}
               onChange={(e) => update('singles_doubles', e.target.value)}
             >
@@ -173,13 +173,13 @@ export function PeerComparisonCard() {
           type="button"
           onClick={onCompute}
           disabled={loading}
-          className="px-3 py-1.5 rounded bg-blue-600 text-white text-xs font-semibold disabled:opacity-50"
+          className="px-3 py-1.5 rounded-ss-md bg-[color:var(--ss-brand)] hover:bg-[color:var(--ss-brand-hover)] text-white text-xs font-semibold disabled:opacity-50 transition-colors duration-fast"
         >
           {loading ? t('auto.PeerComparisonCard.loading') : t('auto.PeerComparisonCard.compute')}
         </button>
       </div>
 
-      {error && <div className="text-xs text-red-600">{error}</div>}
+      {error && <div className="text-xs text-[color:var(--ss-bad)]">{error}</div>}
 
       {result && !result.available && (
         <div className={`text-xs ${textMuted}`}>
@@ -189,7 +189,7 @@ export function PeerComparisonCard() {
 
       {result && result.available && (
         <div className="space-y-2">
-          <span className="inline-block px-2 py-0.5 text-xs rounded bg-blue-600 text-white">
+          <span className="inline-block px-2 py-0.5 text-xs ss-num rounded-ss-sm bg-[color:var(--ss-brand)] text-white">
             {t('auto.PeerComparisonCard.n_chip', { n: result.n })}
           </span>
           <div className="overflow-x-auto">
@@ -207,14 +207,14 @@ export function PeerComparisonCard() {
               </thead>
               <tbody>
                 {Object.entries(result.metrics ?? {}).map(([name, agg]) => (
-                  <tr key={name} className="border-t">
+                  <tr key={name} className="border-t border-[color:var(--ss-border)]">
                     <td className="text-left px-2 py-1">{name}</td>
-                    <td className="text-right px-2 py-1">{agg.p25}</td>
-                    <td className="text-right px-2 py-1">{agg.p50}</td>
-                    <td className="text-right px-2 py-1">{agg.p75}</td>
-                    <td className="text-right px-2 py-1">{agg.mean}</td>
-                    <td className="text-right px-2 py-1">{agg.sd}</td>
-                    <td className="text-right px-2 py-1">{agg.unit}</td>
+                    <td className="text-right px-2 py-1 ss-num">{agg.p25}</td>
+                    <td className="text-right px-2 py-1 ss-num">{agg.p50}</td>
+                    <td className="text-right px-2 py-1 ss-num">{agg.p75}</td>
+                    <td className="text-right px-2 py-1 ss-num">{agg.mean}</td>
+                    <td className="text-right px-2 py-1 ss-num">{agg.sd}</td>
+                    <td className="text-right px-2 py-1 ss-num">{agg.unit}</td>
                   </tr>
                 ))}
               </tbody>

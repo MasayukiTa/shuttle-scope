@@ -51,7 +51,7 @@ function PatternList({ patterns, _isPlayerView }: { patterns: ShotPattern[]; isP
               style={{ width: `${Math.min(p.rate * 100, 100).toFixed(1)}%`, backgroundColor: LOSS }}
             />
           </div>
-          <span className="w-10 text-right text-xs text-gray-400 shrink-0">
+          <span className="w-10 text-right text-xs text-gray-400 shrink-0 ss-num">
             {(p.rate * 100).toFixed(1)}%
           </span>
         </div>
@@ -110,7 +110,7 @@ function PreLossContent({ playerId, filters = DEFAULT_FILTERS }: { playerId: num
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`px-3 py-1 text-xs rounded font-medium transition-colors ${
+            className={`px-3 py-1 text-xs rounded-ss-sm font-medium transition-colors duration-fast ${
               activeTab === tab.key
                 ? ''
                 : 'bg-gray-700 text-gray-400 hover:bg-gray-600'

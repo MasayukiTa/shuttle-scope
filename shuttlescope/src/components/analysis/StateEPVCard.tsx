@@ -51,7 +51,7 @@ export function StateEPVCard({ playerId, filters }: Props) {
   const reliableRows = rawRows.filter((r) => r.reliability >= 0.5).slice(0, 12)
 
   return (
-    <div className={`${card} rounded-lg p-4 space-y-3`}>
+    <div className={`${card} rounded-ss-lg p-4 space-y-3`}>
       <div className="flex items-center justify-between">
         <h3 className={`text-sm font-semibold ${textHeading}`}>{t('auto.StateEPVCard.k1')}</h3>
         <EvidenceBadge tier="research" evidenceLevel="directional" sampleSize={meta?.sample_size} recommendationAllowed={false} />
@@ -70,40 +70,40 @@ export function StateEPVCard({ playerId, filters }: Props) {
           {/* ── モバイル: カード形式 ──────────────────────── */}
           <div className="md:hidden space-y-2">
             {reliableRows.map((row) => (
-              <div key={row.state_key} className={`border rounded-xl p-3 text-xs ${rowBorder}`}>
+              <div key={row.state_key} className={`border rounded-ss-md p-3 text-xs ${rowBorder}`}>
                 {/* コンテキストバッジ群 */}
                 <div className="flex flex-wrap gap-1 mb-2">
-                  <span className="px-1.5 py-0.5 rounded-full bg-blue-500/15 text-blue-400 text-[10px]">
+                  <span className="px-1.5 py-0.5 rounded-ss-sm bg-[var(--ss-brand-tint)] text-[var(--ss-brand)] text-[10px]">
                     {SCORE_PHASE_LABELS[row.state.score_phase] ?? row.state.score_phase}
                   </span>
-                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${textFaint}`}
-                    style={{ background: 'rgba(107,114,128,0.15)' }}>
+                  <span className={`px-1.5 py-0.5 rounded-ss-sm text-[10px] ${textFaint}`}
+                    style={{ background: 'rgba(136, 146, 160, 0.12)' }}>
                     {RALLY_BUCKET_LABELS[row.state.rally_bucket] ?? row.state.rally_bucket}
                   </span>
                   {/* server / receiver は単なる役割識別、勝敗ではない。
                      旧版は server=緑 / receiver=橙 で「緑=良」誤読を生んでいた。
                      役割識別なら categorical (Cool / Warm) で意味中立に。 */}
-                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${textFaint}`}
-                    style={{ background: 'rgba(148,163,184,0.15)' }}>
+                  <span className={`px-1.5 py-0.5 rounded-ss-sm text-[10px] ${textFaint}`}
+                    style={{ background: 'rgba(136, 146, 160, 0.12)' }}>
                     {ROLE_LABELS[row.state.player_role] ?? row.state.player_role}
                   </span>
                 </div>
                 {/* 主要数値 */}
                 <div className="flex items-baseline gap-3 mb-1.5">
-                  <span className={`text-xl font-bold ${row.win_rate >= 0.5 ? 'text-blue-500' : 'text-red-500'}`}>
+                  <span className={`text-xl font-bold ss-num ${row.win_rate >= 0.5 ? 'text-[var(--ss-good)]' : 'text-[var(--ss-bad)]'}`}>
                     {pct(row.win_rate)}
                   </span>
-                  <span className={`text-[10px] ${textFaint}`}>
+                  <span className={`text-[10px] ss-num ${textFaint}`}>
                     [{pct(row.ci_low)}–{pct(row.ci_high)}]
                   </span>
-                  <span className={`text-[10px] ${textFaint} ml-auto`}>{t('auto.StateEPVCard.n_only', { n: row.n })}</span>
+                  <span className={`text-[10px] ss-num ${textFaint} ml-auto`}>{t('auto.StateEPVCard.n_only', { n: row.n })}</span>
                 </div>
                 {/* 推奨ショット */}
                 {row.top_epv_shots.length > 0 && (
                   <div className="flex flex-wrap gap-1">
                     {row.top_epv_shots.slice(0, 2).map((s) => (
                       <span key={s.shot_type}
-                        className={`text-[10px] px-2 py-0.5 rounded ${s.epv > 0 ? 'bg-emerald-500/15 text-emerald-400' : 'bg-orange-500/15 text-orange-400'}`}>
+                        className={`text-[10px] px-2 py-0.5 rounded-ss-sm ss-num ${s.epv > 0 ? 'bg-[var(--ss-success)]/10 text-[var(--ss-success)]' : 'bg-[var(--ss-emphasis)]/10 text-[var(--ss-emphasis)]'}`}>
                         {t('auto.StateEPVCard.shot_pp', { shot: s.shot_type, v: `${s.epv > 0 ? '+' : ''}${(s.epv * 100).toFixed(1)}` })}
                       </span>
                     ))}
@@ -133,16 +133,16 @@ export function StateEPVCard({ playerId, filters }: Props) {
                     <td className={`py-1.5 pr-3 ${textSecondary}`}>{SCORE_PHASE_LABELS[row.state.score_phase] ?? row.state.score_phase}</td>
                     <td className={`py-1.5 pr-3 ${textSecondary}`}>{RALLY_BUCKET_LABELS[row.state.rally_bucket] ?? row.state.rally_bucket}</td>
                     <td className={`py-1.5 pr-3 ${textMuted}`}>{ROLE_LABELS[row.state.player_role] ?? row.state.player_role}</td>
-                    <td className={`py-1.5 pr-3 text-right num-cell ${textMuted}`}>{row.n}</td>
-                    <td className="py-1.5 pr-3 text-right num-cell">
-                      <span className={row.win_rate >= 0.5 ? 'text-blue-500' : 'text-red-500'}>
+                    <td className={`py-1.5 pr-3 text-right ss-num ${textMuted}`}>{row.n}</td>
+                    <td className="py-1.5 pr-3 text-right ss-num">
+                      <span className={row.win_rate >= 0.5 ? 'text-[var(--ss-good)]' : 'text-[var(--ss-bad)]'}>
                         {pct(row.win_rate)}
                       </span>
                     </td>
-                    <td className={`py-1.5 pr-3 text-right text-[10px] num-cell ${textFaint}`}>[{pct(row.ci_low)}–{pct(row.ci_high)}]</td>
+                    <td className={`py-1.5 pr-3 text-right text-[10px] ss-num ${textFaint}`}>[{pct(row.ci_low)}–{pct(row.ci_high)}]</td>
                     <td className={`py-1.5 ${textMuted}`}>
                       {row.top_epv_shots.slice(0, 2).map((s) => (
-                        <span key={s.shot_type} className={`mr-1 text-[10px] ${s.epv > 0 ? 'text-emerald-500' : 'text-orange-500'}`}>
+                        <span key={s.shot_type} className={`mr-1 text-[10px] ss-num ${s.epv > 0 ? 'text-[var(--ss-success)]' : 'text-[var(--ss-emphasis)]'}`}>
                           {t('auto.StateEPVCard.shot_pp_compact', { shot: s.shot_type, v: `${s.epv > 0 ? '+' : ''}${(s.epv * 100).toFixed(1)}` })}
                         </span>
                       ))}

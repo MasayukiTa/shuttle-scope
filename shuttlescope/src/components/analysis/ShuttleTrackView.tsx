@@ -25,7 +25,7 @@ export function ShuttleTrackView({ points, width = 320, height = 240, className 
     return (
       <div
         role="status"
-        className={`flex items-center justify-center rounded border border-slate-600 bg-slate-800/50 text-slate-300 text-sm ${className ?? ''}`}
+        className={`flex items-center justify-center rounded-ss-lg border border-[color:var(--ss-border)] bg-[var(--ss-surface-2)] text-[var(--ss-t2)] text-sm ${className ?? ''}`}
         style={{ width, height }}
       >
         {t('analysis.shuttle_track.empty')}
@@ -41,7 +41,7 @@ export function ShuttleTrackView({ points, width = 320, height = 240, className 
 
   return (
     <figure className={className}>
-      <figcaption className="mb-1 text-sm text-slate-200">
+      <figcaption className="mb-1 text-sm text-[var(--ss-t1)]">
         {t('analysis.shuttle_track.title')}
       </figcaption>
       <svg
@@ -49,11 +49,11 @@ export function ShuttleTrackView({ points, width = 320, height = 240, className 
         height={height}
         role="img"
         aria-label={t('analysis.shuttle_track.title')}
-        className="rounded border border-slate-600 bg-slate-900"
+        className="rounded-ss-lg border border-[color:var(--ss-border)] bg-[var(--ss-surface-2)]"
       >
         <rect x={0} y={0} width={width} height={height} fill="transparent" />
         {/* コート外枠（ヒント） */}
-        <rect x={10} y={10} width={width - 20} height={height - 20} stroke="#64748b" fill="none" strokeDasharray="4 3" />
+        <rect x={10} y={10} width={width - 20} height={height - 20} stroke="var(--ss-border-strong)" fill="none" strokeDasharray="4 3" />
         <path d={path} stroke="#38bdf8" strokeWidth={2} fill="none" />
         {valid.map((p) => (
           <circle
@@ -66,7 +66,7 @@ export function ShuttleTrackView({ points, width = 320, height = 240, className 
           />
         ))}
       </svg>
-      <p className="mt-1 text-xs text-slate-400">
+      <p className="ss-num mt-1 text-xs text-[var(--ss-t3)]">
         {t('analysis.shuttle_track.sample_size', { count: valid.length })}
       </p>
     </figure>

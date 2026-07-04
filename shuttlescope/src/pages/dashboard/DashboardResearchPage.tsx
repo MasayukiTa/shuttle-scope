@@ -51,10 +51,10 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
   const spatialMeta = getMeta('spatial_density')
 
   const restrictedFallback = (
-    <div className={`${card} rounded-lg p-6 text-center text-sm ${textMuted}`}>{t('analysis.restricted')}</div>
+    <div className={`${card} rounded-ss-lg shadow-card p-6 text-center text-sm ${textMuted}`}>{t('analysis.restricted')}</div>
   )
   const analystFallback = (
-    <div className={`${card} rounded-lg p-6 text-center text-sm ${textMuted}`}>{t('auto.DashboardResearchPage.k1')}</div>
+    <div className={`${card} rounded-ss-lg shadow-card p-6 text-center text-sm ${textMuted}`}>{t('auto.DashboardResearchPage.k1')}</div>
   )
 
   return (
@@ -84,7 +84,7 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
       {/* EPV分析（Markov） */}
       <ErrorBoundary>
         <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
-          <div className={`${card} rounded-lg p-4 space-y-3`}>
+          <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-3`}>
             <div className="flex items-center justify-between">
               <h2 className={`text-sm font-semibold ${textHeading}`}>{t('analysis.epv.title')}</h2>
               <EvidenceBadge

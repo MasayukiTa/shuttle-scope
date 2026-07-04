@@ -1,7 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { clsx } from 'clsx'
 import { MIcon } from '@/components/common/MIcon'
-import { useIsLightMode } from '@/hooks/useIsLightMode'
 
 /** N 個 filled star + (max-N) 個 outline star を MIcon で描画 */
 function StarLevel({ filled, max = 3, size = 12 }: { filled: number; max?: number; size?: number }) {
@@ -31,7 +30,6 @@ interface ConfidenceBadgeProps {
  */
 export function ConfidenceBadge({ sampleSize, compact = false, className }: ConfidenceBadgeProps) {
   const { t } = useTranslation()
-  const isLight = useIsLightMode()
 
   // undefined / null / NaN を 0 に正規化（バックエンドが sample_n を省略した場合の保険）
   const size = typeof sampleSize === 'number' && isFinite(sampleSize) ? sampleSize : 0
@@ -41,31 +39,26 @@ export function ConfidenceBadge({ sampleSize, compact = false, className }: Conf
   let colorClass: string
 
   // tier の色分け（赤=低 / 黄=中 / 緑=高）は情報量なので維持。
-  // 背景/文字色のみテーマで分岐: ライトは明色背景+暗色文字、ダークは現行 bg-gray-800。
+  // v2: token 化した status カラー (tint bg + colored text + hairline border) を
+  // 両テーマで共有し、テーマ分岐の手書き if を廃止。
   if (size < 500) {
     filled = 1
     label = t('confidence.low_label')
-    colorClass = isLight
-      ? 'border-red-400 bg-red-50 text-red-700'
-      : 'border-red-400 bg-gray-800 text-red-300'
+    colorClass = 'border-[var(--ss-danger-border)] bg-[var(--ss-danger-bg)] text-[var(--ss-danger-text)]'
   } else if (size < 2000) {
     filled = 2
     label = t('confidence.medium_label')
-    colorClass = isLight
-      ? 'border-yellow-400 bg-amber-50 text-amber-700'
-      : 'border-yellow-400 bg-gray-800 text-amber-400'
+    colorClass = 'border-[var(--ss-warning-border)] bg-[var(--ss-warning-bg)] text-[var(--ss-warning-text)]'
   } else {
     filled = 3
     label = t('confidence.high_label')
-    colorClass = isLight
-      ? 'border-green-400 bg-blue-50 text-blue-700'
-      : 'border-green-400 bg-gray-800 text-blue-300'
+    colorClass = 'border-[var(--ss-info-border)] bg-[var(--ss-info-bg)] text-[var(--ss-info-text)]'
   }
 
   if (compact) {
     return (
       <button
-        className={clsx('inline-flex items-center px-2 py-0.5 rounded border text-xs font-mono cursor-default', colorClass, className)}
+        className={clsx('inline-flex items-center px-2 py-0.5 rounded-ss-pill border text-xs font-mono cursor-default', colorClass, className)}
         title={`${label}（${t('confidence.sample_size')}: ${size.toLocaleString()}${t('confidence.strokes')}）`}
         tabIndex={-1}
       >
@@ -78,10 +71,11 @@ export function ConfidenceBadge({ sampleSize, compact = false, className }: Conf
   // + overflow-hidden を入れる。狭い親では label / sample-size 部分を CSS で
   // 非表示にして ★ だけ残す (= 自動コンパクト)。
   // user 報告 (mobile): 高信頼バッジが枠を突き破る / タイトル側が縦書きになる。
+  // v2: 真の status chip なので rounded-ss-pill (restrained pill) を使う。
   return (
     <div
       className={clsx(
-        'inline-flex items-center gap-2 px-2 py-1 rounded border text-xs',
+        'inline-flex items-center gap-2 px-2.5 py-1 rounded-ss-pill border text-xs',
         'max-w-full overflow-hidden whitespace-nowrap shrink',
         colorClass,
         className,
@@ -90,7 +84,7 @@ export function ConfidenceBadge({ sampleSize, compact = false, className }: Conf
     >
       <StarLevel filled={filled} />
       <span className="hidden sm:inline truncate">{label}</span>
-      <span className="hidden md:inline opacity-70 truncate">
+      <span className="hidden md:inline opacity-70 truncate ss-num">
         ({t('confidence.sample_size')}: {size.toLocaleString()}{t('confidence.strokes')})
       </span>
     </div>

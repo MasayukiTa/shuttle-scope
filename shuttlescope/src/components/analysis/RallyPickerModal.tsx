@@ -84,7 +84,7 @@ export function RallyPickerModal({ matchId, matchLabel, initialSet, selectedRall
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div className="w-full max-w-2xl rounded-xl shadow-2xl" style={bgStyle}>
+      <div className="w-full max-w-2xl rounded-ss-lg shadow-pop" style={bgStyle}>
         {/* ヘッダー */}
         <div
           className="flex items-center justify-between px-5 py-3 border-b"
@@ -111,7 +111,7 @@ export function RallyPickerModal({ matchId, matchLabel, initialSet, selectedRall
                 <button
                   key={s.set_num}
                   onClick={() => setActiveSet(s.set_num)}
-                  className={`px-3 py-1 text-xs rounded font-medium transition-colors ${
+                  className={`px-3 py-1 text-xs rounded-ss-sm font-medium transition-colors duration-fast ${
                     activeSet === s.set_num
                       ? 'bg-blue-600 text-white'
                       : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
@@ -185,7 +185,7 @@ export function RallyPickerModal({ matchId, matchLabel, initialSet, selectedRall
             </span>
             <button
               onClick={() => { onClear(); onClose() }}
-              className="text-xs px-3 py-1 rounded bg-gray-700 text-gray-300 hover:bg-gray-600"
+              className="text-xs px-3 py-1 rounded-ss-sm bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors duration-fast"
             >
               {t('auto.RallyPickerModal.analyze_all')}
             </button>

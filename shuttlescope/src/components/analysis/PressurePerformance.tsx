@@ -54,23 +54,23 @@ function SegmentCard({
   const color = lightSafe(perfColor(segment.win_rate), !isLight)
   return (
     <div
-      className={`rounded-lg p-4 flex flex-col gap-2 ${
-        highlight ? 'bg-gray-700/60 border border-gray-600' : 'bg-gray-700/30'
+      className={`rounded-ss-lg p-4 flex flex-col gap-2 bg-[var(--ss-surface-1)] border border-[var(--ss-border)] ${
+        highlight ? 'ring-1 ring-[var(--ss-brand)] ring-offset-0' : ''
       }`}
     >
-      <p className="text-xs text-gray-400 font-medium">{label}</p>
-      <p className="text-2xl font-bold" style={{ color }}>
+      <p className="text-xs text-[var(--ss-t3)] font-medium">{label}</p>
+      <p className="text-2xl font-bold ss-num" style={{ color }}>
         {pctStr(segment.win_rate)}
       </p>
       {/* 進捗バー */}
-      <div className="w-full bg-gray-600 rounded-full h-1.5">
+      <div className="w-full bg-[var(--ss-surface-2)] rounded-ss-md h-1.5">
         <div
-          className="h-1.5 rounded-full transition-all"
+          className="h-1.5 rounded-ss-md duration-base ease-out"
           style={{ width: barWidth, backgroundColor: color }}
         />
       </div>
-      <p className="text-xs text-gray-500">
-        {t('auto.PressurePerformance.rally_count_label')} <span className="text-gray-300">{segment.rally_count}</span>
+      <p className="text-xs text-[var(--ss-t3)]">
+        {t('auto.PressurePerformance.rally_count_label')} <span className="text-[var(--ss-t2)] ss-num">{segment.rally_count}</span>
       </p>
     </div>
   )
@@ -98,7 +98,7 @@ export function PressurePerformance({ playerId, filters = DEFAULT_FILTERS }: Pre
 
   if (isLoading) {
     return (
-      <div className="text-gray-500 text-sm py-8 text-center">{t('auto.PressurePerformance.k1')}</div>
+      <div className="text-[var(--ss-t3)] text-sm py-8 text-center">{t('auto.PressurePerformance.k1')}</div>
     )
   }
 
@@ -106,7 +106,7 @@ export function PressurePerformance({ playerId, filters = DEFAULT_FILTERS }: Pre
 
   if (!resp?.data || sampleSize === 0) {
     return (
-      <div className="text-gray-500 text-sm py-4 text-center">
+      <div className="text-[var(--ss-t3)] text-sm py-4 text-center">
         {t('auto.PressurePerformance.insufficient')}
       </div>
     )
@@ -119,12 +119,12 @@ export function PressurePerformance({ playerId, filters = DEFAULT_FILTERS }: Pre
     const delta = target - base
     const absPct = Math.abs(delta * 100).toFixed(1)
     if (Math.abs(delta) < 0.005) {
-      return <span className="text-xs text-gray-500">±0.0%</span>
+      return <span className="text-xs text-[var(--ss-t3)] ss-num">±0.0%</span>
     }
     return delta > 0 ? (
-      <span className="text-xs font-semibold" style={{ color: lightSafe(WIN, !isLight) }}>+{absPct}%</span>
+      <span className="text-xs font-semibold ss-num" style={{ color: lightSafe(WIN, !isLight) }}>+{absPct}%</span>
     ) : (
-      <span className="text-xs font-semibold" style={{ color: lightSafe(LOSS, !isLight) }}>−{absPct}%</span>
+      <span className="text-xs font-semibold ss-num" style={{ color: lightSafe(LOSS, !isLight) }}>−{absPct}%</span>
     )
   }
 
@@ -143,10 +143,10 @@ export function PressurePerformance({ playerId, filters = DEFAULT_FILTERS }: Pre
       {/* 通常時からの変化 */}
       <div className="flex gap-3 text-xs">
         <div className="flex-1" />
-        <div className="flex-1 flex items-center justify-center gap-1 text-gray-400">
+        <div className="flex-1 flex items-center justify-center gap-1 text-[var(--ss-t3)]">
           {t('auto.PressurePerformance.vs_normal')} <DeltaBadge base={normal.win_rate} target={endgame.win_rate} />
         </div>
-        <div className="flex-1 flex items-center justify-center gap-1 text-gray-400">
+        <div className="flex-1 flex items-center justify-center gap-1 text-[var(--ss-t3)]">
           {t('auto.PressurePerformance.vs_normal')} <DeltaBadge base={normal.win_rate} target={deuce.win_rate} />
         </div>
       </div>

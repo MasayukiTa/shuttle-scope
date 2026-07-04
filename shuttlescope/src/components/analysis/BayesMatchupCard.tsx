@@ -77,7 +77,7 @@ export function BayesMatchupCard({ playerId, filters }: Props) {
   const estimates = (matchupData?.opponent_estimates ?? []).slice(0, 10)
 
   return (
-    <div className={`${card} rounded-lg p-4 space-y-3`}>
+    <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-3`}>
       <div className="flex items-center justify-between">
         <h3 className={`text-sm font-semibold ${textHeading}`}>{t('auto.BayesMatchupCard.k1')}</h3>
         <EvidenceBadge
@@ -107,7 +107,7 @@ export function BayesMatchupCard({ playerId, filters }: Props) {
           {/* モバイル: カードリスト (md 未満)。情報量を維持しつつ縦並び */}
           <ul className="md:hidden space-y-1.5">
             {estimates.map((est, i) => (
-              <li key={i} className={`rounded border p-2 ${isLight ? 'border-gray-200 bg-white/40' : 'border-gray-700 bg-gray-800/40'}`}>
+              <li key={i} className={`rounded-ss-md border p-2 ${isLight ? 'border-gray-200 bg-white/40' : 'border-gray-700 bg-gray-800/40'}`}>
                 <div className="flex items-baseline justify-between gap-2">
                   <div className="min-w-0 flex-1">
                     <span className={`${textHeading} truncate block`} title={est.opponent_name}>{est.opponent_name}</span>
@@ -117,11 +117,11 @@ export function BayesMatchupCard({ playerId, filters }: Props) {
                       </span>
                     )}
                   </div>
-                  <span className={'shrink-0 text-base font-semibold num-cell ' + (est.posterior_win_prob >= 0.5 ? (isLight ? 'text-emerald-600' : 'text-emerald-400') : (isLight ? 'text-orange-600' : 'text-orange-400'))}>
+                  <span className={'shrink-0 text-base font-semibold num-cell ss-num ' + (est.posterior_win_prob >= 0.5 ? (isLight ? 'text-emerald-600' : 'text-emerald-400') : (isLight ? 'text-orange-600' : 'text-orange-400'))}>
                     {pct(est.posterior_win_prob)}
                   </span>
                 </div>
-                <div className={`grid grid-cols-3 gap-1 mt-1 text-[10px] ${textFaint} num-cell`}>
+                <div className={`grid grid-cols-3 gap-1 mt-1 text-[10px] ${textFaint} num-cell ss-num`}>
                   <span>{t('auto.BayesMatchupCard.n_only', { n: est.n_matches })}</span>
                   <span>{t('auto.BayesMatchupCard.k5')} {pct(est.raw_win_rate)}</span>
                   <span className="text-right">{t('auto.BayesMatchupCard.ci_range', { lo: pct(est.credible_interval[0]), hi: pct(est.credible_interval[1]) })}</span>
@@ -153,14 +153,14 @@ export function BayesMatchupCard({ playerId, filters }: Props) {
                         </span>
                       )}
                     </td>
-                    <td className={`py-1.5 pr-2 text-right ${textSecondary} num-cell`}>{est.n_matches}</td>
-                    <td className={`py-1.5 pr-2 text-right ${textSecondary} num-cell`}>{pct(est.raw_win_rate)}</td>
+                    <td className={`py-1.5 pr-2 text-right ${textSecondary} num-cell ss-num`}>{est.n_matches}</td>
+                    <td className={`py-1.5 pr-2 text-right ${textSecondary} num-cell ss-num`}>{pct(est.raw_win_rate)}</td>
                     <td className="py-1.5 pr-2 text-right">
-                      <span className={'num-cell ' + (est.posterior_win_prob >= 0.5 ? (isLight ? 'text-emerald-600' : 'text-emerald-400') : (isLight ? 'text-orange-600' : 'text-orange-400'))}>
+                      <span className={'num-cell ss-num ' + (est.posterior_win_prob >= 0.5 ? (isLight ? 'text-emerald-600' : 'text-emerald-400') : (isLight ? 'text-orange-600' : 'text-orange-400'))}>
                         {pct(est.posterior_win_prob)}
                       </span>
                     </td>
-                    <td className={`py-1.5 text-right text-[10px] ${textFaint} num-cell`}>
+                    <td className={`py-1.5 text-right text-[10px] ${textFaint} num-cell ss-num`}>
                       [{pct(est.credible_interval[0])}–{pct(est.credible_interval[1])}]
                     </td>
                   </tr>

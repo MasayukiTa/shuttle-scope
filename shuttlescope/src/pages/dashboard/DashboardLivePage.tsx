@@ -86,7 +86,7 @@ export function DashboardLivePage({ playerId, matches }: Props) {
     <div
       className={
         benchMode
-          ? 'space-y-4 bg-gray-900 text-white p-3 rounded-lg text-xl'
+          ? 'space-y-4 bg-gray-900 text-white p-3 rounded-ss-lg text-xl'
           : 'space-y-4'
       }
     >
@@ -118,7 +118,7 @@ export function DashboardLivePage({ playerId, matches }: Props) {
       <ErrorBoundary>
         <div className="space-y-4">
           {/* 試合 / セット / 地点 セレクター */}
-          <div className={`${card} rounded-lg p-4`}>
+          <div className={`${card} rounded-ss-lg shadow-card p-4`}>
             <SectionTitle>{t('analysis.flash.title')}</SectionTitle>
             <div className="flex flex-wrap gap-3 mt-3">
               <div className="flex flex-col gap-1 min-w-[180px] flex-1">
@@ -156,7 +156,7 @@ export function DashboardLivePage({ playerId, matches }: Props) {
                     <button
                       key={n}
                       onClick={() => setFlashSet(n)}
-                      className={`px-3 py-1 text-xs rounded font-medium transition-colors ${flashSet === n ? 'bg-blue-600 text-white' : isLight ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}
+                      className={`px-3 py-1 text-xs rounded-ss-md font-medium transition-colors duration-fast ease-out ss-num ${flashSet === n ? 'bg-blue-600 text-white' : isLight ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}
                     >
                       {t('auto.DashboardLivePage.set_n', { n })}
                     </button>
@@ -170,7 +170,7 @@ export function DashboardLivePage({ playerId, matches }: Props) {
                   disabled={!flashMatchId}
                   onClick={() => setShowRallyPicker(true)}
                   title={flashRallyNum ? `Set ${flashSet} — R.${flashRallyNum}` : undefined}
-                  className={`px-3 py-1 text-xs rounded font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed truncate max-w-full ${isLight ? 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300' : 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'}`}
+                  className={`px-3 py-1 text-xs rounded-ss-md font-medium transition-colors duration-fast ease-out disabled:opacity-40 disabled:cursor-not-allowed truncate max-w-full ss-num ${isLight ? 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300' : 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'}`}
                 >
                   {flashRallyNum ? `Set ${flashSet} — R.${flashRallyNum}` : t('live.all_rallies_pick_from_chart', 'All rallies (pick from chart)')}
                 </button>
@@ -190,7 +190,7 @@ export function DashboardLivePage({ playerId, matches }: Props) {
           )}
 
           {flashMatchId ? (
-            <div className={`${card} rounded-lg p-4`}>
+            <div className={`${card} rounded-ss-lg shadow-card p-4`}>
               <FlashAdvicePanel
                 matchId={flashMatchId}
                 asOfSet={flashSet}
@@ -199,7 +199,7 @@ export function DashboardLivePage({ playerId, matches }: Props) {
               />
             </div>
           ) : (
-            <div className={`${card} rounded-lg p-6 text-center text-sm ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>
+            <div className={`${card} rounded-ss-lg shadow-flat p-6 text-center text-sm ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>
               {t('live.pick_to_see_advice', 'Pick a match and player to see live advice')}
             </div>
           )}
@@ -230,7 +230,7 @@ export function DashboardLivePage({ playerId, matches }: Props) {
       {/* インターバルレポート (ベンチモード時は非表示) */}
       {!benchMode && (
       <ErrorBoundary>
-        <div className={`${card} rounded-lg p-4`}>
+        <div className={`${card} rounded-ss-lg shadow-card p-4`}>
           <div className="flex items-center justify-between mb-3">
             <SectionTitle>{t('analysis.interval_report.title')}</SectionTitle>
             <div className="flex gap-2 items-center flex-wrap">

@@ -50,7 +50,7 @@ function ComparisonCard({
   const valueColor = isLight ? N_GRAY[900] : N_GRAY[50]
   return (
     <div
-      className="rounded-lg p-3"
+      className="rounded-ss-lg p-3"
       style={{ backgroundColor: cardBg, border: `1px solid ${cardBorder}` }}
     >
       {/* タイトル: highlight === 'post_long' のみ accent 色、それ以外は中立 */}
@@ -63,15 +63,15 @@ function ComparisonCard({
       <div className="space-y-1.5">
         <div className="flex justify-between text-xs">
           <span style={{ color: labelColor }}>{t('auto.PostLongRallyStats.k1')}</span>
-          <span className="font-semibold tabular-nums" style={{ color: valueColor }}>{(stats.win_rate * 100).toFixed(1)}%</span>
+          <span className="font-semibold ss-num" style={{ color: valueColor }}>{(stats.win_rate * 100).toFixed(1)}%</span>
         </div>
         <div className="flex justify-between text-xs">
           <span style={{ color: labelColor }}>{t('auto.PostLongRallyStats.k2')}</span>
-          <span className="tabular-nums" style={{ color: valueColor }}>{stats.avg_rally_length.toFixed(1)}</span>
+          <span className="ss-num" style={{ color: valueColor }}>{stats.avg_rally_length.toFixed(1)}</span>
         </div>
         <div className="flex justify-between text-xs">
           <span style={{ color: labelColor }}>{t('auto.PostLongRallyStats.k3')}</span>
-          <span className="tabular-nums" style={{ color: valueColor }}>{stats.count}</span>
+          <span className="ss-num" style={{ color: valueColor }}>{stats.count}</span>
         </div>
       </div>
     </div>
@@ -128,7 +128,7 @@ export function PostLongRallyStats({ playerId, filters = DEFAULT_FILTERS }: Post
       {/* 差分表示 */}
       <div className="text-center text-sm">
         <span className="text-gray-400">{t('auto.PostLongRallyStats.k4')} </span>
-        <span className="font-semibold" style={{ color: isPositive ? WIN : LOSS }}>
+        <span className="font-semibold ss-num" style={{ color: isPositive ? WIN : LOSS }}>
           {isPositive ? '+' : ''}{diffPct}%
         </span>
       </div>

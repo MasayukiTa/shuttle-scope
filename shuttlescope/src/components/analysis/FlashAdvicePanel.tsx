@@ -85,7 +85,7 @@ function AdviceCard({ item, isLight }: { item: AdviceItem; isLight: boolean }) {
 
   return (
     <div
-      className="rounded p-3 space-y-1.5"
+      className="rounded-ss-md p-3 space-y-1.5"
       style={{
         backgroundColor: bg,
         border: `1px solid ${borderBase}`,
@@ -93,7 +93,7 @@ function AdviceCard({ item, isLight }: { item: AdviceItem; isLight: boolean }) {
     >
       <div className="flex items-center gap-2">
         <span
-          className="text-[10px] font-bold px-1.5 py-0.5 rounded tabular-nums"
+          className="text-[10px] font-bold px-1.5 py-0.5 rounded-ss-sm tabular-nums ss-num"
           style={{ color: '#ffffff', backgroundColor: badgeBg }}
         >
           {item.priority}

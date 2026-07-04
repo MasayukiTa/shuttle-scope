@@ -66,7 +66,7 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
     <ReviewBundleProvider value={{ data: bundleQuery.data, isLoading: bundleQuery.isLoading }}>
     <div className="space-y-5">
       {/* 推奨レビュー順序ガイド */}
-      <div className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-3">
+      <div className="bg-gray-800 border border-gray-700 rounded-ss-lg shadow-flat px-4 py-3">
         <p className="text-xs font-semibold text-gray-300 mb-2">
           {t('analysis.review.guide_title', '推奨レビュー順序')}
         </p>
@@ -89,12 +89,12 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
             {t('analysis.review.section_maps', 'STEP 1 — 弱点・配球マップ')}
           </p>
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-            <div className="bg-gray-800 rounded-lg p-4">
+            <div className="bg-gray-800 rounded-ss-lg shadow-card p-4">
               <SectionTitle>{t('analysis.review.vulnerability_map')}</SectionTitle>
               <p className="text-xs text-gray-500 mb-3">{t('analysis.review.vulnerability_subtitle')}</p>
               <ReceivedVulnerabilityMap playerId={playerId} filters={filters} />
             </div>
-            <div className="bg-gray-800 rounded-lg p-4">
+            <div className="bg-gray-800 rounded-ss-lg shadow-card p-4">
               <SectionTitle>{t('analysis.review.effective_map')}</SectionTitle>
               <p className="text-xs text-gray-500 mb-3">{t('analysis.review.effective_map_subtitle')}</p>
               <EffectiveDistributionMap playerId={playerId} filters={filters} />
@@ -110,11 +110,11 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
             {t('analysis.review.section_patterns', 'STEP 2 — 失点・得点前パターン')}
           </p>
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-            <div className="bg-gray-800 rounded-lg p-4">
+            <div className="bg-gray-800 rounded-ss-lg shadow-card p-4">
               <SectionTitle>{t('analysis.review.pre_loss_title')}</SectionTitle>
               <PreLossPatterns playerId={playerId} filters={filters} />
             </div>
-            <div className="bg-gray-800 rounded-lg p-4">
+            <div className="bg-gray-800 rounded-ss-lg shadow-card p-4">
               <SectionTitle>{t('analysis.review.pre_win_title')}</SectionTitle>
               <PreWinPatterns playerId={playerId} filters={filters} />
             </div>
@@ -128,7 +128,7 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
           <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider mb-2 pl-1">
             {t('auto.DashboardReviewPage.step3_score')}
           </p>
-          <div className="bg-gray-800 rounded-lg p-4">
+          <div className="bg-gray-800 rounded-ss-lg shadow-card p-4">
             {/* xs: タイトルと select を縦積みにして余白を確保、sm+: 横並び */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
               <SectionTitle>{t('analysis.score_progression.title')}</SectionTitle>
@@ -163,7 +163,7 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
               playerBName={matches.find((m) => m.match_id === selectedMatchId)?.opponent ?? 'B'}
             />
           ) : (
-            <div className="bg-gray-800 rounded-lg p-4">
+            <div className="bg-gray-800 rounded-ss-lg shadow-flat p-4">
               <p className="text-gray-500 text-sm text-center py-2">{t('auto.DashboardReviewPage.k2')}</p>
             </div>
           )}
@@ -176,7 +176,7 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
           <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider mb-2 pl-1">
             {t('analysis.review.section_sets', 'STEP 4 — セット別変化点')}
           </p>
-          <div className="bg-gray-800 rounded-lg p-4">
+          <div className="bg-gray-800 rounded-ss-lg shadow-card p-4">
             <SectionTitle>{t('auto.DashboardReviewPage.k3')}</SectionTitle>
             <SetComparison playerId={playerId} filters={filters} />
           </div>

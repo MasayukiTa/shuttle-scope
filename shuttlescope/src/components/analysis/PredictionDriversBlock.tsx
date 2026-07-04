@@ -62,17 +62,17 @@ export function PredictionDriversBlock({
         {drivers.map((d, i) => (
           <div key={i} className="flex items-center gap-2 text-xs">
             <span
-              className="text-[10px] px-1 py-0.5 rounded shrink-0"
+              className="text-[10px] px-1 py-0.5 rounded-ss-sm shrink-0"
               style={{
                 color: d.weight === 'primary' ? WIN : subText,
-                border: `1px solid ${d.weight === 'primary' ? WIN + '66' : '#374151'}`,
+                border: `1px solid ${d.weight === 'primary' ? WIN + '66' : 'var(--ss-border)'}`,
                 backgroundColor: d.weight === 'primary' ? WIN + '18' : 'transparent',
               }}
             >
               {WEIGHT_LABEL[d.weight] ?? d.weight}
             </span>
             <span style={{ color: d.weight === 'primary' ? neutral : subText }}>{d.label}</span>
-            <span className="font-mono" style={{ color: subText }}>
+            <span className="font-mono ss-num" style={{ color: subText }}>
               {d.type === 'observation' ? `${d.count}項目` : `${t('auto._shared.n_matches', { n: d.count })}`}
             </span>
           </div>

@@ -143,6 +143,8 @@ const ROLE_BADGE_CLASS_LIGHT: Record<string, string> = {
   coach:   'bg-white border-gray-300 text-gray-700',
   player:  'bg-white border-gray-300 text-gray-700',
 }
+// v2 §6: バッジは r-sm、hairline のみ (装飾的な彩色背景は使わない)。
+const ROLE_BADGE_SHAPE = 'inline-flex items-center px-2 py-0.5 rounded-ss-sm border text-xs font-medium'
 
 // ── Main Shell ────────────────────────────────────────────────────────────────
 
@@ -290,14 +292,14 @@ export function DashboardShell() {
     <div className={`relative flex flex-col h-full ${cardBg} ${textPrimary}`}>
       {/* スクロール上戻しオーバーレイ */}
       {showOverlay && selectedPlayerId && (
-        <div className={`absolute top-0 left-0 right-0 z-40 shadow-lg border-b ${borderColor} ${cardBg}`}>
+        <div className={`absolute top-0 left-0 right-0 z-40 shadow-card-hover border-b ${borderColor} ${cardBg}`}>
           <div className={`flex items-center gap-2 px-4 py-2 border-b ${borderColor}`}>
             <MIcon name="person" size={14} className={textMuted} />
             <span className={`text-sm font-medium ${textPrimary}`}>
               {sortedPlayers.find((p) => p.id === selectedPlayerId)?.name ?? '—'}
             </span>
             {role && (
-              <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-medium ${(isLight ? ROLE_BADGE_CLASS_LIGHT : ROLE_BADGE_CLASS_DARK)[role] ?? (isLight ? 'bg-white border-gray-300 text-gray-700' : 'bg-gray-800 border-gray-600 text-gray-200')}`}>
+              <span className={`${ROLE_BADGE_SHAPE} text-[10px] ${(isLight ? ROLE_BADGE_CLASS_LIGHT : ROLE_BADGE_CLASS_DARK)[role] ?? (isLight ? 'bg-white border-gray-300 text-gray-700' : 'bg-gray-800 border-gray-600 text-gray-200')}`}>
                 {ROLE_LABELS[role] ?? role}
               </span>
             )}
@@ -308,10 +310,10 @@ export function DashboardShell() {
       <div ref={scrollRef} className="flex-1 overflow-y-auto overflow-x-hidden min-h-0">
         <div className={`px-6 pt-6 pb-4 border-b ${borderColor}`}>
           <div className="flex items-center gap-3 mb-4">
-            <MIcon name="bar_chart" className="text-blue-400" size={20} />
+            <MIcon name="bar_chart" style={{ color: 'var(--ss-brand)' }} size={20} />
             <h1 className="text-xl font-semibold">{t('nav.dashboard_title', 'ダッシュボード')}</h1>
             {role && (
-              <span className={`inline-flex items-center px-2 py-0.5 rounded border text-xs font-medium ${(isLight ? ROLE_BADGE_CLASS_LIGHT : ROLE_BADGE_CLASS_DARK)[role] ?? (isLight ? 'bg-white border-gray-300 text-gray-700' : 'bg-gray-800 border-gray-600 text-gray-200')}`}>
+              <span className={`${ROLE_BADGE_SHAPE} ${(isLight ? ROLE_BADGE_CLASS_LIGHT : ROLE_BADGE_CLASS_DARK)[role] ?? (isLight ? 'bg-white border-gray-300 text-gray-700' : 'bg-gray-800 border-gray-600 text-gray-200')}`}>
                 {ROLE_LABELS[role] ?? role}
               </span>
             )}
@@ -356,7 +358,7 @@ export function DashboardShell() {
                 <button
                   onClick={() => dlReport(`/api/reports/comprehensive_pdf?player_id=${selectedPlayerId}`, `report_player${selectedPlayerId}.pdf`)}
                   title={t('auto.DashboardShell.k4')}
-                  className={`text-xs px-2.5 py-1 rounded border transition-colors ${
+                  className={`text-xs px-2.5 py-1 rounded-ss-md border transition-colors duration-base ease-out ${
                     isLight
                       ? 'border-gray-300 text-gray-600 hover:bg-gray-100'
                       : 'border-gray-600 text-gray-300 hover:bg-gray-700'
@@ -367,7 +369,7 @@ export function DashboardShell() {
                 <button
                   onClick={() => dlReport(`/api/reports/comprehensive?player_id=${selectedPlayerId}`, `report_player${selectedPlayerId}.json`)}
                   title={t('auto.DashboardShell.k5')}
-                  className={`text-xs px-2.5 py-1 rounded border transition-colors ${
+                  className={`text-xs px-2.5 py-1 rounded-ss-md border transition-colors duration-base ease-out ${
                     isLight
                       ? 'border-gray-300 text-gray-600 hover:bg-gray-100'
                       : 'border-gray-600 text-gray-300 hover:bg-gray-700'
@@ -380,7 +382,7 @@ export function DashboardShell() {
                   <button
                     onClick={() => dlReport(`/api/reports/scouting?player_id=${selectedPlayerId}`, `scouting_${selectedPlayerId}.pdf`)}
                     title={t('auto.DashboardShell.k6')}
-                    className={`text-xs px-2.5 py-1 rounded border transition-colors ${
+                    className={`text-xs px-2.5 py-1 rounded-ss-md border transition-colors duration-base ease-out ${
                       isLight
                         ? 'border-gray-300 text-gray-500 hover:bg-gray-100 opacity-70'
                         : 'border-gray-600 text-gray-400 hover:bg-gray-700 opacity-70'
@@ -412,10 +414,10 @@ export function DashboardShell() {
             </div>
 
             <div className={`px-6 py-2 border-b ${borderColor}`} data-tutorial="dashboard.matchPicker">
-              <div className={`flex gap-2 flex-wrap items-center rounded-lg px-3 py-2 ${isLight ? 'bg-gray-100' : 'bg-gray-800/50'}`}>
+              <div className={`flex gap-2 flex-wrap items-center rounded-ss-lg px-3 py-2 ${isLight ? 'bg-gray-100' : 'bg-gray-800/50'}`}>
                 <span className={`text-xs ${textMuted} shrink-0`}>{t('analysis.filter.result')}:</span>
                 <select
-                  className={`border text-xs rounded px-2 py-1 focus:outline-none ${isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-700 border-gray-600 text-white'}`}
+                  className={`border text-xs rounded-ss-md px-2 py-1 focus:outline-none ${isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-700 border-gray-600 text-white'}`}
                   value={filterResult}
                   onChange={(e) => setFilterResult(e.target.value as 'all' | 'win' | 'loss')}
                 >
@@ -425,7 +427,7 @@ export function DashboardShell() {
                 </select>
                 <span className={`text-xs ${textMuted} shrink-0 ml-2`}>{t('analysis.filter.level')}:</span>
                 <select
-                  className={`border text-xs rounded px-2 py-1 focus:outline-none ${isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-700 border-gray-600 text-white'}`}
+                  className={`border text-xs rounded-ss-md px-2 py-1 focus:outline-none ${isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-700 border-gray-600 text-white'}`}
                   value={filterLevel ?? ''}
                   onChange={(e) => setFilterLevel(e.target.value || null)}
                 >
@@ -437,14 +439,14 @@ export function DashboardShell() {
                 <span className={`text-xs ${textMuted} shrink-0 ml-2`}>{t('auto.DashboardShell.k2')}</span>
                 <input
                   type="date"
-                  className={`border text-xs rounded px-2 py-1 focus:outline-none w-32 ${isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-700 border-gray-600 text-white'}`}
+                  className={`border text-xs rounded-ss-md px-2 py-1 focus:outline-none w-32 ${isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-700 border-gray-600 text-white'}`}
                   value={filterDateFrom ?? ''}
                   onChange={(e) => setFilterDateFrom(e.target.value || null)}
                 />
                 <span className={`text-xs ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>{t('auto.DashboardShell.k10')}</span>
                 <input
                   type="date"
-                  className={`border text-xs rounded px-2 py-1 focus:outline-none w-32 ${isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-700 border-gray-600 text-white'}`}
+                  className={`border text-xs rounded-ss-md px-2 py-1 focus:outline-none w-32 ${isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-700 border-gray-600 text-white'}`}
                   value={filterDateTo ?? ''}
                   onChange={(e) => setFilterDateTo(e.target.value || null)}
                 />
@@ -459,7 +461,8 @@ export function DashboardShell() {
                 />
                 {(filterResult !== 'all' || filterLevel || filterDateFrom || filterDateTo) && (
                   <button
-                    className="text-xs text-blue-400 hover:text-blue-300 ml-1"
+                    className="text-xs ml-1 transition-colors duration-base ease-out"
+                    style={{ color: 'var(--ss-brand)' }}
                     onClick={() => {
                       setFilterResult('all')
                       setFilterLevel(null)

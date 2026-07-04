@@ -114,17 +114,19 @@ function ForecastForm({ matchId, playerId, onSaved }: Props & { onSaved: () => v
     },
   })
 
+  const inputClassTokenized = `text-sm rounded-ss-md px-2 py-1.5 focus:outline-none transition-colors duration-base ease-out border border-[var(--ss-border)] bg-[var(--ss-surface-1)] text-[var(--ss-t1)] focus:border-[var(--ss-brand)]`
+
   return (
     <div className="space-y-3">
       {/* ロール + 名前 */}
       <div className="flex gap-2">
-        <select value={role} onChange={(e) => setRole(e.target.value)} className={inputClass}>
+        <select value={role} onChange={(e) => setRole(e.target.value)} className={inputClassTokenized}>
           {ROLE_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>
         <input
-          className={`${inputClass} flex-1`}
+          className={`${inputClassTokenized} flex-1`}
           placeholder={t('auto.HumanForecastPanel.k8')}
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -135,20 +137,20 @@ function ForecastForm({ matchId, playerId, onSaved }: Props & { onSaved: () => v
       <div className="flex gap-2">
         <button
           onClick={() => setOutcome('win')}
-          className={`flex-1 py-1.5 rounded text-sm font-medium border transition-colors ${
+          className={`flex-1 py-1.5 rounded-ss-md text-sm font-medium border transition-colors duration-base ease-out ${
             outcome === 'win'
-              ? 'border-gray-700 bg-gray-800 text-blue-300'
-              : 'border-gray-600 bg-gray-700 text-gray-400 hover:border-gray-500'
+              ? 'border-[var(--ss-good)] bg-[var(--ss-brand-tint)] text-[var(--ss-good)]'
+              : 'border-[var(--ss-border)] bg-[var(--ss-surface-2)] text-[var(--ss-t3)] hover:border-[var(--ss-brand)]'
           }`}
         >
           {t('prediction.human_forecast_win')}{t('auto.HumanForecastPanel.w_label')}
         </button>
         <button
           onClick={() => setOutcome('loss')}
-          className={`flex-1 py-1.5 rounded text-sm font-medium border transition-colors ${
+          className={`flex-1 py-1.5 rounded-ss-md text-sm font-medium border transition-colors duration-base ease-out ${
             outcome === 'loss'
-              ? 'border-gray-700 bg-gray-800 text-red-300'
-              : 'border-gray-600 bg-gray-700 text-gray-400 hover:border-gray-500'
+              ? 'border-[var(--ss-bad)] bg-[var(--ss-brand-tint)] text-[var(--ss-bad)]'
+              : 'border-[var(--ss-border)] bg-[var(--ss-surface-2)] text-[var(--ss-t3)] hover:border-[var(--ss-brand)]'
           }`}
         >
           {t('prediction.human_forecast_loss')}{t('auto.HumanForecastPanel.l_label')}
@@ -157,7 +159,7 @@ function ForecastForm({ matchId, playerId, onSaved }: Props & { onSaved: () => v
 
       {/* セットパス + 勝率見込み */}
       <div className="flex gap-2">
-        <select value={setPath} onChange={(e) => setSetPath(e.target.value)} className={inputClass}>
+        <select value={setPath} onChange={(e) => setSetPath(e.target.value)} className={inputClassTokenized}>
           <option value="">{t('auto.HumanForecastPanel.k1')}</option>
           {SET_PATH_OPTIONS.filter(Boolean).map((o) => (
             <option key={o} value={o}>{o}</option>
@@ -167,12 +169,12 @@ function ForecastForm({ matchId, playerId, onSaved }: Props & { onSaved: () => v
           type="number"
           min={0}
           max={100}
-          className={`${inputClass} w-24`}
+          className={`${inputClassTokenized} w-24`}
           placeholder={t('auto.HumanForecastPanel.k9')}
           value={prob}
           onChange={(e) => setProb(e.target.value)}
         />
-        <select value={confidence} onChange={(e) => setConfidence(e.target.value)} className={inputClass}>
+        <select value={confidence} onChange={(e) => setConfidence(e.target.value)} className={inputClassTokenized}>
           {CONFIDENCE_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
@@ -181,7 +183,7 @@ function ForecastForm({ matchId, playerId, onSaved }: Props & { onSaved: () => v
 
       {/* メモ */}
       <textarea
-        className={`${inputClass} w-full resize-none`}
+        className={`${inputClassTokenized} w-full resize-none`}
         rows={2}
         placeholder={t('prediction.human_forecast_notes')}
         value={notes}
@@ -191,12 +193,12 @@ function ForecastForm({ matchId, playerId, onSaved }: Props & { onSaved: () => v
       <button
         onClick={() => save.mutate()}
         disabled={save.isPending}
-        className="w-full py-2 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-sm font-medium"
+        className="w-full py-2 rounded-ss-md bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-50 text-white text-sm font-medium transition-colors duration-base ease-out"
       >
         {save.isPending ? '保存中...' : t('prediction.human_forecast_save')}
       </button>
       {save.isError && (
-        <p className="text-xs" style={{ color: LOSS }}>{t('auto.HumanForecastPanel.k2')}</p>
+        <p className="text-xs text-[var(--ss-bad)]">{t('auto.HumanForecastPanel.k2')}</p>
       )}
     </div>
   )
@@ -206,8 +208,6 @@ function ForecastForm({ matchId, playerId, onSaved }: Props & { onSaved: () => v
 
 function BenchmarkSection({ playerId, isLight }: { playerId: number; isLight: boolean }) {
   const { t } = useTranslation()
-  const subText = isLight ? '#64748b' : '#9ca3af'
-  const neutral = isLight ? '#334155' : '#d1d5db'
 
   const { data: resp } = useQuery({
     queryKey: ['human-benchmark', playerId],
@@ -220,7 +220,7 @@ function BenchmarkSection({ playerId, isLight }: { playerId: number; isLight: bo
   const d = resp?.data
   if (!d || d.total_forecasts === 0) {
     return (
-      <p className="text-xs" style={{ color: subText }}>
+      <p className="text-xs text-[var(--ss-t3)]">
         {t('prediction.benchmark_no_data')}
       </p>
     )
@@ -231,13 +231,13 @@ function BenchmarkSection({ playerId, isLight }: { playerId: number; isLight: bo
       {/* ロール別サマリーテーブル */}
       {d.summary.length > 0 && (
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wide mb-2" style={{ color: subText }}>
+          <p className="text-[10px] font-semibold uppercase tracking-wide mb-2 text-[var(--ss-t3)]">
             {t('prediction.benchmark_title')}
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr style={{ color: subText }}>
+                <tr className="text-[var(--ss-t3)]">
                   <th className="text-left py-1 pr-3">{t('auto.HumanForecastPanel.k3')}</th>
                   <th className="text-right pr-3">{t('auto.HumanForecastPanel.k4')}</th>
                   <th className="text-right pr-3">{t('auto.HumanForecastPanel.k5')}</th>
@@ -247,26 +247,26 @@ function BenchmarkSection({ playerId, isLight }: { playerId: number; isLight: bo
               </thead>
               <tbody>
                 {d.summary.map((s, i) => (
-                  <tr key={i} className="border-t border-gray-700">
-                    <td className="py-1 pr-3" style={{ color: neutral }}>
+                  <tr key={i} className="border-t border-[var(--ss-border)]">
+                    <td className="py-1 pr-3 text-[var(--ss-t2)]">
                       <span className="cell-name-clip" title={`${s.role === 'coach' ? 'コーチ' : 'アナリスト'} (${t('auto._shared.n_matches', { n: s.n })})`}>
                         {t('auto.HumanForecastPanel.evaluator', { label: s.role === 'coach' ? t('roles.coach') : t('roles.analyst'), n: s.n })}
                       </span>
                     </td>
-                    <td className="text-right pr-3 num-cell" style={{ color: neutral }}>
+                    <td className="text-right pr-3 ss-num text-[var(--ss-t2)]">
                       {Math.round(s.human_accuracy * 100)}%
                     </td>
                     <td
-                      className="text-right pr-3 font-medium num-cell"
+                      className="text-right pr-3 font-medium ss-num"
                       style={{ color: s.model_accuracy >= s.human_accuracy ? WIN : LOSS }}
                     >
                       {Math.round(s.model_accuracy * 100)}%
                     </td>
-                    <td className="text-right pr-3 num-cell" style={{ color: neutral }}>
+                    <td className="text-right pr-3 ss-num text-[var(--ss-t2)]">
                       {s.human_brier.toFixed(3)}
                     </td>
                     <td
-                      className="text-right font-medium num-cell"
+                      className="text-right font-medium ss-num"
                       style={{ color: s.model_brier <= s.human_brier ? WIN : LOSS }}
                     >
                       {s.model_brier.toFixed(3)}
@@ -282,13 +282,13 @@ function BenchmarkSection({ playerId, isLight }: { playerId: number; isLight: bo
       {/* 直近の比較一覧（最大5件） */}
       {d.match_comparisons.length > 0 && (
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color: subText }}>
+          <p className="text-[10px] font-semibold uppercase tracking-wide mb-1 text-[var(--ss-t3)]">
             {t('auto.HumanForecastPanel.match_compare', { n: Math.min(5, d.match_comparisons.length) })}
           </p>
           <div className="space-y-1">
             {d.match_comparisons.slice(0, 5).map((c, i) => (
-              <div key={i} className="flex items-center gap-2 text-[10px]" style={{ color: subText }}>
-                <span className="font-mono">{c.match_date.slice(0, 7)}</span>
+              <div key={i} className="flex items-center gap-2 text-[10px] text-[var(--ss-t3)]">
+                <span className="font-mono ss-num">{c.match_date.slice(0, 7)}</span>
                 <span>{c.tournament_level}</span>
                 <span
                   className="font-bold"
@@ -316,8 +316,6 @@ function BenchmarkSection({ playerId, isLight }: { playerId: number; isLight: bo
 export function HumanForecastPanel({ matchId, playerId }: Props) {
   const { t } = useTranslation()
   const isLight = useIsLightMode()
-  const subText = isLight ? '#64748b' : '#9ca3af'
-  const neutral = isLight ? '#334155' : '#d1d5db'
   const qc = useQueryClient()
 
   const [showForm, setShowForm] = useState(false)
@@ -345,13 +343,12 @@ export function HumanForecastPanel({ matchId, playerId }: Props) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold" style={{ color: subText }}>
+        <p className="text-xs font-semibold text-[var(--ss-t3)]">
           {t('prediction.human_forecast')}
         </p>
         <button
           onClick={() => setShowForm((v) => !v)}
-          className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600"
-          style={{ color: neutral }}
+          className="flex items-center gap-1 text-xs px-2 py-1 rounded-ss-md bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] transition-colors duration-base ease-out text-[var(--ss-t2)]"
         >
           <MIcon name="add" size={11} />
           {t('prediction.human_forecast_add')}
@@ -360,7 +357,7 @@ export function HumanForecastPanel({ matchId, playerId }: Props) {
 
       {/* 入力フォーム */}
       {showForm && (
-        <div className="bg-gray-900 rounded p-3">
+        <div className="bg-[var(--ss-surface-2)] rounded-ss-lg p-3 border border-[var(--ss-border)]">
           <ForecastForm
             matchId={matchId}
             playerId={playerId}
@@ -375,9 +372,9 @@ export function HumanForecastPanel({ matchId, playerId }: Props) {
           {forecasts.map((f) => (
             <div
               key={f.id}
-              className="flex items-center gap-2 text-xs bg-gray-900 rounded px-2 py-1.5"
+              className="flex items-center gap-2 text-xs bg-[var(--ss-surface-2)] rounded-ss-md px-2 py-1.5 border border-[var(--ss-border)]"
             >
-              <span style={{ color: subText }}>
+              <span className="text-[var(--ss-t3)]">
                 {f.forecaster_role === 'coach' ? 'コーチ' : 'アナリスト'}
                 {f.forecaster_name && ` (${f.forecaster_name})`}:
               </span>
@@ -388,17 +385,17 @@ export function HumanForecastPanel({ matchId, playerId }: Props) {
                 {f.predicted_outcome === 'win' ? 'W' : 'L'}
               </span>
               {f.predicted_set_path && (
-                <span style={{ color: neutral }}>{f.predicted_set_path}</span>
+                <span className="ss-num text-[var(--ss-t2)]">{f.predicted_set_path}</span>
               )}
               {f.predicted_win_probability !== null && (
-                <span style={{ color: neutral }}>{f.predicted_win_probability}%</span>
+                <span className="ss-num text-[var(--ss-t2)]">{f.predicted_win_probability}%</span>
               )}
               {f.confidence_level && (
-                <span className="text-[10px]" style={{ color: subText }}>({f.confidence_level})</span>
+                <span className="text-[10px] text-[var(--ss-t3)]">({f.confidence_level})</span>
               )}
               <button
                 onClick={() => remove.mutate(f.id)}
-                className="ml-auto p-1 rounded hover:bg-gray-700 text-gray-500 hover:text-red-400"
+                className="ml-auto p-1 rounded-ss-md hover:bg-[var(--ss-surface-3)] text-[var(--ss-t3)] hover:text-[var(--ss-bad)] transition-colors duration-base ease-out"
               >
                 <MIcon name="delete" size={10} />
               </button>
@@ -409,15 +406,14 @@ export function HumanForecastPanel({ matchId, playerId }: Props) {
 
       {/* ベンチマーク折りたたみ */}
       <button
-        className="flex items-center gap-1 text-xs w-full"
-        style={{ color: subText }}
+        className="flex items-center gap-1 text-xs w-full text-[var(--ss-t3)]"
         onClick={() => setShowBenchmark((v) => !v)}
       >
         {showBenchmark ? <MIcon name="expand_less" size={11} /> : <MIcon name="expand_more" size={11} />}
         {t('prediction.benchmark_title')}
       </button>
       {showBenchmark && (
-        <div className="bg-gray-900 rounded p-3">
+        <div className="bg-[var(--ss-surface-2)] rounded-ss-lg p-3 border border-[var(--ss-border)]">
           <BenchmarkSection playerId={playerId} isLight={isLight} />
         </div>
       )}

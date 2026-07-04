@@ -1,8 +1,11 @@
-{# ShuttleScope public site base layout (Jinja2 PR1).
-   V7 (_V7_HOME_HTML) のヘッダ・フッタを共有レイアウトとして抽出したもの。
+{# ShuttleScope public site base layout — "Precision on Gray" (DESIGN_DIRECTION_v2.md).
+   V7 のヘッダ・フッタを共有レイアウトとして抽出したもの。
    - {% block content %} に各ページ本文を入れる。
    - {% block extra_styles %} で各ページ専用の CSS を後置できる (テーマ上書き用)。
    - lang block は EN 移行 (次 PR) 用に block 化してあるが、現状は ja のみ。
+   - design-tokens.css (backend/public/design-tokens.css) は現状 静的ルートが無いため、
+     このファイルの <style> 冒頭にバイト同一の内容をインラインしている。design-tokens.css
+     を変更したら、ここも同じ値に手動で追従させること (運用ルールは同ファイル冒頭コメント参照)。
 #}
 <!DOCTYPE html>
 <html lang="{{ lang|default('ja') }}" data-theme="light">
@@ -24,64 +27,150 @@
 <meta name="twitter:description" content="ストローク単位の記録から試合構造を統計的に可視化するバドミントン分析ワークベンチ。">
 <meta name="twitter:image" content="https://shuttle-scope.com/og-image.png">
 {% block robots %}{% endblock %}
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=MigMix+1P:wght@400;700&display=swap" rel="stylesheet">
+{# 外部フォント CDN 禁止 (企業 TLS でブロックされるため)。system-ui スタックのみ使用。 #}
 <style>
+/* ═══ design-tokens.css インライン (DESIGN_DIRECTION_v2.md §2/§4/§5/§7 準拠) ═══
+   backend/public/design-tokens.css と値を同期させること (手動同期・ビルド非依存)。 */
+:root,
+[data-theme="light"] {
+  --ss-brand:         #2563eb;
+  --ss-brand-hover:   #1d4fd7;
+  --ss-brand-tint:    rgba(37, 99, 235, 0.08);
+  --ss-focus-ring:    rgba(37, 99, 235, 0.32);
+
+  --ss-bg-app:        #f5f6f8;
+  --ss-surface-1:     #ffffff;
+  --ss-surface-2:     #eef1f5;
+  --ss-surface-3:     #e4e8ee;
+
+  --ss-border:        #e3e7ec;
+  --ss-border-strong: #c9d1db;
+
+  --ss-t1: #1a2028;
+  --ss-t2: #55606e;
+  --ss-t3: #8892a0;
+
+  --ss-good:     #1f6fe0;
+  --ss-bad:      #c2334a;
+  --ss-warn:     #b26a00;
+  --ss-success:  #197a48;
+  --ss-emphasis: #e4610f;
+
+  --r-sm:   3px;
+  --r-md:   5px;
+  --r-lg:   6px;
+  --r-xl:   8px;
+  --r-pill: 999px;
+
+  --e0: none;
+  --e1: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --e2: 0 1px 3px rgba(16, 24, 40, 0.10), 0 1px 2px rgba(16, 24, 40, 0.06);
+  --e3: 0 10px 28px rgba(16, 24, 40, 0.14);
+
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --dur-slow: 300ms;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --ss-brand:         #5c9bff;
+  --ss-brand-hover:   #7fb0ff;
+  --ss-brand-tint:    rgba(92, 155, 255, 0.14);
+  --ss-focus-ring:    rgba(92, 155, 255, 0.35);
+
+  --ss-bg-app:        #1c1f24;
+  --ss-surface-1:     #23272e;
+  --ss-surface-2:     #2a2f37;
+  --ss-surface-3:     #323842;
+
+  --ss-border:        #363c46;
+  --ss-border-strong: #454c58;
+
+  --ss-t1: #e6e9ed;
+  --ss-t2: #a5aebb;
+  --ss-t3: #727c89;
+
+  --ss-good:     #6aa6ff;
+  --ss-bad:      #f0808a;
+  --ss-warn:     #fcd34d;
+  --ss-success:  #4bae7a;
+  --ss-emphasis: #f97316;
+
+  color-scheme: dark;
+}
+
+.ss-num { font-variant-numeric: tabular-nums slashed-zero; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ═══ Legacy variable aliases — 旧 --bg/--t1/--blue 系を新トークンへブリッジ。
+   段階移行のため各ページの extra_styles にまだ旧変数を使う箇所があっても壊れない。 ═══ */
+:root, [data-theme="light"] {
+  --bg: var(--ss-bg-app); --surface: var(--ss-surface-1); --surf2: var(--ss-surface-2); --surf3: var(--ss-surface-3);
+  --navy: #16233a; --blue: var(--ss-brand); --blue2: var(--ss-brand); --blue-lt: var(--ss-brand-tint); --blue-md: var(--ss-brand-tint); --grn: var(--ss-success);
+  --t1: var(--ss-t1); --t2: var(--ss-t2); --t3: var(--ss-t3);
+  --bdr: var(--ss-border); --bdr2: var(--ss-border-strong);
+  --nav-bg: rgba(245,246,248,0.92); --nav-bdr: var(--ss-border); --nav-shadow: none;
+  --feat-bg: var(--ss-surface-1); --feat-hover: var(--ss-surface-2);
+  --card-bg: var(--ss-surface-1); --card-bdr: var(--ss-border);
+  --data-bg: var(--ss-surface-1); --fcta-bg: var(--ss-bg-app);
+  --footer-bg: var(--ss-surface-1); --footer-t: var(--ss-t1); --footer-lt: var(--ss-t2); --footer-cp: var(--ss-t3);
+}
+[data-theme="dark"] {
+  --bg: var(--ss-bg-app); --surface: var(--ss-surface-1); --surf2: var(--ss-surface-2); --surf3: var(--ss-surface-3);
+  --navy: #0c2555; --blue: var(--ss-brand); --blue2: var(--ss-brand); --blue-lt: var(--ss-brand-tint); --blue-md: var(--ss-brand-tint); --grn: var(--ss-success);
+  --t1: var(--ss-t1); --t2: var(--ss-t2); --t3: var(--ss-t3);
+  --bdr: var(--ss-border); --bdr2: var(--ss-border-strong);
+  --nav-bg: rgba(28,31,36,0.92); --nav-bdr: var(--ss-border); --nav-shadow: none;
+  --feat-bg: var(--ss-surface-1); --feat-hover: var(--ss-surface-2);
+  --card-bg: var(--ss-surface-1); --card-bdr: var(--ss-border);
+  --data-bg: var(--ss-surface-1); --fcta-bg: var(--ss-bg-app);
+  --footer-bg: var(--ss-surface-1); --footer-t: var(--ss-t1); --footer-lt: var(--ss-t2); --footer-cp: var(--ss-t3);
+}
+
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-
-:root,[data-theme="light"]{
-  --bg:#f0f3f8;--surface:#ffffff;--surf2:#f7f9fc;--surf3:#eef1f7;
-  --hero-bg:#0c1f3f;--hero-bg2:#102646;--hero-t1:#e8f0fb;--hero-t2:#c0d6ee;--hero-bdr:rgba(255,255,255,0.08);
-  --navy:#0c2555;--blue:#1059c8;--blue2:#1a6fe0;--blue-lt:#e8f0fd;--blue-md:rgba(16,89,200,0.10);--grn:#007a56;
-  --t1:#0b1929;--t2:#445e7a;--t3:#8fa5be;
-  --bdr:#dce4ef;--bdr2:#c8d4e6;
-  --nav-bg:rgba(255,255,255,0.96);--nav-bdr:#dce4ef;--nav-shadow:0 1px 0 #dce4ef;
-  --feat-bg:#ffffff;--feat-hover:#e8f0fd;
-  --card-bg:#ffffff;--card-bdr:#dce4ef;
-  --data-bg:#ffffff;--fcta-bg:#f0f3f8;
-  --footer-bg:#0c2555;--footer-t:#dae8f8;--footer-lt:rgba(255,255,255,0.65);--footer-cp:rgba(255,255,255,0.42);
-}
-
-[data-theme="dark"]{
-  --bg:#07101d;--surface:#0d1829;--surf2:#111f33;--surf3:#162840;
-  --hero-bg:#040d18;--hero-bg2:#07101d;--hero-t1:#daeafb;--hero-t2:#a8c4e0;--hero-bdr:rgba(255,255,255,0.07);
-  --navy:#0c2555;--blue:#3380ee;--blue2:#4490ff;--blue-lt:rgba(51,128,238,0.12);--blue-md:rgba(51,128,238,0.12);--grn:#00a874;
-  --t1:#d4e4f8;--t2:#6a8daf;--t3:#3d5a76;
-  --bdr:rgba(255,255,255,0.07);--bdr2:rgba(255,255,255,0.12);
-  --nav-bg:rgba(7,16,29,0.94);--nav-bdr:rgba(255,255,255,0.07);--nav-shadow:none;
-  --feat-bg:#0d1829;--feat-hover:#111f33;
-  --card-bg:#0d1829;--card-bdr:rgba(255,255,255,0.07);
-  --data-bg:#0d1829;--fcta-bg:#07101d;
-  --footer-bg:#040c17;--footer-t:#b0c8e4;--footer-lt:rgba(255,255,255,0.55);--footer-cp:rgba(255,255,255,0.36);
-}
-
-body,nav,.feat-card,.uc-card{transition:background-color 0.25s ease,border-color 0.25s ease,color 0.2s ease}
 html{scroll-behavior:smooth}
-body{font-family:'MigMix 1P','Noto Sans JP',sans-serif;background:var(--bg);color:var(--t1);line-height:1.65;overflow-x:hidden;-webkit-font-smoothing:antialiased}
-::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--bdr2);border-radius:3px}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans JP","Hiragino Sans","Yu Gothic UI",sans-serif;
+  background:var(--ss-bg-app);color:var(--ss-t1);line-height:1.65;overflow-x:hidden;-webkit-font-smoothing:antialiased;
+}
+body,nav{transition:background-color var(--dur-base) var(--ease-out),border-color var(--dur-base) var(--ease-out),color var(--dur-fast) var(--ease-out)}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:var(--ss-bg-app)}::-webkit-scrollbar-thumb{background:var(--ss-border-strong);border-radius:var(--r-sm)}
+a{color:inherit}
+:focus-visible{outline:2px solid var(--ss-brand);outline-offset:2px}
 
-nav{position:fixed;top:0;left:0;right:0;z-index:200;height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 40px;background:var(--nav-bg);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--nav-bdr);box-shadow:var(--nav-shadow)}
-.logo{font-size:20px;font-weight:700;letter-spacing:.06em;color:var(--t1);text-decoration:none;display:flex;align-items:center;gap:8px}
-.logo-mark{width:26px;height:26px;background:#fff;border-radius:5px;display:flex;align-items:center;justify-content:center;overflow:hidden;transition:background .25s}
+nav{position:fixed;top:0;left:0;right:0;z-index:200;height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 40px;background:var(--nav-bg);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--ss-border)}
+.logo{font-size:18px;font-weight:600;letter-spacing:-.01em;color:var(--ss-t1);text-decoration:none;display:flex;align-items:center;gap:8px}
+.logo-mark{width:26px;height:26px;background:var(--ss-surface-1);border:1px solid var(--ss-border);border-radius:var(--r-sm);display:flex;align-items:center;justify-content:center;overflow:hidden}
 .logo-mark img{width:100%;height:100%;object-fit:contain;display:block}
 .nav-links{display:flex;align-items:center;gap:28px;list-style:none}
-.nav-links a{font-size:13px;color:var(--t2);text-decoration:none;transition:color .15s}
-.nav-links a:hover{color:var(--t1)}
+.nav-links a{font-size:13px;font-weight:500;color:var(--ss-t2);text-decoration:none;transition:color var(--dur-fast) var(--ease-out)}
+.nav-links a:hover{color:var(--ss-t1)}
 .nav-right{display:flex;align-items:center;gap:8px}
-.theme-toggle{width:34px;height:34px;border:1px solid var(--bdr2);border-radius:6px;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;line-height:1;transition:background .15s,border-color .15s;color:var(--t2)}
+.theme-toggle{width:34px;height:34px;border:1px solid var(--ss-border-strong);border-radius:var(--r-md);background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;line-height:1;transition:background var(--dur-fast) var(--ease-out),border-color var(--dur-fast) var(--ease-out);color:var(--ss-t2)}
 .theme-toggle svg{width:17px;height:17px;display:block}
 [data-theme="light"] .theme-toggle .ic-sun{display:none}
 [data-theme="dark"] .theme-toggle .ic-moon{display:none}
-.theme-toggle:hover{background:var(--blue-lt);border-color:var(--blue)}
-.lang-toggle{width:34px;height:34px;border:1px solid var(--bdr2);border-radius:6px;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;letter-spacing:.06em;color:var(--t2);transition:background .15s,border-color .15s,color .15s}
-.lang-toggle:hover{background:var(--blue-lt);border-color:var(--blue);color:var(--blue)}
+.theme-toggle:hover{background:var(--ss-brand-tint);border-color:var(--ss-brand)}
+.lang-toggle{width:34px;height:34px;border:1px solid var(--ss-border-strong);border-radius:var(--r-md);background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;letter-spacing:.02em;color:var(--ss-t2);transition:background var(--dur-fast) var(--ease-out),border-color var(--dur-fast) var(--ease-out),color var(--dur-fast) var(--ease-out)}
+.lang-toggle:hover{background:var(--ss-brand-tint);border-color:var(--ss-brand);color:var(--ss-brand)}
 html[lang=en] .ja{display:none}
 html[lang=ja] .en{display:none}
-.btn-login{font-family:'MigMix 1P',sans-serif;font-size:12px;font-weight:700;padding:7px 18px;border:1px solid var(--bdr2);border-radius:5px;color:var(--t2);background:transparent;text-decoration:none;transition:all .15s}
-.btn-login:hover{color:var(--t1);border-color:var(--blue);background:var(--blue-lt)}
+.btn-login{font-size:12px;font-weight:600;padding:7px 18px;border:1px solid var(--ss-border-strong);border-radius:var(--r-md);color:var(--ss-t2);background:transparent;text-decoration:none;transition:all var(--dur-fast) var(--ease-out)}
+.btn-login:hover{color:var(--ss-t1);border-color:var(--ss-brand);background:var(--ss-brand-tint)}
 .hamburger{display:none;flex-direction:column;justify-content:center;gap:4px;width:36px;height:36px;cursor:pointer;background:none;border:none;padding:4px}
-.hamburger span{display:block;height:1.5px;background:var(--t2);transition:transform .2s,opacity .2s;border-radius:2px}
+.hamburger span{display:block;height:1.5px;background:var(--ss-t2);transition:transform var(--dur-fast) var(--ease-out),opacity var(--dur-fast) var(--ease-out);border-radius:1px}
 .hamburger.open span:nth-child(1){transform:translateY(5.5px) rotate(45deg)}
 .hamburger.open span:nth-child(2){opacity:0}
 .hamburger.open span:nth-child(3){transform:translateY(-5.5px) rotate(-45deg)}
@@ -89,27 +178,25 @@ html[lang=ja] .en{display:none}
    padding / backdrop-filter / 半透明背景) をすべて継承する。特に height:58px が効くと
    白背景が 58px(≒1項目) しか覆わず、残りのリンクが背景なしでページ上に溢れて
    「背景透明で文字が読めない」状態になる。height/padding/align/背景/filter を明示打ち消し。 */
-.mobile-menu{display:none;position:fixed;top:58px;left:0;right:0;z-index:190;height:auto;max-height:calc(100vh - 58px);overflow-y:auto;padding:0;align-items:stretch;justify-content:flex-start;background:#ffffff !important;backdrop-filter:none !important;-webkit-backdrop-filter:none !important;border-bottom:1px solid var(--bdr);flex-direction:column;box-shadow:0 10px 28px rgba(0,0,0,0.22)}
-[data-theme="dark"] .mobile-menu{background:#0d1829 !important}
+.mobile-menu{display:none;position:fixed;top:58px;left:0;right:0;z-index:190;height:auto;max-height:calc(100vh - 58px);overflow-y:auto;padding:0;align-items:stretch;justify-content:flex-start;background:var(--ss-surface-1) !important;backdrop-filter:none !important;-webkit-backdrop-filter:none !important;border-bottom:1px solid var(--ss-border);flex-direction:column;box-shadow:var(--e3)}
 .mobile-menu.open{display:flex}
-.mobile-menu a{font-size:14px;color:var(--t1);text-decoration:none;padding:14px 24px;border-bottom:1px solid var(--bdr);transition:color .15s,background .15s}
-.mobile-menu a:hover{color:var(--t1);background:var(--blue-lt)}
+.mobile-menu a{font-size:14px;color:var(--ss-t1);text-decoration:none;padding:14px 24px;border-bottom:1px solid var(--ss-border);transition:color var(--dur-fast) var(--ease-out),background var(--dur-fast) var(--ease-out)}
+.mobile-menu a:hover{color:var(--ss-t1);background:var(--ss-brand-tint)}
 
-.beta-banner{background:#0a4d8c;padding:14px 40px;margin-top:58px}
+.beta-banner{background:var(--ss-t1);padding:14px 40px;margin-top:58px}
 .beta-banner-inner{max-width:1160px;margin:0 auto;display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;text-align:center}
-.beta-badge{font-size:11px;font-weight:700;color:rgba(255,255,255,0.92);background:rgba(255,255,255,0.14);border:1px solid rgba(255,255,255,0.24);border-radius:4px;padding:3px 10px;white-space:nowrap;flex-shrink:0}
+.beta-badge{font-size:11px;font-weight:700;letter-spacing:.06em;color:#fff;background:rgba(255,255,255,0.14);border:1px solid rgba(255,255,255,0.24);border-radius:var(--r-sm);padding:3px 10px;white-space:nowrap;flex-shrink:0}
 .beta-text{font-size:13px;color:rgba(255,255,255,0.86);line-height:1.7;margin:0}
-.beta-text strong{color:#ffffff;font-weight:700}
-.beta-text a{color:#a8d8f8;text-decoration:none;border-bottom:1px solid rgba(168,216,248,0.38);transition:color .15s,border-color .15s}
-.beta-text a:hover{color:#fff;border-bottom-color:rgba(255,255,255,0.55)}
+.beta-text strong{color:#ffffff;font-weight:600}
+.beta-text a{color:#fff;text-decoration:none;border-bottom:1px solid rgba(255,255,255,0.42);transition:border-color var(--dur-fast) var(--ease-out)}
+.beta-text a:hover{border-bottom-color:rgba(255,255,255,0.85)}
 
-footer{background:var(--footer-bg);padding:24px 40px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;transition:background .25s}
-.footer-logo{font-size:17px;font-weight:700;letter-spacing:.05em;color:var(--footer-t);text-decoration:none;display:flex;align-items:center;gap:8px}
-.footer-logo .logo-mark{background:rgba(255,255,255,0.12);font-size:12px}
+footer{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);padding:24px 40px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;transition:background var(--dur-base) var(--ease-out)}
+.footer-logo{font-size:15px;font-weight:600;letter-spacing:-.01em;color:var(--ss-t1);text-decoration:none;display:flex;align-items:center;gap:8px}
 .footer-links{display:flex;flex-wrap:wrap;justify-content:center;gap:12px 20px;list-style:none}
-.footer-links a{font-size:11px;color:var(--footer-lt);text-decoration:none;white-space:nowrap}
-.footer-links a:hover{color:var(--footer-t)}
-.footer-copy{font-size:11px;color:var(--footer-cp)}
+.footer-links a{font-size:12px;color:var(--ss-t2);text-decoration:none;white-space:nowrap;transition:color var(--dur-fast) var(--ease-out)}
+.footer-links a:hover{color:var(--ss-t1)}
+.footer-copy{font-size:11px;color:var(--ss-t3)}
 
 @media(max-width:767px){
   .beta-banner{padding:12px 16px}.beta-text{font-size:12px}
@@ -153,7 +240,7 @@ footer{background:var(--footer-bg);padding:24px 40px;display:flex;align-items:ce
   <a href="/contact"><span class="ja">お問い合わせ</span><span class="en">Contact</span></a>
   <a href="/status"><span class="ja">稼働状況</span><span class="en">Status</span></a>
   <a href="https://app.shuttle-scope.com/#/register"><span class="ja">新規登録</span><span class="en">Register</span></a>
-  <a href="https://app.shuttle-scope.com/login" style="color:var(--blue);font-weight:700"><span class="ja">ログイン →</span><span class="en">Login →</span></a>
+  <a href="https://app.shuttle-scope.com/login" style="color:var(--ss-brand);font-weight:600"><span class="ja">ログイン →</span><span class="en">Login →</span></a>
 </nav>
 
 <div class="beta-banner">

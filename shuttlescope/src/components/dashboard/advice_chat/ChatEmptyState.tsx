@@ -39,7 +39,7 @@ export function ChatEmptyState({ onPick }: Props) {
               key={k}
               type="button"
               onClick={() => onPick(text)}
-              className="text-xs px-3 py-2 rounded border border-slate-200 hover:border-slate-400 hover:bg-slate-50 text-slate-700 text-left"
+              className="text-xs px-3 py-2 rounded-ss-md border border-[color:var(--ss-border)] hover:border-slate-400 hover:bg-[color:var(--ss-surface-2)] text-slate-700 text-left transition-colors duration-fast"
             >
               {text}
             </button>

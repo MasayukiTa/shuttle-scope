@@ -63,14 +63,14 @@ export function PairCombinedView({
   })
 
   if (isLoading) {
-    return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.loading')}</div>
+    return <div className="text-[var(--ss-t3)] text-sm py-4 text-center">{t('analysis.loading')}</div>
   }
 
   const sampleSize = resp?.meta?.sample_size ?? 0
   const d = resp?.data
 
   if (!d || d.pair_match_count === 0) {
-    return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.no_data')}</div>
+    return <div className="text-[var(--ss-t3)] text-sm py-4 text-center">{t('analysis.no_data')}</div>
   }
 
   const winRate = d.pair_win_rate
@@ -81,8 +81,6 @@ export function PairCombinedView({
   const nameColor  = isLight ? '#1e293b' : '#d1d5db'
   const pctColor   = isLight ? '#64748b' : '#6b7280'
   const trackBg    = isLight ? '#e2e8f0' : '#374151'
-  const cardBg     = isLight ? '#f8fafc' : '#1f2937'
-  const cardBorder = isLight ? '#e2e8f0' : '#374151'
 
   return (
     <div className="space-y-4">
@@ -91,20 +89,18 @@ export function PairCombinedView({
       {/* ペア勝率 + 試合数 */}
       <div className="flex gap-3">
         <div
-          className="flex-1 rounded-lg p-3 text-center"
-          style={{ backgroundColor: cardBg, border: `1px solid ${cardBorder}` }}
+          className="flex-1 rounded-ss-lg p-3 text-center bg-[var(--ss-surface-1)] border border-[var(--ss-border)]"
         >
           <p className="text-xs" style={{ color: labelColor }}>{t('auto.PairCombinedView.k1')}</p>
-          <p className="text-2xl font-bold mt-0.5" style={{ color: winColor }}>
+          <p className="text-2xl font-bold ss-num mt-0.5" style={{ color: winColor }}>
             {winRate != null ? `${(winRate * 100).toFixed(0)}%` : '—'}
           </p>
         </div>
         <div
-          className="flex-1 rounded-lg p-3 text-center"
-          style={{ backgroundColor: cardBg, border: `1px solid ${cardBorder}` }}
+          className="flex-1 rounded-ss-lg p-3 text-center bg-[var(--ss-surface-1)] border border-[var(--ss-border)]"
         >
           <p className="text-xs" style={{ color: labelColor }}>{t('auto.PairCombinedView.k2')}</p>
-          <p className="text-2xl font-bold mt-0.5" style={{ color: isLight ? '#1e293b' : '#e2e8f0' }}>
+          <p className="text-2xl font-bold ss-num mt-0.5" style={{ color: nameColor }}>
             {d.pair_match_count}
           </p>
         </div>
@@ -117,30 +113,28 @@ export function PairCombinedView({
           <span className="text-xs w-20 truncate" style={{ color: nameColor }}>{playerAName}</span>
           <div className="flex-1 rounded-full h-2 overflow-hidden" style={{ backgroundColor: trackBg }}>
             <div
-              className="h-2 rounded-full transition-all"
+              className="h-2 rounded-full transition-all duration-base ease-out"
               style={{ width: `${(d.stroke_share.player_a * 100).toFixed(0)}%`, backgroundColor: WIN }}
             />
           </div>
           <span className="text-xs w-20 text-right truncate" style={{ color: nameColor }}>{playerBName}</span>
         </div>
         <div className="flex justify-between mt-0.5">
-          <span className="text-[10px]" style={{ color: pctColor }}>{(d.stroke_share.player_a * 100).toFixed(0)}%</span>
-          <span className="text-[10px]" style={{ color: pctColor }}>{(d.stroke_share.player_b * 100).toFixed(0)}%</span>
+          <span className="text-[10px] ss-num" style={{ color: pctColor }}>{(d.stroke_share.player_a * 100).toFixed(0)}%</span>
+          <span className="text-[10px] ss-num" style={{ color: pctColor }}>{(d.stroke_share.player_b * 100).toFixed(0)}%</span>
         </div>
       </div>
 
       {/* 共通の有効ショット / 失点ショット */}
       <div className="grid grid-cols-2 gap-3">
         <div
-          className="rounded p-2.5"
-          style={{ backgroundColor: 'rgba(59,130,246,0.08)', border: `1px solid ${WIN}` }}
+          className="rounded-ss-md p-2.5 bg-[rgba(37,99,235,0.08)] border border-[var(--ss-brand)]"
         >
           <p className="text-[10px] mb-1" style={{ color: labelColor }}>{t('auto.PairCombinedView.k4')}</p>
           <p className="text-sm font-semibold" style={{ color: WIN }}>{shotJa(d.common_win_shot)}</p>
         </div>
         <div
-          className="rounded p-2.5"
-          style={{ backgroundColor: 'rgba(239,68,68,0.08)', border: `1px solid ${LOSS}` }}
+          className="rounded-ss-md p-2.5 bg-[rgba(194,51,74,0.08)] border border-[var(--ss-bad)]"
         >
           <p className="text-[10px] mb-1" style={{ color: labelColor }}>{t('auto.PairCombinedView.k5')}</p>
           <p className="text-sm font-semibold" style={{ color: LOSS }}>{shotJa(d.common_loss_pattern)}</p>

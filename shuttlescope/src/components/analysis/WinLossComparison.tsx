@@ -37,8 +37,8 @@ function StatRow({ label, winVal, lossVal }: { label: string; winVal: string; lo
   return (
     <tr className="border-b border-gray-700/50">
       <td className="py-2 text-gray-400 text-sm">{label}</td>
-      <td className="py-2 text-center font-semibold text-sm num-cell" style={{ color: WIN }}>{winVal}</td>
-      <td className="py-2 text-center font-semibold text-sm num-cell" style={{ color: LOSS }}>{lossVal}</td>
+      <td className="py-2 text-center font-semibold text-sm num-cell ss-num" style={{ color: WIN }}>{winVal}</td>
+      <td className="py-2 text-center font-semibold text-sm num-cell ss-num" style={{ color: LOSS }}>{lossVal}</td>
     </tr>
   )
 }
@@ -112,7 +112,7 @@ function ComparisonContent({ playerId, filters = DEFAULT_FILTERS }: { playerId: 
           <p className="text-xs mb-2" style={{ color: WIN }}>{t('analysis.win_loss_comparison.win_matches')} {t('analysis.win_loss_comparison.top_shots')}</p>
           <div className="space-y-1">
             {(winStats?.top_shots ?? []).slice(0, 3).map((s) => (
-              <div key={s.shot_type} className="text-xs text-gray-300">
+              <div key={s.shot_type} className="text-xs text-gray-300 ss-num">
                 {s.shot_type_ja}: {s.count}
               </div>
             ))}
@@ -123,7 +123,7 @@ function ComparisonContent({ playerId, filters = DEFAULT_FILTERS }: { playerId: 
           <p className="text-xs mb-2" style={{ color: LOSS }}>{t('analysis.win_loss_comparison.loss_matches')} {t('analysis.win_loss_comparison.top_shots')}</p>
           <div className="space-y-1">
             {(lossStats?.top_shots ?? []).slice(0, 3).map((s) => (
-              <div key={s.shot_type} className="text-xs text-gray-300">
+              <div key={s.shot_type} className="text-xs text-gray-300 ss-num">
                 {s.shot_type_ja}: {s.count}
               </div>
             ))}

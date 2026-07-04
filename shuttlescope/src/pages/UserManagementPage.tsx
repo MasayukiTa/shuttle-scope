@@ -73,10 +73,10 @@ const ROLE_KEYS: Record<string, string> = {
 }
 
 const ROLE_COLORS: Record<string, string> = {
-  admin: 'bg-red-100 text-red-700',
-  analyst: 'bg-purple-100 text-purple-700',
-  coach: 'bg-blue-100 text-blue-700',
-  player: 'bg-green-100 text-green-700',
+  admin: 'bg-[var(--ss-danger-bg)] text-[var(--ss-danger-text)]',
+  analyst: 'bg-[var(--ss-brand-tint)] text-[var(--ss-brand)]',
+  coach: 'bg-[var(--ss-info-bg)] text-[var(--ss-info-text)]',
+  player: 'bg-[var(--ss-success-bg)] text-[var(--ss-success-text)]',
 }
 
 const emptyForm = (): FormState => ({
@@ -121,9 +121,7 @@ function SecretField(props: {
         <button
           type="button"
           onClick={() => setVisible((v) => !v)}
-          className={`absolute inset-y-0 right-0 flex items-center px-3 ${
-            props.isLight ? 'text-gray-500 hover:text-gray-700' : 'text-gray-400 hover:text-gray-200'
-          }`}
+          className="absolute inset-y-0 right-0 flex items-center px-3 text-[var(--ss-t3)] hover:text-[var(--ss-t1)] transition-colors duration-fast ease-out"
           title={visible ? t('users.manage.pw_hide') : t('users.manage.pw_show')}
           aria-label={visible ? t('users.manage.pw_aria_hide') : t('users.manage.pw_aria_show')}
         >
@@ -180,13 +178,13 @@ export function UserManagementPage() {
   const [editingTeamName, setEditingTeamName] = useState<string | null>(null)
   const [teams, setTeams] = useState<TeamDTO[]>([])
 
-  const panelBg = isLight ? 'bg-white' : 'bg-gray-800'
-  const border = isLight ? 'border-gray-200' : 'border-gray-700'
-  const textMain = isLight ? 'text-gray-900' : 'text-gray-100'
-  const textMuted = isLight ? 'text-gray-500' : 'text-gray-400'
-  const rowHover = isLight ? 'hover:bg-gray-50' : 'hover:bg-gray-700/50'
-  const inputCls = `w-full border ${isLight ? 'border-gray-300 bg-white' : 'border-gray-600 bg-gray-700'} rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${textMain}`
-  const _inlinePanelBg = isLight ? 'bg-blue-50 border-blue-100' : 'bg-gray-750 border-blue-900/40'
+  const panelBg = 'bg-[var(--ss-surface-1)]'
+  const border = 'border-[var(--ss-border)]'
+  const textMain = 'text-[var(--ss-t1)]'
+  const textMuted = 'text-[var(--ss-t3)]'
+  const rowHover = 'hover:bg-[var(--ss-surface-2)]'
+  const inputCls = 'w-full border border-[var(--ss-ctrl-border)] bg-[var(--ss-ctrl-bg)] text-[var(--ss-ctrl-text)] rounded-ss-md px-3 py-1.5 text-[16px] sm:text-sm focus:outline-none focus:border-[var(--ss-ctrl-border-focus)] focus:ring-[3px] focus:ring-[var(--ss-focus-ring)] transition-colors duration-fast ease-out'
+  const _inlinePanelBg = 'bg-[var(--ss-brand-tint)] border-[var(--ss-border)]'
 
   const isPlayerRole = form.role === 'player'
   // 旧版: admin は team_name 必須でないため UI ごと出していなかった。
@@ -317,7 +315,7 @@ export function UserManagementPage() {
   const isSelfOnly = myRole === 'player'
 
   if (!myRole) {
-    return <div className="p-8 text-center text-gray-500">{t('users.manage.no_permission')}</div>
+    return <div className="p-8 text-center text-[var(--ss-t3)]">{t('users.manage.no_permission')}</div>
   }
 
   const closeAll = () => {
@@ -653,7 +651,7 @@ export function UserManagementPage() {
       )}
 
       {error ? (
-        <div className="mt-3 bg-red-50 border border-red-200 text-red-600 text-xs rounded px-3 py-2">
+        <div className="mt-3 bg-[var(--ss-danger-bg)] border border-[var(--ss-danger-border)] text-[var(--ss-danger-text)] text-xs rounded-ss-md px-3 py-2">
           {error}
         </div>
       ) : null}
@@ -662,14 +660,14 @@ export function UserManagementPage() {
         <button
           onClick={handleSave}
           disabled={saving}
-          className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm px-4 py-1.5 rounded-lg"
+          className="flex items-center gap-1.5 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-50 text-white text-sm px-4 py-1.5 rounded-ss-md transition-colors duration-fast ease-out"
         >
           <MIcon name="check" size={14} />
           {saving ? t('users.manage.saving') : t('users.manage.save')}
         </button>
         <button
           onClick={closeAll}
-          className={`text-sm px-4 py-1.5 rounded-lg border ${border} ${textMuted}`}
+          className={`text-sm px-4 py-1.5 rounded-ss-md border ${border} ${textMuted} hover:bg-[var(--ss-surface-2)] transition-colors duration-fast ease-out`}
         >
           {t('users.manage.cancel')}
         </button>
@@ -681,7 +679,7 @@ export function UserManagementPage() {
     <div className="flex flex-col h-full">
       <div className={`shrink-0 px-6 py-4 border-b ${border} ${panelBg} flex items-center justify-between`}>
         <div>
-          <h1 className={`text-base font-semibold ${textMain}`}>{t('users.manage.title')}</h1>
+          <h1 className={`text-base font-semibold tracking-[-0.014em] ${textMain}`}>{t('users.manage.title')}</h1>
           {isSelfOnly && (
             <p className={`text-xs mt-0.5 ${textMuted}`}>{t('users.manage.self_only_hint')}</p>
           )}
@@ -690,7 +688,7 @@ export function UserManagementPage() {
           )}
           {myRole === 'admin' && (
             <a href="#/users/pending"
-               className="inline-block mt-1 text-xs text-blue-600 hover:text-blue-800 hover:underline dark:text-blue-400 dark:hover:text-blue-300">
+               className="inline-block mt-1 text-xs text-[var(--ss-brand)] hover:text-[var(--ss-brand-hover)] hover:underline transition-colors duration-fast ease-out">
               {t('auto.UserManagementPage.k15')}
             </a>
           )}
@@ -698,7 +696,7 @@ export function UserManagementPage() {
         {canCreate && (
           <button
             onClick={openCreate}
-            className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-3 py-1.5 rounded-lg"
+            className="flex items-center gap-1.5 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white text-sm font-medium px-3 py-1.5 rounded-ss-md transition-colors duration-fast ease-out"
           >
             <MIcon name="add" size={14} />
             {t('users.manage.add_user')}
@@ -707,7 +705,7 @@ export function UserManagementPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-6">
-        <div className={`mb-4 ${panelBg} border ${border} rounded-xl p-4`}>
+        <div className={`mb-4 ${panelBg} border ${border} rounded-ss-lg shadow-card p-4`}>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
             <div>
               <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.search')}</label>
@@ -736,7 +734,7 @@ export function UserManagementPage() {
 
         {/* 新規作成フォーム（上部パネル） */}
         {showCreateForm ? (
-          <div className={`mb-6 ${panelBg} border ${border} rounded-xl p-5`}>
+          <div className={`mb-6 ${panelBg} border ${border} rounded-ss-lg shadow-card p-5`}>
             <div className="flex items-center justify-between mb-4">
               <h2 className={`text-sm font-semibold ${textMain}`}>{t('users.manage.create_title')}</h2>
               <button onClick={closeAll} className={textMuted}>
@@ -754,10 +752,10 @@ export function UserManagementPage() {
           // するとき action 列 (右端の編集/削除アイコン) が clip され "アイコン
           // が消えた" 事象を起こしていた。x-auto なら右スクロールで到達可能。
           // minWidth=640 で table が自然幅を持てるようにする。
-          <div className={`${panelBg} border ${border} rounded-xl overflow-x-auto`}>
+          <div className={`${panelBg} border ${border} rounded-ss-lg shadow-card overflow-x-auto`}>
             <table className="w-full text-sm" style={{ minWidth: 640 }}>
               <thead>
-                <tr className={`border-b ${border} text-left`}>
+                <tr className={`border-b ${border} text-left bg-[var(--ss-surface-2)]`}>
                   <th className={`px-4 py-2.5 text-xs font-medium ${textMuted}`}>{t('users.manage.col_role')}</th>
                   <th className={`px-4 py-2.5 text-xs font-medium ${textMuted}`}>{t('users.manage.col_display_name')}</th>
                   <th className={`px-4 py-2.5 text-xs font-medium ${textMuted} hidden sm:table-cell`}>
@@ -798,9 +796,9 @@ export function UserManagementPage() {
               <tbody>
                 {filteredUsers.map((u) => (
                   <>
-                    <tr key={u.id} className={`border-b last:border-0 ${border} ${editId === u.id ? (isLight ? 'bg-blue-50/60' : 'bg-blue-900/10') : rowHover}`}>
+                    <tr key={u.id} className={`border-b last:border-0 ${border} ${editId === u.id ? 'bg-[var(--ss-brand-tint)]' : rowHover} transition-colors duration-fast ease-out`}>
                       <td className="px-4 py-2.5 whitespace-nowrap">
-                        <span className={`inline-block text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${ROLE_COLORS[u.role] ?? 'bg-gray-100 text-gray-600'}`}>
+                        <span className={`inline-block text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${ROLE_COLORS[u.role] ?? 'bg-[var(--ss-surface-2)] text-[var(--ss-t2)]'}`}>
                           {ROLE_KEYS[u.role] ? t(ROLE_KEYS[u.role]) : u.role}
                         </span>
                       </td>
@@ -822,12 +820,12 @@ export function UserManagementPage() {
                           <div className={textMuted}>
                             {u.email ?? '—'}
                             {u.email && (
-                              <span className={`ml-1 ${u.email_verified ? 'text-green-600' : 'text-amber-600'}`}>
+                              <span className={`ml-1 ${u.email_verified ? 'text-[var(--ss-success-text)]' : 'text-[var(--ss-warning-text)]'}`}>
                                 {u.email_verified ? t('users.manage.email_verified') : t('users.manage.email_unverified')}
                               </span>
                             )}
                           </div>
-                          <span className={`inline-block mt-0.5 text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap ${u.is_test ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>
+                          <span className={`inline-block mt-0.5 text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap ${u.is_test ? 'bg-[var(--ss-warning-bg)] text-[var(--ss-warning-text)]' : 'bg-[var(--ss-success-bg)] text-[var(--ss-success-text)]'}`}>
                             {u.is_test ? t('users.manage.is_test_yes') : t('users.manage.is_test_no')}
                           </span>
                         </td>
@@ -841,7 +839,7 @@ export function UserManagementPage() {
                               const badges: React.ReactElement[] = []
                               if (L.is_locked) {
                                 badges.push(
-                                  <span key="lock" className="inline-flex items-center gap-0.5 text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700" title={
+                                  <span key="lock" className="inline-flex items-center gap-0.5 text-[10px] px-2 py-0.5 rounded-full bg-[var(--ss-danger-bg)] text-[var(--ss-danger-text)]" title={
                                     t('auto.UserManagementPage.k20', { failed: L.failed_attempts, until: L.locked_until ?? '—' })
                                   }>
                                     {t('auto.UserManagementPage.k21')}
@@ -849,7 +847,7 @@ export function UserManagementPage() {
                                 )
                               } else if (L.near_lock) {
                                 badges.push(
-                                  <span key="nearlock" className="inline-flex items-center gap-0.5 text-[10px] px-2 py-0.5 rounded-full bg-orange-100 text-orange-700" title={
+                                  <span key="nearlock" className="inline-flex items-center gap-0.5 text-[10px] px-2 py-0.5 rounded-full bg-[var(--ss-warning-bg)] text-[var(--ss-warning-text)]" title={
                                     t('auto.UserManagementPage.k22', { failed: L.failed_attempts, remaining: 3 - L.failed_attempts })
                                   }>
                                     <MIcon name="warning" size={10} />{t('auto.UserManagementPage.k23', { failed: L.failed_attempts })}
@@ -858,14 +856,14 @@ export function UserManagementPage() {
                               }
                               if (L.active_uploads >= 2) {
                                 badges.push(
-                                  <span key="ul" className="inline-flex items-center gap-0.5 text-[10px] px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700" title={t('auto.UserManagementPage.k6')}>
+                                  <span key="ul" className="inline-flex items-center gap-0.5 text-[10px] px-2 py-0.5 rounded-full bg-[var(--ss-warning-bg)] text-[var(--ss-warning-text)]" title={t('auto.UserManagementPage.k6')}>
                                     {t('auto.UserManagementPage.k24')}
                                   </span>,
                                 )
                               }
                               if (L.exfil_alerted || L.exfil_near_hard_block) {
                                 badges.push(
-                                  <span key="exfil" className="inline-flex items-center gap-0.5 text-[10px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-700" title={
+                                  <span key="exfil" className="inline-flex items-center gap-0.5 text-[10px] px-2 py-0.5 rounded-full bg-[var(--ss-brand-tint)] text-[var(--ss-brand)]" title={
                                     t('auto.UserManagementPage.k25', { req: L.exfil_requests, bytes: L.exfil_bytes, alerted: String(L.exfil_alerted), near_block: String(L.exfil_near_hard_block) })
                                   }>
                                     {t('auto.UserManagementPage.k26')}
@@ -877,13 +875,13 @@ export function UserManagementPage() {
                                 : <span className={`text-xs ${textMuted}`}>—</span>
                             })()}
                           </td>
-                          <td className={`px-3 py-2.5 text-xs hidden md:table-cell ${
-                            (limits[u.id]?.active_uploads ?? 0) >= 2 ? 'text-red-600 font-semibold' : textMuted
+                          <td className={`px-3 py-2.5 text-xs ss-num hidden md:table-cell ${
+                            (limits[u.id]?.active_uploads ?? 0) >= 2 ? 'text-[var(--ss-bad)] font-semibold' : textMuted
                           }`}>
                             {limits[u.id]?.active_uploads ?? 0}
                           </td>
-                          <td className={`px-3 py-2.5 text-xs hidden lg:table-cell ${
-                            limits[u.id]?.exfil_alerted ? 'text-amber-600 font-semibold' : textMuted
+                          <td className={`px-3 py-2.5 text-xs ss-num hidden lg:table-cell ${
+                            limits[u.id]?.exfil_alerted ? 'text-[var(--ss-warning-text)] font-semibold' : textMuted
                           }`}>
                             {limits[u.id]?.exfil_requests ?? 0}
                           </td>
@@ -895,37 +893,37 @@ export function UserManagementPage() {
                             <div className="flex items-center gap-1">
                               {limits[u.id]?.is_locked && (
                                 <button onClick={() => handleResetLimits(u, 'lock')} disabled={limitResetBusyId === u.id}
-                                  title={t('auto.UserManagementPage.k7')} className={`text-[10px] px-1 rounded border ${border} hover:text-emerald-500 disabled:opacity-50`}>{t('auto.UserManagementPage.k28')}</button>
+                                  title={t('auto.UserManagementPage.k7')} className={`text-[10px] px-1 rounded-ss-sm border ${border} hover:text-[var(--ss-success)] transition-colors duration-fast ease-out disabled:opacity-50`}>{t('auto.UserManagementPage.k28')}</button>
                               )}
                               {(limits[u.id]?.failed_attempts ?? 0) > 0 && (
                                 <button onClick={() => handleResetLimits(u, 'failed_attempts')} disabled={limitResetBusyId === u.id}
-                                  title={t('auto.UserManagementPage.k8')} className={`text-[10px] px-1 rounded border ${border} hover:text-emerald-500 disabled:opacity-50`}>{t('auto.UserManagementPage.k2')}</button>
+                                  title={t('auto.UserManagementPage.k8')} className={`text-[10px] px-1 rounded-ss-sm border ${border} hover:text-[var(--ss-success)] transition-colors duration-fast ease-out disabled:opacity-50`}>{t('auto.UserManagementPage.k2')}</button>
                               )}
                               {(limits[u.id]?.active_uploads ?? 0) >= 2 && (
                                 <button onClick={() => handleResetLimits(u, 'uploads')} disabled={limitResetBusyId === u.id}
-                                  title={t('auto.UserManagementPage.k9')} className={`text-[10px] px-1 rounded border ${border} hover:text-emerald-500 disabled:opacity-50`}>{t('auto.UserManagementPage.k17')}</button>
+                                  title={t('auto.UserManagementPage.k9')} className={`text-[10px] px-1 rounded-ss-sm border ${border} hover:text-[var(--ss-success)] transition-colors duration-fast ease-out disabled:opacity-50`}>{t('auto.UserManagementPage.k17')}</button>
                               )}
                               {(limits[u.id]?.exfil_alerted || limits[u.id]?.exfil_near_hard_block) && (
                                 <button onClick={() => handleResetLimits(u, 'exfil')} disabled={limitResetBusyId === u.id}
-                                  title={t('auto.UserManagementPage.k10')} className={`text-[10px] px-1 rounded border ${border} hover:text-emerald-500 disabled:opacity-50`}>{t('auto.UserManagementPage.k27')}</button>
+                                  title={t('auto.UserManagementPage.k10')} className={`text-[10px] px-1 rounded-ss-sm border ${border} hover:text-[var(--ss-success)] transition-colors duration-fast ease-out disabled:opacity-50`}>{t('auto.UserManagementPage.k27')}</button>
                               )}
                               <button onClick={() => handleResetLimits(u, 'all')} disabled={limitResetBusyId === u.id}
-                                title={t('auto.UserManagementPage.k11')} className={`${textMuted} hover:text-emerald-500 disabled:opacity-50`}>
+                                title={t('auto.UserManagementPage.k11')} className={`${textMuted} hover:text-[var(--ss-success)] transition-colors duration-fast ease-out disabled:opacity-50`}>
                                 <MIcon name="restart_alt" size={14} />
                               </button>
                             </div>
                           )}
                           <button
                             onClick={() => openEdit(u)}
-                            className={`flex items-center gap-0.5 transition-colors ${
-                              editId === u.id ? 'text-blue-500' : `${textMuted} hover:text-blue-500`
+                            className={`flex items-center gap-0.5 transition-colors duration-fast ease-out ${
+                              editId === u.id ? 'text-[var(--ss-brand)]' : `${textMuted} hover:text-[var(--ss-brand)]`
                             }`}
                             title={t('users.manage.edit_title')}
                           >
                             <MIcon name="edit" size={14} />
                             <MIcon name="expand_more"
                               size={12}
-                              className={`transition-transform ${editId === u.id ? 'rotate-180' : ''}`}
+                              className={`transition-transform duration-fast ease-out ${editId === u.id ? 'rotate-180' : ''}`}
                             />
                           </button>
                           {myRole === 'admin' && (
@@ -933,13 +931,13 @@ export function UserManagementPage() {
                               onClick={() => handleResetPassword(u)}
                               disabled={resetBusyId === u.id}
                               title={t('auth.admin_reset.title')}
-                              className={`${textMuted} hover:text-amber-500 disabled:opacity-50`}
+                              className={`${textMuted} hover:text-[var(--ss-warn)] transition-colors duration-fast ease-out disabled:opacity-50`}
                             >
                               <MIcon name="key" size={14} />
                             </button>
                           )}
                           {canDelete && (
-                            <button onClick={() => handleDelete(u)} className={`${textMuted} hover:text-red-500`}>
+                            <button onClick={() => handleDelete(u)} className={`${textMuted} hover:text-[var(--ss-bad)] transition-colors duration-fast ease-out`}>
                               <MIcon name="delete" size={14} />
                             </button>
                           )}
@@ -950,10 +948,10 @@ export function UserManagementPage() {
                     {/* インライン編集フォーム（行の直下に展開） */}
                     {editId === u.id && (
                       <tr key={`edit-${u.id}`}>
-                        <td colSpan={myRole === 'admin' ? 9 : 5} className={`px-4 py-4 border-b ${border} ${isLight ? 'bg-blue-50/60' : 'bg-blue-900/10'}`}>
+                        <td colSpan={myRole === 'admin' ? 9 : 5} className={`px-4 py-4 border-b ${border} bg-[var(--ss-brand-tint)]`}>
                           <div className="flex items-center justify-between mb-3">
                             <h3 className={`text-xs font-semibold ${textMain}`}>{t('users.manage.edit_title')}: {u.display_name || u.username}</h3>
-                            <button onClick={closeAll} className={`${textMuted} hover:text-red-400`}>
+                            <button onClick={closeAll} className={`${textMuted} hover:text-[var(--ss-bad)] transition-colors duration-fast ease-out`}>
                               <MIcon name="close" size={14} />
                             </button>
                           </div>
@@ -977,13 +975,13 @@ export function UserManagementPage() {
       </div>
 
       {resetResult && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div className={`w-full max-w-md rounded-lg p-5 ${isLight ? 'bg-white text-gray-900' : 'bg-gray-800 text-white'}`}>
+        <div className="fixed inset-0 z-50 bg-[var(--ss-bg-overlay)] flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-ss-lg p-5 bg-[var(--ss-surface-1)] text-[var(--ss-t1)] border border-[var(--ss-border)] shadow-pop">
             <h3 className="text-lg font-semibold mb-2">{t('auth.admin_reset.result_title')}</h3>
             <p className={`text-xs mb-3 ${textMuted}`}>
               {resetResult.username}
             </p>
-            <div className={`font-mono text-sm break-all rounded px-3 py-2 mb-3 ${isLight ? 'bg-gray-100' : 'bg-gray-900'}`}>
+            <div className="font-mono text-sm break-all rounded-ss-md px-3 py-2 mb-3 bg-[var(--ss-surface-2)] text-[var(--ss-t1)] ss-num">
               {resetResult.password}
             </div>
             <div className="flex gap-2 justify-end">
@@ -994,13 +992,13 @@ export function UserManagementPage() {
                     setCopyDone(true)
                   } catch { /* ignore */ }
                 }}
-                className={`px-3 py-1.5 rounded text-sm ${isLight ? 'bg-blue-600 text-white hover:bg-blue-500' : 'bg-blue-700 text-white hover:bg-blue-600'}`}
+                className="px-3 py-1.5 rounded-ss-md text-sm bg-[var(--ss-brand)] text-white hover:bg-[var(--ss-brand-hover)] transition-colors duration-fast ease-out"
               >
                 {copyDone ? t('auth.admin_reset.copied') : t('auth.admin_reset.copy')}
               </button>
               <button
                 onClick={() => { setResetResult(null); setCopyDone(false) }}
-                className={`px-3 py-1.5 rounded text-sm ${isLight ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-gray-700 text-gray-200 hover:bg-gray-600'}`}
+                className="px-3 py-1.5 rounded-ss-md text-sm bg-[var(--ss-surface-2)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-3)] transition-colors duration-fast ease-out"
               >
                 {t('auth.admin_reset.close')}
               </button>

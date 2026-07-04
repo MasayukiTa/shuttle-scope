@@ -124,9 +124,9 @@ function RecentFormSection({ data, isLight }: { data: RecentForm; isLight: boole
         {/* 数値 */}
         <div className="space-y-0.5">
           <p className="text-sm font-bold" style={{ color: trendColor }}>
-            {trendLabel} <span className="font-normal text-xs" style={{ color: subText }}>{t('auto.AnalystDepthPanel.recent_n_matches', { n: data.sample })}</span>
+            {trendLabel} <span className="font-normal text-xs ss-num" style={{ color: subText }}>{t('auto.AnalystDepthPanel.recent_n_matches', { n: data.sample })}</span>
           </p>
-          <p className="text-xs" style={{ color: subText }}>
+          <p className="text-xs ss-num" style={{ color: subText }}>
             {t('auto.AnalystDepthPanel.recent_wr', { wr: Math.round(data.win_rate * 100) })}
             <span className="ml-2">{t('auto.AnalystDepthPanel.overall_wr', { wr: Math.round(data.overall_wr * 100) })}</span>
           </p>
@@ -175,7 +175,7 @@ function GrowthTrendSection({ data, isLight }: { data: GrowthTrend; isLight: boo
       <div className="flex items-end gap-1.5">
         {data.buckets.map((b, i) => (
           <div key={i} className="flex flex-col items-center gap-0.5" style={{ minWidth: 28 }}>
-            <span className="text-[9px]" style={{ color: subText }}>
+            <span className="text-[9px] ss-num" style={{ color: subText }}>
               {Math.round(b.win_rate * 100)}%
             </span>
             <div
@@ -183,14 +183,14 @@ function GrowthTrendSection({ data, isLight }: { data: GrowthTrend; isLight: boo
                 height: Math.max(4, Math.round((b.win_rate / maxWR) * BAR_MAX_H)),
                 width: 20,
                 backgroundColor: b.win_rate >= 0.5 ? WIN + 'aa' : LOSS + 'aa',
-                borderRadius: '2px 2px 0 0',
+                borderRadius: 'var(--r-sm) var(--r-sm) 0 0',
               }}
             />
             <span className="text-[9px]" style={{ color: subText }}>{b.label}</span>
           </div>
         ))}
       </div>
-      <p className="text-[10px] mt-1" style={{ color: subText }}>
+      <p className="text-[10px] mt-1 ss-num" style={{ color: subText }}>
         {t('auto.AnalystDepthPanel.slope_per_bucket', { v: `${data.slope > 0 ? '+' : ''}${(data.slope * 100).toFixed(1)}` })}
         <span className="ml-2">{t('auto.AnalystDepthPanel.n_matches', { n: data.sample })}</span>
       </p>
@@ -235,9 +235,9 @@ function BrierScoreSection({ data, isLight }: { data: BrierScore; isLight: boole
       </p>
       <div className="flex items-center gap-3">
         <div className="flex-1 min-w-0">
-          <div className="h-2 bg-gray-700 rounded overflow-hidden">
+          <div className="h-2 bg-gray-700 rounded-ss-pill overflow-hidden">
             <div
-              className="h-full rounded transition-all"
+              className="h-full rounded-ss-pill transition-all duration-base ease-out"
               style={{ width: `${barPct}%`, backgroundColor: gradeColor }}
             />
           </div>
@@ -253,7 +253,7 @@ function BrierScoreSection({ data, isLight }: { data: BrierScore; isLight: boole
           <p className="text-[10px]" style={{ color: gradeColor }}>{gradeLabel}</p>
         </div>
       </div>
-      <p className="text-[10px] mt-1" style={{ color: subText }}>{t('auto.AnalystDepthPanel.loo_estimate', { n: data.sample })}</p>
+      <p className="text-[10px] mt-1 ss-num" style={{ color: subText }}>{t('auto.AnalystDepthPanel.loo_estimate', { n: data.sample })}</p>
     </div>
   )
 }
@@ -288,13 +288,13 @@ function NearestEvidenceSection({ data, isLight }: { data: NearestMatch[]; isLig
             >
               {m.result === 'win' ? 'W' : 'L'}
             </span>
-            <span className="shrink-0 text-[10px] font-mono" style={{ color: subText }}>
+            <span className="shrink-0 text-[10px] font-mono ss-num" style={{ color: subText }}>
               {m.date.slice(0, 7)}
             </span>
             <span className="shrink-0" style={{ color: subText }}>
               {m.tournament_level}
             </span>
-            <span className="font-mono ml-auto" style={{ color: neutral }}>
+            <span className="font-mono ss-num ml-auto" style={{ color: neutral }}>
               {m.score_summary}
             </span>
             {/* 類似度ドット */}

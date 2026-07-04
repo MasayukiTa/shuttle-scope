@@ -146,12 +146,13 @@ export function SearchableSelect({
         onClick={() => !disabled && setOpen((v) => !v)}
         disabled={disabled}
         className={clsx(
-          'flex items-center gap-2 w-full text-left rounded-md px-3 py-1.5 text-sm border transition-colors',
-          'bg-gray-800 border-gray-700 hover:border-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500',
+          'flex items-center gap-2 w-full text-left rounded-ss-md px-3 py-1.5 text-sm border transition-colors duration-fast ease-out',
+          'bg-[var(--ss-ctrl-bg)] border-[var(--ss-ctrl-border)] hover:border-[var(--ss-ctrl-border-hover)]',
+          'focus:outline-none focus:border-[var(--ss-ctrl-border-focus)] focus:ring-[3px] focus:ring-[var(--ss-focus-ring)]',
           disabled && 'opacity-50 cursor-not-allowed',
         )}
       >
-        <span className={clsx('flex-1 truncate', !selectedOption && 'text-gray-500')}>
+        <span className={clsx('flex-1 truncate', !selectedOption ? 'text-[var(--ss-ctrl-placeholder)]' : 'text-[var(--ss-ctrl-text)]')}>
           {loading ? t('common.loading', 'Loading...') : selectedOption ? (
             <>
               {selectedOption.prefix && (
@@ -160,22 +161,22 @@ export function SearchableSelect({
                   : <span className="mr-1">{selectedOption.prefix}</span>
               )}
               {selectedOption.label}
-              {selectedOption.suffix && <span className="ml-1 text-gray-400 text-xs">{selectedOption.suffix}</span>}
+              {selectedOption.suffix && <span className="ml-1 text-[var(--ss-t3)] text-xs">{selectedOption.suffix}</span>}
             </>
           ) : effectiveEmptyLabel}
         </span>
         {value != null && !disabled && (
-          <MIcon name="close" size={14} className="text-gray-500 hover:text-white shrink-0" onClick={handleClear} />
+          <MIcon name="close" size={14} className="text-[var(--ss-t3)] hover:text-[var(--ss-t1)] shrink-0" onClick={handleClear} />
         )}
-        <MIcon name="expand_more" size={14} className={clsx('text-gray-500 shrink-0 transition-transform', open && 'rotate-180')} />
+        <MIcon name="expand_more" size={14} className={clsx('text-[var(--ss-t3)] shrink-0 transition-transform duration-fast ease-out', open && 'rotate-180')} />
       </button>
 
       {/* ドロップダウン */}
       {open && (
-        <div className={clsx('absolute z-50 mt-1 w-full bg-gray-800 border border-gray-600 rounded-lg shadow-xl overflow-hidden min-w-[200px]', dropdownAlign === 'right' ? 'right-0' : 'left-0')}>
+        <div className={clsx('absolute z-50 mt-1 w-full bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-lg shadow-pop overflow-hidden min-w-[200px]', dropdownAlign === 'right' ? 'right-0' : 'left-0')}>
           {/* 検索欄 */}
-          <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-700">
-            <MIcon name="search" size={14} className="text-gray-500 shrink-0" />
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-[var(--ss-border)]">
+            <MIcon name="search" size={14} className="text-[var(--ss-t3)] shrink-0" />
             <input
               ref={inputRef}
               type="text"
@@ -183,10 +184,10 @@ export function SearchableSelect({
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={effectivePlaceholder}
-              className="flex-1 bg-transparent text-sm text-white placeholder-gray-500 outline-none"
+              className="flex-1 bg-transparent text-sm text-[var(--ss-ctrl-text)] placeholder-[var(--ss-ctrl-placeholder)] outline-none"
             />
             {query && (
-              <button onClick={() => setQuery('')} className="text-gray-500 hover:text-white">
+              <button onClick={() => setQuery('')} className="text-[var(--ss-t3)] hover:text-[var(--ss-t1)]">
                 <MIcon name="close" size={12} />
               </button>
             )}
@@ -195,7 +196,7 @@ export function SearchableSelect({
           {/* 選択肢リスト */}
           <div ref={listRef} className="overflow-y-auto" style={{ maxHeight }}>
             {filtered.length === 0 ? (
-              <div className="px-3 py-3 text-sm text-gray-500 text-center">
+              <div className="px-3 py-3 text-sm text-[var(--ss-t3)] text-center">
                 {query ? t('common.no_matches', 'No matches') : t('common.no_options', 'No options')}
               </div>
             ) : (
@@ -206,12 +207,12 @@ export function SearchableSelect({
                   type="button"
                   onClick={() => handleSelect(opt.value)}
                   className={clsx(
-                    'flex items-center gap-2 w-full text-left px-3 py-2 text-sm transition-colors',
+                    'flex items-center gap-2 w-full text-left px-3 py-2 text-sm transition-colors duration-fast ease-out',
                     idx === highlightIdx
-                      ? 'bg-blue-600/30 text-white'
+                      ? 'bg-[var(--ss-brand-tint)] text-[var(--ss-t1)]'
                       : opt.value === value
-                        ? 'bg-gray-700/50 text-white'
-                        : 'text-gray-300 hover:bg-gray-700/50',
+                        ? 'bg-[var(--ss-surface-2)] text-[var(--ss-t1)]'
+                        : 'text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]',
                   )}
                 >
                   {opt.prefix && (
@@ -220,7 +221,7 @@ export function SearchableSelect({
                       : <span className="text-xs shrink-0">{opt.prefix}</span>
                   )}
                   <span className="flex-1 truncate">{opt.label}</span>
-                  {opt.suffix && <span className="text-xs text-gray-500 shrink-0">{opt.suffix}</span>}
+                  {opt.suffix && <span className="text-xs text-[var(--ss-t3)] shrink-0">{opt.suffix}</span>}
                 </button>
               ))
             )}

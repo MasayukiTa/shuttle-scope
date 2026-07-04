@@ -50,20 +50,19 @@ interface Props {
   className?: string
 }
 
-// Design Language v1.2 §12: bg は neutral 固定、severity は文字色で運ぶ。
-// 旧版は bg-{color}-50 / bg-{color}-900/20 の同色相 bg+text でカード全体が
-// 色塗りされていたが、Design Language §12.4 (1 画面の色付き要素を絞る) に
-// 違反。今は bg を完全に neutral 化し、icon と border 強調だけで識別する。
+// Design Language v1.2 §12 / v2 "Precision on Gray": bg は neutral (white surface)
+// 固定、severity は icon 色 + hairline border でのみ運ぶ。1 画面の色付き要素を
+// 絞る方針を維持しつつ、v2 token (--ss-surface-1 / --ss-border / --ss-t1) に統一。
 const SEVERITY_CLASS: Record<string, string> = {
-  info:     'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100',
-  positive: 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100',
-  warning:  'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100',
+  info:     'border-[var(--ss-border)] bg-[var(--ss-surface-1)] text-[var(--ss-t1)]',
+  positive: 'border-[var(--ss-border)] bg-[var(--ss-surface-1)] text-[var(--ss-t1)]',
+  warning:  'border-[var(--ss-border)] bg-[var(--ss-surface-1)] text-[var(--ss-t1)]',
 }
 // severity 別 icon 色 (色は icon + 文字符号のみで運ぶ)
 const SEVERITY_ICON_COLOR: Record<string, string> = {
-  info:     'text-gray-400 dark:text-gray-500',
-  positive: 'text-blue-600 dark:text-blue-300',   // A_GOOD
-  warning:  'text-amber-600 dark:text-amber-400', // CAUTION
+  info:     'text-[var(--ss-t3)]',
+  positive: 'text-[var(--ss-good)]',
+  warning:  'text-[var(--ss-warn)]',
 }
 
 export function AdviceStrip({
@@ -95,9 +94,9 @@ export function AdviceStrip({
 
   if (loading) {
     return (
-      <div className={`rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-3 py-2 ${className || ''}`}>
-        <div className="flex items-center gap-2 text-xs text-gray-500">
-          <span className="inline-block w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+      <div className={`rounded-ss-md border border-[var(--ss-border)] bg-[var(--ss-surface-2)] px-3 py-2 ${className || ''}`}>
+        <div className="flex items-center gap-2 text-xs text-[var(--ss-t3)]">
+          <span className="inline-block w-2 h-2 rounded-full bg-[var(--ss-brand)] animate-pulse" />
           {t('advice.calculating', 'Calculating advice…')}
         </div>
       </div>
@@ -108,12 +107,12 @@ export function AdviceStrip({
   if (!resp || resp.status === 'insufficient_data' || !resp.advice) {
     if (hideWhenInsufficient) return null
     return (
-      <div className={`rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 px-3 py-2 ${className || ''}`}>
+      <div className={`rounded-ss-md border border-[var(--ss-border)] bg-[var(--ss-surface-2)] px-3 py-2 ${className || ''}`}>
         <div className="flex items-start gap-2">
-          <MIcon name="analytics" size={14} className="text-gray-400 mt-0.5 shrink-0" />
-          <div className="text-xs text-gray-600 dark:text-gray-300">
+          <MIcon name="analytics" size={14} className="text-[var(--ss-t3)] mt-0.5 shrink-0" />
+          <div className="text-xs text-[var(--ss-t2)]">
             <div className="font-medium">{t('advice.measuring_title', 'Advice is being measured')}</div>
-            <div className="mt-0.5 text-gray-500 dark:text-gray-400">
+            <div className="mt-0.5 text-[var(--ss-t3)]">
               {resp?.reason || t('advice.measuring_body', 'Concrete observations will appear once enough data is collected. We do not show guess-based comments before then (reliability first).')}
             </div>
           </div>
@@ -126,7 +125,7 @@ export function AdviceStrip({
   const cls = SEVERITY_CLASS[a.severity] || SEVERITY_CLASS.info
   const iconCls = SEVERITY_ICON_COLOR[a.severity] || SEVERITY_ICON_COLOR.info
   return (
-    <div className={`rounded-md border px-3 py-2 ${cls} ${className || ''}`}>
+    <div className={`rounded-ss-md border shadow-card px-3 py-2 ${cls} ${className || ''}`}>
       <div className="flex items-start gap-2">
         <MIcon name="lightbulb" size={14} className={`mt-0.5 shrink-0 ${iconCls}`} />
         <div className="flex-1 min-w-0">
@@ -155,7 +154,7 @@ export function AdviceStrip({
             )}
           </div>
           {showBasis && (
-            <pre className="mt-1 text-[10px] whitespace-pre-wrap break-all opacity-80">
+            <pre className="mt-1 text-[10px] whitespace-pre-wrap break-all opacity-80 ss-num">
               {JSON.stringify(a.basis, null, 2)}
             </pre>
           )}

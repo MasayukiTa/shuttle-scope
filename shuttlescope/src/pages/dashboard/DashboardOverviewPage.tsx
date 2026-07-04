@@ -95,7 +95,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
       onClick={onClick}
       title={t('auto.DashboardOverviewPage.k18')}
       // モバイルはタップしやすいよう padding を厚く (>=44px相当)、md 以上は従来の密配置。
-      className={`shrink-0 ${textMuted} hover:${textHeading} transition-colors p-2.5 md:p-1 rounded ${isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-700'}`}
+      className={`shrink-0 ${textMuted} hover:${textHeading} transition-colors duration-fast ease-out p-2.5 md:p-1 rounded-ss-sm ${isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-700'}`}
     >
       <MIcon name="fullscreen" size={13} />
     </button>
@@ -230,7 +230,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
         {/* 左カラム */}
         <div className="xl:col-span-2 space-y-5 min-w-0">
           {/* ラリー終了タイプ */}
-          <div className={`${card} rounded-lg p-4`} data-tutorial="dashboard.quickSummary">
+          <div className={`${card} rounded-ss-lg shadow-card p-4`} data-tutorial="dashboard.quickSummary">
             <div className="flex items-center justify-between mb-3">
               <SectionTitle>{t('auto.DashboardOverviewPage.k2')}</SectionTitle>
               <div className="flex items-center gap-2" data-tutorial="dashboard.confidenceBadge">
@@ -255,7 +255,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
           </div>
 
           {/* ラリー長分布 */}
-          <div className={`${card} rounded-lg p-4`}>
+          <div className={`${card} rounded-ss-lg shadow-card p-4`}>
             <div className="flex items-center justify-between mb-3">
               <SectionTitle>{t('auto.DashboardOverviewPage.k4')}</SectionTitle>
               <div className="flex items-center gap-2">
@@ -286,7 +286,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
         {/* 右カラム */}
         <div className="space-y-5 min-w-0">
           {/* コートヒートマップ */}
-          <div className={`${card} rounded-lg p-4`} data-tutorial="dashboard.epvHeatmap">
+          <div className={`${card} rounded-ss-lg shadow-card p-4`} data-tutorial="dashboard.epvHeatmap">
             <div className="flex flex-wrap items-center gap-2 mb-3">
               <SectionTitle>{t('auto.DashboardOverviewPage.k5')}</SectionTitle>
               <div className="flex items-center gap-1 ml-auto shrink-0">
@@ -302,7 +302,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                 <button
                   key={tab}
                   onClick={() => setHeatmapTab(tab)}
-                  className={`flex-1 text-xs py-1.5 rounded font-medium transition-colors ${heatmapTab === tab ? (isLight ? 'bg-gray-400 text-white' : 'bg-gray-600 text-white') : (isLight ? 'bg-gray-100 text-gray-500 hover:bg-gray-200' : 'bg-gray-700 text-gray-400 hover:bg-gray-600')}`}
+                  className={`flex-1 text-xs py-1.5 rounded-ss-pill font-medium transition-colors duration-fast ease-out ${heatmapTab === tab ? (isLight ? 'bg-gray-400 text-white' : 'bg-gray-600 text-white') : (isLight ? 'bg-gray-100 text-gray-500 hover:bg-gray-200' : 'bg-gray-700 text-gray-400 hover:bg-gray-600')}`}
                 >
                   {tab === 'hit' ? t('shotmap.hit_point', 'Hit point') : t('shotmap.land_point', 'Land point')}
                 </button>
@@ -316,7 +316,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                     onClick={() => { setHeatmapLastN(n); setHeatmapMatchId(null) }}
                     disabled={heatmapMatchId != null}
                     // モバイルは tap しやすいよう縦 padding を厚めに、sm 以上は従来の密配置
-                    className={`text-[11px] px-2 py-1.5 sm:py-0.5 rounded border transition-colors ${heatmapMatchId == null && heatmapLastN === n ? (isLight ? 'bg-gray-400 border-gray-300 text-white' : 'bg-gray-500 border-gray-400 text-white') : (isLight ? 'bg-white border-gray-300 text-gray-500 hover:bg-gray-100 disabled:opacity-40' : 'bg-gray-700 border-gray-600 text-gray-400 hover:bg-gray-600 disabled:opacity-40')}`}
+                    className={`text-[11px] px-2 py-1.5 sm:py-0.5 rounded-ss-pill border transition-colors duration-fast ease-out ${heatmapMatchId == null && heatmapLastN === n ? (isLight ? 'bg-gray-400 border-gray-300 text-white' : 'bg-gray-500 border-gray-400 text-white') : (isLight ? 'bg-white border-gray-300 text-gray-500 hover:bg-gray-100 disabled:opacity-40' : 'bg-gray-700 border-gray-600 text-gray-400 hover:bg-gray-600 disabled:opacity-40')}`}
                   >
                     {n == null ? t('common.all_time', 'All time') : t('common.recent_n_matches', { count: n, defaultValue: 'Recent {{count}} matches' })}
                   </button>
@@ -330,7 +330,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                     setHeatmapMatchId(v ? Number(v) : null)
                     if (v) setHeatmapLastN(null)
                   }}
-                  className={`w-full text-[11px] rounded px-2 py-1 focus:outline-none ${isLight ? 'bg-white border border-gray-300 text-gray-700' : 'bg-gray-700 border border-gray-600 text-gray-300'}`}
+                  className={`w-full text-[11px] rounded-ss-md px-2 py-1 focus:outline-none ${isLight ? 'bg-white border border-gray-300 text-gray-700' : 'bg-gray-700 border border-gray-600 text-gray-300'}`}
                 >
                   <option value="">{t('auto.DashboardOverviewPage.k6')}</option>
                   {[...matches].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '')).map((m) => (
@@ -360,12 +360,12 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
           <RoleGuard
             allowedRoles={['analyst', 'coach']}
             fallback={
-              <div className={`${card} rounded-lg p-4`}>
+              <div className={`${card} rounded-ss-lg shadow-card p-4`}>
                 <p className={`text-xs ${textMuted} text-center py-2`}>{t('auto.DashboardOverviewPage.k8')}</p>
               </div>
             }
           >
-            <div className={`${card} rounded-lg p-4`}>
+            <div className={`${card} rounded-ss-lg shadow-card p-4`}>
               <div className="flex items-center justify-between mb-3">
                 <SectionTitle>{t('auto.DashboardOverviewPage.k9')}</SectionTitle>
                 {descriptive && <ConfidenceBadge sampleSize={descriptive.total_rallies} className="text-[10px] shrink-0" />}
@@ -374,14 +374,14 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className={`text-sm ${textSecondary}`}>{t('auto.DashboardOverviewPage.k10')}</span>
-                    <span className="text-lg font-semibold text-blue-400">{pct(descriptive.server_win_rate.as_server)}</span>
+                    <span className="ss-num text-lg font-semibold text-blue-400">{pct(descriptive.server_win_rate.as_server)}</span>
                   </div>
                   <div className={`w-full ${isLight ? 'bg-gray-200' : 'bg-gray-700'} rounded-full h-2`}>
                     <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${(descriptive.server_win_rate.as_server * 100).toFixed(1)}%` }} />
                   </div>
                   <div className="flex items-center justify-between">
                     <span className={`text-sm ${textSecondary}`}>{t('auto.DashboardOverviewPage.k11')}</span>
-                    <span className="text-lg font-semibold text-emerald-400">{pct(descriptive.server_win_rate.as_receiver)}</span>
+                    <span className="ss-num text-lg font-semibold text-emerald-400">{pct(descriptive.server_win_rate.as_receiver)}</span>
                   </div>
                   <div className={`w-full ${isLight ? 'bg-gray-200' : 'bg-gray-700'} rounded-full h-2`}>
                     <div className="bg-emerald-500 h-2 rounded-full" style={{ width: `${(descriptive.server_win_rate.as_receiver * 100).toFixed(1)}%` }} />
@@ -397,7 +397,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
       <ConfidenceCalibration playerId={playerId} />
 
       {/* スコア推移 / インターバルレポート 共通試合選択 */}
-      <div className={`${card} rounded-lg p-4`}>
+      <div className={`${card} rounded-ss-lg shadow-card p-4`}>
         {/* 試合セレクタ（前後ナビ付き） */}
         <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
           <SectionTitle>{t('analysis.score_progression.title')}</SectionTitle>
@@ -406,7 +406,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
               onClick={() => setSelectedMatchId(matchOptions[matchNavIdx - 1].value as number)}
               disabled={!canGoPrev}
               title={t('auto.DashboardOverviewPage.k19')}
-              className={`p-1.5 md:p-1 rounded transition-colors disabled:opacity-30 ${isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-700'}`}
+              className={`p-1.5 md:p-1 rounded-ss-sm transition-colors duration-fast ease-out disabled:opacity-30 ${isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-700'}`}
             >
               <MIcon name="chevron_left" size={14} className={textMuted} />
             </button>
@@ -424,7 +424,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
               onClick={() => setSelectedMatchId(matchOptions[matchNavIdx + 1].value as number)}
               disabled={!canGoNext}
               title={t('auto.DashboardOverviewPage.k20')}
-              className={`p-1.5 md:p-1 rounded transition-colors disabled:opacity-30 ${isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-700'}`}
+              className={`p-1.5 md:p-1 rounded-ss-sm transition-colors duration-fast ease-out disabled:opacity-30 ${isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-700'}`}
             >
               <MIcon name="chevron_right" size={14} className={textMuted} />
             </button>
@@ -444,7 +444,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
       </div>
 
       {/* インターバルレポート */}
-      <div className={`${card} rounded-lg p-4`}>
+      <div className={`${card} rounded-ss-lg shadow-card p-4`}>
         <div className="flex items-center justify-between gap-2 mb-3">
           <SectionTitle>{t('analysis.interval_report.title')}</SectionTitle>
           {selectedMatchId && (
@@ -453,7 +453,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                 <button
                   key={n}
                   onClick={() => setIntervalSet(n)}
-                  className={`px-3 py-1 text-xs rounded font-medium transition-colors ${
+                  className={`px-3 py-1 text-xs rounded-ss-sm font-medium transition-colors duration-fast ease-out ${
                     intervalSet === n
                       ? 'bg-blue-600 text-white'
                       : isLight ? 'bg-gray-100 text-gray-500 hover:bg-gray-200' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
@@ -476,7 +476,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
          に届かなくなるため、概要タブの最下部へ移動 (2026-05-19)。
          また期間フィルタ (mlFrom/mlTo) をこのセクション専用に持ち、ほかの
          KPI / グラフ / advice には影響しない (sort も同様にローカル)。 */}
-      <div className={`${card} rounded-lg p-4`}>
+      <div className={`${card} rounded-ss-lg shadow-card p-4`}>
         <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <SectionTitle>{t('auto.DashboardOverviewPage.k12')}</SectionTitle>
           <div className="flex items-center gap-2 flex-wrap">
@@ -485,14 +485,14 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
               type="date"
               value={mlFrom}
               onChange={(e) => setMlFrom(e.target.value)}
-              className={`text-[11px] rounded px-1.5 py-0.5 ${isLight ? 'bg-white border border-gray-300 text-gray-900' : 'bg-gray-700 border border-gray-600 text-gray-100'}`}
+              className={`ss-num text-[11px] rounded-ss-md px-1.5 py-0.5 ${isLight ? 'bg-white border border-gray-300 text-gray-900' : 'bg-gray-700 border border-gray-600 text-gray-100'}`}
             />
             <span className={`text-[10px] ${textMuted}`}>{t('auto.DashboardOverviewPage.k_tilde')}</span>
             <input
               type="date"
               value={mlTo}
               onChange={(e) => setMlTo(e.target.value)}
-              className={`text-[11px] rounded px-1.5 py-0.5 ${isLight ? 'bg-white border border-gray-300 text-gray-900' : 'bg-gray-700 border border-gray-600 text-gray-100'}`}
+              className={`ss-num text-[11px] rounded-ss-md px-1.5 py-0.5 ${isLight ? 'bg-white border border-gray-300 text-gray-900' : 'bg-gray-700 border border-gray-600 text-gray-100'}`}
             />
             {(mlFrom || mlTo) && (
               <button
@@ -503,7 +503,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                 {t('auto.DashboardOverviewPage.k_clear')}
               </button>
             )}
-            <span className={`text-xs ${textMuted}`}>{t('auto.DashboardOverviewPage.k_match_count', { shown: displayMatches.length, total: matches.length })}</span>
+            <span className={`ss-num text-xs ${textMuted}`}>{t('auto.DashboardOverviewPage.k_match_count', { shown: displayMatches.length, total: matches.length })}</span>
           </div>
         </div>
         {loadingMatches ? <LoadingRow /> : displayMatches.length === 0 ? (
@@ -518,7 +518,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                 <li
                   key={m.match_id}
                   onClick={() => setSelectedMatchId(m.match_id)}
-                  className={`rounded border p-2.5 transition-colors cursor-pointer ${
+                  className={`rounded-ss-md border p-2.5 transition-colors duration-fast ease-out cursor-pointer ${
                     isLight ? 'border-gray-200 hover:bg-gray-50' : 'border-gray-700 hover:bg-gray-700/30'
                   }`}
                 >
@@ -526,7 +526,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                     <div className="min-w-0 flex-1">
                       <div className={`text-sm font-medium truncate ${textHeading}`} title={m.opponent}>{m.opponent}</div>
                       <div className={`text-xs truncate ${textSecondary}`} title={m.tournament}>{m.tournament}</div>
-                      <div className={`text-[11px] mt-0.5 ${textMuted} num-cell`}>
+                      <div className={`ss-num text-[11px] mt-0.5 ${textMuted} num-cell`}>
                         {t('auto.DashboardOverviewPage.k_match_meta', {
                           date: m.date,
                           level: m.tournament_level ? ` · ${m.tournament_level}` : '',
@@ -534,7 +534,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                         })}
                       </div>
                     </div>
-                    <span className={`shrink-0 inline-block px-2 py-0.5 rounded text-xs font-semibold ${m.result === 'win' ? 'bg-gray-800 text-blue-300' : 'bg-gray-800 text-red-300'}`}>
+                    <span className={`shrink-0 inline-block px-2 py-0.5 rounded-ss-sm text-xs font-semibold ${m.result === 'win' ? 'bg-gray-800 text-blue-300' : 'bg-gray-800 text-red-300'}`}>
                       {m.result === 'win' ? '勝' : '負'}
                     </span>
                   </div>
@@ -572,7 +572,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                   {displayMatches.map((m) => (
                     <tr
                       key={m.match_id}
-                      className={`border-b ${isLight ? 'border-gray-100 hover:bg-gray-50' : 'border-gray-700/50 hover:bg-gray-700/30'} transition-colors cursor-pointer`}
+                      className={`border-b ${isLight ? 'border-gray-100 hover:bg-gray-50' : 'border-gray-700/50 hover:bg-gray-700/30'} transition-colors duration-fast ease-out cursor-pointer`}
                       onClick={() => setSelectedMatchId(m.match_id)}
                     >
                       <td className={`py-2 pr-3 ${textHeading}`}>
@@ -582,13 +582,13 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                         <span className="cell-name-clip" title={m.tournament}>{m.tournament}</span>
                       </td>
                       <td className="py-2 pr-3 text-center"><span className={`text-xs ${textMuted}`}>{m.tournament_level ?? '—'}</span></td>
-                      <td className={`py-2 pr-3 ${textSecondary} num-cell`}>{m.date}</td>
+                      <td className={`ss-num py-2 pr-3 ${textSecondary} num-cell`}>{m.date}</td>
                       <td className="py-2 pr-3 text-center">
-                        <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${m.result === 'win' ? 'bg-gray-800 text-blue-300' : 'bg-gray-800 text-red-300'}`}>
+                        <span className={`inline-block px-2 py-0.5 rounded-ss-sm text-xs font-semibold ${m.result === 'win' ? 'bg-gray-800 text-blue-300' : 'bg-gray-800 text-red-300'}`}>
                           {m.result === 'win' ? '勝' : '負'}
                         </span>
                       </td>
-                      <td className={`py-2 text-right ${textSecondary} num-cell`}>{m.rally_count}</td>
+                      <td className={`ss-num py-2 text-right ${textSecondary} num-cell`}>{m.rally_count}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -635,9 +635,9 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
         return (
           <ErrorBoundary fallback={
             <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center">
-              <div className={`${card} rounded-lg p-8 max-w-sm text-center`}>
+              <div className={`${card} rounded-ss-lg shadow-pop p-8 max-w-sm text-center`}>
                 <p className={`${textSecondary} mb-4`}>{t('auto.DashboardOverviewPage.k15')}</p>
-                <button onClick={() => setExpandedChart(null)} className={`px-4 py-2 ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-700' : 'bg-gray-600 hover:bg-gray-500 text-white'} rounded text-sm`}>{t('auto.DashboardOverviewPage.k16')}</button>
+                <button onClick={() => setExpandedChart(null)} className={`px-4 py-2 ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-700' : 'bg-gray-600 hover:bg-gray-500 text-white'} rounded-ss-md text-sm transition-colors duration-fast ease-out`}>{t('auto.DashboardOverviewPage.k16')}</button>
               </div>
             </div>
           }>
@@ -652,9 +652,9 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
       {courtHeatOpen && (
         <ErrorBoundary fallback={
           <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center">
-            <div className={`${card} rounded-lg p-8 max-w-sm text-center`}>
+            <div className={`${card} rounded-ss-lg shadow-pop p-8 max-w-sm text-center`}>
               <p className={`${textSecondary} mb-4`}>{t('auto.DashboardOverviewPage.k17')}</p>
-              <button onClick={() => setCourtHeatOpen(false)} className={`px-4 py-2 ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-700' : 'bg-gray-600 hover:bg-gray-500 text-white'} rounded text-sm`}>{t('auto.DashboardOverviewPage.k16')}</button>
+              <button onClick={() => setCourtHeatOpen(false)} className={`px-4 py-2 ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-700' : 'bg-gray-600 hover:bg-gray-500 text-white'} rounded-ss-md text-sm transition-colors duration-fast ease-out`}>{t('auto.DashboardOverviewPage.k16')}</button>
             </div>
           </div>
         }>

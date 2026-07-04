@@ -178,16 +178,16 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
   if (!opponentId) {
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
-        <MIcon name="trending_up" size={32} className="text-gray-400" />
-        <p className="text-sm font-medium text-gray-300">{t('auto.PredictionPanel.k1')}</p>
-        <p className="text-xs text-gray-500">{t('auto.PredictionPanel.k2')}</p>
+        <MIcon name="trending_up" size={32} className="text-[var(--ss-t3)]" />
+        <p className="text-sm font-medium text-[var(--ss-t2)]">{t('auto.PredictionPanel.k1')}</p>
+        <p className="text-xs text-[var(--ss-t3)]">{t('auto.PredictionPanel.k2')}</p>
       </div>
     )
   }
 
   if (isLoading) {
     return (
-      <div className="text-gray-500 text-sm py-8 text-center">{t('prediction.loading')}</div>
+      <div className="text-[var(--ss-t3)] text-sm py-8 text-center">{t('prediction.loading')}</div>
     )
   }
 
@@ -218,7 +218,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
       />
 
       {/* Layer A: コーチ向けサマリー */}
-      <div className="bg-gray-800 rounded-lg p-4 space-y-4">
+      <div className="bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-lg shadow-card p-4 space-y-4">
         <div className="flex items-center gap-3 flex-wrap">
           {meta && <ConfidenceBadge sampleSize={d.sample_size} />}
           <span className="text-xs" style={{ color: subText }}>
@@ -235,7 +235,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
         <div className="grid grid-cols-3 gap-4 text-center">
           <div>
             <p
-              className="text-4xl font-bold"
+              className="text-4xl font-bold ss-num"
               style={{ color: winProbColor(d.win_probability, isLight) }}
             >
               {winPct}%
@@ -245,13 +245,13 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
             </p>
           </div>
           <div>
-            <p className="text-2xl font-bold" style={{ color: neutral }}>
+            <p className="text-2xl font-bold ss-num" style={{ color: neutral }}>
               {meta?.confidence.stars ?? '—'}
             </p>
             <p className="text-[11px] mt-1" style={{ color: subText }}>
               {t('prediction.confidence')}
             </p>
-            <p className="text-xs font-mono mt-0.5" style={{ color: subText }}>
+            <p className="text-xs font-mono mt-0.5 ss-num" style={{ color: subText }}>
               {Math.round(d.confidence * 100)}%
             </p>
           </div>
@@ -263,7 +263,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
               {t('prediction.most_likely')}
             </p>
             {topOutcome && (
-              <p className="text-xs font-mono mt-0.5" style={{ color: subText }}>
+              <p className="text-xs font-mono mt-0.5 ss-num" style={{ color: subText }}>
                 {Math.round(topOutcome[1] * 100)}%
               </p>
             )}
@@ -272,15 +272,15 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
 
         {/* スコアボラティリティ */}
         {d.score_volatility && d.score_volatility.sample >= 3 && (
-          <div className="border-t border-gray-700 pt-3">
+          <div className="border-t border-[var(--ss-border)] pt-3">
             <p className="text-xs font-medium mb-2" style={{ color: subText }}>
               {t('prediction.score_volatility')}
             </p>
             <div className="flex items-center gap-4 flex-wrap">
               <div className="flex items-center gap-2">
-                <div className="w-20 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                <div className="w-20 h-1.5 bg-[var(--ss-surface-2)] rounded-ss-md overflow-hidden">
                   <div
-                    className="h-full rounded-full"
+                    className="h-full rounded-ss-md duration-base ease-out"
                     style={{
                       width: `${Math.round(d.score_volatility.volatility_score * 100)}%`,
                       background: d.score_volatility.volatility_score >= 0.6
@@ -297,10 +297,10 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
                     : t('prediction.volatility_stable')}
                 </span>
               </div>
-              <span className="text-[11px]" style={{ color: subText }}>
+              <span className="text-[11px] ss-num" style={{ color: subText }}>
                 {t('prediction.close_match_rate')} {Math.round(d.score_volatility.close_match_rate * 100)}%
               </span>
-              <span className="text-[11px]" style={{ color: subText }}>
+              <span className="text-[11px] ss-num" style={{ color: subText }}>
                 {t('prediction.dominant_match_rate')} {Math.round(d.score_volatility.dominant_match_rate * 100)}%
               </span>
             </div>
@@ -309,7 +309,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
 
         {/* 最頻スコアライン */}
         {d.most_likely_scorelines.length > 0 && (
-          <div className="border-t border-gray-700 pt-3">
+          <div className="border-t border-[var(--ss-border)] pt-3">
             <p className="text-xs font-medium mb-2" style={{ color: subText }}>
               {t('prediction.most_likely')}
             </p>
@@ -319,19 +319,19 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
                 return (
                   <div key={i} className="flex items-center gap-2 text-xs">
                     <span
-                      className="font-bold w-8 shrink-0 num-cell"
+                      className="font-bold w-8 shrink-0 ss-num"
                       style={{ color: sl.outcome.startsWith('2') ? WIN : LOSS }}
                     >
                       {sl.outcome}
                     </span>
                     <span
-                      className="num-cell flex-1 min-w-0 truncate"
+                      className="ss-num flex-1 min-w-0 truncate"
                       style={{ color: neutral }}
                       title={scoreText}
                     >
                       {scoreText}
                     </span>
-                    <span className="num-cell shrink-0" style={{ color: subText }}>
+                    <span className="ss-num shrink-0" style={{ color: subText }}>
                       {Math.round(sl.probability * 100)}%
                     </span>
                   </div>
@@ -342,7 +342,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
         )}
 
         {/* 試合展開パターン (MatchScriptBlock) */}
-        <div className="border-t border-gray-700 pt-3">
+        <div className="border-t border-[var(--ss-border)] pt-3">
           <p className="text-xs font-medium mb-2" style={{ color: subText }}>
             {t('prediction.match_script')}
           </p>
@@ -354,7 +354,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
 
         {/* 戦術推奨ランキング */}
         {d.tactical_notes.length > 0 && (
-          <div className="border-t border-gray-700 pt-3">
+          <div className="border-t border-[var(--ss-border)] pt-3">
             <p className="text-xs font-semibold mb-2" style={{ color: subText }}>
               {t('prediction.tactical_ranking')}
             </p>
@@ -364,7 +364,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
                 const impact = typeof item === 'string' ? null : item.estimated_impact
                 return (
                   <li key={i} className="flex items-start gap-2 text-xs">
-                    <span className="text-gray-500 shrink-0 w-4 text-right">{i + 1}.</span>
+                    <span className="text-[var(--ss-t3)] shrink-0 w-4 text-right">{i + 1}.</span>
                     <span style={{ color: neutral }}>{note}</span>
                     {impact && (() => {
                       const ni = normalizeImpact(impact)
@@ -376,7 +376,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
                                   : t('prediction.impact_mid', 'Mid')
                       return (
                         <span
-                          className="shrink-0 text-[10px] px-1 py-0.5 rounded font-medium"
+                          className="shrink-0 text-[10px] px-1 py-0.5 rounded-ss-sm font-medium"
                           style={{ color, backgroundColor: bg, border: `1px solid ${bord}` }}
                         >
                           {label}
@@ -392,7 +392,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
 
         {/* 注意フラグ */}
         {d.caution_flags.length > 0 && (
-          <div className="border-t border-gray-700 pt-3 space-y-1">
+          <div className="border-t border-[var(--ss-border)] pt-3 space-y-1">
             {d.caution_flags.map((flag, i) => (
               <p key={i} className="text-xs inline-flex items-center gap-1" style={{ color: LOSS }}>
                 <MIcon name="warning" size={12} />{flag}
@@ -403,7 +403,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
       </div>
 
       {/* Layer B: セット分布（折りたたみ可） */}
-      <div className="bg-gray-800 rounded-lg overflow-hidden">
+      <div className="bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-lg shadow-card overflow-hidden">
         <button
           className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium"
           style={{ color: neutral }}
@@ -416,7 +416,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
           <div className="px-4 pb-4 space-y-4">
             <SetDistributionBar distribution={d.set_distribution} />
             {Object.keys(d.score_bands).length > 0 && (
-              <div className="border-t border-gray-700 pt-3">
+              <div className="border-t border-[var(--ss-border)] pt-3">
                 <p className="text-xs font-medium mb-2" style={{ color: subText }}>
                   {t('prediction.score_bands')}
                 </p>
@@ -428,7 +428,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
               </div>
             )}
             {d.calibrated_scorelines.length > 0 && (
-              <div className="border-t border-gray-700 pt-3">
+              <div className="border-t border-[var(--ss-border)] pt-3">
                 <ScorelineHistogram data={d.calibrated_scorelines} />
               </div>
             )}
@@ -437,7 +437,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
       </div>
 
       {/* Layer C: 根拠・戦術ノート（折りたたみ可） */}
-      <div className="bg-gray-800 rounded-lg overflow-hidden">
+      <div className="bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-lg shadow-card overflow-hidden">
         <button
           className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium"
           style={{ color: neutral }}
@@ -474,7 +474,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
 
             {/* 観察コンテキスト */}
             {Object.keys(d.observation_context).length > 0 && (
-              <div className="border-t border-gray-700 pt-3">
+              <div className="border-t border-[var(--ss-border)] pt-3">
                 <p className="text-xs font-semibold mb-2" style={{ color: subText }}>
                   {t('prediction.observation_context')}
                   <span className="ml-1 text-[10px] font-normal">
@@ -487,7 +487,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
 
             {/* 予測ドライバー・データソース内訳 */}
             {d.prediction_drivers ? (
-              <div className="border-t border-gray-700 pt-3">
+              <div className="border-t border-[var(--ss-border)] pt-3">
                 <p className="text-xs font-semibold mb-2" style={{ color: subText }}>
                   {t('prediction.prediction_drivers')}
                 </p>
@@ -507,7 +507,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
                 )}
               </div>
             ) : (
-              <div className="border-t border-gray-700 pt-3">
+              <div className="border-t border-[var(--ss-border)] pt-3">
                 <p className="text-[11px]" style={{ color: subText }}>
                   {d.similar_matches >= 3
                     ? t('prediction.data_source_h2h')
@@ -525,14 +525,14 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
 
             {/* Phase E: 反事実的ショット比較（アナリストのみ） */}
             {hasAnalystAccess && (
-              <div className="border-t border-gray-700 pt-3">
+              <div className="border-t border-[var(--ss-border)] pt-3">
                 <CounterfactualShots playerId={playerId} />
               </div>
             )}
 
             {/* Phase 1 Rebuild: アナリスト深掘りパネル */}
             {hasAnalystAccess && (
-              <div className="border-t border-gray-700 pt-3">
+              <div className="border-t border-[var(--ss-border)] pt-3">
                 <AnalystDepthPanel
                   playerId={playerId}
                   opponentId={opponentId}

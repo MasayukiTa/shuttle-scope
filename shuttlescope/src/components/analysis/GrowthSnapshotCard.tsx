@@ -48,12 +48,12 @@ export function GrowthSnapshotCard({ playerId, periodDays = 30 }: Props) {
   return (
     <div
       data-tutorial="dashboard.growthSnapshot"
-      className={`${card} rounded-lg p-4`}
+      className={`${card} rounded-ss-lg shadow-card p-4`}
     >
       <div className="flex items-center justify-between mb-3">
         <p className={`text-sm font-semibold ${textHeading}`}>{headerTitle}</p>
         <span
-          className={`text-[10px] px-2 py-0.5 rounded-full border ${
+          className={`text-[10px] px-2 py-0.5 rounded-ss-pill border ${
             isLight
               ? 'border-amber-400 text-amber-700 bg-amber-50'
               : 'border-amber-500 text-amber-300 bg-amber-900/20'
@@ -65,9 +65,9 @@ export function GrowthSnapshotCard({ playerId, periodDays = 30 }: Props) {
 
       {isLoading && (
         <div className="space-y-2 animate-pulse">
-          <div className={`h-3 rounded ${isLight ? 'bg-gray-200' : 'bg-gray-700'} w-5/6`} />
-          <div className={`h-3 rounded ${isLight ? 'bg-gray-200' : 'bg-gray-700'} w-4/6`} />
-          <div className={`h-3 rounded ${isLight ? 'bg-gray-200' : 'bg-gray-700'} w-3/6`} />
+          <div className={`h-3 rounded-ss-sm ${isLight ? 'bg-gray-200' : 'bg-gray-700'} w-5/6`} />
+          <div className={`h-3 rounded-ss-sm ${isLight ? 'bg-gray-200' : 'bg-gray-700'} w-4/6`} />
+          <div className={`h-3 rounded-ss-sm ${isLight ? 'bg-gray-200' : 'bg-gray-700'} w-3/6`} />
         </div>
       )}
 
@@ -83,7 +83,7 @@ export function GrowthSnapshotCard({ playerId, periodDays = 30 }: Props) {
             return (
               <li
                 key={it.id}
-                className={`flex flex-col gap-2 rounded border p-3 ${
+                className={`flex flex-col gap-2 rounded-ss-md border p-3 ${
                   isLight ? 'border-gray-200 bg-white' : 'border-gray-700 bg-gray-800/40'
                 }`}
               >
@@ -94,7 +94,7 @@ export function GrowthSnapshotCard({ playerId, periodDays = 30 }: Props) {
                     href={href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className={`text-xs underline ${
+                    className={`text-xs underline transition-colors duration-fast ${
                       isLight ? 'text-blue-700 hover:text-blue-900' : 'text-blue-300 hover:text-blue-200'
                     }`}
                   >

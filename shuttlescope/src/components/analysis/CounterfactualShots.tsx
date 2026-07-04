@@ -45,19 +45,19 @@ function ChoiceBar({ choice, recommended }: { choice: ShotChoice; recommended: s
       <span className={`w-24 text-right truncate shrink-0 ${isRec ? 'text-white font-medium' : 'text-gray-400'}`}>
         {choice.label}
       </span>
-      <div className="flex-1 bg-gray-700 rounded h-4 relative overflow-hidden">
+      <div className="flex-1 bg-gray-700 rounded-ss-sm h-4 relative overflow-hidden">
         <div
-          className="h-full rounded transition-all"
+          className="h-full rounded-ss-sm transition-all duration-base ease-out"
           style={{ width: `${pct}%`, backgroundColor: perfColor(choice.win_rate) }}
         />
-        <span className="absolute inset-0 flex items-center justify-center text-white text-xs font-mono">
+        <span className="absolute inset-0 flex items-center justify-center text-white text-xs font-mono ss-num">
           {pct}%
         </span>
       </div>
-      <span className="text-gray-500 text-xs w-8 text-right">{choice.count}</span>
+      <span className="text-gray-500 text-xs w-8 text-right ss-num">{choice.count}</span>
       {isRec && (
         <span
-          className="text-xs px-1.5 py-0.5 rounded font-semibold shrink-0"
+          className="text-xs px-1.5 py-0.5 rounded-ss-sm font-semibold shrink-0"
           style={{ backgroundColor: WIN, color: 'white' }}
         >
           {t('auto.CounterfactualShots.recommended')}
@@ -72,15 +72,15 @@ function ComparisonAccordion({ comp }: { comp: Comparison }) {
 
   const [open, setOpen] = useState(false)
   return (
-    <div className="border border-gray-700 rounded-lg overflow-hidden">
+    <div className="border border-gray-700 rounded-ss-lg overflow-hidden">
       <button
-        className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-gray-700/50 transition-colors"
+        className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-gray-700/50 transition-colors duration-fast"
         onClick={() => setOpen(v => !v)}
       >
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-sm text-gray-200 truncate">{comp.context_label}</span>
           <span
-            className="text-xs px-1.5 py-0.5 rounded shrink-0"
+            className="text-xs px-1.5 py-0.5 rounded-ss-sm shrink-0 ss-num"
             style={{ backgroundColor: WIN + '33', color: WIN, border: `1px solid ${WIN}` }}
           >
             {t('auto.CounterfactualShots.lift', { n: Math.round(comp.lift * 100) })}
@@ -143,7 +143,7 @@ export function CounterfactualShots({ playerId }: CounterfactualShotsProps) {
 
   return (
     <RoleGuard allowedRoles={['analyst', 'coach']}>
-      <div className="bg-gray-800 rounded-lg p-4">
+      <div className="bg-gray-800 rounded-ss-lg shadow-card p-4">
         <h3 className="text-sm font-semibold text-gray-200 mb-3">{t('auto.CounterfactualShots.k3')}</h3>
         <Inner playerId={playerId} />
       </div>

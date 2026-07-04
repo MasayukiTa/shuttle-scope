@@ -132,14 +132,14 @@ export function CounterfactualV2Card({ playerId, filters }: Props) {
   const liftColor = isLight ? 'text-amber-600' : 'text-amber-400'
   const overlapWarnColor = isLight ? 'text-amber-600' : 'text-yellow-600'
 
-  const tabBase = 'text-[10px] px-2 py-1 rounded transition-colors'
+  const tabBase = 'text-[10px] px-2 py-1 rounded-ss-sm transition-colors duration-fast'
   const tabActive = isLight ? 'bg-blue-600 text-white' : 'bg-blue-500 text-white'
   const tabInactive = isLight
     ? 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
     : 'text-gray-500 hover:text-gray-300 hover:bg-gray-700/40'
 
   return (
-    <div className={`${card} rounded-lg p-4 space-y-3`}>
+    <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-3`}>
       <div className="flex items-center justify-between">
         <h3 className={`text-sm font-semibold ${textHeading}`}>{t('auto.CounterfactualV2Card.k1')}</h3>
         <EvidenceBadge
@@ -179,9 +179,9 @@ export function CounterfactualV2Card({ playerId, filters }: Props) {
         </p>
       ) : (
         <div className="space-y-2">
-          <p className={`text-[10px] ${textMuted}`}>{t('auto.CounterfactualV2Card.usable_contexts', { n: usable })}</p>
+          <p className={`text-[10px] ${textMuted} ss-num`}>{t('auto.CounterfactualV2Card.usable_contexts', { n: usable })}</p>
           {comparisons.map((comp, i) => (
-            <div key={i} className={`${cardInner} rounded px-3 py-2 space-y-1`}>
+            <div key={i} className={`${cardInner} rounded-ss-sm px-3 py-2 space-y-1`}>
               <div className="flex items-center justify-between">
                 <div className={`text-[11px] ${textSecondary}`}>
                   <span className={`font-medium ${textHeading}`}>{comp.actual_shot}</span>
@@ -197,11 +197,11 @@ export function CounterfactualV2Card({ playerId, filters }: Props) {
                 </div>
                 <div className="flex items-center gap-1">
                   {comp.opponent_type_label && (
-                    <span className={`text-[9px] px-1 rounded ${isLight ? 'bg-gray-100 text-gray-600' : 'bg-gray-700 text-gray-400'}`}>
+                    <span className={`text-[9px] px-1 rounded-ss-sm ${isLight ? 'bg-gray-100 text-gray-600' : 'bg-gray-700 text-gray-400'}`}>
                       {OPPONENT_TYPE_LABELS[comp.opponent_type_label] ?? comp.opponent_type_label}
                     </span>
                   )}
-                  <span className={`text-[10px] ${textFaint}`}>{t('auto.CounterfactualV2Card.n_only', { n: comp.actual_n })}</span>
+                  <span className={`text-[10px] ${textFaint} ss-num`}>{t('auto.CounterfactualV2Card.n_only', { n: comp.actual_n })}</span>
                 </div>
               </div>
               <div className={`text-[10px] ${textFaint}`}>
@@ -211,12 +211,12 @@ export function CounterfactualV2Card({ playerId, filters }: Props) {
                   prev: comp.context.prev_shot ? ` / 直前: ${comp.context.prev_shot}` : '',
                 })}
               </div>
-              <div className={`text-[10px] ${textMuted}`}>
+              <div className={`text-[10px] ${textMuted} ss-num`}>
                 {t('auto.CounterfactualV2Card.actual_wr', { wr: pct(comp.actual_win_rate) })}
                 <span className="ml-1">{t('auto.CounterfactualV2Card.ci_range', { lo: pct(comp.actual_ci_low), hi: pct(comp.actual_ci_high) })}</span>
               </div>
               {comp.alternatives.slice(0, 2).map((alt) => (
-                <div key={alt.shot_type} className={`text-[10px] ${textMuted} ml-2`}>
+                <div key={alt.shot_type} className={`text-[10px] ${textMuted} ml-2 ss-num`}>
                   {t('auto.CounterfactualV2Card.alt_line', { shot: alt.shot_type, wr: pct(alt.win_rate), lo: pct(alt.ci_low), hi: pct(alt.ci_high) })}
                   {cfPhase === 'cf2' && alt.ipw_win_rate != null && (
                     <span className={`ml-1 ${isLight ? 'text-blue-600' : 'text-blue-400'}`}>

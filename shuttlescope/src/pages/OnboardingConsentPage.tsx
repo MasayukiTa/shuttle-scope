@@ -180,16 +180,16 @@ export default function OnboardingConsentPage({
 
   if (loading) {
     return (
-      <div className="min-h-[100svh] flex items-center justify-center bg-gray-50 dark:bg-gray-900 px-4">
-        <div className="text-gray-700 dark:text-gray-200">{t('common.loading') || 'Loading...'}</div>
+      <div className="min-h-[100svh] flex items-center justify-center bg-[var(--ss-bg-app)] px-4">
+        <div className="text-[var(--ss-t2)]">{t('common.loading') || 'Loading...'}</div>
       </div>
     )
   }
 
   if (!state) {
     return (
-      <div className="min-h-[100svh] flex items-center justify-center bg-gray-50 dark:bg-gray-900 px-4">
-        <div className="text-red-600">{error || 'Failed to load consent state'}</div>
+      <div className="min-h-[100svh] flex items-center justify-center bg-[var(--ss-bg-app)] px-4">
+        <div className="text-[var(--ss-bad)]">{error || 'Failed to load consent state'}</div>
       </div>
     )
   }
@@ -199,13 +199,13 @@ export default function OnboardingConsentPage({
 
   return (
     <div
-      className="min-h-[100svh] bg-gray-50 dark:bg-gray-900 py-8 px-4"
+      className="min-h-[100svh] bg-[var(--ss-bg-app)] py-8 px-4"
       style={{ paddingBottom: 'max(2rem, env(safe-area-inset-bottom))' }}
     >
-      <div className="max-w-3xl mx-auto bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-6">
-        <header className="border-b border-gray-200 dark:border-gray-700 pb-4">
+      <div className="max-w-3xl mx-auto bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-lg shadow-card p-6 space-y-6">
+        <header className="border-b border-[var(--ss-border)] pb-4">
           <div className="flex items-start justify-between gap-3">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+            <h1 className="text-2xl font-semibold tracking-[-0.014em] text-[var(--ss-t1)]">
               {t('onboarding.consent.title') || 'データ取り扱いに関する確認・同意'}
             </h1>
             {/* 言語切替: site-wide な i18n を即座に変更。GitHub に access 出来ない
@@ -214,24 +214,24 @@ export default function OnboardingConsentPage({
               <button
                 type="button"
                 onClick={() => i18n.changeLanguage('ja')}
-                className={`px-2 py-1 rounded border ${
+                className={`px-2 py-1 rounded-ss-sm border transition-colors duration-fast ease-out ${
                   (i18n.language as string)?.startsWith('ja')
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200'
+                    ? 'bg-[var(--ss-brand)] text-white border-[var(--ss-brand)]'
+                    : 'border-[var(--ss-border-strong)] text-[var(--ss-t2)]'
                 }`}
               >{t('auto.OnboardingConsentPage.k1')}</button>
               <button
                 type="button"
                 onClick={() => i18n.changeLanguage('en')}
-                className={`px-2 py-1 rounded border ${
+                className={`px-2 py-1 rounded-ss-sm border transition-colors duration-fast ease-out ${
                   (i18n.language as string)?.startsWith('en')
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200'
+                    ? 'bg-[var(--ss-brand)] text-white border-[var(--ss-brand)]'
+                    : 'border-[var(--ss-border-strong)] text-[var(--ss-t2)]'
                 }`}
               >{t('auto.OnboardingConsentPage.en')}</button>
             </div>
           </div>
-          <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+          <p className="mt-2 text-sm text-[var(--ss-t2)]">
             {t('onboarding.consent.intro') ||
               '本サービス (ShuttleScope) のご利用にあたり、以下の文書をお読みいただき、内容をご確認の上、任意同意項目について同意の可否をご判断ください。'}
           </p>
@@ -242,10 +242,10 @@ export default function OnboardingConsentPage({
         {/* optionalOnly mode では必須セクションを丸ごと hide。次回ログイン時に
            任意同意の再確認だけしたい人 (「あとで」を押した人) 用。 */}
         <section className={`space-y-4 ${optionalOnly ? 'hidden' : ''}`}>
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+          <h2 className="text-lg font-semibold text-[var(--ss-t1)]">
             {t('onboarding.consent.required_section') || '必須確認事項（契約履行に基づく処理）'}
           </h2>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
+          <p className="text-xs text-[var(--ss-t3)]">
             {t('onboarding.consent.required_hint') ||
               'これらに同意いただかないと本サービスをご利用いただけません。これらは GDPR Article 6(1)(b)（契約履行）および APPI 第18条に基づく処理であり、撤回はサービス利用の終了と等価となります。'}
           </p>
@@ -310,11 +310,11 @@ export default function OnboardingConsentPage({
 
         {/* 任意同意セクションは badminton 固有 (体組成開示 / AI 学習 / 学術研究)。
            role='llm' の汎用チャット専用ユーザには無関係なので丸ごと hide する。 */}
-        <section className={`space-y-4 border-t border-gray-200 dark:border-gray-700 pt-4 ${llmOnly ? 'hidden' : ''}`}>
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+        <section className={`space-y-4 border-t border-[var(--ss-border)] pt-4 ${llmOnly ? 'hidden' : ''}`}>
+          <h2 className="text-lg font-semibold text-[var(--ss-t1)]">
             {t('onboarding.consent.optional_section') || '任意同意事項（チェックしなくても本サービスは使えます）'}
           </h2>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
+          <p className="text-xs text-[var(--ss-t3)]">
             {t('onboarding.consent.optional_hint') ||
               '以下の任意同意は GDPR Article 6(1)(a) / APPI に基づく同意です。撤回はお問い合わせフォームまたは contact@shuttle-scope.com 宛てメールで受け付けます（受領から 14 日以内に処理）。'}
             {/* 「その他の規約」リンクは任意同意 hint 文の末尾にひっそり配置 (= スマホでも
@@ -323,7 +323,7 @@ export default function OnboardingConsentPage({
             <button
               type="button"
               onClick={() => setOtherDocsOpen(true)}
-              className="underline text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
+              className="underline text-[var(--ss-brand)] hover:text-[var(--ss-brand-hover)]"
             >
               {t('onboarding.consent.other_docs_link') || 'その他の規約はこちら'}
             </button>
@@ -395,12 +395,12 @@ export default function OnboardingConsentPage({
         </section>
 
         {error ? (
-          <div className="text-sm text-red-600 dark:text-red-400 border border-red-200 dark:border-red-700/50 rounded p-3">
+          <div className="text-sm text-[var(--ss-danger-text)] bg-[var(--ss-danger-bg)] border border-[var(--ss-danger-border)] rounded-ss-md p-3">
             {error}
           </div>
         ) : null}
 
-        <footer className="flex flex-col-reverse sm:flex-row gap-3 sm:justify-end pt-4 border-t border-gray-200 dark:border-gray-700">
+        <footer className="flex flex-col-reverse sm:flex-row gap-3 sm:justify-end pt-4 border-t border-[var(--ss-border)]">
           {/* 「あとで見るよ」:
              - optionalOnly mode: 常時表示。書き込まず popup 閉じ→次回再 popup
              - 初回 mode: **必須 check 完了後** にのみ表示 (条件付き render)。
@@ -441,7 +441,7 @@ export default function OnboardingConsentPage({
                   setSubmitting(false)
                 }
               }}
-              className="px-4 py-2 rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+              className="px-4 py-2 rounded-ss-md border border-[var(--ss-border-strong)] text-[var(--ss-t2)] font-medium hover:bg-[var(--ss-surface-2)] transition-colors duration-fast ease-out"
             >
               {t('onboarding.consent.later') || '任意項目は後で回答する'}
             </button>
@@ -450,7 +450,7 @@ export default function OnboardingConsentPage({
             type="button"
             disabled={!canSubmit || submitting}
             onClick={onSubmit}
-            className="px-4 py-2 rounded bg-blue-600 text-white font-medium disabled:bg-gray-400 hover:bg-blue-700 transition"
+            className="px-4 py-2 rounded-ss-md bg-[var(--ss-brand)] text-white font-medium disabled:opacity-50 hover:bg-[var(--ss-brand-hover)] transition-colors duration-fast ease-out"
           >
             {submitting
               ? t('onboarding.consent.submitting') || '送信中...'
@@ -460,7 +460,7 @@ export default function OnboardingConsentPage({
           </button>
         </footer>
 
-        <p className="text-xs text-gray-500 dark:text-gray-400 pt-2">
+        <p className="text-xs text-[var(--ss-t3)] pt-2">
           {t('onboarding.consent.withdraw_notice') ||
             '必須確認事項は契約履行のため撤回は行えません（撤回はサービス利用終了と等価です）。任意同意は 設定 → 体調タブ → 体組成データの開示設定、またはお問い合わせフォーム / contact@shuttle-scope.com 宛てメールでいつでも変更・撤回できます。'}
         </p>
@@ -470,18 +470,18 @@ export default function OnboardingConsentPage({
            ユーザに提示するのは GDPR Art 7(4) (consent freely given) の精神に
            合致する。サイトトップ (apex) かログイン画面のいずれかへ戻れるよう
            にする。 */}
-        <footer className="pt-3 mt-2 border-t border-gray-200 dark:border-gray-700 flex flex-wrap items-center justify-between gap-2 text-xs">
-          <span className="text-gray-500 dark:text-gray-400">
+        <footer className="pt-3 mt-2 border-t border-[var(--ss-border)] flex flex-wrap items-center justify-between gap-2 text-xs">
+          <span className="text-[var(--ss-t3)]">
             {t('onboarding.consent.exit_hint') || '同意せずに離れる場合:'}
           </span>
           <div className="flex flex-wrap items-center gap-3">
             <a
               href={publicSiteUrl('/', i18n.language)}
-              className="underline text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100"
+              className="underline text-[var(--ss-t2)] hover:text-[var(--ss-t1)]"
             >
               {t('onboarding.consent.back_to_site') || 'shuttle-scope.com に戻る'}
             </a>
-            <span aria-hidden="true" className="text-gray-400">{t('auto.OnboardingConsentPage.dot')}</span>
+            <span aria-hidden="true" className="text-[var(--ss-t3)]">{t('auto.OnboardingConsentPage.dot')}</span>
             <button
               type="button"
               onClick={() => {
@@ -499,7 +499,7 @@ export default function OnboardingConsentPage({
                 window.location.href = '/#/'
                 setTimeout(() => window.location.reload(), 50)
               }}
-              className="underline text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100"
+              className="underline text-[var(--ss-t2)] hover:text-[var(--ss-t1)]"
             >
               {t('onboarding.consent.back_to_login') || 'ログイン画面に戻る'}
             </button>
@@ -515,23 +515,23 @@ export default function OnboardingConsentPage({
           onClick={() => setOtherDocsOpen(false)}
         >
           <div
-            className="bg-white dark:bg-gray-800 w-full max-w-md rounded-lg shadow-xl flex flex-col"
+            className="bg-[var(--ss-surface-1)] border border-[var(--ss-border)] w-full max-w-md rounded-ss-lg shadow-pop flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-700">
-              <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--ss-border)]">
+              <div className="text-sm font-semibold text-[var(--ss-t1)]">
                 {t('onboarding.consent.other_docs_title') || 'その他の規約・契約書類'}
               </div>
               <button
                 type="button"
                 onClick={() => setOtherDocsOpen(false)}
-                className="text-sm px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200"
+                className="text-sm px-2 py-1 rounded-ss-sm hover:bg-[var(--ss-surface-2)] text-[var(--ss-t2)] transition-colors duration-fast ease-out"
               >
                 <MIcon name="close" size={14} />
               </button>
             </div>
             <div className="p-3 space-y-2">
-              <p className="text-xs text-gray-500 dark:text-gray-400">
+              <p className="text-xs text-[var(--ss-t3)]">
                 {t('onboarding.consent.other_docs_hint') ||
                   '同意必須ではありませんが、利用目的に応じて参照できる文書です。'}
               </p>
@@ -545,7 +545,7 @@ export default function OnboardingConsentPage({
                   key={slug}
                   type="button"
                   onClick={() => { setOtherDocsOpen(false); setDocModal(slug) }}
-                  className="w-full text-left text-sm px-3 py-2 rounded border border-gray-200 dark:border-gray-700 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"
+                  className="w-full text-left text-sm px-3 py-2 rounded-ss-md border border-[var(--ss-border)] hover:bg-[var(--ss-brand-tint)] text-[var(--ss-t1)] inline-flex items-center gap-2 transition-colors duration-fast ease-out"
                 >
                   <MIcon name="visibility" size={14} />
                   {label}
@@ -606,10 +606,10 @@ function ConsentCheckbox({
 }) {
   return (
     <label
-      className={`flex items-start gap-3 p-3 rounded border ${
+      className={`flex items-start gap-3 p-3 rounded-ss-md border transition-colors duration-fast ease-out ${
         disabled
-          ? 'border-gray-200 dark:border-gray-700 opacity-90 cursor-not-allowed bg-gray-50/40 dark:bg-gray-800/30'
-          : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer'
+          ? 'border-[var(--ss-border)] opacity-90 cursor-not-allowed bg-[var(--ss-surface-2)]'
+          : 'border-[var(--ss-border)] hover:bg-[var(--ss-surface-2)] cursor-pointer'
       }`}
     >
       <input
@@ -617,14 +617,14 @@ function ConsentCheckbox({
         checked={checked}
         disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
-        className="mt-1 h-5 w-5 text-blue-600 rounded disabled:cursor-not-allowed"
+        className="mt-1 h-5 w-5 rounded-ss-sm disabled:cursor-not-allowed"
       />
       <div className="flex-1">
-        <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+        <div className="text-sm font-medium text-[var(--ss-t1)]">
           {label}
-          {required ? <span className="ml-2 text-red-600 text-xs">{requiredMarker}</span> : null}
+          {required ? <span className="ml-2 text-[var(--ss-bad)] text-xs">{requiredMarker}</span> : null}
         </div>
-        <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">{description}</p>
+        <p className="mt-1 text-xs text-[var(--ss-t2)]">{description}</p>
         {docButtons}
       </div>
     </label>
@@ -648,10 +648,10 @@ function DocButton({
       type="button"
       // 親 <label> の click が transmit して checkbox を toggle しないよう block。
       onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClick() }}
-      className={`text-xs px-2.5 py-1 rounded border inline-flex items-center gap-1 ${
+      className={`text-xs px-2.5 py-1 rounded-ss-sm border inline-flex items-center gap-1 transition-colors duration-fast ease-out ${
         scrolled
-          ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
-          : 'border-blue-400 dark:border-blue-600 bg-white dark:bg-gray-800 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/30 animate-pulse-slow'
+          ? 'border-[var(--ss-success-border)] bg-[var(--ss-success-bg)] text-[var(--ss-success-text)]'
+          : 'border-[var(--ss-brand)] bg-[var(--ss-surface-1)] text-[var(--ss-brand)] hover:bg-[var(--ss-brand-tint)] animate-pulse-slow'
       }`}
     >
       {/* CLAUDE.md / memory: アイコンは絶対 Google Material Symbols (MIcon) を使う。
@@ -671,7 +671,7 @@ function OptionalDocLink({ onClick, label }: { onClick: () => void; label: strin
     <button
       type="button"
       onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClick() }}
-      className="text-xs px-2.5 py-1 rounded border inline-flex items-center gap-1 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
+      className="text-xs px-2.5 py-1 rounded-ss-sm border inline-flex items-center gap-1 border-[var(--ss-border-strong)] bg-[var(--ss-surface-1)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)] transition-colors duration-fast ease-out"
     >
       <MIcon name="description" size={14} />
       {label}
@@ -806,10 +806,10 @@ function DocModal({
       onClick={onClose}
     >
       <div
-        className="bg-white dark:bg-gray-800 w-full max-w-4xl h-[85vh] rounded-lg shadow-xl flex flex-col"
+        className="bg-[var(--ss-surface-1)] border border-[var(--ss-border)] w-full max-w-4xl h-[85vh] rounded-ss-lg shadow-pop flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-700 gap-2">
+        <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--ss-border)] gap-2">
           <div className="flex items-center gap-2 min-w-0">
             {/* 戻る: クロスリンクで別 doc に navigate していたら 1 つ前に戻る */}
             <button
@@ -817,14 +817,14 @@ function DocModal({
               onClick={onBack}
               disabled={visitDepth <= 0}
               title={t('onboarding.consent.back') || '前の文書に戻る'}
-              className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 disabled:opacity-30 disabled:cursor-not-allowed"
+              className="p-1 rounded-ss-sm hover:bg-[var(--ss-surface-2)] text-[var(--ss-t2)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors duration-fast ease-out"
             >
               <MIcon name="arrow_back" size={18} />
             </button>
-            <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
+            <div className="text-sm font-semibold text-[var(--ss-t1)] truncate">
               {_titleForPath(currentPath, docKind, t)}
               {reached && (
-                <span className="ml-2 inline-flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400 text-xs">
+                <span className="ml-2 inline-flex items-center gap-0.5 text-[var(--ss-success)] text-xs">
                   <MIcon name="check" size={12} />
                   {t('onboarding.consent.read_done') || '読了'}
                 </span>
@@ -835,14 +835,14 @@ function DocModal({
             <button
               type="button"
               onClick={onPrint}
-              className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+              className="text-xs px-2 py-1 rounded-ss-sm border border-[var(--ss-border-strong)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)] transition-colors duration-fast ease-out"
             >
               {t('onboarding.consent.print') || '印刷'}
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="text-sm px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200"
+              className="text-sm px-2 py-1 rounded-ss-sm hover:bg-[var(--ss-surface-2)] text-[var(--ss-t2)] transition-colors duration-fast ease-out"
             >
               <MIcon name="close" size={14} />
             </button>
