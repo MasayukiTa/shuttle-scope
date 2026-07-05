@@ -292,15 +292,34 @@ describe('CVAssistPanel', () => {
 
   // ── currentStrokeNum ──────────────────────────────────────────────────────
 
-  it('currentStrokeNum と一致するストロークが強調される（ボーダークラス）', () => {
-    render(
-      <CVAssistPanel
-        rallyCandidates={makeRallyCandidate()}
-        currentStrokeNum={1}
-      />
+  it('currentStrokeNum と一致するストロークが強調される（ハイライトクラス）', () => {
+    const candidate = makeRallyCandidate({
+      strokes: [
+        ...makeRallyCandidate().strokes,
+        {
+          stroke_id: 102,
+          stroke_num: 2,
+          timestamp_sec: 2.0,
+          land_zone: null,
+          hitter: null,
+          front_back_role: null,
+        },
+      ],
+    })
+    const { container } = render(
+      <CVAssistPanel rallyCandidates={candidate} currentStrokeNum={1} />
     )
-    // stroke_num=1 の行がハイライト用クラスを持つ
-    const rows = document.querySelectorAll('.border-blue-500\\/30')
-    expect(rows.length).toBeGreaterThan(0)
+    // stroke_num=1 の行がハイライト用クラス（v2 トークン: ss-brand-tint）を持つ
+    const highlighted = [...container.querySelectorAll('div')].filter((el) =>
+      el.className.includes('ss-brand-tint')
+    )
+    expect(highlighted.length).toBeGreaterThan(0)
+
+    // 非カレント行（#2）にはハイライトクラスが付与されない
+    const strokeTwoRow = [...container.querySelectorAll('div')].find((el) =>
+      el.textContent?.trim().startsWith('#2')
+    )
+    expect(strokeTwoRow).toBeTruthy()
+    expect(strokeTwoRow!.className.includes('ss-brand-tint')).toBe(false)
   })
 })
