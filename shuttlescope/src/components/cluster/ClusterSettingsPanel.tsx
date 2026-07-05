@@ -86,7 +86,7 @@ interface NodePingResult {
 
 function StatusBadge({ ok, label }: { ok: boolean; label: string }) {
   return (
-    <span className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-ss-md-ss-sm font-medium ${
+    <span className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-ss-sm font-medium ${
       ok ? 'bg-[var(--ss-success-tint)] text-[var(--ss-success)]' : 'bg-[var(--ss-danger-tint)] text-[var(--ss-danger)]'
     }`}>
       {ok ? <MIcon name="check_circle" size={10} /> : <MIcon name="cancel" size={10} />}
@@ -109,9 +109,9 @@ function GaugeBar({ value, limit, label }: { value: number; limit: number; label
         <span>{label}</span>
         <span className={over ? 'text-[var(--ss-danger)] font-medium ss-num' : 'ss-num'}>{pct}% / {limit}%</span>
       </div>
-      <div className="h-1.5 bg-[var(--ss-surface-3)] rounded-ss-md-ss-sm overflow-hidden">
+      <div className="h-1.5 bg-[var(--ss-surface-3)] rounded-ss-sm overflow-hidden">
         <div
-          className={`h-full rounded-ss-md-ss-sm transition-all duration-base ease-out ${over ? 'bg-[var(--ss-danger)]' : 'bg-[var(--ss-brand)]'}`}
+          className={`h-full rounded-ss-sm transition-all duration-base ease-out ${over ? 'bg-[var(--ss-danger)]' : 'bg-[var(--ss-brand)]'}`}
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -487,9 +487,9 @@ export function ClusterSettingsPanel() {
   }
 
   // ── レンダリング ──────────────────────────────────────────────────────────
-  const sectionCls = `${cardBg} border ${border} rounded-ss-md-ss-lg p-4 space-y-3`
+  const sectionCls = `${cardBg} border ${border} rounded-ss-lg p-4 space-y-3`
   const labelCls = `text-xs font-medium text-[var(--ss-t2)]`
-  const inputCls = `w-full text-sm px-2 py-1.5 rounded-ss-md-ss-md border ${border} bg-[var(--ss-surface-1)] text-[var(--ss-t1)] focus:outline-none focus:ring-2 focus:ring-[var(--ss-focus-ring)]`
+  const inputCls = `w-full text-sm px-2 py-1.5 rounded-ss-md border ${border} bg-[var(--ss-surface-1)] text-[var(--ss-t1)] focus:outline-none focus:ring-2 focus:ring-[var(--ss-focus-ring)]`
 
   if (cfgLoading) {
     return <div className="flex justify-center py-12"><MIcon name="progress_activity" className="animate-spin text-[var(--ss-brand)]" /></div>
@@ -504,7 +504,7 @@ export function ClusterSettingsPanel() {
       {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
       {/* HERO: Ray ステータス + 主要アクション                                  */}
       {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-      <section className={`${cardBg} border ${border} rounded-ss-md-ss-lg p-4 space-y-3`}>
+      <section className={`${cardBg} border ${border} rounded-ss-lg p-4 space-y-3`}>
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className={`w-3 h-3 rounded-ss-md-full shrink-0 ${
@@ -531,7 +531,7 @@ export function ClusterSettingsPanel() {
               <button
                 onClick={() => rayStopMutation.mutate()}
                 disabled={rayStopMutation.isPending}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-ss-md-ss-md bg-[var(--ss-danger)] hover:bg-[var(--ss-danger)] text-white disabled:opacity-50"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-ss-md bg-[var(--ss-danger)] hover:bg-[var(--ss-danger)] text-white disabled:opacity-50"
               >
                 {rayStopMutation.isPending ? <MIcon name="progress_activity" size={11} className="animate-spin" /> : <MIcon name="crop_square" size={11} />}
                 {t('auto.ClusterSettingsPanel.stop')}
@@ -540,7 +540,7 @@ export function ClusterSettingsPanel() {
               <button
                 onClick={startRayHead}
                 disabled={startHeadLoading || needsIp}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-ss-md-ss-md bg-[var(--ss-success)] hover:bg-[var(--ss-success)] text-white disabled:opacity-40"
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-ss-md bg-[var(--ss-success)] hover:bg-[var(--ss-success)] text-white disabled:opacity-40"
               >
                 {startHeadLoading ? <MIcon name="progress_activity" size={13} className="animate-spin" /> : <MIcon name="play_arrow" size={13} />}
                 {t('auto.ClusterSettingsPanel.ray_start')}
@@ -563,7 +563,7 @@ export function ClusterSettingsPanel() {
                 <button
                   key={iface.name}
                   onClick={() => updateNetwork('primary_ip', iface.ip)}
-                  className={`flex items-center gap-1.5 px-2 py-1 rounded-ss-md-ss-md text-xs border ${border} hover:border-[var(--ss-brand)] font-mono`}
+                  className={`flex items-center gap-1.5 px-2 py-1 rounded-ss-md text-xs border ${border} hover:border-[var(--ss-brand)] font-mono`}
                 >
                   {iface.ip} <span className={`opacity-60 font-sans`}>{iface.name}</span>
                 </button>
@@ -584,7 +584,7 @@ export function ClusterSettingsPanel() {
             {workers.map((w, i) => {
               const pr = pingResults[i]
               return (
-                <div key={i} className={`flex items-center gap-1.5 px-2 py-1 rounded-ss-md-ss-md text-xs border ${border}`}>
+                <div key={i} className={`flex items-center gap-1.5 px-2 py-1 rounded-ss-md text-xs border ${border}`}>
                   <div className={`w-1.5 h-1.5 rounded-ss-md-full ${
                     pr && pr !== 'loading' && pr.reachable ? 'bg-[var(--ss-success)]' : 'bg-[var(--ss-t3)]'
                   }`} />
@@ -637,13 +637,13 @@ export function ClusterSettingsPanel() {
       {/* K10 参加セクション (Ray起動後のみ表示)                                 */}
       {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
       {cfg.mode === 'primary' && (rayRunning || workerCmds.length > 0) && cfg.network?.primary_ip && (
-        <section className={`${cardBg} border ${border} rounded-ss-md-ss-lg p-4 space-y-3`}>
+        <section className={`${cardBg} border ${border} rounded-ss-lg p-4 space-y-3`}>
           <h3 className={`text-sm font-semibold text-[var(--ss-t1)]`}>
             {t('auto.ClusterSettingsPanel.join_worker')}
           </h3>
 
           {/* irm ワンライナー */}
-          <div className={`p-3 rounded-ss-md-ss-md border ${border} bg-[var(--ss-brand-tint)]`}>
+          <div className={`p-3 rounded-ss-md border ${border} bg-[var(--ss-brand-tint)]`}>
             <p className={`text-[11px] font-medium mb-1.5 text-[var(--ss-brand)]`}>
               {t('auto.ClusterSettingsPanel.k10_oneliner')}
             </p>
@@ -663,7 +663,7 @@ export function ClusterSettingsPanel() {
           {/* SSH実行 (ワーカーコマンド生成後) */}
           {workerCmds.length > 0 && (
             <div className="space-y-2">
-              <div className={`flex items-center gap-2 p-2 rounded-ss-md-ss-md border ${border}`}>
+              <div className={`flex items-center gap-2 p-2 rounded-ss-md border ${border}`}>
                 <span className={`text-[11px] text-[var(--ss-t2)] shrink-0`}>{t('auto.ClusterSettingsPanel.ssh')}</span>
                 <input className={`${inputCls} w-28 text-[11px]`} placeholder={t('auto.ClusterSettingsPanel.k8')}
                   value={sshUser} onChange={e => setSshUser(e.target.value)} />
@@ -672,7 +672,7 @@ export function ClusterSettingsPanel() {
               </div>
               {workerCmds.map((w, idx) => (
                 <div key={w.ip}>
-                  <div className={`flex items-center gap-2 p-2 rounded-ss-md-ss-md border ${border} bg-[var(--ss-surface-2)]`}>
+                  <div className={`flex items-center gap-2 p-2 rounded-ss-md border ${border} bg-[var(--ss-surface-2)]`}>
                     <span className={`text-[11px] text-[var(--ss-t2)] shrink-0`}>{w.label}</span>
                     <code className="text-[11px] font-mono flex-1 break-all text-[var(--ss-good)]">{w.cmd}</code>
                     <button onClick={() => copyCmd(w.cmd, idx)} className={`shrink-0 text-[var(--ss-t2)] hover:text-[var(--ss-t1)]`}>
@@ -681,7 +681,7 @@ export function ClusterSettingsPanel() {
                     <button
                       onClick={() => remoteRayJoin(w.ip, idx)}
                       disabled={remoteJoinLoading[idx]}
-                      className="shrink-0 flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-ss-md-ss-md bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white disabled:opacity-50"
+                      className="shrink-0 flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-ss-md bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white disabled:opacity-50"
                     >
                       {remoteJoinLoading[idx] ? <MIcon name="progress_activity" size={10} className="animate-spin" /> : <MIcon name="play_arrow" size={10} />}
                       {t('auto.ClusterSettingsPanel.ssh_exec')}
@@ -702,7 +702,7 @@ export function ClusterSettingsPanel() {
       {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
       {/* 詳細設定 (折りたたみ)                                                  */}
       {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-      <div className={`${cardBg} border ${border} rounded-ss-md-ss-lg overflow-hidden`}>
+      <div className={`${cardBg} border ${border} rounded-ss-lg overflow-hidden`}>
         <button
           onClick={() => setShowAdvanced(v => { const next = !v; localStorage.setItem('cluster_showAdvanced', next ? '1' : '0'); return next })}
           className={`w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)] transition-colors`}
@@ -727,7 +727,7 @@ export function ClusterSettingsPanel() {
             <button
               key={m}
               onClick={() => setCfg(c => ({ ...c, mode: m }))}
-              className={`px-3 py-1.5 rounded-ss-md-ss-md text-sm border transition-colors ${
+              className={`px-3 py-1.5 rounded-ss-md text-sm border transition-colors ${
                 cfg.mode === m
                   ? 'border-[var(--ss-brand)] bg-[var(--ss-brand)] text-white'
                   : `border-[var(--ss-border)] text-[var(--ss-t2)] hover:border-[var(--ss-brand)]`
@@ -813,7 +813,7 @@ export function ClusterSettingsPanel() {
             const detectErr = detectErrors[i]
             const rayRunning = status?.ray.status === 'running'
             return (
-              <div key={i} className={`flex flex-col gap-1.5 p-2 rounded-ss-md-ss-md border ${border}`}>
+              <div key={i} className={`flex flex-col gap-1.5 p-2 rounded-ss-md border ${border}`}>
                 <div className="flex items-center gap-2">
                   <input
                     className={`${inputCls} w-16`}
@@ -880,7 +880,7 @@ export function ClusterSettingsPanel() {
                     <button
                       onClick={() => detectWorkerHardware(w.ip, i)}
                       disabled={detecting || !w.ip}
-                      className="flex items-center gap-1 px-2 py-1 text-[11px] rounded-ss-md-ss-md bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white disabled:opacity-50 shrink-0"
+                      className="flex items-center gap-1 px-2 py-1 text-[11px] rounded-ss-md bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white disabled:opacity-50 shrink-0"
                       title={t('cluster.detect_hardware')}
                     >
                       {detecting
@@ -898,7 +898,7 @@ export function ClusterSettingsPanel() {
                   <button
                     onClick={() => wakeWorker(w.ip, i)}
                     disabled={wakeLoading[i] || !w.ip}
-                    className="flex items-center gap-1 px-2 py-1 text-[11px] rounded-ss-md-ss-md bg-[var(--ss-warn)] hover:bg-[var(--ss-warn)] text-white disabled:opacity-50 shrink-0"
+                    className="flex items-center gap-1 px-2 py-1 text-[11px] rounded-ss-md bg-[var(--ss-warn)] hover:bg-[var(--ss-warn)] text-white disabled:opacity-50 shrink-0"
                     title={t('auto.ClusterSettingsPanel.k5')}
                   >
                     {wakeLoading[i] ? <MIcon name="progress_activity" size={11} className="animate-spin" /> : <MIcon name="power_settings_new" size={11} />}
@@ -907,7 +907,7 @@ export function ClusterSettingsPanel() {
                   <button
                     onClick={() => disableWorkerSleep(w.ip, i)}
                     disabled={sleepDisableLoading[i] || !w.ip}
-                    className="flex items-center gap-1 px-2 py-1 text-[11px] rounded-ss-md-ss-md bg-[var(--ss-t2)] hover:bg-[var(--ss-t1)] text-white disabled:opacity-50 shrink-0"
+                    className="flex items-center gap-1 px-2 py-1 text-[11px] rounded-ss-md bg-[var(--ss-t2)] hover:bg-[var(--ss-t1)] text-white disabled:opacity-50 shrink-0"
                     title={t('auto.ClusterSettingsPanel.k6')}
                   >
                     {sleepDisableLoading[i] ? <MIcon name="progress_activity" size={11} className="animate-spin" /> : <MIcon name="dark_mode" size={11} />}
@@ -916,7 +916,7 @@ export function ClusterSettingsPanel() {
                   <button
                     onClick={() => restartWorkerRay(w.ip, i)}
                     disabled={rayRestartLoading[i] || !w.ip}
-                    className="flex items-center gap-1 px-2 py-1 text-[11px] rounded-ss-md-ss-md bg-[var(--ss-success)] hover:bg-[var(--ss-success)] text-white disabled:opacity-50 shrink-0"
+                    className="flex items-center gap-1 px-2 py-1 text-[11px] rounded-ss-md bg-[var(--ss-success)] hover:bg-[var(--ss-success)] text-white disabled:opacity-50 shrink-0"
                     title={t('auto.ClusterSettingsPanel.k7')}
                   >
                     {rayRestartLoading[i] ? <MIcon name="progress_activity" size={11} className="animate-spin" /> : <MIcon name="play_arrow" size={11} />}

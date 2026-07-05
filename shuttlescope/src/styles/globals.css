@@ -83,12 +83,12 @@ html[data-theme="light"] {
 
   --ss-text-primary:  #1a2028;   /* = v2 --ss-t1 */
   --ss-text-secondary:#55606e;   /* = v2 --ss-t2 */
-  --ss-text-muted:    #8892a0;   /* = v2 --ss-t3 */
+  --ss-text-muted:    #6f7887;   /* v2 --ss-t3: 旧#8892a0は薄地で2.8止まり(AA未満)→濃くして可読性確保 */
   --ss-text-disabled: #a7afb9;
 
   --ss-t1: #1a2028;
   --ss-t2: #55606e;
-  --ss-t3: #8892a0;
+  --ss-t3: #6f7887;
 
   --ss-border-default:#e3e7ec;   /* = v2 --ss-border */
   --ss-border-strong: #c9d1db;
@@ -736,7 +736,7 @@ html[data-theme="light"] .text-gray-100 { color: #1a2028 !important; }
 html[data-theme="light"] .text-gray-200 { color: #1a2028 !important; }
 html[data-theme="light"] .text-gray-300 { color: #55606e !important; }
 html[data-theme="light"] .text-gray-400 { color: #55606e !important; }
-html[data-theme="light"] .text-gray-500 { color: #8892a0 !important; }
+html[data-theme="light"] .text-gray-500 { color: #6f7887 !important; }
 
 /* 飽和色 (rose/blue/slate-700 等) 背景の上に乗る白文字/白アイコンは、ライト
    モードでも白を維持する。上の「.text-white→濃色化」が色付きボタンや青バブルの
@@ -798,6 +798,12 @@ html[data-theme="light"] [class*="bg-[var(--ss-emphasis"].text-white,
 html[data-theme="light"] [class*="bg-[var(--ss-emphasis"] .text-white,
 html[data-theme="light"] [class*="bg-[var(--ss-danger-text"].text-white,
 html[data-theme="light"] [class*="bg-[var(--ss-danger-text"] .text-white,
+/* インク色 (t1/t2) を塗りに使う暗色ピル/スクリムも白文字を維持
+ * (ライトモードでも t1=#1a2028, t2=#55606e は暗いので白が正しい)。 */
+html[data-theme="light"] [class*="bg-[var(--ss-t1)"].text-white,
+html[data-theme="light"] [class*="bg-[var(--ss-t1)"] .text-white,
+html[data-theme="light"] [class*="bg-[var(--ss-t2)"].text-white,
+html[data-theme="light"] [class*="bg-[var(--ss-t2)"] .text-white,
 html[data-theme="light"] .bg-blue-400.text-white,
 html[data-theme="light"] .bg-blue-500.text-white,
 html[data-theme="light"] .bg-blue-600.text-white,
