@@ -29,7 +29,7 @@ export function PreMatchQuestionnaire({ playerId, measuredAt, matchId, isLight, 
   )
   const complete = answered >= totalQuestions && totalQuestions > 0
 
-  const labelMuted = isLight ? 'text-xs text-gray-600' : 'text-xs text-gray-400'
+  const labelMuted = 'text-xs text-[var(--ss-t2)]'
   const pct = totalQuestions ? Math.round((answered / totalQuestions) * 100) : 0
 
   const handleSubmit = async () => {
@@ -61,16 +61,16 @@ export function PreMatchQuestionnaire({ playerId, measuredAt, matchId, isLight, 
   return (
     <div className="space-y-4 max-w-3xl">
       <div>
-        <h2 className="text-base font-semibold">{t('condition.prematch.title')}</h2>
+        <h2 className="text-base font-semibold text-[var(--ss-t1)]">{t('condition.prematch.title')}</h2>
         <p className={labelMuted}>{t('condition.prematch.intro')}</p>
       </div>
 
-      <div className={`sticky top-0 z-10 ${isLight ? 'bg-gray-50' : 'bg-gray-900'} py-2`}>
+      <div className="sticky top-0 z-10 bg-[var(--ss-bg-app)] py-2">
         <div className="flex items-center gap-3">
-          <div className="flex-1 h-2 bg-gray-700/30 rounded overflow-hidden">
-            <div className="h-full bg-blue-500 transition-all" style={{ width: `${pct}%` }} />
+          <div className="flex-1 h-2 bg-[var(--ss-surface-3)] rounded-ss-sm overflow-hidden">
+            <div className="h-full bg-[var(--ss-brand)] transition-all duration-base ease-out" style={{ width: `${pct}%` }} />
           </div>
-          <div className="text-xs whitespace-nowrap">
+          <div className="text-xs whitespace-nowrap text-[var(--ss-t2)] ss-num">
             {t('condition.prematch.progress', { n: answered, total: totalQuestions })}
           </div>
         </div>
@@ -84,7 +84,7 @@ export function PreMatchQuestionnaire({ playerId, measuredAt, matchId, isLight, 
       />
 
       {errorMsg && (
-        <div className="text-sm text-red-500 bg-red-500/10 border border-red-500/30 rounded px-3 py-2">
+        <div className="text-sm bg-[var(--ss-danger-bg)] text-[var(--ss-danger-text)] border border-[var(--ss-danger-border)] rounded-ss-md px-3 py-2">
           {errorMsg}
         </div>
       )}
@@ -93,7 +93,7 @@ export function PreMatchQuestionnaire({ playerId, measuredAt, matchId, isLight, 
         <button
           onClick={handleSubmit}
           disabled={mut.isPending || !complete}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded text-sm font-medium"
+          className="px-4 py-2 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-50 text-white rounded-ss-md text-sm font-medium transition-colors duration-fast ease-out"
         >
           {mut.isPending ? '...' : t('condition.prematch.submit')}
         </button>

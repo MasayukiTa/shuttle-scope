@@ -178,8 +178,8 @@ export function RoiRectOverlay({ value, onChange, editing, containerRef }: Props
             top:    `${draft.y * 100}%`,
             width:  `${draft.w * 100}%`,
             height: `${draft.h * 100}%`,
-            border: '2px dashed #f59e0b',
-            background: 'rgba(245,158,11,0.07)',
+            border: '2px dashed rgba(234,88,12,0.6)',
+            background: 'rgba(234,88,12,0.08)',
           }}
         />
       )}
@@ -194,18 +194,19 @@ export function RoiRectOverlay({ value, onChange, editing, containerRef }: Props
           >
             <polygon
               points={svgPolyPoints}
-              fill="rgba(245,158,11,0.08)"
-              stroke="#f59e0b"
+              fill="rgba(234,88,12,0.08)"
+              stroke="rgba(234,88,12,0.6)"
               strokeWidth={1.5}
             />
           </svg>
 
           {/* ラベル（TL コーナー基準・白文字） */}
           <div
-            className="absolute text-[10px] bg-amber-500 px-1 leading-4 rounded-br select-none"
+            className="absolute text-[10px] px-1 leading-4 rounded-br select-none"
             style={{
               left: `${corners[0].x * 100}%`,
               top:  `${corners[0].y * 100}%`,
+              backgroundColor: 'rgba(234,88,12,0.8)',
               color: '#fff',
               pointerEvents: 'none',
               zIndex: 31,
@@ -216,11 +217,12 @@ export function RoiRectOverlay({ value, onChange, editing, containerRef }: Props
 
           {/* × ボタン（TR コーナー右上・白文字） */}
           <button
-            className="absolute bg-amber-500 text-white p-0.5 rounded-bl hover:bg-amber-400 transition-colors"
+            className="absolute text-white p-0.5 rounded-bl hover:opacity-80 transition-colors"
             style={{
               left:      `${corners[1].x * 100}%`,
               top:       `${corners[1].y * 100}%`,
               transform: 'translate(-100%, 0)',
+              backgroundColor: 'rgba(234,88,12,0.8)',
               pointerEvents: 'auto',
               zIndex: 31,
             }}
@@ -234,12 +236,13 @@ export function RoiRectOverlay({ value, onChange, editing, containerRef }: Props
           {corners.map((c, i) => (
             <div
               key={i}
-              className="absolute w-3.5 h-3.5 rounded-full bg-amber-400 border-2 border-white shadow"
+              className="absolute w-3.5 h-3.5 rounded-full border-2 border-white shadow"
               style={{
                 left:      `${c.x * 100}%`,
                 top:       `${c.y * 100}%`,
                 transform: 'translate(-50%, -50%)',
                 cursor:    'grab',
+                backgroundColor: 'rgba(234,88,12,0.8)',
                 pointerEvents: 'auto',
                 zIndex: 31,
               }}
@@ -258,8 +261,8 @@ export function RoiRectOverlay({ value, onChange, editing, containerRef }: Props
       {editing && !draft && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <span
-            className="bg-black/70 text-xs px-3 py-1.5 rounded-full"
-            style={{ color: '#ffffff', fontWeight: 500 }}
+            className="text-xs px-3 py-1.5 rounded-ss-sm"
+            style={{ backgroundColor: 'rgba(0,0,0,0.7)', color: '#ffffff', fontWeight: 500 }}
           >
             {t('auto.RoiRectOverlay.drag_hint')}
           </span>

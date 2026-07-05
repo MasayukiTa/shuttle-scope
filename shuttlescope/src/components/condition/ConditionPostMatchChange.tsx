@@ -122,12 +122,12 @@ export function ConditionPostMatchChange({ playerId, isLight }: Props) {
       .filter((x): x is NonNullable<typeof x> => x != null)
   }, [matches, records])
 
-  const panelBg = isLight ? 'bg-white' : 'bg-gray-800'
-  const borderColor = isLight ? 'border-gray-200' : 'border-gray-700'
-  const textMuted = isLight ? 'text-gray-500' : 'text-gray-400'
-  const textBase = isLight ? 'text-gray-900' : 'text-gray-100'
+  const panelBg = 'bg-[var(--ss-surface-1)]'
+  const borderColor = 'border-[var(--ss-border)]'
+  const textMuted = 'text-[var(--ss-t3)]'
+  const textBase = 'text-[var(--ss-t1)]'
 
-  // プロジェクト色規約: 良い=青, 悪い=赤
+  // プロジェクト色規約: 良い=青, 悪い=赤 (データ系列色 = 変更禁止)
   const posColor = '#3b82f6'
   const negColor = '#ef4444'
 
@@ -139,7 +139,7 @@ export function ConditionPostMatchChange({ playerId, isLight }: Props) {
 
   return (
     <RoleGuard allowedRoles={['analyst', 'coach']} fallback={null}>
-      <section className={`rounded-lg border ${borderColor} ${panelBg} p-4`}>
+      <section className={`rounded-ss-lg border ${borderColor} ${panelBg} p-4`}>
         <button
           onClick={() => setExpanded((v) => !v)}
           className="w-full flex items-center justify-between gap-2 mb-1 text-left"
@@ -178,9 +178,7 @@ export function ConditionPostMatchChange({ playerId, isLight }: Props) {
               </label>
               <select
                 className={
-                  isLight
-                    ? 'border border-gray-300 bg-white text-gray-900 rounded px-2 py-1 text-xs'
-                    : 'border border-gray-600 bg-gray-800 text-white rounded px-2 py-1 text-xs'
+                  'border border-[var(--ss-border-strong)] bg-[var(--ss-surface-1)] text-[var(--ss-t1)] rounded-ss-md px-2 py-1 text-xs'
                 }
                 value={selectedMatchId == null ? '' : String(selectedMatchId)}
                 onChange={(e) => {
@@ -219,7 +217,7 @@ export function ConditionPostMatchChange({ playerId, isLight }: Props) {
               return (
                 <div
                   key={row.match.id}
-                  className={`rounded border ${borderColor} p-3`}
+                  className={`rounded-ss-md border ${borderColor} p-3`}
                 >
                   <div
                     className={`flex flex-wrap items-baseline justify-between gap-2 mb-2`}
@@ -246,30 +244,31 @@ export function ConditionPostMatchChange({ playerId, isLight }: Props) {
                       >
                         <CartesianGrid
                           strokeDasharray="3 3"
-                          stroke={isLight ? '#e5e7eb' : '#374151'}
+                          stroke={'var(--ss-border)'}
                         />
                         <XAxis
                           dataKey="metric"
                           tick={{
-                            fill: isLight ? '#374151' : '#9ca3af',
+                            fill: 'var(--ss-t3)',
                             fontSize: 11,
                           }}
                         />
                         <YAxis
                           tick={{
-                            fill: isLight ? '#374151' : '#9ca3af',
+                            fill: 'var(--ss-t3)',
                             fontSize: 11,
                           }}
                         />
                         <ReferenceLine
                           y={0}
-                          stroke={isLight ? '#9ca3af' : '#6b7280'}
+                          stroke={'var(--ss-border-strong)'}
                         />
                         <Tooltip
                           contentStyle={{
-                            backgroundColor: isLight ? '#ffffff' : '#1f2937',
-                            border: `1px solid ${isLight ? '#e5e7eb' : '#374151'}`,
+                            backgroundColor: 'var(--ss-surface-1)',
+                            border: `1px solid var(--ss-border)`,
                             fontSize: 12,
+                            borderRadius: 6,
                           }}
                           formatter={(
                             _value: unknown,

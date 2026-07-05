@@ -75,24 +75,24 @@ export function TargetSelector({
   return (
     <div className="space-y-3">
       {/* ターゲット選択 */}
-      <p className="text-xs font-medium text-gray-400">{t('benchmark.select_targets')}</p>
+      <p className="text-xs font-medium text-[var(--ss-t2)]">{t('benchmark.select_targets')}</p>
       <div className="flex flex-wrap gap-2">
         {ALL_TARGETS.map((target) => {
           const checked = selected.includes(target)
           return (
             <label
               key={target}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded border text-xs cursor-pointer transition-colors ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-ss-md border text-xs cursor-pointer transition-colors ${
                 checked
-                  ? 'border-blue-500 bg-blue-600 text-white'
-                  : 'border-gray-600 bg-gray-800/40 text-gray-300 hover:border-gray-500'
+                  ? 'border-[var(--ss-brand)] bg-[var(--ss-brand)] text-white'
+                  : 'border-[var(--ss-border)] bg-[var(--ss-surface-2)] text-[var(--ss-t2)] hover:border-[var(--ss-brand)]'
               }`}
             >
               <input
                 type="checkbox"
                 checked={checked}
                 onChange={() => toggleTarget(target)}
-                className="accent-blue-500"
+                className="accent-[var(--ss-brand)]"
               />
               {t(`benchmark.targets.${target}`)}
             </label>
@@ -103,7 +103,7 @@ export function TargetSelector({
       {/* n_frames スライダー */}
       <div className="space-y-1.5">
         <div className="flex items-center justify-between gap-3 text-xs">
-          <span className="text-gray-400 shrink-0">{t('auto.TargetSelector.k1')}</span>
+          <span className="text-[var(--ss-t2)] shrink-0">{t('auto.TargetSelector.k1')}</span>
           <div className="flex items-center gap-1.5 ml-auto">
             {/* 数値直接入力 */}
             <input
@@ -112,9 +112,9 @@ export function TargetSelector({
               max={MAX_FRAMES}
               value={displayValue}
               onChange={(e) => handleNumberInput(e.target.value)}
-              className="w-16 bg-gray-700 border border-gray-600 rounded px-2 py-0.5 text-xs font-mono text-blue-300 text-right focus:outline-none focus:border-blue-500"
+              className="w-16 bg-[var(--ss-surface-2)] border border-[var(--ss-border)] rounded-ss-md px-2 py-0.5 text-xs font-mono ss-num text-[var(--ss-brand)] text-right focus:outline-none focus:border-[var(--ss-brand)]"
             />
-            <span className="text-gray-500">{t('auto.TargetSelector.frames')}</span>
+            <span className="text-[var(--ss-t3)]">{t('auto.TargetSelector.frames')}</span>
           </div>
         </div>
 
@@ -132,7 +132,7 @@ export function TargetSelector({
             onMouseUp={(e) => handleSliderCommit(Number((e.target as HTMLInputElement).value))}
             onTouchEnd={(e) => handleSliderCommit(Number((e.target as HTMLInputElement).value))}
             onKeyUp={(e) => handleSliderCommit(Number((e.target as HTMLInputElement).value))}
-            className="w-full accent-blue-500"
+            className="w-full accent-[var(--ss-brand)]"
           />
           {/* 目盛りライン */}
           <div className="flex justify-between mt-0.5 px-0.5">
@@ -142,8 +142,8 @@ export function TargetSelector({
                 className="flex flex-col items-center"
                 style={{ width: 0, position: 'relative' }}
               >
-                <div className="w-px h-1.5 bg-gray-600" />
-                <span className="text-[9px] text-gray-600 absolute top-2 -translate-x-1/2">{v}</span>
+                <div className="w-px h-1.5 bg-[var(--ss-border)]" />
+                <span className="text-[9px] text-[var(--ss-t3)] absolute top-2 -translate-x-1/2">{v}</span>
               </div>
             ))}
           </div>
@@ -151,11 +151,11 @@ export function TargetSelector({
 
         {/* ドラッグ中: 大きく現在値を表示 */}
         {dragging && (
-          <div className="text-center text-sm font-mono font-bold text-blue-300 tabular-nums">
+          <div className="text-center text-sm font-mono font-bold text-[var(--ss-brand)] ss-num">
             {t('auto.TargetSelector.frames_n', { n: displayValue })}
           </div>
         )}
-        <p className="text-[10px] text-gray-600">
+        <p className="text-[10px] text-[var(--ss-t3)]">
           {t('auto.TargetSelector.frame_hint')}
         </p>
       </div>

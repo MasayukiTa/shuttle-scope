@@ -422,10 +422,10 @@ export function CourtDiagram({
   return (
     <div className="flex flex-col items-center gap-1">
       {label && (
-        <span className="text-xs text-gray-400">{label}</span>
+        <span className="text-xs text-[var(--ss-t3)]">{label}</span>
       )}
-      {!showOOB && !isComposite && <span className="text-[10px] text-gray-500">{t('auto.CourtDiagram.k1')}</span>}
-      {isComposite && <span className="text-[10px] text-gray-500">{t('auto.CourtDiagram.k2')}</span>}
+      {!showOOB && !isComposite && <span className="text-[10px] text-[var(--ss-t3)]">{t('auto.CourtDiagram.k1')}</span>}
+      {isComposite && <span className="text-[10px] text-[var(--ss-t3)]">{t('auto.CourtDiagram.k2')}</span>}
       <svg
         viewBox={`${vbLeft} ${vbTop} ${vbWidth} ${vbHeight}`}
         style={

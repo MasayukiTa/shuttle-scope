@@ -122,15 +122,15 @@ export function SessionShareModal({
     }
   }
 
-  const panelBg = isLight ? 'bg-white border border-gray-200 shadow-xl' : 'bg-gray-800 border border-gray-700 shadow-2xl'
-  const titleColor = isLight ? 'text-gray-900' : 'text-white'
-  const subColor = isLight ? 'text-gray-500' : 'text-gray-400'
-  const codeColor = isLight ? 'text-blue-600' : 'text-blue-300'
-  const urlBg = isLight ? 'bg-gray-100' : 'bg-gray-900/60'
-  const urlColor = isLight ? 'text-gray-600' : 'text-gray-400'
-  const noteColor = isLight ? 'text-gray-400' : 'text-gray-600'
-  const dividerColor = isLight ? 'border-gray-200' : 'border-gray-700'
-  const sectionTitle = isLight ? 'text-gray-700 font-medium' : 'text-gray-300 font-medium'
+  const panelBg = 'bg-[var(--ss-surface-1)] border border-[var(--ss-border)] shadow-[var(--e3)]'
+  const titleColor = 'text-[var(--ss-t1)]'
+  const subColor = 'text-[var(--ss-t3)]'
+  const codeColor = 'text-[var(--ss-brand)]'
+  const urlBg = 'bg-[var(--ss-surface-2)]'
+  const urlColor = 'text-[var(--ss-t2)]'
+  const noteColor = 'text-[var(--ss-t3)]'
+  const dividerColor = 'border-[var(--ss-border)]'
+  const sectionTitle = 'text-[var(--ss-t2)] font-medium'
 
   // Escape で閉じる (backdrop クリックに加えキーボードでも dismiss できるように)。
   useEffect(() => {
@@ -147,7 +147,7 @@ export function SessionShareModal({
       onClick={onClose}
     >
       <div
-        className={`rounded-xl w-80 p-5 max-h-[90vh] overflow-y-auto ${panelBg}`}
+        className={`rounded-ss-lg w-80 p-5 max-h-[90vh] overflow-y-auto ${panelBg}`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* ヘッダー */}
@@ -159,7 +159,7 @@ export function SessionShareModal({
               <span className={`font-mono font-bold ${codeColor}`}>{sessionCode}</span>
             </p>
           </div>
-          <button onClick={onClose} className={`${subColor} hover:${titleColor}`}>
+          <button onClick={onClose} className={`${subColor} hover:text-[var(--ss-t1)] transition-colors duration-fast ease-out`}>
             <MIcon name="close" size={16} />
           </button>
         </div>
@@ -167,7 +167,7 @@ export function SessionShareModal({
         {/* ─── コーチ URL / QR ─────────────────── */}
         <p className={`text-xs mb-2 ${sectionTitle}`}>{t('lan_session.share_modal_coach_view')}</p>
         {coachUrl ? (
-          <div className="flex justify-center mb-3 bg-slate-100 rounded-lg p-2">
+          <div className="flex justify-center mb-3 bg-[var(--ss-surface-2)] rounded-ss-md p-2">
             <canvas ref={canvasRef} />
           </div>
         ) : (
@@ -175,12 +175,12 @@ export function SessionShareModal({
         )}
         {coachUrl && (
           <div className="flex items-center gap-1.5 mb-2">
-            <p className={`flex-1 text-[10px] font-mono truncate rounded px-2 py-1 ${urlBg} ${urlColor}`}>
+            <p className={`flex-1 text-[10px] font-mono truncate rounded-ss-sm px-2 py-1 ${urlBg} ${urlColor}`}>
               {coachUrl}
             </p>
             <button
               onClick={() => handleCopy(coachUrl, setCopied)}
-              className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-blue-600 hover:bg-blue-500 text-white whitespace-nowrap"
+              className="flex items-center gap-1 px-2 py-1 rounded-ss-md text-xs bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white whitespace-nowrap transition-colors duration-fast ease-out"
             >
               {copied ? <MIcon name="check" size={12} /> : <MIcon name="content_copy" size={12} />}
               {copied ? t('lan_session.share_modal_copied') : t('lan_session.password_copy')}
@@ -195,7 +195,7 @@ export function SessionShareModal({
               href={localCoachUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className={`flex-1 text-[10px] font-mono truncate rounded px-2 py-1 ${urlBg} text-blue-400 hover:text-blue-300`}
+              className={`flex-1 text-[10px] font-mono truncate rounded-ss-sm px-2 py-1 ${urlBg} text-[var(--ss-brand)] hover:text-[var(--ss-brand-hover)] transition-colors duration-fast ease-out`}
             >
               {localCoachUrl}
             </a>
@@ -206,7 +206,7 @@ export function SessionShareModal({
         <div className={`border-t pt-4 mb-4 ${dividerColor}`}>
           <p className={`text-xs mb-2 ${sectionTitle}`}>{t('lan_session.password_label')}</p>
           <div className="flex items-center gap-1.5">
-            <div className={`flex-1 flex items-center gap-1 rounded px-2 py-1 ${urlBg}`}>
+            <div className={`flex-1 flex items-center gap-1 rounded-ss-sm px-2 py-1 ${urlBg}`}>
               <span className={`flex-1 text-xs font-mono ${urlColor}`}>
                 {sessionPassword
                   ? showPassword ? sessionPassword : '••••••••'
@@ -216,7 +216,7 @@ export function SessionShareModal({
               {sessionPassword && (
                 <button
                   onClick={() => setShowPassword((v) => !v)}
-                  className={`${subColor} hover:${titleColor}`}
+                  className={`${subColor} hover:text-[var(--ss-t1)] transition-colors duration-fast ease-out`}
                 >
                   {showPassword ? <MIcon name="visibility_off" size={12} /> : <MIcon name="visibility" size={12} />}
                 </button>
@@ -225,7 +225,7 @@ export function SessionShareModal({
             {sessionPassword && (
               <button
                 onClick={() => handleCopy(sessionPassword, setPasswordCopied)}
-                className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-blue-600 hover:bg-blue-500 text-white whitespace-nowrap"
+                className="flex items-center gap-1 px-2 py-1 rounded-ss-md text-xs bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white whitespace-nowrap transition-colors duration-fast ease-out"
               >
                 {passwordCopied ? <MIcon name="check" size={12} /> : <MIcon name="content_copy" size={12} />}
                 {passwordCopied ? t('lan_session.share_modal_copied') : t('lan_session.password_copy')}
@@ -234,7 +234,7 @@ export function SessionShareModal({
             <button
               onClick={handleRegeneratePassword}
               disabled={regenerating}
-              className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-amber-600 hover:bg-amber-500 text-white whitespace-nowrap disabled:opacity-50"
+              className="flex items-center gap-1 px-2 py-1 rounded-ss-md text-xs bg-[var(--ss-warn)] hover:opacity-90 text-white whitespace-nowrap disabled:opacity-50 transition-opacity duration-fast ease-out"
             >
               <MIcon name="refresh" size={12} className={regenerating ? 'animate-spin' : ''} />
               {t('lan_session.password_regenerate')}
@@ -252,16 +252,16 @@ export function SessionShareModal({
               <MIcon name="photo_camera" size={12} className={subColor} />
               <p className={`text-xs ${sectionTitle}`}>{t('lan_session.camera_sender_url_label')}</p>
             </div>
-            <div className="flex justify-center mb-3 bg-slate-100 rounded-lg p-2">
+            <div className="flex justify-center mb-3 bg-[var(--ss-surface-2)] rounded-ss-md p-2">
               <canvas ref={cameraCanvasRef} />
             </div>
             <div className="flex items-center gap-1.5">
-              <p className={`flex-1 text-[10px] font-mono truncate rounded px-2 py-1 ${urlBg} ${urlColor}`}>
+              <p className={`flex-1 text-[10px] font-mono truncate rounded-ss-sm px-2 py-1 ${urlBg} ${urlColor}`}>
                 {cameraUrlWithPwd || cameraUrl}
               </p>
               <button
                 onClick={() => handleCopy(cameraUrlWithPwd || cameraUrl, setCameraUrlCopied)}
-                className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-blue-600 hover:bg-blue-500 text-white whitespace-nowrap"
+                className="flex items-center gap-1 px-2 py-1 rounded-ss-md text-xs bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white whitespace-nowrap transition-colors duration-fast ease-out"
               >
                 {cameraUrlCopied ? <MIcon name="check" size={12} /> : <MIcon name="content_copy" size={12} />}
                 {cameraUrlCopied ? t('lan_session.share_modal_copied') : t('lan_session.password_copy')}
@@ -280,16 +280,16 @@ export function SessionShareModal({
               <MIcon name="monitor" size={12} className={subColor} />
               <p className={`text-xs ${sectionTitle}`}>{t('sharing.viewer_url_label')}</p>
             </div>
-            <div className="flex justify-center mb-3 bg-slate-100 rounded-lg p-2">
+            <div className="flex justify-center mb-3 bg-[var(--ss-surface-2)] rounded-ss-md p-2">
               <canvas ref={viewerCanvasRef} />
             </div>
             <div className="flex items-center gap-1.5">
-              <p className={`flex-1 text-[10px] font-mono truncate rounded px-2 py-1 ${urlBg} ${urlColor}`}>
+              <p className={`flex-1 text-[10px] font-mono truncate rounded-ss-sm px-2 py-1 ${urlBg} ${urlColor}`}>
                 {viewerUrlWithPwd || viewerUrl}
               </p>
               <button
                 onClick={() => handleCopy(viewerUrlWithPwd || viewerUrl, setViewerUrlCopied)}
-                className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-blue-600 hover:bg-blue-500 text-white whitespace-nowrap"
+                className="flex items-center gap-1 px-2 py-1 rounded-ss-md text-xs bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white whitespace-nowrap transition-colors duration-fast ease-out"
               >
                 {viewerUrlCopied ? <MIcon name="check" size={12} /> : <MIcon name="content_copy" size={12} />}
                 {viewerUrlCopied ? t('lan_session.share_modal_copied') : t('lan_session.password_copy')}

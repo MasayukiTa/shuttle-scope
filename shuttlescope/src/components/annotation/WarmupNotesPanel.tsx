@@ -22,10 +22,10 @@ import { MIcon } from '@/components/common/MIcon'
 
 // 信頼度ボタンスタイル（選択時は常に text-white で視認性を確保）
 const CONFIDENCE_STYLE: Record<WarmupConfidence, string> = {
-  unknown:   'bg-gray-600 text-white border-gray-500',
-  tentative: 'bg-yellow-700 text-white border-yellow-600',
-  likely:    'bg-orange-600 text-white border-orange-500',
-  confirmed: 'bg-blue-700 text-white border-blue-600',
+  unknown:   'bg-[var(--ss-t3)] text-white border-[var(--ss-t3)]',
+  tentative: 'bg-[var(--ss-warn)] text-white border-[var(--ss-warn)]',
+  likely:    'bg-[var(--ss-emphasis)] text-white border-[var(--ss-emphasis)]',
+  confirmed: 'bg-[var(--ss-brand)] text-white border-[var(--ss-brand)]',
 }
 
 const CONFIDENCE_LEVELS: WarmupConfidence[] = ['unknown', 'tentative', 'likely', 'confirmed']
@@ -317,16 +317,16 @@ export function WarmupNotesPanel({
       ]
 
   return (
-    <div className="border border-gray-700 bg-gray-800 rounded p-3 text-xs space-y-3">
+    <div className="border border-[var(--ss-border)] bg-[var(--ss-surface-1)] rounded-ss-lg shadow-card p-3 text-xs space-y-3">
       {/* ヘッダー */}
       <div className="flex items-center justify-between">
         <div>
-          <div className="text-gray-200 font-medium text-sm">{t('warmup.title')}</div>
-          <div className="text-gray-500 mt-0.5">{t('warmup.subtitle')}</div>
+          <div className="text-[var(--ss-t1)] font-medium text-sm">{t('warmup.title')}</div>
+          <div className="text-[var(--ss-t3)] mt-0.5">{t('warmup.subtitle')}</div>
         </div>
         <button
           onClick={onClose}
-          className="text-gray-500 hover:text-gray-300 text-lg leading-none px-1"
+          className="text-[var(--ss-t3)] hover:text-[var(--ss-t1)] text-lg leading-none px-1 transition-colors duration-fast ease-out"
           title={t('app.close')}
         >
           <MIcon name="close" size={18} />
@@ -335,7 +335,7 @@ export function WarmupNotesPanel({
 
       {/* ロック警告 */}
       {locked && (
-        <div className="text-gray-400 text-[11px] bg-gray-700 border border-gray-600 rounded px-2 py-1">
+        <div className="text-[var(--ss-t2)] text-[11px] bg-[var(--ss-surface-2)] border border-[var(--ss-border)] rounded-ss-sm px-2 py-1">
           {t('warmup.locked_hint_rally', 'ラリー進行中は変更できません')}
         </div>
       )}
@@ -349,10 +349,10 @@ export function WarmupNotesPanel({
                 key={key}
                 onClick={() => setActivePlayer(key)}
                 className={clsx(
-                  'flex-1 py-1 rounded text-[11px] font-medium transition-colors truncate px-1',
+                  'flex-1 py-1 rounded-ss-sm text-[11px] font-medium transition-colors duration-fast ease-out truncate px-1',
                   activePlayer === key
-                    ? 'bg-blue-700 text-white'
-                    : 'bg-gray-700 text-gray-400 hover:bg-gray-600',
+                    ? 'bg-[var(--ss-brand)] text-white'
+                    : 'bg-[var(--ss-surface-2)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-3)]',
                 )}
                 title={label}
               >
@@ -366,10 +366,10 @@ export function WarmupNotesPanel({
                 key={key}
                 onClick={() => setActivePlayer(key)}
                 className={clsx(
-                  'flex-1 py-1 rounded text-[11px] font-medium transition-colors truncate px-1',
+                  'flex-1 py-1 rounded-ss-sm text-[11px] font-medium transition-colors duration-fast ease-out truncate px-1',
                   activePlayer === key
-                    ? 'bg-orange-700 text-white'
-                    : 'bg-gray-700 text-gray-400 hover:bg-gray-600',
+                    ? 'bg-[var(--ss-emphasis)] text-white'
+                    : 'bg-[var(--ss-surface-2)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-3)]',
                 )}
                 title={label}
               >
@@ -377,7 +377,7 @@ export function WarmupNotesPanel({
               </button>
             ))}
           </div>
-          <div className="flex justify-between text-[9px] text-gray-600 px-0.5">
+          <div className="flex justify-between text-[9px] text-[var(--ss-t3)] px-0.5">
             <span>{t('warmup.team_a')}</span>
             <span>{t('warmup.team_b')}</span>
           </div>
@@ -389,10 +389,10 @@ export function WarmupNotesPanel({
               key={key}
               onClick={() => setActivePlayer(key)}
               className={clsx(
-                'flex-1 py-1.5 rounded text-xs font-medium transition-colors',
+                'flex-1 py-1.5 rounded-ss-sm text-xs font-medium transition-colors duration-fast ease-out',
                 activePlayer === key
-                  ? 'bg-gray-600 text-white'
-                  : 'bg-gray-700 text-gray-400 hover:bg-gray-600',
+                  ? 'bg-[var(--ss-brand)] text-white'
+                  : 'bg-[var(--ss-surface-2)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-3)]',
               )}
             >
               {label}
@@ -406,9 +406,9 @@ export function WarmupNotesPanel({
         {OBS_TYPES.map((def) => {
           const entry = currentObs[def.key]
           return (
-            <div key={def.key} className="bg-gray-700/30 rounded p-2 space-y-1.5">
+            <div key={def.key} className="bg-[var(--ss-surface-2)] rounded-ss-md p-2 space-y-1.5">
               {/* 項目名（1行目） */}
-              <span className="text-gray-300 font-medium text-[11px] block">
+              <span className="text-[var(--ss-t2)] font-medium text-[11px] block">
                 {t(`warmup.observation_${def.key}`)}
               </span>
               {/* 選択値ボタン + 確からしさボタン（同じ行で高さ揃え） */}
@@ -420,10 +420,10 @@ export function WarmupNotesPanel({
                       onClick={() => setField(def.key, entry.value === val ? '' : val)}
                       disabled={locked}
                       className={clsx(
-                        'px-2 py-1 rounded border text-[11px] transition-colors',
+                        'px-2 py-1 rounded-ss-sm border text-[11px] transition-colors duration-fast ease-out',
                         entry.value === val
-                          ? 'bg-gray-500 border-gray-400 text-white'
-                          : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600',
+                          ? 'bg-[var(--ss-t2)] border-[var(--ss-t2)] text-white'
+                          : 'bg-[var(--ss-surface-1)] border-[var(--ss-border-strong)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-3)]',
                         locked && 'cursor-not-allowed opacity-50',
                       )}
                     >
@@ -438,10 +438,10 @@ export function WarmupNotesPanel({
                       onClick={() => setConfidence(def.key, lvl)}
                       disabled={locked}
                       className={clsx(
-                        'px-1.5 py-1 rounded border text-[10px] transition-colors',
+                        'px-1.5 py-1 rounded-ss-sm border text-[10px] transition-colors duration-fast ease-out',
                         entry.confidence === lvl
                           ? CONFIDENCE_STYLE[lvl]
-                          : 'bg-gray-800 text-gray-600 border-gray-700 hover:text-gray-400',
+                          : 'bg-[var(--ss-surface-1)] text-[var(--ss-t3)] border-[var(--ss-border)] hover:text-[var(--ss-t2)]',
                         locked && 'cursor-not-allowed opacity-50',
                       )}
                       title={t(`warmup.confidence_${lvl}`)}
@@ -462,15 +462,15 @@ export function WarmupNotesPanel({
         const activeSelfObs = isPartnerA ? selfObsPartnerA : selfObs
         const setActiveSelfObs = isPartnerA ? setSelfObsPartnerA : setSelfObs
         return (
-          <div className="border-t border-gray-700/60 pt-3 space-y-2">
-            <div className="text-[11px] text-gray-400 font-medium">
+          <div className="border-t border-[var(--ss-border)] pt-3 space-y-2">
+            <div className="text-[11px] text-[var(--ss-t2)] font-medium">
               {t('warmup.self_condition_section', '自コンディション（任意）')}
             </div>
             {SELF_OBS_TYPES.map((def) => {
               const entry = activeSelfObs[def.key]
               return (
-                <div key={def.key} className="bg-gray-700/30 rounded p-2 space-y-1.5">
-                  <span className="text-gray-300 font-medium text-[11px] block">
+                <div key={def.key} className="bg-[var(--ss-surface-2)] rounded-ss-md p-2 space-y-1.5">
+                  <span className="text-[var(--ss-t2)] font-medium text-[11px] block">
                     {t(`warmup.observation_${def.key}`, def.key)}
                   </span>
                   <div className="flex items-center gap-2">
@@ -488,10 +488,10 @@ export function WarmupNotesPanel({
                           }}
                           disabled={locked}
                           className={clsx(
-                            'px-2 py-1 rounded border text-[11px] transition-colors',
+                            'px-2 py-1 rounded-ss-sm border text-[11px] transition-colors duration-fast ease-out',
                             entry.value === val
-                              ? 'bg-gray-500 border-gray-400 text-white'
-                              : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600',
+                              ? 'bg-[var(--ss-t2)] border-[var(--ss-t2)] text-white'
+                              : 'bg-[var(--ss-surface-1)] border-[var(--ss-border-strong)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-3)]',
                             locked && 'cursor-not-allowed opacity-50',
                           )}
                         >
@@ -513,10 +513,10 @@ export function WarmupNotesPanel({
                           }}
                           disabled={locked}
                           className={clsx(
-                            'px-1.5 py-1 rounded border text-[10px] transition-colors',
+                            'px-1.5 py-1 rounded-ss-sm border text-[10px] transition-colors duration-fast ease-out',
                             entry.confidence === lvl
                               ? CONFIDENCE_STYLE[lvl]
-                              : 'bg-gray-800 text-gray-600 border-gray-700 hover:text-gray-400',
+                              : 'bg-[var(--ss-surface-1)] text-[var(--ss-t3)] border-[var(--ss-border)] hover:text-[var(--ss-t2)]',
                             locked && 'cursor-not-allowed opacity-50',
                           )}
                           title={t(`warmup.confidence_${lvl}`)}
@@ -535,7 +535,7 @@ export function WarmupNotesPanel({
 
       {/* エラー */}
       {error && (
-        <div className="text-red-400 text-[11px]">{error}</div>
+        <div className="text-[var(--ss-bad)] text-[11px]">{error}</div>
       )}
 
       {/* 保存ボタン */}
@@ -545,10 +545,10 @@ export function WarmupNotesPanel({
             onClick={handleSave}
             disabled={saving || saved}
             className={clsx(
-              'flex-1 py-1.5 rounded text-xs font-medium transition-colors',
+              'flex-1 py-1.5 rounded-ss-md text-xs font-medium transition-colors duration-fast ease-out',
               saved
-                ? 'bg-gray-600 text-gray-300 cursor-default'
-                : 'bg-blue-700 hover:bg-blue-600 text-white',
+                ? 'bg-[var(--ss-surface-3)] text-[var(--ss-t2)] cursor-default'
+                : 'bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white',
               saving && 'opacity-60 cursor-not-allowed',
             )}
           >
@@ -556,7 +556,7 @@ export function WarmupNotesPanel({
           </button>
           <button
             onClick={onClose}
-            className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-xs"
+            className="px-3 py-1.5 bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t2)] rounded-ss-md text-xs transition-colors duration-fast ease-out"
           >
             {t('warmup.cancel')}
           </button>

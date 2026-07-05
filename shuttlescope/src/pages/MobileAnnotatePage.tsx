@@ -580,15 +580,15 @@ export function MobileAnnotatePage() {
                       const s = await ensureSet()
                       if (s) setCurrentSetIdx(0)
                     }}
-                    className="px-4 py-2 rounded text-sm font-bold disabled:opacity-60"
-                    style={{ backgroundColor: '#2563eb', color: '#ffffff' }}
+                    className="px-4 py-2 rounded-ss-md text-sm font-bold disabled:opacity-60 text-white"
+                    style={{ backgroundColor: 'var(--ss-brand)' }}
                   >
                     {ensureSetState.loading ? t('auto.MobileAnnotatePage.creating_set') : t('auto.MobileAnnotatePage.create_set1_start')}
                   </button>
                   {ensureSetState.error && (
                     <div
-                      className="text-[11px] font-mono px-2 py-1 rounded mt-1 max-w-[90vw] break-all"
-                      style={{ backgroundColor: 'rgba(127,29,29,0.95)', color: '#ffffff' }}
+                      className="text-[11px] font-mono px-2 py-1 rounded-ss-sm mt-1 max-w-[90vw] break-all text-white"
+                      style={{ backgroundColor: 'rgba(127,29,29,0.95)' }}
                     >
                       {ensureSetState.error}
                     </div>
@@ -596,8 +596,8 @@ export function MobileAnnotatePage() {
                   <button
                     type="button"
                     onClick={() => setScreen('play')}
-                    className="px-3 py-1.5 rounded text-xs font-bold"
-                    style={{ backgroundColor: '#4b5563', color: '#ffffff' }}
+                    className="px-3 py-1.5 rounded-ss-md text-xs font-bold text-white"
+                    style={{ backgroundColor: 'var(--ss-t2)' }}
                   >
                     <span className="inline-flex items-center gap-1">
                       <MIcon name="arrow_back" size={14} style={{ color: '#ffffff' }} />
@@ -696,8 +696,8 @@ export function MobileAnnotatePage() {
               <button
                 type="button"
                 onClick={() => { setMatchOverDismissed(true); setScreen('play') }}
-                className="px-3 py-1.5 rounded text-xs font-bold"
-                style={{ backgroundColor: '#4b5563', color: '#ffffff' }}
+                className="px-3 py-1.5 rounded-ss-md text-xs font-bold text-white"
+                style={{ backgroundColor: 'var(--ss-t2)' }}
               >
                 {t('auto.MobileAnnotatePage.check_result_back')}
               </button>
@@ -919,7 +919,7 @@ function Pass2RallyPicker({
     if (!setInfo || !selected.id) {
       // ローカル pending (まだサーバ id がない) なら入れない
       return (
-        <div className="flex-1 flex flex-col items-center justify-center text-gray-300 text-sm gap-3 p-4">
+        <div className="flex-1 flex flex-col items-center justify-center text-[var(--ss-t2)] text-sm gap-3 p-4">
           <div className="text-center">
             {t('auto.MobileAnnotatePage.rally_saving_server')}
             <br />
@@ -928,7 +928,7 @@ function Pass2RallyPicker({
           <button
             type="button"
             onClick={() => setSelected(null)}
-            className="px-3 py-1.5 bg-gray-700 rounded text-xs"
+            className="px-3 py-1.5 bg-[var(--ss-surface-3)] text-[var(--ss-t1)] rounded-ss-md text-xs"
           >
             {t('auto.MobileAnnotatePage.back_to_list')}
           </button>
@@ -952,12 +952,12 @@ function Pass2RallyPicker({
 
   return (
     <div className="flex-1 flex flex-col bg-black/90">
-      <div className="px-3 py-2 border-b border-gray-800 text-xs text-yellow-200">
+      <div className="px-3 py-2 border-b border-[var(--ss-border)] text-xs text-[var(--ss-warn)]">
         {t('auto.MobileAnnotatePage.pass2_select_rally', { sec: pausedAtSec.toFixed(1) })}
       </div>
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
         {sortedRallies.length === 0 ? (
-          <div className="text-gray-500 text-center text-sm py-8">
+          <div className="text-[var(--ss-t3)] text-center text-sm py-8">
             {t('auto.MobileAnnotatePage.record_pass1_first')}
           </div>
         ) : (
@@ -968,36 +968,36 @@ function Pass2RallyPicker({
                 key={`${r.set_id}-${r.rally_num}`}
                 type="button"
                 onClick={() => setSelected(r)}
-                className="w-full text-left px-3 py-2 rounded bg-gray-800 hover:bg-gray-700 flex items-center gap-3"
+                className="w-full text-left px-3 py-2 rounded-ss-md bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] flex items-center gap-3"
               >
-                <span className="font-mono text-[11px] text-gray-400">
+                <span className="font-mono text-[11px] text-[var(--ss-t2)]">
                   {t('auto.MobileAnnotatePage.set_rally_label', { s: setInfo?.set_num ?? '?', r: r.rally_num })}
                 </span>
                 <span className="font-mono text-xs">
-                  <span className={r.winner === 'player_a' ? 'text-blue-400' : 'text-pink-400'}>
+                  <span className={r.winner === 'player_a' ? 'text-[var(--ss-brand)]' : 'text-[var(--ss-bad)]'}>
                     {t('auto.MobileAnnotatePage.player_point', { p: r.winner === 'player_a' ? 'A' : 'B' })}
                   </span>
                 </span>
-                <span className="text-[11px] text-gray-500">
+                <span className="text-[11px] text-[var(--ss-t3)]">
                   {r.score_a_after}-{r.score_b_after}
                 </span>
                 <div className="flex-1" />
-                <span className="font-mono text-[10px] text-gray-500">
+                <span className="font-mono text-[10px] text-[var(--ss-t3)]">
                   @{(r.video_timestamp_end ?? 0).toFixed(1)}s
                 </span>
                 {r.pending && (
-                  <span className="text-[10px] text-amber-400">{t('auto.MobileAnnotatePage.pending')}</span>
+                  <span className="text-[10px] text-[var(--ss-warn)]">{t('auto.MobileAnnotatePage.pending')}</span>
                 )}
               </button>
             )
           })
         )}
       </div>
-      <div className="px-3 py-2 border-t border-gray-800">
+      <div className="px-3 py-2 border-t border-[var(--ss-border)]">
         <button
           type="button"
           onClick={onCancel}
-          className="px-3 py-1.5 rounded bg-gray-700 text-white text-xs"
+          className="px-3 py-1.5 rounded-ss-md bg-[var(--ss-surface-3)] text-[var(--ss-t1)] text-xs"
         >
           {t('auto.MobileAnnotatePage.back_to_video_arrow')}
         </button>
@@ -1060,14 +1060,14 @@ function Pass3RallyPicker({
   if (selected) {
     if (!selected.id) {
       return (
-        <div className="flex-1 flex flex-col items-center justify-center text-gray-300 text-sm gap-3 p-4">
+        <div className="flex-1 flex flex-col items-center justify-center text-[var(--ss-t2)] text-sm gap-3 p-4">
           <div className="text-center">
             {t('auto.MobileAnnotatePage.rally_saving_pass3')}
           </div>
           <button
             type="button"
             onClick={() => setSelected(null)}
-            className="px-3 py-1.5 bg-gray-700 rounded text-xs"
+            className="px-3 py-1.5 bg-[var(--ss-surface-3)] text-[var(--ss-t1)] rounded-ss-md text-xs"
           >
             {t('auto.MobileAnnotatePage.back_to_list')}
           </button>
@@ -1119,12 +1119,12 @@ function Pass3RallyPicker({
 
   return (
     <div className="flex-1 flex flex-col bg-black/90">
-      <div className="px-3 py-2 border-b border-gray-800 text-xs text-yellow-200">
+      <div className="px-3 py-2 border-b border-[var(--ss-border)] text-xs text-[var(--ss-warn)]">
         {t('auto.MobileAnnotatePage.pass3_select_rally')}
       </div>
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
         {sortedRallies.length === 0 ? (
-          <div className="text-gray-500 text-center text-sm py-8">
+          <div className="text-[var(--ss-t3)] text-center text-sm py-8">
             {t('auto.MobileAnnotatePage.record_pass1_first')}
           </div>
         ) : (
@@ -1135,16 +1135,16 @@ function Pass3RallyPicker({
                 key={`${r.set_id}-${r.rally_num}`}
                 type="button"
                 onClick={() => setSelected(r)}
-                className="w-full text-left px-3 py-2 rounded bg-gray-800 hover:bg-gray-700 flex items-center gap-3"
+                className="w-full text-left px-3 py-2 rounded-ss-md bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] flex items-center gap-3"
               >
-                <span className="font-mono text-[11px] text-gray-400">
+                <span className="font-mono text-[11px] text-[var(--ss-t2)]">
                   {t('auto.MobileAnnotatePage.set_rally_label', { s: setInfo?.set_num ?? '?', r: r.rally_num })}
                 </span>
-                <span className={r.winner === 'player_a' ? 'text-blue-400 text-xs' : 'text-pink-400 text-xs'}>
+                <span className={r.winner === 'player_a' ? 'text-[var(--ss-brand)] text-xs' : 'text-[var(--ss-bad)] text-xs'}>
                   {t('auto.MobileAnnotatePage.player_point', { p: r.winner === 'player_a' ? 'A' : 'B' })}
                 </span>
                 <div className="flex-1" />
-                <span className="font-mono text-[10px] text-gray-500">
+                <span className="font-mono text-[10px] text-[var(--ss-t3)]">
                   @{(r.video_timestamp_end ?? 0).toFixed(1)}s
                 </span>
               </button>
@@ -1152,11 +1152,11 @@ function Pass3RallyPicker({
           })
         )}
       </div>
-      <div className="px-3 py-2 border-t border-gray-800">
+      <div className="px-3 py-2 border-t border-[var(--ss-border)]">
         <button
           type="button"
           onClick={onCancel}
-          className="px-3 py-1.5 rounded bg-gray-700 text-white text-xs"
+          className="px-3 py-1.5 rounded-ss-md bg-[var(--ss-surface-3)] text-[var(--ss-t1)] text-xs"
         >
           {t('auto.MobileAnnotatePage.back_to_video_arrow')}
         </button>

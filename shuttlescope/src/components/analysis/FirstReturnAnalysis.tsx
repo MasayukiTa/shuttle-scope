@@ -86,7 +86,7 @@ export function FirstReturnAnalysis({ playerId, filters = DEFAULT_FILTERS }: Fir
             {zones
               .sort((a, b) => b.count - a.count)
               .map((z) => (
-                <tr key={z.zone} className="border-b border-[color:var(--ss-border)]/40 hover:bg-[var(--ss-surface-2)] transition-colors duration-fast">
+                <tr key={z.zone} className="border-b border-[var(--ss-border)] hover:bg-[var(--ss-surface-2)] transition-colors duration-fast">
                   <td className="py-1.5 pr-3 font-semibold text-[var(--ss-t1)]">
                     {t(`zones.${z.zone}`, z.zone)}
                   </td>

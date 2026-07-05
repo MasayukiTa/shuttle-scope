@@ -186,14 +186,14 @@ export function ShuttleTrackOverlay({
         style={{ width: videoWidth, height: videoHeight }}
       />
       {/* research badge */}
-      <div className="absolute top-1 left-1 flex items-center gap-1 bg-black/50 rounded px-1.5 py-0.5">
+      <div className="absolute top-1 left-1 flex items-center gap-1 bg-black/50 rounded-ss-sm px-1.5 py-0.5">
         <span className="text-yellow-400 text-[9px] font-bold uppercase tracking-wide">
           {t('auto.ShuttleTrackOverlay.shuttle_track')}
         </span>
       </div>
       {/* no-data hint */}
       {nearestIdx < 0 && frames.length > 0 && (
-        <div className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[10px] text-gray-400 bg-black/50 rounded px-2 py-0.5">
+        <div className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[10px] ss-num text-gray-400 bg-black/50 rounded-ss-sm px-2 py-0.5">
           {t('auto.ShuttleTrackOverlay.no_shuttle_data')}
         </div>
       )}

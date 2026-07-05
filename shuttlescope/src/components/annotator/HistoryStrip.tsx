@@ -23,10 +23,10 @@ export function HistoryStrip({ strokes, onSeek, maxItems = 5 }: HistoryStripProp
   const recent = strokes.slice(-maxItems)
 
   return (
-    <div className="border-t border-gray-700 bg-gray-900/80 shrink-0" data-tutorial="annotator.historyStrip">
+    <div className="border-t border-[var(--ss-border)] bg-[var(--ss-surface-2)] shrink-0" data-tutorial="annotator.historyStrip">
       <button
         onClick={() => setCollapsed((v) => !v)}
-        className="w-full flex items-center justify-between px-3 py-1 text-[10px] text-gray-500 hover:text-gray-300"
+        className="w-full flex items-center justify-between px-3 py-1 text-[10px] text-[var(--ss-t3)] hover:text-[var(--ss-t2)]"
         aria-expanded={!collapsed}
       >
         <span className="uppercase tracking-wider">{t('annotator.ux.history_title', { n: strokes.length })}</span>
@@ -35,7 +35,7 @@ export function HistoryStrip({ strokes, onSeek, maxItems = 5 }: HistoryStripProp
       {!collapsed && (
         <div className="px-3 pb-2 overflow-x-auto">
           {recent.length === 0 ? (
-            <div className="text-xs text-gray-600 py-1.5">{t('annotator.ux.history_empty')}</div>
+            <div className="text-xs text-[var(--ss-t3)] py-1.5">{t('annotator.ux.history_empty')}</div>
           ) : (
             <ol className="flex items-center gap-2 min-w-min">
               {recent.map((s) => {
@@ -48,12 +48,12 @@ export function HistoryStrip({ strokes, onSeek, maxItems = 5 }: HistoryStripProp
                       disabled={s.timestamp_sec == null}
                       title={`#${s.stroke_num} ${s.shot_type} (${(s.timestamp_sec ?? 0).toFixed(2)}s)`}
                       className={clsx(
-                        'flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-medium border',
+                        'flex items-center gap-1.5 px-2 py-1 rounded-ss-sm text-[11px] font-medium border',
                         style.bg, style.text, style.border,
                         s.timestamp_sec != null ? 'hover:brightness-110' : 'opacity-60 cursor-default',
                       )}
                     >
-                      <span className="font-mono opacity-80">#{s.stroke_num}</span>
+                      <span className="font-mono ss-num opacity-80">#{s.stroke_num}</span>
                       <span aria-hidden>{style.icon}</span>
                       <span className="truncate max-w-[80px]">{s.shot_type}</span>
                     </button>

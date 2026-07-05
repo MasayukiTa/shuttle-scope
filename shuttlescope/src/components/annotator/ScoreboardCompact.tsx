@@ -60,7 +60,7 @@ export function ScoreboardCompact({
     return (
       <div className={clsx('text-center', minWPlayer)}>
         {isDoubles ? (
-          <div className={clsx('text-gray-400 leading-tight', playerLabelSize)}>
+          <div className={clsx('text-[var(--ss-t3)] leading-tight', playerLabelSize)}>
             <div className={clsx('whitespace-nowrap truncate', playerMaxW)} title={main?.name ?? fallback}>
               {main?.name ?? fallback}
             </div>
@@ -69,11 +69,11 @@ export function ScoreboardCompact({
             </div>
           </div>
         ) : (
-          <div className={clsx('text-gray-400 truncate', playerLabelSize)} title={main?.name ?? fallback}>
+          <div className={clsx('text-[var(--ss-t3)] truncate', playerLabelSize)} title={main?.name ?? fallback}>
             {main?.name ?? fallback}
           </div>
         )}
-        <div className={clsx('font-bold tabular-nums', scoreSize)}>{score}</div>
+        <div className={clsx('font-bold tabular-nums ss-num text-[var(--ss-t1)]', scoreSize)}>{score}</div>
       </div>
     )
   }
@@ -81,11 +81,11 @@ export function ScoreboardCompact({
   return (
     <div className={clsx('flex items-center justify-between', className)}>
       {renderSide('a')}
-      <div className="text-center text-xs text-gray-500 num-cell">
-        <div>{t('auto.ScoreboardCompact.set_n', { n: setNum })}</div>
-        <div>{t('auto.ScoreboardCompact.rally_n', { n: rallyNum })}</div>
+      <div className="text-center text-xs text-[var(--ss-t3)] num-cell">
+        <div className="ss-num">{t('auto.ScoreboardCompact.set_n', { n: setNum })}</div>
+        <div className="ss-num">{t('auto.ScoreboardCompact.rally_n', { n: rallyNum })}</div>
         {strokeCount != null && strokeCount > 0 && (
-          <div className="text-[10px] text-blue-400 mt-0.5">{t('auto.ScoreboardCompact.shots_n', { n: strokeCount })}</div>
+          <div className="text-[10px] text-[var(--ss-brand)] mt-0.5 ss-num">{t('auto.ScoreboardCompact.shots_n', { n: strokeCount })}</div>
         )}
         {middleExtra}
       </div>

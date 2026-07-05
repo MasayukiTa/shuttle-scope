@@ -232,7 +232,7 @@ export function CourtHeatModal({
 
             {/* 合成モード注意書き */}
             {mode === 'composite' && (
-              <div className="flex items-start gap-2 p-3 bg-[var(--ss-warn)]/10 border border-[var(--ss-warn)]/30 rounded-ss-lg text-xs max-w-xs">
+              <div className="flex items-start gap-2 p-3 bg-[var(--ss-warn-tint)] border border-[var(--ss-warning-border)] rounded-ss-lg text-xs max-w-xs">
                 <MIcon name="warning" size={13} className="text-[var(--ss-warn)] mt-0.5 shrink-0" />
                 <div className="text-[var(--ss-warn)]">
                   {t('court_heat_modal.composite_note')}

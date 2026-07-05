@@ -1754,10 +1754,10 @@ export function AnnotatorPage() {
 
   if (initError) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-900 text-white">
+      <div className="flex items-center justify-center h-screen bg-[var(--ss-bg-app)] text-[var(--ss-t1)]">
         <div className="text-center max-w-sm px-4">
-          <div className="text-red-400 text-lg mb-2">{t('annotator.ui.init_error')}</div>
-          <div className="text-gray-400 text-sm mb-4 break-words">{initError}</div>
+          <div className="text-[var(--ss-bad)] text-lg mb-2">{t('annotator.ui.init_error')}</div>
+          <div className="text-[var(--ss-t2)] text-sm mb-4 break-words">{initError}</div>
           <div className="flex items-center justify-center gap-2">
             <button
               onClick={() => {
@@ -1767,14 +1767,14 @@ export function AnnotatorPage() {
                 initStartedRef.current = false
                 setInitRetryNonce((n) => n + 1)
               }}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm"
+              className="px-4 py-2 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white rounded-ss-md text-sm transition-colors duration-base ease-out"
               autoFocus
             >
               {t('annotator.ui.retry')}
             </button>
             <button
               onClick={() => navigate('/matches')}
-              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm"
+              className="px-4 py-2 bg-[var(--ss-surface-3)] hover:bg-[var(--ss-surface-2)] text-[var(--ss-t1)] rounded-ss-md text-sm transition-colors duration-base ease-out"
             >
               {t('annotator.ui.back')}
             </button>
@@ -1801,15 +1801,15 @@ export function AnnotatorPage() {
   ]
 
   return (
-    <div className="flex flex-col h-screen bg-gray-900 text-white overflow-hidden">
+    <div className="flex flex-col h-screen bg-[var(--ss-bg-app)] text-[var(--ss-t1)] overflow-hidden">
       {/* ヘッダー */}
-      <div className="flex items-center justify-between px-3 md:px-4 py-2 bg-gray-800 border-b border-gray-700 shrink-0">
+      <div className="flex items-center justify-between px-3 md:px-4 py-2 bg-[var(--ss-surface-1)] border-b border-[var(--ss-border)] shrink-0">
         <button
           onClick={handleLeaveMatch}
           aria-label={t('annotator.ui.back')}
           title={t('annotator.ui.back')}
           className={clsx(
-            'flex items-center gap-1 text-gray-400 hover:text-white shrink-0',
+            'flex items-center gap-1 text-[var(--ss-t2)] hover:text-[var(--ss-t1)] shrink-0',
             isMobile ? 'text-xs p-1' : 'text-sm'
           )}
         >
@@ -1818,7 +1818,7 @@ export function AnnotatorPage() {
         </button>
         {/* U2: モードタブ (入力 / 確認 / 解析 / 設定) */}
         <ModeTabs isMobile={isMobile} className="ml-2" />
-        <div className={clsx('font-medium truncate mx-2 min-w-0 flex-1 text-gray-300', isMobile ? 'text-xs' : 'text-sm')}>
+        <div className={clsx('font-medium truncate mx-2 min-w-0 flex-1 text-[var(--ss-t2)]', isMobile ? 'text-xs' : 'text-sm')}>
           {match ? (() => {
             const isDoubles = match.format !== 'singles'
             const sideA = isDoubles && match.partner_a
@@ -1847,11 +1847,11 @@ export function AnnotatorPage() {
           onClick={() => openCommandPalette()}
           aria-label={t('annotator.ux.command_button_aria')}
           title={t('annotator.ux.command_button_title')}
-          className="hidden md:flex items-center gap-1 shrink-0 mr-1 px-2 py-1 rounded text-xs text-gray-300 bg-gray-700/60 hover:bg-gray-700 transition-colors"
+          className="hidden md:flex items-center gap-1 shrink-0 mr-1 px-2 py-1 rounded-ss-md text-xs text-[var(--ss-t2)] bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-2)] transition-colors"
         >
           <span className="material-symbols-outlined" style={{ fontSize: 14 }}>{t('auto.AnnotatorPage.icon_search')}</span>
           <span className="hidden lg:inline">{t('annotator.ux.command_button_label')}</span>
-          <kbd className="text-[10px] font-mono opacity-70 bg-black/30 px-1 rounded">{t('auto.AnnotatorPage.kbd_cmd_k')}</kbd>
+          <kbd className="text-[10px] font-mono opacity-70 bg-black/30 px-1 rounded-ss-sm">{t('auto.AnnotatorPage.kbd_cmd_k')}</kbd>
         </button>
 
         {/* U1: メニュー (md+ で常時表示。xl+ でも直接ボタン廃止し統一入口に集約) */}
@@ -1873,8 +1873,8 @@ export function AnnotatorPage() {
               <button
                 onClick={toggleMatchDayMode}
                 className={clsx(
-                  'flex items-center justify-between gap-2 px-2 py-1.5 rounded text-xs font-medium text-left transition-colors',
-                  isMatchDayMode ? 'bg-yellow-600 text-white' : 'bg-gray-700 text-gray-200 hover:bg-gray-600',
+                  'flex items-center justify-between gap-2 px-2 py-1.5 rounded-ss-md text-xs font-medium text-left transition-colors',
+                  isMatchDayMode ? 'bg-yellow-600 text-white' : 'bg-[var(--ss-surface-2)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-3)]',
                 )}
               >
                 {/* SettingsModePanel と同じ i18n キーで統一 (drift 防止) */}
@@ -1897,7 +1897,7 @@ export function AnnotatorPage() {
                 ) : (
                   <button
                     onClick={handleOpenVideoWindow}
-                    className="flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium text-left bg-gray-700 text-gray-200 hover:bg-gray-600"
+                    className="flex items-center gap-2 px-2 py-1.5 rounded-ss-md text-xs font-medium text-left bg-[var(--ss-surface-2)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-3)]"
                   >
                     <MIcon name="smart_display" size={14} />
                     {t('dual_monitor.open')}
@@ -1913,8 +1913,8 @@ export function AnnotatorPage() {
                 <button
                   onClick={() => setCvToolsExpanded((v) => !v)}
                   className={clsx(
-                    'flex items-center justify-between gap-2 px-2 py-1.5 rounded text-xs font-medium text-left transition-colors',
-                    cvToolsExpanded ? 'bg-blue-700 text-white' : 'bg-gray-700 text-gray-200 hover:bg-gray-600',
+                    'flex items-center justify-between gap-2 px-2 py-1.5 rounded-ss-md text-xs font-medium text-left transition-colors',
+                    cvToolsExpanded ? 'bg-[var(--ss-brand)] text-white' : 'bg-[var(--ss-surface-2)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-3)]',
                   )}
                 >
                   <span className="flex items-center gap-2">
@@ -1927,7 +1927,7 @@ export function AnnotatorPage() {
                   <button
                     onClick={handleYoloBatch}
                     disabled={!!yoloJob && (yoloJob.status === 'pending' || yoloJob.status === 'running')}
-                    className="flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium text-left bg-gray-800 text-blue-300 hover:bg-gray-800 disabled:opacity-50"
+                    className="flex items-center gap-2 px-2 py-1.5 rounded-ss-md text-xs font-medium text-left bg-[var(--ss-surface-1)] text-[var(--ss-brand)] hover:bg-[var(--ss-surface-2)] disabled:opacity-50"
                   >
                     <span className="material-symbols-outlined" style={{ fontSize: 14 }}>{t('auto.AnnotatorPage.icon_directions_run')}</span>
                     {t('annotator.ux.menu_yolo_run')}
@@ -1937,7 +1937,7 @@ export function AnnotatorPage() {
                   <button
                     onClick={handleTracknetBatch}
                     disabled={!!tracknetJob && (tracknetJob.status === 'pending' || tracknetJob.status === 'running')}
-                    className="flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium text-left bg-gray-800 text-gray-200 hover:bg-gray-800 disabled:opacity-50"
+                    className="flex items-center gap-2 px-2 py-1.5 rounded-ss-md text-xs font-medium text-left bg-[var(--ss-surface-1)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-2)] disabled:opacity-50"
                   >
                     <span className="material-symbols-outlined" style={{ fontSize: 14 }}>{t('auto.AnnotatorPage.icon_route')}</span>
                     {t('annotator.ux.menu_tracknet_run')}
@@ -1950,7 +1950,7 @@ export function AnnotatorPage() {
             <TopBarMenuSection title={t('annotator.ux.menu_section_danger')}>
               <button
                 onClick={() => setShowExceptionDialog(true)}
-                className="flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium text-left bg-gray-800 text-red-300 hover:bg-gray-800"
+                className="flex items-center gap-2 px-2 py-1.5 rounded-ss-md text-xs font-medium text-left bg-[var(--ss-surface-1)] text-[var(--ss-bad)] hover:bg-[var(--ss-surface-2)]"
               >
                 <MIcon name="block" size={14} />
                 {t('exception.title')}
@@ -1960,7 +1960,7 @@ export function AnnotatorPage() {
         </div>
 
         {/* デスクトップ: 全ボタン表示 */}
-        <div className="hidden md:flex items-center gap-2 text-xs text-gray-400 shrink-0">
+        <div className="hidden md:flex items-center gap-2 text-xs text-[var(--ss-t2)] shrink-0">
           {/* K-002: 保存中バッジ */}
           {store.pendingSaveCount > 0 && (
             <span className="text-yellow-400 font-medium">
@@ -2009,10 +2009,10 @@ export function AnnotatorPage() {
               type="button"
               onClick={() => setCvToolsExpanded((v) => !v)}
               className={clsx(
-                'flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors border shrink-0',
+                'flex items-center gap-1 px-2 py-1 rounded-ss-md text-xs font-medium transition-colors border shrink-0',
                 cvToolsExpanded
-                  ? isLight ? 'bg-white text-blue-700 border-gray-200' : 'bg-gray-800 text-blue-300 border-gray-700'
-                  : isLight ? 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-blue-50' : 'bg-gray-800 text-gray-300 border-gray-700 hover:bg-blue-900/20',
+                  ? 'bg-[var(--ss-surface-1)] text-[var(--ss-brand)] border-[var(--ss-border)]'
+                  : 'bg-[var(--ss-surface-2)] text-[var(--ss-t2)] border-[var(--ss-border)] hover:bg-[var(--ss-brand-tint)]',
               )}
               aria-expanded={cvToolsExpanded}
               title={cvToolsExpanded ? t('annotator.ui.cv_tools_collapse_title', { defaultValue: 'CV ツールを折り畳む' }) : t('annotator.ui.cv_tools_expand_title', { defaultValue: 'CV ツール (TrackNet / 人物検出 / 表示) を展開' })}
@@ -2021,13 +2021,13 @@ export function AnnotatorPage() {
               <span>CV</span>
               {/* 圧縮ステータス: 解析中 % または 完了 check */}
               {tracknetJob && (tracknetJob.status === 'pending' || tracknetJob.status === 'running') && (
-                <span className="num-cell text-[10px]"> {Math.round(tracknetJob.progress * 100)}%</span>
+                <span className="num-cell ss-num text-[10px]"> {Math.round(tracknetJob.progress * 100)}%</span>
               )}
               {yoloJob && (yoloJob.status === 'pending' || yoloJob.status === 'running') && (
-                <span className="num-cell text-[10px]"> {Math.round(yoloJob.progress * 100)}%</span>
+                <span className="num-cell ss-num text-[10px]"> {Math.round(yoloJob.progress * 100)}%</span>
               )}
               {tracknetJob?.status === 'complete' && yoloJob?.status === 'complete' && (
-                <MIcon name="check" size={10} className="text-emerald-400" />
+                <MIcon name="check" size={10} className="text-[var(--ss-success)]" />
               )}
               <span className="text-[9px] opacity-70">{cvToolsExpanded ? '▲' : '▼'}</span>
             </button>
@@ -2036,16 +2036,12 @@ export function AnnotatorPage() {
           {/* P3: TrackNet バッチ解析ボタン (state-driven UI、cvToolsExpanded で 折り畳み) */}
           {cvToolsExpanded && appSettings.tracknet_enabled && hasVideo(match) && (
             tracknetJob && (tracknetJob.status === 'pending' || tracknetJob.status === 'running') ? (
-              <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs ${
-                isLight ? 'bg-white text-gray-700' : 'bg-gray-800 text-gray-200'
-              }`}>
+              <div className="flex items-center gap-1.5 px-2 py-1 rounded-ss-md text-xs bg-[var(--ss-surface-1)] text-[var(--ss-t1)]">
                 <span className="animate-pulse">{t('auto.AnnotatorPage.dot_running')}</span>
                 {t('tracknet.batch_running')} {Math.round(tracknetJob.progress * 100)}%
                 <button
                   onClick={handleTracknetBatchStop}
-                  className={`ml-1 px-1 py-0.5 rounded text-[9px] font-medium transition-colors ${
-                    isLight ? 'bg-white text-red-700 hover:bg-red-300' : 'bg-gray-800 text-red-300 hover:bg-gray-800'
-                  }`}
+                  className="ml-1 px-1 py-0.5 rounded-ss-sm text-[9px] font-medium transition-colors bg-[var(--ss-surface-1)] text-[var(--ss-bad)] hover:bg-[var(--ss-surface-2)]"
                   title={t('auto.AnnotatorPage.k3')}
                 >
                   {t('annotator.ui.stop_btn', { defaultValue: '停止' })}
@@ -2053,40 +2049,32 @@ export function AnnotatorPage() {
               </div>
             ) : tracknetJob?.status === 'stopped' ? (
               <div className="flex items-center gap-1">
-                <div className={`flex items-center gap-1 px-2 py-1 rounded text-xs ${
-                  isLight ? 'bg-white text-amber-700' : 'bg-gray-800 text-amber-400'
-                }`}>
+                <div className="flex items-center gap-1 px-2 py-1 rounded-ss-md text-xs bg-[var(--ss-surface-1)] text-[var(--ss-warn)]">
                   <MIcon name="pause" size={12} />{t('annotator.ui.stopped_with_pct', { defaultValue: '停止済 {{pct}}%', pct: Math.round(tracknetJob.progress * 100) })}
                 </div>
                 <button
                   onClick={handleTracknetBatchResume}
-                  className={`flex items-center gap-1 px-1.5 py-1 rounded text-[10px] font-medium transition-colors ${
-                    isLight ? 'bg-white text-gray-200 hover:bg-white border border-gray-200' : 'bg-gray-800 text-gray-200 hover:bg-gray-800 border border-gray-700'
-                  }`}
+                  className="flex items-center gap-1 px-1.5 py-1 rounded-ss-sm text-[10px] font-medium transition-colors bg-[var(--ss-surface-1)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-2)] border border-[var(--ss-border)]"
                   title={t('auto.AnnotatorPage.k4')}
                 >
                   {t('annotator.ui.resume_btn', { defaultValue: '再開' })}
                 </button>
               </div>
             ) : tracknetJob?.status === 'complete' ? (
-              <div className={`flex items-center gap-1 px-2 py-1 rounded text-xs ${
-                isLight ? 'bg-white text-blue-700' : 'bg-gray-800 text-blue-300'
-              }`}>
+              <div className="flex items-center gap-1 px-2 py-1 rounded-ss-md text-xs bg-[var(--ss-surface-1)] text-[var(--ss-brand)]">
                 <MIcon name="check" size={12} />{t('tracknet.updated_strokes', { count: tracknetJob.updated_strokes })}
               </div>
             ) : tracknetJob?.status === 'error' ? (
               <div className="flex flex-col items-start gap-0.5">
                 <button
                   onClick={() => setTracknetJob(null)}
-                  className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors border border-white/60 ${
-                    isLight ? 'bg-white text-red-700 hover:bg-white' : 'bg-gray-800 text-red-300 hover:bg-gray-800'
-                  }`}
+                  className="flex items-center gap-1 px-2 py-1 rounded-ss-md text-xs font-medium transition-colors border border-white/60 bg-[var(--ss-surface-1)] text-[var(--ss-bad)] hover:bg-[var(--ss-surface-2)]"
                   title={tracknetJob.error ?? t('tracknet.batch_error')}
                 >
                   <MIcon name="close" size={12} />{t('tracknet.batch_error_retry')}
                 </button>
                 {tracknetJob.error && (
-                  <span className={`text-[9px] max-w-[160px] truncate ${isLight ? 'text-red-500' : 'text-red-400'}`} title={tracknetJob.error}>
+                  <span className="text-[9px] max-w-[160px] truncate text-[var(--ss-bad)]" title={tracknetJob.error}>
                     {tracknetJob.error}
                   </span>
                 )}
@@ -2095,9 +2083,7 @@ export function AnnotatorPage() {
               <div className="flex items-center gap-1">
                 <button
                   onClick={handleTracknetBatch}
-                  className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
-                    isLight ? 'bg-white text-gray-700 hover:bg-white' : 'bg-gray-800 text-gray-200 hover:bg-gray-800'
-                  }`}
+                  className="flex items-center gap-1 px-2 py-1 rounded-ss-md text-xs font-medium transition-colors bg-[var(--ss-surface-1)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-2)]"
                   title={t('tracknet.batch_start')}
                 >
                   {t('tracknet.batch_start')}
@@ -2105,9 +2091,7 @@ export function AnnotatorPage() {
                 {tracknetArtifactExists && (
                   <button
                     onClick={handleTracknetBatchResume}
-                    className={`flex items-center gap-1 px-1.5 py-1 rounded text-[10px] font-medium transition-colors ${
-                      isLight ? 'bg-white text-gray-200 hover:bg-white border border-gray-200' : 'bg-gray-800 text-gray-200 hover:bg-gray-800 border border-gray-700'
-                    }`}
+                    className="flex items-center gap-1 px-1.5 py-1 rounded-ss-sm text-[10px] font-medium transition-colors bg-[var(--ss-surface-1)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-2)] border border-[var(--ss-border)]"
                     title={t('auto.AnnotatorPage.k4')}
                   >
                     {t('annotator.ui.resume_btn', { defaultValue: '再開' })}
@@ -2118,30 +2102,24 @@ export function AnnotatorPage() {
           )}
           {/* CV オーバーレイグループ（YOLO + TrackNet）— cvToolsExpanded で折り畳み */}
           {cvToolsExpanded && appSettings.yolo_enabled && hasVideo(match) && (
-            <div className={`flex items-center gap-1 px-1.5 py-1 rounded border ${
-              isLight ? 'border-gray-300 bg-gray-50' : 'border-gray-700 bg-gray-800/60'
-            }`}>
-              <span className={`text-[9px] font-bold uppercase tracking-wider pr-1 ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>CV</span>
+            <div className="flex items-center gap-1 px-1.5 py-1 rounded-ss-sm border border-[var(--ss-border)] bg-[var(--ss-surface-2)]">
+              <span className="text-[9px] font-bold uppercase tracking-wider pr-1 text-[var(--ss-t3)]">CV</span>
 
               {/* アーティファクト鮮度ヒント */}
               {yoloArtifactMeta && (
-                <span className={`text-[8px] ${isLight ? 'text-gray-400' : 'text-gray-600'}`} title={t('annotator.ui.yolo_artifact_meta_title', { defaultValue: '最終解析: {{date}} / {{n}}f', date: yoloArtifactMeta.created_at, n: yoloArtifactMeta.frame_count })}>
-                  {new Date(yoloArtifactMeta.created_at).toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                <span className="text-[8px] text-[var(--ss-t3)]" title={t('annotator.ui.yolo_artifact_meta_title', { defaultValue: '最終解析: {{date}} / {{n}}f', date: yoloArtifactMeta.created_at, n: yoloArtifactMeta.frame_count })}>
+                  <span className="ss-num">{new Date(yoloArtifactMeta.created_at).toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
                 </span>
               )}
 
               {/* YOLO プレイヤー検出 */}
               {yoloJob && (yoloJob.status === 'pending' || yoloJob.status === 'running') ? (
-                <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs ${
-                  isLight ? 'bg-white text-blue-700' : 'bg-gray-800 text-blue-300'
-                }`}>
+                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-ss-sm text-xs bg-[var(--ss-surface-1)] text-[var(--ss-brand)]">
                   <span className="animate-pulse">{t('auto.AnnotatorPage.dot_running')}</span>
-                  {t('annotator.ui.person_with_pct', { defaultValue: '人物 {{pct}}%', pct: Math.round(yoloJob.progress * 100) })}
+                  <span className="ss-num">{t('annotator.ui.person_with_pct', { defaultValue: '人物 {{pct}}%', pct: Math.round(yoloJob.progress * 100) })}</span>
                   <button
                     onClick={handleYoloBatchStop}
-                    className={`ml-0.5 px-1 py-0.5 rounded text-[9px] font-medium transition-colors ${
-                      isLight ? 'bg-white text-red-700 hover:bg-red-300' : 'bg-gray-800 text-red-300 hover:bg-gray-800'
-                    }`}
+                    className="ml-0.5 px-1 py-0.5 rounded-ss-sm text-[9px] font-medium transition-colors duration-base ease-out bg-[var(--ss-surface-1)] text-[var(--ss-bad)] hover:bg-[var(--ss-surface-2)]"
                     title={t('auto.AnnotatorPage.k5')}
                   >
                     {t('annotator.ui.stop_btn', { defaultValue: '停止' })}
@@ -2149,16 +2127,12 @@ export function AnnotatorPage() {
                 </div>
               ) : yoloJob?.status === 'stopped' ? (
                 <div className="flex items-center gap-1">
-                  <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs ${
-                    isLight ? 'bg-white text-amber-700' : 'bg-gray-800 text-amber-400'
-                  }`}>
-                    {t('auto.AnnotatorPage.paused_pct', { n: Math.round(yoloJob.progress * 100) })}
+                  <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-ss-sm text-xs bg-[var(--ss-surface-1)] text-[var(--ss-warn)]">
+                    <span className="ss-num">{t('auto.AnnotatorPage.paused_pct', { n: Math.round(yoloJob.progress * 100) })}</span>
                   </div>
                   <button
                     onClick={handleYoloBatchResume}
-                    className={`flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium transition-colors ${
-                      isLight ? 'bg-white text-blue-300 hover:bg-white border border-gray-200' : 'bg-gray-800 text-blue-300 hover:bg-gray-800 border border-gray-700'
-                    }`}
+                    className="flex items-center gap-1 px-1 py-0.5 rounded-ss-sm text-[10px] font-medium transition-colors bg-[var(--ss-surface-1)] text-[var(--ss-brand)] hover:bg-[var(--ss-surface-2)] border border-[var(--ss-border)]"
                     title={t('auto.AnnotatorPage.k6')}
                   >
                     {t('annotator.ui.resume_btn', { defaultValue: '再開' })}
@@ -2180,9 +2154,7 @@ export function AnnotatorPage() {
                         },
                       })
                     }}
-                    className={`flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium transition-colors ${
-                      isLight ? 'bg-white text-red-300 hover:bg-white border border-gray-200' : 'bg-gray-800 text-red-300 hover:bg-gray-800 border border-gray-700'
-                    }`}
+                    className="flex items-center gap-1 px-1 py-0.5 rounded-ss-sm text-[10px] font-medium transition-colors bg-[var(--ss-surface-1)] text-[var(--ss-bad)] hover:bg-[var(--ss-surface-2)] border border-[var(--ss-border)]"
                     title={t('auto.AnnotatorPage.k7')}
                   >
                     <MIcon name="delete" size={11} />
@@ -2191,10 +2163,10 @@ export function AnnotatorPage() {
               ) : yoloJob?.status === 'complete' ? (
                 <button
                   onClick={() => setYoloOverlayVisible((v) => !v)}
-                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
+                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded-ss-sm text-xs font-medium transition-colors ${
                     yoloOverlayVisible
-                      ? isLight ? 'bg-white text-blue-700' : 'bg-blue-700/60 text-blue-200'
-                      : isLight ? 'bg-gray-200 text-gray-600 hover:bg-blue-100' : 'bg-gray-700 text-gray-400 hover:bg-blue-900/40'
+                      ? 'bg-[var(--ss-surface-1)] text-[var(--ss-brand)]'
+                      : 'bg-[var(--ss-surface-2)] text-[var(--ss-t2)] hover:bg-[var(--ss-brand-tint)]'
                   }`}
                   title={yoloOverlayVisible ? t('annotator.ui.person_overlay_hide', { defaultValue: '人物オーバーレイを非表示' }) : t('annotator.ui.person_overlay_show', { defaultValue: '人物オーバーレイを表示' })}
                 >
@@ -2204,15 +2176,13 @@ export function AnnotatorPage() {
                 <div className="flex flex-col items-start gap-0.5">
                   <button
                     onClick={() => setYoloJob(null)}
-                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium border border-white/60 ${
-                      isLight ? 'bg-white text-red-700' : 'bg-gray-800 text-red-300'
-                    }`}
+                    className="flex items-center gap-1 px-1.5 py-0.5 rounded-ss-sm text-xs font-medium border border-white/60 bg-[var(--ss-surface-1)] text-[var(--ss-bad)]"
                     title={yoloJob.error ?? t('yolo.batch_error')}
                   >
                     <MIcon name="close" size={12} />{t('annotator.ui.person_x_label', { defaultValue: '人物' })}
                   </button>
                   {yoloJob.error && (
-                    <span className={`text-[9px] max-w-[140px] truncate ${isLight ? 'text-red-500' : 'text-red-400'}`} title={yoloJob.error}>
+                    <span className="text-[9px] max-w-[140px] truncate text-[var(--ss-bad)]" title={yoloJob.error}>
                       {yoloJob.error}
                     </span>
                   )}
@@ -2225,9 +2195,7 @@ export function AnnotatorPage() {
                       // 明示的に再タグ付けしたい場合は + 識別(10) ボタンを使う。
                       handleYoloBatch()
                     }}
-                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
-                      isLight ? 'bg-white text-blue-700 hover:bg-white' : 'bg-gray-800 text-blue-300 hover:bg-gray-800'
-                    }`}
+                    className="flex items-center gap-1 px-1.5 py-0.5 rounded-ss-sm text-xs font-medium transition-colors bg-[var(--ss-surface-1)] text-[var(--ss-brand)] hover:bg-[var(--ss-surface-2)]"
                     title={t('yolo.batch_start')}
                   >
                     {t('annotator.ui.person_detect_add', { defaultValue: '+ 人物検出' })}
@@ -2235,9 +2203,7 @@ export function AnnotatorPage() {
                   {yoloArtifactExists && (
                     <button
                       onClick={handleYoloBatchResume}
-                      className={`flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium transition-colors ${
-                        isLight ? 'bg-white text-blue-300 hover:bg-white border border-gray-200' : 'bg-gray-800 text-blue-300 hover:bg-gray-800 border border-gray-700'
-                      }`}
+                      className="flex items-center gap-1 px-1 py-0.5 rounded-ss-sm text-[10px] font-medium transition-colors bg-[var(--ss-surface-1)] text-[var(--ss-brand)] hover:bg-[var(--ss-surface-2)] border border-[var(--ss-border)]"
                       title={t('auto.AnnotatorPage.k6')}
                     >
                       {t('annotator.ui.resume_btn', { defaultValue: '再開' })}
@@ -2261,9 +2227,7 @@ export function AnnotatorPage() {
                           },
                         })
                       }}
-                      className={`flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium transition-colors ${
-                        isLight ? 'bg-white text-red-300 hover:bg-white border border-gray-200' : 'bg-gray-800 text-red-300 hover:bg-gray-800 border border-gray-700'
-                      }`}
+                      className="flex items-center gap-1 px-1 py-0.5 rounded-ss-sm text-[10px] font-medium transition-colors bg-[var(--ss-surface-1)] text-[var(--ss-bad)] hover:bg-[var(--ss-surface-2)] border border-[var(--ss-border)]"
                       title={t('auto.AnnotatorPage.k7')}
                     >
                       <MIcon name="delete" size={11} />
@@ -2272,9 +2236,7 @@ export function AnnotatorPage() {
                   {yoloArtifactExists && yoloRoiExpanded && (
                     <button
                       onClick={handleYoloBatchDiff}
-                      className={`flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium transition-colors ${
-                        isLight ? 'bg-white text-amber-700 hover:bg-white border border-gray-200' : 'bg-gray-800 text-amber-400 hover:bg-gray-800 border border-gray-700'
-                      }`}
+                      className="flex items-center gap-1 px-1 py-0.5 rounded-ss-sm text-[10px] font-medium transition-colors bg-[var(--ss-surface-1)] text-[var(--ss-warn)] hover:bg-[var(--ss-surface-2)] border border-[var(--ss-border)]"
                       title={t('auto.AnnotatorPage.k8')}
                     >
                       {t('annotator.ui.diff_update_btn', { defaultValue: '差分更新' })}
@@ -2286,41 +2248,39 @@ export function AnnotatorPage() {
               {/* 選手識別: taggingMode 中はサンプラーフッター表示、それ以外は識別ボタン */}
               {!!hasVideo(match) && (
                 samplerActive ? (
-                  <div className={`flex items-center gap-1 flex-wrap px-1.5 py-0.5 rounded ${
-                    isLight ? 'bg-white border border-gray-200' : 'bg-gray-800 border border-gray-700'
-                  }`}>
+                  <div className="flex items-center gap-1 flex-wrap px-1.5 py-0.5 rounded-ss-sm bg-[var(--ss-surface-1)] border border-[var(--ss-border)]">
                     <span className={`text-xs font-medium ${isLight ? 'text-purple-700' : 'text-purple-300'}`}>
                       {samplerIdx + 1}/{samplerSamples.length}
                     </span>
                     <button
                       onClick={() => seekRel(-5)}
-                      className={`px-1 py-0.5 rounded text-[10px] ${isLight ? 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300' : 'bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-600'}`}
+                      className="px-1 py-0.5 rounded-ss-sm text-[10px] bg-[var(--ss-surface-1)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-2)] border border-[var(--ss-border)]"
                       title={t('auto.AnnotatorPage.k9')}
                     ><span className="inline-flex items-center gap-0.5"><MIcon name="fast_rewind" size={10} />{t('auto.AnnotatorPage.seek_back_5s')}</span></button>
                     <button
                       onClick={() => stepFrame(-1)}
-                      className={`px-1 py-0.5 rounded text-[10px] ${isLight ? 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300' : 'bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-600'}`}
+                      className="px-1 py-0.5 rounded-ss-sm text-[10px] bg-[var(--ss-surface-1)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-2)] border border-[var(--ss-border)]"
                       title={t('auto.AnnotatorPage.k10')}
                     >{t('auto.AnnotatorPage.step_back_1f')}</button>
                     <button
                       onClick={() => stepFrame(1)}
-                      className={`px-1 py-0.5 rounded text-[10px] ${isLight ? 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300' : 'bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-600'}`}
+                      className="px-1 py-0.5 rounded-ss-sm text-[10px] bg-[var(--ss-surface-1)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-2)] border border-[var(--ss-border)]"
                       title={t('auto.AnnotatorPage.k11')}
                     >{t('auto.AnnotatorPage.step_fwd_1f')}</button>
                     <button
                       onClick={() => seekRel(5)}
-                      className={`px-1 py-0.5 rounded text-[10px] ${isLight ? 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300' : 'bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-600'}`}
+                      className="px-1 py-0.5 rounded-ss-sm text-[10px] bg-[var(--ss-surface-1)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-2)] border border-[var(--ss-border)]"
                       title={t('auto.AnnotatorPage.k12')}
                     ><span className="inline-flex items-center gap-0.5">{t('auto.AnnotatorPage.seek_fwd_5s')}<MIcon name="fast_forward" size={10} /></span></button>
-                    <span className={`mx-0.5 ${isLight ? 'text-gray-300' : 'text-gray-600'}`}>|</span>
+                    <span className="mx-0.5 text-[var(--ss-t3)]">|</span>
                     <button
                       onClick={prevSample}
                       disabled={samplerIdx <= 0}
-                      className={`px-1.5 py-0.5 rounded text-[10px] disabled:opacity-40 ${isLight ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-gray-700 text-gray-200 hover:bg-gray-600'}`}
+                      className="px-1.5 py-0.5 rounded-ss-sm text-[10px] disabled:opacity-40 bg-[var(--ss-surface-2)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-3)]"
                     >{t('app.back')}</button>
                     <button
                       onClick={skipCurrentSample}
-                      className={`px-1.5 py-0.5 rounded text-[10px] ${isLight ? 'bg-white text-amber-700 hover:bg-white' : 'bg-gray-800 text-amber-400 hover:bg-gray-800'}`}
+                      className="px-1.5 py-0.5 rounded-ss-sm text-[10px] bg-[var(--ss-surface-1)] text-[var(--ss-warn)] hover:bg-[var(--ss-surface-2)]"
                       title={t('auto.AnnotatorPage.k13')}
                     >{t('annotator.ui.skip')}</button>
                     {samplerIdx < samplerSamples.length - 1 ? (
@@ -2338,7 +2298,7 @@ export function AnnotatorPage() {
                     )}
                     <button
                       onClick={cancelSampler}
-                      className={`px-1 py-0.5 rounded text-[10px] ${isLight ? 'text-gray-500 hover:bg-gray-200' : 'text-gray-400 hover:bg-gray-700'}`}
+                      className="px-1 py-0.5 rounded-ss-sm text-[10px] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-3)]"
                       title={t('auto.AnnotatorPage.k14')}
                     ><MIcon name="close" size={12} /></button>
                   </div>
@@ -2368,18 +2328,14 @@ export function AnnotatorPage() {
                     </button>
                     <button
                       onClick={() => setTaggingMode(false)}
-                      className={`px-1 py-0.5 rounded text-xs ${
-                        isLight ? 'text-gray-500 hover:bg-gray-200' : 'text-gray-400 hover:bg-gray-700'
-                      }`}
+                      className="px-1 py-0.5 rounded-ss-sm text-xs text-[var(--ss-t2)] hover:bg-[var(--ss-surface-3)]"
                     ><MIcon name="close" size={12} /></button>
                   </div>
                 ) : (
                   <button
                     onClick={startSampler}
                     disabled={frameDetectLoading}
-                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors disabled:opacity-50 ${
-                      isLight ? 'bg-white text-gray-700 hover:bg-white' : 'bg-gray-800 text-gray-200 hover:bg-gray-800'
-                    }`}
+                    className="flex items-center gap-1 px-1.5 py-0.5 rounded-ss-sm text-xs font-medium transition-colors disabled:opacity-50 bg-[var(--ss-surface-1)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-2)]"
                     title={trackFrames.length > 0
                       ? t('annotator.ui.track_identify_redo', { defaultValue: 'コート離脱・衣装変更などで識別をやり直す（10サンプル）' })
                       : t('annotator.ui.track_identify_first', { defaultValue: '10サンプルでギャラリータグ付けしてトラッキング開始' })}
@@ -2393,10 +2349,10 @@ export function AnnotatorPage() {
                 <button
                   onClick={() => trackFrames.length > 0 && setTrackingVisible((v) => !v)}
                   disabled={trackFrames.length === 0}
-                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded-ss-sm text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                     trackingVisible && trackFrames.length > 0
-                      ? isLight ? 'bg-white text-gray-700' : 'bg-purple-700/60 text-purple-200'
-                      : isLight ? 'bg-gray-200 text-gray-600 hover:bg-white disabled:hover:bg-gray-200' : 'bg-gray-700 text-gray-400 hover:bg-gray-800 disabled:hover:bg-gray-700'
+                      ? isLight ? 'bg-[var(--ss-surface-1)] text-[var(--ss-t1)]' : 'bg-purple-700/60 text-purple-200'
+                      : 'bg-[var(--ss-surface-2)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-1)] disabled:hover:bg-[var(--ss-surface-2)]'
                   }`}
                   title={
                     trackFrames.length === 0
@@ -2412,10 +2368,10 @@ export function AnnotatorPage() {
               {shuttleFrames.length > 0 && (
                 <button
                   onClick={() => setShuttleOverlayVisible((v) => !v)}
-                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
+                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded-ss-sm text-xs font-medium transition-colors ${
                     shuttleOverlayVisible
-                      ? isLight ? 'bg-white text-amber-700' : 'bg-yellow-700/60 text-yellow-200'
-                      : isLight ? 'bg-gray-200 text-gray-600 hover:bg-yellow-100' : 'bg-gray-700 text-gray-400 hover:bg-yellow-900/40'
+                      ? isLight ? 'bg-[var(--ss-surface-1)] text-[var(--ss-warn)]' : 'bg-yellow-700/60 text-yellow-200'
+                      : 'bg-[var(--ss-surface-2)] text-[var(--ss-t2)] hover:bg-[var(--ss-warn-tint)]'
                   }`}
                   title={shuttleOverlayVisible ? t('annotator.ui.shuttle_hide', { defaultValue: 'シャトル軌跡を非表示' }) : t('annotator.ui.shuttle_show', { defaultValue: 'シャトル軌跡を表示' })}
                 >
@@ -2426,10 +2382,10 @@ export function AnnotatorPage() {
               {/* コートグリッドオーバーレイ */}
               <button
                 onClick={() => setCourtGridVisible((v) => !v)}
-                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
+                className={`flex items-center gap-1 px-1.5 py-0.5 rounded-ss-sm text-xs font-medium transition-colors ${
                   courtGridVisible
-                    ? isLight ? 'bg-white text-gray-700' : 'bg-gray-800 text-gray-200'
-                    : isLight ? 'bg-gray-200 text-gray-600 hover:bg-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-800'
+                    ? 'bg-[var(--ss-surface-1)] text-[var(--ss-t1)]'
+                    : 'bg-[var(--ss-surface-2)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-1)]'
                 }`}
                 title={courtGridVisible ? t('annotator.ui.court_grid_hide', { defaultValue: 'コートグリッドを非表示' }) : t('annotator.ui.court_grid_show', { defaultValue: 'コートグリッドを表示' })}
               >
@@ -2447,12 +2403,12 @@ export function AnnotatorPage() {
                     setRoiEditing(true)
                   }
                 }}
-                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
+                className={`flex items-center gap-1 px-1.5 py-0.5 rounded-ss-sm text-xs font-medium transition-colors ${
                   roiEditing
-                    ? isLight ? 'bg-white text-amber-700' : 'bg-amber-700/60 text-amber-200'
+                    ? isLight ? 'bg-[var(--ss-surface-1)] text-[var(--ss-warn)]' : 'bg-amber-700/60 text-amber-200'
                     : roiRect
-                      ? isLight ? 'bg-white text-amber-700' : 'bg-gray-800 text-amber-400'
-                      : isLight ? 'bg-gray-200 text-gray-600 hover:bg-amber-100' : 'bg-gray-700 text-gray-400 hover:bg-amber-900/40'
+                      ? 'bg-[var(--ss-surface-1)] text-[var(--ss-warn)]'
+                      : 'bg-[var(--ss-surface-2)] text-[var(--ss-t2)] hover:bg-[var(--ss-warn-tint)]'
                 }`}
                 title={roiEditing ? t('annotator.ui.roi_editing_title', { defaultValue: '解析領域の指定を確定（クリックで終了）' }) : roiRect ? t('annotator.ui.roi_change_title', { defaultValue: '解析領域を変更（ドラッグ）' }) : t('annotator.ui.roi_set_title', { defaultValue: '解析領域を指定（TrackNet/YOLO）' })}
               >
@@ -2468,10 +2424,10 @@ export function AnnotatorPage() {
                     setYoloOverlayVisible(!bothOn)
                     setShuttleOverlayVisible(!bothOn)
                   }}
-                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
+                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded-ss-sm text-xs font-medium transition-colors ${
                     yoloOverlayVisible && shuttleOverlayVisible
-                      ? isLight ? 'bg-white text-blue-700' : 'bg-green-700/60 text-green-200'
-                      : isLight ? 'bg-gray-200 text-gray-500 hover:bg-green-100' : 'bg-gray-700 text-gray-500 hover:bg-green-900/40'
+                      ? isLight ? 'bg-[var(--ss-surface-1)] text-[var(--ss-brand)]' : 'bg-green-700/60 text-green-200'
+                      : 'bg-[var(--ss-surface-2)] text-[var(--ss-t3)] hover:bg-[var(--ss-success-tint)]'
                   }`}
                   title={t('auto.AnnotatorPage.k15')}
                 >
@@ -2482,20 +2438,18 @@ export function AnnotatorPage() {
           )}
           {/* CV補助: 候補生成・適用ボタン（cvToolsExpanded で折り畳み） */}
           {cvToolsExpanded && (tracknetJob?.status === 'complete' || yoloJob?.status === 'complete') && (
-            <div className={`flex items-center gap-1 px-1.5 py-1 rounded border ${
-              isLight ? 'border-gray-300 bg-gray-50' : 'border-gray-700 bg-gray-800/60'
-            }`}>
-              <span className={`text-[9px] font-bold uppercase tracking-wider pr-1 ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>
+            <div className="flex items-center gap-1 px-1.5 py-1 rounded-ss-md border border-[var(--ss-border)] bg-[var(--ss-surface-2)]">
+              <span className="text-[9px] font-bold uppercase tracking-wider pr-1 text-[var(--ss-t3)]">
                 {t('annotator.ui.cv_assist_short_label', { defaultValue: 'CV補助' })}
               </span>
               {/* 候補生成 */}
               <button
                 onClick={() => buildCandidates()}
                 disabled={cvBuildLoading}
-                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors disabled:opacity-50 ${
+                className={`flex items-center gap-1 px-1.5 py-0.5 rounded-ss-sm text-[10px] font-medium transition-colors disabled:opacity-50 ${
                   candidatesData
-                    ? isLight ? 'bg-white text-blue-700 hover:bg-white' : 'bg-gray-800 text-blue-300 hover:bg-gray-800'
-                    : isLight ? 'bg-gray-200 text-gray-600 hover:bg-emerald-100' : 'bg-gray-700 text-gray-400 hover:bg-emerald-900/40'
+                    ? 'bg-[var(--ss-surface-1)] text-[var(--ss-brand)] hover:bg-[var(--ss-surface-2)]'
+                    : 'bg-[var(--ss-surface-2)] text-[var(--ss-t2)] hover:bg-[var(--ss-success-tint)]'
                 }`}
                 title={candidatesData ? t('annotator.ui.cv_assist_built_at', { defaultValue: '候補生成済み ({{date}}) — 再生成', date: candidatesData.built_at?.slice(0, 10) }) : t('annotator.ui.cv_assist_build_title', { defaultValue: 'CV候補を生成する' })}
               >
@@ -2507,9 +2461,7 @@ export function AnnotatorPage() {
                   <button
                     onClick={() => applyCandidates('auto_filled', ['land_zone', 'hitter'])}
                     disabled={cvBuildLoading || cvApplyLoading}
-                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors disabled:opacity-50 ${
-                      isLight ? 'bg-white text-blue-700 hover:bg-white' : 'bg-gray-800 text-blue-300 hover:bg-gray-800'
-                    }`}
+                    className="flex items-center gap-1 px-1.5 py-0.5 rounded-ss-sm text-[10px] font-medium transition-colors disabled:opacity-50 bg-[var(--ss-surface-1)] text-[var(--ss-brand)] hover:bg-[var(--ss-surface-2)]"
                     title={t('auto.AnnotatorPage.k16')}
                   >
                     {t('annotator.ui.cv_apply_high', { defaultValue: '高確信度適用' })}
@@ -2517,9 +2469,7 @@ export function AnnotatorPage() {
                   <button
                     onClick={() => applyCandidates('auto_filled', ['land_zone'])}
                     disabled={cvBuildLoading || cvApplyLoading}
-                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors disabled:opacity-50 ${
-                      isLight ? 'bg-white text-blue-700 hover:bg-white' : 'bg-gray-800 text-blue-300 hover:bg-gray-800'
-                    }`}
+                    className="flex items-center gap-1 px-1.5 py-0.5 rounded-ss-sm text-[10px] font-medium transition-colors disabled:opacity-50 bg-[var(--ss-surface-1)] text-[var(--ss-brand)] hover:bg-[var(--ss-surface-2)]"
                     title={t('auto.AnnotatorPage.k17')}
                   >
                     {t('annotator.ui.cv_apply_land_only', { defaultValue: '着地のみ' })}
@@ -2527,9 +2477,7 @@ export function AnnotatorPage() {
                   <button
                     onClick={() => applyCandidates('auto_filled', ['hitter'])}
                     disabled={cvBuildLoading || cvApplyLoading}
-                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors disabled:opacity-50 ${
-                      isLight ? 'bg-white text-gray-700 hover:bg-white' : 'bg-gray-800 text-gray-200 hover:bg-gray-800'
-                    }`}
+                    className="flex items-center gap-1 px-1.5 py-0.5 rounded-ss-sm text-[10px] font-medium transition-colors disabled:opacity-50 bg-[var(--ss-surface-1)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-2)]"
                     title={t('auto.AnnotatorPage.k18')}
                   >
                     {t('annotator.ui.cv_apply_hitter_only', { defaultValue: '打者のみ' })}
@@ -2537,9 +2485,7 @@ export function AnnotatorPage() {
                   <button
                     onClick={() => applyCandidates('suggested', ['land_zone', 'hitter'])}
                     disabled={cvBuildLoading || cvApplyLoading}
-                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors disabled:opacity-50 ${
-                      isLight ? 'bg-white text-gray-700 hover:bg-white' : 'bg-gray-800 text-gray-200 hover:bg-gray-800'
-                    }`}
+                    className="flex items-center gap-1 px-1.5 py-0.5 rounded-ss-sm text-[10px] font-medium transition-colors disabled:opacity-50 bg-[var(--ss-surface-1)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-2)]"
                     title={t('auto.AnnotatorPage.k19')}
                   >
                     {t('annotator.ui.cv_apply_with_candidates', { defaultValue: '候補も含む' })}
@@ -2550,10 +2496,10 @@ export function AnnotatorPage() {
               {candidatesData && (
                 <button
                   onClick={() => setShowCVAssistPanel((v) => !v)}
-                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded-ss-sm text-[10px] font-medium transition-colors ${
                     showCVAssistPanel
-                      ? isLight ? 'bg-white text-gray-700' : 'bg-purple-700/60 text-purple-200'
-                      : isLight ? 'bg-gray-200 text-gray-500 hover:bg-white' : 'bg-gray-700 text-gray-500 hover:bg-gray-800'
+                      ? isLight ? 'bg-[var(--ss-surface-1)] text-[var(--ss-t1)]' : 'bg-purple-700/60 text-purple-200'
+                      : 'bg-[var(--ss-surface-2)] text-[var(--ss-t3)] hover:bg-[var(--ss-surface-1)]'
                   }`}
                   title={t('auto.AnnotatorPage.k20')}
                 >
@@ -2564,10 +2510,10 @@ export function AnnotatorPage() {
               {cvReviewQueue.length > 0 && (
                 <button
                   onClick={() => setCVReviewQueueOpen((v) => !v)}
-                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded-ss-sm text-[10px] font-medium transition-colors ${
                     cvReviewQueueOpen
-                      ? isLight ? 'bg-white text-amber-700' : 'bg-amber-700/60 text-amber-200'
-                      : isLight ? 'bg-white text-amber-700' : 'bg-gray-800 text-amber-400'
+                      ? isLight ? 'bg-[var(--ss-surface-1)] text-[var(--ss-warn)]' : 'bg-amber-700/60 text-amber-200'
+                      : 'bg-[var(--ss-surface-1)] text-[var(--ss-warn)]'
                   }`}
                   title={t('auto.AnnotatorPage.k21')}
                 >
@@ -2587,7 +2533,7 @@ export function AnnotatorPage() {
               )}
               {/* ビルドエラー */}
               {cvBuildError && (
-                <span className={`text-[9px] max-w-[120px] truncate cursor-pointer ${isLight ? 'text-red-500' : 'text-red-400'}`}
+                <span className="text-[9px] max-w-[120px] truncate cursor-pointer text-[var(--ss-bad)]"
                   title={cvBuildError}
                   onClick={clearCVBuildError}
                 >
@@ -2605,14 +2551,10 @@ export function AnnotatorPage() {
                   if (tunnelPending) return  // 公開URL取得中はモーダルを開かない
                   setShowSessionModal(true)
                 }}
-                className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
+                className={`flex items-center gap-1 px-2 py-1 rounded-ss-md text-xs transition-colors ${
                   tunnelPending
-                    ? isLight
-                      ? 'bg-white text-amber-700 cursor-wait'
-                      : 'bg-gray-800 text-amber-400 cursor-wait'
-                    : isLight
-                      ? 'bg-white text-blue-700 hover:bg-white'
-                      : 'bg-gray-800 text-blue-300 hover:bg-gray-800'
+                    ? 'bg-[var(--ss-surface-1)] text-[var(--ss-warn)] cursor-wait'
+                    : 'bg-[var(--ss-surface-1)] text-[var(--ss-brand)] hover:bg-[var(--ss-surface-2)]'
                 }`}
                 title={tunnelPending ? t('annotator.ui.tunnel_pending_title', { defaultValue: 'トンネルURL取得中... しばらくお待ちください' }) : t('annotator.ui.tunnel_show_qr_title', { defaultValue: 'クリックしてQRコード・URLを表示' })}
               >
@@ -2627,14 +2569,10 @@ export function AnnotatorPage() {
                   onClick={() => tunnelToggle.mutate()}
                   disabled={tunnelToggle.isPending}
                   title={tunnelStatus?.data?.running ? t('annotator.ui.tunnel_stop_title', { defaultValue: 'トンネル停止' }) : t('annotator.ui.tunnel_start_title', { defaultValue: 'トンネル起動（HTTPS外部公開）' })}
-                  className={`flex items-center gap-1 px-1.5 py-1 rounded text-xs transition-colors disabled:opacity-50 ${
+                  className={`flex items-center gap-1 px-1.5 py-1 rounded-ss-md text-xs transition-colors disabled:opacity-50 ${
                     tunnelStatus?.data?.running
-                      ? isLight
-                        ? 'bg-white text-blue-700 hover:bg-white hover:text-red-700'
-                        : 'bg-gray-800 text-blue-300 hover:bg-gray-800 hover:text-red-300'
-                      : isLight
-                        ? 'bg-gray-200 text-gray-500 hover:text-gray-700'
-                        : 'bg-gray-700 text-gray-500 hover:text-gray-300'
+                      ? 'bg-[var(--ss-surface-1)] text-[var(--ss-brand)] hover:bg-[var(--ss-surface-2)] hover:text-[var(--ss-bad)]'
+                      : 'bg-[var(--ss-surface-2)] text-[var(--ss-t2)] hover:text-[var(--ss-t1)]'
                   }`}
                 >
                   <MIcon name="public" size={12} className={tunnelStatus?.data?.running ? 'animate-pulse' : ''} />
@@ -2644,7 +2582,7 @@ export function AnnotatorPage() {
               {/* トンネルエラー表示（タイムアウト・認証失敗など） */}
               {tunnelLastError && !tunnelStatus?.data?.running && (
                 <span
-                  className={`text-[9px] max-w-[180px] truncate cursor-help ${isLight ? 'text-red-500' : 'text-red-400'}`}
+                  className="text-[9px] max-w-[180px] truncate cursor-help text-[var(--ss-bad)]"
                   title={tunnelLastError}
                 >
                   <span className="inline-flex items-center gap-0.5"><MIcon name="warning" size={9} />{tunnelLastError.replace('[ngrok] ', '')}</span>
@@ -2654,11 +2592,7 @@ export function AnnotatorPage() {
           ) : (
             <button
               onClick={handleCreateOrGetSession}
-              className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
-                isLight
-                  ? 'bg-gray-100 text-gray-500 hover:text-gray-800'
-                  : 'bg-gray-700 text-gray-400 hover:text-white'
-              }`}
+              className="flex items-center gap-1 px-2 py-1 rounded-ss-md text-xs font-medium transition-colors bg-[var(--ss-surface-2)] text-[var(--ss-t2)] hover:text-[var(--ss-t1)]"
               title={t('sharing.create_session')}
             >
               <MIcon name="share" size={12} />
@@ -2669,9 +2603,7 @@ export function AnnotatorPage() {
           {activeSession && (
             <button
               onClick={() => setShowDeviceManager(true)}
-              className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
-                isLight ? 'bg-gray-200 text-gray-500 hover:text-gray-800' : 'bg-gray-700 text-gray-400 hover:text-white'
-              }`}
+              className="flex items-center gap-1 px-2 py-1 rounded-ss-md text-xs transition-colors bg-[var(--ss-surface-2)] text-[var(--ss-t2)] hover:text-[var(--ss-t1)]"
               title={t('lan_session.open_device_manager')}
             >
               <MIcon name="monitor" size={12} />
@@ -2680,9 +2612,7 @@ export function AnnotatorPage() {
           {/* リモートヘルスバナー */}
           {activeSession && remoteHealth && (
             <div
-              className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] cursor-pointer ${
-                isLight ? 'bg-gray-200 text-gray-700' : 'bg-black/30 text-gray-300'
-              }`}
+              className="flex items-center gap-1 px-2 py-1 rounded-ss-md text-[10px] cursor-pointer bg-[var(--ss-surface-2)] text-[var(--ss-t1)]"
               onClick={() => setShowDeviceManager(true)}
               title={t('auto.AnnotatorPage.k22')}
             >
@@ -2700,7 +2630,7 @@ export function AnnotatorPage() {
                 </span>
               )}
               {tunnelStatus?.data?.running === false && (
-                <span className={isLight ? 'text-gray-500' : 'text-gray-400'}>{t('auto.AnnotatorPage.net_lan')}</span>
+                <span className="text-[var(--ss-t2)]">{t('auto.AnnotatorPage.net_lan')}</span>
               )}
               <span className={
                 remoteHealth.wsConnected
@@ -2717,13 +2647,13 @@ export function AnnotatorPage() {
               )}
             </div>
           )}
-          <div className="w-24 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+          <div className="w-24 h-1.5 bg-[var(--ss-surface-3)] rounded-full overflow-hidden">
             <div
-              className="h-full bg-blue-500 transition-all"
+              className="h-full bg-[var(--ss-brand)] transition-all"
               style={{ width: `${(match?.annotation_progress ?? 0) * 100}%` }}
             />
           </div>
-          <span>{Math.round((match?.annotation_progress ?? 0) * 100)}%</span>
+          <span className="ss-num">{Math.round((match?.annotation_progress ?? 0) * 100)}%</span>
         </div>
 
         {/* モバイル: 進捗 + メニューボタン */}
@@ -2733,16 +2663,16 @@ export function AnnotatorPage() {
               {store.pendingSaveCount}
             </span>
           )}
-          <div className="w-12 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+          <div className="w-12 h-1.5 bg-[var(--ss-surface-3)] rounded-full overflow-hidden">
             <div
-              className="h-full bg-blue-500 transition-all"
+              className="h-full bg-[var(--ss-brand)] transition-all"
               style={{ width: `${(match?.annotation_progress ?? 0) * 100}%` }}
             />
           </div>
-          <span className="text-[10px] text-gray-400">{Math.round((match?.annotation_progress ?? 0) * 100)}%</span>
+          <span className="text-[10px] text-[var(--ss-t2)] ss-num">{Math.round((match?.annotation_progress ?? 0) * 100)}%</span>
           <button
             onClick={() => setShowMobileMenu((v) => !v)}
-            className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+            className="p-1.5 rounded-ss-sm text-[var(--ss-t2)] hover:text-[var(--ss-t1)] hover:bg-[var(--ss-surface-3)] transition-colors"
           >
             <MIcon name="more_vert" size={18} />
           </button>
@@ -2756,13 +2686,13 @@ export function AnnotatorPage() {
           onClick={() => setShowMobileMenu(false)}
         >
           <div
-            className="absolute top-12 right-2 w-56 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1"
+            className="absolute top-12 right-2 w-56 bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-lg shadow-pop py-1"
             onClick={(e) => e.stopPropagation()}
           >
             {/* 途中終了 */}
             <button
               onClick={() => { setShowExceptionDialog(true); setShowMobileMenu(false) }}
-              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-red-400 hover:bg-gray-700"
+              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-[var(--ss-bad)] hover:bg-[var(--ss-surface-3)]"
             >
               <MIcon name="block" size={14} />
               {t('exception.title')}
@@ -2771,8 +2701,8 @@ export function AnnotatorPage() {
             <button
               onClick={() => { toggleMatchDayMode(); setShowMobileMenu(false) }}
               className={clsx(
-                'w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-gray-700',
-                isMatchDayMode ? 'text-yellow-400' : 'text-gray-300'
+                'w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-[var(--ss-surface-3)]',
+                isMatchDayMode ? 'text-[var(--ss-warn)]' : 'text-[var(--ss-t2)]'
               )}
             >
               <MIcon name="keyboard" size={14} />
@@ -2785,7 +2715,7 @@ export function AnnotatorPage() {
                 else handleCreateOrGetSession()
                 setShowMobileMenu(false)
               }}
-              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-gray-300 hover:bg-gray-700"
+              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-[var(--ss-t2)] hover:bg-[var(--ss-surface-3)]"
             >
               <MIcon name="share" size={14} />
               {activeSession ? activeSession.session_code : t('sharing.share')}
@@ -2794,7 +2724,7 @@ export function AnnotatorPage() {
             {match?.player_b?.needs_review && (
               <button
                 onClick={() => { setShowInMatchPanel((v) => !v); setShowMobileMenu(false) }}
-                className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-orange-300 hover:bg-gray-700"
+                className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-orange-300 hover:bg-[var(--ss-surface-3)]"
               >
                 <MIcon name="edit_document" size={14} />
                 {t('in_match_panel.opponent_info')}
@@ -2804,7 +2734,7 @@ export function AnnotatorPage() {
             {store.saveErrors.length > 0 && (
               <button
                 onClick={() => { store.clearSaveErrors(); setShowMobileMenu(false) }}
-                className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-red-400 hover:bg-gray-700"
+                className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-[var(--ss-bad)] hover:bg-[var(--ss-surface-3)]"
               >
                 {t('annotator.save_error_title')} {t('annotator.ui.save_error_count', { defaultValue: '{{n}}件', n: store.saveErrors.length })}
               </button>
@@ -2823,13 +2753,13 @@ export function AnnotatorPage() {
             </span>
             <button
               onClick={() => setReviewQueueOpen(false)}
-              className="text-gray-500 hover:text-gray-300 text-xs px-1"
+              className="text-[var(--ss-t3)] hover:text-[var(--ss-t1)] text-xs px-1"
             >
               {t('review_later.queue_close')}
             </button>
           </div>
           {(reviewBookmarksData?.length ?? 0) === 0 ? (
-            <p className="text-xs text-gray-500">{t('review_later.queue_empty')}</p>
+            <p className="text-xs text-[var(--ss-t3)]">{t('review_later.queue_empty')}</p>
           ) : (
             <div className="flex flex-wrap gap-1.5">
               {reviewBookmarksData!.map((bm) => (
@@ -2841,11 +2771,11 @@ export function AnnotatorPage() {
                     }
                     setReviewQueueOpen(false)
                   }}
-                  className="px-2 py-0.5 bg-gray-800 hover:bg-amber-700/60 text-amber-400 rounded text-xs border border-gray-700"
+                  className="px-2 py-0.5 bg-[var(--ss-surface-1)] hover:bg-amber-700/60 text-amber-400 rounded-ss-sm text-xs border border-[var(--ss-border)] ss-num"
                 >
                   {t('annotator.ui.rally_review_label', { defaultValue: 'ラリー #{{id}}', id: bm.rally_id ?? '?' })}
                   {bm.video_timestamp_sec != null && (
-                    <span className="ml-1 opacity-60 text-[10px]">{Math.floor(bm.video_timestamp_sec / 60)}:{String(Math.floor(bm.video_timestamp_sec % 60)).padStart(2, '0')}</span>
+                    <span className="ml-1 opacity-60 text-[10px] ss-num">{Math.floor(bm.video_timestamp_sec / 60)}:{String(Math.floor(bm.video_timestamp_sec % 60)).padStart(2, '0')}</span>
                   )}
                 </button>
               ))}
@@ -2888,7 +2818,7 @@ export function AnnotatorPage() {
             // 別モニタ表示中はメイン側を非表示（video-only ウィンドウで再生中）
             if (videoSourceMode === 'none') {
               return (
-                <div className="flex items-center justify-center bg-gray-900 rounded text-gray-500 text-xs border border-dashed border-gray-700 py-6 text-center">
+                <div className="flex items-center justify-center bg-[var(--ss-surface-2)] rounded-ss-lg text-[var(--ss-t3)] text-xs border border-dashed border-[var(--ss-border)] py-6 text-center">
                   {t('annotator.ui.external_monitor_playing', { defaultValue: '別モニタで再生中' })}
                 </div>
               )
@@ -2921,8 +2851,8 @@ export function AnnotatorPage() {
                       {/* 録画ボタン */}
                       <button
                         onClick={() => isRecording ? stopRecording() : startRecording(localCamStream)}
-                        className={`absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${
-                          isRecording ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-gray-800/80 hover:bg-gray-700 text-gray-200'
+                        className={`absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded-ss-sm text-xs font-medium ${
+                          isRecording ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-[var(--ss-surface-1)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t1)]'
                         }`}
                         title={isRecording ? t('annotator.ui.rec_stop_local', { defaultValue: '録画停止（ローカル保存）' }) : t('annotator.ui.rec_start', { defaultValue: '録画開始' })}
                       >
@@ -2950,8 +2880,8 @@ export function AnnotatorPage() {
                       {/* 録画ボタン */}
                       <button
                         onClick={() => isRecording ? stopRecording() : startRecording(remoteStream)}
-                        className={`absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${
-                          isRecording ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-gray-800/80 hover:bg-gray-700 text-gray-200'
+                        className={`absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded-ss-sm text-xs font-medium ${
+                          isRecording ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-[var(--ss-surface-1)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t1)]'
                         }`}
                         title={isRecording ? t('annotator.ui.rec_stop_local', { defaultValue: '録画停止（ローカル保存）' }) : t('annotator.ui.rec_start', { defaultValue: '録画開始' })}
                       >
@@ -2963,9 +2893,9 @@ export function AnnotatorPage() {
               }
               return (
                 <div className="w-full" style={{ aspectRatio: '16/9' }}>
-                <div className="w-full h-full flex items-center justify-center bg-gray-800 rounded text-gray-400 text-sm border-2 border-dashed border-gray-600 text-center gap-2 flex-col">
+                <div className="w-full h-full flex items-center justify-center bg-[var(--ss-surface-2)] rounded-ss-md text-[var(--ss-t2)] text-sm border-2 border-dashed border-[var(--ss-border)] text-center gap-2 flex-col">
                   <span>{t('annotator.ui.camera_waiting')}</span>
-                  <span className="text-xs text-gray-600">{t('annotator.ui.camera_start_hint')}</span>
+                  <span className="text-xs text-[var(--ss-t3)]">{t('annotator.ui.camera_start_hint')}</span>
                 </div>
                 </div>
               )
@@ -2973,9 +2903,9 @@ export function AnnotatorPage() {
 
             if (!videoSrc) {
               return (
-                <div className="flex items-center justify-center bg-gray-800 rounded text-gray-500 text-sm border-2 border-dashed border-gray-700 py-6 px-4 text-center gap-2 flex-col">
+                <div className="flex items-center justify-center bg-[var(--ss-surface-2)] rounded-ss-md text-[var(--ss-t2)] text-sm border-2 border-dashed border-[var(--ss-border)] py-6 px-4 text-center gap-2 flex-col">
                   <span>{t('annotator.ui.video_not_set')}</span>
-                  <span className="text-xs text-gray-600">{t('annotator.ui.video_set_hint')}</span>
+                  <span className="text-xs text-[var(--ss-t3)]">{t('annotator.ui.video_set_hint')}</span>
                 </div>
               )
             }
@@ -2997,7 +2927,7 @@ export function AnnotatorPage() {
                     />
                     <button
                       onClick={() => setUseWebView(false)}
-                      className="text-xs text-gray-500 hover:text-gray-300 text-left px-1"
+                      className="text-xs text-[var(--ss-t2)] hover:text-[var(--ss-t1)] text-left px-1"
                     >
                       {t('annotator.ui.back_to_download_play', { defaultValue: '← ダウンロード再生に戻る' })}
                     </button>
@@ -3019,7 +2949,7 @@ export function AnnotatorPage() {
                   {/* DRM保護コンテンツはWebViewモードで視聴 */}
                   <button
                     onClick={() => setUseWebView(true)}
-                    className="text-xs text-gray-500 hover:text-blue-400 text-left px-1 flex items-center gap-1"
+                    className="text-xs text-[var(--ss-t2)] hover:text-[var(--ss-brand)] text-left px-1 flex items-center gap-1"
                     title={t('auto.AnnotatorPage.k23')}
                   >
                     <MIcon name="lock" size={12} />{t('annotator.ui.drm_webview_hint', { defaultValue: 'DRM保護コンテンツ／ログイン必須サイトはブラウザ内視聴モードを使用' })}
@@ -3090,12 +3020,12 @@ export function AnnotatorPage() {
           })()}
 
           {/* 動画ソース設定 */}
-          <div className="bg-gray-800 rounded p-2 text-xs shrink-0">
-            <div className="text-gray-400 font-medium mb-1.5">{t('annotator.ui.video_source')}</div>
+          <div className="bg-[var(--ss-surface-1)] rounded-ss-lg p-2 text-xs shrink-0">
+            <div className="text-[var(--ss-t2)] font-medium mb-1.5">{t('annotator.ui.video_source')}</div>
             <div className="flex gap-1.5 items-center">
               <button
                 onClick={handleFileOpen}
-                className="flex items-center gap-1 px-2 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded whitespace-nowrap"
+                className="flex items-center gap-1 px-2 py-1.5 bg-[var(--ss-surface-3)] hover:bg-[var(--ss-surface-2)] text-[var(--ss-t1)] rounded-ss-md whitespace-nowrap"
                 title={t('auto.AnnotatorPage.k24')}
               >
                 <MIcon name="folder_open" size={12} />
@@ -3121,32 +3051,32 @@ export function AnnotatorPage() {
                 onChange={(e) => setUrlInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') handleUrlSave() }}
                 placeholder={t('auto.AnnotatorPage.k28')}
-                className="flex-1 px-2 py-1.5 bg-gray-700 text-gray-200 rounded border border-gray-600 focus:border-blue-500 outline-none min-w-0"
+                className="flex-1 px-2 py-1.5 bg-[var(--ss-surface-1)] text-[var(--ss-t1)] rounded-ss-md border border-[var(--ss-border-strong)] focus:border-[var(--ss-brand)] outline-none min-w-0"
               />
               <button
                 onClick={handleUrlSave}
-                className="flex items-center gap-1 px-2 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded whitespace-nowrap"
+                className="flex items-center gap-1 px-2 py-1.5 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white rounded-ss-md whitespace-nowrap"
               >
                 <MIcon name="link" size={12} />
                 {t('annotator.ui.url_set', { defaultValue: '設定' })}
               </button>
             </div>
             {hasVideo(match) && (
-              <div className="mt-1 text-gray-500 truncate inline-flex items-center gap-1">
+              <div className="mt-1 text-[var(--ss-t3)] truncate inline-flex items-center gap-1">
                 {getVideoLabel(match) || (<><MIcon name="link" size={11} />{match?.video_url}</>)}
               </div>
             )}
             {uploadProgress && (
-              <div className="mt-2 px-2 py-1.5 bg-gray-900 rounded border border-gray-700">
-                <div className="flex items-center justify-between text-[11px] text-gray-300 mb-1">
+              <div className="mt-2 px-2 py-1.5 bg-[var(--ss-surface-2)] rounded-ss-md border border-[var(--ss-border)]">
+                <div className="flex items-center justify-between text-[11px] text-[var(--ss-t2)] mb-1">
                   <span className="truncate mr-2">{uploadProgress.fileName}</span>
-                  <span className="tabular-nums whitespace-nowrap">
+                  <span className="ss-num tabular-nums whitespace-nowrap">
                     {t('auto.AnnotatorPage.upload_progress', { pct: (uploadProgress.ratio * 100).toFixed(1), mbps: uploadProgress.mbps.toFixed(1) })}
                   </span>
                 </div>
-                <div className="h-1 bg-gray-700 rounded overflow-hidden">
+                <div className="h-1 bg-[var(--ss-surface-3)] rounded-ss-sm overflow-hidden">
                   <div
-                    className="h-full bg-blue-500 transition-all"
+                    className="h-full bg-[var(--ss-brand)] transition-all"
                     style={{ width: `${uploadProgress.ratio * 100}%` }}
                   />
                 </div>
@@ -3171,10 +3101,10 @@ export function AnnotatorPage() {
                   key={mode}
                   onClick={() => setVideoSourceMode(mode)}
                   className={clsx(
-                    'flex-1 py-0.5 rounded text-[10px] border transition-colors',
+                    'flex-1 py-0.5 rounded-ss-sm text-[10px] border transition-colors',
                     videoSourceMode === mode
-                      ? 'bg-blue-600 border-blue-500 text-white'
-                      : 'bg-gray-700 border-gray-600 text-gray-400 hover:bg-gray-600'
+                      ? 'bg-[var(--ss-brand)] border-[var(--ss-brand)] text-white'
+                      : 'bg-[var(--ss-surface-2)] border-[var(--ss-border)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-3)]'
                   )}
                 >
                   {label}
@@ -3188,13 +3118,13 @@ export function AnnotatorPage() {
           <ShortcutLegend variant="compact" className="shrink-0" />
 
           {/* テンキーガイド */}
-          <div className="bg-gray-800 rounded p-3 text-gray-300 shrink-0">
-            <div className="font-semibold text-gray-200 mb-2 text-sm">{t('annotator.ui.numpad_title_desktop')}</div>
+          <div className="bg-[var(--ss-surface-2)] rounded-ss-md p-3 text-[var(--ss-t2)] shrink-0">
+            <div className="font-semibold text-[var(--ss-t1)] mb-2 text-sm">{t('annotator.ui.numpad_title_desktop')}</div>
             <div className="flex gap-4 items-start">
               {/* ゾーンキー */}
               <div className="space-y-1 flex-1">
                 {/* テンキー落点（主） */}
-                <div className="text-[10px] text-gray-300 mb-0.5 font-medium">{t('annotator.ui.numpad_recommended')}</div>
+                <div className="text-[10px] text-[var(--ss-t2)] mb-0.5 font-medium">{t('annotator.ui.numpad_recommended')}</div>
                 <div className="grid grid-cols-3 gap-1">
                   {[
                     { k: '7', zone: 'BL' }, { k: '8', zone: 'BC' }, { k: '9', zone: 'BR' },
@@ -3202,14 +3132,14 @@ export function AnnotatorPage() {
                     { k: '1', zone: 'NL' }, { k: '2', zone: 'NC' }, { k: '3', zone: 'NR' },
                   ].map(({ k, zone }) => (
                     <div key={k} className="text-center">
-                      <kbd className="block bg-gray-600 border border-gray-500 text-white rounded px-1.5 py-0.5 text-xs font-mono">{k}</kbd>
-                      <span className="text-[11px] text-gray-300 font-medium">{zone}</span>
+                      <kbd className="block bg-[var(--ss-surface-3)] border border-[var(--ss-border-strong)] text-white rounded-ss-sm px-1.5 py-0.5 text-xs font-mono">{k}</kbd>
+                      <span className="text-[11px] text-[var(--ss-t2)] font-medium">{zone}</span>
                     </div>
                   ))}
                 </div>
-                <div className="text-[11px] text-gray-500 mt-0.5">{t('annotator.ui.numpad_hint')}</div>
+                <div className="text-[11px] text-[var(--ss-t3)] mt-0.5">{t('annotator.ui.numpad_hint')}</div>
                 {/* 文字キー落点（副・ノートPC向け） */}
-                <div className="text-[10px] text-gray-500 mt-1.5 mb-0.5">{t('annotator.ui.letters_laptop')}</div>
+                <div className="text-[10px] text-[var(--ss-t3)] mt-1.5 mb-0.5">{t('annotator.ui.letters_laptop')}</div>
                 <div className="grid grid-cols-3 gap-1">
                   {[
                     { k: 'U', zone: 'BL' }, { k: 'I', zone: 'BC' }, { k: 'O', zone: 'BR' },
@@ -3217,39 +3147,39 @@ export function AnnotatorPage() {
                     { k: 'M', zone: 'NL' }, { k: ',', zone: 'NC' }, { k: '.', zone: 'NR' },
                   ].map(({ k, zone }) => (
                     <div key={k} className="text-center">
-                      <kbd className="block bg-gray-600 text-white rounded px-1.5 py-0.5 text-xs font-mono">{k}</kbd>
-                      <span className="text-[11px] text-gray-400 font-medium">{zone}</span>
+                      <kbd className="block bg-[var(--ss-surface-3)] text-white rounded-ss-sm px-1.5 py-0.5 text-xs font-mono">{k}</kbd>
+                      <span className="text-[11px] text-[var(--ss-t2)] font-medium">{zone}</span>
                     </div>
                   ))}
                 </div>
-                <div className="text-[11px] text-gray-500 mt-0.5">
+                <div className="text-[11px] text-[var(--ss-t3)] mt-0.5">
                   {t('annotator.ui.shortcut_letters_extra', { defaultValue: 'Shift+U/I/O=OB後 Shift+J/L=OB側 -/=/\\=NET' })}
                 </div>
               </div>
               {/* コートチェンジ情報 + 先サーブ/視点変更 */}
-              <div className="flex-1 border-l border-gray-700 pl-3 space-y-1.5">
-                <p className="text-xs text-gray-400 font-medium">{t('annotator.ui.court_change')}</p>
+              <div className="flex-1 border-l border-[var(--ss-border)] pl-3 space-y-1.5">
+                <p className="text-xs text-[var(--ss-t2)] font-medium">{t('annotator.ui.court_change')}</p>
                 {[1, 2, 3].map((sn) => {
                   const isCurrent = store.currentSetNum === sn
                   const aPos = computePlayerASide(playerAStart, sn, sn === store.currentSetNum ? store.scoreA : 0, sn === store.currentSetNum ? store.scoreB : 0)
                   return (
-                    <div key={sn} className={`text-xs flex items-center gap-1.5 ${isCurrent ? 'text-yellow-300 font-medium' : 'text-gray-500'}`}>
-                      <span className={`w-2 h-2 rounded-full inline-block shrink-0 ${isCurrent ? 'bg-yellow-400' : 'bg-gray-700'}`} />
+                    <div key={sn} className={`text-xs flex items-center gap-1.5 ${isCurrent ? 'text-[var(--ss-warn)] font-medium' : 'text-[var(--ss-t3)]'}`}>
+                      <span className={`w-2 h-2 rounded-full inline-block shrink-0 ${isCurrent ? 'bg-[var(--ss-warn)]' : 'bg-[var(--ss-surface-3)]'}`} />
                       <span>{t('annotator.ui.set_a_position', {
                         defaultValue: 'Set {{set}}: A={{pos}}',
                         set: sn,
                         pos: aPos === 'top' ? t('annotator.ui.side_arrow_top', { defaultValue: '↑上' }) : t('annotator.ui.side_arrow_bottom', { defaultValue: '↓下' }),
                       })}</span>
-                      {sn === 3 && <span className="text-gray-600 text-[10px]">{t('annotator.ui.third_set_swap', { defaultValue: '(11pt↔)' })}</span>}
+                      {sn === 3 && <span className="text-[var(--ss-t3)] text-[10px]">{t('annotator.ui.third_set_swap', { defaultValue: '(11pt↔)' })}</span>}
                     </div>
                   )
                 })}
                 {/* eslint-disable-next-line no-irregular-whitespace */}
-                <p className="text-xs text-gray-500 mt-1"><span className="text-blue-400">■</span> {t('auto.AnnotatorPage.k1')}　<span className="text-orange-400">■</span> {t('auto.AnnotatorPage.k2')}</p>
+                <p className="text-xs text-[var(--ss-t2)] mt-1"><span className="text-blue-400">■</span> {t('auto.AnnotatorPage.k1')}　<span className="text-orange-400">■</span> {t('auto.AnnotatorPage.k2')}</p>
 
                 {/* 先サーブ変更 */}
-                <div className="pt-1.5 border-t border-gray-700 space-y-1">
-                  <p className="text-xs text-gray-400 font-medium">{t('annotator.ui.first_serve')}</p>
+                <div className="pt-1.5 border-t border-[var(--ss-border)] space-y-1">
+                  <p className="text-xs text-[var(--ss-t2)] font-medium">{t('annotator.ui.first_serve')}</p>
                   <div className="flex gap-1">
                     {([
                       { v: 'player_a' as const, label: t('auto.AnnotatorPage.k37') },
@@ -3258,10 +3188,10 @@ export function AnnotatorPage() {
                       <button
                         key={v}
                         onClick={() => handleInitialServerChange(v)}
-                        className={`flex-1 py-0.5 rounded text-xs border ${
+                        className={`flex-1 py-0.5 rounded-ss-sm text-xs border ${
                           match?.initial_server === v
-                            ? 'bg-blue-600 border-blue-500 text-white'
-                            : 'bg-gray-700 border-gray-600 text-gray-400 hover:bg-gray-600'
+                            ? 'bg-[var(--ss-brand)] border-[var(--ss-brand)] text-white'
+                            : 'bg-[var(--ss-surface-2)] border-[var(--ss-border)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-3)]'
                         }`}
                       >
                         {label}
@@ -3270,7 +3200,7 @@ export function AnnotatorPage() {
                   </div>
 
                   {/* 視点変更 */}
-                  <p className="text-xs text-gray-400 font-medium pt-0.5">{t('annotator.ui.analyst_view')}</p>
+                  <p className="text-xs text-[var(--ss-t2)] font-medium pt-0.5">{t('annotator.ui.analyst_view')}</p>
                   <div className="flex gap-1">
                     {([
                       { v: 'bottom' as const, label: t('auto.AnnotatorPage.k39') },
@@ -3279,10 +3209,10 @@ export function AnnotatorPage() {
                       <button
                         key={v}
                         onClick={() => handleViewpointChange(v)}
-                        className={`flex-1 py-0.5 rounded text-xs border ${
+                        className={`flex-1 py-0.5 rounded-ss-sm text-xs border ${
                           playerAStart === v
-                            ? 'bg-blue-600 border-blue-500 text-white'
-                            : 'bg-gray-700 border-gray-600 text-gray-400 hover:bg-gray-600'
+                            ? 'bg-[var(--ss-brand)] border-[var(--ss-brand)] text-white'
+                            : 'bg-[var(--ss-surface-2)] border-[var(--ss-border)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-3)]'
                         }`}
                       >
                         {label}
@@ -3299,7 +3229,7 @@ export function AnnotatorPage() {
         {!isMatchDayMode && !isMobile && (
           <div
             onMouseDown={handleResizeDragStart}
-            className="w-1 shrink-0 cursor-col-resize bg-gray-700 hover:bg-gray-500 transition-colors active:bg-gray-400"
+            className="w-1 shrink-0 cursor-col-resize bg-[var(--ss-surface-3)] hover:bg-[var(--ss-t3)] transition-colors active:bg-[var(--ss-t2)]"
             title={t('auto.AnnotatorPage.k25')}
           />
         )}
@@ -3307,7 +3237,7 @@ export function AnnotatorPage() {
         {/* 右: 入力パネル — 試合中モード時/モバイル時はフルスクリーン */}
         <div className={clsx(
           'flex flex-col overflow-y-auto',
-          (isMatchDayMode || isMobile) ? 'flex-1' : 'w-[40%] border-l border-gray-700'
+          (isMatchDayMode || isMobile) ? 'flex-1' : 'w-[40%] border-l border-[var(--ss-border)]'
         )}>
           {/* U3: モード切替 — input モードのみ既存 UI、他モードは専用パネルへ */}
           {/* UX-R4: モバイル時 (md 未満) は BottomSheet で表示するため、ここでは renderしない */}
@@ -3345,21 +3275,21 @@ export function AnnotatorPage() {
               「ラリー中 (ショット選択待ち)」を色で区別する */}
           <div
             className={clsx(
-              'flex items-center justify-between px-3 py-2 text-xs font-medium border-b border-gray-700 shrink-0',
+              'flex items-center justify-between px-3 py-2 text-xs font-medium border-b border-[var(--ss-border)] shrink-0',
               store.inputStep === 'idle' && !store.isRallyActive
-                ? 'text-gray-400 bg-gray-800'                          // pre-rally idle (待機)
+                ? 'text-[var(--ss-t2)] bg-[var(--ss-surface-2)]'                          // pre-rally idle (待機)
                 : store.inputStep === 'idle'
-                  ? 'text-blue-300 bg-gray-800'                // in-rally idle (ショット待ち) — 緑
+                  ? 'text-[var(--ss-brand)] bg-[var(--ss-surface-2)]'                // in-rally idle (ショット待ち) — 緑
                   : store.inputStep === 'land_zone'
-                    ? 'text-blue-300 bg-gray-800'                    // 着地点入力中 — 青
-                    : 'text-amber-400 bg-gray-800'                // rally_end — 橙
+                    ? 'text-[var(--ss-brand)] bg-[var(--ss-surface-2)]'                    // 着地点入力中 — 青
+                    : 'text-[var(--ss-warn)] bg-[var(--ss-surface-2)]'                // rally_end — 橙
             )}
           >
             <span>{initialized ? stepLabel : t('annotator.ui.loading_dots', { defaultValue: '読み込み中…' })}</span>
             {isMatchDayMode && (
               <button
                 onClick={() => setShowLegendOverlay((v) => !v)}
-                className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+                className="flex items-center gap-1 px-2 py-0.5 rounded-ss-sm text-xs text-[var(--ss-t2)] hover:text-[var(--ss-t1)] hover:bg-[var(--ss-surface-3)] transition-colors"
                 title={t('auto.AnnotatorPage.k26')}
               >
                 <MIcon name="keyboard" size={12} />
@@ -3374,14 +3304,14 @@ export function AnnotatorPage() {
               onClick={() => setShowLegendOverlay(false)}
             >
               <div
-                className="bg-gray-900 border border-gray-700 rounded-lg p-5 max-w-lg w-full mx-4 space-y-4"
+                className="bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-lg p-5 max-w-lg w-full mx-4 space-y-4"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm font-semibold text-gray-200">{t('annotator.ui.shortcuts_title')}</span>
+                  <span className="text-sm font-semibold text-[var(--ss-t1)]">{t('annotator.ui.shortcuts_title')}</span>
                   <button
                     onClick={() => setShowLegendOverlay(false)}
-                    className="text-gray-500 hover:text-white text-lg leading-none"
+                    className="text-[var(--ss-t2)] hover:text-[var(--ss-t1)] text-lg leading-none"
                     aria-label={t('auto.AnnotatorPage.k14')}
                   >
                     <MIcon name="close" size={12} />
@@ -3389,11 +3319,11 @@ export function AnnotatorPage() {
                 </div>
                 {/* キー一覧は ShortcutLegend に集約済 (full variant: 上級キーも含む) */}
                 <ShortcutLegend variant="full" className="!bg-transparent !p-0" />
-                <div className="border-t border-gray-700 pt-3">
-                  <div className="font-semibold text-gray-200 mb-2 text-xs">{t('annotator.ui.numpad_title_mobile')}</div>
+                <div className="border-t border-[var(--ss-border)] pt-3">
+                  <div className="font-semibold text-[var(--ss-t1)] mb-2 text-xs">{t('annotator.ui.numpad_title_mobile')}</div>
                   <div className="flex gap-4 items-start">
                     <div className="space-y-1 flex-1">
-                      <div className="text-[10px] text-gray-400 mb-0.5">{t('annotator.ui.numpad_recommended')}</div>
+                      <div className="text-[10px] text-[var(--ss-t2)] mb-0.5">{t('annotator.ui.numpad_recommended')}</div>
                       <div className="grid grid-cols-3 gap-1">
                         {[
                           { k: '7', zone: 'BL' }, { k: '8', zone: 'BC' }, { k: '9', zone: 'BR' },
@@ -3401,13 +3331,13 @@ export function AnnotatorPage() {
                           { k: '1', zone: 'NL' }, { k: '2', zone: 'NC' }, { k: '3', zone: 'NR' },
                         ].map(({ k, zone }) => (
                           <div key={k} className="text-center">
-                            <kbd className="block bg-gray-600 border border-gray-500 text-white rounded px-1.5 py-0.5 text-xs font-mono">{k}</kbd>
-                            <span className="text-[11px] text-gray-300 font-medium">{zone}</span>
+                            <kbd className="block bg-[var(--ss-surface-3)] border border-[var(--ss-border-strong)] text-white rounded-ss-sm px-1.5 py-0.5 text-xs font-mono">{k}</kbd>
+                            <span className="text-[11px] text-[var(--ss-t2)] font-medium">{zone}</span>
                           </div>
                         ))}
                       </div>
-                      <div className="text-[11px] text-gray-500 mt-0.5">{t('annotator.ui.numpad_hint')}</div>
-                      <div className="text-[10px] text-gray-500 mt-1.5 mb-0.5">{t('annotator.ui.letters_laptop')}</div>
+                      <div className="text-[11px] text-[var(--ss-t3)] mt-0.5">{t('annotator.ui.numpad_hint')}</div>
+                      <div className="text-[10px] text-[var(--ss-t3)] mt-1.5 mb-0.5">{t('annotator.ui.letters_laptop')}</div>
                       <div className="grid grid-cols-3 gap-1">
                         {[
                           { k: 'U', zone: 'BL' }, { k: 'I', zone: 'BC' }, { k: 'O', zone: 'BR' },
@@ -3415,40 +3345,40 @@ export function AnnotatorPage() {
                           { k: 'M', zone: 'NL' }, { k: ',', zone: 'NC' }, { k: '.', zone: 'NR' },
                         ].map(({ k, zone }) => (
                           <div key={k} className="text-center">
-                            <kbd className="block bg-gray-600 text-white rounded px-1.5 py-0.5 text-xs font-mono">{k}</kbd>
-                            <span className="text-[11px] text-gray-400 font-medium">{zone}</span>
+                            <kbd className="block bg-[var(--ss-surface-3)] text-white rounded-ss-sm px-1.5 py-0.5 text-xs font-mono">{k}</kbd>
+                            <span className="text-[11px] text-[var(--ss-t2)] font-medium">{zone}</span>
                           </div>
                         ))}
                       </div>
                     </div>
-                    <div className="flex-1 border-l border-gray-700 pl-3 space-y-1.5">
-                      <p className="text-xs text-gray-400 font-medium">{t('annotator.ui.court_change')}</p>
+                    <div className="flex-1 border-l border-[var(--ss-border)] pl-3 space-y-1.5">
+                      <p className="text-xs text-[var(--ss-t2)] font-medium">{t('annotator.ui.court_change')}</p>
                       {[1, 2, 3].map((sn) => {
                         const isCurrent = store.currentSetNum === sn
                         const aPos = computePlayerASide(playerAStart, sn, sn === store.currentSetNum ? store.scoreA : 0, sn === store.currentSetNum ? store.scoreB : 0)
                         return (
-                          <div key={sn} className={`text-xs flex items-center gap-1.5 ${isCurrent ? 'text-yellow-300 font-medium' : 'text-gray-500'}`}>
-                            <span className={`w-2 h-2 rounded-full inline-block shrink-0 ${isCurrent ? 'bg-yellow-400' : 'bg-gray-700'}`} />
+                          <div key={sn} className={`text-xs flex items-center gap-1.5 ${isCurrent ? 'text-[var(--ss-warn)] font-medium' : 'text-[var(--ss-t3)]'}`}>
+                            <span className={`w-2 h-2 rounded-full inline-block shrink-0 ${isCurrent ? 'bg-[var(--ss-warn)]' : 'bg-[var(--ss-surface-3)]'}`} />
                             <span>{t('annotator.ui.set_a_position', {
                               defaultValue: 'Set {{set}}: A={{pos}}',
                               set: sn,
                               pos: aPos === 'top' ? t('annotator.ui.side_arrow_top', { defaultValue: '↑上' }) : t('annotator.ui.side_arrow_bottom', { defaultValue: '↓下' }),
                             })}</span>
-                            {sn === 3 && <span className="text-gray-600 text-[10px]">{t('annotator.ui.third_set_swap', { defaultValue: '(11pt↔)' })}</span>}
+                            {sn === 3 && <span className="text-[var(--ss-t3)] text-[10px]">{t('annotator.ui.third_set_swap', { defaultValue: '(11pt↔)' })}</span>}
                           </div>
                         )
                       })}
                     </div>
                   </div>
                 </div>
-                <p className="text-[10px] text-gray-600 text-center">{t('annotator.ui.bg_click_close')}</p>
+                <p className="text-[10px] text-[var(--ss-t3)] text-center">{t('annotator.ui.bg_click_close')}</p>
               </div>
             </div>
           )}
 
           {/* モバイル: スコアを sticky 固定 — ScoreboardCompact (大型) */}
           {isMobile && (
-            <div className="sticky top-0 z-10 bg-gray-900 px-3 pt-2 pb-1 shrink-0">
+            <div className="sticky top-0 z-10 bg-[var(--ss-surface-1)] px-3 pt-2 pb-1 shrink-0">
               <ScoreboardCompact
                 match={match}
                 scoreA={store.scoreA}
@@ -3457,7 +3387,7 @@ export function AnnotatorPage() {
                 rallyNum={store.currentRallyNum}
                 strokeCount={store.isRallyActive ? store.currentStrokes.length : 0}
                 useLargeTouch
-                className="bg-gray-800 rounded-lg p-3"
+                className="bg-[var(--ss-surface-2)] rounded-ss-lg p-3"
               />
             </div>
           )}
@@ -3472,24 +3402,24 @@ export function AnnotatorPage() {
                 setNum={store.currentSetNum}
                 rallyNum={store.currentRallyNum}
                 useLargeTouch={useLargeTouch}
-                className={clsx('bg-gray-800 rounded shrink-0', useLargeTouch ? 'p-3' : 'p-2')}
+                className={clsx('bg-[var(--ss-surface-1)] rounded-ss-md shrink-0', useLargeTouch ? 'p-3' : 'p-2')}
                 middleExtra={
                   videoSourceMode !== 'local' ? (
                     <div className="mt-1 flex flex-col items-center gap-0.5">
-                      <div className={clsx('num-cell text-sm font-bold', timer.isRunning ? 'text-green-400' : 'text-gray-400')}>
+                      <div className={clsx('num-cell ss-num text-sm font-bold', timer.isRunning ? 'text-[var(--ss-success)]' : 'text-[var(--ss-t2)]')}>
                         {timer.displayTime}
                       </div>
                       <div className="flex gap-1">
                         {!timer.isRunning ? (
-                          <button onClick={timer.start} className="px-1.5 py-0.5 bg-green-700 hover:bg-green-600 text-white rounded text-[9px] flex items-center gap-0.5">
+                          <button onClick={timer.start} className="px-1.5 py-0.5 bg-[var(--ss-success)] hover:opacity-90 text-white rounded-ss-md text-[9px] flex items-center gap-0.5">
                             <MIcon name="play_arrow" size={8} />{t('timer.start')}
                           </button>
                         ) : (
-                          <button onClick={timer.pause} className="px-1.5 py-0.5 bg-yellow-700 hover:bg-yellow-600 text-white rounded text-[9px] flex items-center gap-0.5">
+                          <button onClick={timer.pause} className="px-1.5 py-0.5 bg-[var(--ss-warn)] hover:opacity-90 text-white rounded-ss-md text-[9px] flex items-center gap-0.5">
                             <MIcon name="pause" size={8} />{t('timer.pause')}
                           </button>
                         )}
-                        <button onClick={timer.reset} className="px-1.5 py-0.5 bg-gray-600 hover:bg-gray-500 text-gray-300 rounded text-[9px]">
+                        <button onClick={timer.reset} className="px-1.5 py-0.5 bg-[var(--ss-surface-3)] hover:opacity-90 text-[var(--ss-t2)] rounded-ss-md text-[9px]">
                           {t('timer.reset')}
                         </button>
                       </div>
@@ -3502,12 +3432,12 @@ export function AnnotatorPage() {
             {/* D-1: 自動保存ステータス（デスクトップのみ） */}
             <div className={clsx('flex items-center text-[10px] shrink-0 px-0.5', isMobile && 'hidden')}>
               {autoSaveError ? (
-                <span className="text-red-400 font-medium inline-flex items-center gap-0.5" title={autoSaveError}>
+                <span className="text-[var(--ss-bad)] font-medium inline-flex items-center gap-0.5" title={autoSaveError}>
                   <MIcon name="warning" size={10} />{autoSaveError}
                 </span>
               ) : store.isRallyActive && store.currentStrokes.length > 0 ? (
                 lastAutoSaveTime ? (
-                  <span className="text-green-500 inline-flex items-center gap-0.5">
+                  <span className="text-[var(--ss-success)] inline-flex items-center gap-0.5">
                     <MIcon name="check" size={10} />
                     {t('annotator.ui.auto_saved_at', {
                       defaultValue: '自動保存済 {{time}}',
@@ -3515,10 +3445,10 @@ export function AnnotatorPage() {
                     })}
                   </span>
                 ) : (
-                  <span className="text-yellow-500 animate-pulse">{t('annotator.ui.unsaved')}</span>
+                  <span className="text-[var(--ss-warn)] animate-pulse">{t('annotator.ui.unsaved')}</span>
                 )
               ) : (
-                <span className="text-gray-600">—</span>
+                <span className="text-[var(--ss-t3)]">—</span>
               )}
             </div>
 
@@ -3540,11 +3470,11 @@ export function AnnotatorPage() {
                     disabled={playerToggleDisabled}
                     title={match?.player_a?.team ? t('annotator.ui.team_prefix_title', { defaultValue: '所属: {{team}}', team: match.player_a.team }) : match?.player_a?.name ?? 'A'}
                     className={clsx(
-                      'flex-1 rounded font-medium transition-colors',
+                      'flex-1 rounded-ss-md font-medium transition-colors',
                       useLargeTouch ? 'py-3 text-sm' : 'py-1.5 text-xs',
                       store.currentPlayer === 'player_a'
                         ? 'bg-blue-600 text-white'
-                        : 'bg-gray-700 text-gray-400 hover:bg-gray-600',
+                        : 'bg-[var(--ss-surface-2)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-3)]',
                       playerToggleDisabled && 'opacity-40 cursor-not-allowed grayscale',
                     )}
                   >
@@ -3555,11 +3485,11 @@ export function AnnotatorPage() {
                     disabled={playerToggleDisabled}
                     aria-keyshortcuts="Tab"
                     className={clsx(
-                      'rounded transition-colors flex items-center gap-1',
+                      'rounded-ss-md transition-colors flex items-center gap-1',
                       useLargeTouch ? 'px-3 py-3' : 'px-2 py-1.5 text-xs',
                       playerToggleDisabled
-                        ? 'bg-gray-800 text-gray-600 cursor-not-allowed opacity-40 grayscale'
-                        : 'bg-gray-700 hover:bg-gray-600 text-gray-300',
+                        ? 'bg-[var(--ss-surface-2)] text-[var(--ss-t3)] cursor-not-allowed opacity-40 grayscale'
+                        : 'bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t2)]',
                     )}
                     title={playerToggleDisabled ? t('annotator.ui.player_toggle_disabled_title', { defaultValue: '落点入力中は切替できません' }) : t('annotator.ui.player_toggle_title', { defaultValue: 'プレイヤー切替 (Tab)' })}
                   >
@@ -3573,11 +3503,11 @@ export function AnnotatorPage() {
                     disabled={playerToggleDisabled}
                     title={match?.player_b?.team ? t('annotator.ui.team_prefix_title', { defaultValue: '所属: {{team}}', team: match.player_b.team }) : match?.player_b?.name ?? 'B'}
                     className={clsx(
-                      'flex-1 rounded font-medium transition-colors',
+                      'flex-1 rounded-ss-md font-medium transition-colors',
                       useLargeTouch ? 'py-3 text-sm' : 'py-1.5 text-xs',
                       store.currentPlayer === 'player_b'
                         ? 'bg-orange-600 text-white'
-                        : 'bg-gray-700 text-gray-400 hover:bg-gray-600',
+                        : 'bg-[var(--ss-surface-2)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-3)]',
                       playerToggleDisabled && 'opacity-40 cursor-not-allowed grayscale',
                     )}
                   >
@@ -3597,7 +3527,7 @@ export function AnnotatorPage() {
                   <div className={clsx('text-yellow-400 mb-2 font-medium', useLargeTouch ? 'text-sm' : 'text-xs')}>
                     {t('annotator.ui.rally_end_panel_title', { defaultValue: 'ラリー終了 — エンドタイプ→勝者の順に選択' })}
                     {!isMobile && lastStriker && (
-                      <span className="ml-1 text-gray-500">
+                      <span className="ml-1 text-[var(--ss-t3)]">
                         {t('annotator.ui.last_striker_paren', {
                           defaultValue: '（最終打者: {{name}}）',
                           name: lastStriker === 'player_a' ? match?.player_a?.name ?? 'A' : match?.player_b?.name ?? 'B',
@@ -3615,11 +3545,11 @@ export function AnnotatorPage() {
                           key={value}
                           onClick={() => setPendingEndType((prev) => prev === value ? null : value)}
                           className={clsx(
-                            'px-1 rounded text-xs font-medium transition-colors text-center',
+                            'px-1 rounded-ss-sm text-xs font-medium transition-colors text-center',
                             useLargeTouch ? 'py-3' : 'py-1.5',
                             pendingEndType === value
                               ? 'bg-yellow-600 text-white border border-yellow-400'
-                              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                              : 'bg-[var(--ss-surface-2)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-3)]'
                           )}
                           title={`${idx + 1}: ${endLabel}`}
                         >
@@ -3646,18 +3576,18 @@ export function AnnotatorPage() {
                             onClick={() => !blocked && pendingEndType && handleConfirmRally(winner, pendingEndType)}
                             disabled={!pendingEndType || blocked}
                             className={clsx(
-                              'relative rounded text-sm font-bold transition-colors',
+                              'relative rounded-ss-md text-sm font-bold transition-colors',
                               useLargeTouch ? 'py-5' : 'py-2.5',
                               !pendingEndType || blocked
-                                ? 'bg-gray-700 text-gray-500 cursor-not-allowed opacity-40'
+                                ? 'bg-[var(--ss-surface-2)] text-[var(--ss-t3)] cursor-not-allowed opacity-40'
                                 : suggested
                                   ? color === 'blue'
                                     ? 'bg-blue-500 hover:bg-blue-400 text-white ring-2 ring-blue-300'
                                     : 'bg-orange-500 hover:bg-orange-400 text-white ring-2 ring-orange-300'
                                   : dimmed
                                     ? color === 'blue'
-                                      ? 'bg-gray-800 hover:bg-gray-800 text-blue-300'
-                                      : 'bg-gray-800 hover:bg-gray-800 text-amber-400'
+                                      ? 'bg-[var(--ss-surface-1)] hover:bg-[var(--ss-surface-1)] text-[var(--ss-brand)]'
+                                      : 'bg-[var(--ss-surface-1)] hover:bg-[var(--ss-surface-1)] text-[var(--ss-warn)]'
                                     : color === 'blue'
                                       ? 'bg-blue-600 hover:bg-blue-500 text-white'
                                       : 'bg-orange-600 hover:bg-orange-500 text-white'
@@ -3674,14 +3604,14 @@ export function AnnotatorPage() {
                     </div>
 
                     {!pendingEndType && (
-                      <p className={clsx('text-gray-500 text-center', useLargeTouch ? 'text-xs' : 'text-[10px]')}>
+                      <p className={clsx('text-[var(--ss-t3)] text-center', useLargeTouch ? 'text-xs' : 'text-[10px]')}>
                         {isMobile
                           ? t('annotator.ui.select_end_type_mobile', { defaultValue: 'エンドタイプを選択' })
                           : t('annotator.ui.select_end_type_desktop', { defaultValue: '1–6キーまたはボタンでエンドタイプを選択' })}
                       </p>
                     )}
                     {pendingEndType && suggestedWinner && (
-                      <p className={clsx('text-gray-300 text-center', useLargeTouch ? 'text-xs' : 'text-[10px]')}>
+                      <p className={clsx('text-[var(--ss-t2)] text-center', useLargeTouch ? 'text-xs' : 'text-[10px]')}>
                         {isMobile
                           ? t('annotator.ui.estimated_winner_mobile', {
                               defaultValue: '推定: {{name}} 得点 — タップで確定',
@@ -3705,7 +3635,7 @@ export function AnnotatorPage() {
                   <button
                     onClick={() => store.cancelRallyEnd()}
                     className={clsx(
-                      'w-full mt-2 bg-gray-700 hover:bg-gray-600 text-gray-400 rounded',
+                      'w-full mt-2 bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t2)] rounded-ss-md',
                       useLargeTouch ? 'py-2.5 text-sm' : 'py-1 text-xs'
                     )}
                   >
@@ -3729,29 +3659,29 @@ export function AnnotatorPage() {
                 const teamA = key === 'player_a' || key === 'partner_a'
                 const activeTeam = teamA ? isActiveA : !isActiveA
                 return clsx(
-                  'flex-1 rounded text-xs border transition-colors truncate',
+                  'flex-1 rounded-ss-sm text-xs border transition-colors truncate',
                   useLargeTouch ? 'py-2' : 'py-1',
                   selected
                     ? teamA
-                      ? isLight ? 'bg-blue-600 border-blue-400 text-white font-semibold' : 'bg-blue-600 border-blue-400 text-white font-semibold'
+                      ? 'bg-blue-600 border-blue-400 text-white font-semibold'
                       : isLight ? 'bg-orange-500 border-orange-400 text-white font-semibold' : 'bg-orange-600 border-orange-400 text-white font-semibold'
                     : activeTeam
-                      ? isLight ? 'bg-gray-200 border-gray-400 text-gray-800 hover:bg-gray-300' : 'bg-gray-700 border-gray-500 text-gray-200 hover:bg-gray-600'
-                      : isLight ? 'bg-gray-100 border-gray-200 text-gray-400 hover:bg-gray-200' : 'bg-gray-800 border-gray-700 text-gray-500 hover:bg-gray-700'
+                      ? 'bg-[var(--ss-surface-2)] border-[var(--ss-border-strong)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-3)]'
+                      : 'bg-[var(--ss-surface-1)] border-[var(--ss-border)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]'
                 )
               }
 
               return (
                 <div
                   className={clsx(
-                    'flex flex-col gap-0.5 px-1 rounded',
+                    'flex flex-col gap-0.5 px-1 rounded-ss-md',
                     // land_zone step 中はオレンジ枠で「打者を確認/変更してから着地点」を強調
-                    store.inputStep === 'land_zone' && 'ring-2 ring-orange-400/60 ring-offset-1 ring-offset-gray-900 py-1',
+                    store.inputStep === 'land_zone' && 'ring-2 ring-orange-400/60 ring-offset-1 ring-offset-[var(--ss-bg-app)] py-1',
                   )}
                 >
                   {store.inputStep === 'land_zone' && (
                     <div className="text-[10px] text-orange-300 text-center font-medium">
-                      {t('annotator.ui.doubles_hitter_hint', { defaultValue: 'ダブルス: 打者を確認・変更 (キー' })} <kbd className="font-mono px-1 bg-gray-800 rounded">7</kbd> <kbd className="font-mono px-1 bg-gray-800 rounded">8</kbd> <kbd className="font-mono px-1 bg-gray-800 rounded">9</kbd> <kbd className="font-mono px-1 bg-gray-800 rounded">0</kbd>{t('annotator.ui.doubles_hitter_hint_close', { defaultValue: ')' })}
+                      {t('annotator.ui.doubles_hitter_hint', { defaultValue: 'ダブルス: 打者を確認・変更 (キー' })} <kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">7</kbd> <kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">8</kbd> <kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">9</kbd> <kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">0</kbd>{t('annotator.ui.doubles_hitter_hint_close', { defaultValue: ')' })}
                     </div>
                   )}
                   {/* 4選手ボタン行 */}
@@ -3762,7 +3692,7 @@ export function AnnotatorPage() {
                     <button onClick={() => store.setHitter('partner_a')} className={btnCls('partner_a')} title={[match.partner_a?.team, '[8]'].filter(Boolean).join(' ')}>
                       <span className="opacity-40 text-[9px] mr-0.5">8</span>{namePA}
                     </button>
-                    <div className={clsx('w-px self-stretch mx-0.5', isLight ? 'bg-gray-300' : 'bg-gray-600')} />
+                    <div className="w-px self-stretch mx-0.5 bg-[var(--ss-border)]" />
                     <button onClick={() => store.setHitter('partner_b')} className={btnCls('partner_b')} title={[match.partner_b?.team, '[9]'].filter(Boolean).join(' ')}>
                       <span className="opacity-40 text-[9px] mr-0.5">9</span>{namePB}
                     </button>
@@ -3795,7 +3725,7 @@ export function AnnotatorPage() {
                 />
                 {/* T3: Basic モードで「ここまでで保存可能」ヒント */}
                 {isBasicMode && (
-                  <p className="text-[10px] text-gray-500 text-center px-1">
+                  <p className="text-[10px] text-[var(--ss-t3)] text-center px-1">
                     {t('annotation_mode.saveable_hint')}
                   </p>
                 )}
@@ -3823,15 +3753,15 @@ export function AnnotatorPage() {
                       ダブルス時は 7/8/9 が hitter にバインドされるため、
                       hit_zone 7-9 入力には Shift+7/8/9 を使う */}
                   <div className="flex flex-col gap-1 items-center">
-                    <span className="text-[10px] text-gray-400 hidden md:inline">
+                    <span className="text-[10px] text-[var(--ss-t2)] hidden md:inline">
                       {store.isDoubles ? (
                         <>
-                          {t('annotator.ui.hit_zone_hint_doubles', { defaultValue: '打点:' })} <kbd className="font-mono px-1 bg-gray-800 rounded">1</kbd>-<kbd className="font-mono px-1 bg-gray-800 rounded">6</kbd>
-                          {' '}{t('annotator.ui.hit_zone_hint_doubles_extra', { defaultValue: '／ 7-9 は' })} <kbd className="font-mono px-1 bg-gray-800 rounded">{t('auto.AnnotatorPage.kbd_shift_7')}</kbd>-<kbd className="font-mono px-1 bg-gray-800 rounded">9</kbd>
+                          {t('annotator.ui.hit_zone_hint_doubles', { defaultValue: '打点:' })} <kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">1</kbd>-<kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">6</kbd>
+                          {' '}{t('annotator.ui.hit_zone_hint_doubles_extra', { defaultValue: '／ 7-9 は' })} <kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">{t('auto.AnnotatorPage.kbd_shift_7')}</kbd>-<kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">9</kbd>
                         </>
                       ) : (
                         <>
-                          {t('annotator.ui.hit_zone_hint_singles', { defaultValue: '打点: トップ行' })} <kbd className="font-mono px-1 bg-gray-800 rounded">1</kbd>-<kbd className="font-mono px-1 bg-gray-800 rounded">9</kbd>
+                          {t('annotator.ui.hit_zone_hint_singles', { defaultValue: '打点: トップ行' })} <kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">1</kbd>-<kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">9</kbd>
                         </>
                       )}
                     </span>
@@ -3844,8 +3774,8 @@ export function AnnotatorPage() {
                     />
                   </div>
                   {/* CourtDiagram にアクティブフォーカス枠を被せて「ここをクリック」を明示 */}
-                  <div className="relative rounded-lg ring-2 ring-blue-400 ring-offset-2 ring-offset-gray-900 animate-pulse-slow">
-                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded bg-blue-500 text-white text-[10px] font-medium whitespace-nowrap shadow z-10">
+                  <div className="relative rounded-ss-lg ring-2 ring-blue-400 ring-offset-2 ring-offset-[var(--ss-bg-app)] animate-pulse-slow">
+                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-ss-sm bg-blue-500 text-white text-[10px] font-medium whitespace-nowrap shadow z-10">
                       {t('annotator.ui.land_select_marker', { defaultValue: '着地点を選択 ↓' })}
                     </span>
                     <CourtDiagram
@@ -3872,18 +3802,18 @@ export function AnnotatorPage() {
                       : t('annotator.ui.skip_dual_meaning_singles', { defaultValue: 'シングルス: 0 / Numpad0 でも skip 可能' })
                   }
                   className={clsx(
-                    'text-gray-500 hover:text-gray-300 text-center',
+                    'text-[var(--ss-t3)] hover:text-[var(--ss-t2)] text-center',
                     useLargeTouch ? 'py-2 text-sm' : 'py-0.5 text-xs'
                   )}
                 >
                   {t('annotator.land_zone_skip')}
                   {isBasicMode && (
-                    <span className="ml-1 text-[10px] text-gray-600">{t('annotator.ui.complete_later')}</span>
+                    <span className="ml-1 text-[10px] text-[var(--ss-t3)]">{t('annotator.ui.complete_later')}</span>
                   )}
                 </button>
                 {/* 打点（自動推定済み） */}
                 {store.pendingStroke.hit_zone && (
-                  <div className="text-[10px] text-gray-500 text-center">
+                  <div className="text-[10px] text-[var(--ss-t3)] text-center">
                     {t('annotator.hit_zone')} {t('annotator.ui.hit_zone_auto_label', { defaultValue: '(自動)' })}: {store.pendingStroke.hit_zone}
                   </div>
                 )}
@@ -3930,7 +3860,7 @@ export function AnnotatorPage() {
                   <>
                     <button
                       onClick={() => setShowSkipRallyDialog(true)}
-                      className="px-3 py-2.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-xs flex items-center gap-1 whitespace-nowrap"
+                      className="px-3 py-2.5 bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t2)] rounded-ss-md text-xs flex items-center gap-1 whitespace-nowrap"
                       title={t('skip_rally.hint')}
                     >
                       <MIcon name="skip_next" size={12} />
@@ -3940,8 +3870,8 @@ export function AnnotatorPage() {
                     <button
                       onClick={() => handleBookmark(null, getTimestamp())}
                       className={clsx(
-                        'px-2.5 py-2.5 rounded text-xs flex items-center transition-colors',
-                        lastBookmarked === null ? 'bg-gray-700 hover:bg-gray-600 text-gray-400' : 'bg-yellow-700/40 text-yellow-300'
+                        'px-2.5 py-2.5 rounded-ss-sm text-xs flex items-center transition-colors duration-base ease-out',
+                        lastBookmarked === null ? 'bg-[var(--ss-surface-3)] hover:bg-[var(--ss-surface-2)] text-[var(--ss-t2)]' : 'bg-[var(--ss-warn-tint)] text-[var(--ss-warn)]'
                       )}
                       title={t('bookmark.add')}
                     >
@@ -3950,7 +3880,7 @@ export function AnnotatorPage() {
                     {/* S-003: コメント */}
                     <button
                       onClick={() => { setShowCommentInput((v) => !v); setCommentRallyId(null) }}
-                      className="px-2.5 py-2.5 bg-gray-700 hover:bg-gray-600 text-gray-400 rounded text-xs flex items-center transition-colors"
+                      className="px-2.5 py-2.5 bg-[var(--ss-surface-3)] hover:bg-[var(--ss-surface-2)] text-[var(--ss-t2)] rounded-ss-sm text-xs flex items-center transition-colors duration-base ease-out"
                       title={t('comment.add')}
                     >
                       <MIcon name="chat" size={13} />
@@ -3961,10 +3891,10 @@ export function AnnotatorPage() {
                         onClick={handleReviewLater}
                         disabled={reviewLaterAdded}
                         className={clsx(
-                          'px-2.5 py-2.5 rounded text-xs flex items-center gap-1 transition-colors whitespace-nowrap',
+                          'px-2.5 py-2.5 rounded-ss-sm text-xs flex items-center gap-1 transition-colors duration-base ease-out whitespace-nowrap',
                           reviewLaterAdded
-                            ? 'bg-amber-700/40 text-amber-300 cursor-default'
-                            : 'bg-gray-700 hover:bg-amber-700/40 text-gray-400 hover:text-amber-300'
+                            ? 'bg-[var(--ss-warn-tint)] text-[var(--ss-warn)] cursor-default'
+                            : 'bg-[var(--ss-surface-3)] hover:bg-[var(--ss-warn-tint)] text-[var(--ss-t2)] hover:text-[var(--ss-warn)]'
                         )}
                         title={t('review_later.hint')}
                       >
@@ -3977,10 +3907,10 @@ export function AnnotatorPage() {
                       <button
                         onClick={() => setShowWarmupPanel((v) => !v)}
                         className={clsx(
-                          'px-2.5 py-2.5 rounded text-xs flex items-center gap-1 transition-colors whitespace-nowrap',
+                          'px-2.5 py-2.5 rounded-ss-sm text-xs flex items-center gap-1 transition-colors duration-base ease-out whitespace-nowrap',
                           showWarmupPanel
-                            ? 'bg-blue-700 text-white'
-                            : 'bg-gray-700 hover:bg-gray-600 text-blue-300'
+                            ? 'bg-[var(--ss-brand)] text-white'
+                            : 'bg-[var(--ss-surface-3)] hover:bg-[var(--ss-surface-2)] text-[var(--ss-brand)]'
                         )}
                         title={t('warmup.button')}
                       >
@@ -4020,19 +3950,19 @@ export function AnnotatorPage() {
                   onChange={(e) => setCommentText(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') handleSubmitComment() }}
                   placeholder={t('comment.placeholder')}
-                  className="flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                  className="flex-1 bg-[var(--ss-surface-2)] border border-[var(--ss-border-strong)] rounded-ss-md px-2 py-1.5 text-xs text-[var(--ss-t1)] placeholder-[var(--ss-t3)] focus:outline-none focus:border-[var(--ss-brand)]"
                   autoFocus
                 />
                 <button
                   onClick={handleSubmitComment}
                   disabled={!commentText.trim()}
-                  className="px-2 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded text-xs text-white"
+                  className="px-2 py-1.5 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-40 rounded-ss-md text-xs text-white"
                 >
                   {t('comment.submit')}
                 </button>
                 <button
                   onClick={() => { setShowCommentInput(false); setCommentText('') }}
-                  className="px-2 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-400"
+                  className="px-2 py-1.5 bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] rounded-ss-md text-xs text-[var(--ss-t2)]"
                   aria-label={t('auto.AnnotatorPage.k14')}
                 >
                   <MIcon name="close" size={12} />
@@ -4043,7 +3973,7 @@ export function AnnotatorPage() {
             {/* ストローク履歴（モバイルでは最終ショットのみ表示） */}
             {isMobile ? (
               store.currentStrokes.length > 0 && (
-                <div className="bg-gray-800 rounded px-3 py-2 text-xs text-gray-400 flex items-center justify-between shrink-0">
+                <div className="bg-[var(--ss-surface-2)] rounded-ss-md px-3 py-2 text-xs text-[var(--ss-t2)] flex items-center justify-between shrink-0">
                   <span>
                     #{store.currentStrokes.length}{' '}
                     {store.currentStrokes[store.currentStrokes.length - 1]?.shot_type ?? ''}
@@ -4051,7 +3981,7 @@ export function AnnotatorPage() {
                       ? ` → ${store.currentStrokes[store.currentStrokes.length - 1].land_zone}`
                       : ''}
                   </span>
-                  <span className="text-gray-600">
+                  <span className="text-[var(--ss-t3)]">
                     {t('auto._shared.n_strokes', { n: store.currentStrokes.length })}
                   </span>
                 </div>
@@ -4071,27 +4001,25 @@ export function AnnotatorPage() {
 
             {/* CV補助アノテーションパネル（showCVAssistPanel=true かつ候補あり） */}
             {!isMobile && showCVAssistPanel && candidatesData && (
-              <div className={`rounded border p-2 shrink-0 ${
-                isLight ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'
-              }`}>
+              <div className="rounded-ss-md border p-2 shrink-0 bg-[var(--ss-surface-1)] border-[var(--ss-border)]">
                 <div className="flex items-center justify-between mb-1.5">
                   <span className={`text-[10px] font-semibold ${isLight ? 'text-purple-700' : 'text-purple-300'}`}>
                     {t('annotator.ui.cv_assist_label', { defaultValue: 'CV補助候補' })}
                   </span>
                   <button
                     onClick={() => setShowCVAssistPanel(false)}
-                    className="text-gray-500 hover:text-gray-300 text-xs px-1"
+                    className="text-[var(--ss-t2)] hover:text-[var(--ss-t1)] text-xs px-1"
                     aria-label={t('auto.AnnotatorPage.k14')}
                   >
                     <MIcon name="close" size={12} />
                   </button>
                 </div>
                 {lastSavedRallyId == null ? (
-                  <div className="text-slate-500 text-xs text-center py-3">
+                  <div className="text-[var(--ss-t3)] text-xs text-center py-3">
                     {t('annotator.ui.cv_assist_finish_rally', { defaultValue: 'ラリーを完了すると候補が表示されます' })}
                   </div>
                 ) : getCandidateForRally(lastSavedRallyId) == null ? (
-                  <div className="text-slate-500 text-xs text-center py-3">
+                  <div className="text-[var(--ss-t3)] text-xs text-center py-3">
                     {t('annotator.ui.cv_assist_no_candidate', { defaultValue: 'このラリーの候補がありません（「候補生成」を再実行してください）' })}
                   </div>
                 ) : (
@@ -4159,7 +4087,7 @@ export function AnnotatorPage() {
             {!isMobile && isBasicMode && store.isRallyActive && store.inputStep !== 'rally_end' && store.currentStrokes.length > 0 && !enrichmentActive && (
               <button
                 onClick={() => setEnrichmentActive(true)}
-                className="w-full flex items-center justify-center gap-1.5 py-1 text-[11px] text-gray-600 hover:text-gray-400 border border-gray-700 rounded transition-colors"
+                className="w-full flex items-center justify-center gap-1.5 py-1 text-[11px] text-[var(--ss-t3)] hover:text-[var(--ss-t2)] border border-[var(--ss-border)] rounded-ss-md transition-colors"
               >
                 <MIcon name="expand_more" size={11} />
                 {t('annotation_mode.enrichment_hint')}
@@ -4197,20 +4125,20 @@ export function AnnotatorPage() {
                 { value: 'lateral',   key: 'enrichment.movement_direction_lateral' },
               ]
               const chipClass = (active: boolean) => clsx(
-                'px-2.5 py-1.5 rounded border text-xs transition-colors',
+                'px-2.5 py-1.5 rounded-ss-sm border text-xs transition-colors',
                 active
-                  ? 'bg-gray-500 border-gray-400 text-white'
-                  : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600',
+                  ? 'bg-[var(--ss-t3)] border-[var(--ss-t2)] text-white'
+                  : 'bg-[var(--ss-surface-2)] border-[var(--ss-border)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-3)]',
               )
               return (
-                <div className="border border-gray-600 bg-gray-800 rounded p-3 text-[11px] space-y-2 shrink-0">
+                <div className="border border-[var(--ss-border)] bg-[var(--ss-surface-2)] rounded-ss-md p-3 text-[11px] space-y-2 shrink-0">
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-300 font-medium">
+                    <span className="text-[var(--ss-t2)] font-medium">
                       {isBasicMode ? t('annotation_mode.enrichment_hint') : t('enrichment.strip_label')}
                     </span>
                     <button
                       onClick={() => setEnrichmentActive(false)}
-                      className="flex items-center gap-0.5 text-gray-500 hover:text-gray-300 text-xs px-1"
+                      className="flex items-center gap-0.5 text-[var(--ss-t3)] hover:text-[var(--ss-t2)] text-xs px-1"
                     >
                       <MIcon name="expand_less" size={11} />
                       {t('annotator.ui.fold_up', { defaultValue: '折りたたむ' })}
@@ -4218,7 +4146,7 @@ export function AnnotatorPage() {
                   </div>
                   {/* 返球品質 */}
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-gray-400 min-w-[56px] text-xs">{t('enrichment.return_quality')}:</span>
+                    <span className="text-[var(--ss-t2)] min-w-[56px] text-xs">{t('enrichment.return_quality')}:</span>
                     {RETURN_QUALITY.map(({ value, key }) => (
                       <button key={value} onClick={() => {
                         const next = last.return_quality === value ? undefined : value
@@ -4230,7 +4158,7 @@ export function AnnotatorPage() {
                   </div>
                   {/* 打点高さ */}
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-gray-400 min-w-[56px] text-xs">{t('enrichment.contact_height')}:</span>
+                    <span className="text-[var(--ss-t2)] min-w-[56px] text-xs">{t('enrichment.contact_height')}:</span>
                     {CONTACT_HEIGHT.map(({ value, key }) => (
                       <button key={value} onClick={() => {
                         const next = last.contact_height === value ? undefined : value
@@ -4242,7 +4170,7 @@ export function AnnotatorPage() {
                   </div>
                   {/* 打点コート位置 */}
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-gray-400 min-w-[56px] text-xs">{t('enrichment.contact_zone')}:</span>
+                    <span className="text-[var(--ss-t2)] min-w-[56px] text-xs">{t('enrichment.contact_zone')}:</span>
                     {CONTACT_ZONE.map(({ value, key }) => (
                       <button key={value} onClick={() => {
                         const next = last.contact_zone === value ? undefined : value
@@ -4254,7 +4182,7 @@ export function AnnotatorPage() {
                   </div>
                   {/* 移動負荷 */}
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-gray-400 min-w-[56px] text-xs">{t('enrichment.movement_burden')}:</span>
+                    <span className="text-[var(--ss-t2)] min-w-[56px] text-xs">{t('enrichment.movement_burden')}:</span>
                     {MOVEMENT_BURDEN.map(({ value, key }) => (
                       <button key={value} onClick={() => {
                         const next = last.movement_burden === value ? undefined : value
@@ -4266,7 +4194,7 @@ export function AnnotatorPage() {
                   </div>
                   {/* 移動方向 */}
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-gray-400 min-w-[56px] text-xs">{t('enrichment.movement_direction')}:</span>
+                    <span className="text-[var(--ss-t2)] min-w-[56px] text-xs">{t('enrichment.movement_direction')}:</span>
                     {MOVEMENT_DIRECTION.map(({ value, key }) => (
                       <button key={value} onClick={() => {
                         const next = last.movement_direction === value ? undefined : value
@@ -4276,7 +4204,7 @@ export function AnnotatorPage() {
                       </button>
                     ))}
                   </div>
-                  <div className="text-[10px] text-gray-500">{t('enrichment.expires_hint')}</div>
+                  <div className="text-[10px] text-[var(--ss-t3)]">{t('enrichment.expires_hint')}</div>
                 </div>
               )
             })()}
@@ -4321,7 +4249,7 @@ export function AnnotatorPage() {
                       : t('annotator.ui.undo_stroke_title', { defaultValue: '直前のストロークを取り消し (Ctrl+Z)' })
                   }
                   className={clsx(
-                    'flex items-center gap-1 justify-center bg-gray-700 hover:bg-gray-600 text-gray-300 rounded',
+                    'flex items-center gap-1 justify-center bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t2)] rounded-ss-md',
                     useLargeTouch ? 'py-3 text-base' : 'py-1.5 text-sm'
                   )}
                 >
@@ -4341,7 +4269,7 @@ export function AnnotatorPage() {
                 <button
                   onClick={() => store.resetRally()}
                   className={clsx(
-                    'w-full bg-gray-800 hover:bg-gray-800 text-red-300 rounded border border-white/60',
+                    'w-full bg-[var(--ss-surface-1)] hover:bg-[var(--ss-surface-1)] text-[var(--ss-bad)] rounded-ss-md border border-white/60',
                     useLargeTouch ? 'py-2.5 text-sm' : 'py-1.5 text-xs'
                   )}
                 >
@@ -4378,15 +4306,15 @@ export function AnnotatorPage() {
                     }
                   }}
                   className={clsx(
-                    'w-full flex items-center justify-center gap-1.5 rounded font-medium',
-                    'bg-gray-700 hover:bg-gray-600 border border-gray-600 text-gray-200',
+                    'w-full flex items-center justify-center gap-1.5 rounded-ss-md font-medium',
+                    'bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] border border-[var(--ss-border)] text-[var(--ss-t1)]',
                     useLargeTouch ? 'py-2.5 text-sm' : 'py-1.5 text-xs'
                   )}
                   title={t('auto.AnnotatorPage.k27')}
                 >
                   <MIcon name="save" size={12} />{t('annotator.ui.manual_save_btn', { defaultValue: '一時保存' })}
                   {lastAutoSaveTime && (
-                    <span className="text-gray-500 text-[10px]">
+                    <span className="text-[var(--ss-t3)] text-[10px]">
                       {new Date(lastAutoSaveTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                     </span>
                   )}
@@ -4399,21 +4327,21 @@ export function AnnotatorPage() {
             {/* UX-R1: stepFocusMode='step' のときは管理操作を隠す (Cmd+K から呼出可) */}
             {initialized && !isMobile && stepFocusMode === 'all' && (
               <div className={clsx(
-                'border rounded p-2 text-xs shrink-0 transition-opacity',
+                'border rounded-ss-md p-2 text-xs shrink-0 transition-opacity',
                 store.isRallyActive
-                  ? 'border-gray-700/50 opacity-40 pointer-events-none'
-                  : 'border-gray-700',
+                  ? 'border-[var(--ss-border)] opacity-40 pointer-events-none'
+                  : 'border-[var(--ss-border)]',
               )}>
-                <div className="text-gray-400 mb-1.5 font-medium flex items-center gap-1.5">
+                <div className="text-[var(--ss-t2)] mb-1.5 font-medium flex items-center gap-1.5">
                   {t('annotator.ui.manage_actions', { defaultValue: '管理操作' })}
                   {store.isRallyActive && (
-                    <span className="text-[10px] text-gray-600">{t('annotator.ui.unavailable_rally')}</span>
+                    <span className="text-[10px] text-[var(--ss-t3)]">{t('annotator.ui.unavailable_rally')}</span>
                   )}
                 </div>
 
                 {/* C-1: セット移行確認ダイアログ */}
                 {setNavConfirm ? (
-                  <div className="bg-yellow-900/20 border border-yellow-700/50 rounded p-2 mb-1.5">
+                  <div className="bg-yellow-900/20 border border-yellow-700/50 rounded-ss-md p-2 mb-1.5">
                     <p className="text-yellow-400 text-[11px] mb-2">
                       {setNavConfirm.direction === 'next'
                         ? t('annotator.ui.set_transition_to_next', {
@@ -4435,13 +4363,13 @@ export function AnnotatorPage() {
                           if (dir === 'next') handleNextSet()
                           else handlePrevSet()
                         }}
-                        className="flex-1 py-1 bg-yellow-700 hover:bg-yellow-600 text-white rounded text-[11px] font-medium"
+                        className="flex-1 py-1 bg-yellow-700 hover:bg-yellow-600 text-white rounded-ss-sm text-[11px] font-medium"
                       >
                         {t('annotator.ui.confirm', { defaultValue: '確定' })}
                       </button>
                       <button
                         onClick={() => setSetNavConfirm(null)}
-                        className="flex-1 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-[11px]"
+                        className="flex-1 py-1 bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t2)] rounded-ss-sm text-[11px]"
                       >
                         {t('annotator.ui.cancel', { defaultValue: 'キャンセル' })}
                       </button>
@@ -4452,14 +4380,14 @@ export function AnnotatorPage() {
                     <button
                       onClick={() => setSetNavConfirm({ direction: 'prev' })}
                       disabled={store.currentSetNum <= 1}
-                      className="flex items-center gap-1 flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded justify-center disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="flex items-center gap-1 flex-1 py-1.5 bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t2)] rounded-ss-sm justify-center disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       <MIcon name="chevron_left" size={12} />
                       {t('annotator.ui.prev_set_btn', { defaultValue: '前のセット (Set {{n}})', n: store.currentSetNum - 1 })}
                     </button>
                     <button
                       onClick={() => setSetNavConfirm({ direction: 'next' })}
-                      className="flex items-center gap-1 flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded justify-center"
+                      className="flex items-center gap-1 flex-1 py-1.5 bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t2)] rounded-ss-sm justify-center"
                     >
                       <MIcon name="chevron_right" size={12} />
                       {t('annotator.ui.next_set_btn', { defaultValue: '次のセットへ (Set {{n}})', n: store.currentSetNum + 1 })}
@@ -4474,7 +4402,7 @@ export function AnnotatorPage() {
                       setCorrectionTargetB(store.scoreB)
                       setShowScoreCorrection(true)
                     }}
-                    className="flex-1 py-1 bg-gray-700 hover:bg-gray-600 text-gray-400 rounded text-[10px]"
+                    className="flex-1 py-1 bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t2)] rounded-ss-sm text-[10px]"
                   >
                     {t('skip_rally.score_correction')}
                   </button>
@@ -4484,7 +4412,7 @@ export function AnnotatorPage() {
                       setForceSetScoreB(store.scoreB)
                       setShowForceSetEnd(true)
                     }}
-                    className="flex-1 py-1 bg-gray-700 hover:bg-gray-600 text-gray-400 rounded text-[10px]"
+                    className="flex-1 py-1 bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t2)] rounded-ss-sm text-[10px]"
                   >
                     {t('skip_rally.force_set_end')}
                   </button>
@@ -4505,28 +4433,28 @@ export function AnnotatorPage() {
 
       {/* V4-U-001: 試合中補完パネル（暫定相手選手情報の追記） */}
       {showInMatchPanel && match?.player_b && (
-        <div className="fixed bottom-4 right-4 z-40 w-72 bg-gray-800 border border-orange-500/40 rounded-lg shadow-xl">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
+        <div className="fixed bottom-4 right-4 z-40 w-72 bg-[var(--ss-surface-1)] border border-orange-500/40 rounded-ss-lg shadow-pop">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--ss-border)]">
             <div className="flex items-center gap-2 text-sm font-medium">
               <MIcon name="edit_document" size={14} className="text-orange-400" />
               {t('in_match_panel.title')}
               {match.player_b.profile_status === 'provisional' && (
-                <span className="text-xs text-yellow-400 bg-yellow-400/10 px-1.5 rounded">
+                <span className="text-xs text-yellow-400 bg-yellow-400/10 px-1.5 rounded-ss-sm">
                   {t('in_match_panel.provisional_badge')}
                 </span>
               )}
             </div>
             <button
               onClick={() => setShowInMatchPanel(false)}
-              className="text-gray-400 hover:text-white text-xs"
+              className="text-[var(--ss-t2)] hover:text-[var(--ss-t1)] text-xs"
               aria-label={t('auto.AnnotatorPage.k14')}
             ><MIcon name="close" size={12} /></button>
           </div>
           <div className="p-4 flex flex-col gap-3">
-            <div className="text-xs text-gray-400 truncate">{match.player_b.name}</div>
+            <div className="text-xs text-[var(--ss-t2)] truncate">{match.player_b.name}</div>
             {/* 利き手 */}
             <div>
-              <label className="block text-xs text-gray-400 mb-1">{t('in_match_panel.dominant_hand')}</label>
+              <label className="block text-xs text-[var(--ss-t2)] mb-1">{t('in_match_panel.dominant_hand')}</label>
               <div className="flex gap-1.5">
                 {[
                   { value: 'R', label: t('in_match_panel.hand_right') },
@@ -4537,10 +4465,10 @@ export function AnnotatorPage() {
                     key={opt.value}
                     onClick={() => setInMatchDominantHand(opt.value)}
                     className={clsx(
-                      'flex-1 py-1 rounded text-xs border',
+                      'flex-1 py-1 rounded-ss-sm text-xs border',
                       inMatchDominantHand === opt.value
-                        ? 'bg-blue-600 border-blue-500 text-white'
-                        : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+                        ? 'bg-[var(--ss-brand)] border-[var(--ss-brand)] text-white'
+                        : 'bg-[var(--ss-surface-2)] border-[var(--ss-border)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-3)]'
                     )}
                   >
                     {opt.label}
@@ -4550,22 +4478,22 @@ export function AnnotatorPage() {
             </div>
             {/* 所属 */}
             <div>
-              <label className="block text-xs text-gray-400 mb-1">{t('in_match_panel.organization')}</label>
+              <label className="block text-xs text-[var(--ss-t2)] mb-1">{t('in_match_panel.organization')}</label>
               <input
                 value={inMatchOrganization}
                 onChange={(e) => setInMatchOrganization(e.target.value)}
-                className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs"
+                className="w-full bg-[var(--ss-surface-2)] border border-[var(--ss-border)] rounded-ss-sm px-2 py-1 text-xs"
                 placeholder={t('auto.AnnotatorPage.k29')}
               />
             </div>
             {/* メモ */}
             <div>
-              <label className="block text-xs text-gray-400 mb-1">{t('in_match_panel.scouting_notes')}</label>
+              <label className="block text-xs text-[var(--ss-t2)] mb-1">{t('in_match_panel.scouting_notes')}</label>
               <textarea
                 value={inMatchScoutingNotes}
                 onChange={(e) => setInMatchScoutingNotes(e.target.value)}
                 rows={2}
-                className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs resize-none"
+                className="w-full bg-[var(--ss-surface-2)] border border-[var(--ss-border)] rounded-ss-sm px-2 py-1 text-xs resize-none"
                 placeholder={t('auto.AnnotatorPage.k30')}
               />
             </div>
@@ -4616,13 +4544,13 @@ export function AnnotatorPage() {
       {/* 途中終了ダイアログ */}
       {showExceptionDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-gray-800 border border-red-700/50 rounded-lg w-80 shadow-2xl">
-            <div className="px-4 py-3 border-b border-gray-700">
-              <div className="flex items-center gap-2 text-sm font-medium text-red-400">
+          <div className="bg-[var(--ss-surface-1)] border border-red-700/50 rounded-ss-lg w-80 shadow-pop">
+            <div className="px-4 py-3 border-b border-[var(--ss-border)]">
+              <div className="flex items-center gap-2 text-sm font-medium text-[var(--ss-bad)]">
                 <MIcon name="block" size={16} />
                 {t('exception.title')}
               </div>
-              <div className="text-xs text-gray-400 mt-0.5">{t('exception.subtitle')}</div>
+              <div className="text-xs text-[var(--ss-t2)] mt-0.5">{t('exception.subtitle')}</div>
             </div>
             <div className="p-4 flex flex-col gap-2">
               {/* 終了理由選択 */}
@@ -4637,10 +4565,10 @@ export function AnnotatorPage() {
                   key={value}
                   onClick={() => setExceptionReason(value)}
                   className={clsx(
-                    'w-full py-2 px-3 rounded text-sm text-left transition-colors border',
+                    'w-full py-2 px-3 rounded-ss-md text-sm text-left transition-colors border',
                     exceptionReason === value
-                      ? 'bg-gray-800 border-gray-700 text-red-300'
-                      : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+                      ? 'bg-[var(--ss-surface-1)] border-[var(--ss-border)] text-[var(--ss-bad)]'
+                      : 'bg-[var(--ss-surface-2)] border-[var(--ss-border)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-3)]'
                   )}
                 >
                   {label}
@@ -4658,14 +4586,14 @@ export function AnnotatorPage() {
                   setShowExceptionDialog(false)
                   setExceptionReason(null)
                 }}
-                className="flex-1 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm"
+                className="flex-1 py-2 bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t2)] rounded-ss-md text-sm"
               >
                 {t('exception.cancel')}
               </button>
               <button
                 onClick={handleException}
                 disabled={!exceptionReason}
-                className="flex-1 py-2 bg-red-700 hover:bg-red-600 text-white rounded text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex-1 py-2 bg-red-700 hover:bg-red-600 text-white rounded-ss-md text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {t('exception.confirm')}
               </button>
@@ -4677,24 +4605,24 @@ export function AnnotatorPage() {
       {/* P1: 見逃しラリーダイアログ */}
       {showSkipRallyDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-gray-800 border border-gray-600 rounded-lg w-72 shadow-2xl">
-            <div className="px-4 py-3 border-b border-gray-700">
-              <div className="text-sm font-medium text-gray-200 flex items-center gap-2">
+          <div className="bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-lg w-72 shadow-pop">
+            <div className="px-4 py-3 border-b border-[var(--ss-border)]">
+              <div className="text-sm font-medium text-[var(--ss-t1)] flex items-center gap-2">
                 <MIcon name="skip_next" size={14} className="text-yellow-400" />
                 {t('skip_rally.title')}
               </div>
-              <div className="text-xs text-gray-400 mt-0.5">{t('skip_rally.hint')}</div>
+              <div className="text-xs text-[var(--ss-t2)] mt-0.5">{t('skip_rally.hint')}</div>
             </div>
             <div className="p-4 grid grid-cols-2 gap-2">
               <button
                 onClick={() => handleSkipRally('player_a')}
-                className="py-4 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm font-bold"
+                className="py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-ss-md text-sm font-bold"
               >
                 {t('annotator.ui.scored_winner', { defaultValue: '{{name}} 得点', name: match?.player_a?.name ?? 'A' })}
               </button>
               <button
                 onClick={() => handleSkipRally('player_b')}
-                className="py-4 bg-orange-600 hover:bg-orange-500 text-white rounded text-sm font-bold"
+                className="py-4 bg-orange-600 hover:bg-orange-500 text-white rounded-ss-md text-sm font-bold"
               >
                 {t('annotator.ui.scored_winner', { defaultValue: '{{name}} 得点', name: match?.player_b?.name ?? 'B' })}
               </button>
@@ -4702,7 +4630,7 @@ export function AnnotatorPage() {
             <div className="px-4 pb-4">
               <button
                 onClick={() => setShowSkipRallyDialog(false)}
-                className="w-full py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-xs"
+                className="w-full py-1.5 bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t2)] rounded-ss-md text-xs"
               >
                 {t('annotator.ui.cancel', { defaultValue: 'キャンセル' })}
               </button>
@@ -4714,13 +4642,13 @@ export function AnnotatorPage() {
       {/* P1: スコア補正ダイアログ */}
       {showScoreCorrection && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-gray-800 border border-gray-600 rounded-lg w-80 shadow-2xl">
-            <div className="px-4 py-3 border-b border-gray-700">
-              <div className="text-sm font-medium text-gray-200">{t('skip_rally.score_correction_title')}</div>
-              <div className="text-xs text-gray-400 mt-0.5">{t('skip_rally.score_correction_hint')}</div>
+          <div className="bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-lg w-80 shadow-pop">
+            <div className="px-4 py-3 border-b border-[var(--ss-border)]">
+              <div className="text-sm font-medium text-[var(--ss-t1)]">{t('skip_rally.score_correction_title')}</div>
+              <div className="text-xs text-[var(--ss-t2)] mt-0.5">{t('skip_rally.score_correction_hint')}</div>
             </div>
             <div className="p-4 space-y-3">
-              <div className="text-xs text-gray-400">
+              <div className="text-xs text-[var(--ss-t2)] ss-num">
                 {t('skip_rally.current')}: {match?.player_a?.name ?? 'A'} {store.scoreA} — {match?.player_b?.name ?? 'B'} {store.scoreB}
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -4729,19 +4657,19 @@ export function AnnotatorPage() {
                   { label: match?.player_b?.name ?? 'B', val: correctionTargetB, setVal: setCorrectionTargetB },
                 ] as const).map(({ label, val, setVal }) => (
                   <div key={label}>
-                    <div className="text-xs text-gray-400 mb-1 truncate">{label}</div>
+                    <div className="text-xs text-[var(--ss-t2)] mb-1 truncate">{label}</div>
                     <div className="flex items-center gap-1">
-                      <button onClick={() => setVal(Math.max(0, val - 1))} className="w-7 h-7 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 font-bold">−</button>
-                      <span className="flex-1 text-center text-lg font-bold text-white">{val}</span>
-                      <button onClick={() => setVal(val + 1)} className="w-7 h-7 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 font-bold">{t('auto.AnnotatorPage.plus')}</button>
+                      <button onClick={() => setVal(Math.max(0, val - 1))} className="w-7 h-7 bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] rounded-ss-sm text-[var(--ss-t2)] font-bold">−</button>
+                      <span className="flex-1 text-center text-lg font-bold text-[var(--ss-t1)] ss-num">{val}</span>
+                      <button onClick={() => setVal(val + 1)} className="w-7 h-7 bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] rounded-ss-sm text-[var(--ss-t2)] font-bold">{t('auto.AnnotatorPage.plus')}</button>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
             <div className="px-4 pb-4 flex gap-2">
-              <button onClick={() => setShowScoreCorrection(false)} className="flex-1 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm">{t('app.cancel')}</button>
-              <button onClick={handleScoreCorrection} className="flex-1 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm font-medium">{t('skip_rally.apply')}</button>
+              <button onClick={() => setShowScoreCorrection(false)} className="flex-1 py-2 bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t2)] rounded-ss-md text-sm">{t('app.cancel')}</button>
+              <button onClick={handleScoreCorrection} className="flex-1 py-2 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white rounded-ss-md text-sm font-medium">{t('skip_rally.apply')}</button>
             </div>
           </div>
         </div>
@@ -4783,32 +4711,32 @@ export function AnnotatorPage() {
       {/* P1: セット強制終了ダイアログ */}
       {showForceSetEnd && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-gray-800 border border-orange-700/50 rounded-lg w-80 shadow-2xl">
-            <div className="px-4 py-3 border-b border-gray-700">
+          <div className="bg-[var(--ss-surface-1)] border border-orange-700/50 rounded-ss-lg w-80 shadow-pop">
+            <div className="px-4 py-3 border-b border-[var(--ss-border)]">
               <div className="text-sm font-medium text-orange-400">{t('skip_rally.force_set_end_title')}</div>
-              <div className="text-xs text-gray-400 mt-0.5">{t('skip_rally.force_set_end_hint')}</div>
+              <div className="text-xs text-[var(--ss-t2)] mt-0.5">{t('skip_rally.force_set_end_hint')}</div>
             </div>
             <div className="p-4 space-y-3">
-              <div className="text-xs text-gray-400">{t('skip_rally.final_score')}</div>
+              <div className="text-xs text-[var(--ss-t2)]">{t('skip_rally.final_score')}</div>
               <div className="grid grid-cols-2 gap-3">
                 {([
                   { label: match?.player_a?.name ?? 'A', val: forceSetScoreA, setVal: setForceSetScoreA },
                   { label: match?.player_b?.name ?? 'B', val: forceSetScoreB, setVal: setForceSetScoreB },
                 ] as const).map(({ label, val, setVal }) => (
                   <div key={label}>
-                    <div className="text-xs text-gray-400 mb-1 truncate">{label}</div>
+                    <div className="text-xs text-[var(--ss-t2)] mb-1 truncate">{label}</div>
                     <div className="flex items-center gap-1">
-                      <button onClick={() => setVal(Math.max(0, val - 1))} className="w-7 h-7 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 font-bold">−</button>
-                      <span className="flex-1 text-center text-lg font-bold text-white">{val}</span>
-                      <button onClick={() => setVal(val + 1)} className="w-7 h-7 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 font-bold">{t('auto.AnnotatorPage.plus')}</button>
+                      <button onClick={() => setVal(Math.max(0, val - 1))} className="w-7 h-7 bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] rounded-ss-sm text-[var(--ss-t2)] font-bold">−</button>
+                      <span className="flex-1 text-center text-lg font-bold text-[var(--ss-t1)] ss-num">{val}</span>
+                      <button onClick={() => setVal(val + 1)} className="w-7 h-7 bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] rounded-ss-sm text-[var(--ss-t2)] font-bold">{t('auto.AnnotatorPage.plus')}</button>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
             <div className="px-4 pb-4 flex gap-2">
-              <button onClick={() => setShowForceSetEnd(false)} className="flex-1 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm">{t('app.cancel')}</button>
-              <button onClick={handleForceSetEnd} className="flex-1 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded text-sm font-medium">{t('skip_rally.confirm_end')}</button>
+              <button onClick={() => setShowForceSetEnd(false)} className="flex-1 py-2 bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t2)] rounded-ss-md text-sm">{t('app.cancel')}</button>
+              <button onClick={handleForceSetEnd} className="flex-1 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-ss-md text-sm font-medium">{t('skip_rally.confirm_end')}</button>
             </div>
           </div>
         </div>

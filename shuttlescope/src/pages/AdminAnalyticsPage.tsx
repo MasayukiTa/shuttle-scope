@@ -77,16 +77,16 @@ export default function AdminAnalyticsPage() {
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2">
+        <h1 className="text-2xl font-bold text-[var(--ss-t1)] inline-flex items-center gap-2">
           <MIcon name="analytics" size={26} />
           Product Analytics
         </h1>
         <div className="flex items-center gap-2 text-sm">
-          <label className="text-gray-600 dark:text-gray-300">{t('admin.analytics.period')}</label>
+          <label className="text-[var(--ss-t2)]">{t('admin.analytics.period')}</label>
           <select
             value={days}
             onChange={(e) => setDays(parseInt(e.target.value, 10))}
-            className="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+            className="px-2 py-1 rounded-ss-md border border-[var(--ss-border)] bg-[var(--ss-surface-1)] text-[var(--ss-t1)]"
           >
             <option value={7}>{t('admin.analytics.days', { count: 7 })}</option>
             <option value={30}>{t('admin.analytics.days', { count: 30 })}</option>
@@ -95,7 +95,7 @@ export default function AdminAnalyticsPage() {
           </select>
           <button
             onClick={() => void reload()}
-            className="px-3 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white inline-flex items-center gap-1"
+            className="px-3 py-1 rounded-ss-md bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white inline-flex items-center gap-1"
           >
             <MIcon name="refresh" size={16} /> {t('admin.analytics.reaggregate')}
           </button>
@@ -103,16 +103,16 @@ export default function AdminAnalyticsPage() {
       </header>
 
       {err && (
-        <div className="text-sm text-red-600 dark:text-red-400 border border-red-200 dark:border-red-700/50 rounded p-3">
+        <div className="text-sm text-[var(--ss-danger-text)] border border-[var(--ss-danger-border)] bg-[var(--ss-danger-bg)] rounded-ss-lg p-3">
           {err}
         </div>
       )}
-      {loading && !overview && <div className="text-gray-600 dark:text-gray-300">{t('admin.analytics.loading')}</div>}
+      {loading && !overview && <div className="text-[var(--ss-t2)]">{t('admin.analytics.loading')}</div>}
 
       {/* A. 生存 */}
       {overview && (
-        <section className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
-          <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">{t('admin.analytics.section_a_title')}</h2>
+        <section className="rounded-ss-lg border border-[var(--ss-border)] bg-[var(--ss-surface-1)] p-4">
+          <h2 className="font-semibold text-[var(--ss-t1)] mb-3">{t('admin.analytics.section_a_title')}</h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <Stat label={t('admin.analytics.stat_wau')} value={overview.wau} />
             <Stat label={t('admin.analytics.stat_mau')} value={overview.mau} />
@@ -128,13 +128,13 @@ export default function AdminAnalyticsPage() {
 
       {/* B. ファネル */}
       {funnel && (
-        <section className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
-          <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">
+        <section className="rounded-ss-lg border border-[var(--ss-border)] bg-[var(--ss-surface-1)] p-4">
+          <h2 className="font-semibold text-[var(--ss-t1)] mb-3">
             {t('admin.analytics.section_b_title', { days: funnel.days })}
           </h2>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="text-gray-600 dark:text-gray-300">
+              <thead className="text-[var(--ss-t2)] bg-[var(--ss-surface-2)]">
                 <tr>
                   <th className="text-left py-1">{t('admin.analytics.col_platform_pass')}</th>
                   <th className="text-right">{t('admin.analytics.col_started')}</th>
@@ -144,10 +144,10 @@ export default function AdminAnalyticsPage() {
                   <th className="text-right">{t('admin.analytics.col_uu')}</th>
                 </tr>
               </thead>
-              <tbody className="text-gray-900 dark:text-gray-100">
+              <tbody className="text-[var(--ss-t1)]">
                 {Object.entries(funnel.funnel).flatMap(([plat, passes]) =>
                   Object.entries(passes).sort(([a], [b]) => a.localeCompare(b)).map(([pass, v]) => (
-                    <tr key={`${plat}-${pass}`} className="border-t border-gray-200 dark:border-gray-700">
+                    <tr key={`${plat}-${pass}`} className="border-t border-[var(--ss-border)]">
                       <td className="py-1">{plat} / {pass}</td>
                       <td className="text-right">{v.started}</td>
                       <td className="text-right">{v.completed}</td>
@@ -163,18 +163,18 @@ export default function AdminAnalyticsPage() {
             </table>
           </div>
           <div className="mt-4">
-            <div className="text-xs text-gray-600 dark:text-gray-300 mb-1">{t('admin.analytics.abandonment_top_label')}</div>
+            <div className="text-xs text-[var(--ss-t2)] mb-1">{t('admin.analytics.abandonment_top_label')}</div>
             <div className="flex flex-wrap gap-1">
               {funnel.abandonment_last_input_top.map((x) => (
                 <span
                   key={x.last_input_type}
-                  className="text-xs px-2 py-1 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200"
+                  className="text-xs px-2 py-1 rounded-ss-sm bg-[var(--ss-warning-bg)] text-[var(--ss-warning-text)]"
                 >
                   {x.last_input_type} × {x.count}
                 </span>
               ))}
               {funnel.abandonment_last_input_top.length === 0 && (
-                <span className="text-xs text-gray-500">{t('admin.analytics.no_data')}</span>
+                <span className="text-xs text-[var(--ss-t3)]">{t('admin.analytics.no_data')}</span>
               )}
             </div>
           </div>
@@ -182,13 +182,13 @@ export default function AdminAnalyticsPage() {
       )}
 
       {/* C. 機能の実需 */}
-      <section className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
-        <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">
+      <section className="rounded-ss-lg border border-[var(--ss-border)] bg-[var(--ss-surface-1)] p-4">
+        <h2 className="font-semibold text-[var(--ss-t1)] mb-3">
           {t('admin.analytics.section_c_title')}
         </h2>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="text-gray-600 dark:text-gray-300">
+            <thead className="text-[var(--ss-t2)] bg-[var(--ss-surface-2)]">
               <tr>
                 <th className="text-left">{t('admin.analytics.col_view_id')}</th>
                 <th className="text-right">{t('admin.analytics.col_view_count')}</th>
@@ -197,9 +197,9 @@ export default function AdminAnalyticsPage() {
                 <th className="text-right">{t('admin.analytics.col_total_dwell_min')}</th>
               </tr>
             </thead>
-            <tbody className="text-gray-900 dark:text-gray-100">
+            <tbody className="text-[var(--ss-t1)]">
               {dwell.map((d) => (
-                <tr key={d.view_id} className="border-t border-gray-200 dark:border-gray-700">
+                <tr key={d.view_id} className="border-t border-[var(--ss-border)]">
                   <td className="py-1">{d.view_id}</td>
                   <td className="text-right">{d.view_count}</td>
                   <td className="text-right">{d.unique_users}</td>
@@ -208,7 +208,7 @@ export default function AdminAnalyticsPage() {
                 </tr>
               ))}
               {dwell.length === 0 && (
-                <tr><td colSpan={5} className="py-2 text-center text-gray-500">{t('admin.analytics.no_data')}</td></tr>
+                <tr><td colSpan={5} className="py-2 text-center text-[var(--ss-t3)]">{t('admin.analytics.no_data')}</td></tr>
               )}
             </tbody>
           </table>
@@ -216,17 +216,17 @@ export default function AdminAnalyticsPage() {
       </section>
 
       {/* D. 学習曲線 */}
-      <section className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
-        <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">
+      <section className="rounded-ss-lg border border-[var(--ss-border)] bg-[var(--ss-surface-1)] p-4">
+        <h2 className="font-semibold text-[var(--ss-t1)] mb-3">
           {t('admin.analytics.section_d_title')}
         </h2>
         <div className="overflow-x-auto text-xs">
           {Object.entries(learning).slice(0, 30).map(([uid, series]) => (
             <div key={uid} className="mb-2">
-              <div className="font-mono text-gray-700 dark:text-gray-300">{t('admin.analytics.user_prefix', { uid })}</div>
+              <div className="font-mono text-[var(--ss-t2)]">{t('admin.analytics.user_prefix', { uid })}</div>
               <div className="flex flex-wrap gap-1">
                 {series.map((s) => (
-                  <span key={s.week} className="px-2 py-1 rounded bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200">
+                  <span key={s.week} className="px-2 py-1 rounded-ss-sm bg-[var(--ss-brand-tint)] text-[var(--ss-brand)]">
                     {s.week.slice(0, 10)}: {Math.round(s.avg_input_ms / 100) / 10}s (n={s.sample})
                   </span>
                 ))}
@@ -234,19 +234,19 @@ export default function AdminAnalyticsPage() {
             </div>
           ))}
           {Object.keys(learning).length === 0 && (
-            <div className="text-gray-500">{t('admin.analytics.no_data')}</div>
+            <div className="text-[var(--ss-t3)]">{t('admin.analytics.no_data')}</div>
           )}
         </div>
       </section>
 
       {/* E. 体調入力品質 */}
-      <section className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
-        <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">
+      <section className="rounded-ss-lg border border-[var(--ss-border)] bg-[var(--ss-surface-1)] p-4">
+        <h2 className="font-semibold text-[var(--ss-t1)] mb-3">
           {t('admin.analytics.section_e_title')}
         </h2>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="text-gray-600 dark:text-gray-300">
+            <thead className="text-[var(--ss-t2)] bg-[var(--ss-surface-2)]">
               <tr>
                 <th className="text-left">{t('admin.analytics.col_question_id')}</th>
                 <th className="text-right">{t('admin.analytics.col_n')}</th>
@@ -254,9 +254,9 @@ export default function AdminAnalyticsPage() {
                 <th className="text-right">{t('admin.analytics.col_avg_changes')}</th>
               </tr>
             </thead>
-            <tbody className="text-gray-900 dark:text-gray-100">
+            <tbody className="text-[var(--ss-t1)]">
               {condition.map((c) => (
-                <tr key={c.question_id} className="border-t border-gray-200 dark:border-gray-700">
+                <tr key={c.question_id} className="border-t border-[var(--ss-border)]">
                   <td className="py-1">{c.question_id}</td>
                   <td className="text-right">{c.n}</td>
                   <td className="text-right">{(c.avg_ms / 1000).toFixed(1)}s</td>
@@ -264,14 +264,14 @@ export default function AdminAnalyticsPage() {
                 </tr>
               ))}
               {condition.length === 0 && (
-                <tr><td colSpan={4} className="py-2 text-center text-gray-500">{t('admin.analytics.no_data')}</td></tr>
+                <tr><td colSpan={4} className="py-2 text-center text-[var(--ss-t3)]">{t('admin.analytics.no_data')}</td></tr>
               )}
             </tbody>
           </table>
         </div>
       </section>
 
-      <p className="text-xs text-gray-500 dark:text-gray-400">
+      <p className="text-xs text-[var(--ss-t3)]">
         {t('admin.analytics.privacy_note')}
       </p>
     </div>
@@ -280,9 +280,9 @@ export default function AdminAnalyticsPage() {
 
 function Stat({ label, value, small }: { label: string; value: number | string; small?: boolean }) {
   return (
-    <div className="rounded border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-900/40">
-      <div className="text-xs text-gray-600 dark:text-gray-400">{label}</div>
-      <div className={`font-semibold text-gray-900 dark:text-gray-100 ${small ? 'text-sm' : 'text-2xl'}`}>{value}</div>
+    <div className="rounded-ss-lg border border-[var(--ss-border)] p-3 bg-[var(--ss-surface-2)]">
+      <div className="text-xs text-[var(--ss-t3)]">{label}</div>
+      <div className={`font-semibold text-[var(--ss-t1)] ${small ? 'text-sm' : 'text-2xl'}`}>{value}</div>
     </div>
   )
 }
@@ -292,22 +292,22 @@ function Kv({ title, data }: { title: string; data: Record<string, number> }) {
   const total = Object.values(data).reduce((a, b) => a + b, 0)
   return (
     <div>
-      <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">{title}</div>
+      <div className="text-xs text-[var(--ss-t3)] mb-1">{title}</div>
       <div className="space-y-1">
         {Object.entries(data).sort(([, a], [, b]) => b - a).map(([k, v]) => (
           <div key={k} className="flex items-center gap-2 text-sm">
-            <span className="w-24 text-gray-700 dark:text-gray-300 truncate">{k}</span>
-            <div className="flex-1 bg-gray-100 dark:bg-gray-700 rounded h-2 overflow-hidden">
+            <span className="w-24 text-[var(--ss-t2)] truncate">{k}</span>
+            <div className="flex-1 bg-[var(--ss-surface-2)] rounded-ss-sm h-2 overflow-hidden">
               <div
-                className="h-full bg-blue-500"
+                className="h-full bg-[var(--ss-brand)]"
                 style={{ width: total > 0 ? `${(v / total) * 100}%` : '0%' }}
               />
             </div>
-            <span className="w-10 text-right text-gray-900 dark:text-gray-100">{v}</span>
+            <span className="w-10 text-right ss-num text-[var(--ss-t1)]">{v}</span>
           </div>
         ))}
         {Object.keys(data).length === 0 && (
-          <div className="text-xs text-gray-500">{t('admin.analytics.no_data')}</div>
+          <div className="text-xs text-[var(--ss-t3)]">{t('admin.analytics.no_data')}</div>
         )}
       </div>
     </div>

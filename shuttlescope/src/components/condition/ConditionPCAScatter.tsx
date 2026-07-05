@@ -182,17 +182,17 @@ export function ConditionPCAScatter({ playerId, isLight }: Props) {
     }
   }, [records, isLight])
 
-  const panelBg = isLight ? 'bg-white' : 'bg-gray-800'
-  const borderColor = isLight ? 'border-gray-200' : 'border-gray-700'
-  const textMuted = isLight ? 'text-gray-500' : 'text-gray-400'
+  const panelBg = 'bg-[var(--ss-surface-1)]'
+  const borderColor = 'border-[var(--ss-border)]'
+  const textMuted = 'text-[var(--ss-t3)]'
 
   return (
     <RoleGuard allowedRoles={['analyst', 'coach']} fallback={null}>
-      <section className={`rounded-lg border ${borderColor} ${panelBg} p-4`}>
+      <section className={`rounded-ss-lg border ${borderColor} ${panelBg} p-4`}>
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-          <h2 className="text-sm font-semibold">{t('condition.pca.title')}</h2>
+          <h2 className="text-sm font-semibold text-[var(--ss-t1)]">{t('condition.pca.title')}</h2>
           {pca.ok && (
-            <span className={`text-xs font-mono ${textMuted}`}>
+            <span className={`text-xs font-mono ss-num ${textMuted}`}>
               {t('auto.ConditionPCAScatter.variance_pc', { label: t('condition.pca.variance_explained'), ev1: (pca.ev1 * 100).toFixed(1), ev2: (pca.ev2 * 100).toFixed(1) })}
             </span>
           )}
@@ -210,18 +210,18 @@ export function ConditionPCAScatter({ playerId, isLight }: Props) {
                 <ScatterChart margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
                   <CartesianGrid
                     strokeDasharray="3 3"
-                    stroke={isLight ? '#e5e7eb' : '#374151'}
+                    stroke={'var(--ss-border)'}
                   />
                   <XAxis
                     type="number"
                     dataKey="pc1"
                     name={t('condition.pca.pc1')}
-                    tick={{ fill: isLight ? '#374151' : '#9ca3af', fontSize: 11 }}
+                    tick={{ fill: 'var(--ss-t3)', fontSize: 11 }}
                     label={{
                       value: t('condition.pca.pc1'),
                       position: 'insideBottom',
                       offset: -4,
-                      fill: isLight ? '#374151' : '#9ca3af',
+                      fill: 'var(--ss-t3)',
                       fontSize: 11,
                     }}
                   />
@@ -229,24 +229,25 @@ export function ConditionPCAScatter({ playerId, isLight }: Props) {
                     type="number"
                     dataKey="pc2"
                     name={t('condition.pca.pc2')}
-                    tick={{ fill: isLight ? '#374151' : '#9ca3af', fontSize: 11 }}
+                    tick={{ fill: 'var(--ss-t3)', fontSize: 11 }}
                     label={{
                       value: t('condition.pca.pc2'),
                       angle: -90,
                       position: 'insideLeft',
-                      fill: isLight ? '#374151' : '#9ca3af',
+                      fill: 'var(--ss-t3)',
                       fontSize: 11,
                     }}
                   />
                   <ZAxis range={[40, 40]} />
-                  <ReferenceLine x={0} stroke={isLight ? '#9ca3af' : '#6b7280'} />
-                  <ReferenceLine y={0} stroke={isLight ? '#9ca3af' : '#6b7280'} />
+                  <ReferenceLine x={0} stroke={'var(--ss-border-strong)'} />
+                  <ReferenceLine y={0} stroke={'var(--ss-border-strong)'} />
                   <Tooltip
                     cursor={{ strokeDasharray: '3 3' }}
                     contentStyle={{
-                      backgroundColor: isLight ? '#ffffff' : '#1f2937',
-                      border: `1px solid ${isLight ? '#e5e7eb' : '#374151'}`,
+                      backgroundColor: 'var(--ss-surface-1)',
+                      border: `1px solid var(--ss-border)`,
                       fontSize: 12,
+                      borderRadius: 6,
                     }}
                     formatter={(_v: unknown, _n: unknown, entry: { payload?: PCAPoint }) => {
                       const p = entry?.payload
@@ -312,7 +313,7 @@ export function ConditionPCAScatter({ playerId, isLight }: Props) {
                 <span className="font-semibold">
                   {t('condition.pca.pc1')} {t('condition.pca.top_loadings')}:
                 </span>{' '}
-                <span className="font-mono">
+                <span className="font-mono ss-num">
                   {pca.loadings1
                     .slice(0, 3)
                     .map(
@@ -326,7 +327,7 @@ export function ConditionPCAScatter({ playerId, isLight }: Props) {
                 <span className="font-semibold">
                   {t('condition.pca.pc2')} {t('condition.pca.top_loadings')}:
                 </span>{' '}
-                <span className="font-mono">
+                <span className="font-mono ss-num">
                   {pca.loadings2
                     .slice(0, 3)
                     .map(

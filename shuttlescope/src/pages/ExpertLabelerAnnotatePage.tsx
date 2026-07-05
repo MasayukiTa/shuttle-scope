@@ -100,8 +100,7 @@ function AnnotateContent() {
   const navigate = useNavigate()
   const { t } = useTranslation()
   const { role } = useAuth()
-  const { theme } = useTheme()
-  const isLight = theme === 'light'
+  useTheme()
   const queryClient = useQueryClient()
 
   const annotatorRole = role === 'coach' ? 'coach' : 'analyst'
@@ -351,14 +350,12 @@ function AnnotateContent() {
     return () => window.removeEventListener('keydown', handler)
   }, [goPrev, goNext, togglePlay, handleSave, handleSkip, handleSaveShot, activeTab])
 
-  const bgBase = isLight ? 'bg-gray-50 text-gray-900' : 'bg-gray-900 text-gray-100'
-  const panelBg = isLight ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'
+  const bgBase = 'bg-[var(--ss-bg-app)] text-[var(--ss-t1)]'
+  const panelBg = 'bg-[var(--ss-surface-1)] border-[var(--ss-border)]'
   const btnLarge =
-    'px-4 py-3 rounded-lg font-medium text-base select-none'
-  const btnPrimary = 'bg-blue-500 hover:bg-blue-600 text-white'
-  const btnSecondary = isLight
-    ? 'bg-gray-200 hover:bg-gray-300 text-gray-900'
-    : 'bg-gray-700 hover:bg-gray-600 text-gray-100'
+    'px-4 py-3 rounded-ss-md font-medium text-base select-none'
+  const btnPrimary = 'bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white'
+  const btnSecondary = 'bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t1)]'
 
   // ラジオボタン（iPad 向けに十分な大きさ）
   const renderRadioGroup = <T extends string>(
@@ -379,10 +376,8 @@ function AnnotateContent() {
               onClick={() => onChange(opt.value)}
               className={`${btnLarge} border ${
                 selected
-                  ? 'bg-blue-500 border-blue-500 text-white'
-                  : isLight
-                  ? 'bg-white border-gray-300 text-gray-800'
-                  : 'bg-gray-800 border-gray-600 text-gray-100'
+                  ? 'bg-[var(--ss-brand)] border-[var(--ss-brand)] text-white'
+                  : 'bg-[var(--ss-surface-1)] border-[var(--ss-border-strong)] text-[var(--ss-t1)]'
               }`}
               style={{ minHeight: '48px', minWidth: '64px' }}
             >
@@ -437,11 +432,7 @@ function AnnotateContent() {
               href={`${API_BASE_URL}/v1/expert/export?match_id=${matchId}&fmt=json`}
               target="_blank"
               rel="noopener noreferrer"
-              className={`text-xs px-3 py-2 rounded border transition-colors ${
-                isLight
-                  ? 'border-gray-300 text-gray-600 hover:bg-gray-100'
-                  : 'border-gray-600 text-gray-300 hover:bg-gray-700'
-              }`}
+              className="text-xs px-3 py-2 rounded-ss-md border transition-colors duration-base ease-out border-[var(--ss-border-strong)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]"
             >
               {t('auto.ExpertLabelerAnnotatePage.json')}
             </a>
@@ -449,20 +440,16 @@ function AnnotateContent() {
               href={`${API_BASE_URL}/v1/expert/export?match_id=${matchId}&fmt=csv`}
               target="_blank"
               rel="noopener noreferrer"
-              className={`text-xs px-3 py-2 rounded border transition-colors ${
-                isLight
-                  ? 'border-gray-300 text-gray-600 hover:bg-gray-100'
-                  : 'border-gray-600 text-gray-300 hover:bg-gray-700'
-              }`}
+              className="text-xs px-3 py-2 rounded-ss-md border transition-colors duration-base ease-out border-[var(--ss-border-strong)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]"
             >
               {t('auto.ExpertLabelerAnnotatePage.csv')}
             </a>
           </div>
         </header>
 
-        <div className={`h-2 rounded ${isLight ? 'bg-gray-200' : 'bg-gray-700'} overflow-hidden mb-4`}>
+        <div className="h-2 rounded-ss-pill bg-[var(--ss-surface-2)] overflow-hidden mb-4">
           <div
-            className="h-full bg-blue-500"
+            className="h-full bg-[var(--ss-brand)]"
             style={{ width: `${((index + 1) / clips.length) * 100}%` }}
           />
         </div>
@@ -474,14 +461,10 @@ function AnnotateContent() {
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`px-4 py-2 rounded-t text-sm font-medium border-b-2 transition-colors ${
+                className={`px-4 py-2 rounded-t-ss-md text-sm font-medium border-b-2 transition-colors duration-base ease-out ${
                   activeTab === tab
-                    ? isLight
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-blue-400 text-blue-400'
-                    : isLight
-                    ? 'border-transparent text-gray-500 hover:text-gray-700'
-                    : 'border-transparent text-gray-400 hover:text-gray-200'
+                    ? 'border-[var(--ss-brand)] text-[var(--ss-brand)]'
+                    : 'border-transparent text-[var(--ss-t3)] hover:text-[var(--ss-t1)]'
                 }`}
               >
                 {tab === 'labeling'
@@ -494,7 +477,7 @@ function AnnotateContent() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* 動画領域 */}
-          <div className={`rounded-lg border p-3 ${panelBg}`}>
+          <div className={`rounded-ss-lg border p-3 ${panelBg}`}>
             {currentClip && (
               <>
                 <video
@@ -504,24 +487,24 @@ function AnnotateContent() {
                   controls
                   autoPlay
                   playsInline
-                  className="w-full rounded bg-black"
+                  className="w-full rounded-ss-md bg-black"
                   style={{ aspectRatio: '16 / 9', maxHeight: '60vh' }}
                 />
-                <div className={`mt-2 text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>
+                <div className="mt-2 text-xs text-[var(--ss-t3)]">
                   {t('auto.ExpertLabelerAnnotatePage.stroke_id', { n: currentClip.stroke_id })}
                   {currentClip.shot_type ? ` / ${currentClip.shot_type}` : ''}
                   {currentClip.miss_type ? ` / ${currentClip.miss_type}` : ''}
                 </div>
               </>
             )}
-            <div className={`mt-2 text-[11px] ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>
+            <div className="mt-2 text-[11px] text-[var(--ss-t3)]">
               {t('expert_labeler.shortcut_hint')}
             </div>
           </div>
 
           {/* ─ 重心ズレ検出タブ（デフォルト） ─ */}
           {activeTab === 'labeling' && (
-          <div className={`rounded-lg border p-4 ${panelBg}`}>
+          <div className={`rounded-ss-lg border p-4 ${panelBg}`}>
             {renderRadioGroup(
               'expert_labeler.posture_collapse',
               POSTURE_OPTIONS,
@@ -561,10 +544,8 @@ function AnnotateContent() {
                       onClick={() => setForm((f) => ({ ...f, confidence: c as Confidence }))}
                       className={`${btnLarge} border ${
                         selected
-                          ? 'bg-yellow-500 border-yellow-500 text-white'
-                          : isLight
-                          ? 'bg-white border-gray-300 text-gray-800'
-                          : 'bg-gray-800 border-gray-600 text-gray-100'
+                          ? 'bg-[var(--ss-warn)] border-[var(--ss-warn)] text-white'
+                          : 'bg-[var(--ss-surface-1)] border-[var(--ss-border-strong)] text-[var(--ss-t1)]'
                       }`}
                       style={{ minHeight: '48px', minWidth: '72px' }}
                     >
@@ -585,11 +566,7 @@ function AnnotateContent() {
                 onChange={(e) => setForm((f) => ({ ...f, comment: e.target.value }))}
                 placeholder={t('expert_labeler.comment_placeholder') as string}
                 rows={2}
-                className={`w-full rounded border px-3 py-2 ${
-                  isLight
-                    ? 'bg-white border-gray-300 text-gray-900'
-                    : 'bg-gray-900 border-gray-600 text-gray-100'
-                }`}
+                className="w-full rounded-ss-md border px-3 py-2 text-base bg-[var(--ss-surface-1)] border-[var(--ss-border-strong)] text-[var(--ss-t1)] focus:outline-none focus:border-[var(--ss-brand)] focus:ring-[3px] focus:ring-[var(--ss-focus-ring)]"
               />
             </div>
 
@@ -633,11 +610,11 @@ function AnnotateContent() {
 
           {/* ─ アノテーション改善タブ（admin のみ） ─ */}
           {activeTab === 'annotation' && role === 'admin' && (
-          <div className={`rounded-lg border p-4 ${panelBg}`}>
+          <div className={`rounded-ss-lg border p-4 ${panelBg}`}>
             <div className="text-sm font-semibold mb-3">
               {t('expert_labeler.shot_type_section')}
             </div>
-            <p className={`text-xs mb-4 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>
+            <p className="text-xs mb-4 text-[var(--ss-t3)]">
               {t('expert_labeler.shot_type_hint')}
             </p>
 
@@ -656,10 +633,8 @@ function AnnotateContent() {
                       onClick={() => setShotAnnotation((s) => ({ ...s, shot_type: shot }))}
                       className={`${btnLarge} border text-xs ${
                         selected
-                          ? 'bg-green-500 border-green-500 text-white'
-                          : isLight
-                          ? 'bg-white border-gray-300 text-gray-800'
-                          : 'bg-gray-800 border-gray-600 text-gray-100'
+                          ? 'bg-[var(--ss-success)] border-[var(--ss-success)] text-white'
+                          : 'bg-[var(--ss-surface-1)] border-[var(--ss-border-strong)] text-[var(--ss-t1)]'
                       }`}
                       style={{ minHeight: '40px', minWidth: '56px' }}
                     >
@@ -690,10 +665,8 @@ function AnnotateContent() {
                       onClick={() => setShotAnnotation((s) => ({ ...s, confidence: c as Confidence }))}
                       className={`${btnLarge} border ${
                         selected
-                          ? 'bg-yellow-500 border-yellow-500 text-white'
-                          : isLight
-                          ? 'bg-white border-gray-300 text-gray-800'
-                          : 'bg-gray-800 border-gray-600 text-gray-100'
+                          ? 'bg-[var(--ss-warn)] border-[var(--ss-warn)] text-white'
+                          : 'bg-[var(--ss-surface-1)] border-[var(--ss-border-strong)] text-[var(--ss-t1)]'
                       }`}
                       style={{ minHeight: '48px', minWidth: '72px' }}
                     >
@@ -714,11 +687,7 @@ function AnnotateContent() {
                 onChange={(e) => setShotAnnotation((s) => ({ ...s, comment: e.target.value }))}
                 placeholder={t('expert_labeler.comment_placeholder') as string}
                 rows={2}
-                className={`w-full rounded border px-3 py-2 ${
-                  isLight
-                    ? 'bg-white border-gray-300 text-gray-900'
-                    : 'bg-gray-900 border-gray-600 text-gray-100'
-                }`}
+                className="w-full rounded-ss-md border px-3 py-2 text-base bg-[var(--ss-surface-1)] border-[var(--ss-border-strong)] text-[var(--ss-t1)] focus:outline-none focus:border-[var(--ss-brand)] focus:ring-[3px] focus:ring-[var(--ss-focus-ring)]"
               />
             </div>
 
@@ -746,15 +715,13 @@ function AnnotateContent() {
                 href={`/api/v1/expert/shot_labels/export?match_id=${matchId}&fmt=csv`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className={`flex items-center justify-center ${btnLarge} border ${
-                  isLight ? 'border-gray-300 text-gray-600 hover:bg-gray-100' : 'border-gray-600 text-gray-300 hover:bg-gray-700'
-                }`}
+                className={`flex items-center justify-center ${btnLarge} border border-[var(--ss-border-strong)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)] transition-colors duration-base ease-out`}
                 style={{ minHeight: '56px' }}
               >
                 {t('auto.ExpertLabelerAnnotatePage.csv')}
               </a>
               <button
-                className={`${btnLarge} bg-green-600 hover:bg-green-700 text-white`}
+                className={`${btnLarge} bg-[var(--ss-success)] hover:brightness-95 text-white`}
                 onClick={handleSaveShot}
                 style={{ minHeight: '56px' }}
               >
@@ -767,7 +734,7 @@ function AnnotateContent() {
 
         {/* トースト通知 */}
         {toast && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-black/80 text-white px-4 py-2 rounded shadow">
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[color:rgba(15,23,42,0.85)] text-white px-4 py-2 rounded-ss-md shadow-pop">
             {toast}
           </div>
         )}

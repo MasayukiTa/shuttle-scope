@@ -16,18 +16,18 @@ export function TopBarScore({ scoreA, scoreB, setNum, isMobile }: TopBarScorePro
   return (
     <div
       className={clsx(
-        'flex items-baseline gap-1 font-mono font-bold tabular-nums select-none',
+        'flex items-baseline gap-1 font-mono font-bold tabular-nums ss-num select-none',
         isMobile ? 'text-base' : 'text-2xl',
       )}
       aria-label={setNum
         ? t('annotator.ux.score_aria_game', { a: scoreA, b: scoreB, n: setNum })
         : t('annotator.ux.score_aria', { a: scoreA, b: scoreB })}
     >
-      <span className={scoreA >= scoreB ? 'text-white' : 'text-gray-300'}>{scoreA}</span>
-      <span className="text-gray-500">-</span>
-      <span className={scoreB >= scoreA ? 'text-white' : 'text-gray-300'}>{scoreB}</span>
+      <span className={scoreA >= scoreB ? 'text-[var(--ss-t1)]' : 'text-[var(--ss-t3)]'}>{scoreA}</span>
+      <span className="text-[var(--ss-t3)]">-</span>
+      <span className={scoreB >= scoreA ? 'text-[var(--ss-t1)]' : 'text-[var(--ss-t3)]'}>{scoreB}</span>
       {setNum != null && (
-        <span className={clsx('ml-2 text-gray-400 font-normal', isMobile ? 'text-[10px]' : 'text-xs')}>
+        <span className={clsx('ml-2 text-[var(--ss-t3)] font-normal', isMobile ? 'text-[10px]' : 'text-xs')}>
           G{setNum}
         </span>
       )}

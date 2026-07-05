@@ -300,7 +300,7 @@ export function TransitionMatrix({ playerId, filters = DEFAULT_FILTERS }: Transi
           <p className="text-xs text-[var(--ss-t3)] mb-2">{t('auto.TransitionMatrix.k2')}</p>
           <div className="space-y-0">
             {matrixData.top_sequences.slice(0, 10).map((seq, i) => (
-              <div key={i} className="flex items-center gap-2 py-2 border-b border-[var(--ss-border)]/50">
+              <div key={i} className="flex items-center gap-2 py-2 border-b border-[var(--ss-border)]">
                 <span className="text-xs w-4 text-[var(--ss-t3)] shrink-0 ss-num">{i + 1}</span>
                 <div className="flex items-center gap-1 flex-1 min-w-0">
                   <span className="text-xs text-[var(--ss-t2)] shrink-0" title={resolveLabel(seq.from)}>{resolveAbbr(seq.from)}</span>

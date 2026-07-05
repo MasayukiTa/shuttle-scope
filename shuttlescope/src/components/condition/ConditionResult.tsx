@@ -9,18 +9,18 @@ interface Props {
   isLight?: boolean
 }
 
-function labelColor(label: string, isLight?: boolean): string {
-  if (label === 'good') return isLight ? 'text-green-700 bg-green-100 border-green-300' : 'text-green-300 bg-green-900/30 border-green-700'
-  if (label === 'caution') return isLight ? 'text-yellow-700 bg-yellow-100 border-yellow-300' : 'text-yellow-300 bg-yellow-900/30 border-yellow-700'
-  return isLight ? 'text-red-700 bg-red-100 border-red-300' : 'text-red-300 bg-red-900/30 border-red-700'
+function labelColor(label: string): string {
+  if (label === 'good') return 'text-[var(--ss-success)] bg-[var(--ss-success-tint)] border-[var(--ss-success-border)]'
+  if (label === 'caution') return 'text-[var(--ss-warn)] bg-[var(--ss-warn-tint)] border-[var(--ss-warning-border)]'
+  return 'text-[var(--ss-bad)] bg-[var(--ss-danger-tint)] border-[var(--ss-danger-border)]'
 }
 
 // Phase 2: 結果画面。role により表示項目を厳格に切替。
 export function ConditionResult({ result, historyCount, isLight }: Props) {
   const { t } = useTranslation()
   const { role } = useAuth()
-  const panelCls = isLight ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'
-  const muted = isLight ? 'text-gray-600' : 'text-gray-400'
+  const panelCls = 'bg-[var(--ss-surface-1)] border-[var(--ss-border)]'
+  const muted = 'text-[var(--ss-t2)]'
 
   // 信頼度バッジ（履歴件数ベース）
   const hc = historyCount ?? result.history_count ?? 0
@@ -28,13 +28,13 @@ export function ConditionResult({ result, historyCount, isLight }: Props) {
   let confColor: string
   if (hc < 7) {
     confLabel = t('condition.confidence.accumulating')
-    confColor = 'border-red-400 bg-red-900/30 text-red-300'
+    confColor = 'border-[var(--ss-danger-border)] bg-[var(--ss-danger-tint)] text-[var(--ss-bad)]'
   } else if (hc < 28) {
     confLabel = t('condition.confidence.reference')
-    confColor = 'border-yellow-400 bg-yellow-900/30 text-yellow-300'
+    confColor = 'border-[var(--ss-warning-border)] bg-[var(--ss-warn-tint)] text-[var(--ss-warn)]'
   } else {
     confLabel = t('condition.confidence.normal')
-    confColor = 'border-green-400 bg-green-900/30 text-green-300'
+    confColor = 'border-[var(--ss-success-border)] bg-[var(--ss-success-tint)] text-[var(--ss-success)]'
   }
 
   const ccs = result.ccs ?? null
@@ -54,15 +54,15 @@ export function ConditionResult({ result, historyCount, isLight }: Props) {
   return (
     <div className="space-y-4">
       {/* CCS + ConfidenceBadge */}
-      <section className={`rounded-lg border p-4 ${panelCls}`}>
+      <section className={`rounded-ss-lg border p-4 shadow-card ${panelCls}`}>
         <div className="flex items-center justify-between mb-2">
           <div className="text-sm font-semibold">{t('condition.result.ccs')}</div>
-          <div className={`inline-flex items-center gap-2 px-2 py-1 rounded border text-xs ${confColor}`}>
+          <div className={`inline-flex items-center gap-2 px-2 py-1 rounded-ss-sm border text-xs ${confColor}`}>
             <span>{confLabel}</span>
             <span className="opacity-70">{t('condition.confidence.records', { n: hc })}</span>
           </div>
         </div>
-        <div className="text-3xl font-bold">
+        <div className="text-3xl font-bold ss-num text-[var(--ss-t1)]">
           {ccs != null ? ccs.toFixed(1) : '—'}
         </div>
 
@@ -73,15 +73,15 @@ export function ConditionResult({ result, historyCount, isLight }: Props) {
               {t('condition.result.personal_range')}
               {lowPct != null && highPct != null ? `: ${rangeLow?.toFixed(1)} 〜 ${rangeHigh?.toFixed(1)}` : ''}
             </div>
-            <div className="relative h-3 bg-gray-700/30 rounded overflow-hidden">
+            <div className="relative h-3 bg-[var(--ss-surface-2)] rounded-ss-sm overflow-hidden">
               {lowPct != null && highPct != null && (
                 <div
-                  className="absolute h-full bg-blue-500/30"
+                  className="absolute h-full bg-[var(--ss-brand-tint)]"
                   style={{ left: `${lowPct}%`, width: `${Math.max(0, highPct - lowPct)}%` }}
                 />
               )}
               <div
-                className="absolute top-0 bottom-0 w-1 bg-blue-600"
+                className="absolute top-0 bottom-0 w-1 bg-[var(--ss-brand)]"
                 style={{ left: `calc(${ccsPct}% - 2px)` }}
               />
             </div>
@@ -90,7 +90,7 @@ export function ConditionResult({ result, historyCount, isLight }: Props) {
         )}
 
         {result.delta_28ma != null && (
-          <div className={`text-xs mt-2 ${muted}`}>
+          <div className={`text-xs mt-2 ss-num ${muted}`}>
             {t('condition.result.delta_28ma')}: {result.delta_28ma >= 0 ? '+' : ''}{result.delta_28ma.toFixed(1)}
           </div>
         )}
@@ -98,11 +98,11 @@ export function ConditionResult({ result, historyCount, isLight }: Props) {
 
       {/* 因子別ラベル（全ロール） */}
       {factors.length > 0 && (
-        <section className={`rounded-lg border p-4 ${panelCls}`}>
+        <section className={`rounded-ss-lg border p-4 shadow-card ${panelCls}`}>
           <div className="text-sm font-semibold mb-3">{t('auto.ConditionResult.k1')}</div>
           <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
             {factors.map((f) => (
-              <div key={f.factor} className={`border rounded p-2 ${labelColor(f.label, isLight)}`}>
+              <div key={f.factor} className={`border rounded-ss-sm p-2 ${labelColor(f.label)}`}>
                 <div className="text-[10px] font-mono opacity-80">{f.factor}</div>
                 <div className="text-[11px] leading-tight mt-0.5">
                   {t(`condition.factor.${f.factor}` as unknown as string)}
@@ -126,27 +126,27 @@ export function ConditionResult({ result, historyCount, isLight }: Props) {
 
       {/* coach 以上: 生数値表示 */}
       {showCoach && (
-        <section className={`rounded-lg border p-4 ${panelCls}`}>
+        <section className={`rounded-ss-lg border p-4 shadow-card ${panelCls}`}>
           <div className="text-sm font-semibold mb-3">{t('auto.ConditionResult.k2')}</div>
           <div className="grid grid-cols-3 md:grid-cols-6 gap-2 text-xs">
             {(['f1', 'f2', 'f3', 'f4', 'f5'] as const).map((k) => (
-              <div key={k} className={`border rounded px-2 py-1 ${isLight ? 'border-gray-300' : 'border-gray-600'}`}>
+              <div key={k} className="border border-[var(--ss-border)] rounded-ss-sm px-2 py-1">
                 <div className={`text-[10px] ${muted}`}>{k.toUpperCase()}</div>
-                <div className="font-mono">{result[k] != null ? (result[k] as number).toFixed(2) : '—'}</div>
+                <div className="font-mono ss-num">{result[k] != null ? (result[k] as number).toFixed(2) : '—'}</div>
               </div>
             ))}
-            <div className={`border rounded px-2 py-1 ${isLight ? 'border-gray-300' : 'border-gray-600'}`}>
+            <div className="border border-[var(--ss-border)] rounded-ss-sm px-2 py-1">
               <div className={`text-[10px] ${muted}`}>{t('auto.ConditionResult.total')}</div>
-              <div className="font-mono">{result.total_score != null ? result.total_score.toFixed(1) : '—'}</div>
+              <div className="font-mono ss-num">{result.total_score != null ? result.total_score.toFixed(1) : '—'}</div>
             </div>
           </div>
           <div className="mt-2">
             <span
               className={
-                'inline-flex items-center px-2 py-0.5 rounded text-xs border ' +
+                'inline-flex items-center px-2 py-0.5 rounded-ss-sm text-xs border ' +
                 (result.validity_flag
-                  ? 'border-green-500 text-green-400 bg-green-900/20'
-                  : 'border-red-500 text-red-400 bg-red-900/20')
+                  ? 'border-[var(--ss-success-border)] text-[var(--ss-success)] bg-[var(--ss-success-tint)]'
+                  : 'border-[var(--ss-danger-border)] text-[var(--ss-bad)] bg-[var(--ss-danger-tint)]')
               }
             >
               {t('condition.result.validity')}: {result.validity_flag ? 'OK' : 'NG'}
@@ -157,11 +157,11 @@ export function ConditionResult({ result, historyCount, isLight }: Props) {
 
       {/* analyst: validity_score, flags, questionnaire_json */}
       {showAnalyst && (
-        <section className={`rounded-lg border p-4 ${panelCls}`}>
+        <section className={`rounded-ss-lg border p-4 shadow-card ${panelCls}`}>
           <div className="text-sm font-semibold mb-2">{t('auto.ConditionResult.k3')}</div>
           {result.validity_score != null && (
             <div className="text-xs mb-1">
-              {t('auto.ConditionResult.validity_score_label')} <span className="font-mono">{result.validity_score.toFixed(3)}</span>
+              {t('auto.ConditionResult.validity_score_label')} <span className="font-mono ss-num">{result.validity_score.toFixed(3)}</span>
             </div>
           )}
           {result.flags_list && result.flags_list.length > 0 && (
@@ -169,7 +169,7 @@ export function ConditionResult({ result, historyCount, isLight }: Props) {
               <div className={muted}>{t('condition.result.flags')}:</div>
               <div className="flex flex-wrap gap-1 mt-1">
                 {result.flags_list.map((f) => (
-                  <span key={f} className="inline-flex px-1.5 py-0.5 rounded bg-orange-900/30 border border-orange-600 text-orange-300 text-[10px]">
+                  <span key={f} className="inline-flex px-1.5 py-0.5 rounded-ss-sm bg-[var(--ss-warn-tint)] border border-[var(--ss-warning-border)] text-[var(--ss-warn)] text-[10px]">
                     {f}
                   </span>
                 ))}
@@ -179,7 +179,7 @@ export function ConditionResult({ result, historyCount, isLight }: Props) {
           {result.questionnaire_json && (
             <details className="text-xs mt-2">
               <summary className="cursor-pointer">{t('condition.result.responses_breakdown')}</summary>
-              <pre className={`mt-1 p-2 rounded overflow-x-auto text-[10px] ${isLight ? 'bg-gray-100' : 'bg-gray-900'}`}>
+              <pre className="mt-1 p-2 rounded-ss-sm overflow-x-auto text-[10px] bg-[var(--ss-surface-2)]">
                 {JSON.stringify(result.questionnaire_json, null, 2)}
               </pre>
             </details>

@@ -185,17 +185,17 @@ export function PlayerTrackingOverlay({
             <div className="flex flex-col items-center gap-1 max-w-md text-center">
               {frameDetectError ? (
                 <>
-                  <span className="bg-red-900/90 text-xs px-3 py-1.5 rounded-full pointer-events-none" style={{ color: '#fca5a5' }}>
+                  <span className="bg-red-900/90 text-xs px-3 py-1.5 rounded-ss-pill pointer-events-none" style={{ color: '#fca5a5' }}>
                     {t('player_tracking.detect_error_pill')}
                   </span>
-                  <div className="bg-black/85 rounded px-2 py-1.5 flex items-start gap-2 max-w-md">
+                  <div className="bg-black/85 rounded-ss-md px-2 py-1.5 flex items-start gap-2 max-w-md">
                     <pre
                       className="text-[10px] font-mono whitespace-pre-wrap break-all text-left select-text overflow-auto"
                       style={{ color: '#fca5a5', maxHeight: '40vh', userSelect: 'text' }}
                     >{frameDetectError}</pre>
                     <button
                       type="button"
-                      className="shrink-0 text-[10px] bg-red-800 hover:bg-red-700 active:bg-red-900 text-white rounded px-2 py-1"
+                      className="shrink-0 text-[10px] bg-red-800 hover:bg-red-700 active:bg-red-900 text-white rounded-ss-md px-2 py-1 transition-colors duration-fast ease-out"
                       onClick={() => {
                         try {
                           navigator.clipboard.writeText(frameDetectError ?? '')
@@ -208,13 +208,13 @@ export function PlayerTrackingOverlay({
                   </div>
                 </>
               ) : (
-                <span className="bg-black/80 text-xs px-3 py-1.5 rounded-full" style={{ color: '#fff' }}>
+                <span className="bg-black/80 text-xs px-3 py-1.5 rounded-ss-pill" style={{ color: '#fff' }}>
                   {t('player_tracking.no_person_detected')}
                 </span>
               )}
               {/* 診断情報（検出ゼロ時のみ表示） */}
               {frameDetectDebug && (
-                <div className="bg-black/85 text-[9px] px-2 py-1.5 rounded font-mono text-left" style={{ color: '#94a3b8' }}>
+                <div className="bg-black/85 text-[9px] px-2 py-1.5 rounded-ss-md font-mono ss-num text-left" style={{ color: '#94a3b8' }}>
                   <div>{t('auto.PlayerTrackingOverlay.k_backend', { backend: frameDetectDebug.backend ?? '—' })}</div>
                   {frameDetectDebug.frame_mean_brightness !== undefined && (
                     <div>{t('auto.PlayerTrackingOverlay.k_frame_brightness', { value: frameDetectDebug.frame_mean_brightness })}</div>
@@ -285,8 +285,8 @@ export function PlayerTrackingOverlay({
               <div
                 className={clsx(
                   'absolute left-1/2 -translate-x-1/2 whitespace-nowrap text-[11px] font-semibold',
-                  'px-2 py-0.5 rounded shadow-lg pointer-events-none select-none',
-                  isLight ? 'bg-white text-gray-900 border border-gray-200' : 'bg-gray-900 text-white border border-gray-700'
+                  'px-2 py-0.5 rounded-ss-sm shadow-card pointer-events-none select-none',
+                  'bg-[var(--ss-surface-1)] text-[var(--ss-t1)] border border-[var(--ss-border)]'
                 )}
                 style={{
                   top: '-26px',

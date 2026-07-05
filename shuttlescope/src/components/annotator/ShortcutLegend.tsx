@@ -62,14 +62,14 @@ export function ShortcutLegend({ variant = 'compact', className }: ShortcutLegen
     : SHORTCUTS
 
   return (
-    <div className={clsx('bg-gray-800 rounded p-3 text-gray-300', className)}>
-      <div className="font-semibold text-gray-200 mb-2 text-sm">
+    <div className={clsx('bg-[var(--ss-surface-2)] rounded-ss-md p-3 text-[var(--ss-t2)]', className)}>
+      <div className="font-semibold text-[var(--ss-t1)] mb-2 text-sm">
         {t('annotator.ui.shortcuts_title')}
       </div>
       <div className={clsx('grid gap-x-4 gap-y-1 text-xs', variant === 'full' ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-2')}>
         {items.map((s) => (
           <span key={s.keys + s.i18nKey} className="flex items-baseline gap-1.5">
-            <kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono shrink-0 num-cell">
+            <kbd className="bg-[var(--ss-surface-3)] text-[var(--ss-t1)] border border-[var(--ss-border-strong)] px-1.5 py-0.5 rounded-ss-sm text-xs font-mono shrink-0 num-cell ss-num">
               {s.keys}
             </kbd>
             <span className="truncate">{t(s.i18nKey, { defaultValue: s.keys })}</span>

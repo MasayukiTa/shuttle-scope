@@ -91,10 +91,10 @@ export function LiveInputPage() {
   }, [store.inputStep, mode])
 
   if (!matchId) {
-    return <div className="p-4 text-sm">{t('auto.LiveInputPage.match_id_missing')}</div>
+    return <div className="p-4 text-sm text-[var(--ss-t1)]">{t('auto.LiveInputPage.match_id_missing')}</div>
   }
   if (!match || !latestSet) {
-    return <div className="p-4 text-sm text-gray-500">{t('annotator.loading', { defaultValue: '読み込み中...' })}</div>
+    return <div className="p-4 text-sm text-[var(--ss-t3)]">{t('annotator.loading', { defaultValue: '読み込み中...' })}</div>
   }
 
   const handleShot = (shotType: ShotType) => {
@@ -149,38 +149,38 @@ export function LiveInputPage() {
   const playerBName = match.player_b?.name ?? 'B'
 
   return (
-    <div className="fixed inset-0 bg-gray-950 text-gray-100 flex flex-col">
+    <div className="fixed inset-0 bg-[var(--ss-bg-app)] text-[var(--ss-t1)] flex flex-col">
       {/* トップバー: 戻る + スコア */}
-      <header className="flex items-center justify-between px-3 py-2 border-b border-gray-800 shrink-0">
+      <header className="flex items-center justify-between px-3 py-2 border-b border-[var(--ss-border)] shrink-0">
         <button
           type="button"
           onClick={() => navigate('/matches')}
-          className="text-sm text-gray-300 px-2 py-1 hover:bg-gray-800 rounded"
+          className="text-sm text-[var(--ss-t2)] px-2 py-1 hover:bg-[var(--ss-surface-2)] rounded-[5px]"
           aria-label={t('annotator.back_to_matches', { defaultValue: '試合一覧に戻る' })}
         >
           ←
         </button>
         <div className="flex items-center gap-3 text-sm">
-          <span className="text-gray-400 truncate max-w-[8rem]">{playerAName}</span>
-          <span className="text-3xl font-mono font-bold tabular-nums">{store.scoreA}</span>
-          <span className="text-gray-500">-</span>
-          <span className="text-3xl font-mono font-bold tabular-nums">{store.scoreB}</span>
-          <span className="text-gray-400 truncate max-w-[8rem]">{playerBName}</span>
+          <span className="text-[var(--ss-t2)] truncate max-w-[8rem]">{playerAName}</span>
+          <span className="text-3xl font-mono font-bold ss-num">{store.scoreA}</span>
+          <span className="text-[var(--ss-t3)]">-</span>
+          <span className="text-3xl font-mono font-bold ss-num">{store.scoreB}</span>
+          <span className="text-[var(--ss-t2)] truncate max-w-[8rem]">{playerBName}</span>
         </div>
-        <div className="text-[10px] text-gray-500">
-          {t('annotator.set', { defaultValue: 'セット' })} {store.currentSetNum}
+        <div className="text-[10px] text-[var(--ss-t3)]">
+          {t('annotator.set', { defaultValue: 'セット' })} <span className="ss-num">{store.currentSetNum}</span>
         </div>
       </header>
 
       {/* モードタブ */}
-      <div className="flex border-b border-gray-800 shrink-0" role="tablist">
+      <div className="flex border-b border-[var(--ss-border)] shrink-0" role="tablist">
         <button
           role="tab"
           aria-selected={mode === 'rally'}
           onClick={() => setMode('rally')}
           className={
             'flex-1 py-2 text-sm font-medium ' +
-            (mode === 'rally' ? 'bg-blue-700 text-white' : 'bg-gray-900 text-gray-400')
+            (mode === 'rally' ? 'bg-[var(--ss-brand)] text-white' : 'bg-[var(--ss-surface-2)] text-[var(--ss-t2)]')
           }
         >
           {t('annotator.live.tab_rally', { defaultValue: 'ラリー入力' })}
@@ -191,7 +191,7 @@ export function LiveInputPage() {
           onClick={() => setMode('result')}
           className={
             'flex-1 py-2 text-sm font-medium ' +
-            (mode === 'result' ? 'bg-orange-600 text-white' : 'bg-gray-900 text-gray-400')
+            (mode === 'result' ? 'bg-[var(--ss-emphasis)] text-white' : 'bg-[var(--ss-surface-2)] text-[var(--ss-t2)]')
           }
         >
           {t('annotator.live.tab_result', { defaultValue: '得点確定' })}

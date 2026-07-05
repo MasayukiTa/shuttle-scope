@@ -103,7 +103,7 @@ export function StateEPVCard({ playerId, filters }: Props) {
                   <div className="flex flex-wrap gap-1">
                     {row.top_epv_shots.slice(0, 2).map((s) => (
                       <span key={s.shot_type}
-                        className={`text-[10px] px-2 py-0.5 rounded-ss-sm ss-num ${s.epv > 0 ? 'bg-[var(--ss-success)]/10 text-[var(--ss-success)]' : 'bg-[var(--ss-emphasis)]/10 text-[var(--ss-emphasis)]'}`}>
+                        className={`text-[10px] px-2 py-0.5 rounded-ss-sm ss-num ${s.epv > 0 ? 'bg-[var(--ss-success-tint)] text-[var(--ss-success)]' : 'bg-[var(--ss-emphasis-tint)] text-[var(--ss-emphasis)]'}`}>
                         {t('auto.StateEPVCard.shot_pp', { shot: s.shot_type, v: `${s.epv > 0 ? '+' : ''}${(s.epv * 100).toFixed(1)}` })}
                       </span>
                     ))}

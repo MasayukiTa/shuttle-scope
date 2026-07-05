@@ -115,19 +115,15 @@ export function ConditionTagCompare({ playerId, isLight }: Props) {
     [stats],
   )
 
-  const cardCls = isLight
-    ? 'border border-gray-200 bg-white rounded p-3'
-    : 'border border-gray-700 bg-gray-900 rounded p-3'
-  const labelCls = isLight ? 'text-xs text-gray-600' : 'text-xs text-gray-400'
-  const selectCls = isLight
-    ? 'border border-gray-300 bg-white text-gray-900 rounded px-2 py-1.5'
-    : 'border border-gray-600 bg-gray-800 text-white rounded px-2 py-1.5'
+  const cardCls = 'border border-[var(--ss-border)] bg-[var(--ss-surface-1)] rounded-ss-lg p-3'
+  const labelCls = 'text-xs text-[var(--ss-t2)]'
+  const selectCls = 'border border-[var(--ss-border-strong)] bg-[var(--ss-surface-1)] text-[var(--ss-t1)] rounded-ss-md px-2 py-1.5 text-base'
 
   return (
     <RoleGuard allowedRoles={['analyst', 'coach']}>
       <div className="space-y-3">
         <div>
-          <h3 className={isLight ? 'text-sm font-semibold text-gray-800' : 'text-sm font-semibold text-gray-100'}>
+          <h3 className={'text-sm font-semibold text-[var(--ss-t1)]'}>
             {t('condition.tags.compare_title')}
           </h3>
           <p className={labelCls}>{t('condition.tags.compare_description')}</p>
@@ -168,15 +164,15 @@ export function ConditionTagCompare({ playerId, isLight }: Props) {
                       data={chartData}
                       margin={{ top: 8, right: 12, left: 4, bottom: 40 }}
                     >
-                      <CartesianGrid strokeDasharray="3 3" stroke={isLight ? '#e5e7eb' : '#374151'} />
+                      <CartesianGrid strokeDasharray="3 3" stroke={'var(--ss-border)'} />
                       <XAxis
                         dataKey="label"
                         angle={-25}
                         textAnchor="end"
                         height={60}
-                        tick={{ fontSize: 11, fill: isLight ? '#374151' : '#d1d5db' }}
+                        tick={{ fontSize: 11, fill: 'var(--ss-t2)' }}
                       />
-                      <YAxis tick={{ fontSize: 11, fill: isLight ? '#374151' : '#d1d5db' }} />
+                      <YAxis tick={{ fontSize: 11, fill: 'var(--ss-t2)' }} />
                       <Tooltip
                         formatter={(v: number, _n, item: { payload?: { nIn: number; nOut: number } }) => {
                           const p = item?.payload
@@ -184,17 +180,17 @@ export function ConditionTagCompare({ playerId, isLight }: Props) {
                           return [`${v.toFixed(2)}${n}`, t('condition.tags.diff_label')]
                         }}
                         contentStyle={{
-                          backgroundColor: isLight ? '#ffffff' : '#1f2937',
-                          border: `1px solid ${isLight ? '#d1d5db' : '#4b5563'}`,
-                          color: isLight ? '#111827' : '#f3f4f6',
+                          backgroundColor: 'var(--ss-surface-1)',
+                          border: `1px solid var(--ss-border-strong)`,
+                          color: 'var(--ss-t1)',
                         }}
                       />
-                      <ReferenceLine y={0} stroke={isLight ? '#9ca3af' : '#6b7280'} />
+                      <ReferenceLine y={0} stroke={'var(--ss-border-strong)'} />
                       <Bar dataKey="diff">
                         {chartData.map((d, idx) => (
                           <Cell
                             key={idx}
-                            fill={d.diff >= 0 ? selectedTag.color : '#ef4444'}
+                            fill={d.diff >= 0 ? selectedTag.color : 'var(--ss-bad)'}
                           />
                         ))}
                       </Bar>
@@ -208,7 +204,7 @@ export function ConditionTagCompare({ playerId, isLight }: Props) {
             <div className={cardCls + ' overflow-x-auto'}>
               <table className="w-full text-xs">
                 <thead>
-                  <tr className={isLight ? 'text-gray-600' : 'text-gray-400'}>
+                  <tr className={'text-[var(--ss-t2)]'}>
                     <th className="text-left py-1 pr-2">{t('condition.tags.metric')}</th>
                     <th className="text-right py-1 px-2">{t('condition.tags.in_mean')}</th>
                     <th className="text-right py-1 px-2">{t('condition.tags.out_mean')}</th>
@@ -217,19 +213,19 @@ export function ConditionTagCompare({ playerId, isLight }: Props) {
                     <th className="text-right py-1 px-2">{t('auto.ConditionTagCompare.n_in')}<sub>{t('auto.ConditionTagCompare.out')}</sub></th>
                   </tr>
                 </thead>
-                <tbody className={isLight ? 'text-gray-800' : 'text-gray-100'}>
+                <tbody className={'text-[var(--ss-t1)]'}>
                   {stats.map((s) => {
                     const insufficient = s.nIn < 2 || s.nOut < 2
                     return (
-                      <tr key={s.key} className="border-t border-gray-200 dark:border-gray-700">
+                      <tr key={s.key} className="border-t border-[var(--ss-border)]">
                         <td className="py-1 pr-2">{s.label}</td>
-                        <td className="text-right py-1 px-2 num-cell">
+                        <td className="text-right py-1 px-2 num-cell ss-num">
                           {s.inMean != null ? s.inMean.toFixed(2) : '—'}
                         </td>
-                        <td className="text-right py-1 px-2 num-cell">
+                        <td className="text-right py-1 px-2 num-cell ss-num">
                           {s.outMean != null ? s.outMean.toFixed(2) : '—'}
                         </td>
-                        <td className="text-right py-1 px-2 num-cell">
+                        <td className="text-right py-1 px-2 num-cell ss-num">
                           {insufficient || s.diff == null ? (
                             <span className="opacity-60">
                               {t('condition.tags.insufficient_short')}
@@ -238,8 +234,8 @@ export function ConditionTagCompare({ playerId, isLight }: Props) {
                             s.diff.toFixed(2)
                           )}
                         </td>
-                        <td className="text-right py-1 px-2 num-cell">{s.nIn}</td>
-                        <td className="text-right py-1 px-2 num-cell">{s.nOut}</td>
+                        <td className="text-right py-1 px-2 num-cell ss-num">{s.nIn}</td>
+                        <td className="text-right py-1 px-2 num-cell ss-num">{s.nOut}</td>
                       </tr>
                     )
                   })}

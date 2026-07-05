@@ -56,14 +56,14 @@ export function BenchmarkProgress({ running, job, onPoll }: Props) {
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between text-xs">
-        <span className="text-gray-400">
+        <span className="text-[var(--ss-t2)]">
           {running ? t('benchmark.running') : t('benchmark.result')}
         </span>
-        <span className="font-mono text-blue-300">{progressPct}%</span>
+        <span className="font-mono text-[var(--ss-brand)] ss-num">{progressPct}%</span>
       </div>
-      <div className="w-full h-2 rounded-full bg-gray-700 overflow-hidden">
+      <div className="w-full h-2 rounded-ss-sm bg-[var(--ss-surface-3)] overflow-hidden">
         <div
-          className="h-full bg-blue-500 transition-all duration-500"
+          className="h-full bg-[var(--ss-brand)] transition-all duration-base ease-out"
           style={{ width: `${progressPct}%` }}
         />
       </div>

@@ -123,6 +123,16 @@ html[data-theme="light"] {
   --ss-danger-bg:      #fbe4e8;
   --ss-danger-border:  #f0a8b4;
 
+  /* 短縮エイリアス (var()参照なのでダークテーマにも自動追従する)。
+   * 実装エージェントが --ss-danger / *-tint と書きがちなため吸収する。 */
+  --ss-danger:       var(--ss-danger-text);
+  --ss-danger-tint:  var(--ss-danger-bg);
+  --ss-success-tint: var(--ss-success-bg);
+  --ss-warn-tint:    var(--ss-warning-bg);
+  --ss-emphasis-tint:   rgba(228, 97, 15, 0.10);
+  --ss-emphasis-border: rgba(228, 97, 15, 0.40);
+  --ss-brand-border:    rgba(37, 99, 235, 0.35);
+
   /* Status: Info */
   --ss-info-text:      #1d4fd7;
   --ss-info-bg:        #dbeafe;
@@ -176,6 +186,9 @@ html[data-theme="dark"] {
   --ss-warn:          #fcd34d;
   --ss-success:       #4bae7a;
   --ss-emphasis:      #f97316;
+  --ss-emphasis-tint:   rgba(249, 115, 22, 0.16);
+  --ss-emphasis-border: rgba(249, 115, 22, 0.42);
+  --ss-brand-border:    rgba(92, 155, 255, 0.40);
 
   /* Radius / elevation / motion tokens are shared across themes (defined
    * on :root above); dark leans on surface steps + hairline per §4, so no

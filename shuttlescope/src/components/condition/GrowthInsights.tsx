@@ -25,26 +25,20 @@ function ConditionConfidenceBadge({ n, isLight }: { n: number; isLight: boolean 
   if (n < 10) {
     filled = 1
     key = 'condition.insights.growth_card.confidence_low'
-    colorClass = isLight
-      ? 'border-red-300 bg-red-50 text-red-600'
-      : 'border-red-400 bg-red-900/20 text-red-300'
+    colorClass = 'border-[var(--ss-danger-border)] bg-[var(--ss-danger-tint)] text-[var(--ss-bad)]'
   } else if (n < 30) {
     filled = 2
     key = 'condition.insights.growth_card.confidence_medium'
-    colorClass = isLight
-      ? 'border-yellow-300 bg-yellow-50 text-yellow-600'
-      : 'border-yellow-400 bg-yellow-900/20 text-yellow-300'
+    colorClass = 'border-[var(--ss-warning-border)] bg-[var(--ss-warn-tint)] text-[var(--ss-warn)]'
   } else {
     filled = 3
     key = 'condition.insights.growth_card.confidence_high'
-    colorClass = isLight
-      ? 'border-green-300 bg-green-50 text-green-600'
-      : 'border-green-400 bg-green-900/20 text-green-300'
+    colorClass = 'border-[var(--ss-success-border)] bg-[var(--ss-success-tint)] text-[var(--ss-success)]'
   }
 
   return (
     <span
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs font-mono ${colorClass}`}
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-ss-sm border text-xs font-mono ${colorClass}`}
       title={t('condition.insights.growth_card.confidence_basis')}
     >
       <span className="inline-flex">
@@ -64,9 +58,9 @@ function GrowthCardRow({ c, isLight, sepColor }: {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
 
-  const labelMuted  = isLight ? 'text-gray-500'   : 'text-gray-400'
-  const labelStrong = isLight ? 'text-gray-800'   : 'text-gray-100'
-  const expandBg    = isLight ? 'bg-gray-50'       : 'bg-gray-900/50'
+  const labelMuted  = 'text-[var(--ss-t2)]'
+  const labelStrong = 'text-[var(--ss-t1)]'
+  const expandBg    = 'bg-[var(--ss-surface-2)]'
 
   const factorLabel = c.factor_key
     ? t(`condition.insights.growth_card.factor.${c.factor_key}`, {
@@ -99,11 +93,11 @@ function GrowthCardRow({ c, isLight, sepColor }: {
             {whenLabel}
           </span>
           <div className="flex items-center gap-1.5 text-sm whitespace-nowrap">
-            <span className={`font-mono ${labelMuted}`}>{winOther}</span>
+            <span className={`font-mono ss-num ${labelMuted}`}>{winOther}</span>
             <span className={labelMuted}>→</span>
-            <span className="font-mono font-semibold text-emerald-500">{winHigh}</span>
+            <span className="font-mono ss-num font-semibold text-[var(--ss-success)]">{winHigh}</span>
             {c.effect && (
-              <span className="font-bold text-emerald-500 ml-0.5">{t('auto.GrowthInsights.k_effect_winrate_up', { effect: c.effect })}</span>
+              <span className="font-bold text-[var(--ss-success)] ml-0.5">{t('auto.GrowthInsights.k_effect_winrate_up', { effect: c.effect })}</span>
             )}
           </div>
         </div>
@@ -113,7 +107,7 @@ function GrowthCardRow({ c, isLight, sepColor }: {
           <ConditionConfidenceBadge n={nTotal} isLight={isLight} />
           <button
             onClick={() => setExpanded(v => !v)}
-            className={`flex items-center gap-0.5 text-[11px] ${labelMuted} hover:text-blue-400 whitespace-nowrap`}
+            className={`flex items-center gap-0.5 text-[11px] ${labelMuted} hover:text-[var(--ss-brand)] whitespace-nowrap duration-base ease-out`}
           >
             {t('condition.insights.growth_card.basis_label')}
             {expanded ? <MIcon name="expand_less" size={12} /> : <MIcon name="expand_more" size={12} />}
@@ -123,21 +117,21 @@ function GrowthCardRow({ c, isLight, sepColor }: {
 
       {/* ── 展開: 根拠の詳細 ── */}
       {expanded && (
-        <div className={`px-4 pb-3 pt-1 ${expandBg} rounded-b space-y-1.5`}>
+        <div className={`px-4 pb-3 pt-1 ${expandBg} rounded-b-ss-sm space-y-1.5`}>
           <div className={`text-xs ${labelMuted} flex flex-wrap gap-4`}>
             <span>
               {t('condition.insights.growth_card.n_high_weeks', { n: nHigh })}
-              <span className="ml-1 text-emerald-500">{t('auto.GrowthInsights.k_winrate_paren', { rate: winHigh })}</span>
+              <span className="ml-1 text-[var(--ss-success)] ss-num">{t('auto.GrowthInsights.k_winrate_paren', { rate: winHigh })}</span>
             </span>
             <span>
               {t('condition.insights.growth_card.n_other_weeks', { n: nOther })}
-              <span className="ml-1">{t('auto.GrowthInsights.k_winrate_paren', { rate: winOther })}</span>
+              <span className="ml-1 ss-num">{t('auto.GrowthInsights.k_winrate_paren', { rate: winOther })}</span>
             </span>
-            <span className={`font-mono text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>
+            <span className="font-mono text-[10px] text-[var(--ss-t3)]">
               {t('condition.insights.growth_card.basis_total', { n: nTotal })}
             </span>
           </div>
-          <div className={`text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-600'} flex items-start gap-1`}>
+          <div className="text-[10px] text-[var(--ss-t3)] flex items-start gap-1">
             <MIcon name="info" size={10} className="shrink-0 mt-0.5" />
             <span>{t('condition.insights.growth_card.mechanism')}</span>
           </div>
@@ -153,10 +147,10 @@ export function GrowthInsights({ playerId, isLight }: Props) {
   const { role } = useAuth()
   const { data, isLoading, error } = useInsights(playerId)
 
-  const panelBg     = isLight ? 'bg-white'        : 'bg-gray-800'
-  const borderColor = isLight ? 'border-gray-200'  : 'border-gray-700'
-  const sepColor    = isLight ? 'border-gray-100'  : 'border-gray-700'
-  const textMuted   = isLight ? 'text-gray-500'    : 'text-gray-400'
+  const panelBg     = 'bg-[var(--ss-surface-1)]'
+  const borderColor = 'border-[var(--ss-border)]'
+  const sepColor    = 'border-[var(--ss-border)]'
+  const textMuted   = 'text-[var(--ss-t2)]'
   const isPlayer    = role === 'player'
 
   const allCards = data?.growth_cards ?? []
@@ -166,9 +160,9 @@ export function GrowthInsights({ playerId, isLight }: Props) {
   const trend = data?.personal_trend
 
   return (
-    <section className={`rounded-lg border ${borderColor} ${panelBg} p-4`}>
+    <section className={`rounded-ss-lg border shadow-card ${borderColor} ${panelBg} p-4`}>
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <h2 className="text-sm font-semibold">
+        <h2 className="text-sm font-semibold text-[var(--ss-t1)]">
           {isPlayer
             ? t('condition.insights.title_player')
             : t('condition.insights.title_coach')}
@@ -176,7 +170,7 @@ export function GrowthInsights({ playerId, isLight }: Props) {
         {trend && trend.ccs_28ma != null && (
           <div className={`flex items-center gap-2 text-xs ${textMuted}`}>
             <span>{t('condition.insights.ccs_28ma')}:</span>
-            <span className="font-mono">{trend.ccs_28ma.toFixed(1)}</span>
+            <span className="font-mono ss-num">{trend.ccs_28ma.toFixed(1)}</span>
             {trend.direction && (
               <span>{t(`condition.insights.direction.${trend.direction}`)}</span>
             )}
@@ -235,17 +229,17 @@ export function GrowthInsights({ playerId, isLight }: Props) {
                       <LineChart data={ft.series} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
                         <CartesianGrid
                           strokeDasharray="3 3"
-                          stroke={isLight ? '#e5e7eb' : '#374151'}
+                          stroke="var(--ss-border)"
                         />
                         <XAxis
                           dataKey="date"
-                          tick={{ fill: isLight ? '#374151' : '#9ca3af', fontSize: 10 }}
+                          tick={{ fill: 'var(--ss-t2)', fontSize: 10 }}
                         />
-                        <YAxis tick={{ fill: isLight ? '#374151' : '#9ca3af', fontSize: 10 }} />
+                        <YAxis tick={{ fill: 'var(--ss-t2)', fontSize: 10 }} />
                         <Tooltip
                           contentStyle={{
-                            backgroundColor: isLight ? '#ffffff' : '#1f2937',
-                            border: `1px solid ${isLight ? '#e5e7eb' : '#374151'}`,
+                            backgroundColor: 'var(--ss-surface-1)',
+                            border: '1px solid var(--ss-border)',
                             fontSize: 11,
                           }}
                         />
@@ -262,7 +256,7 @@ export function GrowthInsights({ playerId, isLight }: Props) {
             <div className={`mt-3 pt-3 border-t ${borderColor} text-xs ${textMuted}`}>
               <span className="mr-2">{t('condition.insights.validity_summary')}:</span>
               {data.validity_summary.valid_ratio != null && (
-                <span className="font-mono">
+                <span className="font-mono ss-num">
                   {(data.validity_summary.valid_ratio * 100).toFixed(0)}%
                 </span>
               )}

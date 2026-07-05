@@ -439,7 +439,7 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
         <div className="absolute top-1 left-1 flex items-center gap-1" style={{ pointerEvents: 'all' }}>
           <button
             onClick={startCalibration}
-            className="flex items-center gap-1 bg-black/50 rounded px-1.5 py-0.5 hover:bg-black/70 transition-colors"
+            className="flex items-center gap-1 bg-black/50 rounded-ss-sm px-1.5 py-0.5 hover:bg-black/70 transition-colors"
             style={{ color: '#ffffff', fontSize: 9, fontWeight: 500, lineHeight: 1.4 }}
           >
             {t('auto.CourtGridOverlay.recreate_grid')}
@@ -447,8 +447,8 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
           {/* キャリブレーション保存状態インジケーター */}
           {calibSource === 'backend' && (
             <span
-              className="flex items-center gap-0.5 bg-green-900/70 rounded px-1 py-0.5"
-              style={{ color: '#86efac', fontSize: 8, lineHeight: 1.4, pointerEvents: 'none' }}
+              className="flex items-center gap-0.5 rounded-ss-sm px-1 py-0.5"
+              style={{ backgroundColor: 'rgba(25,122,72,0.4)', color: '#4BAE7A', fontSize: 8, lineHeight: 1.4, pointerEvents: 'none' }}
             >
               {t('auto.CourtGridOverlay.db_saved')}
             </span>
@@ -456,8 +456,8 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
           {calibSource === 'local' && (
             <button
               onClick={() => postToBackend(points)}
-              className="flex items-center gap-0.5 bg-yellow-900/70 rounded px-1 py-0.5 hover:bg-yellow-800/80 transition-colors"
-              style={{ color: '#fde68a', fontSize: 8, lineHeight: 1.4 }}
+              className="flex items-center gap-0.5 rounded-ss-sm px-1 py-0.5 hover:opacity-80 transition-colors"
+              style={{ backgroundColor: 'rgba(178,106,0,0.4)', color: '#B26A00', fontSize: 8, lineHeight: 1.4 }}
               title={t('auto.CourtGridOverlay.k3')}
             >
               {t('auto.CourtGridOverlay.local_only_sync')}
@@ -469,8 +469,8 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
       {/* ─── 保存中トースト ─────────────────────────── */}
       {saving && (
         <div
-          className="absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded text-xs bg-blue-900/90 border border-blue-500 text-blue-100"
-          style={{ pointerEvents: 'none', zIndex: 30 }}
+          className="absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded-ss-sm text-xs border"
+          style={{ backgroundColor: 'rgba(37,99,235,0.3)', borderColor: 'rgba(37,99,235,0.5)', color: '#5C9BFF', pointerEvents: 'none', zIndex: 30 }}
         >
           {t('auto.CourtGridOverlay.db_saving')}
         </div>
@@ -479,8 +479,8 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
       {/* ─── 保存完了トースト（6秒） ─────────────────────────── */}
       {savedNotice && (
         <div
-          className="absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded text-xs bg-gray-900/90 border border-gray-600 text-gray-200"
-          style={{ pointerEvents: 'none', zIndex: 30 }}
+          className="absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded-ss-sm text-xs border"
+          style={{ backgroundColor: 'rgba(136,146,160,0.3)', borderColor: 'rgba(136,146,160,0.5)', color: '#8892A0', pointerEvents: 'none', zIndex: 30 }}
         >
           {t('auto.CourtGridOverlay.db_save_done')}
         </div>
@@ -492,17 +492,17 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
           ROI overlay (30) と calibrating 中の自身 (35) より上に置く。 */}
       {saveError && (
         <div
-          className="absolute top-2 left-1/2 -translate-x-1/2 px-2 py-1.5 rounded bg-red-900/95 border border-red-500 max-w-md flex items-start gap-2"
-          style={{ pointerEvents: 'auto', zIndex: 40 }}
+          className="absolute top-2 left-1/2 -translate-x-1/2 px-2 py-1.5 rounded-ss-sm max-w-md flex items-start gap-2"
+          style={{ backgroundColor: 'rgba(194,51,74,0.3)', borderColor: 'rgba(194,51,74,0.5)', borderWidth: 1, pointerEvents: 'auto', zIndex: 40 }}
         >
           <pre
             className="text-[11px] font-mono whitespace-pre-wrap break-all text-left select-text overflow-auto"
-            style={{ color: '#fca5a5', maxHeight: '40vh', userSelect: 'text', margin: 0 }}
+            style={{ color: '#C2334A', maxHeight: '40vh', userSelect: 'text', margin: 0 }}
           >{saveError}</pre>
           <button
             type="button"
-            className="shrink-0 text-[10px] bg-red-800 hover:bg-red-700 active:bg-red-900 rounded px-2 py-1"
-            style={{ color: '#ffffff' }}
+            className="shrink-0 text-[10px] rounded-ss-sm px-2 py-1 hover:opacity-80"
+            style={{ backgroundColor: 'rgba(194,51,74,0.5)', color: '#ffffff' }}
             onClick={() => {
               try { navigator.clipboard.writeText(saveError) } catch { /* ignore */ }
             }}
@@ -512,8 +512,8 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
           </button>
           <button
             type="button"
-            className="shrink-0 text-[10px] bg-red-800 hover:bg-red-700 active:bg-red-900 rounded px-2 py-1"
-            style={{ color: '#ffffff' }}
+            className="shrink-0 text-[10px] rounded-ss-sm px-2 py-1 hover:opacity-80"
+            style={{ backgroundColor: 'rgba(194,51,74,0.5)', color: '#ffffff' }}
             onClick={() => setSaveError(null)}
             title={t('auto.CourtGridOverlay.dismiss', { defaultValue: '閉じる' })}
           >
@@ -530,12 +530,12 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
         >
           <button
             onClick={startCalibration}
-            className="flex flex-col items-center gap-2 px-6 py-4 rounded-lg bg-gray-900/80 border border-gray-600 hover:bg-gray-800/90 text-sm"
-            style={{ color: '#e5e7eb' }}
+            className="flex flex-col items-center gap-2 px-6 py-4 rounded-ss-lg text-sm border hover:opacity-80"
+            style={{ backgroundColor: 'rgba(28,31,36,0.8)', borderColor: 'rgba(136,146,160,0.5)', color: '#E6E9ED' }}
           >
-            <MIcon name="mouse" size={20} className="text-cyan-400" />
+            <MIcon name="mouse" size={20} style={{ color: '#5C9BFF' }} />
             <span>{t('auto.CourtGridOverlay.k1')}</span>
-            <span className="text-xs" style={{ color: '#9ca3af' }}>{t('auto.CourtGridOverlay.k2')}</span>
+            <span className="text-xs" style={{ color: '#A5AEBB' }}>{t('auto.CourtGridOverlay.k2')}</span>
           </button>
         </div>
       )}
@@ -560,9 +560,8 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
               setPoints([])
             }
           }}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium
-                     bg-red-700 hover:bg-red-600 border border-red-500 shadow-lg"
-          style={{ color: '#ffffff' }}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-ss-sm text-xs font-medium border shadow-lg hover:opacity-80"
+          style={{ backgroundColor: '#C2334A', borderColor: '#C2334A', color: '#ffffff' }}
         >
           <MIcon name="close" size={12} style={{ color: '#ffffff' }} />
           {t('auto.CourtGridOverlay.cancel')}

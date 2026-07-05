@@ -112,11 +112,11 @@ export function ConditionGlossary({ open, onClose }: Props) {
   const isLight = useIsLightMode()
   if (!open) return null
 
-  const bg = isLight ? '#ffffff' : N_GRAY[800]
-  const border = isLight ? N_GRAY[200] : N_GRAY[700]
-  const textTitle = isLight ? N_GRAY[900] : N_GRAY[50]
-  const textBody = isLight ? N_GRAY[700] : N_GRAY[200]
-  const textMuted = isLight ? N_GRAY[500] : N_GRAY[400]
+  const bg = 'var(--ss-surface-1)'
+  const border = 'var(--ss-border)'
+  const textTitle = 'var(--ss-t1)'
+  const textBody = 'var(--ss-t2)'
+  const textMuted = 'var(--ss-t3)'
 
   return (
     <div
@@ -124,7 +124,7 @@ export function ConditionGlossary({ open, onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-lg"
+        className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-ss-lg"
         style={{ backgroundColor: bg, border: `1px solid ${border}` }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -138,7 +138,7 @@ export function ConditionGlossary({ open, onClose }: Props) {
           <button
             type="button"
             onClick={onClose}
-            className="text-sm px-2 py-1 rounded"
+            className="text-sm px-2 py-1 rounded-ss-sm"
             style={{ color: textMuted }}
           >
             <MIcon name="close" size={16} />
@@ -177,8 +177,8 @@ export function GlossaryHint({ onOpen }: { onOpen: () => void }) {
       title={t('auto.ConditionGlossary.k1')}
       className="inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px]"
       style={{
-        color: isLight ? N_GRAY[500] : N_GRAY[400],
-        border: `1px solid ${isLight ? N_GRAY[300] : N_GRAY[600]}`,
+        color: 'var(--ss-t3)',
+        border: '1px solid var(--ss-border-strong)',
         marginLeft: 4,
       }}
     >

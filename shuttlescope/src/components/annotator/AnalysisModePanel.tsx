@@ -41,32 +41,32 @@ export function AnalysisModePanel({
 
   return (
     <div className="flex flex-col h-full overflow-y-auto">
-      <header className="flex items-center gap-2 px-3 py-2 text-sm font-medium border-b border-gray-700 shrink-0 bg-gray-800/40 text-gray-200">
+      <header className="flex items-center gap-2 px-3 py-2 text-sm font-medium border-b border-[var(--ss-border)] shrink-0 bg-[var(--ss-surface-2)] text-[var(--ss-t1)]">
         <MIcon name="analytics" size={18} />
         {t('annotator.ux.analysis_header')}
       </header>
 
       <div className="px-3 py-3 space-y-4 text-xs">
         <section>
-          <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">{t('annotator.ux.analysis_now')}</div>
+          <div className="text-[10px] uppercase tracking-wider text-[var(--ss-t3)] mb-1">{t('annotator.ux.analysis_now')}</div>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-mono font-bold tabular-nums">{scoreA}-{scoreB}</span>
-            <span className="text-gray-500">{t('auto.AnalysisModePanel.set_rally', { s: setNum, r: rallyNum })}</span>
+            <span className="text-2xl font-mono font-bold tabular-nums ss-num text-[var(--ss-t1)]">{scoreA}-{scoreB}</span>
+            <span className="text-[var(--ss-t3)]">{t('auto.AnalysisModePanel.set_rally', { s: setNum, r: rallyNum })}</span>
           </div>
         </section>
 
         <section>
-          <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">
+          <div className="text-[10px] uppercase tracking-wider text-[var(--ss-t3)] mb-1">
             {t('annotator.ux.analysis_recent_5', { pct: last5.length ? Math.round((aWins / last5.length) * 100) : 0 })}
           </div>
           <div className="flex items-center gap-1">
-            {last5.length === 0 && <span className="text-gray-600">{t('annotator.ux.analysis_no_data')}</span>}
+            {last5.length === 0 && <span className="text-[var(--ss-t3)]">{t('annotator.ux.analysis_no_data')}</span>}
             {last5.map((r, i) => (
               <span
                 key={i}
                 className={
-                  'inline-block w-6 h-6 rounded text-[10px] font-bold flex items-center justify-center ' +
-                  (r.winner === 'player_a' ? 'bg-blue-600 text-white' : 'bg-red-600 text-white')
+                  'inline-block w-6 h-6 rounded-ss-sm text-[10px] font-bold flex items-center justify-center ss-num ' +
+                  (r.winner === 'player_a' ? 'bg-[var(--ss-good)] text-white' : 'bg-[var(--ss-bad)] text-white')
                 }
                 title={r.winner === 'player_a' ? 'A win' : 'B win'}
               >
@@ -77,24 +77,24 @@ export function AnalysisModePanel({
         </section>
 
         <section>
-          <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">
+          <div className="text-[10px] uppercase tracking-wider text-[var(--ss-t3)] mb-1">
             {t('annotator.ux.analysis_shot_counts', { n: recentStrokes.length })}
           </div>
           {shotCounts.length === 0 ? (
-            <div className="text-gray-600">{t('annotator.ux.analysis_no_data')}</div>
+            <div className="text-[var(--ss-t3)]">{t('annotator.ux.analysis_no_data')}</div>
           ) : (
             <ul className="space-y-1">
               {shotCounts.map(([shot, count]) => (
-                <li key={shot} className="flex items-center justify-between border-b border-gray-800 py-1">
-                  <span className="text-gray-300">{shot}</span>
-                  <span className="font-mono tabular-nums text-gray-100">{count}</span>
+                <li key={shot} className="flex items-center justify-between border-b border-[var(--ss-border)] py-1">
+                  <span className="text-[var(--ss-t2)]">{shot}</span>
+                  <span className="font-mono tabular-nums ss-num text-[var(--ss-t1)]">{count}</span>
                 </li>
               ))}
             </ul>
           )}
         </section>
 
-        <p className="text-[10px] text-gray-600">
+        <p className="text-[10px] text-[var(--ss-t3)]">
           {t('annotator.ux.analysis_dashboard_hint')}
         </p>
       </div>

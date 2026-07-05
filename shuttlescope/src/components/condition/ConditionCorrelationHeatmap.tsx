@@ -77,10 +77,10 @@ export function ConditionCorrelationHeatmap({ playerId, isLight }: Props) {
     n: number
   } | null>(null)
 
-  const panelBg = isLight ? 'bg-white' : 'bg-gray-800'
-  const borderColor = isLight ? 'border-gray-200' : 'border-gray-700'
-  const textMuted = isLight ? 'text-gray-500' : 'text-gray-400'
-  const labelColor = isLight ? 'text-gray-700' : 'text-gray-200'
+  const panelBg = 'bg-[var(--ss-surface-1)]'
+  const borderColor = 'border-[var(--ss-border)]'
+  const textMuted = 'text-[var(--ss-t3)]'
+  const labelColor = 'text-[var(--ss-t2)]'
 
   // 利用可能な列を動的に選別 (各列で >=5 件の有限値がある列のみ)
   const { keys, columns } = useMemo(() => {
@@ -142,9 +142,9 @@ export function ConditionCorrelationHeatmap({ playerId, isLight }: Props) {
   const labelFor = (k: NumericKey): string => t(`condition.corr_heatmap.var.${String(k)}`)
 
   return (
-    <section className={`rounded-lg border ${borderColor} ${panelBg} p-4`}>
+    <section className={`rounded-ss-lg border ${borderColor} ${panelBg} p-4`}>
       <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-        <h2 className="text-sm font-semibold">{t('condition.corr_heatmap.title')}</h2>
+        <h2 className="text-sm font-semibold text-[var(--ss-t1)]">{t('condition.corr_heatmap.title')}</h2>
         <span className={`text-xs ${textMuted}`}>
           {t('condition.corr_heatmap.records', { n: records?.length ?? 0 })}
         </span>
@@ -178,6 +178,7 @@ export function ConditionCorrelationHeatmap({ playerId, isLight }: Props) {
                       return (
                         <td
                           key={`c-${i}-${j}`}
+                          className="ss-num"
                           onClick={() =>
                             setSelected({ xi: i, yi: j, r: cell.r, n: cell.n })
                           }
@@ -189,7 +190,7 @@ export function ConditionCorrelationHeatmap({ playerId, isLight }: Props) {
                             textAlign: 'center',
                             cursor: 'pointer',
                             outline: isSel
-                              ? `2px solid ${isLight ? '#1d4ed8' : '#60a5fa'}`
+                              ? `2px solid var(--ss-brand)`
                               : '1px solid rgba(0,0,0,0.05)',
                           }}
                           title={`${labelFor(keys[i])} × ${labelFor(keys[j])}\n${t(
@@ -227,10 +228,10 @@ export function ConditionCorrelationHeatmap({ playerId, isLight }: Props) {
               </span>
               {'  '}
               {t('condition.corr_heatmap.pearson_r')}:{' '}
-              <span className="font-mono">
+              <span className="font-mono ss-num">
                 {selected.r == null ? t('condition.corr_heatmap.na') : selected.r.toFixed(3)}
               </span>
-              {'  '}{t('auto.ConditionCorrelationHeatmap.n_label')} <span className="font-mono">{selected.n}</span>
+              {'  '}{t('auto.ConditionCorrelationHeatmap.n_label')} <span className="font-mono ss-num">{selected.n}</span>
               {selected.r != null && selected.n < MIN_N && (
                 <span className="italic ml-2">
                   {t('condition.corr_heatmap.insufficient_pair')}
@@ -248,7 +249,7 @@ export function ConditionCorrelationHeatmap({ playerId, isLight }: Props) {
                 background: isLight
                   ? 'linear-gradient(to right, #ef4444, #ffffff, #3b82f6)'
                   : 'linear-gradient(to right, #ef4444, #374151, #3b82f6)',
-                border: `1px solid ${isLight ? '#e5e7eb' : '#4b5563'}`,
+                border: `1px solid var(--ss-border)`,
               }}
             />
             <span>{t('condition.corr_heatmap.legend_positive')}</span>

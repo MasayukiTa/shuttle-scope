@@ -54,13 +54,13 @@ export function TopBarMenu({ children, ariaLabel, className }: TopBarMenuProps) 
         onClick={() => setOpen((v) => !v)}
         aria-label={resolvedAriaLabel}
         aria-expanded={open}
-        className="flex items-center justify-center w-8 h-8 rounded text-gray-300 hover:bg-gray-700 transition-colors"
+        className="flex items-center justify-center w-8 h-8 rounded-ss-md text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)] transition-colors duration-fast ease-out"
       >
         <MIcon name="more_vert" size={18} />
       </button>
       {open && (
         <div
-          className="absolute right-0 top-full mt-1 z-50 min-w-[260px] max-w-[340px] bg-gray-800 border border-gray-700 rounded-md shadow-2xl py-2"
+          className="absolute right-0 top-full mt-1 z-50 min-w-[260px] max-w-[340px] bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-md shadow-pop py-2"
           role="menu"
           onClick={() => setOpen(false)}
         >
@@ -87,8 +87,8 @@ interface TopBarMenuSectionProps {
 export function TopBarMenuSection({ title, children, firstSection = false }: TopBarMenuSectionProps) {
   return (
     <div className="flex flex-col gap-1">
-      {!firstSection && <div className="border-t border-gray-700 -mx-2 mt-1 mb-1" />}
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 px-1 pt-0.5">
+      {!firstSection && <div className="border-t border-[var(--ss-border)] -mx-2 mt-1 mb-1" />}
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--ss-t3)] px-1 pt-0.5">
         {title}
       </div>
       <div className="flex flex-col gap-1">{children}</div>

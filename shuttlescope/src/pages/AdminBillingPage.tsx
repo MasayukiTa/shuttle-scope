@@ -52,23 +52,23 @@ function AdminBillingPageInner() {
     <div className="p-4 max-w-6xl mx-auto space-y-6">
       <div>
         <h1 className="text-xl font-bold">{t('admin.billing.title')}</h1>
-        <p className="text-sm text-gray-600 dark:text-gray-400">
+        <p className="text-sm text-[var(--ss-t2)]">
           {t('admin.billing.subtitle')}
         </p>
       </div>
 
       {/* サマリ */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
-          <div className="text-xs text-gray-500">{t('admin.billing.summary_revenue')}</div>
+        <div className="rounded-ss-lg border border-[var(--ss-border)] bg-[var(--ss-surface-1)] p-4">
+          <div className="text-xs text-[var(--ss-t3)]">{t('admin.billing.summary_revenue')}</div>
           <div className="text-2xl font-bold">¥{totalRevenue.toLocaleString()}</div>
         </div>
-        <div className="rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
-          <div className="text-xs text-gray-500">{t('admin.billing.summary_orders')}</div>
+        <div className="rounded-ss-lg border border-[var(--ss-border)] bg-[var(--ss-surface-1)] p-4">
+          <div className="text-xs text-[var(--ss-t3)]">{t('admin.billing.summary_orders')}</div>
           <div className="text-2xl font-bold">{orders.length}</div>
         </div>
-        <div className="rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
-          <div className="text-xs text-gray-500">{t('admin.billing.summary_refunds')}</div>
+        <div className="rounded-ss-lg border border-[var(--ss-border)] bg-[var(--ss-surface-1)] p-4">
+          <div className="text-xs text-[var(--ss-t3)]">{t('admin.billing.summary_refunds')}</div>
           <div className="text-2xl font-bold">{refundedCount}</div>
         </div>
       </div>
@@ -79,7 +79,7 @@ function AdminBillingPageInner() {
           <h2 className="text-lg font-semibold">{t('admin.billing.products_heading', { count: products.length })}</h2>
           <button
             onClick={() => setShowProductForm(!showProductForm)}
-            className="text-xs px-3 py-1 rounded border border-blue-300 text-blue-700 dark:border-blue-700 dark:text-blue-300"
+            className="text-xs px-3 py-1 rounded-ss-md border border-[var(--ss-brand)] text-[var(--ss-brand)]"
           >
             {showProductForm ? t('admin.billing.close') : t('admin.billing.add_new')}
           </button>
@@ -87,11 +87,11 @@ function AdminBillingPageInner() {
         {showProductForm && <ProductCreateForm onCreated={() => { setShowProductForm(false); refetch() }} />}
         <div className="space-y-1">
           {products.map((p) => (
-            <div key={p.id} className="flex items-center justify-between text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-3 py-2">
+            <div key={p.id} className="flex items-center justify-between text-sm bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-md px-3 py-2">
               <div>
-                <span className="font-mono text-xs text-gray-500">{p.code}</span>
+                <span className="font-mono text-xs text-[var(--ss-t3)]">{p.code}</span>
                 {' '}<span className="font-medium">{p.name}</span>
-                {!p.is_active && <span className="ml-2 text-xs text-gray-400">{t('admin.billing.product_inactive')}</span>}
+                {!p.is_active && <span className="ml-2 text-xs text-[var(--ss-t2)]">{t('admin.billing.product_inactive')}</span>}
               </div>
               <div className="font-medium">¥{p.price_jpy.toLocaleString()}</div>
             </div>
@@ -106,7 +106,7 @@ function AdminBillingPageInner() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="text-xs border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded px-2 py-1"
+            className="text-xs border border-[var(--ss-border)] bg-[var(--ss-surface-1)] rounded-ss-md px-2 py-1"
           >
             <option value="">{t('admin.billing.filter_all')}</option>
             <option value="pending">pending</option>
@@ -120,11 +120,11 @@ function AdminBillingPageInner() {
         </div>
 
         {loading && <div className="text-sm">{t('admin.billing.loading')}</div>}
-        {error && <div className="text-sm text-red-600">{error}</div>}
+        {error && <div className="text-sm text-[var(--ss-danger-text)]">{error}</div>}
 
         <div className="overflow-x-auto">
-          <table className="min-w-full text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-            <thead className="bg-gray-50 dark:bg-gray-700">
+          <table className="min-w-full text-sm bg-[var(--ss-surface-1)] border border-[var(--ss-border)]">
+            <thead className="bg-[var(--ss-surface-2)]">
               <tr>
                 <th className="px-3 py-2 text-left">id</th>
                 <th className="px-3 py-2 text-left">user_id</th>
@@ -138,19 +138,19 @@ function AdminBillingPageInner() {
             </thead>
             <tbody>
               {orders.map((o) => (
-                <tr key={o.id} className="border-t border-gray-200 dark:border-gray-700">
+                <tr key={o.id} className="border-t border-[var(--ss-border)]">
                   <td className="px-3 py-1 text-xs">{o.id}</td>
                   <td className="px-3 py-1 text-xs">{o.user_id}</td>
                   <td className="px-3 py-1 text-right">¥{o.amount_jpy.toLocaleString()}</td>
                   <td className="px-3 py-1"><StatusBadge status={o.status} /></td>
                   <td className="px-3 py-1 text-xs hidden sm:table-cell">{o.payment_method}</td>
                   <td className="px-3 py-1 text-xs hidden md:table-cell">{o.provider}</td>
-                  <td className="px-3 py-1 text-[10px] text-gray-500 hidden md:table-cell">{o.created_at}</td>
-                  <td className="px-3 py-1 text-[10px] text-gray-500 hidden lg:table-cell">{o.paid_at}</td>
+                  <td className="px-3 py-1 text-[10px] text-[var(--ss-t3)] hidden md:table-cell">{o.created_at}</td>
+                  <td className="px-3 py-1 text-[10px] text-[var(--ss-t3)] hidden lg:table-cell">{o.paid_at}</td>
                 </tr>
               ))}
               {orders.length === 0 && (
-                <tr><td colSpan={8} className="px-3 py-6 text-center text-gray-500">{t('admin.billing.orders_empty')}</td></tr>
+                <tr><td colSpan={8} className="px-3 py-6 text-center text-[var(--ss-t3)]">{t('admin.billing.orders_empty')}</td></tr>
               )}
             </tbody>
           </table>
@@ -162,15 +162,15 @@ function AdminBillingPageInner() {
 
 function StatusBadge({ status }: { status: string }) {
   const cls: Record<string, string> = {
-    paid: 'bg-green-100 text-green-800',
-    pending: 'bg-yellow-100 text-yellow-800',
-    failed: 'bg-red-100 text-red-800',
-    refunded: 'bg-purple-100 text-purple-800',
-    canceled: 'bg-gray-200 text-gray-700',
-    expired: 'bg-gray-200 text-gray-700',
-    authorized: 'bg-blue-100 text-blue-800',
+    paid: 'bg-[var(--ss-success-bg)] text-[var(--ss-success-text)]',
+    pending: 'bg-[var(--ss-warning-bg)] text-[var(--ss-warning-text)]',
+    failed: 'bg-[var(--ss-danger-bg)] text-[var(--ss-danger-text)]',
+    refunded: 'bg-[var(--ss-surface-2)] text-[var(--ss-t1)]',
+    canceled: 'bg-[var(--ss-surface-2)] text-[var(--ss-t1)]',
+    expired: 'bg-[var(--ss-surface-2)] text-[var(--ss-t1)]',
+    authorized: 'bg-[var(--ss-brand-tint)] text-[var(--ss-brand)]',
   }
-  return <span className={`text-xs px-2 py-0.5 rounded ${cls[status] || 'bg-gray-100'}`}>{status}</span>
+  return <span className={`text-xs px-2 py-0.5 rounded-ss-sm ${cls[status] || 'bg-[var(--ss-surface-2)]'}`}>{status}</span>
 }
 
 function ProductCreateForm({ onCreated }: { onCreated: () => void }) {
@@ -198,20 +198,20 @@ function ProductCreateForm({ onCreated }: { onCreated: () => void }) {
   }
 
   return (
-    <div className="rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 mb-2 space-y-2">
+    <div className="rounded-ss-lg border border-[var(--ss-border)] bg-[var(--ss-surface-1)] p-3 mb-2 space-y-2">
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
         <input value={code} onChange={(e) => setCode(e.target.value)} placeholder={t('admin.billing.form_code_placeholder')}
-               className="text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1" />
+               className="text-sm rounded-ss-md border border-[var(--ss-border)] bg-[var(--ss-surface-1)] px-2 py-1" />
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('admin.billing.form_name_placeholder')}
-               className="text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1" />
+               className="text-sm rounded-ss-md border border-[var(--ss-border)] bg-[var(--ss-surface-1)] px-2 py-1" />
         <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t('admin.billing.form_description_placeholder')}
-               className="text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1" />
+               className="text-sm rounded-ss-md border border-[var(--ss-border)] bg-[var(--ss-surface-1)] px-2 py-1" />
         <input type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder={t('admin.billing.form_price_placeholder')}
-               className="text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1" />
+               className="text-sm rounded-ss-md border border-[var(--ss-border)] bg-[var(--ss-surface-1)] px-2 py-1" />
       </div>
-      {err && <div className="text-xs text-red-600">{err}</div>}
+      {err && <div className="text-xs text-[var(--ss-danger-text)]">{err}</div>}
       <button onClick={submit} disabled={submitting || !code || !name || !price}
-              className="text-xs px-3 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50">
+              className="text-xs px-3 py-1 rounded-ss-md bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] duration-base ease-out text-white disabled:opacity-50">
         {t('admin.billing.form_submit')}
       </button>
     </div>

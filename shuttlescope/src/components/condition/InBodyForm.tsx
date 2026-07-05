@@ -40,10 +40,8 @@ interface Props {
 
 export function InBodyForm({ value, onChange, isLight }: Props) {
   const { t } = useTranslation()
-  const inputCls = isLight
-    ? 'w-full border border-gray-300 bg-white text-gray-900 rounded px-2 py-1.5'
-    : 'w-full border border-gray-600 bg-gray-800 text-white rounded px-2 py-1.5'
-  const labelCls = isLight ? 'text-xs text-gray-600' : 'text-xs text-gray-400'
+  const inputCls = 'w-full border border-[var(--ss-border-strong)] bg-[var(--ss-surface-1)] text-[var(--ss-t1)] rounded-ss-md px-2 py-1.5'
+  const labelCls = 'text-xs text-[var(--ss-t2)]'
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 gap-3">

@@ -23,15 +23,15 @@ interface Props {
 const CONFIG: Record<CVDecisionMode, { labelKey: string; cls: string }> = {
   auto_filled: {
     labelKey: 'cv_assist.decision_auto_filled',
-    cls: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40',
+    cls: 'bg-[var(--ss-success-tint)] text-[var(--ss-success)] border border-[var(--ss-success-border)]',
   },
   suggested: {
     labelKey: 'cv_assist.decision_suggested',
-    cls: 'bg-blue-500/20 text-blue-300 border border-blue-500/40',
+    cls: 'bg-[var(--ss-brand-tint)] text-[var(--ss-brand)] border border-[var(--ss-brand-border)]',
   },
   review_required: {
     labelKey: 'cv_assist.decision_review_required',
-    cls: 'bg-amber-500/20 text-amber-300 border border-amber-500/40',
+    cls: 'bg-[var(--ss-warn-tint)] text-[var(--ss-warn)] border border-[var(--ss-warning-border)]',
   },
 }
 
@@ -41,7 +41,7 @@ export function CVCandidateBadge({ mode, className, compact = false }: Props) {
   return (
     <span
       className={clsx(
-        'inline-flex items-center rounded font-medium leading-none',
+        'inline-flex items-center rounded-ss-sm font-medium leading-none',
         compact ? 'text-[9px] px-1 py-0.5' : 'text-[10px] px-1.5 py-0.5',
         cls,
         className

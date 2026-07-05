@@ -50,14 +50,14 @@ function AccountOrdersPageInner() {
   return (
     <div className="p-4 max-w-4xl mx-auto">
       <h1 className="text-xl font-bold mb-2">{t('auto.AccountOrdersPage.k1')}</h1>
-      <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+      <p className="text-sm text-[var(--ss-t2)] mb-4">
         {t('auto.AccountOrdersPage.k3')}
       </p>
 
       {loading && <div className="text-sm">{t('auto.AccountOrdersPage.k2')}</div>}
-      {error && <div className="text-sm text-red-600">{error}</div>}
+      {error && <div className="text-sm text-[var(--ss-danger-text)]">{error}</div>}
       {!loading && orders.length === 0 && (
-        <div className="rounded border border-gray-200 dark:border-gray-700 p-6 text-center text-sm text-gray-500">
+        <div className="rounded-ss-lg border border-[var(--ss-border)] p-6 text-center text-sm text-[var(--ss-t3)]">
           {t('auto.AccountOrdersPage.k4')}
         </div>
       )}
@@ -65,19 +65,19 @@ function AccountOrdersPageInner() {
       <div className="space-y-2">
         {orders.map((o) => (
           <div key={o.public_id}
-               className="rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+               className="rounded-ss-lg border border-[var(--ss-border)] bg-[var(--ss-surface-1)] p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div className="text-sm">
               <div className="font-medium">{t('auto.AccountOrdersPage.k5', { id: o.public_id.slice(0, 16) })}</div>
-              <div className="text-xs text-gray-500">
+              <div className="text-xs ss-num text-[var(--ss-t3)]">
                 {t('auto.AccountOrdersPage.k6', { date: o.created_at, status: o.status })}
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <div className="text-sm font-medium">{t('auto.AccountOrdersPage.k7', { amount: o.amount_jpy.toLocaleString() })}</div>
+              <div className="text-sm font-medium ss-num">{t('auto.AccountOrdersPage.k7', { amount: o.amount_jpy.toLocaleString() })}</div>
               {o.status === 'paid' && (
                 <a
                   href={receiptDownloadUrl(o.public_id)}
-                  className="text-xs px-3 py-1 rounded border border-blue-300 text-blue-700 dark:border-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                  className="text-xs px-3 py-1 rounded-ss-md border border-[var(--ss-brand)] text-[var(--ss-brand)]"
                 >
                   {t('auto.AccountOrdersPage.k8')}
                 </a>

@@ -52,7 +52,7 @@ function isOk(s: PolicyEvalState): s is PolicyEvalStateOk {
 function TinyBar({ value, color }: { value: number; color: string }) {
   const w = Math.max(0, Math.min(1, value))
   return (
-    <div className="h-1.5 w-full rounded-full bg-[var(--ss-surface-2)]/40 overflow-hidden">
+    <div className="h-1.5 w-full rounded-full bg-[var(--ss-surface-2)] overflow-hidden">
       <div className="h-full rounded-full transition-all duration-base ease-out" style={{ width: `${w * 100}%`, backgroundColor: color }} />
     </div>
   )
@@ -97,7 +97,7 @@ function OkStateRow({
           <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-ss-sm bg-[rgba(37,99,235,0.15)] text-[var(--ss-brand)]">
             {phaseLabel}
           </span>
-          <span className={`text-[11px] px-1.5 py-0.5 rounded-ss-sm bg-[var(--ss-surface-2)]/15 ${textFaint}`}>
+          <span className={`text-[11px] px-1.5 py-0.5 rounded-ss-sm bg-[var(--ss-surface-2)] ${textFaint}`}>
             {roleLabel}
           </span>
         </div>
@@ -164,10 +164,10 @@ function InsufficientRow({
     <div className={`rounded-ss-lg p-2.5 border ${border} opacity-50`}>
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
-          <span className={`text-[10px] px-1.5 py-0.5 rounded-ss-sm bg-[var(--ss-surface-2)]/10 ${textFaint}`}>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded-ss-sm bg-[var(--ss-surface-2)] ${textFaint}`}>
             {phaseLabel}
           </span>
-          <span className={`text-[10px] px-1.5 py-0.5 rounded-ss-sm bg-[var(--ss-surface-2)]/10 ${textFaint}`}>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded-ss-sm bg-[var(--ss-surface-2)] ${textFaint}`}>
             {roleLabel}
           </span>
         </div>

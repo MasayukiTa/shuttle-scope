@@ -148,7 +148,7 @@ export function ShotTypePanel({ selected, onSelect, disabled = false, strokeNum,
     <div className="flex flex-col gap-2" data-tutorial="annotator.shotTypes">
       {groups.map((group) => (
         <div key={group.labelKey}>
-          <div className="text-xs text-gray-500 mb-1 px-1">{t(group.labelKey)}</div>
+          <div className="text-xs text-[var(--ss-t3)] mb-1 px-1">{t(group.labelKey)}</div>
           <div className={clsx('grid gap-1', isMatchDayMode ? 'grid-cols-2' : 'grid-cols-2 md:grid-cols-3')}>
             {group.shots.map((type) => {
               const key = Object.entries(KEYBOARD_MAP).find(([, v]) => v === type)?.[0] ?? ''
@@ -163,7 +163,7 @@ export function ShotTypePanel({ selected, onSelect, disabled = false, strokeNum,
                   disabled={disabled}
                   aria-pressed={isSelected}
                   className={clsx(
-                    'relative px-2 rounded font-medium transition-colors border',
+                    'relative px-2 rounded-ss-md font-medium transition-colors border',
                     isMatchDayMode ? 'py-3 text-sm' : 'py-3 text-sm md:py-1.5 md:text-xs',
                     style.bg, style.bgHover, style.text, style.border,
                     isSelected && style.ringSelected,
@@ -171,7 +171,7 @@ export function ShotTypePanel({ selected, onSelect, disabled = false, strokeNum,
                   )}
                   title={`${t(`shot_types.${type}`)} (${key.toUpperCase()})`}
                 >
-                  <span className={clsx('absolute top-0.5 right-1 text-[9px] opacity-60 font-mono', forceShowKeyHints ? 'inline' : 'hidden md:inline')}>{key.toUpperCase()}</span>
+                  <span className={clsx('absolute top-0.5 right-1 text-[9px] ss-num opacity-60 font-mono', forceShowKeyHints ? 'inline' : 'hidden md:inline')}>{key.toUpperCase()}</span>
                   <span className="absolute top-0.5 left-1 text-[10px] opacity-80" aria-hidden>{style.icon}</span>
                   <span className="block text-center leading-tight">{t(`shot_types.${type}`)}</span>
                 </button>

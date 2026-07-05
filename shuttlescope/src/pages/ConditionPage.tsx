@@ -101,8 +101,8 @@ function BodyDataConsentToggles() {
   return (
     <div
       data-tutorial="condition.disclosureToggle"
-      className={`rounded-lg border p-3 text-xs ${
-        isLight ? 'bg-blue-50 border-blue-200 text-blue-900' : 'bg-blue-900/20 border-blue-700/40 text-blue-200'
+      className={`rounded-ss-lg border p-3 text-xs ${
+        'bg-[var(--ss-brand-tint)] border-[var(--ss-border)] text-[var(--ss-t1)]'
       }`}
     >
       <div className="font-semibold mb-1.5">{t('condition.body_disclose_title', 'Body composition data (weight / body fat / muscle mass etc.) disclosure')}</div>
@@ -240,11 +240,11 @@ export function ConditionPage() {
       })
   }
 
-  const cardBg = isLight ? 'bg-gray-50' : 'bg-gray-900'
-  const panelBg = isLight ? 'bg-white' : 'bg-gray-800'
-  const borderColor = isLight ? 'border-gray-200' : 'border-gray-700'
-  const textPrimary = isLight ? 'text-gray-900' : 'text-white'
-  const textMuted = isLight ? 'text-gray-500' : 'text-gray-400'
+  const cardBg = 'bg-[var(--ss-bg-app)]'
+  const panelBg = 'bg-[var(--ss-surface-1)]'
+  const borderColor = 'border-[var(--ss-border)]'
+  const textPrimary = 'text-[var(--ss-t1)]'
+  const textMuted = 'text-[var(--ss-t3)]'
 
   // player ロール: 身体データモードは非表示（質問票がメインフロー）
   const availableModes: InputMode[] =
@@ -255,15 +255,15 @@ export function ConditionPage() {
       {/* ヘッダー */}
       <div className={`px-6 pt-6 pb-4 border-b ${borderColor} shrink-0`}>
         <div className="flex items-center gap-3 mb-4">
-          <MIcon name="favorite" className="text-pink-500" size={20} />
+          <MIcon name="favorite" className="text-[var(--ss-brand)]" size={20} />
           <h1 className="text-xl font-semibold">{t('condition.title')}</h1>
           <button
             type="button"
             onClick={() => setGlossaryOpen(true)}
             title={t('condition.glossary_tooltip', 'Definitions for CCS / F1–F5 / Hooper Sleep / RPE etc.')}
-            className={`ml-auto inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded border ${isLight ? 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50' : 'bg-gray-800 border-gray-600 text-gray-200 hover:bg-gray-700'}`}
+            className={`ml-auto inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-ss-md border ${'bg-[var(--ss-surface-1)] border-[var(--ss-border-strong)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]'}`}
           >
-            <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border" style={{ borderColor: isLight ? '#94a3b8' : '#94a3b8' }}>?</span>
+            <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border" style={{ borderColor: 'var(--ss-border-strong)' }}>?</span>
             {t('condition.glossary_btn', 'Glossary')}
           </button>
         </div>
@@ -281,11 +281,10 @@ export function ConditionPage() {
                 生スコア・体組成・医療記述は表示されない／自分自身の記録は入力可) */}
             {(role === 'coach' || role === 'analyst') && (
               <div
-                className={`w-full text-xs px-3 py-2 rounded border ${
-                  isLight
-                    ? 'bg-amber-50 border-amber-200 text-amber-800'
-                    : 'bg-amber-900/20 border-amber-700/40 text-amber-200'
+                className={`w-full text-xs px-3 py-2 rounded-ss-md border ${
+                  'text-[var(--ss-warn)]'
                 }`}
+                style={isLight ? { backgroundColor: 'rgba(178,106,0,0.08)', borderColor: 'rgba(178,106,0,0.3)' } : undefined}
               >
                 {t('condition.summary_only_notice')}
               </div>
@@ -321,13 +320,13 @@ export function ConditionPage() {
           <MIcon name="file_download" size={13} className={textMuted} />
           <button
             onClick={() => dlReport(`/api/reports/condition_pdf?player_id=${effectivePlayerId}`, `condition_${effectivePlayerId}.pdf`)}
-            className={`text-xs px-2.5 py-1 rounded border transition-colors ${isLight ? 'border-gray-300 text-gray-600 hover:bg-gray-100' : 'border-gray-600 text-gray-300 hover:bg-gray-700'}`}
+            className={`text-xs px-2.5 py-1 rounded-ss-md border transition-colors ${'border-[var(--ss-border-strong)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]'}`}
           >
             {t('auto.ConditionPage.k5')}
           </button>
           <button
             onClick={() => dlReport(`/api/reports/condition?player_id=${effectivePlayerId}`, `condition_${effectivePlayerId}.json`)}
-            className={`text-xs px-2.5 py-1 rounded border transition-colors ${isLight ? 'border-gray-300 text-gray-600 hover:bg-gray-100' : 'border-gray-600 text-gray-300 hover:bg-gray-700'}`}
+            className={`text-xs px-2.5 py-1 rounded-ss-md border transition-colors ${'border-[var(--ss-border-strong)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]'}`}
           >
             {t('auto.ConditionPage.k6')}
           </button>
@@ -341,12 +340,10 @@ export function ConditionPage() {
             <button
               key={k}
               onClick={() => setSubtab(k)}
-              className={`flex-shrink-0 px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-colors ${
+              className={`flex-shrink-0 px-3 py-1.5 rounded-ss-md text-xs font-medium whitespace-nowrap transition-colors ${
                 subtab === k
-                  ? 'bg-blue-600 text-white'
-                  : isLight
-                  ? 'text-gray-600 hover:bg-gray-100'
-                  : 'text-gray-400 hover:bg-gray-800'
+                  ? 'bg-[var(--ss-brand)] text-white'
+                  : 'text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]'
               }`}
             >
               {t(`condition.subtab_${k}`)}
@@ -429,9 +426,9 @@ export function ConditionPage() {
           // admin で player_id 未紐付) 場合、コンディション入力は無効。
           // 過去仕様: 選択した選手の代理入力ができていたが、誰のデータか曖昧になる
           // ため廃止 (2026-05-19)。
-          <div className={`max-w-2xl p-4 rounded-lg border ${borderColor} ${panelBg}`}>
+          <div className={`max-w-2xl p-4 rounded-ss-lg border ${borderColor} ${panelBg}`}>
             <div className="flex items-start gap-2">
-              <div className="text-xs leading-relaxed" style={{ color: isLight ? '#374151' : '#e2e8f0' }}>
+              <div className="text-xs leading-relaxed" style={{ color: 'var(--ss-t2)' }}>
                 <div className="font-semibold mb-1">
                   {t('auto.ConditionPage.k7')}
                 </div>
@@ -449,11 +446,11 @@ export function ConditionPage() {
             {/* 入力対象明示: 必ず「自分自身」(authPlayerId) のレコードになる。
                選択した選手の代理入力はできない設計 (誰が入力したか曖昧になるのを防ぐ)。 */}
             <div
-              className="text-xs px-3 py-2 rounded border"
+              className="text-xs px-3 py-2 rounded-ss-md border"
               style={{
-                color: isLight ? '#1e40af' : '#bfdbfe',
-                backgroundColor: isLight ? '#eff6ff' : '#1e3a8a33',
-                borderColor: isLight ? '#bfdbfe' : '#1e40af',
+                color: 'var(--ss-brand)',
+                backgroundColor: 'var(--ss-brand-tint)',
+                borderColor: 'var(--ss-brand)',
               }}
             >
               {t('auto.ConditionPage.k10')} <strong>{t('auto.ConditionPage.k3')}</strong> (
@@ -467,12 +464,10 @@ export function ConditionPage() {
                 <button
                   key={m}
                   onClick={() => { setMode(m); setLatestResult(null); setSuccessMsg(null); setErrorMsg(null) }}
-                  className={`flex-shrink-0 px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-colors ${
+                  className={`flex-shrink-0 px-3 py-1.5 rounded-ss-md text-xs font-medium whitespace-nowrap transition-colors ${
                     mode === m
-                      ? 'bg-pink-600 text-white'
-                      : isLight
-                      ? 'text-gray-700 hover:bg-gray-100 border border-gray-200'
-                      : 'text-gray-300 hover:bg-gray-800 border border-gray-700'
+                      ? 'bg-[var(--ss-brand)] text-white'
+                      : 'text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)] border border-[var(--ss-border)]'
                   }`}
                 >
                   {t(`condition.mode.${m}`)}
@@ -488,9 +483,7 @@ export function ConditionPage() {
               <input
                 type="date"
                 className={
-                  isLight
-                    ? 'border border-gray-300 bg-white text-gray-900 rounded px-2 py-1.5 text-sm'
-                    : 'border border-gray-600 bg-gray-800 text-white rounded px-2 py-1.5 text-sm'
+                  'border border-[var(--ss-border-strong)] bg-[var(--ss-surface-1)] text-[var(--ss-t1)] rounded-ss-md px-2 py-1.5 text-sm'
                 }
                 value={measuredAt}
                 onChange={(e) => setMeasuredAt(e.target.value)}
@@ -526,28 +519,28 @@ export function ConditionPage() {
 
             {mode === 'body' && role !== 'player' && (
               <>
-                <section className={`rounded-lg border ${borderColor} ${panelBg} p-4`}>
+                <section className={`rounded-ss-lg border ${borderColor} ${panelBg} p-4`}>
                   <h2 className="text-sm font-semibold mb-3">{t('condition.section_inbody')}</h2>
                   <InBodyForm value={formState} onChange={patch} isLight={isLight} />
                 </section>
 
-                <section className={`rounded-lg border ${borderColor} ${panelBg} p-4`}>
+                <section className={`rounded-ss-lg border ${borderColor} ${panelBg} p-4`}>
                   <h2 className="text-sm font-semibold mb-3">{t('condition.section_hooper_rpe')}</h2>
                   <HooperRpeForm value={formState} onChange={patch} isLight={isLight} />
                 </section>
 
-                <section className={`rounded-lg border ${borderColor} ${panelBg} p-4`}>
+                <section className={`rounded-ss-lg border ${borderColor} ${panelBg} p-4`}>
                   <h2 className="text-sm font-semibold mb-3">{t('condition.section_auxiliary')}</h2>
                   <AuxiliaryForm value={formState} onChange={patch} isLight={isLight} />
                 </section>
 
                 {errorMsg && (
-                  <div className="text-sm text-red-500 bg-red-500/10 border border-red-500/30 rounded px-3 py-2">
+                  <div className="text-sm text-[var(--ss-bad)] bg-[var(--ss-danger-tint)] border border-[var(--ss-danger-border)] rounded-ss-md px-3 py-2">
                     {errorMsg}
                   </div>
                 )}
                 {successMsg && (
-                  <div className="text-sm text-green-500 bg-green-500/10 border border-green-500/30 rounded px-3 py-2">
+                  <div className="text-sm text-[var(--ss-success)] bg-[var(--ss-success-tint)] border border-[var(--ss-success-border)] rounded-ss-md px-3 py-2">
                     {successMsg}
                   </div>
                 )}
@@ -556,7 +549,7 @@ export function ConditionPage() {
                   <button
                     onClick={handleBodySubmit}
                     disabled={createMut.isPending}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded text-sm font-medium"
+                    className="px-4 py-2 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-50 text-white rounded-ss-md text-sm font-medium"
                   >
                     {createMut.isPending ? '...' : t('condition.save')}
                   </button>
@@ -610,10 +603,10 @@ function HistoryView({ list, isLight, canDelete, onSelect }: HistoryViewProps) {
   const qc = useQueryClient()
   const [filter, setFilter] = useState<HistoryFilter>('all')
   const [deletingId, setDeletingId] = useState<number | null>(null)
-  const muted = isLight ? 'text-gray-500' : 'text-gray-400'
-  const panelCls = isLight ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'
-  const filterBtnBase = 'px-3 py-1 rounded text-xs font-medium transition-colors'
-  const filterBtnOff = isLight ? 'text-gray-700 hover:bg-gray-100 border border-gray-200' : 'text-gray-300 hover:bg-gray-800 border border-gray-700'
+  const muted = 'text-[var(--ss-t3)]'
+  const panelCls = 'bg-[var(--ss-surface-1)] border-[var(--ss-border)]'
+  const filterBtnBase = 'px-3 py-1 rounded-ss-md text-xs font-medium transition-colors'
+  const filterBtnOff = 'text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)] border border-[var(--ss-border)]'
 
   const rows: HistoryRow[] = (list as unknown as HistoryRow[]) ?? []
   const filtered = rows
@@ -666,7 +659,7 @@ function HistoryView({ list, isLight, canDelete, onSelect }: HistoryViewProps) {
             <button
               key={opt.key}
               onClick={() => setFilter(opt.key)}
-              className={`${filterBtnBase} ${filter === opt.key ? 'bg-blue-600 text-white' : filterBtnOff}`}
+              className={`${filterBtnBase} ${filter === opt.key ? 'bg-[var(--ss-brand)] text-white' : filterBtnOff}`}
             >
               {opt.label}
             </button>
@@ -684,7 +677,7 @@ function HistoryView({ list, isLight, canDelete, onSelect }: HistoryViewProps) {
           {filtered.map((r, idx) => (
             <div
               key={r.id ?? idx}
-              className={`border rounded-lg ${panelCls} hover:opacity-90 transition-opacity`}
+              className={`border rounded-ss-lg ${panelCls} hover:opacity-90 transition-opacity`}
             >
               <button
                 onClick={() => onSelect(r as unknown as Record<string, unknown>)}
@@ -692,15 +685,15 @@ function HistoryView({ list, isLight, canDelete, onSelect }: HistoryViewProps) {
               >
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium num-cell">{r.measured_at ?? ''}</span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded border ${isLight ? 'border-gray-300 text-gray-600' : 'border-gray-600 text-gray-300'}`}>
+                    <span className="text-sm font-medium num-cell ss-num">{r.measured_at ?? ''}</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-ss-sm border ${'border-[var(--ss-border-strong)] text-[var(--ss-t2)]'}`}>
                       {typeLabel(r.condition_type)}
                     </span>
                   </div>
                   {/* xs: 2 列 grid (5 指標は 3 行で安定)、sm+: 横並び flex-wrap で 1-2 行に */}
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 sm:flex sm:flex-wrap sm:items-center sm:gap-x-3 sm:gap-y-1 text-xs num-cell">
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 sm:flex sm:flex-wrap sm:items-center sm:gap-x-3 sm:gap-y-1 text-xs num-cell ss-num">
                     {r.ccs != null && (
-                      <span>{t('condition.history.ccs')}: <span className="text-blue-500">{fmt(r.ccs)}</span></span>
+                      <span>{t('condition.history.ccs')}: <span className="text-[var(--ss-brand)]">{fmt(r.ccs)}</span></span>
                     )}
                     {r.hooper_index != null && (
                       <span>{t('condition.history.hooper')}: {fmt(r.hooper_index, 0)}</span>
@@ -717,12 +710,12 @@ function HistoryView({ list, isLight, canDelete, onSelect }: HistoryViewProps) {
                   </div>
                 </div>
                 {(r.f1 != null || r.f2 != null || r.f3 != null || r.f4 != null || r.f5 != null) && (
-                  <div className={`mt-1 grid grid-cols-3 gap-x-3 gap-y-1 sm:flex sm:gap-3 text-[11px] num-cell ${muted}`}>
+                  <div className={`mt-1 grid grid-cols-3 gap-x-3 gap-y-1 sm:flex sm:gap-3 text-[11px] num-cell ss-num ${muted}`}>
                     {(['f1', 'f2', 'f3', 'f4', 'f5'] as const).map((k) => {
                       const v = r[k] as number | null | undefined
                       return (
                         <span key={k}>
-                          {k.toUpperCase()}: <span className={isLight ? 'text-gray-800' : 'text-gray-200'}>{fmt(v)}</span>
+                          {k.toUpperCase()}: <span className={'text-[var(--ss-t1)]'}>{fmt(v)}</span>
                         </span>
                       )
                     })}
@@ -734,7 +727,7 @@ function HistoryView({ list, isLight, canDelete, onSelect }: HistoryViewProps) {
                   <button
                     onClick={() => handleDelete(r.id!)}
                     disabled={deletingId === r.id}
-                    className="flex items-center gap-1 text-[11px] text-red-500 hover:text-red-400 disabled:opacity-50"
+                    className="flex items-center gap-1 text-[11px] text-[var(--ss-bad)] hover:opacity-80 disabled:opacity-50"
                   >
                     <MIcon name="delete" size={12} />
                     {t('condition.history.delete')}
