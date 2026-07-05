@@ -18,7 +18,7 @@ export function useCardTheme() {
     textHeading: isLight ? 'text-gray-800' : 'text-gray-200',
     textSecondary: isLight ? 'text-gray-600' : 'text-gray-400',
     textMuted: isLight ? 'text-gray-500' : 'text-gray-500',
-    textFaint: isLight ? 'text-gray-400' : 'text-gray-600',
+    textFaint: isLight ? 'text-gray-400' : 'text-[var(--ss-t3)]',
     // ボーダー
     border: isLight ? 'border-gray-200' : 'border-gray-700',
     borderFaint: isLight ? 'border-gray-100' : 'border-gray-700/40',

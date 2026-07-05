@@ -168,7 +168,7 @@ export function DateRangeSlider({
   const thumbBdr = isLight ? '#ffffff' : '#23272e'   // --ss-surface-1
   const barFill  = isLight ? 'rgba(37,99,235,0.22)' : 'rgba(92,155,255,0.28)'
   const barFillSel = isLight ? 'rgba(37,99,235,0.65)' : 'rgba(92,155,255,0.62)'
-  const tickCol  = isLight ? '#8892a0' : '#727c89'   // --ss-t3
+  const tickCol  = isLight ? '#6f7887' : '#727c89'   // --ss-t3 (light は可読性のため濃色化)
   const labelCol = isLight ? '#55606e' : '#a5aebb'   // --ss-t2
 
   const DENSITY_H = 24  // 密度バーエリアの高さ px
