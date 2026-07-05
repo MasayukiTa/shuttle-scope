@@ -157,20 +157,22 @@ html[data-theme="light"] {
  * v2 §2: pure black / neon 系ではなく暖かいチャコール。ブランド青は
  * charcoal 上のコントラスト確保のため明るめにリフト。 */
 html[data-theme="dark"] {
-  /* shadcn 互換 HSL 変数 */
-  --background: 222.2 84% 4.9%;
-  --foreground: 210 40% 98%;
-  --border: 217.2 32.6% 17.5%;
-  --input: 217.2 32.6% 17.5%;
-  --ring: 212.7 26.8% 83.9%;
-  --primary: 210 40% 98%;
-  --primary-foreground: 222.2 47.4% 11.2%;
-  --secondary: 217.2 32.6% 17.5%;
-  --secondary-foreground: 210 40% 98%;
-  --muted: 217.2 32.6% 17.5%;
-  --muted-foreground: 215 20.2% 65.1%;
-  --accent: 217.2 32.6% 17.5%;
-  --accent-foreground: 210 40% 98%;
+  /* shadcn 互換 HSL 変数 — v2 §2 calm charcoal に合わせる。
+   * 旧 near-black(222 84% 4.9% = #020817)だと body(bg-background)が黒すぎて
+   * ユーザーが嫌う「AIっぽい黒」になるため、charcoal ファミリーへ移行。 */
+  --background: 220 13% 13%;        /* ≈ #1C1F24 (--ss-bg-app) */
+  --foreground: 216 15% 92%;        /* ≈ #E6E9ED (--ss-t1) */
+  --border: 218 13% 24%;            /* ≈ #363C46 (--ss-border) */
+  --input: 218 13% 24%;
+  --ring: 216 100% 68%;             /* ≈ brand #5C9BFF */
+  --primary: 216 100% 68%;
+  --primary-foreground: 220 13% 13%;
+  --secondary: 219 14% 16%;         /* ≈ #23272E (surface-1) */
+  --secondary-foreground: 216 15% 92%;
+  --muted: 219 14% 16%;
+  --muted-foreground: 214 12% 69%;  /* ≈ #A5AEBB (--ss-t2) */
+  --accent: 217 13% 19%;            /* ≈ #2A2F37 (surface-2) */
+  --accent-foreground: 216 15% 92%;
   --destructive: 0 62.8% 30.6%;
   --destructive-foreground: 210 40% 98%;
   --radius: 0.5rem;
