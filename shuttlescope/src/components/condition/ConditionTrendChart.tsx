@@ -99,16 +99,17 @@ export function ConditionTrendChart({ playerId, isLight }: Props) {
 
   const points = useMemo<ChartPoint[]>(() => toPoints(data ?? []), [data])
 
-  const panelBg = isLight ? 'bg-white' : 'bg-gray-800'
-  const borderColor = isLight ? 'border-gray-200' : 'border-gray-700'
-  const textMuted = isLight ? 'text-gray-500' : 'text-gray-400'
-  const sectionTitle = isLight ? 'text-gray-800' : 'text-gray-100'
-  const gridStroke = isLight ? '#e5e7eb' : '#374151'
-  const axisTick = { fill: isLight ? '#374151' : '#9ca3af', fontSize: 11 }
+  const panelBg = 'bg-[var(--ss-surface-1)]'
+  const borderColor = 'border-[var(--ss-border)]'
+  const textMuted = 'text-[var(--ss-t3)]'
+  const sectionTitle = 'text-[var(--ss-t1)]'
+  const gridStroke = 'var(--ss-border)'
+  const axisTick = { fill: 'var(--ss-t3)', fontSize: 11 }
   const tooltipStyle = {
-    backgroundColor: isLight ? '#ffffff' : '#1f2937',
-    border: `1px solid ${isLight ? '#e5e7eb' : '#374151'}`,
+    backgroundColor: 'var(--ss-surface-1)',
+    border: `1px solid var(--ss-border)`,
     fontSize: 12,
+    borderRadius: 6,
   }
 
   // 補助指標は「1点でも値がある列」だけ描画
@@ -121,8 +122,8 @@ export function ConditionTrendChart({ playerId, isLight }: Props) {
 
   if (isLoading) {
     return (
-      <section className={`rounded-lg border ${borderColor} ${panelBg} p-4`}>
-        <h2 className="text-sm font-semibold">{t('condition.trend.title')}</h2>
+      <section className={`rounded-ss-lg border ${borderColor} ${panelBg} p-4`}>
+        <h2 className="text-sm font-semibold text-[var(--ss-t1)]">{t('condition.trend.title')}</h2>
         <div className={`${textMuted} text-xs mt-2`}>{t('condition.trend.loading')}</div>
       </section>
     )
@@ -130,16 +131,16 @@ export function ConditionTrendChart({ playerId, isLight }: Props) {
 
   if (error || !hasCcs) {
     return (
-      <section className={`rounded-lg border ${borderColor} ${panelBg} p-4`}>
-        <h2 className="text-sm font-semibold">{t('condition.trend.title')}</h2>
+      <section className={`rounded-ss-lg border ${borderColor} ${panelBg} p-4`}>
+        <h2 className="text-sm font-semibold text-[var(--ss-t1)]">{t('condition.trend.title')}</h2>
         <div className={`${textMuted} text-xs mt-2`}>{t('condition.trend.no_data')}</div>
       </section>
     )
   }
 
   return (
-    <section className={`rounded-lg border ${borderColor} ${panelBg} p-4 space-y-6`}>
-      <h2 className="text-sm font-semibold">{t('condition.trend.title')}</h2>
+    <section className={`rounded-ss-lg border ${borderColor} ${panelBg} p-4 space-y-6`}>
+      <h2 className="text-sm font-semibold text-[var(--ss-t1)]">{t('condition.trend.title')}</h2>
 
       {/* CCS + 28日移動平均 */}
       <div>

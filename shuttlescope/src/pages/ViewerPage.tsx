@@ -234,53 +234,53 @@ export function ViewerPage() {
 
   // ─── レンダリング ──────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-[var(--ss-bg-app)] text-[var(--ss-t1)] flex flex-col items-center justify-center p-4">
       {/* ロゴ */}
       <div className="mb-4 text-center">
-        <div className="inline-flex items-center gap-2 text-blue-400 mb-1">
+        <div className="inline-flex items-center gap-2 text-[var(--ss-brand)] mb-1">
           <MIcon name="visibility" size={24} />
           <span className="text-lg font-bold">{t('app.name')}</span>
         </div>
-        <p className="text-gray-400 text-sm">{t('auto.ViewerPage.k1')}</p>
-        <p className="text-gray-600 text-xs mt-1">{t('auto.ViewerPage.k2')}</p>
+        <p className="text-[var(--ss-t2)] text-sm">{t('auto.ViewerPage.k1')}</p>
+        <p className="text-[var(--ss-t3)] text-xs mt-1">{t('auto.ViewerPage.k2')}</p>
       </div>
 
       {/* ─── State: join ── */}
       {(viewerState === 'join' || (viewerState === 'connecting' && !paramCode)) && (
-        <div className="w-full max-w-sm bg-gray-800 rounded-xl p-5 shadow-2xl">
+        <div className="w-full max-w-sm bg-[var(--ss-surface-1)] rounded-[6px] p-5 border border-[var(--ss-border)] shadow-[0_1px_2px_rgba(16,24,40,.06)]">
           <div className="space-y-3">
             <div>
-              <label className="block text-xs text-gray-400 mb-1">{t('auto.ViewerPage.k3')}</label>
+              <label className="block text-xs text-[var(--ss-t2)] mb-1">{t('auto.ViewerPage.k3')}</label>
               <input
                 type="text"
                 value={form.sessionCode}
                 onChange={(e) => setForm((f) => ({ ...f, sessionCode: e.target.value.toUpperCase() }))}
                 placeholder="XXXXXX"
-                className="w-full bg-gray-700 rounded-lg px-3 py-2 text-sm font-mono text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-[var(--ss-surface-1)] rounded-[5px] px-3 py-2 text-sm font-mono text-[var(--ss-t1)] placeholder-[var(--ss-t3)] border border-[var(--ss-border-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ss-focus-ring)]"
                 autoCapitalize="characters"
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-400 mb-1">{t('auto.ViewerPage.k4')}</label>
+              <label className="block text-xs text-[var(--ss-t2)] mb-1">{t('auto.ViewerPage.k4')}</label>
               <input
                 type="password"
                 value={form.password}
                 onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-                className="w-full bg-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-[var(--ss-surface-1)] rounded-[5px] px-3 py-2 text-sm text-[var(--ss-t1)] placeholder-[var(--ss-t3)] border border-[var(--ss-border-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ss-focus-ring)]"
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-400 mb-1">{t('auto.ViewerPage.k5')}</label>
+              <label className="block text-xs text-[var(--ss-t2)] mb-1">{t('auto.ViewerPage.k5')}</label>
               <input
                 type="text"
                 value={form.viewerName}
                 onChange={(e) => setForm((f) => ({ ...f, viewerName: e.target.value }))}
                 placeholder={t('auto.ViewerPage.k8')}
-                className="w-full bg-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-[var(--ss-surface-1)] rounded-[5px] px-3 py-2 text-sm text-[var(--ss-t1)] placeholder-[var(--ss-t3)] border border-[var(--ss-border-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ss-focus-ring)]"
               />
             </div>
             {errorMsg && (
-              <div className="flex items-center gap-1.5 text-red-400 text-xs">
+              <div className="flex items-center gap-1.5 text-[var(--ss-bad)] text-xs">
                 <MIcon name="cancel" size={14} />
                 {errorMsg}
               </div>
@@ -288,7 +288,7 @@ export function ViewerPage() {
             <button
               onClick={() => joinSession(form.sessionCode, form.password, form.viewerName)}
               disabled={!form.sessionCode}
-              className="w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium"
+              className="w-full py-2.5 rounded-[5px] bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium text-white"
             >
               {t('auto.ViewerPage.k9')}
             </button>
@@ -299,8 +299,8 @@ export function ViewerPage() {
       {/* ─── State: connecting ── */}
       {viewerState === 'connecting' && paramCode && (
         <div className="text-center">
-          <MIcon name="progress_activity" size={40} className="animate-spin text-blue-400 mx-auto mb-3" />
-          <p className="text-gray-300 text-sm">
+          <MIcon name="progress_activity" size={40} className="animate-spin text-[var(--ss-brand)] mx-auto mb-3" />
+          <p className="text-[var(--ss-t2)] text-sm">
             {reconnectCount > 0
               ? `再接続中... (${reconnectCount}/${MAX_RECONNECT})`
               : 'セッションに接続中...'}
@@ -310,22 +310,22 @@ export function ViewerPage() {
 
       {/* ─── State: waiting ── */}
       {viewerState === 'waiting' && (
-        <div className="w-full max-w-sm bg-gray-800 rounded-xl p-8 text-center shadow-2xl">
-          <div className="w-16 h-16 rounded-full bg-blue-900/50 flex items-center justify-center mx-auto mb-4">
-            <MIcon name="visibility" size={28} className="text-blue-400" />
+        <div className="w-full max-w-sm bg-[var(--ss-surface-1)] rounded-[6px] p-8 text-center border border-[var(--ss-border)] shadow-[0_1px_2px_rgba(16,24,40,.06)]">
+          <div className="w-16 h-16 rounded-full bg-[var(--ss-brand-tint)] flex items-center justify-center mx-auto mb-4">
+            <MIcon name="visibility" size={28} className="text-[var(--ss-brand)]" />
           </div>
-          <p className="text-lg font-semibold mb-2">{t('auto.ViewerPage.k6')}</p>
-          <p className="text-gray-400 text-sm leading-relaxed">
+          <p className="text-lg font-semibold text-[var(--ss-t1)] mb-2">{t('auto.ViewerPage.k6')}</p>
+          <p className="text-[var(--ss-t2)] text-sm leading-relaxed">
             {t('auto.ViewerPage.k10')}
           </p>
-          <div className="mt-4 flex items-center justify-center gap-1.5 text-green-400 text-xs">
+          <div className="mt-4 flex items-center justify-center gap-1.5 text-[var(--ss-success)] text-xs">
             <MIcon name="check_circle" size={14} />
             {t('auto.ViewerPage.k11')}
             {reconnectCount > 0 && (
-              <span className="text-gray-500 ml-1">{t('auto.ViewerPage.k12', { n: reconnectCount })}</span>
+              <span className="text-[var(--ss-t3)] ml-1">{t('auto.ViewerPage.k12', { n: reconnectCount })}</span>
             )}
           </div>
-          <p className="mt-4 text-gray-600 text-xs">
+          <p className="mt-4 text-[var(--ss-t3)] text-xs">
             {t('auto.ViewerPage.k13')}
           </p>
         </div>
@@ -334,23 +334,23 @@ export function ViewerPage() {
       {/* ─── State: receiving ── */}
       {viewerState === 'receiving' && (
         <div className="w-full max-w-2xl flex flex-col items-center">
-          <div className="relative w-full rounded-xl overflow-hidden bg-black aspect-video shadow-2xl">
+          <div className="relative w-full rounded-[6px] overflow-hidden bg-black aspect-video shadow-[0_10px_28px_rgba(16,24,40,.14)]">
             <video
               ref={videoRef}
               autoPlay
               playsInline
               className="w-full h-full object-contain"
             />
-            <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-red-600 text-white text-xs px-2 py-0.5 rounded-full">
+            <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-[var(--ss-bad)] text-white text-xs px-2 py-0.5 rounded-[999px]">
               <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
               {t('auto.ViewerPage.k14')}
             </div>
           </div>
-          <div className="mt-3 flex items-center gap-2 text-xs text-gray-400">
+          <div className="mt-3 flex items-center gap-2 text-xs text-[var(--ss-t3)]">
             <MIcon name="videocam" size={12} />
             <span>{t('auto.ViewerPage.k7')}</span>
             {activeSessionCode && (
-              <span className="font-mono text-gray-500">#{activeSessionCode}</span>
+              <span className="font-mono ss-num text-[var(--ss-t2)]">#{activeSessionCode}</span>
             )}
           </div>
         </div>
@@ -359,9 +359,9 @@ export function ViewerPage() {
       {/* ─── State: error ── */}
       {viewerState === 'error' && (
         <div className="w-full max-w-sm text-center">
-          <div className="bg-gray-800 rounded-xl p-6 shadow-2xl border border-red-500/40">
-            <MIcon name="wifi_off" size={36} className="text-red-400 mx-auto mb-3" />
-            <p className="text-sm text-gray-300 mb-4">{errorMsg || '接続に失敗しました。'}</p>
+          <div className="bg-[var(--ss-surface-1)] rounded-[6px] p-6 border border-[var(--ss-border)] shadow-[0_1px_2px_rgba(16,24,40,.06)]">
+            <MIcon name="wifi_off" size={36} className="text-[var(--ss-bad)] mx-auto mb-3" />
+            <p className="text-sm text-[var(--ss-t2)] mb-4">{errorMsg || '接続に失敗しました。'}</p>
             <div className="flex gap-2 justify-center">
               <button
                 onClick={() => {
@@ -377,13 +377,13 @@ export function ViewerPage() {
                     setErrorMsg('')
                   }
                 }}
-                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-sm"
+                className="px-4 py-2 rounded-[5px] bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-sm text-white font-medium"
               >
                 {t('auto.ViewerPage.k15')}
               </button>
               <button
                 onClick={() => { setViewerState('join'); setErrorMsg('') }}
-                className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-sm text-gray-300"
+                className="px-4 py-2 rounded-[5px] bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-sm text-[var(--ss-t1)] border border-[var(--ss-border)]"
               >
                 {t('auto.ViewerPage.k16')}
               </button>

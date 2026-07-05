@@ -33,7 +33,7 @@ function CommerceLawPageInner() {
   }, [])
 
   if (loading) return <div className="p-8">{t('auto.CommerceLawPage.k1')}</div>
-  if (error || !info) return <div className="p-8 text-red-600">{error ?? '取得失敗'}</div>
+  if (error || !info) return <div className="p-8 text-[var(--ss-danger-text)]">{error ?? '取得失敗'}</div>
 
   const phoneDisplay = info.phone || info.phone_disclosure_policy
 
@@ -41,7 +41,7 @@ function CommerceLawPageInner() {
     <div className="p-6 max-w-3xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">{t('auto.CommerceLawPage.k2')}</h1>
 
-      <table className="w-full text-sm border border-gray-200 dark:border-gray-700">
+      <table className="w-full text-sm border border-[var(--ss-border)]">
         <tbody>
           <Row label="販売事業者" value={info.company_name || '(未設定)'} />
           {info.representative && <Row label="運営責任者" value={info.representative} />}
@@ -61,7 +61,7 @@ function CommerceLawPageInner() {
         </tbody>
       </table>
 
-      <p className="mt-6 text-xs text-gray-500">
+      <p className="mt-6 text-xs text-[var(--ss-t3)]">
         {t('auto.CommerceLawPage.disclaimer')}
       </p>
     </div>
@@ -70,8 +70,8 @@ function CommerceLawPageInner() {
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <tr className="border-b border-gray-200 dark:border-gray-700">
-      <th className="text-left p-3 bg-gray-50 dark:bg-gray-800 align-top w-1/3 font-medium">{label}</th>
+    <tr className="border-b border-[var(--ss-border)]">
+      <th className="text-left p-3 bg-[var(--ss-surface-2)] align-top w-1/3 font-medium">{label}</th>
       <td className="p-3 whitespace-pre-wrap align-top">{value}</td>
     </tr>
   )

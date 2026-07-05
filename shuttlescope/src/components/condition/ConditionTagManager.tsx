@@ -29,13 +29,9 @@ export function ConditionTagManager({ playerId, isLight }: Props) {
   const [color, setColor] = useState<string>('#3b82f6')
   const [error, setError] = useState<string | null>(null)
 
-  const inputCls = isLight
-    ? 'border border-gray-300 bg-white text-gray-900 rounded px-2 py-1.5'
-    : 'border border-gray-600 bg-gray-800 text-white rounded px-2 py-1.5'
-  const labelCls = isLight ? 'text-xs text-gray-600' : 'text-xs text-gray-400'
-  const cardCls = isLight
-    ? 'border border-gray-200 bg-white rounded p-3'
-    : 'border border-gray-700 bg-gray-900 rounded p-3'
+  const inputCls = 'border border-[var(--ss-border-strong)] bg-[var(--ss-surface-1)] text-[var(--ss-t1)] rounded-ss-md px-2 py-1.5 text-base'
+  const labelCls = 'text-xs text-[var(--ss-t2)]'
+  const cardCls = 'border border-[var(--ss-border)] bg-[var(--ss-surface-1)] rounded-ss-lg p-3'
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -69,7 +65,7 @@ export function ConditionTagManager({ playerId, isLight }: Props) {
     <RoleGuard allowedRoles={['analyst', 'coach']}>
       <div className="space-y-4">
         <div>
-          <h3 className={isLight ? 'text-sm font-semibold text-gray-800' : 'text-sm font-semibold text-gray-100'}>
+          <h3 className={'text-sm font-semibold text-[var(--ss-t1)]'}>
             {t('condition.tags.title')}
           </h3>
           <p className={labelCls}>{t('condition.tags.description')}</p>
@@ -94,7 +90,7 @@ export function ConditionTagManager({ playerId, isLight }: Props) {
               <div className="flex items-center gap-2">
                 <input
                   type="color"
-                  className="w-10 h-9 rounded border border-gray-400 bg-transparent"
+                  className="w-10 h-9 rounded-ss-md border border-[var(--ss-border-strong)] bg-transparent"
                   value={color}
                   onChange={(e) => setColor(e.target.value)}
                 />
@@ -105,7 +101,7 @@ export function ConditionTagManager({ playerId, isLight }: Props) {
                       type="button"
                       aria-label={c}
                       onClick={() => setColor(c)}
-                      className="w-6 h-6 rounded border border-gray-400"
+                      className="w-6 h-6 rounded-ss-sm border border-[var(--ss-border-strong)]"
                       style={{ backgroundColor: c }}
                     />
                   ))}
@@ -133,12 +129,12 @@ export function ConditionTagManager({ playerId, isLight }: Props) {
               />
             </label>
           </div>
-          {error && <div className="text-xs text-red-500">{error}</div>}
+          {error && <div className="text-xs text-[var(--ss-bad)]">{error}</div>}
           <div>
             <button
               type="submit"
               disabled={create.isPending}
-              className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white text-sm disabled:opacity-50"
+              className="px-3 py-1.5 rounded-ss-md bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white text-sm disabled:opacity-50"
             >
               {t('condition.tags.add')}
             </button>
@@ -152,15 +148,15 @@ export function ConditionTagManager({ playerId, isLight }: Props) {
             <div className={labelCls}>{t('condition.tags.empty')}</div>
           )}
           {!isLoading && tags.length > 0 && (
-            <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+            <ul className="divide-y divide-[var(--ss-border)] dark:divide-gray-700">
               {tags.map((tag: ConditionTag) => (
                 <li key={tag.id} className="flex items-center gap-3 py-2">
                   <span
-                    className="inline-block w-3 h-3 rounded"
+                    className="inline-block w-3 h-3 rounded-ss-sm"
                     style={{ backgroundColor: tag.color }}
                     aria-hidden
                   />
-                  <span className={isLight ? 'text-sm text-gray-900 flex-1' : 'text-sm text-gray-100 flex-1'}>
+                  <span className={'text-sm text-[var(--ss-t1)] flex-1'}>
                     <span className="font-medium">{tag.label}</span>
                     <span className={labelCls + ' ml-2'}>
                       {tag.start_date}
@@ -174,7 +170,7 @@ export function ConditionTagManager({ playerId, isLight }: Props) {
                         del.mutate(tag.id)
                       }
                     }}
-                    className="text-xs text-red-500 hover:text-red-400"
+                    className="text-xs text-[var(--ss-bad)] hover:opacity-80"
                   >
                     {t('condition.tags.delete')}
                   </button>

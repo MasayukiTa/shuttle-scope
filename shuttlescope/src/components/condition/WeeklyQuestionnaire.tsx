@@ -31,10 +31,8 @@ export function WeeklyQuestionnaire({ playerId, measuredAt, isLight, onSubmitted
   )
   const complete = answered >= totalQuestions && totalQuestions > 0
 
-  const inputCls = isLight
-    ? 'w-full border border-gray-300 bg-white text-gray-900 rounded px-2 py-1.5 text-sm'
-    : 'w-full border border-gray-600 bg-gray-800 text-white rounded px-2 py-1.5 text-sm'
-  const labelMuted = isLight ? 'text-xs text-gray-600' : 'text-xs text-gray-400'
+  const inputCls = 'w-full border border-[var(--ss-border-strong)] bg-[var(--ss-surface-1)] text-[var(--ss-t1)] rounded-ss-md px-2 py-1.5 text-sm'
+  const labelMuted = 'text-xs text-[var(--ss-t2)]'
 
   const handleSubmit = async () => {
     setErrorMsg(null)
@@ -74,16 +72,16 @@ export function WeeklyQuestionnaire({ playerId, measuredAt, isLight, onSubmitted
   return (
     <div className="space-y-4 max-w-3xl">
       <div>
-        <h2 className="text-base font-semibold">{t('condition.weekly.title')}</h2>
+        <h2 className="text-base font-semibold text-[var(--ss-t1)]">{t('condition.weekly.title')}</h2>
         <p className={labelMuted}>{t('condition.weekly.intro')}</p>
       </div>
 
-      <div className={`sticky top-0 z-10 ${isLight ? 'bg-gray-50' : 'bg-gray-900'} py-2`}>
+      <div className="sticky top-0 z-10 bg-[var(--ss-bg-app)] py-2">
         <div className="flex items-center gap-3">
-          <div className="flex-1 h-2 bg-gray-700/30 rounded overflow-hidden">
-            <div className="h-full bg-blue-500 transition-all" style={{ width: `${pct}%` }} />
+          <div className="flex-1 h-2 bg-[var(--ss-surface-3)] rounded-ss-sm overflow-hidden">
+            <div className="h-full bg-[var(--ss-brand)] transition-all duration-base ease-out" style={{ width: `${pct}%` }} />
           </div>
-          <div className="text-xs whitespace-nowrap">
+          <div className="text-xs whitespace-nowrap text-[var(--ss-t2)] ss-num">
             {t('condition.weekly.progress', { n: answered, total: totalQuestions })}
           </div>
         </div>
@@ -97,8 +95,8 @@ export function WeeklyQuestionnaire({ playerId, measuredAt, isLight, onSubmitted
       />
 
       {/* 補助（任意） */}
-      <section className={`rounded-lg border p-4 ${isLight ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'}`}>
-        <h3 className="text-sm font-semibold mb-3">{t('condition.section_auxiliary')}</h3>
+      <section className="rounded-ss-lg border p-4 bg-[var(--ss-surface-1)] border-[var(--ss-border)]">
+        <h3 className="text-sm font-semibold mb-3 text-[var(--ss-t1)]">{t('condition.section_auxiliary')}</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <label className="flex flex-col gap-1">
             <span className={labelMuted}>{t('condition.aux.sleep_hours')}</span>
@@ -135,7 +133,7 @@ export function WeeklyQuestionnaire({ playerId, measuredAt, isLight, onSubmitted
       </section>
 
       {errorMsg && (
-        <div className="text-sm text-red-500 bg-red-500/10 border border-red-500/30 rounded px-3 py-2">
+        <div className="text-sm bg-[var(--ss-danger-bg)] text-[var(--ss-danger-text)] border border-[var(--ss-danger-border)] rounded-ss-md px-3 py-2">
           {errorMsg}
         </div>
       )}
@@ -144,7 +142,7 @@ export function WeeklyQuestionnaire({ playerId, measuredAt, isLight, onSubmitted
         <button
           onClick={handleSubmit}
           disabled={mut.isPending || !complete}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded text-sm font-medium"
+          className="px-4 py-2 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-50 text-white rounded-ss-md text-sm font-medium transition-colors duration-fast ease-out"
         >
           {mut.isPending ? '...' : t('condition.weekly.submit')}
         </button>

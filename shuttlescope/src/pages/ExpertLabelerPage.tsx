@@ -44,8 +44,7 @@ function calcRatio(labeled: number, total: number): number {
 function ExpertLabelerContent() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { theme } = useTheme()
-  const isLight = theme === 'light'
+  useTheme()
   const { role } = useAuth()
   const annotatorRole = role === 'coach' ? 'coach' : 'analyst'
   const isAdmin = role === 'admin'
@@ -81,11 +80,11 @@ function ExpertLabelerContent() {
     }
   })
 
-  const pageBg = isLight ? 'bg-gray-50' : 'bg-gray-900'
-  const textPrimary = isLight ? 'text-gray-900' : 'text-white'
-  const textMuted = isLight ? 'text-gray-500' : 'text-gray-400'
-  const borderColor = isLight ? 'border-gray-200' : 'border-gray-700'
-  const cardBg = isLight ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'
+  const pageBg = 'bg-[var(--ss-bg-app)]'
+  const textPrimary = 'text-[var(--ss-t1)]'
+  const textMuted = 'text-[var(--ss-t3)]'
+  const borderColor = 'border-[var(--ss-border)]'
+  const cardBg = 'bg-[var(--ss-surface-1)] border-[var(--ss-border)]'
 
   const tabs: { key: ActiveTab; label: string; adminOnly?: boolean }[] = [
     { key: 'matches', label: t('expert_labeler.tab_matches') },
@@ -98,8 +97,8 @@ function ExpertLabelerContent() {
       {/* ヘッダー */}
       <div className={`px-6 pt-6 pb-0 border-b ${borderColor} shrink-0`}>
         <div className="flex items-center gap-3 mb-2">
-          <MIcon name="assignment_turned_in" className="text-blue-500" size={20} />
-          <h1 className="text-xl font-semibold">{t('expert_labeler.title')}</h1>
+          <MIcon name="assignment_turned_in" className="text-[var(--ss-brand)]" size={20} />
+          <h1 className="text-xl font-semibold tracking-[-0.014em]">{t('expert_labeler.title')}</h1>
         </div>
         <div className={`text-xs mb-3 ${textMuted}`}>{t('expert_labeler.subtitle')}</div>
 
@@ -111,10 +110,10 @@ function ExpertLabelerContent() {
                 key={tab.key}
                 type="button"
                 onClick={() => setActiveTab(tab.key)}
-                className={`px-4 py-2 text-sm font-medium rounded-t border-b-2 transition-colors ${
+                className={`px-4 py-2 text-sm font-medium rounded-t-ss-md border-b-2 transition-colors duration-base ease-out ${
                   activeTab === tab.key
-                    ? 'border-blue-500 text-blue-500'
-                    : `border-transparent ${textMuted} hover:${textPrimary}`
+                    ? 'border-[var(--ss-brand)] text-[var(--ss-brand)]'
+                    : `border-transparent ${textMuted} hover:text-[var(--ss-t1)]`
                 }`}
               >
                 {tab.label}
@@ -139,7 +138,7 @@ function ExpertLabelerContent() {
             )}
 
             {!videosQuery.isLoading && merged.length === 0 && (
-              <div className={`p-4 rounded border text-sm space-y-2 ${cardBg}`}>
+              <div className={`p-4 rounded-ss-lg border text-sm space-y-2 ${cardBg}`}>
                 <div className="font-semibold">{t('expert_labeler.empty_title')}</div>
                 <div className={textMuted}>{t('expert_labeler.empty_desc')}</div>
                 <ul className={`list-disc pl-5 space-y-1 ${textMuted}`}>
@@ -166,26 +165,26 @@ function ExpertLabelerContent() {
                       type="button"
                       onClick={() => navigate(`/expert-labeler/${v.match_id}`)}
                       // iPad 向け最小タップ領域 48px 以上
-                      className={`flex-1 text-left p-4 rounded-lg border transition-colors hover:shadow ${cardBg}`}
+                      className={`flex-1 text-left p-4 rounded-ss-lg border transition-colors duration-base ease-out hover:shadow-card-hover ${cardBg}`}
                       style={{ minHeight: '72px' }}
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="font-medium truncate">{label}</div>
-                        {done && <span className="text-green-500 text-sm">{t('auto.ExpertLabelerPage.check_mark')}</span>}
+                        {done && <span className="text-[var(--ss-success)] text-sm">{t('auto.ExpertLabelerPage.check_mark')}</span>}
                       </div>
-                      <div className={`mt-1 text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>
+                      <div className="mt-1 text-xs ss-num text-[var(--ss-t3)]">
                         {t('expert_labeler.miss_count')}: {v.miss_count} /{' '}
                         {t('expert_labeler.labeled_count')}: {v.labeled_count} ({pct}%)
                       </div>
                       <div
-                        className={`mt-2 h-2 rounded ${isLight ? 'bg-gray-200' : 'bg-gray-700'} overflow-hidden`}
+                        className="mt-2 h-2 rounded-ss-pill bg-[var(--ss-surface-2)] overflow-hidden"
                       >
                         <div
-                          className="h-full bg-blue-500"
+                          className="h-full bg-[var(--ss-brand)]"
                           style={{ width: `${pct}%` }}
                         />
                       </div>
-                      <div className="mt-2 text-right text-sm font-medium text-blue-500">
+                      <div className="mt-2 text-right text-sm font-medium text-[var(--ss-brand)]">
                         {v.labeled_count > 0 && !done
                           ? t('expert_labeler.resume')
                           : t('expert_labeler.start')}{' '}
@@ -199,11 +198,7 @@ function ExpertLabelerContent() {
                           href={`/api/v1/expert/export?match_id=${v.match_id}&fmt=json`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className={`text-[10px] px-2 py-1 rounded border text-center transition-colors ${
-                            isLight
-                              ? 'border-gray-300 text-gray-500 hover:bg-gray-100'
-                              : 'border-gray-600 text-gray-400 hover:bg-gray-700'
-                          }`}
+                          className="text-[10px] px-2 py-1 rounded-ss-sm border text-center transition-colors duration-base ease-out border-[var(--ss-border-strong)] text-[var(--ss-t3)] hover:bg-[var(--ss-surface-2)]"
                         >
                           {t('auto.ExpertLabelerPage.json')}
                         </a>
@@ -211,11 +206,7 @@ function ExpertLabelerContent() {
                           href={`/api/v1/expert/export?match_id=${v.match_id}&fmt=csv`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className={`text-[10px] px-2 py-1 rounded border text-center transition-colors ${
-                            isLight
-                              ? 'border-gray-300 text-gray-500 hover:bg-gray-100'
-                              : 'border-gray-600 text-gray-400 hover:bg-gray-700'
-                          }`}
+                          className="text-[10px] px-2 py-1 rounded-ss-sm border text-center transition-colors duration-base ease-out border-[var(--ss-border-strong)] text-[var(--ss-t3)] hover:bg-[var(--ss-surface-2)]"
                         >
                           {t('auto.ExpertLabelerPage.csv')}
                         </a>

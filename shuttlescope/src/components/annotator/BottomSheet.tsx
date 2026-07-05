@@ -42,7 +42,7 @@ export function BottomSheet({ label, children, defaultOpen = false, onClose }: B
   return (
     <div
       className={clsx(
-        'fixed left-0 right-0 bottom-0 z-30 bg-gray-900 border-t border-gray-700 shadow-2xl transition-transform duration-200',
+        'fixed left-0 right-0 bottom-0 z-30 bg-[var(--ss-surface-1)] border-t border-[var(--ss-border)] shadow-pop transition-transform duration-base ease-out',
         open ? 'translate-y-0' : 'translate-y-[calc(100%-44px)]',
       )}
       style={{ maxHeight: '78vh' }}
@@ -53,10 +53,10 @@ export function BottomSheet({ label, children, defaultOpen = false, onClose }: B
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium text-gray-300 hover:bg-gray-800 active:bg-gray-700"
+          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)] active:bg-[var(--ss-surface-3)]"
           aria-expanded={open}
         >
-          <span className="block w-10 h-1 rounded bg-gray-600" />
+          <span className="block w-10 h-1 rounded-ss-sm bg-[var(--ss-border-strong)]" />
           {label && <span className="ml-2">{label}</span>}
           <MIcon name={open ? 'expand_more' : 'expand_less'} size={16} />
         </button>
@@ -65,7 +65,7 @@ export function BottomSheet({ label, children, defaultOpen = false, onClose }: B
             type="button"
             onClick={onClose}
             aria-label={t('annotator.ux.bottom_sheet_close')}
-            className="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-800"
+            className="w-9 h-9 flex items-center justify-center text-[var(--ss-t3)] hover:text-[var(--ss-t1)] hover:bg-[var(--ss-surface-2)]"
           >
             <MIcon name="close" size={18} />
           </button>

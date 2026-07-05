@@ -19,7 +19,6 @@
  *     対象サイトが標準HTML5 VideoElementを使用している必要がある
  */
 import { useRef, useState, useCallback, useEffect } from 'react'
-import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useTranslation } from 'react-i18next'
 import { apiPost, apiGet } from '@/api/client'
 import { errorMessage } from '@/utils/errors'
@@ -77,7 +76,6 @@ interface WebViewPlayerProps {
 export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: WebViewPlayerProps) {
   const { t } = useTranslation()
 
-  const isLight = useIsLightMode()
   const webviewRef = useRef<HTMLElement>(null)
   const [currentUrl, setCurrentUrl] = useState(url)
   const [inputUrl, setInputUrl] = useState(url)
@@ -328,21 +326,19 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
     return `${mm}:${ss}`
   }
 
-  // ── テーマ別スタイル定数 ──────────────────────────────────────────────────
-  const outerBg     = isLight ? 'bg-white border border-gray-200'      : 'bg-gray-900 border border-gray-700'
-  const navBarBg    = isLight ? 'bg-gray-100 border-b border-gray-200' : 'bg-gray-800 border-b border-gray-700'
-  const titleBarBg  = isLight ? 'bg-gray-50 border-b border-gray-200'  : 'bg-gray-800/60 border-b border-gray-700/50'
-  const btnHover    = isLight ? 'hover:bg-gray-200 text-gray-500 disabled:opacity-40' : 'hover:bg-gray-700 text-gray-400 disabled:opacity-30'
-  const urlInputBg  = isLight ? 'bg-white border border-gray-300'      : 'bg-gray-700'
-  const urlInputText = isLight ? 'text-gray-800'                        : 'text-gray-200'
-  const titleText   = isLight ? 'text-gray-500'                         : 'text-gray-400'
-  const errorBanner = isLight
-    ? 'bg-red-50 border-b border-red-200 text-red-700'
-    : 'bg-red-900/20 border-b border-red-700/40 text-red-300'
+  // ── スタイル定数 (v2 トークン) ────────────────────────────────────────────
+  const outerBg     = 'bg-[var(--ss-surface-1)] border border-[var(--ss-border)]'
+  const navBarBg    = 'bg-[var(--ss-surface-2)] border-b border-[var(--ss-border)]'
+  const titleBarBg  = 'bg-[var(--ss-surface-2)] border-b border-[var(--ss-border)]'
+  const btnHover    = 'hover:bg-[var(--ss-surface-3)] text-[var(--ss-t3)] disabled:opacity-40'
+  const urlInputBg  = 'bg-[var(--ss-surface-1)] border border-[var(--ss-border-strong)]'
+  const urlInputText = 'text-[var(--ss-t1)]'
+  const titleText   = 'text-[var(--ss-t3)]'
+  const errorBanner = 'bg-[var(--ss-danger-tint)] border-b border-[var(--ss-border)] text-[var(--ss-danger)]'
 
   return (
     <div
-      className={`w-full flex flex-col rounded-lg overflow-hidden ${outerBg}`}
+      className={`w-full flex flex-col rounded-ss-lg overflow-hidden ${outerBg}`}
       style={{ aspectRatio: '16/9', minHeight: '200px' }}
     >
       {/* ── ナビゲーションバー ── */}
@@ -390,11 +386,7 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
           <select
             value={quality}
             onChange={(e) => handleQualityChange(e.target.value as CaptureQuality)}
-            className={`text-[10px] rounded px-1 py-0.5 border ${
-              isLight
-                ? 'bg-white border-gray-300 text-gray-700'
-                : 'bg-gray-700 border-gray-600 text-gray-300'
-            }`}
+            className="text-[10px] rounded-ss-sm px-1 py-0.5 border bg-[var(--ss-surface-1)] border-[var(--ss-border-strong)] text-[var(--ss-t2)]"
             title={t('auto.WebViewPlayer.k9')}
             aria-label={t('auto.WebViewPlayer.k12')}
           >
@@ -410,33 +402,25 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
             <button
               onClick={handleRecordStop}
               disabled={recordState === 'starting'}
-              className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium ${
-                isLight ? 'bg-red-100 text-red-700 hover:bg-red-200' : 'bg-red-900/40 text-red-300 hover:bg-red-800/60'
-              }`}
+              className="flex items-center gap-1 px-2 py-0.5 rounded-ss-sm text-[10px] font-medium bg-[var(--ss-danger-tint)] text-[var(--ss-danger)] hover:bg-[var(--ss-surface-3)]"
               title={t('auto.WebViewPlayer.k10')}
             >
               <MIcon name="crop_square" size={10} className="fill-current" />
-              <span className="num-cell">{formatElapsed(recordElapsedMs)}</span>
+              <span className="num-cell ss-num">{formatElapsed(recordElapsedMs)}</span>
             </button>
           ) : recordState === 'stopping' || recordState === 'processing' ? (
-            <span className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium ${
-              isLight ? 'bg-yellow-100 text-yellow-700' : 'bg-yellow-900/40 text-yellow-300'
-            }`}>
+            <span className="flex items-center gap-1 px-2 py-0.5 rounded-ss-sm text-[10px] font-medium bg-[var(--ss-warn-tint)] text-[var(--ss-warn)]">
               <MIcon name="restart_alt" size={10} className="animate-spin" />
               {recordState === 'stopping' ? t('auto.WebViewPlayer.stopping') : t('auto.WebViewPlayer.saving')}
             </span>
           ) : recordState === 'complete' ? (
-            <span className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium ${
-              isLight ? 'bg-green-100 text-green-700' : 'bg-green-900/40 text-green-300'
-            }`}>
+            <span className="flex items-center gap-1 px-2 py-0.5 rounded-ss-sm text-[10px] font-medium bg-[var(--ss-success-tint)] text-[var(--ss-success)]">
               {t('auto.WebViewPlayer.saved')}
             </span>
           ) : (
             <button
               onClick={handleRecordStart}
-              className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium ${
-                isLight ? 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-200' : 'bg-red-900/20 text-red-400 hover:bg-red-900/40 border border-red-800/40'
-              }`}
+              className="flex items-center gap-1 px-2 py-0.5 rounded-ss-sm text-[10px] font-medium bg-[var(--ss-danger-tint)] text-[var(--ss-danger)] hover:bg-[var(--ss-surface-3)] border border-[var(--ss-border)]"
               title={t('auto.WebViewPlayer.k11')}
             >
               <MIcon name="circle" size={10} className="fill-current" />
@@ -471,11 +455,7 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
 
       {/* HDCP / 黒フレーム警告 (録画完了直後にのみ意味あり) */}
       {recordWarning && (recordState === 'complete' || recordState === 'processing') && (
-        <div className={`flex items-start gap-2 px-3 py-1.5 shrink-0 text-xs ${
-          isLight
-            ? 'bg-orange-50 border-b border-orange-200 text-orange-800'
-            : 'bg-orange-900/20 border-b border-orange-700/40 text-orange-300'
-        }`}>
+        <div className="flex items-start gap-2 px-3 py-1.5 shrink-0 text-xs bg-[var(--ss-warn-tint)] border-b border-[var(--ss-border)] text-[var(--ss-warn)]">
           <MIcon name="error" size={12} className="shrink-0 mt-0.5" />
           <span className="flex-1 break-words">{recordWarning}</span>
           <button
@@ -490,10 +470,10 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
 
       {/* ── ページタイトル（サービス名 + 読込インジケーター） ── */}
       <div className={`flex items-center gap-1.5 px-2 py-1 shrink-0 ${titleBarBg}`}>
-        <MIcon name="smart_display" size={11} className="text-blue-400 shrink-0" />
+        <MIcon name="smart_display" size={11} className="text-[var(--ss-brand)] shrink-0" />
         <span className={`text-[10px] truncate flex-1 ${titleText}`}>{pageTitle}</span>
         {isLoading && (
-          <span className="text-[10px] text-blue-400 shrink-0 animate-pulse">{t('auto.WebViewPlayer.k1')}</span>
+          <span className="text-[10px] text-[var(--ss-brand)] shrink-0 animate-pulse">{t('auto.WebViewPlayer.k1')}</span>
         )}
       </div>
 

@@ -40,7 +40,12 @@ export function PredictionPage() {
   const { role } = useAuth()
   // テレメトリ: page 滞在 dwell 計測 (view_id ベース)
   useEffect(() => analyticsViewLifecycle('prediction.page'), [])
-  const { card, textHeading, textSecondary, textMuted, isLight } = useCardTheme()
+  useCardTheme()
+  // Precision on Gray: トークンベースのクラスに統一（useCardTheme のハードコード gray は使わない）
+  const card = 'bg-[var(--ss-surface-1)] border border-[var(--ss-border)] shadow-card'
+  const textHeading = 'text-[var(--ss-t1)]'
+  const textSecondary = 'text-[var(--ss-t2)]'
+  const textMuted = 'text-[var(--ss-t3)]'
   const [searchParams] = useSearchParams()
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(() => {
     const pid = searchParams.get('playerId')
@@ -97,14 +102,12 @@ export function PredictionPage() {
   })
   const selectedPlayer = players.find((p) => p.id === selectedPlayerId)
 
-  const headerBg = isLight ? 'bg-white border-b border-gray-200' : 'bg-gray-900 border-b border-gray-700'
-  const bodyBg = isLight ? 'bg-gray-50' : 'bg-gray-900'
+  const headerBg = 'bg-[var(--ss-surface-1)] border-b border-[var(--ss-border)]'
+  const bodyBg = 'bg-[var(--ss-bg-app)]'
   const { below: bpBelow } = useBreakpoint()
   const useShortLabel = bpBelow('md')  // md 未満 (=スマホ縦) では短縮ラベル
-  const tabActive = isLight ? 'bg-gray-200 text-gray-900' : 'bg-gray-700 text-white'
-  const tabInactive = isLight
-    ? 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-    : 'text-gray-400 hover:text-white hover:bg-gray-700'
+  const tabActive = 'bg-[var(--ss-surface-3)] text-[var(--ss-t1)]'
+  const tabInactive = 'text-[var(--ss-t3)] hover:text-[var(--ss-t1)] hover:bg-[var(--ss-surface-2)]'
 
   const ROLE_LABELS: Record<string, string> = {
     admin: '管理者',
@@ -113,24 +116,24 @@ export function PredictionPage() {
     player: '選手',
   }
   const ROLE_BADGE_CLASS: Record<string, string> = {
-    admin: 'bg-gray-800 border-gray-700 text-red-300',
-    analyst: 'bg-gray-800 border-gray-700 text-blue-300',
-    coach: 'bg-gray-800 border-gray-700 text-blue-300',
-    player: 'bg-gray-800 border-gray-700 text-gray-200',
+    admin: 'bg-[var(--ss-danger-bg)] border-[var(--ss-danger-border)] text-[var(--ss-danger-text)]',
+    analyst: 'bg-[var(--ss-info-bg)] border-[var(--ss-info-border)] text-[var(--ss-info-text)]',
+    coach: 'bg-[var(--ss-info-bg)] border-[var(--ss-info-border)] text-[var(--ss-info-text)]',
+    player: 'bg-[var(--ss-surface-2)] border-[var(--ss-border)] text-[var(--ss-t2)]',
   }
 
   return (
-      <div className={`flex flex-col h-full ${bodyBg} ${isLight ? 'text-gray-900' : 'text-white'}`}>
+      <div className={`flex flex-col h-full ${bodyBg} text-[var(--ss-t1)]`}>
         {/* ヘッダー */}
         <div className={`px-6 pt-6 pb-4 shrink-0 ${headerBg}`}>
           {/* タイトル行 */}
           <div className="flex items-center gap-3 mb-4">
-            <MIcon name="trending_up" className="text-blue-400" size={20} />
-            <h1 className={`text-xl font-semibold ${textHeading}`}>{t('nav.prediction_title')}</h1>
+            <MIcon name="trending_up" className="text-[var(--ss-brand)]" size={20} />
+            <h1 className={`text-xl font-semibold tracking-[-0.014em] ${textHeading}`}>{t('nav.prediction_title')}</h1>
             {role && (
               <span
-                className={`inline-flex items-center px-2 py-0.5 rounded border text-xs font-medium ${
-                  ROLE_BADGE_CLASS[role] ?? 'bg-gray-700 border-gray-500 text-gray-300'
+                className={`inline-flex items-center px-2 py-0.5 rounded-ss-sm border text-xs font-medium ${
+                  ROLE_BADGE_CLASS[role] ?? 'bg-[var(--ss-surface-2)] border-[var(--ss-border)] text-[var(--ss-t2)]'
                 }`}
               >
                 {ROLE_LABELS[role] ?? role}
@@ -198,11 +201,7 @@ export function PredictionPage() {
                 <select
                   value={tournamentLevel}
                   onChange={(e) => setTournamentLevel(e.target.value)}
-                  className={`text-sm rounded px-2 py-1.5 focus:outline-none ${
-                    isLight
-                      ? 'bg-white border border-gray-300 text-gray-800'
-                      : 'bg-gray-700 border border-gray-600 text-gray-200'
-                  }`}
+                  className="text-base rounded-ss-md px-2 py-1.5 bg-[var(--ss-surface-1)] border border-[var(--ss-border-strong)] text-[var(--ss-t1)] focus:outline-none focus:border-[var(--ss-brand)] focus:ring-[3px] focus:ring-[var(--ss-focus-ring)] transition-colors duration-fast ease-out"
                 >
                   <option value="">{t('auto.PredictionPage.k4')}</option>
                   {LEVEL_OPTIONS.map((lv) => {
@@ -221,7 +220,7 @@ export function PredictionPage() {
         </div>
 
         {/* サブタブ — 常に表示してレイアウトシフトを防ぐ */}
-        <div className={`flex gap-1 px-6 py-2 border-b shrink-0 overflow-x-auto ${isLight ? 'border-gray-200 bg-white' : 'border-gray-800 bg-gray-900'} ${!selectedPlayerId ? 'invisible' : ''}`}>
+        <div className={`flex gap-1 px-6 py-2 border-b shrink-0 overflow-x-auto scrollbar-hide border-[var(--ss-border)] bg-[var(--ss-surface-1)] ${!selectedPlayerId ? 'invisible' : ''}`}>
           {(
             [
               { key: 'preview' as const, label: t('prediction.title'), labelShort: t('prediction.title_short') },
@@ -237,7 +236,7 @@ export function PredictionPage() {
                 trackAnalysisInteraction('prediction.page', 'subtab_change', key)
               }}
               disabled={!selectedPlayerId}
-              className={`px-3 py-1 rounded text-sm font-medium transition-colors whitespace-nowrap ${
+              className={`px-3 py-1 rounded-ss-md text-sm font-medium transition-colors duration-base ease-out whitespace-nowrap ${
                 subTab === key ? tabActive : tabInactive
               }`}
             >
@@ -248,17 +247,17 @@ export function PredictionPage() {
 
         {/* ダウンロードボタン */}
         {selectedPlayerId && (
-          <div className={`flex items-center justify-end gap-1.5 px-6 py-2 border-b shrink-0 ${isLight ? 'border-gray-200 bg-white' : 'border-gray-800 bg-gray-900'}`}>
+          <div className="flex items-center justify-end gap-1.5 px-6 py-2 border-b shrink-0 border-[var(--ss-border)] bg-[var(--ss-surface-1)]">
             <MIcon name="file_download" size={13} className={textMuted} />
             <button
               onClick={() => dlReport(`/api/reports/prediction_pdf?player_id=${selectedPlayerId}`, `prediction_${selectedPlayerId}.pdf`)}
-              className={`text-xs px-2.5 py-1 rounded border transition-colors ${isLight ? 'border-gray-300 text-gray-600 hover:bg-gray-100' : 'border-gray-600 text-gray-300 hover:bg-gray-700'}`}
+              className="text-xs px-2.5 py-1 rounded-ss-md border transition-colors duration-base ease-out border-[var(--ss-border-strong)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]"
             >
               {t('auto.PredictionPage.pdf')}
             </button>
             <button
               onClick={() => dlReport(`/api/reports/prediction?player_id=${selectedPlayerId}`, `prediction_${selectedPlayerId}.json`)}
-              className={`text-xs px-2.5 py-1 rounded border transition-colors ${isLight ? 'border-gray-300 text-gray-600 hover:bg-gray-100' : 'border-gray-600 text-gray-300 hover:bg-gray-700'}`}
+              className="text-xs px-2.5 py-1 rounded-ss-md border transition-colors duration-base ease-out border-[var(--ss-border-strong)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]"
             >
               {t('auto.PredictionPage.json')}
             </button>
@@ -291,7 +290,7 @@ export function PredictionPage() {
             </div>
           ) : subTab === 'lineup' ? (
             <div>
-              <div className={`${card} rounded-lg p-4`}>
+              <div className={`${card} rounded-ss-lg p-4`}>
                 <p className={`text-sm font-semibold mb-3 ${textHeading}`}>
                   {t('prediction.lineup_optimizer')}
                 </p>
@@ -302,7 +301,7 @@ export function PredictionPage() {
             /* forecast タブ: 試合選択 + HumanForecastPanel */
             <div className="space-y-4">
               {/* 試合セレクター */}
-              <div className={`${card} rounded-lg p-4`}>
+              <div className={`${card} rounded-ss-lg p-4`}>
                 <p className={`text-xs font-semibold mb-2 ${textMuted}`}>
                   {t('auto.PredictionPage.select_match')}
                 </p>
@@ -332,7 +331,7 @@ export function PredictionPage() {
 
               {/* 人間予測入力パネル */}
               {forecastMatchId && (
-                <div className={`${card} rounded-lg p-4`}>
+                <div className={`${card} rounded-ss-lg p-4`}>
                   <HumanForecastPanel matchId={forecastMatchId} playerId={selectedPlayerId} />
                 </div>
               )}

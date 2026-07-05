@@ -103,11 +103,11 @@ export function ConditionOutlierWeeks({ playerId, isLight }: Props) {
   const { data, isLoading, error } = useConditions(playerId, { limit: 200 })
   const [openId, setOpenId] = useState<number | null>(null)
 
-  const panelBg = isLight ? 'bg-white' : 'bg-gray-800'
-  const borderColor = isLight ? 'border-gray-200' : 'border-gray-700'
-  const muted = isLight ? 'text-gray-500' : 'text-gray-400'
-  const headBg = isLight ? 'bg-gray-50' : 'bg-gray-900/60'
-  const rowHover = isLight ? 'hover:bg-gray-50' : 'hover:bg-gray-700/40'
+  const panelBg = 'bg-[var(--ss-surface-1)]'
+  const borderColor = 'border-[var(--ss-border)]'
+  const muted = 'text-[var(--ss-t3)]'
+  const headBg = 'bg-[var(--ss-surface-2)]'
+  const rowHover = 'hover:bg-[var(--ss-surface-2)]'
 
   const rows = useMemo<OutlierRow[]>(() => {
     const records = (data ?? []).slice()
@@ -153,16 +153,16 @@ export function ConditionOutlierWeeks({ playerId, isLight }: Props) {
   }, [data])
 
   function severityClass(sev: OutlierRow['severity']): string {
-    if (sev === 'high') return 'bg-red-500/20 text-red-400 border-red-500/40'
-    return 'bg-amber-500/20 text-amber-400 border-amber-500/40'
+    if (sev === 'high') return 'bg-[var(--ss-danger-tint)] text-[var(--ss-bad)] border-[var(--ss-danger-border)]'
+    return 'bg-[var(--ss-warn-tint)] text-[var(--ss-warn)] border-[var(--ss-warning-border)]'
   }
 
   const openRow = openId == null ? null : rows.find((r) => r.recordId === openId) ?? null
 
   return (
-    <section className={`rounded-lg border ${borderColor} ${panelBg} p-4`}>
+    <section className={`rounded-ss-lg border ${borderColor} ${panelBg} p-4`}>
       <div className="flex items-baseline justify-between mb-2">
-        <h2 className="text-sm font-semibold">{t('condition.outlier.title')}</h2>
+        <h2 className="text-sm font-semibold text-[var(--ss-t1)]">{t('condition.outlier.title')}</h2>
         <span className={`text-[11px] ${muted}`}>{t('condition.outlier.description')}</span>
       </div>
 
@@ -179,9 +179,9 @@ export function ConditionOutlierWeeks({ playerId, isLight }: Props) {
           <table className="w-full text-xs">
             <thead className={headBg}>
               <tr>
-                <th className="text-left px-2 py-1 font-medium">{t('condition.outlier.col_date')}</th>
-                <th className="text-left px-2 py-1 font-medium">{t('condition.outlier.col_metric_z')}</th>
-                <th className="text-left px-2 py-1 font-medium">{t('condition.outlier.col_co_break')}</th>
+                <th className="text-left px-2 py-1 font-medium text-[var(--ss-t2)]">{t('condition.outlier.col_date')}</th>
+                <th className="text-left px-2 py-1 font-medium text-[var(--ss-t2)]">{t('condition.outlier.col_metric_z')}</th>
+                <th className="text-left px-2 py-1 font-medium text-[var(--ss-t2)]">{t('condition.outlier.col_co_break')}</th>
               </tr>
             </thead>
             <tbody>
@@ -189,21 +189,21 @@ export function ConditionOutlierWeeks({ playerId, isLight }: Props) {
                 <tr
                   key={r.recordId}
                   onClick={() => setOpenId(r.recordId)}
-                  className={`cursor-pointer border-t ${borderColor} ${rowHover}`}
+                  className={`cursor-pointer border-t ${borderColor} ${rowHover} text-[var(--ss-t1)]`}
                 >
                   <td className="px-2 py-1 align-top">
                     <div className="flex items-center gap-2">
                       <span
-                        className={`inline-block px-1.5 py-0.5 rounded border text-[10px] font-mono uppercase ${severityClass(
+                        className={`inline-block px-1.5 py-0.5 rounded-ss-sm border text-[10px] font-mono uppercase ${severityClass(
                           r.severity,
                         )}`}
                       >
                         {t(`condition.outlier.severity.${r.severity}`)}
                       </span>
-                      <span>{r.date}</span>
+                      <span className="ss-num">{r.date}</span>
                     </div>
                   </td>
-                  <td className="px-2 py-1 align-top num-cell">
+                  <td className="px-2 py-1 align-top num-cell ss-num">
                     {r.primaryZ.toFixed(2)}
                     <span className={`ml-1 ${muted}`}>
                       ({t(`condition.outlier.metric.${PRIMARY}`)})
@@ -219,9 +219,9 @@ export function ConditionOutlierWeeks({ playerId, isLight }: Props) {
                           return (
                             <span
                               key={k}
-                              className={`px-1.5 py-0.5 rounded border text-[10px] ${borderColor} ${muted}`}
+                              className={`px-1.5 py-0.5 rounded-ss-sm border text-[10px] ${borderColor} ${muted}`}
                             >
-                              {t(`condition.outlier.metric.${k}`)}: {z.toFixed(2)}
+                              {t(`condition.outlier.metric.${k}`)}: <span className="ss-num">{z.toFixed(2)}</span>
                             </span>
                           )
                         })}
@@ -237,21 +237,21 @@ export function ConditionOutlierWeeks({ playerId, isLight }: Props) {
 
       {openRow && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--ss-bg-overlay)] p-4"
           onClick={() => setOpenId(null)}
         >
           <div
-            className={`max-w-md w-full rounded-lg border ${borderColor} ${panelBg} p-4 shadow-xl`}
+            className={`max-w-md w-full rounded-ss-lg border ${borderColor} ${panelBg} p-4 shadow-[var(--e3)]`}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold">
-                {t('condition.outlier.detail_title')} ({openRow.date})
+              <h3 className="text-sm font-semibold text-[var(--ss-t1)]">
+                {t('condition.outlier.detail_title')} (<span className="ss-num">{openRow.date}</span>)
               </h3>
               <button
                 type="button"
                 onClick={() => setOpenId(null)}
-                className={`text-xs px-2 py-0.5 border rounded ${borderColor}`}
+                className={`text-xs px-2 py-0.5 border rounded-ss-md ${borderColor} text-[var(--ss-t2)]`}
               >
                 {t('condition.outlier.close')}
               </button>
@@ -261,9 +261,9 @@ export function ConditionOutlierWeeks({ playerId, isLight }: Props) {
                 {METRIC_KEYS.map((k) => {
                   const z = openRow.zMap[k]
                   return (
-                    <tr key={k} className={`border-t ${borderColor}`}>
+                    <tr key={k} className={`border-t ${borderColor} text-[var(--ss-t1)]`}>
                       <td className="px-2 py-1">{t(`condition.outlier.metric.${k}`)}</td>
-                      <td className="px-2 py-1 text-right num-cell">
+                      <td className="px-2 py-1 text-right num-cell ss-num">
                         {z == null ? t('condition.outlier.no_value') : z.toFixed(2)}
                       </td>
                     </tr>

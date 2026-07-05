@@ -151,18 +151,18 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
 
   return (
     <div
-      className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-[var(--ss-bg-overlay)] flex items-center justify-center z-50 p-4"
       role="dialog"
       aria-modal="true"
       onClick={onClose}
     >
-      <div className="bg-gray-800 rounded-lg w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-lg shadow-pop w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
         {/* ヘッダー */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--ss-border)]">
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold">{t('quick_start.title')}</h2>
+            <h2 className="text-lg font-semibold text-[var(--ss-t1)]">{t('quick_start.title')}</h2>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-white">
+          <button onClick={onClose} className="text-[var(--ss-t3)] hover:text-[var(--ss-t1)] transition-colors duration-fast ease-out">
             <MIcon name="close" size={18} />
           </button>
         </div>
@@ -170,7 +170,7 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
         <div className="p-6 flex flex-col gap-4">
           {/* 自チーム選手 */}
           <div>
-            <label className="block text-sm text-gray-400 mb-1">
+            <label className="block text-sm text-[var(--ss-t2)] mb-1">
               {t('quick_start.my_player')} *
             </label>
             <SearchableSelect
@@ -191,24 +191,24 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
 
           {/* 対戦相手名（検索付き） */}
           <div className="relative">
-            <label className="block text-sm text-gray-400 mb-1">
+            <label className="block text-sm text-[var(--ss-t2)] mb-1">
               {t('quick_start.opponent')} *
             </label>
             <div className="relative">
-              <MIcon name="search" size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <MIcon name="search" size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ss-t3)]" />
               <input
                 ref={searchRef}
                 value={opponentQuery}
                 onChange={(e) => setOpponentQuery(e.target.value)}
                 onFocus={() => opponentQuery.trim().length >= 1 && setShowCandidates(true)}
                 placeholder={t('quick_start.opponent_placeholder')}
-                className="w-full bg-gray-700 border border-gray-600 rounded pl-8 pr-3 py-2 text-sm"
+                className="w-full bg-[var(--ss-surface-1)] border border-[var(--ss-border-strong)] rounded-ss-md pl-8 pr-3 py-2 text-sm text-[var(--ss-t1)]"
                 autoComplete="off"
               />
               {opponentId !== null && (
                 <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                  <MIcon name="person" size={12} className="text-green-400" />
-                  <span className="text-xs text-green-400">{t('quick_start.existing')}</span>
+                  <MIcon name="person" size={12} className="text-[var(--ss-success)]" />
+                  <span className="text-xs text-[var(--ss-success)]">{t('quick_start.existing')}</span>
                 </div>
               )}
             </div>
@@ -217,30 +217,30 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
             {showCandidates && (
               <div
                 ref={candidatesRef}
-                className="absolute z-10 top-full mt-1 w-full bg-gray-700 border border-gray-600 rounded shadow-lg max-h-48 overflow-y-auto"
+                className="absolute z-10 top-full mt-1 w-full bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-md shadow-pop max-h-48 overflow-y-auto"
               >
                 {isSearching ? (
-                  <div className="px-3 py-2 text-sm text-gray-400">{t('app.loading')}</div>
+                  <div className="px-3 py-2 text-sm text-[var(--ss-t3)]">{t('app.loading')}</div>
                 ) : (
                   <>
                     {candidates.map((p) => (
                       <button
                         key={p.id}
                         onClick={() => selectCandidate(p)}
-                        className="w-full text-left px-3 py-2 hover:bg-gray-600 text-sm flex items-center justify-between"
+                        className="w-full text-left px-3 py-2 hover:bg-[var(--ss-surface-2)] text-sm flex items-center justify-between transition-colors duration-fast ease-out"
                       >
                         <span className="flex items-center gap-2 min-w-0">
-                          <MIcon name="person" size={12} className="text-gray-400 shrink-0" />
-                          <span className="truncate">{p.name}</span>
+                          <MIcon name="person" size={12} className="text-[var(--ss-t3)] shrink-0" />
+                          <span className="truncate text-[var(--ss-t1)]">{p.name}</span>
                           {p.team && (
-                            <span className="text-xs text-blue-300 bg-gray-800 px-1.5 rounded shrink-0">{p.team}</span>
+                            <span className="text-xs text-[var(--ss-brand)] bg-[var(--ss-brand-tint)] px-1.5 rounded-ss-sm shrink-0">{p.team}</span>
                           )}
                           {p.needs_review && (
-                            <span className="text-xs text-yellow-400 bg-yellow-400/10 px-1 rounded shrink-0">{t('quick_start.provisional')}</span>
+                            <span className="text-xs text-[var(--ss-warning-text)] bg-[var(--ss-warning-bg)] px-1 rounded-ss-sm shrink-0">{t('quick_start.provisional')}</span>
                           )}
                         </span>
                         {p.match_count ? (
-                          <span className="text-xs text-gray-400 shrink-0 ml-1">{t('quick_start.match_count', { count: p.match_count })}</span>
+                          <span className="text-xs text-[var(--ss-t3)] shrink-0 ml-1 ss-num">{t('quick_start.match_count', { count: p.match_count })}</span>
                         ) : null}
                       </button>
                     ))}
@@ -248,7 +248,7 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
                     {opponentQuery.trim().length >= 1 && (
                       <button
                         onClick={useNewOpponent}
-                        className="w-full text-left px-3 py-2 hover:bg-blue-700/30 text-sm flex items-center gap-2 text-blue-300 border-t border-gray-600"
+                        className="w-full text-left px-3 py-2 hover:bg-[var(--ss-brand-tint)] text-sm flex items-center gap-2 text-[var(--ss-brand)] border-t border-[var(--ss-border)] transition-colors duration-fast ease-out"
                       >
                         <MIcon name="person_add" size={12} className="shrink-0" />
                         <span>{t('quick_start.provisional_register_and_start', { name: opponentQuery.trim() })}</span>
@@ -263,16 +263,16 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
           {/* チーム名（名前入力後に表示） */}
           {(opponentQuery.trim().length >= 1) && (
             <div>
-              <label className="block text-sm text-gray-400 mb-1">
+              <label className="block text-sm text-[var(--ss-t2)] mb-1">
                 {t('quick_start.opponent_team')}
-                <span className="ml-1 text-gray-600 text-xs">{t('quick_start.opponent_team_hint')}</span>
+                <span className="ml-1 text-[var(--ss-t3)] text-xs">{t('quick_start.opponent_team_hint')}</span>
               </label>
               <input
                 list="opponent-teams-list"
                 value={opponentTeam}
                 onChange={(e) => setOpponentTeam(e.target.value)}
                 placeholder={t('quick_start.opponent_team_placeholder')}
-                className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
+                className="w-full bg-[var(--ss-surface-1)] border border-[var(--ss-border-strong)] rounded-ss-md px-3 py-2 text-sm text-[var(--ss-t1)]"
                 autoComplete="off"
               />
               <datalist id="opponent-teams-list">
@@ -281,14 +281,14 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
                 ))}
               </datalist>
               {opponentId !== null && opponentTeam && (
-                <p className="text-[11px] text-blue-400 mt-0.5">{t('quick_start.existing_team_editable')}</p>
+                <p className="text-[11px] text-[var(--ss-brand)] mt-0.5">{t('quick_start.existing_team_editable')}</p>
               )}
             </div>
           )}
 
           {/* 先サーブ */}
           <div>
-            <label className="block text-sm text-gray-400 mb-1">
+            <label className="block text-sm text-[var(--ss-t2)] mb-1">
               {t('quick_start.initial_server')}
             </label>
             <div className="flex gap-2">
@@ -299,10 +299,10 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
                 <button
                   key={opt.value}
                   onClick={() => setInitialServer(opt.value as 'player_a' | 'player_b')}
-                  className={`flex-1 py-1.5 rounded text-sm border ${
+                  className={`flex-1 py-1.5 rounded-ss-md text-sm border transition-colors duration-fast ease-out ${
                     initialServer === opt.value
-                      ? 'bg-blue-600 border-blue-500 text-white'
-                      : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+                      ? 'bg-[var(--ss-brand)] border-[var(--ss-brand)] text-white'
+                      : 'bg-[var(--ss-surface-1)] border-[var(--ss-border-strong)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]'
                   }`}
                 >
                   {opt.label}
@@ -313,7 +313,7 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
 
           {/* アナリスト視点（コートのどちら側が自選手か） */}
           <div>
-            <label className="block text-sm text-gray-400 mb-1">
+            <label className="block text-sm text-[var(--ss-t2)] mb-1">
               {t('quick_start.analyst_side_label')}
             </label>
             <div className="flex gap-2">
@@ -324,10 +324,10 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
                 <button
                   key={opt.value}
                   onClick={() => setAnalystSide(opt.value)}
-                  className={`flex-1 py-1.5 rounded text-sm border text-left px-2 ${
+                  className={`flex-1 py-1.5 rounded-ss-md text-sm border text-left px-2 transition-colors duration-fast ease-out ${
                     analystSide === opt.value
-                      ? 'bg-blue-600 border-blue-500 text-white'
-                      : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+                      ? 'bg-[var(--ss-brand)] border-[var(--ss-brand)] text-white'
+                      : 'bg-[var(--ss-surface-1)] border-[var(--ss-border-strong)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]'
                   }`}
                 >
                   <span className="block text-xs font-medium">{opt.label}</span>
@@ -339,13 +339,13 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
 
           {/* 大会区分 */}
           <div>
-            <label className="block text-sm text-gray-400 mb-1">
+            <label className="block text-sm text-[var(--ss-t2)] mb-1">
               {t('quick_start.competition_type')}
             </label>
             <select
               value={competitionType}
               onChange={(e) => setCompetitionType(e.target.value)}
-              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
+              className="w-full bg-[var(--ss-surface-1)] border border-[var(--ss-border-strong)] rounded-ss-md px-3 py-2 text-sm text-[var(--ss-t1)]"
             >
               {COMPETITION_TYPES.map((opt) => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -356,39 +356,39 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
           {/* 大会名（任意） */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm text-gray-400 mb-1">
+              <label className="block text-sm text-[var(--ss-t2)] mb-1">
                 {t('quick_start.tournament_optional')}
               </label>
               <input
                 value={tournament}
                 onChange={(e) => setTournament(e.target.value)}
                 placeholder={t('quick_start.tournament_placeholder')}
-                className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
+                className="w-full bg-[var(--ss-surface-1)] border border-[var(--ss-border-strong)] rounded-ss-md px-3 py-2 text-sm text-[var(--ss-t1)]"
               />
             </div>
             <div>
-              <label className="block text-sm text-gray-400 mb-1 flex items-center gap-1">
+              <label className="block text-sm text-[var(--ss-t2)] mb-1 flex items-center gap-1">
                 {t('quick_start.round_optional')}
               </label>
               <div className="relative">
                 <select
                   value={round}
                   onChange={(e) => setRound(e.target.value)}
-                  className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm appearance-none"
+                  className="w-full bg-[var(--ss-surface-1)] border border-[var(--ss-border-strong)] rounded-ss-md px-3 py-2 text-sm text-[var(--ss-t1)] appearance-none"
                 >
                   <option value="">{t('quick_start.round_blank')}</option>
                   {MATCH_ROUNDS.map((r) => (
                     <option key={r} value={r}>{r}</option>
                   ))}
                 </select>
-                <MIcon name="expand_more" size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                <MIcon name="expand_more" size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--ss-t3)] pointer-events-none" />
               </div>
             </div>
           </div>
 
           {/* エラー表示 */}
           {quickStart.isError && (
-            <div className="text-sm text-red-400 bg-red-400/10 rounded px-3 py-2">
+            <div className="text-sm text-[var(--ss-danger-text)] bg-[var(--ss-danger-bg)] rounded-ss-md px-3 py-2">
               {t('quick_start.error')}
             </div>
           )}
@@ -398,7 +398,7 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm"
+              className="flex-1 py-2 bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t1)] rounded-ss-md text-sm transition-colors duration-fast ease-out"
             >
               {t('app.cancel')}
             </button>
@@ -406,7 +406,7 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
               type="button"
               onClick={handleStart}
               disabled={!canStart || quickStart.isPending}
-              className="flex-1 py-2 bg-yellow-600 hover:bg-yellow-500 text-white font-semibold rounded text-sm flex items-center justify-center gap-2 disabled:opacity-40"
+              className="flex-1 py-2 bg-[var(--ss-emphasis)] hover:opacity-90 text-white font-semibold rounded-ss-md text-sm flex items-center justify-center gap-2 disabled:opacity-40 transition-colors duration-fast ease-out"
             >
               {quickStart.isPending ? t('quick_start.starting') : t('quick_start.start_now')}
             </button>

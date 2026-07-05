@@ -124,12 +124,10 @@ export function ConditionGenericScatter({ playerId, isLight }: Props) {
   const [colorMode, setColorMode] = useState<ColorMode>('month')
   const [zKey, setZKey] = useState<MetricKey>(defaultX)
 
-  const panelBg = isLight ? 'bg-white' : 'bg-gray-800'
-  const borderColor = isLight ? 'border-gray-200' : 'border-gray-700'
-  const textMuted = isLight ? 'text-gray-500' : 'text-gray-400'
-  const selectCls = isLight
-    ? 'border border-gray-300 bg-white text-gray-900 rounded px-2 py-1 text-sm'
-    : 'border border-gray-600 bg-gray-800 text-white rounded px-2 py-1 text-sm'
+  const panelBg = 'bg-[var(--ss-surface-1)]'
+  const borderColor = 'border-[var(--ss-border)]'
+  const textMuted = 'text-[var(--ss-t3)]'
+  const selectCls = 'border border-[var(--ss-border-strong)] bg-[var(--ss-surface-1)] text-[var(--ss-t1)] rounded-ss-md px-2 py-1 text-sm'
 
   // データ整形 (有限値ペアのみ)
   const { points, r, n } = useMemo(() => {
@@ -204,9 +202,9 @@ export function ConditionGenericScatter({ playerId, isLight }: Props) {
 
   return (
     <RoleGuard allowedRoles={['coach', 'analyst']} fallback={null}>
-      <section className={`rounded-lg border ${borderColor} ${panelBg} p-4`}>
+      <section className={`rounded-ss-lg border ${borderColor} ${panelBg} p-4`}>
         <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-          <h2 className="text-sm font-semibold">
+          <h2 className="text-sm font-semibold text-[var(--ss-t1)]">
             {t('condition.generic_scatter.title')}
           </h2>
           {n > 0 && <ConfidenceBadge sampleSize={n} />}
@@ -301,27 +299,28 @@ export function ConditionGenericScatter({ playerId, isLight }: Props) {
                 <ScatterChart margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
                   <CartesianGrid
                     strokeDasharray="3 3"
-                    stroke={isLight ? '#e5e7eb' : '#374151'}
+                    stroke={'var(--ss-border)'}
                   />
                   <XAxis
                     type="number"
                     dataKey="x"
                     name={t(`condition.generic_scatter.metric.${x}`)}
-                    tick={{ fill: isLight ? '#374151' : '#9ca3af', fontSize: 11 }}
+                    tick={{ fill: 'var(--ss-t3)', fontSize: 11 }}
                   />
                   <YAxis
                     type="number"
                     dataKey="y"
                     name={t(`condition.generic_scatter.metric.${y}`)}
-                    tick={{ fill: isLight ? '#374151' : '#9ca3af', fontSize: 11 }}
+                    tick={{ fill: 'var(--ss-t3)', fontSize: 11 }}
                   />
                   <ZAxis range={[60, 60]} />
                   <Tooltip
                     cursor={{ strokeDasharray: '3 3' }}
                     contentStyle={{
-                      backgroundColor: isLight ? '#ffffff' : '#1f2937',
-                      border: `1px solid ${isLight ? '#e5e7eb' : '#374151'}`,
+                      backgroundColor: 'var(--ss-surface-1)',
+                      border: `1px solid var(--ss-border)`,
                       fontSize: 12,
+                      borderRadius: 6,
                     }}
                     formatter={(value: number | string, name: string) => {
                       if (name === 'x')
@@ -378,7 +377,7 @@ export function ConditionGenericScatter({ playerId, isLight }: Props) {
                 <span className="inline-flex items-center gap-2">
                   <span>{t('condition.generic_scatter.legend_value')}:</span>
                   {/* coolwarm grad: 青 (低) → 白 (中) → 赤 (高) */}
-                  <span style={{ width: 120, height: 10, background: 'linear-gradient(to right, #3b4cc0, #ffffff, #b40426)', border: `1px solid ${isLight ? '#e5e7eb' : '#4b5563'}` }} />
+                  <span style={{ width: 120, height: 10, background: 'linear-gradient(to right, #3b4cc0, #ffffff, #b40426)', border: `1px solid var(--ss-border)` }} />
                   <span>{t('auto.ConditionGenericScatter.k1')}</span>
                 </span>
               )}
@@ -386,13 +385,13 @@ export function ConditionGenericScatter({ playerId, isLight }: Props) {
             <div className={`mt-2 flex flex-wrap gap-4 text-xs ${textMuted}`}>
               <span>
                 {t('condition.generic_scatter.pearson_r')}:{' '}
-                <span className="font-mono">
+                <span className="font-mono ss-num">
                   {r != null ? r.toFixed(3) : '—'}
                 </span>
               </span>
               <span>
                 {t('condition.generic_scatter.sample_size')}:{' '}
-                <span className="font-mono">{n}</span>
+                <span className="font-mono ss-num">{n}</span>
               </span>
             </div>
           </>

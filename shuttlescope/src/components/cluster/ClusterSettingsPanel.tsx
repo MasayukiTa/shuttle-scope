@@ -86,8 +86,8 @@ interface NodePingResult {
 
 function StatusBadge({ ok, label }: { ok: boolean; label: string }) {
   return (
-    <span className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-medium ${
-      ok ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'
+    <span className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-ss-md-ss-sm font-medium ${
+      ok ? 'bg-[var(--ss-success-tint)] text-[var(--ss-success)]' : 'bg-[var(--ss-danger-tint)] text-[var(--ss-danger)]'
     }`}>
       {ok ? <MIcon name="check_circle" size={10} /> : <MIcon name="cancel" size={10} />}
       {label}
@@ -105,13 +105,13 @@ function GaugeBar({ value, limit, label }: { value: number; limit: number; label
   const over = value >= limit
   return (
     <div className="space-y-0.5">
-      <div className="flex justify-between text-[11px] text-gray-400">
+      <div className="flex justify-between text-[11px] text-[var(--ss-t2)]">
         <span>{label}</span>
-        <span className={over ? 'text-red-400 font-medium' : ''}>{pct}% / {limit}%</span>
+        <span className={over ? 'text-[var(--ss-danger)] font-medium ss-num' : 'ss-num'}>{pct}% / {limit}%</span>
       </div>
-      <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+      <div className="h-1.5 bg-[var(--ss-surface-3)] rounded-ss-md-ss-sm overflow-hidden">
         <div
-          className={`h-full rounded-full transition-all ${over ? 'bg-red-500' : 'bg-blue-500'}`}
+          className={`h-full rounded-ss-md-ss-sm transition-all duration-base ease-out ${over ? 'bg-[var(--ss-danger)]' : 'bg-[var(--ss-brand)]'}`}
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -487,14 +487,12 @@ export function ClusterSettingsPanel() {
   }
 
   // ── レンダリング ──────────────────────────────────────────────────────────
-  const sectionCls = `${cardBg} border ${border} rounded-lg p-4 space-y-3`
-  const labelCls = `text-xs font-medium ${isLight ? 'text-gray-600' : 'text-gray-400'}`
-  const inputCls = `w-full text-sm px-2 py-1.5 rounded border ${border} ${
-    isLight ? 'bg-white text-gray-900' : 'bg-gray-800 text-gray-100'
-  } focus:outline-none focus:ring-1 focus:ring-blue-500`
+  const sectionCls = `${cardBg} border ${border} rounded-ss-md-ss-lg p-4 space-y-3`
+  const labelCls = `text-xs font-medium text-[var(--ss-t2)]`
+  const inputCls = `w-full text-sm px-2 py-1.5 rounded-ss-md-ss-md border ${border} bg-[var(--ss-surface-1)] text-[var(--ss-t1)] focus:outline-none focus:ring-2 focus:ring-[var(--ss-focus-ring)]`
 
   if (cfgLoading) {
-    return <div className="flex justify-center py-12"><MIcon name="progress_activity" className="animate-spin text-blue-400" /></div>
+    return <div className="flex justify-center py-12"><MIcon name="progress_activity" className="animate-spin text-[var(--ss-brand)]" /></div>
   }
 
   const rayRunning = status?.ray.status === 'running'
@@ -506,22 +504,22 @@ export function ClusterSettingsPanel() {
       {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
       {/* HERO: Ray ステータス + 主要アクション                                  */}
       {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-      <section className={`${cardBg} border ${border} rounded-lg p-4 space-y-3`}>
+      <section className={`${cardBg} border ${border} rounded-ss-md-ss-lg p-4 space-y-3`}>
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className={`w-3 h-3 rounded-full shrink-0 ${
-              rayConnecting ? 'bg-yellow-400 animate-pulse' :
-              rayRunning    ? 'bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.6)]' :
-                              'bg-gray-500'
+            <div className={`w-3 h-3 rounded-ss-md-full shrink-0 ${
+              rayConnecting ? 'bg-[var(--ss-warn)] animate-pulse' :
+              rayRunning    ? 'bg-[var(--ss-success)] shadow-[0_0_6px_rgba(25,122,72,0.6)]' :
+                              'bg-[var(--ss-t3)]'
             }`} />
             <div>
-              <p className={`text-sm font-semibold ${isLight ? 'text-gray-900' : 'text-white'}`}>
+              <p className={`text-sm font-semibold text-[var(--ss-t1)]`}>
                 {t('auto.ClusterSettingsPanel.ray_cluster')}
-                <span className={`ml-2 text-xs font-normal ${textMuted}`}>
+                <span className={`ml-2 text-xs font-normal text-[var(--ss-t3)]`}>
                   {cfg.mode === 'single' ? t('auto.ClusterSettingsPanel.mode_single') : cfg.mode === 'primary' ? t('auto.ClusterSettingsPanel.mode_primary') : t('auto.ClusterSettingsPanel.mode_worker')}
                 </span>
               </p>
-              <p className={`text-xs ${textMuted}`}>
+              <p className={`text-xs text-[var(--ss-t3)]`}>
                 {rayConnecting ? t('auto.ClusterSettingsPanel.connecting') :
                  rayRunning    ? t('auto.ClusterSettingsPanel.running_nodes', { n: status?.ray.nodes.filter(n => n.alive).length ?? 0 }) :
                                  t('auto.ClusterSettingsPanel.stopped')}
@@ -533,7 +531,7 @@ export function ClusterSettingsPanel() {
               <button
                 onClick={() => rayStopMutation.mutate()}
                 disabled={rayStopMutation.isPending}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded bg-red-800 hover:bg-red-700 text-white disabled:opacity-50"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-ss-md-ss-md bg-[var(--ss-danger)] hover:bg-[var(--ss-danger)] text-white disabled:opacity-50"
               >
                 {rayStopMutation.isPending ? <MIcon name="progress_activity" size={11} className="animate-spin" /> : <MIcon name="crop_square" size={11} />}
                 {t('auto.ClusterSettingsPanel.stop')}
@@ -542,13 +540,13 @@ export function ClusterSettingsPanel() {
               <button
                 onClick={startRayHead}
                 disabled={startHeadLoading || needsIp}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded bg-green-700 hover:bg-green-600 text-white disabled:opacity-40"
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-ss-md-ss-md bg-[var(--ss-success)] hover:bg-[var(--ss-success)] text-white disabled:opacity-40"
               >
                 {startHeadLoading ? <MIcon name="progress_activity" size={13} className="animate-spin" /> : <MIcon name="play_arrow" size={13} />}
                 {t('auto.ClusterSettingsPanel.ray_start')}
               </button>
             )}
-            <button onClick={() => refetchStatus()} className={`${textMuted} hover:text-white`}>
+            <button onClick={() => refetchStatus()} className={`text-[var(--ss-t2)] hover:text-[var(--ss-t1)]`}>
               <MIcon name="refresh" size={13} />
             </button>
           </div>
@@ -557,7 +555,7 @@ export function ClusterSettingsPanel() {
         {/* IP未設定時のインライン選択 */}
         {needsIp && (
           <div className="space-y-1.5">
-            <p className="text-xs text-yellow-400 flex items-center gap-1">
+            <p className="text-xs text-[var(--ss-warn)] flex items-center gap-1">
               <MIcon name="wifi" size={11} /> {t('auto.ClusterSettingsPanel.select_ip_first')}
             </p>
             <div className="flex flex-wrap gap-1.5">
@@ -565,7 +563,7 @@ export function ClusterSettingsPanel() {
                 <button
                   key={iface.name}
                   onClick={() => updateNetwork('primary_ip', iface.ip)}
-                  className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs border ${border} hover:border-blue-400 font-mono`}
+                  className={`flex items-center gap-1.5 px-2 py-1 rounded-ss-md-ss-md text-xs border ${border} hover:border-[var(--ss-brand)] font-mono`}
                 >
                   {iface.ip} <span className={`opacity-60 font-sans`}>{iface.name}</span>
                 </button>
@@ -575,7 +573,7 @@ export function ClusterSettingsPanel() {
         )}
 
         {startHeadMsg && (
-          <p className={`text-xs ${startHeadMsg.includes('完了') ? 'text-green-400' : 'text-red-400'}`}>
+          <p className={`text-xs ${startHeadMsg.includes('完了') ? 'text-[var(--ss-success)]' : 'text-[var(--ss-danger)]'}`}>
             {startHeadMsg}
           </p>
         )}
@@ -586,32 +584,32 @@ export function ClusterSettingsPanel() {
             {workers.map((w, i) => {
               const pr = pingResults[i]
               return (
-                <div key={i} className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs border ${border}`}>
-                  <div className={`w-1.5 h-1.5 rounded-full ${
-                    pr && pr !== 'loading' && pr.reachable ? 'bg-green-400' : 'bg-gray-500'
+                <div key={i} className={`flex items-center gap-1.5 px-2 py-1 rounded-ss-md-ss-md text-xs border ${border}`}>
+                  <div className={`w-1.5 h-1.5 rounded-ss-md-full ${
+                    pr && pr !== 'loading' && pr.reachable ? 'bg-[var(--ss-success)]' : 'bg-[var(--ss-t3)]'
                   }`} />
                   <span>{w.label || w.ip}</span>
                   {pr === 'loading'
-                    ? <MIcon name="progress_activity" size={10} className="animate-spin text-blue-400" />
+                    ? <MIcon name="progress_activity" size={10} className="animate-spin text-[var(--ss-brand)]" />
                     : pr
-                      ? <span className={pr.reachable ? 'text-green-400' : 'text-gray-500'}>
+                      ? <span className={pr.reachable ? 'text-[var(--ss-success)]' : 'text-[var(--ss-t3)]'}>
                           {pr.reachable ? `${pr.via === 'ray' ? 'Ray' : 'ICMP'} ${pr.latency_ms}ms` : 'NG'}
                         </span>
                       : null
                   }
-                  <button onClick={() => pingWorker(w.ip, i)} className={`${textMuted} hover:text-white`} title={t('auto.ClusterSettingsPanel.k3')}>
+                  <button onClick={() => pingWorker(w.ip, i)} className={`text-[var(--ss-t2)] hover:text-[var(--ss-t1)]`} title={t('auto.ClusterSettingsPanel.k3')}>
                     <MIcon name="lan" size={10} />
                   </button>
                   <button
                     onClick={() => wakeWorker(w.ip, i)}
                     disabled={wakeLoading[i]}
-                    className={`${textMuted} hover:text-yellow-400 disabled:opacity-40`}
+                    className={`text-[var(--ss-t2)] hover:text-[var(--ss-warn)] disabled:opacity-40`}
                     title="Wake-on-LAN"
                   >
                     {wakeLoading[i] ? <MIcon name="progress_activity" size={10} className="animate-spin" /> : <MIcon name="power_settings_new" size={10} />}
                   </button>
                   {wakeMsg[i] && (
-                    <span className={`text-[10px] ${wakeMsg[i].startsWith('WOL') ? 'text-yellow-400' : 'text-red-400'}`}>
+                    <span className={`text-[10px] ${wakeMsg[i].startsWith('WOL') ? 'text-[var(--ss-warn)]' : 'text-[var(--ss-danger)]'}`}>
                       {wakeMsg[i]}
                     </span>
                   )}
@@ -639,25 +637,25 @@ export function ClusterSettingsPanel() {
       {/* K10 参加セクション (Ray起動後のみ表示)                                 */}
       {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
       {cfg.mode === 'primary' && (rayRunning || workerCmds.length > 0) && cfg.network?.primary_ip && (
-        <section className={`${cardBg} border ${border} rounded-lg p-4 space-y-3`}>
-          <h3 className={`text-sm font-semibold ${isLight ? 'text-gray-800' : 'text-gray-200'}`}>
+        <section className={`${cardBg} border ${border} rounded-ss-md-ss-lg p-4 space-y-3`}>
+          <h3 className={`text-sm font-semibold text-[var(--ss-t1)]`}>
             {t('auto.ClusterSettingsPanel.join_worker')}
           </h3>
 
           {/* irm ワンライナー */}
-          <div className={`p-3 rounded border ${border} ${isLight ? 'bg-blue-50' : 'bg-blue-950/30'}`}>
-            <p className={`text-[11px] font-medium mb-1.5 ${isLight ? 'text-blue-700' : 'text-blue-300'}`}>
+          <div className={`p-3 rounded-ss-md-ss-md border ${border} bg-[var(--ss-brand-tint)]`}>
+            <p className={`text-[11px] font-medium mb-1.5 text-[var(--ss-brand)]`}>
               {t('auto.ClusterSettingsPanel.k10_oneliner')}
             </p>
             <div className="flex items-center gap-2">
-              <code className="text-[11px] font-mono flex-1 break-all text-green-400">
+              <code className="text-[11px] font-mono flex-1 break-all text-[var(--ss-good)]">
                 {`irm http://${cfg.network.primary_ip}:8765/api/cluster/ray/join-script | iex`}
               </code>
               <button
                 onClick={() => copyCmd(`irm http://${cfg.network!.primary_ip}:8765/api/cluster/ray/join-script | iex`, -1)}
-                className={`shrink-0 ${textMuted} hover:text-white`}
+                className={`shrink-0 text-[var(--ss-t2)] hover:text-[var(--ss-t1)]`}
               >
-                {copiedIdx === -1 ? <MIcon name="check" size={14} className="text-green-400" /> : <MIcon name="content_copy" size={14} />}
+                {copiedIdx === -1 ? <MIcon name="check" size={14} className="text-[var(--ss-success)]" /> : <MIcon name="content_copy" size={14} />}
               </button>
             </div>
           </div>
@@ -665,8 +663,8 @@ export function ClusterSettingsPanel() {
           {/* SSH実行 (ワーカーコマンド生成後) */}
           {workerCmds.length > 0 && (
             <div className="space-y-2">
-              <div className={`flex items-center gap-2 p-2 rounded border ${border}`}>
-                <span className={`text-[11px] ${textMuted} shrink-0`}>{t('auto.ClusterSettingsPanel.ssh')}</span>
+              <div className={`flex items-center gap-2 p-2 rounded-ss-md-ss-md border ${border}`}>
+                <span className={`text-[11px] text-[var(--ss-t2)] shrink-0`}>{t('auto.ClusterSettingsPanel.ssh')}</span>
                 <input className={`${inputCls} w-28 text-[11px]`} placeholder={t('auto.ClusterSettingsPanel.k8')}
                   value={sshUser} onChange={e => setSshUser(e.target.value)} />
                 <input type="password" className={`${inputCls} w-28 text-[11px]`} placeholder={t('auto.ClusterSettingsPanel.k9')}
@@ -674,23 +672,23 @@ export function ClusterSettingsPanel() {
               </div>
               {workerCmds.map((w, idx) => (
                 <div key={w.ip}>
-                  <div className={`flex items-center gap-2 p-2 rounded border ${border} ${isLight ? 'bg-gray-50' : 'bg-gray-900'}`}>
-                    <span className={`text-[11px] ${textMuted} shrink-0`}>{w.label}</span>
-                    <code className="text-[11px] font-mono flex-1 break-all text-green-400">{w.cmd}</code>
-                    <button onClick={() => copyCmd(w.cmd, idx)} className={`shrink-0 ${textMuted} hover:text-white`}>
-                      {copiedIdx === idx ? <MIcon name="check" size={12} className="text-green-400" /> : <MIcon name="content_copy" size={12} />}
+                  <div className={`flex items-center gap-2 p-2 rounded-ss-md-ss-md border ${border} bg-[var(--ss-surface-2)]`}>
+                    <span className={`text-[11px] text-[var(--ss-t2)] shrink-0`}>{w.label}</span>
+                    <code className="text-[11px] font-mono flex-1 break-all text-[var(--ss-good)]">{w.cmd}</code>
+                    <button onClick={() => copyCmd(w.cmd, idx)} className={`shrink-0 text-[var(--ss-t2)] hover:text-[var(--ss-t1)]`}>
+                      {copiedIdx === idx ? <MIcon name="check" size={12} className="text-[var(--ss-success)]" /> : <MIcon name="content_copy" size={12} />}
                     </button>
                     <button
                       onClick={() => remoteRayJoin(w.ip, idx)}
                       disabled={remoteJoinLoading[idx]}
-                      className="shrink-0 flex items-center gap-1 px-2 py-0.5 text-[11px] rounded bg-indigo-700 hover:bg-indigo-600 text-white disabled:opacity-50"
+                      className="shrink-0 flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-ss-md-ss-md bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white disabled:opacity-50"
                     >
                       {remoteJoinLoading[idx] ? <MIcon name="progress_activity" size={10} className="animate-spin" /> : <MIcon name="play_arrow" size={10} />}
                       {t('auto.ClusterSettingsPanel.ssh_exec')}
                     </button>
                   </div>
                   {remoteJoinMsg[idx] && (
-                    <p className={`text-[10px] mt-0.5 ${remoteJoinMsg[idx] === '起動完了' ? 'text-green-400' : 'text-red-400'}`}>
+                    <p className={`text-[10px] mt-0.5 ${remoteJoinMsg[idx] === '起動完了' ? 'text-[var(--ss-success)]' : 'text-[var(--ss-danger)]'}`}>
                       {remoteJoinMsg[idx]}
                     </p>
                   )}
@@ -704,26 +702,24 @@ export function ClusterSettingsPanel() {
       {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
       {/* 詳細設定 (折りたたみ)                                                  */}
       {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-      <div className={`${cardBg} border ${border} rounded-lg overflow-hidden`}>
+      <div className={`${cardBg} border ${border} rounded-ss-md-ss-lg overflow-hidden`}>
         <button
           onClick={() => setShowAdvanced(v => { const next = !v; localStorage.setItem('cluster_showAdvanced', next ? '1' : '0'); return next })}
-          className={`w-full flex items-center justify-between px-4 py-3 text-sm font-medium ${
-            isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-gray-800/50'
-          } transition-colors`}
+          className={`w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)] transition-colors`}
         >
           <span className="flex items-center gap-2">
             <MIcon name="dns" size={13} />
             {t('auto.ClusterSettingsPanel.advanced_settings')}
           </span>
-          <span className={`text-xs ${textMuted} transition-transform ${showAdvanced ? 'rotate-180' : ''}`}>▼</span>
+          <span className={`text-xs text-[var(--ss-t3)] transition-transform ${showAdvanced ? 'rotate-180' : ''}`}>▼</span>
         </button>
 
         {showAdvanced && (
-          <div className="p-4 space-y-4 border-t border-gray-700/50">
+          <div className="p-4 space-y-4 border-t border-[var(--ss-border)]">
 
       {/* ── 動作モード ──────────────────────────────────────────────────── */}
       <section className={sectionCls}>
-        <h3 className={`text-sm font-semibold flex items-center gap-2 ${isLight ? 'text-gray-800' : 'text-gray-200'}`}>
+        <h3 className={`text-sm font-semibold flex items-center gap-2 text-[var(--ss-t1)]`}>
           <MIcon name="dns" size={14} /> {t('cluster.mode_label')}
         </h3>
         <div className="flex gap-2">
@@ -731,10 +727,10 @@ export function ClusterSettingsPanel() {
             <button
               key={m}
               onClick={() => setCfg(c => ({ ...c, mode: m }))}
-              className={`px-3 py-1.5 rounded text-sm border transition-colors ${
+              className={`px-3 py-1.5 rounded-ss-md-ss-md text-sm border transition-colors ${
                 cfg.mode === m
-                  ? 'border-blue-500 bg-blue-600 text-white'
-                  : `border-gray-600 ${isLight ? 'text-gray-700 hover:border-gray-400' : 'text-gray-300 hover:border-gray-500'}`
+                  ? 'border-[var(--ss-brand)] bg-[var(--ss-brand)] text-white'
+                  : `border-[var(--ss-border)] text-[var(--ss-t2)] hover:border-[var(--ss-brand)]`
               }`}
             >
               {t(`cluster.mode_${m}`)}
@@ -754,7 +750,7 @@ export function ClusterSettingsPanel() {
       {/* ── ネットワーク割り当て ─────────────────────────────────────────── */}
       {cfg.mode !== 'single' && (
         <section className={sectionCls}>
-          <h3 className={`text-sm font-semibold flex items-center gap-2 ${isLight ? 'text-gray-800' : 'text-gray-200'}`}>
+          <h3 className={`text-sm font-semibold flex items-center gap-2 text-[var(--ss-t1)]`}>
             <MIcon name="lan" size={14} /> {t('cluster.network_section')}
           </h3>
 
@@ -796,19 +792,19 @@ export function ClusterSettingsPanel() {
       {cfg.mode === 'primary' && (
         <section className={sectionCls}>
           <div className="flex items-center justify-between">
-            <h3 className={`text-sm font-semibold flex items-center gap-2 ${isLight ? 'text-gray-800' : 'text-gray-200'}`}>
+            <h3 className={`text-sm font-semibold flex items-center gap-2 text-[var(--ss-t1)]`}>
               <MIcon name="memory" size={14} /> {t('cluster.workers_section')}
             </h3>
             <button
               onClick={addWorker}
-              className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
+              className="text-xs text-[var(--ss-brand)] hover:text-[var(--ss-brand-hover)] flex items-center gap-1"
             >
               <MIcon name="add" size={12} /> {t('cluster.add_worker')}
             </button>
           </div>
 
           {workers.length === 0 && (
-            <p className={`text-xs ${textMuted}`}>{t('auto.ClusterSettingsPanel.k1')}</p>
+            <p className={`text-xs text-[var(--ss-t3)]`}>{t('auto.ClusterSettingsPanel.k1')}</p>
           )}
 
           {workers.map((w, i) => {
@@ -817,7 +813,7 @@ export function ClusterSettingsPanel() {
             const detectErr = detectErrors[i]
             const rayRunning = status?.ray.status === 'running'
             return (
-              <div key={i} className={`flex flex-col gap-1.5 p-2 rounded border ${border}`}>
+              <div key={i} className={`flex flex-col gap-1.5 p-2 rounded-ss-md-ss-md border ${border}`}>
                 <div className="flex items-center gap-2">
                   <input
                     className={`${inputCls} w-16`}
@@ -846,7 +842,7 @@ export function ClusterSettingsPanel() {
                     {pr === 'loading' ? <MIcon name="progress_activity" size={12} className="animate-spin" /> : <MIcon name="lan" size={12} />}
                   </button>
                   {pr && pr !== 'loading' && (
-                    <span className={`text-[11px] shrink-0 flex items-center gap-0.5 ${pr.reachable ? 'text-green-400' : 'text-red-400'}`}>
+                    <span className={`text-[11px] shrink-0 flex items-center gap-0.5 ss-num ${pr.reachable ? 'text-[var(--ss-success)]' : 'text-[var(--ss-danger)]'}`}>
                       {pr.reachable ? <MIcon name="check_circle" size={11} /> : <MIcon name="cancel" size={11} />}
                       {pr.reachable
                         ? `${pr.via === 'ray' ? 'Ray' : pr.via === 'icmp' ? 'ICMP' : 'HTTP'} OK${pr.latency_ms ? ` ${pr.latency_ms}ms` : ''}`
@@ -854,7 +850,7 @@ export function ClusterSettingsPanel() {
                       }
                     </span>
                   )}
-                  <button onClick={() => removeWorker(i)} className="text-red-400 hover:text-red-300 shrink-0">
+                  <button onClick={() => removeWorker(i)} className="text-[var(--ss-danger)] hover:text-[var(--ss-danger)] shrink-0">
                     <MIcon name="delete" size={12} />
                   </button>
                 </div>
@@ -884,7 +880,7 @@ export function ClusterSettingsPanel() {
                     <button
                       onClick={() => detectWorkerHardware(w.ip, i)}
                       disabled={detecting || !w.ip}
-                      className="flex items-center gap-1 px-2 py-1 text-[11px] rounded bg-purple-700 hover:bg-purple-600 text-white disabled:opacity-50 shrink-0"
+                      className="flex items-center gap-1 px-2 py-1 text-[11px] rounded-ss-md-ss-md bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white disabled:opacity-50 shrink-0"
                       title={t('cluster.detect_hardware')}
                     >
                       {detecting
@@ -895,14 +891,14 @@ export function ClusterSettingsPanel() {
                   )}
                 </div>
                 {detectErr && (
-                  <p className="text-[11px] text-red-400">{detectErr}</p>
+                  <p className="text-[11px] text-[var(--ss-danger)]">{detectErr}</p>
                 )}
                 {/* WOL / スリープ無効化 */}
                 <div className="flex items-center gap-2 flex-wrap">
                   <button
                     onClick={() => wakeWorker(w.ip, i)}
                     disabled={wakeLoading[i] || !w.ip}
-                    className="flex items-center gap-1 px-2 py-1 text-[11px] rounded bg-yellow-700 hover:bg-yellow-600 text-white disabled:opacity-50 shrink-0"
+                    className="flex items-center gap-1 px-2 py-1 text-[11px] rounded-ss-md-ss-md bg-[var(--ss-warn)] hover:bg-[var(--ss-warn)] text-white disabled:opacity-50 shrink-0"
                     title={t('auto.ClusterSettingsPanel.k5')}
                   >
                     {wakeLoading[i] ? <MIcon name="progress_activity" size={11} className="animate-spin" /> : <MIcon name="power_settings_new" size={11} />}
@@ -911,7 +907,7 @@ export function ClusterSettingsPanel() {
                   <button
                     onClick={() => disableWorkerSleep(w.ip, i)}
                     disabled={sleepDisableLoading[i] || !w.ip}
-                    className="flex items-center gap-1 px-2 py-1 text-[11px] rounded bg-slate-600 hover:bg-slate-500 text-white disabled:opacity-50 shrink-0"
+                    className="flex items-center gap-1 px-2 py-1 text-[11px] rounded-ss-md-ss-md bg-[var(--ss-t2)] hover:bg-[var(--ss-t1)] text-white disabled:opacity-50 shrink-0"
                     title={t('auto.ClusterSettingsPanel.k6')}
                   >
                     {sleepDisableLoading[i] ? <MIcon name="progress_activity" size={11} className="animate-spin" /> : <MIcon name="dark_mode" size={11} />}
@@ -920,24 +916,24 @@ export function ClusterSettingsPanel() {
                   <button
                     onClick={() => restartWorkerRay(w.ip, i)}
                     disabled={rayRestartLoading[i] || !w.ip}
-                    className="flex items-center gap-1 px-2 py-1 text-[11px] rounded bg-emerald-700 hover:bg-emerald-600 text-white disabled:opacity-50 shrink-0"
+                    className="flex items-center gap-1 px-2 py-1 text-[11px] rounded-ss-md-ss-md bg-[var(--ss-success)] hover:bg-[var(--ss-success)] text-white disabled:opacity-50 shrink-0"
                     title={t('auto.ClusterSettingsPanel.k7')}
                   >
                     {rayRestartLoading[i] ? <MIcon name="progress_activity" size={11} className="animate-spin" /> : <MIcon name="play_arrow" size={11} />}
                     {t('auto.ClusterSettingsPanel.ray_restart')}
                   </button>
                   {rayRestartMsg[i] && (
-                    <span className={`text-[10px] ${rayRestartMsg[i].includes('完了') ? 'text-green-400' : 'text-red-400'}`}>
+                    <span className={`text-[10px] ${rayRestartMsg[i].includes('完了') ? 'text-[var(--ss-success)]' : 'text-[var(--ss-danger)]'}`}>
                       {rayRestartMsg[i]}
                     </span>
                   )}
                   {wakeMsg[i] && (
-                    <span className={`text-[10px] ${wakeMsg[i].startsWith('WOL') ? 'text-yellow-400' : 'text-red-400'}`}>
+                    <span className={`text-[10px] ${wakeMsg[i].startsWith('WOL') ? 'text-[var(--ss-warn)]' : 'text-[var(--ss-danger)]'}`}>
                       {wakeMsg[i]}
                     </span>
                   )}
                   {sleepDisableMsg[i] && (
-                    <span className={`text-[10px] ${sleepDisableMsg[i].includes('完了') ? 'text-green-400' : 'text-red-400'} text-white`}>
+                    <span className={`text-[10px] ${sleepDisableMsg[i].includes('完了') ? 'text-[var(--ss-success)]' : 'text-[var(--ss-danger)]'}`}>
                       {sleepDisableMsg[i]}
                     </span>
                   )}
@@ -951,7 +947,7 @@ export function ClusterSettingsPanel() {
 
       {/* ── 負荷制限 ─────────────────────────────────────────────────────── */}
       <section className={sectionCls}>
-        <h3 className={`text-sm font-semibold flex items-center gap-2 ${isLight ? 'text-gray-800' : 'text-gray-200'}`}>
+        <h3 className={`text-sm font-semibold flex items-center gap-2 ${isLight ? 'text-[var(--ss-t1)]' : 'text-[var(--ss-t1)]'}`}>
           <MIcon name="bolt" size={14} /> {t('cluster.load_section')}
         </h3>
         <div className="space-y-3">
@@ -978,7 +974,7 @@ export function ClusterSettingsPanel() {
 
       {/* ── リソース上限 ─────────────────────────────────────────────────── */}
       <section className={sectionCls}>
-        <h3 className={`text-sm font-semibold flex items-center gap-2 ${isLight ? 'text-gray-800' : 'text-gray-200'}`}>
+        <h3 className={`text-sm font-semibold flex items-center gap-2 ${isLight ? 'text-[var(--ss-t1)]' : 'text-[var(--ss-t1)]'}`}>
           <MIcon name="bolt" size={14} /> {t('cluster.resources_section')}
         </h3>
         <p className={`text-[11px] ${textMuted}`}>{t('cluster.limit_auto_hint')}</p>
@@ -1034,7 +1030,7 @@ export function ClusterSettingsPanel() {
       {/* ── タスク分散設定（Ray 接続中かつ primary モードのみ） ──────────── */}
       {showTaskRouting && (
         <section className={sectionCls}>
-          <h3 className={`text-sm font-semibold flex items-center gap-2 ${isLight ? 'text-gray-800' : 'text-gray-200'}`}>
+          <h3 className={`text-sm font-semibold flex items-center gap-2 ${isLight ? 'text-[var(--ss-t1)]' : 'text-[var(--ss-t1)]'}`}>
             <MIcon name="bolt" size={14} /> {t('cluster.task_routing_section')}
           </h3>
           <div className="space-y-3">
@@ -1049,7 +1045,7 @@ export function ClusterSettingsPanel() {
                       <button
                         key={opt.value}
                         onClick={() => setTaskRouting(r => ({ ...r, [key]: opt.value }))}
-                        className={`px-2 py-1 rounded text-xs border transition-colors ${
+                        className={`px-2 py-1 rounded-ss-md text-xs border transition-colors ${
                           currentValue === opt.value
                             ? 'border-blue-500 bg-blue-600 text-white'
                             : `border-gray-600 ${isLight ? 'text-gray-700 hover:border-gray-400' : 'text-gray-300 hover:border-gray-500'}`
@@ -1069,7 +1065,7 @@ export function ClusterSettingsPanel() {
       {/* ── クラスタステータス ────────────────────────────────────────────── */}
       <section className={sectionCls}>
         <div className="flex items-center justify-between">
-          <h3 className={`text-sm font-semibold flex items-center gap-2 ${isLight ? 'text-gray-800' : 'text-gray-200'}`}>
+          <h3 className={`text-sm font-semibold flex items-center gap-2 ${isLight ? 'text-[var(--ss-t1)]' : 'text-[var(--ss-t1)]'}`}>
             {t('cluster.status_section')}
           </h3>
           <button
@@ -1098,13 +1094,13 @@ export function ClusterSettingsPanel() {
                 <button
                   onClick={() => rayStopMutation.mutate()}
                   disabled={rayStopMutation.isPending}
-                  className="text-xs px-2 py-0.5 rounded border border-red-600 text-red-400 hover:bg-red-900/30 disabled:opacity-50 flex items-center gap-1"
+                  className="text-xs px-2 py-0.5 rounded-ss-md border border-red-600 text-red-400 hover:bg-red-900/30 disabled:opacity-50 flex items-center gap-1"
                 >
                   {rayStopMutation.isPending ? <MIcon name="progress_activity" size={10} className="animate-spin" /> : null}
                   {rayStopMutation.isPending ? t('cluster.ray_stopping') : t('cluster.ray_stop')}
                 </button>
               ) : rayConnecting ? (
-                <span className="text-xs px-2 py-0.5 rounded border border-blue-600 text-blue-400 flex items-center gap-1">
+                <span className="text-xs px-2 py-0.5 rounded-ss-md border border-blue-600 text-blue-400 flex items-center gap-1">
                   <MIcon name="progress_activity" size={10} className="animate-spin" />
                   {t('cluster.ray_connecting')}
                 </span>
@@ -1112,7 +1108,7 @@ export function ClusterSettingsPanel() {
                 <button
                   onClick={() => rayStartMutation.mutate()}
                   disabled={rayStartMutation.isPending}
-                  className="text-xs px-2 py-0.5 rounded border border-blue-600 text-blue-400 hover:bg-blue-900/30 disabled:opacity-50 flex items-center gap-1"
+                  className="text-xs px-2 py-0.5 rounded-ss-md border border-blue-600 text-blue-400 hover:bg-blue-900/30 disabled:opacity-50 flex items-center gap-1"
                 >
                   {rayStartMutation.isPending ? <MIcon name="progress_activity" size={10} className="animate-spin" /> : null}
                   {rayStartMutation.isPending ? t('cluster.ray_starting') : t('cluster.ray_start')}
@@ -1143,7 +1139,7 @@ export function ClusterSettingsPanel() {
         <button
           onClick={() => saveMutation.mutate()}
           disabled={saveMutation.isPending}
-          className="flex items-center gap-2 px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white text-sm disabled:opacity-50"
+          className="flex items-center gap-2 px-4 py-2 rounded-ss-md bg-blue-600 hover:bg-blue-700 text-white text-sm disabled:opacity-50"
         >
           {saveMutation.isPending ? <MIcon name="progress_activity" size={13} className="animate-spin" /> : <MIcon name="save" size={13} />}
           {t('cluster.save')}

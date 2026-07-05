@@ -16,10 +16,10 @@ export function PasswordChangeCard({ isLight }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
 
-  const textHeading = isLight ? 'text-gray-900' : 'text-white'
-  const textMuted = isLight ? 'text-gray-500' : 'text-gray-400'
-  const textSecondary = isLight ? 'text-gray-600' : 'text-gray-300'
-  const inputCls = `${isLight ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-800 border-gray-600 text-white'} border rounded px-3 py-2`
+  const textHeading = 'text-[var(--ss-t1)]'
+  const textMuted = 'text-[var(--ss-t3)]'
+  const textSecondary = 'text-[var(--ss-t2)]'
+  const inputCls = `bg-[var(--ss-surface-1)] border-[var(--ss-border)] text-[var(--ss-t1)] border rounded-ss-md px-3 py-2`
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -80,14 +80,12 @@ export function PasswordChangeCard({ isLight }: Props) {
           autoComplete="new-password"
         />
         <p className={`text-xs ${textMuted} mt-1`}>{t('auth.password_change.requirements')}</p>
-        {error && <div className="text-sm text-red-400">{error}</div>}
-        {done && <div className="text-sm text-green-400">{t('auth.password_change.success')}</div>}
+        {error && <div className="text-sm text-[var(--ss-danger-text)]">{error}</div>}
+        {done && <div className="text-sm text-[var(--ss-success-text)]">{t('auth.password_change.success')}</div>}
         <button
           type="submit"
           disabled={busy}
-          className={`mt-2 px-4 py-2 rounded font-medium text-sm ${
-            isLight ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-blue-700 hover:bg-blue-600 text-white'
-          } disabled:opacity-50`}
+          className={`mt-2 px-4 py-2 rounded-ss-md bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] duration-base ease-out text-white font-medium text-sm disabled:opacity-50`}
         >
           {busy ? t('auth.password_change.submitting') : t('auth.password_change.submit')}
         </button>

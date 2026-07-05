@@ -662,16 +662,16 @@ export default function LlmChatPage() {
   const composerDisabled = sending || notConfigured
 
   return (
-    <div className="flex h-full bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
+    <div className="flex h-full bg-[var(--ss-surface-1)] text-[var(--ss-t1)]">
       {/* 会話サイドバー (デスクトップ md+)。折りたたみ時は非表示にして本体へ幅を譲る。 */}
       {!convListCollapsed && (
-        <aside className="hidden md:flex w-64 shrink-0 flex-col border-r border-slate-200 dark:border-slate-700">
-          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 px-3 py-2">
-            <span className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">{t('llm.conversations')}</span>
+        <aside className="hidden md:flex w-64 shrink-0 flex-col border-r border-[var(--ss-border)]">
+          <div className="flex items-center justify-between border-b border-[var(--ss-border)] px-3 py-2">
+            <span className="text-xs font-bold uppercase tracking-wide text-[var(--ss-t3)]">{t('llm.conversations')}</span>
             <button
               type="button"
               onClick={() => setConvListCollapsed(true)}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-[var(--r-md)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]"
               aria-label={t('llm.collapse_conversations')}
               title={t('llm.collapse_conversations')}
             >
@@ -691,12 +691,12 @@ export default function LlmChatPage() {
             onClick={() => setDrawerOpen(false)}
             className="absolute inset-0 bg-black/40"
           />
-          <div ref={drawerRef} className="absolute inset-y-0 left-0 flex w-72 max-w-[80%] flex-col bg-white dark:bg-slate-900 shadow-xl">
-            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 px-3 py-2.5">
-              <span className="font-bold text-sm">{t('llm.conversations')}</span>
+          <div ref={drawerRef} className="absolute inset-y-0 left-0 flex w-72 max-w-[80%] flex-col bg-[var(--ss-surface-1)] shadow-card">
+            <div className="flex items-center justify-between border-b border-[var(--ss-border)] px-3 py-2.5">
+              <span className="font-bold text-sm text-[var(--ss-t1)]">{t('llm.conversations')}</span>
               <button
                 onClick={() => setDrawerOpen(false)}
-                className="inline-flex h-11 w-11 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-[var(--r-md)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]"
                 aria-label={t('llm.close')}
                 title={t('llm.close')}
               >
@@ -710,11 +710,11 @@ export default function LlmChatPage() {
 
       {/* チャット本体 */}
       <main className="flex flex-1 flex-col min-w-0">
-        <header className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-700 px-4 py-2.5">
+        <header className="flex items-center gap-2 border-b border-[var(--ss-border)] px-4 py-2.5 bg-[var(--ss-surface-1)]">
           <button
             ref={menuBtnRef}
             onClick={() => setDrawerOpen(true)}
-            className="md:hidden inline-flex h-11 w-11 -ml-2 items-center justify-center rounded-md text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+            className="md:hidden inline-flex h-11 w-11 -ml-2 items-center justify-center rounded-[var(--r-md)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]"
             aria-label={t('llm.open_conversations')}
             title={t('llm.open_conversations')}
           >
@@ -725,31 +725,31 @@ export default function LlmChatPage() {
             <button
               type="button"
               onClick={() => setConvListCollapsed(false)}
-              className="hidden md:inline-flex h-11 w-11 -ml-2 items-center justify-center rounded-md text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+              className="hidden md:inline-flex h-11 w-11 -ml-2 items-center justify-center rounded-[var(--r-md)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]"
               aria-label={t('llm.expand_conversations')}
               title={t('llm.expand_conversations')}
             >
               <MIcon name="chevron_right" size={22} ariaHidden />
             </button>
           )}
-          <MIcon name="smart_toy" size={20} ariaHidden className="text-blue-600" />
-          <span className="font-bold">{t('llm.title')}</span>
+          <MIcon name="smart_toy" size={20} ariaHidden className="text-[var(--ss-brand)]" />
+          <span className="font-bold text-[var(--ss-t1)]">{t('llm.title')}</span>
         </header>
 
-        <div className="relative flex-1 min-h-0">
+        <div className="relative flex-1 min-h-0 bg-[var(--ss-bg-app)]">
           <div ref={scrollRef} className="absolute inset-0 overflow-y-auto px-4 py-4 space-y-3">
             {messagesLoading && messages.length === 0 ? (
-              <div className="flex h-full flex-col items-center justify-center text-center text-slate-500 dark:text-slate-400">
+              <div className="flex h-full flex-col items-center justify-center text-center text-[var(--ss-t3)]">
                 <span className="flex gap-1 mb-2" aria-hidden>
-                  <span className="h-2 w-2 rounded-full bg-slate-400 dark:bg-slate-500 animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <span className="h-2 w-2 rounded-full bg-slate-400 dark:bg-slate-500 animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <span className="h-2 w-2 rounded-full bg-slate-400 dark:bg-slate-500 animate-bounce" style={{ animationDelay: '300ms' }} />
+                  <span className="h-2 w-2 rounded-full bg-[var(--ss-t3)] animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="h-2 w-2 rounded-full bg-[var(--ss-t3)] animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="h-2 w-2 rounded-full bg-[var(--ss-t3)] animate-bounce" style={{ animationDelay: '300ms' }} />
                 </span>
                 <p className="text-sm">{t('llm.loading')}</p>
               </div>
             ) : (
               messages.length === 0 && !streamText && !streaming && (
-                <div className="flex h-full flex-col items-center justify-center text-center text-slate-500 dark:text-slate-400">
+                <div className="flex h-full flex-col items-center justify-center text-center text-[var(--ss-t3)]">
                   <MIcon name="smart_toy" size={40} ariaHidden className="mb-2" />
                   <p className="text-sm">{t('llm.empty')}</p>
                 </div>
@@ -774,25 +774,25 @@ export default function LlmChatPage() {
             <button
               type="button"
               onClick={scrollToBottom}
-              className="absolute bottom-3 left-1/2 -translate-x-1/2 inline-flex h-10 items-center gap-1 rounded-full bg-slate-700 dark:bg-slate-600 px-3 text-xs font-medium text-white ss-on-accent shadow-lg hover:bg-slate-800 dark:hover:bg-slate-500"
+              className="absolute bottom-3 left-1/2 -translate-x-1/2 inline-flex h-10 items-center gap-1 rounded-full bg-[var(--ss-t1)] px-3 text-xs font-medium text-white shadow-card hover:opacity-90"
               aria-label={t('llm.scroll_to_latest')}
               title={t('llm.scroll_to_latest')}
             >
-              <MIcon name="arrow_downward" size={16} ariaHidden className="ss-on-accent" />
+              <MIcon name="arrow_downward" size={16} ariaHidden />
               {t('llm.scroll_to_latest')}
             </button>
           )}
         </div>
 
         {error && (
-          <div role="alert" className="mx-4 mb-2 flex items-start gap-2 rounded-md bg-red-50 dark:bg-red-900/30 px-3 py-2 text-sm text-red-700 dark:text-red-300">
+          <div role="alert" className="mx-4 mb-2 flex items-start gap-2 rounded-[var(--r-md)] bg-[var(--ss-danger-tint)] px-3 py-2 text-sm text-[var(--ss-danger)] border border-[var(--ss-danger-border)]">
             <span className="flex-1">{error}</span>
             {retryPrompt && (
               <button
                 type="button"
                 onClick={() => onSend(retryPrompt)}
                 disabled={sending}
-                className="inline-flex items-center gap-1 rounded px-2 py-0.5 font-medium text-red-700 dark:text-red-200 underline hover:no-underline disabled:opacity-50"
+                className="inline-flex items-center gap-1 rounded-[var(--r-md)] px-2 py-0.5 font-medium text-[var(--ss-danger)] underline hover:no-underline disabled:opacity-50"
               >
                 <MIcon name="refresh" size={14} ariaHidden />
                 {t('llm.retry')}
@@ -801,12 +801,12 @@ export default function LlmChatPage() {
           </div>
         )}
         {notConfigured && (
-          <div className="mx-4 mb-2 rounded-md bg-amber-50 dark:bg-amber-900/30 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
+          <div className="mx-4 mb-2 rounded-[var(--r-md)] bg-[var(--ss-warn-tint)] px-3 py-2 text-sm text-[var(--ss-warn)] border border-[var(--ss-warning-border)]">
             {t('llm.not_configured')}
           </div>
         )}
 
-        <div className="border-t border-slate-200 dark:border-slate-700 p-3">
+        <div className="border-t border-[var(--ss-border)] bg-[var(--ss-surface-1)] p-3">
           {/* モデルピッカー: NIM の各チャットモデルを切り替える (高速/高精度はモデル選択で表現)。
               選択肢の label は backend (allowlist) が返す値で、ハードコードしない。
               native <select> でキーボード操作 / テーマ追従。状態は localStorage 永続。 */}
@@ -817,7 +817,7 @@ export default function LlmChatPage() {
                   name="smart_toy"
                   size={16}
                   ariaHidden
-                  className="pointer-events-none absolute left-2.5 text-slate-500 dark:text-slate-400"
+                  className="pointer-events-none absolute left-2.5 text-[var(--ss-t2)]"
                 />
                 <select
                   value={selectedModel}
@@ -825,7 +825,7 @@ export default function LlmChatPage() {
                   disabled={composerDisabled}
                   aria-label={t('llm.model_picker_label')}
                   title={t('llm.model_picker_label')}
-                  className="min-h-[36px] appearance-none rounded-full border border-slate-300 bg-slate-100 py-1.5 pl-8 pr-8 text-xs font-medium text-slate-700 hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                  className="min-h-[36px] appearance-none rounded-full border border-[var(--ss-border)] bg-[var(--ss-surface-2)] py-1.5 pl-8 pr-8 text-xs font-medium text-[var(--ss-t1)] hover:bg-[var(--ss-surface-3)] focus:outline-none focus:ring-2 focus:ring-[var(--ss-brand)] disabled:opacity-50"
                 >
                   {models.map((m) => (
                     <option key={m.id} value={m.id}>
@@ -837,7 +837,7 @@ export default function LlmChatPage() {
                   name="expand_more"
                   size={16}
                   ariaHidden
-                  className="pointer-events-none absolute right-2 text-slate-500 dark:text-slate-400"
+                  className="pointer-events-none absolute right-2 text-[var(--ss-t2)]"
                 />
               </div>
             </div>
@@ -846,16 +846,16 @@ export default function LlmChatPage() {
           {images.length > 0 && (
             <div className="mb-2 flex flex-wrap gap-2">
               {images.map((im) => (
-                <div key={im.id} className="relative h-16 w-16 overflow-hidden rounded-md border border-slate-300 dark:border-slate-600">
+                <div key={im.id} className="relative h-16 w-16 overflow-hidden rounded-[var(--r-md)] border border-[var(--ss-border)]">
                   <img src={im.dataUrl} alt={t('llm.attached_image')} className="h-full w-full object-cover" />
                   <button
                     type="button"
                     onClick={() => onRemoveImage(im.id)}
-                    className="absolute right-0.5 top-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-900/70 text-white hover:bg-slate-900"
+                    className="absolute right-0.5 top-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-[rgba(26,32,40,0.7)] text-white hover:bg-[var(--ss-t1)]"
                     aria-label={t('llm.remove_image')}
                     title={t('llm.remove_image')}
                   >
-                    <MIcon name="close" size={14} ariaHidden className="ss-on-accent" />
+                    <MIcon name="close" size={14} ariaHidden />
                   </button>
                 </div>
               ))}
@@ -874,13 +874,13 @@ export default function LlmChatPage() {
               ボタンを絶対配置にしない = 枠から構造的にはみ出さない。items-end でボタンは
               常に最下行に揃い、textarea が伸びても枠内に収まる (ChatGPT/Claude 風)。
               枠 (border/rounded/focus-within ring) はこの div が持ち、textarea は borderless。 */}
-          <div className="flex items-end gap-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5 focus-within:ring-2 focus-within:ring-blue-500">
+          <div className="flex items-end gap-1.5 rounded-[var(--r-lg)] border border-[var(--ss-border)] bg-[var(--ss-surface-1)] px-2 py-1.5 focus-within:ring-2 focus-within:ring-[var(--ss-brand)]">
             {/* 画像添付ボタン: 上限到達 or 設定未完了で無効化。 */}
             <button
               type="button"
               onClick={onPickImage}
               disabled={composerDisabled || images.length >= MAX_IMAGES}
-              className="shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700 disabled:opacity-40"
+              className="shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-[var(--r-md)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)] disabled:opacity-40"
               aria-label={t('llm.attach_image')}
               title={t('llm.attach_image')}
             >
@@ -893,15 +893,15 @@ export default function LlmChatPage() {
                 onClick={onToggleVoice}
                 disabled={composerDisabled}
                 aria-pressed={listening}
-                className={`shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-md disabled:opacity-40 ${
+                className={`shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-[var(--r-md)] disabled:opacity-40 ${
                   listening
-                    ? 'bg-rose-600 text-white hover:bg-rose-700 animate-pulse'
-                    : 'text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700'
+                    ? 'bg-[var(--ss-danger)] text-white hover:opacity-90 animate-pulse'
+                    : 'text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]'
                 }`}
                 aria-label={listening ? t('llm.voice_stop') : t('llm.voice_input')}
                 title={listening ? t('llm.voice_stop') : t('llm.voice_input')}
               >
-                <MIcon name={listening ? 'mic' : 'mic_none'} size={20} ariaHidden className={listening ? 'ss-on-accent' : undefined} />
+                <MIcon name={listening ? 'mic' : 'mic_none'} size={20} ariaHidden />
               </button>
             )}
             <textarea
@@ -911,26 +911,26 @@ export default function LlmChatPage() {
               onKeyDown={onKeyDown}
               rows={1}
               placeholder={listening ? t('llm.voice_listening') : notConfigured ? t('llm.not_configured_hint') : t('llm.placeholder')}
-              className="flex-1 min-w-0 resize-none border-0 bg-transparent px-1 py-1.5 text-sm leading-relaxed focus:outline-none focus:ring-0 max-h-40 overflow-y-auto"
+              className="flex-1 min-w-0 resize-none border-0 bg-transparent px-1 py-1.5 text-sm leading-relaxed text-[var(--ss-t1)] placeholder-[var(--ss-t3)] focus:outline-none focus:ring-0 max-h-40 overflow-y-auto"
             />
             {streaming ? (
               <button
                 onClick={onStop}
-                className="shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-md bg-rose-600 text-white hover:bg-rose-700"
+                className="shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-[var(--r-md)] bg-[var(--ss-danger)] text-white hover:opacity-90"
                 aria-label={t('llm.stop')}
                 title={t('llm.stop')}
               >
-                <MIcon name="stop" size={20} ariaHidden className="ss-on-accent" />
+                <MIcon name="stop" size={20} ariaHidden />
               </button>
             ) : (
               <button
                 onClick={() => onSend()}
                 disabled={composerDisabled || (!input.trim() && images.length === 0)}
-                className="shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                className="shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-[var(--r-md)] bg-[var(--ss-brand)] text-white hover:bg-[var(--ss-brand-hover)] disabled:opacity-50"
                 aria-label={t('llm.send')}
                 title={t('llm.send')}
               >
-                <MIcon name="send" size={18} ariaHidden className="ss-on-accent" />
+                <MIcon name="send" size={18} ariaHidden />
               </button>
             )}
           </div>
@@ -979,25 +979,25 @@ function ConversationList({
     <>
       <button
         onClick={onNewChat}
-        className="m-3 inline-flex min-h-[44px] items-center justify-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-bold text-white ss-on-accent hover:bg-blue-700"
+        className="m-3 inline-flex min-h-[44px] items-center justify-center gap-2 rounded-[var(--r-md)] bg-[var(--ss-brand)] px-3 py-2 text-sm font-bold text-white hover:bg-[var(--ss-brand-hover)]"
       >
-        <MIcon name="add" size={18} ariaHidden className="ss-on-accent" />
+        <MIcon name="add" size={18} ariaHidden />
         {t('llm.new_chat')}
       </button>
       <div className="flex-1 overflow-y-auto px-2 pb-3">
         {conversations.map((c) => (
           <div
             key={c.id}
-            className={`group flex items-center gap-1 rounded-md px-2 py-2 text-sm ${
+            className={`group flex items-center gap-1 rounded-[var(--r-md)] px-2 py-2 text-sm ${
               renamingId === c.id ? '' : 'cursor-pointer'
             } ${
               c.id === activeId
-                ? 'bg-slate-100 dark:bg-slate-800'
-                : 'hover:bg-slate-50 dark:hover:bg-slate-800/60'
+                ? 'bg-[var(--ss-brand-tint)]'
+                : 'hover:bg-[var(--ss-surface-2)]'
             }`}
             onClick={() => { if (renamingId !== c.id) onSelectConversation(c.id) }}
           >
-            <MIcon name="forum" size={16} ariaHidden className="text-slate-400 shrink-0" />
+            <MIcon name="forum" size={16} ariaHidden className="text-[var(--ss-t3)] shrink-0" />
             {renamingId === c.id ? (
               <input
                 autoFocus
@@ -1012,17 +1012,17 @@ function ConversationList({
                 maxLength={200}
                 placeholder={t('llm.rename_placeholder')}
                 aria-label={t('llm.rename')}
-                className="flex-1 min-w-0 rounded border border-blue-500 bg-white dark:bg-slate-900 px-1.5 py-0.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="flex-1 min-w-0 rounded-[var(--r-md)] border border-[var(--ss-brand)] bg-[var(--ss-surface-1)] px-1.5 py-0.5 text-sm text-[var(--ss-t1)] focus:outline-none focus:ring-2 focus:ring-[var(--ss-brand)]"
               />
             ) : (
-              <span className="flex-1 truncate">{c.title}</span>
+              <span className="flex-1 truncate text-[var(--ss-t1)]">{c.title}</span>
             )}
             {confirmDeleteId === c.id ? (
               // 削除確認: 実行 / キャンセルの 2 ボタンをインライン表示。
               <>
                 <button
                   onClick={(e) => { e.stopPropagation(); confirmDelete(c.id) }}
-                  className="inline-flex h-11 w-11 shrink-0 items-center justify-center text-red-500 hover:text-red-600"
+                  className="inline-flex h-11 w-11 shrink-0 items-center justify-center text-[var(--ss-danger)] hover:opacity-80"
                   aria-label={t('llm.confirm_delete')}
                   title={t('llm.confirm_delete')}
                 >
@@ -1030,7 +1030,7 @@ function ConversationList({
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); cancelDelete() }}
-                  className="inline-flex h-11 w-11 shrink-0 items-center justify-center text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                  className="inline-flex h-11 w-11 shrink-0 items-center justify-center text-[var(--ss-t2)] hover:text-[var(--ss-t1)]"
                   aria-label={t('llm.cancel')}
                   title={t('llm.cancel')}
                 >
@@ -1042,7 +1042,7 @@ function ConversationList({
                 {renamingId === c.id ? (
                   <button
                     onClick={(e) => { e.stopPropagation(); commitRename(c.id) }}
-                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center text-slate-400 hover:text-blue-600 dark:hover:text-blue-400"
+                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center text-[var(--ss-t3)] hover:text-[var(--ss-brand)]"
                     aria-label={t('llm.save')}
                     title={t('llm.save')}
                   >
@@ -1051,7 +1051,7 @@ function ConversationList({
                 ) : (
                   <button
                     onClick={(e) => { e.stopPropagation(); startRename(c) }}
-                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 opacity-100 md:opacity-0 md:group-hover:opacity-100"
+                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center text-[var(--ss-t3)] hover:text-[var(--ss-brand)] opacity-100 md:opacity-0 md:group-hover:opacity-100"
                     aria-label={t('llm.rename')}
                     title={t('llm.rename')}
                   >
@@ -1060,7 +1060,7 @@ function ConversationList({
                 )}
                 <button
                   onClick={(e) => { e.stopPropagation(); requestDelete(c.id) }}
-                  className="inline-flex h-11 w-11 shrink-0 items-center justify-center text-slate-400 hover:text-red-500 opacity-100 md:opacity-0 md:group-hover:opacity-100"
+                  className="inline-flex h-11 w-11 shrink-0 items-center justify-center text-[var(--ss-t3)] hover:text-[var(--ss-danger)] opacity-100 md:opacity-0 md:group-hover:opacity-100"
                   aria-label={t('llm.delete')}
                   title={t('llm.delete')}
                 >
@@ -1097,7 +1097,7 @@ function Bubble({ role, content, images, pending }: { role: string; content: str
             </div>
           )}
           {content && (
-            <div className="rounded-2xl rounded-tr-sm bg-blue-600 px-3.5 py-2 text-sm leading-relaxed text-white ss-on-accent whitespace-pre-wrap break-words">
+            <div className="rounded-2xl rounded-tr-sm bg-[var(--ss-brand)] px-3.5 py-2 text-sm leading-relaxed text-white whitespace-pre-wrap break-words">
               {content}
             </div>
           )}
@@ -1116,14 +1116,14 @@ function Bubble({ role, content, images, pending }: { role: string; content: str
   // ストリーミング中 (pending) も Markdown 描画し、確定時の再レイアウトちらつきを無くす。
   return (
     <div className="group flex flex-col items-start">
-      <div className={`max-w-[85%] rounded-2xl rounded-tl-sm bg-slate-100 dark:bg-slate-800 px-3.5 py-2 text-sm leading-relaxed break-words ${pending ? 'opacity-90' : ''}`}>
+      <div className={`max-w-[85%] rounded-2xl rounded-tl-sm bg-[var(--ss-surface-2)] px-3.5 py-2 text-sm leading-relaxed break-words text-[var(--ss-t1)] ${pending ? 'opacity-90' : ''}`}>
         <ChatMarkdown content={content} />
         {pending && <span className="ml-1 inline-block animate-pulse align-baseline">▌</span>}
       </div>
       {!pending && content && (
         <button
           onClick={onCopy}
-          className="mt-1 inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs text-slate-500 transition-opacity hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-300 opacity-100 md:opacity-0 md:group-hover:opacity-100"
+          className="mt-1 inline-flex items-center gap-1 rounded-[var(--r-md)] px-1.5 py-1 text-xs text-[var(--ss-t3)] transition-opacity hover:text-[var(--ss-t2)] opacity-100 md:opacity-0 md:group-hover:opacity-100"
           aria-label={t('llm.copy')}
           title={t('llm.copy')}
         >
@@ -1144,13 +1144,13 @@ function Bubble({ role, content, images, pending }: { role: string; content: str
 function TypingIndicator({ label }: { label: string }) {
   return (
     <div className="flex justify-start">
-      <div className="flex items-center gap-2 rounded-2xl rounded-tl-sm bg-slate-100 dark:bg-slate-800 px-3.5 py-2.5">
+      <div className="flex items-center gap-2 rounded-2xl rounded-tl-sm bg-[var(--ss-surface-2)] px-3.5 py-2.5">
         <span className="flex gap-1" aria-hidden>
-          <span className="h-2 w-2 rounded-full bg-slate-400 dark:bg-slate-500 animate-bounce" style={{ animationDelay: '0ms' }} />
-          <span className="h-2 w-2 rounded-full bg-slate-400 dark:bg-slate-500 animate-bounce" style={{ animationDelay: '150ms' }} />
-          <span className="h-2 w-2 rounded-full bg-slate-400 dark:bg-slate-500 animate-bounce" style={{ animationDelay: '300ms' }} />
+          <span className="h-2 w-2 rounded-full bg-[var(--ss-t3)] animate-bounce" style={{ animationDelay: '0ms' }} />
+          <span className="h-2 w-2 rounded-full bg-[var(--ss-t3)] animate-bounce" style={{ animationDelay: '150ms' }} />
+          <span className="h-2 w-2 rounded-full bg-[var(--ss-t3)] animate-bounce" style={{ animationDelay: '300ms' }} />
         </span>
-        <span className="text-xs text-slate-500 dark:text-slate-500">{label}</span>
+        <span className="text-xs text-[var(--ss-t3)]">{label}</span>
       </div>
     </div>
   )
@@ -1162,13 +1162,13 @@ function ReasoningBlock({ content, label }: { content: string; label: string }) 
   return (
     <details
       open
-      className="mb-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 px-3 py-2 text-slate-500 dark:text-slate-400"
+      className="mb-2 rounded-[var(--r-lg)] border border-[var(--ss-border)] bg-[var(--ss-surface-2)] px-3 py-2 text-[var(--ss-t3)]"
     >
-      <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs font-medium select-none">
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs font-medium select-none text-[var(--ss-t2)]">
         <MIcon name="lightbulb" size={14} ariaHidden />
         {label}
       </summary>
-      <div className="mt-1.5 whitespace-pre-wrap break-words text-xs leading-relaxed opacity-90">
+      <div className="mt-1.5 whitespace-pre-wrap break-words text-xs leading-relaxed opacity-90 text-[var(--ss-t3)]">
         {content}
       </div>
     </details>

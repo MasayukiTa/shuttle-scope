@@ -53,11 +53,11 @@ function DeviceIcon({ type }: { type: DeviceType | null }) {
 
 function _RoleBadge({ role }: { role: string }) {
   const color: Record<string, string> = {
-    active_camera: 'bg-red-500 text-white',
-    camera_candidate: 'bg-amber-500 text-white',
-    analyst: 'bg-purple-500 text-white',
-    coach: 'bg-blue-500 text-white',
-    viewer: 'bg-gray-500 text-white',
+    active_camera: 'bg-[var(--ss-bad)] text-white',
+    camera_candidate: 'bg-[var(--ss-warn)] text-white',
+    analyst: 'bg-[var(--ss-brand)] text-white',
+    coach: 'bg-[var(--ss-brand)] text-white',
+    viewer: 'bg-[var(--ss-t2)] text-white',
   }
   const label: Record<string, string> = {
     active_camera: 'アクティブカメラ',
@@ -67,7 +67,7 @@ function _RoleBadge({ role }: { role: string }) {
     viewer: 'ビューワー',
   }
   return (
-    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${color[role] ?? 'bg-gray-600 text-white'}`}>
+    <span className={`text-[10px] px-1.5 py-0.5 rounded-ss-pill font-medium ${color[role] ?? 'bg-[var(--ss-t2)] text-white'}`}>
       {label[role] ?? role}
     </span>
   )
@@ -76,17 +76,17 @@ function _RoleBadge({ role }: { role: string }) {
 function ApprovalBadge({ status }: { status: string }) {
   const { t } = useTranslation()
   if (status === 'approved') return (
-    <span className="flex items-center gap-0.5 text-[10px] text-green-400">
+    <span className="flex items-center gap-0.5 text-[10px] text-[var(--ss-success)]">
       <MIcon name="check_circle" size={10} /> {t('auto.DeviceManagerPanel.approved')}
     </span>
   )
   if (status === 'rejected') return (
-    <span className="flex items-center gap-0.5 text-[10px] text-red-400">
+    <span className="flex items-center gap-0.5 text-[10px] text-[var(--ss-bad)]">
       <MIcon name="cancel" size={10} /> {t('auto.DeviceManagerPanel.rejected')}
     </span>
   )
   return (
-    <span className="flex items-center gap-0.5 text-[10px] text-amber-400 animate-pulse">
+    <span className="flex items-center gap-0.5 text-[10px] text-[var(--ss-warn)] animate-pulse">
       <MIcon name="warning" size={10} /> {t('auto.DeviceManagerPanel.pending')}
     </span>
   )
@@ -97,7 +97,7 @@ function HeartbeatBadge({ lastHeartbeat }: { lastHeartbeat: string | null }) {
   const diffSec = (Date.now() - new Date(lastHeartbeat).getTime()) / 1000
   const stale = diffSec > 60
   return (
-    <span className={`text-[9px] inline-flex items-center gap-0.5 ${stale ? 'text-red-400' : 'text-gray-500'}`}>
+    <span className={`text-[9px] inline-flex items-center gap-0.5 ${stale ? 'text-[var(--ss-bad)]' : 'text-[var(--ss-t3)]'}`}>
       {stale ? <><MIcon name="warning" size={9} />応答なし</> : `${Math.round(diffSec)}s前`}
     </span>
   )
@@ -389,7 +389,7 @@ function DeviceRow({ p, _isLight, titleColor, subColor, rowBg, onApprove, onReje
     : false
 
   return (
-    <div className={`rounded-lg p-3 ${rowBg} ${isStaleCamera ? 'border border-amber-500/40' : ''}`}>
+    <div className={`rounded-ss-md p-3 ${rowBg} ${isStaleCamera ? 'border border-[var(--ss-warning-border)]' : ''}`}>
       <div className="flex items-start gap-2">
         <div className={`mt-0.5 ${subColor}`}><DeviceIcon type={p.device_type} /></div>
         <div className="flex-1 min-w-0">
@@ -399,13 +399,13 @@ function DeviceRow({ p, _isLight, titleColor, subColor, rowBg, onApprove, onReje
             </span>
             <ApprovalBadge status={p.approval_status} />
             {(p.device_type === 'iphone' || p.device_type === 'ipad') && (
-              <span className="text-[9px] px-1 py-0.5 rounded bg-purple-900/40 text-purple-400">{t('auto.DeviceManagerPanel.k1')}</span>
+              <span className="text-[9px] px-1 py-0.5 rounded-ss-sm bg-[var(--ss-brand-tint)] text-[var(--ss-brand)]">{t('auto.DeviceManagerPanel.k1')}</span>
             )}
             {p.device_type === 'pc' && (
-              <span className="text-[9px] px-1 py-0.5 rounded bg-gray-700/60 text-gray-500">{t('auto.DeviceManagerPanel.k2')}</span>
+              <span className="text-[9px] px-1 py-0.5 rounded-ss-sm bg-[var(--ss-surface-3)] text-[var(--ss-t3)]">{t('auto.DeviceManagerPanel.k2')}</span>
             )}
             {isStaleCamera && (
-              <span className="text-[9px] px-1 py-0.5 rounded bg-amber-900/40 text-amber-400 flex items-center gap-0.5">
+              <span className="text-[9px] px-1 py-0.5 rounded-ss-sm bg-[var(--ss-warn-tint)] text-[var(--ss-warn)] flex items-center gap-0.5">
                 <MIcon name="warning" size={8} />{t('handoff.stale_warning')}
               </span>
             )}
@@ -414,31 +414,31 @@ function DeviceRow({ p, _isLight, titleColor, subColor, rowBg, onApprove, onReje
         <button
           onClick={() => onDeleteDevice(p)}
           title={t('auto.DeviceManagerPanel.k11')}
-          className="shrink-0 text-gray-600 hover:text-red-400 transition-colors"
+          className="shrink-0 text-[var(--ss-t3)] hover:text-[var(--ss-bad)] transition-colors duration-base ease-out"
         >
           <MIcon name="delete" size={12} />
         </button>
       </div>
       <div className="ml-6 mt-0.5">
         <div className={`flex items-center gap-2 text-[10px] ${subColor}`}>
-          <span className={`flex items-center gap-0.5 ${p.is_connected ? 'text-green-400' : 'text-gray-500'}`}>
-            <span className={`w-1 h-1 rounded-full ${p.is_connected ? 'bg-green-400' : 'bg-gray-600'}`} />
+          <span className={`flex items-center gap-0.5 ${p.is_connected ? 'text-[var(--ss-success)]' : 'text-[var(--ss-t3)]'}`}>
+            <span className={`w-1 h-1 rounded-full ${p.is_connected ? 'bg-[var(--ss-success)]' : 'bg-[var(--ss-t3)]'}`} />
             {p.is_connected ? '接続' : '切断'}
           </span>
           {p.connection_state === 'sending_video' && (
-            <span className="text-red-400 flex items-center gap-0.5">
+            <span className="text-[var(--ss-bad)] flex items-center gap-0.5">
               <MIcon name="videocam" size={10} />{t('auto.DeviceManagerPanel.sending')}
             </span>
           )}
           {p.connection_state === 'receiving_video' && (
-            <span className="text-blue-400 flex items-center gap-0.5">
+            <span className="text-[var(--ss-brand)] flex items-center gap-0.5">
               <MIcon name="videocam" size={10} />{t('auto.DeviceManagerPanel.receiving')}
             </span>
           )}
           {p.device_class && <span>{p.device_class}</span>}
           <HeartbeatBadge lastHeartbeat={p.last_heartbeat} />
           {p.viewer_permission !== 'default' && (
-            <span className={p.viewer_permission === 'allowed' ? 'text-green-400' : 'text-red-400'}>
+            <span className={p.viewer_permission === 'allowed' ? 'text-[var(--ss-success)]' : 'text-[var(--ss-bad)]'}>
               {p.viewer_permission === 'allowed' ? '映像受信許可' : '映像受信停止'}
             </span>
           )}
@@ -450,24 +450,24 @@ function DeviceRow({ p, _isLight, titleColor, subColor, rowBg, onApprove, onReje
         <div className="flex gap-1.5 mt-2 flex-wrap">
           {p.connection_role === 'viewer' && p.source_capability === 'camera' && (
             <button onClick={() => onMakeCandidate(p)}
-              className="text-[10px] px-2 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white">
+              className="text-[10px] px-2 py-1 rounded-ss-sm bg-[var(--ss-warn)] hover:opacity-90 transition-colors duration-base ease-out text-white">
               {t('lan_session.action_make_candidate')}
             </button>
           )}
           {p.connection_role === 'camera_candidate' && (
             <button onClick={() => onActivateCamera(p)}
-              className="text-[10px] px-2 py-1 rounded bg-red-600 hover:bg-red-500 text-white">
+              className="text-[10px] px-2 py-1 rounded-ss-sm bg-[var(--ss-bad)] hover:opacity-90 transition-colors duration-base ease-out text-white">
               {t('lan_session.action_activate_camera')}
             </button>
           )}
           {p.connection_role === 'active_camera' && (
             <>
               <button onClick={() => onRequestCamera(p)}
-                className="text-[10px] px-2 py-1 rounded bg-red-700 hover:bg-red-600 text-white flex items-center gap-0.5">
+                className="text-[10px] px-2 py-1 rounded-ss-sm bg-[var(--ss-bad)] hover:opacity-90 transition-colors duration-base ease-out text-white flex items-center gap-0.5">
                 <MIcon name="videocam" size={9} />{isStaleCamera ? t('handoff.stale_rerequest') : 'カメラ再リクエスト'}
               </button>
               <button onClick={() => onDeactivate(p)}
-                className="text-[10px] px-2 py-1 rounded bg-gray-600 hover:bg-gray-500 text-white">
+                className="text-[10px] px-2 py-1 rounded-ss-sm bg-[var(--ss-t2)] hover:opacity-90 transition-colors duration-base ease-out text-white">
                 {t('lan_session.action_deactivate')}
               </button>
             </>
@@ -476,27 +476,27 @@ function DeviceRow({ p, _isLight, titleColor, subColor, rowBg, onApprove, onReje
           {p.device_class !== 'phone' && (
             p.viewer_permission !== 'allowed' ? (
               <button onClick={() => onAllowVideo(p)}
-                className="text-[10px] px-2 py-1 rounded bg-blue-700 hover:bg-blue-600 text-white flex items-center gap-0.5">
+                className="text-[10px] px-2 py-1 rounded-ss-sm bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] transition-colors duration-base ease-out text-white flex items-center gap-0.5">
                 <MIcon name="shield" size={9} />{t('lan_session.action_allow_receive')}
               </button>
             ) : (
               <button onClick={() => onBlockVideo(p)}
-                className="text-[10px] px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-white flex items-center gap-0.5">
+                className="text-[10px] px-2 py-1 rounded-ss-sm bg-[var(--ss-surface-3)] hover:bg-[var(--ss-border-strong)] transition-colors duration-base ease-out text-[var(--ss-t1)] flex items-center gap-0.5">
                 <MIcon name="gpp_bad" size={9} />{t('lan_session.action_stop_receive')}
               </button>
             )
           )}
           {p.device_class === 'phone' && (
-            <span className="text-[9px] text-gray-500">{t('viewer_relay.phone_blocked')}</span>
+            <span className="text-[9px] text-[var(--ss-t3)]">{t('viewer_relay.phone_blocked')}</span>
           )}
         </div>
       )}
       {p.approval_status === 'pending' && (
         <div className="flex gap-1.5 mt-2">
-          <button onClick={() => onApprove(p)} className="text-[10px] px-2 py-0.5 rounded bg-green-600 hover:bg-green-500 text-white flex items-center gap-0.5">
+          <button onClick={() => onApprove(p)} className="text-[10px] px-2 py-0.5 rounded-ss-sm bg-[var(--ss-success)] hover:opacity-90 transition-colors duration-base ease-out text-white flex items-center gap-0.5">
             <MIcon name="check_circle" size={10} />{t('device_approval.approve')}
           </button>
-          <button onClick={() => onReject(p)} className="text-[10px] px-2 py-0.5 rounded bg-red-700 hover:bg-red-600 text-white flex items-center gap-0.5">
+          <button onClick={() => onReject(p)} className="text-[10px] px-2 py-0.5 rounded-ss-sm bg-[var(--ss-bad)] hover:opacity-90 transition-colors duration-base ease-out text-white flex items-center gap-0.5">
             <MIcon name="cancel" size={10} />{t('device_approval.reject')}
           </button>
         </div>
@@ -519,10 +519,10 @@ function DeviceGroupedList({ participants, isLight, titleColor, subColor, rowBg,
   const others = participants.filter((p) => !['active_camera', 'camera_candidate', 'viewer'].includes(p.connection_role))
 
   const GroupHeader = ({ label, iconName, count }: { label: string; iconName: string; count: number }) => (
-    <div className={`flex items-center gap-1.5 text-[10px] font-medium py-1.5 ${isLight ? 'text-gray-500' : 'text-gray-500'}`}>
+    <div className="flex items-center gap-1.5 text-[10px] font-medium py-1.5 text-[var(--ss-t3)]">
       <MIcon name={iconName} size={11} />
       <span className="uppercase tracking-wide">{label}</span>
-      <span className={`ml-auto text-[9px] px-1.5 py-0.5 rounded-full ${isLight ? 'bg-gray-200 text-gray-500' : 'bg-gray-700 text-gray-400'}`}>{count}</span>
+      <span className="ml-auto text-[9px] px-1.5 py-0.5 rounded-ss-pill bg-[var(--ss-surface-3)] text-[var(--ss-t3)]">{count}</span>
     </div>
   )
 
@@ -727,17 +727,19 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
   }
 
   // ─── スタイル ────────────────────────────────────────────────────────
+  // NOTE: トークンはテーマ (data-theme) に応じて自動的に値が切り替わるため、
+  // isLight による分岐は不要になったが、他コンポーネントへ渡す props 形状は維持する。
 
-  const panelBg = isLight ? 'bg-white border border-gray-200 shadow-xl' : 'bg-gray-800 border border-gray-700 shadow-2xl'
-  const titleColor = isLight ? 'text-gray-900' : 'text-white'
-  const subColor = isLight ? 'text-gray-500' : 'text-gray-400'
-  const rowBg = isLight ? 'bg-gray-50 hover:bg-gray-100' : 'bg-gray-700/50 hover:bg-gray-700'
-  const divider = isLight ? 'border-gray-200' : 'border-gray-700'
-  const tabActive = isLight ? 'border-blue-500 text-blue-600' : 'border-blue-400 text-blue-300'
-  const tabInactive = isLight ? 'border-transparent text-gray-500 hover:text-gray-700' : 'border-transparent text-gray-500 hover:text-gray-300'
+  const panelBg = 'bg-[var(--ss-surface-1)] border border-[var(--ss-border)] shadow-card'
+  const titleColor = 'text-[var(--ss-t1)]'
+  const subColor = 'text-[var(--ss-t3)]'
+  const rowBg = 'bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)]'
+  const divider = 'border-[var(--ss-border)]'
+  const tabActive = 'border-[var(--ss-brand)] text-[var(--ss-brand)]'
+  const tabInactive = 'border-transparent text-[var(--ss-t3)] hover:text-[var(--ss-t1)]'
 
   return (
-    <div className={`rounded-xl w-[420px] p-5 max-h-[88vh] overflow-y-auto ${panelBg}`}>
+    <div className={`rounded-ss-lg w-[420px] p-5 max-h-[88vh] overflow-y-auto ${panelBg}`}>
       {/* ヘッダー */}
       <div className="flex items-center justify-between mb-3">
         <p className={`text-sm font-semibold ${titleColor}`}>{t('lan_session.device_manager_title')}</p>
@@ -745,7 +747,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
           <button
             onClick={handlePurgeDisconnected}
             title={t('auto.DeviceManagerPanel.k12')}
-            className={`${subColor} hover:text-red-400`}
+            className={`${subColor} hover:text-[var(--ss-bad)] transition-colors duration-base ease-out`}
           >
             <MIcon name="delete" size={14} />
           </button>
@@ -762,7 +764,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors ${
+            className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors duration-base ease-out ${
               activeTab === tab ? tabActive : tabInactive
             }`}
           >
@@ -772,14 +774,14 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
       </div>
 
       {/* ─── リモート診断パネル ── */}
-      <div className={`mb-3 rounded-lg px-3 py-2 space-y-1 text-[10px] ${isLight ? 'bg-gray-50 border border-gray-200' : 'bg-gray-900/60 border border-gray-700'}`}>
-        <p className={`text-[9px] font-semibold uppercase tracking-wider mb-1.5 ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>{t('auto.DeviceManagerPanel.k3')}</p>
+      <div className="mb-3 rounded-ss-md px-3 py-2 space-y-1 text-[10px] bg-[var(--ss-surface-2)] border border-[var(--ss-border)]">
+        <p className="text-[9px] font-semibold uppercase tracking-wider mb-1.5 text-[var(--ss-t3)]">{t('auto.DeviceManagerPanel.k3')}</p>
 
         {/* シグナリング (WS) */}
         <div className="flex items-center gap-1.5">
-          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${wsConnected ? 'bg-green-400' : wsReconnecting ? 'bg-amber-400 animate-pulse' : 'bg-gray-500'}`} />
-          <span className={isLight ? 'text-gray-500' : 'text-gray-400'}>{t('auto.DeviceManagerPanel.k4')}</span>
-          <span className={wsConnected ? 'text-green-400' : wsReconnecting ? 'text-amber-400' : 'text-gray-500'}>
+          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${wsConnected ? 'bg-[var(--ss-success)]' : wsReconnecting ? 'bg-[var(--ss-warn)] animate-pulse' : 'bg-[var(--ss-t3)]'}`} />
+          <span className="text-[var(--ss-t2)]">{t('auto.DeviceManagerPanel.k4')}</span>
+          <span className={wsConnected ? 'text-[var(--ss-success)]' : wsReconnecting ? 'text-[var(--ss-warn)]' : 'text-[var(--ss-t3)]'}>
             {wsConnected ? '接続中' : wsReconnecting ? `再接続中 (${wsReconnectCount}/5)` : '未接続'}
           </span>
         </div>
@@ -787,37 +789,37 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
         {/* P2P (WebRTC) */}
         <div className="flex items-center gap-1.5">
           <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-            connectionState === 'connected' ? 'bg-green-400'
-            : connectionState === 'failed' ? 'bg-red-400'
-            : connectionState === 'connecting' ? 'bg-amber-400 animate-pulse'
-            : 'bg-gray-500'
+            connectionState === 'connected' ? 'bg-[var(--ss-success)]'
+            : connectionState === 'failed' ? 'bg-[var(--ss-bad)]'
+            : connectionState === 'connecting' ? 'bg-[var(--ss-warn)] animate-pulse'
+            : 'bg-[var(--ss-t3)]'
           }`} />
-          <span className={isLight ? 'text-gray-500' : 'text-gray-400'}>{t('auto.DeviceManagerPanel.k5')}</span>
+          <span className="text-[var(--ss-t2)]">{t('auto.DeviceManagerPanel.k5')}</span>
           <span className={
-            connectionState === 'connected' ? 'text-green-400'
-            : connectionState === 'failed' ? 'text-red-400'
-            : 'text-gray-400'
+            connectionState === 'connected' ? 'text-[var(--ss-success)]'
+            : connectionState === 'failed' ? 'text-[var(--ss-bad)]'
+            : 'text-[var(--ss-t3)]'
           }>{connectionState ?? '待機中'}</span>
         </div>
 
         {/* ICE 収集状態 */}
         {iceGatheringState && (
           <div className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-gray-500" />
-            <span className={isLight ? 'text-gray-500' : 'text-gray-400'}>{t('auto.DeviceManagerPanel.k6')}</span>
-            <span className="text-gray-400">{iceGatheringState}</span>
+            <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-[var(--ss-t3)]" />
+            <span className="text-[var(--ss-t2)]">{t('auto.DeviceManagerPanel.k6')}</span>
+            <span className="text-[var(--ss-t3)]">{iceGatheringState}</span>
           </div>
         )}
 
         {/* TURN 使用状況 */}
         <div className="flex items-center gap-1.5">
-          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${turnInUse === true ? 'bg-blue-400' : 'bg-gray-500'}`} />
-          <span className={isLight ? 'text-gray-500' : 'text-gray-400'}>{t('auto.DeviceManagerPanel.k7')}</span>
+          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${turnInUse === true ? 'bg-[var(--ss-brand)]' : 'bg-[var(--ss-t3)]'}`} />
+          <span className="text-[var(--ss-t2)]">{t('auto.DeviceManagerPanel.k7')}</span>
           {turnInUse === null
-            ? <span className="text-gray-500">{t('auto.DeviceManagerPanel.k8')}</span>
+            ? <span className="text-[var(--ss-t3)]">{t('auto.DeviceManagerPanel.k8')}</span>
             : turnInUse
-              ? <span className="text-blue-400">{t('auto.DeviceManagerPanel.k9')}</span>
-              : <span className="text-gray-400">{t('auto.DeviceManagerPanel.k10')}</span>
+              ? <span className="text-[var(--ss-brand)]">{t('auto.DeviceManagerPanel.k9')}</span>
+              : <span className="text-[var(--ss-t3)]">{t('auto.DeviceManagerPanel.k10')}</span>
           }
         </div>
       </div>
@@ -827,19 +829,17 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
         <div className="mb-4 relative">
           <div className="flex items-center justify-between mb-1">
             <p className={`text-[10px] ${subColor}`}>
-              <span className="inline-block w-2 h-2 rounded-full bg-red-500 mr-1 animate-pulse" />
+              <span className="inline-block w-2 h-2 rounded-full bg-[var(--ss-bad)] mr-1 animate-pulse" />
               {t('auto.DeviceManagerPanel.remote_receiving', { id: activeParticipantId })}
-              {turnInUse === true && <span className="ml-2 text-blue-400">{t('auto.DeviceManagerPanel.turn')}</span>}
-              {turnInUse === false && <span className="ml-2 text-gray-500">{t('auto.DeviceManagerPanel.p2p')}</span>}
+              {turnInUse === true && <span className="ml-2 text-[var(--ss-brand)]">{t('auto.DeviceManagerPanel.turn')}</span>}
+              {turnInUse === false && <span className="ml-2 text-[var(--ss-t3)]">{t('auto.DeviceManagerPanel.p2p')}</span>}
             </p>
             <button
               onClick={() => setRealtimeYoloOn((v) => !v)}
-              className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
+              className={`text-[10px] px-2 py-0.5 rounded-ss-pill border transition-colors duration-base ease-out ${
                 realtimeYoloOn
-                  ? 'border-green-500 bg-green-500/15 text-green-400'
-                  : isLight
-                    ? 'border-gray-300 text-gray-600 hover:border-gray-400'
-                    : 'border-gray-600 text-gray-400 hover:border-gray-500'
+                  ? 'border-[var(--ss-success)] bg-[var(--ss-success-tint)] text-[var(--ss-success)]'
+                  : 'border-[var(--ss-border-strong)] text-[var(--ss-t2)] hover:border-[var(--ss-t3)]'
               }`}
               title={t('auto.DeviceManagerPanel.k13')}
             >
@@ -853,7 +853,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
             <video
               ref={remoteVideoRef}
               autoPlay playsInline muted
-              className="w-full rounded-lg aspect-video bg-black object-contain"
+              className="w-full rounded-ss-md aspect-video bg-black object-contain"
             />
             <LiveInferenceOverlay
               videoRef={remoteVideoRef}
@@ -868,7 +868,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
             )}
           </div>
           {realtimeYoloOn && realtimeYolo.error && (
-            <p className="text-[10px] text-red-400 mt-1">{realtimeYolo.error}</p>
+            <p className="text-[10px] text-[var(--ss-bad)] mt-1">{realtimeYolo.error}</p>
           )}
         </div>
       )}
@@ -878,17 +878,17 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
         <div className="mb-4">
           <div className="flex items-center justify-between mb-1">
             <p className={`text-[10px] ${subColor}`}>
-              <span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1 animate-pulse" />
+              <span className="inline-block w-2 h-2 rounded-full bg-[var(--ss-success)] mr-1 animate-pulse" />
               {t('auto.DeviceManagerPanel.local_camera')}
             </p>
-            <button onClick={handleStopLocal} className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1">
+            <button onClick={handleStopLocal} className="text-xs text-[var(--ss-bad)] hover:opacity-80 transition-colors duration-base ease-out flex items-center gap-1">
               <MIcon name="videocam_off" size={12} />{t('lan_session.local_source_stop')}
             </button>
           </div>
           <video
             ref={localVideoRef}
             autoPlay playsInline muted
-            className="w-full rounded-lg aspect-video bg-black object-contain"
+            className="w-full rounded-ss-md aspect-video bg-black object-contain"
           />
         </div>
       )}
@@ -899,9 +899,9 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
         <>
           {/* 承認待ちバナー */}
           {participants.filter((p) => p.approval_status === 'pending').length > 0 && (
-            <div className="mb-3 px-3 py-2 rounded-lg border border-amber-500/40 bg-amber-500/10 flex items-center gap-2">
-              <MIcon name="warning" size={12} className="text-amber-400 flex-shrink-0" />
-              <p className="text-xs text-amber-400">
+            <div className="mb-3 px-3 py-2 rounded-ss-md border border-[var(--ss-warning-border)] bg-[var(--ss-warn-tint)] flex items-center gap-2">
+              <MIcon name="warning" size={12} className="text-[var(--ss-warn)] flex-shrink-0" />
+              <p className="text-xs text-[var(--ss-warn)]">
                 {t('auto.DeviceManagerPanel.pending_devices')}
               </p>
             </div>
@@ -936,13 +936,13 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
             <div className={`border-t pt-3 mt-3 ${divider}`}>
               <p className={`text-xs font-medium mb-2 ${titleColor}`}>{t('lan_session.local_sources_label')}</p>
               {localCameraError && (
-                <p className="text-[10px] text-red-400 mb-2 flex items-center gap-1">
+                <p className="text-[10px] text-[var(--ss-bad)] mb-2 flex items-center gap-1">
                   <MIcon name="cancel" size={10} />{localCameraError}
                 </p>
               )}
               <div className="space-y-1.5">
                 {localSources.map((src) => (
-                  <div key={src.deviceId} className={`flex items-center gap-2 rounded-lg px-3 py-2 ${rowBg}`}>
+                  <div key={src.deviceId} className={`flex items-center gap-2 rounded-ss-md px-3 py-2 ${rowBg}`}>
                     <MIcon name="photo_camera" size={12} className={subColor} />
                     <span className={`flex-1 text-xs truncate ${titleColor}`}>{src.label}</span>
                     <span className={`text-[10px] ${subColor}`}>
@@ -950,12 +950,12 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
                     </span>
                     {localActiveId === src.deviceId ? (
                       <button onClick={handleStopLocal}
-                        className="text-[10px] px-2 py-0.5 rounded bg-gray-600 hover:bg-gray-500 text-white">
+                        className="text-[10px] px-2 py-0.5 rounded-ss-sm bg-[var(--ss-surface-3)] hover:bg-[var(--ss-border-strong)] transition-colors duration-base ease-out text-[var(--ss-t1)]">
                         {t('lan_session.local_source_stop')}
                       </button>
                     ) : (
                       <button onClick={() => handleSelectLocalSource(src)}
-                        className="text-[10px] px-2 py-0.5 rounded bg-blue-600 hover:bg-blue-500 text-white">
+                        className="text-[10px] px-2 py-0.5 rounded-ss-sm bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] transition-colors duration-base ease-out text-white">
                         {t('lan_session.local_source_select')}
                       </button>
                     )}
@@ -976,7 +976,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
       {handoffTarget && (
         <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60" onClick={() => setHandoffTarget(null)}>
           <div
-            className={`rounded-xl p-5 w-72 shadow-2xl ${isLight ? 'bg-white border border-gray-200' : 'bg-gray-800 border border-gray-700'}`}
+            className="rounded-ss-lg p-5 w-72 shadow-pop bg-[var(--ss-surface-1)] border border-[var(--ss-border)]"
             onClick={(e) => e.stopPropagation()}
           >
             <p className={`text-sm font-semibold mb-1 ${titleColor}`}>{t('handoff.confirm_title')}</p>
@@ -985,10 +985,10 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
               <span className="font-medium">{handoffTarget.device_name ?? `デバイス #${handoffTarget.id}`}</span>
             </p>
             <div className="flex gap-2">
-              <button onClick={confirmHandoff} className="flex-1 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm">
+              <button onClick={confirmHandoff} className="flex-1 py-2 rounded-ss-md bg-[var(--ss-bad)] hover:opacity-90 transition-colors duration-base ease-out text-white text-sm">
                 {t('handoff.confirm_ok')}
               </button>
-              <button onClick={() => setHandoffTarget(null)} className={`flex-1 py-2 rounded-lg text-sm ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-700' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}>
+              <button onClick={() => setHandoffTarget(null)} className="flex-1 py-2 rounded-ss-md text-sm bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] transition-colors duration-base ease-out text-[var(--ss-t1)]">
                 {t('handoff.confirm_cancel')}
               </button>
             </div>
@@ -1000,16 +1000,16 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
       {localSwitchPending && (
         <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60" onClick={() => setLocalSwitchPending(null)}>
           <div
-            className={`rounded-xl p-5 w-72 shadow-2xl ${isLight ? 'bg-white border border-gray-200' : 'bg-gray-800 border border-gray-700'}`}
+            className="rounded-ss-lg p-5 w-72 shadow-pop bg-[var(--ss-surface-1)] border border-[var(--ss-border)]"
             onClick={(e) => e.stopPropagation()}
           >
             <p className={`text-sm font-semibold mb-1 ${titleColor}`}>{t('handoff.local_switch_confirm')}</p>
             <p className={`text-xs mb-4 ${subColor}`}>{localSwitchPending.label}</p>
             <div className="flex gap-2">
-              <button onClick={confirmLocalSwitch} className="flex-1 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm">
+              <button onClick={confirmLocalSwitch} className="flex-1 py-2 rounded-ss-md bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] transition-colors duration-base ease-out text-white text-sm">
                 {t('handoff.local_switch_ok')}
               </button>
-              <button onClick={() => setLocalSwitchPending(null)} className={`flex-1 py-2 rounded-lg text-sm ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-700' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}>
+              <button onClick={() => setLocalSwitchPending(null)} className="flex-1 py-2 rounded-ss-md text-sm bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] transition-colors duration-base ease-out text-[var(--ss-t1)]">
                 {t('handoff.local_switch_cancel')}
               </button>
             </div>

@@ -13,8 +13,8 @@ interface Props {
 // 共通: 5 択ラジオで質問を縦並びレンダ。進捗表示は親側に委ねる。
 export function QuestionnaireRunner({ items, responses, onChange, isLight }: Props) {
   const { t } = useTranslation()
-  const panelCls = isLight ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'
-  const labelMuted = isLight ? 'text-gray-600' : 'text-gray-400'
+  const panelCls = 'bg-[var(--ss-surface-1)] border-[var(--ss-border)]'
+  const labelMuted = 'text-[var(--ss-t2)]'
 
   // 質問ごとに入力開始時刻と value 変更回数を保持 (テレメトリ用)
   const startedAtRef = useRef<Record<string, number>>({})
@@ -48,17 +48,17 @@ export function QuestionnaireRunner({ items, responses, onChange, isLight }: Pro
         const scaleName = t(`condition.scale.${q.scale}.name`)
         const factorLabel = q.factor === 'V' || q.factor === 'AUX' ? q.factor : t(`condition.factor.${q.factor}`)
         return (
-          <div key={q.id} className={`border rounded-lg p-3 ${panelCls}`}>
+          <div key={q.id} className={`border rounded-ss-lg p-3 ${panelCls}`}>
             <div className="flex flex-wrap items-center gap-2 mb-2">
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-blue-600/20 text-blue-400 border border-blue-500/30">
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded-ss-sm text-[10px] font-mono bg-[var(--ss-brand-tint)] text-[var(--ss-brand)] border border-[var(--ss-brand-border)]">
                 {q.factor}
               </span>
               <span className={`text-[10px] ${labelMuted}`}>{factorLabel}</span>
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-purple-600/20 text-purple-400 border border-purple-500/30">
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded-ss-sm text-[10px] bg-[var(--ss-surface-2)] text-[var(--ss-t2)] border border-[var(--ss-border-strong)]">
                 {scaleName}
               </span>
             </div>
-            <div className="text-sm mb-2">{t(q.text_key)}</div>
+            <div className="text-sm mb-2 text-[var(--ss-t1)]">{t(q.text_key)}</div>
             <div className="grid grid-cols-5 gap-1">
               {[1, 2, 3, 4, 5].map((n) => (
                 <button
@@ -66,16 +66,14 @@ export function QuestionnaireRunner({ items, responses, onChange, isLight }: Pro
                   type="button"
                   onClick={() => set(q.id, n)}
                   className={
-                    'text-[11px] py-2 rounded border transition-colors ' +
+                    'text-[11px] py-2 rounded-ss-md border transition-colors duration-fast ease-out ' +
                     (current === n
-                      ? 'bg-blue-600 border-blue-600 text-white'
-                      : isLight
-                      ? 'bg-gray-50 border-gray-300 text-gray-700 hover:bg-gray-100'
-                      : 'bg-gray-900 border-gray-600 text-gray-300 hover:bg-gray-700')
+                      ? 'bg-[var(--ss-brand)] border-[var(--ss-brand)] text-white'
+                      : 'bg-[var(--ss-surface-2)] border-[var(--ss-border-strong)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-3)]')
                   }
                   title={t(`condition.scale.${q.scale}.${n}` as unknown as string) as string}
                 >
-                  <div className="font-bold">{n}</div>
+                  <div className="font-bold ss-num">{n}</div>
                   <div className="opacity-75 leading-tight line-clamp-2 px-1">
                     {t(`condition.scale.${q.scale}.${n}` as unknown as string)}
                   </div>

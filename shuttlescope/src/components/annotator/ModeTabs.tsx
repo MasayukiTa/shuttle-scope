@@ -48,11 +48,11 @@ export function ModeTabs({ isMobile, className }: ModeTabsProps) {
             aria-selected={active}
             onClick={() => setMode(key)}
             className={clsx(
-              'flex items-center gap-1 rounded font-medium transition-colors',
+              'flex items-center gap-1 rounded-ss-md font-medium transition-colors duration-base ease-out',
               isMobile ? 'px-1.5 py-1 text-[10px]' : 'px-2.5 py-1.5 text-xs',
               active
-                ? 'bg-blue-600 text-white'
-                : 'bg-transparent text-gray-400 hover:text-white hover:bg-gray-700',
+                ? 'bg-[var(--ss-brand)] text-white'
+                : 'bg-transparent text-[var(--ss-t2)] hover:text-[var(--ss-t1)] hover:bg-[var(--ss-surface-3)]',
             )}
             title={label}
           >

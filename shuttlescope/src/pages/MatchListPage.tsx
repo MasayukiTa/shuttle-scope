@@ -67,11 +67,9 @@ export function MatchListPage() {
   const { card, textHeading, textSecondary, textMuted, textFaint, isLight } = useCardTheme()
   const { role, playerId, teamName } = useAuth()
 
-  const bodyBg = isLight ? 'bg-gray-50' : 'bg-gray-900'
-  const borderLine = isLight ? 'border-gray-200' : 'border-gray-700'
-  const inputClass = isLight
-    ? 'bg-white border border-gray-300 rounded px-3 py-2 text-sm text-gray-900'
-    : 'bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white'
+  const bodyBg = 'bg-[var(--ss-bg-app)]'
+  const borderLine = 'border-[var(--ss-border)]'
+  const inputClass = 'bg-[var(--ss-surface-1)] border border-[var(--ss-border-strong)] rounded-[var(--r-md)] px-3 py-2 text-sm text-[var(--ss-t1)]'
 
   const [showForm, setShowForm] = useState(false)
   const [showQuickStart, setShowQuickStart] = useState(false)
@@ -567,20 +565,20 @@ export function MatchListPage() {
     // 内側の flex-1 overflow-y-auto に頼らず、ページ全体を 1 つの scroll container
     // にすることで、filter を含めて自然にスクロール出来るようにする。
     // ※ 並んで sticky にすべき要素 (header) があれば後で position:sticky で対処。
-    <div className={`h-full overflow-y-auto flex flex-col ${bodyBg} ${isLight ? 'text-gray-900' : 'text-white'}`}>
+    <div className={`h-full overflow-y-auto flex flex-col ${bodyBg} text-[var(--ss-t1)]`}>
       {/* ヘッダー */}
       <div className={`flex items-center justify-between gap-2 flex-wrap px-6 py-4 border-b ${borderLine}`}>
         <h1 className={`text-xl font-semibold ${textHeading}`}>{t('nav.matches')}</h1>
         <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => setShowQuickStart(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-yellow-600 hover:bg-yellow-500 text-white font-semibold rounded text-sm"
+            className="flex items-center gap-2 px-4 py-2 bg-[var(--ss-warn)] hover:opacity-90 text-white font-semibold rounded-[var(--r-md)] text-sm"
           >
             {t('quick_start.button')}
           </button>
           <button
             onClick={() => { setEditingMatchId(null); setForm(defaultForm()); resetPlayerFields(); setShowForm(true) }}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm"
+            className="flex items-center gap-2 px-4 py-2 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white rounded-[var(--r-md)] text-sm"
           >
             <MIcon name="add" size={16} />
             {t('auto.MatchListPage.k29')}
@@ -589,32 +587,28 @@ export function MatchListPage() {
       </div>
 
       {/* フィルター（モバイルではスクロール内へ移動するため hidden md:flex） */}
-      <div className={`hidden md:flex flex-col gap-2 px-6 py-3 border-b ${borderLine} text-sm ${isLight ? 'bg-gray-100' : 'bg-gray-800'}`}>
+      <div className={`hidden md:flex flex-col gap-2 px-6 py-3 border-b ${borderLine} text-sm bg-[var(--ss-surface-2)]`}>
         {/* テキスト部分検索 */}
         <div className="relative">
-          <MIcon name="search" size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <MIcon name="search" size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--ss-t3)] pointer-events-none" />
           <input
             type="text"
             value={filterText}
             onChange={(e) => setFilterText(e.target.value)}
             placeholder={t('auto.MatchListPage.k13')}
-            className={`w-full pl-8 pr-8 py-1.5 rounded border text-sm ${
-              isLight
-                ? 'bg-white border-gray-300 text-gray-800 placeholder-gray-400'
-                : 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-500'
-            }`}
+            className="w-full pl-8 pr-8 py-1.5 rounded-[var(--r-md)] border border-[var(--ss-border-strong)] text-sm bg-[var(--ss-surface-1)] text-[var(--ss-t1)] placeholder-[var(--ss-t3)]"
           />
           {filterText && (
             <button
               onClick={() => setFilterText('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--ss-t3)] hover:text-[var(--ss-t1)]"
             >
               <MIcon name="close" size={12} />
             </button>
           )}
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          <MIcon name="filter_alt" size={14} className="text-gray-400 shrink-0" />
+          <MIcon name="filter_alt" size={14} className="text-[var(--ss-t3)] shrink-0" />
           <SearchableSelect
             options={playerOptions}
             value={filterPlayer || null}
@@ -626,7 +620,7 @@ export function MatchListPage() {
           <select
             value={filterLevel}
             onChange={(e) => setFilterLevel(e.target.value)}
-            className={`${isLight ? 'bg-white border-gray-300' : 'bg-gray-800 border-gray-700'} border rounded px-2 py-1.5 text-sm`}
+            className="border rounded-[var(--r-md)] px-2 py-1.5 text-sm bg-[var(--ss-surface-1)] border-[var(--ss-border-strong)] text-[var(--ss-t1)]"
           >
             <option value="">{t('match.list.level_all')}</option>
             {['IC', 'IS', 'SJL', '全日本', '国内', 'その他'].map((l) => (
@@ -647,7 +641,7 @@ export function MatchListPage() {
             <select
               value={downloadQuality}
               onChange={(e) => setDownloadQuality(e.target.value)}
-              className={`${isLight ? 'bg-white border-gray-300' : 'bg-gray-700 border-gray-600'} border rounded px-2 py-1 text-sm`}
+              className="border rounded-[var(--r-md)] px-2 py-1 text-sm bg-[var(--ss-surface-1)] border-[var(--ss-border-strong)] text-[var(--ss-t1)]"
             >
               <option value="360">360p</option>
               <option value="480">480p</option>
@@ -658,7 +652,7 @@ export function MatchListPage() {
             <select
               value={downloadCookieBrowser}
               onChange={(e) => setDownloadCookieBrowser(e.target.value)}
-              className={`${isLight ? 'bg-white border-gray-300' : 'bg-gray-700 border-gray-600'} border rounded px-2 py-1 text-sm`}
+              className="border rounded-[var(--r-md)] px-2 py-1 text-sm bg-[var(--ss-surface-1)] border-[var(--ss-border-strong)] text-[var(--ss-t1)]"
               title={t('auto.MatchListPage.k4')}
             >
               <option value="">{t('match.list.cookie_none')}</option>
@@ -691,18 +685,14 @@ export function MatchListPage() {
             <button
               key={p}
               onClick={() => applyDatePreset(p)}
-              className={`text-xs px-2 py-0.5 rounded border ${
-                isLight
-                  ? 'border-gray-300 text-gray-600 hover:bg-gray-200'
-                  : 'border-gray-600 text-gray-400 hover:bg-gray-700'
-              }`}
+              className="text-xs px-2 py-0.5 rounded-[var(--r-md)] border border-[var(--ss-border)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]"
             >
               {p === 'week' ? t('auto.MatchListPage.k30') : p === 'month' ? t('auto.MatchListPage.k31') : t('auto.MatchListPage.k32')}
             </button>
           ))}
           {(filterDateFrom || filterDateTo) && (
             <button
-              className="text-xs text-blue-400 hover:text-blue-300"
+              className="text-xs text-[var(--ss-brand)] hover:text-[var(--ss-brand-hover)]"
               onClick={() => { setFilterDateFrom(null); setFilterDateTo(null) }}
             >
               {t('auto.MatchListPage.k33')}
@@ -713,7 +703,7 @@ export function MatchListPage() {
 
       {/* 一括選択バー（選択時のみ表示） */}
       {selectedMatchIds.size > 0 && (
-        <div className="flex items-center gap-3 flex-wrap gap-y-2 px-6 py-2 bg-blue-600 text-white text-sm shrink-0">
+        <div className="flex items-center gap-3 flex-wrap gap-y-2 px-6 py-2 bg-[var(--ss-brand)] text-white text-sm shrink-0">
           <span className="font-medium">{t('auto.MatchListPage.k34', { n: selectedMatchIds.size })}</span>
           <button
             onClick={() => {
@@ -721,7 +711,7 @@ export function MatchListPage() {
               // R258 R6 P2 fix: noopener,noreferrer 統一
               window.open(`/api/sync/export/match?match_ids=${encodeURIComponent(ids)}`, '_blank', 'noopener,noreferrer')
             }}
-            className="flex items-center gap-1.5 px-3 py-1 bg-white/20 hover:bg-white/30 rounded text-sm"
+            className="flex items-center gap-1.5 px-3 py-1 bg-white/20 hover:bg-white/30 rounded-[var(--r-md)] text-sm"
           >
             <MIcon name="download" size={13} />
             {t('auto.MatchListPage.k35')}
@@ -740,31 +730,27 @@ export function MatchListPage() {
          の landscape phone で内側 scroll が高さ 0 になり list 行が見えない問題対策)。 */}
       <div className="px-3 md:px-6 py-4">
         {/* モバイル用フィルター（スクロールで上に消える） */}
-        <div className={`md:hidden flex flex-col gap-2 -mx-3 px-3 py-3 mb-3 border-b ${borderLine} text-sm ${isLight ? 'bg-gray-100' : 'bg-gray-800'}`}>
+        <div className={`md:hidden flex flex-col gap-2 -mx-3 px-3 py-3 mb-3 border-b ${borderLine} text-sm bg-[var(--ss-surface-2)]`}>
           <div className="relative">
-            <MIcon name="search" size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <MIcon name="search" size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--ss-t3)] pointer-events-none" />
             <input
               type="text"
               value={filterText}
               onChange={(e) => setFilterText(e.target.value)}
               placeholder={t('auto.MatchListPage.k13')}
-              className={`w-full pl-8 pr-8 py-1.5 rounded border text-sm ${
-                isLight
-                  ? 'bg-white border-gray-300 text-gray-800 placeholder-gray-400'
-                  : 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-500'
-              }`}
+              className="w-full pl-8 pr-8 py-1.5 rounded-[var(--r-md)] border border-[var(--ss-border-strong)] text-sm bg-[var(--ss-surface-1)] text-[var(--ss-t1)] placeholder-[var(--ss-t3)]"
             />
             {filterText && (
               <button
                 onClick={() => setFilterText('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--ss-t3)] hover:text-[var(--ss-t1)]"
               >
                 <MIcon name="close" size={12} />
               </button>
             )}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <MIcon name="filter_alt" size={14} className="text-gray-400 shrink-0" />
+            <MIcon name="filter_alt" size={14} className="text-[var(--ss-t3)] shrink-0" />
             <SearchableSelect
               options={playerOptions}
               value={filterPlayer || null}
@@ -776,7 +762,7 @@ export function MatchListPage() {
             <select
               value={filterLevel}
               onChange={(e) => setFilterLevel(e.target.value)}
-              className={`${isLight ? 'bg-white border-gray-300' : 'bg-gray-800 border-gray-700'} border rounded px-2 py-1.5 text-sm`}
+              className="border rounded-[var(--r-md)] px-2 py-1.5 text-sm bg-[var(--ss-surface-1)] border-[var(--ss-border-strong)] text-[var(--ss-t1)]"
             >
               <option value="">{t('match.list.level_all')}</option>
               {['IC', 'IS', 'SJL', '全日本', '国内', 'その他'].map((l) => (
@@ -802,18 +788,14 @@ export function MatchListPage() {
               <button
                 key={p}
                 onClick={() => applyDatePreset(p)}
-                className={`text-xs px-2 py-0.5 rounded border ${
-                  isLight
-                    ? 'border-gray-300 text-gray-600 hover:bg-gray-200'
-                    : 'border-gray-600 text-gray-400 hover:bg-gray-700'
-                }`}
+                className="text-xs px-2 py-0.5 rounded-[var(--r-md)] border border-[var(--ss-border)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-3)]"
               >
                 {p === 'week' ? t('auto.MatchListPage.k30') : p === 'month' ? t('auto.MatchListPage.k31') : t('auto.MatchListPage.k32')}
               </button>
             ))}
             {(filterDateFrom || filterDateTo) && (
               <button
-                className="text-xs text-blue-400 hover:text-blue-300"
+                className="text-xs text-[var(--ss-brand)] hover:text-[var(--ss-brand-hover)]"
                 onClick={() => { setFilterDateFrom(null); setFilterDateTo(null) }}
               >
                 {t('auto.MatchListPage.k33')}
@@ -828,7 +810,7 @@ export function MatchListPage() {
             <p className="mb-4">{t('auto.MatchListPage.k37')}</p>
             <button
               onClick={() => navigate('/getting-started')}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm"
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white rounded-[var(--r-md)] text-sm"
             >
               <MIcon name="menu_book" size={16} />
               {t('getting_started.title')}
@@ -855,7 +837,7 @@ export function MatchListPage() {
             {/* ── デスクトップ: テーブル ─────────────────────────────── */}
             <table className="hidden md:table w-full text-sm">
               <thead>
-                <tr className={`${textSecondary} border-b ${borderLine}`}>
+                <tr className={`${textSecondary} border-b ${borderLine} bg-[var(--ss-surface-2)]`}>
                   {/* 一括選択チェックボックス */}
                   <th className="py-2 pr-2 w-6">
                     <input
@@ -922,9 +904,7 @@ export function MatchListPage() {
                         )}
                       </button>
                       {showStatusDropdown && (
-                        <div className={`absolute top-full left-0 mt-1 z-50 rounded shadow-lg border min-w-[90px] text-xs py-0.5 ${
-                          isLight ? 'bg-white border-gray-200 text-gray-800' : 'bg-gray-900 border-gray-700 text-gray-100'
-                        }`}>
+                        <div className="absolute top-full left-0 mt-1 z-50 rounded-[var(--r-md)] shadow-lg border border-[var(--ss-border)] min-w-[90px] text-xs py-0.5 bg-[var(--ss-surface-1)]">
                           {([
                             { key: 'pending',    label: t('auto.MatchListPage.k20') },
                             { key: 'in_progress', label: t('auto.MatchListPage.k21') },
@@ -934,8 +914,8 @@ export function MatchListPage() {
                               key={key}
                               className={`w-full text-left px-3 py-1.5 flex items-center gap-1.5 ${
                                 statusSortTarget === key
-                                  ? isLight ? 'bg-blue-50 font-semibold text-blue-700' : 'bg-blue-900/30 font-semibold text-blue-300'
-                                  : isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-800'
+                                  ? 'bg-[var(--ss-brand-tint)] font-semibold text-[var(--ss-brand)]'
+                                  : 'hover:bg-[var(--ss-surface-2)]'
                               }`}
                               onClick={() => {
                                 setStatusSortTarget(statusSortTarget === key ? null : key)
@@ -988,10 +968,10 @@ export function MatchListPage() {
       {/* 試合登録モーダル */}
       {showForm && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className={`${card} rounded-lg w-full max-w-2xl max-h-[90dvh] overflow-y-auto`}>
+          <div className={`${card} rounded-[var(--r-lg)] w-full max-w-2xl max-h-[90dvh] overflow-y-auto`}>
             <div className={`flex items-center justify-between px-6 py-4 border-b ${borderLine}`}>
               <h2 className={`text-lg font-semibold ${textHeading}`}>{editingMatchId !== null ? t('auto.MatchListPage.k42') : t('auto.MatchListPage.k29')}</h2>
-              <button onClick={() => { setShowForm(false); setEditingMatchId(null); setForm(defaultForm()); resetPlayerFields() }} className={`${textMuted} ${isLight ? 'hover:text-gray-900' : 'hover:text-white'}`}><MIcon name="close" size={12} /></button>
+              <button onClick={() => { setShowForm(false); setEditingMatchId(null); setForm(defaultForm()); resetPlayerFields() }} className={`${textMuted} hover:text-[var(--ss-t1)]`}><MIcon name="close" size={12} /></button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 flex flex-col gap-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1196,7 +1176,7 @@ export function MatchListPage() {
                       <button
                         type="button"
                         onClick={handlePickVideoFile}
-                        className={`flex items-center gap-1 px-2 py-2 ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300' : 'bg-gray-700 hover:bg-gray-600 text-gray-200 border-gray-600'} rounded text-xs whitespace-nowrap border`}
+                        className="flex items-center gap-1 px-2 py-2 bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t1)] border border-[var(--ss-border)] rounded-[var(--r-md)] text-xs whitespace-nowrap"
                       >
                         <MIcon name="folder_open" size={13} />
                         {t('auto.MatchListPage.k49')}
@@ -1214,7 +1194,7 @@ export function MatchListPage() {
                         type="button"
                         onClick={handleFetchTitle}
                         disabled={fetchingTitle}
-                        className={`flex items-center gap-1 px-2 py-2 ${isLight ? 'bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200' : 'bg-blue-900/30 hover:bg-blue-900/50 text-blue-200 border-blue-800'} rounded text-xs whitespace-nowrap border disabled:opacity-50`}
+                        className="flex items-center gap-1 px-2 py-2 bg-[var(--ss-brand-tint)] hover:opacity-90 text-[var(--ss-brand)] border border-[var(--ss-brand)] rounded-[var(--r-md)] text-xs whitespace-nowrap disabled:opacity-50"
                         title={t('match.list.fetch_title')}
                       >
                         <MIcon name="auto_awesome" size={13} />
@@ -1225,7 +1205,7 @@ export function MatchListPage() {
                       <button
                         type="button"
                         onClick={() => setForm((f) => ({ ...f, video_local_path: '' }))}
-                        className={`${textMuted} ${isLight ? 'hover:text-gray-900' : 'hover:text-white'} text-xs px-1`}
+                        className={`${textMuted} hover:text-[var(--ss-t1)] text-xs px-1`}
                         title={t('auto.MatchListPage.k12')}
                       ><MIcon name="close" size={12} /></button>
                     )}
@@ -1246,13 +1226,9 @@ export function MatchListPage() {
                     const pctNum = Math.max(0, Math.min(100, parseFloat(dl.percent ?? '0') || 0))
                     if (isErr) {
                       return (
-                        <div
-                          className={`mt-2 p-2.5 rounded border ${
-                            isLight ? 'border-red-200 bg-red-50' : 'border-red-800 bg-red-900/20'
-                          }`}
-                        >
+                        <div className="mt-2 p-2.5 rounded-[var(--r-md)] border border-[var(--ss-danger)] bg-[var(--ss-danger-tint)]">
                           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
-                            <div className={`flex items-start gap-1.5 text-xs flex-1 min-w-0 ${isLight ? 'text-red-700' : 'text-red-300'}`}>
+                            <div className="flex items-start gap-1.5 text-xs flex-1 min-w-0 text-[var(--ss-danger)]">
                               <MIcon name="error" size={14} className="shrink-0 mt-0.5" />
                               <div className="min-w-0">
                                 <div className="font-medium">{t('auto.MatchListPage.k27')}</div>
@@ -1268,11 +1244,7 @@ export function MatchListPage() {
                                 const m = matches.find((x) => x.id === editingMatchId)
                                 if (m) setDownloadModalMatch(m)
                               }}
-                              className={`shrink-0 inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded text-xs font-medium ${
-                                isLight
-                                  ? 'bg-red-600 hover:bg-red-700 text-white'
-                                  : 'bg-red-700 hover:bg-red-600 text-white'
-                              }`}
+                              className="shrink-0 inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-[var(--r-md)] text-xs font-medium bg-[var(--ss-danger)] hover:opacity-90 text-white"
                             >
                               <MIcon name="download" size={12} />
                               {t('auto.MatchListPage.k50')}
@@ -1282,13 +1254,9 @@ export function MatchListPage() {
                       )
                     }
                     return (
-                      <div
-                        className={`mt-2 p-2.5 rounded border ${
-                          isLight ? 'border-blue-200 bg-blue-50' : 'border-blue-800 bg-blue-900/20'
-                        }`}
-                      >
+                      <div className="mt-2 p-2.5 rounded-[var(--r-md)] border border-[var(--ss-brand)] bg-[var(--ss-brand-tint)]">
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 text-xs mb-1.5">
-                          <span className={`flex items-center gap-1.5 font-medium ${isLight ? 'text-blue-700' : 'text-blue-300'}`}>
+                          <span className="flex items-center gap-1.5 font-medium text-[var(--ss-brand)]">
                             <MIcon name="download" size={13} className="animate-pulse shrink-0" />
                             <span className="truncate">
                               {dl.status === 'queued' && t('auto.MatchListPage.k51')}
@@ -1305,15 +1273,11 @@ export function MatchListPage() {
                             )}
                           </span>
                         </div>
-                        <div className={`h-2 rounded-full overflow-hidden ${isLight ? 'bg-blue-200/60' : 'bg-blue-950'}`}>
+                        <div className="h-2 rounded-full overflow-hidden bg-[var(--ss-brand-tint)]">
                           <div
-                            className={`h-full transition-all duration-300 ${
-                              dl.status === 'downloading'
-                                ? (isLight ? 'bg-blue-500' : 'bg-blue-400')
-                                : (isLight ? 'bg-blue-300 animate-pulse' : 'bg-blue-700 animate-pulse')
-                            }`}
+                            className="h-full transition-all duration-300 bg-[var(--ss-brand)] animate-pulse"
                             style={dl.status === 'downloading'
-                              ? { width: `${pctNum}%` }
+                              ? { width: `${pctNum}%`, animationPlayState: 'paused' }
                               : { width: dl.status === 'processing' ? '100%' : '15%' }}
                           />
                         </div>
@@ -1340,11 +1304,7 @@ export function MatchListPage() {
                             alert(t('match.list.reissue_video_token_failed') + ': ' + errorMessage(err))
                           }
                         }}
-                        className={`text-xs px-3 py-1.5 rounded border ${
-                          isLight
-                            ? 'border-amber-300 text-amber-700 hover:bg-amber-50'
-                            : 'border-amber-700 text-amber-300 hover:bg-amber-900/20'
-                        }`}
+                        className="text-xs px-3 py-1.5 rounded-[var(--r-md)] border border-[var(--ss-warn)] text-[var(--ss-warn)] hover:bg-[var(--ss-warn-tint)]"
                         title={t('match.list.reissue_video_token_hint')}
                       >
                         <span className="inline-flex items-center gap-1"><MIcon name="refresh" size={11} />{t('match.list.reissue_video_token')}</span>
@@ -1368,12 +1328,10 @@ export function MatchListPage() {
                         key={opt.value}
                         type="button"
                         onClick={() => setForm((f) => ({ ...f, initial_server: f.initial_server === opt.value ? '' : opt.value }))}
-                        className={`flex-1 py-1.5 rounded text-sm border ${
+                        className={`flex-1 py-1.5 rounded-[var(--r-md)] text-sm border ${
                           form.initial_server === opt.value
-                            ? 'bg-blue-600 border-blue-500 text-white'
-                            : isLight
-                              ? 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                              : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+                            ? 'bg-[var(--ss-brand)] border-[var(--ss-brand)] text-white'
+                            : 'bg-[var(--ss-surface-1)] border-[var(--ss-border)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-2)]'
                         }`}
                       >
                         {opt.label}
@@ -1392,12 +1350,10 @@ export function MatchListPage() {
                         key={opt.value}
                         type="button"
                         onClick={() => setAnalystSide(opt.value)}
-                        className={`flex-1 py-1.5 rounded text-sm border ${
+                        className={`flex-1 py-1.5 rounded-[var(--r-md)] text-sm border ${
                           analystSide === opt.value
-                            ? 'bg-blue-600 border-blue-500 text-white'
-                            : isLight
-                              ? 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                              : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+                            ? 'bg-[var(--ss-brand)] border-[var(--ss-brand)] text-white'
+                            : 'bg-[var(--ss-surface-1)] border-[var(--ss-border)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-2)]'
                         }`}
                       >
                         {opt.label}
@@ -1435,7 +1391,7 @@ export function MatchListPage() {
                 <button
                   type="submit"
                   disabled={createMatch.isPending || updateMatch.isPending}
-                  className="flex-1 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm font-medium disabled:opacity-50"
+                  className="flex-1 py-2 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white rounded-[var(--r-md)] text-sm font-medium disabled:opacity-50"
                 >
                   {editingMatchId !== null
                     ? (updateMatch.isPending ? t('auto.MatchListPage.k57') : t('auto.MatchListPage.k58'))
@@ -1444,7 +1400,7 @@ export function MatchListPage() {
                 <button
                   type="button"
                   onClick={() => { setShowForm(false); setEditingMatchId(null); setForm(defaultForm()); resetPlayerFields() }}
-                  className={`flex-1 py-2 ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-700' : 'bg-gray-700 hover:bg-gray-600'} rounded text-sm`}
+                  className="flex-1 py-2 bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t1)] rounded-[var(--r-md)] text-sm"
                 >
                   {t('app.cancel')}
                 </button>

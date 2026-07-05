@@ -4,7 +4,6 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { apiGet } from '@/api/client'
 import { CoGTimeline, CoGPoint } from '@/components/analysis/CoGTimeline'
-import { useTheme } from '@/hooks/useTheme'
 import { MIcon } from '@/components/common/MIcon'
 
 interface MatchSummary {
@@ -19,19 +18,15 @@ interface CoGResponse {
 
 export function CoGDetectionPage({ onBack }: { onBack?: () => void } = {}) {
   const { t } = useTranslation()
-  const { theme } = useTheme()
   const navigate = useNavigate()
-  const isLight = theme === 'light'
 
   const [matchId, setMatchId] = useState<number | null>(null)
   const [strokeId, setStrokeId] = useState<number | null>(null)
   const [side, setSide] = useState<string | undefined>(undefined)
 
-  const bgBase = isLight ? 'bg-gray-50 text-gray-900' : 'bg-gray-900 text-gray-100'
-  const panelBg = isLight ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'
-  const selectCls = `rounded border px-3 py-2 text-sm ${
-    isLight ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-800 border-gray-600 text-gray-100'
-  }`
+  const bgBase = 'bg-[var(--ss-bg-app)] text-[var(--ss-t1)]'
+  const panelBg = 'bg-[var(--ss-surface-1)] border-[var(--ss-border)]'
+  const selectCls = 'rounded-[5px] border-[var(--ss-border-strong)] px-3 py-2 text-sm bg-[var(--ss-surface-1)] text-[var(--ss-t1)] border'
 
   // 試合一覧取得
   const matchesQuery = useQuery<MatchSummary[]>({
@@ -62,16 +57,14 @@ export function CoGDetectionPage({ onBack }: { onBack?: () => void } = {}) {
       <div className="max-w-5xl mx-auto p-4 md:p-6">
         <header className="flex items-center gap-4 mb-6 flex-wrap">
           <button
-            className={`px-4 py-2 rounded text-sm border ${
-              isLight ? 'border-gray-300 hover:bg-gray-100' : 'border-gray-600 hover:bg-gray-700'
-            }`}
+            className="px-4 py-2 rounded-[5px] text-sm border border-[var(--ss-border)] hover:bg-[var(--ss-surface-2)]"
             onClick={() => onBack ? onBack() : navigate(-1)}
           >
             ← {t('cog_detection.back')}
           </button>
           <div>
-            <h1 className="text-xl font-bold">{t('cog_detection.title')}</h1>
-            <p className={`text-sm ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>
+            <h1 className="text-xl font-bold text-[var(--ss-t1)]">{t('cog_detection.title')}</h1>
+            <p className="text-sm text-[var(--ss-t2)]">
               {t('cog_detection.subtitle')}
             </p>
           </div>
@@ -135,21 +128,21 @@ export function CoGDetectionPage({ onBack }: { onBack?: () => void } = {}) {
         </div>
 
         {/* CoG ビジュアライゼーション */}
-        <div className={`rounded-lg border p-4 ${panelBg}`}>
+        <div className={`rounded-[6px] border p-4 ${panelBg}`}>
           {!strokeId && (
-            <div className={`flex items-center justify-center h-48 text-sm ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>
+            <div className="flex items-center justify-center h-48 text-sm text-[var(--ss-t3)]">
               {t('cog_detection.select_stroke')}
             </div>
           )}
           {strokeId && cogQuery.isLoading && (
-            <div className={`flex items-center justify-center h-48 text-sm ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>
+            <div className="flex items-center justify-center h-48 text-sm text-[var(--ss-t3)]">
               {t('cog_detection.loading')}
             </div>
           )}
           {strokeId && !cogQuery.isLoading && (
             <>
               {points.length < 10 && points.length > 0 && (
-                <p className="text-xs text-amber-500 mb-2 inline-flex items-center gap-1"><MIcon name="warning" size={12} />{t('cog_detection.sample_warning')}</p>
+                <p className="text-xs text-[var(--ss-warn)] mb-2 inline-flex items-center gap-1"><MIcon name="warning" size={12} />{t('cog_detection.sample_warning')}</p>
               )}
               <CoGTimeline
                 points={points}
@@ -168,16 +161,16 @@ export function CoGDetectionPage({ onBack }: { onBack?: () => void } = {}) {
                     { label: t('cog_detection.forward_lean'), value: (points.reduce((s, p) => s + p.forward_lean, 0) / points.length).toFixed(3) },
                     { label: t('cog_detection.stability'),    value: (points.reduce((s, p) => s + p.stability_score, 0) / points.length).toFixed(3) },
                   ].map((item) => (
-                    <div key={item.label} className={`rounded border p-3 text-center ${isLight ? 'border-gray-200' : 'border-gray-700'}`}>
-                      <div className="text-xs mb-1">{item.label}</div>
-                      <div className="text-lg font-bold">{item.value}</div>
+                    <div key={item.label} className="rounded-[5px] border border-[var(--ss-border)] p-3 text-center bg-[var(--ss-surface-2)]">
+                      <div className="text-xs text-[var(--ss-t2)] mb-1">{item.label}</div>
+                      <div className="text-lg font-bold ss-num text-[var(--ss-t1)]">{item.value}</div>
                     </div>
                   ))}
                 </div>
               )}
 
               {points.length === 0 && (
-                <div className={`flex items-center justify-center h-24 text-sm ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>
+                <div className="flex items-center justify-center h-24 text-sm text-[var(--ss-t3)]">
                   {t('cog_detection.no_data')}
                 </div>
               )}

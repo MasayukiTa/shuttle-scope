@@ -39,12 +39,12 @@ export function SecurityLogPage() {
   const [secSeverity, setSecSeverity] = useState('')
   const [secIp, setSecIp] = useState('')
 
-  const textHeading = isLight ? 'text-gray-900' : 'text-white'
-  const textMuted = isLight ? 'text-gray-500' : 'text-gray-400'
-  const textSecondary = isLight ? 'text-gray-600' : 'text-gray-300'
-  const cardBg = isLight ? 'bg-white' : 'bg-gray-800'
-  const borderLine = isLight ? 'border-gray-200' : 'border-gray-700'
-  const inputCls = `${isLight ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-white'} border rounded px-2 py-1 text-sm`
+  const textHeading = 'text-[var(--ss-t1)]'
+  const textMuted = 'text-[var(--ss-t3)]'
+  const textSecondary = 'text-[var(--ss-t2)]'
+  const cardBg = 'bg-[var(--ss-surface-1)]'
+  const borderLine = 'border-[var(--ss-border)]'
+  const inputCls = `bg-[var(--ss-surface-1)] border-[var(--ss-border)] text-[var(--ss-t1)] border rounded-ss-md px-2 py-1 text-sm`
 
   const load = async () => {
     setLoading(true)
@@ -109,10 +109,10 @@ export function SecurityLogPage() {
             <button
               key={k}
               onClick={() => setTab(k)}
-              className={`px-3 py-1 rounded border ${
+              className={`px-3 py-1 rounded-ss-md border ${
                 tab === k
-                  ? (isLight ? 'bg-blue-600 text-white border-blue-600' : 'bg-blue-700 text-white border-blue-700')
-                  : (isLight ? 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50' : 'bg-gray-800 border-gray-600 text-gray-200 hover:bg-gray-700')
+                  ? 'bg-[var(--ss-brand)] text-white border-[var(--ss-brand)]'
+                  : 'bg-[var(--ss-surface-1)] border-[var(--ss-border)] text-[var(--ss-t1)]'
               }`}
             >
               {label}
@@ -198,21 +198,19 @@ export function SecurityLogPage() {
             className={`${inputCls} w-24`} />
         </div>
         <button onClick={load} disabled={loading}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm ${
-            isLight ? 'bg-blue-600 text-white hover:bg-blue-500' : 'bg-blue-700 text-white hover:bg-blue-600'
-          } disabled:opacity-50`}>
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-ss-md bg-[var(--ss-brand)] text-white hover:bg-[var(--ss-brand-hover)] duration-base ease-out text-sm disabled:opacity-50`}>
           <MIcon name="refresh" size={14} className={loading ? 'animate-spin' : ''} />
           {t('auth.audit_log.refresh', '再読込')}
         </button>
         <span className={`text-xs ${textMuted}`}>表示: {tab === 'request' ? reqRows.length : tab === 'security' ? secRows.length : errRows.length} 件</span>
       </div>
 
-      {error && <div className="text-sm text-red-400 flex-shrink-0">{error}</div>}
+      {error && <div className="text-sm text-[var(--ss-danger-text)] flex-shrink-0">{error}</div>}
 
-      <div className={`flex-1 min-h-0 overflow-auto rounded border ${borderLine} ${cardBg}`}>
+      <div className={`flex-1 min-h-0 overflow-auto rounded-ss-lg border ${borderLine} ${cardBg}`}>
         {tab === 'error' ? (
           <table className="min-w-full text-xs">
-            <thead className={`sticky top-0 z-10 ${isLight ? 'bg-gray-50' : 'bg-gray-900'}`}>
+            <thead className={`sticky top-0 z-10 bg-[var(--ss-surface-2)]`}>
               <tr className={textMuted}>
                 <th className="text-left px-2 py-2">ID</th>
                 <th className="text-left px-2 py-2">Time</th>
@@ -230,7 +228,7 @@ export function SecurityLogPage() {
                 <tr key={r.id} className={`border-t ${borderLine} align-top`}>
                   <td className={`px-2 py-1.5 font-mono ${textMuted}`}>{r.id}</td>
                   <td className={`px-2 py-1.5 whitespace-nowrap ${textSecondary}`} title={r.ts}>{fmtTs(r.ts)}</td>
-                  <td className={`px-2 py-1.5 font-mono text-red-500`}>{r.exc_type || '—'}</td>
+                  <td className={`px-2 py-1.5 font-mono text-[var(--ss-danger-text)]`}>{r.exc_type || '—'}</td>
                   <td className={`px-2 py-1.5 font-mono ${textHeading}`}>{r.method || '—'}</td>
                   <td className={`px-2 py-1.5 font-mono break-all ${textSecondary}`}>{r.path || '—'}</td>
                   <td className={`px-2 py-1.5 hidden md:table-cell font-mono text-[10px] break-all max-w-md ${textMuted}`} title={r.traceback || ''}>{r.message || ''}</td>
@@ -241,7 +239,7 @@ export function SecurityLogPage() {
           </table>
         ) : tab === 'request' ? (
           <table className="min-w-full text-xs">
-            <thead className={`sticky top-0 z-10 ${isLight ? 'bg-gray-50' : 'bg-gray-900'}`}>
+            <thead className={`sticky top-0 z-10 bg-[var(--ss-surface-2)]`}>
               <tr className={textMuted}>
                 <th className="text-left px-2 py-2">ID</th>
                 <th className="text-left px-2 py-2">Time</th>
@@ -263,10 +261,10 @@ export function SecurityLogPage() {
                 <tr key={r.id} className={`border-t ${borderLine}`}>
                   <td className={`px-2 py-1.5 font-mono ${textMuted}`}>{r.id}</td>
                   <td className={`px-2 py-1.5 whitespace-nowrap ${textSecondary}`} title={r.ts}>{fmtTs(r.ts)}</td>
-                  <td className={`px-2 py-1.5 font-mono ${r.source === 'nginx' ? 'text-blue-500' : textMuted}`}>{r.source || '—'}</td>
+                  <td className={`px-2 py-1.5 font-mono ${r.source === 'nginx' ? 'text-[var(--ss-brand)]' : textMuted}`}>{r.source || '—'}</td>
                   <td className={`px-2 py-1.5 font-mono ${textHeading}`}>{r.method}</td>
                   <td className={`px-2 py-1.5 font-mono break-all ${textSecondary}`}>{r.path}</td>
-                  <td className={`px-2 py-1.5 font-mono ${r.status >= 500 ? 'text-red-500' : r.status >= 400 ? 'text-amber-500' : textSecondary}`}>{r.status}</td>
+                  <td className={`px-2 py-1.5 font-mono ss-num ${r.status >= 500 ? 'text-[var(--ss-danger-text)]' : r.status >= 400 ? 'text-[var(--ss-warning-text)]' : textSecondary}`}>{r.status}</td>
                   <td className={`px-2 py-1.5 font-mono ${textMuted}`}>{r.duration_ms}</td>
                   <td className={`px-2 py-1.5 font-mono whitespace-nowrap ${textSecondary}`}>{r.ip_addr || '—'}{r.country ? ` (${r.country})` : ''}</td>
                   <td className={`px-2 py-1.5 hidden md:table-cell ${textSecondary}`}>{r.user_id ?? '—'}</td>
@@ -278,7 +276,7 @@ export function SecurityLogPage() {
           </table>
         ) : (
           <table className="min-w-full text-xs">
-            <thead className={`sticky top-0 z-10 ${isLight ? 'bg-gray-50' : 'bg-gray-900'}`}>
+            <thead className={`sticky top-0 z-10 bg-[var(--ss-surface-2)]`}>
               <tr className={textMuted}>
                 <th className="text-left px-2 py-2">ID</th>
                 <th className="text-left px-2 py-2">Time</th>
@@ -298,7 +296,7 @@ export function SecurityLogPage() {
                   <td className={`px-2 py-1.5 font-mono ${textMuted}`}>{r.id}</td>
                   <td className={`px-2 py-1.5 whitespace-nowrap ${textSecondary}`} title={r.ts}>{fmtTs(r.ts)}</td>
                   <td className={`px-2 py-1.5 font-mono ${textHeading}`}>{r.event_type}</td>
-                  <td className={`px-2 py-1.5 font-mono ${r.severity === 'critical' ? 'text-red-500' : r.severity === 'warn' ? 'text-amber-500' : textSecondary}`}>{r.severity}</td>
+                  <td className={`px-2 py-1.5 font-mono ${r.severity === 'critical' ? 'text-[var(--ss-danger-text)]' : r.severity === 'warn' ? 'text-[var(--ss-warning-text)]' : textSecondary}`}>{r.severity}</td>
                   <td className={`px-2 py-1.5 font-mono whitespace-nowrap ${textSecondary}`}>{r.ip_addr || '—'}</td>
                   <td className={`px-2 py-1.5 font-mono break-all ${textSecondary}`}>{r.path || '—'}</td>
                   <td className={`px-2 py-1.5 hidden md:table-cell font-mono ${textMuted}`}>{r.method || '—'}</td>

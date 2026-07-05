@@ -43,9 +43,9 @@ export function DeviceSelector({ devices, selected, onChange }: Props) {
 
   return (
     <div className="space-y-2">
-      <p className="text-xs font-medium text-gray-400">{t('benchmark.detect_devices')}</p>
+      <p className="text-xs font-medium text-[var(--ss-t2)]">{t('benchmark.detect_devices')}</p>
       {devices.length === 0 && (
-        <p className="text-xs text-gray-500">{t('benchmark.unavailable')}</p>
+        <p className="text-xs text-[var(--ss-t3)]">{t('benchmark.unavailable')}</p>
       )}
       {devices.map((dev) => {
         const isChecked = selected.includes(dev.device_id)
@@ -55,12 +55,12 @@ export function DeviceSelector({ devices, selected, onChange }: Props) {
           <label
             key={dev.device_id}
             title={formatSpecs(dev.specs)}
-            className={`flex items-center gap-2 px-3 py-2 rounded border text-sm transition-colors cursor-pointer ${
+            className={`flex items-center gap-2 px-3 py-2 rounded-ss-md border text-sm transition-colors cursor-pointer ${
               disabled
-                ? 'border-gray-700 text-gray-600 cursor-not-allowed bg-gray-900/30'
+                ? 'border-[var(--ss-border)] text-[var(--ss-t3)] cursor-not-allowed bg-[var(--ss-surface-3)]'
                 : isChecked
-                ? 'border-blue-500 bg-blue-600 text-white'
-                : 'border-gray-600 bg-gray-800/40 text-gray-300 hover:border-gray-500'
+                ? 'border-[var(--ss-brand)] bg-[var(--ss-brand)] text-white'
+                : 'border-[var(--ss-border)] bg-[var(--ss-surface-2)] text-[var(--ss-t2)] hover:border-[var(--ss-brand)]'
             }`}
           >
             <input
@@ -68,13 +68,13 @@ export function DeviceSelector({ devices, selected, onChange }: Props) {
               checked={isChecked}
               disabled={disabled}
               onChange={() => !disabled && toggle(dev.device_id)}
-              className="accent-blue-500"
+              className="accent-[var(--ss-brand)]"
             />
             <DeviceIcon type={dev.device_type} />
             <span className="flex-1">{dev.label}</span>
-            <span className={`text-[11px] ${isChecked ? 'text-blue-100' : 'text-gray-500'}`}>{t(`benchmark.device_types.${dev.device_type}`)}</span>
+            <span className={`text-[11px] ${isChecked ? 'text-white' : 'text-[var(--ss-t3)]'}`}>{t(`benchmark.device_types.${dev.device_type}`)}</span>
             {disabled && (
-              <span className="text-[10px] text-gray-600 ml-1">{t('benchmark.unavailable')}</span>
+              <span className="text-[10px] text-[var(--ss-t3)] ml-1">{t('benchmark.unavailable')}</span>
             )}
           </label>
         )

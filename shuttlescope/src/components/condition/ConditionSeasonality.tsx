@@ -135,14 +135,12 @@ export function ConditionSeasonality({ playerId, isLight }: Props) {
   const [metric, setMetric] = useState<MetricKey>('ccs')
 
 
-  const panelBg = isLight ? 'bg-white' : 'bg-gray-800'
-  const borderColor = isLight ? 'border-gray-200' : 'border-gray-700'
-  const muted = isLight ? 'text-gray-500' : 'text-gray-400'
-  const headBg = isLight ? 'bg-gray-50' : 'bg-gray-900/60'
-  const activeBtn = 'bg-blue-500 text-white border-blue-500'
-  const inactiveBtn = isLight
-    ? 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-    : 'bg-gray-800 text-gray-200 border-gray-600 hover:bg-gray-700'
+  const panelBg = 'bg-[var(--ss-surface-1)]'
+  const borderColor = 'border-[var(--ss-border)]'
+  const muted = 'text-[var(--ss-t3)]'
+  const headBg = 'bg-[var(--ss-surface-2)]'
+  const activeBtn = 'bg-[var(--ss-brand)] text-white border-[var(--ss-brand)]'
+  const inactiveBtn = 'bg-[var(--ss-surface-1)] text-[var(--ss-t2)] border-[var(--ss-border-strong)] hover:bg-[var(--ss-surface-2)]'
 
   const records = useMemo(() => (data ?? []).slice(), [data])
   const availableMetrics = useMemo(() => detectAvailableMetrics(records), [records])
@@ -185,9 +183,9 @@ export function ConditionSeasonality({ playerId, isLight }: Props) {
   const hasAnyData = records.length > 0
 
   return (
-    <section className={`rounded-lg border ${borderColor} ${panelBg} p-4`}>
+    <section className={`rounded-ss-lg border ${borderColor} ${panelBg} p-4`}>
       <div className="flex items-baseline justify-between mb-2 gap-2 flex-wrap">
-        <h2 className="text-sm font-semibold">{t('condition.seasonality.title')}</h2>
+        <h2 className="text-sm font-semibold text-[var(--ss-t1)]">{t('condition.seasonality.title')}</h2>
         <span className={`text-[11px] ${muted}`}>
           {t('condition.seasonality.description')}
         </span>
@@ -200,7 +198,7 @@ export function ConditionSeasonality({ playerId, isLight }: Props) {
             key={m}
             type="button"
             onClick={() => setMode(m)}
-            className={`text-xs px-2 py-1 border rounded ${
+            className={`text-xs px-2 py-1 border rounded-ss-md ${
               mode === m ? activeBtn : inactiveBtn
             }`}
           >
@@ -217,7 +215,7 @@ export function ConditionSeasonality({ playerId, isLight }: Props) {
               key={k}
               type="button"
               onClick={() => setMetric(k)}
-              className={`text-[11px] px-2 py-0.5 border rounded ${
+              className={`text-[11px] px-2 py-0.5 border rounded-ss-sm ${
                 effectiveMetric === k ? activeBtn : inactiveBtn
               }`}
             >
@@ -240,18 +238,19 @@ export function ConditionSeasonality({ playerId, isLight }: Props) {
               <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
                 <CartesianGrid
                   strokeDasharray="3 3"
-                  stroke={isLight ? '#e5e7eb' : '#374151'}
+                  stroke={'var(--ss-border)'}
                 />
                 <XAxis
                   dataKey="label"
-                  tick={{ fontSize: 11, fill: isLight ? '#374151' : '#d1d5db' }}
+                  tick={{ fontSize: 11, fill: 'var(--ss-t3)' }}
                 />
-                <YAxis tick={{ fontSize: 11, fill: isLight ? '#374151' : '#d1d5db' }} />
+                <YAxis tick={{ fontSize: 11, fill: 'var(--ss-t3)' }} />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: isLight ? '#ffffff' : '#1f2937',
-                    border: `1px solid ${isLight ? '#e5e7eb' : '#374151'}`,
+                    backgroundColor: 'var(--ss-surface-1)',
+                    border: `1px solid var(--ss-border)`,
                     fontSize: 12,
+                    borderRadius: 6,
                   }}
                   formatter={(v: unknown, _name, payload) => {
                     const n = (payload?.payload as { n?: number } | undefined)?.n ?? 0
@@ -268,7 +267,7 @@ export function ConditionSeasonality({ playerId, isLight }: Props) {
                    - 平均近辺 → 白〜灰色
                    全て同色だと「全部良い/悪い」のミスリードになるため、
                    差分の符号と大きさを色で示す。 */}
-                <Bar dataKey="value" radius={[4, 4, 0, 0]} stroke={isLight ? '#cbd5e1' : '#475569'} strokeWidth={1}>
+                <Bar dataKey="value" radius={[4, 4, 0, 0]} stroke={'var(--ss-border-strong)'} strokeWidth={1}>
                   {chartData.map((d, i) => (
                     <Cell key={i} fill={deviationBarFill(d.deviation, isLight)} />
                   ))}
@@ -282,11 +281,11 @@ export function ConditionSeasonality({ playerId, isLight }: Props) {
             <table className="w-full text-xs">
               <thead className={headBg}>
                 <tr>
-                  <th className="text-left px-2 py-1 font-medium">
+                  <th className="text-left px-2 py-1 font-medium text-[var(--ss-t2)]">
                     {t('condition.seasonality.col_bucket')}
                   </th>
                   {availableMetrics.map((k) => (
-                    <th key={k} className="text-right px-2 py-1 font-medium">
+                    <th key={k} className="text-right px-2 py-1 font-medium text-[var(--ss-t2)]">
                       {t(`condition.seasonality.metric.${k}`)}
                     </th>
                   ))}
@@ -294,14 +293,14 @@ export function ConditionSeasonality({ playerId, isLight }: Props) {
               </thead>
               <tbody>
                 {buckets.map((b, i) => (
-                  <tr key={i} className={`border-t ${borderColor}`}>
+                  <tr key={i} className={`border-t ${borderColor} text-[var(--ss-t1)]`}>
                     <td className="px-2 py-1">{b.label}</td>
                     {availableMetrics.map((k) => {
                       const arr = b.values[k] ?? []
                       const n = arr.length
                       const m = n >= MIN_N ? mean(arr) : null
                       return (
-                        <td key={k} className="px-2 py-1 text-right num-cell">
+                        <td key={k} className="px-2 py-1 text-right num-cell ss-num">
                           {m == null ? (
                             <span className={muted}>
                               {t('condition.seasonality.no_value')}

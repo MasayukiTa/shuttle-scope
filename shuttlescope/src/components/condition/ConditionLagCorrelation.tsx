@@ -150,12 +150,10 @@ export function ConditionLagCorrelation({ playerId, isLight }: Props) {
     return best
   }, [lagResults])
 
-  const panelBg = isLight ? 'bg-white' : 'bg-gray-800'
-  const borderColor = isLight ? 'border-gray-200' : 'border-gray-700'
-  const textMuted = isLight ? 'text-gray-500' : 'text-gray-400'
-  const selectCls = isLight
-    ? 'border border-gray-300 bg-white text-gray-900 rounded px-2 py-1 text-sm'
-    : 'border border-gray-600 bg-gray-800 text-white rounded px-2 py-1 text-sm'
+  const panelBg = 'bg-[var(--ss-surface-1)]'
+  const borderColor = 'border-[var(--ss-border)]'
+  const textMuted = 'text-[var(--ss-t3)]'
+  const selectCls = 'border border-[var(--ss-border-strong)] bg-[var(--ss-surface-1)] text-[var(--ss-t1)] rounded-ss-md px-2 py-1 text-sm'
 
   const chartData = lagResults.map((row) => ({
     lag: row.lag,
@@ -172,9 +170,9 @@ export function ConditionLagCorrelation({ playerId, isLight }: Props) {
 
   return (
     <RoleGuard allowedRoles={['analyst', 'coach', 'player']} fallback={null}>
-      <section className={`rounded-lg border ${borderColor} ${panelBg} p-4`}>
+      <section className={`rounded-ss-lg border ${borderColor} ${panelBg} p-4`}>
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-          <h2 className="text-sm font-semibold">{t('condition.lag_corr.title')}</h2>
+          <h2 className="text-sm font-semibold text-[var(--ss-t1)]">{t('condition.lag_corr.title')}</h2>
         </div>
 
         <p className={`text-xs ${textMuted} mb-3`}>{t('condition.lag_corr.description')}</p>
@@ -224,30 +222,31 @@ export function ConditionLagCorrelation({ playerId, isLight }: Props) {
                 >
                   <CartesianGrid
                     strokeDasharray="3 3"
-                    stroke={isLight ? '#e5e7eb' : '#374151'}
+                    stroke={'var(--ss-border)'}
                   />
                   <XAxis
                     dataKey="lag"
-                    tick={{ fill: isLight ? '#374151' : '#9ca3af', fontSize: 11 }}
+                    tick={{ fill: 'var(--ss-t3)', fontSize: 11 }}
                     label={{
                       value: t('condition.lag_corr.lag_axis'),
                       position: 'insideBottom',
                       offset: -4,
-                      fill: isLight ? '#374151' : '#9ca3af',
+                      fill: 'var(--ss-t3)',
                       fontSize: 11,
                     }}
                   />
                   <YAxis
                     type="number"
                     domain={[-1, 1]}
-                    tick={{ fill: isLight ? '#374151' : '#9ca3af', fontSize: 11 }}
+                    tick={{ fill: 'var(--ss-t3)', fontSize: 11 }}
                   />
-                  <ReferenceLine y={0} stroke={isLight ? '#9ca3af' : '#6b7280'} />
+                  <ReferenceLine y={0} stroke={'var(--ss-border-strong)'} />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: isLight ? '#ffffff' : '#1f2937',
-                      border: `1px solid ${isLight ? '#e5e7eb' : '#374151'}`,
+                      backgroundColor: 'var(--ss-surface-1)',
+                      border: `1px solid var(--ss-border)`,
                       fontSize: 12,
+                      borderRadius: 6,
                     }}
                     formatter={(_value: unknown, _name: unknown, entry: { payload?: { r: number | null; n: number } }) => {
                       const p = entry?.payload
@@ -297,7 +296,7 @@ export function ConditionLagCorrelation({ playerId, isLight }: Props) {
             <div className={`mt-2 flex flex-wrap gap-4 text-xs ${textMuted}`}>
               <span>
                 {t('condition.lag_corr.best_lag')}:{' '}
-                <span className="font-mono">
+                <span className="font-mono ss-num">
                   {bestLag
                     ? `${bestLag.lag} ${t('condition.lag_corr.weeks')} (r=${bestLag.r.toFixed(3)}, N=${bestLag.n})`
                     : t('condition.lag_corr.insufficient')}

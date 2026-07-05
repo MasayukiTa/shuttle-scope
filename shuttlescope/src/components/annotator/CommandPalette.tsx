@@ -108,11 +108,11 @@ export function CommandPalette({ commands }: CommandPaletteProps) {
       aria-label={t('auto.CommandPalette.k1')}
     >
       <div
-        className="bg-gray-900 border border-gray-700 rounded-lg shadow-2xl w-[520px] max-w-[90vw] overflow-hidden"
+        className="bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-lg shadow-pop w-[520px] max-w-[90vw] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-700">
-          <MIcon name="search" size={18} className="text-gray-500" />
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-[var(--ss-border)]">
+          <MIcon name="search" size={18} className="text-[var(--ss-t3)]" />
           <input
             ref={inputRef}
             type="text"
@@ -134,17 +134,17 @@ export function CommandPalette({ commands }: CommandPaletteProps) {
               }
             }}
             placeholder={t('annotator.ux.command_placeholder')}
-            className="flex-1 bg-transparent text-gray-100 outline-none text-sm placeholder:text-gray-500"
+            className="flex-1 bg-transparent text-[var(--ss-t1)] outline-none text-sm placeholder:text-[var(--ss-t3)]"
           />
           <div className="flex items-center gap-1 shrink-0">
-            <kbd className="text-[10px] text-gray-400 border border-gray-700 rounded px-1.5 py-0.5 font-mono">↑↓</kbd>
-            <kbd className="text-[10px] text-gray-400 border border-gray-700 rounded px-1.5 py-0.5 font-mono">{t('auto.CommandPalette.key_enter')}</kbd>
-            <kbd className="text-[10px] text-gray-400 border border-gray-700 rounded px-1.5 py-0.5 font-mono">{t('auto.CommandPalette.key_esc')}</kbd>
+            <kbd className="text-[10px] text-[var(--ss-t2)] border border-[var(--ss-border-strong)] rounded-ss-sm px-1.5 py-0.5 font-mono">↑↓</kbd>
+            <kbd className="text-[10px] text-[var(--ss-t2)] border border-[var(--ss-border-strong)] rounded-ss-sm px-1.5 py-0.5 font-mono">{t('auto.CommandPalette.key_enter')}</kbd>
+            <kbd className="text-[10px] text-[var(--ss-t2)] border border-[var(--ss-border-strong)] rounded-ss-sm px-1.5 py-0.5 font-mono">{t('auto.CommandPalette.key_esc')}</kbd>
           </div>
         </div>
         <ul className="max-h-[50vh] overflow-y-auto py-1" role="listbox">
           {filtered.length === 0 && (
-            <li className="px-3 py-3 text-xs text-gray-500">{t('annotator.ux.command_no_match')}</li>
+            <li className="px-3 py-3 text-xs text-[var(--ss-t3)]">{t('annotator.ux.command_no_match')}</li>
           )}
           {filtered.map((c, i) => (
             <li
@@ -155,17 +155,17 @@ export function CommandPalette({ commands }: CommandPaletteProps) {
               onClick={() => exec(c)}
               className={clsx(
                 'flex items-center gap-2 px-3 py-1.5 cursor-pointer text-sm',
-                i === activeIdx ? 'bg-blue-600 text-white' : 'text-gray-200',
+                i === activeIdx ? 'bg-[var(--ss-brand)] text-white' : 'text-[var(--ss-t1)]',
                 c.disabled && 'opacity-40 cursor-not-allowed',
               )}
             >
               {c.icon && <MIcon name={c.icon} size={16} />}
               <span className="flex-1 truncate">{c.label}</span>
-              {c.hint && <span className="text-[10px] text-gray-400">{c.hint}</span>}
+              {c.hint && <span className={clsx('text-[10px]', i === activeIdx ? 'text-white/80' : 'text-[var(--ss-t3)]')}>{c.hint}</span>}
             </li>
           ))}
         </ul>
-        <div className="flex items-center justify-between px-3 py-1.5 border-t border-gray-700 text-[10px] text-gray-500">
+        <div className="flex items-center justify-between px-3 py-1.5 border-t border-[var(--ss-border)] text-[10px] text-[var(--ss-t3)]">
           <span>{t('annotator.ux.command_help')}</span>
           <span>{t('annotator.ux.command_hint_global')}</span>
         </div>

@@ -35,13 +35,13 @@ export function NotificationInboxPage() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
 
-  const panelBg = isLight ? 'bg-white' : 'bg-gray-800'
-  const border = isLight ? 'border-gray-200' : 'border-gray-700'
-  const textMain = isLight ? 'text-gray-900' : 'text-gray-100'
-  const textMuted = isLight ? 'text-gray-500' : 'text-gray-400'
-  const rowHover = isLight ? 'hover:bg-gray-50' : 'hover:bg-gray-700/50'
-  const inputCls = `w-full border ${isLight ? 'border-gray-300 bg-white' : 'border-gray-600 bg-gray-700'} rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${textMain}`
-  const btnSecondary = `${isLight ? 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50' : 'bg-gray-700 text-gray-200 border-gray-600 hover:bg-gray-600'} border`
+  const panelBg = 'bg-[var(--ss-surface-1)]'
+  const border = 'border-[var(--ss-border)]'
+  const textMain = 'text-[var(--ss-t1)]'
+  const textMuted = 'text-[var(--ss-t3)]'
+  const rowHover = 'hover:bg-[var(--ss-surface-2)]'
+  const inputCls = `w-full border border-[var(--ss-border)] bg-[var(--ss-surface-1)] rounded-ss-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ss-brand)] ${textMain}`
+  const btnSecondary = `bg-[var(--ss-surface-1)] text-[var(--ss-t1)] border-[var(--ss-border)] border`
 
   const inquiriesQuery = useQuery({
     queryKey: ['public-inquiries'],
@@ -91,7 +91,7 @@ export function NotificationInboxPage() {
   })
 
   if (role !== 'admin') {
-    return <div className="p-8 text-center text-gray-500">{t('auto.NotificationInboxPage.k1')}</div>
+    return <div className="p-8 text-center text-[var(--ss-t3)]">{t('auto.NotificationInboxPage.k1')}</div>
   }
 
   const items = inquiriesQuery.data?.data ?? []
@@ -175,7 +175,7 @@ export function NotificationInboxPage() {
           <button
             type="button"
             onClick={() => setListCollapsed((v) => !v)}
-            className={`hidden md:inline-flex items-center justify-center w-8 h-8 rounded-md ${btnSecondary} text-lg`}
+            className={`hidden md:inline-flex items-center justify-center w-8 h-8 rounded-ss-md ${btnSecondary} text-lg`}
             title={listCollapsed ? t('auto.NotificationInboxPage.k17') : t('auto.NotificationInboxPage.k16')}
             aria-label={listCollapsed ? t('auto.NotificationInboxPage.k17') : t('auto.NotificationInboxPage.k16')}
           >
@@ -193,7 +193,7 @@ export function NotificationInboxPage() {
                   setSelectionMode((v) => !v)
                   setSelectedIds(new Set())
                 }}
-                className={`px-2.5 py-1.5 rounded-md ${selectionMode ? 'bg-blue-600 text-white border-blue-600 border' : btnSecondary}`}
+                className={`px-2.5 py-1.5 rounded-ss-md ${selectionMode ? 'bg-[var(--ss-brand)] text-white border-[var(--ss-brand)] border' : btnSecondary}`}
               >
                 {selectionMode
                   ? t('auto.NotificationInboxPage.k14')
@@ -202,14 +202,14 @@ export function NotificationInboxPage() {
               <button
                 type="button"
                 onClick={handleBulkDeleteResolved}
-                className={`px-2.5 py-1.5 rounded-md ${btnSecondary}`}
+                className={`px-2.5 py-1.5 rounded-ss-md ${btnSecondary}`}
               >
                 {t('auto.NotificationInboxPage.k21')}
               </button>
               <button
                 type="button"
                 onClick={() => setDateModalOpen(true)}
-                className={`px-2.5 py-1.5 rounded-md ${btnSecondary}`}
+                className={`px-2.5 py-1.5 rounded-ss-md ${btnSecondary}`}
               >
                 {t('auto.NotificationInboxPage.k22')}
               </button>
@@ -224,7 +224,7 @@ export function NotificationInboxPage() {
                     key={item.id}
                     className={`flex items-stretch border-b ${border} ${
                       selectedId === item.id && !selectionMode
-                        ? (isLight ? 'bg-blue-50' : 'bg-blue-900/20')
+                        ? 'bg-[var(--ss-brand-tint)]'
                         : ''
                     }`}
                   >
@@ -256,7 +256,7 @@ export function NotificationInboxPage() {
                             // R42: WAF 誤 ban 申し立てチャネルからの投稿。
                             // 通常 inquiry より優先度高として目立つ赤バッジを付与。
                             <span
-                              className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-red-600 text-white shrink-0"
+                              className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-ss-sm bg-[var(--ss-bad)] text-white shrink-0"
                               title={t('auto.NotificationInboxPage.k34')}
                             >
                               {t('auto.NotificationInboxPage.ban_appeal')}
@@ -265,20 +265,20 @@ export function NotificationInboxPage() {
                           <span className="truncate">{item.name}</span>
                         </div>
                         <span
-                          className={`text-[11px] shrink-0 px-2 py-0.5 rounded-full ${
+                          className={`text-[11px] shrink-0 px-2 py-0.5 rounded-ss-sm ${
                             item.status === 'new'
-                              ? 'bg-red-100 text-red-700'
+                              ? 'bg-[var(--ss-danger-bg)] text-[var(--ss-danger-text)]'
                               : item.status === 'reviewed'
-                                ? 'bg-amber-100 text-amber-700'
-                                : 'bg-green-100 text-green-700'
+                                ? 'bg-[var(--ss-warning-bg)] text-[var(--ss-warning-text)]'
+                                : 'bg-[var(--ss-success-bg)] text-[var(--ss-success-text)]'
                           }`}
                         >
                           {STATUS_LABELS[item.status]}
                         </span>
                       </div>
-                      <div className={`text-xs mt-1 ${textMuted} truncate`}>{item.organization || '所属未記入'}</div>
-                      <div className={`text-xs mt-2 line-clamp-2 ${textMuted}`}>{item.message}</div>
-                      <div className={`text-[10px] mt-1 ${textMuted}`}>
+                      <div className={`text-xs mt-1 text-[var(--ss-t2)] truncate`}>{item.organization || '所属未記入'}</div>
+                      <div className={`text-xs mt-2 line-clamp-2 text-[var(--ss-t2)]`}>{item.message}</div>
+                      <div className={`text-[10px] mt-1 text-[var(--ss-t2)]`}>
                         {new Date(item.created_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}
                       </div>
                     </button>
@@ -289,7 +289,7 @@ export function NotificationInboxPage() {
                           e.stopPropagation()
                           handleDeleteOne(item.id)
                         }}
-                        className={`px-3 text-red-500 hover:bg-red-500/10`}
+                        className={`px-3 text-[var(--ss-danger-text)] hover:bg-[var(--ss-danger-bg)]`}
                         title={t('auto.NotificationInboxPage.k12')}
                         aria-label={t('auto.NotificationInboxPage.k12')}
                       >
@@ -313,7 +313,7 @@ export function NotificationInboxPage() {
                   type="button"
                   onClick={handleBulkDeleteSelected}
                   disabled={bulkDeleteMutation.isPending || selectedIds.size === 0}
-                  className="flex-1 px-3 py-2 rounded-md bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-sm font-medium"
+                  className="flex-1 px-3 py-2 rounded-ss-md bg-[var(--ss-bad)] hover:opacity-90 duration-base ease-out disabled:opacity-50 text-white text-sm font-medium"
                 >
                   {t('auto.NotificationInboxPage.k20', { n: selectedIds.size })}
                 </button>
@@ -336,7 +336,7 @@ export function NotificationInboxPage() {
               ← {t('auto.NotificationInboxPage.k15')}
             </button>
 
-            <div className={`rounded-xl border ${border} ${panelBg} p-4 md:p-6`}>
+            <div className={`rounded-ss-lg border ${border} ${panelBg} p-4 md:p-6`}>
               <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                 <div className="min-w-0">
                   <h2 className={`text-xl font-semibold ${textMain} truncate`}>{selected.name}</h2>
@@ -348,12 +348,10 @@ export function NotificationInboxPage() {
                       key={status}
                       type="button"
                       onClick={() => updateMutation.mutate({ inquiryId: selected.id, status, admin_note: draftNote })}
-                      className={`px-3 py-2 rounded-lg text-sm font-medium border ${
+                      className={`px-3 py-2 rounded-ss-md text-sm font-medium border ${
                         selected.status === status
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : isLight
-                            ? 'bg-white text-gray-700 border-gray-300'
-                            : 'bg-gray-700 text-gray-200 border-gray-600'
+                          ? 'bg-[var(--ss-brand)] text-white border-[var(--ss-brand)]'
+                          : 'bg-[var(--ss-surface-2)] text-[var(--ss-t1)] border-[var(--ss-border)]'
                       }`}
                     >
                       {STATUS_LABELS[status]}
@@ -362,7 +360,7 @@ export function NotificationInboxPage() {
                   <button
                     type="button"
                     onClick={() => handleDeleteOne(selected.id)}
-                    className="px-3 py-2 rounded-lg text-sm font-medium border bg-red-600 hover:bg-red-700 text-white border-red-600"
+                    className="px-3 py-2 rounded-ss-md text-sm font-medium border bg-[var(--ss-bad)] hover:opacity-90 duration-base ease-out text-white border-[var(--ss-bad)]"
                   >
                     {t('auto.NotificationInboxPage.k12')}
                   </button>
@@ -407,7 +405,7 @@ export function NotificationInboxPage() {
                         admin_note: draftNote,
                       })
                     }
-                    className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium"
+                    className="px-4 py-2 rounded-ss-md bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] duration-base ease-out text-white text-sm font-medium"
                   >
                     {t('auto.NotificationInboxPage.k30')}
                   </button>
@@ -429,7 +427,7 @@ export function NotificationInboxPage() {
           onClick={() => setDateModalOpen(false)}
         >
           <div
-            className={`${panelBg} rounded-xl border ${border} max-w-md w-full p-5 space-y-4`}
+            className={`${panelBg} rounded-ss-lg border ${border} max-w-md w-full p-5 space-y-4`}
             onClick={(e) => e.stopPropagation()}
           >
             <div>
@@ -470,7 +468,7 @@ export function NotificationInboxPage() {
               <button
                 type="button"
                 onClick={() => setDateModalOpen(false)}
-                className={`flex-1 px-3 py-2 rounded-md text-sm ${btnSecondary}`}
+                className={`flex-1 px-3 py-2 rounded-ss-md text-sm ${btnSecondary}`}
               >
                 {t('auto.NotificationInboxPage.k28')}
               </button>
@@ -478,7 +476,7 @@ export function NotificationInboxPage() {
                 type="button"
                 onClick={handleBulkDeleteByDate}
                 disabled={bulkDeleteMutation.isPending}
-                className="flex-1 px-3 py-2 rounded-md bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-sm font-medium"
+                className="flex-1 px-3 py-2 rounded-ss-md bg-[var(--ss-bad)] hover:opacity-90 duration-base ease-out disabled:opacity-50 text-white text-sm font-medium"
               >
                 {t('auto.NotificationInboxPage.k29')}
               </button>

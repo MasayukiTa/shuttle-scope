@@ -174,7 +174,7 @@ export function EffectiveDistributionMap({ playerId, filters = DEFAULT_FILTERS }
                   .map(([zone, d]) => (
                     <tr
                       key={zone}
-                      className="border-b border-[var(--ss-border)]/40 hover:bg-[var(--ss-surface-2)] cursor-pointer transition-colors duration-base ease-out"
+                      className="border-b border-[var(--ss-border)] hover:bg-[var(--ss-surface-2)] cursor-pointer transition-colors duration-base ease-out"
                       onClick={() => handleZoneClick(zone)}
                     >
                       <td className="py-1.5 pr-3 font-semibold" style={{ color: topZones.includes(zone) ? WIN : undefined }}>

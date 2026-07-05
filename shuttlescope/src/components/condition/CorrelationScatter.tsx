@@ -38,12 +38,10 @@ export function CorrelationScatter({ playerId, isLight }: Props) {
 
   const { data, isLoading, error } = useCorrelation(playerId, x, y)
 
-  const panelBg = isLight ? 'bg-white' : 'bg-gray-800'
-  const borderColor = isLight ? 'border-gray-200' : 'border-gray-700'
-  const textMuted = isLight ? 'text-gray-500' : 'text-gray-400'
-  const selectCls = isLight
-    ? 'border border-gray-300 bg-white text-gray-900 rounded px-2 py-1 text-sm'
-    : 'border border-gray-600 bg-gray-800 text-white rounded px-2 py-1 text-sm'
+  const panelBg = 'bg-[var(--ss-surface-1)]'
+  const borderColor = 'border-[var(--ss-border)]'
+  const textMuted = 'text-[var(--ss-t3)]'
+  const selectCls = 'border border-[var(--ss-border-strong)] bg-[var(--ss-surface-1)] text-[var(--ss-t1)] rounded-ss-md px-2 py-1 text-sm'
 
   const points = data?.points ?? []
   const n = data?.n ?? 0
@@ -51,9 +49,9 @@ export function CorrelationScatter({ playerId, isLight }: Props) {
   const p = data?.p_value
 
   return (
-    <section className={`rounded-lg border ${borderColor} ${panelBg} p-4`}>
+    <section className={`rounded-ss-lg border ${borderColor} ${panelBg} p-4`}>
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <h2 className="text-sm font-semibold">{t('condition.correlation.title')}</h2>
+        <h2 className="text-sm font-semibold text-[var(--ss-t1)]">{t('condition.correlation.title')}</h2>
         {n > 0 && <ConfidenceBadge sampleSize={n} />}
       </div>
 
@@ -91,24 +89,25 @@ export function CorrelationScatter({ playerId, isLight }: Props) {
           <div style={{ width: '100%', height: 280 }}>
             <ResponsiveContainer>
               <ScatterChart margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={isLight ? '#e5e7eb' : '#374151'} />
+                <CartesianGrid strokeDasharray="3 3" stroke={'var(--ss-border)'} />
                 <XAxis
                   type="number"
                   dataKey="x"
                   name={x}
-                  tick={{ fill: isLight ? '#374151' : '#9ca3af', fontSize: 11 }}
+                  tick={{ fill: 'var(--ss-t3)', fontSize: 11 }}
                 />
                 <YAxis
                   type="number"
                   dataKey="y"
                   name={y}
-                  tick={{ fill: isLight ? '#374151' : '#9ca3af', fontSize: 11 }}
+                  tick={{ fill: 'var(--ss-t3)', fontSize: 11 }}
                 />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: isLight ? '#ffffff' : '#1f2937',
-                    border: `1px solid ${isLight ? '#e5e7eb' : '#374151'}`,
+                    backgroundColor: 'var(--ss-surface-1)',
+                    border: `1px solid var(--ss-border)`,
                     fontSize: 12,
+                    borderRadius: 6,
                   }}
                 />
                 <Scatter data={points} fill={catColor('Cool', isLight)} />
@@ -118,14 +117,14 @@ export function CorrelationScatter({ playerId, isLight }: Props) {
           <div className={`mt-3 flex flex-wrap gap-4 text-xs ${textMuted}`}>
             <span>
               {t('condition.correlation.pearson_r')}:{' '}
-              <span className="font-mono">{r != null ? r.toFixed(3) : '—'}</span>
+              <span className="font-mono ss-num">{r != null ? r.toFixed(3) : '—'}</span>
             </span>
             <span>
-              {t('auto.CorrelationScatter.n_label')} <span className="font-mono">{n}</span>
+              {t('auto.CorrelationScatter.n_label')} <span className="font-mono ss-num">{n}</span>
             </span>
             <span>
               {t('condition.correlation.p_value')}:{' '}
-              <span className="font-mono">{p != null ? p.toFixed(3) : '—'}</span>
+              <span className="font-mono ss-num">{p != null ? p.toFixed(3) : '—'}</span>
             </span>
             {data?.confidence_note && <span className="italic">{data.confidence_note}</span>}
           </div>

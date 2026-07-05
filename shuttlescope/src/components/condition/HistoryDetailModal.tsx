@@ -48,14 +48,10 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
   const [savedMsg, setSavedMsg] = useState<string | null>(null)
 
   const overlayBg = 'bg-black/50'
-  const panelCls = isLight
-    ? 'bg-white border-gray-200 text-gray-900'
-    : 'bg-gray-800 border-gray-700 text-white'
-  const muted = isLight ? 'text-gray-500' : 'text-gray-400'
-  const sectionBorder = isLight ? 'border-gray-200' : 'border-gray-700'
-  const selectCls = isLight
-    ? 'border border-gray-300 bg-white text-gray-900 rounded px-2 py-1 text-sm'
-    : 'border border-gray-600 bg-gray-900 text-white rounded px-2 py-1 text-sm'
+  const panelCls = 'bg-[var(--ss-surface-1)] border-[var(--ss-border)] text-[var(--ss-t1)]'
+  const muted = 'text-[var(--ss-t2)]'
+  const sectionBorder = 'border-[var(--ss-border)]'
+  const selectCls = 'border border-[var(--ss-border-strong)] bg-[var(--ss-surface-1)] text-[var(--ss-t1)] rounded-ss-md px-2 py-1 text-sm'
 
   const id = record['id'] as number | undefined
   const measuredAt = (record['measured_at'] as string | undefined) ?? ''
@@ -100,7 +96,7 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
   const metricRow = (label: string, value: unknown, digits = 1) => (
     <div className="flex justify-between text-sm">
       <span className={muted}>{label}</span>
-      <span className="font-mono">{fmt(value, digits)}</span>
+      <span className="font-mono ss-num">{fmt(value, digits)}</span>
     </div>
   )
 
@@ -114,15 +110,15 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className={`relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-lg border ${panelCls} shadow-xl`}
+        className={`relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-ss-lg border ${panelCls} shadow-[var(--e3)]`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* ヘッダー */}
         <div className={`sticky top-0 z-10 flex items-center justify-between px-4 py-3 border-b ${sectionBorder} ${panelCls}`}>
           <div className="flex items-center gap-2">
             <h2 className="text-base font-semibold">{t('condition.history_detail.title')}</h2>
-            <span className={`text-xs ${muted}`}>{measuredAt}</span>
-            <span className={`text-[10px] px-1.5 py-0.5 rounded border ${isLight ? 'border-gray-300 text-gray-600' : 'border-gray-600 text-gray-300'}`}>
+            <span className={`text-xs ss-num ${muted}`}>{measuredAt}</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded-ss-sm border border-[var(--ss-border-strong)] text-[var(--ss-t2)]">
               {typeLabel}
             </span>
           </div>
@@ -130,7 +126,7 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
             type="button"
             onClick={onClose}
             aria-label={t('condition.history_detail.close') as string}
-            className={isLight ? 'text-gray-500 hover:text-gray-800' : 'text-gray-400 hover:text-white'}
+            className="text-[var(--ss-t2)] hover:text-[var(--ss-t1)] duration-base ease-out"
           >
             <MIcon name="close" size={18} />
           </button>
@@ -138,7 +134,7 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
 
         <div className="p-4 space-y-4">
           {/* 指標 */}
-          <section className={`rounded border ${sectionBorder} p-3`}>
+          <section className={`rounded-ss-md border ${sectionBorder} p-3`}>
             <h3 className="text-xs font-semibold mb-2">{t('condition.history_detail.metrics_section')}</h3>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1">
               {metricRow(t('condition.history.ccs'), record['ccs'], 2)}
@@ -154,13 +150,13 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
 
           {/* 身体指標 */}
           {bodyItems.length > 0 && (
-            <section className={`rounded border ${sectionBorder} p-3`}>
+            <section className={`rounded-ss-md border ${sectionBorder} p-3`}>
               <h3 className="text-xs font-semibold mb-2">{t('condition.history_detail.body_section')}</h3>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                 {bodyItems.map((it) => (
                   <div key={it.key} className="flex justify-between text-sm">
                     <span className={muted}>{t(`condition.inbody.${it.key}`, it.key)}</span>
-                    <span className="font-mono">{fmt(it.value)}</span>
+                    <span className="font-mono ss-num">{fmt(it.value)}</span>
                   </div>
                 ))}
               </div>
@@ -168,7 +164,7 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
           )}
 
           {/* 質問票回答 */}
-          <section className={`rounded border ${sectionBorder} p-3`}>
+          <section className={`rounded-ss-md border ${sectionBorder} p-3`}>
             <h3 className="text-xs font-semibold mb-2">{t('condition.history_detail.questionnaire_section')}</h3>
             {isAnalyst && answerKeys.length > 0 && (
               <div className={`text-[11px] ${muted} mb-2`}>
@@ -199,7 +195,7 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
                           ))}
                         </select>
                       ) : (
-                        <span className="font-mono text-sm w-8 text-right">{val}</span>
+                        <span className="font-mono ss-num text-sm w-8 text-right">{val}</span>
                       )}
                     </div>
                   )
@@ -209,12 +205,12 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
           </section>
 
           {errorMsg && (
-            <div className="text-sm text-red-500 bg-red-500/10 border border-red-500/30 rounded px-3 py-2">
+            <div className="text-sm text-[var(--ss-bad)] bg-[var(--ss-danger-tint)] border border-[var(--ss-danger-border)] rounded-ss-md px-3 py-2">
               {errorMsg}
             </div>
           )}
           {savedMsg && (
-            <div className="text-sm text-green-500 bg-green-500/10 border border-green-500/30 rounded px-3 py-2">
+            <div className="text-sm text-[var(--ss-success)] bg-[var(--ss-success-tint)] border border-[var(--ss-success-border)] rounded-ss-md px-3 py-2">
               {savedMsg}
             </div>
           )}
@@ -225,7 +221,7 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
           <button
             type="button"
             onClick={onClose}
-            className={`px-3 py-1.5 rounded text-sm ${isLight ? 'border border-gray-300 hover:bg-gray-100' : 'border border-gray-600 hover:bg-gray-700'}`}
+            className="px-3 py-1.5 rounded-ss-md text-sm border border-[var(--ss-border-strong)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-2)] duration-base ease-out"
           >
             {t('condition.history_detail.close')}
           </button>
@@ -234,7 +230,7 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
               type="button"
               onClick={handleSave}
               disabled={saving}
-              className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded text-sm font-medium"
+              className="px-4 py-1.5 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-50 text-white rounded-ss-md text-sm font-medium duration-base ease-out"
             >
               {saving ? t('condition.history_detail.saving') : t('condition.history_detail.save')}
             </button>

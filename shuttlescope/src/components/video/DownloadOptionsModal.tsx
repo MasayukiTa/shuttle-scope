@@ -23,7 +23,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { apiPost } from '@/api/client'
-import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { MIcon } from '@/components/common/MIcon'
 
 // ── ヘルパ ───────────────────────────────────────────────────────────────────
@@ -110,7 +109,6 @@ export function DownloadOptionsModal({
   isElectronLocal = false,
 }: Props) {
   const { t } = useTranslation()
-  const isLight = useIsLightMode()
 
   const [tab, setTab] = useState<TabId>('full')
   const [quality, setQuality] = useState(initialQuality)
@@ -243,16 +241,14 @@ export function DownloadOptionsModal({
 
   if (!open) return null
 
-  // ── スタイル ──────────────────────────────────────────────────────────────
-  const panelBg     = isLight ? 'bg-white border border-gray-200' : 'bg-gray-800 border border-gray-700'
-  const headerBg    = isLight ? 'border-b border-gray-200' : 'border-b border-gray-700'
-  const tabActive   = isLight ? 'bg-blue-600 text-white' : 'bg-blue-600 text-white'
-  const tabInactive = isLight ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-  const labelColor  = isLight ? 'text-gray-700' : 'text-gray-300'
-  const muteColor   = isLight ? 'text-gray-500' : 'text-gray-400'
-  const inputCls    = isLight
-    ? 'bg-white border border-gray-300 text-gray-900'
-    : 'bg-gray-700 border border-gray-600 text-gray-100'
+  // ── スタイル (v2 トークン) ────────────────────────────────────────────────
+  const panelBg     = 'bg-[var(--ss-surface-1)] border border-[var(--ss-border)]'
+  const headerBg    = 'border-b border-[var(--ss-border)]'
+  const tabActive   = 'bg-[var(--ss-brand)] text-white'
+  const tabInactive = 'bg-[var(--ss-surface-2)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-3)]'
+  const labelColor  = 'text-[var(--ss-t2)]'
+  const muteColor   = 'text-[var(--ss-t3)]'
+  const inputCls    = 'bg-[var(--ss-surface-1)] border border-[var(--ss-border-strong)] text-[var(--ss-t1)]'
 
   return (
     <div
@@ -262,11 +258,11 @@ export function DownloadOptionsModal({
       aria-labelledby="download-modal-title"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className={`${panelBg} rounded-lg w-full max-w-xl max-h-[90vh] flex flex-col`}>
+      <div className={`${panelBg} rounded-ss-lg shadow-card w-full max-w-xl max-h-[90vh] flex flex-col text-[var(--ss-t1)]`}>
         {/* ヘッダー */}
         <div className={`flex items-center justify-between px-5 py-3 ${headerBg}`}>
           <div className="flex items-center gap-2 min-w-0">
-            <MIcon name="download" size={18} className="text-blue-400 shrink-0" />
+            <MIcon name="download" size={18} className="text-[var(--ss-brand)] shrink-0" />
             <div className="min-w-0">
               <h2 id="download-modal-title" className="text-base font-semibold truncate">
                 {t('video.dl.title', 'Download video')}
@@ -291,7 +287,7 @@ export function DownloadOptionsModal({
               key={tabDef.id}
               onClick={() => tabDef.id !== 'pin' && setTab(tabDef.id)}
               disabled={tabDef.id === 'pin'}
-              className={`px-3 py-1.5 rounded text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+              className={`px-3 py-1.5 rounded-ss-sm text-xs font-medium transition-colors duration-base ease-out disabled:opacity-50 disabled:cursor-not-allowed ${
                 tab === tabDef.id ? tabActive : tabInactive
               }`}
               title={tabDef.hintKey ? t(tabDef.hintKey) : undefined}
@@ -328,7 +324,7 @@ export function DownloadOptionsModal({
                     value={startInput}
                     onChange={(e) => setStartInput(e.target.value)}
                     placeholder="00:30:00"
-                    className={`text-sm rounded px-2 py-1.5 ${inputCls}`}
+                    className={`text-sm rounded-ss-md px-2 py-1.5 ss-num ${inputCls}`}
                     aria-label={t('video.dl.start', 'Start')}
                   />
                 </label>
@@ -339,7 +335,7 @@ export function DownloadOptionsModal({
                     value={endInput}
                     onChange={(e) => setEndInput(e.target.value)}
                     placeholder="01:30:00"
-                    className={`text-sm rounded px-2 py-1.5 ${inputCls}`}
+                    className={`text-sm rounded-ss-md px-2 py-1.5 ss-num ${inputCls}`}
                     aria-label={t('video.dl.end', 'End')}
                   />
                 </label>
@@ -357,7 +353,7 @@ export function DownloadOptionsModal({
                 </div>
               )}
               {rangeError && (
-                <div className="text-xs text-red-500">{rangeError}</div>
+                <div className="text-xs text-[var(--ss-danger)]">{rangeError}</div>
               )}
             </div>
           )}
@@ -377,7 +373,7 @@ export function DownloadOptionsModal({
             <select
               value={quality}
               onChange={(e) => setQuality(e.target.value)}
-              className={`text-sm rounded px-2 py-1 ${inputCls}`}
+              className={`text-sm rounded-ss-md px-2 py-1 ${inputCls}`}
             >
               <option value="360">360p</option>
               <option value="480">480p</option>
@@ -395,7 +391,7 @@ export function DownloadOptionsModal({
               <select
                 value={cookieBrowser}
                 onChange={(e) => setCookieBrowser(e.target.value)}
-                className={`text-sm rounded px-2 py-1 flex-1 ${inputCls}`}
+                className={`text-sm rounded-ss-md px-2 py-1 flex-1 ${inputCls}`}
               >
                 <option value="">{t('video.dl.cookie_none', 'None')}</option>
                 <option value="chrome">Chrome</option>
@@ -416,13 +412,13 @@ export function DownloadOptionsModal({
             <MIcon name="expand_more" size={12} className={authPanelOpen ? 'rotate-0' : '-rotate-90'} />
             {t('video.dl.auth_panel', 'Member-only sites · password-protected video')}
             {(cookiesFileName || videoPassword) && (
-              <span className={`text-[10px] inline-flex items-center gap-0.5 ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>
+              <span className="text-[10px] inline-flex items-center gap-0.5 text-[var(--ss-success)]">
                 <MIcon name="check" size={10} />{t('video.dl.configured', 'Configured')}
               </span>
             )}
           </button>
           {authPanelOpen && (
-            <div className="flex flex-col gap-2 pl-4 border-l border-dashed" style={{ borderColor: isLight ? '#cbd5e1' : '#374151' }}>
+            <div className="flex flex-col gap-2 pl-4 border-l border-dashed border-[var(--ss-border-strong)]">
               {/* cookies.txt */}
               <div className="flex flex-col gap-1">
                 <span className={`text-xs ${muteColor}`}>{t('video.dl.cookies_label', 'cookies.txt (Netscape format, ≤1MB)')}</span>
@@ -437,20 +433,20 @@ export function DownloadOptionsModal({
                     <button
                       type="button"
                       onClick={() => handleCookiesFile(null)}
-                      className={`text-[10px] px-2 py-1 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300' : 'bg-gray-700 hover:bg-gray-600'}`}
+                      className="text-[10px] px-2 py-1 rounded-ss-sm bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)]"
                     >
                       <MIcon name="close" size={10} />
                     </button>
                   )}
                 </div>
                 {cookiesFileName && !cookiesError && (
-                  <div className={`text-[10px] inline-flex items-center gap-0.5 ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>
+                  <div className="text-[10px] inline-flex items-center gap-0.5 text-[var(--ss-success)]">
                     <MIcon name="check" size={10} />
                     {t('video.dl.cookies_ok', { name: cookiesFileName, kb: Math.round(cookiesTxt.length / 1024), defaultValue: '{{name}} ({{kb}} KB)' })}
                   </div>
                 )}
                 {cookiesError && (
-                  <div className="text-[10px] text-red-500 inline-flex items-center gap-0.5"><MIcon name="warning" size={10} />{cookiesError}</div>
+                  <div className="text-[10px] text-[var(--ss-danger)] inline-flex items-center gap-0.5"><MIcon name="warning" size={10} />{cookiesError}</div>
                 )}
               </div>
 
@@ -465,12 +461,12 @@ export function DownloadOptionsModal({
                     placeholder={t('video.dl.video_password_ph', 'Video password')}
                     autoComplete="off"
                     maxLength={1024}
-                    className={`text-sm rounded px-2 py-1 flex-1 ${inputCls}`}
+                    className={`text-sm rounded-ss-md px-2 py-1 flex-1 ${inputCls}`}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
-                    className={`text-[10px] px-2 py-1 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300' : 'bg-gray-700 hover:bg-gray-600'}`}
+                    className="text-[10px] px-2 py-1 rounded-ss-sm bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)]"
                   >
                     {showPassword ? t('video.dl.hide', 'Hide') : t('video.dl.show', 'Show')}
                   </button>
@@ -481,7 +477,7 @@ export function DownloadOptionsModal({
 
           {/* エラー */}
           {submitError && (
-            <div className="flex items-start gap-1.5 text-xs text-red-500">
+            <div className="flex items-start gap-1.5 text-xs text-[var(--ss-danger)]">
               <MIcon name="error" size={12} className="shrink-0 mt-0.5" />
               <span className="break-words">{submitError}</span>
             </div>
@@ -489,19 +485,17 @@ export function DownloadOptionsModal({
         </div>
 
         {/* フッタ: 送信ボタン */}
-        <div className={`px-5 py-3 flex items-center justify-end gap-2 ${headerBg}`}>
+        <div className={`px-5 py-3 flex items-center justify-end gap-2 border-t border-[var(--ss-border)]`}>
           <button
             onClick={onClose}
-            className={`text-sm px-3 py-1.5 rounded ${
-              isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-700' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
-            }`}
+            className="text-sm px-3 py-1.5 rounded-ss-md bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t2)]"
           >
             {t('app.cancel', 'Cancel')}
           </button>
           <button
             onClick={handleSubmit}
             disabled={submitting || !!rangeError || (tab === 'manual' && (startSec === null && endSec === null))}
-            className="text-sm px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-medium flex items-center gap-1.5"
+            className="text-sm px-4 py-1.5 rounded-ss-md bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-50 text-white font-medium flex items-center gap-1.5"
           >
             <MIcon name="download" size={14} />
             {submitting ? t('video.dl.starting', 'Starting...') : tab === 'manual' ? t('video.dl.download_range', 'Download range') : t('video.dl.download', 'Download')}

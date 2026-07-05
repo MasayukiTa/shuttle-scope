@@ -33,14 +33,14 @@ export function AttributePanel({ attributes, onChange, disabled = false }: Attri
         aria-pressed={attributes.is_backhand}
         aria-disabled={disabled || undefined}
         aria-keyshortcuts="Q"
-        className={`flex items-center gap-1.5 px-3 py-2.5 md:px-2 md:py-1 rounded border transition-colors ${
+        className={`flex items-center gap-1.5 px-3 py-2.5 md:px-2 md:py-1 rounded-ss-md border transition-colors duration-fast ease-out ${
           attributes.is_backhand
-            ? 'bg-purple-700 border-purple-500 text-white'
-            : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+            ? 'bg-[var(--ss-brand)] border-[var(--ss-brand)] text-white'
+            : 'bg-[var(--ss-surface-1)] border-[var(--ss-border-strong)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-3)]'
         } ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
       >
         <span>{t('annotator.backhand')} {t('auto.AttributePanel.bh')}</span>
-        <kbd className="hidden md:inline text-[10px] font-mono opacity-60 bg-black/20 px-1 rounded">Q</kbd>
+        <kbd className="hidden md:inline text-[10px] font-mono ss-num opacity-60 bg-[var(--ss-surface-3)] px-1 rounded-ss-sm">Q</kbd>
       </button>
 
       {/* ラウンドヘッド */}
@@ -50,14 +50,14 @@ export function AttributePanel({ attributes, onChange, disabled = false }: Attri
         aria-pressed={attributes.is_around_head}
         aria-disabled={disabled || undefined}
         aria-keyshortcuts="W"
-        className={`flex items-center gap-1.5 px-3 py-2.5 md:px-2 md:py-1 rounded border transition-colors ${
+        className={`flex items-center gap-1.5 px-3 py-2.5 md:px-2 md:py-1 rounded-ss-md border transition-colors duration-fast ease-out ${
           attributes.is_around_head
-            ? 'bg-purple-700 border-purple-500 text-white'
-            : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+            ? 'bg-[var(--ss-brand)] border-[var(--ss-brand)] text-white'
+            : 'bg-[var(--ss-surface-1)] border-[var(--ss-border-strong)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-3)]'
         } ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
       >
         <span>{t('annotator.around_head')} {t('auto.AttributePanel.rh')}</span>
-        <kbd className="hidden md:inline text-[10px] font-mono opacity-60 bg-black/20 px-1 rounded">W</kbd>
+        <kbd className="hidden md:inline text-[10px] font-mono ss-num opacity-60 bg-[var(--ss-surface-3)] px-1 rounded-ss-sm">W</kbd>
       </button>
 
       {/* ネット上下 */}
@@ -66,7 +66,7 @@ export function AttributePanel({ attributes, onChange, disabled = false }: Attri
         role="radiogroup"
         aria-label={t('annotator.net_position_aria')}
       >
-        <span className="text-gray-500 text-xs">
+        <span className="text-[var(--ss-t3)] text-xs">
           {t('annotator.net_label')}
         </span>
         {[
@@ -85,8 +85,8 @@ export function AttributePanel({ attributes, onChange, disabled = false }: Attri
               aria-disabled={disabled || undefined}
               className={
                 (selected
-                  ? 'px-3 py-2 md:px-2 md:py-0.5 rounded bg-blue-600 text-white text-xs'
-                  : 'px-3 py-2 md:px-2 md:py-0.5 rounded bg-gray-700 text-gray-300 text-xs hover:bg-gray-600')
+                  ? 'px-3 py-2 md:px-2 md:py-0.5 rounded-ss-md bg-[var(--ss-brand)] text-white text-xs transition-colors duration-fast ease-out'
+                  : 'px-3 py-2 md:px-2 md:py-0.5 rounded-ss-md bg-[var(--ss-surface-1)] border border-[var(--ss-border-strong)] text-[var(--ss-t2)] text-xs hover:bg-[var(--ss-surface-3)] transition-colors duration-fast ease-out')
                 + (disabled ? ' opacity-40 cursor-not-allowed' : '')
               }
             >

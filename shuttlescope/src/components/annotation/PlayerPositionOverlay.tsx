@@ -174,14 +174,14 @@ export function PlayerPositionOverlay({
         style={{ width: videoWidth, height: videoHeight }}
       />
       {/* research badge */}
-      <div className="absolute top-1 right-1 flex items-center gap-1 bg-black/50 rounded px-1.5 py-0.5">
+      <div className="absolute top-1 right-1 flex items-center gap-1 bg-black/50 rounded-ss-sm px-1.5 py-0.5">
         <span className="text-amber-400 text-[9px] font-bold uppercase tracking-wide">
           {t('auto.PlayerPositionOverlay.assisted')}
         </span>
       </div>
       {/* no-data hint */}
       {!nearestFrame && frames.length > 0 && (
-        <div className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[10px] text-gray-400 bg-black/50 rounded px-2 py-0.5">
+        <div className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[10px] text-gray-400 bg-black/50 rounded-ss-sm px-2 py-0.5">
           {t('yolo.no_data_at_time', 'この時刻の検出データなし')}
         </div>
       )}

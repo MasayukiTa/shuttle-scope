@@ -34,7 +34,7 @@ export function ResultMatrix({ job, devices, targets }: Props) {
 
   // 結果が空の場合は何も表示しない
   if (Object.keys(job.results).length === 0) {
-    return <p className="text-xs text-gray-500">{t('benchmark.no_result')}</p>
+    return <p className="text-xs text-[var(--ss-t3)]">{t('benchmark.no_result')}</p>
   }
 
   // target ごとの最速デバイス ID をキャッシュ
@@ -47,15 +47,15 @@ export function ResultMatrix({ job, devices, targets }: Props) {
     <div className="overflow-x-auto">
       <table className="text-xs w-full border-collapse">
         <thead>
-          <tr>
+          <tr className="bg-[var(--ss-surface-2)]">
             {/* 左上の空セル */}
-            <th className="text-left px-2 py-1.5 text-gray-500 font-medium border-b border-gray-700">
+            <th className="text-left px-2 py-1.5 text-[var(--ss-t2)] font-medium border-b border-[var(--ss-border)]">
               {t('benchmark.result')}
             </th>
             {targets.map((target) => (
               <th
                 key={target}
-                className="px-2 py-1.5 text-gray-400 font-medium border-b border-gray-700 whitespace-nowrap"
+                className="px-2 py-1.5 text-[var(--ss-t2)] font-medium border-b border-[var(--ss-border)] whitespace-nowrap"
               >
                 {t(`benchmark.targets.${target}`)}
               </th>
@@ -64,9 +64,9 @@ export function ResultMatrix({ job, devices, targets }: Props) {
         </thead>
         <tbody>
           {devices.map((dev) => (
-            <tr key={dev.device_id} className="border-b border-gray-800">
+            <tr key={dev.device_id} className="border-b border-[var(--ss-border)] hover:bg-[var(--ss-surface-3)]">
               {/* デバイスラベル */}
-              <td className="px-2 py-2 text-gray-300 font-medium whitespace-nowrap">
+              <td className="px-2 py-2 text-[var(--ss-t1)] font-medium whitespace-nowrap">
                 {dev.label}
               </td>
               {/* ターゲットごとのセル */}
@@ -77,7 +77,7 @@ export function ResultMatrix({ job, devices, targets }: Props) {
                 if (!cell) {
                   // 未計測
                   return (
-                    <td key={target} className="px-2 py-2 text-center text-gray-600">
+                    <td key={target} className="px-2 py-2 text-center text-[var(--ss-t3)]">
                       —
                     </td>
                   )
@@ -87,7 +87,7 @@ export function ResultMatrix({ job, devices, targets }: Props) {
                   // "device unavailable" = このデバイスでは対応外（CPU専用タスク等）→ 未計測扱い
                   if (cell.error === 'device unavailable') {
                     return (
-                      <td key={target} className="px-2 py-2 text-center text-gray-600">
+                      <td key={target} className="px-2 py-2 text-center text-[var(--ss-t3)]">
                         —
                       </td>
                     )
@@ -97,7 +97,7 @@ export function ResultMatrix({ job, devices, targets }: Props) {
                     return (
                       <td
                         key={target}
-                        className="px-2 py-2 text-center bg-yellow-900/30 text-yellow-400 rounded text-[10px]"
+                        className="px-2 py-2 text-center bg-[var(--ss-warn-tint)] text-[var(--ss-warn)] rounded-ss-md text-[10px]"
                         title={cell.error}
                       >
                         {t('auto.ResultMatrix.no_model')}
@@ -108,7 +108,7 @@ export function ResultMatrix({ job, devices, targets }: Props) {
                   return (
                     <td
                       key={target}
-                      className="px-2 py-2 text-center bg-red-900/40 text-red-400 rounded"
+                      className="px-2 py-2 text-center bg-[var(--ss-danger-tint)] text-[var(--ss-danger)] rounded-ss-md"
                       title={cell.error}
                     >
                       {t('auto.ResultMatrix.err')}
@@ -120,16 +120,16 @@ export function ResultMatrix({ job, devices, targets }: Props) {
                 return (
                   <td
                     key={target}
-                    className={`px-2 py-2 text-center rounded ${
-                      isFastest ? 'bg-blue-900/40' : ''
+                    className={`px-2 py-2 text-center rounded-ss-md ${
+                      isFastest ? 'bg-[var(--ss-brand-tint)]' : ''
                     }`}
                   >
                     {/* fps は大字 */}
-                    <p className={`font-bold font-mono ${isFastest ? 'text-blue-300' : 'text-green-300'}`}>
+                    <p className={`font-bold font-mono ss-num ${isFastest ? 'text-[var(--ss-brand)]' : 'text-[var(--ss-good)]'}`}>
                       {cell.fps.toFixed(1)} fps
                     </p>
                     {/* avg_ms / p95_ms は小字 */}
-                    <p className="text-[10px] text-gray-500 mt-0.5">
+                    <p className="text-[10px] text-[var(--ss-t3)] mt-0.5 ss-num">
                       {t('auto.ResultMatrix.ms_p95', { avg: cell.avg_ms.toFixed(1), p95: cell.p95_ms.toFixed(1) })}
                     </p>
                   </td>

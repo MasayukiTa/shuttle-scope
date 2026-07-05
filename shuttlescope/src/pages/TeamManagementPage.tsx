@@ -177,7 +177,7 @@ export function TeamManagementPage() {
   if (!isAdmin && !isCoach) {
     return (
       <div className="p-6">
-        <p className="text-sm text-gray-500">{t('auto.TeamManagementPage.k1')}</p>
+        <p className="text-sm text-[var(--ss-t3)]">{t('auto.TeamManagementPage.k1')}</p>
       </div>
     )
   }
@@ -189,7 +189,7 @@ export function TeamManagementPage() {
         {isAdmin && (
           <button
             onClick={() => setShowCreate(true)}
-            className="flex items-center gap-1 px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 shrink-0"
+            className="flex items-center gap-1 px-3 py-2 bg-[var(--ss-brand)] text-white rounded-ss-md hover:bg-[var(--ss-brand-hover)] shrink-0"
           >
             <MIcon name="add" size={16} /> <span className="hidden sm:inline">{t('auto.TeamManagementPage.k3')}</span><span className="sm:hidden">{t('auto.TeamManagementPage.k4')}</span>
           </button>
@@ -197,47 +197,47 @@ export function TeamManagementPage() {
       </div>
 
       {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded">
+        <div className="mb-4 p-3 bg-[var(--ss-danger-bg)] border border-[var(--ss-danger-border)] text-[var(--ss-danger-text)] text-sm rounded-ss-lg">
           {error}
         </div>
       )}
 
       {showCreate && (
-        <div className="mb-6 p-4 border rounded bg-gray-50">
-          <h2 className="font-semibold mb-3">{t('auto.TeamManagementPage.k5')}</h2>
+        <div className="mb-6 p-4 border border-[var(--ss-border)] rounded-ss-lg bg-[var(--ss-surface-2)]">
+          <h2 className="font-semibold mb-3 text-[var(--ss-t1)]">{t('auto.TeamManagementPage.k5')}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium mb-1">{t('auto.TeamManagementPage.k6')}</label>
+              <label className="block text-xs font-medium mb-1 text-[var(--ss-t2)]">{t('auto.TeamManagementPage.k6')}</label>
               <input
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className="w-full px-3 py-2 border rounded"
+                className="w-full px-3 py-2 border border-[var(--ss-border)] rounded-ss-md bg-[var(--ss-surface-1)] text-[var(--ss-t1)]"
                 placeholder={t('auto.TeamManagementPage.k25')}
               />
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1">{t('auto.TeamManagementPage.k7')}</label>
+              <label className="block text-xs font-medium mb-1 text-[var(--ss-t2)]">{t('auto.TeamManagementPage.k7')}</label>
               <input
                 value={form.display_id}
                 onChange={(e) => setForm({ ...form, display_id: e.target.value })}
-                className="w-full px-3 py-2 border rounded"
+                className="w-full px-3 py-2 border border-[var(--ss-border)] rounded-ss-md bg-[var(--ss-surface-1)] text-[var(--ss-t1)]"
                 placeholder={t('auto.TeamManagementPage.k26')}
               />
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1">{t('auto.TeamManagementPage.k8')}</label>
+              <label className="block text-xs font-medium mb-1 text-[var(--ss-t2)]">{t('auto.TeamManagementPage.k8')}</label>
               <input
                 value={form.short_name}
                 onChange={(e) => setForm({ ...form, short_name: e.target.value })}
-                className="w-full px-3 py-2 border rounded"
+                className="w-full px-3 py-2 border border-[var(--ss-border)] rounded-ss-md bg-[var(--ss-surface-1)] text-[var(--ss-t1)]"
               />
             </div>
             <div className="md:col-span-2">
-              <label className="block text-xs font-medium mb-1">{t('auto.TeamManagementPage.k9')}</label>
+              <label className="block text-xs font-medium mb-1 text-[var(--ss-t2)]">{t('auto.TeamManagementPage.k9')}</label>
               <textarea
                 value={form.notes}
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                className="w-full px-3 py-2 border rounded"
+                className="w-full px-3 py-2 border border-[var(--ss-border)] rounded-ss-md bg-[var(--ss-surface-1)] text-[var(--ss-t1)]"
                 rows={2}
               />
             </div>
@@ -249,14 +249,14 @@ export function TeamManagementPage() {
                 setForm(emptyForm())
               }}
               disabled={creating}
-              className="px-3 py-2 border rounded disabled:opacity-50 w-full sm:w-auto"
+              className="px-3 py-2 border border-[var(--ss-border-strong)] rounded-ss-md text-[var(--ss-t1)] bg-[var(--ss-surface-1)] disabled:opacity-50 w-full sm:w-auto"
             >
               {t('auto.TeamManagementPage.k23')}
             </button>
             <button
               onClick={handleCreate}
               disabled={creating}
-              className="px-3 py-2 bg-blue-600 text-white rounded disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 w-full sm:w-auto"
+              className="px-3 py-2 bg-[var(--ss-brand)] text-white rounded-ss-md disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 w-full sm:w-auto"
             >
               {creating && <MIcon name="progress_activity" size={14} className="animate-spin" />}
               {creating ? t('auto.TeamManagementPage.k27') : t('auto.TeamManagementPage.k28')}
@@ -266,50 +266,50 @@ export function TeamManagementPage() {
       )}
 
       {loading ? (
-        <p className="text-sm text-gray-500">{t('auto.TeamManagementPage.k10')}</p>
+        <p className="text-sm text-[var(--ss-t3)]">{t('auto.TeamManagementPage.k10')}</p>
       ) : isMobile ? (
         <div className="space-y-2">
           {teams.length === 0 && (
-            <div className="py-6 text-center text-sm text-gray-500">{t('auto.TeamManagementPage.k11')}</div>
+            <div className="py-6 text-center text-sm text-[var(--ss-t3)]">{t('auto.TeamManagementPage.k11')}</div>
           )}
           {teams.map((tm) => {
             const editing = editingId === tm.id
             const expanded = expandedTeamId === tm.id
             const members = usersByTeam[tm.id] || []
             return (
-              <div key={tm.id} className="border rounded p-3 bg-white">
+              <div key={tm.id} className="border border-[var(--ss-border)] rounded-ss-lg p-3 bg-[var(--ss-surface-1)]">
                 {editing ? (
                   <div className="space-y-2">
                     <input
                       value={editForm.name}
                       onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                      className="w-full px-2 py-1.5 border rounded text-sm"
+                      className="w-full px-2 py-1.5 border border-[var(--ss-border)] rounded-ss-md text-sm bg-[var(--ss-surface-1)] text-[var(--ss-t1)]"
                       placeholder={t('auto.TeamManagementPage.k16')}
                     />
                     <input
                       value={editForm.display_id}
                       onChange={(e) => setEditForm({ ...editForm, display_id: e.target.value })}
-                      className="w-full px-2 py-1.5 border rounded text-sm"
+                      className="w-full px-2 py-1.5 border border-[var(--ss-border)] rounded-ss-md text-sm bg-[var(--ss-surface-1)] text-[var(--ss-t1)]"
                       placeholder={t('auto.TeamManagementPage.k15')}
                     />
                     <input
                       value={editForm.short_name}
                       onChange={(e) => setEditForm({ ...editForm, short_name: e.target.value })}
-                      className="w-full px-2 py-1.5 border rounded text-sm"
+                      className="w-full px-2 py-1.5 border border-[var(--ss-border)] rounded-ss-md text-sm bg-[var(--ss-surface-1)] text-[var(--ss-t1)]"
                       placeholder={t('auto.TeamManagementPage.k8')}
                     />
                     <div className="flex gap-2 justify-end">
                       <button
                         onClick={() => setEditingId(null)}
                         disabled={savingId === tm.id}
-                        className="p-2 text-gray-500 border rounded disabled:opacity-50"
+                        className="p-2 text-[var(--ss-t2)] border border-[var(--ss-border)] rounded-ss-md disabled:opacity-50"
                       >
                         <MIcon name="close" size={16} />
                       </button>
                       <button
                         onClick={() => handleSave(tm.id)}
                         disabled={savingId === tm.id}
-                        className="p-2 bg-green-600 text-white rounded inline-flex items-center gap-1 disabled:opacity-60"
+                        className="p-2 bg-[var(--ss-success)] text-white rounded-ss-md inline-flex items-center gap-1 disabled:opacity-60"
                       >
                         {savingId === tm.id ? <MIcon name="progress_activity" size={14} className="animate-spin" /> : <MIcon name="check" size={16} />}
                       </button>
@@ -319,21 +319,21 @@ export function TeamManagementPage() {
                   <>
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
-                        <div className="font-medium truncate">{tm.name}</div>
-                        <div className="text-xs text-gray-500 mt-0.5 flex flex-wrap gap-x-2">
-                          <code className="bg-gray-100 px-1 rounded">{tm.display_id || '—'}</code>
+                        <div className="font-medium truncate text-[var(--ss-t1)]">{tm.name}</div>
+                        <div className="text-xs text-[var(--ss-t3)] mt-0.5 flex flex-wrap gap-x-2">
+                          <code className="bg-[var(--ss-surface-2)] px-1 rounded">{tm.display_id || '—'}</code>
                           {tm.short_name && <span>({tm.short_name})</span>}
                           {tm.is_independent ? (
-                            <span className="px-1.5 rounded bg-yellow-100 text-yellow-700">{t('auto.TeamManagementPage.k12')}</span>
+                            <span className="px-1.5 rounded-ss-sm bg-[var(--ss-warning-bg)] text-[var(--ss-warning-text)]">{t('auto.TeamManagementPage.k12')}</span>
                           ) : (
-                            <span className="px-1.5 rounded bg-blue-100 text-blue-700">{t('auto.TeamManagementPage.k13')}</span>
+                            <span className="px-1.5 rounded-ss-sm bg-[var(--ss-brand-tint)] text-[var(--ss-brand)]">{t('auto.TeamManagementPage.k13')}</span>
                           )}
                         </div>
                       </div>
                       <div className="flex gap-1 shrink-0">
                         <button
                           onClick={() => setExpandedTeamId((cur) => (cur === tm.id ? null : tm.id))}
-                          className="p-1.5 text-gray-600 border rounded inline-flex items-center gap-1"
+                          className="p-1.5 text-[var(--ss-t2)] border border-[var(--ss-border)] rounded-ss-md inline-flex items-center gap-1"
                         >
                           <MIcon name="group" size={14} />
                           <span className="text-xs">{members.length}</span>
@@ -341,7 +341,7 @@ export function TeamManagementPage() {
                         {(isAdmin || isCoach) && (
                           <button
                             onClick={() => startEdit(tm)}
-                            className="p-1.5 text-blue-600 border rounded"
+                            className="p-1.5 text-[var(--ss-brand)] border border-[var(--ss-border)] rounded-ss-md"
                           >
                             <MIcon name="edit" size={14} />
                           </button>
@@ -350,7 +350,7 @@ export function TeamManagementPage() {
                           <button
                             onClick={() => startDelete(tm)}
                             disabled={deletingId === tm.id}
-                            className="p-1.5 text-red-600 border rounded disabled:opacity-50"
+                            className="p-1.5 text-[var(--ss-danger-text)] border border-[var(--ss-border)] rounded-ss-md disabled:opacity-50"
                             title={t('auto.TeamManagementPage.k20')}
                           >
                             {deletingId === tm.id ? (
@@ -363,16 +363,16 @@ export function TeamManagementPage() {
                       </div>
                     </div>
                     {expanded && (
-                      <div className="mt-3 pt-3 border-t">
-                        <div className="text-xs text-gray-500 mb-1">{t('auto.TeamManagementPage.k29', { n: members.length })}</div>
+                      <div className="mt-3 pt-3 border-t border-[var(--ss-border)]">
+                        <div className="text-xs text-[var(--ss-t3)] mb-1">{t('auto.TeamManagementPage.k29', { n: members.length })}</div>
                         {members.length === 0 ? (
-                          <div className="text-xs text-gray-400">{t('auto.TeamManagementPage.k14')}</div>
+                          <div className="text-xs text-[var(--ss-t3)]">{t('auto.TeamManagementPage.k14')}</div>
                         ) : (
                           <ul className="space-y-1 text-sm">
                             {members.map((u) => (
                               <li key={u.id} className="flex items-center gap-2">
-                                <span className="px-1.5 py-0.5 rounded text-[10px] bg-gray-200 text-gray-700">{u.role}</span>
-                                <span className="truncate">{u.display_name || u.username}</span>
+                                <span className="px-1.5 py-0.5 rounded-ss-sm text-[10px] bg-[var(--ss-surface-2)] text-[var(--ss-t2)]">{u.role}</span>
+                                <span className="truncate text-[var(--ss-t1)]">{u.display_name || u.username}</span>
                               </li>
                             ))}
                           </ul>
@@ -388,12 +388,12 @@ export function TeamManagementPage() {
       ) : (
         <table className="w-full border-collapse">
           <thead>
-            <tr className="text-left border-b">
-              <th className="py-2 pr-2">ID</th>
-              <th className="py-2 pr-2">{t('auto.TeamManagementPage.k15')}</th>
-              <th className="py-2 pr-2">{t('auto.TeamManagementPage.k16')}</th>
-              <th className="py-2 pr-2">{t('auto.TeamManagementPage.k8')}</th>
-              <th className="py-2 pr-2">{t('auto.TeamManagementPage.k17')}</th>
+            <tr className="text-left border-b border-[var(--ss-border)] bg-[var(--ss-surface-2)]">
+              <th className="py-2 pr-2 text-[var(--ss-t1)]">ID</th>
+              <th className="py-2 pr-2 text-[var(--ss-t1)]">{t('auto.TeamManagementPage.k15')}</th>
+              <th className="py-2 pr-2 text-[var(--ss-t1)]">{t('auto.TeamManagementPage.k16')}</th>
+              <th className="py-2 pr-2 text-[var(--ss-t1)]">{t('auto.TeamManagementPage.k8')}</th>
+              <th className="py-2 pr-2 text-[var(--ss-t1)]">{t('auto.TeamManagementPage.k17')}</th>
               <th className="py-2"></th>
             </tr>
           </thead>
@@ -402,17 +402,17 @@ export function TeamManagementPage() {
               const editing = editingId === tm.id
               const canEdit = isAdmin || (isCoach && false) // coach は自チームのみ。サーバ側で権限制御。
               return (
-                <tr key={tm.id} className="border-b">
-                  <td className="py-2 pr-2 text-xs text-gray-500">{tm.id}</td>
+                <tr key={tm.id} className="border-b border-[var(--ss-border)] bg-[var(--ss-surface-1)]">
+                  <td className="py-2 pr-2 text-xs ss-num text-[var(--ss-t3)]">{tm.id}</td>
                   <td className="py-2 pr-2">
                     {editing ? (
                       <input
                         value={editForm.display_id}
                         onChange={(e) => setEditForm({ ...editForm, display_id: e.target.value })}
-                        className="w-full px-2 py-1 border rounded text-sm"
+                        className="w-full px-2 py-1 border border-[var(--ss-border)] rounded-ss-md text-sm bg-[var(--ss-surface-1)] text-[var(--ss-t1)]"
                       />
                     ) : (
-                      <code className="text-xs bg-gray-100 px-2 py-0.5 rounded">{tm.display_id || '—'}</code>
+                      <code className="text-xs bg-[var(--ss-surface-2)] px-2 py-0.5 rounded-ss-sm text-[var(--ss-t2)]">{tm.display_id || '—'}</code>
                     )}
                   </td>
                   <td className="py-2 pr-2">
@@ -420,10 +420,10 @@ export function TeamManagementPage() {
                       <input
                         value={editForm.name}
                         onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                        className="w-full px-2 py-1 border rounded text-sm"
+                        className="w-full px-2 py-1 border border-[var(--ss-border)] rounded-ss-md text-sm bg-[var(--ss-surface-1)] text-[var(--ss-t1)]"
                       />
                     ) : (
-                      <span>{tm.name}</span>
+                      <span className="text-[var(--ss-t1)]">{tm.name}</span>
                     )}
                   </td>
                   <td className="py-2 pr-2">
@@ -431,17 +431,17 @@ export function TeamManagementPage() {
                       <input
                         value={editForm.short_name}
                         onChange={(e) => setEditForm({ ...editForm, short_name: e.target.value })}
-                        className="w-full px-2 py-1 border rounded text-sm"
+                        className="w-full px-2 py-1 border border-[var(--ss-border)] rounded-ss-md text-sm bg-[var(--ss-surface-1)] text-[var(--ss-t1)]"
                       />
                     ) : (
-                      <span className="text-sm text-gray-600">{tm.short_name || '—'}</span>
+                      <span className="text-sm text-[var(--ss-t2)]">{tm.short_name || '—'}</span>
                     )}
                   </td>
                   <td className="py-2 pr-2 text-xs">
                     {tm.is_independent ? (
-                      <span className="px-2 py-0.5 rounded bg-yellow-100 text-yellow-700">{t('auto.TeamManagementPage.k12')}</span>
+                      <span className="px-2 py-0.5 rounded-ss-sm bg-[var(--ss-warning-bg)] text-[var(--ss-warning-text)]">{t('auto.TeamManagementPage.k12')}</span>
                     ) : (
-                      <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-700">{t('auto.TeamManagementPage.k13')}</span>
+                      <span className="px-2 py-0.5 rounded-ss-sm bg-[var(--ss-brand-tint)] text-[var(--ss-brand)]">{t('auto.TeamManagementPage.k13')}</span>
                     )}
                   </td>
                   <td className="py-2 text-right">
@@ -449,7 +449,7 @@ export function TeamManagementPage() {
                       {!editing && (
                         <button
                           onClick={() => setExpandedTeamId((cur) => (cur === tm.id ? null : tm.id))}
-                          className="p-1 text-gray-600 hover:bg-gray-100 rounded inline-flex items-center gap-1"
+                          className="p-1 text-[var(--ss-t2)] border border-[var(--ss-border)] rounded-ss-md inline-flex items-center gap-1"
                           title={t('auto.TeamManagementPage.k21')}
                         >
                           <MIcon name="group" size={14} />
@@ -461,14 +461,14 @@ export function TeamManagementPage() {
                           <button
                             onClick={() => handleSave(tm.id)}
                             disabled={savingId === tm.id}
-                            className="p-1 text-green-600 hover:bg-green-50 rounded disabled:opacity-50"
+                            className="p-1 text-[var(--ss-success)] border border-[var(--ss-border)] rounded-ss-md disabled:opacity-50"
                             title={t('auto.TeamManagementPage.k22')}
                           >
                             {savingId === tm.id ? <MIcon name="progress_activity" size={16} className="animate-spin" /> : <MIcon name="check" size={16} />}
                           </button>
                           <button
                             onClick={() => setEditingId(null)}
-                            className="p-1 text-gray-500 hover:bg-gray-50 rounded"
+                            className="p-1 text-[var(--ss-t2)] border border-[var(--ss-border)] rounded-ss-md"
                             title={t('auto.TeamManagementPage.k23')}
                           >
                             <MIcon name="close" size={16} />
@@ -478,7 +478,7 @@ export function TeamManagementPage() {
                         <>
                           <button
                             onClick={() => startEdit(tm)}
-                            className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                            className="p-1 text-[var(--ss-brand)] border border-[var(--ss-border)] rounded-ss-md"
                             title={t('auto.TeamManagementPage.k24')}
                           >
                             <MIcon name="edit" size={16} />
@@ -486,7 +486,7 @@ export function TeamManagementPage() {
                           {isAdmin && (
                             <button
                               onClick={() => startDelete(tm)}
-                              className="p-1 text-red-600 hover:bg-red-50 rounded"
+                              className="p-1 text-[var(--ss-danger-text)] border border-[var(--ss-border)] rounded-ss-md"
                               title={t('auto.TeamManagementPage.k20')}
                               disabled={deletingId === tm.id}
                             >
@@ -508,18 +508,18 @@ export function TeamManagementPage() {
               if (expandedTeamId !== tm.id) return null
               const members = usersByTeam[tm.id] || []
               return (
-                <tr key={`${tm.id}-members-row`} className="bg-gray-50/60">
+                <tr key={`${tm.id}-members-row`} className="bg-[var(--ss-surface-2)]">
                   <td colSpan={6} className="px-4 py-2">
-                    <div className="text-xs text-gray-500 mb-1">{t('auto.TeamManagementPage.k30', { name: tm.name, n: members.length })}</div>
+                    <div className="text-xs text-[var(--ss-t3)] mb-1">{t('auto.TeamManagementPage.k30', { name: tm.name, n: members.length })}</div>
                     {members.length === 0 ? (
-                      <div className="text-xs text-gray-400">{t('auto.TeamManagementPage.k14')}</div>
+                      <div className="text-xs text-[var(--ss-t3)]">{t('auto.TeamManagementPage.k14')}</div>
                     ) : (
                       <ul className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-1 text-sm">
                         {members.map((u) => (
                           <li key={u.id} className="flex items-center gap-2">
-                            <span className="px-1.5 py-0.5 rounded text-[10px] bg-gray-200 text-gray-700">{u.role}</span>
-                            <span>{u.display_name || u.username}</span>
-                            <span className="text-xs text-gray-400">@{u.username}</span>
+                            <span className="px-1.5 py-0.5 rounded-ss-sm text-[10px] bg-[var(--ss-border)] text-[var(--ss-t2)]">{u.role}</span>
+                            <span className="text-[var(--ss-t1)]">{u.display_name || u.username}</span>
+                            <span className="text-xs text-[var(--ss-t3)]">@{u.username}</span>
                           </li>
                         ))}
                       </ul>
@@ -530,7 +530,7 @@ export function TeamManagementPage() {
             })}
             {teams.length === 0 && (
               <tr>
-                <td colSpan={6} className="py-6 text-center text-sm text-gray-500">
+                <td colSpan={6} className="py-6 text-center text-sm text-[var(--ss-t3)]">
                   {t('auto.TeamManagementPage.k11')}
                 </td>
               </tr>
@@ -551,28 +551,28 @@ export function TeamManagementPage() {
           }}
         >
           <div
-            className="bg-white rounded-lg shadow-lg max-w-md w-full p-5"
+            className="bg-[var(--ss-surface-1)] rounded-ss-lg shadow-card border border-[var(--ss-border)] max-w-md w-full p-5"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-2 mb-3">
-              <MIcon name="warning" size={20} className="text-red-600" />
-              <h2 className="text-lg font-semibold">{t('auto.TeamManagementPage.k18')}</h2>
+              <MIcon name="warning" size={20} className="text-[var(--ss-danger-text)]" />
+              <h2 className="text-lg font-semibold text-[var(--ss-t1)]">{t('auto.TeamManagementPage.k18')}</h2>
             </div>
-            <p className="text-sm text-gray-700 mb-3">
+            <p className="text-sm text-[var(--ss-t2)] mb-3">
               {t('auto.TeamManagementPage.k31')}「<span className="font-medium">{deleteTarget.name}</span>」{t('auto.TeamManagementPage.k32')}
             </p>
 
             {!deleteDeps ? (
-              <div className="text-sm text-gray-500 flex items-center gap-2 py-2">
+              <div className="text-sm text-[var(--ss-t3)] flex items-center gap-2 py-2">
                 <MIcon name="progress_activity" size={14} className="animate-spin" /> {t('auto.TeamManagementPage.k33')}
               </div>
             ) : (
               <div className="mb-4">
-                <div className="text-xs text-gray-500 mb-1">{t('auto.TeamManagementPage.k19')}</div>
-                <ul className="text-sm space-y-0.5 mb-3">
+                <div className="text-xs text-[var(--ss-t3)] mb-1">{t('auto.TeamManagementPage.k19')}</div>
+                <ul className="text-sm space-y-0.5 mb-3 text-[var(--ss-t2)]">
                   <li>
                     {t('auto.TeamManagementPage.k34')}{' '}
-                    <span className={deleteDeps.counts.users ? 'font-medium text-red-700' : 'text-gray-500'}>
+                    <span className={deleteDeps.counts.users ? 'font-medium ss-num text-[var(--ss-danger-text)]' : 'ss-num text-[var(--ss-t3)]'}>
                       {deleteDeps.counts.users}
                     </span>{' '}
                     {t('auto.TeamManagementPage.k35')}
@@ -580,7 +580,7 @@ export function TeamManagementPage() {
                   <li>
                     {t('auto.TeamManagementPage.k36')}{' '}
                     <span
-                      className={deleteDeps.counts.players ? 'font-medium text-red-700' : 'text-gray-500'}
+                      className={deleteDeps.counts.players ? 'font-medium ss-num text-[var(--ss-danger-text)]' : 'ss-num text-[var(--ss-t3)]'}
                     >
                       {deleteDeps.counts.players}
                     </span>{' '}
@@ -589,7 +589,7 @@ export function TeamManagementPage() {
                   <li>
                     {t('auto.TeamManagementPage.k37')}{' '}
                     <span
-                      className={deleteDeps.counts.matches ? 'font-medium text-red-700' : 'text-gray-500'}
+                      className={deleteDeps.counts.matches ? 'font-medium ss-num text-[var(--ss-danger-text)]' : 'ss-num text-[var(--ss-t3)]'}
                     >
                       {deleteDeps.counts.matches}
                     </span>{' '}
@@ -599,11 +599,11 @@ export function TeamManagementPage() {
                 {(deleteDeps.counts.users ||
                   deleteDeps.counts.players ||
                   deleteDeps.counts.matches) > 0 ? (
-                  <div className="text-xs bg-yellow-50 border border-yellow-200 text-yellow-800 p-2 rounded">
+                  <div className="text-xs bg-[var(--ss-warning-bg)] border border-[var(--ss-warning-border)] text-[var(--ss-warning-text)] p-2 rounded-ss-sm">
                     {t('auto.TeamManagementPage.k39')}
                   </div>
                 ) : (
-                  <div className="text-xs bg-green-50 border border-green-200 text-green-800 p-2 rounded">
+                  <div className="text-xs bg-[var(--ss-success-bg)] border border-[var(--ss-success-border)] text-[var(--ss-success-text)] p-2 rounded-ss-sm">
                     {t('auto.TeamManagementPage.k40')}
                   </div>
                 )}
@@ -619,7 +619,7 @@ export function TeamManagementPage() {
                   }
                 }}
                 disabled={deletingId != null}
-                className="px-3 py-2 border rounded disabled:opacity-50"
+                className="px-3 py-2 border border-[var(--ss-border-strong)] rounded-ss-md text-[var(--ss-t1)] bg-[var(--ss-surface-1)] disabled:opacity-50"
               >
                 {t('auto.TeamManagementPage.k23')}
               </button>
@@ -630,7 +630,7 @@ export function TeamManagementPage() {
                   <button
                     onClick={() => confirmDelete(true)}
                     disabled={deletingId != null}
-                    className="px-3 py-2 bg-orange-600 text-white rounded disabled:opacity-60 inline-flex items-center gap-2"
+                    className="px-3 py-2 bg-[var(--ss-emphasis)] text-white rounded-ss-md disabled:opacity-60 inline-flex items-center gap-2"
                   >
                     {deletingId != null && <MIcon name="progress_activity" size={14} className="animate-spin" />}
                     {t('auto.TeamManagementPage.k41')}
@@ -643,7 +643,7 @@ export function TeamManagementPage() {
                   <button
                     onClick={() => confirmDelete(false)}
                     disabled={deletingId != null}
-                    className="px-3 py-2 bg-red-600 text-white rounded disabled:opacity-60 inline-flex items-center gap-2"
+                    className="px-3 py-2 bg-[var(--ss-bad)] text-white rounded-ss-md disabled:opacity-60 inline-flex items-center gap-2"
                   >
                     {deletingId != null && <MIcon name="progress_activity" size={14} className="animate-spin" />}
                     {t('auto.TeamManagementPage.k20')}

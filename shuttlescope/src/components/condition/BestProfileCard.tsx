@@ -36,26 +36,20 @@ function MatchConfidenceBadge({ n, isLight }: { n: number; isLight: boolean }) {
   if (n < 5) {
     filled = 1
     label = t('condition.insights.growth_card.confidence_low')
-    colorClass = isLight
-      ? 'border-red-300 bg-red-50 text-red-600'
-      : 'border-red-400 bg-red-900/20 text-red-300'
+    colorClass = 'border-[var(--ss-danger-border)] bg-[var(--ss-danger-tint)] text-[var(--ss-bad)]'
   } else if (n < 16) {
     filled = 2
     label = t('condition.insights.growth_card.confidence_medium')
-    colorClass = isLight
-      ? 'border-yellow-300 bg-yellow-50 text-yellow-600'
-      : 'border-yellow-400 bg-yellow-900/20 text-yellow-300'
+    colorClass = 'border-[var(--ss-warning-border)] bg-[var(--ss-warn-tint)] text-[var(--ss-warn)]'
   } else {
     filled = 3
     label = t('condition.insights.growth_card.confidence_high')
-    colorClass = isLight
-      ? 'border-green-300 bg-green-50 text-green-600'
-      : 'border-green-400 bg-green-900/20 text-green-300'
+    colorClass = 'border-[var(--ss-success-border)] bg-[var(--ss-success-tint)] text-[var(--ss-success)]'
   }
 
   return (
     <span
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs font-mono ${colorClass}`}
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-ss-sm border text-xs font-mono ${colorClass}`}
       title={`サンプル数: ${n}試合`}
     >
       <span className="inline-flex">
@@ -71,11 +65,11 @@ export function BestProfileCard({ playerId, isLight }: Props) {
   const { t } = useTranslation()
   const { data, isLoading, error } = useBestProfile(playerId)
 
-  const panelBg    = isLight ? 'bg-white'        : 'bg-gray-800'
-  const borderColor = isLight ? 'border-gray-200' : 'border-gray-700'
-  const textMuted   = isLight ? 'text-gray-500'   : 'text-gray-400'
-  const textStrong  = isLight ? 'text-gray-800'   : 'text-gray-100'
-  const sepColor    = isLight ? 'border-gray-100' : 'border-gray-700'
+  const panelBg    = 'bg-[var(--ss-surface-1)]'
+  const borderColor = 'border-[var(--ss-border)]'
+  const textMuted   = 'text-[var(--ss-t2)]'
+  const textStrong  = 'text-[var(--ss-t1)]'
+  const sepColor    = 'border-[var(--ss-border)]'
   const topFactors = (data?.key_factors ?? []).slice(0, 5)
   const n = data?.n_matches ?? 0
   const inRate  = data?.win_rate_in_profile
@@ -85,7 +79,7 @@ export function BestProfileCard({ playerId, isLight }: Props) {
     : null
 
   return (
-    <section className={`rounded-lg border ${borderColor} ${panelBg} p-4`}>
+    <section className={`rounded-ss-lg border shadow-card ${borderColor} ${panelBg} p-4`}>
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <h2 className={`text-sm font-semibold ${textStrong}`}>
           {t('condition.best_profile.title_coach')}
@@ -104,17 +98,17 @@ export function BestProfileCard({ playerId, isLight }: Props) {
             <div className={`flex items-center gap-4 text-sm pb-3 border-b ${sepColor}`}>
               <div>
                 <span className={`text-xs ${textMuted}`}>{t('condition.best_profile.in_profile')}: </span>
-                <span className="font-mono font-semibold text-green-500">
+                <span className="font-mono ss-num font-semibold text-[var(--ss-success)]">
                   {(inRate * 100).toFixed(1)}%
                 </span>
               </div>
               <span className={`text-xs ${textMuted}`}>→</span>
               <div>
                 <span className={`text-xs ${textMuted}`}>{t('condition.best_profile.outside')}: </span>
-                <span className="font-mono">{(outRate * 100).toFixed(1)}%</span>
+                <span className="font-mono ss-num">{(outRate * 100).toFixed(1)}%</span>
               </div>
               {rateDiff != null && rateDiff > 0 && (
-                <span className="text-xs font-semibold text-emerald-500">
+                <span className="text-xs font-semibold text-[var(--ss-success)] ss-num">
                   {t('auto.BestProfileCard.rate_diff_pp', { n: rateDiff })}
                 </span>
               )}
@@ -145,19 +139,19 @@ export function BestProfileCard({ playerId, isLight }: Props) {
                     gapNode = null
                   } else if (gap === 0) {
                     gapNode = (
-                      <span className={`font-medium ${isLight ? 'text-green-600' : 'text-green-400'}`}>
+                      <span className="font-medium text-[var(--ss-success)]">
                         <MIcon name="check" size={14} />
                       </span>
                     )
                   } else if (gap > 0) {
                     gapNode = (
-                      <span className={`${isLight ? 'text-orange-600' : 'text-orange-400'}`}>
+                      <span className="text-[var(--ss-warn)] ss-num">
                         ↑{gap.toFixed(1)}{unit}
                       </span>
                     )
                   } else {
                     gapNode = (
-                      <span className={`${isLight ? 'text-blue-600' : 'text-blue-400'}`}>
+                      <span className="text-[var(--ss-brand)] ss-num">
                         ↓{Math.abs(gap).toFixed(1)}{unit}
                       </span>
                     )
@@ -183,12 +177,12 @@ export function BestProfileCard({ playerId, isLight }: Props) {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className={`text-xs font-medium ${textStrong} shrink-0`}>{label}</span>
                         {cur != null && (
-                          <span className={`text-xs font-mono ${textMuted} shrink-0`}>
+                          <span className={`text-xs font-mono ss-num ${textMuted} shrink-0`}>
                             {t('auto.BestProfileCard.current_label')} <strong>{cur.toFixed(1)}{unit}</strong>
                           </span>
                         )}
                         {targetRange && (
-                          <span className={`text-[11px] font-mono ${textMuted} shrink-0`}>
+                          <span className={`text-[11px] font-mono ss-num ${textMuted} shrink-0`}>
                             {t('auto.BestProfileCard.target_range', { r: targetRange })}
                           </span>
                         )}

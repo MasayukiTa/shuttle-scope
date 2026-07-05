@@ -66,7 +66,7 @@ export function SettingsModePanel({
 
   return (
     <div className="flex flex-col h-full overflow-y-auto">
-      <header className="flex items-center gap-2 px-3 py-2 text-sm font-medium border-b border-gray-700 shrink-0 bg-gray-800/40 text-gray-200">
+      <header className="flex items-center gap-2 px-3 py-2 text-sm font-medium border-b border-[var(--ss-border)] shrink-0 bg-[var(--ss-surface-2)] text-[var(--ss-t1)]">
         <MIcon name="settings" size={18} />
         {t('annotator.ux.settings_header')}
       </header>
@@ -166,7 +166,7 @@ export function SettingsModePanel({
             type="button"
             onClick={onOpenCalibration}
             disabled={!onOpenCalibration}
-            className="w-full px-2 py-1.5 rounded text-xs bg-gray-700 text-gray-200 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="w-full px-2 py-1.5 rounded-ss-md text-xs bg-[var(--ss-surface-2)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-3)] disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {t('annotator.ux.settings_court_open')}
           </button>
@@ -197,7 +197,7 @@ export function SettingsModePanel({
             type="button"
             onClick={onOpenKeyboardLegend}
             disabled={!onOpenKeyboardLegend}
-            className="w-full px-2 py-1.5 rounded text-xs bg-gray-700 text-gray-200 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="w-full px-2 py-1.5 rounded-ss-md text-xs bg-[var(--ss-surface-2)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-3)] disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {t('annotator.ux.settings_keys_legend')}
           </button>
@@ -224,24 +224,24 @@ function Section({ icon, title, children, defaultOpen = false, alwaysOpen = fals
   const expanded = alwaysOpen || open
 
   return (
-    <div className="rounded border border-gray-700 bg-gray-800/40 overflow-hidden">
+    <div className="rounded-ss-lg border border-[var(--ss-border)] bg-[var(--ss-surface-1)] overflow-hidden">
       <button
         type="button"
         onClick={() => !alwaysOpen && setOpen((v) => !v)}
         disabled={alwaysOpen}
         aria-expanded={expanded}
-        className="w-full flex items-center gap-2 px-2 py-1.5 text-left text-gray-200 hover:bg-gray-700/40 disabled:cursor-default disabled:hover:bg-transparent"
+        className="w-full flex items-center gap-2 px-2 py-1.5 text-left text-[var(--ss-t1)] hover:bg-[var(--ss-surface-2)] disabled:cursor-default disabled:hover:bg-transparent"
       >
-        <MIcon name={icon} size={14} className="text-gray-500 shrink-0" />
-        <span className="flex-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+        <MIcon name={icon} size={14} className="text-[var(--ss-t3)] shrink-0" />
+        <span className="flex-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--ss-t3)]">
           {title}
         </span>
         {!alwaysOpen && (
-          <MIcon name={expanded ? 'expand_less' : 'expand_more'} size={14} className="text-gray-500" />
+          <MIcon name={expanded ? 'expand_less' : 'expand_more'} size={14} className="text-[var(--ss-t3)]" />
         )}
       </button>
       {expanded && (
-        <div className="px-2 py-2 space-y-1.5 border-t border-gray-700 bg-gray-900/40">
+        <div className="px-2 py-2 space-y-1.5 border-t border-[var(--ss-border)] bg-[var(--ss-surface-2)]">
           {children}
         </div>
       )}
@@ -258,16 +258,16 @@ function ToggleControl({
     <button
       type="button"
       onClick={onClick}
-      className="w-full flex items-center justify-between gap-2 px-2 py-2 rounded bg-gray-700 hover:bg-gray-600 text-left text-gray-200"
+      className="w-full flex items-center justify-between gap-2 px-2 py-2 rounded-ss-md bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-left text-[var(--ss-t1)]"
     >
       <span className="flex flex-col min-w-0">
         <span className="truncate">{label}</span>
-        {hint && <span className="text-[10px] text-gray-400 truncate">{hint}</span>}
+        {hint && <span className="text-[10px] text-[var(--ss-t3)] truncate">{hint}</span>}
       </span>
       <span
         className={
-          'text-[10px] px-1.5 py-0.5 rounded font-mono shrink-0 ' +
-          (on ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400')
+          'text-[10px] px-1.5 py-0.5 rounded-ss-sm font-mono shrink-0 ss-num ' +
+          (on ? 'bg-[var(--ss-brand)] text-white' : 'bg-[var(--ss-surface-3)] text-[var(--ss-t3)]')
         }
       >
         {on ? 'ON' : 'OFF'}
@@ -295,7 +295,7 @@ function SegmentedControl({
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-[11px] text-gray-400">{label}</span>
+      <span className="text-[11px] text-[var(--ss-t3)]">{label}</span>
       <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
         {options.map((o) => (
           <button
@@ -304,17 +304,17 @@ function SegmentedControl({
             onClick={() => onChange(o.value)}
             disabled={disabled}
             className={
-              'px-2 py-1.5 rounded text-xs transition-colors truncate ' +
+              'px-2 py-1.5 rounded-ss-md text-xs transition-colors duration-fast ease-out truncate ' +
               (value === o.value
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-700 text-gray-200 hover:bg-gray-600 disabled:opacity-50')
+                ? 'bg-[var(--ss-brand)] text-white'
+                : 'bg-[var(--ss-surface-2)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-3)] disabled:opacity-50')
             }
           >
             {o.label}
           </button>
         ))}
       </div>
-      {hint && <span className="text-[10px] text-gray-500">{hint}</span>}
+      {hint && <span className="text-[10px] text-[var(--ss-t3)]">{hint}</span>}
     </div>
   )
 }

@@ -66,7 +66,7 @@ export function VideoOverlayToggles({
   return (
     <div
       className={clsx(
-        'absolute top-2 right-2 z-20 flex flex-col gap-1.5 bg-black/60 rounded-md p-1 backdrop-blur',
+        'absolute top-2 right-2 z-20 flex flex-col gap-1.5 bg-black/60 rounded-ss-md p-1 backdrop-blur',
         className,
       )}
     >
@@ -80,11 +80,11 @@ export function VideoOverlayToggles({
           aria-label={t.label}
           title={t.label}
           className={clsx(
-            'flex items-center justify-center w-8 h-8 rounded transition-colors',
+            'flex items-center justify-center w-8 h-8 rounded-ss-md transition-colors duration-fast ease-out',
             t.disabled
               ? 'opacity-30 cursor-not-allowed text-gray-400'
               : t.on
-                ? 'bg-blue-600 text-white'
+                ? 'bg-[var(--ss-brand)] text-white'
                 : 'bg-gray-800/80 text-gray-300 hover:bg-gray-700/80',
           )}
         >

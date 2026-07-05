@@ -56,10 +56,10 @@ export function ConsentManagementCard({ isLight }: { isLight: boolean }) {
   if (consentQuery.isLoading) {
     return (
       <section>
-        <h2 className={`text-lg font-medium mb-1 ${isLight ? 'text-gray-900' : 'text-white'}`}>
+        <h2 className={`text-lg font-medium mb-1 text-[var(--ss-t1)]`}>
           {t('settings.consent.title', '同意状態')}
         </h2>
-        <div className="flex items-center gap-2 text-sm text-gray-500 mt-2">
+        <div className="flex items-center gap-2 text-sm text-[var(--ss-t3)] mt-2">
           <MIcon name="progress_activity" size={14} className="animate-spin" />
           {t('common.loading', '読み込み中…')}
         </div>
@@ -101,16 +101,14 @@ export function ConsentManagementCard({ isLight }: { isLight: boolean }) {
     regrantMutation.mutate(type)
   }
 
-  const cardCls = `rounded-lg border p-4 ${
-    isLight ? 'border-gray-300 bg-white' : 'border-gray-600 bg-gray-800'
-  }`
+  const cardCls = `rounded-ss-lg border border-[var(--ss-border)] bg-[var(--ss-surface-1)] p-4`
 
   return (
     <section>
-      <h2 className={`text-lg font-medium mb-1 ${isLight ? 'text-gray-900' : 'text-white'}`}>
+      <h2 className={`text-lg font-medium mb-1 text-[var(--ss-t1)]`}>
         {t('settings.consent.title', '同意状態と撤回')}
       </h2>
-      <p className={`text-xs mb-3 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>
+      <p className={`text-xs mb-3 text-[var(--ss-t3)]`}>
         {t(
           'settings.consent.description',
           '任意同意は GDPR Article 7(3) / APPI 第18条に基づきいつでも撤回できます。' +
@@ -127,9 +125,7 @@ export function ConsentManagementCard({ isLight }: { isLight: boolean }) {
             return (
               <div
                 key={type}
-                className={`flex items-start justify-between gap-3 pb-3 border-b last:border-b-0 ${
-                  isLight ? 'border-gray-200' : 'border-gray-700'
-                }`}
+                className={`flex items-start justify-between gap-3 pb-3 border-b last:border-b-0 border-[var(--ss-border)]`}
               >
                 <div className="flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -150,34 +146,26 @@ export function ConsentManagementCard({ isLight }: { isLight: boolean }) {
                         {t('settings.consent.status_on', 'GRANTED')}
                       </span>
                     )}
-                    <span className={`text-sm font-medium ${isLight ? 'text-gray-900' : 'text-white'}`}>
+                    <span className={`text-sm font-medium text-[var(--ss-t1)]`}>
                       {t(`settings.consent.types.${type}`, type)}
                     </span>
                     {isRequired ? (
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
-                        isLight
-                          ? 'bg-blue-50 text-blue-700 border-blue-300'
-                          : 'bg-blue-500/20 text-blue-300 border-blue-500/40'
-                      }`}>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-ss-sm border bg-[var(--ss-brand-tint)] text-[var(--ss-brand)] border-[var(--ss-brand)]`}>
                         {t('settings.consent.required_label', '契約履行（必須）')}
                       </span>
                     ) : (
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
-                        isLight
-                          ? 'bg-gray-100 text-gray-700 border-gray-300'
-                          : 'bg-gray-500/20 text-gray-300 border-gray-500/40'
-                      }`}>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-ss-sm border bg-[var(--ss-surface-2)] text-[var(--ss-t2)] border-[var(--ss-border)]`}>
                         {t('settings.consent.optional_label', '任意')}
                       </span>
                     )}
                   </div>
                   {rec?.given_at && !isWithdrawn && (
-                    <div className={`text-xs mt-1 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>
+                    <div className={`text-xs mt-1 text-[var(--ss-t3)]`}>
                       {t('settings.consent.granted_on', '承認日')}: {new Date(rec.given_at).toLocaleDateString()}
                     </div>
                   )}
                   {rec?.withdrawn_at && (
-                    <div className={`text-xs mt-1 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>
+                    <div className={`text-xs mt-1 text-[var(--ss-t3)]`}>
                       {t('settings.consent.withdrawn_label', '撤回済み')}: {new Date(rec.withdrawn_at).toLocaleDateString()}
                     </div>
                   )}
@@ -186,9 +174,7 @@ export function ConsentManagementCard({ isLight }: { isLight: boolean }) {
                 <div className="flex items-center">
                   {isRequired ? (
                     <span
-                      className={`flex items-center gap-1 text-xs ${
-                        isLight ? 'text-gray-500' : 'text-gray-400'
-                      }`}
+                      className={`flex items-center gap-1 text-xs text-[var(--ss-t3)]`}
                     >
                       <MIcon name="error" size={12} />
                       {t('settings.consent.required_note', '撤回不可')}
@@ -199,11 +185,7 @@ export function ConsentManagementCard({ isLight }: { isLight: boolean }) {
                     <button
                       onClick={() => handleRegrant(type)}
                       disabled={pending === type}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border transition-colors ${
-                        isLight
-                          ? 'border-gray-300 text-gray-700 hover:bg-gray-100'
-                          : 'border-gray-600 text-gray-200 hover:bg-gray-700'
-                      } ${pending === type ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-ss-md text-xs font-medium border border-[var(--ss-border)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-2)] transition-colors duration-base ease-out ${pending === type ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       {pending === type ? (
                         <MIcon name="progress_activity" size={12} className="animate-spin" />
@@ -216,11 +198,7 @@ export function ConsentManagementCard({ isLight }: { isLight: boolean }) {
                     <button
                       onClick={() => handleWithdraw(type)}
                       disabled={pending === type}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border transition-colors ${
-                        isLight
-                          ? 'border-red-300 text-red-700 hover:bg-red-50'
-                          : 'border-red-600 text-red-400 hover:bg-red-900/20'
-                      } ${pending === type ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-ss-md text-xs font-medium border border-[var(--ss-danger-border)] text-[var(--ss-danger-text)] hover:bg-[var(--ss-danger-bg)] transition-colors duration-base ease-out ${pending === type ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       {pending === type ? (
                         <MIcon name="progress_activity" size={12} className="animate-spin" />
@@ -237,7 +215,7 @@ export function ConsentManagementCard({ isLight }: { isLight: boolean }) {
         </div>
 
         {withdrawMutation.isError && (
-          <div className="mt-3 text-xs text-red-400">
+          <div className="mt-3 text-xs text-[var(--ss-danger-text)]">
             {t('settings.consent.error', '撤回に失敗しました。再試行してください。')}
           </div>
         )}

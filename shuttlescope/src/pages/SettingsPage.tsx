@@ -860,41 +860,39 @@ export function SettingsPage() {
 
   const { card, textHeading, textSecondary, textMuted, _textFaint, isLight } = useCardTheme()
   const { theme, setTheme } = useTheme()
-  const bodyBg = isLight ? 'bg-gray-50' : 'bg-gray-900'
-  const borderLine = isLight ? 'border-gray-200' : 'border-gray-700'
-  const inputClass = isLight
-    ? 'bg-white border border-gray-300 rounded px-3 py-2 text-sm text-gray-900'
-    : 'bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white'
+  const bodyBg = 'bg-[var(--ss-bg-app)]'
+  const borderLine = 'border-[var(--ss-border)]'
+  const inputClass = 'bg-[var(--ss-surface-1)] border border-[var(--ss-border-strong)] rounded-ss-md px-3 py-2 text-base text-[var(--ss-t1)] focus:outline-none focus:border-[var(--ss-brand)] focus:ring-[3px] focus:ring-[var(--ss-focus-ring)] transition-colors duration-fast ease-out'
 
   return (
-    <div className={`flex flex-col h-full ${bodyBg} ${isLight ? 'text-gray-900' : 'text-white'}`}>
+    <div className={`flex flex-col h-full ${bodyBg} text-[var(--ss-t1)]`}>
       {/* CV バッチ fps 確認ダイアログ */}
       {cvBatchConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className={`rounded-xl p-6 max-w-sm w-full mx-4 space-y-4 border ${isLight ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-600'}`}>
-            <p className="text-sm font-medium">{t('auto.SettingsPage.cv_batch_title', { label: cvBatchConfirm.label })}</p>
-            <p className={`text-sm ${isLight ? 'text-gray-700' : 'text-gray-300'}`}>
+          <div className="rounded-ss-lg p-6 max-w-sm w-full mx-4 space-y-4 border border-[var(--ss-border)] bg-[var(--ss-surface-1)] shadow-pop">
+            <p className="text-sm font-medium text-[var(--ss-t1)]">{t('auto.SettingsPage.cv_batch_title', { label: cvBatchConfirm.label })}</p>
+            <p className="text-sm text-[var(--ss-t2)]">
               {t('auto.SettingsPage.cv_batch_estimate_prefix')}
-              <span className="text-yellow-400 font-bold">
+              <span className="text-[var(--ss-warn)] font-semibold">
                 {cvBatchConfirm.estimatedHours >= 1
                   ? t('auto.SettingsPage.cv_batch_hours', { n: cvBatchConfirm.estimatedHours.toFixed(1) })
                   : t('auto.SettingsPage.cv_batch_minutes', { n: Math.round(cvBatchConfirm.estimatedHours * 60) })}
               </span>
               {t('auto.SettingsPage.cv_batch_estimate_suffix')}
             </p>
-            <p className={`text-xs ${isLight ? 'text-gray-500' : 'text-gray-500'}`}>
+            <p className="text-xs text-[var(--ss-t3)]">
               {t('auto.SettingsPage.cv_batch_background_note')}
             </p>
             <div className="flex gap-3">
               <button
                 onClick={cvBatchConfirm.onConfirm}
-                className="flex-1 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm font-medium text-white"
+                className="flex-1 py-2 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] rounded-ss-md text-sm font-medium text-white transition-colors duration-fast ease-out"
               >
                 {t('auto.SettingsPage.cv_batch_confirm')}
               </button>
               <button
                 onClick={() => setCvBatchConfirm(null)}
-                className={`flex-1 py-2 rounded text-sm ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-700' : 'bg-gray-700 hover:bg-gray-600 text-white'}`}
+                className="flex-1 py-2 rounded-ss-md text-sm bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t1)] transition-colors duration-fast ease-out"
               >
                 {t('auto.SettingsPage.cv_batch_cancel')}
               </button>
@@ -929,15 +927,15 @@ export function SettingsPage() {
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key as 'players' | 'review' | 'tracknet' | 'sharing' | 'data' | 'cluster' | 'account')}
-              className={`flex-shrink-0 flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+              className={`flex-shrink-0 flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-colors duration-base ease-out whitespace-nowrap ${
                 activeTab === tab.key
-                  ? 'border-blue-500 text-blue-400'
-                  : `border-transparent ${textMuted} ${isLight ? 'hover:text-gray-900' : 'hover:text-white'}`
+                  ? 'border-[var(--ss-brand)] text-[var(--ss-t1)]'
+                  : 'border-transparent text-[var(--ss-t3)] hover:text-[var(--ss-t1)]'
               }`}
             >
               {tab.label}
               {'badge' in tab && (tab.badge ?? 0) > 0 && (
-                <span className="inline-flex items-center justify-center w-4 h-4 text-[10px] bg-orange-500 text-white rounded-full">
+                <span className="inline-flex items-center justify-center w-4 h-4 text-[10px] bg-[var(--ss-warn)] text-white rounded-ss-pill">
                   {tab.badge}
                 </span>
               )}
@@ -945,9 +943,7 @@ export function SettingsPage() {
           ))}
         </div>
         {/* 右端フェードアウト */}
-        <div className={`absolute right-0 top-0 h-full w-8 pointer-events-none ${
-          isLight ? 'bg-gradient-to-l from-white to-transparent' : 'bg-gradient-to-l from-gray-900 to-transparent'
-        }`} />
+        <div className="absolute right-0 top-0 h-full w-8 pointer-events-none bg-gradient-to-l from-[var(--ss-bg-app)] to-transparent" />
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 sm:p-6">
@@ -960,7 +956,7 @@ export function SettingsPage() {
               {canCreatePlayers && (
                 <button
                   onClick={() => { setEditingPlayer(null); setPlayerForm(defaultPlayerForm()); setShowPlayerForm(true) }}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-sm"
+                  className="flex items-center gap-2 px-3 py-1.5 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] rounded-ss-md text-sm text-white transition-colors duration-fast ease-out"
                 >
                   <MIcon name="add" size={14} />
                   {t('settings.ui.add_player')}
@@ -998,7 +994,7 @@ export function SettingsPage() {
                   type="checkbox"
                   checked={targetOnly}
                   onChange={(e) => setTargetOnly(e.target.checked)}
-                  className="accent-blue-500"
+                  className="accent-[var(--ss-brand)]"
                 />
                 {t('player.target_only')}
               </label>
@@ -1013,7 +1009,7 @@ export function SettingsPage() {
             {/* テーブル: xs-md で min-w-[640px] により列幅の崩壊を防止、横スクロールで全列保持 */}
             <div className="overflow-x-auto">
               <table className="w-full text-sm min-w-[640px]">
-                <thead className={`sticky top-0 z-10 ${bodyBg}`}>
+                <thead className="sticky top-0 z-10 bg-[var(--ss-surface-2)]">
                   <tr className={`${textSecondary} border-b ${borderLine}`}>
                     {/* ソート可能カラム共通ヘルパー */}
                     {(
@@ -1073,7 +1069,7 @@ export function SettingsPage() {
                 </thead>
                 <tbody>
                   {filteredPlayers.map((p) => (
-                    <tr key={p.id} className={`border-b ${isLight ? 'border-gray-100 hover:bg-gray-50' : 'border-gray-800 hover:bg-gray-800/50'}`}>
+                    <tr key={p.id} className="border-b border-[var(--ss-border)] hover:bg-[var(--ss-surface-2)]">
                       <td className="pr-4">
                         {/* 行高さを name_en 有無に関わらず統一: min-h で2行分確保し中央寄せ */}
                         <div className="flex flex-col justify-center min-h-[3.25rem] py-1">
@@ -1086,16 +1082,16 @@ export function SettingsPage() {
                           >
                             <span className="cell-name-clip">{p.name}</span>
                             {copiedPlayerId === p.id ? (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500 text-white border border-white font-medium shrink-0">
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-ss-sm bg-[var(--ss-success)] text-white font-medium shrink-0">
                                 {t('auto.SettingsPage.copied')}
                               </span>
                             ) : (
-                              <span className={`text-[10px] opacity-0 group-hover:opacity-60 transition-opacity shrink-0 ${textMuted}`}>
+                              <span className={`text-[10px] opacity-0 group-hover:opacity-60 transition-opacity duration-fast ease-out shrink-0 ${textMuted}`}>
                                 {t('auto.SettingsPage.k21')}
                               </span>
                             )}
                           </button>
-                          {p.name_en && <div className="text-xs text-gray-500 mt-0.5 leading-snug truncate" title={p.name_en}>{p.name_en}</div>}
+                          {p.name_en && <div className="text-xs text-[var(--ss-t3)] mt-0.5 leading-snug truncate" title={p.name_en}>{p.name_en}</div>}
                         </div>
                       </td>
                       <td className={`py-2 pr-4 ${textSecondary}`}>
@@ -1104,7 +1100,7 @@ export function SettingsPage() {
                           {p.team_history && p.team_history.length > 0 && (
                             <span
                               title={p.team_history.map(h => `${h.team}${h.until ? ` (〜${h.until})` : ''}`).join(' → ')}
-                              className="text-[10px] px-1 rounded bg-gray-600/50 text-gray-400 cursor-default"
+                              className="text-[10px] px-1 rounded-ss-sm bg-[var(--ss-surface-2)] text-[var(--ss-t3)] cursor-default"
                             >
                               {t('auto.SettingsPage.history_count', { n: p.team_history.length })}
                             </span>
@@ -1115,14 +1111,14 @@ export function SettingsPage() {
                       <td className={`py-2 pr-4 ${textSecondary}`}>
                         {p.dominant_hand === 'R' ? '右' : p.dominant_hand === 'L' ? '左' : '-'}
                       </td>
-                      <td className={`py-2 pr-4 ${textSecondary}`}>{p.world_ranking ? `#${p.world_ranking}` : '-'}</td>
+                      <td className={`py-2 pr-4 ${textSecondary} ss-num`}>{p.world_ranking ? `#${p.world_ranking}` : '-'}</td>
                       <td className="py-2 pr-4">
-                        {p.is_target && <MIcon name="check_circle" size={14} className="text-green-400" />}
+                        {p.is_target && <MIcon name="check_circle" size={14} className="text-[var(--ss-success)]" />}
                       </td>
                       <td className="py-2">
                         {deleteConfirmId === p.id ? (
                           // インライン削除確認
-                          <div className={`flex items-center gap-1 px-2 py-1 rounded border border-white text-xs ${isLight ? 'bg-white text-red-700' : 'bg-gray-800 text-red-300'}`}>
+                          <div className="flex items-center gap-1 px-2 py-1 rounded-ss-sm border border-[var(--ss-border-strong)] text-xs bg-[var(--ss-surface-1)] text-[var(--ss-bad)]">
                             <button
                               onClick={() => { deletePlayer.mutate(p.id); setDeleteConfirmId(null) }}
                               className="font-medium hover:opacity-80"
@@ -1141,13 +1137,13 @@ export function SettingsPage() {
                           <div className="flex items-center gap-1">
                             <button
                               onClick={() => openEdit(p)}
-                              className={`p-1.5 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
+                              className="p-1.5 rounded-ss-sm bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t2)] transition-colors duration-fast ease-out"
                             >
                               <MIcon name="edit" size={12} />
                             </button>
                             <button
                               onClick={() => setDeleteConfirmId(p.id)}
-                              className="p-1.5 rounded bg-gray-800 hover:bg-red-700 text-red-300"
+                              className="p-1.5 rounded-ss-sm bg-[var(--ss-surface-2)] hover:bg-[var(--ss-bad)] hover:text-white text-[var(--ss-bad)] transition-colors duration-fast ease-out"
                             >
                               <MIcon name="delete" size={12} />
                             </button>
@@ -1162,7 +1158,7 @@ export function SettingsPage() {
 
             {/* 空状態メッセージ */}
             {players.length === 0 && (
-              <div className="text-center text-gray-500 py-8">
+              <div className="text-center text-[var(--ss-t3)] py-8">
                 {t('settings.ui.no_players')}
               </div>
             )}
@@ -1180,7 +1176,7 @@ export function SettingsPage() {
             <h2 className={`text-lg font-medium ${textHeading} mb-4`}>{t('review.title')}</h2>
             <div className="mb-6">
               <h3 className={`text-sm font-medium ${textSecondary} mb-2 flex items-center gap-2`}>
-                <MIcon name="error" size={14} className="text-orange-400" />
+                <MIcon name="error" size={14} className="text-[var(--ss-warn)]" />
                 {t('review.provisional_players')}
               </h3>
               {!reviewPlayersData?.data?.length ? (
@@ -1198,12 +1194,12 @@ export function SettingsPage() {
                   </thead>
                   <tbody>
                     {reviewPlayersData.data.map((p) => (
-                      <tr key={p.id} className={`border-b ${isLight ? 'border-gray-100 hover:bg-gray-50' : 'border-gray-800 hover:bg-gray-800/50'}`}>
+                      <tr key={p.id} className="border-b border-[var(--ss-border)] hover:bg-[var(--ss-surface-2)]">
                         <td className="py-2 pr-4">
                           <div className="flex items-center gap-2">
                             {p.name}
                             {p.profile_status === 'provisional' && (
-                              <span className="text-xs text-yellow-400 bg-yellow-400/10 px-1 rounded">{t('settings.ui.tentative')}</span>
+                              <span className="text-xs text-[var(--ss-warn)] bg-[var(--ss-brand-tint)] px-1 rounded-ss-sm">{t('settings.ui.tentative')}</span>
                             )}
                           </div>
                         </td>
@@ -1213,12 +1209,12 @@ export function SettingsPage() {
                         <td className={`py-2 pr-4 hidden sm:table-cell ${textSecondary}`}>
                           {p.dominant_hand === 'R' ? '右' : p.dominant_hand === 'L' ? '左' : t('player.unknown_hand')}
                         </td>
-                        <td className={`py-2 pr-4 ${textSecondary}`}>{p.match_count ?? 0}</td>
+                        <td className={`py-2 pr-4 ${textSecondary} ss-num`}>{p.match_count ?? 0}</td>
                         <td className="py-2">
                           <div className="flex items-center gap-1">
                             <button
                               onClick={() => openEdit(p)}
-                              className={`p-1.5 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
+                              className="p-1.5 rounded-ss-sm bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t2)] transition-colors duration-fast ease-out"
                               title={t('auto.SettingsPage.k23')}
                             >
                               <MIcon name="edit" size={12} />
@@ -1226,9 +1222,8 @@ export function SettingsPage() {
                             <button
                               onClick={() => markVerified.mutate(p.id)}
                               disabled={markVerified.isPending}
-                              // 濃色背景 (green-800) には白文字 (memory rule)。
-                              // 以前は text-green-300 = 同系色で読めなかった。
-                              className="p-1.5 rounded bg-green-700 hover:bg-green-600 text-white"
+                              // 濃色背景には白文字 (memory rule)。--ss-success は塗り、文字は白固定。
+                              className="p-1.5 rounded-ss-sm bg-[var(--ss-success)] hover:opacity-90 text-white transition-opacity duration-fast ease-out"
                               title={t('review.mark_verified')}
                               aria-label={t('review.mark_verified') as string}
                             >
@@ -1253,42 +1248,42 @@ export function SettingsPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-6">
             {/* モデルステータス */}
-            <div className={`${card} rounded-lg p-4 border ${borderLine}`}>
+            <div className="bg-[var(--ss-surface-1)] rounded-ss-lg p-4 border border-[var(--ss-border)] shadow-card">
               <h3 className={`text-sm font-medium ${textSecondary} mb-3 flex items-center gap-2`}>
-                <MIcon name="bolt" size={14} className="text-yellow-400" />
+                <MIcon name="bolt" size={14} className="text-[var(--ss-warn)]" />
                 {t('tracknet.model_status')}
               </h3>
               {!tracknetStatus ? (
                 <p className={`text-sm ${textMuted}`}>{t('tracknet.backend_offline')}</p>
               ) : tracknetStatus.data?.available ? (
                 <div className="flex items-center gap-2">
-                  <MIcon name="check_circle" size={14} className="text-green-400" />
-                  <span className="text-sm text-green-300">
+                  <MIcon name="check_circle" size={14} className="text-[var(--ss-success)]" />
+                  <span className="text-sm text-[var(--ss-success)]">
                     {t('tracknet.model_ready')} — {tracknetStatus.data.backend}
                   </span>
                 </div>
               ) : (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <MIcon name="error" size={14} className="text-orange-400" />
-                    <span className="text-sm text-orange-300">{t('tracknet.model_not_found')}</span>
+                    <MIcon name="error" size={14} className="text-[var(--ss-warn)]" />
+                    <span className="text-sm text-[var(--ss-warn)]">{t('tracknet.model_not_found')}</span>
                   </div>
-                <div className={`${isLight ? 'bg-gray-100' : 'bg-gray-900'} rounded p-3 text-xs font-mono space-y-1 ${textMuted}`}>
-                    <p className="text-gray-300 font-sans font-medium text-xs mb-1">{t('tracknet.setup_instructions')}</p>
+                <div className={`bg-[var(--ss-surface-2)] rounded-ss-md p-3 text-xs font-mono space-y-1 ${textMuted}`}>
+                    <p className="text-[var(--ss-t2)] font-sans font-medium text-xs mb-1">{t('tracknet.setup_instructions')}</p>
                     <p>{t('auto.SettingsPage.tracknet_cmd_download')}</p>
                     <p>{t('auto.SettingsPage.tracknet_cmd_export')}</p>
                     <p>{t('auto.SettingsPage.tracknet_cmd_convert')}</p>
-                    <p className="text-gray-500 font-sans">{t('auto.SettingsPage.k1')}</p>
+                    <p className="text-[var(--ss-t3)] font-sans">{t('auto.SettingsPage.k1')}</p>
                   </div>
                 </div>
               )}
             </div>
 
             {/* 有効/無効トグル */}
-            <div className={`flex items-center justify-between ${card} rounded-lg p-4 border ${borderLine}`}>
+            <div className="flex items-center justify-between bg-[var(--ss-surface-1)] rounded-ss-lg p-4 border border-[var(--ss-border)] shadow-card">
               <div>
-                <p className="text-sm font-medium">{t('tracknet.enable_toggle')}</p>
-                <p className="text-xs text-gray-400 mt-0.5">{t('tracknet.enable_description')}</p>
+                <p className="text-sm font-medium text-[var(--ss-t1)]">{t('tracknet.enable_toggle')}</p>
+                <p className="text-xs text-[var(--ss-t3)] mt-0.5">{t('tracknet.enable_description')}</p>
               </div>
               <button
                 onClick={() => updateSettings({ tracknet_enabled: !appSettings.tracknet_enabled })}
@@ -1296,13 +1291,13 @@ export function SettingsPage() {
                 className="flex-shrink-0"
               >
                 {appSettings.tracknet_enabled
-                  ? <MIcon name="toggle_on" size={32} className="text-blue-400" />
-                  : <MIcon name="toggle_off" size={32} className="text-gray-500" />}
+                  ? <MIcon name="toggle_on" size={32} className="text-[var(--ss-brand)]" />
+                  : <MIcon name="toggle_off" size={32} className="text-[var(--ss-t3)]" />}
               </button>
             </div>
 
             {/* バックエンド選択 */}
-            <div className={`${card} rounded-lg p-4 border ${borderLine}`}>
+            <div className="bg-[var(--ss-surface-1)] rounded-ss-lg p-4 border border-[var(--ss-border)] shadow-card">
               <h3 className={`text-sm font-medium ${textSecondary} mb-3 flex items-center gap-2`}>
                 <MIcon name="memory" size={14} />
                 {t('tracknet.backend_label')}
@@ -1320,10 +1315,10 @@ export function SettingsPage() {
                   <button
                     key={opt.value}
                     onClick={() => updateSettings({ tracknet_backend: opt.value })}
-                    className={`py-1.5 px-3 rounded text-xs border transition-colors ${
+                    className={`py-1.5 px-3 rounded-ss-md text-xs border transition-colors duration-fast ease-out ${
                       appSettings.tracknet_backend === opt.value
-                        ? 'border-blue-500 bg-blue-600 text-white'
-                        : 'border-gray-600 bg-gray-700 text-gray-300 hover:border-gray-500'
+                        ? 'border-[var(--ss-brand)] bg-[var(--ss-brand)] text-white'
+                        : 'border-[var(--ss-border-strong)] bg-[var(--ss-surface-1)] text-[var(--ss-t2)] hover:border-[var(--ss-t3)]'
                     }`}
                   >
                     {opt.label}
@@ -1333,9 +1328,9 @@ export function SettingsPage() {
             </div>
 
             {/* 解析モード */}
-            <div className={`${card} rounded-lg p-4 border ${borderLine}`}>
+            <div className="bg-[var(--ss-surface-1)] rounded-ss-lg p-4 border border-[var(--ss-border)] shadow-card">
               <h3 className={`text-sm font-medium ${textSecondary} mb-1`}>{t('tracknet.mode_label')}</h3>
-              <p className="text-xs text-gray-500 mb-3">{t('tracknet.mode_description')}</p>
+              <p className="text-xs text-[var(--ss-t3)] mb-3">{t('tracknet.mode_description')}</p>
               <div className="flex gap-2">
                 {([
                   { value: 'batch', label: t('tracknet.mode_batch') },
@@ -1344,10 +1339,10 @@ export function SettingsPage() {
                   <button
                     key={opt.value}
                     onClick={() => updateSettings({ tracknet_mode: opt.value })}
-                    className={`flex-1 py-2 px-3 rounded text-sm border transition-colors ${
+                    className={`flex-1 py-2 px-3 rounded-ss-md text-sm border transition-colors duration-fast ease-out ${
                       appSettings.tracknet_mode === opt.value
-                        ? 'border-gray-700 bg-gray-800 text-blue-300'
-                        : 'border-gray-600 bg-gray-700 text-gray-300 hover:border-gray-500'
+                        ? 'border-[var(--ss-brand)] bg-[var(--ss-brand-tint)] text-[var(--ss-brand)]'
+                        : 'border-[var(--ss-border-strong)] bg-[var(--ss-surface-1)] text-[var(--ss-t2)] hover:border-[var(--ss-t3)]'
                     }`}
                   >
                     {opt.label}
@@ -1357,10 +1352,10 @@ export function SettingsPage() {
             </div>
 
             {/* CPU使用率上限 */}
-            <div className={`${card} rounded-lg p-4 border ${borderLine}`}>
+            <div className="bg-[var(--ss-surface-1)] rounded-ss-lg p-4 border border-[var(--ss-border)] shadow-card">
               <div className="flex items-center justify-between mb-2">
                 <h3 className={`text-sm font-medium ${textSecondary}`}>{t('tracknet.cpu_limit_label')}</h3>
-                <span className="text-sm font-mono text-blue-300">{appSettings.tracknet_max_cpu_pct}%</span>
+                <span className="text-sm font-mono ss-num text-[var(--ss-brand)]">{appSettings.tracknet_max_cpu_pct}%</span>
               </div>
               <input
                 type="range"
@@ -1369,20 +1364,20 @@ export function SettingsPage() {
                 step={5}
                 value={appSettings.tracknet_max_cpu_pct}
                 onChange={(e) => updateSettings({ tracknet_max_cpu_pct: Number(e.target.value) })}
-                className="w-full accent-blue-500"
+                className="w-full accent-[var(--ss-brand)]"
               />
-              <div className="flex justify-between text-xs text-gray-500 mt-1">
+              <div className="flex justify-between text-xs text-[var(--ss-t3)] mt-1">
                 <span>10%</span>
                 <span>90%</span>
               </div>
             </div>
 
             {/* YOLO プレイヤー検出 セクション */}
-            <div className={`${card} rounded-lg p-4 border ${borderLine} space-y-3`}>
+            <div className="bg-[var(--ss-surface-1)] rounded-ss-lg p-4 border border-[var(--ss-border)] shadow-card space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium">{t('yolo.enabled')}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{t('yolo.enable_description')}</p>
+                  <p className="text-sm font-medium text-[var(--ss-t1)]">{t('yolo.enabled')}</p>
+                  <p className="text-xs text-[var(--ss-t3)] mt-0.5">{t('yolo.enable_description')}</p>
                 </div>
                 <button
                   onClick={() => updateSettings({ yolo_enabled: !appSettings.yolo_enabled })}
@@ -1390,16 +1385,16 @@ export function SettingsPage() {
                   className="flex-shrink-0"
                 >
                   {appSettings.yolo_enabled
-                    ? <MIcon name="toggle_on" size={32} className="text-blue-400" />
-                    : <MIcon name="toggle_off" size={32} className="text-gray-500" />}
+                    ? <MIcon name="toggle_on" size={32} className="text-[var(--ss-brand)]" />
+                    : <MIcon name="toggle_off" size={32} className="text-[var(--ss-t3)]" />}
                 </button>
               </div>
 
               {/* YOLO モデルステータス */}
-              <div className={`rounded p-2.5 text-xs space-y-1.5 ${isLight ? 'bg-gray-100' : 'bg-gray-900'}`}>
-                <p className={`font-medium ${isLight ? 'text-gray-600' : 'text-gray-400'}`}>{t('settings.ui.model_state')}</p>
+              <div className="rounded-ss-md p-2.5 text-xs space-y-1.5 bg-[var(--ss-surface-2)]">
+                <p className="font-medium text-[var(--ss-t2)]">{t('settings.ui.model_state')}</p>
                 {!yoloStatus ? (
-                  <p className={isLight ? 'text-gray-500' : 'text-gray-500'}>{t('settings.ui.backend_connecting')}</p>
+                  <p className="text-[var(--ss-t3)]">{t('settings.ui.backend_connecting')}</p>
                 ) : (() => {
                   const sc = yoloStatus.data?.status_code
                   const msg = yoloStatus.data?.status_message
@@ -1407,8 +1402,8 @@ export function SettingsPage() {
                     return (
                       <div className="space-y-0.5">
                         <div className="flex items-center gap-2">
-                          <span className="text-emerald-400">{t('auto.SettingsPage.status_dot')}</span>
-                          <span className={isLight ? 'text-emerald-700' : 'text-emerald-300'}>
+                          <span className="text-[var(--ss-success)]">{t('auto.SettingsPage.status_dot')}</span>
+                          <span className="text-[var(--ss-success)]">
                             {t('auto.SettingsPage.yolo_ready', { backend: yoloStatus.data?.backend ?? 'ultralytics' })}
                           </span>
                         </div>
@@ -1419,12 +1414,12 @@ export function SettingsPage() {
                     return (
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
-                          <span className="text-blue-400">{t('auto.SettingsPage.status_dot')}</span>
-                          <span className={isLight ? 'text-blue-700' : 'text-blue-300'}>
+                          <span className="text-[var(--ss-brand)]">{t('auto.SettingsPage.status_dot')}</span>
+                          <span className="text-[var(--ss-brand)]">
                             {t('auto.SettingsPage.yolo_weights_missing')}
                           </span>
                         </div>
-                        {msg && <p className={`text-[10px] ${isLight ? 'text-gray-500' : 'text-gray-500'}`}>{msg}</p>}
+                        {msg && <p className="text-[10px] text-[var(--ss-t3)]">{msg}</p>}
                       </div>
                     )
                   }
@@ -1432,10 +1427,10 @@ export function SettingsPage() {
                     return (
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
-                          <span className="text-red-400">{t('auto.SettingsPage.status_dot')}</span>
-                          <span className={isLight ? 'text-red-700' : 'text-red-300'}>{t('settings.ui.load_failed')}</span>
+                          <span className="text-[var(--ss-bad)]">{t('auto.SettingsPage.status_dot')}</span>
+                          <span className="text-[var(--ss-bad)]">{t('settings.ui.load_failed')}</span>
                         </div>
-                        {msg && <p className={`text-[10px] font-mono break-all ${isLight ? 'text-gray-600' : 'text-gray-400'}`}>{msg}</p>}
+                        {msg && <p className="text-[10px] font-mono break-all text-[var(--ss-t2)]">{msg}</p>}
                       </div>
                     )
                   }
@@ -1443,10 +1438,10 @@ export function SettingsPage() {
                   return (
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <span className="text-orange-400">{t('auto.SettingsPage.status_dot')}</span>
-                        <span className={isLight ? 'text-orange-700' : 'text-orange-300'}>{t('settings.ui.package_missing')}</span>
+                        <span className="text-[var(--ss-warn)]">{t('auto.SettingsPage.status_dot')}</span>
+                        <span className="text-[var(--ss-warn)]">{t('settings.ui.package_missing')}</span>
                       </div>
-                      <code className={`block text-[10px] px-2 py-1 rounded ${isLight ? 'bg-gray-200 text-gray-700' : 'bg-gray-800 text-gray-300'}`}>
+                      <code className="block text-[10px] px-2 py-1 rounded-ss-sm bg-[var(--ss-surface-3)] text-[var(--ss-t2)]">
                         {t('auto.SettingsPage.pip_install_ultralytics')}
                       </code>
                     </div>
@@ -1459,16 +1454,16 @@ export function SettingsPage() {
             <div className="space-y-6">{/* right col */}
 
             {/* ─── GPU / デバイス設定 ─── */}
-            <div className={`${card} rounded-lg p-4 border ${borderLine} space-y-4`}>
+            <div className="bg-[var(--ss-surface-1)] rounded-ss-lg p-4 border border-[var(--ss-border)] shadow-card space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className={`text-sm font-medium ${textSecondary} flex items-center gap-2`}>
-                  <MIcon name="memory" size={14} className="text-purple-400" />
+                  <MIcon name="memory" size={14} className="text-[var(--ss-brand)]" />
                   {t('auto.SettingsPage.gpu_device_heading')}
                 </h3>
                 <button
                   onClick={() => refetchDevices()}
                   disabled={devicesFetching}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-50 transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white rounded-ss-md bg-[var(--ss-t2)] hover:opacity-90 disabled:opacity-50 transition-opacity duration-fast ease-out"
                 >
                   {devicesFetching ? <MIcon name="restart_alt" size={11} className="animate-spin" /> : <MIcon name="restart_alt" size={11} />}
                   {t('settings.ui.redetect')}
@@ -1478,21 +1473,21 @@ export function SettingsPage() {
               {/* CUDA デバイス選択 */}
               {computeDevices && (computeDevices.cuda_devices?.length ?? 0) > 0 && (
                 <div>
-                  <p className={`text-xs font-medium mb-2 ${isLight ? 'text-gray-600' : 'text-gray-400'}`}>{t('auto.SettingsPage.k2')}</p>
+                  <p className="text-xs font-medium mb-2 text-[var(--ss-t2)]">{t('auto.SettingsPage.k2')}</p>
                   <div className="space-y-1.5">
                     {computeDevices.cuda_devices.map((dev) => (
                       <button
                         key={dev.index}
                         onClick={() => updateSettings({ cuda_device_index: dev.index })}
-                        className={`w-full text-left px-3 py-2 rounded text-xs border transition-colors ${
+                        className={`w-full text-left px-3 py-2 rounded-ss-md text-xs border transition-colors duration-fast ease-out ${
                           appSettings.cuda_device_index === dev.index
-                            ? 'border-blue-500 bg-blue-600/20 text-blue-300'
-                            : `border-gray-600 ${isLight ? 'bg-white text-gray-700' : 'bg-gray-700 text-gray-300'} hover:border-gray-500`
+                            ? 'border-[var(--ss-brand)] bg-[var(--ss-brand-tint)] text-[var(--ss-brand)]'
+                            : 'border-[var(--ss-border-strong)] bg-[var(--ss-surface-1)] text-[var(--ss-t2)] hover:border-[var(--ss-t3)]'
                         }`}
                       >
                         <span className="font-medium">GPU {dev.index}</span>
                         <span className="ml-2">{dev.name}</span>
-                        <span className={`ml-auto float-right ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>{dev.vram_mb >= 1024 ? `${(dev.vram_mb / 1024).toFixed(1)} GB` : `${dev.vram_mb} MB`}</span>
+                        <span className="ml-auto float-right ss-num text-[var(--ss-t3)]">{dev.vram_mb >= 1024 ? `${(dev.vram_mb / 1024).toFixed(1)} GB` : `${dev.vram_mb} MB`}</span>
                       </button>
                     ))}
                   </div>
@@ -1502,16 +1497,16 @@ export function SettingsPage() {
               {/* OpenVINO デバイス選択 */}
               {computeDevices && (computeDevices.openvino_devices?.length ?? 0) > 0 && (
                 <div>
-                  <p className={`text-xs font-medium mb-2 ${isLight ? 'text-gray-600' : 'text-gray-400'}`}>{t('auto.SettingsPage.k3')}</p>
+                  <p className="text-xs font-medium mb-2 text-[var(--ss-t2)]">{t('auto.SettingsPage.k3')}</p>
                   <div className="flex flex-wrap gap-2">
                     {computeDevices.openvino_devices.map((dev) => (
                       <button
                         key={dev}
                         onClick={() => updateSettings({ openvino_device: dev })}
-                        className={`py-1.5 px-3 rounded text-xs border transition-colors ${
+                        className={`py-1.5 px-3 rounded-ss-md text-xs border transition-colors duration-fast ease-out ${
                           appSettings.openvino_device === dev
-                            ? 'border-blue-500 bg-blue-600 text-white'
-                            : `border-gray-600 ${isLight ? 'bg-white text-gray-700' : 'bg-gray-700 text-gray-300'} hover:border-gray-500`
+                            ? 'border-[var(--ss-brand)] bg-[var(--ss-brand)] text-white'
+                            : 'border-[var(--ss-border-strong)] bg-[var(--ss-surface-1)] text-[var(--ss-t2)] hover:border-[var(--ss-t3)]'
                         }`}
                       >
                         {dev}
@@ -1524,24 +1519,22 @@ export function SettingsPage() {
               {/* ONNX プロバイダー状態表示 */}
               {computeDevices && (
                 <div>
-                  <p className={`text-xs font-medium mb-1.5 ${isLight ? 'text-gray-600' : 'text-gray-400'}`}>{t('auto.SettingsPage.k4')}</p>
+                  <p className="text-xs font-medium mb-1.5 text-[var(--ss-t2)]">{t('auto.SettingsPage.k4')}</p>
                   <div className="flex flex-wrap gap-1.5">
                     {(computeDevices.onnx_providers ?? []).map((p) => (
                       <span
                         key={p}
-                        className={`text-[10px] px-2 py-0.5 rounded ${
-                          p === 'CUDAExecutionProvider'
-                            ? 'bg-gray-800 text-blue-300 border border-gray-700'
-                            : p === 'DmlExecutionProvider'
-                            ? 'bg-gray-800 text-blue-300 border border-gray-700'
-                            : `${isLight ? 'bg-gray-100 text-gray-600' : 'bg-gray-800 text-gray-400'} border border-gray-600`
+                        className={`text-[10px] px-2 py-0.5 rounded-ss-sm border ${
+                          p === 'CUDAExecutionProvider' || p === 'DmlExecutionProvider'
+                            ? 'bg-[var(--ss-brand-tint)] text-[var(--ss-brand)] border-[var(--ss-brand-border)]'
+                            : 'bg-[var(--ss-surface-2)] text-[var(--ss-t2)] border-[var(--ss-border-strong)]'
                         }`}
                       >
                         {p.replace('ExecutionProvider', '')}
                       </span>
                     ))}
                     {(computeDevices.onnx_providers ?? []).length === 0 && (
-                      <span className="text-xs text-gray-500">{t('auto.SettingsPage.k5')}</span>
+                      <span className="text-xs text-[var(--ss-t3)]">{t('auto.SettingsPage.k5')}</span>
                     )}
                   </div>
                   {(() => {
@@ -1550,10 +1543,10 @@ export function SettingsPage() {
                     const hasDml = providers.includes('DmlExecutionProvider')
                     if (hasCuda || hasDml) return null
                     return (
-                      <p className="text-[10px] text-amber-400 mt-1.5">
+                      <p className="text-[10px] text-[var(--ss-warn)] mt-1.5">
                         {t('auto.SettingsPage.gpu_hint_prefix')}
-                        <code className="bg-gray-800 px-1 rounded">{t('auto.SettingsPage.pkg_onnxruntime_gpu')}</code>{t('auto.SettingsPage.gpu_hint_cuda_or')}
-                        <code className="bg-gray-800 px-1 rounded">{t('auto.SettingsPage.pkg_onnxruntime_directml')}</code>{t('auto.SettingsPage.gpu_hint_directml_suffix')}
+                        <code className="bg-[var(--ss-surface-2)] px-1 rounded-ss-sm">{t('auto.SettingsPage.pkg_onnxruntime_gpu')}</code>{t('auto.SettingsPage.gpu_hint_cuda_or')}
+                        <code className="bg-[var(--ss-surface-2)] px-1 rounded-ss-sm">{t('auto.SettingsPage.pkg_onnxruntime_directml')}</code>{t('auto.SettingsPage.gpu_hint_directml_suffix')}
                       </p>
                     )
                   })()}
@@ -1561,22 +1554,22 @@ export function SettingsPage() {
               )}
 
               {!computeDevices && !devicesFetching && (
-                <p className="text-xs text-gray-500">{t('auto.SettingsPage.k6')}</p>
+                <p className="text-xs text-[var(--ss-t3)]">{t('auto.SettingsPage.k6')}</p>
               )}
             </div>
 
             {/* ─── ベンチマーク（新 UI） ─── */}
-            <div className={`${card} rounded-lg p-4 border ${borderLine} space-y-4`}>
+            <div className="bg-[var(--ss-surface-1)] rounded-ss-lg p-4 border border-[var(--ss-border)] shadow-card space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className={`text-sm font-medium ${textSecondary} flex items-center gap-2`}>
-                  <MIcon name="bolt" size={14} className="text-yellow-400" />
+                  <MIcon name="bolt" size={14} className="text-[var(--ss-warn)]" />
                   {t('benchmark.title')}
                 </h3>
                 {/* デバイス検出ボタン */}
                 <button
                   onClick={fetchBmDevices}
                   disabled={bmRunning || bmDetecting}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-50 transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white rounded-ss-md bg-[var(--ss-t2)] hover:opacity-90 disabled:opacity-50 transition-opacity duration-fast ease-out"
                 >
                   {bmDetecting
                     ? <><MIcon name="progress_activity" size={12} className="animate-spin" />{t('benchmark.detecting')}</>
@@ -1587,7 +1580,7 @@ export function SettingsPage() {
 
               {/* エラー表示 */}
               {bmError && (
-                <p className="text-xs text-red-400">{bmError}</p>
+                <p className="text-xs text-[var(--ss-bad)]">{bmError}</p>
               )}
 
               {/* デバイス選択 */}
@@ -1611,7 +1604,7 @@ export function SettingsPage() {
               <button
                 onClick={startBenchmark}
                 disabled={bmRunning || bmSelectedDevices.length === 0 || bmTargets.length === 0}
-                className="flex items-center gap-1.5 px-4 py-2 text-xs text-white rounded bg-blue-700 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-wait transition-colors"
+                className="flex items-center gap-1.5 px-4 py-2 text-xs text-white rounded-ss-md bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-50 disabled:cursor-wait transition-colors duration-fast ease-out"
               >
                 {bmRunning ? (
                   <><MIcon name="restart_alt" size={11} className="animate-spin" /> {t('benchmark.running')}</>
@@ -1624,7 +1617,7 @@ export function SettingsPage() {
               {bmRunning && (
                 <button
                   onClick={stopBenchmark}
-                  className="flex items-center gap-1.5 px-4 py-2 text-xs text-white rounded bg-red-700 hover:bg-red-600 transition-colors"
+                  className="flex items-center gap-1.5 px-4 py-2 text-xs text-white rounded-ss-md bg-[var(--ss-bad)] hover:opacity-90 transition-opacity duration-fast ease-out"
                 >
                   <MIcon name="crop_square" size={11} /> {t('benchmark.stop')}
                 </button>
@@ -1659,8 +1652,8 @@ export function SettingsPage() {
 
             {/* トンネル起動中バナー: URLをここで優先表示 */}
             {tunnelStatus?.data?.running && tunnelStatus.data.url && (
-              <div className="bg-blue-900/30 border border-blue-500/40 rounded-lg p-4 space-y-2">
-                <div className="flex items-center gap-2 text-sm font-medium text-blue-300">
+              <div className="bg-[var(--ss-brand-tint)] border border-[var(--ss-brand-border)] rounded-ss-lg p-4 space-y-2">
+                <div className="flex items-center gap-2 text-sm font-medium text-[var(--ss-brand)]">
                   <MIcon name="public" size={14} />
                   {t('auto.SettingsPage.tunnel_connected')}
                 </div>
@@ -1669,23 +1662,23 @@ export function SettingsPage() {
             )}
 
             {/* LAN モード設定 */}
-            <div className={`${card} rounded-lg p-4 border ${borderLine}`}>
+            <div className="bg-[var(--ss-surface-1)] rounded-ss-lg p-4 border border-[var(--ss-border)] shadow-card">
               <div className="flex items-center justify-between mb-3">
                 <div>
-                  <p className="text-sm font-medium">{t('sharing.lan_mode_label')}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{t('sharing.lan_mode_description')}</p>
+                  <p className="text-sm font-medium text-[var(--ss-t1)]">{t('sharing.lan_mode_label')}</p>
+                  <p className="text-xs text-[var(--ss-t3)] mt-0.5">{t('sharing.lan_mode_description')}</p>
                 </div>
                 <button
                   onClick={() => toggleLanMode.mutate(!serverInfo?.data?.lan_mode)}
                   className="flex-shrink-0"
                 >
                   {serverInfo?.data?.lan_mode
-                    ? <MIcon name="toggle_on" size={32} className="text-blue-400" />
-                    : <MIcon name="toggle_off" size={32} className="text-gray-500" />}
+                    ? <MIcon name="toggle_on" size={32} className="text-[var(--ss-brand)]" />
+                    : <MIcon name="toggle_off" size={32} className="text-[var(--ss-t3)]" />}
                 </button>
               </div>
               {serverInfo?.data?.lan_mode && serverInfo.data.lan_ips.length > 0 ? (
-                <div className={`${isLight ? 'bg-gray-100' : 'bg-gray-900'} rounded p-3 space-y-3`}>
+                <div className="bg-[var(--ss-surface-2)] rounded-ss-md p-3 space-y-3">
                   {serverInfo.data.lan_ips.map((ip) => {
                     const appUrl = `http://${ip}:${serverInfo.data.port}/`
                     return (
@@ -1694,27 +1687,27 @@ export function SettingsPage() {
                   })}
                 </div>
               ) : serverInfo?.data?.lan_mode ? (
-                <div className="flex items-center gap-2 text-xs text-orange-400">
+                <div className="flex items-center gap-2 text-xs text-[var(--ss-warn)]">
                   <MIcon name="wifi_off" size={12} />
                   {t('sharing.lan_no_ip')}
                 </div>
               ) : (
-                <p className="text-xs text-gray-500">{t('sharing.lan_disabled_hint')}</p>
+                <p className="text-xs text-[var(--ss-t3)]">{t('sharing.lan_disabled_hint')}</p>
               )}
             </div>
 
             {/* リモート公開 */}
-            <div className={`${card} rounded-lg p-4 border ${borderLine}`}>
+            <div className="bg-[var(--ss-surface-1)] rounded-ss-lg p-4 border border-[var(--ss-border)] shadow-card">
               <h3 className={`text-sm font-medium ${textSecondary} mb-1 flex items-center gap-2`}>
-                <MIcon name="public" size={14} className="text-blue-400" />
+                <MIcon name="public" size={14} className="text-[var(--ss-brand)]" />
                 {t('sharing.remote_exposure_title')}
               </h3>
-              <p className={`text-xs mb-3 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>{t('sharing.remote_exposure_description')}</p>
+              <p className="text-xs mb-3 text-[var(--ss-t3)]">{t('sharing.remote_exposure_description')}</p>
 
               {/* プロバイダー選択（停止中のみ変更可） */}
               {!tunnelStatus?.data?.running && (
                 <div className="mb-3">
-                  <p className={`text-xs font-medium mb-1.5 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>{t('sharing.remote_provider_label')}</p>
+                  <p className="text-xs font-medium mb-1.5 text-[var(--ss-t3)]">{t('sharing.remote_provider_label')}</p>
                   <div className="flex gap-2 flex-wrap">
                     {(['auto', 'ngrok', 'cloudflare'] as const).map(p => {
                       const unavailable =
@@ -1724,20 +1717,20 @@ export function SettingsPage() {
                         <button
                           key={p}
                           onClick={() => updateSettings({ tunnel_provider: p })}
-                          className={`flex items-center gap-1 px-3 py-1 rounded text-xs transition-colors ${
+                          className={`flex items-center gap-1 px-3 py-1 rounded-ss-md text-xs transition-colors duration-fast ease-out ${
                             appSettings.tunnel_provider === p
-                              ? 'bg-blue-600 text-white'
-                              : isLight ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                              ? 'bg-[var(--ss-brand)] text-white'
+                              : 'bg-[var(--ss-surface-2)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-3)]'
                           }`}
                         >
                           {p === 'auto' ? '自動' : p}
-                          {unavailable && <MIcon name="close" size={11} className="text-orange-400 ml-0.5" />}
+                          {unavailable && <MIcon name="close" size={11} className="text-[var(--ss-warn)] ml-0.5" />}
                         </button>
                       )
                     })}
                   </div>
                   {appSettings.tunnel_provider === 'auto' && (
-                    <p className={`text-xs mt-1.5 ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>{t('sharing.auto_order_hint')}</p>
+                    <p className="text-xs mt-1.5 text-[var(--ss-t3)]">{t('sharing.auto_order_hint')}</p>
                   )}
                 </div>
               )}
@@ -1745,14 +1738,12 @@ export function SettingsPage() {
               {/* ngrok 認証トークン */}
               {(appSettings.tunnel_provider === 'ngrok' || appSettings.tunnel_provider === 'auto') && (
                 <div className="space-y-1.5">
-                  <label className={`text-xs font-medium ${isLight ? 'text-gray-600' : 'text-gray-400'}`}>
+                  <label className="text-xs font-medium text-[var(--ss-t2)]">
                     {t('sharing.ngrok_authtoken_label')}
                   </label>
                   {tunnelStatus?.data?.ngrok_authtoken_from_env ? (
                     /* env から自動適用済み */
-                    <div className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${
-                      isLight ? 'bg-white border border-gray-200 text-blue-700' : 'bg-gray-800 border border-gray-700 text-blue-300'
-                    }`}>
+                    <div className="flex items-center gap-2 px-2 py-1.5 rounded-ss-sm text-xs bg-[var(--ss-surface-1)] border border-[var(--ss-border)] text-[var(--ss-brand)]">
                       <MIcon name="check_circle" size={12} />
                       {t('sharing.ngrok_authtoken_from_env')}
                     </div>
@@ -1765,14 +1756,10 @@ export function SettingsPage() {
                           value={appSettings.ngrok_authtoken ?? ''}
                           onChange={(e) => updateSettings({ ngrok_authtoken: e.target.value })}
                           placeholder={t('sharing.ngrok_authtoken_placeholder')}
-                          className={`flex-1 rounded px-2 py-1 text-xs font-mono ${
-                            isLight
-                              ? 'bg-gray-100 text-gray-700 placeholder-gray-400 border border-gray-200'
-                              : 'bg-gray-900/60 text-gray-300 placeholder-gray-600 border border-gray-700'
-                          } focus:outline-none focus:ring-1 focus:ring-blue-500`}
+                          className="flex-1 rounded-ss-md px-2 py-1 text-xs font-mono bg-[var(--ss-surface-2)] text-[var(--ss-t2)] placeholder-[var(--ss-t3)] border border-[var(--ss-border)] focus:outline-none focus:ring-[3px] focus:ring-[var(--ss-focus-ring)] focus:border-[var(--ss-brand)] transition-colors duration-fast ease-out"
                         />
                       </div>
-                      <p className={`text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-600'}`}>
+                      <p className="text-[10px] text-[var(--ss-t3)]">
                         {t('sharing.ngrok_authtoken_hint')}
                       </p>
                     </>
@@ -1783,31 +1770,29 @@ export function SettingsPage() {
               {/* 利用可否なし */}
               {tunnelStatus?.data?.available === false ? (
                 <div className="space-y-1.5">
-                  <div className="flex items-center gap-2 text-xs text-orange-400">
+                  <div className="flex items-center gap-2 text-xs text-[var(--ss-warn)]">
                     <MIcon name="error" size={13} />
                     {t('sharing.tunnel_not_available')}
                   </div>
-                  <p className={`text-xs ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>{t('sharing.tunnel_install_hint')}</p>
+                  <p className="text-xs text-[var(--ss-t3)]">{t('sharing.tunnel_install_hint')}</p>
                 </div>
               ) : (
                 <div className="space-y-3">
                   {tunnelStatus?.data?.providers?.cloudflare?.available && (
-                    <div className={`rounded border px-3 py-2 text-xs ${
-                      isLight ? 'border-gray-200 bg-white text-blue-700' : 'border-gray-700 bg-gray-800 text-blue-300'
-                    }`}>
+                    <div className="rounded-ss-md border px-3 py-2 text-xs border-[var(--ss-border)] bg-[var(--ss-surface-1)] text-[var(--ss-brand)]">
                       <div className="font-medium">{t('auto.SettingsPage.cloudflare_named_tunnel')}</div>
                       <div className="mt-1 font-mono break-all">
                         {tunnelStatus.data.providers.cloudflare.hostname
                           ? `https://${tunnelStatus.data.providers.cloudflare.hostname}`
                           : (import.meta.env.VITE_SS_APP_URL ?? 'https://app.shuttle-scope.com')}
                       </div>
-                      <div className={`mt-1 ${isLight ? 'text-blue-600' : 'text-blue-400'}`}>
+                      <div className="mt-1 text-[var(--ss-brand)]">
                         {tunnelStatus.data.providers.cloudflare.named_ready
                           ? 'named tunnel 設定を検出しました。Cloudflare 選択時は固定ドメインを優先します。'
                           : 'named tunnel 設定は未完了です。repo外の Desktop\\cloudflare-shuttle-scope または ~/.cloudflared を使う想定です。'}
                       </div>
                       {tunnelStatus.data.providers.cloudflare.config_path && (
-                        <div className={`mt-1 break-all ${isLight ? 'text-blue-500' : 'text-blue-500'}`}>
+                        <div className="mt-1 break-all text-[var(--ss-brand)]">
                           {tunnelStatus.data.providers.cloudflare.config_path}
                         </div>
                       )}
@@ -1817,13 +1802,13 @@ export function SettingsPage() {
                   <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2">
                       {tunnelStatus?.data?.running
-                        ? <span className="inline-block w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                        : <span className="inline-block w-2 h-2 rounded-full bg-gray-500" />}
-                      <span className="text-sm">
+                        ? <span className="inline-block w-2 h-2 rounded-full bg-[var(--ss-success)] animate-pulse" />
+                        : <span className="inline-block w-2 h-2 rounded-full bg-[var(--ss-t3)]" />}
+                      <span className="text-sm text-[var(--ss-t1)]">
                         {tunnelStatus?.data?.running ? t('sharing.tunnel_running') : t('sharing.tunnel_not_running')}
                       </span>
                       {tunnelStatus?.data?.active_provider && (
-                        <span className={`text-xs px-1.5 py-0.5 rounded font-mono ${isLight ? 'bg-gray-100 text-gray-500' : 'bg-gray-700 text-gray-400'}`}>
+                        <span className="text-xs px-1.5 py-0.5 rounded-ss-sm font-mono bg-[var(--ss-surface-2)] text-[var(--ss-t3)]">
                           {tunnelStatus.data.active_provider}
                         </span>
                       )}
@@ -1833,7 +1818,7 @@ export function SettingsPage() {
                         <button
                           onClick={() => tunnelStart.mutate()}
                           disabled={tunnelStart.isPending}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded text-xs text-white"
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-50 rounded-ss-md text-xs text-white transition-colors duration-fast ease-out"
                         >
                           <MIcon name="power_settings_new" size={12} />
                           {tunnelStart.isPending ? t('sharing.tunnel_starting') : t('sharing.tunnel_start')}
@@ -1842,7 +1827,7 @@ export function SettingsPage() {
                         <button
                           onClick={() => tunnelStop.mutate()}
                           disabled={tunnelStop.isPending}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-red-800 hover:bg-red-700 disabled:opacity-50 rounded text-xs text-white"
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--ss-bad)] hover:opacity-90 disabled:opacity-50 rounded-ss-md text-xs text-white transition-opacity duration-fast ease-out"
                         >
                           <MIcon name="power_off" size={12} />
                           {t('sharing.tunnel_stop')}
@@ -1852,25 +1837,25 @@ export function SettingsPage() {
                   </div>
 
                   {tunnelStatus?.data?.running && tunnelStatus.data.url && (
-                    <div className={`${isLight ? 'bg-gray-100' : 'bg-gray-900'} rounded p-3`}>
+                    <div className="bg-[var(--ss-surface-2)] rounded-ss-md p-3">
                       <LanUrlCard url={tunnelStatus.data.url} hint={t('sharing.tunnel_url_hint')} />
                     </div>
                   )}
 
                   {tunnelStatus?.data?.running && !tunnelStatus.data.url && (
-                    <p className={`text-xs animate-pulse ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>{t('auto.SettingsPage.k7')}</p>
+                    <p className="text-xs animate-pulse text-[var(--ss-t3)]">{t('auto.SettingsPage.k7')}</p>
                   )}
                 </div>
               )}
             </div>
 
             {/* リモート映像（WebRTC） */}
-            <div className={`${card} rounded-lg p-4 border ${borderLine}`}>
+            <div className="bg-[var(--ss-surface-1)] rounded-ss-lg p-4 border border-[var(--ss-border)] shadow-card">
               <h3 className={`text-sm font-medium ${textSecondary} mb-1 flex items-center gap-2`}>
-                <MIcon name="wifi" size={14} className="text-purple-400" />
+                <MIcon name="wifi" size={14} className="text-[var(--ss-brand)]" />
                 {t('sharing.remote_video_title')}
               </h3>
-              <p className={`text-xs mb-3 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>{t('sharing.remote_video_description')}</p>
+              <p className="text-xs mb-3 text-[var(--ss-t3)]">{t('sharing.remote_video_description')}</p>
 
               {/* Off / WebRTC 選択 */}
               <div className="flex gap-2 mb-3">
@@ -1878,10 +1863,10 @@ export function SettingsPage() {
                   <button
                     key={v}
                     onClick={() => updateSettings({ video_transport: v })}
-                    className={`px-3 py-1 rounded text-xs transition-colors ${
+                    className={`px-3 py-1 rounded-ss-md text-xs transition-colors duration-fast ease-out ${
                       appSettings.video_transport === v
-                        ? 'bg-blue-600 text-white'
-                        : isLight ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                        ? 'bg-[var(--ss-brand)] text-white'
+                        : 'bg-[var(--ss-surface-2)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-3)]'
                     }`}
                   >
                     {v === 'off' ? t('sharing.video_transport_off') : t('sharing.video_transport_webrtc')}
@@ -1895,18 +1880,18 @@ export function SettingsPage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className={`text-xs font-medium ${textSecondary}`}>{t('sharing.turn_enable_label')}</p>
-                      <p className={`text-xs mt-0.5 ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>{t('sharing.turn_description')}</p>
+                      <p className="text-xs mt-0.5 text-[var(--ss-t3)]">{t('sharing.turn_description')}</p>
                     </div>
                     <button onClick={() => updateSettings({ turn_enabled: !appSettings.turn_enabled })}>
                       {appSettings.turn_enabled
-                        ? <MIcon name="toggle_on" size={28} className="text-blue-400" />
-                        : <MIcon name="toggle_off" size={28} className="text-gray-500" />}
+                        ? <MIcon name="toggle_on" size={28} className="text-[var(--ss-brand)]" />
+                        : <MIcon name="toggle_off" size={28} className="text-[var(--ss-t3)]" />}
                     </button>
                   </div>
 
                   {/* TURN なし警告 */}
                   {!appSettings.turn_enabled && (
-                    <div className={`flex items-start gap-2 text-xs rounded p-2 ${isLight ? 'bg-white text-amber-700' : 'bg-gray-800 text-amber-400'}`}>
+                    <div className="flex items-start gap-2 text-xs rounded-ss-sm p-2 bg-[var(--ss-surface-2)] text-[var(--ss-warn)]">
                       <MIcon name="error" size={12} className="flex-shrink-0 mt-0.5" />
                       {t('sharing.webrtc_best_effort_warning')}
                     </div>
@@ -1914,7 +1899,7 @@ export function SettingsPage() {
 
                   {/* TURN 必要場面説明 */}
                   {appSettings.turn_enabled && (
-                    <p className={`text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>
+                    <p className="text-xs text-[var(--ss-t3)]">
                       {t('sharing.turn_when_required')}
                     </p>
                   )}
@@ -1927,12 +1912,12 @@ export function SettingsPage() {
                         placeholder={t('sharing.turn_url_placeholder')}
                         value={appSettings.turn_url}
                         onChange={e => updateSettings({ turn_url: e.target.value })}
-                        className={`w-full px-2 py-1.5 rounded text-xs border font-mono ${
-                          isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-800 border-gray-600 text-gray-200'
-                        } ${appSettings.turn_url && !/^turns?:/i.test(appSettings.turn_url) ? 'border-red-500' : ''}`}
+                        className={`w-full px-2 py-1.5 rounded-ss-md text-xs border font-mono bg-[var(--ss-surface-1)] text-[var(--ss-t1)] ${
+                          appSettings.turn_url && !/^turns?:/i.test(appSettings.turn_url) ? 'border-[var(--ss-bad)]' : 'border-[var(--ss-border-strong)]'
+                        }`}
                       />
                       {appSettings.turn_url && !/^turns?:/i.test(appSettings.turn_url) && (
-                        <p className="text-[10px] text-red-400 flex items-center gap-1">
+                        <p className="text-[10px] text-[var(--ss-bad)] flex items-center gap-1">
                           <MIcon name="error" size={10} />
                           {t('sharing.turn_url_invalid')}
                         </p>
@@ -1943,18 +1928,14 @@ export function SettingsPage() {
                           placeholder={t('sharing.turn_username_placeholder')}
                           value={appSettings.turn_username}
                           onChange={e => updateSettings({ turn_username: e.target.value })}
-                          className={`flex-1 px-2 py-1.5 rounded text-xs border ${
-                            isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-800 border-gray-600 text-gray-200'
-                          }`}
+                          className="flex-1 px-2 py-1.5 rounded-ss-md text-xs border bg-[var(--ss-surface-1)] border-[var(--ss-border-strong)] text-[var(--ss-t1)]"
                         />
                         <input
                           type="password"
                           placeholder={t('sharing.turn_credential_placeholder')}
                           value={appSettings.turn_credential}
                           onChange={e => updateSettings({ turn_credential: e.target.value })}
-                          className={`flex-1 px-2 py-1.5 rounded text-xs border ${
-                            isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-800 border-gray-600 text-gray-200'
-                          }`}
+                          className="flex-1 px-2 py-1.5 rounded-ss-md text-xs border bg-[var(--ss-surface-1)] border-[var(--ss-border-strong)] text-[var(--ss-t1)]"
                         />
                       </div>
 
@@ -1963,12 +1944,12 @@ export function SettingsPage() {
                         <button
                           onClick={() => turnTest.mutate()}
                           disabled={turnTest.isPending || !appSettings.turn_url}
-                          className={`px-3 py-1.5 text-xs rounded disabled:opacity-40 ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-700' : 'bg-gray-700 hover:bg-gray-600 text-gray-200'}`}
+                          className="px-3 py-1.5 text-xs rounded-ss-md disabled:opacity-40 bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t2)] transition-colors duration-fast ease-out"
                         >
                           {turnTest.isPending ? t('sharing.turn_test_running') : t('sharing.turn_test_button')}
                         </button>
                         {turnTest.data && (
-                          <span className={`text-xs flex items-center gap-1 ${turnTest.data.success ? 'text-green-400' : 'text-red-400'}`}>
+                          <span className={`text-xs flex items-center gap-1 ${turnTest.data.success ? 'text-[var(--ss-success)]' : 'text-[var(--ss-bad)]'}`}>
                             {turnTest.data.success
                               ? <><MIcon name="check_circle" size={11} />{t('sharing.turn_test_ok')} ({turnTest.data.data?.host}:{turnTest.data.data?.port})</>
                               : <><MIcon name="error" size={11} />{t('sharing.turn_test_fail')}: {turnTest.data.error}</>
@@ -1983,12 +1964,12 @@ export function SettingsPage() {
             </div>
 
             {/* セッション作成ヘルプ */}
-            <div className={`${card} rounded-lg p-4 border ${borderLine}`}>
+            <div className="bg-[var(--ss-surface-1)] rounded-ss-lg p-4 border border-[var(--ss-border)] shadow-card">
               <h3 className={`text-sm font-medium ${textSecondary} mb-2 flex items-center gap-2`}>
                 <MIcon name="share" size={14} />
                 {t('sharing.session_guide_title')}
               </h3>
-              <ol className="space-y-2 text-xs text-gray-400">
+              <ol className="space-y-2 text-xs text-[var(--ss-t3)]">
                 <li>1. {t('sharing.guide_step1')}</li>
                 <li>2. {t('sharing.guide_step2')}</li>
                 <li>3. {t('sharing.guide_step3')}</li>
@@ -1997,7 +1978,7 @@ export function SettingsPage() {
             </div>
 
             {/* Q-002/Q-008: ネットワーク診断 */}
-            <div className={`${card} rounded-lg p-4 border ${borderLine}`}>
+            <div className="bg-[var(--ss-surface-1)] rounded-ss-lg p-4 border border-[var(--ss-border)] shadow-card">
               <div className="flex items-center justify-between mb-3">
                 <h3 className={`text-sm font-medium ${textSecondary} flex items-center gap-2`}>
                   <MIcon name="wifi" size={14} />
@@ -2006,7 +1987,7 @@ export function SettingsPage() {
                 <button
                   onClick={() => runDiagnostics()}
                   disabled={netDiagFetching}
-                  className={`px-3 py-1 text-xs rounded disabled:opacity-50 ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-700' : 'bg-gray-700 hover:bg-gray-600 text-gray-200'}`}
+                  className="px-3 py-1 text-xs rounded-ss-md disabled:opacity-50 bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t2)] transition-colors duration-fast ease-out"
                 >
                   {netDiagFetching ? '診断中...' : t('sharing.run_diagnostics')}
                 </button>
@@ -2017,9 +1998,9 @@ export function SettingsPage() {
                   {/* 環境分類 */}
                   <div className="flex items-center gap-2">
                     {netDiag.data.environment === 'open'
-                      ? <MIcon name="check_circle" size={14} className="text-green-400" />
-                      : <MIcon name="error" size={14} className="text-orange-400" />}
-                    <span className="text-sm font-medium">
+                      ? <MIcon name="check_circle" size={14} className="text-[var(--ss-success)]" />
+                      : <MIcon name="error" size={14} className="text-[var(--ss-warn)]" />}
+                    <span className="text-sm font-medium text-[var(--ss-t1)]">
                       {{
                         open: 'オープン環境',
                         corporate_proxy: '企業プロキシ検出',
@@ -2029,7 +2010,7 @@ export function SettingsPage() {
                         unknown: '不明',
                       }[netDiag.data.environment] ?? netDiag.data.environment}
                     </span>
-                    <span className="text-xs text-gray-500 ml-auto">{netDiag.data.probe_duration_ms}ms</span>
+                    <span className="text-xs text-[var(--ss-t3)] ml-auto ss-num">{netDiag.data.probe_duration_ms}ms</span>
                   </div>
 
                   {/* capabilities */}
@@ -2039,7 +2020,7 @@ export function SettingsPage() {
                       ['TCP 80', netDiag.data.capabilities.tcp_80.ok],
                       ['Localhost', netDiag.data.capabilities.localhost_bridge.ok],
                     ] as [string, boolean][]).map(([label, ok]) => (
-                      <div key={label} className={`rounded px-2 py-1 text-center inline-flex items-center justify-center gap-1 ${ok ? 'bg-gray-800 text-blue-300' : 'bg-gray-800 text-red-300'}`}>
+                      <div key={label} className={`rounded-ss-sm px-2 py-1 text-center inline-flex items-center justify-center gap-1 ${ok ? 'bg-[var(--ss-brand-tint)] text-[var(--ss-brand)]' : 'bg-[var(--ss-surface-2)] text-[var(--ss-bad)]'}`}>
                         <MIcon name={ok ? 'check' : 'close'} size={11} />{label}
                       </div>
                     ))}
@@ -2047,23 +2028,23 @@ export function SettingsPage() {
 
                   {/* LAN 情報 */}
                   {netDiag.data.lan.lan_ips.length > 0 && (
-                    <div className="text-xs text-gray-400">
+                    <div className="text-xs text-[var(--ss-t3)]">
                       {t('auto.SettingsPage.lan_ip', { ips: netDiag.data.lan.lan_ips.join(', ') })}
                     </div>
                   )}
 
                   {/* transport ladder 推奨 */}
-                  <div className={`${isLight ? 'bg-gray-100' : 'bg-gray-900'} rounded p-3 space-y-1`}>
+                  <div className="bg-[var(--ss-surface-2)] rounded-ss-md p-3 space-y-1">
                     <p className={`text-xs font-medium ${textSecondary} mb-1`}>{t('sharing.transport_ladder')}</p>
                     {netDiag.data.transport_ladder.map((rec, i) => (
-                      <p key={i} className="text-xs text-gray-400">{rec}</p>
+                      <p key={i} className="text-xs text-[var(--ss-t3)]">{rec}</p>
                     ))}
                   </div>
                 </div>
               )}
 
               {!netDiag && !netDiagFetching && (
-                <p className="text-xs text-gray-500">{t('sharing.diag_not_run')}</p>
+                <p className="text-xs text-[var(--ss-t3)]">{t('sharing.diag_not_run')}</p>
               )}
             </div>
           </div>
@@ -2074,10 +2055,10 @@ export function SettingsPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
 
             {/* ── デバイス・同期設定 (admin only) ────────────────────────── */}
-            {role === 'admin' && <section className={`${card} rounded-lg p-5 space-y-4`}>
+            {role === 'admin' && <section className="bg-[var(--ss-surface-1)] rounded-ss-lg p-5 space-y-4 border border-[var(--ss-border)] shadow-card">
               <div className="flex items-center gap-2">
-                <MIcon name="storage" size={16} className="text-gray-400" />
-                <h2 className="text-base font-semibold">{t('settings.ui.sync_settings')}</h2>
+                <MIcon name="storage" size={16} className="text-[var(--ss-t3)]" />
+                <h2 className="text-base font-semibold text-[var(--ss-t1)]">{t('settings.ui.sync_settings')}</h2>
               </div>
               <div className="space-y-3">
                 <div>
@@ -2088,10 +2069,10 @@ export function SettingsPage() {
                       value={appSettings.sync_device_id}
                       onChange={(e) => updateSettings({ sync_device_id: e.target.value })}
                       placeholder={t('auto.SettingsPage.k26')}
-                      className="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white font-mono"
+                      className={`flex-1 ${inputClass} font-mono`}
                     />
                   </div>
-                  <p className="text-[11px] text-gray-500 mt-0.5">{t('auto.SettingsPage.k9')}</p>
+                  <p className="text-[11px] text-[var(--ss-t3)] mt-0.5">{t('auto.SettingsPage.k9')}</p>
                 </div>
                 <div>
                   <label className={`block text-sm ${textSecondary} mb-1`}>{t('auto.SettingsPage.k10')}</label>
@@ -2100,24 +2081,24 @@ export function SettingsPage() {
                     value={appSettings.sync_folder_path}
                     onChange={(e) => updateSettings({ sync_folder_path: e.target.value })}
                     placeholder={t('auto.SettingsPage.k27')}
-                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white font-mono"
+                    className={`w-full ${inputClass} font-mono`}
                   />
-                  <p className="text-[11px] text-gray-500 mt-0.5">{t('auto.SettingsPage.k11')}</p>
+                  <p className="text-[11px] text-[var(--ss-t3)] mt-0.5">{t('auto.SettingsPage.k11')}</p>
                 </div>
               </div>
             </section>}
 
             {/* ── 監査ログ (admin only) ────────────────────────── */}
             {role === 'admin' && (
-              <section className={`${card} rounded-lg p-5 space-y-3`}>
+              <section className="bg-[var(--ss-surface-1)] rounded-ss-lg p-5 space-y-3 border border-[var(--ss-border)] shadow-card">
                 <div className="flex items-center gap-2">
-                  <MIcon name="description" size={16} className="text-amber-400" />
-                  <h2 className="text-base font-semibold">{t('settings.ui.audit_logs_title')}</h2>
+                  <MIcon name="description" size={16} className="text-[var(--ss-warn)]" />
+                  <h2 className="text-base font-semibold text-[var(--ss-t1)]">{t('settings.ui.audit_logs_title')}</h2>
                 </div>
-                <p className="text-xs text-gray-400">{t('settings.ui.audit_logs_desc')}</p>
+                <p className="text-xs text-[var(--ss-t3)]">{t('settings.ui.audit_logs_desc')}</p>
                 <button
                   onClick={() => navigate('/audit-logs')}
-                  className="inline-flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium px-3 py-2 rounded-lg"
+                  className="inline-flex items-center gap-2 bg-[var(--ss-warn)] hover:opacity-90 text-white text-sm font-medium px-3 py-2 rounded-ss-md transition-opacity duration-fast ease-out"
                 >
                   <MIcon name="description" size={14} />
                   {t('settings.ui.audit_logs_open')}
@@ -2127,17 +2108,17 @@ export function SettingsPage() {
 
             {/* ── セキュリティ監視 (admin only) ─────────────────── */}
             {role === 'admin' && (
-              <section className={`${card} rounded-lg p-5 space-y-3`}>
+              <section className="bg-[var(--ss-surface-1)] rounded-ss-lg p-5 space-y-3 border border-[var(--ss-border)] shadow-card">
                 <div className="flex items-center gap-2">
-                  <MIcon name="security" size={16} className="text-red-400" />
-                  <h2 className="text-base font-semibold">{t('settings.ui.security_logs_title', 'セキュリティ監視')}</h2>
+                  <MIcon name="security" size={16} className="text-[var(--ss-bad)]" />
+                  <h2 className="text-base font-semibold text-[var(--ss-t1)]">{t('settings.ui.security_logs_title', 'セキュリティ監視')}</h2>
                 </div>
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-[var(--ss-t3)]">
                   {t('settings.ui.security_logs_desc', '外部からの HTTP リクエスト・攻撃検知 (probe / rate limit 等) ログ。アプリ内操作の監査ログとは分離。')}
                 </p>
                 <button
                   onClick={() => navigate('/admin/security')}
-                  className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium px-3 py-2 rounded-lg"
+                  className="inline-flex items-center gap-2 bg-[var(--ss-bad)] hover:opacity-90 text-white text-sm font-medium px-3 py-2 rounded-ss-md transition-opacity duration-fast ease-out"
                 >
                   <MIcon name="security" size={14} />
                   {t('settings.ui.security_logs_open', 'セキュリティ監視を開く')}
@@ -2148,20 +2129,20 @@ export function SettingsPage() {
             <TutorialReplaySection card={card} />
 
             {role === 'admin' && (
-              <section className={`${card} rounded-lg p-5 space-y-3`}>
+              <section className="bg-[var(--ss-surface-1)] rounded-ss-lg p-5 space-y-3 border border-[var(--ss-border)] shadow-card">
                 <div className="flex items-center gap-2">
-                  <MIcon name="analytics" size={16} className="text-emerald-400" />
-                  <h2 className="text-base font-semibold">
+                  <MIcon name="analytics" size={16} className="text-[var(--ss-success)]" />
+                  <h2 className="text-base font-semibold text-[var(--ss-t1)]">
                     {t('settings.ui.analytics_title') || 'Product Analytics'}
                   </h2>
                 </div>
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-[var(--ss-t3)]">
                   {t('settings.ui.analytics_desc') ||
                     'WAU/MAU、アノテーション完遂ファネル、分析画面の実需、学習曲線、体調入力品質。PRIVACY §IX-bis 仮名化テレメトリ。'}
                 </p>
                 <button
                   onClick={() => navigate('/admin/analytics')}
-                  className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-3 py-2 rounded-lg"
+                  className="inline-flex items-center gap-2 bg-[var(--ss-success)] hover:opacity-90 text-white text-sm font-medium px-3 py-2 rounded-ss-md transition-opacity duration-fast ease-out"
                 >
                   <MIcon name="analytics" size={14} />
                   {t('settings.ui.analytics_open') || 'Analytics を開く'}
@@ -2170,13 +2151,13 @@ export function SettingsPage() {
             )}
 
             {/* ── エクスポート ──────────────────────────────── */}
-            <section className={`${card} rounded-lg p-5 space-y-4`} data-tutorial="settings.export">
+            <section className="bg-[var(--ss-surface-1)] rounded-ss-lg p-5 space-y-4 border border-[var(--ss-border)] shadow-card" data-tutorial="settings.export">
               <div className="flex items-center gap-2">
-                <MIcon name="download" size={16} className="text-blue-400" />
-                <h2 className="text-base font-semibold">{t('settings.ui.export')}</h2>
+                <MIcon name="download" size={16} className="text-[var(--ss-brand)]" />
+                <h2 className="text-base font-semibold text-[var(--ss-t1)]">{t('settings.ui.export')}</h2>
               </div>
-              <p className="text-xs text-gray-400">
-                {t('auto.SettingsPage.export_desc_prefix')}<code className="bg-gray-700 px-1 rounded">{t('auto.SettingsPage.ext_sspkg')}</code>{t('auto.SettingsPage.export_desc_suffix')}
+              <p className="text-xs text-[var(--ss-t3)]">
+                {t('auto.SettingsPage.export_desc_prefix')}<code className="bg-[var(--ss-surface-2)] px-1 rounded-ss-sm">{t('auto.SettingsPage.ext_sspkg')}</code>{t('auto.SettingsPage.export_desc_suffix')}
               </p>
 
               {/* エクスポートモード切替 */}
@@ -2185,8 +2166,8 @@ export function SettingsPage() {
                   <button
                     key={key}
                     onClick={() => setExportMode(key)}
-                    className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-                      exportMode === key ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:text-white'
+                    className={`px-3 py-1 rounded-ss-md text-xs font-medium transition-colors duration-fast ease-out ${
+                      exportMode === key ? 'bg-[var(--ss-brand)] text-white' : 'bg-[var(--ss-surface-2)] text-[var(--ss-t3)] hover:text-[var(--ss-t1)]'
                     }`}
                   >
                     {label}
@@ -2198,7 +2179,7 @@ export function SettingsPage() {
                 /* 試合選択 */
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="text-sm text-gray-400">{t('auto.SettingsPage.k12')}</label>
+                    <label className="text-sm text-[var(--ss-t3)]">{t('auto.SettingsPage.k12')}</label>
                     {exportMatchList.length > 0 && (
                       <button
                         type="button"
@@ -2208,7 +2189,7 @@ export function SettingsPage() {
                           const allSelected = allIds.every((id: string) => currentIds.includes(id))
                           setExportMatchIds(allSelected ? '' : allIds.join(', '))
                         }}
-                        className="text-xs text-blue-400 hover:text-blue-300"
+                        className="text-xs text-[var(--ss-brand)] hover:text-[var(--ss-brand-hover)]"
                       >
                         {exportMatchList.every((m) => exportMatchIds.split(',').map((s: string) => s.trim()).includes(String(m.id)))
                           ? '選択解除' : 'すべて選択'}
@@ -2222,10 +2203,10 @@ export function SettingsPage() {
                         value={exportMatchIds}
                         onChange={(e) => setExportMatchIds(e.target.value)}
                         placeholder={t('auto.SettingsPage.k28')}
-                        className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white mb-1"
+                        className={`w-full ${inputClass} mb-1`}
                       />
                       {exportMatchList.length > 0 && (
-                        <div className="max-h-40 overflow-y-auto rounded border border-gray-700 divide-y divide-gray-700">
+                        <div className="max-h-40 overflow-y-auto rounded-ss-md border border-[var(--ss-border)] divide-y divide-[var(--ss-border)]">
                           {exportMatchList.map((m) => (
                             <button
                               key={m.id}
@@ -2235,13 +2216,13 @@ export function SettingsPage() {
                                 const sid = String(m.id)
                                 setExportMatchIds(ids.includes(sid) ? ids.filter((x: string) => x !== sid).join(', ') : [...ids, sid].join(', '))
                               }}
-                              className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between transition-colors ${
+                              className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between transition-colors duration-fast ease-out ${
                                 exportMatchIds.split(',').map((s: string) => s.trim()).includes(String(m.id))
-                                  ? 'bg-gray-800 text-blue-300' : 'text-gray-300 hover:bg-gray-700'
+                                  ? 'bg-[var(--ss-brand-tint)] text-[var(--ss-brand)]' : 'text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]'
                               }`}
                             >
-                              <span>[{m.id}] {m.date} {m.tournament}</span>
-                              <span className={`text-[10px] ${m.result === 'win' ? 'text-green-400' : 'text-red-400'}`}>
+                              <span className="ss-num">[{m.id}] {m.date} {m.tournament}</span>
+                              <span className={`text-[10px] ${m.result === 'win' ? 'text-[var(--ss-success)]' : 'text-[var(--ss-bad)]'}`}>
                                 {m.result === 'win' ? '勝' : m.result === 'loss' ? '敗' : m.result}
                               </span>
                             </button>
@@ -2252,7 +2233,7 @@ export function SettingsPage() {
                     <button
                       onClick={handleExportMatch}
                       disabled={!exportMatchIds.trim()}
-                      className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded text-sm font-medium transition-colors whitespace-nowrap"
+                      className="flex items-center gap-1.5 px-4 py-2 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-40 rounded-ss-md text-sm font-medium text-white transition-colors duration-fast ease-out whitespace-nowrap"
                     >
                       <MIcon name="download" size={14} />
                       {t('auto.SettingsPage.download')}
@@ -2268,12 +2249,12 @@ export function SettingsPage() {
                       type="datetime-local"
                       value={exportSince}
                       onChange={(e) => setExportSince(e.target.value)}
-                      className="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white"
+                      className={`flex-1 ${inputClass}`}
                     />
                     <button
                       onClick={handleExportMatch}
                       disabled={!exportSince.trim()}
-                      className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded text-sm font-medium transition-colors whitespace-nowrap"
+                      className="flex items-center gap-1.5 px-4 py-2 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-40 rounded-ss-md text-sm font-medium text-white transition-colors duration-fast ease-out whitespace-nowrap"
                     >
                       <MIcon name="download" size={14} />
                       {t('auto.SettingsPage.diff_download')}
@@ -2284,13 +2265,13 @@ export function SettingsPage() {
             </section>
 
             {/* ── インポート ────────────────────────────────── */}
-            <section className={`${card} rounded-lg p-5 space-y-4`} data-tutorial="settings.import">
+            <section className="bg-[var(--ss-surface-1)] rounded-ss-lg p-5 space-y-4 border border-[var(--ss-border)] shadow-card" data-tutorial="settings.import">
               <div className="flex items-center gap-2">
-                <MIcon name="upload" size={16} className="text-emerald-400" />
-                <h2 className="text-base font-semibold">{t('settings.ui.import')}</h2>
+                <MIcon name="upload" size={16} className="text-[var(--ss-success)]" />
+                <h2 className="text-base font-semibold text-[var(--ss-t1)]">{t('settings.ui.import')}</h2>
               </div>
-              <p className="text-xs text-gray-400">
-                {t('auto.SettingsPage.import_desc_prefix')}<code className="bg-gray-700 px-1 rounded">{t('auto.SettingsPage.ext_sspkg')}</code>{t('auto.SettingsPage.import_desc_suffix')}
+              <p className="text-xs text-[var(--ss-t3)]">
+                {t('auto.SettingsPage.import_desc_prefix')}<code className="bg-[var(--ss-surface-2)] px-1 rounded-ss-sm">{t('auto.SettingsPage.ext_sspkg')}</code>{t('auto.SettingsPage.import_desc_suffix')}
               </p>
 
               <div>
@@ -2303,7 +2284,7 @@ export function SettingsPage() {
                     setImportPreview(null)
                     setImportResult(null)
                   }}
-                  className={`w-full text-sm file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs ${isLight ? 'text-gray-700 file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200' : 'text-gray-300 file:bg-gray-700 file:text-gray-300 hover:file:bg-gray-600'}`}
+                  className="w-full text-sm text-[var(--ss-t2)] file:mr-3 file:py-1.5 file:px-3 file:rounded-ss-sm file:border-0 file:text-xs file:bg-[var(--ss-surface-2)] file:text-[var(--ss-t2)] hover:file:bg-[var(--ss-surface-3)]"
                 />
               </div>
 
@@ -2311,7 +2292,7 @@ export function SettingsPage() {
                 <button
                   onClick={handlePreviewImport}
                   disabled={importPreviewLoading}
-                  className={`flex items-center gap-1.5 px-4 py-2 disabled:opacity-40 rounded text-sm transition-colors ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-700' : 'bg-gray-700 hover:bg-gray-600 text-gray-200'}`}
+                  className="flex items-center gap-1.5 px-4 py-2 disabled:opacity-40 rounded-ss-md text-sm transition-colors duration-fast ease-out bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t2)]"
                 >
                   <MIcon name="visibility" size={14} />
                   {importPreviewLoading ? '確認中...' : '内容を確認'}
@@ -2320,26 +2301,26 @@ export function SettingsPage() {
 
               {/* プレビュー結果 */}
               {importPreview && (
-                <div className="rounded-lg border border-gray-700 p-4 space-y-3">
+                <div className="rounded-ss-lg border border-[var(--ss-border)] p-4 space-y-3">
                   {!importPreview.success ? (
-                    <p className="text-sm text-red-400">{importPreview.data?.error ?? 'エラー'}</p>
+                    <p className="text-sm text-[var(--ss-bad)]">{importPreview.data?.error ?? 'エラー'}</p>
                   ) : (
                     <>
                       <div className="grid grid-cols-2 gap-2 text-xs">
                         {[
-                          { label: t('auto.SettingsPage.k39'), value: importPreview.data?.merge_preview?.added ?? 0, color: 'text-blue-400' },
-                          { label: t('auto.SettingsPage.k16'), value: importPreview.data?.merge_preview?.updated ?? 0, color: 'text-yellow-400' },
-                          { label: t('auto.SettingsPage.k40'), value: importPreview.data?.merge_preview?.kept ?? 0, color: 'text-gray-400' },
-                          { label: t('auto.SettingsPage.k41'), value: importPreview.data?.merge_preview?.conflicts ?? 0, color: 'text-orange-400' },
+                          { label: t('auto.SettingsPage.k39'), value: importPreview.data?.merge_preview?.added ?? 0, color: 'text-[var(--ss-brand)]' },
+                          { label: t('auto.SettingsPage.k16'), value: importPreview.data?.merge_preview?.updated ?? 0, color: 'text-[var(--ss-warn)]' },
+                          { label: t('auto.SettingsPage.k40'), value: importPreview.data?.merge_preview?.kept ?? 0, color: 'text-[var(--ss-t3)]' },
+                          { label: t('auto.SettingsPage.k41'), value: importPreview.data?.merge_preview?.conflicts ?? 0, color: 'text-[var(--ss-warn)]' },
                         ].map(({ label, value, color }) => (
-                          <div key={label} className="bg-gray-700/50 rounded p-2 text-center">
-                            <p className={`text-xl font-bold ${color}`}>{value}</p>
-                            <p className="text-gray-500">{label}</p>
+                          <div key={label} className="bg-[var(--ss-surface-2)] rounded-ss-md p-2 text-center">
+                            <p className={`text-xl font-semibold ss-num ${color}`}>{value}</p>
+                            <p className="text-[var(--ss-t3)]">{label}</p>
                           </div>
                         ))}
                       </div>
                       {(importPreview.data?.merge_preview?.conflicts ?? 0) > 0 && (
-                        <p className="text-xs text-orange-400">
+                        <p className="text-xs text-[var(--ss-warn)]">
                           {t('auto.SettingsPage.conflict_warning', { n: importPreview.data.merge_preview.conflicts })}
                         </p>
                       )}
@@ -2347,7 +2328,7 @@ export function SettingsPage() {
                         <button
                           onClick={handleImport}
                           disabled={importRunning}
-                          className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 rounded text-sm font-medium transition-colors"
+                          className="w-full flex items-center justify-center gap-2 py-2.5 bg-[var(--ss-success)] hover:opacity-90 disabled:opacity-40 rounded-ss-md text-sm font-medium text-white transition-opacity duration-fast ease-out"
                         >
                           <MIcon name="upload" size={14} />
                           {importRunning ? 'インポート中...' : 'インポート実行'}
@@ -2360,28 +2341,28 @@ export function SettingsPage() {
 
               {/* インポート結果 */}
               {importResult && (
-                <div className={`rounded-lg p-3 text-sm ${importResult.success ? 'bg-emerald-900/30 border border-emerald-700' : 'bg-red-900/30 border border-red-700'}`}>
+                <div className={`rounded-ss-lg p-3 text-sm border ${importResult.success ? 'bg-[var(--ss-brand-tint)] border-[var(--ss-success-border)]' : 'bg-[var(--ss-surface-2)] border-[var(--ss-danger-border)]'}`}>
                   {importResult.success ? (
                     <>
-                      <p className="font-medium text-emerald-300 mb-1">{t('auto.SettingsPage.k15')}</p>
-                      <p className="text-xs text-gray-300">
+                      <p className="font-medium text-[var(--ss-success)] mb-1">{t('auto.SettingsPage.k15')}</p>
+                      <p className="text-xs text-[var(--ss-t2)]">
                         {t('auto.SettingsPage.import_result_summary', { added: importResult.data?.added, updated: importResult.data?.updated, kept: importResult.data?.kept, conflicts: importResult.data?.conflicts })}
                       </p>
                     </>
                   ) : (
-                    <p className="text-red-400">{importResult.error ?? 'インポートエラー'}</p>
+                    <p className="text-[var(--ss-bad)]">{importResult.error ?? 'インポートエラー'}</p>
                   )}
                 </div>
               )}
             </section>
 
             {/* ── バックアップ (admin only) ──────────────────────────────── */}
-            {role === 'admin' && <section className={`${card} rounded-lg p-5 space-y-4`}>
+            {role === 'admin' && <section className="bg-[var(--ss-surface-1)] rounded-ss-lg p-5 space-y-4 border border-[var(--ss-border)] shadow-card">
               <div className="flex items-center gap-2">
-                <MIcon name="storage" size={16} className="text-purple-400" />
-                <h2 className="text-base font-semibold">{t('settings.ui.backup')}</h2>
+                <MIcon name="storage" size={16} className="text-[var(--ss-brand)]" />
+                <h2 className="text-base font-semibold text-[var(--ss-t1)]">{t('settings.ui.backup')}</h2>
               </div>
-              <p className="text-xs text-gray-400">
+              <p className="text-xs text-[var(--ss-t3)]">
                 {t('auto.SettingsPage.backup_desc')}
               </p>
 
@@ -2389,25 +2370,25 @@ export function SettingsPage() {
                 <button
                   onClick={handleBackup}
                   disabled={backupRunning}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-purple-700 hover:bg-purple-600 disabled:opacity-40 rounded text-sm font-medium transition-colors text-white"
+                  className="flex items-center gap-1.5 px-4 py-2 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-40 rounded-ss-md text-sm font-medium transition-colors duration-fast ease-out text-white"
                 >
                   <MIcon name="folder_zip" size={14} />
                   {backupRunning ? t('settings.ui.backup_running') : t('settings.ui.backup_now')}
                 </button>
                 {backupResult && (
-                  <p className="text-xs text-gray-300 truncate max-w-xs">{backupResult}</p>
+                  <p className="text-xs text-[var(--ss-t2)] truncate max-w-xs">{backupResult}</p>
                 )}
               </div>
 
               {/* バックアップ一覧 */}
               {(backupsData?.data?.length ?? 0) > 0 && (
                 <div className="space-y-1">
-                  <p className="text-xs text-gray-500">{t('settings.ui.saved_backups')}</p>
-                  <div className="rounded border border-gray-700 divide-y divide-gray-700 max-h-48 overflow-y-auto">
+                  <p className="text-xs text-[var(--ss-t3)]">{t('settings.ui.saved_backups')}</p>
+                  <div className="rounded-ss-md border border-[var(--ss-border)] divide-y divide-[var(--ss-border)] max-h-48 overflow-y-auto">
                     {backupsData!.data.map((b) => (
-                      <div key={b.filename} className="flex items-center justify-between px-3 py-2 text-xs text-gray-300 gap-2">
+                      <div key={b.filename} className="flex items-center justify-between px-3 py-2 text-xs text-[var(--ss-t2)] gap-2">
                         <span className="truncate font-mono flex-1 min-w-0" title={b.filename}>{b.filename}</span>
-                        <span className="text-gray-500 shrink-0 num-cell">{(b.size_bytes / 1024).toFixed(0)} KB</span>
+                        <span className="text-[var(--ss-t3)] shrink-0 ss-num">{(b.size_bytes / 1024).toFixed(0)} KB</span>
                       </div>
                     ))}
                   </div>
@@ -2417,25 +2398,25 @@ export function SettingsPage() {
 
             {/* ── クラウドフォルダ候補 ─────────────────────── */}
             {cloudFolderConfigured && (
-              <section className={`${card} rounded-lg p-5 space-y-4`}>
+              <section className="bg-[var(--ss-surface-1)] rounded-ss-lg p-5 space-y-4 border border-[var(--ss-border)] shadow-card">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <MIcon name="share" size={16} className="text-cyan-400" />
-                    <h2 className="text-base font-semibold">{t('settings.ui.cloud_packages')}</h2>
+                    <MIcon name="share" size={16} className="text-[var(--ss-brand)]" />
+                    <h2 className="text-base font-semibold text-[var(--ss-t1)]">{t('settings.ui.cloud_packages')}</h2>
                   </div>
-                  <button onClick={() => refetchCloudPackages()} className={`text-xs px-2 py-1 rounded ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-white'}`}>{t('auto.SettingsPage.k16')}</button>
+                  <button onClick={() => refetchCloudPackages()} className="text-xs px-2 py-1 rounded-ss-sm bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t2)] transition-colors duration-fast ease-out">{t('auto.SettingsPage.k16')}</button>
                 </div>
-                <p className="text-xs text-gray-400 font-mono truncate">{cloudPackagesData?.folder}</p>
+                <p className="text-xs text-[var(--ss-t3)] font-mono truncate">{cloudPackagesData?.folder}</p>
 
                 {cloudPackages.length === 0 ? (
-                  <p className="text-sm text-gray-500">{t('settings.ui.no_packages')}</p>
+                  <p className="text-sm text-[var(--ss-t3)]">{t('settings.ui.no_packages')}</p>
                 ) : (
-                  <div className="rounded border border-gray-700 divide-y divide-gray-700 max-h-60 overflow-y-auto">
+                  <div className="rounded-ss-md border border-[var(--ss-border)] divide-y divide-[var(--ss-border)] max-h-60 overflow-y-auto">
                     {cloudPackages.map((pkg) => (
                       <div key={pkg.filename} className="flex items-center justify-between px-3 py-2 text-xs gap-3">
                         <div className="min-w-0">
-                          <p className="text-gray-200 font-mono truncate">{pkg.filename}</p>
-                          <p className="text-gray-500">{t('auto.SettingsPage.pkg_size_date', { kb: (pkg.size_bytes / 1024).toFixed(0), date: pkg.modified_at?.slice(0, 10) })}</p>
+                          <p className="text-[var(--ss-t1)] font-mono truncate">{pkg.filename}</p>
+                          <p className="text-[var(--ss-t3)]">{t('auto.SettingsPage.pkg_size_date', { kb: (pkg.size_bytes / 1024).toFixed(0), date: pkg.modified_at?.slice(0, 10) })}</p>
                         </div>
                         <button
                           onClick={async () => {
@@ -2446,7 +2427,7 @@ export function SettingsPage() {
                               : `エラー: ${json.detail}`)
                             if (json.success) queryClient.invalidateQueries()
                           }}
-                          className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-700 hover:bg-emerald-600 rounded text-white whitespace-nowrap shrink-0"
+                          className="flex items-center gap-1 px-2.5 py-1.5 bg-[var(--ss-success)] hover:opacity-90 rounded-ss-sm text-white whitespace-nowrap shrink-0 transition-opacity duration-fast ease-out"
                         >
                           <MIcon name="upload" size={11} />
                           {t('settings.ui.fetch_in')}
@@ -2460,28 +2441,28 @@ export function SettingsPage() {
 
             {/* ── 競合レビュー ─────────────────────────────── */}
             {conflicts.length > 0 && (
-              <section className={`${card} rounded-lg p-5 space-y-4`}>
+              <section className="bg-[var(--ss-surface-1)] rounded-ss-lg p-5 space-y-4 border border-[var(--ss-border)] shadow-card">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <MIcon name="error" size={16} className="text-orange-400" />
-                    <h2 className="text-base font-semibold">{t('settings.ui.conflict_review')}</h2>
-                    <span className="text-xs bg-orange-500 text-white px-1.5 py-0.5 rounded-full">{conflicts.length}</span>
+                    <MIcon name="error" size={16} className="text-[var(--ss-warn)]" />
+                    <h2 className="text-base font-semibold text-[var(--ss-t1)]">{t('settings.ui.conflict_review')}</h2>
+                    <span className="text-xs bg-[var(--ss-warn)] text-white px-1.5 py-0.5 rounded-ss-pill">{conflicts.length}</span>
                   </div>
-                  <button onClick={() => refetchConflicts()} className={`text-xs px-2 py-1 rounded ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-white'}`}>{t('auto.SettingsPage.k16')}</button>
+                  <button onClick={() => refetchConflicts()} className="text-xs px-2 py-1 rounded-ss-sm bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t2)] transition-colors duration-fast ease-out">{t('auto.SettingsPage.k16')}</button>
                 </div>
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-[var(--ss-t3)]">
                   {t('auto.SettingsPage.conflict_review_desc')}
                 </p>
                 <div className="space-y-2 max-h-80 overflow-y-auto">
                   {conflicts.map((c) => (
-                    <div key={c.id} className="rounded border border-orange-900/60 bg-orange-900/10 p-3 space-y-2">
+                    <div key={c.id} className="rounded-ss-md border border-[var(--ss-warning-border)] bg-[var(--ss-surface-2)] p-3 space-y-2">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">
-                          <p className="text-xs font-medium text-orange-300 truncate" title={`${c.record_table} / ${c.record_uuid ?? ''}`}>
+                          <p className="text-xs font-medium text-[var(--ss-warn)] truncate" title={`${c.record_table} / ${c.record_uuid ?? ''}`}>
                             {c.record_table} / <span className="font-mono">{c.record_uuid?.slice(0, 8)}…</span>
                           </p>
-                          <p className="text-[11px] text-gray-400 mt-0.5 break-words">{c.reason}</p>
-                          <p className="text-[11px] text-gray-500 num-cell">
+                          <p className="text-[11px] text-[var(--ss-t3)] mt-0.5 break-words">{c.reason}</p>
+                          <p className="text-[11px] text-[var(--ss-t3)] ss-num">
                             {t('auto.SettingsPage.conflict_timestamps', { local: c.local_updated_at?.slice(0, 16), incoming: c.import_updated_at?.slice(0, 16) })}
                             {c.import_device ? ` (${c.import_device})` : ''}
                           </p>
@@ -2490,13 +2471,13 @@ export function SettingsPage() {
                       <div className="flex gap-2">
                         <button
                           onClick={() => resolveConflict(c.id, 'keep_local')}
-                          className="flex-1 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded transition-colors"
+                          className="flex-1 py-1.5 text-xs bg-[var(--ss-surface-1)] border border-[var(--ss-border-strong)] hover:bg-[var(--ss-surface-3)] rounded-ss-md transition-colors duration-fast ease-out text-[var(--ss-t1)]"
                         >
                           {t('settings.ui.keep_local')}
                         </button>
                         <button
                           onClick={() => resolveConflict(c.id, 'use_incoming')}
-                          className="flex-1 py-1.5 text-xs bg-orange-700 hover:bg-orange-600 text-white rounded transition-colors"
+                          className="flex-1 py-1.5 text-xs bg-[var(--ss-warn)] hover:opacity-90 text-white rounded-ss-md transition-opacity duration-fast ease-out"
                         >
                           {t('settings.ui.overwrite_with_import')}
                         </button>
@@ -2509,11 +2490,11 @@ export function SettingsPage() {
 
             {/* ── JSON パッケージ インポート ──────────────────────── */}
             <section>
-              <h2 className="text-base font-semibold">{t('settings.ui.json_package_import')}</h2>
+              <h2 className="text-base font-semibold text-[var(--ss-t1)]">{t('settings.ui.json_package_import')}</h2>
               <p className={`text-xs ${textMuted} mt-1 mb-3`}>
                 {t('auto.SettingsPage.json_import_desc')}
               </p>
-              <div className={`space-y-3 p-3 rounded border ${isLight ? 'bg-gray-50 border-gray-200' : 'bg-gray-900/40 border-gray-700'}`}>
+              <div className="space-y-3 p-3 rounded-ss-md border bg-[var(--ss-surface-2)] border-[var(--ss-border)]">
                 <input
                   type="file"
                   accept=".json,application/json"
@@ -2521,9 +2502,7 @@ export function SettingsPage() {
                     setPkgImportFile(e.target.files?.[0] ?? null)
                     setPkgImportResult(null)
                   }}
-                  className={`block w-full text-xs ${textMuted} file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium ${
-                    isLight ? 'file:bg-gray-200 file:text-gray-700' : 'file:bg-gray-700 file:text-gray-300'
-                  }`}
+                  className={`block w-full text-xs ${textMuted} file:mr-3 file:py-1 file:px-3 file:rounded-ss-sm file:border-0 file:text-xs file:font-medium file:bg-[var(--ss-surface-3)] file:text-[var(--ss-t2)]`}
                 />
                 {pkgImportFile && (
                   <p className={`text-xs ${textSecondary}`}>{t('auto.SettingsPage.selected_file', { name: pkgImportFile.name })}</p>
@@ -2532,7 +2511,7 @@ export function SettingsPage() {
                   <button
                     onClick={() => handlePkgImport(false)}
                     disabled={!pkgImportFile || pkgImportRunning}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed`}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-ss-md text-xs font-medium text-white bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-fast ease-out"
                   >
                     <MIcon name="upload" size={12} />
                     {pkgImportRunning ? t('settings.ui.importing') : t('settings.ui.import')}
@@ -2541,14 +2520,14 @@ export function SettingsPage() {
                     <button
                       onClick={() => handlePkgImport(true)}
                       disabled={pkgImportRunning}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium text-white bg-orange-600 hover:bg-orange-500 disabled:opacity-40"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-ss-md text-xs font-medium text-white bg-[var(--ss-warn)] hover:opacity-90 disabled:opacity-40 transition-opacity duration-fast ease-out"
                     >
                       {t('settings.ui.reimport_overwrite')}
                     </button>
                   )}
                 </div>
                 {pkgImportResult && (
-                  <p className={`text-xs font-medium ${pkgImportResult.success ? 'text-green-400' : 'text-red-400'}`}>
+                  <p className={`text-xs font-medium ${pkgImportResult.success ? 'text-[var(--ss-success)]' : 'text-[var(--ss-bad)]'}`}>
                     {pkgImportResult.message}
                   </p>
                 )}
@@ -2556,10 +2535,10 @@ export function SettingsPage() {
             </section>
 
             {/* ── DB メンテナンス (admin only) ──────────────────────────────────── */}
-            {role === 'admin' && <section className={`${card} rounded-lg p-5 space-y-4`}>
+            {role === 'admin' && <section className="bg-[var(--ss-surface-1)] rounded-ss-lg p-5 space-y-4 border border-[var(--ss-border)] shadow-card">
               <div className="flex items-center gap-2">
-                <MIcon name="storage" size={16} className="text-purple-400" />
-                <h2 className="text-base font-semibold">{t('settings.ui.db_maintenance')}</h2>
+                <MIcon name="storage" size={16} className="text-[var(--ss-brand)]" />
+                <h2 className="text-base font-semibold text-[var(--ss-t1)]">{t('settings.ui.db_maintenance')}</h2>
               </div>
 
               {/* DB 状態 */}
@@ -2567,22 +2546,22 @@ export function SettingsPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
                   <div className="flex justify-between">
                     <span className={textSecondary}>{t('settings.ui.db_size')}</span>
-                    <span className="font-mono">{dbStats.file_size_mb} MB</span>
+                    <span className="font-mono ss-num text-[var(--ss-t1)]">{dbStats.file_size_mb} MB</span>
                   </div>
                   <div className="flex justify-between">
                     <span className={textSecondary}>{t('settings.ui.wal_size')}</span>
-                    <span className="font-mono">{dbStats.wal_size_mb} MB</span>
+                    <span className="font-mono ss-num text-[var(--ss-t1)]">{dbStats.wal_size_mb} MB</span>
                   </div>
                   <div className="flex justify-between">
                     <span className={textSecondary}>{t('settings.ui.free_pages')}</span>
-                    <span className={`font-mono ${dbStats.freelist_ratio > 0.1 ? 'text-orange-400' : ''}`}>
+                    <span className={`font-mono ss-num ${dbStats.freelist_ratio > 0.1 ? 'text-[var(--ss-warn)]' : 'text-[var(--ss-t1)]'}`}>
                       {dbStats.freelist_count} ({(dbStats.freelist_ratio * 100).toFixed(1)}%)
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className={textSecondary}>{t('auto.SettingsPage.auto_vacuum_label')}</span>
                     <div className="flex items-center gap-2">
-                      <span className={`font-mono text-xs ${dbStats.auto_vacuum === 2 ? 'text-green-400' : 'text-yellow-400'}`}>
+                      <span className={`font-mono text-xs ${dbStats.auto_vacuum === 2 ? 'text-[var(--ss-success)]' : 'text-[var(--ss-warn)]'}`}>
                         {dbStats.auto_vacuum === 0 ? 'OFF' : dbStats.auto_vacuum === 1 ? 'FULL' : 'INCREMENTAL'}
                       </span>
                       {/* トグルボタン */}
@@ -2591,7 +2570,7 @@ export function SettingsPage() {
                           onClick={() => handleSetAutoVacuum('incremental')}
                           disabled={dbAvRunning}
                           title={t('auto.SettingsPage.k24')}
-                          className="text-[10px] px-2 py-0.5 rounded bg-yellow-600 hover:bg-yellow-500 text-white disabled:opacity-40 transition-colors"
+                          className="text-[10px] px-2 py-0.5 rounded-ss-sm bg-[var(--ss-warn)] hover:opacity-90 text-white disabled:opacity-40 transition-opacity duration-fast ease-out"
                         >
                           {dbAvRunning ? <MIcon name="restart_alt" size={10} className="animate-spin inline" /> : 'INCREMENTAL に変更'}
                         </button>
@@ -2600,7 +2579,7 @@ export function SettingsPage() {
                           onClick={() => handleSetAutoVacuum('off')}
                           disabled={dbAvRunning}
                           title={t('auto.SettingsPage.k25')}
-                          className="text-[10px] px-2 py-0.5 rounded bg-gray-600 hover:bg-gray-500 text-white disabled:opacity-40 transition-colors"
+                          className="text-[10px] px-2 py-0.5 rounded-ss-sm bg-[var(--ss-t2)] hover:opacity-90 text-white disabled:opacity-40 transition-opacity duration-fast ease-out"
                         >
                           {dbAvRunning ? <MIcon name="restart_alt" size={10} className="animate-spin inline" /> : 'OFF に戻す'}
                         </button>
@@ -2611,21 +2590,21 @@ export function SettingsPage() {
               )}
 
               {dbAvMessage && (
-                <div className="text-xs rounded px-3 py-2 bg-gray-800 text-blue-300">
+                <div className="text-xs rounded-ss-sm px-3 py-2 bg-[var(--ss-surface-2)] text-[var(--ss-brand)]">
                   {dbAvMessage}
                 </div>
               )}
 
-              <p className="text-xs text-gray-400 leading-relaxed">
-                <span className="font-medium text-gray-300">{t('auto.SettingsPage.k17')}</span>
+              <p className="text-xs text-[var(--ss-t3)] leading-relaxed">
+                <span className="font-medium text-[var(--ss-t2)]">{t('auto.SettingsPage.k17')}</span>
                 {t('auto.SettingsPage.db_optimize_desc')}
               </p>
 
               {dbMaintResult && (
-                <div className={`text-xs rounded px-3 py-2 ${
+                <div className={`text-xs rounded-ss-sm px-3 py-2 ${
                   dbMaintResult.freed_mb > 0
-                    ? 'bg-gray-800 text-blue-300'
-                    : 'bg-gray-700 text-gray-300'
+                    ? 'bg-[var(--ss-surface-2)] text-[var(--ss-brand)]'
+                    : 'bg-[var(--ss-surface-2)] text-[var(--ss-t2)]'
                 }`}>
                   {dbMaintResult.freed_mb > 0
                     ? `${dbMaintResult.freed_pages} ページ（${dbMaintResult.freed_mb} MB）を回収しました`
@@ -2636,10 +2615,10 @@ export function SettingsPage() {
               <button
                 onClick={handleDbMaintenance}
                 disabled={dbMaintRunning || dbAvRunning}
-                className={`flex items-center gap-2 px-4 py-2 rounded text-sm font-medium transition-colors ${
+                className={`flex items-center gap-2 px-4 py-2 rounded-ss-md text-sm font-medium transition-colors duration-fast ease-out ${
                   dbMaintRunning || dbAvRunning
-                    ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                    : 'bg-purple-700 hover:bg-purple-600 text-white'
+                    ? 'bg-[var(--ss-surface-2)] text-[var(--ss-t3)] cursor-not-allowed'
+                    : 'bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white'
                 }`}
               >
                 {dbMaintRunning

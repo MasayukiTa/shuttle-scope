@@ -32,14 +32,14 @@ function SourceIcon({ kind }: { kind: string }) {
 
 function SuitabilityBadge({ value }: { value: string }) {
 
-  const color = value === 'high' ? 'bg-green-600 text-white'
-    : value === 'usable' ? 'bg-yellow-600 text-white'
-    : 'bg-gray-600 text-gray-300'
+  const color = value === 'high' ? 'bg-[var(--ss-success)] text-white'
+    : value === 'usable' ? 'bg-[var(--ss-warn)] text-white'
+    : 'bg-[var(--ss-surface-3)] text-[var(--ss-t2)]'
   const labelMap: Record<string, string> = {
     high: '推奨', usable: '使用可', fallback: 'フォールバック',
   }
   return (
-    <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${color}`}>
+    <span className={`text-[9px] px-1.5 py-0.5 rounded-ss-pill font-medium ${color}`}>
       {labelMap[value] ?? value}
     </span>
   )
@@ -52,16 +52,16 @@ function StatusBadge({ status }: { status: string }) {
 
   if (status === 'active') {
     return (
-      <span className="flex items-center gap-0.5 text-[9px] text-red-400 font-medium">
-        <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
+      <span className="flex items-center gap-0.5 text-[9px] text-[var(--ss-bad)] font-medium">
+        <span className="w-1.5 h-1.5 rounded-full bg-[var(--ss-bad)] animate-pulse" />
         {t('auto.LiveSourceSelector.active')}
       </span>
     )
   }
   if (status === 'candidate') {
-    return <span className="text-[9px] text-yellow-400">{t('auto.LiveSourceSelector.k1')}</span>
+    return <span className="text-[9px] text-[var(--ss-warn)]">{t('auto.LiveSourceSelector.k1')}</span>
   }
-  return <span className="text-[9px] text-gray-500">{t('auto.LiveSourceSelector.k2')}</span>
+  return <span className="text-[9px] text-[var(--ss-t3)]">{t('auto.LiveSourceSelector.k2')}</span>
 }
 
 // ─── メインコンポーネント ─────────────────────────────────────────────────────
@@ -114,15 +114,17 @@ export function LiveSourceSelector({ sessionCode }: Props) {
     } catch { /* ignore */ }
   }
 
-  const titleColor = isLight ? 'text-gray-900' : 'text-white'
-  const subColor = isLight ? 'text-gray-500' : 'text-gray-400'
-  const rowBg = isLight ? 'bg-gray-50 hover:bg-gray-100' : 'bg-gray-700/50 hover:bg-gray-700'
+  // NOTE: トークンはテーマに応じて自動的に切り替わるため isLight 分岐は不要だが、
+  // フック呼び出し (テーマ変更時の再レンダリングトリガー) は維持する。
+  const titleColor = 'text-[var(--ss-t1)]'
+  const subColor = 'text-[var(--ss-t3)]'
+  const rowBg = 'bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)]'
 
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
         <p className={`text-xs font-medium ${titleColor}`}>{t('live_source.title')}</p>
-        <button onClick={fetchSources} className={`${subColor} hover:${titleColor}`}>
+        <button onClick={fetchSources} className="text-[var(--ss-t3)] hover:text-[var(--ss-t1)]">
           <MIcon name="refresh" size={12} className={loading ? 'animate-spin' : ''} />
         </button>
       </div>
@@ -132,7 +134,7 @@ export function LiveSourceSelector({ sessionCode }: Props) {
       ) : (
         <div className="space-y-1.5">
           {sources.map((src) => (
-            <div key={src.id} className={`rounded-lg px-3 py-2.5 ${rowBg}`}>
+            <div key={src.id} className={`rounded-ss-md px-3 py-2.5 ${rowBg}`}>
               <div className="flex items-start gap-2">
                 <div className={`mt-0.5 ${subColor}`}>
                   <SourceIcon kind={src.source_kind} />
@@ -165,14 +167,14 @@ export function LiveSourceSelector({ sessionCode }: Props) {
                   {src.source_status === 'active' ? (
                     <button
                       onClick={() => handleDeactivate(src)}
-                      className="text-[10px] px-2 py-1 rounded bg-gray-600 hover:bg-gray-500 text-white"
+                      className="text-[10px] px-2 py-1 rounded-ss-md bg-[var(--ss-surface-1)] border border-[var(--ss-border-strong)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-2)]"
                     >
                       {t('live_source.deactivate')}
                     </button>
                   ) : (
                     <button
                       onClick={() => handleActivate(src)}
-                      className="text-[10px] px-2 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white"
+                      className="text-[10px] px-2 py-1 rounded-ss-md bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white"
                     >
                       {t('live_source.activate')}
                     </button>

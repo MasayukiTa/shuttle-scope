@@ -120,14 +120,14 @@ export function VideoPlayer({
       <div className="relative">
         {seekHover && duration > 0 && (
           <div
-            className="absolute bottom-full mb-1.5 -translate-x-1/2 bg-gray-800 text-white text-xs rounded px-1.5 py-0.5 pointer-events-none whitespace-nowrap shadow-lg z-10"
+            className="absolute bottom-full mb-1.5 -translate-x-1/2 bg-[var(--ss-surface-1)] text-[var(--ss-t1)] text-xs rounded-[5px] px-1.5 py-0.5 pointer-events-none whitespace-nowrap shadow-lg z-10 border border-[var(--ss-border)]"
             style={{ left: seekHover.x }}
           >
             {formatTime(seekHover.pct * duration)}
           </div>
         )}
         <div
-          className="h-2 bg-gray-700 rounded-full cursor-pointer hover:bg-gray-600 transition-colors"
+          className="h-2 bg-[var(--ss-surface-2)] rounded-full cursor-pointer hover:bg-[var(--ss-surface-3)] transition-colors"
           onClick={handleSeek}
           onMouseMove={(e) => {
             const rect = e.currentTarget.getBoundingClientRect()
@@ -138,37 +138,37 @@ export function VideoPlayer({
           onMouseLeave={() => setSeekHover(null)}
         >
           <div
-            className="h-full bg-blue-500 rounded-full transition-all"
+            className="h-full bg-[var(--ss-brand)] rounded-full transition-all"
             style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
           />
         </div>
       </div>
 
       {/* タイム表示 */}
-      <div className="text-xs text-gray-400 text-center font-mono">
+      <div className="text-xs text-[var(--ss-t3)] text-center font-mono ss-num">
         {formatTime(currentTime)} / {formatTime(duration)}
       </div>
 
       {/* コントロールバー */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1">
-          <button onClick={seekBackward} className="p-1 rounded hover:bg-gray-700 text-gray-300" title={t('auto.VideoPlayer.k1')}>
+          <button onClick={seekBackward} className="p-1 rounded-[5px] hover:bg-[var(--ss-surface-2)] text-[var(--ss-t2)]" title={t('auto.VideoPlayer.k1')}>
             <MIcon name="skip_previous" size={16} />
           </button>
-          <button onClick={stepBackward} className="p-1 rounded hover:bg-gray-700 text-gray-300" title={t('auto.VideoPlayer.k2')}>
+          <button onClick={stepBackward} className="p-1 rounded-[5px] hover:bg-[var(--ss-surface-2)] text-[var(--ss-t2)]" title={t('auto.VideoPlayer.k2')}>
             <MIcon name="chevron_left" size={16} />
           </button>
           <button
             onClick={togglePlay}
-            className="p-2 rounded bg-blue-600 hover:bg-blue-500 text-white"
+            className="p-2 rounded-[5px] bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white"
             title={isPlaying ? t('auto.VideoPlayer.pause') : t('auto.VideoPlayer.play')}
           >
             {isPlaying ? <MIcon name="pause" size={18} /> : <MIcon name="play_arrow" size={18} />}
           </button>
-          <button onClick={stepForward} className="p-1 rounded hover:bg-gray-700 text-gray-300" title={t('auto.VideoPlayer.k3')}>
+          <button onClick={stepForward} className="p-1 rounded-[5px] hover:bg-[var(--ss-surface-2)] text-[var(--ss-t2)]" title={t('auto.VideoPlayer.k3')}>
             <MIcon name="chevron_right" size={16} />
           </button>
-          <button onClick={seekForward} className="p-1 rounded hover:bg-gray-700 text-gray-300" title={t('auto.VideoPlayer.k4')}>
+          <button onClick={seekForward} className="p-1 rounded-[5px] hover:bg-[var(--ss-surface-2)] text-[var(--ss-t2)]" title={t('auto.VideoPlayer.k4')}>
             <MIcon name="skip_next" size={16} />
           </button>
         </div>
@@ -180,10 +180,10 @@ export function VideoPlayer({
               key={rate}
               onClick={() => onPlaybackRateChange(rate)}
               className={clsx(
-                'px-2 py-1 rounded text-xs font-mono',
+                'px-2 py-1 rounded-[5px] text-xs font-mono ss-num',
                 playbackRate === rate
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  ? 'bg-[var(--ss-brand)] text-white'
+                  : 'bg-[var(--ss-surface-2)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-3)]'
               )}
             >
               {t('auto.VideoPlayer.speed', { rate })}

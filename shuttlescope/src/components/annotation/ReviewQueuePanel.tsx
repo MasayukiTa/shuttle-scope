@@ -36,9 +36,9 @@ function ConfidencePill({ value, label }: { value: number; label: string }) {
   return (
     <span
       className={clsx(
-        'text-[9px] font-mono tabular-nums px-1 rounded',
-        pct >= 70 ? 'bg-gray-800 text-emerald-300' :
-        pct >= 45 ? 'bg-gray-800 text-blue-300' : 'bg-gray-800 text-amber-400'
+        'text-[9px] font-mono ss-num px-1 rounded-ss-sm',
+        pct >= 70 ? 'bg-[var(--ss-surface-2)] text-[var(--ss-success)]' :
+        pct >= 45 ? 'bg-[var(--ss-surface-2)] text-[var(--ss-brand)]' : 'bg-[var(--ss-surface-2)] text-[var(--ss-warn)]'
       )}
       title={`${label}: ${pct}%`}
     >
@@ -69,12 +69,12 @@ function QueueItem({
   const summary = rallyCandidate?.cv_confidence_summary
 
   return (
-    <div className="flex flex-col bg-amber-500/10 border border-amber-500/25 rounded px-2 py-1.5 gap-0.5">
+    <div className="flex flex-col bg-[var(--ss-warn-tint)] border border-[var(--ss-warning-border)] rounded-ss-md px-2 py-1.5 gap-0.5">
       <div className="flex items-start gap-2">
-        <MIcon name="warning" size={11} className="text-amber-400 mt-0.5 shrink-0" />
+        <MIcon name="warning" size={11} className="text-[var(--ss-warn)] mt-0.5 shrink-0" />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-xs font-semibold text-white">R{item.rally_num}</span>
+            <span className="text-xs font-semibold ss-num text-[var(--ss-t1)]">R{item.rally_num}</span>
             {summary && (
               <>
                 <ConfidencePill value={summary.land_zone_fill_rate} label={t('review_queue.land_pill')} />
@@ -85,7 +85,7 @@ function QueueItem({
           {hasReasons && (
             <button
               onClick={() => setExpanded((v) => !v)}
-              className="flex items-center gap-0.5 text-[9px] text-amber-400/70 hover:text-amber-400 mt-0.5"
+              className="flex items-center gap-0.5 text-[9px] text-[var(--ss-warn)] hover:text-[var(--ss-warn)] mt-0.5 transition-colors duration-fast ease-out"
             >
               {expanded ? <MIcon name="expand_more" size={9} /> : <MIcon name="chevron_right" size={9} />}
               {allReasonLabels.join(' / ')}
@@ -94,19 +94,19 @@ function QueueItem({
           {expanded && (
             <div className="mt-0.5 flex flex-col gap-0.5 pl-2">
               {dataReasons.length > 0 && (
-                <div className="text-[9px] text-amber-300/70">
-                  <span className="text-slate-500 mr-1">{t('review_queue.data_label')}</span>
+                <div className="text-[9px] text-[var(--ss-warn)]">
+                  <span className="text-[var(--ss-t3)] mr-1">{t('review_queue.data_label')}</span>
                   {dataReasons.map(reasonLabel).join(' · ')}
                 </div>
               )}
               {qualityReasons.length > 0 && (
-                <div className="text-[9px] text-amber-300/70">
-                  <span className="text-slate-500 mr-1">{t('review_queue.quality_label')}</span>
+                <div className="text-[9px] text-[var(--ss-warn)]">
+                  <span className="text-[var(--ss-t3)] mr-1">{t('review_queue.quality_label')}</span>
                   {qualityReasons.map(reasonLabel).join(' · ')}
                 </div>
               )}
               {other.length > 0 && (
-                <div className="text-[9px] text-slate-500">
+                <div className="text-[9px] text-[var(--ss-t3)]">
                   {other.map(reasonLabel).join(' · ')}
                 </div>
               )}
@@ -117,7 +117,7 @@ function QueueItem({
           {onJumpToRally && (
             <button
               onClick={() => onJumpToRally(item.rally_id, item.rally_num)}
-              className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 hover:bg-blue-500/40 text-blue-300 transition-colors"
+              className="text-[10px] px-1.5 py-0.5 rounded-ss-sm bg-[var(--ss-brand-tint)] hover:bg-[var(--ss-brand-tint)] text-[var(--ss-brand)] transition-colors duration-fast ease-out"
               title={t('review_queue.jump_title')}
             >
               {t('review_queue.jump_btn')}
@@ -125,7 +125,7 @@ function QueueItem({
           )}
           <button
             onClick={() => onMarkCompleted(item.rally_id)}
-            className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-300 transition-colors"
+            className="text-[10px] px-1.5 py-0.5 rounded-ss-sm bg-[var(--ss-success-tint)] hover:bg-[var(--ss-success-tint)] text-[var(--ss-success)] transition-colors duration-fast ease-out"
             title={t('review_queue.mark_complete_title')}
           >
             {t('review_queue.mark_complete_btn')}
@@ -153,19 +153,19 @@ export function ReviewQueuePanel({
   return (
     <div className={clsx('flex flex-col gap-2', className)}>
       <div className="flex items-center gap-2">
-        <MIcon name="assignment" size={14} className="text-amber-400" />
-        <span className="text-xs font-semibold text-slate-300">{t('review_queue.title')}</span>
+        <MIcon name="assignment" size={14} className="text-[var(--ss-warn)]" />
+        <span className="text-xs font-semibold text-[var(--ss-t2)]">{t('review_queue.title')}</span>
         {pending.length > 0 && (
-          <span className="ml-auto text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded px-1.5 py-0.5 font-medium">
+          <span className="ml-auto text-[10px] ss-num bg-[var(--ss-warn-tint)] text-[var(--ss-warn)] border border-[var(--ss-warning-border)] rounded-ss-sm px-1.5 py-0.5 font-medium">
             {t('review_queue.count_items', { count: pending.length })}
           </span>
         )}
-        {loading && <MIcon name="refresh" size={12} className="text-slate-500 animate-spin ml-1" />}
+        {loading && <MIcon name="refresh" size={12} className="text-[var(--ss-t3)] animate-spin ml-1" />}
       </div>
 
       {pending.length === 0 && !loading ? (
-        <div className="text-center text-slate-500 text-xs py-3">
-          <MIcon name="check_circle" size={14} className="inline mr-1 text-emerald-500" />
+        <div className="text-center text-[var(--ss-t3)] text-xs py-3">
+          <MIcon name="check_circle" size={14} className="inline mr-1 text-[var(--ss-success)]" />
           {t('review_queue.none')}
         </div>
       ) : (
@@ -186,7 +186,7 @@ export function ReviewQueuePanel({
         <div>
           <button
             onClick={() => setShowCompleted((v) => !v)}
-            className="text-[10px] text-slate-500 hover:text-slate-400 flex items-center gap-1"
+            className="text-[10px] text-[var(--ss-t3)] hover:text-[var(--ss-t2)] flex items-center gap-1 transition-colors duration-fast ease-out"
           >
             {showCompleted ? <MIcon name="expand_more" size={10} /> : <MIcon name="chevron_right" size={10} />}
             {t('review_queue.completed_section', { count: completed.length })}
@@ -196,11 +196,11 @@ export function ReviewQueuePanel({
               {completed.map((item) => (
                 <div
                   key={item.rally_id}
-                  className="flex items-center gap-2 px-2 py-1 rounded bg-white/5 border border-white/10"
+                  className="flex items-center gap-2 px-2 py-1 rounded-ss-sm bg-[var(--ss-surface-2)] border border-[var(--ss-border)]"
                 >
-                  <MIcon name="check_circle" size={10} className="text-emerald-500 shrink-0" />
-                  <span className="text-[10px] text-slate-400">R{item.rally_num}</span>
-                  <span className="text-[9px] text-slate-600 truncate">
+                  <MIcon name="check_circle" size={10} className="text-[var(--ss-success)] shrink-0" />
+                  <span className="text-[10px] ss-num text-[var(--ss-t3)]">R{item.rally_num}</span>
+                  <span className="text-[9px] text-[var(--ss-t3)] truncate">
                     {item.cv_reason_codes.map(reasonLabel).join(' / ')}
                   </span>
                 </div>

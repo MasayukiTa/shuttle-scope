@@ -106,11 +106,11 @@ export function ConditionVolatilityRanking({ playerId, isLight }: Props) {
     return out
   }, [data, t])
 
-  const panelBg = isLight ? 'bg-white' : 'bg-gray-800'
-  const borderColor = isLight ? 'border-gray-200' : 'border-gray-700'
-  const textMuted = isLight ? 'text-gray-500' : 'text-gray-400'
-  const gridColor = isLight ? '#e5e7eb' : '#374151'
-  const tickColor = isLight ? '#374151' : '#9ca3af'
+  const panelBg = 'bg-[var(--ss-surface-1)]'
+  const borderColor = 'border-[var(--ss-border)]'
+  const textMuted = 'text-[var(--ss-t3)]'
+  const gridColor = 'var(--ss-border)'
+  const tickColor = 'var(--ss-t3)'
 
   // Design Language §6: helper 経由のみ。CV = Cool (主指標)、差分 = Amber。
   const cvColor = catColor('Cool', isLight)
@@ -134,9 +134,9 @@ export function ConditionVolatilityRanking({ playerId, isLight }: Props) {
 
   return (
     <RoleGuard allowedRoles={['analyst', 'coach', 'player']} fallback={null}>
-      <section className={`rounded-lg border ${borderColor} ${panelBg} p-4`}>
+      <section className={`rounded-ss-lg border ${borderColor} ${panelBg} p-4`}>
         <div className="flex items-baseline justify-between mb-2 flex-wrap gap-2">
-          <h2 className="text-sm font-semibold">{t('condition.volatility.title')}</h2>
+          <h2 className="text-sm font-semibold text-[var(--ss-t1)]">{t('condition.volatility.title')}</h2>
           <span className={`text-[11px] ${textMuted}`}>
             {t('condition.volatility.description')}
           </span>
@@ -186,9 +186,10 @@ export function ConditionVolatilityRanking({ playerId, isLight }: Props) {
                     />
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: isLight ? '#ffffff' : '#1f2937',
+                        backgroundColor: 'var(--ss-surface-1)',
                         border: `1px solid ${gridColor}`,
                         fontSize: 12,
+                        borderRadius: 6,
                       }}
                       formatter={(
                         _v: unknown,
@@ -242,9 +243,10 @@ export function ConditionVolatilityRanking({ playerId, isLight }: Props) {
                     />
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: isLight ? '#ffffff' : '#1f2937',
+                        backgroundColor: 'var(--ss-surface-1)',
                         border: `1px solid ${gridColor}`,
                         fontSize: 12,
+                        borderRadius: 6,
                       }}
                       formatter={(
                         _v: unknown,

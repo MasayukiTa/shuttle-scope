@@ -39,12 +39,12 @@ export function AuditLogPage() {
   const [sortKey, setSortKey] = useState<SortKey>('created_at')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
 
-  const textHeading = isLight ? 'text-gray-900' : 'text-white'
-  const textMuted = isLight ? 'text-gray-500' : 'text-gray-400'
-  const textSecondary = isLight ? 'text-gray-600' : 'text-gray-300'
-  const cardBg = isLight ? 'bg-white' : 'bg-gray-800'
-  const borderLine = isLight ? 'border-gray-200' : 'border-gray-700'
-  const inputCls = `${isLight ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-white'} border rounded px-2 py-1 text-sm`
+  const textHeading = 'text-[var(--ss-t1)]'
+  const textMuted = 'text-[var(--ss-t3)]'
+  const textSecondary = 'text-[var(--ss-t2)]'
+  const cardBg = 'bg-[var(--ss-surface-1)]'
+  const borderLine = 'border-[var(--ss-border)]'
+  const inputCls = `bg-[var(--ss-surface-1)] border-[var(--ss-border)] text-[var(--ss-t1)] border rounded-ss-md px-2 py-1 text-sm`
 
   const load = async () => {
     setLoading(true)
@@ -292,9 +292,7 @@ export function AuditLogPage() {
         <button
           onClick={load}
           disabled={loading}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm ${
-            isLight ? 'bg-blue-600 text-white hover:bg-blue-500' : 'bg-blue-700 text-white hover:bg-blue-600'
-          } disabled:opacity-50`}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-ss-md bg-[var(--ss-brand)] text-white hover:bg-[var(--ss-brand-hover)] duration-base ease-out text-sm disabled:opacity-50`}
         >
           <MIcon name="refresh" size={14} className={loading ? 'animate-spin' : ''} />
           {t('auth.audit_log.refresh')}
@@ -302,9 +300,7 @@ export function AuditLogPage() {
         <button
           onClick={exportCsv}
           disabled={loading || rows.length === 0}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm ${
-            isLight ? 'bg-emerald-600 text-white hover:bg-emerald-500' : 'bg-emerald-700 text-white hover:bg-emerald-600'
-          } disabled:opacity-50`}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-ss-md bg-[var(--ss-success)] text-white hover:opacity-90 duration-base ease-out text-sm disabled:opacity-50`}
           title="現在の表示順で CSV ダウンロード"
         >
           <MIcon name="download" size={14} /> CSV
@@ -312,13 +308,13 @@ export function AuditLogPage() {
         <span className={`text-xs ${textMuted}`}>表示: {tab === 'audit' ? sortedRows.length : tab === 'request' ? reqRows.length : secRows.length} 件</span>
       </div>
 
-      {error && <div className="text-sm text-red-400 flex-shrink-0">{error}</div>}
+      {error && <div className="text-sm text-[var(--ss-danger-text)] flex-shrink-0">{error}</div>}
 
       {tab !== 'audit' && (
-        <div className={`flex-1 min-h-0 overflow-auto rounded border ${borderLine} ${cardBg}`}>
+        <div className={`flex-1 min-h-0 overflow-auto rounded-ss-lg border ${borderLine} ${cardBg}`}>
           {tab === 'request' ? (
             <table className="min-w-full text-xs">
-              <thead className={`sticky top-0 z-10 ${isLight ? 'bg-gray-50' : 'bg-gray-900'}`}>
+              <thead className={`sticky top-0 z-10 bg-[var(--ss-surface-2)]`}>
                 <tr className={textMuted}>
                   <th className="text-left px-2 py-2">ID</th>
                   <th className="text-left px-2 py-2">Time</th>
@@ -343,7 +339,7 @@ export function AuditLogPage() {
                     </td>
                     <td className={`px-2 py-1.5 font-mono ${textHeading}`}>{r.method}</td>
                     <td className={`px-2 py-1.5 font-mono break-all ${textSecondary}`}>{r.path}</td>
-                    <td className={`px-2 py-1.5 font-mono ${r.status >= 500 ? 'text-red-500' : r.status >= 400 ? 'text-amber-500' : textSecondary}`}>{r.status}</td>
+                    <td className={`px-2 py-1.5 font-mono ss-num ${r.status >= 500 ? 'text-[var(--ss-danger-text)]' : r.status >= 400 ? 'text-[var(--ss-warning-text)]' : textSecondary}`}>{r.status}</td>
                     <td className={`px-2 py-1.5 font-mono ${textMuted}`}>{r.duration_ms}</td>
                     <td className={`px-2 py-1.5 font-mono whitespace-nowrap ${textSecondary}`}>{r.ip_addr || '—'}{r.country ? ` (${r.country})` : ''}</td>
                     <td className={`px-2 py-1.5 hidden md:table-cell ${textSecondary}`}>{r.user_id ?? '—'}</td>
@@ -355,7 +351,7 @@ export function AuditLogPage() {
             </table>
           ) : (
             <table className="min-w-full text-xs">
-              <thead className={`sticky top-0 z-10 ${isLight ? 'bg-gray-50' : 'bg-gray-900'}`}>
+              <thead className={`sticky top-0 z-10 bg-[var(--ss-surface-2)]`}>
                 <tr className={textMuted}>
                   <th className="text-left px-2 py-2">ID</th>
                   <th className="text-left px-2 py-2">Time</th>
@@ -377,7 +373,7 @@ export function AuditLogPage() {
                       {new Date(r.ts).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
                     </td>
                     <td className={`px-2 py-1.5 font-mono ${textHeading}`}>{r.event_type}</td>
-                    <td className={`px-2 py-1.5 font-mono ${r.severity === 'critical' ? 'text-red-500' : r.severity === 'warn' ? 'text-amber-500' : textSecondary}`}>{r.severity}</td>
+                    <td className={`px-2 py-1.5 font-mono ${r.severity === 'critical' ? 'text-[var(--ss-danger-text)]' : r.severity === 'warn' ? 'text-[var(--ss-warning-text)]' : textSecondary}`}>{r.severity}</td>
                     <td className={`px-2 py-1.5 font-mono whitespace-nowrap ${textSecondary}`}>{r.ip_addr || '—'}</td>
                     <td className={`px-2 py-1.5 font-mono break-all ${textSecondary}`}>{r.path || '—'}</td>
                     <td className={`px-2 py-1.5 hidden md:table-cell font-mono ${textMuted}`}>{r.method || '—'}</td>
@@ -391,9 +387,9 @@ export function AuditLogPage() {
       )}
 
       {tab === 'audit' && (
-      <div className={`flex-1 min-h-0 overflow-auto rounded border ${borderLine} ${cardBg}`}>
+      <div className={`flex-1 min-h-0 overflow-auto rounded-ss-lg border ${borderLine} ${cardBg}`}>
         <table className="min-w-full text-sm">
-          <thead className={`sticky top-0 z-10 ${isLight ? 'bg-gray-50' : 'bg-gray-900'}`}>
+          <thead className={`sticky top-0 z-10 bg-[var(--ss-surface-2)]`}>
             <tr className={textMuted}>
               <th className="text-left px-3 py-2">ID</th>
               <th

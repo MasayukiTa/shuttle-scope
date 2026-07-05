@@ -57,11 +57,11 @@ function BatteryIndicator({ level, charging }: { level: number; charging: boolea
 
   const pct = Math.round(level * 100)
   const iconName = pct > 60 ? 'battery_full' : pct > 25 ? 'battery_5_bar' : 'battery_2_bar'
-  const color = pct > 60 ? 'text-green-400' : pct > 25 ? 'text-yellow-400' : 'text-red-400'
+  const color = pct > 60 ? 'text-[var(--ss-good)]' : pct > 25 ? 'text-[var(--ss-warn)]' : 'text-[var(--ss-bad)]'
   return (
     <span className={`flex items-center gap-0.5 text-[10px] ${color}`}>
       <MIcon name={iconName} size={12} />
-      {pct}%{charging ? <MIcon name="bolt" size={10} className="ml-0.5" /> : null}
+      <span className="ss-num">{pct}%</span>{charging ? <MIcon name="bolt" size={10} className="ml-0.5" /> : null}
     </span>
   )
 }
@@ -73,11 +73,11 @@ function NetworkQualityIndicator({ rttMs }: { rttMs: number | null }) {
   if (rttMs === null) return null
   const good = rttMs < 80
   const iconName = good ? 'wifi' : 'signal_wifi_0_bar'
-  const color = good ? 'text-green-400' : 'text-yellow-400'
+  const color = good ? 'text-[var(--ss-good)]' : 'text-[var(--ss-warn)]'
   return (
     <span className={`flex items-center gap-0.5 text-[10px] ${color}`}>
       <MIcon name={iconName} size={12} />
-      {t('camera_sender.network_quality')} {rttMs}ms
+      {t('camera_sender.network_quality')} <span className="ss-num">{rttMs}ms</span>
     </span>
   )
 }
@@ -87,10 +87,10 @@ function NetworkQualityIndicator({ rttMs }: { rttMs: number | null }) {
 function SessionBadge({ sessionCode, role }: { sessionCode: string; role: string }) {
   const { t } = useTranslation()
   return (
-    <div className="flex items-center gap-2 text-[10px] text-gray-500 mb-1">
-      <span>{t('camera_sender.session_label')}: <span className="font-mono text-gray-400">{sessionCode}</span></span>
+    <div className="flex items-center gap-2 text-[10px] text-[var(--ss-t3)] mb-1">
+      <span>{t('camera_sender.session_label')}: <span className="font-mono ss-num text-[var(--ss-t2)]">{sessionCode}</span></span>
       <span>|</span>
-      <span>{t('camera_sender.role_display')}: <span className="text-blue-400">{role}</span></span>
+      <span>{t('camera_sender.role_display')}: <span className="text-[var(--ss-brand)]">{role}</span></span>
     </div>
   )
 }
@@ -507,52 +507,52 @@ export function CameraSenderPage() {
 
   // ─── レンダリング ──────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-[var(--ss-bg-app)] text-[var(--ss-t1)] flex flex-col items-center justify-center p-4">
       {/* ロゴ */}
       <div className="mb-4 text-center">
-        <div className="inline-flex items-center gap-2 text-blue-400 mb-1">
+        <div className="inline-flex items-center gap-2 text-[var(--ss-brand)] mb-1">
           <MIcon name="photo_camera" size={24} />
           <span className="text-lg font-bold">{t('app.name')}</span>
         </div>
-        <p className="text-gray-400 text-sm">{t('camera_sender.join_title')}</p>
+        <p className="text-[var(--ss-t2)] text-sm">{t('camera_sender.join_title')}</p>
       </div>
 
       {/* ─── State: join ────────────────── */}
       {(senderState === 'join' || (senderState === 'connecting' && !paramCode)) && (
-        <div className="w-full max-w-sm bg-gray-800 rounded-xl p-5 shadow-2xl">
+        <div className="w-full max-w-sm bg-[var(--ss-surface-1)] rounded-[6px] p-5 border border-[var(--ss-border)] shadow-[0_1px_2px_rgba(16,24,40,.06)]">
           <div className="space-y-3">
             <div>
-              <label className="block text-xs text-gray-400 mb-1">{t('camera_sender.join_code_label')}</label>
+              <label className="block text-xs text-[var(--ss-t2)] mb-1">{t('camera_sender.join_code_label')}</label>
               <input
                 type="text"
                 value={form.sessionCode}
                 onChange={(e) => setForm((f) => ({ ...f, sessionCode: e.target.value.toUpperCase() }))}
                 placeholder="XXXXXX"
-                className="w-full bg-gray-700 rounded-lg px-3 py-2 text-sm font-mono text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-[var(--ss-surface-1)] rounded-[5px] px-3 py-2 text-sm font-mono ss-num text-[var(--ss-t1)] placeholder-[var(--ss-t3)] border border-[var(--ss-border-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ss-focus-ring)]"
                 autoCapitalize="characters"
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-400 mb-1">{t('camera_sender.join_password_label')}</label>
+              <label className="block text-xs text-[var(--ss-t2)] mb-1">{t('camera_sender.join_password_label')}</label>
               <input
                 type="password"
                 value={form.password}
                 onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-                className="w-full bg-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-[var(--ss-surface-1)] rounded-[5px] px-3 py-2 text-sm text-[var(--ss-t1)] placeholder-[var(--ss-t3)] border border-[var(--ss-border-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ss-focus-ring)]"
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-400 mb-1">{t('camera_sender.join_device_label')}</label>
+              <label className="block text-xs text-[var(--ss-t2)] mb-1">{t('camera_sender.join_device_label')}</label>
               <input
                 type="text"
                 value={form.deviceName}
                 onChange={(e) => setForm((f) => ({ ...f, deviceName: e.target.value }))}
                 placeholder={t('auto.CameraSenderPage.k2')}
-                className="w-full bg-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-[var(--ss-surface-1)] rounded-[5px] px-3 py-2 text-sm text-[var(--ss-t1)] placeholder-[var(--ss-t3)] border border-[var(--ss-border-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ss-focus-ring)]"
               />
             </div>
             {errorMsg && (
-              <div className="flex items-center gap-1.5 text-red-400 text-xs">
+              <div className="flex items-center gap-1.5 text-[var(--ss-bad)] text-xs">
                 <MIcon name="cancel" size={14} />
                 {errorMsg}
               </div>
@@ -560,7 +560,7 @@ export function CameraSenderPage() {
             <button
               onClick={() => joinSession(form.sessionCode, form.password, form.deviceName)}
               disabled={!form.sessionCode || senderState === 'connecting'}
-              className="w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium inline-flex items-center justify-center gap-2"
+              className="w-full py-2.5 rounded-[5px] bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium text-white inline-flex items-center justify-center gap-2"
             >
               {senderState === 'connecting' && <MIcon name="progress_activity" size={14} className="animate-spin" />}
               {senderState === 'connecting' ? '接続中…' : t('camera_sender.join_button')}
@@ -572,8 +572,8 @@ export function CameraSenderPage() {
       {/* ─── State: connecting ──────────── */}
       {senderState === 'connecting' && paramCode && (
         <div className="text-center">
-          <MIcon name="progress_activity" size={40} className="animate-spin text-blue-400 mx-auto mb-3" />
-          <p className="text-gray-300 text-sm">
+          <MIcon name="progress_activity" size={40} className="animate-spin text-[var(--ss-brand)] mx-auto mb-3" />
+          <p className="text-[var(--ss-t2)] text-sm">
             {reconnectCount > 0
               ? `${t('camera_sender.reconnecting')} (${reconnectCount}/${MAX_RECONNECT}${t('camera_sender.reconnect_attempt')})`
               : t('camera_sender.join_connecting')}
@@ -585,18 +585,18 @@ export function CameraSenderPage() {
       {senderState === 'state_a' && (
         <div className="w-full max-w-sm flex flex-col items-center">
           <StatusBar />
-          <div className="w-full bg-gray-800 rounded-xl p-8 shadow-2xl text-center">
-            <div className="w-16 h-16 rounded-full bg-blue-900/50 flex items-center justify-center mx-auto mb-4">
-              <MIcon name="photo_camera" size={28} className="text-blue-400" />
+          <div className="w-full bg-[var(--ss-surface-1)] rounded-[6px] p-8 border border-[var(--ss-border)] shadow-[0_1px_2px_rgba(16,24,40,.06)] text-center">
+            <div className="w-16 h-16 rounded-full bg-[var(--ss-brand-tint)] flex items-center justify-center mx-auto mb-4">
+              <MIcon name="photo_camera" size={28} className="text-[var(--ss-brand)]" />
             </div>
-            <p className="text-lg font-semibold mb-2">{t('camera_sender.state_a_title')}</p>
-            <p className="text-gray-400 text-sm leading-relaxed">{t('camera_sender.state_a_hint')}</p>
-            <div className="mt-4 flex items-center justify-center gap-1.5 text-green-400 text-xs">
+            <p className="text-lg font-semibold text-[var(--ss-t1)] mb-2">{t('camera_sender.state_a_title')}</p>
+            <p className="text-[var(--ss-t2)] text-sm leading-relaxed">{t('camera_sender.state_a_hint')}</p>
+            <div className="mt-4 flex items-center justify-center gap-1.5 text-[var(--ss-success)] text-xs">
               <MIcon name="check_circle" size={14} />
               {t('camera_sender.status_connected')}
             </div>
             {/* 端末名表示・編集 */}
-            <div className="mt-4 border-t border-gray-700 pt-4">
+            <div className="mt-4 border-t border-[var(--ss-border)] pt-4">
               {editingName ? (
                 <div className="flex items-center gap-2">
                   <input
@@ -612,7 +612,7 @@ export function CameraSenderPage() {
                       }
                       if (e.key === 'Escape') setEditingName(false)
                     }}
-                    className="flex-1 bg-gray-700 rounded px-2 py-1 text-sm text-white text-center focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="flex-1 bg-[var(--ss-surface-2)] rounded-[5px] px-2 py-1 text-sm text-[var(--ss-t1)] text-center border border-[var(--ss-border)] focus:outline-none focus:ring-2 focus:ring-[var(--ss-focus-ring)]"
                     placeholder={getDeviceTypeLabel()}
                     maxLength={32}
                   />
@@ -623,19 +623,19 @@ export function CameraSenderPage() {
                       savedDeviceNameRef.current = n
                       setEditingName(false)
                     }}
-                    className="p-1 text-green-400 hover:text-green-300"
+                    className="p-1 text-[var(--ss-success)] hover:text-[var(--ss-good)]"
                   >
                     <MIcon name="check" size={16} />
                   </button>
                 </div>
               ) : (
                 <div className="flex items-center justify-center gap-2">
-                  <span className="text-xs text-gray-400">
-                    {t('auto.CameraSenderPage.k_device_name_label')} <span className="text-gray-200 font-medium">{savedDeviceNameRef.current || getDeviceTypeLabel()}</span>
+                  <span className="text-xs text-[var(--ss-t3)]">
+                    {t('auto.CameraSenderPage.k_device_name_label')} <span className="text-[var(--ss-t1)] font-medium">{savedDeviceNameRef.current || getDeviceTypeLabel()}</span>
                   </span>
                   <button
                     onClick={() => { setNameInput(savedDeviceNameRef.current || getDeviceTypeLabel()); setEditingName(true) }}
-                    className="p-1 text-gray-500 hover:text-gray-300 rounded"
+                    className="p-1 text-[var(--ss-t3)] hover:text-[var(--ss-t1)] rounded-[5px]"
                     title={t('auto.CameraSenderPage.k1')}
                   >
                     <MIcon name="edit" size={12} />
@@ -651,16 +651,16 @@ export function CameraSenderPage() {
       {senderState === 'state_b' && (
         <div className="w-full max-w-sm flex flex-col items-center">
           <StatusBar />
-          <div className="w-full bg-gray-800 rounded-xl p-6 shadow-2xl border border-amber-500/40">
-            <div className="w-16 h-16 rounded-full bg-amber-900/50 flex items-center justify-center mx-auto mb-4">
-              <MIcon name="photo_camera" size={28} className="text-amber-400" />
+          <div className="w-full bg-[var(--ss-surface-1)] rounded-[6px] p-6 border border-[var(--ss-border)] shadow-[0_1px_2px_rgba(16,24,40,.06)]">
+            <div className="w-16 h-16 rounded-full bg-[rgba(178,106,0,0.08)] flex items-center justify-center mx-auto mb-4">
+              <MIcon name="photo_camera" size={28} className="text-[var(--ss-warn)]" />
             </div>
-            <p className="text-center text-lg font-semibold mb-2">{t('camera_sender.state_b_title')}</p>
-            <p className="text-center text-xs text-gray-400 mb-5">
+            <p className="text-center text-lg font-semibold text-[var(--ss-t1)] mb-2">{t('camera_sender.state_b_title')}</p>
+            <p className="text-center text-xs text-[var(--ss-t2)] mb-5">
               {t('auto.CameraSenderPage.k_fix_device')}
             </p>
             {errorMsg && (
-              <div className="flex items-start gap-1.5 text-red-400 text-xs mb-3 bg-red-900/30 rounded-lg p-2">
+              <div className="flex items-start gap-1.5 text-[var(--ss-bad)] text-xs mb-3 bg-[rgba(194,51,74,0.08)] rounded-[5px] p-2 border border-[var(--ss-border)]">
                 <MIcon name="cancel" size={14} className="shrink-0 mt-0.5" />
                 {errorMsg}
               </div>
@@ -669,14 +669,14 @@ export function CameraSenderPage() {
               <button
                 onClick={startCamera}
                 disabled={startingCamera}
-                className="w-full py-3 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold flex items-center justify-center gap-2"
+                className="w-full py-3 rounded-[5px] bg-[var(--ss-bad)] hover:bg-[rgba(194,51,74,0.9)] disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold flex items-center justify-center gap-2"
               >
                 {startingCamera ? <MIcon name="progress_activity" size={18} className="animate-spin" /> : <MIcon name="photo_camera" size={18} />}
                 {startingCamera ? '起動中…' : t('camera_sender.state_b_start')}
               </button>
               <button
                 onClick={() => { setSenderState('state_a'); setErrorMsg('') }}
-                className="w-full py-2.5 rounded-xl bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm"
+                className="w-full py-2.5 rounded-[5px] bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t1)] text-sm border border-[var(--ss-border)]"
               >
                 {t('camera_sender.state_b_cancel')}
               </button>
@@ -702,7 +702,7 @@ export function CameraSenderPage() {
         >
           <StatusBar />
           {/* カメラプレビュー */}
-          <div className="relative w-full mb-4 rounded-xl overflow-hidden bg-black aspect-video">
+          <div className="relative w-full mb-4 rounded-[6px] overflow-hidden bg-black aspect-video shadow-[0_10px_28px_rgba(16,24,40,.14)]">
             <video
               ref={previewRef}
               autoPlay
@@ -710,15 +710,15 @@ export function CameraSenderPage() {
               muted
               className="w-full h-full object-cover"
             />
-            <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-red-600 text-white text-xs px-2 py-0.5 rounded-full">
+            <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-[var(--ss-bad)] text-white text-xs px-2 py-0.5 rounded-[999px]">
               <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
               {t('camera_sender.state_c_active')}
             </div>
           </div>
-          <p className="text-center text-xs text-gray-400 mb-4">{t('camera_sender.state_c_hint')}</p>
+          <p className="text-center text-xs text-[var(--ss-t3)] mb-4">{t('camera_sender.state_c_hint')}</p>
           <button
             onClick={stopCamera}
-            className="w-full py-3 rounded-xl bg-gray-700 hover:bg-gray-600 text-white font-medium flex items-center justify-center gap-2"
+            className="w-full py-3 rounded-[5px] bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t1)] font-medium flex items-center justify-center gap-2 border border-[var(--ss-border)]"
           >
             <MIcon name="videocam_off" size={18} />
             {t('camera_sender.state_c_stop')}
@@ -729,10 +729,10 @@ export function CameraSenderPage() {
       {/* ─── State: error ───────────────── */}
       {senderState === 'error' && (
         <div className="w-full max-w-sm text-center">
-          <div className="bg-gray-800 rounded-xl p-6 shadow-2xl border border-red-500/40">
-            <MIcon name="wifi_off" size={36} className="text-red-400 mx-auto mb-3" />
-            <p className="text-sm text-gray-300 mb-1">{errorMsg || t('camera_sender.join_error_network')}</p>
-            <p className="text-xs text-gray-500 mb-4">
+          <div className="bg-[var(--ss-surface-1)] rounded-[6px] p-6 border border-[var(--ss-border)] shadow-[0_1px_2px_rgba(16,24,40,.06)]">
+            <MIcon name="wifi_off" size={36} className="text-[var(--ss-bad)] mx-auto mb-3" />
+            <p className="text-sm text-[var(--ss-t2)] mb-1">{errorMsg || t('camera_sender.join_error_network')}</p>
+            <p className="text-xs text-[var(--ss-t3)] mb-4">
               {t('auto.CameraSenderPage.k_wifi_check')}
             </p>
             <div className="flex gap-2 justify-center">
@@ -748,13 +748,13 @@ export function CameraSenderPage() {
                     setSenderState('join')
                   }
                 }}
-                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-sm"
+                className="px-4 py-2 rounded-[5px] bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-sm text-white font-medium"
               >
                 {t('auto.CameraSenderPage.k_retry')}
               </button>
               <button
                 onClick={() => { setSenderState('join'); setErrorMsg('') }}
-                className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-sm text-gray-300"
+                className="px-4 py-2 rounded-[5px] bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-sm text-[var(--ss-t1)] border border-[var(--ss-border)]"
               >
                 {t('auto.CameraSenderPage.k_restart')}
               </button>

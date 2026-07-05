@@ -25,7 +25,7 @@ export function StrokeHistory({ strokes, playerAName = 'A', playerBName = 'B', p
 
   if (recent.length === 0) {
     return (
-      <div className="text-xs text-gray-500 italic text-center py-2">
+      <div className="text-xs text-[var(--ss-t3)] italic text-center py-2">
         {t('annotator.stroke_none')}
       </div>
     )
@@ -49,7 +49,7 @@ export function StrokeHistory({ strokes, playerAName = 'A', playerBName = 'B', p
 
   return (
     <div className="flex flex-col gap-1">
-      <div className="text-xs text-gray-500">{t('annotator.recent_strokes')}</div>
+      <div className="text-xs text-[var(--ss-t3)]">{t('annotator.recent_strokes')}</div>
       {recent.map((stroke, idx) => {
         const playerLabel = resolvePlayerLabel(stroke.player)
         const teamTooltip = resolveTeamTooltip(stroke.player)
@@ -70,12 +70,12 @@ export function StrokeHistory({ strokes, playerAName = 'A', playerBName = 'B', p
         return (
           <div
             key={stroke.stroke_num}
-            className={`text-xs px-2 py-0.5 rounded font-mono flex items-center gap-1.5 ${isLatest ? 'bg-gray-700 text-gray-100' : 'text-gray-400'}`}
+            className={`text-xs px-2 py-0.5 rounded-ss-sm font-mono ss-num flex items-center gap-1.5 ${isLatest ? 'bg-[var(--ss-surface-2)] text-[var(--ss-t1)]' : 'text-[var(--ss-t3)]'}`}
           >
             <span title={teamTooltip}>{num}{playerLabel}:{shotLabel}{hitLabel}{landLabel}</span>
             {isHitZoneOverridden && (
               <span
-                className="text-[9px] text-orange-300 border border-orange-500/40 rounded px-1 shrink-0"
+                className="text-[9px] text-[var(--ss-emphasis)] border border-[var(--ss-emphasis-border)] rounded-ss-sm px-1 shrink-0"
                 title={t('annotator.hit_zone_manual_tooltip', {
                   cv: stroke.hit_zone_cv_original,
                   picked: stroke.hit_zone,
@@ -85,7 +85,7 @@ export function StrokeHistory({ strokes, playerAName = 'A', playerBName = 'B', p
               </span>
             )}
             {missingLand && (
-              <span className="text-[9px] text-yellow-700/80 border border-yellow-700/30 rounded px-1 shrink-0">{t('annotator.missing_land_zone')}</span>
+              <span className="text-[9px] text-[var(--ss-warn)] border border-[var(--ss-warning-border)] rounded-ss-sm px-1 shrink-0">{t('annotator.missing_land_zone')}</span>
             )}
           </div>
         )

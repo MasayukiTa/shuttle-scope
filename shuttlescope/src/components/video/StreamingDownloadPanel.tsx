@@ -212,48 +212,36 @@ export function StreamingDownloadPanel({
   const showCookieHint = !!cookieBrowser
   const ffmpegMissing = capabilities !== null && !capabilities.ffmpeg
 
-  // ── テーマ別スタイル定数 ────────────────────────────────────────────────────
-  const outerBg    = isLight ? 'bg-white border border-gray-200 shadow-sm' : 'bg-gray-800'
-  const urlBoxBg   = isLight ? 'bg-gray-100' : 'bg-gray-900/60'
-  const urlColor   = isLight ? '#0f172a' : '#ffffff'
+  // ── スタイル定数 (v2 トークン) ─────────────────────────────────────────────
+  const outerBg    = 'bg-[var(--ss-surface-1)] border border-[var(--ss-border)] shadow-card'
+  const urlBoxBg   = 'bg-[var(--ss-surface-2)]'
 
-  const bannerWarn = isLight
-    ? 'text-orange-700 bg-orange-50 border border-orange-200'
-    : 'text-orange-300 bg-orange-900/20 border border-orange-700/40'
-  const bannerInfo = isLight
-    ? 'text-yellow-800 bg-yellow-50 border border-yellow-200'
-    : 'text-yellow-300 bg-yellow-900/20 border border-yellow-700/40'
-  const bannerSuccess = isLight
-    ? 'text-green-700 bg-green-50 border border-green-200'
-    : 'text-green-400 bg-green-900/20 border border-green-700/40'
-  const bannerError = isLight
-    ? 'text-red-700 bg-red-50 border border-red-200'
-    : 'text-red-300 bg-red-900/20 border border-red-700/40'
-  const bannerBlue = isLight
-    ? 'text-blue-800 bg-blue-50 border border-blue-200'
-    : 'text-blue-300 bg-blue-900/20 border border-blue-700/40'
+  const bannerWarn = 'text-[var(--ss-warn)] bg-[var(--ss-warn-tint)] border border-[var(--ss-border)]'
+  const bannerInfo = 'text-[var(--ss-warn)] bg-[var(--ss-warn-tint)] border border-[var(--ss-border)]'
+  const bannerSuccess = 'text-[var(--ss-success)] bg-[var(--ss-success-tint)] border border-[var(--ss-border)]'
+  const bannerError = 'text-[var(--ss-danger)] bg-[var(--ss-danger-tint)] border border-[var(--ss-border)]'
+  const bannerBlue = 'text-[var(--ss-brand)] bg-[var(--ss-brand-tint)] border border-[var(--ss-border)]'
 
-  const labelColor    = isLight ? 'text-gray-600' : 'text-gray-400'
-  const muteColor     = isLight ? 'text-gray-500' : 'text-gray-500'
-  const progressTrack = isLight ? 'bg-gray-200' : 'bg-gray-700'
-  const siteColor     = isLight ? 'text-gray-900' : 'text-white'
-  const retryColor    = isLight ? 'text-gray-500 hover:text-gray-800' : 'text-gray-400 hover:text-white'
+  const labelColor    = 'text-[var(--ss-t2)]'
+  const muteColor     = 'text-[var(--ss-t3)]'
+  const progressTrack = 'bg-[var(--ss-surface-3)]'
+  const siteColor     = 'text-[var(--ss-t1)]'
+  const retryColor    = 'text-[var(--ss-t3)] hover:text-[var(--ss-t1)]'
 
   return (
     <div
-      className={`flex flex-col gap-3 rounded-lg overflow-hidden ${outerBg}`}
+      className={`flex flex-col gap-3 rounded-ss-lg overflow-hidden ${outerBg}`}
       style={{ aspectRatio: '16/9', justifyContent: 'center', padding: '20px 24px' }}
     >
       {/* ── サービス名 + URL ── */}
       <div className="flex items-center gap-2 flex-wrap">
-        <MIcon name="movie" size={16} className="text-blue-400 shrink-0" />
+        <MIcon name="movie" size={16} className="text-[var(--ss-brand)] shrink-0" />
         <span className={`text-sm font-semibold ${siteColor}`}>{siteName}</span>
         <span className={`text-xs ${muteColor}`}>{t('auto.StreamingDownloadPanel.k1')}</span>
       </div>
 
       <div
-        className={`text-xs font-mono rounded px-2 py-1.5 truncate ${urlBoxBg}`}
-        style={{ color: urlColor }}
+        className={`text-xs font-mono rounded-ss-sm px-2 py-1.5 truncate text-[var(--ss-t1)] ${urlBoxBg}`}
       >
         {url}
       </div>
@@ -264,7 +252,7 @@ export function StreamingDownloadPanel({
           <MIcon name="wifi_off" size={13} className="shrink-0 mt-0.5" />
           <span>
             <strong>{t('auto.StreamingDownloadPanel.k2')}</strong>{t('auto.StreamingDownloadPanel.ffmpeg_warn1')}
-            {t('auto.StreamingDownloadPanel.ffmpeg_warn2_pre')}<code className={`px-1 rounded ${isLight ? 'bg-gray-200' : 'bg-gray-700'}`}>{t('auto.StreamingDownloadPanel.ffmpeg_cmd')}</code>{t('auto.StreamingDownloadPanel.ffmpeg_warn2_post')}
+            {t('auto.StreamingDownloadPanel.ffmpeg_warn2_pre')}<code className="px-1 rounded-ss-sm bg-[var(--ss-surface-2)]">{t('auto.StreamingDownloadPanel.ffmpeg_cmd')}</code>{t('auto.StreamingDownloadPanel.ffmpeg_warn2_post')}
           </span>
         </div>
       )}
@@ -306,8 +294,8 @@ export function StreamingDownloadPanel({
         <div className="space-y-1.5">
           <div className={`flex items-center justify-between text-xs ${labelColor}`}>
             <div className="flex items-center gap-1.5">
-              <MIcon name="progress_activity" size={12} className="animate-spin text-blue-400" />
-              <span>
+              <MIcon name="progress_activity" size={12} className="animate-spin text-[var(--ss-brand)]" />
+              <span className="ss-num">
                 {dlState === 'starting'
                   ? t('auto.StreamingDownloadPanel.starting')
                   : dlState === 'processing'
@@ -315,7 +303,7 @@ export function StreamingDownloadPanel({
                   : progress.percent}
               </span>
             </div>
-            <div className={`flex gap-3 ${muteColor}`}>
+            <div className={`flex gap-3 ss-num ${muteColor}`}>
               {progress.speed && <span>{progress.speed}</span>}
               {progress.eta && dlState === 'downloading' && <span>{t('auto.StreamingDownloadPanel.remaining', { eta: progress.eta })}</span>}
             </div>
@@ -324,10 +312,10 @@ export function StreamingDownloadPanel({
             <div
               className={`h-full rounded-full transition-all duration-700 ${
                 dlState === 'processing'
-                  ? 'bg-yellow-500 w-full animate-pulse'
+                  ? 'bg-[var(--ss-warn)] w-full animate-pulse'
                   : dlState === 'starting'
-                  ? 'bg-blue-500 w-[3%]'
-                  : 'bg-blue-500'
+                  ? 'bg-[var(--ss-brand)] w-[3%]'
+                  : 'bg-[var(--ss-brand)]'
               }`}
               style={dlState === 'downloading' ? { width: `${percentNum}%` } : undefined}
             />

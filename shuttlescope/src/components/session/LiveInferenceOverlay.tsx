@@ -17,17 +17,18 @@ interface Props {
 
 function ConfidenceBar({ value }: { value: number }) {
   const pct = Math.round(value * 100)
-  const color = pct >= 70 ? 'bg-green-500' : pct >= 40 ? 'bg-yellow-500' : 'bg-red-500'
+  const color = pct >= 70 ? 'bg-[var(--ss-success)]' : pct >= 40 ? 'bg-[var(--ss-warn)]' : 'bg-[var(--ss-bad)]'
   return (
     <div className="flex items-center gap-1">
-      <div className="flex-1 h-1 bg-gray-700 rounded-full overflow-hidden">
+      <div className="flex-1 h-1 bg-[var(--ss-surface-3)] rounded-full overflow-hidden">
         <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
       </div>
-      <span className="text-[10px] text-gray-400 w-7">{pct}%</span>
+      <span className="text-[10px] text-[var(--ss-t3)] w-7">{pct}%</span>
     </div>
   )
 }
 
+// NOTE: per-frame overlay マーカー — リアルタイム描画要素なので新規 transition は追加しない。
 function ZoneMarker({ candidate }: { candidate: LiveInferenceCandidate }) {
   if (!candidate.zone || !candidate.x_norm || !candidate.y_norm) return null
   const x = candidate.x_norm * 100
@@ -62,33 +63,33 @@ export function LiveInferenceOverlay({ videoRef, sessionCode, className = '' }: 
         {/* 推論オン/オフトグル */}
         <button
           onClick={() => setEnabled((v) => !v)}
-          className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-colors border ${
+          className={`flex items-center gap-1 px-2 py-1 rounded-ss-sm text-[10px] font-medium transition-colors duration-base ease-out border ${
             enabled
-              ? 'bg-yellow-500 text-black border-yellow-400 hover:bg-yellow-400'
-              : 'bg-black/70 border-gray-500 hover:bg-gray-800/90'
+              ? 'bg-[var(--ss-brand)] text-white border-transparent hover:bg-[var(--ss-brand-hover)]'
+              : 'bg-black/70 border-[var(--ss-border-strong)] hover:bg-black/85 text-white'
           }`}
         >
           {enabled ? <MIcon name="bolt" size={10} /> : <MIcon name="flash_off" size={10} />}
-          <span style={{ color: enabled ? 'inherit' : 'white' }}>
+          <span>
             {enabled ? t('live_inference.enabled') : t('live_inference.disabled')}
           </span>
         </button>
 
         {/* 推論結果表示 */}
         {enabled && (
-          <div className="bg-gray-900/80 rounded px-2 py-1.5 min-w-24">
+          <div className="bg-black/80 rounded-ss-sm px-2 py-1.5 min-w-24">
             {!candidate || !candidate.available ? (
-              <p className="text-[9px] text-gray-500">
+              <p className="text-[9px] text-white/60">
                 {inferring
                   ? t('live_inference.buffering')
                   : t('live_inference.model_unavailable')}
               </p>
             ) : candidate.buffering ? (
-              <p className="text-[9px] text-yellow-400">{t('live_inference.buffering')}</p>
+              <p className="text-[9px] text-[var(--ss-warn)]">{t('live_inference.buffering')}</p>
             ) : (
               <>
-                <p className="text-[9px] text-gray-400 mb-0.5">{t('live_inference.candidate_zone')}</p>
-                <p className="text-xs font-mono text-yellow-300 mb-0.5">
+                <p className="text-[9px] text-white/60 mb-0.5">{t('live_inference.candidate_zone')}</p>
+                <p className="text-xs font-mono text-white mb-0.5">
                   {candidate.zone ?? t('live_inference.no_candidate')}
                 </p>
                 <ConfidenceBar value={candidate.confidence} />

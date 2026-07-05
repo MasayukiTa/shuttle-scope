@@ -131,12 +131,12 @@ export function YouTubeLivePanel({ matchId }: { matchId?: number } = {}) {
 
   return (
     <div className="space-y-4">
-      <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+      <h3 className="text-base font-semibold text-[var(--ss-t1)]">
         {t('youtubeLive.title')}
       </h3>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+        <label className="block text-sm font-medium text-[var(--ss-t2)] mb-1">
           {t('youtubeLive.urlLabel')}
         </label>
         <input
@@ -145,25 +145,25 @@ export function YouTubeLivePanel({ matchId }: { matchId?: number } = {}) {
           onChange={(e) => setUrl(e.target.value)}
           placeholder={t('youtubeLive.urlPlaceholder')}
           disabled={isRecording || loading}
-          className="w-full rounded-md border border-gray-300 dark:border-gray-600
-                     bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100
-                     px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500
-                     disabled:opacity-50"
+          className="w-full rounded-ss-md border border-[var(--ss-border-strong)]
+                     bg-[var(--ss-surface-1)] text-[var(--ss-t1)]
+                     px-3 py-2 text-base focus:outline-none focus:border-[var(--ss-brand)] focus:ring-[3px] focus:ring-[var(--ss-focus-ring)]
+                     disabled:opacity-50 transition-colors duration-fast ease-out"
         />
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+        <label className="block text-sm font-medium text-[var(--ss-t2)] mb-1">
           {t('youtubeLive.cookieBrowserLabel')}
         </label>
         <select
           value={cookieBrowser}
           onChange={(e) => setCookieBrowser(e.target.value)}
           disabled={isRecording || loading}
-          className="rounded-md border border-gray-300 dark:border-gray-600
-                     bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100
-                     px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500
-                     disabled:opacity-50"
+          className="rounded-ss-md border border-[var(--ss-border-strong)]
+                     bg-[var(--ss-surface-1)] text-[var(--ss-t1)]
+                     px-3 py-2 text-base focus:outline-none focus:border-[var(--ss-brand)] focus:ring-[3px] focus:ring-[var(--ss-focus-ring)]
+                     disabled:opacity-50 transition-colors duration-fast ease-out"
         >
           <option value="">{t('youtubeLive.cookieBrowserNone')}</option>
           {COOKIE_BROWSERS.map((b) => (
@@ -172,7 +172,7 @@ export function YouTubeLivePanel({ matchId }: { matchId?: number } = {}) {
             </option>
           ))}
         </select>
-        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+        <p className="mt-1 text-xs text-[var(--ss-t3)]">
           {t('youtubeLive.cookieBrowserHint')}
         </p>
       </div>
@@ -182,8 +182,8 @@ export function YouTubeLivePanel({ matchId }: { matchId?: number } = {}) {
           <button
             onClick={handleStart}
             disabled={loading || !url.trim()}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium
-                       rounded-md disabled:opacity-50 transition-colors"
+            className="px-4 py-2 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white text-sm font-medium
+                       rounded-ss-md disabled:opacity-50 transition-colors duration-base ease-out"
           >
             {loading ? t('youtubeLive.probing') : t('youtubeLive.startRecording')}
           </button>
@@ -191,8 +191,8 @@ export function YouTubeLivePanel({ matchId }: { matchId?: number } = {}) {
           <button
             onClick={handleStop}
             disabled={loading}
-            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium
-                       rounded-md disabled:opacity-50 transition-colors"
+            className="px-4 py-2 bg-[var(--ss-bad)] hover:opacity-90 text-white text-sm font-medium
+                       rounded-ss-md disabled:opacity-50 transition-colors duration-base ease-out"
           >
             {t('youtubeLive.stopRecording')}
           </button>
@@ -200,19 +200,19 @@ export function YouTubeLivePanel({ matchId }: { matchId?: number } = {}) {
       </div>
 
       {errorMsg && (
-        <div className="rounded-md bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3">
-          <p className="text-sm text-red-700 dark:text-red-400">{errorMsg}</p>
+        <div className="rounded-ss-md bg-[var(--ss-danger-tint)] border border-[var(--ss-danger-border)] p-3">
+          <p className="text-sm text-[var(--ss-bad)]">{errorMsg}</p>
         </div>
       )}
 
       {job && (
-        <div className="rounded-md border border-gray-200 dark:border-gray-700
-                        bg-gray-50 dark:bg-gray-800/50 p-4 space-y-2">
+        <div className="rounded-ss-md border border-[var(--ss-border)]
+                        bg-[var(--ss-surface-2)] p-4 space-y-2">
           <div className="flex items-center gap-2">
             {isRecording && (
-              <span className="inline-block w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+              <span className="inline-block w-2 h-2 rounded-full bg-[var(--ss-bad)] animate-pulse" />
             )}
-            <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+            <span className="text-sm font-medium text-[var(--ss-t1)]">
               {job.status === 'recording'
                 ? t('youtubeLive.recording')
                 : job.status === 'probing'
@@ -221,32 +221,32 @@ export function YouTubeLivePanel({ matchId }: { matchId?: number } = {}) {
                     ? t('youtubeLive.stopped')
                     : t('youtubeLive.error')}
             </span>
-            <span className="text-xs text-gray-500 dark:text-gray-400">
+            <span className="text-xs text-[var(--ss-t3)]">
               — {methodLabel(job.method)}
             </span>
           </div>
 
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600 dark:text-gray-400">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-[var(--ss-t2)]">
             <span>{t('youtubeLive.fileSize')}:</span>
-            <span>{formatBytes(job.file_size)}</span>
+            <span className="ss-num">{formatBytes(job.file_size)}</span>
             <span>{t('youtubeLive.elapsed')}:</span>
-            <span>{formatElapsed(job.elapsed)}</span>
+            <span className="ss-num">{formatElapsed(job.elapsed)}</span>
             <span>{t('youtubeLive.jobId')}:</span>
-            <span className="font-mono truncate">{job.job_id}</span>
+            <span className="font-mono truncate ss-num">{job.job_id}</span>
           </div>
 
           {job.method === 'drm' && (
-            <p className="text-xs text-blue-600 dark:text-blue-400">
+            <p className="text-xs text-[var(--ss-brand)]">
               {t('youtubeLive.drmCapturing')}
             </p>
           )}
 
           {job.error && (
-            <p className="text-xs text-red-600 dark:text-red-400">{job.error}</p>
+            <p className="text-xs text-[var(--ss-bad)]">{job.error}</p>
           )}
 
           {job.status === 'stopped' && job.out_path && (
-            <p className="text-xs text-gray-500 dark:text-gray-500 break-all">
+            <p className="text-xs text-[var(--ss-t3)] break-all">
               {t('youtubeLive.outPath')}: {job.out_path}
             </p>
           )}
