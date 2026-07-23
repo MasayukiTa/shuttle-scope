@@ -55,7 +55,7 @@ pytest-xdist>=3.8.0            # 2026-05-08: CI 並列化 (`-n auto`) で 45 分
 pytest-timeout>=2.4.0        # 2026-05-11: WS テスト 54 分 hang → CI 60 分 timeout 事故防止
 
 # ── P3: TrackNet / 推論ランタイム ────────────────────────────────
-opencv-python>=4.9.0
+opencv-python>=4.13.0.92
 # OpenVINO アクセラレーション（Intel GPU / iGPU 対応）
 openvino>=2026.1.0; sys_platform != 'unsupported'
 # TensorFlow / tf2onnx: TrackNet の ONNX エクスポート時のみ必要
