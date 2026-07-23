@@ -481,7 +481,7 @@ export function DashboardShell() {
             <div className="px-6 pt-1 pb-8">
               <ErrorBoundary>
                 <Routes>
-                  <Route path="/" element={<Navigate to="overview" replace />} />
+                  <Route path="/" element={<Navigate to="/dashboard/overview" replace />} />
                   <Route
                     path="overview"
                     element={
