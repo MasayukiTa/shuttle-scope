@@ -102,6 +102,8 @@ COMPONENTS = [
     {"key": "tunnel",   "ja": "公開トンネル",     "en": "Public tunnel",    "sev_down": "critical", "sev_degraded": "major"},
     {"key": "gpu",      "ja": "GPU",              "en": "GPU",              "sev_down": "major",    "sev_degraded": "minor"},
     {"key": "worker",   "ja": "解析ワーカー",     "en": "Analysis worker",  "sev_down": "major",    "sev_degraded": "minor"},
+    # 時計ズレは TOTP/MFA とトークン有効期限の前提。ずれるとログイン不能になる。
+    {"key": "clock",    "ja": "サーバ時刻",       "en": "Server clock",     "sev_down": "critical", "sev_degraded": "minor"},
 ]
 _COMP_BY_KEY = {c["key"]: c for c in COMPONENTS}
 COMPONENT_KEYS = [c["key"] for c in COMPONENTS]
@@ -113,6 +115,7 @@ _AUTO_TEXT = {
     "tunnel":   ("公開トンネルに接続できません",     "外部からのアクセスが一時的に不可となっています。"),
     "gpu":      ("GPU が利用できません",             "解析処理が一時的に利用できない状態です。"),
     "worker":   ("解析ワーカーが応答しません",        "解析ジョブの処理が一時的に滞っています。"),
+    "clock":    ("サーバ時刻がずれています",          "ログイン (二段階認証) が一時的に失敗する場合があります。"),
 }
 
 
@@ -233,12 +236,116 @@ def _parse_ha_connections(metrics_text: str) -> Optional[int]:
     return total
 
 
+# ── 時計ズレ (clock) ────────────────────────────────────────────────────────
+#
+# 背景 (障害): 2026-07 に Windows Time サービス (w32time) が停止し、サーバ時計が
+# TOTP の検証窓 (±30 秒) を外れて admin が MFA でログインできなくなった。
+# 時計がずれても「サービスは全部緑」で何の警告も出ず、原因判明まで時間を要した。
+#
+# 判定は 2 系統:
+#   1) SNTP で外部の基準時刻と比較したオフセット (本命。実際に壊れる量そのもの)
+#   2) w32time サービスの稼働状態 (Windows のみ。NTP に届かなくても検知できる)
+
+_NTP_SERVERS = ("time.cloudflare.com", "ntp.nict.jp", "pool.ntp.org")
+_NTP_TIMEOUT_SEC = 2.0
+# TOTP の窓は ±30 秒 (前後 1 ステップ許容)。余裕を持って警告を出す。
+_CLOCK_WARN_SEC = 5.0     # これを超えたら degraded
+_CLOCK_DOWN_SEC = 25.0    # これを超えたら TOTP が落ち始める = down
+
+
+def _sntp_offset_sec(server: str, timeout: float = _NTP_TIMEOUT_SEC) -> Optional[float]:
+    """SNTP (RFC 4330) でサーバとのオフセット秒を返す。失敗時 None。
+
+    外部ライブラリを足さずに済むよう 48 byte のパケットを直接組む。
+    戻り値 > 0 はローカル時計が進んでいることを意味する。
+    """
+    import socket
+    import struct as _struct
+
+    # LI=0, VN=3, Mode=3 (client)
+    packet = b"\x1b" + 47 * b"\0"
+    # NTP epoch (1900-01-01) と UNIX epoch (1970-01-01) の差
+    NTP_DELTA = 2_208_988_800
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.settimeout(timeout)
+        t0 = time.time()
+        sock.sendto(packet, (server, 123))
+        data, _ = sock.recvfrom(48)
+        t3 = time.time()
+    except Exception:
+        return None
+    finally:
+        sock.close()
+    if len(data) < 48:
+        return None
+    # transmit timestamp = offset 40..47 (秒 32bit + 小数 32bit)
+    secs, frac = _struct.unpack("!II", data[40:48])
+    server_time = (secs - NTP_DELTA) + frac / 2 ** 32
+    # 往復遅延の半分を引いて片道分を補正する
+    rtt = t3 - t0
+    return (t0 + rtt / 2.0) - server_time
+
+
+def _w32time_running() -> Optional[bool]:
+    """Windows Time サービスが動いているか。Windows 以外 / 判定不能なら None。"""
+    if os.name != "nt":
+        return None
+    try:
+        import subprocess
+        out = subprocess.run(
+            ["sc", "query", "w32time"],
+            capture_output=True, text=True, timeout=5,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except Exception:
+        return None
+    if out.returncode != 0:
+        return None
+    return "RUNNING" in (out.stdout or "").upper()
+
+
+def _check_clock() -> tuple[str, Optional[float], Optional[str], Optional[float]]:
+    """時計ズレ。TOTP/MFA と署名検証の前提なので、ずれ始めた段階で気付けるようにする。"""
+    offset: Optional[float] = None
+    for server in _NTP_SERVERS:
+        offset = _sntp_offset_sec(server)
+        if offset is not None:
+            break
+
+    svc_running = _w32time_running()
+
+    if offset is None:
+        # NTP に到達できない環境 (UDP 123 遮断など) でも、時刻同期サービスが
+        # 落ちていることは分かる。落ちていれば必ず degraded にする
+        # (「測れないので緑」で 24 日気付かなかったのが前回の障害)。
+        if svc_running is False:
+            return DEGRADED, None, "時刻同期サービスが停止しています", 0.5
+        return OPERATIONAL, None, "オフセット測定不可", None
+
+    abs_off = abs(offset)
+    if abs_off >= _CLOCK_DOWN_SEC:
+        status = DOWN
+    elif abs_off >= _CLOCK_WARN_SEC or svc_running is False:
+        status = DEGRADED
+    else:
+        status = OPERATIONAL
+    # detail は無認証の公開ステータスページに出るため、精密なオフセットを
+    # そのまま晒さず秒単位に丸める (metric 側に生値は残る)。
+    detail = "同期済み" if abs_off < 1.0 else f"ズレ 約{offset:+.0f}秒"
+    if svc_running is False:
+        detail += " / 時刻同期サービス停止"
+    sev = _piecewise_severity(abs_off, 1.0, _CLOCK_WARN_SEC, _CLOCK_DOWN_SEC)
+    return status, float(offset), detail, sev
+
+
 _CHECKS = {
     "api": lambda db: _check_api(),
     "database": lambda db: _check_database(db),
     "tunnel": lambda db: _check_tunnel(),
     "gpu": lambda db: _check_gpu(),
     "worker": lambda db: _check_worker(),
+    "clock": lambda db: _check_clock(),
 }
 
 

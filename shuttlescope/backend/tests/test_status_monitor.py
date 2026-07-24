@@ -100,3 +100,70 @@ def test_evaluate_and_record_writes_and_prunes():
     sm.evaluate_and_record(db, now)
     assert db.query(HealthSample).filter(HealthSample.sampled_at == now).count() == len(sm.COMPONENT_KEYS)
     assert db.query(HealthSample).filter(HealthSample.sampled_at == old).count() == 0  # prune
+
+
+# ── 時計ズレ監視 (2026-07 の MFA 締め出し障害の再発防止) ────────────────────
+#
+# w32time が停止してサーバ時計が TOTP の窓 (±30 秒) を外れ、admin がログイン
+# できなくなったが、監視は全て緑のままで何の手掛かりも出なかった。
+
+def test_clock_operational_when_offset_small(monkeypatch):
+    from backend.services import status_monitor as sm
+    monkeypatch.setattr(sm, "_sntp_offset_sec", lambda server, timeout=2.0: 0.4)
+    monkeypatch.setattr(sm, "_w32time_running", lambda: True)
+    status, metric, detail, sev = sm._check_clock()
+    assert status == sm.OPERATIONAL
+    assert metric == 0.4
+    assert sev is not None and sev < 1.0 / 3.0
+
+
+def test_clock_degraded_when_drifting(monkeypatch):
+    """TOTP がまだ通る範囲でも、ずれ始めたら警告する。"""
+    from backend.services import status_monitor as sm
+    monkeypatch.setattr(sm, "_sntp_offset_sec", lambda server, timeout=2.0: 9.0)
+    monkeypatch.setattr(sm, "_w32time_running", lambda: True)
+    status, _metric, detail, _sev = sm._check_clock()
+    assert status == sm.DEGRADED
+    assert "9" in detail
+
+
+def test_clock_down_when_offset_breaks_totp(monkeypatch):
+    """±30 秒の窓を超える手前で down 扱いにする (実際の締め出し条件)。"""
+    from backend.services import status_monitor as sm
+    monkeypatch.setattr(sm, "_sntp_offset_sec", lambda server, timeout=2.0: -45.0)
+    monkeypatch.setattr(sm, "_w32time_running", lambda: True)
+    status, metric, _detail, sev = sm._check_clock()
+    assert status == sm.DOWN
+    assert metric == -45.0
+    assert sev == 1.0
+
+
+def test_clock_degraded_when_time_service_stopped_even_without_ntp(monkeypatch):
+    """NTP に到達できなくても、時刻同期サービスの停止だけで検知できること。
+
+    「測れないので緑」にしてしまうと、前回と同じく無症状のまま放置される。
+    """
+    from backend.services import status_monitor as sm
+    monkeypatch.setattr(sm, "_sntp_offset_sec", lambda server, timeout=2.0: None)
+    monkeypatch.setattr(sm, "_w32time_running", lambda: False)
+    status, _metric, detail, _sev = sm._check_clock()
+    assert status == sm.DEGRADED
+    assert "時刻同期" in detail
+
+
+def test_clock_stays_operational_when_unmeasurable(monkeypatch):
+    """NTP 遮断環境で誤検知しないこと (サービスは動いている場合)。"""
+    from backend.services import status_monitor as sm
+    monkeypatch.setattr(sm, "_sntp_offset_sec", lambda server, timeout=2.0: None)
+    monkeypatch.setattr(sm, "_w32time_running", lambda: True)
+    status, metric, _detail, sev = sm._check_clock()
+    assert status == sm.OPERATIONAL
+    assert metric is None and sev is None
+
+
+def test_clock_component_is_registered():
+    from backend.services import status_monitor as sm
+    assert "clock" in sm.COMPONENT_KEYS
+    assert "clock" in sm._CHECKS
+    assert "clock" in sm._AUTO_TEXT
+    assert sm._COMP_BY_KEY["clock"]["sev_down"] == "critical"
