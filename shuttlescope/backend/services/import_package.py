@@ -169,6 +169,11 @@ _FORCED_STRIP_COLUMNS = {
     # MFA 解除 / 強制 admin 化 / activate / 検証済 email スプーフィング を一括防止。
     "mfa_secret",
     "totp_secret",        # 重複だが allowlist 側にある場合の防御深化
+    # MfaRecoveryCode.code_hash / used_at。現在 _TABLE_MAP に無いため dormant だが、
+    # import 経由で書けると攻撃者が自前のリカバリコードを仕込んで MFA を無効化できる
+    # (used_at を書ければ正規ユーザのコードを枯らすことも可能)。
+    "code_hash",
+    "used_at",
     "email_verified",
     "email_verified_at",
     "is_active",

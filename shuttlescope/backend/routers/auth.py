@@ -741,6 +741,23 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
         raise
 
 
+def _mfa_challenge_if_enabled(user: User, db: Session, ip: Optional[str]):
+    """MFA 有効ユーザにはフル JWT を渡さず、プリ認証トークンを返す。
+
+    MFA 有効なら LoginResponse(mfa_required=True) を、無効なら None を返す。
+
+    このゲートは全ての「秘密情報を検証してトークンを発行する」grant_type から
+    呼ぶこと。credential だけに実装されていた結果、password / pin grant では
+    MFA が完全に素通りしていた (= username+password を知る攻撃者が
+    grant_type を変えるだけで MFA を迂回できた)。
+    """
+    if not getattr(user, "totp_enabled", False):
+        return None
+    mfa_token = create_access_token(user.id, "mfa_pending", hours=5 / 60)
+    log_access(db, "login_mfa_required", user_id=user.id, ip_addr=ip)
+    return LoginResponse(mfa_required=True, mfa_token=mfa_token)
+
+
 def _login_impl(req: "LoginRequest", request: Request, db: Session, _login_t0: float):
     ip = _get_ip(request)
     _check_ip_rate_limit(ip)
@@ -777,10 +794,9 @@ def _login_impl(req: "LoginRequest", request: Request, db: Session, _login_t0: f
         _on_login_success(user, db)
 
         # MFA 有効ならプリ認証トークンを返す
-        if user.totp_enabled:
-            mfa_token = create_access_token(user.id, "mfa_pending", hours=5 / 60)
-            log_access(db, "login_mfa_required", user_id=user.id, ip_addr=ip)
-            return LoginResponse(mfa_required=True, mfa_token=mfa_token)
+        challenge = _mfa_challenge_if_enabled(user, db, ip)
+        if challenge is not None:
+            return challenge
 
         token = create_access_token(user.id, user.role, user.player_id, team_name=user.team_name, team_id=user.team_id)
         log_access(db, "login", user_id=user.id, ip_addr=ip)
@@ -812,6 +828,11 @@ def _login_impl(req: "LoginRequest", request: Request, db: Session, _login_t0: f
         if not _verify_password(req.password, user.hashed_credential):
             _on_login_failure(user, db, ip, "wrong_password")
         _on_login_success(user, db)
+        # credential grant と同様に MFA を要求する (grant_type を変えるだけで
+        # MFA を迂回できてはならない)。
+        challenge = _mfa_challenge_if_enabled(user, db, ip)
+        if challenge is not None:
+            return challenge
         token = create_access_token(user.id, user.role, user.player_id, team_name=user.team_name, team_id=user.team_id)
         log_access(db, "login", user_id=user.id, ip_addr=ip)
         return LoginResponse(
@@ -872,6 +893,10 @@ def _login_impl(req: "LoginRequest", request: Request, db: Session, _login_t0: f
         if user.hashed_credential and not _verify_password(req.pin or "", user.hashed_credential):
             _on_login_failure(user, db, ip, "wrong_pin")
         _on_login_success(user, db)
+        # player ロールでも MFA を有効にできるため、pin grant でも同じゲートを通す。
+        challenge = _mfa_challenge_if_enabled(user, db, ip)
+        if challenge is not None:
+            return challenge
         token = create_access_token(user.id, user.role, user.player_id, team_name=user.team_name, team_id=user.team_id)
         log_access(db, "login", user_id=user.id, ip_addr=ip)
         return LoginResponse(
