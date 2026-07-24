@@ -4006,7 +4006,12 @@
       "mfa_prompt": "Enter the 6-digit code shown in your authenticator app (iOS Passwords, Google Authenticator, etc.).",
       "mfa_code_label": "Verification code (6 digits)",
       "mfa_submit": "Verify and continue",
-      "mfa_cancel": "Back to login"
+      "mfa_cancel": "Back to login",
+      "mfa_use_recovery": "Can't use your authenticator? Use a recovery code",
+      "mfa_use_totp": "Back to entering a verification code",
+      "mfa_recovery_prompt": "Enter one of the recovery codes you saved when you set up MFA. The code you use will be invalidated.",
+      "mfa_recovery_label": "Recovery code",
+      "mfa_recovery_format_error": "A recovery code is 16 characters (e.g. XXXX-XXXX-XXXX-XXXX)"
     },
     "MatchListPage": {
       "k1": "Registered",

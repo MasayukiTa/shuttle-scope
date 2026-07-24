@@ -6,6 +6,7 @@ import hmac as _hmac_mod
 import logging
 import os
 import re as _re
+import secrets as _secrets
 import struct
 import threading
 import time
@@ -17,12 +18,14 @@ from typing import Optional
 
 import bcrypt as _bcrypt_lib
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field, StrictBool, field_validator
+from pydantic import BaseModel, Field, StrictBool, field_validator, model_validator
 from sqlalchemy.orm import Session
 
 from backend.config import settings
 from backend.db.database import get_db
-from backend.db.models import Player, PlayerPageAccess, Team, User, UserConsent
+from backend.db.models import (
+    MfaRecoveryCode, Player, PlayerPageAccess, Team, User, UserConsent,
+)
 
 # llm = 汎用 LLM チャット (/#/llm)、badminton = バドミントン解析アプリ。
 # admin が player_page_access 経由でユーザ単位に付与する (自己付与不可)。
@@ -178,6 +181,128 @@ def _totp_uri(secret: str, username: str) -> str:
     return (
         f"otpauth://totp/{urllib.parse.quote(issuer)}:{urllib.parse.quote(username)}"
         f"?secret={secret}&issuer={urllib.parse.quote(issuer)}&algorithm=SHA1&digits=6&period=30"
+    )
+
+
+# ── MFA リカバリコード ───────────────────────────────────────────────────────
+#
+# 認証アプリの紛失やサーバ/端末の時計ズレで TOTP が通らなくなった際の、
+# 唯一の自力復旧手段。2026-07 の締め出し障害 (w32time 停止による時計ズレ) では
+# この手段が存在せず、DB を直接書き換えるしか復旧方法が無かった。
+
+# base32 準拠 (0/1/8/9 を含まない = 目視誤読しにくい)
+_RECOVERY_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+_RECOVERY_CODE_LEN = 16          # 16 文字 × 5bit = 80bit
+_RECOVERY_CODE_COUNT = 10        # 1 回の発行で 10 本
+_RECOVERY_GROUP = 4              # XXXX-XXXX-XXXX-XXXX 表示
+
+
+def _generate_recovery_code() -> str:
+    """80bit の使い捨てコードを XXXX-XXXX-XXXX-XXXX 形式で返す。"""
+    raw = "".join(_secrets.choice(_RECOVERY_ALPHABET) for _ in range(_RECOVERY_CODE_LEN))
+    return "-".join(
+        raw[i: i + _RECOVERY_GROUP] for i in range(0, _RECOVERY_CODE_LEN, _RECOVERY_GROUP)
+    )
+
+
+def _normalize_recovery_code(code: str) -> str:
+    """入力揺れ (小文字・ハイフン有無・空白) を吸収して比較用に正規化する。"""
+    if not code:
+        return ""
+    return "".join(ch for ch in code.upper() if ch in _RECOVERY_ALPHABET)
+
+
+def _hash_recovery_code(code: str) -> str:
+    """正規化済みコードの SHA-256 hex を返す。
+
+    パスワードと違いコードは 80bit の一様乱数なので、辞書攻撃・レインボー
+    テーブルいずれも成立しない。salt 付き低速ハッシュ (bcrypt) にすると
+    ログイン 1 回あたり発行数ぶんの検証が必要になり CPU 消費型 DoS を招くため、
+    ハッシュ直引きできる高速ハッシュを選ぶ。
+    """
+    return hashlib.sha256(_normalize_recovery_code(code).encode("utf-8")).hexdigest()
+
+
+def _issue_recovery_codes(db: Session, user_id: int) -> list[str]:
+    """既存コードを全て破棄し、新しいコード一式を発行して平文を返す。
+
+    平文は返り値としてのみ存在し、DB にはハッシュしか残らない。
+    """
+    db.query(MfaRecoveryCode).filter(MfaRecoveryCode.user_id == user_id).delete(
+        synchronize_session=False
+    )
+    codes: list[str] = []
+    for _ in range(_RECOVERY_CODE_COUNT):
+        code = _generate_recovery_code()
+        codes.append(code)
+        db.add(
+            MfaRecoveryCode(
+                user_id=user_id,
+                code_hash=_hash_recovery_code(code),
+                created_at=datetime.utcnow(),
+            )
+        )
+    db.commit()
+    return codes
+
+
+def _consume_recovery_code(db: Session, user_id: int, code: str, ip: Optional[str]) -> bool:
+    """リカバリコードを 1 本消費する。成功なら True。
+
+    二重使用防止のため、`used_at IS NULL` を条件に含めた UPDATE の
+    rowcount で判定する (SELECT してから UPDATE すると、同一コードの
+    同時 2 リクエストが両方成功しうる)。
+    """
+    normalized = _normalize_recovery_code(code)
+    # 長さが合わない入力は DB を叩くまでもなく棄却する。
+    if len(normalized) != _RECOVERY_CODE_LEN:
+        return False
+    code_hash = _hash_recovery_code(normalized)
+    updated = (
+        db.query(MfaRecoveryCode)
+        .filter(
+            MfaRecoveryCode.user_id == user_id,
+            MfaRecoveryCode.code_hash == code_hash,
+            MfaRecoveryCode.used_at.is_(None),
+        )
+        .update(
+            {"used_at": datetime.utcnow(), "used_ip": ip},
+            synchronize_session=False,
+        )
+    )
+    db.commit()
+    return updated > 0
+
+
+def _emit_recovery_security_event(
+    user_id: int, ip: Optional[str], detail: str, severity: str = "warning"
+) -> None:
+    """リカバリコードの使用/再発行を security_events に残す。
+
+    MFA を迂回できる操作なので、正規利用でも「いつ・どこから」を追える必要が
+    ある (アカウント乗っ取りの初動がリカバリコード使用であることは多い)。
+    """
+    try:
+        from backend.utils.security_log import emit_security_event
+        emit_security_event(
+            "mfa_recovery",
+            severity=severity,
+            ip_addr=ip,
+            user_id=user_id,
+            details={"detail": detail},
+        )
+    except Exception:  # noqa: BLE001 - 監査記録の失敗で認証を落とさない
+        logger.warning("failed to emit mfa_recovery security event", exc_info=True)
+
+
+def _recovery_codes_remaining(db: Session, user_id: int) -> int:
+    return (
+        db.query(MfaRecoveryCode)
+        .filter(
+            MfaRecoveryCode.user_id == user_id,
+            MfaRecoveryCode.used_at.is_(None),
+        )
+        .count()
     )
 
 
@@ -500,7 +625,29 @@ class MfaLoginRequest(BaseModel):
     # 短命 JWT (mfa_pending) を想定。署名込み JWT は 200〜400 byte 程度なので
     # 1024 で十分。code は 6 桁数字。
     mfa_token: str = Field(..., max_length=1024)
-    code: str = Field(..., max_length=16)
+    code: Optional[str] = Field(None, max_length=16)
+    # 認証アプリを失った / 端末の時計がずれた場合の代替。
+    # 表示形式は XXXX-XXXX-XXXX-XXXX (16 文字 + ハイフン 3)。区切り文字の
+    # 揺れを許容するため上限は緩めに 32。
+    recovery_code: Optional[str] = Field(None, max_length=32)
+
+    @model_validator(mode="after")
+    def _exactly_one_credential(self):
+        # 両方同時指定を許すと「TOTP が通らなければリカバリコードも試す」形の
+        # 1 リクエスト 2 回試行になり、ブルートフォース計数が実質半分になる。
+        if bool(self.code) == bool(self.recovery_code):
+            raise ValueError("code または recovery_code のいずれか一方を指定してください")
+        return self
+
+
+class MfaRecoveryCodesResponse(BaseModel):
+    """リカバリコードの平文を返す唯一のタイミングの応答。
+
+    平文は DB に保存しないため、この応答を逃すと再発行しか復旧手段がない。
+    """
+    success: bool = True
+    recovery_codes: list[str]
+    message: str = ""
 
 
 # ── ブートストラップ ─────────────────────────────────────────────────────────
@@ -758,11 +905,25 @@ def mfa_login(req: MfaLoginRequest, request: Request, db: Session = Depends(get_
         raise HTTPException(status_code=401, detail="MFAが有効化されていません")
     # MFA completion must re-check lockout state before issuing a token.
     _check_lockout(user)
-    if not _verify_totp(user.totp_secret, req.code):
-        _record_mfa_failure(user_id)
-        raise HTTPException(status_code=401, detail="認証コードが無効です")
+    if req.recovery_code:
+        # 認証アプリ紛失 / 時計ズレ時の復旧経路。コードは単回使用で消費される。
+        if not _consume_recovery_code(db, user_id, req.recovery_code, ip):
+            _record_mfa_failure(user_id)
+            raise HTTPException(status_code=401, detail="リカバリコードが無効か、既に使用済みです")
+        remaining = _recovery_codes_remaining(db, user_id)
+        # 「誰かがリカバリコードを使った」は不正アクセスの兆候にもなるため、
+        # 通常ログインとは区別して監査に残す。
+        log_access(db, "login_mfa_recovery_used", user_id=user.id, ip_addr=ip)
+        _emit_recovery_security_event(
+            user.id, ip, f"MFA recovery code consumed (remaining={remaining})"
+        )
+    else:
+        if not _verify_totp(user.totp_secret, req.code or ""):
+            _record_mfa_failure(user_id)
+            raise HTTPException(status_code=401, detail="認証コードが無効です")
     token = create_access_token(user.id, user.role, user.player_id, team_name=user.team_name, team_id=user.team_id)
-    log_access(db, "login_mfa_ok", user_id=user.id, ip_addr=ip)
+    if not req.recovery_code:
+        log_access(db, "login_mfa_ok", user_id=user.id, ip_addr=ip)
     return LoginResponse(
         access_token=token,
         refresh_token=_issue_refresh_for(user.id),
@@ -889,9 +1050,14 @@ def _record_mfa_failure(user_id: int) -> None:
         _mfa_failures.setdefault(user_id, []).append(_t_mfa.time())
 
 
-@router.post("/mfa/confirm")
+@router.post("/mfa/confirm", response_model=MfaRecoveryCodesResponse)
 def mfa_confirm(req: MfaCodeRequest, request: Request, db: Session = Depends(get_db)):
-    """TOTPコードを検証してMFAを有効化する。"""
+    """TOTPコードを検証してMFAを有効化し、リカバリコードを発行する。
+
+    リカバリコードの平文を返すのはこの応答と /mfa/recovery/regenerate だけ。
+    DB にはハッシュしか残らないため、ここで控えを取らないと復旧手段は
+    再発行 (= TOTP が通る状態が前提) のみになる。
+    """
     from backend.utils.auth import get_auth
     ctx = get_auth(request)
     if not ctx.user_id:
@@ -907,7 +1073,14 @@ def mfa_confirm(req: MfaCodeRequest, request: Request, db: Session = Depends(get
     user.totp_enabled = True
     db.commit()
     log_access(db, "mfa_enabled", user_id=user.id)
-    return {"success": True, "message": "MFAが有効化されました"}
+    codes = _issue_recovery_codes(db, user.id)
+    return MfaRecoveryCodesResponse(
+        recovery_codes=codes,
+        message=(
+            "MFAが有効化されました。リカバリコードを安全な場所に保管してください。"
+            "この画面を閉じると再表示できません。"
+        ),
+    )
 
 
 @router.post("/mfa/disable")
@@ -929,9 +1102,48 @@ def mfa_disable(req: MfaCodeRequest, request: Request, db: Session = Depends(get
         raise HTTPException(status_code=400, detail="認証コードが無効です")
     user.totp_secret = None
     user.totp_enabled = False
+    # MFA を無効化したらリカバリコードも失効させる。残しておくと、次に MFA を
+    # 有効化したとき「前回の紙のコード」がまだ通ってしまう。
+    db.query(MfaRecoveryCode).filter(MfaRecoveryCode.user_id == user.id).delete(
+        synchronize_session=False
+    )
     db.commit()
     log_access(db, "mfa_disabled", user_id=user.id)
     return {"success": True, "message": "MFAが無効化されました"}
+
+
+@router.post("/mfa/recovery/regenerate", response_model=MfaRecoveryCodesResponse)
+def mfa_recovery_regenerate(
+    req: MfaCodeRequest, request: Request, db: Session = Depends(get_db)
+):
+    """TOTPコードを確認してリカバリコードを再発行する（既存コードは全て失効）。
+
+    使い切った場合や、控えを紛失した場合に使う。
+    """
+    from backend.utils.auth import get_auth
+    ctx = get_auth(request)
+    if not ctx.user_id:
+        raise HTTPException(status_code=401, detail="認証が必要です")
+    # 漏洩した access token による総当たりを遮断 (他 MFA 経路と共通カウンタ)。
+    _check_mfa_brute_limit(ctx.user_id)
+    user = db.get(User, ctx.user_id)
+    if not user or not user.totp_enabled or not user.totp_secret:
+        raise HTTPException(status_code=400, detail="MFAは有効化されていません")
+    if not _verify_totp(user.totp_secret, req.code):
+        _record_mfa_failure(ctx.user_id)
+        raise HTTPException(status_code=400, detail="認証コードが無効です")
+    codes = _issue_recovery_codes(db, user.id)
+    log_access(db, "mfa_recovery_regenerated", user_id=user.id, ip_addr=_get_ip(request))
+    _emit_recovery_security_event(
+        user.id, _get_ip(request), "MFA recovery codes regenerated", severity="info"
+    )
+    return MfaRecoveryCodesResponse(
+        recovery_codes=codes,
+        message=(
+            "リカバリコードを再発行しました。以前のコードは全て無効です。"
+            "この画面を閉じると再表示できません。"
+        ),
+    )
 
 
 @router.get("/mfa/status")
@@ -944,7 +1156,13 @@ def mfa_status(request: Request, db: Session = Depends(get_db)):
     user = db.get(User, ctx.user_id)
     if not user:
         raise HTTPException(status_code=404, detail="ユーザーが見つかりません")
-    return {"success": True, "mfa_enabled": bool(user.totp_enabled)}
+    return {
+        "success": True,
+        "mfa_enabled": bool(user.totp_enabled),
+        # 残数のみ返す (コード本体は DB にハッシュしか無いので返しようがない)。
+        # 0 本になったら再発行を促す UI 判断に使う。
+        "recovery_codes_remaining": _recovery_codes_remaining(db, user.id),
+    }
 
 
 # ── ブートストラップステータス ───────────────────────────────────────────────

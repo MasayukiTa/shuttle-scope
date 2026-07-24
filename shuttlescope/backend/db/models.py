@@ -86,6 +86,48 @@ class User(Base):
     date_of_birth: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
 
+class MfaRecoveryCode(Base):
+    """MFA (TOTP) リカバリコード。認証アプリを失った / 端末の時計がずれた場合の
+    唯一の自力復旧手段。
+
+    背景 (障害): 2026-07 に w32time 停止でサーバ時計がずれ TOTP が一致せず、
+    admin が自分のアカウントから締め出された。当時リカバリ手段が存在せず、
+    DB を直接叩いて totp_enabled を落とすしか復旧方法が無かった。
+
+    保存形式:
+      平文は発行時に 1 度だけユーザへ返し、DB には SHA-256 ハッシュのみ保存する。
+      コードは 80bit (base32 16 文字) の乱数なので、辞書攻撃・レインボーテーブル
+      いずれも成立せず、salt 無し高速ハッシュで十分 (パスワードと異なり低エント
+      ロピー入力が存在しないため)。ハッシュ直引きにすることで、ログイン 1 回
+      あたり bcrypt を発行数ぶん回す必要が無く、DoS 経路も塞げる。
+
+    単回使用:
+      used_at が NULL の行だけが有効。消費は
+      `UPDATE ... WHERE id=? AND used_at IS NULL` の rowcount で判定し、
+      同時 2 リクエストによる二重使用を防ぐ。
+    """
+    __tablename__ = "mfa_recovery_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    # SHA-256 hex (64 文字)
+    code_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, nullable=False
+    )
+    # NULL = 未使用。使用時に UTC 時刻を入れて無効化する。
+    used_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # 監査用: どの IP から使われたか
+    used_ip: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+
+    __table_args__ = (
+        # ログイン時は user_id が確定しているので (user_id, code_hash) で直引きする。
+        Index("ix_mfa_recovery_codes_user_hash", "user_id", "code_hash"),
+    )
+
+
 class UserConsent(Base):
     """GDPR Article 7(1) (demonstrate consent) / APPI 第18条 準拠の同意取得記録。
 

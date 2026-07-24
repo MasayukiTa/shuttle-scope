@@ -4014,7 +4014,12 @@
       "mfa_prompt": "認証アプリ（iOS パスワード / Google Authenticator 等）に表示されている 6 桁のコードを入力してください。",
       "mfa_code_label": "認証コード（6 桁）",
       "mfa_submit": "認証して続行",
-      "mfa_cancel": "ログイン画面に戻る"
+      "mfa_cancel": "ログイン画面に戻る",
+      "mfa_use_recovery": "認証アプリが使えない場合（リカバリコードを使う）",
+      "mfa_use_totp": "認証コードの入力に戻る",
+      "mfa_recovery_prompt": "MFA 設定時に保管したリカバリコードを 1 つ入力してください。使用したコードは無効になります。",
+      "mfa_recovery_label": "リカバリコード",
+      "mfa_recovery_format_error": "リカバリコードは 16 文字です（例: XXXX-XXXX-XXXX-XXXX）"
     },
     "MatchListPage": {
       "k1": "登録済",
