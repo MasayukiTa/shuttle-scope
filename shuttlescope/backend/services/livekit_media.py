@@ -22,7 +22,7 @@ import time
 from dataclasses import dataclass
 from typing import Literal, Optional
 
-from jose import jwt  # 既存 backend と同じ python-jose
+import jwt  # PyJWT (旧 python-jose から置換: PYSEC-2026-1325 の ecdsa 依存排除)
 
 Role = Literal["operator", "camera", "viewer"]
 
@@ -107,4 +107,4 @@ def issue_access_token(
         "exp": issued + cfg.token_ttl,
         "video": {"room": room, "roomJoin": True, **grant},
     }
-    return jwt.encode(claims, cfg.api_secret, algorithm="HS256")
+    return jwt.encode(claims, cfg.api_secret, algorithm="HS256")  # PyJWT 2.x: str を返す (jose と同じ)

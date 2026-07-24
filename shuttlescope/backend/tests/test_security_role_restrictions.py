@@ -613,10 +613,10 @@ class TestAPTHardening:
         """iat が 5 分以上未来の JWT は拒否。"""
         from backend.utils.jwt_utils import verify_token
         from backend.config import settings as s
-        from jose import jwt as jose_jwt
+        import jwt as pyjwt
         import time as _t
         future_iat = int(_t.time()) + 3600
-        tok = jose_jwt.encode(
+        tok = pyjwt.encode(
             {"sub": "1", "role": "admin", "iat": future_iat, "exp": future_iat + 600, "jti": "x"},
             s.SECRET_KEY, algorithm="HS256",
         )
@@ -626,10 +626,10 @@ class TestAPTHardening:
         """exp - iat が 2 日以上の JWT は拒否 (forged super-long-lived token 対策)。"""
         from backend.utils.jwt_utils import verify_token
         from backend.config import settings as s
-        from jose import jwt as jose_jwt
+        import jwt as pyjwt
         import time as _t
         iat = int(_t.time())
-        tok = jose_jwt.encode(
+        tok = pyjwt.encode(
             {"sub": "1", "role": "admin", "iat": iat, "exp": iat + 86400 * 10, "jti": "x"},
             s.SECRET_KEY, algorithm="HS256",
         )

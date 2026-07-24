@@ -1002,9 +1002,10 @@ def logout(
 
     ctx = get_auth(request)
 
-    from jose import jwt as _jose_jwt, JWTError
+    import jwt as _pyjwt
+    from jwt import PyJWTError
     try:
-        payload = _jose_jwt.decode(
+        payload = _pyjwt.decode(
             auth_header[7:], settings.SECRET_KEY, algorithms=["HS256"]
         )
         jti = payload.get("jti")
@@ -1012,7 +1013,7 @@ def logout(
         if jti and exp:
             expires_at = datetime.utcfromtimestamp(exp)
             revoke_token(jti, getattr(ctx, "user_id", None), expires_at)
-    except JWTError:
+    except PyJWTError:
         # 無効な Bearer token もログ書かず 200（スパム防止）
         return {"success": True}
 

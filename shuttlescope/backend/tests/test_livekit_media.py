@@ -1,8 +1,8 @@
 """LiveKit メディア統合 (Phase 1) の単体テスト — LiveKit サーバ不要 (JWT 検証のみ)。"""
 from __future__ import annotations
 
+import jwt
 import pytest
-from jose import jwt
 
 from backend.services.livekit_media import (
     LiveKitConfig,
