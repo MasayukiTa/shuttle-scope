@@ -459,7 +459,7 @@ async def ws_camera_handler(
             return False
         try:
             from backend.utils.jwt_utils import verify_token as _reverify
-            from jose import JWTError as _JWTError  # narrow except 用
+            from jwt import PyJWTError as _JWTError  # narrow except 用 (旧 jose.JWTError から置換)
             payload = await _asyncio_cam.to_thread(_reverify, _saved_token)
             if not isinstance(payload, dict):
                 logger.warning("camera operator WS reverify failed; closing session=%s", session_code)

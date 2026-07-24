@@ -6,7 +6,8 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
-from jose import JWTError, jwt
+import jwt as _pyjwt
+from jwt import PyJWTError
 from backend.config import settings
 
 logger = logging.getLogger(__name__)
@@ -61,7 +62,7 @@ def create_access_token(
         payload["team_name"] = team_name
     if team_id is not None:
         payload["team_id"] = team_id
-    return jwt.encode(payload, settings.SECRET_KEY, algorithm=ALGORITHM)
+    return _pyjwt.encode(payload, settings.SECRET_KEY, algorithm=ALGORITHM)
 
 
 def _hash_refresh_token(token: str) -> str:
@@ -272,7 +273,7 @@ def verify_token(token: str) -> Optional[dict]:
     try:
         # まず標準 decode (aud 検証付き)。aud が無い旧 token は MissingRequiredClaim を投げるので
         # 段階移行として options で aud を一旦無効化してから自前で確認する。
-        payload = jwt.decode(
+        payload = _pyjwt.decode(
             token,
             settings.SECRET_KEY,
             algorithms=[ALGORITHM],
@@ -368,7 +369,7 @@ def verify_token(token: str) -> Optional[dict]:
                 return None
 
         return payload
-    except JWTError as e:
+    except PyJWTError as e:
         logger.debug("JWT verification failed: %s", e)
         return None
 
