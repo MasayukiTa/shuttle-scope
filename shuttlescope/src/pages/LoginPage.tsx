@@ -79,7 +79,13 @@ async function apiLogin(body: object): Promise<LoginResult> {
   }
 }
 
-async function apiMfaLogin(mfaToken: string, code: string): Promise<AuthSession & { error?: string }> {
+// code / recoveryCode はどちらか一方だけを送る。両方送るとサーバ側の
+// バリデーション (1 リクエスト 2 回試行の防止) で 422 になる。
+async function apiMfaLogin(
+  mfaToken: string,
+  code: string,
+  useRecovery = false,
+): Promise<AuthSession & { error?: string }> {
   try {
     // /api/auth/mfa/login は _GLOBAL_AUTH_EXEMPT に含まれないため
     // GlobalAuthMiddleware が Authorization: Bearer 必須。mfa_token は
@@ -93,7 +99,11 @@ async function apiMfaLogin(mfaToken: string, code: string): Promise<AuthSession 
         'Content-Type': 'application/json',
         Authorization: `Bearer ${mfaToken}`,
       },
-      body: JSON.stringify({ mfa_token: mfaToken, code }),
+      body: JSON.stringify(
+        useRecovery
+          ? { mfa_token: mfaToken, recovery_code: code }
+          : { mfa_token: mfaToken, code },
+      ),
     })
     if (!res.ok) {
       let msg = 'MFA 認証に失敗しました'
@@ -117,6 +127,21 @@ async function apiMfaLogin(mfaToken: string, code: string): Promise<AuthSession 
   } catch (e) {
     return _errSession(String(e))
   }
+}
+
+// リカバリコードは base32 由来の 16 文字 (0/1/8/9 を含まない)。
+// 表示は XXXX-XXXX-XXXX-XXXX だが、入力は区切り・大小文字を問わず受ける。
+const RECOVERY_CODE_LEN = 16
+const RECOVERY_ALPHABET = /[A-Z2-7]/
+
+function normalizeRecoveryInput(value: string): string {
+  return value.toUpperCase().split('').filter((c) => RECOVERY_ALPHABET.test(c)).join('')
+}
+
+// 入力中も XXXX-XXXX-… の見た目を保って読み合わせしやすくする。
+function formatRecoveryInput(value: string): string {
+  const raw = normalizeRecoveryInput(value).slice(0, RECOVERY_CODE_LEN)
+  return raw.replace(/(.{4})(?=.)/g, '$1-')
 }
 
 interface BootstrapStatus {
@@ -152,6 +177,9 @@ export function LoginPage({ onLogin }: Props) {
   // して MFA 入力画面に切り替える。Submit で /api/auth/mfa/login を呼ぶ。
   const [mfaToken, setMfaToken] = useState<string | null>(null)
   const [mfaCode, setMfaCode] = useState('')
+  // 認証アプリを失った / 端末やサーバの時計がずれて TOTP が通らない場合に
+  // リカバリコード入力へ切り替える。
+  const [useRecovery, setUseRecovery] = useState(false)
   // セッション期限切れリダイレクト時の通知バナー
   const sessionExpired =
     typeof window !== 'undefined' &&
@@ -206,20 +234,30 @@ export function LoginPage({ onLogin }: Props) {
   const handleMfaSubmit = async () => {
     if (!mfaToken) return
     const code = mfaCode.trim()
-    if (!/^\d{6}$/.test(code)) {
+    if (useRecovery) {
+      // XXXX-XXXX-XXXX-XXXX (区切りは任意)。正規化後 16 文字であればよい。
+      if (normalizeRecoveryInput(code).length !== RECOVERY_CODE_LEN) {
+        setError(t('auto.LoginPage.mfa_recovery_format_error'))
+        return
+      }
+    } else if (!/^\d{6}$/.test(code)) {
       setError('6 桁の数字を入力してください')
       return
     }
     setLoading(true)
     setError(null)
-    const result = await apiMfaLogin(mfaToken, code)
+    const result = await apiMfaLogin(mfaToken, code, useRecovery)
     setLoading(false)
     if (result.error || !result.token) {
       setError(result.error || 'MFA 認証に失敗しました')
-      // mfa_token が期限切れ (5 分) の場合は最初からやり直し
-      if ((result.error || '').includes('期限切れ') || (result.error || '').includes('無効')) {
+      // mfa_token 自体が失効した場合のみ最初からやり直す。
+      // 「認証コードが無効です」「リカバリコードが無効か…」でも巻き戻ると、
+      // 打ち間違えるたびにパスワード入力からやり直しになってしまう。
+      if ((result.error || '').includes('MFAトークンが無効')
+          || (result.error || '').includes('期限切れ')) {
         setMfaToken(null)
         setMfaCode('')
+        setUseRecovery(false)
       }
       return
     }
@@ -229,6 +267,14 @@ export function LoginPage({ onLogin }: Props) {
 
   const handleMfaCancel = () => {
     setMfaToken(null)
+    setMfaCode('')
+    setUseRecovery(false)
+    setError(null)
+  }
+
+  // TOTP ⇄ リカバリコードの切り替え。入力欄の検証規則が変わるため入力を捨てる。
+  const toggleRecoveryMode = () => {
+    setUseRecovery((v) => !v)
     setMfaCode('')
     setError(null)
   }
@@ -276,25 +322,44 @@ export function LoginPage({ onLogin }: Props) {
         {mfaToken && (
           <div className="space-y-4">
             <div className={`text-sm ${mutedCls}`}>
-              {t('auto.LoginPage.mfa_prompt')}
+              {useRecovery
+                ? t('auto.LoginPage.mfa_recovery_prompt')
+                : t('auto.LoginPage.mfa_prompt')}
             </div>
             <div>
               <label className={`block text-sm font-medium mb-1 ${labelCls}`}>
-                {t('auto.LoginPage.mfa_code_label')}
+                {useRecovery
+                  ? t('auto.LoginPage.mfa_recovery_label')
+                  : t('auto.LoginPage.mfa_code_label')}
               </label>
-              <input
-                type="text"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                pattern="[0-9]*"
-                maxLength={6}
-                value={mfaCode}
-                onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                onKeyDown={(e) => e.key === 'Enter' && handleMfaSubmit()}
-                className={`${fieldCls} ss-num text-center tracking-widest text-lg`}
-                placeholder="000000"
-                autoFocus
-              />
+              {useRecovery ? (
+                <input
+                  type="text"
+                  autoComplete="one-time-code"
+                  // 16 文字 + ハイフン 3 = 19
+                  maxLength={19}
+                  value={mfaCode}
+                  onChange={(e) => setMfaCode(formatRecoveryInput(e.target.value))}
+                  onKeyDown={(e) => e.key === 'Enter' && handleMfaSubmit()}
+                  className={`${fieldCls} ss-num text-center tracking-widest text-lg`}
+                  placeholder="XXXX-XXXX-XXXX-XXXX"
+                  autoFocus
+                />
+              ) : (
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  value={mfaCode}
+                  onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  onKeyDown={(e) => e.key === 'Enter' && handleMfaSubmit()}
+                  className={`${fieldCls} ss-num text-center tracking-widest text-lg`}
+                  placeholder="000000"
+                  autoFocus
+                />
+              )}
             </div>
             {error && (
               <div className="border text-sm rounded-ss-md px-3 py-2 bg-[var(--ss-danger-bg)] border-[var(--ss-danger-border)] text-[var(--ss-danger-text)]">
@@ -303,10 +368,24 @@ export function LoginPage({ onLogin }: Props) {
             )}
             <button
               onClick={handleMfaSubmit}
-              disabled={loading || mfaCode.length !== 6}
+              disabled={
+                loading
+                || (useRecovery
+                  ? normalizeRecoveryInput(mfaCode).length !== RECOVERY_CODE_LEN
+                  : mfaCode.length !== 6)
+              }
               className="w-full bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-50 text-white font-medium py-2 px-4 rounded-ss-md text-sm transition-colors duration-fast ease-out"
             >
               {loading ? t('auth.logging_in') : t('auto.LoginPage.mfa_submit')}
+            </button>
+            <button
+              onClick={toggleRecoveryMode}
+              disabled={loading}
+              className="w-full text-sm py-2 px-4 rounded-ss-md transition-colors duration-fast ease-out text-[var(--ss-t2)] hover:text-[var(--ss-t1)] hover:bg-[var(--ss-surface-2)]"
+            >
+              {useRecovery
+                ? t('auto.LoginPage.mfa_use_totp')
+                : t('auto.LoginPage.mfa_use_recovery')}
             </button>
             <button
               onClick={handleMfaCancel}
