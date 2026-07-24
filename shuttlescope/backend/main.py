@@ -2217,13 +2217,21 @@ async def _global_exception_handler(request: StarletteRequest, exc: Exception):
         )
     except Exception:
         pass
-    if app_settings.PUBLIC_MODE or app_settings.HIDE_STACK_TRACES:
+    # スタックトレース秘匿は PUBLIC_MODE / HIDE_STACK_TRACES 単独ではなく
+    # is_production_posture (config.py) で判定する。個別サービス env が
+    # ENVIRONMENT=production のみを設定し HIDE_STACK_TRACES を別ファイル任せに
+    # していた構成では、その別ファイルが失われると本番でも生トレースバックが
+    # 露出しうる (fail-open)。is_production_posture は PUBLIC_MODE /
+    # HIDE_API_DOCS / HIDE_STACK_TRACES / ENVIRONMENT=production /
+    # SS_PUBLIC_HOSTNAME のいずれかで真になる fail-safe な統合判定なので、
+    # 秘匿範囲が狭まることはなく広がる方向にしか倒れない。
+    if app_settings.is_production_posture:
         return StarletteResponse(
             '{"detail":"内部エラーが発生しました"}',
             status_code=500,
             media_type="application/json",
         )
-    # 開発時はトレースバックをレスポンスに含める
+    # 開発時 (本番姿勢でない) はトレースバックをレスポンスに含める
     tb = _traceback.format_exc()
     import json as _json
     return StarletteResponse(
