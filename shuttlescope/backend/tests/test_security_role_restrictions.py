@@ -1187,23 +1187,46 @@ class TestValidationErrorMasking:
 
 
 # ─── V-07: HIDE_STACK_TRACES フラグ ──────────────────────────────────────────
+# 実際にハンドラが参照するのは `is_production_posture` (SEC-001) であり、単純な
+# `PUBLIC_MODE or HIDE_STACK_TRACES` ではない。以下は実ゲートそのものを検証する。
 
 class TestHideStackTraces:
     def test_stack_trace_hidden_when_flag_set(self, monkeypatch):
-        """HIDE_STACK_TRACES=True の時は traceback がレスポンスに含まれない。"""
+        """HIDE_STACK_TRACES=True の時は is_production_posture が True になり、
+        `_global_exception_handler` が実際に traceback をマスクする条件を満たす。"""
         from backend.config import settings as s
         monkeypatch.setattr(s, "HIDE_STACK_TRACES", True, raising=False)
         monkeypatch.setattr(s, "PUBLIC_MODE", False, raising=False)
-        hide = s.PUBLIC_MODE or s.HIDE_STACK_TRACES
-        assert hide is True
+        monkeypatch.setattr(s, "HIDE_API_DOCS", False, raising=False)
+        assert s.is_production_posture is True
 
     def test_stack_trace_visible_in_dev(self, monkeypatch):
-        """PUBLIC_MODE=False かつ HIDE_STACK_TRACES=False なら traceback が出る（開発時）。"""
+        """PUBLIC_MODE=False かつ HIDE_API_DOCS=False かつ HIDE_STACK_TRACES=False
+        かつ ENVIRONMENT=development (SS_PUBLIC_HOSTNAME 未設定) なら
+        is_production_posture は False になる（開発時は traceback が出る）。"""
         from backend.config import settings as s
-        monkeypatch.setattr(s, "HIDE_STACK_TRACES", False, raising=False)
         monkeypatch.setattr(s, "PUBLIC_MODE", False, raising=False)
-        hide = s.PUBLIC_MODE or s.HIDE_STACK_TRACES
-        assert hide is False
+        monkeypatch.setattr(s, "HIDE_API_DOCS", False, raising=False)
+        monkeypatch.setattr(s, "HIDE_STACK_TRACES", False, raising=False)
+        monkeypatch.setattr(s, "ENVIRONMENT", "development", raising=False)
+        monkeypatch.setenv("ENVIRONMENT", "development")
+        monkeypatch.delenv("SS_PUBLIC_HOSTNAME", raising=False)
+        assert s.is_production_posture is False
+
+    def test_stack_trace_hidden_when_only_environment_production(self, monkeypatch):
+        """SEC-001 回帰テスト: PUBLIC_MODE/HIDE_API_DOCS/HIDE_STACK_TRACES が
+        全て False でも ENVIRONMENT=production だけで is_production_posture は
+        True になる。旧ゲート `PUBLIC_MODE or HIDE_STACK_TRACES` はこのケースを
+        すり抜けて本番でも生トレースバックを露出しうる欠陥があった (このテストが
+        検出する回帰そのもの)。"""
+        from backend.config import settings as s
+        monkeypatch.setattr(s, "PUBLIC_MODE", False, raising=False)
+        monkeypatch.setattr(s, "HIDE_API_DOCS", False, raising=False)
+        monkeypatch.setattr(s, "HIDE_STACK_TRACES", False, raising=False)
+        monkeypatch.setattr(s, "ENVIRONMENT", "production", raising=False)
+        monkeypatch.setenv("ENVIRONMENT", "production")
+        monkeypatch.delenv("SS_PUBLIC_HOSTNAME", raising=False)
+        assert s.is_production_posture is True
 
 
 # ─── admin ロール: 全操作疎通確認 ─────────────────────────────────────────────
