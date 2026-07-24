@@ -2279,7 +2279,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
         # COOP は popup/window.opener を切り離す。SPA のため same-origin で十分
         response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
-        if app_settings.PUBLIC_MODE:
+        # SEC-001 と同じ fail-open パターン: 個別サービス env は ENVIRONMENT=production
+        # のみを設定し PUBLIC_MODE を立てないことがあるため、PUBLIC_MODE 単独判定だと
+        # 本番で HSTS が出ない。is_production_posture (PUBLIC_MODE / ENVIRONMENT=production
+        # のいずれか) で判定する。
+        if app_settings.is_production_posture:
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         # 認証 Bearer 付きの API レスポンスは機密扱い — 中間キャッシュ禁止
         path = request.url.path
