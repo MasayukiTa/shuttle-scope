@@ -138,6 +138,10 @@ def test_no_orphan_event_names():
         "password_change_failed",
         "mfa_enabled",
         "mfa_disabled",
+        # MFA リカバリコード (認証アプリ紛失 / 時計ズレ時の復旧経路)。
+        # MFA を迂回できる操作なので、正規利用でも必ず監査に残す。
+        "login_mfa_recovery_used",
+        "mfa_recovery_regenerated",
         "account_unlocked",
         # ユーザ管理 / チーム
         "user_created",
