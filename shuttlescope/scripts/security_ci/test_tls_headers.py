@@ -6,7 +6,7 @@
 """round145 + round150 + round154: TLS / HSTS / CSP / X-Frame / 漏洩ヘッダ"""
 import sys, os, ssl, socket
 sys.path.insert(0, os.path.dirname(__file__))
-from _common import req, Findings, HOST, PORT, INSECURE
+from _common import req, hget, Findings, HOST, PORT, INSECURE
 
 
 def main():
@@ -47,23 +47,23 @@ def main():
 
     # --- セキュリティヘッダ ----------------------------------------------
     s, h, _ = req("GET", "/api/health")
-    if not h.get("strict-transport-security"):
+    if not hget(h, "strict-transport-security"):
         f.high("hsts_missing", "Strict-Transport-Security not set")
     else:
-        f.passed("hsts", h.get("strict-transport-security", "")[:80])
+        f.passed("hsts", hget(h, "strict-transport-security")[:80])
 
-    if h.get("x-frame-options") not in ("DENY", "SAMEORIGIN"):
-        f.high("x_frame_missing", f"got={h.get('x-frame-options')}")
+    if hget(h, "x-frame-options") not in ("DENY", "SAMEORIGIN"):
+        f.high("x_frame_missing", f"got={hget(h, 'x-frame-options')}")
     else:
-        f.passed("x_frame", h.get("x-frame-options", ""))
+        f.passed("x_frame", hget(h, "x-frame-options"))
 
-    if not h.get("x-content-type-options"):
+    if not hget(h, "x-content-type-options"):
         f.high("xcto_missing", "X-Content-Type-Options not set")
     else:
-        f.passed("xcto", h.get("x-content-type-options", ""))
+        f.passed("xcto", hget(h, "x-content-type-options"))
 
     s2, h2, _ = req("GET", "/")
-    csp = h2.get("content-security-policy", "")
+    csp = hget(h2, "content-security-policy")
     if not csp:
         f.high("csp_missing", "Content-Security-Policy not set on /")
     else:
@@ -74,7 +74,7 @@ def main():
 
     # 機密ヘッダ漏洩
     for k in ["x-powered-by", "x-aspnet-version", "x-runtime"]:
-        v = h.get(k, "")
+        v = hget(h, k)
         if v:
             f.high(f"header_leak:{k}", v[:60])
 
@@ -83,7 +83,7 @@ def main():
         s, hh, _ = req("OPTIONS", "/api/auth/me",
                        headers={"Origin": origin,
                                 "Access-Control-Request-Method": "GET"})
-        aco = hh.get("access-control-allow-origin", "")
+        aco = hget(hh, "access-control-allow-origin")
         if aco in ("*", origin):
             f.critical(f"cors:{origin}", f"ACO={aco}")
         else:
