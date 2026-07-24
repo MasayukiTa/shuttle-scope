@@ -38,6 +38,21 @@ def req(m, p, body=None, headers=None, host=None, port=None, timeout=30):
     return r.status, dict(r.getheaders()), r.read()
 
 
+def hget(headers, name, default=""):
+    """headers (dict) から大文字小文字を無視してヘッダ値を取得する。
+
+    http.client の getheaders() はサーバが送った元の大文字小文字を保持する
+    (例: "X-Frame-Options")。req() はそれをそのまま dict 化するため、呼び出し側が
+    小文字キーで h.get("x-frame-options") のように引くと常に None/default になり
+    偽陽性 (permanent false HIGH) を生む。必ずこのヘルパー経由で引くこと。
+    """
+    name_lower = name.lower()
+    for k, v in headers.items():
+        if k.lower() == name_lower:
+            return v
+    return default
+
+
 def short(b, n=140):
     if isinstance(b, bytes):
         return b.decode("utf-8", "replace")[:n]
