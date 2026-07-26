@@ -157,10 +157,15 @@ def _totp_generate_secret() -> str:
 
 
 def _hotp_value(secret: str, counter: int) -> int:
+    # SHA-1 は RFC 4226 (HOTP) / RFC 6238 (TOTP) が定める既定アルゴリズムで、
+    # Google Authenticator や iOS パスワードなど実在の認証アプリが確実に対応する
+    # のはこれだけ。他へ変えると登録済み端末が一斉に無効になる。
+    # HMAC-SHA1 の安全性は SHA-1 の衝突耐性に依存しないため (MAC としては現在も
+    # 安全)、ここでの SHA-1 使用は既知の弱点に当たらない。
     padding = "=" * (-len(secret) % 8)
     key = base64.b32decode(secret.upper() + padding)
     msg = struct.pack(">Q", counter)
-    h = _hmac_mod.new(key, msg, hashlib.sha1).digest()
+    h = _hmac_mod.new(key, msg, hashlib.sha1).digest()  # DevSkim: ignore DS126858
     offset = h[-1] & 0x0F
     code = struct.unpack(">I", h[offset: offset + 4])[0] & 0x7FFFFFFF
     return code % 1_000_000
@@ -180,7 +185,9 @@ def _totp_uri(secret: str, username: str) -> str:
     issuer = "ShuttleScope"
     return (
         f"otpauth://totp/{urllib.parse.quote(issuer)}:{urllib.parse.quote(username)}"
-        f"?secret={secret}&issuer={urllib.parse.quote(issuer)}&algorithm=SHA1&digits=6&period=30"
+        # algorithm=SHA1 は otpauth URI の既定値 (RFC 6238)。_hotp_value 側の
+        # 実装と一致させる必要があり、認証アプリ互換のため変更不可。
+        f"?secret={secret}&issuer={urllib.parse.quote(issuer)}&algorithm=SHA1&digits=6&period=30"  # DevSkim: ignore DS126858
     )
 
 
