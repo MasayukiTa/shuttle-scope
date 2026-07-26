@@ -23,6 +23,7 @@ from typing import Any, Callable, Optional
 from sqlalchemy.orm import Session
 
 from backend.utils.auth import AuthCtx
+from backend.utils.error_detail import client_safe_error
 
 log = logging.getLogger(__name__)
 
@@ -34,8 +35,12 @@ def _safe_call(label: str, fn: Callable, *args, **kwargs) -> dict:
         # FastAPI handler は dict を返すか、HTTPException を投げる
         return {"ok": True, "data": result}
     except Exception as e:
-        log.warning("comprehensive_report section %s failed: %s", label, e)
-        return {"ok": False, "error": str(e)[:200]}
+        # 完全な情報はログ側に残し、応答には本番姿勢で汎用文言のみ載せる。
+        # section error は 200 応答の一部として返るため main.py の汎用例外
+        # ハンドラを通らず、ここで秘匿しないと外部へ生の例外文言が漏れる
+        # (CodeQL py/stack-trace-exposure)。
+        log.warning("comprehensive_report section %s failed: %s", label, e, exc_info=True)
+        return {"ok": False, "error": client_safe_error(e)}
 
 
 def gather_player_report(

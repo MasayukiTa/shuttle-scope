@@ -521,7 +521,15 @@ class YOLOInference:
                 return result
             except Exception as exc:
                 logger.exception("YOLO inference error (backend=%s): %s", self._backend, exc)
-                self._last_debug["error"] = str(exc)
+                # _last_debug は /api/yolo/frame-detect の応答 (200) にそのまま
+                # 載るため、生の例外文言を入れるとモデルの絶対パスや CUDA /
+                # TensorRT の内部エラーが外部ユーザへ漏れる
+                # (CodeQL py/stack-trace-exposure)。完全な情報は直上の
+                # logger.exception でサーバ側に残している。
+                from backend.utils.error_detail import client_safe_error
+                self._last_debug["error"] = client_safe_error(
+                    exc, generic="推論に失敗しました"
+                )
                 return []
 
     def _predict_openvino(self, frame) -> list[dict]:
