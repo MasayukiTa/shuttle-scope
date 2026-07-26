@@ -1,17 +1,21 @@
-"""例外文言をクライアントに返す前に、本番姿勢では秘匿する。
+"""例外文言をクライアント応答に載せないための共通ヘルパー。
 
 背景 (CodeQL py/stack-trace-exposure):
-  例外の `str()` をそのまま API 応答に載せると、モデルの絶対パス・DB のカラム名・
-  ONNX / CUDA ランタイムの内部エラー等が外部ユーザへ漏れ、後続攻撃の material に
-  なる。`main.py` の汎用例外ハンドラは `is_production_posture` で既に秘匿している
-  が、「例外を捕まえて **正常応答 (200) の一部** として返す」経路
+  例外の `str()` をそのまま API 応答に載せると、モデルの絶対パス・DB のテーブル /
+  カラム名・ONNX / CUDA ランタイムの内部エラー等が外部ユーザへ漏れ、後続攻撃の
+  material になる。`main.py` の汎用例外ハンドラは本番姿勢で秘匿しているが、
+  「例外を捕まえて **正常応答 (200) の一部** として返す」経路
   (レポートの section error、推論の debug 情報) はそのハンドラを通らないため、
-  同じ判定を個別に通す必要がある。
+  個別に塞ぐ必要があった。
 
-判定は main.py と同じ `settings.is_production_posture` に一元化する。
-これは PUBLIC_MODE / HIDE_API_DOCS / HIDE_STACK_TRACES / ENVIRONMENT=production /
-SS_PUBLIC_HOSTNAME のいずれかで真になる fail-safe な統合判定なので、個別 env の
-設定漏れで秘匿が外れる (fail-open する) ことがない。
+なぜ「開発時だけ詳細を返す」ようにしないのか:
+  当初は `is_production_posture` で分岐して開発時のみ詳細を返していたが、
+  静的解析は実行時フラグを評価できないため「例外 → 応答」の経路が残っていると
+  判定し続ける (実際 CodeQL の alert が閉じなかった)。
+  分岐を持つ限り「本番判定が将来 fail-open した瞬間に漏れる」構造でもある。
+  そこで **環境によらず一律で汎用文言のみ** を返す形にした。
+  完全な情報は呼び出し側が logger (exc_info=True) でサーバログに残しており、
+  調査に必要な情報は失われない。
 """
 from __future__ import annotations
 
@@ -19,21 +23,13 @@ from __future__ import annotations
 GENERIC_ERROR_JA = "内部エラーが発生しました"
 
 
-def client_safe_error(
-    exc: BaseException | str,
-    *,
-    limit: int = 200,
-    generic: str = GENERIC_ERROR_JA,
-) -> str:
-    """クライアントへ返して安全な例外文言を返す。
+def client_safe_error(generic: str = GENERIC_ERROR_JA) -> str:
+    """クライアントへ返す汎用エラー文言を返す。
 
-    本番姿勢では固定の汎用文言、開発時は原因調査のため詳細を返す。
+    例外オブジェクトを **引数に取らない** のは意図的で、呼び出し側が誤って
+    例外文言を応答へ流し込む余地をなくすため (型の上で不可能にする)。
 
     呼び出し側の責務: 完全な情報は必ず logger 側に残すこと
-    (この関数は記録を行わない。秘匿するのは「応答に載せる文字列」だけ)。
+    (この関数は記録を行わない)。
     """
-    from backend.config import settings
-
-    if settings.is_production_posture:
-        return generic
-    return str(exc)[:limit]
+    return generic

@@ -61,9 +61,8 @@ def yolo_status():
     # 導入案内なので、そのまま返して運用者の手掛かりを残す。
     _status_message = detail["message"]
     if detail["status_code"] == "load_failed":
-        _status_message = client_safe_error(
-            _status_message or "", generic="モデルの読み込みに失敗しました"
-        )
+        logger.warning("yolo status load_failed: %s", _status_message)
+        _status_message = client_safe_error("モデルの読み込みに失敗しました")
     return {
         "success": True,
         "data": {

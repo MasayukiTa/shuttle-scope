@@ -527,9 +527,7 @@ class YOLOInference:
                 # (CodeQL py/stack-trace-exposure)。完全な情報は直上の
                 # logger.exception でサーバ側に残している。
                 from backend.utils.error_detail import client_safe_error
-                self._last_debug["error"] = client_safe_error(
-                    exc, generic="推論に失敗しました"
-                )
+                self._last_debug["error"] = client_safe_error("推論に失敗しました")
                 return []
 
     def _predict_openvino(self, frame) -> list[dict]:

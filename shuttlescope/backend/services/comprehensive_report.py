@@ -35,12 +35,12 @@ def _safe_call(label: str, fn: Callable, *args, **kwargs) -> dict:
         # FastAPI handler は dict を返すか、HTTPException を投げる
         return {"ok": True, "data": result}
     except Exception as e:
-        # 完全な情報はログ側に残し、応答には本番姿勢で汎用文言のみ載せる。
+        # 完全な情報はログ側に残し、応答には汎用文言のみ載せる。
         # section error は 200 応答の一部として返るため main.py の汎用例外
-        # ハンドラを通らず、ここで秘匿しないと外部へ生の例外文言が漏れる
-        # (CodeQL py/stack-trace-exposure)。
+        # ハンドラを通らず、ここで塞がないと外部へ生の例外文言 (DB のテーブル /
+        # カラム名など) が漏れる (CodeQL py/stack-trace-exposure)。
         log.warning("comprehensive_report section %s failed: %s", label, e, exc_info=True)
-        return {"ok": False, "error": client_safe_error(e)}
+        return {"ok": False, "error": client_safe_error()}
 
 
 def gather_player_report(
