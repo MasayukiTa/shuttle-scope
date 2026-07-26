@@ -28,6 +28,7 @@ from backend.cv.reid import extract_embedding as _extract_reid_emb, MIN_APP_SIM 
 # Track A3 (2026-05-04): identity tracking ロジックは backend/cv/identity_graph.py に
 # 抽出済み。本ルータからは facade 経由で呼び出すだけ。
 from backend.cv.identity_graph import track_identities as _ig_track_identities
+from backend.utils.error_detail import client_safe_error
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -55,6 +56,14 @@ def yolo_status():
     """YOLO モデルの導入状況・バックエンドを返す"""
     inf = get_yolo_inference()
     detail = inf.get_status_detail()
+    # status_code="load_failed" の message だけが生の例外文言 (モデルの絶対パス /
+    # CUDA・TensorRT の内部エラー) を含む。他の status_code の message は静的な
+    # 導入案内なので、そのまま返して運用者の手掛かりを残す。
+    _status_message = detail["message"]
+    if detail["status_code"] == "load_failed":
+        _status_message = client_safe_error(
+            _status_message or "", generic="モデルの読み込みに失敗しました"
+        )
     return {
         "success": True,
         "data": {
@@ -62,11 +71,11 @@ def yolo_status():
             "backend": inf.backend_name(),
             "loaded": inf._loaded,
             "status_code": detail["status_code"],
-            "status_message": detail["message"],
+            "status_message": _status_message,
             # 後方互換
             "install_hint": (
                 None if inf.is_available()
-                else detail["message"] or "pip install ultralytics を実行してモデルを導入してください"
+                else _status_message or "pip install ultralytics を実行してモデルを導入してください"
             ),
         },
     }
