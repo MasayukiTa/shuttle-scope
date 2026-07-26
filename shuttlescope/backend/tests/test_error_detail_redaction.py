@@ -11,11 +11,28 @@
 静的解析上「例外 → 応答」の経路が残り続け、かつ本番判定が将来 fail-open した
 瞬間に漏れる構造になるため。調査に必要な情報はサーバログ側に残る。
 """
-import logging
-
 from backend.utils.error_detail import GENERIC_ERROR_JA, client_safe_error
 
 _SECRET = r"C:\Users\kiyus\models\yolov8n.onnx: invalid graph node 'x'"
+
+
+def _spy_logger(monkeypatch, logger, method: str) -> list[str]:
+    """logger.<method> の呼び出し内容を捕捉する。
+
+    caplog はロガーのレベル / propagate / ハンドラ構成に左右され、手元では通るが
+    CI では空になった。ここで確認したいのは「詳細を握り潰さずログへ渡している
+    か」なので、呼び出しそのものを捕捉して環境非依存にする。
+    """
+    calls: list[str] = []
+
+    def _spy(fmt, *args, **kwargs):
+        try:
+            calls.append(str(fmt) % args if args else str(fmt))
+        except Exception:  # noqa: BLE001 - 整形失敗時も原文を残す
+            calls.append(str(fmt))
+
+    monkeypatch.setattr(logger, method, _spy)
+    return calls
 
 
 # ── ヘルパー本体 ─────────────────────────────────────────────────────────────
@@ -45,17 +62,17 @@ def _boom():
     raise RuntimeError(r'psycopg: relation "secret_table" does not exist')
 
 
-def test_report_section_error_is_generic(caplog):
-    from backend.services.comprehensive_report import _safe_call
+def test_report_section_error_is_generic(monkeypatch):
+    from backend.services import comprehensive_report as cr
 
-    with caplog.at_level(logging.WARNING):
-        got = _safe_call("descriptive", _boom)
+    logged = _spy_logger(monkeypatch, cr.log, "warning")
+    got = cr._safe_call("descriptive", _boom)
 
     assert got["ok"] is False
     assert got["error"] == GENERIC_ERROR_JA
     assert "secret_table" not in got["error"]
     # 調査用の情報はログ側に残っていること (握り潰しではない)
-    assert "secret_table" in caplog.text
+    assert any("secret_table" in m for m in logged), logged
 
 
 def test_report_section_success_is_unchanged():
@@ -95,19 +112,20 @@ def _gray_frame():
     return np.full((32, 32, 3), 128, dtype=np.uint8)
 
 
-def test_yolo_predict_frame_debug_error_is_generic(caplog):
+def test_yolo_predict_frame_debug_error_is_generic(monkeypatch):
     """predict_frame の例外が debug["error"] 経由で漏れないこと (実コード経路)。"""
-    engine = _engine_forced_to_fail()
+    from backend.yolo import inference as inf_mod
 
-    with caplog.at_level(logging.ERROR):
-        assert engine.predict_frame(_gray_frame()) == []
+    engine = _engine_forced_to_fail()
+    logged = _spy_logger(monkeypatch, inf_mod.logger, "exception")
+    assert engine.predict_frame(_gray_frame()) == []
 
     err = engine.get_last_debug()["error"]
     assert err == "推論に失敗しました"
     for leaked in ("yolov8n", "kiyus", "invalid graph"):
         assert leaked not in err
     # 完全な情報はサーバログに残る
-    assert "invalid graph" in caplog.text
+    assert any("invalid graph" in m for m in logged), logged
 
 
 # ── 漏洩経路 3: /api/yolo/status の status_message ───────────────────────────
@@ -139,26 +157,14 @@ def _status_body(monkeypatch, detail):
 
 
 def test_yolo_status_redacts_load_failure(monkeypatch):
-    # backend.routers.yolo の logger は root へ伝播しない設定なので caplog では
-    # 拾えない。ログ出力の有無はハンドラを直接付けて確認する。
     from backend.routers import yolo as yolo_router
 
-    captured: list[str] = []
-
-    class _Capture(logging.Handler):
-        def emit(self, record):
-            captured.append(record.getMessage())
-
-    handler = _Capture(level=logging.WARNING)
-    yolo_router.logger.addHandler(handler)
-    try:
-        body = _status_body(monkeypatch, {
-            "status_code": "load_failed",
-            "backend": None,
-            "message": r"TRT/CUDA load failed: C:\models\engine.plan not found",
-        })
-    finally:
-        yolo_router.logger.removeHandler(handler)
+    captured = _spy_logger(monkeypatch, yolo_router.logger, "warning")
+    body = _status_body(monkeypatch, {
+        "status_code": "load_failed",
+        "backend": None,
+        "message": r"TRT/CUDA load failed: C:\models\engine.plan not found",
+    })
 
     assert body["status_code"] == "load_failed"
     assert body["status_message"] == "モデルの読み込みに失敗しました"
