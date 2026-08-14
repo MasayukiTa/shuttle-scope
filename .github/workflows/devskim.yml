@@ -30,7 +30,7 @@ jobs:
       security-events: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
 
       # microsoft/DevSkim-Action は内部で Docker build → mcr.microsoft.com から
       # dotnet/sdk:8.0 を pull するが、MCR が 403 を返して落ちる事象が継続。
