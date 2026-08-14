@@ -150,7 +150,9 @@ class TestBenchmarkAPI:
 
         # ジョブ状態を確認
         status_resp = client.get(f"/api/v1/benchmark/jobs/{job_id}", headers=admin_headers)
-        assert status_resp.status_code == 200
+        # 失敗時に応答本文を出す: 過去 2 回、並列実行時にここが 403 になったが
+        # 本文が出ないためどのガードが弾いたのか特定できなかった。
+        assert status_resp.status_code == 200, f"{status_resp.status_code}: {status_resp.text}"
         job_data = status_resp.json()
         assert job_data["job_id"] == job_id
         assert job_data["status"] in ("pending", "running", "done", "failed")
