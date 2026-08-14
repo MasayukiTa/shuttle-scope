@@ -14,9 +14,38 @@ from backend.utils.jwt_utils import create_access_token
 
 # Module-level constant replaced by lazy fixture (CI 403 fix)
 @pytest.fixture()
-def admin_headers():
+def admin_headers(_admin_user):
     """Per-test fresh admin token (lazy fixture pattern, see test_db_maintenance.py)."""
-    return {"Authorization": f"Bearer {create_access_token(user_id=1, role='admin')}"}
+    return {"Authorization": f"Bearer {create_access_token(user_id=_admin_user, role='admin')}"}
+
+
+# TOTP secret は形式が正しければ値そのものは検証されない
+_DUMMY_TOTP_SECRET = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
+
+
+@pytest.fixture()
+def _admin_user(db_session):
+    """admin トークンに対応する実ユーザを用意し、その id を返す。
+
+    require_admin は role だけでなく DB 上の user を見て MFA enrollment
+    (totp_enabled) を確認する。以前はトークンを user_id=1 決め打ちで発行し、
+    ユーザは作っていなかった — 他テストが偶然 user 1 を残していたから通って
+    いただけで、共有 DB をテストごとに空にした途端
+    `403 admin role required` で落ちた。
+
+    このファイル自身が前提を用意するので、実行順にもテスト配分にも依存しない。
+    """
+    from backend.db.models import User
+
+    user = User(
+        username="benchmark_admin",
+        role="admin",
+        totp_secret=_DUMMY_TOTP_SECRET,
+        totp_enabled=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+    return user.id
 
 
 # ─── probe_all() ユニットテスト ────────────────────────────────────────────────
