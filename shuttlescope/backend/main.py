@@ -5,12 +5,23 @@ import os
 # Windows の CP932 デフォルトエンコーディングを UTF-8 に強制する。
 # Electron の Node.js 側が data.toString('utf8') で受け取るため、
 # stdout/stderr ともに UTF-8 で出力しなければ日本語が文字化けする。
+#
+# 既存ストリームを *その場で* 設定し直す (reconfigure) こと。以前は
+# `sys.stdout = io.TextIOWrapper(sys.stdout.buffer, ...)` と差し替えていたが、
+# import 時に sys.stdout を差し替えるとテスト実行時に壊れる:
+# pytest はキャプチャ用オブジェクトを sys.stdout に入れており、その .buffer を
+# 掴んだ新ラッパーを sys に残すと、pytest がキャプチャを閉じた後もラッパーだけが
+# 生き残って閉じたバッファを指す。以降の出力が
+# `ValueError: I/O operation on closed file` になり、sys.stderr 側が壊れると
+# インタプリタが "lost sys.stderr" で即死する (Python 3.12 で顕在化)。
+# reconfigure は差し替えを伴わないので、この参照の取り残しが起きない。
 if sys.platform == "win32":
-    import io as _io
-    if hasattr(sys.stdout, "buffer"):
-        sys.stdout = _io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-    if hasattr(sys.stderr, "buffer"):
-        sys.stderr = _io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+    for _std in (sys.stdout, sys.stderr):
+        try:
+            _std.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+        except Exception:
+            # pytest のキャプチャ等 reconfigure を持たないオブジェクトでは何もしない
+            pass
 
 # Windows マルチノード Ray クラスタを有効化
 os.environ.setdefault("RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER", "1")
@@ -240,6 +251,20 @@ def _enforce_production_security_gate() -> None:
     )
 
 
+def _background_loops_disabled() -> bool:
+    """常駐バックグラウンドループを起動しない構成か。
+
+    テスト実行時 (conftest が `SS_DISABLE_BACKGROUND_LOOPS=1` を設定) に使う。
+    TestClient がアプリの lifespan を起動するたび、監視・GC・アーカイブの各
+    ループが走り続け、pytest が出力キャプチャを閉じた後にログを書いて
+    `ValueError: I/O operation on closed file` を起こす (Python 3.12 で顕在化)。
+    テストは各チェック関数を直接呼んで検証しており、周期ループ自体は不要。
+    """
+    import os as _os_bg
+    return (_os_bg.environ.get("SS_DISABLE_BACKGROUND_LOOPS", "") or "").strip().lower() \
+        in ("1", "true", "yes", "on")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """アプリ起動時にテーブル作成 + stale cleanup タスク開始"""
@@ -343,6 +368,8 @@ async def lifespan(app: FastAPI):
 
     # ── INFRA Phase B: JobRunner 起動 ─────────────────────────────────────
     try:
+        if _background_loops_disabled():
+            raise RuntimeError("background loops disabled")
         from backend.pipeline.jobs import start_job_runner  # type: ignore
         start_job_runner()
     except ImportError:
@@ -436,10 +463,13 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.debug("[INFRA] _auto_detect_ray skipped: %s", exc)
 
-    cleanup_task = asyncio.create_task(_stale_device_cleanup())
+    cleanup_task = (None if _background_loops_disabled()
+                    else asyncio.create_task(_stale_device_cleanup()))
 
     # 稼働状況の自動監視 (コンポーネント別死活/負荷を定期サンプリングし障害区間を自動記録)
     try:
+        if _background_loops_disabled():
+            raise RuntimeError("background loops disabled")
         from backend.services.status_monitor import start_status_monitor
         status_monitor_task = start_status_monitor()
     except Exception as exc:
@@ -448,6 +478,8 @@ async def lifespan(app: FastAPI):
 
     # 分割アップロードのアイドル GC
     try:
+        if _background_loops_disabled():
+            raise RuntimeError("background loops disabled")
         from backend.routers.uploads import gc_loop as _uploads_gc_loop
         uploads_gc_task = asyncio.create_task(_uploads_gc_loop())
     except Exception as exc:
@@ -456,6 +488,8 @@ async def lifespan(app: FastAPI):
 
     # DL 動画 24h アーカイブループ (SS_LIVE_ARCHIVE_ROOT 未設定時は no-op)
     try:
+        if _background_loops_disabled():
+            raise RuntimeError("background loops disabled")
         from backend.services.downloads_archiver import archive_loop as _dl_archive_loop
         dl_archive_task = asyncio.create_task(_dl_archive_loop())
     except Exception as exc:
@@ -499,6 +533,8 @@ async def lifespan(app: FastAPI):
             except Exception as exc:
                 logger.warning("revoked_tokens periodic GC error: %s", exc)
     try:
+        if _background_loops_disabled():
+            raise RuntimeError("background loops disabled")
         revoked_gc_task = asyncio.create_task(_revoked_tokens_gc_loop())
     except Exception as exc:
         logger.debug("revoked_tokens GC scheduling skipped: %s", exc)
