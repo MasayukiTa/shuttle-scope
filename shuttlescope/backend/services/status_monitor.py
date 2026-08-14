@@ -221,7 +221,7 @@ def _check_tunnel() -> tuple[str, Optional[float], Optional[str], Optional[float
             import urllib.request
             # nosec B310: scheme は _is_http_url で http/https に限定済み
             # (file:// 等のローカル読み出しに転用されない)。
-            txt = urllib.request.urlopen(url, timeout=3).read().decode("utf-8", "replace")  # nosec B310
+            txt = urllib.request.urlopen(url, timeout=3).read().decode("utf-8", "replace")  # nosec B310  # nosemgrep
             conns = _parse_ha_connections(txt)
             if conns is not None:
                 return ((OPERATIONAL, float(conns), f"edge 接続 {conns}", 0.0) if conns > 0
