@@ -19,6 +19,47 @@ def admin_headers():
     return {"Authorization": f"Bearer {create_access_token(user_id=1, role='admin')}"}
 
 
+# TOTP secret は形式が正しければ値は何でもよい (検証はしない)
+_DUMMY_TOTP_SECRET = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
+
+
+@pytest.fixture(autouse=True)
+def _ensure_admin_user_exists(db_session):
+    """admin_headers が指す user_id=1 を DB に実在させる。
+
+    require_admin は admin MFA ゲートが有効なとき、DB 上の user を引いて
+    totp_enabled を確認する。ゲートは conftest が無効化しているが、これは
+    プロセス内の可変な設定オブジェクトに依存しており、他テストが settings を
+    再生成すると復活しうる。実際この 403 は過去に一度踏まれており (上の
+    「CI 403 fix」参照)、CI の並列実行でテスト配分が変わった際に再発した。
+
+    ゲートの状態に関係なく通るよう、このファイル自身が前提を用意する。
+    既存の user 1 がいる場合は触らない (他テストの前提を壊さないため)、
+    自分で作った場合のみ後始末する。
+    """
+    from backend.db.models import User
+
+    created = False
+    if db_session.get(User, 1) is None:
+        db_session.add(User(
+            id=1,
+            username="benchmark_admin",
+            role="admin",
+            totp_secret=_DUMMY_TOTP_SECRET,
+            totp_enabled=True,
+        ))
+        db_session.commit()
+        created = True
+    yield
+    if created:
+        try:
+            db_session.rollback()
+            db_session.query(User).filter(User.id == 1).delete(synchronize_session=False)
+            db_session.commit()
+        except Exception:  # noqa: BLE001 - 後始末の失敗でテストを落とさない
+            db_session.rollback()
+
+
 # ─── probe_all() ユニットテスト ────────────────────────────────────────────────
 
 class TestProbeAll:
