@@ -79,7 +79,9 @@ class TestAccessToken:
             jwt.decode(tok, "wrong-secret", algorithms=["HS256"], options={"verify_aud": False})
 
     def test_not_configured_raises(self):
-        empty = LiveKitConfig(url="", api_key="", api_secret="")
+        # nosec B106: 空文字列は「未設定」を表す値で、秘密のハードコードではない
+        # (未設定時に RuntimeError を投げることを確認するためのテスト)。
+        empty = LiveKitConfig(url="", api_key="", api_secret="")  # nosec B106
         with pytest.raises(RuntimeError):
             issue_access_token("x", "WS1A2B", "operator", cfg=empty, now=1_000_000)
 
