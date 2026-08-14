@@ -167,3 +167,44 @@ def test_clock_component_is_registered():
     assert "clock" in sm._CHECKS
     assert "clock" in sm._AUTO_TEXT
     assert sm._COMP_BY_KEY["clock"]["sev_down"] == "critical"
+
+
+# ── CLOUDFLARED_METRICS_URL のスキーム制限 (Bandit B310) ────────────────────
+#
+# urlopen は file:// や独自スキームも開けるため、メトリクス URL を
+# http/https に限定する。運用者設定の env とはいえ、誤設定や設定ファイル
+# 汚染でローカルファイル読み出しに転用される経路を残さない。
+
+def test_metrics_url_accepts_http_and_https():
+    from backend.services import status_monitor as sm
+    assert sm._is_http_url("http://127.0.0.1:2000/metrics")
+    assert sm._is_http_url("https://metrics.example.com/m")
+
+
+def test_metrics_url_rejects_non_http_schemes():
+    from backend.services import status_monitor as sm
+    for bad in ("file:///C:/Windows/win.ini", "file:///etc/passwd",
+                "ftp://example.com/x", "gopher://example.com/",
+                "data:text/plain;base64,QQ==", "", "not a url"):
+        assert not sm._is_http_url(bad), bad
+
+
+def test_tunnel_check_skips_urlopen_for_non_http_scheme(monkeypatch):
+    """非 http スキームでは urlopen を呼ばずプロセス判定へ落ちること。"""
+    from backend.services import status_monitor as sm
+
+    monkeypatch.setenv("CLOUDFLARED_METRICS_URL", "file:///etc/passwd")
+
+    called = []
+
+    import urllib.request
+
+    def _boom(*a, **k):
+        called.append(a)
+        raise AssertionError("urlopen が呼ばれた")
+
+    monkeypatch.setattr(urllib.request, "urlopen", _boom)
+    # 例外にならず (= urlopen を呼ばず) 結果を返すこと
+    status, _metric, _detail, _sev = sm._check_tunnel()
+    assert status in (sm.OPERATIONAL, sm.DEGRADED, sm.DOWN)
+    assert not called

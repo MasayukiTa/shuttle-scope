@@ -197,15 +197,31 @@ def _check_worker() -> tuple[str, Optional[float], Optional[str], Optional[float
         return OPERATIONAL, None, None, None
 
 
+def _is_http_url(url: str) -> bool:
+    """http/https のみ許可する。
+
+    CLOUDFLARED_METRICS_URL は運用者が設定する env だが、`file://` や独自スキーム
+    を渡すと urlopen がローカルファイル読み出しに転用されうる (Bandit B310)。
+    メトリクス取得に必要なのは http(s) だけなので、入口で限定する。
+    """
+    try:
+        from urllib.parse import urlparse
+        return urlparse(url).scheme in ("http", "https")
+    except Exception:  # noqa: BLE001 - 解析不能な文字列は不許可
+        return False
+
+
 def _check_tunnel() -> tuple[str, Optional[float], Optional[str], Optional[float]]:
     """cloudflared プロセス生存で判定。metrics endpoint が env で指定されていれば
     edge 接続数 (cloudflared_tunnel_ha_connections) も見る。
     連続値が無いので severity は 2 値 (接続あり=0.0 / 切断=1.0)。"""
     url = os.environ.get("CLOUDFLARED_METRICS_URL")
-    if url:
+    if url and _is_http_url(url):
         try:
             import urllib.request
-            txt = urllib.request.urlopen(url, timeout=3).read().decode("utf-8", "replace")
+            # nosec B310: scheme は _is_http_url で http/https に限定済み
+            # (file:// 等のローカル読み出しに転用されない)。
+            txt = urllib.request.urlopen(url, timeout=3).read().decode("utf-8", "replace")  # nosec B310
             conns = _parse_ha_connections(txt)
             if conns is not None:
                 return ((OPERATIONAL, float(conns), f"edge 接続 {conns}", 0.0) if conns > 0
