@@ -102,14 +102,45 @@ def test_engine():
     engine.dispose()
 
 
+def _truncate_all_tables(engine) -> None:
+    """全テーブルを空にする。
+
+    子テーブルから消すため sorted_tables (親→子) を逆順に回す。
+    SQLite の in-memory DB なので DELETE で十分速い。
+    """
+    with engine.begin() as conn:
+        for table in reversed(Base.metadata.sorted_tables):
+            conn.execute(table.delete())
+
+
 @pytest.fixture()
 def db_session(test_engine):
-    """Provide a rollback-isolated DB session for each test."""
+    """各テストに DB セッションを渡し、**テスト後に DB を空に戻す**。
+
+    以前は rollback だけで隔離していたが、rollback で消えるのは未コミット分だけ。
+    テスト対象コードもテスト自身も `commit()` するため、コミットされた行は
+    セッションスコープの共有 in-memory DB に残り、同じ worker の後続テストから
+    見えてしまう。これが実際に何度も CI を壊してきた:
+
+      - test_pipeline_smoke: 他テストの ShotInference を数え込んで 3 != 5
+        (2026-05-08。match 限定 count に直したが、別の数え方で 33 != 3 が再発)
+      - test_benchmark_devices: admin_headers が user_id=1 の JWT を発行するだけで
+        ユーザを作らず、他テストが残した user 1 の中身で 403 になる
+        (ファイル内の「CI 403 fix」コメントが前回の対症療法)
+      - test_mfa_recovery_codes: 作成したユーザを消さず他ファイルを巻き込んだ
+
+    xdist はファイルを動的に配分するため「どのテストが同居するか」が実行ごとに
+    変わり、汚染は**間欠的な失敗**として現れる。個々のテストに後始末を足すより、
+    ここで一律に断つ方が確実。
+    """
     TestingSession = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
     session = TestingSession()
-    yield session
-    session.rollback()
-    session.close()
+    try:
+        yield session
+    finally:
+        session.rollback()
+        session.close()
+        _truncate_all_tables(test_engine)
 
 
 @pytest.fixture(autouse=True)
