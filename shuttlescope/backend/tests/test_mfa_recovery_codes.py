@@ -14,6 +14,7 @@ from backend.db.database import get_db
 from backend.db.models import MfaRecoveryCode, User
 from backend.main import app
 from backend.routers.auth import (
+    _IP_LOGIN_TIMES,
     _RECOVERY_CODE_COUNT,
     _hash_recovery_code,
     _hotp_value,
@@ -25,15 +26,57 @@ from backend.routers.auth import (
 from backend.utils.jwt_utils import create_access_token
 
 
+# 本ファイルが作るユーザ名。テスト終了時に必ず消す (下の fixture 参照)。
+_TEST_USERNAMES = ("mfa_user", "mfa_player")
+
+
+@pytest.fixture(autouse=True)
+def _cleanup_created_users(db_session):
+    """本ファイルが commit したユーザを後始末する。
+
+    テスト対象コードが commit するため db_session の rollback では消えず、
+    セッションスコープの共有 DB に行が残る。残すと **他のテストファイルが壊れる**:
+    `admin_headers` 系の fixture は user_id=1 の JWT を発行するだけで、
+    認可は DB の role 再チェックに依存する。本ファイルのユーザが id=1 を
+    取ると admin 判定が落ちて 403 になる (CI の並列割り当てが変わった際に
+    test_benchmark_devices が実際にこれで落ちた)。
+    """
+    yield
+    try:
+        db_session.rollback()
+        ids = [
+            row[0] for row in db_session.query(User.id)
+            .filter(User.username.in_(_TEST_USERNAMES)).all()
+        ]
+        if ids:
+            # SQLite は既定で FK CASCADE が効かないため子から先に消す
+            db_session.query(MfaRecoveryCode).filter(
+                MfaRecoveryCode.user_id.in_(ids)
+            ).delete(synchronize_session=False)
+            db_session.query(User).filter(User.id.in_(ids)).delete(
+                synchronize_session=False
+            )
+            db_session.commit()
+    except Exception:  # noqa: BLE001 - 後始末の失敗でテストを落とさない
+        db_session.rollback()
+
+
 @pytest.fixture(autouse=True)
 def _reset_mfa_rate_limiters():
-    """MFA 系のレートリミッタはプロセス内のモジュール変数なので、
-    テスト間で持ち越すと後続テストが 429 で落ちる (setup は 10 分 5 回上限)。"""
-    _mfa_setup_counters.clear()
-    _mfa_failures.clear()
+    """MFA / ログイン系のレートリミッタはプロセス内のモジュール変数なので、
+    テスト間で持ち越すと後続テストが 429 で落ちる。
+
+    - MFA setup: 10 分 5 回上限
+    - MFA 失敗: 10 分 10 回上限
+    - IP 単位のログイン: **60 秒 10 回上限**。本ファイルは 1 テストで最大 3 回
+      ログインするため、リセットしないと後半のテストが必ず 429 になる
+      (CI の並列実行で実際に発生した)。テストは全て同一の client IP から出る。
+    """
+    for state in (_mfa_setup_counters, _mfa_failures, _IP_LOGIN_TIMES):
+        state.clear()
     yield
-    _mfa_setup_counters.clear()
-    _mfa_failures.clear()
+    for state in (_mfa_setup_counters, _mfa_failures, _IP_LOGIN_TIMES):
+        state.clear()
 
 
 def _current_totp(secret: str) -> str:
