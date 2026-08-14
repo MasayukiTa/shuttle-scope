@@ -11,6 +11,14 @@
 import os  # noqa: E402
 os.environ.setdefault("SS_REQUIRE_ADMIN_MFA", "0")
 
+# アプリの常駐バックグラウンドループ (状況監視 / 各種 GC / アーカイブ / JobRunner)
+# をテスト中は起動しない。TestClient が lifespan を起動するたびにこれらが走り続け、
+# pytest が出力キャプチャを閉じた後にログを書くと
+# `ValueError: I/O operation on closed file` でテストが ERROR になる
+# (Python 3.12 で顕在化し、Windows の直列実行で多数のテストが巻き添えになった)。
+# 各ループの中身はテスト側が関数を直接呼んで検証しており、周期実行は不要。
+os.environ.setdefault("SS_DISABLE_BACKGROUND_LOOPS", "1")
+
 # xdist 並列 (CI Linux: -n auto --dist loadfile) では複数 worker が同一 file SQLite を
 # 共有し、各テストの drop_all/create_all が交錯して "table X already exists" で落ちる
 # (Windows は serial なので無衝突)。backend.db.database の engine 生成より前に、
