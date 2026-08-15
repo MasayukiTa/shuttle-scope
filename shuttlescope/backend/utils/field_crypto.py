@@ -159,11 +159,15 @@ class FieldKeyError(RuntimeError):
     """フィールド暗号鍵が無い / 壊れている / 既存データを復号できない。"""
 
 
-def verify_key_roundtrip() -> None:
-    """鍵で暗号化→復号が成立することを確認する。失敗なら FieldKeyError。
+CANARY_PLAINTEXT = "shuttlescope-field-key-canary-v1"
 
-    起動時プリフライト用。鍵が無い場合もエラーにする (呼び出し側が本番姿勢か
-    どうかで扱いを決める)。
+
+def verify_key_roundtrip() -> None:
+    """鍵が「使える」ことだけを確認する。失敗なら FieldKeyError。
+
+    注意: これは **鍵が正しいことを保証しない**。その場で暗号化して同じ鍵で復号する
+    だけなので、新しく生成した別の鍵でも通る。保存済みデータをその鍵で扱えるかは
+    verify_key_matches_stored_data() で確認すること。
     """
     f = _get_fernet()
     if f is None:
@@ -171,12 +175,52 @@ def verify_key_roundtrip() -> None:
             "SS_FIELD_ENCRYPTION_KEY が未設定または不正です。"
             "暗号化フィールドは復号できず、新規保存は平文になります。"
         )
-    canary = "field-crypto-canary"
-    token = encrypt_field(canary)
+    token = encrypt_field(CANARY_PLAINTEXT)
     if not token or not token.startswith(_KEY_VERSION_PREFIX):
         raise FieldKeyError("暗号化に失敗しました (鍵は読めるが encrypt が機能していません)。")
-    if decrypt_field(token) != canary:
+    if decrypt_field(token) != CANARY_PLAINTEXT:
         raise FieldKeyError("復号結果が一致しません (鍵が壊れています)。")
+
+
+def verify_key_matches_stored_data(session) -> None:
+    """DB に永続化したカナリアで「この鍵が今のデータの鍵か」を確認する。
+
+    その場限りの往復では、正しい鍵と *新しく生成した別の鍵* を区別できない。
+    別鍵で起動すると:
+      - 既存の暗号文が全て復号不能になる
+      - バックフィルが平文を **別鍵で** 暗号化し、鍵が混在した DB になる
+    これを防ぐため、初回に暗号化したカナリアを DB へ保存し、以降は毎回それを
+    復号して一致を確認する。
+
+    カナリアが未登録なら作成する (初回起動 / 新規環境)。既存の暗号化データが
+    無い環境でも成立するよう、既存列ではなく専用の 1 行を使う。
+    """
+    from sqlalchemy import text as _text
+
+    verify_key_roundtrip()
+
+    row = session.execute(
+        _text("SELECT value FROM field_key_canary WHERE id = 1")
+    ).scalar()
+
+    if row is None:
+        session.execute(
+            _text("INSERT INTO field_key_canary (id, value) VALUES (1, :v)"),
+            {"v": encrypt_field(CANARY_PLAINTEXT)},
+        )
+        session.commit()
+        logger.info("[field_crypto] 鍵カナリアを新規登録しました。")
+        return
+
+    if not can_decrypt(row):
+        raise FieldKeyError(
+            "保存済みカナリアを現在の鍵で復号できません。"
+            "別の鍵が設定されている可能性が高く、このまま起動すると既存の暗号文が"
+            "全て読めず、新規保存は別鍵で暗号化されて鍵が混在します。"
+            "退避した正しい鍵を復元してください (新しい鍵を生成してはいけません)。"
+        )
+    if decrypt_field(row) != CANARY_PLAINTEXT:
+        raise FieldKeyError("カナリアの内容が一致しません (データ破損の可能性)。")
 
 
 def can_decrypt(ciphertext: Optional[str]) -> bool:

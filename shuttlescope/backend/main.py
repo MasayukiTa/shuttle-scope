@@ -238,8 +238,12 @@ def _enforce_production_security_gate() -> None:
     # 「読める鍵」と「正しい鍵」は別物 (32byte base64 なら別の鍵でも構文上は通る)
     # ため、往復 (encrypt→decrypt) まで確認する。
     try:
-        from backend.utils.field_crypto import FieldKeyError, verify_key_roundtrip
-        verify_key_roundtrip()
+        from backend.db.database import SessionLocal as _SL_fek
+        from backend.utils.field_crypto import verify_key_matches_stored_data
+        with _SL_fek() as _db_fek:
+            # その場の往復だけでは「新しく生成した別の鍵」を弾けないため、
+            # DB に永続化したカナリアを復号して同一性まで確認する。
+            verify_key_matches_stored_data(_db_fek)
     except Exception as _fek_exc:  # noqa: BLE001 - FieldKeyError 以外も起動拒否
         errors.append(
             "(g) SS_FIELD_ENCRYPTION_KEY is unusable: "
