@@ -7,39 +7,53 @@
 (= 正規の参加者、または漏れた credential を拾った者) が起こす問題なので、
 資格情報なしで試しても意味がない。
 
-TURN には内部へ中継させる経路が複数ある。片方だけ塞いでも迂回されるため、
-両方を試す:
+試す経路 (どれか 1 つでも通れば内部へ届く):
   1. CreatePermission + Send indication
   2. ChannelBind + ChannelData
-加えて TCP リレー (RFC 6062) が開いていないかも確認する。TCP が通ると
-内部の PostgreSQL 等へ本物の接続を張られるため UDP より危険。
+  3. IPv6 の割当を要求してから IPv6 の内部アドレス
+  4. IPv4-mapped IPv6 (::ffff:10.0.0.1) — IPv4 の deny を書いただけでは
+     素通りする。実測で確認済み
+  5. ブロードキャスト / 0.0.0.0 / TURN 自身
+  6. TCP リレー (RFC 6062) — 通ると内部へ本物の TCP 接続を張られる
+  7. 認証なしの Allocate
+
+**443 Peer Address Family Mismatch を「安全」と数えないこと。**
+それは deny が効いたのではなく、割当の address family が違うので
+検査に到達していないだけ。本スクリプトは宛先の family に合わせて
+割当を要求し、それでも 443 が返る場合は「未検証」として報告する。
 
 使い方:
     python verify_turn_hardening.py --host turn.example.com --port 3478 \
         --user <username> --password <credential> \
-        --peer 192.168.1.10 --peer 10.0.0.5
+        --peer 192.168.1.10 --peer 10.0.0.5 --peer fd00::1
 
-終了コード 0 = 全ての内部アドレスが拒否された。1 = 中継された (危険)。
+終了コード 0 = 中継された経路なし。1 = 中継された、または未検証が残った。
+
+検証記録: docs/validation/turn_relay_abuse_verification.md
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
 import hmac
+import ipaddress
 import secrets
 import socket
 import struct
 import sys
 
 MAGIC = 0x2112A442
-ALLOCATE_REQ, ALLOCATE_OK, ALLOCATE_ERR = 0x0003, 0x0103, 0x0113
+ALLOCATE_REQ, ALLOCATE_OK = 0x0003, 0x0103
 CREATEPERM_REQ, CREATEPERM_OK, CREATEPERM_ERR = 0x0008, 0x0108, 0x0118
 CHANNELBIND_REQ, CHANNELBIND_OK, CHANNELBIND_ERR = 0x0009, 0x0109, 0x0119
+SEND_IND = 0x0016
 A_USERNAME, A_MI, A_ERR = 0x0006, 0x0008, 0x0009
 A_REALM, A_NONCE = 0x0014, 0x0015
-A_XOR_PEER, A_DATA, A_REQ_TRANSPORT, A_CHANNEL = 0x0012, 0x0013, 0x0019, 0x000C
+A_XOR_PEER, A_DATA, A_CHANNEL = 0x0012, 0x0013, 0x000C
+A_REQ_TRANSPORT, A_REQ_ADDR_FAMILY = 0x0019, 0x0017
 
 TRANSPORT_UDP, TRANSPORT_TCP = 17, 6
+FAMILY_V4, FAMILY_V6 = 0x01, 0x02
 
 
 def _pad(b: bytes) -> bytes:
@@ -50,9 +64,15 @@ def _attr(t: int, v: bytes) -> bytes:
     return struct.pack("!HH", t, len(v)) + _pad(v)
 
 
-def _xor_addr(ip: str, port: int) -> bytes:
-    return (struct.pack("!BBH", 0, 0x01, port ^ (MAGIC >> 16))
-            + struct.pack("!I", struct.unpack("!I", socket.inet_aton(ip))[0] ^ MAGIC))
+def _xor_peer(ip_str: str, port: int, tid: bytes) -> bytes:
+    ip = ipaddress.ip_address(ip_str)
+    xport = port ^ (MAGIC >> 16)
+    if ip.version == 4:
+        return (struct.pack("!BBH", 0, FAMILY_V4, xport)
+                + struct.pack("!I", int(ip) ^ MAGIC))
+    mask = int.from_bytes(struct.pack("!I", MAGIC) + tid, "big")
+    return (struct.pack("!BBH", 0, FAMILY_V6, xport)
+            + (int(ip) ^ mask).to_bytes(16, "big"))
 
 
 def _build(mt: int, tid: bytes, attrs: bytes, key: bytes | None) -> bytes:
@@ -78,127 +98,187 @@ def _parse(data: bytes) -> tuple[int, dict[int, bytes]]:
 def _errtext(a: dict[int, bytes]) -> str:
     raw = a.get(A_ERR)
     if not raw or len(raw) < 4:
-        return "(エラーコードなし)"
+        return "(コードなし)"
     return f"{raw[2] * 100 + raw[3]} {raw[4:].decode('utf-8', 'replace')}"
 
 
-class TurnSession:
+def _err_code(a: dict[int, bytes]) -> int:
+    raw = a.get(A_ERR)
+    return raw[2] * 100 + raw[3] if raw and len(raw) >= 4 else 0
+
+
+class Turn:
     def __init__(self, host: str, port: int, user: str, password: str) -> None:
-        self.dst = (host, port)
-        self.user, self.password = user, password
+        self.dst, self.user, self.password = (host, port), user, password
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.settimeout(5)
-        self.key = b""
-        self.realm = ""
-        self.nonce = b""
+        self.key, self.realm, self.nonce = b"", "", b""
 
     def close(self) -> None:
         self.sock.close()
 
-    def _auth_attrs(self) -> bytes:
+    def _auth(self) -> bytes:
         return (_attr(A_USERNAME, self.user.encode())
-                + _attr(A_REALM, self.realm.encode())
-                + _attr(A_NONCE, self.nonce))
+                + _attr(A_REALM, self.realm.encode()) + _attr(A_NONCE, self.nonce))
 
-    def allocate(self, transport: int = TRANSPORT_UDP) -> str:
+    def allocate(self, transport: int = TRANSPORT_UDP,
+                 family: int | None = None) -> tuple[bool, str]:
         rt = _attr(A_REQ_TRANSPORT, struct.pack("!BBBB", transport, 0, 0, 0))
+        if family is not None:
+            rt += _attr(A_REQ_ADDR_FAMILY, struct.pack("!BBBB", family, 0, 0, 0))
         self.sock.sendto(_build(ALLOCATE_REQ, secrets.token_bytes(12), rt, None), self.dst)
         _mt, a = _parse(self.sock.recvfrom(2048)[0])
         self.realm = a.get(A_REALM, b"").decode()
         self.nonce = a.get(A_NONCE, b"")
-        self.key = hashlib.md5(  # noqa: S324 - RFC 5389 が MD5 を規定している
+        self.key = hashlib.md5(  # noqa: S324 - RFC 5389 が MD5 を規定
             f"{self.user}:{self.realm}:{self.password}".encode()).digest()
-
-        req = _build(ALLOCATE_REQ, secrets.token_bytes(12),
-                     rt + self._auth_attrs(), self.key)
-        self.sock.sendto(req, self.dst)
+        self.sock.sendto(
+            _build(ALLOCATE_REQ, secrets.token_bytes(12), rt + self._auth(), self.key),
+            self.dst)
         mt, a = _parse(self.sock.recvfrom(2048)[0])
-        return "OK" if mt == ALLOCATE_OK else f"拒否: {_errtext(a)}"
+        return (True, "OK") if mt == ALLOCATE_OK else (False, _errtext(a))
 
-    def create_permission(self, ip: str, port: int) -> tuple[bool, str]:
-        attrs = _attr(A_XOR_PEER, _xor_addr(ip, port)) + self._auth_attrs()
-        self.sock.sendto(_build(CREATEPERM_REQ, secrets.token_bytes(12), attrs, self.key),
-                         self.dst)
+    def create_permission(self, ip: str, port: int) -> tuple[str, str]:
+        tid = secrets.token_bytes(12)
+        attrs = _attr(A_XOR_PEER, _xor_peer(ip, port, tid)) + self._auth()
+        self.sock.sendto(_build(CREATEPERM_REQ, tid, attrs, self.key), self.dst)
         mt, a = _parse(self.sock.recvfrom(2048)[0])
         if mt == CREATEPERM_OK:
-            return True, "許可された"
-        if mt == CREATEPERM_ERR:
-            return False, _errtext(a)
-        return False, f"想定外の応答 0x{mt:04x}"
+            tid2 = secrets.token_bytes(12)
+            self.sock.sendto(
+                _build(SEND_IND, tid2,
+                       _attr(A_XOR_PEER, _xor_peer(ip, port, tid2))
+                       + _attr(A_DATA, b"TURN-HARDENING-PROBE"), None), self.dst)
+            return "RELAYED", "許可された"
+        if _err_code(a) == 443:
+            return "UNTESTED", _errtext(a)
+        return "BLOCKED", _errtext(a)
 
-    def channel_bind(self, ip: str, port: int, channel: int = 0x4000) -> tuple[bool, str]:
-        attrs = (_attr(A_CHANNEL, struct.pack("!HH", channel, 0))
-                 + _attr(A_XOR_PEER, _xor_addr(ip, port)) + self._auth_attrs())
-        self.sock.sendto(_build(CHANNELBIND_REQ, secrets.token_bytes(12), attrs, self.key),
-                         self.dst)
+    def channel_bind(self, ip: str, port: int) -> tuple[str, str]:
+        tid = secrets.token_bytes(12)
+        attrs = (_attr(A_CHANNEL, struct.pack("!HH", 0x4000, 0))
+                 + _attr(A_XOR_PEER, _xor_peer(ip, port, tid)) + self._auth())
+        self.sock.sendto(_build(CHANNELBIND_REQ, tid, attrs, self.key), self.dst)
         mt, a = _parse(self.sock.recvfrom(2048)[0])
         if mt == CHANNELBIND_OK:
-            return True, "許可された"
-        if mt == CHANNELBIND_ERR:
-            return False, _errtext(a)
-        return False, f"想定外の応答 0x{mt:04x}"
+            self.sock.sendto(struct.pack("!HH", 0x4000, 20) + b"TURN-HARDENING-PROBE",
+                             self.dst)
+            return "RELAYED", "許可された"
+        if _err_code(a) == 443:
+            return "UNTESTED", _errtext(a)
+        return "BLOCKED", _errtext(a)
+
+
+def _probe(host: str, port: int, user: str, pw: str, peer: str,
+           peer_port: int, method: str) -> tuple[str, str]:
+    """宛先の family に合わせて割当を要求してから 1 経路を試す。"""
+    family = FAMILY_V6 if ipaddress.ip_address(peer).version == 6 else FAMILY_V4
+    t = Turn(host, port, user, pw)
+    try:
+        ok, detail = t.allocate(TRANSPORT_UDP, family)
+        if not ok:
+            # v6 割当自体を持たないサーバなら family 指定なしで再試行
+            t2 = Turn(host, port, user, pw)
+            try:
+                ok2, detail2 = t2.allocate(TRANSPORT_UDP, None)
+                if not ok2:
+                    return "UNTESTED", f"allocate 不可 ({detail2})"
+                return (t2.create_permission(peer, peer_port) if method == "perm"
+                        else t2.channel_bind(peer, peer_port))
+            finally:
+                t2.close()
+        return (t.create_permission(peer, peer_port) if method == "perm"
+                else t.channel_bind(peer, peer_port))
+    except socket.timeout:
+        return "UNTESTED", "無応答"
+    except Exception as exc:  # noqa: BLE001
+        return "UNTESTED", f"例外: {exc}"
+    finally:
+        t.close()
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description=__doc__)
+    p = argparse.ArgumentParser(description="TURN 踏み台化の実地確認")
     p.add_argument("--host", required=True)
     p.add_argument("--port", type=int, default=3478)
     p.add_argument("--user", required=True)
     p.add_argument("--password", required=True)
     p.add_argument("--peer", action="append", required=True,
-                   help="中継を試みる内部アドレス。複数指定可")
+                   help="中継を試みる内部アドレス (IPv4/IPv6)。複数指定可")
     p.add_argument("--peer-port", type=int, default=5432)
     args = p.parse_args()
 
-    failures: list[str] = []
+    relayed: list[str] = []
+    untested: list[str] = []
 
-    print(f"TURN {args.host}:{args.port} を検証します")
-    print()
+    print(f"TURN {args.host}:{args.port} を検証します\n")
 
-    # TCP リレーが開いていないか
-    s = TurnSession(args.host, args.port, args.user, args.password)
+    # 認証なしで確保できないこと
+    t = Turn(args.host, args.port, args.user, args.password)
     try:
-        tcp = s.allocate(TRANSPORT_TCP)
-        if tcp == "OK":
-            print("  [危険] TCP リレーが有効です。内部へ TCP 接続を張られます。")
-            print("         no-tcp-relay を設定してください")
-            failures.append("tcp-relay")
+        rt = _attr(A_REQ_TRANSPORT, struct.pack("!BBBB", TRANSPORT_UDP, 0, 0, 0))
+        t.sock.sendto(_build(ALLOCATE_REQ, secrets.token_bytes(12), rt, None), t.dst)
+        mt, a = _parse(t.sock.recvfrom(2048)[0])
+        if mt == ALLOCATE_OK:
+            print("  [危険] 認証なしで Allocate できました")
+            relayed.append("unauthenticated-allocate")
         else:
-            print(f"  [良] TCP リレーは無効 ({tcp})")
+            print(f"  [良] 認証なしの Allocate は拒否 ({_errtext(a)})")
+    except socket.timeout:
+        print("  [?] 認証なし Allocate が無応答")
+        untested.append("unauthenticated-allocate")
+    finally:
+        t.close()
+
+    # TCP リレーが開いていないこと
+    t = Turn(args.host, args.port, args.user, args.password)
+    try:
+        ok, detail = t.allocate(TRANSPORT_TCP)
+        if ok:
+            print("  [危険] TCP リレーが有効です。内部へ TCP 接続を張られます")
+            print("         no-tcp-relay を設定してください")
+            relayed.append("tcp-relay")
+        else:
+            print(f"  [良] TCP リレーは無効 ({detail})")
     except socket.timeout:
         print("  [?] TCP allocate が無応答")
+        untested.append("tcp-relay")
     finally:
-        s.close()
+        t.close()
     print()
 
+    # 内部アドレスへの中継。IPv4 は mapped 表記も必ず試す
+    targets: list[tuple[str, str]] = []
     for peer in args.peer:
-        print(f"内部アドレス {peer}:{args.peer_port} への中継を試みます")
-        for label, method in (("CreatePermission", "perm"), ("ChannelBind", "chan")):
-            s = TurnSession(args.host, args.port, args.user, args.password)
-            try:
-                alloc = s.allocate(TRANSPORT_UDP)
-                if alloc != "OK":
-                    print(f"  [?] {label}: allocate に失敗 ({alloc})。資格情報を確認してください")
-                    continue
-                if method == "perm":
-                    allowed, detail = s.create_permission(peer, args.peer_port)
-                else:
-                    allowed, detail = s.channel_bind(peer, args.peer_port)
-                if allowed:
-                    print(f"  [危険] {label} が通りました — 踏み台にできます")
-                    failures.append(f"{peer}/{label}")
-                else:
-                    print(f"  [良] {label} は拒否されました ({detail})")
-            except socket.timeout:
-                print(f"  [?] {label}: 無応答")
-            finally:
-                s.close()
+        targets.append((peer, peer))
+        if ipaddress.ip_address(peer).version == 4:
+            targets.append((f"::ffff:{peer}", f"{peer} (IPv4-mapped IPv6 表記)"))
+    for extra in ("255.255.255.255", "0.0.0.0", args.host):
+        targets.append((extra, extra))
+
+    for addr, label in targets:
+        print(f"{label} への中継")
+        for name, method in (("CreatePermission", "perm"), ("ChannelBind", "chan")):
+            verdict, detail = _probe(args.host, args.port, args.user,
+                                     args.password, addr, args.peer_port, method)
+            if verdict == "RELAYED":
+                print(f"  [危険] {name} が通りました — 踏み台にできます")
+                relayed.append(f"{addr}/{name}")
+            elif verdict == "UNTESTED":
+                print(f"  [未検証] {name}: {detail}")
+                untested.append(f"{addr}/{name}")
+            else:
+                print(f"  [良] {name} は拒否 ({detail})")
         print()
 
-    if failures:
-        print(f"結果: 危険な経路が {len(failures)} 件あります → {', '.join(failures)}")
+    if relayed:
+        print(f"結果: 中継できた経路が {len(relayed)} 件 → {', '.join(relayed)}")
         return 1
-    print("結果: 試した内部アドレスへの中継は全て拒否されました")
+    if untested:
+        print(f"結果: 未検証が {len(untested)} 件残りました → {', '.join(untested)}")
+        print("      未検証は「安全」ではありません。攻撃者はそこから来ます")
+        return 1
+    print("結果: 試した全経路で中継は拒否されました")
     return 0
 
 
