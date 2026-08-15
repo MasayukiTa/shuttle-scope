@@ -187,10 +187,16 @@ def _enforce_production_security_gate() -> None:
     各 fail は logger.critical + sys.exit(2)。warning は続行可。
     """
     import sys as _sys_gate
-    env_norm = (app_settings.ENVIRONMENT or "").strip().lower()
-    is_public = bool(getattr(app_settings, "PUBLIC_MODE", False))
-    is_prod = (env_norm == "production") or is_public
-    if not is_prod:
+    # 発動条件は is_production_posture に揃える。
+    #
+    # 以前は `ENVIRONMENT=production or PUBLIC_MODE` だけを見ており、実際の本番ホスト
+    # (ENVIRONMENT=development / PUBLIC_MODE=False だが HIDE_API_DOCS=1,
+    # HIDE_STACK_TRACES=1) では **この gate 自体が一度も走っていなかった**。
+    # 「スタックトレースは本番として秘匿するのに、構成ミスの検査は素通り」という
+    # 食い違いで、(g) の鍵チェックも当然効かず、鍵を失っても起動して平文保存へ
+    # 静かにフォールバックする状態だった。
+    # 例外ハンドラ側で同じズレを直したのと同じ理由で、判定を一本化する。
+    if not app_settings.is_production_posture:
         return  # dev / test は厳格化しない
 
     errors: list[str] = []

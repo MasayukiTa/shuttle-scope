@@ -232,3 +232,34 @@ def test_setup_regenerates_when_stored_secret_is_unusable(db_session, with_key):
         assert _totp_secret_usable(secret)
     finally:
         app.dependency_overrides.clear()
+
+
+# ── 起動ゲートの発動条件 ────────────────────────────────────────────────────
+
+def test_startup_gate_fires_on_production_posture_not_just_environment(monkeypatch):
+    """HIDE_STACK_TRACES だけが立った本番ホストでも gate が走ること。
+
+    実際の本番は ENVIRONMENT=development / PUBLIC_MODE=False のまま
+    HIDE_API_DOCS=1, HIDE_STACK_TRACES=1 で運用されており、旧条件
+    (ENVIRONMENT=production or PUBLIC_MODE) では gate が一度も発動していなかった。
+    秘匿は本番扱いなのに構成チェックだけ素通り、という状態を防ぐ。
+    """
+    from backend.config import settings
+    import backend.main as main_mod
+
+    monkeypatch.setattr(settings, "ENVIRONMENT", "development", raising=False)
+    monkeypatch.setattr(settings, "PUBLIC_MODE", False, raising=False)
+    monkeypatch.setattr(settings, "HIDE_API_DOCS", True, raising=False)
+    monkeypatch.setattr(settings, "HIDE_STACK_TRACES", True, raising=False)
+    assert settings.is_production_posture is True
+
+    called = []
+    monkeypatch.setattr(
+        main_mod, "_background_loops_disabled", lambda: True, raising=False)
+
+    # gate が走れば鍵検証が呼ばれる。呼ばれたことだけを見る (成否は別テスト)。
+    import backend.utils.field_crypto as fc
+    monkeypatch.setattr(fc, "verify_key_matches_stored_data",
+                        lambda session: called.append(True), raising=False)
+    main_mod._enforce_production_security_gate()
+    assert called, "本番姿勢なのに gate が発動しなかった"
