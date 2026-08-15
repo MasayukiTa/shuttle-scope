@@ -114,7 +114,8 @@ def test_wrong_session_password_is_still_rejected():
     code = "PTPW"
     _make_session(code)
     with TestClient(app, base_url="http://localhost") as client:
-        resp = _join(client, code, session_password="wrong-password")
+        # 拒否されることを確かめるための誤ったパスワード (テスト用固定値)
+        resp = _join(client, code, session_password="wrong-password")  # nosec B106
     assert resp.status_code == 401
 
 
