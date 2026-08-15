@@ -287,11 +287,15 @@ SFU でも端から端まで守りたい場合は E2EE (Insertable Streams / SFr
 2. **ICE 資格情報が門番になる**。WebRTC は STUN binding request に
    セッションごとの ufrag/pwd を要求し、合わないパケットは処理せず捨てる。
    一般的なポート開放より攻撃面はずっと狭い
-3. **急所: TURN を内部ネットワークへの踏み台にされること。** 素の TURN は
-   「任意の宛先へ中継してくれるプロキシ」なので、設定を誤ると LAN 内部
-   (PostgreSQL、管理画面、他の機器) へ中継させられる。
-   `denied-peer-ip` で RFC1918 / loopback / link-local を全て禁止し、
-   `no-multicast-peers` を設定すること。**これが最重要**
+3. **急所: TURN を内部ネットワークへの踏み台にされること。**
+   **実測で確認済み** (`docs/validation/turn_relay_abuse_verification.md`)。
+   既定の coturn は RFC1918 を拒否しないため、資格情報を持つ者は LAN 上の
+   内部サービスへ実際に到達できた。塞ぐ経路は **CreatePermission と
+   ChannelBind の 2 つ**あり、片方だけでは迂回される。
+   `denied-peer-ip` で両方とも 403 になることも実測した。
+   併せて `no-tcp-relay` を明示すること (TCP が通ると内部へ本物の
+   TCP 接続を張られる)。設定ひな型は `infra/turn/coturn.conf.example`、
+   本番確認は `infra/turn/verify_turn_hardening.py`
 4. **資格情報は短命の HMAC 方式**にする。現行 `tunnel.py` は Settings の
    固定 TURN credential をそのまま返しており、これは踏み台化と
    帯域の踏み倒しを招く (codex 指摘済み・未修正)
@@ -339,3 +343,5 @@ RTP + ジッタバッファの世界で要求が別物。
   通る」は TURN については誤りだったので訂正**。TURN は暗号文を転送する
   だけで復号できない (公式 FAQ で確認)。復号するのは SFU。あわせて
   自前 UDP 公開時の防御項目と、miasma-protocol の転用可否を記録。
+- 2026-08-15 踏み台化を実機で検証。既定設定では成立し、`denied-peer-ip`
+  で止まることを対照実験で確認。検証記録と設定ひな型・確認スクリプトを追加。
