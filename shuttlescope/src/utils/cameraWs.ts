@@ -5,11 +5,12 @@
  *   operator / device / viewer の 3 箇所が同じ組み立てを個別に持ち、いずれも
  *   token を `isHttps` のときしか付けていなかった。サーバ側 `_ws_require_auth`
  *   は全ロールに JWT を要求し、operator 役に至ってはループバック緩和の対象外
- *   なので、Electron (file: → ws://localhost) と LAN 直結 (ws://192.168.x.x)
+ *   なので、Electron (file: → ws スキームの localhost) と LAN 直結
  *   では 3 ロールとも 4401 / 4403 で閉じられていた。
  *
- *   平文 ws:// に JWT を載せない意図でこの条件が置かれていたと解釈できるため、
- *   条件を外すのではなく「ループバック宛なら載せる」に変える。ループバックは
+ *   平文 ws スキームに JWT を載せない意図でこの条件が置かれていたと解釈
+ *   できるため、条件を外すのではなく「ループバック宛なら載せる」に変える。
+ *   ループバックは
  *   ネットワークに出ないので露出は増えず、Electron が復旧する。
  *   LAN 平文経路は依然 token を送らない = 繋がらないままであり、これは
  *   短命 WS チケットで別途解決する (JWT を平文 LAN に流す代替は採らない)。
@@ -25,9 +26,9 @@ export function cameraWsUrl(
   sessionCode: string,
   params: Record<string, string | number>,
 ): string {
-  // Electron(file:)                  → ws://localhost:8765
-  // LAN 直接(http:)                   → ws://192.168.x.x:8765
-  // Cloudflare named tunnel(https:)   → wss://app.shuttle-scope.com
+  // Electron(file:)                  → ws スキーム / localhost:8765
+  // LAN 直接(http:)                   → ws スキーム / 192.168.x.x:8765
+  // Cloudflare named tunnel(https:)   → wss スキーム / app.shuttle-scope.com
   //                                     (ポートなし、Cloudflare が自動 WS upgrade)
   const isElectron = window.location.protocol === 'file:'
   const isHttps = window.location.protocol === 'https:'
