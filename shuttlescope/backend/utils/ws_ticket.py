@@ -72,6 +72,22 @@ def issue_ws_ticket(session_code: str, role: str, participant_id: str) -> str:
     return ticket
 
 
+def peek_ws_ticket(ticket: str) -> Optional[WsTicketClaim]:
+    """使い切らずに中身だけ見る。
+
+    前提条件 (Origin / セッション一致) の確認に使う。先に消費してしまうと、
+    条件を満たさない接続一回で正規の入場券が焼ける。
+    """
+    if not ticket:
+        return None
+    now = time.time()
+    with _LOCK:
+        claim = _TICKETS.get(ticket)
+    if claim is None or claim.expires_at <= now:
+        return None
+    return claim
+
+
 def consume_ws_ticket(ticket: str) -> Optional[WsTicketClaim]:
     """入場券を使い切って中身を返す。無効・期限切れ・二度目は None。"""
     if not ticket:
