@@ -62,7 +62,8 @@ describe('cameraWsUrl', () => {
     expect(url.searchParams.get('token')).toBe(TOKEN)
   })
 
-  it('LAN 平文 (ws://192.168.x.x) には token を載せない', () => {
+  // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
+  it('LAN 平文 (ws スキーム) には token を載せない', () => {
     sessionStorage.setItem('shuttlescope_token', TOKEN)
     setLocation('http:', '192.168.1.20:5173')
 

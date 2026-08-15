@@ -80,7 +80,9 @@ def _build(mt: int, tid: bytes, attrs: bytes, key: bytes | None) -> bytes:
     if key is None:
         return struct.pack("!HHI", mt, len(attrs), MAGIC) + tid + attrs
     head = struct.pack("!HHI", mt, len(attrs) + 24, MAGIC) + tid
-    mac = hmac.new(key, head + attrs, hashlib.sha1).digest()
+    # MESSAGE-INTEGRITY は RFC 5389 が HMAC-SHA1 を規定している。こちらが
+    # 選べるものではなく、変えるとサーバが検証に失敗する。
+    mac = hmac.new(key, head + attrs, hashlib.sha1).digest()  # noqa: S324  # nosec B324  # nosemgrep  # DevSkim: ignore DS126858
     a2 = attrs + _attr(A_MI, mac)
     return struct.pack("!HHI", mt, len(a2), MAGIC) + tid + a2
 
@@ -131,7 +133,9 @@ class Turn:
         _mt, a = _parse(self.sock.recvfrom(2048)[0])
         self.realm = a.get(A_REALM, b"").decode()
         self.nonce = a.get(A_NONCE, b"")
-        self.key = hashlib.md5(  # noqa: S324 - RFC 5389 が MD5 を規定
+        # long-term credential の鍵は RFC 5389 が MD5(username:realm:password)
+        # と規定している。強度の選択ではなくプロトコル定数。
+        self.key = hashlib.md5(  # noqa: S324  # nosec B324  # nosemgrep  # DevSkim: ignore DS126858
             f"{self.user}:{self.realm}:{self.password}".encode()).digest()
         self.sock.sendto(
             _build(ALLOCATE_REQ, secrets.token_bytes(12), rt + self._auth(), self.key),
@@ -308,7 +312,8 @@ def main() -> int:
         if ipaddress.ip_address(peer).version == 4:
             for notation, label in _v4_in_v6_notations(peer):
                 targets.append((notation, f"{peer} ({label})"))
-    for extra in ("255.255.255.255", "0.0.0.0", args.host):
+    # 中継を試みる「宛先」であって待受アドレスではない (bind していない)
+    for extra in ("255.255.255.255", "0.0.0.0", args.host):  # nosec B104
         targets.append((extra, extra))
 
     pool = _SessionPool(args.host, args.port, args.user, args.password)

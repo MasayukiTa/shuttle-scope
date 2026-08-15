@@ -31,6 +31,10 @@ export function cameraWsUrl(
   //                                     (ポートなし、Cloudflare が自動 WS upgrade)
   const isElectron = window.location.protocol === 'file:'
   const isHttps = window.location.protocol === 'https:'
+  // Electron (file:) と LAN 直結は平文 ws になる。ページ自体が平文で配信されて
+  // いる以上ここだけ wss にはできない。資格情報は下で https / ループバック宛て
+  // に限って載せ、平文 LAN には出さない。
+  // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
   const wsProto = isHttps ? 'wss' : 'ws'
   const hostname = window.location.hostname || 'localhost'
   const wsHost = isElectron
@@ -52,6 +56,7 @@ export function cameraWsUrl(
     : ''
   if (token) query.set('token', token)
 
+  // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
   return `${wsProto}://${wsHost}/ws/camera/${encodeURIComponent(sessionCode)}?${query.toString()}`
 }
 
