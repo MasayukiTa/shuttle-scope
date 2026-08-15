@@ -19,7 +19,8 @@ import { apiPost, apiGet } from '@/api/client'
 import { useDeviceHeartbeat } from '@/hooks/useDeviceHeartbeat'
 import { useServerSideRecording } from '@/hooks/session/useServerSideRecording'
 import { errorStatus } from '@/utils/errors'
-import { cameraWsUrl } from '@/utils/cameraWs'
+import { participantWsUrl } from '@/utils/cameraWs'
+import { getDeviceUid } from '@/utils/deviceUid'
 import { MIcon } from '@/components/common/MIcon'
 
 type SenderState = 'join' | 'connecting' | 'state_a' | 'state_b' | 'state_c' | 'error'
@@ -146,6 +147,11 @@ export function CameraSenderPage() {
   const savedPidRef = useRef<number | null>(null)
   const savedPasswordRef = useRef('')
   const savedDeviceNameRef = useRef('')
+  // join で一度だけ返る参加者トークン。WS 入場券の引き換えに使う。
+  // sessionStorage には置かない (この端末のこのタブの寿命だけで十分)。
+  const savedTokenRef = useRef('')
+  // 入場券取得の await 中にアンマウントされたら WS を開かないための番人
+  const disposedRef = useRef(false)
 
   useEffect(() => { senderStateRef.current = senderState }, [senderState])
 
@@ -224,7 +230,7 @@ export function CameraSenderPage() {
     setReconnectCount(count)
     setSenderState('connecting')
     reconnectTimerRef.current = setTimeout(() => {
-      connectWs(code, pid)  
+      void connectWs(code, pid)
     }, RECONNECT_DELAY_MS)
     // connectWs is defined below and used via closure (mutually recursive callbacks)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -232,7 +238,7 @@ export function CameraSenderPage() {
 
   // ─── WebSocket 接続 ───────────────────────────────────────────────────────
    
-  const connectWs = useCallback((code: string, pid: number) => {
+  const connectWs = useCallback(async (code: string, pid: number) => {
     if (wsRef.current) {
       wsRef.current.onclose = null
       wsRef.current.onerror = null
@@ -240,7 +246,18 @@ export function CameraSenderPage() {
       wsRef.current = null
     }
 
-    const ws = new WebSocket(cameraWsUrl(code, { participant_id: pid }))
+    // join で得た参加者トークンを 30 秒使い捨ての入場券に引き換える。
+    // 失敗したら通常の切断と同じ扱いで再接続へ回す。
+    let wsUrl: string
+    try {
+      wsUrl = await participantWsUrl(code, 'device', pid, savedTokenRef.current)
+    } catch {
+      scheduleReconnect(code, pid)
+      return
+    }
+    if (disposedRef.current) return
+
+    const ws = new WebSocket(wsUrl)
     wsRef.current = ws
 
     ws.onopen = () => {
@@ -312,24 +329,28 @@ export function CameraSenderPage() {
         data: {
           participant_id: number; session_code: string; role: string;
           connection_role: string; match_id?: number | null
+          participant_token?: string
         }
       }>(`/sessions/${code}/join`, {
         role: 'viewer',
         device_name: resolvedName,
         device_type: getDeviceType(),
+        device_uid: getDeviceUid(),
         session_password: password || undefined,
       })
       if (!res.success) throw new Error('join failed')
       const pid = res.data.participant_id
       setParticipantId(pid)
       savedPidRef.current = pid
+      // WS 入場券の引き換えに使う。平文はこの応答でしか返らない。
+      savedTokenRef.current = res.data.participant_token ?? ''
       setActiveSessionCode(code)
       // R-1: サーバ自動録画用 match_id を保存
       if (res.data.match_id != null) {
         setRecordingMatchId(res.data.match_id)
       }
       reconnectCountRef.current = 0
-      connectWs(code, pid)
+      void connectWs(code, pid)
     } catch (err: unknown) {
       const status = errorStatus(err)
       if (status === 401) {
@@ -462,7 +483,7 @@ export function CameraSenderPage() {
         reconnectCountRef.current = 0
         setReconnectCount(0)
         setSenderState('connecting')
-        connectWs(savedCodeRef.current, savedPidRef.current)
+        void connectWs(savedCodeRef.current, savedPidRef.current)
       }
     }
     document.addEventListener('visibilitychange', onVisibilityChange)
@@ -472,6 +493,7 @@ export function CameraSenderPage() {
   // アンマウント時クリーンアップ
   useEffect(() => {
     return () => {
+      disposedRef.current = true
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
       stopRttPolling()
       localStreamRef.current?.getTracks().forEach((t) => t.stop())
@@ -735,7 +757,7 @@ export function CameraSenderPage() {
                   const code = savedCodeRef.current
                   const pid = savedPidRef.current
                   if (code && pid) {
-                    connectWs(code, pid)
+                    void connectWs(code, pid)
                   } else {
                     setSenderState('join')
                   }
