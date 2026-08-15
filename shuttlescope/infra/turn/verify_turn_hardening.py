@@ -41,6 +41,7 @@ import secrets
 import socket
 import struct
 import sys
+from typing import Optional
 
 MAGIC = 0x2112A442
 ALLOCATE_REQ, ALLOCATE_OK = 0x0003, 0x0103
@@ -188,32 +189,64 @@ def _v4_in_v6_notations(v4: str) -> list[tuple[str, str]]:
     ]
 
 
-def _probe(host: str, port: int, user: str, pw: str, peer: str,
-           peer_port: int, method: str) -> tuple[str, str]:
-    """宛先の family に合わせて割当を要求してから 1 経路を試す。"""
+class _SessionPool:
+    """address family ごとに割当を 1 つだけ作って使い回す。
+
+    宛先ごとに新しい Allocate を投げると、まともに quota を設定したサーバでは
+    486 Allocation Quota Reached で検査が完走しない (実測)。本物のクライアントも
+    1 つの割当に対して複数の peer permission を張るので、こちらが正しい。
+    """
+
+    def __init__(self, host: str, port: int, user: str, pw: str) -> None:
+        self._args = (host, port, user, pw)
+        self._sessions: dict[int, Optional[Turn]] = {}
+        self._errors: dict[int, str] = {}
+
+    def get(self, family: int) -> tuple[Optional[Turn], str]:
+        if family in self._sessions:
+            return self._sessions[family], self._errors.get(family, "")
+        t = Turn(*self._args)
+        try:
+            ok, detail = t.allocate(TRANSPORT_UDP, family)
+            if not ok and family == FAMILY_V6:
+                # v6 の割当を持たないサーバもある。その場合は検査不能と記録する
+                t.close()
+                self._sessions[family] = None
+                self._errors[family] = detail
+                return None, detail
+            if not ok:
+                t.close()
+                self._sessions[family] = None
+                self._errors[family] = detail
+                return None, detail
+            self._sessions[family] = t
+            return t, ""
+        except Exception as exc:  # noqa: BLE001
+            t.close()
+            self._sessions[family] = None
+            self._errors[family] = str(exc)
+            return None, str(exc)
+
+    def close(self) -> None:
+        for t in self._sessions.values():
+            if t is not None:
+                t.close()
+
+
+def _probe(pool: "_SessionPool", peer: str, peer_port: int,
+           method: str) -> tuple[str, str]:
+    """宛先の family に合った割当を使い回して 1 経路を試す。"""
     family = FAMILY_V6 if ipaddress.ip_address(peer).version == 6 else FAMILY_V4
-    t = Turn(host, port, user, pw)
+    t, err = pool.get(family)
+    if t is None:
+        return "UNTESTED", f"allocate 不可 ({err})"
     try:
-        ok, detail = t.allocate(TRANSPORT_UDP, family)
-        if not ok:
-            # v6 割当自体を持たないサーバなら family 指定なしで再試行
-            t2 = Turn(host, port, user, pw)
-            try:
-                ok2, detail2 = t2.allocate(TRANSPORT_UDP, None)
-                if not ok2:
-                    return "UNTESTED", f"allocate 不可 ({detail2})"
-                return (t2.create_permission(peer, peer_port) if method == "perm"
-                        else t2.channel_bind(peer, peer_port))
-            finally:
-                t2.close()
         return (t.create_permission(peer, peer_port) if method == "perm"
                 else t.channel_bind(peer, peer_port))
     except socket.timeout:
         return "UNTESTED", "無応答"
     except Exception as exc:  # noqa: BLE001
         return "UNTESTED", f"例外: {exc}"
-    finally:
-        t.close()
 
 
 def main() -> int:
@@ -278,11 +311,11 @@ def main() -> int:
     for extra in ("255.255.255.255", "0.0.0.0", args.host):
         targets.append((extra, extra))
 
+    pool = _SessionPool(args.host, args.port, args.user, args.password)
     for addr, label in targets:
         print(f"{label} への中継")
         for name, method in (("CreatePermission", "perm"), ("ChannelBind", "chan")):
-            verdict, detail = _probe(args.host, args.port, args.user,
-                                     args.password, addr, args.peer_port, method)
+            verdict, detail = _probe(pool, addr, args.peer_port, method)
             if verdict == "RELAYED":
                 print(f"  [危険] {name} が通りました — 踏み台にできます")
                 relayed.append(f"{addr}/{name}")
@@ -292,6 +325,8 @@ def main() -> int:
             else:
                 print(f"  [良] {name} は拒否 ({detail})")
         print()
+
+    pool.close()
 
     if relayed:
         print(f"結果: 中継できた経路が {len(relayed)} 件 → {', '.join(relayed)}")

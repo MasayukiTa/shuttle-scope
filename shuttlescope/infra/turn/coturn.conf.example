@@ -70,11 +70,21 @@ denied-peer-ip=ff00::-ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
 # ::ffff: だけ塞いでも、6to4 / NAT64 / Teredo / IPv4-compatible は別表記なので
 # 素通りする。実測で 6to4 と NAT64 が ACL を通過した (この環境では変換経路が
 # 無いため配送はされなかったが、NAT64 のある環境なら成立する)。
-denied-peer-ip=::-::ffff:ffff                                   # IPv4-compatible ::x.x.x.x
-denied-peer-ip=64:ff9b::-64:ff9b::ffff:ffff                     # NAT64 well-known prefix
-denied-peer-ip=64:ff9b:1::-64:ff9b:1:ffff:ffff:ffff:ffff:ffff   # NAT64 local-use prefix
-denied-peer-ip=2002::-2002:ffff:ffff:ffff:ffff:ffff:ffff:ffff   # 6to4
-denied-peer-ip=2001::-2001:0:ffff:ffff:ffff:ffff:ffff:ffff      # Teredo
+#
+# 【罠 3】行末コメントを書かないこと。`denied-peer-ip=<範囲>  # 説明` と
+#   書くとコメントごとアドレスとして解釈され、"Wrong address format" になって
+#   その行が死ぬ (実測)。説明は必ず独立した行に書く。
+#
+# IPv4-compatible ::x.x.x.x
+denied-peer-ip=::-::ffff:ffff
+# NAT64 well-known prefix
+denied-peer-ip=64:ff9b::-64:ff9b::ffff:ffff
+# NAT64 local-use prefix
+denied-peer-ip=64:ff9b:1::-64:ff9b:1:ffff:ffff:ffff:ffff:ffff
+# 6to4
+denied-peer-ip=2002::-2002:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+# Teredo
+denied-peer-ip=2001::-2001:0:ffff:ffff:ffff:ffff:ffff:ffff
 
 # これが無いと 255.255.255.255 への中継が通る (実測)。LAN 全体への
 # ブロードキャスト注入に使われる
@@ -94,6 +104,8 @@ max-bps=2000000
 
 # ── 露出を減らす ────────────────────────────────────────────────────────────
 no-cli
+# web admin は使わない (4.6.2 には stored XSS の報告がある)
+no-web-admin
 no-software-attribute
 fingerprint
 
