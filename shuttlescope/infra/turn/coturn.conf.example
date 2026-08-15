@@ -29,7 +29,9 @@ static-auth-secret=CHANGE_ME_LONG_RANDOM_SECRET
 # ── 踏み台化の防止 ── ここが最重要 ─────────────────────────────────────────
 # 素の TURN は「任意の宛先へ中継するプロキシ」であり、既定では RFC1918 を
 # 拒否しない。実測で、既定設定のまま LAN 上の内部サービスへ到達できた。
-# CreatePermission と ChannelBind の両方を塞ぐ必要がある (片方だけでは迂回可)。
+#
+# 以下は全て実測で「無いと通る / 有ると 403 で止まる」を確認した行である
+# (docs/validation/turn_relay_abuse_verification.md)。1 行でも削ると穴が開く。
 denied-peer-ip=0.0.0.0-0.255.255.255
 denied-peer-ip=10.0.0.0-10.255.255.255
 denied-peer-ip=100.64.0.0-100.127.255.255
@@ -40,13 +42,23 @@ denied-peer-ip=192.0.0.0-192.0.0.255
 denied-peer-ip=192.168.0.0-192.168.255.255
 denied-peer-ip=198.18.0.0-198.19.255.255
 denied-peer-ip=224.0.0.0-255.255.255.255
-# IPv6 も同様に塞ぐ (IPv4 だけ塞いで安心しない)
+
+# IPv6 表記での回避を塞ぐ。**IPv4 の deny だけでは素通りする**
+#
+# 攻撃者は IPv6 のリレー割当 (RFC 6156 の REQUESTED-ADDRESS-FAMILY) を要求し、
+# 内部の IPv4 アドレスを ::ffff:172.16.0.5 の形で指定できる。実測では、
+# 下の ::ffff: 行が無い状態でこの経路が通り、内部サービスへ到達した。
+# IPv4 の denied-peer-ip は IPv6 表記には適用されない。
+denied-peer-ip=::ffff:0.0.0.0-::ffff:255.255.255.255
 denied-peer-ip=::1
 denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
 denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff
 denied-peer-ip=ff00::-ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
 
+# これが無いと 255.255.255.255 への中継が通る (実測)。LAN 全体への
+# ブロードキャスト注入に使われる
 no-multicast-peers
+
 # loopback は既定で拒否される。allow-loopback-peers を書かないこと
 # (書くと 127.0.0.1 へ中継できてしまうのを実測で確認済み)
 
