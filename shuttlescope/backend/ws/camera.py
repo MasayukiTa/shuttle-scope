@@ -19,9 +19,14 @@ WebRTC シグナリングを中継する。映像データは流れない（SDP/
   camera_stop     {participant_id}
 
 [Operator → 送信デバイス]
-  camera_request      {target_participant_id}
-  webrtc_answer       {target_participant_id, sdp}
-  ice_candidate       {target_participant_id, candidate, sdp_mid, sdp_m_line_index}
+  camera_request      {stream_id | target_participant_id}
+  webrtc_answer       {stream_id | target_participant_id, sdp}
+  ice_candidate       {stream_id | target_participant_id, candidate, sdp_mid, sdp_m_line_index}
+
+  宛先は stream_id で指定する。participant_id 指定は旧クライアント互換で残す。
+  stream_id → 端末の解決はサーバが行うので、operator は「どの端末か」を
+  知らなくてよい。これはハブ (中継役) を operator から他へ移すための土台で、
+  operator が中継役でなくなっても同じプロトコルのまま動く。
 
 [Viewer → Operator]
   viewer_webrtc_answer  {viewer_id, sdp}
@@ -32,13 +37,22 @@ WebRTC シグナリングを中継する。映像データは流れない（SDP/
   viewer_ice_candidate  {viewer_id, candidate, sdp_mid, sdp_m_line_index}
 
 [Server → Operator]
-  device_list_update  {devices: [{participant_id, status}]}
-  viewer_joined       {viewer_id}
-  viewer_left         {viewer_id}
+  device_list_update   {devices: [{participant_id, stream_id, status}]}
+  camera_stream_ended  {participant_id, stream_id}
+  viewer_joined        {viewer_id}
+  viewer_left          {viewer_id}
+
+送信デバイス発のメッセージには、サーバが participant_id と stream_id を
+**上書きして**付ける。クライアント申告を採用すると他カメラを騙れるため。
+
+stream_id は端末が接続するたびに新しく採番される。operator はこれを見て
+「同じ端末の新しい映像」と「前の映像の残骸」を区別でき、カメラごとに
+PeerConnection を持ち分けられる。
 """
 import json
 import logging
 import re
+import uuid
 import time as _time
 from typing import Optional
 
@@ -99,7 +113,36 @@ class CameraSignalingManager:
 
     def _ensure_session(self, session_code: str) -> None:
         if session_code not in self._sessions:
-            self._sessions[session_code] = {"operator": None, "devices": {}, "viewers": {}}
+            self._sessions[session_code] = {
+                "operator": None,
+                "devices": {},
+                "viewers": {},
+                # stream_id → participant_id。カメラが繋ぎ直すたびに新しい
+                # stream_id を発行するので、operator は「同じ端末の新しい映像」と
+                # 「前の映像の残骸」を区別できる。
+                "streams": {},
+                # participant_id → stream_id (現行のもの)
+                "device_streams": {},
+            }
+
+    def _new_stream_id(self, session_code: str, participant_id: str) -> str:
+        """この参加者の新しい stream を採番し、古い対応を捨てる。"""
+        sess = self._sessions[session_code]
+        old = sess["device_streams"].pop(participant_id, None)
+        if old is not None:
+            sess["streams"].pop(old, None)
+        stream_id = uuid.uuid4().hex
+        sess["streams"][stream_id] = participant_id
+        sess["device_streams"][participant_id] = stream_id
+        return stream_id
+
+    def stream_id_for(self, session_code: str, participant_id: str) -> Optional[str]:
+        sess = self._sessions.get(session_code)
+        return sess["device_streams"].get(participant_id) if sess else None
+
+    def participant_for_stream(self, session_code: str, stream_id: str) -> Optional[str]:
+        sess = self._sessions.get(session_code)
+        return sess["streams"].get(stream_id) if sess else None
 
     # ─── 接続 ────────────────────────────────────────────────────────────
 
@@ -194,8 +237,22 @@ class CameraSignalingManager:
                 await ws.close(code=1013, reason="too many connections")
                 return
             await ws.accept()
+            # camera review B3 fix: 同じ participant_id の二重接続を黙って
+            # 上書きしていた。旧ソケットは閉じられず残り、さらに旧ソケットの
+            # finally が participant_id だけで pop するため **新しいソケットを
+            # 一覧から消す**。カメラが繋ぎ直すたびに自分を消す競合になっていた。
+            # 新接続で明示的に置換し、旧ソケットは閉じる。
+            previous = sess["devices"].get(participant_id)
+            if previous is not None and previous is not ws:
+                logger.info("camera device replaced: %s pid=%s", session_code, participant_id)
+                try:
+                    await previous.close(code=1012, reason="replaced by a newer connection")
+                except Exception:  # noqa: BLE001 - 既に切れている場合がある
+                    pass
             sess["devices"][participant_id] = ws
-            logger.info("camera device connected: %s pid=%s", session_code, participant_id)
+            stream_id = self._new_stream_id(session_code, participant_id)
+            logger.info("camera device connected: %s pid=%s stream=%s",
+                        session_code, participant_id, stream_id)
         await self._notify_device_list(session_code)
 
     async def connect_viewer(self, session_code: str, viewer_id: str, ws: WebSocket) -> None:
@@ -249,13 +306,36 @@ class CameraSignalingManager:
                 logger.info("camera operator disconnected: %s", session_code)
                 self._gc_session_if_empty(session_code)
 
-    async def disconnect_device(self, session_code: str, participant_id: str) -> None:
+    async def disconnect_device(self, session_code: str, participant_id: str,
+                                ws: Optional[WebSocket] = None) -> None:
         # ws #9 fix: lock で session state の mutation を直列化
+        # camera review B3 fix: participant_id だけで pop すると、置換された
+        # 旧ソケットの後始末が新しいソケットを消してしまう。**登録されているのが
+        # 自分自身のときだけ**消す。
+        ended_stream: Optional[str] = None
         async with self._slock(session_code):
-            if session_code in self._sessions:
-                self._sessions[session_code]["devices"].pop(participant_id, None)
+            sess = self._sessions.get(session_code)
+            if sess is not None:
+                stored = sess["devices"].get(participant_id)
+                if ws is not None and stored is not None and stored is not ws:
+                    logger.info(
+                        "camera device disconnect ignored (already replaced): %s pid=%s",
+                        session_code, participant_id)
+                    return
+                sess["devices"].pop(participant_id, None)
+                ended_stream = sess["device_streams"].pop(participant_id, None)
+                if ended_stream is not None:
+                    sess["streams"].pop(ended_stream, None)
                 logger.info("camera device disconnected: %s pid=%s", session_code, participant_id)
                 self._gc_session_if_empty(session_code)
+        if ended_stream is not None:
+            # operator がどの映像を畳めばよいか分かるようにする。
+            # これが無いと operator は死んだ PeerConnection を抱えたままになる。
+            await self._send_to_operator(session_code, {
+                "type": "camera_stream_ended",
+                "participant_id": participant_id,
+                "stream_id": ended_stream,
+            })
         await self._notify_device_list(session_code)
 
     async def disconnect_viewer(self, session_code: str, viewer_id: str) -> None:
@@ -314,10 +394,27 @@ class CameraSignalingManager:
             except Exception:
                 self._sessions[session_code]["operator"] = None
 
+    async def relay_to_stream(self, session_code: str, stream_id: str, message: dict) -> None:
+        """stream_id 宛の中継。宛先の解決はサーバ側で行う。
+
+        operator が participant_id を直接指定する必要をなくすための経路。
+        stream が既に終わっていれば黙って捨てる (死んだ端末へ送らない)。
+        """
+        participant_id = self.participant_for_stream(session_code, stream_id)
+        if participant_id is None:
+            return
+        await self.relay_to_device(session_code, participant_id, message)
+
     async def _notify_device_list(self, session_code: str) -> None:
+        sess = self._sessions.get(session_code, {})
+        streams = sess.get("device_streams", {})
         devices = [
-            {"participant_id": pid, "status": "connected"}
-            for pid in self._sessions.get(session_code, {}).get("devices", {}).keys()
+            {
+                "participant_id": pid,
+                "stream_id": streams.get(pid),
+                "status": "connected",
+            }
+            for pid in sess.get("devices", {}).keys()
         ]
         await self._send_to_operator(session_code, {
             "type": "device_list_update",
@@ -545,6 +642,15 @@ async def ws_camera_handler(
                 ):
                     await camera_manager.relay_to_device(session_code, target_pid, msg)
 
+                # stream_id 宛。宛先の解決はサーバが行うので、operator は
+                # participant_id を知らなくてよい (ハブ非依存化の一歩)。
+                target_stream = str(msg.get("stream_id", ""))
+                if _id_ok(target_stream) and msg_type in (
+                    "camera_request", "webrtc_answer", "ice_candidate",
+                    "camera_deactivate",
+                ):
+                    await camera_manager.relay_to_stream(session_code, target_stream, msg)
+
                 # Operator → ビューワーへの中継（PC が viewer に offer を送る）
                 target_vid = str(msg.get("viewer_id", ""))
                 if _id_ok(target_vid) and msg_type in (
@@ -560,7 +666,10 @@ async def ws_camera_handler(
 
             else:
                 # 送信デバイス → Operator に中継
+                # participant_id と stream_id はサーバが上書きする。
+                # クライアント申告を採用すると他カメラを騙れる。
                 msg["participant_id"] = participant_id
+                msg["stream_id"] = camera_manager.stream_id_for(session_code, participant_id)
                 await camera_manager.relay_to_operator(session_code, msg)
 
                 if msg_type == "camera_stop":
@@ -574,4 +683,4 @@ async def ws_camera_handler(
         elif is_viewer and viewer_id:
             await camera_manager.disconnect_viewer(session_code, viewer_id)
         elif participant_id:
-            await camera_manager.disconnect_device(session_code, participant_id)
+            await camera_manager.disconnect_device(session_code, participant_id, websocket)

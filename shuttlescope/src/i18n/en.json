@@ -3702,7 +3702,9 @@
       "p2p": "P2P",
       "local_camera": "Local camera in use",
       "pending_devices": "There are devices awaiting approval",
-      "realtime_yolo": "Realtime YOLO {{state}}"
+      "realtime_yolo": "Realtime YOLO {{state}}",
+      "other_cameras": "{{count}} other camera(s) — click to make primary",
+      "switch_primary": "Make this camera the primary view"
     },
     "LiveSourceSelector": {
       "k1": "Candidate",

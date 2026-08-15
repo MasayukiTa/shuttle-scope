@@ -5,8 +5,9 @@
  * WebRTC 経由で転送受信して表示する。
  *
  * 接続フロー:
- *   join → POST /sessions/{code}/join (role=viewer)
- *        → WS /ws/camera/{code}?role=viewer&vid={pid}
+ *   join → POST /sessions/{code}/join (role=viewer) → participant_token
+ *        → POST /sessions/{code}/ws-ticket        → 30 秒の入場券
+ *        → WS /ws/camera/{code}?ticket={ticket}
  *        → operator が viewer_webrtc_offer を送信
  *        → RTCPeerConnection で受信・表示
  *
@@ -18,6 +19,8 @@ import { apiPost, apiGet } from '@/api/client'
 import { useDeviceHeartbeat } from '@/hooks/useDeviceHeartbeat'
 import { useTranslation } from 'react-i18next'
 import { MIcon } from '@/components/common/MIcon'
+import { participantWsUrl } from '@/utils/cameraWs'
+import { getDeviceUid } from '@/utils/deviceUid'
 
 type ViewerState = 'join' | 'connecting' | 'waiting' | 'receiving' | 'error'
 
@@ -52,6 +55,10 @@ export function ViewerPage() {
   const savedPidRef = useRef<number | null>(null)
   const savedPasswordRef = useRef('')
   const savedNameRef = useRef('')
+  // join で一度だけ返る参加者トークン。WS 入場券の引き換えに使う。
+  const savedTokenRef = useRef('')
+  // 入場券取得の await 中にアンマウントされたら WS を開かないための番人
+  const disposedRef = useRef(false)
 
   useEffect(() => { viewerStateRef.current = viewerState }, [viewerState])
 
@@ -73,7 +80,7 @@ export function ViewerPage() {
     setReconnectCount(count)
     setViewerState('connecting')
     reconnectTimerRef.current = setTimeout(() => {
-      connectWs(code, pid)  
+      void connectWs(code, pid)
     }, RECONNECT_DELAY_MS)
     // connectWs is defined below (mutually recursive callbacks)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -81,23 +88,24 @@ export function ViewerPage() {
 
   // ─── WebSocket 接続 ───────────────────────────────────────────────────────
    
-  const connectWs = useCallback((code: string, pid: number) => {
+  const connectWs = useCallback(async (code: string, pid: number) => {
     if (wsRef.current) {
       wsRef.current.onclose = null
       wsRef.current.close()
       wsRef.current = null
     }
 
-    const isElectron = window.location.protocol === 'file:'
-    const isHttps = window.location.protocol === 'https:'
-    const wsProto = isHttps ? 'wss' : 'ws'
-    const wsHost = isElectron
-      ? 'localhost:8765'
-      : isHttps
-        ? window.location.host
-        : `${window.location.hostname}:8765`
-    const wsToken = isHttps ? (sessionStorage.getItem('shuttlescope_token') ?? '') : ''
-    const wsUrl = `${wsProto}://${wsHost}/ws/camera/${code}?role=viewer&vid=${pid}${wsToken ? `&token=${wsToken}` : ''}`
+    // camera review #1 fix: サーバは `viewer_id` を読む (旧 `vid` は互換で受理)。
+    // 入場券経路では role / viewer_id は入場券に刻まれた値が使われる。
+    let wsUrl: string
+    try {
+      wsUrl = await participantWsUrl(code, 'viewer', pid, savedTokenRef.current)
+    } catch {
+      scheduleReconnect(code, pid)
+      return
+    }
+    if (disposedRef.current) return
+
     const ws = new WebSocket(wsUrl)
     wsRef.current = ws
 
@@ -187,20 +195,26 @@ export function ViewerPage() {
     try {
       const res = await apiPost<{
         success: boolean
-        data: { participant_id: number; session_code: string }
+        data: {
+          participant_id: number; session_code: string
+          participant_token?: string
+        }
       }>(`/sessions/${code}/join`, {
         role: 'viewer',
         device_name: name,
         device_type: 'pc',
+        device_uid: getDeviceUid(),
         session_password: password || undefined,
       })
       if (!res.success) throw new Error('join failed')
       const pid = res.data.participant_id
       setParticipantId(pid)
       savedPidRef.current = pid
+      // WS 入場券の引き換えに使う。平文はこの応答でしか返らない。
+      savedTokenRef.current = res.data.participant_token ?? ''
       setActiveSessionCode(code)
       reconnectCountRef.current = 0
-      connectWs(code, pid)
+      void connectWs(code, pid)
     } catch (err: unknown) {
       const status = errorStatus(err)
       if (status === 401) setErrorMsg('セッションコードまたはパスワードが正しくありません。')
@@ -224,7 +238,11 @@ export function ViewerPage() {
 
   // アンマウント時クリーンアップ
   useEffect(() => {
+    // StrictMode は setup → cleanup → setup と二度走る。ここで false に
+    // 戻さないと、二度目以降の接続が入場券取得後に必ず中止される。
+    disposedRef.current = false
     return () => {
+      disposedRef.current = true
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
       pcRef.current?.close()
       if (wsRef.current?.onclose) wsRef.current.onclose = null
@@ -371,7 +389,7 @@ export function ViewerPage() {
                   const pid = savedPidRef.current
                   if (code && pid) {
                     setViewerState('connecting')
-                    connectWs(code, pid)
+                    void connectWs(code, pid)
                   } else {
                     setViewerState('join')
                     setErrorMsg('')

@@ -5,6 +5,7 @@
   GET  /api/sessions/{code}                       → セッション情報取得
   GET  /api/sessions/{code}/state                 → ライブスナップショット（コーチビュー初期化用）
   POST /api/sessions/{code}/join                  → 参加者登録（パスワード検証あり）
+  POST /api/sessions/{code}/ws-ticket             → カメラ WS への一回限り入場券
   POST /api/sessions/{code}/end                   → セッション終了
   GET  /api/sessions/match/{mid}                  → 試合に紐づくアクティブセッション一覧
   GET  /api/sessions/my-info                      → LAN IP / ポート情報
@@ -13,6 +14,12 @@
   POST /api/sessions/{code}/devices/{pid}/activate-camera  → カメラ有効化（最大4台）
   POST /api/sessions/{code}/devices/{pid}/deactivate-camera→ カメラ降格
   POST /api/sessions/{code}/regenerate-password            → パスワード再生成
+
+join と ws-ticket は GlobalAuthMiddleware の例外である。カメラを担うスマホは
+アプリのアカウントを持たず、想定 UX は「QR を読む → セッションパスワードを
+入れる → カメラになる」であるため。防御は join のパスワード検証 (PBKDF2) と
+code / 送信元 IP の二軸レート制限、ws-ticket は join が発行した
+participant_token 自身で行う。
 """
 import hashlib
 import os
@@ -34,6 +41,7 @@ from backend.db.database import get_db
 from backend.db.models import Match, SharedSession, SessionParticipant, LiveSource
 from backend.utils.auth import require_match_scope as _require_match_scope
 from backend.utils.source_quality import compute_suitability
+from backend.utils.ws_ticket import TICKET_TTL_SEC, issue_ws_ticket
 
 router = APIRouter()
 
@@ -150,7 +158,15 @@ class ParticipantJoin(BaseModel):
     device_name: Optional[str] = Field(default=None, max_length=100)
     device_type: Optional[str] = Field(default=None, max_length=32)   # iphone/ipad/pc/usb_camera/builtin_camera
     session_password: Optional[str] = Field(default=None, max_length=200)
-    device_uid: Optional[str] = Field(default=None, max_length=128)    # デバイス固有 ID（再接続認識用）
+    # DB は VARCHAR(64)。ここを広く取ると未認証入力がそのまま DB エラーになる
+    device_uid: Optional[str] = Field(default=None, max_length=64)     # デバイス固有 ID（再接続認識用）
+
+
+class WsTicketRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+    participant_id: int = Field(..., ge=1, le=2_147_483_647)
+    participant_token: str = Field(..., min_length=16, max_length=256)
+    role: str = Field(..., max_length=16)   # device / viewer
 
 
 class ViewerPermissionBody(BaseModel):
@@ -312,18 +328,134 @@ def _check_join_rate_limit(code: str) -> None:
             )
 
 
-def _record_join_failure(code: str) -> None:
-    if not code:
+# join を GlobalAuthMiddleware の例外にした時点で、code 単位の制限だけでは
+# 足りなくなる。攻撃者が毎回違う code を試すと失敗が別々のカウンタに散り、
+# どれも閾値に届かないまま「存在する session_code」を列挙できてしまう
+# (404 と 401 の差が oracle になる)。加えて PBKDF2 100k 回を無制限に
+# 呼ばせる CPU 枯渇経路にもなる。そこで送信元単位の上限を併置する。
+_JOIN_IP_FAILURES: dict[str, list[float]] = defaultdict(list)
+_JOIN_IP_RATE_LIMIT = 20     # 同一 IP からの 60 秒以内 20 失敗で拒否
+
+
+def _check_join_ip_rate_limit(request: Optional[Request]) -> None:
+    ip = _join_client_ip(request)
+    if not ip:
         return
+    now = _time.time()
+    cutoff = now - _JOIN_RATE_WINDOW
     with _JOIN_RATE_LOCK:
-        _JOIN_FAILURES[code].append(_time.time())
+        arr = [t for t in _JOIN_IP_FAILURES[ip] if t > cutoff]
+        _JOIN_IP_FAILURES[ip] = arr
+        if len(arr) >= _JOIN_IP_RATE_LIMIT:
+            raise HTTPException(
+                status_code=429,
+                detail=f"認証失敗が多すぎます。{_JOIN_RATE_WINDOW}秒後に再試行してください。",
+            )
+
+
+def _join_client_ip(request: Optional[Request]) -> str:
+    if request is None:
+        return ""
+    try:
+        from backend.utils.client_ip import trusted_client_ip
+        ip = trusted_client_ip(request, default="")
+        return "" if ip == "unknown" else ip
+    except Exception:  # noqa: BLE001 - IP が取れなくても join 自体は続行させる
+        return ""
+
+
+# ─── 参加者スコープの WS 資格情報 ─────────────────────────────────────────────
+#
+# カメラ signaling WS はアプリの JWT を要求するが、スマホはアカウントを持たない。
+# join 成功時に「この session の この participant」だけを表す資格情報を発行する。
+# 平文は応答で一度だけ返し、DB には SHA-256 のみ置く。
+
+_WS_TOKEN_TTL = timedelta(hours=3)   # 1 試合 + 前後の余裕
+
+
+def _hash_ws_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _issue_participant_token(participant: SessionParticipant) -> str:
+    """参加者トークンを発行し、hash と期限を participant に載せる（commit は呼び出し側）。"""
+    token = secrets.token_urlsafe(32)
+    participant.ws_token_hash = _hash_ws_token(token)
+    participant.ws_token_expires_at = datetime.utcnow() + _WS_TOKEN_TTL
+    return token
+
+
+def _revoke_participant_token(participant: SessionParticipant) -> None:
+    """資格情報を失効させる（reject / 削除時。commit は呼び出し側）。"""
+    participant.ws_token_hash = None
+    participant.ws_token_expires_at = None
+
+
+def _revoke_all_participant_tokens(db: Session, session_id: int) -> int:
+    """セッション内の全参加者トークンを失効させる（commit は呼び出し側）。
+
+    セッション終了とパスワード再生成で使う。パスワードを変えたのに古い
+    パスワードで得た資格情報が生き続けるなら、変えた意味がない。
+    """
+    return (
+        db.query(SessionParticipant)
+        .filter(
+            SessionParticipant.session_id == session_id,
+            SessionParticipant.ws_token_hash.isnot(None),
+        )
+        .update(
+            {"ws_token_hash": None, "ws_token_expires_at": None},
+            synchronize_session=False,
+        )
+    )
+
+
+def _participant_token_valid(participant: SessionParticipant, token: str) -> bool:
+    """参加者トークンを検証する。
+
+    hash 同士の比較は compare_digest で行う。ただし参加者不在・別セッション・
+    期限切れは呼び出し側で短絡するため、関数全体が定数時間なわけではない。
+    秘密が漏れるのは hash の比較部分だけなので、そこだけを守れば足りる。
+    """
+    stored = participant.ws_token_hash or ""
+    expires = participant.ws_token_expires_at
+    candidate = _hash_ws_token(token) if token else ""
+    # stored が空でも compare_digest を通し、存在有無で応答時間が変わらないようにする
+    ok = secrets.compare_digest(stored or "\x00" * 64, candidate or "\x01" * 64)
+    if not ok or not stored:
+        return False
+    if expires is None or expires <= datetime.utcnow():
+        return False
+    return True
+
+
+def _record_join_failure(code: str, request: Optional[Request] = None) -> None:
+    now = _time.time()
+    ip = _join_client_ip(request)
+    with _JOIN_RATE_LOCK:
+        if code:
+            _JOIN_FAILURES[code].append(now)
+        if ip:
+            _JOIN_IP_FAILURES[ip].append(now)
 
 
 @router.post("/sessions/{code}/join")
-def join_session(code: str, body: ParticipantJoin, db: Session = Depends(get_db)):
-    """参加者登録（コーチ・ビューワーが接続時に呼ぶ）。パスワードが設定されている場合は検証する。"""
-    # PBKDF2 検証へ流す前に session_code 単位の rate limit を適用する。
+def join_session(
+    code: str,
+    body: ParticipantJoin,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """参加者登録（コーチ・ビューワーが接続時に呼ぶ）。パスワードが設定されている場合は検証する。
+
+    この endpoint は GlobalAuthMiddleware の例外である。カメラを担うスマホは
+    アプリのアカウントを持たず、セッションパスワードだけで参加するのが想定 UX
+    のため。防御は「code 単位 + 送信元 IP 単位のレート制限」と
+    「PBKDF2 によるパスワード検証」で行う。
+    """
+    # PBKDF2 検証へ流す前に code / 送信元の両方で rate limit を適用する。
     _check_join_rate_limit(code)
+    _check_join_ip_rate_limit(request)
 
     session = (
         db.query(SharedSession)
@@ -332,16 +464,16 @@ def join_session(code: str, body: ParticipantJoin, db: Session = Depends(get_db)
     )
     if not session:
         # 存在しない code への brute-force もカウントして探索コストを上げる
-        _record_join_failure(code)
+        _record_join_failure(code, request)
         raise HTTPException(status_code=404, detail="セッションが見つからないか終了しています")
 
     # パスワード検証
     if session.password_hash:
         if not body.session_password:
-            _record_join_failure(code)
+            _record_join_failure(code, request)
             raise HTTPException(status_code=401, detail="パスワードが必要です")
         if not _verify_password(body.session_password, session.password_hash):
-            _record_join_failure(code)
+            _record_join_failure(code, request)
             raise HTTPException(status_code=401, detail="パスワードが正しくありません")
 
     # デバイスタイプから source_capability / device_class を推定
@@ -373,6 +505,8 @@ def join_session(code: str, body: ParticipantJoin, db: Session = Depends(get_db)
         existing.last_heartbeat = datetime.utcnow()
         if body.device_name:
             existing.device_name = body.device_name
+        # 再接続でも新しい資格情報を出す（旧トークンはこの時点で無効になる）
+        ws_token = _issue_participant_token(existing)
         db.commit()
         db.refresh(existing)
         return {
@@ -384,6 +518,7 @@ def join_session(code: str, body: ParticipantJoin, db: Session = Depends(get_db)
                 "connection_role": existing.connection_role,
                 "reconnected": True,
                 "match_id": session.match_id,
+                "participant_token": ws_token,
             },
         }
 
@@ -405,6 +540,8 @@ def join_session(code: str, body: ParticipantJoin, db: Session = Depends(get_db)
         is_connected=True,
     )
     db.add(participant)
+    db.flush()          # participant.id を確定させてからトークンを載せる
+    ws_token = _issue_participant_token(participant)
     db.commit()
     db.refresh(participant)
     return {
@@ -416,7 +553,66 @@ def join_session(code: str, body: ParticipantJoin, db: Session = Depends(get_db)
             "connection_role": participant.connection_role,
             # R-1: Sender 側で MediaRecorder 自動録画を開始するため match_id を返す
             "match_id": session.match_id,
+            # WS 接続に使う参加者スコープの資格情報。平文はここでしか返らない。
+            "participant_token": ws_token,
         },
+    }
+
+
+@router.post("/sessions/{code}/ws-ticket")
+def issue_camera_ws_ticket(
+    code: str,
+    body: WsTicketRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """カメラ signaling WS への一回限りの入場券を発行する。
+
+    この endpoint も GlobalAuthMiddleware の例外だが、認証は participant_token
+    そのもので行う（join でセッションパスワードを検証済みの参加者だけが持つ）。
+
+    ブラウザは WS に Authorization ヘッダを付けられないため資格情報はクエリに
+    載せるしかない。URL はログや Referer に残るので、そこへ置くのは寿命 30 秒・
+    使い捨ての入場券に限る。参加者トークン本体は常に本文でしか扱わない。
+    """
+    _check_join_ip_rate_limit(request)
+
+    if body.role not in ("device", "viewer"):
+        raise HTTPException(status_code=400, detail="role は device か viewer のみです")
+
+    session = (
+        db.query(SharedSession)
+        .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
+        .first()
+    )
+    if not session:
+        _record_join_failure(code, request)
+        raise HTTPException(status_code=404, detail="セッションが見つからないか終了しています")
+
+    participant = db.get(SessionParticipant, body.participant_id)
+    # 「参加者が居ない」と「トークンが違う」を応答で区別しない
+    if (
+        participant is None
+        or participant.session_id != session.id
+        or not _participant_token_valid(participant, body.participant_token)
+    ):
+        _record_join_failure(code, request)
+        raise HTTPException(status_code=401, detail="参加資格を確認できません")
+
+    # 要求された role を鵜呑みにせず、参加者の属性と突き合わせる。
+    # これを見ないと、映像を受けるだけの端末が「カメラです」と名乗って
+    # operator に offer を投げられる。
+    if participant.approval_status == "rejected":
+        raise HTTPException(status_code=403, detail="このデバイスは拒否されています")
+    if body.role == "device" and participant.source_capability != "camera":
+        raise HTTPException(status_code=403, detail="このデバイスはカメラとして登録されていません")
+    if body.role == "viewer" and participant.viewer_permission == "blocked":
+        raise HTTPException(status_code=403, detail="この端末の映像受信は停止されています")
+
+    ticket = issue_ws_ticket(code, body.role, str(participant.id))
+    return {
+        "success": True,
+        "data": {"ticket": ticket, "expires_in": TICKET_TTL_SEC},
     }
 
 
@@ -428,6 +624,9 @@ def end_session(code: str, request: Request, db: Session = Depends(get_db)):
     if not session:
         raise HTTPException(status_code=404, detail="セッションが見つかりません")
     session.is_active = False
+    # 参加者の資格情報も同時に失効させる。終了したセッションの入場券を
+    # 取り直せる状態を残さない。
+    _revoke_all_participant_tokens(db, session.id)
     db.commit()
     # トークンを削除（終了済みセッションを再利用できないようにする）
     _operator_tokens.pop(code, None)
@@ -595,6 +794,8 @@ def reject_device(code: str, participant_id: int, request: Request, db: Session 
     _check_operator_access(request, code)
     participant = _get_participant(code, participant_id, db)
     participant.approval_status = "rejected"
+    # 拒否した端末が資格情報を持ったままだと、以後も入場券を取り直せてしまう
+    _revoke_participant_token(participant)
     db.commit()
     return {"success": True, "data": _participant_to_dict(participant)}
 
@@ -775,6 +976,9 @@ def regenerate_password(code: str, request: Request, db: Session = Depends(get_d
 
     plain_password = _generate_password()
     session.password_hash = _hash_password(plain_password)
+    # 旧パスワードで得た参加者トークンを失効させる。ここを残すと
+    # パスワードを変えても既存の端末が入り続けられ、再生成の意味が消える。
+    _revoke_all_participant_tokens(db, session.id)
     db.commit()
     # Round 258 R25 P3 fix (R25 P3-3): operator token も同時に再発行する。
     # 旧コードは `regenerate-password` で session password だけ更新していたが、
