@@ -46,6 +46,33 @@ ALL_TARGETS = [
 ]
 
 
+
+# ベンチマークが切り替える env は CV バックエンド選択に関わるものだけ。
+# 以前は fresh Settings() の **全フィールド** を共有 settings へコピーしていたが、
+# それは env 由来でない設定 (テストが立てた ss_require_admin_mfa など) まで
+# 無条件に巻き戻す。実際 CI で、/run が起動したバックグラウンドジョブがこの
+# コピーを実行し、直後の /jobs 参照が admin ゲート復活で 403 になっていた。
+# 反映する必要があるのは下のキーだけなので、対象を限定する。
+_CV_SETTING_KEYS = (
+    "ss_use_gpu",
+    "ss_cuda_device",
+    "ss_cv_mock",
+    "ss_bench_backend",
+)
+
+
+def _refresh_cv_settings() -> None:
+    """CV バックエンド選択に関わる設定だけを env から読み直す。"""
+    from backend import config as cfg_mod
+    fresh = cfg_mod.Settings()
+    for key in _CV_SETTING_KEYS:
+        if key in fresh.model_fields:
+            try:
+                setattr(cfg_mod.settings, key, getattr(fresh, key))
+            except Exception:
+                pass
+
+
 def _compute_metrics(latencies_sec: List[float]) -> Dict[str, float]:
     """レイテンシ列から fps / avg_ms / p95_ms を算出する。"""
     arr = np.array(latencies_sec, dtype=np.float64)
@@ -256,13 +283,7 @@ def _env_override(device: ComputeDevice) -> Generator[None, None, None]:
         # `from backend.config import settings` で参照をキャプチャしている他モジュール
         # (auth / network_diag 等) が古い instance を保持し続け、テスト間で
         # settings 属性のずれによる pollution を起こすため、属性を in-place で更新する。
-        from backend import config as cfg_mod
-        _fresh = cfg_mod.Settings()
-        for _k in _fresh.model_fields.keys():
-            try:
-                setattr(cfg_mod.settings, _k, getattr(_fresh, _k))
-            except Exception:
-                pass
+        _refresh_cv_settings()
         # デバイスが変わるたびにキャッシュを破棄して正しいバックエンドを再解決する
         from backend.cv import factory as _factory
         _factory.clear_cache()
@@ -273,13 +294,7 @@ def _env_override(device: ComputeDevice) -> Generator[None, None, None]:
         _restore_env("SS_CUDA_DEVICE", old_cuda_dev)
         _restore_env("SS_CV_MOCK", old_cv_mock)
         _restore_env("SS_BENCH_BACKEND", old_backend)
-        from backend import config as cfg_mod
-        _fresh = cfg_mod.Settings()
-        for _k in _fresh.model_fields.keys():
-            try:
-                setattr(cfg_mod.settings, _k, getattr(_fresh, _k))
-            except Exception:
-                pass
+        _refresh_cv_settings()
         from backend.cv import factory as _factory
         _factory.clear_cache()
 

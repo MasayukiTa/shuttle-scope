@@ -53,13 +53,12 @@ def mock_env(monkeypatch: pytest.MonkeyPatch) -> None:
     # settings を in-place で更新して環境変数を反映させる
     # (instance を差し替えると `from backend.config import settings` の参照が切れて
     # 他テストで pollution を起こすため)
-    from backend import config as cfg_mod
-    _fresh = cfg_mod.Settings()
-    for _k in _fresh.model_fields.keys():
-        try:
-            setattr(cfg_mod.settings, _k, getattr(_fresh, _k))
-        except Exception:
-            pass
+    #
+    # 反映するのは CV バックエンド選択に関わるキーだけ。全フィールドをコピーすると
+    # env 由来でない設定 (conftest が立てる ss_require_admin_mfa など) まで
+    # 巻き戻り、同じ worker の後続テストが 403 になる。
+    from backend.benchmark.runner import _refresh_cv_settings
+    _refresh_cv_settings()
 
 
 # ─── TrackNet ベンチマークテスト ───────────────────────────────────────────────
