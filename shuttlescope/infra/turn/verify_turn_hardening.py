@@ -135,7 +135,8 @@ class Turn:
         self.nonce = a.get(A_NONCE, b"")
         # long-term credential の鍵は RFC 5389 が MD5(username:realm:password)
         # と規定している。強度の選択ではなくプロトコル定数。
-        self.key = hashlib.md5(  # noqa: S324  # nosec B324  # nosemgrep  # DevSkim: ignore DS126858
+        # nosemgrep: python.lang.security.insecure-hash-algorithms-md5.insecure-hash-algorithm-md5
+        self.key = hashlib.md5(  # noqa: S324  # nosec B324  # DevSkim: ignore DS126858
             f"{self.user}:{self.realm}:{self.password}".encode()).digest()
         self.sock.sendto(
             _build(ALLOCATE_REQ, secrets.token_bytes(12), rt + self._auth(), self.key),
