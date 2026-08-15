@@ -55,7 +55,12 @@ class User(Base):
     # セキュリティ強化カラム
     failed_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False, server_default="0")
     locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    totp_secret: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    # MFA の共有秘密。平文で持つと DB 単体の流出 (バックアップ・ダンプ・データ
+    # ディレクトリ奪取) だけで攻撃者が有効な TOTP を生成でき、MFA が意味を失う。
+    # EncryptedText で透過暗号化する (impl=Text: 暗号文は 143 文字程度になるため
+    # 旧 String(64) には収まらない)。migration 0048 で列型を TEXT へ広げ、
+    # 既存の平文は backend/scripts/encrypt_totp_secrets.py で暗号化する。
+    totp_secret: Mapped[Optional[str]] = mapped_column(_EncryptedText, nullable=True)
     totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="0")
     # M-A2: メールアドレス（任意、ユニーク）。register / password reset / invite で使用。
     # 既存 username ログインとの併用 (username または email でログイン可能)。

@@ -182,7 +182,8 @@ def _enforce_production_security_gate() -> None:
       (e) SS_ALLOW_LOOPBACK_NO_AUTH が production posture で有効なら fail
       (f) SS_OPERATOR_TOKEN が空なのに /tunnel/start 等の operator endpoint が
           有効なら warning (R7)
-      (g) SS_FIELD_ENCRYPTION_KEY が空でも warning だけ (現在は未 wire なので任意)
+      (g) SS_FIELD_ENCRYPTION_KEY が使えない (未設定 / 不正 / 往復不能) なら fail。
+          users.totp_secret を EncryptedText に載せて以降、鍵は MFA の前提。
     各 fail は logger.critical + sys.exit(2)。warning は続行可。
     """
     import sys as _sys_gate
@@ -228,11 +229,23 @@ def _enforce_production_security_gate() -> None:
     if not op_tok:
         warnings_.append("(f) SS_OPERATOR_TOKEN is empty — tunnel/operator endpoints rely on loopback only.")
 
-    fek = (getattr(app_settings, "ss_field_encryption_key", "") or "").strip()
-    if not fek:
-        warnings_.append(
-            "(g) SS_FIELD_ENCRYPTION_KEY is empty — encrypted fields would fall back to plaintext. "
-            "Generate via `python -c 'from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())'`."
+    # (g) フィールド暗号鍵。以前は「未 wire なので warning のみ」だったが、
+    # users.totp_secret (MFA の共有秘密) を EncryptedText に載せたので必須になった。
+    # 鍵が無い/壊れている状態で起動させると:
+    #   - 既存の暗号文が復号できず、TOTP 検証にセンチネル文字列が渡る
+    #   - 新規に設定された secret が平文で保存され、暗号化が静かに無効化される
+    # どちらも認証の破綻なので fail-closed にする。
+    # 「読める鍵」と「正しい鍵」は別物 (32byte base64 なら別の鍵でも構文上は通る)
+    # ため、往復 (encrypt→decrypt) まで確認する。
+    try:
+        from backend.utils.field_crypto import FieldKeyError, verify_key_roundtrip
+        verify_key_roundtrip()
+    except Exception as _fek_exc:  # noqa: BLE001 - FieldKeyError 以外も起動拒否
+        errors.append(
+            "(g) SS_FIELD_ENCRYPTION_KEY is unusable: "
+            f"{_fek_exc}. MFA secrets cannot be decrypted. "
+            "Restore the escrowed key; do NOT generate a new one "
+            "(existing ciphertext would become unrecoverable)."
         )
 
     for w in warnings_:

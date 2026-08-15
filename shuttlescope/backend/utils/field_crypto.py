@@ -152,6 +152,54 @@ def is_encryption_active() -> bool:
     return _get_fernet() is not None
 
 
+# 鍵が「読める」ことと「正しい鍵である」ことは別。Fernet 鍵は 32 byte base64 で
+# あれば構文上は妥当なので、別の鍵に差し替わっていても _get_fernet() は成功する。
+# 実際に往復させて初めて、その鍵で保存済みデータを扱えると言える。
+class FieldKeyError(RuntimeError):
+    """フィールド暗号鍵が無い / 壊れている / 既存データを復号できない。"""
+
+
+def verify_key_roundtrip() -> None:
+    """鍵で暗号化→復号が成立することを確認する。失敗なら FieldKeyError。
+
+    起動時プリフライト用。鍵が無い場合もエラーにする (呼び出し側が本番姿勢か
+    どうかで扱いを決める)。
+    """
+    f = _get_fernet()
+    if f is None:
+        raise FieldKeyError(
+            "SS_FIELD_ENCRYPTION_KEY が未設定または不正です。"
+            "暗号化フィールドは復号できず、新規保存は平文になります。"
+        )
+    canary = "field-crypto-canary"
+    token = encrypt_field(canary)
+    if not token or not token.startswith(_KEY_VERSION_PREFIX):
+        raise FieldKeyError("暗号化に失敗しました (鍵は読めるが encrypt が機能していません)。")
+    if decrypt_field(token) != canary:
+        raise FieldKeyError("復号結果が一致しません (鍵が壊れています)。")
+
+
+def can_decrypt(ciphertext: Optional[str]) -> bool:
+    """その暗号文を現在の鍵で実際に復号できるかを返す。
+
+    `v1:` 前置の有無だけでは「暗号化済みか」の判定にならない (別の鍵で暗号化
+    された値も前置は同じ)。バックフィルの二重暗号化防止と、起動時に既存データを
+    本当に読めるかの確認に使う。
+    """
+    if ciphertext is None or not isinstance(ciphertext, str):
+        return False
+    if not ciphertext.startswith(_KEY_VERSION_PREFIX):
+        return False
+    f = _get_fernet()
+    if f is None:
+        return False
+    try:
+        f.decrypt(ciphertext[len(_KEY_VERSION_PREFIX):].encode("ascii"))
+        return True
+    except Exception:
+        return False
+
+
 def generate_key() -> str:
     """新規 Fernet 鍵を生成する（CLI / 鍵ローテ用）。
 

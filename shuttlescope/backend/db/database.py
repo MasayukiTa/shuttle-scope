@@ -203,7 +203,10 @@ def add_columns_if_missing(eng) -> None:
         # セキュリティ強化: アカウントロックアウト・MFA
         ("users", "failed_attempts", "INTEGER DEFAULT 0"),
         ("users", "locked_until",    "TEXT"),
-        ("users", "totp_secret",     "VARCHAR(64)"),
+        # EncryptedText (impl=Text)。暗号文は 143 文字程度になるため VARCHAR(64)
+        # では入らない。この自己修復は「列が無いときの CREATE」にしか効かないので、
+        # 既存 DB の列型変更は migration 0048 が担当する。
+        ("users", "totp_secret",     "TEXT"),
         ("users", "totp_enabled",    "INTEGER DEFAULT 0"),
         # 監査ログ改ざん検知: ハッシュチェーン
         ("access_logs", "prev_hash", "VARCHAR(64)"),

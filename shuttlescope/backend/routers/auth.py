@@ -171,8 +171,38 @@ def _hotp_value(secret: str, counter: int) -> int:
     return code % 1_000_000
 
 
+# decrypt_field が復号に失敗したときに返すセンチネル。これを base32 secret として
+# 扱うと base32 デコードで例外になり 500 を返す (= リカバリコード経路まで巻き添え)。
+# 「MFA が使えない」ことを明示的に検出するため、値として弾く。
+_UNUSABLE_SECRET_SENTINELS = (
+    "[ENCRYPTED:KEY_MISSING]",
+    "[ENCRYPTED:INVALID]",
+    "[ENCRYPTED:ERROR]",
+)
+
+
+def _totp_secret_usable(secret: Optional[str]) -> bool:
+    """保存済み secret が TOTP 検証に使える形かを返す。
+
+    鍵の紛失・不一致・改ざんで復号できなかった場合、DB からは平文ではなく
+    センチネル文字列が返る。これを検証に渡さない。
+    """
+    if not secret or not isinstance(secret, str):
+        return False
+    return secret not in _UNUSABLE_SECRET_SENTINELS
+
+
 def _verify_totp(secret: str, code: str) -> bool:
-    """前後1ウィンドウ（±30秒）を許容してTOTPコードを検証する。"""
+    """前後1ウィンドウ（±30秒）を許容してTOTPコードを検証する。
+
+    復号不能な secret は「一致しない」ではなく使用不可として False を返す
+    (呼び出し側で 503 相当を返せるよう _totp_secret_usable で事前判定すること)。
+    """
+    if not _totp_secret_usable(secret):
+        logger.error(
+            "[auth] TOTP secret を復号できません。SS_FIELD_ENCRYPTION_KEY を確認してください。"
+        )
+        return False
     try:
         input_code = int(code.strip())
     except (ValueError, TypeError):
@@ -950,6 +980,15 @@ def mfa_login(req: MfaLoginRequest, request: Request, db: Session = Depends(get_
             user.id, ip, f"MFA recovery code consumed (remaining={remaining})"
         )
     else:
+        # 鍵の紛失・不一致で secret が復号できないケースを「コードが違う」と伝えると、
+        # 運用者が延々と正しいコードを打ち続けることになる。復旧手段
+        # (リカバリコード) へ誘導できるよう区別して返す。
+        if not _totp_secret_usable(user.totp_secret):
+            logger.error("[auth] MFA login: secret を復号できません (user_id=%s)", user_id)
+            raise HTTPException(
+                status_code=503,
+                detail="MFA を検証できません。リカバリコードでログインし、管理者に連絡してください。",
+            )
         if not _verify_totp(user.totp_secret, req.code or ""):
             _record_mfa_failure(user_id)
             raise HTTPException(status_code=401, detail="認証コードが無効です")
