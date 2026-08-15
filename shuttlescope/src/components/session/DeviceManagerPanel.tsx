@@ -12,17 +12,17 @@
  * - LiveSourceSelector 統合
  * - LiveInferenceOverlay 統合
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
-import { apiGet, apiPost, apiDelete } from '@/api/client'
+import { apiPost, apiDelete } from '@/api/client'
 import { LiveSourceSelector } from './LiveSourceSelector'
 import { LiveInferenceOverlay } from './LiveInferenceOverlay'
 import { RealtimeYoloOverlay } from './RealtimeYoloOverlay'
 import { useRealtimeYolo } from '@/hooks/useRealtimeYolo'
+import { useCameraHub } from '@/hooks/session/useCameraHub'
 import type { SessionParticipant, LocalCameraSource, DeviceType } from '@/types'
 import { MIcon } from '@/components/common/MIcon'
-import { cameraWsUrl } from '@/utils/cameraWs'
 
 interface RemoteHealth {
   wsConnected: boolean
@@ -104,238 +104,14 @@ function HeartbeatBadge({ lastHeartbeat }: { lastHeartbeat: string | null }) {
   )
 }
 
-// ─── WebRTC 受信（iOS → PC）────────────────────────────────────────────────
+// ─── サムネイル ───────────────────────────────────────────────────────────────
 
-function useWebRTCReceiver(sessionCode: string) {
-  const wsRef = useRef<WebSocket | null>(null)
-  const pcRef = useRef<RTCPeerConnection | null>(null)
-  const [stream, setStream] = useState<MediaStream | null>(null)
-  // stale closure 対策: stream の最新値を ref で保持
-  const streamRef = useRef<MediaStream | null>(null)
-  const [activeParticipantId, setActiveParticipantId] = useState<string | null>(null)
-  const [connectionState, setConnectionState] = useState<RTCPeerConnectionState | null>(null)
-  const [iceGatheringState, setIceGatheringState] = useState<RTCIceGatheringState | null>(null)
-  const [wsConnected, setWsConnected] = useState(false)
-  const [wsReconnecting, setWsReconnecting] = useState(false)
-  const [wsReconnectCount, setWsReconnectCount] = useState(0)
-  const [turnInUse, setTurnInUse] = useState<boolean | null>(null)
-  const statsTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const reconnectCountRef = useRef(0)
-  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const manualDisconnectRef = useRef(false)
-  // ICE サーバー設定（バックエンドから取得、TURN 含む）
-  const iceServersRef = useRef<RTCIceServer[]>([{ urls: 'stun:stun.l.google.com:19302' }])
-  // viewer id → pc map (PC → viewers relay)
-  const viewerPCsRef = useRef<Map<string, RTCPeerConnection>>(new Map())
-
-  useEffect(() => { streamRef.current = stream }, [stream])
-
-  // TURN relay 検出: 選択済み candidate pair が relay 型かチェック
-  const startStatsPolling = useCallback((pc: RTCPeerConnection) => {
-    statsTimerRef.current = setInterval(async () => {
-      try {
-        const stats = await pc.getStats()
-        let relayInUse = false
-        stats.forEach((report) => {
-          if (report.type === 'candidate-pair' && report.state === 'succeeded') {
-            const localId = report.localCandidateId
-            stats.forEach((r) => {
-              if (r.id === localId && r.type === 'local-candidate' && r.candidateType === 'relay') {
-                relayInUse = true
-              }
-            })
-          }
-        })
-        setTurnInUse(relayInUse)
-      } catch { /* ignore */ }
-    }, 5000)
-  }, [])
-
-  const stopStatsPolling = useCallback(() => {
-    if (statsTimerRef.current) {
-      clearInterval(statsTimerRef.current)
-      statsTimerRef.current = null
-    }
-    setTurnInUse(null)
-  }, [])
-
-  const sendMessage = useCallback((msg: object) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(msg))
-    }
-  }, [])
-
-  const connect = useCallback(async () => {
-    if (wsRef.current) return
-    manualDisconnectRef.current = false
-
-    // ICE サーバー設定を取得（TURN が有効な場合はリレー経由）
-    try {
-      const iceCfg = await apiGet<{ success: boolean; data: { ice_servers: RTCIceServer[] } }>('/webrtc/ice-config')
-      if (iceCfg.success && iceCfg.data.ice_servers.length > 0) {
-        iceServersRef.current = iceCfg.data.ice_servers
-      }
-    } catch { /* バックエンド未起動時はデフォルト STUN を使用 */ }
-
-    let ws: WebSocket
-    try {
-      ws = new WebSocket(cameraWsUrl(sessionCode, { role: 'operator' }))
-    } catch { return }
-    wsRef.current = ws
-
-    ws.onopen = () => {
-      setWsConnected(true)
-      setWsReconnecting(false)
-      setWsReconnectCount(0)
-      reconnectCountRef.current = 0
-    }
-    ws.onclose = () => {
-      wsRef.current = null
-      setWsConnected(false)
-      if (manualDisconnectRef.current) return
-      const next = reconnectCountRef.current + 1
-      if (next > 5) { setWsReconnecting(false); return }
-      reconnectCountRef.current = next
-      setWsReconnectCount(next)
-      setWsReconnecting(true)
-      reconnectTimerRef.current = setTimeout(() => { connect() }, 5_000)
-    }
-
-    ws.onmessage = async (event) => {
-      try {
-        const msg = JSON.parse(event.data)
-
-        // ─ iOS → PC WebRTC ─
-        if (msg.type === 'webrtc_offer') {
-          stopStatsPolling()
-          // ハンドオフ安全化: 既存 PC を先にクローズ（ダブルアクティブ防止）
-          if (pcRef.current) {
-            pcRef.current.close()
-            pcRef.current = null
-            setStream(null)
-          }
-          const pc = new RTCPeerConnection({ iceServers: iceServersRef.current })
-          pcRef.current = pc
-          setActiveParticipantId(String(msg.participant_id))
-          setConnectionState(pc.connectionState)
-          setIceGatheringState(pc.iceGatheringState)
-          pc.onicegatheringstatechange = () => setIceGatheringState(pc.iceGatheringState)
-          pc.onconnectionstatechange = () => {
-            setConnectionState(pc.connectionState)
-            if (pc.connectionState === 'connected') startStatsPolling(pc)
-          }
-          pc.ontrack = (e) => {
-            if (e.streams[0]) setStream(e.streams[0])
-          }
-          pc.onicecandidate = (e) => {
-            if (e.candidate && ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({
-                type: 'ice_candidate',
-                target_participant_id: msg.participant_id,
-                candidate: e.candidate.candidate,
-                sdp_mid: e.candidate.sdpMid,
-                sdp_m_line_index: e.candidate.sdpMLineIndex,
-              }))
-            }
-          }
-          await pc.setRemoteDescription({ type: 'offer', sdp: msg.sdp })
-          const answer = await pc.createAnswer()
-          await pc.setLocalDescription(answer)
-          ws.send(JSON.stringify({
-            type: 'webrtc_answer',
-            target_participant_id: msg.participant_id,
-            sdp: answer.sdp,
-          }))
-        } else if (msg.type === 'ice_candidate' && pcRef.current) {
-          await pcRef.current.addIceCandidate({
-            candidate: msg.candidate,
-            sdpMid: msg.sdp_mid,
-            sdpMLineIndex: msg.sdp_m_line_index,
-          }).catch(() => {})
-
-        // ─ viewer joined → PC sends offer to viewer ─
-        // streamRef.current を使うことで stale closure を回避
-        } else if (msg.type === 'viewer_joined' && pcRef.current && streamRef.current) {
-          const viewerId = String(msg.viewer_id)
-          const currentStream = streamRef.current
-          const vpc = new RTCPeerConnection({ iceServers: iceServersRef.current })
-          viewerPCsRef.current.set(viewerId, vpc)
-          currentStream.getTracks().forEach((t) => vpc.addTrack(t, currentStream))
-          vpc.onicecandidate = (e) => {
-            if (e.candidate && ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({
-                type: 'viewer_ice_candidate',
-                viewer_id: viewerId,
-                candidate: e.candidate.candidate,
-                sdp_mid: e.candidate.sdpMid,
-                sdp_m_line_index: e.candidate.sdpMLineIndex,
-              }))
-            }
-          }
-          const offer = await vpc.createOffer()
-          await vpc.setLocalDescription(offer)
-          ws.send(JSON.stringify({
-            type: 'viewer_webrtc_offer',
-            viewer_id: viewerId,
-            sdp: offer.sdp,
-          }))
-
-        // ─ viewer answer / ICE ─
-        } else if (msg.type === 'viewer_webrtc_answer') {
-          const viewerId = String(msg.viewer_id)
-          const vpc = viewerPCsRef.current.get(viewerId)
-          if (vpc) {
-            await vpc.setRemoteDescription({ type: 'answer', sdp: msg.sdp })
-          }
-        } else if (msg.type === 'viewer_ice_candidate') {
-          const viewerId = String(msg.viewer_id)
-          const vpc = viewerPCsRef.current.get(viewerId)
-          if (vpc) {
-            await vpc.addIceCandidate({
-              candidate: msg.candidate,
-              sdpMid: msg.sdp_mid,
-              sdpMLineIndex: msg.sdp_m_line_index,
-            }).catch(() => {})
-          }
-
-        // ─ viewer left ─
-        } else if (msg.type === 'viewer_left') {
-          const viewerId = String(msg.viewer_id)
-          viewerPCsRef.current.get(viewerId)?.close()
-          viewerPCsRef.current.delete(viewerId)
-
-        } else if (msg.type === 'camera_stop') {
-          stopStatsPolling()
-          setStream(null)
-          setActiveParticipantId(null)
-          setConnectionState(null)
-          setIceGatheringState(null)
-          pcRef.current?.close()
-          pcRef.current = null
-        }
-      } catch { /* ignore */ }
-    }
-  }, [sessionCode, startStatsPolling, stopStatsPolling])  // stream を deps から除去: streamRef で最新値を参照
-
-  const requestCamera = useCallback((participantId: number) => {
-    wsRef.current?.send(JSON.stringify({ type: 'camera_request', target_participant_id: participantId }))
-  }, [])
-
-  const disconnect = useCallback(() => {
-    manualDisconnectRef.current = true
-    if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null }
-    reconnectCountRef.current = 0
-    stopStatsPolling()
-    pcRef.current?.close(); pcRef.current = null
-    viewerPCsRef.current.forEach((vpc) => vpc.close())
-    viewerPCsRef.current.clear()
-    wsRef.current?.close(); wsRef.current = null
-    setStream(null); setActiveParticipantId(null); setConnectionState(null)
-    setIceGatheringState(null); setWsConnected(false); setWsReconnecting(false); setWsReconnectCount(0)
-  }, [stopStatsPolling])
-
-  useEffect(() => () => { disconnect() }, [disconnect])
-  return { stream, activeParticipantId, connectionState, iceGatheringState, wsConnected, wsReconnecting, wsReconnectCount, turnInUse, connect, requestCamera, disconnect, sendMessage }
+function CameraThumb({ stream }: { stream: MediaStream }) {
+  const ref = useRef<HTMLVideoElement>(null)
+  useEffect(() => {
+    if (ref.current) ref.current.srcObject = stream
+  }, [stream])
+  return <video ref={ref} autoPlay playsInline muted className="w-full h-full object-cover" />
 }
 
 // ─── ローカルカメラ列挙 ───────────────────────────────────────────────────────
@@ -578,7 +354,21 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
 
-  const { stream: remoteStream, activeParticipantId, connectionState, iceGatheringState, wsConnected, wsReconnecting, wsReconnectCount, turnInUse, connect, requestCamera, sendMessage } = useWebRTCReceiver(sessionCode)
+  const {
+    streams, wsConnected, reconnecting: wsReconnecting, reconnectCount: wsReconnectCount,
+    connectionStates, turnInUse, connect, requestCamera, sendMessage,
+  } = useCameraHub(sessionCode)
+
+  // 主表示にするカメラ。未選択なら最初に届いたもの。
+  // 解析 (LiveInference / YOLO) と onRemoteStream はこの 1 本に対して行う。
+  const [primaryStreamId, setPrimaryStreamId] = useState<string | null>(null)
+  const primary = useMemo(
+    () => streams.find((s) => s.streamId === primaryStreamId) ?? streams[0] ?? null,
+    [streams, primaryStreamId],
+  )
+  const remoteStream = primary?.stream ?? null
+  const activeParticipantId = primary?.participantId ?? null
+  const connectionState = primary ? (connectionStates[primary.streamId] ?? null) : null
 
   // リアルタイム YOLO トグル（オペレーター PC 側のみ。ViewerPage では使わない）
   const [realtimeYoloOn, setRealtimeYoloOn] = useState(false)
@@ -774,7 +564,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
           <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${wsConnected ? 'bg-[var(--ss-success)]' : wsReconnecting ? 'bg-[var(--ss-warn)] animate-pulse' : 'bg-[var(--ss-t3)]'}`} />
           <span className="text-[var(--ss-t2)]">{t('auto.DeviceManagerPanel.k4')}</span>
           <span className={wsConnected ? 'text-[var(--ss-success)]' : wsReconnecting ? 'text-[var(--ss-warn)]' : 'text-[var(--ss-t3)]'}>
-            {wsConnected ? '接続中' : wsReconnecting ? `再接続中 (${wsReconnectCount}/5)` : '未接続'}
+            {wsConnected ? '接続中' : wsReconnecting ? `再接続中 (${wsReconnectCount} 回目)` : '未接続'}
           </span>
         </div>
 
@@ -862,6 +652,31 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
           {realtimeYoloOn && realtimeYolo.error && (
             <p className="text-[10px] text-[var(--ss-bad)] mt-1">{realtimeYolo.error}</p>
           )}
+        </div>
+      )}
+
+      {/* ─── 他のカメラ (複数同時受信) ── */}
+      {streams.length > 1 && (
+        <div className="mb-4">
+          <p className={`text-[10px] mb-1 ${subColor}`}>
+            {t('auto.DeviceManagerPanel.other_cameras', { count: streams.length - 1 })}
+          </p>
+          <div className="grid grid-cols-3 gap-1.5">
+            {streams.filter((s) => s.streamId !== primary?.streamId).map((s) => (
+              <button
+                key={s.streamId}
+                onClick={() => setPrimaryStreamId(s.streamId)}
+                className="relative rounded-ss-sm overflow-hidden bg-black aspect-video border border-[var(--ss-border)] hover:border-[var(--ss-brand)] transition-colors duration-base ease-out"
+                title={t('auto.DeviceManagerPanel.switch_primary')}
+              >
+                <CameraThumb stream={s.stream} />
+                <span className="absolute bottom-0 left-0 right-0 text-[9px] text-white bg-black/60 px-1 truncate">
+                  #{s.participantId}
+                  {connectionStates[s.streamId] === 'failed' && ' ⚠'}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 

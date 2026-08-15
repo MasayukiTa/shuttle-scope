@@ -166,11 +166,12 @@ B (リモート PC ハブ) は**意図的に選ぶ対象ではない**。現行�
 
 ### 段階
 
-1. **プロトコルをハブ非依存にする** (挙動不変)
-   `stream_id` 導入、カメラ/視聴者から宛先指定を除去、
-   `media_hub` をセッション属性として持つ (値は `local_pc` のみ)
-2. **operator を複数カメラ対応にする** (`Map<streamId, PeerConnection>`)
-   — ハブが operator のままでも多カメラは成立させる必要がある
+1. **プロトコルをハブ非依存にする** — **完了 (2026-08-15)**
+   `stream_id` を導入し、宛先の解決をサーバ側へ移した。
+   `media_hub` のセッション属性化は段階 3 と同時に行う
+2. **operator を複数カメラ対応にする** — **完了 (2026-08-15)**
+   `useCameraHub` が stream_id ごとに PeerConnection を持つ。
+   A1〜A5 (単一 pcRef / 通知なし差し替え / viewer 取りこぼし / vpc リーク) を解消
 3. **自宅外ハブ (VPS の SFU + TURN) を立てる** — 5.7 節。
    NAT 越えとハブを同時に解く。`media_hub=remote_sfu` を選べるようにする
 4. **CV と録画の入力を購読へ移す** — operator ブラウザの JPEG 中継と
