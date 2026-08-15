@@ -91,6 +91,22 @@ class User(Base):
     date_of_birth: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
 
+class FieldKeyCanary(Base):
+    """フィールド暗号鍵が「今のデータの鍵」であることを確認するためのカナリア。
+
+    その場で暗号化して復号するだけでは、正しい鍵と新しく生成した別の鍵を区別
+    できない。別鍵のまま起動すると既存の暗号文が全て読めなくなり、さらに新規
+    保存が別鍵で行われて鍵が混在した DB になる。
+    初回起動時に既知の平文を暗号化して 1 行だけ保存し、以降は毎回それを復号して
+    一致を確認する。値は EncryptedText を通さず、暗号文そのものを持つ
+    (復号可否の判定自体が目的のため)。
+    """
+    __tablename__ = "field_key_canary"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 class MfaRecoveryCode(Base):
     """MFA (TOTP) リカバリコード。認証アプリを失った / 端末の時計がずれた場合の
     唯一の自力復旧手段。

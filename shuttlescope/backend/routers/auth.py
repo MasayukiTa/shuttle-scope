@@ -171,36 +171,41 @@ def _hotp_value(secret: str, counter: int) -> int:
     return code % 1_000_000
 
 
-# decrypt_field が復号に失敗したときに返すセンチネル。これを base32 secret として
-# 扱うと base32 デコードで例外になり 500 を返す (= リカバリコード経路まで巻き添え)。
-# 「MFA が使えない」ことを明示的に検出するため、値として弾く。
-_UNUSABLE_SECRET_SENTINELS = (
-    "[ENCRYPTED:KEY_MISSING]",
-    "[ENCRYPTED:INVALID]",
-    "[ENCRYPTED:ERROR]",
-)
-
-
 def _totp_secret_usable(secret: Optional[str]) -> bool:
     """保存済み secret が TOTP 検証に使える形かを返す。
 
-    鍵の紛失・不一致・改ざんで復号できなかった場合、DB からは平文ではなく
-    センチネル文字列が返る。これを検証に渡さない。
+    「センチネル文字列を列挙して弾く」だけでは不十分だった:
+      - 復号失敗のセンチネルは将来増えうる (`[ENCRYPTED:...]`)
+      - 何らかの理由で復号されなかった暗号文 (`v1:` 等) がそのまま来うる
+      - 破損して base32 として不正な値もありうる
+    いずれも `_hotp_value` の base32 デコードで例外になり 500 を招く。
+    そこで **base32 として実際にデコードできるか** まで確認する。
     """
     if not secret or not isinstance(secret, str):
         return False
-    return secret not in _UNUSABLE_SECRET_SENTINELS
+    if secret.startswith("[ENCRYPTED:"):
+        return False
+    # 暗号文がそのまま渡ってきた場合 (バージョン前置つき) も弾く
+    if _re.match(r"^v\d+:", secret):
+        return False
+    try:
+        padding = "=" * (-len(secret) % 8)
+        base64.b32decode(secret.upper() + padding)
+    except Exception:  # noqa: BLE001 - 不正な base32 は使用不可
+        return False
+    return True
 
 
 def _verify_totp(secret: str, code: str) -> bool:
     """前後1ウィンドウ（±30秒）を許容してTOTPコードを検証する。
 
-    復号不能な secret は「一致しない」ではなく使用不可として False を返す
+    復号不能・破損した secret は「一致しない」ではなく使用不可として False を返す
     (呼び出し側で 503 相当を返せるよう _totp_secret_usable で事前判定すること)。
     """
     if not _totp_secret_usable(secret):
         logger.error(
-            "[auth] TOTP secret を復号できません。SS_FIELD_ENCRYPTION_KEY を確認してください。"
+            "[auth] TOTP secret が使用できません (復号失敗または破損)。"
+            "SS_FIELD_ENCRYPTION_KEY を確認してください。"
         )
         return False
     try:
@@ -208,7 +213,13 @@ def _verify_totp(secret: str, code: str) -> bool:
     except (ValueError, TypeError):
         return False
     t = int(time.time()) // 30
-    return any(_hotp_value(secret, t + w) == input_code for w in (-1, 0, 1))
+    try:
+        return any(_hotp_value(secret, t + w) == input_code for w in (-1, 0, 1))
+    except Exception:  # noqa: BLE001 - 保存値の破損で 500 を返さない
+        # _totp_secret_usable を通っていても、想定外の値で計算が失敗しうる。
+        # 認証は「通らない」で閉じる (fail-closed) 。
+        logger.exception("[auth] TOTP 計算に失敗しました (保存値が壊れている可能性)")
+        return False
 
 
 def _totp_uri(secret: str, username: str) -> str:
@@ -1053,6 +1064,15 @@ def mfa_setup(request: Request, db: Session = Depends(get_db)):
     # 攻撃者が再生成して正規ユーザの QR スキャンを差し替え、自分の secret を仕込むのを防ぐ。
     # 同 secret を返却して setup 進行を冪等化する (ユーザは前回の QR を引き続き使える)。
     existing_secret = getattr(user, "totp_secret", None)
+    # 復号できなかった値 (センチネル / 暗号文 / 破損) から QR を作ると、ユーザは
+    # 絶対に一致しないコードを登録させられる。使えない値は「setup 途中」ではなく
+    # 「壊れている」ので、新しい secret を発行し直す方が復旧が早い。
+    if existing_secret and not _totp_secret_usable(existing_secret):
+        logger.error(
+            "[auth] mfa_setup: 保存済み secret が使用不能のため再生成します (user_id=%s)",
+            ctx.user_id,
+        )
+        existing_secret = None
     if existing_secret:
         return MfaSetupResponse(secret=existing_secret,
                                 otpauth_uri=_totp_uri(existing_secret, user.username))

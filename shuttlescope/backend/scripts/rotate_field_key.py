@@ -31,10 +31,15 @@ from cryptography.fernet import Fernet, InvalidToken
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-# 暗号化対象テーブルとフィールドの宣言
+# 暗号化対象テーブルとフィールドの宣言。
+#
+# EncryptedText / EncryptedString を使う列を追加したら **必ずここにも足すこと**。
+# 漏れた列は旧鍵のまま取り残され、旧鍵を破棄した時点で復号不能になる。
+# users.totp_secret が漏れると MFA が検証できず、運用者が締め出される。
 TARGETS = [
     ("conditions", "injury_notes"),
     ("conditions", "general_comment"),
+    ("users", "totp_secret"),
 ]
 
 KEY_VERSION_PREFIX = "v1:"
