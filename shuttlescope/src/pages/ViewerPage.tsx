@@ -18,6 +18,7 @@ import { apiPost, apiGet } from '@/api/client'
 import { useDeviceHeartbeat } from '@/hooks/useDeviceHeartbeat'
 import { useTranslation } from 'react-i18next'
 import { MIcon } from '@/components/common/MIcon'
+import { cameraWsUrl } from '@/utils/cameraWs'
 
 type ViewerState = 'join' | 'connecting' | 'waiting' | 'receiving' | 'error'
 
@@ -88,17 +89,9 @@ export function ViewerPage() {
       wsRef.current = null
     }
 
-    const isElectron = window.location.protocol === 'file:'
-    const isHttps = window.location.protocol === 'https:'
-    const wsProto = isHttps ? 'wss' : 'ws'
-    const wsHost = isElectron
-      ? 'localhost:8765'
-      : isHttps
-        ? window.location.host
-        : `${window.location.hostname}:8765`
-    const wsToken = isHttps ? (sessionStorage.getItem('shuttlescope_token') ?? '') : ''
-    const wsUrl = `${wsProto}://${wsHost}/ws/camera/${code}?role=viewer&vid=${pid}${wsToken ? `&token=${wsToken}` : ''}`
-    const ws = new WebSocket(wsUrl)
+    // camera review #1 fix: サーバは `viewer_id` を読む。旧 `vid` は互換のため
+    // サーバ側で受理し続けるが、送る側は正式名に揃える。
+    const ws = new WebSocket(cameraWsUrl(code, { role: 'viewer', viewer_id: pid }))
     wsRef.current = ws
 
     ws.onopen = () => {

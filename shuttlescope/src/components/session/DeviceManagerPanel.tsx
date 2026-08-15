@@ -22,6 +22,7 @@ import { RealtimeYoloOverlay } from './RealtimeYoloOverlay'
 import { useRealtimeYolo } from '@/hooks/useRealtimeYolo'
 import type { SessionParticipant, LocalCameraSource, DeviceType } from '@/types'
 import { MIcon } from '@/components/common/MIcon'
+import { cameraWsUrl } from '@/utils/cameraWs'
 
 interface RemoteHealth {
   wsConnected: boolean
@@ -176,18 +177,9 @@ function useWebRTCReceiver(sessionCode: string) {
       }
     } catch { /* バックエンド未起動時はデフォルト STUN を使用 */ }
 
-    // Electron(file:)                  → ws://localhost:8765
-    // LAN 直接(http:)                   → ws://192.168.x.x:8765
-    // Cloudflare named tunnel(https:)   → wss://app.shuttle-scope.com (ポートなし、Cloudflare が自動 WS upgrade)
-    const isElectron = window.location.protocol === 'file:'
-    const isHttps = window.location.protocol === 'https:'
-    const wsProto = isHttps ? 'wss' : 'ws'
-    const wsHost = isElectron ? 'localhost:8765' : isHttps ? window.location.host : `${window.location.hostname || 'localhost'}:8765`
-    const wsToken = isHttps ? (sessionStorage.getItem('shuttlescope_token') ?? '') : ''
-    const wsUrl = `${wsProto}://${wsHost}/ws/camera/${sessionCode}?role=operator${wsToken ? `&token=${wsToken}` : ''}`
     let ws: WebSocket
     try {
-      ws = new WebSocket(wsUrl)
+      ws = new WebSocket(cameraWsUrl(sessionCode, { role: 'operator' }))
     } catch { return }
     wsRef.current = ws
 
