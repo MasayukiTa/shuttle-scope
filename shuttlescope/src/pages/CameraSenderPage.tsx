@@ -19,6 +19,7 @@ import { apiPost, apiGet } from '@/api/client'
 import { useDeviceHeartbeat } from '@/hooks/useDeviceHeartbeat'
 import { useServerSideRecording } from '@/hooks/session/useServerSideRecording'
 import { errorStatus } from '@/utils/errors'
+import { cameraWsUrl } from '@/utils/cameraWs'
 import { MIcon } from '@/components/common/MIcon'
 
 type SenderState = 'join' | 'connecting' | 'state_a' | 'state_b' | 'state_c' | 'error'
@@ -239,16 +240,7 @@ export function CameraSenderPage() {
       wsRef.current = null
     }
 
-    // Electron(file:)                  → ws://localhost:8765
-    // LAN 直接(http:)                   → ws://192.168.x.x:8765
-    // Cloudflare named tunnel(https:)   → wss://app.shuttle-scope.com (ポートなし、Cloudflare が自動 WS upgrade)
-    const isElectron = window.location.protocol === 'file:'
-    const isHttps = window.location.protocol === 'https:'
-    const wsProto = isHttps ? 'wss' : 'ws'
-    const wsHost = isElectron ? 'localhost:8765' : isHttps ? window.location.host : `${window.location.hostname}:8765`
-    const wsToken = isHttps ? (sessionStorage.getItem('shuttlescope_token') ?? '') : ''
-    const wsUrl = `${wsProto}://${wsHost}/ws/camera/${code}?participant_id=${pid}${wsToken ? `&token=${wsToken}` : ''}`
-    const ws = new WebSocket(wsUrl)
+    const ws = new WebSocket(cameraWsUrl(code, { participant_id: pid }))
     wsRef.current = ws
 
     ws.onopen = () => {

@@ -3187,6 +3187,7 @@ async def ws_camera(
     role: str = Query(default=None),
     participant_id: str = Query(default=None),
     viewer_id: str = Query(default=None),
+    vid: str = Query(default=None),
 ):
     """WebRTC シグナリング中継エンドポイント
     ?role=operator               → PC オペレーター
@@ -3197,6 +3198,11 @@ async def ws_camera(
     のみ。旧コードは `_ws_require_auth` の接続性ゲートしか持たず、認証通れば誰でも
     先着で operator を奪取できた (camera signaling 乗っ取り)。
     role=viewer / participant は今まで通り (session_code 共有で OK)。
+
+    camera review #1 fix: ViewerPage は `?vid=` を送っていたが当関数は `viewer_id`
+    しか読まず、viewer は例外なく handler の close(4000) に落ちていた
+    (リモートビューワー機能が全く成立していなかった)。クライアントは `viewer_id`
+    へ揃えたが、配布済みの旧クライアントのために `vid` も受理する。
     """
     if not await _ws_require_auth(websocket):
         return
@@ -3212,7 +3218,7 @@ async def ws_camera(
     from backend.ws.camera import ws_camera_handler
     await ws_camera_handler(
         session_code, websocket,
-        role=role, participant_id=participant_id, viewer_id=viewer_id,
+        role=role, participant_id=participant_id, viewer_id=viewer_id or vid,
     )
 
 
