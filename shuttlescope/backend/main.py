@@ -3215,9 +3215,11 @@ async def ws_camera(
     # 刻まれており、クライアント申告の同名クエリは一切採用しない。
     # これにより「session_code さえ知っていれば他人の participant_id を
     # 騙れる」経路が閉じる。
-    from backend.utils.ws_ticket import consume_ws_ticket
+    from backend.utils.ws_ticket import consume_ws_ticket, peek_ws_ticket
     ticket = websocket.query_params.get("ticket", "")
-    claim = consume_ws_ticket(ticket) if ticket else None
+    # 消費は前提条件を確かめてから行う。先に消費すると、間違った URL への
+    # 接続一回で正規の入場券が焼かれ、利用者が再取得に追われる。
+    claim = peek_ws_ticket(ticket) if ticket else None
     if claim is not None:
         # CSWSH 防御だけは JWT 経路と同様に必ず通す
         if not _ws_origin_allowed(websocket):
@@ -3225,6 +3227,10 @@ async def ws_camera(
             return
         if claim.session_code != session_code:
             await websocket.close(code=4403, reason="ticket is bound to another session")
+            return
+        # ここまで通って初めて使い切る (二重接続を防ぐ)
+        if consume_ws_ticket(ticket) is None:
+            await websocket.close(code=4403, reason="ticket already used")
             return
         from backend.ws.camera import ws_camera_handler
         await ws_camera_handler(

@@ -234,6 +234,11 @@ async function fetchWithAutoRefresh(input: string, init: RequestInit): Promise<R
   if (res.status !== 401) return res
   // /auth/refresh 自体が 401 の場合は再試行しない
   if (input.includes('/auth/refresh') || input.includes('/auth/login')) return res
+  // camera review: セッション参加系はアプリの JWT ではなくセッションパスワード /
+  // 参加者トークンで認証する。ここでの 401 は「パスワードが違う」であって
+  // 「アプリのログインが切れた」ではない。素通ししないと、スマホでコードを
+  // 打ち間違えただけでトークン更新が走り、失敗すればログアウトさせられる。
+  if (input.includes('/join') || input.includes('/ws-ticket')) return res
   const refresh = await tryRefreshToken()
   if (refresh === 'invalid') {
     // refresh token も失効 = 完全失効 → 自動でログイン画面へ

@@ -238,6 +238,9 @@ export function ViewerPage() {
 
   // アンマウント時クリーンアップ
   useEffect(() => {
+    // StrictMode は setup → cleanup → setup と二度走る。ここで false に
+    // 戻さないと、二度目以降の接続が入場券取得後に必ず中止される。
+    disposedRef.current = false
     return () => {
       disposedRef.current = true
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
