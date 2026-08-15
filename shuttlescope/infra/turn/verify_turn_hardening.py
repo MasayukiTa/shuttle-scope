@@ -169,6 +169,25 @@ class Turn:
         return "BLOCKED", _errtext(a)
 
 
+def _v4_in_v6_notations(v4: str) -> list[tuple[str, str]]:
+    """IPv4 アドレスを IPv6 の中に埋め込む書き方を並べる。
+
+    denylist は表記ごとに書かないと効かない。`::ffff:` だけ塞いだ状態で
+    6to4 と NAT64 が ACL を通過することを実測している。
+    """
+    n = int(ipaddress.ip_address(v4))
+    hi, lo = (n >> 16) & 0xFFFF, n & 0xFFFF
+    return [
+        (f"::ffff:{v4}", "IPv4-mapped ::ffff:"),
+        (str(ipaddress.ip_address(n)), "IPv4-compatible ::x.x.x.x"),
+        (f"2002:{hi:x}:{lo:x}::1", "6to4 2002::/16"),
+        (str(ipaddress.ip_address(int(ipaddress.ip_address("64:ff9b::")) | n)),
+         "NAT64 well-known prefix"),
+        (str(ipaddress.ip_address(int(ipaddress.ip_address("64:ff9b:1::")) | n)),
+         "NAT64 local-use prefix"),
+    ]
+
+
 def _probe(host: str, port: int, user: str, pw: str, peer: str,
            peer_port: int, method: str) -> tuple[str, str]:
     """宛先の family に合わせて割当を要求してから 1 経路を試す。"""
@@ -247,12 +266,15 @@ def main() -> int:
         t.close()
     print()
 
-    # 内部アドレスへの中継。IPv4 は mapped 表記も必ず試す
+    # 内部アドレスへの中継。IPv4 は「IPv6 の中に埋め込む」表記を全て試す。
+    # ::ffff: だけ塞いでも 6to4 / NAT64 / Teredo / IPv4-compatible は
+    # 別表記なので素通りする (実測で 6to4 と NAT64 が通過した)。
     targets: list[tuple[str, str]] = []
     for peer in args.peer:
         targets.append((peer, peer))
         if ipaddress.ip_address(peer).version == 4:
-            targets.append((f"::ffff:{peer}", f"{peer} (IPv4-mapped IPv6 表記)"))
+            for notation, label in _v4_in_v6_notations(peer):
+                targets.append((notation, f"{peer} ({label})"))
     for extra in ("255.255.255.255", "0.0.0.0", args.host):
         targets.append((extra, extra))
 
