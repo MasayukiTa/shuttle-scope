@@ -23,6 +23,20 @@ def admin_headers(_admin_user):
 _DUMMY_TOTP_SECRET = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
 
 
+@pytest.fixture(autouse=True)
+def _admin_gate_off(monkeypatch):
+    """admin MFA ゲートをこのファイル内で明示的に無効化する。
+
+    conftest がセッション開始時に settings.ss_require_admin_mfa=False を立てるが、
+    それはプロセス内の可変オブジェクト 1 つに依存している。実際 CI では他テストの
+    fixture が fresh Settings() の全フィールドを共有 settings へコピーしており、
+    どのテストと同居するかで admin 判定が 403 に振れていた。
+    ここで毎テスト立て直せば、実行順にも配分にも依存しない。
+    """
+    from backend.config import settings
+    monkeypatch.setattr(settings, "ss_require_admin_mfa", False, raising=False)
+
+
 @pytest.fixture()
 def _admin_user(db_session):
     """admin トークンに対応する実ユーザを用意し、その id を返す。
