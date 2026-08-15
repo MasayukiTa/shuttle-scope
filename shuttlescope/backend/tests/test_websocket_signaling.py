@@ -353,6 +353,53 @@ class TestViewerConnect:
         left_msgs = [m for m in operator_msgs if m["type"] == "viewer_left"]
         assert left_msgs[0]["viewer_id"] == "viewer-xyz"
 
+    def test_legacy_vid_query_param_is_accepted(self):
+        """配布済みクライアントが送る `?vid=` でも viewer として接続できること。
+
+        ViewerPage は `vid` を送っていたが WS ルートは `viewer_id` しか読まず、
+        viewer は例外なく close(4000) に落ちていた = リモートビューワー機能が
+        まったく成立していなかった。既存テストが正式名 `viewer_id` を直接
+        使っていたため、この不一致はテストを素通りしていた。
+        送信側は `viewer_id` に揃えたが、更新前のクライアントのために
+        サーバは `vid` も受理し続ける。
+        """
+        code = _fresh_code("VID")
+        operator_msgs: list[dict] = []
+        ready = threading.Event()
+        done = threading.Event()
+
+        with TestClient(app) as client:
+            def run_operator():
+                with client.websocket_connect(f"/ws/camera/{code}?{_OPR_QS}") as ws:
+                    ready.set()
+                    try:
+                        operator_msgs.append(json.loads(ws.receive_text()))
+                    except Exception:
+                        pass
+                    done.wait(timeout=3)
+
+            def run_viewer():
+                ready.wait(timeout=3)
+                time.sleep(0.05)
+                # 旧クライアントと同じ形。`viewer_id` ではなく `vid`。
+                with client.websocket_connect(
+                    f"/ws/camera/{code}?role=viewer&vid=legacy-viewer"
+                ) as _ws:
+                    time.sleep(0.1)
+                done.set()
+
+            t1 = threading.Thread(target=run_operator, daemon=True)
+            t2 = threading.Thread(target=run_viewer, daemon=True)
+            t1.start()
+            t2.start()
+            t1.join(timeout=5)
+            t2.join(timeout=5)
+
+        # close(4000) されていれば operator は何も受け取らない
+        assert len(operator_msgs) >= 1, "旧 `vid` クライアントが viewer として接続できていない"
+        assert operator_msgs[0]["type"] == "viewer_joined"
+        assert operator_msgs[0]["viewer_id"] == "legacy-viewer"
+
 
 # ─── メッセージ中継テスト ─────────────────────────────────────────────────────
 

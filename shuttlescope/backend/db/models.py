@@ -654,6 +654,11 @@ class SessionParticipant(Base):
     viewer_permission: Mapped[str] = mapped_column(String(20), default="default")        # allowed/blocked/default
     device_class: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)       # phone/tablet/pc/camera
     display_size_class: Mapped[str] = mapped_column(String(20), default="standard")      # standard/large_tablet
+    # 参加者スコープの WS 認証（migration 0050）
+    # スマホはアプリのアカウントを持たないため、join 成功時にこの参加者だけを
+    # 表す資格情報を発行する。平文は返却時の一度きりで、DB には SHA-256 のみ。
+    ws_token_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    ws_token_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     session: Mapped["SharedSession"] = relationship("SharedSession", back_populates="participants")
     live_sources: Mapped[list["LiveSource"]] = relationship(

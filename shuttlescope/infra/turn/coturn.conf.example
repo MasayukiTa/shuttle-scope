@@ -1,0 +1,114 @@
+# coturn 設定のひな型 — 自宅回線に UDP を開けて TURN を立てる場合
+#
+# 使う前に infra/turn/verify_turn_hardening.py を実際のサーバへ向けて走らせ、
+# 「内部へ中継されないこと」を確認すること。設定しただけで満足しない。
+#
+# 検証記録: docs/validation/turn_relay_abuse_verification.md
+# 設計背景: docs/design/MEDIA_PATH_v1.md
+
+# ── 待受 ────────────────────────────────────────────────────────────────────
+listening-port=3478
+tls-listening-port=5349
+# 公開するのはメディアの UDP 範囲だけ。範囲は狭く取る (1 通話あたり数ポート)
+min-port=49160
+max-port=49300
+
+realm=turn.example.com
+# 外向きアドレスを明示する。NAT 配下なら external-ip が必要
+# external-ip=<グローバルIP>
+# listening-ip=<LAN側IP>
+
+# ── 認証 ────────────────────────────────────────────────────────────────────
+# 固定パスワードを使わない。時刻ベースの一時credentialにする
+# (username = "<expiry-unixtime>", password = base64(HMAC-SHA1(secret, username)))
+# 静的 user= は踏み台・帯域踏み倒しの温床になるので本番では使わない
+use-auth-secret
+static-auth-secret=CHANGE_ME_LONG_RANDOM_SECRET
+# 資格情報の寿命はアプリ側で短く切る (試合1回ぶん = 数時間で十分)
+
+# ── 踏み台化の防止 ── ここが最重要 ─────────────────────────────────────────
+#
+# 【罠 1】`allowed-peer-ip` を 1 行でも書くと deny より優先される。
+#   記述順は関係ない。実測で、下の deny を全て入れた設定に
+#   `allowed-peer-ip=<LAN の IP>` を 1 行足しただけで内部サービスへ到達した。
+#   **この設定ファイルに allowed-peer-ip を書かないこと。**
+#
+# 【罠 2】CIDR 記法は使えない。`172.16.0.0/12` と書くと coturn は
+#   "Wrong address format" とログに出すだけで**起動を続け、その範囲は
+#   無防備になる** (実測)。必ず `開始IP-終了IP` の形で書く。
+#   設定を書き換えたら infra/turn/verify_turn_hardening.py で実挙動を確認する。
+#   ログを見ないと気づけない類の失敗なので、設定の見た目で判断しない。
+# 素の TURN は「任意の宛先へ中継するプロキシ」であり、既定では RFC1918 を
+# 拒否しない。実測で、既定設定のまま LAN 上の内部サービスへ到達できた。
+#
+# 以下は全て実測で「無いと通る / 有ると 403 で止まる」を確認した行である
+# (docs/validation/turn_relay_abuse_verification.md)。1 行でも削ると穴が開く。
+denied-peer-ip=0.0.0.0-0.255.255.255
+denied-peer-ip=10.0.0.0-10.255.255.255
+denied-peer-ip=100.64.0.0-100.127.255.255
+denied-peer-ip=127.0.0.0-127.255.255.255
+denied-peer-ip=169.254.0.0-169.254.255.255
+denied-peer-ip=172.16.0.0-172.31.255.255
+denied-peer-ip=192.0.0.0-192.0.0.255
+denied-peer-ip=192.168.0.0-192.168.255.255
+denied-peer-ip=198.18.0.0-198.19.255.255
+denied-peer-ip=224.0.0.0-255.255.255.255
+
+# IPv6 表記での回避を塞ぐ。**IPv4 の deny だけでは素通りする**
+#
+# 攻撃者は IPv6 のリレー割当 (RFC 6156 の REQUESTED-ADDRESS-FAMILY) を要求し、
+# 内部の IPv4 アドレスを ::ffff:172.16.0.5 の形で指定できる。実測では、
+# 下の ::ffff: 行が無い状態でこの経路が通り、内部サービスへ到達した。
+# IPv4 の denied-peer-ip は IPv6 表記には適用されない。
+denied-peer-ip=::ffff:0.0.0.0-::ffff:255.255.255.255
+denied-peer-ip=::1
+denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+denied-peer-ip=ff00::-ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+
+# IPv4 を IPv6 の中に埋め込む方式も塞ぐ。
+# ::ffff: だけ塞いでも、6to4 / NAT64 / Teredo / IPv4-compatible は別表記なので
+# 素通りする。実測で 6to4 と NAT64 が ACL を通過した (この環境では変換経路が
+# 無いため配送はされなかったが、NAT64 のある環境なら成立する)。
+#
+# 【罠 3】行末コメントを書かないこと。`denied-peer-ip=<範囲>  # 説明` と
+#   書くとコメントごとアドレスとして解釈され、"Wrong address format" になって
+#   その行が死ぬ (実測)。説明は必ず独立した行に書く。
+#
+# IPv4-compatible ::x.x.x.x
+denied-peer-ip=::-::ffff:ffff
+# NAT64 well-known prefix
+denied-peer-ip=64:ff9b::-64:ff9b::ffff:ffff
+# NAT64 local-use prefix
+denied-peer-ip=64:ff9b:1::-64:ff9b:1:ffff:ffff:ffff:ffff:ffff
+# 6to4
+denied-peer-ip=2002::-2002:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+# Teredo
+denied-peer-ip=2001::-2001:0:ffff:ffff:ffff:ffff:ffff:ffff
+
+# これが無いと 255.255.255.255 への中継が通る (実測)。LAN 全体への
+# ブロードキャスト注入に使われる
+no-multicast-peers
+
+# loopback は既定で拒否される。allow-loopback-peers を書かないこと
+# (書くと 127.0.0.1 へ中継できてしまうのを実測で確認済み)
+
+# TCP リレー (RFC 6062) を明示的に切る。通ると内部の PostgreSQL 等へ
+# 本物の TCP 接続を張られる。UDP より危険なので既定任せにしない
+no-tcp-relay
+
+# ── 使用量の制限 ────────────────────────────────────────────────────────────
+user-quota=12
+total-quota=100
+max-bps=2000000
+
+# ── 露出を減らす ────────────────────────────────────────────────────────────
+no-cli
+# web admin は使わない (4.6.2 には stored XSS の報告がある)
+no-web-admin
+no-software-attribute
+fingerprint
+
+# ログ (SSD を削らないよう、ローテーションは別途 OS 側で)
+log-file=/var/log/turnserver.log
+simple-log
