@@ -253,13 +253,12 @@ def test_startup_gate_fires_on_production_posture_not_just_environment(monkeypat
     monkeypatch.setattr(settings, "HIDE_STACK_TRACES", True, raising=False)
     assert settings.is_production_posture is True
 
-    called = []
-    monkeypatch.setattr(
-        main_mod, "_background_loops_disabled", lambda: True, raising=False)
+    # 「発動したか」を副作用で測ると環境依存で脆くなるので、gate が必ず落とす
+    # 条件 (本番で SQLite) を与えて sys.exit(2) が起きるかで判定する。
+    # 旧条件 (ENVIRONMENT=production or PUBLIC_MODE) のままなら早期 return して
+    # 例外は起きない = このテストが失敗する。
+    monkeypatch.setattr(settings, "DATABASE_URL",
+                        "sqlite:///./should-not-be-used.db", raising=False)
 
-    # gate が走れば鍵検証が呼ばれる。呼ばれたことだけを見る (成否は別テスト)。
-    import backend.utils.field_crypto as fc
-    monkeypatch.setattr(fc, "verify_key_matches_stored_data",
-                        lambda session: called.append(True), raising=False)
-    main_mod._enforce_production_security_gate()
-    assert called, "本番姿勢なのに gate が発動しなかった"
+    with pytest.raises(SystemExit):
+        main_mod._enforce_production_security_gate()
