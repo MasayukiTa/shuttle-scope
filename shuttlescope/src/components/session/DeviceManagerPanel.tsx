@@ -670,9 +670,11 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
                 title={t('auto.DeviceManagerPanel.switch_primary')}
               >
                 <CameraThumb stream={s.stream} />
-                <span className="absolute bottom-0 left-0 right-0 text-[9px] text-white bg-black/60 px-1 truncate">
+                <span className="absolute bottom-0 left-0 right-0 text-[9px] text-white bg-black/60 px-1 truncate inline-flex items-center gap-0.5">
                   #{s.participantId}
-                  {connectionStates[s.streamId] === 'failed' && ' ⚠'}
+                  {connectionStates[s.streamId] === 'failed' && (
+                    <MIcon name="warning" size={9} className="text-[var(--ss-bad)]" />
+                  )}
                 </span>
               </button>
             ))}
