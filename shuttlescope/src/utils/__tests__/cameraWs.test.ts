@@ -88,4 +88,16 @@ describe('cameraWsUrl', () => {
 
     expect(url.searchParams.has('token')).toBe(false)
   })
+
+  it('入場券を使うときは JWT を URL に出さない', () => {
+    // 入場券だけで認証が完結するのに JWT まで載せると、URL がログや Referer に
+    // 残ったときの被害が入場券方式にした意味ごと消える。
+    sessionStorage.setItem('shuttlescope_token', TOKEN)
+    setLocation('https:', 'app.shuttle-scope.com')
+
+    const url = new URL(cameraWsUrl('ABC123', { ticket: 'tkt-xyz' }))
+
+    expect(url.searchParams.get('ticket')).toBe('tkt-xyz')
+    expect(url.searchParams.has('token')).toBe(false)
+  })
 })

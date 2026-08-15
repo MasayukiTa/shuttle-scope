@@ -1912,6 +1912,11 @@ _GLOBAL_AUTH_EXEMPT = _re_acl.compile(
     # auth サブパス: 終端 $ で anchor (sub-path の延長を許さない)
     r"auth/(?:login|logout|refresh|bootstrap-status|register|email/verify"
     r"|password/(?:request_reset|reset)|invitation/(?:peek|accept))(?:\?.*)?$"
+    # カメラ参加経路: スマホはアプリのアカウントを持たず、想定 UX は
+    # 「QR を読む → セッションパスワードを入れる → カメラになる」。
+    # join は PBKDF2 のパスワード検証と code/IP 二軸のレート制限で守り、
+    # ws-ticket は join が発行した participant_token 自身で認証する。
+    r"|sessions/[A-Za-z0-9_-]{1,32}/(?:join|ws-ticket)(?:\?.*)?$"
     # health は exact match (= /api/health のみ。/api/health/cv は router で別途認証)
     r"|health(?:\?.*)?$"
     # csp_report は exact match
@@ -3204,6 +3209,32 @@ async def ws_camera(
     (リモートビューワー機能が全く成立していなかった)。クライアントは `viewer_id`
     へ揃えたが、配布済みの旧クライアントのために `vid` も受理する。
     """
+    # 入場券経路: スマホ (device / viewer) はアプリの JWT を持たないため、
+    # join が発行した participant_token と引き換えに得た 30 秒使い捨ての
+    # ticket で認証する。ticket には session / role / participant_id が
+    # 刻まれており、クライアント申告の同名クエリは一切採用しない。
+    # これにより「session_code さえ知っていれば他人の participant_id を
+    # 騙れる」経路が閉じる。
+    from backend.utils.ws_ticket import consume_ws_ticket
+    ticket = websocket.query_params.get("ticket", "")
+    claim = consume_ws_ticket(ticket) if ticket else None
+    if claim is not None:
+        # CSWSH 防御だけは JWT 経路と同様に必ず通す
+        if not _ws_origin_allowed(websocket):
+            await websocket.close(code=4403)
+            return
+        if claim.session_code != session_code:
+            await websocket.close(code=4403, reason="ticket is bound to another session")
+            return
+        from backend.ws.camera import ws_camera_handler
+        await ws_camera_handler(
+            session_code, websocket,
+            role="viewer" if claim.role == "viewer" else None,
+            participant_id=None if claim.role == "viewer" else claim.participant_id,
+            viewer_id=claim.participant_id if claim.role == "viewer" else None,
+        )
+        return
+
     if not await _ws_require_auth(websocket):
         return
     if role == "operator":
