@@ -78,7 +78,7 @@ nvidia-ml-py>=12.0               # NVIDIA GPU 監視（旧 pynvml の後継）
 
 # ── P4: YOLO プレイヤー検出 ───────────────────────────────────────
 # ultralytics が torch / torchvision を自動インストールする
-ultralytics>=8.0
+ultralytics>=8.4.120
 PyJWT>=2.10.0                     # JWT トークン生成・検証。旧 python-jose から置換 (PYSEC-2026-1325: 脆弱な ecdsa への推移的依存を排除、上流修正無し)
 # cryptography は DB フィールド暗号化 (Fernet: utils/field_crypto.py, scripts/rotate_field_key.py) で使用。
 # 旧 python-jose[cryptography] の extra 経由で暗黙に入っていたが、jose 撤去で消えて CI が
