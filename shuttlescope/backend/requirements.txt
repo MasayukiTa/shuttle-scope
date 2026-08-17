@@ -10,7 +10,7 @@
 # Dependabot が明示 PR で提案 → CI レビュー経由にするため exact pin で固定する。
 fastapi==0.141.1
 starlette==1.6.0
-uvicorn[standard]==0.52.1
+uvicorn[standard]==0.52.3
 python-multipart==0.0.32   # Dependabot #44-47 (querystring DoS / negative Content-Length / RFC2231 & semicolon parameter smuggling) 修正のため bump
 pydantic-settings==2.15.0   # GHSA-4xgf-cpjx-pc3j (NestedSecretsSettingsSource symlink read) 修正のため bump
 # pydantic.EmailStr 用バリデータ（pydantic[email] と同等）
