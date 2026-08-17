@@ -86,4 +86,4 @@ PyJWT>=2.10.0                     # JWT トークン生成・検証。旧 python
 cryptography>=44.0.0
 bcrypt>=5.0.0                     # パスワードハッシュ（passlib は bcrypt 4+ 非互換のため直接使用）
 pyzipper>=0.4.0                   # Phase A2: バックアップ ZIP の AES-256 暗号化
-hypothesis>=6.152.7,<6.153          # Phase B1: Security Invariants property-based テスト (6.150+ は TreeNode API 非互換バグあり)
+hypothesis>=6.165.6,<6.166          # Phase B1: Security Invariants property-based テスト (6.150+ は TreeNode API 非互換バグあり)
