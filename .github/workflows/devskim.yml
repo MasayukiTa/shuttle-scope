@@ -36,7 +36,7 @@ jobs:
       # dotnet/sdk:8.0 を pull するが、MCR が 403 を返して落ちる事象が継続。
       # 代わりに .NET tool として DevSkim.CLI を直接インストールして実行する。
       - name: Setup .NET
-        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '8.0.x'
 
