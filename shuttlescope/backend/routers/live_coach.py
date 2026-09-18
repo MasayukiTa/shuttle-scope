@@ -228,6 +228,20 @@ def _safe(text: str) -> str:
     return out
 
 
+def _sufficiency_score(n: int, *, cap: float) -> float:
+    """データ量の単調増加スコア (0.5〜cap)。**確率ではない。**
+
+    D-5: 旧来この値は `confidence` という名前で返り、画面では
+    「信頼度 NN%」として描かれていた。中身は N を 0.5〜0.95 に写す
+    手置きの式で、**NN という数に対応する事象が存在しない**。
+
+    並べ替え・足切りのように単調性だけが要る用途に留めること。
+    画面に出す信頼度が要るなら `backend/utils/confidence.py` の
+    `check_confidence` (閾値が文書化されていて星と警告文を返す) を使う。
+    """
+    return round(min(0.5 + min(n, 30) / 60.0, cap), 3)
+
+
 @router.get("/analysis/live_suggestions")
 def get_live_suggestions(
     player_id: int = Query(..., ge=1, le=2_147_483_647),
@@ -296,7 +310,11 @@ def get_live_suggestions(
         for st, wr, lift_pp, n in shot_stats[:3]:
             if lift_pp < 5.0:
                 continue
-            conf = min(0.5 + min(n, 30) / 60.0, 0.95)
+            # D-5: これは **確率ではない**。N の単調増加関数で、0.5〜0.95 に
+            # 収まるよう手で置いた式。「信頼度 NN%」として画面に出してはいけない
+            # (IntervalSuggestionsStrip の % 表示は撤去済み)。
+            # 並べ替えと足切りにだけ使う。標本数は headline の N=... が持つ。
+            conf = _sufficiency_score(n, cap=0.95)
             if conf < 0.5:
                 continue
             items.append({
@@ -320,7 +338,7 @@ def get_live_suggestions(
             alt_list = [s for s in shot_stats if s[2] > 0 and s[0] != st]
             alt = alt_list[-1] if alt_list else None
             alt_label = alt[0] if alt else "別のショット"
-            conf = min(0.5 + min(n, 30) / 60.0, 0.9)
+            conf = _sufficiency_score(n, cap=0.9)  # 確率ではない。上のコメント参照
             if conf < 0.5:
                 continue
             items.append({

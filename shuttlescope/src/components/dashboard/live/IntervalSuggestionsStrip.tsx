@@ -90,16 +90,17 @@ export function IntervalSuggestionsStrip({
         <ol className="mt-2 space-y-2">
           {data.items.map((it, idx) => {
             const headline = i18n.language?.startsWith('en') ? it.headline_en : it.headline_ja
-            const confPct = Math.round(it.confidence * 100)
             return (
               <li key={it.id} className="flex items-start gap-2 text-sm">
                 <span className="font-bold w-5 ss-num text-[var(--ss-t2)]">{idx + 1}.</span>
                 <div className="flex-1">
                   <div>{headline}</div>
                   <div className="text-xs mt-1 flex items-center gap-2">
-                    <span className="inline-flex items-center rounded-ss-sm border border-[var(--ss-border-strong)] bg-[var(--ss-surface-1)] px-2 py-0.5 font-medium text-[var(--ss-t2)] ss-num">
-                      {t('auto.IntervalSuggestionsStrip.confidence', { pct: confPct })}
-                    </span>
+                    {/* D-5: ここは `confidence * 100` を「信頼度 NN%」として出していた。
+                        その値は live_coach.py の `min(0.5 + min(n,30)/60, 0.95)` で、
+                        N の単調関数でしかなく、NN という数に対応する事象が無い。
+                        標本数は headline に `N=...` として既に入っているので、
+                        意味の無い % は出さない。 */}
                     {it.evidence_path && (
                       <span className="text-[var(--ss-t3)] text-xs">{it.evidence_path}</span>
                     )}
