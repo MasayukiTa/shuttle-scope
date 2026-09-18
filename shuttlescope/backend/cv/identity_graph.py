@@ -174,6 +174,8 @@ def track_identities(
                 "cy_n": matched_p.get("cy_n") or (bbox[1] + bbox[3]) / 2,
                 "hist": matched_p.get("hist") or a.get("hist") or [],
                 "lost": False,
+                # 人が割り当てたシード。対応付けは人の判断なので最大。
+                "assoc_quality": 1.0,
             })
         elif bbox_from_ui and len(bbox_from_ui) == 4:
             logger.warning(
@@ -187,6 +189,8 @@ def track_identities(
                 "cy_n": (bbox_from_ui[1] + bbox_from_ui[3]) / 2,
                 "hist": a.get("hist") or [],
                 "lost": False,
+                # 人が割り当てたシード。対応付けは人の判断なので最大。
+                "assoc_quality": 1.0,
             })
 
     if not init:
@@ -409,12 +413,20 @@ def track_identities(
                                     st["gallery"][:seed_count]
                                     + st["gallery"][-(GALLERY_MAX - seed_count):]
                                 )
+                    # C-series: この枠が «その選手» である確からしさ。
+                    # 検出器の confidence ではなく **関連付けの品質** なので
+                    # assoc_quality と呼ぶ。IoU と外見類似度のどちらかが高ければ
+                    # 対応付けは固い、という素直な読み方にしてある。
+                    # (ここで «confidence» と名乗ると検出信頼度と取り違える)
                     frame_players.append({
                         "player_key": pk,
                         "bbox": st["bbox"],
                         "cx_n": new_cx,
                         "cy_n": new_cy,
                         "lost": False,
+                        "assoc_quality": round(
+                            max(0.0, min(1.0, max(iou_mv, sim_mv))), 3
+                        ),
                     })
                 else:
                     bw = (st["bbox"][2] - st["bbox"][0]) if len(st["bbox"]) == 4 else 0.1
@@ -427,12 +439,18 @@ def track_identities(
                     st["cy_n"] = pred_cy
                     st["bbox"] = pred_bbox
                     st["lost_count"] += 1
+                    # 外挿した枠。検出と対応付いていないので、
+                    # 見失ってからの経過フレーム数で単調に減衰させる。
+                    # 0 になるのは再取得しきい値に達したとき。
                     frame_players.append({
                         "player_key": pk,
                         "bbox": pred_bbox,
                         "cx_n": pred_cx,
                         "cy_n": pred_cy,
                         "lost": True,
+                        "assoc_quality": round(
+                            max(0.0, 1.0 - st["lost_count"] / max(1, REACQ_THRESH)) * 0.5, 3
+                        ),
                     })
 
             matched_det_indices = set(track_to_det.values())

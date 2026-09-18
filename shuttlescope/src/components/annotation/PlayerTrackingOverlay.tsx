@@ -19,14 +19,19 @@ export interface TrackedPlayer {
   cy_n?: number
   lost?: boolean
   /**
-   * 検出信頼度 (0–1)。**現状バックエンドは送っていない。**
-   * backend/cv/identity_graph.py が組み立てる frame_players は
-   * player_key / bbox / cx_n / cy_n / lost だけで、検出器が持っている
-   * confidence (backend/cv/base.py) を追跡フレームまで運んでいない。
-   * そのため下の opacity 計算は常に conf=1 に落ち、低信頼の枠も
-   * 高信頼と同じ濃さで描かれる。プランビングは CV 側の別タスク。
+   * 関連付け品質 (0–1)。`backend/cv/identity_graph.py` が付ける。
+   *
+   * **検出器の confidence ではない。** 「この枠が *その選手* である確からしさ」で、
+   * 中身は:
+   *   - 検出と対応付いたフレーム: IoU と外見類似度の大きいほう
+   *   - 見失って外挿したフレーム: 経過フレーム数で減衰させた値 (上限 0.5)
+   *   - 人が割り当てたシードフレーム: 1.0
+   *
+   * 以前は `confidence` という名前で宣言だけされており、**送る側が存在しなかった**
+   * ため常に undefined → 不透明度が conf=1 に落ち、低品質の枠も高品質と
+   * 同じ濃さで描かれていた。
    */
-  confidence?: number
+  assoc_quality?: number
 }
 
 export interface TrackFrame {
@@ -267,7 +272,7 @@ export function PlayerTrackingOverlay({
         const color = KEY_COLORS[p.player_key] ?? '#6b7280'
         // 検出信頼度を不透明度に反映 (不確実性開示=非交渉ルール)。lost は最も薄く、
         // それ以外は conf に連動 (低信頼を高信頼と同じ濃さで見せて過信させない)。
-        const conf = typeof p.confidence === 'number' ? Math.max(0, Math.min(1, p.confidence)) : 1
+        const conf = typeof p.assoc_quality === 'number' ? Math.max(0, Math.min(1, p.assoc_quality)) : 1
         const opacity = p.lost ? LOST_OPACITY : (0.4 + 0.5 * conf)
         const isHovered = hoveredIdx === i
         const displayName = playerOptions.find(o => o.key === p.player_key)?.name ?? p.player_key
