@@ -96,6 +96,28 @@ def get_epv(
                      date_from=date_from, date_to=date_to)
 
 
+def _epv_registry_meta() -> dict:
+    """registry の caution / assumptions を meta に載せる。
+
+    D-5: `/analysis/epv` は meta を手で組み立てており、
+    `build_response_meta` を通していなかったので **registry の caution が
+    エンドポイントの返り値に一度も入っていなかった**。
+    描く側 (MarkovEPV) が受け取れないので、注意書きは存在しないのと同じだった。
+
+    EPV の大きさは `epv_engine._SHOT_ATTACK_WEIGHT` という **手置きの定数表**で
+    決まる。それを伏せたまま数値を出すのは、このリポジトリの
+    「不確実性を必ず開示する」規約に反する。
+    """
+    from backend.analysis.analysis_registry import get_analysis_meta
+    entry = get_analysis_meta("epv")
+    return {
+        "tier": entry["tier"],
+        "evidence_level": entry["evidence_level"],
+        "caution": entry["caution"],
+        "assumptions": entry["assumptions"],
+    }
+
+
 def _epv_impl(db: Session, player_id: int, ctx=None,
               result=None, tournament_level=None,
               date_from=None, date_to=None):
@@ -113,7 +135,8 @@ def _epv_impl(db: Session, player_id: int, ctx=None,
         return {
             "success": True,
             "data": {"top_patterns": [], "bottom_patterns": []},
-            "meta": {"sample_size": 0, "confidence": empty_confidence},
+            "meta": {"sample_size": 0, "confidence": empty_confidence,
+                     **_epv_registry_meta()},
         }
 
     if ctx is None:
@@ -140,7 +163,8 @@ def _epv_impl(db: Session, player_id: int, ctx=None,
         return {
             "success": True,
             "data": {"top_patterns": [], "bottom_patterns": []},
-            "meta": {"sample_size": 0, "confidence": empty_confidence},
+            "meta": {"sample_size": 0, "confidence": empty_confidence,
+                     **_epv_registry_meta()},
         }
 
     if ctx is not None:
@@ -211,7 +235,8 @@ def _epv_impl(db: Session, player_id: int, ctx=None,
             "global_epv": state_epv_result.get("global_epv", {}),
             "state_summary": state_epv_result.get("state_summary", {}),
         },
-        "meta": {"sample_size": total_strokes, "confidence": confidence},
+        "meta": {"sample_size": total_strokes, "confidence": confidence,
+                 **_epv_registry_meta()},
     }
 
 

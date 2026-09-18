@@ -275,8 +275,16 @@ _RAW: list[dict] = [
         "analysis_type": "epv",
         "tier": "research",
         "evidence_level": "directional",
-        "caution": "EPVはマルコフモデルに基づく探索的指標です。定常性仮定・独立ラリー仮定を含みます。",
-        "assumptions": "定常1次マルコフ過程。各ラリーは独立と仮定。",
+        "caution": (
+            "EPVはマルコフモデルに基づく探索的指標です。定常性仮定・独立ラリー仮定を含みます。"
+            "**球種ごとの攻撃力の大きさは、このデータから推定した値ではなく、"
+            "あらかじめ人が決めた定数表です** (epv_engine.py の _SHOT_ATTACK_WEIGHT)。"
+            "順序の傾向として読み、数値そのものを根拠にしないでください。"
+        ),
+        "assumptions": (
+            "定常1次マルコフ過程。各ラリーは独立と仮定。"
+            "球種の攻撃力は手置きの定数表 (smash=0.85 … defensive=0.25) を使用。"
+        ),
         "promotion_criteria": "校正品質改善・状態定義の安定化・N≥500ラリー",
         "page": "dashboard",
         "section": "research",
@@ -285,8 +293,18 @@ _RAW: list[dict] = [
         "analysis_type": "shot_influence",
         "tier": "research",
         "evidence_level": "exploratory",
-        "caution": "ショット影響度は因果効果ではなく相関ベースのヒューリスティックです。",
-        "assumptions": "ラリー内ポジション・攻撃重み・勝敗の積として影響度を定義します。",
+        "caution": (
+            "ショット影響度は因果効果ではありません。"
+            "**「相関ベース」ですらなく、球種の攻撃重みと品質係数は"
+            "このデータに当てはめた値ではない手置きの定数表です** "
+            "(shot_influence.py の _SHOT_ATTACK_WEIGHT / _SHOT_QUALITY_WEIGHT)。"
+            "注釈から来るのは球種・品質・勝敗の組合せだけで、大きさは人が決めた値です。"
+        ),
+        "assumptions": (
+            "ラリー内ポジション・攻撃重み・勝敗の積として影響度を定義します。"
+            "攻撃重み (smash=0.85 … defensive=0.25) と品質係数 (excellent=1.5 … poor=0.6) は"
+            "手置きの定数で、選手やデータに合わせた較正はしていません。"
+        ),
         "promotion_criteria": "状態条件付き推定・BootstrapCIの導入",
         "page": "dashboard",
         "section": "research",

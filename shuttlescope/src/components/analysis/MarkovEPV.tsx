@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
+import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { useResearchBundleSlice } from '@/contexts/ResearchBundleContext'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { RoleGuard } from '@/components/common/RoleGuard'
@@ -29,7 +30,14 @@ interface EPVResponse {
     top_patterns: EPVPattern[]
     bottom_patterns: EPVPattern[]
   }
-  meta: { sample_size: number; confidence: { level: string; stars: string; label: string } }
+  meta: {
+    sample_size: number
+    confidence: { level: string; stars: string; label: string }
+    // D-5: EPV の大きさは epv_engine の手置き定数表で決まる。
+    // registry の caution をサーバが返すようになったので必ず描く。
+    caution?: string | null
+    assumptions?: string | null
+  }
 }
 
 function EPVCard({ pattern, isPositive, rank }: { pattern: EPVPattern; isPositive: boolean; rank: number }) {
@@ -109,11 +117,18 @@ export function MarkovEPV({ playerId, filters = DEFAULT_FILTERS }: MarkovEPVProp
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-3">
-        <ConfidenceBadge sampleSize={sampleSize} />
+        <ConfidenceBadge sampleSize={sampleSize} unit="strokes" />
         <span className="text-[11px] text-[var(--ss-t3)]">
           {t('auto.MarkovEPV.epv_def')}
         </span>
       </div>
+      {/* D-5: このカードだけ注意書きを描いていなかった。サーバは registry の
+          caution を返しているのに読む側が無い＝注意書きが存在しないのと同じ。
+          兄弟の StateEPVCard と同じ ResearchNotice を使う。 */}
+      <ResearchNotice
+        caution={resp?.meta?.caution ?? t('analysis.epv.caution_fallback')}
+        assumptions={resp?.meta?.assumptions ?? undefined}
+      />
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
         {/* 上位パターン（全ロール） */}

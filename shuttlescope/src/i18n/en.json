@@ -1772,7 +1772,8 @@
       "count": "Count",
       "ci": "CI",
       "top_patterns": "Top patterns",
-      "bottom_patterns": "Growth-area patterns"
+      "bottom_patterns": "Growth-area patterns",
+      "caution_fallback": "EPV is an exploratory index based on a Markov model. The per-shot attack magnitudes are a hand-set constant table, not values estimated from this data. Read the ordering, not the numbers."
     },
     "interval_report": {
       "title": "Set-interval brief",
