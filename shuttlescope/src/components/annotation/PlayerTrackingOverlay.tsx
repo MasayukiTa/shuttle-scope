@@ -18,6 +18,15 @@ export interface TrackedPlayer {
   cx_n?: number
   cy_n?: number
   lost?: boolean
+  /**
+   * 検出信頼度 (0–1)。**現状バックエンドは送っていない。**
+   * backend/cv/identity_graph.py が組み立てる frame_players は
+   * player_key / bbox / cx_n / cy_n / lost だけで、検出器が持っている
+   * confidence (backend/cv/base.py) を追跡フレームまで運んでいない。
+   * そのため下の opacity 計算は常に conf=1 に落ち、低信頼の枠も
+   * 高信頼と同じ濃さで描かれる。プランビングは CV 側の別タスク。
+   */
+  confidence?: number
 }
 
 export interface TrackFrame {

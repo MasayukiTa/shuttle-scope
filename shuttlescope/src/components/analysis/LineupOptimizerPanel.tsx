@@ -14,6 +14,7 @@ import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { WIN, LOSS } from '@/styles/colors'
 import { MIcon } from '@/components/common/MIcon'
+import type { UserRole } from '@/types'
 
 // ── 型定義 ──────────────────────────────────────────────────────────────────
 
@@ -43,7 +44,10 @@ interface LineupResult {
 
 interface Props {
   players: PlayerSummary[]
-  role: 'admin' | 'analyst' | 'coach' | 'player' | null
+  // UserRole 全体を受ける。demo / llm も渡りうるので、判定は必ず
+  // 下の isAnalyst のような許可リストで書くこと (role !== 'player' のような
+  // 否定条件にすると demo / llm が解析者扱いで通り抜ける)。
+  role: UserRole | null
 }
 
 const LEVEL_OPTIONS = ['', 'IC', 'IS', 'SJL', '全日本', '国内', 'その他']

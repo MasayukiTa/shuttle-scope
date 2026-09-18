@@ -97,7 +97,10 @@ export async function listPendingForMatch(matchId: number): Promise<PendingRally
     })
     db.close()
     return items
-      .filter((it) => it.matchId === matchId)
+      // matchId は number だが、過去に useParams の string がそのまま入った
+      // レコードが端末に残っている。厳密比較だとそれらを取りこぼし、
+      // オフライン中に付けたラリーが永久に再送されない。数値化して突合する。
+      .filter((it) => Number(it.matchId) === matchId)
       .sort((a, b) => (a.queued_at < b.queued_at ? -1 : 1))
   } catch (err) {
     if (typeof console !== 'undefined') console.warn('[offline] list failed:', err)
