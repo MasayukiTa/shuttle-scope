@@ -23,13 +23,23 @@ from backend.analysis.insights.player_summary_service import build_player_summar
 
 # ── helpers ────────────────────────────────────────────────────────────────
 
-def _ctx(role: str = "coach", user_id: int = 1, player_id: int | None = None) -> AuthCtx:
+# `/insights/player_summary` は以前**認可が一切無かった** (player_id を変えれば
+# 誰でも全選手を引けた)。認可を足した結果、team_id を持たない ctx は
+# `can_access_player` で弾かれる — これは `check_export_player_scope` 等と
+# 同じ既存の規則で、チーム未設定の coach/analyst はどこでも何も見えない。
+# フィクスチャが team を持っていなかったのは、認可が無かった頃の名残。
+_TEAM_ID = 1
+
+
+def _ctx(role: str = "coach", user_id: int = 1, player_id: int | None = None,
+         team_id: int | None = _TEAM_ID) -> AuthCtx:
     return AuthCtx(role=role, player_id=player_id, user_id=user_id,
-                   team_name=None, team_id=None)
+                   team_name=None, team_id=team_id)
 
 
-def _override_auth(role: str, user_id: int = 1, player_id: int | None = None):
-    app.dependency_overrides[get_auth] = lambda: _ctx(role, user_id, player_id)
+def _override_auth(role: str, user_id: int = 1, player_id: int | None = None,
+                   team_id: int | None = _TEAM_ID):
+    app.dependency_overrides[get_auth] = lambda: _ctx(role, user_id, player_id, team_id)
 
 
 def _override_db(session):
@@ -49,8 +59,9 @@ def _cleanup_overrides():
     _clear_overrides()
 
 
-def _make_player(db, name: str) -> Player:
-    p = Player(name=name)
+def _make_player(db, name: str, team_id: int | None = _TEAM_ID) -> Player:
+    # 所属を持たせる。持たせないと can_access_player が (正しく) 弾く。
+    p = Player(name=name, team_id=team_id)
     db.add(p)
     db.flush()
     return p

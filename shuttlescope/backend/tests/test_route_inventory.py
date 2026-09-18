@@ -48,7 +48,15 @@ PUBLIC_PREFIXES: tuple[str, ...] = (
 EXPECTED_EXEMPT_REGEX_SUBSTRINGS = (
     "health(?:",
     "csp_report(?:",
-    "public(?:",
+    # `public(?:` という前方一致は撤去した。旧パターンは
+    # `/api/public/inquiries` 系 5 ルート (admin 専用) まで免除しており、
+    # 免除されると middleware の承認待ち検査・mfa_pending 拒否・role
+    # ホワイトリストを全部飛ばしていた。実際に未認証で到達してよい
+    # 4 ルートを列挙する形に変えたので、drift 検出もその形を見る。
+    "public/status/day(?:",
+    "public/contact(?:",
+    "public/ban_appeal(?:",
+    "public/content_report(?:",
     "auth/(?:login|logout|refresh|bootstrap-status|register|email/verify",
     "_internal/billing/webhooks/(?:stripe|komoju|univapay)",
     "_internal/billing/legal_info",
@@ -176,6 +184,14 @@ class TestGlobalAuthExemptRegex:
         "/api/_internal/billing/legal_info_",
         "/api/csp_reportXYZ",
         "/api/_internal/videos",      # trailing / 必須
+        # admin 専用の問い合わせ管理。旧 `public(?:` 前方一致はこれらを
+        # 巻き込んで免除しており、middleware の承認待ち検査・mfa_pending 拒否・
+        # role ホワイトリストを全部飛ばしていた。守っていたのは
+        # public_site.py:322 の弱い `ctx.is_admin` のみ版 1 枚だけだった。
+        "/api/public/inquiries",
+        "/api/public/inquiries/unread-count",
+        "/api/public/inquiries/12",
+        "/api/public/inquiries/bulk-delete",
     ])
     def test_near_miss_paths_not_exempt(self, path: str):
         from backend.main import _GLOBAL_AUTH_EXEMPT
@@ -191,7 +207,9 @@ class TestGlobalAuthExemptRegex:
         "/api/auth/email/verify",
         "/api/auth/password/reset",
         "/api/public/contact",
-        "/api/public/teams",
+        "/api/public/status/day",
+        "/api/public/ban_appeal",
+        "/api/public/content_report",
         "/api/_internal/billing/webhooks/stripe",
         "/api/_internal/billing/webhooks/komoju",
         "/api/_internal/billing/legal_info",
