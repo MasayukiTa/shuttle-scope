@@ -76,7 +76,7 @@ function CustomTooltip({ active, payload }: import('@/utils/rechartsTypes').Rech
 
   const isLight = useIsLightMode()
   if (!active || !payload?.length) return null
-  const d = payload[0]?.payload as RallyPoint
+  const d = payload[0]?.payload as RallyPoint | undefined
   if (!d) return null
   const style = getTooltipStyle(isLight)
   const headingColor = isLight ? '#0f172a' : '#f9fafb'

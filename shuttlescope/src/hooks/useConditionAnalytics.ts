@@ -112,7 +112,10 @@ interface BestProfileRaw {
   key_factors?: Array<{
     key: string
     effect_size?: number
-    direction?: string
+    // backend/analysis/condition_analytics.py:338 はこの 2 値しか返さない。
+    // string のままだと BestProfileKeyFactor.direction (リテラル union) に
+    // 代入できず、key_factors 全体が型エラーになる。
+    direction?: 'higher_when_winning' | 'lower_when_winning'
     target_min?: number | null
     target_max?: number | null
     target_mean?: number | null

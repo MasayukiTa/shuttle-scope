@@ -33,6 +33,12 @@ import { errorMessage } from '@/utils/errors'
 // MobileAnnotate 用の最小型 (backend レスポンスの該当フィールドのみ)
 interface MatchLite {
   available_qualities?: Array<{ quality: string; height: number; ready: boolean }>
+  // getMobileVideoSrc が読む項目。インデックスシグネチャだけだと unknown に
+  // なって渡せないので、使う分は明示しておく。
+  id?: number
+  video_token?: string | null
+  video_url?: string | null
+  has_video_local?: boolean | null
   [key: string]: unknown
 }
 interface CvStroke {
@@ -48,8 +54,11 @@ interface RallyRow {
   uuid?: string
   set_id: number
   rally_num: number
-  server?: 'player_a' | 'player_b'
-  winner?: 'player_a' | 'player_b'
+  // backend/db/models.py の Rally.server / Rally.winner は nullable=False。
+  // optional にしていたせいで undefined が RallyLite へ流れ、
+  // 一覧の `winner === 'player_a' ? A : B` が未設定を B の得点として描いていた。
+  server: 'player_a' | 'player_b'
+  winner: 'player_a' | 'player_b'
   score_a_after?: number
   score_b_after?: number
   video_timestamp_end?: number

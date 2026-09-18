@@ -333,7 +333,9 @@ export function useServerSideRecording(
           chunk_size: 8_388_608,   // 8MB
         },
       )
-      initRes = (r as { data?: InitResponse }).data ?? (r as InitResponse)
+      // envelope ({success,data}) と素の InitResponse の両方を受ける。
+      // 直接 as で往復すると重なりが無いと怒られるので unknown を経由する。
+      initRes = r.data ?? (r as unknown as InitResponse)
       uploadIdRef.current = initRes.upload_id
       chunkIndexRef.current = 0
     } catch (err: unknown) {

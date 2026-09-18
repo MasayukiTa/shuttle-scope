@@ -45,7 +45,7 @@ function CustomTooltip({ active, payload }: import('@/utils/rechartsTypes').Rech
 
   const isLight = useIsLightMode()
   if (!active || !payload?.length) return null
-  const d = payload[0]?.payload as RallyPoint
+  const d = payload[0]?.payload as RallyPoint | undefined
   if (!d) return null
   const bg = isLight ? '#ffffff' : '#1f2937'
   const border = isLight ? '#cbd5e1' : '#374151'

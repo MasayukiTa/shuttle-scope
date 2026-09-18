@@ -141,7 +141,21 @@ export function GrowthTimeline({
 
   // ─── ペアモード: 日付をキーにして2プレイヤーのデータをマージ ─────────────
 
-  let chartData: Record<string, unknown>[]
+  // Record<string, unknown> にすると name が unknown に潰れ、
+  // 下の yearBoundaryNames (string[]) に入らなくなる。行の形を明示する。
+  // ペアモードは valueA/valueB、通常モードは value を使う。
+  interface TimelineRow {
+    name: string
+    isYearBoundary: boolean
+    fullDate: string
+    value?: number | null
+    moving_avg?: number | null
+    valueA?: number | null
+    movingAvgA?: number | null
+    valueB?: number | null
+    movingAvgB?: number | null
+  }
+  let chartData: TimelineRow[]
   let yearBoundaryNames: string[]
 
   if (isPairMode && partnerResp) {
@@ -240,7 +254,7 @@ export function GrowthTimeline({
           style={{ cursor: 'pointer' }}
           onClick={(chart: import('@/utils/rechartsTypes').RechartsClickPayload) => {
             // recharts: クリックされたポイントは chart.activePayload[0].payload
-            const p = chart?.activePayload?.[0]?.payload as Record<string, unknown> | undefined
+            const p = chart?.activePayload?.[0]?.payload as TimelineRow | undefined
             if (!p || isPairMode) return  // ペア比較モードでは比較ポップアップ非対応
             const idx = chartData.indexOf(p)
             if (idx < 0) return

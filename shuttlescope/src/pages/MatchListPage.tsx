@@ -319,6 +319,9 @@ export function MatchListPage() {
       // 既存ファイル名は m.video_filename / m.has_video_local で表示する。
       video_local_path: '',
       notes: m.notes ?? '',
+      // 編集開始時にこれを入れ忘れていたため、公開プール登録済みの試合を
+      // 開いてもチェックが外れて見え、非公開だと誤認する状態だった。
+      is_public_pool: m.is_public_pool ?? false,
     })
     // 編集中の試合の既存動画ファイル名（パスは含まない、表示専用）
     setEditingVideoFilename(m.video_filename ?? (m.has_video_local ? '(動画登録済み)' : ''))
