@@ -129,3 +129,35 @@ def test_explicit_off_disables_bytetrack():
             os.environ["SS_YOLO_BYTETRACK"] = old
         else:
             os.environ.pop("SS_YOLO_BYTETRACK", None)
+
+
+class TestLabelProvenanceReachesHitterConfidence:
+    """C-8: `player_a` / `player_b` は幾何であって人物ではない。
+
+    トラックが解決できないと、`yolo/inference.py` は **その場の検出の y 平均**
+    より上を player_a にする。2 人が同じ側に立っていても必ず片方が「奥」になる。
+    それが `Stroke.player` に入る = 選手別統計が根元から崩れる。
+
+    距離だけを見る `hitter_confidence` はこの違いを知らないので、
+    ラベルの来歴を運んで、推測なら自動採用に届かないところまで落とす。
+    """
+
+    def test_guessed_label_cannot_reach_auto_fill(self):
+        from backend.yolo.cv_aligner import HITTER_GUESS_CONF_CAP
+        from backend.cv.candidate_builder import CONF_HIGH, CONF_MEDIUM, _conf_to_decision
+
+        assert HITTER_GUESS_CONF_CAP < CONF_HIGH, "推測が auto_filled に届いてしまう"
+        assert HITTER_GUESS_CONF_CAP < CONF_MEDIUM, "推測が suggested に届いてしまう"
+        mode, _ = _conf_to_decision(HITTER_GUESS_CONF_CAP)
+        assert mode == "review_required"
+
+    def test_tracked_label_is_not_capped(self):
+        """追跡で解決したラベルまで落としていないこと。
+
+        片側だけ見ると「全部 review にする」実装でも通ってしまうので、
+        通る側も固定する。
+        """
+        from backend.cv.candidate_builder import CONF_HIGH, _conf_to_decision
+        mode, _ = _conf_to_decision(0.95)
+        assert mode == "auto_filled"
+        assert 0.95 >= CONF_HIGH

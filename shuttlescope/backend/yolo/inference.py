@@ -936,6 +936,9 @@ class YOLOInference:
                     and prev_label in self._PLAYER_LABELS
                     and prev_label not in used_labels):
                 p["label"] = prev_label
+                # C-8: この割当は「前フレームの同一 track」に基づく。
+                # 下の位置ベース割当と区別できるよう来歴を残す。
+                p["label_source"] = "track"
                 used_labels.add(prev_label)
             else:
                 unresolved.append(p)
@@ -948,15 +951,23 @@ class YOLOInference:
             near = sorted([d for d in unresolved if d["centroid"][1]  > y_mid], key=lambda d: d["centroid"][0])
             ordered_unresolved = far + near
             free_labels = [lbl for lbl in self._PLAYER_LABELS if lbl not in used_labels]
+            # C-8: ここは **その場の検出の y 平均より上か下か** で割り当てるだけで、
+            # 人物の同一性は見ていない。2 人が同じ側に立っていても必ず片方が
+            # 「奥 (player_a)」になる。`Stroke.player` はこれを引き継ぐので、
+            # 推測を確定値として書かないよう来歴を残し、下流 (cv_aligner) が
+            # 確信度を抑えられるようにする。
             for p, lbl in zip(ordered_unresolved, free_labels):
                 p["label"] = lbl
+                p["label_source"] = "position_fallback"
                 used_labels.add(lbl)
             # それでも余ったら player_other
             for p in ordered_unresolved[len(free_labels):]:
                 p["label"] = "player_other"
+                p["label_source"] = "position_fallback"
 
         for p in extra:
             p["label"] = "player_other"
+            p["label_source"] = "overflow"
 
         # ── prev_track_labels 更新 (今フレームの確定マップを保存) ──
         new_prev: dict[int, str] = {}

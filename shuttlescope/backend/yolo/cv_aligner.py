@@ -43,6 +43,19 @@ MATCH_WINDOW_SEC: float = 0.5
 # ヒッター候補とみなすための最大シャトル距離（正規化コード座標）
 MAX_HITTER_DIST: float = 0.35
 
+# C-8: ラベルが位置ベースの推測だったときの hitter_confidence 上限。
+#
+# この値は CONF_MEDIUM (既定 0.48) も下回るので、**候補は review_required になる**
+# — 自動採用されないだけでなく、人の確認を必ず通る。
+# 意図的にそこまで落としている: 2 人が同じ側に立っているとき y 平均での上下割当は
+# 実質コイン投げで、「誰が打ったか」を当てている保証が無い。
+# 候補自体は残るので、操作者は見て採否を決められる。
+#
+# より良い形は「2 つの検出が y 方向にどれだけ離れているか」を見て、
+# ネットを挟んでいるときだけ割当を信頼することだが、ネット位置
+# (court_adapter) が要る。未実装 — private_docs の C-8 参照。
+HITTER_GUESS_CONF_CAP = 0.45
+
 # ラリー境界のパディング（秒）: 映像同期ずれを吸収
 RALLY_BOUNDARY_PAD_SEC: float = 0.25
 
@@ -152,6 +165,17 @@ def _build_events(
                     hitter_confidence = round(
                         (1.0 - hitter_dist / MAX_HITTER_DIST) * shuttle_conf, 3
                     )
+                    # C-8: 距離は「誰に一番近いか」しか語らない。
+                    # その **ラベル自体** が位置ベースの当てずっぽう
+                    # (yolo/inference.py の y 平均による上下割当) なら、
+                    # どれだけ近くても「どちらの選手か」は分かっていない。
+                    # 2 人が同じ側に立てば必ず片方が player_a になる程度の根拠しかない。
+                    # `Stroke.player` を自動で埋めさせないよう上限まで落とす
+                    # (結果として review_required になる)。
+                    if nearest.get("label_source") in ("position_fallback", "overflow"):
+                        hitter_confidence = round(
+                            min(hitter_confidence, HITTER_GUESS_CONF_CAP), 3
+                        )
 
         # 受け手候補: ヒッターでない方
         receiver: Optional[str] = None
