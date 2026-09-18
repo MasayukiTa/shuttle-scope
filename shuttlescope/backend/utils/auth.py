@@ -534,16 +534,40 @@ def require_admin(request: Request, db: Session = Depends(get_db)) -> "AuthCtx":
     ctx = get_auth(request)
     if not ctx.is_admin:
         raise HTTPException(status_code=403, detail="admin role required")
-    # S-11: DB の現在状態を必ず見る。
-    # 旧実装は MFA ゲートが有効なときだけ DB を引いていたので、
-    # `ss_require_admin_mfa=0` にすると **token の主張だけで admin** になった。
-    # また MFA ゲートが有効でも見ていたのは totp_enabled だけで、
-    # **降格・ロック・承認待ちは素通り**していた。access token の寿命 (15 分)
-    # のあいだ、admin を外した相手が admin のままでいられる。
-    #
-    # user_id を持たないのは X-Role 互換経路だけで、そちらは
-    # `allow_legacy_header_auth` が loopback + operator token で塞いでいる。
-    # 照合する相手が存在しないので、その経路はここでは触らない。
+
+    # この関数は 2 通りの呼ばれ方をする:
+    #   - `Depends(require_admin)` … FastAPI が db を注入する
+    #   - `require_admin(request)`  … ハンドラ本体から直接 (リポジトリ内に 42 箇所)
+    # 後者では `db` が **`Depends` の既定値オブジェクトのまま**渡ってくる。
+    # 以前は DB を引くのが MFA ゲート有効時だけで、テストはゲートを切っていたため
+    # 表面化しなかったが、常に DB を見るようにした途端
+    # `'Depends' object has no attribute 'get'` で 500 になった。
+    # 42 箇所を書き換えるより、ここで «Session でなければ自分で開く» に倒すほうが
+    # 呼び出し規約として素直で、将来の直接呼び出しも壊さない。
+    if isinstance(db, Session):
+        _check_admin_account_state(db, ctx, settings)
+        return ctx
+    from backend.db.database import SessionLocal
+    with SessionLocal() as _db:
+        _check_admin_account_state(_db, ctx, settings)
+    return ctx
+
+
+def _check_admin_account_state(db: Session, ctx: "AuthCtx", settings) -> None:
+    """admin の «いまの» アカウント状態を DB で確認する。
+
+    S-11: 旧実装は MFA ゲートが有効なときだけ DB を引いていたので、
+    `ss_require_admin_mfa=0` にすると **token の主張だけで admin** になった。
+    また MFA ゲートが有効でも見ていたのは totp_enabled だけで、
+    **降格・ロック・承認待ちは素通り**していた。access token の寿命 (15 分) の
+    あいだ、admin を外した相手が admin のままでいられる。
+
+    user_id を持たないのは X-Role 互換経路だけで、そちらは
+    `allow_legacy_header_auth` が loopback + operator token で塞いでいる。
+    照合する相手が存在しないので、その経路はここでは触らない。
+
+    問題があれば 403 を送出する。何も返さない。
+    """
     if ctx.user_id:
         user = db.get(User, ctx.user_id)
         if not user:
@@ -567,7 +591,6 @@ def require_admin(request: Request, db: Session = Depends(get_db)) -> "AuthCtx":
     elif getattr(settings, "ss_require_admin_mfa", True):
         # JWT 経路で user_id が取れないのは異常。MFA 必須設定なら拒否側へ。
         raise HTTPException(status_code=403, detail="admin role required")
-    return ctx
 
 
 def require_admin_or_analyst(request: Request) -> "AuthCtx":

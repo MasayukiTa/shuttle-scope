@@ -110,3 +110,30 @@ class TestRequireAdminRechecksDb:
 
         monkeypatch.setattr(settings, "ss_require_admin_mfa", False, raising=False)
         assert require_admin(None, db) is not None
+
+
+class TestCalledDirectlyWithoutDb:
+    """`require_admin(request)` と直接呼ぶ経路 (リポジトリ内に 42 箇所)。
+
+    その呼び方だと `db` は **`Depends` の既定値オブジェクトのまま**渡ってくる。
+    DB を引くのが MFA ゲート有効時だけだった頃はテスト (ゲート off) で
+    表面化しなかったが、常に DB を見るようにした途端
+    `'Depends' object has no attribute 'get'` で 500 になった。CI が検出。
+    """
+
+    @pytest.fixture(autouse=True)
+    def _point_session_local_at_this_db(self, db, monkeypatch):
+        """直接呼び出しの経路は SessionLocal を自分で開くので、
+        テスト用の engine に向けておく。"""
+        import backend.db.database as database
+        monkeypatch.setattr(database, "SessionLocal", lambda: db)
+
+    def test_direct_call_passes_for_a_healthy_admin(self, db, as_admin):
+        assert require_admin(None) is not None
+
+    def test_direct_call_still_refuses_a_demoted_admin(self, db, as_admin):
+        as_admin.role = "coach"
+        db.commit()
+        with pytest.raises(HTTPException) as exc:
+            require_admin(None)
+        assert exc.value.status_code == 403
