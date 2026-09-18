@@ -1,7 +1,7 @@
 """Insight 共通型定義。"""
 from __future__ import annotations
 
-from typing import TypedDict, NotRequired
+from typing import Optional, TypedDict, NotRequired
 
 
 class InsightContext(TypedDict):
@@ -21,7 +21,11 @@ class InsightItem(TypedDict):
     id: str               # 'growth_smash', 'consistency_lift', ...
     prose: str            # 2-3 文の日本語または英語
     evidence_path: str    # e.g. '/api/analysis/shot_win_loss?player_id=12'
-    confidence: float     # 0..1
+    # None = 「信頼度という概念が当てはまらない出力」。定型の拒否文や
+    # ナンセンス短絡のように、分析を経ていない応答に数値を付けると
+    # UI が「信頼度 100%」と表示してしまう。UI は数値でないとき
+    # バッジを描かない (ChatMessageBubble.tsx:39-42)。
+    confidence: Optional[float]   # 0..1、または None
     metric: dict          # prose の裏付け生数値
 
 
