@@ -268,7 +268,14 @@ class TestControlPlane:
             cp.require_local_or_operator_token(_mk_request(client_host="8.8.8.8"))
         assert exc.value.status_code == 403
 
-    def test_allow_helpers(self):
+    def test_allow_helpers(self, monkeypatch):
+        # operator token 未設定 (dev) の挙動を確かめるテストなので、
+        # **明示的にその状態を作る**。以前は素で走らせており、CI に
+        # `.env.development` が無いおかげで通っていただけだった。
+        # ローカルには 43 文字の token が入っているので、同じコードが
+        # 手元でだけ落ちる (実際に落ちた)。環境で結果が変わるテストは、
+        # 何を保証しているのか読めない。
+        monkeypatch.setattr(cp, "_OPERATOR_TOKEN", "")
         r_local = _mk_request(client_host="127.0.0.1")
         r_ext = _mk_request(client_host="8.8.8.8")
         assert cp.allow_legacy_header_auth(r_local) is True
@@ -277,6 +284,23 @@ class TestControlPlane:
         assert cp.allow_seed_admin(r_local) is True
         assert cp.allow_local_file_control(r_local) is True
         assert cp.allow_local_file_control(r_ext) is False
+
+    def test_operator_token_is_a_second_factor_on_loopback(self, monkeypatch):
+        """token が設定されていれば、loopback だけでは X-Role 経路を通さない。
+
+        S-11: X-Role フォールバックは admin を名乗れば `admin_mfa_ok=True` を
+        無条件に得る。それが許されるのは、この二要素ガードが効いている
+        前提があってこそなので、前提そのものを固定しておく。
+        """
+        monkeypatch.setattr(cp, "_OPERATOR_TOKEN", "tok")
+        assert cp.allow_legacy_header_auth(_mk_request(client_host="127.0.0.1")) is False
+        assert cp.allow_legacy_header_auth(
+            _mk_request({"X-Operator-Token": "tok"}, client_host="127.0.0.1")
+        ) is True
+        # token が一致しても loopback でなければ通らない
+        assert cp.allow_legacy_header_auth(
+            _mk_request({"X-Operator-Token": "tok"}, client_host="8.8.8.8")
+        ) is False
 
     def test_require_local_operator_or_admin_allows_loopback(self):
         cp.require_local_operator_or_admin(_mk_request(client_host="127.0.0.1"))
