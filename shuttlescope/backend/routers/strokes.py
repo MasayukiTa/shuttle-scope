@@ -1,5 +1,5 @@
 """ストローク管理API（/api/strokes）"""
-from typing import Optional
+from typing import Literal, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -46,8 +46,14 @@ class StrokeData(BaseModel):
     land_x: Optional[float] = None
     land_y: Optional[float] = None
     hit_zone: Optional[str] = Field(default=None, max_length=32)
-    # Phase A: 'cv' = CV 自動推定 / 'manual' = 人間 override
-    hit_zone_source: Optional[str] = Field(default=None, max_length=32)
+    # 打点の由来。**自由文字列だったので、どの値でも書けた** (任意のクライアントが
+    # 'manual' を名乗れたし、綴り違いも黙って保存された)。語彙を固定する。
+    #   'manual'       = 人が明示的に指定した
+    #   'carried_over' = 直前の打球の着地点を引き継いだ (人間由来の推測)
+    #   'cv'           = CV の出力
+    # 'carried_over' は 2026-09-18 に追加。それまでこの経路は 'cv' を名乗っており、
+    # **CV を一度も走らせていない試合でも 2 打目以降が機械由来として残っていた**。
+    hit_zone_source: Optional[Literal["manual", "carried_over", "cv"]] = None
     # Phase A: CV 元推定値 (override 後も保持)
     hit_zone_cv_original: Optional[str] = Field(default=None, max_length=32)
     land_zone: Optional[str] = Field(default=None, max_length=32)

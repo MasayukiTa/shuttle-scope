@@ -249,7 +249,7 @@ export interface StrokeInput {
   shot_type: ShotType
   hit_zone?: Zone9
   /** Phase A: 'cv' = 自動推定そのまま / 'manual' = 人間 override */
-  hit_zone_source?: 'cv' | 'manual'
+  hit_zone_source?: 'cv' | 'manual' | 'carried_over'
   /** Phase A: CV 元推定値 (override 後も保持してデータ品質計測) */
   hit_zone_cv_original?: Zone9 | null
   land_zone?: LandZone

@@ -31,7 +31,7 @@ export interface BatchStrokePayload {
   player: string
   shot_type: string
   hit_zone?: string | number
-  hit_zone_source?: 'cv' | 'manual'
+  hit_zone_source?: 'cv' | 'manual' | 'carried_over'
   hit_zone_cv_original?: string | number | null
   land_zone?: string
   is_backhand: boolean
