@@ -217,3 +217,36 @@ def test_multiple_cameras_coexist_with_distinct_streams(count: int):
     ids = _run(scenario())
     assert all(ids)
     assert len(set(ids)) == count, "stream_id が重複している"
+
+
+def test_operator_is_told_when_a_reconnect_replaces_a_stream():
+    """置換で消えた古い stream の終了が operator に届くこと。
+
+    `disconnect_device` は「登録されているのが自分自身のときだけ」処理する
+    設計なので、置換された旧ソケットの finally は早期 return して何も送らない。
+    つまり**終端はここにしかない**。旧実装は `_new_stream_id` が古い対応を
+    黙って捨てるだけだったため、operator の `useCameraHub` は死んだ
+    RTCPeerConnection を保持し続け、iOS のバックグラウンド化や Wi-Fi の
+    瞬断ごとに 1 本ずつ漏れていた (UI にも死んだタイルが残る)。
+    """
+    import json
+
+    m = CameraSignalingManager()
+    op = _FakeWS("operator")
+
+    async def scenario():
+        await m.connect_operator("S9", op)
+        await m.connect_device("S9", "10", _FakeWS("old"))
+        old = m.stream_id_for("S9", "10")
+        op.sent.clear()
+        await m.connect_device("S9", "10", _FakeWS("new"))
+        return old
+
+    old = _run(scenario())
+    ended = [
+        json.loads(x) for x in op.sent
+        if json.loads(x).get("type") == "camera_stream_ended"
+    ]
+    assert ended, "置換された stream の終了が operator に届いていない"
+    assert ended[0]["stream_id"] == old
+    assert ended[0]["participant_id"] == "10"

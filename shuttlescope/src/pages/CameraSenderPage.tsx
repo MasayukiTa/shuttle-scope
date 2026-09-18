@@ -263,6 +263,18 @@ export function CameraSenderPage() {
     ws.onopen = () => {
       reconnectCountRef.current = 0
       setReconnectCount(0)
+      // 再接続時、サーバ側は **新しい stream_id を採番して古い対応を捨てる**
+      // (ws/camera.py の _new_stream_id)。旧実装はここで device_hello を
+      // 送って state_a に戻すだけで、**古い RTCPeerConnection を閉じも
+      // 再 offer もしなかった**。結果、カメラは点いたまま映像が流れず、
+      // 画面は「待機中」と表示し続ける — 失敗したことが誰にも分からない。
+      // 古い接続をここで畳み、operator からの camera_request で作り直す。
+      if (pcRef.current) {
+        try {
+          pcRef.current.close()
+        } catch { /* 既に閉じている場合がある */ }
+        pcRef.current = null
+      }
       ws.send(JSON.stringify({
         type: 'device_hello',
         participant_id: pid,
@@ -396,6 +408,16 @@ export function CameraSenderPage() {
         }
       } catch { /* バックエンド未起動時はデフォルト STUN を使用 */ }
 
+      // 前回の stream を止めてから取り直す。止めずに上書きすると
+      // 古いトラックが生き続け、端末のカメラ表示 (LED) が点いたままになり、
+      // 電池とメモリを食う。
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach((t) => {
+          try {
+            t.stop()
+          } catch { /* 既に停止している場合がある */ }
+        })
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: false,
@@ -410,6 +432,13 @@ export function CameraSenderPage() {
         void serverRecorder.start(stream).catch(() => { /* noop */ })
       }
 
+      // 再開のたびに前の PeerConnection とトラックを閉じずに上書きしていた。
+      // カメラの LED が点いたまま、メモリと電池を食い続ける。
+      if (pcRef.current) {
+        try {
+          pcRef.current.close()
+        } catch { /* 既に閉じている場合がある */ }
+      }
       const pc = new RTCPeerConnection({ iceServers })
       pcRef.current = pc
       startRttPolling(pc)

@@ -125,8 +125,17 @@ class CameraSignalingManager:
                 "device_streams": {},
             }
 
-    def _new_stream_id(self, session_code: str, participant_id: str) -> str:
-        """この参加者の新しい stream を採番し、古い対応を捨てる。"""
+    def _new_stream_id(self, session_code: str,
+                       participant_id: str) -> tuple[str, Optional[str]]:
+        """この参加者の新しい stream を採番し、古い対応を捨てる。
+
+        **捨てた古い stream_id も返す。** 以前は黙って捨てていたので、
+        カメラが繋ぎ直すたびに operator 側へ終了が伝わらず、
+        `useCameraHub` が死んだ RTCPeerConnection を保持したままになっていた
+        (iOS のバックグラウンド化や Wi-Fi の瞬断ごとに 1 本ずつ漏れ、
+         UI にも死んだタイルが残る)。
+        呼び出し側が camera_stream_ended を送れるように返す。
+        """
         sess = self._sessions[session_code]
         old = sess["device_streams"].pop(participant_id, None)
         if old is not None:
@@ -134,7 +143,7 @@ class CameraSignalingManager:
         stream_id = uuid.uuid4().hex
         sess["streams"][stream_id] = participant_id
         sess["device_streams"][participant_id] = stream_id
-        return stream_id
+        return stream_id, old
 
     def stream_id_for(self, session_code: str, participant_id: str) -> Optional[str]:
         sess = self._sessions.get(session_code)
@@ -250,9 +259,20 @@ class CameraSignalingManager:
                 except Exception:  # noqa: BLE001 - 既に切れている場合がある
                     pass
             sess["devices"][participant_id] = ws
-            stream_id = self._new_stream_id(session_code, participant_id)
+            stream_id, replaced_stream = self._new_stream_id(session_code, participant_id)
             logger.info("camera device connected: %s pid=%s stream=%s",
                         session_code, participant_id, stream_id)
+        if replaced_stream is not None:
+            # 再接続で置き換わった古い stream。ここで終了を伝えないと
+            # operator は古い PeerConnection を畳めない。
+            # (disconnect_device 側は「登録されているのが自分自身のときだけ」
+            #  処理する設計なので、置換された旧ソケットの finally は
+            #  早期 return して何も送らない。終端はここにしかない。)
+            await self._send_to_operator(session_code, {
+                "type": "camera_stream_ended",
+                "participant_id": participant_id,
+                "stream_id": replaced_stream,
+            })
         await self._notify_device_list(session_code)
 
     async def connect_viewer(self, session_code: str, viewer_id: str, ws: WebSocket) -> None:
