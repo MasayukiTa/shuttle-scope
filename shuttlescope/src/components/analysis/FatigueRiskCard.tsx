@@ -88,7 +88,7 @@ function Inner({ playerId, tournamentLevel }: FatigueRiskCardProps) {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3 flex-wrap">
-        <ConfidenceBadge sampleSize={d.breakdown.total_rallies} />
+        <ConfidenceBadge sampleSize={d.breakdown.total_rallies} unit="rallies" />
         <span className="text-xs text-[var(--ss-t3)]">
           {t('auto._shared.n_rallies', { n: d.breakdown.total_rallies })}
         </span>

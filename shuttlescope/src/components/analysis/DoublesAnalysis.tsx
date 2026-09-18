@@ -72,7 +72,8 @@ function PartnerComparison({ playerId }: { playerId: number }) {
 
   return (
     <div className="space-y-3">
-      <ConfidenceBadge sampleSize={sampleSize} />
+      {/* partner_comparison の sample_size は試合数 (match_count の総和) */}
+      <ConfidenceBadge sampleSize={sampleSize} unit="matches" />
       <div className="space-y-2">
         {partners.map((p) => (
           <div
@@ -148,7 +149,8 @@ function ServeReceiveStats({ playerId }: { playerId: number }) {
 
   return (
     <div className="space-y-3">
-      <ConfidenceBadge sampleSize={sampleSize} />
+      {/* doubles_serve_receive の sample_size はラリー数 (serve_total + receive_total) */}
+      <ConfidenceBadge sampleSize={sampleSize} unit="rallies" />
 
       {/* サーブ/レシーブ勝率バー */}
       <ResponsiveContainer width="100%" height={100}>
@@ -252,7 +254,8 @@ function StrokeSharing({ playerId }: { playerId: number }) {
 
   return (
     <div className="space-y-3">
-      <ConfidenceBadge sampleSize={sampleSize} />
+      {/* stroke_sharing の sample_size はラリー数 */}
+      <ConfidenceBadge sampleSize={sampleSize} unit="rallies" />
 
       {/* 平均バランス比率メーター */}
       <div

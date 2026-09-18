@@ -954,7 +954,10 @@
     "medium_label": "中程度（解釈に注意）",
     "high_label": "高信頼（実用レベル）",
     "sample_size": "サンプル数",
-    "strokes": "球"
+    "strokes": "球",
+    "unit_strokes": "球",
+    "unit_rallies": "ラリー",
+    "unit_matches": "試合"
   },
   "end_types": {
     "ace": "エース",

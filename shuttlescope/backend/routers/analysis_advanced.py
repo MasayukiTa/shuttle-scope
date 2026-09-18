@@ -1571,18 +1571,23 @@ def get_flash_advice(
     if player_win_shots:
         shot_counts = Counter(player_win_shots)
         top_shot = shot_counts.most_common(1)[0][0]
-        # 全ラリー中でのそのショット勝率
-        shot_rallies_win = sum(
-            1 for s in all_strokes
-            if s.shot_type == top_shot and s.player == player_role and s.rally_id in win_rallies
-        )
-        shot_rallies_total = sum(
-            1 for s in all_strokes
+        # D-5: 旧実装は **打球数** を数えていた (勝ちラリー中のその球種の打球数 ÷
+        # その球種の総打球数)。1 ラリーで同じ球を 4 回打てば 4 回数えるので、
+        # これは勝率ではない。「勝率」と名乗る以上、母数はラリーでなければ
+        # ならないので、その球種を打った **相異なるラリー** で数える。
+        rallies_with_shot = {
+            s.rally_id for s in all_strokes
             if s.shot_type == top_shot and s.player == player_role
-        )
-        win_pct = round(shot_rallies_win / shot_rallies_total * 100) if shot_rallies_total else 0
+        }
+        rallies_with_shot_won = rallies_with_shot & win_rallies
+        shot_rallies_total = len(rallies_with_shot)
+        win_pct = round(len(rallies_with_shot_won) / shot_rallies_total * 100) if shot_rallies_total else 0
         shot_label = _shot_ja(top_shot)
-        opportunity_body = f"「{shot_label}」での得点が多い（このセット勝率 {win_pct}%）"
+        opportunity_body = (
+            f"「{shot_label}」での得点が多い"
+            f"（このセットで {shot_label} を打ったラリーの勝率 {win_pct}%"
+            f" / {len(rallies_with_shot_won)}-{shot_rallies_total}ラリー）"
+        )
 
     # ── 3. pattern: セット全体の失点前3球のショット傾向 ──────────────────────
     pre_loss_3 = []

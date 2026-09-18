@@ -946,7 +946,10 @@
     "medium_label": "Moderate (interpret with care)",
     "high_label": "High confidence (usable)",
     "sample_size": "Sample size",
-    "strokes": "shots"
+    "strokes": "shots",
+    "unit_strokes": " strokes",
+    "unit_rallies": " rallies",
+    "unit_matches": " matches"
   },
   "end_types": {
     "ace": "Ace",
