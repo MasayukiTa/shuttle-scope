@@ -318,7 +318,14 @@ def _run_tracknet(job: dict, video_path: str) -> None:
                 yn = pt.get("y_norm")
                 if xn is not None and yn is not None:
                     zone_info = pixel_to_court_zone(xn, yn, H)
-                    pt["zone"]      = zone_info["zone_name"]   # 既存 zone を上書き
+                    # C-7: ここで `zone` を 18 ゾーン名 ("A_front_left" 等) で
+                    # 上書きしていた。`zone` は zone_mapper が入れる Zone9
+                    # ("BL" 等) の場所で、candidate_builder はこれを無検証で読んで
+                    # `land_zone` 候補にする。`Stroke.land_zone` は VARCHAR(5) なので
+                    # **PostgreSQL では 12 文字が入らず失敗し、SQLite では黙って入る**
+                    # (開発では通り本番だけ落ちる、いつもの形)。
+                    # Zone9 は保ったまま、コート座標系の呼称は別キーに置く。
+                    pt["court_zone_name"] = zone_info["zone_name"]
                     pt["court_x"]   = zone_info["court_x"]
                     pt["court_y"]   = zone_info["court_y"]
                     pt["zone_id"]   = zone_info["zone_id"]

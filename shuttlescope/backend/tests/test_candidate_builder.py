@@ -343,3 +343,32 @@ class TestBuildCandidates:
         # stability は 0.5 に近い場合は追加されないこともあるので、assertion はゆるく
         review_codes = rc["review_reason_codes"]
         assert isinstance(review_codes, list)
+
+
+class TestLandZoneVocabulary:
+    """C-7: `zone` フィールドに 2 種類の語彙が混ざる。
+
+    `tracknet/zone_mapper.py` は Zone9 ("BL") を入れるが、キャリブレーションが
+    あると `video_import.py` が同じフィールドを 18 ゾーン名 ("A_front_left") で
+    上書きしていた。`Stroke.land_zone` は VARCHAR(5) なので、
+    **PostgreSQL では 12 文字が入らず失敗し、SQLite では黙って入る**。
+    """
+
+    def test_eighteen_zone_names_do_not_become_candidates(self):
+        frames = [_make_tracknet_frame(1.05 + i * 0.05, "A_front_left", 0.92) for i in range(10)]
+        assert _infer_land_zone(frames, None, stroke_ts=1.0, next_stroke_ts=None) is None
+
+    def test_zone9_still_flows_through(self):
+        frames = [_make_tracknet_frame(1.05 + i * 0.01, "NL", 0.92) for i in range(60)]
+        result = _infer_land_zone(frames, None, stroke_ts=1.0, next_stroke_ts=None)
+        assert result is not None
+        assert result["value"] == "NL"
+
+    def test_every_accepted_value_fits_the_column(self):
+        """許可語彙はすべて VARCHAR(5) に収まること。
+
+        ここが破れると本番 (PostgreSQL) だけ落ちる。
+        """
+        from backend.cv.candidate_builder import _VALID_LAND_ZONES
+        too_long = [z for z in _VALID_LAND_ZONES if len(z) > 5]
+        assert not too_long, f"VARCHAR(5) に入らない語彙: {too_long}"

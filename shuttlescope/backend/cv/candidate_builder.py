@@ -430,6 +430,21 @@ def detect_rally_boundaries_from_cv(
 
 # ── 着地ゾーン推定 ────────────────────────────────────────────────────────────
 
+# C-7: land_zone として許す語彙。backend/config.py の ZONES_9 と
+# ZoneOOB / ZoneNet (src/types/index.ts の LandZone) に対応する。
+# ここを通らない値は candidate にしない。
+try:
+    from backend.config import ZONES_9 as _ZONES_9
+except Exception:  # pragma: no cover - config が読めない環境
+    _ZONES_9 = ["BL", "BC", "BR", "ML", "MC", "MR", "NL", "NC", "NR"]
+_VALID_LAND_ZONES = frozenset(_ZONES_9) | {
+    z for z in (
+        "OB_BL", "OB_BC", "OB_BR", "OB_LB", "OB_LM", "OB_LN",
+        "OB_RB", "OB_RM", "OB_RN", "OB_FL", "OB_FC", "OB_FR", "NET",
+    )
+}
+
+
 def _wilson_lower_bound(successes: int, total: int, z: float = 1.96) -> float:
     """二項比率の Wilson スコア下側信頼限界 (既定 95%)。
 
@@ -486,7 +501,13 @@ def _infer_land_zone(
     if not landing_window:
         landing_window = window
 
-    zone_counter: Counter = Counter(f["zone"] for f in landing_window if f.get("zone"))
+    # C-7: `zone` に Zone9 以外の語彙 (18 ゾーンの "A_front_left" 等) が
+    # 混ざりうる。`Stroke.land_zone` は VARCHAR(5) なので、そのまま流すと
+    # PostgreSQL で落ちる (SQLite は黙って通す)。ここで語彙を検査して弾く。
+    zone_counter: Counter = Counter(
+        f["zone"] for f in landing_window
+        if f.get("zone") and f["zone"] in _VALID_LAND_ZONES
+    )
     if not zone_counter:
         return None
 
