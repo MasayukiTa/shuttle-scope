@@ -836,11 +836,53 @@ def purge_disconnected(code: str, request: Request, db: Session = Depends(get_db
     return {"success": True, "data": {"deleted": count}}
 
 
+class HeartbeatBody(BaseModel):
+    """ハートビートの本文。
+
+    参加者トークンは任意。ログイン済みユーザ (JWT 経路) はこれまでどおり
+    本文なしで呼べる。QR + セッションパスワードで参加した端末は JWT を
+    持たないので、join で受け取ったトークンをここで提示する。
+    """
+    model_config = {"extra": "forbid"}
+    participant_token: Optional[str] = Field(default=None, max_length=256)
+
+
 @router.post("/sessions/{code}/devices/{participant_id}/heartbeat")
-def device_heartbeat(code: str, participant_id: int, db: Session = Depends(get_db)):
+def device_heartbeat(
+    code: str,
+    participant_id: int,
+    request: Request,
+    body: Optional[HeartbeatBody] = None,
+    db: Session = Depends(get_db),
+):
     """デバイスのハートビートを更新（30 秒ごとに呼ぶ）。
-    同時に同セッション内のステール active_camera を自動降格する。"""
+    同時に同セッション内のステール active_camera を自動降格する。
+
+    **認証**: このルートはこれまで `_GLOBAL_AUTH_EXEMPT` に入っておらず、
+    JWT を持たない参加端末は 401 になっていた。`useDeviceHeartbeat` は
+    404/410 しか見ないので **401 を握り潰して再試行し続け**、
+    `last_heartbeat` が一度も更新されなかった。その結果
+    `_release_stale_active_cameras` (90 秒) が
+    **配信中のカメラを camera_candidate / idle へ降格**し、
+    DB と operator の画面が実態と乖離していた。
+
+    単に免除すると誰でも他人の端末を生存扱いにできてしまうので、
+    ws-ticket と同じく参加者トークンで認証する。
+    """
     participant = _get_participant(code, participant_id, db)
+
+    token = (body.participant_token if body else None) or ""
+    if token:
+        if not _participant_token_valid(participant, token):
+            raise HTTPException(status_code=401, detail="参加資格を確認できません")
+    else:
+        # トークン無し = 従来どおりログイン済みユーザの経路。middleware が
+        # JWT を検証済みなので、ここでは追加の確認をしない。
+        from backend.utils.auth import get_auth
+        ctx = get_auth(request)
+        if ctx.role is None:
+            raise HTTPException(status_code=401, detail="認証が必要です")
+
     participant.last_heartbeat = datetime.utcnow()
     participant.is_connected = True
     db.commit()

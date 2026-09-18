@@ -66,6 +66,9 @@ export function ViewerPage() {
   useDeviceHeartbeat(
     viewerState === 'waiting' || viewerState === 'receiving' ? activeSessionCode : null,
     participantId,
+    undefined,  // onRemoved は使っていない
+    // JWT を持たない viewer 端末はこのトークンで認証される
+    savedTokenRef.current || undefined,
   )
 
   // ─── 再接続スケジュール ───────────────────────────────────────────────────

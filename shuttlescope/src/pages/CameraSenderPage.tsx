@@ -161,6 +161,9 @@ export function CameraSenderPage() {
       ? activeSessionCode
       : null,
     participantId,
+    undefined,  // onRemoved は使っていない
+    // JWT を持たない参加端末はこのトークンで認証される
+    savedTokenRef.current || undefined,
   )
 
   // ─── バッテリー API ───────────────────────────────────────────────────────
