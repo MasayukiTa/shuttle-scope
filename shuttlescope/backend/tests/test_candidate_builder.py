@@ -74,12 +74,35 @@ class TestInferLandZone:
         assert result["source"] == "tracknet"
         assert result["confidence_score"] > 0
 
-    def test_high_confidence_gives_auto_filled(self):
-        # 全フレーム高信頼度・同一ゾーン → composite conf 高い
+    def test_sparse_evidence_requires_review_even_when_consistent(self):
+        """C-10: 観測が少なければ、全部同じゾーンでも自動採用しない。
+
+        旧実装は `count / total` を一貫性としていたので 1/1 = 1.0 となり、
+        **観測 1 個が最高スコア**だった。着地窓のサンプルは 1fps サンプリングの
+        せいで通常 1 個なので、それが既定の状態だった。
+        """
         frames = [_make_tracknet_frame(1.05 + i * 0.05, "NL", 0.92) for i in range(10)]
         result = _infer_land_zone(frames, None, stroke_ts=1.0, next_stroke_ts=None)
         assert result is not None
+        # 10 フレーム中、着地窓に入るのは後半 4 個だけ
+        assert result["decision_mode"] == "review_required"
+
+    def test_dense_consistent_evidence_can_still_be_accepted(self):
+        """証拠が増えれば従来どおり採用側へ上がること。
+
+        下限を入れただけで経路を殺していないことを確かめる
+        (片側だけ見ると「全部 review にする」実装でも通ってしまう)。
+        """
+        frames = [_make_tracknet_frame(1.05 + i * 0.01, "NL", 0.92) for i in range(60)]
+        result = _infer_land_zone(frames, None, stroke_ts=1.0, next_stroke_ts=None)
+        assert result is not None
         assert result["decision_mode"] in ("auto_filled", "suggested")
+
+    def test_same_ratio_scores_higher_with_more_observations(self):
+        """同じ割合なら、観測が多いほうが高いこと（逆転が直ったことの本体）。"""
+        from backend.cv.candidate_builder import _wilson_lower_bound
+        assert _wilson_lower_bound(1, 1) < _wilson_lower_bound(10, 10)
+        assert _wilson_lower_bound(4, 5) < _wilson_lower_bound(80, 100)
 
     def test_low_confidence_frames_filtered(self):
         # 信頼度 0.38 未満は除外される

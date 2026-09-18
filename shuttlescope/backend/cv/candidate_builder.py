@@ -430,6 +430,26 @@ def detect_rally_boundaries_from_cv(
 
 # ── 着地ゾーン推定 ────────────────────────────────────────────────────────────
 
+def _wilson_lower_bound(successes: int, total: int, z: float = 1.96) -> float:
+    """二項比率の Wilson スコア下側信頼限界 (既定 95%)。
+
+    C-10: 「同じゾーンが続いた割合」を素の `successes / total` で測ると、
+    観測 1 個で 1.0 になる。**証拠が減るほど自信が上がる**という逆転で、
+    しかも着地窓のサンプルは通常 1 個なので、これが常態だった。
+
+    Wilson 下限は標本サイズを分母側に織り込むので、割合が同じでも
+    観測が少ないほど低く出る。中心極限近似だが、比率の区間推定としては
+    Wald より小標本で素直に振る舞う。
+    """
+    if total <= 0:
+        return 0.0
+    phat = successes / total
+    denom = 1.0 + z * z / total
+    centre = phat + z * z / (2 * total)
+    margin = z * ((phat * (1 - phat) / total + z * z / (4 * total * total)) ** 0.5)
+    return max(0.0, (centre - margin) / denom)
+
+
 def _infer_land_zone(
     tracknet_frames: list[dict],
     tracknet_ts_local,  # unused (kept for signature symmetry)
@@ -472,7 +492,14 @@ def _infer_land_zone(
 
     best_zone, count = zone_counter.most_common(1)[0]
     total = len(landing_window)
-    zone_consistency = count / total  # 同じゾーンが続く割合
+    # C-10: 素の割合 `count / total` だと **観測が 1 個のとき 1.0** になり、
+    # 「証拠が少ないほど自信が強い」という逆転が起きる。着地窓のサンプルは
+    # 1fps サンプリング (video_import.py) のせいで普通 1 個なので、
+    # これが着地点候補の主経路の既定値になっていた。
+    # 標本サイズを織り込む Wilson スコアの下側信頼限界に置き換える。
+    # (1/1 → 0.21、8/10 → 0.49、80/100 → 0.71 のように、
+    #  同じ割合でも観測が増えるほど高くなる)
+    zone_consistency = _wilson_lower_bound(count, total)
 
     # 信頼度 = TrackNet の平均 confidence × ゾーン一貫性
     avg_conf = statistics.mean(f["confidence"] for f in landing_window)
