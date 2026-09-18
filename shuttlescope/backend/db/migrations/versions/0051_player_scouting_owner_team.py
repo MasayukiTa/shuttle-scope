@@ -31,28 +31,48 @@ branch_labels = None
 depends_on = None
 
 
+_COLUMN = "scouting_owner_team_id"
+_INDEX = "ix_players_scouting_owner_team_id"
+
+
 def upgrade() -> None:
-    op.add_column(
-        "players",
-        sa.Column("scouting_owner_team_id", sa.Integer(), nullable=True),
-    )
-    op.create_index(
-        "ix_players_scouting_owner_team_id",
-        "players",
-        ["scouting_owner_team_id"],
-    )
-    op.create_foreign_key(
-        "fk_players_scouting_owner_team_id_teams",
-        "players",
-        "teams",
-        ["scouting_owner_team_id"],
-        ["id"],
-    )
+    # bootstrap 経路は先に Base.metadata.create_all で models どおりの表を作ってから
+    # alembic を回す。その場合この列は既に存在するので、素の add_column だと
+    # "duplicate column name" で migration 全体が失敗する (0050 も同じ理由で
+    # inspector ガードを持っている)。存在確認してから足す。
+    insp = sa.inspect(op.get_bind())
+    existing = {c["name"] for c in insp.get_columns("players")}
+    if _COLUMN not in existing:
+        op.add_column("players", sa.Column(_COLUMN, sa.Integer(), nullable=True))
+
+    index_names = {i["name"] for i in insp.get_indexes("players")}
+    if _INDEX not in index_names:
+        op.create_index(_INDEX, "players", [_COLUMN])
+
+    # SQLite は ALTER TABLE ADD CONSTRAINT を持たないため、FK は batch でしか
+    # 足せない。ここでの FK は整合性の宣言であって、可視性の判定は
+    # アプリ側 (can_see_scouting_players) が行う。SQLite では省略する。
+    if op.get_bind().dialect.name != "sqlite":
+        fk_names = {fk["name"] for fk in insp.get_foreign_keys("players")}
+        if "fk_players_scouting_owner_team_id_teams" not in fk_names:
+            op.create_foreign_key(
+                "fk_players_scouting_owner_team_id_teams",
+                "players",
+                "teams",
+                [_COLUMN],
+                ["id"],
+            )
 
 
 def downgrade() -> None:
-    op.drop_constraint(
-        "fk_players_scouting_owner_team_id_teams", "players", type_="foreignkey"
-    )
-    op.drop_index("ix_players_scouting_owner_team_id", table_name="players")
-    op.drop_column("players", "scouting_owner_team_id")
+    insp = sa.inspect(op.get_bind())
+    if op.get_bind().dialect.name != "sqlite":
+        fk_names = {fk["name"] for fk in insp.get_foreign_keys("players")}
+        if "fk_players_scouting_owner_team_id_teams" in fk_names:
+            op.drop_constraint(
+                "fk_players_scouting_owner_team_id_teams", "players", type_="foreignkey"
+            )
+    if _INDEX in {i["name"] for i in insp.get_indexes("players")}:
+        op.drop_index(_INDEX, table_name="players")
+    if _COLUMN in {c["name"] for c in insp.get_columns("players")}:
+        op.drop_column("players", _COLUMN)
