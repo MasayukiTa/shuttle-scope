@@ -13,9 +13,12 @@
 from __future__ import annotations
 
 import hmac
+import logging
 import os
 
 from fastapi import HTTPException, Request
+
+logger = logging.getLogger(__name__)
 
 # 信頼済みクラスタサブネットプレフィックス（カンマ区切り）
 # 例: SS_TRUSTED_SUBNETS=192.168.100.,192.168.101.
@@ -242,14 +245,33 @@ def allow_seed_admin(request: Request) -> bool:
 
 
 def _is_admin_jwt(request: Request) -> bool:
-    """Bearer JWT が有効かつ role=admin であれば True。"""
+    """Bearer JWT が admin として認可できるか。
+
+    S-11: 旧実装は `verify_token` の payload から `role == "admin"` を読むだけで、
+    `get_auth` / `AuthCtx.is_admin` を通していなかった。is_admin は
+    **MFA enrollment を DB で確認**してから admin を名乗らせる設計 (auth.py の
+    `_admin_mfa_ok` 計算) なので、ここだけその検査を素通りしていた。
+
+    しかもこの述語が使われる `require_local_operator_or_admin` は、
+    control-plane の中で**唯一 loopback を要求しない**経路で、クラスタ制御を
+    通す。他の全経路が拒否する token が、ここだけ通る状態だった。
+
+    判定は正規の `AuthCtx.is_admin` に委譲する。
+    `get_auth` は Authorization が無ければ X-Role ヘッダに落ちるが、
+    そちらは `allow_legacy_header_auth` が loopback 限定にしている。
+    ここでは「Bearer JWT であること」を明示的に要求して、
+    ヘッダ経由で本関数が True になる余地を残さない。
+    """
     auth = request.headers.get("Authorization", "")
     if not auth.startswith("Bearer "):
         return False
-    token = auth[7:]
-    from backend.utils.jwt_utils import verify_token
-    payload = verify_token(token)
-    return bool(payload and payload.get("role") == "admin")
+    from backend.utils.auth import get_auth
+    try:
+        return bool(get_auth(request).is_admin)
+    except Exception:
+        # 認可判定が出来なかったら拒否側に倒す (fail closed)。
+        logger.warning("[control_plane] admin JWT 判定に失敗したため拒否した")
+        return False
 
 
 def require_local_operator_or_admin(request: Request) -> None:
