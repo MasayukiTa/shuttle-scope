@@ -71,3 +71,43 @@ def test_deny_all_sentinel_is_in_the_future():
     """番兵が過去だと「全拒否」にならず、静かに全許可へ戻る。"""
     import time
     assert jwt_utils._DENY_ALL_TS > int(time.time()) + 365 * 24 * 3600
+
+
+class TestMissingIatIsRejected:
+    """`iat` の無い JWT は失効チェックを丸ごと飛ばしていた。
+
+    旧実装は iat sanity / exp-iat 上限 / mass-revoke / per-user revoke の
+    4 つを `if iat is not None:` の中に入れていたので、iat を落とした token は
+    **どの失効機構も通らずに認証を通過した**。発行経路は 1 つで必ず iat を
+    入れるため、iat が無い token は自前で発行したものではない。
+    """
+
+    def _token_without_iat(self) -> str:
+        import datetime
+        import uuid
+        import jwt as pyjwt
+        from backend.config import settings
+        from backend.utils.jwt_utils import ALGORITHM, JWT_AUDIENCE, JWT_ISSUER
+
+        payload = {
+            "sub": "1",
+            "role": "admin",
+            "jti": str(uuid.uuid4()),
+            "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1),
+            "iss": JWT_ISSUER,
+            "aud": JWT_AUDIENCE,
+            "token_use": "access",
+        }
+        return pyjwt.encode(payload, settings.SECRET_KEY, algorithm=ALGORITHM)
+
+    def test_token_without_iat_is_rejected(self):
+        from backend.utils.jwt_utils import verify_token
+        assert verify_token(self._token_without_iat()) is None
+
+    def test_normal_token_still_verifies(self):
+        """拒否を足したせいで正規のトークンまで落ちていないこと。"""
+        from backend.utils.jwt_utils import create_access_token, verify_token
+        token = create_access_token(1, "coach", 1, team_name="T", team_id=3)
+        payload = verify_token(token)
+        assert payload is not None
+        assert payload.get("team_id") == 3

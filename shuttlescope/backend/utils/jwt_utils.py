@@ -322,51 +322,58 @@ def verify_token(token: str) -> Optional[dict]:
         import time as _time
         now = int(_time.time())
         iat = payload.get("iat")
-        if iat is not None:
-            try:
-                iat_i = int(iat)
-                if iat_i > now + 300:
-                    logger.warning("JWT rejected: iat in future iat=%s now=%s", iat_i, now)
-                    return None
-                # exp - iat が想定有効期限（24時間 = 86400秒）を大幅超過していれば拒否
-                exp = payload.get("exp")
-                if exp is not None:
-                    try:
-                        exp_i = int(exp)
-                        if exp_i - iat_i > 86400 * 2:
-                            logger.warning("JWT rejected: exp-iat too long exp=%s iat=%s", exp_i, iat_i)
-                            return None
-                    except (ValueError, TypeError):
-                        pass
-
-                # Phase C2: mass-revoke sentinel チェック
-                # admin が POST /api/admin/security/revoke_all_tokens を呼んだ後、
-                # その時刻より前に発行された JWT は全て失効扱いにする
-                mass_revoke_at = _get_mass_revoke_timestamp()
-                if mass_revoke_at is not None and iat_i < mass_revoke_at:
-                    logger.info("JWT rejected: mass-revoked iat=%s mass_revoke_at=%s",
-                                iat_i, mass_revoke_at)
-                    return None
-
-                # Round 258 R20 P2 fix (R20 P2-2): per-user revoke epoch チェック。
-                # change_password / admin_reset_password 経由で revoke_all_for_user が
-                # sentinel を書くと、当該 user の iat < user_revoke_at 全 access token
-                # が以降の verify で reject される (15 分の access token 残時間を 0 化)。
-                _sub_for_revoke = payload.get("sub")
-                try:
-                    _user_id_for_revoke = int(_sub_for_revoke) if _sub_for_revoke is not None else None
-                except (ValueError, TypeError):
-                    _user_id_for_revoke = None
-                if _user_id_for_revoke is not None:
-                    user_revoke_at = _get_user_revoke_timestamp(_user_id_for_revoke)
-                    if user_revoke_at is not None and iat_i < user_revoke_at:
-                        logger.info(
-                            "JWT rejected: per-user revoked sub=%s iat=%s user_revoke_at=%s",
-                            _user_id_for_revoke, iat_i, user_revoke_at,
-                        )
-                        return None
-            except (ValueError, TypeError):
+        if iat is None:
+            # S-11: 旧実装はこのブロック全体を `if iat is not None:` で囲んで
+            # いたため、**iat の無い token は失効チェックを全部飛ばしていた** —
+            # mass-revoke も per-user revoke も exp-iat の上限も。
+            # 発行経路は 1 つ (_pyjwt.encode, 47 行目) で必ず iat を入れるので、
+            # iat が無い token は自前で発行したものではない。拒否する。
+            logger.warning("JWT rejected: no iat claim (失効チェックを飛ばせてしまう)")
+            return None
+        try:
+            iat_i = int(iat)
+            if iat_i > now + 300:
+                logger.warning("JWT rejected: iat in future iat=%s now=%s", iat_i, now)
                 return None
+            # exp - iat が想定有効期限（24時間 = 86400秒）を大幅超過していれば拒否
+            exp = payload.get("exp")
+            if exp is not None:
+                try:
+                    exp_i = int(exp)
+                    if exp_i - iat_i > 86400 * 2:
+                        logger.warning("JWT rejected: exp-iat too long exp=%s iat=%s", exp_i, iat_i)
+                        return None
+                except (ValueError, TypeError):
+                    pass
+
+            # Phase C2: mass-revoke sentinel チェック
+            # admin が POST /api/admin/security/revoke_all_tokens を呼んだ後、
+            # その時刻より前に発行された JWT は全て失効扱いにする
+            mass_revoke_at = _get_mass_revoke_timestamp()
+            if mass_revoke_at is not None and iat_i < mass_revoke_at:
+                logger.info("JWT rejected: mass-revoked iat=%s mass_revoke_at=%s",
+                            iat_i, mass_revoke_at)
+                return None
+
+            # Round 258 R20 P2 fix (R20 P2-2): per-user revoke epoch チェック。
+            # change_password / admin_reset_password 経由で revoke_all_for_user が
+            # sentinel を書くと、当該 user の iat < user_revoke_at 全 access token
+            # が以降の verify で reject される (15 分の access token 残時間を 0 化)。
+            _sub_for_revoke = payload.get("sub")
+            try:
+                _user_id_for_revoke = int(_sub_for_revoke) if _sub_for_revoke is not None else None
+            except (ValueError, TypeError):
+                _user_id_for_revoke = None
+            if _user_id_for_revoke is not None:
+                user_revoke_at = _get_user_revoke_timestamp(_user_id_for_revoke)
+                if user_revoke_at is not None and iat_i < user_revoke_at:
+                    logger.info(
+                        "JWT rejected: per-user revoked sub=%s iat=%s user_revoke_at=%s",
+                        _user_id_for_revoke, iat_i, user_revoke_at,
+                    )
+                    return None
+        except (ValueError, TypeError):
+            return None
 
         return payload
     except PyJWTError as e:
