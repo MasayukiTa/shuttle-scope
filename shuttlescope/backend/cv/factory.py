@@ -162,11 +162,20 @@ def _resolve_tracknet(key: tuple) -> TrackNetInferencer:
     except (ImportError, RuntimeError) as exc:
         logger.warning("[cv.factory] CPU TrackNet 使用不可: %s — Mock にフォールバック", exc)
 
-    # 最終フォールバック: Mock
-    from backend.cv.tracknet_mock import MockTrackNet
-
-    logger.info("[cv.factory] TrackNet: Mock にフォールバック")
-    return MockTrackNet()
+    # C-9: ここで **黙って Mock に落ちてはいけない**。
+    # MockTrackNet は動画を開かずに決め打ちの正弦波を `confidence=0.8` で返す。
+    # これは `CONF_HIGH=0.72` を超えるので、処理できなかった動画から
+    # 「高信頼の着地点」が auto_filled として生成される。
+    # 成果物にも UI にも「mock だった」という表示は無い。
+    #
+    # 推論できないことは失敗であって、結果ではない。明示的に Mock を
+    # 要求された場合 (SS_CV_MOCK=1、上流で処理済み) だけ Mock を返す。
+    raise RuntimeError(
+        "TrackNet の実装を解決できませんでした (CUDA / OpenVINO / CPU いずれも使用不可)。"
+        " Mock には落としません — 動画を読まずに生成した正弦波が confidence=0.8 の"
+        " 着地点として保存され、実データと区別できなくなるためです。"
+        " テストや非 CUDA 開発機で意図的にダミーを使う場合は SS_CV_MOCK=1 を設定してください。"
+    )
 
 
 def get_pose() -> PoseInferencer:
