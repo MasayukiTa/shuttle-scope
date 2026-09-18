@@ -98,7 +98,9 @@ def test_reset_label_continuity_clears_map():
     inf._assign_player_labels([
         _det("person", 0.9, 0.2, 0.2, track_id=10),
     ])
-    assert inf._prev_track_labels == {10: "player_a"}
+    # C-8: (label, origin) を保持する。origin が無いと、位置ベースの推測が
+    # 次フレームで "track" に化けて hitter_confidence の上限を素通りする。
+    assert inf._prev_track_labels == {10: ("player_a", "position_fallback")}
     inf.reset_label_continuity()
     assert inf._prev_track_labels == {}
 
@@ -161,3 +163,24 @@ class TestLabelProvenanceReachesHitterConfidence:
         mode, _ = _conf_to_decision(0.95)
         assert mode == "auto_filled"
         assert 0.95 >= CONF_HIGH
+
+
+def test_a_positional_guess_stays_a_guess_across_frames():
+    """C-8: track 継続はラベルを運ぶだけで、同一性を立証しない。
+
+    最初のフレームでラベルを決めるのは y 平均による上下割当 (= 推測)。
+    それが次フレームで `label_source="track"` になると、
+    `cv_aligner` の上限 (推測なら review_required) を素通りしてしまう。
+    origin を持ち越すことで、推測は何フレーム続いても推測のままにする。
+    """
+    inf = YOLOInference()
+
+    first = inf._assign_player_labels([_det("person", 0.9, 0.2, 0.2, track_id=10)])
+    assert first[0]["label_source"] == "position_fallback"
+
+    # 同じ track_id で次フレーム — ラベルは継続するが、来歴は推測のまま
+    second = inf._assign_player_labels([_det("person", 0.9, 0.2, 0.2, track_id=10)])
+    assert second[0]["label"] == first[0]["label"]
+    assert second[0]["label_source"] == "position_fallback", (
+        "推測が track 継続で «追跡で確定» に化けている"
+    )

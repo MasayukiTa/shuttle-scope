@@ -207,7 +207,12 @@ class YOLOInference:
         self._hybrid_failed: bool = False
         # Track A1: track_id → label の継続マップ。
         # ByteTrack 有効時に同一 track_id が次フレームでも同ラベルを引き継ぐ。
-        self._prev_track_labels: dict[int, str] = {}
+        # C-8: (label, origin) を保持する。origin は「その label が最初に
+        # どう決まったか」。track 継続はラベルを運ぶだけで **同一性を新たに
+        # 立証しない** ので、位置ベースの推測は継続しても推測のまま扱う。
+        # (label だけ保存していたため、推測が次フレームで "track" に化けて
+        #  hitter_confidence の上限を素通りしていた)
+        self._prev_track_labels: dict[int, tuple[str, str]] = {}
         # person v2 court area filter: 試合ごとに 4 コーナー多角形を set すると、
         # 各検出の foot_point が拡張多角形外なら drop する (審判/掲示板/観客対策)。
         # None の場合は filter 無効 (キャリブ未設定試合の fail-safe)。
@@ -931,14 +936,15 @@ class YOLOInference:
         unresolved: list[dict] = []
         for p in named:
             tid = p.get("track_id")
-            prev_label = self._prev_track_labels.get(tid) if tid is not None else None
+            prev = self._prev_track_labels.get(tid) if tid is not None else None
+            prev_label, prev_origin = prev if prev else (None, None)
             if (prev_label
                     and prev_label in self._PLAYER_LABELS
                     and prev_label not in used_labels):
                 p["label"] = prev_label
-                # C-8: この割当は「前フレームの同一 track」に基づく。
-                # 下の位置ベース割当と区別できるよう来歴を残す。
-                p["label_source"] = "track"
+                # C-8: track 継続はラベルを運ぶだけで、同一性を新たに立証しない。
+                # 元が位置ベースの推測なら推測のまま引き継ぐ。
+                p["label_source"] = prev_origin or "track"
                 used_labels.add(prev_label)
             else:
                 unresolved.append(p)
@@ -970,12 +976,14 @@ class YOLOInference:
             p["label_source"] = "overflow"
 
         # ── prev_track_labels 更新 (今フレームの確定マップを保存) ──
-        new_prev: dict[int, str] = {}
+        new_prev: dict[int, tuple[str, str]] = {}
         for p in named:
             tid = p.get("track_id")
             lbl = p.get("label")
             if tid is not None and lbl in self._PLAYER_LABELS:
-                new_prev[tid] = lbl
+                # origin も一緒に持ち越す。ここで "track" に丸めると
+                # 推測が 1 フレームで «追跡で確定した» ことになってしまう。
+                new_prev[tid] = (lbl, p.get("label_source") or "position_fallback")
         self._prev_track_labels = new_prev
 
         return named + extra + others
