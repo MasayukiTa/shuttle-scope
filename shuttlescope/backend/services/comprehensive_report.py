@@ -48,6 +48,7 @@ def gather_player_report(
     player_id: int,
     ctx: AuthCtx,
     *,
+    request: Any = None,
     date_from: Optional[DateType] = None,
     date_to: Optional[DateType] = None,
     tournament_level: Optional[str] = None,
@@ -174,10 +175,18 @@ def gather_player_report(
         player_id=player_id, db=db, **_common,
     )
     # opponent_stats は filter args を取らない
-    sections["opponent_stats"] = _safe_call(
-        "opponent_stats", get_opponent_stats,
-        player_id=player_id, db=db,
-    )
+    #
+    # `/api/analysis/opponent_stats` は main.py の
+    # `_PLAYER_FORBIDDEN_ANALYSIS_PATHS` に入っており、player ロールには
+    # 403 を返す。CLAUDE.md の「選手に直接の弱点提示をしない」を根拠にした
+    # 非交渉事項。しかしここは**プロセス内で直接呼ぶ**ので middleware を
+    # 通らず、**player が API では 403 になる内容をレポート越しに受け取れて**
+    # いた。同じ規則をここでも適用する。
+    if role != "player":
+        sections["opponent_stats"] = _safe_call(
+            "opponent_stats", get_opponent_stats,
+            player_id=player_id, db=db,
+        )
     sections["temporal_performance"] = _safe_call(
         "temporal_performance", get_temporal_performance,
         player_id=player_id, db=db, **_common,
@@ -189,24 +198,45 @@ def gather_player_report(
             get_match_preview,
             get_fatigue_risk,
         )
-        # get_fatigue_risk は FastAPI Request を要求する。直接呼びでは
-        # team-scope の get_auth(request) が失敗するため、最小限の Mock
-        # Request を組み立てる。loopback + role=admin として通す。
-        from starlette.requests import Request as _StarletteRequest
-        _fr_scope = {
-            "type": "http", "method": "GET", "path": "/api/predict/fatigue_risk",
-            "headers": [(b"x-role", b"admin"),
-                        (b"x-forwarded-for", b"127.0.0.1")],
-            "client": ("127.0.0.1", 0), "server": ("127.0.0.1", 8765),
-            "query_string": b"", "scheme": "http", "http_version": "1.1",
-            "raw_path": b"/api/predict/fatigue_risk", "root_path": "",
-        }
-        _fake_request = _StarletteRequest(_fr_scope)
-        sections["fatigue_risk"] = _safe_call(
-            "fatigue_risk", get_fatigue_risk,
-            request=_fake_request, player_id=player_id, tournament_level=None, db=db,
-        )
+        # 旧実装は `x-role: admin` + loopback client を持つ Starlette Request を
+        # **捏造して** get_fatigue_risk に渡していた。呼び出し元が admin でなくても
+        # admin として、全チームのラリーを対象に計算されていた
+        # (operator token が効いていなかった間は実際にそうなっていた)。
+        #
+        # 認可を「HTTP を通ること」に置いている以上、サービス層が Request を
+        # 自作してハンドラを直接叩けば、認可は無いのと同じになる。
+        # 本物の Request を渡し、呼び出し元と同じ権限で計算させる。
+        if request is None:
+            # Request を渡さない呼び出し元がいるなら、それは認可を確かめずに
+            # 内部 API を叩こうとしている。黙って admin に昇格させるより、
+            # このセクションを出さないほうがよい。
+            sections["fatigue_risk"] = {
+                "ok": False,
+                "error": "request context not supplied",
+            }
+        else:
+            sections["fatigue_risk"] = _safe_call(
+                "fatigue_risk", get_fatigue_risk,
+                request=request, player_id=player_id, tournament_level=None, db=db,
+            )
         # match_preview は対戦相手指定なので skip 可
+
+    # ── 3.5 player 向けに、直接の弱点提示になる section を落とす ──────
+    #
+    # docstring と CLAUDE.md は「player には raw EPV / 勝率を出さない」
+    # 「直接の弱点提示をしない」と定めているが、実装で role を見ていたのは
+    # prediction セクションだけだった。下の 3 つはいずれも選手本人に対して
+    # 敗因・弱点・生の勝敗をそのまま示すものなので、同じ規則の対象。
+    # 1 箇所にまとめてあるのは、section が増えたときに見落とさないため。
+    _PLAYER_FORBIDDEN_SECTIONS = (
+        "shot_win_loss",        # 球種別の得点/失点 = 生の勝敗内訳
+        "pre_loss_patterns",    # 「敗北前ラリーパターン」= 直接の弱点提示
+        "pressure_performance", # 競り合い局面の成否
+        "opponent_stats",       # 上で既に除外済み (念のため)
+    )
+    if role == "player":
+        for _k in _PLAYER_FORBIDDEN_SECTIONS:
+            sections.pop(_k, None)
 
     # ── 4. Growth ───────────────────────────────────────────────────
     try:

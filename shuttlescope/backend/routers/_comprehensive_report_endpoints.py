@@ -46,6 +46,9 @@ def get_comprehensive_report_json(
     check_export_player_scope(ctx, player_id, db)
     return gather_player_report(
         db, player_id, ctx,
+        # 本物の Request を渡す。サービス層が Request を捏造して
+        # 内部ハンドラを admin として叩くのをやめたため、呼び出し元の権限で計算される。
+        request=request,
         date_from=_parse_date(date_from),
         date_to=_parse_date(date_to),
         tournament_level=tournament_level,
@@ -67,6 +70,9 @@ def get_comprehensive_report_pdf(
     check_export_player_scope(ctx, player_id, db)
     data = gather_player_report(
         db, player_id, ctx,
+        # 本物の Request を渡す。サービス層が Request を捏造して
+        # 内部ハンドラを admin として叩くのをやめたため、呼び出し元の権限で計算される。
+        request=request,
         date_from=_parse_date(date_from),
         date_to=_parse_date(date_to),
         tournament_level=tournament_level,
