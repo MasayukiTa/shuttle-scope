@@ -618,10 +618,21 @@ def create_invitation(body: InvitationCreateRequest, request: Request,
 
 @router.get("/auth/invitation/peek")
 def peek_invitation(token: str = Query(..., min_length=10, max_length=200),
+                    request: Request = None,
                     db: Session = Depends(get_db)):
     """招待トークンの内容を読み取る (accept ページの初期表示用)。
 
-    トークンを消費しない。"""
+    トークンを消費しない。
+
+    S-11: 未認証・レート制限ゼロだった。
+    **総当たりの心配は無い** — 招待トークンは `secrets.token_urlsafe(32)`
+    (約 256bit) なので、当てることはできない。塞ぐべきはそこではなく、
+    認証不要のまま 1 リクエスト = 1 回の DB 検索を無制限に踏ませられる点。
+    兄弟の `/auth/email/verify` と同じ IP 単位の制限を掛ける。
+    """
+    ip = _client_ip(request) if request else "unknown"
+    _enforce_rate_limit(ip, "", "invitation_peek", ip_max=30, ip_window_s=3600,
+                        email_max=999, email_window_s=3600)
     rec = peek_invitation_token(db, token)
     if rec is None:
         raise HTTPException(status_code=400, detail="トークンが無効または期限切れです")
