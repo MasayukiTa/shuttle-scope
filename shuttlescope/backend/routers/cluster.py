@@ -127,6 +127,9 @@ def _apply_host_key_policy(client, host: str) -> None:
             logger.warning("known_hosts を用意できませんでした (%s) — 接続を拒否します", exc)
             client.set_missing_host_key_policy(paramiko.RejectPolicy())
             return
+        # nosec B507 -- 直前の load_host_keys で保存先を与えているため、
+        # 「未知の鍵を毎回受け入れる」ではなく「初回だけ固定する」挙動になる。
+        # 以後の鍵変更は paramiko が BadHostKeyException で止める。
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     else:
         client.set_missing_host_key_policy(paramiko.RejectPolicy())
@@ -527,7 +530,7 @@ def start_ray_head(body: StartHeadRequest, request: Request) -> Dict[str, Any]:
                 # 任意コマンドが連鎖実行されるのを防ぐため、quote 文字と
                 # コマンド連結文字を遮断する (CWE-78)。validate 済みでないバッチは
                 # 実行を見送り、警告ログを残す。
-                client.exec_command(f'cmd /c "{bat}"', timeout=120)  # nosec B601 -- bat validated by _SAFE_BAT_RE + deny-list before thread spawn
+                client.exec_command(f'cmd /c "{bat}"', timeout=120)  # nosec B601 -- bat は validate_worker_bat_path を通過済み (形式 + 禁止文字)
                 logger.info("worker ray-restart 完了: %s", wip)
             except Exception as exc:
                 logger.warning("worker ray-restart 失敗 %s: %s", wip, exc)

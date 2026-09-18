@@ -1099,6 +1099,10 @@ def _ssh_run_python_script(host: str, username: str, password: str,
             if not _kh.exists():
                 _kh.touch()
             ssh.load_host_keys(str(_kh))
+            # nosec B507 -- load_host_keys で保存先を与えているので、これは
+            # 「未知の鍵を毎回受け入れる」ではなく「初回だけ固定する」挙動に
+            # なる。以後に鍵が変わったら paramiko が BadHostKeyException で
+            # 止める。保存先を用意できない場合は下の except で RejectPolicy。
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         except Exception as _kh_exc:  # noqa: BLE001
             logger.warning(
