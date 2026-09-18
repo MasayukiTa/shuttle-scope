@@ -1,6 +1,6 @@
 """ラリー管理API（/api/rallies）"""
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -78,13 +78,36 @@ def rally_to_dict(r: Rally) -> dict:
 
 
 @router.post("/rallies", status_code=201)
-def create_rally(body: RallyCreate, request: Request, db: Session = Depends(get_db)):
+def create_rally(
+    body: RallyCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    idem_key: Optional[str] = Header(None, alias="X-Idempotency-Key"),
+):
     """ラリー作成。
+
+    **冪等性**: `src/utils/mobileAnnotateQueue.ts` は以前から
+    `X-Idempotency-Key` を送っていたが、このルータは読んでいなかった。
+    レスポンスを失った再送で同じ rally_num の行が二重に入り、
+    `get_annotation_state` が `ORDER BY rally_num DESC .first()` で拾うため
+    **再開時のスコアがどちらの重複を引くか次第**になっていた。
+
     R48: player ロール (= 選手) が自分が出場する試合に対して mobile annotation
     から書き込めるよう、明示拒否を削除。require_match_scope が
     user_can_access_match (player は match.player_a/b_id == ctx.player_id のみ可)
     で正しく弾く。他選手の試合に書き込もうとした player は依然 403。
     """
+    endpoint_id = "create_rally"
+    from backend.utils.auth import get_auth as _ga
+    ctx_for_idem = _ga(request)
+    if idem_key:
+        from backend.utils.idempotency import is_valid_key, get_cached, replay_response
+        if not is_valid_key(idem_key):
+            raise HTTPException(status_code=400, detail="X-Idempotency-Key の形式が不正です")
+        cached = get_cached(idem_key, ctx_for_idem.user_id, endpoint_id)
+        if cached is not None:
+            return replay_response(cached)
+
     _rally_require_scope(request, db, body.set_id)
     rally = Rally(**body.model_dump())
     touch(rally)
@@ -93,7 +116,11 @@ def create_rally(body: RallyCreate, request: Request, db: Session = Depends(get_
     # set_id から辿って試合の関与選手のみ無効化
     response_cache.bump_players(players_for_set(db, body.set_id))
     db.refresh(rally)
-    return {"success": True, "data": rally_to_dict(rally)}
+    response = {"success": True, "data": rally_to_dict(rally)}
+    if idem_key:
+        from backend.utils.idempotency import store
+        store(idem_key, ctx_for_idem.user_id, endpoint_id, response, status_code=201)
+    return response
 
 
 @router.put("/rallies/{rally_id}")

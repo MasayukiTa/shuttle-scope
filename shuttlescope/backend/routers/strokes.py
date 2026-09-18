@@ -1,6 +1,6 @@
 """ストローク管理API（/api/strokes）"""
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -140,10 +140,34 @@ def stroke_to_dict(s: Stroke) -> dict:
 
 
 @router.post("/strokes/batch", status_code=201)
-def batch_save_rally(body: BatchSaveRequest, request: Request, db: Session = Depends(get_db)):
-    """ラリー確定時の一括保存（個別保存より効率的）"""
-    # セット存在確認 + team scope (R48: player は自分の試合のみ可、scope 経由判定)
+def batch_save_rally(
+    body: BatchSaveRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    idem_key: Optional[str] = Header(None, alias="X-Idempotency-Key"),
+):
+    """ラリー確定時の一括保存（個別保存より効率的）
+
+    **冪等性**: `src/utils/mobileAnnotateQueue.ts` と `useOfflineSync.ts` は
+    以前から `X-Idempotency-Key` を送っていたが、**このルータは読んでいなかった**。
+    再送が起きるのは「サーバは処理したがレスポンスを失った」ときで、まさに
+    モバイル注釈キューが想定している iOS の背景化・弱電波の状況。結果として
+    **ラリーと打球が二重に入り、ラリー数と下流の全指標が静かに壊れていた**。
+    """
     from backend.utils.auth import require_match_scope
+
+    endpoint_id = "batch_save_rally"
+    from backend.utils.auth import get_auth
+    ctx_for_idem = get_auth(request)
+    if idem_key:
+        from backend.utils.idempotency import is_valid_key, get_cached, replay_response
+        if not is_valid_key(idem_key):
+            raise HTTPException(status_code=400, detail="X-Idempotency-Key の形式が不正です")
+        cached = get_cached(idem_key, ctx_for_idem.user_id, endpoint_id)
+        if cached is not None:
+            return replay_response(cached)
+
+    # セット存在確認 + team scope (R48: player は自分の試合のみ可、scope 経由判定)
     game_set = db.get(GameSet, body.rally.set_id)
     if not game_set:
         raise HTTPException(status_code=404, detail="セットが見つかりません")
@@ -236,13 +260,17 @@ def batch_save_rally(body: BatchSaveRequest, request: Request, db: Session = Dep
         except Exception:
             pass
 
-    return {
+    response = {
         "success": True,
         "data": {
             "rally_id": rally.id,
             "stroke_count": len(saved_strokes),
         }
     }
+    if idem_key:
+        from backend.utils.idempotency import store
+        store(idem_key, ctx_for_idem.user_id, endpoint_id, response, status_code=201)
+    return response
 
 
 @router.post("/strokes", status_code=201)
