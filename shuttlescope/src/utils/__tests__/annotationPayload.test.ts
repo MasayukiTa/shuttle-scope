@@ -16,10 +16,10 @@ describe('buildBatchPayload', () => {
     stroke_num: 1,
     player: 'player_a',
     shot_type: 'short_service',
-    hit_zone: 5,
+    hit_zone: 'MC',
     hit_zone_source: 'cv',
-    hit_zone_cv_original: 5,
-    land_zone: '7',
+    hit_zone_cv_original: 'MC',
+    land_zone: 'NL',
     is_backhand: false,
     is_around_head: false,
     above_net: true,
@@ -63,15 +63,15 @@ describe('buildBatchPayload', () => {
   it('Phase A: hit_zone_source と hit_zone_cv_original を取りこぼさない', () => {
     const overridden: StrokeInput = {
       ...baseStroke,
-      hit_zone: 9,
+      hit_zone: 'NR',
       hit_zone_source: 'manual',
-      hit_zone_cv_original: 5,
+      hit_zone_cv_original: 'MC',
     }
     const payload = buildBatchPayload({ ...baseArgs, strokes: [overridden] })
     expect(payload.strokes[0]).toMatchObject({
-      hit_zone: 9,
+      hit_zone: 'NR',
       hit_zone_source: 'manual',
-      hit_zone_cv_original: 5,
+      hit_zone_cv_original: 'MC',
     })
   })
 
@@ -92,8 +92,8 @@ describe('buildBatchPayload', () => {
       stroke_num: 1,
       player: 'player_a',
       shot_type: 'short_service',
-      hit_zone: 5,
-      land_zone: '7',
+      hit_zone: 'MC',
+      land_zone: 'NL',
       is_backhand: false,
       is_around_head: false,
       above_net: true,

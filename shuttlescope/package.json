@@ -15,7 +15,7 @@
     "lint:strict": "eslint . --max-warnings=0",
     "check:i18n": "python scripts/check_module_scope_t.py",
     "check:icons": "python scripts/check_no_emoji_in_jsx.py",
-    "check:all": "npm run check:i18n && npm run check:icons && npm run lint",
+    "check:all": "npm run typecheck && npm run check:i18n && npm run check:icons && npm run lint",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

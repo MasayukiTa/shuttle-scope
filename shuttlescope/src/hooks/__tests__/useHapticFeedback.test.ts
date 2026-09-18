@@ -8,16 +8,21 @@ import { useHapticFeedback } from '../useHapticFeedback'
 
 describe('useHapticFeedback', () => {
   let vibrateMock: ReturnType<typeof vi.fn>
-  let originalVibrate: Navigator['vibrate'] | undefined
-  type VibrateNav = Navigator & { vibrate?: (pattern: number | number[]) => boolean }
+  let originalVibrate: ((pattern: number | number[]) => boolean) | undefined
+  // lib.dom の Navigator.vibrate は必須プロパティなので、Navigator & {vibrate?}
+  // だと「必須かつ optional」になり undefined 代入も delete もできない。
+  // vibrate を外してから optional として付け直す。
+  // (実機では PC ブラウザに vibrate が無いので optional が正しい)
+  type VibrateNav = Omit<Navigator, 'vibrate'> & { vibrate?: (pattern: number | number[]) => boolean }
+  const nav = navigator as unknown as VibrateNav
 
   beforeEach(() => {
     vibrateMock = vi.fn(() => true)
-    originalVibrate = (navigator as VibrateNav).vibrate
-    ;(navigator as VibrateNav).vibrate = vibrateMock as unknown as Navigator['vibrate']
+    originalVibrate = nav.vibrate
+    ;nav.vibrate = vibrateMock as unknown as VibrateNav['vibrate']
   })
   afterEach(() => {
-    ;(navigator as VibrateNav).vibrate = originalVibrate
+    ;nav.vibrate = originalVibrate
   })
 
   it('tap calls navigator.vibrate(20)', () => {
@@ -43,7 +48,7 @@ describe('useHapticFeedback', () => {
   })
 
   it('graceful no-op when navigator.vibrate is missing', () => {
-    delete (navigator as VibrateNav).vibrate
+    delete nav.vibrate
     const { result } = renderHook(() => useHapticFeedback())
     expect(() => act(() => result.current.tap())).not.toThrow()
   })

@@ -21,14 +21,14 @@ describe('annotationStore flipMode', () => {
     useAnnotationStore.getState().setFlipMode('auto')
     useAnnotationStore.getState().inputShotType('smash', 0)
     expect(useAnnotationStore.getState().currentPlayer).toBe('player_a')
-    useAnnotationStore.getState().selectLandZone(5)
+    useAnnotationStore.getState().selectLandZone('MC')
     expect(useAnnotationStore.getState().currentPlayer).toBe('player_b')
   })
 
   it('manual mode keeps currentPlayer on selectLandZone', () => {
     useAnnotationStore.getState().setFlipMode('manual')
     useAnnotationStore.getState().inputShotType('smash', 0)
-    useAnnotationStore.getState().selectLandZone(5)
+    useAnnotationStore.getState().selectLandZone('MC')
     expect(useAnnotationStore.getState().currentPlayer).toBe('player_a')
   })
 
@@ -37,7 +37,7 @@ describe('annotationStore flipMode', () => {
     try {
       useAnnotationStore.getState().setFlipMode('semi-auto')
       useAnnotationStore.getState().inputShotType('smash', 0)
-      useAnnotationStore.getState().selectLandZone(5)
+      useAnnotationStore.getState().selectLandZone('MC')
       // flipped → player_b
       expect(useAnnotationStore.getState().currentPlayer).toBe('player_b')
 
@@ -55,7 +55,7 @@ describe('annotationStore flipMode', () => {
     try {
       useAnnotationStore.getState().setFlipMode('semi-auto')
       useAnnotationStore.getState().inputShotType('smash', 0)
-      useAnnotationStore.getState().selectLandZone(5)
+      useAnnotationStore.getState().selectLandZone('MC')
       expect(useAnnotationStore.getState().currentPlayer).toBe('player_b')
 
       vi.advanceTimersByTime(800)
