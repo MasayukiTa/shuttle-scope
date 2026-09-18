@@ -905,7 +905,17 @@ export function AnnotatorPage() {
     },
     onSkipRallyOpen: () => setShowSkipRallyDialog(true),
     onServerSelect: (player) => store.setPlayer(player),
-    onToggleHitter: () => store.toggleHitterWithinTeam(),
+    // A-7: Tab は凡例に「プレイヤー切替」と書いてあるのに
+    // toggleHitterWithinTeam に繋がっており、シングルスでは
+    // `if (!s.isDoubles) return {}` で**何も起きなかった**。
+    // preventDefault だけは効くので Tab のフォーカス移動も死んでおり、
+    // シングルスで打者の取り違えを直す手段がキーボードに無かった。
+    // ダブルスはチーム内切替のまま (側の切替は 7/8/9/0 が担う)。
+    onToggleHitter: () => {
+      const s = useAnnotationStore.getState()
+      if (s.isDoubles) s.toggleHitterWithinTeam()
+      else s.togglePlayer()
+    },
     onHitterSelect: (hitter) => store.setHitter(hitter),
   })
 

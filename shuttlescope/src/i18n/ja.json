@@ -1332,6 +1332,7 @@
     "match_day_mode_off": "試合中モード OFF",
     "pending_saves": "保存中",
     "save_error_title": "保存失敗",
+    "offline_sync_rejected": "オフライン再送がサーバに拒否されました (HTTP {{status}})。このラリーは未保存です。",
     "save_error_clear": "エラーを消去",
     "doubles_mode": "ダブルスモード",
     "hitter_select": "打者",

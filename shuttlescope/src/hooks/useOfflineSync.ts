@@ -13,6 +13,10 @@ import { useEffect, useRef } from 'react'
 
 import { apiPost } from '@/api/client'
 import { listPendingForMatch, removePending } from '@/utils/offlineStrokeQueue'
+import { useAnnotationStore } from '@/store/annotationStore'
+// hook の外では useTranslation の t が束縛されない。CLAUDE.md の規約どおり
+// 修飾済みの i18n.t を使う。
+import i18n from '@/i18n'
 
 const POLL_INTERVAL_MS = 30_000
 
@@ -66,6 +70,17 @@ export function useOfflineSync(matchId: number | null): void {
                 `[offline-sync] rally ${it.setId}/${it.rallyNum} は ${status} で` +
                   ' 恒久的に拒否されています。後続を処理するため飛ばします。',
               )
+              // **操作者に見せる。** 黙って飛ばすと、保存できたつもりのまま
+              // 入力が続く。既存の保存エラー表示に同じ経路で載せる。
+              // 同じラリーを毎回 30 秒ごとに積まないよう重複は入れない。
+              const store = useAnnotationStore.getState()
+              const already = store.saveErrors.some((e) => e.rallyNum === it.rallyNum)
+              if (!already) {
+                store.addSaveError({
+                  rallyNum: it.rallyNum,
+                  error: i18n.t('annotator.offline_sync_rejected', { status }),
+                })
+              }
               continue
             }
             break

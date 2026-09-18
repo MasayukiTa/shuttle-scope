@@ -1228,6 +1228,7 @@
     "match_day_mode_off": "Match-day mode OFF",
     "pending_saves": "Saving",
     "save_error_title": "Save failed",
+    "offline_sync_rejected": "The server rejected this rally on offline resend (HTTP {{status}}). It is NOT saved.",
     "save_error_clear": "Clear error",
     "doubles_mode": "Doubles mode",
     "hitter_select": "Hitter",

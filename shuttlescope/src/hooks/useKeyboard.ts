@@ -414,7 +414,8 @@ export function useKeyboard({
         return
       }
 
-      // Tab: ダブルスモードのみ — チーム内ヒッター切替
+      // Tab: 打者切替。ダブルスはチーム内、シングルスは側の切替。
+      // (振り分けは呼び出し側の onToggleHitter が持つ)
       if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault()
         onToggleHitterRef.current?.()
