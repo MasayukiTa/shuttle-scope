@@ -1,7 +1,20 @@
 """ShuttleScope バックエンド設定・定数定義"""
 import pathlib
 import warnings
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings
+
+# ── env 名の別名について ───────────────────────────────────────────────────
+# Settings に env_prefix は設定していない。よって `SS_FOO` という環境変数は
+# **読まれない** — フィールド名 `FOO` がそのまま env 名になる。
+# ところがコメントも運用手順も長らく `SS_` 付きで書かれていた。実測:
+#   SS_ALLOW_LOOPBACK_NO_AUTH=0 を設定しても ALLOW_LOOPBACK_NO_AUTH は True のまま。
+# つまり**本番で loopback 無認証バイパスを閉じる手順が、手順どおりにやると
+# 何もしていなかった**。
+# 既存のデプロイが素の名前を使っている可能性があるので、名前を変えるのではなく
+# **両方を受ける** (`SS_` 付きを先に見る)。
+def _ss(name: str) -> AliasChoices:
+    return AliasChoices("SS_" + name, name)
 
 # プロジェクトルート（shuttlescope/）を絶対パスで特定
 _ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -23,18 +36,22 @@ class Settings(BaseSettings):
     # R-002: LAN共有モード（0.0.0.0バインドでLAN内アクセスを可能にする）
     LAN_MODE: bool = False
     # 公開モード: SS_PUBLIC_MODE=1 でクラスタ/ベンチマーク/DB保守ルーターをマウント除外
-    PUBLIC_MODE: bool = False
+    PUBLIC_MODE: bool = Field(False, validation_alias=_ss("PUBLIC_MODE"))
+    # 公開ホスト名。**これまで Settings のフィールドですらなく** os.environ を
+    # 直読みしていたので、`.env` に書いても本番姿勢判定に一切効かなかった
+    # (backend に load_dotenv は無い)。
+    PUBLIC_HOSTNAME: str = Field("", validation_alias=_ss("PUBLIC_HOSTNAME"))
     # rereview defense-in-depth: loopback (127.0.0.1) からの JWT 無し API/WS 緩和を
     # 強制的に殺すスイッチ。SS_ALLOW_LOOPBACK_NO_AUTH=0 で常時 JWT 必須。
     # 既定は True (Electron 単体運用での PIN 選択 UX を維持)。
     # 本番 (cloudflared / nginx / SSH forward) では 0 に設定する。
-    ALLOW_LOOPBACK_NO_AUTH: bool = True
+    ALLOW_LOOPBACK_NO_AUTH: bool = Field(True, validation_alias=_ss("ALLOW_LOOPBACK_NO_AUTH"))
     # API ドキュメント非表示: SS_HIDE_API_DOCS=1 で /docs /redoc /openapi.json を無効化
     # PUBLIC_MODE=True でも同様に無効化されるが、クラスタルーターを残したまま docs だけ消したい場合に使う
-    HIDE_API_DOCS: bool = False
+    HIDE_API_DOCS: bool = Field(False, validation_alias=_ss("HIDE_API_DOCS"))
     # スタックトレース隠蔽: SS_HIDE_STACK_TRACES=1 で 500 エラーの詳細をクライアントに返さない
     # PUBLIC_MODE=True でも同様に隠蔽されるが、PUBLIC_MODE を使わず本番運用する場合に使う
-    HIDE_STACK_TRACES: bool = False
+    HIDE_STACK_TRACES: bool = Field(False, validation_alias=_ss("HIDE_STACK_TRACES"))
     # ngrok 認証トークン（環境変数 NGROK_AUTHTOKEN から自動読み込み）
     NGROK_AUTHTOKEN: str = ""
     # Cloudflare Tunnel (named tunnel) 設定
@@ -200,8 +217,10 @@ class Settings(BaseSettings):
         env = (self.ENVIRONMENT or _os.environ.get("ENVIRONMENT", "")).strip().lower()
         if env == "production":
             return True
-        # 公開ホスト名が明示されている (Cloudflare 経由公開) なら本番扱い
-        if _os.environ.get("SS_PUBLIC_HOSTNAME", "").strip():
+        # 公開ホスト名が明示されている (Cloudflare 経由公開) なら本番扱い。
+        # settings を先に見る (= .env も効く)。環境変数直読みは後方互換の保険。
+        if (self.PUBLIC_HOSTNAME or _os.environ.get("SS_PUBLIC_HOSTNAME", "")
+                or _os.environ.get("PUBLIC_HOSTNAME", "")).strip():
             return True
         return False
 

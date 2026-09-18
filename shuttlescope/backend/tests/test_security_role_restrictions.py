@@ -1211,6 +1211,9 @@ class TestHideStackTraces:
         monkeypatch.setattr(s, "ENVIRONMENT", "development", raising=False)
         monkeypatch.setenv("ENVIRONMENT", "development")
         monkeypatch.delenv("SS_PUBLIC_HOSTNAME", raising=False)
+        # S-9: 素の名前も受けるようになったので両方消す
+        monkeypatch.delenv("PUBLIC_HOSTNAME", raising=False)
+        monkeypatch.setattr(s, "PUBLIC_HOSTNAME", "", raising=False)
         assert s.is_production_posture is False
 
     def test_stack_trace_hidden_when_only_environment_production(self, monkeypatch):
@@ -1226,6 +1229,9 @@ class TestHideStackTraces:
         monkeypatch.setattr(s, "ENVIRONMENT", "production", raising=False)
         monkeypatch.setenv("ENVIRONMENT", "production")
         monkeypatch.delenv("SS_PUBLIC_HOSTNAME", raising=False)
+        # S-9: 素の名前も受けるようになったので両方消す
+        monkeypatch.delenv("PUBLIC_HOSTNAME", raising=False)
+        monkeypatch.setattr(s, "PUBLIC_HOSTNAME", "", raising=False)
         assert s.is_production_posture is True
 
 
