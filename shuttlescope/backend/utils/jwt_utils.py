@@ -408,8 +408,14 @@ def _is_token_revoked(jti: str) -> bool:
                 .first()
             ) is not None
     except Exception as exc:
-        logger.warning("Blacklist check failed jti=%s: %s", jti, exc)
-        return False
+        # S-11: 旧実装は False (= 失効していない) を返していた。
+        # **封じ込め策が、最も必要な瞬間に開く**。失効照会が出来ないなら
+        # 「失効しているかもしれない」側に倒すのが正しい。
+        # DB が落ちていればどの経路も動かないので、可用性の損失は実質無い。
+        logger.error(
+            "Blacklist check failed jti=%s: %s -- 失効済みとして扱い拒否する", jti, exc,
+        )
+        return True
 
 
 # Phase C2: mass-revoke sentinel キャッシュ
@@ -419,6 +425,10 @@ def _is_token_revoked(jti: str) -> bool:
 # (cache ヒット率は数 % 落ちるが、verify_token の DB query 1 回 < 1ms なので
 #  通常運用への影響は無視できる。)
 _MASS_REVOKE_CACHE: dict = {"ts": 0.0, "value": None}
+# 失効照会自体が出来なかったときに返す番兵。呼び出し側は
+# `iat < mass_revoke_at` で拒否するので、十分に未来の値を返せば全拒否になる。
+# (fail closed。DB が落ちていれば他の経路も動かないので実害は無い)
+_DENY_ALL_TS = 4102444800  # 2100-01-01T00:00:00Z
 _MASS_REVOKE_CACHE_TTL = 5.0
 
 # Round 258 R20 P2 fix (R20 P2-2): per-user の token revoke epoch。
@@ -654,9 +664,18 @@ def _get_mass_revoke_timestamp() -> Optional[int]:
             _MASS_REVOKE_CACHE.update({"ts": now, "value": ts})
             return ts
     except Exception as exc:
-        logger.warning("[jwt] mass_revoke check failed: %s", exc)
-        _MASS_REVOKE_CACHE.update({"ts": now, "value": None})
-        return None
+        # S-11: 旧実装は None (= 一斉失効は無い) を返し、しかもその None を
+        # 5 秒キャッシュしていた。DB エラーの間ずっと一斉失効が無効になる。
+        # 呼び出し側は None を「通してよい」と解釈するので、**緊急一括失効が
+        # 必要な局面で確実に無効化される**。
+        #
+        # ここでは cache を上書きしない (誤った None を焼き付けない)。
+        # 直近の成功値があればそれを使い、一度も成功していなければ
+        # `_DENY_ALL_TS` を返して全 token を拒否する = fail closed。
+        logger.error("[jwt] mass_revoke check failed: %s", exc)
+        if _MASS_REVOKE_CACHE["ts"] > 0.0:
+            return _MASS_REVOKE_CACHE["value"]
+        return _DENY_ALL_TS
 
 
 def cleanup_expired_revoked_tokens() -> int:
