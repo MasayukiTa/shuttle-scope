@@ -8,7 +8,6 @@
  * 理解できるよう、各指標ラベルの隣に「?」アイコンを置き、
  * その場で短い説明 + 「詳細」リンクで本モーダルへ。
  */
-import { _useState } from 'react'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { MIcon } from '@/components/common/MIcon'
 import { N_GRAY } from '@/styles/colors'

@@ -9,7 +9,7 @@ import { replayTutorial, useTutorialState, useAutoTutorial } from '@/components/
 import QRCode from 'qrcode'
 import { errorMessage, errorStatus } from '@/utils/errors'
 import { apiGet, apiPost, apiPut, apiDelete, newIdempotencyKey } from '@/api/client'
-import { Player, TeamHistoryEntry, _SharedSession, NetworkDiagnostics } from '@/types'
+import { Player, TeamHistoryEntry, NetworkDiagnostics } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
 import { useSettings } from '@/hooks/useSettings'
 import { useCardTheme } from '@/hooks/useCardTheme'

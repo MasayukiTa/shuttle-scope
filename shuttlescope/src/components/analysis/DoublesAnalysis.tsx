@@ -18,7 +18,7 @@ import {
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
-import { WIN, LOSS, BAR, perfColor, _lightSafe, getTooltipStyle, AXIS_TICK, AXIS_TICK_LIGHT } from '@/styles/colors'
+import { WIN, LOSS, BAR, perfColor, getTooltipStyle, AXIS_TICK, AXIS_TICK_LIGHT } from '@/styles/colors'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 

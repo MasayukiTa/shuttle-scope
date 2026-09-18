@@ -1,7 +1,5 @@
 import { useTranslation } from 'react-i18next'
 import { useDiscrepancy, DiscrepancyItem } from '@/hooks/useConditionAnalytics'
-import { _useAuth } from '@/hooks/useAuth'
-
 // 乖離アラートリスト（coach/analyst only）
 // player にはこのコンポーネント自体をマウントしない呼び出し側で制御
 interface Props {
