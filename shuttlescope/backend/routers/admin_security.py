@@ -26,11 +26,20 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["admin_security"])
 
 
-def _require_admin(request: Request):
-    ctx = get_auth(request)
-    if not ctx.is_admin:
-        raise HTTPException(status_code=403, detail="admin ロールが必要です")
-    return ctx
+def _require_admin(request: Request, db: Session):
+    """admin 判定は正規版 (`backend.utils.auth.require_admin`) に委譲する。
+
+    S-11: ここには `ctx.is_admin` だけを見る独自版があった。JWT の role 主張を
+    信じるだけで DB を一切読まないので、**MFA 未 enrollment の admin でも
+    通っていた**。このルータが持つのは
+    `revoke_all_tokens` / 動画トークン一括再発行 / 監査ログ / ユーザ制限解除 —
+    まさに漏洩時の封じ込めに使う面なので、ここだけ弱いのは筋が通らない。
+
+    `require_admin` は FastAPI の Depends としても使えるが、このルータは
+    ハンドラ本体から明示的に呼ぶ形なので、db を受け取って同じ関数へ渡す。
+    """
+    from backend.utils.auth import require_admin as _require_admin_canonical
+    return _require_admin_canonical(request, db)
 
 
 @router.post("/admin/security/revoke_all_tokens")
@@ -44,7 +53,7 @@ def revoke_all_tokens(request: Request, db: Session = Depends(get_db)):
 
     用途: SECRET_KEY 漏洩疑惑 / 大規模インシデント発生時の封じ込め
     """
-    ctx = _require_admin(request)
+    ctx = _require_admin(request, db)
 
     revoked_count = 0
     try:
@@ -105,7 +114,7 @@ def reissue_all_video_tokens(
     用途: video_token の大量漏洩、または鍵漏洩疑惑時の即時封じ込め。
     動作: 全 Match の video_token を新 UUID4 に置換 (旧 token は次回アクセスで 404)。
     """
-    ctx = _require_admin(request)
+    ctx = _require_admin(request, db)
 
     from backend.db.models import Match
     from backend.utils.video_token import new_token
@@ -152,7 +161,7 @@ def get_audit_log(
       since_hours: 過去何時間分を返すか (デフォルト 24h、最大 720h=30 日)
       limit: 取得最大件数 (デフォルト 500)
     """
-    ctx = _require_admin(request)
+    ctx = _require_admin(request, db)
 
     try:
         from backend.db.models import AccessLog
@@ -201,7 +210,7 @@ def get_user_limits(request: Request, db: Session = Depends(get_db)):
       - exfil: 直近 60 秒の bytes / requests / alerted
       - active_uploads: 進行中 UploadSession 件数 (per-user 上限 = 2)
     """
-    _require_admin(request)
+    _require_admin(request, db)
     from backend.main import ExfilRateLimitMiddleware  # type: ignore
     from backend.db.models import User, UploadSession
 
@@ -295,7 +304,7 @@ def reset_user_limits(
 
     body 全部未指定 / 空 / 全 None なら **全部 True** (後方互換).
     """
-    ctx = _require_admin(request)
+    ctx = _require_admin(request, db)
     from backend.main import ExfilRateLimitMiddleware  # type: ignore
     from backend.db.models import UploadSession, User
 
@@ -388,7 +397,7 @@ def reset_user_limits(
 
 # ─── admin 書込み per-class bucket の snapshot ────────────────────────────
 @router.get("/admin/security/admin_write_limits")
-def get_admin_write_limits(request: Request):
+def get_admin_write_limits(request: Request, db: Session = Depends(get_db)):
     """admin 自身の書込み rate-limit per-class bucket の現在値を返す.
 
     レスポンス例:
@@ -405,7 +414,7 @@ def get_admin_write_limits(request: Request):
           }
         }
     """
-    _require_admin(request)
+    _require_admin(request, db)
     from backend.main import AdminWriteRateLimitMiddleware  # type: ignore
     snap = AdminWriteRateLimitMiddleware.snapshot()
     return {
