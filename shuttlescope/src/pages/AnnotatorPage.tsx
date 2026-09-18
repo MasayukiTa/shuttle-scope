@@ -462,6 +462,8 @@ export function AnnotatorPage() {
           current_rally_num: number
           score_a: number
           score_b: number
+          /** A-2: 次のサーバ。前ラリーの勝者 (無ければセット/試合の初期サーバ)。 */
+          next_server?: 'player_a' | 'player_b' | null
         }
       }>(`/annotation/${matchId}/state`),
     enabled: !!matchId,
@@ -509,7 +511,10 @@ export function AnnotatorPage() {
           state.current_set_num,
           state.current_rally_num,
           state.score_a,
-          state.score_b
+          state.score_b,
+          // A-2: これを渡さないと再開時に必ず player_a のサーブから始まり、
+          // 以降の打者が全部ずれる。無表示で気づけない。
+          state.next_server ?? undefined,
         )
         setInitialized(true)
       } catch (err: unknown) {
@@ -682,7 +687,10 @@ export function AnnotatorPage() {
     if (!prevSet) return
 
     try {
-      const res = await apiGet<{ success: boolean; data: { count: number; next_rally_num: number } }>(
+      const res = await apiGet<{
+        success: boolean
+        data: { count: number; next_rally_num: number; next_server?: 'player_a' | 'player_b' | null }
+      }>(
         `/sets/${prevSet.id}/rally_count`
       )
       useAnnotationStore.getState().init(
@@ -691,7 +699,9 @@ export function AnnotatorPage() {
         prevSetNum,
         res.data.next_rally_num,
         prevSet.score_a ?? 0,
-        prevSet.score_b ?? 0
+        prevSet.score_b ?? 0,
+        // A-2: 前セットへ戻るときもサーブ権を引き継ぐ。
+        res.data.next_server ?? undefined,
       )
       queryClient.invalidateQueries({ queryKey: ['sets', matchId] })
       // handleModalNextSet と同様、セット移動時は 11 点インターバル表示状態をリセット

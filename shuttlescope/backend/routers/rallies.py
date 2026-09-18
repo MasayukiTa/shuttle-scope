@@ -218,6 +218,7 @@ def get_annotation_state(match_id: int, request: Request, db: Session = Depends(
                 "current_rally_num": 1,
                 "score_a": 0,
                 "score_b": 0,
+                "next_server": match.initial_server,
             }
         }
 
@@ -234,8 +235,21 @@ def get_annotation_state(match_id: int, request: Request, db: Session = Depends(
                 "current_rally_num": last_rally.rally_num + 1,
                 "score_a": last_rally.score_a_after,
                 "score_b": last_rally.score_b_after,
+                # A-2: サーブ権を返していなかったため、途中まで入力した試合を
+                # 開き直すと次のラリーが必ず player_a のサーブで始まり、
+                # 以降の打者が全部ずれていた。バドミントンでは前ラリーの
+                # 勝者が次のサーバなので、それをそのまま返す。
+                "next_server": last_rally.winner,
             }
         }
+
+    # このセットにまだラリーが無い = セット頭。前セットの勝者がサーバ。
+    # 前セットも無ければ試合の初期サーバ。
+    prev_set = db.query(GameSet).filter(
+        GameSet.match_id == match_id,
+        GameSet.set_num < last_set.set_num,
+    ).order_by(GameSet.set_num.desc()).first()
+    next_server = (prev_set.winner if prev_set and prev_set.winner else match.initial_server)
 
     return {
         "success": True,
@@ -245,6 +259,7 @@ def get_annotation_state(match_id: int, request: Request, db: Session = Depends(
             "current_rally_num": 1,
             "score_a": 0,
             "score_b": 0,
+            "next_server": next_server,
         }
     }
 

@@ -118,7 +118,33 @@ def end_set(set_id: int, body: SetEnd, request: Request, db: Session = Depends(g
 
 
 @router.get("/sets/{set_id}/rally_count")
-def get_rally_count(set_id: int, db: Session = Depends(get_db)):
-    """セット内のラリー数（次のラリー番号算出用）"""
+def get_rally_count(set_id: int, request: Request, db: Session = Depends(get_db)):
+    """セット内のラリー数（次のラリー番号算出用）と、次のサーバ。
+
+    scope check が一切無く、set_id を総当たりすれば cross-team の進行状況
+    (ラリー数) を誰でも読めた。sibling の GET /sets/match/{match_id} と同じ
+    `_set_require_match_scope` を適用する。
+
+    A-2: next_server も返す。前セットへ戻ったとき (handlePrevSet) に
+    サーブ権を渡せず player_a から再開していた。
+    """
+    gs = db.get(GameSet, set_id)
+    if not gs:
+        raise HTTPException(status_code=404, detail="セットが見つかりません")
+    match = db.get(Match, gs.match_id)
+    if not match:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    _set_require_match_scope(request, db, match)
+
     count = db.query(func.count(Rally.id)).filter(Rally.set_id == set_id).scalar() or 0
-    return {"success": True, "data": {"count": count, "next_rally_num": count + 1}}
+    last_rally = db.query(Rally).filter(
+        Rally.set_id == set_id
+    ).order_by(Rally.rally_num.desc()).first()
+    return {
+        "success": True,
+        "data": {
+            "count": count,
+            "next_rally_num": count + 1,
+            "next_server": last_rally.winner if last_rally else match.initial_server,
+        },
+    }

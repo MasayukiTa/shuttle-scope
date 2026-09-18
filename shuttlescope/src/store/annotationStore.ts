@@ -208,7 +208,10 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       pendingStroke: emptyPending(),
       inputStep: 'idle',
       currentStrokeNum: 1,
-      // 最初のラリーのみ initial_server を使用。それ以降は confirmRally が維持する
+      // initialServer は「このラリーのサーバ」。ラリー進行中は confirmRally が維持する。
+      // 再開時は呼び出し側が /annotation/{id}/state の next_server
+      // (= 前ラリーの勝者) を渡すこと。渡さないと player_a に戻り、
+      // 以降の打者が全部ずれる (A-2)。
       currentPlayer: initialServer ?? 'player_a',
       currentHitter: initialServer ?? 'player_a',
       undoStack: [],
