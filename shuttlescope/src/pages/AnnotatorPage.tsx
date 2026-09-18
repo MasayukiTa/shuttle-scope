@@ -48,6 +48,7 @@ import { useSettings } from '@/hooks/useSettings'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useCVJobs } from '@/hooks/annotator/useCVJobs'
+import { computePlayerASide, landingCourtMode } from '@/utils/courtSides'
 import type { RawDetection } from '@/components/annotation/PlayerTrackingOverlay'
 import { useSessionSharing } from '@/hooks/annotator/useSessionSharing'
 import { useCVCandidates } from '@/hooks/annotator/useCVCandidates'
@@ -141,21 +142,6 @@ function normalizeVideoPath(path: string, matchId?: number | string): string {
     return 'localfile:///' + path.replace(/\\/g, '/')
   }
   return path
-}
-
-// ─── コートチェンジ計算 ────────────────────────────────────────────────────────
-// BWFルール: セット開始ごとにサイドチェンジ、第3セットは11点でサイドチェンジ
-// setNum=1 → 0回チェンジ, setNum=2 → 1回, setNum=3 → 2回（+11pt時さらに1回）
-function computePlayerASide(
-  initial: 'top' | 'bottom',
-  setNum: number,
-  scoreA: number,
-  scoreB: number
-): 'top' | 'bottom' {
-  const betweenSets = setNum - 1
-  const midSet = setNum === 3 && Math.max(scoreA, scoreB) >= 11 ? 1 : 0
-  const flipped = (betweenSets + midSet) % 2 === 1
-  return flipped ? (initial === 'top' ? 'bottom' : 'top') : initial
 }
 
 // ─── END_TYPES ────────────────────────────────────────────────────────────────
@@ -3779,20 +3765,31 @@ export function AnnotatorPage() {
                     <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-ss-sm bg-blue-500 text-white text-[10px] font-medium whitespace-nowrap shadow z-10">
                       {t('annotator.ui.land_select_marker', { defaultValue: '着地点を選択 ↓' })}
                     </span>
-                    <CourtDiagram
-                      mode={store.currentPlayer === 'player_b' ? 'hit' : 'land'}
-                      selectedZone={store.pendingStroke.land_zone ?? null}
-                      onZoneSelect={(zone: LandZone) => { haptic.strokeConfirm(); store.selectLandZone(zone) }}
-                      interactive={true}
-                      showOOB={true}
-                      label={undefined}
-                      maxWidth={isMobile ? 340 : 200}
-                      playerSides={(() => {
-                        const aTop = computePlayerASide(playerAStart, store.currentSetNum, store.scoreA, store.scoreB) === 'top'
-                        return { top: aTop ? 'a' : 'b', bottom: aTop ? 'b' : 'a' }
-                      })()}
-                      activePlayer={store.currentPlayer === 'player_a' ? 'a' : 'b'}
-                    />
+                    {(() => {
+                      // A-1: 押せる半面は「打った人の反対側」でなければならない。
+                      // 以前は mode を currentPlayer だけで決めており、コート
+                      // チェンジ (セット間・第3セット11点) を無視していた。
+                      // ラベルと色は computePlayerASide に従っていたので、
+                      // セット2以降は「A と色が付いた自分の半面」を着地点として
+                      // 押させる状態になっていた。見た目では気づけない。
+                      // CourtDiagram の mode は上下どちらを活性にするかも兼ねる
+                      // ('land'=上半面, 'hit'=下半面)。
+                      const aSide = computePlayerASide(playerAStart, store.currentSetNum, store.scoreA, store.scoreB)
+                      const aTop = aSide === 'top'
+                      return (
+                        <CourtDiagram
+                          mode={landingCourtMode(aSide, store.currentPlayer)}
+                          selectedZone={store.pendingStroke.land_zone ?? null}
+                          onZoneSelect={(zone: LandZone) => { haptic.strokeConfirm(); store.selectLandZone(zone) }}
+                          interactive={true}
+                          showOOB={true}
+                          label={undefined}
+                          maxWidth={isMobile ? 340 : 200}
+                          playerSides={{ top: aTop ? 'a' : 'b', bottom: aTop ? 'b' : 'a' }}
+                          activePlayer={store.currentPlayer === 'player_a' ? 'a' : 'b'}
+                        />
+                      )
+                    })()}
                   </div>
                 </div>
                 <button
