@@ -194,12 +194,28 @@ class CourtBoundedFilter:
         self.persistence_frames = max(0, persistence_frames)
         self._track_seen: Dict[int, int] = defaultdict(int)
         # 起動時監査証跡 (GDPR Article 32 評価のため)
+        #
+        # C-11: `strict_mode=True` だけをログに出すと「コート外を除外している」と
+        # 読めるが、**court_adapter が無ければ実際には何も除外していない**。
+        # その場合 is_in_court は 0.0 <= cx <= 1.0 (=画像全体) に退化するので、
+        # 未キャリブレーションの試合では観客も1人も落ちない。
+        # 監査証跡としては「強制できているか」が本質なので、そこを明示する。
+        self.enforcing_court_boundary = court_adapter is not None
         try:
             import logging as _logging_cbf
-            _logging_cbf.getLogger(__name__).info(
-                "[CourtBoundedFilter] strict_mode=%s court_margin=%s",
-                self.strict_mode, self.court_margin,
+            _log_cbf = _logging_cbf.getLogger(__name__)
+            _log_cbf.info(
+                "[CourtBoundedFilter] strict_mode=%s court_margin=%s enforcing_court_boundary=%s",
+                self.strict_mode, self.court_margin, self.enforcing_court_boundary,
             )
+            if self.strict_mode and not self.enforcing_court_boundary:
+                _log_cbf.warning(
+                    "[CourtBoundedFilter] strict_mode=True だが court_adapter が無いため"
+                    " **コート境界を強制できていない** (画像全体が in_court 扱い)。"
+                    " この試合の検出は観客を除外していない。"
+                    " GDPR 25条 / APPI 20条の技術的措置としては成立していないので、"
+                    " キャリブレーションを行うこと。"
+                )
         except Exception:
             pass
 
@@ -214,7 +230,11 @@ class CourtBoundedFilter:
         cx, cy = self._bbox_center(bbox)
         if self.court_adapter is not None:
             return self.court_adapter.in_court(cx, cy, margin=self.court_margin)
-        # フォールバック: 画像端マージン
+        # フォールバック: 画像端マージン。
+        # C-11: strict_mode では court_margin が 0 なので、これは
+        # 「画像内なら何でも in_court」でしかない。**除外はしていない。**
+        # 呼び出し側は `enforcing_court_boundary` を見て、
+        # 成果物に「境界を強制していない」ことを残すこと。
         return (
             self.court_margin <= cx <= 1.0 - self.court_margin
             and self.court_margin <= cy <= 1.0 - self.court_margin

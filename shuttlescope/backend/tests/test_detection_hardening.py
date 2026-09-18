@@ -169,3 +169,35 @@ def test_reset_clears_persistence():
     cbf.filter([d])
     cbf.reset()
     assert cbf.filter([d]) == []  # カウンタリセット後、また 1 から
+
+
+class TestCourtBoundaryIsHonestAboutEnforcement:
+    """C-11: `strict_mode=True` は「除外している」を意味しない。
+
+    court_adapter が無いと `is_in_court` は `0.0 <= cx <= 1.0`（画像全体）に
+    退化するので、**未キャリブレーションの試合では観客を1人も落としていない**。
+    起動ログは strict_mode=True としか言っておらず、GDPR 25条 / APPI 20条の
+    技術的措置として文書化されていた。
+
+    「強制できているか」を機械可読にし、片方だけでなく両方を固定する。
+    """
+
+    def test_without_an_adapter_it_reports_not_enforcing(self):
+        from backend.cv.detection_hardening import CourtBoundedFilter
+        f = CourtBoundedFilter()
+        assert f.strict_mode is True
+        assert f.enforcing_court_boundary is False
+        # 画面隅（観客がいる位置）が通ってしまうこと自体は現状の挙動
+        assert f.is_in_court([0.01, 0.01, 0.05, 0.10]) is True
+
+    def test_with_an_adapter_it_enforces_and_says_so(self):
+        from backend.cv.detection_hardening import CourtBoundedFilter
+
+        class _Adapter:
+            def in_court(self, cx, cy, margin=0.0):
+                return 0.3 <= cx <= 0.7
+
+        f = CourtBoundedFilter(court_adapter=_Adapter())
+        assert f.enforcing_court_boundary is True
+        assert f.is_in_court([0.01, 0.01, 0.05, 0.10]) is False
+        assert f.is_in_court([0.45, 0.45, 0.55, 0.60]) is True
