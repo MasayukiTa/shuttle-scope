@@ -17,6 +17,14 @@ export function useDeviceHeartbeat(
   sessionCode: string | null,
   participantId: number | null,
   onRemoved?: () => void,
+  /**
+   * join で受け取った参加者トークン。QR + セッションパスワードで参加した端末は
+   * アプリの JWT を持たないので、これを送らないと middleware に 401 で弾かれる。
+   * 旧実装は本文を空で送っており、**401 は 404/410 ではないので下の catch が
+   * 黙って握り潰し**、`last_heartbeat` が一度も更新されなかった。その結果
+   * サーバ側の 90 秒判定が配信中のカメラを idle に降格していた。
+   */
+  participantToken?: string,
 ) {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const removedRef = useRef(false)
@@ -27,7 +35,10 @@ export function useDeviceHeartbeat(
 
     const sendHeartbeat = async () => {
       try {
-        await apiPost(`/sessions/${sessionCode}/devices/${participantId}/heartbeat`, {})
+        await apiPost(
+          `/sessions/${sessionCode}/devices/${participantId}/heartbeat`,
+          participantToken ? { participant_token: participantToken } : {},
+        )
       } catch (err: unknown) {
         // 404 / 410 は server 側で削除された signal とみなして onRemoved 通知 + ループ停止
         const e = err as { status?: number; message?: string }
@@ -55,5 +66,5 @@ export function useDeviceHeartbeat(
         timerRef.current = null
       }
     }
-  }, [sessionCode, participantId, onRemoved])
+  }, [sessionCode, participantId, onRemoved, participantToken])
 }

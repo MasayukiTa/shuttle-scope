@@ -61,6 +61,11 @@ EXPECTED_EXEMPT_REGEX_SUBSTRINGS = (
     "_internal/billing/webhooks/(?:stripe|komoju|univapay)",
     "_internal/billing/legal_info",
     "_internal/videos/",
+    # JWT を持たない参加端末が 30 秒ごとに呼ぶ。免除しないと 401 になり、
+    # クライアントは 404/410 しか見ないので黙って再試行し続け、
+    # last_heartbeat が更新されないまま配信中のカメラが idle に降格される。
+    # 免除はしているが、ハンドラ側で参加者トークンを検証している。
+    "devices/",
 )
 
 
@@ -192,6 +197,12 @@ class TestGlobalAuthExemptRegex:
         "/api/public/inquiries/unread-count",
         "/api/public/inquiries/12",
         "/api/public/inquiries/bulk-delete",
+        # heartbeat の免除が近接パスへ広がっていないこと。participant_id は
+        # 数値に限定し、末尾を heartbeat で固定してある。
+        "/api/sessions/ABC123/devices/42",
+        "/api/sessions/ABC123/devices/42/heartbeatX",
+        "/api/sessions/ABC123/devices/abc/heartbeat",
+        "/api/sessions/ABC123/devices/42/set-viewer-permission",
     ])
     def test_near_miss_paths_not_exempt(self, path: str):
         from backend.main import _GLOBAL_AUTH_EXEMPT
@@ -210,6 +221,7 @@ class TestGlobalAuthExemptRegex:
         "/api/public/status/day",
         "/api/public/ban_appeal",
         "/api/public/content_report",
+        "/api/sessions/ABC123/devices/42/heartbeat",
         "/api/_internal/billing/webhooks/stripe",
         "/api/_internal/billing/webhooks/komoju",
         "/api/_internal/billing/legal_info",

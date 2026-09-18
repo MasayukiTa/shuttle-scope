@@ -1929,6 +1929,14 @@ _GLOBAL_AUTH_EXEMPT = _re_acl.compile(
     # join は PBKDF2 のパスワード検証と code/IP 二軸のレート制限で守り、
     # ws-ticket は join が発行した participant_token 自身で認証する。
     r"|sessions/[A-Za-z0-9_-]{1,32}/(?:join|ws-ticket)(?:\?.*)?$"
+    # heartbeat: JWT を持たない参加端末 (QR + セッションパスワード) が
+    # 30 秒ごとに呼ぶ。免除しないと 401 になり、クライアントは 404/410 しか
+    # 見ないので黙って再試行し続け、last_heartbeat が更新されないまま
+    # **配信中のカメラが 90 秒で idle に降格**される。
+    # 単なる免除ではなく、ハンドラ側で参加者トークンを検証している
+    # (ws-ticket と同じ方式)。participant_id は数値に限定し、
+    # 末尾を固定してこの 1 ルートだけに絞る。
+    r"|sessions/[A-Za-z0-9_-]{1,32}/devices/\d{1,12}/heartbeat(?:\?.*)?$"
     # health は exact match (= /api/health のみ。/api/health/cv は router で別途認証)
     r"|health(?:\?.*)?$"
     # csp_report は exact match
