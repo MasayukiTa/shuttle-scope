@@ -1,13 +1,7 @@
-﻿import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { apiPost, apiGet } from '../../api/client'
 import { errorMessage } from '@/utils/errors'
-
-interface ShuttlescopeApi {
-  youtubeLiveDrmStart: (url: string, jobId: string, token: string) => Promise<unknown>
-  youtubeLiveDrmStop: () => Promise<unknown>
-}
-type WindowWithShuttlescope = Window & { shuttlescope?: ShuttlescopeApi }
 
 interface JobStatus {
   job_id: string
@@ -41,7 +35,7 @@ export function YouTubeLivePanel({ matchId }: { matchId?: number } = {}) {
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const isElectron = typeof window !== 'undefined' && !!(window as WindowWithShuttlescope).shuttlescope
+  const isElectron = typeof window !== 'undefined' && !!window.shuttlescope
 
   const stopPoll = useCallback(() => {
     if (pollRef.current) {
@@ -88,9 +82,16 @@ export function YouTubeLivePanel({ matchId }: { matchId?: number } = {}) {
           setLoading(false)
           return
         }
-        const ss = (window as WindowWithShuttlescope).shuttlescope!
+        // isElectron は shuttlescope の有無しか見ていない。preload に
+        // DRM メソッドが無い旧ビルドでもここへ来るので個別に確認する。
+        const drmStart = window.shuttlescope?.youtubeLiveDrmStart
+        if (!drmStart) {
+          setErrorMsg(t('youtubeLive.noElectron'))
+          setLoading(false)
+          return
+        }
         const token = sessionStorage.getItem('shuttlescope_token') ?? ''
-        await ss.youtubeLiveDrmStart(url.trim(), result.job_id, token)
+        await drmStart(url.trim(), result.job_id, token)
         setJob({ ...result, method: 'drm', status: 'recording' })
       }
 
@@ -107,7 +108,7 @@ export function YouTubeLivePanel({ matchId }: { matchId?: number } = {}) {
     setLoading(true)
     try {
       if (job.method === 'drm' && isElectron) {
-        await (window as WindowWithShuttlescope).shuttlescope!.youtubeLiveDrmStop()
+        await window.shuttlescope?.youtubeLiveDrmStop?.()
       }
       const result = await apiPost<JobStatus>(`/youtube_live/${job.job_id}/stop`, {})
       setJob(result)

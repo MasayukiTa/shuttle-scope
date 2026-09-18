@@ -20,7 +20,13 @@ declare global {
   }
 
   interface Window {
-    shuttlescope: {
+    /**
+     * Electron の preload が注入する API。
+     * **ブラウザ (トンネル経由の iPad / スマホ / ViewerPage) では undefined。**
+     * 必須プロパティとして宣言すると、未ガードの呼び出しが型で通ってしまい
+     * ブラウザ側だけ実行時に落ちる。optional のままにしておくこと。
+     */
+    shuttlescope?: {
       version: string
       platform: string
       openVideoFile: () => Promise<string | null>
@@ -44,6 +50,12 @@ declare global {
       sendMirror?: (payload: unknown) => void
       /** 別モニタミラー: 他ウィンドウからのペイロードを購読（返り値はアンサブスクライブ） */
       onMirror?: (cb: (payload: unknown) => void) => () => void
+      /** YouTube Live DRM 録画開始 (electron/preload.ts:68) */
+      youtubeLiveDrmStart?: (url: string, jobId: string, token: string) => Promise<{ sourceId: string; sourceName: string }>
+      /** YouTube Live DRM 録画停止 (electron/preload.ts:70) */
+      youtubeLiveDrmStop?: () => Promise<void>
+      // 下のインデックスシグネチャがあるので、宣言し忘れたメソッドは
+      // unknown になって呼べない。preload に足したらここにも足すこと。
       [key: string]: unknown
     }
   }

@@ -12,7 +12,7 @@
  * 利用可能な name は https://fonts.google.com/icons から検索。
  * 実体は npm package material-symbols のローカルフォント (CSP / 外部通信不要)。
  */
-import { CSSProperties } from 'react'
+import { CSSProperties, MouseEventHandler } from 'react'
 import { clsx } from 'clsx'
 
 interface MIconProps {
@@ -32,6 +32,12 @@ interface MIconProps {
   style?: CSSProperties
   ariaLabel?: string
   ariaHidden?: boolean
+  /**
+   * クリックハンドラ。SearchableSelect の × (クリア) のように、
+   * アイコン自体が操作対象になる箇所で使う。
+   * 受け取らない実装だったため、渡していた側は無反応になっていた。
+   */
+  onClick?: MouseEventHandler<HTMLSpanElement>
 }
 
 export function MIcon({
@@ -45,6 +51,7 @@ export function MIcon({
   style,
   ariaLabel,
   ariaHidden = true,
+  onClick,
 }: MIconProps) {
   return (
     <span
@@ -52,6 +59,7 @@ export function MIcon({
       aria-label={ariaLabel}
       aria-hidden={ariaHidden && !ariaLabel ? 'true' : undefined}
       role={ariaLabel ? 'img' : undefined}
+      onClick={onClick}
       style={{
         fontSize: size,
         lineHeight: 1,

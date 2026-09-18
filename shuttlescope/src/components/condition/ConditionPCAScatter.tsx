@@ -351,6 +351,8 @@ interface PCAPoint {
   date: string
   month: number
   color: string
+  /** monthShape() が付ける系列形状。宣言漏れで filter 側が型エラーになっていた。 */
+  shape: 'circle' | 'square' | 'triangle'
   topKeys: string[]
 }
 
