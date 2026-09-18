@@ -24,7 +24,30 @@ _TRUSTED_PREFIXES: list[str] = [
     if s.strip()
 ]
 
-_OPERATOR_TOKEN: str = os.getenv("SS_OPERATOR_TOKEN", "").strip()
+def _load_operator_token() -> str:
+    """operator token を「実効値」として解決する。
+
+    旧実装は `os.getenv` だけを見ていた。しかし pydantic-settings は `.env` を
+    Settings に読み込むだけで `os.environ` には入れないため、
+    **`.env` に SS_OPERATOR_TOKEN を書いても此処では空になる**。
+    結果、`allow_select_login` / `allow_legacy_header_auth` が
+    「token 未設定 (dev)」の枝に落ち、docstring が約束している二要素ガードが
+    黙って loopback 単独許可へ退化していた (本番で実際にこの状態だった:
+    .env に 43 文字の token があり、プロセス環境には無い)。
+
+    環境変数を優先し、無ければ Settings を見る。どちらの設定手段でも効くようにする。
+    """
+    tok = os.getenv("SS_OPERATOR_TOKEN", "").strip()
+    if tok:
+        return tok
+    try:
+        from backend.config import settings as _settings
+        return (getattr(_settings, "ss_operator_token", "") or "").strip()
+    except Exception:
+        return ""
+
+
+_OPERATOR_TOKEN: str = _load_operator_token()
 
 
 # Round 258 R7 P0 fix (Codex review):

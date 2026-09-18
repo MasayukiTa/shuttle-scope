@@ -623,10 +623,29 @@ def create_match(body: MatchCreate, request: Request, db: Session = Depends(get_
                                 getattr(body, "partner_b_id", None)) if p]
             if pids:
                 team_players = db.query(Player).filter(Player.id.in_(pids)).all()
-                if not any((p.team or "").strip() == team for p in team_players):
+                own_roster = any((p.team or "").strip() == team for p in team_players)
+                # 0051: スカウティング用の外部選手を自チームが登録している場合、
+                # 自チーム選手が1人も出ない試合 (相手 X 対 無関係 Y) を作れる必要がある。
+                # これが無いと「一週間前に発表された相手の過去映像を解析する」が
+                # admin 以外で成立しない。所属ではなく登録主体で許可する。
+                # 可視性は下の resolve_owner_team_for_match_create が
+                # owner_team_id を自チームに固定することで保たれる。
+                from backend.utils.auth import can_see_scouting_players
+                own_scouting = (
+                    can_see_scouting_players(ctx)
+                    and ctx.team_id is not None
+                    and any(
+                        p.scouting_owner_team_id == ctx.team_id
+                        for p in team_players
+                    )
+                )
+                if not (own_roster or own_scouting):
                     raise HTTPException(
                         status_code=403,
-                        detail=f"自チーム ({team}) の選手が含まれない試合は作成できません",
+                        detail=(
+                            f"自チーム ({team}) の選手も、自チームが登録した外部選手も "
+                            "含まれない試合は作成できません"
+                        ),
                     )
     # Phase B-5: owner_team_id / is_public_pool を解決
     owner_id, is_public = resolve_owner_team_for_match_create(

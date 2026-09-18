@@ -117,6 +117,10 @@ class PlayerCreate(BaseModel):
     organization: Optional[str] = Field(default=None, max_length=200)
     aliases: Optional[list[str]] = None
     scouting_notes: Optional[str] = Field(default=None, max_length=5000)
+    # 0051: スカウティング用の外部選手として登録する。自チームに所属しない相手選手を
+    # 解析対象にするための唯一の正規経路。true のとき team は不要で、登録した
+    # チームだけが見られる (Player.scouting_owner_team_id)。
+    is_scouting: bool = False
 
     @field_validator("aliases", mode="after")
     @classmethod
@@ -197,9 +201,39 @@ def player_to_dict(p: Player, match_count: int = 0) -> dict:
         "aliases": _parse_json_list(p.aliases),
         "name_normalized": p.name_normalized,
         "scouting_notes": p.scouting_notes,
+        # 0051: スカウティング用の外部選手か。所有チームの id は出さない
+        # (どのチームが登録したかは他チームに知らせる必要がない)。
+        # 画面側で「外部」と分かるようにするためだけの真偽値。
+        "is_scouting": p.scouting_owner_team_id is not None,
         # 所属履歴
         "team_history": _parse_json_list(p.team_history),
     }
+
+
+def _own_team_or_scouting_filter(db: Session, team_name: str, ctx):
+    """「自チーム所属」または「自チームが登録した外部選手」を選ぶ条件を返す。
+
+    Phase B-15+ で Player.team は文字列でなくなったため、以前は teams.name を
+    JOIN して絞っていた。JOIN だと team_id が NULL の外部選手が構造的に落ちるので、
+    チームを先に 1 回解決して id 比較の OR にする。
+
+    チームが見つからなければ None を返す (呼び出し側で空を返す)。
+    外部選手を足すのは analyst / coach のときだけ。
+    """
+    from backend.db.models import Team as _Team
+    row = (
+        db.query(_Team.id)
+        .filter(_Team.name == team_name, _Team.deleted_at.is_(None))
+        .first()
+    )
+    if not row:
+        return None
+    team_id = row[0]
+    cond = Player.team_id == team_id
+    from backend.utils.auth import can_see_scouting_players
+    if can_see_scouting_players(ctx):
+        cond = cond | (Player.scouting_owner_team_id == team_id)
+    return cond
 
 
 @router.get("/players")
@@ -223,11 +257,16 @@ def list_players(request: Request, db: Session = Depends(get_db),
             if not allow_legacy_header_auth(request):
                 return {"success": True, "data": []}
         else:
-            # Phase B-15+: team 文字列撤去後は teams.name JOIN で解決
-            from backend.db.models import Team as _Team
-            query = query.join(_Team, _Team.id == Player.team_id).filter(
-                _Team.name == team, _Team.deleted_at.is_(None)
-            )
+            cond = _own_team_or_scouting_filter(db, team, ctx)
+            if cond is None:
+                return {"success": True, "data": []}
+            query = query.filter(cond)
+    elif not ctx.is_admin:
+        # 旧実装はここが素通りのコメント行 (`# admin は全選手`) だった。
+        # is_player / is_coach / is_analyst / is_admin はいずれも role の完全一致
+        # なので、`llm` と `demo` はどの枝にも入らず**全選手を取得できていた**。
+        # ロールを足すたびに黙って漏れる形なので、既定を拒否にする。
+        return {"success": True, "data": []}
     # admin は全選手
 
     players = query.all()
@@ -262,10 +301,10 @@ def _scoped_player_query(db: Session, request: Request):
         if allow_legacy_header_auth(request):
             return query
         return query.filter(Player.id == -1)  # 空
-    from backend.db.models import Team as _Team
-    return query.join(_Team, _Team.id == Player.team_id).filter(
-        _Team.name == team, _Team.deleted_at.is_(None)
-    )
+    cond = _own_team_or_scouting_filter(db, team, ctx)
+    if cond is None:
+        return query.filter(Player.id == -1)  # 空
+    return query.filter(cond)
 
 
 @router.get("/players/search")
@@ -372,24 +411,53 @@ def create_player(
     _ctx=Depends(require_analyst),
 ):
     """選手登録"""
-    # analyst は自チーム以外の選手を登録不可 (cross-team データ汚染防止)
-    from backend.utils.auth import get_auth as _ga
+    from backend.utils.auth import can_see_scouting_players, get_auth as _ga
     _actor = _ga(request)
-    if _actor.is_analyst and not _actor.is_admin:
-        actor_team = (_actor.team_name or "").strip()
-        body_team = (body.team or "").strip()
-        if not actor_team:
-            from backend.utils.control_plane import allow_legacy_header_auth
-            if not allow_legacy_header_auth(request):
-                raise HTTPException(status_code=403, detail="team_name 未設定")
-        elif not body_team or body_team != actor_team:
+
+    # 0051: スカウティング用の外部選手。所属ではなく「自チームが登録した」ことで
+    # 可視性を決めるので、team は取らず scouting_owner_team_id に登録主体を刻む。
+    scouting_owner_team_id: Optional[int] = None
+    if body.is_scouting:
+        if not (_actor.is_admin or can_see_scouting_players(_actor)):
             raise HTTPException(
-                status_code=403,
-                detail=f"自チーム ({actor_team}) 以外の選手は登録できません",
+                status_code=403, detail="外部選手を登録する権限がありません"
             )
-    # team 必須 (空文字/whitespace 拒否)
-    if not body.team or not body.team.strip():
-        raise HTTPException(status_code=422, detail="team must not be empty or whitespace only")
+        if not _actor.is_admin:
+            if _actor.team_id is None:
+                raise HTTPException(status_code=403, detail="team_id 未設定")
+            scouting_owner_team_id = _actor.team_id
+        else:
+            # admin は自分のチームに紐づかないことがある。所有チームが決まらない
+            # 外部選手は誰にも見えない孤児になるため、明示を求める。
+            if _actor.team_id is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="外部選手の登録には所有チームが必要です",
+                )
+            scouting_owner_team_id = _actor.team_id
+        if (body.team or "").strip():
+            raise HTTPException(
+                status_code=422,
+                detail="外部選手に team は指定できません (所属ではなく登録主体で管理します)",
+            )
+    else:
+        # analyst は自チーム以外の選手を登録不可 (cross-team データ汚染防止)。
+        # 外部選手は上の分岐で扱うので、ここは従来どおり所属チームの話に限る。
+        if _actor.is_analyst and not _actor.is_admin:
+            actor_team = (_actor.team_name or "").strip()
+            body_team = (body.team or "").strip()
+            if not actor_team:
+                from backend.utils.control_plane import allow_legacy_header_auth
+                if not allow_legacy_header_auth(request):
+                    raise HTTPException(status_code=403, detail="team_name 未設定")
+            elif not body_team or body_team != actor_team:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"自チーム ({actor_team}) 以外の選手は登録できません",
+                )
+        # team 必須 (空文字/whitespace 拒否)
+        if not body.team or not body.team.strip():
+            raise HTTPException(status_code=422, detail="team must not be empty or whitespace only")
     # HTML タグ / 制御文字 / BIDI override の注入を拒否 (stored XSS 対策・多層防御)
     _reject_html_in_field(body.name, "name", require_non_empty=True)
     _reject_html_in_field(body.name_en, "name_en")
@@ -400,6 +468,9 @@ def create_player(
     _reject_html_in_field(body.scouting_notes, "scouting_notes")
     _validate_dominant_hand(body.dominant_hand)
     data = body.model_dump()
+    # is_scouting は API の入力であって Player の列ではない。取り除かないと
+    # Player(**data) が TypeError になる。所有チームは上で解決済み。
+    data.pop("is_scouting", None)
     aliases = data.pop("aliases", None)
     aliases_json = json.dumps(aliases, ensure_ascii=False) if aliases else None
     # 正規化名を自動生成
@@ -456,6 +527,7 @@ def create_player(
     player = Player(
         **data,
         team_id=team_id_resolved,
+        scouting_owner_team_id=scouting_owner_team_id,
         aliases=aliases_json,
         name_normalized=name_normalized,
     )

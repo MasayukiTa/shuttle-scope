@@ -307,6 +307,14 @@ class Player(Base):
     team_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("teams.id"), nullable=True, index=True
     )
+    # 0051: スカウティング用の外部選手。team_id が示すのは「所属」、こちらは「登録主体」。
+    # 相手選手を解析するには、自チームに所属しない選手のレコードが要る。しかし可視範囲を
+    # 「全チーム」に広げると他チームの名簿と注釈データまで見えてしまうため、
+    # 「自チームが登録した外部選手」という第二の所有関係を持たせ、そこだけを開ける。
+    # player / llm ロールには開けない (analyst / coach のみ)。
+    scouting_owner_team_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("teams.id"), nullable=True, index=True
+    )
 
     @property
     def team(self) -> Optional[str]:
