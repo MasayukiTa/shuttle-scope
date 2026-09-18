@@ -60,9 +60,12 @@ where ray >nul 2>&1
 if not errorlevel 1 (
     ray stop --force >nul 2>&1
     timeout /t 2 /nobreak >nul
+    :: See start_primary.bat: the dashboard serves the Jobs API and Ray has no
+    :: authentication, so it is bound to loopback unless set deliberately.
+    if not defined SS_RAY_DASHBOARD_HOST set SS_RAY_DASHBOARD_HOST=127.0.0.1
     ray start --head ^
         --port=%SS_RAY_PORT% ^
-        --dashboard-host=0.0.0.0 ^
+        --dashboard-host=%SS_RAY_DASHBOARD_HOST% ^
         --dashboard-port=8265 ^
         --num-cpus=%SS_RAY_CPUS% ^
         --num-gpus=%SS_RAY_GPUS% ^
