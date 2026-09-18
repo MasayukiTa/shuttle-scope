@@ -9,6 +9,8 @@
 """
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -33,7 +35,10 @@ def match(db_session):
     db_session.flush()
     m = Match(
         tournament="サーブ権テスト",
-        date="2026-09-18",
+        # tournament_level / round は NOT NULL。省くと fixture が落ちる。
+        tournament_level="practice",
+        round="R1",
+        date=date(2026, 9, 18),
         format="singles",
         player_a_id=a.id,
         player_b_id=b.id,
