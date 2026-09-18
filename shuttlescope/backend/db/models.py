@@ -4,7 +4,7 @@ from typing import Optional
 from uuid import uuid4
 from sqlalchemy import (
     BigInteger, Integer, String, Float, Boolean, DateTime, Date,
-    ForeignKey, Text, UniqueConstraint, Index, LargeBinary, func, JSON
+    ForeignKey, Text, UniqueConstraint, Index, LargeBinary, func, JSON, text
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.db.database import Base
@@ -478,6 +478,18 @@ class Rally(Base):
     __tablename__ = "rallies"
     __table_args__ = (
         Index("ix_rallies_set_id_rally_num", "set_id", "rally_num"),
+        # A-5: (set_id, rally_num) に一意性が無く、再開・再送・複数端末で
+        # 同じラリー番号が二重に入っていた。論理削除済みの行とは衝突させたく
+        # ないので部分インデックスにする (PostgreSQL / SQLite 双方が対応)。
+        # migration 0053 と対で入れること。
+        Index(
+            "uq_rallies_set_id_rally_num_active",
+            "set_id",
+            "rally_num",
+            unique=True,
+            sqlite_where=text("deleted_at IS NULL"),
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

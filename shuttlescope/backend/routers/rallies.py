@@ -2,6 +2,7 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
@@ -113,10 +114,43 @@ def create_rally(
             return replay_response(cached)
 
     _rally_require_scope(request, db, body.set_id)
+
+    # A-5: (set_id, rally_num) は一意 (migration 0053)。sibling の POST /sets と
+    # 同じく、既に同じ番号があればそれを返す。再開・再送・複数端末で同じ番号が
+    # 二重に入ると、スコア推移も集計も静かに壊れる。
+    existing = db.query(Rally).filter(
+        Rally.set_id == body.set_id,
+        Rally.rally_num == body.rally_num,
+        Rally.deleted_at.is_(None),
+    ).first()
+    if existing:
+        response = {"success": True, "data": rally_to_dict(existing)}
+        if idem_key:
+            from backend.utils.idempotency import store
+            store(idem_key, ctx_for_idem.user_id, endpoint_id, response, status_code=201)
+        return response
+
     rally = Rally(**body.model_dump())
     touch(rally)
     db.add(rally)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # 上の検査と INSERT の間に別リクエストが入った場合。
+        # 一意インデックスが最終的な砦なので、ここは勝った側の行を返す。
+        db.rollback()
+        existing = db.query(Rally).filter(
+            Rally.set_id == body.set_id,
+            Rally.rally_num == body.rally_num,
+            Rally.deleted_at.is_(None),
+        ).first()
+        if existing is None:
+            raise
+        response = {"success": True, "data": rally_to_dict(existing)}
+        if idem_key:
+            from backend.utils.idempotency import store
+            store(idem_key, ctx_for_idem.user_id, endpoint_id, response, status_code=201)
+        return response
     # set_id から辿って試合の関与選手のみ無効化
     response_cache.bump_players(players_for_set(db, body.set_id))
     db.refresh(rally)
