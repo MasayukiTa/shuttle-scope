@@ -40,7 +40,7 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
   const { role } = useAuth()
   const canAdvice = role === 'coach' || role === 'analyst' || role === 'admin'
   const { getMeta } = useAnalysisMeta()
-  const { card, textHeading, textMuted, _textFaint, _badge, _isLight } = useCardTheme()
+  const { card, textHeading, textMuted, textFaint: _textFaint, badge: _badge, isLight: _isLight } = useCardTheme()
 
   // 研究タブ bundle（optional）: backend 未実装でも silent fail で undefined
   // → 各カードは provided=false で個別 fetch にフォールバックする

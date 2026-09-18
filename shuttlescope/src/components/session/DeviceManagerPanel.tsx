@@ -150,7 +150,7 @@ interface DeviceRowProps {
   t: (key: string) => string
 }
 
-function DeviceRow({ p, _isLight, titleColor, subColor, rowBg, onApprove, onReject, onActivateCamera, onDeactivate, onRequestCamera, onMakeCandidate, onAllowVideo, onBlockVideo, onDeleteDevice, t }: DeviceRowProps) {
+function DeviceRow({ p, isLight: _isLight, titleColor, subColor, rowBg, onApprove, onReject, onActivateCamera, onDeactivate, onRequestCamera, onMakeCandidate, onAllowVideo, onBlockVideo, onDeleteDevice, t }: DeviceRowProps) {
 
   const isStaleCamera = p.connection_role === 'active_camera' && p.last_heartbeat
     ? (Date.now() - new Date(p.last_heartbeat).getTime()) / 1000 > 60

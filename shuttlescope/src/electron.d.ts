@@ -1,6 +1,24 @@
+/// <reference types="vite/client" />
+
 export {}
 
 declare global {
+  /**
+   * Vite が注入する環境変数。vite/client の ImportMetaEnv を拡張する。
+   * ここに書いてあるキーだけが型として通るので、綴り違いはコンパイルで落ちる。
+   * 値は必ず文字列 (未設定なら undefined)。真偽値は文字列比較で判定すること。
+   */
+  interface ImportMetaEnv {
+    readonly VITE_SS_API_BASE_URL?: string
+    readonly VITE_SS_APP_URL?: string
+    readonly VITE_SS_BILLING_UI_ENABLED?: string
+    readonly VITE_SS_HEALTH_CHECK_TIMEOUT_MS?: string
+    readonly VITE_SS_PREFER_LAN_ENDPOINT?: string
+    readonly VITE_SS_SENDER_AUTO_RECORD?: string
+    readonly VITE_SS_SENDER_CHUNK_SECONDS?: string
+    readonly VITE_SS_TURNSTILE_SITE_KEY?: string
+  }
+
   interface Window {
     shuttlescope: {
       version: string

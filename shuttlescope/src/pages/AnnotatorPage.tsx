@@ -1087,7 +1087,7 @@ export function AnnotatorPage() {
   // P3/P4: CV ジョブフック（TrackNet + YOLO バッチ解析・オーバーレイ）
   const {
     tracknetJob, setTracknetJob, shuttleFrames, shuttleOverlayVisible,
-    setShuttleOverlayVisible, _tracknetArtifactAt, handleTracknetBatch,
+    setShuttleOverlayVisible, tracknetArtifactAt: _tracknetArtifactAt, handleTracknetBatch,
     handleTracknetBatchResume, handleTracknetBatchStop, tracknetArtifactExists,
     yoloJob, setYoloJob, yoloFrames, yoloOverlayVisible,
     setYoloOverlayVisible, yoloArtifactMeta, handleYoloBatch,
@@ -1292,7 +1292,7 @@ export function AnnotatorPage() {
     showSessionModal, setShowSessionModal,
     showDeviceManager, setShowDeviceManager,
     handleCreateOrGetSession,
-    tunnelStatus, tunnelToggle, _tunnelBase, tunnelPending, tunnelLastError, rebaseUrl,
+    tunnelStatus, tunnelToggle, tunnelBase: _tunnelBase, tunnelPending, tunnelLastError, rebaseUrl,
     remoteStream, setRemoteStream,
     remoteStreamVideoRef,
     localCamStream, setLocalCamStream,

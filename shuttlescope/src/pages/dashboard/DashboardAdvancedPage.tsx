@@ -59,7 +59,7 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
   const [pairMode, setPairMode] = useState(false)
   const [partnerPlayerId, setPartnerPlayerId] = useState<number | null>(null)
   const { getMeta } = useAnalysisMeta()
-  const { card, _cardInner, textHeading, textSecondary, textMuted, _textFaint, badge, _border, isLight } = useCardTheme()
+  const { card, cardInner: _cardInner, textHeading, textSecondary, textMuted, textFaint: _textFaint, badge, border: _border, isLight } = useCardTheme()
   const { role } = useAuth()
 
   // Override summary: admin/analyst/coach のみクエリ

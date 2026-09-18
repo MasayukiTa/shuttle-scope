@@ -37,9 +37,9 @@ const PRIMARY_TYPE_LABEL: Record<string, string> = {
 export function PredictionDriversBlock({
   primaryType,
   primaryCount,
-  _h2hCount,
-  _sameLevelCount,
-  _allCount,
+  h2hCount: _h2hCount,
+  sameLevelCount: _sameLevelCount,
+  allCount: _allCount,
   hasObservations,
   drivers,
 }: PredictionDriversBlockProps) {
