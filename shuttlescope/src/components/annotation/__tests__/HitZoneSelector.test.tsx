@@ -5,7 +5,10 @@
  *  - 9 タイル (1-9) が描画される
  *  - cvPrediction が指定されたセルに auto_awesome (MIcon) アイコンと CV ラベルが出る
  *  - selectedZone が isOverridden=true のとき orange、false のとき blue で塗られる
- *  - クリックで onZoneSelect が呼ばれ、引数が Zone9 値である
+ *  - クリックで onZoneSelect が呼ばれ、引数が Zone9 文字列である
+ *    (旧テストは数値 1..9 を期待しており、**誤った契約を固定していた**。
+ *     その数値が backend の `hit_zone: Optional[str]` に弾かれ、
+ *     打点を手で直したラリーが 422 で保存されなくなっていた)
  *  - disabled=true のときクリックしても callback が呼ばれない
  */
 import { describe, it, expect, vi } from 'vitest'
@@ -32,8 +35,8 @@ describe('HitZoneSelector', () => {
   it('shows CV preselect indicator when cvPrediction is set', () => {
     const { container } = render(
       <HitZoneSelector
-        cvPrediction={5}
-        selectedZone={5}
+        cvPrediction={'MC'}
+        selectedZone={'MC'}
         onZoneSelect={() => {}}
         isOverridden={false}
       />,
@@ -46,19 +49,19 @@ describe('HitZoneSelector', () => {
     expect(container.textContent).toContain('auto_awesome')
   })
 
-  it('calls onZoneSelect with the tapped zone number', () => {
+  it('calls onZoneSelect with the tapped Zone9 value', () => {
     const onSelect = vi.fn()
     render(
       <HitZoneSelector
-        cvPrediction={5}
-        selectedZone={5}
+        cvPrediction={'MC'}
+        selectedZone={'MC'}
         onZoneSelect={onSelect}
         isOverridden={false}
       />,
     )
     const btn7 = screen.getByRole('button', { name: /7/ })
     fireEvent.click(btn7)
-    expect(onSelect).toHaveBeenCalledWith(7)
+    expect(onSelect).toHaveBeenCalledWith('NL')
   })
 
   it('does not call onZoneSelect when disabled', () => {
@@ -81,7 +84,7 @@ describe('HitZoneSelector', () => {
     render(
       <HitZoneSelector
         cvPrediction={null}
-        selectedZone={6}
+        selectedZone={'MR'}  // 6 番目のタイル (中段右)
         onZoneSelect={() => {}}
         isOverridden
       />,

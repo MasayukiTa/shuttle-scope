@@ -112,10 +112,14 @@ const NET_KEY: Record<string, ZoneNet> = {
 // トップ行 1-9 → hit_zone (打点) override
 // HitZoneSelector の 3x3 配置 (上段=左奥/中奥/右奥, 中段=左中/中中/右中, 下段=左前/中前/右前) に対応
 // e.code === 'Digit1'..'Digit9' のときのみ反応 (Numpad は land_zone 用に温存)
-const DIGIT_HIT_ZONE: Record<string, number> = {
-  Digit1: 1, Digit2: 2, Digit3: 3,
-  Digit4: 4, Digit5: 5, Digit6: 6,
-  Digit7: 7, Digit8: 8, Digit9: 9,
+// 旧実装は数値 1..9 を持ち、呼び出し側で `as unknown as Zone9` と
+// キャストしていた。HitZoneSelector も同じ数値を渡しており、その値が
+// backend の `hit_zone: Optional[str]` に弾かれて保存が 422 で失敗していた。
+// 数字はキーボード上の位置であって、記録する値ではない。Zone9 を直接持つ。
+const DIGIT_HIT_ZONE: Record<string, Zone9> = {
+  Digit1: 'BL', Digit2: 'BC', Digit3: 'BR',
+  Digit4: 'ML', Digit5: 'MC', Digit6: 'MR',
+  Digit7: 'NL', Digit8: 'NC', Digit9: 'NR',
 }
 
 /** フォーカスが入力系要素内にあるか確認 */
@@ -297,7 +301,7 @@ export function useKeyboard({
         // singles では Shift 不要 (Digit1..Digit9 が直接 hit_zone)。
         if (e.shiftKey && store.isDoubles && e.code in DIGIT_HIT_ZONE) {
           e.preventDefault()
-          store.setHitZoneOverride(DIGIT_HIT_ZONE[e.code] as unknown as Zone9)
+          store.setHitZoneOverride(DIGIT_HIT_ZONE[e.code])
           return
         }
 
@@ -314,9 +318,7 @@ export function useKeyboard({
         // Numpad は land_zone 用なので干渉しない
         if (e.code in DIGIT_HIT_ZONE) {
           e.preventDefault()
-          // pendingStroke.hit_zone は Zone9 string 型だが既存実装で number もサポート
-          // (HitZoneSelector が `[1..9]` で setHitZoneOverride を呼ぶため)
-          store.setHitZoneOverride(DIGIT_HIT_ZONE[e.code] as unknown as Zone9)
+          store.setHitZoneOverride(DIGIT_HIT_ZONE[e.code])
           return
         }
 

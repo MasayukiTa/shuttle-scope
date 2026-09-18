@@ -33,7 +33,17 @@ interface HitZoneSelectorProps {
   cellSize?: number
 }
 
-const ZONES: Zone9[] = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+// 3x3 の並び順。`useKeyboard.ts` の定義と同じ対応:
+//   上段 = 左奥/中奥/右奥、中段 = 左中/中中/右中、下段 = 左前/中前/右前
+// (NUMPAD_ZONE も Numpad7/8/9 = BL/BC/BR で上段が奥になっている)
+//
+// 旧実装は `const ZONES: Zone9[] = [1, 2, ..., 9]` と**数値**を Zone9
+// (文字列 union) として扱っていた。tsc は 9 件のエラーを出していたが、
+// 型検査自体が `psl` の 1 件で止まっていたため誰も見ていなかった。
+// その数値がそのまま `pendingStroke.hit_zone` に入り、backend の
+// `hit_zone: Optional[str]` に弾かれて **`/strokes/batch` が 422 で
+// 丸ごと失敗**していた (打点を手で直したラリーが保存されない)。
+const ZONES: Zone9[] = ['BL', 'BC', 'BR', 'ML', 'MC', 'MR', 'NL', 'NC', 'NR']
 
 export function HitZoneSelector({
   cvPrediction,
@@ -65,7 +75,7 @@ export function HitZoneSelector({
         role="grid"
         aria-label={t('annotator.hit_zone_aria')}
       >
-        {ZONES.map((zone) => {
+        {ZONES.map((zone, idx) => {
           const isCv = cvPrediction === zone
           const isSelected = selectedZone === zone
           const isManualPick = isSelected && isOverridden
@@ -79,7 +89,7 @@ export function HitZoneSelector({
               onClick={() => !disabled && onZoneSelect(zone)}
               disabled={disabled}
               aria-pressed={isSelected}
-              aria-label={t('annotator.hit_zone_cell', { zone })}
+              aria-label={t('annotator.hit_zone_cell', { zone: idx + 1 })}
               className={clsx(
                 'relative flex items-center justify-center rounded-ss-md font-mono ss-num text-base font-bold',
                 'transition-colors duration-100 select-none',
@@ -99,7 +109,8 @@ export function HitZoneSelector({
                 minHeight: Math.max(cellSize, 44),
               }}
             >
-              <span>{zone}</span>
+              {/* 表示はキーボードの数字。値は Zone9 文字列。 */}
+              <span>{idx + 1}</span>
               {isCv && (
                 <MIcon name="auto_awesome"
                   size={10}
