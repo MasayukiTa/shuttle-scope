@@ -227,6 +227,18 @@ export function useServerSideRecording(
         // 5xx / network のみ retry 対象。
         if (res.status >= 500 && res.status < 600) {
           enqueuePending(chunkIndex, blob)
+        } else {
+          // 4xx は再送しても解消しない。**だがこの枝はエラーを一切
+          // 表示せずに return していた。**
+          // 逐次モードのサーバは `chunk_index != received_count` を 409 で
+          // 返すので、1 個失敗した時点で以後すべて 409 になる。つまり
+          // 通信の一瞬の揺らぎで録画が途切れ、**画面は「録画中」のまま、
+          // 操作者は録れていると信じ続ける**。
+          // 直せない失敗こそ、黙って捨ててはいけない。
+          setErrorMsg(
+            `アップロードが拒否されました (HTTP ${res.status})。` +
+              'この時点以降の録画は保存されていません。',
+          )
         }
         return false
       }
@@ -309,7 +321,13 @@ export function useServerSideRecording(
           filename: `sender_record_${Date.now()}.${mimeType.includes('mp4') ? 'mp4' : 'webm'}`,
           mime_type: mimeType,
           // streaming=true: 事前にサイズが分からない MediaRecorder 経路。
-          // total_size は上限 (5GB) として渡し、実サイズは finalize 時に確定する。
+          // total_size は上限の申告であって予約ではない。実サイズは finalize
+          // 時に確定する。
+          // コメントは 5GB と書いてあったが実際の値は 50GB で、**食い違って
+          // いた**。サーバ側はこれを `*2` して空き容量を要求していたため、
+          // 空き 100GB 未満の機械では録画がそもそも始まらなかった
+          // (サーバ側は streaming なら下限だけを見るよう修正済み)。
+          // 値はサーバの MAX_UPLOAD_SIZE (50GB) に合わせて据え置く。
           streaming: true,
           total_size: 50_000_000_000,
           chunk_size: 8_388_608,   // 8MB
