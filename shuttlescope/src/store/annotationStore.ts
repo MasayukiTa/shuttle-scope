@@ -12,7 +12,7 @@ export interface PendingStroke {
   /** Phase A: CV 自動推定値 (人間 override 前のオリジナル) */
   hit_zone_cv?: Zone9 | null
   /** Phase A: 'cv' = CV 値そのまま / 'manual' = 人間 override */
-  hit_zone_source?: 'cv' | 'manual'
+  hit_zone_source?: 'cv' | 'manual' | 'carried_over'
   land_zone?: LandZone
   is_backhand: boolean
   is_around_head: boolean
@@ -288,7 +288,11 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
         // Phase A: CV preselect 値を pendingStroke に格納
         hit_zone_cv: cvHitZone,
         hit_zone: cvHitZone ?? s.pendingStroke.hit_zone,
-        hit_zone_source: 'cv',
+        // ここで入れているのは **直前の打球の着地点** = 人間が入力した値で、
+        // CV の出力ではない。'cv' と記録していたため、CV を一度も走らせて
+        // いない試合でも 2 打目以降が全部「機械が決めた値」として残っていた。
+        // 由来を正しく書く。
+        hit_zone_source: 'carried_over',
       },
       inputStep: 'land_zone',
     }))
@@ -311,12 +315,14 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
 
     // Phase A: hit_zone_source の決定。
     // pendingStroke.hit_zone_source が既に 'manual' なら override 済として保持。
-    // それ以外（CV値そのまま or autoHitZone 由来）は 'cv' 扱い。
+    // それ以外は直前の着地点から引き継いだ値なので 'carried_over'。
+    // (CV の出力ではない。'cv' と書くと、CV を走らせていない試合でも
+    //  機械由来のデータとして残ってしまう。)
     const finalHitZone = state.pendingStroke.hit_zone_source === 'manual'
       ? state.pendingStroke.hit_zone
       : autoHitZone
-    const hitZoneSource: 'cv' | 'manual' =
-      state.pendingStroke.hit_zone_source === 'manual' ? 'manual' : 'cv'
+    const hitZoneSource: 'manual' | 'carried_over' =
+      state.pendingStroke.hit_zone_source === 'manual' ? 'manual' : 'carried_over'
     const cvOriginal = state.pendingStroke.hit_zone_cv ?? autoHitZone ?? null
 
     const stroke: StrokeInput = {
@@ -377,8 +383,8 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
     const finalHitZone = state.pendingStroke.hit_zone_source === 'manual'
       ? (state.pendingStroke.hit_zone as Zone9 | undefined)
       : (autoHitZone as Zone9 | undefined)
-    const hitZoneSource: 'cv' | 'manual' =
-      state.pendingStroke.hit_zone_source === 'manual' ? 'manual' : 'cv'
+    const hitZoneSource: 'manual' | 'carried_over' =
+      state.pendingStroke.hit_zone_source === 'manual' ? 'manual' : 'carried_over'
     const cvOriginal = state.pendingStroke.hit_zone_cv ?? (autoHitZone as Zone9 | undefined) ?? null
 
     const stroke: StrokeInput = {
@@ -423,8 +429,10 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
   // CV 値と一致するなら source='cv'、違うなら 'manual'
   setHitZoneOverride: (zone) =>
     set((s) => {
-      const cv = s.pendingStroke.hit_zone_cv ?? null
-      const source: 'cv' | 'manual' = (cv != null && zone === cv) ? 'cv' : 'manual'
+      // 旧実装は、押した値が先読み値と同じなら 'cv' に落としていた。
+      // **人が押したという事実は、押した結果が何であっても変わらない。**
+      // 一致したときだけ人間の確認が記録から消えるのは、来歴として誤り。
+      const source: 'manual' = 'manual'
       return {
         pendingStroke: {
           ...s.pendingStroke,
