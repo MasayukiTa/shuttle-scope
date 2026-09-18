@@ -29,6 +29,11 @@ echo [primary] Python: %PYTHON%
 if not defined SS_CLUSTER_MODE   set SS_CLUSTER_MODE=primary
 if not defined SS_RAY_PORT       set SS_RAY_PORT=6379
 if not defined SS_RAY_DASHBOARD  set SS_RAY_DASHBOARD=8265
+:: Ray dashboard also serves the Jobs API, and Ray has no authentication,
+:: so anything that can reach it can run code. 0.0.0.0 exposed it on every
+:: interface including the home LAN. Default to loopback; set this variable
+:: deliberately if the dashboard must be reachable from another machine.
+if not defined SS_RAY_DASHBOARD_HOST set SS_RAY_DASHBOARD_HOST=127.0.0.1
 if not defined SS_RAY_CPUS       set SS_RAY_CPUS=8
 if not defined SS_RAY_GPUS       set SS_RAY_GPUS=1
 if not defined API_PORT          set API_PORT=8765
@@ -76,7 +81,7 @@ if errorlevel 1 (
     timeout /t 2 /nobreak >nul
     ray start --head ^
         --port=%SS_RAY_PORT% ^
-        --dashboard-host=0.0.0.0 ^
+        --dashboard-host=%SS_RAY_DASHBOARD_HOST% ^
         --dashboard-port=%SS_RAY_DASHBOARD% ^
         --num-cpus=%SS_RAY_CPUS% ^
         --num-gpus=%SS_RAY_GPUS% ^

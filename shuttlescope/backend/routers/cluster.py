@@ -465,11 +465,18 @@ def start_ray_head(body: StartHeadRequest, request: Request) -> Dict[str, Any]:
                     sorted(expected_worker_ips - alive_workers))
 
     # ray start --head
+    # dashboard は Ray Jobs API を持つ = 届けばコード実行。`0.0.0.0` は
+    # **全インタフェース**に出すので、クラスタが載っているリンクローカル
+    # (169.254.x) だけでなく自宅 LAN (192.168.1.x) からも届いていた。
+    # Ray 自体に認証が無いため、届くことがそのまま実行権になる。
+    # クラスタが実際に載っているアドレスに寄せる。
+    # (別マシンのブラウザから見たい場合は、そのアドレス宛に届く経路を
+    #  用意する側で決めること。既定で全部に出す理由は無い。)
     cmd = [
         ray_cmd, "start", "--head",
         f"--node-ip-address={safe_ip}",
         f"--port={safe_port}",
-        "--dashboard-host=0.0.0.0",
+        f"--dashboard-host={safe_ip}",
     ]
     if safe_cpus is not None:
         cmd.append(f"--num-cpus={safe_cpus}")
