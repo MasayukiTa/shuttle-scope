@@ -75,11 +75,17 @@ function detectPlatform(): string {
 
 function uuid(): string {
   try {
-    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-      return (crypto as Crypto & { randomUUID: () => string }).randomUUID()
+    // lib.dom では randomUUID が必須プロパティなので `in` で絞ると
+    // else 側が never に落ち、フォールバックが型上だけ消える。
+    // 実際には randomUUID は secure context 限定で、LAN の http:// では
+    // undefined になる — このアプリが一番使う経路なので消してはいけない。
+    const c: Crypto | undefined = typeof crypto !== 'undefined' ? crypto : undefined
+    if (!c) throw new Error('no crypto')
+    if (typeof c.randomUUID === 'function') {
+      return c.randomUUID()
     }
     const buf = new Uint8Array(16)
-    crypto.getRandomValues(buf)
+    c.getRandomValues(buf)
     buf[6] = (buf[6] & 0x0f) | 0x40
     buf[8] = (buf[8] & 0x3f) | 0x80
     const hex = Array.from(buf).map(b => b.toString(16).padStart(2, '0')).join('')
@@ -267,7 +273,7 @@ export function trackAnalysisInteraction(viewId: string, action: string, target?
 export function trackConditionInput(questionId: string, elapsedMs: number, valueChangedCount = 1): void {
   track('condition_input', { question_id: questionId, elapsed_ms: elapsedMs, value_changed_count: valueChangedCount })
 }
-export function trackTutorialStep(tutorialId: string, stepNo: number, action: 'viewed' | 'completed' | 'skipped' | 'replayed'): void {
+export function trackTutorialStep(tutorialId: string, stepNo: number, action: 'viewed' | 'completed' | 'skipped' | 'replayed' | 'aborted'): void {
   track('tutorial_step', { tutorial_id: tutorialId, step_no: stepNo, action })
 }
 export function trackError(where: string, errorKind: string, props: Record<string, unknown> = {}): void {

@@ -21,6 +21,7 @@ import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { WIN, LOSS, BAR, perfColor, getTooltipStyle, AXIS_TICK, AXIS_TICK_LIGHT } from '@/styles/colors'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+import type { AnalysisMeta } from '@/types'
 
 interface MatchItem {
   match_id: number
@@ -53,7 +54,7 @@ function PartnerComparison({ playerId }: { playerId: number }) {
   const { data: resp, isLoading } = useQuery({
     queryKey: ['analysis-partner-comparison', playerId],
     queryFn: () =>
-      apiGet<{ success: boolean; data: { partners: PartnerItem[] }; meta: Record<string, unknown> }>(
+      apiGet<{ success: boolean; data: { partners: PartnerItem[] }; meta: AnalysisMeta }>(
         '/analysis/partner_comparison',
         { player_id: playerId }
       ),
@@ -121,7 +122,7 @@ function ServeReceiveStats({ playerId }: { playerId: number }) {
   const { data: resp, isLoading } = useQuery({
     queryKey: ['analysis-doubles-serve-receive', playerId],
     queryFn: () =>
-      apiGet<{ success: boolean; data: ServeReceiveData; meta: Record<string, unknown> }>(
+      apiGet<{ success: boolean; data: ServeReceiveData; meta: AnalysisMeta }>(
         '/analysis/doubles_serve_receive',
         { player_id: playerId }
       ),
@@ -226,7 +227,7 @@ function StrokeSharing({ playerId }: { playerId: number }) {
   const { data: resp, isLoading } = useQuery({
     queryKey: ['analysis-stroke-sharing', playerId],
     queryFn: () =>
-      apiGet<{ success: boolean; data: StrokeSharingData; meta: Record<string, unknown> }>(
+      apiGet<{ success: boolean; data: StrokeSharingData; meta: AnalysisMeta }>(
         '/analysis/stroke_sharing',
         { player_id: playerId }
       ),
@@ -309,7 +310,7 @@ function CourtCoverage({ matchId }: { matchId: number }) {
   const { data: resp, isLoading } = useQuery({
     queryKey: ['analysis-court-coverage-split', matchId],
     queryFn: () =>
-      apiGet<{ success: boolean; data: CoverageData; meta: Record<string, unknown> }>(
+      apiGet<{ success: boolean; data: CoverageData; meta: AnalysisMeta }>(
         '/analysis/court_coverage_split',
         { match_id: matchId }
       ),

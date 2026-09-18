@@ -21,6 +21,26 @@ export const DEFAULT_FILTERS: AnalysisFilters = {
 // (例: testtest) は login 直後に /#/login へ戻されていた。
 export type UserRole = 'admin' | 'analyst' | 'coach' | 'player' | 'demo' | 'llm'
 
+/**
+ * 解析レスポンスの meta。backend/utils/confidence.py check_confidence() と
+ * 各 analysis_* ルータが返す形に対応する。
+ *
+ * `Record<string, unknown>` で受けると sample_size が unknown になり、
+ * ConfidenceBadge / NoDataMessage に number として渡せない。
+ * 標本数と不確実性の提示は非交渉ルールなので、型で固定しておく。
+ */
+export interface AnalysisConfidence {
+  level: 'insufficient' | 'low' | 'medium' | 'high'
+  stars: string
+  label: string
+  warning: string | null
+}
+
+export interface AnalysisMeta {
+  sample_size: number
+  confidence?: AnalysisConfidence
+}
+
 export type DominantHand = 'R' | 'L' | 'unknown'
 
 export type ProfileStatus = 'provisional' | 'partial' | 'verified'

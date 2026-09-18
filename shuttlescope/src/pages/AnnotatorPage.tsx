@@ -48,6 +48,7 @@ import { useSettings } from '@/hooks/useSettings'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useCVJobs } from '@/hooks/annotator/useCVJobs'
+import type { RawDetection } from '@/components/annotation/PlayerTrackingOverlay'
 import { useSessionSharing } from '@/hooks/annotator/useSessionSharing'
 import { useCVCandidates } from '@/hooks/annotator/useCVCandidates'
 import { AnnotatorVideoPane } from '@/components/annotator/AnnotatorVideoPane'
@@ -380,7 +381,9 @@ export function AnnotatorPage() {
   interface SamplerEntry {
     ts: number
     assignments: Record<number, string>
-    detections: unknown[]  // 確定時に bbox/hist を取り出せるよう保持
+    // 確定時に bbox/hist を取り出せるよう保持。unknown[] だと取り出し側が
+    // 型を失い、bbox/hist が渡らないまま追跡シードを作ってしまう。
+    detections: RawDetection[]
     skipped: boolean
   }
   const [samplerSamples, setSamplerSamples] = useState<SamplerEntry[]>([])
@@ -604,7 +607,7 @@ export function AnnotatorPage() {
       })
       // Phase A: オフライン耐性 — 送信前に IndexedDB へ stash、成功時に削除
       void stashPending({
-        matchId: matchId!,
+        matchId: Number(matchId),
         setId,
         rallyNum,
         payload: batchPayload,
@@ -622,7 +625,7 @@ export function AnnotatorPage() {
           setReviewLaterAdded(false)
         }
         // Phase A: 送信成功 → stash 削除
-        void removePending(matchId!, setId, rallyNum)
+        void removePending(Number(matchId), setId, rallyNum)
       }).catch((err: unknown) => {
         useAnnotationStore.getState().decrementPending()
         useAnnotationStore.getState().addSaveError({
@@ -3035,7 +3038,6 @@ export function AnnotatorPage() {
                 type="file"
                 accept="video/*"
                 // iOS Safari: capture 属性で直接カメラ起動を優先 (value 属性は書き込み不要)
-                // @ts-expect-error capture attribute not in React input typings
                 capture="environment"
                 style={{ display: 'none' }}
                 onChange={(e) => {

@@ -1040,6 +1040,9 @@ function Pass3RallyPicker({
     queryKey: ['mobile-annot-strokes', selected?.id],
     queryFn: () => apiGet<{ data: Array<{
       id?: number
+      // backend/routers/strokes.py:113 が返している。宣言から漏れていたため
+      // 下の serverStrokes.rally_id が常に undefined になっていた。
+      rally_id: number
       stroke_num: number
       player: 'player_a' | 'player_b'
       shot_type: string

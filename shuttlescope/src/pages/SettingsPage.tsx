@@ -2321,7 +2321,7 @@ export function SettingsPage() {
                       </div>
                       {(importPreview.data?.merge_preview?.conflicts ?? 0) > 0 && (
                         <p className="text-xs text-[var(--ss-warn)]">
-                          {t('auto.SettingsPage.conflict_warning', { n: importPreview.data.merge_preview.conflicts })}
+                          {t('auto.SettingsPage.conflict_warning', { n: importPreview.data?.merge_preview?.conflicts ?? 0 })}
                         </p>
                       )}
                       {!importResult && (
