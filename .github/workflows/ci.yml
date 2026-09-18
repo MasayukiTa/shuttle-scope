@@ -72,6 +72,13 @@ jobs:
         if: ${{ hashFiles('shuttlescope/eslint.config.*', 'shuttlescope/.eslintrc*') != '' }}
         run: npm run lint
 
+      - name: Typecheck
+        # 2026-09-18: これまで tsc は CI でも check:all でも一度も走っていなかった。
+        # vite の build は型を見ないので、型エラーは全部素通りしていた。
+        # 導入時点で 158 件あり、その中に「ラリーを丸ごと捨てる」実行時欠陥
+        # (offline stash の matchId 型不一致) が埋まっていた。0 件で維持する。
+        run: npm run typecheck
+
       - name: Build desktop app
         run: npm run build
 

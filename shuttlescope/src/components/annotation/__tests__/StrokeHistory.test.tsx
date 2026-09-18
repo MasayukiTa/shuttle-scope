@@ -17,10 +17,10 @@ const baseStroke: StrokeInput = {
   stroke_num: 1,
   player: 'player_a',
   shot_type: 'short_service',
-  hit_zone: 5,
+  hit_zone: 'MC',
   hit_zone_source: 'cv',
-  hit_zone_cv_original: 5,
-  land_zone: '7',
+  hit_zone_cv_original: 'MC',
+  land_zone: 'NL',
   is_backhand: false,
   is_around_head: false,
   above_net: undefined,
@@ -31,9 +31,9 @@ describe('StrokeHistory hit_zone override badge', () => {
   it('CV と一致する打点ではバッジを表示しない', () => {
     const stroke: StrokeInput = {
       ...baseStroke,
-      hit_zone: 5,
+      hit_zone: 'MC',
       hit_zone_source: 'cv',
-      hit_zone_cv_original: 5,
+      hit_zone_cv_original: 'MC',
     }
     render(<StrokeHistory strokes={[stroke]} />)
     expect(screen.queryByText('手動打点')).toBeNull()
@@ -42,9 +42,9 @@ describe('StrokeHistory hit_zone override badge', () => {
   it('hit_zone_source = "manual" + CV 元値と現在値が違うときバッジを表示する', () => {
     const stroke: StrokeInput = {
       ...baseStroke,
-      hit_zone: 9,
+      hit_zone: 'NR',
       hit_zone_source: 'manual',
-      hit_zone_cv_original: 5,
+      hit_zone_cv_original: 'MC',
     }
     render(<StrokeHistory strokes={[stroke]} />)
     expect(screen.getByText('手動打点')).toBeTruthy()
@@ -55,9 +55,9 @@ describe('StrokeHistory hit_zone override badge', () => {
     // override されていない (値が変わっていない) なら強調しない。
     const stroke: StrokeInput = {
       ...baseStroke,
-      hit_zone: 5,
+      hit_zone: 'MC',
       hit_zone_source: 'manual',
-      hit_zone_cv_original: 5,
+      hit_zone_cv_original: 'MC',
     }
     render(<StrokeHistory strokes={[stroke]} />)
     expect(screen.queryByText('手動打点')).toBeNull()
@@ -67,7 +67,7 @@ describe('StrokeHistory hit_zone override badge', () => {
     // CV 推定が走らなかったストローク。手動入力扱いだが「override」ではない。
     const stroke: StrokeInput = {
       ...baseStroke,
-      hit_zone: 9,
+      hit_zone: 'NR',
       hit_zone_source: 'manual',
       hit_zone_cv_original: null,
     }
@@ -79,23 +79,23 @@ describe('StrokeHistory hit_zone override badge', () => {
     const cv: StrokeInput = {
       ...baseStroke,
       stroke_num: 1,
-      hit_zone: 5,
+      hit_zone: 'MC',
       hit_zone_source: 'cv',
-      hit_zone_cv_original: 5,
+      hit_zone_cv_original: 'MC',
     }
     const overridden: StrokeInput = {
       ...baseStroke,
       stroke_num: 2,
-      hit_zone: 8,
+      hit_zone: 'NC',
       hit_zone_source: 'manual',
-      hit_zone_cv_original: 3,
+      hit_zone_cv_original: 'BR',
     }
     const cv2: StrokeInput = {
       ...baseStroke,
       stroke_num: 3,
-      hit_zone: 4,
+      hit_zone: 'ML',
       hit_zone_source: 'cv',
-      hit_zone_cv_original: 4,
+      hit_zone_cv_original: 'ML',
     }
     render(<StrokeHistory strokes={[cv, overridden, cv2]} />)
     const badges = screen.getAllByText('手動打点')
@@ -105,14 +105,14 @@ describe('StrokeHistory hit_zone override badge', () => {
   it('tooltip に CV 値と選択値が表示される', () => {
     const stroke: StrokeInput = {
       ...baseStroke,
-      hit_zone: 7,
+      hit_zone: 'NL',
       hit_zone_source: 'manual',
-      hit_zone_cv_original: 2,
+      hit_zone_cv_original: 'BC',
     }
     render(<StrokeHistory strokes={[stroke]} />)
     const badge = screen.getByText('手動打点')
     const tooltip = badge.getAttribute('title') ?? ''
-    expect(tooltip).toContain('2')
-    expect(tooltip).toContain('7')
+    expect(tooltip).toContain('BC')
+    expect(tooltip).toContain('NL')
   })
 })
