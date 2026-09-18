@@ -12,6 +12,23 @@ import pytest
 from fastapi.testclient import TestClient
 from backend.utils.jwt_utils import create_access_token
 
+@pytest.fixture(autouse=True)
+def _seed_admin_user(db_session):
+    """このファイルの admin トークンは `user_id=1` を名指ししている。
+    対応する実ユーザを用意する。
+
+    `require_admin` は DB 上の user を引いて role / locked_until /
+    承認待ち / totp_enabled を確認するので、ユーザが居ないと
+    「削除済み admin」と同じ扱いになり 403 になる。
+    """
+    from backend.db.models import User
+
+    if db_session.get(User, 1) is None:
+        db_session.add(User(id=1, username="seeded_admin", role="admin", totp_enabled=True))
+        db_session.commit()
+    yield
+
+
 # Module-level constant replaced by lazy fixture (CI 403 fix)
 @pytest.fixture()
 def admin_headers():

@@ -9,6 +9,7 @@
   X-Player-Id が実際にそのリソースに関連付けられているかを DB で検証する。
   これにより「ロールは正直に選ぶが ID を書き換えて覗こうとする」攻撃を防ぐ。
 """
+from datetime import datetime
 from enum import Enum
 from typing import Optional
 
@@ -533,11 +534,29 @@ def require_admin(request: Request, db: Session = Depends(get_db)) -> "AuthCtx":
     ctx = get_auth(request)
     if not ctx.is_admin:
         raise HTTPException(status_code=403, detail="admin role required")
-    if getattr(settings, "ss_require_admin_mfa", True):
-        if not ctx.user_id:
-            raise HTTPException(status_code=403, detail="admin role required")
+    # S-11: DB の現在状態を必ず見る。
+    # 旧実装は MFA ゲートが有効なときだけ DB を引いていたので、
+    # `ss_require_admin_mfa=0` にすると **token の主張だけで admin** になった。
+    # また MFA ゲートが有効でも見ていたのは totp_enabled だけで、
+    # **降格・ロック・承認待ちは素通り**していた。access token の寿命 (15 分)
+    # のあいだ、admin を外した相手が admin のままでいられる。
+    #
+    # user_id を持たないのは X-Role 互換経路だけで、そちらは
+    # `allow_legacy_header_auth` が loopback + operator token で塞いでいる。
+    # 照合する相手が存在しないので、その経路はここでは触らない。
+    if ctx.user_id:
         user = db.get(User, ctx.user_id)
-        if not user or not getattr(user, "totp_enabled", False):
+        if not user:
+            raise HTTPException(status_code=403, detail="admin role required")
+        if (getattr(user, "role", None) or "") != UserRole.ADMIN.value:
+            # DB 上でもう admin ではない (降格済み)
+            raise HTTPException(status_code=403, detail="admin role required")
+        locked_until = getattr(user, "locked_until", None)
+        if locked_until and locked_until > datetime.utcnow():
+            raise HTTPException(status_code=403, detail="admin role required")
+        if getattr(user, "awaiting_admin_approval", False):
+            raise HTTPException(status_code=403, detail="admin role required")
+        if getattr(settings, "ss_require_admin_mfa", True) and not getattr(user, "totp_enabled", False):
             raise HTTPException(
                 status_code=403,
                 detail=(
@@ -545,6 +564,9 @@ def require_admin(request: Request, db: Session = Depends(get_db)) -> "AuthCtx":
                     "/api/auth/mfa/setup → /api/auth/mfa/confirm で設定してください。"
                 ),
             )
+    elif getattr(settings, "ss_require_admin_mfa", True):
+        # JWT 経路で user_id が取れないのは異常。MFA 必須設定なら拒否側へ。
+        raise HTTPException(status_code=403, detail="admin role required")
     return ctx
 
 
