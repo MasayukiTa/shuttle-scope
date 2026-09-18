@@ -1026,12 +1026,21 @@ def get_insights(
     return {"success": True, "data": data}
 
 
-def _require_condition_access(request: Request, cond: Condition) -> None:
+def _require_condition_access(
+    request: Request, cond: Condition, resolved_role: Optional[str] = None
+) -> None:
     """BOLA/IDOR 対策:
     - player は自 player_id の condition のみ参照/編集可能
     - analyst/coach は自チーム選手の condition のみ参照/編集可能 (cross-team 漏洩防止)
     - admin は全件
     - 未認証 (role=None) は 401
+
+    `resolved_role` は `Depends(resolve_role)` が決めたロール。
+    ループバック互換経路 (X-Role ヘッダ / ?role=) では JWT が無く
+    `ctx.role` が None になるので、**この関数だけが役割を知らない**状態になる。
+    旧実装はその場合に関数末尾へ落ちて暗黙に許可していたため、
+    既定を拒否にしたところで互換経路が全部 403 になった。
+    役割の出所を 1 つに揃える。
     """
     from backend.utils.auth import get_auth
     ctx = get_auth(request)
@@ -1039,6 +1048,16 @@ def _require_condition_access(request: Request, cond: Condition) -> None:
         from backend.utils.control_plane import allow_legacy_header_auth
         if not allow_legacy_header_auth(request):
             raise HTTPException(status_code=401, detail="認証が必要です")
+        # 互換経路。ルータが解決したロールで判定する。
+        if resolved_role == "admin":
+            return
+        if resolved_role == "player":
+            # 本人確認の材料 (ctx.player_id) がこの経路には無い。
+            # 旧挙動を保つが、本人限定にはできないことを明示しておく。
+            return
+        if resolved_role in ("analyst", "coach"):
+            return
+        raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
     if ctx.is_admin:
         return
     if ctx.is_player:
@@ -1077,7 +1096,7 @@ def get_condition(
     cond = db.get(Condition, condition_id)
     if not cond:
         raise HTTPException(status_code=404, detail="コンディション記録が見つかりません")
-    _require_condition_access(request, cond)
+    _require_condition_access(request, cond, role)
     return {"success": True, "data": _serialize(cond, role, db)}
 
 
