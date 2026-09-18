@@ -1054,7 +1054,7 @@ export function AnnotatorPage() {
             if (restoredPending?.shot_type) {
               useAnnotationStore.setState((_s) => ({
                 pendingStroke: restoredPending as unknown as typeof _s.pendingStroke,
-                inputStep: (saved.inputStep as typeof s.inputStep) ?? 'idle',
+                inputStep: (saved.inputStep as typeof _s.inputStep) ?? 'idle',
               }))
             }
             // 前回の動画再生位置に復元
