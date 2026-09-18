@@ -535,9 +535,17 @@ def create_player(
     )
     touch(player)
     db.add(player)
+    # `db.commit()` は属性を expire するので、その後の `player.id` は
+    # **DB への再 SELECT** になる。行が既に無ければ
+    # 「Instance has been deleted」で 500 になり、実際 CI で観測した
+    # (xdist の別ワーカーがテーブルを truncate した瞬間に踏んだ)。
+    # flush で採番だけ済ませ、id を値として確保してから commit する。
+    # sibling の 752 / 786 行は元から local 変数を使っていて、ここだけ違った。
+    db.flush()
+    new_player_id = player.id
     db.commit()
     # 新規選手の登録はチーム可視範囲に影響し得るためグローバル無効化も実施
-    response_cache.bump_players([player.id])
+    response_cache.bump_players([new_player_id])
     response_cache.bump_version()
     db.refresh(player)
     return {"success": True, "data": player_to_dict(player)}
