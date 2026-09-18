@@ -5,7 +5,7 @@ import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { RoleGuard } from '@/components/common/RoleGuard'
-import { perfColor, _BAR, _AXIS_TICK } from '@/styles/colors'
+import { perfColor } from '@/styles/colors'
 import { useTranslation } from 'react-i18next'
 
 interface OpponentAdaptiveShotsProps {

@@ -21,7 +21,6 @@ import { PrematchStatCard } from '@/components/analysis/PrematchStatCard'
 import { useAuth } from '@/hooks/useAuth'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
-import { _RoleGuard } from '@/components/common/RoleGuard'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { MIcon } from '@/components/common/MIcon'
 
