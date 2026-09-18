@@ -189,6 +189,11 @@ class TestGlobalAuthExemptRegex:
         "/api/_internal/billing/legal_info_",
         "/api/csp_reportXYZ",
         "/api/_internal/videos",      # trailing / 必須
+        # S-12: このプレフィクス配下は列挙になったので、存在しないパスや
+        # 将来足したルートが自動的に免除されることはもう無い。
+        "/api/_internal/videos/abc.mp4",
+        "/api/_internal/videos/server_artifacts/42/delete",
+        "/api/_internal/videos/server_artifacts/abc/stream",
         # admin 専用の問い合わせ管理。旧 `public(?:` 前方一致はこれらを
         # 巻き込んで免除しており、middleware の承認待ち検査・mfa_pending 拒否・
         # role ホワイトリストを全部飛ばしていた。守っていたのは
@@ -225,7 +230,11 @@ class TestGlobalAuthExemptRegex:
         "/api/_internal/billing/webhooks/stripe",
         "/api/_internal/billing/webhooks/komoju",
         "/api/_internal/billing/legal_info",
-        "/api/_internal/videos/abc.mp4",
+        # S-12: 前方一致をやめて実在の 3 ルートの列挙にした。
+        # いずれも internal_videos.py で _require_worker (X-Worker-Token) を通る。
+        "/api/_internal/videos/server_artifacts",
+        "/api/_internal/videos/server_artifacts/42/stream",
+        "/api/_internal/videos/server_artifacts/42/mark_synced",
     ])
     def test_legitimate_public_paths_exempt(self, path: str):
         from backend.main import _GLOBAL_AUTH_EXEMPT

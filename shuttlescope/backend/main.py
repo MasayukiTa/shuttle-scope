@@ -1972,8 +1972,15 @@ _GLOBAL_AUTH_EXEMPT = _re_acl.compile(
     r"|_internal/billing/webhooks/(?:stripe|komoju|univapay)(?:\?.*)?$"
     # Phase Pay-1: 法的情報 (exact match)
     r"|_internal/billing/legal_info(?:\?.*)?$"
-    # R-3: Worker 共有 API は X-Worker-Token で独自認証、JWT 不要
-    r"|_internal/videos/[^?]*(?:\?.*)?$"
+    # R-3: Worker 共有 API は X-Worker-Token で独自認証 (HMAC, timing-safe)、JWT 不要。
+    # S-12: 旧 `_internal/videos/[^?]*` は前方一致で、**このプレフィクス配下に
+    # 将来足したルートが自動的に免除される**。`public` と同じ形の穴なので、
+    # 同じく実在する 3 ルートの列挙にする。ここに足すときは、対象ハンドラが
+    # `_require_worker` を呼んでいることを必ず確認すること
+    # (backend/routers/internal_videos.py)。
+    r"|_internal/videos/server_artifacts(?:\?.*)?$"
+    r"|_internal/videos/server_artifacts/\d{1,12}/stream(?:\?.*)?$"
+    r"|_internal/videos/server_artifacts/\d{1,12}/mark_synced(?:\?.*)?$"
     r")"
 )
 # /api/auth/refresh: refresh_token 自体が credential なので Authorization 必須は
