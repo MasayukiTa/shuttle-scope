@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from backend.analysis.insights.player_summary_service import build_player_summary
@@ -60,9 +60,24 @@ def get_player_summary(
     if sections is not None:
         section_list = [s.strip() for s in sections.split(",") if s.strip()]
 
+    # このエンドポイントには認可が一切無く、`player_id` を変えるだけで
+    # **誰でも全選手**の識別情報・成績・ショット構成・ゾーン分布・体調データを
+    # 引けていた (教科書的な IDOR)。しかも `/api/insights/` は
+    # main.py のスコープ強制 middleware の prefix リストに入っていないので、
+    # 第二の防御線も無い。ここで閉じる。
+    from backend.utils.auth import can_access_player
+
+    if ctx.is_player:
+        # 選手は自分のサマリのみ。他選手の player_id を指定させない。
+        if not ctx.player_id or player_id != ctx.player_id:
+            raise HTTPException(status_code=404, detail="選手が見つかりません")
+    elif not can_access_player(ctx, player_id, db):
+        raise HTTPException(status_code=404, detail="選手が見つかりません")
+
     payload = build_player_summary(
         db, player_id, date_from, date_to, section_list
     )
-    if ctx.role == "player":
+    if ctx.role in ("player", "demo"):
+        # demo も実データを見せない対象。player と同じ伏せ方をする。
         payload = _redact_for_player(payload)
     return payload

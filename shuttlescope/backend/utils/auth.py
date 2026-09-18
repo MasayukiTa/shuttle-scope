@@ -57,8 +57,14 @@ PLAYER_SENSITIVE_KEYS = [
 
 
 def filter_by_role(data: dict, role: str) -> dict:
-    """ロールに応じてデータをフィルタリング"""
-    if role == UserRole.PLAYER:
+    """ロールに応じてデータをフィルタリング。
+
+    `demo` は「最小権限・実データ不可」と定義されているのに、旧実装では
+    `player` だけを伏せて **demo には epv / weakness_zones /
+    win_rate_vs_opponent といった analyst 相当のキーがそのまま出ていた**。
+    player 以上に制限されるべきロールなので、同じものを伏せる。
+    """
+    if role in (UserRole.PLAYER, "player", "demo"):
         return {k: v for k, v in data.items() if k not in PLAYER_SENSITIVE_KEYS}
     return data
 
@@ -268,6 +274,17 @@ def user_can_access_match(ctx: AuthCtx, m: Match) -> bool:
             return False
         return ctx.player_id in _match_player_ids(m)
     # coach / analyst（または未ロール扱いの内部呼び出し含む）
+    #
+    # 役割述語は完全一致なので、`llm` と `demo` はどの枝にも入らずここに落ちる。
+    # 下の `is_public` 分岐は無条件 True を返すため、**この 2 ロールが
+    # 公開プールの全試合を読めていた**。
+    # ただしこの枝は「未ロールの内部呼び出し」も意図的に受けているので
+    # (docstring 下のコメント)、一律 deny にすると内部経路が壊れる。
+    # ロールが明示されていて、かつ coach / analyst でないものだけを弾く。
+    _role = (ctx.role or "").strip()
+    if _role and _role not in ("coach", "analyst"):
+        return False
+
     owner_id = getattr(m, "owner_team_id", None)
     is_public = bool(getattr(m, "is_public_pool", False))
     if ctx.team_id is not None and owner_id is not None and owner_id == ctx.team_id:

@@ -1933,8 +1933,18 @@ _GLOBAL_AUTH_EXEMPT = _re_acl.compile(
     r"|health(?:\?.*)?$"
     # csp_report は exact match
     r"|csp_report(?:\?.*)?$"
-    # public は path の続き OK
-    r"|public(?:/[^?]*)?(?:\?.*)?$"
+    # public: 前方一致をやめて 4 ルートの列挙にする。
+    # 旧 `public(?:/[^?]*)?$` は唯一の前方一致エントリで、
+    # `/api/public/inquiries` 系 5 ルート (GET 一覧 / unread-count /
+    # PATCH / DELETE / bulk-delete。いずれも admin 専用) まで免除していた。
+    # 免除されると middleware の承認待ち検査・mfa_pending 拒否・role
+    # ホワイトリストを全部飛ばし、残る防御は public_site.py:322 の
+    # `ctx.is_admin` だけを見る弱い版 1 枚になる。
+    # 実際に未認証で到達してよいのはこの 4 つだけ。
+    r"|public/status/day(?:\?.*)?$"
+    r"|public/contact(?:\?.*)?$"
+    r"|public/ban_appeal(?:\?.*)?$"
+    r"|public/content_report(?:\?.*)?$"
     # R47: canary paths (intentionally exposed without auth so attackers reach
     # the canary handler which records + tarpits + escalates). Auth-protecting
     # these would fingerprint that something is here (= 401 means "exists").
