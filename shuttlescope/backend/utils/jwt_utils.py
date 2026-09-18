@@ -525,6 +525,35 @@ def _get_user_revoke_timestamp(user_id: int) -> Optional[int]:
         return fail_closed_horizon
 
 
+def revoke_all_sessions_or_500(user_id: int, context: str) -> None:
+    """refresh と access の両方を失効させ、失敗したら 500 にする。
+
+    「資格情報が変わったらセッションを全部切る」という手当ては、
+    change_password / 管理者リセット / パスワードリセットの 3 箇所で必要になる。
+    同じ 6 行が散らばると、今回のように **1 箇所だけ抜ける**。
+    (パスワードリセットだけ失効させておらず、乗っ取られた人が
+     パスワードを変えても攻撃者の refresh token が 7 日生き続けていた。)
+
+    ログをここに置いているのは副次的な効果もある: 呼び出し側は
+    パスワードを扱う関数なので、その本体で logger を呼ぶと静的解析が
+    「資格情報をログに出している」と読む (実際に出しているのは user_id と
+    例外だけ)。関心事をこちらに寄せると、その誤検知も起きない。
+
+    context はログに出す呼び出し元の識別子 ("password reset" 等)。
+    """
+    revoke_all_refresh_tokens_for_user(user_id)
+    try:
+        revoke_all_for_user(user_id)
+    except Exception as exc:
+        logger.error(
+            "revoke_all_for_user failed (%s) user_id=%s: %s", context, user_id, exc
+        )
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=500, detail="access token 失効処理に失敗しました"
+        )
+
+
 def revoke_all_for_user(user_id: int) -> None:
     """指定 user_id の access/refresh token を **iat ベースで** 全失効させる。
 
