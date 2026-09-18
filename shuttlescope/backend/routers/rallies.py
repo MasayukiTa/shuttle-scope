@@ -62,6 +62,10 @@ class RallyUpdate(BaseModel):
 def rally_to_dict(r: Rally) -> dict:
     return {
         "id": r.id,
+        # uuid を返していなかったため、クライアント側の重複排除キー
+        # (MobileAnnotatePage の client_uuid) が常に undefined になり、
+        # 二重登録ガードが死んでいた。
+        "uuid": r.uuid,
         "set_id": r.set_id,
         "rally_num": r.rally_num,
         "server": r.server,
@@ -153,6 +157,34 @@ def delete_rally(rally_id: int, request: Request, db: Session = Depends(get_db))
     db.commit()
     response_cache.bump_players(affected_players)
     return {"success": True, "data": {"id": rally_id}}
+
+
+@router.get("/rallies/match/{match_id}")
+def get_rallies_for_match(match_id: int, request: Request, db: Session = Depends(get_db)):
+    """試合のラリー一覧（再開用）。
+
+    モバイル注釈は「既に入っているラリー」を取れないと、リロードのたびに
+    スコアが 0-0 に戻り rally_num が 1 から重複する。これまでこの経路の
+    エンドポイントが存在せず (クライアントは無い `GET /rallies?match_id=`
+    を叩いて 405 を受けていた)、一覧は常に空だった。
+
+    scope は sibling の `GET /sets/match/{match_id}` と同じ考え方で、
+    match 単位で検証する。
+    """
+    match = db.get(Match, match_id)
+    if not match:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    from backend.utils.auth import require_match_scope
+    require_match_scope(request, match, db)
+
+    rallies = (
+        db.query(Rally)
+        .join(GameSet, Rally.set_id == GameSet.id)
+        .filter(GameSet.match_id == match_id)
+        .order_by(GameSet.set_num, Rally.rally_num)
+        .all()
+    )
+    return {"success": True, "data": [rally_to_dict(r) for r in rallies]}
 
 
 @router.get("/annotation/{match_id}/state")

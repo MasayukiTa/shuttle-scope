@@ -310,12 +310,12 @@ export function MobileAnnotatePage() {
   // セット一覧 + 既存ラリー取得 (Pass 1 用)
   const setsQuery = useQuery({
     queryKey: ['mobile-annot-sets', matchId],
-    queryFn: () => apiGet<{ data: SetRow[] }>(`/sets?match_id=${matchId}`),
+    queryFn: () => apiGet<{ data: SetRow[] }>(`/sets/match/${matchId}`),
     enabled: !!matchId,
   })
   const ralliesQuery = useQuery({
     queryKey: ['mobile-annot-rallies', matchId],
-    queryFn: () => apiGet<{ data: RallyRow[] }>(`/rallies?match_id=${matchId}`),
+    queryFn: () => apiGet<{ data: RallyRow[] }>(`/rallies/match/${matchId}`),
     enabled: !!matchId,
   })
   // PC AnnotatorPage と同じ resume データソース: /annotation/{id}/state は

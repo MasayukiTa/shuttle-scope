@@ -67,7 +67,9 @@ export function LiveInputPage() {
 
   const { data: setsData } = useQuery<{ data: Array<{ id: number; set_num: number }> }>({
     queryKey: ['live-sets', matchId],
-    queryFn: () => apiGet(`/sets?match_id=${matchId}`),
+    // A-3: `/sets?match_id=` は存在しないルート (実体は `/sets/match/{id}`)。
+    // 405 で latestSet が決まらず「読み込み中…」から進まなかった。
+    queryFn: () => apiGet(`/sets/match/${matchId}`),
     enabled: !!matchId,
     staleTime: 60_000,
   })
