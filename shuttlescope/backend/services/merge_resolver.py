@@ -63,7 +63,14 @@ def decide_merge(
                              incoming_record=incoming, reason="uuid not found locally")
 
     local_id = local.get("id")
+    # 未来日時のクランプ。`_sanitize_import_record` は updated_at をクランプするが、
+    # **判定より後に走る**うえ deleted_at は対象外だった。よって
+    # `{"uuid": <対象>, "deleted_at": "9999-12-31"}` は下の `>=` で常に削除側が勝つ。
+    # 「未来に消された」は成立しないので、ここで現在時刻に丸める。
+    _now = datetime.utcnow()
     inc_deleted = _parse_dt(incoming.get("deleted_at"))
+    if inc_deleted is not None and inc_deleted > _now:
+        inc_deleted = _now
     loc_updated = _parse_dt(local.get("updated_at"))
     inc_updated = _parse_dt(incoming.get("updated_at"))
     inc_hash = incoming.get("content_hash")

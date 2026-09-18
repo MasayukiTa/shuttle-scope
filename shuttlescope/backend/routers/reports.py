@@ -637,8 +637,21 @@ def get_condition_report(
     conditions = _q.order_by(Condition.measured_at.desc()).limit(120).all()
     _extra_headers = _date_range_header(date_from, date_to)
 
-    rows = [
-        {
+    # 同意レジームはこの経路を素通りしていた。conditions.py は
+    # `filter_condition_fields(..., owner_consents)` を通しており、同意が無ければ
+    # hooper_index / session_rpe / sleep_hours / weight_kg / f1..f5 (Tier 2-3) を
+    # 伏せる。レポート側は生のまま出していたので、**同じデータが endpoint 群に
+    # よって出たり出なかったりしていた**。同じ関数を通す。
+    from backend.routers.conditions import _get_owner_body_consents
+    from backend.utils.field_sensitivity import filter_condition_fields
+
+    _role = ctx.role
+    _consents_cache: dict[int, dict] = {}
+
+    def _visible(c) -> dict:
+        if c.player_id not in _consents_cache:
+            _consents_cache[c.player_id] = _get_owner_body_consents(db, c.player_id)
+        full = {
             "measured_at": str(c.measured_at),
             "condition_type": c.condition_type,
             "ccs_score": c.ccs_score,
@@ -652,8 +665,9 @@ def get_condition_report(
             "f4_motivation": c.f4_motivation,
             "f5_sleep_life": c.f5_sleep_life,
         }
-        for c in conditions
-    ]
+        return filter_condition_fields(full, _role, _consents_cache[c.player_id])
+
+    rows = [_visible(c) for c in conditions]
 
     def _avg(vals):
         v = [x for x in vals if x is not None]
@@ -663,10 +677,13 @@ def get_condition_report(
         "record_count": len(rows),
         "date_from": rows[-1]["measured_at"] if rows else None,
         "date_to": rows[0]["measured_at"] if rows else None,
-        "avg_ccs": _avg([r["ccs_score"] for r in rows]),
-        "avg_hooper": _avg([r["hooper_index"] for r in rows]),
-        "avg_rpe": _avg([r["session_rpe"] for r in rows]),
-        "avg_sleep_h": _avg([r["sleep_hours"] for r in rows]),
+        # rows は同意に応じてキーごと落ちるので .get() で読む。
+        # 伏せられた値の平均は出さない: 平均もその値の一部であって、
+        # 個票を隠して要約だけ出すのは同じものを別の粒度で開示しているだけ。
+        "avg_ccs": _avg([r.get("ccs_score") for r in rows]),
+        "avg_hooper": _avg([r.get("hooper_index") for r in rows]),
+        "avg_rpe": _avg([r.get("session_rpe") for r in rows]),
+        "avg_sleep_h": _avg([r.get("sleep_hours") for r in rows]),
     }
 
     payload = {

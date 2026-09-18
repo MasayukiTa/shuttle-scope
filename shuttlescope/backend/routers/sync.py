@@ -196,6 +196,9 @@ def export_match_endpoint(
     try:
         pkg_bytes = export_match(
             db, ids, device_id=_get_device_id(db, device_id), since=since, until=until,
+            # 書き出す側のロールを渡す。渡さないと同意フィルタが Tier 0 に落ちる
+            # (fail-closed) ので、健康データが丸ごと欠ける。
+            actor_role=ctx.role,
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -227,7 +230,7 @@ def export_player_endpoint(
     try:
         pkg_bytes = export_player(
             db, player_id, device_id=_get_device_id(db, device_id),
-            since=since, until=until,
+            since=since, until=until, actor_role=ctx.role,
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -270,7 +273,7 @@ def export_conditions_endpoint(
     try:
         pkg_bytes = export_conditions_only(
             db, ids, device_id=_get_device_id(db, device_id),
-            since=since, until=until,
+            since=since, until=until, actor_role=ctx.role,
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -299,7 +302,12 @@ def export_change_set_endpoint(
     全チームの DB delta をチーム境界なしで吐くため admin 限定 (cross-team 漏洩防止)。
     analyst のチームスコープ済みエクスポートは /sync/export/match・/sync/export/player を使う。"""
     try:
-        pkg_bytes = export_change_set(db, since, device_id=_get_device_id(db, device_id))
+        # admin 限定の全 delta。admin は ROLE_MAX_TIER で Tier 4 なので
+        # 同意フィルタは実質素通りするが、ロールを渡さないと Tier 0 に落ちて
+        # 中身が欠けたパッケージになる。明示する。
+        pkg_bytes = export_change_set(
+            db, since, device_id=_get_device_id(db, device_id), actor_role="admin",
+        )
     except Exception as e:
         logger.warning("sync export failed: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="エクスポート処理に失敗しました")
