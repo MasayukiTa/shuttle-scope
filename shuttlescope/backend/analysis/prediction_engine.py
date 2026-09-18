@@ -543,7 +543,19 @@ def compute_match_narrative(
 
 
 def compute_confidence_score(sample_size: int, similar_matches: int) -> float:
-    """信頼度スコア (0.0–1.0)"""
+    """データ量の単調増加スコア (0.0–1.0)。**確率ではない。**
+
+    D-5: この値は長らく「信頼度 NN%」として画面に大書きされ、
+    その値の長さでバーまで引かれていた。中身は下のとおり
+    `1 - exp(-n/20) + min(0.15, similar*0.015)` という手置きの式で、
+    統計的な意味は無い。28 試合で 75% と出るが、その 75 という数に
+    対応する事象は存在しない。
+
+    **% として、またバーの長さとして提示してはいけない。**
+    画面に出す信頼度は `backend/utils/confidence.py` の `check_confidence`
+    (閾値が文書化されていて、星と警告文を返す) を使うこと。
+    この関数は並べ替えや内部の足切りのような、単調性だけが要る用途に留める。
+    """
     base = 1.0 - math.exp(-sample_size / 20.0)
     bonus = min(0.15, similar_matches * 0.015)
     return round(min(0.95, base + bonus), 4)

@@ -33,7 +33,7 @@ interface Tokens {
 
 interface CoachSummaryStripProps {
   winProbability: number
-  confidence: number
+  // confidence (0-1 の手置きスコア) は意図的に受け取らない。D-5 参照。
   confidenceStars: string
   setDistribution: { '2-0': number; '2-1': number; '1-2': number; '0-2': number }
   cautionFlags: string[]
@@ -62,7 +62,6 @@ function topOutcome(dist: CoachSummaryStripProps['setDistribution']): string {
 
 export function CoachSummaryStrip({
   winProbability,
-  confidence,
   confidenceStars,
   setDistribution,
   cautionFlags,
@@ -97,7 +96,6 @@ export function CoachSummaryStrip({
       }
 
   const winPct = Math.round(winProbability * 100)
-  const confPct = Math.round(confidence * 100)
   const topResult = topOutcome(setDistribution)
   const topRisk = cautionFlags[0] ?? null
   const firstNote = tacticalNotes[0]
@@ -148,33 +146,24 @@ export function CoachSummaryStrip({
           )}
         </Cell>
 
-        {/* 2. 信頼度 — 数値 + バー (色ではなく長さで読む) */}
+        {/* 2. 信頼度 — 星と標本数。
+            D-5: ここは以前 `confidence * 100` を「NN %」として大きく出し、
+            さらにその値でバーを引いていた。その値は
+            `1 - exp(-n/20) + min(0.15, similar*0.015)` という手置きの式で、
+            確率的な意味を持たない。% とバーは「測った量」に見えるので、
+            正規の指標 (check_confidence 由来の星) と標本数だけを出す。 */}
         <Cell tokens={tokens} label={t('prediction.confidence') || '信頼度'} divide>
           <div className="flex items-baseline gap-1">
             <span
-              className="text-[20px] font-semibold leading-none tabular-nums"
+              className="text-[20px] font-semibold leading-none"
               style={{ color: tokens.textStrong }}
             >
-              {confPct}
-            </span>
-            <span className="text-xs" style={{ color: tokens.textMuted }}>%</span>
-            <span className="ml-1 text-xs" style={{ color: tokens.textFaint }}>
-              {confidenceStars}
+              {confidenceStars || '—'}
             </span>
           </div>
-          {/* 信頼度バー (色は中立、長さで情報を運ぶ) */}
-          <div
-            className="mt-1.5 h-1 rounded-full overflow-hidden"
-            style={{ backgroundColor: tokens.divider }}
-          >
-            <div
-              className="h-full"
-              style={{
-                width: `${Math.max(0, Math.min(100, confPct))}%`,
-                backgroundColor: tokens.textMuted,
-              }}
-            />
-          </div>
+          <p className="mt-1 text-[10px] tabular-nums" style={{ color: tokens.textFaint }}>
+            {t('prediction.sample_n', { n: sampleSize })}
+          </p>
           {lowSample && (
             <p
               className="mt-1 text-[10px]"

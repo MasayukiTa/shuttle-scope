@@ -23,11 +23,22 @@ BOOTSTRAP_N = 300  # CI 計算用リサンプル回数（速度とのトレー�
 MIN_N_CI = 5       # CI を計算する最低サンプル数
 
 
-def _bootstrap_mean_ci(values: list[float], n_bootstrap: int = BOOTSTRAP_N) -> tuple[float, float]:
-    """list[float] のブートストラップ 95% CI を返す。"""
+def _bootstrap_mean_ci(
+    values: list[float], n_bootstrap: int = BOOTSTRAP_N
+) -> tuple[float | None, float | None]:
+    """list[float] のブートストラップ 95% CI を返す。
+
+    **サンプルが足りないときは (None, None) を返す。**
+
+    旧実装はここで `(平均×0.8, 平均×1.2)` を返していた。リサンプリングも
+    統計的根拠も無い値を、**本物の bootstrap CI と同じ `ci_low` / `ci_high`
+    フィールドで**返していたので、受け手には区別が付かなかった。
+    「区間が出ている」こと自体が根拠の主張になる以上、根拠が無いときは
+    数字を出さないのが正しい。CLAUDE.md の
+    「データが足りないならそう言う。確からしさを装わない」に従う。
+    """
     if len(values) < MIN_N_CI:
-        avg = sum(values) / len(values) if values else 0.0
-        return (round(avg * 0.8, 4), round(min(avg * 1.2, 1.0), 4))
+        return (None, None)
     n = len(values)
     boot_means = []
     for _ in range(n_bootstrap):
@@ -230,8 +241,10 @@ def compute_shot_influence_v2(
         ci_low, ci_high = _bootstrap_mean_ci(scores)
         per_shot_type[st] = {
             "avg": avg,
+            # n < MIN_N_CI では null。UI は区間を描かず「標本不足」と出すこと。
             "ci_low": ci_low,
             "ci_high": ci_high,
+            "ci_method": "bootstrap" if ci_low is not None else None,
             "n": len(scores),
         }
 
@@ -250,8 +263,8 @@ def compute_shot_influence_v2(
                 {
                     "shot_type": st,
                     "avg_influence": round(sum(sc) / len(sc), 4),
-                    "ci_low": _bootstrap_mean_ci(sc)[0],
-                    "ci_high": _bootstrap_mean_ci(sc)[1],
+                    # 同じリサンプリングを 2 回回していたので 1 回にする
+                    **dict(zip(("ci_low", "ci_high"), _bootstrap_mean_ci(sc))),
                     "n": len(sc),
                 }
                 for st, sc in shot_map.items()
@@ -264,6 +277,7 @@ def compute_shot_influence_v2(
             "avg_influence": avg_influence,
             "ci_low": ci_low,
             "ci_high": ci_high,
+            "ci_method": "bootstrap" if ci_low is not None else None,
             "n_rallies": state_rally_counts[state_key],
             "top_shots": top_shots,
         })

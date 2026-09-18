@@ -1808,6 +1808,9 @@
       "skip": "スキップ",
       "resume": "試合に戻る",
       "next_set": "次のセットへ"
+    },
+    "shot_influence_v2": {
+      "ci_unavailable": "標本不足"
     }
   },
   "skip_rally": {
@@ -2226,7 +2229,8 @@
     "benchmark_no_data": "ベンチマークデータなし（試合前予測を入力してください）",
     "impact_high": "高",
     "impact_mid": "中",
-    "impact_low": "低"
+    "impact_low": "低",
+    "sample_n": "{{n}} 試合"
   },
   "observation_analytics": {
     "title": "補助観察インサイト",

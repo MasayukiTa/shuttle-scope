@@ -1800,6 +1800,9 @@
       "skip": "Skip",
       "resume": "Back to match",
       "next_set": "Next set"
+    },
+    "shot_influence_v2": {
+      "ci_unavailable": "too few samples"
     }
   },
   "skip_rally": {
@@ -2218,7 +2221,8 @@
     "benchmark_no_data": "No benchmark data (enter pre-match forecasts)",
     "impact_high": "High",
     "impact_mid": "Mid",
-    "impact_low": "Low"
+    "impact_low": "Low",
+    "sample_n": "{{n}} matches"
   },
   "observation_analytics": {
     "title": "Auxiliary observation insights",

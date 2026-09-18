@@ -9,16 +9,18 @@ import { useTranslation } from 'react-i18next'
 
 interface ShotTypeStat {
   avg: number
-  ci_low: number
-  ci_high: number
+  // n が閾値未満のときサーバは null を返す (でっち上げ区間を廃止)
+  ci_low: number | null
+  ci_high: number | null
   n: number
 }
 
 interface TopShot {
   shot_type: string
   avg_influence: number
-  ci_low: number
-  ci_high: number
+  // n が閾値未満のときサーバは null を返す (でっち上げ区間を廃止)
+  ci_low: number | null
+  ci_high: number | null
   n: number
 }
 
@@ -26,8 +28,9 @@ interface StateBreakdownEntry {
   state_key: string
   state_epv: number
   avg_influence: number
-  ci_low: number
-  ci_high: number
+  // n が閾値未満のときサーバは null を返す (でっち上げ区間を廃止)
+  ci_low: number | null
+  ci_high: number | null
   n_rallies: number
   top_shots: TopShot[]
 }
@@ -140,7 +143,9 @@ export function ShotInfluenceV2Card({ playerId, filters }: Props) {
                   <span className={`text-xs w-24 truncate ${textSecondary}`}>{shotType}</span>
                   <InfluenceBar value={stat.avg} max={maxInfluence} isLight={isLight} />
                   <span className={`text-[10px] shrink-0 ${textFaint} ss-num`}>
-                    [{stat.ci_low.toFixed(3)}–{stat.ci_high.toFixed(3)}]
+                    {stat.ci_low != null && stat.ci_high != null
+                      ? `[${stat.ci_low.toFixed(3)}–${stat.ci_high.toFixed(3)}]`
+                      : t('analysis.shot_influence_v2.ci_unavailable')}
                   </span>
                 </div>
               ))}

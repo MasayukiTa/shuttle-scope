@@ -208,7 +208,6 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
       {/* CoachSummaryStrip — 常時表示（折りたたみなし） */}
       <CoachSummaryStrip
         winProbability={d.win_probability_v2 ?? d.win_probability}
-        confidence={d.confidence}
         confidenceStars={meta?.confidence.stars ?? ''}
         setDistribution={d.set_distribution}
         cautionFlags={d.caution_flags}
@@ -251,8 +250,8 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
             <p className="text-[11px] mt-1" style={{ color: subText }}>
               {t('prediction.confidence')}
             </p>
-            <p className="text-xs font-mono mt-0.5 ss-num" style={{ color: subText }}>
-              {Math.round(d.confidence * 100)}%
+            <p className="text-[11px] mt-0.5 ss-num" style={{ color: subText }}>
+              {t('prediction.sample_n', { n: meta?.sample_size ?? 0 })}
             </p>
           </div>
           <div>
