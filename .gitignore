@@ -73,3 +73,6 @@ shuttlescope/backend/models/yolov8n_*_dyn*
 shuttlescope/backend/cv/person_tracker_native/build/
 shuttlescope/backend/cv/*.pyd
 shuttlescope/backend/cv/person_tracker_native/*.pyd
+
+# SSH host key pinning for cluster workers (machine-specific, not shared)
+shuttlescope/cluster_known_hosts

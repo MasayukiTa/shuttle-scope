@@ -1084,7 +1084,27 @@ def _ssh_run_python_script(host: str, username: str, password: str,
     except Exception:
         pass
     if _registered_worker:
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        # AutoAddPolicy は TOFU ではない。足した鍵を保存しないので、
+        # **毎回どんな鍵でも受け入れる**。接続先はリンクローカル
+        # (169.254.x) — 認証の無い自動設定アドレスなので、なりすました
+        # 相手に平文の SSH パスワードを渡すことになる。
+        # 保存先を明示して本物の TOFU にする (初回で固定、以後の変更は
+        # paramiko が BadHostKeyException で止める)。
+        # $HOME に依存しない固定パスなので、上のコメントが挙げている
+        # ScheduledTask 起動時の known_hosts 見失いも起きない。
+        try:
+            import pathlib as _pl
+            _kh = _pl.Path(__file__).resolve().parent.parent.parent / "cluster_known_hosts"
+            _kh.parent.mkdir(parents=True, exist_ok=True)
+            if not _kh.exists():
+                _kh.touch()
+            ssh.load_host_keys(str(_kh))
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        except Exception as _kh_exc:  # noqa: BLE001
+            logger.warning(
+                "known_hosts を用意できませんでした (%s) — 接続を拒否します", _kh_exc
+            )
+            ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
     else:
         ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
     try:

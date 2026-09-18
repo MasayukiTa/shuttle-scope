@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import ipaddress
 import logging
+import re
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -27,6 +28,31 @@ from backend.utils.auth import get_auth
 from backend.utils.control_plane import require_local_operator_or_admin
 
 logger = logging.getLogger(__name__)
+
+
+_SAFE_BAT_RE = re.compile(r"^[A-Za-z]:[\\/][A-Za-z0-9_\-\\/. ]+\.(?:bat|cmd)$")
+_BAT_FORBIDDEN_CHARS = ('"', "'", "&", "|", ";", "`", "$", "\n", "\r", "%")
+
+
+def validate_worker_bat_path(bat: object) -> str:
+    """cluster.config.yaml 由来の .bat パスを、SSH で実行してよい形に絞る。
+
+    この値は `cmd /c "{bat}"` に埋め込まれる。cmd は二重引用符の内側でも
+    `&` や `|` を解釈するので、`"` を1つ入れられた時点でコマンドを継ぎ足せる。
+
+    同じ検証が head 再起動時の一括処理にはあり、
+    `POST /cluster/nodes/{ip}/ray-restart` には**無かった**。
+    `POST /cluster/config` は `Dict[str, Any]` を無検証で書き込むので、
+    設定を書ける相手はそこから**ワーカー上での任意コマンド実行**に到達できた。
+    検証を 1 箇所にまとめ、両方が同じ規則を通るようにする。
+    """
+    if not isinstance(bat, str) or not _SAFE_BAT_RE.match(bat):
+        raise HTTPException(status_code=400, detail="ray_restart_bat のパス形式が不正です")
+    if any(c in bat for c in _BAT_FORBIDDEN_CHARS):
+        raise HTTPException(
+            status_code=400, detail="ray_restart_bat に使用できない文字が含まれています"
+        )
+    return bat
 
 
 def _validate_cluster_ip(ip: str) -> str:
@@ -78,6 +104,29 @@ def _apply_host_key_policy(client, host: str) -> None:
     except Exception:
         pass
     if registered:
+        # 旧実装は AutoAddPolicy を「TOFU 相当」と書いていたが、**TOFU ではない**。
+        # AutoAddPolicy が足した鍵はその client オブジェクトと一緒に捨てられるので、
+        # 次の接続でも「未知の鍵」として再び無条件に受け入れる。つまり
+        # **毎回どんな鍵でも通る**。接続先はリンクローカル (169.254.x) で、
+        # これは認証の無い自動設定アドレスなので、なりすました相手に
+        # **平文の SSH パスワードをそのまま渡す**ことになる。
+        #
+        # 保存先を明示すると本物の TOFU になる: 初回で固定され、以後に鍵が
+        # 変わったら paramiko が BadHostKeyException で止める。
+        # docstring が挙げていた問題 (ScheduledTask 起動で $HOME が動き
+        # known_hosts を見失う) も、$HOME に依存しない固定パスにすれば消える。
+        try:
+            import pathlib as _pl
+            kh = _pl.Path(__file__).resolve().parent.parent.parent / "cluster_known_hosts"
+            kh.parent.mkdir(parents=True, exist_ok=True)
+            if not kh.exists():
+                kh.touch()
+            client.load_host_keys(str(kh))
+        except Exception as exc:  # noqa: BLE001
+            # 保存先を用意できないなら、無条件受け入れに落とすのではなく拒否する。
+            logger.warning("known_hosts を用意できませんでした (%s) — 接続を拒否します", exc)
+            client.set_missing_host_key_policy(paramiko.RejectPolicy())
+            return
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     else:
         client.set_missing_host_key_policy(paramiko.RejectPolicy())
@@ -185,8 +234,30 @@ def save_cluster_config(body: ConfigSaveRequest, request: Request) -> Dict[str, 
                             w[k] = ex[k]
         except Exception:
             pass
+
+        # ここは `Dict[str, Any]` を無検証で書き込んでいた。書き込まれた値は
+        # あとで SSH の接続先・実行する .bat・リモートのモデルパスとして使われる
+        # ので、**設定を書ける相手はワーカー上での任意コマンド実行に到達できた**。
+        # 保存の時点で、危険な使われ方をする鍵だけは形を確かめる。
+        # (他の鍵まで allowlist にすると、設定項目が増えるたびに保存が壊れる。
+        #  ここで見るのは「あとで OS に渡る値」に限る。)
+        in_workers = incoming.get("network", {}).get("workers", [])
+        if isinstance(in_workers, list):
+            for w in in_workers:
+                if not isinstance(w, dict):
+                    continue
+                if w.get("ip"):
+                    # SSH の宛先になる。プライベート / リンクローカルに限る。
+                    w["ip"] = _validate_cluster_ip(str(w["ip"]))
+                if w.get("ray_restart_bat"):
+                    w["ray_restart_bat"] = validate_worker_bat_path(w["ray_restart_bat"])
+
         topology.save_config(incoming)
         return {"ok": True, "message": "cluster.config.yaml を保存しました"}
+    except HTTPException:
+        # 上の検証が出した 400 を、下の `except Exception` が 500 に変えてしまう。
+        # 拒否理由は呼び出し側に伝わるべきなのでそのまま通す。
+        raise
     except Exception as exc:
         logger.error("cluster config save failed: %s", exc)
         raise HTTPException(500, f"設定ファイルの保存に失敗しました: {exc}")
@@ -454,9 +525,9 @@ def start_ray_head(body: StartHeadRequest, request: Request) -> Dict[str, Any]:
             except Exception as exc:
                 logger.warning("worker ray-restart 失敗 %s: %s", wip, exc)
 
-        # bat 値の前段バリデーション。Windows パス記号 + 限定された英数記号のみを許容する。
-        import re as _re_bat
-        _SAFE_BAT_RE = _re_bat.compile(r"^[A-Za-z]:[\\/][A-Za-z0-9_\-\\/. ]+\.(?:bat|cmd)$")
+        # bat 値の前段バリデーションは validate_worker_bat_path に共通化した。
+        # 規則が 2 箇所にあると、片方だけ直したり片方に足し忘れたりする
+        # (実際に `/cluster/nodes/{ip}/ray-restart` 側が素通しだった)。
         # head 部分再起動モードでは alive な worker は触らない（連打時の不要な
         # K10 ray restart を防いでゴーストノード増殖を抑える）。
         # head 完全再起動モード（force or head 落ち）では全 worker を再起動する。
@@ -471,9 +542,9 @@ def start_ray_head(body: StartHeadRequest, request: Request) -> Dict[str, Any]:
             if skip_head_restart and wip in alive_workers:
                 logger.info("worker=%s は alive のため SSH 再起動 skip", wip)
                 continue
-            if not isinstance(bat, str) or not _SAFE_BAT_RE.match(bat) or any(
-                c in bat for c in ('"', "'", "&", "|", ";", "`", "$", "\n", "\r", "%")
-            ):
+            try:
+                bat = validate_worker_bat_path(bat)
+            except HTTPException:
                 logger.warning(
                     "ray_restart_bat skipped (unsafe path): worker=%s value=%r",
                     wip, bat,
@@ -895,6 +966,9 @@ def remote_ray_restart(worker_ip: str, request: Request) -> Dict[str, Any]:
             "worker の ssh_user / ssh_password / ray_restart_bat が未設定です",
         )
 
+    # 設定ファイル由来の値をそのまま cmd に埋めていた。兄弟の一括処理には
+    # 同じ検証があり、ここだけ素通しだった。
+    bat_path = validate_worker_bat_path(bat_path)
     cmd = f'cmd /c "{bat_path}"'
     try:
         client = paramiko.SSHClient()
