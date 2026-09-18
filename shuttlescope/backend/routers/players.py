@@ -284,8 +284,10 @@ def _scoped_player_query(db: Session, request: Request):
 
     - admin: 全選手
     - player: 自分の Player レコードのみ
-    - coach / analyst: 自チームの選手のみ (team_name 一致)。team 未設定は loopback の
-      dev/test のみ全件、それ以外は空。
+    - coach / analyst: 自チームの選手 + 自チームが登録した外部選手 (0051)。
+      team 未設定は loopback の dev/test のみ全件、それ以外は空。
+    - それ以外のロール (llm / demo): team_name があればその所属選手のみ。
+      外部選手は出さない (can_see_scouting_players が False)。
     """
     from backend.utils.auth import get_auth
     ctx = get_auth(request)

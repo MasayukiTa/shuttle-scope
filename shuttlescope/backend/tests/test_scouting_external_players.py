@@ -93,11 +93,12 @@ def world(client):
     admin = _login(client, ADMIN_USER, ADMIN_PASS)
     a = _team(client, admin, "ScoutTeamA", "SA-001")
     b = _team(client, admin, "ScoutTeamB", "SB-001")
-    _user(client, admin, username="an_a01", password="AnalystA-1234567!",
+    # テスト用の固定パスワード。実在の資格情報ではない。
+    _user(client, admin, username="an_a01", password="AnalystA-1234567!",  # nosec B106
           role="analyst", team_id=a)
-    _user(client, admin, username="co_a01", password="CoachA-1234567!",
+    _user(client, admin, username="co_a01", password="CoachA-1234567!",  # nosec B106
           role="coach", team_id=a)
-    _user(client, admin, username="an_b01", password="AnalystB-1234567!",
+    _user(client, admin, username="an_b01", password="AnalystB-1234567!",  # nosec B106
           role="analyst", team_id=b)
     return {
         "admin": admin,
@@ -120,9 +121,22 @@ def test_analyst_can_register_an_external_player(client, world):
     assert not data.get("team"), "外部選手に所属が付いている"
 
 
-def test_coach_can_register_an_external_player(client, world):
-    r = _scouting_player(client, world["coach_a"], "Opponent Y")
-    assert r.status_code in (200, 201), r.text
+def test_coach_cannot_register_but_can_analyse(client, world):
+    """coach に与えるのは「解析できること」であって登録権限ではない。
+
+    `POST /players` は以前から `require_analyst` (analyst / admin) なので、
+    coach は登録できない。ここを外部選手のために広げると、スカウティングと
+    無関係な選手登録まで coach に開くことになる。
+    coach に必要なのは、analyst が登録した外部選手を**見て解析できる**ことだけ。
+    """
+    denied = _scouting_player(client, world["coach_a"], "Opponent Y")
+    assert denied.status_code == 403, denied.text
+
+    _scouting_player(client, world["analyst_a"], "Opponent For Coach")
+    listed = client.get("/api/players", headers=_h(world["coach_a"]))
+    assert listed.status_code == 200, listed.text
+    names = [p["name"] for p in listed.json()["data"]]
+    assert "Opponent For Coach" in names, "coach が自チームの外部選手を見られない"
 
 
 def test_external_player_cannot_carry_a_team(client, world):
@@ -135,10 +149,19 @@ def test_external_player_cannot_carry_a_team(client, world):
 
 
 def test_team_is_still_required_for_a_normal_player(client, world):
-    """既存の不変則を壊していないこと。"""
-    r = client.post("/api/players", json={"name": "Normal", "dominant_hand": "R"},
-                    headers=_h(world["analyst_a"]))
-    assert r.status_code == 422, r.text
+    """既存の不変則を壊していないこと。
+
+    analyst は自チーム検査(403)のほうが先に効き、team 未指定の 422 までは
+    到達しない。両方の枝が生きていることを、2 つのロールで確かめる。
+    """
+    as_analyst = client.post("/api/players", json={"name": "Normal", "dominant_hand": "R"},
+                             headers=_h(world["analyst_a"]))
+    assert as_analyst.status_code == 403, as_analyst.text
+
+    # admin は自チーム検査を通るので、team 必須の 422 に到達する
+    as_admin = client.post("/api/players", json={"name": "Normal2", "dominant_hand": "R"},
+                           headers=_h(world["admin"]))
+    assert as_admin.status_code == 422, as_admin.text
 
 
 # ── 見える範囲 ──────────────────────────────────────────────────────────────
