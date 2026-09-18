@@ -142,9 +142,14 @@ def validate_response(
             num_str = m.group(0)
             if not _number_explained(num_str, allowed_nums):
                 unexplained.append(num_str)
-        if len(unexplained) > 1:
+        # 旧実装は `len(unexplained) > 1`。**捏造が 1 個なら常に通っていた。**
+        # 1 個でも根拠の無い数値が混ざれば、その文は読み手にとって誤りなので
+        # 落とす。「1 個までは許す」に安全側の意味づけは無い。
+        # 併せて `"ok": True if False else False` という死んだ式を畳んだ
+        # (常に False。トグルの書きかけが残っていたもの)。
+        if unexplained:
             return {
-                "ok": True if False else False,
+                "ok": False,
                 "reason": f"hallucinated_numbers:{','.join(unexplained)}",
             }
 

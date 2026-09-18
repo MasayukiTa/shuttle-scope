@@ -168,7 +168,12 @@ class ExternalApiGenerator:
                 id=f"intent_{intent}",
                 prose=fixed,
                 evidence_path="",
-                confidence=1.0,  # 固定回答なので信頼度 100%
+                # 旧実装は `confidence=1.0`。UI (`ChatMessageBubble.tsx`) は
+                # これを「信頼度 100%」と表示するので、**解析を一切していない
+                # 定型の拒否文に最高の信頼度が付いていた**。
+                # 「回答が固定である」ことと「その回答が確からしい」ことは別。
+                # 分析に基づく数値ではないので信頼度は持たせない。
+                confidence=None,
                 metric={"intent": intent, "user_text_preview": (user_text or "")[:60]},
             )
             return InsightResult(
