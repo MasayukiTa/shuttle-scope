@@ -242,6 +242,39 @@ def _obj_to_dict(obj: Any) -> dict:
     return d
 
 
+def _may_write(obj, importer_team_id: Optional[int]) -> bool:
+    """インポートがこのレコードを書き換えてよいか。
+
+    旧実装は `hasattr(obj, "owner_team_id")` だけを見ていた。**この列を持つのは
+    Match だけ**で、Player / Comment / EventBookmark / PreMatchObservation /
+    HumanForecast は `team_id`、GameSet / Rally / Stroke は**チーム列を持たない**。
+    結果、他チームの選手・ラリー・打球・コメントを uuid 一致だけで上書き・
+    論理削除できた。
+
+    同じリポジトリの `routers/sync.py` の conflict 解決は
+    `owner_team_id → team_id → それも無ければ admin のみ` という正しい梯子を
+    実装している。**こちらがそれに追随していなかった。** 判定を揃える。
+
+    ここには actor の JWT が無く `importer_team_id` しか渡ってこないので、
+    「admin のみ」を表現できない。チーム列を持たない model は
+    **書き換えを拒否する**(fail-closed)。Rally / Stroke は親 (Match) の
+    所有で守るべきもので、uuid だけを根拠に個別に書き換えられてよいものではない。
+    """
+    if importer_team_id is None:
+        # teamless なインポータは、誰のものとも確定できないので書かせない。
+        # (Round 258 R14 が sync.py 側で同じ結論に倒している)
+        return False
+    for attr in ("owner_team_id", "team_id"):
+        if hasattr(obj, attr):
+            val = getattr(obj, attr, None)
+            if val is None:
+                # 所有者不明の legacy 行。uuid を知っているだけの相手に
+                # 書かせる理由が無い。
+                return False
+            return bool(val == importer_team_id)
+    return False
+
+
 def _apply_record(
     db: Session,
     model_cls: type,
@@ -265,11 +298,8 @@ def _apply_record(
     if decision.action == "delete":
         obj = db.query(model_cls).filter_by(id=decision.local_id).first()
         if obj and hasattr(obj, "deleted_at") and obj.deleted_at is None:
-            # Round 258 R3 P1 fix (Finding 4): delete も ownership 検証必須。
-            # 旧来は uuid 一致だけで他チームのレコードを soft-delete できた。
-            if importer_team_id is not None and hasattr(obj, "owner_team_id"):
-                if obj.owner_team_id is not None and obj.owner_team_id != importer_team_id:
-                    return  # 他チームのレコードは静かにスキップ
+            if not _may_write(obj, importer_team_id):
+                return  # 他チームのレコードは静かにスキップ
             obj.deleted_at = server_now
             db.commit()
         return
@@ -281,6 +311,13 @@ def _apply_record(
     _remap_fks(data, id_remap)
 
     if decision.action == "new":
+        # 発信元で論理削除された行が、こちらでは未知 (= action "new") のとき、
+        # `_sanitize_import_record` が deleted_at を strip するので
+        # **墓石が生きた行として復活していた**。
+        # 端末 A で消したラリーが、端末 B へのパッケージ同期で蘇る経路。
+        # 削除済みの行を知らないなら、作る理由が無い。作らない。
+        if incoming.get("deleted_at"):
+            return
         # 新規作成時は importer team を server-side で強制設定
         if importer_team_id is not None:
             for col in ("owner_team_id", "home_team_id", "team_id"):
@@ -297,10 +334,8 @@ def _apply_record(
     elif decision.action == "update":
         obj = db.query(model_cls).filter_by(id=decision.local_id).first()
         if obj:
-            # Round 258 R3 P1 fix (Finding 4): update も ownership 検証必須。
-            if importer_team_id is not None and hasattr(obj, "owner_team_id"):
-                if obj.owner_team_id is not None and obj.owner_team_id != importer_team_id:
-                    return
+            if not _may_write(obj, importer_team_id):
+                return
             for k, v in data.items():
                 if k != "id":
                     setattr(obj, k, v)
@@ -444,8 +479,8 @@ def import_package(db: Session, raw: bytes, dry_run: bool = False,
                         summary.errors.append(f"{table_key}[{uuid}]: {e}")
 
             # Conditions / ConditionTags — uuid なしの自然キーマージ
-            _import_conditions(db, zf, names, id_remap, summary, dry_run)
-            _import_condition_tags(db, zf, names, id_remap, summary, dry_run)
+            _import_conditions(db, zf, names, id_remap, summary, dry_run, importer_team_id)
+            _import_condition_tags(db, zf, names, id_remap, summary, dry_run, importer_team_id)
 
     except zipfile.BadZipFile:
         summary.errors.append("不正な ZIP ファイルです")
@@ -466,18 +501,45 @@ def _parse_date(v: Any) -> Optional[_date]:
         return None
 
 
+
+def _player_is_writable(db: Session, pid, importer_team_id: Optional[int]) -> bool:
+    """その選手の体調データをインポータが書いてよいか。
+
+    旧実装は `db.get(Player, pid)` の**存在確認だけ**で、`importer_team_id` を
+    引数に取ってすらいなかった。よって任意の analyst が、自然キー
+    (player_id, measured_at, condition_type) を指定するだけで
+    **任意の選手の InBody / Hooper / RPE / 暗号化された injury_notes を
+    上書きできた**。健康データなので影響が大きい。
+
+    他の import 経路と同じ梯子に揃える。teamless なインポータは書けない。
+    """
+    if importer_team_id is None:
+        return False
+    p = db.get(Player, pid)
+    if p is None:
+        return False
+    for attr in ("team_id", "scouting_owner_team_id"):
+        val = getattr(p, attr, None)
+        if val is not None and val == importer_team_id:
+            return True
+    return False
+
+
 def _import_conditions(
     db: Session, zf: zipfile.ZipFile, names: set, id_remap: dict,
     summary: ImportSummary, dry_run: bool,
+    importer_team_id: Optional[int] = None,
 ) -> None:
     """Condition を (player_id, measured_at, condition_type) 自然キーでマージ。"""
     if "conditions.json" not in names:
         return
     recs: list[dict] = json.loads(zf.read("conditions.json"))
-    valid_cols = _get_columns(Condition)
     for rec in recs:
         try:
-            data = {k: v for k, v in rec.items() if k in valid_cols and k != "id"}
+            # 他の import 経路と同じサニタイズを通す。ここだけ生の
+            # mass-assignment のままで、validity_score / validity_flag /
+            # created_at のような server-derived 列まで書けていた。
+            data = _sanitize_import_record(Condition, rec, datetime.utcnow())
             _remap_fks(data, id_remap)
             pid = data.get("player_id")
             measured_at = _parse_date(data.get("measured_at"))
@@ -485,9 +547,8 @@ def _import_conditions(
             if not pid or not measured_at:
                 summary.errors.append("conditions: player_id/measured_at 不正でスキップ")
                 continue
-            # FK 整合: player が存在しなければスキップ
-            if not db.get(Player, pid):
-                summary.errors.append(f"conditions: player_id={pid} が存在せずスキップ")
+            if not _player_is_writable(db, pid, importer_team_id):
+                summary.errors.append(f"conditions: player_id={pid} への書き込み権限がありません")
                 continue
             data["measured_at"] = measured_at
             existing = (
@@ -525,15 +586,15 @@ def _import_conditions(
 def _import_condition_tags(
     db: Session, zf: zipfile.ZipFile, names: set, id_remap: dict,
     summary: ImportSummary, dry_run: bool,
+    importer_team_id: Optional[int] = None,
 ) -> None:
     """ConditionTag を (player_id, label, start_date) 自然キーでマージ。"""
     if "condition_tags.json" not in names:
         return
     recs: list[dict] = json.loads(zf.read("condition_tags.json"))
-    valid_cols = _get_columns(ConditionTag)
     for rec in recs:
         try:
-            data = {k: v for k, v in rec.items() if k in valid_cols and k != "id"}
+            data = _sanitize_import_record(ConditionTag, rec, datetime.utcnow())
             _remap_fks(data, id_remap)
             pid = data.get("player_id")
             start_date = _parse_date(data.get("start_date"))
@@ -541,8 +602,8 @@ def _import_condition_tags(
             if not pid or not start_date or not label:
                 summary.errors.append("condition_tags: 必須項目不足でスキップ")
                 continue
-            if not db.get(Player, pid):
-                summary.errors.append(f"condition_tags: player_id={pid} が存在せずスキップ")
+            if not _player_is_writable(db, pid, importer_team_id):
+                summary.errors.append(f"condition_tags: player_id={pid} への書き込み権限がありません")
                 continue
             data["start_date"] = start_date
             data["end_date"] = _parse_date(data.get("end_date"))

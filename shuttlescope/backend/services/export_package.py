@@ -49,6 +49,39 @@ def _model_to_dict(obj: Any) -> dict:
     return d
 
 
+def _condition_dicts(db: Session, rows: list, actor_role: Optional[str]) -> list[dict]:
+    """Condition を、書き出す側のロールと本人の同意に応じて伏せてから dict にする。
+
+    エクスポートは同意レジームを素通りしていた。`conditions.py` は
+    `filter_condition_fields(..., owner_consents)` を通しており、同意が無ければ
+    Hooper / RPE / 体組成 / 医療自由記述を伏せる。一方エクスポートは
+    生のまま `.sspkg` に入れていたので、**API では見られない値が
+    ファイルとしては持ち出せた**。consents/BODY_DISCLOSURE_TO_*.md の迂回。
+
+    `actor_role` が None のときは `get_max_tier(None) == 0`、つまり識別子のみ。
+    **fail-closed にしてある**: 呼び出し側がロールを渡し忘れたときに
+    健康データが出るより、出ないほうがよい。
+
+    注: ConditionTag には感度分類が無いのでここでは扱っていない。
+    タグ名に傷病名が入り得るので、分類を作って同じ扱いにすること (未対応)。
+    """
+    from backend.routers.conditions import _get_owner_body_consents
+    from backend.utils.field_sensitivity import filter_condition_fields
+
+    consents_cache: dict[int, dict] = {}
+    out: list[dict] = []
+    for c in rows:
+        pid = getattr(c, "player_id", None)
+        if pid is not None and pid not in consents_cache:
+            consents_cache[pid] = _get_owner_body_consents(db, pid)
+        out.append(
+            filter_condition_fields(
+                _model_to_dict(c), actor_role, consents_cache.get(pid)
+            )
+        )
+    return out
+
+
 def _checksum(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -65,6 +98,7 @@ def export_match(
     device_id: Optional[str] = None,
     since: Optional[str] = None,
     until: Optional[str] = None,
+    actor_role: Optional[str] = None,
 ) -> bytes:
     """
     指定した試合（複数可）と関連レコードを .sspkg バイト列として返す。
@@ -135,7 +169,7 @@ def export_match(
         "human_forecasts": [_model_to_dict(f) for f in forecasts],
         "comments":      [_model_to_dict(c) for c in comments],
         "bookmarks":     [_model_to_dict(b) for b in bookmarks],
-        "conditions":    [_model_to_dict(c) for c in conditions_all],
+        "conditions":    _condition_dicts(db, conditions_all, actor_role),
         "condition_tags": [_model_to_dict(t) for t in condition_tags_all],
     }
 
@@ -189,6 +223,7 @@ def export_player(
     device_id: Optional[str] = None,
     since: Optional[str] = None,
     until: Optional[str] = None,
+    actor_role: Optional[str] = None,
 ) -> bytes:
     """対象選手に紐づく試合 + 期間内コンディションを .sspkg として生成。
 
@@ -208,11 +243,14 @@ def export_player(
 
     # 試合が期間内に 1 件もなくても conditions/tags があれば許可
     if match_ids:
-        return export_match(db, match_ids, device_id=device_id, since=since, until=until)
+        return export_match(
+            db, match_ids, device_id=device_id, since=since, until=until,
+            actor_role=actor_role,
+        )
 
     return export_conditions_only(
         db, [player_id], device_id=device_id, since=since, until=until
-    )
+    , actor_role=actor_role)
 
 
 def export_conditions_only(
@@ -221,6 +259,7 @@ def export_conditions_only(
     device_id: Optional[str] = None,
     since: Optional[str] = None,
     until: Optional[str] = None,
+    actor_role: Optional[str] = None,
 ) -> bytes:
     """選手群 × 期間の Condition/ConditionTag のみをパッケージ化 (試合無し)。"""
     if not player_ids:
@@ -254,7 +293,7 @@ def export_conditions_only(
         "human_forecasts": [],
         "comments":      [],
         "bookmarks":     [],
-        "conditions":    [_model_to_dict(c) for c in conditions_all],
+        "conditions":    _condition_dicts(db, conditions_all, actor_role),
         "condition_tags": [_model_to_dict(t) for t in condition_tags_all],
     }
     manifest = {
@@ -284,7 +323,12 @@ def export_conditions_only(
 
 # ─── エクスポート: Change Set ──────────────────────────────────────────────────
 
-def export_change_set(db: Session, since: str, device_id: Optional[str] = None) -> bytes:
+def export_change_set(
+    db: Session,
+    since: str,
+    device_id: Optional[str] = None,
+    actor_role: Optional[str] = None,
+) -> bytes:
     """
     since（ISO 8601）以降に updated_at が変化した全レコードをエクスポート。
     仕様書 §6.3 Change Set Export。
@@ -330,7 +374,7 @@ def export_change_set(db: Session, since: str, device_id: Optional[str] = None) 
         "human_forecasts": [_model_to_dict(f) for f in forecast_list],
         "comments":        [_model_to_dict(c) for c in comment_list],
         "bookmarks":       [_model_to_dict(b) for b in bookmark_list],
-        "conditions":      [_model_to_dict(c) for c in conditions_list],
+        "conditions":      _condition_dicts(db, conditions_list, actor_role),
         "condition_tags":  [_model_to_dict(t) for t in tags_list],
     }
 

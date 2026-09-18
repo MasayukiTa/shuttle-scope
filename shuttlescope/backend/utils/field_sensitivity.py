@@ -88,6 +88,45 @@ def get_max_tier(role: Optional[str]) -> int:
     return ROLE_MAX_TIER.get(role, 0)
 
 
+# --- 外部処理系（社外の LLM API 等）への送出 ---
+
+# ROLE_MAX_TIER は「社内の誰に見せるか」の表であって、社外の事業者は載っていない。
+# 載せられない: 同意書 (consents/BODY_DISCLOSURE_TO_*.md §1) が定めているのは
+# Coach / Analyst という**役割**への開示であり、第三者への送信を許す条項は無い。
+# したがって外部宛には、どのロールにも紐づけず、識別子と健康データを落とす。
+#
+# 落とす対象:
+#   - player_name / player_id : 個人の識別。統計を作るのに不要
+#   - conditions              : avg_rpe / avg_hooper は Tier 2 の生スコア
+#
+# 残すもの (試合中のプレーの統計。これが insight の題材そのもの):
+#   sample / outcomes / shot_mix / zones / recent_trend / date_from / date_to
+_EXTERNAL_DROP_KEYS = frozenset({"player_name", "player_id", "conditions"})
+
+
+def redact_for_external_processor(payload: Optional[dict]) -> dict:
+    """社外の処理系へ渡す直前に、識別子と健康データを落とす。
+
+    **allow-list ではなく drop-list にしていない理由**: サマリの構造は今後も
+    増える。増えたキーが黙って外へ出るより、増えたキーが黙って落ちるほうが安全。
+    よって「残すキー」を明示する allow-list にしてある。
+
+    知らないキーは落とす。呼び出し側はここを通ったものだけを送ること。
+    """
+    if not payload:
+        return {}
+    keep = {
+        "date_from",
+        "date_to",
+        "sample",
+        "outcomes",
+        "shot_mix",
+        "zones",
+        "recent_trend",
+    }
+    return {k: v for k, v in payload.items() if k in keep and k not in _EXTERNAL_DROP_KEYS}
+
+
 def get_effective_max_tier(
     role: Optional[str],
     owner_consents: Optional[dict[str, bool]] = None,

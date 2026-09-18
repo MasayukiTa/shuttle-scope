@@ -217,8 +217,18 @@ class ExternalApiGenerator:
                 "Include N=<count> or confidence percentage."
             )
 
+        # 社外 (NVIDIA NIM 等) へ出る唯一の地点。ここまで analytics は
+        # player_name と conditions(avg_rpe / avg_hooper) を含んでおり、
+        # そのまま json.dumps してリクエストボディに入れていた。
+        # consents/BODY_DISCLOSURE_TO_COACH.md §1 は生の Hooper / RPE を
+        # Sensitive Health Data と定義し、明示的な同意がある場合にのみ
+        # **Coach という役割へ**開示すると定めている。第三者への送信を
+        # 許す条項は無い。識別子と健康データを落としてから送る。
+        from backend.utils.field_sensitivity import redact_for_external_processor
+
+        outbound_analytics = redact_for_external_processor(analytics)
         user_body = json.dumps(
-            {"analytics": analytics, "question_hint": question_hint},
+            {"analytics": outbound_analytics, "question_hint": question_hint},
             ensure_ascii=False,
         )
 
@@ -297,7 +307,13 @@ class ExternalApiGenerator:
             prose=content.strip(),
             evidence_path="",  # NIM 出力はテキストのみ
             confidence=confidence,
-            metric=analytics,
+            # 送ったものと検証するものを揃える。`metric` は
+            # output_validators の「許容される数値」の集合でもあるので、
+            # **モデルが見ていない数値をここに入れると裏取りの意味が逆になる**
+            # (見ていない値に一致した幻覚を「裏が取れた」と判定してしまう)。
+            # 返り値としても、生の avg_rpe / avg_hooper は Tier 2 で、
+            # ROLE_MAX_TIER 上 coach / analyst には出せない値なので落として正しい。
+            metric=outbound_analytics,
         )
         return InsightResult(
             items=[item],
