@@ -367,8 +367,12 @@ export interface SessionParticipant {
   joined_at: string
   last_seen_at: string
   is_connected: boolean
-  /** migration 0004 */
-  device_uid: string | null
+  /**
+   * サーバは返さない。join で送るだけの値。
+   * 「セッションパスワード + 同じ device_uid」で既存の参加者行に合流できる =
+   * 再接続の資格情報として働くので、読める相手を増やさない。
+   */
+  device_uid?: never
   approval_status: DeviceApprovalStatus
   last_heartbeat: string | null
   viewer_permission: ViewerPermission

@@ -127,10 +127,10 @@ def _apply_host_key_policy(client, host: str) -> None:
             logger.warning("known_hosts を用意できませんでした (%s) — 接続を拒否します", exc)
             client.set_missing_host_key_policy(paramiko.RejectPolicy())
             return
-        # nosec B507 -- 直前の load_host_keys で保存先を与えているため、
+        # 直前の load_host_keys で保存先を与えているため、
         # 「未知の鍵を毎回受け入れる」ではなく「初回だけ固定する」挙動になる。
         # 以後の鍵変更は paramiko が BadHostKeyException で止める。
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # nosec B507
     else:
         client.set_missing_host_key_policy(paramiko.RejectPolicy())
 

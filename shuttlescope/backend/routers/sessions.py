@@ -1090,8 +1090,13 @@ def _participant_to_dict(p: SessionParticipant) -> dict:
         "joined_at": p.joined_at.isoformat(),
         "last_seen_at": p.last_seen_at.isoformat(),
         "is_connected": p.is_connected,
-        # migration 0004
-        "device_uid": p.device_uid,
+        # `device_uid` は返さない。
+        # join は「セッションパスワード + 同じ device_uid」で既存の参加者行に
+        # 合流し、その行の approval_status (承認済みを含む) を引き継いだうえで
+        # 元の端末のトークンを失効させる。つまりこの値は**再接続の資格情報**
+        # として働く。読める相手を増やす理由が無い。
+        # 画面側は送信にしか使っておらず、返ってきた値は参照していない
+        # (CameraSenderPage / ViewerPage は getDeviceUid() を送るだけ)。
         "approval_status": p.approval_status,
         "last_heartbeat": p.last_heartbeat.isoformat() if p.last_heartbeat else None,
         "viewer_permission": p.viewer_permission,
