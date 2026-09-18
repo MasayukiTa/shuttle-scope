@@ -323,6 +323,75 @@ const VIDEO_MIME: Record<string, string> = {
   mts: 'video/mp2t',
 }
 
+// preload を持つ窓に共通で付ける遷移ガード。
+//
+// 以前は mainWindow の生成箇所にだけ書かれており、**videoWindow には
+// 1 つも付いていなかった**。videoWindow は同じ index.cjs を preload
+// しているので、遠隔オリジンへ遷移されると window.shuttlescope 一式
+// (ファイル書き込み / 画面録画の開始 / shell.openExternal /
+//  メイン窓のスクリーンショット) をそのオリジンが握る。
+//
+// 窓ごとに書くと次に窓が増えたとき同じ抜けが起きるので、関数にして
+// 「preload を付けたら必ずこれを呼ぶ」形にする。
+const ALLOWED_NAV_ORIGINS = new Set([
+  'http://localhost:5173',
+  'http://localhost:8765',
+  'http://127.0.0.1:8765',
+])
+
+function applyNavigationGuards(wc: Electron.WebContents): void {
+  wc.on('will-navigate', (event: Electron.Event, url: string) => {
+    try {
+      const u = new URL(url)
+      // file: はローカル HTML を renderer に表示できてしまうため開発時のみ。
+      if (u.protocol === 'file:') {
+        const _isDev = !app.isPackaged && process.env.NODE_ENV === 'development'
+        if (!_isDev) {
+          event.preventDefault()
+          console.warn('[Main] file: navigation blocked in production-like mode:', url)
+        }
+        return
+      }
+      if (u.protocol === 'localfile:') return
+      if (!ALLOWED_NAV_ORIGINS.has(`${u.protocol}//${u.host}`)) {
+        event.preventDefault()
+        if (u.protocol === 'http:' || u.protocol === 'https:') {
+          shell.openExternal(url).catch(() => {})
+        }
+      }
+    } catch {
+      event.preventDefault()
+    }
+  })
+
+  wc.setWindowOpenHandler(({ url }: { url: string }) => {
+    try {
+      const u = new URL(url)
+      if (u.protocol === 'http:' || u.protocol === 'https:') {
+        shell.openExternal(url).catch(() => {})
+      }
+    } catch {}
+    return { action: 'deny' }
+  })
+
+  // webview へ不審な webPreferences を差し込ませない。
+  // 上書きではなく allowlist 外を削除する (webSecurity:false や
+  // allowpopups を差し込む経路を残さないため)。
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(wc as any).on('will-attach-webview', (_event: Electron.Event, webPreferences: Record<string, unknown>) => {
+    const _allowed = new Set<string>(['contextIsolation', 'nodeIntegration', 'sandbox', 'session'])
+    for (const k of Object.keys(webPreferences)) {
+      if (!_allowed.has(k)) {
+        delete webPreferences[k]
+      }
+    }
+    ;(webPreferences as any).nodeIntegration = false
+    ;(webPreferences as any).contextIsolation = true
+    ;(webPreferences as any).sandbox = true
+  })
+}
+
+
 function registerLocalFileProtocol(): void {
   protocol.handle('localfile', (request) => {
     // Electron #4 fix: 旧コードは `slice('localfile:///'.length)` で生 URL を
@@ -577,6 +646,16 @@ ipcMain.handle('open-video-window', (_event, src: string, displayId: number, sta
   })
 
   videoWindow.webContents.setUserAgent(BROWSER_UA)
+  // videoWindow は index.cjs (フル preload) を付けているのに、will-navigate も
+  // setWindowOpenHandler も will-attach-webview も**1 つも無かった**。
+  // preload を持つ窓でこれらが全部欠けているのはこの窓だけ。
+  // video-only ページで location を書き換えられると、preload は新しい文書にも
+  // 付け直されるので、**遠隔オリジンが window.shuttlescope 一式を握る** ——
+  // ファイル書き込み、画面録画の開始、shell.openExternal、メイン窓の
+  // スクリーンショットまで。webviewTag も有効なので、
+  // `<webview nodeintegration>` を差し込む経路も開いていた。
+  // mainWindow と同じ守りを適用する。
+  applyNavigationGuards(videoWindow.webContents)
 
   const encodedSrc = encodeURIComponent(src)
   const matchParam = matchId ? `&matchId=${encodeURIComponent(matchId)}` : ''
@@ -865,7 +944,32 @@ ipcMain.handle('save-recorded-video', async (_event, data: ArrayBuffer, defaultF
 // 孤児コードだった。完全に削除する。capture-webview-frame は user-gesture フラグで
 // 守る。
 let _lastUserInputAt = 0
-ipcMain.handle('capture-webview-frame', async () => {
+
+// OS の能力に届く IPC は、送信元がメインウィンドウの top frame であることを
+// 確かめてから実行する。relaunch-app と get-backend-log はこの検査を持っていたが、
+// **screen-capture-start / youtube-live-drm-start / open-external-safe には
+// 無かった**。前者2つは任意オリジンの窓を開いて desktopCapturer で画面録画を
+// 始められるので、レンダラ側の XSS だけで「利用者の画面を録って、アプリ自身の
+// 認証済みアップロード経路で送り出す」ところまで到達できた。
+// 検査を関数にして、付け忘れが分かる形にする。
+function _isFromMainWindowTopFrame(event: Electron.IpcMainInvokeEvent, label: string): boolean {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    console.warn(`[${label}] denied: main window unavailable`)
+    return false
+  }
+  if (event.sender.id !== mainWindow.webContents.id) {
+    console.warn(`[${label}] denied: sender is not main window webContents`)
+    return false
+  }
+  if (event.senderFrame?.parent != null) {
+    console.warn(`[${label}] denied: sender is a sub-frame`)
+    return false
+  }
+  return true
+}
+
+ipcMain.handle('capture-webview-frame', async (event) => {
+  if (!_isFromMainWindowTopFrame(event, 'capture-webview-frame')) return null
   if (!mainWindow || mainWindow.isDestroyed()) return null
   // rereview Electron #8 強化: 直近 5s に user gesture (キーボード/マウス) があった
   // 場合のみ許可。renderer XSS 経由ではこのフラグを立てられない。
@@ -888,7 +992,12 @@ ipcMain.handle('capture-webview-frame', async () => {
 // noopener なしで呼んでおり、reverse tabnabbing / opener 経由の改竄余地があった。
 // Electron 経由なら shell.openExternal で OS 標準ブラウザに切り出すのが安全。
 // http(s) のみ許可して file:// / javascript:// 等のスキーム injection を遮断する。
-ipcMain.handle('open-external-safe', async (_event, url: string) => {
+ipcMain.handle('open-external-safe', async (event, url: string) => {
+  // 送信元検査が無く、任意のレンダラスクリプトが既定ブラウザで URL を開けた。
+  // scheme の検査はあったが、呼び出し主の検査が無かった。
+  if (!_isFromMainWindowTopFrame(event, 'open-external-safe')) {
+    return { ok: false, reason: 'denied' }
+  }
   try {
     if (typeof url !== 'string' || url.length > 4096) return { ok: false, reason: 'invalid' }
     const u = new URL(url)
@@ -1092,7 +1201,12 @@ const CAPTURE_QUALITY_PRESETS: Record<CaptureQuality, { bitsPerSecond: number; m
   high: { bitsPerSecond: 9_000_000, maxWidth: 1920, maxHeight: 1080, maxFrameRate: 30 },
 }
 
-ipcMain.handle('youtube-live-drm-start', async (_event, url: string, jobId: string, token: string) => {
+ipcMain.handle('youtube-live-drm-start', async (event, url: string, jobId: string, token: string) => {
+  // 新しい最上位ウィンドウを開き、desktopCapturer で録画を始め、
+  // レンダラが渡した bearer token を保持する経路。送信元検査が無かった。
+  if (!_isFromMainWindowTopFrame(event, 'youtube-live-drm-start')) {
+    return { ok: false, reason: 'denied' }
+  }
   _ytDrmJobId = jobId
   _ytDrmToken = token
 
@@ -1333,7 +1447,19 @@ ipcMain.handle('youtube-live-drm-stop', async () => {
 //
 // 注意: HDCP / プラットフォーム側 black-frame 対策には触れない。DRM 強制で
 // 画面キャプチャ自体を blocked にするサイト (Netflix 等) は本機能の対象外。
-ipcMain.handle('screen-capture-start', async (_event, opts: { url: string; jobId: string; token: string; matchId?: number | null; quality?: CaptureQuality }) => {
+ipcMain.handle('screen-capture-start', async (event, opts: { url: string; jobId: string; token: string; matchId?: number | null; quality?: CaptureQuality }) => {
+  // 任意の https オリジンを最上位ウィンドウで開き、OS レベルの画面録画を
+  // 始め、アプリの認証済みアップロード経路へ送る。ここに送信元検査も
+  // ユーザ操作の要件も無かったので、レンダラ側の XSS だけで
+  // 「画面を録って送り出す」まで到達できた。
+  if (!_isFromMainWindowTopFrame(event, 'screen-capture-start')) {
+    return { ok: false, reason: 'denied' }
+  }
+  if (Date.now() - _lastUserInputAt > 5000) {
+    // 画面録画の開始は、利用者の操作が直前にあったときだけ。
+    console.warn('[screen-capture-start] denied: no recent user gesture')
+    return { ok: false, reason: 'no_user_gesture' }
+  }
   const { url, jobId, token } = opts
   const quality: CaptureQuality = (opts.quality && opts.quality in CAPTURE_QUALITY_PRESETS) ? opts.quality : 'med'
   const preset = CAPTURE_QUALITY_PRESETS[quality]
@@ -1546,69 +1672,10 @@ function createWindow(): void {
   // （loadURL より前に設定すること）
   mainWindow.webContents.setUserAgent(BROWSER_UA)
 
-  // ─── ナビゲーション / 新ウィンドウの制限（XSS → 外部誘導の防御） ─────────────
-  // webSecurity:false の副作用で SOP が無効化されているため、
-  // 悪意のあるスクリプトが別 URL に遷移しないよう明示的にブロックする。
-  const ALLOWED_NAV_ORIGINS = new Set([
-    'http://localhost:5173',
-    'http://localhost:8765',
-    'http://127.0.0.1:8765',
-  ])
-  mainWindow.webContents.on('will-navigate', (event: Electron.Event, url: string) => {
-    try {
-      const u = new URL(url)
-      // R258 R6 P2 fix (private_docs/2026-05-09_security_deep_hole_hunt.md):
-      // 旧来は file: プロトコルを無条件許可していたが、ローカル HTML / 任意ファイルを
-      // renderer に表示できる余地があった (Node 無効でも CSP 境界外読み込み)。
-      // 動画は localfile: 独自プロトコル + path jail に寄せ済なので file: は
-      // 開発時のみ許可、production 相当では明示拒否する。
-      if (u.protocol === 'file:') {
-        const _isDev = !app.isPackaged && process.env.NODE_ENV === 'development'
-        if (!_isDev) {
-          event.preventDefault()
-          console.warn('[Main] file: navigation blocked in production-like mode:', url)
-        }
-        return
-      }
-      if (u.protocol === 'localfile:') return
-      if (!ALLOWED_NAV_ORIGINS.has(`${u.protocol}//${u.host}`)) {
-        event.preventDefault()
-        // 外部 http(s) URL は既定ブラウザで開く
-        if (u.protocol === 'http:' || u.protocol === 'https:') {
-          shell.openExternal(url).catch(() => {})
-        }
-      }
-    } catch {
-      event.preventDefault()
-    }
-  })
-  mainWindow.webContents.setWindowOpenHandler(({ url }: { url: string }) => {
-    try {
-      const u = new URL(url)
-      if (u.protocol === 'http:' || u.protocol === 'https:') {
-        shell.openExternal(url).catch(() => {})
-      }
-    } catch {}
-    return { action: 'deny' }
-  })
-  // webview へ不審な webPreferences を差し込ませない
-  // Electron #17 fix: 旧コードは preload/nodeIntegration/contextIsolation のみ
-  // 上書きしており、攻撃者が `webSecurity: false` / `allowpopups: true` /
-  // `enableRemoteModule: true` などを差し込むと SOP 無効化 + popup 経路を作れた。
-  // 上書きするのではなく allowlist だけ残して全ての他のキーを削除する。
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ;(mainWindow.webContents as any).on('will-attach-webview', (_event: Electron.Event, webPreferences: Record<string, unknown>) => {
-    const _allowed = new Set<string>(['contextIsolation', 'nodeIntegration', 'sandbox', 'session'])
-    for (const k of Object.keys(webPreferences)) {
-      if (!_allowed.has(k)) {
-        delete webPreferences[k]
-      }
-    }
-    ;(webPreferences as any).nodeIntegration = false
-    ;(webPreferences as any).contextIsolation = true
-    ;(webPreferences as any).sandbox = true
-    // webSecurity / allowpopups / experimentalFeatures は明示的に削除済 (allowlist 外)
-  })
+  // ナビゲーション / 新ウィンドウ / webview の制限は applyNavigationGuards に
+  // 共通化した。以前はこの窓の生成箇所にだけ書かれており、同じ preload を
+  // 付けている videoWindow には 1 つも付いていなかった。
+  applyNavigationGuards(mainWindow.webContents)
 
   const rendererFile = path.join(app.getAppPath(), 'out', 'renderer', 'index.html')
   // Electron #10 fix: packaged build では Ctrl+Shift+I / F12 で DevTools を開けないようにする。
