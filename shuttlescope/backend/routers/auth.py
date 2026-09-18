@@ -1349,7 +1349,15 @@ def refresh(req: RefreshRequest, request: Request, db: Session = Depends(get_db)
         raise HTTPException(status_code=401, detail="user not found")
     # Refresh must re-check lockout state before issuing a token.
     _check_lockout(user)
-    access = create_access_token(user.id, user.role, user.player_id, team_name=user.team_name)
+    # S-11: ここだけ team_id を渡し忘れていた (他の 7 箇所は渡している)。
+    # access token は 15 分なので、**ログインから 15 分後に coach / analyst の
+    # team_id が消える**。team_id を見る認可 (user_can_access_match の
+    # owner_team_id 判定、スカウティング選手の可視判定など) が、その時点から
+    # 静かに別の答えを返し始めていた。
+    access = create_access_token(
+        user.id, user.role, user.player_id,
+        team_name=user.team_name, team_id=user.team_id,
+    )
     ip = _get_ip(request)
     log_access(db, "token_refresh", user_id=user.id, ip_addr=ip)
     return RefreshResponse(access_token=access, refresh_token=rotated["new_token"])
