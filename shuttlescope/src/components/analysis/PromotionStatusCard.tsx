@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { apiGet, apiPost, apiDelete } from '@/api/client'
+import { apiGet, apiPost, apiDelete, newIdempotencyKey } from '@/api/client'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { useAuth } from '@/hooks/useAuth'
 import { AnalysisFilters } from '@/types'
