@@ -121,11 +121,52 @@ def test_wrong_session_password_is_still_rejected():
 
 # ── 入場券 ──────────────────────────────────────────────────────────────────
 
-def _ticket(client: TestClient, code: str, pid: int, token: str, role: str = "device"):
+def _approve(pid: int) -> None:
+    """operator がこの端末をカメラとして承認した状態にする。
+
+    `role="device"` の入場券は承認済みでないと出ない。
+    旧実装は `rejected` だけを弾いており、既定の `pending` のまま
+    配信できていた (source_capability は join 時にクライアントが申告した
+    device_type から決まるだけなので、何も確かめていなかった)。
+    """
+    db = db_module.SessionLocal()
+    try:
+        p = db.get(SessionParticipant, pid)
+        # **pending のときだけ承認する。** 無条件に上書きすると、
+        # 「拒否された端末が入り直せないこと」を確かめているテストの
+        # 前提をこのヘルパが消してしまう。
+        if p is not None and p.approval_status == "pending":
+            p.approval_status = "approved"
+            db.commit()
+    finally:
+        db.close()
+
+
+def _ticket(client: TestClient, code: str, pid: int, token: str, role: str = "device",
+            approved: bool = True):
+    if role == "device" and approved:
+        _approve(pid)
     return client.post(
         f"/api/sessions/{code}/ws-ticket",
         json={"participant_id": pid, "participant_token": token, "role": role},
     )
+
+
+def test_a_pending_device_cannot_get_a_camera_ticket():
+    """operator が承認する前に配信を始められないこと。
+
+    承認の意思は approval_status にしか無い。`source_capability` は
+    クライアントが送った device_type から決まるので、"iphone" と名乗れば
+    誰でも "camera" になり、検査として成立していなかった。
+    """
+    code = "PTPEND"
+    _make_session(code)
+    with TestClient(app, base_url="http://localhost") as client:
+        data = _join(client, code).json()["data"]
+        resp = _ticket(client, code, data["participant_id"],
+                       data["participant_token"], approved=False)
+
+    assert resp.status_code == 403, resp.text
 
 
 def test_ticket_is_issued_for_a_valid_participant_token():
@@ -191,10 +232,14 @@ def test_expired_token_is_refused():
 
 
 def test_a_non_camera_participant_cannot_claim_the_device_role():
-    """要求された role を鵜呑みにしないこと。
+    """`source_capability` が "camera" でない端末は device 券を取れないこと。
 
-    これを見ないと、映像を受けるだけの端末が「カメラです」と名乗って
-    operator に offer を投げ、表示中の映像を差し替えられる。
+    **この検査だけでは「カメラを名乗る」を防げない**ことに注意。
+    `source_capability` は join 時にクライアントが送った `device_type` から
+    決まるだけなので、`"iphone"` と申告すれば誰でも "camera" になる。
+    実際に防いでいるのは上の承認検査 (approval_status == "approved") で、
+    ここは「pc と申告した端末が後から device を名乗る」だけを弾く。
+    両方が要る。
     """
     code = "PTROLE"
     _make_session(code)

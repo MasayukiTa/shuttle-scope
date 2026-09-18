@@ -604,8 +604,27 @@ def issue_camera_ws_ticket(
     # operator に offer を投げられる。
     if participant.approval_status == "rejected":
         raise HTTPException(status_code=403, detail="このデバイスは拒否されています")
-    if body.role == "device" and participant.source_capability != "camera":
-        raise HTTPException(status_code=403, detail="このデバイスはカメラとして登録されていません")
+    if body.role == "device":
+        # `source_capability` は join 時に **クライアントが申告した device_type**
+        # からしか決まらない (`"iphone"` と名乗れば "camera" になる)。
+        # つまりこの検査は「クライアントが送った値をクライアントの申告と
+        # 突き合わせている」だけで、何も確かめていなかった。
+        #
+        # 実際に「この端末をカメラとして使ってよい」と決められるのは operator
+        # だけで、その意思は approval_status に入っている。既定は "pending" で、
+        # 旧実装は "rejected" しか弾いていなかったため、**承認前の端末が
+        # そのまま配信できた**。
+        # operator 画面には保留一覧と承認ボタンが既にあり、送信側も
+        # 「PCから開始指示を待っています」と表示する状態を持っている。
+        # 設計はもともと承認を前提にしている。
+        if participant.approval_status != "approved":
+            raise HTTPException(
+                status_code=403, detail="このデバイスはまだ承認されていません"
+            )
+        if participant.source_capability != "camera":
+            raise HTTPException(
+                status_code=403, detail="このデバイスはカメラとして登録されていません"
+            )
     if body.role == "viewer" and participant.viewer_permission == "blocked":
         raise HTTPException(status_code=403, detail="この端末の映像受信は停止されています")
 
