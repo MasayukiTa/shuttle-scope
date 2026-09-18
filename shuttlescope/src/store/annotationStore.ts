@@ -432,7 +432,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       // 旧実装は、押した値が先読み値と同じなら 'cv' に落としていた。
       // **人が押したという事実は、押した結果が何であっても変わらない。**
       // 一致したときだけ人間の確認が記録から消えるのは、来歴として誤り。
-      const source: 'manual' = 'manual'
+      const source = 'manual' as const
       return {
         pendingStroke: {
           ...s.pendingStroke,
