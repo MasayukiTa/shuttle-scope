@@ -184,7 +184,7 @@ function OverrideForm({
   onClose: () => void
 }) {
   const { t } = useTranslation()
-  const { isLight, textHeading, textMuted, _textFaint, cardInner, border } = theme
+  const { isLight, textHeading, textMuted, textFaint: _textFaint, cardInner, border } = theme
   const { role } = useAuth()
   const qc = useQueryClient()
   const [status, setStatus] = useState(currentOverride?.status ?? 'requires_review')

@@ -121,7 +121,7 @@ function FormationBar({ breakdown }: { breakdown: Record<string, FormationBreakd
 export function YoloCVPositionCard({ playerId, filters }: Props) {
   const { t } = useTranslation()
 
-  const { card, cardInner, textHeading, textSecondary, textMuted, textFaint, _loading, isLight } =
+  const { card, cardInner, textHeading, textSecondary, textMuted, textFaint, loading: _loading, isLight } =
     useCardTheme()
 
   // 1. プレイヤーの試合一覧（最新順）

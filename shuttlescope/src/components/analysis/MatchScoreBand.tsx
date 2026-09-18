@@ -16,7 +16,7 @@ interface MatchScoreBandProps {
   opponentName: string
 }
 
-export function MatchScoreBand({ scoreBands, _playerName, _opponentName }: MatchScoreBandProps) {
+export function MatchScoreBand({ scoreBands, playerName: _playerName, opponentName: _opponentName }: MatchScoreBandProps) {
   const { t } = useTranslation()
   const isLight = useIsLightMode()
   const textColor = isLight ? '#334155' : '#d1d5db'

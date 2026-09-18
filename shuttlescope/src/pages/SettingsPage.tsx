@@ -858,7 +858,7 @@ export function SettingsPage() {
     return () => document.removeEventListener('keydown', handler)
   }, [showPlayerForm])
 
-  const { card, textHeading, textSecondary, textMuted, _textFaint, isLight } = useCardTheme()
+  const { card, textHeading, textSecondary, textMuted, textFaint: _textFaint, isLight } = useCardTheme()
   const { theme, setTheme } = useTheme()
   const bodyBg = 'bg-[var(--ss-bg-app)]'
   const borderLine = 'border-[var(--ss-border)]'

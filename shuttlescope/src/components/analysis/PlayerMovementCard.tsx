@@ -206,7 +206,7 @@ function MiniCourtHeatmap({
 
 function CumulativeDistanceChart({
   playerStats,
-  _playerNames,
+  playerNames: _playerNames,
   isLight,
 }: {
   playerStats: Record<string, PlayerStats>

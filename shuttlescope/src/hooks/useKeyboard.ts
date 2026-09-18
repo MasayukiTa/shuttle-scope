@@ -178,7 +178,7 @@ export function useKeyboard({
 
       // Access store state directly to avoid stale closure issues
       const store = useAnnotationStore.getState()
-      const { inputStep, isRallyActive, currentStrokes, currentStrokeNum, _pendingStroke } = store
+      const { inputStep, isRallyActive, currentStrokes, currentStrokeNum, pendingStroke: _pendingStroke } = store
 
       // ─── グローバル: 動画シーク（常時有効） ────────────────────────────────
       if (!e.ctrlKey && !e.metaKey && !e.altKey) {
