@@ -54,6 +54,8 @@ export interface CameraHubState {
   reconnecting: boolean
   reconnectCount: number
   connectionStates: Record<string, RTCPeerConnectionState>
+  /** ICE 候補収集の進行状況。接続が張れないときの切り分けに使う。 */
+  iceGatheringStates: Record<string, RTCIceGatheringState>
   turnInUse: boolean | null
   connect: () => Promise<void>
   disconnect: () => void
@@ -81,6 +83,8 @@ export function useCameraHub(sessionCode: string): CameraHubState {
   const [reconnectCount, setReconnectCount] = useState(0)
   const [connectionStates, setConnectionStates] =
     useState<Record<string, RTCPeerConnectionState>>({})
+  const [iceGatheringStates, setIceGatheringStates] =
+    useState<Record<string, RTCIceGatheringState>>({})
   const [turnInUse, setTurnInUse] = useState<boolean | null>(null)
 
   const publish = useCallback(() => {
@@ -181,6 +185,9 @@ export function useCameraHub(sessionCode: string): CameraHubState {
     const holder: IngressPeer = { participantId, pc, pendingIce: [], remoteReady: false }
     ingressRef.current.set(streamId, holder)
 
+    pc.onicegatheringstatechange = () => {
+      setIceGatheringStates((prev) => ({ ...prev, [streamId]: pc.iceGatheringState }))
+    }
     pc.onconnectionstatechange = () => {
       setConnectionStates((prev) => ({ ...prev, [streamId]: pc.connectionState }))
       if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
@@ -225,6 +232,11 @@ export function useCameraHub(sessionCode: string): CameraHubState {
       }
     })
     setConnectionStates((prev) => {
+      const next = { ...prev }
+      delete next[streamId]
+      return next
+    })
+    setIceGatheringStates((prev) => {
       const next = { ...prev }
       delete next[streamId]
       return next
@@ -316,6 +328,7 @@ export function useCameraHub(sessionCode: string): CameraHubState {
     wsRef.current = null
     setStreams([])
     setConnectionStates({})
+    setIceGatheringStates({})
     setWsConnected(false)
     setReconnecting(false)
     setReconnectCount(0)
@@ -372,7 +385,7 @@ export function useCameraHub(sessionCode: string): CameraHubState {
 
   return {
     streams, wsConnected, reconnecting, reconnectCount,
-    connectionStates, turnInUse, connect, disconnect,
+    connectionStates, iceGatheringStates, turnInUse, connect, disconnect,
     requestCamera: (target) => send({
       type: 'camera_request',
       ...(typeof target === 'string' && target.length > 20

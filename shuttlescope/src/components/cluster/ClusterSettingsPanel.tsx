@@ -9,6 +9,7 @@ import { apiGet, apiPost } from '@/api/client'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { MIcon } from '@/components/common/MIcon'
+import { errorMessage } from '@/utils/errors'
 
 // ────────────────────────────────────────────────────────────────────────────
 // 型定義

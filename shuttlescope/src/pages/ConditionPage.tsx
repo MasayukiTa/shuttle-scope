@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { apiGet, apiPost, apiDelete, API_BASE_URL } from '@/api/client'
+import { apiGet, apiPost, apiDelete, API_BASE_URL, newIdempotencyKey } from '@/api/client'
 import { Player } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
 import { useTheme } from '@/hooks/useTheme'

@@ -21,6 +21,7 @@ import { useTranslation } from 'react-i18next'
 import { MIcon } from '@/components/common/MIcon'
 import { participantWsUrl } from '@/utils/cameraWs'
 import { getDeviceUid } from '@/utils/deviceUid'
+import { errorStatus } from '@/utils/errors'
 
 type ViewerState = 'join' | 'connecting' | 'waiting' | 'receiving' | 'error'
 

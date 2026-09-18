@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
-import { apiPost, apiDelete } from '@/api/client'
+import { apiPost, apiDelete, apiGet, newIdempotencyKey } from '@/api/client'
 import { LiveSourceSelector } from './LiveSourceSelector'
 import { LiveInferenceOverlay } from './LiveInferenceOverlay'
 import { RealtimeYoloOverlay } from './RealtimeYoloOverlay'
@@ -356,7 +356,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
 
   const {
     streams, wsConnected, reconnecting: wsReconnecting, reconnectCount: wsReconnectCount,
-    connectionStates, turnInUse, connect, requestCamera, sendMessage,
+    connectionStates, iceGatheringStates, turnInUse, connect, requestCamera, sendMessage,
   } = useCameraHub(sessionCode)
 
   // 主表示にするカメラ。未選択なら最初に届いたもの。
@@ -369,6 +369,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
   const remoteStream = primary?.stream ?? null
   const activeParticipantId = primary?.participantId ?? null
   const connectionState = primary ? (connectionStates[primary.streamId] ?? null) : null
+  const iceGatheringState = primary ? (iceGatheringStates[primary.streamId] ?? null) : null
 
   // リアルタイム YOLO トグル（オペレーター PC 側のみ。ViewerPage では使わない）
   const [realtimeYoloOn, setRealtimeYoloOn] = useState(false)
