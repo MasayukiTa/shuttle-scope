@@ -3,7 +3,7 @@ from datetime import datetime, date
 from typing import Optional
 from uuid import uuid4
 from sqlalchemy import (
-    Integer, String, Float, Boolean, DateTime, Date,
+    BigInteger, Integer, String, Float, Boolean, DateTime, Date,
     ForeignKey, Text, UniqueConstraint, Index, LargeBinary, func, JSON
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -1451,7 +1451,10 @@ class UploadSession(Base):
     match_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("matches.id"), nullable=True)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     mime_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    total_size: Mapped[int] = mapped_column(Integer, nullable=False)   # bytes
+    # 0052: Integer (int4, 上限 ~2.1GB) では MAX_UPLOAD_SIZE の 50GB を表現できず、
+    # PostgreSQL では溢れて書き込みが失敗する。SQLite の INTEGER は 64bit なので
+    # 開発機とテストだけ通っていた。
+    total_size: Mapped[int] = mapped_column(BigInteger, nullable=False)   # bytes
     chunk_size: Mapped[int] = mapped_column(Integer, nullable=False)
     total_chunks: Mapped[int] = mapped_column(Integer, nullable=False)
     # bitmap。1bit/chunk で受領状態を保持。ceil(total_chunks/8) bytes。

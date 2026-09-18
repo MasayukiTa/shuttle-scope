@@ -255,7 +255,17 @@ def init_upload(
         free_bytes = shutil.disk_usage(str(UPLOAD_DIR)).free
     except OSError:
         free_bytes = 0
-    if free_bytes < max(MIN_FREE_DISK_BYTES, body.total_size * 2):
+    # streaming モードの total_size は「確定サイズ」ではなく上限の申告値
+    # (コード内の他所でもそう扱っている: :238-241)。それを `*2` して
+    # 空き容量の要求にすると、クライアントが 50GB と申告した時点で
+    # **空き 100GB を要求する**ことになり、実際の録画サイズと無関係に
+    # 507 で録画が始まらない。streaming では下限だけを見る。
+    required_free = (
+        MIN_FREE_DISK_BYTES
+        if body.streaming
+        else max(MIN_FREE_DISK_BYTES, body.total_size * 2)
+    )
+    if free_bytes < required_free:
         raise HTTPException(status_code=507, detail="サーバのディスク空き容量が不足しています")
 
     # per-user 並列上限チェック
