@@ -228,11 +228,23 @@ def _enforce_production_security_gate() -> None:
         warnings_.append("(d) HIDE_STACK_TRACES is False in production — exception details may leak.")
 
     import os as _os_gate
-    if _os_gate.environ.get("SS_ALLOW_LOOPBACK_NO_AUTH") == "1":
-        errors.append("(e) SS_ALLOW_LOOPBACK_NO_AUTH=1 in production — bypasses auth on loopback.")
+    # 旧実装は環境変数の文字列が "1" かどうかだけを見ていた。本番ホストは
+    # SS_ALLOW_LOOPBACK_NO_AUTH を設定しておらず、この検査は通る。しかし実効値
+    # app_settings.ALLOW_LOOPBACK_NO_AUTH の既定は True なので、
+    # 「ゲートは緑、ループバック無認証は有効」という状態が成立していた。
+    # 検査対象は設定の由来ではなく実効値。
+    if bool(getattr(app_settings, "ALLOW_LOOPBACK_NO_AUTH", False)):
+        errors.append(
+            "(e) ALLOW_LOOPBACK_NO_AUTH is effectively enabled in production posture — "
+            "bypasses auth for requests that reach the app from loopback without a "
+            "forwarded header. Set SS_ALLOW_LOOPBACK_NO_AUTH=0 (or PUBLIC_MODE=1)."
+        )
 
-    op_tok = (_os_gate.environ.get("SS_OPERATOR_TOKEN") or "").strip()
-    if not op_tok:
+    # (e) と同じ理由で、環境変数の有無ではなく control_plane が実際に使う値を見る。
+    # .env にだけ書かれた token は os.environ に載らないので、旧実装は
+    # 「.env に設定済みだが実際には無効」を「設定済み」と誤判定していた。
+    from backend.utils.control_plane import _OPERATOR_TOKEN as _op_tok_effective
+    if not _op_tok_effective:
         warnings_.append("(f) SS_OPERATOR_TOKEN is empty — tunnel/operator endpoints rely on loopback only.")
 
     # (g) フィールド暗号鍵。以前は「未 wire なので warning のみ」だったが、

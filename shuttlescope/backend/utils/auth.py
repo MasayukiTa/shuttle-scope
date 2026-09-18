@@ -358,6 +358,16 @@ def require_match_access_or_404(match_id: int, request, db) -> "Match":
     return m
 
 
+def can_see_scouting_players(ctx: AuthCtx) -> bool:
+    """スカウティング用の外部選手 (Player.scouting_owner_team_id) を見せてよいロールか。
+
+    **許可リストにしてある。** 否定リスト (「player 以外」等) にすると、ロールを
+    足したときに黙って外部選手まで見えるようになる。
+    analyst と coach のみ。player は自分のレコードだけ、llm / demo には出さない。
+    """
+    return bool(ctx.is_analyst or ctx.is_coach)
+
+
 def can_access_player(ctx: AuthCtx, player_id: int, db) -> bool:
     """選手データへのアクセス可否（Phase B-6 拡張版）。
 
@@ -377,6 +387,14 @@ def can_access_player(ctx: AuthCtx, player_id: int, db) -> bool:
     if not p:
         return False
     if p.team_id is not None and p.team_id == ctx.team_id:
+        return True
+    # 自チームが登録したスカウティング用の外部選手 (0051)。
+    # 試合をまだ作っていない段階でも選べる必要があるため、match 経由の判定より先に見る。
+    if (
+        can_see_scouting_players(ctx)
+        and p.scouting_owner_team_id is not None
+        and p.scouting_owner_team_id == ctx.team_id
+    ):
         return True
     # 自チームから見える match に登場するか
     q = db.query(Match.id).filter(

@@ -43,7 +43,15 @@ export function GrowthSnapshotCard({ playerId, periodDays = 30 }: Props) {
   })
 
   const headerTitle = t('auto.GrowthSnapshotCard.title')
-  const betaChip = t('auto.GrowthSnapshotCard.beta_chip')
+  // `/insights/growth_snapshot` はまだ DB を引かず固定の例示値を返す。その回の
+  // 返り値は meta.example で自己申告しているが、画面はこれを読んでいなかったため、
+  // 例示値が「テンプレ生成 (ベータ)」= 実データの初期版として表示されていた。
+  // さらに下の ConfidenceBadge は例示値の sample_n をそのまま星に変換するので、
+  // 作り物に信頼度を付けて見せていた。example のときは出所を明示し、星は出さない。
+  const isExample = data?.meta?.example === true
+  const chipLabel = isExample
+    ? t('auto.GrowthSnapshotCard.sample_chip')
+    : t('auto.GrowthSnapshotCard.beta_chip')
 
   return (
     <div
@@ -59,9 +67,15 @@ export function GrowthSnapshotCard({ playerId, periodDays = 30 }: Props) {
               : 'border-amber-500 text-amber-300 bg-amber-900/20'
           }`}
         >
-          {betaChip}
+          {chipLabel}
         </span>
       </div>
+
+      {isExample && (
+        <p className={`text-xs mb-3 ${textMuted}`}>
+          {t('auto.GrowthSnapshotCard.sample_note')}
+        </p>
+      )}
 
       {isLoading && (
         <div className="space-y-2 animate-pulse">
@@ -89,7 +103,7 @@ export function GrowthSnapshotCard({ playerId, periodDays = 30 }: Props) {
               >
                 <p className={`text-sm leading-relaxed ${textHeading}`}>{it.prose}</p>
                 <div className="flex items-center justify-between gap-2">
-                  <ConfidenceBadge sampleSize={sampleN} compact />
+                  {isExample ? <span /> : <ConfidenceBadge sampleSize={sampleN} compact />}
                   <a
                     href={href}
                     target="_blank"

@@ -4266,7 +4266,9 @@
       "title": "This week's growth area",
       "beta_chip": "Template-generated (beta)",
       "empty": "Need a bit more data to surface growth areas",
-      "details": "→ Details"
+      "details": "→ Details",
+      "sample_chip": "Sample data",
+      "sample_note": "Placeholder data for smoke-testing. The numbers are not real."
     },
     "GrowthTimeline": {
       "k1": "Win rate",
