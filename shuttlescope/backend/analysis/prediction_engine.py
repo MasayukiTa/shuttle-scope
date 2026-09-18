@@ -403,6 +403,13 @@ def build_caution_flags(
     return flags[:2]
 
 
+# D-5: 判定 (勝利有力 / 苦戦が予想 …) を出してよい最低試合数。
+# `backend/utils/confidence.py` の opponent_analysis (30) は解析全体の目安で、
+# 「勝ち負けの言い切り」はそれより慎重でよい。ここを下回るときは
+# 判定を出さず、勝率そのものだけを見せる。
+VERDICT_MIN_SAMPLE = 5
+
+
 def compute_match_narrative(
     player_name: str,
     opponent_name: str,
@@ -429,16 +436,25 @@ def compute_match_narrative(
       knowns          : 試合前に分かっていること（H2H・観察など）
     """
     # ── 判定 ───────────────────────────────────────────────────────────────
-    if win_prob >= 0.63:
-        verdict, verdict_level = '勝利有力', 'win'
+    # D-5: 判定は勝率を手置きの閾値で言葉に置き換えているだけ。
+    # 言葉だけを出すと「解析がそう結論した」ように読めるので、
+    #   (a) 閾値そのものを返り値に載せて追跡できるようにし、
+    #   (b) 標本が足りないときは判定を出さない
+    # の 2 点で扱う。勝率そのものは別途表示されているので、
+    # 言葉を伏せても情報は失われない。
+    if sample_size < VERDICT_MIN_SAMPLE:
+        verdict, verdict_level = '判定を出すにはデータが不足', 'neutral'
+        verdict_band = None
+    elif win_prob >= 0.63:
+        verdict, verdict_level, verdict_band = '勝利有力', 'win', '勝率63%以上'
     elif win_prob >= 0.53:
-        verdict, verdict_level = 'やや優勢', 'win'
+        verdict, verdict_level, verdict_band = 'やや優勢', 'win', '勝率53〜63%'
     elif win_prob >= 0.45:
-        verdict, verdict_level = '五分五分', 'neutral'
+        verdict, verdict_level, verdict_band = '五分五分', 'neutral', '勝率45〜53%'
     elif win_prob >= 0.35:
-        verdict, verdict_level = 'やや不利', 'loss'
+        verdict, verdict_level, verdict_band = 'やや不利', 'loss', '勝率35〜45%'
     else:
-        verdict, verdict_level = '苦戦が予想', 'loss'
+        verdict, verdict_level, verdict_band = '苦戦が予想', 'loss', '勝率35%未満'
 
     # ── 最有力スコアライン ─────────────────────────────────────────────────
     likely_score = '—'
@@ -535,6 +551,8 @@ def compute_match_narrative(
     return {
         'verdict': verdict,
         'verdict_level': verdict_level,
+        # 判定の根拠となった勝率の帯。None は「標本不足で判定なし」。
+        'verdict_band': verdict_band,
         'likely_score': likely_score,
         'deciding_factor': deciding_factor,
         'risk_zones': risk_zones[:3],

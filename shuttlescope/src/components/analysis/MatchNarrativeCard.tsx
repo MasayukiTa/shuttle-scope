@@ -12,6 +12,11 @@ import { MIcon } from '@/components/common/MIcon'
 export interface MatchNarrative {
   verdict: string          // "勝利有力" | "やや優勢" | "五分五分" | "やや不利" | "苦戦が予想"
   verdict_level: 'win' | 'neutral' | 'loss'
+  /** D-5: 判定の根拠になった勝率の帯 ("勝率63%以上" 等)。
+   *  null は「標本不足で判定を出していない」。
+   *  判定は手置き閾値で勝率を言葉に置き換えているだけなので、
+   *  帯を併記しないと「解析がそう結論した」ように読める。 */
+  verdict_band?: string | null
   likely_score: string     // "2-1 勝利（21-18 / 19-21 / 21-16）— 52%"
   deciding_factor: string  // 決め手の文章
   risk_zones: string[]     // ぐだりやすい局面
@@ -71,6 +76,9 @@ export function MatchNarrativeCard({ narrative, playerName, opponentName }: Prop
             <p className="text-lg font-bold leading-tight" style={{ color: verdictColor }}>
               {t('auto.MatchNarrativeCard.verdict', { player: playerName, verdict: narrative.verdict })}
             </p>
+            {narrative.verdict_band && (
+              <p className="text-[10px]" style={{ color: subText }}>{narrative.verdict_band}</p>
+            )}
           </div>
         </div>
         <div className="shrink-0 text-right">
