@@ -12,6 +12,7 @@
 """
 from __future__ import annotations
 
+import hmac
 import os
 
 from fastapi import HTTPException, Request
@@ -169,7 +170,14 @@ def is_trusted_cluster_request(request: Request) -> bool:
 def _has_valid_operator_token(request: Request) -> bool:
     if not _OPERATOR_TOKEN:
         return False
-    return request.headers.get("X-Operator-Token", "") == _OPERATOR_TOKEN
+    # 旧実装は素の `==` だった。このトークンは allow_select_login /
+    # allow_legacy_header_auth を守る唯一の第二要素なので、
+    # バイト単位の比較時間差が観測できる形にしておく理由が無い。
+    # リポジトリ内の他の秘密比較 (worker_auth, video token) は
+    # すべて compare_digest を使っており、ここだけ揃っていなかった。
+    return hmac.compare_digest(
+        request.headers.get("X-Operator-Token", ""), _OPERATOR_TOKEN
+    )
 
 
 def require_local_or_operator_token(request: Request) -> None:

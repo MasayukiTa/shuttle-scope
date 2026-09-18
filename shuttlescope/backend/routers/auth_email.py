@@ -567,6 +567,26 @@ def reset_password(body: PasswordResetConfirm, request: Request,
     user.failed_attempts = 0
     user.locked_until = None
     db.commit()
+
+    # 旧実装はここでセッションを失効させていなかった。兄弟の
+    # `change_password` (auth.py:1417) と管理者リセット (:1447) は両方やっている。
+    # **アカウントを乗っ取られた人がパスワードをリセットしても、攻撃者の
+    # access token は期限まで生き、refresh token は 7 日生きて回り続ける。**
+    # 「パスワードを変える」は乗っ取り対応の標準手段なので、それが対応に
+    # なっていないのは効き方が悪い。同じ処理を通す。
+    from backend.utils.jwt_utils import (
+        revoke_all_refresh_tokens_for_user as _revoke_refresh,
+        revoke_all_for_user as _revoke_access,
+    )
+    _revoke_refresh(user.id)
+    try:
+        _revoke_access(user.id)
+    except Exception as exc:
+        logger.error(
+            "revoke_all_for_user failed (password reset) user_id=%s: %s", user.id, exc
+        )
+        raise HTTPException(status_code=500, detail="access token 失効処理に失敗しました")
+
     log_access(db, "password_reset_completed", user_id=user_id, ip_addr=_client_ip(request))
     return {"success": True, "data": {"user_id": user_id}}
 

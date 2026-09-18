@@ -595,8 +595,29 @@ def _player_scope_check(request: Request, player) -> None:
                 raise HTTPException(status_code=403, detail="team_name 未設定")
             return
         if (player.team or "").strip() != team:
+            # 0051: 自チームが登録した外部選手 (スカウティング用) は所属を持たないが
+            # 見えてよい。list_players / _scoped_player_query と判定を揃える。
+            from backend.utils.auth import can_see_scouting_players
+            owner = getattr(player, "scouting_owner_team_id", None)
+            if (
+                can_see_scouting_players(ctx)
+                and owner is not None
+                and ctx.team_id is not None
+                and owner == ctx.team_id
+            ):
+                return
             _log_scope_denial(request, ctx, player, status=404, reason="cross_team")
             raise HTTPException(status_code=404, detail="選手が見つかりません")
+        return
+
+    # ここに落ちるのは is_admin / is_analyst / is_coach / is_player のいずれでもない
+    # ロール、つまり `llm` と `demo`。役割述語はすべて完全一致なのでどの枝にも
+    # 入らず、**関数の末尾に落ちる = 許可** になっていた。呼び出し元
+    # (`GET /players/{id}` / `/matches` / `/stats`、`PUT /players/{id}`、
+    #  conditions.py の 4 箇所) はこの関数を認可の要と見なしているので、
+    # 全チームの選手を読み書きできていた。既定を拒否にする。
+    _log_scope_denial(request, ctx, player, status=403, reason="role_not_scoped")
+    raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
 
 
 @router.get("/players/{player_id}")

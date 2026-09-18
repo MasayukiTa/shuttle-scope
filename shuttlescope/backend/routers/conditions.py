@@ -601,7 +601,13 @@ def create_condition(body: ConditionCreate, request: Request, db: Session = Depe
         from backend.utils.auth import can_access_player as _cap_c
         if not _cap_c(ctx, body.player_id, db):
             raise HTTPException(status_code=403, detail="自チーム選手のみ登録できます")
-    # admin は全選手に登録可能
+    elif not ctx.is_admin:
+        # 旧実装はここが `# admin は全選手に登録可能` というコメント行だけで、
+        # 役割述語はすべて完全一致なので **`llm` と `demo` がどの枝にも入らず
+        # 素通り**していた。しかもこのルートだけ `Depends(resolve_role)` が
+        # 無いので実際に到達する。任意の選手に InBody / Hooper / RPE を
+        # 捏造投入できる状態だった。既定を拒否にする。
+        raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
 
     player = db.get(Player, body.player_id)
     if not player:
@@ -957,9 +963,18 @@ def get_insights(
     if not _player:
         raise HTTPException(status_code=404, detail="選手が見つかりません")
     # R282: analyst/coach の cross-team 集計漏洩を遮断。admin は bypass。
-    # player ロールは既存の role 分岐 (growth_cards 限定) で扱う。
     from backend.utils.auth import get_auth
-    if not get_auth(request).is_player:
+    _ctx_ins = get_auth(request)
+    if _ctx_ins.is_player:
+        # 旧実装は player 枝で**スコープ検査を丸ごと飛ばし**、しかも
+        # `player_id` を ctx.player_id と照合していなかった。
+        # 「growth_cards 限定なので安全」という前提だったが、限定されるのは
+        # **出力の種類**であって**対象の選手**ではない。
+        # → 選手アカウントが他選手の成長カードと CCS トレンドを読めていた。
+        # 兄弟の /correlation と /best_profile は照合しており、ここだけ抜けていた。
+        if not _ctx_ins.player_id or player_id != _ctx_ins.player_id:
+            raise HTTPException(status_code=404, detail="選手が見つかりません")
+    else:
         from backend.routers.players import _player_scope_check
         _player_scope_check(request, _player)
     conds = _load_player_conditions(db, player_id, since)
@@ -1044,6 +1059,12 @@ def _require_condition_access(request: Request, cond: Condition) -> None:
             if not p or (p.team or "").strip() != team:
                 raise HTTPException(status_code=404, detail="コンディション記録が見つかりません")
         return
+
+    # 旧実装はここで暗黙に `return None` = 許可だった。役割述語は完全一致なので
+    # `llm` と `demo` がどの枝にも入らず末尾に落ちる。`DELETE /conditions/{id}` は
+    # `Depends(resolve_role)` を持たないため実際に到達し、**任意チームの体調記録を
+    # 削除できた**。既定を拒否にする。
+    raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
 
 
 @router.get("/{condition_id}")
