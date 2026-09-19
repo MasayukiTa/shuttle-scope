@@ -48,6 +48,7 @@ import { useSettings } from '@/hooks/useSettings'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useCVJobs } from '@/hooks/annotator/useCVJobs'
+import { setWinner } from '@/utils/badmintonRules'
 import { computePlayerASide, landingCourtMode } from '@/utils/courtSides'
 import type { RawDetection } from '@/components/annotation/PlayerTrackingOverlay'
 import { useSessionSharing } from '@/hooks/annotator/useSessionSharing'
@@ -642,7 +643,20 @@ export function AnnotatorPage() {
     const setId = s.currentSetId
     if (!setId) return
 
-    const winner = s.scoreA > s.scoreB ? 'player_a' : 'player_b'
+    // A-8: 以前は `scoreA > scoreB` だけで勝者を決めていた。21 点も 2 点差も
+    // 見ていないので、5-5 で «次のセットへ» を押すと (> が偽なので) B の勝ちが
+    // 確定していた。実際のルールは badmintonRules に既にある。
+    const ruleWinner = setWinner({ scoreA: s.scoreA, scoreB: s.scoreB })
+    if (!ruleWinner) {
+      // ルール上まだ終わっていない。棄権・中断ならその旨を記録する経路
+      // (試合の exception_reason) を使う。ここで黙って «勝者» を作らない。
+      showError(t('annotator.set_not_finished', {
+        defaultValue: 'このスコアではセットが終了していません（{{a}}-{{b}}）',
+        a: s.scoreA, b: s.scoreB,
+      }))
+      return
+    }
+    const winner = ruleWinner === 'A' ? 'player_a' : 'player_b'
     try {
       // 現セット終了
       await apiPut(`/sets/${setId}/end`, {

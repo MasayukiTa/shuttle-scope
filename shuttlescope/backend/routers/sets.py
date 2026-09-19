@@ -36,6 +36,29 @@ class SetEnd(BaseModel):
     winner: str = Field(..., pattern="^(player_a|player_b)$")
     score_a: int = Field(..., ge=0, le=40)  # デュース含め 30 前後が最大、40 で余裕
     score_b: int = Field(..., ge=0, le=40)
+    # A-8: 棄権・中断で «ルール上まだ終わっていないスコア» のままセットを
+    # 閉じることは実際にある。その場合だけ明示的に申告させる。
+    # 既定 False = 通常終了として、スコアと勝者の整合を検査する。
+    incomplete: bool = False
+
+
+# バドミントンの set 終了条件 (src/utils/badmintonRules.ts と同じ)
+POINT_TARGET = 21
+GOLDEN_POINT = 30
+
+
+def _winner_from_scores(score_a: int, score_b: int) -> Optional[str]:
+    """スコアから勝者を決める。まだ終わっていなければ None。
+
+    - 30 点先取 (ゴールデンポイント) は 2 点差不要
+    - それ以外は 21 点以上かつ 2 点差
+    """
+    hi, lo = max(score_a, score_b), min(score_a, score_b)
+    if hi >= GOLDEN_POINT:
+        return "player_a" if score_a >= GOLDEN_POINT else "player_b"
+    if hi >= POINT_TARGET and hi - lo >= 2:
+        return "player_a" if score_a > score_b else "player_b"
+    return None
 
 
 def set_to_dict(s: GameSet) -> dict:
@@ -104,6 +127,33 @@ def end_set(set_id: int, body: SetEnd, request: Request, db: Session = Depends(g
     match = db.get(Match, game_set.match_id)
     if match:
         _set_require_match_scope(request, db, match)
+
+    # A-8: 旧実装はクライアントが申告した winner をそのまま書いていた。
+    # 21 点も 2 点差も 30 上限も見ていないので、5-5 で «次のセットへ» を押すと
+    # (フロントが `scoreA > scoreB` で決めていたため) B の勝ちとして確定した。
+    # 勝敗はこの先の全解析の土台なので、サーバ側で突き合わせる。
+    expected = _winner_from_scores(body.score_a, body.score_b)
+    if body.incomplete:
+        # 棄権・中断。ルール上は未完了のまま閉じてよいが、
+        # «完了した» という顔をさせないため理由は match 側に残すこと。
+        pass
+    elif expected is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"スコア {body.score_a}-{body.score_b} ではセットは終了していません "
+                f"(21点以上かつ2点差、または30点先取)。"
+                f" 棄権・中断で閉じる場合は incomplete=true を指定してください"
+            ),
+        )
+    elif expected != body.winner:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"スコア {body.score_a}-{body.score_b} の勝者は {expected} です"
+                f" (申告: {body.winner})"
+            ),
+        )
 
     game_set.winner = body.winner
     game_set.score_a = body.score_a
