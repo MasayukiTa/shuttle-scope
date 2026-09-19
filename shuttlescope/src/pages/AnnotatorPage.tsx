@@ -1421,6 +1421,23 @@ export function AnnotatorPage() {
     }
   }, [match?.player_a_start_side])
 
+  // この列より前に作られた試合は player_a_start_side が NULL のままで、
+  // その間 CV の打者候補は人に対応づけられず全部 review_required に落ちる
+  // (backend/cv/side_mapping.py)。localStorage に **その試合について明示的に
+  // 選ばれた** 視点があるなら、それは操作者が記録した事実なので一度だけ
+  // サーバへ移す。localStorage にも無い試合は既定値しか持っていないので、
+  // 既定を事実として書き込まない。
+  useEffect(() => {
+    if (!matchId || !match || match.player_a_start_side) return
+    const stored = localStorage.getItem(`shuttlescope.viewpoint.${matchId}`)
+    if (stored !== 'top' && stored !== 'bottom') return
+    apiPut(`/matches/${matchId}`, { player_a_start_side: stored })
+      .then(() => queryClient.invalidateQueries({ queryKey: ['match', matchId] }))
+      .catch(() => {
+        // 操作の結果ではないので画面には出さない。次に開いたときにまた試す。
+      })
+  }, [matchId, match, queryClient])
+
   // ダブルスモード検出 — match 読み込み後にストアへ反映
   useEffect(() => {
     if (!initialized || !match) return

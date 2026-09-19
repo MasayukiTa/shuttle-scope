@@ -214,3 +214,28 @@ class TestApplyRefusesAnUnmappedHitter:
         cand = {"value": "A_front_left", "confidence_score": 0.9,
                 "decision_mode": "auto_filled", "reason_codes": []}
         assert passes(cand, ApplyRequest(), {"auto_filled"}) is True
+
+
+class TestItAgreesWithTheFrontendRule:
+    """同じ規則が `src/utils/courtSides.ts` にもある。
+
+    二重実装を許すには「同じ入力で同じ答え」を固定するしかない。ここは
+    `src/utils/__tests__/courtSides.test.ts` の `computePlayerASide` の
+    アサーションをそのまま写したもの。片方だけ直したら落ちる。
+
+    違いは 1 点だけで、意図的:
+    フロントはコート図を描くだけなので 4 ゲーム目でも値を返すが、
+    こちらは `Stroke.player` に人の名前を書くので答えない (別のテストで固定)。
+    """
+
+    @pytest.mark.parametrize("start,set_num,a,b,expected", [
+        ("bottom", 1, 0, 0, "bottom"),   # 第1セットは初期サイドのまま
+        ("top",    1, 5, 3, "top"),
+        ("bottom", 2, 0, 0, "top"),      # セットごとに入れ替わる
+        ("bottom", 3, 0, 0, "bottom"),
+        ("bottom", 3, 10, 8, "bottom"),  # 第3セットは11点でもう一度入れ替わる
+        ("bottom", 3, 11, 8, "top"),
+        ("bottom", 3, 8, 11, "top"),
+    ])
+    def test_same_answers_as_court_sides_ts(self, start, set_num, a, b, expected):
+        assert side_of_player_a(start, set_num, a, b) == expected
