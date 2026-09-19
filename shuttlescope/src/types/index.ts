@@ -36,8 +36,17 @@ export interface AnalysisConfidence {
   warning: string | null
 }
 
+/**
+ * 標本の単位。backend/analysis/analysis_registry.py の SampleUnit と対応する。
+ * 宣言の無い解析では backend が `sample_unit: null` を返すので、UI は
+ * 単位を決めつけず標本数だけを出す（ConfidenceBadge 参照）。
+ */
+export type SampleUnit = 'strokes' | 'rallies' | 'matches'
+
 export interface AnalysisMeta {
   sample_size: number
+  /** sample_size が何を数えた値か。未宣言の解析では null。 */
+  sample_unit?: SampleUnit | null
   confidence?: AnalysisConfidence
 }
 

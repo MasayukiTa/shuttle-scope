@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { clsx } from 'clsx'
 import { MIcon } from '@/components/common/MIcon'
+import type { SampleUnit } from '@/types'
 
 /** N 個 filled star + (max-N) 個 outline star を MIcon で描画 */
 function StarLevel({ filled, max = 3, size = 12 }: { filled: number; max?: number; size?: number }) {
@@ -14,14 +15,15 @@ function StarLevel({ filled, max = 3, size = 12 }: { filled: number; max?: numbe
 }
 
 /**
- * 標本の単位。**閾値も表示も単位で変わるので、必ず実際の単位を渡すこと。**
+ * 標本の単位（定義は `@/types`）。**閾値も表示も単位で変わる。**
  *
  * D-5: 既定の閾値 (500 / 2000) は打球数のものだが、呼び出し側は
  * 試合数・ラリー数・打球数のどれも渡していた。試合数が 500 を超えることは
  * 無いので、試合数を渡していた画面は**永久に★1つ・赤の「参考値」**に固定され、
  * しかもツールチップは「球」と表示していた。値も単位も誤りだった。
+ * 既定値を置く限り「宣言し忘れ」と「打球数」を区別できないので、既定は廃した。
  */
-export type SampleUnit = 'strokes' | 'rallies' | 'matches'
+export type { SampleUnit }
 
 /** 単位ごとの [中程度, 高信頼] 閾値。 */
 const THRESHOLDS: Record<SampleUnit, [number, number]> = {
@@ -35,7 +37,16 @@ const THRESHOLDS: Record<SampleUnit, [number, number]> = {
 
 interface ConfidenceBadgeProps {
   sampleSize: number
-  /** 標本の単位。既定は従来どおり打球数。 */
+  /**
+   * 標本の単位。**既定値は無い。**
+   *
+   * 未指定のときは★も色も出さず、標本数だけを表示する。
+   * 以前はここで `'strokes'` を既定にしていたが、呼び出し側の約半数は
+   * 試合数・ラリー数を渡していたので、打球数の閾値 (500/2000) で
+   * 判定した★と「球」という単位表示は、その画面では全て誤りだった。
+   * 単位が分からないなら信頼度は判定できない、というのが正しい状態で、
+   * 分からないまま★を出すのは無根拠な確信の表示にあたる。
+   */
   unit?: SampleUnit
   /** コンパクト表示（モバイル用）: ★マークのみ、タイトルでフル情報 */
   compact?: boolean
@@ -44,17 +55,38 @@ interface ConfidenceBadgeProps {
 
 /**
  * 信頼度バッジ（全解析結果に必ず付与）
- * 500球未満: 警告スタイル（赤枠）
- * 500-2000球: 中程度（黄枠）
- * 2000球以上: 高信頼（緑枠）
  *
- * compact=true: モバイル向けに★のみ表示（タップでツールチップ）
+ * `unit` を渡した場合のみ信頼度を判定する（単位ごとの閾値は THRESHOLDS）。
+ * 例: strokes なら 500 未満=参考値（赤）/ 500-2000=中程度（黄）/ 2000 以上=高信頼（緑）。
+ *
+ * `unit` 未指定なら★も色も出さず、標本数だけを表示する。
+ *
+ * compact=true: モバイル向けに★のみ表示（タップでツールチップ）。
+ * 単位未宣言のときは compact でも数字を出す（★が無いので空になってしまうため）。
  */
-export function ConfidenceBadge({ sampleSize, unit = 'strokes', compact = false, className }: ConfidenceBadgeProps) {
+export function ConfidenceBadge({ sampleSize, unit, compact = false, className }: ConfidenceBadgeProps) {
   const { t } = useTranslation()
 
   // undefined / null / NaN を 0 に正規化（バックエンドが sample_n を省略した場合の保険）
   const size = typeof sampleSize === 'number' && isFinite(sampleSize) ? sampleSize : 0
+
+  // 単位未宣言: 数だけ出す。★・色・単位語はどれも単位が決まって初めて意味を持つ。
+  if (unit === undefined) {
+    return (
+      <div
+        className={clsx(
+          'inline-flex items-center gap-1 px-2.5 py-1 rounded-ss-pill border text-xs',
+          'max-w-full overflow-hidden whitespace-nowrap shrink',
+          'border-[var(--ss-border-default)] text-[var(--ss-text-secondary)]',
+          className,
+        )}
+        title={`${t('confidence.sample_size')}: ${size.toLocaleString()}`}
+      >
+        {!compact && <span className="hidden sm:inline truncate">{t('confidence.sample_size')}:</span>}
+        <span className="ss-num">{size.toLocaleString()}</span>
+      </div>
+    )
+  }
 
   let filled: number
   let label: string

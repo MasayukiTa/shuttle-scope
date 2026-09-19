@@ -235,7 +235,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
               <SectionTitle>{t('auto.DashboardOverviewPage.k2')}</SectionTitle>
               <div className="flex items-center gap-2" data-tutorial="dashboard.confidenceBadge">
                 {descriptive && (
-                  <ConfidenceBadge sampleSize={descriptive.total_rallies} className="text-[10px] shrink-0" />
+                  <ConfidenceBadge sampleSize={descriptive.total_rallies} unit="rallies" className="text-[10px] shrink-0" />
                 )}
                 <ExpandBtn onClick={() => setExpandedChart('end_type')} />
               </div>
@@ -260,7 +260,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
               <SectionTitle>{t('auto.DashboardOverviewPage.k4')}</SectionTitle>
               <div className="flex items-center gap-2">
                 {descriptive && (
-                  <ConfidenceBadge sampleSize={descriptive.total_rallies} className="text-[10px] shrink-0" />
+                  <ConfidenceBadge sampleSize={descriptive.total_rallies} unit="rallies" className="text-[10px] shrink-0" />
                 )}
                 <ExpandBtn onClick={() => setExpandedChart('rally_dist')} />
               </div>
@@ -368,7 +368,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
             <div className={`${card} rounded-ss-lg shadow-card p-4`}>
               <div className="flex items-center justify-between mb-3">
                 <SectionTitle>{t('auto.DashboardOverviewPage.k9')}</SectionTitle>
-                {descriptive && <ConfidenceBadge sampleSize={descriptive.total_rallies} className="text-[10px] shrink-0" />}
+                {descriptive && <ConfidenceBadge sampleSize={descriptive.total_rallies} unit="rallies" className="text-[10px] shrink-0" />}
               </div>
               {loadingDescriptive || !descriptive?.server_win_rate ? <LoadingRow /> : (
                 <div className="space-y-3">
