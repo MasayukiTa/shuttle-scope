@@ -51,8 +51,17 @@ def _fmt_shot_label(key: str, lang: str) -> str:
     return table_en.get(key, key)
 
 
-def _confidence_from_sample(n: int) -> float:
-    """N=30 → 0.4, N=500 → 0.7, N=2000+ → 0.9 程度に丸める。"""
+def _sample_weight(n: int) -> float:
+    """**並べ替え専用**の N の単調関数。信頼度ではない。
+
+    N=30 → 0.4, N=500 → 0.7, N=2000+ → 0.9 と丸めるが、この 0.7 は
+    どんな統計量でもない。以前はこれを `InsightItem.confidence` に入れており、
+    UI (`ChatMessageBubble.tsx`) が「信頼度 70%」として描いていた。
+    誰も計算していない数字を、いちばん信用できそうな見た目で出していたことになる。
+
+    **この値を表示に回さないこと。** サンプル数を読者に伝えるなら
+    `metric.sample_n` と prose の `N=...` を使う。
+    """
     if n < _MIN_SAMPLE_N:
         return 0.0
     if n >= 2000:
@@ -121,7 +130,7 @@ class TemplateGenerator:
                 id="recent_form",
                 prose=prose,
                 evidence_path=f"/api/analysis/recent_form?player_id={player_id}",
-                confidence=_confidence_from_sample(n_rallies),
+                confidence=_sample_weight(n_rallies),
                 metric={
                     "last_5_match_win_rate": last5,
                     "delta_vs_prior_5": delta,
@@ -155,7 +164,7 @@ class TemplateGenerator:
                 id="shot_mix",
                 prose=base,
                 evidence_path=f"/api/analysis/shot_mix?player_id={player_id}",
-                confidence=_confidence_from_sample(n_strokes),
+                confidence=_sample_weight(n_strokes),
                 metric={
                     "top_shot": top.get("shot_type"),
                     "top_share": top.get("share"),
@@ -183,7 +192,7 @@ class TemplateGenerator:
                 id="condition_recovery",
                 prose=prose,
                 evidence_path=f"/api/analysis/conditions?player_id={player_id}",
-                confidence=_confidence_from_sample(cond_n * 10),  # 主観評価なので weighted
+                confidence=_sample_weight(cond_n * 10),  # 主観評価なので weighted
                 metric={"avg_rpe": avg_rpe, "n": cond_n},
             ))
 
@@ -218,7 +227,7 @@ class TemplateGenerator:
                     id="growth_shot",
                     prose=prose,
                     evidence_path=f"/api/analysis/shot_win_loss?player_id={player_id}",
-                    confidence=_confidence_from_sample(n),
+                    confidence=_sample_weight(n),
                     metric={
                         "shot": top.get("shot"),
                         "win_rate": top.get("win_rate"),
@@ -250,7 +259,7 @@ class TemplateGenerator:
                     id="consistency_lift",
                     prose=prose,
                     evidence_path=f"/api/analysis/recent_form?player_id={player_id}",
-                    confidence=_confidence_from_sample(n),
+                    confidence=_sample_weight(n),
                     metric={"win_rate": rf.get("win_rate"), "delta_pp": delta_pp, "sample_n": n},
                 )
             )
@@ -284,7 +293,7 @@ class TemplateGenerator:
                     id="growth_timeline",
                     prose=prose,
                     evidence_path=f"/api/analysis/growth_timeline?player_id={player_id}",
-                    confidence=_confidence_from_sample(n),
+                    confidence=_sample_weight(n),
                     metric={
                         "metric": metric_key,
                         "delta_pp": delta_pp,
@@ -293,8 +302,14 @@ class TemplateGenerator:
                 )
             )
 
-        # 信頼度の高い順に最大 3 件
-        items = sorted(items, key=lambda it: it["confidence"], reverse=True)[:3]
+        # サンプル数の多い順に最大 3 件
+        items = sorted(items, key=lambda it: it["confidence"] or 0.0, reverse=True)[:3]
+        # 並べ替えに使った値は N の単調関数でしかないので、**出す前に消す**。
+        # `InsightItem.confidence` が数値だと UI が「信頼度 NN%」を描く
+        # (ChatMessageBubble.tsx)。N は各 item の `metric.sample_n` と
+        # prose の中に残っている。
+        for _it in items:
+            _it["confidence"] = None
 
         return InsightResult(
             items=items,

@@ -65,7 +65,9 @@ def test_template_generator_emits_items():
     for it in result["items"]:
         assert "弱点" not in it["prose"]
         assert "weakness" not in it["prose"].lower()
-        assert 0.0 <= it["confidence"] <= 1.0
+        # 信頼度は載せない。N の単調関数を «信頼度 NN%» として描いていたのを
+        # やめた (test_insight_confidence.py)。並べ替えには今も使っている。
+        assert it["confidence"] is None
 
 
 def test_template_generator_english():

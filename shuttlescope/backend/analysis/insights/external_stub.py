@@ -38,36 +38,6 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _extract_sample_size(analytics: dict | None) -> int:
-    """analytics から最大 sample_n を拾う (heuristic 用)。"""
-    if not analytics:
-        return 0
-    max_n = 0
-    for v in analytics.values():
-        if isinstance(v, dict):
-            n = int(v.get("sample_n", 0) or 0)
-            if n > max_n:
-                max_n = n
-        elif isinstance(v, list):
-            for it in v:
-                if isinstance(it, dict):
-                    n = int(it.get("sample_n", 0) or 0)
-                    if n > max_n:
-                        max_n = n
-    return max_n
-
-
-def _confidence_heuristic(analytics: dict | None) -> float:
-    """baseline 0.6, sample_n>=30 で +0.2, 上限 0.85。"""
-    n = _extract_sample_size(analytics)
-    c = 0.6
-    if n >= 30:
-        c += 0.2
-    if c > 0.85:
-        c = 0.85
-    return c
-
-
 class ExternalApiGenerator:
     """NVIDIA NIM (OpenAI 互換) ジェネレータ。
 
@@ -306,12 +276,17 @@ class ExternalApiGenerator:
         except Exception:
             pass
 
-        confidence = _confidence_heuristic(analytics)
         item = InsightItem(
             id="growth_main",
             prose=content.strip(),
             evidence_path="",  # NIM 出力はテキストのみ
-            confidence=confidence,
+            # 旧実装は `0.6 (+0.2 if sample_n>=30)` を信頼度として付けていた。
+            # これは **言語モデルの自由文** で、0.6 も 0.8 も何かを測った値では
+            # ない。UI は数値を見れば「信頼度 80%」と描くので、
+            # 裏取りの済んでいない文章に最も信用できそうな見た目が付いていた。
+            # 上の定型拒否文と同じ理由で数値は持たせない。
+            # サンプル数を伝えるのは prose 側の責務 (プロンプトが N=<count> を要求する)。
+            confidence=None,
             # 送ったものと検証するものを揃える。`metric` は
             # output_validators の「許容される数値」の集合でもあるので、
             # **モデルが見ていない数値をここに入れると裏取りの意味が逆になる**

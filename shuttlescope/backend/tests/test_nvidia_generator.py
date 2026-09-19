@@ -10,7 +10,6 @@ import pytest
 from backend.analysis.insights import external_stub
 from backend.analysis.insights.external_stub import (
     ExternalApiGenerator,
-    _confidence_heuristic,
 )
 
 
@@ -80,7 +79,8 @@ def test_success_returns_insight_result(env_key):
     item = result["items"][0]
     assert "勝率" in item["prose"]
     assert item["id"] == "growth_main"
-    assert 0.79 < item["confidence"] <= 0.85  # sample_n>=30 → 0.8
+    # 言語モデルの自由文に信頼度を付けない (下の専用テストを参照)
+    assert item["confidence"] is None
     assert result["meta"]["tokens"]["total"] == 160  # type: ignore[typeddict-item]
 
 
@@ -113,15 +113,16 @@ def test_connect_error_retries_then_raises(env_key):
     assert mock_post.call_count == 3
 
 
-def test_confidence_heuristic_bounds():
-    # 小サンプル → 0.6
-    assert _confidence_heuristic({"x": {"sample_n": 5}}) == pytest.approx(0.6)
-    # >=30 → 0.8
-    assert _confidence_heuristic({"x": {"sample_n": 50}}) == pytest.approx(0.8)
-    # 巨大サンプル → 0.85 cap (現実装は 0.6+0.2=0.8 が上限挙動だが cap は 0.85 で安全側)
-    assert _confidence_heuristic({"x": {"sample_n": 100000}}) <= 0.85
-    # 空 analytics
-    assert _confidence_heuristic({}) == pytest.approx(0.6)
+def test_the_model_output_carries_no_confidence_number():
+    """言語モデルの自由文に信頼度を付けない。
+
+    旧実装は `0.6 (+0.2 if sample_n>=30)` を `InsightItem.confidence` に入れて
+    いた。0.6 も 0.8 も何かを測った値ではないのに、UI
+    (`ChatMessageBubble.tsx`) は数値を見れば「信頼度 80%」と描く。
+    裏取りの済んでいない文章が、いちばん信用できそうな見た目で出ていた。
+    N を読者に伝えるのは prose 側 (プロンプトが N=<count> を要求する)。
+    """
+    assert not hasattr(external_stub, "_confidence_heuristic")
 
 
 def test_factory_returns_template_without_env(monkeypatch):
