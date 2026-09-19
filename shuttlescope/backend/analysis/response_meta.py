@@ -28,6 +28,7 @@ def build_response_meta(analysis_type: str, sample_size: int) -> dict:
           "tier": str,
           "evidence_level": str,
           "sample_size": int,
+          "sample_unit": "strokes" | "rallies" | "matches" | None,
           "min_recommended_sample": int,
           "confidence_level": float,
           "conclusion_allowed": bool,
@@ -54,6 +55,10 @@ def build_response_meta(analysis_type: str, sample_size: int) -> dict:
         "tier": tier,
         "evidence_level": entry["evidence_level"],
         "sample_size": sample_size,
+        # D-5: `sample_size` が何を数えた値か。UI の ConfidenceBadge は
+        # 単位ごとに閾値も表示も変える。宣言が無い解析では None を返し、
+        # 画面は「球」と決めつけずに数だけ出す。
+        "sample_unit": entry.get("sample_unit"),
         "min_recommended_sample": min_samples,
         "confidence_level": confidence_level,
         "conclusion_allowed": policy["show_conclusion"] and sufficient,

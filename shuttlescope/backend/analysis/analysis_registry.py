@@ -20,6 +20,11 @@ from typing import TypedDict, Literal, Optional
 
 
 AnalysisTier = Literal["stable", "advanced", "research"]
+# 標本の単位。`sample_size` が何を数えた値なのかは解析ごとに違う。
+# D-5: 宣言が無かったので UI の ConfidenceBadge は全部「球」として扱い、
+# 試合数を渡していた画面は**永久に★1つ・赤の「参考値」**に固定され、
+# しかもツールチップには「球」と出ていた。値も単位も誤りだった。
+SampleUnit = Literal["strokes", "rallies", "matches"]
 EvidenceLevel = Literal["exploratory", "directional", "practical_candidate", "practical_adopted"]
 
 
@@ -28,6 +33,10 @@ class RegistryEntry(TypedDict):
     tier: AnalysisTier
     evidence_level: EvidenceLevel
     min_recommended_sample: int
+    # `sample_size` が数えている単位。分かっているものだけ宣言する。
+    # 推測で埋めると「単位の分からない数字」に戻るので、
+    # **エンドポイントが実際に何を渡しているかを読んでから**書くこと。
+    sample_unit: Optional[SampleUnit]
     caution: Optional[str]
     assumptions: Optional[str]
     promotion_criteria: Optional[str]
@@ -291,6 +300,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "shot_influence",
+        "sample_unit": "rallies",
         "tier": "research",
         "evidence_level": "exploratory",
         "caution": (
@@ -444,6 +454,7 @@ _RAW: list[dict] = [
 
     {
         "analysis_type": "epv_state",
+        "sample_unit": "rallies",
         "tier": "research",
         "evidence_level": "directional",
         "caution": "状態ベースEPVは状態定義の品質に強く依存します。状態数が少ない場合、推定が不安定になります。",
@@ -454,6 +465,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "state_action",
+        "sample_unit": "rallies",
         "tier": "research",
         "evidence_level": "exploratory",
         "caution": "状態-行動価値（Q値）はサンプル不足で高分散になります。少サンプル時はCI幅が広くなります。",
@@ -464,6 +476,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "hazard_fatigue",
+        "sample_unit": "rallies",
         "tier": "research",
         "evidence_level": "exploratory",
         "caution": "ハザード推定はラリー結果の時系列パターンから計算します。実際の疲労と一致しない場合があります。",
@@ -474,6 +487,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "counterfactual_v2",
+        "sample_unit": "rallies",
         "tier": "research",
         "evidence_level": "exploratory",
         "caution": "CF-1フェーズ: ブートストラップCIによる不確実性推定を含みます。傾向スコア制御はまだ未実装です。",
@@ -484,6 +498,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "bayes_matchup",
+        "sample_unit": "matches",
         "tier": "research",
         "evidence_level": "exploratory",
         "caution": "経験的ベイズは事前分布をデータから推定します。データ不足時は強く事前に引っ張られます。",
@@ -494,6 +509,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "opponent_policy",
+        "sample_unit": "strokes",
         "tier": "research",
         "evidence_level": "exploratory",
         "caution": "対戦相手ポリシーは観測されたショット選択の統計です。意図的な戦術変化は反映しません。",
@@ -504,11 +520,27 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "doubles_role",
+        "sample_unit": "strokes",
         "tier": "research",
         "evidence_level": "exploratory",
         "caution": "ロール推定（前衛/後衛）はラリー構造のルールベース分類です。実際のポジションとは異なる場合があります。",
         "assumptions": "ショット種別・順番から前衛/後衛ロールをルールで判定します。HMMは未実装です。",
         "promotion_criteria": "トラッキングデータとの照合・HMM移行（DB-2）",
+        "page": "analyst",
+        "section": "spine_rs5",
+    },
+    {
+        # DB-3。`doubles_role` とは数えているものが違う (試合数)。
+        # 同じエントリを借りていたので、**打球数向けの閾値で試合数を judge** して
+        # いた。ロール推定そのものとは別の解析として登録する。
+        "analysis_type": "doubles_role_stability",
+        "sample_unit": "matches",
+        "tier": "research",
+        "evidence_level": "exploratory",
+        "min_recommended_sample": 10,
+        "caution": "ロール安定性は試合ごとのロール推定を集約したものです。元のロール推定がルールベースである制約をそのまま引き継ぎます。",
+        "assumptions": "ダブルスの試合ごとに推定したロールの一貫性を測ります。試合数が少ないと安定性は測れません。",
+        "promotion_criteria": "ロール推定自体の精度検証（DB-2）",
         "page": "analyst",
         "section": "spine_rs5",
     },
@@ -525,6 +557,7 @@ def _build_registry() -> dict[str, RegistryEntry]:
             "tier": tier,  # type: ignore[typeddict-item]
             "evidence_level": raw["evidence_level"],  # type: ignore[typeddict-item]
             "min_recommended_sample": raw.get("min_recommended_sample", TIER_MIN_SAMPLES.get(tier, 50)),
+            "sample_unit": raw.get("sample_unit"),
             "caution": raw.get("caution"),
             "assumptions": raw.get("assumptions"),
             "promotion_criteria": raw.get("promotion_criteria"),
@@ -542,6 +575,7 @@ _FALLBACK: RegistryEntry = {
     "tier": "research",
     "evidence_level": "exploratory",
     "min_recommended_sample": 50,
+    "sample_unit": None,
     "caution": "このモジュールは研究段階です。",
     "assumptions": None,
     "promotion_criteria": None,

@@ -847,7 +847,9 @@ def get_doubles_role_stability(
     matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
     doubles_matches = [m for m in matches if getattr(m, "format", None) in ("womens_doubles", "mixed_doubles")]
     if not doubles_matches:
-        meta = build_response_meta("doubles_role", 0)
+        # D-5: ここが数えているのは **試合数**。`doubles_role` は打球数なので、
+        # 同じエントリを借りると打球数向けの閾値で試合数を判定することになる。
+        meta = build_response_meta("doubles_role_stability", 0)
         return {
             "success": True,
             "data": {
@@ -880,7 +882,7 @@ def get_doubles_role_stability(
         role_by_match=role_by_match,
         set_to_match=set_to_match,
     )
-    meta = build_response_meta("doubles_role", result_data.get("n_matches_analyzed", 0))
+    meta = build_response_meta("doubles_role_stability", result_data.get("n_matches_analyzed", 0))
     return {"success": True, "data": result_data, "meta": meta}
 
 
