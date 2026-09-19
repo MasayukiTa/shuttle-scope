@@ -116,24 +116,37 @@ def build_cv_candidates(match_id: int, request: Request, db: Session = Depends(g
     tracknet_frames: list[dict] = []
     yolo_frames: list[dict]     = []
     alignment_data: list[dict]  = []
+    # C-12: 「壊れていて読めなかった」と「そもそも無かった」を区別する。
+    # 旧実装はどちらも空リストにして先へ進み、候補 0 件を `success: true` で
+    # 返していた。読み手には «CV は走ったが何も見つからなかった» と映るし、
+    # 両方壊れていたときに出る 400 は「先に CV 解析を実行してください」で、
+    # 実際には解析済み・成果物が壊れているのに逆のことを言っていた。
+    corrupt: list[str] = []
 
-    if tracknet_artifact and tracknet_artifact.data:
+    def _load(artifact, label: str) -> list[dict]:
+        if not artifact or not artifact.data:
+            return []
         try:
-            tracknet_frames = json.loads(tracknet_artifact.data)
+            return json.loads(artifact.data)
         except Exception:
-            logger.warning("TrackNet artifact JSON 解析失敗 match_id=%d", match_id)
+            logger.warning("%s artifact JSON 解析失敗 match_id=%d", label, match_id)
+            corrupt.append(label)
+            return []
 
-    if yolo_artifact and yolo_artifact.data:
-        try:
-            yolo_frames = json.loads(yolo_artifact.data)
-        except Exception:
-            logger.warning("YOLO artifact JSON 解析失敗 match_id=%d", match_id)
+    tracknet_frames = _load(tracknet_artifact, "TrackNet")
+    yolo_frames     = _load(yolo_artifact, "YOLO")
+    alignment_data  = _load(alignment_artifact, "アライメント")
 
-    if alignment_artifact and alignment_artifact.data:
-        try:
-            alignment_data = json.loads(alignment_artifact.data)
-        except Exception:
-            logger.warning("アライメント artifact JSON 解析失敗 match_id=%d", match_id)
+    if corrupt:
+        # 壊れた成果物を «無かったこと» にして候補を作ると、欠けたまま
+        # 完成した顔の結果が残る。作り直しが要ることを言って止める。
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                f"CV 成果物が読めません ({', '.join(corrupt)})。"
+                "保存されたデータが壊れています。該当の CV 解析をやり直してください。"
+            ),
+        )
 
     # アライメントデータがなく両方揃っていれば即時計算
     if not alignment_data and tracknet_frames and yolo_frames:
@@ -141,7 +154,15 @@ def build_cv_candidates(match_id: int, request: Request, db: Session = Depends(g
         try:
             alignment_data = align_match(yolo_frames, tracknet_frames, rally_boundaries)
         except Exception as e:
+            # アライメントは «あれば精度が上がる» 補助なので、失敗しても候補生成は
+            # 続ける。ただし黙って落とすと «アライメント込みの結果» と区別が
+            # 付かないので、成果物に残す (下の alignment_failed)。
             logger.warning("アライメント計算失敗: %s", e)
+            alignment_failed = str(e) or e.__class__.__name__
+        else:
+            alignment_failed = None
+    else:
+        alignment_failed = None
 
     if not tracknet_frames and not yolo_frames:
         raise HTTPException(
@@ -173,6 +194,9 @@ def build_cv_candidates(match_id: int, request: Request, db: Session = Depends(g
     if isinstance(candidates, dict):
         candidates["fps_used"] = fps
         candidates["fps_known"] = fps_known
+        # C-12: アライメントを計算しようとして失敗したなら、その痕跡を残す。
+        # 打者推定はアライメントがあるときと無いときで経路が変わる。
+        candidates["alignment_failed"] = alignment_failed
 
     candidates_json = json.dumps(candidates, ensure_ascii=False)
 
