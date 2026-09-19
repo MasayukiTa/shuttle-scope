@@ -280,8 +280,33 @@ def batch_save_rally(
 
 
 @router.post("/strokes", status_code=201)
-def create_stroke(rally_id: int, body: StrokeData, request: Request, db: Session = Depends(get_db)):
-    """ストローク記録（個別）"""
+def create_stroke(
+    rally_id: int,
+    body: StrokeData,
+    request: Request,
+    db: Session = Depends(get_db),
+    idem_key: Optional[str] = Header(None, alias="X-Idempotency-Key"),
+):
+    """ストローク記録（個別）
+
+    **冪等性**: `/strokes/batch` と同じ理由でここも要る。
+    `mobileAnnotateQueue.ts` がキューに載せる POST は
+    `POST /api/rallies` と **`POST /api/strokes?rally_id=:rally_id`** の 2 つで、
+    前者だけが冪等化されていた。再送は「サーバは処理したがレスポンスを失った」
+    ときに起きるので、1 打球が二重に入り `rally_length` と下流の全カウントが
+    静かにずれる。キューの PUT / DELETE は結果が同じなので再送しても害はない。
+    """
+    endpoint_id = f"create_stroke:{rally_id}"
+    from backend.utils.auth import get_auth as _ga
+    ctx_for_idem = _ga(request)
+    if idem_key:
+        from backend.utils.idempotency import is_valid_key, get_cached, replay_response
+        if not is_valid_key(idem_key):
+            raise HTTPException(status_code=400, detail="X-Idempotency-Key の形式が不正です")
+        cached = get_cached(idem_key, ctx_for_idem.user_id, endpoint_id)
+        if cached is not None:
+            return replay_response(cached)
+
     _stroke_require_scope(request, db, rally_id)
 
     valid, error = validate_stroke(body.model_dump())
@@ -298,7 +323,11 @@ def create_stroke(rally_id: int, body: StrokeData, request: Request, db: Session
     # rally → set → match 経由で関与選手のみ無効化
     response_cache.bump_players(players_for_rally(db, rally_id))
     db.refresh(stroke)
-    return {"success": True, "data": stroke_to_dict(stroke)}
+    response = {"success": True, "data": stroke_to_dict(stroke)}
+    if idem_key:
+        from backend.utils.idempotency import store
+        store(idem_key, ctx_for_idem.user_id, endpoint_id, response, status_code=201)
+    return response
 
 
 @router.put("/strokes/{stroke_id}")
