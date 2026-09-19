@@ -230,11 +230,20 @@ class CourtBoundedFilter:
         cx, cy = self._bbox_center(bbox)
         if self.court_adapter is not None:
             return self.court_adapter.in_court(cx, cy, margin=self.court_margin)
-        # フォールバック: 画像端マージン。
-        # C-11: strict_mode では court_margin が 0 なので、これは
-        # 「画像内なら何でも in_court」でしかない。**除外はしていない。**
-        # 呼び出し側は `enforcing_court_boundary` を見て、
-        # 成果物に「境界を強制していない」ことを残すこと。
+        # C-11: strict_mode で court_adapter が無いときは **何も通さない**。
+        #
+        # 以前はここで画像端マージン判定に退化していたが、strict_mode では
+        # court_margin が 0 なので実質「画像内なら何でも in_court」= 観客も
+        # 1 人も除外していなかった。それでいて起動ログは strict_mode=True と
+        # 言い、docstring は GDPR 25条 / APPI 20条の技術的措置だと書いていた。
+        #
+        # 「コート内か判定できない」を「コート内である」と読み替えるのが誤り。
+        # 判定できないなら通さない (fail closed)。
+        # **未キャリブレーションの試合では人物検出の結果が空になる。**
+        # それは機能の停止ではなく、キャリブレーションが前提条件であることの表明。
+        if self.strict_mode:
+            return False
+        # 非 strict: 従来どおり画像端マージンで緩く判定する
         return (
             self.court_margin <= cx <= 1.0 - self.court_margin
             and self.court_margin <= cy <= 1.0 - self.court_margin

@@ -155,7 +155,7 @@ def build_cv_candidates(match_id: int, request: Request, db: Session = Depends(g
     strokes_db = _get_strokes_for_rallies(db, rally_ids)
 
     # ── 候補生成 ─────────────────────────────────────────────────────────────
-    fps = _resolve_match_fps(db, match_id)
+    fps, fps_known = _resolve_match_fps(db, match_id)
     candidates = build_candidates(
         match_id=match_id,
         rallies_db=rallies_db,
@@ -165,6 +165,11 @@ def build_cv_candidates(match_id: int, request: Request, db: Session = Depends(g
         alignment_data=alignment_data,
         fps=fps,
     )
+    # C-12: fps を推定できたかを成果物に残す。false のときは秒→フレーム換算が
+    # ずれている可能性があり、ラリー境界候補の位置がそのぶん信用できない。
+    if isinstance(candidates, dict):
+        candidates["fps_used"] = fps
+        candidates["fps_known"] = fps_known
 
     candidates_json = json.dumps(candidates, ensure_ascii=False)
 
@@ -497,24 +502,41 @@ def _latest_artifact(db: Session, match_id: int, artifact_type: str) -> Optional
     )
 
 
-def _resolve_match_fps(db: Session, match_id: int, default: float = 60.0) -> float:
+def _resolve_match_fps(
+    db: Session, match_id: int, default: float = 60.0
+) -> tuple[float, bool]:
     """ラリー境界検出の秒→frame 換算に使う FPS を解決する。
 
-    Recording.fps（試合に紐づく動画）があればそれを使い、無ければ default(60)。
+    Returns: (fps, known) — known=False なら **推定できず default を使った**。
+
+    C-12: 旧実装は `except Exception: pass` のあと黙って 60.0 を返していた。
+    30fps 素材では秒→フレーム換算が全て 2 倍ずれるのに、出力には
+    「fps が分からなかった」という痕跡が一切残らない。
+    DB エラーと「Recording が無い」も区別していなかった。
+    呼び出し側が成果物に残せるよう、推定できたかどうかを返す。
     """
+    from backend.db.models import Recording
     try:
-        from backend.db.models import Recording
         rec = (
             db.query(Recording)
             .filter(Recording.match_id == match_id, Recording.fps != None)  # noqa: E711
             .order_by(Recording.branch_no)
             .first()
         )
-        if rec and rec.fps and rec.fps > 0:
-            return float(rec.fps)
-    except Exception:
-        pass
-    return default
+    except Exception as exc:
+        logger.warning(
+            "[cv_candidates] match=%s の fps 取得に失敗: %s — %.1f を仮定する",
+            match_id, exc, default,
+        )
+        return default, False
+    if rec and rec.fps and rec.fps > 0:
+        return float(rec.fps), True
+    logger.warning(
+        "[cv_candidates] match=%s に fps を持つ Recording が無い — %.1f を仮定する。"
+        " 素材が %.0ffps でなければ秒→フレーム換算がずれる",
+        match_id, default, default,
+    )
+    return default, False
 
 
 def _save_rally_boundaries_artifact(

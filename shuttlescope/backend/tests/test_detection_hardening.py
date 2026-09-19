@@ -84,14 +84,38 @@ def test_in_court_default_margin():
     assert cbf.is_in_court([0.01, 0.01, 0.02, 0.02]) is False  # 外側マージン外
 
 
+class _AcceptAllCourt:
+    """コート判定を常に True にするテスト用アダプタ。
+
+    C-11 以降、court_adapter が無いと strict_mode では何も通らない。
+    審判ゾーン / 面積 / 持続性フィルタのテストは **コート判定の話ではない** ので、
+    そこを固定してから当の関心事だけを見る。
+    """
+
+    def in_court(self, cx, cy, margin=0.0):
+        return True
+
+
 def test_strict_mode_forces_zero_margin():
     """strict_mode=True (default) が court_margin を 0 に強制することを確認。"""
     cbf = CourtBoundedFilter(court_margin=0.10)  # strict_mode default True
     assert cbf.strict_mode is True
     assert cbf.court_margin == 0.0
-    # margin=0.10 なら reject される位置 (cx=0.05) が strict mode では accept される
-    # (court_adapter なしのフォールバック挙動: 0 <= cx <= 1 ならコート内扱い)
-    assert cbf.is_in_court([0.04, 0.04, 0.06, 0.06]) is True
+
+
+def test_strict_mode_without_an_adapter_admits_nobody():
+    """C-11: 境界を判定できないなら通さない (fail closed)。
+
+    以前は画像端マージン判定に退化し、strict_mode では margin が 0 なので
+    **画像内なら何でもコート内**だった。観客を 1 人も除外していないのに
+    起動ログは strict_mode=True と言い、GDPR 25条 / APPI 20条の技術的措置だと
+    docstring に書いてあった。
+    「判定できない」を「コート内である」と読み替えていたのが誤り。
+    """
+    cbf = CourtBoundedFilter(court_margin=0.10)
+    assert cbf.enforcing_court_boundary is False
+    assert cbf.is_in_court([0.04, 0.04, 0.06, 0.06]) is False
+    assert cbf.is_in_court([0.45, 0.45, 0.55, 0.60]) is False
 
 
 def test_strict_mode_can_be_disabled_for_tests():
@@ -102,7 +126,7 @@ def test_strict_mode_can_be_disabled_for_tests():
 
 
 def test_umpire_zone_excluded():
-    cbf = CourtBoundedFilter(umpire_zone_x=(0.40, 0.60), umpire_zone_y=(0.92, 1.0))
+    cbf = CourtBoundedFilter(umpire_zone_x=(0.40, 0.60), umpire_zone_y=(0.92, 1.0), court_adapter=_AcceptAllCourt())
     out = cbf.filter([
         _det(0.45, 0.93, 0.55, 0.99, conf=0.9),  # 審判席 → 除外
         _det(0.45, 0.40, 0.55, 0.50, conf=0.9),  # コート内 → 残る
@@ -112,7 +136,7 @@ def test_umpire_zone_excluded():
 
 
 def test_min_area_excludes_tiny_dots():
-    cbf = CourtBoundedFilter(min_area=0.001)
+    cbf = CourtBoundedFilter(min_area=0.001, court_adapter=_AcceptAllCourt())
     out = cbf.filter([
         _det(0.50, 0.50, 0.51, 0.51, conf=0.9),  # area=0.0001 → 除外
         _det(0.50, 0.50, 0.55, 0.55, conf=0.9),  # area=0.0025 → 残る
@@ -121,7 +145,7 @@ def test_min_area_excludes_tiny_dots():
 
 
 def test_max_area_excludes_huge():
-    cbf = CourtBoundedFilter(max_area=0.30)
+    cbf = CourtBoundedFilter(max_area=0.30, court_adapter=_AcceptAllCourt())
     out = cbf.filter([
         _det(0.05, 0.05, 0.95, 0.95, conf=0.9),  # 巨大 → 除外
     ])
@@ -129,7 +153,7 @@ def test_max_area_excludes_huge():
 
 
 def test_persistence_filter_requires_n_frames():
-    cbf = CourtBoundedFilter(persistence_frames=3)
+    cbf = CourtBoundedFilter(persistence_frames=3, court_adapter=_AcceptAllCourt())
     d = _det(0.50, 0.50, 0.55, 0.55, track_id=42)
     assert cbf.filter([d]) == []  # frame 1: skip
     assert cbf.filter([d]) == []  # frame 2: skip
@@ -137,7 +161,7 @@ def test_persistence_filter_requires_n_frames():
 
 
 def test_persistence_filter_resets_when_track_disappears():
-    cbf = CourtBoundedFilter(persistence_frames=3)
+    cbf = CourtBoundedFilter(persistence_frames=3, court_adapter=_AcceptAllCourt())
     d1 = _det(0.50, 0.50, 0.55, 0.55, track_id=42)
     d2 = _det(0.40, 0.40, 0.45, 0.45, track_id=99)
     cbf.filter([d1])
@@ -163,7 +187,7 @@ def test_filter_with_court_adapter():
 
 
 def test_reset_clears_persistence():
-    cbf = CourtBoundedFilter(persistence_frames=3)
+    cbf = CourtBoundedFilter(persistence_frames=3, court_adapter=_AcceptAllCourt())
     d = _det(0.50, 0.50, 0.55, 0.55, track_id=1)
     cbf.filter([d])
     cbf.filter([d])
@@ -187,8 +211,8 @@ class TestCourtBoundaryIsHonestAboutEnforcement:
         f = CourtBoundedFilter()
         assert f.strict_mode is True
         assert f.enforcing_court_boundary is False
-        # 画面隅（観客がいる位置）が通ってしまうこと自体は現状の挙動
-        assert f.is_in_court([0.01, 0.01, 0.05, 0.10]) is True
+        # C-11 厳格化後: 判定できないので通さない
+        assert f.is_in_court([0.01, 0.01, 0.05, 0.10]) is False
 
     def test_with_an_adapter_it_enforces_and_says_so(self):
         from backend.cv.detection_hardening import CourtBoundedFilter
