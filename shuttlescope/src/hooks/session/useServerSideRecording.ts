@@ -110,12 +110,13 @@ const DEFAULT_TIMESLICE_SEC =
  *   - MAX_PENDING_CHUNKS=20 → 最大 ~160 MB の RAM。
  *     ブラウザタブの heap (1-2 GB) には十分収まり、かつ無限にバッファして
  *     OOM で renderer プロセスが落ちる事故を防ぐ。
- *   - 上限超過時は **古い順に drop**。完全な無欠録画は諦め、最新分の保全を優先。
- *     drop した chunkIndex は errorMsg に記録するので運用側が認識できる。
+ *   - 上限超過時は **新しいほうを捨てる**。サーバが逐次受信しか受け付けないため、
+ *     既に並んでいる古い chunk を捨てると連番が途切れ、以後は何を送っても 409 に
+ *     なる（＝残り全部を失う）。捨てた分は errorMsg に出す。
  *
  * リトライ間隔:
- *   - RETRY_INTERVAL_MS=15s。timeslice=10s なので「次の chunk と同時に裏で再送」され、
- *     burst にはならない (uploadChunk は並行 fire-and-forget)。
+ *   - RETRY_INTERVAL_MS=15s。送信は常に 1 本だけ走る（pump）ので、
+ *     回線復帰時に一斉送信して burst にはならない。
  */
 const MAX_PENDING_CHUNKS = 20
 const RETRY_INTERVAL_MS = 15_000
@@ -156,32 +157,50 @@ export function useServerSideRecording(
   const chunkIndexRef = useRef<number>(0)
   const apiBaseRef = useRef<string>('')
 
-  // Round 258 R17 P0 fix (NEW-1): メモリ上の pending chunk キュー。
+  // 送信キュー（index 昇順の FIFO）。
+  //
+  // サーバは streaming モードで `chunk_index != received_count` を 409 にする
+  // (`uploads.py`)。**厳密に 1 本ずつ・順番どおり**でなければ受け付けない。
+  // 旧実装はこれに 2 つの点で反していた:
+  //
+  //   1. `ondataavailable` が `void uploadChunk(...)` で投げっぱなしにしており、
+  //      回線が揺れて n+1 が n より先に着くと 409。以後すべて 409 になり、
+  //      そこで録画が終わる
+  //   2. あふれたとき**古い順に drop** していた。逐次が前提のサーバでは、
+  //      index N を捨てた時点で N+1 以降が永久に受け付けられない。
+  //      「最新を残す」つもりの方針が、実際には**残り全部の損失**を確定させていた
+  //
+  // したがって送信は 1 本に直列化し、index は**キューに入るときに**採番する
+  // (入れられなかった chunk は index を消費しない = 連番が途切れない)。
   // localStorage には絶対に書かない (R16 F-2 の DoS/XSS 経路を再導入しない)。
-  // Map<chunkIndex, Blob> insertion-order を保つので「古い順に drop」が自然にできる。
-  const pendingRef = useRef<Map<number, Blob>>(new Map())
+  const queueRef = useRef<Array<{ index: number; blob: Blob }>>([])
   const retryTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const droppedChunksRef = useRef<number[]>([])
-  const retryInFlightRef = useRef<boolean>(false)
+  const sendingRef = useRef<boolean>(false)
+  const fatalRef = useRef<boolean>(false)
 
-  // ─── pending キュー操作 ──────────────────────────────────────────
-  // Round 258 R17 P0 fix (NEW-1): pending Map に積む。容量超過時は古い順に drop。
-  const enqueuePending = useCallback((chunkIndex: number, blob: Blob) => {
-    const q = pendingRef.current
-    // 既に同じ index が居る場合 (retry の再失敗) は新しい blob で上書きしない
-    // (Map.set で同 key を再 set するとイテレーション順序が末尾に移動する仕様だが、
-    //  blob 自体は同じなので「新しい失敗」として末尾扱いになるのは許容)。
-    q.set(chunkIndex, blob)
-    while (q.size > MAX_PENDING_CHUNKS) {
-      const oldestKey = q.keys().next().value
-      if (oldestKey === undefined) break
-      q.delete(oldestKey)
-      droppedChunksRef.current.push(oldestKey as number)
+  // ─── 送信キュー操作 ──────────────────────────────────────────────
+  /**
+   * chunk をキュー末尾に積む。**index はここで採番する。**
+   *
+   * 満杯なら**新しいほうを捨てる**。逐次が前提なので、既に並んでいる
+   * 古い chunk を捨てると連番が途切れ、以後は何を送っても 409 になる。
+   * 捨てた分は録画に時間の穴として残るが、**その先の録画は続けられる**。
+   * 穴が空いたことは errorMsg に出す（黙って捨てない）。
+   */
+  const enqueue = useCallback((blob: Blob): boolean => {
+    if (fatalRef.current) return false
+    const q = queueRef.current
+    if (q.length >= MAX_PENDING_CHUNKS) {
+      droppedChunksRef.current.push(chunkIndexRef.current)
       setErrorMsg(
-        `pending queue overflow: chunk #${oldestKey} dropped ` +
-        `(total dropped: ${droppedChunksRef.current.length})`,
+        `送信が追いつかず、この時点の映像を ${droppedChunksRef.current.length} 個ぶん破棄しました` +
+        '（録画は継続しています。映像に欠落が残ります）',
       )
+      return false
     }
+    q.push({ index: chunkIndexRef.current++, blob })
+    return true
   }, [])
 
   // ─── アップロード関数 ───────────────────────────────────────────
@@ -226,7 +245,9 @@ export function useServerSideRecording(
         // 4xx (auth / validation) はリトライしても解消しないため積まない。
         // 5xx / network のみ retry 対象。
         if (res.status >= 500 && res.status < 600) {
-          enqueuePending(chunkIndex, blob)
+          // 5xx / 一過性。キューの先頭に残したまま次の interval で再送する
+          // （pump 側が shift しないので順序は保たれる）。
+          return false
         } else {
           // 4xx は再送しても解消しない。**だがこの枝はエラーを一切
           // 表示せずに return していた。**
@@ -235,6 +256,9 @@ export function useServerSideRecording(
           // 通信の一瞬の揺らぎで録画が途切れ、**画面は「録画中」のまま、
           // 操作者は録れていると信じ続ける**。
           // 直せない失敗こそ、黙って捨ててはいけない。
+          // 4xx はこのセッションでは回復しない。再送し続けても同じ 409 を
+          // 繰り返すだけなので、fatal を立てて送信を止める。
+          fatalRef.current = true
           setErrorMsg(
             `アップロードが拒否されました (HTTP ${res.status})。` +
               'この時点以降の録画は保存されていません。',
@@ -242,42 +266,40 @@ export function useServerSideRecording(
         }
         return false
       }
-      // 成功時: 既に pending に居る場合は除去 (retry 成功)
-      pendingRef.current.delete(chunkIndex)
       setUploadedChunks((n) => n + 1)
       return true
     } catch (err: unknown) {
-      // ネットワーク完全切断等の throw は retry 対象に積む
-      enqueuePending(chunkIndex, blob)
+      // ネットワーク完全切断等の throw。先頭に残して次の interval で再送。
       setErrorMsg(errorMessage(err))
       return false
     }
-  }, [enqueuePending])
+  }, [])
 
-  // ─── retry タイマー ──────────────────────────────────────────────
-  // Round 258 R17 P0 fix (NEW-1): pending を順に再送する。
-  // 同時実行を 1 つに制限 (retryInFlightRef) して、回線復活直後に
-  // 全 pending chunk を一斉に同時 POST し DoS 状態にしないようにする。
-  const flushPending = useCallback(async () => {
-    if (retryInFlightRef.current) return
+  // ─── 送信ポンプ（直列・順序保証） ──────────────────────────────
+  /**
+   * キューの先頭から 1 本ずつ送る。**同時に走るのは常に 1 本だけ。**
+   *
+   * サーバが `chunk_index == received_count` を要求するので、並行に投げると
+   * 到着順が入れ替わった瞬間に 409 になり、そこで録画が終わる。
+   * 成功したものだけを shift し、失敗したら先頭に残して打ち切る
+   * （次の interval か次の chunk で再開する）。順序は決して入れ替えない。
+   */
+  const pump = useCallback(async () => {
+    if (sendingRef.current) return
+    if (fatalRef.current) return
     if (!uploadIdRef.current) return
-    if (pendingRef.current.size === 0) return
-    retryInFlightRef.current = true
+    if (queueRef.current.length === 0) return
+    sendingRef.current = true
     try {
-      // Map のスナップショットを取って while でひとつずつ処理
-      // (uploadChunk 成功時に pendingRef.current.delete されるので、
-      //  同時に新たな失敗 chunk が積まれてもイテレーターは壊れない)
-      const entries = Array.from(pendingRef.current.entries())
-      for (const [idx, blob] of entries) {
-        if (!uploadIdRef.current) break
-        const ok = await uploadChunk(blob, idx)
-        if (!ok) {
-          // この round はここで打ち切り。次の interval まで待つ。
-          break
-        }
+      while (queueRef.current.length > 0) {
+        if (!uploadIdRef.current || fatalRef.current) break
+        const head = queueRef.current[0]
+        const ok = await uploadChunk(head.blob, head.index)
+        if (!ok) break          // 先頭を残したまま打ち切る = 順序が崩れない
+        queueRef.current.shift()
       }
     } finally {
-      retryInFlightRef.current = false
+      sendingRef.current = false
     }
   }, [uploadChunk])
 
@@ -357,9 +379,9 @@ export function useServerSideRecording(
 
     recorder.ondataavailable = (e) => {
       if (!e.data || e.data.size === 0) return
-      const idx = chunkIndexRef.current++
-      // 並行 upload でブロックしない (ベストエフォート)
-      void uploadChunk(e.data, idx)
+      // 並行に投げない。キューに積んでポンプを起こすだけ。
+      // （サーバは chunk_index == received_count を要求する）
+      if (enqueue(e.data)) void pump()
     }
     recorder.onerror = (e: Event) => {
       const err = (e as Event & { error?: unknown }).error
@@ -374,8 +396,10 @@ export function useServerSideRecording(
      // にだけ起動する。旧コードは start 前に setInterval を仕込み、recorder.start()
      // が throw した場合 timer が orphan して uploadIdRef を見ながら無駄 retry を
      // 続け、refresh されたトークンで finalize 後の session に書き込む経路まであった。
-    pendingRef.current.clear()
+    queueRef.current = []
     droppedChunksRef.current = []
+    fatalRef.current = false
+    sendingRef.current = false
     try {
       recorder.start(timesliceSec * 1000)
     } catch (err: unknown) {
@@ -387,9 +411,9 @@ export function useServerSideRecording(
     if (retryTimerRef.current) {
       clearInterval(retryTimerRef.current)
     }
-    retryTimerRef.current = setInterval(() => { void flushPending() }, RETRY_INTERVAL_MS)
+    retryTimerRef.current = setInterval(() => { void pump() }, RETRY_INTERVAL_MS)
     return true
-  }, [matchId, timesliceSec, enabled, uploadChunk, flushPending])
+  }, [matchId, timesliceSec, enabled, enqueue, pump])
 
   // ─── 停止 + finalize ────────────────────────────────────────────
   const stop = useCallback(async () => {
@@ -408,7 +432,7 @@ export function useServerSideRecording(
         clearInterval(retryTimerRef.current)
         retryTimerRef.current = null
       }
-      pendingRef.current.clear()
+      queueRef.current = []
       setState('idle')
       return
     }
@@ -416,7 +440,7 @@ export function useServerSideRecording(
     await new Promise((r) => setTimeout(r, 500))
     // Round 258 R17 P0 fix (NEW-1): finalize 前に pending を可能な限り flush。
     // タイマーで自然に流れるのを待つと finalize と競合するため明示的に呼ぶ。
-    try { await flushPending() } catch { /* noop */ }
+    try { await pump() } catch { /* noop */ }
     // retry timer 停止 (finalize 後の再送は無意味)
     if (retryTimerRef.current) {
       clearInterval(retryTimerRef.current)
@@ -425,8 +449,8 @@ export function useServerSideRecording(
     // uploadId をここで無効化 → 以降の uploadChunk は no-op
     uploadIdRef.current = null
     const droppedCount = droppedChunksRef.current.length
-    const stillPending = pendingRef.current.size
-    pendingRef.current.clear()
+    const stillPending = queueRef.current.length
+    queueRef.current = []
     if (droppedCount > 0 || stillPending > 0) {
       setErrorMsg(
         `chunk loss: dropped=${droppedCount} stillPending=${stillPending} ` +
@@ -455,7 +479,7 @@ export function useServerSideRecording(
       setErrorMsg(`finalize エラー: ${errorMessage(err)}`)
       setState('error')
     }
-  }, [flushPending])
+  }, [pump])
 
   // unmount で必ず停止
   useEffect(() => {
