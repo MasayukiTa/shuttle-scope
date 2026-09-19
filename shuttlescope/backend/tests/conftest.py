@@ -34,7 +34,7 @@ if _xw:
         os.environ["DATABASE_URL"] = f"sqlite:///./backend/db/_pytest_{_xw}.db"
 
 import pytest  # noqa: E402
-from sqlalchemy import create_engine  # noqa: E402
+from sqlalchemy import create_engine, event as sa_event  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 
 from backend.db import database as db_module  # noqa: E402
@@ -133,9 +133,25 @@ def test_engine(tmp_path_factory):
         # StaticPool と違い接続自体は共有されない。
         connect_args={"check_same_thread": False, "timeout": 30},
     )
-    # WAL: 読み手が書き手をブロックしないので "database is locked" を避けられる。
-    with engine.begin() as _conn:
-        _conn.exec_driver_sql("PRAGMA journal_mode=WAL")
+
+    # ファイルにした分だけ遅くなる。実測 (Windows serial job):
+    #   in-memory:  1723 件 / 3m42s = 0.129 s/件
+    #   file:       1859 件 / 6m17s = 0.203 s/件  (+57%)
+    # 効いているのは 1 件ごとの fsync で、**テスト用 DB に耐久性は要らない**
+    # (session 終了で捨てるファイル)。`synchronous=OFF` はプロセスが死んだ
+    # ときの破損を許す設定だが、捨てる DB では失うものが無い。
+    # journal_mode と違い **接続ごと**の設定なので、全接続に掛ける。
+    @sa_event.listens_for(engine, "connect")
+    def _fast_test_pragmas(dbapi_conn, _rec):  # noqa: ANN001
+        cur = dbapi_conn.cursor()
+        try:
+            # WAL: 読み手が書き手をブロックしない ("database is locked" 回避)。
+            # ファイルヘッダに残るので毎回設定しても冪等。
+            cur.execute("PRAGMA journal_mode=WAL")
+            cur.execute("PRAGMA synchronous=OFF")
+        finally:
+            cur.close()
+
     Base.metadata.create_all(engine)
 
     # Force the app/database module to use the same in-memory DB everywhere,
