@@ -3280,6 +3280,25 @@ async def ws_camera(
 
     if not await _ws_require_auth(websocket):
         return
+
+    # 入場券が無いなら device / viewer としては繋がせない。
+    #
+    # 旧実装はここで **クライアントが送ってきた participant_id / viewer_id を
+    # そのまま**ハンドラに渡していた。`SessionParticipant` に user_id は無く、
+    # JWT の持ち主とその行を結びつけるものが存在しないので、
+    # **session_code を知る認証済み利用者なら誰でも（player でも）
+    # 他人の端末になりすませた**。「アプリの JWT を持っている」ことは
+    # 「participant N を支配している」ことの証拠にならない。
+    #
+    # 端末側の身元は participant_token だけが担保しており、それを
+    # 使い捨ての入場券に引き換える経路が既にある。そちらに一本化する。
+    if role != "operator" and (participant_id or viewer_id or vid):
+        await websocket.close(
+            code=4403,
+            reason="device / viewer は入場券が必要です (POST /sessions/{code}/ws-ticket)",
+        )
+        return
+
     if role == "operator":
         # JWT を再検証して role claim をチェック (loopback 緩和でも operator 役は要 JWT)
         from backend.utils.jwt_utils import verify_token

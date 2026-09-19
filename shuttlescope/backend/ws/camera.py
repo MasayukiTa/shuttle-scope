@@ -487,7 +487,18 @@ async def ws_camera_handler(
     is_operator = role == "operator"
     is_viewer = role == "viewer" and viewer_id
 
-    # 送信デバイスとして接続する場合: participant_id がこのセッションに属することを検証
+    # 送信デバイスとして接続する場合: participant_id がこのセッションに属し、
+    # **かつ operator に承認されている**ことを検証する。
+    #
+    # 旧実装は「その行がこのセッションに在るか」しか見ていなかった。
+    # `approval_status` は `backend/ws/` のどこからも参照されておらず、
+    # **operator の拒否ボタンはシグナリング層に対して何の効力も持っていなかった**。
+    # `pending`（既定値）のまま、あるいは明示的に `rejected` された端末が、
+    # そのまま配信できる。
+    #
+    # 入場券経路 (`/sessions/{code}/ws-ticket`) には同じ検査が既にあるが、
+    # 券は 30 秒有効なので発行後の拒否は反映されないし、JWT 経路は券を通らない。
+    # 接続を張る側で見るのが正しい場所。
     if participant_id and not is_operator and not is_viewer:
         from backend.db.database import SessionLocal
         from backend.db.models import SessionParticipant as _SP
@@ -498,12 +509,44 @@ async def ws_camera_handler(
                 _SP.id == _pid_int,
                 _SP.session_id == _session.id,
             ).first()
+            _approval = _p.approval_status if _p else None
         except (ValueError, TypeError):
-            _p = None
+            _p, _approval = None, None
         finally:
             _db2.close()
         if not _p:
             await websocket.close(code=4403, reason="この participant_id はセッションに登録されていません")
+            return
+        if _approval != "approved":
+            # 「まだ承認されていない」と「拒否された」を言い分ける。
+            # 送信側の画面は前者なら待てばよく、後者は待っても変わらない。
+            reason = ("このデバイスは拒否されています" if _approval == "rejected"
+                      else "このデバイスはまだ承認されていません")
+            await websocket.close(code=4403, reason=reason)
+            return
+
+    # 受信 (viewer) も同じ。operator が「この端末への映像を止める」と決めた意思は
+    # `viewer_permission` に入っているが、これも `backend/ws/` から参照されて
+    # いなかった。入場券経路は見ているので、**券を取らずに JWT で繋ぎ直せば
+    # 止めたはずの端末に映像が戻る**。
+    # viewer_id が このセッションの participant を指すときだけ検査する
+    # (セッションコードを共有しただけの未登録ビューワは従来どおり)。
+    if is_viewer:
+        from backend.db.database import SessionLocal
+        from backend.db.models import SessionParticipant as _SP
+        _db3 = SessionLocal()
+        try:
+            _vp = _db3.query(_SP).filter(
+                _SP.id == int(viewer_id),
+                _SP.session_id == _session.id,
+            ).first()
+            _blocked = bool(_vp) and _vp.viewer_permission == "blocked"
+        except (ValueError, TypeError):
+            _blocked = False          # 数値でない = 未登録ビューワ
+        finally:
+            _db3.close()
+        if _blocked:
+            await websocket.close(code=4403, reason="この端末の映像受信は停止されています")
             return
 
     if is_operator:
@@ -591,6 +634,57 @@ async def ws_camera_handler(
             logger.debug("camera operator reverify error: %s", _exc)
         return False
 
+    def _approval_now() -> Optional[str]:
+        """participant の承認状態を **DB から読み直して** 返す。
+
+        accept 時に読んだ ORM オブジェクトを見続けると、operator が
+        「拒否」を押しても接続中は何も起きない。都度読み直すこと。
+        """
+        from backend.db.database import SessionLocal as _SL
+        from backend.db.models import SessionParticipant as _SP2
+        _d = _SL()
+        try:
+            row = _d.query(_SP2.approval_status).filter(
+                _SP2.id == int(participant_id),
+                _SP2.session_id == _session.id,
+            ).first()
+            return row[0] if row else None
+        except (ValueError, TypeError):
+            return None
+        finally:
+            _d.close()
+
+    async def _do_recheck_approval_and_close_if_revoked() -> bool:
+        """接続中に承認が取り消されたら閉じる。
+
+        **accept 時の検査は入場条件であって、取り消しの機構ではない。**
+        operator の「拒否」は押した時点で効かなければ意味がないので、
+        本来は押下と同時に切るべきで、この定期確認はそれを取りこぼしたときの
+        回収にあたる（即時通知はまだ無い。TASKS の残件）。
+        間隔は operator token の再検証と同じ 60s ±jitter に相乗りさせている。
+        **この 60s のあいだは取り消し後も繋がったままになる**、という意味である。
+        """
+        if not participant_id or is_operator or is_viewer:
+            return False
+        try:
+            status = await _asyncio_cam.to_thread(_approval_now)
+        except _asyncio_cam.CancelledError:
+            raise
+        except OSError as _exc:
+            logger.debug("camera approval recheck error: %s", _exc)
+            return False
+        if status != "approved":
+            logger.info(
+                "camera device WS closing: approval=%s session=%s participant=%s",
+                status, session_code, participant_id,
+            )
+            try:
+                await websocket.close(code=4403, reason="このデバイスの承認が取り消されました")
+            except Exception:
+                pass
+            return True
+        return False
+
     try:
         while True:
             try:
@@ -603,11 +697,15 @@ async def ws_camera_handler(
                 _last_reverify = _time.monotonic()
                 if await _do_reverify_and_close_if_invalid():
                     return
+                if await _do_recheck_approval_and_close_if_revoked():
+                    return
                 continue
             # 受信成功時は interval 単位でだけ再検証 (busy traffic でも DB 負荷を抑える)
             if (_time.monotonic() - _last_reverify) >= _reverify_interval:
                 _last_reverify = _time.monotonic()
                 if await _do_reverify_and_close_if_invalid():
+                    return
+                if await _do_recheck_approval_and_close_if_revoked():
                     return
             # 巨大メッセージによるメモリ DoS (CWE-770) を遮断する。
             if len(raw) > _MAX_WS_MESSAGE_BYTES:

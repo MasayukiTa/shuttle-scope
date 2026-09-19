@@ -30,7 +30,7 @@ import threading
 import time as _time
 from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -166,7 +166,11 @@ class WsTicketRequest(BaseModel):
     model_config = {"extra": "forbid"}
     participant_id: int = Field(..., ge=1, le=2_147_483_647)
     participant_token: str = Field(..., min_length=16, max_length=256)
-    role: str = Field(..., max_length=16)   # device / viewer
+    # **device / viewer のみ。** 旧実装は `str` を丸ごと受けており、
+    # `role="operator"` や綴り違いを送ると下の `if body.role == "device"` /
+    # `"viewer"` のどちらにも入らず、**承認検査を一つも通らないまま**
+    # 入場券が発行されていた。未知の値は閉じる側に倒す。
+    role: Literal["device", "viewer"]
 
 
 class ViewerPermissionBody(BaseModel):

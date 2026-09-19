@@ -68,7 +68,13 @@ export function cameraWsUrl(
  * participant_token を本文で渡して 30 秒使い捨ての入場券に引き換え、
  * URL には入場券しか載せない (URL はログや Referer に残るため)。
  *
- * participant_token が無い場合はログイン済みユーザとして JWT 経路に戻す。
+ * participant_token が無い場合は**繋がない**。
+ *
+ * 以前はここで JWT 経路にフォールバックし、`participant_id` を URL に載せて
+ * いた。サーバ側にはその id の持ち主を確かめる手段が無い
+ * (`SessionParticipant` に user_id が無い) ので、これは
+ * **ログイン済みなら誰でも他人の端末になりすませる**経路だった。
+ * サーバはこの経路を閉じたので、ここで投げて理由を見せる。
  */
 export async function participantWsUrl(
   sessionCode: string,
@@ -77,11 +83,8 @@ export async function participantWsUrl(
   participantToken: string,
 ): Promise<string> {
   if (!participantToken) {
-    return cameraWsUrl(
-      sessionCode,
-      role === 'viewer'
-        ? { role: 'viewer', viewer_id: participantId }
-        : { participant_id: participantId },
+    throw new Error(
+      'この端末の参加トークンがありません。セッションに参加し直してください。',
     )
   }
   const res = await apiPost<{ success: boolean; data: { ticket: string } }>(
