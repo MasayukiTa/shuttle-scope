@@ -78,6 +78,28 @@ def _reset_jwt_caches():
     yield
 
 
+@pytest.fixture(autouse=True)
+def _reset_idempotency_cache():
+    """各テストで冪等キーの in-memory cache をクリアする。
+
+    `backend/utils/idempotency.py` の `_records` はプロセス全体で 1 つ。
+    `db_session` の後片付けが行を消しても**応答のキャッシュは残る**ので、
+    後続テストが同じキーを使うと「消えた行を指す古い応答」がそのまま
+    返る。`_MASS_REVOKE_CACHE` と同じ形の事故なので、同じように断つ。
+    """
+    try:
+        from backend.utils import idempotency as _idem
+        _idem._records.clear()
+    except Exception:
+        pass
+    yield
+    try:
+        from backend.utils import idempotency as _idem
+        _idem._records.clear()
+    except Exception:
+        pass
+
+
 @pytest.fixture(scope="session")
 def test_engine(tmp_path_factory):
     """Create one SQLite engine shared by every session in this pytest worker.
