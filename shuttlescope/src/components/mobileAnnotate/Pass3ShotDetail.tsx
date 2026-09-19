@@ -34,6 +34,7 @@ import { AnnotateOverlay, ZoneCode } from './AnnotateOverlay'
 import { enqueue } from '@/utils/mobileAnnotateQueue'
 import { useTranslation } from 'react-i18next'
 import { MIcon } from '@/components/common/MIcon'
+import { normalizeStrikerTeam, nextStrikingTeam, teamLetter } from '@/utils/players'
 
 // Build inside the component via useMemo so t() is bound to the current
 // i18next instance. Defining this at module scope crashes the minified
@@ -153,12 +154,13 @@ export function Pass3ShotDetail({
   const intermediates = sorted.filter((s) => s.stroke_num < 9000)
   const finalSentinel = sorted.find((s) => s.stroke_num >= 9000) || null
   const nextStrokeNum = (intermediates[intermediates.length - 1]?.stroke_num ?? 0) + 1
-  // 前 stroke の player の逆
-  const nextPlayer: 'player_a' | 'player_b' = (() => {
-    const prev = sorted[sorted.length - 1]
-    if (!prev) return rally.server
-    return prev.player === 'player_a' ? 'player_b' : 'player_a'
-  })()
+  // 前 stroke の player の逆。
+  // ダブルスの stroke は player が partner_a / partner_b にもなるので、
+  // 素直に反転すると `partner_a` !== `player_a` から `player_a` が返り、
+  // **同じチームに打ち返したことになる**。チームへ正規化してから反転する。
+  const nextPlayer: 'player_a' | 'player_b' = nextStrikingTeam(
+    sorted[sorted.length - 1]?.player, rally.server,
+  )
 
   const commitShot = async (shotKey: ShotKey | 'other', hit: ZoneCode | null, land: ZoneCode | null) => {
     // 送信前検証: backend validate_stroke を必ず通る形だけ送る。弾かれる組合せを
@@ -369,9 +371,9 @@ export function Pass3ShotDetail({
           >
             <span className="font-mono text-[11px] text-gray-400">#{s.stroke_num}</span>
             <span className={`text-xs font-bold ${
-              s.player === 'player_a' ? 'text-blue-400' : 'text-pink-400'
+              normalizeStrikerTeam(s.player) === 'player_a' ? 'text-blue-400' : 'text-pink-400'
             }`}>
-              {s.player === 'player_a' ? 'A' : 'B'}
+              {teamLetter(s.player)}
             </span>
             <span className="text-xs">
               {labelForShot.get(s.shot_type)

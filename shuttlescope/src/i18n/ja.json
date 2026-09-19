@@ -1525,6 +1525,7 @@
       "save_failed_message": "保存失敗",
       "force_set_end_error_prefix": "セット強制終了エラー:",
       "score_correction_error_prefix": "スコア補正エラー:",
+      "score_correction_partial": "スコア補正が途中で止まりました。成功した分だけ反映しています。もう一度実行すると残りを補います。",
       "exception_save_failed_prefix": "途中終了の保存に失敗しました:",
       "unknown_error": "不明なエラー",
       "restore_dialog_title": "前回の未保存データを復元",

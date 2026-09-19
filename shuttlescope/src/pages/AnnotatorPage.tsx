@@ -49,6 +49,8 @@ import { useIsMobile } from '@/hooks/useIsMobile'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useCVJobs } from '@/hooks/annotator/useCVJobs'
 import { setWinner } from '@/utils/badmintonRules'
+// doubles では stroke.player が partner_* にもなる。チームへ正規化する共通関数。
+import { normalizeStrikerTeam } from '@/utils/players'
 import { computePlayerASide, landingCourtMode } from '@/utils/courtSides'
 import type { RawDetection } from '@/components/annotation/PlayerTrackingOverlay'
 import { useSessionSharing } from '@/hooks/annotator/useSessionSharing'
@@ -165,15 +167,6 @@ const END_TYPE_DEFS = [
 // cant_reach → 打者が勝つ（相手が取れない）
 // ace → 打者が勝つ（クリーンウィナー）
 // forced_error/unforced_error → 文脈依存のため手動選択
-// doubles では striker が partner_a/partner_b になり得る。勝者判定は team
-// (player_a/player_b) 単位なので、比較前に partner_* を所属チームへ正規化する。
-// これを欠くと doubles で partner が終端ミスした時にガード/サジェストが不発になる。
-function normalizeStrikerTeam(striker: string | undefined): 'player_a' | 'player_b' | undefined {
-  if (striker === 'player_a' || striker === 'partner_a') return 'player_a'
-  if (striker === 'player_b' || striker === 'partner_b') return 'player_b'
-  return undefined
-}
-
 function getSuggestedWinner(
   endType: string | null,
   lastStriker: string | undefined
@@ -1624,7 +1617,20 @@ export function AnnotatorPage() {
       queryClient.invalidateQueries({ queryKey: ['annotation-state', matchId] })
       setShowScoreCorrection(false)
     } catch (err: unknown) {
-      showError(`${t('annotator.ui.score_correction_error_prefix', { defaultValue: 'スコア補正エラー:' })} ${errorMessage(err, t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' }))}`)
+      // 途中で失敗しても、**ここまでに送ったラリーはサーバに残っている**。
+      // 旧実装はローカルを一切動かさなかったので、画面のスコアと rally_num が
+      // DB より手前のままになり、次に入れる本物のラリーが既に存在する
+      // rally_num とぶつかる (migration 0053 の一意制約で弾かれ、入力が止まる)。
+      // 成功した分だけ進めて、画面と DB を合わせる。
+      // scoreA / scoreB / rallyNum は 1 本成功するごとに更新しているので、
+      // ここでは最後に成功した地点を指している。
+      useAnnotationStore.getState().applyScoreCorrection(scoreA, scoreB, rallyNum)
+      queryClient.invalidateQueries({ queryKey: ['annotation-state', matchId] })
+      showError(
+        `${t('annotator.ui.score_correction_error_prefix', { defaultValue: 'スコア補正エラー:' })} `
+        + `${errorMessage(err, t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' }))} `
+        + t('annotator.ui.score_correction_partial'),
+      )
     } finally {
       useAnnotationStore.getState().decrementPending()
     }
@@ -3636,6 +3642,20 @@ export function AnnotatorPage() {
               const lastStroke = store.currentStrokes[store.currentStrokes.length - 1]
               const lastStriker = lastStroke?.player
               const suggestedWinner = getSuggestedWinner(pendingEndType, lastStriker)
+              // ダブルスでは `stroke.player` が partner_a / partner_b にもなる
+              // (annotationStore: isDoubles なら currentHitter を入れる)。
+              // 旧実装は `=== 'player_a' ? A : B` の二択だったので、**partner_a が
+              // 打った直後の «最終打者» に B の名前が出ていた**。操作者はその表示を
+              // 見て勝者を選ぶので、表示が逆だと入力そのものが逆になる。
+              // 判定側 (getSuggestedWinner / isWinnerBlocked) は
+              // normalizeStrikerTeam で正規化済みなので、ずれていたのは表示だけ。
+              const strikerName = (p: string | undefined): string | undefined => {
+                if (p === 'player_a') return match?.player_a?.name ?? 'A'
+                if (p === 'partner_a') return match?.partner_a?.name ?? 'A2'
+                if (p === 'player_b') return match?.player_b?.name ?? 'B'
+                if (p === 'partner_b') return match?.partner_b?.name ?? 'B2'
+                return undefined
+              }
               return (
                 <div className={clsx('border border-yellow-700/50 bg-yellow-900/20 rounded shrink-0', useLargeTouch ? 'p-3' : 'p-2')}>
                   <div className={clsx('text-yellow-400 mb-2 font-medium', useLargeTouch ? 'text-sm' : 'text-xs')}>
@@ -3644,7 +3664,7 @@ export function AnnotatorPage() {
                       <span className="ml-1 text-[var(--ss-t3)]">
                         {t('annotator.ui.last_striker_paren', {
                           defaultValue: '（最終打者: {{name}}）',
-                          name: lastStriker === 'player_a' ? match?.player_a?.name ?? 'A' : match?.player_b?.name ?? 'B',
+                          name: strikerName(lastStriker),
                         })}
                       </span>
                     )}
