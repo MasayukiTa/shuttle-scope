@@ -16,6 +16,7 @@ iGPU 優先設計:
 from __future__ import annotations
 
 import logging
+import os
 import re
 import time
 import uuid
@@ -270,8 +271,33 @@ def _run_tracknet(job: dict, video_path: str) -> None:
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 1
     fps   = cap.get(cv2.CAP_PROP_FPS) or 30.0
 
-    # 1fps サンプリングでシャトル軌跡構築
-    step_frames = max(1, int(fps))
+    # シャトル軌跡構築のサンプリング。
+    #
+    # C-10: 旧実装は 1fps 固定だった。シャトルの落下は 1 秒未満なので、
+    # 着地窓に入るサンプルは 1 個しか無く、着地点候補が事実上すべて
+    # review_required にしかならない (一貫性の下限が標本数を織り込むため)。
+    #
+    # 実測 (検出 0.9、LAND_SEARCH_WINDOW_SEC=3.0 の上限ケース):
+    #   1fps  -> landing_window 2 個  -> 0.31  review_required
+    #   5fps  -> 6 個                 -> 0.55  suggested
+    #   10fps -> 12 個                -> 0.68  suggested
+    #   15fps -> 18 個                -> 0.74  auto_filled
+    #   30fps -> 36 個                -> 0.81  auto_filled
+    # (実際の窓は次ストロークで切られるのでこれより短い = 上の値は上限)
+    #
+    # 既定を 10fps にする。候補が「人が見て採否を決められる」水準になり、
+    # かつ auto_filled を名乗らない。推論コストはほぼサンプル数に比例するので、
+    # GPU 時間と相談して `CV_TRACKNET_SAMPLE_FPS` で調整すること
+    # (auto_filled まで届かせたいなら 15 以上)。
+    _sample_fps = float(os.environ.get("CV_TRACKNET_SAMPLE_FPS", "10"))
+    if _sample_fps <= 0:
+        _sample_fps = 10.0
+    # 元動画より速くはサンプルできない
+    step_frames = max(1, int(round(fps / min(_sample_fps, fps))))
+    logger.info(
+        "[video_import] TrackNet サンプリング: %.1ffps 相当 (step_frames=%d, 動画 %.1ffps)",
+        min(_sample_fps, fps), step_frames, fps,
+    )
     track: list[dict] = []
     frame_buf: list = []
     frame_idx = 0
