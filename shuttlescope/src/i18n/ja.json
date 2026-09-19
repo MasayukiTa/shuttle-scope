@@ -5019,7 +5019,8 @@
     "dir_lateral": "横 {{pct}}%",
     "dir_diagonal": "斜 {{pct}}%",
     "dir_depth": "前後 {{pct}}%",
-    "zone_note": "ゾーン内の数字はフレーム数。濃いほど長時間滞在。A: 自コート上部 / B: 相手コート下部。"
+    "zone_note": "ゾーン内の数字はフレーム数。濃いほど長時間滞在。A: 自コート上部 / B: 相手コート下部。",
+    "open_calibration": "コートキャリブレーションを開く"
   },
   "tutorials": {
     "mobile_annotate_pass": {

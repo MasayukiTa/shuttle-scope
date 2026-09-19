@@ -47,6 +47,15 @@ interface PlayerStats {
 interface MovementStatsData {
   available: boolean
   reason?: string
+  /**
+   * キャリブレーション未設定のため計算していない、の意。
+   *
+   * 以前はこの状態でも数字を返して「精度が低下しています」と添えていたが、
+   * 射影が無いときサーバは画面内の比率をコート座標として使っていたので、
+   * 距離も速度もゾーンもコートとは無関係な値だった。
+   * いまはサーバが計算せず、ここでキャリブレーションへ誘導する。
+   */
+  needs_calibration?: boolean
   has_calibration: boolean
   court_width_m: number
   court_length_m: number
@@ -332,12 +341,66 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
 
   // ── データなし ───────────────────────────────────────────────────────────
   if (!stats?.available) {
+    // キャリブレーションさえすれば出るケースは、理由を書くだけで終わらせず
+    // その場から設定へ行けるようにする（クリックでグリッドを開く）。
+    const canClick = !!onOpenGrid
+    const isLocalOnly = stats?.needs_calibration && calibSource === 'local'
     return (
-      <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-1`}>
+      <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-2`}>
         <h3 className={`text-sm font-semibold ${textHeading}`}>{t('auto.PlayerMovementCard.k2')}</h3>
         <p className={`text-xs ${textMuted}`}>
           {stats?.reason ?? t('auto.PlayerMovementCard.no_tracks')}
         </p>
+        {stats?.needs_calibration && (
+          <button
+            type="button"
+            onClick={canClick ? onOpenGrid : undefined}
+            disabled={!canClick}
+            className={[
+              'w-full text-left text-xs rounded-ss-md px-3 py-2',
+              'bg-yellow-600/80 border border-yellow-400/60',
+              canClick ? 'cursor-pointer hover:bg-yellow-500/80 active:bg-yellow-700/80 transition-colors duration-fast' : 'opacity-80',
+            ].join(' ')}
+            style={{ color: '#fff' }}
+          >
+            {isLocalOnly ? (
+              <>
+                {t('movement.grid_local_unsaved', 'Grid is set locally but not yet saved to the DB.')}
+                {onSyncGridFromLocal && (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={async (e) => {
+                      e.stopPropagation()
+                      if (syncing) return
+                      setSyncing(true)
+                      setSyncResult(t('auto.PlayerMovementCard.sync_in_progress'))
+                      try {
+                        const r = await onSyncGridFromLocal()
+                        if (r.ok) setSyncResult(t('auto.PlayerMovementCard.sync_done'))
+                        else setSyncResult(t('auto.PlayerMovementCard.sync_failed', { status: r.status ?? '?', message: r.message ?? '' }))
+                      } catch (err) {
+                        setSyncResult(t('auto.PlayerMovementCard.sync_network_error', { msg: err instanceof Error ? err.message : String(err) }))
+                      } finally {
+                        setSyncing(false)
+                        setTimeout(() => setSyncResult(null), 6000)
+                      }
+                    }}
+                    className="ml-2 underline font-semibold"
+                  >
+                    {syncing ? t('auto.PlayerMovementCard.syncing') : t('auto.PlayerMovementCard.sync_click')}
+                  </span>
+                )}
+                {syncResult && <span className="block mt-1 text-[11px]">{syncResult}</span>}
+              </>
+            ) : (
+              <>
+                {t('movement.open_calibration', 'Open court calibration')}
+                {canClick && <span className="underline ml-1">{t('auto.PlayerMovementCard.k4')}</span>}
+              </>
+            )}
+          </button>
+        )}
       </div>
     )
   }
@@ -353,8 +416,9 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
         <div>
           <h3 className={`text-sm font-semibold ${textHeading}`}>{t('auto.PlayerMovementCard.k2')}</h3>
           <p className={`text-[10px] ${textFaint}`}>
+            {/* ここに来る時点でキャリブレーションは必ずある（無ければ上で return）ので、
+                「キャリブなし・相対値」の注記は出しようがない。消した。 */}
             {t('movement.court_dims', { len: stats.court_length_m, width: stats.court_width_m, defaultValue: 'Court: {{len}}m × {{width}}m' })}
-            {!stats.has_calibration && t('movement.calib_relative_note', ' (no calibration · relative)')}
           </p>
         </div>
         <span className={`text-[10px] font-medium ${CONF_COLORS[conf.level]}`}>
@@ -362,68 +426,9 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
         </span>
       </div>
 
-      {/* キャリブ未設定の警告 */}
-      {!stats.has_calibration && (() => {
-        const isLocal = calibSource === 'local'
-        const canClick = !!onOpenGrid
-        const Wrapper = canClick ? 'button' : 'div'
-        return (
-          <Wrapper
-            {...(canClick ? { onClick: onOpenGrid, type: 'button' } : {})}
-            className={[
-              'w-full text-left text-xs',
-              'bg-yellow-600/80 border border-yellow-400/60 rounded-ss-md px-3 py-2',
-              canClick ? 'cursor-pointer hover:bg-yellow-500/80 active:bg-yellow-700/80 transition-colors duration-fast' : '',
-            ].join(' ')}
-            style={{ color: '#fff' }}
-          >
-            {isLocal ? (
-              <span>
-                {t('movement.grid_local_unsaved', 'Grid is set locally but not yet saved to the DB.')}
-                {onSyncGridFromLocal ? (
-                  <button
-                    type="button"
-                    onClick={async (e) => {
-                      e.stopPropagation()
-                      if (syncing) return
-                      setSyncing(true)
-                      setSyncResult(t('auto.PlayerMovementCard.sync_in_progress'))
-                      console.warn('[GridSync] start')
-                      try {
-                        const r = await onSyncGridFromLocal()
-                        console.warn('[GridSync] result', r)
-                        if (r.ok) setSyncResult(t('auto.PlayerMovementCard.sync_done'))
-                        else setSyncResult(t('auto.PlayerMovementCard.sync_failed', { status: r.status ?? '?', message: r.message ?? '' }))
-                      } catch (err) {
-                        console.warn('[GridSync] error', err)
-                        setSyncResult(t('auto.PlayerMovementCard.sync_network_error', { msg: err instanceof Error ? err.message : String(err) }))
-                      } finally {
-                        setSyncing(false)
-                        setTimeout(() => setSyncResult(null), 6000)
-                      }
-                    }}
-                    className="ml-2 underline font-semibold disabled:opacity-50"
-                    disabled={syncing}
-                    style={{ color: '#fff' }}
-                  >
-                    {syncing ? t('auto.PlayerMovementCard.syncing') : t('auto.PlayerMovementCard.sync_click')}
-                  </button>
-                ) : canClick ? (
-                  <span className="underline ml-1">{t('auto.PlayerMovementCard.k3')}</span>
-                ) : null}
-                {syncResult && (
-                  <div className="mt-1 text-[11px]" style={{ color: '#fff' }}>{syncResult}</div>
-                )}
-              </span>
-            ) : (
-              <span>
-                {t('movement.no_calib', 'Court calibration not set; showing relative values.')}
-                {canClick && <span className="underline ml-1">{t('auto.PlayerMovementCard.k4')}</span>}
-              </span>
-            )}
-          </Wrapper>
-        )
-      })()}
+      {/* キャリブ未設定の警告はここには来ない:
+          サーバがキャリブ無しでは計算しなくなったので (available=false)、
+          誘導は上の「データなし」分岐に移した。 */}
 
       {/* ── 選手ごとの統計 ───────────────────────────────────────────────── */}
       <div className="space-y-3">

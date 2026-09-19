@@ -31,6 +31,10 @@ from backend.cv.identity_graph import track_identities as _ig_track_identities
 from backend.utils.error_detail import client_safe_error
 
 logger = logging.getLogger(__name__)
+
+#: ゾーン判定の許容はみ出し（court_calibration.pixel_to_court_zone と同じ 0.02）。
+#: これを超えたら「コート外」として別に数える。
+_ZONE_TOL = 0.02
 router = APIRouter()
 
 # ─── インメモリジョブ管理 ────────────────────────────────────────────────────
@@ -1333,6 +1337,31 @@ def get_movement_stats(match_id: int, db: Session = Depends(get_db)):
     has_calibration = calib is not None
     H = calib["homography"] if calib else None
 
+    # キャリブレーションが無いなら**何も出さない**（2026-09-19 ユーザ判断）。
+    #
+    # 以前は未設定でも数字を返し、confidence を "low" にして
+    # 「距離精度が低下しています」と添えていた。これは精度の問題ではない。
+    # 射影が無いとき下のループは `cx_c, cy_c = cx_img, cy_img` として
+    # **画面内の比率をそのままコート座標に使い**、それに court_width_m /
+    # court_length_m を掛けてメートルを名乗っていた。走行距離も速度も
+    # ゾーン滞在も、コートとは無関係な数になる。単位が付いているぶん
+    # もっともらしく見えるのが悪い。
+    #
+    # 「まだ出せない・キャリブレーションすれば出る」と言うほうが正しい。
+    if not has_calibration:
+        return {
+            "success": True,
+            "data": {
+                "available": False,
+                "needs_calibration": True,
+                "reason": (
+                    "コートキャリブレーションが未設定です。"
+                    "コート座標が決まらないと移動距離・速度・ゾーン滞在は計算できません。"
+                    "「コートキャリブレーション」（6点指定）を行うと表示されます。"
+                ),
+            },
+        }
+
     # ── コート寸法 ───────────────────────────────────────────────────────────
     is_doubles = match.format in ("doubles", "mixed_doubles")
     court_width_m  = 6.7 if is_doubles else 6.1   # 横幅
@@ -1387,21 +1416,23 @@ def get_movement_stats(match_id: int, db: Session = Depends(get_db)):
             ts = p_pt["ts"]
             cx_img, cy_img = p_pt["cx"], p_pt["cy"]
 
-            # 画像座標 → コート正規化座標
-            if H:
-                cx_c, cy_c = apply_homography(H, cx_img, cy_img)
-                cx_c = max(0.0, min(1.0, cx_c))
-                cy_c = max(0.0, min(1.0, cy_c))
-            else:
-                cx_c, cy_c = cx_img, cy_img   # キャリブなし: 画像座標をそのまま使用
+            # 画像座標 → コート正規化座標（ここに来る時点で H は必ずある）
+            cx_c, cy_c = apply_homography(H, cx_img, cy_img)
 
-            # ゾーン集計（3列 × 6行 → 18ゾーン）
-            col_i  = min(int(cx_c * 3), 2)
-            row_i  = min(int(cy_c * 6), 5)
-            side   = "A" if row_i < 3 else "B"
-            depth  = ["front", "mid", "back"][row_i % 3]
-            col    = ["left", "center", "right"][col_i]
-            zone_name = f"{side}_{depth}_{col}"
+            # **クランプしない。** 以前は [0,1] に丸めてから列・行を出していたので、
+            # コート外に立っている選手が端のゾーンの滞在として数えられていた。
+            # バドミントンでは選手がラインの外へ出るのは普通なので、
+            # 距離・速度は丸めない生の投影座標で計算するほうが正しく、
+            # ゾーンは「コート外」を別の枠として数える。
+            if -_ZONE_TOL <= cx_c <= 1 + _ZONE_TOL and -_ZONE_TOL <= cy_c <= 1 + _ZONE_TOL:
+                col_i  = min(int(max(cx_c, 0.0) * 3), 2)
+                row_i  = min(int(max(cy_c, 0.0) * 6), 5)
+                side   = "A" if row_i < 3 else "B"
+                depth  = ["front", "mid", "back"][row_i % 3]
+                col    = ["left", "center", "right"][col_i]
+                zone_name = f"{side}_{depth}_{col}"
+            else:
+                zone_name = "out_of_court"
             zone_visits[zone_name] = zone_visits.get(zone_name, 0) + 1
 
             if prev is not None:
@@ -1462,11 +1493,9 @@ def get_movement_stats(match_id: int, db: Session = Depends(get_db)):
         }
 
     # ── 信頼度メタデータ ─────────────────────────────────────────────────────
+    # キャリブレーション未設定の枝はここには来ない（上で早期 return 済み）。
     max_frames = max((v["frames_tracked"] for v in results.values()), default=0)
-    if not has_calibration:
-        conf_level  = "low"
-        conf_reason = "コートキャリブレーション未設定のため距離精度が低下しています。グリッド線ではなく「コートキャリブレーション」（6点指定）が必要です。"
-    elif max_frames < 100:
+    if max_frames < 100:
         conf_level  = "low"
         conf_reason = f"トラックフレーム数が少なめです（{max_frames}フレーム）。"
     elif max_frames < 300:

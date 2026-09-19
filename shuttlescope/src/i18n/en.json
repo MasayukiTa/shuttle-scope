@@ -4961,7 +4961,8 @@
     "dir_lateral": "Lateral {{pct}}%",
     "dir_diagonal": "Diagonal {{pct}}%",
     "dir_depth": "Depth {{pct}}%",
-    "zone_note": "Numbers in zones are frame counts; darker = longer dwell. A: own court (top) / B: opponent court (bottom)."
+    "zone_note": "Numbers in zones are frame counts; darker = longer dwell. A: own court (top) / B: opponent court (bottom).",
+    "open_calibration": "Open court calibration"
   },
   "shot_color_categories": {
     "attack": "Attack (green / ◆)",
