@@ -30,8 +30,12 @@ class TestModelVersion:
 
 class TestFallback:
     def test_no_pose_uses_rule_v0_logic(self):
-        # pose 無し → 従来ルール（base 0.6 + hit_zone 0.1）
-        out = classify_stroke({"shot_type": "smash", "hit_zone": "rear"})
+        # pose 無し → 従来ルール（base 0.6 + hit_zone 0.1）。
+        # hit_zone は 9 ゾーン語彙 (validators.VALID_HIT_ZONES)。
+        # 以前ここは "rear" を渡していたが、それは
+        # opponent_classifier の front/rear/balanced 軸の値で、
+        # hit_zone には入らない。加点されていたのは語彙を見ていなかったから。
+        out = classify_stroke({"shot_type": "smash", "hit_zone": "BC"})
         assert out["confidence"] == 0.7
 
     def test_empty_pose_list_fallback(self):
@@ -62,5 +66,26 @@ class TestPoseAdjustment:
 
     def test_confidence_stays_in_bounds(self):
         overhead = [_lm_frame(0.05, 0.50, elbow_extended=True) for _ in range(5)]
-        out = classify_stroke({"shot_type": "smash", "hit_zone": "rear"}, pose_frames=overhead)
+        out = classify_stroke({"shot_type": "smash", "hit_zone": "BC"}, pose_frames=overhead)
         assert 0.05 <= out["confidence"] <= 0.99
+
+
+class TestHitZoneVocabulary:
+    """hit_zone は 9 ゾーン語彙。別の語彙の値で確信度を上げない。
+
+    旧実装は `if hz:` と真偽値としてしか見ていなかったので、
+    `opponent_classifier` の front/rear/balanced 軸の値
+    （「その選手が前寄りか後ろ寄りか」という別の概念）を渡しても
+    +0.1 されていた。判別に使えない文字列を根拠に確信度が上がっていた。
+    """
+
+    def test_a_valid_zone_adds_confidence(self):
+        without = classify_stroke({"shot_type": "smash"})["confidence"]
+        with_zone = classify_stroke({"shot_type": "smash", "hit_zone": "BC"})["confidence"]
+        assert with_zone > without
+
+    def test_a_value_from_another_vocabulary_does_not(self):
+        without = classify_stroke({"shot_type": "smash"})["confidence"]
+        for foreign in ("rear", "front", "balanced", "A_back_left", "nonsense"):
+            got = classify_stroke({"shot_type": "smash", "hit_zone": foreign})["confidence"]
+            assert got == without, f"{foreign!r} で確信度が上がっている"

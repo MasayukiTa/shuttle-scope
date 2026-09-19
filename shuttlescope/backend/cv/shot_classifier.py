@@ -70,9 +70,21 @@ def classify_stroke(stroke: Any, pose_frames: Optional[Sequence[Any]] = None) ->
     is_bh = bool(_get(stroke, "is_backhand", False))
     if is_bh:
         base -= 0.1
-    # hit_zone があるほど確信度が上がる
+    # hit_zone があるほど確信度が上がる。
+    #
+    # **ただし語彙を検査する。** 旧実装は真偽値としてしか見ておらず、
+    # 何が入っていても +0.1 していた。`Stroke.hit_zone` の語彙は 9 ゾーン
+    # (BL/BC/BR/ML/MC/MR/NL/NC/NR) で、`validators.VALID_HIT_ZONES` が正本。
+    # 一方この関数のテストは `"rear"` を渡していた。これは
+    # `opponent_classifier.classify_court_zone` の front/rear/balanced 軸
+    # ——「その選手が前寄りか後ろ寄りか」という**別の概念**の値で、
+    # hit_zone に入ることはない。同じ名前で 3 つの語彙が流通していた。
+    #
+    # 値を見ないまま加点すると、**語彙違いの値からも確信度が上がる**。
+    # 判別に使えない文字列を根拠にしているので、加点しないのが正しい。
+    from backend.utils.validators import VALID_HIT_ZONES
     hz = _get(stroke, "hit_zone")
-    if hz:
+    if hz in VALID_HIT_ZONES:
         base += 0.1
 
     # ── rule-v1: ポーズ特徴による補正（利用可能な場合のみ） ────────────────────
