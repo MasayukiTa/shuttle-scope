@@ -53,8 +53,49 @@ def _redact_secrets(data: Dict[str, Any]) -> Dict[str, Any]:
     workers = ((redacted.get("network") or {}).get("workers") or [])
     for w in workers:
         if isinstance(w, dict) and w.get("ssh_password"):
-            w["ssh_password"] = "SSH_PASSWORD_REDACTED"
+            w["ssh_password"] = REDACTED_PASSWORD
     return redacted
+
+
+#: `_redact_secrets` が書き込むセンチネル。これは**パスワードではない**ので、
+#: 読み出す側は値として採用してはならない。
+REDACTED_PASSWORD = "SSH_PASSWORD_REDACTED"
+
+
+def resolve_worker_ssh_password(worker: Dict[str, Any]) -> Optional[str]:
+    """worker の SSH パスワードを解決する。**設定ファイルは最後の手段。**
+
+    優先順:
+      1. `SS_<ID>_SSH_PASSWORD`（worker 個別）
+      2. `SS_K10_SSH_PASSWORD` / `SS_WORKER_SSH_PASSWORD`（共通）
+      3. YAML の `ssh_password`。ただし空とセンチネルは**無効**として扱う
+
+    `_redact_secrets` は save のたびに YAML の値をセンチネルへ書き換えるので、
+    YAML の値を素で使う実装は「一度 save が走ると、以後
+    `"SSH_PASSWORD_REDACTED"` という文字列で SSH を試みる」形になっていた。
+    この関数を通す側はその状態を「未設定」として扱える。
+
+    3 は互換のために残しているだけで、**平文を置く前提の経路ではない**。
+    """
+    import os as _os
+
+    if not isinstance(worker, dict):
+        return None
+
+    wid = (worker.get("id") or "").strip().upper()
+    if wid:
+        env_pwd = (_os.getenv(f"SS_{wid}_SSH_PASSWORD") or "").strip()
+        if env_pwd:
+            return env_pwd
+    for name in ("SS_K10_SSH_PASSWORD", "SS_WORKER_SSH_PASSWORD"):
+        env_pwd = (_os.getenv(name) or "").strip()
+        if env_pwd:
+            return env_pwd
+
+    pwd = worker.get("ssh_password")
+    if isinstance(pwd, str) and pwd.strip() and pwd.strip() != REDACTED_PASSWORD:
+        return pwd
+    return None
 
 
 def _save_yaml(path: pathlib.Path, data: Dict[str, Any]) -> None:

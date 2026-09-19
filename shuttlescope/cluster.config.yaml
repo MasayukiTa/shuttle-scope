@@ -20,6 +20,7 @@ network:
     model_base: C:\ss-models
     mac: 84:47:09:52:84:cd
     ssh_user: M.Takeuchi
+    # 平文を置かないこと。実行時は SS_<ID>_SSH_PASSWORD / SS_WORKER_SSH_PASSWORD から読む
     ssh_password: SSH_PASSWORD_REDACTED
     ray_restart_bat: C:\Users\M.Takeuchi\Desktop\ray-restart.bat
 ray:

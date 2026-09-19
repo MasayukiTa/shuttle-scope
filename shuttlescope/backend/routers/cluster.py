@@ -24,6 +24,7 @@ from pydantic import BaseModel
 from backend.cluster import bootstrap as _bootstrap
 from backend.cluster.load_guard import load_guard
 from backend.cluster import topology
+from backend.cluster.topology import resolve_worker_ssh_password
 from backend.utils.auth import get_auth
 from backend.utils.control_plane import require_local_operator_or_admin
 
@@ -544,7 +545,8 @@ def start_ray_head(body: StartHeadRequest, request: Request) -> Dict[str, Any]:
         for w in workers:
             wip = w.get("ip", "")
             user = w.get("ssh_user")
-            pwd = w.get("ssh_password")
+            # 設定ファイルの値を素で使わない。redact 済み・未設定なら env から。
+            pwd = resolve_worker_ssh_password(w)
             bat = w.get("ray_restart_bat")
             if not (wip and user and pwd and bat):
                 continue
@@ -968,12 +970,14 @@ def remote_ray_restart(worker_ip: str, request: Request) -> Dict[str, Any]:
         raise HTTPException(404, f"worker {actual_ip} が cluster.config.yaml に見つかりません")
 
     user = worker.get("ssh_user")
-    password = worker.get("ssh_password")
+    # 設定ファイルの値を素で使わない。redact 済み・未設定なら env から。
+    password = resolve_worker_ssh_password(worker)
     bat_path = worker.get("ray_restart_bat")
     if not (user and password and bat_path):
         raise HTTPException(
             400,
-            "worker の ssh_user / ssh_password / ray_restart_bat が未設定です",
+            "worker の ssh_user / ssh_password / ray_restart_bat が未設定です"
+            "（パスワードは SS_<ID>_SSH_PASSWORD / SS_WORKER_SSH_PASSWORD でも指定できます）",
         )
 
     # 設定ファイル由来の値をそのまま cmd に埋めていた。兄弟の一括処理には

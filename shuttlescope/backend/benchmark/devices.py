@@ -485,14 +485,16 @@ def _probe_ssh_workers(existing_ids: set | None = None) -> list[ComputeDevice]:
         existing_ids = set()
 
     try:
-        from backend.cluster.topology import get_workers
+        from backend.cluster.topology import get_workers, resolve_worker_ssh_password
         workers = get_workers()
 
         for worker in workers:
             ip = worker.get("ip", "")
             if not ip:
                 continue
-            if not worker.get("ssh_user") or not worker.get("ssh_password"):
+            # 設定ファイルの値を素で見ない。redact 済みの YAML でも env があれば
+            # SSH は張れるので、「YAML に平文があるか」で判定してはいけない。
+            if not worker.get("ssh_user") or not resolve_worker_ssh_password(worker):
                 continue
 
             label = worker.get("label", ip)

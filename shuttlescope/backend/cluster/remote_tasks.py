@@ -962,27 +962,20 @@ def _get_worker_ssh_creds(worker_ip: str) -> Optional[Dict[str, str]]:
       2. `SS_K10_SSH_PASSWORD` env-var (または worker 個別 `SS_<ID>_SSH_PASSWORD`)
          からの読み出しを fallback として実装
       3. それでも未設定なら None (= SSH dispatch 不可、Ray fallback)
+
+    優先順の実体は `topology.resolve_worker_ssh_password` に移した。
+    同じ規則が cluster router と benchmark/devices にも要るので、
+    ここに閉じていると読み出し側ごとに挙動が分かれる（実際に分かれていた）。
     """
     try:
-        from backend.cluster.topology import load_config
-        import os as _os
+        from backend.cluster.topology import load_config, resolve_worker_ssh_password
         cfg = load_config()
         for w in cfg.get("network", {}).get("workers", []):
             if w.get("ip") != worker_ip:
                 continue
             user = w.get("ssh_user")
-            pwd = w.get("ssh_password")
-            wid = (w.get("id") or "").strip().upper()
-            # 1) ENV 優先 (worker 個別 → 共通)
-            env_pwd = ""
-            if wid:
-                env_pwd = (_os.getenv(f"SS_{wid}_SSH_PASSWORD") or "").strip()
-            if not env_pwd:
-                env_pwd = (_os.getenv("SS_K10_SSH_PASSWORD") or _os.getenv("SS_WORKER_SSH_PASSWORD") or "").strip()
-            if user and env_pwd:
-                return {"host": worker_ip, "username": user, "password": env_pwd}
-            # 2) YAML 値が redacted でない場合のみ採用
-            if user and pwd and pwd != _REDACTED_PASSWORD:
+            pwd = resolve_worker_ssh_password(w)
+            if user and pwd:
                 return {"host": worker_ip, "username": user, "password": pwd}
             return None
     except Exception:

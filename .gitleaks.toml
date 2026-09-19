@@ -3,10 +3,68 @@
 # confirmed false-positive that exists in past commits cannot be cleared by only
 # editing the current file — it must be allowlisted here.
 #
-# `useDefault = true` keeps the entire built-in Gitleaks ruleset; we ONLY add a
-# narrow allowlist for specific, verified-synthetic test fixtures.
+# `useDefault = true` keeps the entire built-in Gitleaks ruleset; we add a narrow
+# allowlist for verified-synthetic test fixtures, plus one custom rule (below)
+# for the class of secret the default ruleset structurally cannot see.
 [extend]
 useDefault = true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# なぜこの規則が要るか
+#
+# 2026-04-24 から約 5 か月、`shuttlescope/cluster.config.yaml` にワーカー機の
+# SSH パスワードが平文で入ったまま **public リポジトリに置かれていた**。
+# Gitleaks は全履歴を走査して毎回緑だった。抑止されたのではなく、
+# **一度も検出していない**。
+#
+# 既定のルールセットは「形のある秘密」を狙う — `nvapi-...`、`ghp_...`、
+# AWS のキー ID、PEM ヘッダ。**YAML の `ssh_password:` に入った普通の文字列には
+# 形が無い**ので、どの形状ルールにも当たらない。エントロピーも人間が作った
+# パスワードでは閾値に届かない。
+#
+# したがって値の形ではなく **キーの名前** で拾う。設定ファイル形式に限定し、
+# プレースホルダは allowlist で外す。
+#
+# 検証済みの挙動 (regex を Go RE2 互換の範囲で書き、先読みを使っていない):
+#   捕まえる : ssh_password: a1$2Bcdefgh   ← 実際に漏れた行と同じ形 ($ を含む)
+#              api_key: "abcd1234efgh5678"
+#              client_secret = 9f8e7d6c5b4a3210
+#   通す     : ssh_password: changeme / ***MASKED*** / ${SSH_PASSWORD}
+#              password: your-password-here
+#              ssh_password:            (空)
+#   対象外   : .py / .tsx など。型注釈 `ssh_password: Optional[str]` を
+#              誤検知しないよう、path を設定ファイル形式に絞ってある。
+# ─────────────────────────────────────────────────────────────────────────────
+[[rules]]
+id = "config-file-plaintext-credential"
+description = "Plaintext credential assigned to a credential-named key in a config file"
+# 値に `$` を許すこと。実際に漏れたパスワードは `$` を含んでおり、
+# `${VAR}` 参照を避けるために `$` を除外すると **本物を取り逃がす**。
+# `${` は下の allowlist で外す。`[` `]` は型注釈よけ。
+regex = '''(?i)(ssh_password|ssh_pass|password|passwd|secret|api_key|apikey|auth_token|access_token|private_key|client_secret)\s*[:=]\s*["']?([^\s"'#<>{}\[\]]{6,})'''
+path = '''(?i)\.(ya?ml|json|ini|toml|cfg|conf|properties|env|env\.[a-z]+)$'''
+keywords = [
+  "ssh_password",
+  "ssh_pass",
+  "password",
+  "passwd",
+  "secret",
+  "api_key",
+  "apikey",
+  "auth_token",
+  "access_token",
+  "private_key",
+  "client_secret",
+]
+
+  [rules.allowlist]
+  description = "Placeholders, env-var references and masked values are not secrets"
+  regexTarget = "match"
+  regexes = [
+    '''(?i)(changeme|change-me|example|placeholder|dummy|sample|your[-_]?|xxxx|\*{3,}|redacted|masked|test[-_]?only|not[-_]?a[-_]?real|\.\.\.)''',
+    # `${VAR}` / `$VAR` 形式の環境変数参照
+    '''\$\{''',
+  ]
 
 [allowlist]
 description = "Verified false positives (synthetic test fixtures, never real secrets)"
