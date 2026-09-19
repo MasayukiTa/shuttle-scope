@@ -1002,6 +1002,13 @@ export function AnnotatorPage() {
       strokes: store.currentStrokes,
       pendingStroke: store.pendingStroke,
       inputStep: store.inputStep,
+      // ラリーの開始位置。これを落とすと復元時に «動画の先頭で始まった»
+      // ことになり、そのまま `video_timestamp_start` として保存される。
+      rallyStartTimestamp: store.rallyStartTimestamp,
+      // 次に打つのは誰か。ストロークごとに入れ替わるので、復元で
+      // 生のストローク配列を積み直しても再現されない (打数が奇数なら必ずずれる)。
+      currentPlayer: store.currentPlayer,
+      currentHitter: store.currentHitter,
       videoTimestamp: videoRef.current?.currentTime ?? null,
       savedAt: now,
     }
@@ -1028,9 +1035,36 @@ export function AnnotatorPage() {
     store.isRallyActive,
     store.currentSetId,
     store.currentRallyNum,
+    // 手動のプレイヤー切替 (togglePlayer) はストロークを増やさないので、
+    // これを外すと «次に打つのは誰か» だけが古いまま保存される。
+    store.currentPlayer,
+    store.currentHitter,
+    store.rallyStartTimestamp,
     autoSaveError,
     t,
   ])
+
+  // タブを閉じる・リロードする前に引き止める。
+  // 入力途中のラリーは **確定するまでサーバに存在しない**ので、閉じれば消える。
+  // 送信中 (pendingSaveCount > 0) のラリーも同じで、応答を待たずに閉じると
+  // 保存されたかどうかが分からないまま終わる。
+  // 一時保存があるので復元はできるが、それは «復元しますか» に気づいた場合だけ。
+  //
+  // beforeunload は文言を指定してもブラウザ既定のメッセージに置き換えられる。
+  // preventDefault() が仕様上の引き止め方法。
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      const s = useAnnotationStore.getState()
+      const hasUnconfirmedInput =
+        s.isRallyActive && (s.currentStrokes.length > 0 || !!s.pendingStroke.shot_type)
+      if (!hasUnconfirmedInput && s.pendingSaveCount === 0) return
+      e.preventDefault()
+      // 古いブラウザは returnValue を見る。
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [])
 
   // 初期化完了後: 前回の未保存ストロークがあれば復元確認
   useEffect(() => {
@@ -1045,6 +1079,9 @@ export function AnnotatorPage() {
         setId: number; rallyNum: number; strokes: Array<Record<string, unknown>>
         pendingStroke?: Record<string, unknown>; inputStep?: string
         savedAt: number; videoTimestamp?: number
+        rallyStartTimestamp?: number | null
+        currentPlayer?: 'player_a' | 'player_b'
+        currentHitter?: string
       }
       const hasContent = saved.strokes.length > 0 || !!(saved.pendingStroke as { shot_type?: string } | undefined)?.shot_type
       if (
@@ -1066,12 +1103,25 @@ export function AnnotatorPage() {
           destructive: false,
           onConfirm: () => {
             // ストアに直接書き込み（store.startRally と同等の準備）
-            store.startRally(store.rallyStartTimestamp ?? 0)
+            // 旧実装は `store.rallyStartTimestamp ?? 0` だった。リロード直後の
+            // ストアは null なので、復元したラリーは必ず «動画の 0 秒から始まった»
+            // ことになり、それが `video_timestamp_start` として保存されていた。
+            // 一時保存に入っていなければ (この項目より前の保存) **null のまま**
+            // 通す。欠けている方が、嘘の 0 より扱える。
+            store.startRally(saved.rallyStartTimestamp ?? null)
             for (const stroke of saved.strokes) {
               useAnnotationStore.setState((s) => ({
                 currentStrokes: [...s.currentStrokes, stroke as unknown as (typeof s.currentStrokes)[number]],
                 currentStrokeNum: s.currentStrokeNum + 1,
               }))
+            }
+            // 打順の復元。`setState` でストロークを積むだけでは
+            // `currentPlayer` の交替が走らないので、保存値をそのまま戻す。
+            if (saved.currentPlayer === 'player_a' || saved.currentPlayer === 'player_b') {
+              useAnnotationStore.setState({
+                currentPlayer: saved.currentPlayer,
+                currentHitter: saved.currentHitter ?? saved.currentPlayer,
+              })
             }
             // ペンディングストローク（ショット種別まで入力済み）も復元
             const restoredPending = saved.pendingStroke as { shot_type?: string } | undefined

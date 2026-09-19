@@ -83,7 +83,10 @@ interface AnnotationState {
   clearSaveErrors: () => void
 
   // ラリー操作
-  startRally: (timestamp: number) => void
+  /** 一時保存からの復元では動画位置が分からないことがある。
+   *  0 を入れるとラリーが «動画の先頭で始まった» ことになり、
+   *  `video_timestamp_start` としてそのまま保存されるので null を許す。 */
+  startRally: (timestamp: number | null) => void
   endRallyRequest: () => void
   cancelRallyEnd: () => void
 
