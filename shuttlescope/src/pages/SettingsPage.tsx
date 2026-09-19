@@ -1939,6 +1939,24 @@ export function SettingsPage() {
                         />
                       </div>
 
+                      {/* coturn の use-auth-secret 共有鍵。
+                          **これが無いと TURN の資格情報は発行されない。**
+                          固定の username / credential は利用者に配らない
+                          （全員に同じものが渡り、失効もしないため）。 */}
+                      <input
+                        type="password"
+                        placeholder={t('sharing.turn_secret_placeholder')}
+                        value={appSettings.turn_static_auth_secret}
+                        onChange={e => updateSettings({ turn_static_auth_secret: e.target.value })}
+                        className="w-full px-2 py-1.5 rounded-ss-md text-xs border bg-[var(--ss-surface-1)] border-[var(--ss-border-strong)] text-[var(--ss-t1)]"
+                      />
+                      {appSettings.turn_enabled && !appSettings.turn_static_auth_secret && (
+                        <p className="text-[10px] text-[var(--ss-bad)] flex items-center gap-1">
+                          <MIcon name="error" size={10} />
+                          {t('sharing.turn_secret_required')}
+                        </p>
+                      )}
+
                       {/* 疎通テストボタン + 結果 */}
                       <div className="flex items-center gap-2">
                         <button

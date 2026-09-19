@@ -2037,7 +2037,9 @@
     "ngrok_authtoken_label": "ngrok 認証トークン",
     "ngrok_authtoken_placeholder": "2abc...（ngrok ダッシュボードから取得）",
     "ngrok_authtoken_hint": "ngrok 3.x は認証トークンが必須です。https://dashboard.ngrok.com/get-started/your-authtoken で取得できます。",
-    "ngrok_authtoken_from_env": "環境変数から自動適用済み（.env.development）"
+    "ngrok_authtoken_from_env": "環境変数から自動適用済み（.env.development）",
+    "turn_secret_placeholder": "coturn の共有鍵 (use-auth-secret)",
+    "turn_secret_required": "共有鍵が未設定です。TURN の資格情報を発行できません（固定のユーザー名・パスワードは配布しません）。"
   },
   "bookmark": {
     "add": "ブックマーク追加",

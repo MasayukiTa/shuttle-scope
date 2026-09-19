@@ -566,32 +566,88 @@ def tunnel_stop(request: Request):
 
 # ─── WebRTC ICE 設定 ─────────────────────────────────────────────────────────
 
+#: 発行する TURN 資格情報の寿命（秒）。WebRTC の接続確立は数秒なので、
+#: 1 時間あれば長すぎず、時計ずれにも耐える。
+TURN_CREDENTIAL_TTL_SEC = 3600
+
+
+def _ephemeral_turn_credentials(secret: str, user_id: Optional[int], ttl: int) -> tuple[str, str]:
+    """coturn の `use-auth-secret`（REST API 方式）の資格情報を作る。
+
+        username = "<有効期限のUNIX時刻>:<利用者>"
+        credential = base64(HMAC-SHA1(secret, username))
+
+    coturn 側は同じ秘密鍵で検証するので、**サーバ同士で共有するのは
+    秘密鍵だけ**になり、利用者へ渡すのは期限付きの派生値だけで済む。
+    """
+    import base64
+    import hashlib
+    import hmac
+
+    expiry = int(time.time()) + ttl
+    username = f"{expiry}:{user_id if user_id is not None else 'anon'}"
+    digest = hmac.new(secret.encode(), username.encode(), hashlib.sha1).digest()
+    return username, base64.b64encode(digest).decode()
+
+
 @router.get("/webrtc/ice-config")
-def webrtc_ice_config(db: Session = Depends(get_db)):
+def webrtc_ice_config(request: Request, db: Session = Depends(get_db)):
     """WebRTC ICE サーバー設定を返す（STUN デフォルト + TURN オプション）
 
-    Settings の turn_enabled / turn_url / turn_username / turn_credential を読み取り、
-    RTCPeerConnection の iceServers 形式で返す。
-    TURN が無効の場合は STUN のみ返す（ベストエフォート）。
+    **TURN の資格情報は利用者ごと・期限つきで発行する。**
+
+    以前は Settings の `turn_username` / `turn_credential` をそのまま返して
+    いた。この endpoint は WebRTC を張る全員が叩くもので、認証は要るが
+    ロールは問わない（player でも通る）。つまり**固定の TURN 資格情報が
+    全利用者に配られていた**ことになる。TURN はトラフィックを中継する
+    サーバなので、受け取った側はそれを自分の通信の中継に使える。
+    期限も無いので、一度渡ったものは失効しない。
+
+    いまは `turn_static_auth_secret`（coturn の `use-auth-secret` と同じ鍵）
+    から HMAC で期限つきの資格情報を作って返す。**固定の資格情報は
+    返さない。** 鍵が未設定のまま TURN を有効にしている場合は STUN だけを
+    返し、理由を `turn_warning` に入れる（黙って TURN 無しにしない）。
     """
     from backend.routers.settings import _load_all
     cfg = _load_all(db)
 
     ice_servers: list[dict] = [{"urls": "stun:stun.l.google.com:19302"}]
+    turn_warning: Optional[str] = None
+    turn_active = False
 
     if cfg.get("turn_enabled") and cfg.get("turn_url"):
-        entry: dict = {"urls": cfg["turn_url"]}
-        if cfg.get("turn_username"):
-            entry["username"] = cfg["turn_username"]
-        if cfg.get("turn_credential"):
-            entry["credential"] = cfg["turn_credential"]
-        ice_servers.append(entry)
+        secret = (cfg.get("turn_static_auth_secret") or "").strip()
+        if secret:
+            from backend.utils.auth import get_auth
+            try:
+                user_id = get_auth(request).user_id
+            except Exception:  # noqa: BLE001
+                user_id = None
+            username, credential = _ephemeral_turn_credentials(
+                secret, user_id, TURN_CREDENTIAL_TTL_SEC,
+            )
+            ice_servers.append({
+                "urls": cfg["turn_url"],
+                "username": username,
+                "credential": credential,
+            })
+            turn_active = True
+        else:
+            turn_warning = (
+                "TURN が有効ですが turn_static_auth_secret が未設定のため、"
+                "資格情報を発行できません。coturn を use-auth-secret で構成し、"
+                "同じ鍵を設定してください（固定の turn_username / turn_credential は配布しません）。"
+            )
 
     return {
         "success": True,
         "data": {
             "ice_servers": ice_servers,
-            "turn_enabled": bool(cfg.get("turn_enabled")),
+            # 「設定上 有効か」ではなく「実際に TURN を返したか」を返す。
+            # 鍵が無くて返せていないのに true を返すと、画面は使えると信じる。
+            "turn_enabled": turn_active,
+            "turn_credential_ttl_sec": TURN_CREDENTIAL_TTL_SEC if turn_active else None,
+            "turn_warning": turn_warning,
         },
     }
 

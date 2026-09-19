@@ -31,6 +31,7 @@ export interface AppSettings {
   turn_url: string
   turn_username: string
   turn_credential: string
+  turn_static_auth_secret: string
 }
 
 const DEFAULTS: AppSettings = {
@@ -52,6 +53,7 @@ const DEFAULTS: AppSettings = {
   turn_url: '',
   turn_username: '',
   turn_credential: '',
+  turn_static_auth_secret: '',
 }
 
 const LS_KEY = 'shuttlescope.settings'

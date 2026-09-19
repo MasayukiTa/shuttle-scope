@@ -2027,7 +2027,9 @@
     "ngrok_authtoken_label": "ngrok auth token",
     "ngrok_authtoken_placeholder": "2abc... (from the ngrok dashboard)",
     "ngrok_authtoken_hint": "ngrok 3.x requires an auth token. Get one at https://dashboard.ngrok.com/get-started/your-authtoken.",
-    "ngrok_authtoken_from_env": "Auto-applied from environment variable (.env.development)"
+    "ngrok_authtoken_from_env": "Auto-applied from environment variable (.env.development)",
+    "turn_secret_placeholder": "coturn shared secret (use-auth-secret)",
+    "turn_secret_required": "No shared secret set, so no TURN credentials can be issued (the static username and password are not handed out)."
   },
   "bookmark": {
     "add": "Add bookmark",

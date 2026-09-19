@@ -22,6 +22,7 @@ router = APIRouter()
 _SENSITIVE_SETTING_KEYS = {
     "ngrok_authtoken",
     "turn_credential",
+    "turn_static_auth_secret",
     "turn_username",
     "turn_url",
     "ss_notify_webhook_url",
@@ -90,7 +91,12 @@ DEFAULT_SETTINGS: dict = {
     "turn_enabled": False,             # TURN リレー有効化
     "turn_url": "",                    # turn:your-server.example.com:3478
     "turn_username": "",               # TURN ユーザー名
-    "turn_credential": "",             # TURN パスワード
+    "turn_credential": "",             # TURN パスワード（**配布しない**。下の共有鍵を使うこと）
+    # coturn の `use-auth-secret` と同じ共有鍵。これがあるときだけ
+    # /webrtc/ice-config が期限つきの資格情報を発行する。
+    # 固定の turn_username / turn_credential は利用者に渡さない
+    # （全員に同じものが渡り、失効もしないため）。
+    "turn_static_auth_secret": "",
 }
 
 
