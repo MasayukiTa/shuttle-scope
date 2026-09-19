@@ -28,7 +28,6 @@
     "@radix-ui/react-toast": "^1.2.23",
     "@tanstack/react-query": "^5.101.4",
     "@types/qrcode": "^1.5.6",
-    "@xmldom/xmldom": "^0.9.10",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
     "d3": "^7.9.0",
@@ -73,6 +72,8 @@
   },
   "overrides": {
     "ip-address": "^10.2.0",
+    "plist": { "@xmldom/xmldom": "^0.8.15" },
+    "brace-expansion": "^2.1.4",
     "tmp": "0.2.7",
     "form-data": "^4.0.6",
     "tar": "^7.5.16",
