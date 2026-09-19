@@ -65,6 +65,17 @@ def _h(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
+def _data(r):
+    """成功応答の data を取り出す。status を先に突きつける。
+
+    以前はこのファイル中が `r.json()["data"]` 直書きで、サーバが 500 を返すと
+    `KeyError: 'data'` としか出なかった。`raise_server_exceptions=False` なので
+    例外も飛んでこず、CI ログから原因を読み取れない。
+    """
+    assert r.status_code in (200, 201), f"{r.status_code}: {r.text}"
+    return r.json()["data"]
+
+
 def _team(client, admin_token: str, name: str, display_id: str) -> int:
     r = client.post("/api/auth/teams", json={"name": name, "display_id": display_id},
                     headers=_h(admin_token))
@@ -186,9 +197,9 @@ def test_another_team_does_not_see_it(client, world):
 def test_roster_of_another_team_is_still_invisible(client, world):
     """従来のテナント境界が緩んでいないこと。"""
     admin = world["admin"]
-    client.post("/api/players", json={
+    _data(client.post("/api/players", json={
         "name": "B Roster", "dominant_hand": "R", "team": "ScoutTeamB",
-    }, headers=_h(admin))
+    }, headers=_h(admin)))
     r = client.get("/api/players", headers=_h(world["analyst_a"]))
     names = [p["name"] for p in r.json()["data"]]
     assert "B Roster" not in names
@@ -210,8 +221,8 @@ def test_a_match_between_two_external_players_can_be_created(client, world):
     これが 403 だと、相手の映像を取り込む経路が存在しない。
     """
     tok = world["analyst_a"]
-    x = _scouting_player(client, tok, "Opp A").json()["data"]["id"]
-    y = _scouting_player(client, tok, "Opp B").json()["data"]["id"]
+    x = _data(_scouting_player(client, tok, "Opp A"))["id"]
+    y = _data(_scouting_player(client, tok, "Opp B"))["id"]
     r = client.post("/api/matches", json=_match_body(x, y), headers=_h(tok))
     assert r.status_code in (200, 201), r.text
 
@@ -222,16 +233,16 @@ def test_that_match_is_owned_by_the_registering_team(client, world):
     ここが緩むと、可視性の根拠が無い試合ができてしまう。
     """
     tok = world["analyst_a"]
-    x = _scouting_player(client, tok, "Opp C").json()["data"]["id"]
-    y = _scouting_player(client, tok, "Opp D").json()["data"]["id"]
-    m = client.post("/api/matches", json=_match_body(x, y), headers=_h(tok)).json()["data"]
+    x = _data(_scouting_player(client, tok, "Opp C"))["id"]
+    y = _data(_scouting_player(client, tok, "Opp D"))["id"]
+    m = _data(client.post("/api/matches", json=_match_body(x, y), headers=_h(tok)))
     assert m.get("owner_team_id") == world["team_a"]
 
 
 def test_another_team_cannot_use_someone_elses_external_players(client, world):
     """他チームが登録した外部選手で試合を作れないこと。"""
-    x = _scouting_player(client, world["analyst_a"], "Opp E").json()["data"]["id"]
-    y = _scouting_player(client, world["analyst_a"], "Opp F").json()["data"]["id"]
+    x = _data(_scouting_player(client, world["analyst_a"], "Opp E"))["id"]
+    y = _data(_scouting_player(client, world["analyst_a"], "Opp F"))["id"]
     r = client.post("/api/matches", json=_match_body(x, y),
                     headers=_h(world["analyst_b"]))
     assert r.status_code == 403, r.text
@@ -240,12 +251,12 @@ def test_another_team_cannot_use_someone_elses_external_players(client, world):
 def test_a_match_with_no_own_player_and_no_own_external_player_is_still_refused(client, world):
     """穴を広げすぎていないこと。admin が作った無関係な選手同士は依然 403。"""
     admin = world["admin"]
-    p1 = client.post("/api/players", json={
+    p1 = _data(client.post("/api/players", json={
         "name": "Foreign 1", "dominant_hand": "R", "team": "ScoutTeamB",
-    }, headers=_h(admin)).json()["data"]["id"]
-    p2 = client.post("/api/players", json={
+    }, headers=_h(admin)))["id"]
+    p2 = _data(client.post("/api/players", json={
         "name": "Foreign 2", "dominant_hand": "R", "team": "ScoutTeamB",
-    }, headers=_h(admin)).json()["data"]["id"]
+    }, headers=_h(admin)))["id"]
     r = client.post("/api/matches", json=_match_body(p1, p2),
                     headers=_h(world["analyst_a"]))
     assert r.status_code == 403, r.text

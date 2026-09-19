@@ -36,7 +36,6 @@ if _xw:
 import pytest  # noqa: E402
 from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
-from sqlalchemy.pool import StaticPool  # noqa: E402
 
 from backend.db import database as db_module  # noqa: E402
 from backend.db import models as _models  # noqa: F401,E402  # ensure metadata registration
@@ -80,13 +79,41 @@ def _reset_jwt_caches():
 
 
 @pytest.fixture(scope="session")
-def test_engine():
-    """Create one shared in-memory SQLite engine for the backend test session."""
+def test_engine(tmp_path_factory):
+    """Create one SQLite engine shared by every session in this pytest worker.
+
+    **`:memory:` + StaticPool は使えない。** StaticPool は DBAPI 接続を 1 本しか
+    持たないので、プロセス内の全 Session が「同じ接続 = 同じトランザクション」を
+    共有してしまう。FastAPI の同期エンドポイントは threadpool の別スレッドで動き、
+    middleware は event loop スレッドで自前の SessionLocal を開くため、両者は
+    本当に同時に走る。`get_db` の `db.close()` は未コミットなら ROLLBACK を
+    発行するので、**別の Session が flush 済みで commit 前の行が消える**。
+
+    実際に CI (linux, xdist gw1) で踏んだ:
+
+        POST /api/players -> players.py db.refresh(player)
+        sqlalchemy.exc.InvalidRequestError: Could not refresh instance '<Player>'
+
+    commit した直後の行が 1 文あとに消えていた。Windows 側 (serial) は同じ
+    コミットで PASS しており、「間欠的に落ちる」という顔でしか出てこない。
+    players.py の `db.flush()` で id を先に確保するコメントが指している
+    ObjectDeletedError も同じ機構で、あれは 1 箇所だけの手当てだった。
+
+    worker ごとに **ファイル** DB を 1 つ持たせる。見え方 (全 Session が同じ
+    データを見る) は `:memory:` と同じまま、接続はセッションごとに分かれるので
+    トランザクションが混線しない。xdist は worker がプロセス分離なので、
+    tmp_path_factory が worker ごとに別ディレクトリを返す。
+    """
+    db_path = tmp_path_factory.mktemp("db") / "shuttlescope_test.db"
     engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
+        f"sqlite:///{db_path}",
+        # 同期エンドポイントは threadpool の別スレッドで動くため必要。
+        # StaticPool と違い接続自体は共有されない。
+        connect_args={"check_same_thread": False, "timeout": 30},
     )
+    # WAL: 読み手が書き手をブロックしないので "database is locked" を避けられる。
+    with engine.begin() as _conn:
+        _conn.exec_driver_sql("PRAGMA journal_mode=WAL")
     Base.metadata.create_all(engine)
 
     # Force the app/database module to use the same in-memory DB everywhere,

@@ -76,3 +76,55 @@ class TestSessionLocalRebinding:
         finally:
             db.close()
             alt_engine.dispose()
+
+
+class TestSessionsDoNotShareOneConnection:
+    """test_engine の Session どうしがトランザクションを共有していないこと。
+
+    以前の test_engine は `:memory:` + StaticPool だった。StaticPool は DBAPI
+    接続を 1 本しか持たないので、プロセス内の全 Session が同じ接続 = 同じ
+    トランザクションに乗る。アプリの同期エンドポイントは threadpool の別
+    スレッドで動き、`_stale_device_cleanup` は 30 秒ごとに event loop
+    スレッドで `with SessionLocal() as db:` を開いて閉じる (= ROLLBACK)。
+    その ROLLBACK が別スレッドの flush 済み・commit 前の INSERT を消す。
+
+    CI (linux, xdist) で実際に観測した症状:
+
+        POST /api/players -> players.py db.refresh(player)
+        sqlalchemy.exc.InvalidRequestError: Could not refresh instance '<Player>'
+
+    commit した直後の行が 1 文あとに消えていた。間欠的にしか出ないので
+    「flaky」で片付きやすい。ここで機構そのものを固定する。
+    """
+
+    def test_a_rollback_in_one_session_does_not_destroy_anothers_write(self, test_engine):
+        Session = sessionmaker(bind=test_engine)
+        writer = Session()
+        try:
+            p = Player(name="ハーネス隔離確認", dominant_hand="R")
+            writer.add(p)
+            writer.flush()          # INSERT 済み・未 commit
+            pid = p.id
+
+            # 別 Session が同じ engine で読み、閉じる (= ROLLBACK)。
+            # 接続が共有されていれば、この ROLLBACK が上の INSERT を巻き戻す。
+            other = Session()
+            try:
+                other.query(Player).count()
+            finally:
+                other.close()
+
+            writer.commit()
+        finally:
+            writer.close()
+
+        reader = Session()
+        try:
+            assert reader.get(Player, pid) is not None, (
+                "別 Session の rollback で commit 済みの行が消えた"
+                " — Session が 1 本の接続を共有している"
+            )
+            reader.query(Player).filter(Player.id == pid).delete()
+            reader.commit()
+        finally:
+            reader.close()

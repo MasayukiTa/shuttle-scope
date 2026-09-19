@@ -543,12 +543,16 @@ def create_player(
     # sibling の 752 / 786 行は元から local 変数を使っていて、ここだけ違った。
     db.flush()
     new_player_id = player.id
+    # 同じ理由で **応答も commit 前に作る**。`db.refresh()` は expire を
+    # 巻き戻すためだけの再 SELECT で、行が同時に消えていれば
+    # `InvalidRequestError: Could not refresh instance` で 500 になる
+    # (CI で実際に観測)。flush 済みの属性は既に揃っているので refresh は要らない。
+    payload = player_to_dict(player)
     db.commit()
     # 新規選手の登録はチーム可視範囲に影響し得るためグローバル無効化も実施
     response_cache.bump_players([new_player_id])
     response_cache.bump_version()
-    db.refresh(player)
-    return {"success": True, "data": player_to_dict(player)}
+    return {"success": True, "data": payload}
 
 
 def _log_scope_denial(request: Request, ctx, player, *, status: int, reason: str) -> None:
