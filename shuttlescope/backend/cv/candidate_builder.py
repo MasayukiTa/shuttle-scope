@@ -438,19 +438,22 @@ def detect_rally_boundaries_from_cv(
 
 # ── 着地ゾーン推定 ────────────────────────────────────────────────────────────
 
-# C-7: land_zone として許す語彙。backend/config.py の ZONES_9 と
-# ZoneOOB / ZoneNet (src/types/index.ts の LandZone) に対応する。
-# ここを通らない値は candidate にしない。
+# C-7: CV フレームの `zone` として許す語彙。
+#
+# ここに来るのは `backend/tracknet/zone_mapper.coords_to_zone` の出力だけで、
+# それは `ZONE_MAP` の 9 値 (Zone9) しか返さない。**コート外やネット接触の
+# 語彙は CV からは出てこない** — 人が入力する `land_zone` の方にはあるが、
+# それはこの経路を通らない。
+#
+# 以前ここに `OB_LB` / `OB_RB` / `OB_FC` / `NET` を並べていたが、これらは
+# どこにも存在しない綴りで (人間側の語彙は `OB_LL` / `OB_RL` / `NET_L`)、
+# 「何も弾かない許可リスト」として書いた分だけ緩めていた。
+# 語彙は 1 か所から取る。
 try:
     from backend.config import ZONES_9 as _ZONES_9
 except Exception:  # pragma: no cover - config が読めない環境
     _ZONES_9 = ["BL", "BC", "BR", "ML", "MC", "MR", "NL", "NC", "NR"]
-_VALID_LAND_ZONES = frozenset(_ZONES_9) | {
-    z for z in (
-        "OB_BL", "OB_BC", "OB_BR", "OB_LB", "OB_LM", "OB_LN",
-        "OB_RB", "OB_RM", "OB_RN", "OB_FL", "OB_FC", "OB_FR", "NET",
-    )
-}
+_VALID_LAND_ZONES = frozenset(_ZONES_9)
 
 
 def _wilson_lower_bound(successes: int, total: int, z: float = 1.96) -> float:

@@ -12,6 +12,34 @@ INVALID_COMBINATIONS: list[tuple[str, Optional[list[str]]]] = [
 # サーブ種別（ラリー1球目のみ有効）
 SERVICE_TYPES = ["short_service", "long_service"]
 
+# ── ゾーン語彙 ───────────────────────────────────────────────────────────────
+# `src/types/index.ts` の Zone9 / ZoneOOB / ZoneNet と 1 対 1 で対応する。
+# 二重定義なので `backend/tests/test_zone_vocabulary.py` が TS 側を読んで突き合わせる。
+#
+# ここまで検証が無く、`land_zone` は 5 文字以内なら何でも保存できた。
+# ゾーンはヒートマップと空間分析の集計キーなので、綴り違いが 1 つ混ざると
+# **誰も選んでいないマスが集計に現れる**。落ちるのではなく静かに増える。
+try:
+    from backend.config import ZONES_9 as _ZONES_9
+except Exception:  # pragma: no cover - config が読めない環境
+    _ZONES_9 = ["BL", "BC", "BR", "ML", "MC", "MR", "NL", "NC", "NR"]
+
+COURT_ZONES = frozenset(_ZONES_9)
+# コート外 (ZoneOOB)
+OOB_ZONES = frozenset({
+    "OB_BL", "OB_BC", "OB_BR",      # バックライン外
+    "OB_LL", "OB_LM", "OB_LN",      # 左サイドライン外
+    "OB_RL", "OB_RM", "OB_RN",      # 右サイドライン外
+    "OB_FL", "OB_FR",               # ネット前
+})
+# ネット接触 (ZoneNet)
+NET_ZONES = frozenset({"NET_L", "NET_C", "NET_R"})
+
+# 着地点はコート内・コート外・ネット接触のすべてを取りうる
+VALID_LAND_ZONES = COURT_ZONES | OOB_ZONES | NET_ZONES
+# 打点は «打った位置» なのでコート内のみ
+VALID_HIT_ZONES = COURT_ZONES
+
 
 def validate_stroke(stroke_data: dict) -> tuple[bool, Optional[str]]:
     """
@@ -36,6 +64,14 @@ def validate_stroke(stroke_data: dict) -> tuple[bool, Optional[str]]:
     # サーブは1球目のみ
     if shot_type in SERVICE_TYPES and stroke_num != 1:
         return False, f"サーブ（{shot_type}）はラリーの1球目のみ有効です"
+
+    # ゾーン語彙。知らない綴りを通すと、集計のときだけ «誰も選んでいないマス»
+    # として現れる。入口で弾く。
+    if land_zone is not None and land_zone not in VALID_LAND_ZONES:
+        return False, f"着地ゾーン '{land_zone}' は定義されていません"
+    hit_zone = stroke_data.get("hit_zone")
+    if hit_zone is not None and hit_zone not in VALID_HIT_ZONES:
+        return False, f"打点ゾーン '{hit_zone}' は定義されていません"
 
     return True, None
 

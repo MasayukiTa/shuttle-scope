@@ -77,6 +77,12 @@ export function Pass1RallyEnd({
   cvHint,
 }: Props) {
   const { t } = useTranslation()
+  // 二重送信の防止は **ref** で持つ。`busy` は state なので、同じレンダ内に
+  // 届いた 2 回目のタップも `busy === false` を読んで通ってしまう
+  // (モバイルのダブルタップで実際に起きる)。通れば同じ rally_num で
+  // 2 本 enqueue され、`onRallyAdded` も 2 回走って画面に幻のラリーが残る。
+  // state の方はボタンの disabled 表示に要るので両方持つ。
+  const busyRef = useRef(false)
   const [busy, setBusy] = useState(false)
   // テレメトリ: pass 開始時刻と直前入力時刻
   const passStartRef = useRef<number>(performance.now())
@@ -121,7 +127,8 @@ export function Pass1RallyEnd({
   const goldenFlag = isGoldenPoint({ scoreA, scoreB })
 
   const submit = async (winner: 'player_a' | 'player_b') => {
-    if (busy) return
+    if (busyRef.current) return
+    busyRef.current = true
     setBusy(true)
     try {
       const newA = scoreA + (winner === 'player_a' ? 1 : 0)
@@ -164,6 +171,7 @@ export function Pass1RallyEnd({
       inputCountRef.current += 1
       lastInputTypeRef.current = `rally_winner_${winner}`
     } finally {
+      busyRef.current = false
       setBusy(false)
     }
   }
