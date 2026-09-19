@@ -330,6 +330,8 @@ export function AnnotatorPage() {
   const [forceSetScoreB, setForceSetScoreB] = useState(0)
 
   // アナリスト視点（セット1開始時のplayer_aの位置）
+  // C-8: サーバの値 (試合の事実) を優先し、無ければ localStorage → 既定 'bottom'。
+  // 既存試合はサーバ値が無いので、従来の挙動のまま動く。
   const [playerAStart, setPlayerAStart] = useState<'top' | 'bottom'>(
     () => (localStorage.getItem(`shuttlescope.viewpoint.${matchId}`) as 'top' | 'bottom') ?? 'bottom'
   )
@@ -1375,11 +1377,35 @@ export function AnnotatorPage() {
     }
   }, [matchId, queryClient, t])
 
-  // アナリスト視点変更（localStorage 保存）
+  // アナリスト視点変更。
+  // C-8: これは表示の好みではなく **試合の事実** (セット1開始時の player_a の位置)。
+  // サーバに保存しないと CV がラベルを人物に対応付けられず、
+  // 別の PC で開いたときにコート図の向きも変わる。
+  // localStorage は既存試合との互換のために残す。
   const handleViewpointChange = useCallback((side: 'top' | 'bottom') => {
     setPlayerAStart(side)
-    if (matchId) localStorage.setItem(`shuttlescope.viewpoint.${matchId}`, side)
-  }, [matchId])
+    if (!matchId) return
+    localStorage.setItem(`shuttlescope.viewpoint.${matchId}`, side)
+    apiPut(`/matches/${matchId}`, { player_a_start_side: side })
+      .then(() => queryClient.invalidateQueries({ queryKey: ['match', matchId] }))
+      .catch((err: unknown) => {
+        // 保存できなくても入力は続けられるが、黙って落とすと
+        // 「保存されたつもり」になるので操作者に見せる。
+        showError(t('annotator.viewpoint_save_failed', {
+          defaultValue: '視点の保存に失敗しました', msg: errorMessage(err),
+        }))
+      })
+  }, [matchId, queryClient, showError, t])
+
+  // C-8: サーバに保存された「セット1開始時の player_a の位置」を優先する。
+  // 未設定の試合 (この列より前に作られたもの) は localStorage のままでよい。
+  // ここで上書きしないと、別の PC で開いたときに向きが変わる。
+  useEffect(() => {
+    const side = match?.player_a_start_side
+    if (side === 'top' || side === 'bottom') {
+      setPlayerAStart(side)
+    }
+  }, [match?.player_a_start_side])
 
   // ダブルスモード検出 — match 読み込み後にストアへ反映
   useEffect(() => {

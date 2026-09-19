@@ -71,7 +71,8 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
     onSuccess: (data: unknown) => {
       const matchId = (data as { data?: { match?: { id?: number } } } | null)?.data?.match?.id
       if (matchId) {
-        // アナリスト視点をlocalStorageに保存（AnnotatorPageで読み込む）
+        // サーバにも保存済み (player_a_start_side)。localStorage は
+        // 既存試合との互換のために残す (サーバ値が無いときのフォールバック)。
         localStorage.setItem(`shuttlescope.viewpoint.${matchId}`, analystSide)
         onStarted(matchId)
       }
@@ -135,6 +136,9 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
       opponent_id: opponentId ?? undefined,
       opponent_team: opponentTeam.trim() || undefined,
       initial_server: initialServer || undefined,
+      // C-8: 「セット1開始時の自選手の位置」は**試合の事実**。
+      // localStorage だけに置くと、サーバ (と CV) が知らないままになる。
+      player_a_start_side: analystSide,
       competition_type: competitionType,
       tournament: tournament.trim() || undefined,
       round: round || undefined,

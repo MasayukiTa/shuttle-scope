@@ -412,6 +412,12 @@ class Match(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     # V4: クイックスタート・試合メタデータ
     initial_server: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)     # player_a / player_b
+    # C-8: セット1開始時に player_a が画面のどちら側に居たか ('top' / 'bottom')。
+    # **試合の事実**であって表示の好みではない。以前は注釈者のブラウザの
+    # localStorage (`shuttlescope.viewpoint.{matchId}`) にしか無く、サーバが
+    # 知らなかったため、CV は自分のラベル (画面の上側 = player_a) を
+    # 人物に対応付けられなかった。別の PC で開くとコート図の向きも変わっていた。
+    player_a_start_side: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     competition_type: Mapped[Optional[str]] = mapped_column(String(30), nullable=True, default="unknown")  # official/practice_match/open_practice/unknown
     created_via_quick_start: Mapped[bool] = mapped_column(Boolean, default=False)
     metadata_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, default="minimal")  # minimal/partial/verified

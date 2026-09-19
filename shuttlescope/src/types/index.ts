@@ -188,6 +188,10 @@ export interface Match {
   partner_b?: { id: number; name: string; team?: string }
   // V4: クイックスタート・試合メタデータ
   initial_server?: string
+  /** C-8: セット1開始時に player_a が画面のどちら側に居たか。**試合の事実**。
+   *  以前は注釈者のブラウザの localStorage にしか無く、サーバも CV も知らなかった。
+   *  既存試合は未設定 (undefined) なので、読み手は localStorage にフォールバックする。 */
+  player_a_start_side?: 'top' | 'bottom' | null
   competition_type?: CompetitionType
   created_via_quick_start?: boolean
   metadata_status?: MetadataStatus

@@ -45,6 +45,8 @@ class MatchCreate(BaseModel):
     notes: Optional[str] = None
     # V4
     initial_server: Optional[str] = None
+    # C-8: セット1開始時の player_a の位置 ('top' / 'bottom')。試合の事実。
+    player_a_start_side: Optional[str] = None
     competition_type: Optional[str] = "unknown"
     created_via_quick_start: bool = False
     metadata_status: Optional[str] = "minimal"
@@ -80,6 +82,8 @@ class MatchUpdate(BaseModel):
     notes: Optional[str] = None
     # V4
     initial_server: Optional[str] = None
+    # C-8: セット1開始時の player_a の位置 ('top' / 'bottom')。試合の事実。
+    player_a_start_side: Optional[str] = None
     competition_type: Optional[str] = None
     metadata_status: Optional[str] = None
     exception_reason: Optional[str] = None
@@ -187,6 +191,7 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
         ("tournament", 200), ("tournament_grade", 100), ("round", 100),
         ("venue", 200), ("notes", 5000), ("final_score", 200),
         ("initial_server", 50), ("competition_type", 50),
+        ("player_a_start_side", 10),
         ("metadata_status", 50), ("exception_reason", 500),
     ):
         v = getattr(body, fname, None)
@@ -206,6 +211,14 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
                 )
         if fname in _non_empty_required and not v.strip():
             raise HTTPException(status_code=422, detail=f"{fname} must not be empty or whitespace only")
+    # C-8: 語彙を固定する。CV がこれを見てラベルを人物へ対応付けるので、
+    # 想定外の値が入ると「サーバが言っている事実」の顔で間違いが残る。
+    _side = getattr(body, "player_a_start_side", None)
+    if _side is not None and _side not in ("top", "bottom"):
+        raise HTTPException(
+            status_code=422,
+            detail="player_a_start_side は 'top' か 'bottom' のいずれかです",
+        )
     # video_url の制御文字拒否 (CR/LF/Tab 埋め込みで header injection / shell 攻撃経路)
     vu = getattr(body, "video_url", None)
     if vu is not None and isinstance(vu, str) and vu != "":
@@ -485,6 +498,7 @@ def match_to_dict(
         "updated_at": m.updated_at.isoformat() if m.updated_at else None,
         # V4
         "initial_server": m.initial_server,
+        "player_a_start_side": m.player_a_start_side,
         "competition_type": m.competition_type or "unknown",
         "created_via_quick_start": bool(m.created_via_quick_start),
         "metadata_status": m.metadata_status or "minimal",
@@ -1058,6 +1072,9 @@ class QuickStartBody(BaseModel):
     opponent_id: Optional[int] = Field(default=None, ge=1, le=2_147_483_647)
     opponent_team: Optional[str] = Field(default=None, max_length=100)  # Team.name VARCHAR(100)
     initial_server: Optional[str] = Field(default=None, max_length=32)  # player_a / player_b
+    # C-8: UI は既に「セット1開始時の自選手の位置」として聞いている。
+    # localStorage ではなく試合に保存する。
+    player_a_start_side: Optional[str] = Field(default=None, max_length=10)
     competition_type: str = Field("unknown", max_length=50)             # official/practice_match/open_practice/unknown
     tournament: Optional[str] = Field(default=None, max_length=200)     # Match.tournament VARCHAR(200)
     round: Optional[str] = Field(default=None, max_length=50)           # Match.round VARCHAR(50)
@@ -1113,6 +1130,7 @@ def quick_start_match(body: QuickStartBody, request: Request, db: Session = Depe
         player_b_id=player_b.id,
         result="unfinished",
         initial_server=body.initial_server,
+        player_a_start_side=body.player_a_start_side,
         competition_type=body.competition_type,
         created_via_quick_start=True,
         metadata_status="minimal",
