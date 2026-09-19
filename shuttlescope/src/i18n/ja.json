@@ -1963,6 +1963,7 @@
         "landing_zone_ambiguous": "着地ゾーン不明確",
         "hitter_undetected": "打者検出不可",
         "multiple_near_players": "打者候補競合",
+        "player_identity_unmapped": "打った人を特定できません（試合の「セット1開始時の自選手の位置」が未設定）",
         "role_state_unstable": "ロール状態不安定",
         "track_present_high_confidence": "高確信度トラック"
       },
