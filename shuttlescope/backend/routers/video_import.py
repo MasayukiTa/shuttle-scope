@@ -254,7 +254,19 @@ def _run_tracknet(job: dict, video_path: str) -> None:
     from backend.tracknet.inference import get_inference
     from backend.routers.court_calibration import load_calibration_standalone, pixel_to_court_zone
 
-    inf = get_inference("openvino")   # GPU優先バックエンドを明示
+    # **"auto"**。以前は "openvino" を「GPU優先バックエンドを明示」として
+    # 固定していたが、OpenVINO の "GPU" は **Intel の GPU** を指す。
+    # 本番機 (MiniTakeuchi) は RTX 5060 Ti を積んでおり、この指定では
+    # NVIDIA のカードを遊ばせたまま Intel iGPU で推論していた。
+    #
+    # 実測 (2026-09-20、本番機・実試合映像 1920x1080 29.97fps):
+    #   openvino : 1557.9 ms / 推論   (0.6 推論/s)
+    #   cuda     :   16.0 ms / 推論  (62.4 推論/s)   = **97 倍**
+    #
+    # `inference.py` の "auto" は ONNX CUDA を最優先に解決する
+    # (docstring がこのカードを名指ししている)。CUDA が無い K10 ワーカーでは
+    # 従来どおり OpenVINO へ落ちるので、固定する理由が無い。
+    inf = get_inference("auto")
     if not inf.load():
         job["tracknet"]["status"] = "error"
         job["tracknet"]["error"] = inf.get_load_error() or "ロード失敗"
@@ -285,11 +297,24 @@ def _run_tracknet(job: dict, video_path: str) -> None:
     #   30fps -> 36 個                -> 0.81  auto_filled
     # (実際の窓は次ストロークで切られるのでこれより短い = 上の値は上限)
     #
-    # 既定を 10fps にする。候補が「人が見て採否を決められる」水準になり、
-    # かつ auto_filled を名乗らない。推論コストはほぼサンプル数に比例するので、
-    # GPU 時間と相談して `CV_TRACKNET_SAMPLE_FPS` で調整すること
-    # (auto_filled まで届かせたいなら 15 以上)。
-    _sample_fps = float(os.environ.get("CV_TRACKNET_SAMPLE_FPS", "10"))
+    # 既定は 15fps。**実測してから決めた** (2026-09-20、本番機・実試合映像)。
+    #
+    # 10fps だったのは「GPU 時間と相談して」という理由だったが、その GPU 時間は
+    # 上記のとおり **Intel iGPU で推論していたせい**で、NVIDIA のカードでは
+    # 話がまるで違う。60 分の試合 1 本あたりの実測投影:
+    #
+    #   サンプル   推論      デコード   合計      Wilson 下限 (検出 0.92)
+    #   10 fps    9.6 min   6.0 min   15.6 min   0.68  suggested
+    #   15 fps   14.4 min   6.0 min   20.4 min   0.74  auto_filled
+    #   30 fps   28.8 min   6.0 min   34.8 min   0.81  auto_filled
+    #
+    # (デコードはサンプリング率によらず一定。ループは毎フレーム読むため)
+    #
+    # 15 を選ぶ理由: auto_filled の閾値に届く最小のサンプリング率。
+    # 30 にすると GPU 時間が倍になって Wilson 下限は 0.07 しか上がらない。
+    # 30 でも実時間を下回る (52 分の映像に 35 分) ので、証拠を厚くしたいなら
+    # `CV_TRACKNET_SAMPLE_FPS=30` で足りる。
+    _sample_fps = float(os.environ.get("CV_TRACKNET_SAMPLE_FPS", "15"))
     if _sample_fps <= 0:
         _sample_fps = 10.0
     # 元動画より速くはサンプルできない
