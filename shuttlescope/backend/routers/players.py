@@ -5,6 +5,7 @@ import unicodedata
 from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
@@ -210,6 +211,44 @@ def player_to_dict(p: Player, match_count: int = 0) -> dict:
     }
 
 
+def _match_counts(db: Session, players: list[Player]) -> dict[int, int]:
+    """選手ごとの出場試合数。
+
+    **ダブルスのパートナー枠を数えていなかった。** 3 箇所とも
+    `player_a_id | player_b_id` だけを見ていたので、パートナーとしてしか
+    出ていない選手は `match_count = 0` になる。ダッシュボードの選手セレクタは
+    `match_count > 0` で絞るので (`DashboardShell.tsx`)、**その選手は一覧から
+    消えて解析対象に選べない**。ダブルス解析を持っているのに選べない。
+
+    1 人ずつ COUNT を投げていたのも直す (選手数ぶんのクエリが毎回走っていた)。
+
+    soft-delete された試合を除外しないのは従来どおり。`matches.py` が
+    `Match.deleted_at` を一切見ていないので、ここだけ変えると数が食い違う。
+    """
+    ids = {p.id for p in players}
+    if not ids:
+        return {}
+    rows = (
+        db.query(
+            Match.player_a_id, Match.player_b_id,
+            Match.partner_a_id, Match.partner_b_id,
+        )
+        .filter(or_(
+            Match.player_a_id.in_(ids),
+            Match.player_b_id.in_(ids),
+            Match.partner_a_id.in_(ids),
+            Match.partner_b_id.in_(ids),
+        ))
+        .all()
+    )
+    counts = {pid: 0 for pid in ids}
+    for row in rows:
+        # 同じ試合に同じ選手が 2 枠で入ることは無いはずだが、入っていても 1 と数える
+        for pid in {v for v in row if v is not None} & ids:
+            counts[pid] += 1
+    return counts
+
+
 def _own_team_or_scouting_filter(db: Session, team_name: str, ctx):
     """「自チーム所属」または「自チームが登録した外部選手」を選ぶ条件を返す。
 
@@ -270,12 +309,8 @@ def list_players(request: Request, db: Session = Depends(get_db),
     # admin は全選手
 
     players = query.all()
-    result = []
-    for p in players:
-        cnt = db.query(Match).filter(
-            (Match.player_a_id == p.id) | (Match.player_b_id == p.id)
-        ).count()
-        result.append(player_to_dict(p, match_count=cnt))
+    counts = _match_counts(db, players)
+    result = [player_to_dict(p, match_count=counts.get(p.id, 0)) for p in players]
     return {"success": True, "data": result}
 
 
@@ -358,14 +393,13 @@ def search_players(request: Request, q: str = Query(default="", max_length=100),
     ordered = exact + prefix + contains + alias_match
     # 重複除去（順序保持）
     seen: set[int] = set()
-    result = []
+    unique: list[Player] = []
     for p in ordered:
         if p.id not in seen:
             seen.add(p.id)
-            cnt = db.query(Match).filter(
-                (Match.player_a_id == p.id) | (Match.player_b_id == p.id)
-            ).count()
-            result.append(player_to_dict(p, match_count=cnt))
+            unique.append(p)
+    counts = _match_counts(db, unique)
+    result = [player_to_dict(p, match_count=counts.get(p.id, 0)) for p in unique]
 
     return {"success": True, "data": result}
 
@@ -378,12 +412,8 @@ def list_needs_review(request: Request, db: Session = Depends(get_db),
     players = _scoped_player_query(db, request).filter(
         Player.needs_review == True  # noqa: E712
     ).order_by(Player.created_at.desc()).all()
-    result = []
-    for p in players:
-        cnt = db.query(Match).filter(
-            (Match.player_a_id == p.id) | (Match.player_b_id == p.id)
-        ).count()
-        result.append(player_to_dict(p, match_count=cnt))
+    counts = _match_counts(db, players)
+    result = [player_to_dict(p, match_count=counts.get(p.id, 0)) for p in players]
     return {"success": True, "data": result}
 
 
