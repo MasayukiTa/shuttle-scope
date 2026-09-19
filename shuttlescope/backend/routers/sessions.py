@@ -914,9 +914,19 @@ def set_viewer_permission(
     code: str,
     participant_id: int,
     body: ViewerPermissionBody,
+    request: Request,
     db: Session = Depends(get_db),
 ):
-    """ビューワー映像受信許可を設定"""
+    """ビューワー映像受信許可を設定
+
+    S-6: **このデバイス系エンドポイントだけ `_check_operator_access` が無かった。**
+    set-role / activate-camera / deactivate-camera / approve / reject / delete /
+    purge / heartbeat の 8 本は全て通している。`viewer_permission` は
+    「その端末が他の参加者のカメラ映像を受け取ってよいか」なので、抜けていると
+    **セッションコードを知っている LAN/リモートの誰でも blocked を allowed に
+    戻して映像を受け取り始められる**。
+    """
+    _check_operator_access(request, code)
     valid = {"allowed", "blocked", "default"}
     if body.viewer_permission not in valid:
         raise HTTPException(status_code=400, detail=f"無効な値: {body.viewer_permission}")
@@ -932,8 +942,13 @@ def set_viewer_permission(
 # ─── ライブソース管理エンドポイント ──────────────────────────────────────────
 
 @router.get("/sessions/{code}/sources")
-def list_sources(code: str, db: Session = Depends(get_db)):
-    """セッションのライブソース一覧（優先度順）"""
+def list_sources(code: str, request: Request, db: Session = Depends(get_db)):
+    """セッションのライブソース一覧（優先度順）
+
+    S-6 の掃引で見つけた分。ライブソース系の 4 本は **認可が一切無かった**
+    (`request` すら取っていない)。読み取りは兄弟の
+    `GET /sessions/{code}/devices` と同じ team scope に揃える。
+    """
     session = (
         db.query(SharedSession)
         .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
@@ -941,6 +956,7 @@ def list_sources(code: str, db: Session = Depends(get_db)):
     )
     if not session:
         raise HTTPException(status_code=404, detail="セッションが見つかりません")
+    _require_session_scope(request, session, db)
 
     sources = (
         db.query(LiveSource)
@@ -952,8 +968,14 @@ def list_sources(code: str, db: Session = Depends(get_db)):
 
 
 @router.post("/sessions/{code}/sources", status_code=201)
-def register_source(code: str, body: RegisterSourceBody, db: Session = Depends(get_db)):
-    """ライブソースを登録（PC がローカルカメラや iOS を登録する）"""
+def register_source(code: str, body: RegisterSourceBody, request: Request,
+                    db: Session = Depends(get_db)):
+    """ライブソースを登録（PC がローカルカメラや iOS を登録する）
+
+    S-6: 認可が無く、セッションコードを知っていれば他人のセッションへ
+    ソースを登録できた。兄弟のデバイス操作 8 本と同じ operator 検査を通す。
+    """
+    _check_operator_access(request, code)
     session = (
         db.query(SharedSession)
         .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
@@ -984,8 +1006,13 @@ def register_source(code: str, body: RegisterSourceBody, db: Session = Depends(g
 
 
 @router.post("/sessions/{code}/sources/{source_id}/activate")
-def activate_source(code: str, source_id: int, db: Session = Depends(get_db)):
-    """ソースをアクティブ化（1 ソース制限 — 既存 active を inactive に降格）"""
+def activate_source(code: str, source_id: int, request: Request,
+                    db: Session = Depends(get_db)):
+    """ソースをアクティブ化（1 ソース制限 — 既存 active を inactive に降格）
+
+    S-6: **どの映像が生かを切り替える操作**に認可が無かった。
+    """
+    _check_operator_access(request, code)
     session = (
         db.query(SharedSession)
         .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
@@ -1010,8 +1037,13 @@ def activate_source(code: str, source_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/sessions/{code}/sources/{source_id}/deactivate")
-def deactivate_source(code: str, source_id: int, db: Session = Depends(get_db)):
-    """ソースを candidate に降格"""
+def deactivate_source(code: str, source_id: int, request: Request,
+                      db: Session = Depends(get_db)):
+    """ソースを candidate に降格
+
+    S-6: 認可が無く、セッションコードを知っていれば生中継を止められた。
+    """
+    _check_operator_access(request, code)
     session = (
         db.query(SharedSession)
         .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))

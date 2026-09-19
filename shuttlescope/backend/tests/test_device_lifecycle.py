@@ -160,6 +160,45 @@ class TestViewerPermissionSet:
         target = next((d for d in devices if d["id"] == pid), None)
         assert target["viewer_permission"] == "blocked"
 
+    def test_a_remote_caller_without_the_operator_token_is_refused(
+        self, lifecycle_client, db_session,
+    ):
+        """S-6: このエンドポイントだけ operator 認可が抜けていた。
+
+        `viewer_permission` は「その端末が他の参加者のカメラ映像を受け取って
+        よいか」。抜けていると **セッションコードを知っている LAN/リモートの
+        誰でも blocked を allowed に戻せる**。
+        兄弟の 8 本 (approve / reject / set-role / activate-camera /
+        deactivate-camera / delete / purge / heartbeat) は全て通している。
+
+        `_check_operator_access` は 127.0.0.1 と `testclient` を無条件で通すので、
+        拒否側を見るには LAN の IP から来たことにする必要がある。
+        """
+        _, code, password = lifecycle_client
+        local = TestClient(app, headers={"X-Role": "analyst"})
+        pid = _join_device(local, code, password)
+
+        remote = TestClient(app, headers={"X-Role": "analyst"},
+                            client=("192.168.1.50", 54321))
+        resp = remote.post(
+            f"/api/sessions/{code}/devices/{pid}/set-viewer-permission",
+            json={"viewer_permission": "allowed"},
+        )
+        assert resp.status_code == 403, resp.text
+
+        # 値が変わっていないこと (拒否が «返事だけ» でないこと)
+        devices = local.get(f"/api/sessions/{code}/devices").json()["data"]
+        target = next(d for d in devices if d["id"] == pid)
+        assert target["viewer_permission"] != "allowed"
+
+    def test_a_local_caller_is_still_allowed(self, lifecycle_client):
+        """ローカルの解析者 (Electron) の経路を塞いでいないこと。"""
+        client, code, password = lifecycle_client
+        pid = _join_device(client, code, password)
+        resp = client.post(f"/api/sessions/{code}/devices/{pid}/set-viewer-permission",
+                           json={"viewer_permission": "allowed"})
+        assert resp.status_code == 200, resp.text
+
     def test_set_permission_invalid_value(self, lifecycle_client):
         """無効な permission 値は 422"""
         client, code, password = lifecycle_client

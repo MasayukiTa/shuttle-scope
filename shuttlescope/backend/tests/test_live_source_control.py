@@ -211,3 +211,61 @@ class TestDeactivateSource:
         sources = client.get(f"/api/sessions/{code}/sources").json()["data"]
         source_map = {s["id"]: s for s in sources}
         assert source_map[sid]["source_status"] != "active"
+
+
+# ─── T5: 認可 (S-6 の掃引で見つけた分) ────────────────────────────────────────
+
+class TestSourceEndpointsRequireAuthorization:
+    """ライブソース系の 4 本は **認可が一切無かった** (`request` すら取っていない)。
+
+    どれもセッションコードだけで届くので、コードを知っている相手が
+    ソースを列挙し、登録し、**どの映像が生かを切り替えられた**。
+    デバイス操作の兄弟 8 本は元から `_check_operator_access` を通している。
+
+    `_check_operator_access` は 127.0.0.1 と `testclient` を無条件で通すので、
+    拒否側を見るには LAN の IP から来たことにする。
+    """
+
+    def _remote(self):
+        return TestClient(app, headers={"X-Role": "analyst"},
+                          client=("192.168.1.50", 54321))
+
+    def test_registering_a_source_from_the_lan_is_refused(self, source_client_with_session):
+        _, code, _ = source_client_with_session
+        resp = self._remote().post(f"/api/sessions/{code}/sources",
+                                   json={"source_kind": "usb_camera"})
+        assert resp.status_code == 403, resp.text
+
+    def test_activating_a_source_from_the_lan_is_refused(self, source_client_with_session):
+        """**どの映像が生か**を他人が切り替えられないこと。"""
+        client, code, _ = source_client_with_session
+        sid = client.post(f"/api/sessions/{code}/sources",
+                          json={"source_kind": "usb_camera"}).json()["data"]["id"]
+        resp = self._remote().post(f"/api/sessions/{code}/sources/{sid}/activate")
+        assert resp.status_code == 403, resp.text
+        # 拒否が «返事だけ» でないこと
+        sources = client.get(f"/api/sessions/{code}/sources").json()["data"]
+        assert {s["id"]: s for s in sources}[sid]["source_status"] != "active"
+
+    def test_deactivating_a_source_from_the_lan_is_refused(self, source_client_with_session):
+        client, code, _ = source_client_with_session
+        sid = client.post(f"/api/sessions/{code}/sources",
+                          json={"source_kind": "usb_camera"}).json()["data"]["id"]
+        client.post(f"/api/sessions/{code}/sources/{sid}/activate")
+        resp = self._remote().post(f"/api/sessions/{code}/sources/{sid}/deactivate")
+        assert resp.status_code == 403, resp.text
+        sources = client.get(f"/api/sessions/{code}/sources").json()["data"]
+        assert {s["id"]: s for s in sources}[sid]["source_status"] == "active"
+
+    def test_the_local_operator_path_still_works(self, source_client_with_session):
+        """Electron の解析者 (localhost) を塞いでいないこと。
+
+        画面は `DeviceManagerPanel` → `LiveSourceSelector` で、兄弟の
+        デバイス操作と同じ経路から呼んでいる。
+        """
+        client, code, _ = source_client_with_session
+        sid = client.post(f"/api/sessions/{code}/sources",
+                          json={"source_kind": "usb_camera"}).json()["data"]["id"]
+        assert client.post(f"/api/sessions/{code}/sources/{sid}/activate").status_code == 200
+        assert client.get(f"/api/sessions/{code}/sources").status_code == 200
+        assert client.post(f"/api/sessions/{code}/sources/{sid}/deactivate").status_code == 200
