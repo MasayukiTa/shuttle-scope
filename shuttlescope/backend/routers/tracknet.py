@@ -6,7 +6,7 @@ import uuid
 import threading
 import logging
 from typing import Optional
-from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
+from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -21,6 +21,37 @@ router = APIRouter()
 
 # バッチジョブ管理（インメモリ）
 _jobs: dict[str, dict] = {}
+
+
+def _require_job_scope(request: Request, job_id: str, db: Session) -> dict:
+    """job を所有する match の team scope を強制し、job dict を返す。
+
+    S-6 の掃引で見つけた分。job 系は `job_id` しか取らず scope 検査を持って
+    いなかった。`TeamScopeAccessControlMiddleware` は path の数字を match_id
+    として拾うが、job_id は `str(uuid.uuid4())[:8]` の 16 進 8 文字なので:
+
+      - tracknet 側のパターンは末尾が `$` で `/batch/{job_id}/stop` に一致しない
+      - yolo 側は一致するが **8 文字がたまたま全部数字のときだけ** (約 2.3%)。
+        そのときは無関係な Match をその番号で引いて可否を決めてしまう
+
+    どちらも job の所有者検査になっていない。job は生成時に `match_id` を
+    持っているので、それを解決して通常の match scope を掛ける。
+    `cv_candidates.py` が rally_id 経由の IDOR で辿ったのと同じ形。
+    """
+    job = _jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません")
+    match_id = job.get("match_id")
+    if match_id is None:
+        # match に紐づかない job は所有者を決められない。fail-closed。
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません")
+    match = db.get(Match, match_id)
+    if not match:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    from backend.utils.auth import require_match_scope
+    require_match_scope(request, match, db)
+    return job
+
 
 
 def _load_setting_int(db, key: str, default: int) -> int:
@@ -221,20 +252,16 @@ def start_batch(
 
 
 @router.get("/tracknet/batch/{job_id}/status")
-def batch_status(job_id: str):
+def batch_status(job_id: str, request: Request, db: Session = Depends(get_db)):
     """バッチジョブの進捗確認"""
-    job = _jobs.get(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="ジョブが見つかりません")
+    job = _require_job_scope(request, job_id, db)
     return {"success": True, "data": job}
 
 
 @router.post("/tracknet/batch/{job_id}/stop")
-def stop_tracknet_batch(job_id: str):
+def stop_tracknet_batch(job_id: str, request: Request, db: Session = Depends(get_db)):
     """実行中のTrackNetバッチに停止リクエストを送る。現在のラリーが終わり次第停止する。"""
-    job = _jobs.get(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="ジョブが見つかりません")
+    job = _require_job_scope(request, job_id, db)
     if job.get("status") not in (BatchJobStatus.RUNNING, BatchJobStatus.PENDING):
         return {"success": True, "data": {"message": "already stopped"}}
     _jobs[job_id]["stop_requested"] = True
