@@ -15,6 +15,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { apiPost } from '@/api/client'
+import { errorMessage, errorStatus } from '@/utils/errors'
 import { MIcon } from '@/components/common/MIcon'
 import { useAutoTutorial } from '@/components/tutorial/useTutorial'
 import { useTranslation } from 'react-i18next'
@@ -174,12 +175,25 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
     let serverFailed = false
     try {
       const payload = { points: points.map((p) => [p.x, p.y] as [number, number]) }
+      let refused = false
       try {
         await apiPost(`/matches/${matchId}/court_calibration`, payload)
-      } catch {
-        // backend 失敗時も localStorage は保存して desktop と共有可能にする
+      } catch (e: unknown) {
         serverFailed = true
-        setErr(t('auto.MobileCourtCalib.err_server_failed_local_only'))
+        // C-6: サーバは «計算できたか» ではなく «成立しているか» を見るように
+        // なった (退化した配置・ネット支柱の残差)。422 は「通信が届かなかった」
+        // ではなく「この 6 点では成立しない」。
+        // それを localStorage に残すと、次に開いたときそのまま使われる。
+        refused = errorStatus(e) === 422
+        setErr(
+          refused
+            ? errorMessage(e, t('auto.MobileCourtCalib.err_server_failed_local_only'))
+            : t('auto.MobileCourtCalib.err_server_failed_local_only'),
+        )
+      }
+      if (refused) {
+        // 成立していない点を保存も通知もしない。押し直してもらう。
+        return
       }
       try {
         localStorage.setItem(`court-calib-${matchId}`, JSON.stringify(points))

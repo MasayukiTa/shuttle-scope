@@ -17,6 +17,7 @@ from backend.routers.court_calibration import (
     apply_homography,
     is_inside_court,
     pixel_to_court_zone,
+    _validate_calibration,
 )
 
 
@@ -131,11 +132,34 @@ class TestPixelToCourtZone:
                 result = pixel_to_court_zone(x, y, flat_H)
                 assert 0 <= result["zone_id"] <= 17
 
-    def test_court_xy_clamped(self, flat_H):
-        """コート外の点は [0,1] にクランプされる"""
+    def test_a_point_outside_the_court_is_not_given_a_zone(self, flat_H):
+        """C-6: 旧実装は [0,1] にクランプしてからゾーンを決めていた。
+
+        アウトになった打球も観客席の誤検出も、端のゾーンとして自信ありげに
+        返っていた。18 ゾーンはコートの中しか覆っていないので、外は
+        「外」と言える。
+        """
         result = pixel_to_court_zone(2.0, -1.0, flat_H)
+        assert result["out_of_court"] is True
+        assert result["zone_name"] is None
+        assert result["zone_id"] is None
+        assert result["side"] is None
+        # 丸めた座標は従来どおり範囲内、生の値は外に出たままで残る
         assert 0.0 <= result["court_x"] <= 1.0
         assert 0.0 <= result["court_y"] <= 1.0
+        assert result["court_x_raw"] > 1.0 or result["court_y_raw"] < 0.0
+
+    def test_a_point_inside_the_court_still_gets_a_zone(self, flat_H):
+        result = pixel_to_court_zone(0.5, 0.5, flat_H)
+        assert result["out_of_court"] is False
+        assert result["zone_name"] is not None
+        assert 0 <= result["zone_id"] <= 17
+
+    def test_a_point_just_on_the_line_is_kept(self, flat_H):
+        """ライン上を外扱いにすると、際どい着地が全部消える。"""
+        for x, y in ((0.0, 0.5), (1.0, 0.5), (0.5, 0.0), (0.5, 1.0)):
+            result = pixel_to_court_zone(x, y, flat_H)
+            assert result["out_of_court"] is False, (x, y)
 
     def test_zone_id_formula(self, flat_H):
         """zone_id = row_i * 3 + col_i が成立する"""
@@ -203,3 +227,61 @@ class TestIsInsideCourt:
         tri = [[0.0, 0.0], [1.0, 0.0], [0.5, 1.0]]
         assert is_inside_court(0.5, 0.4, tri) is True
         assert is_inside_court(0.1, 0.9, tri) is False
+
+
+# ─── C-6 キャリブレーションの妥当性検査 ───────────────────────────────────────
+
+class TestCalibrationValidity:
+    """4 点対応の DLT は **どんな 4 点でも行列を返す**。
+
+    退化した配置でも SVD は例外を出さないので、旧実装は「計算できた」だけを
+    確認して保存していた。以後のゾーン判定は全部その行列を通る。
+
+    ネット支柱の 2 点は当てはめに使っていないので、変換後の y が 0.5 から
+    どれだけ離れているかは独立した残差になる。旧実装はそれを計算して
+    ログに出すだけだった。
+    """
+
+    SQUARE = [(0.1, 0.1), (0.9, 0.1), (0.9, 0.9), (0.1, 0.9)]
+
+    def _net(self, y: float = 0.5, lx: float = 0.0, rx: float = 1.0):
+        return (lx, y), (rx, y)
+
+    def test_a_good_calibration_is_accepted(self):
+        net_l, net_r = self._net()
+        errors, warnings, quality = _validate_calibration(self.SQUARE, net_l, net_r)
+        assert errors == [], errors
+        assert warnings == []
+        assert quality["net_y_error"] == 0.0
+
+    def test_three_collinear_points_are_refused(self):
+        collinear = [(0.1, 0.1), (0.5, 0.1), (0.9, 0.1), (0.5, 0.9)]
+        errors, _, _ = _validate_calibration(collinear, *self._net())
+        assert errors, "一直線の 3 点が通っている"
+        assert "一直線" in errors[0]
+
+    def test_a_self_intersecting_order_is_refused(self):
+        """2 点を入れ替えると砂時計型になる。SVD は何も言わない。"""
+        crossed = [(0.1, 0.1), (0.9, 0.1), (0.1, 0.9), (0.9, 0.9)]
+        errors, _, _ = _validate_calibration(crossed, *self._net())
+        assert any("凸四角形" in e for e in errors), errors
+
+    def test_the_net_being_far_off_centre_is_refused(self):
+        """支柱は当てはめに使っていないので、これは独立した検算。"""
+        errors, _, _ = _validate_calibration(self.SQUARE, *self._net(y=0.8))
+        assert any("ネット支柱" in e and "離れすぎ" in e for e in errors), errors
+
+    def test_a_small_net_offset_is_only_a_warning(self):
+        errors, warnings, quality = _validate_calibration(self.SQUARE, *self._net(y=0.57))
+        assert errors == [], errors
+        assert warnings, "ずれているのに何も言っていない"
+        assert quality["net_y_error"] == pytest.approx(0.07, abs=1e-6)
+
+    def test_swapped_net_posts_are_refused(self):
+        errors, _, _ = _validate_calibration(self.SQUARE, *self._net(lx=1.0, rx=0.0))
+        assert any("左右" in e for e in errors), errors
+
+    def test_the_residual_is_recorded_not_just_logged(self):
+        _, _, quality = _validate_calibration(self.SQUARE, *self._net(y=0.53))
+        assert quality["net_y_avg"] == pytest.approx(0.53)
+        assert quality["net_y_error"] == pytest.approx(0.03, abs=1e-6)

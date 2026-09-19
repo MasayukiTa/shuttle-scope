@@ -339,6 +339,7 @@ def _run_tracknet(job: dict, video_path: str) -> None:
         if calib and "homography" in calib:
             H = calib["homography"]
             refined = 0
+            out_of_court = 0
             for pt in track:
                 xn = pt.get("x_norm")
                 yn = pt.get("y_norm")
@@ -351,13 +352,24 @@ def _run_tracknet(job: dict, video_path: str) -> None:
                     # **PostgreSQL では 12 文字が入らず失敗し、SQLite では黙って入る**
                     # (開発では通り本番だけ落ちる、いつもの形)。
                     # Zone9 は保ったまま、コート座標系の呼称は別キーに置く。
-                    pt["court_zone_name"] = zone_info["zone_name"]
+                    # C-6: コートの外に落ちた点は 18 ゾーンに属さない。
+                    # 旧実装は [0,1] にクランプしてから判定していたので、
+                    # アウトや観客席の誤検出が端のゾーンとして確定していた。
+                    # 外なら座標だけ残してゾーンは付けない。
                     pt["court_x"]   = zone_info["court_x"]
                     pt["court_y"]   = zone_info["court_y"]
+                    pt["out_of_court"] = zone_info["out_of_court"]
+                    if zone_info["out_of_court"]:
+                        out_of_court += 1
+                        continue
+                    pt["court_zone_name"] = zone_info["zone_name"]
                     pt["zone_id"]   = zone_info["zone_id"]
                     refined += 1
-            if refined:
-                logger.info("TrackNet zone refined by homography: match=%d points=%d", match_id, refined)
+            if refined or out_of_court:
+                logger.info(
+                    "TrackNet zone refined by homography: match=%d points=%d out_of_court=%d",
+                    match_id, refined, out_of_court,
+                )
 
     job["tracknet"]["status"] = "done"
     job["tracknet"]["progress"] = 1.0

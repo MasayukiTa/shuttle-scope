@@ -81,6 +81,75 @@ def _compute_homography(
     return (H / H[2, 2]).tolist()
 
 
+# ─── キャリブレーションの妥当性検査 (C-6) ────────────────────────────────────
+#
+# 4 点対応の DLT は **どんな 4 点でも何かしらの行列を返す**。退化した配置
+# (3 点が一直線・自己交差する四角形・順序違い) でも SVD は例外を出さないので、
+# 旧実装は «計算できた» ことだけを確認して保存していた。以後のゾーン判定は
+# すべてその行列を通るので、間違ったキャリブレーションは静かに全部を汚す。
+#
+# ネット支柱の 2 点は **行列の当てはめに使っていない**ので、変換後の y が
+# 0.5 (コート中央) からどれだけ離れているかは独立した残差になる。
+# 旧実装はこれを計算してログに出すだけだった (誰も読まない計器)。
+
+# ネット y の許容: これを超えたら保存を拒否する
+NET_Y_REJECT = 0.15
+# 警告として成果物に残す境界
+NET_Y_WARN = 0.05
+# 3 点が一直線とみなす外積の閾値 (正規化座標なので面積の 2 倍)
+COLLINEAR_EPS = 1e-3
+
+
+def _cross(o, a, b) -> float:
+    return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+
+def _validate_calibration(
+    corners: list[tuple[float, float]],
+    net_l: tuple[float, float],
+    net_r: tuple[float, float],
+) -> tuple[list[str], list[str], dict]:
+    """(拒否理由, 警告, 品質値) を返す。拒否理由が空なら保存してよい。"""
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    # 退化: 連続する 3 点の外積。符号が揃っていなければ凸四角形ではない
+    # (自己交差 or 順序違い)。絶対値が小さければ一直線。
+    crosses = [
+        _cross(corners[i], corners[(i + 1) % 4], corners[(i + 2) % 4])
+        for i in range(4)
+    ]
+    if any(abs(c) < COLLINEAR_EPS for c in crosses):
+        errors.append("4 点のうち 3 点がほぼ一直線です")
+    elif not (all(c > 0 for c in crosses) or all(c < 0 for c in crosses)):
+        errors.append("4 点が凸四角形になっていません (順序が違うか交差しています)")
+
+    # ネット支柱は当てはめに使っていないので、変換後の位置は独立した検算になる。
+    net_y_avg = (net_l[1] + net_r[1]) / 2.0
+    net_y_err = abs(net_y_avg - 0.5)
+    if net_y_err > NET_Y_REJECT:
+        errors.append(
+            f"ネット支柱がコート中央から離れすぎています "
+            f"(変換後 y={net_y_avg:.3f}, 理想 0.5)"
+        )
+    elif net_y_err > NET_Y_WARN:
+        warnings.append(
+            f"ネット支柱の位置がずれています (変換後 y={net_y_avg:.3f}, 理想 0.5)"
+        )
+
+    # 左右の取り違え。左支柱が右支柱より右に来ることはない。
+    if net_l[0] >= net_r[0]:
+        errors.append("ネット支柱の左右が入れ替わっています")
+
+    quality = {
+        "net_y_avg": round(net_y_avg, 4),
+        "net_y_error": round(net_y_err, 4),
+        "convex": not errors or "凸四角形" not in " ".join(errors),
+        "warnings": warnings,
+    }
+    return errors, warnings, quality
+
+
 def _invert_homography(H: list[list[float]]) -> list[list[float]]:
     """ホモグラフィの逆行列（コート座標→画像座標）を返す。"""
     H_inv = np.linalg.inv(np.array(H, dtype=np.float64))
@@ -104,17 +173,42 @@ def pixel_to_court_zone(
     """
     画像正規化座標 → コート正規化座標 → 18ゾーン情報。
 
+    C-6: 旧実装は変換後の座標を **[0,1] にクランプしてから** ゾーンを決めていた。
+    コートの外に落ちた点 (アウト・観客席・誤検出) が、端のゾーンとして
+    自信ありげに返っていたことになる。18 ゾーンはコートの中しか覆っていないので、
+    外は「分からない」ではなく「外」と言えるし、言うべき。
+
     Returns dict:
-      court_x, court_y  : コート正規化座標 [0,1]
-      zone_id           : 0-17 (row*3+col)
-      zone_name         : 例 "A_front_left"
-      side              : 'A' | 'B'
-      depth             : 'front' | 'mid' | 'back'
-      col               : 'left' | 'center' | 'right'
+      court_x, court_y  : コート正規化座標 (コート内に丸めた値)
+      court_x_raw, court_y_raw : 丸める前の値。外にどれだけ出たかが分かる
+      out_of_court      : コートの外か
+      zone_id           : 0-17 (row*3+col)。外なら None
+      zone_name         : 例 "A_front_left"。外なら None
+      side              : 'A' | 'B'。外なら None
+      depth             : 'front' | 'mid' | 'back'。外なら None
+      col               : 'left' | 'center' | 'right'。外なら None
     """
-    cx, cy = apply_homography(H, x_norm, y_norm)
-    cx = max(0.0, min(1.0, cx))
-    cy = max(0.0, min(1.0, cy))
+    raw_x, raw_y = apply_homography(H, x_norm, y_norm)
+    # ライン上の点を外に落とさないための余裕。コート幅の 2%。
+    tol = 0.02
+    out_of_court = not (-tol <= raw_x <= 1.0 + tol and -tol <= raw_y <= 1.0 + tol)
+
+    cx = max(0.0, min(1.0, raw_x))
+    cy = max(0.0, min(1.0, raw_y))
+
+    base = {
+        "court_x":     round(cx, 4),
+        "court_y":     round(cy, 4),
+        "court_x_raw": round(raw_x, 4),
+        "court_y_raw": round(raw_y, 4),
+        "out_of_court": out_of_court,
+    }
+    if out_of_court:
+        base.update({
+            "zone_id": None, "zone_name": None,
+            "side": None, "depth": None, "col": None,
+        })
+        return base
 
     col_i = min(int(cx * 3), 2)
     row_i = min(int(cy * 6), 5)
@@ -123,15 +217,14 @@ def pixel_to_court_zone(
     depth_names = ("front", "mid", "back")
     side        = "A" if row_i < 3 else "B"
 
-    return {
-        "court_x":   round(cx, 4),
-        "court_y":   round(cy, 4),
+    base.update({
         "zone_id":   row_i * 3 + col_i,
         "zone_name": f"{side}_{depth_names[row_i % 3]}_{col_names[col_i]}",
         "side":      side,
         "depth":     depth_names[row_i % 3],
         "col":       col_names[col_i],
-    }
+    })
+    return base
 
 
 def is_inside_court(
@@ -250,6 +343,20 @@ def save_court_calibration(
     net_r = apply_homography(H, *pts[5])
     net_y_avg = (net_l[1] + net_r[1]) / 2.0  # 理想値 = 0.5
 
+    # C-6: 計算できたことと正しいことは違う。退化した配置・順序違い・
+    # ネット支柱の残差を検査して、明らかに壊れているものは保存しない。
+    errors, warnings, quality = _validate_calibration(src_corners, net_l, net_r)
+    if errors:
+        logger.warning(
+            "キャリブレーション拒否 match_id=%s reasons=%s", match_id, errors,
+        )
+        raise HTTPException(
+            status_code=422,
+            detail="キャリブレーションが成立していません: " + " / ".join(errors),
+        )
+    if warnings:
+        logger.info("キャリブレーション警告 match_id=%s: %s", match_id, warnings)
+
     summary_data = {
         "points":         [[p.x, p.y] for p in body.points],
         "homography":     H,
@@ -264,6 +371,8 @@ def save_court_calibration(
             "w": body.container_width,
             "h": body.container_height,
         },
+        # C-6: 検算の結果を成果物に残す。ログだけでは誰も読まない。
+        "quality": quality,
         "calibrated_at": datetime.datetime.utcnow().isoformat(),
     }
     summary_json = json.dumps(summary_data, ensure_ascii=False)
