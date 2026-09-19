@@ -71,3 +71,41 @@ class TestTooLittleDataStillReturnsNothing:
     def test_no_items_below_the_threshold(self):
         result = TemplateGenerator().generate(_ctx(strokes=3, rallies=1, matches=1))
         assert result["items"] == []
+
+
+class TestAssistedProvenanceIsDisclosed:
+    """C-5: CV 由来の打球を混ぜた集計に、混ぜたと書いてあること。
+
+    `Stroke.source_method == 'assisted'` は CV 候補を適用した打球。
+    読み手は「人が見て入れた値」として読むので、黙って混ぜない。
+    """
+
+    def _ctx_with(self, assisted: int) -> dict:
+        ctx = _ctx(strokes=1200, rallies=300, matches=20)
+        ctx["analytics"]["sample"]["assisted_strokes"] = assisted
+        return ctx
+
+    def _shot_mix_item(self, ctx):
+        items = TemplateGenerator().generate(ctx)["items"]
+        found = [i for i in items if i["id"] == "shot_mix"]
+        assert found, [i["id"] for i in items]
+        return found[0]
+
+    def test_a_mixed_aggregate_says_so(self):
+        item = self._shot_mix_item(self._ctx_with(180))
+        assert "CV" in item["prose"], item["prose"]
+        assert "180" in item["prose"]
+        assert item["metric"]["assisted_n"] == 180
+
+    def test_a_purely_manual_aggregate_says_nothing_extra(self):
+        """0 件のとき «CV 0球» と書き足すのは雑音。"""
+        item = self._shot_mix_item(self._ctx_with(0))
+        assert "CV" not in item["prose"], item["prose"]
+        assert item["metric"]["assisted_n"] == 0
+
+    def test_a_summary_without_the_field_behaves_like_zero(self):
+        """この項目より前に作られた集計 (assisted_strokes 無し) で落ちない。"""
+        ctx = _ctx(strokes=1200, rallies=300, matches=20)
+        assert "assisted_strokes" not in ctx["analytics"]["sample"]
+        item = self._shot_mix_item(ctx)
+        assert item["metric"]["assisted_n"] == 0

@@ -94,6 +94,9 @@ class TemplateGenerator:
         n_strokes = int(sample.get("strokes", 0) or 0)
         n_rallies = int(sample.get("rallies", 0) or 0)
         n_matches = int(sample.get("matches", 0) or 0)
+        # C-5: この集計に CV 由来の打球がどれだけ混ざっているか。
+        # 混ぜたなら混ぜたと言う。読み手は «人が見て入れた値» だと思って読む。
+        n_assisted = int(sample.get("assisted_strokes", 0) or 0)
         # データが少なすぎる場合は空 (上位 fallback に「データ不足」表示を任せる)
         if n_strokes < _MIN_SAMPLE_N:
             return InsightResult(
@@ -160,6 +163,12 @@ class TemplateGenerator:
                     base += f"Adding more {alt_label} broadens your options."
                 else:
                     base += "Mixing in other shots broadens options."
+            if n_assisted > 0:
+                base += (
+                    f"（{n_strokes}球中{n_assisted}球はCV候補を適用した値です）"
+                    if lang == "ja"
+                    else f" ({n_assisted} of {n_strokes} strokes came from applied CV candidates.)"
+                )
             items.append(InsightItem(
                 id="shot_mix",
                 prose=base,
@@ -168,6 +177,7 @@ class TemplateGenerator:
                 metric={
                     "top_shot": top.get("shot_type"),
                     "top_share": top.get("share"),
+                    "assisted_n": n_assisted,
                     "alt_shot": shot_mix[1].get("shot_type") if len(shot_mix) >= 2 else None,
                     "sample_n": n_strokes,
                 },

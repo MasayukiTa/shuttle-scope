@@ -140,7 +140,17 @@ def test_happy_path_summary(db_session):
     assert out["player_name"] == "Taro"
     assert out["sample"]["matches"] == 2
     assert out["sample"]["rallies"] > 0
-    assert out["sample"]["strokes"] > 0
+    # C-5: strokes は **対象選手自身の打球数**。旧実装はラリー内の全打球
+    # (相手の分も) を数えており、その下の shot_mix / zones は対象選手だけを
+    # 数えていたので、読み手に見える証拠量が倍になっていた。
+    # C-5: strokes は **対象選手自身の打球数**。_seed_match は 1 ラリーにつき
+    # 4 本を player_a / player_b 交互に入れるので、対象選手 (player_a) の分は
+    # ラリー数の 2 倍ちょうど。旧実装はラリー内の全打球を数えていたので
+    # 4 倍になり、shot_mix / zones は対象選手しか数えていないのに
+    # 「N=<2倍>」と出ていた = 読み手に見える証拠量が倍。
+    assert out["sample"]["strokes"] == out["sample"]["rallies"] * 2
+    # 人の入力だけなので CV 由来は 0
+    assert out["sample"]["assisted_strokes"] == 0
     # 1 勝 1 敗
     assert out["outcomes"]["win_rate"] == 0.5
     assert out["outcomes"]["n"] == 2
@@ -163,7 +173,9 @@ def test_empty_player(db_session):
     p = _make_player(db_session, "Ghost")
     db_session.flush()
     out = build_player_summary(db_session, p.id, None, None, None)
-    assert out["sample"] == {"matches": 0, "rallies": 0, "strokes": 0}
+    assert out["sample"] == {
+        "matches": 0, "rallies": 0, "strokes": 0, "assisted_strokes": 0,
+    }
     assert out["outcomes"]["n"] == 0
     assert out["shot_mix"] == []
     assert out["zones"] == {"hit_top": [], "land_top": []}

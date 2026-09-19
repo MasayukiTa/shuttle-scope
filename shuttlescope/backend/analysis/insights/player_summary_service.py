@@ -131,6 +131,7 @@ def build_player_summary(
 
     n_rallies = 0
     n_strokes = 0
+    n_assisted = 0
     shot_mix_rows: list[tuple[str, int]] = []
     hit_zone_rows: list[tuple[str, int]] = []
     land_zone_rows: list[tuple[str, int]] = []
@@ -170,6 +171,9 @@ def build_player_summary(
                     Stroke.shot_type,
                     Stroke.hit_zone,
                     Stroke.land_zone,
+                    # C-5: この打球が人の入力か CV 由来かを一緒に読む。
+                    # 集計に混ぜたなら、混ぜたと言う必要がある。
+                    Stroke.source_method,
                 )
                 .filter(
                     Stroke.rally_id.in_(rally_ids),
@@ -177,18 +181,27 @@ def build_player_summary(
                 )
                 .all()
             )
-            n_strokes = len(stroke_rows)
 
             shot_counter: Counter[str] = Counter()
             hit_counter: Counter[str] = Counter()
             land_counter: Counter[str] = Counter()
-            for rid, sp, stype, hz, lz in stroke_rows:
+            # 旧実装は `n_strokes = len(stroke_rows)` で、これは
+            # **ラリー内の全打球 (相手の分も含む)** だった。一方その下の
+            # カウンタは対象選手の打球しか数えない。つまり「N=1200 の
+            # ショット構成」と出ていたものの実体は約半分で、読み手に見える
+            # 証拠量が倍になっていた。対象選手の打球だけを数える。
+            n_strokes = 0
+            n_assisted = 0
+            for rid, sp, stype, hz, lz, src in stroke_rows:
                 mid = rally_to_match.get(rid)
                 if mid is None:
                     continue
                 side = side_by_match.get(mid)
                 if side != sp:
                     continue
+                n_strokes += 1
+                if src == "assisted":
+                    n_assisted += 1
                 if stype:
                     shot_counter[stype] += 1
                 if hz:
@@ -253,7 +266,11 @@ def build_player_summary(
         "sample": {
             "matches": int(n_matches),
             "rallies": int(n_rallies),
+            # 対象選手自身の打球数 (相手の打球は含まない)
             "strokes": int(n_strokes),
+            # C-5: このうち CV 候補を適用したもの。0 でない集計は
+            # 「人が見て入れた値」だけでできてはいない。
+            "assisted_strokes": int(n_assisted),
         },
         "outcomes": {
             "win_rate": round(match_win_rate, 4),
