@@ -60,6 +60,7 @@ class TestRallyCreateIsIdempotent:
         return {
             "set_id": set_id, "rally_num": 1, "server": "player_a",
             "winner": "player_a", "end_type": "ace", "rally_length": 2,
+            "score_a_after": 1, "score_b_after": 0,
         }
 
     def test_the_same_key_does_not_create_a_second_rally(self, client, db_session, game_set):
@@ -71,11 +72,16 @@ class TestRallyCreateIsIdempotent:
         assert second.json()["data"]["id"] == first.json()["data"]["id"]
         assert db_session.query(Rally).filter(Rally.set_id == game_set.id).count() == 1
 
-    def test_a_malformed_key_is_refused_rather_than_ignored(self, client, game_set):
+    @pytest.mark.parametrize("bad", ["short", "has spaces here", "x" * 200, "semi;colon"])
+    def test_a_malformed_key_is_refused_rather_than_ignored(self, client, game_set, bad):
         """短すぎる・記号入りのキーを黙って «無し» として扱うと、
-        再送防止が効いていないことに誰も気づけない。"""
+        再送防止が効いていないことに誰も気づけない。
+
+        ヘッダ値は latin-1 までなので、ここに日本語は置けない
+        (`UnicodeEncodeError` になるだけで、検査の確認にならない)。
+        """
         res = client.post("/api/rallies", json=self._body(game_set.id),
-                          headers={"X-Idempotency-Key": "短い"})
+                          headers={"X-Idempotency-Key": bad})
         assert res.status_code == 400, res.text
 
 
