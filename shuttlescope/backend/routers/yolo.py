@@ -32,9 +32,6 @@ from backend.utils.error_detail import client_safe_error
 
 logger = logging.getLogger(__name__)
 
-#: ゾーン判定の許容はみ出し（court_calibration.pixel_to_court_zone と同じ 0.02）。
-#: これを超えたら「コート外」として別に数える。
-_ZONE_TOL = 0.02
 router = APIRouter()
 
 # ─── インメモリジョブ管理 ────────────────────────────────────────────────────
@@ -1311,7 +1308,7 @@ def get_movement_stats(match_id: int, db: Session = Depends(get_db)):
     未設定の場合は画像正規化座標での相対値として返す。
     """
     import math
-    from backend.routers.court_calibration import load_calibration_from_db, apply_homography
+    from backend.routers.court_calibration import load_calibration_from_db, pixel_to_court_zone
 
     match = db.get(Match, match_id)
     if not match:
@@ -1416,23 +1413,21 @@ def get_movement_stats(match_id: int, db: Session = Depends(get_db)):
             ts = p_pt["ts"]
             cx_img, cy_img = p_pt["cx"], p_pt["cy"]
 
-            # 画像座標 → コート正規化座標（ここに来る時点で H は必ずある）
-            cx_c, cy_c = apply_homography(H, cx_img, cy_img)
-
-            # **クランプしない。** 以前は [0,1] に丸めてから列・行を出していたので、
-            # コート外に立っている選手が端のゾーンの滞在として数えられていた。
-            # バドミントンでは選手がラインの外へ出るのは普通なので、
-            # 距離・速度は丸めない生の投影座標で計算するほうが正しく、
-            # ゾーンは「コート外」を別の枠として数える。
-            if -_ZONE_TOL <= cx_c <= 1 + _ZONE_TOL and -_ZONE_TOL <= cy_c <= 1 + _ZONE_TOL:
-                col_i  = min(int(max(cx_c, 0.0) * 3), 2)
-                row_i  = min(int(max(cy_c, 0.0) * 6), 5)
-                side   = "A" if row_i < 3 else "B"
-                depth  = ["front", "mid", "back"][row_i % 3]
-                col    = ["left", "center", "right"][col_i]
-                zone_name = f"{side}_{depth}_{col}"
-            else:
-                zone_name = "out_of_court"
+            # 画像座標 → コート正規化座標 → 18ゾーン。
+            #
+            # 式を書き写さず `pixel_to_court_zone` を呼ぶ。同じ 18 ゾーンの式が
+            # 4 箇所に複製されており、C-6 で court_calibration のものだけ直した
+            # 結果、**ここだけ古い挙動（クランプしてから行・列を出す）が残って
+            # いた**。コート外に立っている選手が端のゾーンの滞在として数えられる。
+            # バドミントンでは選手がラインの外へ出るのは普通なので、これは
+            # 珍しい例外ではなく日常的に混ざる。
+            #
+            # 距離・速度には**丸めない**生の投影座標 (`court_*_raw`) を使う。
+            # サイドラインの 1m 外は、コート座標でも本当に 1m 外にある。
+            z = pixel_to_court_zone(cx_img, cy_img, H)
+            cx_c = z["court_x_raw"]
+            cy_c = z["court_y_raw"]
+            zone_name = z["zone_name"] if not z["out_of_court"] else "out_of_court"
             zone_visits[zone_name] = zone_visits.get(zone_name, 0) + 1
 
             if prev is not None:

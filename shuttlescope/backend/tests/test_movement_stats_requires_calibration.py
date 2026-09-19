@@ -130,3 +130,22 @@ class TestWithoutAnyTrack:
         data = _get(client, match_id).json()["data"]
         assert data["available"] is False
         assert data.get("needs_calibration") is not True
+
+
+class TestZoneClassificationUsesTheSharedFunction:
+    """18 ゾーンの式を書き写さないこと。
+
+    同じ式が 4 箇所に複製されていて、C-6 で `court_calibration` のものだけ
+    直した結果、`yolo.py` には古い挙動（[0,1] にクランプしてから行・列を
+    出す）が残っていた。コート外に立っている選手が端ゾーンの滞在として
+    数えられる。バドミントンでは選手がラインの外へ出るのは普通なので、
+    これは珍しい例外ではなく日常的に混ざる。
+    """
+
+    def test_the_formula_is_not_copied_into_yolo_router(self):
+        import pathlib
+        src = (pathlib.Path(__file__).resolve().parents[1]
+               / "routers" / "yolo.py").read_text(encoding="utf-8")
+        assert "pixel_to_court_zone" in src, "共有関数を呼んでいない"
+        for copied in ("* 3), 2)", "* 6), 5)"):
+            assert copied not in src, f"18ゾーンの式が書き写されている: {copied}"
