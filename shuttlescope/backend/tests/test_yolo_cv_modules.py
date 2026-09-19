@@ -287,31 +287,84 @@ class TestComputeFormationTendency:
 
 
 class TestComputeHitterDistribution:
-    def test_basic(self):
-        alignment = [
-            {"summary": {"hitter_a_count": 8, "hitter_b_count": 2}},
-            {"summary": {"hitter_a_count": 4, "hitter_b_count": 6}},
+    """`hitter_a_count` は «画面の上側» の回数であって人ではない。
+
+    エンドは各ゲームのあとに替わるので、翻訳せずに試合全体で足すと
+    セット1の自分とセット2の相手が同じ山に積まれる。それがそのまま
+    UI の「Player A 62% / Player B 38%」になっていた。
+    """
+
+    def _ctx(self, *set_nums):
+        return {
+            i + 1: {"set_num": n, "score_a_before": 0, "score_b_before": 0}
+            for i, n in enumerate(set_nums)
+        }
+
+    def _aln(self, *pairs):
+        return [
+            {"rally_id": i + 1, "summary": {"hitter_a_count": a, "hitter_b_count": b}}
+            for i, (a, b) in enumerate(pairs)
         ]
-        result = _compute_hitter_distribution(alignment)
+
+    def test_same_set_sums_straight_through(self):
+        result = _compute_hitter_distribution(
+            self._aln((8, 2), (4, 6)),
+            rally_context=self._ctx(1, 1),
+            player_a_start_side="top",
+        )
         assert result["hitter_a_count"] == 12
         assert result["hitter_b_count"] == 8
         assert abs(result["hitter_a_ratio"] + result["hitter_b_ratio"] - 1.0) < 0.01
 
+    def test_the_second_set_is_counted_on_the_other_side(self):
+        """**これが直したかった集計の嘘。** 同じ «上側 8 回» が、
+        セット1では player_a、セット2では player_b に積まれる。"""
+        result = _compute_hitter_distribution(
+            self._aln((8, 2), (8, 2)),
+            rally_context=self._ctx(1, 2),
+            player_a_start_side="top",
+        )
+        assert result["hitter_a_count"] == 10   # 8 (set1 上) + 2 (set2 下)
+        assert result["hitter_b_count"] == 10
+
+    def test_starting_at_the_bottom_inverts_everything(self):
+        result = _compute_hitter_distribution(
+            self._aln((8, 2)),
+            rally_context=self._ctx(1),
+            player_a_start_side="bottom",
+        )
+        assert result["hitter_a_count"] == 2
+        assert result["hitter_b_count"] == 8
+
     def test_rally_dominant_counts(self):
-        # a=8, b=2 → a dominant (8 > 2*1.5)
-        # a=3, b=6 → b dominant (6 > 3*1.5)
-        alignment = [
-            {"summary": {"hitter_a_count": 8, "hitter_b_count": 2}},
-            {"summary": {"hitter_a_count": 3, "hitter_b_count": 6}},
-        ]
-        result = _compute_hitter_distribution(alignment)
+        # a=8, b=2 → a dominant (8 > 2*1.5) / a=3, b=6 → b dominant (6 > 3*1.5)
+        result = _compute_hitter_distribution(
+            self._aln((8, 2), (3, 6)),
+            rally_context=self._ctx(1, 1),
+            player_a_start_side="top",
+        )
         assert result["rally_dominant"]["player_a"] == 1
         assert result["rally_dominant"]["player_b"] == 1
 
+    def test_without_a_start_side_nothing_is_reported(self):
+        """0% と書くのも嘘なので、比率そのものを出さない。"""
+        assert _compute_hitter_distribution(self._aln((8, 2)),
+                                            rally_context=self._ctx(1)) is None
+
+    def test_unmappable_rallies_are_excluded_and_counted(self):
+        result = _compute_hitter_distribution(
+            self._aln((8, 2), (5, 5)),
+            # 2 本目は 4 ゲーム目 = エンド交替規則を持っていない
+            rally_context=self._ctx(1, 4),
+            player_a_start_side="top",
+        )
+        assert result["hitter_a_count"] == 8
+        assert result["mapped_rally_count"] == 1
+        assert result["unmapped_rally_count"] == 1
+        assert "除外" in result["note"]
+
     def test_empty(self):
-        result = _compute_hitter_distribution([])
-        assert result["hitter_a_count"] == 0
-        assert result["hitter_b_count"] == 0
+        assert _compute_hitter_distribution([]) is None
 
 
 class TestComputePressureMap:

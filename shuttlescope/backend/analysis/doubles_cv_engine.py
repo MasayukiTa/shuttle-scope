@@ -102,12 +102,38 @@ def compute_doubles_cv_analytics(match_id: int, db: Session) -> dict:
     formation_tendency = _compute_formation_tendency(summary_json)
     rotation_transitions = _compute_rotation_transitions(frames, rallies)
     pressure_map = _compute_pressure_map(frames, strokes)
-    hitter_dist = _compute_hitter_distribution(alignment) if alignment else None
+
+    match = db.get(Match, match_id)
+    # CV の hitter_a/b は «画面の上側/下側» なので、人に直すには
+    # 開始サイドとラリーごとのセット・スコアが要る (side_mapping)。
+    set_num_by_id = {gs.id: gs.set_num for gs in sets}
+    rally_context = {
+        r.id: {
+            "set_num": set_num_by_id.get(r.set_id),
+            "score_a_before": r.score_a_before,
+            "score_b_before": r.score_b_before,
+        }
+        for r in rallies
+    }
+    hitter_dist = _compute_hitter_distribution(
+        alignment,
+        rally_context=rally_context,
+        player_a_start_side=getattr(match, "player_a_start_side", None),
+    ) if alignment else None
 
     if not alignment:
         notes.append("TrackNet アライメントがありません。'位置統合' ボタンを押すとヒッター候補解析が追加されます。")
+    elif hitter_dist is None:
+        notes.append(
+            "ヒッター候補を選手に対応づけられませんでした。"
+            "試合の «セット1開始時の自選手の位置» を設定すると集計できます。"
+        )
+    elif hitter_dist.get("unmapped_rally_count"):
+        notes.append(
+            f"{hitter_dist['unmapped_rally_count']} ラリーは選手を特定できず"
+            "ヒッター集計から除外しました。"
+        )
 
-    match = db.get(Match, match_id)
     is_doubles = match and match.format in (
         "womens_doubles", "mens_doubles", "mixed_doubles"
     ) if match else False
@@ -252,16 +278,48 @@ def _compute_pressure_map(frames: list[dict], strokes: list[Stroke]) -> dict:
 
 # ─── ヒッター候補分布 ────────────────────────────────────────────────────────
 
-def _compute_hitter_distribution(alignment: list[dict]) -> dict:
-    """アライメント結果からヒッター候補の分布を集計する。"""
+def _compute_hitter_distribution(
+    alignment: list[dict],
+    rally_context: Optional[dict[int, dict]] = None,
+    player_a_start_side: Optional[str] = None,
+) -> Optional[dict]:
+    """アライメント結果からヒッター候補の分布を集計する。
+
+    **`hitter_a_count` は「画面の上側にいた人」の回数**で、人ではない
+    (`backend/cv/side_mapping.py`)。エンドは各ゲームのあとに替わるので、
+    翻訳せずに試合全体で足すと **セット1の自分とセット2の相手を同じ山に積む**。
+    そのまま UI の「Player A 62% / Player B 38%」になっていた。
+
+    ラリーごとに «そのとき画面上側にいたのは誰か» を解いてから足す。
+    解けないラリー (開始サイド未設定 / 4ゲーム目以降 / 最終ゲームでスコア不明) は
+    **足さずに数える**。1 ラリーも解けなければ None を返し、呼び出し側が
+    «出せない» と言う。比率を 0% と書くのも嘘なので、出さない。
+    """
+    from backend.cv.side_mapping import side_of_player_a
+
+    rally_context = rally_context or {}
     total_a = 0
     total_b = 0
+    unmapped_rallies = 0
     rally_dominant: dict[str, int] = {"player_a": 0, "player_b": 0, "balanced": 0}
 
     for rally in alignment:
         summary = rally.get("summary", {})
-        a = summary.get("hitter_a_count", 0)
-        b = summary.get("hitter_b_count", 0)
+        top = summary.get("hitter_a_count", 0)     # 画面上側
+        bottom = summary.get("hitter_b_count", 0)  # 画面下側
+
+        ctx = rally_context.get(rally.get("rally_id")) or {}
+        side_a = side_of_player_a(
+            player_a_start_side,
+            ctx.get("set_num"),
+            ctx.get("score_a_before"),
+            ctx.get("score_b_before"),
+        )
+        if side_a is None:
+            unmapped_rallies += 1
+            continue
+
+        a, b = (top, bottom) if side_a == "top" else (bottom, top)
         total_a += a
         total_b += b
         if a > b * 1.5:
@@ -271,12 +329,21 @@ def _compute_hitter_distribution(alignment: list[dict]) -> dict:
         else:
             rally_dominant["balanced"] += 1
 
+    mapped_rallies = len(alignment) - unmapped_rallies
+    if mapped_rallies <= 0:
+        return None
+
     total = max(total_a + total_b, 1)
+    note = "assisted — CV 推定値。精度は動画品質に依存します。"
+    if unmapped_rallies:
+        note += f" {unmapped_rallies}/{len(alignment)} ラリーは選手を特定できず除外。"
     return {
         "hitter_a_count": total_a,
         "hitter_b_count": total_b,
         "hitter_a_ratio": round(total_a / total, 3),
         "hitter_b_ratio": round(total_b / total, 3),
         "rally_dominant": rally_dominant,
-        "note": "assisted — CV 推定値。精度は動画品質に依存します。",
+        "mapped_rally_count": mapped_rallies,
+        "unmapped_rally_count": unmapped_rallies,
+        "note": note,
     }
