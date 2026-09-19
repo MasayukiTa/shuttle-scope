@@ -218,23 +218,43 @@ class TestDeactivateSource:
 class TestSourceEndpointsRequireAuthorization:
     """ライブソース系の 4 本は **認可が一切無かった** (`request` すら取っていない)。
 
-    どれもセッションコードだけで届くので、コードを知っている相手が
+    どれもセッションコードだけで届くので、**認証済みの利用者**なら
     ソースを列挙し、登録し、**どの映像が生かを切り替えられた**。
     デバイス操作の兄弟 8 本は元から `_check_operator_access` を通している。
 
-    `_check_operator_access` は 127.0.0.1 と `testclient` を無条件で通すので、
-    拒否側を見るには LAN の IP から来たことにする。
+    テストの形について: 最初は `X-Role` ヘッダだけを付けた LAN からの
+    リクエストで試したが、**`GlobalAuthMiddleware` が先に 401 で弾くため
+    エンドポイントまで届いていなかった** (拒否はされるが、確かめたい
+    `_check_operator_access` は一度も走らない)。ここでは実物の JWT を付けて
+    認証層を通し、同じトークンを localhost から投げると 200 になることも
+    確かめる — そうしないと 403 が «認可で落ちた» のか «認証で落ちた» のか
+    区別できない。
     """
 
+    def _token(self) -> str:
+        from backend.utils.jwt_utils import create_access_token
+        return create_access_token(1, "analyst")
+
     def _remote(self):
-        return TestClient(app, headers={"X-Role": "analyst"},
-                          client=("192.168.1.50", 54321))
+        """LAN の IP から来た、認証済みの利用者。"""
+        return TestClient(
+            app,
+            headers={"Authorization": f"Bearer {self._token()}"},
+            client=("192.168.1.50", 54321),
+        )
+
+    def _local_with_same_token(self):
+        """同じトークンで localhost から。403 の出どころを切り分けるため。"""
+        return TestClient(app, headers={"Authorization": f"Bearer {self._token()}"})
 
     def test_registering_a_source_from_the_lan_is_refused(self, source_client_with_session):
         _, code, _ = source_client_with_session
-        resp = self._remote().post(f"/api/sessions/{code}/sources",
-                                   json={"source_kind": "usb_camera"})
+        body = {"source_kind": "usb_camera"}
+        resp = self._remote().post(f"/api/sessions/{code}/sources", json=body)
         assert resp.status_code == 403, resp.text
+        # 同じトークンでも localhost なら通る = 認証ではなく認可で落ちている
+        ok = self._local_with_same_token().post(f"/api/sessions/{code}/sources", json=body)
+        assert ok.status_code == 201, ok.text
 
     def test_activating_a_source_from_the_lan_is_refused(self, source_client_with_session):
         """**どの映像が生か**を他人が切り替えられないこと。"""

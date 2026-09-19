@@ -160,36 +160,44 @@ class TestViewerPermissionSet:
         target = next((d for d in devices if d["id"] == pid), None)
         assert target["viewer_permission"] == "blocked"
 
-    def test_a_remote_caller_without_the_operator_token_is_refused(
-        self, lifecycle_client, db_session,
-    ):
+    def test_a_remote_caller_without_the_operator_token_is_refused(self, lifecycle_client):
         """S-6: このエンドポイントだけ operator 認可が抜けていた。
 
         `viewer_permission` は「その端末が他の参加者のカメラ映像を受け取って
-        よいか」。抜けていると **セッションコードを知っている LAN/リモートの
-        誰でも blocked を allowed に戻せる**。
-        兄弟の 8 本 (approve / reject / set-role / activate-camera /
-        deactivate-camera / delete / purge / heartbeat) は全て通している。
+        よいか」。抜けていると **認証済みの利用者なら誰でも** blocked を
+        allowed に戻せる。兄弟の 8 本 (approve / reject / set-role /
+        activate-camera / deactivate-camera / delete / purge / heartbeat) は
+        全て `_check_operator_access` を通している。
 
-        `_check_operator_access` は 127.0.0.1 と `testclient` を無条件で通すので、
-        拒否側を見るには LAN の IP から来たことにする必要がある。
+        最初は `X-Role` だけを付けた LAN からのリクエストで書いたが、
+        **`GlobalAuthMiddleware` が先に 401 で弾くのでエンドポイントに
+        届いていなかった** — 拒否はされるが確かめたい検査は走らない。
+        実物の JWT を付けて認証層を通し、同じトークンが localhost からなら
+        200 になることも見る (403 の出どころの切り分け)。
         """
-        _, code, password = lifecycle_client
-        local = TestClient(app, headers={"X-Role": "analyst"})
-        pid = _join_device(local, code, password)
+        from backend.utils.jwt_utils import create_access_token
+        client, code, password = lifecycle_client
+        pid = _join_device(client, code, password)
+        token = create_access_token(1, "analyst")
+        body = {"viewer_permission": "allowed"}
 
-        remote = TestClient(app, headers={"X-Role": "analyst"},
+        remote = TestClient(app, headers={"Authorization": f"Bearer {token}"},
                             client=("192.168.1.50", 54321))
         resp = remote.post(
-            f"/api/sessions/{code}/devices/{pid}/set-viewer-permission",
-            json={"viewer_permission": "allowed"},
+            f"/api/sessions/{code}/devices/{pid}/set-viewer-permission", json=body,
         )
         assert resp.status_code == 403, resp.text
 
-        # 値が変わっていないこと (拒否が «返事だけ» でないこと)
-        devices = local.get(f"/api/sessions/{code}/devices").json()["data"]
-        target = next(d for d in devices if d["id"] == pid)
-        assert target["viewer_permission"] != "allowed"
+        # 拒否が «返事だけ» でないこと
+        devices = client.get(f"/api/sessions/{code}/devices").json()["data"]
+        assert next(d for d in devices if d["id"] == pid)["viewer_permission"] != "allowed"
+
+        # 同じトークンでも localhost なら通る = 認証ではなく認可で落ちている
+        local = TestClient(app, headers={"Authorization": f"Bearer {token}"})
+        ok = local.post(
+            f"/api/sessions/{code}/devices/{pid}/set-viewer-permission", json=body,
+        )
+        assert ok.status_code == 200, ok.text
 
     def test_a_local_caller_is_still_allowed(self, lifecycle_client):
         """ローカルの解析者 (Electron) の経路を塞いでいないこと。"""
