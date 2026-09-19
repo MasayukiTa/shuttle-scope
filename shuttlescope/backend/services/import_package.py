@@ -34,8 +34,52 @@ _MAX_MEMBER_COUNT       = 5000
 _MAX_COMPRESSION_RATIO  = 100                       # uncompressed/compressed 上限
 
 
+# 実測で打ち切るときの読み取り単位
+_READ_CHUNK = 1 * 1024 * 1024
+
+
+class ZipBombError(Exception):
+    """**申告ではなく実測**で上限を超えたメンバーがあった。"""
+
+
+
+def read_member_capped(
+    zf: zipfile.ZipFile, name: str, cap: int = _MAX_PER_MEMBER,
+) -> bytes:
+    """メンバーを、実際に読めたバイト数で打ち切りながら展開する。
+
+    `check_zip_bomb_caps` が見ている `ZipInfo.file_size` と `compress_size` は
+    **中央ディレクトリの申告値**で、これを書くのは相手側。少なく申告すれば
+    メンバー数・単一サイズ・圧縮率・合計サイズの検査はすべて通る。
+
+    ただし **そこからメモリが溢れる経路は無い**: `ZipExtFile` は申告された
+    `file_size` までしか復元せず、CRC が合わずに `BadZipFile` になる
+    (`backend/tests/test_zip_member_cap.py` で実測)。多く申告すれば事前検査が
+    展開前に弾く。
+
+    それでも実測で止めるのは、いまの保護が「stdlib が `file_size` を守る」
+    という実装依存の性質に丸ごと乗っているから。**塞いだ穴ではなく多層防御**。
+    """
+    out = bytearray()
+    with zf.open(name, "r") as fh:
+        while True:
+            chunk = fh.read(_READ_CHUNK)
+            if not chunk:
+                break
+            out.extend(chunk)
+            if len(out) > cap:
+                raise ZipBombError(
+                    f"メンバー {name} の展開後サイズが上限 ({cap} byte) を超えています"
+                )
+    return bytes(out)
+
+
 def check_zip_bomb_caps(zf: zipfile.ZipFile) -> Optional[str]:
     """ZIP メンバーが zip bomb の上限を超えているか検査する。
+
+    **これは申告値の検査であって防御ではない。** 値は中央ディレクトリのもので、
+    相手が書ける。実際に守るのは `read_member_capped`。ここは正直な
+    パッケージを展開前に早く弾くためのもの。
 
     解凍前に呼び出すこと。違反があればエラーメッセージ (str) を返し、
     無ければ None を返す。``import_package`` と ``validate_package`` の
@@ -399,7 +443,7 @@ def import_package(db: Session, raw: bytes, dry_run: bool = False,
                 if fname not in names:
                     continue
 
-                records: list[dict] = json.loads(zf.read(fname))
+                records: list[dict] = json.loads(read_member_capped(zf, fname))
 
                 for rec in records:
                     uuid = rec.get("uuid")
@@ -482,6 +526,9 @@ def import_package(db: Session, raw: bytes, dry_run: bool = False,
             _import_conditions(db, zf, names, id_remap, summary, dry_run, importer_team_id)
             _import_condition_tags(db, zf, names, id_remap, summary, dry_run, importer_team_id)
 
+    except ZipBombError as e:
+        # 申告を信じた事前検査を通り抜けた分。実測で止めた。
+        summary.errors.append(str(e))
     except zipfile.BadZipFile:
         summary.errors.append("不正な ZIP ファイルです")
     except Exception as e:
@@ -533,7 +580,7 @@ def _import_conditions(
     """Condition を (player_id, measured_at, condition_type) 自然キーでマージ。"""
     if "conditions.json" not in names:
         return
-    recs: list[dict] = json.loads(zf.read("conditions.json"))
+    recs: list[dict] = json.loads(read_member_capped(zf, "conditions.json"))
     for rec in recs:
         try:
             # 他の import 経路と同じサニタイズを通す。ここだけ生の
@@ -591,7 +638,7 @@ def _import_condition_tags(
     """ConditionTag を (player_id, label, start_date) 自然キーでマージ。"""
     if "condition_tags.json" not in names:
         return
-    recs: list[dict] = json.loads(zf.read("condition_tags.json"))
+    recs: list[dict] = json.loads(read_member_capped(zf, "condition_tags.json"))
     for rec in recs:
         try:
             data = _sanitize_import_record(ConditionTag, rec, datetime.utcnow())
