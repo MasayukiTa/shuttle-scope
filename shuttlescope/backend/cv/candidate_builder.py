@@ -138,6 +138,7 @@ def build_candidates(
     alignment_data: list[dict],  # アライメント結果（per-rally list）; 空可
     court_adapter=None,           # Track A2: CourtAdapter (None で従来通り)
     fps: float = 60.0,            # A5: ラリー境界検出の秒→frame 換算に使う動画 FPS
+    player_a_start_side: Optional[str] = None,  # 'top' / 'bottom'; CV ラベル→人の翻訳に使う
 ) -> dict:
     """試合全体の CV 候補を生成して返す。
 
@@ -222,6 +223,13 @@ def build_candidates(
                                     next_stroke_ts=next_ts)
             hitter = _infer_hitter(aln, rally_yolo, rally_tracknet, stroke_ts=ts,
                                    stroke_num=stroke.get("stroke_num", 1))
+            _attach_player_identity(
+                hitter,
+                start_side=player_a_start_side,
+                set_num=rally.get("set_num"),
+                score_a_before=rally.get("score_a_before"),
+                score_b_before=rally.get("score_b_before"),
+            )
             role = _infer_front_back_role(rally_yolo, stroke_ts=ts, court_adapter=court_adapter) if rally_yolo else None
 
             if land and land["confidence_score"] is not None:
@@ -543,6 +551,44 @@ def _infer_land_zone(
 
 
 # ── 打者推定 ──────────────────────────────────────────────────────────────────
+
+def _attach_player_identity(
+    hitter: Optional[dict],
+    *,
+    start_side: Optional[str],
+    set_num: Optional[int],
+    score_a_before: Optional[int],
+    score_b_before: Optional[int],
+) -> None:
+    """`hitter["value"]`（画面上の位置）を試合の player_a / player_b に翻訳する。
+
+    `_infer_hitter` が返す `player_a` は「画面の上側にいた人」という意味しかない
+    (`backend/cv/side_mapping.py` 参照)。`Stroke.player` はその試合の本人を指すので、
+    自選手が下側に映っている試合では**そのまま繋ぐと打者が全部入れ替わる**。
+
+    翻訳できないとき (開始サイド未設定 / 4ゲーム目以降 / 最終セットでスコア不明) は
+    value を書き換えず、**要確認に落として理由を残す**。黙って «画面上の位置» を
+    人として書くのが元の不具合なので、分からないまま通すことはしない。
+    """
+    if not hitter or not hitter.get("value"):
+        return
+    from backend.cv.side_mapping import resolve_cv_player
+
+    screen_label = hitter["value"]
+    hitter["screen_label"] = screen_label
+    resolved = resolve_cv_player(
+        screen_label, start_side, set_num, score_a_before, score_b_before,
+    )
+    if resolved is None:
+        hitter["player_identity_resolved"] = False
+        hitter["decision_mode"] = "review_required"
+        codes = hitter.setdefault("reason_codes", [])
+        if "player_identity_unmapped" not in codes:
+            codes.append("player_identity_unmapped")
+        return
+    hitter["value"] = resolved
+    hitter["player_identity_resolved"] = True
+
 
 def _infer_hitter(
     alignment: Optional[dict],

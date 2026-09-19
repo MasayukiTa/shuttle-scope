@@ -156,6 +156,8 @@ def build_cv_candidates(match_id: int, request: Request, db: Session = Depends(g
 
     # ── 候補生成 ─────────────────────────────────────────────────────────────
     fps, fps_known = _resolve_match_fps(db, match_id)
+    # CV ラベルは «画面の上側/下側» でしかないので、人に直すには開始サイドが要る。
+    # 未設定なら翻訳せず要確認に落ちる (candidate_builder._attach_player_identity)。
     candidates = build_candidates(
         match_id=match_id,
         rallies_db=rallies_db,
@@ -164,6 +166,7 @@ def build_cv_candidates(match_id: int, request: Request, db: Session = Depends(g
         yolo_frames=yolo_frames,
         alignment_data=alignment_data,
         fps=fps,
+        player_a_start_side=match.player_a_start_side,
     )
     # C-12: fps を推定できたかを成果物に残す。false のときは秒→フレーム換算が
     # ずれている可能性があり、ラリー境界候補の位置がそのぶん信用できない。
@@ -259,6 +262,11 @@ def _field_passes_filters(
 ) -> bool:
     """候補フィールド（land_zone / hitter）が apply 条件 + A1-2 フィルタを満たすか。"""
     if not cand:
+        return False
+    # `Stroke.player` は «その試合の誰か» を指す。CV のラベルは «画面の上側/下側»
+    # でしかないので、人に翻訳できていない候補は **mode="all" でも書かない**。
+    # どちらの人か分からないまま、半分の確率で逆のものを確定値として残すことになる。
+    if cand.get("player_identity_resolved") is False:
         return False
     if cand.get("decision_mode") not in apply_modes:
         return False
@@ -595,6 +603,7 @@ def _get_rallies_for_match(db: Session, match_id: int) -> list[dict]:
     set_ids = [s.id for s in sets]
     if not set_ids:
         return []
+    set_num_by_id = {s.id: s.set_num for s in sets}
     rallies = (
         db.query(Rally)
         .filter(Rally.set_id.in_(set_ids))
@@ -605,6 +614,11 @@ def _get_rallies_for_match(db: Session, match_id: int) -> list[dict]:
         {
             "id":                    r.id,
             "set_id":                r.set_id,
+            # CV ラベル (画面上の位置) を人に翻訳するのに要る。
+            # エンド交替はセット単位、最終セットは 11 点でもう一度替わる。
+            "set_num":               set_num_by_id.get(r.set_id),
+            "score_a_before":        r.score_a_before,
+            "score_b_before":        r.score_b_before,
             "rally_num":             r.rally_num,
             "video_timestamp_start": r.video_timestamp_start,
             "video_timestamp_end":   r.video_timestamp_end,

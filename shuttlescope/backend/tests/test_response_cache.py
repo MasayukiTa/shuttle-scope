@@ -48,11 +48,24 @@ def test_miss_returns_none():
 
 
 def test_ttl_expiry():
-    key = response_cache.build_key("/api/analysis/foo", {"pid": "1"})
-    response_cache.set(key, "value", ttl=0.05)
-    assert response_cache.get(key) == "value"
-    time.sleep(0.1)
-    assert response_cache.get(key) is None
+    """TTL 内は残り、過ぎたら消える。in-memory と DB の両層で。
+
+    旧実装は ttl=0.05 の 1 本で「まだある」と「もう無い」の両方を見ていた。
+    `set()` は同期で DB に upsert するので、その書き込みが 50ms を超えると
+    **読む前に期限切れになる**。CI (Windows) で実際に踏んだ:
+    `assert None == 'value'`。待つ方向 (期限切れ) は長引いても壊れないので、
+    「まだある」は余裕のある TTL、「もう無い」は短い TTL と別々に確かめる。
+    """
+    alive = response_cache.build_key("/api/analysis/foo", {"pid": "1"})
+    response_cache.set(alive, "value", ttl=60)
+    assert response_cache.get(alive) == "value"
+
+    doomed = response_cache.build_key("/api/analysis/foo", {"pid": "2"})
+    response_cache.set(doomed, "value", ttl=0.05)
+    time.sleep(0.2)
+    assert response_cache.get(doomed) is None
+    # 期限切れが巻き添えで他のキーを落としていないこと
+    assert response_cache.get(alive) == "value"
 
 
 def test_max_entries_lru_evict(monkeypatch):
