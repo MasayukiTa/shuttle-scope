@@ -115,7 +115,7 @@ function speedKmh(mps: number) { return (mps * 3.6).toFixed(1) }
 
 // ─── ミニコートヒートマップ ────────────────────────────────────────────────────
 
-function MiniCourtHeatmap({
+export function MiniCourtHeatmap({
   zoneVisits,
   playerKey,
   isLight,
@@ -156,8 +156,17 @@ function MiniCourtHeatmap({
             const zoneName = `${side}_${depth}_${col}`
             const count = zoneVisits[zoneName] ?? 0
             const intensity = count / maxVisit
-            // 行インデックス: A_front=0, A_mid=1, A_back=2, B_front=3, B_mid=4, B_back=5
-            const rowIdx = si * 3 + di
+            // 行の並び (上から下へ):
+            //   A_back / A_mid / A_front | NET | B_front / B_mid / B_back
+            //
+            // `front` は **ネットからの距離** であって画面上の位置ではないので、
+            // ネットを挟んで折り返す。A 側は `ZONE_ROWS` の逆順になる。
+            //
+            // A-1b 以前は `pixel_to_court_zone` が A 側だけ depth を反転させて
+            // 出していた (奥のベースラインが "front")。その誤りと、ここの
+            // `si * 3 + di` という素直な並べ方が噛み合って、見た目だけは
+            // 合っていた。バックエンドを直した時点でこちらが上下逆になる。
+            const rowIdx = si === 0 ? (2 - di) : (3 + di)
             const y = rowIdx < 3
               ? rowIdx * cellH
               : rowIdx * cellH + netH
