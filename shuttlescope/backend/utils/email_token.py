@@ -172,6 +172,34 @@ def consume_password_reset_token(db: Session, token_plain: str) -> Optional[int]
     return rec.user_id if rec else None
 
 
+def invalidate_outstanding_password_reset_tokens(
+    db: Session, user_id: int, except_hash: Optional[str] = None
+) -> int:
+    """そのユーザーの未使用リセットトークンを全部使用済みにする。返り値は件数。
+
+    リセットが成功しても、**他に発行済みのトークンは生きたまま**だった。
+    乗っ取り対応としてのリセットはこう破れる:
+
+      1. 攻撃者が被害者のメールアドレスでリセットを要求する（要求は誰でもできる）
+      2. 被害者が気づいて自分でリセットする。セッションは失効する
+      3. 攻撃者の手元のトークンはまだ有効なので、もう一度リセットして取り返す
+
+    「パスワードを変える」が乗っ取り対応の標準手段である以上、
+    変えた時点で**他の鍵も全部落とす**必要がある。
+    """
+    from backend.db.models import PasswordResetToken
+    now = datetime.utcnow()
+    q = db.query(PasswordResetToken).filter(
+        PasswordResetToken.user_id == user_id,
+        PasswordResetToken.consumed_at.is_(None),
+    )
+    if except_hash:
+        q = q.filter(PasswordResetToken.token_hash != except_hash)
+    n = q.update({"consumed_at": now}, synchronize_session=False)
+    db.commit()
+    return int(n or 0)
+
+
 # ─── Invitation ─────────────────────────────────────────────────────────────
 
 def issue_invitation_token(

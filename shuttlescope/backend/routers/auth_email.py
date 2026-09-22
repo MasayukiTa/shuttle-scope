@@ -577,7 +577,16 @@ def reset_password(body: PasswordResetConfirm, request: Request,
 
     revoke_all_sessions_or_500(user.id, "password reset")
 
-    log_access(db, "password_reset_completed", user_id=user_id, ip_addr=_client_ip(request))
+    # セッションだけ失効させても、**他に発行済みのリセットトークンは生きている**。
+    # リセット要求は誰でも出せるので、乗っ取り犯が先に 1 通取っておけば、
+    # 被害者がリセットした直後にそれを使って取り返せる。
+    # パスワードを変えた時点で他の鍵も落とす。
+    from backend.utils.email_token import invalidate_outstanding_password_reset_tokens
+
+    revoked_tokens = invalidate_outstanding_password_reset_tokens(db, user_id)
+
+    log_access(db, "password_reset_completed", user_id=user_id, ip_addr=_client_ip(request),
+               details={"other_reset_tokens_invalidated": revoked_tokens})
     return {"success": True, "data": {"user_id": user_id}}
 
 
