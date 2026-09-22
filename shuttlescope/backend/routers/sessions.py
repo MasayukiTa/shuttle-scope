@@ -820,6 +820,15 @@ def reject_device(code: str, participant_id: int, request: Request, db: Session 
     # 拒否した端末が資格情報を持ったままだと、以後も入場券を取り直せてしまう
     _revoke_participant_token(participant)
     db.commit()
+    # S-6 (2026-09-22): ここまでは DB を書くだけで、既に繋がっている WS には
+    # 何もしていなかった。切断は camera WS 側の **60s ごとの再検査**に相乗り
+    # していたので、拒否ボタンを押してから最大 1 分は繋がったままだった。
+    # その場で切る。WS が閉じると `disconnect_device` が operator へ
+    # `camera_stream_ended` を送り、operator 側が該当 `RTCPeerConnection` を
+    # 閉じて初めて**映像が止まる**（WS を閉じるだけでは止まらない）。
+    # 届かなかった場合は従来どおり 60s ループが拾う。
+    from backend.ws.camera import camera_manager as _cam_mgr
+    _cam_mgr.revoke_device_threadsafe(code, str(participant_id), "rejected by operator")
     return {"success": True, "data": _participant_to_dict(participant)}
 
 

@@ -67,6 +67,18 @@ _MAX_WS_MESSAGE_BYTES = 64 * 1024
 # 1 接続あたりの 1 秒間メッセージ流量 (シグナリング想定で十分なバッファ)。
 _MAX_WS_MESSAGES_PER_SEC = 60
 
+#: 送信デバイスが operator へ送ってよいメッセージ種別 (S-6)。
+#: `src/pages/CameraSenderPage.tsx` が実際に送るのはこの 5 種類だけ。
+#: `viewer_*` と `camera_stream_ended` / `device_list_update` は
+#: **サーバが発行する制御メッセージ**なので、ここには絶対に入れない。
+_DEVICE_TO_OPERATOR_TYPES = frozenset({
+    "device_hello",
+    "camera_accept",
+    "webrtc_offer",
+    "ice_candidate",
+    "camera_stop",
+})
+
 
 class CameraSignalingManager:
     """セッションコード → {operator, devices, viewers} のインメモリ管理"""
@@ -102,6 +114,67 @@ class CameraSignalingManager:
         from collections import OrderedDict
         self._operator_owners: "OrderedDict[str, int]" = OrderedDict()
         self._OPERATOR_OWNERS_MAX = 4096
+        # S-6 (2026-09-22): operator が端末を拒否したとき、**その場で**切るための
+        # イベントループ参照。承認取り消しは 60s の再検査ループに相乗りしていたので、
+        # 取り消し後も最大 1 分は繋がったままだった。
+        # REST ハンドラ (同期・threadpool) から呼ぶので、WS 側で loop を覚えておき
+        # `run_coroutine_threadsafe` で戻す。
+        self._loop = None
+
+    def _remember_loop(self) -> None:
+        """いま走っているイベントループを覚える（WS ハンドラから呼ぶ）。"""
+        import asyncio as _aio
+        try:
+            self._loop = _aio.get_running_loop()
+        except RuntimeError:  # pragma: no cover - ループ外から呼ばれた場合
+            pass
+
+    async def revoke_device(self, session_code: str, participant_id: str,
+                            reason: str = "approval revoked") -> bool:
+        """指定端末の WS を即座に閉じる。閉じたら True。
+
+        WS を閉じるだけでは **確立済みの WebRTC は止まらない**（映像は peer 間を
+        直接流れる）。切断で走る `disconnect_device` が operator へ
+        `camera_stream_ended` を送り、operator 側 `closeStream` が ingress と
+        その egress の `RTCPeerConnection` を閉じることで初めて映像が止まる。
+        だからここでは「WS を閉じる」だけでなく、閉じた結果として
+        `camera_stream_ended` が飛ぶ経路を通すことが重要。
+        """
+        sess = self._sessions.get(session_code)
+        if not sess:
+            return False
+        ws = sess["devices"].get(str(participant_id))
+        if ws is None:
+            return False
+        logger.info("camera device revoked: %s pid=%s (%s)",
+                    session_code, participant_id, reason)
+        try:
+            await ws.close(code=1008, reason=reason)
+        except Exception:  # noqa: BLE001 - 既に切れていることがある
+            pass
+        # 相手が既に消えていて finally が走らない場合に備え、ここでも後始末する。
+        # `disconnect_device` は「登録されているのが自分自身のときだけ」処理する
+        # ので、二重に呼ばれても片方は早期 return する。
+        await self.disconnect_device(session_code, str(participant_id), ws)
+        return True
+
+    def revoke_device_threadsafe(self, session_code: str, participant_id: str,
+                                 reason: str = "approval revoked") -> None:
+        """同期の REST ハンドラから `revoke_device` を発火する。
+
+        失敗しても REST 側は落とさない。届かなかった場合は 60s の再検査ループが
+        従来どおり拾う（= 遅くなるだけで、開いたままにはならない）。
+        """
+        import asyncio as _aio
+        loop = self._loop
+        if loop is None or loop.is_closed():
+            return
+        try:
+            _aio.run_coroutine_threadsafe(
+                self.revoke_device(session_code, str(participant_id), reason), loop
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("camera revoke dispatch failed: %s", exc)
 
     def _slock(self, session_code: str) -> "asyncio.Lock":
         import asyncio as _aio
@@ -454,6 +527,8 @@ async def ws_camera_handler(
     viewer_id: Optional[str] = None,
 ) -> None:
     """WebRTC シグナリング WebSocket ハンドラー"""
+    # S-6: 同期の REST ハンドラ (承認取り消し) からこのループへ戻れるようにする。
+    camera_manager._remember_loop()
     # Round 258 R3 P1 fix: query string 由来の任意長 ID で memory exhaustion を避ける。
     # viewer_id / participant_id は dict のキーになるため、長大値や制御文字を含む値は
     # accept() 前に拒否する。許容: ASCII alphanum / '-' / '_' / 64 文字以下。
@@ -784,6 +859,25 @@ async def ws_camera_handler(
 
             else:
                 # 送信デバイス → Operator に中継
+                #
+                # S-6 (2026-09-22): ここだけ **種別を検査していなかった**。
+                # operator / viewer の枝には許可リストがあるのに、デバイスからの
+                # メッセージは type を問わずそのまま operator のクライアントへ
+                # 流していた。operator 側 `useCameraHub.handle` は `viewer_joined` /
+                # `viewer_left` / `viewer_webrtc_answer` / `viewer_ice_candidate` を
+                # 処理し、**これらの `viewer_id` はサーバが上書きしない**ので:
+                #   - `viewer_joined` を送れば、operator に任意の viewer へ
+                #     映像を offer させられる（= 映像の持ち出し）
+                #   - `viewer_left` を送れば、他の viewer の接続を落とせる
+                # つまり承認済みの端末 1 台で viewer 側の配信経路を乗っ取れた。
+                # これらはサーバが発行する制御メッセージなので、デバイスからは
+                # 一切受けない。
+                if msg_type not in _DEVICE_TO_OPERATOR_TYPES:
+                    logger.warning(
+                        "camera device sent a non-device message type: session=%s pid=%s type=%r",
+                        session_code, participant_id, msg_type[:32],
+                    )
+                    continue
                 # participant_id と stream_id はサーバが上書きする。
                 # クライアント申告を採用すると他カメラを騙れる。
                 msg["participant_id"] = participant_id
