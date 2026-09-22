@@ -66,6 +66,21 @@ export interface CVCandidatesData {
   match_id: number
   built_at: string
   rallies: Record<string, RallyCVCandidate>
+  /**
+   * 成果物の来歴。バックエンドは前から記録していたが **画面が一度も読んで
+   * いなかった**ので、候補が空でも理由が分からなかった。
+   *
+   * - `calibrated`: コートキャリブレーション済みか。無いと着地ゾーン候補は
+   *   一件も出ない（CV は画像座標から Zone9 を名乗らない）
+   * - `player_a_start_side_known`: 開始サイドが入っているか。無いと CV の
+   *   `player_a`（画面の上側）を人に翻訳できず、打者候補が要確認に落ちる
+   * - `fps_known`: fps を推定できたか。false なら秒→フレーム換算がずれうる
+   * - `alignment_failed`: アライメント計算が失敗したときの理由
+   */
+  calibrated?: boolean
+  player_a_start_side_known?: boolean
+  fps_known?: boolean
+  alignment_failed?: string | null
 }
 
 export interface ReviewQueueItem {

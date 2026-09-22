@@ -1159,6 +1159,13 @@
       "hitter_undetected": "打者不明",
       "multiple_near_players": "打者候補競合",
       "role_state_unstable": "ロール不安定"
+    },
+    "provenance": {
+      "title": "CV 補助が効いていない理由",
+      "not_calibrated": "コートキャリブレーションが未設定です。コート座標が決まらないと着地ゾーンの候補は出せません（6 点指定で表示されます）。",
+      "start_side_unknown": "セット1開始時の player_a の位置が未設定です。CV のラベルを人に対応づけられないため、打者候補はすべて要確認になります。",
+      "fps_unknown": "動画の fps を推定できませんでした。秒→フレーム換算がずれている可能性があり、ラリー境界候補の位置は目安です。",
+      "alignment_failed": "TrackNet と YOLO のアライメント計算に失敗しました。打者推定の精度が落ちます。"
     }
   },
   "review": {

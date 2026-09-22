@@ -92,3 +92,34 @@ class TestCorruptArtifactsAreNotSilentlyEmpty:
         """«無い» はこれまでどおり 400。壊れているのと区別が付くこと。"""
         res = _build(client, match_id)
         assert res.status_code == 400, res.text
+
+class TestTheBuildSaysWhyItCouldNotHelp:
+    """候補が空なだけでは «壊れている» と区別が付かない。
+
+    A-1b 以降、CV は画像座標から Zone9 を名乗らない（ネット位置も半面も
+    画像には入っていない）。**キャリブレーションが無い試合では着地ゾーン
+    候補が一件も出ない**ので、理由を成果物に残して画面が言えるようにする。
+    """
+
+    def test_an_uncalibrated_match_is_marked_as_such(self, client, db_session, match_id):
+        import json as _json
+
+        # ビルドを通すだけの最小アーティファクト。空リストは
+        # 「アーティファクトが無い」と同じ 400 になるので 1 フレーム入れる。
+        _artifact(db_session, match_id, ARTIFACT_TYPE_TRACKNET, _json.dumps([
+            {"timestamp_sec": 1.0, "confidence": 0.9,
+             "x_norm": 0.5, "y_norm": 0.5, "zone": None},
+        ]))
+        _artifact(db_session, match_id, ARTIFACT_TYPE_YOLO, _json.dumps([]))
+        res = _build(client, match_id)
+        assert res.status_code == 200, res.text
+
+        got = client.get(f"/api/cv-candidates/{match_id}")
+        assert got.status_code == 200, got.text
+        data = got.json()["data"]
+        assert data is not None
+        assert data["calibrated"] is False, (
+            "キャリブレーション未設定が成果物に残っていない。"
+            "画面は «CV候補なし» としか言えなくなる"
+        )
+        assert data["player_a_start_side_known"] is False

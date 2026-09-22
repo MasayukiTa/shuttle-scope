@@ -1151,6 +1151,13 @@
       "hitter_undetected": "Hitter undetected",
       "multiple_near_players": "Multiple hitter candidates",
       "role_state_unstable": "Role unstable"
+    },
+    "provenance": {
+      "title": "Why CV assistance is limited",
+      "not_calibrated": "The court is not calibrated. Without court coordinates no landing-zone candidate can be produced; set the six points to enable it.",
+      "start_side_unknown": "Which side player_a started on is not set. CV labels cannot be mapped to people, so every hitter candidate falls to review.",
+      "fps_unknown": "The video frame rate could not be determined. Seconds-to-frames conversion may be off, so rally boundary candidates are approximate.",
+      "alignment_failed": "TrackNet and YOLO could not be aligned. Hitter inference is less reliable."
     }
   },
   "review": {

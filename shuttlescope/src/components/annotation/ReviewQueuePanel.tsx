@@ -136,6 +136,38 @@ function QueueItem({
   )
 }
 
+/**
+ * CV 成果物の来歴を、**なぜ候補が少ない/無いのか**として見せる。
+ *
+ * バックエンドは `fps_known` / `alignment_failed` を前から記録していたが、
+ * 画面が一度も読んでいなかったので「CV候補なし」としか出ていなかった。
+ * A-1b で CV が画像座標から Zone9 を名乗るのをやめた結果、
+ * **キャリブレーションが無い試合では着地ゾーン候補が一件も出ない**ので、
+ * 理由を言えないままだと「壊れている」と見分けがつかない。
+ */
+function ProvenanceNotice({ data }: { data?: CVCandidatesData | null }) {
+  const { t } = useTranslation()
+  if (!data) return null
+  const issues: string[] = []
+  if (data.calibrated === false) issues.push('not_calibrated')
+  if (data.player_a_start_side_known === false) issues.push('start_side_unknown')
+  if (data.fps_known === false) issues.push('fps_unknown')
+  if (data.alignment_failed) issues.push('alignment_failed')
+  if (issues.length === 0) return null
+  return (
+    <div className="flex flex-col gap-0.5 rounded-ss-sm border border-[var(--ss-warning-border)] bg-[var(--ss-warn-tint)] px-2 py-1.5">
+      <span className="text-[10px] font-semibold text-[var(--ss-warn)]">
+        {t('review_queue.provenance.title')}
+      </span>
+      {issues.map((k) => (
+        <span key={k} className="text-[10px] text-[var(--ss-t2)]">
+          {t(`review_queue.provenance.${k}`)}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 export function ReviewQueuePanel({
   items,
   loading,
@@ -162,6 +194,8 @@ export function ReviewQueuePanel({
         )}
         {loading && <MIcon name="refresh" size={12} className="text-[var(--ss-t3)] animate-spin ml-1" />}
       </div>
+
+      <ProvenanceNotice data={candidatesData} />
 
       {pending.length === 0 && !loading ? (
         <div className="text-center text-[var(--ss-t3)] text-xs py-3">

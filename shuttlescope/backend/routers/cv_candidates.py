@@ -197,6 +197,15 @@ def build_cv_candidates(match_id: int, request: Request, db: Session = Depends(g
         # C-12: アライメントを計算しようとして失敗したなら、その痕跡を残す。
         # 打者推定はアライメントがあるときと無いときで経路が変わる。
         candidates["alignment_failed"] = alignment_failed
+        # A-1b の続き: キャリブレーションが無いと **着地ゾーンは一件も出ない**。
+        # CV は画像座標から Zone9 を名乗るのをやめたので (ネット位置も半面も
+        # 画像には入っていない)、コート座標に直せない試合では `zone` が常に
+        # None になり、`candidate_builder` は候補を作らない。
+        # その状態で画面に出るのは「CV候補なし」だけで、**なぜ無いのかが
+        # 分からない**。理由を成果物に残して画面が言えるようにする。
+        from backend.routers.court_calibration import load_calibration_from_db
+        candidates["calibrated"] = bool(load_calibration_from_db(match_id, db))
+        candidates["player_a_start_side_known"] = match.player_a_start_side in ("top", "bottom")
 
     candidates_json = json.dumps(candidates, ensure_ascii=False)
 
