@@ -24,6 +24,7 @@ from backend.db import database as db_module
 from backend.db.models import Match, Player, SharedSession, SessionParticipant
 from backend.ws.camera import camera_manager
 from backend.utils.jwt_utils import create_access_token
+from backend.utils.ws_ticket import issue_ws_ticket
 
 
 # Round 258 R37 fix: 2 つの threading + `with TestClient(app) as client` を併走させる
@@ -158,6 +159,28 @@ def clear_camera_manager():
     camera_manager._operator_owners.clear()
 
 
+
+# `2465f34` 以降、device / viewer は **入場券 (ws-ticket) でしか繋げない**。
+# `?participant_id=` / `?viewer_id=` / `?vid=` を素で送ると 4403 で閉じられる
+# （`SessionParticipant` に `user_id` が無く、JWT の持ち主とその行を結ぶものが
+#  無いので、session_code を知る認証済み利用者なら誰でも他人の端末になりすませた）。
+#
+# このファイルは素のクエリで繋ぎ続けていたので、**CI で backend テストが
+# 走るようになった最初の回に 18 本が 60 秒タイムアウトで落ちた**
+# （それまでは lint の失敗でテスト自体が実行されていなかった）。
+#
+# 券の**発行**（participant_token の検証・承認状態の検査）は
+# `test_camera_participant_token.py` の担当なので、ここでは
+# `issue_ws_ticket` を直接呼んで中継の挙動だけを見る。券は使い捨てなので
+# 接続のたびに 1 枚発行する。
+def _device_qs(code: str, participant_id) -> str:
+    return "ticket=" + issue_ws_ticket(code, "device", str(participant_id))
+
+
+def _viewer_qs(code: str, viewer_id: str) -> str:
+    return "ticket=" + issue_ws_ticket(code, "viewer", viewer_id)
+
+
 # ─── 接続テスト ───────────────────────────────────────────────────────────────
 
 class TestOperatorConnect:
@@ -213,7 +236,7 @@ class TestDeviceConnect:
                 ready.wait(timeout=3)
                 time.sleep(0.05)  # operator 側の receive 待ち
                 pid = _session_pids[code][0]
-                with client.websocket_connect(f"/ws/camera/{code}?participant_id={pid}") as _ws:
+                with client.websocket_connect(f"/ws/camera/{code}?{_device_qs(code, pid)}") as _ws:
                     time.sleep(0.1)
                 done.set()
 
@@ -252,8 +275,8 @@ class TestDeviceConnect:
                 time.sleep(0.05)
                 pid0 = _session_pids[code][0]
                 pid1 = _session_pids[code][1]
-                with client.websocket_connect(f"/ws/camera/{code}?participant_id={pid0}") as _:
-                    with client.websocket_connect(f"/ws/camera/{code}?participant_id={pid1}") as __:
+                with client.websocket_connect(f"/ws/camera/{code}?{_device_qs(code, pid0)}") as _:
+                    with client.websocket_connect(f"/ws/camera/{code}?{_device_qs(code, pid1)}") as __:
                         time.sleep(0.2)
                 done.set()
 
@@ -294,7 +317,7 @@ class TestViewerConnect:
                 ready.wait(timeout=3)
                 time.sleep(0.05)
                 with client.websocket_connect(
-                    f"/ws/camera/{code}?role=viewer&viewer_id=viewer-abc"
+                    f"/ws/camera/{code}?{_viewer_qs(code, 'viewer-abc')}"
                 ) as _ws:
                     time.sleep(0.1)
                 done.set()
@@ -335,7 +358,7 @@ class TestViewerConnect:
                 ready.wait(timeout=3)
                 time.sleep(0.05)
                 with client.websocket_connect(
-                    f"/ws/camera/{code}?role=viewer&viewer_id=viewer-xyz"
+                    f"/ws/camera/{code}?{_viewer_qs(code, 'viewer-xyz')}"
                 ) as _ws:
                     viewer_connected.set()
                     time.sleep(0.1)  # → 切断
@@ -353,20 +376,24 @@ class TestViewerConnect:
         left_msgs = [m for m in operator_msgs if m["type"] == "viewer_left"]
         assert left_msgs[0]["viewer_id"] == "viewer-xyz"
 
-    def test_legacy_vid_query_param_is_accepted(self):
-        """配布済みクライアントが送る `?vid=` でも viewer として接続できること。
+    def test_legacy_vid_query_param_is_now_refused(self):
+        """旧クライアントの `?vid=` は **もう通さない**。
 
-        ViewerPage は `vid` を送っていたが WS ルートは `viewer_id` しか読まず、
-        viewer は例外なく close(4000) に落ちていた = リモートビューワー機能が
-        まったく成立していなかった。既存テストが正式名 `viewer_id` を直接
-        使っていたため、この不一致はテストを素通りしていた。
-        送信側は `viewer_id` に揃えたが、更新前のクライアントのために
-        サーバは `vid` も受理し続ける。
+        以前は「配布済みクライアントのために `vid` も受理し続ける」ための
+        テストだった。`2465f34` で方針が変わっている: `SessionParticipant` に
+        `user_id` が無く、JWT の持ち主とその行を結ぶものが存在しないので、
+        **session_code を知る認証済み利用者なら誰でも他人の viewer になりすませた**。
+        身元を担保できるのは participant_token だけなので、device / viewer は
+        入場券 (`POST /sessions/{code}/ws-ticket`) の一本に絞った。
+
+        `vid` は `viewer_id` と同じ扱いで 4403 になる。ここを「通る」ままに
+        しておくと、**塞いだはずの経路がテストで守られている**ことになる。
         """
         code = _fresh_code("VID")
         operator_msgs: list[dict] = []
         ready = threading.Event()
         done = threading.Event()
+        viewer_refused = threading.Event()
 
         with TestClient(app) as client:
             def run_operator():
@@ -381,11 +408,16 @@ class TestViewerConnect:
             def run_viewer():
                 ready.wait(timeout=3)
                 time.sleep(0.05)
-                # 旧クライアントと同じ形。`viewer_id` ではなく `vid`。
-                with client.websocket_connect(
-                    f"/ws/camera/{code}?role=viewer&vid=legacy-viewer"
-                ) as _ws:
-                    time.sleep(0.1)
+                # 旧クライアントと同じ形。券を持たない `vid` は閉じられる。
+                try:
+                    with client.websocket_connect(
+                        f"/ws/camera/{code}?role=viewer&vid=legacy-viewer"
+                    ) as _ws:
+                        _ws.receive_text()
+                except Exception:
+                    viewer_refused.set()
+                else:
+                    pass
                 done.set()
 
             t1 = threading.Thread(target=run_operator, daemon=True)
@@ -395,10 +427,12 @@ class TestViewerConnect:
             t1.join(timeout=5)
             t2.join(timeout=5)
 
-        # close(4000) されていれば operator は何も受け取らない
-        assert len(operator_msgs) >= 1, "旧 `vid` クライアントが viewer として接続できていない"
-        assert operator_msgs[0]["type"] == "viewer_joined"
-        assert operator_msgs[0]["viewer_id"] == "legacy-viewer"
+        assert viewer_refused.is_set(), (
+            "券なしの `?vid=` がまだ viewer として通っている"
+        )
+        assert not any(m.get("type") == "viewer_joined" for m in operator_msgs), (
+            f"operator に viewer_joined が届いている: {operator_msgs}"
+        )
 
 
 # ─── メッセージ中継テスト ─────────────────────────────────────────────────────
@@ -430,7 +464,7 @@ class TestDeviceToOperatorRelay:
                 ready.wait(timeout=3)
                 time.sleep(0.05)
                 pid = _session_pids[code][0]
-                with client.websocket_connect(f"/ws/camera/{code}?participant_id={pid}") as ws:
+                with client.websocket_connect(f"/ws/camera/{code}?{_device_qs(code, pid)}") as ws:
                     time.sleep(0.05)
                     ws.send_json({
                         "type": "device_hello",
@@ -473,7 +507,7 @@ class TestDeviceToOperatorRelay:
                 ready.wait(timeout=3)
                 time.sleep(0.05)
                 pid = _session_pids[code][0]
-                with client.websocket_connect(f"/ws/camera/{code}?participant_id={pid}") as ws:
+                with client.websocket_connect(f"/ws/camera/{code}?{_device_qs(code, pid)}") as ws:
                     time.sleep(0.05)
                     ws.send_json({"type": "camera_accept"})
                     time.sleep(0.15)
@@ -516,7 +550,7 @@ class TestOperatorToDeviceRelay:
             def run_device():
                 op_ready.wait(timeout=3)
                 pid = _session_pids[code][0]
-                with client.websocket_connect(f"/ws/camera/{code}?participant_id={pid}") as ws:
+                with client.websocket_connect(f"/ws/camera/{code}?{_device_qs(code, pid)}") as ws:
                     dev_ready.set()
                     try:
                         raw = ws.receive_text()
@@ -567,7 +601,7 @@ class TestOperatorToViewerRelay:
                 op_ready.wait(timeout=3)
                 time.sleep(0.05)
                 with client.websocket_connect(
-                    f"/ws/camera/{code}?role=viewer&viewer_id=viewer-relay-test"
+                    f"/ws/camera/{code}?{_viewer_qs(code, 'viewer-relay-test')}"
                 ) as ws:
                     vw_ready.set()
                     try:
@@ -615,7 +649,7 @@ class TestViewerToOperatorRelay:
                 op_ready.wait(timeout=3)
                 time.sleep(0.05)
                 with client.websocket_connect(
-                    f"/ws/camera/{code}?role=viewer&viewer_id=vw-ans"
+                    f"/ws/camera/{code}?{_viewer_qs(code, 'vw-ans')}"
                 ) as ws:
                     vw_ready.set()
                     time.sleep(0.1)
