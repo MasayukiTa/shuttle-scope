@@ -150,6 +150,45 @@ def test_backup_refuses_plaintext_zip_in_real_production_shape(
         bs.create_backup()
 
 
+def _csp_for(host: str) -> str:
+    """`SecurityHeadersMiddleware` を直接呼んで CSP ヘッダを取り出す。
+
+    TestClient を使わないのは、`with TestClient(app)` が **lifespan を起動**し、
+    posture が True のこの fixture では起動ゲートが
+    「production posture なのに DATABASE_URL が SQLite」で `sys.exit(2)` して
+    CI が `CancelledError` で落ちたため。ルーティングも認証もここの関心では
+    ないので、ミドルウェアだけを直接叩く。
+    """
+    import asyncio
+
+    from starlette.requests import Request as StarletteRequest
+    from starlette.responses import HTMLResponse
+
+    from backend.main import SecurityHeadersMiddleware
+
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/",
+        "raw_path": b"/",
+        "query_string": b"",
+        "headers": [(b"host", host.encode())],
+        "client": ("127.0.0.1", 0),
+        "scheme": "https",
+        "server": (host, 443),
+        "root_path": "",
+        "app": None,
+    }
+    request = StarletteRequest(scope)
+
+    async def call_next(_req):
+        return HTMLResponse("<!DOCTYPE html><html></html>")
+
+    mw = SecurityHeadersMiddleware(app=None)
+    res = asyncio.run(mw.dispatch(request, call_next))
+    return res.headers.get("Content-Security-Policy", "")
+
+
 @_NEEDS_MAIN
 def test_csp_connect_src_is_tight_in_real_production_shape(real_production_shape):
     """CSP の `connect-src` を姿勢で決める。
@@ -158,14 +197,15 @@ def test_csp_connect_src_is_tight_in_real_production_shape(real_production_shape
     `connect-src 'self' wss: https: http://localhost:*` で、
     **XSS から任意の https/wss へ exfil できる状態**だった。
     """
-    from fastapi.testclient import TestClient
-
-    from backend.main import app
-
-    with TestClient(app) as client:
-        res = client.get("/", headers={"host": "app.shuttle-scope.com"})
-    csp = res.headers.get("Content-Security-Policy", "")
+    csp = _csp_for("app.shuttle-scope.com")
     assert csp, "HTML レスポンスに CSP が付いていない"
     assert "connect-src 'self' https://app.shuttle-scope.com" in csp, csp
     assert "wss: https:" not in csp, f"dev 側の緩い connect-src が出ている: {csp}"
     assert "http://localhost:" not in csp, csp
+
+
+@_NEEDS_MAIN
+def test_csp_connect_src_stays_loose_in_development(development_shape):
+    """開発では localhost 宛を許す（dev の接続を壊さない）。"""
+    csp = _csp_for("localhost")
+    assert "http://localhost:" in csp, csp
