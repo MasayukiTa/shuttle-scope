@@ -103,7 +103,6 @@ def create_human_forecast(
     }
     touch_sync_metadata(forecast, payload_like=payload, device_id=get_device_id(db))
     db.commit()
-    db.refresh(forecast)
 
     return {
         "success": True,

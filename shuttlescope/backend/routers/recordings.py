@@ -101,7 +101,6 @@ def create_recording(match_id: int, body: RecordingCreate, request: Request, db:
     )
     db.add(rec)
     db.commit()
-    db.refresh(rec)
     return _to_dict(rec)
 
 
@@ -141,5 +140,4 @@ def patch_recording(rec_id: int, body: RecordingPatch, request: Request, db: Ses
     if body.ended:
         rec.ended_at = datetime.utcnow()
     db.commit()
-    db.refresh(rec)
     return _to_dict(rec)

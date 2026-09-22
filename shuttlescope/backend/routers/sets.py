@@ -114,7 +114,6 @@ def create_set(body: SetCreate, request: Request, db: Session = Depends(get_db))
     db.commit()
     # 試合の関与選手のみキャッシュ無効化
     response_cache.bump_players(players_for_match(db, body.match_id))
-    db.refresh(game_set)
     return {"success": True, "data": set_to_dict(game_set)}
 
 
@@ -163,7 +162,6 @@ def end_set(set_id: int, body: SetEnd, request: Request, db: Session = Depends(g
     db.commit()
     # 終了したセットの試合の関与選手のみ無効化
     response_cache.bump_players(players_for_match(db, game_set.match_id))
-    db.refresh(game_set)
     return {"success": True, "data": set_to_dict(game_set)}
 
 

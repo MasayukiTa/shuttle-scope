@@ -508,6 +508,12 @@ def _on_login_failure(user: User, db: Session, ip: Optional[str], reason: str) -
         synchronize_session=False,
     )
     db.commit()
+    # ここの refresh は **消さないこと**。直前の `update(...)` は
+    # `synchronize_session=False` の一括 UPDATE で ORM を迂回しており、
+    # セッションが持っている `user` の属性は更新前の値のままになる。
+    # 読み直さないと直後の `failed_attempts` 判定が古い値で走る。
+    # （routers の他の refresh は commit で expire した属性を戻すためだけの
+    #   再 SELECT だったので 2026-09-22 に一掃した。これはそれとは別物。）
     db.refresh(user)
     if user.failed_attempts >= _MAX_FAILED_ATTEMPTS:
         log_access(db, "account_locked", user_id=user.id, ip_addr=ip,
@@ -1947,7 +1953,6 @@ def create_user(body: UserCreate, request: Request, db: Session = Depends(get_db
         # username / player_id どちらの衝突かは error 文面で判別可能だが、
         # 攻撃者向けには曖昧化する (timing / reason side channel 抑制)。
         raise HTTPException(status_code=409, detail="user already exists")
-    db.refresh(user)
     log_access(db, "user_created", user_id=user.id, details={"role": body.role, "display_name": body.display_name, "team_id": team.id})
     return {"success": True, "data": {"id": user.id, "role": user.role, "display_name": user.display_name, "team_id": team.id}}
 
@@ -2905,7 +2910,6 @@ def create_team(body: TeamBody, request: Request, db: Session = Depends(get_db))
     except _IntegrityError:
         db.rollback()
         raise HTTPException(status_code=409, detail="team already exists")
-    db.refresh(team)
     log_access(db, "team_created", details={"team_id": team.id, "display_id": team.display_id})
     return {"success": True, "data": _team_to_dict(team, for_admin=True)}
 

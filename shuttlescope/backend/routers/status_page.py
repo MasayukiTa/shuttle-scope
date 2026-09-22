@@ -202,7 +202,7 @@ def create_incident(body: IncidentCreate, request: Request, db: Session = Depend
         component=body.component, began_at=body.began_at or datetime.utcnow(),
         status="investigating",
     )
-    db.add(inc); db.commit(); db.refresh(inc)
+    db.add(inc); db.commit()
     return _inc_dict(inc)
 
 
@@ -221,7 +221,7 @@ def patch_incident(inc_id: int, body: IncidentPatch, request: Request, db: Sessi
     if body.resolved:
         inc.status = "resolved"
         inc.resolved_at = datetime.utcnow()
-    db.commit(); db.refresh(inc)
+    db.commit()
     return _inc_dict(inc)
 
 
@@ -232,7 +232,7 @@ def create_maintenance(body: MaintenanceCreate, request: Request, db: Session = 
         title=body.title, body=body.body, scheduled_start=body.scheduled_start,
         scheduled_end=body.scheduled_end, status="scheduled",
     )
-    db.add(m); db.commit(); db.refresh(m)
+    db.add(m); db.commit()
     return _mnt_dict(m)
 
 
@@ -250,7 +250,7 @@ def patch_maintenance(mnt_id: int, body: MaintenancePatch, request: Request, db:
         m.body = body.body
     if body.scheduled_end is not None:
         m.scheduled_end = body.scheduled_end
-    db.commit(); db.refresh(m)
+    db.commit()
     return _mnt_dict(m)
 
 
@@ -261,7 +261,7 @@ def create_announcement(body: AnnouncementCreate, request: Request, db: Session 
         title=body.title, body=body.body, pinned=body.pinned,
         published_at=body.published_at or datetime.utcnow(), status="published",
     )
-    db.add(a); db.commit(); db.refresh(a)
+    db.add(a); db.commit()
     return _ann_dict(a)
 
 
@@ -281,5 +281,5 @@ def patch_announcement(ann_id: int, body: AnnouncementPatch, request: Request, d
         a.body = body.body
     if body.pinned is not None:
         a.pinned = body.pinned
-    db.commit(); db.refresh(a)
+    db.commit()
     return _ann_dict(a)

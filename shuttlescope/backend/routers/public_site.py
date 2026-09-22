@@ -851,7 +851,6 @@ async def submit_public_contact(body: PublicInquiryCreate, request: Request, db:
     )
     db.add(inquiry)
     db.commit()
-    db.refresh(inquiry)
     _notify_inquiry(inquiry)
     return {"success": True, "data": {"id": inquiry.id, "status": inquiry.status}}
 
@@ -897,7 +896,6 @@ async def submit_ban_appeal(body: BanAppealCreate, request: Request, db: Session
     )
     db.add(inquiry)
     db.commit()
-    db.refresh(inquiry)
     _notify_inquiry(inquiry)
     return {"success": True, "data": {"id": inquiry.id, "status": inquiry.status}}
 
@@ -1298,7 +1296,6 @@ async def submit_content_report(
     )
     db.add(report)
     db.commit()
-    db.refresh(report)
 
     # admin 通知 (audit_log + 受領 ID 返却)
     try:

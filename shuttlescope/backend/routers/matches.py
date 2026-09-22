@@ -684,7 +684,6 @@ def create_match(body: MatchCreate, request: Request, db: Session = Depends(get_
         body.player_a_id, body.player_b_id,
         getattr(body, "partner_a_id", None), getattr(body, "partner_b_id", None),
     ])
-    db.refresh(match)
     return {"success": True, "data": match_to_dict(match, include_players=True, db=db)}
 
 
@@ -806,7 +805,6 @@ def update_match(match_id: int, body: MatchUpdate, request: Request, db: Session
     db.commit()
     post_players = [match.player_a_id, match.player_b_id, match.partner_a_id, match.partner_b_id]
     response_cache.bump_players(pre_players + post_players)
-    db.refresh(match)
     return {"success": True, "data": match_to_dict(match, include_players=True, db=db)}
 
 
@@ -1142,8 +1140,6 @@ def quick_start_match(body: QuickStartBody, request: Request, db: Session = Depe
     db.commit()
     # クイックスタートで関与する2選手だけ無効化
     response_cache.bump_players([body.player_a_id, player_b.id])
-    db.refresh(match)
-    db.refresh(player_b)
 
     return {
         "success": True,

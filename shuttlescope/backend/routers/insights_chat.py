@@ -202,7 +202,6 @@ def create_chat_session(
     )
     db.add(sess)
     db.commit()
-    db.refresh(sess)
     return {
         "session_id": sess.id,
         "lang": sess.lang,
@@ -445,8 +444,6 @@ def send_chat_message(
     db.add(ai_msg)
     sess.last_used_at = datetime.utcnow()
     db.commit()
-    db.refresh(user_msg)
-    db.refresh(ai_msg)
 
     # applied_scope は frontend で "Active filters" バーを描画するために返す
     applied_scope = {

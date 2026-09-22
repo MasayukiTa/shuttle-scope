@@ -262,7 +262,7 @@ def create_conversation(body: ConversationCreate, request: Request, db: Session 
         user_id=ctx.user_id, title=(body.title or "新しいチャット"),
         provider=pr.name.split(":")[0], model=pr.model, system_prompt=body.system_prompt,
     )
-    db.add(c); db.commit(); db.refresh(c)
+    db.add(c); db.commit()
     log_access(db, "llm_conversation_create", user_id=ctx.user_id,
                resource_type="llm_conversation", resource_id=c.id)
     return _conv_dict(c)
@@ -273,7 +273,7 @@ def rename_conversation(cid: int, body: ConversationRename, request: Request, db
     ctx = require_llm_access(request, db)
     c = _own_conversation(cid, ctx, db)  # 所有者限定 (IDOR 防止)
     c.title = body.title.strip()[:200]
-    db.commit(); db.refresh(c)
+    db.commit()
     log_access(db, "llm_conversation_rename", user_id=ctx.user_id,
                resource_type="llm_conversation", resource_id=c.id)
     return _conv_dict(c)

@@ -375,7 +375,6 @@ def register(body: RegisterRequest, request: Request, db: Session = Depends(get_
     )
     db.add(user)
     db.commit()
-    db.refresh(user)
 
     # 2026-05-26: 自動確認メール送信は SS_MAIL_BACKEND が console 状態のため
     # 実送信されない。代わりに admin 向け webhook 通知のみ行い、admin が
@@ -679,7 +678,6 @@ def accept_invitation(body: InvitationAcceptRequest, request: Request,
     )
     db.add(user)
     db.commit()
-    db.refresh(user)
 
     # token 消費
     consume_invitation_token(db, body.token, accepted_by_user_id=user.id)
@@ -769,7 +767,6 @@ def approve_pending_user(
         user.team_id = team.id
         user.team_name = team.name  # team_id 指定時も team_name を必ず補完
     db.commit()
-    db.refresh(user)
 
     log_access(
         db, "user_approved",

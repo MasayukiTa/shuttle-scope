@@ -123,7 +123,6 @@ def create_training_record(
     )
     db.add(rec)
     db.commit()
-    db.refresh(rec)
 
     try:
         from backend.utils.access_log import log_access

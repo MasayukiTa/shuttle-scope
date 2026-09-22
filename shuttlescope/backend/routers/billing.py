@@ -549,7 +549,6 @@ def admin_create_product(body: CreateProductRequest, request: Request,
     )
     db.add(p)
     db.commit()
-    db.refresh(p)
     log_access(db, "billing_product_created",
                user_id=ctx.user_id, resource_type="billing_product", resource_id=p.id,
                details={"code": body.code, "price_jpy": body.price_jpy})

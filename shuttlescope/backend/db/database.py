@@ -60,10 +60,30 @@ if "sqlite" in settings.DATABASE_URL and ":memory:" not in settings.DATABASE_URL
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+# リクエストスコープ専用のセッション (2026-09-22)。
+#
+# 既定の `expire_on_commit=True` では commit した瞬間に全属性が expire するので、
+# 応答を組み立てるために `db.refresh(obj)` を呼ぶ必要があった。この refresh は
+# **トランザクションの外で走る再 SELECT** で、その間に行が消えていれば
+# `ObjectDeletedError` になり 500 を返す（CI で実際に観測した）。
+# 同じ形が routers に 50 箇所以上あった。
+#
+# ハンドラのセッションは 1 リクエストで閉じるので、commit 後に属性を保持しても
+# 困らない（むしろ応答に必要なのは commit した値そのもの）。
+# ここだけ `expire_on_commit=False` にして refresh を要らなくする。
+#
+# **`SessionLocal` のほうは変えない。** 背景ワーカー (`pipeline/worker.py` 等) は
+# 1 つのセッションを長く持って何度も commit するので、expire を切ると
+# identity map に載ったままの行が古い値を返し続ける。寿命の違う 2 つを
+# 同じ設定にしてはいけない。
+RequestSessionLocal = sessionmaker(
+    autocommit=False, autoflush=False, bind=engine, expire_on_commit=False,
+)
+
 
 def get_db():
     """FastAPI依存性注入用DBセッション"""
-    db = SessionLocal()
+    db = RequestSessionLocal()
     try:
         yield db
     finally:

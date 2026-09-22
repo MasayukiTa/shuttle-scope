@@ -179,7 +179,6 @@ def create_condition_tag(
     )
     db.add(tag)
     db.commit()
-    db.refresh(tag)
     return {"success": True, "data": _serialize(tag)}
 
 
@@ -205,7 +204,6 @@ def update_condition_tag(
     if tag.end_date is not None and tag.end_date < tag.start_date:
         raise HTTPException(status_code=422, detail="end_date は start_date 以降である必要があります")
     db.commit()
-    db.refresh(tag)
     return {"success": True, "data": _serialize(tag)}
 
 

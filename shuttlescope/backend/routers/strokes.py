@@ -234,7 +234,6 @@ def batch_save_rally(
     db.commit()
     # 試合の関与選手のみキャッシュ無効化（他選手の解析結果は保持）
     response_cache.bump_players(players_for_match(db, game_set.match_id))
-    db.refresh(rally)
 
     # S-001: アクティブセッションへスコア更新をブロードキャスト（非同期）
     import asyncio
@@ -322,7 +321,6 @@ def create_stroke(
     db.commit()
     # rally → set → match 経由で関与選手のみ無効化
     response_cache.bump_players(players_for_rally(db, rally_id))
-    db.refresh(stroke)
     response = {"success": True, "data": stroke_to_dict(stroke)}
     if idem_key:
         from backend.utils.idempotency import store
@@ -343,7 +341,6 @@ def update_stroke(stroke_id: int, body: StrokeData, request: Request, db: Sessio
     db.commit()
     # 対象 stroke の rally 経由で関与選手のみ無効化
     response_cache.bump_players(players_for_rally(db, stroke.rally_id))
-    db.refresh(stroke)
     return {"success": True, "data": stroke_to_dict(stroke)}
 
 

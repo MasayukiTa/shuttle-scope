@@ -320,7 +320,6 @@ def upsert_label(
         )
         db.add(label)
     db.commit()
-    db.refresh(label)
     return label
 
 
@@ -520,7 +519,6 @@ def upsert_shot_label(
         )
         db.add(row)
     db.commit()
-    db.refresh(row)
     return row
 
 

@@ -97,7 +97,6 @@ def create_comment(body: CommentCreate, request: Request, db: Session = Depends(
     payload = {"match_id": body.match_id, "text": body.text, "author_role": author_role}
     touch_sync_metadata(comment, payload_like=payload, device_id=get_device_id(db))
     db.commit()
-    db.refresh(comment)
 
     # アクティブセッションへブロードキャスト（非同期にしない — FastAPIが sync def を threadpool で実行）
     import asyncio

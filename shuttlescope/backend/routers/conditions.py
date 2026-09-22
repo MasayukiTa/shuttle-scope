@@ -536,7 +536,6 @@ def submit_questionnaire(body: QuestionnaireSubmit, request: Request, db: Sessio
     )
     db.add(cond)
     db.commit()
-    db.refresh(cond)
     # 同意書 第5条: 提出した本人 (player) と admin のみ生データ可。
     # coach/analyst が代理提出した場合は ROLE_MAX_TIER に従って自動マスクされる。
     owner_consents = _get_owner_body_consents(db, cond.player_id)
@@ -626,7 +625,6 @@ def create_condition(body: ConditionCreate, request: Request, db: Session = Depe
     _recompute(cond)
     db.add(cond)
     db.commit()
-    db.refresh(cond)
     # audit log: 誰がどの player の condition を登録したか forensic 追跡用
     try:
         _log_acc_cond(
@@ -721,7 +719,6 @@ def update_condition(condition_id: int, body: ConditionUpdate, request: Request,
     apply_update(cond, data)
     _recompute(cond)
     db.commit()
-    db.refresh(cond)
     # Round 258 P0 fix: 同意書 第5条 — coach の正当な編集後でもレスポンスに
     # 生スコア・体組成を含めない。role 別 masking は _serialize() に統合済み。
     from backend.utils.auth import get_auth as _ga_resp

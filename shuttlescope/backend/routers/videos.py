@@ -197,7 +197,6 @@ def reissue_video_token(
     old_token = match.video_token
     match.video_token = new_token()
     db.commit()
-    db.refresh(match)
 
     try:
         log_access(

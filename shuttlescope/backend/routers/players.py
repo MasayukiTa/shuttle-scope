@@ -573,7 +573,7 @@ def create_player(
     # sibling の 752 / 786 行は元から local 変数を使っていて、ここだけ違った。
     db.flush()
     new_player_id = player.id
-    # 同じ理由で **応答も commit 前に作る**。`db.refresh()` は expire を
+    # 同じ理由で **応答も commit 前に作る**。`` は expire を
     # 巻き戻すためだけの再 SELECT で、行が同時に消えていれば
     # `InvalidRequestError: Could not refresh instance` で 500 になる
     # (CI で実際に観測)。flush 済みの属性は既に揃っているので refresh は要らない。
@@ -793,7 +793,6 @@ def update_player(player_id: Annotated[int, Path(ge=1, le=2_147_483_647)], body:
     # 選手単位で無効化 + team 変更はコーチ可視範囲に影響するためグローバルも無効化
     response_cache.bump_players([player_id])
     response_cache.bump_version()
-    db.refresh(player)
     return {"success": True, "data": player_to_dict(player)}
 
 

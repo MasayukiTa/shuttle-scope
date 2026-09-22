@@ -97,7 +97,6 @@ def create_bookmark(body: BookmarkCreate, request: Request, db: Session = Depend
     payload = {"match_id": body.match_id, "bookmark_type": body.bookmark_type, "rally_id": body.rally_id}
     touch_sync_metadata(bm, payload_like=payload, device_id=get_device_id(db))
     db.commit()
-    db.refresh(bm)
 
     # コーチ要求の場合はアナリストへ通知ブロードキャスト
     if body.bookmark_type == "coach_request":

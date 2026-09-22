@@ -153,7 +153,6 @@ def create_rally(
         return response
     # set_id から辿って試合の関与選手のみ無効化
     response_cache.bump_players(players_for_set(db, body.set_id))
-    db.refresh(rally)
     response = {"success": True, "data": rally_to_dict(rally)}
     if idem_key:
         from backend.utils.idempotency import store
@@ -174,7 +173,6 @@ def update_rally(rally_id: int, body: RallyUpdate, request: Request, db: Session
     db.commit()
     # 対象 rally の試合の関与選手のみ無効化
     response_cache.bump_players(players_for_set(db, rally.set_id))
-    db.refresh(rally)
     return {"success": True, "data": rally_to_dict(rally)}
 
 

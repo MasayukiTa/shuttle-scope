@@ -232,7 +232,6 @@ def create_session(body: SessionCreate, request: Request, db: Session = Depends(
     )
     db.add(session)
     db.commit()
-    db.refresh(session)
 
     # オペレータートークン生成（セッション作成者にのみ返す。LAN権限操作に必要）
     op_token = _generate_operator_token()
@@ -512,7 +511,6 @@ def join_session(
         # 再接続でも新しい資格情報を出す（旧トークンはこの時点で無効になる）
         ws_token = _issue_participant_token(existing)
         db.commit()
-        db.refresh(existing)
         return {
             "success": True,
             "data": {
@@ -547,7 +545,6 @@ def join_session(
     db.flush()          # participant.id を確定させてからトークンを載せる
     ws_token = _issue_participant_token(participant)
     db.commit()
-    db.refresh(participant)
     return {
         "success": True,
         "data": {
@@ -1014,7 +1011,6 @@ def register_source(code: str, body: RegisterSourceBody, request: Request,
     )
     db.add(source)
     db.commit()
-    db.refresh(source)
     return {"success": True, "data": _source_to_dict(source)}
 
 
