@@ -289,14 +289,58 @@ class LiveFrameHintRequest(BaseModel):
     confidence_threshold: float = Field(default=0.5, ge=0.0, le=1.0, allow_inf_nan=False)
 
 
+#: ライブフレームのバッファを持てるセッション数の上限。
+#: `session_code` は**クライアントが自由に決めた文字列**なので、
+#: 未知のコードでも辞書に入れてしまうと 1 セッションあたり最大 3 枚の
+#: デコード済みフレーム (1 枚 8MB まで) が無限に積める。
+_MAX_LIVE_SESSIONS = 32
+
+
+def require_live_session_scope(request: Request, db: Session, session_code: str):
+    """`session_code` が実在し、呼び手がその試合にアクセスできることを確かめる。
+
+    2026-09-22 の認可掃引で見つけた穴:
+
+    - `session_code` の実在も、呼び手がそのセッションに関係あるかも見ていなかった。
+      **他人のセッション宛のバッファにフレームを差し込め**、3 枚たまった時点の
+      推論結果も受け取れた
+    - 未知のコードでも `_live_frame_buffers[code]` を作っていたので、
+      認証済みなら誰でも**辞書を無限に膨らませられた**（1 件あたり最大 3 枚 ×
+      8MB のデコード済みフレーム）
+
+    セッション参加者かどうかは `SessionParticipant` に `user_id` が無いので
+    直接は答えられない。答えられるのは「その試合にアクセスできるか」なので、
+    `sessions.py` と同じ `require_match_scope` を通す。
+    """
+    from backend.db.models import SharedSession
+    from backend.utils.auth import require_match_scope
+
+    session = (
+        db.query(SharedSession)
+        .filter(SharedSession.session_code == session_code)
+        .first()
+    )
+    if session is None:
+        # 存在しないコードは 404。ここで弾くことで、未知のコードで
+        # バッファ辞書を膨らませる経路も同時に閉じる。
+        raise HTTPException(status_code=404, detail="セッションが見つかりません")
+    match = db.get(Match, session.match_id)
+    if match is None:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    return require_match_scope(request, match, db)
+
+
 @router.post("/tracknet/live_frame_hint")
-def live_frame_hint(body: LiveFrameHintRequest):
+def live_frame_hint(body: LiveFrameHintRequest, request: Request,
+                    db: Session = Depends(get_db)):
     """ライブカメラ映像の 1 フレームを受け取り、3 フレーム蓄積後に TrackNet 推論を実行。
     JS 側（DeviceManagerPanel / LiveInferenceOverlay）が 200ms 間隔で呼ぶ想定。
     """
     import base64
     import cv2
     import numpy as np
+
+    require_live_session_scope(request, db, body.session_code)
 
     inf = get_inference()
     if not inf.is_available() or not inf.load():
@@ -328,8 +372,12 @@ def live_frame_hint(body: LiveFrameHintRequest):
     except Exception:
         return {"success": False, "error": "フレームデコードに失敗しました"}
 
-    # セッション別バッファに追加
+    # セッション別バッファに追加。
+    # 実在するセッションしかここに来ないが、古いセッションの分が残り続けるので
+    # 件数に上限を設けて古いものから捨てる。
     if body.session_code not in _live_frame_buffers:
+        while len(_live_frame_buffers) >= _MAX_LIVE_SESSIONS:
+            _live_frame_buffers.pop(next(iter(_live_frame_buffers)))
         _live_frame_buffers[body.session_code] = deque(maxlen=3)
     buf = _live_frame_buffers[body.session_code]
     buf.append(frame)
