@@ -156,6 +156,14 @@ def flush_to_file(path: str) -> None:
     snap = snapshot()
     tmp = path + ".tmp"
     try:
+        # 置き場所を作る。既定の保存先 `backend/data/` は **リポジトリに
+        # 存在しないことがある**（tracked なファイルが 1 つも無ければ clone に
+        # 出てこない）。ディレクトリが無いと open が失敗し、下の except が
+        # warning に落として握りつぶすので、**5 分ごとの flush が一度も
+        # 成功しないまま静かに終わる**。
+        _parent = os.path.dirname(path)
+        if _parent:
+            os.makedirs(_parent, exist_ok=True)
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(snap, f, ensure_ascii=False, indent=2)
         os.replace(tmp, path)
