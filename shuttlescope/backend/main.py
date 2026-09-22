@@ -2415,11 +2415,14 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             # Round 258 R39 fix (Codex F-008 P3): production CSP では
             # `connect-src 'self' wss: https:` を厳格化。任意 https/wss への
             # exfil 経路を XSS から塞ぐ。expected origin だけ列挙する。
+            # 2026-09-22: 判定を `is_production_posture` に寄せた。ここは
+            # `PUBLIC_MODE or ENVIRONMENT=="production"` を**ローカルに書き直して**
+            # いたので、実際の本番 (PUBLIC_MODE=False / ENVIRONMENT が production に
+            # 届いていない / HIDE_API_DOCS=1 で posture だけ True) では dev 側の
+            # 緩い connect-src が出ていた。本番ログの CSP レポートで実測。
+            # main.py:192 の startup-gate が踏んだのと同じ fail-open。
             from backend.config import settings as _s_csp
-            _is_prod = (
-                bool(getattr(_s_csp, "PUBLIC_MODE", False))
-                or (getattr(_s_csp, "ENVIRONMENT", "") or "").strip().lower() == "production"
-            )
+            _is_prod = bool(getattr(_s_csp, "is_production_posture", False))
             if _is_prod:
                 connect_src = (
                     "connect-src 'self' "
@@ -3568,17 +3571,27 @@ _FALLBACK_HTML = """<!DOCTYPE html>
 # Round 258 R39 fix (Codex F-003 P2): production で .map を配信しない。
 # source map を取得されると frontend ソース構造 / API ルート名 / コメント / 設計上の
 # 仮定が全部 attacker に渡る → reconnaissance の質が著しく上がる。
-# 開発時のみ .map を allow、PUBLIC_MODE / ENVIRONMENT=production では除外する。
+# 開発時のみ .map を allow、本番姿勢では除外する。
+# 2026-09-22: 2 点直した。
+#  (1) `PUBLIC_MODE or ENVIRONMENT=="production"` のローカル再実装をやめ
+#      `is_production_posture` に寄せた（CSP と同じ fail-open だった）。
+#  (2) **判定を import 時に固定するのをやめた。** 許可拡張子の集合を module
+#      import の瞬間に確定させていたので、設定を変えてもプロセスを再起動する
+#      まで反映されず、テストからも切り替えられなかった（= この分岐は実行時に
+#      一度も検証できていなかった）。リクエストごとに解決する。
 from backend.config import settings as _settings_assets
-_IS_PUBLIC_BUILD = (
-    bool(getattr(_settings_assets, "PUBLIC_MODE", False))
-    or (getattr(_settings_assets, "ENVIRONMENT", "") or "").strip().lower() == "production"
-)
-_ASSETS_ALLOWED_EXTS = {".js", ".mjs", ".css", ".woff", ".woff2", ".ttf", ".otf",
-                        ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico",
-                        ".json", ".txt", ".wasm"}
-if not _IS_PUBLIC_BUILD:
-    _ASSETS_ALLOWED_EXTS.add(".map")  # 開発時のみ
+_ASSETS_BASE_EXTS = frozenset({".js", ".mjs", ".css", ".woff", ".woff2", ".ttf", ".otf",
+                               ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico",
+                               ".json", ".txt", ".wasm"})
+
+
+def _assets_allowed_exts() -> frozenset:
+    """配信を許可する拡張子。`.map` は本番姿勢では外す。"""
+    if getattr(_settings_assets, "is_production_posture", False):
+        return _ASSETS_BASE_EXTS
+    return _ASSETS_BASE_EXTS | {".map"}  # 開発時のみ
+
+
 _ASSETS_SEGMENT_RE = _re_acl.compile(r"^[A-Za-z0-9_.\-]+$")
 
 
@@ -3599,7 +3612,7 @@ async def serve_assets(asset_path: str):
         candidate.relative_to(_assets_root)
     except ValueError:
         raise HTTPException(status_code=404)
-    if candidate.suffix.lower() not in _ASSETS_ALLOWED_EXTS:
+    if candidate.suffix.lower() not in _assets_allowed_exts():
         raise HTTPException(status_code=404)
     if not candidate.exists() or not candidate.is_file():
         raise HTTPException(status_code=404)

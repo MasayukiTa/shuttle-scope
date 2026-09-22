@@ -98,11 +98,12 @@ def create_backup(label: Optional[str] = None, max_generations: int = 10) -> Pat
     # 運用ミスに極めて弱いので、エラーで止めて運用者に注意喚起する。
     # passphrase の最低長 (PKWARE-AES KDF が PBKDF2-SHA1 1000 iter と弱いため、
     # 実エントロピーで補償する) も同時に強制する。
+    # 2026-09-22: `PUBLIC_MODE or ENVIRONMENT=="production"` のローカル再実装を
+    # `is_production_posture` に寄せた。実本番は PUBLIC_MODE=False かつ
+    # ENVIRONMENT が production に届いていない状態だったので、この fail-closed は
+    # 一度も発動していなかった（passphrase が設定済みだったので平文にはならずに済んだ）。
     from backend.config import settings as _bp_settings
-    _is_prod = (
-        bool(getattr(_bp_settings, "PUBLIC_MODE", False))
-        or (getattr(_bp_settings, "ENVIRONMENT", "") or "").strip().lower() == "production"
-    )
+    _is_prod = bool(getattr(_bp_settings, "is_production_posture", False))
     if _is_prod:
         if not passphrase:
             raise RuntimeError(

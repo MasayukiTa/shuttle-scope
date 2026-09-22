@@ -84,12 +84,16 @@ def _client_ip(request: Request) -> str:
     return trusted_client_ip(request, default="")
 
 
-# PUBLIC_MODE=True または ENVIRONMENT=production では空文字・testclient を
-# loopback 扱いしない（Cloudflare で CF-Connecting-IP が剥がれるような異常経路
-# や設定ミスで攻撃者が loopback バイパスを得るのを阻止する・多層防御）。
+# 本番姿勢では空文字・testclient を loopback 扱いしない（Cloudflare で
+# CF-Connecting-IP が剥がれるような異常経路や設定ミスで攻撃者が loopback
+# バイパスを得るのを阻止する・多層防御）。
+#
+# 2026-09-22: ここは `_is_production_mode()` という **どこからも呼ばれていない**
+# 関数を持っていて、実際の判定は下の `env_norm` ブロックが単独で行っていた。
+# 判定を `settings.is_production_posture` に一本化する。
 def _is_production_mode() -> bool:
     from backend.config import settings as _s
-    return bool(getattr(_s, "PUBLIC_MODE", False)) or (getattr(_s, "ENVIRONMENT", "") == "production")
+    return bool(getattr(_s, "is_production_posture", False))
 
 
 def _normalize_ip(ip: str) -> str:
@@ -120,8 +124,8 @@ def is_loopback_request(request: Request) -> bool:
     Round 258 R7 P0 fix (Codex): proxy ヘッダ無視で socket IP のみを根拠にする。
     Round 258 R8 P0/P1 fix: IPv4-mapped IPv6 (`::ffff:127.0.0.1`) を正規化してから判定。
 
-    本番環境（PUBLIC_MODE=True または ENVIRONMENT=production）では
-    `""` や `"testclient"` を loopback 扱いしない。開発/テスト時のみ許容する。
+    本番姿勢（`settings.is_production_posture`）では `""` や `"testclient"` を
+    loopback 扱いしない。開発/テスト時のみ許容する。
     """
     ip = _normalize_ip(_socket_client_ip(request))
     if ip in ("127.0.0.1", "::1", "localhost"):
@@ -147,6 +151,15 @@ def is_loopback_request(request: Request) -> bool:
     # 修正: `backend.config.settings.ENVIRONMENT` を経由する。settings 側で
     # default="development" + strip+lower されているため、env が空でも development
     # と解釈される。
+    #
+    # Round 258 R39 fix (2026-09-22): `ENVIRONMENT` の文字列だけを見ていたので、
+    # 本番で `ENVIRONMENT` が production に届いていない (実測: NSSM の env ブロックが
+    # 壊れていた) 場合に **本番が development 扱い**になり、blank/testclient が
+    # loopback 認定されていた。名前ではなく姿勢 (`is_production_posture`) で判定する。
+    # posture は HIDE_API_DOCS / HIDE_STACK_TRACES / PUBLIC_HOSTNAME でも True に
+    # なるため、ENVIRONMENT の設定ミス 1 つで dev 扱いに落ちることがなくなる。
+    if _is_production_mode():
+        return False
     try:
         from backend.config import settings as _settings_cp
         env_norm = (getattr(_settings_cp, "ENVIRONMENT", None) or "").strip().lower()
