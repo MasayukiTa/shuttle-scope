@@ -61,6 +61,26 @@ def _fresh_code() -> str:
     return f"LIVE_INF_{_counter:04d}"
 
 
+@pytest.fixture(autouse=True)
+def _bypass_session_scope(monkeypatch):
+    """セッションの所属検査を外す。
+
+    このファイルの主題は **推論パイプライン**（バッファリング / モデル未導入時の
+    fallback / base64 の異常系）で、合成したセッションコードを使う。
+
+    `5d4dc05` で `live_frame_hint` は `session_code` の実在と呼び手の権限を
+    見るようになった（見ていなかったので、他人のセッションのバッファに
+    フレームを差し込めた／未知のコードで辞書を無限に膨らませられた）。
+    その検査自体は `test_live_frame_hint_scope.py` が担当する。
+    ここで実セッションを組み立てると、テストの主題がぼやけるうえ
+    「どちらが落ちたのか」が読めなくなる。
+    """
+    monkeypatch.setattr(
+        "backend.routers.tracknet.require_live_session_scope",
+        lambda *a, **k: None,
+    )
+
+
 # ─── モデル未導入時の safe fallback ───────────────────────────────────────────
 
 class TestModelUnavailable:

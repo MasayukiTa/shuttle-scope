@@ -382,57 +382,27 @@ class TestViewerConnect:
         以前は「配布済みクライアントのために `vid` も受理し続ける」ための
         テストだった。`2465f34` で方針が変わっている: `SessionParticipant` に
         `user_id` が無く、JWT の持ち主とその行を結ぶものが存在しないので、
-        **session_code を知る認証済み利用者なら誰でも他人の viewer になりすませた**。
-        身元を担保できるのは participant_token だけなので、device / viewer は
-        入場券 (`POST /sessions/{code}/ws-ticket`) の一本に絞った。
+        **session_code を知る認証済み利用者なら誰でも他人の viewer に
+        なりすませた**。身元を担保できるのは participant_token だけなので、
+        device / viewer は入場券 (`POST /sessions/{code}/ws-ticket`) に絞った。
 
         `vid` は `viewer_id` と同じ扱いで 4403 になる。ここを「通る」ままに
-        しておくと、**塞いだはずの経路がテストで守られている**ことになる。
+        しておくと、**塞いだはずの経路をテストが守っている**ことになる。
+
+        operator は立てない。前版では operator 側が来ない
+        `receive_text()` で 60 秒ブロックして、拒否されたこと自体ではなく
+        タイムアウトで落ちていた。主張は「viewer が拒否される」の一点。
         """
         code = _fresh_code("VID")
-        operator_msgs: list[dict] = []
-        ready = threading.Event()
-        done = threading.Event()
-        viewer_refused = threading.Event()
 
         with TestClient(app) as client:
-            def run_operator():
-                with client.websocket_connect(f"/ws/camera/{code}?{_OPR_QS}") as ws:
-                    ready.set()
-                    try:
-                        operator_msgs.append(json.loads(ws.receive_text()))
-                    except Exception:
-                        pass
-                    done.wait(timeout=3)
-
-            def run_viewer():
-                ready.wait(timeout=3)
-                time.sleep(0.05)
-                # 旧クライアントと同じ形。券を持たない `vid` は閉じられる。
-                try:
-                    with client.websocket_connect(
-                        f"/ws/camera/{code}?role=viewer&vid=legacy-viewer"
-                    ) as _ws:
-                        _ws.receive_text()
-                except Exception:
-                    viewer_refused.set()
-                else:
-                    pass
-                done.set()
-
-            t1 = threading.Thread(target=run_operator, daemon=True)
-            t2 = threading.Thread(target=run_viewer, daemon=True)
-            t1.start()
-            t2.start()
-            t1.join(timeout=5)
-            t2.join(timeout=5)
-
-        assert viewer_refused.is_set(), (
-            "券なしの `?vid=` がまだ viewer として通っている"
-        )
-        assert not any(m.get("type") == "viewer_joined" for m in operator_msgs), (
-            f"operator に viewer_joined が届いている: {operator_msgs}"
-        )
+            with pytest.raises(Exception):
+                with client.websocket_connect(
+                    f"/ws/camera/{code}?role=viewer&vid=legacy-viewer"
+                ) as ws:
+                    # 拒否は handshake 直後の close で来る。何か受けようとすると
+                    # WebSocketDisconnect になる。
+                    ws.receive_text()
 
 
 # ─── メッセージ中継テスト ─────────────────────────────────────────────────────
