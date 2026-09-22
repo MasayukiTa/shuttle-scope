@@ -148,3 +148,22 @@ def test_the_live_buffer_cannot_grow_without_bound():
     finally:
         buffers.clear()
         buffers.update(saved)
+
+
+def test_the_dead_single_frame_endpoint_is_gone():
+    """`/api/tracknet/frame_hint` を復活させない。
+
+    3 枚の base64 から 1 回推論する実験的エンドポイントだったが、
+    **リポジトリ全体で呼び出し元が 1 つも無かった**
+    (`git ls-files` の全ファイルを走査。ヒットしたのはルータ自身と
+     ROADMAP の記述だけ)。実際に使われているのは `live_frame_hint`。
+
+    誰も使っていない的を開けたままにしない。認証済みなら誰でも
+    3x2MB の base64 を送って CPU 推論を 200〜500ms 走らせられた。
+    処理そのもの (`inf.predict_frames`) は live_frame_hint 側に同じものがある。
+    """
+    from backend.routers.tracknet import router
+
+    paths = {getattr(r, "path", "") for r in router.routes}
+    assert "/tracknet/frame_hint" not in paths, paths
+    assert "/tracknet/live_frame_hint" in paths, "生きているほうまで消えている"

@@ -403,60 +403,17 @@ def live_frame_hint(body: LiveFrameHintRequest, request: Request,
     }
 
 
-# ────────────────────────────────────────────────────────────────────
-# /api/tracknet/frame_hint — シングルフレームヒント（P5向け実験的）
-# ────────────────────────────────────────────────────────────────────
-
-class FrameHintRequest(BaseModel):
-    """Base64エンコードされた1フレーム（PNG/JPEG）を受け取る"""
-    model_config = {"extra": "forbid"}
-    # round136 D-5: 5MB 入力で 500 → 各 base64 に max_length=2MB (decode 後 ~1.5MB)
-    frame_b64: str = Field(..., max_length=2_000_000)
-    frame_prev_b64: str = Field(..., max_length=2_000_000)
-    frame_next_b64: str = Field(..., max_length=2_000_000)
-    confidence_threshold: float = Field(default=0.5, ge=0.0, le=1.0, allow_inf_nan=False)
-
-@router.post("/tracknet/frame_hint")
-def frame_hint(body: FrameHintRequest):
-    """[実験的 P5] 3フレームからシャトル位置を推定。
-    WebViewキャプチャによるリアルタイム補助用。
-    精度・遅延は環境依存。i5-1235UではCPU推論で200~500ms程度。
-    """
-    import base64
-    import cv2
-    import numpy as np
-
-    inf = get_inference()
-    if not inf.is_available() or not inf.load():
-        return {"success": True, "data": {"zone": None, "confidence": 0.0, "available": False}}
-
-    frames = []
-    for b64 in [body.frame_prev_b64, body.frame_b64, body.frame_next_b64]:
-        try:
-            img_bytes = base64.b64decode(b64)
-            arr = np.frombuffer(img_bytes, dtype=np.uint8)
-            frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-            frames.append(frame)
-        except Exception:
-            return {"success": False, "error": "フレームデコードに失敗しました"}
-
-    results = inf.predict_frames(frames)
-    if not results:
-        return {"success": True, "data": {"zone": None, "confidence": 0.0}}
-
-    r = results[0]
-    return {
-        "success": True,
-        "data": {
-            "zone": r["zone"] if r["confidence"] >= body.confidence_threshold else None,
-            "confidence": r["confidence"],
-            "x_norm": r["x_norm"],
-            "y_norm": r["y_norm"],
-            "available": True,
-        },
-    }
-
-
+# `/api/tracknet/frame_hint` はここにあった (2026-09-22 削除)。
+#
+# 3 枚の base64 フレームから 1 回だけ推論する実験的エンドポイント
+# ([実験的 P5] と自称していた)。**リポジトリ全体で呼び出し元が 1 つも
+# 無かった** — 実際に使われているのは 1 フレームずつ受けてバッファする
+# `live_frame_hint` のほう。
+#
+# 残しておくと、認証済みなら誰でも 3x2MB の base64 を送って CPU 推論を
+# 200〜500ms 走らせられる的が、誰も使っていないまま開いたままになる。
+# 中身の処理 (`inf.predict_frames`) は live_frame_hint 側に同じものがある
+# ので、機能としては何も失われない。
 # ────────────────────────────────────────────────────────────────────
 # バックグラウンドジョブ実装
 # ────────────────────────────────────────────────────────────────────

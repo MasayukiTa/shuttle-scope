@@ -466,6 +466,8 @@ onnxruntime-directml  # OpenVINO 非対応環境フォールバック
 **実装概要**:
 - Electron IPC: `capture-webview-frame` → base64 PNG を返す
 - バックエンド: `/api/tracknet/frame_hint` エンドポイント（単フレーム推論）
+  — **2026-09-22 に削除**。呼び出し元が 1 つも実装されないまま残っていた。
+  実際に使われているのは `/api/tracknet/live_frame_hint`（1 枚ずつ受けて 3 枚でバッファ）
 - 結果をアノテーション画面の hit_zone / land_zone に反映
 
 **Go / No-Go 条件**:
