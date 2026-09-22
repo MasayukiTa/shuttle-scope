@@ -24,7 +24,8 @@ import pathlib
 
 import sqlalchemy as sa
 
-from backend.db.database import RequestSessionLocal, SessionLocal
+import backend.db.database as db_module
+from backend.db.database import SessionLocal, get_db
 from backend.db.models import Base, Player
 
 
@@ -32,6 +33,60 @@ def _scratch_engine():
     engine = sa.create_engine("sqlite://")
     Base.metadata.create_all(engine)
     return engine
+
+
+def _request_session(engine):
+    """`get_db` と同じ設定のセッションを、テスト用 engine に向けて取る。
+
+    `get_db` はジェネレータなので、engine を差し替えて 1 個取り出す。
+    ここで独自に `sessionmaker(expire_on_commit=False)` を書くと
+    **実装ではなく写しを検証する**ことになるので、本物を通す。
+    """
+    original = db_module.SessionLocal
+    from sqlalchemy.orm import sessionmaker
+    db_module.SessionLocal = sessionmaker(
+        autocommit=False, autoflush=False, bind=engine
+    )
+    try:
+        gen = get_db()
+        return next(gen)
+    finally:
+        db_module.SessionLocal = original
+
+
+def test_get_db_goes_through_the_module_level_SessionLocal():
+    """`get_db` が **その時点の** `SessionLocal` を使うこと。
+
+    `backend/tests/conftest.py` はテスト用 engine に向けるために
+    `db_module.SessionLocal` を差し替える。`get_db` が別の sessionmaker を
+    持つと、**リクエスト経路だけ本物の DB を見に行く**。
+    2026-09-22 に実際にそれをやって、CI のログイン系が全部 401 になった
+    （テスト DB に作ったユーザが、ハンドラからは存在しないため）。
+    """
+    import sqlalchemy as sa
+    from sqlalchemy.orm import sessionmaker
+
+    marker = sa.create_engine("sqlite://")
+    original = db_module.SessionLocal
+    db_module.SessionLocal = sessionmaker(
+        autocommit=False, autoflush=False, bind=marker
+    )
+    try:
+        gen = get_db()
+        db = next(gen)
+        assert db.get_bind() is marker, (
+            "get_db が差し替え後の SessionLocal を通っていない。"
+            "テストの engine 差し替えがリクエスト経路に効かない"
+        )
+        assert db.expire_on_commit is False
+        db.close()
+    finally:
+        db_module.SessionLocal = original
+
+
+def test_the_session_class_itself_still_expires_on_commit():
+    """`SessionLocal()` を直に呼ぶ経路（背景ワーカー）は既定のまま。"""
+    assert SessionLocal.kw.get("expire_on_commit", True) is True
 
 
 def test_commit_does_not_expire_attributes_on_the_request_session():
@@ -48,7 +103,7 @@ def test_commit_does_not_expire_attributes_on_the_request_session():
     def _record(conn, cursor, statement, parameters, context, executemany):
         statements.append(statement)
 
-    db = RequestSessionLocal(bind=engine)
+    db = _request_session(engine)
     try:
         p = Player(name="A")
         db.add(p)
