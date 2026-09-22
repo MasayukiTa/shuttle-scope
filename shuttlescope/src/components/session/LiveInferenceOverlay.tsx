@@ -29,8 +29,17 @@ function ConfidenceBar({ value }: { value: number }) {
 }
 
 // NOTE: per-frame overlay マーカー — リアルタイム描画要素なので新規 transition は追加しない。
-function ZoneMarker({ candidate }: { candidate: LiveInferenceCandidate }) {
-  if (!candidate.zone || !candidate.x_norm || !candidate.y_norm) return null
+export function ZoneMarker({ candidate }: { candidate: LiveInferenceCandidate }) {
+  // マーカーの条件は **位置があること** だけ。
+  //
+  // 2 つ直した:
+  //  - `!candidate.zone` を条件に入れていたので、A-1b で CV が Zone9 を
+  //    名乗るのをやめた (画像座標からは半面もネット位置も決まらない) 瞬間に
+  //    **マーカーが完全に消えた**。ここで見せたいのは「シャトルがどこに
+  //    いるか」で、ゾーン名はその横のテキストの話。
+  //  - `!candidate.x_norm` は **0 を falsy として弾く**。画面の左端・上端に
+  //    シャトルが来ると消える。null 判定にする。
+  if (candidate.x_norm == null || candidate.y_norm == null) return null
   const x = candidate.x_norm * 100
   const y = candidate.y_norm * 100
   return (
