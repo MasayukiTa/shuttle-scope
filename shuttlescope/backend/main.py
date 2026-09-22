@@ -2980,6 +2980,9 @@ def _csp_check_rate(ip: str) -> bool:
     return True
 
 
+from backend.utils.csp_report import _CSP_UNINFORMATIVE, _csp_report_summary
+
+
 @app.post("/api/csp_report")
 async def csp_report(request: StarletteRequest):
     """CSP 違反レポート受信 (I-1: round118)。
@@ -3045,7 +3048,19 @@ async def csp_report(request: StarletteRequest):
             return _JSONResp({"ok": False, "reason": "bad_shape"}, status_code=400)
 
         import logging as _lg
-        _lg.getLogger("csp_report").warning("CSP violation: %s", str(data)[:500])
+        summary, actionable = _csp_report_summary(data)
+        _log = _lg.getLogger("csp_report")
+        if actionable:
+            _log.warning("CSP violation: %s", summary)
+        else:
+            # 情報の無いレポートを WARNING で積むと、**本物の違反がその中に
+            # 埋もれる**。本番のログは 182 件すべてがこちら側だった
+            # (`blocked-uri` も `source-file` も `script-sample` も無く、
+            #  フィールド構成は Safari のもの。拡張機能が差し込んだ
+            #  スクリプトでも上がる)。件数だけ数えて DEBUG に落とす。
+            _CSP_UNINFORMATIVE["n"] += 1
+            _log.debug("CSP violation (no detail, #%d): %s",
+                       _CSP_UNINFORMATIVE["n"], summary)
     except Exception:
         pass
     return {"ok": True}
