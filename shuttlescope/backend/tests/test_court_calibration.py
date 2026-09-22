@@ -104,12 +104,49 @@ class TestPixelToCourtZone:
         """恒等写像ホモグラフィ（画像座標=コート座標）"""
         return _compute_homography(UNIT_SQUARE_SRC, UNIT_SQUARE_DST)
 
-    def test_top_left_is_A_front_left(self, flat_H):
+    def test_far_baseline_corner_is_A_back_left(self, flat_H):
+        """A-1b: コート y=0 は **A 側のベースライン**。ネットは y=0.5。
+
+        旧実装・旧テストはここを `A_front_left` と呼んでいた。両サイドとも
+        `depth_names[row_i % 3]` を素で使っていたので、A 側だけ front と back が
+        入れ替わり、**同じ "front" がコートの反対の端を指していた**。
+        旧テストは実装の都合をそのまま書き写していたので、この誤りでは落ちない。
+        front/mid/back はネットからの距離で決める（両サイド共通の意味）。
+        """
         result = pixel_to_court_zone(0.05, 0.05, flat_H)
-        assert result["zone_name"] == "A_front_left"
+        assert result["zone_name"] == "A_back_left"
         assert result["side"] == "A"
-        assert result["depth"] == "front"
+        assert result["depth"] == "back"
         assert result["col"] == "left"
+
+    def test_front_always_means_nearest_the_net_on_both_sides(self, flat_H):
+        """front は必ずネット際、back は必ずベースライン。左右は画面基準。"""
+        # ネットは y=0.5。その両隣が front。
+        a_at_net = pixel_to_court_zone(0.5, 0.5 - 0.01, flat_H)
+        b_at_net = pixel_to_court_zone(0.5, 0.5 + 0.01, flat_H)
+        assert (a_at_net["side"], a_at_net["depth"]) == ("A", "front")
+        assert (b_at_net["side"], b_at_net["depth"]) == ("B", "front")
+
+        # 両端のベースラインが back。
+        a_base = pixel_to_court_zone(0.5, 0.01, flat_H)
+        b_base = pixel_to_court_zone(0.5, 0.99, flat_H)
+        assert (a_base["side"], a_base["depth"]) == ("A", "back")
+        assert (b_base["side"], b_base["depth"]) == ("B", "back")
+
+        # 列は鏡映しない: 画面左は両半面とも left（ユーザ判断: 画面基準）。
+        assert pixel_to_court_zone(0.05, 0.05, flat_H)["col"] == "left"
+        assert pixel_to_court_zone(0.05, 0.95, flat_H)["col"] == "left"
+        assert pixel_to_court_zone(0.95, 0.05, flat_H)["col"] == "right"
+        assert pixel_to_court_zone(0.95, 0.95, flat_H)["col"] == "right"
+
+    def test_depth_bands_are_monotonic_in_distance_from_the_net(self, flat_H):
+        """ネットから遠ざかるにつれ front→mid→back の順に進む（両サイド）。"""
+        a_depths = [pixel_to_court_zone(0.5, y, flat_H)["depth"]
+                    for y in (0.49, 0.30, 0.10)]
+        b_depths = [pixel_to_court_zone(0.5, y, flat_H)["depth"]
+                    for y in (0.51, 0.70, 0.90)]
+        assert a_depths == ["front", "mid", "back"], a_depths
+        assert b_depths == ["front", "mid", "back"], b_depths
 
     def test_bottom_right_is_B_back_right(self, flat_H):
         result = pixel_to_court_zone(0.95, 0.95, flat_H)

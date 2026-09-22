@@ -11,8 +11,13 @@ MatchCVArtifact に保存し、以下を計算して返す:
 コート正規化座標:
   TL=(0,0), TR=(1,0), BR=(1,1), BL=(0,1)
   ネット: Y ≈ 0.5
-  幅ゾーン: x ∈ [0,1/3] left / [1/3,2/3] center / [2/3,1] right
-  奥行ゾーン: y ∈ [0,1/6],[1/6,2/6],[2/6,3/6] A側3段, [3/6,4/6],[4/6,5/6],[5/6,1] B側3段
+  幅ゾーン (列): x ∈ [0,1/3] left / [1/3,2/3] center / [2/3,1] right
+                **両半面とも画面基準**。奥側でも画面左が left（鏡映しない）
+  奥行ゾーン (段): front/mid/back は **ネットからの距離**。画像上の位置ではない
+      A 側 (y<0.5, ネットは y=0.5 側): y ∈ [0,1/6] back / [1/6,2/6] mid / [2/6,3/6] front
+      B 側 (y>0.5, ネットは y=0.5 側): y ∈ [3/6,4/6] front / [4/6,5/6] mid / [5/6,1] back
+  zone_id = row_i*3+col_i は **画像の並び順**のままなので、zone_id と depth は
+  A 側で逆順に対応する（zone_id は位置 ID、depth は意味ラベル）
 
 エンドポイント:
   POST /api/matches/{match_id}/court_calibration
@@ -217,11 +222,27 @@ def pixel_to_court_zone(
     depth_names = ("front", "mid", "back")
     side        = "A" if row_i < 3 else "B"
 
+    # A-1b (2026-09-22): depth は **A 側だけ反転していた**。
+    #
+    # コート正規化座標は TL=(0,0) / BL=(0,1) で、ネットは y≈0.5。つまり
+    # A 側 (y<0.5) のベースラインは y=0、ネットは y=0.5。それなのに旧実装は
+    # 両サイドとも `depth_names[row_i % 3]` を素で使っていたので、
+    # A 側は row 0 (= 奥のベースライン) が "front"、row 2 (= ネット際) が
+    # "back" になっていた。B 側は正しく front=ネット際。
+    # 同じ "front" という語が、半面によって**コートの反対の端**を指していた。
+    #
+    # front/mid/back は「ネットからの距離」であって画像上の位置ではない
+    # （L/C/R は逆に画面基準で、両半面とも画面左が left。ユーザ判断: 画面基準）。
+    # `CourtDiagram` の ZONES が人手入力の正本で、そちらは両半面とも N=ネット側
+    # ・列は画面基準。CV 側をそれに合わせる。
+    band    = row_i % 3
+    depth_i = (2 - band) if side == "A" else band
+
     base.update({
         "zone_id":   row_i * 3 + col_i,
-        "zone_name": f"{side}_{depth_names[row_i % 3]}_{col_names[col_i]}",
+        "zone_name": f"{side}_{depth_names[depth_i]}_{col_names[col_i]}",
         "side":      side,
-        "depth":     depth_names[row_i % 3],
+        "depth":     depth_names[depth_i],
         "col":       col_names[col_i],
     })
     return base

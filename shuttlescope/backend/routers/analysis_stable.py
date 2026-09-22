@@ -219,7 +219,7 @@ def get_heatmap_composite(
     db: Session = Depends(get_db),
 ):
     """
-    コートヒートマップ合成ビュー: 打点データ + 着地点の点対称変換を合成して返す。
+    コートヒートマップ合成ビュー: 打点データ + 着地点をネット線で折り返して合成する。
 
     ⚠️ 重要: この変換は可視化専用。
     ⚠️ ゾーン集計・勝率計算・空間解析には絶対に使用しないこと。
@@ -227,19 +227,20 @@ def get_heatmap_composite(
 
     Returns:
         hit: 打点データ（自コート座標系そのまま）
-        land_rotated: 着地点データ（点対称変換済み・自コート座標系）
+        land_rotated: 着地点データ（ネット線で折り返し済み・自コート座標系）
         total_strokes: 総ストローク数
         note: 可視化専用である旨の注記
     """
     ALL_ZONES = ["BL", "BC", "BR", "ML", "MC", "MR", "NL", "NC", "NR"]
 
-    # 9ゾーン点対称変換マッピング（ネット中心）
-    # ⚠️ 可視化専用 — 空間分析には使用しないこと
-    ZONE_ROTATION_MAP: dict[str, str] = {
-        "BL": "NR", "BC": "NC", "BR": "NL",
-        "ML": "MR", "MC": "MC", "MR": "ML",
-        "NL": "BR", "NC": "BC", "NR": "BL",
-    }
+    # A-1b (2026-09-22): ここには 180 度の点対称表 `ZONE_ROTATION_MAP` があった。
+    # それは **列が選手基準** (各選手が自分から見た左右で L/R を呼ぶ) 前提の表で、
+    # このアプリの入力 UI (`CourtDiagram`) は列が画面基準・行がネット基準。
+    # 前提が違う変換を掛けていたので、相手のベースライン際に落ちた球が
+    # 自コートのネット際に描かれていた（クリアがネット前に見える）。
+    # ネット線での鏡映は行ラベルも列ラベルも変えないので畳み込みは恒等写像。
+    # 導出は `backend/utils/zone9_fold.py` に書いてある。
+    from backend.utils.zone9_fold import fold_land_zone_onto_own_court
 
     # 試合絞り込み
     if match_ids is not None:
@@ -300,10 +301,11 @@ def get_heatmap_composite(
         for z in ALL_ZONES
     }
 
-    # 着地点データを点対称変換（相手コート→自コート座標系）
-    # ⚠️ 可視化専用変換 — 空間分析には混入させないこと
+    # 着地点データを自コート座標系へ畳み込む（相手コート→自コート）
+    # ⚠️ 可視化専用 — 空間分析には混入させないこと
     land_rotated: dict[str, dict] = {}
-    for src_zone, dst_zone in ZONE_ROTATION_MAP.items():
+    for src_zone in ALL_ZONES:
+        dst_zone = fold_land_zone_onto_own_court(src_zone)
         land_rotated[dst_zone] = {
             "count": land_counts.get(src_zone, 0),
             "rate": round(land_counts.get(src_zone, 0) / land_total, 4),
@@ -319,8 +321,9 @@ def get_heatmap_composite(
             "land_rotated": land_rotated,
             "total_strokes": total_strokes,
             "note": (
-                "着地点データは点対称変換（ネット中心）により自コート座標系に"
-                "変換済みです。この合成表示は可視化補助のみを目的としており、"
+                "着地点データをネット線で折り返して自コート座標系に重ねています"
+                "（行はネット基準・列は画面基準なので、ゾーン名は変わりません）。"
+                "この合成表示は可視化補助のみを目的としており、"
                 "空間分析・ゾーン別勝率計算とは独立しています。"
             ),
         },
