@@ -253,6 +253,7 @@ def _run_tracknet(job: dict, video_path: str) -> None:
     import cv2
     from backend.tracknet.inference import get_inference
     from backend.routers.court_calibration import load_calibration_standalone, pixel_to_court_zone
+    from backend.tracknet.zone_mapper import court_to_zone9
 
     # **"auto"**。以前は "openvino" を「GPU優先バックエンドを明示」として
     # 固定していたが、OpenVINO の "GPU" は **Intel の GPU** を指す。
@@ -389,6 +390,18 @@ def _run_tracknet(job: dict, video_path: str) -> None:
                         continue
                     pt["court_zone_name"] = zone_info["zone_name"]
                     pt["zone_id"]   = zone_info["zone_id"]
+                    # A-1b (2026-09-22): `zone` (Zone9) を入れられるのは
+                    # **ここだけ**になった。`zone_mapper.coords_to_zone` は
+                    # 画像の生座標から Zone9 を名乗るのをやめて None を返す
+                    # (ネット位置も半面も遠近も画像座標には入っていない)。
+                    # キャリブレーション済みのここではコート座標があるので
+                    # Zone9 が決まる。未キャリブレーションの試合では
+                    # `zone` は None のままで、`candidate_builder` は
+                    # 着地点候補を出さない (C-11 と同じ方針)。
+                    side_zone = court_to_zone9(zone_info["court_x"], zone_info["court_y"])
+                    if side_zone:
+                        pt["court_side"] = side_zone[0]
+                        pt["zone"] = side_zone[1]
                     refined += 1
             if refined or out_of_court:
                 logger.info(
