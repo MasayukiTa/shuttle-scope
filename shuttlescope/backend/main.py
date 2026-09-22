@@ -1949,6 +1949,13 @@ _GLOBAL_AUTH_EXEMPT = _re_acl.compile(
     # ホワイトリストを全部飛ばし、残る防御は public_site.py:322 の
     # `ctx.is_admin` だけを見る弱い版 1 枚になる。
     # 実際に未認証で到達してよいのはこの 4 つだけ。
+    # `/api/public/status` は **公開ステータスページ自身が 60 秒ごとに叩く**。
+    # `status.html.j2` の poll() が状態変化を検知してページを再読み込みする経路で、
+    # 免除リストに `/day` しか入っていなかったため、ログインしていない閲覧者には
+    # 401 が返り続けていた。fetch は `r.ok ? ... : null` と `.catch(){}` で
+    # **黙って捨てる**ので、誰も気づかないまま自動更新だけが死んでいた。
+    # 返すのは粗い状態 (operational/degraded/down) と件数だけ。
+    r"|public/status(?:\?.*)?$"
     r"|public/status/day(?:\?.*)?$"
     r"|public/contact(?:\?.*)?$"
     r"|public/ban_appeal(?:\?.*)?$"
