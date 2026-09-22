@@ -15,6 +15,10 @@ python-multipart==0.0.32   # Dependabot #44-47 (querystring DoS / negative Conte
 pydantic-settings==2.15.0   # GHSA-4xgf-cpjx-pc3j (NestedSecretsSettingsSource symlink read) 修正のため bump
 # pydantic.EmailStr 用バリデータ（pydantic[email] と同等）
 email-validator>=2.3.0
+# pydantic 経由で必ず入るが、backend/analysis/insights/types.py が
+# 直接 import する（3.10 で NotRequired を取るため）。暗黙の推移依存に
+# 頼ると、pydantic が外した日に静かに壊れる。
+typing-extensions>=4.12
 
 # ── データベース ──────────────────────────────────────────────────
 sqlalchemy==2.0.52

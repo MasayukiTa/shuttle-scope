@@ -1,7 +1,18 @@
 """Insight 共通型定義。"""
 from __future__ import annotations
 
-from typing import Optional, TypedDict, NotRequired
+import sys
+from typing import Optional, TypedDict
+
+# `NotRequired` は 3.11 以降の `typing` にしかない。これ 1 行のために
+# **backend.main を import するテスト 112 ファイルが 3.10 で収集できず**、
+# ローカルの回帰確認がその範囲を丸ごと素通りしていた
+# （その状態で push して CI を 1 回赤くした）。
+# 本番も CI も 3.12 のまま。ここは収集できるようにするためだけの分岐。
+if sys.version_info >= (3, 11):
+    from typing import NotRequired
+else:  # pragma: no cover - 3.10 でのテスト収集用
+    from typing_extensions import NotRequired
 
 
 class InsightContext(TypedDict):
