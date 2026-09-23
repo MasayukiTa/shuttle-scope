@@ -1891,19 +1891,24 @@ def release_provisional_player(db: Session, user: User) -> None:
     名簿に残る。まだ何からも参照されていない = 自動生成されたまま使われて
     いない行なので、そのときだけ切り離して消す。試合や注釈が既に付いている
     なら実体のある選手なので、紐付けも行もそのままにする。
+
+    **先に紐付けを外してから**参照の有無を数えること。`users.player_id` 自体が
+    players への外部キーなので、外す前に数えると必ず「参照されている」になり、
+    行が永久に残る (本番 PostgreSQL で実際にそうなった)。
     """
     pid = user.player_id
     if pid is None:
         return
     player = db.get(Player, pid)
-    if player is None:
-        user.player_id = None
-        db.flush()
-        return
-    if not _player_is_unreferenced(db, pid):
-        return
     user.player_id = None
     db.flush()
+    if player is None:
+        return
+    if not _player_is_unreferenced(db, pid):
+        # 実体のある選手だった。紐付けを戻して何もしない。
+        user.player_id = pid
+        db.flush()
+        return
     db.delete(player)
     db.flush()
 

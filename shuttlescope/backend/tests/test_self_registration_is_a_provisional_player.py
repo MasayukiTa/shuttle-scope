@@ -102,12 +102,18 @@ class TestEnsurePlayerRecord:
 
 
 class TestReleaseProvisionalPlayer:
+    """承認と拒否は登録とは**別のリクエスト**なので、`users.player_id` は
+    既に DB に入っている。セッションは autoflush=False なので、ここで
+    commit しないと「まだ書かれていない」状態を試すことになり、
+    `users` 自身の外部キーを数え落とす欠陥を見逃す (本番で実際に起きた)。"""
+
     def test_deletes_a_player_nothing_points_at(self, db_session):
         u = User(username="became_coach", role="player", display_name="C",
                  hashed_credential=_hash_password("pw"))
         db_session.add(u)
         db_session.flush()
         pid = ensure_player_record(db_session, u)
+        db_session.commit()
         u.role = "coach"
         release_provisional_player(db_session, u)
         assert u.player_id is None
@@ -121,6 +127,7 @@ class TestReleaseProvisionalPlayer:
         db_session.add(u)
         db_session.flush()
         pid = ensure_player_record(db_session, u)
+        db_session.commit()
         other = Player(name="相手")
         db_session.add(other)
         db_session.flush()
