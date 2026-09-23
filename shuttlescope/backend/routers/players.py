@@ -420,7 +420,14 @@ def list_needs_review(request: Request, db: Session = Depends(get_db),
 @router.get("/players/teams")
 def list_teams(request: Request, db: Session = Depends(get_db),
                _auth: AuthCtx = Depends(_require_auth)):
-    """DBに登録済みの全チーム名を重複なしで返す（同姓同名識別・入力補完用）"""
+    """DBに登録済みの全チーム名を重複なしで返す（同姓同名識別・入力補完用）
+
+    全チーム名を返すので、認証さえ通れば誰でも組織名を列挙できていた。
+    用途は選手の登録・編集フォームの入力補完で、player はそもそも選手を
+    作れない (書き込みは middleware で 403)。運用ロールに限定する。
+    """
+    if (_auth.role or "") not in ("admin", "analyst", "coach"):
+        raise _HTTPException(status_code=403, detail="この情報は参照できません")
     # Phase B-15+: Player.team 文字列撤去後は teams テーブル直接読みに切替
     from backend.db.models import Team as _Team
     rows = (

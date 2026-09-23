@@ -16,9 +16,18 @@ router = APIRouter(tags=["youtube_live"])
 
 
 def _require_auth(request: Request):
+    """録画 job の操作・閲覧は運用ロールに限る。
+
+    `_job_status` は `out_path` (サーバの絶対パス) と元 URL を返す。
+    旧実装は「ロールが何かある」だけで通していたので、公開登録で作った
+    player アカウントでも全 job の一覧とサーバのパスが読めていた。
+    録画はオペレーション機能なので player / llm / demo には開けない。
+    """
     ctx = get_auth(request)
     if ctx.role is None:
         raise HTTPException(status_code=401, detail="認証が必要です")
+    if ctx.role not in ("admin", "analyst", "coach"):
+        raise HTTPException(status_code=403, detail="この操作の権限がありません")
     return ctx
 
 

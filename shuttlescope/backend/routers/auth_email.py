@@ -29,7 +29,7 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
-from backend.db.models import User
+from backend.db.models import Player, User
 from backend.utils.access_log import log_access
 from backend.utils.auth import get_auth
 from backend.utils.email_token import (
@@ -374,6 +374,11 @@ def register(body: RegisterRequest, request: Request, db: Session = Depends(get_
         date_of_birth=dob_val,
     )
     db.add(user)
+    # player ロールなので自分自身の Player レコードをここで作って紐付ける。
+    # player_id が NULL のままだと PlayerAccessControlMiddleware が全 API を
+    # 401 にするため、承認されてもアプリが使えないアカウントになる。
+    from backend.routers.auth import ensure_player_record
+    ensure_player_record(db, user)
     db.commit()
 
     # 2026-05-26: 自動確認メール送信は SS_MAIL_BACKEND が console 状態のため
@@ -686,6 +691,9 @@ def accept_invitation(body: InvitationAcceptRequest, request: Request,
         email_verified_at=datetime.utcnow(),  # 招待リンク経由なので検証済み扱い
     )
     db.add(user)
+    # 招待の role が player なら、register と同じく Player を作って紐付ける。
+    from backend.routers.auth import ensure_player_record
+    ensure_player_record(db, user)
     db.commit()
 
     # token 消費
@@ -775,6 +783,19 @@ def approve_pending_user(
         )
         user.team_id = team.id
         user.team_name = team.name  # team_id 指定時も team_name を必ず補完
+    # role の確定に合わせて Player の紐付けを整える。
+    # - player のまま承認: register で作った Player をそのまま使う (無ければ作る)
+    # - coach / analyst として承認: register が作った Player は誰でもない行に
+    #   なるので、まだ何からも参照されていなければ外して消す
+    from backend.routers.auth import ensure_player_record, release_provisional_player
+    if user.role == "player":
+        ensure_player_record(db, user)
+        if user.player_id is not None and user.team_id is not None:
+            p = db.get(Player, user.player_id)
+            if p is not None and p.team_id is None:
+                p.team_id = user.team_id
+    else:
+        release_provisional_player(db, user)
     db.commit()
 
     log_access(
@@ -821,6 +842,10 @@ def reject_pending_user(
         resource_id=user_id,
         details={"username": user.username, "email": getattr(user, "email", None)},
     )
+    # register が作った Player を道連れにする。放っておくと拒否したはずの人の
+    # 行が選手名簿に残る。何かから参照されていれば (= 実体のある選手なら) 残す。
+    from backend.routers.auth import release_provisional_player
+    release_provisional_player(db, user)
     db.delete(user)
     db.commit()
     return {"success": True, "data": {"user_id": user_id, "deleted": True}}

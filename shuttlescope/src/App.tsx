@@ -558,6 +558,9 @@ function ProtectedMainRoute() {
   // 任意同意 (体組成開示 / AI 学習 等) の "未回答" 状態。consent_required と
   // 違ってこちらは "あとで" を選んで先送りできる。
   const [optionalConsentPending, setOptionalConsentPending] = useState<boolean>(false)
+  // 新規登録直後の仮登録状態 (player ロール / チーム未確定)。使えはするが
+  // 自分のデータしか無いので、空に見える理由を常時表示する。
+  const [awaitingApproval, setAwaitingApproval] = useState<boolean>(false)
 
   useIdleLogout({
     enabled: !!token,
@@ -589,6 +592,7 @@ function ProtectedMainRoute() {
           displayName: me.display_name ?? null,
           pageAccess: me.page_access ?? [],
         })
+        setAwaitingApproval(!!me.awaiting_admin_approval)
         setConsentRequired(!!me.consent_required)
         setOptionalConsentPending(!!me.optional_consent_pending)
       })
@@ -695,8 +699,32 @@ function ProtectedMainRoute() {
           </ErrorBoundary>
         }
       />
-      <Route path="*" element={<MainLayout />} />
+      <Route
+        path="*"
+        element={
+          <>
+            {/* フルブリードのスマホアノテ画面には出さない (R48 の趣旨を壊すため) */}
+            {awaitingApproval && <PendingApprovalBanner />}
+            <MainLayout />
+          </>
+        }
+      />
     </Routes>
+  )
+}
+
+/** 仮登録 (admin がチームとロールを確定する前) であることの常時表示。 */
+function PendingApprovalBanner() {
+  const { t } = useTranslation()
+  return (
+    <div
+      role="status"
+      className="px-4 py-2 text-sm text-center border-b border-[var(--ss-border)] bg-[var(--ss-surface-2)] text-[var(--ss-t2)]"
+    >
+      <span className="font-medium text-[var(--ss-t1)]">{t('auth.pending_approval.title')}</span>
+      <span className="mx-2">—</span>
+      <span>{t('auth.pending_approval.body')}</span>
+    </div>
   )
 }
 

@@ -378,6 +378,9 @@ export interface AuthMeDTO {
   // 任意同意のうち 1 度も回答していない type が残っているか。
   // True: popup を出す。ユーザは「あとで」も選べる。
   optional_consent_pending?: boolean
+  // 新規登録直後 (player 仮登録) で、admin がチームとロールを確定していない状態。
+  // player として使えるが自分のデータしか無いので、その理由を画面に出す。
+  awaiting_admin_approval?: boolean
 }
 
 export function authMe(): Promise<AuthMeDTO> {

@@ -1529,6 +1529,12 @@ def me(request: Request, db: Session = Depends(get_db)):
         # 任意同意のうち 1 度も回答していない type が残っているか。
         # True なら frontend は popup を表示するが「あとで」だけは押せる軽量 mode。
         "optional_consent_pending": optional_pending,
+        # 仮登録 (公開登録直後で、admin がチームとロールを確定していない) 状態か。
+        # player としては使えるが自分のデータしか無いので、frontend は
+        # その理由をバナーで常時表示する。
+        "awaiting_admin_approval": bool(
+            getattr(user, "awaiting_admin_approval", False)
+        ) if user else False,
     }
 
 
@@ -1826,6 +1832,82 @@ def _resolve_team_for_user_create(
     return team
 
 
+def ensure_player_record(db: Session, user: User) -> Optional[int]:
+    """role='player' の user に Player レコードを必ず 1 つ結び付ける。
+
+    PlayerAccessControlMiddleware は player_id を持たない player トークンを
+    **全 /api/ で 401** にする (main.py「player ロールを名乗るが player_id を
+    持たない → 常に拒否」)。つまり player ロールの user を player_id なしで
+    作ると、ログインは通るのにアプリが一切使えないアカウントができあがる。
+    self-register / 招待受諾 / 保留ユーザ承認のいずれもこれを作っていたため、
+    「player ロールの user を作る・role を player にする」経路はすべて
+    ここを通す。
+
+    既に player_id があれば何もしない (他人の Player に付け替えない)。
+    所属は承認時に admin が決めるので team_id は user の現在値をそのまま写す
+    (未所属なら None のまま)。
+    """
+    if (user.role or "") != "player":
+        return user.player_id
+    if user.player_id is not None:
+        return user.player_id
+    name = (user.display_name or user.username or "").strip()[:100]
+    if not name:
+        name = f"user{user.id}"
+    player = Player(name=name, team_id=user.team_id)
+    db.add(player)
+    db.flush()
+    user.player_id = player.id
+    return player.id
+
+
+def _player_is_unreferenced(db: Session, player_id: int) -> bool:
+    """その Player を指している行が players 以外に 1 つも無いか。
+
+    参照テーブルを手で列挙すると新しいテーブルが増えたときに黙って腐るので、
+    metadata の外部キーから引く。
+    """
+    import sqlalchemy as _sa
+    from backend.db.models import Base as _Base
+    for table in _Base.metadata.sorted_tables:
+        if table.name == "players":
+            continue
+        for fk in table.foreign_keys:
+            if fk.column.table.name != "players":
+                continue
+            n = db.execute(
+                _sa.select(_sa.func.count()).select_from(table).where(fk.parent == player_id)
+            ).scalar()
+            if n:
+                return False
+    return True
+
+
+def release_provisional_player(db: Session, user: User) -> None:
+    """player ロールでなくなった user から、自動生成した Player を切り離す。
+
+    self-register は全員 player ロールで入ってくるので、admin が coach /
+    analyst として承認した瞬間、自動生成した Player は誰でもない行として
+    名簿に残る。まだ何からも参照されていない = 自動生成されたまま使われて
+    いない行なので、そのときだけ切り離して消す。試合や注釈が既に付いている
+    なら実体のある選手なので、紐付けも行もそのままにする。
+    """
+    pid = user.player_id
+    if pid is None:
+        return
+    player = db.get(Player, pid)
+    if player is None:
+        user.player_id = None
+        db.flush()
+        return
+    if not _player_is_unreferenced(db, pid):
+        return
+    user.player_id = None
+    db.flush()
+    db.delete(player)
+    db.flush()
+
+
 @router.get("/users")
 def list_users(request: Request, db: Session = Depends(get_db)):
     from backend.utils.auth import get_auth
@@ -1942,6 +2024,9 @@ def create_user(body: UserCreate, request: Request, db: Session = Depends(get_db
         hashed_credential=hashed,
     )
     db.add(user)
+    # player ロールで player_id を省略されたら、その場で Player を作って紐付ける。
+    # 省略を許したまま作ると「ログインは通るのに全 API が 401」のアカウントになる。
+    ensure_player_record(db, user)
     # parallel POST race: 同じ username / player_id が DB レベルの unique 制約で
     # IntegrityError になる経路を 409 に正規化する (round 210 AA8)。素の 500 は
     # スタックトレースリークと攻撃者の意図しない情報提示につながるので避ける。
@@ -2215,6 +2300,9 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
         user.team_name = team.name
     if body.player_id is not None and ctx.is_admin:
         user.player_id = body.player_id
+    # role を player にしたのに player_id が無いと、以後そのユーザは全 API で
+    # 401 になる。role 変更の副作用としてここで必ず紐付ける。
+    ensure_player_record(db, user)
 
     # 最終 role が admin 以外なら team_name は必須 (空文字化を防止)
     final_role = user.role

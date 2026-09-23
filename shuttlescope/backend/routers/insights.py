@@ -53,8 +53,14 @@ def get_growth_snapshot(
         raise HTTPException(status_code=401, detail="auth required")
     if ctx.role not in {"player", "coach", "analyst", "admin", "demo"}:
         raise HTTPException(status_code=403, detail="forbidden")
-    # player は本人のみ
-    if ctx.role == "player" and ctx.player_id is not None and ctx.player_id != player_id:
+    # player は本人のみ。
+    # `ctx.player_id is not None` を条件に入れていたため、player_id を持たない
+    # player では照合そのものが飛ばされ、任意の ?player_id= を指定できていた。
+    # 実際には PlayerAccessControlMiddleware が player_id 無しの player を
+    # 全 /api/ で 401 にしているので HTTP 経由では踏めないが、**この関数自体は
+    # 「スコープが NULL なら素通し」**という形になっている。middleware の
+    # 一行に依存した守りなので、ここでも閉じる。
+    if ctx.role == "player" and ctx.player_id != player_id:
         raise HTTPException(status_code=403, detail="player can only view own snapshot")
 
     analytics = _example_analytics()

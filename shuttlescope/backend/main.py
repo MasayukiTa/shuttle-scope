@@ -1996,14 +1996,28 @@ _GLOBAL_AUTH_EXEMPT = _re_acl.compile(
 # rotation の reuse 検知 + lockout 再 check が走るので、Authorization 不要でも
 # brute-force / replay は防げる。
 
-# 承認待ち (awaiting_admin_approval=True) ユーザでも到達可能なエンドポイント。
-# - /api/auth/me: 自分の承認状態 / email_verified の確認
-# - /api/auth/logout: ログアウト
-# - /api/auth/email/resend_verification: 検証メール再送
-# それ以外は admin が承認するまで全 403 を返す。
-_PENDING_APPROVAL_ALLOW = _re_acl.compile(
-    r"^/api/auth/(me|logout|email/resend_verification)$"
-)
+# 承認待ち (awaiting_admin_approval=True) ユーザの扱い。
+#
+# 2026-09-23 に方針を変更した。以前はここで
+# `^/api/auth/(me|logout|email/resend_verification)$` 以外を全部 403 にして
+# いたが、公開登録は player ロールで入ってくるので、承認待ちの間は
+# **ログインできるのに何も開けない**状態だった (フロントには承認待ちを
+# 表示する画面も無く、全 API が 403 で壊れて見えていた)。
+#
+# 新しい定義: 承認待ちは「チーム未所属の player」。player ロールとしての
+# 権限はそのまま通し、admin の承認は「ロールとチームの確定」に格下げする。
+# 実データが見えないのは承認フラグではなく、既存の player スコープが
+# 担保している (自分の player_id / team_id に無い試合は 403/404、
+# 書き込みは PlayerAccessControlMiddleware の allowlist で 403)。
+#
+# 一方で、承認待ちのまま player 以外のロールを持つ状態は想定していない
+# (承認して初めて analyst / coach になる)。万一そうなったら fail-closed に
+# 倒す — ここを「全部通す」にすると、将来ロールが増えたときに黙って
+# 権限が開く。
+def _pending_approval_allows(role: str, path: str) -> bool:
+    if role == "player":
+        return True
+    return bool(_re_acl.match(r"^/api/auth/(me|logout|email/resend_verification)$", path))
 
 
 class GlobalAuthMiddleware(BaseHTTPMiddleware):
@@ -2094,8 +2108,9 @@ class GlobalAuthMiddleware(BaseHTTPMiddleware):
             )
         # 承認待ちユーザーの API 制限
         # JWT に awaiting フラグは入れていないため DB を引いて確認する。
-        # 軽量化のためパスが既に許可リストならスキップ。
-        if not _PENDING_APPROVAL_ALLOW.match(request.url.path):
+        # 軽量化のため、そのロールで既に許可されるパスなら DB を引かない。
+        if not _pending_approval_allows((payload.get("role") or "").strip(),
+                                        request.url.path):
             user_id = payload.get("sub")
             if user_id is not None:
                 try:
@@ -3134,8 +3149,14 @@ def _ws_origin_allowed(websocket: WebSocket) -> bool:
     return origin in allowed or origin in extra_local
 
 
-async def _ws_require_auth(websocket: WebSocket) -> bool:
+async def _ws_require_auth(websocket: WebSocket) -> "dict | None":
     """WS 接続時のJWT事前検証（accept() 前に呼ぶ）。
+
+    戻り値は「検証済み JWT payload」。拒否したときだけ None を返す。
+    ループバック無認証で通した場合は payload が無いので空 dict を返す
+    (呼び出し側は `is None` で判定すること。空 dict は falsy なので
+    `if not payload` と書くとループバックを拒否してしまう)。
+    呼び出し側がロール/承認状態で追加判定できるように payload を返している。
 
     Round 258 R3 P0 fix:
     - Origin allowlist チェックを最初に追加 (CSWSH 対策)
@@ -3154,29 +3175,30 @@ async def _ws_require_auth(websocket: WebSocket) -> bool:
     # CSWSH 防御
     if not _ws_origin_allowed(websocket):
         await websocket.close(code=4403)
-        return False
+        return None
 
-    def _accept_token(tok: str) -> bool:
+    def _accept_token(tok: str) -> "dict | None":
         if not tok:
-            return False
+            return None
         payload = verify_token(tok)
         if not payload:
-            return False
+            return None
         # mfa_pending は WS 経由のロール強化に流用できないよう拒否
         role = (payload.get("role") or "").strip()
         if role == "mfa_pending" or not role:
-            return False
-        return True
+            return None
+        return payload
 
     # PUBLIC_MODE（Cloudflare 公開）では、cloudflared が 127.0.0.1 から接続するため
     # loopback / ws:// の緩和条件を許容すると外部から JWT 無しで WS に繋げてしまう。
     # したがって PUBLIC_MODE 時は例外なく JWT を要求する。
     if app_settings.PUBLIC_MODE:
         token = websocket.query_params.get("token", "")
-        if _accept_token(token):
-            return True
+        payload = _accept_token(token)
+        if payload is not None:
+            return payload
         await websocket.close(code=4401)
-        return False
+        return None
 
     client_ip = websocket.client.host if websocket.client else ""
     forwarded = (
@@ -3202,17 +3224,89 @@ async def _ws_require_auth(websocket: WebSocket) -> bool:
         and normalized_ip in real_loopback
         and not forwarded
     ):
-        return True
+        return {}
 
     # 旧コードは scheme == "ws"（平文 WS）を session_code を shared-secret として
     # 信頼していたが、LAN attacker が session_code を brute-force すれば camera
     # signaling 乗っ取り / WebRTC MITM / YOLO DoS が成立するため撤去。
     token = websocket.query_params.get("token", "")
-    if _accept_token(token):
-        return True
+    payload = _accept_token(token)
+    if payload is not None:
+        return payload
 
     await websocket.close(code=4401)
-    return False
+    return None
+
+
+def _ws_auth_ctx(payload: dict):
+    """WS の JWT payload から AuthCtx を組み立てる。
+
+    get_auth は Request 前提なので WS からは使えない。WS でも HTTP と同じ
+    スコープ判定 (user_can_access_match 等) を掛けられるようにするための橋。
+    """
+    from backend.utils.auth import AuthCtx
+
+    def _int_or_none(v):
+        try:
+            n = int(v)
+            return n if n > 0 else None
+        except (ValueError, TypeError):
+            return None
+
+    role = (payload.get("role") or "").strip() or None
+    uid = _int_or_none(payload.get("sub"))
+    # AuthCtx.is_admin は MFA enrollment との AND を取る。get_auth と同じ判定を
+    # ここでも行わないと、admin が常に非 admin 扱いになりライブが見られなくなる。
+    admin_mfa_ok = False
+    if role == "admin":
+        try:
+            if not getattr(app_settings, "ss_require_admin_mfa", True):
+                admin_mfa_ok = True
+            elif uid:
+                from backend.db.database import SessionLocal as _SL_ws
+                from backend.db.models import User as _User_ws
+                with _SL_ws() as _db_ws:
+                    _u_ws = _db_ws.get(_User_ws, uid)
+                    admin_mfa_ok = bool(_u_ws and getattr(_u_ws, "totp_enabled", False))
+        except Exception:
+            admin_mfa_ok = False
+    tn = payload.get("team_name")
+    return AuthCtx(
+        role,
+        _int_or_none(payload.get("player_id")),
+        tn.strip() if isinstance(tn, str) and tn.strip() else None,
+        user_id=uid,
+        team_id=_int_or_none(payload.get("team_id")),
+        admin_mfa_ok=admin_mfa_ok,
+    )
+
+
+def _ws_session_allowed(payload: dict, session_code: str, db) -> bool:
+    """この JWT でこの共有セッションのライブフィードを見てよいか。
+
+    HTTP 側と同じ `user_can_access_match` を使う。admin は素通り、player は
+    自分が出ている試合のみ、coach / analyst は自チーム / 公開プールのみ。
+    セッションが無い場合も False (呼び出し側が存在と同じ 4404 を返す)。
+    """
+    from backend.db.models import SharedSession
+    from backend.utils.auth import user_can_access_match
+
+    sess = (
+        db.query(SharedSession)
+        .filter(SharedSession.session_code == session_code,
+                SharedSession.is_active.is_(True))
+        .first()
+    )
+    if sess is None:
+        return False
+    match = getattr(sess, "match", None)
+    if match is None:
+        return False
+    try:
+        return bool(user_can_access_match(_ws_auth_ctx(payload), match))
+    except Exception:
+        # 判定できないときは閉じる (fail-closed)
+        return False
 
 
 # ─── S-001: WebSocket ライブフィード ─────────────────────────────────────────
@@ -3220,11 +3314,20 @@ async def _ws_require_auth(websocket: WebSocket) -> bool:
 @app.websocket("/ws/live/{session_code}")
 async def ws_live(session_code: str, websocket: WebSocket):
     """コーチ / ビューワーがリアルタイムでスコア・ラリー情報を受け取る WS エンドポイント"""
-    if not await _ws_require_auth(websocket):
+    payload = await _ws_require_auth(websocket)
+    if payload is None:
         return
     from backend.ws.live import ws_live_handler
     db = next(get_db())
     try:
+        # セッションコードだけを合言葉にしない。HTTP 側は試合の所属で閲覧可否を
+        # 決めているのに、ここは「有効な JWT + 6 文字のコード」で誰でもスナップ
+        # ショット (スコア・直近ラリー・選手名) を取れていた。同じ試合アクセス
+        # 判定を WS にも通す。close する前に判定するので 4404 との差で
+        # コードの存在を当てられることも無くなる。
+        if payload and not _ws_session_allowed(payload, session_code, db):
+            await websocket.close(code=4404, reason="セッションが存在しないか終了しています")
+            return
         await ws_live_handler(session_code, websocket, db)
     finally:
         db.close()
@@ -3241,8 +3344,18 @@ async def ws_yolo_realtime(session_code: str, websocket: WebSocket):
     セッションごとに独立、接続ごとに独立タスクで動作するため、複数 PC からの
     並列接続が自然にサポートされる（共有状態なし）。
     """
-    if not await _ws_require_auth(websocket):
+    payload = await _ws_require_auth(websocket)
+    if payload is None:
         return
+    # ここはフレームを受け取るたびに GPU 推論を回す。旧コードは「有効な JWT が
+    # あるか」しか見ていなかったので、公開登録で作った誰のアカウントでも
+    # 任意のラベル文字列を session_code に渡して推論を回せた (接続数の上限も
+    # 無い)。操作する側 = カメラ WS の operator と同じロールに揃える。
+    if payload:
+        _role_yolo = (payload.get("role") or "").strip()
+        if _role_yolo not in ("admin", "analyst", "coach"):
+            await websocket.close(code=4403, reason="この操作の権限がありません")
+            return
     from backend.routers.yolo_realtime import ws_realtime_yolo_handler
     await ws_realtime_yolo_handler(session_code, websocket)
 
@@ -3303,7 +3416,7 @@ async def ws_camera(
         )
         return
 
-    if not await _ws_require_auth(websocket):
+    if await _ws_require_auth(websocket) is None:
         return
 
     # 入場券が無いなら device / viewer としては繋がせない。
