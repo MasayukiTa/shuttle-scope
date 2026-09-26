@@ -1242,6 +1242,8 @@
       "settings_section_match": "試合設定",
       "settings_player_a_start_label": "解析対象 (A) の初期コート",
       "settings_player_a_start_hint": "コートチェンジ前の A の側 (画面の上下)",
+      "start_side_required_title": "開始サイドを設定してください",
+      "start_side_required_hint": "CV の選手対応付けに必要です。1セット目開始時の A の位置を選んでください。",
       "settings_side_top": "↑ 上",
       "settings_side_bottom": "↓ 下",
       "settings_initial_server_label": "最初のサーバー (1セット目)",

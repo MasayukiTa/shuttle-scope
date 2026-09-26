@@ -2922,6 +2922,34 @@ export function AnnotatorPage() {
 
       {/* メインレイアウト
           U7: モバイル (<md) は縦積み (動画上 / パネル下)。≥md は従来の横並び。 */}
+      {match && !match.player_a_start_side && (
+        <div className="shrink-0 border-b border-amber-500/40 bg-amber-500/10 px-3 py-2 flex flex-wrap items-center gap-2 text-xs">
+          <MIcon name="warning" size={16} className="text-amber-400 shrink-0" />
+          <span className="font-medium text-[var(--ss-t1)]">
+            {t('annotator.ux.start_side_required_title')}
+          </span>
+          <span className="text-[var(--ss-t2)]">
+            {t('annotator.ux.start_side_required_hint')}
+          </span>
+          <div className="ml-auto flex gap-1">
+            <button
+              type="button"
+              onClick={() => handleViewpointChange('bottom')}
+              className="px-2.5 py-1.5 rounded-ss-md bg-[var(--ss-surface-2)] text-[var(--ss-t1)] border border-[var(--ss-border)] hover:bg-[var(--ss-surface-3)]"
+            >
+              {t('annotator.ux.settings_side_bottom')}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleViewpointChange('top')}
+              className="px-2.5 py-1.5 rounded-ss-md bg-[var(--ss-surface-2)] text-[var(--ss-t1)] border border-[var(--ss-border)] hover:bg-[var(--ss-surface-3)]"
+            >
+              {t('annotator.ux.settings_side_top')}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
         {/* 左: 動画エリア — 試合中モード時/モバイル時は非表示 */}
         <div
@@ -3382,7 +3410,7 @@ export function AnnotatorPage() {
                 onOpenCalibration={() => setCourtGridVisible(true)}
                 onOpenKeyboardLegend={() => setShowLegendOverlay(true)}
                 playerAStart={playerAStart}
-                onSetPlayerAStart={setPlayerAStart}
+                onSetPlayerAStart={handleViewpointChange}
                 initialServer={(match?.initial_server as 'player_a' | 'player_b' | undefined) ?? 'player_a'}
                 onSetInitialServer={handleInitialServerChange}
                 forceShowKeyHints={forceShowKeyHints}
@@ -4923,7 +4951,7 @@ export function AnnotatorPage() {
               onOpenCalibration={() => setCourtGridVisible(true)}
               onOpenKeyboardLegend={() => setShowLegendOverlay(true)}
               playerAStart={playerAStart}
-              onSetPlayerAStart={setPlayerAStart}
+              onSetPlayerAStart={handleViewpointChange}
               initialServer={(match?.initial_server as 'player_a' | 'player_b' | undefined) ?? 'player_a'}
               onSetInitialServer={handleInitialServerChange}
             />

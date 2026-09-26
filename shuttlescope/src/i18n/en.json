@@ -1486,6 +1486,8 @@
       "settings_section_match": "Match settings",
       "settings_player_a_start_label": "Initial court of analyzed player (A)",
       "settings_player_a_start_hint": "A's side (top/bottom of the screen) before court change",
+      "start_side_required_title": "Set the starting side",
+      "start_side_required_hint": "CV player mapping needs this. Choose A's position at the start of Set 1.",
       "settings_side_top": "↑ Top",
       "settings_side_bottom": "↓ Bottom",
       "settings_initial_server_label": "First server (Set 1)",
