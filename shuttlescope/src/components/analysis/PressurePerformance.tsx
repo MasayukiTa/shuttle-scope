@@ -131,7 +131,7 @@ export function PressurePerformance({ playerId, filters = DEFAULT_FILTERS }: Pre
   return (
     <div className="space-y-3">
       {/* 信頼度バッジ */}
-      <ConfidenceBadge sampleSize={sampleSize} />
+      <ConfidenceBadge sampleSize={sampleSize} unit="rallies" />
 
       {/* 3列カード */}
       <div className="grid grid-cols-3 gap-3">

@@ -277,7 +277,7 @@ export function StyleDistanceCard({ playerId }: Props) {
                       n: distData!.cohort_size,
                     })}
                   </span>
-                  <ConfidenceBadge sampleSize={meta?.sample_size ?? 0} compact />
+                  <ConfidenceBadge sampleSize={meta?.sample_size ?? 0} unit={meta?.sample_unit ?? undefined} compact />
                 </div>
               </div>
 

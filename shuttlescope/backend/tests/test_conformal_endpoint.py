@@ -177,6 +177,7 @@ class TestConformalEndpoint:
         assert "sample_size" in meta
         assert "confidence" in meta
         assert meta["analysis_type"] == "conformal"
+        assert meta["sample_unit"] == "rallies"
         assert meta["tier"] == "research"
         assert meta["evidence_level"] == "exploratory"
 

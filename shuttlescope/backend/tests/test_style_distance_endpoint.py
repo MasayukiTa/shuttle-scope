@@ -183,6 +183,7 @@ class TestStyleDistanceEndpoint:
         assert "zone_labels" in data
         meta = body["meta"]
         assert meta["analysis_type"] == "style_distance"
+        assert meta["sample_unit"] is None
 
     def test_zone_labels_has_9_entries(self, style_distance_client):
         """zone_labels は 9 ゾーン (BL/BC/BR/ML/MC/MR/NL/NC/NR) を返すこと。"""

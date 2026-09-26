@@ -1,5 +1,6 @@
 // コンフォーマル予測 API クライアント（分布フリーカバレッジ保証）
 import { apiGet } from '@/api/client'
+import type { SampleUnit } from '@/types'
 
 // ── 型定義 ──────────────────────────────────────────────────────────────────
 
@@ -48,6 +49,7 @@ export interface ConformalData {
 
 export interface ConformalMeta {
   sample_size: number
+  sample_unit?: SampleUnit | null
   confidence: Record<string, unknown>
   analysis_type: string
   tier: string

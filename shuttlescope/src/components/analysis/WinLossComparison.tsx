@@ -76,7 +76,7 @@ function ComparisonContent({ playerId, filters = DEFAULT_FILTERS }: { playerId: 
 
   return (
     <div className="space-y-3">
-      <ConfidenceBadge sampleSize={sampleSize} />
+      <ConfidenceBadge sampleSize={sampleSize} unit="matches" />
 
       <div className="overflow-x-auto">
         <table className="w-full text-sm">

@@ -218,7 +218,7 @@ export function GrowthTimeline({
 
   return (
     <div className="space-y-2">
-      <ConfidenceBadge sampleSize={sampleSize} />
+      <ConfidenceBadge sampleSize={sampleSize} unit="matches" />
 
       {/* トレンドラベル（メインプレイヤー） */}
       <div className="flex items-center justify-between">

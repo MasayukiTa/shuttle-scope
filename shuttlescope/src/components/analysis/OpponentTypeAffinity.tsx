@@ -87,7 +87,7 @@ export function OpponentTypeAffinity({ playerId, filters = DEFAULT_FILTERS }: Op
 
   return (
     <div className="space-y-3">
-      <ConfidenceBadge sampleSize={sampleSize} />
+      <ConfidenceBadge sampleSize={sampleSize} unit="matches" />
 
       <div className="space-y-2">
         {summary.map((entry) => {

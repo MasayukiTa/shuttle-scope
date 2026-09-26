@@ -219,7 +219,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
       {/* Layer A: コーチ向けサマリー */}
       <div className="bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-lg shadow-card p-4 space-y-4">
         <div className="flex items-center gap-3 flex-wrap">
-          {meta && <ConfidenceBadge sampleSize={d.sample_size} />}
+          {meta && <ConfidenceBadge sampleSize={d.sample_size} unit="matches" />}
           <span className="text-xs" style={{ color: subText }}>
             {t('prediction.sample_size')}: {t('auto._shared.n_matches', { n: d.sample_size })}
           </span>

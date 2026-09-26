@@ -1,5 +1,6 @@
 // DR-OPE ポリシー評価 API クライアント
 import { apiGet } from '@/api/client'
+import type { SampleUnit } from '@/types'
 
 // ── 型定義 ──────────────────────────────────────────────────────────────────
 
@@ -35,6 +36,7 @@ export interface PolicyEvalSummary {
 
 export interface PolicyEvalMeta {
   sample_size: number
+  sample_unit?: SampleUnit | null
   confidence: Record<string, unknown>
   analysis_type: 'policy_eval'
   tier: string

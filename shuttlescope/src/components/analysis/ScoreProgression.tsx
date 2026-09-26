@@ -232,7 +232,7 @@ export function ScoreProgression({ matchId, onSetPointClick, initialSet }: Score
 
   return (
     <div className="space-y-3">
-      <ConfidenceBadge sampleSize={sampleSize} />
+      <ConfidenceBadge sampleSize={sampleSize} unit="rallies" />
 
       {/* セットセレクター */}
       {sets.length > 1 && (

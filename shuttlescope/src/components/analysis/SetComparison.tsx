@@ -115,7 +115,7 @@ export function SetComparison({ playerId, chartHeight = 200, filters = DEFAULT_F
   return (
     <div className="space-y-3">
       {/* 信頼度バッジ */}
-      <ConfidenceBadge sampleSize={sampleSize} />
+      <ConfidenceBadge sampleSize={sampleSize} unit="rallies" />
 
       {/* 勝率縦棒グラフ */}
       <ResponsiveContainer width="100%" height={chartHeight}>

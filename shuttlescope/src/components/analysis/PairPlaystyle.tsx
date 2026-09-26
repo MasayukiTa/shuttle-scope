@@ -82,7 +82,7 @@ export function PairPlaystyle({ playerAId, playerBId, playerAName = 'A', playerB
 
   return (
     <div className="space-y-3">
-      <ConfidenceBadge sampleSize={sampleSize} />
+      <ConfidenceBadge sampleSize={sampleSize} unit="strokes" />
 
       {/* プレースタイルバッジ */}
       <div

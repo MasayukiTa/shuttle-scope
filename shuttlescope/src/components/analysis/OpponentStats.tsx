@@ -49,7 +49,7 @@ function OpponentTable({ playerId }: { playerId: number }) {
 
   return (
     <div className="space-y-3">
-      <ConfidenceBadge sampleSize={sampleSize} />
+      <ConfidenceBadge sampleSize={sampleSize} unit="rallies" />
 
       {/* モバイル: カードリスト (md 未満)。情報量を維持しつつ縦並びで横スクロール回避 */}
       <ul className="md:hidden space-y-1.5">

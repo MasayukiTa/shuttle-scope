@@ -84,7 +84,7 @@ export function EffectiveDistributionMap({ playerId, filters = DEFAULT_FILTERS }
     <>
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <ConfidenceBadge sampleSize={sampleSize} />
+          <ConfidenceBadge sampleSize={sampleSize} unit="strokes" />
           <button
             onClick={() => { setInitialZone(null); setModalOpen(true) }}
             title={t('auto.EffectiveDistributionMap.k4')}

@@ -98,7 +98,7 @@ export function PreWinPatterns({ playerId, filters = DEFAULT_FILTERS }: PreWinPa
 
   return (
     <div className="space-y-3">
-      <ConfidenceBadge sampleSize={sampleSize} />
+      <ConfidenceBadge sampleSize={sampleSize} unit="rallies" />
 
       <div className="flex gap-1">
         {tabs.map((tab) => (

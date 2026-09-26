@@ -22,6 +22,7 @@ from backend.analysis.router_helpers import (
     _player_role_in_match, _get_player_matches, _fetch_matches_sets_rallies,
 )
 from backend.analysis.analysis_config import AnalysisConfig
+from backend.analysis.analysis_registry import get_analysis_meta
 from backend.analysis.response_meta import build_input_provenance
 from backend.analysis.markov import MarkovAnalyzer
 from backend.analysis.shot_influence import ShotInfluenceAnalyzer
@@ -86,10 +87,15 @@ def _with_input_provenance(
     strokes_by_rally: dict | None = None,
     uses_hit_zone: bool = False,
 ) -> dict:
-    """Attach provenance only when this endpoint still has the raw source rows."""
-    if rallies is None and strokes is None and strokes_by_rally is None:
-        return meta
+    """Attach declared sample unit and provenance for analysis responses."""
     enriched = dict(meta)
+    analysis_type = enriched.get("analysis_type")
+    if analysis_type and "sample_unit" not in enriched:
+        enriched["sample_unit"] = get_analysis_meta(str(analysis_type)).get("sample_unit")
+
+    if rallies is None and strokes is None and strokes_by_rally is None:
+        return enriched
+
     enriched["input_provenance"] = build_input_provenance(
         rallies=rallies or [],
         strokes_by_rally=strokes_by_rally or {},
@@ -2093,8 +2099,13 @@ def get_matchup_forecast(
             "success": True,
             "data": {"player_id": player_id, "strength": None, "matchups": [],
                      "n_players": len(ids), "n_matches": len(pairs)},
-            "meta": {"sample_size": len(pairs), "confidence": confidence,
-                     "analysis_type": "matchup_forecast", "tier": "research", "evidence_level": "exploratory"},
+            "meta": _with_input_provenance({
+                "sample_size": len(pairs),
+                "confidence": confidence,
+                "analysis_type": "matchup_forecast",
+                "tier": "research",
+                "evidence_level": "exploratory",
+            }),
         }
 
     idx = {pid: i for i, pid in enumerate(ids)}
@@ -2125,6 +2136,11 @@ def get_matchup_forecast(
         "success": True,
         "data": {"player_id": player_id, "strength": strength, "matchups": matchups,
                  "n_players": len(ids), "n_matches": len(pairs)},
-        "meta": {"sample_size": len(pairs), "confidence": confidence,
-                 "analysis_type": "matchup_forecast", "tier": "research", "evidence_level": "exploratory"},
+        "meta": _with_input_provenance({
+            "sample_size": len(pairs),
+            "confidence": confidence,
+            "analysis_type": "matchup_forecast",
+            "tier": "research",
+            "evidence_level": "exploratory",
+        }),
     }

@@ -205,7 +205,7 @@ export function MatchupForecastCard({ playerId }: Props) {
                     high: forecastData.strength.ci_high.toFixed(3),
                   })}
                 </span>
-                <ConfidenceBadge sampleSize={meta?.sample_size ?? 0} compact />
+                <ConfidenceBadge sampleSize={meta?.sample_size ?? 0} unit={meta?.sample_unit ?? undefined} compact />
               </div>
             </div>
           )}

@@ -401,7 +401,7 @@ export function ConformalCard({ playerId }: Props) {
                       test: confData!.n_test,
                     })}
                   </span>
-                  <ConfidenceBadge sampleSize={meta?.sample_size ?? 0} compact />
+                  <ConfidenceBadge sampleSize={meta?.sample_size ?? 0} unit={meta?.sample_unit ?? undefined} compact />
                 </div>
               </div>
 

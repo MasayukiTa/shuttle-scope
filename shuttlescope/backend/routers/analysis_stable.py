@@ -16,6 +16,7 @@ from backend.analysis.router_helpers import (
     _player_role_in_match, _get_player_matches, _fetch_matches_sets_rallies,
 )
 from backend.analysis.analysis_config import AnalysisConfig
+from backend.analysis.analysis_registry import get_analysis_meta
 from backend.analysis.response_meta import build_input_provenance
 
 from backend.utils.auth import require_query_scope  # cross-team IDOR ガード
@@ -32,6 +33,9 @@ def _with_input_provenance(
     uses_hit_zone: bool = False,
 ) -> dict:
     enriched = dict(meta)
+    analysis_type = enriched.get("analysis_type")
+    if analysis_type and "sample_unit" not in enriched:
+        enriched["sample_unit"] = get_analysis_meta(str(analysis_type)).get("sample_unit")
     enriched["input_provenance"] = build_input_provenance(
         rallies=rallies or [],
         strokes_by_rally=strokes_by_rally or {},
@@ -228,6 +232,7 @@ def get_heatmap(
             {
                 "sample_size": total_strokes,
                 "confidence": confidence,
+                "analysis_type": "heatmap",
             },
             strokes=provenance_strokes,
             uses_hit_zone=(type == "hit"),

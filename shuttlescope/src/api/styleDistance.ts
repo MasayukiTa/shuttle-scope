@@ -1,5 +1,6 @@
 // スタイル距離（最適輸送）API クライアント
 import { apiGet } from '@/api/client'
+import type { SampleUnit } from '@/types'
 
 // ── 型定義 ──────────────────────────────────────────────────────────────────
 
@@ -31,6 +32,7 @@ export interface StyleDistanceData {
 
 export interface StyleDistanceMeta {
   sample_size: number
+  sample_unit?: SampleUnit | null
   confidence: Record<string, unknown>
   analysis_type: 'style_distance'
   tier: string

@@ -84,7 +84,7 @@ export function PairCombinedView({
 
   return (
     <div className="space-y-4">
-      <ConfidenceBadge sampleSize={sampleSize} />
+      <ConfidenceBadge sampleSize={sampleSize} unit="rallies" />
 
       {/* ペア勝率 + 試合数 */}
       <div className="flex gap-3">

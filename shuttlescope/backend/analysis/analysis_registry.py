@@ -92,6 +92,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "heatmap",
+        "sample_unit": "strokes",
         "tier": "stable",
         "evidence_level": "practical_adopted",
         "caution": None,
@@ -352,6 +353,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "exploitability",
+        "sample_unit": "strokes",
         "tier": "research",
         "evidence_level": "exploratory",
         "min_recommended_sample": 20,
@@ -374,6 +376,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "conformal",
+        "sample_unit": "rallies",
         "tier": "research",
         "evidence_level": "exploratory",
         "min_recommended_sample": 40,
@@ -398,6 +401,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "policy_eval",
+        "sample_unit": "strokes",
         "tier": "research",
         "evidence_level": "exploratory",
         "min_recommended_sample": 20,
@@ -432,6 +436,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "matchup_forecast",
+        "sample_unit": "matches",
         "tier": "research",
         "evidence_level": "exploratory",
         "min_recommended_sample": 5,

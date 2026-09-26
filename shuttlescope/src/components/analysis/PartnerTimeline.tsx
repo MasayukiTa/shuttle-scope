@@ -75,7 +75,7 @@ export function PartnerTimeline({ playerId, partnerId, partnerName }: PartnerTim
 
   return (
     <div className="space-y-2">
-      <ConfidenceBadge sampleSize={sampleSize} />
+      <ConfidenceBadge sampleSize={sampleSize} unit="matches" />
 
       <div className="flex items-center justify-between">
         <span className="text-xs text-[var(--ss-t3)]">

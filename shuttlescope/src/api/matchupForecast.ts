@@ -1,5 +1,6 @@
 // 対戦予測（階層ベイズ）API クライアント
 import { apiGet } from '@/api/client'
+import type { SampleUnit } from '@/types'
 
 // ── 型定義 ──────────────────────────────────────────────────────────────────
 
@@ -25,6 +26,7 @@ export interface MatchupForecastData {
 
 export interface MatchupForecastMeta {
   sample_size: number
+  sample_unit?: SampleUnit | null
   confidence: Record<string, unknown>
   analysis_type: 'matchup_forecast'
   tier: string

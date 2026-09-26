@@ -79,14 +79,14 @@ function Inner({ playerId }: { playerId: number }) {
   const sampleSize = resp?.meta?.sample_size ?? 0
 
   if (opponents.length === 0) {
-    return <NoDataMessage sampleSize={sampleSize} minRequired={5} unit="試合" />
+    return <NoDataMessage sampleSize={sampleSize} minRequired={5} unit="ストローク" />
   }
 
   const activeOpp = selected !== null ? opponents.find(o => o.opponent_id === selected) : opponents[0]
 
   return (
     <div className="space-y-3">
-      <ConfidenceBadge sampleSize={sampleSize} />
+      <ConfidenceBadge sampleSize={sampleSize} unit="strokes" />
 
       {/* 対戦相手タブ */}
       <div className="flex flex-wrap gap-1">

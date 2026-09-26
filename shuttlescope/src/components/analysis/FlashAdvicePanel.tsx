@@ -154,7 +154,7 @@ export function FlashAdvicePanel({ matchId, asOfSet, asOfRallyNum, playerId }: F
 
   return (
     <div className="space-y-3">
-      <ConfidenceBadge sampleSize={sampleSize} />
+      <ConfidenceBadge sampleSize={sampleSize} unit="rallies" />
 
       {extended && (
         <div className="text-[10px] text-gray-400 text-right">

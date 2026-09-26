@@ -167,6 +167,7 @@ class TestPolicyEvalEndpoint:
         assert "sample_size" in meta
         assert "confidence" in meta
         assert meta["analysis_type"] == "policy_eval"
+        assert meta["sample_unit"] == "strokes"
 
     def test_meta_provenance_counts_only_action_strokes(self, policy_eval_client):
         """D-9: DR-OPE の来歴に相手応手を混ぜず、実際の行動 stroke だけ数える。"""

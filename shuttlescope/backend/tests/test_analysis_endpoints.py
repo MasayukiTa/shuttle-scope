@@ -173,6 +173,15 @@ class TestNewAnalysisEndpoints:
         assert data["success"] is True
         assert "levels" in data["data"]
 
+    def test_heatmap_declares_stroke_sample_unit(self, client_with_data):
+        """heatmap の sample_size は stroke 件数なので単位も明示する。"""
+        client, player_id, _ = client_with_data
+        resp = client.get(f"/api/analysis/heatmap?player_id={player_id}&type=hit")
+        assert resp.status_code == 200
+        meta = resp.json()["meta"]
+        assert meta["analysis_type"] == "heatmap"
+        assert meta["sample_unit"] == "strokes"
+
     def test_pre_loss_patterns_returns_200(self, client_with_data):
         """pre_loss_patterns が200を返すこと"""
         client, player_id, _ = client_with_data

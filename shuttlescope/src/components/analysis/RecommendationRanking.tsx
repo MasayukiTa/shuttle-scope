@@ -183,10 +183,10 @@ export function RecommendationRanking({ playerId }: RecommendationRankingProps) 
       </h3>
 
       {items.length === 0 ? (
-        <NoDataMessage sampleSize={sampleSize} minRequired={5} unit="ラリー" />
+        <NoDataMessage sampleSize={sampleSize} minRequired={5} unit="ストローク" />
       ) : (
         <div className="space-y-2">
-          <ConfidenceBadge sampleSize={sampleSize} />
+          <ConfidenceBadge sampleSize={sampleSize} unit="strokes" />
           <div className="space-y-2 mt-2">
             {items.map(item => (
               <RankCard key={item.rank} item={item} isPlayer={isPlayer} />

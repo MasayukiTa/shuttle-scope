@@ -75,7 +75,7 @@ export function SpatialDensityMap({ playerId }: SpatialDensityMapProps) {
   return (
     <div className="bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-lg p-4">
       <h3 className="text-sm font-semibold text-[var(--ss-t1)] mb-3">{t('auto.SpatialDensityMap.k1')}</h3>
-      <ConfidenceBadge sampleSize={sampleSize} />
+      <ConfidenceBadge sampleSize={sampleSize} unit="strokes" />
 
       <div className="mt-3 flex gap-4 items-start">
         {/* SVGコート */}

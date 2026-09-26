@@ -200,7 +200,7 @@ function PartnerRankingSection({
                     )}
                   </span>
                   {/* xs: ConfidenceBadge と試合数を hide して名前領域を確保 */}
-                  <span className="hidden sm:inline-flex"><ConfidenceBadge sampleSize={r.sample_size} /></span>
+                  <span className="hidden sm:inline-flex"><ConfidenceBadge sampleSize={r.sample_size} unit="matches" /></span>
                   <span className="hidden sm:inline text-[10px] shrink-0 ss-num" style={{ color: subText }}>
                     {t('lineup.n_matches', { n: r.sample_size, defaultValue: '{{n}} matches' })}
                   </span>
@@ -360,7 +360,7 @@ export function PairSimulationPanel({ players }: PairSimulationPanelProps) {
         <div className="bg-[var(--ss-surface-2)] rounded-ss-lg p-4 space-y-4">
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-sm font-semibold min-w-0 truncate max-w-full" style={{ color: neutral }} title={d.pair_name}>{d.pair_name}</span>
-            <ConfidenceBadge sampleSize={d.sample_size} />
+            <ConfidenceBadge sampleSize={d.sample_size} unit="matches" />
             <span className="text-xs ss-num" style={{ color: subText }}>{t('lineup.n_matches', { n: d.sample_size, defaultValue: '{{n}} matches' })}</span>
           </div>
 

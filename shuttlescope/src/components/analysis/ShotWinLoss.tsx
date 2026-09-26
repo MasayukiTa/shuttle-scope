@@ -115,7 +115,7 @@ export function ShotWinLoss({ playerId, filters = DEFAULT_FILTERS }: ShotWinLoss
   return (
     <div className="space-y-3">
       {/* 信頼度バッジ */}
-      <ConfidenceBadge sampleSize={sampleSize} />
+      <ConfidenceBadge sampleSize={sampleSize} unit="rallies" />
 
       {/* 積み上げ横棒グラフ */}
       <ResponsiveContainer width="100%" height={chartHeight}>

@@ -126,7 +126,7 @@ export function RallyLengthWinRate({ playerId, chartHeight = 220, filters = DEFA
     <div className="space-y-3">
       {/* 信頼度バッジ + プレイヤータイプバッジ */}
       <div className="flex flex-wrap items-center gap-2">
-        <ConfidenceBadge sampleSize={sampleSize} />
+        <ConfidenceBadge sampleSize={sampleSize} unit="rallies" />
         {playerType && (
           <span
             className={`inline-flex items-center px-2 py-1 rounded-ss-sm border text-xs font-medium ${playerTypeBadgeClass(

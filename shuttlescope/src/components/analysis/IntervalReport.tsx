@@ -75,7 +75,7 @@ export function IntervalReport({ matchId, completedSet, onSetClick }: IntervalRe
 
   return (
     <div className="space-y-3">
-      <ConfidenceBadge sampleSize={sampleSize} />
+      <ConfidenceBadge sampleSize={sampleSize} unit="rallies" />
 
       {/* 現在の推定勝率 — 無彩色カード、数値の符号のみ A/B 色 */}
       {currentEst && (() => {

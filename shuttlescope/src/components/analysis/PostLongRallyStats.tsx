@@ -110,7 +110,7 @@ export function PostLongRallyStats({ playerId, filters = DEFAULT_FILTERS }: Post
 
   return (
     <div className="space-y-3">
-      <ConfidenceBadge sampleSize={sampleSize} />
+      <ConfidenceBadge sampleSize={sampleSize} unit="rallies" />
 
       <div className="grid grid-cols-2 gap-3">
         <ComparisonCard

@@ -71,7 +71,7 @@ export function ConfidenceCalibration({ playerId }: ConfidenceCalibrationProps) 
         )}
       </div>
 
-      <ConfidenceBadge sampleSize={sampleSize} />
+      <ConfidenceBadge sampleSize={sampleSize} unit="strokes" />
 
       {d && (
         <>

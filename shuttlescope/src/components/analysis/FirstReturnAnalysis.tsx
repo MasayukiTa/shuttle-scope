@@ -61,7 +61,7 @@ export function FirstReturnAnalysis({ playerId, filters = DEFAULT_FILTERS }: Fir
 
   return (
     <div className="space-y-3">
-      <ConfidenceBadge sampleSize={sampleSize} />
+      <ConfidenceBadge sampleSize={sampleSize} unit="strokes" />
 
       {topZones.length > 0 && (
         <div className="text-xs text-[var(--ss-t3)]">

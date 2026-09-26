@@ -11,7 +11,7 @@ import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { apiGet } from '@/api/client'
-import { AnalysisFilters } from '@/types'
+import { AnalysisFilters, type SampleUnit } from '@/types'
 import { BAR, TOOLTIP_STYLE as _CW_TOOLTIP, getTooltipStyle, AXIS_TICK_LIGHT } from '@/styles/colors'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { ScoreProgression, type RallyPoint } from '@/components/analysis/ScoreProgression'
@@ -36,7 +36,7 @@ interface DescriptiveData {
 interface HeatmapResponse {
   success: boolean
   data: Record<string, number>
-  meta?: { sample_size?: number }
+  meta?: { sample_size?: number; sample_unit?: SampleUnit | null }
 }
 
 interface SetScore {
@@ -291,8 +291,11 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
               <SectionTitle>{t('auto.DashboardOverviewPage.k5')}</SectionTitle>
               <div className="flex items-center gap-1 ml-auto shrink-0">
                 {(() => {
-                  const s = heatmapTab === 'hit' ? heatmapHitResp?.meta?.sample_size : heatmapLandResp?.meta?.sample_size
-                  return s != null && s > 0 ? <ConfidenceBadge sampleSize={s} className="text-[10px]" /> : null
+                  const meta = heatmapTab === 'hit' ? heatmapHitResp?.meta : heatmapLandResp?.meta
+                  const s = meta?.sample_size
+                  return s != null && s > 0
+                    ? <ConfidenceBadge sampleSize={s} unit={meta?.sample_unit ?? undefined} className="text-[10px]" />
+                    : null
                 })()}
                 <ExpandBtn onClick={() => setCourtHeatOpen(true)} />
               </div>

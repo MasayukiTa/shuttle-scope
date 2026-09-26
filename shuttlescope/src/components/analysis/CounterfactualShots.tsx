@@ -122,12 +122,12 @@ function Inner({ playerId }: { playerId: number }) {
   const sampleSize = resp?.meta?.sample_size ?? 0
 
   if (comparisons.length === 0) {
-    return <NoDataMessage sampleSize={sampleSize} minRequired={30} unit="ラリー" />
+    return <NoDataMessage sampleSize={sampleSize} minRequired={30} unit="ストローク" />
   }
 
   return (
     <div className="space-y-3">
-      <ConfidenceBadge sampleSize={sampleSize} />
+      <ConfidenceBadge sampleSize={sampleSize} unit="strokes" />
       <p className="text-xs text-gray-400">{t('auto.CounterfactualShots.k2')}</p>
       <div className="space-y-2">
         {comparisons.map((c, i) => (

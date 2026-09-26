@@ -139,6 +139,7 @@ class TestMatchupForecastEndpoint:
         assert "n_players" in data
         meta = body["meta"]
         assert meta["analysis_type"] == "matchup_forecast"
+        assert meta["sample_unit"] == "matches"
 
     def test_strength_has_value_and_ci(self, matchup_forecast_client):
         """strength に value / ci_low / ci_high が含まれること。"""

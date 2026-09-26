@@ -278,7 +278,7 @@ export function CourtHeatModal({
 
             {/* サンプルサイズ */}
             <div className="flex items-center gap-2">
-              {sampleSize > 0 && <ConfidenceBadge sampleSize={sampleSize} />}
+              {sampleSize > 0 && <ConfidenceBadge sampleSize={sampleSize} unit="strokes" />}
               <span className="text-[11px] text-[var(--ss-t3)]">
                 {t('court_heat_modal.stroke_count', { n: sampleSize })}
               </span>

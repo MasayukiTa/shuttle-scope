@@ -204,7 +204,7 @@ export function SetIntervalSummary({
           {data && (
             <>
               {/* 信頼度バッジ（全タブ共通） */}
-              <ConfidenceBadge sampleSize={sampleSize} />
+              <ConfidenceBadge sampleSize={sampleSize} unit="strokes" />
 
               {/* ── 概要タブ ── */}
               {activeTab === 'overview' && (

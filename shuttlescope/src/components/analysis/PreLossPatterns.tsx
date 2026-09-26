@@ -102,7 +102,7 @@ function PreLossContent({ playerId, filters = DEFAULT_FILTERS }: { playerId: num
 
   return (
     <div className="space-y-3">
-      <ConfidenceBadge sampleSize={sampleSize} />
+      <ConfidenceBadge sampleSize={sampleSize} unit="rallies" />
 
       {/* タブ切替 */}
       <div className="flex gap-1">

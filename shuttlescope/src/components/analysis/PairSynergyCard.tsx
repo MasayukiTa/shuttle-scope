@@ -81,7 +81,7 @@ function Inner({ playerId }: { playerId: number }) {
 
   return (
     <div className="space-y-3">
-      <ConfidenceBadge sampleSize={sampleSize} />
+      <ConfidenceBadge sampleSize={sampleSize} unit="matches" />
       <p className="text-xs text-gray-400">
         {t('auto.PairSynergyCard.avg_wr')} <span className="font-mono ss-num text-gray-200">{Math.round(avgWr * 100)}%</span>
       </p>

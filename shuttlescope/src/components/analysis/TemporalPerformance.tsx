@@ -75,7 +75,7 @@ export function TemporalPerformance({ playerId, chartHeight = 180, filters = DEF
 
   return (
     <div className="space-y-3">
-      <ConfidenceBadge sampleSize={sampleSize} />
+      <ConfidenceBadge sampleSize={sampleSize} unit="rallies" />
 
       <ResponsiveContainer width="100%" height={chartHeight}>
         <BarChart data={chartData} margin={{ top: 5, right: 16, left: 0, bottom: 5 }}>

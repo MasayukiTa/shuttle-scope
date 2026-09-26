@@ -81,7 +81,7 @@ export function TournamentComparison({ playerId, filters = DEFAULT_FILTERS }: To
 
   return (
     <div className="space-y-3">
-      <ConfidenceBadge sampleSize={sampleSize} />
+      <ConfidenceBadge sampleSize={sampleSize} unit="matches" />
 
       {/* 棒グラフ */}
       <ResponsiveContainer width="100%" height={180}>
