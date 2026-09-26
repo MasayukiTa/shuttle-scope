@@ -62,6 +62,28 @@ class Detection:
     conf: float
 
 
+class RealtimeYoloError(RuntimeError):
+    """Realtime YOLO failed before a valid detection result existed."""
+
+    reason = "inference_error"
+
+
+class ModelUnavailableError(RealtimeYoloError):
+    reason = "model_not_available"
+
+
+class InvalidFrameError(RealtimeYoloError):
+    reason = "invalid_frame"
+
+
+class InferenceRuntimeError(RealtimeYoloError):
+    reason = "inference_failed"
+
+
+class InvalidModelOutputError(RealtimeYoloError):
+    reason = "invalid_model_output"
+
+
 def _letterbox(img: np.ndarray) -> tuple[np.ndarray, float, int, int]:
     h, w = img.shape[:2]
     r = min(_INPUT_W / w, _INPUT_H / h)
@@ -91,18 +113,18 @@ def _nms(boxes: np.ndarray, scores: np.ndarray, iou_th: float) -> List[int]:
 def infer_jpeg(jpeg_bytes: bytes) -> List[Detection]:
     """JPEG バイト列を推論し、person の正規化 bbox リストを返す。
 
-    モデル未配置または推論失敗時は空リスト。
+    正常推論で person が 0 件なら空リスト。モデル未配置・decode失敗・推論失敗・不正出力は例外。
     """
     with _lock:
         _try_load()
         if _session is None:
-            return []
+            raise ModelUnavailableError("yolov8n model is not available")
         session = _session
 
     arr = np.frombuffer(jpeg_bytes, dtype=np.uint8)
     img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     if img is None:
-        return []
+        raise InvalidFrameError("JPEG frame could not be decoded")
     orig_h, orig_w = img.shape[:2]
 
     canvas, r, dx, dy = _letterbox(img)
@@ -111,9 +133,15 @@ def infer_jpeg(jpeg_bytes: bytes) -> List[Detection]:
 
     try:
         outputs = session.run(None, {session.get_inputs()[0].name: tensor})
-    except Exception:
-        return []
+    except Exception as exc:
+        raise InferenceRuntimeError(f"ONNX inference failed: {exc}") from exc
+    if not outputs:
+        raise InvalidModelOutputError("YOLO returned no output tensors")
     pred = outputs[0]
+    if not isinstance(pred, np.ndarray):
+        raise InvalidModelOutputError(
+            f"YOLO output is not a numpy array: {type(pred).__name__}"
+        )
 
     # ultralytics yolov8 ONNX は (1, 84, N) を返す。他形状も一応 flip 対応。
     if pred.ndim == 3 and pred.shape[1] < pred.shape[2]:
@@ -122,11 +150,11 @@ def infer_jpeg(jpeg_bytes: bytes) -> List[Detection]:
     elif pred.ndim == 3:
         pred = pred[0]
     else:
-        return []
+        raise InvalidModelOutputError(f"unexpected YOLO output shape: {pred.shape}")
 
     # 各行: [cx, cy, w, h, cls0_score, cls1_score, ..., cls79_score]
     if pred.shape[1] < 5:
-        return []
+        raise InvalidModelOutputError(f"YOLO output has too few channels: {pred.shape}")
     class_scores = pred[:, 4:]
     cls_ids = np.argmax(class_scores, axis=1)
     cls_conf = class_scores[np.arange(len(pred)), cls_ids]

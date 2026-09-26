@@ -91,9 +91,26 @@ async def ws_realtime_yolo_handler(session_code: str, websocket: WebSocket) -> N
             t0 = time.perf_counter()
             try:
                 dets = await loop.run_in_executor(None, yolov8n.infer_jpeg, data)
-            except Exception as e:  # pragma: no cover
-                logger.warning("[realtime-yolo] infer error: %s", e)
-                dets = []
+            except yolov8n.RealtimeYoloError as exc:
+                logger.warning(
+                    "[realtime-yolo] infer rejected reason=%s: %s",
+                    exc.reason,
+                    exc,
+                )
+                await websocket.send_text(json.dumps({
+                    "type": "error",
+                    "reason": exc.reason,
+                    "message": str(exc),
+                }))
+                continue
+            except Exception as exc:  # pragma: no cover - unexpected implementation fault
+                logger.exception("[realtime-yolo] unexpected infer error: %s", exc)
+                await websocket.send_text(json.dumps({
+                    "type": "error",
+                    "reason": "inference_internal_error",
+                    "message": "realtime YOLO inference failed",
+                }))
+                continue
             finally:
                 inflight -= 1
             dt_ms = (time.perf_counter() - t0) * 1000.0
