@@ -122,13 +122,16 @@ export function CameraSenderPage() {
   const [nameInput, setNameInput] = useState('')
   const [isPortrait, setIsPortrait] = useState(() => window.innerHeight > window.innerWidth)
   const [participantId, setParticipantId] = useState<number | null>(null)
+  const [participantToken, setParticipantToken] = useState('')
   const [activeSessionCode, setActiveSessionCode] = useState<string>(paramCode ?? '')
   const [reconnectCount, setReconnectCount] = useState(0)
   // R-1: サーバ自動録画用 match_id (session join のレスポンスから取得)
   const [recordingMatchId, setRecordingMatchId] = useState<number | null>(null)
   const serverRecorder = useServerSideRecording({
     matchId: recordingMatchId,
-    sessionCode: paramCode,
+    sessionCode: activeSessionCode,
+    participantId,
+    participantToken,
   })
   const [battery, setBattery] = useState<{ level: number; charging: boolean } | null>(null)
   const [rttMs, setRttMs] = useState<number | null>(null)
@@ -359,6 +362,7 @@ export function CameraSenderPage() {
       savedPidRef.current = pid
       // WS 入場券の引き換えに使う。平文はこの応答でしか返らない。
       savedTokenRef.current = res.data.participant_token ?? ''
+      setParticipantToken(savedTokenRef.current)
       setActiveSessionCode(code)
       // R-1: サーバ自動録画用 match_id を保存
       if (res.data.match_id != null) {

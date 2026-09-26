@@ -1919,6 +1919,13 @@ app.add_middleware(AnalysisCacheMiddleware)
 # 修正: 全 path を **`$` または `(?:/...)` の境界付き** で anchor し、
 # `/api/health` を **exact match** (= `/api/health/cv` 含まないため別途 router 側で
 # 認証する) にする。F-001 で `/api/health/cv` を `ctx.role` チェックする impl と整合。
+_PARTICIPANT_UPLOAD_PATH = _re_acl.compile(
+    r"^/api/v1/uploads/video/(?:"
+    r"init|chunk|"
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:/status|/finalize)?"
+    r")$"
+)
+
 _GLOBAL_AUTH_EXEMPT = _re_acl.compile(
     r"^/api/(?:"
     # auth サブパス: 終端 $ で anchor (sub-path の延長を許さない)
@@ -2044,6 +2051,22 @@ class GlobalAuthMiddleware(BaseHTTPMiddleware):
             )
         if _GLOBAL_AUTH_EXEMPT.match(request.url.path):
             return await call_next(request)
+
+        # QR camera devices have no app JWT. They authenticate upload requests
+        # with the participant credential issued by /sessions/{code}/join.
+        # Only the existing upload operations are allowed through here; the
+        # uploads router then validates token + participant + active session and
+        # binds the upload_id to that participant. Presence of these headers is
+        # not itself authentication.
+        _participant_auth = (request.headers.get("Authorization") or "").strip()
+        if (
+            _PARTICIPANT_UPLOAD_PATH.match(request.url.path)
+            and _participant_auth.startswith("Participant ")
+            and request.headers.get("X-Session-Code")
+            and request.headers.get("X-Participant-Id")
+        ):
+            return await call_next(request)
+
         # browser <video> stream: token クエリ認証経路 (Bearer header を送れない)。
         # endpoint 側で hmac.compare_digest による厳密 token check を実施するため、
         # ここでは「token クエリが付いている」ことだけを条件に middleware を素通しする。
@@ -2525,7 +2548,7 @@ app.add_middleware(
     allow_origins=_cors_origins,
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Accept", "Authorization", "X-Session-Token", "X-Role", "X-Player-Id", "X-Team-Name", "X-Worker-Token", "X-Idempotency-Key"],
+    allow_headers=["Content-Type", "Accept", "Authorization", "X-Session-Token", "X-Session-Code", "X-Participant-Id", "X-Role", "X-Player-Id", "X-Team-Name", "X-Worker-Token", "X-Idempotency-Key"],
 )
 
 

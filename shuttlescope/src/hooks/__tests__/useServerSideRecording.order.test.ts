@@ -126,4 +126,44 @@ describe('useServerSideRecording — streaming upload ordering', () => {
     expect(observed.order).toEqual(sorted)
     expect(observed.order[0]).toBe(0)
   })
+  it('QR participant credential is used for init, chunk, and finalize', async () => {
+    const fetchMock = installFetch(observed)
+    vi.stubGlobal('fetch', fetchMock)
+    let recorder: FakeMediaRecorder | null = null
+    const origCtor = FakeMediaRecorder
+    vi.stubGlobal('MediaRecorder', class extends origCtor {
+      constructor(s: unknown, o: unknown) { super(s, o); recorder = this as unknown as FakeMediaRecorder }
+    })
+    const { result } = renderHook(() => useServerSideRecording({
+      matchId: 1,
+      sessionCode: 'SESSION1',
+      participantId: 42,
+      participantToken: 'participant-secret',
+      timesliceSec: 1,
+    }))
+
+    await act(async () => { await result.current.start({} as MediaStream) })
+    expect(recorder).not.toBeNull()
+
+    await act(async () => {
+      recorder!.ondataavailable?.({ data: new Blob([new Uint8Array([1, 2, 3])]) })
+      await new Promise((r) => setTimeout(r, 80))
+    })
+
+    await act(async () => { await result.current.stop() })
+
+    const calls = fetchMock.mock.calls.map(([url, init]) => ({ url: String(url), init }))
+    for (const suffix of ['/uploads/video/init', '/uploads/video/chunk', '/finalize']) {
+      const matching = calls.filter(({ url }) => url.includes(suffix))
+      expect(matching.length, `missing ${suffix}`).toBeGreaterThan(0)
+      const hasParticipantAuth = matching.some(({ init }) => {
+        const headers = init?.headers as Record<string, string> | undefined
+        return headers?.Authorization === 'Participant participant-secret'
+          && headers['X-Session-Code'] === 'SESSION1'
+          && headers['X-Participant-Id'] === '42'
+      })
+      expect(hasParticipantAuth, `participant auth missing on ${suffix}`).toBe(true)
+    }
+  })
+
 })

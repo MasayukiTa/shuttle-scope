@@ -1466,6 +1466,9 @@ class UploadSession(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)  # UUID = upload_id
     user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    # QR camera devices do not have an app User/JWT. Bind their upload session to
+    # the SessionParticipant that proved possession of the participant token.
+    participant_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     match_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("matches.id"), nullable=True)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     mime_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)

@@ -398,3 +398,129 @@ def test_ticket_bound_to_another_session_is_refused():
         assert other not in camera_manager._sessions or not (
             camera_manager._sessions[other]["devices"]
         ), "別セッションの入場券で登録されている"
+
+
+# ── QR camera -> server recording upload ──────────────────────────────────────
+
+def _participant_upload_headers(join_data: dict, *, token: str | None = None) -> dict[str, str]:
+    return {
+        "Authorization": f"Participant {token or join_data['participant_token']}",
+        "X-Session-Code": join_data["session_code"],
+        "X-Participant-Id": str(join_data["participant_id"]),
+    }
+
+
+def _init_participant_upload(client: TestClient, join_data: dict, **payload_overrides):
+    payload = {
+        "match_id": join_data["match_id"],
+        "filename": "camera_record.webm",
+        "mime_type": "video/webm",
+        "streaming": True,
+        "total_size": 1024,
+        "chunk_size": 64 * 1024,
+    }
+    payload.update(payload_overrides)
+    return client.post(
+        "/api/v1/uploads/video/init",
+        json=payload,
+        headers=_participant_upload_headers(join_data),
+    )
+
+
+def test_approved_qr_camera_can_init_upload_and_session_is_bound_to_participant(
+    tmp_path, monkeypatch,
+):
+    from backend.db.models import UploadSession
+    from backend.routers import uploads as uploads_router
+
+    code = "PTUP01"
+    _make_session(code)
+    monkeypatch.setattr(uploads_router, "UPLOAD_DIR", tmp_path)
+    monkeypatch.setattr(uploads_router, "MIN_FREE_DISK_BYTES", 0)
+
+    with TestClient(app, base_url="http://localhost") as client:
+        joined = _join(client, code).json()["data"]
+        _approve(joined["participant_id"])
+        resp = _init_participant_upload(client, joined)
+
+    assert resp.status_code == 200, resp.text
+    upload_id = resp.json()["upload_id"]
+    db = db_module.SessionLocal()
+    try:
+        upload = db.get(UploadSession, upload_id)
+        assert upload is not None
+        assert upload.user_id is None
+        assert upload.participant_id == joined["participant_id"]
+        assert upload.match_id == joined["match_id"]
+    finally:
+        db.close()
+
+
+def test_participant_upload_rejects_bad_token_pending_device_and_match_mismatch(
+    tmp_path, monkeypatch,
+):
+    from backend.routers import uploads as uploads_router
+
+    code = "PTUP02"
+    _make_session(code)
+    monkeypatch.setattr(uploads_router, "UPLOAD_DIR", tmp_path)
+    monkeypatch.setattr(uploads_router, "MIN_FREE_DISK_BYTES", 0)
+
+    with TestClient(app, base_url="http://localhost") as client:
+        joined = _join(client, code).json()["data"]
+
+        pending = _init_participant_upload(client, joined)
+        assert pending.status_code == 403, pending.text
+
+        _approve(joined["participant_id"])
+        bad_token = client.post(
+            "/api/v1/uploads/video/init",
+            json={
+                "match_id": joined["match_id"],
+                "filename": "camera_record.webm",
+                "mime_type": "video/webm",
+                "streaming": True,
+                "total_size": 1024,
+                "chunk_size": 64 * 1024,
+            },
+            headers=_participant_upload_headers(joined, token="wrong-token"),
+        )
+        assert bad_token.status_code == 401, bad_token.text
+
+        wrong_match = _init_participant_upload(
+            client, joined, match_id=joined["match_id"] + 99999,
+        )
+        assert wrong_match.status_code == 403, wrong_match.text
+
+
+def test_participant_cannot_manage_another_participants_upload(
+    tmp_path, monkeypatch,
+):
+    from backend.routers import uploads as uploads_router
+
+    _make_session("PTUP03A")
+    _make_session("PTUP03B")
+    monkeypatch.setattr(uploads_router, "UPLOAD_DIR", tmp_path)
+    monkeypatch.setattr(uploads_router, "MIN_FREE_DISK_BYTES", 0)
+
+    with TestClient(app, base_url="http://localhost") as client:
+        first = _join(client, "PTUP03A").json()["data"]
+        second = _join(client, "PTUP03B").json()["data"]
+        _approve(first["participant_id"])
+        _approve(second["participant_id"])
+
+        init = _init_participant_upload(client, first)
+        assert init.status_code == 200, init.text
+        upload_id = init.json()["upload_id"]
+
+        stolen = client.get(
+            f"/api/v1/uploads/video/{upload_id}/status",
+            headers=_participant_upload_headers(second),
+        )
+        assert stolen.status_code == 403, stolen.text
+
+        cleanup = client.delete(
+            f"/api/v1/uploads/video/{upload_id}",
+            headers=_participant_upload_headers(first),
+        )
+        assert cleanup.status_code == 200, cleanup.text

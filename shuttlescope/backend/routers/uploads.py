@@ -24,6 +24,7 @@ import shutil
 import threading
 import time
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
@@ -34,7 +35,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
-from backend.db.models import Match, UploadSession
+from backend.db.models import Match, SharedSession, SessionParticipant, UploadSession
 from backend.utils.auth import AuthCtx, get_auth
 from backend.utils.safe_path import safe_path
 
@@ -117,6 +118,89 @@ def _require_writer(ctx: AuthCtx) -> None:
     if ctx.role not in ALLOWED_ROLES:
         raise HTTPException(status_code=403, detail="アップロード権限がありません")
 
+@dataclass(frozen=True)
+class _UploadActor:
+    """Identity allowed to own one upload session.
+
+    Exactly one of user_id / participant_id is normally set. user_id can be
+    None on the legacy loopback writer path, but participant_id is always
+    explicit for a QR camera device.
+    """
+
+    user_id: Optional[int]
+    participant_id: Optional[int]
+    participant_match_id: Optional[int] = None
+
+
+def _resolve_upload_actor(request: Request, db: Session, ctx: AuthCtx) -> _UploadActor:
+    """Authorize a normal writer JWT or a QR-camera participant credential."""
+    if ctx.role in ALLOWED_ROLES:
+        return _UploadActor(user_id=ctx.user_id, participant_id=None)
+
+    auth = (request.headers.get("Authorization") or "").strip()
+    if not auth.startswith("Participant "):
+        _require_writer(ctx)  # preserves the existing 403 for non-writer app roles
+        raise AssertionError("unreachable")
+
+    token = auth[len("Participant "):].strip()
+    code = (request.headers.get("X-Session-Code") or "").strip()
+    pid_raw = (request.headers.get("X-Participant-Id") or "").strip()
+    if not token or len(token) > 512 or not code or len(code) > 32:
+        raise HTTPException(status_code=401, detail="参加資格を確認できません")
+    try:
+        participant_id = int(pid_raw)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=401, detail="参加資格を確認できません")
+    if participant_id <= 0:
+        raise HTTPException(status_code=401, detail="参加資格を確認できません")
+
+    shared = (
+        db.query(SharedSession)
+        .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
+        .first()
+    )
+    participant = db.get(SessionParticipant, participant_id)
+    if shared is None or participant is None or participant.session_id != shared.id:
+        raise HTTPException(status_code=401, detail="参加資格を確認できません")
+
+    # Reuse the same constant-time hash validation used by WS ticket issuance.
+    # Import locally to keep router import order acyclic.
+    from backend.routers.sessions import _participant_token_valid
+    if not _participant_token_valid(participant, token):
+        raise HTTPException(status_code=401, detail="参加資格を確認できません")
+
+    # Recording is a camera capability, not a generic viewer capability. Requiring
+    # operator approval also prevents a freshly joined, still-pending device from
+    # writing large files before the operator has accepted it.
+    if participant.approval_status != "approved":
+        raise HTTPException(status_code=403, detail="このデバイスはまだ承認されていません")
+    if participant.source_capability != "camera":
+        raise HTTPException(status_code=403, detail="このデバイスはカメラとして登録されていません")
+
+    return _UploadActor(
+        user_id=None,
+        participant_id=participant.id,
+        participant_match_id=shared.match_id,
+    )
+
+
+def _require_upload_owner(actor: _UploadActor, upload: UploadSession) -> None:
+    """Bind every continuation request to the principal that created the upload."""
+    owner_participant_id = getattr(upload, "participant_id", None)
+    if owner_participant_id is not None:
+        if actor.participant_id != owner_participant_id:
+            raise HTTPException(status_code=403, detail="このアップロードへの権限がありません")
+        return
+
+    # A participant credential must never inherit access to an old/JWT-owned
+    # upload merely because user_id is NULL.
+    if actor.participant_id is not None:
+        raise HTTPException(status_code=403, detail="このアップロードへの権限がありません")
+
+    if upload.user_id is not None and upload.user_id != actor.user_id:
+        raise HTTPException(status_code=403, detail="このアップロードへの権限がありません")
+
+
 
 def _bitmap_get(bitmap: bytes, idx: int) -> bool:
     byte_i, bit_i = idx // 8, idx % 8
@@ -198,10 +282,14 @@ class FinalizeResponse(BaseModel):
 @router.post("/video/init", response_model=InitResponse)
 def init_upload(
     body: InitRequest,
+    request: Request,
     db: Session = Depends(get_db),
     ctx: AuthCtx = Depends(get_auth),
 ):
-    _require_writer(ctx)
+    actor = _resolve_upload_actor(request, db, ctx)
+    if actor.participant_id is not None:
+        if body.match_id is None or body.match_id != actor.participant_match_id:
+            raise HTTPException(status_code=403, detail="参加セッションとは別の試合へ録画できません")
 
     # filename に NUL / CR / LF / その他制御文字が混入すると、後続の表示・
     # ログ出力・Content-Disposition ヘッダ生成等で破壊的に振る舞う可能性がある。
@@ -268,8 +356,20 @@ def init_upload(
     if free_bytes < required_free:
         raise HTTPException(status_code=507, detail="サーバのディスク空き容量が不足しています")
 
-    # per-user 並列上限チェック
-    if ctx.user_id is not None:
+    # Per-principal concurrent upload cap. QR cameras have no User row, so
+    # they must be counted by participant_id rather than falling into the shared
+    # loopback/anonymous bucket.
+    if actor.participant_id is not None:
+        active = db.query(UploadSession).filter(
+            UploadSession.participant_id == actor.participant_id,
+            UploadSession.status == "uploading",
+        ).count()
+        if active >= MAX_CONCURRENT_PER_USER:
+            raise HTTPException(
+                status_code=429,
+                detail=f"同時アップロード本数の上限 ({MAX_CONCURRENT_PER_USER}) に達しています",
+            )
+    elif ctx.user_id is not None:
         active = db.query(UploadSession).filter(
             UploadSession.user_id == ctx.user_id,
             UploadSession.status == "uploading",
@@ -322,7 +422,8 @@ def init_upload(
 
     session = UploadSession(
         id=upload_id,
-        user_id=ctx.user_id,
+        user_id=actor.user_id,
+        participant_id=actor.participant_id,
         match_id=body.match_id,
         filename=body.filename[:255],
         mime_type=body.mime_type,
@@ -492,7 +593,7 @@ async def upload_chunk(
     db: Session = Depends(get_db),
     ctx: AuthCtx = Depends(get_auth),
 ):
-    _require_writer(ctx)
+    actor = _resolve_upload_actor(request, db, ctx)
 
     # B-8: Content-Encoding 制限 (gzip/br/deflate decompress bomb 防御)
     enc = (request.headers.get("content-encoding") or "").strip().lower()
@@ -509,8 +610,7 @@ async def upload_chunk(
             if session.status != "uploading":
                 raise HTTPException(status_code=409, detail=f"セッションは {session.status} 状態です")
             # 所有者チェック (D-2 強化、毎 chunk で必ず確認)
-            if session.user_id is not None and ctx.user_id is not None and session.user_id != ctx.user_id:
-                raise HTTPException(status_code=403, detail="このアップロードへの権限がありません")
+            _require_upload_owner(actor, session)
             if chunk_index < 0:
                 raise HTTPException(status_code=400, detail="chunk_index が範囲外です")
             is_streaming = bool(getattr(session, "streaming", False))
@@ -625,15 +725,16 @@ async def upload_chunk(
 @router.get("/video/{upload_id}/status", response_model=StatusResponse)
 def upload_status(
     upload_id: str,
+    request: Request,
     db: Session = Depends(get_db),
     ctx: AuthCtx = Depends(get_auth),
 ):
-    _require_writer(ctx)
+    actor = _resolve_upload_actor(request, db, ctx)
     session = db.get(UploadSession, upload_id)
     if session is None:
         raise HTTPException(status_code=404, detail="アップロードセッションが見つかりません")
-    if session.user_id is not None and ctx.user_id is not None and session.user_id != ctx.user_id:
-        raise HTTPException(status_code=403, detail="このアップロードへの権限がありません")
+    _require_upload_owner(actor, session)
+
     received = [i for i in range(session.total_chunks) if _bitmap_get(session.received_bitmap, i)]
     return StatusResponse(
         upload_id=upload_id,
@@ -647,17 +748,18 @@ def upload_status(
 @router.post("/video/{upload_id}/finalize", response_model=FinalizeResponse)
 async def finalize_upload(
     upload_id: str,
+    request: Request,
     db: Session = Depends(get_db),
     ctx: AuthCtx = Depends(get_auth),
 ):
-    _require_writer(ctx)
+    actor = _resolve_upload_actor(request, db, ctx)
     lock = await _get_upload_lock(upload_id)
     async with lock:
         session = db.get(UploadSession, upload_id)
         if session is None:
             raise HTTPException(status_code=404, detail="アップロードセッションが見つかりません")
-        if session.user_id is not None and ctx.user_id is not None and session.user_id != ctx.user_id:
-            raise HTTPException(status_code=403, detail="このアップロードへの権限がありません")
+        _require_upload_owner(actor, session)
+
         if session.status == "completed":
             # R39 fix (F-005): 絶対 path は返さない (basename だけ)
             from pathlib import Path as _PathFin2
@@ -790,15 +892,16 @@ async def finalize_upload(
 @router.delete("/video/{upload_id}")
 def abort_upload(
     upload_id: str,
+    request: Request,
     db: Session = Depends(get_db),
     ctx: AuthCtx = Depends(get_auth),
 ):
-    _require_writer(ctx)
+    actor = _resolve_upload_actor(request, db, ctx)
     session = db.get(UploadSession, upload_id)
     if session is None:
         raise HTTPException(status_code=404, detail="アップロードセッションが見つかりません")
-    if session.user_id is not None and ctx.user_id is not None and session.user_id != ctx.user_id:
-        raise HTTPException(status_code=403, detail="このアップロードへの権限がありません")
+    _require_upload_owner(actor, session)
+
     if session.status == "uploading":
         session.status = "aborted"
         session.updated_at = datetime.utcnow()

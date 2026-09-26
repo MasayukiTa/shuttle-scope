@@ -27,7 +27,6 @@
  * ```
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { apiPost } from '@/api/client'
 import { resolveBaseUrl } from '@/utils/preferredEndpoint'
 import { errorMessage } from '@/utils/errors'
 
@@ -78,6 +77,9 @@ interface InitResponse {
 interface UseServerSideRecordingOptions {
   matchId: number | null
   sessionCode?: string
+  /** QR/session participant identity for account-less camera devices. */
+  participantId?: number | null
+  participantToken?: string
   /** タイムスライス秒数 (デフォルト 10 秒)。短いほどデータ損失リスク減、API 負荷増 */
   timesliceSec?: number
   /** 自動録画 ON/OFF (env: VITE_SS_SENDER_AUTO_RECORD) */
@@ -140,7 +142,7 @@ function selectMimeType(): string {
 export function useServerSideRecording(
   options: UseServerSideRecordingOptions,
 ): UseServerSideRecordingReturn {
-  const { matchId, timesliceSec = DEFAULT_TIMESLICE_SEC, enabled = DEFAULT_AUTO_RECORD } = options
+  const { matchId, sessionCode, participantId, participantToken, timesliceSec = DEFAULT_TIMESLICE_SEC, enabled = DEFAULT_AUTO_RECORD } = options
 
   const [state, setState] = useState<ServerRecordingState>('idle')
   const [uploadedChunks, setUploadedChunks] = useState(0)
@@ -204,6 +206,18 @@ export function useServerSideRecording(
   }, [])
 
   // ─── アップロード関数 ───────────────────────────────────────────
+  const getUploadAuthHeaders = useCallback((): Record<string, string> => {
+    if (participantToken && participantId != null && sessionCode) {
+      return {
+        Authorization: 'Participant ' + participantToken,
+        'X-Session-Code': sessionCode,
+        'X-Participant-Id': String(participantId),
+      }
+    }
+    const token = sessionStorage.getItem('shuttlescope_token') ?? ''
+    return token ? { Authorization: 'Bearer ' + token } : {}
+  }, [participantId, participantToken, sessionCode])
+
   const uploadChunk = useCallback(async (blob: Blob, chunkIndex: number) => {
     // Round 258 R18 P0 fix (R18a P0-1): uploadId を **関数頭でスナップショット**。
     // 旧コードは `const uploadId = uploadIdRef.current` を取得した直後 await を挟むが、
@@ -214,7 +228,6 @@ export function useServerSideRecording(
     const uploadId = uploadIdRef.current
     if (!uploadId) return false
     const base = apiBaseRef.current || ''
-    const token = sessionStorage.getItem('shuttlescope_token') ?? ''
     const url = `${base}/api/v1/uploads/video/chunk`
     try {
       const fd = new FormData()
@@ -225,7 +238,7 @@ export function useServerSideRecording(
         method: 'POST',
         headers: {
           // Content-Type は FormData が自動で multipart/form-data; boundary= を付与する
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...getUploadAuthHeaders(),
         },
         body: fd,
       })
@@ -273,7 +286,7 @@ export function useServerSideRecording(
       setErrorMsg(errorMessage(err))
       return false
     }
-  }, [])
+  }, [getUploadAuthHeaders])
 
   // ─── 送信ポンプ（直列・順序保証） ──────────────────────────────
   /**
@@ -336,28 +349,28 @@ export function useServerSideRecording(
     // upload session を init (total_size=0 で streaming モード)
     let initRes: InitResponse
     try {
-      const r = await apiPost<{ success: boolean; data: InitResponse }>(
-        '/v1/uploads/video/init',
-        {
+      const base = apiBaseRef.current || ''
+      const r = await fetch(`${base}/api/v1/uploads/video/init`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getUploadAuthHeaders(),
+        },
+        body: JSON.stringify({
           match_id: matchId,
           filename: `sender_record_${Date.now()}.${mimeType.includes('mp4') ? 'mp4' : 'webm'}`,
           mime_type: mimeType,
-          // streaming=true: 事前にサイズが分からない MediaRecorder 経路。
-          // total_size は上限の申告であって予約ではない。実サイズは finalize
-          // 時に確定する。
-          // コメントは 5GB と書いてあったが実際の値は 50GB で、**食い違って
-          // いた**。サーバ側はこれを `*2` して空き容量を要求していたため、
-          // 空き 100GB 未満の機械では録画がそもそも始まらなかった
-          // (サーバ側は streaming なら下限だけを見るよう修正済み)。
-          // 値はサーバの MAX_UPLOAD_SIZE (50GB) に合わせて据え置く。
           streaming: true,
           total_size: 50_000_000_000,
-          chunk_size: 8_388_608,   // 8MB
-        },
-      )
-      // envelope ({success,data}) と素の InitResponse の両方を受ける。
-      // 直接 as で往復すると重なりが無いと怒られるので unknown を経由する。
-      initRes = r.data ?? (r as unknown as InitResponse)
+          chunk_size: 8_388_608,
+        }),
+      })
+      if (!r.ok) {
+        const body = await r.text()
+        throw new Error(`HTTP ${r.status}: ${body.slice(0, 160)}`)
+      }
+      const payload = await r.json() as ({ data?: InitResponse } & Partial<InitResponse>)
+      initRes = payload.data ?? (payload as InitResponse)
       uploadIdRef.current = initRes.upload_id
       chunkIndexRef.current = 0
     } catch (err: unknown) {
@@ -413,7 +426,7 @@ export function useServerSideRecording(
     }
     retryTimerRef.current = setInterval(() => { void pump() }, RETRY_INTERVAL_MS)
     return true
-  }, [matchId, timesliceSec, enabled, enqueue, pump])
+  }, [matchId, timesliceSec, enabled, enqueue, pump, getUploadAuthHeaders])
 
   // ─── 停止 + finalize ────────────────────────────────────────────
   const stop = useCallback(async () => {
@@ -459,12 +472,11 @@ export function useServerSideRecording(
     }
     try {
       const base = apiBaseRef.current || ''
-      const token = sessionStorage.getItem('shuttlescope_token') ?? ''
       const res = await fetch(`${base}/api/v1/uploads/video/${uploadId}/finalize`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...getUploadAuthHeaders(),
         },
         body: '{}',
       })
@@ -479,7 +491,7 @@ export function useServerSideRecording(
       setErrorMsg(`finalize エラー: ${errorMessage(err)}`)
       setState('error')
     }
-  }, [pump])
+  }, [pump, getUploadAuthHeaders])
 
   // unmount で必ず停止
   useEffect(() => {
