@@ -130,7 +130,7 @@ def _seed_policy_player(db, n_rallies: int = 24):
 def policy_eval_client(db_session):
     """シードデータ付きの TestClient を返す。"""
     player_id = _seed_policy_player(db_session, n_rallies=24)
-    db_session.flush()
+    db_session.commit()
 
     app.dependency_overrides[get_db] = lambda: db_session
     app.dependency_overrides[get_auth] = _admin_ctx
@@ -214,6 +214,7 @@ class TestPolicyEvalEndpoint:
         db_session.add(empty_player)
         db_session.flush()
         empty_pid = empty_player.id
+        db_session.commit()
 
         app.dependency_overrides[get_db] = lambda: db_session
         app.dependency_overrides[get_auth] = _admin_ctx

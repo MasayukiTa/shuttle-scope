@@ -5,7 +5,8 @@ from datetime import date
 
 from backend.main import app
 from backend.db.database import get_db
-from backend.db.models import Player, Match, PreMatchObservation
+from backend.db.models import Player, Match, PreMatchObservation, User
+from backend.utils.jwt_utils import create_access_token
 
 
 @pytest.fixture
@@ -27,10 +28,17 @@ def warmup_client(db_session):
         result="win",
     )
     db_session.add(match)
-    db_session.flush()
+    admin_user = User(
+        id=900011, username="warmup_admin", role="admin",
+        totp_enabled=True, consent_required=False,
+        awaiting_admin_approval=False, is_test=True,
+    )
+    db_session.add(admin_user)
+    db_session.commit()
 
     app.dependency_overrides[get_db] = lambda: db_session
-    client = TestClient(app, headers={"X-Role": "admin"})
+    admin_token = create_access_token(user_id=admin_user.id, role="admin")
+    client = TestClient(app, headers={"Authorization": f"Bearer {admin_token}"})
     yield client, match.id, player_a.id, player_b.id
     app.dependency_overrides.clear()
 

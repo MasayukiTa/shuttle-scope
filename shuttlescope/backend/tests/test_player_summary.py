@@ -246,7 +246,7 @@ def test_player_role_redacts_win_rate(db_session):
     p = _make_player(db_session, "Hidden")
     opp = _make_player(db_session, "OppH")
     _seed_match(db_session, p, opp, on=date(2025, 4, 1), result="win")
-    db_session.flush()
+    db_session.commit()
 
     _override_db(db_session)
     _override_auth("player", user_id=999, player_id=p.id)
@@ -266,7 +266,7 @@ def test_coach_role_sees_raw_win_rate(db_session):
     p = _make_player(db_session, "Raw")
     opp = _make_player(db_session, "OppR")
     _seed_match(db_session, p, opp, on=date(2025, 4, 1), result="win")
-    db_session.flush()
+    db_session.commit()
 
     _override_db(db_session)
     _override_auth("coach", user_id=998)

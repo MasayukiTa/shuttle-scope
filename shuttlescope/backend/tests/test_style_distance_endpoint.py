@@ -147,7 +147,7 @@ def _seed_style_players(db):
 def style_distance_client(db_session):
     """シードデータ付きの TestClient を返す。"""
     ref_id = _seed_style_players(db_session)
-    db_session.flush()
+    db_session.commit()
 
     app.dependency_overrides[get_db] = lambda: db_session
     app.dependency_overrides[get_auth] = _admin_ctx
@@ -223,6 +223,7 @@ class TestStyleDistanceEndpoint:
         db_session.add(solo)
         db_session.flush()
         solo_id = solo.id
+        db_session.commit()
 
         app.dependency_overrides[get_db] = lambda: db_session
         app.dependency_overrides[get_auth] = _admin_ctx

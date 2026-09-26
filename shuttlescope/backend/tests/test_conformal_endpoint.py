@@ -134,7 +134,7 @@ def _seed_conformal_player(db, n_rallies: int = 60):
 def conformal_client(db_session):
     """シードデータ付きの TestClient を返す。"""
     player_id = _seed_conformal_player(db_session, n_rallies=60)
-    db_session.flush()
+    db_session.commit()
 
     app.dependency_overrides[get_db] = lambda: db_session
     app.dependency_overrides[get_auth] = _admin_ctx
@@ -244,6 +244,7 @@ class TestConformalEndpoint:
         db_session.add(empty_player)
         db_session.flush()
         empty_pid = empty_player.id
+        db_session.commit()
 
         app.dependency_overrides[get_db] = lambda: db_session
         app.dependency_overrides[get_auth] = _admin_ctx

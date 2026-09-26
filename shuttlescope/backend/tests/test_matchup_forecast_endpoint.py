@@ -103,7 +103,7 @@ def _seed_matchup_players(db):
 def matchup_forecast_client(db_session):
     """シードデータ付きの TestClient を返す。"""
     target_id = _seed_matchup_players(db_session)
-    db_session.flush()
+    db_session.commit()
 
     app.dependency_overrides[get_db] = lambda: db_session
     app.dependency_overrides[get_auth] = _admin_ctx
@@ -193,6 +193,7 @@ class TestMatchupForecastEndpoint:
         db_session.add(empty_player)
         db_session.flush()
         empty_pid = empty_player.id
+        db_session.commit()
 
         app.dependency_overrides[get_db] = lambda: db_session
         app.dependency_overrides[get_auth] = _admin_ctx

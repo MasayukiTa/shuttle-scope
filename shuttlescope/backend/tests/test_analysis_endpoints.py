@@ -127,7 +127,7 @@ def client_with_data(db_session):
     match2 = make_test_match(db_session, player_a, player_b, result="loss", tournament_level="SJL")
     make_test_set_and_rallies(db_session, match2, n_rallies=12)
 
-    db_session.flush()
+    db_session.commit()
 
     app.dependency_overrides[get_db] = lambda: db_session
     # research / advanced tier の router-level Depends を bypass.
@@ -383,7 +383,7 @@ class TestEmptyDataHandling:
     def test_all_responses_have_meta_when_successful(self, db_session):
         """成功レスポンスに meta が含まれること"""
         player = make_test_player(db_session, "メタテスト")
-        db_session.flush()
+        db_session.commit()
 
         app.dependency_overrides[get_db] = lambda: db_session
         # research / advanced tier の router-level Depends を bypass

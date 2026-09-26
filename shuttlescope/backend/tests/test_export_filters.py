@@ -11,8 +11,9 @@ from sqlalchemy.orm import Session
 
 from backend.main import app
 from backend.db.database import get_db
-from backend.db.models import Player, Match, GameSet, Rally, Stroke
+from backend.db.models import Player, Match, GameSet, Rally, Stroke, User
 from backend.utils.auth import AuthCtx, get_auth
+from backend.utils.jwt_utils import create_access_token
 
 
 def _admin_ctx() -> AuthCtx:
@@ -75,13 +76,24 @@ def seeded(db_session):
     m3 = _mk_match(db_session, pa, pb, date(2025, 6, 1))
     for mm in (m1, m2, m3):
         _mk_set_rally(db_session, mm)
-    db_session.flush()
+    # F-1: HTTP 境界では commit 済み seed を使い、別 Session からも見える状態にする。
+    # 認証も legacy X-Role ではなく、実在ユーザ + JWT で本番経路を通す。
+    admin_user = User(
+        id=900001, username="export_admin", role="admin",
+        totp_enabled=True, consent_required=False,
+        awaiting_admin_approval=False, is_test=True,
+    )
+    player_user = User(
+        id=900002, username="export_player", role="player", player_id=pa.id,
+        consent_required=False, awaiting_admin_approval=False, is_test=True,
+    )
+    db_session.add_all([admin_user, player_user])
+    db_session.commit()
 
     app.dependency_overrides[get_db] = lambda: db_session
     app.dependency_overrides[get_auth] = _admin_ctx
-    # routers call get_auth(request) directly, so dependency_overrides は効かない。
-    # X-Role ヘッダで admin 認証する (loopback + ENVIRONMENT=development で有効)。
-    client = TestClient(app, headers={"X-Role": "admin"})
+    admin_token = create_access_token(user_id=admin_user.id, role="admin")
+    client = TestClient(app, headers={"Authorization": f"Bearer {admin_token}"})
     try:
         yield client, db_session, pa, [m1, m2, m3]
     finally:
@@ -188,10 +200,11 @@ class TestExportPeriod:
 class TestExportPeriodRoleGate:
     def test_player_role_forbidden(self, seeded):
         client, _, pa, _ = seeded
-        # X-Role: player を渡すと export_period の role gate が 403 を返す
+        # 実在 player user の JWT で role gate が 403 を返すことを確認する。
+        player_token = create_access_token(user_id=900002, role="player", player_id=pa.id)
         r = client.get(
             f"/api/export/period?player_id={pa.id}",
-            headers={"X-Role": "player", "X-Player-Id": str(pa.id)},
+            headers={"Authorization": f"Bearer {player_token}"},
         )
         assert r.status_code == 403, r.text
 

@@ -71,7 +71,7 @@ def obs_client(db_session):
     _make_obs(db_session, m3.id, opp2.id, "physical_caution", "light", "likely")
     # m4 は観察記録なし
 
-    db_session.flush()
+    db_session.commit()
 
     app.dependency_overrides[get_db] = lambda: db_session
     app.dependency_overrides[get_auth] = _obs_admin_ctx

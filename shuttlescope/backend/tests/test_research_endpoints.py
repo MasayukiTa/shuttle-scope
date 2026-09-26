@@ -108,7 +108,7 @@ def research_client(db_session):
                       partner_a=partner, match_date=date(2025, 2, 1))
     _make_rallies(db_session, m_d, n=10)
 
-    db_session.flush()
+    db_session.commit()
 
     app.dependency_overrides[get_db] = lambda: db_session
     # research / advanced tier の router-level Depends を bypass
