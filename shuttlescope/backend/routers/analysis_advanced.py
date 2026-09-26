@@ -17,6 +17,7 @@ from backend.analysis.router_helpers import (
     _player_role_in_match, _get_player_matches, _fetch_matches_sets_rallies,
 )
 from backend.analysis.analysis_config import AnalysisConfig
+from backend.analysis.response_meta import build_input_provenance
 from backend.analysis.growth_engine import (
     growth_points_weighted,
     strength_weighted_moving_avg,
@@ -27,6 +28,23 @@ from backend.analysis.growth_engine import (
 # middleware が import 失敗時に空集合化するリスクをカバーするため router-level でガード。
 router = APIRouter(dependencies=[Depends(require_non_player), Depends(require_query_scope)])
 
+
+def _with_input_provenance(
+    meta: dict,
+    *,
+    rallies: list | tuple | None = None,
+    strokes: list | tuple | None = None,
+    strokes_by_rally: dict | None = None,
+    uses_hit_zone: bool = False,
+) -> dict:
+    enriched = dict(meta)
+    enriched["input_provenance"] = build_input_provenance(
+        rallies=rallies or [],
+        strokes_by_rally=strokes_by_rally or {},
+        strokes=strokes,
+        uses_hit_zone=uses_hit_zone,
+    )
+    return enriched
 
 # ---------------------------------------------------------------------------
 # B-003: 連続得点/失点・デュース勝率・逆転率
@@ -186,7 +204,10 @@ def get_rally_length_vs_winrate(
                 "player_type": "unknown",
                 "player_type_ja": "不明",
             },
-            "meta": {"sample_size": 0, "confidence": empty_confidence},
+            "meta": _with_input_provenance(
+                {"sample_size": 0, "confidence": empty_confidence},
+                rallies=[],
+            ),
         }
 
     match_ids = [m.id for m in matches]
@@ -274,10 +295,13 @@ def get_rally_length_vs_winrate(
             "player_type": player_type,
             "player_type_ja": player_type_ja,
         },
-        "meta": {
-            "sample_size": total_rallies,
-            "confidence": confidence,
-        },
+        "meta": _with_input_provenance(
+            {
+                "sample_size": total_rallies,
+                "confidence": confidence,
+            },
+            rallies=rallies,
+        ),
     }
 
 
@@ -307,7 +331,10 @@ def get_pressure_performance(
                 "endgame": empty_stat,
                 "normal": empty_stat,
             },
-            "meta": {"sample_size": 0, "confidence": empty_confidence},
+            "meta": _with_input_provenance(
+                {"sample_size": 0, "confidence": empty_confidence},
+                rallies=[],
+            ),
         }
 
     match_ids = [m.id for m in matches]
@@ -373,10 +400,13 @@ def get_pressure_performance(
             "endgame": _build_stat(stats["endgame"]),
             "normal": _build_stat(stats["normal"]),
         },
-        "meta": {
-            "sample_size": total_all,
-            "confidence": confidence,
-        },
+        "meta": _with_input_provenance(
+            {
+                "sample_size": total_all,
+                "confidence": confidence,
+            },
+            rallies=rallies,
+        ),
     }
 
 
@@ -412,7 +442,11 @@ def get_shot_transition_matrix(
                 "total_transitions": 0,
                 "top_sequences": [],
             },
-            "meta": {"sample_size": 0, "confidence": empty_confidence},
+            "meta": _with_input_provenance(
+                {"sample_size": 0, "confidence": empty_confidence},
+                rallies=[],
+                strokes=[],
+            ),
         }
 
     match_ids = [m.id for m in matches]
@@ -435,12 +469,16 @@ def get_shot_transition_matrix(
                 "total_transitions": 0,
                 "top_sequences": [],
             },
-            "meta": {"sample_size": 0, "confidence": empty_confidence},
+            "meta": _with_input_provenance(
+                {"sample_size": 0, "confidence": empty_confidence},
+                rallies=[],
+                strokes=[],
+            ),
         }
 
-    rally_ids_rows = db.query(Rally.id, Rally.set_id).filter(Rally.set_id.in_(set_ids)).all()
-    rally_ids = [r.id for r in rally_ids_rows]
-    rally_to_set: dict[int, int] = {r.id: r.set_id for r in rally_ids_rows}
+    rally_rows = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all()
+    rally_ids = [r.id for r in rally_rows]
+    rally_to_set: dict[int, int] = {r.id: r.set_id for r in rally_rows}
 
     if not rally_ids:
         return {
@@ -453,7 +491,11 @@ def get_shot_transition_matrix(
                 "total_transitions": 0,
                 "top_sequences": [],
             },
-            "meta": {"sample_size": 0, "confidence": empty_confidence},
+            "meta": _with_input_provenance(
+                {"sample_size": 0, "confidence": empty_confidence},
+                rallies=[],
+                strokes=[],
+            ),
         }
 
     # 全ストロークを取得（rally_id, stroke_num, player, shot_type の順でソート）
@@ -466,7 +508,7 @@ def get_shot_transition_matrix(
 
     # ラリーごとにプレイヤーロールを確定
     rally_to_role: dict[int, str] = {}
-    for r_id, s_id in [(r.id, r.set_id) for r in rally_ids_rows]:
+    for r_id, s_id in [(r.id, r.set_id) for r in rally_rows]:
         match_id = set_to_match[s_id]
         rally_to_role[r_id] = role_by_match[match_id]
 
@@ -479,6 +521,8 @@ def get_shot_transition_matrix(
         strokes_by_rally[stroke.rally_id].append(stroke)
 
     total_transitions = 0
+    provenance_stroke_ids: set[int] = set()
+    provenance_rally_ids: set[int] = set()
     for r_id, strokes in strokes_by_rally.items():
         player_role = rally_to_role.get(r_id)
         if not player_role:
@@ -501,6 +545,8 @@ def get_shot_transition_matrix(
                 continue
             raw_counts[idx1][idx2] += 1
             total_transitions += 1
+            provenance_stroke_ids.update((s1.id, s2.id))
+            provenance_rally_ids.add(r_id)
 
     # 正規化行列（行和で割る）
     matrix = [[0.0] * n for _ in range(n)]
@@ -538,10 +584,14 @@ def get_shot_transition_matrix(
             "total_transitions": total_transitions,
             "top_sequences": top_sequences,
         },
-        "meta": {
-            "sample_size": total_transitions,
-            "confidence": confidence,
-        },
+        "meta": _with_input_provenance(
+            {
+                "sample_size": total_transitions,
+                "confidence": confidence,
+            },
+            rallies=[r for r in rally_rows if r.id in provenance_rally_ids],
+            strokes=[s for s in all_strokes if s.id in provenance_stroke_ids],
+        ),
     }
 
 
@@ -566,7 +616,10 @@ def get_temporal_performance(
         return {
             "success": True,
             "data": {"phases": []},
-            "meta": {"sample_size": 0, "confidence": empty_confidence},
+            "meta": _with_input_provenance(
+                {"sample_size": 0, "confidence": empty_confidence},
+                rallies=[],
+            ),
         }
 
     match_ids = [m.id for m in matches]
@@ -622,7 +675,10 @@ def get_temporal_performance(
     return {
         "success": True,
         "data": {"phases": phase_list},
-        "meta": {"sample_size": total_sample, "confidence": confidence},
+        "meta": _with_input_provenance(
+            {"sample_size": total_sample, "confidence": confidence},
+            rallies=rallies,
+        ),
     }
 
 
@@ -652,7 +708,10 @@ def get_post_long_rally_stats(
                 "post_long": {"win_rate": 0.0, "avg_rally_length": 0.0, "count": 0},
                 "diff_win_rate": 0.0,
             },
-            "meta": {"sample_size": 0, "confidence": empty_confidence},
+            "meta": _with_input_provenance(
+                {"sample_size": 0, "confidence": empty_confidence},
+                rallies=[],
+            ),
         }
 
     match_ids = [m.id for m in matches]
@@ -716,7 +775,10 @@ def get_post_long_rally_stats(
             "post_long": post_stat,
             "diff_win_rate": diff,
         },
-        "meta": {"sample_size": total_sample, "confidence": confidence},
+        "meta": _with_input_provenance(
+            {"sample_size": total_sample, "confidence": confidence},
+            rallies=rallies_all,
+        ),
     }
 
 
@@ -740,7 +802,10 @@ def get_opponent_stats(player_id: int, db: Session = Depends(get_db)):
         return {
             "success": True,
             "data": {"opponents": []},
-            "meta": {"sample_size": 0, "confidence": empty_confidence},
+            "meta": _with_input_provenance(
+                {"sample_size": 0, "confidence": empty_confidence},
+                rallies=[],
+            ),
         }
 
     match_ids = [m.id for m in matches]
@@ -808,7 +873,10 @@ def get_opponent_stats(player_id: int, db: Session = Depends(get_db)):
     return {
         "success": True,
         "data": {"opponents": opponents_list},
-        "meta": {"sample_size": total_sample, "confidence": confidence},
+        "meta": _with_input_provenance(
+            {"sample_size": total_sample, "confidence": confidence},
+            rallies=rallies,
+        ),
     }
 
 
@@ -833,7 +901,11 @@ def get_opponent_vulnerability(opponent_id: int, db: Session = Depends(get_db)):
         return {
             "success": True,
             "data": {"zone_loss_rates": {}, "weak_zones": []},
-            "meta": {"sample_size": 0, "confidence": empty_confidence},
+            "meta": _with_input_provenance(
+                {"sample_size": 0, "confidence": empty_confidence},
+                rallies=[],
+                strokes=[],
+            ),
         }
 
     role_by_match: dict[int, str] = {
@@ -861,7 +933,11 @@ def get_opponent_vulnerability(opponent_id: int, db: Session = Depends(get_db)):
         return {
             "success": True,
             "data": {"zone_loss_rates": {}, "weak_zones": []},
-            "meta": {"sample_size": 0, "confidence": empty_confidence},
+            "meta": _with_input_provenance(
+                {"sample_size": 0, "confidence": empty_confidence},
+                rallies=[],
+                strokes=[],
+            ),
         }
 
     # 失点ラリーの着地ゾーンを集計（相手の最終打の着地点）
@@ -874,6 +950,8 @@ def get_opponent_vulnerability(opponent_id: int, db: Session = Depends(get_db)):
 
     # ラリーごとの最終ストロークの着地ゾーン
     last_stroke_zone: dict[int, str] = {}
+    provenance_strokes: list[Stroke] = []
+    provenance_rally_ids: set[int] = set()
     strokes_by_rally: dict[int, list[Stroke]] = defaultdict(list)
     for stroke in strokes:
         strokes_by_rally[stroke.rally_id].append(stroke)
@@ -888,6 +966,8 @@ def get_opponent_vulnerability(opponent_id: int, db: Session = Depends(get_db)):
             last = opp_strokes[-1]
             if last.land_zone:
                 last_stroke_zone[r_id] = last.land_zone
+                provenance_strokes.append(last)
+                provenance_rally_ids.add(r_id)
 
     zone_loss_counts: dict[str, int] = defaultdict(int)
     total_losses = len(lost_rally_ids)
@@ -906,7 +986,11 @@ def get_opponent_vulnerability(opponent_id: int, db: Session = Depends(get_db)):
     return {
         "success": True,
         "data": {"zone_loss_rates": zone_loss_rates, "weak_zones": weak_zones},
-        "meta": {"sample_size": total_losses, "confidence": confidence},
+        "meta": _with_input_provenance(
+            {"sample_size": total_losses, "confidence": confidence},
+            rallies=[r for r in rallies if r.id in lost_rally_ids],
+            strokes=provenance_strokes,
+        ),
     }
 
 
@@ -941,7 +1025,11 @@ def get_opponent_card(opponent_id: int, db: Session = Depends(get_db)):
                 "serve_style": None,
                 "serve_style_ja": None,
             },
-            "meta": {"sample_size": 0, "confidence": empty_confidence},
+            "meta": _with_input_provenance(
+                {"sample_size": 0, "confidence": empty_confidence},
+                rallies=[],
+                strokes=[],
+            ),
         }
 
     role_by_match: dict[int, str] = {
@@ -973,15 +1061,18 @@ def get_opponent_card(opponent_id: int, db: Session = Depends(get_db)):
         )
         shot_counter: dict[str, int] = defaultdict(int)
         serve_counter: dict[str, int] = defaultdict(int)
+        provenance_strokes: list[Stroke] = []
         for stroke in strokes:
             role = rally_to_role.get(stroke.rally_id)
             if stroke.player == role:
+                provenance_strokes.append(stroke)
                 shot_counter[stroke.shot_type] += 1
                 if stroke.stroke_num == 1:
                     serve_counter[stroke.shot_type] += 1
     else:
         shot_counter = defaultdict(int)
         serve_counter = defaultdict(int)
+        provenance_strokes = []
 
     top_shot = None
     if shot_counter:
@@ -1012,7 +1103,11 @@ def get_opponent_card(opponent_id: int, db: Session = Depends(get_db)):
             "serve_style": serve_style,
             "serve_style_ja": serve_style_ja,
         },
-        "meta": {"sample_size": total_rallies, "confidence": confidence},
+        "meta": _with_input_provenance(
+            {"sample_size": total_rallies, "confidence": confidence},
+            rallies=rallies,
+            strokes=provenance_strokes,
+        ),
     }
 
 
@@ -1048,6 +1143,7 @@ def get_court_coverage_split(match_id: int, db: Session = Depends(get_db)):
         for role in players_to_track
     }
 
+    strokes: list[Stroke] = []
     if rally_ids:
         strokes = (
             db.query(Stroke)
@@ -1106,7 +1202,11 @@ def get_court_coverage_split(match_id: int, db: Session = Depends(get_db)):
     return {
         "success": True,
         "data": response_data,
-        "meta": {"sample_size": total_sample, "confidence": confidence},
+        "meta": _with_input_provenance(
+            {"sample_size": total_sample, "confidence": confidence},
+            rallies=rallies,
+            strokes=strokes,
+        ),
     }
 
 
@@ -1132,7 +1232,10 @@ def get_partner_comparison(player_id: int, db: Session = Depends(get_db)):
         return {
             "success": True,
             "data": {"partners": []},
-            "meta": {"sample_size": 0, "confidence": empty_confidence},
+            "meta": _with_input_provenance(
+                {"sample_size": 0, "confidence": empty_confidence},
+                rallies=[],
+            ),
         }
 
     # パートナーIDを抽出
@@ -1207,7 +1310,10 @@ def get_partner_comparison(player_id: int, db: Session = Depends(get_db)):
     return {
         "success": True,
         "data": {"partners": partners_list},
-        "meta": {"sample_size": total_sample, "confidence": confidence},
+        "meta": _with_input_provenance(
+            {"sample_size": total_sample, "confidence": confidence},
+            rallies=rallies,
+        ),
     }
 
 
@@ -1237,7 +1343,11 @@ def get_doubles_serve_receive(player_id: int, db: Session = Depends(get_db)):
                 "serve_style": {"short_service": 0.0, "long_service": 0.0},
                 "receive_zones": [],
             },
-            "meta": {"sample_size": 0, "confidence": empty_confidence},
+            "meta": _with_input_provenance(
+                {"sample_size": 0, "confidence": empty_confidence},
+                rallies=[],
+                strokes=[],
+            ),
         }
 
     match_ids = [m.id for m in matches]
@@ -1286,6 +1396,7 @@ def get_doubles_serve_receive(player_id: int, db: Session = Depends(get_db)):
 
     serve_style: dict[str, int] = defaultdict(int)
     receive_zone_wins: dict[str, dict] = defaultdict(lambda: {"wins": 0, "total": 0})
+    provenance_strokes: list[Stroke] = []
 
     strokes_by_rally: dict[int, list[Stroke]] = defaultdict(list)
     for stroke in strokes:
@@ -1303,11 +1414,13 @@ def get_doubles_serve_receive(player_id: int, db: Session = Depends(get_db)):
             for s in serves:
                 if s.shot_type in ("short_service", "long_service"):
                     serve_style[s.shot_type] += 1
+                    provenance_strokes.append(s)
         else:
             # レシーブ（stroke_num=2）のゾーンを集計
             returns = [s for s in stks if s.stroke_num == 2 and s.player == role]
             for s in returns:
                 zone = s.land_zone or "unknown"
+                provenance_strokes.append(s)
                 receive_zone_wins[zone]["total"] += 1
                 if player_won:
                     receive_zone_wins[zone]["wins"] += 1
@@ -1338,7 +1451,11 @@ def get_doubles_serve_receive(player_id: int, db: Session = Depends(get_db)):
             "serve_style": serve_style_rates,
             "receive_zones": receive_zones,
         },
-        "meta": {"sample_size": total_sample, "confidence": confidence},
+        "meta": _with_input_provenance(
+            {"sample_size": total_sample, "confidence": confidence},
+            rallies=rallies,
+            strokes=provenance_strokes,
+        ),
     }
 
 
@@ -1369,7 +1486,11 @@ def get_stroke_sharing(player_id: int, db: Session = Depends(get_db)):
                 "imbalanced_count": 0,
                 "avg_balance_ratio": 0.0,
             },
-            "meta": {"sample_size": 0, "confidence": empty_confidence},
+            "meta": _with_input_provenance(
+                {"sample_size": 0, "confidence": empty_confidence},
+                rallies=[],
+                strokes=[],
+            ),
         }
 
     match_ids = [m.id for m in matches]
@@ -1411,7 +1532,11 @@ def get_stroke_sharing(player_id: int, db: Session = Depends(get_db)):
                 "imbalanced_count": 0,
                 "avg_balance_ratio": 0.0,
             },
-            "meta": {"sample_size": 0, "confidence": empty_confidence},
+            "meta": _with_input_provenance(
+                {"sample_size": 0, "confidence": empty_confidence},
+                rallies=[],
+                strokes=[],
+            ),
         }
 
     all_strokes = (
@@ -1430,6 +1555,8 @@ def get_stroke_sharing(player_id: int, db: Session = Depends(get_db)):
     imbalanced_total = 0
     total_balance_ratio = 0.0
     total_rallies = 0
+    provenance_rally_ids: set[int] = set()
+    provenance_strokes: list[Stroke] = []
 
     for rally in rallies:
         r_id = rally.id
@@ -1437,11 +1564,14 @@ def get_stroke_sharing(player_id: int, db: Session = Depends(get_db)):
         partner_role = rally_to_partner.get(r_id)
         stks = strokes_by_rally.get(r_id, [])
 
-        player_count = sum(1 for s in stks if s.player == player_role)
-        partner_count = sum(1 for s in stks if s.player == partner_role)
+        team_strokes = [s for s in stks if s.player in (player_role, partner_role)]
+        player_count = sum(1 for s in team_strokes if s.player == player_role)
+        partner_count = sum(1 for s in team_strokes if s.player == partner_role)
         team_total = player_count + partner_count
         if team_total == 0:
             continue
+        provenance_rally_ids.add(r_id)
+        provenance_strokes.extend(team_strokes)
 
         # バランス比率: 0.5に近いほどバランスが取れている
         balance_ratio = min(player_count, partner_count) / team_total
@@ -1474,7 +1604,11 @@ def get_stroke_sharing(player_id: int, db: Session = Depends(get_db)):
             "imbalanced_count": imbalanced_total,
             "avg_balance_ratio": avg_balance_ratio,
         },
-        "meta": {"sample_size": total_rallies, "confidence": confidence},
+        "meta": _with_input_provenance(
+            {"sample_size": total_rallies, "confidence": confidence},
+            rallies=[r for r in rallies if r.id in provenance_rally_ids],
+            strokes=provenance_strokes,
+        ),
     }
 
 
@@ -1497,19 +1631,31 @@ def get_flash_advice(
     sets = sets_q.all()
     if not sets:
         return {"success": True, "data": {"items": [], "item_count": 0, "extended_items_included": False},
-                "meta": {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0)}}
+                "meta": _with_input_provenance(
+                    {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0)},
+                    rallies=[],
+                    strokes=[],
+                )}
 
     # 対象セット
     target_set = next((s for s in sets if s.set_num == as_of_set), None)
     if not target_set:
         return {"success": True, "data": {"items": [], "item_count": 0, "extended_items_included": False},
-                "meta": {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0)}}
+                "meta": _with_input_provenance(
+                    {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0)},
+                    rallies=[],
+                    strokes=[],
+                )}
 
     # 対象プレイヤーのロール確認
     match = db.query(Match).filter(Match.id == match_id).first()
     if not match:
         return {"success": True, "data": {"items": [], "item_count": 0, "extended_items_included": False},
-                "meta": {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0)}}
+                "meta": _with_input_provenance(
+                    {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0)},
+                    rallies=[],
+                    strokes=[],
+                )}
 
     # ダブルスのパートナーも含めてロール決定
     player_role = "player_a" if (match.player_a_id == player_id or match.partner_a_id == player_id) else "player_b"
@@ -1524,7 +1670,11 @@ def get_flash_advice(
     sample_size = len(rallies)
     if sample_size == 0:
         return {"success": True, "data": {"items": [], "item_count": 0, "extended_items_included": False},
-                "meta": {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0)}}
+                "meta": _with_input_provenance(
+                    {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0)},
+                    rallies=[],
+                    strokes=[],
+                )}
 
     # 直近5ラリー
     recent_rallies = rallies[-5:]
@@ -1539,6 +1689,7 @@ def get_flash_advice(
         .all()
     )
     recent_strokes = [s for s in all_strokes if s.rally_id in recent_ids]
+    provenance_stroke_ids: set[int] = set()
 
     strokes_by_rally: dict[int, list] = {}
     for s in all_strokes:
@@ -1549,12 +1700,14 @@ def get_flash_advice(
     loss_rallies = {r.id for r in rallies if r.winner == opp_role}
 
     # ── 1. danger: 直近5ラリーの失点ショット傾向 ──────────────────────────────
-    recent_loss_shots = [
-        s.shot_type for s in recent_strokes
+    recent_loss_stroke_rows = [
+        s for s in recent_strokes
         if s.rally_id in {r.id for r in recent_rallies if r.winner == opp_role}
         and s.player == opp_role
         and s.shot_type
     ]
+    provenance_stroke_ids.update(s.id for s in recent_loss_stroke_rows)
+    recent_loss_shots = [s.shot_type for s in recent_loss_stroke_rows]
     danger_body = "直近5ラリーでは失点の特定パターンが見られません"
     if recent_loss_shots:
         top_shot, top_cnt = Counter(recent_loss_shots).most_common(1)[0]
@@ -1563,10 +1716,12 @@ def get_flash_advice(
         danger_body = f"直近で相手の「{shot_label}」による失点が{top_cnt}回（直近{len(recent_rallies)}ラリー中）"
 
     # ── 2. opportunity: 得点率が高い自分のショット ────────────────────────────
-    player_win_shots = [
-        s.shot_type for s in all_strokes
+    player_win_stroke_rows = [
+        s for s in all_strokes
         if s.rally_id in win_rallies and s.player == player_role and s.shot_type
     ]
+    provenance_stroke_ids.update(s.id for s in player_win_stroke_rows)
+    player_win_shots = [s.shot_type for s in player_win_stroke_rows]
     opportunity_body = "有効な攻め口のデータが不足しています"
     if player_win_shots:
         shot_counts = Counter(player_win_shots)
@@ -1575,10 +1730,12 @@ def get_flash_advice(
         # その球種の総打球数)。1 ラリーで同じ球を 4 回打てば 4 回数えるので、
         # これは勝率ではない。「勝率」と名乗る以上、母数はラリーでなければ
         # ならないので、その球種を打った **相異なるラリー** で数える。
-        rallies_with_shot = {
-            s.rally_id for s in all_strokes
+        top_shot_rows = [
+            s for s in all_strokes
             if s.shot_type == top_shot and s.player == player_role
-        }
+        ]
+        provenance_stroke_ids.update(s.id for s in top_shot_rows)
+        rallies_with_shot = {s.rally_id for s in top_shot_rows}
         rallies_with_shot_won = rallies_with_shot & win_rallies
         shot_rallies_total = len(rallies_with_shot)
         win_pct = round(len(rallies_with_shot_won) / shot_rallies_total * 100) if shot_rallies_total else 0
@@ -1594,20 +1751,26 @@ def get_flash_advice(
     for rid in loss_rallies:
         strokes = strokes_by_rally.get(rid, [])
         # 最後から3球目以前のショット（失点直前）
+        chosen = None
         if len(strokes) >= 3:
-            pre_loss_3.append(strokes[-3].shot_type)
+            chosen = strokes[-3]
         elif len(strokes) >= 2:
-            pre_loss_3.append(strokes[-2].shot_type)
+            chosen = strokes[-2]
+        if chosen is not None:
+            provenance_stroke_ids.add(chosen.id)
+            pre_loss_3.append(chosen.shot_type)
     pattern_body = "ラリーパターンのデータが不足しています"
     if pre_loss_3:
         top_pre, cnt = Counter([s for s in pre_loss_3 if s]).most_common(1)[0]
         pattern_body = f"失点の{cnt}回でラリー中盤に「{_shot_ja(top_pre)}」が多い"
 
     # ── 4. opponent: 相手の直近多用ショット ──────────────────────────────────
-    opp_recent = [
-        s.shot_type for s in recent_strokes
+    opp_recent_rows = [
+        s for s in recent_strokes
         if s.player == opp_role and s.shot_type
     ]
+    provenance_stroke_ids.update(s.id for s in opp_recent_rows)
+    opp_recent = [s.shot_type for s in opp_recent_rows]
     opponent_body = "相手の直近ショットデータが不足しています"
     if opp_recent:
         top_opp, cnt = Counter(opp_recent).most_common(1)[0]
@@ -1685,7 +1848,11 @@ def get_flash_advice(
             "item_count": len(items),
             "extended_items_included": extended,
         },
-        "meta": {"sample_size": sample_size, "confidence": confidence},
+        "meta": _with_input_provenance(
+            {"sample_size": sample_size, "confidence": confidence},
+            rallies=rallies,
+            strokes=[s for s in all_strokes if s.id in provenance_stroke_ids],
+        ),
     }
 
 
@@ -1710,10 +1877,20 @@ def get_growth_timeline(
     if not matches:
         return {"success": True, "data": {"points": [], "trend": "pending", "trend_delta": 0.0,
                                           "weighted_trend": "pending", "weighted_trend_delta": 0.0},
-                "meta": {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0)}}
+                "meta": _with_input_provenance(
+                    {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0)},
+                    rallies=[],
+                )}
 
     # growth_engine: 強度重み付きポイント計算
-    raw_points = growth_points_weighted(matches, player_id, db, metric=metric)
+    provenance_rows: dict[str, list] = {"rallies": []}
+    raw_points = growth_points_weighted(
+        matches,
+        player_id,
+        db,
+        metric=metric,
+        provenance_rows=provenance_rows,
+    )
     points = strength_weighted_moving_avg(raw_points, window_size=window_size)
 
     # トレンド判定（通常値 + 強度補正値）
@@ -1732,7 +1909,10 @@ def get_growth_timeline(
             "weighted_trend": trend_info["weighted_trend"],
             "weighted_trend_delta": trend_info["weighted_trend_delta"],
         },
-        "meta": {"sample_size": len(points), "confidence": confidence},
+        "meta": _with_input_provenance(
+            {"sample_size": len(points), "confidence": confidence},
+            rallies=list({r.id: r for r in provenance_rows["rallies"]}.values()),
+        ),
     }
 
 
@@ -1762,14 +1942,24 @@ def get_growth_judgment(
                 "match_count": match_count,
                 "min_matches_required": min_matches,
             },
-            "meta": {"sample_size": match_count, "confidence": check_confidence("descriptive_basic", match_count)},
+            "meta": _with_input_provenance(
+                {"sample_size": match_count, "confidence": check_confidence("descriptive_basic", match_count)},
+                rallies=[],
+            ),
         }
 
     metrics_result = {}
+    provenance_rows: dict[str, list] = {"rallies": []}
 
     for metric in ("win_rate", "serve_win_rate"):
         # growth_engine: 強度重み付きポイントで計算
-        raw_pts = growth_points_weighted(matches, player_id, db, metric=metric)
+        raw_pts = growth_points_weighted(
+            matches,
+            player_id,
+            db,
+            metric=metric,
+            provenance_rows=provenance_rows,
+        )
         annotated = len(raw_pts)
         window = max(2, annotated // 3)
         if annotated < max(window * 2, min_matches):
@@ -1838,7 +2028,10 @@ def get_growth_judgment(
             "annotated_match_count": annotated_match_count,
             "min_matches_required": min_matches,
         },
-        "meta": {"sample_size": annotated_match_count},
+        "meta": _with_input_provenance(
+            {"sample_size": annotated_match_count},
+            rallies=list({r.id: r for r in provenance_rows["rallies"]}.values()),
+        ),
     }
 
 

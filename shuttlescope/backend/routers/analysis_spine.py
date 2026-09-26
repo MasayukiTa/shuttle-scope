@@ -25,7 +25,7 @@ from backend.db.models import Match, GameSet, Rally, Stroke
 from backend.analysis.router_helpers import (
     _player_role_in_match, _get_player_matches, _fetch_matches_sets_rallies,
 )
-from backend.analysis.response_meta import build_response_meta
+from backend.analysis.response_meta import build_input_provenance, build_response_meta
 from backend.analysis.analysis_registry import list_registry_entries, get_tier as _registry_get_tier
 from backend.analysis.analysis_meta import EVIDENCE_META
 from backend.analysis.promotion_rules import all_criteria_as_dict, DEMOTION_CONDITIONS
@@ -50,6 +50,26 @@ from backend.utils.auth import (
 
 router = APIRouter(dependencies=[Depends(require_query_scope)])
 
+
+def _analysis_meta(
+    analysis_type: str,
+    sample_size: int,
+    *,
+    rallies: list | tuple | None = None,
+    strokes_by_rally: dict | None = None,
+) -> dict:
+    """Build analysis meta and attach provenance only for inputs actually used."""
+    if rallies is None and strokes_by_rally is None:
+        return build_response_meta(analysis_type, sample_size)
+    provenance = build_input_provenance(
+        rallies=rallies or [],
+        strokes_by_rally=strokes_by_rally or {},
+    )
+    return build_response_meta(
+        analysis_type,
+        sample_size,
+        input_provenance=provenance,
+    )
 
 def _build_aux_maps(db: Session, matches: list, set_ids: list, rally_ids: list) -> tuple:
     """セット番号マップ・ストロークマップを構築するヘルパー。"""
@@ -109,7 +129,7 @@ def _epv_state_table_impl(db: Session, player_id: int, ctx=None,
     matches, role_by_match, set_to_match, set_num_map, rallies, strokes_by_rally = \
         _load_ctx_or_query(db, player_id, ctx, result, tournament_level, date_from, date_to)
     if not matches:
-        meta = build_response_meta("epv_state", 0)
+        meta = _analysis_meta("epv_state", 0, rallies=[], strokes_by_rally={})
         return {"success": True, "data": {"state_table": [], "global_win_rate": 0.5, "total_rallies": 0}, "meta": meta}
 
     result_data = compute_rally_state_epv(
@@ -120,7 +140,7 @@ def _epv_state_table_impl(db: Session, player_id: int, ctx=None,
         set_num_by_set=set_num_map,
     )
 
-    meta = build_response_meta("epv_state", len(rallies))
+    meta = _analysis_meta("epv_state", len(rallies), rallies=rallies, strokes_by_rally=strokes_by_rally)
     return {"success": True, "data": result_data, "meta": meta}
 
 
@@ -139,7 +159,7 @@ def get_epv_state_map(
 ):
     matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
     if not matches:
-        return {"success": True, "data": [], "meta": build_response_meta("epv_state", 0)}
+        return {"success": True, "data": [], "meta": _analysis_meta("epv_state", 0, rallies=[], strokes_by_rally={})}
 
     match_ids = [m.id for m in matches]
     role_by_match = {m.id: _player_role_in_match(m, player_id) for m in matches}
@@ -161,7 +181,7 @@ def get_epv_state_map(
         set_num_by_set=set_num_map,
     )
     state_map = compute_epv_state_map(state_result["state_table"])
-    meta = build_response_meta("epv_state", len(rallies))
+    meta = _analysis_meta("epv_state", len(rallies), rallies=rallies, strokes_by_rally=strokes_by_rally)
     return {"success": True, "data": state_map, "meta": meta}
 
 
@@ -189,7 +209,7 @@ def _state_action_values_impl(db: Session, player_id: int, ctx=None,
     matches, role_by_match, set_to_match, set_num_map, rallies, strokes_by_rally = \
         _load_ctx_or_query(db, player_id, ctx, result, tournament_level, date_from, date_to)
     if not matches:
-        return {"success": True, "data": {"q_table": [], "best_actions": {}, "total_states": 0, "total_reliable_cells": 0}, "meta": build_response_meta("state_action", 0)}
+        return {"success": True, "data": {"q_table": [], "best_actions": {}, "total_states": 0, "total_reliable_cells": 0}, "meta": _analysis_meta("state_action", 0, rallies=[], strokes_by_rally={})}
 
     result_data = compute_q_values(
         rallies=rallies,
@@ -198,7 +218,7 @@ def _state_action_values_impl(db: Session, player_id: int, ctx=None,
         set_to_match=set_to_match,
         set_num_by_set=set_num_map,
     )
-    meta = build_response_meta("state_action", len(rallies))
+    meta = _analysis_meta("state_action", len(rallies), rallies=rallies, strokes_by_rally=strokes_by_rally)
     return {"success": True, "data": result_data, "meta": meta}
 
 
@@ -217,7 +237,7 @@ def get_state_best_actions(
 ):
     matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
     if not matches:
-        return {"success": True, "data": [], "meta": build_response_meta("state_action", 0)}
+        return {"success": True, "data": [], "meta": _analysis_meta("state_action", 0, rallies=[], strokes_by_rally={})}
 
     match_ids = [m.id for m in matches]
     role_by_match = {m.id: _player_role_in_match(m, player_id) for m in matches}
@@ -239,7 +259,7 @@ def get_state_best_actions(
         set_num_by_set=set_num_map,
     )
     best_list = summarize_best_actions(result_data["best_actions"])
-    meta = build_response_meta("state_action", len(rallies))
+    meta = _analysis_meta("state_action", len(rallies), rallies=rallies, strokes_by_rally=strokes_by_rally)
     return {"success": True, "data": best_list, "meta": meta}
 
 
@@ -267,7 +287,7 @@ def _counterfactual_v2_impl(db: Session, player_id: int, ctx=None,
     matches, role_by_match, set_to_match, set_num_map, rallies, strokes_by_rally = \
         _load_ctx_or_query(db, player_id, ctx, result, tournament_level, date_from, date_to)
     if not matches:
-        return {"success": True, "data": {"comparisons": [], "total_contexts": 0, "usable_contexts": 0}, "meta": build_response_meta("counterfactual_v2", 0)}
+        return {"success": True, "data": {"comparisons": [], "total_contexts": 0, "usable_contexts": 0}, "meta": _analysis_meta("counterfactual_v2", 0, rallies=[], strokes_by_rally={})}
 
     result_data = compute_counterfactual_v2(
         rallies=rallies,
@@ -276,7 +296,7 @@ def _counterfactual_v2_impl(db: Session, player_id: int, ctx=None,
         set_to_match=set_to_match,
         set_num_by_set=set_num_map,
     )
-    meta = build_response_meta("counterfactual_v2", len(rallies))
+    meta = _analysis_meta("counterfactual_v2", len(rallies), rallies=rallies, strokes_by_rally=strokes_by_rally)
     return {"success": True, "data": result_data, "meta": meta}
 
 
@@ -304,7 +324,7 @@ def _hazard_fatigue_impl(db: Session, player_id: int, ctx=None,
     matches, role_by_match, set_to_match, set_num_map, rallies, _sbr = \
         _load_ctx_or_query(db, player_id, ctx, result, tournament_level, date_from, date_to)
     if not matches:
-        return {"success": True, "data": {}, "meta": build_response_meta("hazard_fatigue", 0)}
+        return {"success": True, "data": {}, "meta": _analysis_meta("hazard_fatigue", 0, rallies=[])}
 
     result_data = compute_hazard_model(
         rallies=rallies,
@@ -312,7 +332,7 @@ def _hazard_fatigue_impl(db: Session, player_id: int, ctx=None,
         set_to_match=set_to_match,
         set_num_by_set=set_num_map,
     )
-    meta = build_response_meta("hazard_fatigue", len(rallies))
+    meta = _analysis_meta("hazard_fatigue", len(rallies), rallies=rallies)
     return {"success": True, "data": result_data, "meta": meta}
 
 
@@ -373,7 +393,7 @@ def _opponent_policy_impl(db: Session, player_id: int, ctx=None,
     matches, role_by_match, set_to_match, set_num_map, rallies, strokes_by_rally = \
         _load_ctx_or_query(db, player_id, ctx, result, tournament_level, date_from, date_to)
     if not matches:
-        return {"success": True, "data": {"global_policy": {}, "context_policies": [], "total_opponent_shots": 0, "usable_contexts": 0}, "meta": build_response_meta("opponent_policy", 0)}
+        return {"success": True, "data": {"global_policy": {}, "context_policies": [], "total_opponent_shots": 0, "usable_contexts": 0}, "meta": _analysis_meta("opponent_policy", 0, rallies=[], strokes_by_rally={})}
 
     result_data = compute_opponent_policy(
         rallies=rallies,
@@ -382,7 +402,7 @@ def _opponent_policy_impl(db: Session, player_id: int, ctx=None,
         set_to_match=set_to_match,
         set_num_by_set=set_num_map,
     )
-    meta = build_response_meta("opponent_policy", result_data.get("total_opponent_shots", 0))
+    meta = _analysis_meta("opponent_policy", result_data.get("total_opponent_shots", 0), rallies=rallies, strokes_by_rally=strokes_by_rally)
     return {"success": True, "data": result_data, "meta": meta}
 
 
@@ -426,7 +446,7 @@ def _doubles_role_impl(db: Session, player_id: int, ctx=None,
         matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
         doubles_matches = [m for m in matches if getattr(m, 'format', None) in ('womens_doubles', 'mixed_doubles')]
         if not doubles_matches:
-            return {"success": True, "data": {"inferred_role": "unknown", "confidence_score": 0.0, "total_shots": 0}, "meta": build_response_meta("doubles_role", 0)}
+            return {"success": True, "data": {"inferred_role": "unknown", "confidence_score": 0.0, "total_shots": 0}, "meta": _analysis_meta("doubles_role", 0, rallies=[], strokes_by_rally={})}
         match_ids = [m.id for m in doubles_matches]
         role_by_match = {m.id: _player_role_in_match(m, player_id) for m in doubles_matches}
         sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
@@ -437,7 +457,7 @@ def _doubles_role_impl(db: Session, player_id: int, ctx=None,
         _, strokes_by_rally = _build_aux_maps(db, doubles_matches, [], rally_ids)
 
     if not doubles_matches:
-        return {"success": True, "data": {"inferred_role": "unknown", "confidence_score": 0.0, "total_shots": 0}, "meta": build_response_meta("doubles_role", 0)}
+        return {"success": True, "data": {"inferred_role": "unknown", "confidence_score": 0.0, "total_shots": 0}, "meta": _analysis_meta("doubles_role", 0, rallies=[], strokes_by_rally={})}
 
     result_data = compute_doubles_role_inference(
         rallies=rallies,
@@ -445,7 +465,7 @@ def _doubles_role_impl(db: Session, player_id: int, ctx=None,
         role_by_match=role_by_match,
         set_to_match=set_to_match,
     )
-    meta = build_response_meta("doubles_role", result_data.get("total_shots", 0))
+    meta = _analysis_meta("doubles_role", result_data.get("total_shots", 0), rallies=rallies, strokes_by_rally=strokes_by_rally)
     return {"success": True, "data": result_data, "meta": meta}
 
 
@@ -465,13 +485,13 @@ def get_doubles_role_db2(
     from backend.db.models import Player
     player = db.query(Player).filter(Player.id == player_id).first()
     if not player:
-        return {"success": True, "data": {}, "meta": build_response_meta("doubles_role", 0)}
+        return {"success": True, "data": {}, "meta": _analysis_meta("doubles_role", 0, rallies=[], strokes_by_rally={})}
 
     all_matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
     doubles_matches = [m for m in all_matches if getattr(m, 'format', None) in ('womens_doubles', 'mixed_doubles')]
 
     if not doubles_matches:
-        meta = build_response_meta("doubles_role", 0)
+        meta = _analysis_meta("doubles_role", 0, rallies=[], strokes_by_rally={})
         return {"success": True, "data": {"inferred_role": "unknown", "confidence_score": 0.0, "total_shots": 0, "db_phase": "db2"}, "meta": meta}
 
     match_ids = [m.id for m in doubles_matches]
@@ -491,7 +511,7 @@ def get_doubles_role_db2(
         role_by_match=role_by_match,
         set_to_match=set_to_match,
     )
-    meta = build_response_meta("doubles_role", result_data.get("total_shots", 0))
+    meta = _analysis_meta("doubles_role", result_data.get("total_shots", 0), rallies=rallies, strokes_by_rally=strokes_by_rally)
     return {"success": True, "data": result_data, "meta": meta}
 
 
@@ -510,7 +530,7 @@ def get_counterfactual_cf2(
 ):
     matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
     if not matches:
-        return {"success": True, "data": {"comparisons": [], "total_contexts": 0, "usable_contexts": 0, "cf_phase": "cf2"}, "meta": build_response_meta("counterfactual_v2", 0)}
+        return {"success": True, "data": {"comparisons": [], "total_contexts": 0, "usable_contexts": 0, "cf_phase": "cf2"}, "meta": _analysis_meta("counterfactual_v2", 0, rallies=[], strokes_by_rally={})}
 
     match_ids = [m.id for m in matches]
     role_by_match = {m.id: _player_role_in_match(m, player_id) for m in matches}
@@ -531,7 +551,7 @@ def get_counterfactual_cf2(
         set_to_match=set_to_match,
         set_num_by_set=set_num_map,
     )
-    meta = build_response_meta("counterfactual_v2", len(rallies))
+    meta = _analysis_meta("counterfactual_v2", len(rallies), rallies=rallies, strokes_by_rally=strokes_by_rally)
     return {"success": True, "data": result_data, "meta": meta}
 
 
@@ -552,7 +572,7 @@ def get_counterfactual_cf3(
 
     matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
     if not matches:
-        return {"success": True, "data": {"comparisons": [], "total_contexts": 0, "usable_contexts": 0, "cf_phase": "cf3"}, "meta": build_response_meta("counterfactual_v2", 0)}
+        return {"success": True, "data": {"comparisons": [], "total_contexts": 0, "usable_contexts": 0, "cf_phase": "cf3"}, "meta": _analysis_meta("counterfactual_v2", 0, rallies=[], strokes_by_rally={})}
 
     match_ids = [m.id for m in matches]
     role_by_match = {m.id: _player_role_in_match(m, player_id) for m in matches}
@@ -592,7 +612,7 @@ def get_counterfactual_cf3(
         set_num_by_set=set_num_map,
         opponent_type_by_match=opponent_type_by_match,
     )
-    meta = build_response_meta("counterfactual_v2", len(rallies))
+    meta = _analysis_meta("counterfactual_v2", len(rallies), rallies=rallies, strokes_by_rally=strokes_by_rally)
     return {"success": True, "data": result_data, "meta": meta}
 
 
@@ -620,7 +640,7 @@ def _shot_influence_v2_impl(db: Session, player_id: int, ctx=None,
     matches, role_by_match, set_to_match, set_num_map, rallies, strokes_by_rally = \
         _load_ctx_or_query(db, player_id, ctx, result, tournament_level, date_from, date_to)
     if not matches:
-        meta = build_response_meta("shot_influence", 0)
+        meta = _analysis_meta("shot_influence", 0, rallies=[], strokes_by_rally={})
         return {"success": True, "data": {"per_shot_type": {}, "state_breakdown": [], "total_rallies": 0, "usable_rallies": 0}, "meta": meta}
 
     result_data = compute_shot_influence_v2(
@@ -640,7 +660,7 @@ def _shot_influence_v2_impl(db: Session, player_id: int, ctx=None,
         }
         for rv in result_data["rally_details"]
     ]
-    meta = build_response_meta("shot_influence", len(rallies))
+    meta = _analysis_meta("shot_influence", len(rallies), rallies=rallies, strokes_by_rally=strokes_by_rally)
     return {"success": True, "data": result_data, "meta": meta}
 
 
@@ -849,7 +869,7 @@ def get_doubles_role_stability(
     if not doubles_matches:
         # D-5: ここが数えているのは **試合数**。`doubles_role` は打球数なので、
         # 同じエントリを借りると打球数向けの閾値で試合数を判定することになる。
-        meta = build_response_meta("doubles_role_stability", 0)
+        meta = _analysis_meta("doubles_role_stability", 0, rallies=[], strokes_by_rally={})
         return {
             "success": True,
             "data": {
@@ -882,7 +902,7 @@ def get_doubles_role_stability(
         role_by_match=role_by_match,
         set_to_match=set_to_match,
     )
-    meta = build_response_meta("doubles_role_stability", result_data.get("n_matches_analyzed", 0))
+    meta = _analysis_meta("doubles_role_stability", result_data.get("n_matches_analyzed", 0), rallies=rallies, strokes_by_rally=strokes_by_rally)
     return {"success": True, "data": result_data, "meta": meta}
 
 

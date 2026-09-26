@@ -56,6 +56,70 @@ MAX_HITTER_DIST: float = 0.35
 # (court_adapter) が要る。未実装 — private_docs の C-8 参照。
 HITTER_GUESS_CONF_CAP = 0.45
 
+# D-5: 位置ベース推測でも、キャリブレーション済みコート上で **2 人だけ**が
+# ネットを挟んでいるなら「上/下という幾何ラベル」は coin flip ではない。
+# ただし D-3 のシャトル↔人物距離はまだ画像座標なので auto_filled までは上げない。
+# 既定 CONF_MEDIUM=0.48 / CONF_HIGH=0.72 の間に固定し、最大 suggested とする。
+HITTER_NET_SEPARATED_CONF_CAP = 0.65
+_GUESSED_LABEL_SOURCES = {"position_fallback", "overflow"}
+
+
+def position_label_geometry(
+    players: list[dict],
+    court_adapter=None,
+) -> str:
+    """位置ベース player_a/player_b がネット分離で裏付けられるかを分類する。
+
+    player_a/player_b の screen-label を信用できるのは singles 相当の
+    2 人だけが検出され、両者の foot_point がキャリブレーション済みコートの
+    反対側にある場合だけ。4 人いる doubles、床点欠損、ネット際、未校正では
+    推測を昇格しない。
+    """
+    if court_adapter is None or not getattr(court_adapter, "is_calibrated", False):
+        return "uncalibrated"
+
+    court_players = [
+        p for p in players
+        if p.get("label") in ("player_a", "player_b", "player_c", "player_d")
+    ]
+    if len(court_players) != 2:
+        return "not_two_players"
+    by_label = {p.get("label"): p for p in court_players}
+    if set(by_label) != {"player_a", "player_b"}:
+        return "not_screen_pair"
+
+    sides: dict[str, str] = {}
+    for label in ("player_a", "player_b"):
+        p = by_label[label]
+        foot = p.get("foot_point")
+        if not isinstance(foot, (list, tuple)) or len(foot) < 2:
+            return "missing_foot_point"
+        side = court_adapter.side_of_net(foot[0], foot[1])
+        if side is None:
+            return "net_ambiguous"
+        sides[label] = side
+
+    return "net_separated" if sides["player_a"] != sides["player_b"] else "same_side"
+
+
+def cap_guessed_hitter_confidence(
+    confidence: float,
+    nearest_player: Optional[dict],
+    players: list[dict],
+    court_adapter=None,
+) -> tuple[float, Optional[str]]:
+    """位置ベース人物ラベルの確信度上限を、ネット幾何で保守的に決める。"""
+    if not nearest_player or nearest_player.get("label_source") not in _GUESSED_LABEL_SOURCES:
+        return float(confidence), None
+
+    geometry = position_label_geometry(players, court_adapter)
+    cap = (
+        HITTER_NET_SEPARATED_CONF_CAP
+        if geometry == "net_separated"
+        else HITTER_GUESS_CONF_CAP
+    )
+    return min(float(confidence), cap), geometry
+
 # ラリー境界のパディング（秒）: 映像同期ずれを吸収
 RALLY_BOUNDARY_PAD_SEC: float = 0.25
 
@@ -64,6 +128,7 @@ def align_match(
     yolo_frames: list[dict],
     tracknet_frames: list[dict],
     rallies: list[dict],
+    court_adapter=None,
 ) -> list[dict]:
     """試合全体の YOLO + TrackNet アライメントを計算する。
 
@@ -93,7 +158,7 @@ def align_match(
         rally_yolo = _frames_in_range(yolo_frames, yolo_ts, padded_start, padded_end)
         rally_tracknet = _frames_in_range(tracknet_frames, tracknet_ts, padded_start, padded_end)
 
-        events = _build_events(rally_yolo, rally_tracknet)
+        events = _build_events(rally_yolo, rally_tracknet, court_adapter=court_adapter)
         summary = _summarize_events(events)
 
         results.append({
@@ -117,6 +182,7 @@ def _frames_in_range(frames: list[dict], timestamps: list[float],
 def _build_events(
     yolo_frames: list[dict],
     tracknet_frames: list[dict],
+    court_adapter=None,
 ) -> list[dict]:
     """各 TrackNet フレームに最近傍 YOLO フレームをマッチングしてイベントを構築する。"""
     yolo_ts = [f["timestamp_sec"] for f in yolo_frames]
@@ -151,6 +217,7 @@ def _build_events(
         hitter: Optional[str] = None
         hitter_dist: float = 0.0
         hitter_confidence: float = 0.0  # 距離から算出した候補確信度（0-1）
+        hitter_label_geometry: Optional[str] = None
         if shuttle_x is not None and shuttle_y is not None and shuttle_conf >= 0.4:
             nearest = nearest_player_to_point(players, shuttle_x, shuttle_y)
             if nearest:
@@ -165,17 +232,14 @@ def _build_events(
                     hitter_confidence = round(
                         (1.0 - hitter_dist / MAX_HITTER_DIST) * shuttle_conf, 3
                     )
-                    # C-8: 距離は「誰に一番近いか」しか語らない。
-                    # その **ラベル自体** が位置ベースの当てずっぽう
-                    # (yolo/inference.py の y 平均による上下割当) なら、
-                    # どれだけ近くても「どちらの選手か」は分かっていない。
-                    # 2 人が同じ側に立てば必ず片方が player_a になる程度の根拠しかない。
-                    # `Stroke.player` を自動で埋めさせないよう上限まで落とす
-                    # (結果として review_required になる)。
-                    if nearest.get("label_source") in ("position_fallback", "overflow"):
-                        hitter_confidence = round(
-                            min(hitter_confidence, HITTER_GUESS_CONF_CAP), 3
-                        )
+                    # C-8 / D-5: 同じ側・未校正・4人検出等では推測ラベルを
+                    # review_required 上限へ。2人だけが foot_point でネットを挟む
+                    # 場合だけ suggested 上限まで許す。D-3 の距離問題が残るため
+                    # net-separated でも auto_filled にはしない。
+                    hitter_confidence, hitter_label_geometry = cap_guessed_hitter_confidence(
+                        hitter_confidence, nearest, players, court_adapter
+                    )
+                    hitter_confidence = round(hitter_confidence, 3)
 
         # 受け手候補: ヒッターでない方
         receiver: Optional[str] = None
@@ -197,6 +261,7 @@ def _build_events(
             "hitter_candidate": hitter,
             "hitter_distance": hitter_dist,
             "hitter_confidence": hitter_confidence,
+            "hitter_label_geometry": hitter_label_geometry,
             "receiver_candidate": receiver,
             "formation": formation,
         })

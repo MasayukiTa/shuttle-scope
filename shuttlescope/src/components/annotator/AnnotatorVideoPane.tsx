@@ -29,6 +29,7 @@ interface Props {
   currentVideoSec: number
   shuttleFrames: ShuttleFrame[]
   shuttleOverlayVisible: boolean
+  tracknetBackendUsed?: string | null
   /** コートグリッドオーバーレイ */
   courtGridMatchId?: string
   courtGridVisible?: boolean
@@ -96,6 +97,7 @@ export function AnnotatorVideoPane({
   currentVideoSec,
   shuttleFrames,
   shuttleOverlayVisible,
+  tracknetBackendUsed,
   courtGridMatchId,
   courtGridVisible = false,
   roiRect = null,
@@ -188,6 +190,7 @@ export function AnnotatorVideoPane({
             videoWidth={rr.width}
             videoHeight={rr.height}
             visible={shuttleOverlayVisible}
+            backendUsed={tracknetBackendUsed}
           />
         </div>
       )}

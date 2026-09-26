@@ -507,10 +507,27 @@ def _update_match_video_path(old_path: Path, new_path: Path, match_id: Optional[
 
     n = 0
     with SessionLocal() as db:
-        # 1. match_id 指定の場合は明示更新（古いパスと一致しなくても）
+        # 1. match_id 指定の場合は明示更新。
+        # 通常は SSD -> HDD の同一ファイル移動なので CV 成果物は維持する。
+        # ただし、match に既に old_path とは無関係な別 local 動画が紐付いているのに
+        # 明示 match_id で上書きする場合だけ「内容差し替え」として無効化する。
         if match_id is not None:
             m = db.get(Match, match_id)
             if m is not None and (m.video_local_path or "") != new_url:
+                cur_local = (m.video_local_path or "").strip()
+                relocation_sources = {old_url, old_str, new_url}
+                if cur_local and cur_local not in relocation_sources:
+                    from backend.services.video_source_lifecycle import (
+                        invalidate_match_cv_artifacts_if_source_replaced,
+                    )
+                    invalidate_match_cv_artifacts_if_source_replaced(
+                        db,
+                        m.id,
+                        old_video_local_path=m.video_local_path,
+                        old_video_url=m.video_url,
+                        new_video_local_path=new_url,
+                        new_video_url=m.video_url,
+                    )
                 m.video_local_path = new_url
                 n += 1
                 logger.info("[yt_live] DB updated: match_id=%s → %s", match_id, new_url)

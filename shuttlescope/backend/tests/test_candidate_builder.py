@@ -3,6 +3,7 @@
 DB アクセスなし。純粋関数レベルのテスト。
 """
 import pytest
+from backend.cv.court_adapter import CourtAdapter
 from backend.cv.candidate_builder import (
     CONF_HIGH,
     CONF_MEDIUM,
@@ -177,6 +178,87 @@ class TestInferHitter:
         result = _infer_hitter(alignment, [], [], stroke_ts=1.0, stroke_num=1)
         assert result is not None
         assert result["decision_mode"] == "auto_filled"
+
+
+    @staticmethod
+    def _identity_adapter():
+        H = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+        return CourtAdapter(homography=H, homography_inv=H)
+
+    def test_direct_fallback_net_separated_guess_is_suggested_not_auto(self):
+        yolo = [{
+            "timestamp_sec": 1.0,
+            "players": [
+                {
+                    "label": "player_a",
+                    "label_source": "position_fallback",
+                    "centroid": [0.25, 0.25],
+                    "foot_point": [0.25, 0.25],
+                },
+                {
+                    "label": "player_b",
+                    "label_source": "position_fallback",
+                    "centroid": [0.75, 0.75],
+                    "foot_point": [0.75, 0.75],
+                },
+            ],
+        }]
+        tracknet = [{
+            "timestamp_sec": 1.0,
+            "confidence": 0.95,
+            "x_norm": 0.25,
+            "y_norm": 0.25,
+        }]
+        result = _infer_hitter(
+            None,
+            yolo,
+            tracknet,
+            stroke_ts=1.0,
+            stroke_num=1,
+            court_adapter=self._identity_adapter(),
+        )
+        assert result is not None
+        assert result["value"] == "player_a"
+        assert result["confidence_score"] == pytest.approx(0.65)
+        assert result["decision_mode"] == "suggested"
+        assert "hitter_label_geometry:net_separated" in result["reason_codes"]
+
+    def test_direct_fallback_same_side_guess_remains_review_required(self):
+        yolo = [{
+            "timestamp_sec": 1.0,
+            "players": [
+                {
+                    "label": "player_a",
+                    "label_source": "position_fallback",
+                    "centroid": [0.25, 0.25],
+                    "foot_point": [0.25, 0.25],
+                },
+                {
+                    "label": "player_b",
+                    "label_source": "position_fallback",
+                    "centroid": [0.75, 0.35],
+                    "foot_point": [0.75, 0.35],
+                },
+            ],
+        }]
+        tracknet = [{
+            "timestamp_sec": 1.0,
+            "confidence": 0.95,
+            "x_norm": 0.25,
+            "y_norm": 0.25,
+        }]
+        result = _infer_hitter(
+            None,
+            yolo,
+            tracknet,
+            stroke_ts=1.0,
+            stroke_num=1,
+            court_adapter=self._identity_adapter(),
+        )
+        assert result is not None
+        assert result["confidence_score"] == pytest.approx(0.45)
+        assert result["decision_mode"] == "review_required"
+        assert "hitter_label_geometry:same_side" in result["reason_codes"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────

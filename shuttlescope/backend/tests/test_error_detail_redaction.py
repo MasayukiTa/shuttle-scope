@@ -11,6 +11,8 @@
 静的解析上「例外 → 応答」の経路が残り続け、かつ本番判定が将来 fail-open した
 瞬間に漏れる構造になるため。調査に必要な情報はサーバログ側に残る。
 """
+import pytest
+
 from backend.utils.error_detail import GENERIC_ERROR_JA, client_safe_error
 
 _SECRET = r"C:\Users\kiyus\models\yolov8n.onnx: invalid graph node 'x'"
@@ -126,6 +128,23 @@ def test_yolo_predict_frame_debug_error_is_generic(monkeypatch):
         assert leaked not in err
     # 完全な情報はサーバログに残る
     assert any("invalid graph" in m for m in logged), logged
+
+
+def test_yolo_checked_api_raises_on_inference_failure():
+    from backend.yolo import inference as inf_mod
+
+    engine = _engine_forced_to_fail()
+    with pytest.raises(inf_mod.YOLOInferenceError, match="推論に失敗しました"):
+        engine.predict_frame_checked(_gray_frame())
+
+
+def test_yolo_checked_api_preserves_valid_zero_detections(monkeypatch):
+    from backend.yolo import inference as inf_mod
+
+    engine = inf_mod.YOLOInference.__new__(inf_mod.YOLOInference)
+    engine._last_debug = {"detected": 0}
+    monkeypatch.setattr(engine, "predict_frame", lambda _frame: [])
+    assert engine.predict_frame_checked(_gray_frame()) == []
 
 
 # ── 漏洩経路 3: /api/yolo/status の status_message ───────────────────────────

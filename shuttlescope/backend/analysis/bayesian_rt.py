@@ -14,6 +14,7 @@ class BayesianRealTimeAnalyzer:
         opponent_id: int | None = None,
         db: Session | None = None,
         exclude_match_id: int | None = None,
+        provenance_rows: dict[str, list] | None = None,
     ) -> dict[str, float]:
         """過去データからBeta分布のprior(alpha, beta)を計算する
 
@@ -57,6 +58,8 @@ class BayesianRealTimeAnalyzer:
             set_ids = [s.id for s in sets]
 
             rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
+            if provenance_rows is not None:
+                provenance_rows.setdefault("rallies", []).extend(rallies)
 
             wins = 0
             total = len(rallies)
@@ -125,6 +128,7 @@ class BayesianRealTimeAnalyzer:
         match_id: int,
         completed_set_num: int,
         db: Session,
+        provenance_rows: dict[str, list] | None = None,
     ) -> dict[str, Any]:
         """セット間の速報レポートを生成する
 
@@ -170,6 +174,7 @@ class BayesianRealTimeAnalyzer:
                 opponent_id=opponent_id,
                 db=db,
                 exclude_match_id=match_id,
+                provenance_rows=provenance_rows,
             )
 
             # 完了セットごとにベイズ更新
@@ -184,6 +189,8 @@ class BayesianRealTimeAnalyzer:
                 .order_by(Rally.set_id, Rally.rally_num)
                 .all()
             )
+            if provenance_rows is not None:
+                provenance_rows.setdefault("rallies", []).extend(rallies_all)
 
             rallies_by_set: dict[int, list] = {}
             for rally in rallies_all:

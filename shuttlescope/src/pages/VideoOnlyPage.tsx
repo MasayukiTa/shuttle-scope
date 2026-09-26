@@ -25,6 +25,7 @@ interface DataMsg {
   src: string
   yoloFrames: YoloFrame[]
   shuttleFrames: ShuttleFrame[]
+  tracknetBackendUsed?: string | null
   trackFrames: TrackFrame[]
   frameDetections: RawDetection[]
   roiRect: RoiRect | null
@@ -156,6 +157,7 @@ export function VideoOnlyPage() {
               videoWidth={rr.width}
               videoHeight={rr.height}
               visible={data.shuttleOverlayVisible}
+              backendUsed={data.tracknetBackendUsed}
             />
           </div>
         )}

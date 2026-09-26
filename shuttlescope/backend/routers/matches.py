@@ -794,6 +794,21 @@ def update_match(match_id: int, body: MatchUpdate, request: Request, db: Session
         cur_vlp = (match.video_local_path or "").strip()
         if not new_vlp and cur_vlp.startswith("server://"):
             payload.pop("video_local_path", None)
+
+    # D-7: 有効動画ソースが置換される場合、旧動画の座標系に依存する
+    # calibration / YOLO / TrackNet / alignment 成果物を同一 transaction で破棄する。
+    from backend.services.video_source_lifecycle import (
+        invalidate_match_cv_artifacts_if_source_replaced as _invalidate_cv_on_video_replace,
+    )
+    _invalidate_cv_on_video_replace(
+        db,
+        match.id,
+        old_video_local_path=match.video_local_path,
+        old_video_url=match.video_url,
+        new_video_local_path=payload.get("video_local_path", match.video_local_path),
+        new_video_url=payload.get("video_url", match.video_url),
+    )
+
     from backend.utils.db_update import apply_update
     apply_update(match, payload)
     # video_local_path が新たに設定された / 変更された場合に video_token を発行する。
@@ -1448,6 +1463,19 @@ async def start_download(
             m = s.get(Match, target_match_id)
             if m is None:
                 return
+            old_local = (m.video_local_path or "").strip()
+            if old_local and old_local != fp:
+                from backend.services.video_source_lifecycle import (
+                    invalidate_match_cv_artifacts_if_source_replaced,
+                )
+                invalidate_match_cv_artifacts_if_source_replaced(
+                    s,
+                    m.id,
+                    old_video_local_path=m.video_local_path,
+                    old_video_url=m.video_url,
+                    new_video_local_path=fp,
+                    new_video_url=m.video_url,
+                )
             m.video_local_path = fp
             s.commit()
         except Exception as exc:

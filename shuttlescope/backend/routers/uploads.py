@@ -833,8 +833,23 @@ async def finalize_upload(
         if session.match_id is not None:
             m = db.get(Match, session.match_id)
             if m is not None:
+                # D-7: 新規 upload は「同じ URL の materialize」ではなく、動画内容そのものの
+                # 置換として扱う。旧動画座標に依存する recoverable CV 成果物は同じ transaction
+                # で破棄し、人手 annotation truth (Rally / Stroke) は残す。
+                new_video_local_path = f"server://{upload_id}{final.suffix}"
+                from backend.services.video_source_lifecycle import (
+                    invalidate_match_cv_artifacts_if_source_replaced,
+                )
+                invalidate_match_cv_artifacts_if_source_replaced(
+                    db,
+                    m.id,
+                    old_video_local_path=m.video_local_path,
+                    old_video_url=m.video_url,
+                    new_video_local_path=new_video_local_path,
+                    new_video_url="",
+                )
                 # サーバ保管の URL スキームとして server:// を使う（Electron localfile:// と区別）
-                m.video_local_path = f"server://{upload_id}{final.suffix}"
+                m.video_local_path = new_video_local_path
                 m.video_url = ""
                 # video_token がなければ発行 (Phase 1 の app://video/{token} 経路用)
                 from backend.utils.video_token import new_token as _new_video_token

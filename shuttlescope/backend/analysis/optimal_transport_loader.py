@@ -95,6 +95,7 @@ def load_zone_histograms(
     *,
     allowed_player_ids: Optional[set[int]] = None,
     min_matches: int = 3,
+    provenance_rows: Optional[dict[str, list]] = None,
 ) -> dict[int, np.ndarray]:
     """参照選手 + コホート選手の land_zone 正規化ヒストグラム辞書を返す。
 
@@ -115,6 +116,10 @@ def load_zone_histograms(
       2. コホート + 参照選手のストロークを一括取得
       3. 各選手の land_zone 集計 → 正規化
     """
+    if provenance_rows is not None:
+        provenance_rows.clear()
+        provenance_rows.update({"rallies": [], "strokes": []})
+
     K = len(ZONE_LABELS)
     zone_index = {z: i for i, z in enumerate(ZONE_LABELS)}
 
@@ -206,6 +211,8 @@ def load_zone_histograms(
     # Stroke.player は "player_a" / "player_b" / "partner_a" / "partner_b"
     # → match の player_a_id / player_b_id から実 player_id を解決する
     counts: dict[int, np.ndarray] = {pid: np.zeros(K) for pid in target_ids}
+    used_rally_ids: set[int] = set()
+    used_stroke_ids: set[int] = set()
 
     for s in strokes:
         if s.land_zone is None:
@@ -231,6 +238,13 @@ def load_zone_histograms(
 
         if actual_pid in counts:
             counts[actual_pid][z_idx] += 1.0
+            if provenance_rows is not None:
+                used_rally_ids.add(s.rally_id)
+                used_stroke_ids.add(s.id)
+
+    if provenance_rows is not None:
+        provenance_rows["rallies"] = [r for r in rallies if r.id in used_rally_ids]
+        provenance_rows["strokes"] = [s for s in strokes if s.id in used_stroke_ids]
 
     # ── 正規化 ─────────────────────────────────────────────────────────────
     result: dict[int, np.ndarray] = {}

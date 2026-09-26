@@ -81,6 +81,13 @@ export type YoloJob = {
   error: string | null
 }
 
+export type CVArtifactMeta = {
+  artifact_id?: number | null
+  backend_used?: string | null
+  frame_count?: number | null
+  created_at?: string | null
+}
+
 // ── オプション型 ──────────────────────────────────────────────────────────────
 
 interface Options {
@@ -107,6 +114,7 @@ export interface CVJobsResult {
   shuttleOverlayVisible: boolean
   setShuttleOverlayVisible: React.Dispatch<React.SetStateAction<boolean>>
   tracknetArtifactAt: string | null
+  tracknetArtifactMeta: CVArtifactMeta | null
   handleTracknetBatch: () => Promise<void>
   handleTracknetBatchResume: () => Promise<void>
   handleTracknetBatchStop: () => Promise<void>
@@ -118,7 +126,7 @@ export interface CVJobsResult {
   yoloFrames: any[]
   yoloOverlayVisible: boolean
   setYoloOverlayVisible: React.Dispatch<React.SetStateAction<boolean>>
-  yoloArtifactMeta: { created_at: string; frame_count: number } | null
+  yoloArtifactMeta: CVArtifactMeta | null
   handleYoloBatch: () => Promise<void>
   handleYoloBatchResume: () => Promise<void>
   handleYoloBatchStop: () => Promise<void>
@@ -184,6 +192,7 @@ export function useCVJobs({
   const [shuttleFrames, setShuttleFrames] = useState<ShuttleFrame[]>([])
   const [shuttleOverlayVisible, setShuttleOverlayVisible] = useState(false)
   const [tracknetArtifactAt, setTracknetArtifactAt] = useState<string | null>(null)
+  const [tracknetArtifactMeta, setTracknetArtifactMeta] = useState<CVArtifactMeta | null>(null)
   const [tracknetArtifactExists, setTracknetArtifactExists] = useState(false)
 
   // ── YOLO ──────────────────────────────────────────────────────────────────
@@ -193,9 +202,7 @@ export function useCVJobs({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [yoloFrames, setYoloFrames] = useState<any[]>([])
   const [yoloOverlayVisible, setYoloOverlayVisible] = useState(false)
-  const [yoloArtifactMeta, setYoloArtifactMeta] = useState<{
-    created_at: string; frame_count: number
-  } | null>(null)
+  const [yoloArtifactMeta, setYoloArtifactMeta] = useState<CVArtifactMeta | null>(null)
   const [yoloArtifactExists, setYoloArtifactExists] = useState(false)
 
   // 前回実行時の ROI（localStorage per matchId）
@@ -306,17 +313,31 @@ export function useCVJobs({
     if (!matchId) return
     // match 切替時の遅延応答が新 match の状態を汚染しないようガード。
     let cancelled = false
-    apiGet<{ success: boolean; data: { frame_count: number } | null }>(`/yolo/results/${matchId}`)
-      .then(res => { if (!cancelled) setYoloArtifactExists(!!(res.success && res.data)) })
+    setYoloArtifactMeta(null)
+    setTracknetArtifactMeta(null)
+    setYoloArtifactExists(false)
+    setTracknetArtifactExists(false)
+    setShuttleFrames([])
+
+    apiGet<{ success: boolean; data: CVArtifactMeta | null }>(`/yolo/results/${matchId}`)
+      .then(res => {
+        if (cancelled) return
+        setYoloArtifactExists(!!(res.success && res.data))
+        if (res.success && res.data) setYoloArtifactMeta(res.data)
+      })
       .catch(() => {})
     // shuttle_track を優先確認。なければ tracknet_resume_check（ストロークに land_zone が
     // 設定済みかどうか）で判定する。これにより旧バージョンで shuttle_track が保存されていない
     // 場合でも「再開」ボタンを表示できる。
-    apiGet<{ success: boolean; data: unknown[] }>(`/tracknet/shuttle_track/${matchId}`)
+    apiGet<{ success: boolean; data: ShuttleFrame[]; meta?: CVArtifactMeta }>(
+      `/tracknet/shuttle_track/${matchId}`
+    )
       .then(res => {
         if (cancelled) return
+        if (res.success && res.meta) setTracknetArtifactMeta(res.meta)
         if (res.success && Array.isArray(res.data) && res.data.length > 0) {
           setTracknetArtifactExists(true)
+          setShuttleFrames(res.data)
         } else {
           // shuttle_track がない場合はストロークの land_zone をフォールバックで確認
           return apiGet<{ success: boolean; data: { has_land_zone: boolean } }>(
@@ -405,9 +426,16 @@ export function useCVJobs({
               queryClient.invalidateQueries({ queryKey: ['strokes'] })
               // TrackNet 完了後にシャトル軌跡アーティファクトを取得
               try {
-                const trackRes = await apiGet<{ success: boolean; data: ShuttleFrame[] }>(
+                const trackRes = await apiGet<{
+                  success: boolean
+                  data: ShuttleFrame[]
+                  meta?: CVArtifactMeta
+                }>(
                   `/tracknet/shuttle_track/${matchId}`
                 )
+                if (trackRes.success && trackRes.meta) {
+                  setTracknetArtifactMeta(trackRes.meta)
+                }
                 if (trackRes.success && Array.isArray(trackRes.data) && trackRes.data.length > 0) {
                   setShuttleFrames(trackRes.data)
                   setTracknetArtifactAt(
@@ -565,13 +593,10 @@ export function useCVJobs({
             try {
               const metaRes = await apiGet<{
                 success: boolean
-                data: { created_at: string; frame_count: number } | null
+                data: CVArtifactMeta | null
               }>(`/yolo/results/${matchId}`)
               if (metaRes.success && metaRes.data) {
-                setYoloArtifactMeta({
-                  created_at: metaRes.data.created_at,
-                  frame_count: metaRes.data.frame_count,
-                })
+                setYoloArtifactMeta(metaRes.data)
               }
             } catch { /* meta 取得失敗は無視 */ }
           }
@@ -622,6 +647,7 @@ export function useCVJobs({
     shuttleOverlayVisible,
     setShuttleOverlayVisible,
     tracknetArtifactAt,
+    tracknetArtifactMeta,
     handleTracknetBatch,
     handleTracknetBatchResume,
     handleTracknetBatchStop,

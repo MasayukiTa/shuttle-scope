@@ -35,6 +35,8 @@ interface Props {
   videoWidth: number
   videoHeight: number
   visible: boolean
+  /** 保存済み TrackNet 成果物を生成した実 backend 名。mock 判別にも使う。 */
+  backendUsed?: string | null
 }
 
 /** 軌跡として描画する過去フレーム数 */
@@ -61,6 +63,7 @@ export function ShuttleTrackOverlay({
   videoWidth,
   videoHeight,
   visible,
+  backendUsed,
 }: Props) {
   const { t } = useTranslation()
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -189,6 +192,7 @@ export function ShuttleTrackOverlay({
       <div className="absolute top-1 left-1 flex items-center gap-1 bg-black/50 rounded-ss-sm px-1.5 py-0.5">
         <span className="text-yellow-400 text-[9px] font-bold uppercase tracking-wide">
           {t('auto.ShuttleTrackOverlay.shuttle_track')}
+          {backendUsed ? ` · ${backendUsed}` : ''}
         </span>
       </div>
       {/* no-data hint */}

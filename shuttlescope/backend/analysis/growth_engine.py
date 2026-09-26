@@ -128,6 +128,7 @@ def growth_points_weighted(
     player_id: int,
     db: Session,
     metric: str = "win_rate",
+    provenance_rows: Optional[dict[str, list]] = None,
 ) -> list[dict]:
     """
     時系列の各試合について、通常指標と相手強度補正済み指標の両方を計算する。
@@ -151,6 +152,8 @@ def growth_points_weighted(
     """
     strength_cache = build_strength_cache(db, matches, player_id)
     points: list[dict] = []
+    if provenance_rows is not None:
+        provenance_rows.setdefault("rallies", [])
 
     # バルクロード: 全試合ぶんの GameSet / Rally を1クエリずつで取得（N+1 排除）
     match_ids = [m.id for m in matches]
@@ -178,6 +181,7 @@ def growth_points_weighted(
         if metric == "win_rate":
             wins = sum(1 for r in rallies if r.winner == role)
             value = round(wins / len(rallies), 4)
+            used_rallies = rallies
 
         elif metric == "serve_win_rate":
             serve_rallies = [r for r in rallies if r.server == role]
@@ -186,12 +190,17 @@ def growth_points_weighted(
             value = round(
                 sum(1 for r in serve_rallies if r.winner == role) / len(serve_rallies), 4
             )
+            used_rallies = serve_rallies
 
         elif metric == "avg_rally_length":
             value = round(sum(r.rally_length for r in rallies) / len(rallies), 2)
+            used_rallies = rallies
 
         else:
             continue
+
+        if provenance_rows is not None:
+            provenance_rows["rallies"].extend(used_rallies)
 
         strength = strength_cache.get(opp_id, 0.5)
         points.append({

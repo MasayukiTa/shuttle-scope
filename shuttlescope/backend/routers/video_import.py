@@ -486,7 +486,7 @@ def _expand_polygon(polygon: list[list[float]], margin: float = _ROI_EXPAND_MARG
 def _run_yolo(job: dict, video_path: str) -> None:
     """YOLO でプレイヤー位置を解析（GPU優先）。コートキャリブレーションが設定済みなら ROI 外の検出を除外する。"""
     import cv2
-    from backend.yolo.inference import get_yolo_inference
+    from backend.yolo.inference import YOLOInferenceError, get_yolo_inference
     from backend.routers.court_calibration import load_calibration_standalone, is_inside_court
 
     inf = get_yolo_inference()
@@ -529,7 +529,13 @@ def _run_yolo(job: dict, video_path: str) -> None:
         if not ret:
             break
         if frame_idx % sample_every == 0:
-            players = inf.predict_frame(frame)
+            try:
+                players = inf.predict_frame_checked(frame)
+            except YOLOInferenceError as exc:
+                job["yolo"]["status"] = "error"
+                job["yolo"]["error"] = str(exc)
+                cap.release()
+                raise
             # ROI フィルタ: foot_point（足元推定）がコート多角形の外側なら除外
             if roi_polygon:
                 filtered = []

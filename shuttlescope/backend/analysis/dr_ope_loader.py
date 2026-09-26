@@ -17,6 +17,8 @@ exploitability_loader の load_exploitability_records をそのまま再利用�
 """
 from __future__ import annotations
 
+from typing import Optional
+
 from sqlalchemy.orm import Session
 
 from backend.analysis.exploitability_loader import load_exploitability_records
@@ -27,6 +29,7 @@ def load_policy_records(
     player_id: int,
     *,
     coarse: bool = True,
+    provenance_rows: Optional[dict[str, list]] = None,
 ) -> dict[str, list[dict]]:
     """player_id の全試合から DR-OPE 用レコードを状態キー別に返す。
 
@@ -43,7 +46,13 @@ def load_policy_records(
         {state_key: [{"a": str, "win": 0|1}, ...]}
         レコードなし / 試合なしの場合は {} を返す。
     """
-    raw = load_exploitability_records(db, player_id, coarse=coarse)
+    raw = load_exploitability_records(
+        db,
+        player_id,
+        coarse=coarse,
+        provenance_rows=provenance_rows,
+        provenance_include_response=False,
+    )
 
     policy_records: dict[str, list[dict]] = {}
     for state_key, recs in raw.items():

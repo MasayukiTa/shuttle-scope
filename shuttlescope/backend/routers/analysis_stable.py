@@ -16,11 +16,29 @@ from backend.analysis.router_helpers import (
     _player_role_in_match, _get_player_matches, _fetch_matches_sets_rallies,
 )
 from backend.analysis.analysis_config import AnalysisConfig
+from backend.analysis.response_meta import build_input_provenance
 
 from backend.utils.auth import require_query_scope  # cross-team IDOR ガード
 
 router = APIRouter(dependencies=[Depends(require_query_scope)])
 
+
+def _with_input_provenance(
+    meta: dict,
+    *,
+    rallies: list | tuple | None = None,
+    strokes: list | tuple | None = None,
+    strokes_by_rally: dict | None = None,
+    uses_hit_zone: bool = False,
+) -> dict:
+    enriched = dict(meta)
+    enriched["input_provenance"] = build_input_provenance(
+        rallies=rallies or [],
+        strokes_by_rally=strokes_by_rally or {},
+        strokes=strokes,
+        uses_hit_zone=uses_hit_zone,
+    )
+    return enriched
 
 # ---------------------------------------------------------------------------
 # 1. Descriptive statistics
@@ -117,10 +135,13 @@ def get_descriptive(
             "win_by_end_type": {k: v for k, v in win_by_end_type.items()},
             "server_win_rate": server_win_rate,
         },
-        "meta": {
-            "sample_size": total_rallies,
-            "confidence": confidence,
-        },
+        "meta": _with_input_provenance(
+            {
+                "sample_size": total_rallies,
+                "confidence": confidence,
+            },
+            rallies=rallies,
+        ),
     }
 
 
@@ -162,6 +183,7 @@ def get_heatmap(
 
     zone_counts: dict[str, int] = defaultdict(int, {z: 0 for z in ALL_ZONES})
     total_strokes = 0
+    provenance_strokes: list[Stroke] = []
 
     def _count_strokes(match_ids: list[int], player_role: str) -> None:
         nonlocal total_strokes
@@ -180,7 +202,7 @@ def get_heatmap(
         if not rally_ids:
             return
         rows = (
-            db.query(zone_col)
+            db.query(Stroke)
             .filter(
                 Stroke.rally_id.in_(rally_ids),
                 Stroke.player == player_role,
@@ -188,9 +210,11 @@ def get_heatmap(
             )
             .all()
         )
-        for (zone,) in rows:
+        for stroke in rows:
+            zone = stroke.hit_zone if type == "hit" else stroke.land_zone
             zone_counts[zone] += 1
             total_strokes += 1
+            provenance_strokes.append(stroke)
 
     _count_strokes(match_ids_as_a, "player_a")
     _count_strokes(match_ids_as_b, "player_b")
@@ -200,10 +224,14 @@ def get_heatmap(
     return {
         "success": True,
         "data": dict(zone_counts),
-        "meta": {
-            "sample_size": total_strokes,
-            "confidence": confidence,
-        },
+        "meta": _with_input_provenance(
+            {
+                "sample_size": total_strokes,
+                "confidence": confidence,
+            },
+            strokes=provenance_strokes,
+            uses_hit_zone=(type == "hit"),
+        ),
     }
 
 
@@ -258,6 +286,7 @@ def get_heatmap_composite(
     hit_counts: dict[str, int] = defaultdict(int, {z: 0 for z in ALL_ZONES})
     land_counts: dict[str, int] = defaultdict(int, {z: 0 for z in ALL_ZONES})
     total_strokes = 0
+    provenance_strokes: list[Stroke] = []
 
     def _count_zones(mids: list[int], player_role: str) -> None:
         nonlocal total_strokes
@@ -270,24 +299,25 @@ def get_heatmap_composite(
         if not rally_ids:
             return
 
-        hit_rows = (
-            db.query(Stroke.hit_zone)
-            .filter(Stroke.rally_id.in_(rally_ids), Stroke.player == player_role, Stroke.hit_zone.isnot(None))
+        rows = (
+            db.query(Stroke)
+            .filter(
+                Stroke.rally_id.in_(rally_ids),
+                Stroke.player == player_role,
+            )
             .all()
         )
-        for (z,) in hit_rows:
-            if z in ALL_ZONES:
-                hit_counts[z] += 1
+        for stroke in rows:
+            contributed = False
+            if stroke.hit_zone in ALL_ZONES:
+                hit_counts[stroke.hit_zone] += 1
                 total_strokes += 1
-
-        land_rows = (
-            db.query(Stroke.land_zone)
-            .filter(Stroke.rally_id.in_(rally_ids), Stroke.player == player_role, Stroke.land_zone.isnot(None))
-            .all()
-        )
-        for (z,) in land_rows:
-            if z in ALL_ZONES:
-                land_counts[z] += 1
+                contributed = True
+            if stroke.land_zone in ALL_ZONES:
+                land_counts[stroke.land_zone] += 1
+                contributed = True
+            if contributed:
+                provenance_strokes.append(stroke)
 
     _count_zones(match_ids_as_a, "player_a")
     _count_zones(match_ids_as_b, "player_b")
@@ -327,10 +357,14 @@ def get_heatmap_composite(
                 "空間分析・ゾーン別勝率計算とは独立しています。"
             ),
         },
-        "meta": {
-            "sample_size": total_strokes,
-            "confidence": confidence,
-        },
+        "meta": _with_input_provenance(
+            {
+                "sample_size": total_strokes,
+                "confidence": confidence,
+            },
+            strokes=provenance_strokes,
+            uses_hit_zone=True,
+        ),
     }
 
 
@@ -367,6 +401,8 @@ def get_heatmap_zone_detail(
     land_zone_counts: dict[str, int] = defaultdict(int)  # type=hit 時の着地分布
     total = 0
     wins = 0
+    provenance_rallies: list[Rally] = []
+    provenance_strokes: list[Stroke] = []
 
     def _collect(match_ids: list[int], player_role: str) -> None:
         nonlocal total, wins
@@ -389,8 +425,11 @@ def get_heatmap_zone_detail(
             )
             .all()
         )
+        used_rally_ids: set[int] = set()
         for stroke in rows:
             total += 1
+            provenance_strokes.append(stroke)
+            used_rally_ids.add(stroke.rally_id)
             rally = rally_map.get(stroke.rally_id)
             if rally and rally.winner == player_role:
                 wins += 1
@@ -399,6 +438,9 @@ def get_heatmap_zone_detail(
             # hit_zone の場合は land_zone 分布も集計
             if type == "hit" and stroke.land_zone:
                 land_zone_counts[stroke.land_zone] += 1
+        provenance_rallies.extend(
+            rally_map[rid] for rid in used_rally_ids if rid in rally_map
+        )
 
     _collect(match_ids_as_a, "player_a")
     _collect(match_ids_as_b, "player_b")
@@ -419,7 +461,12 @@ def get_heatmap_zone_detail(
             "top_shot_types": [{"shot_type": k, "count": v} for k, v in top_shot_types],
             "transitions": [{"zone": k, "count": v} for k, v in transitions],
         },
-        "meta": {"sample_size": total},
+        "meta": _with_input_provenance(
+            {"sample_size": total},
+            rallies=provenance_rallies,
+            strokes=provenance_strokes,
+            uses_hit_zone=(type == "hit"),
+        ),
     }
 
 
@@ -647,7 +694,11 @@ def get_shot_win_loss(
         return {
             "success": True,
             "data": [],
-            "meta": {"sample_size": 0, "confidence": confidence},
+            "meta": _with_input_provenance(
+                {"sample_size": 0, "confidence": confidence},
+                rallies=[],
+                strokes=[],
+            ),
         }
 
     match_ids = [m.id for m in matches]
@@ -664,7 +715,11 @@ def get_shot_win_loss(
         return {
             "success": True,
             "data": [],
-            "meta": {"sample_size": 0, "confidence": confidence},
+            "meta": _with_input_provenance(
+                {"sample_size": 0, "confidence": confidence},
+                rallies=[],
+                strokes=[],
+            ),
         }
 
     rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all()
@@ -684,7 +739,11 @@ def get_shot_win_loss(
         return {
             "success": True,
             "data": [],
-            "meta": {"sample_size": 0, "confidence": confidence},
+            "meta": _with_input_provenance(
+                {"sample_size": 0, "confidence": confidence},
+                rallies=rallies,
+                strokes=[],
+            ),
         }
 
     # プレイヤーのストロークを全取得
@@ -698,12 +757,14 @@ def get_shot_win_loss(
     # ストロークが属するラリーを基準に集計
     shot_rallies: dict[str, set[int]] = defaultdict(set)
     shot_win_rallies: dict[str, set[int]] = defaultdict(set)
+    provenance_strokes: list[Stroke] = []
 
     for stroke in all_strokes:
         r_id = stroke.rally_id
         player_role = rally_to_role.get(r_id)
         if stroke.player != player_role:
             continue
+        provenance_strokes.append(stroke)
         shot_rallies[stroke.shot_type].add(r_id)
         if rally_player_won.get(r_id, False):
             shot_win_rallies[stroke.shot_type].add(r_id)
@@ -730,10 +791,14 @@ def get_shot_win_loss(
     return {
         "success": True,
         "data": result,
-        "meta": {
-            "sample_size": total_rallies,
-            "confidence": confidence,
-        },
+        "meta": _with_input_provenance(
+            {
+                "sample_size": total_rallies,
+                "confidence": confidence,
+            },
+            rallies=rallies,
+            strokes=provenance_strokes,
+        ),
     }
 
 
@@ -779,7 +844,10 @@ def _set_comparison_impl(
         return {
             "success": True,
             "data": {"by_set": []},
-            "meta": {"sample_size": 0, "confidence": confidence},
+            "meta": _with_input_provenance(
+                {"sample_size": 0, "confidence": confidence},
+                rallies=[],
+            ),
         }
 
     if not sets:
@@ -787,7 +855,10 @@ def _set_comparison_impl(
         return {
             "success": True,
             "data": {"by_set": []},
-            "meta": {"sample_size": 0, "confidence": confidence},
+            "meta": _with_input_provenance(
+                {"sample_size": 0, "confidence": confidence},
+                rallies=[],
+            ),
         }
 
     set_num_map: dict[int, int] = {s.id: s.set_num for s in sets}
@@ -839,10 +910,13 @@ def _set_comparison_impl(
     return {
         "success": True,
         "data": by_set_formatted,
-        "meta": {
-            "sample_size": total_all,
-            "confidence": confidence,
-        },
+        "meta": _with_input_provenance(
+            {
+                "sample_size": total_all,
+                "confidence": confidence,
+            },
+            rallies=rallies,
+        ),
     }
 
 
@@ -867,7 +941,7 @@ def get_score_progression(match_id: int, db: Session = Depends(get_db)):
         return {
             "success": True,
             "data": {"sets": []},
-            "meta": {"sample_size": 0},
+            "meta": _with_input_provenance({"sample_size": 0}, rallies=[]),
         }
 
     set_ids = [s.id for s in sets]
@@ -922,7 +996,10 @@ def get_score_progression(match_id: int, db: Session = Depends(get_db)):
     return {
         "success": True,
         "data": {"sets": sets_data},
-        "meta": {"sample_size": total_rallies},
+        "meta": _with_input_provenance(
+            {"sample_size": total_rallies},
+            rallies=rallies_all,
+        ),
     }
 
 
@@ -984,8 +1061,15 @@ def get_win_loss_comparison(
         return {
             "success": True,
             "data": {"win_matches": None, "loss_matches": None},
-            "meta": {"sample_size": 0, "confidence": empty_confidence},
+            "meta": _with_input_provenance(
+                {"sample_size": 0, "confidence": empty_confidence},
+                rallies=[],
+                strokes=[],
+            ),
         }
+
+    provenance_rallies: list[Rally] = []
+    provenance_strokes: list[Stroke] = []
 
     # 試合ごとにプレイヤーの勝敗を判定
     win_match_ids: list[int] = []
@@ -1023,6 +1107,7 @@ def get_win_loss_comparison(
         if not rallies:
             return None
 
+        provenance_rallies.extend(rallies)
         rally_ids = [r.id for r in rallies]
 
         total_length = 0
@@ -1057,6 +1142,7 @@ def get_win_loss_comparison(
                 continue
             player_role = role_by_match.get(match_id)
             if stroke.player == player_role:
+                provenance_strokes.append(stroke)
                 shot_counter[stroke.shot_type] += 1
 
         top_shots = sorted(
@@ -1096,7 +1182,11 @@ def get_win_loss_comparison(
             "win_matches": win_stats,
             "loss_matches": loss_stats,
         },
-        "meta": {"sample_size": total_matches, "confidence": confidence},
+        "meta": _with_input_provenance(
+            {"sample_size": total_matches, "confidence": confidence},
+            rallies=provenance_rallies,
+            strokes=provenance_strokes,
+        ),
     }
 
 
@@ -1121,7 +1211,10 @@ def get_tournament_level_comparison(
         return {
             "success": True,
             "data": {"levels": []},
-            "meta": {"sample_size": 0, "confidence": empty_confidence},
+            "meta": _with_input_provenance(
+                {"sample_size": 0, "confidence": empty_confidence},
+                rallies=[],
+            ),
         }
 
     role_by_match: dict[int, str] = {
@@ -1187,7 +1280,10 @@ def get_tournament_level_comparison(
     return {
         "success": True,
         "data": {"levels": result_levels},
-        "meta": {"sample_size": total_sample, "confidence": confidence},
+        "meta": _with_input_provenance(
+            {"sample_size": total_sample, "confidence": confidence},
+            rallies=rallies,
+        ),
     }
 
 
@@ -1233,7 +1329,11 @@ def _pre_loss_patterns_impl(
         return {
             "success": True,
             "data": {"pre_loss_1": [], "pre_loss_2": [], "pre_loss_3": []},
-            "meta": {"sample_size": 0, "confidence": empty_confidence},
+            "meta": _with_input_provenance(
+                {"sample_size": 0, "confidence": empty_confidence},
+                rallies=[],
+                strokes=[],
+            ),
         }
 
     # 失点ラリーを抽出
@@ -1268,6 +1368,8 @@ def _pre_loss_patterns_impl(
     pre2: dict[str, int] = defaultdict(int)
     pre3: dict[str, int] = defaultdict(int)
     sample_size = 0
+    provenance_rally_ids: set[int] = set()
+    provenance_strokes: list[Stroke] = []
 
     for rally_id, strokes in strokes_by_rally.items():
         if rally_id not in lost_rally_ids:
@@ -1280,6 +1382,8 @@ def _pre_loss_patterns_impl(
         if not player_strokes:
             continue
         sample_size += 1
+        provenance_rally_ids.add(rally_id)
+        provenance_strokes.extend(player_strokes)
         # 最後（1球前）
         if len(player_strokes) >= 1:
             pre1[player_strokes[-1].shot_type] += 1
@@ -1315,7 +1419,11 @@ def _pre_loss_patterns_impl(
             "pre_loss_2": _build_ranked(pre2),
             "pre_loss_3": _build_ranked(pre3),
         },
-        "meta": {"sample_size": sample_size, "confidence": confidence},
+        "meta": _with_input_provenance(
+            {"sample_size": sample_size, "confidence": confidence},
+            rallies=[r for r in rallies if r.id in provenance_rally_ids],
+            strokes=provenance_strokes,
+        ),
     }
 
 
@@ -1340,7 +1448,11 @@ def get_first_return_analysis(
         return {
             "success": True,
             "data": {"zones": [], "top_zones": [], "sample_size": 0},
-            "meta": {"sample_size": 0, "confidence": empty_confidence},
+            "meta": _with_input_provenance(
+                {"sample_size": 0, "confidence": empty_confidence},
+                rallies=[],
+                strokes=[],
+            ),
         }
 
     match_ids = [m.id for m in matches]
@@ -1370,7 +1482,11 @@ def get_first_return_analysis(
         return {
             "success": True,
             "data": {"zones": [], "top_zones": [], "sample_size": 0},
-            "meta": {"sample_size": 0, "confidence": empty_confidence},
+            "meta": _with_input_provenance(
+                {"sample_size": 0, "confidence": empty_confidence},
+                rallies=[],
+                strokes=[],
+            ),
         }
 
     # stroke_num=2 のストロークを取得
@@ -1418,7 +1534,11 @@ def get_first_return_analysis(
             "top_zones": top_zones,
             "sample_size": total_sample,
         },
-        "meta": {"sample_size": total_sample, "confidence": confidence},
+        "meta": _with_input_provenance(
+            {"sample_size": total_sample, "confidence": confidence},
+            rallies=[r for r in rallies if r.id in receiver_rally_ids],
+            strokes=return_strokes,
+        ),
     }
 
 
@@ -1447,7 +1567,12 @@ def get_zone_detail(
         return {
             "success": True,
             "data": {"zone": zone, "total_shots": 0, "shot_breakdown": [], "win_rate": 0.0},
-            "meta": {"sample_size": 0, "confidence": empty_confidence},
+            "meta": _with_input_provenance(
+                {"sample_size": 0, "confidence": empty_confidence},
+                rallies=[],
+                strokes=[],
+                uses_hit_zone=(type == "hit"),
+            ),
         }
 
     match_ids = [m.id for m in matches]
@@ -1474,7 +1599,12 @@ def get_zone_detail(
         return {
             "success": True,
             "data": {"zone": zone, "total_shots": 0, "shot_breakdown": [], "win_rate": 0.0},
-            "meta": {"sample_size": 0, "confidence": empty_confidence},
+            "meta": _with_input_provenance(
+                {"sample_size": 0, "confidence": empty_confidence},
+                rallies=[],
+                strokes=[],
+                uses_hit_zone=(type == "hit"),
+            ),
         }
 
     zone_col = Stroke.hit_zone if type == "hit" else Stroke.land_zone
@@ -1491,12 +1621,16 @@ def get_zone_detail(
     shot_wins: dict[str, int] = defaultdict(int)
     total_wins = 0
     total_shots = 0
+    provenance_strokes: list[Stroke] = []
+    provenance_rally_ids: set[int] = set()
 
     for stroke in strokes:
         r_id = stroke.rally_id
         player_role = rally_to_role.get(r_id)
         if stroke.player != player_role:
             continue
+        provenance_strokes.append(stroke)
+        provenance_rally_ids.add(r_id)
         shot_total[stroke.shot_type] += 1
         total_shots += 1
         if rally_player_won.get(r_id, False):
@@ -1528,7 +1662,12 @@ def get_zone_detail(
             "shot_breakdown": shot_breakdown,
             "win_rate": overall_win_rate,
         },
-        "meta": {"sample_size": total_shots, "confidence": confidence},
+        "meta": _with_input_provenance(
+            {"sample_size": total_shots, "confidence": confidence},
+            rallies=[r for r in rallies if r.id in provenance_rally_ids],
+            strokes=provenance_strokes,
+            uses_hit_zone=(type == "hit"),
+        ),
     }
 
 
@@ -1553,7 +1692,11 @@ def get_set_summary(set_id: int, max_rally_num: Optional[int] = None, db: Sessio
         return {
             "success": True,
             "data": None,
-            "meta": {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0)},
+            "meta": _with_input_provenance(
+                {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0)},
+                rallies=[],
+                strokes=[],
+            ),
         }
 
     # 基本統計
@@ -1580,6 +1723,7 @@ def get_set_summary(set_id: int, max_rally_num: Optional[int] = None, db: Sessio
     strokes_by_rally: dict[int, list] = defaultdict(list)
     for s in strokes:
         strokes_by_rally[s.rally_id].append(s)
+    provenance_stroke_ids: set[int] = set()
 
     # 直近失点パターン（player_a 視点 / 最近 10 失点ラリー）
     loss_rallies = [r for r in rallies if r.winner == "player_b"][-10:]
@@ -1588,6 +1732,8 @@ def get_set_summary(set_id: int, max_rally_num: Optional[int] = None, db: Sessio
     for r in loss_rallies:
         s_list = sorted(strokes_by_rally.get(r.id, []), key=lambda x: x.stroke_num)
         last_s = s_list[-1] if s_list else None
+        if last_s is not None:
+            provenance_stroke_ids.add(last_s.id)
         et = END_TYPE_JA.get(r.end_type, r.end_type)
         st = SHOT_TYPE_JA.get(last_s.shot_type, last_s.shot_type) if last_s else "-"
         key = f"{r.end_type}_{last_s.shot_type if last_s else 'unknown'}"
@@ -1611,7 +1757,9 @@ def get_set_summary(set_id: int, max_rally_num: Optional[int] = None, db: Sessio
     shot_stats: dict[str, dict] = defaultdict(lambda: {"wins": 0, "total": 0})
     for r in rallies:
         s_list = strokes_by_rally.get(r.id, [])
-        used = set(s.shot_type for s in s_list if s.player == "player_a")
+        player_a_strokes = [s for s in s_list if s.player == "player_a"]
+        provenance_stroke_ids.update(s.id for s in player_a_strokes)
+        used = set(s.shot_type for s in player_a_strokes)
         won = r.winner == "player_a"
         for st in used:
             shot_stats[st]["total"] += 1
@@ -1639,6 +1787,7 @@ def get_set_summary(set_id: int, max_rally_num: Optional[int] = None, db: Sessio
         a_strokes = [s for s in s_list if s.player == "player_a"]
         if a_strokes:
             last = a_strokes[-1]
+            provenance_stroke_ids.add(last.id)
             last_shot_stats[last.shot_type]["total"] += 1
             if r.winner == "player_b":
                 last_shot_stats[last.shot_type]["losses"] += 1
@@ -1674,7 +1823,11 @@ def get_set_summary(set_id: int, max_rally_num: Optional[int] = None, db: Sessio
             "effective_shots": effective_shots,
             "risky_shots": risky_shots,
         },
-        "meta": {"sample_size": total_strokes, "confidence": confidence},
+        "meta": _with_input_provenance(
+            {"sample_size": total_strokes, "confidence": confidence},
+            rallies=rallies,
+            strokes=[s for s in strokes if s.id in provenance_stroke_ids],
+        ),
     }
 
 
@@ -1719,7 +1872,11 @@ def _pre_win_patterns_impl(
         return {
             "success": True,
             "data": {"pre_win_1": [], "pre_win_2": [], "pre_win_3": []},
-            "meta": {"sample_size": 0, "confidence": empty_confidence},
+            "meta": _with_input_provenance(
+                {"sample_size": 0, "confidence": empty_confidence},
+                rallies=[],
+                strokes=[],
+            ),
         }
 
     won_rally_ids: set[int] = set()
@@ -1735,7 +1892,11 @@ def _pre_win_patterns_impl(
         return {
             "success": True,
             "data": {"pre_win_1": [], "pre_win_2": [], "pre_win_3": []},
-            "meta": {"sample_size": 0, "confidence": empty_confidence},
+            "meta": _with_input_provenance(
+                {"sample_size": 0, "confidence": empty_confidence},
+                rallies=[],
+                strokes=[],
+            ),
         }
 
     all_strokes = sorted(
@@ -1750,6 +1911,8 @@ def _pre_win_patterns_impl(
     pre2: dict[str, int] = defaultdict(int)
     pre3: dict[str, int] = defaultdict(int)
     sample_size = 0
+    provenance_rally_ids: set[int] = set()
+    provenance_strokes: list[Stroke] = []
 
     for rally_id, strokes in strokes_by_rally.items():
         player_role = rally_to_role.get(rally_id)
@@ -1759,6 +1922,8 @@ def _pre_win_patterns_impl(
         if not player_strokes:
             continue
         sample_size += 1
+        provenance_rally_ids.add(rally_id)
+        provenance_strokes.extend(player_strokes)
         if len(player_strokes) >= 1:
             pre1[player_strokes[-1].shot_type] += 1
         if len(player_strokes) >= 2:
@@ -1790,7 +1955,11 @@ def _pre_win_patterns_impl(
             "pre_win_2": _build_ranked_win(pre2),
             "pre_win_3": _build_ranked_win(pre3),
         },
-        "meta": {"sample_size": sample_size, "confidence": confidence},
+        "meta": _with_input_provenance(
+            {"sample_size": sample_size, "confidence": confidence},
+            rallies=[r for r in rallies if r.id in provenance_rally_ids],
+            strokes=provenance_strokes,
+        ),
     }
 
 
@@ -1837,7 +2006,11 @@ def _effective_distribution_map_impl(
     empty = {
         "success": True,
         "data": {"zone_effectiveness": {}, "top_zones": []},
-        "meta": {"sample_size": 0, "confidence": empty_conf},
+        "meta": _with_input_provenance(
+            {"sample_size": 0, "confidence": empty_conf},
+            rallies=[],
+            strokes=[],
+        ),
     }
     if not matches:
         return empty
@@ -1885,12 +2058,16 @@ def _effective_distribution_map_impl(
 
     # 全ラリーでのプレイヤーストローク着地ゾーン集計（分母）
     zone_total: dict[str, int] = defaultdict(int)
+    provenance_strokes: list[Stroke] = []
+    provenance_rally_ids: set[int] = set()
     for s in ctx.strokes:
         if shot_type and s.shot_type != shot_type:
             continue
         player_role = rally_to_role.get(s.rally_id)
         if player_role and s.player == player_role and s.land_zone:
             zone_total[s.land_zone] += 1
+            provenance_strokes.append(s)
+            provenance_rally_ids.add(s.rally_id)
 
     if sample_size == 0:
         return empty
@@ -1917,7 +2094,11 @@ def _effective_distribution_map_impl(
     return {
         "success": True,
         "data": {"zone_effectiveness": zone_effectiveness, "top_zones": top_zones},
-        "meta": {"sample_size": sample_size, "confidence": confidence},
+        "meta": _with_input_provenance(
+            {"sample_size": sample_size, "confidence": confidence},
+            rallies=[r for r in rallies if r.id in provenance_rally_ids],
+            strokes=provenance_strokes,
+        ),
     }
 
 
@@ -1962,7 +2143,11 @@ def _received_vulnerability_impl(
     empty = {
         "success": True,
         "data": {"zones": {}, "danger_zones": []},
-        "meta": {"sample_size": 0, "confidence": empty_conf},
+        "meta": _with_input_provenance(
+            {"sample_size": 0, "confidence": empty_conf},
+            rallies=[],
+            strokes=[],
+        ),
     }
     if not matches:
         return empty
@@ -1983,10 +2168,14 @@ def _received_vulnerability_impl(
 
     # 全ラリーで相手ストロークの着地ゾーン集計（分母）
     zone_total_opp: dict[str, int] = defaultdict(int)
+    provenance_strokes: list[Stroke] = []
+    provenance_rally_ids: set[int] = set()
     for s in ctx.strokes:
         player_role = rally_to_role.get(s.rally_id)
         if player_role and s.player != player_role and s.land_zone:
             zone_total_opp[s.land_zone] += 1
+            provenance_strokes.append(s)
+            provenance_rally_ids.add(s.rally_id)
 
     # 失点ラリーで相手最終ストロークの着地ゾーン集計（分子）
     loss_strokes = sorted(
@@ -2038,7 +2227,11 @@ def _received_vulnerability_impl(
     return {
         "success": True,
         "data": {"zones": zones_data, "danger_zones": danger_zones},
-        "meta": {"sample_size": sample_size, "confidence": confidence},
+        "meta": _with_input_provenance(
+            {"sample_size": sample_size, "confidence": confidence},
+            rallies=[r for r in rallies if r.id in provenance_rally_ids],
+            strokes=provenance_strokes,
+        ),
     }
 
 
@@ -2060,7 +2253,12 @@ def get_effective_distribution_map_zone_detail(
     empty = {
         "success": True,
         "data": {"zone": zone, "total_count": 0, "win_count": 0, "win_rate": None, "top_shot_types": [], "hit_zones": []},
-        "meta": {"sample_size": 0},
+        "meta": _with_input_provenance(
+            {"sample_size": 0},
+            rallies=[],
+            strokes=[],
+            uses_hit_zone=True,
+        ),
     }
     matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
     if not matches:
@@ -2125,7 +2323,12 @@ def get_effective_distribution_map_zone_detail(
             "top_shot_types": top_shot_types,
             "hit_zones": hit_zones,
         },
-        "meta": {"sample_size": total_count},
+        "meta": _with_input_provenance(
+            {"sample_size": total_count},
+            rallies=[r for r in rallies if any(s.rally_id == r.id for s in player_strokes)],
+            strokes=player_strokes,
+            uses_hit_zone=True,
+        ),
     }
 
 
@@ -2147,7 +2350,12 @@ def get_received_vulnerability_zone_detail(
     empty = {
         "success": True,
         "data": {"zone": zone, "total_count": 0, "loss_count": 0, "loss_rate": None, "top_shot_types": [], "hit_zones": []},
-        "meta": {"sample_size": 0},
+        "meta": _with_input_provenance(
+            {"sample_size": 0},
+            rallies=[],
+            strokes=[],
+            uses_hit_zone=True,
+        ),
     }
     matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
     if not matches:
@@ -2212,5 +2420,10 @@ def get_received_vulnerability_zone_detail(
             "top_shot_types": top_shot_types,
             "hit_zones": hit_zones,
         },
-        "meta": {"sample_size": total_count},
+        "meta": _with_input_provenance(
+            {"sample_size": total_count},
+            rallies=[r for r in rallies if any(s.rally_id == r.id for s in opp_strokes)],
+            strokes=opp_strokes,
+            uses_hit_zone=True,
+        ),
     }

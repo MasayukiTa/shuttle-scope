@@ -89,6 +89,7 @@ def make_test_set_and_rallies(
             rally_length=5,
             score_a_after=score_a,
             score_b_after=score_b,
+            annotation_mode="assisted_record",
         )
         db.add(rally)
         db.flush()
@@ -104,6 +105,8 @@ def make_test_set_and_rallies(
                 hit_zone="BC",
                 land_zone="NL",
                 hit_y=0.2 if player == "player_a" else 0.8,
+                source_method="assisted" if player == "player_a" else "manual",
+                hit_zone_source="cv" if player == "player_a" else "manual",
             )
             db.add(stroke)
 
@@ -270,6 +273,60 @@ class TestNewAnalysisEndpoints:
         data = resp.json()
         assert data["success"] is True
         assert "zone" in data["data"]
+
+    def test_rally_only_meta_discloses_assisted_provenance(self, client_with_data):
+        client, player_id, _ = client_with_data
+        resp = client.get(f"/api/analysis/descriptive?player_id={player_id}")
+        assert resp.status_code == 200
+        provenance = resp.json()["meta"]["input_provenance"]
+        assert provenance["rallies"]["total"] > 0
+        assert provenance["rallies"]["annotation_mode"]["assisted_record"] > 0
+        assert provenance["strokes"]["total"] == 0
+        assert provenance["has_assisted_annotations"] is True
+
+    def test_growth_timeline_meta_uses_engine_rally_provenance(self, client_with_data):
+        client, player_id, _ = client_with_data
+        resp = client.get(f"/api/analysis/growth_timeline?player_id={player_id}&metric=win_rate&window_size=2")
+        assert resp.status_code == 200
+        provenance = resp.json()["meta"]["input_provenance"]
+        assert provenance["rallies"]["total"] > 0
+        assert provenance["has_assisted_annotations"] is True
+
+    def test_interval_report_meta_includes_bayesian_rally_provenance(self, client_with_data):
+        client, _, match_id = client_with_data
+        resp = client.get(f"/api/analysis/interval_report?match_id={match_id}&completed_set_num=1")
+        assert resp.status_code == 200
+        provenance = resp.json()["meta"]["input_provenance"]
+        assert provenance["rallies"]["total"] > 0
+        assert provenance["has_assisted_annotations"] is True
+
+    def test_hit_zone_analysis_meta_discloses_cv_provenance(self, client_with_data):
+        client, player_id, _ = client_with_data
+        resp = client.get(f"/api/analysis/zone_detail?player_id={player_id}&zone=BC&type=hit")
+        assert resp.status_code == 200
+        provenance = resp.json()["meta"]["input_provenance"]
+        assert provenance["has_cv_derived_strokes"] is True
+        assert provenance["has_cv_hit_zones"] is True
+        assert provenance["hit_zones"]["source"]["cv"] > 0
+
+    def test_transition_meta_discloses_cv_without_claiming_hit_zone_use(self, client_with_data):
+        client, player_id, _ = client_with_data
+        resp = client.get(f"/api/analysis/shot_transition_matrix?player_id={player_id}")
+        assert resp.status_code == 200
+        provenance = resp.json()["meta"]["input_provenance"]
+        assert provenance["has_cv_derived_strokes"] is True
+        assert provenance["strokes"]["source_method"]["assisted"] > 0
+        assert "has_cv_hit_zones" not in provenance
+        assert "hit_zones" not in provenance
+
+    def test_review_bundle_preserves_per_analysis_provenance(self, client_with_data):
+        client, player_id, _ = client_with_data
+        resp = client.get(f"/api/analysis/bundle/review?player_id={player_id}")
+        assert resp.status_code == 200
+        provenance = resp.json()["meta"]["input_provenance_by_analysis"]
+        assert isinstance(provenance, dict)
+        assert "rally_sequence_patterns" in provenance
+        assert provenance["rally_sequence_patterns"]["has_cv_derived_strokes"] is True
 
     def test_partner_comparison_returns_200(self, client_with_data):
         """partner_comparison が200を返すこと（ダブルス試合なし）"""

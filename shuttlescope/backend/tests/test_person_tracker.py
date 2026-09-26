@@ -246,9 +246,11 @@ class _FakeDetector:
     detections は (label, conf, x1n, y1n, x2n, y2n) の tuple list。
     """
 
-    def __init__(self, detections_per_frame: list[list[tuple]]):
+    def __init__(self, detections_per_frame: list[list[tuple]], error: str | None = None):
         self._per_frame = detections_per_frame
         self._idx = 0
+        self._error = error
+        self._debug: dict = {}
         self.backend = "fake"
 
     def load(self) -> bool:
@@ -258,7 +260,11 @@ class _FakeDetector:
         return self.backend
 
     def predict_frame(self, frame) -> list[dict]:
+        if self._error:
+            self._debug = {"error": self._error}
+            return []
         if self._idx >= len(self._per_frame):
+            self._debug = {"detected": 0}
             return []
         out = []
         for label, conf, x1n, y1n, x2n, y2n in self._per_frame[self._idx]:
@@ -270,12 +276,23 @@ class _FakeDetector:
                 "foot_point": [(x1n + x2n) / 2, y2n],
             })
         self._idx += 1
+        self._debug = {"detected": len(out)}
+        return out
+
+    def get_last_debug(self) -> dict:
+        return dict(self._debug)
+
+    def predict_frame_checked(self, frame) -> list[dict]:
+        from backend.yolo.inference import YOLOInferenceError
+        out = self.predict_frame(frame)
+        if self._debug.get("error"):
+            raise YOLOInferenceError(self._debug["error"])
         return out
 
 
-def _install_fake_detector(monkeypatch, detections_per_frame):
+def _install_fake_detector(monkeypatch, detections_per_frame, error=None):
     """backend.yolo.inference.get_yolo_inference を fake で差し替え。"""
-    fake = _FakeDetector(detections_per_frame)
+    fake = _FakeDetector(detections_per_frame, error=error)
     import backend.yolo.inference as yi_mod
     monkeypatch.setattr(yi_mod, "get_yolo_inference", lambda *a, **kw: fake, raising=True)
     return fake
@@ -289,6 +306,14 @@ class TestPersonTrackerUpdateSmoke:
         tracker = PersonTracker(match_type="doubles", court_corners=SQUARE_CORNERS)
         out = tracker.update(np.zeros((100, 100, 3), dtype=np.uint8), 0)
         assert out == []
+
+    def test_update_detector_failure_is_not_treated_as_zero_detections(self, monkeypatch):
+        from backend.yolo.inference import YOLOInferenceError
+
+        _install_fake_detector(monkeypatch, [[]], error="synthetic detector failure")
+        tracker = PersonTracker(match_type="doubles", court_corners=SQUARE_CORNERS)
+        with pytest.raises(YOLOInferenceError, match="synthetic detector failure"):
+            tracker.update(np.zeros((100, 100, 3), dtype=np.uint8), 0)
 
     def test_update_single_detection_assigns_track_id(self, monkeypatch):
         # frame 0/1 で同じ位置に person → ByteTracker が同じ track_id を継続するはず

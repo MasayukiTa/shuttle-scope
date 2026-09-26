@@ -40,6 +40,7 @@ FALLBACK_FORMATION_MIN_X_DIFF = float(os.environ.get("CV_FORMATION_MIN_X_DIFF", 
 
 DepthBand = Literal["front_a", "back_a", "front_b", "back_b", "mid"]
 FormationType = Literal["front_back", "parallel", "mixed"]
+NetSide = Literal["a", "b"]
 
 
 @dataclass
@@ -170,6 +171,32 @@ class CourtAdapter:
             return "front_b"
         else:
             return "back_b"
+
+    def side_of_net(
+        self,
+        x_norm: float,
+        y_norm: float,
+        *,
+        net_margin: float = 0.03,
+    ) -> Optional[NetSide]:
+        """床面上の点がネットの A/B どちら側かを返す。
+
+        D-5 の人物側判定専用。homography は床平面の写像なので、呼び出し側は
+        bbox centroid ではなく foot_point のような床面近似点を渡すこと。
+        未キャリブレーション・ネット際・射影失敗は推測せず None。
+        """
+        if not self.is_calibrated:
+            return None
+        try:
+            _, court_y = self.pixel_to_court(float(x_norm), float(y_norm))
+        except (TypeError, ValueError, ZeroDivisionError, FloatingPointError):
+            return None
+        if not np.isfinite(court_y):
+            return None
+        margin = max(0.0, min(float(net_margin), 0.25))
+        if abs(court_y - 0.5) <= margin:
+            return None
+        return "a" if court_y < 0.5 else "b"
 
     def in_court(self, x_norm: float, y_norm: float, margin: float = 0.05) -> bool:
         """点が ROI 多角形 (コート + マージン) 内か判定。"""

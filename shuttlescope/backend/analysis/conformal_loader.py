@@ -44,6 +44,7 @@ def load_rally_outcome_samples(
     player_id: int,
     *,
     coarse: bool = True,
+    provenance_rows: Optional[dict[str, list]] = None,
 ) -> list[dict]:
     """player_id の全試合から per-rally サンプルを返す。
 
@@ -53,6 +54,10 @@ def load_rally_outcome_samples(
         "{score_phase}|{player_role}|{dominant_shot_bucket}"
     勝敗不明 / ストロークなし / shot_type 不明のラリーはスキップする。
     """
+    if provenance_rows is not None:
+        provenance_rows.clear()
+        provenance_rows.update({"rallies": [], "strokes": []})
+
     matches = _get_player_matches(db, player_id)
     if not matches:
         return []
@@ -89,6 +94,8 @@ def load_rally_outcome_samples(
         strokes_by_rally[s.rally_id].append(s)
 
     samples: list[dict] = []
+    used_rally_ids: set[int] = set()
+    used_stroke_ids: set[int] = set()
 
     for rally in rallies:
         if not rally.winner:
@@ -128,5 +135,14 @@ def load_rally_outcome_samples(
 
         win = 1 if rally.winner == role else 0
         samples.append({"group": group, "win": win})
+        if provenance_rows is not None:
+            used_rally_ids.add(rally.id)
+            for stroke in strokes:
+                if stroke.player == role and bucket_shot(stroke.shot_type) is not None:
+                    used_stroke_ids.add(stroke.id)
+
+    if provenance_rows is not None:
+        provenance_rows["rallies"] = [r for r in rallies if r.id in used_rally_ids]
+        provenance_rows["strokes"] = [s for s in all_strokes if s.id in used_stroke_ids]
 
     return samples

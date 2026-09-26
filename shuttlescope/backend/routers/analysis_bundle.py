@@ -91,6 +91,7 @@ def get_review_bundle(
     ]
 
     sample_size = 0
+    provenance_by_analysis: dict[str, dict] = {}
     for key, fn in jobs:
         try:
             value = fn()
@@ -100,6 +101,9 @@ def get_review_bundle(
                 ss = meta.get("sample_size")
                 if isinstance(ss, int) and ss > sample_size:
                     sample_size = ss
+                provenance = meta.get("input_provenance")
+                if isinstance(provenance, dict):
+                    provenance_by_analysis[key] = provenance
         except Exception as exc:
             logger.exception("bundle card failed: %s", key)
             bundle[key] = None
@@ -111,6 +115,7 @@ def get_review_bundle(
         "meta": {
             "player_id": player_id,
             "sample_size": sample_size,
+            "input_provenance_by_analysis": provenance_by_analysis or None,
             "errors": errors if errors else None,
         },
     }
@@ -158,6 +163,7 @@ def get_research_bundle(
     ]
 
     sample_size = 0
+    provenance_by_analysis: dict[str, dict] = {}
     for key, fn in jobs:
         try:
             value = fn()
@@ -167,6 +173,9 @@ def get_research_bundle(
                 ss = meta.get("sample_size")
                 if isinstance(ss, int) and ss > sample_size:
                     sample_size = ss
+                provenance = meta.get("input_provenance")
+                if isinstance(provenance, dict):
+                    provenance_by_analysis[key] = provenance
         except Exception as exc:
             logger.exception("research bundle card failed: %s", key)
             bundle[key] = None
@@ -178,6 +187,7 @@ def get_research_bundle(
         "meta": {
             "player_id": player_id,
             "sample_size": sample_size,
+            "input_provenance_by_analysis": provenance_by_analysis or None,
             "errors": errors if errors else None,
         },
     }

@@ -79,6 +79,8 @@ def _make_rallies(db, match, n=12, avg_len=7):
                 hit_y=0.2 if player == "player_a" else 0.8,
                 land_x=0.5,
                 land_y=0.8 if player == "player_a" else 0.2,
+                source_method="manual" if player == "player_a" else "assisted",
+                hit_zone_source="manual" if player == "player_a" else "cv",
             )
             db.add(s)
         db.flush()
@@ -139,6 +141,17 @@ class TestOpponentTypeAffinity:
             assert isinstance(entry["wins"], int)
             assert entry["wins"] >= 0
             assert entry["wins"] <= entry["match_count"]
+
+    def test_meta_discloses_cv_provenance_used_by_classifier(self, research_client):
+        """D-9: 相手分類が読む opponent strokes の assisted / hit_zone_source を meta に出す。"""
+        client, pid, *_ = research_client
+        resp = client.get(f"/api/analysis/opponent_type_affinity?player_id={pid}")
+        assert resp.status_code == 200
+        provenance = resp.json()["meta"]["input_provenance"]
+        assert provenance["has_cv_derived_strokes"] is True
+        assert provenance["strokes"]["source_method"]["assisted"] > 0
+        assert provenance["has_cv_hit_zones"] is True
+        assert provenance["hit_zones"]["source"]["cv"] > 0
 
     def test_empty_player_returns_empty(self, research_client):
         client, *_ = research_client

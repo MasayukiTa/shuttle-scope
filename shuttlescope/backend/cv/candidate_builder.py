@@ -221,8 +221,14 @@ def build_candidates(
 
             land = _infer_land_zone(rally_tracknet, tracknet_ts_local=None, stroke_ts=ts,
                                     next_stroke_ts=next_ts)
-            hitter = _infer_hitter(aln, rally_yolo, rally_tracknet, stroke_ts=ts,
-                                   stroke_num=stroke.get("stroke_num", 1))
+            hitter = _infer_hitter(
+                aln,
+                rally_yolo,
+                rally_tracknet,
+                stroke_ts=ts,
+                stroke_num=stroke.get("stroke_num", 1),
+                court_adapter=court_adapter,
+            )
             _attach_player_identity(
                 hitter,
                 start_side=player_a_start_side,
@@ -599,6 +605,7 @@ def _infer_hitter(
     tracknet_frames: list[dict],
     stroke_ts: Optional[float],
     stroke_num: int,
+    court_adapter=None,
 ) -> Optional[dict]:
     """アライメントデータ優先でヒッターを推定。なければ YOLO 近傍で推定。"""
     if stroke_ts is None:
@@ -678,6 +685,7 @@ def _infer_hitter(
     # 最近傍プレイヤー候補
     players = best_yolo.get("players", [])
     nearest_label: Optional[str] = None
+    nearest_player: Optional[dict] = None
     nearest_dist: float = float("inf")
 
     for p in players:
@@ -691,13 +699,29 @@ def _infer_hitter(
         if dist < nearest_dist:
             nearest_dist = dist
             nearest_label = label
+            nearest_player = p
 
     if nearest_label is None or nearest_dist > 0.35:
         return None
 
     # 距離から信頼度算出（線形減衰）
     hitter_conf = round((1.0 - nearest_dist / 0.35) * shuttle_conf, 3)
+
+    # C-8 / D-5: position_fallback / overflow は人物同一性の証拠ではない。
+    # ただし、singles 相当の2人が calibrated court 上でネットを挟む場合だけ、
+    # screen-side label としての幾何根拠があるので suggested 上限まで許す。
+    # D-3（画像座標距離）が残るため auto_filled には昇格させない。
+    from backend.yolo.cv_aligner import cap_guessed_hitter_confidence
+    hitter_conf, label_geometry = cap_guessed_hitter_confidence(
+        hitter_conf,
+        nearest_player,
+        players,
+        court_adapter,
+    )
+    hitter_conf = round(hitter_conf, 3)
     decision_mode, reason_codes = _conf_to_decision(hitter_conf)
+    if label_geometry:
+        reason_codes.append(f"hitter_label_geometry:{label_geometry}")
 
     # プレイヤーが複数いて近い場合は ambiguous
     near_players = [

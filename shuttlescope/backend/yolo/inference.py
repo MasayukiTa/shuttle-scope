@@ -39,6 +39,16 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+
+class YOLOInferenceError(RuntimeError):
+    """YOLO 推論が正常完了しなかったことを表す内部例外。
+
+    predict_frame() の list 戻り値は既存 API 互換のため維持する。
+    失敗と正常な 0 件を区別する必要がある内部 consumer は
+    predict_frame_checked() を使う。
+    """
+
+
 WEIGHTS_DIR = Path(__file__).parent / "weights"
 ONNX_MODEL = WEIGHTS_DIR / "yolo_badminton.onnx"
 PT_MODEL = WEIGHTS_DIR / "yolo_badminton.pt"
@@ -477,6 +487,14 @@ class YOLOInference:
         """直前の推論診断情報を返す（APIレスポンスに埋め込んで UI に表示する）"""
         return dict(self._last_debug)
 
+    def predict_frame_checked(self, frame) -> list[dict]:
+        """推論失敗を例外として伝播し、正常な 0 件だけ [] を返す。"""
+        result = self.predict_frame(frame)
+        debug = self.get_last_debug()
+        error = debug.get("error")
+        if error:
+            raise YOLOInferenceError(str(error))
+        return result
     def predict_frame(self, frame) -> list[dict]:
         """1 フレームからプレイヤーを検出。失敗時は空リストを返す。
 
@@ -567,8 +585,7 @@ class YOLOInference:
         logger.debug("YOLO OpenVINO normalized shape: %s", raw.shape)
 
         if raw.ndim != 2 or raw.shape[0] < 5:
-            logger.warning("YOLO OpenVINO: unexpected output shape %s — skipping", raw.shape)
-            return []
+            raise ValueError(f"YOLO OpenVINO unexpected output shape: {raw.shape}")
 
         import numpy as _np
         detections: list[dict] = []
@@ -820,8 +837,7 @@ class YOLOInference:
             arr = arr.T
 
         if arr.ndim != 2 or arr.shape[1] < 5:
-            logger.warning("YOLO ONNX: unexpected output shape %s", arr.shape)
-            return []
+            raise ValueError(f"YOLO ONNX unexpected output shape: {arr.shape}")
 
         cls_map = {0: "player_a", 1: "player_b", 2: "shuttle"}
         n_ch = arr.shape[1]

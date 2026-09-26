@@ -1155,7 +1155,7 @@ export function AnnotatorPage() {
   // P3/P4: CV ジョブフック（TrackNet + YOLO バッチ解析・オーバーレイ）
   const {
     tracknetJob, setTracknetJob, shuttleFrames, shuttleOverlayVisible,
-    setShuttleOverlayVisible, tracknetArtifactAt: _tracknetArtifactAt, handleTracknetBatch,
+    setShuttleOverlayVisible, tracknetArtifactAt: _tracknetArtifactAt, tracknetArtifactMeta, handleTracknetBatch,
     handleTracknetBatchResume, handleTracknetBatchStop, tracknetArtifactExists,
     yoloJob, setYoloJob, yoloFrames, yoloOverlayVisible,
     setYoloOverlayVisible, yoloArtifactMeta, handleYoloBatch,
@@ -1724,6 +1724,7 @@ export function AnnotatorPage() {
         src: rawSrc,
         yoloFrames,
         shuttleFrames,
+        tracknetBackendUsed: tracknetArtifactMeta?.backend_used ?? null,
         trackFrames,
         frameDetections,
         roiRect: roiRect ?? null,
@@ -1755,7 +1756,7 @@ export function AnnotatorPage() {
     return () => { cancelAnimationFrame(raf); unsub() }
   }, [
     videoWindowOpen, match, matchId, videoRef, currentVideoSec, playbackRate,
-    yoloFrames, shuttleFrames, trackFrames, frameDetections, roiRect,
+    yoloFrames, shuttleFrames, tracknetArtifactMeta?.backend_used, trackFrames, frameDetections, roiRect,
     yoloOverlayVisible, shuttleOverlayVisible, courtGridVisible, trackingVisible,
   ])
 
@@ -2227,9 +2228,25 @@ export function AnnotatorPage() {
               <span className="text-[9px] font-bold uppercase tracking-wider pr-1 text-[var(--ss-t3)]">CV</span>
 
               {/* アーティファクト鮮度ヒント */}
-              {yoloArtifactMeta && (
-                <span className="text-[8px] text-[var(--ss-t3)]" title={t('annotator.ui.yolo_artifact_meta_title', { defaultValue: '最終解析: {{date}} / {{n}}f', date: yoloArtifactMeta.created_at, n: yoloArtifactMeta.frame_count })}>
+              {yoloArtifactMeta?.created_at && (
+                <span className="text-[8px] text-[var(--ss-t3)]" title={t('annotator.ui.yolo_artifact_meta_title', { defaultValue: '最終解析: {{date}} / {{n}}f', date: yoloArtifactMeta.created_at, n: yoloArtifactMeta.frame_count ?? '?' })}>
                   <span className="ss-num">{new Date(yoloArtifactMeta.created_at).toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                </span>
+              )}
+              {yoloArtifactMeta?.backend_used && (
+                <span
+                  className="text-[8px] font-mono text-[var(--ss-t3)]"
+                  title={t('annotator.ui.cv_backend_title', { defaultValue: '人物検出成果物の backend: {{backend}}', backend: yoloArtifactMeta.backend_used })}
+                >
+                  {t('annotator.ui.yolo_backend_badge', { defaultValue: 'YOLO:{{backend}}', backend: yoloArtifactMeta.backend_used })}
+                </span>
+              )}
+              {tracknetArtifactMeta?.backend_used && (
+                <span
+                  className="text-[8px] font-mono text-[var(--ss-t3)]"
+                  title={t('annotator.ui.tracknet_backend_title', { defaultValue: 'シャトル軌跡成果物の backend: {{backend}}', backend: tracknetArtifactMeta.backend_used })}
+                >
+                  {t('annotator.ui.tracknet_backend_badge', { defaultValue: 'TrackNet:{{backend}}', backend: tracknetArtifactMeta.backend_used })}
                 </span>
               )}
 
@@ -3121,6 +3138,7 @@ export function AnnotatorPage() {
                 currentVideoSec={currentVideoSec}
                 shuttleFrames={shuttleFrames}
                 shuttleOverlayVisible={shuttleOverlayVisible}
+                tracknetBackendUsed={tracknetArtifactMeta?.backend_used}
                 courtGridMatchId={matchId ?? undefined}
                 courtGridVisible={courtGridVisible}
                 onCalibrationSaved={() => {

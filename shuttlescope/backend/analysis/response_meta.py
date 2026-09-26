@@ -13,37 +13,110 @@ response_meta.py — API レスポンス共通 meta フィールドビルダー
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from backend.analysis.analysis_registry import (
     get_analysis_meta,
     TIER_OUTPUT_POLICY,
 )
 
 
-def build_response_meta(analysis_type: str, sample_size: int) -> dict:
-    """
-    analysis_type と実際のサンプルサイズから meta dict を構築する。
+def _bucket(value: object, known: tuple[str, ...]) -> str:
+    raw = str(value or "").strip().lower()
+    return raw if raw in known else "unknown"
 
-    Returns:
-        {
-          "tier": str,
-          "evidence_level": str,
-          "sample_size": int,
-          "sample_unit": "strokes" | "rallies" | "matches" | None,
-          "min_recommended_sample": int,
-          "confidence_level": float,
-          "conclusion_allowed": bool,
-          "recommendation_allowed": bool,
-          "caution": str | None,
-          "assumptions": str | None,
-          "promotion_criteria": str | None,
-        }
+
+def build_input_provenance(
+    rallies: list | tuple | None = None,
+    strokes_by_rally: Mapping | None = None,
+    *,
+    strokes: list | tuple | None = None,
+    uses_hit_zone: bool = False,
+) -> dict:
+    """解析入力に実際に含まれた annotation / CV 由来の内訳を要約する。
+
+    ID や生データは返さず count のみを返す。legacy 行の NULL や未知値は
+    unknown に畳み、来歴が分からないデータを manual と誤認しない。
+
+    source_method == "assisted" は C-5 と同じ定義で「CV 候補を適用した打球」。
+    hit_zone の来歴は、その解析が hit_zone を実際に使う場合だけ載せる。
     """
+    rally_rows = list(rallies or [])
+    if strokes is not None:
+        stroke_rows = list(strokes)
+    else:
+        stroke_rows = [
+            stroke
+            for rows in (strokes_by_rally or {}).values()
+            for stroke in rows
+        ]
+
+    rally_modes = {"manual_record": 0, "assisted_record": 0, "unknown": 0}
+    for rally in rally_rows:
+        mode = _bucket(
+            getattr(rally, "annotation_mode", None),
+            ("manual_record", "assisted_record"),
+        )
+        rally_modes[mode] += 1
+
+    stroke_methods = {"manual": 0, "assisted": 0, "corrected": 0, "unknown": 0}
+    hit_zone_sources = {"manual": 0, "carried_over": 0, "cv": 0, "unknown": 0}
+    hit_zone_total = 0
+
+    for stroke in stroke_rows:
+        method = _bucket(
+            getattr(stroke, "source_method", None),
+            ("manual", "assisted", "corrected"),
+        )
+        stroke_methods[method] += 1
+
+        if uses_hit_zone and getattr(stroke, "hit_zone", None) is not None:
+            hit_zone_total += 1
+            zone_source = _bucket(
+                getattr(stroke, "hit_zone_source", None),
+                ("manual", "carried_over", "cv"),
+            )
+            hit_zone_sources[zone_source] += 1
+
+    provenance = {
+        "schema_version": 1,
+        "rallies": {
+            "total": len(rally_rows),
+            "annotation_mode": rally_modes,
+        },
+        "strokes": {
+            "total": len(stroke_rows),
+            "source_method": stroke_methods,
+        },
+        "has_cv_derived_strokes": stroke_methods["assisted"] > 0,
+        "has_assisted_annotations": (
+            rally_modes["assisted_record"] > 0 or stroke_methods["assisted"] > 0
+        ),
+        "has_corrected_annotations": stroke_methods["corrected"] > 0,
+    }
+
+    if uses_hit_zone:
+        provenance["hit_zones"] = {
+            "total_with_value": hit_zone_total,
+            "source": hit_zone_sources,
+        }
+        provenance["has_cv_hit_zones"] = hit_zone_sources["cv"] > 0
+
+    return provenance
+
+
+def build_response_meta(
+    analysis_type: str,
+    sample_size: int,
+    *,
+    input_provenance: dict | None = None,
+) -> dict:
+    """analysis_type と実際のサンプルサイズから meta dict を構築する。"""
     entry = get_analysis_meta(analysis_type)
     tier = entry["tier"]
     min_samples = entry["min_recommended_sample"]
     policy = TIER_OUTPUT_POLICY.get(tier, TIER_OUTPUT_POLICY["research"])
 
-    # 信頼度スコア (0〜1): min_samples に対する実サンプルの達成率
     if min_samples > 0:
         confidence_level = round(min(1.0, sample_size / min_samples), 3)
     else:
@@ -51,13 +124,10 @@ def build_response_meta(analysis_type: str, sample_size: int) -> dict:
 
     sufficient = sample_size >= min_samples
 
-    return {
+    meta = {
         "tier": tier,
         "evidence_level": entry["evidence_level"],
         "sample_size": sample_size,
-        # D-5: `sample_size` が何を数えた値か。UI の ConfidenceBadge は
-        # 単位ごとに閾値も表示も変える。宣言が無い解析では None を返し、
-        # 画面は「球」と決めつけずに数だけ出す。
         "sample_unit": entry.get("sample_unit"),
         "min_recommended_sample": min_samples,
         "confidence_level": confidence_level,
@@ -67,6 +137,9 @@ def build_response_meta(analysis_type: str, sample_size: int) -> dict:
         "assumptions": entry["assumptions"],
         "promotion_criteria": entry["promotion_criteria"],
     }
+    if input_provenance is not None:
+        meta["input_provenance"] = input_provenance
+    return meta
 
 
 def build_empty_meta(analysis_type: str) -> dict:

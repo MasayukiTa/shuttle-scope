@@ -103,6 +103,7 @@ def _seed_policy_player(db, n_rallies: int = 24):
             hit_zone="BC",
             land_zone="NL",
             hit_y=0.2,
+            source_method="assisted",
         )
         db.add(stroke_target)
 
@@ -115,6 +116,7 @@ def _seed_policy_player(db, n_rallies: int = 24):
             hit_zone="NC",
             land_zone="BC",
             hit_y=0.8,
+            source_method="manual",
         )
         db.add(stroke_opp)
 
@@ -165,6 +167,18 @@ class TestPolicyEvalEndpoint:
         assert "sample_size" in meta
         assert "confidence" in meta
         assert meta["analysis_type"] == "policy_eval"
+
+    def test_meta_provenance_counts_only_action_strokes(self, policy_eval_client):
+        """D-9: DR-OPE の来歴に相手応手を混ぜず、実際の行動 stroke だけ数える。"""
+        client, player_id = policy_eval_client
+        resp = client.get(f"/api/analysis/policy_eval?player_id={player_id}")
+        assert resp.status_code == 200
+        provenance = resp.json()["meta"]["input_provenance"]
+        methods = provenance["strokes"]["source_method"]
+        assert provenance["strokes"]["total"] == 24
+        assert methods["assisted"] == 24
+        assert methods["manual"] == 0
+        assert provenance["has_cv_derived_strokes"] is True
 
     def test_at_least_one_state_ok_with_uplift(self, policy_eval_client):
         """十分なサンプルがある状態で status='ok' かつ ci_low <= ci_high の数値が返ること。"""

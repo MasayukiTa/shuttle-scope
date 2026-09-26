@@ -152,7 +152,13 @@ def build_cv_candidates(match_id: int, request: Request, db: Session = Depends(g
     if not alignment_data and tracknet_frames and yolo_frames:
         rally_boundaries = _get_rally_boundaries(db, match_id)
         try:
-            alignment_data = align_match(yolo_frames, tracknet_frames, rally_boundaries)
+            from backend.cv.court_adapter import CourtAdapter
+            alignment_data = align_match(
+                yolo_frames,
+                tracknet_frames,
+                rally_boundaries,
+                court_adapter=CourtAdapter.for_match(match_id),
+            )
         except Exception as e:
             # アライメントは «あれば精度が上がる» 補助なので、失敗しても候補生成は
             # 続ける。ただし黙って落とすと «アライメント込みの結果» と区別が

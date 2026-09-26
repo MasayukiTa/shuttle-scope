@@ -41,6 +41,7 @@ def _extract_opponent_metrics(
     rallies: list[Rally],
     opp_role: str,
     db: Session,
+    provenance_rows: Optional[dict[str, list]] = None,
 ) -> Optional[dict]:
     """
     単試合のラリー・ストロークデータから相手の指標を抽出する。
@@ -69,6 +70,10 @@ def _extract_opponent_metrics(
     total = len(opp_strokes)
     if total == 0:
         return None
+
+    if provenance_rows is not None:
+        provenance_rows.setdefault("rallies", []).extend(rallies)
+        provenance_rows.setdefault("strokes", []).extend(opp_strokes)
 
     avg_len = sum(r.rally_length for r in rallies) / len(rallies)
 
@@ -146,6 +151,7 @@ def classify_opponent(
     opponent_id: int,
     matches_with_opponent: list[Match],
     player_id: int,
+    provenance_rows: Optional[dict[str, list]] = None,
 ) -> dict:
     """
     複数試合にわたる対戦データから相手の 5 軸分類を計算する。
@@ -201,7 +207,12 @@ def classify_opponent(
         if not set_ids:
             continue
         rallies = [r for sid in set_ids for r in rallies_by_set.get(sid, [])]
-        metrics = _extract_opponent_metrics(rallies, opp_role, db)
+        metrics = _extract_opponent_metrics(
+            rallies,
+            opp_role,
+            db,
+            provenance_rows=provenance_rows,
+        )
         if metrics is None:
             continue
 
@@ -245,6 +256,7 @@ def classify_all_opponents(
     db: Session,
     player_id: int,
     matches: list[Match],
+    provenance_rows: Optional[dict[str, list]] = None,
 ) -> dict[int, dict]:
     """
     対戦した全相手に対して classify_opponent を実行し、
@@ -256,10 +268,30 @@ def classify_all_opponents(
         opp_id = m.player_b_id if m.player_a_id == player_id else m.player_a_id
         opp_matches.setdefault(opp_id, []).append(m)
 
-    return {
-        opp_id: classify_opponent(db, opp_id, opp_ms, player_id)
+    if provenance_rows is not None:
+        provenance_rows.clear()
+        provenance_rows.update({"rallies": [], "strokes": []})
+
+    result = {
+        opp_id: classify_opponent(
+            db,
+            opp_id,
+            opp_ms,
+            player_id,
+            provenance_rows=provenance_rows,
+        )
         for opp_id, opp_ms in opp_matches.items()
     }
+
+    if provenance_rows is not None:
+        provenance_rows["rallies"] = list({
+            row.id: row for row in provenance_rows["rallies"]
+        }.values())
+        provenance_rows["strokes"] = list({
+            row.id: row for row in provenance_rows["strokes"]
+        }.values())
+
+    return result
 
 
 # ── axes 別集計ユーティリティ ────────────────────────────────────────────────

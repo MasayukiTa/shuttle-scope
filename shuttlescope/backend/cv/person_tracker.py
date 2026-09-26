@@ -3,7 +3,7 @@
 設計書: private_docs/2026-05-27_person_tracking_design.md
 
 Phase 3.5 (2026-05-27): 検出と追跡を分離する 2-stage 設計に refactor。
-- 検出: backend.yolo.inference.get_yolo_inference().predict_frame()
+- 検出: backend.yolo.inference.get_yolo_inference().predict_frame_checked()
         (TRT / CUDA / OpenVINO / CPU 経路を自動選択、court filter 内包)
 - 追跡: backend.cv.byte_tracker.ByteTracker (scratch, MIT)
 これにより ultralytics の素 ONNX 経由 12 fps → TRT 経路で 1000+ fps を期待。
@@ -513,10 +513,10 @@ class PersonTracker:
             #   SS_YOLO_USE_TRT=0 で TRT スキップ等。
             from backend.yolo.inference import get_yolo_inference  # type: ignore
             self._detector = get_yolo_inference()
-            # 明示 load — 失敗時は update() で空 list を返す挙動になる
+            # 明示 load。失敗は update() で正常な 0 件に偽装せず例外として伝播する。
             if not self._detector.load():
                 logger.warning(
-                    "PersonTracker: YOLO detector load 失敗、空 detection で動作"
+                    "PersonTracker: YOLO detector load 失敗、次回 update で明示エラー"
                 )
             else:
                 logger.info(
@@ -542,7 +542,7 @@ class PersonTracker:
 
         # 検出: full-frame 推論。predict_frame は **正規化座標** で返るので pixel に戻す。
         h, w = frame.shape[:2]
-        detections_n = self._detector.predict_frame(frame) if self._detector is not None else []
+        detections_n = self._detector.predict_frame_checked(frame) if self._detector is not None else []
 
         # ByteTracker は pixel 座標 + score を受け取る。
         # YOLOInference の出力は person / player_a..d / player_other 等の混在ラベル。

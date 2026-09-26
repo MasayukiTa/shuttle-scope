@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db, SessionLocal
 from backend.db.models import Match, GameSet, Rally, MatchCVArtifact
-from backend.yolo.inference import get_yolo_inference, filter_detections_by_court
+from backend.yolo.inference import YOLOInferenceError, get_yolo_inference, filter_detections_by_court
 from backend.yolo.court_mapper import summarize_frame_positions, summarize_rally_positions
 from backend.yolo.cv_aligner import align_match
 from backend.analysis.doubles_cv_engine import compute_doubles_cv_analytics
@@ -412,7 +412,13 @@ def align_yolo_tracknet(match_id: int, db: Session = Depends(get_db)):
         if r.video_timestamp_start is not None
     ]
 
-    alignment = align_match(yolo_frames, tracknet_frames, rally_dicts)
+    from backend.cv.court_adapter import CourtAdapter
+    alignment = align_match(
+        yolo_frames,
+        tracknet_frames,
+        rally_dicts,
+        court_adapter=CourtAdapter.for_match(match_id),
+    )
 
     # 結果を artifact に保存
     alignment_json = json.dumps(alignment, ensure_ascii=False)
@@ -763,6 +769,7 @@ def _run_batch(
 ) -> None:
     _jobs[job_id]["status"] = JobStatus.RUNNING
     db = SessionLocal()
+    cap = None
 
     try:
         inf = get_yolo_inference()
@@ -899,7 +906,7 @@ def _run_batch(
                     new_players: list[dict] = []
                     for droi in delta_rois:
                         cropped = _crop_roi(frame, droi)
-                        detected = inf.predict_frame(cropped)
+                        detected = inf.predict_frame_checked(cropped)
                         new_players.extend(_remap_player_coords(detected, droi))
                     # person v2: 差分検出にもコート外フィルタを適用
                     new_players = filter_detections_by_court(new_players, court_polygon)
@@ -913,7 +920,7 @@ def _run_batch(
                 else:
                     # 未処理フレーム: 通常検出
                     cropped = _crop_roi(frame, roi)
-                    players = inf.predict_frame(cropped)
+                    players = inf.predict_frame_checked(cropped)
                     if roi:
                         players = _remap_player_coords(players, roi)
                     # person v2: コート外 (審判/掲示板/観客) を drop
@@ -983,6 +990,8 @@ def _run_batch(
         _jobs[job_id]["status"] = JobStatus.ERROR
         _jobs[job_id]["error"] = str(exc)
     finally:
+        if cap is not None:
+            cap.release()
         db.close()
 
 
@@ -1041,7 +1050,11 @@ def detect_single_frame(
     roi = body.roi_rect.model_dump() if body.roi_rect else None
     cropped = _crop_roi(frame, roi)
     h_crop, w_crop = cropped.shape[:2]
-    players = inf.predict_frame(cropped)
+    try:
+        players = inf.predict_frame_checked(cropped)
+    except YOLOInferenceError as exc:
+        logger.warning("frame_detect inference failed: %s", exc)
+        raise HTTPException(status_code=503, detail="YOLO 推論に失敗しました") from exc
     if roi:
         players = _remap_player_coords(players, roi)
 

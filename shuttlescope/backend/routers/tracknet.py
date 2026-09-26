@@ -114,9 +114,15 @@ def get_shuttle_track(match_id: int, db: Session = Depends(get_db)):
         .order_by(MatchCVArtifact.created_at.desc())
         .first()
     )
+    meta = {
+        "artifact_id": artifact.id if artifact else None,
+        "backend_used": artifact.backend_used if artifact else None,
+        "frame_count": artifact.frame_count if artifact else None,
+        "created_at": artifact.created_at.isoformat() if artifact and artifact.created_at else None,
+    }
     if not artifact or not artifact.data:
-        return {"success": True, "data": []}
-    return {"success": True, "data": json.loads(artifact.data)}
+        return {"success": True, "data": [], "meta": meta}
+    return {"success": True, "data": json.loads(artifact.data), "meta": meta}
 
 
 @router.get("/tracknet/resume_check/{match_id}")

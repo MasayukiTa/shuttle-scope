@@ -53,6 +53,9 @@ interface CourtCalibResponse {
 interface ShuttleTrackResponse {
   success?: boolean
   data?: ShuttleFrame[]
+  meta?: {
+    backend_used?: string | null
+  }
 }
 
 interface YoloPlayerDetection {
@@ -356,6 +359,7 @@ export function MobileCVOverlay({
           videoWidth={videoWidth}
           videoHeight={videoHeight}
           visible={showShuttle && shuttleFrames.length > 0}
+          backendUsed={shuttleQuery.data?.meta?.backend_used}
         />
       </div>
 

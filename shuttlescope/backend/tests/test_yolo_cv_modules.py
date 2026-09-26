@@ -17,10 +17,15 @@ from backend.yolo.court_mapper import (
     summarize_rally_positions,
 )
 from backend.yolo.cv_aligner import (
+    HITTER_GUESS_CONF_CAP,
+    HITTER_NET_SEPARATED_CONF_CAP,
     align_match,
+    cap_guessed_hitter_confidence,
+    position_label_geometry,
     _frames_in_range,
     _summarize_events,
 )
+from backend.cv.court_adapter import CourtAdapter
 from backend.analysis.doubles_cv_engine import (
     _compute_formation_tendency,
     _compute_hitter_distribution,
@@ -149,6 +154,92 @@ class TestFramesInRange:
         frames = [{"timestamp_sec": 1.0}]
         ts = [1.0]
         assert _frames_in_range(frames, ts, 5.0, 10.0) == []
+
+
+# ──────────────────────────────────────────────────────────────
+# D-5: guessed labels + calibrated net geometry
+# ──────────────────────────────────────────────────────────────
+
+class TestHitterNetGeometry:
+    @staticmethod
+    def _adapter():
+        H = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+        return CourtAdapter(homography=H, homography_inv=H)
+
+    @staticmethod
+    def _players(*, same_side=False, four_players=False):
+        b_y = 0.35 if same_side else 0.75
+        players = [
+            {
+                "label": "player_a",
+                "label_source": "position_fallback",
+                "centroid": [0.25, 0.25],
+                "foot_point": [0.25, 0.25],
+            },
+            {
+                "label": "player_b",
+                "label_source": "position_fallback",
+                "centroid": [0.75, b_y],
+                "foot_point": [0.75, b_y],
+            },
+        ]
+        if four_players:
+            players.extend([
+                {"label": "player_c", "label_source": "position_fallback", "centroid": [0.2, 0.7], "foot_point": [0.2, 0.7]},
+                {"label": "player_d", "label_source": "position_fallback", "centroid": [0.8, 0.8], "foot_point": [0.8, 0.8]},
+            ])
+        return players
+
+    def test_net_separated_two_player_guess_can_reach_suggested_cap(self):
+        players = self._players()
+        conf, geometry = cap_guessed_hitter_confidence(
+            0.95, players[0], players, self._adapter()
+        )
+        assert geometry == "net_separated"
+        assert conf == pytest.approx(HITTER_NET_SEPARATED_CONF_CAP)
+
+    def test_same_side_guess_keeps_review_required_cap(self):
+        players = self._players(same_side=True)
+        conf, geometry = cap_guessed_hitter_confidence(
+            0.95, players[0], players, self._adapter()
+        )
+        assert geometry == "same_side"
+        assert conf == pytest.approx(HITTER_GUESS_CONF_CAP)
+
+    def test_uncalibrated_guess_keeps_review_required_cap(self):
+        players = self._players()
+        conf, geometry = cap_guessed_hitter_confidence(
+            0.95, players[0], players, CourtAdapter()
+        )
+        assert geometry == "uncalibrated"
+        assert conf == pytest.approx(HITTER_GUESS_CONF_CAP)
+
+    def test_doubles_four_player_frame_is_not_promoted(self):
+        players = self._players(four_players=True)
+        assert position_label_geometry(players, self._adapter()) == "not_two_players"
+        conf, geometry = cap_guessed_hitter_confidence(
+            0.95, players[0], players, self._adapter()
+        )
+        assert geometry == "not_two_players"
+        assert conf == pytest.approx(HITTER_GUESS_CONF_CAP)
+
+    def test_align_match_records_net_geometry_and_caps_below_auto_fill(self):
+        players = self._players()
+        yolo = [{"timestamp_sec": 1.0, "players": players}]
+        tracknet = [{
+            "timestamp_sec": 1.0,
+            "zone": "NL",
+            "confidence": 0.95,
+            "x_norm": 0.25,
+            "y_norm": 0.25,
+        }]
+        rallies = [{"rally_id": 1, "start_sec": 0.5, "end_sec": 1.5}]
+        event = align_match(
+            yolo, tracknet, rallies, court_adapter=self._adapter()
+        )[0]["events"][0]
+        assert event["hitter_candidate"] == "player_a"
+        assert event["hitter_label_geometry"] == "net_separated"
+        assert event["hitter_confidence"] == pytest.approx(HITTER_NET_SEPARATED_CONF_CAP)
 
 
 # ──────────────────────────────────────────────────────────────
