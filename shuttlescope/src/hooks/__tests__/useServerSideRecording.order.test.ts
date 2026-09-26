@@ -157,7 +157,7 @@ describe('useServerSideRecording — streaming upload ordering', () => {
       const matching = calls.filter(({ url }) => url.includes(suffix))
       expect(matching.length, `missing ${suffix}`).toBeGreaterThan(0)
       const hasParticipantAuth = matching.some(({ init }) => {
-        const headers = init?.headers as Record<string, string> | undefined
+        const headers = (init as RequestInit | undefined)?.headers as Record<string, string> | undefined
         return headers?.Authorization === 'Participant participant-secret'
           && headers['X-Session-Code'] === 'SESSION1'
           && headers['X-Participant-Id'] === '42'
