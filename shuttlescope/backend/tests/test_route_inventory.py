@@ -202,11 +202,14 @@ class TestGlobalAuthExemptRegex:
         "/api/public/inquiries/unread-count",
         "/api/public/inquiries/12",
         "/api/public/inquiries/bulk-delete",
-        # heartbeat の免除が近接パスへ広がっていないこと。participant_id は
-        # 数値に限定し、末尾を heartbeat で固定してある。
+        # participant credential で認証する heartbeat / ice-config の免除が
+        # 近接パスへ広がっていないこと。participant_id は数値に限定し、
+        # 末尾も列挙した 2 route だけに固定する。
         "/api/sessions/ABC123/devices/42",
         "/api/sessions/ABC123/devices/42/heartbeatX",
+        "/api/sessions/ABC123/devices/42/ice-configX",
         "/api/sessions/ABC123/devices/abc/heartbeat",
+        "/api/sessions/ABC123/devices/abc/ice-config",
         "/api/sessions/ABC123/devices/42/set-viewer-permission",
     ])
     def test_near_miss_paths_not_exempt(self, path: str):
@@ -227,6 +230,7 @@ class TestGlobalAuthExemptRegex:
         "/api/public/ban_appeal",
         "/api/public/content_report",
         "/api/sessions/ABC123/devices/42/heartbeat",
+        "/api/sessions/ABC123/devices/42/ice-config",
         "/api/_internal/billing/webhooks/stripe",
         "/api/_internal/billing/webhooks/komoju",
         "/api/_internal/billing/legal_info",

@@ -26,7 +26,7 @@ import time
 import urllib.request
 from typing import Optional, Literal
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from backend.config import settings
@@ -571,7 +571,7 @@ def tunnel_stop(request: Request):
 TURN_CREDENTIAL_TTL_SEC = 3600
 
 
-def _ephemeral_turn_credentials(secret: str, user_id: Optional[int], ttl: int) -> tuple[str, str]:
+def _ephemeral_turn_credentials(secret: str, subject: Optional[int | str], ttl: int) -> tuple[str, str]:
     """coturn の `use-auth-secret`（REST API 方式）の資格情報を作る。
 
         username = "<有効期限のUNIX時刻>:<利用者>"
@@ -585,32 +585,21 @@ def _ephemeral_turn_credentials(secret: str, user_id: Optional[int], ttl: int) -
     import hmac
 
     expiry = int(time.time()) + ttl
-    username = f"{expiry}:{user_id if user_id is not None else 'anon'}"
+    username = f"{expiry}:{subject if subject is not None else 'anon'}"
     digest = hmac.new(secret.encode(), username.encode(), hashlib.sha1).digest()
     return username, base64.b64encode(digest).decode()
 
 
-@router.get("/webrtc/ice-config")
-def webrtc_ice_config(request: Request, db: Session = Depends(get_db)):
-    """WebRTC ICE サーバー設定を返す（STUN デフォルト + TURN オプション）
+def build_ice_config_for_subject(db: Session, subject: int | str | None) -> dict:
+    """Build STUN/TURN config for an already-authenticated principal.
 
-    **TURN の資格情報は利用者ごと・期限つきで発行する。**
-
-    以前は Settings の `turn_username` / `turn_credential` をそのまま返して
-    いた。この endpoint は WebRTC を張る全員が叩くもので、認証は要るが
-    ロールは問わない（player でも通る）。つまり**固定の TURN 資格情報が
-    全利用者に配られていた**ことになる。TURN はトラフィックを中継する
-    サーバなので、受け取った側はそれを自分の通信の中継に使える。
-    期限も無いので、一度渡ったものは失効しない。
-
-    いまは `turn_static_auth_secret`（coturn の `use-auth-secret` と同じ鍵）
-    から HMAC で期限つきの資格情報を作って返す。**固定の資格情報は
-    返さない。** 鍵が未設定のまま TURN を有効にしている場合は STUN だけを
-    返し、理由を `turn_warning` に入れる（黙って TURN 無しにしない）。
+    Authentication belongs to the calling endpoint. App-JWT users and QR/session
+    participants therefore share one TURN policy without weakening the global
+    authentication middleware.
     """
     from backend.routers.settings import _load_all
-    cfg = _load_all(db)
 
+    cfg = _load_all(db)
     ice_servers: list[dict] = [{"urls": "stun:stun.l.google.com:19302"}]
     turn_warning: Optional[str] = None
     turn_active = False
@@ -618,13 +607,8 @@ def webrtc_ice_config(request: Request, db: Session = Depends(get_db)):
     if cfg.get("turn_enabled") and cfg.get("turn_url"):
         secret = (cfg.get("turn_static_auth_secret") or "").strip()
         if secret:
-            from backend.utils.auth import get_auth
-            try:
-                user_id = get_auth(request).user_id
-            except Exception:  # noqa: BLE001
-                user_id = None
             username, credential = _ephemeral_turn_credentials(
-                secret, user_id, TURN_CREDENTIAL_TTL_SEC,
+                secret, subject, TURN_CREDENTIAL_TTL_SEC,
             )
             ice_servers.append({
                 "urls": cfg["turn_url"],
@@ -643,8 +627,6 @@ def webrtc_ice_config(request: Request, db: Session = Depends(get_db)):
         "success": True,
         "data": {
             "ice_servers": ice_servers,
-            # 「設定上 有効か」ではなく「実際に TURN を返したか」を返す。
-            # 鍵が無くて返せていないのに true を返すと、画面は使えると信じる。
             "turn_enabled": turn_active,
             "turn_credential_ttl_sec": TURN_CREDENTIAL_TTL_SEC if turn_active else None,
             "turn_warning": turn_warning,
@@ -652,17 +634,39 @@ def webrtc_ice_config(request: Request, db: Session = Depends(get_db)):
     }
 
 
+@router.get("/webrtc/ice-config")
+def webrtc_ice_config(request: Request, db: Session = Depends(get_db)):
+    """ICE config for normal app users.
+
+    GlobalAuthMiddleware already requires an app credential on this path.
+    Resolve it again here as defense in depth and to bind ephemeral TURN
+    credentials to the authenticated user. QR/session participants use the
+    session-scoped endpoint in sessions.py instead.
+    """
+    from backend.utils.auth import get_auth
+
+    ctx = get_auth(request)
+    if ctx.role is None:
+        raise HTTPException(status_code=401, detail="認証が必要です")
+    subject: int | str | None = ctx.user_id
+    if subject is None:
+        subject = f"role:{ctx.role}"
+    return build_ice_config_for_subject(db, subject)
+
 # ─── TURN 疎通テスト ──────────────────────────────────────────────────────────
 
 _TURN_URL_RE = re.compile(r'^turns?:([^:?]+)(?::(\d+))?', re.IGNORECASE)
 
 
 @router.post("/webrtc/test-turn")
-def webrtc_test_turn(db: Session = Depends(get_db)):
+def webrtc_test_turn(request: Request, db: Session = Depends(get_db)):
     """TURN サーバーへの TCP 疎通チェック。
     設定された turn_url のホスト:ポートに TCP 接続を試み、到達可能かを返す。
     """
     from backend.routers.settings import _load_all
+    from backend.utils.auth import require_admin
+
+    require_admin(request, db)
     cfg = _load_all(db)
 
     if not cfg.get("turn_enabled"):

@@ -524,3 +524,159 @@ def test_participant_cannot_manage_another_participants_upload(
             headers=_participant_upload_headers(first),
         )
         assert cleanup.status_code == 200, cleanup.text
+
+
+# ── QR/session participant -> ICE/TURN credentials ───────────────────────────
+
+def _participant_ice(
+    client: TestClient,
+    join_data: dict,
+    *,
+    token: str | None = None,
+):
+    return client.get(
+        f"/api/sessions/{join_data['session_code']}/devices/{join_data['participant_id']}/ice-config",
+        headers={
+            "Authorization": f"Participant {token or join_data['participant_token']}",
+        },
+    )
+
+
+def _enable_test_turn(monkeypatch):
+    from backend.routers import settings as settings_router
+
+    cfg = {
+        "turn_enabled": True,
+        "turn_url": "turn:relay.example.com:3478",
+        "turn_username": "static-user",
+        "turn_credential": "static-password",
+        "turn_static_auth_secret": "participant-shared-secret",
+    }
+    monkeypatch.setattr(settings_router, "_load_all", lambda _db: cfg)
+    return cfg
+
+
+def test_approved_camera_participant_can_get_scoped_turn_credentials(monkeypatch):
+    code = "PTICECAM"
+    _make_session(code)
+    _enable_test_turn(monkeypatch)
+
+    with TestClient(app, base_url="http://localhost") as client:
+        joined = _join(client, code).json()["data"]
+
+        pending = _participant_ice(client, joined)
+        assert pending.status_code == 403, pending.text
+
+        _approve(joined["participant_id"])
+        resp = _participant_ice(client, joined)
+
+    assert resp.status_code == 200, resp.text
+    data = resp.json()["data"]
+    turn = [item for item in data["ice_servers"] if item["urls"].startswith("turn:")]
+    assert len(turn) == 1
+    assert turn[0]["username"].endswith(
+        f":participant:{joined['participant_id']}"
+    )
+    body = resp.text
+    assert "static-user" not in body
+    assert "static-password" not in body
+
+
+def test_viewer_participant_can_get_turn_without_camera_approval(monkeypatch):
+    code = "PTICEVIEW"
+    _make_session(code)
+    _enable_test_turn(monkeypatch)
+
+    with TestClient(app, base_url="http://localhost") as client:
+        joined = _join(
+            client,
+            code,
+            role="viewer",
+            device_type="pc",
+            device_name="Viewer PC",
+        ).json()["data"]
+        resp = _participant_ice(client, joined)
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["data"]["turn_enabled"] is True
+
+
+def test_participant_ice_rejects_wrong_token_and_blocked_viewer(monkeypatch):
+    code = "PTICEBAD"
+    _make_session(code)
+    _enable_test_turn(monkeypatch)
+
+    with TestClient(app, base_url="http://localhost") as client:
+        joined = _join(
+            client,
+            code,
+            role="viewer",
+            device_type="pc",
+            device_name="Viewer PC",
+        ).json()["data"]
+
+        bad = _participant_ice(client, joined, token="wrong-participant-token")
+        assert bad.status_code == 401, bad.text
+
+        db = db_module.SessionLocal()
+        try:
+            p = db.get(SessionParticipant, joined["participant_id"])
+            assert p is not None
+            p.viewer_permission = "blocked"
+            db.commit()
+        finally:
+            db.close()
+
+        blocked = _participant_ice(client, joined)
+        assert blocked.status_code == 403, blocked.text
+
+
+def test_participant_ice_does_not_reveal_another_participant_id(monkeypatch):
+    code = "PTICEENUM"
+    _make_session(code)
+    _enable_test_turn(monkeypatch)
+
+    with TestClient(app, base_url="http://localhost") as client:
+        joined = _join(
+            client,
+            code,
+            role="viewer",
+            device_type="pc",
+            device_name="Viewer PC",
+        ).json()["data"]
+        resp = client.get(
+            f"/api/sessions/{code}/devices/{joined['participant_id'] + 9999}/ice-config",
+            headers={"Authorization": f"Participant {joined['participant_token']}"},
+        )
+
+    assert resp.status_code == 401, resp.text
+
+def test_participant_ice_is_bound_to_active_session(monkeypatch):
+    code = "PTICEEND"
+    _make_session(code)
+    _enable_test_turn(monkeypatch)
+
+    with TestClient(app, base_url="http://localhost") as client:
+        joined = _join(
+            client,
+            code,
+            role="viewer",
+            device_type="pc",
+            device_name="Viewer PC",
+        ).json()["data"]
+
+        db = db_module.SessionLocal()
+        try:
+            session = (
+                db.query(SharedSession)
+                .filter(SharedSession.session_code == code)
+                .one()
+            )
+            session.is_active = False
+            db.commit()
+        finally:
+            db.close()
+
+        resp = _participant_ice(client, joined)
+
+    assert resp.status_code == 404, resp.text

@@ -23,14 +23,27 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.db.database import get_db
+from backend.db.models import User
 from backend.main import app
 from backend.routers.tunnel import TURN_CREDENTIAL_TTL_SEC, _ephemeral_turn_credentials
+from backend.utils.jwt_utils import create_access_token
 
 
 @pytest.fixture()
 def client(db_session):
+    user = User(
+        username="turn_credential_player",
+        role="analyst",
+        awaiting_admin_approval=False,
+        consent_required=False,
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+
     app.dependency_overrides[get_db] = lambda: db_session
-    c = TestClient(app, headers={"X-Role": "admin"})
+    token = create_access_token(user_id=user.id, role=user.role, minutes=10)
+    c = TestClient(app, headers={"Authorization": f"Bearer {token}"})
     yield c
     app.dependency_overrides.clear()
 
@@ -129,3 +142,87 @@ class TestEphemeralCredentials:
         data = _ice(client)
         assert data["turn_enabled"] is False
         assert data["turn_warning"] is None
+
+
+def test_app_ice_config_requires_an_authenticated_role(db_session, monkeypatch):
+    from starlette.requests import Request
+    from backend.routers import settings as settings_mod
+    from backend.routers import tunnel as tunnel_mod
+
+    monkeypatch.setattr(
+        settings_mod,
+        "_load_all",
+        lambda _db: {"turn_enabled": False, "turn_url": ""},
+    )
+
+    def _request(token: str | None) -> Request:
+        headers = [] if token is None else [(b"authorization", f"Bearer {token}".encode("ascii"))]
+        return Request({
+            "type": "http",
+            "method": "GET",
+            "path": "/api/webrtc/ice-config",
+            "headers": headers,
+            "client": ("127.0.0.1", 12345),
+            "scheme": "http",
+            "server": ("localhost", 80),
+        })
+
+    token = create_access_token(user_id=123, role="player", minutes=10)
+    allowed = tunnel_mod.webrtc_ice_config(_request(token), db_session)
+    assert allowed["success"] is True
+
+    with pytest.raises(Exception) as denied:
+        tunnel_mod.webrtc_ice_config(_request(None), db_session)
+    assert getattr(denied.value, "status_code", None) == 401
+
+def test_turn_reachability_probe_is_admin_only(db_session, monkeypatch):
+    """The outbound TCP diagnostic is an admin operation, not a generic WebRTC API."""
+    from starlette.requests import Request
+    from backend.config import settings as app_settings
+    from backend.routers import settings as settings_mod
+    from backend.routers import tunnel as tunnel_mod
+    from backend.utils import control_plane
+
+    monkeypatch.setattr(app_settings, "ss_require_admin_mfa", False)
+    monkeypatch.setattr(control_plane, "allow_legacy_header_auth", lambda _request: True)
+    monkeypatch.setattr(
+        settings_mod,
+        "_load_all",
+        lambda _db: {
+            "turn_enabled": True,
+            "turn_url": "turn:relay.example.com:3478",
+        },
+    )
+
+    class _Sock:
+        def close(self):
+            return None
+
+    calls: list[tuple] = []
+
+    def _connect(addr, timeout):
+        calls.append((addr, timeout))
+        return _Sock()
+
+    monkeypatch.setattr(tunnel_mod._socket, "create_connection", _connect)
+
+    def _request(role: str) -> Request:
+        headers = [(b"x-role", role.encode("ascii"))]
+        return Request({
+            "type": "http",
+            "method": "POST",
+            "path": "/api/webrtc/test-turn",
+            "headers": headers,
+            "client": ("127.0.0.1", 12345),
+            "scheme": "http",
+            "server": ("localhost", 80),
+        })
+
+    with pytest.raises(Exception) as denied:
+        tunnel_mod.webrtc_test_turn(_request("player"), db_session)
+    assert getattr(denied.value, "status_code", None) == 403
+    assert calls == [], "outbound connection happened before authorization"
+
+    allowed = tunnel_mod.webrtc_test_turn(_request("admin"), db_session)
+    assert allowed["success"] is True
+    assert calls == [(("relay.example.com", 3478), 5)]

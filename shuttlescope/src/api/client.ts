@@ -273,6 +273,34 @@ async function fetchWithAutoRefresh(input: string, init: RequestInit): Promise<R
   }
 }
 
+export async function getParticipantIceConfig(
+  sessionCode: string,
+  participantId: number,
+  participantToken: string,
+): Promise<{ success: boolean; data: { ice_servers: RTCIceServer[] } }> {
+  const code = encodeURIComponent(sessionCode)
+  const url = BASE_URL + '/sessions/' + code + '/devices/' + participantId + '/ice-config'
+  const wrap = _withDefaultTimeout(url, {
+    headers: { Authorization: 'Participant ' + participantToken },
+  })
+  let res: Response
+  try {
+    res = await fetch(url, wrap.init)
+  } catch (e) {
+    if (wrap.isTimeout()) {
+      throw new Error(`API timeout (${DEFAULT_API_TIMEOUT_MS}ms): ${url}`, { cause: e })
+    }
+    throw e
+  } finally {
+    wrap.cleanup()
+  }
+  if (!res.ok) {
+    const text = await res.text()
+    throw httpError(res.status, text)
+  }
+  return res.json()
+}
+
 export async function apiGet<T>(
   path: string,
   params?: Record<string, string | number | boolean | null | undefined>

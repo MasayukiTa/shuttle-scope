@@ -15,7 +15,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useLocation } from 'react-router-dom'
-import { apiPost, apiGet } from '@/api/client'
+import { apiPost, getParticipantIceConfig } from '@/api/client'
 import { useDeviceHeartbeat } from '@/hooks/useDeviceHeartbeat'
 import { useTranslation } from 'react-i18next'
 import { MIcon } from '@/components/common/MIcon'
@@ -127,7 +127,14 @@ export function ViewerPage() {
           // ICE config 取得（TURN 含む）
           let iceServers: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
           try {
-            const iceCfg = await apiGet<{ success: boolean; data: { ice_servers: RTCIceServer[] } }>('/webrtc/ice-config')
+            if (savedPidRef.current == null || !savedTokenRef.current || !savedCodeRef.current) {
+              throw new Error('participant credential unavailable')
+            }
+            const iceCfg = await getParticipantIceConfig(
+              savedCodeRef.current,
+              savedPidRef.current,
+              savedTokenRef.current,
+            )
             if (iceCfg.success && iceCfg.data.ice_servers.length > 0) {
               iceServers = iceCfg.data.ice_servers
             }

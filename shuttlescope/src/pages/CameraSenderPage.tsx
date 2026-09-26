@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { apiPost, apiGet } from '@/api/client'
+import { apiPost, getParticipantIceConfig } from '@/api/client'
 import { useDeviceHeartbeat } from '@/hooks/useDeviceHeartbeat'
 import { useServerSideRecording } from '@/hooks/session/useServerSideRecording'
 import { errorStatus } from '@/utils/errors'
@@ -409,7 +409,14 @@ export function CameraSenderPage() {
       // ICE サーバー設定を取得（TURN が有効な場合はリレー経由）
       let iceServers: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
       try {
-        const iceCfg = await apiGet<{ success: boolean; data: { ice_servers: RTCIceServer[] } }>('/webrtc/ice-config')
+        if (participantId == null || !savedTokenRef.current || !activeSessionCode) {
+          throw new Error('participant credential unavailable')
+        }
+        const iceCfg = await getParticipantIceConfig(
+          activeSessionCode,
+          participantId,
+          savedTokenRef.current,
+        )
         if (iceCfg.success && iceCfg.data.ice_servers.length > 0) {
           iceServers = iceCfg.data.ice_servers
         }

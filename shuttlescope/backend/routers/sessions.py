@@ -876,6 +876,48 @@ class HeartbeatBody(BaseModel):
     participant_token: Optional[str] = Field(default=None, max_length=256)
 
 
+@router.get("/sessions/{code}/devices/{participant_id}/ice-config")
+def participant_ice_config(
+    code: str,
+    participant_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """ICE config for QR/session participants without an app JWT.
+
+    The join-issued participant token proves membership in one active shared
+    session. Camera devices must also be operator-approved, and blocked viewers
+    cannot mint TURN credentials.
+    """
+    session = (
+        db.query(SharedSession)
+        .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
+        .first()
+    )
+    if session is None:
+        raise HTTPException(status_code=404, detail="セッションが見つかりません")
+
+    participant = db.get(SessionParticipant, participant_id)
+    auth = (request.headers.get("Authorization") or "").strip()
+    token = auth[len("Participant "):].strip() if auth.startswith("Participant ") else ""
+    if (
+        participant is None
+        or participant.session_id != session.id
+        or not _participant_token_valid(participant, token)
+    ):
+        # participant の存在有無と token 不一致を応答で区別しない。
+        raise HTTPException(status_code=401, detail="参加資格を確認できません")
+
+    if participant.approval_status == "rejected":
+        raise HTTPException(status_code=403, detail="このデバイスは拒否されています")
+    if participant.source_capability == "camera" and participant.approval_status != "approved":
+        raise HTTPException(status_code=403, detail="このデバイスはまだ承認されていません")
+    if participant.viewer_permission == "blocked":
+        raise HTTPException(status_code=403, detail="この端末の映像受信は停止されています")
+
+    from backend.routers.tunnel import build_ice_config_for_subject
+    return build_ice_config_for_subject(db, f"participant:{participant.id}")
+
 @router.post("/sessions/{code}/devices/{participant_id}/heartbeat")
 def device_heartbeat(
     code: str,
