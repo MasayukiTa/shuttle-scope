@@ -168,21 +168,27 @@ def advice_dashboard_overview(db: Session, player_id: int, ctx: AuthCtx) -> dict
         )
 
     parts = []
-    # 1. ラリー勝率の事実
-    if cur["win_rate"] is not None:
-        wr_pct = round(cur["win_rate"] * 100, 1)
-        parts.append(f"直近 30 日のラリー勝率は {wr_pct}% (試合 {cur['match_count']} / ラリー {cur['rally_count']})")
-    # 2. 前 30 日比 (両期間とも閾値を満たす場合のみ)
     delta_str = None
-    if prev_only_match >= MIN_MATCHES and prev_only_rally >= MIN_RALLIES:
-        # 直近 30 日とその前 30 日のラリー勝率を分けて再計算
-        prev_wr = (prev["wins"] - cur["wins"]) / prev_only_rally if prev_only_rally else None
-        if prev_wr is not None and cur["win_rate"] is not None:
-            delta_pp = (cur["win_rate"] - prev_wr) * 100
-            sign = "+" if delta_pp >= 0 else ""
-            delta_str = f"その前 30 日比 {sign}{delta_pp:.1f}pp"
-            parts.append(delta_str)
-    # 3. 最頻使用ショット (確定事実)
+    if ctx.role == "player":
+        # Do not expose raw rally win-rate / delta values to player role.
+        parts.append(
+            f"直近 30 日は {cur['match_count']} 試合 / {cur['rally_count']} ラリー"
+        )
+    else:
+        if cur["win_rate"] is not None:
+            wr_pct = round(cur["win_rate"] * 100, 1)
+            parts.append(
+                f"直近 30 日のラリー勝率は {wr_pct}% "
+                f"(試合 {cur['match_count']} / ラリー {cur['rally_count']})"
+            )
+        if prev_only_match >= MIN_MATCHES and prev_only_rally >= MIN_RALLIES:
+            prev_wr = (prev["wins"] - cur["wins"]) / prev_only_rally if prev_only_rally else None
+            if prev_wr is not None and cur["win_rate"] is not None:
+                delta_pp = (cur["win_rate"] - prev_wr) * 100
+                sign = "+" if delta_pp >= 0 else ""
+                delta_str = f"その前 30 日比 {sign}{delta_pp:.1f}pp"
+                parts.append(delta_str)
+    # Most-used shot is descriptive and is safe for all roles.
     if cur["primary_shot"]:
         st, cnt, ratio = cur["primary_shot"]
         parts.append(f"最頻ショットは {st} ({cnt} 本 / 全体の {round(ratio * 100, 1)}%)")

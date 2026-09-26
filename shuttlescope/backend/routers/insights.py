@@ -10,12 +10,15 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from sqlalchemy.orm import Session
+
+from backend.db.database import get_db
 
 from backend.analysis.insights import (
     InsightContext,
     get_generator,
 )
-from backend.utils.auth import get_auth, AuthCtx
+from backend.utils.auth import get_auth, AuthCtx, can_access_player
 
 router = APIRouter()
 
@@ -47,6 +50,7 @@ def get_growth_snapshot(
     period_days: int = Query(30, ge=1, le=365),
     lang: str = Query("ja", pattern="^(ja|en)$"),
     ctx: AuthCtx = Depends(get_auth),
+    db: Session = Depends(get_db),
 ) -> dict:
     # ── ロール: player 以上。未認証(None)は拒否 ───────────────────
     if ctx.role is None:
@@ -62,6 +66,8 @@ def get_growth_snapshot(
     # 一行に依存した守りなので、ここでも閉じる。
     if ctx.role == "player" and ctx.player_id != player_id:
         raise HTTPException(status_code=403, detail="player can only view own snapshot")
+    if ctx.role in {"coach", "analyst", "admin"} and not can_access_player(ctx, player_id, db):
+        raise HTTPException(status_code=403, detail="player is outside your accessible scope")
 
     analytics = _example_analytics()
 
@@ -72,6 +78,8 @@ def get_growth_snapshot(
         "role": ctx.role,
         "lang": lang,
     }
+    if ctx.user_id is not None:
+        insight_ctx["user_id"] = int(ctx.user_id)
     generator = get_generator()
     result = generator.generate(insight_ctx)
 

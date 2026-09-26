@@ -315,7 +315,7 @@ def get_scouting_report(
             ["項目", "値"],
             ["試合数", str(len(matches))],
             ["総ラリー数", str(total_rallies)],
-            ["勝率", f"{win_rate:.1%}"],
+            ["\u30e9\u30ea\u30fc\u52dd\u7387", f"{win_rate:.1%}"],
             ["平均ラリー長", f"{avg_rally:.1f}打"],
         ]
         table = Table(stats_data, colWidths=[60*mm, 60*mm])
@@ -384,6 +384,7 @@ def get_scouting_report(
                     "total_matches": len(matches),
                     "total_rallies": total_rallies,
                     "win_rate": win_rate,
+                    "win_rate_basis": "rallies",
                     "avg_rally_length": avg_rally,
                     "top_shots": top_shots,
                     "disclaimer": DISCLAIMER_JA,
@@ -495,6 +496,7 @@ def get_player_growth_report(
             "total_matches": len(matches),
             "total_rallies": total_rallies,
             "win_rate": win_rate,
+            "win_rate_basis": "rallies",
             "avg_rally_length": avg_rally,
             "top_shots": top_shots,
             "disclaimer": sanitize_player_text(DISCLAIMER_JA),
@@ -822,18 +824,8 @@ def get_condition_report_pdf(
             headers={"Content-Disposition": f"attachment; filename=condition_{player_id}.pdf"},
         )
 
-    except Exception:
-        return {
-            "success": True,
-            "data": {
-                "player_name": player.name,
-                "summary": {
-                    "record_count": len(conditions), "date_from": date_from, "date_to": date_to,
-                    "avg_ccs": avg_ccs, "avg_hooper": avg_hooper, "avg_rpe": avg_rpe, "avg_sleep_h": avg_sleep,
-                },
-                "disclaimer": DISCLAIMER_JA,
-            },
-        }
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="PDF generation failed") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -906,9 +898,9 @@ def get_prediction_report(
         "success": True,
         "data": {
             "player_name": player.name,
-            "overall": {"total_matches": len(matches), "total_rallies": total, "win_rate": win_rate},
+            "overall": {"total_matches": len(matches), "total_rallies": total, "win_rate": win_rate, "win_rate_basis": "rallies"},
             "by_level": [
-                {"level": lv, "win_rate": round(v["wins"] / v["total"], 3) if v["total"] else None, "rallies": v["total"]}
+                {"level": lv, "win_rate": round(v["wins"] / v["total"], 3) if v["total"] else None, "win_rate_basis": "rallies", "rallies": v["total"]}
                 for lv, v in levels.items()
             ],
             "fatigue_hooper_avg_recent4": fatigue,
@@ -1057,15 +1049,5 @@ def get_prediction_report_pdf(
             headers={"Content-Disposition": f"attachment; filename=prediction_{player_id}.pdf"},
         )
 
-    except Exception:
-        return {
-            "success": True,
-            "data": {
-                "player_name": player.name,
-                "total_matches": len(matches),
-                "total_rallies": total,
-                "win_rate_pct": win_rate_pct,
-                "fatigue_hooper_avg_recent4": fatigue,
-                "disclaimer": DISCLAIMER_JA,
-            },
-        }
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="PDF generation failed") from exc

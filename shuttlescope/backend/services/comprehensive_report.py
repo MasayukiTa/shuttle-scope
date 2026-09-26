@@ -22,7 +22,7 @@ from typing import Any, Callable, Optional
 
 from sqlalchemy.orm import Session
 
-from backend.utils.auth import AuthCtx
+from backend.utils.auth import AuthCtx, apply_match_team_scope
 from backend.utils.error_detail import client_safe_error
 
 log = logging.getLogger(__name__)
@@ -246,11 +246,12 @@ def gather_player_report(
 
     # ── 5. 試合単位 raw (JSON のみ) ─────────────────────────────────
     if include_per_match:
+        match_q = db.query(Match).filter(
+            (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
+        )
+        match_q = apply_match_team_scope(match_q, ctx)
         matches = (
-            db.query(Match)
-            .filter(
-                (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
-            )
+            match_q
             .order_by(Match.date.desc().nullslast(), Match.id.desc())
             .limit(500)
             .all()

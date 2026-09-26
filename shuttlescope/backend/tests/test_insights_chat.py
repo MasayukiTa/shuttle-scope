@@ -208,3 +208,50 @@ def test_admin_can_access_other_users_session():
     _override("admin", user_id=999)
     r = _CLIENT.get(f"/api/insights/chat/sessions/{sid}/messages")
     assert r.status_code == 200
+
+
+# ─── 13. target_player_id は role だけでなく実スコープも検査 ─────────────
+def test_target_player_override_requires_access(monkeypatch):
+    _override("coach", user_id=210)
+    sid = _CLIENT.post("/api/insights/chat/sessions",
+                       json={"lang": "ja"}).json()["session_id"]
+    monkeypatch.setattr(chat_router_mod, "can_access_player",
+                        lambda _ctx, _pid, _db: False)
+
+    r = _CLIENT.post(
+        f"/api/insights/chat/sessions/{sid}/messages",
+        json={"content": "対象選手を見たい", "target_player_id": 999},
+    )
+    assert r.status_code == 403
+    assert "アクセス" in r.json()["detail"]
+
+
+# ─── 14. generator context に監査用 user_id を伝播 ──────────────────
+def test_generator_context_includes_user_id(monkeypatch):
+    _override("coach", user_id=211)
+    sid = _CLIENT.post("/api/insights/chat/sessions",
+                       json={"lang": "ja"}).json()["session_id"]
+    captured: dict = {}
+
+    class _Generator:
+        def generate(self, ctx):
+            captured.update(ctx)
+            return {
+                "items": [{
+                    "id": "test",
+                    "prose": "テスト応答です",
+                    "evidence_path": "",
+                    "confidence": None,
+                    "metric": {},
+                }],
+                "generator": "test",
+                "generated_at": "2026-09-27T00:00:00+00:00",
+            }
+
+    monkeypatch.setattr(chat_router_mod, "get_generator", lambda: _Generator())
+    r = _CLIENT.post(
+        f"/api/insights/chat/sessions/{sid}/messages",
+        json={"content": "通常の質問です"},
+    )
+    assert r.status_code == 200, r.text
+    assert captured["user_id"] == 211

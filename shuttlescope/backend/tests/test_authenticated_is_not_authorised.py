@@ -72,6 +72,22 @@ class TestGrowthSnapshotIdentityCheck:
                                 lang="ja", ctx=ctx)
         assert err.value.status_code == 403
 
+    def test_coach_scope_is_checked_before_snapshot_generation(self, monkeypatch):
+        import pytest as _pytest
+        from fastapi import HTTPException as _HTTPException
+        from backend.routers import insights as insights_router
+        from backend.utils.auth import AuthCtx
+
+        monkeypatch.setattr(insights_router, "can_access_player",
+                            lambda _ctx, _pid, _db: False)
+        ctx = AuthCtx("coach", None, None, user_id=2, team_id=10)
+        with _pytest.raises(_HTTPException) as err:
+            insights_router.get_growth_snapshot(
+                request=None, player_id=1234, period_days=30, lang="ja",
+                ctx=ctx, db=object(),
+            )
+        assert err.value.status_code == 403
+
     def test_a_player_can_still_read_their_own(self, db_session):
         u, p = _seed_player_user(db_session, "own_snapshot", "本人")
         app.dependency_overrides[get_db] = lambda: db_session

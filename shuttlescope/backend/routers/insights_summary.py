@@ -37,10 +37,17 @@ def _redact_for_player(payload: dict) -> dict:
     if "outcomes" in payload and isinstance(payload["outcomes"], dict):
         outcomes = dict(payload["outcomes"])
         outcomes.pop("win_rate", None)
+        outcomes.pop("win_rate_basis", None)
         outcomes.pop("set_win_rate", None)
         outcomes["growth_phase"] = _growth_phase_from_sample(n_matches)
         payload = dict(payload)
         payload["outcomes"] = outcomes
+    if "recent_trend" in payload and isinstance(payload["recent_trend"], dict):
+        recent = dict(payload["recent_trend"])
+        recent.pop("last_5_match_win_rate", None)
+        recent.pop("delta_vs_prior_5", None)
+        payload = dict(payload)
+        payload["recent_trend"] = recent
     return payload
 
 

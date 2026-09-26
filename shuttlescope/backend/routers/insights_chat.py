@@ -27,7 +27,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import ChatMessage, ChatSession
-from backend.utils.auth import AuthCtx, get_auth
+from backend.utils.auth import AuthCtx, can_access_player, get_auth
 from backend.analysis.insights import get_generator
 from backend.analysis.insights.types import InsightContext
 from backend.analysis.insights.safety import (
@@ -363,7 +363,13 @@ def send_chat_message(
         effective_target = None
         if body.target_player_id and body.target_player_id > 0:
             if ctx.role in ("admin", "coach", "analyst"):
-                effective_target = int(body.target_player_id)
+                requested_target = int(body.target_player_id)
+                if not can_access_player(ctx, requested_target, db):
+                    raise HTTPException(
+                        status_code=403,
+                        detail="この選手のデータへアクセスする権限がありません",
+                    )
+                effective_target = requested_target
             # それ以外の role は黙って無視 (cross-player snooping 防止)
         analytics = _build_analytics_context(
             db, ctx, sess, sess.lang,
@@ -376,6 +382,7 @@ def send_chat_message(
             "analytics": analytics,
             "role": ctx.role,
             "lang": sess.lang,
+            "user_id": int(ctx.user_id),
             # 2026-05-25: generator が user 入力を見て intent 分類する (meta /
             # forecast / data) ため raw text を渡す。
             "user_text": cleaned,  # type: ignore[typeddict-unknown-key]

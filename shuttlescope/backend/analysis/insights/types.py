@@ -22,6 +22,8 @@ class InsightContext(TypedDict):
     analytics: dict  # caller が事前 fetch した解析スナップショット
     role: str        # 'player' / 'coach' / 'analyst' / 'admin'
     lang: str        # 'ja' / 'en'
+    # Audit/budget attribution for external generator calls.
+    user_id: NotRequired[int]
     # 2026-05-25: 生のユーザ入力テキスト。ExternalApiGenerator が intent
     #   分類 (meta / forecast / data) と prompt 切替に使う。
     user_text: NotRequired[str]

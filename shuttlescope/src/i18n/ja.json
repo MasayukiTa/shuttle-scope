@@ -2926,6 +2926,7 @@
       "disclaimer_banner": "⚠ AI による生成です。数値や事実関係に誤りが含まれることがあります。試合判断や指導方針に使う前に、正確なレポートはアナリスト（管理者）にご依頼ください。",
       "disclaimer_request_report": "正確なレポートを依頼する",
       "safety_hint_admin": "AI 応答が安全基準で差し替えられました",
+      "safety_hint": "\u5b89\u5168\u57fa\u6e96\u306b\u3088\u308b\u4ee3\u66ff\u5fdc\u7b54",
       "char_counter": "{{n}}/2000",
       "period": {
         "chipLabel": "期間",

@@ -8,7 +8,6 @@
 import { useTranslation } from 'react-i18next'
 import { MIcon } from '@/components/common/MIcon'
 import { ChatMessage } from './useAdviceChat'
-import { useTypewriter } from './useTypewriter'
 
 interface Props {
   msg: ChatMessage
@@ -151,10 +150,10 @@ export function ChatMessageBubble({
               {t('auto.AdviceChat.confidence', { n: conf })}
             </span>
           )}
-          {msg.is_fallback && isAdmin && (
+          {msg.is_fallback && (
             <span
-              title={t('auto.AdviceChat.safety_hint_admin')}
-              aria-label={t('auto.AdviceChat.safety_hint_admin')}
+              title={t(isAdmin ? 'auto.AdviceChat.safety_hint_admin' : 'auto.AdviceChat.safety_hint')}
+              aria-label={t(isAdmin ? 'auto.AdviceChat.safety_hint_admin' : 'auto.AdviceChat.safety_hint')}
               className="inline-flex items-center text-[10px] text-amber-700"
             >
               <MIcon name="shield" size={12} ariaHidden />

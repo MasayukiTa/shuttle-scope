@@ -153,6 +153,7 @@ def test_happy_path_summary(db_session):
     assert out["sample"]["assisted_strokes"] == 0
     # 1 勝 1 敗
     assert out["outcomes"]["win_rate"] == 0.5
+    assert out["outcomes"]["win_rate_basis"] == "matches"
     assert out["outcomes"]["n"] == 2
     # shot_mix は 5 件以下
     assert len(out["shot_mix"]) <= 5
@@ -257,6 +258,9 @@ def test_player_role_redacts_win_rate(db_session):
     assert "outcomes" in body
     assert "win_rate" not in body["outcomes"]
     assert "set_win_rate" not in body["outcomes"]
+    assert "win_rate_basis" not in body["outcomes"]
+    assert "last_5_match_win_rate" not in body["recent_trend"]
+    assert "delta_vs_prior_5" not in body["recent_trend"]
     assert body["outcomes"]["growth_phase"] in ("early", "developing", "established")
     # sample=1 → "early"
     assert body["outcomes"]["growth_phase"] == "early"
@@ -276,4 +280,5 @@ def test_coach_role_sees_raw_win_rate(db_session):
     body = r.json()
     assert "win_rate" in body["outcomes"]
     assert body["outcomes"]["win_rate"] == 1.0
+    assert body["outcomes"]["win_rate_basis"] == "matches"
     assert "growth_phase" not in body["outcomes"]

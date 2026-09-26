@@ -274,6 +274,7 @@ def build_player_summary(
         },
         "outcomes": {
             "win_rate": round(match_win_rate, 4),
+            "win_rate_basis": "matches",
             "set_win_rate": round(set_win_rate, 4),
             "n": int(n_matches),
         },

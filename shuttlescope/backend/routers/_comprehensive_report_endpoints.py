@@ -302,6 +302,11 @@ def _render_comprehensive_pdf(data: dict) -> bytes:
 
     flow.append(Spacer(1, 8))
     flow.append(Paragraph(
+        "\u3053\u306e\u30c7\u30fc\u30bf\u306f\u76f8\u95a2\u3092\u793a\u3059\u3082\u306e\u3067\u3042\u308a\u3001\u56e0\u679c\u95a2\u4fc2\u3092\u793a\u3059\u3082\u306e\u3067\u306f\u3042\u308a\u307e\u305b\u3093",
+        small,
+    ))
+    flow.append(Spacer(1, 4))
+    flow.append(Paragraph(
         _safe_paragraph_text(
             "本レポートは ShuttleScope 自動生成。各 section の信頼度 (sample_size) を確認の上、"
             "コーチと選手の対話のたたき台としてください。試合単位の raw データは JSON 版を参照。"
