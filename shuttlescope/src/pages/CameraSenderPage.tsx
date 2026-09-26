@@ -21,6 +21,7 @@ import { useServerSideRecording } from '@/hooks/session/useServerSideRecording'
 import { errorStatus } from '@/utils/errors'
 import { participantWsUrl } from '@/utils/cameraWs'
 import { getDeviceUid } from '@/utils/deviceUid'
+import { getParticipantRejoinToken, setParticipantRejoinToken } from '@/utils/participantRejoinToken'
 import { MIcon } from '@/components/common/MIcon'
 
 type SenderState = 'join' | 'connecting' | 'state_a' | 'state_b' | 'state_c' | 'error'
@@ -342,6 +343,8 @@ export function CameraSenderPage() {
     savedPasswordRef.current = password
     savedDeviceNameRef.current = resolvedName
     try {
+      const deviceUid = getDeviceUid()
+      const previousParticipantToken = getParticipantRejoinToken(code, deviceUid)
       const res = await apiPost<{
         success: boolean
         data: {
@@ -353,7 +356,8 @@ export function CameraSenderPage() {
         role: 'viewer',
         device_name: resolvedName,
         device_type: getDeviceType(),
-        device_uid: getDeviceUid(),
+        device_uid: deviceUid,
+        participant_token: previousParticipantToken || undefined,
         session_password: password || undefined,
       })
       if (!res.success) throw new Error('join failed')
@@ -362,6 +366,9 @@ export function CameraSenderPage() {
       savedPidRef.current = pid
       // WS 入場券の引き換えに使う。平文はこの応答でしか返らない。
       savedTokenRef.current = res.data.participant_token ?? ''
+      if (savedTokenRef.current) {
+        setParticipantRejoinToken(code, deviceUid, savedTokenRef.current)
+      }
       setParticipantToken(savedTokenRef.current)
       setActiveSessionCode(code)
       // R-1: サーバ自動録画用 match_id を保存

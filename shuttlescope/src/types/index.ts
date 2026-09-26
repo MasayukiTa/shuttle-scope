@@ -402,8 +402,8 @@ export interface SessionParticipant {
   is_connected: boolean
   /**
    * サーバは返さない。join で送るだけの値。
-   * 「セッションパスワード + 同じ device_uid」で既存の参加者行に合流できる =
-   * 再接続の資格情報として働くので、読める相手を増やさない。
+   * device_uid は再接続候補を探すための識別子で、認証材料ではない。
+   * 既存 participant の再利用には前回 participant token の証明が必要。
    */
   device_uid?: never
   approval_status: DeviceApprovalStatus

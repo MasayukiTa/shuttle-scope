@@ -21,6 +21,7 @@ import { useTranslation } from 'react-i18next'
 import { MIcon } from '@/components/common/MIcon'
 import { participantWsUrl } from '@/utils/cameraWs'
 import { getDeviceUid } from '@/utils/deviceUid'
+import { getParticipantRejoinToken, setParticipantRejoinToken } from '@/utils/participantRejoinToken'
 import { errorStatus } from '@/utils/errors'
 
 type ViewerState = 'join' | 'connecting' | 'waiting' | 'receiving' | 'error'
@@ -204,6 +205,8 @@ export function ViewerPage() {
     savedNameRef.current = name
 
     try {
+      const deviceUid = getDeviceUid()
+      const previousParticipantToken = getParticipantRejoinToken(code, deviceUid)
       const res = await apiPost<{
         success: boolean
         data: {
@@ -214,7 +217,8 @@ export function ViewerPage() {
         role: 'viewer',
         device_name: name,
         device_type: 'pc',
-        device_uid: getDeviceUid(),
+        device_uid: deviceUid,
+        participant_token: previousParticipantToken || undefined,
         session_password: password || undefined,
       })
       if (!res.success) throw new Error('join failed')
@@ -223,6 +227,9 @@ export function ViewerPage() {
       savedPidRef.current = pid
       // WS 入場券の引き換えに使う。平文はこの応答でしか返らない。
       savedTokenRef.current = res.data.participant_token ?? ''
+      if (savedTokenRef.current) {
+        setParticipantRejoinToken(code, deviceUid, savedTokenRef.current)
+      }
       setActiveSessionCode(code)
       reconnectCountRef.current = 0
       void connectWs(code, pid)

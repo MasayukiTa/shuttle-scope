@@ -119,6 +119,106 @@ def test_wrong_session_password_is_still_rejected():
     assert resp.status_code == 401
 
 
+def test_device_uid_alone_does_not_reuse_an_approved_participant():
+    """device_uid を知っているだけでは approved 状態を継承できないこと。"""
+    code = "PTUIDONLY"
+    _make_session(code)
+    with TestClient(app, base_url="http://localhost") as client:
+        first = _join(client, code, device_uid="stable-device-uid").json()["data"]
+        _approve(first["participant_id"])
+
+        # 前回 token を提示せず同じ UID を名乗る。
+        second_resp = _join(client, code, device_uid="stable-device-uid")
+        assert second_resp.status_code == 200
+        second = second_resp.json()["data"]
+
+    assert second["participant_id"] != first["participant_id"]
+    assert not second.get("reconnected", False)
+
+    db = db_module.SessionLocal()
+    try:
+        original = db.get(SessionParticipant, first["participant_id"])
+        replacement = db.get(SessionParticipant, second["participant_id"])
+        assert original is not None and original.approval_status == "approved"
+        assert replacement is not None and replacement.approval_status == "pending"
+    finally:
+        db.close()
+
+
+def test_invalid_previous_token_does_not_reuse_approved_participant():
+    """同じ UID でも token が一致しなければ approved 行を再利用しない。"""
+    code = "PTBADREJOIN"
+    _make_session(code)
+    with TestClient(app, base_url="http://localhost") as client:
+        first = _join(client, code, device_uid="invalid-proof-device").json()["data"]
+        _approve(first["participant_id"])
+
+        second_resp = _join(
+            client,
+            code,
+            device_uid="invalid-proof-device",
+            participant_token="invalid-proof-token-xxxxxxxxxxxx",
+        )
+        assert second_resp.status_code == 200
+        second = second_resp.json()["data"]
+
+    assert second["participant_id"] != first["participant_id"]
+    assert not second.get("reconnected", False)
+
+    db = db_module.SessionLocal()
+    try:
+        replacement = db.get(SessionParticipant, second["participant_id"])
+        assert replacement is not None
+        assert replacement.approval_status == "pending"
+    finally:
+        db.close()
+
+
+def test_valid_previous_token_reuses_participant_and_rotates_token():
+    """同じ UID + 前回 token を証明できた端末だけ同じ participant を再利用する。"""
+    code = "PTREJOIN"
+    _make_session(code)
+    with TestClient(app, base_url="http://localhost") as client:
+        first = _join(client, code, device_uid="rejoin-device-uid").json()["data"]
+        _approve(first["participant_id"])
+
+        second_resp = _join(
+            client,
+            code,
+            device_uid="rejoin-device-uid",
+            participant_token=first["participant_token"],
+        )
+        assert second_resp.status_code == 200
+        second = second_resp.json()["data"]
+
+        assert second["participant_id"] == first["participant_id"]
+        assert second["reconnected"] is True
+        assert second["participant_token"] != first["participant_token"]
+
+        # rotation 後は旧 token が即座に使えず、新 token だけが通る。
+        assert _ticket(
+            client,
+            code,
+            first["participant_id"],
+            first["participant_token"],
+        ).status_code == 401
+        assert _ticket(
+            client,
+            code,
+            second["participant_id"],
+            second["participant_token"],
+        ).status_code == 200
+
+    db = db_module.SessionLocal()
+    try:
+        participant = db.get(SessionParticipant, second["participant_id"])
+        assert participant is not None
+        assert participant.approval_status == "approved"
+        assert participant.ws_token_hash == _hash_ws_token(second["participant_token"])
+    finally:
+        db.close()
+
+
 # ── 入場券 ──────────────────────────────────────────────────────────────────
 
 def _approve(pid: int) -> None:

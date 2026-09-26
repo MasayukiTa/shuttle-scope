@@ -159,7 +159,10 @@ class ParticipantJoin(BaseModel):
     device_type: Optional[str] = Field(default=None, max_length=32)   # iphone/ipad/pc/usb_camera/builtin_camera
     session_password: Optional[str] = Field(default=None, max_length=200)
     # DB は VARCHAR(64)。ここを広く取ると未認証入力がそのまま DB エラーになる
-    device_uid: Optional[str] = Field(default=None, max_length=64)     # デバイス固有 ID（再接続認識用）
+    # device_uid は再接続候補の検索用であり、認証材料にはしない。
+    device_uid: Optional[str] = Field(default=None, max_length=64)
+    # 既存 participant 行を再利用する場合の proof-of-possession。
+    participant_token: Optional[str] = Field(default=None, min_length=16, max_length=256)
 
 
 class WsTicketRequest(BaseModel):
@@ -491,16 +494,24 @@ def join_session(
     elif body.device_type in ("usb_camera", "builtin_camera"):
         dev_class = "camera"
 
-    # device_uid で同一デバイスの再接続を認識
+    # U-9: device_uid は「候補の検索」にしか使わない。
+    # 同じ participant 行（approved を含む）を再利用するには、前回 join で発行した
+    # participant_token の proof-of-possession を必須にする。token が無い/不正/期限切れ
+    # なら既存行を触らず、新しい pending participant として参加させる。
     existing = None
-    if body.device_uid:
-        existing = (
+    if body.device_uid and body.participant_token:
+        candidates = (
             db.query(SessionParticipant)
             .filter(
                 SessionParticipant.session_id == session.id,
                 SessionParticipant.device_uid == body.device_uid,
             )
-            .first()
+            .order_by(SessionParticipant.id.desc())
+            .all()
+        )
+        existing = next(
+            (p for p in candidates if _participant_token_valid(p, body.participant_token)),
+            None,
         )
     if existing:
         existing.is_connected = True
