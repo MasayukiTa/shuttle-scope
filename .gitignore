@@ -24,6 +24,7 @@ shuttlescope/**/*.pyc
 shuttlescope/.coverage
 
 # Local-only runtime diagnostics
+shuttlescope/backend/data/attack_pattern.json
 kernel.errors.txt
 
 # Local duplicate model copies
