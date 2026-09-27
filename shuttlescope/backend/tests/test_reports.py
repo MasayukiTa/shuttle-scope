@@ -1,7 +1,14 @@
 """レポート生成のテスト"""
 import pytest
+from types import SimpleNamespace
 
-from backend.routers.reports import sanitize_player_text, FORBIDDEN_WORDS, DISCLAIMER_JA
+from backend.routers.reports import (
+    DISCLAIMER_JA,
+    FORBIDDEN_WORDS,
+    _avg_visible,
+    _visible_condition_rows,
+    sanitize_player_text,
+)
 
 
 class TestSanitizePlayerText:
@@ -84,3 +91,87 @@ class TestScoutingReport:
         assert "相関" in DISCLAIMER_JA
         assert "因果関係" in DISCLAIMER_JA
         assert len(DISCLAIMER_JA) > 20
+
+class TestReportConditionConsentBoundary:
+    """L-5: レポート経路も conditions API と同じ同意境界を使う。"""
+
+    @staticmethod
+    def _condition():
+        return SimpleNamespace(
+            player_id=10,
+            measured_at="2026-09-27",
+            condition_type="daily",
+            ccs_score=82.0,
+            hooper_index=11.5,
+            session_rpe=7.0,
+            sleep_hours=6.5,
+            weight_kg=61.2,
+            f1_physical=4.0,
+            f2_stress=3.0,
+            f3_mood=4.0,
+            f4_motivation=5.0,
+            f5_sleep_life=3.0,
+        )
+
+    def test_coach_without_owner_consent_cannot_receive_raw_condition_metrics(self, monkeypatch):
+        import backend.routers.conditions as conditions_router
+
+        monkeypatch.setattr(
+            conditions_router,
+            "_get_owner_body_consents",
+            lambda _db, _pid: {},
+        )
+        rows = _visible_condition_rows(object(), [self._condition()], "coach")
+
+        assert len(rows) == 1
+        assert rows[0]["measured_at"] == "2026-09-27"
+        for key in ("ccs_score", "hooper_index", "session_rpe", "sleep_hours", "weight_kg"):
+            assert key not in rows[0]
+        assert _avg_visible(rows, "hooper_index", digits=1) is None
+
+    def test_coach_with_explicit_owner_consent_can_receive_tier3_metrics(self, monkeypatch):
+        import backend.routers.conditions as conditions_router
+
+        monkeypatch.setattr(
+            conditions_router,
+            "_get_owner_body_consents",
+            lambda _db, _pid: {"body_disclose_to_coach": True},
+        )
+        rows = _visible_condition_rows(object(), [self._condition()], "coach")
+
+        assert rows[0]["hooper_index"] == 11.5
+        assert rows[0]["session_rpe"] == 7.0
+        assert rows[0]["sleep_hours"] == 6.5
+        assert rows[0]["weight_kg"] == 61.2
+        assert _avg_visible(rows, "hooper_index", digits=1) == 11.5
+
+    def test_analyst_consent_does_not_authorise_coach_and_vice_versa(self, monkeypatch):
+        import backend.routers.conditions as conditions_router
+
+        monkeypatch.setattr(
+            conditions_router,
+            "_get_owner_body_consents",
+            lambda _db, _pid: {"body_disclose_to_analyst": True},
+        )
+        coach_rows = _visible_condition_rows(object(), [self._condition()], "coach")
+        analyst_rows = _visible_condition_rows(object(), [self._condition()], "analyst")
+
+        assert "hooper_index" not in coach_rows[0]
+        assert analyst_rows[0]["hooper_index"] == 11.5
+        assert analyst_rows[0]["weight_kg"] == 61.2
+
+    def test_player_and_admin_keep_their_existing_visibility(self, monkeypatch):
+        import backend.routers.conditions as conditions_router
+
+        monkeypatch.setattr(
+            conditions_router,
+            "_get_owner_body_consents",
+            lambda _db, _pid: {},
+        )
+        player_rows = _visible_condition_rows(object(), [self._condition()], "player")
+        admin_rows = _visible_condition_rows(object(), [self._condition()], "admin")
+
+        assert player_rows[0]["hooper_index"] == 11.5
+        assert "weight_kg" not in player_rows[0]
+        assert admin_rows[0]["hooper_index"] == 11.5
+        assert admin_rows[0]["weight_kg"] == 61.2

@@ -98,6 +98,44 @@ FORBIDDEN_WORDS = {
 DISCLAIMER_JA = "このデータは相関を示すものであり、因果関係を示すものではありません"
 
 
+def _visible_condition_rows(db: Session, conditions: list[Condition], role: str | None) -> list[dict]:
+    """レポートで閲覧可能な Condition フィールドだけを返す。
+
+    JSON / PDF / prediction の各経路が別々に生 Condition を読むと、同意済み endpoint と
+    非同意 endpoint が分裂する。全レポートはこの関数を単一の開示境界として使う。
+    個票で伏せる値は平均・派生値でも伏せる。
+    """
+    from backend.routers.conditions import _get_owner_body_consents
+    from backend.utils.field_sensitivity import filter_condition_fields
+
+    consents_cache: dict[int, dict] = {}
+    rows: list[dict] = []
+    for c in conditions:
+        if c.player_id not in consents_cache:
+            consents_cache[c.player_id] = _get_owner_body_consents(db, c.player_id)
+        full = {
+            "measured_at": str(c.measured_at),
+            "condition_type": c.condition_type,
+            "ccs_score": c.ccs_score,
+            "hooper_index": c.hooper_index,
+            "session_rpe": c.session_rpe,
+            "sleep_hours": c.sleep_hours,
+            "weight_kg": c.weight_kg,
+            "f1_physical": c.f1_physical,
+            "f2_stress": c.f2_stress,
+            "f3_mood": c.f3_mood,
+            "f4_motivation": c.f4_motivation,
+            "f5_sleep_life": c.f5_sleep_life,
+        }
+        rows.append(filter_condition_fields(full, role, consents_cache[c.player_id]))
+    return rows
+
+
+def _avg_visible(rows: list[dict], key: str, digits: int = 2) -> float | None:
+    vals = [row.get(key) for row in rows if row.get(key) is not None]
+    return round(sum(vals) / len(vals), digits) if vals else None
+
+
 def _build_court_heatmap_png(zone_counts: dict[str, int]) -> bytes | None:
     """コートゾーン別ヒートマップをmatplotlibでPNG生成する"""
     if not _ensure_matplotlib():
@@ -639,41 +677,8 @@ def get_condition_report(
     conditions = _q.order_by(Condition.measured_at.desc()).limit(120).all()
     _extra_headers = _date_range_header(date_from, date_to)
 
-    # 同意レジームはこの経路を素通りしていた。conditions.py は
-    # `filter_condition_fields(..., owner_consents)` を通しており、同意が無ければ
-    # hooper_index / session_rpe / sleep_hours / weight_kg / f1..f5 (Tier 2-3) を
-    # 伏せる。レポート側は生のまま出していたので、**同じデータが endpoint 群に
-    # よって出たり出なかったりしていた**。同じ関数を通す。
-    from backend.routers.conditions import _get_owner_body_consents
-    from backend.utils.field_sensitivity import filter_condition_fields
-
-    _role = ctx.role
-    _consents_cache: dict[int, dict] = {}
-
-    def _visible(c) -> dict:
-        if c.player_id not in _consents_cache:
-            _consents_cache[c.player_id] = _get_owner_body_consents(db, c.player_id)
-        full = {
-            "measured_at": str(c.measured_at),
-            "condition_type": c.condition_type,
-            "ccs_score": c.ccs_score,
-            "hooper_index": c.hooper_index,
-            "session_rpe": c.session_rpe,
-            "sleep_hours": c.sleep_hours,
-            "weight_kg": c.weight_kg,
-            "f1_physical": c.f1_physical,
-            "f2_stress": c.f2_stress,
-            "f3_mood": c.f3_mood,
-            "f4_motivation": c.f4_motivation,
-            "f5_sleep_life": c.f5_sleep_life,
-        }
-        return filter_condition_fields(full, _role, _consents_cache[c.player_id])
-
-    rows = [_visible(c) for c in conditions]
-
-    def _avg(vals):
-        v = [x for x in vals if x is not None]
-        return round(sum(v) / len(v), 2) if v else None
+    # JSON / PDF / prediction で同じ同意境界を使う。
+    rows = _visible_condition_rows(db, conditions, ctx.role)
 
     summary = {
         "record_count": len(rows),
@@ -682,10 +687,10 @@ def get_condition_report(
         # rows は同意に応じてキーごと落ちるので .get() で読む。
         # 伏せられた値の平均は出さない: 平均もその値の一部であって、
         # 個票を隠して要約だけ出すのは同じものを別の粒度で開示しているだけ。
-        "avg_ccs": _avg([r.get("ccs_score") for r in rows]),
-        "avg_hooper": _avg([r.get("hooper_index") for r in rows]),
-        "avg_rpe": _avg([r.get("session_rpe") for r in rows]),
-        "avg_sleep_h": _avg([r.get("sleep_hours") for r in rows]),
+        "avg_ccs": _avg_visible(rows, "ccs_score"),
+        "avg_hooper": _avg_visible(rows, "hooper_index"),
+        "avg_rpe": _avg_visible(rows, "session_rpe"),
+        "avg_sleep_h": _avg_visible(rows, "sleep_hours"),
     }
 
     payload = {
@@ -729,16 +734,13 @@ def get_condition_report_pdf(
         .all()
     )
 
-    def _avg(vals):
-        v = [x for x in vals if x is not None]
-        return round(sum(v) / len(v), 2) if v else None
-
-    avg_ccs = _avg([c.ccs_score for c in conditions])
-    avg_hooper = _avg([c.hooper_index for c in conditions])
-    avg_rpe = _avg([c.session_rpe for c in conditions])
-    avg_sleep = _avg([c.sleep_hours for c in conditions])
-    date_from = str(conditions[-1].measured_at) if conditions else "—"
-    date_to = str(conditions[0].measured_at) if conditions else "—"
+    visible_rows = _visible_condition_rows(db, conditions, ctx.role)
+    avg_ccs = _avg_visible(visible_rows, "ccs_score")
+    avg_hooper = _avg_visible(visible_rows, "hooper_index")
+    avg_rpe = _avg_visible(visible_rows, "session_rpe")
+    avg_sleep = _avg_visible(visible_rows, "sleep_hours")
+    date_from = visible_rows[-1].get("measured_at", "—") if visible_rows else "—"
+    date_to = visible_rows[0].get("measured_at", "—") if visible_rows else "—"
 
     try:
         from reportlab.lib.pagesizes import A4
@@ -763,7 +765,7 @@ def get_condition_report_pdf(
 
         content = [
             Paragraph(f"体調レポート: {_safe_paragraph_text(player.name)}", title_s),
-            Paragraph(f"集計期間: {date_from} 〜 {date_to}　記録数: {len(conditions)}", body_s),
+            Paragraph(f"集計期間: {date_from} 〜 {date_to}　記録数: {len(visible_rows)}", body_s),
             Spacer(1, 5*mm),
             Paragraph("■ 平均指標", body_s),
         ]
@@ -789,17 +791,19 @@ def get_condition_report_pdf(
         ]))
         content.append(tbl)
 
-        if conditions:
+        if visible_rows:
             content.append(Spacer(1, 5*mm))
             content.append(Paragraph("■ 直近20件の記録", body_s))
             rec_data = [["測定日", "種別", "CCS", "Hooper", "RPE", "睡眠(h)"]]
-            for c in conditions[:20]:
+            for row in visible_rows[:20]:
+                ccs = row.get("ccs_score")
+                sleep = row.get("sleep_hours")
                 rec_data.append([
-                    str(c.measured_at), c.condition_type or "—",
-                    f"{c.ccs_score:.1f}" if c.ccs_score is not None else "—",
-                    str(c.hooper_index) if c.hooper_index is not None else "—",
-                    str(c.session_rpe) if c.session_rpe is not None else "—",
-                    f"{c.sleep_hours:.1f}" if c.sleep_hours is not None else "—",
+                    row.get("measured_at", "—"), row.get("condition_type") or "—",
+                    f"{ccs:.1f}" if ccs is not None else "—",
+                    str(row.get("hooper_index")) if row.get("hooper_index") is not None else "—",
+                    str(row.get("session_rpe")) if row.get("session_rpe") is not None else "—",
+                    f"{sleep:.1f}" if sleep is not None else "—",
                 ])
             rec_tbl = Table(rec_data, colWidths=[30*mm, 25*mm, 22*mm, 22*mm, 20*mm, 20*mm])
             rec_tbl.setStyle(TableStyle([
@@ -891,8 +895,8 @@ def get_prediction_report(
         .limit(4)
         .all()
     )
-    hoopers = [c.hooper_index for c in recent_conditions if c.hooper_index is not None]
-    fatigue = round(sum(hoopers) / len(hoopers), 1) if hoopers else None
+    visible_conditions = _visible_condition_rows(db, recent_conditions, ctx.role)
+    fatigue = _avg_visible(visible_conditions, "hooper_index", digits=1)
 
     payload = {
         "success": True,
@@ -967,8 +971,8 @@ def get_prediction_report_pdf(
         .limit(4)
         .all()
     )
-    hoopers = [c.hooper_index for c in recent_conditions if c.hooper_index is not None]
-    fatigue = round(sum(hoopers) / len(hoopers), 1) if hoopers else None
+    visible_conditions = _visible_condition_rows(db, recent_conditions, ctx.role)
+    fatigue = _avg_visible(visible_conditions, "hooper_index", digits=1)
 
     try:
         from reportlab.lib.pagesizes import A4
