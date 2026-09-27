@@ -45,6 +45,11 @@ from backend.services.llm.registry import (
 )
 from backend.services.llm.tools import tool_definitions
 from backend.utils.access_log import log_access
+from backend.analysis.insights.safety.budget import (
+    CHAT_BUDGET_DAILY_TOKENS,
+    reserve_persistent_budget,
+    reconcile_persistent_budget,
+)
 from backend.utils.auth import get_auth
 
 logger = logging.getLogger(__name__)
@@ -55,6 +60,13 @@ MAX_TOKENS = 2048
 CONTEXT_TOKEN_BUDGET = 8000      # 履歴に使うトークン上限 (context rot / 上限超過回避)
 _RATE_LIMIT_SEC = 1.0
 _last_req: dict = {}
+
+# Generic chat uses the same durable llm_budget ledger infrastructure but a
+# separate "chat" scope/daily allowance from badminton insight generation.
+# Reserve against the bounded prompt window + maximum completion; reconcile to
+# approximate actual usage after the stream ends. Image tokenization varies by
+# provider, so charge a conservative fixed estimate per attached image.
+_LLM_CHAT_IMAGE_TOKEN_ESTIMATE = 1024
 
 # ── 画像 (マルチモーダル) 入力の上限 ─────────────────────────────────────────
 MAX_IMAGES = 4                          # 1 メッセージあたりの画像枚数上限
@@ -120,6 +132,21 @@ def _build_multimodal_content(text: str, images: List[str]):
 
 def _est_tokens(s: str) -> int:
     return max(1, len(s or "") // 4)
+
+
+def _estimate_chat_tokens(
+    history: list[ChatMessage],
+    system_prompt: str | None,
+    image_count: int,
+    output_chars: int = 0,
+) -> int:
+    """Conservative provider-agnostic token estimate for durable budgeting."""
+    prompt_tokens = sum(_est_tokens(str(m.content)) for m in history)
+    if system_prompt:
+        prompt_tokens += _est_tokens(system_prompt)
+    prompt_tokens += max(int(image_count), 0) * _LLM_CHAT_IMAGE_TOKEN_ESTIMATE
+    output_tokens = max(0, int(output_chars)) // 4
+    return max(1, prompt_tokens + output_tokens)
 
 
 def _windowed_history(turns) -> list:
@@ -333,13 +360,54 @@ def post_message(cid: int, body: MessageCreate, request: Request, db: Session = 
         }}
 
     last_seq = db.query(func.max(LlmTurn.seq)).filter(LlmTurn.conversation_id == c.id).scalar() or 0
-    db.add(LlmTurn(conversation_id=c.id, seq=last_seq + 1, role="user",
-                   content=body.content, tool_calls=user_meta))
-    c.last_used_at = datetime.utcnow()
-    # 自動タイトル: 最初のユーザ発言から (既存製品同様)。
-    if last_seq == 0 and (not c.title or c.title == "新しいチャット"):
-        c.title = (body.content.strip()[:40] or "新しいチャット")
-    db.commit()
+    # Persistent budget is checked before the chat write/provider call. Use the
+    # same bounded history policy with the current user message included, but do
+    # not persist that message unless a reservation succeeds.
+    prior_turns = (
+        db.query(LlmTurn)
+        .filter(LlmTurn.conversation_id == c.id)
+        .order_by(LlmTurn.seq.asc())
+        .all()
+    )
+    budget_history = _windowed_history(
+        [*prior_turns, ChatMessage(role="user", content=body.content)]
+    )
+    system_prompt = c.system_prompt
+    estimated_prompt_tokens = _estimate_chat_tokens(
+        budget_history,
+        system_prompt,
+        len(image_metas),
+    )
+    reserve_tokens = estimated_prompt_tokens + MAX_TOKENS
+    allowed_budget, _remaining_budget, budget_reservation_id = reserve_persistent_budget(
+        int(ctx.user_id),
+        reserve_tokens,
+        scope="chat",
+        daily_limit=CHAT_BUDGET_DAILY_TOKENS,
+    )
+    if not allowed_budget:
+        raise HTTPException(
+            status_code=429,
+            detail={"error": "budget_exceeded"},
+        )
+
+    try:
+        db.add(LlmTurn(conversation_id=c.id, seq=last_seq + 1, role="user",
+                       content=body.content, tool_calls=user_meta))
+        c.last_used_at = datetime.utcnow()
+        # 自動タイトル: 最初のユーザ発言から (既存製品同様)。
+        if last_seq == 0 and (not c.title or c.title == "新しいチャット"):
+            c.title = (body.content.strip()[:40] or "新しいチャット")
+        db.commit()
+    except Exception:
+        db.rollback()
+        reconcile_persistent_budget(
+            int(ctx.user_id),
+            budget_reservation_id,
+            reserve_tokens,
+            0,
+        )
+        raise
     log_access(db, "llm_message", user_id=ctx.user_id,
                resource_type="llm_conversation", resource_id=c.id,
                details={"chars": len(body.content), "images": len(image_metas)})
@@ -354,7 +422,6 @@ def post_message(cid: int, body: MessageCreate, request: Request, db: Session = 
             if m.role == "user":
                 m.content = _build_multimodal_content(body.content, body.images)
                 break
-    system_prompt = c.system_prompt
     # モデルはピッカーの選択 (allowlist 検証済み chosen_model) を使う。reasoning 対応
     # モデルなら provider が reasoning_content を出し、SSE 'reasoning' で自動表示される
     # (旧 thinking フラグでのモデル切替は廃止 = モデル選択が応答品質/推論可否を駆動)。
@@ -389,6 +456,18 @@ def post_message(cid: int, body: MessageCreate, request: Request, db: Session = 
             yield _sse({"type": "error", "message": "生成中にエラーが発生しました"})
         finally:
             text = "".join(acc)
+            actual_tokens = _estimate_chat_tokens(
+                history,
+                system_prompt,
+                len(image_metas),
+                output_chars=len(text),
+            )
+            reconcile_persistent_budget(
+                int(ctx.user_id),
+                budget_reservation_id,
+                reserve_tokens,
+                actual_tokens,
+            )
             if text:
                 try:
                     with SessionLocal() as s2:

@@ -25,6 +25,7 @@ from backend.db.models import SecurityEvent
 
 
 INSIGHT_BUDGET_DAILY_TOKENS = int(os.getenv("INSIGHT_BUDGET_DAILY_TOKENS", "50000"))
+CHAT_BUDGET_DAILY_TOKENS = int(os.getenv("LLM_CHAT_BUDGET_DAILY_TOKENS", "200000"))
 
 # Reserve enough for the system prompt + analytics JSON + the provider's
 # max_tokens=350 response. If the provider reports fewer tokens, reconciliation
@@ -119,10 +120,13 @@ def _find_reservation(
     return None
 
 
-def _ledger_used(rows: list[SecurityEvent]) -> int:
+def _ledger_used(rows: list[SecurityEvent], scope: str = "insights") -> int:
     total = 0
     for row in rows:
         details = row.details if isinstance(row.details, dict) else {}
+        row_scope = str(details.get("scope") or "insights")
+        if row_scope != scope:
+            continue
         try:
             total += int(details.get("delta_tokens", 0) or 0)
         except (TypeError, ValueError):
@@ -145,6 +149,9 @@ def _lock_user_budget(db, user_id: int, dialect: str) -> None:
 def reserve_persistent_budget(
     user_id: int | None,
     tokens: int = INSIGHT_BUDGET_RESERVATION_TOKENS,
+    *,
+    scope: str = "insights",
+    daily_limit: int | None = None,
 ) -> tuple[bool, int, str | None]:
     """Atomically reserve daily budget.
 
@@ -157,6 +164,8 @@ def reserve_persistent_budget(
 
     uid = int(user_id)
     reserve = max(int(tokens), 0)
+    budget_scope = str(scope or "insights")
+    limit = INSIGHT_BUDGET_DAILY_TOKENS if daily_limit is None else max(int(daily_limit), 0)
     reservation_id = str(uuid.uuid4())
 
     db = db_module.SessionLocal()
@@ -167,11 +176,11 @@ def reserve_persistent_budget(
             _SQLITE_LOCK.acquire()
             sqlite_locked = True
         _lock_user_budget(db, uid, dialect)
-        used = _ledger_used(_ledger_rows(db, uid))
+        used = _ledger_used(_ledger_rows(db, uid), budget_scope)
         proposed = used + reserve
-        if proposed > INSIGHT_BUDGET_DAILY_TOKENS:
+        if proposed > limit:
             db.rollback()
-            return False, max(INSIGHT_BUDGET_DAILY_TOKENS - used, 0), None
+            return False, max(limit - used, 0), None
 
         db.add(SecurityEvent(
             event_type=_LEDGER_EVENT,
@@ -179,13 +188,14 @@ def reserve_persistent_budget(
             user_id=uid,
             details={
                 "kind": "reserve",
+                "scope": budget_scope,
                 "reservation_id": reservation_id,
                 "budget_day": _today_iso(),
                 "delta_tokens": reserve,
             },
         ))
         db.commit()
-        return True, max(INSIGHT_BUDGET_DAILY_TOKENS - proposed, 0), reservation_id
+        return True, max(limit - proposed, 0), reservation_id
     except Exception:
         db.rollback()
         return False, 0, None
@@ -226,6 +236,8 @@ def reconcile_persistent_budget(
         if reservation is None:
             db.rollback()
             return
+        reservation_details = reservation.details if isinstance(reservation.details, dict) else {}
+        budget_scope = str(reservation_details.get("scope") or "insights")
 
         # A request reserved just before UTC midnight can finish just after it.
         # Do not write the previous day's refund/overage into the new day's
@@ -251,6 +263,7 @@ def reconcile_persistent_budget(
             user_id=uid,
             details={
                 "kind": "reconcile",
+                "scope": budget_scope,
                 "reservation_id": reservation_id,
                 "delta_tokens": actual - reserved,
                 "actual_tokens": actual,

@@ -267,6 +267,32 @@ def test_persistent_budget_reservation_reconciles_actual_usage(
     assert rid3 is None
 
 
+def test_persistent_budget_scopes_are_isolated(isolated_budget_db, monkeypatch):
+    """Generic chat usage must not consume the badminton-insights allowance."""
+    monkeypatch.setattr(budget_mod, "INSIGHT_BUDGET_DAILY_TOKENS", 1000)
+
+    allowed_i, remaining_i, rid_i = budget_mod.reserve_persistent_budget(
+        503, 900, scope="insights", daily_limit=1000
+    )
+    assert allowed_i is True and rid_i
+    assert remaining_i == 100
+
+    allowed_c, remaining_c, rid_c = budget_mod.reserve_persistent_budget(
+        503, 900, scope="chat", daily_limit=1000
+    )
+    assert allowed_c is True and rid_c
+    assert remaining_c == 100
+
+    denied_i, remaining_i2, _ = budget_mod.reserve_persistent_budget(
+        503, 101, scope="insights", daily_limit=1000
+    )
+    denied_c, remaining_c2, _ = budget_mod.reserve_persistent_budget(
+        503, 101, scope="chat", daily_limit=1000
+    )
+    assert denied_i is False and remaining_i2 == 100
+    assert denied_c is False and remaining_c2 == 100
+
+
 def test_previous_day_reconcile_does_not_credit_today(
     isolated_budget_db, monkeypatch
 ):

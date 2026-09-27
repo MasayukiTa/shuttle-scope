@@ -9,7 +9,13 @@ from types import SimpleNamespace
 from fastapi.testclient import TestClient
 
 from backend.main import app
-from backend.routers.llm_chat import CONTEXT_TOKEN_BUDGET, MAX_CONTEXT_TURNS, _windowed_history
+from backend.routers.llm_chat import (
+    CONTEXT_TOKEN_BUDGET,
+    MAX_CONTEXT_TURNS,
+    _estimate_chat_tokens,
+    _windowed_history,
+)
+from backend.services.llm.base import ChatMessage, Delta
 from backend.utils.jwt_utils import create_access_token
 
 
@@ -92,3 +98,108 @@ def test_windowed_history_token_and_count_bounded():
     assert out[-1].content == turns[-1].content
     tot = sum(max(1, len(m.content) // 4) for m in out)
     assert tot <= CONTEXT_TOKEN_BUDGET + 200
+
+def test_chat_budget_rejection_does_not_persist_user_turn(monkeypatch):
+    import backend.routers.llm_chat as llm_chat
+
+    llm_chat._last_req.clear()
+    monkeypatch.setattr(llm_chat, "provider_configured", lambda: True)
+    monkeypatch.setattr(
+        llm_chat,
+        "reserve_persistent_budget",
+        lambda _uid, _tokens, **_kwargs: (False, 0, None),
+    )
+
+    uid = 9110
+    with TestClient(app) as client:
+        c = client.post("/api/llm/conversations", json={}, headers=_hdr(uid, "llm"))
+        assert c.status_code == 201, c.text
+        cid = c.json()["id"]
+
+        r = client.post(
+            f"/api/llm/conversations/{cid}/messages",
+            json={"content": "budget should reject this"},
+            headers=_hdr(uid, "llm"),
+        )
+        assert r.status_code == 429, r.text
+        assert r.json()["detail"]["error"] == "budget_exceeded"
+
+        messages = client.get(
+            f"/api/llm/conversations/{cid}/messages",
+            headers=_hdr(uid, "llm"),
+        )
+        assert messages.status_code == 200
+        assert messages.json()["messages"] == []
+
+
+def test_chat_budget_is_reconciled_after_stream(monkeypatch):
+    import backend.routers.llm_chat as llm_chat
+
+    class _FakeProvider:
+        name = "fake"
+        model = "fake-model"
+
+        def stream_chat(self, *_args, **_kwargs):
+            yield Delta(content="hello world")
+            yield Delta(finish_reason="stop")
+
+    reservations = []
+    reconciliations = []
+
+    llm_chat._last_req.clear()
+    monkeypatch.setattr(llm_chat, "provider_configured", lambda: True)
+    monkeypatch.setattr(llm_chat, "default_chat_model", lambda: "fake-model")
+    monkeypatch.setattr(llm_chat, "allowed_chat_model_ids", lambda: {"fake-model"})
+    monkeypatch.setattr(llm_chat, "get_provider", lambda **_kwargs: _FakeProvider())
+    monkeypatch.setattr(llm_chat, "tool_definitions", lambda: None)
+
+    def _reserve(uid, tokens, **kwargs):
+        reservations.append((uid, tokens, kwargs))
+        return True, 9999, "reservation-1"
+
+    def _reconcile(uid, reservation_id, reserved, actual):
+        reconciliations.append((uid, reservation_id, reserved, actual))
+
+    monkeypatch.setattr(llm_chat, "reserve_persistent_budget", _reserve)
+    monkeypatch.setattr(llm_chat, "reconcile_persistent_budget", _reconcile)
+
+    uid = 9111
+    with TestClient(app) as client:
+        c = client.post("/api/llm/conversations", json={}, headers=_hdr(uid, "llm"))
+        assert c.status_code == 201, c.text
+        cid = c.json()["id"]
+
+        with client.stream(
+            "POST",
+            f"/api/llm/conversations/{cid}/messages",
+            json={"content": "hello"},
+            headers=_hdr(uid, "llm"),
+        ) as r:
+            assert r.status_code == 200
+            body = "".join(r.iter_text())
+            assert '"type": "done"' in body
+
+    assert len(reservations) == 1
+    assert len(reconciliations) == 1
+    rec_uid, rec_id, reserved, actual = reconciliations[0]
+    assert rec_uid == uid
+    assert rec_id == "reservation-1"
+    assert reserved == reservations[0][1]
+    assert reservations[0][2]["scope"] == "chat"
+    assert reservations[0][2]["daily_limit"] > 0
+    assert 0 < actual <= reserved
+
+
+def test_estimate_chat_tokens_includes_system_images_and_output():
+    history = [
+        ChatMessage(role="user", content="x" * 400),
+        ChatMessage(role="assistant", content="y" * 200),
+    ]
+    base = _estimate_chat_tokens(history, None, 0)
+    enriched = _estimate_chat_tokens(
+        history,
+        "z" * 400,
+        2,
+        output_chars=400,
+    )
+    assert enriched > base

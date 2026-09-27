@@ -9,6 +9,7 @@
 """
 from backend.analysis.insights.safety.audit import log_llm_call
 from backend.analysis.insights.safety.budget import (
+    CHAT_BUDGET_DAILY_TOKENS,
     INSIGHT_BUDGET_DAILY_TOKENS,
     INSIGHT_BUDGET_RESERVATION_TOKENS,
     check_and_record_budget,
@@ -40,6 +41,7 @@ __all__ = [
     "reserve_persistent_budget",
     "reconcile_persistent_budget",
     "reset_for_test",
+    "CHAT_BUDGET_DAILY_TOKENS",
     "INSIGHT_BUDGET_DAILY_TOKENS",
     "INSIGHT_BUDGET_RESERVATION_TOKENS",
     "SYSTEM_PROMPT_V1_JA",
