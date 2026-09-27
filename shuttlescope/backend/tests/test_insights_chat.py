@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 # 環境変数は backend モジュール import 前に設定済 (pytest コマンドライン側)。
 from backend.main import app
-from backend.db.database import Base, engine, SessionLocal
+from backend.db import database as db_module
 from backend.db.models import ChatMessage, ChatSession
 from backend.utils.auth import AuthCtx, get_auth
 from backend.analysis.insights.safety import budget as budget_mod
@@ -37,13 +37,15 @@ def _clear_override():
 
 
 @pytest.fixture(autouse=True)
-def _fresh_state():
-    """各テスト前に rate-limit / budget / DB をリセット。"""
+def _fresh_state(db_session):
+    """各テスト前に rate-limit / budget をリセット。
+
+    DB 隔離は共通 conftest の db_session/test_engine に任せる。
+    ここで import 時に固定した production engine を drop/create すると、
+    conftest の SQLite 差し替えを迂回して実 DB を触るため禁止。
+    """
     chat_router_mod._RATE_LIMIT.clear()
     reset_budget()
-    # DB は session 単位で再作成 (テスト独立性)
-    Base.metadata.drop_all(engine)
-    Base.metadata.create_all(engine)
     yield
     _clear_override()
 
@@ -200,7 +202,7 @@ def test_delete_session_then_get_404():
     r = _CLIENT.get(f"/api/insights/chat/sessions/{sid}/messages")
     assert r.status_code == 404
     # DB レベルで content が匿名化されている
-    with SessionLocal() as db:
+    with db_module.SessionLocal() as db:
         msgs = db.query(ChatMessage).filter(ChatMessage.session_id == sid).all()
         assert all(m.content == "(reset)" for m in msgs)
 
