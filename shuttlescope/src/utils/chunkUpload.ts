@@ -30,6 +30,8 @@ const DEFAULT_CHUNK_SIZE = 2 * 1024 * 1024
 const DEFAULT_THROTTLE_MBPS = 16
 const DEFAULT_MAX_RETRIES = 5
 
+class NonRetryableUploadError extends Error {}
+
 const STORAGE_KEY = 'shuttlescope.chunkUpload.inflight'
 
 interface InflightRecord {
@@ -37,6 +39,7 @@ interface InflightRecord {
   matchId?: number
   fileSize: number
   fileName: string
+  lastModified: number
   chunkSize: number
 }
 
@@ -129,23 +132,37 @@ export async function uploadVideoInChunks(opts: ChunkUploadOptions): Promise<Chu
   const prev = loadInflight(key)
   if (prev) {
     try {
-      const status = await getJson<{
-        upload_id: string
-        status: string
-        received_count: number
-        total_chunks: number
-        received_indices: number[]
-      }>(`/v1/uploads/video/${prev.uploadId}/status`, signal)
-      if (status.status === 'uploading') {
-        uploadId = prev.uploadId
-        effectiveChunkSize = prev.chunkSize
-        totalChunks = status.total_chunks
-        receivedIndices = new Set(status.received_indices)
-      } else {
+      const metadataMatches =
+        prev.fileSize === file.size &&
+        prev.fileName === file.name &&
+        prev.lastModified === file.lastModified &&
+        Number.isFinite(prev.chunkSize) &&
+        prev.chunkSize > 0
+
+      if (!metadataMatches) {
         clearInflight(key)
+      } else {
+        const status = await getJson<{
+          upload_id: string
+          status: string
+          received_count: number
+          total_chunks: number
+          received_indices: number[]
+        }>(`/v1/uploads/video/${prev.uploadId}/status`, signal)
+        const expectedTotalChunks = Math.ceil(file.size / prev.chunkSize)
+        if (status.status === 'uploading' && status.total_chunks === expectedTotalChunks) {
+          uploadId = prev.uploadId
+          effectiveChunkSize = prev.chunkSize
+          totalChunks = status.total_chunks
+          receivedIndices = new Set(
+            status.received_indices.filter((i) => i >= 0 && i < status.total_chunks),
+          )
+        } else {
+          clearInflight(key)
+        }
       }
     } catch {
-      // サーバ側で消えていた → init やり直し
+      // サーバ側で消えていた / resume metadata が壊れていた → init やり直し
       clearInflight(key)
     }
   }
@@ -172,6 +189,7 @@ export async function uploadVideoInChunks(opts: ChunkUploadOptions): Promise<Chu
       matchId,
       fileSize: file.size,
       fileName: file.name,
+      lastModified: file.lastModified,
       chunkSize: effectiveChunkSize,
     })
     onUploadIdAssigned?.(uploadId)
@@ -211,7 +229,7 @@ export async function uploadVideoInChunks(opts: ChunkUploadOptions): Promise<Chu
           const text = await res.text().catch(() => '')
           // 400-499 は再送無意味（冪等性違反/権限/サイズ）
           if (res.status >= 400 && res.status < 500 && res.status !== 429) {
-            throw new Error(`chunk ${i} failed: ${res.status} ${text}`)
+            throw new NonRetryableUploadError(`chunk ${i} failed: ${res.status} ${text}`)
           }
           throw new Error(`chunk ${i} transient ${res.status} ${text}`)
         }
@@ -239,7 +257,7 @@ export async function uploadVideoInChunks(opts: ChunkUploadOptions): Promise<Chu
         lastErr = null
         break
       } catch (e) {
-        if (signal?.aborted) throw e
+        if (signal?.aborted || e instanceof NonRetryableUploadError) throw e
         lastErr = e
         // 指数バックオフ（ジッタ付き）
         const backoff = Math.min(30000, 500 * Math.pow(2, attempt)) + Math.random() * 300
