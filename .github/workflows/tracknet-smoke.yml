@@ -35,7 +35,9 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: '3.12'
+          # TensorFlow 2.15.1 publishes wheels through Python 3.11, not 3.12.
+          # Keep this job on 3.11 while the exporter depends on Keras 2 checkpoint loading.
+          python-version: '3.11'
           cache: pip
           cache-dependency-path: |
             shuttlescope/backend/requirements.txt
