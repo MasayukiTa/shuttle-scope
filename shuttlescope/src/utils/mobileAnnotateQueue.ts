@@ -45,6 +45,11 @@ export interface QueueItem {
   pathParams?: Record<string, string | number>
   /** body */
   body?: Record<string, unknown>
+  /**
+   * 同じ論理リソース内で送信順序を守るためのキー。
+   * 例: rally:42。未指定時は endpoint/pathParams から導出する。
+   */
+  sequenceKey?: string
   /** 試行回数 */
   attempts: number
   /** 最後の試行時刻 (epoch ms) */
@@ -151,6 +156,7 @@ export async function enqueue(
   endpoint: QueueEndpoint,
   body?: Record<string, unknown>,
   pathParams?: Record<string, string | number>,
+  options?: { sequenceKey?: string },
 ): Promise<{ clientUuid: string; localId: number }> {
   const db = await openDb()
   const clientUuid = newClientUuid()
@@ -159,6 +165,7 @@ export async function enqueue(
     endpoint,
     body,
     pathParams,
+    sequenceKey: options?.sequenceKey,
     attempts: 0,
     nextAttemptAt: Date.now(),
     manualRetry: false,
@@ -179,6 +186,47 @@ export function classifyQueueHttpFailure(status: number): Exclude<QueueSendResul
   if (status === 401) return 'auth'
   if (status >= 400 && status < 500 && status !== 429) return 'manual'
   return 'retry'
+}
+
+export function queueSequenceKey(
+  item: Pick<QueueItem, 'endpoint' | 'pathParams' | 'sequenceKey'>,
+): string | null {
+  if (item.sequenceKey) return item.sequenceKey
+
+  if (item.endpoint === 'POST /api/strokes?rally_id=:rally_id') {
+    const rallyId = item.pathParams?.rally_id
+    return rallyId == null ? null : `rally:${rallyId}`
+  }
+
+  if (
+    item.endpoint === 'PATCH /api/rallies/:id'
+    || item.endpoint === 'PUT /api/rallies/:id'
+    || item.endpoint === 'DELETE /api/rallies/:id'
+  ) {
+    const rallyId = item.pathParams?.id
+    return rallyId == null ? null : `rally:${rallyId}`
+  }
+
+  return null
+}
+
+export function nextSequenceRunnableAt(items: QueueItem[]): number | null {
+  const blockedSequenceKeys = new Set<string>()
+  let earliest: number | null = null
+
+  for (const it of [...items].sort((a, b) => (a.localId ?? 0) - (b.localId ?? 0))) {
+    const sequenceKey = queueSequenceKey(it)
+    if (sequenceKey) {
+      if (blockedSequenceKeys.has(sequenceKey)) continue
+      // 同一 sequence では最古の item だけが scheduling を決める。
+      // manualRetry なら後続も自動送信させない。
+      blockedSequenceKeys.add(sequenceKey)
+    }
+    if (it.manualRetry) continue
+    if (earliest == null || it.nextAttemptAt < earliest) earliest = it.nextAttemptAt
+  }
+
+  return earliest
 }
 
 async function trySend(item: QueueItem): Promise<QueueSendResult> {
@@ -236,10 +284,20 @@ async function flushOnce(): Promise<void> {
     const db = await openDb()
     const store = tx(db, 'readonly')
     const items: QueueItem[] = await wrapReq(store.getAll())
+    items.sort((a, b) => (a.localId ?? 0) - (b.localId ?? 0))
     const now = Date.now()
+    const blockedSequenceKeys = new Set<string>()
+
     for (const it of items) {
-      if (it.manualRetry) continue
-      if (it.nextAttemptAt > now) continue
+      const sequenceKey = queueSequenceKey(it)
+      if (sequenceKey && blockedSequenceKeys.has(sequenceKey)) continue
+
+      // 同じ rally の後続操作は、先行操作が manual/backoff 中なら追い越させない。
+      if (it.manualRetry || it.nextAttemptAt > now) {
+        if (sequenceKey) blockedSequenceKeys.add(sequenceKey)
+        continue
+      }
+
       const result = await trySend(it)
       if (result === 'ok') {
         const wstore = tx(db, 'readwrite')
@@ -261,6 +319,7 @@ async function flushOnce(): Promise<void> {
         }
         const wstore = tx(db, 'readwrite')
         await wrapReq(wstore.put(it))
+        if (sequenceKey) blockedSequenceKeys.add(sequenceKey)
       }
     }
   } finally {
@@ -278,13 +337,12 @@ async function scheduleNextFlush(): Promise<void> {
     const db = await openDb()
     const store = tx(db, 'readonly')
     const items: QueueItem[] = await wrapReq(store.getAll())
-    const pending = items.filter((i) => !i.manualRetry)
-    if (pending.length === 0) {
-      // 何もないので 30 秒後に再ポーリング (新規 enqueue 時に明示 kick もする)
+    const earliest = nextSequenceRunnableAt(items)
+    if (earliest == null) {
+      // 何も自動送信できない (空 or manualRetry で sequence が塞がれている)。
       _flushTimer = window.setTimeout(flushOnce, 30_000)
       return
     }
-    const earliest = Math.min(...pending.map((i) => i.nextAttemptAt))
     const delay = Math.max(0, earliest - Date.now())
     _flushTimer = window.setTimeout(flushOnce, Math.min(delay, 30_000))
   } catch {

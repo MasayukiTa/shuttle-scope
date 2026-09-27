@@ -233,7 +233,7 @@ export function Pass3ShotDetail({
       shot_type: finalSentinel.shot_type,
       hit_zone: finalSentinel.hit_zone,
       land_zone: finalSentinel.land_zone,
-    }, { id: finalSentinel.id })
+    }, { id: finalSentinel.id }, { sequenceKey: `rally:${rally.id}` })
     onStrokeUpdated({ ...finalSentinel, stroke_num: targetNum })
     // rally_length を実数 (= 最終 stroke の番号 = targetNum) に更新。
     await enqueue('PUT /api/rallies/:id', { rally_length: targetNum }, { id: rally.id })
@@ -269,7 +269,7 @@ export function Pass3ShotDetail({
       shot_type: shotKey,
       hit_zone: s.hit_zone,
       land_zone: newLand,
-    }, { id: s.id })
+    }, { id: s.id }, { sequenceKey: `rally:${rally.id}` })
     onStrokeUpdated({ ...s, shot_type: shotKey, land_zone: newLand })
     setEditingStrokeNum(null)
   }
