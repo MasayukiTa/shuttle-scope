@@ -593,6 +593,98 @@ def test_participant_upload_rejects_bad_token_pending_device_and_match_mismatch(
         assert wrong_match.status_code == 403, wrong_match.text
 
 
+def _finalize_participant_recording(client: TestClient, join_data: dict):
+    init = _init_participant_upload(client, join_data)
+    assert init.status_code == 200, init.text
+    upload_id = init.json()["upload_id"]
+    payload = b"\x1a\x45\xdf\xa3" + (b"camera-test" * 8)
+    chunk = client.post(
+        "/api/v1/uploads/video/chunk",
+        data={"upload_id": upload_id, "chunk_index": "0"},
+        files={"chunk": ("chunk.webm", payload, "video/webm")},
+        headers=_participant_upload_headers(join_data),
+    )
+    assert chunk.status_code == 200, chunk.text
+    finalized = client.post(
+        f"/api/v1/uploads/video/{upload_id}/finalize",
+        headers=_participant_upload_headers(join_data),
+    )
+    assert finalized.status_code == 200, finalized.text
+    return upload_id, payload, finalized.json()
+
+
+def test_two_qr_cameras_create_distinct_recording_branches_and_keep_first_primary(
+    tmp_path, monkeypatch,
+):
+    from backend.db.models import Recording
+    from backend.routers import uploads as uploads_router
+
+    code = "PTMULTICAM"
+    _make_session(code)
+    monkeypatch.setattr(uploads_router, "UPLOAD_DIR", tmp_path)
+    monkeypatch.setattr(uploads_router, "MIN_FREE_DISK_BYTES", 0)
+    monkeypatch.setattr(
+        uploads_router,
+        "_validate_video_container",
+        lambda _path: (True, "test"),
+    )
+    # Avoid unrelated async post-processing in this focused lifecycle test.
+    import backend.pipeline.jobs as jobs_module
+    monkeypatch.setattr(jobs_module, "enqueue", lambda *_a, **_k: None)
+
+    with TestClient(app, base_url="http://localhost") as client:
+        first = _join(client, code, device_name="Court Camera A").json()["data"]
+        second = _join(client, code, device_name="Court Camera B").json()["data"]
+        _approve(first["participant_id"])
+        _approve(second["participant_id"])
+
+        upload_a, payload_a, final_a = _finalize_participant_recording(client, first)
+        upload_b, payload_b, final_b = _finalize_participant_recording(client, second)
+
+        assert final_a["branch_no"] == 1
+        assert final_b["branch_no"] == 2
+        assert final_a["recording_id"] != final_b["recording_id"]
+
+        db = db_module.SessionLocal()
+        try:
+            match = db.get(Match, first["match_id"])
+            rows = (
+                db.query(Recording)
+                .filter(Recording.match_id == first["match_id"])
+                .order_by(Recording.branch_no)
+                .all()
+            )
+            assert len(rows) == 2
+            assert [r.branch_no for r in rows] == [1, 2]
+            assert [r.status for r in rows] == ["ready", "ready"]
+            assert [r.source_kind for r in rows] == ["iphone_webrtc", "iphone_webrtc"]
+            assert rows[0].label == "Court Camera A"
+            assert rows[1].label == "Court Camera B"
+            assert rows[0].video_local_path == f"server://{upload_a}.webm"
+            assert rows[1].video_local_path == f"server://{upload_b}.webm"
+            # Legacy single-video consumers keep the first camera as primary.
+            assert match is not None
+            assert match.video_local_path == rows[0].video_local_path
+            rec_b_id = rows[1].id
+            rec_b_token = rows[1].video_token
+        finally:
+            db.close()
+
+        streamed = client.get(
+            f"/api/recordings/{rec_b_id}/stream?token={rec_b_token}",
+            headers={"Range": "bytes=0-3"},
+        )
+        assert streamed.status_code == 206, streamed.text
+        assert streamed.headers["content-range"] == f"bytes 0-3/{len(payload_b)}"
+        assert streamed.content == payload_b[:4]
+
+        wrong_token = client.get(
+            f"/api/recordings/{rec_b_id}/stream?token={'0' * 32}",
+            headers={"Range": "bytes=0-3"},
+        )
+        assert wrong_token.status_code == 401
+
+
 def test_participant_cannot_manage_another_participants_upload(
     tmp_path, monkeypatch,
 ):

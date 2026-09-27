@@ -6,7 +6,7 @@ import { clsx } from 'clsx'
 import { MIcon } from '@/components/common/MIcon'
 
 import { useAutoTutorial } from '@/components/tutorial/useTutorial'
-import { getVideoSrc, hasVideo, getVideoLabel } from '@/utils/videoSrc'
+import { getRecordingVideoSrc, getVideoSrc, hasVideo, getVideoLabel } from '@/utils/videoSrc'
 import { errorMessage } from '@/utils/errors'
 import { StreamingDownloadPanel } from '@/components/video/StreamingDownloadPanel'
 import { WebViewPlayer } from '@/components/video/WebViewPlayer'
@@ -92,6 +92,21 @@ const STREAMING_SITE_NAMES: Record<string, string> = {
 }
 
 const DIRECT_VIDEO_EXTS = new Set(['.mp4', '.webm', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.m4v', '.ts', '.mts'])
+
+type RecordingInfo = {
+  id: number
+  match_id: number
+  branch_no: number
+  kind: string
+  source_kind?: string | null
+  status: string
+  video_token?: string | null
+  resolution?: string | null
+  fps?: number | null
+  label?: string | null
+  started_at?: string | null
+  ended_at?: string | null
+}
 
 /**
  * URL が Electron で直接再生できない配信サービスのものか判定し、
@@ -338,6 +353,7 @@ export function AnnotatorPage() {
 
   // P2: 映像ソースモード + 手動タイマー
   const [videoSourceMode, setVideoSourceMode] = useState<VideoSourceMode>('local')
+  const [selectedRecordingId, setSelectedRecordingId] = useState<number | null>(null)
   const timer = useMatchTimer()
 
   // TrackNet/YOLO 解析領域（ROI）— matchId ごとに localStorage 永続化
@@ -451,6 +467,16 @@ export function AnnotatorPage() {
     queryKey: ['match', matchId],
     queryFn: () => apiGet<{ success: boolean; data: Match }>(`/matches/${matchId}`),
     enabled: !!matchId,
+  })
+
+  const { data: recordingsData } = useQuery({
+    queryKey: ['recordings', matchId],
+    queryFn: () =>
+      apiGet<{ success: boolean; data: RecordingInfo[] }>(`/matches/${matchId}/recordings`),
+    enabled: !!matchId,
+    // QR カメラは別端末で finalize される。Annotator を開いたままでも枝一覧へ
+    // 数秒以内に反映し、画面再読込を要求しない。
+    refetchInterval: 5_000,
   })
 
   const { data: annotationStateData } = useQuery({
@@ -1163,6 +1189,32 @@ export function AnnotatorPage() {
 
   const match = matchData?.data
 
+  const recordings = recordingsData?.data ?? []
+  const playableRecordings = useMemo(
+    () => recordings.filter(
+      (recording) => recording.status === 'ready' && Boolean(recording.video_token),
+    ),
+    [recordings],
+  )
+  const selectedRecording = selectedRecordingId == null
+    ? null
+    : playableRecordings.find((recording) => recording.id === selectedRecordingId) ?? null
+  const selectedRecordingSrc = getRecordingVideoSrc(selectedRecording)
+  const activeVideoRawSrc = selectedRecordingSrc || getVideoSrc(match)
+
+  useEffect(() => {
+    setSelectedRecordingId(null)
+  }, [matchId])
+
+  useEffect(() => {
+    if (
+      selectedRecordingId != null
+      && !playableRecordings.some((recording) => recording.id === selectedRecordingId)
+    ) {
+      setSelectedRecordingId(null)
+    }
+  }, [playableRecordings, selectedRecordingId])
+
   // 選手識別オーバーレイ用の選手候補リスト
   const playerOptions = match ? [
     ...(match.player_a  ? [{ key: 'player_a',  name: match.player_a.name  }] : []),
@@ -1710,8 +1762,7 @@ export function AnnotatorPage() {
 
   // P4: 別モニタで動画を開く
   const handleOpenVideoWindow = useCallback(() => {
-    const rawSrc = getVideoSrc(match)
-    const src = normalizeVideoPath(rawSrc, matchId)
+    const src = normalizeVideoPath(activeVideoRawSrc, matchId)
     if (!src || !window.shuttlescope?.openVideoWindow) return
     // selectedDisplayId が未設定の場合は非プライマリの先頭にフォールバック
     const targetId = selectedDisplayId ?? displays.find((d) => !d.isPrimary)?.id ?? displays[0]?.id
@@ -1722,7 +1773,7 @@ export function AnnotatorPage() {
     setVideoWindowOpen(true)
     // メイン側は video を保持したまま継続。別モニタは BroadcastChannel で
     // 時刻・再生状態・解析データをミラーするだけの「画面拡張」として動かす。
-  }, [match, displays, selectedDisplayId, videoRef, matchId])
+  }, [activeVideoRawSrc, displays, selectedDisplayId, videoRef, matchId])
 
   const handleCloseVideoWindow = useCallback(() => {
     window.shuttlescope?.closeVideoWindow?.()
@@ -1737,7 +1788,7 @@ export function AnnotatorPage() {
     const send = window.shuttlescope?.sendMirror
     const subscribe = window.shuttlescope?.onMirror
     if (!send || !subscribe) return
-    const rawSrc = getVideoSrc(match)
+    const rawSrc = activeVideoRawSrc
     const pushData = () => {
       send({
         type: 'data',
@@ -1775,7 +1826,7 @@ export function AnnotatorPage() {
     })
     return () => { cancelAnimationFrame(raf); unsub() }
   }, [
-    videoWindowOpen, match, matchId, videoRef, currentVideoSec, playbackRate,
+    videoWindowOpen, activeVideoRawSrc, matchId, videoRef, currentVideoSec, playbackRate,
     yoloFrames, shuttleFrames, tracknetArtifactMeta?.backend_used, trackFrames, frameDetections, roiRect,
     yoloOverlayVisible, shuttleOverlayVisible, courtGridVisible, trackingVisible,
   ])
@@ -3011,8 +3062,7 @@ export function AnnotatorPage() {
             }
 
             // 動画ソース決定（旧形式の Windows パスを normalizeVideoPath で変換）
-            const rawSrc = getVideoSrc(match)
-            const videoSrc = normalizeVideoPath(rawSrc, matchId)
+            const videoSrc = normalizeVideoPath(activeVideoRawSrc, matchId)
             const streamingSiteName = videoSrc ? detectStreamingSite(videoSrc) : null
 
             // 中継ブラウザモード: DeviceManagerのWebRTCストリームまたはローカルカメラを表示
@@ -3251,6 +3301,35 @@ export function AnnotatorPage() {
               <div className="mt-1 text-[var(--ss-t3)] truncate inline-flex items-center gap-1">
                 {getVideoLabel(match) || (<><MIcon name="link" size={11} />{match?.video_url}</>)}
               </div>
+            )}
+            {playableRecordings.length > 0 && (
+              <label className="mt-1.5 flex items-center gap-2 text-[10px] text-[var(--ss-t2)]">
+                <span className="shrink-0">
+                  {t('annotator.ui.recording_branch', { defaultValue: '録画枝' })}
+                </span>
+                <select
+                  value={selectedRecordingId ?? ''}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    setSelectedRecordingId(value ? Number(value) : null)
+                    setVideoSourceMode('local')
+                  }}
+                  className="min-w-0 flex-1 rounded-ss-sm border border-[var(--ss-border)] bg-[var(--ss-surface-2)] px-1.5 py-1 text-[10px] text-[var(--ss-t1)]"
+                >
+                  <option value="">
+                    {t('annotator.ui.recording_primary', { defaultValue: '主動画' })}
+                  </option>
+                  {playableRecordings.map((recording) => (
+                    <option key={recording.id} value={recording.id}>
+                      {t('annotator.ui.recording_branch_option', {
+                        defaultValue: '枝 {{branch}} · {{label}}',
+                        branch: recording.branch_no,
+                        label: recording.label || recording.source_kind || recording.kind,
+                      })}
+                    </option>
+                  ))}
+                </select>
+              </label>
             )}
             {uploadProgress && (
               <div className="mt-2 px-2 py-1.5 bg-[var(--ss-surface-2)] rounded-ss-md border border-[var(--ss-border)]">

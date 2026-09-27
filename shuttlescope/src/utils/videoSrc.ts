@@ -1,3 +1,5 @@
+import { API_BASE_URL } from '@/api/client'
+
 /**
  * 試合の動画再生 URL を生成する。
  *
@@ -97,4 +99,20 @@ export function getVideoLabel(match?: {
   if (match.video_url) return `🔗 ${match.video_url}`
   if (match.has_video_local) return '📁 (動画登録済み)'
   return ''
+}
+
+export type RecordingVideoRef = {
+  id?: number
+  video_token?: string | null
+}
+
+/**
+ * Recording branch のブラウザ再生 URL。
+ *
+ * Match.video_token と同様に raw filesystem path はクライアントへ渡さず、
+ * branch 固有 token で Range 対応 stream endpoint を参照する。
+ */
+export function getRecordingVideoSrc(recording?: RecordingVideoRef | null): string {
+  if (!recording?.id || !recording.video_token) return ''
+  return `${API_BASE_URL}/recordings/${recording.id}/stream?token=${encodeURIComponent(recording.video_token)}`
 }

@@ -2071,6 +2071,13 @@ class GlobalAuthMiddleware(BaseHTTPMiddleware):
                 and request.url.path.endswith("/stream")
                 and request.query_params.get("token")):
             return await call_next(request)
+        # Recording branch stream uses the same browser <video> token model.
+        # Presence of the token only bypasses middleware; the endpoint performs
+        # the constant-time DB token comparison before serving bytes.
+        if (request.url.path.startswith("/api/recordings/")
+                and request.url.path.endswith("/stream")
+                and request.query_params.get("token")):
+            return await call_next(request)
         # PUBLIC_MODE（Cloudflare 公開）では loopback 緩和を適用しない。
         # rereview #4 fix (defense-in-depth): SS_ALLOW_LOOPBACK_NO_AUTH=0 で env
         # ベースの kill-switch を提供。本番 (cloudflared / nginx / SSH forward) で

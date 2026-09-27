@@ -295,6 +295,9 @@ class FinalizeResponse(BaseModel):
     # NOTE: filename だけ返す。絶対 path / dir 構造は露出しない。
     filename: Optional[str] = None
     match_id: Optional[int] = None
+    # QR camera upload は 1 match -> N Recording 枝へ保存する。
+    recording_id: Optional[int] = None
+    branch_no: Optional[int] = None
 
 
 # ─── エンドポイント ───────────────────────────────────────────────────────────
@@ -782,14 +785,34 @@ async def finalize_upload(
             # R39 fix (F-005): 絶対 path は返さない (basename だけ)
             from pathlib import Path as _PathFin2
             _bn = ""
+            recording_id = None
+            branch_no = None
             try:
                 if session.final_path:
                     _bn = _PathFin2(session.final_path).name
+                if session.match_id is not None:
+                    from backend.db.models import Recording as _Recording
+                    rec = (
+                        db.query(_Recording)
+                        .filter(
+                            _Recording.match_id == session.match_id,
+                            _Recording.video_local_path == f"server://{upload_id}{_PathFin2(session.filename).suffix.lower() or '.mp4'}",
+                        )
+                        .first()
+                    )
+                    if rec is not None:
+                        recording_id = rec.id
+                        branch_no = rec.branch_no
             except Exception:
                 pass
-            return FinalizeResponse(upload_id=upload_id, status="completed",
-                                    filename=_bn or session.filename or None,
-                                    match_id=session.match_id)
+            return FinalizeResponse(
+                upload_id=upload_id,
+                status="completed",
+                filename=_bn or session.filename or None,
+                match_id=session.match_id,
+                recording_id=recording_id,
+                branch_no=branch_no,
+            )
         if session.status != "uploading":
             raise HTTPException(status_code=409, detail=f"セッションは {session.status} 状態です")
         is_streaming = bool(getattr(session, "streaming", False))
@@ -847,32 +870,74 @@ async def finalize_upload(
             except OSError:
                 pass
 
-        # match_id があれば video_local_path を設定
+        recording_id = None
+        branch_no = None
+
+        # match_id があれば動画を紐づける。
         if session.match_id is not None:
-            m = db.get(Match, session.match_id)
-            if m is not None:
-                # D-7: 新規 upload は「同じ URL の materialize」ではなく、動画内容そのものの
-                # 置換として扱う。旧動画座標に依存する recoverable CV 成果物は同じ transaction
-                # で破棄し、人手 annotation truth (Rally / Stroke) は残す。
-                new_video_local_path = f"server://{upload_id}{final.suffix}"
-                from backend.services.video_source_lifecycle import (
-                    invalidate_match_cv_artifacts_if_source_replaced,
+            new_video_local_path = f"server://{upload_id}{final.suffix}"
+            from backend.utils.video_token import new_token as _new_video_token
+
+            if actor.participant_id is not None:
+                # QR camera / multi-camera: 1 upload = 1 Recording 枝。
+                # match row を lock して branch_no 採番を同じ transaction で直列化する。
+                from backend.services.recording_lifecycle import (
+                    create_camera_recording,
+                    lock_match_for_recording,
                 )
-                invalidate_match_cv_artifacts_if_source_replaced(
-                    db,
-                    m.id,
-                    old_video_local_path=m.video_local_path,
-                    old_video_url=m.video_url,
-                    new_video_local_path=new_video_local_path,
-                    new_video_url="",
-                )
-                # サーバ保管の URL スキームとして server:// を使う（Electron localfile:// と区別）
-                m.video_local_path = new_video_local_path
-                m.video_url = ""
-                # video_token がなければ発行 (Phase 1 の app://video/{token} 経路用)
-                from backend.utils.video_token import new_token as _new_video_token
-                if not getattr(m, "video_token", None):
-                    m.video_token = _new_video_token()
+                m = lock_match_for_recording(db, session.match_id)
+                if m is not None:
+                    rec = create_camera_recording(
+                        db,
+                        match=m,
+                        participant_id=actor.participant_id,
+                        video_local_path=new_video_local_path,
+                        started_at=session.created_at,
+                        ended_at=datetime.utcnow(),
+                        streaming=is_streaming,
+                    )
+                    recording_id = rec.id
+                    branch_no = rec.branch_no
+
+                    # Legacy single-video consumers still need one primary video.
+                    # Only the first camera recording claims that slot; later cameras
+                    # remain independently addressable Recording branches.
+                    if not (m.video_local_path or "").strip() and not (m.video_url or "").strip():
+                        from backend.services.video_source_lifecycle import (
+                            invalidate_match_cv_artifacts_if_source_replaced,
+                        )
+                        invalidate_match_cv_artifacts_if_source_replaced(
+                            db,
+                            m.id,
+                            old_video_local_path=m.video_local_path,
+                            old_video_url=m.video_url,
+                            new_video_local_path=new_video_local_path,
+                            new_video_url="",
+                        )
+                        m.video_local_path = new_video_local_path
+                        m.video_url = ""
+                        if not getattr(m, "video_token", None):
+                            m.video_token = _new_video_token()
+            else:
+                # Authenticated app-user upload keeps the existing replacement
+                # semantics used by the annotator's "replace video" workflow.
+                m = db.get(Match, session.match_id)
+                if m is not None:
+                    from backend.services.video_source_lifecycle import (
+                        invalidate_match_cv_artifacts_if_source_replaced,
+                    )
+                    invalidate_match_cv_artifacts_if_source_replaced(
+                        db,
+                        m.id,
+                        old_video_local_path=m.video_local_path,
+                        old_video_url=m.video_url,
+                        new_video_local_path=new_video_local_path,
+                        new_video_url="",
+                    )
+                    m.video_local_path = new_video_local_path
+                    m.video_url = ""
+                    if not getattr(m, "video_token", None):
+                        m.video_token = _new_video_token()
 
         # R-1: ServerVideoArtifact を生成 (Sender からの自動録画ストリームの記録)
         try:
@@ -919,6 +984,8 @@ async def finalize_upload(
             status="completed",
             filename=_basename or session.filename or None,
             match_id=session.match_id,
+            recording_id=recording_id,
+            branch_no=branch_no,
         )
 
 
