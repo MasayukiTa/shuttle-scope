@@ -335,7 +335,12 @@ def send_chat_message(
         date_to=eff_date_to,
     )
     db.add(user_msg)
-    db.flush()
+    # Do not flush before the persistent budget reservation.
+    # SessionLocal uses autoflush=False, so keeping the chat write pending avoids
+    # taking SQLite's write lock before reserve_persistent_budget() opens its
+    # independent durable ledger transaction. Flushing here self-deadlocks on
+    # SQLite (outer chat session holds the writer; budget waits on BEGIN IMMEDIATE).
+    # The user/AI messages and scope are committed together after generation.
 
     # ── AI 応答生成 ────────────────────────────────────────────────
     if injection:
