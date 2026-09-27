@@ -73,7 +73,13 @@ class HarnessedGenerator:
         for item in result.get("items", []):
             prose = item.get("prose", "")
             metric = item.get("metric") or {}
-            v = validate_response(prose, lang, metric)
+            numeric_policy = item.get("numeric_policy", "grounded")
+            v = validate_response(
+                prose,
+                lang,
+                metric,
+                numeric_policy=numeric_policy,
+            )
             if not v["ok"]:
                 if self.audit:
                     try:

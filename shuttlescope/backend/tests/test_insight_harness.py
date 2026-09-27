@@ -107,6 +107,27 @@ def test_validate_numeric_consistency_passes():
     assert r["reason"] is None
 
 
+def test_validate_numeric_free_policy_rejects_even_universal_safe_numbers():
+    r = validate_response(
+        "Try a drill for 10 repetitions.",
+        "en",
+        {"sample_n": 10},
+        numeric_policy="none",
+    )
+    assert r["ok"] is False
+    assert r["reason"].startswith("numeric_claims_disallowed:")
+
+
+def test_validate_numeric_free_policy_allows_qualitative_prose():
+    r = validate_response(
+        "Your next step is to stabilize cross-court net placement.",
+        "en",
+        {"sample_n": 10},
+        numeric_policy="none",
+    )
+    assert r == {"ok": True, "reason": None}
+
+
 def test_validate_blocks_refusal_topic():
     text = "プロテインのサプリを毎日 30g 摂取するとよいでしょう。"
     r = validate_response(text, "ja", None)
@@ -150,6 +171,27 @@ class _RaisingInner:
         raise RuntimeError("boom")
 
 
+class _NumericFreeInner:
+    name = "numeric-free-inner"
+
+    def generate(self, ctx):
+        return {
+            "items": [
+                {
+                    "id": "x",
+                    "prose": "Try 10 cross-court net shots.",
+                    "evidence_path": "",
+                    "confidence": None,
+                    "metric": {},
+                    "numeric_policy": "none",
+                }
+            ],
+            "generator": self.name,
+            "generated_at": "2026-01-01T00:00:00+00:00",
+            "meta": {"tokens": {"in": 3, "out": 2, "total": 5}},
+        }
+
+
 def _sample_ctx():
     return {
         "player_id": 12,
@@ -180,6 +222,15 @@ def test_harness_falls_back_on_inner_exception():
         out = h.generate(_sample_ctx())
     assert out.get("meta", {}).get("fallback_reason", "").startswith("inner_exception:")
     assert out["generator"] == "template"
+
+
+def test_harness_falls_back_when_numeric_free_provider_emits_number():
+    with patch("backend.analysis.insights.safety.harness.log_llm_call"):
+        h = HarnessedGenerator(inner=_NumericFreeInner(), fallback=TemplateGenerator())
+        out = h.generate(_sample_ctx())
+    assert out["generator"] == "template"
+    assert out["meta"]["fallback_reason"].startswith("numeric_claims_disallowed:")
+    assert out["meta"]["tokens"] == {"in": 3, "out": 2, "total": 5}
 
 
 # ─────────────────────────────────────────────────────────────

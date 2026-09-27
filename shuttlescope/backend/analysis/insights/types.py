@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import sys
-from typing import Optional, TypedDict
+from typing import Literal, Optional, TypedDict
 
 # `NotRequired` は 3.11 以降の `typing` にしかない。これ 1 行のために
 # **backend.main を import するテスト 112 ファイルが 3.10 で収集できず**、
@@ -40,6 +40,9 @@ class InsightItem(TypedDict):
     # バッジを描かない (ChatMessageBubble.tsx:39-42)。
     confidence: Optional[float]   # 0..1、または None
     metric: dict          # prose の裏付け生数値
+    # grounded: metric 内の数値だけ許可（既定）
+    # none: 外部 LLM の自由文など、数値主張そのものを禁止
+    numeric_policy: NotRequired[Literal["grounded", "none"]]
 
 
 class InsightResult(TypedDict):

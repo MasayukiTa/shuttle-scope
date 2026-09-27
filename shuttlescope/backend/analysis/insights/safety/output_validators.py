@@ -11,7 +11,7 @@
 from __future__ import annotations
 
 import re
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 from backend.analysis.insights.safety.system_prompts import (
     BANNED_TERMS_EN,
@@ -92,6 +92,7 @@ def validate_response(
     text: str,
     lang: str,
     allowed_metrics: dict | None,
+    numeric_policy: Literal["grounded", "none"] = "grounded",
 ) -> ValidationResult:
     """LLM 出力を多段バリデーション。"""
     if text is None:
@@ -131,7 +132,17 @@ def validate_response(
         return {"ok": False, "reason": "leaked_json"}
 
     # 6) 数値整合性
-    if allowed_metrics is not None:
+    # 外部 LLM の自由文は「どの指標の数字か」を構造的に証明できないため、
+    # numeric_policy="none" では数字そのものを禁止する。数値は決定論的な
+    # analytics / ConfidenceBadge 側で表示する。
+    if numeric_policy == "none":
+        found = [m.group(0) for m in _NUMBER_RE.finditer(text)]
+        if found:
+            return {
+                "ok": False,
+                "reason": f"numeric_claims_disallowed:{','.join(found)}",
+            }
+    elif allowed_metrics is not None:
         allowed_nums = _flatten_metric_numbers(allowed_metrics) | _UNIVERSAL_SAFE
         # N=X パターンは X が metrics に存在すれば許可
         n_eq_values = {float(m.group(1)) for m in _N_EQ_RE.finditer(text)}

@@ -79,8 +79,10 @@ def test_success_returns_insight_result(env_key):
     item = result["items"][0]
     assert "勝率" in item["prose"]
     assert item["id"] == "growth_main"
-    # 言語モデルの自由文に信頼度を付けない (下の専用テストを参照)
+    # 言語モデルの自由文に信頼度を付けず、数値主張も許可しない。
     assert item["confidence"] is None
+    assert item["metric"] == {}
+    assert item["numeric_policy"] == "none"
     assert result["meta"]["tokens"]["total"] == 160  # type: ignore[typeddict-item]
 
 
@@ -217,25 +219,33 @@ def test_match_statistics_are_still_sent(env_key):
     assert "0.58" in serialized
 
 
-def test_validator_allowed_numbers_match_what_the_model_saw(env_key):
-    """返る metric が送信ペイロードと一致すること。
+def test_external_model_statistics_are_not_validator_allowlist(env_key):
+    """外部へ送った analytics を自由文の「数値許可リスト」に流用しないこと。
 
-    metric は output_validators の「許容される数値」の集合でもある。
-    モデルが見ていない数値をここに入れると、**その値に一致した幻覚を
-    「裏が取れた」と判定してしまう**ので、送信内容と揃っている必要がある。
+    analytics 内に 58 や 12 があっても、それが prose のどの指標を意味するかを
+    validator は証明できない。自由文は numeric_policy=none で数値そのものを
+    禁止し、検証済み数値は deterministic UI 側で表示する。
     """
-    import json as _json
-
     sent, result = _captured_request_body()
-    metric = result["items"][0]["metric"]
-    assert "player_name" not in metric
-    assert "conditions" not in metric
-    assert "outcomes" in metric
+    item = result["items"][0]
 
-    # 送信ボディの analytics と、返った metric が同一であること
+    assert item["metric"] == {}
+    assert item["numeric_policy"] == "none"
+
+    # 外部モデルへは必要な非機微 analytics を渡し続ける。
+    import json as _json
     sent_analytics = _json.loads(sent["messages"][1]["content"])["analytics"]
-    assert metric == sent_analytics
+    assert "outcomes" in sent_analytics
+    assert sent_analytics["outcomes"]["win_rate"] == 0.58
 
+
+def test_external_prompt_explicitly_forbids_numeric_prose(env_key):
+    sent, _ = _captured_request_body()
+    user_content = sent["messages"][1]["content"]
+    system_content = sent["messages"][0]["content"]
+
+    assert "Do not include any numbers" in user_content
+    assert "Do not write any numbers" in system_content
 
 def test_unknown_keys_are_dropped_not_forwarded():
     """allow-list であること。サマリにキーが増えても黙って外へ出ないこと。"""

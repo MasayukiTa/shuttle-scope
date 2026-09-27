@@ -181,15 +181,16 @@ class ExternalApiGenerator:
             question_hint = (
                 f"{lang_directive} "
                 f"User question: \"{(user_text or '')[:80]}\" — this is a prediction question. "
-                "State that an AI can't make hard predictions and describe trends from past data only."
+                "State that an AI can't make hard predictions and describe qualitative trends "
+                "from past data only. Do not include any numeric values."
             )
         else:
             question_hint = (
                 f"{lang_directive} "
                 f"User question: \"{(user_text or 'next growth area?')[:80]}\". "
-                "Generate 1 short growth insight (<=3 sentences, <=100 words in English / "
-                "<=200 chars in Japanese / equivalent length in other languages). "
-                "Include N=<count> or confidence percentage."
+                "Generate one short qualitative growth insight (up to three sentences). "
+                "Do not include any numbers, percentages, counts, scores, sample sizes, "
+                "or confidence values; verified numeric evidence is rendered separately by the application."
             )
 
         # 社外 (NVIDIA NIM 等) へ出る唯一の地点。ここまで analytics は
@@ -279,22 +280,14 @@ class ExternalApiGenerator:
         item = InsightItem(
             id="growth_main",
             prose=content.strip(),
-            evidence_path="",  # NIM 出力はテキストのみ
-            # 旧実装は `0.6 (+0.2 if sample_n>=30)` を信頼度として付けていた。
-            # これは **言語モデルの自由文** で、0.6 も 0.8 も何かを測った値では
-            # ない。UI は数値を見れば「信頼度 80%」と描くので、
-            # 裏取りの済んでいない文章に最も信用できそうな見た目が付いていた。
-            # 上の定型拒否文と同じ理由で数値は持たせない。
-            # サンプル数を伝えるのは prose 側の責務 (プロンプトが N=<count> を要求する)。
+            evidence_path="",  # NIM output is qualitative prose only
+            # Free-form provider prose cannot prove which metric a number belongs to.
+            # Verified numbers are rendered by deterministic analytics / ConfidenceBadge.
             confidence=None,
-            # 送ったものと検証するものを揃える。`metric` は
-            # output_validators の「許容される数値」の集合でもあるので、
-            # **モデルが見ていない数値をここに入れると裏取りの意味が逆になる**
-            # (見ていない値に一致した幻覚を「裏が取れた」と判定してしまう)。
-            # 返り値としても、生の avg_rpe / avg_hooper は Tier 2 で、
-            # ROLE_MAX_TIER 上 coach / analyst には出せない値なので落として正しい。
-            metric=outbound_analytics,
+            metric={},
+            numeric_policy="none",
         )
+
         return InsightResult(
             items=[item],
             generator=self.name,
