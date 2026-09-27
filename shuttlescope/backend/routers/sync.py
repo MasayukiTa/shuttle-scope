@@ -42,7 +42,7 @@ def _sanitize_errors(errors):
     return [f"{len(errors)} 件の内部エラーが発生しました"]
 
 
-from backend.db.models import SyncConflict, Match, Player, User, UserConsent
+from backend.db.models import SyncConflict, Match, Player, User, UserConsent, GameSet, Rally, Stroke
 from backend.utils.auth import (
     get_auth,
     require_analyst,
@@ -626,6 +626,66 @@ async def validate_only(file: UploadFile = File(...), _ctx=Depends(require_analy
 
 # ─── 競合レビュー ──────────────────────────────────────────────────────────────
 
+def _conflict_local_object(db: Session, conflict: SyncConflict):
+    """Return the current local row referenced by a conflict, or None."""
+    from backend.services.import_package import _TABLE_MAP, _find_by_uuid
+    model_cls = dict(_TABLE_MAP).get(conflict.record_table)
+    if model_cls is None:
+        return None
+    return _find_by_uuid(db, model_cls, conflict.record_uuid)
+
+
+def _record_owner_team_ids(db: Session, record_table: str, obj) -> set[int]:
+    """Resolve the team(s) that may administer a sync record.
+
+    Direct team columns are authoritative where present. Sets/rallies/strokes
+    inherit ownership from their parent Match. Unknown/orphan rows return an
+    empty set so non-admin callers fail closed.
+    """
+    if obj is None:
+        return set()
+
+    teams: set[int] = set()
+    for attr in ("owner_team_id", "team_id", "scouting_owner_team_id"):
+        val = getattr(obj, attr, None)
+        if val is not None:
+            try:
+                teams.add(int(val))
+            except (TypeError, ValueError):
+                pass
+
+    if record_table == "sets":
+        match = db.get(Match, getattr(obj, "match_id", None))
+        if match is not None and match.owner_team_id is not None:
+            teams.add(int(match.owner_team_id))
+    elif record_table == "rallies":
+        game_set = db.get(GameSet, getattr(obj, "set_id", None))
+        match = db.get(Match, game_set.match_id) if game_set is not None else None
+        if match is not None and match.owner_team_id is not None:
+            teams.add(int(match.owner_team_id))
+    elif record_table == "strokes":
+        rally = db.get(Rally, getattr(obj, "rally_id", None))
+        game_set = db.get(GameSet, rally.set_id) if rally is not None else None
+        match = db.get(Match, game_set.match_id) if game_set is not None else None
+        if match is not None and match.owner_team_id is not None:
+            teams.add(int(match.owner_team_id))
+
+    return teams
+
+
+def _conflict_visible_to_actor(db: Session, conflict: SyncConflict, ctx) -> bool:
+    """Admin sees all; analyst only records owned by their team."""
+    if bool(getattr(ctx, "is_admin", False)):
+        return True
+    actor_team = getattr(ctx, "team_id", None)
+    if actor_team is None:
+        return False
+    local_obj = _conflict_local_object(db, conflict)
+    return int(actor_team) in _record_owner_team_ids(
+        db, conflict.record_table, local_obj
+    )
+
+
 class ConflictResolveBody(_BaseModel):
     resolution: str  # "keep_local" | "use_incoming"
 
@@ -635,12 +695,16 @@ def list_conflicts(db: Session = Depends(get_db), _ctx=Depends(require_analyst))
     """未解決の競合レコード一覧を返す。
     incoming_snapshot に他チーム/他選手のレコードが含まれ得るため analyst/admin のみ。
     """
-    conflicts = (
-        db.query(SyncConflict)
-        .filter(SyncConflict.resolution.is_(None))
-        .order_by(SyncConflict.created_at.desc())
-        .all()
-    )
+    conflicts = [
+        c
+        for c in (
+            db.query(SyncConflict)
+            .filter(SyncConflict.resolution.is_(None))
+            .order_by(SyncConflict.created_at.desc())
+            .all()
+        )
+        if _conflict_visible_to_actor(db, c, _ctx)
+    ]
     return {
         "success": True,
         "data": [
@@ -678,7 +742,8 @@ def resolve_conflict(
     開放すると Player/Match の任意改ざんに繋がる。analyst/admin に限定する。
     """
     conflict = db.get(SyncConflict, conflict_id)
-    if not conflict:
+    if not conflict or not _conflict_visible_to_actor(db, conflict, _ctx):
+        # 404 avoids leaking that another team's conflict id exists.
         raise HTTPException(status_code=404, detail="競合が見つかりません")
 
     if body.resolution not in ("keep_local", "use_incoming"):
@@ -687,7 +752,8 @@ def resolve_conflict(
     if body.resolution == "use_incoming" and conflict.incoming_snapshot:
         # incoming のスナップショットを対象テーブルに適用
         import json as _json
-        from backend.services.import_package import _TABLE_MAP, _find_by_uuid, _get_columns, _remap_fks
+        from backend.services.import_package import _TABLE_MAP, _find_by_uuid
+        from backend.utils.sync_meta import touch
         table_map = {k: v for k, v in _TABLE_MAP}
         model_cls = table_map.get(conflict.record_table)
         if model_cls:
@@ -708,55 +774,21 @@ def resolve_conflict(
                     from backend.services.import_package import _sanitize_import_record
                     from datetime import datetime as _dt_cf
                     safe_data = _sanitize_import_record(model_cls, incoming, _dt_cf.utcnow())
-                    # Round 258 R14 P0 fix (deep audit R13-C): R13 で `actor_team is not None`
-                    # AND 他チーム判定で deny していたが、actor_team が None (teamless analyst /
-                    # 招待直後 / admin demote 直後) の場合は判定そのものをスキップしていたため、
-                    # teamless analyst が任意 team の record を上書き可能だった (cross-team
-                    # takeover)。deny を default にし、admin / 同一チーム所属者のみ allow に倒す。
-                    # Round 258 R15 P3 fix (deep audit R13-D): R12-R13 で
-                    # `if "_ctx" in locals()` という dead guard を入れていたが、
-                    # _ctx は関数 parameter なので常に locals() に含まれる。
-                    # 直接アクセスして type 不整合があれば早期に AttributeError で
-                    # 落とす方が defense として明示的。
-                    actor_team = getattr(_ctx, "team_id", None)
-                    actor_is_admin = bool(getattr(_ctx, "is_admin", False))
-
-                    def _allow_or_403(local_team_attr: str) -> None:
-                        if actor_is_admin:
-                            return
-                        local_team_val = getattr(local_obj, local_team_attr, None)
-                        # local_team が None (legacy / 未設定) でも teamless actor は通さない
-                        if actor_team is None:
-                            raise HTTPException(
-                                status_code=403,
-                                detail="team_id が設定されていないユーザーは sync conflict を解決できません",
-                            )
-                        if local_team_val is None:
-                            # local 側が teamless = 過去の orphan record。actor が
-                            # 自身の team_id で上書きできるが、念のため admin のみに制限。
-                            raise HTTPException(
-                                status_code=403,
-                                detail="team_id 未設定の record は admin のみ編集可能です",
-                            )
-                        if local_team_val != actor_team:
-                            raise HTTPException(
-                                status_code=403,
-                                detail="他チームのレコードは編集できません",
-                            )
-
-                    if hasattr(local_obj, "owner_team_id"):
-                        _allow_or_403("owner_team_id")
-                    elif hasattr(local_obj, "team_id"):
-                        _allow_or_403("team_id")
-                    else:
-                        # User や認証関連の model は admin だけ編集可能
-                        if not actor_is_admin:
-                            raise HTTPException(
-                                status_code=403,
-                                detail="このレコードの編集には管理者権限が必要です",
-                            )
+                    # Team ownership was already checked for both keep_local and
+                    # use_incoming by _conflict_visible_to_actor(), including
+                    # parent Match traversal for Set/Rally/Stroke.
+                    #
+                    # Package integer foreign keys are device-local. The import-time
+                    # id_remap is not stored in SyncConflict, so applying *_id from a
+                    # saved snapshot later would silently point at unrelated local rows.
+                    # Conflict resolution therefore updates business scalar fields only;
+                    # relationship changes require an explicit local edit.
+                    for k in list(safe_data):
+                        if k.endswith("_id"):
+                            safe_data.pop(k, None)
                     for k, v in safe_data.items():
                         setattr(local_obj, k, v)
+                    touch(local_obj)
                     db.commit()
             except HTTPException:
                 raise
