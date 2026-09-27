@@ -8,6 +8,20 @@
  * 認証の材料ではない。あくまで「同じ端末候補か」の手掛かりとして使う。
  */
 const DEVICE_UID_KEY = 'ss_device_uid'
+let memoryFallbackUid = ''
+
+function getSessionFallback(): string {
+  try {
+    const existing = sessionStorage.getItem(DEVICE_UID_KEY)
+    if (existing) return existing
+    const uid = crypto.randomUUID()
+    sessionStorage.setItem(DEVICE_UID_KEY, uid)
+    return uid
+  } catch {
+    if (!memoryFallbackUid) memoryFallbackUid = crypto.randomUUID()
+    return memoryFallbackUid
+  }
+}
 
 export function getDeviceUid(): string {
   try {
@@ -17,7 +31,8 @@ export function getDeviceUid(): string {
     localStorage.setItem(DEVICE_UID_KEY, uid)
     return uid
   } catch {
-    // プライベートブラウズ等で localStorage が使えない場合は毎回新規でよい
-    return crypto.randomUUID()
+    // localStorage が拒否されても、同一タブ内では stable な UID を維持する。
+    // sessionStorage も使えない環境だけ module-memory fallback に落とす。
+    return getSessionFallback()
   }
 }
