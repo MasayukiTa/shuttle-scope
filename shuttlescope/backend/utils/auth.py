@@ -804,10 +804,10 @@ def check_export_match_scope(
     if ctx.is_admin:
         return
     if ctx.is_analyst:
-        # round126 V-5 fix: analyst にも team scope を強制
-        team = (ctx.team_name or "").strip()
-        if not team:
-            raise HTTPException(status_code=403, detail="team_name 未設定")
+        # team_name 文字列ではなく正規化済み team_id を境界にする。
+        # 同名チーム / チーム改名で export scope が壊れないようにする。
+        if ctx.team_id is None:
+            raise HTTPException(status_code=403, detail="team_id 未設定")
         for m in matches:
             pids = _match_player_ids(m)
             if not pids:
@@ -815,8 +815,12 @@ def check_export_match_scope(
                     status_code=403,
                     detail=f"試合 id={m.id} に選手情報がありません",
                 )
-            players = db.query(Player).filter(Player.id.in_(pids)).all()
-            if not any(_team_of(p) == team for p in players):
+            hit = (
+                db.query(Player.id)
+                .filter(Player.id.in_(pids), Player.team_id == ctx.team_id)
+                .first()
+            )
+            if hit is None:
                 raise HTTPException(
                     status_code=403,
                     detail=f"試合 id={m.id} はあなたのチームの試合ではありません",
@@ -833,9 +837,8 @@ def check_export_match_scope(
                 )
         return
     if ctx.is_coach:
-        team = (ctx.team_name or "").strip()
-        if not team:
-            raise HTTPException(status_code=403, detail="team_name 未設定")
+        if ctx.team_id is None:
+            raise HTTPException(status_code=403, detail="team_id 未設定")
         for m in matches:
             pids = _match_player_ids(m)
             if not pids:
@@ -843,8 +846,12 @@ def check_export_match_scope(
                     status_code=403,
                     detail=f"試合 id={m.id} に選手情報がありません",
                 )
-            players = db.query(Player).filter(Player.id.in_(pids)).all()
-            if not any(_team_of(p) == team for p in players):
+            hit = (
+                db.query(Player.id)
+                .filter(Player.id.in_(pids), Player.team_id == ctx.team_id)
+                .first()
+            )
+            if hit is None:
                 raise HTTPException(
                     status_code=403,
                     detail=f"試合 id={m.id} はあなたのチームの試合ではありません",

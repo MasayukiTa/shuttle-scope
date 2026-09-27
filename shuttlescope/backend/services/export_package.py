@@ -10,7 +10,7 @@ import hashlib
 import io
 import json
 import zipfile
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Optional
 
 from sqlalchemy.orm import Session
@@ -43,10 +43,47 @@ def _model_to_dict(obj: Any) -> dict:
     d = {}
     for col in obj.__table__.columns:
         val = getattr(obj, col.name)
-        if isinstance(val, datetime):
+        if isinstance(val, (datetime, date)):
             val = val.isoformat()
         d[col.name] = val
     return d
+
+
+def _minimal_player_dict(player: Player) -> dict:
+    """試合参照を復元するためだけの最小 Player identity。
+
+    他チーム選手は Match の外部キー再マップに必要なので Player 行そのものは
+    package に残す。ただし 1 試合対戦しただけで nationality / birth_year /
+    notes / scouting_notes / team_history 等まで持ち出せないよう、同期に必要な
+    id / uuid / name だけに縮約する。updated_at を意図的に含めないため、
+    import 先に同じ uuid が既にある場合は merge_resolver が local 優先になる。
+    """
+    return {
+        "id": player.id,
+        "uuid": player.uuid,
+        "name": player.name,
+    }
+
+
+def _full_export_player_ids(
+    players: list[Player],
+    actor_role: Optional[str],
+    actor_team_id: Optional[int],
+) -> set[int]:
+    """呼び出し元が詳細属性/Condition を持ち出してよい Player id を返す。
+
+    admin は全件。analyst/coach は自チーム所属または自チームが明示的に
+    scouting ownership を持つ外部選手だけ。team_id 不明は fail-closed。
+    """
+    if actor_role == "admin":
+        return {p.id for p in players}
+    if actor_team_id is None:
+        return set()
+    return {
+        p.id
+        for p in players
+        if p.team_id == actor_team_id or p.scouting_owner_team_id == actor_team_id
+    }
 
 
 def _condition_dicts(db: Session, rows: list, actor_role: Optional[str]) -> list[dict]:
@@ -99,14 +136,17 @@ def export_match(
     since: Optional[str] = None,
     until: Optional[str] = None,
     actor_role: Optional[str] = None,
+    actor_team_id: Optional[int] = None,
 ) -> bytes:
     """
     指定した試合（複数可）と関連レコードを .sspkg バイト列として返す。
 
     含むもの:
-      Match, GameSet, Rally, Stroke, 関連 Player（最小メタ）
+      Match, GameSet, Rally, Stroke, 関連 Player
+        - 自チーム/自チーム scouting 所有: 詳細メタ
+        - 他チーム: FK 復元用の id/uuid/name のみ
       PreMatchObservation, HumanForecast, Comment, EventBookmark
-      Condition (参加選手の since〜until 期間), ConditionTag (同期間)
+      Condition / ConditionTag は詳細 export を許可された選手の since〜until 期間のみ
 
     since/until は "YYYY-MM-DD" で Condition.measured_at / ConditionTag.start_date に適用。
     """
@@ -140,12 +180,17 @@ def export_match(
     comments = db.query(Comment).filter(Comment.match_id.in_(match_ids)).all()
     bookmarks = db.query(EventBookmark).filter(EventBookmark.match_id.in_(match_ids)).all()
 
-    # Condition / ConditionTag — 参加選手 × 期間で絞り込み
+    # X-7: 「自チーム選手と 1 試合した」だけで、相手 Player の詳細属性や
+    # Condition/ConditionTag まで package に入っていた。試合そのものを同期するには
+    # 相手 Player の identity 行が必要だが、詳細データは不要。所有境界を分ける。
+    full_player_ids = _full_export_player_ids(players, actor_role, actor_team_id)
+
+    # Condition / ConditionTag — 詳細 export を許可された選手 × 期間だけ。
     conditions_all: list[Condition] = []
     condition_tags_all: list[ConditionTag] = []
-    if player_ids:
-        cq = db.query(Condition).filter(Condition.player_id.in_(player_ids))
-        tq = db.query(ConditionTag).filter(ConditionTag.player_id.in_(player_ids))
+    if full_player_ids:
+        cq = db.query(Condition).filter(Condition.player_id.in_(full_player_ids))
+        tq = db.query(ConditionTag).filter(ConditionTag.player_id.in_(full_player_ids))
         if since:
             cq = cq.filter(Condition.measured_at >= since)
             tq = tq.filter(
@@ -160,7 +205,10 @@ def export_match(
 
     # dict 変換
     payload: dict[str, Any] = {
-        "players":       [_model_to_dict(p) for p in players],
+        "players":       [
+            _model_to_dict(p) if p.id in full_player_ids else _minimal_player_dict(p)
+            for p in players
+        ],
         "matches":       [_model_to_dict(m) for m in matches],
         "sets":          [_model_to_dict(s) for s in sets_all],
         "rallies":       [_model_to_dict(r) for r in rallies_all],

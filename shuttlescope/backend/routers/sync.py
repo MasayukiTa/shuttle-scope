@@ -199,6 +199,7 @@ def export_match_endpoint(
             # 書き出す側のロールを渡す。渡さないと同意フィルタが Tier 0 に落ちる
             # (fail-closed) ので、健康データが丸ごと欠ける。
             actor_role=ctx.role,
+            actor_team_id=ctx.team_id,
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
