@@ -24,6 +24,7 @@ import shutil
 import threading
 import time
 import uuid
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -69,8 +70,11 @@ ALLOWED_MIME_PREFIXES = ("video/",)
 
 # ─── 同時実行制御 ─────────────────────────────────────────────────────────────
 
-# upload_id → asyncio.Lock（同一 upload_id のチャンク書き込みを直列化）
+# upload_id → asyncio.Lock（同一 upload_id の chunk/finalize/GC を直列化）
 _upload_locks: dict[str, asyncio.Lock] = {}
+# lock object を取得済みだがまだ lock.acquire() 待ちの caller も含む lease 数。
+# GC が「unlocked」を見て map から消した直後に古い lock へ caller が入る ABA を防ぐ。
+_upload_lock_refs: dict[str, int] = {}
 _upload_locks_guard = asyncio.Lock()
 
 # グローバル同時チャンク数。Semaphore は初期化時のイベントループ確定後に作成する。
@@ -84,13 +88,29 @@ def _get_global_sem() -> asyncio.Semaphore:
     return _global_chunk_sem
 
 
-async def _get_upload_lock(upload_id: str) -> asyncio.Lock:
+@asynccontextmanager
+async def _hold_upload_lock(upload_id: str):
+    """Acquire a ref-counted per-upload lock without ABA replacement races."""
     async with _upload_locks_guard:
         lock = _upload_locks.get(upload_id)
         if lock is None:
             lock = asyncio.Lock()
             _upload_locks[upload_id] = lock
-        return lock
+        _upload_lock_refs[upload_id] = _upload_lock_refs.get(upload_id, 0) + 1
+
+    try:
+        async with lock:
+            yield
+    finally:
+        async with _upload_locks_guard:
+            refs = _upload_lock_refs.get(upload_id, 0) - 1
+            if refs <= 0:
+                _upload_lock_refs.pop(upload_id, None)
+                # No holder and no waiter can still reference this lock: safe to retire.
+                if _upload_locks.get(upload_id) is lock and not lock.locked():
+                    _upload_locks.pop(upload_id, None)
+            else:
+                _upload_lock_refs[upload_id] = refs
 
 
 _UPLOAD_ID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
@@ -602,8 +622,7 @@ async def upload_chunk(
 
     sem = _get_global_sem()
     async with sem:
-        lock = await _get_upload_lock(upload_id)
-        async with lock:
+        async with _hold_upload_lock(upload_id):
             session = db.get(UploadSession, upload_id)
             if session is None:
                 raise HTTPException(status_code=404, detail="アップロードセッションが見つかりません")
@@ -753,8 +772,7 @@ async def finalize_upload(
     ctx: AuthCtx = Depends(get_auth),
 ):
     actor = _resolve_upload_actor(request, db, ctx)
-    lock = await _get_upload_lock(upload_id)
-    async with lock:
+    async with _hold_upload_lock(upload_id):
         session = db.get(UploadSession, upload_id)
         if session is None:
             raise HTTPException(status_code=404, detail="アップロードセッションが見つかりません")
@@ -905,28 +923,31 @@ async def finalize_upload(
 
 
 @router.delete("/video/{upload_id}")
-def abort_upload(
+async def abort_upload(
     upload_id: str,
     request: Request,
     db: Session = Depends(get_db),
     ctx: AuthCtx = Depends(get_auth),
 ):
     actor = _resolve_upload_actor(request, db, ctx)
-    session = db.get(UploadSession, upload_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="アップロードセッションが見つかりません")
-    _require_upload_owner(actor, session)
+    # abort も chunk/finalize/GC と同じ lock に参加する。
+    # chunk 書込み中に .part を消す、または finalize と状態更新が競合する経路を塞ぐ。
+    async with _hold_upload_lock(upload_id):
+        session = db.get(UploadSession, upload_id)
+        if session is None:
+            raise HTTPException(status_code=404, detail="アップロードセッションが見つかりません")
+        _require_upload_owner(actor, session)
 
-    if session.status == "uploading":
-        session.status = "aborted"
-        session.updated_at = datetime.utcnow()
-        db.commit()
-    # .part を削除
-    try:
-        _part_path(upload_id).unlink(missing_ok=True)
-    except OSError:
-        pass
-    return {"success": True}
+        if session.status == "uploading":
+            session.status = "aborted"
+            session.updated_at = datetime.utcnow()
+            db.commit()
+        # .part を削除
+        try:
+            _part_path(upload_id).unlink(missing_ok=True)
+        except OSError:
+            pass
+        return {"success": True}
 
 
 # ─── Range 対応ストリーミング再生 ─────────────────────────────────────────────
@@ -1064,6 +1085,31 @@ def stream_video_for_match(
 
 # ─── バックグラウンド GC ─────────────────────────────────────────────────────
 
+async def _expire_stale_upload_session(
+    db: Session,
+    stale_session: UploadSession,
+    cutoff: datetime,
+) -> bool:
+    """Expire one stale upload only if it is still stale after taking its lock."""
+    async with _hold_upload_lock(stale_session.id):
+        # The initial stale query may be arbitrarily old by the time this lock is
+        # acquired. Force a fresh read after all chunk/finalize holders ahead of
+        # us have completed before deciding whether GC may delete the .part file.
+        db.expire(stale_session)
+        current = db.get(UploadSession, stale_session.id)
+        if current is None:
+            return False
+        if current.status != "uploading" or current.updated_at >= cutoff:
+            return False
+        try:
+            _part_path(current.id).unlink(missing_ok=True)
+        except OSError:
+            pass
+        current.status = "expired"
+        current.updated_at = datetime.utcnow()
+        return True
+
+
 async def gc_loop() -> None:
     """アイドルな .part / upload_session を定期クリーンアップ。"""
     from backend.db.database import SessionLocal
@@ -1077,24 +1123,17 @@ async def gc_loop() -> None:
                     UploadSession.status == "uploading",
                     UploadSession.updated_at < cutoff,
                 ).all()
-                for s in stale:
-                    try:
-                        _part_path(s.id).unlink(missing_ok=True)
-                    except OSError:
-                        pass
-                    s.status = "expired"
-                    s.updated_at = datetime.utcnow()
-                if stale:
+                expired_count = 0
+                for stale_session in stale:
+                    # GC も chunk/finalize と同じ lock を取る。stale query 後に
+                    # upload が再開して updated_at が進んだ場合は expire しない。
+                    if await _expire_stale_upload_session(db, stale_session, cutoff):
+                        expired_count += 1
+                if expired_count:
                     db.commit()
-                    print(f"[uploads] GC: expired {len(stale)} idle upload session(s)")
+                    print(f"[uploads] GC: expired {expired_count} idle upload session(s)")
             finally:
                 db.close()
-            # lock dict の掃除（active でないもの）
-            async with _upload_locks_guard:
-                for uid in list(_upload_locks.keys()):
-                    lk = _upload_locks[uid]
-                    if not lk.locked():
-                        _upload_locks.pop(uid, None)
         except asyncio.CancelledError:
             raise
         except Exception as e:
