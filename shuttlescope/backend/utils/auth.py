@@ -387,12 +387,18 @@ def can_see_scouting_players(ctx: AuthCtx) -> bool:
 
 
 def can_access_player(ctx: AuthCtx, player_id: int, db) -> bool:
-    """選手データへのアクセス可否（Phase B-6 拡張版）。
+    """選手個人データへのアクセス可否。
 
     - admin: 全可
     - player: 自分のみ
-    - coach/analyst: 自チーム所属 player（Player.team_id == ctx.team_id）
-      または「自チームから可視な試合に登場する player」
+    - coach/analyst: 自チーム所属 player
+    - coach/analyst: 自チームが明示登録した scouting 外部 player
+
+    重要:
+        「自チームから見える試合に一度登場した」ことは、相手選手の全個人データへ
+        アクセスする根拠にしない。試合単位の閲覧可否は user_can_access_match() が
+        担い、選手単位の継続的な解析権限は team_id / scouting_owner_team_id という
+        明示的な所有関係だけで判定する。
     """
     if ctx.is_admin:
         return True
@@ -400,29 +406,22 @@ def can_access_player(ctx: AuthCtx, player_id: int, db) -> bool:
         return ctx.player_id is not None and ctx.player_id == player_id
     if ctx.team_id is None:
         return False
-    from backend.db.models import Player, Match
+
+    from backend.db.models import Player
+
     p = db.get(Player, player_id)
     if not p:
         return False
     if p.team_id is not None and p.team_id == ctx.team_id:
         return True
+
     # 自チームが登録したスカウティング用の外部選手 (0051)。
-    # 試合をまだ作っていない段階でも選べる必要があるため、match 経由の判定より先に見る。
-    if (
+    # 対戦前の映像解析にも使うため、match の存在はアクセス条件にしない。
+    return bool(
         can_see_scouting_players(ctx)
         and p.scouting_owner_team_id is not None
         and p.scouting_owner_team_id == ctx.team_id
-    ):
-        return True
-    # 自チームから見える match に登場するか
-    q = db.query(Match.id).filter(
-        (Match.player_a_id == player_id)
-        | (Match.player_b_id == player_id)
-        | (Match.partner_a_id == player_id)
-        | (Match.partner_b_id == player_id)
     )
-    q = apply_match_team_scope(q, ctx)
-    return q.first() is not None
 
 
 def resolve_owner_team_for_match_create(
