@@ -173,7 +173,15 @@ export async function enqueue(
  * 単一 item を送信。成功なら DB から削除、失敗なら attempts を更新して
  * 次回スケジュール時刻を仕込む。manualRetry に到達したら停止して UI 通知させる。
  */
-async function trySend(item: QueueItem): Promise<'ok' | 'retry' | 'manual'> {
+export type QueueSendResult = 'ok' | 'retry' | 'manual' | 'auth'
+
+export function classifyQueueHttpFailure(status: number): Exclude<QueueSendResult, 'ok'> {
+  if (status === 401) return 'auth'
+  if (status >= 400 && status < 500 && status !== 429) return 'manual'
+  return 'retry'
+}
+
+async function trySend(item: QueueItem): Promise<QueueSendResult> {
   // path placeholder 置換
   let url = item.endpoint.split(' ')[1] // "POST /api/rallies" → "/api/rallies"
   const method = item.endpoint.split(' ')[0]
@@ -188,7 +196,15 @@ async function trySend(item: QueueItem): Promise<'ok' | 'retry' | 'manual'> {
     'Content-Type': 'application/json',
     'X-Idempotency-Key': item.clientUuid,
   }
-  if (token) headers.Authorization = `Bearer ${token}`
+  if (!token) {
+    // App startup can run the queue before login/session restoration. That is
+    // not a permanent payload failure and must not consume retry budget or
+    // move valuable offline annotations to manualRetry.
+    item.lastStatus = 401
+    item.lastError = 'authentication required'
+    return 'auth'
+  }
+  headers.Authorization = `Bearer ${token}`
 
   try {
     const resp = await fetch(url, {
@@ -197,15 +213,9 @@ async function trySend(item: QueueItem): Promise<'ok' | 'retry' | 'manual'> {
       body: method === 'GET' ? undefined : JSON.stringify(item.body ?? {}),
     })
     if (resp.ok) return 'ok'
-    // 4xx (= クライアント側の根本問題、リトライ意味なし) → manual に格上げ
-    if (resp.status >= 400 && resp.status < 500 && resp.status !== 429) {
-      item.lastStatus = resp.status
-      item.lastError = (await resp.text()).slice(0, 300)
-      return 'manual'
-    }
     item.lastStatus = resp.status
-    item.lastError = `HTTP ${resp.status}`
-    return 'retry'
+    item.lastError = (await resp.text()).slice(0, 300) || `HTTP ${resp.status}`
+    return classifyQueueHttpFailure(resp.status)
   } catch (e) {
     item.lastError = (e instanceof Error ? e.message : String(e)).slice(0, 300)
     return 'retry'
@@ -235,13 +245,19 @@ async function flushOnce(): Promise<void> {
         const wstore = tx(db, 'readwrite')
         await wrapReq(wstore.delete(it.localId!))
       } else {
-        it.attempts += 1
         it.lastAttemptAt = Date.now()
-        const delay = nextDelay(it.attempts)
-        if (result === 'manual' || delay < 0) {
-          it.manualRetry = true
+        if (result === 'auth') {
+          // Authentication is an external prerequisite, not a failed send.
+          // Preserve attempts and retry soon after login/session restoration.
+          it.nextAttemptAt = Date.now() + 30_000
         } else {
-          it.nextAttemptAt = Date.now() + delay
+          it.attempts += 1
+          const delay = nextDelay(it.attempts)
+          if (result === 'manual' || delay < 0) {
+            it.manualRetry = true
+          } else {
+            it.nextAttemptAt = Date.now() + delay
+          }
         }
         const wstore = tx(db, 'readwrite')
         await wrapReq(wstore.put(it))
