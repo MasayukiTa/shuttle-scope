@@ -20,6 +20,15 @@ MergeAction = Literal["new", "update", "keep", "conflict", "delete"]
 CONFLICT_WINDOW_SEC = 5
 
 
+def _parse_revision(val: Any) -> Optional[int]:
+    """同期 revision を正の整数として読む。未設定/不正値は信頼しない。"""
+    try:
+        rev = int(val)
+    except (TypeError, ValueError):
+        return None
+    return rev if rev >= 1 else None
+
+
 def _parse_dt(val: Any) -> Optional[datetime]:
     """ISO 文字列 / datetime を datetime に統一（タイムゾーン naive）"""
     if val is None:
@@ -81,6 +90,8 @@ def decide_merge(
     inc_updated = _parse_dt(incoming.get("updated_at"))
     inc_hash = incoming.get("content_hash")
     loc_hash = local.get("content_hash")
+    inc_revision = _parse_revision(incoming.get("revision"))
+    loc_revision = _parse_revision(local.get("revision"))
 
     # 論理削除を反映（incoming が削除済み かつ ローカルより新しい）
     if inc_deleted is not None:
@@ -102,7 +113,27 @@ def decide_merge(
 
     delta = abs((inc_updated - loc_updated).total_seconds())
 
-    # 近接タイムスタンプ + ハッシュ不一致 → 競合
+    # X-5: 同じ revision から独立に編集された内容が異なるなら、端末時計が
+    # どれだけずれていても競合。revision は untrusted package input なので
+    # 「どちらを勝たせるか」には使わず、fail-closed に conflict を増やす方向だけに使う。
+    if (
+        inc_hash
+        and loc_hash
+        and inc_hash != loc_hash
+        and inc_revision is not None
+        and loc_revision is not None
+        and inc_revision == loc_revision
+    ):
+        return MergeDecision(
+            uuid=uuid,
+            action="conflict",
+            table=table,
+            local_id=local_id,
+            incoming_record=incoming,
+            reason=f"same revision {inc_revision}, hash differs",
+        )
+
+    # 旧データや revision が異なる場合の後方互換: 近接タイムスタンプ + ハッシュ不一致。
     if delta <= CONFLICT_WINDOW_SEC and inc_hash and loc_hash and inc_hash != loc_hash:
         return MergeDecision(uuid=uuid, action="conflict", table=table,
                              local_id=local_id, incoming_record=incoming,

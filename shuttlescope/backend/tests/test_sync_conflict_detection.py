@@ -100,6 +100,7 @@ class TestTheConflictBranchNowFires:
                 "uuid": "same-uuid",
                 "updated_at": (now + timedelta(seconds=1)).isoformat(),
                 "content_hash": incoming.content_hash,
+                "revision": 2,
                 "shot_type": incoming_shot,
             },
             {
@@ -107,6 +108,7 @@ class TestTheConflictBranchNowFires:
                 "uuid": "same-uuid",
                 "updated_at": now.isoformat(),
                 "content_hash": local.content_hash,
+                "revision": 2,
                 "shot_type": local_shot,
             },
         )
@@ -122,8 +124,26 @@ class TestTheConflictBranchNowFires:
         decision = decide_merge("strokes", incoming, local)
         assert decision.action != "conflict", decision.reason
 
-    def test_edits_far_apart_in_time_are_not_a_conflict(self):
+    def test_same_revision_conflicts_even_when_device_clocks_are_far_apart(self):
         incoming, local = self._pair("clear", "smash")
+        far = datetime(2026, 9, 19, 12, 0, 0) + timedelta(hours=6)
+        incoming["updated_at"] = far.isoformat()
+        decision = decide_merge("strokes", incoming, local)
+        assert decision.action == "conflict", decision.reason
+        assert "same revision" in decision.reason
+
+    def test_different_revisions_fall_back_to_timestamp_order(self):
+        incoming, local = self._pair("clear", "smash")
+        incoming["revision"] = 3
+        far = datetime(2026, 9, 19, 12, 0, 0) + timedelta(seconds=CONFLICT_WINDOW_SEC + 60)
+        incoming["updated_at"] = far.isoformat()
+        decision = decide_merge("strokes", incoming, local)
+        assert decision.action == "update", decision.reason
+
+    def test_missing_revision_falls_back_to_timestamp_order(self):
+        incoming, local = self._pair("clear", "smash")
+        incoming.pop("revision")
+        local.pop("revision")
         far = datetime(2026, 9, 19, 12, 0, 0) + timedelta(seconds=CONFLICT_WINDOW_SEC + 60)
         incoming["updated_at"] = far.isoformat()
         decision = decide_merge("strokes", incoming, local)
