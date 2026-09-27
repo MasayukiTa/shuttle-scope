@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from backend.services.merge_resolver import decide_merge, MergeDecision
+from backend.utils.sync_meta import business_payload, compute_content_hash
 from backend.db.models import (
     Match, GameSet, Rally, Stroke, Player,
     PreMatchObservation, HumanForecast, Comment, EventBookmark,
@@ -370,6 +371,8 @@ def _apply_record(
         obj = model_cls(**data)
         db.add(obj)
         db.flush()
+        if hasattr(obj, "content_hash"):
+            obj.content_hash = compute_content_hash(business_payload(obj))
         # id リマップ登録
         old_id = incoming.get("id")
         if old_id and obj.id:
@@ -383,12 +386,28 @@ def _apply_record(
             for k, v in data.items():
                 if k != "id":
                     setattr(obj, k, v)
+            # incoming content_hash / revision are untrusted and stripped above.
+            # Recompute the hash from the resulting local business row so the
+            # next sync can actually detect a conflicting edit.
+            if hasattr(obj, "content_hash"):
+                obj.content_hash = compute_content_hash(business_payload(obj))
+            old_id = incoming.get("id")
+            if old_id and obj.id:
+                # Parent updates must participate in FK remapping exactly like
+                # new/keep records; otherwise a later child falls back to the
+                # source device's integer PK.
+                id_remap.setdefault(table_key, {})[old_id] = obj.id
 
     db.commit()
 
 
 def _remap_fks(data: dict, id_remap: dict[str, dict[str, int]]) -> None:
-    """外部キー列の値をリマップテーブルで変換する"""
+    """外部キーを source package の ID から local ID へ厳密に変換する。
+
+    生の整数 PK は端末ローカルな値であり、別端末では同じ対象を意味しない。
+    mapping が無い値をそのまま残すと、部分/細工 package から既存の別レコードへ
+    子行を注入できるため fail-closed にする。
+    """
     fk_map = {
         "player_a_id": "players",
         "player_b_id": "players",
@@ -401,11 +420,16 @@ def _remap_fks(data: dict, id_remap: dict[str, dict[str, int]]) -> None:
         "stroke_id": "strokes",
     }
     for col, src_table in fk_map.items():
-        if col in data and data[col] is not None:
-            old_val = data[col]
-            new_val = id_remap.get(src_table, {}).get(old_val)
-            if new_val is not None:
-                data[col] = new_val
+        if col not in data or data[col] is None:
+            continue
+        old_val = data[col]
+        mapping = id_remap.get(src_table, {})
+        if old_val not in mapping:
+            raise ValueError(
+                f"unresolved package foreign key: {col}={old_val!r} "
+                f"(missing {src_table} mapping)"
+            )
+        data[col] = mapping[old_val]
 
 
 # ─── メインインポート処理 ──────────────────────────────────────────────────────
