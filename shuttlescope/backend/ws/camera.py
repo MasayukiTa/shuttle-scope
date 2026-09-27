@@ -50,6 +50,7 @@ stream_id は端末が接続するたびに新しく採番される。operator �
 PeerConnection を持ち分けられる。
 """
 import json
+from contextlib import asynccontextmanager
 import logging
 import re
 import uuid
@@ -94,6 +95,8 @@ class CameraSignalingManager:
         # 同一 session に対して同時に起きると _sessions[session_code] dict の状態が
         # 競合する。state mutate 系の操作はこの lock 経由で直列化する。
         self._session_locks: dict[str, "asyncio.Lock"] = {}
+        # Count both lock holders and waiters; reclaim only after the last guard leaves.
+        self._session_lock_refs: dict[str, int] = {}
         # 3rd-review #1b/4 fix: operator session-owner check。
         # main.py:1730-1738 の JWT role-claim ガードは privileged role かどうかは見るが、
         # 同一 role の他ユーザが他人のセッションを乗っ取れる問題は塞げていない。
@@ -184,6 +187,27 @@ class CameraSignalingManager:
             self._session_locks[session_code] = lk
         return lk
 
+    @asynccontextmanager
+    async def _session_guard(self, session_code: str):
+        """Serialize one session and safely reclaim its lock after the last waiter."""
+        lk = self._slock(session_code)
+        self._session_lock_refs[session_code] = self._session_lock_refs.get(session_code, 0) + 1
+        try:
+            async with lk:
+                yield
+        finally:
+            refs = self._session_lock_refs.get(session_code, 1) - 1
+            if refs <= 0:
+                self._session_lock_refs.pop(session_code, None)
+                if (
+                    session_code not in self._sessions
+                    and self._session_locks.get(session_code) is lk
+                    and not lk.locked()
+                ):
+                    self._session_locks.pop(session_code, None)
+            else:
+                self._session_lock_refs[session_code] = refs
+
     def _ensure_session(self, session_code: str) -> None:
         if session_code not in self._sessions:
             self._sessions[session_code] = {
@@ -238,7 +262,7 @@ class CameraSignalingManager:
         # 3rd-review #1b/4 fix: session-owner consistency check。
         # session_code 単位で先着 user_id を覚え、それ以降 operator は同じ user_id だけ。
         # user_id が None (loopback 緩和) のときは owner check をスキップする。
-        async with self._slock(session_code):
+        async with self._session_guard(session_code):
             self._ensure_session(session_code)
             existing = self._sessions[session_code].get("operator")
             if existing is not None:
@@ -303,7 +327,7 @@ class CameraSignalingManager:
     async def connect_device(self, session_code: str, participant_id: str, ws: WebSocket) -> None:
         # rereview ws #9 fix: ensure_session + dict mutation を _slock で直列化
         # Round 258 R7 P2 fix: per-session + 全体 cap を accept() 前に確認
-        async with self._slock(session_code):
+        async with self._session_guard(session_code):
             self._ensure_session(session_code)
             sess = self._sessions[session_code]
             if len(sess["devices"]) >= self.MAX_DEVICES_PER_SESSION:
@@ -351,7 +375,7 @@ class CameraSignalingManager:
     async def connect_viewer(self, session_code: str, viewer_id: str, ws: WebSocket) -> None:
         # rereview ws #9 fix: 同上 — viewer 接続も lock で直列化
         # Round 258 R7 P2 fix: per-session + 全体 cap を accept() 前に確認
-        async with self._slock(session_code):
+        async with self._session_guard(session_code):
             self._ensure_session(session_code)
             sess = self._sessions[session_code]
             if len(sess["viewers"]) >= self.MAX_VIEWERS_PER_SESSION:
@@ -381,14 +405,14 @@ class CameraSignalingManager:
         """Round 258 R3 P1 fix: 全 connection が無くなったら session entry を pop。
         旧来は operator が None になっても _sessions / _session_locks が永続化し
         attacker が多数の session_code に touch してメモリを膨らませられた。
-        ※ caller は self._slock(session_code) を保持していること。
+        ※ caller は self._session_guard(session_code) を保持していること。
         """
         sess = self._sessions.get(session_code)
         if sess is None:
             return
         if sess.get("operator") is None and not sess.get("devices") and not sess.get("viewers"):
             self._sessions.pop(session_code, None)
-            self._session_locks.pop(session_code, None)
+            # Lock reclamation is deferred until the final guard exits.
             logger.info("camera session entry GC'd: %s", session_code)
 
     async def disconnect_operator(
@@ -398,7 +422,7 @@ class CameraSignalingManager:
         # U-10: 旧 operator socket の finally が、新しく接続済みの operator slot を
         # 消してはいけない。device と同じく、呼出元 socket と現在登録中 socket の
         # identity が一致する場合だけ切断する。ws=None は既存の管理/テスト呼出し互換。
-        async with self._slock(session_code):
+        async with self._session_guard(session_code):
             sess = self._sessions.get(session_code)
             if sess is None:
                 return
@@ -420,7 +444,7 @@ class CameraSignalingManager:
         # 旧ソケットの後始末が新しいソケットを消してしまう。**登録されているのが
         # 自分自身のときだけ**消す。
         ended_stream: Optional[str] = None
-        async with self._slock(session_code):
+        async with self._session_guard(session_code):
             sess = self._sessions.get(session_code)
             if sess is not None:
                 stored = sess["devices"].get(participant_id)
@@ -447,7 +471,7 @@ class CameraSignalingManager:
 
     async def disconnect_viewer(self, session_code: str, viewer_id: str) -> None:
         # rereview ws #9 fix: lock 経由で dict 操作を直列化
-        async with self._slock(session_code):
+        async with self._session_guard(session_code):
             if session_code in self._sessions:
                 self._sessions[session_code]["viewers"].pop(viewer_id, None)
                 logger.info("camera viewer disconnected: %s vid=%s", session_code, viewer_id)
@@ -472,7 +496,7 @@ class CameraSignalingManager:
                 await device_ws.send_text(json.dumps(message))
             except Exception:
                 # 3rd-review LOW: 失敗時の dict mutate を _slock 経由に揃える
-                async with self._slock(session_code):
+                async with self._session_guard(session_code):
                     if session_code in self._sessions:
                         self._sessions[session_code]["devices"].pop(str(participant_id), None)
 
@@ -485,7 +509,7 @@ class CameraSignalingManager:
                 await viewer_ws.send_text(json.dumps(message))
             except Exception:
                 # 3rd-review LOW: 失敗時の dict mutate を _slock 経由に揃える
-                async with self._slock(session_code):
+                async with self._session_guard(session_code):
                     if session_code in self._sessions:
                         self._sessions[session_code]["viewers"].pop(str(viewer_id), None)
 

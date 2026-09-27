@@ -250,3 +250,42 @@ def test_operator_is_told_when_a_reconnect_replaces_a_stream():
     assert ended, "置換された stream の終了が operator に届いていない"
     assert ended[0]["stream_id"] == old
     assert ended[0]["participant_id"] == "10"
+
+def test_session_lock_is_not_replaced_while_another_guard_is_waiting():
+    """Session GC must not create two independent locks for the same code."""
+    m = CameraSignalingManager()
+
+    async def scenario():
+        first_entered = asyncio.Event()
+        release_first = asyncio.Event()
+        observed = {}
+
+        async def first_user():
+            async with m._session_guard("LOCK"):
+                m._ensure_session("LOCK")
+                observed["lock"] = m._session_locks["LOCK"]
+                # Empty session state is GC'd while this exact lock is held.
+                m._gc_session_if_empty("LOCK")
+                first_entered.set()
+                await release_first.wait()
+
+        async def waiting_user():
+            await first_entered.wait()
+            async with m._session_guard("LOCK"):
+                observed["same"] = m._session_locks["LOCK"] is observed["lock"]
+
+        t1 = asyncio.create_task(first_user())
+        await first_entered.wait()
+        t2 = asyncio.create_task(waiting_user())
+        await asyncio.sleep(0)
+        assert m._session_lock_refs["LOCK"] == 2
+        assert m._session_locks["LOCK"] is observed["lock"]
+
+        release_first.set()
+        await asyncio.gather(t1, t2)
+        return observed
+
+    observed = _run(scenario())
+    assert observed["same"] is True
+    assert "LOCK" not in m._session_locks
+    assert "LOCK" not in m._session_lock_refs
