@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 from backend.main import app
 from backend.db.database import get_db
 from backend.db.models import Player, Match, SharedSession, SessionParticipant
+from backend.utils.jwt_utils import create_access_token
 
 
 # ─── ヘルパー ─────────────────────────────────────────────────────────────────
@@ -44,7 +45,10 @@ def _make_match(db) -> Match:
 def lifecycle_client(db_session):
     """セッション作成済みクライアント"""
     app.dependency_overrides[get_db] = lambda: db_session
-    client = TestClient(app, headers={"X-Role": "analyst"})
+    # GlobalAuthMiddleware を実際に通す JWT を使う。legacy X-Role だけでは
+    # 現行認証で endpoint に到達せず、ライフサイクル契約を検証できない。
+    token = create_access_token(user_id=1, role="admin")
+    client = TestClient(app, headers={"Authorization": f"Bearer {token}"})
 
     match = _make_match(db_session)
     db_session.commit()
