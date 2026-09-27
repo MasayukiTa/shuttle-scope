@@ -12,7 +12,11 @@
 import { useEffect, useRef } from 'react'
 
 import { apiPost } from '@/api/client'
-import { listPendingForMatch, removePending } from '@/utils/offlineStrokeQueue'
+import {
+  listPendingForMatch,
+  offlineStrokeIdempotencyKey,
+  removePending,
+} from '@/utils/offlineStrokeQueue'
 import { useAnnotationStore } from '@/store/annotationStore'
 // hook の外では useTranslation の t が束縛されない。CLAUDE.md の規約どおり
 // 修飾済みの i18n.t を使う。
@@ -25,30 +29,35 @@ interface BatchResult {
   data?: { rally_id: number; stroke_count: number }
 }
 
-export function useOfflineSync(matchId: number | null): void {
+export function useOfflineSync(matchId: number | null, ownerUserId: number | null): void {
   const inflightRef = useRef(false)
 
   useEffect(() => {
-    if (matchId == null) return
+    if (matchId == null || ownerUserId == null) return
 
     const sync = async () => {
       if (inflightRef.current) return
       if (typeof navigator !== 'undefined' && navigator.onLine === false) return
       inflightRef.current = true
       try {
-        const items = await listPendingForMatch(matchId)
+        const items = await listPendingForMatch(matchId, ownerUserId)
         for (const it of items) {
           try {
             // apiPost は既定で**毎回新しい** idempotency key を作る。再送のたびに
             // キーが変わると、サーバが「処理済みだが応答を失った」最初の送信と
             // 同じものだと判定できず、ラリーが二重に入る。キューの同一性
             // (match/set/rally) から安定キーを作って上書きする。
-            const stableKey = `offline-${it.matchId}-${it.setId}-${it.rallyNum}`
+            const stableKey = offlineStrokeIdempotencyKey(
+              ownerUserId,
+              it.matchId,
+              it.setId,
+              it.rallyNum,
+            )
             const res = await apiPost<BatchResult>('/strokes/batch', it.payload, {
               'X-Idempotency-Key': stableKey,
             })
             if (res?.success) {
-              await removePending(it.matchId, it.setId, it.rallyNum)
+              await removePending(ownerUserId, it.matchId, it.setId, it.rallyNum)
             }
           } catch (e) {
             // 旧実装は無条件 break だった。恒久的な 4xx (壊れたペイロード等) が
@@ -105,5 +114,5 @@ export function useOfflineSync(matchId: number | null): void {
       }
       clearInterval(interval)
     }
-  }, [matchId])
+  }, [matchId, ownerUserId])
 }

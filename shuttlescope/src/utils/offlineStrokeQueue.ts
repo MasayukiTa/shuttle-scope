@@ -1,16 +1,14 @@
 /**
- * オフライン耐性: 未送信ラリー (strokes batch) を IndexedDB に stash する。
+ * Offline annotation durability queue for /strokes/batch.
  *
- * Phase A 実装 (hybrid_ui_implementation_plan_v2.md §6.6 参照)。
+ * Security invariant:
+ *   A queued payload belongs to the authenticated user who created it.
+ *   It must never be replayed under a different user's credentials on a
+ *   shared browser/device.
  *
- * 設計:
- *   - DB:    'shuttlescope_offline'
- *   - store: 'pending_rallies'
- *   - key:   `${matchId}/${setId}/${rallyNum}` (string)
- *   - value: { matchId, setId, rallyNum, payload, queued_at }
- *
- * 体育館の WiFi 不安定で `/strokes/batch` 送信失敗しても 1 ラリー全消失を防ぐ。
- * 起動時 + ネットワーク復帰時に useOfflineSync が再送する。
+ * Legacy records without ownerUserId are intentionally not auto-claimed.
+ * They remain in IndexedDB for manual recovery, but automatic replay fails
+ * closed instead of guessing ownership.
  */
 
 const DB_NAME = 'shuttlescope_offline'
@@ -18,12 +16,49 @@ const STORE = 'pending_rallies'
 const DB_VERSION = 1
 
 export interface PendingRally {
+  ownerUserId: number
   matchId: number
   setId: number
   rallyNum: number
-  /** /strokes/batch に送る body そのまま */
+  /** /strokes/batch request body. */
   payload: unknown
-  queued_at: string  // ISO timestamp
+  queued_at: string
+}
+
+interface StoredPendingRally extends Partial<PendingRally> {
+  key?: string
+}
+
+export function offlineStrokeQueueKey(
+  ownerUserId: number,
+  matchId: number,
+  setId: number,
+  rallyNum: number,
+): string {
+  return `${ownerUserId}/${matchId}/${setId}/${rallyNum}`
+}
+
+export function offlineStrokeIdempotencyKey(
+  ownerUserId: number,
+  matchId: number,
+  setId: number,
+  rallyNum: number,
+): string {
+  return `offline-${ownerUserId}-${matchId}-${setId}-${rallyNum}`
+}
+
+export function pendingRallyBelongsTo(
+  item: StoredPendingRally,
+  ownerUserId: number,
+  matchId: number,
+): item is PendingRally {
+  return (
+    Number.isInteger(item.ownerUserId) &&
+    Number(item.ownerUserId) === ownerUserId &&
+    Number(item.matchId) === matchId &&
+    Number.isFinite(Number(item.setId)) &&
+    Number.isFinite(Number(item.rallyNum))
+  )
 }
 
 function openDb(): Promise<IDBDatabase> {
@@ -44,29 +79,28 @@ function openDb(): Promise<IDBDatabase> {
   })
 }
 
-function makeKey(matchId: number, setId: number, rallyNum: number): string {
-  return `${matchId}/${setId}/${rallyNum}`
-}
-
-/** ストロークバッチを stash する。送信成功後は removePending を呼ぶ。 */
+/** Persist before network send. */
 export async function stashPending(p: PendingRally): Promise<void> {
   try {
     const db = await openDb()
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE, 'readwrite')
-      tx.objectStore(STORE).put({ key: makeKey(p.matchId, p.setId, p.rallyNum), ...p })
+      tx.objectStore(STORE).put({
+        key: offlineStrokeQueueKey(p.ownerUserId, p.matchId, p.setId, p.rallyNum),
+        ...p,
+      })
       tx.oncomplete = () => resolve()
       tx.onerror = () => reject(tx.error ?? new Error('stash error'))
     })
     db.close()
   } catch (err) {
-    // IndexedDB 不可環境では stash 失敗を握りつぶす (オフライン耐性は best-effort)
     if (typeof console !== 'undefined') console.warn('[offline] stash failed:', err)
   }
 }
 
-/** 送信成功時に該当 stash を削除する。 */
+/** Remove only the current user's queued copy after a confirmed send. */
 export async function removePending(
+  ownerUserId: number,
   matchId: number,
   setId: number,
   rallyNum: number,
@@ -75,7 +109,9 @@ export async function removePending(
     const db = await openDb()
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE, 'readwrite')
-      tx.objectStore(STORE).delete(makeKey(matchId, setId, rallyNum))
+      tx.objectStore(STORE).delete(
+        offlineStrokeQueueKey(ownerUserId, matchId, setId, rallyNum),
+      )
       tx.oncomplete = () => resolve()
       tx.onerror = () => reject(tx.error ?? new Error('remove error'))
     })
@@ -85,22 +121,27 @@ export async function removePending(
   }
 }
 
-/** 試合 ID で未送信 stash を全件取得 (古い順)。 */
-export async function listPendingForMatch(matchId: number): Promise<PendingRally[]> {
+/**
+ * Return only queued rows owned by the current authenticated user.
+ *
+ * Ownerless v1 rows are deliberately excluded: assigning them to whoever
+ * happens to be logged in now would recreate the cross-account replay bug.
+ */
+export async function listPendingForMatch(
+  matchId: number,
+  ownerUserId: number,
+): Promise<PendingRally[]> {
   try {
     const db = await openDb()
-    const items = await new Promise<PendingRally[]>((resolve, reject) => {
+    const items = await new Promise<StoredPendingRally[]>((resolve, reject) => {
       const tx = db.transaction(STORE, 'readonly')
       const req = tx.objectStore(STORE).getAll()
-      req.onsuccess = () => resolve((req.result ?? []) as PendingRally[])
+      req.onsuccess = () => resolve((req.result ?? []) as StoredPendingRally[])
       req.onerror = () => reject(req.error ?? new Error('list error'))
     })
     db.close()
     return items
-      // matchId は number だが、過去に useParams の string がそのまま入った
-      // レコードが端末に残っている。厳密比較だとそれらを取りこぼし、
-      // オフライン中に付けたラリーが永久に再送されない。数値化して突合する。
-      .filter((it) => Number(it.matchId) === matchId)
+      .filter((it): it is PendingRally => pendingRallyBelongsTo(it, ownerUserId, matchId))
       .sort((a, b) => (a.queued_at < b.queued_at ? -1 : 1))
   } catch (err) {
     if (typeof console !== 'undefined') console.warn('[offline] list failed:', err)
@@ -108,18 +149,18 @@ export async function listPendingForMatch(matchId: number): Promise<PendingRally
   }
 }
 
-/** 全試合の stash 件数を返す (UI バッジ用)。 */
-export async function countAllPending(): Promise<number> {
+/** Count only the current user's queued rows. */
+export async function countPendingForUser(ownerUserId: number): Promise<number> {
   try {
     const db = await openDb()
-    const n = await new Promise<number>((resolve, reject) => {
+    const items = await new Promise<StoredPendingRally[]>((resolve, reject) => {
       const tx = db.transaction(STORE, 'readonly')
-      const req = tx.objectStore(STORE).count()
-      req.onsuccess = () => resolve(req.result)
-      req.onerror = () => reject(req.error ?? new Error('count error'))
+      const req = tx.objectStore(STORE).getAll()
+      req.onsuccess = () => resolve((req.result ?? []) as StoredPendingRally[])
+      req.onerror = () => reject(req.error ?? new Error('list error'))
     })
     db.close()
-    return n
+    return items.filter((it) => Number(it.ownerUserId) === ownerUserId).length
   } catch {
     return 0
   }

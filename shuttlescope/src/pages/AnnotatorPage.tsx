@@ -29,9 +29,14 @@ import { VideoOverlayToggles } from '@/components/annotator/VideoOverlayToggles'
 import { CommandPalette, openCommandPalette, type PaletteCommand } from '@/components/annotator/CommandPalette'
 import { NoticeBanner, ConfirmDialog, type NoticeState, type ConfirmState } from '@/components/common/Notice'
 import { BottomSheet } from '@/components/annotator/BottomSheet'
-import { stashPending, removePending } from '@/utils/offlineStrokeQueue'
+import {
+  offlineStrokeIdempotencyKey,
+  removePending,
+  stashPending,
+} from '@/utils/offlineStrokeQueue'
 import { buildBatchPayload, buildSkippedRallyPayload } from '@/utils/annotationPayload'
 import { useOfflineSync } from '@/hooks/useOfflineSync'
+import { useAuth } from '@/hooks/useAuth'
 import { useHapticFeedback } from '@/hooks/useHapticFeedback'
 import { StrokeHistory } from '@/components/annotation/StrokeHistory'
 import { SetIntervalSummary } from '@/components/analysis/SetIntervalSummary'
@@ -198,11 +203,12 @@ function isWinnerBlocked(
 
 export function AnnotatorPage() {
   const { matchId } = useParams<{ matchId: string }>()
+  const { userId } = useAuth()
   // 初回 mount でデスクトップ アノテーターの操作チュートリアルを自動起動
   // (未完了ユーザのみ、再生済はスキップ)
   useAutoTutorial('desktop_annotator')
   // Phase A: オフライン未送信ラリーの自動再送
-  useOfflineSync(matchId ? Number(matchId) : null)
+  useOfflineSync(matchId ? Number(matchId) : null, userId)
   // Phase C speed: 触覚フィードバック (モバイル/タブレットのみ実効)
   const haptic = useHapticFeedback()
   const navigate = useNavigate()
@@ -592,15 +598,27 @@ export function AnnotatorPage() {
         rallyStartTimestamp: rallyStart,
         isBasicMode,
       })
-      // Phase A: オフライン耐性 — 送信前に IndexedDB へ stash、成功時に削除
-      void stashPending({
-        matchId: Number(matchId),
-        setId,
-        rallyNum,
-        payload: batchPayload,
-        queued_at: new Date().toISOString(),
-      })
-      apiPost<{ success: boolean; data: { rally_id: number; stroke_count: number } }>('/strokes/batch', batchPayload).then((res) => {
+      // Phase A: オフライン耐性 — 認証済み user の所有権を queue に焼き込む。
+      // owner が取れない異常状態では payload を別ユーザへ誤帰属させないため stash しない。
+      const queueOwnerUserId = userId
+      const stableIdempotencyKey = queueOwnerUserId != null
+        ? offlineStrokeIdempotencyKey(queueOwnerUserId, Number(matchId), setId, rallyNum)
+        : undefined
+      if (queueOwnerUserId != null) {
+        void stashPending({
+          ownerUserId: queueOwnerUserId,
+          matchId: Number(matchId),
+          setId,
+          rallyNum,
+          payload: batchPayload,
+          queued_at: new Date().toISOString(),
+        })
+      }
+      apiPost<{ success: boolean; data: { rally_id: number; stroke_count: number } }>(
+        '/strokes/batch',
+        batchPayload,
+        stableIdempotencyKey ? { 'X-Idempotency-Key': stableIdempotencyKey } : undefined,
+      ).then((res) => {
         useAnnotationStore.getState().decrementPending()
         queryClient.invalidateQueries({ queryKey: ['annotation-state', matchId] })
         queryClient.invalidateQueries({ queryKey: ['sets', matchId] })
@@ -611,8 +629,10 @@ export function AnnotatorPage() {
           setLastSavedRallyId(res.data.rally_id)
           setReviewLaterAdded(false)
         }
-        // Phase A: 送信成功 → stash 削除
-        void removePending(Number(matchId), setId, rallyNum)
+        // Phase A: 送信成功 → この user の stash だけ削除
+        if (queueOwnerUserId != null) {
+          void removePending(queueOwnerUserId, Number(matchId), setId, rallyNum)
+        }
       }).catch((err: unknown) => {
         useAnnotationStore.getState().decrementPending()
         useAnnotationStore.getState().addSaveError({
@@ -627,7 +647,7 @@ export function AnnotatorPage() {
     // 切替前の値で保存される stale closure バグがあった (annotation_mode 誤分類)。
     // autoSaveKey も同様に matchId 由来だが念のため明示。midGameShown は
     // ref 経由で読むため deps 不要。
-    [matchId, queryClient, isBasicMode, autoSaveKey, t]
+    [matchId, queryClient, isBasicMode, autoSaveKey, t, userId]
   )
 
   // --- セット終了 → 次のセット作成 (K-003: サマリーモーダル表示) ---
