@@ -40,7 +40,7 @@ jobs:
           python-version: '3.11'
           cache: pip
           cache-dependency-path: |
-            shuttlescope/backend/requirements.txt
+            shuttlescope/backend/tracknet/requirements-smoke.txt
 
       - name: Install TrackNet dependencies
         # Exact version pins to satisfy supply-chain best practice (Scorecard
@@ -54,7 +54,7 @@ jobs:
         # onnxruntime is required by the Smoke-load step to load the exported
         # tracknet.onnx. Not in backend/requirements.txt because production
         # may use OpenVINO instead.
-        run: python -m pip install -r backend/requirements.txt "tensorflow==2.15.1" "tf2onnx==1.16.1" "onnxruntime==1.17.3"
+        run: python -m pip install -r backend/tracknet/requirements-smoke.txt
 
       - name: Download TensorFlow weights
         run: python -m backend.tracknet.setup download
