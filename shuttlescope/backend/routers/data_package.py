@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from backend.db.database import get_db
 from backend.db.models import Match, GameSet, Rally, Stroke, Player
 from backend.utils.auth import get_auth, check_export_match_scope, require_analyst
+from backend.utils.identity_uuid import canonical_identity_uuid
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -470,6 +471,65 @@ def export_package(
 
 # ─── インポート ────────────────────────────────────────────────────────────────
 
+def _require_package_uuid(value: Any, label: str) -> str:
+    canonical = canonical_identity_uuid(value)
+    if canonical is None:
+        raise HTTPException(status_code=422, detail=f"{label} の UUID が不正です")
+    return canonical
+
+
+def _find_reusable_import_player(db: Session, p_data: dict, ctx) -> Optional[Player]:
+    """Reuse only a player already visible through the importer ownership scope."""
+    player_uuid = _require_package_uuid(p_data.get("uuid"), "player")
+    q = db.query(Player)
+    if not getattr(ctx, "is_admin", False):
+        if ctx.team_id is None:
+            return None
+        q = q.filter(
+            (Player.team_id == ctx.team_id)
+            | (Player.scouting_owner_team_id == ctx.team_id)
+        )
+    existing = q.filter(Player.uuid == player_uuid).first()
+    if existing is not None:
+        return existing
+    name = p_data.get("name")
+    if isinstance(name, str) and name:
+        return q.filter(Player.name == name).first()
+    return None
+
+
+def _new_imported_player(p_data: dict, actor_team_id: Optional[int]) -> Player:
+    """Create a scouting-owned external player from a portable package."""
+    player_uuid = _require_package_uuid(p_data.get("uuid"), "player")
+    return Player(
+        uuid=player_uuid,
+        name=p_data["name"],
+        name_en=p_data.get("name_en"),
+        team_id=None,
+        scouting_owner_team_id=actor_team_id,
+        nationality=p_data.get("nationality"),
+        dominant_hand=p_data.get("dominant_hand"),
+        birth_year=p_data.get("birth_year"),
+    )
+
+
+def _required_player_mapping(
+    player_id_map: dict[int, int],
+    source_id: Any,
+    field: str,
+    *,
+    optional: bool = False,
+) -> Optional[int]:
+    if source_id is None and optional:
+        return None
+    try:
+        return player_id_map[source_id]
+    except (KeyError, TypeError):
+        raise HTTPException(
+            status_code=422,
+            detail=f"{field} の player mapping を解決できません",
+        )
+
 @router.post("/import/package")
 async def import_package_endpoint(request: Request, db: Session = Depends(get_db)):
     """JSON パッケージをインポートする（analyst / admin 限定）。
@@ -480,6 +540,13 @@ async def import_package_endpoint(request: Request, db: Session = Depends(get_db
     リクエストボディ: export_package が生成した JSON
     """
     require_analyst(request)
+    ctx = get_auth(request)
+    if ctx.team_id is None and not getattr(ctx, "is_admin", False):
+        return {
+            "success": False,
+            "error": "import 実行者がチーム未所属です。team 紐付けが必要です。",
+        }
+    actor_team_id = ctx.team_id
     force = request.query_params.get("force", "false").lower() == "true"
 
     try:
@@ -511,27 +578,17 @@ async def import_package_endpoint(request: Request, db: Session = Depends(get_db
     if not match_data:
         raise HTTPException(status_code=422, detail="match データが含まれていません")
 
-    # ── Player 解決: name マッチング → 既存再利用 or 新規作成 ──────────────
+    # ── Player 解決: importer scope 内だけ再利用 / なければ scouting player 作成 ─
     player_id_map: dict[int, int] = {}  # pkg 内 player.id → ローカル DB id
     for p_data in pkg.get("players", []):
-        existing = db.query(Player).filter(Player.uuid == p_data["uuid"]).first()
-        if not existing:
-            existing = db.query(Player).filter(Player.name == p_data["name"]).first()
+        existing = _find_reusable_import_player(db, p_data, ctx)
         if existing:
             player_id_map[p_data["id"]] = existing.id
         else:
-            new_player = Player(
-                name=p_data["name"],
-                name_en=p_data.get("name_en"),
-                team=p_data.get("team"),
-                nationality=p_data.get("nationality"),
-                dominant_hand=p_data.get("dominant_hand"),
-                birth_year=p_data.get("birth_year"),
-            )
+            new_player = _new_imported_player(p_data, actor_team_id)
             db.add(new_player)
             db.flush()
             player_id_map[p_data["id"]] = new_player.id
-
     # ── Match 解決 ────────────────────────────────────────────────────────────
     # routers #5 fix: 旧コードは match_data["owner_team_id"] を _apply_match_data 経由で
     # そのまま反映し、resolve_owner_team_for_match_create を経由しなかった。analyst が
@@ -541,15 +598,8 @@ async def import_package_endpoint(request: Request, db: Session = Depends(get_db
     # 対策:
     #  (a) import 時に owner_team_id = ctx.team_id を強制
     #  (b) force=true 上書きは既存 match の owner_team_id == ctx.team_id のときのみ許可
-    from backend.utils.auth import get_auth
-    ctx = get_auth(request)
-    if ctx.team_id is None and not getattr(ctx, "is_admin", False):
-        return {
-            "success": False,
-            "error": "import 実行者がチーム未所属です。team 紐付けが必要です。",
-        }
-    actor_team_id = ctx.team_id
-
+    match_data = dict(match_data)
+    match_data["uuid"] = _require_package_uuid(match_data.get("uuid"), "match")
     existing_match = db.query(Match).filter(Match.uuid == match_data["uuid"]).first()
     if existing_match and not force:
         return {
@@ -699,10 +749,18 @@ def _apply_match_data(match_obj: Match, data: dict, player_id_map: dict) -> None
         match_obj.date = date.fromisoformat(data["date"])
     match_obj.venue = data.get("venue")
     match_obj.format = data["format"]
-    match_obj.player_a_id = player_id_map.get(data["player_a_id"], data["player_a_id"])
-    match_obj.player_b_id = player_id_map.get(data["player_b_id"], data["player_b_id"])
-    match_obj.partner_a_id = player_id_map.get(data["partner_a_id"]) if data.get("partner_a_id") else None
-    match_obj.partner_b_id = player_id_map.get(data["partner_b_id"]) if data.get("partner_b_id") else None
+    match_obj.player_a_id = _required_player_mapping(
+        player_id_map, data.get("player_a_id"), "player_a_id"
+    )
+    match_obj.player_b_id = _required_player_mapping(
+        player_id_map, data.get("player_b_id"), "player_b_id"
+    )
+    match_obj.partner_a_id = _required_player_mapping(
+        player_id_map, data.get("partner_a_id"), "partner_a_id", optional=True
+    )
+    match_obj.partner_b_id = _required_player_mapping(
+        player_id_map, data.get("partner_b_id"), "partner_b_id", optional=True
+    )
     match_obj.result = data["result"]
     match_obj.final_score = data.get("final_score")
     match_obj.annotation_status = data.get("annotation_status", "complete")

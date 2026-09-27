@@ -18,6 +18,7 @@ from sqlalchemy import text
 
 from backend.services.merge_resolver import decide_merge, MergeDecision
 from backend.utils.sync_meta import business_payload, compute_content_hash
+from backend.utils.identity_uuid import canonical_identity_uuid
 from backend.db.models import (
     Match, GameSet, Rally, Stroke, Player,
     PreMatchObservation, HumanForecast, Comment, EventBookmark,
@@ -470,10 +471,16 @@ def import_package(db: Session, raw: bytes, dry_run: bool = False,
                 records: list[dict] = json.loads(read_member_capped(zf, fname))
 
                 for rec in records:
-                    uuid = rec.get("uuid")
-                    if not uuid:
-                        summary.errors.append(f"{table_key}: uuid なしレコードをスキップ")
+                    raw_uuid = rec.get("uuid")
+                    uuid = canonical_identity_uuid(raw_uuid)
+                    if uuid is None:
+                        summary.errors.append(
+                            f"{table_key}: 不正な uuid レコードをスキップ"
+                        )
                         continue
+                    if raw_uuid != uuid:
+                        rec = dict(rec)
+                        rec["uuid"] = uuid
 
                     local_obj = _find_by_uuid(db, model_cls, uuid)
                     local_dict = _obj_to_dict(local_obj) if local_obj else None
