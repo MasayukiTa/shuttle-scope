@@ -221,7 +221,7 @@ class TestViewerPermissionSet:
 
 class TestReconnectByDeviceUid:
     def test_reconnect_same_device_uid(self, lifecycle_client):
-        """同じ device_uid で再接続すると新規作成ではなく既存レコードを更新する"""
+        """同じ device_uid + 前回 token の proof で既存レコードを再利用する。"""
         client, code, password = lifecycle_client
 
         device_uid = "test-device-uid-abc123"
@@ -235,21 +235,26 @@ class TestReconnectByDeviceUid:
             "device_uid": device_uid,
         })
         assert resp1.status_code == 200
-        pid1 = resp1.json()["data"]["participant_id"]
+        first = resp1.json()["data"]
+        pid1 = first["participant_id"]
 
-        # 2 回目の参加（同じ device_uid）
+        # 2 回目の参加（同じ device_uid + 前回 join token）
         resp2 = client.post(f"/api/sessions/{code}/join", json={
             "role": "viewer",
             "device_name": "テストiPhone（再接続）",
             "device_type": "iphone",
             "session_password": password,
             "device_uid": device_uid,
+            "participant_token": first["participant_token"],
         })
         assert resp2.status_code == 200
-        pid2 = resp2.json()["data"]["participant_id"]
+        second = resp2.json()["data"]
+        pid2 = second["participant_id"]
 
-        # 同じ participant_id が返される（新規作成されていない）
+        # proof-of-possession があれば同じ participant_id を再利用し、token は rotate する。
         assert pid1 == pid2
+        assert second["reconnected"] is True
+        assert second["participant_token"] != first["participant_token"]
 
     def test_different_device_uid_creates_new(self, lifecycle_client):
         """異なる device_uid では別の participant が作成される"""
