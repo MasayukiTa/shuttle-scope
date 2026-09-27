@@ -48,6 +48,23 @@ interface EgressPeer {
 const DEFAULT_ICE: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
 const RECONNECT_DELAY_MS = 5_000
 
+/** remote description 前に保持する ICE candidate の上限。 */
+export const MAX_PENDING_ICE_CANDIDATES = 128
+
+/**
+ * U-10: remote description 未設定の peer へ無制限に ICE を積まない。
+ * 候補は時間順なので、上限超過時は最古を捨てて最新を保持する。
+ */
+export function enqueuePendingIce(
+  queue: RTCIceCandidateInit[],
+  candidate: RTCIceCandidateInit,
+): void {
+  if (queue.length >= MAX_PENDING_ICE_CANDIDATES) {
+    queue.splice(0, queue.length - MAX_PENDING_ICE_CANDIDATES + 1)
+  }
+  queue.push(candidate)
+}
+
 export interface CameraHubState {
   streams: CameraStream[]
   wsConnected: boolean
@@ -109,8 +126,9 @@ export function useCameraHub(sessionCode: string): CameraHubState {
     holder: IngressPeer | EgressPeer, init: RTCIceCandidateInit,
   ) => {
     if (!holder.remoteReady) {
-      // remote description 前に渡すと弾かれる。適用後にまとめて入れる
-      holder.pendingIce.push(init)
+      // remote description 前に渡すと弾かれる。適用後にまとめて入れる。
+      // U-10: 悪意ある/壊れた signaling peer が無制限に候補を積めないよう cap する。
+      enqueuePendingIce(holder.pendingIce, init)
       return
     }
     await holder.pc.addIceCandidate(init).catch(() => { /* 個別失敗は許容 */ })

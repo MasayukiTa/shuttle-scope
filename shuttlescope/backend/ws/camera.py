@@ -391,13 +391,27 @@ class CameraSignalingManager:
             self._session_locks.pop(session_code, None)
             logger.info("camera session entry GC'd: %s", session_code)
 
-    async def disconnect_operator(self, session_code: str) -> None:
-        # rereview ws #9 fix: 同期版だった disconnect_operator を async + lock 化
+    async def disconnect_operator(
+        self, session_code: str, ws: Optional[WebSocket] = None
+    ) -> None:
+        # rereview ws #9 fix: 同期版だった disconnect_operator を async + lock 化。
+        # U-10: 旧 operator socket の finally が、新しく接続済みの operator slot を
+        # 消してはいけない。device と同じく、呼出元 socket と現在登録中 socket の
+        # identity が一致する場合だけ切断する。ws=None は既存の管理/テスト呼出し互換。
         async with self._slock(session_code):
-            if session_code in self._sessions:
-                self._sessions[session_code]["operator"] = None
-                logger.info("camera operator disconnected: %s", session_code)
-                self._gc_session_if_empty(session_code)
+            sess = self._sessions.get(session_code)
+            if sess is None:
+                return
+            stored = sess.get("operator")
+            if ws is not None and stored is not None and stored is not ws:
+                logger.info(
+                    "camera operator disconnect ignored (already replaced): %s",
+                    session_code,
+                )
+                return
+            sess["operator"] = None
+            logger.info("camera operator disconnected: %s", session_code)
+            self._gc_session_if_empty(session_code)
 
     async def disconnect_device(self, session_code: str, participant_id: str,
                                 ws: Optional[WebSocket] = None) -> None:
@@ -891,7 +905,7 @@ async def ws_camera_handler(
         pass
     finally:
         if is_operator:
-            await camera_manager.disconnect_operator(session_code)
+            await camera_manager.disconnect_operator(session_code, websocket)
         elif is_viewer and viewer_id:
             await camera_manager.disconnect_viewer(session_code, viewer_id)
         elif participant_id:

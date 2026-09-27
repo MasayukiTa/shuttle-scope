@@ -69,6 +69,23 @@ async def test_second_concurrent_operator_rejected_without_accept(manager):
 # ─── #1b/#4: session-owner consistency ───────────────────────────────────────
 
 @pytest.mark.asyncio
+async def test_stale_operator_disconnect_does_not_clear_replacement(manager):
+    """旧 socket の finally は、既に差し替わった新 operator を消さない。"""
+    old_ws = _FakeWebSocket()
+    new_ws = _FakeWebSocket()
+
+    await manager.connect_operator("S_STALE", old_ws, user_id=77)
+
+    # 実ネットワークでは old socket の終了処理と再接続が競合し得る。
+    # 置換済み状態を直接作り、old_ws の finally を再現する。
+    manager._sessions["S_STALE"]["operator"] = new_ws
+
+    await manager.disconnect_operator("S_STALE", old_ws)
+
+    assert manager._sessions["S_STALE"]["operator"] is new_ws
+
+
+@pytest.mark.asyncio
 async def test_owner_persists_after_disconnect(manager):
     """operator が一度切断されても session_code の owner は記録され続ける。
 
