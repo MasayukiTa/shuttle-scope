@@ -330,7 +330,7 @@ def send_chat_message(
         author="user",
         content=cleaned,
         tokens=_APPROX_TOKENS_PER_MESSAGE // 2,
-        validation_reason=("injection_attempt" if injection else None),
+        validation_reason=(",".join(flags) if flags else None),
         date_from=eff_date_from,
         date_to=eff_date_to,
     )
