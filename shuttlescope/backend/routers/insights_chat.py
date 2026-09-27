@@ -31,7 +31,9 @@ from backend.utils.auth import AuthCtx, can_access_player, get_auth
 from backend.analysis.insights import get_generator
 from backend.analysis.insights.types import InsightContext
 from backend.analysis.insights.safety import (
-    check_and_record_budget,
+    INSIGHT_BUDGET_RESERVATION_TOKENS,
+    reconcile_persistent_budget,
+    reserve_persistent_budget,
     sanitize_user_input,
 )
 from backend.analysis.chat.slot_extractors import extract_all
@@ -45,7 +47,8 @@ _ALLOWED_ROLES = {"coach", "analyst", "admin"}
 # in-memory rate-limit: {user_id: last_message_ts_seconds}
 _RATE_LIMIT: dict[int, float] = {}
 _RATE_LIMIT_SECONDS = 2.0
-# 1 メッセージあたりの概算トークン数 (input+output 合算の粗い見積)
+# ChatMessage.tokens is only a UI/storage estimate. External LLM cost control
+# uses the persistent reservation/reconciliation ledger instead.
 _APPROX_TOKENS_PER_MESSAGE = 200
 
 # Injection 検知時に返す安全な定型応答
@@ -262,17 +265,9 @@ def send_chat_message(
     cleaned, flags = sanitize_user_input(body.content)
     injection = "injection_attempt" in flags
 
-    # ── budget ────────────────────────────────────────────────────
-    allowed, _remaining = check_and_record_budget(
-        int(ctx.user_id), _APPROX_TOKENS_PER_MESSAGE
-    )
-    if not allowed:
-        raise HTTPException(
-            status_code=429,
-            detail={"error": "budget_exceeded"},
-        )
-
-    # rate-limit 記録は budget check 通過後に行う
+    # Injection short-circuit does not call an external model, so do not charge
+    # the external-LLM token budget here. Budget is reserved immediately before
+    # generation and reconciled to provider-reported actual usage afterwards.
     _RATE_LIMIT[int(ctx.user_id)] = now_ts
 
     # ── next turn ─────────────────────────────────────────────────
@@ -387,15 +382,58 @@ def send_chat_message(
             # forecast / data) ため raw text を渡す。
             "user_text": cleaned,  # type: ignore[typeddict-unknown-key]
         }
+        allowed, _remaining, reservation_id = reserve_persistent_budget(
+            int(ctx.user_id), INSIGHT_BUDGET_RESERVATION_TOKENS
+        )
+        if not allowed:
+            raise HTTPException(
+                status_code=429,
+                detail={"error": "budget_exceeded"},
+            )
+
+        generation_failed = False
         try:
             result = get_generator().generate(insight_ctx)
         except Exception as exc:  # noqa: BLE001
+            generation_failed = True
             # ハーネス未経由でも常に template を最終フォールバックに
             from backend.analysis.insights.template import TemplateGenerator
             result = TemplateGenerator().generate(insight_ctx)
             result_meta = {"fallback_reason": f"generate_exception:{type(exc).__name__}"}
         else:
             result_meta = dict(result.get("meta") or {}) if isinstance(result, dict) else {}
+
+        token_meta = result_meta.get("tokens") if isinstance(result_meta, dict) else None
+        reported_total = 0
+        if isinstance(token_meta, dict):
+            try:
+                reported_total = int(token_meta.get("total", 0) or 0)
+            except (TypeError, ValueError):
+                reported_total = 0
+
+        generator_name = str(result.get("generator") or "")
+        if reported_total > 0:
+            actual_tokens = reported_total
+        elif generation_failed:
+            # The provider may already have accepted/billed the request before
+            # the client raised. With no usage metadata, keep the conservative
+            # reservation rather than refunding it merely because we fell back
+            # to a local template.
+            actual_tokens = INSIGHT_BUDGET_RESERVATION_TOKENS
+        elif "template" in generator_name or "short_circuit" in generator_name:
+            # No external provider call happened.
+            actual_tokens = 0
+        else:
+            # Provider omitted usage: keep the conservative reservation instead
+            # of silently charging zero.
+            actual_tokens = INSIGHT_BUDGET_RESERVATION_TOKENS
+
+        reconcile_persistent_budget(
+            int(ctx.user_id),
+            reservation_id,
+            INSIGHT_BUDGET_RESERVATION_TOKENS,
+            actual_tokens,
+        )
 
         items = result.get("items") or []
         if items:

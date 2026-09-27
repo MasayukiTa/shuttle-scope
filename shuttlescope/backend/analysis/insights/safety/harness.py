@@ -33,9 +33,17 @@ class HarnessedGenerator:
         self,
         ctx: InsightContext,
         reason: str,
+        source_meta: dict | None = None,
     ) -> InsightResult:
         result = self.fallback.generate(ctx)
         meta = dict(result.get("meta") or {})  # type: ignore[arg-type]
+        # Preserve provider usage even when output validation rejects the prose.
+        # The external call was still billable, so dropping token metadata here
+        # would make the persistent budget undercount failed/filtered calls.
+        if source_meta:
+            for key in ("tokens", "latency_ms"):
+                if key in source_meta:
+                    meta[key] = source_meta[key]
         meta["fallback_reason"] = reason
         meta["fallback_at"] = _now_iso()
         result["meta"] = meta  # type: ignore[typeddict-item]
@@ -76,7 +84,10 @@ class HarnessedGenerator:
                         )
                     except Exception:  # noqa: BLE001
                         pass
-                return self._fallback_with_meta(ctx, v["reason"] or "unknown")
+                source_meta = dict(result.get("meta") or {})  # type: ignore[arg-type]
+                return self._fallback_with_meta(
+                    ctx, v["reason"] or "unknown", source_meta=source_meta
+                )
 
         # 3) すべて OK
         if self.audit:

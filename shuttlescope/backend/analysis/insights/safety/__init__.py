@@ -10,7 +10,10 @@
 from backend.analysis.insights.safety.audit import log_llm_call
 from backend.analysis.insights.safety.budget import (
     INSIGHT_BUDGET_DAILY_TOKENS,
+    INSIGHT_BUDGET_RESERVATION_TOKENS,
     check_and_record_budget,
+    reconcile_persistent_budget,
+    reserve_persistent_budget,
     reset_for_test,
 )
 from backend.analysis.insights.safety.harness import HarnessedGenerator
@@ -34,8 +37,11 @@ __all__ = [
     "log_llm_call",
     "HarnessedGenerator",
     "check_and_record_budget",
+    "reserve_persistent_budget",
+    "reconcile_persistent_budget",
     "reset_for_test",
     "INSIGHT_BUDGET_DAILY_TOKENS",
+    "INSIGHT_BUDGET_RESERVATION_TOKENS",
     "SYSTEM_PROMPT_V1_JA",
     "SYSTEM_PROMPT_V1_EN",
     "BANNED_TERMS_JA",

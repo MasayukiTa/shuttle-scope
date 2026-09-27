@@ -1,10 +1,13 @@
 """LLM 安全ハーネスの単体テスト。"""
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from backend.analysis.insights.safety import (
     HarnessedGenerator,
@@ -190,3 +193,125 @@ def test_factory_external_wraps_with_harness(monkeypatch):
     gen = get_generator("nvidia")
     # env あり → HarnessedGenerator、env なし → TemplateGenerator どちらも accept
     assert isinstance(gen, (HarnessedGenerator, TemplateGenerator))
+
+
+
+@pytest.fixture
+def isolated_budget_db(monkeypatch):
+    """Use only the SecurityEvent table in an isolated shared in-memory SQLite DB."""
+    from backend.db.models import SecurityEvent
+
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    SecurityEvent.__table__.create(engine)
+    local_session = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+    monkeypatch.setattr(budget_mod.db_module, "SessionLocal", local_session)
+    try:
+        yield local_session
+    finally:
+        engine.dispose()
+
+
+def test_persistent_budget_reservation_reconciles_actual_usage(
+    isolated_budget_db, monkeypatch
+):
+    """Persistent ledger survives sessions and charges provider-reported usage."""
+    monkeypatch.setattr(budget_mod, "INSIGHT_BUDGET_DAILY_TOKENS", 1000)
+
+    allowed, remaining, rid = budget_mod.reserve_persistent_budget(501, 400)
+    assert allowed is True
+    assert remaining == 600
+    assert rid
+
+    budget_mod.reconcile_persistent_budget(501, rid, 400, 100)
+    # A repeated reconcile must not double-credit the reservation.
+    budget_mod.reconcile_persistent_budget(501, rid, 400, 100)
+
+    allowed2, remaining2, rid2 = budget_mod.reserve_persistent_budget(501, 900)
+    assert allowed2 is True
+    assert remaining2 == 0
+    assert rid2
+
+    allowed3, remaining3, rid3 = budget_mod.reserve_persistent_budget(501, 1)
+    assert allowed3 is False
+    assert remaining3 == 0
+    assert rid3 is None
+
+
+def test_previous_day_reconcile_does_not_credit_today(
+    isolated_budget_db, monkeypatch
+):
+    """A reservation crossing UTC midnight must not alter the next day's allowance."""
+    from backend.db.models import SecurityEvent
+
+    monkeypatch.setattr(budget_mod, "INSIGHT_BUDGET_DAILY_TOKENS", 1000)
+
+    allowed, _remaining, old_rid = budget_mod.reserve_persistent_budget(502, 400)
+    assert allowed and old_rid
+
+    db = isolated_budget_db()
+    try:
+        reserve_row = (
+            db.query(SecurityEvent)
+            .filter(SecurityEvent.event_type == "llm_budget")
+            .one()
+        )
+        reserve_row.ts = datetime.utcnow() - timedelta(days=1)
+        db.commit()
+    finally:
+        db.close()
+
+    allowed2, remaining2, current_rid = budget_mod.reserve_persistent_budget(502, 300)
+    assert allowed2 is True
+    assert remaining2 == 700
+    assert current_rid
+
+    # The old reservation would normally refund 300 tokens. That refund belongs
+    # to yesterday and must not reduce today's usage.
+    budget_mod.reconcile_persistent_budget(502, old_rid, 400, 100)
+
+    allowed3, remaining3, _rid3 = budget_mod.reserve_persistent_budget(502, 700)
+    assert allowed3 is True
+    assert remaining3 == 0
+
+    denied, remaining4, denied_rid = budget_mod.reserve_persistent_budget(502, 1)
+    assert denied is False
+    assert remaining4 == 0
+    assert denied_rid is None
+
+
+def test_harness_preserves_provider_tokens_when_validation_falls_back():
+    """Rejected LLM prose was still billable; fallback must retain usage metadata."""
+
+    class _BadWithUsage:
+        name = "billable-bad-inner"
+
+        def generate(self, _ctx):
+            return {
+                "items": [{
+                    "id": "bad",
+                    "prose": "この弱点は改善が必要です",
+                    "evidence_path": "",
+                    "confidence": None,
+                    "metric": {},
+                }],
+                "generator": self.name,
+                "generated_at": "2026-09-27T00:00:00+00:00",
+                "meta": {
+                    "tokens": {"in": 120, "out": 40, "total": 160},
+                    "latency_ms": 25,
+                },
+            }
+
+    with patch("backend.analysis.insights.safety.harness.log_llm_call"):
+        out = HarnessedGenerator(
+            inner=_BadWithUsage(), fallback=TemplateGenerator()
+        ).generate(_sample_ctx())
+
+    assert out["generator"] == "template"
+    assert out["meta"]["tokens"]["total"] == 160
+    assert out["meta"]["latency_ms"] == 25
+    assert out["meta"]["fallback_reason"].startswith("banned_term:")

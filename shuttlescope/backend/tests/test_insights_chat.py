@@ -116,13 +116,15 @@ def test_rate_limit_blocks_rapid_send():
 
 
 # ─── 6. budget exhausted ────────────────────────────────────────
-def test_budget_exhausted_returns_429():
+def test_budget_exhausted_returns_429(monkeypatch):
     _override("coach", user_id=50)
     sid = _CLIENT.post("/api/insights/chat/sessions",
                        json={"lang": "ja"}).json()["session_id"]
-    # 予算を強制的に枯渇させる
-    budget_mod._state[50] = {budget_mod._today_iso():
-                             budget_mod.INSIGHT_BUDGET_DAILY_TOKENS}
+    monkeypatch.setattr(
+        chat_router_mod,
+        "reserve_persistent_budget",
+        lambda *_args, **_kwargs: (False, 0, None),
+    )
     r = _CLIENT.post(f"/api/insights/chat/sessions/{sid}/messages",
                      json={"content": "blocked by budget"})
     assert r.status_code == 429
@@ -255,3 +257,89 @@ def test_generator_context_includes_user_id(monkeypatch):
     )
     assert r.status_code == 200, r.text
     assert captured["user_id"] == 211
+
+
+
+def test_generator_usage_reconciles_persistent_budget(monkeypatch):
+    _override("coach", user_id=212)
+    sid = _CLIENT.post("/api/insights/chat/sessions",
+                       json={"lang": "ja"}).json()["session_id"]
+    calls: list[tuple] = []
+
+    monkeypatch.setattr(
+        chat_router_mod,
+        "reserve_persistent_budget",
+        lambda uid, tokens: (True, 45_000, "reservation-1"),
+    )
+    monkeypatch.setattr(
+        chat_router_mod,
+        "reconcile_persistent_budget",
+        lambda *args: calls.append(args),
+    )
+
+    class _Generator:
+        def generate(self, _ctx):
+            return {
+                "items": [{
+                    "id": "test",
+                    "prose": "テスト応答です",
+                    "evidence_path": "",
+                    "confidence": None,
+                    "metric": {},
+                }],
+                "generator": "nvidia-test",
+                "generated_at": "2026-09-27T00:00:00+00:00",
+                "meta": {"tokens": {"in": 120, "out": 40, "total": 160}},
+            }
+
+    monkeypatch.setattr(chat_router_mod, "get_generator", lambda: _Generator())
+    r = _CLIENT.post(
+        f"/api/insights/chat/sessions/{sid}/messages",
+        json={"content": "通常の質問です"},
+    )
+    assert r.status_code == 200, r.text
+    assert calls == [(
+        212,
+        "reservation-1",
+        chat_router_mod.INSIGHT_BUDGET_RESERVATION_TOKENS,
+        160,
+    )]
+
+def test_generator_exception_keeps_conservative_budget_reservation(monkeypatch):
+    """Unknown provider usage after an exception must not be refunded to zero."""
+    _override("coach", user_id=213)
+    sid = _CLIENT.post(
+        "/api/insights/chat/sessions", json={"lang": "ja"}
+    ).json()["session_id"]
+    calls: list[tuple] = []
+
+    monkeypatch.setattr(
+        chat_router_mod,
+        "reserve_persistent_budget",
+        lambda uid, tokens: (True, 45_000, "reservation-error"),
+    )
+    monkeypatch.setattr(
+        chat_router_mod,
+        "reconcile_persistent_budget",
+        lambda *args: calls.append(args),
+    )
+
+    class _FailingGenerator:
+        def generate(self, _ctx):
+            raise RuntimeError("provider failed after request dispatch")
+
+    monkeypatch.setattr(
+        chat_router_mod, "get_generator", lambda: _FailingGenerator()
+    )
+    r = _CLIENT.post(
+        f"/api/insights/chat/sessions/{sid}/messages",
+        json={"content": "通常の質問です"},
+    )
+
+    assert r.status_code == 200, r.text
+    assert calls == [(
+        213,
+        "reservation-error",
+        chat_router_mod.INSIGHT_BUDGET_RESERVATION_TOKENS,
+        chat_router_mod.INSIGHT_BUDGET_RESERVATION_TOKENS,
+    )]
