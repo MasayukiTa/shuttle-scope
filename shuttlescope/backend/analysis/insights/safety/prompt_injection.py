@@ -47,6 +47,21 @@ _INJECTION_PATTERNS = (
         r"(?:system[- ]?prompt|versteckte\s+anweisungen|obige\s+anweisungen)",
         re.IGNORECASE,
     ),
+    # Fake chat-role headers / structured messages embedded in user prose.
+    # Require a privileged role plus an instruction-bearing payload to avoid
+    # flagging ordinary phrases such as "the system message was confusing".
+    re.compile(
+        r"(?:^|[\n>\[{,])\s*[\"']?(?:system|developer)[\"']?"
+        r"\s*(?::|=)\s*[\"']?(?:ignore|forget|reveal|show|print|repeat|override|"
+        r"disregard|act\s+as|you\s+are\s+now)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"[\"']role[\"']\s*:\s*[\"'](?:system|developer)[\"']"
+        r"[^\n]{0,120}[\"']content[\"']\s*:\s*[\"']"
+        r"(?:ignore|forget|reveal|show|print|repeat|override|disregard)",
+        re.IGNORECASE,
+    ),
 )
 
 # Bounded quantifiers eliminate polynomial backtracking on adversarial
@@ -56,13 +71,32 @@ _INJECTION_PATTERNS = (
 _HTML_TAG_RE = re.compile(r"<[^<>]{1,200}>")
 _REPEATED_CHAR_RE = re.compile(r"(.)\1{50,2000}")
 _ZERO_WIDTH_RE = re.compile(r"[\u200b-\u200f\u2060\ufeff]")
+
+# Detection-only confusable folding. NFKC handles full-width Latin but not
+# cross-script lookalikes (e.g. Cyrillic і in "іgnore"). Map the small set of
+# Greek/Cyrillic glyphs commonly used to disguise ASCII instruction keywords.
+# The original user text is never rewritten with this table.
+_CONFUSABLE_TRANS = str.maketrans({
+    "а": "a", "А": "A",  # Cyrillic
+    "е": "e", "Е": "E",
+    "і": "i", "І": "I",
+    "о": "o", "О": "O",
+    "р": "p", "Р": "P",
+    "с": "c", "С": "C",
+    "х": "x", "Х": "X",
+    "у": "y", "У": "Y",
+    "Α": "A", "Β": "B", "Ε": "E", "Ι": "I", "Κ": "K",  # Greek
+    "Μ": "M", "Ν": "N", "Ο": "O", "Ρ": "P", "Τ": "T", "Χ": "X",
+    "ο": "o", "ι": "i",
+})
 _BASE64_CANDIDATE_RE = re.compile(
     r"(?<![A-Za-z0-9+/_-])([A-Za-z0-9+/_-]{20,512}={0,2})(?![A-Za-z0-9+/_-])"
 )
 
 
 def _normalize_for_detection(text: str) -> str:
-    return _ZERO_WIDTH_RE.sub("", unicodedata.normalize("NFKC", text))
+    normalized = unicodedata.normalize("NFKC", text).translate(_CONFUSABLE_TRANS)
+    return _ZERO_WIDTH_RE.sub("", normalized)
 
 
 def _matches_injection(text: str) -> bool:

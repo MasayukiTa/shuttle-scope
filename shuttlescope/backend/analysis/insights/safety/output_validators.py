@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Literal, TypedDict
 
 from backend.analysis.insights.safety.system_prompts import (
@@ -136,7 +137,11 @@ def validate_response(
     # numeric_policy="none" では数字そのものを禁止する。数値は決定論的な
     # analytics / ConfidenceBadge 側で表示する。
     if numeric_policy == "none":
-        found = [m.group(0) for m in _NUMBER_RE.finditer(text)]
+        # NFKC before numeric scanning catches Unicode disguises such as
+        # full-width/circled/superscript digits and vulgar fractions. We only
+        # validate the normalized copy; the displayed text is left untouched.
+        numeric_scan_text = unicodedata.normalize("NFKC", text)
+        found = [m.group(0) for m in _NUMBER_RE.finditer(numeric_scan_text)]
         if found:
             return {
                 "ok": False,

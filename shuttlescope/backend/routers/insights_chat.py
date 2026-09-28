@@ -19,7 +19,7 @@ from __future__ import annotations
 import re
 import time
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
@@ -162,10 +162,14 @@ class _SendMessageBody(BaseModel):
     date_from: Optional[str] = Field(default=None)
     date_to: Optional[str] = Field(default=None)
     # 会話スコープ拡張: クライアント側 (composer chip UI) で確定済みの slot 値
-    shot_type: Optional[str] = Field(default=None)
-    zone: Optional[str] = Field(default=None)
+    # Structured scope values are vocabulary-bound. Keeping them as arbitrary
+    # strings would create a second free-text channel beside `content` and make
+    # cross-field prompt-injection reasoning fragile even though these values are
+    # not currently concatenated into LLM user_text.
+    shot_type: Optional[Literal["smash", "clear", "drop", "net", "drive", "push", "lob", "serve"]] = None
+    zone: Optional[Literal["FL", "FR", "BL", "BR", "FRONT", "BACK", "SIDE"]] = None
     # ユーザが明示的にクリアしたスロット名 (e.g. ["period", "zone"])
-    clear_slots: Optional[list[str]] = Field(default=None)
+    clear_slots: Optional[list[Literal["period", "shot_type", "zone"]]] = None
     # ダッシュボードで観察中の対象選手 ID。admin/coach/analyst が他選手を見ているときに
     # frontend が現在の viewed playerId を渡す。admin/coach/analyst 以外の role が
     # 指定しても無視 (ctx.player_id fallback)。player ロール自身は自分の id 以外
