@@ -22,6 +22,8 @@ from sqlalchemy.orm import Session
 
 from backend.db.models import Match, GameSet, Rally, Stroke, MatchCVArtifact
 from backend.analysis.doubles_role_inference import adjust_role_with_cv_signals
+from backend.cv.court_adapter import CourtAdapter
+from backend.yolo.court_mapper import summarize_frame_positions, summarize_rally_positions
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +64,26 @@ def compute_doubles_cv_analytics(match_id: int, db: Session) -> dict:
         }
 
     frames: list[dict] = json.loads(yolo_artifact.data)
-    summary_json = json.loads(yolo_artifact.summary) if yolo_artifact.summary else {}
+    court_adapter = CourtAdapter.for_match(match_id)
+
+    # B-4: 画像正規化座標をコート座標として扱う解析は禁止。
+    # YOLO raw detection 自体は有効でも、陣形・前後衛・pressure map は床面
+    # homography が無ければ意味を持たないため明示 unavailable にする。
+    if not court_adapter.is_calibrated:
+        return {
+            "available": False,
+            "calibration_required": True,
+            "yolo_frame_count": yolo_artifact.frame_count or len(frames),
+            "backend_used": yolo_artifact.backend_used,
+            "notes": [
+                "コートキャリブレーションが未設定のため、位置・陣形解析は表示しません。"
+                " コート四隅を設定してから再度解析してください。"
+            ],
+        }
+
+    # 保存済み summary は YOLO 実行時点の calibration 状態に依存し得るため、
+    # raw frames から現在の calibration で毎回再集計する。
+    summary_json = summarize_frame_positions(frames, court_adapter=court_adapter)
 
     # アライメント artifact（あれば）
     alignment_artifact = (
@@ -100,8 +121,12 @@ def compute_doubles_cv_analytics(match_id: int, db: Session) -> dict:
 
     # 解析実行
     formation_tendency = _compute_formation_tendency(summary_json)
-    rotation_transitions = _compute_rotation_transitions(frames, rallies)
-    pressure_map = _compute_pressure_map(frames, strokes)
+    rotation_transitions = _compute_rotation_transitions(
+        frames, rallies, court_adapter=court_adapter
+    )
+    pressure_map = _compute_pressure_map(
+        frames, strokes, court_adapter=court_adapter
+    )
 
     match = db.get(Match, match_id)
     # CV の hitter_a/b は «画面の上側/下側» なので、人に直すには
@@ -200,10 +225,12 @@ def _compute_formation_tendency(summary: dict) -> dict:
 
 # ─── ローテーション遷移カウント ───────────────────────────────────────────────
 
-def _compute_rotation_transitions(frames: list[dict], rallies: list[Rally]) -> int:
+def _compute_rotation_transitions(
+    frames: list[dict],
+    rallies: list[Rally],
+    court_adapter: CourtAdapter,
+) -> int:
     """ラリー間で前後陣 ↔ 平行陣が切り替わった回数を返す。"""
-    from backend.yolo.court_mapper import classify_formation, summarize_rally_positions
-
     if not rallies or not frames:
         return 0
 
@@ -214,7 +241,12 @@ def _compute_rotation_transitions(frames: list[dict], rallies: list[Rally]) -> i
         if r.video_timestamp_start is None:
             continue
         end = r.video_timestamp_end or (r.video_timestamp_start + 10.0)
-        rally_summary = summarize_rally_positions(frames, r.video_timestamp_start, end)
+        rally_summary = summarize_rally_positions(
+            frames,
+            r.video_timestamp_start,
+            end,
+            court_adapter=court_adapter,
+        )
         fm = rally_summary.get("formations", {})
         if not fm:
             continue
@@ -228,7 +260,11 @@ def _compute_rotation_transitions(frames: list[dict], rallies: list[Rally]) -> i
 
 # ─── 圧力マップ ──────────────────────────────────────────────────────────────
 
-def _compute_pressure_map(frames: list[dict], strokes: list[Stroke]) -> dict:
+def _compute_pressure_map(
+    frames: list[dict],
+    strokes: list[Stroke],
+    court_adapter: CourtAdapter,
+) -> dict:
     """ストローク着地ゾーン × プレイヤー位置の圧力マップを生成する。
 
     ゾーン別に「そのゾーンへの着地時に player_b（受け手）が前衛にいた割合」を計算。
@@ -258,10 +294,16 @@ def _compute_pressure_map(frames: list[dict], strokes: list[Stroke]) -> dict:
             continue
 
         players = nearest_frame.get("players", [])
-        # player_b（受け手仮定）の depth_band
+        # player_b（受け手仮定）の床面 foot_point を calibrated court へ写像。
+        # 保存済み depth_band は画像座標由来の可能性があるため使用しない。
         p_b = next((p for p in players if p.get("label") == "player_b"), None)
-        if p_b:
-            is_front = p_b.get("depth_band") == "front"
+        foot = p_b.get("foot_point") if p_b else None
+        if foot and len(foot) >= 2:
+            try:
+                band = str(court_adapter.depth_band(float(foot[0]), float(foot[1])))
+            except (TypeError, ValueError, ZeroDivisionError, FloatingPointError):
+                continue
+            is_front = band.startswith("front")
             zone_pressure[stroke.land_zone].append(1.0 if is_front else 0.0)
 
     # ゾーン別集計

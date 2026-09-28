@@ -93,3 +93,5 @@ def test_yolo_result_already_exposes_saved_backend(db_session, match):
     assert result["success"] is True
     assert result["data"]["backend_used"] == "onnx_cuda"
     assert result["data"]["frame_count"] == 12
+    assert result["data"]["summary"]["court_calibrated"] is False
+    assert result["data"]["summary"]["coordinate_space"] == "image_normalized"

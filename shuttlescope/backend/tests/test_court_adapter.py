@@ -135,8 +135,8 @@ def test_candidate_builder_role_inference_with_adapter():
 def test_court_mapper_formation_with_adapter():
     from backend.yolo.court_mapper import classify_formation
     players = [
-        {"label": "player_a", "centroid": [0.5, 0.20]},
-        {"label": "player_b", "centroid": [0.5, 0.50]},
+        {"label": "player_a", "centroid": [0.5, 0.10], "foot_point": [0.5, 0.20]},
+        {"label": "player_b", "centroid": [0.5, 0.40], "foot_point": [0.5, 0.50]},
     ]
     a = _identity_adapter()
     assert classify_formation(players, court_adapter=a) == "front_back"

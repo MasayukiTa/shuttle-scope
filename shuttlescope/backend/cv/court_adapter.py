@@ -230,14 +230,20 @@ class CourtAdapter:
         if self._H_np is None:
             dx = abs(p1[0] - p2[0])
             dy = abs(p1[1] - p2[1])
+            min_y = FALLBACK_FORMATION_MIN_Y_DIFF
+            min_x = FALLBACK_FORMATION_MIN_X_DIFF
         else:
             c1 = self.pixel_to_court(*p1)
             c2 = self.pixel_to_court(*p2)
             dx = abs(c1[0] - c2[0])
             dy = abs(c1[1] - c2[1])
-        # キャリブ時は court 座標、未キャリブ時は画像座標で同じ閾値ロジック
-        if dy >= self.formation_min_y_diff and dy > dx:
+            # ここでは既に court 正規化座標へ写像済みなので、比較する閾値も
+            # court 座標系でなければならない。旧実装は逆射影した image 閾値を
+            # court 差分へ当てており、射影の強いカメラほど判定が歪んでいた。
+            min_y = 0.18
+            min_x = 0.25
+        if dy >= min_y and dy > dx:
             return "front_back"
-        if dx >= self.formation_min_x_diff and dx >= dy:
+        if dx >= min_x and dx >= dy:
             return "parallel"
         return "mixed"

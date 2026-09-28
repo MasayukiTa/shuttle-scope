@@ -28,6 +28,7 @@ from backend.cv.reid import extract_embedding as _extract_reid_emb, MIN_APP_SIM 
 # Track A3 (2026-05-04): identity tracking ロジックは backend/cv/identity_graph.py に
 # 抽出済み。本ルータからは facade 経由で呼び出すだけ。
 from backend.cv.identity_graph import track_identities as _ig_track_identities
+from backend.cv.court_adapter import CourtAdapter
 from backend.utils.error_detail import client_safe_error
 
 logger = logging.getLogger(__name__)
@@ -285,6 +286,12 @@ def get_yolo_results(match_id: int, include_raw: bool = False, db: Session = Dep
         return {"success": True, "data": None}
 
     summary = json.loads(artifact.summary) if artifact.summary else None
+    if isinstance(summary, dict) and "coordinate_space" not in summary:
+        # Legacy artifacts were summarized from raw image-normalized centroids.
+        # Do not let old payloads masquerade as calibrated court coordinates.
+        summary = dict(summary)
+        summary["court_calibrated"] = False
+        summary["coordinate_space"] = "image_normalized"
     result: dict = {
         "match_id": match_id,
         "artifact_id": artifact.id,
@@ -855,7 +862,10 @@ def _run_batch(
             else:
                 # 全フレーム処理済み → そのまま完了
                 cap.release()
-                summary = summarize_frame_positions(frames_data)
+                summary = summarize_frame_positions(
+            frames_data,
+            court_adapter=CourtAdapter.for_match(match_id),
+        )
                 _upsert_yolo_artifact(db, match_id, frames_data, inf.backend_name(), json.dumps(summary, ensure_ascii=False))
                 _jobs[job_id]["status"] = JobStatus.COMPLETE
                 _jobs[job_id]["progress"] = 1.0
@@ -967,7 +977,10 @@ def _run_batch(
             return
 
         # コート位置サマリー計算
-        summary = summarize_frame_positions(frames_data)
+        summary = summarize_frame_positions(
+                    frames_data,
+                    court_adapter=CourtAdapter.for_match(match_id),
+                )
         summary_json = json.dumps(summary, ensure_ascii=False)
 
         # 最終保存

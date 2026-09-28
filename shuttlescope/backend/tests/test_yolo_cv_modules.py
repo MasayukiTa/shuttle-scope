@@ -104,6 +104,7 @@ class TestSummarizeFramePositions:
         return {
             "label": label,
             "centroid": [cx, cy],
+            "foot_point": [cx, cy],
             "depth_band": "front" if cy < 0.35 else ("back" if cy > 0.65 else "mid"),
             "court_side": "left" if cx < 0.5 else "right",
         }
@@ -135,6 +136,50 @@ class TestSummarizeFramePositions:
         ]
         s = summarize_rally_positions(frames, 4.0, 6.0)
         assert s["total_frames"] == 1  # only ts=5.0 in range
+
+
+    def test_uncalibrated_summary_is_explicitly_image_space(self):
+        p_a = self._full_player("player_a", 0.3, 0.2)
+        p_b = self._full_player("player_b", 0.7, 0.7)
+        summary = summarize_frame_positions([self._frame(1.0, [p_a, p_b])])
+
+        assert summary["court_calibrated"] is False
+        assert summary["coordinate_space"] == "image_normalized"
+
+    def test_calibrated_summary_uses_floor_points_in_court_space(self):
+        H = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+        adapter = CourtAdapter(homography=H, homography_inv=H)
+        p_a = self._full_player("player_a", 0.1, 0.1)
+        p_b = self._full_player("player_b", 0.9, 0.9)
+        p_a["foot_point"] = [0.25, 0.30]
+        p_b["foot_point"] = [0.75, 0.70]
+
+        summary = summarize_frame_positions(
+            [self._frame(1.0, [p_a, p_b])],
+            court_adapter=adapter,
+        )
+
+        assert summary["court_calibrated"] is True
+        assert summary["coordinate_space"] == "court_normalized"
+        assert summary["player_a_avg_position"] == [0.25, 0.3]
+        assert summary["player_b_avg_position"] == [0.75, 0.7]
+
+    def test_calibrated_summary_skips_centroid_when_floor_point_missing(self):
+        H = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+        adapter = CourtAdapter(homography=H, homography_inv=H)
+        p_a = self._full_player("player_a", 0.2, 0.2)
+        p_b = self._full_player("player_b", 0.8, 0.8)
+        p_a.pop("foot_point")
+        p_b.pop("foot_point")
+
+        summary = summarize_frame_positions(
+            [self._frame(1.0, [p_a, p_b])],
+            court_adapter=adapter,
+        )
+
+        assert summary["frames_with_both_players"] == 0
+        assert summary["player_a_avg_position"] is None
+        assert summary["formations"]["unknown"] == 1
 
 
 # ──────────────────────────────────────────────────────────────
@@ -197,6 +242,15 @@ class TestHitterNetGeometry:
         )
         assert geometry == "net_separated"
         assert conf == pytest.approx(HITTER_NET_SEPARATED_CONF_CAP)
+
+    def test_formation_type_uses_court_threshold_after_projection(self):
+        # H halves image y into court y. Image y difference 0.4 becomes court 0.2.
+        # Comparing that court delta to an inverse-projected image threshold (0.36)
+        # would incorrectly classify mixed; court threshold 0.18 must yield front_back.
+        H = [[1, 0, 0], [0, 0.5, 0], [0, 0, 1]]
+        H_inv = [[1, 0, 0], [0, 2.0, 0], [0, 0, 1]]
+        adapter = CourtAdapter(homography=H, homography_inv=H_inv)
+        assert adapter.formation_type((0.5, 0.2), (0.5, 0.6)) == "front_back"
 
     def test_same_side_guess_keeps_review_required_cap(self):
         players = self._players(same_side=True)
@@ -459,8 +513,13 @@ class TestComputeHitterDistribution:
 
 
 class TestComputePressureMap:
+    @staticmethod
+    def _adapter():
+        H = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+        return CourtAdapter(homography=H, homography_inv=H)
+
     def test_empty_returns_empty(self):
-        assert _compute_pressure_map([], []) == {}
+        assert _compute_pressure_map([], [], self._adapter()) == {}
 
     def test_no_matching_frames_returns_empty(self):
         class FakeStroke:
@@ -468,8 +527,26 @@ class TestComputePressureMap:
             timestamp_sec = 5.0
 
         frames = [{"timestamp_sec": 1.0, "players": []}]
-        result = _compute_pressure_map(frames, [FakeStroke()])
+        result = _compute_pressure_map(frames, [FakeStroke()], self._adapter())
         assert result == {}
+
+    def test_pressure_uses_calibrated_foot_point_not_stored_depth_band(self):
+        class FakeStroke:
+            land_zone = "NL"
+            timestamp_sec = 1.0
+
+        frames = [{
+            "timestamp_sec": 1.0,
+            "players": [{
+                "label": "player_b",
+                "centroid": [0.5, 0.9],
+                "foot_point": [0.5, 0.55],
+                "depth_band": "back",
+            }],
+        }]
+        result = _compute_pressure_map(frames, [FakeStroke()], self._adapter())
+        assert result["NL"]["sample_count"] == 1
+        assert result["NL"]["receiver_front_ratio"] == 1.0
 
 
 # ──────────────────────────────────────────────────────────────

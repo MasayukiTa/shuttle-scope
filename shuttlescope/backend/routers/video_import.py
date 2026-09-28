@@ -580,10 +580,14 @@ def _save_yolo_artifact(match_id: int, frames_data: list[dict], backend: str) ->
     from backend.db.database import SessionLocal
     from backend.db.models import MatchCVArtifact
     from backend.yolo.court_mapper import summarize_frame_positions
+    from backend.cv.court_adapter import CourtAdapter
 
     db = SessionLocal()
     try:
-        summary = summarize_frame_positions(frames_data)
+        summary = summarize_frame_positions(
+            frames_data,
+            court_adapter=CourtAdapter.for_match(match_id),
+        )
         frames_json  = json.dumps(frames_data, ensure_ascii=False)
         summary_json = json.dumps(summary,     ensure_ascii=False)
 

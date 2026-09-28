@@ -65,6 +65,7 @@ interface PressureZone {
 
 interface CVAnalysis {
   available: boolean
+  calibration_required?: boolean
   yolo_frame_count?: number
   backend_used?: string
   position_summary?: Record<string, unknown>
@@ -171,17 +172,24 @@ export function YoloCVPositionCard({ playerId, filters }: Props) {
     )
   }
 
-  // ─── YOLO データなし ─────────────────────────────────────────────────────────
+  // ─── YOLO データなし / コート未校正 ─────────────────────────────────────────
   if (!cv?.available) {
+    const needsCalibration = cv?.calibration_required === true
     return (
       <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-2`}>
         <h3 className={`text-sm font-semibold ${textHeading}`}>{t('auto.YoloCVPositionCard.k3')}</h3>
         <p className={`text-xs ${textMuted}`}>
-          {t('auto.YoloCVPositionCard.no_yolo', { id: recentMatch.id })}
+          {needsCalibration
+            ? t('analysis.yolo.calibration_required', {
+                defaultValue: 'コートキャリブレーションが未設定のため、位置・陣形解析は表示しません。',
+              })
+            : t('auto.YoloCVPositionCard.no_yolo', { id: recentMatch.id })}
         </p>
-        <p className={`text-xs ${textFaint}`}>
-          {t('auto.YoloCVPositionCard.run_detection')}
-        </p>
+        {!needsCalibration && (
+          <p className={`text-xs ${textFaint}`}>
+            {t('auto.YoloCVPositionCard.run_detection')}
+          </p>
+        )}
         {cv?.notes?.map((n, i) => (
           <p key={i} className={`text-[10px] ${textFaint}`}>{n}</p>
         ))}
