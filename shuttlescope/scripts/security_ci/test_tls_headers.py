@@ -6,7 +6,7 @@
 """round145 + round150 + round154: TLS / HSTS / CSP / X-Frame / 漏洩ヘッダ"""
 import sys, os, ssl, socket
 sys.path.insert(0, os.path.dirname(__file__))
-from _common import req, hget, Findings, HOST, PORT, INSECURE
+from _common import req, hget, Findings, HOST, PORT, INSECURE, is_expected_decoy
 
 
 def main():
@@ -118,7 +118,10 @@ def main():
               "/dump.sql", "/.env.local", "/wp-admin", "/phpmyadmin"]:
         s, _, b = req("GET", p)
         if s == 200 and len(b) > 30:
-            f.critical(f"dump:{p}", "exposed")
+            if is_expected_decoy(p, b):
+                f.passed(f"dump:{p}", "verified intentional decoy")
+            else:
+                f.critical(f"dump:{p}", "exposed")
 
     crit, high, warn, passed = f.summary()
     if crit > 0:

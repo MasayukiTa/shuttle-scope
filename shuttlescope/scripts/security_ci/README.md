@@ -18,6 +18,23 @@
 | `test_smuggling_methods.py` | round119 + 134 | XXE / TE / method override / TRACE/PURGE/CONNECT / CRLF / Host poison |
 | `test_public_endpoints.py` | round137 | contact / register / verify / reset の入力検証 + OAuth probe |
 
+## 認証境界の strict probe
+
+`test_no_auth_endpoints.py` は 2 層で検査する。
+
+1. broad sweep: 列挙・dump・near-miss を広く GET し、公開/認証境界の異常を探す。
+2. `STRICT_AUTH_PROBES`: 高リスク route を **実際の HTTP method** で呼び、401/403 だけを合格とする。
+
+strict probe では 404 / 405 / 422 を合格にしない。route 名や method が変わって probe が
+空振りしても「認証されている」と誤認しないためである。通常 pytest の
+`backend/tests/test_route_inventory.py` が strict probe と実 FastAPI route/method を
+突き合わせるので、route 変更時は CI で drift を検出する。
+
+保護対象 endpoint の 200 は、レスポンスが空でも auth bypass として失敗する。
+例外は明示 public endpoint と、本文の固有マーカーまで一致した intentional decoy
+(`/graphql`, `/dump.sql`) だけ。decoy path が将来本物の漏洩へ変わっても、
+単なる path allowlist では通らない。
+
 ## 使い方
 
 ### 本番 (default)

@@ -59,6 +59,35 @@ def short(b, n=140):
     return str(b)[:n]
 
 
+def is_expected_decoy(path: str, body: bytes | str) -> bool:
+    """Return True only for known intentional deception responses.
+
+    A bare HTTP 200 is never enough: each decoy needs stable content markers so
+    a future real leak at the same path cannot be silently reclassified as safe.
+    """
+    raw = body if isinstance(body, bytes) else str(body).encode("utf-8", "replace")
+    if path == "/graphql":
+        return all(
+            marker in raw
+            for marker in (
+                b'"__schema"',
+                b'"AdminToken"',
+                b'"BackupSecret"',
+                b'"InternalConfig"',
+            )
+        )
+    if path == "/dump.sql":
+        return all(
+            marker in raw
+            for marker in (
+                b"ShuttleScope DB dump (fake honeypot)",
+                b"ss_canary_admin_live_",
+                b"ss_canary_backup_pass_",
+            )
+        )
+    return False
+
+
 class Findings:
     """CRITICAL/HIGH/MEDIUM/LOW を集計し、CRITICAL があれば exit 1"""
     def __init__(self, suite):
