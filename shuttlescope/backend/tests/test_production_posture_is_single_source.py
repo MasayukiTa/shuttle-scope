@@ -189,6 +189,32 @@ def _csp_for(host: str) -> str:
     return res.headers.get("Content-Security-Policy", "")
 
 
+def _script_src_directive(csp: str) -> str:
+    return csp.split("script-src ", 1)[1].split(";", 1)[0]
+
+
+@_NEEDS_MAIN
+def test_app_csp_uses_unique_nonce_without_unsafe_inline(real_production_shape):
+    """Cloudflare JSD 用に nonce を許すが SPA 全体の inline script は許可しない。"""
+    csp1 = _csp_for("app.shuttle-scope.com")
+    csp2 = _csp_for("app.shuttle-scope.com")
+    script1 = _script_src_directive(csp1)
+    script2 = _script_src_directive(csp2)
+
+    assert script1.startswith("'self' 'nonce-"), script1
+    assert "'unsafe-inline'" not in script1, script1
+    assert script2.startswith("'self' 'nonce-"), script2
+    assert script1 != script2, "CSP nonce must be fresh for every HTML response"
+
+
+@_NEEDS_MAIN
+def test_public_lp_keeps_existing_inline_policy_without_nonce(real_production_shape):
+    """公開 LP は既存 inline UI を持つため SPA と別ポリシーのまま維持する。"""
+    script = _script_src_directive(_csp_for("shuttle-scope.com"))
+    assert script == "'self' 'unsafe-inline'", script
+    assert "'nonce-" not in script, script
+
+
 @_NEEDS_MAIN
 def test_csp_connect_src_is_tight_in_real_production_shape(real_production_shape):
     """CSP の `connect-src` を姿勢で決める。

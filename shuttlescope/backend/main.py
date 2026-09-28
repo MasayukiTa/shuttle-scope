@@ -1,6 +1,7 @@
 """ShuttleScope FastAPI メインアプリケーション"""
 import sys
 import os
+import secrets
 
 # Windows の CP932 デフォルトエンコーディングを UTF-8 に強制する。
 # Electron の Node.js 側が data.toString('utf8') で受け取るため、
@@ -2454,7 +2455,18 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             # SPA (app.shuttle-scope.com) は厳格 CSP のまま。
             host = (request.headers.get("host") or "").split(":")[0].lower()
             is_public_lp = host in ("shuttle-scope.com", "www.shuttle-scope.com")
-            script_src = "script-src 'self' 'unsafe-inline'" if is_public_lp else "script-src 'self'"
+            if is_public_lp:
+                script_src = "script-src 'self' 'unsafe-inline'"
+            else:
+                # Cloudflare Bot Fight Mode injects JavaScript Detections into HTML.
+                # With only script-src 'self', its bootstrap inline script is blocked.
+                # Cloudflare explicitly supports nonce-based CSP and copies the nonce
+                # from the origin response header onto injected script tags. Keep
+                # 'self' for ShuttleScope's external bundles and add a per-response
+                # nonce solely for Cloudflare's injected bootstrap; never relax to
+                # unsafe-inline on the authenticated SPA.
+                csp_nonce = secrets.token_urlsafe(24)
+                script_src = f"script-src 'self' 'nonce-{csp_nonce}'"
             # 公開 LP は Google Fonts CSS も使うので style-src に https: を追加
             style_src = (
                 "style-src 'self' 'unsafe-inline' https:"
