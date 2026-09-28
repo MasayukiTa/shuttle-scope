@@ -19,10 +19,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.db import database as db_module
-from backend.db.models import Match, Player, SharedSession, SessionParticipant
+from backend.db.models import Match, Player, SharedSession, SessionParticipant, User
 from backend.main import app
 from backend.routers.sessions import _hash_ws_token
 from backend.utils import ws_ticket
+from backend.utils.jwt_utils import create_access_token
 from backend.ws.camera import camera_manager
 
 _PASSWORD = "camera-pass-1234"
@@ -59,6 +60,25 @@ def _make_session(code: str, password: str | None = _PASSWORD) -> None:
             password_hash=_hash_password(password) if password else None,
         ))
         db.commit()
+    finally:
+        db.close()
+
+
+def _operator_auth_headers(code: str) -> dict[str, str]:
+    """Create a real admin JWT so operator REST calls cross GlobalAuthMiddleware."""
+    db = db_module.SessionLocal()
+    try:
+        user = User(
+            username=f"qr-lifecycle-admin-{code.lower()}",
+            role="admin",
+            awaiting_admin_approval=False,
+            consent_required=False,
+            is_test=True,
+        )
+        db.add(user)
+        db.commit()
+        token = create_access_token(user_id=user.id, role="admin", minutes=10)
+        return {"Authorization": f"Bearer {token}"}
     finally:
         db.close()
 
@@ -872,3 +892,168 @@ def test_participant_ice_is_bound_to_active_session(monkeypatch):
         resp = _participant_ice(client, joined)
 
     assert resp.status_code == 404, resp.text
+
+
+
+def test_qr_camera_full_lifecycle_join_approve_stream_upload_rejoin_rotate_reject(
+    tmp_path, monkeypatch,
+):
+    """P1 golden path: exercise the QR camera lifecycle as one connected flow.
+
+    This intentionally spans the boundaries that were previously tested in
+    isolation: anonymous QR join -> operator approval -> one-time WS ticket ->
+    participant upload -> reload/rejoin proof -> token rotation -> rejection.
+    """
+    from backend.db.models import Recording
+    from backend.routers import uploads as uploads_router
+    import backend.pipeline.jobs as jobs_module
+
+    code = "PTGOLDEN"
+    device_uid = "golden-iphone-device"
+    _make_session(code)
+
+    monkeypatch.setattr(uploads_router, "UPLOAD_DIR", tmp_path)
+    monkeypatch.setattr(uploads_router, "MIN_FREE_DISK_BYTES", 0)
+    monkeypatch.setattr(
+        uploads_router,
+        "_validate_video_container",
+        lambda _path: (True, "test"),
+    )
+    monkeypatch.setattr(jobs_module, "enqueue", lambda *_a, **_k: None)
+
+    operator_headers = _operator_auth_headers(code)
+    with TestClient(
+        app,
+        base_url="http://localhost",
+        headers=operator_headers,
+    ) as client:
+        # 1) QR join: no app account is required for the participant identity.
+        joined = _join(
+            client,
+            code,
+            device_uid=device_uid,
+            device_name="Golden iPhone",
+            device_type="iphone",
+        ).json()["data"]
+        old_token = joined["participant_token"]
+
+        # 2) Pending devices cannot obtain a device WS ticket.
+        pending = _ticket(
+            client,
+            code,
+            joined["participant_id"],
+            old_token,
+            approved=False,
+        )
+        assert pending.status_code == 403, pending.text
+
+        # 3) Real operator REST approval, crossing GlobalAuth with a real JWT.
+        approved = client.post(
+            f"/api/sessions/{code}/devices/{joined['participant_id']}/approve",
+        )
+        assert approved.status_code == 200, approved.text
+        assert approved.json()["data"]["approval_status"] == "approved"
+
+        # 4) Approved participant receives a one-shot WS ticket and can connect.
+        ticket_resp = _ticket(
+            client,
+            code,
+            joined["participant_id"],
+            old_token,
+            approved=False,
+        )
+        assert ticket_resp.status_code == 200, ticket_resp.text
+        ticket = ticket_resp.json()["data"]["ticket"]
+        with client.websocket_connect(
+            f"/ws/camera/{code}?ticket={ticket}",
+            headers={"Origin": "http://localhost", "Host": "localhost"},
+        ) as ws:
+            registered = set(camera_manager._sessions[code]["devices"].keys())
+            assert registered == {str(joined["participant_id"])}
+            # End the device signaling loop through the same message used by the
+            # real sender instead of relying on TestClient context teardown.
+            ws.send_text('{"type":"camera_stop"}')
+
+        # 5) The same participant credential owns a server-side recording upload.
+        upload_id, payload, finalized = _finalize_participant_recording(client, joined)
+        assert finalized["recording_id"] is not None
+        assert finalized["branch_no"] == 1
+
+        # 6) Reload/rejoin: same device UID is insufficient by itself; presenting
+        # the previous participant token proves possession and rotates it.
+        rejoined_resp = _join(
+            client,
+            code,
+            device_uid=device_uid,
+            device_name="Golden iPhone",
+            device_type="iphone",
+            participant_token=old_token,
+        )
+        assert rejoined_resp.status_code == 200, rejoined_resp.text
+        rejoined = rejoined_resp.json()["data"]
+        assert rejoined["participant_id"] == joined["participant_id"]
+        assert rejoined["reconnected"] is True
+        assert rejoined["participant_token"] != old_token
+        new_token = rejoined["participant_token"]
+
+        # Old token is dead immediately, including upload-management scope.
+        old_ticket = _ticket(
+            client,
+            code,
+            rejoined["participant_id"],
+            old_token,
+            approved=False,
+        )
+        assert old_ticket.status_code == 401, old_ticket.text
+        old_upload = client.get(
+            f"/api/v1/uploads/video/{upload_id}/status",
+            headers=_participant_upload_headers(rejoined, token=old_token),
+        )
+        assert old_upload.status_code == 401, old_upload.text
+
+        # New token inherits the approved participant and still owns the upload.
+        new_ticket = _ticket(
+            client,
+            code,
+            rejoined["participant_id"],
+            new_token,
+            approved=False,
+        )
+        assert new_ticket.status_code == 200, new_ticket.text
+        new_upload = client.get(
+            f"/api/v1/uploads/video/{upload_id}/status",
+            headers=_participant_upload_headers(rejoined, token=new_token),
+        )
+        assert new_upload.status_code == 200, new_upload.text
+
+        # 7) Operator rejection revokes the current participant token.
+        rejected = client.post(
+            f"/api/sessions/{code}/devices/{rejoined['participant_id']}/reject",
+        )
+        assert rejected.status_code == 200, rejected.text
+        assert rejected.json()["data"]["approval_status"] == "rejected"
+
+        after_reject_ticket = _ticket(
+            client,
+            code,
+            rejoined["participant_id"],
+            new_token,
+            approved=False,
+        )
+        assert after_reject_ticket.status_code == 401, after_reject_ticket.text
+        after_reject_upload = _init_participant_upload(
+            client,
+            rejoined,
+        )
+        assert after_reject_upload.status_code == 401, after_reject_upload.text
+
+    # Recording committed before reload/rejoin remains intact.
+    db = db_module.SessionLocal()
+    try:
+        rec = db.get(Recording, finalized["recording_id"])
+        assert rec is not None
+        assert rec.status == "ready"
+        assert rec.video_local_path == f"server://{upload_id}.webm"
+        assert (tmp_path / f"{upload_id}.webm").read_bytes() == payload
+    finally:
+        db.close()
