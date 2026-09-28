@@ -487,6 +487,48 @@ class CameraSignalingManager:
     async def relay_to_operator(self, session_code: str, message: dict) -> None:
         await self._send_to_operator(session_code, message)
 
+    async def relay_current_device_to_operator(
+        self,
+        session_code: str,
+        participant_id: str,
+        ws: WebSocket,
+        message: dict,
+    ) -> bool:
+        """Relay a device message only while this websocket is still current.
+
+        Device reconnect replaces the participant socket and creates a new
+        stream_id. A late ICE/offer from the old socket must never inherit that
+        new stream_id. This operation shares the session guard with reconnect,
+        so signaling is ordered before replacement or dropped after replacement.
+        """
+        pid = str(participant_id)
+        async with self._session_guard(session_code):
+            sess = self._sessions.get(session_code)
+            if sess is None or sess.get("devices", {}).get(pid) is not ws:
+                logger.info(
+                    "camera stale device message dropped: session=%s pid=%s",
+                    session_code,
+                    pid,
+                )
+                return False
+
+            stream_id = sess.get("device_streams", {}).get(pid)
+            if not stream_id:
+                return False
+
+            operator = sess.get("operator")
+            if operator is None:
+                return True
+
+            outbound = dict(message)
+            outbound["participant_id"] = pid
+            outbound["stream_id"] = stream_id
+            try:
+                await operator.send_text(json.dumps(outbound))
+            except Exception:
+                sess["operator"] = None
+            return True
+
     async def relay_to_device(self, session_code: str, participant_id: str, message: dict) -> None:
         if session_code not in self._sessions:
             return
@@ -918,9 +960,15 @@ async def ws_camera_handler(
                     continue
                 # participant_id と stream_id はサーバが上書きする。
                 # クライアント申告を採用すると他カメラを騙れる。
-                msg["participant_id"] = participant_id
-                msg["stream_id"] = camera_manager.stream_id_for(session_code, participant_id)
-                await camera_manager.relay_to_operator(session_code, msg)
+                relayed = await camera_manager.relay_current_device_to_operator(
+                    session_code,
+                    participant_id,
+                    websocket,
+                    msg,
+                )
+                if not relayed:
+                    # A newer connection already owns this participant slot.
+                    return
 
                 if msg_type == "camera_stop":
                     break

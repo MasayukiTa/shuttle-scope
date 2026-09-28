@@ -289,3 +289,112 @@ def test_session_lock_is_not_replaced_while_another_guard_is_waiting():
     assert observed["same"] is True
     assert "LOCK" not in m._session_locks
     assert "LOCK" not in m._session_lock_refs
+
+
+
+def test_stale_replaced_device_cannot_relabel_ice_as_new_stream():
+    """A late message from the old socket must be dropped after reconnect."""
+    import json
+
+    m = CameraSignalingManager()
+    op = _FakeWS("operator")
+    old_ws, new_ws = _FakeWS("old"), _FakeWS("new")
+
+    async def scenario():
+        await m.connect_operator("S_STALE_ICE", op, user_id=1)
+        await m.connect_device("S_STALE_ICE", "10", old_ws)
+        old_stream = m.stream_id_for("S_STALE_ICE", "10")
+        await m.connect_device("S_STALE_ICE", "10", new_ws)
+        new_stream = m.stream_id_for("S_STALE_ICE", "10")
+        op.sent.clear()
+
+        old_ok = await m.relay_current_device_to_operator(
+            "S_STALE_ICE",
+            "10",
+            old_ws,
+            {"type": "ice_candidate", "candidate": "old-candidate"},
+        )
+        new_ok = await m.relay_current_device_to_operator(
+            "S_STALE_ICE",
+            "10",
+            new_ws,
+            {"type": "ice_candidate", "candidate": "new-candidate"},
+        )
+        return old_stream, new_stream, old_ok, new_ok
+
+    old_stream, new_stream, old_ok, new_ok = _run(scenario())
+    assert old_stream != new_stream
+    assert old_ok is False
+    assert new_ok is True
+
+    ice = [json.loads(x) for x in op.sent if json.loads(x).get("type") == "ice_candidate"]
+    assert len(ice) == 1
+    assert ice[0]["candidate"] == "new-candidate"
+    assert ice[0]["stream_id"] == new_stream
+    assert ice[0]["participant_id"] == "10"
+
+
+def test_reconnect_is_ordered_after_inflight_old_device_signaling():
+    """If old signaling already owns the guard, stream-ended must follow it."""
+    import json
+
+    m = CameraSignalingManager()
+    send_started = asyncio.Event()
+    release_send = asyncio.Event()
+
+    class _BlockingOperator(_FakeWS):
+        async def send_text(self, data: str) -> None:
+            payload = json.loads(data)
+            if payload.get("type") == "ice_candidate":
+                send_started.set()
+                await release_send.wait()
+            self.sent.append(data)
+
+    op = _BlockingOperator("operator")
+    old_ws, new_ws = _FakeWS("old"), _FakeWS("new")
+
+    async def scenario():
+        await m.connect_operator("S_ICE_ORDER", op, user_id=1)
+        await m.connect_device("S_ICE_ORDER", "10", old_ws)
+        old_stream = m.stream_id_for("S_ICE_ORDER", "10")
+        op.sent.clear()
+
+        relay_task = asyncio.create_task(
+            m.relay_current_device_to_operator(
+                "S_ICE_ORDER",
+                "10",
+                old_ws,
+                {"type": "ice_candidate", "candidate": "in-flight-old"},
+            )
+        )
+        await send_started.wait()
+
+        reconnect_task = asyncio.create_task(
+            m.connect_device("S_ICE_ORDER", "10", new_ws)
+        )
+        await asyncio.sleep(0)
+        # Reconnect shares the same guard and therefore cannot replace the stream
+        # while the old signaling message is in flight.
+        assert not reconnect_task.done()
+
+        release_send.set()
+        assert await relay_task is True
+        await reconnect_task
+        new_stream = m.stream_id_for("S_ICE_ORDER", "10")
+        return old_stream, new_stream
+
+    old_stream, new_stream = _run(scenario())
+    assert old_stream != new_stream
+
+    messages = [json.loads(x) for x in op.sent]
+    ice_idx = next(
+        i for i, msg in enumerate(messages)
+        if msg.get("type") == "ice_candidate"
+    )
+    ended_idx = next(
+        i for i, msg in enumerate(messages)
+        if msg.get("type") == "camera_stream_ended"
+        and msg.get("stream_id") == old_stream
+    )
+    assert ice_idx < ended_idx
+    assert messages[ice_idx]["stream_id"] == old_stream
