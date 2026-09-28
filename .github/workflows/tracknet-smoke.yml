@@ -41,12 +41,13 @@ jobs:
           cache: pip
           cache-dependency-path: |
             shuttlescope/backend/tracknet/requirements-smoke.txt
+            shuttlescope/backend/tracknet/requirements-smoke.lock.txt
 
       - name: Install TrackNet dependencies
-        # Exact version pins to satisfy supply-chain best practice (Scorecard
-        # PinnedDependenciesID). Hash pinning via --require-hashes is not used
-        # because the upstream wheels are large multi-arch (tensorflow ~600MB)
-        # and the smoke workflow runs only weekly + on demand.
+        # The human-maintained manifest pins the direct TrackNet toolchain.
+        # CI executes the generated Linux/Python 3.11 lock below with
+        # --require-hashes so every resolved transitive distribution is pinned
+        # and integrity-checked as well.
         # TF 2.15 (Keras 2) is the last release that loads the V1/V2
         # checkpoint format produced by Chang-Chia-Chi/TrackNet via
         # model.load_weights("weights/TrackNet"). Keras 3 (TF >= 2.16)
@@ -59,10 +60,9 @@ jobs:
         # release without that dependency; TrackNet only consumes the ONNX file
         # generated in this job (no hub/external-data/version-converter inputs).
         run: |
-          # Install only from the pinned smoke-test manifest. Keeping package
-          # names out of the workflow command also lets Scorecard validate the
-          # dependency declaration from a single source of truth.
-          python -m pip install --requirement backend/tracknet/requirements-smoke.txt
+          # Install the Linux/Python 3.11 lock with hashes for every resolved
+          # wheel/sdist. This is the executable dependency source for CI.
+          python -m pip install --require-hashes --requirement backend/tracknet/requirements-smoke.lock.txt
           python -m pip check
 
       - name: Verify TrackNet toolchain
