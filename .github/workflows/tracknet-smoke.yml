@@ -59,16 +59,10 @@ jobs:
         # release without that dependency; TrackNet only consumes the ONNX file
         # generated in this job (no hub/external-data/version-converter inputs).
         run: |
-          # Keep the executable dependency set explicit here as well as in
-          # requirements-smoke.txt so Scorecard can verify every package is pinned.
-          python -m pip install \
-            "numpy==1.26.4" \
-            "protobuf==4.25.8" \
-            "tensorflow==2.15.1" \
-            "tf2onnx==1.17.0" \
-            "onnxruntime==1.17.3" \
-            "opencv-python-headless==4.10.0.84" \
-            "onnx==1.18.0"
+          # Install only from the pinned smoke-test manifest. Keeping package
+          # names out of the workflow command also lets Scorecard validate the
+          # dependency declaration from a single source of truth.
+          python -m pip install --requirement backend/tracknet/requirements-smoke.txt
           python -m pip check
 
       - name: Verify TrackNet toolchain

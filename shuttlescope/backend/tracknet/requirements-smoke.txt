@@ -8,7 +8,9 @@ numpy==1.26.4
 protobuf==4.25.8
 tensorflow==2.15.1
 tf2onnx==1.17.0
-# Keep ONNX transitive. Newer direct ONNX pins require newer ml-dtypes /
-# protobuf than TensorFlow 2.15 supports; pip selects the compatible release.
+# ONNX 1.18.0 is the newest converter-compatible release that still works
+# with TensorFlow 2.15 / ml-dtypes~=0.3.1. Keep it explicit here so the
+# workflow installs from one pinned manifest rather than an inline pip command.
+onnx==1.18.0
 onnxruntime==1.17.3
 opencv-python-headless==4.10.0.84
