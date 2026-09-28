@@ -11,7 +11,7 @@ from backend.tracknet import setup as tracknet_setup
 def _source(path: Path, payload: bytes) -> dict[Path, dict[str, str]]:
     return {
         path: {
-            "url": "https://example.invalid/TrackNet.index",
+            "url": f"{tracknet_setup.BASE_URL}/TrackNet.index",
             "sha256": hashlib.sha256(payload).hexdigest(),
         }
     }
@@ -21,6 +21,39 @@ def test_upstream_checkpoint_is_commit_pinned() -> None:
     assert len(tracknet_setup.UPSTREAM_COMMIT) == 40
     assert "/main/" not in tracknet_setup.BASE_URL
     assert tracknet_setup.UPSTREAM_COMMIT in tracknet_setup.BASE_URL
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "file:///etc/passwd",
+        "https://example.invalid/TrackNet.index",
+        (
+            "https://raw.githubusercontent.com.evil.invalid/"
+            "Chang-Chia-Chi/TrackNet-Badminton-Tracking-tensorflow2/"
+            f"{tracknet_setup.UPSTREAM_COMMIT}/weights/TrackNet.index"
+        ),
+        (
+            "https://raw.githubusercontent.com/"
+            "Chang-Chia-Chi/TrackNet-Badminton-Tracking-tensorflow2/"
+            "main/weights/TrackNet.index"
+        ),
+        f"{tracknet_setup.BASE_URL}/TrackNet.index?download=1",
+        f"{tracknet_setup.BASE_URL}/TrackNet.index#fragment",
+    ],
+)
+def test_weight_url_rejects_untrusted_locations(url: str) -> None:
+    with pytest.raises(ValueError, match="Untrusted TrackNet checkpoint URL"):
+        tracknet_setup._validated_weight_url(url)
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["TrackNet.index", "TrackNet.data-00000-of-00001"],
+)
+def test_weight_url_accepts_only_pinned_checkpoint_objects(name: str) -> None:
+    url = f"{tracknet_setup.BASE_URL}/{name}"
+    assert tracknet_setup._validated_weight_url(url) == url
 
 
 def test_verified_cached_weight_skips_network(tmp_path, monkeypatch) -> None:

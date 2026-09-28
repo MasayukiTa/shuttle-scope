@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import sys
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -30,20 +31,29 @@ TF_DATA_PATH = WEIGHTS_DIR / "TrackNet.data-00000-of-00001"
 ONNX_PATH = WEIGHTS_DIR / "tracknet.onnx"
 OV_XML = WEIGHTS_DIR / "tracknet.xml"
 
-UPSTREAM_COMMIT = "d13eb075c7efcca25ede62ac4a21e18891c2f49b"
-BASE_URL = (
-    "https://raw.githubusercontent.com/"
-    "Chang-Chia-Chi/TrackNet-Badminton-Tracking-tensorflow2/"
-    f"{UPSTREAM_COMMIT}/weights"
+UPSTREAM_COMMIT = "d13eb075c7efcca25ede62ac4a21e18891c2f49b"  # DevSkim: ignore DS173237 -- public git commit, not a credential
+TRUSTED_WEIGHT_SCHEME = "https"
+TRUSTED_WEIGHT_HOST = "raw.githubusercontent.com"
+TRUSTED_WEIGHT_PATH_PREFIX = (
+    "/Chang-Chia-Chi/TrackNet-Badminton-Tracking-tensorflow2/"
+    f"{UPSTREAM_COMMIT}/weights/"
 )
+BASE_URL = (
+    f"{TRUSTED_WEIGHT_SCHEME}://{TRUSTED_WEIGHT_HOST}"
+    f"{TRUSTED_WEIGHT_PATH_PREFIX.rstrip('/')}"
+)
+TRUSTED_WEIGHT_PATHS = {
+    f"{TRUSTED_WEIGHT_PATH_PREFIX}TrackNet.index",
+    f"{TRUSTED_WEIGHT_PATH_PREFIX}TrackNet.data-00000-of-00001",
+}
 WEIGHT_SOURCES = {
     TF_INDEX_PATH: {
         "url": f"{BASE_URL}/TrackNet.index",
-        "sha256": "6291bee8498978e171ef7dc5464930b1a10f5d24236b2b763693a6c911818d6c",
+        "sha256": "6291bee8498978e171ef7dc5464930b1a10f5d24236b2b763693a6c911818d6c",  # DevSkim: ignore DS173237 -- public SHA256 checksum
     },
     TF_DATA_PATH: {
         "url": f"{BASE_URL}/TrackNet.data-00000-of-00001",
-        "sha256": "57abcbe67daadcc8dca63418afd7200ab105f226c4fd55f9713d92fe72e80025",
+        "sha256": "57abcbe67daadcc8dca63418afd7200ab105f226c4fd55f9713d92fe72e80025",  # DevSkim: ignore DS173237 -- public SHA256 checksum
     },
 }
 
@@ -60,9 +70,26 @@ def _matches_expected_hash(path: Path, expected_sha256: str) -> bool:
     return path.exists() and _sha256(path) == expected_sha256
 
 
+def _validated_weight_url(url: str) -> str:
+    """Return only the exact HTTPS upstream checkpoint URLs we permit."""
+    parsed = urllib.parse.urlsplit(url)
+    if (
+        parsed.scheme != TRUSTED_WEIGHT_SCHEME
+        or parsed.hostname != TRUSTED_WEIGHT_HOST
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.port not in (None, 443)
+        or parsed.query
+        or parsed.fragment
+        or parsed.path not in TRUSTED_WEIGHT_PATHS
+    ):
+        raise ValueError(f"Untrusted TrackNet checkpoint URL: {url!r}")
+    return url
+
+
 def cmd_download():
     for target, source in WEIGHT_SOURCES.items():
-        url = source["url"]
+        url = _validated_weight_url(source["url"])
         expected_sha256 = source["sha256"]
 
         if _matches_expected_hash(target, expected_sha256):
@@ -77,7 +104,9 @@ def cmd_download():
         tmp.unlink(missing_ok=True)
         print(f"Downloading {target.name} from pinned upstream commit ...")
         try:
-            urllib.request.urlretrieve(url, tmp)
+            # nosec B310: _validated_weight_url restricts scheme, host, port,
+            # credentials, query/fragment and path to two fixed HTTPS objects.
+            urllib.request.urlretrieve(url, tmp)  # nosec B310  # nosemgrep
             actual_sha256 = _sha256(tmp)
             if actual_sha256 != expected_sha256:
                 raise RuntimeError(
