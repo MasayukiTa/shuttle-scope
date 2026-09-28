@@ -254,6 +254,7 @@ def _run_tracknet(job: dict, video_path: str) -> None:
     from backend.tracknet.inference import get_inference
     from backend.routers.court_calibration import load_calibration_standalone, pixel_to_court_zone
     from backend.tracknet.zone_mapper import court_to_zone9
+    from backend.tracknet.video_sampling import TrackNetFrameSampler, step_frames_for_fps
 
     # **"auto"**。以前は "openvino" を「GPU優先バックエンドを明示」として
     # 固定していたが、OpenVINO の "GPU" は **Intel の GPU** を指す。
@@ -319,41 +320,37 @@ def _run_tracknet(job: dict, video_path: str) -> None:
     if _sample_fps <= 0:
         _sample_fps = 10.0
     # 元動画より速くはサンプルできない
-    step_frames = max(1, int(round(fps / min(_sample_fps, fps))))
+    step_frames = step_frames_for_fps(fps, _sample_fps)
     logger.info(
         "[video_import] TrackNet サンプリング: %.1ffps 相当 (step_frames=%d, 動画 %.1ffps)",
         min(_sample_fps, fps), step_frames, fps,
     )
     track: list[dict] = []
-    frame_buf: list = []
-    frame_idx = 0
+    sampler = TrackNetFrameSampler(step_frames=step_frames)
 
     while True:
         ret, frame = cap.read()
         if not ret:
             break
-        frame_buf.append(frame)
-        if len(frame_buf) == 3:
-            results = inf.predict_frames(frame_buf)
+
+        sampled = sampler.push(frame)
+        if sampled is not None:
+            results = inf.predict_frames(sampled.frames)
             if results:
                 r = results[0]
                 track.append({
-                    "frame_idx": frame_idx,
-                    "timestamp_sec": round(frame_idx / fps, 3),
+                    "frame_idx": sampled.start_frame,
+                    "timestamp_sec": round(sampled.start_frame / fps, 3),
                     "zone": r["zone"],
                     "confidence": r["confidence"],
                     "x_norm": r.get("x_norm"),
                     "y_norm": r.get("y_norm"),
                 })
-            frame_buf = frame_buf[step_frames:]   # step_frames ずつスライド
-            frame_idx += step_frames
 
-        # step_frames ごとにフレームを消費
-        for _ in range(step_frames - 1):
-            cap.read()
-            frame_idx += 1
-
-        job["tracknet"]["progress"] = min(frame_idx / total, 1.0)
+        # decoded_frames is the physical source-frame count.  Keep progress and
+        # timestamps tied to that real index rather than a separately advanced
+        # logical counter; otherwise sampling-rate changes distort the timeline.
+        job["tracknet"]["progress"] = min(sampler.decoded_frames / total, 1.0)
         job["progress"] = job["tracknet"]["progress"] * 0.5  # 全体の 0-50%
 
     cap.release()
