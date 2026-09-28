@@ -7,9 +7,14 @@ import sqlite3
 import tempfile
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 
-from backend.db.database import bootstrap_database
+from backend.db.database import (
+    _ensure_analytics_indexes,
+    _ensure_unique_indexes,
+    bootstrap_database,
+    create_tables,
+)
 
 
 def _sqlite_url(path: str) -> str:
@@ -102,3 +107,31 @@ def test_bootstrap_versioned_db_is_idempotent_on_repeated_startup():
         eng.dispose()
         if os.path.exists(path):
             os.remove(path)
+
+
+def test_sqlite_index_bootstrap_batches_commits():
+    """Index bootstrap should fsync once per helper, not once per index."""
+    eng = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    commits = 0
+
+    def _count_commit(_conn):
+        nonlocal commits
+        commits += 1
+
+    try:
+        create_tables(eng)
+        event.listen(eng, "commit", _count_commit)
+
+        _ensure_unique_indexes(eng)
+        _ensure_analytics_indexes(eng)
+
+        assert commits == 2
+        with eng.connect() as conn:
+            player_indexes = {row[1] for row in conn.exec_driver_sql("PRAGMA index_list(players)")}
+            stroke_indexes = {row[1] for row in conn.exec_driver_sql("PRAGMA index_list(strokes)")}
+
+        assert "uix_players_uuid" in player_indexes
+        assert "ix_strokes_shot_type" in stroke_indexes
+    finally:
+        event.remove(eng, "commit", _count_commit)
+        eng.dispose()

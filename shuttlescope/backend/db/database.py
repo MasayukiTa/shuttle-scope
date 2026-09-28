@@ -290,7 +290,7 @@ def _ensure_unique_indexes(eng) -> None:
         "players", "matches", "sets", "rallies", "strokes",
         "pre_match_observations", "human_forecasts", "comments", "event_bookmarks",
     ]
-    with eng.connect() as conn:
+    def _apply(conn) -> None:
         for table in uuid_tables:
             # 重複チェック
             try:
@@ -306,9 +306,36 @@ def _ensure_unique_indexes(eng) -> None:
             idx_name = f"uix_{table}_uuid"
             try:
                 conn.execute(text(f"CREATE UNIQUE INDEX IF NOT EXISTS {idx_name} ON {table}(uuid)"))
-                conn.commit()
             except Exception:
                 pass
+
+    if eng.dialect.name == "sqlite":
+        # SQLite の DDL は transactional。インデックスごとの commit は journal/fsync を
+        # 何度も発生させ、Windows の cold filesystem / AV scan と重なると bootstrap が
+        # CREATE INDEX 内で長時間化する。1 transaction にまとめて disk sync を集約する。
+        with eng.begin() as conn:
+            _apply(conn)
+    else:
+        # PostgreSQL は1つの DDL error で transaction 全体が aborted になるため、
+        # 従来どおり各 index を独立 commit する。
+        with eng.connect() as conn:
+            for table in uuid_tables:
+                try:
+                    dup = conn.execute(
+                        text(f"SELECT uuid, COUNT(*) AS c FROM {table} WHERE uuid IS NOT NULL GROUP BY uuid HAVING c > 1")
+                    ).fetchall()
+                    if dup:
+                        print(f"[sync] WARNING: {table}.uuid に重複あり — unique index をスキップ ({len(dup)} 件)")
+                        continue
+                except Exception:
+                    conn.rollback()
+                    continue
+                idx_name = f"uix_{table}_uuid"
+                try:
+                    conn.execute(text(f"CREATE UNIQUE INDEX IF NOT EXISTS {idx_name} ON {table}(uuid)"))
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
 
 
 def _ensure_analytics_indexes(eng) -> None:
@@ -339,13 +366,23 @@ def _ensure_analytics_indexes(eng) -> None:
         ("ix_sc_record_uuid",               "sync_conflicts",        "record_uuid"),
         ("ix_sc_resolution",                "sync_conflicts",        "resolution"),
     ]
-    with eng.connect() as conn:
-        for idx_name, table, cols in indexes:
-            try:
-                conn.execute(text(f"CREATE INDEX IF NOT EXISTS {idx_name} ON {table}({cols})"))
-                conn.commit()
-            except Exception:
-                pass
+    if eng.dialect.name == "sqlite":
+        # 同じ bootstrap 内の index DDL を1 transactionにまとめる。特にWindowsでは
+        # indexごとの commit が journal flush を増やし、まれな60秒級stallの増幅要因になる。
+        with eng.begin() as conn:
+            for idx_name, table, cols in indexes:
+                try:
+                    conn.execute(text(f"CREATE INDEX IF NOT EXISTS {idx_name} ON {table}({cols})"))
+                except Exception:
+                    pass
+    else:
+        with eng.connect() as conn:
+            for idx_name, table, cols in indexes:
+                try:
+                    conn.execute(text(f"CREATE INDEX IF NOT EXISTS {idx_name} ON {table}({cols})"))
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
 
 
 def run_db_migrations() -> None:
