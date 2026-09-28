@@ -2,8 +2,15 @@
 # TensorFlow 2.15.1 is the final Keras 2 line used by the upstream TrackNet
 # checkpoint and therefore requires Python <=3.11 and NumPy <2.
 numpy==1.26.4
-protobuf==3.20.3
+# TensorFlow 2.15 accepts protobuf >=3.20.3,<5. tf2onnx 1.17 removed the
+# old ~=3.20 cap, so 4.25.8 closes GHSA-8qvm-5x2c-j2w7 / CVE-2024-7254
+# while preserving the upstream Keras 2 checkpoint loader.
+protobuf==4.25.8
 tensorflow==2.15.1
-tf2onnx==1.16.1
+tf2onnx==1.17.0
+# Pin the ONNX version that the last successful export smoke resolved to.
+# This keeps the export toolchain deterministic instead of drifting with
+# tf2onnx's broad onnx>=1.14 dependency.
+onnx==1.17.0
 onnxruntime==1.17.3
 opencv-python-headless==4.10.0.84
