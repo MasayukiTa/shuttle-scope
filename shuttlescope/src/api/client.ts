@@ -62,15 +62,21 @@ function httpError(status: number, text: string): Error {
 //   'transient' … 429/503/5xx/network/timeout 等の一過性失敗。トークンは温存し、
 //                 ログアウトしない (次回呼び出しで同じ refresh token を再利用)。
 // App.tsx の authMe ガードと同じ非対称性をここでも担保する。
-type RefreshResult = 'ok' | 'invalid' | 'transient'
-let _refreshInflight: Promise<RefreshResult> | null = null
+type RefreshResult = 'ok' | 'invalid' | 'transient' | 'superseded'
+type RefreshFlight = { refreshToken: string; promise: Promise<RefreshResult> }
+let _refreshInflight: RefreshFlight | null = null
 
 async function tryRefreshToken(): Promise<RefreshResult> {
-  if (_refreshInflight) return _refreshInflight
-  _refreshInflight = (async () => {
+  const rt = sessionStorage.getItem(REFRESH_KEY)
+  if (!rt) return 'invalid'
+
+  // Single-flight only within the same auth generation. If user B logs in while
+  // user A's refresh is still pending, B must not wait on A's promise.
+  if (_refreshInflight?.refreshToken === rt) return _refreshInflight.promise
+
+  const flight = {} as RefreshFlight
+  const promise = (async (): Promise<RefreshResult> => {
     try {
-      const rt = sessionStorage.getItem(REFRESH_KEY)
-      if (!rt) return 'invalid'
       let res: Response
       try {
         res = await fetch(`${BASE_URL}/auth/refresh`, {
@@ -79,31 +85,51 @@ async function tryRefreshToken(): Promise<RefreshResult> {
           body: JSON.stringify({ refresh_token: rt }),
         })
       } catch {
-        // network / timeout = 一過性。有効な refresh token を捨てない。
-        return 'transient'
+        // network / timeout = transient. Never destroy a valid refresh token.
+        return sessionStorage.getItem(REFRESH_KEY) === rt ? 'transient' : 'superseded'
       }
+
       if (res.ok) {
         const data: { access_token: string; refresh_token: string } = await res.json()
+        // The user may have logged out or switched accounts while this refresh
+        // request was in flight. Never let an old session's delayed response
+        // overwrite the newer authentication generation.
+        if (sessionStorage.getItem(REFRESH_KEY) !== rt) {
+          return 'superseded'
+        }
         sessionStorage.setItem(TOKEN_KEY, data.access_token)
         sessionStorage.setItem(REFRESH_KEY, data.refresh_token)
         try { window.dispatchEvent(new Event(AUTH_CHANGED_EVENT)) } catch {}
         return 'ok'
       }
-      // 401/403 のみ「refresh token 失効 = 本当の失効」とみなしクリアする。
+
       if (res.status === 401 || res.status === 403) {
+        // A stale refresh failure must not log out a newer user/session.
+        if (sessionStorage.getItem(REFRESH_KEY) !== rt) {
+          return 'superseded'
+        }
         sessionStorage.removeItem(TOKEN_KEY)
         sessionStorage.removeItem(REFRESH_KEY)
         try { window.dispatchEvent(new Event(AUTH_CHANGED_EVENT)) } catch {}
         return 'invalid'
       }
-      // 429 / 503 / その他 5xx = 一過性。トークン温存。
-      return 'transient'
+
+      // 429 / 503 / other 5xx are transient. If the user switched while
+      // waiting, mark this result superseded so the old request is not replayed.
+      return sessionStorage.getItem(REFRESH_KEY) === rt ? 'transient' : 'superseded'
     } finally {
-      // 次の 401 バッチに備えて解放（成功時の値は短命キャッシュしない）
-      setTimeout(() => { _refreshInflight = null }, 0)
+      // Clear only the flight that is actually finishing. A newer auth
+      // generation may already have installed its own in-flight refresh.
+      setTimeout(() => {
+        if (_refreshInflight === flight) _refreshInflight = null
+      }, 0)
     }
   })()
-  return _refreshInflight
+
+  flight.refreshToken = rt
+  flight.promise = promise
+  _refreshInflight = flight
+  return promise
 }
 
 // セッション完全失効時に画面リダイレクトするためのフラグ (連続 401 で多重発火しないよう保護)
@@ -249,6 +275,12 @@ async function fetchWithAutoRefresh(input: string, init: RequestInit): Promise<R
     // 一過性の refresh 失敗 (429/503/network)。ログアウトせずトークンを温存し、
     // 元の 401 を呼び出し側へ返す (retryable エラーとして扱われ、次回呼び出しで
     // 同じ refresh token を使って再試行できる)。login-bounce を防ぐ。
+    return res
+  }
+  if (refresh === 'superseded') {
+    // Auth generation changed while the old request was waiting. Do not replay
+    // that request under the new user's credentials and do not log the new user
+    // out because of the old session's refresh result.
     return res
   }
   // refresh === 'ok' → 新 access token で再送 (再送にもタイムアウトを掛ける)
