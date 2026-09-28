@@ -15,6 +15,7 @@ from backend.main import app
 from backend.db import database as db_module
 from backend.db.models import ChatMessage, ChatSession
 from backend.utils.auth import AuthCtx, get_auth
+from backend.utils.jwt_utils import create_access_token
 from backend.analysis.insights.safety import budget as budget_mod
 from backend.analysis.insights.safety import reset_for_test as reset_budget
 from backend.routers import insights_chat as chat_router_mod
@@ -30,10 +31,16 @@ def _ctx(role: str = "coach", user_id: int = 100) -> AuthCtx:
 
 def _override(role: str = "coach", user_id: int = 100):
     app.dependency_overrides[get_auth] = lambda: _ctx(role, user_id)
+    # GlobalAuthMiddleware runs before FastAPI dependency overrides. TestClient
+    # must therefore carry a real access token even when the endpoint AuthCtx is
+    # intentionally overridden to exercise role-specific handler behavior.
+    transport_token = create_access_token(user_id=user_id, role="coach", minutes=10)
+    _CLIENT.headers["Authorization"] = f"Bearer {transport_token}"
 
 
 def _clear_override():
     app.dependency_overrides.pop(get_auth, None)
+    _CLIENT.headers.pop("Authorization", None)
 
 
 @pytest.fixture(autouse=True)
