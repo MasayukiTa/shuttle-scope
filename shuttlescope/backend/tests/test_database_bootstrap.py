@@ -7,11 +7,14 @@ import sqlite3
 import tempfile
 from pathlib import Path
 
+import pytest
 from sqlalchemy import create_engine, event
 
 from backend.db.database import (
     _ensure_analytics_indexes,
     _ensure_unique_indexes,
+    _safe_sql_column_list,
+    _safe_sql_ident,
     bootstrap_database,
     create_tables,
 )
@@ -135,3 +138,12 @@ def test_sqlite_index_bootstrap_batches_commits():
     finally:
         event.remove(eng, "commit", _count_commit)
         eng.dispose()
+
+def test_bootstrap_sql_identifier_guards_reject_injected_identifiers():
+    assert _safe_sql_ident("matches") == "matches"
+    assert _safe_sql_column_list("match_id, player_id") == "match_id, player_id"
+
+    with pytest.raises(ValueError):
+        _safe_sql_ident("matches; DROP TABLE users")
+    with pytest.raises(ValueError):
+        _safe_sql_column_list("match_id, player_id DESC")

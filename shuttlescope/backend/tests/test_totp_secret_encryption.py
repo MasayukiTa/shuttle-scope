@@ -217,7 +217,7 @@ def test_setup_regenerates_when_stored_secret_is_unusable(db_session, with_key):
     from backend.utils.jwt_utils import create_access_token
 
     user = User(username="broken_secret_user", role="analyst",
-                totp_secret="[ENCRYPTED:INVALID]", totp_enabled=False)
+                totp_secret="[ENCRYPTED:INVALID]", totp_enabled=False)  # nosec B106 -- corrupt fixture sentinel
     db_session.add(user)
     db_session.commit()
 

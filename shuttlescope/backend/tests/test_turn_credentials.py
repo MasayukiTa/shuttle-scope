@@ -72,21 +72,21 @@ def _ice(client):
 
 class TestStaticCredentialsAreNeverHandedOut:
     def test_the_configured_password_does_not_appear_in_the_response(self, client, turn_cfg):
-        turn_cfg(turn_static_auth_secret="shared-secret")
+        turn_cfg(turn_static_auth_secret="shared-secret")  # nosec B106 -- fixed test fixture
         body = client.get("/api/webrtc/ice-config").text
         assert "static-password" not in body
         assert "static-user" not in body
 
     def test_without_a_shared_secret_no_turn_is_returned(self, client, turn_cfg):
         """鍵が無いなら固定の資格情報に**戻さない**。STUN だけを返す。"""
-        turn_cfg(turn_static_auth_secret="")
+        turn_cfg(turn_static_auth_secret="")  # nosec B106 -- explicit missing-secret test
         data = _ice(client)
         urls = [s.get("urls") for s in data["ice_servers"]]
         assert "turn:relay.example.com:3478" not in urls
         assert all(s.get("urls", "").startswith("stun:") for s in data["ice_servers"])
 
     def test_and_it_says_why_rather_than_silently_dropping_turn(self, client, turn_cfg):
-        turn_cfg(turn_static_auth_secret="")
+        turn_cfg(turn_static_auth_secret="")  # nosec B106 -- explicit missing-secret test
         data = _ice(client)
         assert data["turn_warning"], "TURN を落としたのに理由が無い"
         assert "turn_static_auth_secret" in data["turn_warning"]
@@ -97,22 +97,22 @@ class TestStaticCredentialsAreNeverHandedOut:
         「設定上は有効」を返すと、画面は TURN が使えると信じて
         繋がらない理由を別のところに探すことになる。
         """
-        turn_cfg(turn_static_auth_secret="")
+        turn_cfg(turn_static_auth_secret="")  # nosec B106 -- explicit missing-secret test
         assert _ice(client)["turn_enabled"] is False
-        turn_cfg(turn_static_auth_secret="shared-secret")
+        turn_cfg(turn_static_auth_secret="shared-secret")  # nosec B106 -- fixed test fixture
         assert _ice(client)["turn_enabled"] is True
 
 
 class TestEphemeralCredentials:
     def test_turn_is_returned_when_the_secret_is_set(self, client, turn_cfg):
-        turn_cfg(turn_static_auth_secret="shared-secret")
+        turn_cfg(turn_static_auth_secret="shared-secret")  # nosec B106 -- fixed test fixture
         data = _ice(client)
         turn = [s for s in data["ice_servers"] if s["urls"].startswith("turn:")]
         assert len(turn) == 1
         assert turn[0]["username"] and turn[0]["credential"]
 
     def test_the_username_carries_an_expiry_in_the_future(self, client, turn_cfg):
-        turn_cfg(turn_static_auth_secret="shared-secret")
+        turn_cfg(turn_static_auth_secret="shared-secret")  # nosec B106 -- fixed test fixture
         data = _ice(client)
         turn = [s for s in data["ice_servers"] if s["urls"].startswith("turn:")][0]
         expiry_s, _, _who = turn["username"].partition(":")
@@ -125,20 +125,20 @@ class TestEphemeralCredentials:
 
         ここが合っていないと、期限つきにはなったが**誰も繋がらない**。
         """
-        username, credential = _ephemeral_turn_credentials("shared-secret", 42, 3600)
+        username, credential = _ephemeral_turn_credentials("shared-secret", 42, 3600)  # nosec B106 -- protocol vector
         expected = base64.b64encode(
             hmac.new(b"shared-secret", username.encode(), hashlib.sha1).digest()
         ).decode()
         assert credential == expected
 
     def test_a_different_secret_produces_a_different_credential(self):
-        u1, c1 = _ephemeral_turn_credentials("secret-a", 42, 3600)
-        _u2, c2 = _ephemeral_turn_credentials("secret-b", 42, 3600)
+        u1, c1 = _ephemeral_turn_credentials("secret-a", 42, 3600)  # nosec B106 -- protocol vector
+        _u2, c2 = _ephemeral_turn_credentials("secret-b", 42, 3600)  # nosec B106 -- protocol vector
         assert c1 != c2
         assert u1  # username は鍵に依らない
 
     def test_turn_disabled_returns_stun_only_without_a_warning(self, client, turn_cfg):
-        turn_cfg(turn_enabled=False, turn_static_auth_secret="shared-secret")
+        turn_cfg(turn_enabled=False, turn_static_auth_secret="shared-secret")  # nosec B106 -- fixed test fixture
         data = _ice(client)
         assert data["turn_enabled"] is False
         assert data["turn_warning"] is None

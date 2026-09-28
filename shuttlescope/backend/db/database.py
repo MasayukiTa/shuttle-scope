@@ -1,12 +1,33 @@
 """SQLAlchemy データベース設定"""
 import logging
 import os
+import re
 from sqlalchemy import create_engine, event, text, inspect
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from backend.config import settings
 import uuid as _uuid_mod
 
 logger = logging.getLogger(__name__)
+
+
+_SQL_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_SQL_COLUMN_LIST_RE = re.compile(
+    r"^[A-Za-z_][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*)*$"
+)
+
+
+def _safe_sql_ident(value: str) -> str:
+    """Validate an internal SQL identifier before composing bootstrap DDL."""
+    if not _SQL_IDENT_RE.fullmatch(value):
+        raise ValueError(f"unsafe SQL identifier: {value!r}")
+    return value
+
+
+def _safe_sql_column_list(value: str) -> str:
+    """Validate a comma-separated internal column list used by bootstrap indexes."""
+    if not _SQL_COLUMN_LIST_RE.fullmatch(value):
+        raise ValueError(f"unsafe SQL column list: {value!r}")
+    return value
 
 
 class Base(DeclarativeBase):
@@ -294,8 +315,10 @@ def _ensure_unique_indexes(eng) -> None:
         for table in uuid_tables:
             # 重複チェック
             try:
-                dup = conn.execute(
-                    text(f"SELECT uuid, COUNT(*) AS c FROM {table} WHERE uuid IS NOT NULL GROUP BY uuid HAVING c > 1")
+                safe_table = _safe_sql_ident(table)
+                dup = conn.exec_driver_sql(
+                    f"SELECT uuid, COUNT(*) AS c FROM {safe_table} "
+                    "WHERE uuid IS NOT NULL GROUP BY uuid HAVING c > 1"
                 ).fetchall()
                 if dup:
                     print(f"[sync] WARNING: {table}.uuid に重複あり — unique index をスキップ ({len(dup)} 件)")
@@ -305,7 +328,11 @@ def _ensure_unique_indexes(eng) -> None:
             # UNIQUE INDEX 作成（既存の場合は無視）
             idx_name = f"uix_{table}_uuid"
             try:
-                conn.execute(text(f"CREATE UNIQUE INDEX IF NOT EXISTS {idx_name} ON {table}(uuid)"))
+                safe_idx = _safe_sql_ident(idx_name)
+                safe_table = _safe_sql_ident(table)
+                conn.exec_driver_sql(
+                    f"CREATE UNIQUE INDEX IF NOT EXISTS {safe_idx} ON {safe_table}(uuid)"
+                )
             except Exception:
                 pass
 
@@ -321,8 +348,10 @@ def _ensure_unique_indexes(eng) -> None:
         with eng.connect() as conn:
             for table in uuid_tables:
                 try:
-                    dup = conn.execute(
-                        text(f"SELECT uuid, COUNT(*) AS c FROM {table} WHERE uuid IS NOT NULL GROUP BY uuid HAVING c > 1")
+                    safe_table = _safe_sql_ident(table)
+                    dup = conn.exec_driver_sql(
+                        f"SELECT uuid, COUNT(*) AS c FROM {safe_table} "
+                        "WHERE uuid IS NOT NULL GROUP BY uuid HAVING c > 1"
                     ).fetchall()
                     if dup:
                         print(f"[sync] WARNING: {table}.uuid に重複あり — unique index をスキップ ({len(dup)} 件)")
@@ -332,7 +361,11 @@ def _ensure_unique_indexes(eng) -> None:
                     continue
                 idx_name = f"uix_{table}_uuid"
                 try:
-                    conn.execute(text(f"CREATE UNIQUE INDEX IF NOT EXISTS {idx_name} ON {table}(uuid)"))
+                    safe_idx = _safe_sql_ident(idx_name)
+                    safe_table = _safe_sql_ident(table)
+                    conn.exec_driver_sql(
+                        f"CREATE UNIQUE INDEX IF NOT EXISTS {safe_idx} ON {safe_table}(uuid)"
+                    )
                     conn.commit()
                 except Exception:
                     conn.rollback()
@@ -372,14 +405,24 @@ def _ensure_analytics_indexes(eng) -> None:
         with eng.begin() as conn:
             for idx_name, table, cols in indexes:
                 try:
-                    conn.execute(text(f"CREATE INDEX IF NOT EXISTS {idx_name} ON {table}({cols})"))
+                    safe_idx = _safe_sql_ident(idx_name)
+                    safe_table = _safe_sql_ident(table)
+                    safe_cols = _safe_sql_column_list(cols)
+                    conn.exec_driver_sql(
+                        f"CREATE INDEX IF NOT EXISTS {safe_idx} ON {safe_table}({safe_cols})"
+                    )
                 except Exception:
                     pass
     else:
         with eng.connect() as conn:
             for idx_name, table, cols in indexes:
                 try:
-                    conn.execute(text(f"CREATE INDEX IF NOT EXISTS {idx_name} ON {table}({cols})"))
+                    safe_idx = _safe_sql_ident(idx_name)
+                    safe_table = _safe_sql_ident(table)
+                    safe_cols = _safe_sql_column_list(cols)
+                    conn.exec_driver_sql(
+                        f"CREATE INDEX IF NOT EXISTS {safe_idx} ON {safe_table}({safe_cols})"
+                    )
                     conn.commit()
                 except Exception:
                     conn.rollback()

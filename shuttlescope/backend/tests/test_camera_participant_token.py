@@ -157,7 +157,7 @@ def test_invalid_previous_token_does_not_reuse_approved_participant():
             client,
             code,
             device_uid="invalid-proof-device",
-            participant_token="invalid-proof-token-xxxxxxxxxxxx",
+            participant_token="invalid-proof-token-xxxxxxxxxxxx",  # nosec B106 -- deliberate invalid test credential
         )
         assert second_resp.status_code == 200
         second = second_resp.json()["data"]
@@ -583,7 +583,7 @@ def test_participant_upload_rejects_bad_token_pending_device_and_match_mismatch(
                 "total_size": 1024,
                 "chunk_size": 64 * 1024,
             },
-            headers=_participant_upload_headers(joined, token="wrong-token"),
+            headers=_participant_upload_headers(joined, token="wrong-token"),  # nosec B106 -- negative auth test
         )
         assert bad_token.status_code == 401, bad_token.text
 
@@ -807,7 +807,7 @@ def test_participant_ice_rejects_wrong_token_and_blocked_viewer(monkeypatch):
             device_name="Viewer PC",
         ).json()["data"]
 
-        bad = _participant_ice(client, joined, token="wrong-participant-token")
+        bad = _participant_ice(client, joined, token="wrong-participant-token")  # nosec B106 -- negative auth test
         assert bad.status_code == 401, bad.text
 
         db = db_module.SessionLocal()
