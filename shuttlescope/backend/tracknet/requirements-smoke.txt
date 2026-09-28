@@ -6,11 +6,11 @@ numpy==1.26.4
 # old ~=3.20 cap, so 4.25.8 closes the protobuf DoS advisory that is
 # patchable within the supported Keras 2 exporter stack.
 protobuf==4.25.8
-tensorflow==2.15.1
+tensorflow==2.21.0
 tf2onnx==1.17.0
 # ONNX 1.18.0 is the newest converter-compatible release that still works
 # with TensorFlow 2.15 / ml-dtypes~=0.3.1. Keep it explicit here so the
 # workflow installs from one pinned manifest rather than an inline pip command.
-onnx==1.18.0
-onnxruntime==1.17.3
+onnx==1.23.0
+onnxruntime==1.30.0
 opencv-python-headless==4.10.0.84
