@@ -33,16 +33,16 @@ import bisect
 import logging
 from typing import Optional
 
-from backend.yolo.court_mapper import nearest_player_to_point, classify_formation
+from backend.yolo.court_mapper import classify_formation
+from backend.cv.hitter_proximity import nearest_player_by_proximity
 
 logger = logging.getLogger(__name__)
 
 # YOLO フレームとシャトルフレームのタイムスタンプ許容マッチング幅（秒）
 MATCH_WINDOW_SEC: float = 0.5
 
-# ヒッター候補とみなすための最大シャトル距離（正規化コード座標）
-MAX_HITTER_DIST: float = 0.35
-
+# D-3: hitter proximity は固定画像距離ではなく bbox の見かけ高さで正規化する。
+# シャトルは空中なので床 homography へ投影しない（D-1 と分離）。
 # C-8: ラベルが位置ベースの推測だったときの hitter_confidence 上限。
 #
 # この値は CONF_MEDIUM (既定 0.48) も下回るので、**候補は review_required になる**
@@ -58,7 +58,8 @@ HITTER_GUESS_CONF_CAP = 0.45
 
 # D-5: 位置ベース推測でも、キャリブレーション済みコート上で **2 人だけ**が
 # ネットを挟んでいるなら「上/下という幾何ラベル」は coin flip ではない。
-# ただし D-3 のシャトル↔人物距離はまだ画像座標なので auto_filled までは上げない。
+# D-3 の固定画像距離は bbox-scale 正規化へ置換済みだが、proximity 自体は
+# annotation truth ではないため auto_filled には上げない。
 # 既定 CONF_MEDIUM=0.48 / CONF_HIGH=0.72 の間に固定し、最大 suggested とする。
 HITTER_NET_SEPARATED_CONF_CAP = 0.65
 _GUESSED_LABEL_SOURCES = {"position_fallback", "overflow"}
@@ -213,29 +214,36 @@ def _build_events(
 
         formation = classify_formation(players)
 
-        # ヒッター候補: シャトル位置に最近傍のプレイヤー
+        # ヒッター候補: シャトル位置に bbox-scale で最も近いプレイヤー。
+        # 固定 0.35 の画像距離は遠方選手ほど実空間で広すぎるため使わない。
         hitter: Optional[str] = None
         hitter_dist: float = 0.0
-        hitter_confidence: float = 0.0  # 距離から算出した候補確信度（0-1）
+        hitter_dist_limit: Optional[float] = None
+        hitter_dist_ratio: Optional[float] = None
+        hitter_confidence: float = 0.0
         hitter_label_geometry: Optional[str] = None
         if shuttle_x is not None and shuttle_y is not None and shuttle_conf >= 0.4:
-            nearest = nearest_player_to_point(players, shuttle_x, shuttle_y)
-            if nearest:
-                cx, cy = nearest["centroid"]
-                import math
-                hitter_dist = round(math.sqrt(
-                    (cx - shuttle_x) ** 2 + (cy - shuttle_y) ** 2
-                ), 4)
-                if hitter_dist <= MAX_HITTER_DIST:
+            proximity = nearest_player_by_proximity(
+                players,
+                shuttle_x,
+                shuttle_y,
+                labels={"player_a", "player_b"},
+            )
+            if proximity is not None:
+                hitter_dist = round(proximity.raw_distance, 4)
+                hitter_dist_limit = round(proximity.allowed_distance, 4)
+                hitter_dist_ratio = round(proximity.normalized_distance, 4)
+                if proximity.normalized_distance <= 1.0:
+                    nearest = proximity.player
                     hitter = nearest.get("label")
-                    # 距離が近いほど確信度が高い（線形減衰）
+                    # bbox-scale 閾値に対する近さで線形減衰する。
                     hitter_confidence = round(
-                        (1.0 - hitter_dist / MAX_HITTER_DIST) * shuttle_conf, 3
+                        max(0.0, 1.0 - proximity.normalized_distance) * shuttle_conf,
+                        3,
                     )
                     # C-8 / D-5: 同じ側・未校正・4人検出等では推測ラベルを
                     # review_required 上限へ。2人だけが foot_point でネットを挟む
-                    # 場合だけ suggested 上限まで許す。D-3 の距離問題が残るため
-                    # net-separated でも auto_filled にはしない。
+                    # 場合だけ suggested 上限まで許す。
                     hitter_confidence, hitter_label_geometry = cap_guessed_hitter_confidence(
                         hitter_confidence, nearest, players, court_adapter
                     )
@@ -260,6 +268,9 @@ def _build_events(
             # hitter_candidate: CV 推定。最終的な真値ではない（annotation truth への書き込み不可）
             "hitter_candidate": hitter,
             "hitter_distance": hitter_dist,
+            "hitter_distance_limit": hitter_dist_limit,
+            "hitter_distance_ratio": hitter_dist_ratio,
+            "hitter_distance_metric": "bbox_scale",
             "hitter_confidence": hitter_confidence,
             "hitter_label_geometry": hitter_label_geometry,
             "receiver_candidate": receiver,

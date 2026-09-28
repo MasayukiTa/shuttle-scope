@@ -64,13 +64,14 @@ from __future__ import annotations
 
 import bisect
 import logging
-import math
 import statistics
 from collections import Counter
 from datetime import datetime
 from typing import Optional
 
 import os
+
+from backend.cv.hitter_proximity import nearest_player_by_proximity, players_within_proximity
 
 logger = logging.getLogger(__name__)
 
@@ -682,35 +683,31 @@ def _infer_hitter(
     if shuttle_x is None or shuttle_y is None:
         return None
 
-    # 最近傍プレイヤー候補
+    # D-3: 固定画像距離ではなく人物 bbox の見かけ高さで局所スケール正規化。
+    # シャトルは空中なので床 homography には投影しない。
     players = best_yolo.get("players", [])
-    nearest_label: Optional[str] = None
-    nearest_player: Optional[dict] = None
-    nearest_dist: float = float("inf")
-
-    for p in players:
-        cx, cy = p.get("centroid", [None, None])
-        if cx is None or cy is None:
-            continue
-        label = p.get("label")
-        if label not in ("player_a", "player_b"):
-            continue
-        dist = math.sqrt((cx - shuttle_x) ** 2 + (cy - shuttle_y) ** 2)
-        if dist < nearest_dist:
-            nearest_dist = dist
-            nearest_label = label
-            nearest_player = p
-
-    if nearest_label is None or nearest_dist > 0.35:
+    proximity = nearest_player_by_proximity(
+        players,
+        shuttle_x,
+        shuttle_y,
+        labels={"player_a", "player_b"},
+    )
+    if proximity is None or proximity.normalized_distance > 1.0:
         return None
 
-    # 距離から信頼度算出（線形減衰）
-    hitter_conf = round((1.0 - nearest_dist / 0.35) * shuttle_conf, 3)
+    nearest_player = proximity.player
+    nearest_label = nearest_player.get("label")
+    if nearest_label not in ("player_a", "player_b"):
+        return None
+
+    hitter_conf = round(
+        max(0.0, 1.0 - proximity.normalized_distance) * shuttle_conf,
+        3,
+    )
 
     # C-8 / D-5: position_fallback / overflow は人物同一性の証拠ではない。
     # ただし、singles 相当の2人が calibrated court 上でネットを挟む場合だけ、
     # screen-side label としての幾何根拠があるので suggested 上限まで許す。
-    # D-3（画像座標距離）が残るため auto_filled には昇格させない。
     from backend.yolo.cv_aligner import cap_guessed_hitter_confidence
     hitter_conf, label_geometry = cap_guessed_hitter_confidence(
         hitter_conf,
@@ -720,15 +717,16 @@ def _infer_hitter(
     )
     hitter_conf = round(hitter_conf, 3)
     decision_mode, reason_codes = _conf_to_decision(hitter_conf)
+    reason_codes.append("hitter_proximity:bbox_scale")
     if label_geometry:
         reason_codes.append(f"hitter_label_geometry:{label_geometry}")
 
-    # プレイヤーが複数いて近い場合は ambiguous
-    near_players = [
-        p for p in players
-        if p.get("label") in ("player_a", "player_b")
-        and _player_dist(p, shuttle_x, shuttle_y) <= 0.35
-    ]
+    near_players = players_within_proximity(
+        players,
+        shuttle_x,
+        shuttle_y,
+        labels={"player_a", "player_b"},
+    )
     if len(near_players) >= 2:
         reason_codes.append("multiple_near_players")
 

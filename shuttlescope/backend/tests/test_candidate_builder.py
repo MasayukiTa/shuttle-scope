@@ -194,12 +194,14 @@ class TestInferHitter:
                     "label_source": "position_fallback",
                     "centroid": [0.25, 0.25],
                     "foot_point": [0.25, 0.25],
+                    "bbox": [0.20, 0.15, 0.30, 0.35],
                 },
                 {
                     "label": "player_b",
                     "label_source": "position_fallback",
                     "centroid": [0.75, 0.75],
                     "foot_point": [0.75, 0.75],
+                    "bbox": [0.70, 0.65, 0.80, 0.85],
                 },
             ],
         }]
@@ -232,12 +234,14 @@ class TestInferHitter:
                     "label_source": "position_fallback",
                     "centroid": [0.25, 0.25],
                     "foot_point": [0.25, 0.25],
+                    "bbox": [0.20, 0.15, 0.30, 0.35],
                 },
                 {
                     "label": "player_b",
                     "label_source": "position_fallback",
                     "centroid": [0.75, 0.35],
                     "foot_point": [0.75, 0.35],
+                    "bbox": [0.70, 0.25, 0.80, 0.45],
                 },
             ],
         }]

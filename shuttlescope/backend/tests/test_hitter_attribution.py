@@ -58,8 +58,8 @@ def test_priority2_nearest_player_to_shuttle():
         swing_events=[],
         shuttle_position=(0.50, 0.50),
         player_positions=[
-            {"label": "player_a", "centroid": [0.10, 0.10]},  # 遠い
-            {"label": "player_b", "centroid": [0.55, 0.52]},  # 近い
+            {"label": "player_a", "centroid": [0.10, 0.10], "bbox": [0.05, 0.00, 0.15, 0.20]},  # 遠い
+            {"label": "player_b", "centroid": [0.55, 0.52], "bbox": [0.50, 0.42, 0.60, 0.62]},  # 近い
         ],
     )
     assert res.identity == "player_b"
@@ -72,7 +72,7 @@ def test_priority2_too_far_falls_to_review():
         stroke_timestamp_sec=1.0,
         swing_events=[],
         shuttle_position=(0.10, 0.10),
-        player_positions=[{"label": "player_a", "centroid": [0.90, 0.90]}],  # 距離 ~1.13
+        player_positions=[{"label": "player_a", "centroid": [0.90, 0.90], "bbox": [0.85, 0.80, 0.95, 1.00]}],  # 距離 ~1.13
         proximity_max_dist=0.35,
     )
     assert res.source == "review_required"
@@ -106,13 +106,13 @@ def test_proximity_confidence_decreases_with_distance():
     near = attribute_hitter(
         stroke_timestamp_sec=1.0, swing_events=[],
         shuttle_position=(0.50, 0.50),
-        player_positions=[{"label": "p", "centroid": [0.50, 0.50]}],
+        player_positions=[{"label": "p", "centroid": [0.50, 0.50], "bbox": [0.45, 0.40, 0.55, 0.60]}],
         proximity_max_dist=0.35,
     )
     far = attribute_hitter(
         stroke_timestamp_sec=1.0, swing_events=[],
         shuttle_position=(0.50, 0.50),
-        player_positions=[{"label": "p", "centroid": [0.65, 0.65]}],  # 距離 ~0.21
+        player_positions=[{"label": "p", "centroid": [0.65, 0.65], "bbox": [0.60, 0.55, 0.70, 0.75]}],  # 距離 ~0.21
         proximity_max_dist=0.35,
     )
     assert near.confidence > far.confidence

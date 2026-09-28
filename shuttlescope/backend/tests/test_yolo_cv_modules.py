@@ -220,12 +220,14 @@ class TestHitterNetGeometry:
                 "label_source": "position_fallback",
                 "centroid": [0.25, 0.25],
                 "foot_point": [0.25, 0.25],
+                "bbox": [0.20, 0.15, 0.30, 0.35],
             },
             {
                 "label": "player_b",
                 "label_source": "position_fallback",
                 "centroid": [0.75, b_y],
                 "foot_point": [0.75, b_y],
+                "bbox": [0.70, b_y - 0.10, 0.80, b_y + 0.10],
             },
         ]
         if four_players:

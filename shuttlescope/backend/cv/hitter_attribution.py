@@ -15,11 +15,11 @@
 """
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
 from typing import Iterable, List, Literal, Optional
 
 from backend.cv.swing_detector import SwingEvent
+from backend.cv.hitter_proximity import nearest_player_by_proximity
 
 HitterSource = Literal["swing_detector", "proximity", "review_required"]
 
@@ -38,7 +38,7 @@ def attribute_hitter(
     stroke_timestamp_sec: float,
     swing_events: Iterable[SwingEvent],
     shuttle_position: Optional[tuple] = None,            # (x_norm, y_norm) at stroke ts
-    player_positions: Optional[List[dict]] = None,        # [{"label", "centroid": [x,y]}, ...]
+    player_positions: Optional[List[dict]] = None,        # [{"label", "centroid": [x,y], "bbox": [x1,y1,x2,y2]}, ...]
     swing_window_sec: float = 0.25,
     proximity_max_dist: float = 0.35,
 ) -> HitterAttribution:
@@ -50,7 +50,7 @@ def attribute_hitter(
         shuttle_position: 該当時刻の shuttle 位置 (画像正規化、None なら proximity 不可)
         player_positions: 該当時刻周辺のプレイヤー検出
         swing_window_sec: stroke ts ± この秒数の SwingEvent を Priority 1 候補にする
-        proximity_max_dist: shuttle ↔ player の最大許容距離 (画像正規化)
+        proximity_max_dist: bbox-scale 距離の絶対画像上限（旧0.35を安全上限として維持）
 
     Returns:
         HitterAttribution
@@ -70,31 +70,26 @@ def attribute_hitter(
 
     fallback_reasons: List[str] = ["no_swing_in_window"]
 
-    # Priority 2: proximity to shuttle
+    # Priority 2: perspective-aware image proximity.
+    # Missing bbox is not silently downgraded to the old fixed threshold.
     if shuttle_position and player_positions:
         sx, sy = shuttle_position
-        nearest_label: Optional[str] = None
-        nearest_dist: float = float("inf")
-        for p in player_positions:
-            label = p.get("label")
-            c = p.get("centroid")
-            if not label or not c or len(c) < 2:
-                continue
-            dx = c[0] - sx
-            dy = c[1] - sy
-            d = math.sqrt(dx * dx + dy * dy)
-            if d < nearest_dist:
-                nearest_dist = d
-                nearest_label = label
-        if nearest_label is not None and nearest_dist <= proximity_max_dist:
-            # 距離 0 → confidence 1.0、距離 max → 0
-            conf = max(0.0, 1.0 - nearest_dist / proximity_max_dist)
+        proximity = nearest_player_by_proximity(
+            player_positions,
+            sx,
+            sy,
+            max_image_distance=proximity_max_dist,
+        )
+        if proximity is not None and proximity.normalized_distance <= 1.0:
+            conf = max(0.0, 1.0 - proximity.normalized_distance)
             return HitterAttribution(
-                identity=nearest_label,
+                identity=proximity.player.get("label"),
                 source="proximity",
                 confidence=round(conf, 3),
-                fallback_reasons=fallback_reasons,
+                fallback_reasons=fallback_reasons + ["bbox_scale_proximity"],
             )
+        if proximity is None:
+            fallback_reasons.append("no_player_bbox_scale")
         fallback_reasons.append("no_player_near_shuttle")
     else:
         if not shuttle_position:
