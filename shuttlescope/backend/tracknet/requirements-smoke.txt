@@ -5,7 +5,7 @@ numpy==1.26.4
 # TensorFlow 2.15 accepts protobuf >=3.20.3,<5. tf2onnx 1.17 removed the
 # old ~=3.20 cap, so 4.25.8 closes the protobuf DoS advisory that is
 # patchable within the supported Keras 2 exporter stack.
-protobuf==4.25.8
+protobuf==5.29.6
 tensorflow==2.15.1
 tf2onnx==1.17.0
 # ONNX 1.18.0 is the newest converter-compatible release that still works
