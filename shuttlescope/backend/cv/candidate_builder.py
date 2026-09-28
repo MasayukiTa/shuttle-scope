@@ -45,6 +45,14 @@ StrokeCVCandidate:
     "reason_codes": [str]
   } | None,
 
+  "hit_zone": {
+    "value": str,
+    "confidence_score": float,
+    "source": "yolo_footpoint",
+    "decision_mode": "auto_filled"|"suggested"|"review_required",
+    "reason_codes": [str]
+  } | None,
+
   "hitter": {
     "value": "player_a"|"player_b",
     "confidence_score": float,
@@ -237,6 +245,12 @@ def build_candidates(
                 score_a_before=rally.get("score_a_before"),
                 score_b_before=rally.get("score_b_before"),
             )
+            hit_zone = _infer_hit_zone_from_hitter(
+                rally_yolo,
+                stroke_ts=ts,
+                hitter=hitter,
+                court_adapter=court_adapter,
+            )
             role = _infer_front_back_role(rally_yolo, stroke_ts=ts, court_adapter=court_adapter) if rally_yolo else None
 
             if land and land["confidence_score"] is not None:
@@ -249,6 +263,7 @@ def build_candidates(
                 "stroke_num":   stroke.get("stroke_num"),
                 "timestamp_sec": ts,
                 "land_zone":    land,
+                "hit_zone":     hit_zone,
                 "hitter":       hitter,
                 "front_back_role": role,
             })
@@ -264,6 +279,10 @@ def build_candidates(
         h_fill = sum(
             1 for s in stroke_candidates
             if s["hitter"] and s["hitter"]["decision_mode"] != "review_required"
+        ) / max(len(stroke_candidates), 1)
+        hz_fill = sum(
+            1 for s in stroke_candidates
+            if s.get("hit_zone") and s["hit_zone"]["decision_mode"] != "review_required"
         ) / max(len(stroke_candidates), 1)
         avg_conf = (
             statistics.mean(land_confs + hitter_confs)
@@ -282,6 +301,7 @@ def build_candidates(
             "cv_assist_available": len(rally_tracknet) > 0 or len(rally_yolo) > 0,
             "cv_confidence_summary": {
                 "land_zone_fill_rate": round(lz_fill, 3),
+                "hit_zone_fill_rate":  round(hz_fill, 3),
                 "hitter_fill_rate":    round(h_fill, 3),
                 # A0: avg_confidence は gated_conf 由来の実効値（gate ON 時）。
                 # quality_gated フラグで「生の検出率%ではなく減衰後の実効値」だと
@@ -736,6 +756,103 @@ def _infer_hitter(
         "source":           "fusion",
         "decision_mode":    decision_mode,
         "reason_codes":     reason_codes,
+    }
+
+
+def _infer_hit_zone_from_hitter(
+    yolo_frames: list[dict],
+    stroke_ts: Optional[float],
+    hitter: Optional[dict],
+    court_adapter=None,
+) -> Optional[dict]:
+    """打球時の「打者の床面位置」を Zone9 として推定する。
+
+    D-1: hit_zone を空中シャトルの3D接触点とは定義しない。単眼映像で
+    シャトルを床 homography に落とすと高さ由来の系統誤差が入るためである。
+    ここで扱う hit_zone は「打球時に打者が立っていた床面 Zone9」。
+
+    観測に使うのは YOLO の foot_point（無ければ bbox 下辺中央）だけで、
+    homography が無い試合では推測しない。
+    """
+    if (
+        stroke_ts is None
+        or not hitter
+        or court_adapter is None
+        or not getattr(court_adapter, "is_calibrated", False)
+        or not yolo_frames
+    ):
+        return None
+
+    screen_label = hitter.get("screen_label") or hitter.get("value")
+    if screen_label not in ("player_a", "player_b"):
+        return None
+
+    ts_list = [f.get("timestamp_sec", 0.0) for f in yolo_frames]
+    idx = bisect.bisect_left(ts_list, stroke_ts)
+    best_frame = None
+    best_gap = float("inf")
+    for i in (idx - 1, idx):
+        if 0 <= i < len(yolo_frames):
+            gap = abs(ts_list[i] - stroke_ts)
+            if gap < best_gap and gap <= HITTER_MATCH_WINDOW_SEC:
+                best_gap = gap
+                best_frame = yolo_frames[i]
+    if best_frame is None:
+        return None
+
+    player = next(
+        (p for p in best_frame.get("players", []) if p.get("label") == screen_label),
+        None,
+    )
+    if player is None:
+        return None
+
+    foot = player.get("foot_point")
+    if foot and len(foot) >= 2:
+        x_norm, y_norm = foot[0], foot[1]
+    else:
+        bbox = player.get("bbox")
+        if not bbox or len(bbox) < 4:
+            return None
+        x_norm = (bbox[0] + bbox[2]) / 2.0
+        y_norm = bbox[3]
+
+    try:
+        court_x, court_y = court_adapter.pixel_to_court(float(x_norm), float(y_norm))
+    except (TypeError, ValueError, ZeroDivisionError, FloatingPointError):
+        return None
+
+    from backend.tracknet.zone_mapper import court_to_zone9
+
+    side_zone = court_to_zone9(court_x, court_y)
+    if side_zone is None:
+        return None
+    side, zone = side_zone
+
+    # screen label は上側=player_a / 下側=player_b という幾何ラベル。
+    # homography結果と食い違う場合、ラベル又は検出が怪しいので自動採用しない。
+    expected_side = "A" if screen_label == "player_a" else "B"
+    if side != expected_side:
+        return None
+
+    hitter_conf = hitter.get("confidence_score")
+    if hitter_conf is None:
+        return None
+    det_conf = player.get("confidence")
+    conf = float(hitter_conf)
+    if isinstance(det_conf, (int, float)):
+        conf = min(conf, float(det_conf))
+    conf = round(max(0.0, min(conf, 1.0)), 3)
+    decision_mode, reason_codes = _conf_to_decision(conf)
+    reason_codes.append("hit_zone:hitter_footpoint_homography")
+
+    return {
+        "value": zone,
+        "confidence_score": conf,
+        "source": "yolo_footpoint",
+        "decision_mode": decision_mode,
+        "reason_codes": reason_codes,
+        "coordinate_definition": "hitter_floor_position",
     }
 
 

@@ -285,7 +285,7 @@ def get_cv_candidates(match_id: int, request: Request, db: Session = Depends(get
 
 class ApplyRequest(BaseModel):
     mode: str = "auto_filled"  # "auto_filled" | "suggested" | "all"
-    fields: list[str] = ["land_zone", "hitter"]  # 適用するフィールド
+    fields: list[str] = ["land_zone", "hitter"]  # 適用するフィールド。hit_zone は明示指定時のみ
 
     # A1-2: レビュー一括適用フィルタ（すべて任意。未指定時は従来挙動を完全維持）
     min_confidence: Optional[float] = None      # この値未満の候補は適用しない
@@ -364,6 +364,7 @@ def apply_cv_candidates(
 
     updated_count = 0
     land_zone_count = 0
+    hit_zone_count = 0
     hitter_count = 0
     skipped_count = 0  # フィルタや条件で適用しなかったフィールド数
 
@@ -399,6 +400,21 @@ def apply_cv_candidates(
                 elif lz:
                     skipped_count += 1
 
+            # 打点ゾーン書き戻し。
+            # D-1: CV hit_zone は空中シャトル位置ではなく、打球時の打者の
+            # 足元を calibrated court へ投影した床面 Zone9。
+            if "hit_zone" in body.fields:
+                hz = sc.get("hit_zone")
+                if _field_passes_filters(hz, body, apply_modes):
+                    if stroke.hit_zone != hz["value"] or stroke.hit_zone_source != "cv":
+                        stroke.hit_zone = hz["value"]
+                        stroke.hit_zone_source = "cv"
+                        stroke.hit_zone_cv_original = hz["value"]
+                        hit_zone_count += 1
+                        changed = True
+                elif hz:
+                    skipped_count += 1
+
             # 打者書き戻し
             if "hitter" in body.fields:
                 ht = sc.get("hitter")
@@ -422,6 +438,7 @@ def apply_cv_candidates(
         "data": {
             "updated_strokes": updated_count,
             "land_zone_count": land_zone_count,
+            "hit_zone_count":  hit_zone_count,
             "hitter_count":    hitter_count,
             "skipped_count":   skipped_count,
             "applied_by_mode": body.mode,

@@ -10,6 +10,7 @@ from backend.cv.candidate_builder import (
     _conf_to_decision,
     _infer_land_zone,
     _infer_hitter,
+    _infer_hit_zone_from_hitter,
     _compute_review_reasons,
     build_candidates,
 )
@@ -263,6 +264,97 @@ class TestInferHitter:
         assert result["confidence_score"] == pytest.approx(0.45)
         assert result["decision_mode"] == "review_required"
         assert "hitter_label_geometry:same_side" in result["reason_codes"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# D-1: hit_zone = hitter floor position on calibrated court
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestInferHitZoneFromHitter:
+    @staticmethod
+    def _identity_adapter():
+        H = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+        return CourtAdapter(homography=H, homography_inv=H)
+
+    def test_calibrated_hitter_footpoint_maps_to_zone9(self):
+        yolo = [{
+            "timestamp_sec": 1.0,
+            "players": [{
+                "label": "player_a",
+                "foot_point": [0.20, 0.10],
+                "bbox": [0.15, 0.00, 0.25, 0.10],
+                "confidence": 0.90,
+            }],
+        }]
+        hitter = {
+            "value": "player_a",
+            "screen_label": "player_a",
+            "confidence_score": 0.85,
+        }
+        result = _infer_hit_zone_from_hitter(
+            yolo, 1.0, hitter, self._identity_adapter()
+        )
+        assert result is not None
+        assert result["value"] == "BL"
+        assert result["source"] == "yolo_footpoint"
+        assert result["coordinate_definition"] == "hitter_floor_position"
+        assert result["confidence_score"] == pytest.approx(0.85)
+
+    def test_unscaled_airborne_shuttle_is_never_used_without_calibration(self):
+        yolo = [{
+            "timestamp_sec": 1.0,
+            "players": [{
+                "label": "player_a",
+                "foot_point": [0.20, 0.10],
+                "bbox": [0.15, 0.00, 0.25, 0.10],
+            }],
+        }]
+        hitter = {
+            "value": "player_a",
+            "screen_label": "player_a",
+            "confidence_score": 0.85,
+        }
+        assert _infer_hit_zone_from_hitter(yolo, 1.0, hitter, CourtAdapter()) is None
+
+    def test_bbox_bottom_center_is_floor_fallback_not_centroid(self):
+        yolo = [{
+            "timestamp_sec": 1.0,
+            "players": [{
+                "label": "player_b",
+                "centroid": [0.90, 0.51],
+                "bbox": [0.40, 0.60, 0.60, 0.95],
+                "confidence": 0.80,
+            }],
+        }]
+        hitter = {
+            "value": "player_b",
+            "screen_label": "player_b",
+            "confidence_score": 0.75,
+        }
+        result = _infer_hit_zone_from_hitter(
+            yolo, 1.0, hitter, self._identity_adapter()
+        )
+        assert result is not None
+        # bbox bottom-center=(0.5,0.95) => B side, baseline, center.
+        assert result["value"] == "BC"
+
+    def test_screen_label_and_homography_side_mismatch_fails_closed(self):
+        yolo = [{
+            "timestamp_sec": 1.0,
+            "players": [{
+                "label": "player_a",
+                "foot_point": [0.20, 0.90],
+                "bbox": [0.15, 0.80, 0.25, 0.90],
+            }],
+        }]
+        hitter = {
+            "value": "player_a",
+            "screen_label": "player_a",
+            "confidence_score": 0.85,
+        }
+        assert _infer_hit_zone_from_hitter(
+            yolo, 1.0, hitter, self._identity_adapter()
+        ) is None
 
 
 # ─────────────────────────────────────────────────────────────────────────────

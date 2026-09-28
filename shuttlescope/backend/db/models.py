@@ -579,6 +579,8 @@ class Stroke(Base):
     return_target_y:    Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     # ゾーン（集計・フィルタ用）
+    # hit_zone = 打球時の打者の床面位置 Zone9。空中シャトルの3D接触点ではない。
+    # CV自動値は calibrated homography + YOLO foot_point からのみ生成する。
     hit_zone: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)   # BL/BC/BR/ML/MC/MR/NL/NC/NR
     # Phase A: 打点ソース ('cv' = CV 自動値そのまま / 'manual' = 人間 override)
     hit_zone_source: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)

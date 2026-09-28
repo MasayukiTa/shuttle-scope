@@ -39,7 +39,7 @@ export interface CVCandidatesResult {
   } | null
   applyCandidates: (
     mode?: 'auto_filled' | 'suggested' | 'all',
-    fields?: ('land_zone' | 'hitter')[]
+    fields?: ('land_zone' | 'hit_zone' | 'hitter')[]
   ) => Promise<void>
 
   // レビューキュー
@@ -149,7 +149,7 @@ export function useCVCandidates({ matchId }: Options): CVCandidatesResult {
 
   const applyCandidates = useCallback(async (
     mode: 'auto_filled' | 'suggested' | 'all' = 'auto_filled',
-    fields: ('land_zone' | 'hitter')[] = ['land_zone', 'hitter']
+    fields: ('land_zone' | 'hit_zone' | 'hitter')[] = ['land_zone', 'hitter']
   ) => {
     if (!matchId) return
     await applyMutation.mutateAsync({ mode, fields })

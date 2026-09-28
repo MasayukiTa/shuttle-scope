@@ -14,7 +14,7 @@
  */
 
 export type CVDecisionMode = 'auto_filled' | 'suggested' | 'review_required'
-export type CVSource = 'tracknet' | 'yolo' | 'alignment' | 'fusion'
+export type CVSource = 'tracknet' | 'yolo' | 'yolo_footpoint' | 'alignment' | 'fusion'
 export type CVFrontBackRole = 'front' | 'back' | 'unclear'
 export type CVDominantRole = 'front' | 'back' | 'mixed'
 
@@ -43,12 +43,16 @@ export interface StrokeCVCandidate {
   stroke_num: number
   timestamp_sec: number | null
   land_zone: CVFieldResult | null
+  /** 打球時の打者の床面位置 Zone9。旧artifactでは未定義。 */
+  hit_zone?: CVFieldResult | null
   hitter: CVFieldResult | null
   front_back_role: CVFrontBackRoleResult | null
 }
 
 export interface CVConfidenceSummary {
   land_zone_fill_rate: number
+  /** D-1導入前のartifactとの互換のため optional。 */
+  hit_zone_fill_rate?: number
   hitter_fill_rate: number
   avg_confidence: number
 }

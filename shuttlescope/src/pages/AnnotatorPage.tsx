@@ -2668,7 +2668,7 @@ export function AnnotatorPage() {
               {candidatesData && (
                 <>
                   <button
-                    onClick={() => applyCandidates('auto_filled', ['land_zone', 'hitter'])}
+                    onClick={() => applyCandidates('auto_filled', ['land_zone', 'hit_zone', 'hitter'])}
                     disabled={cvBuildLoading || cvApplyLoading}
                     className="flex items-center gap-1 px-1.5 py-0.5 rounded-ss-sm text-[10px] font-medium transition-colors disabled:opacity-50 bg-[var(--ss-surface-1)] text-[var(--ss-brand)] hover:bg-[var(--ss-surface-2)]"
                     title={t('auto.AnnotatorPage.k16')}
@@ -2684,6 +2684,14 @@ export function AnnotatorPage() {
                     {t('annotator.ui.cv_apply_land_only', { defaultValue: '着地のみ' })}
                   </button>
                   <button
+                    onClick={() => applyCandidates('auto_filled', ['hit_zone'])}
+                    disabled={cvBuildLoading || cvApplyLoading}
+                    className="flex items-center gap-1 px-1.5 py-0.5 rounded-ss-sm text-[10px] font-medium transition-colors disabled:opacity-50 bg-[var(--ss-surface-1)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-2)]"
+                    title={t('annotator.ui.cv_apply_hit_only_title', { defaultValue: '高確信度の打点ゾーン（打者の床面位置）のみ適用' })}
+                  >
+                    {t('annotator.ui.cv_apply_hit_only', { defaultValue: '打点のみ' })}
+                  </button>
+                  <button
                     onClick={() => applyCandidates('auto_filled', ['hitter'])}
                     disabled={cvBuildLoading || cvApplyLoading}
                     className="flex items-center gap-1 px-1.5 py-0.5 rounded-ss-sm text-[10px] font-medium transition-colors disabled:opacity-50 bg-[var(--ss-surface-1)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-2)]"
@@ -2692,7 +2700,7 @@ export function AnnotatorPage() {
                     {t('annotator.ui.cv_apply_hitter_only', { defaultValue: '打者のみ' })}
                   </button>
                   <button
-                    onClick={() => applyCandidates('suggested', ['land_zone', 'hitter'])}
+                    onClick={() => applyCandidates('suggested', ['land_zone', 'hit_zone', 'hitter'])}
                     disabled={cvBuildLoading || cvApplyLoading}
                     className="flex items-center gap-1 px-1.5 py-0.5 rounded-ss-sm text-[10px] font-medium transition-colors disabled:opacity-50 bg-[var(--ss-surface-1)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-2)]"
                     title={t('auto.AnnotatorPage.k19')}
@@ -2733,10 +2741,11 @@ export function AnnotatorPage() {
               {cvApplyResult && (
                 <span
                   className={`text-[9px] ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}
-                  title={t('annotator.ui.cv_apply_breakdown_title', { defaultValue: '着地: {{land}}件 / 打者: {{hitter}}件', land: cvApplyResult.land_zone_count, hitter: cvApplyResult.hitter_count })}
+                  title={t('annotator.ui.cv_apply_breakdown_title', { defaultValue: '着地: {{land}}件 / 打点: {{hit}}件 / 打者: {{hitter}}件', land: cvApplyResult.land_zone_count, hit: cvApplyResult.hit_zone_count, hitter: cvApplyResult.hitter_count })}
                 >
                   {t('annotator.ui.cv_apply_result', { defaultValue: '{{n}}件適用', n: cvApplyResult.updated_strokes })}
                   {cvApplyResult.land_zone_count > 0 && t('annotator.ui.cv_apply_result_land', { defaultValue: ' (着地{{n}})', n: cvApplyResult.land_zone_count })}
+                  {cvApplyResult.hit_zone_count > 0 && t('annotator.ui.cv_apply_result_hit', { defaultValue: ' (打点{{n}})', n: cvApplyResult.hit_zone_count })}
                   {cvApplyResult.hitter_count > 0 && t('annotator.ui.cv_apply_result_hitter', { defaultValue: ' (打者{{n}})', n: cvApplyResult.hitter_count })}
                 </span>
               )}
