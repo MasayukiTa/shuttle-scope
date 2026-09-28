@@ -65,7 +65,7 @@ def test_verified_cached_weight_skips_network(tmp_path, monkeypatch) -> None:
     def _unexpected_download(*_args, **_kwargs):
         raise AssertionError("verified cache must not hit network")
 
-    monkeypatch.setattr(tracknet_setup.urllib.request, "urlretrieve", _unexpected_download)
+    monkeypatch.setattr(tracknet_setup, "_download_weight", _unexpected_download)
 
     tracknet_setup.cmd_download()
 
@@ -83,9 +83,8 @@ def test_corrupt_cached_weight_is_replaced_only_after_hash_verification(
 
     def _download(_url: str, destination: Path):
         Path(destination).write_bytes(trusted)
-        return str(destination), None
 
-    monkeypatch.setattr(tracknet_setup.urllib.request, "urlretrieve", _download)
+    monkeypatch.setattr(tracknet_setup, "_download_weight", _download)
 
     tracknet_setup.cmd_download()
 
@@ -100,9 +99,8 @@ def test_hash_mismatch_never_promotes_downloaded_weight(tmp_path, monkeypatch) -
 
     def _download(_url: str, destination: Path):
         Path(destination).write_bytes(b"attacker-controlled")
-        return str(destination), None
 
-    monkeypatch.setattr(tracknet_setup.urllib.request, "urlretrieve", _download)
+    monkeypatch.setattr(tracknet_setup, "_download_weight", _download)
 
     with pytest.raises(RuntimeError, match="SHA256 mismatch"):
         tracknet_setup.cmd_download()

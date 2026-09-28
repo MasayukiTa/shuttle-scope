@@ -18,9 +18,9 @@ it through onnxruntime and, optionally, OpenVINO.
 from __future__ import annotations
 
 import hashlib
+import http.client
 import sys
 import urllib.parse
-import urllib.request
 from pathlib import Path
 
 WEIGHTS_DIR = Path(__file__).parent / "weights"
@@ -87,6 +87,29 @@ def _validated_weight_url(url: str) -> str:
     return url
 
 
+def _download_weight(url: str, destination: Path) -> None:
+    """Download one allowlisted checkpoint object over verified HTTPS."""
+    parsed = urllib.parse.urlsplit(_validated_weight_url(url))
+    connection = http.client.HTTPSConnection(TRUSTED_WEIGHT_HOST, 443, timeout=30)
+    try:
+        connection.request(
+            "GET",
+            parsed.path,
+            headers={"User-Agent": "ShuttleScope-TrackNet-Setup/1"},
+        )
+        response = connection.getresponse()
+        if response.status != 200:
+            raise RuntimeError(
+                f"TrackNet checkpoint download failed: HTTP {response.status} "
+                f"{response.reason}"
+            )
+        with destination.open("wb") as fh:
+            while chunk := response.read(1024 * 1024):
+                fh.write(chunk)
+    finally:
+        connection.close()
+
+
 def cmd_download():
     for target, source in WEIGHT_SOURCES.items():
         url = _validated_weight_url(source["url"])
@@ -104,9 +127,7 @@ def cmd_download():
         tmp.unlink(missing_ok=True)
         print(f"Downloading {target.name} from pinned upstream commit ...")
         try:
-            # nosec B310: _validated_weight_url restricts scheme, host, port,
-            # credentials, query/fragment and path to two fixed HTTPS objects.
-            urllib.request.urlretrieve(url, tmp)  # nosec B310  # nosemgrep
+            _download_weight(url, tmp)
             actual_sha256 = _sha256(tmp)
             if actual_sha256 != expected_sha256:
                 raise RuntimeError(
