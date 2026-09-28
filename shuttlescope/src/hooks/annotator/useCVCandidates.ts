@@ -33,6 +33,7 @@ export interface CVCandidatesResult {
   applyResult: {
     updated_strokes: number
     land_zone_count: number
+    hit_zone_count: number
     hitter_count: number
     applied_by_mode: string
     applied_fields: string[]
@@ -61,6 +62,7 @@ export function useCVCandidates({ matchId }: Options): CVCandidatesResult {
   const [applyResult, setApplyResult] = useState<{
     updated_strokes: number
     land_zone_count: number
+    hit_zone_count: number
     hitter_count: number
     applied_by_mode: string
     applied_fields: string[]
@@ -131,6 +133,7 @@ export function useCVCandidates({ matchId }: Options): CVCandidatesResult {
         data: {
           updated_strokes: number
           land_zone_count: number
+          hit_zone_count: number
           hitter_count: number
           applied_by_mode: string
           applied_fields: string[]
