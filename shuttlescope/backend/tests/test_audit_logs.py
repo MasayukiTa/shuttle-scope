@@ -29,7 +29,7 @@ def client(test_engine, monkeypatch):
     settings.BOOTSTRAP_ADMIN_USERNAME = ADMIN_USER
     settings.BOOTSTRAP_ADMIN_PASSWORD = ADMIN_PASS
     from backend.main import app
-    with TestClient(app, raise_server_exceptions=False) as c:
+    with TestClient(app, base_url="http://localhost", raise_server_exceptions=False) as c:
         yield c
 
 
@@ -178,3 +178,82 @@ class TestAuditLogHashChain:
             headers={"Authorization": f"Bearer {analyst['access_token']}"},
         )
         assert resp.status_code == 403
+
+
+def test_deleted_user_audit_rows_remain_orphaned_and_chain_intact(client, test_engine):
+    """B-2: user deletion must not rewrite append-only audit rows.
+
+    access_logs.user_id intentionally becomes an orphan integer reference after
+    user deletion. Nulling/deleting it would change the canonical row bytes and
+    break the HMAC chain. Audit API may no longer resolve a username, but the
+    immutable actor identifier and chain must remain intact.
+    """
+    from sqlalchemy.orm import sessionmaker
+    from backend.db.models import AccessLog, User
+    from backend.routers.auth import _hash_password
+
+    admin = _login(client, ADMIN_USER, ADMIN_PASS)
+    admin_access = admin["access_token"]
+
+    Session = sessionmaker(bind=test_engine)
+    with Session() as db:
+        target = User(
+            username="audit_orphan_target",
+            role="analyst",
+            display_name="Audit Orphan Target",
+            hashed_credential=_hash_password("AuditTarget1!"),
+            is_test=True,
+            awaiting_admin_approval=False,
+            consent_required=False,
+        )
+        db.add(target)
+        db.commit()
+        target_id = target.id
+
+    target_login = _login(client, "audit_orphan_target", "AuditTarget1!")
+    assert target_login["role"] == "analyst"
+
+    with Session() as db:
+        before_ids = [
+            row.id
+            for row in db.query(AccessLog)
+            .filter(AccessLog.user_id == target_id)
+            .order_by(AccessLog.id.asc())
+            .all()
+        ]
+        assert before_ids, "target login should have produced an audit row"
+
+    deleted = client.delete(
+        f"/api/auth/users/{target_id}",
+        headers={"Authorization": f"Bearer {admin_access}"},
+    )
+    assert deleted.status_code == 200, deleted.text
+
+    with Session() as db:
+        assert db.get(User, target_id) is None
+        after_rows = (
+            db.query(AccessLog)
+            .filter(AccessLog.user_id == target_id)
+            .order_by(AccessLog.id.asc())
+            .all()
+        )
+        assert [row.id for row in after_rows] == before_ids
+
+    listed = client.get(
+        f"/api/auth/audit-logs?user_id={target_id}&limit=50",
+        headers={"Authorization": f"Bearer {admin_access}"},
+    )
+    assert listed.status_code == 200, listed.text
+    rows = listed.json()["data"]
+    assert rows
+    assert all(row["user_id"] == target_id for row in rows)
+    assert all(row["username"] is None for row in rows)
+
+    verified = client.get(
+        "/api/auth/audit-logs/verify",
+        headers={"Authorization": f"Bearer {admin_access}"},
+    )
+    assert verified.status_code == 200, verified.text
+    body = verified.json()["data"]
+    assert body["ok"] is True
+    assert body["first_bad_id"] is None
