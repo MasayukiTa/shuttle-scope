@@ -181,3 +181,54 @@ async def test_retry_of_second_chunk_does_not_append_or_shift_bytes(tmp_path, mo
     assert part.read_bytes() == first + second
     assert part.stat().st_size == 32
     assert db.commits == 1
+
+
+
+@pytest.mark.asyncio
+async def test_streaming_retry_after_response_loss_is_idempotent(tmp_path, monkeypatch):
+    """Server commit may succeed even when the client never receives the response."""
+    upload_id = "00000000-0000-0000-0000-000000000074"
+    session = _normal_session(upload_id)
+    session.streaming = True
+    # Streaming total_chunks is only an initial estimate; bitmap grows by index.
+    session.total_chunks = 1
+    db = _FakeDb(session)
+    part = tmp_path / f"{upload_id}.part"
+    part.write_bytes(b"")
+
+    monkeypatch.setattr(uploads, "_part_path", lambda _id: part)
+    monkeypatch.setattr(
+        uploads,
+        "_resolve_upload_actor",
+        lambda *_a, **_k: SimpleNamespace(user_id=7, participant_id=None),
+    )
+    monkeypatch.setattr(uploads, "_require_upload_owner", lambda *_a, **_k: None)
+    monkeypatch.setattr(uploads, "_get_global_sem", lambda: asyncio.Semaphore(8))
+
+    payload = b"\x00\x00\x00\x10ftyp" + b"A" * 8
+
+    # First request is committed. In the real failure mode the HTTP response is
+    # then lost in transit, so the client retries the exact same chunk/index.
+    first_result = await uploads.upload_chunk(
+        request=SimpleNamespace(headers={}),
+        upload_id=upload_id,
+        chunk_index=0,
+        chunk=_upload_file(payload),
+        db=db,
+        ctx=SimpleNamespace(role="player", user_id=7),
+    )
+    retry_result = await uploads.upload_chunk(
+        request=SimpleNamespace(headers={}),
+        upload_id=upload_id,
+        chunk_index=0,
+        chunk=_upload_file(payload),
+        db=db,
+        ctx=SimpleNamespace(role="player", user_id=7),
+    )
+
+    assert first_result["already_received"] is False
+    assert retry_result["already_received"] is True
+    assert session.received_count == 1
+    assert uploads._bitmap_get(session.received_bitmap, 0)
+    assert part.read_bytes() == payload
+    assert db.commits == 1

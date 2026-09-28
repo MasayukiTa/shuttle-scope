@@ -37,9 +37,13 @@ interface Observed {
   maxConcurrent: number
 }
 
-function installFetch(observed: Observed, opts: { failAt?: number } = {}) {
+function installFetch(
+  observed: Observed,
+  opts: { failAt?: number; loseResponseAt?: number } = {},
+) {
   let inFlight = 0
   let received = 0
+  const attempts = new Map<number, number>()
   return vi.fn(async (url: unknown, init?: { body?: unknown }) => {
     const u = String(url)
     if (u.includes('/uploads/video/init')) {
@@ -50,20 +54,35 @@ function installFetch(observed: Observed, opts: { failAt?: number } = {}) {
       observed.maxConcurrent = Math.max(observed.maxConcurrent, inFlight)
       const fd = init?.body as FormData
       const idx = Number(fd.get('chunk_index'))
+      const attempt = (attempts.get(idx) ?? 0) + 1
+      attempts.set(idx, attempt)
       // ネットワークの揺らぎを模す。**あとの chunk ほど速く返す**ので、
       // 並行に投げている実装では到着順が入れ替わる（= サーバの 409 規則に触れる）。
       // 一定待ちにすると投げた順のまま返ってしまい、この検査が何も見なくなる。
       await new Promise((r) => setTimeout(r, Math.max(2, 40 - idx * 8)))
       inFlight -= 1
-      if (opts.failAt === idx && !observed.order.includes(idx)) {
+      if (opts.failAt === idx && attempt === 1) {
         return { ok: false, status: 503, text: async () => 'boom' }   // 一過性
       }
-      // サーバと同じ規則で拒否する
+      // Real backend semantics: a retry of an already committed index is
+      // idempotent and acknowledged instead of producing a 409.
+      if (idx < received) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true, already_received: true, received_count: received }),
+          text: async () => '',
+        }
+      }
       if (idx !== received) {
         return { ok: false, status: 409, text: async () => `expected=${received} got=${idx}` }
       }
       received += 1
       observed.order.push(idx)
+      if (opts.loseResponseAt === idx && attempt === 1) {
+        // Server has accepted/committed the chunk, but the HTTP response is lost.
+        throw new TypeError('simulated response loss after server commit')
+      }
       return { ok: true, status: 200, json: async () => ({}), text: async () => '' }
     }
     return { ok: true, status: 200, json: async () => ({}), text: async () => '' }
@@ -86,8 +105,11 @@ describe('useServerSideRecording — streaming upload ordering', () => {
     vi.restoreAllMocks()
   })
 
-  async function recordChunks(count: number, failAt?: number) {
-    vi.stubGlobal('fetch', installFetch(observed, { failAt }))
+  async function recordChunks(
+    count: number,
+    opts: { failAt?: number; loseResponseAt?: number } = {},
+  ) {
+    vi.stubGlobal('fetch', installFetch(observed, opts))
     const { result } = renderHook(() => useServerSideRecording({ matchId: 1, timesliceSec: 1 }))
     let recorder: FakeMediaRecorder | null = null
     const origCtor = FakeMediaRecorder
@@ -101,9 +123,12 @@ describe('useServerSideRecording — streaming upload ordering', () => {
     await act(async () => {
       for (let i = 0; i < count; i++) {
         recorder!.ondataavailable?.({ data: new Blob([new Uint8Array([1, 2, 3])]) })
+        // MediaRecorder emits chunks over time. This spacing exercises the
+        // real retry path: after a transient failure, the next chunk wakes the
+        // pump immediately rather than waiting for the 15-second backstop.
+        await new Promise((r) => setTimeout(r, 70))
       }
-      // ポンプが流れ切るのを待つ
-      await new Promise((r) => setTimeout(r, 60 * count))
+      await new Promise((r) => setTimeout(r, 120))
     })
     return result
   }
@@ -121,11 +146,18 @@ describe('useServerSideRecording — streaming upload ordering', () => {
   it('一過性の 5xx のあとも順序が崩れない', async () => {
     // index 2 を一度だけ 503 にする。先頭に残して再送されるので、
     // 3 以降が 2 を追い越してはいけない。
-    await recordChunks(5, 2)
+    await recordChunks(5, { failAt: 2 })
     const sorted = [...observed.order].sort((a, b) => a - b)
     expect(observed.order).toEqual(sorted)
-    expect(observed.order[0]).toBe(0)
+    expect(observed.order).toEqual([0, 1, 2, 3, 4])
   })
+
+  it('response loss after server commit retries the same index without duplication', async () => {
+    await recordChunks(5, { loseResponseAt: 2 })
+    expect(observed.order).toEqual([0, 1, 2, 3, 4])
+    expect(observed.maxConcurrent).toBe(1)
+  })
+
   it('QR participant credential is used for init, chunk, and finalize', async () => {
     const fetchMock = installFetch(observed)
     vi.stubGlobal('fetch', fetchMock)
