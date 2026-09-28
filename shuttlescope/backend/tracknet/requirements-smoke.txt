@@ -3,14 +3,12 @@
 # checkpoint and therefore requires Python <=3.11 and NumPy <2.
 numpy==1.26.4
 # TensorFlow 2.15 accepts protobuf >=3.20.3,<5. tf2onnx 1.17 removed the
-# old ~=3.20 cap, so 4.25.8 closes GHSA-8qvm-5x2c-j2w7 / CVE-2024-7254
-# while preserving the upstream Keras 2 checkpoint loader.
+# old ~=3.20 cap, so 4.25.8 closes the protobuf DoS advisory that is
+# patchable within the supported Keras 2 exporter stack.
 protobuf==4.25.8
 tensorflow==2.15.1
 tf2onnx==1.17.0
-# Pin the ONNX version that the last successful export smoke resolved to.
-# This keeps the export toolchain deterministic instead of drifting with
-# tf2onnx's broad onnx>=1.14 dependency.
-onnx==1.17.0
+# Keep ONNX transitive. Newer direct ONNX pins require newer ml-dtypes /
+# protobuf than TensorFlow 2.15 supports; pip selects the compatible release.
 onnxruntime==1.17.3
 opencv-python-headless==4.10.0.84
