@@ -18,14 +18,37 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.db.database import get_db
-from backend.db.models import GameSet, Match, Player, Rally, Stroke
+from backend.db.models import GameSet, Match, Player, Rally, Stroke, User
 from backend.main import app
+from backend.utils.jwt_utils import create_access_token
 
 
 @pytest.fixture()
-def client(db_session):
+def client(db_session, game_set):
     app.dependency_overrides[get_db] = lambda: db_session
-    c = TestClient(app, headers={"X-Role": "admin"})
+    match = db_session.get(Match, game_set.match_id)
+    assert match is not None
+    user = User(
+        username=f"idem-player-{match.player_a_id}",
+        role="player",
+        player_id=match.player_a_id,
+        awaiting_admin_approval=False,
+        consent_required=False,
+        is_test=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+    token = create_access_token(
+        user_id=user.id,
+        role="player",
+        player_id=match.player_a_id,
+        minutes=10,
+    )
+    c = TestClient(
+        app,
+        base_url="http://localhost",
+        headers={"Authorization": f"Bearer {token}"},
+    )
     yield c
     app.dependency_overrides.clear()
 
@@ -55,6 +78,18 @@ def _key(suffix: str) -> dict:
     return {"X-Idempotency-Key": f"itest-{suffix}-0001"}
 
 
+def _simulate_server_restart() -> None:
+    """Drop process-local idempotency state while preserving the DB.
+
+    This is the relevant server-restart boundary for an offline client: the
+    browser still has the queued X-Idempotency-Key, but the backend process has
+    lost every in-memory cache entry and must hydrate the dedup record from DB.
+    """
+    from backend.utils import idempotency as idem
+    with idem._lock:
+        idem._records.clear()
+
+
 class TestRallyCreateIsIdempotent:
     def _body(self, set_id: int) -> dict:
         return {
@@ -72,6 +107,20 @@ class TestRallyCreateIsIdempotent:
         assert second.json()["data"]["id"] == first.json()["data"]["id"]
         assert db_session.query(Rally).filter(Rally.set_id == game_set.id).count() == 1
 
+    def test_same_rally_key_survives_backend_process_restart(
+        self, client, db_session, game_set
+    ):
+        h = _key("rally-restart")
+        first = client.post("/api/rallies", json=self._body(game_set.id), headers=h)
+        assert first.status_code in (200, 201), first.text
+
+        _simulate_server_restart()
+
+        retry = client.post("/api/rallies", json=self._body(game_set.id), headers=h)
+        assert retry.status_code in (200, 201), retry.text
+        assert retry.json()["data"]["id"] == first.json()["data"]["id"]
+        assert db_session.query(Rally).filter(Rally.set_id == game_set.id).count() == 1
+
     @pytest.mark.parametrize("bad", ["short", "has spaces here", "x" * 200, "semi;colon"])
     def test_a_malformed_key_is_refused_rather_than_ignored(self, client, game_set, bad):
         """短すぎる・記号入りのキーを黙って «無し» として扱うと、
@@ -83,6 +132,43 @@ class TestRallyCreateIsIdempotent:
         res = client.post("/api/rallies", json=self._body(game_set.id),
                           headers={"X-Idempotency-Key": bad})
         assert res.status_code == 400, res.text
+
+
+    def test_player_cannot_write_rally_for_an_unrelated_match(
+        self, client, db_session
+    ):
+        outsider_a = Player(name="outsider A", dominant_hand="R")
+        outsider_b = Player(name="outsider B", dominant_hand="R")
+        db_session.add_all([outsider_a, outsider_b])
+        db_session.flush()
+        other_match = Match(
+            tournament="scope test",
+            tournament_level="practice",
+            round="R1",
+            date=date(2026, 9, 28),
+            format="singles",
+            player_a_id=outsider_a.id,
+            player_b_id=outsider_b.id,
+            result="unknown",
+        )
+        db_session.add(other_match)
+        db_session.flush()
+        other_set = GameSet(match_id=other_match.id, set_num=1)
+        db_session.add(other_set)
+        db_session.commit()
+
+        res = client.post(
+            "/api/rallies",
+            json=self._body(other_set.id),
+            headers=_key("foreign-rally"),
+        )
+        assert res.status_code == 403, res.text
+        assert (
+            db_session.query(Rally)
+            .filter(Rally.set_id == other_set.id)
+            .count()
+            == 0
+        )
 
 
 class TestStrokeCreateIsIdempotent:
@@ -112,6 +198,29 @@ class TestStrokeCreateIsIdempotent:
         assert second.json()["data"]["id"] == first.json()["data"]["id"]
         assert db_session.query(Stroke).filter(Stroke.rally_id == rally_id).count() == 1
 
+    def test_same_stroke_key_survives_backend_process_restart(
+        self, client, db_session, game_set
+    ):
+        rally_id = self._rally(client, db_session, game_set)
+        h = _key("stroke-restart")
+        first = client.post(
+            f"/api/strokes?rally_id={rally_id}",
+            json=self._body(),
+            headers=h,
+        )
+        assert first.status_code in (200, 201), first.text
+
+        _simulate_server_restart()
+
+        retry = client.post(
+            f"/api/strokes?rally_id={rally_id}",
+            json=self._body(),
+            headers=h,
+        )
+        assert retry.status_code in (200, 201), retry.text
+        assert retry.json()["data"]["id"] == first.json()["data"]["id"]
+        assert db_session.query(Stroke).filter(Stroke.rally_id == rally_id).count() == 1
+
     def test_a_different_key_still_records_a_second_stroke(self, client, db_session, game_set):
         """別の打球は別の打球。重複除去が効きすぎて入力が消えては困る。"""
         rally_id = self._rally(client, db_session, game_set)
@@ -129,3 +238,91 @@ class TestStrokeCreateIsIdempotent:
         body2["stroke_num"] = 2
         client.post(f"/api/strokes?rally_id={rally_id}", json=body2)
         assert db_session.query(Stroke).filter(Stroke.rally_id == rally_id).count() == 2
+
+
+
+class TestBatchOfflineReplayIsIdempotent:
+    def _body(self, set_id: int) -> dict:
+        return {
+            "rally": {
+                "set_id": set_id,
+                "rally_num": 1,
+                "server": "player_a",
+                "winner": "player_a",
+                "end_type": "ace",
+                "rally_length": 1,
+                "score_a_after": 1,
+                "score_b_after": 0,
+                "is_deuce": False,
+                "annotation_mode": "manual_record",
+            },
+            "strokes": [
+                {
+                    "stroke_num": 1,
+                    "player": "player_a",
+                    "shot_type": "short_service",
+                    "source_method": "manual",
+                }
+            ],
+        }
+
+    def test_batch_retry_after_backend_restart_does_not_duplicate(
+        self, client, db_session, game_set
+    ):
+        headers = _key("batch-restart")
+        first = client.post(
+            "/api/strokes/batch",
+            json=self._body(game_set.id),
+            headers=headers,
+        )
+        assert first.status_code in (200, 201), first.text
+        first_rally_id = first.json()["data"]["rally_id"]
+
+        _simulate_server_restart()
+
+        retry = client.post(
+            "/api/strokes/batch",
+            json=self._body(game_set.id),
+            headers=headers,
+        )
+        assert retry.status_code in (200, 201), retry.text
+        assert retry.json()["data"]["rally_id"] == first_rally_id
+        assert db_session.query(Rally).filter(Rally.set_id == game_set.id).count() == 1
+        assert db_session.query(Stroke).filter(Stroke.rally_id == first_rally_id).count() == 1
+
+
+
+class TestPlayerAnnotationWriteBoundary:
+    def test_player_can_update_and_delete_own_rally(self, client, game_set):
+        create = client.post(
+            "/api/rallies",
+            json={
+                "set_id": game_set.id,
+                "rally_num": 1,
+                "server": "player_a",
+                "winner": "player_a",
+                "end_type": "ace",
+                "rally_length": 1,
+                "score_a_after": 1,
+                "score_b_after": 0,
+            },
+            headers=_key("own-rally-write"),
+        )
+        assert create.status_code in (200, 201), create.text
+        rally_id = create.json()["data"]["id"]
+
+        update = client.put(
+            f"/api/rallies/{rally_id}",
+            json={"rally_length": 3},
+        )
+        assert update.status_code == 200, update.text
+        assert update.json()["data"]["rally_length"] == 3
+
+        delete = client.delete(f"/api/rallies/{rally_id}")
+        assert delete.status_code == 200, delete.text
+
+    def test_player_annotation_allowlist_does_not_open_generic_writes(self, client):
+        # The request body is intentionally incomplete. Middleware must reject
+        # the route on role before the matches handler can return validation 422.
+        res = client.post("/api/matches", json={})
+        assert res.status_code == 403, res.text

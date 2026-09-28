@@ -1236,6 +1236,16 @@ class PlayerAccessControlMiddleware(BaseHTTPMiddleware):
             # ついていても通すのが自然。
             if method == "POST" and path == "/api/public/content_report":
                 _player_write_allowed = True
+            # R48 mobile annotation: player may edit annotations only through
+            # routers that enforce require_match_scope(request, ...). Keep the
+            # middleware allow-list exact so this does not become a generic
+            # player write bypass.
+            if method == "POST" and path in ("/api/rallies", "/api/strokes", "/api/strokes/batch"):
+                _player_write_allowed = True
+            if method in ("PUT", "DELETE") and _re_acl.fullmatch(r"/api/rallies/\d+", path):
+                _player_write_allowed = True
+            if method in ("PUT", "DELETE") and _re_acl.fullmatch(r"/api/strokes/\d+", path):
+                _player_write_allowed = True
             if not _player_write_allowed:
                 try:
                     from backend.utils.access_log import log_access
