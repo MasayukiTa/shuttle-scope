@@ -23,7 +23,7 @@ typing-extensions>=4.12
 # ── データベース ──────────────────────────────────────────────────
 sqlalchemy==2.0.52
 alembic==1.19.1
-mako>=1.3.12                 # CVE-2026-44307 (Windows path traversal in template lookup) 修正のため pin (alembic 経由)
+mako>=1.4.1                 # CVE-2026-44307 (Windows path traversal in template lookup) 修正のため pin (alembic 経由)
 psycopg2-binary==2.9.12      # PostgreSQL ドライバ（SQLite → PG 移行後に使用）
 
 # ── データ分析 ────────────────────────────────────────────────────
