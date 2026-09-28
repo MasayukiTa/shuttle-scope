@@ -5024,6 +5024,12 @@
     "team_name_label": "Team",
     "team_name_hint": "Pick an existing team or type a new team name",
     "team_name_required": "Please enter a team name for the chosen role",
+    "notify_warning": "{{count}} pending user(s) have an undelivered or unknown admin notification. Review this list instead of relying on Discord alone.",
+    "notify_delivered": "Admin notification: delivered",
+    "notify_unconfigured": "Admin notification: webhook not configured",
+    "notify_invalid_url": "Admin notification: invalid webhook URL",
+    "notify_failed": "Admin notification: delivery failed",
+    "notify_unknown": "Admin notification: unknown (including legacy registrations)",
     "role": {
       "player": "Player",
       "coach": "Coach",

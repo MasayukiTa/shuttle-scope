@@ -17,6 +17,7 @@
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -29,7 +30,7 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
-from backend.db.models import Player, User
+from backend.db.models import AccessLog, Player, User
 from backend.utils.access_log import log_access
 from backend.utils.auth import get_auth
 from backend.utils.email_token import (
@@ -240,24 +241,23 @@ def _send_email_safe(to: str, subject: str, body: str, tag: str) -> None:
         logger.error("[auth_email] mail send failed (%s): %s", tag, exc)
 
 
-def _notify_admin_webhook(content: str) -> None:
-    """admin 向け Discord/Slack webhook 通知 (2026-05-26 数日凌ぎ実装)。
+def _notify_admin_webhook(content: str) -> str:
+    """admin 向け Discord/Slack webhook 通知。
 
-    SS_ADMIN_NOTIFY_WEBHOOK_URL が未設定なら no-op。
-    Discord/Slack の Incoming Webhook はどちらも `{"content": "..."}` 形式を受け付ける
-    (Slack は text key も受けるが content も互換扱い)。例外は吸収。
+    register 本体は通知障害で失敗させない。一方で「通知できたか」を durable に
+    残せるよう、呼び出し側へ粗い delivery status を返す。URL や例外本文などの
+    secret / forensic detail は返さずログだけに残す。
     """
     url = (os.environ.get("SS_ADMIN_NOTIFY_WEBHOOK_URL", "") or "").strip()
     if not url:
         logger.warning("[auth_email] webhook URL unset (SS_ADMIN_NOTIFY_WEBHOOK_URL); skipping notify")
-        return
+        return "unconfigured"
     if not url.startswith("https://"):
         logger.warning("[auth_email] webhook URL not https; skipping notify (host=%s)", url[:40])
-        return
+        return "invalid_url"
     try:
-        import json as _json
         import urllib.request as _urlreq
-        body = _json.dumps({"content": content[:1800]}, ensure_ascii=False).encode("utf-8")
+        body = json.dumps({"content": content[:1800]}, ensure_ascii=False).encode("utf-8")
         # Discord blocks default Python-urllib User-Agent with 403. Set a
         # generic UA so /api/webhooks/* accepts the POST.
         req = _urlreq.Request(
@@ -275,9 +275,12 @@ def _notify_admin_webhook(content: str) -> None:
             if not (200 <= resp.status < 300):
                 logger.warning("[auth_email] webhook returned non-2xx: %d body=%s",
                                resp.status, resp.read()[:200])
+                return "failed"
+        return "delivered"
     except Exception as exc:
         logger.error("[auth_email] webhook notify failed: %s (url_host=%s)",
                      exc, url.split("/")[2] if "//" in url else "?")
+        return "failed"
 
 
 # ─── 1. Register ─────────────────────────────────────────────────────────────
@@ -386,7 +389,7 @@ def register(body: RegisterRequest, request: Request, db: Session = Depends(get_
     # 管理画面で register email を確認し、shuttlescopecom@gmail.com から手動で
     # 案内メールを送る運用。mail backend が本実装に切り替わったら verify
     # メール送信を復活させる。
-    _notify_admin_webhook(
+    admin_notify_status = _notify_admin_webhook(
         "**[ShuttleScope] 新規登録待機ユーザー**\n"
         f"- username: `{user.username}`\n"
         f"- user_id: `{user.id}`\n"
@@ -395,8 +398,16 @@ def register(body: RegisterRequest, request: Request, db: Session = Depends(get_
         f"- IP: `{ip or 'unknown'}`\n"
         "→ 管理画面で email を確認 → 承認 → shuttlescopecom@gmail.com から案内メール送信"
     )
-    log_access(db, "register", user_id=user.id, ip_addr=ip,
-               details={"email_domain": body.email.split("@")[-1]})
+    log_access(
+        db,
+        "register",
+        user_id=user.id,
+        ip_addr=ip,
+        details={
+            "email_domain": body.email.split("@")[-1],
+            "admin_notify_status": admin_notify_status,
+        },
+    )
     return {"success": True, "data": {"user_id": user.id}}
 
 
@@ -730,6 +741,38 @@ def list_pending_users(request: Request, db: Session = Depends(get_db)):
         .order_by(User.created_at.desc())
         .all()
     )
+
+    # Discord/Slack が落ちても「通知に失敗した登録」が消えないよう、register 時に
+    # access_logs へ保存した delivery status を同じ管理画面へ返す。
+    notify_by_user: dict[int, tuple[str, Optional[str]]] = {}
+    user_ids = [int(u.id) for u in users if u.id is not None]
+    if user_ids:
+        rows = (
+            db.query(AccessLog)
+            .filter(
+                AccessLog.action == "register",
+                AccessLog.user_id.in_(user_ids),
+            )
+            .order_by(AccessLog.id.desc())
+            .all()
+        )
+        for row in rows:
+            uid = int(row.user_id) if row.user_id is not None else None
+            if uid is None or uid in notify_by_user:
+                continue
+            status = "unknown"
+            try:
+                detail = json.loads(row.details or "{}")
+                raw = detail.get("admin_notify_status")
+                if raw in {"delivered", "unconfigured", "invalid_url", "failed"}:
+                    status = raw
+            except (TypeError, ValueError, json.JSONDecodeError):
+                pass
+            notify_by_user[uid] = (
+                status,
+                row.created_at.isoformat() if row.created_at else None,
+            )
+
     return {
         "success": True,
         "data": [
@@ -740,6 +783,8 @@ def list_pending_users(request: Request, db: Session = Depends(get_db)):
                 "email_verified": bool(getattr(u, "email_verified_at", None)),
                 "display_name": u.display_name,
                 "created_at": u.created_at.isoformat() if u.created_at else None,
+                "admin_notify_status": notify_by_user.get(int(u.id), ("unknown", None))[0],
+                "admin_notify_at": notify_by_user.get(int(u.id), ("unknown", None))[1],
             }
             for u in users
         ],

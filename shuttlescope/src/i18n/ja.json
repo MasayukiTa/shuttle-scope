@@ -4851,6 +4851,12 @@
     "team_name_label": "所属チーム",
     "team_name_hint": "既存チームを選択するか、新しいチーム名を入力してください",
     "team_name_required": "ロールに合ったチーム名を入力してください",
+    "notify_warning": "通知未達または状態不明の承認待ちユーザが {{count}} 件あります。Discord 通知だけに依存せず、この一覧を確認してください。",
+    "notify_delivered": "管理者通知: 配信済み",
+    "notify_unconfigured": "管理者通知: Webhook 未設定",
+    "notify_invalid_url": "管理者通知: Webhook URL 設定不正",
+    "notify_failed": "管理者通知: 配信失敗",
+    "notify_unknown": "管理者通知: 状態不明（旧登録を含む）",
     "role": {
       "player": "選手 (player)",
       "coach": "コーチ (coach)",

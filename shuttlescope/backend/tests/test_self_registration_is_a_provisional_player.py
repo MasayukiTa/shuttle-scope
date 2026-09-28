@@ -20,12 +20,13 @@
 from __future__ import annotations
 
 from datetime import date
+import json
 
 import pytest
 from fastapi.testclient import TestClient
 
 from backend.db.database import get_db
-from backend.db.models import Player, User
+from backend.db.models import AccessLog, Player, User
 from backend.main import app, _pending_approval_allows
 from backend.routers.auth import (
     _hash_password,
@@ -49,6 +50,53 @@ def _register(client, username: str, monkeypatch) -> dict:
 
 
 class TestRegisterCreatesAPlayer:
+    def test_register_persists_admin_notification_failure_for_pending_admin_ui(
+        self, db_session, monkeypatch,
+    ):
+        import backend.routers.auth_email as auth_email
+
+        admin = User(
+            username="notify_admin",
+            role="admin",
+            display_name="Notify Admin",
+            hashed_credential=_hash_password("pw"),
+            awaiting_admin_approval=False,
+            consent_required=False,
+        )
+        db_session.add(admin)
+        db_session.commit()
+
+        monkeypatch.setattr(auth_email, "_notify_admin_webhook", lambda _content: "failed")
+        app.dependency_overrides[get_db] = lambda: db_session
+        try:
+            client = TestClient(app, raise_server_exceptions=False)
+            resp = _register(client, "notify_failed_user", monkeypatch)
+            assert resp.status_code == 201, resp.text
+            uid = resp.json()["data"]["user_id"]
+
+            token = create_access_token(user_id=admin.id, role="admin")
+            pending = client.get(
+                "/api/auth/users/pending",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert pending.status_code == 200, pending.text
+        finally:
+            app.dependency_overrides.clear()
+
+        audit = (
+            db_session.query(AccessLog)
+            .filter(AccessLog.action == "register", AccessLog.user_id == uid)
+            .order_by(AccessLog.id.desc())
+            .first()
+        )
+        assert audit is not None
+        detail = json.loads(audit.details or "{}")
+        assert detail["admin_notify_status"] == "failed"
+
+        row = next(item for item in pending.json()["data"] if item["id"] == uid)
+        assert row["admin_notify_status"] == "failed"
+        assert row["admin_notify_at"]
+
     def test_register_links_a_player_record(self, db_session, monkeypatch):
         app.dependency_overrides[get_db] = lambda: db_session
         try:
@@ -208,3 +256,17 @@ class TestAPendingPlayerCanActuallyUseTheApi:
             assert resp.status_code in (403, 404), resp.text
         finally:
             app.dependency_overrides.clear()
+
+
+class TestAdminNotificationDeliveryStatus:
+    def test_unconfigured_webhook_is_explicit(self, monkeypatch):
+        import backend.routers.auth_email as auth_email
+
+        monkeypatch.delenv("SS_ADMIN_NOTIFY_WEBHOOK_URL", raising=False)
+        assert auth_email._notify_admin_webhook("test") == "unconfigured"
+
+    def test_non_https_webhook_is_explicit(self, monkeypatch):
+        import backend.routers.auth_email as auth_email
+
+        monkeypatch.setenv("SS_ADMIN_NOTIFY_WEBHOOK_URL", "http://127.0.0.1/hook")
+        assert auth_email._notify_admin_webhook("test") == "invalid_url"

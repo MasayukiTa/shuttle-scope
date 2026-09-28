@@ -13,6 +13,8 @@ interface PendingUser {
   email_verified: boolean
   display_name: string | null
   created_at: string | null
+  admin_notify_status: 'delivered' | 'unconfigured' | 'invalid_url' | 'failed' | 'unknown'
+  admin_notify_at: string | null
 }
 
 interface PendingListResp {
@@ -35,6 +37,7 @@ export default function PendingUsersPage() {
     queryFn: () => listTeams(),
   })
   const teams: TeamDTO[] = teamsData?.data ?? []
+  const notifyIssues = (data?.data ?? []).filter((u) => u.admin_notify_status !== 'delivered')
 
   return (
     <div className="p-4 max-w-5xl mx-auto bg-[var(--ss-bg-app)] min-h-full">
@@ -47,6 +50,12 @@ export default function PendingUsersPage() {
       {error && (
         <div className="text-sm rounded-ss-md border px-3 py-2 bg-[var(--ss-danger-bg)] border-[var(--ss-danger-border)] text-[var(--ss-danger-text)]">
           {(error as Error).message}
+        </div>
+      )}
+
+      {notifyIssues.length > 0 && (
+        <div className="mb-4 rounded-ss-md border px-3 py-2 bg-[var(--ss-warn-bg)] border-[var(--ss-warn-border)] text-[var(--ss-warn-text)] text-sm">
+          {t('pendingUsers.notify_warning', { count: notifyIssues.length })}
         </div>
       )}
 
@@ -149,6 +158,23 @@ function PendingUserRow({
             )}
           </div>
           <div className="text-[10px] text-[var(--ss-t3)] ss-num">{user.created_at}</div>
+          <div className="mt-1">
+            {user.admin_notify_status === 'delivered' ? (
+              <span className="text-[10px] text-[var(--ss-success)]">
+                {t('pendingUsers.notify_delivered')}
+              </span>
+            ) : (
+              <span className="text-[10px] text-[var(--ss-warn)]">
+                {user.admin_notify_status === 'unconfigured'
+                  ? t('pendingUsers.notify_unconfigured')
+                  : user.admin_notify_status === 'invalid_url'
+                    ? t('pendingUsers.notify_invalid_url')
+                    : user.admin_notify_status === 'failed'
+                      ? t('pendingUsers.notify_failed')
+                      : t('pendingUsers.notify_unknown')}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
