@@ -190,6 +190,16 @@ def stream_recording(
     file = _recording_file_path(rec)
     if not file.exists() or not file.is_file():
         raise HTTPException(status_code=404, detail="動画ファイルが見つかりません")
+    # source がブラウザで再生できない codec (iPhone の HEVC など) なら、生成済みの
+    # 再生互換版 (H.264) に差し替える。二視点の 2 本目はここを通る。
+    if (rec.video_local_path or "").startswith("server://"):
+        from backend.routers.uploads import UPLOAD_DIR
+        from backend.services.video_variants import playback_variant_file
+        _rest = (rec.video_local_path or "")[len("server://"):]
+        _uid = _rest.rsplit(".", 1)[0] if "." in _rest else _rest
+        _play = playback_variant_file(Path(UPLOAD_DIR), _uid)
+        if _play is not None:
+            file = _play
 
     total = file.stat().st_size
     if total <= 0:

@@ -401,7 +401,7 @@ def _run_video_variant_job(db: Session, match_id: int) -> dict:
     localfile:/// やアーカイブ済みアクセス経路は対象外 (= 旧 / 外部動画は variant
     を作らない)。
     """
-    from backend.db.models import Match
+    from backend.db.models import Match, Recording
     from backend.services.video_variants import generate_all_for_source
     from backend.routers.uploads import UPLOAD_DIR
     from backend.utils.safe_path import safe_path
@@ -409,14 +409,35 @@ def _run_video_variant_job(db: Session, match_id: int) -> dict:
     m = db.get(Match, match_id)
     if m is None:
         raise RuntimeError(f"match {match_id} not found")
-    vlp = m.video_local_path or ""
-    if not vlp.startswith("server://"):
-        return {"skipped": "video_local_path not server://"}
-    rest = vlp[len("server://"):]
-    src = safe_path(UPLOAD_DIR, rest)
-    if src is None or not src.exists():
-        raise RuntimeError(f"source file missing: {rest}")
-    # upload_id は server://{upload_id}{ext} の {upload_id} 部分。拡張子を除いた basename。
-    upload_id = rest.rsplit(".", 1)[0] if "." in rest else rest
-    result = generate_all_for_source(src, UPLOAD_DIR, upload_id)
-    return {"variants": result}
+
+    out: dict = {}
+    done: set = set()
+
+    def _run(vlp: str, label: str) -> None:
+        if not vlp.startswith("server://"):
+            out[label] = {"skipped": "video_local_path not server://"}
+            return
+        rest = vlp[len("server://"):]
+        # upload_id は server://{upload_id}{ext} の {upload_id} 部分。拡張子を除いた basename。
+        upload_id = rest.rsplit(".", 1)[0] if "." in rest else rest
+        if upload_id in done:
+            return
+        done.add(upload_id)
+        src = safe_path(UPLOAD_DIR, rest)
+        if src is None or not src.exists():
+            raise RuntimeError(f"source file missing: {rest}")
+        out[label] = generate_all_for_source(src, UPLOAD_DIR, upload_id)
+
+    _run(m.video_local_path or "", "variants")
+    # 二視点などで枝番 (Recording) に載った動画も同じ扱いにする。
+    # 主動画だけ処理すると、2 本目が HEVC のとき再生互換版が作られず映らない。
+    for rec in (
+        db.query(Recording)
+        .filter(Recording.match_id == match_id)
+        .order_by(Recording.branch_no)
+        .all()
+    ):
+        vlp = rec.video_local_path or ""
+        if vlp.startswith("server://"):
+            _run(vlp, f"recording_{rec.branch_no}")
+    return out

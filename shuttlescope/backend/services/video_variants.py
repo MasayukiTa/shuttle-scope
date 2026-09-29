@@ -122,8 +122,28 @@ class ProbeResult:
 
 @dataclass(frozen=True)
 class VariantPlan:
-    quality: str    # "fhd" / "hd"
-    target_h: int   # 1080 / 720
+    quality: str    # "fhd" / "hd" / "play"
+    target_h: int   # 1080 / 720 / 再生版は source 高さ (上限 1080)
+
+
+# ─── 再生互換版 ("play") ─────────────────────────────────────────────────
+#
+# ブラウザの <video> が確実に再生できる codec だけを「安全」とみなす。
+# iPhone の既定は HEVC (H.265) で、Windows のブラウザは HEVC デコーダの有無が
+# 環境依存 (会社貸与 PC などでは映らないことがある)。撮影側に「互換性優先で撮って」
+# と頼むのは回避策で、受け取る側が再生できる形にするのが根本。
+#
+# 解析パイプラインは source をそのまま読む (サーバ側 ffmpeg は HEVC をデコードできる)
+# ので、source は加工しない。再生用に別ファイルを作り、配信時に自動で差し替える。
+# 「安全」の判定に無い codec (hevc / prores / mpeg2 / ...) はすべて対象にする:
+# 未知の codec を「たぶん再生できる」側に倒すと、映らない原因が見えなくなる。
+_BROWSER_SAFE_CODECS = frozenset({"h264", "vp8", "vp9"})
+
+PLAYBACK_QUALITY = "play"
+# 再生版の縦解像度の上限。注釈の目視には 1080p で足り、4K を H.264 に
+# 焼き直すと時間もディスクも無駄になる (解析は source を読む)。
+_PLAYBACK_MAX_H = 1080
+_PLAYBACK_CRF = 23
 
 
 # ─── 公開 API ────────────────────────────────────────────────────────────
@@ -234,6 +254,47 @@ def decide_variants(probe: ProbeResult) -> List[VariantPlan]:
     return plans
 
 
+def decide_playback(probe: Optional[ProbeResult]) -> Optional[VariantPlan]:
+    """source がブラウザで再生できない codec のとき、再生互換版の生成プランを返す。
+
+    - probe 失敗 / 寸法不明 → None (何も作らない。作れない理由を隠さず ffprobe の
+      warning が残る)
+    - codec が h264 / vp8 / vp9 → None (そのまま再生できる)
+    - それ以外 (hevc など) → H.264 の再生版。縦は source と同じ、上限 1080
+
+    upscale はしない (source が 720p なら 720p のまま)。
+    """
+    if probe is None or probe.width <= 0 or probe.height <= 0:
+        return None
+    if probe.width * probe.height > _MAX_SOURCE_PIXELS:
+        return None
+    if (probe.codec or "").strip().lower() in _BROWSER_SAFE_CODECS:
+        return None
+    return VariantPlan(
+        quality=PLAYBACK_QUALITY,
+        target_h=min(probe.height, _PLAYBACK_MAX_H),
+    )
+
+
+def playback_variant_file(upload_dir: Path, upload_id: str) -> Optional[Path]:
+    """再生互換版が **完成して** 存在すればそのパスを返す。無ければ None。
+
+    再生互換版は「source がブラウザで再生できないときだけ」作られるので、
+    ファイルがあること自体が「差し替えるべき」という印になる (配信のたびに
+    ffprobe を走らせない)。生成は atomic rename なので、見えているファイルは
+    常に完成品。
+    """
+    if not upload_id or "/" in upload_id or "\\" in upload_id or ".." in upload_id:
+        return None
+    p = variant_path(upload_dir, upload_id, PLAYBACK_QUALITY)
+    try:
+        if p.exists() and p.stat().st_size > 0:
+            return p
+    except OSError:
+        return None
+    return None
+
+
 def variant_dir(upload_dir: Path) -> Path:
     """variant 出力先ディレクトリ。存在しなければ作る。"""
     d = upload_dir / _VARIANT_SUBDIR
@@ -321,6 +382,9 @@ def generate_variant(
         "-c:v", "libx264",
         "-preset", _VARIANT_PRESET,
         "-crf", str(crf),
+        # 10bit / 4:2:2 の source (iPhone の HDR 動画など) をそのまま x264 に
+        # 渡すと、ブラウザが再生できない profile になる。8bit 4:2:0 に揃える。
+        "-pix_fmt", "yuv420p",
         "-c:a", "aac",
         "-b:a", "128k",
         "-movflags", "+faststart",  # web 配信時に moov を先頭へ
@@ -391,6 +455,11 @@ def generate_all_for_source(
         return {"_error": f"source not found: {source}"}
     probe = probe_source(source)
     plans = decide_variants(probe)
+    # 再生互換版は解像度に依らず必要になる (720p の HEVC でも映らない) ので、
+    # decide_variants が空でも作る。最初に作る: 映るかどうかに直結するため。
+    playback = decide_playback(probe)
+    if playback is not None:
+        plans = [playback] + list(plans)
     results: Dict[str, str] = {}
     if not plans:
         if probe is None:
@@ -400,7 +469,10 @@ def generate_all_for_source(
                 f"source {probe.width}x{probe.height} -> no variants needed"
             )
         return results
-    crf_by_q = {"uhd": _VARIANT_CRF_UHD, "fhd": _VARIANT_CRF_FHD, "hd": _VARIANT_CRF_HD}
+    crf_by_q = {
+        "uhd": _VARIANT_CRF_UHD, "fhd": _VARIANT_CRF_FHD, "hd": _VARIANT_CRF_HD,
+        PLAYBACK_QUALITY: _PLAYBACK_CRF,
+    }
     for plan in plans:
         target = variant_path(upload_dir, upload_id, plan.quality)
         crf = crf_by_q.get(plan.quality, _VARIANT_CRF_FHD)

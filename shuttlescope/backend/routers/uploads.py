@@ -1082,6 +1082,15 @@ def stream_video_for_match(
                     vpath_safe = None
                 if vpath_safe is not None and vpath_safe.exists() and vpath_safe.stat().st_size > 0:
                     file = vpath_safe
+        if file is None and (quality or "").strip().lower() not in ("source", "src"):
+            # 画質を明示されていない (または要求した variant が無い) とき:
+            # source がブラウザで再生できない codec (iPhone の HEVC など) なら、
+            # 生成済みの再生互換版 (H.264) に差し替える。明示の "source" だけは
+            # 本当の元ファイルを返す。再生版が未完成の間は source を返す
+            # (= 変換が終わるまでは映らない環境がある)。
+            from backend.services.video_variants import playback_variant_file
+            _uid = rest.rsplit(".", 1)[0] if "." in rest else rest
+            file = playback_variant_file(Path(UPLOAD_DIR), _uid)
         if file is None:
             file = safe_path(UPLOAD_DIR, rest)
     elif vlp.startswith("localfile:///"):
