@@ -189,8 +189,18 @@ def _csp_for(host: str) -> str:
     return res.headers.get("Content-Security-Policy", "")
 
 
+def _csp_directive_tokens(csp: str, name: str) -> tuple[str, ...]:
+    """Return one CSP directive as exact source-expression tokens."""
+    prefix = f"{name} "
+    for directive in csp.split(";"):
+        directive = directive.strip()
+        if directive.startswith(prefix):
+            return tuple(directive[len(prefix):].split())
+    return ()
+
+
 def _script_src_directive(csp: str) -> str:
-    return csp.split("script-src ", 1)[1].split(";", 1)[0]
+    return " ".join(_csp_directive_tokens(csp, "script-src"))
 
 
 @_NEEDS_MAIN
@@ -223,11 +233,16 @@ def test_cloudflare_analytics_allowlist_is_public_lp_only(real_production_shape)
     public_csp = _csp_for("shuttle-scope.com")
     app_csp = _csp_for("app.shuttle-scope.com")
 
-    assert "https://static.cloudflareinsights.com" in _script_src_directive(public_csp)
-    assert "https://cloudflareinsights.com" in public_csp
+    public_script = _csp_directive_tokens(public_csp, "script-src")
+    public_connect = _csp_directive_tokens(public_csp, "connect-src")
+    app_script = _csp_directive_tokens(app_csp, "script-src")
+    app_connect = _csp_directive_tokens(app_csp, "connect-src")
 
-    assert "https://static.cloudflareinsights.com" not in _script_src_directive(app_csp)
-    assert "https://cloudflareinsights.com" not in app_csp
+    assert "https://static.cloudflareinsights.com" in public_script
+    assert "https://cloudflareinsights.com" in public_connect
+
+    assert "https://static.cloudflareinsights.com" not in app_script
+    assert "https://cloudflareinsights.com" not in app_connect
 
 
 @_NEEDS_MAIN
