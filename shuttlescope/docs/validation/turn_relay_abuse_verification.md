@@ -205,13 +205,40 @@ Windows Firewall は 3 プロファイルとも有効 (受信の既定動作は�
 - 6to4 / NAT64 / Teredo prefixが実targetに含まれること
 - DNS A/AAAA解決と重複除去
 - IPv6 TURN control endpointのsocket family
-- coturn.conf.example の必須deny/quota/no-tcp-relay/no-admin directive
+- coturn.conf.example の必須deny/quota/no-tcp-relay directiveと、web-adminがopt-inのまま無効であること
 
-focused test: backend/tests/test_turn_hardening_verifier.py 4/4 pass。
+focused test: backend/tests/test_turn_hardening_verifier.py 5/5 pass。
 
 なお /api/webrtc/test-turn は管理画面用のTCP到達確認に過ぎず、
 TURN Allocate/auth/peer ACL の安全性を証明しない。
 本番判定は必ず verify_turn_hardening.py の実プロトコルprobeで行う。
+
+### 2026-09-29 実coturn対照試験（verifierの実効性確認）
+
+WSL上のcoturn 4.6.2を実際に2構成で起動し、同じ資格情報・同じpeer集合へ
+`verify_turn_hardening.py` を当てた。
+
+- hardened構成: 現行denylist + `no-tcp-relay` + quotaを適用。
+  CreatePermission / ChannelBindとも、RFC1918、IPv4-mapped、IPv4-compatible、
+  6to4、NAT64 2種、Teredo、ULA、broadcastを全て拒否。verifier終了コード0。
+- vulnerable control: denylistを外した対照構成。
+  同じprobeのうち32経路でCreatePermissionまたはChannelBindが実際に成功し、
+  verifier終了コード1。
+- `0.0.0.0` とTURN自身への中継はcoturn既定で403になり、対照構成でも通らない。
+
+この対照試験で、verifierが単に「エラーが返ったから安全」と判定しているのではなく、
+防御有無に応じて実際のrelay許可/拒否を識別できることを再確認した。
+
+同時にverifier側の欠陥を1件修正した。以前は複数peerのChannelBindで
+channel number `0x4000` を再利用していたため、2つ目以降はACL評価前にcoturnが
+channel競合で拒否し、偽のBLOCKEDを作り得た。現在はpeerごとに
+`0x4000..0x7FFF` のfresh channel numberを採番する。
+
+またcoturn 4.6.2には `no-web-admin` directiveは存在しない。
+`web-admin` はopt-inで既定無効なので、`no-web-admin` を書くと
+`Bad configuration format` 警告になるだけで防御にはならない。
+テンプレートから削除し、`web-admin` / `web-admin-listen-on-workers` が
+存在しないことをテストで固定した。
 
 ## 未検証 (正直に残す)
 

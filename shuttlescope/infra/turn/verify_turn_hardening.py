@@ -126,6 +126,10 @@ class Turn:
         self.sock.settimeout(5)
         self.key, self.realm, self.nonce = b"", "", b""
         self.last_error_code = 0
+        # RFC 5766 channel numbers are 0x4000..0x7FFF. Reusing one number for
+        # a different peer makes coturn reject the second bind before peer ACL
+        # evaluation, which used to create a false "BLOCKED" result.
+        self._next_channel = 0x4000
 
     def close(self) -> None:
         self.sock.close()
@@ -172,13 +176,18 @@ class Turn:
         return "BLOCKED", _errtext(a)
 
     def channel_bind(self, ip: str, port: int) -> tuple[str, str]:
+        if self._next_channel > 0x7FFF:
+            return "UNTESTED", "channel number space exhausted"
+        channel = self._next_channel
+        self._next_channel += 1
+
         tid = secrets.token_bytes(12)
-        attrs = (_attr(A_CHANNEL, struct.pack("!HH", 0x4000, 0))
+        attrs = (_attr(A_CHANNEL, struct.pack("!HH", channel, 0))
                  + _attr(A_XOR_PEER, _xor_peer(ip, port, tid)) + self._auth())
         self.sock.sendto(_build(CHANNELBIND_REQ, tid, attrs, self.key), self.dst)
         mt, a = _parse(self.sock.recvfrom(2048)[0])
         if mt == CHANNELBIND_OK:
-            self.sock.sendto(struct.pack("!HH", 0x4000, 20) + b"TURN-HARDENING-PROBE",
+            self.sock.sendto(struct.pack("!HH", channel, 20) + b"TURN-HARDENING-PROBE",
                              self.dst)
             return "RELAYED", "許可された"
         if _err_code(a) == 443:

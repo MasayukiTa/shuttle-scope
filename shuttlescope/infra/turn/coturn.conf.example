@@ -104,8 +104,9 @@ max-bps=2000000
 
 # ── 露出を減らす ────────────────────────────────────────────────────────────
 no-cli
-# web admin は使わない (4.6.2 には stored XSS の報告がある)
-no-web-admin
+# web admin は opt-in (web-admin) で、coturn 4.6.2 では既定無効。
+# no-web-admin という directive は存在せず "Bad configuration format" になるため
+# 書かない。web-admin / web-admin-listen-on-workers を追加しないこと。
 no-software-attribute
 fingerprint
 

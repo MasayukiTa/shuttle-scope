@@ -4,6 +4,7 @@ import importlib.util
 import ipaddress
 from pathlib import Path
 import socket
+import struct
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -99,9 +100,17 @@ def test_coturn_template_keeps_required_hardening_directives():
         "no-multicast-peers",
         "no-tcp-relay",
         "no-cli",
-        "no-web-admin",
     }
     assert required.issubset(active)
+    # coturn 4.6.2 has only positive web-admin; web admin is disabled by
+    # default. no-web-admin is invalid and silently ignored after a warning.
+    assert "no-web-admin" not in active
+    assert not any(
+        line == "web-admin"
+        or line.startswith("web-admin=")
+        or line.startswith("web-admin-listen-on-workers")
+        for line in active
+    )
     assert not any(line.startswith("allowed-peer-ip=") for line in active)
     assert any(line.startswith("user-quota=") for line in active)
     assert any(line.startswith("total-quota=") for line in active)
@@ -114,3 +123,65 @@ def test_coturn_template_keeps_required_hardening_directives():
     assert any("64:ff9b::" in line for line in deny_lines)
     assert any("2002::-" in line for line in deny_lines)
     assert any("2001::-" in line for line in deny_lines)
+
+
+def test_channel_bind_uses_a_fresh_channel_for_each_peer(monkeypatch):
+    monkeypatch.setattr(
+        turn_verify.socket,
+        "getaddrinfo",
+        lambda *args, **kwargs: [
+            (
+                socket.AF_INET,
+                socket.SOCK_DGRAM,
+                socket.IPPROTO_UDP,
+                "",
+                ("127.0.0.1", 3478),
+            )
+        ],
+    )
+
+    sent = []
+    responses = []
+
+    class FakeSocket:
+        def __init__(self, family, socktype, proto):
+            pass
+
+        def settimeout(self, value):
+            pass
+
+        def sendto(self, data, dst):
+            sent.append(data)
+
+        def recvfrom(self, size):
+            return responses.pop(0), ("127.0.0.1", 3478)
+
+        def close(self):
+            pass
+
+    def ok_response():
+        tid = b"x" * 12
+        return turn_verify._build(
+            turn_verify.CHANNELBIND_OK, tid, b"", None
+        )
+
+    monkeypatch.setattr(turn_verify.socket, "socket", FakeSocket)
+    responses.extend([ok_response(), ok_response()])
+
+    trn = turn_verify.Turn("127.0.0.1", 3478, "u", "p")
+    trn.key = b"k"
+    trn.realm = "r"
+    trn.nonce = b"n"
+
+    assert trn.channel_bind("10.0.0.1", 9999)[0] == "RELAYED"
+    assert trn.channel_bind("10.0.0.2", 9999)[0] == "RELAYED"
+
+    bind_messages = [sent[0], sent[2]]
+    channels = []
+    for message in bind_messages:
+        _mt, attrs = turn_verify._parse(message)
+        raw = attrs[turn_verify.A_CHANNEL]
+        channel, _reserved = struct.unpack("!HH", raw)
+        channels.append(channel)
+
+    assert channels == [0x4000, 0x4001]
