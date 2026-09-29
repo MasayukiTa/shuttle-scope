@@ -12,8 +12,8 @@ SHA-256 で hash し、`backend/models/SHA256SUMS` に記録された期待値�
 運用:
   - モデルを正当に更新した直後に scripts/regenerate_model_manifest.py を実行
     して SHA256SUMS を更新し、commit する。
-  - backend 起動時に verify_models() が呼ばれる。MISMATCH → CRITICAL ログ
-    + (本番なら exit 1)、UNEXPECTED → WARNING (新規モデル: 手動更新待ち)。
+  - backend 起動時に verify_models() が呼ばれる。MISMATCH / MISSING は
+    CRITICAL。UNEXPECTED は開発環境では WARNING、本番では fail-closed にできる。
   - 検証対象拡張子は MODEL_EXTENSIONS。trt_cache/ 等の自動生成キャッシュは除外。
 """
 from __future__ import annotations
@@ -149,9 +149,14 @@ class ModelIntegrityResult:
         self.missing: list[str] = []     # manifest にあるが現物無し
         self.unexpected: list[str] = []  # 現物にあるが manifest に無い
 
-    def has_critical_problem(self) -> bool:
-        # mismatch / missing は重大 (差し替え or 削除されている)
-        return bool(self.mismatched) or bool(self.missing)
+    def has_critical_problem(self, *, include_unexpected: bool = False) -> bool:
+        # mismatch / missing は重大 (差し替え or 削除されている)。
+        # production では manifest 外モデルも trust root への未承認追加として重大扱いする。
+        return (
+            bool(self.mismatched)
+            or bool(self.missing)
+            or (include_unexpected and bool(self.unexpected))
+        )
 
     def summary(self) -> str:
         return (
@@ -192,34 +197,57 @@ def verify_models(
 def verify_and_log(
     *,
     fail_on_mismatch: bool = False,
+    fail_on_unexpected: bool = False,
     models_dir: Optional[Path] = None,
     manifest_path: Optional[Path] = None,
 ) -> ModelIntegrityResult:
-    """起動時に呼ばれる薄いラッパ. エラー時は logger に CRITICAL + (任意で exit)."""
+    """起動時にモデル trust root を検証する。
+
+    開発環境では manifest 外モデルを warning に留められるが、production は
+    fail_on_unexpected=True で未承認モデルの追加も fail-closed にする。
+    """
     result = verify_models(models_dir=models_dir, manifest_path=manifest_path)
+
+    for rel, exp, act in result.mismatched:
+        logger.critical(
+            "model integrity MISMATCH path=%s expected=%s actual=%s",
+            rel, exp[:12] + "...", act[:12] + "...",
+        )
+    for rel in result.missing:
+        logger.critical(
+            "model integrity MISSING path=%s (in manifest, not on disk)",
+            rel,
+        )
+    for rel in result.unexpected:
+        log = logger.critical if fail_on_unexpected else logger.warning
+        log(
+            "model integrity UNEXPECTED path=%s "
+            "(on disk, not in manifest — regenerate manifest if intentional)",
+            rel,
+        )
+
+    should_fail = (
+        (fail_on_mismatch and (result.mismatched or result.missing))
+        or (fail_on_unexpected and result.unexpected)
+    )
+    if should_fail:
+        import sys
+        sys.stderr.write(
+            f"[FATAL] model integrity check failed: {result.summary()}\n"
+            "Refusing to start. Restore/remove unapproved model files or update "
+            "SHA256SUMS via `python -m backend.scripts.regenerate_model_manifest` "
+            "after independently verifying the artifact provenance.\n"
+        )
+        sys.exit(3)
+
     if result.has_critical_problem():
-        for rel, exp, act in result.mismatched:
-            logger.critical(
-                "model integrity MISMATCH path=%s expected=%s actual=%s",
-                rel, exp[:12] + "...", act[:12] + "...",
-            )
-        for rel in result.missing:
-            logger.critical("model integrity MISSING path=%s (in manifest, not on disk)", rel)
-        if fail_on_mismatch:
-            import sys
-            sys.stderr.write(
-                f"[FATAL] model integrity check failed: {result.summary()}\n"
-                "Refusing to start. Either restore the model files or regenerate "
-                "SHA256SUMS via `python -m backend.scripts.regenerate_model_manifest`.\n"
-            )
-            sys.exit(3)
+        logger.error("model integrity problems detected (%s)", result.summary())
     elif result.unexpected:
-        for rel in result.unexpected:
-            logger.warning(
-                "model integrity UNEXPECTED path=%s (on disk, not in manifest — regenerate manifest if intentional)",
-                rel,
-            )
-        logger.info("model integrity OK with %d unexpected new files (%s)", len(result.unexpected), result.summary())
+        logger.info(
+            "model integrity OK with %d unexpected new files (%s)",
+            len(result.unexpected),
+            result.summary(),
+        )
     else:
         logger.info("model integrity OK (%s)", result.summary())
     return result

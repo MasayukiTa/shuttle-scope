@@ -364,8 +364,8 @@ async def lifespan(app: FastAPI):
 
     # ── Round 258 #8: モデルファイル整合性検証 ─────────────────────────────
     # backend/models/ 配下のモデル hash を SHA256SUMS と照合。
-    # MISMATCH/MISSING は CRITICAL ログ。本番 (ENVIRONMENT=production) では
-    # 起動を拒否する (バックドア入りモデルでの推論を防止)。
+    # MISMATCH/MISSING は CRITICAL。本番 (ENVIRONMENT=production) では
+    # UNEXPECTED も未承認モデルの追加として起動拒否する。
     #
     # Round 258 P0/P1 fix:
     # - ENVIRONMENT のスペース/大小文字ゆらぎを strip().lower() で吸収
@@ -377,7 +377,10 @@ async def lifespan(app: FastAPI):
     is_prod = env_norm == "production"
     try:
         from backend.utils.model_integrity import verify_and_log
-        verify_and_log(fail_on_mismatch=is_prod)
+        verify_and_log(
+            fail_on_mismatch=is_prod,
+            fail_on_unexpected=is_prod,
+        )
     except SystemExit:
         raise  # production fail-closed: そのまま落とす
     except Exception as exc:
