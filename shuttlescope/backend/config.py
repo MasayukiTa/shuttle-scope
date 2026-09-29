@@ -27,6 +27,13 @@ _WEAK_KEYS = frozenset({
 
 class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///./backend/db/shuttlescope.db"
+    # PostgreSQL role-lockdown 後の Alembic 専用接続。
+    # .env.development に書かれた SS_DB_MIGRATION_URL も Settings 経由で
+    # Alembic env.py から読めるよう、明示フィールドにする。
+    SS_DB_MIGRATION_URL: str = Field(
+        "",
+        validation_alias=_ss("DB_MIGRATION_URL"),
+    )
     API_PORT: int = 8765
     SECRET_KEY: str = "development-secret-key"
     ENVIRONMENT: str = "development"

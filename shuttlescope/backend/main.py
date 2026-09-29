@@ -209,6 +209,14 @@ def _enforce_production_security_gate() -> None:
             "(a) DATABASE_URL is SQLite in production posture. "
             "Use postgresql+psycopg://... or unset PUBLIC_MODE/ENVIRONMENT=production."
         )
+    elif db_url.startswith("postgresql") and not (
+        getattr(app_settings, "SS_DB_MIGRATION_URL", "") or ""
+    ).strip():
+        errors.append(
+            "(a2) SS_DB_MIGRATION_URL is missing for PostgreSQL production posture. "
+            "Runtime ss_user must not own schema objects; configure the dedicated "
+            "ss_migration connection before starting."
+        )
 
     sec = (getattr(app_settings, "SECRET_KEY", "") or "").strip()
     if not sec or sec in ("dev", "default", "change-me", "secret") or len(sec) < 32:
@@ -306,15 +314,33 @@ async def lifespan(app: FastAPI):
     """アプリ起動時にテーブル作成 + stale cleanup タスク開始"""
     # R40-1: 本番姿勢構成ミスは起動を拒否する
     _enforce_production_security_gate()
+    strict_bootstrap = bool(app_settings.is_production_posture)
     try:
         loop = asyncio.get_event_loop()
         await asyncio.wait_for(
-            loop.run_in_executor(None, lambda: bootstrap_database(None, app_settings.DATABASE_URL)),
+            loop.run_in_executor(
+                None,
+                lambda: bootstrap_database(
+                    None,
+                    app_settings.DATABASE_URL,
+                    fail_on_migration_error=strict_bootstrap,
+                ),
+            ),
             timeout=30.0,
         )
     except asyncio.TimeoutError:
+        if strict_bootstrap:
+            logger.critical(
+                "bootstrap_database timed out in production posture; refusing startup"
+            )
+            raise RuntimeError("database bootstrap timed out in production posture")
         logger.warning("bootstrap_database がタイムアウト（30s）— 起動を続行します")
     except Exception as exc:
+        if strict_bootstrap:
+            logger.critical(
+                "bootstrap_database failed in production posture: %s", exc
+            )
+            raise
         logger.warning("bootstrap_database エラー: %s — 起動を続行します", exc)
 
     # R47: Tor 出口 IP リストを起動時に読み込む (env で path 指定されている場合のみ)
