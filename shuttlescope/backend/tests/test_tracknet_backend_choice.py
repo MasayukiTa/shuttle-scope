@@ -82,8 +82,14 @@ class TestCheckpointObjectPathCompatibility:
         assert "assert_existing_objects_matched()" in SETUP_SRC
 
 
-class TestTensorRtFallbackContract:
-    def test_trt_failures_retry_cuda_before_slower_backends(self):
+class TestTensorRtBackendContract:
+    def test_native_engine_is_supported_and_preferred(self):
+        assert "TRT_ENGINE_CANDIDATES" in INFERENCE_SRC
+        assert "tensorrt_native" in INFERENCE_SRC
+        assert "def _load_tensorrt_native" in INFERENCE_SRC
+        assert '"trt": cmd_trt' in SETUP_SRC
+        assert "TRT_ENGINE_PATH" in SETUP_SRC
+
+    def test_ort_tensorrt_is_explicit_opt_in(self):
+        assert 'SS_ENABLE_ORT_TRT' in INFERENCE_SRC
         assert "def _fallback_to_cuda_after_trt" in INFERENCE_SRC
-        assert INFERENCE_SRC.count("_fallback_to_cuda_after_trt(_reason)") >= 2
-        assert "_fallback_to_cuda_after_trt(str(_err_holder[0]))" in INFERENCE_SRC

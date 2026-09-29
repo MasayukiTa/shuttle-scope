@@ -4,6 +4,7 @@ Usage:
   python -m backend.tracknet.setup download
   python -m backend.tracknet.setup export
   python -m backend.tracknet.setup convert
+  python -m backend.tracknet.setup trt
   python -m backend.tracknet.setup all
 
 `download` fetches the real public badminton checkpoint from a pinned upstream
@@ -30,6 +31,7 @@ TF_INDEX_PATH = WEIGHTS_DIR / "TrackNet.index"
 TF_DATA_PATH = WEIGHTS_DIR / "TrackNet.data-00000-of-00001"
 ONNX_PATH = WEIGHTS_DIR / "tracknet.onnx"
 OV_XML = WEIGHTS_DIR / "tracknet.xml"
+TRT_ENGINE_PATH = WEIGHTS_DIR / "tracknet.engine"
 
 UPSTREAM_COMMIT = "d13eb075c7efcca25ede62ac4a21e18891c2f49b"  # DevSkim: ignore DS173237 -- public git commit, not a credential
 TRUSTED_WEIGHT_SCHEME = "https"
@@ -210,6 +212,67 @@ def cmd_convert():
     print(f"[ok] OpenVINO IR saved to {OV_XML}")
 
 
+def cmd_trt():
+    """Build a fixed batch=1 FP16 TensorRT engine from the validated ONNX."""
+    if not ONNX_PATH.exists():
+        print(f"[error] ONNX model not found: {ONNX_PATH}")
+        print("Run: python -m backend.tracknet.setup export")
+        sys.exit(1)
+
+    try:
+        import tensorrt as trt
+    except ImportError:
+        print("[error] TensorRT Python package not found")
+        sys.exit(1)
+
+    logger = trt.Logger(trt.Logger.WARNING)
+    builder = trt.Builder(logger)
+    flags = 0
+    explicit_batch = getattr(
+        trt.NetworkDefinitionCreationFlag, "EXPLICIT_BATCH", None
+    )
+    if explicit_batch is not None:
+        flags = 1 << int(explicit_batch)
+    network = builder.create_network(flags)
+    parser = trt.OnnxParser(network, logger)
+    if not parser.parse(ONNX_PATH.read_bytes()):
+        errors = [
+            str(parser.get_error(i))
+            for i in range(parser.num_errors)
+        ]
+        raise RuntimeError("TensorRT ONNX parse failed: " + " | ".join(errors))
+
+    config = builder.create_builder_config()
+    config.set_memory_pool_limit(
+        trt.MemoryPoolType.WORKSPACE,
+        4 * 1024 ** 3,
+    )
+    if getattr(builder, "platform_has_fast_fp16", True):
+        config.set_flag(trt.BuilderFlag.FP16)
+    if hasattr(config, "builder_optimization_level"):
+        config.builder_optimization_level = 3
+
+    if network.num_inputs != 1:
+        raise RuntimeError(
+            f"expected one TensorRT input, got {network.num_inputs}"
+        )
+    input_name = network.get_input(0).name
+    profile = builder.create_optimization_profile()
+    static_shape = (1, 3, 288, 512)
+    profile.set_shape(input_name, static_shape, static_shape, static_shape)
+    config.add_optimization_profile(profile)
+
+    print(f"Building native TensorRT engine to {TRT_ENGINE_PATH} ...")
+    serialized = builder.build_serialized_network(network, config)
+    if serialized is None:
+        raise RuntimeError("TensorRT engine build returned None")
+
+    tmp = TRT_ENGINE_PATH.with_suffix(".engine.part")
+    tmp.write_bytes(bytes(serialized))
+    tmp.replace(TRT_ENGINE_PATH)
+    print(f"[ok] TensorRT engine saved to {TRT_ENGINE_PATH}")
+
+
 def cmd_all():
     cmd_download()
     cmd_export()
@@ -229,6 +292,7 @@ def main():
         "download": cmd_download,
         "export": cmd_export,
         "convert": cmd_convert,
+        "trt": cmd_trt,
         "all": cmd_all,
     }
     if cmd not in commands:
