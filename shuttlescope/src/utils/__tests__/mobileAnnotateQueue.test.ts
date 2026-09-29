@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   classifyQueueHttpFailure,
   nextSequenceRunnableAt,
+  queueFlushDecision,
+  queueItemOwnership,
   queueSequenceKey,
+  tokenUserId,
   type QueueItem,
   type QueueEndpoint,
 } from '../mobileAnnotateQueue'
@@ -96,5 +99,54 @@ describe('mobileAnnotateQueue per-rally ordering', () => {
       item(3, 'PUT /api/rallies/:id', { id: 84 }, 700),
     ]
     expect(nextSequenceRunnableAt(withIndependent)).toBe(700)
+  })
+})
+
+function jwt(payload: Record<string, unknown>): string {
+  const b64 = (o: unknown) => btoa(JSON.stringify(o)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  return `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64(payload)}.sig`
+}
+
+describe('mobileAnnotateQueue owner scoping (shared device)', () => {
+  it('reads the user from the same token that is sent', () => {
+    expect(tokenUserId(jwt({ sub: '17' }))).toBe(17)
+    expect(tokenUserId(jwt({ sub: 17 }))).toBe(17)
+  })
+
+  it('does not guess an owner from a malformed or ownerless token', () => {
+    expect(tokenUserId(null)).toBeNull()
+    expect(tokenUserId('not-a-jwt')).toBeNull()
+    expect(tokenUserId(jwt({ sub: 'abc' }))).toBeNull()
+    expect(tokenUserId(jwt({ role: 'analyst' }))).toBeNull()
+    expect(tokenUserId(jwt({ sub: 0 }))).toBeNull()
+  })
+
+  it('never sends queued input of user A under user B', () => {
+    const a = item(1, 'POST /api/strokes?rally_id=:rally_id', { rally_id: 42 }, 0, { ownerUserId: 11 })
+    expect(queueItemOwnership(a, 11)).toBe('mine')
+    expect(queueItemOwnership(a, 12)).toBe('foreign')
+    expect(queueItemOwnership(a, null)).toBe('foreign')
+    expect(queueFlushDecision(a, 12)).toBe('skip')
+    expect(queueFlushDecision(a, null)).toBe('skip')
+    expect(queueFlushDecision(a, 11)).toBe('send')
+  })
+
+  it('holds ownerless input for a manual retry instead of claiming it', () => {
+    const legacy = item(2, 'PUT /api/rallies/:id', { id: 42 }, 0)
+    expect(queueItemOwnership(legacy, 11)).toBe('legacy')
+    expect(queueFlushDecision(legacy, 11)).toBe('hold')
+    expect(queueFlushDecision(legacy, null)).toBe('hold')
+  })
+
+  it('the backlog of another user does not decide when this queue wakes up', () => {
+    const items = [
+      item(1, 'PUT /api/rallies/:id', { id: 42 }, 100, { ownerUserId: 11 }),
+      item(2, 'PUT /api/rallies/:id', { id: 84 }, 900, { ownerUserId: 12 }),
+    ]
+    expect(nextSequenceRunnableAt(items, 12)).toBe(900)
+    expect(nextSequenceRunnableAt(items, 11)).toBe(100)
+    expect(nextSequenceRunnableAt(items, null)).toBeNull()
+    // without an owner argument the previous behaviour is unchanged
+    expect(nextSequenceRunnableAt(items)).toBe(100)
   })
 })
