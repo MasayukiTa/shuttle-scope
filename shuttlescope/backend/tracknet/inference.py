@@ -429,6 +429,62 @@ class TrackNetInference:
                             and "TensorrtExecutionProvider" in available_providers
                             and os.environ.get("SS_DISABLE_TRT", "0") not in ("1", "true", "True")
                         )
+
+                        def _fallback_to_cuda_after_trt(reason: str) -> bool:
+                            """Rebuild this backend with TRT disabled and adopt CUDA EP."""
+                            if not _use_trt or onnx_model_gpu is None:
+                                return False
+                            tried.append(f"onnx_trt: {reason} — CUDA EP にフォールバック")
+                            previous = os.environ.get("SS_DISABLE_TRT")
+                            os.environ["SS_DISABLE_TRT"] = "1"
+                            try:
+                                fallback = TrackNetInference(
+                                    backend="cuda",
+                                    device=self._device,
+                                    cuda_device_index=self._cuda_device_index,
+                                    openvino_device=self._openvino_device,
+                                )
+                                if not fallback.load() or not fallback.backend_name().startswith("onnx_cuda"):
+                                    tried.append(
+                                        "onnx_cuda retry: "
+                                        + (fallback.get_load_error() or fallback.backend_name())
+                                    )
+                                    return False
+                                sess_fallback = fallback._sess_onnx_cuda
+                                if sess_fallback is None:
+                                    tried.append("onnx_cuda retry: CUDA session was not retained")
+                                    return False
+                                input_fallback = sess_fallback.get_inputs()[0].name
+                                self._max_batch = fallback._max_batch
+                                self._infer_fn = (
+                                    lambda frames, _s=sess_fallback, _n=input_fallback:
+                                    self._run_onnx(_s, _n, frames)
+                                )
+                                self._batch_infer_fn = (
+                                    lambda batch, _s=sess_fallback, _n=input_fallback:
+                                    self._run_onnx_batch(_s, _n, batch)
+                                )
+                                self._backend_name = fallback.backend_name()
+                                self._load_error = None
+                                self._gpu_load_error = reason
+                                self._sess_onnx_cuda = sess_fallback
+                                self._init_gpu_preproc(
+                                    sess_fallback, input_fallback, self._cuda_device_index
+                                )
+                                logger.warning(
+                                    "TrackNet TensorRT failed (%s); using %s instead",
+                                    reason,
+                                    self._backend_name,
+                                )
+                                return True
+                            except Exception as exc:
+                                tried.append(f"onnx_cuda retry: {exc}")
+                                return False
+                            finally:
+                                if previous is None:
+                                    os.environ.pop("SS_DISABLE_TRT", None)
+                                else:
+                                    os.environ["SS_DISABLE_TRT"] = previous
                         # TRT 向けモデル: FP32 ONNX を優先（TRT 側で FP16 化）。
                         # リアルタイム目的のため opt_shapes は batch=1、max=8。
                         # 実測: opt=8/max=16/ws=6GB が RTX 5060 Ti で最速 (133 fps / 7.5ms per batch=8)
@@ -491,29 +547,11 @@ class TrackNetInference:
                             if effective_backend in ("cuda", "onnx_cuda"):
                                 effective_backend = "auto"
                         elif _err_holder[0] is not None:
-                            # TRT 付きで失敗した場合、TRT を外して CUDA EP 単体で再試行
-                            # （TrackNet の FP16 ONNX は TRT の ForeignNode 実装が無い）
-                            _retry_ok = False
-                            if _use_trt:
-                                tried.append(f"onnx_trt: {_err_holder[0]} — CUDA EP にフォールバック")
-                                try:
-                                    # CUDA 再試行時は FP16 ONNX を使用
-                                    _sess_holder[0] = ort.InferenceSession(
-                                        str(onnx_model_gpu),
-                                        sess_options=sess_opts,
-                                        providers=[
-                                            ("CUDAExecutionProvider", cuda_opts),
-                                            "CPUExecutionProvider",
-                                        ],
-                                    )
-                                    _err_holder[0] = None
-                                    _retry_ok = True
-                                except Exception as _e2:
-                                    tried.append(f"onnx_cuda retry: {_e2}")
-                            if not _retry_ok:
-                                tried.append(f"onnx_cuda: {_err_holder[0]}")
-                                if effective_backend in ("cuda", "onnx_cuda"):
-                                    effective_backend = "auto"
+                            if _fallback_to_cuda_after_trt(str(_err_holder[0])):
+                                return True
+                            tried.append(f"onnx_cuda: {_err_holder[0]}")
+                            if effective_backend in ("cuda", "onnx_cuda"):
+                                effective_backend = "auto"
                         else:
                             sess = _sess_holder[0]
                             input_name = sess.get_inputs()[0].name
@@ -543,6 +581,8 @@ class TrackNetInference:
                                     "CUDA 初回推論タイムアウト（60s）— Blackwell 等の新 GPU は"
                                     " onnxruntime のバージョンアップが必要な場合があります"
                                 )
+                                if _fallback_to_cuda_after_trt(_reason):
+                                    return True
                                 tried.append(_reason)
                                 self._gpu_load_error = _reason
                                 if effective_backend in ("cuda", "onnx_cuda"):
@@ -551,6 +591,8 @@ class TrackNetInference:
                                 _reason = (
                                     f"CUDA 初回推論失敗: {_run_err[0]}"
                                 )
+                                if _fallback_to_cuda_after_trt(_reason):
+                                    return True
                                 tried.append(_reason)
                                 self._gpu_load_error = _reason
                                 if effective_backend in ("cuda", "onnx_cuda"):

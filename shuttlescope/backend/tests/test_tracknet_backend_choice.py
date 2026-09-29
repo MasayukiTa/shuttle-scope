@@ -31,6 +31,8 @@ MODEL_SRC = (pathlib.Path(__file__).resolve().parents[1]
              / "tracknet" / "model.py").read_text(encoding="utf-8")
 SETUP_SRC = (pathlib.Path(__file__).resolve().parents[1]
              / "tracknet" / "setup.py").read_text(encoding="utf-8")
+INFERENCE_SRC = (pathlib.Path(__file__).resolve().parents[1]
+                 / "tracknet" / "inference.py").read_text(encoding="utf-8")
 
 
 class TestTheBackendIsNotPinnedToOpenvino:
@@ -78,3 +80,10 @@ class TestCheckpointObjectPathCompatibility:
 
     def test_export_fails_if_model_objects_do_not_match_checkpoint(self):
         assert "assert_existing_objects_matched()" in SETUP_SRC
+
+
+class TestTensorRtFallbackContract:
+    def test_trt_failures_retry_cuda_before_slower_backends(self):
+        assert "def _fallback_to_cuda_after_trt" in INFERENCE_SRC
+        assert INFERENCE_SRC.count("_fallback_to_cuda_after_trt(_reason)") >= 2
+        assert "_fallback_to_cuda_after_trt(str(_err_holder[0]))" in INFERENCE_SRC
