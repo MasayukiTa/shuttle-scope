@@ -1,0 +1,74 @@
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/shuttlescope/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3
+    groups:
+      python-minor-patch:
+        update-types: ["minor", "patch"]
+    # major は個別 PR (breaking change を 1 つずつ check できる)
+    commit-message:
+      prefix: "deps(py)"
+    labels: ["dependencies", "python"]
+
+  - package-ecosystem: "pip"
+    directory: "/shuttlescope"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3
+    groups:
+      worker-minor-patch:
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "deps(py-worker)"
+    labels: ["dependencies", "python"]
+
+  - package-ecosystem: "npm"
+    directory: "/shuttlescope"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3
+    groups:
+      js-minor-patch:
+        update-types: ["minor", "patch"]
+    # React/Electron/Tailwind 等の major は個別 PR で慎重に評価
+    commit-message:
+      prefix: "deps(js)"
+    labels: ["dependencies", "javascript"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3
+    groups:
+      actions-minor-patch:
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "deps(actions)"
+    labels: ["dependencies", "github-actions"]

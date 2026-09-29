@@ -1,0 +1,121 @@
+/* ═══════════════════════════════════════════════════════════════════
+ * ShuttleScope — Public Site Design Tokens Bridge
+ * DESIGN_DIRECTION_v2.md §2 / §4 / §5 / §7 準拠
+ *
+ * このファイルは backend/templates/public/*.j2 (marketing / 公開ページ)
+ * が app 本体 (src/styles/globals.css) と "全く同じ" brand blue / surface /
+ * text / border / radius / motion トークンを使うための自己完結ブリッジ。
+ * 旧 #1059c8 のような公開サイト独自ブランド色の分岐を解消する目的。
+ *
+ * 運用ルール:
+ *   - ここに定義する値は globals.css の §2 (light) / dark charcoal トークンと
+ *     常に一致させること。globals.css 側のトークン値を変更したら、この
+ *     ファイルも同じ値に追従して更新する (手動同期。ビルド依存を増やさない
+ *     ため public テンプレートは Vite バンドルの外で完結させる)。
+ *   - データ/チャート配色 (A_GOOD/B_BAD/N_GRAY/coolwarm 等, src/styles/colors.ts)
+ *     はここには含めない。公開サイトはマーケティング用の UI chrome のみ。
+ *   - 外部フォント/CDN 禁止 (system-ui フォールバックのみ)。
+ *
+ * 既定 = LIGHT (soft gray canvas)。dark は [data-theme="dark"] トグルのみ。
+ * ═══════════════════════════════════════════════════════════════════ */
+
+:root,
+[data-theme="light"] {
+  /* ── Brand / interactive ── */
+  --ss-brand:         #2563eb;
+  --ss-brand-hover:   #1d4fd7;
+  --ss-brand-tint:    rgba(37, 99, 235, 0.08);
+  --ss-focus-ring:    rgba(37, 99, 235, 0.32);
+
+  /* ── Surfaces (soft gray canvas + white panels) ── */
+  --ss-bg-app:        #f5f6f8;
+  --ss-surface-1:     #ffffff;
+  --ss-surface-2:     #eef1f5;
+  --ss-surface-3:     #e4e8ee;
+
+  /* ── Borders ── */
+  --ss-border:        #e3e7ec;
+  --ss-border-strong: #c9d1db;
+
+  /* ── Text (ink) ── */
+  --ss-t1: #1a2028;
+  --ss-t2: #55606e;
+  --ss-t3: #8892a0;
+
+  /* ── Status ── */
+  --ss-good:     #1f6fe0;
+  --ss-bad:      #c2334a;
+  --ss-warn:     #b26a00;
+  --ss-success:  #197a48;
+  --ss-emphasis: #e4610f;
+
+  /* ── Radius (crisp / minimal, §4) ── */
+  --r-sm:   3px;
+  --r-md:   5px;
+  --r-lg:   6px;
+  --r-xl:   8px;
+  --r-pill: 999px;
+
+  /* ── Elevation (light-tuned subtle shadows, §4) ── */
+  --e0: none;
+  --e1: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --e2: 0 1px 3px rgba(16, 24, 40, 0.10), 0 1px 2px rgba(16, 24, 40, 0.06);
+  --e3: 0 10px 28px rgba(16, 24, 40, 0.14);
+
+  /* ── Motion (§5) ── */
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --dur-slow: 300ms;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  color-scheme: light;
+}
+
+/* ── Dark: calm charcoal toggle (NOT black/neon), §2 ── */
+[data-theme="dark"] {
+  --ss-brand:         #5c9bff;
+  --ss-brand-hover:   #7fb0ff;
+  --ss-brand-tint:    rgba(92, 155, 255, 0.14);
+  --ss-focus-ring:    rgba(92, 155, 255, 0.35);
+
+  --ss-bg-app:        #1c1f24;
+  --ss-surface-1:     #23272e;
+  --ss-surface-2:     #2a2f37;
+  --ss-surface-3:     #323842;
+
+  --ss-border:        #363c46;
+  --ss-border-strong: #454c58;
+
+  --ss-t1: #e6e9ed;
+  --ss-t2: #a5aebb;
+  --ss-t3: #727c89;
+
+  --ss-good:     #6aa6ff;
+  --ss-bad:      #f0808a;
+  --ss-warn:     #fcd34d;
+  --ss-success:  #4bae7a;
+  --ss-emphasis: #f97316;
+
+  /* radius/motion tokens are shared; elevation leans on surface steps +
+     hairline borders on dark (shadows read weak on dark), so --e* are not
+     overridden here — callers should prefer borders over shadow on dark. */
+
+  color-scheme: dark;
+}
+
+/* Numerals signature (§3): tabular figures for any public-page metric. */
+.ss-num {
+  font-variant-numeric: tabular-nums slashed-zero;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,0 +1,473 @@
+"""MFA リカバリコードのテスト。
+
+背景 (障害): 2026-07 に w32time 停止でサーバ時計がずれ TOTP が一致せず、admin が
+自分のアカウントから締め出された。当時リカバリ手段が無く、DB を直接書き換えて
+totp_enabled を落とすしか復旧方法が無かった。本テストはその復旧経路が実際に
+機能し、かつ悪用できないことを検証する。
+"""
+import time
+
+import pytest
+from fastapi.testclient import TestClient
+
+from backend.db.database import get_db
+from backend.db.models import MfaRecoveryCode, User
+from backend.main import app
+from backend.routers.auth import (
+    _IP_LOGIN_TIMES,
+    _RECOVERY_CODE_COUNT,
+    _hash_recovery_code,
+    _hotp_value,
+    _hash_password,
+    _mfa_failures,
+    _mfa_setup_counters,
+    _normalize_recovery_code,
+)
+from backend.utils.jwt_utils import create_access_token
+
+
+# 本ファイルが作るユーザ名。テスト終了時に必ず消す (下の fixture 参照)。
+_TEST_USERNAMES = ("mfa_user", "mfa_player")
+
+
+@pytest.fixture(autouse=True)
+def _cleanup_created_users(db_session):
+    """本ファイルが commit したユーザを後始末する。
+
+    テスト対象コードが commit するため db_session の rollback では消えず、
+    セッションスコープの共有 DB に行が残る。残すと **他のテストファイルが壊れる**:
+    `admin_headers` 系の fixture は user_id=1 の JWT を発行するだけで、
+    認可は DB の role 再チェックに依存する。本ファイルのユーザが id=1 を
+    取ると admin 判定が落ちて 403 になる (CI の並列割り当てが変わった際に
+    test_benchmark_devices が実際にこれで落ちた)。
+    """
+    yield
+    try:
+        db_session.rollback()
+        ids = [
+            row[0] for row in db_session.query(User.id)
+            .filter(User.username.in_(_TEST_USERNAMES)).all()
+        ]
+        if ids:
+            # SQLite は既定で FK CASCADE が効かないため子から先に消す
+            db_session.query(MfaRecoveryCode).filter(
+                MfaRecoveryCode.user_id.in_(ids)
+            ).delete(synchronize_session=False)
+            db_session.query(User).filter(User.id.in_(ids)).delete(
+                synchronize_session=False
+            )
+            db_session.commit()
+    except Exception:  # noqa: BLE001 - 後始末の失敗でテストを落とさない
+        db_session.rollback()
+
+
+@pytest.fixture(autouse=True)
+def _reset_mfa_rate_limiters():
+    """MFA / ログイン系のレートリミッタはプロセス内のモジュール変数なので、
+    テスト間で持ち越すと後続テストが 429 で落ちる。
+
+    - MFA setup: 10 分 5 回上限
+    - MFA 失敗: 10 分 10 回上限
+    - IP 単位のログイン: **60 秒 10 回上限**。本ファイルは 1 テストで最大 3 回
+      ログインするため、リセットしないと後半のテストが必ず 429 になる
+      (CI の並列実行で実際に発生した)。テストは全て同一の client IP から出る。
+    """
+    for state in (_mfa_setup_counters, _mfa_failures, _IP_LOGIN_TIMES):
+        state.clear()
+    yield
+    for state in (_mfa_setup_counters, _mfa_failures, _IP_LOGIN_TIMES):
+        state.clear()
+
+
+def _current_totp(secret: str) -> str:
+    return f"{_hotp_value(secret, int(time.time()) // 30):06d}"
+
+
+def _password_login(client: TestClient, user: User, grant_type: str = "credential") -> str:
+    """ログインして mfa_token を返す (MFA 必須であることも確認)。"""
+    resp = client.post(
+        "/api/auth/login",
+        json={
+            "grant_type": grant_type,
+            "username": user.username,
+            "password": "correct-horse-battery",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["mfa_required"] is True, body
+    assert body["mfa_token"], body
+    assert not body["access_token"], "MFA 未完了なのにフル JWT が発行された"
+    return body["mfa_token"]
+
+
+def _make_user(db_session, username: str = "mfa_user") -> User:
+    db_session.query(User).filter(User.username == username).delete()
+    db_session.commit()
+    user = User(
+        username=username,
+        role="analyst",
+        hashed_credential=_hash_password("correct-horse-battery"),
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user
+
+
+def _auth_headers(user: User) -> dict:
+    token = create_access_token(user.id, user.role)
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _enroll_mfa(client: TestClient, user: User, db_session) -> list[str]:
+    """setup → confirm まで通してリカバリコードを受け取る。"""
+    headers = _auth_headers(user)
+    resp = client.post("/api/auth/mfa/setup", headers=headers)
+    assert resp.status_code == 200, resp.text
+    secret = resp.json()["secret"]
+    resp = client.post(
+        "/api/auth/mfa/confirm", headers=headers, json={"code": _current_totp(secret)}
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["success"] is True
+    return body["recovery_codes"]
+
+
+def test_confirm_issues_recovery_codes(db_session):
+    """MFA 有効化時にリカバリコードが発行され、DB には平文が残らない。"""
+    app.dependency_overrides[get_db] = lambda: db_session
+    try:
+        client = TestClient(app, base_url="http://localhost")
+        user = _make_user(db_session)
+        codes = _enroll_mfa(client, user, db_session)
+
+        assert len(codes) == _RECOVERY_CODE_COUNT
+        assert len(set(codes)) == _RECOVERY_CODE_COUNT, "コードが重複している"
+        for code in codes:
+            # 表示形式 XXXX-XXXX-XXXX-XXXX
+            assert len(code) == 19 and code.count("-") == 3
+            assert len(_normalize_recovery_code(code)) == 16
+
+        rows = (
+            db_session.query(MfaRecoveryCode)
+            .filter(MfaRecoveryCode.user_id == user.id)
+            .all()
+        )
+        assert len(rows) == _RECOVERY_CODE_COUNT
+        stored = {r.code_hash for r in rows}
+        # 平文が保存されていないこと
+        assert not (stored & set(codes))
+        # ハッシュが一致すること
+        assert stored == {_hash_recovery_code(c) for c in codes}
+        assert all(r.used_at is None for r in rows)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_login_with_recovery_code_succeeds_and_consumes_it(db_session):
+    """本番障害の再現: TOTP が使えなくてもリカバリコードでログインでき、
+    同じコードは二度と使えない。"""
+    app.dependency_overrides[get_db] = lambda: db_session
+    try:
+        client = TestClient(app, base_url="http://localhost")
+        user = _make_user(db_session)
+        codes = _enroll_mfa(client, user, db_session)
+
+        mfa_token = _password_login(client, user)
+
+        resp = client.post(
+            "/api/auth/mfa/login",
+            headers={"Authorization": f"Bearer {mfa_token}"},
+            json={"mfa_token": mfa_token, "recovery_code": codes[0]},
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["access_token"]
+
+        # 消費済みになっている
+        row = (
+            db_session.query(MfaRecoveryCode)
+            .filter(
+                MfaRecoveryCode.user_id == user.id,
+                MfaRecoveryCode.code_hash == _hash_recovery_code(codes[0]),
+            )
+            .one()
+        )
+        db_session.refresh(row)
+        assert row.used_at is not None
+
+        # 同じコードの再使用は拒否される (単回使用)
+        mfa_token2 = _password_login(client, user)
+        resp = client.post(
+            "/api/auth/mfa/login",
+            headers={"Authorization": f"Bearer {mfa_token2}"},
+            json={"mfa_token": mfa_token2, "recovery_code": codes[0]},
+        )
+        assert resp.status_code == 401
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_recovery_code_accepts_formatting_variants(db_session):
+    """区切り・大小文字の揺れを吸収する (紙から手打ちされる前提)。"""
+    app.dependency_overrides[get_db] = lambda: db_session
+    try:
+        client = TestClient(app, base_url="http://localhost")
+        user = _make_user(db_session)
+        codes = _enroll_mfa(client, user, db_session)
+        messy = codes[0].replace("-", " ").lower()
+
+        mfa_token = _password_login(client, user)
+        resp = client.post(
+            "/api/auth/mfa/login",
+            headers={"Authorization": f"Bearer {mfa_token}"},
+            json={"mfa_token": mfa_token, "recovery_code": messy},
+        )
+        assert resp.status_code == 200, resp.text
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_wrong_recovery_code_is_rejected(db_session):
+    app.dependency_overrides[get_db] = lambda: db_session
+    try:
+        client = TestClient(app, base_url="http://localhost")
+        user = _make_user(db_session)
+        _enroll_mfa(client, user, db_session)
+
+        mfa_token = _password_login(client, user)
+        resp = client.post(
+            "/api/auth/mfa/login",
+            headers={"Authorization": f"Bearer {mfa_token}"},
+            json={"mfa_token": mfa_token, "recovery_code": "AAAA-BBBB-CCCC-DDDD"},
+        )
+        assert resp.status_code == 401
+        # 未使用のまま (誤入力で在庫が減らない)
+        unused = (
+            db_session.query(MfaRecoveryCode)
+            .filter(
+                MfaRecoveryCode.user_id == user.id,
+                MfaRecoveryCode.used_at.is_(None),
+            )
+            .count()
+        )
+        assert unused == _RECOVERY_CODE_COUNT
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_cannot_send_both_code_and_recovery_code(db_session):
+    """1 リクエストで 2 種類の試行をさせない (ブルートフォース計数の回避防止)。"""
+    app.dependency_overrides[get_db] = lambda: db_session
+    try:
+        client = TestClient(app, base_url="http://localhost")
+        user = _make_user(db_session)
+        codes = _enroll_mfa(client, user, db_session)
+
+        mfa_token = _password_login(client, user)
+        resp = client.post(
+            "/api/auth/mfa/login",
+            headers={"Authorization": f"Bearer {mfa_token}"},
+            json={"mfa_token": mfa_token, "code": "000000", "recovery_code": codes[0]},
+        )
+        assert resp.status_code == 422
+        # どちらも指定しないのも拒否
+        resp = client.post(
+            "/api/auth/mfa/login",
+            headers={"Authorization": f"Bearer {mfa_token}"},
+            json={"mfa_token": mfa_token},
+        )
+        assert resp.status_code == 422
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_regenerate_invalidates_old_codes(db_session):
+    app.dependency_overrides[get_db] = lambda: db_session
+    try:
+        client = TestClient(app, base_url="http://localhost")
+        user = _make_user(db_session)
+        old_codes = _enroll_mfa(client, user, db_session)
+        db_session.refresh(user)
+        secret = user.totp_secret
+
+        headers = _auth_headers(user)
+        resp = client.post(
+            "/api/auth/mfa/recovery/regenerate",
+            headers=headers,
+            json={"code": _current_totp(secret)},
+        )
+        assert resp.status_code == 200, resp.text
+        new_codes = resp.json()["recovery_codes"]
+        assert len(new_codes) == _RECOVERY_CODE_COUNT
+        assert not (set(new_codes) & set(old_codes))
+
+        # 旧コードは DB から消えている
+        rows = (
+            db_session.query(MfaRecoveryCode)
+            .filter(MfaRecoveryCode.user_id == user.id)
+            .all()
+        )
+        assert len(rows) == _RECOVERY_CODE_COUNT
+        assert {r.code_hash for r in rows} == {_hash_recovery_code(c) for c in new_codes}
+
+        # 旧コードでのログインは失敗する
+        mfa_token = _password_login(client, user)
+        resp = client.post(
+            "/api/auth/mfa/login",
+            headers={"Authorization": f"Bearer {mfa_token}"},
+            json={"mfa_token": mfa_token, "recovery_code": old_codes[0]},
+        )
+        assert resp.status_code == 401
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_regenerate_requires_valid_totp(db_session):
+    """access token を奪った攻撃者が勝手にコードを握れないこと。"""
+    app.dependency_overrides[get_db] = lambda: db_session
+    try:
+        client = TestClient(app, base_url="http://localhost")
+        user = _make_user(db_session)
+        _enroll_mfa(client, user, db_session)
+
+        resp = client.post(
+            "/api/auth/mfa/recovery/regenerate",
+            headers=_auth_headers(user),
+            json={"code": "000000"},
+        )
+        assert resp.status_code == 400
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_regenerate_rejects_mfa_pending_token(db_session):
+    """パスワードだけを知る攻撃者 (mfa_pending トークン) は再発行できない。"""
+    app.dependency_overrides[get_db] = lambda: db_session
+    try:
+        client = TestClient(app, base_url="http://localhost")
+        user = _make_user(db_session)
+        _enroll_mfa(client, user, db_session)
+
+        mfa_token = _password_login(client, user)
+        resp = client.post(
+            "/api/auth/mfa/recovery/regenerate",
+            headers={"Authorization": f"Bearer {mfa_token}"},
+            json={"code": "000000"},
+        )
+        assert resp.status_code == 401
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_disable_mfa_purges_recovery_codes(db_session):
+    """MFA 無効化で旧コードが失効する (再有効化時に古い紙が通らない)。"""
+    app.dependency_overrides[get_db] = lambda: db_session
+    try:
+        client = TestClient(app, base_url="http://localhost")
+        user = _make_user(db_session)
+        _enroll_mfa(client, user, db_session)
+        db_session.refresh(user)
+
+        resp = client.post(
+            "/api/auth/mfa/disable",
+            headers=_auth_headers(user),
+            json={"code": _current_totp(user.totp_secret)},
+        )
+        assert resp.status_code == 200, resp.text
+        remaining = (
+            db_session.query(MfaRecoveryCode)
+            .filter(MfaRecoveryCode.user_id == user.id)
+            .count()
+        )
+        assert remaining == 0
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_status_reports_remaining_count(db_session):
+    app.dependency_overrides[get_db] = lambda: db_session
+    try:
+        client = TestClient(app, base_url="http://localhost")
+        user = _make_user(db_session)
+        codes = _enroll_mfa(client, user, db_session)
+
+        resp = client.get("/api/auth/mfa/status", headers=_auth_headers(user))
+        assert resp.status_code == 200
+        assert resp.json()["recovery_codes_remaining"] == _RECOVERY_CODE_COUNT
+
+        # 1 本消費すると残数が減る
+        mfa_token = _password_login(client, user)
+        client.post(
+            "/api/auth/mfa/login",
+            headers={"Authorization": f"Bearer {mfa_token}"},
+            json={"mfa_token": mfa_token, "recovery_code": codes[0]},
+        )
+        resp = client.get("/api/auth/mfa/status", headers=_auth_headers(user))
+        assert resp.json()["recovery_codes_remaining"] == _RECOVERY_CODE_COUNT - 1
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_password_grant_cannot_bypass_mfa(db_session):
+    """grant_type を credential から password に変えるだけで MFA を迂回できないこと。
+
+    回帰: MFA ゲートは credential grant にしか実装されておらず、
+    username+password を知る攻撃者が grant_type="password" を送るだけで
+    フル JWT を受け取れた (= MFA が事実上無効だった)。
+    """
+    app.dependency_overrides[get_db] = lambda: db_session
+    try:
+        client = TestClient(app, base_url="http://localhost")
+        user = _make_user(db_session)
+        _enroll_mfa(client, user, db_session)
+
+        resp = client.post(
+            "/api/auth/login",
+            json={
+                "grant_type": "password",
+                "username": user.username,
+                "password": "correct-horse-battery",
+            },
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["mfa_required"] is True, body
+        assert not body["access_token"], "password grant で MFA を迂回できている"
+        assert body["mfa_token"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_pin_grant_cannot_bypass_mfa(db_session):
+    """player の pin grant でも MFA を迂回できないこと。"""
+    app.dependency_overrides[get_db] = lambda: db_session
+    try:
+        client = TestClient(app, base_url="http://localhost")
+        db_session.query(User).filter(User.username == "mfa_player").delete()
+        db_session.commit()
+        player = User(
+            username="mfa_player",
+            role="player",
+            hashed_credential=_hash_password("123456"),
+        )
+        db_session.add(player)
+        db_session.commit()
+        # MFA を有効化 (player の enrollment API は player_id 紐付けを要求するため、
+        # ここでは検証対象であるログインゲートだけを見るよう直接有効化する)
+        player.totp_secret = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
+        player.totp_enabled = True
+        db_session.commit()
+        db_session.refresh(player)
+
+        resp = client.post(
+            "/api/auth/login",
+            json={"grant_type": "pin", "user_id": player.id, "pin": "123456"},
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["mfa_required"] is True, body
+        assert not body["access_token"], "pin grant で MFA を迂回できている"
+    finally:
+        app.dependency_overrides.clear()

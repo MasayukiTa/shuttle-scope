@@ -1,0 +1,7 @@
+mode	run_no	elapsed_sec	status
+indiv_sum	1	6.243	200,200,200,200,200,200
+indiv_sum	2	6.665	200,200,200,200,200,200
+indiv_sum	3	7.617	200,200,200,200,200,200
+bundle	1	1.340	200
+bundle	2	1.333	200
+bundle	3	1.703	200

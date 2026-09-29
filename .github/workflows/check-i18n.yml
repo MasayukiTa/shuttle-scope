@@ -1,0 +1,28 @@
+name: i18n module-scope t() check
+
+# Catches the recurring bug: a top-level `const X = { label: t('...') }`
+# at module scope crashes the minified bundle with
+# "ReferenceError: t is not defined". `t` exists only inside the
+# useTranslation() hook context.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check-module-scope-t:
+    name: scan src/**/*.tsx for bare module-scope t()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        with:
+          python-version: '3.12'
+      - name: Run i18n module-scope check
+        working-directory: shuttlescope
+        run: python scripts/check_module_scope_t.py

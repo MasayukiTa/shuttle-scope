@@ -1,0 +1,526 @@
+/**
+ * 配信URLダウンロードパネル
+ *
+ * YouTube / Twitter / Bilibili / ニコニコ動画 / 登録制配信サイト など、
+ * Electron で直接再生できない配信URLを検出したときに表示する。
+ *
+ * yt-dlp でダウンロードし、完了後は localfile:// 経由でローカル再生に自動切替する。
+ * ログイン必須サイトは「Cookieブラウザ」で使用ブラウザを選択すると、
+ * そのブラウザのCookieを自動取得して認証を通過できる。
+ *
+ * 【ffmpegについて】
+ * ffmpegが未インストールの場合、映像+音声マージが不要な
+ * プリマージ済みストリームのみを使用するフォールバックモードで動作する。
+ * 画質が制限される場合がある。
+ */
+import { useState, useEffect, useCallback } from 'react'
+import { apiGet, apiPost } from '@/api/client'
+import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { useTranslation } from 'react-i18next'
+import { DownloadOptionsModal } from '@/components/video/DownloadOptionsModal'
+import { errorMessage } from '@/utils/errors'
+import { MIcon } from '@/components/common/MIcon'
+
+interface StreamingDownloadPanelProps {
+  /** 配信URL（表示 + ダウンロード元） */
+  url: string
+  /** 試合ID（ダウンロードAPI に使用） */
+  matchId: string
+  /** 検出されたサービス名（YouTube, Bilibili など） */
+  siteName: string
+  /** ダウンロード完了後に呼ばれるコールバック（match データ再取得を期待） */
+  onDownloadComplete: () => void
+}
+
+type DLState = 'idle' | 'starting' | 'downloading' | 'processing' | 'complete' | 'error'
+
+interface ProgressInfo {
+  percent: string
+  speed: string
+  eta: string
+}
+
+interface Capabilities {
+  yt_dlp: boolean
+  ffmpeg: boolean
+}
+
+export function StreamingDownloadPanel({
+  url,
+  matchId,
+  siteName,
+  onDownloadComplete,
+}: StreamingDownloadPanelProps) {
+  const { t } = useTranslation()
+  const isLight = useIsLightMode()
+  const QUALITY_OPTIONS = [
+    { value: '360', label: '360p' },
+    { value: '480', label: '480p' },
+    { value: '720', label: t('auto.StreamingDownloadPanel.k11') },
+    { value: '1080', label: '1080p' },
+    { value: 'best', label: t('auto.StreamingDownloadPanel.k12') },
+  ]
+  const COOKIE_BROWSER_OPTIONS = [
+    { value: '', label: t('auto.StreamingDownloadPanel.k13') },
+    { value: 'chrome', label: 'Chrome' },
+    { value: 'edge', label: 'Edge' },
+    { value: 'firefox', label: 'Firefox' },
+    { value: 'brave', label: 'Brave' },
+    { value: 'opera', label: 'Opera' },
+    { value: 'vivaldi', label: 'Vivaldi' },
+    { value: 'chromium', label: 'Chromium' },
+  ]
+  const [quality, setQuality] = useState('720')
+  const [cookieBrowser, setCookieBrowser] = useState('')
+  const [dlState, setDlState] = useState<DLState>('idle')
+  const [jobId, setJobId] = useState<string | null>(null)
+  // DL オプションモーダル (2026-05-08): 範囲指定 (切り抜き) DL のための高度オプション窓
+  const [showOptionsModal, setShowOptionsModal] = useState(false)
+  const [progress, setProgress] = useState<ProgressInfo>({ percent: '0%', speed: '', eta: '' })
+  const [errorMsg, setErrorMsg] = useState('')
+  const [capabilities, setCapabilities] = useState<Capabilities | null>(null)
+  // 会員限定サイト対応: cookies.txt (Netscape 形式) を Web 経由でも投入できるようにする。
+  // 旧版は cookie_browser のみで、Cloudflare 経由の Web からは何も渡せなかった。
+  // backend `/matches/{id}/download` は body に `cookies_txt: string` を受け付ける既存実装を活用。
+  const [cookiesTxt, setCookiesTxt] = useState<string>('')
+  const [cookiesFileName, setCookiesFileName] = useState<string>('')
+  const [cookiesError, setCookiesError] = useState<string>('')
+  // 動画パスワード (Vimeo Showcase 等)。type=password でブラウザ管理者に依頼。
+  // 既定では UI 折りたたみ。送信時のみ backend に渡し、状態は localStorage に保存しない。
+  const [videoPassword, setVideoPassword] = useState<string>('')
+  const [showPassword, setShowPassword] = useState<boolean>(false)
+  const [authPanelOpen, setAuthPanelOpen] = useState<boolean>(false)
+
+  // ── システム機能確認（ffmpeg / yt-dlp 可用性） ────────────────────────────
+  useEffect(() => {
+    apiGet<{ success: boolean; data: Capabilities }>('/system/capabilities')
+      .then((res) => setCapabilities(res.data))
+      .catch(() => {
+        // 取得失敗時はデフォルトとして両方 true 扱い（旧バックエンド互換）
+        setCapabilities({ yt_dlp: true, ffmpeg: true })
+      })
+  }, [])
+
+  // ── ダウンロード進捗ポーリング ──────────────────────────────────────────────
+  useEffect(() => {
+    if (!jobId || (dlState !== 'downloading' && dlState !== 'processing' && dlState !== 'starting')) return
+
+    const poll = setInterval(async () => {
+      try {
+        const res = await apiGet<{
+          success: boolean
+          data: {
+            status: string
+            percent?: string
+            speed?: string
+            eta?: string
+            error?: string
+          }
+        }>(`/matches/${matchId}/download/status`, { job_id: jobId })
+
+        const d = res.data
+        switch (d.status) {
+          case 'complete':
+            clearInterval(poll)
+            setDlState('complete')
+            setTimeout(onDownloadComplete, 800)
+            break
+          case 'error':
+            clearInterval(poll)
+            setDlState('error')
+            setErrorMsg(d.error ?? t('auto.StreamingDownloadPanel.err_unknown'))
+            break
+          case 'downloading':
+            setDlState('downloading')
+            setProgress({
+              percent: d.percent ?? '0%',
+              speed: d.speed ?? '',
+              eta: d.eta ?? '',
+            })
+            break
+          case 'processing':
+            setDlState('processing')
+            break
+          // pending / unknown は次のポーリングまで待機
+        }
+      } catch {
+        // ネットワークエラーはスキップ
+      }
+    }, 1500)
+
+    return () => clearInterval(poll)
+  }, [jobId, dlState, matchId, onDownloadComplete])
+
+  // ── ダウンロード開始 ────────────────────────────────────────────────────────
+  const handleDownload = useCallback(async () => {
+    setDlState('starting')
+    setErrorMsg('')
+    try {
+      const body: Record<string, unknown> = { quality, cookie_browser: cookieBrowser }
+      // cookies.txt が投入されていれば backend の `cookies_txt` パスを使う (Web 経由会員限定サイト対応)
+      if (cookiesTxt.trim()) body.cookies_txt = cookiesTxt
+      // Vimeo Showcase 等のパスワード保護動画用 (yt-dlp --video-password)
+      if (videoPassword) body.video_password = videoPassword
+      const res = await apiPost<{ success: boolean; data: { job_id: string } }>(
+        `/matches/${matchId}/download`,
+        body,
+      )
+      setJobId(res.data.job_id)
+      setDlState('downloading')
+    } catch (err: unknown) {
+      setDlState('error')
+      setErrorMsg(errorMessage(err, t('auto.StreamingDownloadPanel.err_start_failed')))
+    }
+  }, [matchId, quality, cookieBrowser, cookiesTxt, videoPassword])
+
+  // ── cookies.txt ファイル投入 (1MB 上限、Netscape ヘッダ簡易チェック) ────────
+  const handleCookiesFile = useCallback(async (file: File | null) => {
+    setCookiesError('')
+    if (!file) {
+      setCookiesTxt('')
+      setCookiesFileName('')
+      return
+    }
+    if (file.size > 1024 * 1024) {
+      setCookiesError(t('auto.StreamingDownloadPanel.err_cookies_too_large'))
+      return
+    }
+    try {
+      const text = await file.text()
+      // Netscape cookies.txt 形式の簡易チェック (backend と同じ条件)
+      if (!/Netscape HTTP Cookie File/i.test(text) && !/^# /m.test(text)) {
+        setCookiesError(t('auto.StreamingDownloadPanel.err_cookies_not_netscape'))
+        return
+      }
+      setCookiesTxt(text)
+      setCookiesFileName(file.name)
+    } catch (err: unknown) {
+      setCookiesError(errorMessage(err, t('auto.StreamingDownloadPanel.err_file_read_failed')))
+    }
+  }, [])
+
+  // ── リセット ────────────────────────────────────────────────────────────────
+  const handleRetry = useCallback(() => {
+    setDlState('idle')
+    setJobId(null)
+    setProgress({ percent: '0%', speed: '', eta: '' })
+    setErrorMsg('')
+  }, [])
+
+  const isActive = dlState === 'starting' || dlState === 'downloading' || dlState === 'processing'
+  const percentNum = Math.max(0, Math.min(100, parseFloat(progress.percent) || 0))
+  const showCookieHint = !!cookieBrowser
+  const ffmpegMissing = capabilities !== null && !capabilities.ffmpeg
+
+  // ── スタイル定数 (v2 トークン) ─────────────────────────────────────────────
+  const outerBg    = 'bg-[var(--ss-surface-1)] border border-[var(--ss-border)] shadow-card'
+  const urlBoxBg   = 'bg-[var(--ss-surface-2)]'
+
+  const bannerWarn = 'text-[var(--ss-warn)] bg-[var(--ss-warn-tint)] border border-[var(--ss-border)]'
+  const bannerInfo = 'text-[var(--ss-warn)] bg-[var(--ss-warn-tint)] border border-[var(--ss-border)]'
+  const bannerSuccess = 'text-[var(--ss-success)] bg-[var(--ss-success-tint)] border border-[var(--ss-border)]'
+  const bannerError = 'text-[var(--ss-danger)] bg-[var(--ss-danger-tint)] border border-[var(--ss-border)]'
+  const bannerBlue = 'text-[var(--ss-brand)] bg-[var(--ss-brand-tint)] border border-[var(--ss-border)]'
+
+  const labelColor    = 'text-[var(--ss-t2)]'
+  const muteColor     = 'text-[var(--ss-t3)]'
+  const progressTrack = 'bg-[var(--ss-surface-3)]'
+  const siteColor     = 'text-[var(--ss-t1)]'
+  const retryColor    = 'text-[var(--ss-t3)] hover:text-[var(--ss-t1)]'
+
+  return (
+    <div
+      className={`flex flex-col gap-3 rounded-ss-lg overflow-hidden ${outerBg}`}
+      style={{ aspectRatio: '16/9', justifyContent: 'center', padding: '20px 24px' }}
+    >
+      {/* ── サービス名 + URL ── */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <MIcon name="movie" size={16} className="text-[var(--ss-brand)] shrink-0" />
+        <span className={`text-sm font-semibold ${siteColor}`}>{siteName}</span>
+        <span className={`text-xs ${muteColor}`}>{t('auto.StreamingDownloadPanel.k1')}</span>
+      </div>
+
+      <div
+        className={`text-xs font-mono rounded-ss-sm px-2 py-1.5 truncate text-[var(--ss-t1)] ${urlBoxBg}`}
+      >
+        {url}
+      </div>
+
+      {/* ── ffmpeg 未インストール警告 ── */}
+      {ffmpegMissing && dlState === 'idle' && (
+        <div className={`flex items-start gap-2 text-xs rounded p-2 ${bannerWarn}`}>
+          <MIcon name="wifi_off" size={13} className="shrink-0 mt-0.5" />
+          <span>
+            <strong>{t('auto.StreamingDownloadPanel.k2')}</strong>{t('auto.StreamingDownloadPanel.ffmpeg_warn1')}
+            {t('auto.StreamingDownloadPanel.ffmpeg_warn2_pre')}<code className="px-1 rounded-ss-sm bg-[var(--ss-surface-2)]">{t('auto.StreamingDownloadPanel.ffmpeg_cmd')}</code>{t('auto.StreamingDownloadPanel.ffmpeg_warn2_post')}
+          </span>
+        </div>
+      )}
+
+      {/* ── 説明バナー ── */}
+      <div className={`flex items-start gap-2 text-xs rounded p-2 ${bannerInfo}`}>
+        <MIcon name="error" size={13} className="shrink-0 mt-0.5" />
+        <span>
+          {t('auto.StreamingDownloadPanel.info_banner')}
+        </span>
+      </div>
+
+      {/* ── 完了 ── */}
+      {dlState === 'complete' && (
+        <div className={`flex items-center gap-2 text-sm rounded p-3 ${bannerSuccess}`}>
+          <MIcon name="check_circle" size={16} />
+          <span>{t('auto.StreamingDownloadPanel.k3')}</span>
+        </div>
+      )}
+
+      {/* ── エラー ── */}
+      {dlState === 'error' && (
+        <div className="flex flex-col gap-2">
+          <div className={`flex items-start gap-2 text-xs rounded p-2 ${bannerError}`}>
+            <MIcon name="error" size={13} className="shrink-0 mt-0.5" />
+            <span className="whitespace-pre-wrap break-all">{errorMsg}</span>
+          </div>
+          <button
+            onClick={handleRetry}
+            className={`text-xs underline text-left ${retryColor}`}
+          >
+            {t('auto.StreamingDownloadPanel.retry')}
+          </button>
+        </div>
+      )}
+
+      {/* ── 進捗バー（ダウンロード中） ── */}
+      {isActive && (
+        <div className="space-y-1.5">
+          <div className={`flex items-center justify-between text-xs ${labelColor}`}>
+            <div className="flex items-center gap-1.5">
+              <MIcon name="progress_activity" size={12} className="animate-spin text-[var(--ss-brand)]" />
+              <span className="ss-num">
+                {dlState === 'starting'
+                  ? t('auto.StreamingDownloadPanel.starting')
+                  : dlState === 'processing'
+                  ? t('auto.StreamingDownloadPanel.merging')
+                  : progress.percent}
+              </span>
+            </div>
+            <div className={`flex gap-3 ss-num ${muteColor}`}>
+              {progress.speed && <span>{progress.speed}</span>}
+              {progress.eta && dlState === 'downloading' && <span>{t('auto.StreamingDownloadPanel.remaining', { eta: progress.eta })}</span>}
+            </div>
+          </div>
+          <div className={`h-2 rounded-full overflow-hidden ${progressTrack}`}>
+            <div
+              className={`h-full rounded-full transition-all duration-700 ${
+                dlState === 'processing'
+                  ? 'bg-[var(--ss-warn)] w-full animate-pulse'
+                  : dlState === 'starting'
+                  ? 'bg-[var(--ss-brand)] w-[3%]'
+                  : 'bg-[var(--ss-brand)]'
+              }`}
+              style={dlState === 'downloading' ? { width: `${percentNum}%` } : undefined}
+            />
+          </div>
+          {showCookieHint && (
+            <p className={`text-xs ${muteColor}`}>
+              {t('auto.StreamingDownloadPanel.using_cookie', { label: COOKIE_BROWSER_OPTIONS.find(o => o.value === cookieBrowser)?.label ?? cookieBrowser })}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* ── 品質 + Cookie + ダウンロードボタン（idle / error 時） ── */}
+      {(dlState === 'idle' || dlState === 'error') && (
+        <div className="flex flex-col gap-2">
+          {/* 1行目: 品質 + Cookie ブラウザ */}
+          <div className="flex items-center gap-2">
+            {/* 品質選択 */}
+            <div className="flex items-center gap-1 min-w-0">
+              <label className={`text-xs shrink-0 ${labelColor}`}>{t('auto.StreamingDownloadPanel.k4')}</label>
+              <select
+                value={quality}
+                onChange={(e) => setQuality(e.target.value)}
+                className={`border text-xs rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 ${
+                  isLight
+                    ? 'bg-white border-gray-300 text-gray-800'
+                    : 'bg-gray-700 border-gray-600 text-gray-200'
+                }`}
+              >
+                {QUALITY_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}{ffmpegMissing && opt.value !== '360' && opt.value !== '480' ? ' *' : ''}
+                  </option>
+                ))}
+              </select>
+              {ffmpegMissing && (
+                <span className="text-[10px] text-orange-400" title={t('auto.StreamingDownloadPanel.k10')}>{t('auto.StreamingDownloadPanel.k5')}</span>
+              )}
+            </div>
+
+            {/* Cookie ブラウザ選択 */}
+            <div className="flex items-center gap-1 flex-1 min-w-0">
+              <MIcon name="cookie" size={12} className={`shrink-0 ${labelColor}`} />
+              <label className={`text-xs shrink-0 ${labelColor}`}>{t('auto.StreamingDownloadPanel.cookie_label')}</label>
+              <div className="relative flex-1 min-w-0">
+                <select
+                  value={cookieBrowser}
+                  onChange={(e) => setCookieBrowser(e.target.value)}
+                  className={`w-full border text-xs rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 appearance-none pr-5 ${
+                    isLight
+                      ? 'bg-white border-gray-300 text-gray-800'
+                      : 'bg-gray-700 border-gray-600 text-gray-200'
+                  }`}
+                >
+                  {COOKIE_BROWSER_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+                <MIcon name="expand_more" size={10} className={`absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none ${labelColor}`} />
+              </div>
+            </div>
+          </div>
+
+          {/* Cookie 使用時の注意 */}
+          {cookieBrowser && (
+            <div className={`text-xs rounded px-2 py-1.5 space-y-0.5 ${bannerBlue}`}>
+              <div><strong>{COOKIE_BROWSER_OPTIONS.find(o => o.value === cookieBrowser)?.label}</strong> {t('auto.StreamingDownloadPanel.k6')}</div>
+              <div className={isLight ? 'text-blue-600' : 'text-blue-400'}>{t('auto.StreamingDownloadPanel.k7')}</div>
+              <div className={`font-medium ${isLight ? 'text-orange-600' : 'text-orange-300'}`}>{t('auto.StreamingDownloadPanel.k8')}</div>
+            </div>
+          )}
+
+          {/* cookies.txt ファイル投入 (会員限定サイト Web 経由 DL 用)
+              Cookie-Editor 拡張等で書き出した Netscape 形式 cookies.txt を読み込み、
+              backend の `cookies_txt` パスに送る。1MB 上限 + 簡易ヘッダチェックあり。 */}
+          <div className="flex flex-col gap-1 border-t border-dashed pt-2"
+               style={{ borderColor: isLight ? '#cbd5e1' : '#374151' }}>
+            <label className={`text-xs ${labelColor} flex items-center gap-1`}>
+              <MIcon name="cookie" size={12} />
+              {t('auto.StreamingDownloadPanel.cookies_txt_label')}
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="file"
+                accept=".txt,text/plain"
+                onChange={(e) => handleCookiesFile(e.target.files?.[0] ?? null)}
+                className={`text-xs flex-1 min-w-0 ${isLight ? 'text-gray-700' : 'text-gray-300'}`}
+              />
+              {cookiesFileName && (
+                <button
+                  type="button"
+                  onClick={() => handleCookiesFile(null)}
+                  className={`text-[10px] px-1 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
+                  title={t('auto.StreamingDownloadPanel.k15')}
+                >
+                  <MIcon name="close" size={10} />
+                </button>
+              )}
+            </div>
+            {cookiesFileName && !cookiesError && (
+              <div className={`text-[10px] ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>
+                {t('auto.StreamingDownloadPanel.cookies_loaded', { name: cookiesFileName, n: Math.round(cookiesTxt.length / 1024) })}
+              </div>
+            )}
+            {cookiesError && (
+              <div className={`text-[10px] inline-flex items-center gap-0.5 ${isLight ? 'text-red-600' : 'text-red-400'}`}>
+                <MIcon name="warning" size={10} />{cookiesError}
+              </div>
+            )}
+            <div className={`text-[10px] ${isLight ? 'text-gray-500' : 'text-gray-500'}`}>
+              {t('auto.StreamingDownloadPanel.ext_hint')}
+            </div>
+          </div>
+
+          {/* パスワード保護動画 (Vimeo Showcase 等) */}
+          <div className="flex flex-col gap-1 border-t border-dashed pt-2"
+               style={{ borderColor: isLight ? '#cbd5e1' : '#374151' }}>
+            <button
+              type="button"
+              onClick={() => setAuthPanelOpen((v) => !v)}
+              className={`text-xs ${labelColor} flex items-center gap-1 self-start`}
+              aria-expanded={authPanelOpen}
+            >
+              <MIcon name="expand_more" size={12} className={authPanelOpen ? 'rotate-0' : '-rotate-90'} />
+              {t('auto.StreamingDownloadPanel.pw_video_label')}
+              {videoPassword && <span className={`text-[10px] ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>{t('auto.StreamingDownloadPanel.k14')}</span>}
+            </button>
+            {authPanelOpen && (
+              <div className="flex flex-col gap-1 pl-4">
+                <div className="flex items-center gap-2">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={videoPassword}
+                    onChange={(e) => setVideoPassword(e.target.value)}
+                    placeholder={t('auto.StreamingDownloadPanel.k17')}
+                    autoComplete="off"
+                    maxLength={1024}
+                    className={`text-xs flex-1 min-w-0 rounded px-2 py-1 border ${
+                      isLight
+                        ? 'bg-white border-gray-300 text-gray-800'
+                        : 'bg-gray-700 border-gray-600 text-gray-200'
+                    }`}
+                    aria-label={t('auto.StreamingDownloadPanel.k17')}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    className={`text-[10px] px-2 py-1 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-700' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
+                    aria-label={showPassword ? t('auto.StreamingDownloadPanel.pw_hide_aria') : t('auto.StreamingDownloadPanel.pw_show_aria')}
+                  >
+                    {showPassword ? t('auto.StreamingDownloadPanel.pw_hide') : t('auto.StreamingDownloadPanel.pw_show')}
+                  </button>
+                </div>
+                <div className={`text-[10px] ${isLight ? 'text-gray-500' : 'text-gray-500'}`}>
+                  {t('auto.StreamingDownloadPanel.pw_hint')}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ダウンロードボタン */}
+          <button
+            onClick={handleDownload}
+            className="flex items-center justify-center gap-2 w-full py-2 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white rounded text-sm font-medium transition-colors"
+          >
+            <MIcon name="download" size={15} />
+            {t('auto.StreamingDownloadPanel.download_play')}
+            {ffmpegMissing && <span className="text-xs text-blue-300 ml-1">{t('auto.StreamingDownloadPanel.k9')}</span>}
+          </button>
+
+          {/* 範囲指定 (切り抜き) DL オプションモーダル — Live 配信が長くて全部 DL したくない場合 */}
+          <button
+            type="button"
+            onClick={() => setShowOptionsModal(true)}
+            className={`flex items-center justify-center gap-1.5 w-full py-1.5 text-xs rounded ${
+              isLight
+                ? 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                : 'bg-gray-700/60 hover:bg-gray-700 text-gray-300'
+            }`}
+            title={t('auto.StreamingDownloadPanel.k16')}
+          >
+            <MIcon name="content_cut" size={12} />
+            {t('auto.StreamingDownloadPanel.range_options')}
+          </button>
+        </div>
+      )}
+
+      {/* 詳細 DL オプションモーダル */}
+      <DownloadOptionsModal
+        open={showOptionsModal}
+        onClose={() => setShowOptionsModal(false)}
+        matchId={Number(matchId)}
+        videoUrl={url}
+        matchLabel={siteName}
+        initialQuality={quality}
+        initialCookieBrowser={cookieBrowser}
+        onStarted={(newJobId) => {
+          if (newJobId) {
+            setJobId(newJobId)
+            setDlState('downloading')
+          }
+        }}
+      />
+    </div>
+  )
+}

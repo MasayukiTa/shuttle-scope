@@ -1,0 +1,898 @@
+# ShuttleScope Privacy Notice
+## Version 1.2 — Effective upon first use of the Software by any Contributing Party
+## Effective Date: 2026-05-08 (Version 1.2 supersedes Version 1.1; Version 1.1 superseded Version 1.0 on 2026-05-08)
+
+---
+
+### PRELIMINARY STATEMENT
+
+This Privacy Notice ("Notice") is issued by the Licensor of ShuttleScope as
+identified in the Software License ("Licensor," "we," "us," or "our") and
+describes in detail the categories, purposes, legal bases, retention practices,
+security measures, cross-border transfer mechanisms, and data subject rights
+applicable to the collection, use, storage, and disclosure of personal
+information — including, without limitation, information relating to identified
+and identifiable professional and amateur athletes — in connection with the
+ShuttleScope software application ("Software"), any associated application
+programming interfaces, data synchronization services, analytics infrastructure,
+and machine learning systems operated by the Licensor (collectively, the
+"Service").
+
+This Notice is addressed to: (a) natural persons who use the Software as analysts,
+coaches, or administrators ("Users"); (b) natural persons whose performance data
+is recorded, annotated, or analyzed through the Software, whether or not such
+persons are themselves Users ("Athletes" or "Data Subjects"); and (c) legal
+entities that deploy the Software on behalf of teams, federations, or other
+organizations ("Organizations"), whose own obligations are further described in
+`DATA_CONTRIBUTION_TERMS.md`.
+
+THIS NOTICE SHOULD BE READ IN CONJUNCTION WITH `DATA_CONTRIBUTION_TERMS.md`,
+WHICH GOVERNS THE INTELLECTUAL PROPERTY AND DATA LICENSING DIMENSIONS OF DATA
+SUBMITTED THROUGH THE SOFTWARE. THIS NOTICE ADDRESSES THE PERSONAL DATA AND
+PRIVACY DIMENSIONS OF THAT SAME DATA.
+
+---
+
+### ARTICLE I — SCOPE AND APPLICABILITY
+
+**1.1 Material Scope.**  
+This Notice applies to the processing of personal data — meaning any information
+relating to an identified or identifiable natural person ("personal data" or
+"personal information") — by the Licensor acting in the capacity of either data
+controller or data processor, as applicable in light of the deployment context
+described in Article III. This Notice applies regardless of whether the Software
+is deployed in a fully local offline mode, a hybrid mode involving periodic data
+export, or any Network-Connected Mode (as defined in `DATA_CONTRIBUTION_TERMS.md`)
+involving real-time or batch transmission to the Licensor's infrastructure.
+
+**1.2 Territorial Scope.**  
+This Notice is intended to address the privacy expectations and legal obligations
+relevant to the Licensor's operations globally. Specific provisions address:
+
+  **(a)** requirements arising under Japanese law, including the Act on the
+  Protection of Personal Information (Act No. 57 of 2003, as amended, "APPI") and
+  supplementary guidelines issued by the Personal Information Protection Commission
+  of Japan ("PPC"), which constitute the Licensor's primary regulatory framework
+  as of the effective date of this Notice;
+
+  **(b)** requirements arising under Regulation (EU) 2016/679 of the European
+  Parliament and of the Council (the "General Data Protection Regulation" or
+  "GDPR") and implementing legislation in EU and EEA member states, to the extent
+  that the Software processes data of individuals located in the EEA or that EU/EEA
+  law is otherwise applicable;
+
+  **(c)** requirements arising under the UK GDPR as incorporated into UK law by
+  the Data Protection Act 2018, to the extent applicable;
+
+  **(d)** requirements arising under the Personal Information Protection and
+  Electronic Documents Act (Canada, "PIPEDA") and successor legislation, to the
+  extent applicable; and
+
+  **(e)** requirements arising under any other national, state, or sectoral data
+  protection legislation applicable to specific deployments of the Software,
+  including without limitation legislation in South Korea (the Personal Information
+  Protection Act, "PIPA"), Brazil (the Lei Geral de Proteção de Dados, "LGPD"),
+  Australia (the Privacy Act 1988), and the United States (sector-specific and
+  state-level legislation).
+
+Organizations deploying the Software in regulated jurisdictions remain
+independently responsible for their own compliance with applicable law.
+
+**1.3 Exclusions.**  
+This Notice does not govern the processing of personal data by Organizations
+acting in their capacity as data controllers with respect to their own employees,
+athletes, or members. Each Organization remains responsible for its own privacy
+notices, consent mechanisms, and legal bases for the processing it conducts
+within its own deployment of the Software.
+
+---
+
+### ARTICLE II — CATEGORIES OF PERSONAL DATA
+
+**2.1 User Account and Access Data.**  
+In connection with user authentication, authorization, and session management, the
+Software may process:
+
+  **(a)** username or user identifier;
+  **(b)** role designation (analyst, coach, or player role within the application);
+  **(c)** player account linkages (where a user account is associated with an
+  athlete's own data profile);
+  **(d)** session metadata including access timestamps, device type, operating
+  system version, and application version;
+  **(e)** application configuration preferences; and
+  **(f)** audit log entries recording actions taken within the Software.
+
+**2.2 Athlete Performance and Annotation Data.**  
+The core operational data processed by the Software consists of structured records
+relating to identified or identifiable athletes, including:
+
+  **(a)** athlete full names and, where provided, name romanizations or
+  transliterations;
+  **(b)** team, club, federation, or national association affiliation;
+  **(c)** nationality;
+  **(d)** date of birth or birth year;
+  **(e)** world ranking position and ranking history, to the extent entered or
+  imported;
+  **(f)** dominant hand designation (right or left);
+  **(g)** designation as a "target" athlete for primary analysis focus;
+  **(h)** match history including opponents, venues, dates, tournament names,
+  tournament tier designations, round designations, and match formats;
+  **(i)** match results (win, loss, walkover, or unfinished) from the perspective
+  of each identified athlete;
+  **(j)** stroke-level annotation records as described in Section 1.4 of
+  `DATA_CONTRIBUTION_TERMS.md`, comprising among other fields: shot type
+  classifications, court zone impact and landing designations, body-position
+  coordinates, above-net indicators, and other tactical parameters; and
+  **(k)** free-text notes entered by analysts or coaches in relation to specific
+  matches or athletes.
+
+**2.3 Derived Performance Profiles.**  
+The analytical functions of the Software generate derived data items that, when
+associated with identified athletes, constitute personal data relating to those
+athletes. These include:
+
+  **(a)** computed win rates disaggregated by shot type, tournament level, match
+  result, rally length, score phase, and other dimensions;
+  **(b)** shot pattern profiles including transition probability matrices that
+  describe individual tactical tendencies;
+  **(c)** expected possession value (EPV) estimates and shot influence scores
+  associated with individual stroke sequences attributable to identified athletes;
+  **(d)** player type classifications derived from rally-length win rate patterns;
+  **(e)** pressure-situation performance indicators (deuce win rates, endgame win
+  rates relative to normal-play win rates);
+  **(f)** post-long-rally fatigue or momentum indicators;
+  **(g)** first-return zone preference profiles; and
+  **(h)** any other analytical output that is stored in association with an
+  identified athlete's profile within the Software's data schema.
+
+The data items described in this Section 2.3 may, individually or in combination,
+reveal information about an athlete's physical condition, tactical vulnerabilities,
+strategic tendencies, or competitive performance levels. Such data may be
+commercially sensitive and may be subject to elevated protection requirements
+under applicable law.
+
+**2.4 Operational and Telemetry Data.**  
+The Software generates operational records that may include personal data:
+
+  **(a)** error logs and crash reports that may incidentally record user
+  identifiers or active data state at the time of an error;
+  **(b)** performance metrics and timing records generated during annotation
+  sessions; and
+  **(c)** usage event records capturing the sequence and frequency of feature
+  use within a session.
+
+**2.5 Data Not Collected.**  
+As of the effective date of this Notice, and subject to future updates:
+
+  **(a)** the Software does not collect health, medical, or injury data about
+  athletes unless such data is voluntarily entered by an analyst or coach in a
+  free-text notes field;
+  **(b)** the Software does not collect financial information about athletes or
+  Organizations;
+  **(c)** the Software does not collect continuous biometric data (e.g., heart
+  rate, GPS tracks) unless such data is generated from video analysis functions
+  and associated with performance records;
+  **(d)** the Software does not, in offline mode, transmit any personal data to
+  the Licensor's servers; and
+  **(e)** the Software's video processing, where applicable, operates on
+  locally stored files; video content is not transmitted to the Licensor's
+  infrastructure under these Terms.
+
+**2.6 Cookies and Equivalent Technologies on `shuttle-scope.com`.**  
+The Licensor's marketing and information website at `https://shuttle-scope.com`
+uses cookies and equivalent client-side storage technologies in the following
+categories. The categorization is provided pursuant to Article 5(3) of
+Directive 2002/58/EC ("ePrivacy Directive") as transposed into national law,
+to the extent applicable:
+
+  **(a) Strictly Necessary Cookies.** Cookies required for core functionality
+  of the website, including session continuity, security tokens (CSRF
+  protection), and authentication. Strictly necessary cookies are not subject
+  to opt-in consent and are placed when a Data Subject visits the website.
+
+  **(b) Functional Cookies.** Cookies that retain Data Subject preferences
+  such as theme selection or language. Functional cookies are placed only
+  after the Data Subject has provided opt-in consent.
+
+  **(c) Analytics Cookies.** Cookies that collect aggregated information
+  about how the website is used. Analytics cookies are placed only after the
+  Data Subject has provided opt-in consent. As of the effective date of this
+  Notice, no analytics provider receives Personal Data; should an analytics
+  provider be engaged, the relevant sub-processor shall be added to the
+  registry maintained internally and to the disclosures in this Section 2.6.
+
+  **(d) Marketing Cookies.** Not used as of the effective date of this
+  Notice. Should marketing cookies be introduced in the future, they shall
+  be placed only after the Data Subject has provided opt-in consent and the
+  introduction shall be reflected in an updated version of this Notice.
+
+The website provides a consent banner allowing Data Subjects to grant or
+withhold consent for Functional and Analytics Cookies independently, to
+review the categorization at any time, and to withdraw a previously granted
+consent. Records of consent (timestamp, choice per category, and policy
+version) are retained as required to demonstrate compliance with applicable
+consent rules.
+
+---
+
+### ARTICLE III — PROCESSING ROLES AND RESPONSIBILITIES
+
+**3.1 Local Offline Deployment.**  
+Where the Software is operated exclusively in offline mode on hardware under the
+Organization's exclusive control, with no data synchronization, no cloud backup,
+and no API calls to Licensor infrastructure:
+
+  **(a)** the Organization acts as the sole data controller or equivalent for all
+  personal data processed within the Software;
+  **(b)** the Licensor does not receive, access, or process personal data as a
+  consequence of such deployment; and
+  **(c)** the obligations of the Licensor under this Notice apply, if at all, only
+  if the Organization subsequently transmits data to the Licensor through a
+  different channel (such as a support request containing exported data, a bug
+  report containing error logs, or use of any Network-Connected Mode feature).
+
+**3.2 Network-Connected Mode Deployment.**  
+Where the Software is operated in a mode that results in the transmission of
+personal data to the Licensor's infrastructure:
+
+  **(a)** the Licensor acts as a data processor with respect to the Organization's
+  instructions for service delivery purposes; and
+  **(b)** the Licensor acts as an independent data controller with respect to its
+  own use of that data for analytical, research, and model development purposes
+  as described in `DATA_CONTRIBUTION_TERMS.md`, subject to the lawful basis
+  provisions of Article IV.
+
+**3.3 Athlete Access via Player Role.**  
+Where the Software is configured to permit an athlete to access the Software in
+the "player" role:
+
+  **(a)** the athlete accesses a restricted view of their own performance data
+  subject to role-based access controls;
+  **(b)** coach-only and analyst-only content (including direct weakness
+  characterizations, EPV scores, and raw comparative analytics) is suppressed from
+  the player-facing view in accordance with the Software's design;
+  **(c)** the Licensor's processing of data in connection with such access is
+  subject to this Notice in its entirety; and
+  **(d)** the Organization remains responsible for determining whether the
+  athlete's use of the player-role interface requires a separate consent mechanism,
+  data sharing notice, or agreement under applicable law.
+
+---
+
+### ARTICLE IV — PURPOSES AND LEGAL BASES FOR PROCESSING
+
+**4.1 Purposes.**  
+The Licensor may process personal data for the following purposes, each of which
+is described with particularity below:
+
+  **(a) Service Delivery:** Processing necessary to operate the Software's
+  annotation, analysis, reporting, and visualization functions in response to
+  user interactions, including the generation of performance reports, analytical
+  dashboards, and coaching summaries.
+
+  **(b) Software Maintenance and Improvement:** Processing necessary for
+  debugging, testing, performance optimization, security hardening, feature
+  development, and quality assurance of the Software, including the use of
+  anonymized or pseudonymized data in test environments.
+
+  **(c) Model Training and Algorithm Development:** Processing of Contributed Data
+  — including personal data relating to athletes to the extent authorized by the
+  Data Grant in `DATA_CONTRIBUTION_TERMS.md` — for the purpose of training,
+  validating, benchmarking, and improving machine learning models, statistical
+  models, and analytical algorithms, whether or not such models are deployed
+  within the Software.
+
+  **(d) Research:** Processing of personal data — including athlete performance
+  profiles — for sports science research, tactical analysis research, and related
+  academic or applied research, subject to appropriate anonymization or
+  pseudonymization where feasible and where not inconsistent with the research
+  purpose.
+
+  **(e) Security and Fraud Prevention:** Processing of operational logs,
+  access records, and session data for the purpose of detecting, investigating,
+  and preventing unauthorized access, data breaches, abuse, and security
+  incidents.
+
+  **(f) Legal Compliance:** Processing required to comply with applicable laws,
+  regulations, judicial orders, regulatory investigations, or other legally
+  mandated obligations.
+
+  **(g) Data Subject Rights Fulfillment:** Processing required to respond to
+  access requests, correction requests, deletion requests, portability requests,
+  and other data subject rights as described in Article VIII.
+
+**4.2 Legal Bases.**  
+
+  **(a) APPI (Japan):** The Licensor's processing activities under this Notice
+  are conducted on the basis of: (i) the necessity of processing for the
+  performance of a contract with the Organization (Article 18 of APPI with respect
+  to service delivery); (ii) the legitimate interests of the Licensor in
+  developing, improving, and commercializing sports analytics technology, provided
+  such interests do not override the fundamental rights and interests of the Data
+  Subjects; and (iii) consent, where required by the APPI or supplementary PPC
+  guidelines, including for the provision of personal data to third parties or
+  for uses not initially anticipated.
+
+  **(b) GDPR (EU/EEA):** Where GDPR applies, the Licensor relies on: (i) Article
+  6(1)(b) (contract performance) for service delivery; (ii) Article 6(1)(f)
+  (legitimate interests) for product improvement, security, and research purposes,
+  subject to a balancing test conducted in favor of the Licensor's commercial and
+  research interests balanced against the Data Subjects' reasonable expectations
+  as athletes in a competitive sport context; and (iii) Article 6(1)(a) (consent)
+  where required. Where the data constitutes "special categories of personal data"
+  under Article 9 GDPR (which may include health or biometric data to the extent
+  entered), the legal basis is the explicit consent of the Data Subject (Article
+  9(2)(a)) or, where consent cannot practicably be obtained, the substantial
+  public interest basis under Article 9(2)(g) as implemented in national law,
+  subject to appropriate safeguards.
+
+  **(c) Other Jurisdictions:** The Licensor shall rely on comparable legal bases
+  under applicable national legislation. Organizations are responsible for
+  verifying that the legal basis asserted by the Licensor is recognized and
+  sufficient under the law applicable to their specific deployment.
+
+---
+
+### ARTICLE V — SENSITIVE DATA: ATHLETE PERFORMANCE PROFILES
+
+**5.1 Elevated Risk Acknowledgment.**  
+The parties acknowledge that derived performance profiles of individual athletes
+— as described in Section 2.3 — carry elevated sensitivity risks distinct from
+ordinary personal data, because such profiles:
+
+  **(a)** may reveal tactical vulnerabilities that, if disclosed to opposing teams
+  or agents, could adversely affect an athlete's competitive outcomes or
+  professional reputation;
+
+  **(b)** may reveal performance trends that, if disclosed to sports organizations
+  or agents during contract negotiations, could affect an athlete's economic
+  position;
+
+  **(c)** may constitute commercially valuable proprietary intelligence belonging
+  to the athlete, the athlete's organization, or both; and
+
+  **(d)** may carry implications regarding an athlete's physical or mental
+  condition that could, in some contexts, engage health data protection frameworks.
+
+**5.2 Protective Measures Specific to Athlete Performance Profiles.**  
+In recognition of the elevated sensitivity described in Section 5.1, the Licensor
+shall:
+
+  **(a)** maintain logical separation between athlete performance profiles
+  associated with different Contributing Party deployments, such that data from
+  one Organization is not disclosed to a competing Organization in an identifiable
+  form;
+
+  **(b)** apply pseudonymization techniques when athlete performance profiles are
+  used in aggregated research or model training datasets to the extent technically
+  feasible without materially impairing the analytical value of such data;
+
+  **(c)** treat requests by identified athletes for access to, correction of, or
+  deletion of their performance profiles as high-priority requests subject to the
+  timelines set forth in Article VIII; and
+
+  **(d)** not sell, license, or disclose athlete performance profiles in
+  identifiable form to third-party commercial data brokers, competing sports
+  analytics platforms, or other parties whose primary business involves
+  aggregating and reselling sports performance intelligence about identified
+  athletes, without the prior written consent of the Contributing Party.
+
+**5.3 Note on Aggregated Data.**  
+The provisions of Section 5.2 apply to data in identifiable form. The Licensor's
+use of aggregated, anonymized, or pseudonymized data — where the re-identification
+of specific individuals is not reasonably possible — is not restricted by Section
+5.2 and is governed solely by the Data Grant in `DATA_CONTRIBUTION_TERMS.md`.
+
+---
+
+### ARTICLE V-bis — AI MODEL TRAINING DATA PRACTICES
+
+**5b.1 Sources of Training Data.**  
+The Licensor uses the following data sources for the training, fine-tuning,
+evaluation, and benchmarking of artificial intelligence and machine learning
+models, including but not limited to shuttle trajectory models, pose estimation
+models, shot-classification models, and statistical performance models:
+
+  **(a)** Athletes' performance video and annotations explicitly licensed to the
+  Licensor by Contributing Parties under the Data Grant in
+  `DATA_CONTRIBUTION_TERMS.md`;
+
+  **(b)** Annotation data generated by Users during normal use of the Software,
+  where such Users have provided explicit consent to AI model training through
+  the consent mechanism described in Article IV;
+
+  **(c)** Publicly available reference datasets where the licensing terms
+  governing such datasets permit the use described above and where the use
+  remains consistent with the originating dataset's terms.
+
+**5b.2 Exclusions from Training Data.**  
+The Licensor shall not use the following for AI model training, save where the
+relevant Data Subject or Contributing Party has provided explicit additional
+consent specifically directed to that purpose:
+
+  **(a)** Match videos uploaded by Users in beta or production deployments where
+  such use has not been authorized through the consent mechanism described in
+  Article IV;
+
+  **(b)** Personal data of identified athletes who have exercised the right to
+  object to such processing under Article 21 GDPR or equivalent provisions of
+  applicable national law;
+
+  **(c)** Personal data subject to specific contractual restrictions limiting
+  training use, including any limitation imposed by a Data Processing Agreement
+  or comparable instrument between the Licensor and a Contributing Party;
+
+  **(d)** Personal data within the special categories defined in Article 9 GDPR
+  (including health data and biometric data for the purpose of uniquely
+  identifying a natural person), save where explicit consent under Article
+  9(2)(a) has been obtained for the specific training purpose.
+
+**5b.3 Model Memorization Mitigation.**  
+The Licensor implements technical measures intended to minimize the risk that
+trained models retain or reproduce identifiable individual records, including
+where applicable:
+
+  **(a)** Differential privacy techniques applied to the training process where
+  technically feasible without disproportionately impairing the analytical
+  utility of the resulting model;
+
+  **(b)** Aggregation, de-identification, or pseudonymization of personal data
+  prior to inclusion in training datasets where feasible and consistent with the
+  modeling objective;
+
+  **(c)** Periodic audit of model outputs for unintended exposure of personal
+  data, and corrective retraining where such exposure is identified.
+
+The Licensor acknowledges that complete elimination of memorization risk is not
+technically guaranteed for all model architectures, and shall apply reasonable
+state-of-the-art mitigations proportionate to the risk profile of the specific
+training activity.
+
+**5b.4 Right to Object to Training Use.**  
+Data Subjects may object to the use of their personal data for AI model
+training purposes at any time through the contact mechanism in Article X. Upon
+receipt of a verified objection:
+
+  **(a)** the objection shall be honored prospectively, such that no further
+  training of new models or new training rounds of existing models shall
+  incorporate the objecting Data Subject's personal data;
+
+  **(b)** reasonable efforts shall be made to remove the Data Subject's personal
+  data from active training datasets that are subject to ongoing or scheduled
+  retraining, with the timing of removal aligned to the affected models'
+  retraining schedule rather than effected through immediate model deletion;
+
+  **(c)** the limitations described in Section 8.4(a) regarding personal data
+  already incorporated into trained model weights apply equally to objections
+  under this Section 5b.4, and the Licensor shall not be required to discard
+  trained models for which extraction of individual records is not technically
+  feasible, provided that the Licensor takes reasonable steps to minimize the
+  ongoing influence of the objecting Data Subject's data on model outputs.
+
+**5b.5 Transparency and Disclosure.**  
+The Licensor shall maintain, and make available to Data Subjects and
+Contributing Parties on reasonable request, a description of (i) the categories
+of training data used in production models, (ii) the lawful basis for each
+category of training use, and (iii) the mitigations applied under Section 5b.3.
+This description shall be updated as model training practices evolve and shall
+be furnished without undue delay following a request directed to the contact
+mechanism in Article X.
+
+---
+
+### ARTICLE VI — DATA SHARING AND DISCLOSURE
+
+**6.1 General.**  
+Personal data is not sold. Personal data may be disclosed to third parties in the
+following circumstances only:
+
+  **(a) Service Providers and Subprocessors:** The Licensor may engage cloud
+  infrastructure providers, database hosting providers, analytics platforms, model
+  training infrastructure operators, and other service providers to process
+  personal data on behalf of the Licensor. Such providers are engaged under data
+  processing agreements or equivalent contractual instruments requiring data
+  protection standards at least as protective as those described in this Notice.
+
+  **(b) Research Collaboration:** The Licensor may share Athlete and Personnel
+  Data in pseudonymized or aggregated form with research collaborators, academic
+  institutions, or sports science researchers for purposes consistent with the
+  Data Grant. Identifiable data shared with research collaborators is subject to
+  appropriate data sharing agreements.
+
+  **(c) Legal Process and Regulatory Compliance:** Personal data may be disclosed
+  in response to lawfully issued judicial orders, regulatory investigations, law
+  enforcement requests, or other legal obligations. The Licensor will, where
+  legally permissible and operationally feasible, notify the affected Contributing
+  Party before disclosing personal data in response to legal process.
+
+  **(d) Corporate Transactions:** In the event of a merger, acquisition, asset
+  sale, business transfer, restructuring, or financing transaction, personal data
+  may be transferred to the successor entity, provided that such successor entity
+  is bound by this Notice or a successor privacy notice providing materially
+  equivalent protections.
+
+  **(e) Safety and Security:** Personal data may be disclosed where reasonably
+  necessary to protect the physical safety of any person, prevent fraud, or
+  protect the security, integrity, or functionality of the Software or Service.
+
+**6.2 Cross-Border Transfers.**  
+Personal data may be transferred to and processed in countries other than the
+country of original collection. For transfers subject to GDPR or equivalent
+restrictions:
+
+  **(a)** transfers to countries with an applicable adequacy decision are made on
+  the basis of such decision;
+
+  **(b)** transfers to countries without an adequacy decision are made on the
+  basis of standard contractual clauses as adopted or approved by the relevant
+  supervisory authority, supplementary technical and organizational measures
+  appropriate to the risk profile of the data, and a transfer impact assessment
+  where required; and
+
+  **(c)** contributing Organizations in Japan are advised that, with respect to
+  any cross-border provision of personal data to the Licensor where the Licensor
+  is located outside Japan, the Organization should confirm that either (i) the
+  recipient country has a personal information protection system deemed equivalent
+  by the PPC, or (ii) the recipient has implemented equivalent protective measures,
+  or (iii) the Data Subject has consented to such transfer after being informed of
+  the relevant country's personal information protection system.
+
+---
+
+### ARTICLE VI-bis — AI ADVISORY (NVIDIA NIM) — OPT-IN PROCESSING
+
+**6-bis.1 Feature scope.**
+The Software includes an optional in-app advisory dialogue ("Growth Advisor")
+that submits a structured analytics summary of the viewing User's own
+performance to a third-party large-language-model inference endpoint operated
+by NVIDIA Corporation under their "NVIDIA NIM" service ("NIM") and surfaces the
+natural-language response inside the Software. The feature is generated by AI
+and is **expressly labeled in-product as non-authoritative**: the disclaimer
+"AI による生成です。正確なレポートはアナリストにご依頼ください / AI-generated.
+Please request a verified report from an analyst" is shown on every advisory
+session.
+
+**6-bis.2 Data minimization.**
+Only the following data is transmitted to NIM:
+
+  **(a)** the User's own aggregated analytics summary (win-rate, shot-mix,
+  zone heatmap aggregates, recent-form delta, sample counts) scoped strictly to
+  the requesting User's `player_id`;
+
+  **(b)** the User's free-text question;
+
+  **(c)** the system prompt containing safety rules (no weakness framing,
+  growth-oriented language, prohibition on inventing numbers).
+
+The following are **never** transmitted: raw video, frame coordinates,
+opponent identifiers, personal contact information, authentication credentials,
+condition / health metrics (RPE, Hooper), other Users' or Athletes' data.
+
+**6-bis.3 Role gating and opt-in.**
+At the Effective Date of this Article, the Growth Advisor is enabled for the
+`admin` role only. Activation for the `coach`, `analyst`, or `player` role
+requires a per-User opt-in toggle in Settings ("AI アドバイス機能を有効にする"
+/ "Enable AI advisory") and is off by default. Opt-in can be withdrawn at any
+time; doing so disables further transmission to NIM but does not retroactively
+delete responses already received and stored in the conversation log.
+
+**6-bis.4 Subprocessor.**
+NVIDIA Corporation acts as a sub-processor under Article 6.1(a). Its data
+handling for the NIM endpoint is governed by NVIDIA's own terms of service and
+privacy notices, which the Contributing Party is responsible for reviewing
+before opting in for a non-admin role. The Licensor's data processing agreement
+with NVIDIA (where applicable) and NIM-side retention behavior are documented
+on request.
+
+**6-bis.5 Cross-border transfer.**
+Inputs may be processed on NVIDIA infrastructure located outside Japan and
+outside the EEA. Where the User's jurisdiction requires explicit notice of
+cross-border transfer (e.g. APPI Art. 28, GDPR Art. 46), the opt-in toggle
+serves as the notice and consent moment.
+
+**6-bis.6 Verified-report path.**
+Because AI responses are non-authoritative, the in-product disclaimer offers a
+"verified-report" channel that routes the User to the analyst / administrator
+for a human-reviewed report. The verified-report channel does not transmit data
+to NIM and is the canonical source of truth for any match decision or coaching
+action.
+
+---
+
+### ARTICLE VII — RETENTION
+
+**7.1 General Principles.**  
+Personal data is retained for no longer than necessary to fulfill the purposes
+for which it was collected, or as required by law, contract, or legitimate
+operational necessity. Retention periods are determined based on the following
+considerations:
+
+  **(a)** the period during which the Software is actively deployed by the
+  Contributing Party;
+  **(b)** the minimum period required for effective model training, where
+  Contributed Data is used for that purpose;
+  **(c)** legal obligations requiring retention for minimum statutory periods;
+  **(d)** limitation periods applicable to potential claims arising from the data;
+  **(e)** business continuity and disaster recovery requirements; and
+  **(f)** the data subject deletion or restriction requests described in Article
+  VIII, to the extent that such requests override the foregoing retention periods.
+
+**7.2 Post-Termination Retention.**  
+Upon termination of the Software License or cessation of a Contributing Party's
+use of the Software, personal data associated with that Contributing Party will
+be deleted or anonymized within a reasonable period, subject to:
+
+  **(a)** retention required for legal compliance, tax, audit, or regulatory
+  purposes;
+  **(b)** retention of data already incorporated into trained model weights in a
+  manner that does not permit extraction of identifiable individual records; and
+  **(c)** retention of operational and audit logs for security and incident
+  response purposes for such period as the Licensor reasonably determines to be
+  necessary.
+
+---
+
+### ARTICLE VIII — DATA SUBJECT RIGHTS
+
+**8.1 Applicable Rights.**  
+Depending on the jurisdiction in which the Data Subject is located and the
+applicable legal framework, Data Subjects may have rights including the right to:
+
+  **(a)** access a copy of personal data held by the Licensor relating to the
+  Data Subject;
+  **(b)** correct inaccurate personal data;
+  **(c)** request erasure of personal data, subject to the limitations described
+  in Section 8.4;
+  **(d)** restrict the processing of personal data pending resolution of a
+  dispute about accuracy or lawfulness;
+  **(e)** receive personal data in a structured, commonly used, machine-readable
+  format (data portability), where technically feasible;
+  **(f)** object to processing based on legitimate interests or for direct
+  marketing purposes; and
+  **(g)** lodge a complaint with the relevant data protection supervisory authority.
+
+**8.2 Routing of Requests.**  
+Where the Licensor acts as a data processor on behalf of an Organization:
+
+  **(a)** Data Subject requests should be directed in the first instance to the
+  Organization acting as data controller, which is responsible for determining
+  the appropriate response;
+  **(b)** the Licensor shall provide reasonable assistance to the Organization in
+  responding to Data Subject requests, in accordance with applicable data
+  processing agreements.
+
+Where the Licensor acts as an independent data controller:
+
+  **(c)** Data Subject requests may be directed to the Licensor through the
+  contact mechanism specified in Article X.
+
+**8.3 Response Timelines.**  
+The Licensor shall respond to verified Data Subject requests within:
+
+  **(a)** one month of receipt, with the possibility of extension for a further
+  two months where the complexity or number of requests so requires, under GDPR;
+  **(b)** two weeks of receipt where the applicable legal framework is APPI; and
+  **(c)** such other timeline as required by applicable law in other
+  jurisdictions.
+
+**8.4 Limitations on Erasure.**  
+The right to erasure is subject to the following limitations:
+
+  **(a)** personal data incorporated into trained model weights where individual
+  data cannot practicably be extracted or deleted without retraining the model
+  from scratch may be addressed through model retraining schedules rather than
+  immediate deletion, provided that the Licensor takes reasonable steps to
+  minimize the ongoing influence of such data on model outputs;
+
+  **(b)** personal data required to be retained for legal, audit, tax, or
+  regulatory compliance purposes shall be retained for the minimum required period
+  notwithstanding an erasure request; and
+
+  **(c)** erasure of athlete performance data held within an Organization's own
+  deployment is the responsibility of the Organization and must be addressed
+  through the Organization's own data management procedures.
+
+**8.5 Withdrawal Mechanism (Interim).**  
+As of the effective date of Version 1.1 of this Notice, withdrawal of consent
+for optional processing purposes (including AI model training as described in
+Article V-bis and research participation as described in Article IV) is
+operated through the following channels:
+
+  **(a)** the in-application contact form accessible after authentication;
+
+  **(b)** the public contact form at `https://shuttle-scope.com/contact`;
+  and
+
+  **(c)** electronic mail to `contact@shuttle-scope.com`.
+
+The Licensor acknowledges that this interim mechanism may not fully satisfy
+the standard expressed in Article 7(3) GDPR, which requires that the
+withdrawal of consent be as easy as the giving of consent. The Licensor is
+committed to implementing an in-application withdrawal interface, accessible
+from the Software's settings, by no later than 31 December 2026. Until that
+implementation is delivered, withdrawal requests received through the
+channels in this Section 8.5 shall be processed within fourteen (14) days of
+verified receipt and shall take prospective effect from the date of
+processing, save where retroactive removal is required by other applicable
+provisions of this Notice.
+
+Required confirmations relating to the contractual basis for service
+delivery (Article 6(1)(b) GDPR / Article 18 APPI) — as opposed to consent
+under Article 6(1)(a) — are not subject to withdrawal under this Section.
+A Data Subject who does not wish those processing activities to continue
+may discontinue use of the Software, in which case the retention provisions
+of Article VII shall apply.
+
+---
+
+### ARTICLE IX — SECURITY
+
+**9.1 Technical and Organizational Measures.**  
+The Licensor implements and maintains technical and organizational security
+measures appropriate to the risk profile of personal data processed in connection
+with the Software, including:
+
+  **(a)** encryption of personal data in transit using TLS 1.2 or higher, where
+  applicable to Network-Connected Mode operations;
+  **(b)** access controls limiting access to personal data to personnel or systems
+  with a legitimate operational need;
+  **(c)** logging of administrative access to systems containing personal data;
+  **(d)** regular security assessments and vulnerability management procedures;
+  and
+  **(e)** procedures for detecting, investigating, and notifying relevant parties
+  of personal data breaches as required by applicable law.
+
+**9.2 Incident Notification.**  
+In the event of a personal data breach that is likely to result in a risk to the
+rights and freedoms of natural persons, the Licensor shall:
+
+  **(a)** notify affected Contributing Parties without undue delay and, where
+  required by applicable law, within the legally prescribed notification window
+  (72 hours under GDPR; promptly under APPI);
+  **(b)** provide information sufficient for the Contributing Party to assess the
+  breach and fulfill its own notification obligations; and
+  **(c)** cooperate with the Contributing Party and relevant supervisory
+  authorities as required.
+
+**9.3 Beta Period Interim Measures.**  
+During the beta period of the Service, certain technical and organizational
+measures described in this Article IX are operated under interim
+arrangements appropriate to a small-scale beta deployment. These interim
+arrangements are documented in the Licensor's internal operating
+procedures, reviewed at the end of the beta period, and progressively
+replaced or upgraded as the Service matures. Material changes to the
+arrangements that affect the protection of Personal Data shall be reflected
+in subsequent updates to this Notice.
+
+---
+
+### ARTICLE IX-bis — PRODUCT TELEMETRY (PSEUDONYMOUS EVENT LOG)
+
+**9bis.1 Purpose.**
+The Software collects pseudonymous, event-level telemetry from authenticated
+users for the sole purposes of (a) measuring product reliability and
+performance, (b) identifying user-experience friction (drop-off points,
+input latency, screen dwell), (c) prioritising product improvements, and
+(d) generating internal product KPIs (weekly active users, annotation
+completion funnel, feature adoption). No content of matches, no shot
+coordinates, no body-composition values, and no free-text user input are
+collected through this channel.
+
+**9bis.2 Legal Basis.**
+Processing under this Article is conducted under the **legitimate interests**
+basis of GDPR Article 6(1)(f) and the equivalent ground in APPI Article 18
+(legitimate business operation purpose disclosed at the time of acquisition).
+A standalone consent prompt is not presented because the data are
+pseudonymised, the events are minimal in scope, no third-party processor is
+involved, and the processing is integral to ordinary product operation.
+
+**9bis.3 Identifiers.**
+User and team identifiers are not stored in the telemetry table in raw form.
+Each identifier is transformed into a 64-character HMAC-SHA256 digest under
+a server-side secret before being persisted. The mapping table from raw
+identifier to digest is not maintained, but the digest is deterministic for
+a given user under a fixed secret, enabling longitudinal analysis without
+direct re-identification from a database dump.
+
+**9bis.4 Event Categories.**
+The Software persists the following event types only: `session_start`,
+`session_end`, `page_view`, `pass_started`, `pass_completed`,
+`pass_abandoned`, `input_event` (elapsed time only, no input value),
+`analysis_view`, `analysis_dwell`, `analysis_interaction` (action name only,
+no value content), `condition_input` (question identifier and elapsed time
+only, no answer value), `tutorial_step`, `error_event` (error class only),
+`network_slow` (endpoint and latency only), and a generic `ui_event` for
+future extension. The complete and current allowlist is enumerated in the
+source file `backend/utils/telemetry.py`.
+
+**9bis.5 No Third-Party Disclosure.**
+Telemetry events are not transmitted to any third-party analytics provider,
+advertising network, or data broker. No cookies are set for the purposes of
+this Article. All processing occurs on infrastructure operated by the
+Licensor.
+
+**9bis.6 Retention.**
+Telemetry events are retained as a product asset and are not subject to a
+fixed deletion schedule. Storage is partitioned by month for query locality.
+Aggregated derived datasets (e.g., weekly funnel rollups) may be retained
+indefinitely.
+
+**9bis.7 Right to Object (GDPR Article 21) and Equivalent.**
+A Data Subject who objects to the processing described in this Article may
+submit a request to the contact address in Article X. Upon verification, the
+Licensor will exclude that Data Subject's future events from ingest by
+pseudonym suppression at the application boundary. Aggregated statistics
+already computed need not be retroactively recomputed where the contribution
+of a single subject cannot be technically isolated without re-aggregation
+of the entire historical dataset.
+
+**9bis.8 Right of Access (GDPR Article 15 / APPI 第28条).**
+A Data Subject may obtain a copy of the telemetry events tied to their
+pseudonymous identifier through the in-application data export endpoint
+documented in Article VIII of this Notice.
+
+### ARTICLE IX-ter — MINORS AND AGE-AWARE PROCESSING
+
+**9ter.1 Age Information.**
+The Software may collect, on a voluntary basis at registration or at any
+later point, the Data Subject's date of birth (for user accounts) or birth
+year (for player profiles). Provision is not required to use the Software.
+
+**9ter.2 Capture-Time Minor Flag.**
+When a match record is created, the Software computes a `captured_minor_flag`
+field by comparing the match date against the birth year of each
+participating player whose birth year is known. If any participant was under
+eighteen (18) years of age at the time of capture, the flag is set to
+`True`; if all known participants were adults, the flag is set to `False`;
+if no participating player's age is known, the flag is set to `NULL`
+(unknown).
+
+**9ter.3 Default Exclusion from AI Training Extraction.**
+Datasets prepared for AI / machine-learning training are by default filtered
+to exclude records where `captured_minor_flag = True`. An explicit operator
+override is technically possible and is recorded in an audit log. The default
+exclusion exists to minimise the legal and reputational risk surface
+associated with the processing of minor-captured data and does not constitute
+a representation that minor-captured data may never be used; rather, it
+shifts the decision from default-inclusion to deliberate, audited
+inclusion.
+
+**9ter.4 Consent UI for Minors.**
+Where the Software can determine that the current user is a minor (date of
+birth known and indicating an age below eighteen), the optional consent for
+AI / machine-learning training is presented with its checkbox in the
+**unchecked** state by default, and an inline notice is displayed
+recommending that the consent be granted, if at all, only after consultation
+with a legal guardian.
+
+---
+
+### ARTICLE X — CONTACT AND REVISION
+
+**10.1 Contact.**  
+Questions, requests, or concerns regarding this Notice or the Licensor's personal
+data processing practices should be directed to the Licensor through the contact
+mechanism identified in the Software's documentation or the applicable service
+agreement.
+
+**10.2 Updates to This Notice.**  
+This Notice may be updated from time to time. Material changes will be
+communicated to Contributing Parties through the Software or through other
+reasonable means. Continued use of the Software following the effective date of
+a revised Notice constitutes acceptance of the revised Notice with respect to
+data processed after that date.
+
+**10.3 Supervisory Authority.**  
+Data Subjects located in Japan may address concerns to the Personal Information
+Protection Commission (個人情報保護委員会). Data Subjects located in the
+EU/EEA may address concerns to the supervisory authority in their member state
+of habitual residence, place of work, or place of an alleged infringement.
+Data Subjects in other jurisdictions may contact the relevant national data
+protection authority.
+
+---
+
+*This Notice is a repository-level baseline document. It should be supplemented
+with jurisdiction-specific annexes, data processing agreements, and consent
+instruments appropriate to each Organization's deployment context before any
+production use involving personal data of identifiable athletes or users.*

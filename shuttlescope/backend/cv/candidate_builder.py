@@ -1,0 +1,1040 @@
+"""CV補助アノテーション候補生成エンジン
+
+TrackNet + YOLO + アライメント出力を統合し、
+ストロークごとの落点・打者・ロール候補を生成する。
+
+出力形式（cv_candidates アーティファクトの data フィールドに保存）:
+{
+  "match_id": int,
+  "built_at": str (ISO),
+  "rallies": {
+    "<rally_id>": RallyCVCandidate,
+    ...
+  }
+}
+
+RallyCVCandidate:
+{
+  "rally_id": int,
+  "cv_assist_available": bool,
+  "cv_confidence_summary": {
+    "land_zone_fill_rate": float,     # 高確信度着地ゾーン率
+    "hitter_fill_rate": float,        # 高確信度打者率
+    "avg_confidence": float
+  },
+  "front_back_role_signal": {         # ダブルス前後ポジション
+    "player_a_dominant": "front"|"back"|"mixed",
+    "player_b_dominant": "front"|"back"|"mixed",
+    "stability": float                # 0=不安定, 1=安定
+  } | None,
+  "review_reason_codes": [str],
+  "strokes": [StrokeCVCandidate]
+}
+
+StrokeCVCandidate:
+{
+  "stroke_id": int | None,
+  "stroke_num": int,
+  "timestamp_sec": float | None,
+
+  "land_zone": {
+    "value": str,
+    "confidence_score": float,
+    "source": "tracknet",
+    "decision_mode": "auto_filled"|"suggested"|"review_required",
+    "reason_codes": [str]
+  } | None,
+
+  "hit_zone": {
+    "value": str,
+    "confidence_score": float,
+    "source": "yolo_footpoint",
+    "decision_mode": "auto_filled"|"suggested"|"review_required",
+    "reason_codes": [str]
+  } | None,
+
+  "hitter": {
+    "value": "player_a"|"player_b",
+    "confidence_score": float,
+    "source": "yolo"|"tracknet"|"fusion"|"alignment",
+    "decision_mode": "auto_filled"|"suggested"|"review_required",
+    "reason_codes": [str]
+  } | None,
+
+  "front_back_role": {
+    "player_a": "front"|"back"|"unclear",
+    "player_b": "front"|"back"|"unclear",
+    "confidence": float
+  } | None
+}
+"""
+from __future__ import annotations
+
+import bisect
+import logging
+import statistics
+from collections import Counter
+from datetime import datetime
+from typing import Optional
+
+import os
+
+from backend.cv.hitter_proximity import nearest_player_by_proximity, players_within_proximity
+
+logger = logging.getLogger(__name__)
+
+# ── 信頼度しきい値（環境変数で上書き可能 — 実映像チューニング用）───────────────
+# 例: CV_CONF_HIGH=0.65 CV_CONF_MEDIUM=0.40 python -m backend.main
+CONF_HIGH   = float(os.environ.get("CV_CONF_HIGH",   "0.72"))  # auto_filled
+CONF_MEDIUM = float(os.environ.get("CV_CONF_MEDIUM", "0.48"))  # suggested
+# < CONF_MEDIUM → review_required
+
+# TrackNet: 着地候補として有効とする最低信頼度
+TRACKNET_MIN_CONF = float(os.environ.get("CV_TRACKNET_MIN_CONF", "0.38"))
+
+# ヒッター推定: アライメントイベントとストロークタイムスタンプの許容誤差（秒）
+HITTER_MATCH_WINDOW_SEC = float(os.environ.get("CV_HITTER_WINDOW_SEC", "0.6"))
+
+# 着地ゾーン探索: ストロークタイムスタンプから何秒後まで見るか
+LAND_SEARCH_WINDOW_SEC = float(os.environ.get("CV_LAND_SEARCH_SEC", "3.0"))
+
+# ダブルスロール: Y座標でfront/back判定する境界（正規化0-1）
+# Track A2: court_adapter があれば動的に上書きされる。env はフォールバック用。
+FRONT_THRESHOLD_Y = float(os.environ.get("CV_FRONT_Y", "0.42"))  # y < この値 → front
+BACK_THRESHOLD_Y  = float(os.environ.get("CV_BACK_Y",  "0.60"))  # y > この値 → back
+
+# ロール安定性判定: 各フレームでの割合がこれ以上なら "安定"
+ROLE_STABILITY_MIN = float(os.environ.get("CV_ROLE_STABILITY", "0.65"))
+
+logger.debug(
+    "CV thresholds: CONF_HIGH=%.2f CONF_MEDIUM=%.2f TRACKNET_MIN=%.2f "
+    "HITTER_WIN=%.1fs LAND_SEARCH=%.1fs",
+    CONF_HIGH, CONF_MEDIUM, TRACKNET_MIN_CONF, HITTER_MATCH_WINDOW_SEC, LAND_SEARCH_WINDOW_SEC,
+)
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    """env を bool として読む（shuttle_quality_gate と同じ規則）。"""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() not in ("0", "false", "no", "off", "")
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+def rally_boundary_detect_enabled() -> bool:
+    """ラリー境界の CV 自動検出が有効か（既定 ON）。
+
+    SS_RALLY_BOUNDARY_DETECT=0 で完全に無効化すると、build_candidates の戻り値に
+    rally_boundaries キーは入らず、従来の手動 video_timestamp_start/end のみ使用する
+    挙動に戻る（後方互換）。
+    """
+    return _env_flag("SS_RALLY_BOUNDARY_DETECT", True)
+
+
+def build_candidates(
+    match_id: int,
+    rallies_db: list[dict],      # DB から取得したラリー情報（id, video_timestamp_start/end）
+    strokes_db: list[dict],      # DB から取得したストローク情報（id, rally_id, stroke_num, timestamp_sec）
+    tracknet_frames: list[dict], # TrackNet アーティファクト data（frame list）
+    yolo_frames: list[dict],     # YOLO アーティファクト data（frame list）
+    alignment_data: list[dict],  # アライメント結果（per-rally list）; 空可
+    court_adapter=None,           # Track A2: CourtAdapter (None で従来通り)
+    fps: float = 60.0,            # A5: ラリー境界検出の秒→frame 換算に使う動画 FPS
+    player_a_start_side: Optional[str] = None,  # 'top' / 'bottom'; CV ラベル→人の翻訳に使う
+) -> dict:
+    """試合全体の CV 候補を生成して返す。
+
+    Returns:
+        候補辞書 (cv_candidates アーティファクトの data フィールドに保存する内容)
+
+    A5: SS_RALLY_BOUNDARY_DETECT が有効（既定 ON）なら、TrackNet シャトル軌跡
+    （gated_conf）と YOLO プレイヤー位置から RallyBoundaryDetector でラリー境界候補を
+    推定し、戻り値に `rally_boundaries` フィールドを追加する。既存 `rallies`
+    フィールドは一切変更しない（境界は suggested 中心の候補であり、自動でラリーを
+    切らない）。OFF のときは rally_boundaries キー自体を付けず従来挙動に戻る。
+    """
+    # Track A2: court_adapter 未指定時は match_id から自動ロード (フォールバック動作付)
+    if court_adapter is None:
+        try:
+            from backend.cv.court_adapter import CourtAdapter
+            court_adapter = CourtAdapter.for_match(match_id)
+        except Exception:
+            court_adapter = None
+
+    # A0: シャトル検出 信頼度の正直化（quality-gate）。
+    # raw confidence は過大申告しがちなので、peak鋭さ + 動き整合で減衰させ、
+    # 着地ゾーン/打者推定が gated_conf を見るようにする。
+    # SS_SHUTTLE_QUALITY_GATE=0 で無効化すると従来挙動（無改変）に戻る。
+    gate_active = False
+    try:
+        from backend.cv.shuttle_quality_gate import gate_enabled, gate_frames
+        if gate_enabled() and tracknet_frames:
+            tracknet_frames = gate_frames(tracknet_frames)
+            gate_active = True
+    except Exception as e:  # gate は best-effort: 失敗しても従来挙動で継続
+        logger.warning("shuttle quality-gate skip: %s", e)
+
+    # タイムスタンプ索引を事前構築
+    tracknet_ts = [f.get("timestamp_sec", 0.0) for f in tracknet_frames]
+    yolo_ts     = [f.get("timestamp_sec", 0.0) for f in yolo_frames]
+
+    # アライメント: rally_id → alignment dict
+    alignment_by_rally: dict[int, dict] = {
+        a["rally_id"]: a for a in alignment_data if "rally_id" in a
+    }
+
+    # ストローク: rally_id → [stroke_dict]
+    strokes_by_rally: dict[int, list[dict]] = {}
+    for s in strokes_db:
+        strokes_by_rally.setdefault(s["rally_id"], []).append(s)
+
+    result_rallies: dict[str, dict] = {}
+
+    for rally in rallies_db:
+        rally_id = rally["id"]
+        start_sec = rally.get("video_timestamp_start") or 0.0
+        end_sec   = rally.get("video_timestamp_end") or (start_sec + 60.0)
+
+        rally_strokes = sorted(
+            strokes_by_rally.get(rally_id, []),
+            key=lambda s: s.get("stroke_num", 0),
+        )
+
+        # ラリー内の TrackNet / YOLO フレームを取得
+        rally_tracknet = _frames_in_range(tracknet_frames, tracknet_ts,
+                                          start_sec - 0.25, end_sec + 0.25)
+        rally_yolo     = _frames_in_range(yolo_frames, yolo_ts,
+                                          start_sec - 0.25, end_sec + 0.25)
+
+        aln = alignment_by_rally.get(rally_id)
+
+        # ストロークごとの候補生成
+        stroke_candidates: list[dict] = []
+        land_confs: list[float] = []
+        hitter_confs: list[float] = []
+
+        for idx, stroke in enumerate(rally_strokes):
+            ts = stroke.get("timestamp_sec")
+
+            # 次のストロークのタイムスタンプ（着地探索上限に使う）
+            next_ts: Optional[float] = None
+            if idx + 1 < len(rally_strokes):
+                next_ts = rally_strokes[idx + 1].get("timestamp_sec")
+
+            land = _infer_land_zone(rally_tracknet, tracknet_ts_local=None, stroke_ts=ts,
+                                    next_stroke_ts=next_ts)
+            hitter = _infer_hitter(
+                aln,
+                rally_yolo,
+                rally_tracknet,
+                stroke_ts=ts,
+                stroke_num=stroke.get("stroke_num", 1),
+                court_adapter=court_adapter,
+            )
+            _attach_player_identity(
+                hitter,
+                start_side=player_a_start_side,
+                set_num=rally.get("set_num"),
+                score_a_before=rally.get("score_a_before"),
+                score_b_before=rally.get("score_b_before"),
+            )
+            hit_zone = _infer_hit_zone_from_hitter(
+                rally_yolo,
+                stroke_ts=ts,
+                hitter=hitter,
+                court_adapter=court_adapter,
+            )
+            role = _infer_front_back_role(rally_yolo, stroke_ts=ts, court_adapter=court_adapter) if rally_yolo else None
+
+            if land and land["confidence_score"] is not None:
+                land_confs.append(land["confidence_score"])
+            if hitter and hitter["confidence_score"] is not None:
+                hitter_confs.append(hitter["confidence_score"])
+
+            stroke_candidates.append({
+                "stroke_id":    stroke.get("id"),
+                "stroke_num":   stroke.get("stroke_num"),
+                "timestamp_sec": ts,
+                "land_zone":    land,
+                "hit_zone":     hit_zone,
+                "hitter":       hitter,
+                "front_back_role": role,
+            })
+
+        # ラリー全体のサマリーと要確認コード
+        reason_codes = _compute_review_reasons(
+            rally_tracknet, aln, stroke_candidates
+        )
+        lz_fill = sum(
+            1 for s in stroke_candidates
+            if s["land_zone"] and s["land_zone"]["decision_mode"] != "review_required"
+        ) / max(len(stroke_candidates), 1)
+        h_fill = sum(
+            1 for s in stroke_candidates
+            if s["hitter"] and s["hitter"]["decision_mode"] != "review_required"
+        ) / max(len(stroke_candidates), 1)
+        hz_fill = sum(
+            1 for s in stroke_candidates
+            if s.get("hit_zone") and s["hit_zone"]["decision_mode"] != "review_required"
+        ) / max(len(stroke_candidates), 1)
+        avg_conf = (
+            statistics.mean(land_confs + hitter_confs)
+            if (land_confs or hitter_confs) else 0.0
+        )
+
+        fb_role = _infer_rally_front_back_role(rally_yolo, court_adapter=court_adapter) if rally_yolo else None
+
+        # ダブルスロール不安定 → 要確認コード追加
+        if fb_role and fb_role.get("stability", 1.0) < 0.5:
+            if "role_state_unstable" not in reason_codes:
+                reason_codes.append("role_state_unstable")
+
+        result_rallies[str(rally_id)] = {
+            "rally_id": rally_id,
+            "cv_assist_available": len(rally_tracknet) > 0 or len(rally_yolo) > 0,
+            "cv_confidence_summary": {
+                "land_zone_fill_rate": round(lz_fill, 3),
+                "hit_zone_fill_rate":  round(hz_fill, 3),
+                "hitter_fill_rate":    round(h_fill, 3),
+                # A0: avg_confidence は gated_conf 由来の実効値（gate ON 時）。
+                # quality_gated フラグで「生の検出率%ではなく減衰後の実効値」だと
+                # UI が判別できるようにする（誤解を招く生%との取り違え防止）。
+                "avg_confidence":      round(avg_conf, 3),
+                "quality_gated":       gate_active,
+            },
+            "front_back_role_signal": fb_role,
+            "review_reason_codes":    reason_codes,
+            "strokes": stroke_candidates,
+        }
+
+    out: dict = {
+        "match_id":  match_id,
+        "built_at":  datetime.utcnow().isoformat(),
+        "rallies":   result_rallies,
+    }
+
+    # A5: ラリー境界の CV 自動検出（候補のみ。既存 rallies は不変）。
+    # ここでの tracknet_frames は quality-gate 適用後（gated_conf）。
+    if rally_boundary_detect_enabled():
+        try:
+            out["rally_boundaries"] = detect_rally_boundaries_from_cv(
+                match_id=match_id,
+                shuttle_frames=tracknet_frames,
+                player_frames=yolo_frames,
+                fps=fps,
+            )
+        except Exception as e:  # best-effort: 失敗しても候補生成全体は壊さない
+            logger.warning("rally boundary detect skip: %s", e)
+
+    return out
+
+
+# ── ラリー境界 CV 自動検出（A5 統合） ─────────────────────────────────────────
+
+def detect_rally_boundaries_from_cv(
+    match_id: int,
+    shuttle_frames: list[dict],
+    player_frames: list[dict],
+    *,
+    fps: float = 60.0,
+) -> dict:
+    """TrackNet シャトル軌跡 + YOLO プレイヤー位置から RallyBoundaryDetector で
+    ラリー境界候補を推定する。
+
+    Args:
+        match_id: 試合 ID（出力メタ用）
+        shuttle_frames: TrackNet アーティファクト data。各要素は
+            {"timestamp_sec", "confidence"(=gated_conf), "x_norm"?, "y_norm"?, ...}
+        player_frames: YOLO アーティファクト data。各要素は
+            {"timestamp_sec", "players": [{"label", "centroid":[x,y]}, ...]}
+        fps: 秒ベース閾値を frame ベースに換算する動画 FPS。
+
+    Returns:
+        {
+          "match_id": int,
+          "fps": float,
+          "thresholds": {...},          # 実際に使った env 上書き値
+          "boundary_count": int,
+          "boundaries": [BoundaryCandidate, ...]
+        }
+
+    BoundaryCandidate:
+        {
+          "kind": "start"|"end",
+          "frame_index": int,
+          "timestamp_sec": float,
+          "confidence": float,
+          "signals_fired": [str],
+          "decision_mode": "auto_filled"|"suggested"|"review_required",
+          "reason_codes": [str]
+        }
+
+    プレイヤー位置とシャトル信頼度は別アーティファクト（別 FPS / フレーム数の
+    可能性あり）なので、timestamp_sec を主キーにマージする。シャトル側のフレーム列
+    を時間軸の基準にし、各シャトルフレーム時刻に最近傍のプレイヤーフレームを当てる。
+    """
+    from backend.cv.rally_boundary import RallyBoundaryDetector
+
+    # env 上書き可能な閾値（rally_boundary.py のコンストラクタ引数に対応）
+    thresholds = {
+        "shuttle_missing_seconds": _env_float("SS_RALLY_SHUTTLE_MISSING_SEC", 0.5),
+        "shuttle_conf_thresh":     _env_float("SS_RALLY_SHUTTLE_CONF", 0.30),
+        "player_static_seconds":   _env_float("SS_RALLY_PLAYER_STATIC_SEC", 0.4),
+        "player_static_speed":     _env_float("SS_RALLY_PLAYER_STATIC_SPEED", 0.005),
+        "min_signals":             int(_env_float("SS_RALLY_MIN_SIGNALS", 2)),
+        "min_rally_seconds":       _env_float("SS_RALLY_MIN_RALLY_SEC", 0.5),
+    }
+
+    det = RallyBoundaryDetector(fps=fps, **thresholds)
+
+    if not shuttle_frames:
+        return {
+            "match_id":       match_id,
+            "fps":            fps,
+            "thresholds":     thresholds,
+            "boundary_count": 0,
+            "boundaries":     [],
+        }
+
+    # プレイヤーフレームを timestamp_sec 昇順に索引化（最近傍引き当て用）
+    player_sorted = sorted(player_frames, key=lambda f: f.get("timestamp_sec", 0.0))
+    player_ts = [f.get("timestamp_sec", 0.0) for f in player_sorted]
+
+    def _players_at(ts: float) -> list[dict]:
+        """timestamp ts に最近傍の YOLO フレームの players（label+centroid）を返す。"""
+        if not player_sorted:
+            return []
+        idx = bisect.bisect_left(player_ts, ts)
+        best = None
+        best_gap = float("inf")
+        for i in (idx - 1, idx):
+            if 0 <= i < len(player_sorted):
+                gap = abs(player_ts[i] - ts)
+                if gap < best_gap:
+                    best_gap = gap
+                    best = player_sorted[i]
+        if best is None:
+            return []
+        result: list[dict] = []
+        for p in best.get("players", []):
+            label = p.get("label")
+            centroid = p.get("centroid")
+            if label in ("player_a", "player_b") and centroid and len(centroid) >= 2:
+                result.append({"label": label, "centroid": [centroid[0], centroid[1]]})
+        return result
+
+    # シャトルフレームを時間軸基準に detector へ流す
+    shuttle_sorted = sorted(shuttle_frames, key=lambda f: f.get("timestamp_sec", 0.0))
+    boundaries: list[dict] = []
+    for frame_index, sf in enumerate(shuttle_sorted):
+        ts = float(sf.get("timestamp_sec", 0.0))
+        conf = sf.get("confidence")
+        ev = det.process_frame(
+            frame_index=frame_index,
+            timestamp_sec=ts,
+            shuttle_confidence=conf,
+            player_positions=_players_at(ts),
+        )
+        if ev is not None:
+            decision_mode, reason_codes = _conf_to_decision(ev.confidence)
+            boundaries.append({
+                "kind":          ev.kind,
+                "frame_index":   ev.frame_index,
+                "timestamp_sec": round(ev.timestamp_sec, 3),
+                "confidence":    round(ev.confidence, 3),
+                "signals_fired": list(ev.signals_fired),
+                "decision_mode": decision_mode,
+                "reason_codes":  reason_codes,
+            })
+
+    return {
+        "match_id":       match_id,
+        "fps":            fps,
+        "thresholds":     thresholds,
+        "boundary_count": len(boundaries),
+        "boundaries":     boundaries,
+    }
+
+
+# ── 着地ゾーン推定 ────────────────────────────────────────────────────────────
+
+# C-7: CV フレームの `zone` として許す語彙。
+#
+# ここに来るのは `backend/tracknet/zone_mapper.coords_to_zone` の出力だけで、
+# それは `ZONE_MAP` の 9 値 (Zone9) しか返さない。**コート外やネット接触の
+# 語彙は CV からは出てこない** — 人が入力する `land_zone` の方にはあるが、
+# それはこの経路を通らない。
+#
+# 以前ここに `OB_LB` / `OB_RB` / `OB_FC` / `NET` を並べていたが、これらは
+# どこにも存在しない綴りで (人間側の語彙は `OB_LL` / `OB_RL` / `NET_L`)、
+# 「何も弾かない許可リスト」として書いた分だけ緩めていた。
+# 語彙は 1 か所から取る。
+try:
+    from backend.config import ZONES_9 as _ZONES_9
+except Exception:  # pragma: no cover - config が読めない環境
+    _ZONES_9 = ["BL", "BC", "BR", "ML", "MC", "MR", "NL", "NC", "NR"]
+_VALID_LAND_ZONES = frozenset(_ZONES_9)
+
+
+def _wilson_lower_bound(successes: int, total: int, z: float = 1.96) -> float:
+    """二項比率の Wilson スコア下側信頼限界 (既定 95%)。
+
+    C-10: 「同じゾーンが続いた割合」を素の `successes / total` で測ると、
+    観測 1 個で 1.0 になる。**証拠が減るほど自信が上がる**という逆転で、
+    しかも着地窓のサンプルは通常 1 個なので、これが常態だった。
+
+    Wilson 下限は標本サイズを分母側に織り込むので、割合が同じでも
+    観測が少ないほど低く出る。中心極限近似だが、比率の区間推定としては
+    Wald より小標本で素直に振る舞う。
+    """
+    if total <= 0:
+        return 0.0
+    phat = successes / total
+    denom = 1.0 + z * z / total
+    centre = phat + z * z / (2 * total)
+    margin = z * ((phat * (1 - phat) / total + z * z / (4 * total * total)) ** 0.5)
+    return max(0.0, (centre - margin) / denom)
+
+
+def _infer_land_zone(
+    tracknet_frames: list[dict],
+    tracknet_ts_local,  # unused (kept for signature symmetry)
+    stroke_ts: Optional[float],
+    next_stroke_ts: Optional[float],
+) -> Optional[dict]:
+    """ストロークタイムスタンプ以降の TrackNet フレームから着地ゾーンを推定する。"""
+    if stroke_ts is None:
+        return None
+    if not tracknet_frames:
+        return None
+
+    # ストロークから next_ts or +LAND_SEARCH_WINDOW_SEC の範囲
+    search_end = min(
+        stroke_ts + LAND_SEARCH_WINDOW_SEC,
+        (next_stroke_ts - 0.05) if next_stroke_ts else (stroke_ts + LAND_SEARCH_WINDOW_SEC),
+    )
+
+    # 範囲内フレームを抽出（信頼度フィルタ）
+    window = [
+        f for f in tracknet_frames
+        if f.get("timestamp_sec", 0) >= stroke_ts + 0.05
+           and f.get("timestamp_sec", 0) <= search_end
+           and f.get("confidence", 0) >= TRACKNET_MIN_CONF
+           and f.get("zone") is not None
+    ]
+    if not window:
+        return None
+
+    # 着地はウィンドウの後半部分でゾーンが安定するところ
+    # 後半 40% のフレームを優先（シャトルが落下しきる直前）
+    split = max(1, int(len(window) * 0.6))
+    landing_window = window[split:]
+    if not landing_window:
+        landing_window = window
+
+    # C-7: `zone` に Zone9 以外の語彙 (18 ゾーンの "A_front_left" 等) が
+    # 混ざりうる。`Stroke.land_zone` は VARCHAR(5) なので、そのまま流すと
+    # PostgreSQL で落ちる (SQLite は黙って通す)。ここで語彙を検査して弾く。
+    zone_counter: Counter = Counter(
+        f["zone"] for f in landing_window
+        if f.get("zone") and f["zone"] in _VALID_LAND_ZONES
+    )
+    if not zone_counter:
+        return None
+
+    best_zone, count = zone_counter.most_common(1)[0]
+    total = len(landing_window)
+    # C-10: 素の割合 `count / total` だと **観測が 1 個のとき 1.0** になり、
+    # 「証拠が少ないほど自信が強い」という逆転が起きる。着地窓のサンプルは
+    # 1fps サンプリング (video_import.py) のせいで普通 1 個なので、
+    # これが着地点候補の主経路の既定値になっていた。
+    # 標本サイズを織り込む Wilson スコアの下側信頼限界に置き換える。
+    # (1/1 → 0.21、8/10 → 0.49、80/100 → 0.71 のように、
+    #  同じ割合でも観測が増えるほど高くなる)
+    zone_consistency = _wilson_lower_bound(count, total)
+
+    # 信頼度 = TrackNet の平均 confidence × ゾーン一貫性
+    avg_conf = statistics.mean(f["confidence"] for f in landing_window)
+    composite_conf = round(avg_conf * zone_consistency, 3)
+
+    decision_mode, reason_codes = _conf_to_decision(composite_conf)
+
+    if zone_consistency < 0.4:
+        reason_codes.append("landing_zone_ambiguous")
+        # 一貫性が低すぎる場合は強制的に review
+        decision_mode = "review_required"
+
+    return {
+        "value":            best_zone,
+        "confidence_score": composite_conf,
+        "source":           "tracknet",
+        "decision_mode":    decision_mode,
+        "reason_codes":     reason_codes,
+    }
+
+
+# ── 打者推定 ──────────────────────────────────────────────────────────────────
+
+def _attach_player_identity(
+    hitter: Optional[dict],
+    *,
+    start_side: Optional[str],
+    set_num: Optional[int],
+    score_a_before: Optional[int],
+    score_b_before: Optional[int],
+) -> None:
+    """`hitter["value"]`（画面上の位置）を試合の player_a / player_b に翻訳する。
+
+    `_infer_hitter` が返す `player_a` は「画面の上側にいた人」という意味しかない
+    (`backend/cv/side_mapping.py` 参照)。`Stroke.player` はその試合の本人を指すので、
+    自選手が下側に映っている試合では**そのまま繋ぐと打者が全部入れ替わる**。
+
+    翻訳できないとき (開始サイド未設定 / 4ゲーム目以降 / 最終セットでスコア不明) は
+    value を書き換えず、**要確認に落として理由を残す**。黙って «画面上の位置» を
+    人として書くのが元の不具合なので、分からないまま通すことはしない。
+    """
+    if not hitter or not hitter.get("value"):
+        return
+    from backend.cv.side_mapping import resolve_cv_player
+
+    screen_label = hitter["value"]
+    hitter["screen_label"] = screen_label
+    resolved = resolve_cv_player(
+        screen_label, start_side, set_num, score_a_before, score_b_before,
+    )
+    if resolved is None:
+        hitter["player_identity_resolved"] = False
+        hitter["decision_mode"] = "review_required"
+        codes = hitter.setdefault("reason_codes", [])
+        if "player_identity_unmapped" not in codes:
+            codes.append("player_identity_unmapped")
+        return
+    hitter["value"] = resolved
+    hitter["player_identity_resolved"] = True
+
+
+def _infer_hitter(
+    alignment: Optional[dict],
+    yolo_frames: list[dict],
+    tracknet_frames: list[dict],
+    stroke_ts: Optional[float],
+    stroke_num: int,
+    court_adapter=None,
+) -> Optional[dict]:
+    """アライメントデータ優先でヒッターを推定。なければ YOLO 近傍で推定。"""
+    if stroke_ts is None:
+        return None
+
+    # ── 1. アライメントデータから推定 ─────────────────────────────────────────
+    if alignment and alignment.get("events"):
+        events = alignment["events"]
+        event_ts = [e.get("timestamp_sec", 0.0) for e in events]
+
+        # ストロークタイムスタンプに最近傍のイベントを探す
+        idx = bisect.bisect_left(event_ts, stroke_ts)
+        best_event = None
+        best_gap = float("inf")
+        for i in [idx - 1, idx]:
+            if 0 <= i < len(events):
+                gap = abs(event_ts[i] - stroke_ts)
+                if gap < best_gap and gap <= HITTER_MATCH_WINDOW_SEC:
+                    best_gap = gap
+                    best_event = events[i]
+
+        if best_event and best_event.get("hitter_candidate"):
+            hitter_val  = best_event["hitter_candidate"]
+            hitter_conf = best_event.get("hitter_confidence", 0.0)
+            decision_mode, reason_codes = _conf_to_decision(hitter_conf)
+            return {
+                "value":            hitter_val,
+                "confidence_score": round(hitter_conf, 3),
+                "source":           "alignment",
+                "decision_mode":    decision_mode,
+                "reason_codes":     reason_codes,
+            }
+
+    # ── 2. YOLO + TrackNet 直接推定（フォールバック） ────────────────────────
+    if not yolo_frames:
+        return None
+
+    # ストロークタイムスタンプに最近傍の YOLO フレームを探す
+    yolo_ts_list = [f.get("timestamp_sec", 0.0) for f in yolo_frames]
+    idx = bisect.bisect_left(yolo_ts_list, stroke_ts)
+    best_yolo = None
+    best_gap = float("inf")
+    for i in [idx - 1, idx]:
+        if 0 <= i < len(yolo_ts_list):
+            gap = abs(yolo_ts_list[i] - stroke_ts)
+            if gap < best_gap and gap <= HITTER_MATCH_WINDOW_SEC:
+                best_gap = gap
+                best_yolo = yolo_frames[i]
+
+    if best_yolo is None:
+        return None
+
+    # TrackNet でシャトル位置を取得
+    tracknet_ts_list = [f.get("timestamp_sec", 0.0) for f in tracknet_frames]
+    shuttle_x: Optional[float] = None
+    shuttle_y: Optional[float] = None
+    shuttle_conf: float = 0.0
+
+    idx2 = bisect.bisect_left(tracknet_ts_list, stroke_ts)
+    best_tf = None
+    best_gap2 = float("inf")
+    for i in [idx2 - 1, idx2]:
+        if 0 <= i < len(tracknet_ts_list):
+            gap = abs(tracknet_ts_list[i] - stroke_ts)
+            if gap < best_gap2 and gap <= HITTER_MATCH_WINDOW_SEC:
+                best_gap2 = gap
+                best_tf = tracknet_frames[i]
+
+    if best_tf and best_tf.get("confidence", 0) >= 0.4:
+        shuttle_x = best_tf.get("x_norm")
+        shuttle_y = best_tf.get("y_norm")
+        shuttle_conf = best_tf.get("confidence", 0.0)
+
+    if shuttle_x is None or shuttle_y is None:
+        return None
+
+    # D-3: 固定画像距離ではなく人物 bbox の見かけ高さで局所スケール正規化。
+    # シャトルは空中なので床 homography には投影しない。
+    players = best_yolo.get("players", [])
+    proximity = nearest_player_by_proximity(
+        players,
+        shuttle_x,
+        shuttle_y,
+        labels={"player_a", "player_b"},
+    )
+    if proximity is None or proximity.normalized_distance > 1.0:
+        return None
+
+    nearest_player = proximity.player
+    nearest_label = nearest_player.get("label")
+    if nearest_label not in ("player_a", "player_b"):
+        return None
+
+    hitter_conf = round(
+        max(0.0, 1.0 - proximity.normalized_distance) * shuttle_conf,
+        3,
+    )
+
+    # C-8 / D-5: position_fallback / overflow は人物同一性の証拠ではない。
+    # ただし、singles 相当の2人が calibrated court 上でネットを挟む場合だけ、
+    # screen-side label としての幾何根拠があるので suggested 上限まで許す。
+    from backend.yolo.cv_aligner import cap_guessed_hitter_confidence
+    hitter_conf, label_geometry = cap_guessed_hitter_confidence(
+        hitter_conf,
+        nearest_player,
+        players,
+        court_adapter,
+    )
+    hitter_conf = round(hitter_conf, 3)
+    decision_mode, reason_codes = _conf_to_decision(hitter_conf)
+    reason_codes.append("hitter_proximity:bbox_scale")
+    if label_geometry:
+        reason_codes.append(f"hitter_label_geometry:{label_geometry}")
+
+    near_players = players_within_proximity(
+        players,
+        shuttle_x,
+        shuttle_y,
+        labels={"player_a", "player_b"},
+    )
+    if len(near_players) >= 2:
+        reason_codes.append("multiple_near_players")
+
+    return {
+        "value":            nearest_label,
+        "confidence_score": hitter_conf,
+        "source":           "fusion",
+        "decision_mode":    decision_mode,
+        "reason_codes":     reason_codes,
+    }
+
+
+def _infer_hit_zone_from_hitter(
+    yolo_frames: list[dict],
+    stroke_ts: Optional[float],
+    hitter: Optional[dict],
+    court_adapter=None,
+) -> Optional[dict]:
+    """打球時の「打者の床面位置」を Zone9 として推定する。
+
+    D-1: hit_zone を空中シャトルの3D接触点とは定義しない。単眼映像で
+    シャトルを床 homography に落とすと高さ由来の系統誤差が入るためである。
+    ここで扱う hit_zone は「打球時に打者が立っていた床面 Zone9」。
+
+    観測に使うのは YOLO の foot_point（無ければ bbox 下辺中央）だけで、
+    homography が無い試合では推測しない。
+    """
+    if (
+        stroke_ts is None
+        or not hitter
+        or court_adapter is None
+        or not getattr(court_adapter, "is_calibrated", False)
+        or not yolo_frames
+    ):
+        return None
+
+    screen_label = hitter.get("screen_label") or hitter.get("value")
+    if screen_label not in ("player_a", "player_b"):
+        return None
+
+    ts_list = [f.get("timestamp_sec", 0.0) for f in yolo_frames]
+    idx = bisect.bisect_left(ts_list, stroke_ts)
+    best_frame = None
+    best_gap = float("inf")
+    for i in (idx - 1, idx):
+        if 0 <= i < len(yolo_frames):
+            gap = abs(ts_list[i] - stroke_ts)
+            if gap < best_gap and gap <= HITTER_MATCH_WINDOW_SEC:
+                best_gap = gap
+                best_frame = yolo_frames[i]
+    if best_frame is None:
+        return None
+
+    player = next(
+        (p for p in best_frame.get("players", []) if p.get("label") == screen_label),
+        None,
+    )
+    if player is None:
+        return None
+
+    foot = player.get("foot_point")
+    if foot and len(foot) >= 2:
+        x_norm, y_norm = foot[0], foot[1]
+    else:
+        bbox = player.get("bbox")
+        if not bbox or len(bbox) < 4:
+            return None
+        x_norm = (bbox[0] + bbox[2]) / 2.0
+        y_norm = bbox[3]
+
+    try:
+        court_x, court_y = court_adapter.pixel_to_court(float(x_norm), float(y_norm))
+    except (TypeError, ValueError, ZeroDivisionError, FloatingPointError):
+        return None
+
+    from backend.tracknet.zone_mapper import court_to_zone9
+
+    side_zone = court_to_zone9(court_x, court_y)
+    if side_zone is None:
+        return None
+    side, zone = side_zone
+
+    # screen label は上側=player_a / 下側=player_b という幾何ラベル。
+    # homography結果と食い違う場合、ラベル又は検出が怪しいので自動採用しない。
+    expected_side = "A" if screen_label == "player_a" else "B"
+    if side != expected_side:
+        return None
+
+    hitter_conf = hitter.get("confidence_score")
+    if hitter_conf is None:
+        return None
+    det_conf = player.get("confidence")
+    conf = float(hitter_conf)
+    if isinstance(det_conf, (int, float)):
+        conf = min(conf, float(det_conf))
+    conf = round(max(0.0, min(conf, 1.0)), 3)
+    decision_mode, reason_codes = _conf_to_decision(conf)
+    reason_codes.append("hit_zone:hitter_footpoint_homography")
+
+    return {
+        "value": zone,
+        "confidence_score": conf,
+        "source": "yolo_footpoint",
+        "decision_mode": decision_mode,
+        "reason_codes": reason_codes,
+        "coordinate_definition": "hitter_floor_position",
+    }
+
+
+# ── ダブルスロール推定（ストロークレベル） ────────────────────────────────────
+
+def _infer_front_back_role(
+    yolo_frames: list[dict],
+    stroke_ts: Optional[float] = None,
+    court_adapter=None,
+) -> Optional[dict]:
+    """指定タイムスタンプ付近のフレームからダブルスの前後ポジションを推定する。
+
+    Track A2: court_adapter (CourtAdapter) を渡せばコート座標由来の動的閾値で判定。
+    渡さないか未キャリブレーションの場合は従来 hard-coded 閾値にフォールバック。
+    """
+    if not yolo_frames:
+        return None
+
+    if stroke_ts is not None:
+        yolo_ts_list = [f.get("timestamp_sec", 0.0) for f in yolo_frames]
+        idx = bisect.bisect_left(yolo_ts_list, stroke_ts)
+        nearby = []
+        for i in range(max(0, idx - 2), min(len(yolo_frames), idx + 3)):
+            nearby.append(yolo_frames[i])
+    else:
+        nearby = yolo_frames
+
+    if not nearby:
+        return None
+
+    # 各プレイヤーの平均 Y 位置を計算
+    y_values: dict[str, list[float]] = {"player_a": [], "player_b": []}
+    for frame in nearby:
+        for p in frame.get("players", []):
+            label = p.get("label")
+            if label in y_values:
+                cy = p.get("centroid", [None, None])[1]
+                if cy is not None:
+                    y_values[label].append(cy)
+
+    if not y_values["player_a"] and not y_values["player_b"]:
+        return None
+
+    front_y = court_adapter.front_threshold_y if court_adapter is not None else FRONT_THRESHOLD_Y
+    back_y = court_adapter.back_threshold_y if court_adapter is not None else BACK_THRESHOLD_Y
+
+    def classify_y(ys: list[float]) -> tuple[str, float]:
+        if not ys:
+            return "unclear", 0.0
+        avg_y = statistics.mean(ys)
+        if avg_y < front_y:
+            conf = min(1.0, (front_y - avg_y) / max(front_y, 1e-6))
+            return "front", round(conf, 3)
+        elif avg_y > back_y:
+            conf = min(1.0, (avg_y - back_y) / max(1.0 - back_y, 1e-6))
+            return "back", round(conf, 3)
+        else:
+            return "unclear", 0.3
+
+    role_a, conf_a = classify_y(y_values["player_a"])
+    role_b, conf_b = classify_y(y_values["player_b"])
+    avg_role_conf = round((conf_a + conf_b) / 2, 3)
+
+    return {
+        "player_a":  role_a,
+        "player_b":  role_b,
+        "confidence": avg_role_conf,
+    }
+
+
+# ── ラリーレベルのダブルスロール推定 ─────────────────────────────────────────
+
+def _infer_rally_front_back_role(yolo_frames: list[dict], court_adapter=None) -> Optional[dict]:
+    """ラリー全体の YOLO フレームからダブルス役割安定性を推定する。
+
+    Track A2: court_adapter 渡せば動的閾値を使用。
+    """
+    if not yolo_frames:
+        return None
+
+    front_y = court_adapter.front_threshold_y if court_adapter is not None else FRONT_THRESHOLD_Y
+    back_y = court_adapter.back_threshold_y if court_adapter is not None else BACK_THRESHOLD_Y
+
+    frame_roles_a: list[str] = []
+    frame_roles_b: list[str] = []
+
+    for frame in yolo_frames:
+        for p in frame.get("players", []):
+            label = p.get("label")
+            cy = p.get("centroid", [None, None])[1]
+            if cy is None:
+                continue
+            if label == "player_a":
+                frame_roles_a.append("front" if cy < front_y else
+                                     "back" if cy > back_y else "unclear")
+            elif label == "player_b":
+                frame_roles_b.append("front" if cy < front_y else
+                                     "back" if cy > back_y else "unclear")
+
+    def dominant(roles: list[str]) -> str:
+        if not roles:
+            return "mixed"
+        c = Counter(roles)
+        top, cnt = c.most_common(1)[0]
+        if cnt / len(roles) >= ROLE_STABILITY_MIN:
+            return top if top != "unclear" else "mixed"
+        return "mixed"
+
+    def stability(roles: list[str]) -> float:
+        if not roles:
+            return 0.0
+        c = Counter(roles)
+        _, cnt = c.most_common(1)[0]
+        return round(cnt / len(roles), 3)
+
+    dom_a = dominant(frame_roles_a)
+    dom_b = dominant(frame_roles_b)
+    stab = round(
+        (stability(frame_roles_a) + stability(frame_roles_b)) / 2, 3
+    ) if (frame_roles_a or frame_roles_b) else 0.0
+
+    return {
+        "player_a_dominant": dom_a,
+        "player_b_dominant": dom_b,
+        "stability":         stab,
+    }
+
+
+# ── レビュー理由コード計算 ────────────────────────────────────────────────────
+
+def _compute_review_reasons(
+    tracknet_frames: list[dict],
+    alignment: Optional[dict],
+    stroke_candidates: list[dict],
+) -> list[str]:
+    codes: list[str] = []
+
+    if not tracknet_frames:
+        codes.append("low_frame_coverage")
+    elif len(tracknet_frames) < 5:
+        codes.append("low_frame_coverage")
+
+    if alignment is None:
+        codes.append("alignment_missing")
+
+    # 過半数のストロークで landing zone が review_required なら全体も
+    n_review = sum(
+        1 for s in stroke_candidates
+        if s.get("land_zone") and s["land_zone"]["decision_mode"] == "review_required"
+    )
+    if stroke_candidates and n_review / len(stroke_candidates) >= 0.5:
+        codes.append("landing_zone_ambiguous")
+
+    # 打者が特定できなかったストロークが多い
+    n_no_hitter = sum(1 for s in stroke_candidates if not s.get("hitter"))
+    if stroke_candidates and n_no_hitter / len(stroke_candidates) >= 0.6:
+        codes.append("hitter_undetected")
+
+    return codes
+
+
+# ── ユーティリティ ────────────────────────────────────────────────────────────
+
+def _conf_to_decision(conf: float) -> tuple[str, list[str]]:
+    """信頼度スコアから decision_mode と reason_codes を返す。"""
+    if conf >= CONF_HIGH:
+        return "auto_filled", ["track_present_high_confidence"]
+    elif conf >= CONF_MEDIUM:
+        return "suggested", []
+    else:
+        return "review_required", []
+
+
+def _frames_in_range(frames: list[dict], timestamps: list[float],
+                     start: float, end: float) -> list[dict]:
+    lo = bisect.bisect_left(timestamps, start)
+    hi = bisect.bisect_right(timestamps, end)
+    return frames[lo:hi]
+
+
+def _player_dist(player: dict, sx: float, sy: float) -> float:
+    cx, cy = player.get("centroid", [None, None])
+    if cx is None or cy is None:
+        return float("inf")
+    return math.sqrt((cx - sx) ** 2 + (cy - sy) ** 2)

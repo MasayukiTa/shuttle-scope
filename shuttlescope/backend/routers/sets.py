@@ -1,0 +1,198 @@
+"""セット管理API（/api/sets）"""
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+from sqlalchemy import func
+
+from backend.db.database import get_db
+from backend.db.models import GameSet, Match, Rally
+from backend.utils.sync_meta import touch
+from backend.utils import response_cache
+from backend.utils.match_players import players_for_match
+
+router = APIRouter()
+
+
+def _set_require_match_scope(request: Request, db: Session, match: Match) -> None:
+    """match に対する team scope 検証。
+    R48: player は自分の出場試合に限り book / create / end 可 (mobile annotation 用)。
+    `require_match_scope` が user_can_access_match で player→match 判定する。
+    """
+    from backend.utils.auth import require_match_scope
+    require_match_scope(request, match, db)
+
+
+class SetCreate(BaseModel):
+    # extra フィールド禁止 + set_num は 1-5 に制限 (ベスト 3 of 5 相当)
+    # これは badminton の公式ルールに従う。99 等の不正値を 422 で弾く
+    model_config = {"extra": "forbid"}
+    match_id: int
+    set_num: int = Field(..., ge=1, le=5)
+
+
+class SetEnd(BaseModel):
+    model_config = {"extra": "forbid"}
+    winner: str = Field(..., pattern="^(player_a|player_b)$")
+    score_a: int = Field(..., ge=0, le=40)  # デュース含め 30 前後が最大、40 で余裕
+    score_b: int = Field(..., ge=0, le=40)
+    # A-8: 棄権・中断で «ルール上まだ終わっていないスコア» のままセットを
+    # 閉じることは実際にある。その場合だけ明示的に申告させる。
+    # 既定 False = 通常終了として、スコアと勝者の整合を検査する。
+    incomplete: bool = False
+
+
+# バドミントンの set 終了条件 (src/utils/badmintonRules.ts と同じ)
+POINT_TARGET = 21
+GOLDEN_POINT = 30
+
+
+def _winner_from_scores(score_a: int, score_b: int) -> Optional[str]:
+    """スコアから勝者を決める。まだ終わっていなければ None。
+
+    - 30 点先取 (ゴールデンポイント) は 2 点差不要
+    - それ以外は 21 点以上かつ 2 点差
+    """
+    hi, lo = max(score_a, score_b), min(score_a, score_b)
+    if hi >= GOLDEN_POINT:
+        return "player_a" if score_a >= GOLDEN_POINT else "player_b"
+    if hi >= POINT_TARGET and hi - lo >= 2:
+        return "player_a" if score_a > score_b else "player_b"
+    return None
+
+
+def set_to_dict(s: GameSet) -> dict:
+    return {
+        "id": s.id,
+        "match_id": s.match_id,
+        "set_num": s.set_num,
+        "winner": s.winner,
+        "score_a": s.score_a,
+        "score_b": s.score_b,
+        "is_deuce": s.is_deuce,
+    }
+
+
+@router.get("/sets/match/{match_id}")
+def get_sets(match_id: int, request: Request, db: Session = Depends(get_db)):
+    """試合のセット一覧。
+
+    Round 258 R13 P0 fix (deep audit F-2): 旧コードは auth/scope check 一切無しで
+    cross-team の set 一覧 (得点・winner・timestamp) を任意ユーザに返していた。
+    sibling である POST /sets / PUT /sets/{id}/end と同じ `_set_require_match_scope`
+    を適用して、cross-team enumeration (player JWT で全試合スコアボード抽出) を遮断。
+    """
+    match = db.get(Match, match_id)
+    if not match:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    _set_require_match_scope(request, db, match)
+    sets = db.query(GameSet).filter(
+        GameSet.match_id == match_id
+    ).order_by(GameSet.set_num).all()
+    return {"success": True, "data": [set_to_dict(s) for s in sets]}
+
+
+@router.post("/sets", status_code=201)
+def create_set(body: SetCreate, request: Request, db: Session = Depends(get_db)):
+    """セット作成（重複チェックあり）"""
+    match = db.get(Match, body.match_id)
+    if not match:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    _set_require_match_scope(request, db, match)
+
+    # 既に同じセット番号が存在する場合はそれを返す
+    existing = db.query(GameSet).filter(
+        GameSet.match_id == body.match_id,
+        GameSet.set_num == body.set_num,
+    ).first()
+    if existing:
+        return {"success": True, "data": set_to_dict(existing)}
+
+    game_set = GameSet(match_id=body.match_id, set_num=body.set_num)
+    touch(game_set)
+    db.add(game_set)
+    db.commit()
+    # 試合の関与選手のみキャッシュ無効化
+    response_cache.bump_players(players_for_match(db, body.match_id))
+    return {"success": True, "data": set_to_dict(game_set)}
+
+
+@router.put("/sets/{set_id}/end")
+def end_set(set_id: int, body: SetEnd, request: Request, db: Session = Depends(get_db)):
+    """セット終了（スコア・勝者確定）"""
+    game_set = db.get(GameSet, set_id)
+    if not game_set:
+        raise HTTPException(status_code=404, detail="セットが見つかりません")
+    match = db.get(Match, game_set.match_id)
+    if match:
+        _set_require_match_scope(request, db, match)
+
+    # A-8: 旧実装はクライアントが申告した winner をそのまま書いていた。
+    # 21 点も 2 点差も 30 上限も見ていないので、5-5 で «次のセットへ» を押すと
+    # (フロントが `scoreA > scoreB` で決めていたため) B の勝ちとして確定した。
+    # 勝敗はこの先の全解析の土台なので、サーバ側で突き合わせる。
+    expected = _winner_from_scores(body.score_a, body.score_b)
+    if body.incomplete:
+        # 棄権・中断。ルール上は未完了のまま閉じてよいが、
+        # «完了した» という顔をさせないため理由は match 側に残すこと。
+        pass
+    elif expected is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"スコア {body.score_a}-{body.score_b} ではセットは終了していません "
+                f"(21点以上かつ2点差、または30点先取)。"
+                f" 棄権・中断で閉じる場合は incomplete=true を指定してください"
+            ),
+        )
+    elif expected != body.winner:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"スコア {body.score_a}-{body.score_b} の勝者は {expected} です"
+                f" (申告: {body.winner})"
+            ),
+        )
+
+    game_set.winner = body.winner
+    game_set.score_a = body.score_a
+    game_set.score_b = body.score_b
+    game_set.is_deuce = body.score_a >= 20 and body.score_b >= 20
+    touch(game_set)
+    db.commit()
+    # 終了したセットの試合の関与選手のみ無効化
+    response_cache.bump_players(players_for_match(db, game_set.match_id))
+    return {"success": True, "data": set_to_dict(game_set)}
+
+
+@router.get("/sets/{set_id}/rally_count")
+def get_rally_count(set_id: int, request: Request, db: Session = Depends(get_db)):
+    """セット内のラリー数（次のラリー番号算出用）と、次のサーバ。
+
+    scope check が一切無く、set_id を総当たりすれば cross-team の進行状況
+    (ラリー数) を誰でも読めた。sibling の GET /sets/match/{match_id} と同じ
+    `_set_require_match_scope` を適用する。
+
+    A-2: next_server も返す。前セットへ戻ったとき (handlePrevSet) に
+    サーブ権を渡せず player_a から再開していた。
+    """
+    gs = db.get(GameSet, set_id)
+    if not gs:
+        raise HTTPException(status_code=404, detail="セットが見つかりません")
+    match = db.get(Match, gs.match_id)
+    if not match:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    _set_require_match_scope(request, db, match)
+
+    count = db.query(func.count(Rally.id)).filter(Rally.set_id == set_id).scalar() or 0
+    last_rally = db.query(Rally).filter(
+        Rally.set_id == set_id
+    ).order_by(Rally.rally_num.desc()).first()
+    return {
+        "success": True,
+        "data": {
+            "count": count,
+            "next_rally_num": count + 1,
+            "next_server": last_rally.winner if last_rally else match.initial_server,
+        },
+    }

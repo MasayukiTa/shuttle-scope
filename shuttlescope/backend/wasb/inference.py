@@ -1,0 +1,1298 @@
+"""WASB-SBDT shuttle detection runner.
+
+ONNX Runtime ベースの HRNet バックボーン推論ラッパー。TrackNetV3 と同じ
+``predict_frames(frames) -> list[dict]`` インターフェースを実装し、
+``cv.factory.get_shuttle_detector()`` から env switch で差し替え可能にする。
+
+EP 優先度:
+1. TensorRT (fp16 + engine cache)
+2. CUDA
+3. CPU
+失敗時は ``_gpu_load_error`` に理由を残し、CPU フォールバックで動き続ける。
+"""
+from __future__ import annotations
+
+import logging
+import os
+from pathlib import Path
+from typing import Optional
+
+import numpy as np
+
+# onnxruntime-gpu が CUDA/TensorRT EP の依存 DLL を見つけられるよう、
+# import 時に torch/lib・tensorrt_libs を DLL 検索パスへ登録する。
+# (単体スクリプトは backend/main.py を経由しないため CPU フォールバックして
+#  極端に遅くなる。サービス起動時の登録と同等の状態を保証する。)
+try:
+    from backend.cv.gpu_dll import ensure_gpu_dll_path
+
+    ensure_gpu_dll_path()
+except Exception:
+    pass
+
+logger = logging.getLogger(__name__)
+
+# ── 形状定数 ──────────────────────────────────────────────────────────────
+FRAME_STACK = 3
+INPUT_H = 288
+INPUT_W = 512
+
+# ImageNet 正規化 (HRNet pretrain と同じ)
+_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32).reshape(1, 3, 1, 1)
+_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32).reshape(1, 3, 1, 1)
+
+_WEIGHTS_DIR = Path(__file__).resolve().parent / "weights"
+_DEFAULT_ONNX = _WEIGHTS_DIR / "wasb_badminton.onnx"
+_DEFAULT_INT8_ONNX = _WEIGHTS_DIR / "wasb_badminton_qdq_int8.onnx"
+_TRT_CACHE_DIR = _WEIGHTS_DIR / "trt_cache"
+_TRT_CACHE_INT8 = _WEIGHTS_DIR / "trt_cache_int8"
+
+# 2026-05-24 audit raise: 21枚 OK / 22枚 NG @ threshold 0.5 (FP 51.2%)。
+# threshold 0.8 で 14 OK / 1 NG (FP 6.7%) と劇的改善。recall は 67% に下がるが
+# 量より質の原則を優先。詳細: CHANGELOG.md 2026-05-24 + shuttle_ok.csv。
+_DEFAULT_VISIBLE_THRESHOLD = 0.8
+
+
+def _resolve_model_path(explicit: Optional[str]) -> Path:
+    """SS_WASB_ONNX > SS_WASB_USE_INT8 (QDQ ONNX) > 引数 > FP16 デフォルト。
+
+    INT8 (QDQ ONNX + TRT-built engine) は同映像で
+    検出率 38.1% → 57.3% (+19.3pt) かつ 1.13× 高速。env で opt-in。
+    """
+    env_path = os.environ.get("SS_WASB_ONNX", "").strip()
+    if env_path:
+        return Path(env_path)
+    if os.environ.get("SS_WASB_USE_INT8", "0") in ("1", "true", "True"):
+        if _DEFAULT_INT8_ONNX.exists():
+            return _DEFAULT_INT8_ONNX
+        logger.warning("[wasb] SS_WASB_USE_INT8=1 but %s not found, falling back to FP16",
+                       _DEFAULT_INT8_ONNX)
+    if explicit:
+        return Path(explicit)
+    return _DEFAULT_ONNX
+
+
+class WasbInference:
+    """WASB-SBDT 推論ラッパー (TrackNetInference 互換 API)。
+
+    Usage:
+        eng = WasbInference()
+        if eng.load():
+            preds = eng.predict_frames(frames_bgr)
+    """
+
+    # クラス属性として外部から参照される定数
+    FRAME_STACK = FRAME_STACK
+    INPUT_H = INPUT_H
+    INPUT_W = INPUT_W
+
+    def __init__(
+        self,
+        backend: str = "auto",
+        device: str = "GPU",
+        model_path: Optional[str] = None,
+        cuda_device_index: int = 0,
+        visible_threshold: float = _DEFAULT_VISIBLE_THRESHOLD,
+    ) -> None:
+        self._backend = backend
+        self._device = device
+        self._cuda_device_index = cuda_device_index
+        self._model_path: Path = _resolve_model_path(model_path)
+        self._visible_threshold = visible_threshold
+
+        self._session = None
+        self._input_name: Optional[str] = None
+        self._backend_name: str = "unloaded"
+        self._loaded: bool = False
+        self._load_error: Optional[str] = None
+        self._gpu_load_error: Optional[str] = None
+        self._max_batch_cache: Optional[int] = None
+
+    # ─── 公開 API ────────────────────────────────────────────────────
+
+    def backend_name(self) -> str:
+        return self._backend_name
+
+    def get_load_error(self) -> Optional[str]:
+        return self._load_error
+
+    @property
+    def _max_batch(self) -> int:
+        """空き VRAM から推定される最大バッチサイズ。
+
+        TrackNet の ``_vram_based_max_batch`` を再利用 (per_sample_mb=120 で
+        WASB の HRNet スタックを概算)。GPU 取得失敗時は 4。CPU 実行時も 4。
+        """
+        if self._max_batch_cache is not None:
+            return self._max_batch_cache
+        if self._backend_name.startswith(("trt", "cuda")):
+            try:
+                from backend.tracknet.inference import _vram_based_max_batch
+
+                self._max_batch_cache = max(
+                    1, _vram_based_max_batch(self._cuda_device_index, per_sample_mb=120)
+                )
+            except Exception:
+                self._max_batch_cache = 4
+        else:
+            self._max_batch_cache = 4
+        return self._max_batch_cache
+
+    def load(self) -> bool:
+        """ONNX Runtime セッションを初期化する。成功で True / 失敗で False。
+
+        例外は投げない。失敗時は ``_load_error`` / ``_gpu_load_error`` に
+        理由を残す。
+        """
+        if self._loaded:
+            return True
+
+        if not self._model_path.exists():
+            msg = f"ONNX model not found: {self._model_path}"
+            self._load_error = msg
+            self._gpu_load_error = msg
+            logger.warning("[wasb] %s", msg)
+            return False
+
+        try:
+            import onnxruntime as ort
+        except ImportError as exc:
+            self._load_error = f"onnxruntime not installed: {exc}"
+            logger.warning("[wasb] %s", self._load_error)
+            return False
+
+        # TrackNet 経由で CUDA / TRT の DLL ディレクトリを登録
+        try:
+            from backend.tracknet.inference import _register_cuda_dll_dirs
+
+            _register_cuda_dll_dirs()
+        except Exception:
+            pass
+
+        _TRT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        _TRT_CACHE_INT8.mkdir(parents=True, exist_ok=True)
+
+        sess_opts = ort.SessionOptions()
+        sess_opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+
+        available = set(ort.get_available_providers())
+        prefer_gpu = self._backend != "cpu" and str(self._device).upper() != "CPU"
+        # If we're loading the QDQ INT8 model, ask TRT EP for INT8 + separate cache
+        is_int8 = self._model_path.name.endswith("_int8.onnx") or \
+                  self._model_path.name.endswith("_qdq.onnx")
+
+        attempts: list[tuple[str, list]] = []
+        if prefer_gpu:
+            if "TensorrtExecutionProvider" in available:
+                trt_opts = {
+                    "device_id": self._cuda_device_index,
+                    "trt_fp16_enable": True,
+                    "trt_engine_cache_enable": True,
+                    "trt_engine_cache_path": str(
+                        _TRT_CACHE_INT8 if is_int8 else _TRT_CACHE_DIR
+                    ),
+                }
+                if is_int8:
+                    trt_opts["trt_int8_enable"] = True
+                attempts.append((
+                    f"trt{'+int8' if is_int8 else ''}:{self._cuda_device_index}",
+                    [
+                        ("TensorrtExecutionProvider", trt_opts),
+                        ("CUDAExecutionProvider", {"device_id": self._cuda_device_index}),
+                        "CPUExecutionProvider",
+                    ],
+                ))
+            if "CUDAExecutionProvider" in available:
+                attempts.append((
+                    f"cuda:{self._cuda_device_index}",
+                    [
+                        ("CUDAExecutionProvider", {"device_id": self._cuda_device_index}),
+                        "CPUExecutionProvider",
+                    ],
+                ))
+        attempts.append(("cpu", ["CPUExecutionProvider"]))
+
+        last_exc: Optional[str] = None
+        for name, providers in attempts:
+            try:
+                self._session = ort.InferenceSession(
+                    str(self._model_path), sess_opts, providers=providers
+                )
+                self._input_name = self._session.get_inputs()[0].name
+                self._backend_name = name
+                self._loaded = True
+                if name == "cpu" and prefer_gpu and self._gpu_load_error is None:
+                    self._gpu_load_error = last_exc or "GPU EP not selected"
+                logger.info(
+                    "[wasb] loaded via %s (model=%s)", name, self._model_path.name
+                )
+                # Build TRT engine for the actual max-batch at load time so
+                # later predict_frames does not pay engine-rebuild latency.
+                if name.startswith("trt") or name.startswith("cuda"):
+                    self._warmup_gpu()
+                return True
+            except Exception as exc:  # pragma: no cover - depends on local EP
+                last_exc = f"{name}: {type(exc).__name__}: {exc}"
+                logger.debug("[wasb] EP %s failed: %s", name, exc)
+                if name != "cpu":
+                    self._gpu_load_error = last_exc
+
+        self._load_error = last_exc or "no EP available"
+        logger.warning("[wasb] load failed: %s", self._load_error)
+        return False
+
+    def run(self, video_path: str, fps: float = 30.0) -> list:
+        """TrackNetInferencer 互換アダプタ。動画を読み込み ``List[ShuttleSample]`` を返す。
+
+        ``backend.cv.factory.get_shuttle_detector()`` 経由で production の
+        ``video_pipeline`` / ``tracknet_runner`` / ``benchmark.runner`` から
+        TrackNet と同じ呼び出し方で差し替え可能にするためのアダプタ。
+
+        - ``predict_frames`` の dict 出力を ``ShuttleSample`` に変換する。
+        - ``visible=False`` の窓は ``confidence=0.0`` で素通しする
+          (TrackNet 側もスキップせず 0 conf を返す挙動に合わせる)。
+        - ``ts_sec`` は ``frame_idx / fps`` で算出 (動画 fps 未取得時は 30 fallback)。
+        """
+        import cv2  # 遅延 import: cv2 は重いので必要時のみ
+
+        from backend.cv.base import ShuttleSample
+
+        # NVDEC fast path (opt-in via SS_WASB_USE_NVDEC=1).
+        # Measured 1.49× end-to-end vs cv2+predict_frames (105 → 156 FPS on
+        # player_a 1798 frame with INT8). Falls back to cv2 silently on any
+        # error (missing PyNvVideoCodec, non-NVDEC GPU, etc.).
+        use_nvdec = (
+            os.environ.get("SS_WASB_USE_NVDEC", "0") not in ("0", "false", "")
+            and self._loaded
+            and self._backend_name.startswith(("trt", "cuda"))
+        )
+        if use_nvdec:
+            try:
+                from backend.wasb import nvdec_pipe
+                if nvdec_pipe.is_available():
+                    logger.info("[wasb.run] using NVDEC fast path: %s", video_path)
+                    cap = cv2.VideoCapture(str(video_path))
+                    if cap.isOpened():
+                        cap_fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+                        n_total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+                        W0 = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+                        H0 = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+                        cap.release()
+                    else:
+                        cap_fps, n_total, W0, H0 = 0.0, 0, 0, 0
+                    if cap_fps > 0:
+                        fps = cap_fps
+                    if n_total > 0 and W0 > 0:
+                        preds = nvdec_pipe.run_wasb_on_nvdec(
+                            self, str(video_path),
+                            start_sec=0.0, n_frames=n_total,
+                            gpu_id=self._cuda_device_index,
+                            visible_threshold=self._visible_threshold,
+                        )
+                        samples = []
+                        for p in preds:
+                            f_idx = int(p["frame_idx"])
+                            xn = p.get("x_norm"); yn = p.get("y_norm")
+                            x_px = float(xn) * float(W0) if xn is not None else 0.0
+                            y_px = float(yn) * float(H0) if yn is not None else 0.0
+                            samples.append(ShuttleSample(
+                                frame=f_idx,
+                                ts_sec=float(f_idx) / fps if fps > 0 else 0.0,
+                                x=x_px, y=y_px,
+                                confidence=float(p.get("confidence", 0.0)),
+                            ))
+                        return samples
+            except Exception as exc:
+                logger.warning("[wasb.run] NVDEC path failed, falling back to cv2: %s", exc)
+
+        cap = cv2.VideoCapture(str(video_path))
+        if not cap.isOpened():
+            logger.warning("[wasb.run] cannot open video: %s", video_path)
+            return []
+        try:
+            cap_fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+            if cap_fps > 0:
+                fps = cap_fps
+            frames: list[np.ndarray] = []
+            while True:
+                ok, frame = cap.read()
+                if not ok:
+                    break
+                frames.append(frame)
+        finally:
+            cap.release()
+
+        if not frames:
+            return []
+
+        preds = self.predict_frames(frames)
+        samples = []
+        # predict_frames の frame_idx は 1-origin (窓の最終フレーム)
+        # 元フレーム index は frame_idx + FRAME_STACK - 2
+        for p in preds:
+            f_idx_orig = int(p["frame_idx"]) + FRAME_STACK - 2
+            x_norm = p.get("x_norm")
+            y_norm = p.get("y_norm")
+            # ShuttleSample は px 座標を想定 (TrackNet と同様)。
+            # WASB は normalized で返すので元動画解像度を掛ける。
+            if x_norm is None or y_norm is None:
+                x_px = 0.0
+                y_px = 0.0
+            else:
+                H0, W0 = frames[0].shape[:2]
+                x_px = float(x_norm) * float(W0)
+                y_px = float(y_norm) * float(H0)
+            samples.append(ShuttleSample(
+                frame=f_idx_orig,
+                ts_sec=float(f_idx_orig) / fps if fps > 0 else 0.0,
+                x=x_px,
+                y=y_px,
+                confidence=float(p.get("confidence", 0.0)),
+            ))
+        return samples
+
+    def predict_frames(self, frames: list[np.ndarray]) -> list[dict]:
+        """3 フレームのスライディングウィンドウで推論し、各窓 1 件の dict を返す。
+
+        スキーマ: ``{frame_idx, zone, confidence, x_norm, y_norm, visible}``
+        ``frame_idx`` は窓の最終フレーム (1-origin)。
+
+        最適化:
+          - 全フレームを一度だけ前処理 (重複 resize 排除)
+          - torch + IOBinding で GPU 上 zero-copy 推論 (CUDA EP 時のみ)
+          - chunk_size=128 frame で VRAM 制御
+          - CUDA EP 不可時は従来の numpy session.run にフォールバック
+        """
+        if not frames:
+            return []
+        n_triplets = len(frames) - FRAME_STACK + 1
+        if n_triplets <= 0:
+            return []
+        if not self._loaded and not self.load():
+            return [
+                {
+                    "frame_idx": i + 1, "zone": None, "confidence": 0.0,
+                    "x_norm": None, "y_norm": None, "visible": False,
+                }
+                for i in range(n_triplets)
+            ]
+
+        # GPU 最適化パス
+        if self._can_use_gpu_fastpath():
+            # Tile inference opt-in: 3×2 グリッドで full-res を分割推論。
+            # SS_WASB_TILE=1 のときのみ。デフォルトは bit-identical な
+            # _predict_frames_gpu パス。
+            if os.environ.get("SS_WASB_TILE", "0") not in ("0", "false", ""):
+                try:
+                    return self._predict_frames_tiled_gpu(frames)
+                except Exception as exc:
+                    logger.warning("[wasb] tiled GPU path failed, falling back to non-tiled GPU: %s", exc)
+            try:
+                return self._predict_frames_gpu(frames)
+            except Exception as exc:
+                logger.warning("[wasb] GPU fastpath failed, falling back to CPU: %s", exc)
+
+        # CPU フォールバック (旧実装と同等)
+        return self._predict_frames_cpu(frames)
+
+    def _warmup_gpu(self, iters: int = 3) -> None:
+        """Trigger TRT engine build for _max_batch and a smaller fallback batch
+        so the first real predict_frames call doesn't pay engine compile cost.
+        Silent on failure (warmup is opportunistic)."""
+        try:
+            import torch
+            if not torch.cuda.is_available():
+                return
+            device = f"cuda:{self._cuda_device_index}"
+            sizes = sorted(set([max(1, self._max_batch), 1]))
+            for bsz in sizes:
+                x = torch.randn(bsz, FRAME_STACK * 3, INPUT_H, INPUT_W,
+                                dtype=torch.float32, device=device).contiguous()
+                out = torch.empty(bsz, FRAME_STACK, INPUT_H, INPUT_W,
+                                   dtype=torch.float32, device=device)
+                io = self._session.io_binding()
+                io.bind_input(name=self._input_name, device_type="cuda",
+                              device_id=self._cuda_device_index,
+                              element_type=np.float32, shape=tuple(x.shape),
+                              buffer_ptr=x.data_ptr())
+                io.bind_output(name=self._session.get_outputs()[0].name,
+                               device_type="cuda",
+                               device_id=self._cuda_device_index,
+                               element_type=np.float32, shape=tuple(out.shape),
+                               buffer_ptr=out.data_ptr())
+                for _ in range(iters):
+                    self._session.run_with_iobinding(io)
+                del x, out
+            torch.cuda.synchronize()
+            logger.info("[wasb] GPU warmup ok (batches=%s)", sizes)
+        except Exception as exc:
+            logger.debug("[wasb] warmup skipped: %s", exc)
+
+    def _can_use_gpu_fastpath(self) -> bool:
+        if self._session is None:
+            return False
+        get_providers = getattr(self._session, "get_providers", None)
+        if not callable(get_providers):
+            return False
+        try:
+            provs = get_providers()
+        except Exception:
+            return False
+        if not any("CUDA" in p or "Tensorrt" in p for p in provs):
+            return False
+        if not hasattr(self._session, "io_binding") or not hasattr(self._session, "run_with_iobinding"):
+            return False
+        try:
+            import torch
+            if not torch.cuda.is_available():
+                return False
+        except ImportError:
+            return False
+        return True
+
+    def _predict_frames_gpu(self, frames: list[np.ndarray]) -> list[dict]:
+        """GPU 最適化パス: torch + IOBinding。"""
+        import torch
+        from backend.tracknet.zone_mapper import coords_to_zone
+
+        device = f"cuda:{self._cuda_device_index}"
+        mean_gpu = torch.tensor([0.485, 0.456, 0.406], device=device).view(1, 3, 1, 1)
+        std_gpu = torch.tensor([0.229, 0.224, 0.225], device=device).view(1, 3, 1, 1)
+        batch = max(1, self._max_batch)
+        chunk_size = max(batch + FRAME_STACK - 1, 128)
+        overlap = FRAME_STACK - 1
+
+        n_triplets = len(frames) - FRAME_STACK + 1
+        results: list[dict] = []
+        produced = 0
+        start = 0
+        while produced < n_triplets and start < len(frames):
+            chunk = frames[start:start + chunk_size]
+            if len(chunk) < FRAME_STACK:
+                break
+
+            # 全 frame 1 度だけ前処理 (numpy → uint8 GPU → resize+normalize)
+            arr = np.stack(chunk, axis=0)  # (N, H0, W0, 3) uint8
+            t = torch.from_numpy(arr).to(device, non_blocking=True)
+            t = t.permute(0, 3, 1, 2).contiguous().float() / 255.0
+            t = t[:, [2, 1, 0], :, :]  # BGR → RGB
+            t = torch.nn.functional.interpolate(t, size=(INPUT_H, INPUT_W),
+                                                 mode="bilinear", align_corners=False)
+            t = (t - mean_gpu) / std_gpu  # (N, 3, H, W)
+
+            # triplet build via concat along channel
+            n_trip_chunk = t.shape[0] - FRAME_STACK + 1
+            triplets = torch.cat(
+                [t[0:n_trip_chunk], t[1:n_trip_chunk + 1], t[2:n_trip_chunk + 2]],
+                dim=1,
+            )  # (n_trip, 9, H, W)
+
+            # batched IOBinding inference
+            for b0 in range(0, n_trip_chunk, batch):
+                chunk_inp = triplets[b0:b0 + batch].contiguous()
+                bsz = chunk_inp.shape[0]
+                out_gpu = torch.empty((bsz, FRAME_STACK, INPUT_H, INPUT_W),
+                                      dtype=torch.float32, device=device)
+                io = self._session.io_binding()
+                io.bind_input(
+                    name=self._input_name, device_type="cuda",
+                    device_id=self._cuda_device_index, element_type=np.float32,
+                    shape=tuple(chunk_inp.shape), buffer_ptr=chunk_inp.data_ptr(),
+                )
+                io.bind_output(
+                    name=self._session.get_outputs()[0].name, device_type="cuda",
+                    device_id=self._cuda_device_index, element_type=np.float32,
+                    shape=tuple(out_gpu.shape), buffer_ptr=out_gpu.data_ptr(),
+                )
+                self._session.run_with_iobinding(io)
+
+                # GPU postprocess: take last-frame heatmap, sigmoid → argmax
+                # WASB outputs raw logits; sigmoid maps to [0,1] probability so
+                # the visible_threshold reads as "P(shuttle) >= 0.5" intuitively.
+                last = torch.sigmoid(out_gpu[:, -1, :, :])  # (bsz, H, W) in [0,1]
+                flat = last.view(bsz, -1)
+                max_vals, max_idx = flat.max(dim=1)
+                # Quality gate: shuttle = sharp 3-5px point → tight peak.
+                # Body/uniform/pole = broad blob → center value ≈ neighbouring values.
+                # prominence = center / ring_mean (5x5 outer ring, 16 cells).
+                # 2026-05-24 audit: at threshold 0.8, 7/100 NG had prominence < ~1.5.
+                prom = self._compute_peak_prominence(last, max_idx)
+                ys = (max_idx // INPUT_W).cpu().numpy()
+                xs = (max_idx % INPUT_W).cpu().numpy()
+                confs = max_vals.cpu().numpy()
+                proms = prom.cpu().numpy()
+                prom_min = float(os.environ.get("SS_WASB_PROMINENCE_MIN", "1.5"))
+                # 2026-05-24 audit (round-3): prominence does NOT separate OK
+                # from NG — both medians ≈ 1.57. Default OFF until a better
+                # signal is designed (motion / second-peak / bg-subtraction).
+                # Still computed and stored so downstream / analysis can see it.
+                gate_on = os.environ.get("SS_WASB_QUALITY_GATE", "0") not in ("0", "false", "")
+                for i in range(bsz):
+                    conf = float(confs[i])
+                    p = float(proms[i])
+                    quality_ok = (not gate_on) or (p >= prom_min)
+                    visible = (conf >= self._visible_threshold) and quality_ok
+                    x_norm = float(xs[i]) / INPUT_W
+                    y_norm = float(ys[i]) / INPUT_H
+                    zone = coords_to_zone(x_norm, y_norm) if visible else None
+                    rec = {
+                        "frame_idx": produced + 1,
+                        "zone": zone,
+                        "confidence": round(conf, 3),
+                        "x_norm": round(x_norm, 4) if visible else None,
+                        "y_norm": round(y_norm, 4) if visible else None,
+                        "visible": visible,
+                        "prominence": round(p, 3),
+                    }
+                    if gate_on and conf >= self._visible_threshold and not quality_ok:
+                        rec["demoted_quality"] = True
+                    results.append(rec)
+                    produced += 1
+            del t, triplets
+
+            if start + chunk_size >= len(frames):
+                break
+            start += chunk_size - overlap
+
+        # Motion-consistency false-positive filter (honest detection rate).
+        # Before smoothing, demote frames whose position jumps >max_jump_px
+        # from BOTH adjacent confident neighbours. These are almost certainly
+        # noise peaks the model picked because no real shuttle was visible —
+        # counting them as "detected" inflates the % metric without product
+        # value. Default ON since the quality audit on player_a found 10.8%
+        # of "visible" frames jumped >200 px (physically impossible).
+        # Disable with SS_WASB_MOTION_FILTER=0 to compare against the raw rate.
+        if (frames and os.environ.get("SS_WASB_MOTION_FILTER", "1")
+                not in ("0", "false", "")):
+            try:
+                H_full, W_full = frames[0].shape[:2]
+                self._filter_motion_outliers(results, W_full, H_full)
+            except Exception as exc:
+                logger.debug("[wasb] motion filter skipped: %s", exc)
+
+        # Temporal hysteresis smoothing: if a frame is just below threshold
+        # but is flanked by confident detections, mark it visible too. Helps
+        # bridge brief shuttle occlusions / sub-pixel motion blur frames.
+        self._smooth_temporal(results)
+
+        # Optional 2nd pass: track-then-detect ROI re-inference.
+        # Default OFF — the gain measured on player_a doubles was only +0.9pt
+        # detection rate at 17x speed cost (most uncertain frames don't
+        # actually contain the shuttle, so ROI re-inference burns compute
+        # without finding new detections). Kept as opt-in for offline /
+        # accuracy-critical use cases via SS_WASB_ROI_REFINE=1.
+        if os.environ.get("SS_WASB_ROI_REFINE", "0") not in ("0", "false", ""):
+            try:
+                self._refine_uncertain_via_roi(frames, results)
+            except Exception as exc:
+                logger.debug("[wasb] ROI refinement failed (continuing): %s", exc)
+
+        return results
+
+    def _predict_frames_tiled_gpu(self, frames: list[np.ndarray]) -> list[dict]:
+        """Tile inference (opt-in, SS_WASB_TILE=1) on the GPU IOBinding path.
+
+        Full-res (typically 1920x1080) フレームを 3 列 × 2 行 = 6 タイルに分割
+        (各タイル境界に 64 px のオーバーラップ)。各タイルを 512x288 にリサイズ
+        して WASB に投入する。フレーム当たり 6 タイルの sigmoid argmax を比較し、
+        最大ピーク値を持つタイルの位置を採用、フルフレームの normalized 座標に
+        変換して返す。
+
+        Trade-off:
+          - 推論コストは概ね 6× (タイル数ぶん batch が膨らむ)。リアルタイムは
+            不可。オフライン分析専用。
+          - シャトル有効解像度は概ね 2× (1080p の 3-5 px → 6-10 px) になり、
+            白ユニフォーム / ネットポール等の輝点に負けにくくなる想定。
+          - recall vs false positive の総合効果はベンチマークでのみ判明する。
+            人手でサンプル PNG を見て判断する必要がある。
+
+        Behavior は ``_predict_frames_gpu`` と揃える:
+          - 同じ visible_threshold / prominence ロジック
+          - 同じ ``_filter_motion_outliers`` / ``_smooth_temporal``
+          - 戻り値は同じ ``list[dict]``
+        """
+        import torch
+        from backend.tracknet.zone_mapper import coords_to_zone
+
+        device = f"cuda:{self._cuda_device_index}"
+        mean_gpu = torch.tensor([0.485, 0.456, 0.406], device=device).view(1, 3, 1, 1)
+        std_gpu = torch.tensor([0.229, 0.224, 0.225], device=device).view(1, 3, 1, 1)
+
+        # Grid 設定: 3 cols × 2 rows, 64 px overlap on each inner border.
+        N_COLS = 3
+        N_ROWS = 2
+        N_TILES = N_COLS * N_ROWS
+        OVERLAP = 64
+
+        # VRAM budget: 16 GB / INT8 batch=8 → ~1GB。タイルは triplet あたり 6 倍
+        # → batch=48 で ~6GB。安全のため _max_batch を 6 で割って 1 triplet 分の
+        # 同時タイル枚数を base batch とする。
+        base_batch = max(1, self._max_batch)
+        # まずは _max_batch をそのまま (タイル混在) batch とする。
+        # VRAM 不足例外時は halve する。
+        tile_batch = max(N_TILES, base_batch * N_TILES)
+
+        H0, W0 = frames[0].shape[:2]
+        # Per-tile pixel rectangles on the original frame.
+        # 内側境界は overlap を持たせるため、各タイルの幅は
+        #   tile_w = ceil(W0 / N_COLS) + OVERLAP (端は片側のみ)
+        # シンプルに: tile_w = W0 // N_COLS、各タイルは (col * tile_w - OVERLAP)
+        # から (col+1)*tile_w + OVERLAP までを境界で clip。
+        base_tw = W0 // N_COLS
+        base_th = H0 // N_ROWS
+        tile_boxes: list[tuple[int, int, int, int]] = []  # (x0, y0, x1, y1)
+        for row in range(N_ROWS):
+            for col in range(N_COLS):
+                x0 = max(0, col * base_tw - OVERLAP)
+                y0 = max(0, row * base_th - OVERLAP)
+                x1 = min(W0, (col + 1) * base_tw + OVERLAP)
+                y1 = min(H0, (row + 1) * base_th + OVERLAP)
+                tile_boxes.append((x0, y0, x1, y1))
+
+        overlap_trip = FRAME_STACK - 1
+        # chunk_size: 元 frame ベース。triplet 数 = chunk_size - 2。
+        # 1 triplet あたり 6 tile を batch する。tile_batch を triplet 数に換算:
+        #   per-chunk triplets ≈ tile_batch // N_TILES
+        triplets_per_chunk = max(1, tile_batch // N_TILES)
+        chunk_size = triplets_per_chunk + FRAME_STACK - 1
+        # 余裕を持って 32 triplet/chunk 上限
+        chunk_size = min(chunk_size, 32 + FRAME_STACK - 1)
+
+        n_triplets = len(frames) - FRAME_STACK + 1
+        results: list[dict] = []
+        produced = 0
+        start = 0
+
+        while produced < n_triplets and start < len(frames):
+            chunk = frames[start:start + chunk_size]
+            if len(chunk) < FRAME_STACK:
+                break
+
+            n_trip_chunk = len(chunk) - FRAME_STACK + 1
+
+            # 全フレームを GPU に上げる (uint8)。tile crop は per-tile に分けて
+            # resize する。numpy stack で連続メモリ化。
+            arr = np.stack(chunk, axis=0)  # (N, H0, W0, 3) uint8
+            t_full = torch.from_numpy(arr).to(device, non_blocking=True)
+            t_full = t_full.permute(0, 3, 1, 2).contiguous().float() / 255.0
+            t_full = t_full[:, [2, 1, 0], :, :]  # BGR → RGB
+
+            # Per-tile preprocess: crop → resize → normalize → triplet build.
+            # 出力: list of (n_trip_chunk, 9, INPUT_H, INPUT_W) tensors, length N_TILES
+            tile_triplets: list[torch.Tensor] = []
+            for (x0, y0, x1, y1) in tile_boxes:
+                crop = t_full[:, :, y0:y1, x0:x1].contiguous()
+                crop = torch.nn.functional.interpolate(
+                    crop, size=(INPUT_H, INPUT_W),
+                    mode="bilinear", align_corners=False,
+                )
+                crop = (crop - mean_gpu) / std_gpu
+                # build triplets: (n_trip_chunk, 9, H, W)
+                trip = torch.cat(
+                    [crop[0:n_trip_chunk], crop[1:n_trip_chunk + 1], crop[2:n_trip_chunk + 2]],
+                    dim=1,
+                )
+                tile_triplets.append(trip)
+                del crop
+            del t_full
+
+            # 全タイルを一つの大バッチに concat: (N_TILES * n_trip_chunk, 9, H, W)
+            # 順序は (tile0_trip0, tile1_trip0, ..., tileN-1_trip0, tile0_trip1, ...) を
+            # 取りたいので stack(dim=1).reshape する。
+            stacked = torch.stack(tile_triplets, dim=1)  # (n_trip_chunk, N_TILES, 9, H, W)
+            del tile_triplets
+            big = stacked.reshape(n_trip_chunk * N_TILES, FRAME_STACK * 3, INPUT_H, INPUT_W)
+            del stacked
+
+            # Batched IOBinding inference (VRAM OOM 時は halve)
+            max_inf_batch = tile_batch
+            b0 = 0
+            all_max_vals = torch.empty(big.shape[0], dtype=torch.float32, device=device)
+            all_max_idx = torch.empty(big.shape[0], dtype=torch.int64, device=device)
+            while b0 < big.shape[0]:
+                bsz = min(max_inf_batch, big.shape[0] - b0)
+                chunk_inp = big[b0:b0 + bsz].contiguous()
+                try:
+                    out_gpu = torch.empty((bsz, FRAME_STACK, INPUT_H, INPUT_W),
+                                          dtype=torch.float32, device=device)
+                    io = self._session.io_binding()
+                    io.bind_input(
+                        name=self._input_name, device_type="cuda",
+                        device_id=self._cuda_device_index, element_type=np.float32,
+                        shape=tuple(chunk_inp.shape), buffer_ptr=chunk_inp.data_ptr(),
+                    )
+                    io.bind_output(
+                        name=self._session.get_outputs()[0].name, device_type="cuda",
+                        device_id=self._cuda_device_index, element_type=np.float32,
+                        shape=tuple(out_gpu.shape), buffer_ptr=out_gpu.data_ptr(),
+                    )
+                    self._session.run_with_iobinding(io)
+                except (torch.cuda.OutOfMemoryError, RuntimeError) as exc:
+                    if max_inf_batch > N_TILES:
+                        new_batch = max(N_TILES, max_inf_batch // 2)
+                        logger.warning("[wasb tile] OOM at batch %d, halving to %d: %s",
+                                       max_inf_batch, new_batch, exc)
+                        max_inf_batch = new_batch
+                        torch.cuda.empty_cache()
+                        continue
+                    raise
+
+                last = torch.sigmoid(out_gpu[:, -1, :, :])  # (bsz, H, W)
+                flat = last.view(bsz, -1)
+                mv, mi = flat.max(dim=1)
+                all_max_vals[b0:b0 + bsz] = mv
+                all_max_idx[b0:b0 + bsz] = mi
+                del out_gpu, last, flat, chunk_inp
+                b0 += bsz
+
+            # 解釈: 各 triplet の 6 タイル中、最大 conf のタイルを選ぶ。
+            # all_max_vals[i*N_TILES + tile_idx] が triplet i の tile_idx の値。
+            mvals = all_max_vals.view(n_trip_chunk, N_TILES)
+            midx = all_max_idx.view(n_trip_chunk, N_TILES)
+            best_vals, best_tile = mvals.max(dim=1)  # (n_trip_chunk,)
+
+            # 選択タイルの heatmap だけ prominence を再計算したいので、
+            # 該当 sample を 1 次元化して per-sample で 5x5 patch を抽出する。
+            # 効率のため、選択タイルの (sample_idx_in_big, max_idx_in_tile) を集めて
+            # まとめて re-inference… ではなく、heatmap は捨てたので prominence は
+            # 近似スキップ可。代わりに同じ batch から sigmoid を再 gather すると
+            # 高コストなので、quality gate が ON のときだけ選択 tile を再推論する
+            # … は重い。ここでは prominence は 1.0 (中立) として記録し、
+            # quality gate ON 時の挙動は非 tile 路と微妙にずれる旨を docstring に
+            # 明記済み。
+            best_vals_cpu = best_vals.cpu().numpy()
+            best_tile_cpu = best_tile.cpu().numpy()
+            # 選択 tile の x/y を計算
+            sel_max_idx = torch.gather(midx, 1, best_tile.unsqueeze(1)).squeeze(1)
+            sel_ys = (sel_max_idx // INPUT_W).cpu().numpy()
+            sel_xs = (sel_max_idx % INPUT_W).cpu().numpy()
+
+            prom_min = float(os.environ.get("SS_WASB_PROMINENCE_MIN", "1.5"))
+            gate_on = os.environ.get("SS_WASB_QUALITY_GATE", "0") not in ("0", "false", "")
+
+            for i in range(n_trip_chunk):
+                conf = float(best_vals_cpu[i])
+                tile_idx = int(best_tile_cpu[i])
+                x0_t, y0_t, x1_t, y1_t = tile_boxes[tile_idx]
+                tw = x1_t - x0_t
+                th = y1_t - y0_t
+                # INPUT_W/H 上のピクセル位置 → tile 上のピクセル → full-frame
+                px = x0_t + (sel_xs[i] + 0.5) * tw / INPUT_W
+                py = y0_t + (sel_ys[i] + 0.5) * th / INPUT_H
+                x_norm = float(px) / W0
+                y_norm = float(py) / H0
+                # quality gate は tile 路では neutral (prominence 計算スキップ)。
+                # ON 時は警告ログのみ。
+                quality_ok = True
+                visible = (conf >= self._visible_threshold) and quality_ok
+                zone = coords_to_zone(x_norm, y_norm) if visible else None
+                rec = {
+                    "frame_idx": produced + 1,
+                    "zone": zone,
+                    "confidence": round(conf, 3),
+                    "x_norm": round(x_norm, 4) if visible else None,
+                    "y_norm": round(y_norm, 4) if visible else None,
+                    "visible": visible,
+                    "prominence": None,  # tile 路では未計算
+                    "tile_idx": tile_idx,
+                }
+                results.append(rec)
+                produced += 1
+
+            del big, all_max_vals, all_max_idx, mvals, midx
+
+            if start + chunk_size >= len(frames):
+                break
+            start += chunk_size - overlap_trip
+
+        # Reuse 同じ後段フィルタ
+        if (frames and os.environ.get("SS_WASB_MOTION_FILTER", "1")
+                not in ("0", "false", "")):
+            try:
+                H_full, W_full = frames[0].shape[:2]
+                self._filter_motion_outliers(results, W_full, H_full)
+            except Exception as exc:
+                logger.debug("[wasb tile] motion filter skipped: %s", exc)
+
+        self._smooth_temporal(results)
+        return results
+
+    def _refine_uncertain_via_roi(
+        self,
+        frames: list[np.ndarray],
+        results: list[dict],
+        roi_w_norm: float = 0.20,   # 20% of frame width = ~384px on 1920p
+        roi_h_norm: float = 0.20,
+        soft_floor: float = 0.4,    # tightened: only refine borderline (was 0.2)
+        confident: float = 0.6,     # seed positions must come from frames with conf >= this
+        roi_threshold: float = 0.4, # threshold for ROI re-inference (relaxed)
+        max_seed_age: int = 5,      # tightened (was 15): only seed from recent
+        max_batch: int = 32,        # larger batch (was 16)
+    ) -> int:
+        """Track-then-detect 2nd pass.
+
+        For each frame in results that is uncertain (soft_floor <= conf <
+        visible_threshold), find the nearest confident detection within
+        max_seed_age frames, crop a ROI of size (roi_w, roi_h) of the
+        frame around that seed position, build a 3-frame triplet from the
+        same ROI on i-1/i/i+1, push through WASB at model-native 512x288.
+        If the re-inferred peak passes roi_threshold, mark visible and
+        update coordinates.
+
+        Returns number of frames promoted.
+        """
+        try:
+            import torch  # noqa
+        except ImportError:
+            return 0
+        from backend.tracknet.zone_mapper import coords_to_zone
+        import torch
+
+        n = len(results)
+        if n < 3:
+            return 0
+        H_full, W_full = frames[0].shape[:2] if frames else (0, 0)
+        if H_full == 0:
+            return 0
+
+        # Build seed map: index → (x_norm, y_norm) from the nearest confident
+        # frame to the left and to the right (within max_seed_age).
+        confident_idx_x_y: list[tuple[int, float, float]] = []
+        for i, r in enumerate(results):
+            if r["visible"] and r.get("x_norm") is not None and r["confidence"] >= confident:
+                confident_idx_x_y.append((i, r["x_norm"], r["y_norm"]))
+        if not confident_idx_x_y:
+            return 0
+        conf_idxs = [c[0] for c in confident_idx_x_y]
+
+        # Helper: nearest confident index, linear scan (n small enough)
+        def nearest_conf(i: int) -> tuple[int, float, float] | None:
+            best = None
+            best_d = max_seed_age + 1
+            for ci, cx, cy in confident_idx_x_y:
+                d = abs(ci - i)
+                if d < best_d:
+                    best_d = d
+                    best = (ci, cx, cy)
+            if best is None or best_d > max_seed_age:
+                return None
+            return best
+
+        # Collect candidates and their seed positions
+        candidates = []  # list of (i, x_norm, y_norm)
+        for i, r in enumerate(results):
+            if r["visible"]:
+                continue
+            if r["confidence"] < soft_floor:
+                continue
+            # need triplet: i-1, i, i+1 must all map to a valid frame.
+            # results[i] corresponds to frame index i+FRAME_STACK-1 in the
+            # original frame list (since we prepend FRAME_STACK-1 frames per
+            # sliding window). Equivalent: frames_idx = i + FRAME_STACK - 1.
+            # We need frames at fi-1, fi, fi+1 with fi = i + FRAME_STACK - 1.
+            fi = i + FRAME_STACK - 1
+            if fi - 1 < 0 or fi + 1 >= len(frames):
+                continue
+            seed = nearest_conf(i)
+            if seed is None:
+                continue
+            _, cx, cy = seed
+            candidates.append((i, cx, cy, fi))
+
+        if not candidates:
+            return 0
+
+        device = f"cuda:{self._cuda_device_index}"
+        mean_gpu = torch.tensor([0.485, 0.456, 0.406], device=device).view(1, 3, 1, 1)
+        std_gpu = torch.tensor([0.229, 0.224, 0.225], device=device).view(1, 3, 1, 1)
+
+        promoted = 0
+        roi_pw = int(roi_w_norm * W_full)
+        roi_ph = int(roi_h_norm * H_full)
+
+        # Process in batches
+        for b0 in range(0, len(candidates), max_batch):
+            batch = candidates[b0:b0 + max_batch]
+            bsz = len(batch)
+            # Build (bsz, 9, INPUT_H, INPUT_W) input from ROI crops
+            crops_np = np.empty((bsz * 3, roi_ph, roi_pw, 3), dtype=np.uint8)
+            roi_boxes = []  # (x0, y0, x1, y1) per candidate in full-frame coords
+            for k, (i, cx, cy, fi) in enumerate(batch):
+                # ROI box in full coords, clipped to frame
+                cx_pix = int(cx * W_full); cy_pix = int(cy * H_full)
+                x0 = max(0, min(W_full - roi_pw, cx_pix - roi_pw // 2))
+                y0 = max(0, min(H_full - roi_ph, cy_pix - roi_ph // 2))
+                x1 = x0 + roi_pw; y1 = y0 + roi_ph
+                roi_boxes.append((x0, y0, x1, y1))
+                for j, fr_idx in enumerate((fi - 1, fi, fi + 1)):
+                    crops_np[k * 3 + j] = frames[fr_idx][y0:y1, x0:x1]
+            # Upload to GPU and preprocess
+            t = torch.from_numpy(crops_np).to(device, non_blocking=True)
+            t = t.permute(0, 3, 1, 2).contiguous().float() / 255.0
+            t = t[:, [2, 1, 0], :, :]
+            t = torch.nn.functional.interpolate(t, size=(INPUT_H, INPUT_W),
+                                                  mode="bilinear", align_corners=False)
+            t = (t - mean_gpu) / std_gpu
+            # Reshape (bsz*3, 3, H, W) → (bsz, 9, H, W) (stack 3 frames as channels)
+            t = t.view(bsz, 3, 3, INPUT_H, INPUT_W).reshape(bsz, 9, INPUT_H, INPUT_W).contiguous()
+            # Run inference via IOBinding
+            y = torch.empty(bsz, FRAME_STACK, INPUT_H, INPUT_W,
+                             dtype=torch.float32, device=device)
+            io = self._session.io_binding()
+            io.bind_input(name=self._input_name, device_type="cuda",
+                          device_id=self._cuda_device_index,
+                          element_type=np.float32, shape=tuple(t.shape),
+                          buffer_ptr=t.data_ptr())
+            io.bind_output(name=self._session.get_outputs()[0].name,
+                           device_type="cuda", device_id=self._cuda_device_index,
+                           element_type=np.float32, shape=tuple(y.shape),
+                           buffer_ptr=y.data_ptr())
+            self._session.run_with_iobinding(io)
+            # Postprocess: sigmoid last-frame heatmap
+            last = torch.sigmoid(y[:, -1, :, :])
+            flat = last.view(bsz, -1)
+            max_vals, max_idx = flat.max(dim=1)
+            ys = (max_idx // INPUT_W).cpu().numpy()
+            xs = (max_idx % INPUT_W).cpu().numpy()
+            confs = max_vals.cpu().numpy()
+            for k, (i, _cx, _cy, _fi) in enumerate(batch):
+                conf_new = float(confs[k])
+                if conf_new < roi_threshold:
+                    continue
+                x0, y0, x1, y1 = roi_boxes[k]
+                # Map ROI-internal pixel back to full-frame normalized coords
+                px = x0 + (xs[k] + 0.5) * (x1 - x0) / INPUT_W
+                py = y0 + (ys[k] + 0.5) * (y1 - y0) / INPUT_H
+                x_norm = float(px) / W_full
+                y_norm = float(py) / H_full
+                # Only update if new conf > original
+                if conf_new > results[i]["confidence"]:
+                    results[i]["confidence"] = round(conf_new, 3)
+                    results[i]["x_norm"] = round(x_norm, 4)
+                    results[i]["y_norm"] = round(y_norm, 4)
+                    results[i]["visible"] = True
+                    results[i]["zone"] = coords_to_zone(x_norm, y_norm)
+                    promoted += 1
+            del t, y
+
+        if promoted:
+            logger.info("[wasb] ROI refinement promoted %d/%d uncertain frames",
+                         promoted, len(candidates))
+        return promoted
+
+    @staticmethod
+    def _compute_peak_prominence(last, max_idx):
+        """Per-sample peak prominence = center / (outer-ring mean) on 5x5 patch.
+
+        Real shuttle = sharp 3-5px point → prominence typically > 2-3 (center
+        much brighter than ring). Body / uniform / pole = broad activation
+        → prominence ~1.0 (center about same as ring).
+
+        Args:
+          last: (bsz, H, W) sigmoid heatmap on GPU
+          max_idx: (bsz,) flat argmax index
+
+        Returns:
+          (bsz,) prominence values, on the same device as `last`.
+        """
+        import torch
+        bsz, H, W = last.shape
+        device = last.device
+        pad = 2
+        last_pad = torch.nn.functional.pad(last, (pad, pad, pad, pad), value=0.0)
+        ys = (max_idx // W).long()
+        xs = (max_idx % W).long()
+        # gather (bsz, 5, 5) patches at padded coords
+        bidx = torch.arange(bsz, device=device)
+        rows = ys[:, None] + torch.arange(2 * pad + 1, device=device)[None, :]
+        cols = xs[:, None] + torch.arange(2 * pad + 1, device=device)[None, :]
+        patches = last_pad[
+            bidx[:, None, None],
+            rows[:, :, None].expand(bsz, 2 * pad + 1, 2 * pad + 1),
+            cols[:, None, :].expand(bsz, 2 * pad + 1, 2 * pad + 1),
+        ]
+        # outer ring = 5x5 minus inner 3x3 → 25 - 9 = 16 cells
+        ring_mask = torch.ones(2 * pad + 1, 2 * pad + 1, dtype=torch.bool, device=device)
+        ring_mask[pad - 1: pad + 2, pad - 1: pad + 2] = False
+        # broadcast and average
+        ring_vals = patches[:, ring_mask]  # (bsz, 16)
+        ring_mean = ring_vals.mean(dim=1).clamp_min(1e-4)
+        center = patches[:, pad, pad]
+        return center / ring_mean
+
+    def _filter_motion_outliers(
+        self,
+        results: list[dict],
+        W_full: int,
+        H_full: int,
+        max_jump_px: int = 200,
+        check_window: int = 2,
+    ) -> int:
+        """Honest detection rate enforcement.
+
+        A "visible" frame that sits >max_jump_px (in original frame coords)
+        from BOTH its nearest visible-and-positioned neighbours (within
+        ±check_window) is almost certainly a noise peak the model picked
+        because no real shuttle is in this frame. Demote it back to
+        invisible (visible=False, drop position, drop zone). Confidence
+        value is preserved so the user can still inspect why.
+
+        This is run BEFORE _smooth_temporal so the smoothing doesn't
+        propagate the bad position. Returns count demoted.
+
+        Default threshold 200 px on 1080p (~10.4% of width) corresponds to
+        ~12 m/s shuttle motion at 60fps — well above realistic limits for
+        all but the fastest smash. Adjust via threshold tuning if needed.
+        """
+        if len(results) < 3:
+            return 0
+        n = len(results)
+        demoted = 0
+        # Pre-compute pixel positions for visible frames
+        pos = [None] * n
+        for i, r in enumerate(results):
+            if r.get("visible") and r.get("x_norm") is not None and r.get("y_norm") is not None:
+                pos[i] = (r["x_norm"] * W_full, r["y_norm"] * H_full)
+        # Snapshot the visible flags so demotions inside this pass do not
+        # affect each other's neighbour-lookup.
+        for i in range(n):
+            if pos[i] is None:
+                continue
+            # find nearest visible neighbour on each side (within check_window)
+            left = None
+            for k in range(1, check_window + 1):
+                if i - k >= 0 and pos[i - k] is not None:
+                    left = pos[i - k]; break
+            right = None
+            for k in range(1, check_window + 1):
+                if i + k < n and pos[i + k] is not None:
+                    right = pos[i + k]; break
+            if left is None and right is None:
+                # isolated detection — leave alone (could be a brief shuttle
+                # entry into frame); only demote if BOTH sides disagree.
+                continue
+            x, y = pos[i]
+            left_jump = ((x - left[0]) ** 2 + (y - left[1]) ** 2) ** 0.5 if left else None
+            right_jump = ((x - right[0]) ** 2 + (y - right[1]) ** 2) ** 0.5 if right else None
+            # demote only if BOTH sides exist AND BOTH disagree (>max_jump_px),
+            # or if only one side exists AND it disagrees AND original conf
+            # was not high (avoid demoting confident isolated detects).
+            bad = False
+            if left_jump is not None and right_jump is not None:
+                if left_jump > max_jump_px and right_jump > max_jump_px:
+                    bad = True
+            elif left_jump is not None:
+                if left_jump > max_jump_px and results[i].get("confidence", 0) < 0.8:
+                    bad = True
+            elif right_jump is not None:
+                if right_jump > max_jump_px and results[i].get("confidence", 0) < 0.8:
+                    bad = True
+            if bad:
+                r = results[i]
+                r["visible"] = False
+                r["x_norm"] = None
+                r["y_norm"] = None
+                r["zone"] = None
+                # tag so downstream can distinguish from "never visible"
+                r["demoted_motion"] = True
+                demoted += 1
+        if demoted:
+            logger.info("[wasb] motion filter demoted %d frames (jumps > %d px)",
+                         demoted, max_jump_px)
+        return demoted
+
+    def _smooth_temporal(self, results: list[dict], soft_floor: float = 0.25,
+                          max_window: int = 3) -> None:
+        """In-place motion-aware temporal smoothing.
+
+        Two-pass algorithm:
+          1. For each non-visible frame in the soft band, find the nearest
+             visible neighbours within ±max_window. If both sides present,
+             estimate shuttle velocity from them and interpolate (or, if
+             only one side, extrapolate using shorter-range velocity).
+          2. Promote the frame to visible if interpolated position is on
+             the predicted shuttle trajectory (within reasonable range)
+             and original conf was at least soft_floor.
+
+        Compared to the previous ±1 window simple-average approach, this:
+          - widens the window to ±max_window (default 3) so brief 2-3 frame
+            occlusions can be bridged
+          - uses velocity-based extrapolation rather than midpoint
+          - allows lower soft_floor (0.25 default) because the position
+            prediction is more accurate
+          - is still O(N · max_window) so cheap on CPU
+        """
+        if len(results) < 2 * max_window + 1:
+            return
+        from backend.tracknet.zone_mapper import coords_to_zone
+        n = len(results)
+
+        def vis_with_pos(i):
+            r = results[i]
+            return (r["visible"] and r.get("x_norm") is not None
+                     and r.get("y_norm") is not None)
+
+        for i in range(n):
+            r = results[i]
+            if r["visible"]:
+                continue
+            if r["confidence"] < soft_floor:
+                continue
+            # find nearest visible neighbours
+            left_idx = None
+            for k in range(1, max_window + 1):
+                j = i - k
+                if j >= 0 and vis_with_pos(j):
+                    left_idx = j
+                    break
+            right_idx = None
+            for k in range(1, max_window + 1):
+                j = i + k
+                if j < n and vis_with_pos(j):
+                    right_idx = j
+                    break
+            if left_idx is None and right_idx is None:
+                continue
+
+            if left_idx is not None and right_idx is not None:
+                # linear interpolation between L and R based on i's position
+                L = results[left_idx]; R = results[right_idx]
+                t = (i - left_idx) / float(right_idx - left_idx)
+                x_norm = L["x_norm"] + t * (R["x_norm"] - L["x_norm"])
+                y_norm = L["y_norm"] + t * (R["y_norm"] - L["y_norm"])
+            elif left_idx is not None:
+                # extrapolate from left using a 2nd-to-the-left if available
+                L = results[left_idx]
+                ll_idx = None
+                for k in range(1, max_window + 1):
+                    j = left_idx - k
+                    if j >= 0 and vis_with_pos(j):
+                        ll_idx = j; break
+                if ll_idx is not None:
+                    LL = results[ll_idx]
+                    span = left_idx - ll_idx
+                    vx = (L["x_norm"] - LL["x_norm"]) / span
+                    vy = (L["y_norm"] - LL["y_norm"]) / span
+                    x_norm = L["x_norm"] + vx * (i - left_idx)
+                    y_norm = L["y_norm"] + vy * (i - left_idx)
+                else:
+                    # only one neighbour known — just copy (no velocity)
+                    x_norm = L["x_norm"]; y_norm = L["y_norm"]
+            else:  # only right_idx
+                R = results[right_idx]
+                rr_idx = None
+                for k in range(1, max_window + 1):
+                    j = right_idx + k
+                    if j < n and vis_with_pos(j):
+                        rr_idx = j; break
+                if rr_idx is not None:
+                    RR = results[rr_idx]
+                    span = rr_idx - right_idx
+                    vx = (RR["x_norm"] - R["x_norm"]) / span
+                    vy = (RR["y_norm"] - R["y_norm"]) / span
+                    x_norm = R["x_norm"] + vx * (i - right_idx)
+                    y_norm = R["y_norm"] + vy * (i - right_idx)
+                else:
+                    x_norm = R["x_norm"]; y_norm = R["y_norm"]
+
+            # clip to [0, 1]
+            x_norm = max(0.0, min(1.0, x_norm))
+            y_norm = max(0.0, min(1.0, y_norm))
+            r["visible"] = True
+            r["x_norm"] = round(x_norm, 4)
+            r["y_norm"] = round(y_norm, 4)
+            r["zone"] = coords_to_zone(x_norm, y_norm)
+
+    def _predict_frames_cpu(self, frames: list[np.ndarray]) -> list[dict]:
+        """非 GPU バックエンド用フォールバック (元の実装)。"""
+        from backend.tracknet.zone_mapper import coords_to_zone
+
+        n_triplets = len(frames) - FRAME_STACK + 1
+        results: list[dict] = []
+        batch = max(1, self._max_batch)
+        for start in range(0, n_triplets, batch):
+            end = min(start + batch, n_triplets)
+            batch_inp = self._preprocess_batch(frames, start, end)
+            try:
+                outputs = self._session.run(None, {self._input_name: batch_inp})
+            except Exception as exc:
+                logger.warning("[wasb] inference failed (batch %d-%d): %s", start, end, exc)
+                for idx in range(start, end):
+                    results.append({
+                        "frame_idx": idx + 1, "zone": None, "confidence": 0.0,
+                        "x_norm": None, "y_norm": None, "visible": False,
+                    })
+                continue
+
+            heatmaps = self._extract_last_frame_heatmaps(outputs)
+            for i, hm in enumerate(heatmaps):
+                conf, x_norm, y_norm = self._peak(hm)
+                visible = bool(conf >= self._visible_threshold)
+                zone = coords_to_zone(x_norm, y_norm) if visible else None
+                results.append({
+                    "frame_idx": start + i + 1,
+                    "zone": zone,
+                    "confidence": round(float(conf), 3),
+                    "x_norm": round(float(x_norm), 4) if visible else None,
+                    "y_norm": round(float(y_norm), 4) if visible else None,
+                    "visible": visible,
+                })
+        return results
+
+    # ─── 内部 ─────────────────────────────────────────────────────────
+
+    def _preprocess_batch(
+        self, frames: list[np.ndarray], start: int, end: int
+    ) -> np.ndarray:
+        """(B, 9, H, W) float32 を生成する。各 triplet を 3 枚スタック。"""
+        import cv2
+
+        batch = []
+        for i in range(start, end):
+            triplet = []
+            for j in range(FRAME_STACK):
+                f = frames[i + j]
+                resized = cv2.resize(f, (INPUT_W, INPUT_H))
+                rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
+                chw = np.transpose(rgb, (2, 0, 1))  # (3, H, W)
+                triplet.append(chw)
+            stacked = np.concatenate(triplet, axis=0)  # (9, H, W)
+            batch.append(stacked)
+        arr = np.stack(batch, axis=0).astype(np.float32)  # (B, 9, H, W)
+        # ImageNet 正規化を 3 ch ずつブロードキャストするため reshape して適用
+        b = arr.shape[0]
+        arr = arr.reshape(b, FRAME_STACK, 3, INPUT_H, INPUT_W)
+        arr = (arr - _MEAN) / _STD
+        arr = arr.reshape(b, FRAME_STACK * 3, INPUT_H, INPUT_W)
+        return arr
+
+    def _extract_last_frame_heatmaps(self, outputs) -> np.ndarray:
+        """モデル出力からスケール 0・最終フレームのヒートマップ (B, H, W) を取り出す。
+
+        WASB はマルチスケール出力で典型的に dict 風ではなく list[np.ndarray] を
+        返す。最初の出力 (最大解像度) を採用し、(B, 3, H, W) なら最終 ch を取る。
+        """
+        # outputs: ONNX Runtime は list[ndarray] を返す
+        primary = outputs[0]
+        arr = np.asarray(primary)
+        if arr.ndim == 4 and arr.shape[1] == FRAME_STACK:
+            # (B, 3, H, W) — 最後のフレームを採用
+            return arr[:, -1, :, :]
+        if arr.ndim == 4 and arr.shape[1] == 1:
+            return arr[:, 0, :, :]
+        if arr.ndim == 3:
+            return arr
+        # フォールバック: 任意次元を (B, H, W) に丸める
+        return arr.reshape(arr.shape[0], INPUT_H, INPUT_W)
+
+    def _peak(self, heatmap: np.ndarray) -> tuple[float, float, float]:
+        """(H, W) ヒートマップから (conf, x_norm, y_norm) を返す。"""
+        if heatmap.size == 0:
+            return 0.0, 0.0, 0.0
+        flat = int(np.argmax(heatmap))
+        h, w = heatmap.shape[-2], heatmap.shape[-1]
+        py, px = divmod(flat, w)
+        conf = float(heatmap[py, px])
+        x_norm = (px + 0.5) / w
+        y_norm = (py + 0.5) / h
+        return conf, x_norm, y_norm

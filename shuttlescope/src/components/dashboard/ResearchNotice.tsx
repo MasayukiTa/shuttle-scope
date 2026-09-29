@@ -1,0 +1,59 @@
+// 研究ページ用の注意バナーコンポーネント
+//
+// Design Language v1.2 §12 改訂:
+//   - 旧版は bg-amber-50 / bg-amber-950 等の色付き bg を持っており、
+//     ダークモードで見ても「明るい色のバー」が浮いて見える原因だった。
+//   - 新版: bg は常に N_GRAY (theme に追従)、warning の意味は **左罫線でなく**
+//     amber 色の **タイトル文字 + ⚠ アイコン** で示す。
+//     左罫線 縦バー方式は禁止 (詐欺サイト感)。
+import { useTranslation } from 'react-i18next'
+import { useIsLightMode } from '@/hooks/useIsLightMode'
+
+interface ResearchNoticeProps {
+  assumptions?: string
+  caution: string
+  reason?: string
+  promotionCriteria?: string
+  className?: string
+}
+
+export function ResearchNotice({
+  assumptions,
+  caution,
+  reason,
+  promotionCriteria,
+  className = '',
+}: ResearchNoticeProps) {
+  const { t } = useTranslation()
+  const isLight = useIsLightMode()
+
+  // bg / border は完全に N_GRAY (theme 連動)。
+  // warning 意味は タイトル文字色 (amber) で運ぶ。
+  // v2: crisp corner + hairline (--ss-border) + amber アクセントは左罫線でなく
+  // タイトル文字色のみで運ぶ方針は維持。コンテナは token 直参照に統一。
+  const containerClass = isLight
+    ? 'bg-white border border-[color:var(--ss-border)]'
+    : 'bg-gray-800 border border-[color:var(--ss-border)]'
+  const headingColor = isLight ? '#b45309' /* amber-700 */ : '#fbbf24' /* amber-400 */
+  const cautionColor = isLight ? '#374151' /* gray-700 */ : '#e2e8f0' /* gray-200 */
+  const subColor = isLight ? '#64748b' /* gray-500 */ : '#94a3b8' /* gray-400 */
+  const faintColor = isLight ? '#94a3b8' /* gray-400 */ : '#64748b' /* gray-500 */
+
+  return (
+    <div className={`rounded-ss-lg px-4 py-3 space-y-1 ${containerClass} ${className}`}>
+      <p className="text-[11px] font-semibold flex items-center gap-1" style={{ color: headingColor }}>
+        {t('auto.ResearchNotice.heading')}
+      </p>
+      <p className="text-[11px]" style={{ color: cautionColor }}>{caution}</p>
+      {assumptions && (
+        <p className="text-[10px]" style={{ color: subColor }}>{t('auto.ResearchNotice.assumptions', { v: assumptions })}</p>
+      )}
+      {reason && (
+        <p className="text-[10px]" style={{ color: faintColor }}>{t('auto.ResearchNotice.reason', { v: reason })}</p>
+      )}
+      {promotionCriteria && (
+        <p className="text-[10px]" style={{ color: faintColor }}>{t('auto.ResearchNotice.promotion', { v: promotionCriteria })}</p>
+      )}
+    </div>
+  )
+}

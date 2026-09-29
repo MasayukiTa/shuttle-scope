@@ -1,0 +1,594 @@
+{# 公開ステータス/メンテナンスページ。base から nav/footer を継承し、本文は
+   compute_public_status(db) が返す status dict をサーバサイドレンダリングする。
+   - JS 無効でも現在状態が読める（progressive enhancement）。
+   - {% block status_banner %} を空で上書きし、ページ自身ではバナーを出さない。
+   - 障害理由/タイトルは運用者入力なので autoescape に任せる（XSS 防止）。 #}
+{% extends "public/base.html.j2" %}
+
+{% set _is_en = (lang == 'en') %}
+{% set overall = status.overall|default('operational') %}
+
+{% block title %}{% if _is_en %}ShuttleScope | Status{% else %}ShuttleScope | 稼働状況{% endif %}{% endblock %}
+{% block meta_description %}{% if _is_en %}Current operational status, scheduled maintenance and incident history for ShuttleScope.{% else %}ShuttleScope の稼働状況・予定メンテナンス・障害履歴をお知らせします。{% endif %}{% endblock %}
+{% block canonical %}https://shuttle-scope.com{{ canonical_path }}{% endblock %}
+{% block og_url %}https://shuttle-scope.com{{ canonical_path }}{% endblock %}
+{% block og_title %}{% if _is_en %}ShuttleScope | Status{% else %}ShuttleScope | 稼働状況{% endif %}{% endblock %}
+{% block og_description %}{% if _is_en %}Current operational status and maintenance information.{% else %}現在の稼働状況とメンテナンス情報。{% endif %}{% endblock %}
+{% block robots %}{% if noindex %}<meta name="robots" content="noindex,nofollow">{% endif %}{% endblock %}
+
+{# ステータスページ自身ではトップバナーを出さない（全文を表示しているため）。 #}
+{% block status_banner %}{% endblock %}
+
+{% block extra_styles %}
+<style>
+  /* テーマ変数で light/dark 両対応 (base.html.j2 の :root / [data-theme=dark] — v2 tokens) */
+  body.public-status-page{ background: var(--ss-bg-app); }
+  .public-status-page .shell{max-width:920px;margin:0 auto;padding:32px 24px 56px;
+    color:var(--ss-t1);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Hiragino Sans","Yu Gothic UI",sans-serif;}
+  .public-status-page h1{margin:0 0 6px;font-size:clamp(1.6rem,3vw,2.2rem);line-height:1.2;letter-spacing:-.014em;font-weight:600;color:var(--ss-t1);}
+  .public-status-page .sub{color:var(--ss-t2);font-size:.92rem;margin-bottom:22px;}
+  /* 全体ステータス見出しパネル。飽和色背景なので文字は常に #fff (物理的可読性のため固定)。 */
+  .ss-hero{display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+    border-radius:var(--r-lg);padding:20px 22px;margin-bottom:24px;color:#fff;}
+  .ss-hero[data-sev="operational"]{background:var(--ss-success)}
+  .ss-hero[data-sev="degraded"]{background:var(--ss-warn)}
+  .ss-hero[data-sev="down"]{background:var(--ss-bad)}
+  .ss-hero .ss-bigdot{width:16px;height:16px;border-radius:50%;background:#fff;flex-shrink:0}
+  .ss-hero .ss-htxt{display:flex;flex-direction:column;gap:2px}
+  .ss-hero .ss-htitle{font-size:1.25rem;font-weight:600;color:#fff;line-height:1.3}
+  .ss-hero .ss-hsub{font-size:.85rem;color:rgba(255,255,255,.86)}
+  .public-status-page h2{font-size:1.12rem;font-weight:600;color:var(--ss-t1);margin:28px 0 12px;
+    display:flex;align-items:center;gap:9px}
+  .public-status-page h2 .cnt{font-size:.78rem;font-weight:700;color:var(--ss-t2);
+    background:var(--ss-surface-3);border-radius:var(--r-pill);padding:2px 9px}
+  /* カード */
+  .ss-card{background:var(--ss-surface-1);border:1px solid var(--ss-border);border-radius:var(--r-lg);box-shadow:var(--e1);
+    padding:16px 18px;margin-bottom:10px}
+  .ss-card .ss-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .ss-card .ss-title{font-weight:600;color:var(--ss-t1);font-size:1.02rem}
+  .ss-card .ss-reason{color:var(--ss-t2);line-height:1.7;margin-top:7px;font-size:.94rem}
+  .ss-card .ss-meta{color:var(--ss-t3);font-size:.82rem;margin-top:8px;display:flex;gap:14px;flex-wrap:wrap}
+  /* バッジ。飽和色背景 + 常に #fff (可読性のため固定)。 */
+  .ss-badge{font-size:.72rem;font-weight:700;letter-spacing:.02em;border-radius:var(--r-sm);
+    padding:3px 9px;color:#fff;white-space:nowrap}
+  .ss-badge.sev-critical{background:var(--ss-bad)}
+  .ss-badge.sev-major{background:var(--ss-warn)}
+  .ss-badge.sev-minor{background:var(--ss-brand)}
+  .ss-badge.st-investigating{background:var(--ss-warn)}
+  .ss-badge.st-identified{background:#7c3aed}
+  .ss-badge.st-monitoring{background:var(--ss-brand)}
+  .ss-badge.st-resolved{background:var(--ss-success)}
+  .ss-badge.mt-scheduled{background:var(--ss-brand)}
+  .ss-badge.mt-in_progress{background:var(--ss-warn)}
+  .ss-badge.mt-completed{background:var(--ss-success)}
+  .ss-badge.mt-canceled{background:var(--ss-t3)}
+  .ss-badge.outline{background:transparent;color:var(--ss-t2);border:1px solid var(--ss-border-strong)}
+  .ss-empty{color:var(--ss-t2);font-size:.92rem;background:var(--ss-surface-2);
+    border:1px dashed var(--ss-border-strong);border-radius:var(--r-lg);padding:16px 18px}
+  /* 障害履歴 / 更新情報: タイル乱立を避ける compact list (status.claude.com 風) */
+  .ss-list{background:var(--ss-surface-1);border:1px solid var(--ss-border);border-radius:var(--r-lg);box-shadow:var(--e1);
+    padding:2px 16px;margin-bottom:10px}
+  .ss-item{display:flex;gap:14px;align-items:baseline;padding:11px 0;border-top:1px solid var(--ss-border)}
+  .ss-item:first-child{border-top:none}
+  .ss-item .ss-when{color:var(--ss-t3);font-size:.78rem;white-space:nowrap;flex:0 0 92px;font-variant-numeric:tabular-nums}
+  .ss-item .ss-body{flex:1 1 auto;min-width:0}
+  .ss-item .ss-h{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .ss-item .ss-h .t{font-weight:600;color:var(--ss-t1);font-size:.95rem}
+  .ss-item .ss-d{color:var(--ss-t2);font-size:.86rem;line-height:1.6;margin-top:3px;
+    overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .ss-more{border-top:1px solid var(--ss-border)}
+  .ss-more>summary{cursor:pointer;color:var(--ss-brand);font-size:.85rem;list-style:none;
+    padding:11px 0;user-select:none}
+  .ss-more>summary::-webkit-details-marker{display:none}
+  .ss-more[open]>summary{color:var(--ss-t2)}
+  .ss-more .ss-item:first-child{border-top:none}
+  /* 障害履歴: クリックで原因・対策(reason)を展開する disclosure */
+  .ss-inc{border-top:1px solid var(--ss-border)}
+  .ss-inc:first-child,.ss-more .ss-inc:first-child{border-top:none}
+  .ss-inc-sum{display:flex;gap:14px;align-items:baseline;padding:11px 0;cursor:pointer;
+    list-style:none;user-select:none}
+  .ss-inc-sum::-webkit-details-marker{display:none}
+  .ss-inc-sum:focus-visible{outline:2px solid var(--ss-brand);outline-offset:2px;border-radius:var(--r-sm)}
+  .ss-inc-sum .ss-when{color:var(--ss-t3);font-size:.78rem;white-space:nowrap;flex:0 0 92px;font-variant-numeric:tabular-nums}
+  .ss-inc-sum .ss-body{flex:1 1 auto;min-width:0}
+  .ss-inc-sum .ss-h{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .ss-inc-sum .ss-h .t{font-weight:600;color:var(--ss-t1);font-size:.95rem}
+  .ss-inc-toggle{margin-left:auto;color:var(--ss-brand);font-size:.78rem;font-weight:600;
+    white-space:nowrap;display:inline-flex;align-items:center;gap:4px}
+  .ss-inc-toggle::after{content:"\25B8";transition:transform var(--dur-fast) var(--ease-out)}
+  .ss-inc[open] .ss-inc-toggle::after{transform:rotate(90deg)}
+  .ss-inc[open] .ss-inc-toggle .lbl-closed{display:none}
+  .ss-inc:not([open]) .ss-inc-toggle .lbl-open{display:none}
+  .ss-inc-detail{padding:2px 0 13px 106px;color:var(--ss-t2);font-size:.9rem;line-height:1.75;
+    white-space:pre-line}
+  @media(max-width:600px){
+    .ss-inc-sum{flex-direction:column;gap:3px}
+    .ss-inc-sum .ss-when{flex:none}
+    .ss-inc-toggle{margin-left:0}
+    .ss-inc-detail{padding-left:0}
+  }
+  /* スマホ: 日時を1段目・本文を2段目に積む (横並びだと本文が潰れて読めないため) */
+  @media(max-width:600px){
+    .ss-item{flex-direction:column;gap:3px}
+    .ss-item .ss-when{flex:none}
+    .ss-item .ss-d{display:block;-webkit-line-clamp:unset;overflow:visible}
+  }
+  /* 10分スロットをタップ/フォーカスした時の読み出し (モバイルは hover が無いため) */
+  .ss-slot-readout{min-height:1.2em;margin:8px 2px 2px;font-size:.86rem;color:var(--ss-t1);font-weight:600}
+  .ss-slot-readout:empty{display:none}
+  .ss-checked{margin-top:26px;color:var(--ss-t3);font-size:.82rem;text-align:center}
+  .ss-checked .ss-refresh-note{display:block;margin-top:4px;color:var(--ss-t3)}
+  @media(max-width:720px){
+    .public-status-page .shell{padding:18px 14px 44px}
+    .ss-hero{padding:18px}
+  }
+  /* コンポーネント一覧 (claude status 風: crisp radius / 余白重視) */
+  .ss-components{background:var(--ss-surface-1);border:1px solid var(--ss-border);border-radius:var(--r-lg);box-shadow:var(--e1);overflow:hidden}
+  .ss-comp{padding:15px 18px;border-top:1px solid var(--ss-border)}
+  .ss-comp:first-child{border-top:none}
+  .ss-comp-head{display:flex;align-items:center;gap:12px}
+  .ss-comp-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;background:var(--ss-t3)}
+  .ss-comp[data-st="operational"] .ss-comp-dot{background:var(--ss-success)}
+  .ss-comp[data-st="degraded"] .ss-comp-dot{background:var(--ss-warn)}
+  .ss-comp[data-st="down"] .ss-comp-dot{background:var(--ss-bad)}
+  .ss-comp-name{font-weight:600;color:var(--ss-t1);font-size:.96rem}
+  .ss-comp-detail{color:var(--ss-t2);font-size:.82rem;font-variant-numeric:tabular-nums}
+  .ss-comp-right{margin-left:auto;display:flex;align-items:center;gap:12px}
+  .ss-comp-uptime{color:var(--ss-t2);font-size:.8rem;font-variant-numeric:tabular-nums}
+  .ss-comp-badge{font-size:.72rem;font-weight:700;border-radius:var(--r-sm);padding:3px 9px;color:#fff;white-space:nowrap}
+  .ss-comp-badge.st-operational{background:var(--ss-success)}
+  .ss-comp-badge.st-degraded{background:var(--ss-warn)}
+  .ss-comp-badge.st-down{background:var(--ss-bad)}
+  .ss-comp-badge.st-unknown{background:var(--ss-t3)}
+  /* 90日稼働履歴バー (1 セグメント = 1 日)。各セグメントは <button> で、
+     クリック/Enter/Space でその日の 10分刻み詳細モーダルを開く。 */
+  .ss-bar{display:flex;gap:2px;margin-top:12px;height:30px;align-items:stretch}
+  .ss-bar-seg{flex:1 1 0;min-width:1px;border:none;padding:0;border-radius:1px;
+    background:var(--ss-border-strong);cursor:pointer;transition:opacity var(--dur-fast) var(--ease-out);-webkit-appearance:none;appearance:none}
+  .ss-bar-seg:hover{opacity:.6}
+  .ss-bar-seg:focus-visible{outline:2px solid var(--ss-brand);outline-offset:1px;opacity:.6}
+  .ss-bar-seg[data-st="operational"]{background:var(--ss-success)}
+  .ss-bar-seg[data-st="degraded"]{background:var(--ss-warn)}
+  .ss-bar-seg[data-st="down"]{background:var(--ss-bad)}
+  .ss-bar-seg[data-st="nodata"]{background:var(--ss-border-strong)}
+  .ss-bar-axis{display:flex;justify-content:space-between;margin-top:6px;color:var(--ss-t3);font-size:.72rem}
+  .ss-legend{display:flex;gap:16px;flex-wrap:wrap;margin:16px 2px 4px;color:var(--ss-t2);font-size:.78rem}
+  .ss-legend i{display:inline-block;width:10px;height:10px;border-radius:var(--r-sm);vertical-align:middle;margin-right:5px}
+  .ss-legend i[data-st="operational"]{background:var(--ss-success)}
+  .ss-legend i[data-st="degraded"]{background:var(--ss-warn)}
+  .ss-legend i[data-st="down"]{background:var(--ss-bad)}
+  .ss-legend i[data-st="nodata"]{background:var(--ss-border-strong)}
+  .ss-legend .ss-legend-scale{display:inline-flex;align-items:center;gap:6px}
+  .ss-legend .ss-grad{width:96px;height:10px;border-radius:var(--r-sm);margin:0;
+    background:linear-gradient(90deg,var(--ss-success) 0%,var(--ss-warn) 50%,var(--ss-bad) 100%)}
+  .ss-comp-note{color:var(--ss-t3);font-size:.8rem;margin:6px 2px 0}
+  @media(max-width:600px){.ss-comp-head{flex-wrap:wrap;gap:8px}.ss-comp-detail{width:100%;order:3}}
+
+  /* ── 日次ドリルダウン モーダル (10分スロット詳細) ── */
+  .ss-modal{position:fixed;inset:0;z-index:1000;display:none;align-items:flex-start;justify-content:center;
+    padding:5vh 16px 24px;background:rgba(16,24,40,.55);overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .ss-modal.open{display:flex}
+  .ss-modal-box{background:var(--ss-surface-1);border:1px solid var(--ss-border);border-radius:var(--r-lg);
+    width:100%;max-width:560px;box-shadow:var(--e3);overflow:hidden}
+  /* ヘッダは飽和色背景なので文字は常に #fff (light/dark とも物理的可読性のため固定) */
+  .ss-modal-head{display:flex;align-items:center;gap:10px;padding:16px 18px;color:#fff;
+    background:var(--ss-brand)}
+  .ss-modal-head .ss-mh-dot{width:11px;height:11px;border-radius:50%;flex-shrink:0;background:#fff}
+  .ss-modal-head .ss-mh-txt{display:flex;flex-direction:column;gap:2px;min-width:0}
+  .ss-modal-head .ss-mh-title{font-size:1.02rem;font-weight:600;color:#fff;line-height:1.25}
+  .ss-modal-head .ss-mh-sub{font-size:.8rem;color:rgba(255,255,255,.86);font-variant-numeric:tabular-nums}
+  .ss-modal-head .ss-mh-close{margin-left:auto;flex-shrink:0;width:32px;height:32px;border:none;cursor:pointer;
+    border-radius:var(--r-md);background:rgba(255,255,255,.16);color:#fff;display:flex;align-items:center;justify-content:center;
+    transition:background var(--dur-fast) var(--ease-out)}
+  .ss-modal-head .ss-mh-close:hover{background:rgba(255,255,255,.30)}
+  .ss-modal-head .ss-mh-close:focus-visible{outline:2px solid #fff;outline-offset:1px}
+  .ss-modal-head .ss-mh-close svg{width:18px;height:18px;display:block}
+  .ss-modal-body{padding:16px 18px 18px}
+  .ss-modal-summary{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+  .ss-sum-chip{font-size:.76rem;font-weight:700;color:var(--ss-t2);background:var(--ss-surface-2);
+    border:1px solid var(--ss-border);border-radius:var(--r-pill);padding:3px 10px;font-variant-numeric:tabular-nums}
+  .ss-sum-chip i{display:inline-block;width:9px;height:9px;border-radius:var(--r-sm);vertical-align:middle;margin-right:5px}
+  .ss-sum-chip i[data-st="operational"]{background:var(--ss-success)}
+  .ss-sum-chip i[data-st="degraded"]{background:var(--ss-warn)}
+  .ss-sum-chip i[data-st="down"]{background:var(--ss-bad)}
+  .ss-sum-chip i[data-st="nodata"]{background:var(--ss-border-strong)}
+  /* 144 スロット (10分×24h) を 12列グリッドで。各セルは色 + ホバー/フォーカスで時刻 tooltip */
+  .ss-slot-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:3px}
+  .ss-slot{position:relative;aspect-ratio:1/1;min-height:14px;border-radius:var(--r-sm);background:var(--ss-border-strong)}
+  .ss-slot[data-st="operational"]{background:var(--ss-success)}
+  .ss-slot[data-st="degraded"]{background:var(--ss-warn)}
+  .ss-slot[data-st="down"]{background:var(--ss-bad)}
+  .ss-slot[data-st="nodata"]{background:var(--ss-border-strong);opacity:.5}
+  .ss-slot:hover,.ss-slot:focus-visible{outline:2px solid var(--ss-t1);outline-offset:1px;z-index:2}
+  .ss-modal-state{color:var(--ss-t2);font-size:.86rem;padding:18px 2px;text-align:center}
+  .ss-modal-foot{color:var(--ss-t3);font-size:.75rem;margin-top:14px;line-height:1.6}
+  @media(max-width:480px){
+    .ss-slot-grid{grid-template-columns:repeat(8,1fr)}
+    .ss-modal{padding:2vh 10px 18px}
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<script>document.body.classList.add('public-status-page');</script>
+{% set sev_label = {'critical': ('重大','Critical'), 'major': ('重度','Major'), 'minor': ('軽微','Minor')} %}
+{% set inc_st_label = {'investigating': ('調査中','Investigating'), 'identified': ('原因特定','Identified'), 'monitoring': ('経過観察','Monitoring'), 'resolved': ('解決済み','Resolved')} %}
+{% set mnt_st_label = {'scheduled': ('予定','Scheduled'), 'in_progress': ('実施中','In progress'), 'completed': ('完了','Completed'), 'canceled': ('中止','Canceled')} %}
+{% set overall_label = {'operational': ('全システム正常稼働中','All systems operational'), 'degraded': ('一部機能が不安定です','Partial degradation'), 'down': ('障害が発生しています','Service disruption')} %}
+
+<div class="shell"
+     data-overall="{{ overall }}"
+     data-active="{{ status.active_incidents|length }}"
+     data-maint="{{ status.maintenance|length }}"
+     data-rmaint="{{ status.recent_maintenance|length }}">
+
+  <h1>{% if _is_en %}System Status{% else %}稼働状況{% endif %}</h1>
+  <p class="sub">{% if _is_en %}Current operational status, planned maintenance and recent incidents.{% else %}現在の稼働状況・予定メンテナンス・直近の障害履歴をお知らせします。{% endif %}</p>
+
+  <div class="ss-hero" data-sev="{{ overall }}">
+    <span class="ss-bigdot"></span>
+    <div class="ss-htxt">
+      <span class="ss-htitle">{{ overall_label.get(overall, ('',''))[1 if _is_en else 0] }}</span>
+      <span class="ss-hsub">{% if _is_en %}Last checked: {% else %}最終確認: {% endif %}<time class="ss-time" datetime="{{ status.checked_at }}">{{ status.checked_at }}</time></span>
+    </div>
+  </div>
+
+  {# システム構成コンポーネント (status.claude.com 風: 状態 + 負荷 + 90日稼働履歴バー) #}
+  {% if status.components %}
+  {% set comp_label = {'operational': ('正常','Operational'), 'degraded': ('低下','Degraded'), 'down': ('停止','Down'), 'unknown': ('不明','Unknown')} %}
+  <h2>{% if _is_en %}Components{% else %}システム構成{% endif %}</h2>
+  <div class="ss-components">
+    {% for c in status.components %}
+    <div class="ss-comp" data-st="{{ c.status }}">
+      <div class="ss-comp-head">
+        <span class="ss-comp-dot"></span>
+        <span class="ss-comp-name">{{ c.name_en if _is_en else c.name_ja }}</span>
+        {% if c.detail %}<span class="ss-comp-detail">{{ c.detail }}</span>{% endif %}
+        <span class="ss-comp-right">
+          {% if c.uptime_pct is not none %}<span class="ss-comp-uptime">{{ '%.2f'|format(c.uptime_pct) }}%{% if not _is_en %} 稼働{% else %} uptime{% endif %}</span>{% endif %}
+          <span class="ss-comp-badge st-{{ c.status }}">{{ comp_label.get(c.status, (c.status, c.status))[1 if _is_en else 0] }}</span>
+        </span>
+      </div>
+      {% if c.history %}
+      <div class="ss-bar" role="group" aria-label="{% if _is_en %}90-day uptime, select a day for 10-minute detail{% else %}直近90日の稼働履歴。日を選ぶと10分刻みの詳細を表示{% endif %}">
+        {% for d in c.history %}<button type="button" class="ss-bar-seg" data-st="{{ d.st }}"
+          {% if d.color %}style="background:{{ d.color }}"{% endif %}
+          data-day="{{ d.d }}" data-comp="{{ c.key }}" data-comp-name="{{ c.name_en if _is_en else c.name_ja }}"
+          title="{{ d.d }}" aria-label="{{ c.name_en if _is_en else c.name_ja }} {{ d.d }}"></button>{% endfor %}
+      </div>
+      <div class="ss-bar-axis"><span>{% if _is_en %}90 days ago{% else %}90日前{% endif %}</span><span>{% if _is_en %}Today{% else %}本日{% endif %}</span></div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  <div class="ss-legend">
+    <span class="ss-legend-scale">{% if _is_en %}Operational{% else %}正常{% endif %}<i class="ss-grad"></i>{% if _is_en %}Outage{% else %}停止{% endif %}</span>
+    <span><i data-st="nodata"></i>{% if _is_en %}No data{% else %}データなし{% endif %}</span>
+  </div>
+  <p class="ss-comp-note">{% if _is_en %}Sampled about every 10 minutes; uptime is over the last 90 days.{% else %}約10分ごとに自動サンプリング。稼働率は直近90日の割合です。{% endif %}</p>
+  {% endif %}
+
+  {# 予定メンテナンス #}
+  {% if status.maintenance %}
+  <h2>{% if _is_en %}Scheduled maintenance{% else %}予定メンテナンス{% endif %}<span class="cnt">{{ status.maintenance|length }}</span></h2>
+  {% for m in status.maintenance %}
+  <div class="ss-card">
+    <div class="ss-row">
+      <span class="ss-title">{{ m.title }}</span>
+      <span class="ss-badge mt-{{ m.status }}">{{ mnt_st_label.get(m.status, (m.status, m.status))[1 if _is_en else 0] }}</span>
+    </div>
+    {% if m.body %}<div class="ss-reason">{{ m.body }}</div>{% endif %}
+    <div class="ss-meta">
+      {% if m.scheduled_start %}<span>{% if _is_en %}From{% else %}開始{% endif %}: <time class="ss-time" datetime="{{ m.scheduled_start }}">{{ m.scheduled_start }}</time></span>{% endif %}
+      {% if m.scheduled_end %}<span>{% if _is_en %}To{% else %}終了{% endif %}: <time class="ss-time" datetime="{{ m.scheduled_end }}">{{ m.scheduled_end }}</time></span>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {# 進行中の障害 #}
+  <h2>{% if _is_en %}Active incidents{% else %}進行中の障害{% endif %}<span class="cnt">{{ status.active_incidents|length }}</span></h2>
+  {% if status.active_incidents %}
+  {% for i in status.active_incidents %}
+  <div class="ss-card">
+    <div class="ss-row">
+      <span class="ss-title">{{ i.title }}</span>
+      <span class="ss-badge sev-{{ i.severity }}">{{ sev_label.get(i.severity, (i.severity, i.severity))[1 if _is_en else 0] }}</span>
+      <span class="ss-badge st-{{ i.status }}">{{ inc_st_label.get(i.status, (i.status, i.status))[1 if _is_en else 0] }}</span>
+      {% if i.component %}<span class="ss-badge outline">{{ i.component }}</span>{% endif %}
+      {% if i.source == 'auto' %}<span class="ss-badge outline">{% if _is_en %}auto-detected{% else %}自動検知{% endif %}</span>{% endif %}
+    </div>
+    {% if i.reason %}<div class="ss-reason">{{ i.reason }}</div>{% endif %}
+    <div class="ss-meta">
+      {% if i.began_at %}<span>{% if _is_en %}Started{% else %}発生{% endif %}: <time class="ss-time" datetime="{{ i.began_at }}">{{ i.began_at }}</time></span>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+  {% else %}
+  <div class="ss-empty">{% if _is_en %}No active incidents. All monitored services are operating normally.{% else %}進行中の障害はありません。監視中のサービスは正常に稼働しています。{% endif %}</div>
+  {% endif %}
+
+  {# 更新情報 / お知らせ (運用者がキュレーションした公開フィード) #}
+  {% if status.announcements %}
+  <h2>{% if _is_en %}Updates{% else %}更新情報{% endif %}<span class="cnt">{{ status.announcements|length }}</span></h2>
+  <div class="ss-list">
+    {% for a in status.announcements %}
+    {% if loop.index == 6 and status.announcements|length > 5 %}<details class="ss-more"><summary>{% if _is_en %}Show {{ status.announcements|length - 5 }} more{% else %}残り{{ status.announcements|length - 5 }}件を表示{% endif %}</summary>{% endif %}
+    <div class="ss-item">
+      <span class="ss-when">{% if a.published_at %}<time class="ss-time" datetime="{{ a.published_at }}">{{ a.published_at }}</time>{% endif %}</span>
+      <div class="ss-body">
+        <div class="ss-h">{% if a.pinned %}<span class="ss-badge mt-scheduled">{% if _is_en %}Pinned{% else %}固定{% endif %}</span>{% endif %}<span class="t">{{ (a.title_en if _is_en and a.title_en else a.title) }}</span></div>
+        {% set _abody = (a.body_en if _is_en and a.body_en else a.body) %}{% if _abody %}<div class="ss-d">{{ _abody }}</div>{% endif %}
+      </div>
+    </div>
+    {% if loop.last and status.announcements|length > 5 %}</details>{% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {# 障害履歴 (解決済み含む直近) #}
+  {% set history = status.recent_incidents | rejectattr('status', 'equalto', 'resolved') | list %}
+  {% set resolved_hist = status.recent_incidents | selectattr('status', 'equalto', 'resolved') | list %}
+  {% if resolved_hist %}
+  <h2>{% if _is_en %}Recent history{% else %}障害履歴{% endif %}<span class="cnt">{{ resolved_hist|length }}</span></h2>
+  <div class="ss-list">
+    {% for i in resolved_hist %}
+    {% if loop.index == 6 and resolved_hist|length > 5 %}<details class="ss-more"><summary>{% if _is_en %}Show {{ resolved_hist|length - 5 }} more{% else %}残り{{ resolved_hist|length - 5 }}件を表示{% endif %}</summary>{% endif %}
+    {% if i.reason %}
+    {# reason がある履歴はクリックで原因・対策を展開 #}
+    <details class="ss-inc">
+      <summary class="ss-inc-sum">
+        <span class="ss-when">{% if i.began_at %}<time class="ss-time" datetime="{{ i.began_at }}">{{ i.began_at }}</time>{% endif %}</span>
+        <div class="ss-body">
+          <div class="ss-h"><span class="t">{{ i.title }}</span><span class="ss-badge sev-{{ i.severity }}">{{ sev_label.get(i.severity, (i.severity, i.severity))[1 if _is_en else 0] }}</span>{% if i.component %}<span class="ss-badge outline">{{ i.component }}</span>{% endif %}<span class="ss-inc-toggle"><span class="lbl-closed">{% if _is_en %}Details{% else %}詳細{% endif %}</span><span class="lbl-open">{% if _is_en %}Close{% else %}閉じる{% endif %}</span></span></div>
+        </div>
+      </summary>
+      <div class="ss-inc-detail">{{ i.reason }}</div>
+    </details>
+    {% else %}
+    <div class="ss-item">
+      <span class="ss-when">{% if i.began_at %}<time class="ss-time" datetime="{{ i.began_at }}">{{ i.began_at }}</time>{% endif %}</span>
+      <div class="ss-body">
+        <div class="ss-h"><span class="t">{{ i.title }}</span><span class="ss-badge sev-{{ i.severity }}">{{ sev_label.get(i.severity, (i.severity, i.severity))[1 if _is_en else 0] }}</span>{% if i.component %}<span class="ss-badge outline">{{ i.component }}</span>{% endif %}</div>
+      </div>
+    </div>
+    {% endif %}
+    {% if loop.last and resolved_hist|length > 5 %}</details>{% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {# メンテナンス履歴 (終了済み・完了/中止のメンテナンス枠) #}
+  {% if status.recent_maintenance %}
+  <h2>{% if _is_en %}Maintenance history{% else %}メンテナンス履歴{% endif %}<span class="cnt">{{ status.recent_maintenance|length }}</span></h2>
+  <div class="ss-list">
+    {% for m in status.recent_maintenance %}
+    {% if loop.index == 6 and status.recent_maintenance|length > 5 %}<details class="ss-more"><summary>{% if _is_en %}Show {{ status.recent_maintenance|length - 5 }} more{% else %}残り{{ status.recent_maintenance|length - 5 }}件を表示{% endif %}</summary>{% endif %}
+    {# 終了済みの表示ラベル: canceled は中止、それ以外 (実施済/期限超過) は完了扱い #}
+    {% set _mst = 'canceled' if m.status == 'canceled' else 'completed' %}
+    <div class="ss-item">
+      <span class="ss-when">{% if m.scheduled_start %}<time class="ss-time" datetime="{{ m.scheduled_start }}">{{ m.scheduled_start }}</time>{% endif %}</span>
+      <div class="ss-body">
+        <div class="ss-h"><span class="t">{{ m.title }}</span><span class="ss-badge mt-{{ _mst }}">{{ mnt_st_label.get(_mst, (_mst, _mst))[1 if _is_en else 0] }}</span></div>
+        {% if m.body %}<div class="ss-d">{{ m.body }}</div>{% endif %}
+        <div class="ss-d">{% if _is_en %}Window{% else %}実施期間{% endif %}: <time class="ss-time" datetime="{{ m.scheduled_start }}">{{ m.scheduled_start }}</time>{% if m.scheduled_end %} – <time class="ss-time" datetime="{{ m.scheduled_end }}">{{ m.scheduled_end }}</time>{% endif %}</div>
+      </div>
+    </div>
+    {% if loop.last and status.recent_maintenance|length > 5 %}</details>{% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <p class="ss-checked">
+    <span>{% if _is_en %}All times are shown in Japan Standard Time (JST).{% else %}時刻はすべて日本標準時 (JST) で表示しています。{% endif %}</span>
+    <span class="ss-refresh-note">{% if _is_en %}This page refreshes automatically when the status changes.{% else %}状況が変化すると自動的に再読み込みされます。{% endif %}</span>
+  </p>
+</div>
+
+{# 日次ドリルダウン用モーダル (10分スロット詳細)。中身は JS が安全に構築する
+   (textContent / dataset のみ。サーバ文字列の innerHTML 挿入はしない)。 #}
+<div class="ss-modal" id="ss-day-modal" role="dialog" aria-modal="true" aria-labelledby="ss-mh-title" hidden>
+  <div class="ss-modal-box">
+    <div class="ss-modal-head">
+      <span class="ss-mh-dot"></span>
+      <div class="ss-mh-txt">
+        <span class="ss-mh-title" id="ss-mh-title"></span>
+        <span class="ss-mh-sub" id="ss-mh-sub"></span>
+      </div>
+      <button type="button" class="ss-mh-close" id="ss-mh-close"
+        aria-label="{% if _is_en %}Close{% else %}閉じる{% endif %}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div class="ss-modal-body">
+      <div class="ss-modal-summary" id="ss-modal-summary"></div>
+      <div class="ss-modal-state" id="ss-modal-state"></div>
+      <div class="ss-slot-grid" id="ss-slot-grid" role="img"></div>
+      <div class="ss-slot-readout" id="ss-slot-readout" aria-live="polite"></div>
+      <p class="ss-modal-foot" id="ss-modal-foot"></p>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// サーバは naive UTC の ISO 文字列 (例 "2026-06-05T01:23:45", オフセット無し) を出力する。
+// これを必ず JST (Asia/Tokyo) の "yyyy-MM-dd HH:mm:ss (JST)" で表示する。
+// 注意: オフセット無し ISO を new Date() に渡すとブラウザのローカル時刻と解釈されるため、
+// タイムゾーン指定が無い場合は 'Z' を付けて UTC として解釈させる。
+(function(){
+  function fmt(iso){
+    if(!iso) return '';
+    var s=(/[zZ]$|[+-]\d\d:?\d\d$/.test(iso)) ? iso : iso+'Z';  // naive は UTC とみなす
+    var d=new Date(s);
+    if(isNaN(d.getTime())) return iso;
+    try{
+      var parts=new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',
+        year:'numeric',month:'2-digit',day:'2-digit',
+        hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).formatToParts(d);
+      var m={};parts.forEach(function(p){m[p.type]=p.value;});
+      return m.year+'-'+m.month+'-'+m.day+' '+m.hour+':'+m.minute+':'+m.second+' (JST)';
+    }catch(e){return iso;}
+  }
+  document.querySelectorAll('time.ss-time').forEach(function(t){
+    var iso=t.getAttribute('datetime');var s=fmt(iso);if(s)t.textContent=s;
+  });
+  // 状況が初期レンダリング時と変わったら自動再読み込み（手動 DOM 構築を避け XSS 余地を作らない）。
+  var shell=document.querySelector('.shell');
+  if(!shell) return;
+  var init={o:shell.getAttribute('data-overall'),a:shell.getAttribute('data-active'),m:shell.getAttribute('data-maint'),rm:shell.getAttribute('data-rmaint')};
+  function poll(){
+    fetch('/api/public/status',{headers:{'Accept':'application/json'}}).then(function(r){
+      return r.ok?r.json():null;
+    }).then(function(d){
+      if(!d) return;
+      var changed=(d.overall||'operational')!==init.o
+        || String((d.active_incidents||[]).length)!==init.a
+        || String((d.maintenance||[]).length)!==init.m
+        || String((d.recent_maintenance||[]).length)!==init.rm;
+      if(changed){location.reload();}
+    }).catch(function(){});
+  }
+  setInterval(poll,60000);
+})();
+
+// ── 日次バーのドリルダウン: クリックでその日の 10分刻み詳細を取得して表示 ──
+// セキュリティ: API は粗い状態 (operational/degraded/down/nodata) のみ返す。
+// DOM は textContent / setAttribute のみで構築し、サーバ文字列を innerHTML に流さない。
+(function(){
+  var EN = (document.documentElement.lang === 'en');
+  var L = EN ? {
+    op:'Operational', dg:'Degraded', dn:'Outage', nd:'No data',
+    loading:'Loading…', failed:'Could not load detail. Please try again later.',
+    noData:'No samples were recorded on this day.',
+    foot:'Each cell is a 10-minute window (144 per day). Tap or focus a cell to see its time and status. Times are JST.',
+    subFmt:function(d){return d;}
+  } : {
+    op:'正常', dg:'低下', dn:'停止', nd:'データなし',
+    loading:'読み込み中…', failed:'詳細を取得できませんでした。時間をおいて再度お試しください。',
+    noData:'この日に記録されたサンプルはありません。',
+    foot:'1 マスは 10 分間 (1 日 144 マス)。マスをタップ/フォーカスすると時刻と状態を表示します。時刻は JST です。',
+    subFmt:function(d){return d;}
+  };
+  var ST_LABEL={operational:L.op,degraded:L.dg,down:L.dn,nodata:L.nd};
+
+  var modal=document.getElementById('ss-day-modal');
+  if(!modal) return;
+  var box=modal.querySelector('.ss-modal-box');
+  var elTitle=document.getElementById('ss-mh-title');
+  var elSub=document.getElementById('ss-mh-sub');
+  var elSummary=document.getElementById('ss-modal-summary');
+  var elState=document.getElementById('ss-modal-state');
+  var elGrid=document.getElementById('ss-slot-grid');
+  var elFoot=document.getElementById('ss-modal-foot');
+  var elReadout=document.getElementById('ss-slot-readout');
+  var btnClose=document.getElementById('ss-mh-close');
+  var lastFocus=null, reqSeq=0;
+
+  // naive UTC ISO ("2026-06-05T01:20:00", オフセット無し) を JST "HH:mm" に変換。
+  function jstHM(iso){
+    if(!iso) return '';
+    var s=(/[zZ]$|[+-]\d\d:?\d\d$/.test(iso))?iso:iso+'Z';
+    var d=new Date(s);
+    if(isNaN(d.getTime())) return '';
+    try{
+      var p=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Tokyo',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(d);
+      var m={};p.forEach(function(x){m[x.type]=x.value;});
+      return m.hour+':'+m.minute;
+    }catch(e){return '';}
+  }
+  function clear(el){while(el.firstChild)el.removeChild(el.firstChild);}
+
+  function openModal(){
+    lastFocus=document.activeElement;
+    modal.hidden=false; modal.classList.add('open');
+    document.body.style.overflow='hidden';
+    btnClose.focus();
+  }
+  function closeModal(){
+    modal.classList.remove('open'); modal.hidden=true;
+    document.body.style.overflow='';
+    if(lastFocus && lastFocus.focus) lastFocus.focus();
+  }
+
+  function renderSummary(summary){
+    clear(elSummary);
+    [['operational',summary.operational],['degraded',summary.degraded],['down',summary.down],['nodata',summary.nodata]]
+      .forEach(function(pair){
+        var st=pair[0], n=pair[1]||0;
+        if(!n) return; // 0 件のカテゴリは出さない
+        var chip=document.createElement('span'); chip.className='ss-sum-chip';
+        var sw=document.createElement('i'); sw.setAttribute('data-st',st); chip.appendChild(sw);
+        chip.appendChild(document.createTextNode((ST_LABEL[st]||st)+' '+n));
+        elSummary.appendChild(chip);
+      });
+  }
+
+  function renderSlots(slots){
+    clear(elGrid);
+    var frag=document.createDocumentFragment();
+    slots.forEach(function(s){
+      var cell=document.createElement('span');
+      cell.className='ss-slot';
+      cell.setAttribute('data-st', s.st);
+      if(s.color){ cell.style.background=s.color; }
+      cell.setAttribute('tabindex','0');
+      var hm=jstHM(s.t);
+      var lbl=hm+' '+(ST_LABEL[s.st]||s.st);
+      cell.setAttribute('title', lbl);
+      cell.setAttribute('aria-label', lbl);
+      cell.dataset.lbl = lbl;
+      frag.appendChild(cell);
+    });
+    elGrid.appendChild(frag);
+  }
+
+  function loadDay(day, comp, compName){
+    var mySeq=++reqSeq;
+    // ヘッダ: コンポーネント名 + 日付。compName/day はクリックされた要素の dataset
+    // (サーバが autoescape 済みで描画した属性値) を textContent で入れる。
+    elTitle.textContent=compName||'';
+    elSub.textContent=L.subFmt(day);
+    elGrid.setAttribute('aria-label', (compName||'')+' '+day);
+    clear(elSummary); clear(elGrid); elFoot.textContent=''; elReadout.textContent='';
+    elState.textContent=L.loading;
+    openModal();
+    // クリックされたバーの component に絞って取得する (各バーは component 別)。
+    var url='/api/public/status/day?day='+encodeURIComponent(day);
+    if(comp) url+='&component='+encodeURIComponent(comp);
+    fetch(url,{headers:{'Accept':'application/json'}})
+      .then(function(r){return r.ok?r.json():null;})
+      .then(function(d){
+        if(mySeq!==reqSeq) return; // 連打: 最新リクエストのみ反映
+        if(!d || !d.slots){elState.textContent=L.failed; return;}
+        renderSummary(d.summary||{});
+        renderSlots(d.slots);
+        elState.textContent = d.has_data ? '' : L.noData;
+        elFoot.textContent=L.foot;
+      })
+      .catch(function(){ if(mySeq===reqSeq) elState.textContent=L.failed; });
+  }
+
+  // 各セグメント (button.ss-bar-seg) のクリック。data-* から日付/コンポーネントを取得。
+  document.querySelectorAll('.ss-bar-seg').forEach(function(seg){
+    seg.addEventListener('click', function(){
+      loadDay(seg.getAttribute('data-day'), seg.getAttribute('data-comp'),
+              seg.getAttribute('data-comp-name'));
+    });
+  });
+
+  // 10分スロットをタップ/フォーカスすると時刻+状態を読み出し表示 (モバイルは hover 不可)。
+  function showSlot(e){ var c=e.target.closest('.ss-slot'); if(c && c.dataset.lbl) elReadout.textContent=c.dataset.lbl; }
+  elGrid.addEventListener('click', showSlot);
+  elGrid.addEventListener('focusin', showSlot);
+
+  btnClose.addEventListener('click', closeModal);
+  // 背景クリックで閉じる (ボックス内クリックは無視)
+  modal.addEventListener('click', function(e){ if(e.target===modal) closeModal(); });
+  document.addEventListener('keydown', function(e){
+    if(e.key==='Escape' && modal.classList.contains('open')) closeModal();
+  });
+})();
+</script>
+{% endblock %}

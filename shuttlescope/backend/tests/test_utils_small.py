@@ -1,0 +1,338 @@
+"""C5: small unit tests for backend/utils modules."""
+from __future__ import annotations
+
+import pytest
+from starlette.requests import Request
+
+from backend.utils import control_plane as cp
+from backend.utils import field_sensitivity as fs
+from backend.utils import match_players as mp
+
+
+class TestFieldSensitivity:
+    # Round 258 R2 で `analyst=4 / coach=3` から `analyst=1 / coach=1` に縮小。
+    # 医療自由記述・体組成の漏洩経路を遮断するための変更。テスト assert を新仕様に同期。
+    # impl 側 backend/utils/field_sensitivity.py:77-82 が一次ソース。
+    def test_get_max_tier_known_roles(self):
+        assert fs.get_max_tier("admin") == 4
+        assert fs.get_max_tier("analyst") == 1
+        assert fs.get_max_tier("coach") == 1
+        assert fs.get_max_tier("player") == 2
+
+    def test_get_max_tier_unknown_or_none(self):
+        assert fs.get_max_tier(None) == 0
+        assert fs.get_max_tier("") == 0
+        assert fs.get_max_tier("unknown") == 0
+
+    def test_filter_keeps_tier0_ids(self):
+        row = {"id": 1, "player_id": 5, "measured_at": "2026-01-01"}
+        assert fs.filter_condition_fields(row, "player") == row
+
+    def test_filter_drops_higher_tier_for_player(self):
+        row = {
+            "id": 1,
+            "hooper_fatigue": 3,
+            "weight_kg": 70.0,
+            "injury_notes": "sprain",
+        }
+        got = fs.filter_condition_fields(row, "player")
+        assert "weight_kg" not in got
+        assert "injury_notes" not in got
+        # player は Tier 2 まで → hooper_fatigue (Tier 2) は OK
+        assert got["hooper_fatigue"] == 3
+
+    def test_filter_coach_does_not_see_body_composition_or_medical(self):
+        # Round 258 R2: coach=Tier 1 縮小により weight_kg / injury_notes 両方 drop。
+        # 旧テスト名 (`..._but_not_medical`) は 4→3 時代の前提だったため改名。
+        row = {"weight_kg": 70.0, "injury_notes": "sprain"}
+        got = fs.filter_condition_fields(row, "coach")
+        assert "weight_kg" not in got
+        assert "injury_notes" not in got
+
+    def test_filter_analyst_only_sees_tier_le_1(self):
+        # Round 258 R2: analyst=Tier 1 縮小により Tier 2+ は全て drop。
+        # CONDITION_FIELD_TIERS で Tier 1 は `validity_flag` のみ (他は派生 score)。
+        # weight_kg=Tier 3, injury_notes=Tier 4, general_comment=Tier 4 → 全 drop。
+        # 旧テスト名 (`..._sees_all`) は廃止し、Tier 1 だけ可視であることを assert する。
+        row = {
+            "validity_flag": True,   # Tier 1 → keep
+            "weight_kg": 70.0,        # Tier 3 → drop
+            "injury_notes": "sprain", # Tier 4 → drop
+            "general_comment": "ok",  # Tier 4 → drop
+        }
+        got = fs.filter_condition_fields(row, "analyst")
+        assert "weight_kg" not in got
+        assert "injury_notes" not in got
+        assert "general_comment" not in got
+        assert got.get("validity_flag") is True
+
+    def test_filter_unknown_field_defaults_to_tier0(self):
+        row = {"brand_new_field": "value"}
+        assert fs.filter_condition_fields(row, "player") == row
+
+    def test_analyst_can_see_body_data_only_if_consented(self):
+        # owner が body_disclose_to_analyst 同意してれば analyst も Tier 3 まで OK
+        row = {"validity_flag": True, "weight_kg": 70.0, "injury_notes": "x"}
+        # 同意なし → Tier 1 のまま
+        got_no = fs.filter_condition_fields(row, "analyst", None)
+        assert "weight_kg" not in got_no
+        # 同意あり → Tier 3 まで → weight_kg は OK, injury_notes (Tier 4) はまだ drop
+        got_yes = fs.filter_condition_fields(row, "analyst", {"body_disclose_to_analyst": True})
+        assert got_yes.get("weight_kg") == 70.0
+        assert "injury_notes" not in got_yes
+
+    def test_coach_default_off_for_body_data(self):
+        # coach は default で body を見られない (同意なしは Tier 1)
+        row = {"weight_kg": 70.0}
+        assert "weight_kg" not in fs.filter_condition_fields(row, "coach", None)
+        # 同意 True なら Tier 3 まで
+        assert fs.filter_condition_fields(row, "coach", {"body_disclose_to_coach": True}).get("weight_kg") == 70.0
+        # 別 type の同意 (analyst 用) では coach には開放されない
+        assert "weight_kg" not in fs.filter_condition_fields(row, "coach", {"body_disclose_to_analyst": True})
+
+    def test_admin_unaffected_by_consents(self):
+        row = {"weight_kg": 70.0, "injury_notes": "x"}
+        assert fs.filter_condition_fields(row, "admin", None) == row
+
+
+class TestMatchPlayers:
+    def _mk_match(self, db, **kwargs):
+        from datetime import date as _date
+
+        from backend.db.models import Match
+
+        kwargs.setdefault("tournament", "t")
+        kwargs.setdefault("tournament_level", "other")
+        kwargs.setdefault("round", "F")
+        kwargs.setdefault("date", _date(2026, 1, 1))
+        kwargs.setdefault("format", "singles")
+        kwargs.setdefault("result", "win")
+        m = Match(**kwargs)
+        db.add(m)
+        db.commit()
+        db.refresh(m)
+        return m
+
+    def test_players_for_match_none(self, test_engine):
+        from sqlalchemy.orm import sessionmaker
+
+        Session = sessionmaker(bind=test_engine)
+        with Session() as s:
+            assert mp.players_for_match(s, None) == []
+
+    def test_players_for_match_missing(self, test_engine):
+        from sqlalchemy.orm import sessionmaker
+
+        Session = sessionmaker(bind=test_engine)
+        with Session() as s:
+            assert mp.players_for_match(s, 999999) == []
+
+    def test_players_for_match_singles(self, test_engine):
+        from sqlalchemy.orm import sessionmaker
+
+        from backend.db.models import Player
+
+        Session = sessionmaker(bind=test_engine)
+        with Session() as s:
+            pa = Player(name="A")
+            pb = Player(name="B")
+            s.add_all([pa, pb])
+            s.commit()
+            m = self._mk_match(s, player_a_id=pa.id, player_b_id=pb.id)
+            ids = mp.players_for_match(s, m.id)
+            assert sorted(ids) == sorted([pa.id, pb.id])
+
+    def test_players_for_match_doubles(self, test_engine):
+        from sqlalchemy.orm import sessionmaker
+
+        from backend.db.models import Player
+
+        Session = sessionmaker(bind=test_engine)
+        with Session() as s:
+            players = [Player(name=n) for n in ("A", "B", "C", "D")]
+            s.add_all(players)
+            s.commit()
+            m = self._mk_match(
+                s,
+                player_a_id=players[0].id,
+                partner_a_id=players[1].id,
+                player_b_id=players[2].id,
+                partner_b_id=players[3].id,
+            )
+            ids = mp.players_for_match(s, m.id)
+            assert sorted(ids) == sorted([p.id for p in players])
+
+    def test_players_for_set_and_rally(self, test_engine):
+        from sqlalchemy.orm import sessionmaker
+
+        from backend.db.models import GameSet, Player, Rally
+
+        Session = sessionmaker(bind=test_engine)
+        with Session() as s:
+            pa = Player(name="A")
+            pb = Player(name="B")
+            s.add_all([pa, pb])
+            s.commit()
+            m = self._mk_match(s, player_a_id=pa.id, player_b_id=pb.id)
+            gs = GameSet(match_id=m.id, set_num=1)
+            s.add(gs)
+            s.commit()
+            r = Rally(
+                set_id=gs.id,
+                rally_num=1,
+                server="player_a",
+                winner="player_a",
+                end_type="ace",
+                rally_length=1,
+            )
+            s.add(r)
+            s.commit()
+
+            assert sorted(mp.players_for_set(s, gs.id)) == sorted([pa.id, pb.id])
+            assert sorted(mp.players_for_rally(s, r.id)) == sorted([pa.id, pb.id])
+            assert mp.players_for_set(s, None) == []
+            assert mp.players_for_rally(s, None) == []
+            assert mp.players_for_set(s, 999999) == []
+            assert mp.players_for_rally(s, 999999) == []
+
+
+def _mk_request(headers: dict | None = None, client_host: str | None = "127.0.0.1") -> Request:
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/",
+        "headers": [(k.lower().encode(), v.encode()) for k, v in (headers or {}).items()],
+        "client": (client_host, 50000) if client_host is not None else None,
+    }
+    return Request(scope)
+
+
+class TestControlPlane:
+    def test_loopback_detection(self):
+        assert cp.is_loopback_request(_mk_request(client_host="127.0.0.1")) is True
+        assert cp.is_loopback_request(_mk_request(client_host="::1")) is True
+        assert cp.is_loopback_request(_mk_request(client_host="8.8.8.8")) is False
+
+    def test_cf_connecting_ip_ignored_by_control_plane(self):
+        # Round 258 R7 P0 fix: control-plane decisions (`is_loopback_request` /
+        # `is_trusted_cluster_request`) は **proxy headers を無視** する設計に変更。
+        # 攻撃者が CF-Connecting-IP / X-Forwarded-For を spoof しても、socket peer が
+        # loopback であれば loopback と判定される (= 内部信頼境界は socket レベル)。
+        # 旧テスト名 (`overrides_client`) は古い「CF が socket を上書き」前提だったため改名。
+        r = _mk_request({"CF-Connecting-IP": "8.8.8.8"}, client_host="127.0.0.1")
+        # socket=127.0.0.1 → loopback (CF header は無視される)
+        assert cp.is_loopback_request(r) is True
+
+    def test_trusted_subnet(self, monkeypatch):
+        monkeypatch.setattr(cp, "_TRUSTED_PREFIXES", ["192.168.100."])
+        r = _mk_request(client_host="192.168.100.5")
+        assert cp.is_trusted_cluster_request(r) is True
+        r2 = _mk_request(client_host="10.0.0.1")
+        assert cp.is_trusted_cluster_request(r2) is False
+
+    def test_operator_token_valid(self, monkeypatch):
+        monkeypatch.setattr(cp, "_OPERATOR_TOKEN", "secret123")
+        r = _mk_request({"X-Operator-Token": "secret123"}, client_host="8.8.8.8")
+        assert cp._has_valid_operator_token(r) is True
+
+    def test_operator_token_mismatch(self, monkeypatch):
+        monkeypatch.setattr(cp, "_OPERATOR_TOKEN", "secret123")
+        r = _mk_request({"X-Operator-Token": "wrong"}, client_host="8.8.8.8")
+        assert cp._has_valid_operator_token(r) is False
+
+    def test_operator_token_empty_config(self, monkeypatch):
+        monkeypatch.setattr(cp, "_OPERATOR_TOKEN", "")
+        r = _mk_request({"X-Operator-Token": "anything"}, client_host="8.8.8.8")
+        assert cp._has_valid_operator_token(r) is False
+
+    def test_require_local_allows_loopback(self):
+        cp.require_local_or_operator_token(_mk_request(client_host="127.0.0.1"))
+
+    def test_require_local_allows_trusted_subnet(self, monkeypatch):
+        monkeypatch.setattr(cp, "_TRUSTED_PREFIXES", ["10.10."])
+        cp.require_local_or_operator_token(_mk_request(client_host="10.10.0.5"))
+
+    def test_require_local_allows_operator_token(self, monkeypatch):
+        monkeypatch.setattr(cp, "_OPERATOR_TOKEN", "tok")
+        monkeypatch.setattr(cp, "_TRUSTED_PREFIXES", [])
+        cp.require_local_or_operator_token(
+            _mk_request({"X-Operator-Token": "tok"}, client_host="8.8.8.8")
+        )
+
+    def test_require_local_rejects_external(self, monkeypatch):
+        from fastapi import HTTPException
+
+        monkeypatch.setattr(cp, "_OPERATOR_TOKEN", "")
+        monkeypatch.setattr(cp, "_TRUSTED_PREFIXES", [])
+        with pytest.raises(HTTPException) as exc:
+            cp.require_local_or_operator_token(_mk_request(client_host="8.8.8.8"))
+        assert exc.value.status_code == 403
+
+    def test_allow_helpers(self, monkeypatch):
+        # operator token 未設定 (dev) の挙動を確かめるテストなので、
+        # **明示的にその状態を作る**。以前は素で走らせており、CI に
+        # `.env.development` が無いおかげで通っていただけだった。
+        # ローカルには 43 文字の token が入っているので、同じコードが
+        # 手元でだけ落ちる (実際に落ちた)。環境で結果が変わるテストは、
+        # 何を保証しているのか読めない。
+        monkeypatch.setattr(cp, "_OPERATOR_TOKEN", "")
+        r_local = _mk_request(client_host="127.0.0.1")
+        r_ext = _mk_request(client_host="8.8.8.8")
+        assert cp.allow_legacy_header_auth(r_local) is True
+        assert cp.allow_legacy_header_auth(r_ext) is False
+        assert cp.allow_select_login(r_local) is True
+        assert cp.allow_seed_admin(r_local) is True
+        assert cp.allow_local_file_control(r_local) is True
+        assert cp.allow_local_file_control(r_ext) is False
+
+    def test_operator_token_is_a_second_factor_on_loopback(self, monkeypatch):
+        """token が設定されていれば、loopback だけでは X-Role 経路を通さない。
+
+        S-11: X-Role フォールバックは admin を名乗れば `admin_mfa_ok=True` を
+        無条件に得る。それが許されるのは、この二要素ガードが効いている
+        前提があってこそなので、前提そのものを固定しておく。
+        """
+        monkeypatch.setattr(cp, "_OPERATOR_TOKEN", "tok")
+        assert cp.allow_legacy_header_auth(_mk_request(client_host="127.0.0.1")) is False
+        assert cp.allow_legacy_header_auth(
+            _mk_request({"X-Operator-Token": "tok"}, client_host="127.0.0.1")
+        ) is True
+        # token が一致しても loopback でなければ通らない
+        assert cp.allow_legacy_header_auth(
+            _mk_request({"X-Operator-Token": "tok"}, client_host="8.8.8.8")
+        ) is False
+
+    def test_require_local_operator_or_admin_allows_loopback(self):
+        cp.require_local_operator_or_admin(_mk_request(client_host="127.0.0.1"))
+
+    def test_require_local_operator_or_admin_allows_operator_token(self, monkeypatch):
+        monkeypatch.setattr(cp, "_OPERATOR_TOKEN", "tok")
+        monkeypatch.setattr(cp, "_TRUSTED_PREFIXES", [])
+        cp.require_local_operator_or_admin(
+            _mk_request({"X-Operator-Token": "tok"}, client_host="8.8.8.8")
+        )
+
+    def test_require_local_operator_or_admin_allows_admin_jwt(self, monkeypatch):
+        monkeypatch.setattr(cp, "_OPERATOR_TOKEN", "")
+        monkeypatch.setattr(cp, "_TRUSTED_PREFIXES", [])
+        monkeypatch.setattr(cp, "_is_admin_jwt", lambda _req: True)
+        cp.require_local_operator_or_admin(_mk_request(client_host="8.8.8.8"))
+
+    def test_require_local_operator_or_admin_rejects_non_admin_jwt(self, monkeypatch):
+        from fastapi import HTTPException
+        monkeypatch.setattr(cp, "_OPERATOR_TOKEN", "")
+        monkeypatch.setattr(cp, "_TRUSTED_PREFIXES", [])
+        monkeypatch.setattr(cp, "_is_admin_jwt", lambda _req: False)
+        with pytest.raises(HTTPException) as exc:
+            cp.require_local_operator_or_admin(_mk_request(client_host="8.8.8.8"))
+        assert exc.value.status_code == 403
+
+    def test_require_local_or_operator_token_still_rejects_admin_jwt(self, monkeypatch):
+        """require_local_or_operator_token は admin JWT を許可しない（旧来の厳格ポリシー）。"""
+        from fastapi import HTTPException
+        monkeypatch.setattr(cp, "_OPERATOR_TOKEN", "")
+        monkeypatch.setattr(cp, "_TRUSTED_PREFIXES", [])
+        monkeypatch.setattr(cp, "_is_admin_jwt", lambda _req: True)
+        with pytest.raises(HTTPException) as exc:
+            cp.require_local_or_operator_token(_mk_request(client_host="8.8.8.8"))
+        assert exc.value.status_code == 403

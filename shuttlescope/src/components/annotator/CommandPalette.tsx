@@ -1,0 +1,175 @@
+/**
+ * U6: Ctrl+K コマンドパレット (VS Code / Linear 風)。
+ *
+ * 任意のアクションを名前で検索 → Enter で実行。
+ *
+ * - グローバルキー: Ctrl+K (Mac は Cmd+K も)
+ * - グローバルイベント `commandpalette:open` でも開閉できる
+ *   (タッチデバイス / 明示ボタン用。openCommandPalette() ヘルパーを使う)
+ * - 開いた状態で / でも検索フォーカス
+ * - 矢印キーで候補移動、Enter で実行、Esc で閉じる
+ * - command provider は外部から `commands` props で注入する
+ */
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { clsx } from 'clsx'
+import { MIcon } from '@/components/common/MIcon'
+
+export interface PaletteCommand {
+  id: string
+  label: string
+  hint?: string         // 補足 (右側にグレー表示)
+  icon?: string         // Material Symbols name
+  keywords?: string[]   // 検索ヒット用
+  run: () => void
+  disabled?: boolean
+}
+
+interface CommandPaletteProps {
+  commands: PaletteCommand[]
+}
+
+/** イベント名 (キーボードショートカットを持たないタッチデバイス向けに ⌘K 相当を発火する) */
+const PALETTE_OPEN_EVENT = 'shuttlescope:command-palette-open'
+
+/** 外部から CommandPalette を開く。明示ボタンや他の UI から呼び出す用。 */
+export function openCommandPalette(): void {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent(PALETTE_OPEN_EVENT))
+}
+
+export function CommandPalette({ commands }: CommandPaletteProps) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [activeIdx, setActiveIdx] = useState(0)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // グローバルキー Ctrl+K / Cmd+K
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const meta = e.ctrlKey || e.metaKey
+      if (meta && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault()
+        setOpen((v) => !v)
+        setQuery('')
+        setActiveIdx(0)
+      }
+    }
+    const onOpenEvent = () => {
+      setOpen((v) => !v)
+      setQuery('')
+      setActiveIdx(0)
+    }
+    window.addEventListener('keydown', onKey)
+    window.addEventListener(PALETTE_OPEN_EVENT, onOpenEvent)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener(PALETTE_OPEN_EVENT, onOpenEvent)
+    }
+  }, [])
+
+  // 開いたら入力にフォーカス
+  useEffect(() => {
+    if (open) {
+      const t = setTimeout(() => inputRef.current?.focus(), 30)
+      return () => clearTimeout(t)
+    }
+  }, [open])
+
+  const q = query.trim().toLowerCase()
+  const filtered = useMemo(() => {
+    if (!q) return commands
+    return commands.filter((c) => {
+      const hay = (c.label + ' ' + (c.hint ?? '') + ' ' + (c.keywords ?? []).join(' ')).toLowerCase()
+      return hay.includes(q)
+    })
+  }, [commands, q])
+
+  // active index clamp
+  useEffect(() => { setActiveIdx(0) }, [q])
+
+  const close = () => { setOpen(false); setQuery('') }
+  const exec = (c: PaletteCommand) => {
+    if (c.disabled) return
+    close()
+    // run after close so any side-effect-on-close is settled
+    setTimeout(c.run, 0)
+  }
+
+  if (!open) return null
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] bg-black/60 backdrop-blur-sm"
+      onClick={close}
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('auto.CommandPalette.k1')}
+    >
+      <div
+        className="bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-lg shadow-pop w-[520px] max-w-[90vw] overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-[var(--ss-border)]">
+          <MIcon name="search" size={18} className="text-[var(--ss-t3)]" />
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowDown') {
+                e.preventDefault()
+                setActiveIdx((i) => Math.min(filtered.length - 1, i + 1))
+              } else if (e.key === 'ArrowUp') {
+                e.preventDefault()
+                setActiveIdx((i) => Math.max(0, i - 1))
+              } else if (e.key === 'Enter') {
+                e.preventDefault()
+                const c = filtered[activeIdx]
+                if (c) exec(c)
+              } else if (e.key === 'Escape') {
+                close()
+              }
+            }}
+            placeholder={t('annotator.ux.command_placeholder')}
+            className="flex-1 bg-transparent text-[var(--ss-t1)] outline-none text-sm placeholder:text-[var(--ss-t3)]"
+          />
+          <div className="flex items-center gap-1 shrink-0">
+            <kbd className="text-[10px] text-[var(--ss-t2)] border border-[var(--ss-border-strong)] rounded-ss-sm px-1.5 py-0.5 font-mono">↑↓</kbd>
+            <kbd className="text-[10px] text-[var(--ss-t2)] border border-[var(--ss-border-strong)] rounded-ss-sm px-1.5 py-0.5 font-mono">{t('auto.CommandPalette.key_enter')}</kbd>
+            <kbd className="text-[10px] text-[var(--ss-t2)] border border-[var(--ss-border-strong)] rounded-ss-sm px-1.5 py-0.5 font-mono">{t('auto.CommandPalette.key_esc')}</kbd>
+          </div>
+        </div>
+        <ul className="max-h-[50vh] overflow-y-auto py-1" role="listbox">
+          {filtered.length === 0 && (
+            <li className="px-3 py-3 text-xs text-[var(--ss-t3)]">{t('annotator.ux.command_no_match')}</li>
+          )}
+          {filtered.map((c, i) => (
+            <li
+              key={c.id}
+              role="option"
+              aria-selected={i === activeIdx}
+              onMouseEnter={() => setActiveIdx(i)}
+              onClick={() => exec(c)}
+              className={clsx(
+                'flex items-center gap-2 px-3 py-1.5 cursor-pointer text-sm',
+                i === activeIdx ? 'bg-[var(--ss-brand)] text-white' : 'text-[var(--ss-t1)]',
+                c.disabled && 'opacity-40 cursor-not-allowed',
+              )}
+            >
+              {c.icon && <MIcon name={c.icon} size={16} />}
+              <span className="flex-1 truncate">{c.label}</span>
+              {c.hint && <span className={clsx('text-[10px]', i === activeIdx ? 'text-white/80' : 'text-[var(--ss-t3)]')}>{c.hint}</span>}
+            </li>
+          ))}
+        </ul>
+        <div className="flex items-center justify-between px-3 py-1.5 border-t border-[var(--ss-border)] text-[10px] text-[var(--ss-t3)]">
+          <span>{t('annotator.ux.command_help')}</span>
+          <span>{t('annotator.ux.command_hint_global')}</span>
+        </div>
+      </div>
+    </div>
+  )
+}

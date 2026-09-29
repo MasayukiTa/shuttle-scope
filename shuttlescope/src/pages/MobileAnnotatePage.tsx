@@ -1,0 +1,1178 @@
+/**
+ * MobileAnnotatePage (R48 step 1)
+ *
+ * iPhone Safari 専用のスマホアノテーション画面。AnnotatorPage (PC/iPad 用) と
+ * 別実装にして、選手が試合中・試合後にスマホ片手で入力できる UI に特化する。
+ *
+ * 設計思想 (詳細は別ドキュメント):
+ *   - Play mode / Annotate mode を厳密に分離して干渉ゼロ
+ *   - 3 つの Pass を自由順で切替可:
+ *       Pass 1: ラリー区切り (得点入った瞬間 = rally end timestamp)
+ *       Pass 2: サーブ打点 / サーブ着地 / 最終打点 / 最終着地
+ *       Pass 3: 各ストロークの詳細 (shot type, hit zone)
+ *   - クロップ領域: 鳥瞰固定カメラの不要部分を切り抜いて再生
+ *   - 各入力ごとに即サーバ送信 + ローカル冗長キャッシュ (IndexedDB)
+ *   - 認知負荷を最大限下げる: 1 画面で 1 判断
+ *
+ * 現状 (commit 1): scaffold + landscape guard + Pass 切替 UI 雛形のみ。
+ * 次 commit で動画再生 + crop region。
+ */
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
+import { useQuery } from '@tanstack/react-query'
+// CLAUDE.md / メモリ規約: 新規 UI は Material Symbols (MIcon)。lucide は段階廃止。
+import { MIcon } from '@/components/common/MIcon'
+import { apiGet, apiPost } from '@/api/client'
+import { useAutoTutorial } from '@/components/tutorial/useTutorial'
+import { AdviceStrip } from '@/components/common/AdviceStrip'
+import { getMobileVideoSrc } from '@/utils/videoSrc'
+import { PlayMode } from '@/components/mobileAnnotate/PlayMode'
+import { errorMessage } from '@/utils/errors'
+
+// MobileAnnotate 用の最小型 (backend レスポンスの該当フィールドのみ)
+interface MatchLite {
+  available_qualities?: Array<{ quality: string; height: number; ready: boolean }>
+  // getMobileVideoSrc が読む項目。インデックスシグネチャだけだと unknown に
+  // なって渡せないので、使う分は明示しておく。
+  id?: number
+  video_token?: string | null
+  video_url?: string | null
+  has_video_local?: boolean | null
+  [key: string]: unknown
+}
+interface CvStroke {
+  timestamp_sec?: number
+  hitter?: { value?: 'player_a' | 'player_b'; confidence_score?: number; decision_mode?: string }
+}
+interface CvRally {
+  strokes?: CvStroke[]
+}
+interface SetRow { id: number; set_num: number }
+interface RallyRow {
+  id: number
+  uuid?: string
+  set_id: number
+  rally_num: number
+  // backend/db/models.py の Rally.server / Rally.winner は nullable=False。
+  // optional にしていたせいで undefined が RallyLite へ流れ、
+  // 一覧の `winner === 'player_a' ? A : B` が未設定を B の得点として描いていた。
+  server: 'player_a' | 'player_b'
+  winner: 'player_a' | 'player_b'
+  score_a_after?: number
+  score_b_after?: number
+  video_timestamp_end?: number
+}
+import { Pass1RallyEnd } from '@/components/mobileAnnotate/Pass1RallyEnd'
+import { Pass2ServeFinal } from '@/components/mobileAnnotate/Pass2ServeFinal'
+import { Pass3ShotDetail } from '@/components/mobileAnnotate/Pass3ShotDetail'
+import { startBackgroundFlush, getStatus, retryAllManual } from '@/utils/mobileAnnotateQueue'
+import { setWinner, matchWinner } from '@/utils/badmintonRules'
+
+type ScreenMode = 'play' | 'annotate'
+
+interface RallyLite {
+  id?: number | null
+  client_uuid: string
+  set_id: number
+  rally_num: number
+  server: 'player_a' | 'player_b'
+  winner: 'player_a' | 'player_b'
+  score_a_after: number
+  score_b_after: number
+  video_timestamp_end: number
+  pending?: boolean
+}
+
+interface SetInfo {
+  id: number
+  set_num: number
+}
+
+export type AnnotatePass = 'rally' | 'serve_final' | 'detail'
+
+// 多段レベル: 入力者が「どこまで作るか」を選ぶ。データモデルは不変で、
+// どの Pass タブを表示するかの表示制御のみに使う (= バックエンド変更不要)。
+//   1 = ラリーのみ (Pass1)
+//   2 = +サーブ・最終打点 (Pass1,2)
+//   3 = +全ストローク (Pass1,2,3)
+export type AnnotateLevel = 1 | 2 | 3
+
+// level ごとに表示する Pass の集合 (順序は Pass の自然順)。
+const PASSES_FOR_LEVEL: Record<AnnotateLevel, AnnotatePass[]> = {
+  1: ['rally'],
+  2: ['rally', 'serve_final'],
+  3: ['rally', 'serve_final', 'detail'],
+}
+
+const LEVEL_STORAGE_PREFIX = 'ss.mobileAnnotate.level.'
+
+function loadLevel(matchId: string | undefined): AnnotateLevel {
+  if (!matchId) return 1
+  try {
+    const raw = localStorage.getItem(`${LEVEL_STORAGE_PREFIX}${matchId}`)
+    const n = raw ? Number(raw) : 1
+    if (n === 1 || n === 2 || n === 3) return n
+  } catch { /* ignore */ }
+  return 1 // 既定 Lv1 (最軽量 = 最初の体験を軽く)
+}
+
+function saveLevel(matchId: string | undefined, level: AnnotateLevel): void {
+  if (!matchId) return
+  try {
+    localStorage.setItem(`${LEVEL_STORAGE_PREFIX}${matchId}`, String(level))
+  } catch { /* ignore */ }
+}
+
+// i18n キー (component 内 useMemo([t]) で解決する。module-scope での t() 呼び出しは禁止)
+const PASS_LABEL_KEYS: Record<AnnotatePass, string> = {
+  rally: 'auto.MobileAnnotatePage.pass_rally',
+  serve_final: 'auto.MobileAnnotatePage.pass_serve_final',
+  detail: 'auto.MobileAnnotatePage.pass_detail',
+}
+
+const PASS_ICONS: Record<AnnotatePass, React.ReactNode> = {
+  rally: <MIcon name="play_arrow" size={14} />,
+  serve_final: <MIcon name="center_focus_strong" size={14} />,
+  detail: <MIcon name="layers" size={14} />,
+}
+
+
+/**
+ * 横向きを促す guard。iOS Safari は CSS の orientation lock を尊重しないため、
+ * 画面サイズで縦向きを検知して overlay を出す。
+ */
+function LandscapeGuard({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation()
+
+  const [isPortrait, setIsPortrait] = useState<boolean>(() =>
+    typeof window !== 'undefined' && window.innerHeight > window.innerWidth,
+  )
+
+  useEffect(() => {
+    const onResize = () => setIsPortrait(window.innerHeight > window.innerWidth)
+    window.addEventListener('resize', onResize)
+    window.addEventListener('orientationchange', onResize)
+    return () => {
+      window.removeEventListener('resize', onResize)
+      window.removeEventListener('orientationchange', onResize)
+    }
+  }, [])
+
+  // 🔧 children は常時 mount。縦向き時は overlay を上から被せるだけ。
+  // 旧実装は `if (isPortrait) return <portrait/>` で children を完全 unmount
+  // していたため、横→縦→横 と回した瞬間に MobileAnnotatePage + PlayMode の state
+  // (進行中の TrackNet job id / 動画 currentTime / 入力済みラリー等) が
+  // 全部リセットされていた。
+  return (
+    <>
+      {children}
+      {isPortrait && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center p-6 text-center"
+          style={{ backgroundColor: '#000000', color: '#ffffff' }}
+        >
+          <div className="relative mb-4" style={{ color: '#ffffff' }}>
+            <MIcon name="smartphone" size={64} style={{ color: '#ffffff' }} />
+            <span className="absolute -top-3 -right-3" style={{ color: '#ffffff' }}>
+              <MIcon name="screen_rotation" size={28} style={{ color: '#ffffff' }} />
+            </span>
+          </div>
+          <h2 className="text-xl font-bold mb-2" style={{ color: '#ffffff' }}>{t('auto.MobileAnnotatePage.k1')}</h2>
+          <p className="text-sm" style={{ color: 'rgba(255,255,255,0.9)' }}>
+            {t('auto.MobileAnnotatePage.landscape_only')}<br />
+            {t('auto.MobileAnnotatePage.rotate_device')}
+          </p>
+          <p className="text-[11px] mt-6 max-w-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>
+            {t('auto.MobileAnnotatePage.safari_addressbar_1')}<br />
+            {t('auto.MobileAnnotatePage.safari_addressbar_2')}<br />
+            {t('auto.MobileAnnotatePage.add_to_home')}
+          </p>
+        </div>
+      )}
+    </>
+  )
+}
+
+
+export function MobileAnnotatePage() {
+  const { t } = useTranslation()
+  const { matchId } = useParams<{ matchId: string }>()
+  const navigate = useNavigate()
+  // 初回 mount でモバイルアノテーションのチュートリアル自動起動 (未完なら)
+  useAutoTutorial('mobile_annotate_pass')
+  const [pass, setPass] = useState<AnnotatePass>('rally')
+  // 多段レベル: localStorage (match 単位) に保持。既定 Lv1。
+  const [level, setLevelState] = useState<AnnotateLevel>(() => loadLevel(matchId))
+  // 「レベル選択 picker を開いているか」。初回 mount で開いて軽い体験を案内する。
+  const [levelPickerOpen, setLevelPickerOpen] = useState(false)
+  const visiblePasses = useMemo(() => PASSES_FOR_LEVEL[level], [level])
+  // Pass ラベルは t() で解決 (言語切替に追従)。module-scope では t() を呼べないため component 内で。
+  const PASS_LABELS = useMemo<Record<AnnotatePass, string>>(() => ({
+    rally: t(PASS_LABEL_KEYS.rally),
+    serve_final: t(PASS_LABEL_KEYS.serve_final),
+    detail: t(PASS_LABEL_KEYS.detail),
+  }), [t])
+  const setLevel = (lv: AnnotateLevel) => {
+    setLevelState(lv)
+    saveLevel(matchId, lv)
+    // 選択レベルで非表示になる Pass に居たら Pass1 に戻す (= 表示制御の整合)。
+    setPass((cur) => (PASSES_FOR_LEVEL[lv].includes(cur) ? cur : 'rally'))
+  }
+  const [screen, setScreen] = useState<ScreenMode>('play')
+  const [pausedAtSec, setPausedAtSec] = useState<number>(0)
+  // 配信画質: モバイル既定は 'hd' (720p) → 帯域節約。fhd/source へユーザが任意切替可。
+  const [videoQuality, setVideoQuality] = useState<'source' | 'uhd' | 'fhd' | 'hd'>('hd')
+  const videoElRef = useRef<HTMLVideoElement | null>(null)
+  // calib 編集中フラグ: PlayMode 内 state だがこちらの overlay/chip も隠したいので
+  // PlayMode 側から callback で同期する
+  const [calibEditingTop, setCalibEditingTop] = useState(false)
+  // 診断: calib 中に "セット未登録" バナー等が裏で render されていないか確認。
+  // 本来 !calibEditingTop で gate しているが、user 報告で center タップ阻害の
+  // 可能性指摘あり。実機検証用 console.log は削除済み。
+  const [queueStatus, setQueueStatus] = useState<{
+    pending: number
+    manualRetry: number
+  }>({ pending: 0, manualRetry: 0 })
+
+  // match 情報を取得 (動画 URL を得るため)
+  const matchQuery = useQuery({
+    queryKey: ['match', matchId],
+    queryFn: () => apiGet<{ data: MatchLite }>(`/matches/${matchId}`),
+    enabled: !!matchId,
+  })
+
+  // CV 候補を取得 (タイムライン マーカー + Pass1 hint 用)
+  // 失敗しても UI は壊さない (= retry 1 回、empty 配列を fallback)
+  const cvCandidatesQuery = useQuery({
+    queryKey: ['mobile-cv-candidates', matchId],
+    queryFn: () => apiGet<{ rallies?: Record<string, CvRally> }>(`/cv-candidates/${matchId}`),
+    enabled: !!matchId,
+    retry: 1,
+    staleTime: 60_000,
+  })
+  // CV 候補の stroke timestamp を平坦化 (seek bar マーカー用)
+  const cvCandidateTimestamps = useMemo<number[]>(() => {
+    const ral = cvCandidatesQuery.data?.rallies
+    if (!ral || typeof ral !== 'object') return []
+    const out: number[] = []
+    for (const r of Object.values(ral)) {
+      for (const s of (r?.strokes || [])) {
+        if (typeof s?.timestamp_sec === 'number') out.push(s.timestamp_sec)
+      }
+    }
+    return out.sort((a, b) => a - b)
+  }, [cvCandidatesQuery.data])
+
+  // Pass1 へ渡す CV hint: pausedAtSec の直前 3 秒以内で最も近い stroke の hitter を
+  // 推奨 winner とする (= ラリー最後の打者 = 次失点を喫した側を相手にした打者)。
+  // 厳密推論ではなく hint なので user が override 可能。
+  const pass1CvHint = useMemo(() => {
+    const ral = cvCandidatesQuery.data?.rallies
+    if (!ral || typeof ral !== 'object') return null
+    let best: CvStroke | null = null
+    let bestGap = Infinity
+    for (const r of Object.values(ral)) {
+      for (const s of (r?.strokes || [])) {
+        const t = s?.timestamp_sec
+        if (typeof t !== 'number') continue
+        const gap = pausedAtSec - t  // pause 時点の直前 (負なら未来 = 除外)
+        if (gap >= 0 && gap < 3.0 && gap < bestGap) {
+          bestGap = gap
+          best = s
+        }
+      }
+    }
+    if (!best) return null
+    const hitterVal = best?.hitter?.value as ('player_a' | 'player_b' | undefined)
+    if (hitterVal !== 'player_a' && hitterVal !== 'player_b') return null
+    return {
+      suggestedWinner: hitterVal,
+      confidence: best?.hitter?.confidence_score as number | undefined,
+      mode: best?.hitter?.decision_mode as string | undefined,
+    }
+  }, [cvCandidatesQuery.data, pausedAtSec])
+  const match = matchQuery.data?.data
+  // available_qualities は backend が `[{quality, height, ready}, ...]` で返す
+  const availableQualities: { quality: string; height: number; ready: boolean }[] = useMemo(
+    () => match?.available_qualities || [{ quality: 'source', height: 0, ready: true }],
+    [match?.available_qualities],
+  )
+
+  const effectiveQuality = useMemo<'source' | 'uhd' | 'fhd' | 'hd'>(() => {
+    const found = availableQualities.find((q) => q.quality === videoQuality && q.ready)
+    if (found) return videoQuality
+    const firstReady = availableQualities.find((q) => q.ready)
+    return (firstReady?.quality || 'source') as 'source' | 'uhd' | 'fhd' | 'hd'
+  }, [availableQualities, videoQuality])
+  const videoSrc = getMobileVideoSrc(match, effectiveQuality)
+
+  // セット一覧 + 既存ラリー取得 (Pass 1 用)
+  const setsQuery = useQuery({
+    queryKey: ['mobile-annot-sets', matchId],
+    queryFn: () => apiGet<{ data: SetRow[] }>(`/sets/match/${matchId}`),
+    enabled: !!matchId,
+  })
+  const ralliesQuery = useQuery({
+    queryKey: ['mobile-annot-rallies', matchId],
+    queryFn: () => apiGet<{ data: RallyRow[] }>(`/rallies/match/${matchId}`),
+    enabled: !!matchId,
+  })
+  // PC AnnotatorPage と同じ resume データソース: /annotation/{id}/state は
+  // current_set_num / current_rally_num / score_a / score_b を返す。
+  // PC で途中まで入力した状態をモバイルから引き継ぐためここを source of truth に。
+  const annotStateQuery = useQuery({
+    queryKey: ['mobile-annot-state', matchId],
+    queryFn: () => apiGet<{ data?: {
+      current_set_num?: number; current_rally_num?: number;
+      score_a?: number; score_b?: number;
+      updated_at?: string;
+    } }>(`/annotation/${matchId}/state`),
+    enabled: !!matchId,
+    staleTime: 5_000,
+  })
+
+  const [localRallies, setLocalRallies] = useState<RallyLite[]>([])
+  const [currentSetIdx, setCurrentSetIdx] = useState<number>(0)
+
+  const allSets: SetInfo[] = useMemo(() => {
+    const rows = setsQuery.data?.data ?? []
+    return rows.map((s) => ({ id: s.id, set_num: s.set_num }))
+      .sort((a: SetInfo, b: SetInfo) => a.set_num - b.set_num)
+  }, [setsQuery.data])
+
+  const serverRallies: RallyLite[] = useMemo(() => {
+    const rows = ralliesQuery.data?.data ?? []
+    return rows.map((r) => ({
+      id: r.id,
+      client_uuid: r.uuid ?? '',
+      set_id: r.set_id,
+      rally_num: r.rally_num,
+      server: r.server,
+      winner: r.winner,
+      score_a_after: r.score_a_after ?? 0,
+      score_b_after: r.score_b_after ?? 0,
+      video_timestamp_end: r.video_timestamp_end ?? 0,
+      pending: false,
+    }))
+  }, [ralliesQuery.data])
+
+  const mergedRallies = useMemo(() => {
+    // server + local の合算。ただし server に既に取り込まれた local (client_uuid 一致)
+    // は重複なので除外する。これを欠くと送信成功後の refetch で同一ラリーが
+    // 二重計上され、rally_num 衝突・running score の誤りを起こす。server コピーを優先。
+    const serverUuids = new Set(serverRallies.map((r) => r.client_uuid).filter(Boolean))
+    const localOnly = localRallies.filter(
+      (r) => !(r.client_uuid && serverUuids.has(r.client_uuid)),
+    )
+    const all = [...serverRallies, ...localOnly]
+    return all.sort((a, b) => {
+      if (a.set_id !== b.set_id) return a.set_id - b.set_id
+      return a.rally_num - b.rally_num
+    })
+  }, [serverRallies, localRallies])
+
+  // 「過去アノテの続きから再開」用: 既存ラリーの最新 video_timestamp_end を取る。
+  // PlayMode の上部に "前回 M:SS から再開" chip を出し、タップで seek する。
+  // ⚠️ mergedRallies の宣言より後ろに置く (let/const の TDZ: 宣言前に参照すると
+  // "Cannot access 'mergedRallies' before initialization" で render が即死する。
+  // 旧版で resumeFromSec を mergedRallies より上に書いていて mobile annotate が
+  // 白画面になっていた)。
+  const resumeFromSec = useMemo<number>(() => {
+    let best = 0
+    for (const r of mergedRallies) {
+      const t = r?.video_timestamp_end
+      if (typeof t === 'number' && t > best) best = t
+    }
+    return best
+  }, [mergedRallies])
+
+  const currentSet = allSets[currentSetIdx]
+
+  // 各セットの最終 rally の score から勝者を判定して "completed sets" を作る。
+  const completedSetWinners = useMemo(() => {
+    const bySet = new Map<number, { setNum: number; lastA: number; lastB: number }>()
+    for (const s of allSets) bySet.set(s.id, { setNum: s.set_num, lastA: 0, lastB: 0 })
+    for (const r of mergedRallies) {
+      const e = bySet.get(r.set_id)
+      if (e) { e.lastA = r.score_a_after; e.lastB = r.score_b_after }
+    }
+    return Array.from(bySet.values())
+      .sort((a, b) => a.setNum - b.setNum)
+      .map((e) => setWinner({ scoreA: e.lastA, scoreB: e.lastB }))
+      .filter((w): w is 'A' | 'B' => w !== null)
+  }, [allSets, mergedRallies])
+
+  // match.format (singles / doubles_md / doubles_xd 等) は best-of-3 が一般。
+  // 正式 best-of は将来 match レコードに持たせるが、当面 3 固定。
+  const bestOf = 3
+  const matchOver = matchWinner({ completedSetWinners, bestOf })
+  // H20: 試合終了 overlay を閉じられるようにする。旧版は描画条件が screen 非依存で
+  // 閉じるボタンが setScreen('play') を呼ぶだけ=非表示にできず、誤タップで誤確定した
+  // 試合のラリーを修正できない全画面ブロックになっていた。
+  const [matchOverDismissed, setMatchOverDismissed] = useState(false)
+  // スコアが変わって matchOver でなくなったら dismiss フラグをリセット。
+  useEffect(() => { if (!matchOver) setMatchOverDismissed(false) }, [matchOver])
+
+  // /annotation/state を読んで、PC 側で進行中の set_num に追従する。
+  // PC で第2セット中盤までやって離脱 → mobile 起動時、ここで第2セットに自動 jump。
+  useEffect(() => {
+    const state = annotStateQuery.data?.data
+    if (!state || allSets.length === 0) return
+    const targetSetNum = state.current_set_num
+    if (!targetSetNum) return
+    const idx = allSets.findIndex((s) => s.set_num === targetSetNum)
+    if (idx >= 0 && idx !== currentSetIdx) {
+      setCurrentSetIdx(idx)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [annotStateQuery.data, allSets.length])
+
+  const [ensureSetState, setEnsureSetState] = useState<{ loading: boolean; error: string | null }>({
+    loading: false, error: null,
+  })
+
+  const ensureSet = async (): Promise<SetInfo | null> => {
+    if (currentSet) return currentSet
+    if (!matchId) {
+      setEnsureSetState({ loading: false, error: t('auto.MobileAnnotatePage.err_no_match_id') })
+      return null
+    }
+    setEnsureSetState({ loading: true, error: null })
+    try {
+      const resp = await apiPost<{ data?: { id?: number }; id?: number }>(`/sets`, {
+        match_id: Number(matchId), set_num: 1,
+      })
+      const newSet: SetInfo = { id: resp.data?.id ?? resp.id ?? 0, set_num: 1 }
+      // 旧コードは refetch() を await せず即 return していたため、呼び出し側で
+      // setCurrentSetIdx(0) しても allSets が空のままで Pass1RallyEnd が現れず
+      // 「セット 1 を作成して開始」が押せないように見える事象が発生していた。
+      // refetch を待ってから return する。
+      await setsQuery.refetch()
+      setEnsureSetState({ loading: false, error: null })
+      return newSet
+    } catch (e: unknown) {
+      const msg = errorMessage(e, '不明なエラー').slice(0, 200)
+      setEnsureSetState({ loading: false, error: msg })
+      return null
+    }
+  }
+
+  // body スクロール抑止 + iOS Safari URL バー minimize
+  useEffect(() => {
+    const origBodyOverflow = document.body.style.overflow
+    const origHtmlOverflow = document.documentElement.style.overflow
+    const origHtmlHeight = document.documentElement.style.height
+    document.body.style.overflow = 'hidden'
+    document.documentElement.style.overflow = 'hidden'
+    // iOS Safari: html 高さを 100vh + 1px にして 1 度だけ scroll させると
+    // 上部 URL バーが minimize される
+    document.documentElement.style.height = '100vh'
+    // 微小 scroll trick (iOS Safari の上部 URL バー / 下部タブバーを minimize)
+    window.scrollTo(0, 1)
+    return () => {
+      document.body.style.overflow = origBodyOverflow
+      document.documentElement.style.overflow = origHtmlOverflow
+      document.documentElement.style.height = origHtmlHeight
+    }
+  }, [])
+
+  // フルスクリーン API (iOS Safari は video element に対してのみ可)
+  // 任意のタイミングでユーザがタップして full screen に入れるよう関数を用意
+  const _requestVideoFullscreen = () => {
+    const v = videoElRef.current
+    if (!v) return
+    const anyV = v as HTMLVideoElement & { webkitEnterFullscreen?: () => void }
+    if (anyV.webkitEnterFullscreen) anyV.webkitEnterFullscreen()
+    else if (v.requestFullscreen) v.requestFullscreen().catch(() => {})
+  }
+
+  // 送信キューを起動 + ステータスを 2 秒ごとにポーリング (UI 表示用)
+  useEffect(() => {
+    startBackgroundFlush()
+    let cancelled = false
+    const tick = async () => {
+      const s = await getStatus()
+      if (!cancelled) setQueueStatus({ pending: s.pending, manualRetry: s.manualRetry })
+    }
+    void tick()
+    const id = window.setInterval(tick, 2000)
+    return () => {
+      cancelled = true
+      window.clearInterval(id)
+    }
+  }, [])
+
+  return (
+    <LandscapeGuard>
+      <div className="fixed inset-0 bg-black text-white touch-none select-none">
+        {/* 本体: viewport 全面に動画 / アノテ画面が広がる
+            PlayMode は screen state に依存せず常時 mount しておく (= video element を
+            unmount しないので、annotate ↔ play を往復しても src が 0 秒から再 load
+            しない)。Pass1/2/3 は overlay として PlayMode の **上に** 重ねる。 */}
+        <div className="absolute inset-0 bg-gray-950" data-tutorial="mobileAnnotate.video">
+          {matchQuery.isLoading ? (
+            // 真ん中で確実に視認できる spinner + ラベル。Material Symbols font が
+            // ロード中に raw 文字列が見えないよう、ここでは plain CSS の spinner を使う。
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-sm" style={{ color: '#e5e7eb', backgroundColor: '#0f172a' }}>
+              <div
+                style={{
+                  width: 48, height: 48, border: '4px solid rgba(255,255,255,0.18)',
+                  borderTopColor: '#60a5fa', borderRadius: '50%',
+                  animation: 'ssMobileSpin 0.9s linear infinite',
+                }}
+              />
+              <div>{t('auto.MobileAnnotatePage.k2')}</div>
+              <style>{`
+                @keyframes ssMobileSpin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
+              `}</style>
+            </div>
+          ) : matchQuery.error ? (
+            <div className="absolute inset-0 flex items-center justify-center text-sm" style={{ color: '#fca5a5', backgroundColor: '#0f172a' }}>
+              {t('auto.MobileAnnotatePage.match_fetch_failed')}
+            </div>
+          ) : (
+            <PlayMode
+              matchId={matchId ?? ''}
+              videoSrc={videoSrc}
+              onTapVideo={(t) => {
+                setPausedAtSec(t)
+                setScreen('annotate')
+              }}
+              videoElRef={(el) => { videoElRef.current = el }}
+              qualities={availableQualities}
+              currentQuality={effectiveQuality}
+              onQualityChange={(q) => setVideoQuality(q as 'source' | 'uhd' | 'fhd' | 'hd')}
+              cvCandidateTimestamps={cvCandidateTimestamps}
+              resumeFromSec={resumeFromSec}
+              onRetryVideo={() => { void matchQuery.refetch() }}
+              onCalibEditingChange={(v) => {
+                setCalibEditingTop(v)
+                // calib 開始時は screen を 'play' に強制 → annotate モードで
+                // 出る "セット未登録" 等のフルスクリーンバナー (z-40 inset-0
+                // bg-black/0.9) が確実に unmount される。banner が見えなくても
+                // DOM 上残ると iOS で center タップを横取りする可能性があるため。
+                if (v) setScreen('play')
+              }}
+            />
+          )}
+
+          {/* Pass overlay: annotate モード時に PlayMode 上に被せる
+             NOTE: calib 編集中は隠す (= 編集に集中させる) */}
+          {!calibEditingTop && screen === 'annotate' && !matchQuery.isLoading && !matchQuery.error && pass === 'rally' && (() => {
+            if (!currentSet) {
+              return (
+                <div
+                  className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-4 text-center"
+                  // z-index と pointer-events を明示。 (a) z=50 で右側 Pass
+                  // chip (z=45) や CV overlay より上に確実に。(b) pointer-events
+                  // auto を明示して、親の inherited none 等で吸われない。
+                  // (c) touch-action:manipulation で iOS の 300ms click 遅延 +
+                  // 一部の touch→click 抑制を回避。
+                  style={{
+                    backgroundColor: 'rgba(0,0,0,0.9)',
+                    color: '#ffffff',
+                    zIndex: 50,
+                    pointerEvents: 'auto',
+                    touchAction: 'manipulation',
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  onTouchStart={(e) => e.stopPropagation()}
+                >
+                  <div className="text-sm font-bold" style={{ color: '#ffffff' }}>
+                    {t('auto.MobileAnnotatePage.no_sets_registered')}
+                  </div>
+                  <button
+                    type="button"
+                    disabled={ensureSetState.loading}
+                    onClick={async () => {
+                      const s = await ensureSet()
+                      if (s) setCurrentSetIdx(0)
+                    }}
+                    className="px-4 py-2 rounded-ss-md text-sm font-bold disabled:opacity-60 text-white"
+                    style={{ backgroundColor: 'var(--ss-brand)' }}
+                  >
+                    {ensureSetState.loading ? t('auto.MobileAnnotatePage.creating_set') : t('auto.MobileAnnotatePage.create_set1_start')}
+                  </button>
+                  {ensureSetState.error && (
+                    <div
+                      className="text-[11px] font-mono px-2 py-1 rounded-ss-sm mt-1 max-w-[90vw] break-all text-white"
+                      style={{ backgroundColor: 'rgba(127,29,29,0.95)' }}
+                    >
+                      {ensureSetState.error}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setScreen('play')}
+                    className="px-3 py-1.5 rounded-ss-md text-xs font-bold text-white"
+                    style={{ backgroundColor: 'var(--ss-t2)' }}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      <MIcon name="arrow_back" size={14} style={{ color: '#ffffff' }} />
+                      {t('auto.MobileAnnotatePage.back_to_video')}
+                    </span>
+                  </button>
+                  <div
+                    className="text-[11px] max-w-xs mt-4 flex items-center gap-1 justify-center"
+                    style={{ color: 'rgba(255,255,255,0.85)' }}
+                  >
+                    <MIcon name="lightbulb" size={14} style={{ color: '#fde047' }} />
+                    <span>
+                      {t('auto.MobileAnnotatePage.calib_hint_1')}{' '}
+                      <MIcon name="edit" size={12} style={{ color: '#ffffff' }} />{' '}
+                      {t('auto.MobileAnnotatePage.calib_hint_2')}
+                    </span>
+                  </div>
+                </div>
+              )
+            }
+            return (
+              <div className="absolute inset-0 z-40">
+                <Pass1RallyEnd
+                  matchId={matchId ?? ''}
+                  currentSet={currentSet}
+                  rallies={mergedRallies}
+                  pausedAtSec={pausedAtSec}
+                  cvHint={pass1CvHint}
+                  onRallyAdded={(r) => {
+                    setLocalRallies((prev) => [...prev, r])
+                    // 入力後は動画に戻す → 次のラリーへ視聴を続ける流れ
+                    setScreen('play')
+                  }}
+                  onCancel={() => setScreen('play')}
+                  onUndoLast={async () => {
+                    // 直前ラリーの Undo: server id があれば DELETE queue、
+                    // 無ければ local state からのみ削除。
+                    if (!currentSet) return
+                    const setRallies = mergedRallies.filter((r) => r.set_id === currentSet.id)
+                    const last = setRallies[setRallies.length - 1]
+                    if (!last) return
+                    if (last.id) {
+                      const { enqueue } = await import('@/utils/mobileAnnotateQueue')
+                      await enqueue('DELETE /api/rallies/:id', undefined, { id: last.id })
+                      // optimistic: 一覧から消し、server fetch も refresh
+                      setLocalRallies((prev) => prev.filter(
+                        (r) => !(r.set_id === last.set_id && r.rally_num === last.rally_num),
+                      ))
+                      ralliesQuery.refetch()
+                    } else {
+                      // local pending のみ → state から除外で完了
+                      setLocalRallies((prev) =>
+                        prev.filter((r) => r.client_uuid !== last.client_uuid),
+                      )
+                    }
+                  }}
+                  onSetEnded={() => {
+                    // 次セットへ: 既存なら index 進める、なければ作成
+                    if (currentSetIdx + 1 < allSets.length) {
+                      setCurrentSetIdx(currentSetIdx + 1)
+                    } else {
+                      apiPost(`/sets`, {
+                        match_id: Number(matchId),
+                        set_num: (currentSet.set_num + 1),
+                      }).then(() => {
+                        setsQuery.refetch().then(() => {
+                          setCurrentSetIdx(currentSetIdx + 1)
+                        })
+                      })
+                    }
+                  }}
+                />
+              </div>
+            )
+          })()}
+
+          {/* 試合終了 overlay: best-of-N のセット先取が確定したら表示。
+             共通 util の matchWinner で判定。tap で閉じて確認のみ。 */}
+          {!calibEditingTop && matchOver && !matchOverDismissed && (
+            <div
+              className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-4 text-center"
+              style={{
+                backgroundColor: 'rgba(0,0,0,0.92)', color: '#ffffff',
+                zIndex: 49,  // Pass overlay (z-40) より上、calib (z-50) より下
+                pointerEvents: 'auto', touchAction: 'manipulation',
+              }}
+              onClick={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+            >
+              <div className="text-base font-bold" style={{ color: '#ffffff' }}>
+                {t('auto.MobileAnnotatePage.match_over', { player: matchOver === 'A' ? t('auto.MobileAnnotatePage.player_a') : t('auto.MobileAnnotatePage.player_b') })}
+              </div>
+              <div className="text-xs font-mono" style={{ color: 'rgba(255,255,255,0.8)' }}>
+                {t('auto.MobileAnnotatePage.bestof_sets_won', { n: bestOf, a: completedSetWinners.filter((w) => w === 'A').length, b: completedSetWinners.filter((w) => w === 'B').length })}
+              </div>
+              <button
+                type="button"
+                onClick={() => { setMatchOverDismissed(true); setScreen('play') }}
+                className="px-3 py-1.5 rounded-ss-md text-xs font-bold text-white"
+                style={{ backgroundColor: 'var(--ss-t2)' }}
+              >
+                {t('auto.MobileAnnotatePage.check_result_back')}
+              </button>
+              <div className="text-[11px] mt-2" style={{ color: 'rgba(255,255,255,0.6)' }}>
+                {t('auto.MobileAnnotatePage.match_saved_pc_edit')}
+              </div>
+              {/* 2. 試合保存直後の advice strip — 本試合の実測値ベース */}
+              {matchId && (
+                <div className="mt-3 w-full max-w-xs" style={{ pointerEvents: 'auto' }}>
+                  <AdviceStrip
+                    context="post_match_save"
+                    playerId={undefined /* 自分の player_id は backend が ctx から解決 */}
+                    matchId={Number(matchId)}
+                    hideWhenInsufficient={false}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {!calibEditingTop && screen === 'annotate' && !matchQuery.isLoading && !matchQuery.error && pass === 'serve_final' && visiblePasses.includes('serve_final') && (
+            <div className="absolute inset-0 z-40 bg-black/85">
+              <Pass2RallyPicker
+                rallies={mergedRallies}
+                sets={allSets}
+                pausedAtSec={pausedAtSec}
+                onCancel={() => setScreen('play')}
+              />
+            </div>
+          )}
+
+          {!calibEditingTop && screen === 'annotate' && !matchQuery.isLoading && !matchQuery.error && pass === 'detail' && visiblePasses.includes('detail') && (
+            <div className="absolute inset-0 z-40 bg-black/85">
+              <Pass3RallyPicker
+                rallies={mergedRallies}
+                sets={allSets}
+                pausedAtSec={pausedAtSec}
+                onCancel={() => setScreen('play')}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* 左上オーバーレイ: 戻る + match #id + キュー (テーマ追従)。
+           calib 中は隠す (= 編集集中)。 */}
+        {!calibEditingTop && (
+        <div
+          className="absolute left-2 flex items-center gap-1.5 text-xs"
+          style={{ top: 'max(0.5rem, env(safe-area-inset-top))', zIndex: 45 }}
+          data-tutorial="mobileAnnotate.queueStatus"
+        >
+          {/* 戻るボタン: 誤タップで作業中の試合から離脱しないよう確認ダイアログを挟む */}
+          <button
+            type="button"
+            onClick={() => {
+              // window.confirm はネイティブダイアログで PWA/iOS でも確実に動く。
+              // OK = navigate, Cancel = 留まる。
+              if (window.confirm(t('auto.MobileAnnotatePage.leave_confirm'))) {
+                navigate('/matches')
+              }
+            }}
+            className="p-2 rounded shadow ss-overlay-chip"
+            aria-label={t('auto.MobileAnnotatePage.k4')}
+            title={t('auto.MobileAnnotatePage.k3')}
+          >
+            <MIcon name="arrow_back" size={16} />
+          </button>
+          <span className="font-mono text-[10px] px-1.5 py-1 rounded shadow ss-overlay-chip">
+            #{matchId ?? '?'}
+          </span>
+          {queueStatus.pending > 0 && (
+            <span
+              className="flex items-center gap-1 text-[10px] px-1.5 py-1 rounded shadow ss-overlay-chip-warning"
+              title={t('auto.MobileAnnotatePage.queue_pending', { n: queueStatus.pending })}
+            >
+              <MIcon name="cloud_off" size={12} />
+              {queueStatus.pending}
+            </span>
+          )}
+          {queueStatus.manualRetry > 0 && (
+            <button
+              type="button"
+              onClick={() => void retryAllManual()}
+              className="flex items-center gap-1 text-[10px] px-1.5 py-1 rounded shadow ss-overlay-chip-danger"
+              title={t('auto.MobileAnnotatePage.queue_failed', { n: queueStatus.manualRetry })}
+            >
+              <MIcon name="warning" size={12} />
+              {queueStatus.manualRetry}
+            </button>
+          )}
+        </div>
+        )}
+
+        {/* 右側中央オーバーレイ: Pass 切替 (テーマ追従)。calib 中は隠す。
+            z-45 = Pass1/2/3 overlay (z-40) より上。annotate モード中でも Pass を
+            切替できないと set 1 prompt から抜けられない事象を防ぐ。 */}
+        {!calibEditingTop && (
+        <div
+          className="absolute right-2 flex flex-col gap-1.5"
+          style={{ top: '50%', transform: 'translateY(-50%)', zIndex: 45 }}
+          data-tutorial="mobileAnnotate.passSwitch"
+        >
+          {/* レベル変更ボタン: 現在レベルを表示し、タップで picker を開く。 */}
+          <button
+            type="button"
+            onClick={() => setLevelPickerOpen(true)}
+            className="flex items-center gap-1 px-2 rounded text-[10px] font-medium shadow ss-overlay-chip"
+            style={{ minHeight: 44 }}
+            title={t('auto.MobileAnnotatePage.level_change')}
+          >
+            <MIcon name="tune" size={14} />
+            <span>{t('auto.MobileAnnotatePage.level_badge', { n: level })}</span>
+          </button>
+          {/* level に応じて表示する Pass のみ描画 (= 表示制御のみ、保存ロジック不変) */}
+          {visiblePasses.map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => setPass(p)}
+              aria-current={pass === p ? 'true' : undefined}
+              className={`flex items-center gap-1 px-2 rounded text-[10px] font-medium shadow ${pass === p ? 'ss-overlay-chip-accent ring-2 ring-white/70' : 'ss-overlay-chip'}`}
+              style={{ minHeight: 44 }}
+              title={PASS_LABELS[p]}
+            >
+              {PASS_ICONS[p]}
+              <span className="hidden xs:inline">{PASS_LABELS[p]}</span>
+            </button>
+          ))}
+        </div>
+        )}
+
+        {/* 入力レベル選択 picker: 入力者が「どこまで作るか」を選ぶ。
+            Pass の可視性のみを制御し、保存ロジック / API / データ型は不変。
+            calib 中は隠す。 */}
+        {!calibEditingTop && levelPickerOpen && (
+          <div
+            className="absolute inset-0 flex items-center justify-center px-4"
+            style={{ backgroundColor: 'rgba(0,0,0,0.92)', zIndex: 60, pointerEvents: 'auto', touchAction: 'manipulation' }}
+            onClick={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+          >
+            <div className="w-full max-w-sm flex flex-col gap-2">
+              <div className="text-sm font-bold mb-1" style={{ color: '#ffffff' }}>
+                {t('auto.MobileAnnotatePage.level_picker_title')}
+              </div>
+              {([
+                { lv: 1 as AnnotateLevel, label: t('auto.MobileAnnotatePage.level_lv1_short'), desc: t('auto.MobileAnnotatePage.level_lv1_desc') },
+                { lv: 2 as AnnotateLevel, label: t('auto.MobileAnnotatePage.level_lv2_short'), desc: t('auto.MobileAnnotatePage.level_lv2_desc') },
+                { lv: 3 as AnnotateLevel, label: t('auto.MobileAnnotatePage.level_lv3_short'), desc: t('auto.MobileAnnotatePage.level_lv3_desc') },
+              ]).map((opt) => {
+                const active = level === opt.lv
+                return (
+                  <button
+                    key={opt.lv}
+                    type="button"
+                    onClick={() => { setLevel(opt.lv); setLevelPickerOpen(false) }}
+                    aria-current={active ? 'true' : undefined}
+                    className={`w-full text-left rounded px-3 py-2 shadow ${active ? 'ss-overlay-chip-accent ring-2 ring-white/70' : 'ss-overlay-chip'}`}
+                    style={{ minHeight: 44 }}
+                  >
+                    <div className="text-sm font-bold">{opt.label}</div>
+                    <div className="text-[11px] opacity-90 mt-0.5">{opt.desc}</div>
+                  </button>
+                )
+              })}
+              <div className="text-[11px] mt-1 flex items-center gap-1" style={{ color: 'rgba(255,255,255,0.75)' }}>
+                <MIcon name="info" size={13} style={{ color: 'rgba(255,255,255,0.75)' }} />
+                <span>{t('auto.MobileAnnotatePage.level_can_upgrade')}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLevelPickerOpen(false)}
+                className="mt-1 self-end px-3 rounded text-xs font-bold shadow ss-overlay-chip"
+                style={{ minHeight: 44 }}
+              >
+                <span className="inline-flex items-center gap-1">
+                  <MIcon name="arrow_back" size={14} />
+                  {t('auto.MobileAnnotatePage.back_to_video')}
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </LandscapeGuard>
+  )
+}
+
+
+/**
+ * Pass 2 のラリー picker。pausedAtSec 付近のラリーから順にリスト表示し、
+ * 選択するとそのラリーに対する Pass2ServeFinal step machine を起動する。
+ */
+function Pass2RallyPicker({
+  rallies,
+  sets,
+  pausedAtSec,
+  onCancel,
+}: {
+  rallies: RallyLite[]
+  sets: SetInfo[]
+  pausedAtSec: number
+  onCancel: () => void
+}) {
+  const { t } = useTranslation()
+  const [selected, setSelected] = useState<RallyLite | null>(null)
+
+  // pausedAtSec に近い順
+  const sortedRallies = useMemo(() => {
+    return [...rallies].sort((a, b) => {
+      const da = Math.abs((a.video_timestamp_end ?? 0) - pausedAtSec)
+      const db = Math.abs((b.video_timestamp_end ?? 0) - pausedAtSec)
+      return da - db
+    })
+  }, [rallies, pausedAtSec])
+
+  if (selected) {
+    const setInfo = sets.find((s) => s.id === selected.set_id)
+    if (!setInfo || !selected.id) {
+      // ローカル pending (まだサーバ id がない) なら入れない
+      return (
+        <div className="flex-1 flex flex-col items-center justify-center text-[var(--ss-t2)] text-sm gap-3 p-4">
+          <div className="text-center">
+            {t('auto.MobileAnnotatePage.rally_saving_server')}
+            <br />
+            {t('auto.MobileAnnotatePage.pass2_after_save')}
+          </div>
+          <button
+            type="button"
+            onClick={() => setSelected(null)}
+            className="px-3 py-1.5 bg-[var(--ss-surface-3)] text-[var(--ss-t1)] rounded-ss-md text-xs"
+          >
+            {t('auto.MobileAnnotatePage.back_to_list')}
+          </button>
+        </div>
+      )
+    }
+    return (
+      <Pass2ServeFinal
+        rally={{
+          id: selected.id,
+          rally_num: selected.rally_num,
+          set_num: setInfo.set_num,
+          server: selected.server,
+          winner: selected.winner,
+        }}
+        onCompleted={() => setSelected(null)}
+        onCancel={() => setSelected(null)}
+      />
+    )
+  }
+
+  return (
+    <div className="flex-1 flex flex-col bg-black/90">
+      <div className="px-3 py-2 border-b border-[var(--ss-border)] text-xs text-[var(--ss-warn)]">
+        {t('auto.MobileAnnotatePage.pass2_select_rally', { sec: pausedAtSec.toFixed(1) })}
+      </div>
+      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        {sortedRallies.length === 0 ? (
+          <div className="text-[var(--ss-t3)] text-center text-sm py-8">
+            {t('auto.MobileAnnotatePage.record_pass1_first')}
+          </div>
+        ) : (
+          sortedRallies.map((r) => {
+            const setInfo = sets.find((s) => s.id === r.set_id)
+            return (
+              <button
+                key={`${r.set_id}-${r.rally_num}`}
+                type="button"
+                onClick={() => setSelected(r)}
+                className="w-full text-left px-3 py-2 rounded-ss-md bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] flex items-center gap-3"
+              >
+                <span className="font-mono text-[11px] text-[var(--ss-t2)]">
+                  {t('auto.MobileAnnotatePage.set_rally_label', { s: setInfo?.set_num ?? '?', r: r.rally_num })}
+                </span>
+                <span className="font-mono text-xs">
+                  <span className={r.winner === 'player_a' ? 'text-[var(--ss-brand)]' : 'text-[var(--ss-bad)]'}>
+                    {t('auto.MobileAnnotatePage.player_point', { p: r.winner === 'player_a' ? 'A' : 'B' })}
+                  </span>
+                </span>
+                <span className="text-[11px] text-[var(--ss-t3)]">
+                  {r.score_a_after}-{r.score_b_after}
+                </span>
+                <div className="flex-1" />
+                <span className="font-mono text-[10px] text-[var(--ss-t3)]">
+                  @{(r.video_timestamp_end ?? 0).toFixed(1)}s
+                </span>
+                {r.pending && (
+                  <span className="text-[10px] text-[var(--ss-warn)]">{t('auto.MobileAnnotatePage.pending')}</span>
+                )}
+              </button>
+            )
+          })
+        )}
+      </div>
+      <div className="px-3 py-2 border-t border-[var(--ss-border)]">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-3 py-1.5 rounded-ss-md bg-[var(--ss-surface-3)] text-[var(--ss-t1)] text-xs"
+        >
+          {t('auto.MobileAnnotatePage.back_to_video_arrow')}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+
+/**
+ * Pass 3 のラリー picker。選択するとそのラリーの strokes を fetch して
+ * Pass3ShotDetail を起動。
+ */
+function Pass3RallyPicker({
+  rallies,
+  sets,
+  pausedAtSec,
+  onCancel,
+}: {
+  rallies: RallyLite[]
+  sets: SetInfo[]
+  pausedAtSec: number
+  onCancel: () => void
+}) {
+  const { t } = useTranslation()
+  const [selected, setSelected] = useState<RallyLite | null>(null)
+  const [localStrokes, setLocalStrokes] = useState<Array<{
+    id?: number | null
+    rally_id: number
+    stroke_num: number
+    player: 'player_a' | 'player_b'
+    shot_type: string
+    hit_zone?: string | null
+    land_zone?: string | null
+    pending?: boolean
+  }>>([])
+
+  // 選択ラリーの stroke を fetch
+  const strokesQuery = useQuery({
+    queryKey: ['mobile-annot-strokes', selected?.id],
+    queryFn: () => apiGet<{ data: Array<{
+      id?: number
+      // backend/routers/strokes.py:113 が返している。宣言から漏れていたため
+      // 下の serverStrokes.rally_id が常に undefined になっていた。
+      rally_id: number
+      stroke_num: number
+      player: 'player_a' | 'player_b'
+      shot_type: string
+      hit_zone?: string | null
+      land_zone?: string | null
+    }> }>(`/strokes?rally_id=${selected!.id}`),
+    enabled: !!selected?.id,
+  })
+
+  const sortedRallies = useMemo(() => {
+    return [...rallies].sort((a, b) => {
+      const da = Math.abs((a.video_timestamp_end ?? 0) - pausedAtSec)
+      const db = Math.abs((b.video_timestamp_end ?? 0) - pausedAtSec)
+      return da - db
+    })
+  }, [rallies, pausedAtSec])
+
+  if (selected) {
+    if (!selected.id) {
+      return (
+        <div className="flex-1 flex flex-col items-center justify-center text-[var(--ss-t2)] text-sm gap-3 p-4">
+          <div className="text-center">
+            {t('auto.MobileAnnotatePage.rally_saving_pass3')}
+          </div>
+          <button
+            type="button"
+            onClick={() => setSelected(null)}
+            className="px-3 py-1.5 bg-[var(--ss-surface-3)] text-[var(--ss-t1)] rounded-ss-md text-xs"
+          >
+            {t('auto.MobileAnnotatePage.back_to_list')}
+          </button>
+        </div>
+      )
+    }
+    const setInfo = sets.find((s) => s.id === selected.set_id)
+    const serverStrokes = (strokesQuery.data?.data ?? []).map((s) => ({
+      id: s.id,
+      rally_id: s.rally_id,
+      stroke_num: s.stroke_num,
+      player: s.player,
+      shot_type: s.shot_type,
+      hit_zone: s.hit_zone,
+      land_zone: s.land_zone,
+      pending: false,
+    }))
+    const local = localStrokes.filter((s) => s.rally_id === selected.id)
+    const all = [...serverStrokes, ...local]
+    return (
+      <Pass3ShotDetail
+        rally={{
+          id: selected.id,
+          rally_num: selected.rally_num,
+          set_num: setInfo?.set_num ?? 1,
+          server: selected.server,
+          winner: selected.winner,
+        }}
+        strokes={all}
+        onStrokeAdded={(s) => {
+          setLocalStrokes((prev) => [...prev, { ...s, rally_id: selected.id! }])
+        }}
+        onStrokeUpdated={(s) => {
+          setLocalStrokes((prev) =>
+            prev.map((x) =>
+              x.rally_id === selected.id! && x.stroke_num === s.stroke_num
+                ? { ...x, shot_type: s.shot_type }
+                : x,
+            ),
+          )
+        }}
+        onClose={() => {
+          setSelected(null)
+          setLocalStrokes([])
+        }}
+      />
+    )
+  }
+
+  return (
+    <div className="flex-1 flex flex-col bg-black/90">
+      <div className="px-3 py-2 border-b border-[var(--ss-border)] text-xs text-[var(--ss-warn)]">
+        {t('auto.MobileAnnotatePage.pass3_select_rally')}
+      </div>
+      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        {sortedRallies.length === 0 ? (
+          <div className="text-[var(--ss-t3)] text-center text-sm py-8">
+            {t('auto.MobileAnnotatePage.record_pass1_first')}
+          </div>
+        ) : (
+          sortedRallies.map((r) => {
+            const setInfo = sets.find((s) => s.id === r.set_id)
+            return (
+              <button
+                key={`${r.set_id}-${r.rally_num}`}
+                type="button"
+                onClick={() => setSelected(r)}
+                className="w-full text-left px-3 py-2 rounded-ss-md bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] flex items-center gap-3"
+              >
+                <span className="font-mono text-[11px] text-[var(--ss-t2)]">
+                  {t('auto.MobileAnnotatePage.set_rally_label', { s: setInfo?.set_num ?? '?', r: r.rally_num })}
+                </span>
+                <span className={r.winner === 'player_a' ? 'text-[var(--ss-brand)] text-xs' : 'text-[var(--ss-bad)] text-xs'}>
+                  {t('auto.MobileAnnotatePage.player_point', { p: r.winner === 'player_a' ? 'A' : 'B' })}
+                </span>
+                <div className="flex-1" />
+                <span className="font-mono text-[10px] text-[var(--ss-t3)]">
+                  @{(r.video_timestamp_end ?? 0).toFixed(1)}s
+                </span>
+              </button>
+            )
+          })
+        )}
+      </div>
+      <div className="px-3 py-2 border-t border-[var(--ss-border)]">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-3 py-1.5 rounded-ss-md bg-[var(--ss-surface-3)] text-[var(--ss-t1)] text-xs"
+        >
+          {t('auto.MobileAnnotatePage.back_to_video_arrow')}
+        </button>
+      </div>
+    </div>
+  )
+}

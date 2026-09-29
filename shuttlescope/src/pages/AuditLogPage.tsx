@@ -1,0 +1,473 @@
+import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { authAuditLogs, authAuditLogActions, AuditLogEntry, AuditLogActionItem, authRequestLogs, authSecurityEvents, RequestLogEntry, SecurityEventEntry } from '@/api/client'
+import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { useAuth } from '@/hooks/useAuth'
+import { MIcon } from '@/components/common/MIcon'
+
+type SortKey = 'created_at' | 'action' | 'user' | 'ip_addr'
+type SortDir = 'asc' | 'desc'
+type LogTab = 'audit' | 'request' | 'security'
+
+export function AuditLogPage() {
+  const { t } = useTranslation()
+  const isLight = useIsLightMode()
+  const { role } = useAuth()
+  const [tab, _setTab] = useState<LogTab>('audit')
+  const [rows, setRows] = useState<AuditLogEntry[]>([])
+  const [reqRows, setReqRows] = useState<RequestLogEntry[]>([])
+  const [secRows, setSecRows] = useState<SecurityEventEntry[]>([])
+  // request log フィルタ
+  const [reqMethod, setReqMethod] = useState('')
+  const [reqPath, setReqPath] = useState('')
+  const [reqStatusMin, setReqStatusMin] = useState<string>('')
+  const [reqStatusMax, setReqStatusMax] = useState<string>('')
+  const [reqIp, setReqIp] = useState('')
+  // security event フィルタ
+  const [secType, setSecType] = useState('')
+  const [secSeverity, setSecSeverity] = useState('')
+  const [secIp, setSecIp] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [actionFilter, setActionFilter] = useState('')
+  const [userFilter, setUserFilter] = useState('')
+  const [ipFilter, setIpFilter] = useState('')
+  const [limit, setLimit] = useState(500)
+  // action 名一覧 (dropdown 用)。backend で count desc に並べたものをそのまま表示。
+  const [actionOptions, setActionOptions] = useState<AuditLogActionItem[]>([])
+  // ソート状態
+  const [sortKey, setSortKey] = useState<SortKey>('created_at')
+  const [sortDir, setSortDir] = useState<SortDir>('desc')
+
+  const textHeading = 'text-[var(--ss-t1)]'
+  const textMuted = 'text-[var(--ss-t3)]'
+  const textSecondary = 'text-[var(--ss-t2)]'
+  const cardBg = 'bg-[var(--ss-surface-1)]'
+  const borderLine = 'border-[var(--ss-border)]'
+  const inputCls = `bg-[var(--ss-surface-1)] border-[var(--ss-border)] text-[var(--ss-t1)] border rounded-ss-md px-2 py-1 text-sm`
+
+  const load = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      if (tab === 'audit') {
+        const params: { action?: string; user_id?: number; ip?: string; limit?: number } = { limit }
+        if (actionFilter.trim()) params.action = actionFilter.trim()
+        const uid = parseInt(userFilter, 10)
+        if (Number.isFinite(uid) && uid > 0) params.user_id = uid
+        if (ipFilter.trim()) params.ip = ipFilter.trim()
+        const res = await authAuditLogs(params)
+        setRows(res.data)
+      } else if (tab === 'request') {
+        const params: { method?: string; path_prefix?: string; status_min?: number; status_max?: number; ip?: string; limit?: number } = { limit }
+        if (reqMethod.trim()) params.method = reqMethod.trim().toUpperCase()
+        if (reqPath.trim()) params.path_prefix = reqPath.trim()
+        const lo = parseInt(reqStatusMin, 10); if (Number.isFinite(lo)) params.status_min = lo
+        const hi = parseInt(reqStatusMax, 10); if (Number.isFinite(hi)) params.status_max = hi
+        if (reqIp.trim()) params.ip = reqIp.trim()
+        const res = await authRequestLogs(params)
+        setReqRows(res.data)
+      } else {
+        const params: { event_type?: string; severity?: string; ip?: string; limit?: number } = { limit }
+        if (secType.trim()) params.event_type = secType.trim()
+        if (secSeverity.trim()) params.severity = secSeverity.trim()
+        if (secIp.trim()) params.ip = secIp.trim()
+        const res = await authSecurityEvents(params)
+        setSecRows(res.data)
+      }
+    } catch (err) {
+      const e = err as Error
+      setError(e.message || 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (role === 'admin') {
+      load()
+      authAuditLogActions()
+        .then((r) => setActionOptions(r.data || []))
+        .catch(() => { /* noop */ })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role, tab])
+
+  const sortedRows = useMemo(() => {
+    const copy = [...rows]
+    const dir = sortDir === 'asc' ? 1 : -1
+    copy.sort((a, b) => {
+      const get = (r: AuditLogEntry): string | number => {
+        switch (sortKey) {
+          case 'created_at':
+            return r.created_at || ''
+          case 'action':
+            return r.action || ''
+          case 'user':
+            return r.username || (r.user_id ? `#${r.user_id}` : '')
+          case 'ip_addr':
+            return r.ip_addr || ''
+        }
+      }
+      const av = get(a)
+      const bv = get(b)
+      if (av < bv) return -1 * dir
+      if (av > bv) return 1 * dir
+      return 0
+    })
+    return copy
+  }, [rows, sortKey, sortDir])
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortKey(key)
+      setSortDir(key === 'created_at' ? 'desc' : 'asc')
+    }
+  }
+
+  const exportCsv = () => {
+    const header = ['id', 'created_at', 'action', 'user_id', 'username', 'ip_addr', 'details']
+    const escape = (v: unknown): string => {
+      const s = v == null ? '' : String(v)
+      if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+        return '"' + s.replace(/"/g, '""') + '"'
+      }
+      return s
+    }
+    const lines = [header.join(',')]
+    for (const r of sortedRows) {
+      lines.push(
+        [
+          r.id,
+          r.created_at,
+          r.action,
+          r.user_id ?? '',
+          r.username ?? '',
+          r.ip_addr ?? '',
+          r.details ?? '',
+        ]
+          .map(escape)
+          .join(',')
+      )
+    }
+    const csv = '﻿' + lines.join('\r\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+    a.href = url
+    a.download = `audit_logs_${ts}.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  if (role !== 'admin') {
+    return (
+      <div className={`p-6 ${textSecondary}`}>admin 権限が必要です</div>
+    )
+  }
+
+  const sortIcon = (key: SortKey) => {
+    if (sortKey !== key) return <span className="opacity-30">↕</span>
+    return sortDir === 'asc' ? <MIcon name="arrow_upward" size={12} /> : <MIcon name="arrow_downward" size={12} />
+  }
+
+  return (
+    <div className="p-3 sm:p-6 space-y-4 h-full flex flex-col overflow-hidden">
+      <div className="flex-shrink-0">
+        <h1 className={`text-xl font-semibold ${textHeading}`}>{t('auth.audit_log.title')}</h1>
+        <p className={`text-xs mt-1 ${textMuted}`}>{t('auth.audit_log.hint')}</p>
+        {/* HTTP リクエスト / セキュリティイベントは「セキュリティ監視」(/admin/security) へ分離。
+            この画面はアプリ内操作 (access_logs) の監査専用。 */}
+      </div>
+
+      <div className="flex flex-wrap items-end gap-3 flex-shrink-0">
+        {tab === 'audit' && <>
+        <div>
+          <label className={`block text-xs mb-1 ${textMuted}`}>{t('auth.audit_log.filter_action')}</label>
+          {/* dropdown: distinct action 一覧。空 = フィルタなし。typo 防止と
+             どの action が存在するかの可視化を兼ねる。dropdown 不可時の保険として
+             /audit-logs/actions が失敗したら空配列のまま (action filter 無効化)。 */}
+          <select
+            value={actionFilter}
+            onChange={(e) => setActionFilter(e.target.value)}
+            className={`${inputCls} min-w-[180px]`}
+          >
+            <option value="">— すべて —</option>
+            {actionOptions.map((o) => (
+              <option key={o.action} value={o.action}>
+                {o.action} ({o.count})
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className={`block text-xs mb-1 ${textMuted}`}>{t('auth.audit_log.filter_user')}</label>
+          <input
+            value={userFilter}
+            onChange={(e) => setUserFilter(e.target.value)}
+            className={inputCls}
+            placeholder="数値 user_id (例: 123)"
+            inputMode="numeric"
+          />
+        </div>
+        <div>
+          <label className={`block text-xs mb-1 ${textMuted}`}>{t('auth.audit_log.filter_ip', 'IP')}</label>
+          {/* 部分一致 (LIKE %ip%)。"192.168." のような prefix も "203.0.113.5" の
+              ような完全 IP も同じ入力欄で扱える。空欄でフィルタなし。 */}
+          <input
+            value={ipFilter}
+            onChange={(e) => setIpFilter(e.target.value)}
+            className={`${inputCls} w-40`}
+            placeholder={t('auth.audit_log.filter_ip_placeholder', 'e.g. 192.168. or 203.0.113.5')}
+            inputMode="text"
+          />
+        </div>
+        </>}
+        {tab === 'request' && <>
+          <div>
+            <label className={`block text-xs mb-1 ${textMuted}`}>Method</label>
+            <select value={reqMethod} onChange={(e) => setReqMethod(e.target.value)} className={inputCls}>
+              <option value="">— all —</option>
+              <option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option>
+            </select>
+          </div>
+          <div>
+            <label className={`block text-xs mb-1 ${textMuted}`}>Path prefix</label>
+            <input value={reqPath} onChange={(e) => setReqPath(e.target.value)} className={`${inputCls} w-60`} placeholder="/api/auth/" />
+          </div>
+          <div>
+            <label className={`block text-xs mb-1 ${textMuted}`}>Status ≥</label>
+            <input type="number" min={100} max={599} value={reqStatusMin} onChange={(e) => setReqStatusMin(e.target.value)} className={`${inputCls} w-20`} placeholder="400" />
+          </div>
+          <div>
+            <label className={`block text-xs mb-1 ${textMuted}`}>Status ≤</label>
+            <input type="number" min={100} max={599} value={reqStatusMax} onChange={(e) => setReqStatusMax(e.target.value)} className={`${inputCls} w-20`} placeholder="599" />
+          </div>
+          <div>
+            <label className={`block text-xs mb-1 ${textMuted}`}>IP</label>
+            <input value={reqIp} onChange={(e) => setReqIp(e.target.value)} className={`${inputCls} w-40`} placeholder="192.168. or full" />
+          </div>
+        </>}
+        {tab === 'security' && <>
+          <div>
+            <label className={`block text-xs mb-1 ${textMuted}`}>Event type</label>
+            <select value={secType} onChange={(e) => setSecType(e.target.value)} className={inputCls}>
+              <option value="">— all —</option>
+              <option>probe_attempt</option>
+              <option>rate_limit_hit</option>
+              <option>honeytoken_hit</option>
+              <option>path_normalization_block</option>
+              <option>ip_banned</option>
+            </select>
+          </div>
+          <div>
+            <label className={`block text-xs mb-1 ${textMuted}`}>Severity</label>
+            <select value={secSeverity} onChange={(e) => setSecSeverity(e.target.value)} className={inputCls}>
+              <option value="">— all —</option>
+              <option>info</option><option>warn</option><option>critical</option>
+            </select>
+          </div>
+          <div>
+            <label className={`block text-xs mb-1 ${textMuted}`}>IP</label>
+            <input value={secIp} onChange={(e) => setSecIp(e.target.value)} className={`${inputCls} w-40`} placeholder="192.168. or full" />
+          </div>
+        </>}
+        <div>
+          <label className={`block text-xs mb-1 ${textMuted}`}>{t('auth.audit_log.limit')}</label>
+          {/* backend cap は 5000。それ以上入力しても backend で clamp される */}
+          <input
+            type="number"
+            min={1}
+            max={5000}
+            value={limit}
+            onChange={(e) => setLimit(Math.max(1, Math.min(5000, parseInt(e.target.value, 10) || 500)))}
+            className={`${inputCls} w-24`}
+          />
+        </div>
+        <button
+          onClick={load}
+          disabled={loading}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-ss-md bg-[var(--ss-brand)] text-white hover:bg-[var(--ss-brand-hover)] duration-base ease-out text-sm disabled:opacity-50`}
+        >
+          <MIcon name="refresh" size={14} className={loading ? 'animate-spin' : ''} />
+          {t('auth.audit_log.refresh')}
+        </button>
+        <button
+          onClick={exportCsv}
+          disabled={loading || rows.length === 0}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-ss-md bg-[var(--ss-success)] text-white hover:opacity-90 duration-base ease-out text-sm disabled:opacity-50`}
+          title="現在の表示順で CSV ダウンロード"
+        >
+          <MIcon name="download" size={14} /> CSV
+        </button>
+        <span className={`text-xs ${textMuted}`}>表示: {tab === 'audit' ? sortedRows.length : tab === 'request' ? reqRows.length : secRows.length} 件</span>
+      </div>
+
+      {error && <div className="text-sm text-[var(--ss-danger-text)] flex-shrink-0">{error}</div>}
+
+      {tab !== 'audit' && (
+        <div className={`flex-1 min-h-0 overflow-auto rounded-ss-lg border ${borderLine} ${cardBg}`}>
+          {tab === 'request' ? (
+            <table className="min-w-full text-xs">
+              <thead className={`sticky top-0 z-10 bg-[var(--ss-surface-2)]`}>
+                <tr className={textMuted}>
+                  <th className="text-left px-2 py-2">ID</th>
+                  <th className="text-left px-2 py-2">Time</th>
+                  <th className="text-left px-2 py-2">Method</th>
+                  <th className="text-left px-2 py-2">Path</th>
+                  <th className="text-left px-2 py-2">Status</th>
+                  <th className="text-left px-2 py-2">Dur(ms)</th>
+                  <th className="text-left px-2 py-2">IP</th>
+                  <th className="text-left px-2 py-2 hidden md:table-cell">User</th>
+                  <th className="text-left px-2 py-2 hidden lg:table-cell">UA</th>
+                  <th className="text-left px-2 py-2 hidden xl:table-cell">Query</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reqRows.length === 0 ? (
+                  <tr><td colSpan={10} className={`px-3 py-6 text-center ${textMuted}`}>{t('auth.audit_log.empty')}</td></tr>
+                ) : reqRows.map((r) => (
+                  <tr key={r.id} className={`border-t ${borderLine}`}>
+                    <td className={`px-2 py-1.5 font-mono ${textMuted}`}>{r.id}</td>
+                    <td className={`px-2 py-1.5 whitespace-nowrap ${textSecondary}`} title={r.ts}>
+                      {new Date(r.ts).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
+                    </td>
+                    <td className={`px-2 py-1.5 font-mono ${textHeading}`}>{r.method}</td>
+                    <td className={`px-2 py-1.5 font-mono break-all ${textSecondary}`}>{r.path}</td>
+                    <td className={`px-2 py-1.5 font-mono ss-num ${r.status >= 500 ? 'text-[var(--ss-danger-text)]' : r.status >= 400 ? 'text-[var(--ss-warning-text)]' : textSecondary}`}>{r.status}</td>
+                    <td className={`px-2 py-1.5 font-mono ${textMuted}`}>{r.duration_ms}</td>
+                    <td className={`px-2 py-1.5 font-mono whitespace-nowrap ${textSecondary}`}>{r.ip_addr || '—'}{r.country ? ` (${r.country})` : ''}</td>
+                    <td className={`px-2 py-1.5 hidden md:table-cell ${textSecondary}`}>{r.user_id ?? '—'}</td>
+                    <td className={`px-2 py-1.5 hidden lg:table-cell font-mono text-[10px] break-all max-w-[260px] ${textMuted}`}>{r.ua || ''}</td>
+                    <td className={`px-2 py-1.5 hidden xl:table-cell font-mono text-[10px] break-all max-w-[300px] ${textMuted}`}>{r.query || ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <table className="min-w-full text-xs">
+              <thead className={`sticky top-0 z-10 bg-[var(--ss-surface-2)]`}>
+                <tr className={textMuted}>
+                  <th className="text-left px-2 py-2">ID</th>
+                  <th className="text-left px-2 py-2">Time</th>
+                  <th className="text-left px-2 py-2">Event</th>
+                  <th className="text-left px-2 py-2">Sev</th>
+                  <th className="text-left px-2 py-2">IP</th>
+                  <th className="text-left px-2 py-2">Path</th>
+                  <th className="text-left px-2 py-2 hidden md:table-cell">Method</th>
+                  <th className="text-left px-2 py-2 hidden lg:table-cell">Details</th>
+                </tr>
+              </thead>
+              <tbody>
+                {secRows.length === 0 ? (
+                  <tr><td colSpan={8} className={`px-3 py-6 text-center ${textMuted}`}>{t('auth.audit_log.empty')}</td></tr>
+                ) : secRows.map((r) => (
+                  <tr key={r.id} className={`border-t ${borderLine}`}>
+                    <td className={`px-2 py-1.5 font-mono ${textMuted}`}>{r.id}</td>
+                    <td className={`px-2 py-1.5 whitespace-nowrap ${textSecondary}`} title={r.ts}>
+                      {new Date(r.ts).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
+                    </td>
+                    <td className={`px-2 py-1.5 font-mono ${textHeading}`}>{r.event_type}</td>
+                    <td className={`px-2 py-1.5 font-mono ${r.severity === 'critical' ? 'text-[var(--ss-danger-text)]' : r.severity === 'warn' ? 'text-[var(--ss-warning-text)]' : textSecondary}`}>{r.severity}</td>
+                    <td className={`px-2 py-1.5 font-mono whitespace-nowrap ${textSecondary}`}>{r.ip_addr || '—'}</td>
+                    <td className={`px-2 py-1.5 font-mono break-all ${textSecondary}`}>{r.path || '—'}</td>
+                    <td className={`px-2 py-1.5 hidden md:table-cell font-mono ${textMuted}`}>{r.method || '—'}</td>
+                    <td className={`px-2 py-1.5 hidden lg:table-cell font-mono text-[10px] break-all max-w-md ${textMuted}`}>{r.details || ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {tab === 'audit' && (
+      <div className={`flex-1 min-h-0 overflow-auto rounded-ss-lg border ${borderLine} ${cardBg}`}>
+        <table className="min-w-full text-sm">
+          <thead className={`sticky top-0 z-10 bg-[var(--ss-surface-2)]`}>
+            <tr className={textMuted}>
+              <th className="text-left px-3 py-2">ID</th>
+              <th
+                className="text-left px-3 py-2 cursor-pointer select-none"
+                onClick={() => handleSort('created_at')}
+              >
+                <span className="inline-flex items-center gap-1">
+                  {t('auth.audit_log.column_time')} {sortIcon('created_at')}
+                </span>
+              </th>
+              <th
+                className="text-left px-3 py-2 cursor-pointer select-none"
+                onClick={() => handleSort('action')}
+              >
+                <span className="inline-flex items-center gap-1">
+                  {t('auth.audit_log.column_action')} {sortIcon('action')}
+                </span>
+              </th>
+              <th
+                className="text-left px-3 py-2 cursor-pointer select-none"
+                onClick={() => handleSort('user')}
+              >
+                <span className="inline-flex items-center gap-1">
+                  {t('auth.audit_log.column_user')} {sortIcon('user')}
+                </span>
+              </th>
+              <th
+                className="text-left px-3 py-2 cursor-pointer select-none hidden md:table-cell"
+                onClick={() => handleSort('ip_addr')}
+              >
+                <span className="inline-flex items-center gap-1">
+                  {t('auth.audit_log.column_ip')} {sortIcon('ip_addr')}
+                </span>
+              </th>
+              <th className="text-left px-3 py-2 hidden lg:table-cell">{t('auth.audit_log.column_details')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedRows.length === 0 ? (
+              <tr>
+                <td colSpan={6} className={`px-3 py-6 text-center ${textMuted}`}>
+                  {t('auth.audit_log.empty')}
+                </td>
+              </tr>
+            ) : (
+              sortedRows.map((r) => (
+                <tr key={r.id} className={`border-t ${borderLine}`}>
+                  <td className={`px-3 py-2 whitespace-nowrap font-mono text-xs ${textMuted}`}>{r.id}</td>
+                  <td className={`px-3 py-2 whitespace-nowrap ${textSecondary}`} title={r.created_at}>
+                    {(() => {
+                      // backend は UTC+Z を返す。JST (Asia/Tokyo) で表示する
+                      try {
+                        const d = new Date(r.created_at)
+                        if (!isNaN(d.getTime())) {
+                          return d.toLocaleString('ja-JP', {
+                            timeZone: 'Asia/Tokyo',
+                            year: 'numeric', month: '2-digit', day: '2-digit',
+                            hour: '2-digit', minute: '2-digit', second: '2-digit',
+                            hour12: false,
+                          })
+                        }
+                      } catch { /* fall through */ }
+                      return r.created_at.replace('T', ' ').slice(0, 19)
+                    })()}
+                  </td>
+                  <td className={`px-3 py-2 whitespace-nowrap ${textHeading}`}>{r.action}</td>
+                  <td className={`px-3 py-2 whitespace-nowrap ${textSecondary}`}>
+                    {r.username ? `${r.username} (#${r.user_id})` : (r.user_id ? `#${r.user_id}` : '—')}
+                  </td>
+                  <td className={`px-3 py-2 whitespace-nowrap hidden md:table-cell ${textSecondary}`}>{r.ip_addr || '—'}</td>
+                  <td className={`px-3 py-2 font-mono text-xs hidden lg:table-cell ${textSecondary} break-all max-w-md`}>{r.details || ''}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+      )}
+    </div>
+  )
+}

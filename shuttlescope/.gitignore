@@ -1,0 +1,68 @@
+node_modules/
+out/
+dist/
+.venv/
+*.db
+*.db.compact
+*.db-wal
+*.db-shm
+*.sqlite
+*.db.bak-*
+players.db
+matches.db
+results.db
+player*.db
+match*.db
+result*.db
+__pycache__/
+.pytest_cache/
+*.pyc
+.env
+.env.local
+.env.development
+.env.production
+.env.*.local
+videos/
+reports/
+migrate_log.txt
+
+# YOLO / CV model assets
+yolov8n.pt
+yolov8s.pt
+yolov8m.pt
+yolov8l.pt
+yolov8x.pt
+*.pt
+backend/yolo/weights/
+backend/tracknet/weights/*.onnx
+
+# Local-only runtime diagnostics
+kernel.errors.txt
+backend/kernel.errors.txt
+
+# Backend supervisor / process logs
+backend/*.log
+backend/*.log.prev
+backend/supervisor.log
+backend/data/worker.lock
+
+# Backend extra DB artifacts (more patterns for safety)
+backend/db/*.db-shm
+backend/db/*.db-wal
+backend/db/*.db.compact
+backend/db/*.db.bak-*
+backend/db/*.db.sqlite-backup-*
+
+# Large pose / external model weights (kept out of git - re-downloadable)
+backend/models/rtmpose*.onnx
+backend/models/rtmpose*.pt
+backend/models/trt_cache/
+backend/models/osnet_x0_25_reid.onnx
+backend/models/osnet_x0_25.onnx
+
+# Pytest / hypothesis caches in inner repo
+.hypothesis/
+
+# .env backup variants
+.env.development.bak.*
+.env.production.bak.*

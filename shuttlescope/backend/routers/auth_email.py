@@ -1,0 +1,896 @@
+"""メール経由のセルフサービス認証ルーター (M-A4)。
+
+エンドポイント:
+  POST /api/auth/register                    新規登録 (email + password + Turnstile)
+  POST /api/auth/email/resend_verification   検証メール再送 (要ログイン)
+  GET  /api/auth/email/verify                リンク検証 (?token=...)
+  POST /api/auth/password/request_reset      リセットメール送信要求 (email + Turnstile)
+  POST /api/auth/password/reset              token + 新 password で実リセット
+  POST /api/auth/invitation/create           招待発行 (admin/coach)
+  GET  /api/auth/invitation/peek             招待トークン情報を取得 (accept ページ初期表示)
+  POST /api/auth/invitation/accept           招待トークンでアカウント作成
+
+セキュリティ:
+  - register / request_reset は email 存在に関わらず同じレスポンス (列挙防御)
+  - rate limit は既存 middleware で IP/email 単位
+  - access_log に各イベントを記録
+"""
+from __future__ import annotations
+
+import json
+import logging
+import os
+import re
+from datetime import datetime, timedelta
+from threading import Lock
+from typing import Optional
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy.orm import Session
+
+from backend.db.database import get_db
+from backend.db.models import AccessLog, Player, User
+from backend.utils.access_log import log_access
+from backend.utils.auth import get_auth
+from backend.utils.email_token import (
+    issue_email_verification_token,
+    consume_email_verification_token,
+    issue_password_reset_token,
+    consume_password_reset_token,
+    issue_invitation_token,
+    consume_invitation_token,
+    peek_invitation_token,
+)
+from backend.utils.turnstile import verify_turnstile
+
+logger = logging.getLogger(__name__)
+router = APIRouter(tags=["auth_email"])
+
+_USERNAME_RE = re.compile(r"^[A-Za-z0-9_\-.]{3,64}$")
+
+
+# ─── M-A レート制限 (IP + email 単位) ────────────────────────────────────
+# 既存 ExfilRateLimitMiddleware は authenticated 用なので、unauthenticated な
+# self-service 系エンドポイントには別途 in-memory rate limiter を被せる。
+#
+# 制限値:
+#   register:        IP 単位 5 req / 15min, email 単位 3 req / 24h
+#   request_reset:   IP 単位 5 req / 15min, email 単位 3 req / 1h
+#   reset_consume:   IP 単位 20 req / 1h, global 200 req / 1h (R26)
+#
+# in-memory 実装の制約:
+#   - プロセス再起動でリセット (本番複数プロセスは想定外、単一プロセス前提)
+#   - 1 プロセスのメモリ内のみ → IP 偽装は別 layer (CF) で防御
+#
+# Round 258 R29 P2 fix (R26 P2-2): 上記の「単一プロセス前提」を **起動時に強制**。
+# PM2 cluster mode / multiple uvicorn workers で auth プロセスが複数立ち上がると、
+# 各 worker が個別の bucket を持ち、global rate limit が `count × N_workers` に
+# 緩んでしまう (例: 200/h global → 1000/h with 5 workers)。
+# 環境変数 `SS_AUTH_PROCESS_INSTANCES` (PM2 ecosystem.config 側で `instances: 1`
+# でも、明示的な値) または PM2 標準の `pm_id` / `NODE_APP_INSTANCE` を見て、
+# 1 を超える場合は警告ログを出す。本番運用ではこの警告を CI / オンコール監視で
+# 検知して構成を直す。
+def _enforce_single_instance_warning() -> None:
+    import os as _os_si
+    # PM2 が cluster mode のとき NODE_APP_INSTANCE に 0..N-1 を設定。
+    # uvicorn worker count は WEB_CONCURRENCY / --workers で決まる。
+    raw_instance = _os_si.environ.get("NODE_APP_INSTANCE", "")
+    raw_workers = _os_si.environ.get("WEB_CONCURRENCY", "")
+    raw_pm2_total = _os_si.environ.get("instances", "")  # PM2 internal
+    suspicious = []
+    if raw_instance.isdigit() and int(raw_instance) > 0:
+        suspicious.append(f"NODE_APP_INSTANCE={raw_instance}")
+    if raw_workers.isdigit() and int(raw_workers) > 1:
+        suspicious.append(f"WEB_CONCURRENCY={raw_workers}")
+    if raw_pm2_total.isdigit() and int(raw_pm2_total) > 1:
+        suspicious.append(f"PM2 instances={raw_pm2_total}")
+    if suspicious:
+        import logging as _log_si
+        _log_si.getLogger(__name__).warning(
+            "[auth-rate-limit] suspected multi-process deployment: %s. "
+            "_RATE_BUCKETS is in-memory and will not compose across processes; "
+            "global rate limits become count*N. Set instances=1 in pm2 ecosystem "
+            "or migrate buckets to Redis/DB.",
+            suspicious,
+        )
+
+
+_enforce_single_instance_warning()
+
+
+_RATE_LOCK = Lock()
+_RATE_BUCKETS: dict[str, list[datetime]] = {}
+
+
+def _rate_limit_check(bucket_key: str, max_count: int, window_seconds: int) -> bool:
+    """bucket_key の試行回数が制限以内か確認。True=許可, False=制限超過。
+
+    Round 258 R9 F-2 fix (deep audit): 旧 LRU は「最古の `max(timestamps)` を持つ
+    bucket を 1 件だけ削除」する設計だったため、攻撃者が 1001 個の偽 IP を spray
+    すると **lockout 中の被害者の bucket が evict され、被害者向け brute force が
+    再開可能** になる脆弱性があった (= LRU eviction が defense-bypass primitive)。
+    対策:
+      1. eviction は「window 外で活動が無い bucket の一括削除」(absolute age cutoff)
+      2. 個別 entry の取り合いではないので、1001 spray でも被害者 bucket は維持
+      3. cap 超過時もまずは expired のみ落とす。それでも cap 超なら新規 bucket 作成を
+         拒否 (制限を保守側に倒す)
+    """
+    now = datetime.utcnow()
+    cutoff = now - timedelta(seconds=window_seconds)
+    # window より古い = 任意 scope の bucket を全消去するための maximum window。
+    # 各 scope の window が異なるため、最大の `password_reset` 1h を採用すれば
+    # それより古い bucket は確実に死んでいる。
+    max_window_cutoff = now - timedelta(hours=24)
+    with _RATE_LOCK:
+        history = [ts for ts in _RATE_BUCKETS.get(bucket_key, []) if ts >= cutoff]
+        if len(history) >= max_count:
+            _RATE_BUCKETS[bucket_key] = history
+            return False
+        history.append(now)
+        _RATE_BUCKETS[bucket_key] = history
+        # GC: 24h 以上活動の無い bucket を一括削除 (絶対年齢ベース)
+        if len(_RATE_BUCKETS) > 1000:
+            stale_keys = [
+                k for k, v in _RATE_BUCKETS.items()
+                if not v or max(v) < max_window_cutoff
+            ]
+            for sk in stale_keys:
+                _RATE_BUCKETS.pop(sk, None)
+            # それでも cap 超 → 強制 cap (5000 まで許容、超過分は新規拒否)
+            if len(_RATE_BUCKETS) > 5000:
+                # 新規 bucket 作成を一時的に拒否することで、偽 IP spray を緩和
+                # (= 攻撃中は legitimate user も影響を受けるが、defense 優先)
+                if bucket_key not in _RATE_BUCKETS:
+                    return False
+    return True
+
+
+def _enforce_rate_limit(ip: str, email: str, scope: str,
+                        ip_max: int, ip_window_s: int,
+                        email_max: int, email_window_s: int) -> None:
+    """IP 単位 + email 単位の 2 段制限を適用。違反時は 429 を投げる。"""
+    if not _rate_limit_check(f"{scope}:ip:{ip}", ip_max, ip_window_s):
+        raise HTTPException(
+            status_code=429,
+            detail=f"短時間に多くの試行があります。しばらく待ってから再度お試しください。",
+        )
+    email_key = (email or "").lower()
+    if email_key and not _rate_limit_check(f"{scope}:email:{email_key}", email_max, email_window_s):
+        raise HTTPException(
+            status_code=429,
+            detail=f"このメールアドレスへの試行回数が上限に達しました。",
+        )
+
+
+# ─── スキーマ ───────────────────────────────────────────────────────────────
+
+class RegisterRequest(BaseModel):
+    # mass-assignment 防御: is_admin / role / team_id 等の権限関連フィールドが
+    # body 経由で silent drop されない (拒否される) ことを保証する。
+    model_config = {"extra": "forbid"}
+    username: str = Field(..., min_length=3, max_length=64)
+    email: EmailStr
+    password: str = Field(..., min_length=8, max_length=128)
+    display_name: Optional[str] = Field(None, max_length=100)
+    turnstile_token: Optional[str] = Field(None, max_length=2048)
+    # 任意入力。PRIVACY §IX-ter (未成年配慮) と AI 学習除外判定の根拠。
+    # ISO 8601 yyyy-mm-dd。未入力 = NULL = 大人として扱われる。
+    date_of_birth: Optional[str] = Field(None, max_length=10, pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+
+class PasswordResetRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+    email: EmailStr
+    turnstile_token: Optional[str] = Field(None, max_length=2048)
+
+
+class PasswordResetConfirm(BaseModel):
+    model_config = {"extra": "forbid"}
+    token: str = Field(..., min_length=10, max_length=200)
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+
+class InvitationCreateRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+    email: EmailStr
+    role: str = Field("analyst", pattern=r"^(analyst|coach|player)$")
+    team_id: Optional[int] = Field(None, ge=1, le=2_147_483_647)
+
+
+class InvitationAcceptRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+    token: str = Field(..., min_length=10, max_length=200)
+    username: str = Field(..., min_length=3, max_length=64)
+    password: str = Field(..., min_length=8, max_length=128)
+    display_name: Optional[str] = Field(None, max_length=100)
+
+
+# ─── ヘルパー ─────────────────────────────────────────────────────────────
+
+def _client_ip(request: Request) -> str:
+    # Round 258 R3 fix: CF-Connecting-IP は loopback (cloudflared) 経由の時だけ信用
+    from backend.utils.client_ip import trusted_client_ip
+    return trusted_client_ip(request, default="")[:64]
+
+
+def _app_base_url() -> str:
+    try:
+        from backend.config import settings
+        return (getattr(settings, "ss_app_base_url", "") or "https://app.shuttle-scope.com").rstrip("/")
+    except Exception:
+        import os
+        return (os.environ.get("SS_APP_BASE_URL", "") or "https://app.shuttle-scope.com").rstrip("/")
+
+
+def _hash_password_or_422(password: str) -> str:
+    """既存の auth.py 内ヘルパーを再利用するため遅延 import。"""
+    from backend.routers.auth import _hash_password, _validate_password_strength
+    _validate_password_strength(password)
+    return _hash_password(password)
+
+
+def _send_email_safe(to: str, subject: str, body: str, tag: str) -> None:
+    """例外を吸収してメール送信する。失敗してもユーザーフローは止めない。"""
+    try:
+        from backend.services.mailer import get_mailer
+        from backend.services.mailer.base import MailMessage
+        mailer = get_mailer()
+        mailer.send(MailMessage(to=[to], subject=subject, text_body=body, tags=[tag]))
+    except Exception as exc:
+        logger.error("[auth_email] mail send failed (%s): %s", tag, exc)
+
+
+def _notify_admin_webhook(content: str) -> str:
+    """admin 向け Discord/Slack webhook 通知。
+
+    register 本体は通知障害で失敗させない。一方で「通知できたか」を durable に
+    残せるよう、呼び出し側へ粗い delivery status を返す。URL や例外本文などの
+    secret / forensic detail は返さずログだけに残す。
+    """
+    url = (os.environ.get("SS_ADMIN_NOTIFY_WEBHOOK_URL", "") or "").strip()
+    if not url:
+        logger.warning("[auth_email] webhook URL unset (SS_ADMIN_NOTIFY_WEBHOOK_URL); skipping notify")
+        return "unconfigured"
+    if not url.startswith("https://"):
+        logger.warning("[auth_email] webhook URL not https; skipping notify (host=%s)", url[:40])
+        return "invalid_url"
+    try:
+        import urllib.request as _urlreq
+        body = json.dumps({"content": content[:1800]}, ensure_ascii=False).encode("utf-8")
+        # Discord blocks default Python-urllib User-Agent with 403. Set a
+        # generic UA so /api/webhooks/* accepts the POST.
+        req = _urlreq.Request(
+            url, data=body,
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "ShuttleScope-AdminNotify/1.0 (+https://shuttle-scope.com)",
+            },
+            method="POST",
+        )
+        # nosec B310: scheme is https-guarded above, URL is operator-supplied secret.
+        with _urlreq.urlopen(req, timeout=10) as resp:  # nosec B310  # nosemgrep
+            logger.info("[auth_email] webhook posted: status=%d url_host=%s",
+                        resp.status, url.split("/")[2] if "//" in url else "?")
+            if not (200 <= resp.status < 300):
+                logger.warning("[auth_email] webhook returned non-2xx: %d body=%s",
+                               resp.status, resp.read()[:200])
+                return "failed"
+        return "delivered"
+    except Exception as exc:
+        logger.error("[auth_email] webhook notify failed: %s (url_host=%s)",
+                     exc, url.split("/")[2] if "//" in url else "?")
+        return "failed"
+
+
+# ─── 1. Register ─────────────────────────────────────────────────────────────
+
+def _registration_enabled() -> bool:
+    """SS_REGISTRATION_ENABLED が 1 のときのみ True。"""
+    try:
+        from backend.config import settings
+        return bool(int(getattr(settings, "ss_registration_enabled", 0) or 0))
+    except Exception:
+        import os
+        return os.environ.get("SS_REGISTRATION_ENABLED", "0") == "1"
+
+
+def _password_reset_enabled() -> bool:
+    try:
+        from backend.config import settings
+        return bool(int(getattr(settings, "ss_password_reset_enabled", 0) or 0))
+    except Exception:
+        import os
+        return os.environ.get("SS_PASSWORD_RESET_ENABLED", "0") == "1"
+
+
+@router.post("/auth/register", status_code=201)
+def register(body: RegisterRequest, request: Request, db: Session = Depends(get_db)):
+    """新規ユーザー登録。
+
+    - username + email + password + Turnstile
+    - 即座にメール検証トークン発行 → メール送信
+    - email_verified_at は None (検証メールリンク踏むまで未検証)
+
+    SS_REGISTRATION_ENABLED=1 が必須。デフォルト無効 (503)。
+    メール配信が確実な環境でのみ有効化すること。
+    """
+    if not _registration_enabled():
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "現在、新規登録は受付を停止しております。"
+                "ご利用希望の方は shuttle-scope.com の問い合わせフォームよりご連絡ください。"
+            ),
+        )
+    ip = _client_ip(request)
+    # M-A レート制限: IP 単位 5/15min + email 単位 3/24h
+    _enforce_rate_limit(
+        ip, body.email, scope="register",
+        ip_max=5, ip_window_s=15 * 60,
+        email_max=3, email_window_s=24 * 60 * 60,
+    )
+
+    ok, reason = verify_turnstile(body.turnstile_token, ip)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reason)
+
+    if not _USERNAME_RE.match(body.username):
+        raise HTTPException(status_code=422, detail="username の形式が不正です (3-64 文字、英数 _ - .)")
+
+    # username / email 重複チェック
+    existing = (
+        db.query(User)
+        .filter((User.username == body.username) | (User.email == body.email))
+        .first()
+    )
+    if existing is not None:
+        # 列挙防御: 既存でも同じ「成功風」レスポンスを返す
+        # 実際のメールは送らない (既存ユーザに通知してしまうので)
+        log_access(db, "register_duplicate", details={"username": body.username, "ip": ip})
+        return {"success": True, "data": {"user_id": None}}
+
+    hashed = _hash_password_or_422(body.password)
+    # PRIVACY §IX-ter: dob 任意入力。届いていれば parse、失敗時は None で続行。
+    dob_val = None
+    if body.date_of_birth:
+        try:
+            from datetime import date as _date
+            y, m, d = body.date_of_birth.split("-")
+            parsed = _date(int(y), int(m), int(d))
+            # 妥当性チェック: 1900〜今日。未来 dob と歴史 dob は黙って棄却。
+            from datetime import date as _today_date
+            today = _today_date.today()
+            if 1900 <= parsed.year <= today.year and parsed <= today:
+                dob_val = parsed
+        except (ValueError, TypeError):
+            dob_val = None
+    user = User(
+        username=body.username,
+        email=body.email,
+        hashed_credential=hashed,
+        display_name=body.display_name,
+        # 公開 register は player ロール + admin 承認待ち。
+        # admin が「保留中ユーザー一覧」から承認するまで全 API 403 になる。
+        role="player",
+        awaiting_admin_approval=True,
+        date_of_birth=dob_val,
+    )
+    db.add(user)
+    # player ロールなので自分自身の Player レコードをここで作って紐付ける。
+    # player_id が NULL のままだと PlayerAccessControlMiddleware が全 API を
+    # 401 にするため、承認されてもアプリが使えないアカウントになる。
+    from backend.routers.auth import ensure_player_record
+    ensure_player_record(db, user)
+    db.commit()
+
+    # 2026-05-26: 自動確認メール送信は SS_MAIL_BACKEND が console 状態のため
+    # 実送信されない。代わりに admin 向け webhook 通知のみ行い、admin が
+    # 管理画面で register email を確認し、shuttlescopecom@gmail.com から手動で
+    # 案内メールを送る運用。mail backend が本実装に切り替わったら verify
+    # メール送信を復活させる。
+    admin_notify_status = _notify_admin_webhook(
+        "**[ShuttleScope] 新規登録待機ユーザー**\n"
+        f"- username: `{user.username}`\n"
+        f"- user_id: `{user.id}`\n"
+        f"- email domain: `{body.email.split('@')[-1]}`\n"
+        f"- registered at: `{datetime.utcnow().isoformat()}Z`\n"
+        f"- IP: `{ip or 'unknown'}`\n"
+        "→ 管理画面で email を確認 → 承認 → shuttlescopecom@gmail.com から案内メール送信"
+    )
+    log_access(
+        db,
+        "register",
+        user_id=user.id,
+        ip_addr=ip,
+        details={
+            "email_domain": body.email.split("@")[-1],
+            "admin_notify_status": admin_notify_status,
+        },
+    )
+    return {"success": True, "data": {"user_id": user.id}}
+
+
+# ─── 2. Email verification ───────────────────────────────────────────────────
+
+@router.get("/auth/email/verify")
+def verify_email(token: str = Query(..., min_length=10, max_length=200),
+                 request: Request = None, db: Session = Depends(get_db)):
+    """メール内のリンクを踏んだ時の検証エンドポイント。"""
+    # round142 J-1 fix: token brute force 防御 (IP 単位 30 回 / 1 時間)
+    ip = _client_ip(request) if request else "unknown"
+    _enforce_rate_limit(ip, "", "verify", ip_max=30, ip_window_s=3600,
+                        email_max=999, email_window_s=3600)
+    result = consume_email_verification_token(db, token)
+    if result is None:
+        raise HTTPException(status_code=400, detail="トークンが無効または期限切れです")
+    user_id, email = result
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="ユーザーが見つかりません")
+    user.email = email
+    user.email_verified_at = datetime.utcnow()
+    db.commit()
+    log_access(db, "email_verified", user_id=user_id,
+               ip_addr=_client_ip(request) if request else None)
+    return {"success": True, "data": {"verified_email": email}}
+
+
+@router.post("/auth/email/resend_verification")
+def resend_verification(request: Request, db: Session = Depends(get_db)):
+    """ログイン中ユーザーのメール検証リンクを再送する。"""
+    ctx = get_auth(request)
+    if ctx.role is None:
+        raise HTTPException(status_code=401, detail="認証が必要です")
+    user = db.get(User, ctx.user_id)
+    if user is None or not user.email:
+        raise HTTPException(status_code=400, detail="メールアドレスが登録されていません")
+    if user.email_verified_at is not None:
+        return {"success": True, "data": {"already_verified": True}}
+    token = issue_email_verification_token(db, user.id, user.email)
+    verify_url = f"{_app_base_url()}/verify?token={token}"
+    _send_email_safe(
+        user.email,
+        "ShuttleScope メールアドレス確認 (再送)",
+        f"以下のリンクをクリックして確認を完了してください:\n\n{verify_url}",
+        tag="email_verify_resend",
+    )
+    log_access(db, "email_verify_resend", user_id=user.id)
+    return {"success": True, "data": {"sent": True}}
+
+
+# ─── 3. Password reset ──────────────────────────────────────────────────────
+
+@router.post("/auth/password/request_reset")
+def request_password_reset(body: PasswordResetRequest, request: Request,
+                           background_tasks: BackgroundTasks = None,  # type: ignore
+                           db: Session = Depends(get_db)):
+    """パスワードリセットメールを送信する。
+
+    列挙防御: email 存在に関わらず同じレスポンスを返す。
+
+    SS_PASSWORD_RESET_ENABLED=1 が必須。デフォルト無効 (503)。
+    """
+    if not _password_reset_enabled():
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "現在、パスワードリセットは受付を停止しております。"
+                "管理者までお問い合わせください。"
+            ),
+        )
+    ip = _client_ip(request)
+    # M-A レート制限: IP 単位 5/15min + email 単位 3/1h
+    _enforce_rate_limit(
+        ip, body.email, scope="reset",
+        ip_max=5, ip_window_s=15 * 60,
+        email_max=3, email_window_s=60 * 60,
+    )
+
+    ok, reason = verify_turnstile(body.turnstile_token, ip)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reason)
+
+    # Round 258 R3 P0 fix (VULN-2): password reset timing oracle 対策。
+    # 旧来は user 存在時のみ DB INSERT + 同期 SMTP 送信を実行、無い時は cheap log
+    # のみだったため、応答時間差で email 列挙が可能だった。
+    # 対策: 重い処理をすべて BackgroundTasks に逃がし、レスポンスは常に同じ
+    # cheap log + return パスを通す。
+    user = db.query(User).filter(User.email == body.email).first()
+    if user is not None:
+        token = issue_password_reset_token(db, user.id, requested_ip=ip)
+        reset_url = f"{_app_base_url()}/password/reset-confirm?token={token}"
+        # background_tasks で送信を非同期化し、応答時間を user の存在に依存させない
+        if background_tasks is not None:
+            background_tasks.add_task(
+                _send_email_safe,
+                body.email,
+                "ShuttleScope パスワードリセット",
+                f"以下のリンクから新しいパスワードを設定してください:\n\n{reset_url}\n\n"
+                f"このリンクは 15 分間有効です。\n"
+                f"心当たりがない場合はこのメールを無視してください。",
+                "password_reset",
+            )
+        else:
+            _send_email_safe(
+                body.email,
+                "ShuttleScope パスワードリセット",
+                f"以下のリンクから新しいパスワードを設定してください:\n\n{reset_url}\n\n"
+                f"このリンクは 15 分間有効です。\n"
+                f"心当たりがない場合はこのメールを無視してください。",
+                tag="password_reset",
+            )
+        log_access(db, "password_reset_requested", user_id=user.id, ip_addr=ip)
+    else:
+        # 存在しない email でもダミー hash 計算で時間差を吸収する。
+        # DB INSERT は行わない (それ自体は user 不在なので意味なし) が、
+        # bcrypt 並みの計算量で「あったように見せる」。
+        try:
+            import bcrypt as _bcrypt_dummy
+            _bcrypt_dummy.hashpw(body.email.encode('utf-8')[:72], _bcrypt_dummy.gensalt(rounds=4))
+        except Exception:
+            pass
+        # Round 258 R24 P2 fix (R24 P2): 旧コードは email_domain を平文でログに残して
+        # いたため、`access_log` 読取り権を持つ analyst が "存在しない email"
+        # に対する 429 と組み合わせて、組織 domain の user 列挙を可能にしていた。
+        # 修正: domain を SHA256 hash の short prefix (8 hex) に置換 → 同 domain か
+        # どうかは判定できるが、平文 leak はしない。
+        # Round 258 R26 P3 fix (R25 P3-1): SHA-256 prefix 単独だと長期間の log で
+        # 同 domain は同じ hash を持ち続け、attacker が一度 known seed domain を
+        # 走らせれば cross-day で相関可能。日付ベース salt (UTC date 単位) を
+        # HMAC で混ぜて、cross-day 相関を切る。
+        import hashlib as _hashlib_aem
+        import hmac as _hmac_aem
+        from datetime import datetime as _dt_aem
+        _dom = body.email.split("@")[-1].lower().strip()
+        _daily_salt = _dt_aem.utcnow().strftime("%Y-%m-%d").encode("utf-8")
+        _dom_hash = _hmac_aem.new(_daily_salt, _dom.encode("utf-8"), _hashlib_aem.sha256).hexdigest()[:8]
+        log_access(db, "password_reset_unknown_email", ip_addr=ip,
+                   details={"email_domain_hash": _dom_hash, "salt": "daily-utc"})
+    # 列挙防御: 常に成功風レスポンス
+    return {"success": True, "data": {"sent": True}}
+
+
+@router.post("/auth/password/reset")
+def reset_password(body: PasswordResetConfirm, request: Request,
+                   db: Session = Depends(get_db)):
+    """token + 新 password で実リセット。"""
+    # Round 258 R24 P1 fix (R24 P1): 旧コードは `request_reset` (送信側) のみに
+    # rate limit をかけていたが、`reset_password` (consume 側) は無制限だった。
+    # 攻撃者は token 文字列 (≥10 chars base64) を brute-force し放題で、
+    # min_length=10 の低エントロピー token / timing 観測で当たりを引ける。
+    # 修正: IP 単位の弱い rate limit (1h で 20 回) を強制。
+    # Round 258 R26 P1 fix (R25 P1-3): IP 単独 RL は LAN-mode (0.0.0.0 bind) で
+    # /24 内 254 端末分の bucket を持てるため、20 × 254 = 5,080/h まで許容
+    # されてしまう。global bucket (200/h) を併設して全体上限を絶対的に固定する。
+    ip = _client_ip(request)
+    _enforce_rate_limit(ip, "", "reset_consume", ip_max=20, ip_window_s=3600,
+                        email_max=0, email_window_s=3600)
+    # global bucket: scope key を固定して全 IP で共有
+    if not _rate_limit_check("reset_consume:global", 200, 3600):
+        raise HTTPException(
+            status_code=429,
+            detail="システム全体のリセット試行回数が上限に達しました。",
+        )
+    user_id = consume_password_reset_token(db, body.token)
+    if user_id is None:
+        raise HTTPException(status_code=400, detail="トークンが無効または期限切れです")
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="ユーザーが見つかりません")
+    user.hashed_credential = _hash_password_or_422(body.new_password)
+    user.failed_attempts = 0
+    user.locked_until = None
+    db.commit()
+
+    # 旧実装はここでセッションを失効させていなかった。兄弟の
+    # `change_password` (auth.py:1417) と管理者リセット (:1447) は両方やっている。
+    # **アカウントを乗っ取られた人がパスワードをリセットしても、攻撃者の
+    # access token は期限まで生き、refresh token は 7 日生きて回り続ける。**
+    # 「パスワードを変える」は乗っ取り対応の標準手段なので、それが対応に
+    # なっていないのは効き方が悪い。同じ処理を通す。
+    from backend.utils.jwt_utils import revoke_all_sessions_or_500
+
+    revoke_all_sessions_or_500(user.id, "password reset")
+
+    # セッションだけ失効させても、**他に発行済みのリセットトークンは生きている**。
+    # リセット要求は誰でも出せるので、乗っ取り犯が先に 1 通取っておけば、
+    # 被害者がリセットした直後にそれを使って取り返せる。
+    # パスワードを変えた時点で他の鍵も落とす。
+    from backend.utils.email_token import invalidate_outstanding_password_reset_tokens
+
+    revoked_tokens = invalidate_outstanding_password_reset_tokens(db, user_id)
+
+    log_access(db, "password_reset_completed", user_id=user_id, ip_addr=_client_ip(request),
+               details={"other_reset_tokens_invalidated": revoked_tokens})
+    return {"success": True, "data": {"user_id": user_id}}
+
+
+# ─── 4. Invitation ──────────────────────────────────────────────────────────
+
+@router.post("/auth/invitation/create", status_code=201)
+def create_invitation(body: InvitationCreateRequest, request: Request,
+                      db: Session = Depends(get_db)):
+    """admin / coach が新規メンバーを招待する。"""
+    ctx = get_auth(request)
+    if not (ctx.is_admin or ctx.role == "coach"):
+        raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
+    # coach は player のみ招待可
+    if not ctx.is_admin and body.role != "player":
+        raise HTTPException(status_code=403, detail="coach は player のみ招待できます")
+    # team_id 妥当性: coach は自チームのみ
+    if not ctx.is_admin and body.team_id is not None and body.team_id != ctx.team_id:
+        raise HTTPException(status_code=403, detail="他チームには招待できません")
+
+    token = issue_invitation_token(
+        db, body.email, body.role, ctx.user_id,
+        team_id=(body.team_id if body.team_id is not None else ctx.team_id),
+    )
+    accept_url = f"{_app_base_url()}/invite?token={token}"
+    _send_email_safe(
+        body.email,
+        "ShuttleScope への招待",
+        f"ShuttleScope に招待されました ({body.role}).\n\n"
+        f"以下のリンクからアカウントを作成してください:\n\n{accept_url}\n\n"
+        f"このリンクは 72 時間有効です。",
+        tag="invitation",
+    )
+    log_access(db, "invitation_created", user_id=ctx.user_id,
+               details={"email_domain": body.email.split("@")[-1], "role": body.role})
+    return {"success": True, "data": {"sent": True}}
+
+
+@router.get("/auth/invitation/peek")
+def peek_invitation(token: str = Query(..., min_length=10, max_length=200),
+                    request: Request = None,
+                    db: Session = Depends(get_db)):
+    """招待トークンの内容を読み取る (accept ページの初期表示用)。
+
+    トークンを消費しない。
+
+    S-11: 未認証・レート制限ゼロだった。
+    **総当たりの心配は無い** — 招待トークンは `secrets.token_urlsafe(32)`
+    (約 256bit) なので、当てることはできない。塞ぐべきはそこではなく、
+    認証不要のまま 1 リクエスト = 1 回の DB 検索を無制限に踏ませられる点。
+    兄弟の `/auth/email/verify` と同じ IP 単位の制限を掛ける。
+    """
+    ip = _client_ip(request) if request else "unknown"
+    _enforce_rate_limit(ip, "", "invitation_peek", ip_max=30, ip_window_s=3600,
+                        email_max=999, email_window_s=3600)
+    rec = peek_invitation_token(db, token)
+    if rec is None:
+        raise HTTPException(status_code=400, detail="トークンが無効または期限切れです")
+    return {
+        "success": True,
+        "data": {
+            "email": rec.email,
+            "role": rec.role,
+            "team_id": rec.team_id,
+            "expires_at": rec.expires_at.isoformat(),
+        },
+    }
+
+
+@router.post("/auth/invitation/accept", status_code=201)
+def accept_invitation(body: InvitationAcceptRequest, request: Request,
+                      db: Session = Depends(get_db)):
+    """招待トークンで新規アカウントを作成する。"""
+    if not _USERNAME_RE.match(body.username):
+        raise HTTPException(status_code=422, detail="username の形式が不正です")
+
+    rec = peek_invitation_token(db, body.token)
+    if rec is None:
+        raise HTTPException(status_code=400, detail="トークンが無効または期限切れです")
+
+    # username / email 重複
+    existing = (
+        db.query(User)
+        .filter((User.username == body.username) | (User.email == rec.email))
+        .first()
+    )
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="username または email が既に使用されています")
+
+    hashed = _hash_password_or_422(body.password)
+    user = User(
+        username=body.username,
+        email=rec.email,
+        hashed_credential=hashed,
+        display_name=body.display_name,
+        role=rec.role,
+        team_id=rec.team_id,
+        email_verified_at=datetime.utcnow(),  # 招待リンク経由なので検証済み扱い
+    )
+    db.add(user)
+    # 招待の role が player なら、register と同じく Player を作って紐付ける。
+    from backend.routers.auth import ensure_player_record
+    ensure_player_record(db, user)
+    db.commit()
+
+    # token 消費
+    consume_invitation_token(db, body.token, accepted_by_user_id=user.id)
+    log_access(db, "invitation_accepted", user_id=user.id,
+               details={"role": rec.role, "inviter_user_id": rec.inviter_user_id})
+    return {"success": True, "data": {"user_id": user.id, "role": user.role}}
+
+
+# ─── 5. 保留中ユーザー管理 (admin only) ────────────────────────────────────
+
+class PendingApprovalRequest(BaseModel):
+    """admin が保留ユーザーを承認する際のロール / チーム指定。"""
+    # mass-assignment 防御: admin ロール昇格を body 経由で silent 注入できないように。
+    model_config = {"extra": "forbid"}
+    role: str = Field("player", pattern=r"^(analyst|coach|player)$")
+    team_id: Optional[int] = Field(None, ge=1, le=2_147_483_647)
+    team_name: Optional[str] = Field(None, max_length=100)
+
+
+@router.get("/auth/users/pending")
+def list_pending_users(request: Request, db: Session = Depends(get_db)):
+    """awaiting_admin_approval=True のユーザー一覧を返す (admin only)。
+
+    self-register したユーザーが管理者の承認を待っている。
+    admin が UI で個別に承認 + ロール / team_id 割り当てを行う想定。
+    """
+    ctx = get_auth(request)
+    if not ctx.is_admin:
+        raise HTTPException(status_code=403, detail="admin ロールが必要です")
+    users = (
+        db.query(User)
+        .filter(User.awaiting_admin_approval.is_(True))
+        .order_by(User.created_at.desc())
+        .all()
+    )
+
+    # Discord/Slack が落ちても「通知に失敗した登録」が消えないよう、register 時に
+    # access_logs へ保存した delivery status を同じ管理画面へ返す。
+    notify_by_user: dict[int, tuple[str, Optional[str]]] = {}
+    user_ids = [int(u.id) for u in users if u.id is not None]
+    if user_ids:
+        rows = (
+            db.query(AccessLog)
+            .filter(
+                AccessLog.action == "register",
+                AccessLog.user_id.in_(user_ids),
+            )
+            .order_by(AccessLog.id.desc())
+            .all()
+        )
+        for row in rows:
+            uid = int(row.user_id) if row.user_id is not None else None
+            if uid is None or uid in notify_by_user:
+                continue
+            status = "unknown"
+            try:
+                detail = json.loads(row.details or "{}")
+                raw = detail.get("admin_notify_status")
+                if raw in {"delivered", "unconfigured", "invalid_url", "failed"}:
+                    status = raw
+            except (TypeError, ValueError, json.JSONDecodeError):
+                pass
+            notify_by_user[uid] = (
+                status,
+                row.created_at.isoformat() if row.created_at else None,
+            )
+
+    return {
+        "success": True,
+        "data": [
+            {
+                "id": u.id,
+                "username": u.username,
+                "email": getattr(u, "email", None),
+                "email_verified": bool(getattr(u, "email_verified_at", None)),
+                "display_name": u.display_name,
+                "created_at": u.created_at.isoformat() if u.created_at else None,
+                "admin_notify_status": notify_by_user.get(int(u.id), ("unknown", None))[0],
+                "admin_notify_at": notify_by_user.get(int(u.id), ("unknown", None))[1],
+            }
+            for u in users
+        ],
+    }
+
+
+@router.post("/auth/users/{user_id}/approve")
+def approve_pending_user(
+    user_id: int, body: PendingApprovalRequest,
+    request: Request, db: Session = Depends(get_db),
+):
+    """保留中ユーザーを admin が承認する。同時にロールと所属チームを設定する。
+
+    動作:
+      - awaiting_admin_approval = False に更新
+      - role / team_id (または team_name) を引数で指定
+      - 既に承認済 (awaiting=False) のユーザーへの POST は 409
+    """
+    ctx = get_auth(request)
+    if not ctx.is_admin:
+        raise HTTPException(status_code=403, detail="admin ロールが必要です")
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="ユーザーが見つかりません")
+    if not bool(getattr(user, "awaiting_admin_approval", False)):
+        raise HTTPException(status_code=409, detail="このユーザーは既に承認済みです")
+
+    user.role = body.role
+    user.awaiting_admin_approval = False
+    # チーム解決: 未存在の team_id をそのまま代入すると PostgreSQL(本番) では FK 違反で
+    # commit が 500、SQLite では dangling FK になる。POST /auth/users と同じ
+    # _resolve_team_for_user_create で team_id を存在検証し、team_name は lookup/作成する。
+    if body.team_id is not None or (body.team_name and body.team_name.strip()):
+        from backend.routers.auth import _resolve_team_for_user_create
+        team = _resolve_team_for_user_create(
+            db,
+            team_id=body.team_id,
+            independent=False,
+            team_name=body.team_name,
+            display_name_hint=getattr(user, "display_name", None),
+        )
+        user.team_id = team.id
+        user.team_name = team.name  # team_id 指定時も team_name を必ず補完
+    # role の確定に合わせて Player の紐付けを整える。
+    # - player のまま承認: register で作った Player をそのまま使う (無ければ作る)
+    # - coach / analyst として承認: register が作った Player は誰でもない行に
+    #   なるので、まだ何からも参照されていなければ外して消す
+    from backend.routers.auth import ensure_player_record, release_provisional_player
+    if user.role == "player":
+        ensure_player_record(db, user)
+        if user.player_id is not None and user.team_id is not None:
+            p = db.get(Player, user.player_id)
+            if p is not None and p.team_id is None:
+                p.team_id = user.team_id
+    else:
+        release_provisional_player(db, user)
+    db.commit()
+
+    log_access(
+        db, "user_approved",
+        user_id=ctx.user_id,
+        resource_type="user",
+        resource_id=user_id,
+        details={
+            "approved_role": body.role,
+            "approved_team_id": body.team_id,
+            "approved_team_name": body.team_name,
+        },
+    )
+    return {
+        "success": True,
+        "data": {
+            "user_id": user.id,
+            "role": user.role,
+            "team_id": user.team_id,
+            "team_name": user.team_name,
+            "awaiting_admin_approval": False,
+        },
+    }
+
+
+@router.post("/auth/users/{user_id}/reject")
+def reject_pending_user(
+    user_id: int, request: Request, db: Session = Depends(get_db),
+):
+    """保留中ユーザーを admin が拒否 (削除) する。"""
+    ctx = get_auth(request)
+    if not ctx.is_admin:
+        raise HTTPException(status_code=403, detail="admin ロールが必要です")
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="ユーザーが見つかりません")
+    if not bool(getattr(user, "awaiting_admin_approval", False)):
+        raise HTTPException(status_code=409, detail="承認済みユーザーは拒否できません (admin 経由で削除してください)")
+
+    log_access(
+        db, "user_rejected",
+        user_id=ctx.user_id,
+        resource_type="user",
+        resource_id=user_id,
+        details={"username": user.username, "email": getattr(user, "email", None)},
+    )
+    # register が作った Player を道連れにする。放っておくと拒否したはずの人の
+    # 行が選手名簿に残る。何かから参照されていれば (= 実体のある選手なら) 残す。
+    from backend.routers.auth import release_provisional_player
+    release_provisional_player(db, user)
+    db.delete(user)
+    db.commit()
+    return {"success": True, "data": {"user_id": user_id, "deleted": True}}

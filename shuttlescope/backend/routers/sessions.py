@@ -1,0 +1,1289 @@
+"""R-001/R-002: 共有セッション管理API（/api/sessions）
+
+セッションライフサイクル:
+  POST /api/sessions                              → セッション作成（パスワード自動生成）
+  GET  /api/sessions/{code}                       → セッション情報取得
+  GET  /api/sessions/{code}/state                 → ライブスナップショット（コーチビュー初期化用）
+  POST /api/sessions/{code}/join                  → 参加者登録（パスワード検証あり）
+  POST /api/sessions/{code}/ws-ticket             → カメラ WS への一回限り入場券
+  POST /api/sessions/{code}/end                   → セッション終了
+  GET  /api/sessions/match/{mid}                  → 試合に紐づくアクティブセッション一覧
+  GET  /api/sessions/my-info                      → LAN IP / ポート情報
+  GET  /api/sessions/{code}/devices               → 接続デバイス一覧
+  POST /api/sessions/{code}/devices/{pid}/set-role         → connection_role 変更
+  POST /api/sessions/{code}/devices/{pid}/activate-camera  → カメラ有効化（最大4台）
+  POST /api/sessions/{code}/devices/{pid}/deactivate-camera→ カメラ降格
+  POST /api/sessions/{code}/regenerate-password            → パスワード再生成
+
+join と ws-ticket は GlobalAuthMiddleware の例外である。カメラを担うスマホは
+アプリのアカウントを持たず、想定 UX は「QR を読む → セッションパスワードを
+入れる → カメラになる」であるため。防御は join のパスワード検証 (PBKDF2) と
+code / 送信元 IP の二軸レート制限、ws-ticket は join が発行した
+participant_token 自身で行う。
+"""
+import hashlib
+import os
+import secrets
+import socket
+import string
+import threading
+import time as _time
+from collections import defaultdict
+from datetime import datetime, timedelta
+from typing import Literal, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+
+from backend.config import settings
+from backend.db.database import get_db
+from backend.db.models import Match, SharedSession, SessionParticipant, LiveSource
+from backend.utils.auth import require_match_scope as _require_match_scope
+from backend.utils.source_quality import compute_suitability
+from backend.utils.ws_ticket import TICKET_TTL_SEC, issue_ws_ticket
+
+router = APIRouter()
+
+
+def _require_session_scope(request: Request, session: SharedSession, db: Session):
+    """session → match → scope 検証のヘルパー"""
+    match = db.get(Match, session.match_id)
+    if match is None:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    return _require_match_scope(request, match, db)
+
+
+# ─── パスワードユーティリティ ────────────────────────────────────────────────
+
+def _generate_password(length: int = 8) -> str:
+    """ランダムな英数字パスワードを生成"""
+    chars = string.ascii_letters + string.digits
+    return "".join(secrets.choice(chars) for _ in range(length))
+
+
+def _hash_password(plain: str) -> str:
+    """PBKDF2-SHA256 でパスワードをハッシュ（stdlib のみ使用）"""
+    salt = os.urandom(16)
+    dk = hashlib.pbkdf2_hmac("sha256", plain.encode(), salt, 100_000)
+    return salt.hex() + ":" + dk.hex()
+
+
+def _verify_password(plain: str, stored_hash: str) -> bool:
+    """ハッシュ検証"""
+    try:
+        salt_hex, dk_hex = stored_hash.split(":", 1)
+        salt = bytes.fromhex(salt_hex)
+        dk = hashlib.pbkdf2_hmac("sha256", plain.encode(), salt, 100_000)
+        return secrets.compare_digest(dk.hex(), dk_hex)
+    except Exception:
+        return False
+
+
+# ─── セッションコードユーティリティ ─────────────────────────────────────────
+
+def _generate_code(length: int = 6) -> str:
+    """ランダムな英数字セッションコードを生成（CSPRNG使用）"""
+    chars = string.ascii_uppercase + string.digits
+    return "".join(secrets.choice(chars) for _ in range(length))
+
+
+# ─── オペレータートークン管理（インメモリ） ───────────────────────────────────────
+# セッション作成者（アナリスト/ローカルPC）のみが持つ 32 文字トークン。
+# ローカルホスト (127.0.0.1 / ::1) からのリクエストはトークンなしで常に許可。
+# LAN/リモートからの権限操作にはこのトークンが必要。
+
+_operator_tokens: dict[str, str] = {}   # session_code → token
+
+
+def _generate_operator_token() -> str:
+    return secrets.token_hex(16)          # 32 文字の hex
+
+
+def _check_operator_access(request: Request, session_code: str) -> None:
+    """ローカルからのリクエストは無条件許可。LAN/リモートには operator_token を要求。
+
+    許可ホスト:
+      - 127.0.0.1 / ::1 / localhost: ローカルマシン（Electron 上のアナリスト）
+      - testclient: Starlette TestClient（pytest用。Uvicorn では絶対に設定されない）
+    """
+    client_host = request.client.host if request.client else "127.0.0.1"
+    if client_host in ("127.0.0.1", "::1", "localhost", "testclient"):
+        return
+    token = request.headers.get("X-Session-Token", "")
+    stored = _operator_tokens.get(session_code, "")
+    if not stored or not secrets.compare_digest(token.encode(), stored.encode()):
+        raise HTTPException(
+            status_code=403,
+            detail="この操作にはオペレータートークンが必要です（X-Session-Token ヘッダー）",
+        )
+
+
+def _get_lan_ips() -> list[str]:
+    """ローカル LAN の IPv4 アドレスを返す"""
+    ips: list[str] = []
+    try:
+        hostname = socket.gethostname()
+        for info in socket.getaddrinfo(hostname, None, socket.AF_INET):
+            ip = info[4][0]
+            if ip.startswith(("192.168.", "10.", "172.")):
+                ips.append(ip)
+    except Exception:
+        pass
+    # フォールバック
+    if not ips:
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            ips.append(s.getsockname()[0])
+            s.close()
+        except Exception:
+            pass
+    return list(dict.fromkeys(ips))  # 重複排除
+
+
+# ─── リクエストモデル ─────────────────────────────────────────────────────────
+
+class SessionCreate(BaseModel):
+    # round120 fix: extra=forbid で `expires_at`/`ttl_minutes` 等を遮断
+    model_config = {"extra": "forbid"}
+    match_id: int
+    created_by_role: str = "analyst"
+
+
+class ParticipantJoin(BaseModel):
+    model_config = {"extra": "forbid"}
+    role: str = Field("coach", max_length=32)
+    # device_name は DB VARCHAR(100) と整合 (validator 通過後の DB 500 を予防)
+    device_name: Optional[str] = Field(default=None, max_length=100)
+    device_type: Optional[str] = Field(default=None, max_length=32)   # iphone/ipad/pc/usb_camera/builtin_camera
+    session_password: Optional[str] = Field(default=None, max_length=200)
+    # DB は VARCHAR(64)。ここを広く取ると未認証入力がそのまま DB エラーになる
+    # device_uid は再接続候補の検索用であり、認証材料にはしない。
+    device_uid: Optional[str] = Field(default=None, max_length=64)
+    # 既存 participant 行を再利用する場合の proof-of-possession。
+    participant_token: Optional[str] = Field(default=None, min_length=16, max_length=256)
+
+
+class WsTicketRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+    participant_id: int = Field(..., ge=1, le=2_147_483_647)
+    participant_token: str = Field(..., min_length=16, max_length=256)
+    # **device / viewer のみ。** 旧実装は `str` を丸ごと受けており、
+    # `role="operator"` や綴り違いを送ると下の `if body.role == "device"` /
+    # `"viewer"` のどちらにも入らず、**承認検査を一つも通らないまま**
+    # 入場券が発行されていた。未知の値は閉じる側に倒す。
+    role: Literal["device", "viewer"]
+
+
+class ViewerPermissionBody(BaseModel):
+    model_config = {"extra": "forbid"}
+    viewer_permission: str = Field(..., max_length=32)  # allowed / blocked / default
+
+
+class RegisterSourceBody(BaseModel):
+    model_config = {"extra": "forbid"}
+    source_kind: str = Field(..., max_length=32)              # iphone_webrtc/usb_camera/builtin_camera/pc_local
+    participant_id: Optional[int] = Field(default=None, ge=1, le=2_147_483_647)
+    source_resolution: Optional[str] = Field(default=None, max_length=32)  # "1280x720"
+    source_fps: Optional[int] = Field(default=None, ge=1, le=240)
+
+
+class SetRoleBody(BaseModel):
+    # mass-assignment 防御: 旧コードは extra silent drop 受理だった
+    model_config = {"extra": "forbid"}
+    connection_role: str = Field(..., max_length=32)  # viewer/coach/analyst/camera_candidate/active_camera
+
+
+# ─── エンドポイント ───────────────────────────────────────────────────────────
+
+@router.post("/sessions", status_code=201)
+def create_session(body: SessionCreate, request: Request, db: Session = Depends(get_db)):
+    """試合に対する共有セッションを作成。既存アクティブセッションがあれば再利用。"""
+    match = db.get(Match, body.match_id)
+    if not match:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    ctx = _require_match_scope(request, match, db)
+    # player はセッション作成不可（コーチ/アナリスト用の操作）
+    if ctx.is_player:
+        raise HTTPException(status_code=403, detail="セッション作成権限がありません")
+
+    # 既存アクティブセッション確認
+    existing = (
+        db.query(SharedSession)
+        .filter(SharedSession.match_id == body.match_id, SharedSession.is_active.is_(True))
+        .first()
+    )
+    if existing:
+        return {"success": True, "data": _session_to_dict(existing, db)}
+
+    # 新規作成（コード重複回避）
+    for _ in range(10):
+        code = _generate_code()
+        if not db.query(SharedSession).filter(SharedSession.session_code == code).first():
+            break
+
+    # パスワード自動生成
+    plain_password = _generate_password()
+    hashed = _hash_password(plain_password)
+
+    session = SharedSession(
+        match_id=body.match_id,
+        session_code=code,
+        created_by_role=body.created_by_role,
+        password_hash=hashed,
+    )
+    db.add(session)
+    db.commit()
+
+    # オペレータートークン生成（セッション作成者にのみ返す。LAN権限操作に必要）
+    op_token = _generate_operator_token()
+    _operator_tokens[code] = op_token
+
+    data = _session_to_dict(session, db)
+    data["session_password"] = plain_password  # 初回のみ平文で返す
+    data["operator_token"] = op_token           # 初回のみ返す（ローカル保存を推奨）
+    return {"success": True, "data": data}
+
+
+@router.get("/sessions/my-info")
+def my_server_info(request: Request):
+    """LAN IP / ポート情報を返す（コーチへの共有URL生成用）。
+    player は自 LAN 情報を知る必要がないため、admin/analyst/coach のみ許可。"""
+    from backend.utils.auth import require_non_player
+    require_non_player(request)
+    lan_ips = _get_lan_ips()
+    port = settings.API_PORT
+    lan_mode = settings.LAN_MODE
+    return {
+        "success": True,
+        "data": {
+            "lan_ips": lan_ips,
+            "port": port,
+            "lan_mode": lan_mode,
+            "accessible": lan_mode and bool(lan_ips),
+        },
+    }
+
+
+@router.get("/sessions/match/{match_id}")
+def sessions_for_match(match_id: int, request: Request, db: Session = Depends(get_db)):
+    """試合に紐づくアクティブセッション一覧"""
+    match = db.get(Match, match_id)
+    if not match:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    _require_match_scope(request, match, db)
+    sessions = (
+        db.query(SharedSession)
+        .filter(SharedSession.match_id == match_id, SharedSession.is_active.is_(True))
+        .all()
+    )
+    return {"success": True, "data": [_session_to_dict(s, db) for s in sessions]}
+
+
+@router.get("/sessions/{code}")
+def get_session(code: str, request: Request, db: Session = Depends(get_db)):
+    """セッション情報取得"""
+    session = db.query(SharedSession).filter(SharedSession.session_code == code).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="セッションが見つかりません")
+    _require_session_scope(request, session, db)
+    return {"success": True, "data": _session_to_dict(session, db)}
+
+
+@router.get("/sessions/{code}/state")
+def session_state(code: str, request: Request, db: Session = Depends(get_db)):
+    """コーチビュー初期化用のライブスナップショット（REST版）"""
+    from backend.ws.live import _build_session_snapshot
+
+    session = (
+        db.query(SharedSession)
+        .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="セッションが見つからないか終了しています")
+    _require_session_scope(request, session, db)
+
+    snapshot = _build_session_snapshot(session, db)
+    return {"success": True, "data": snapshot}
+
+
+# ─── join 試行レート制限 (PBKDF2 / セッションパスワード brute force 対策) ─────
+# session_code 単位で 60 秒窓内の認証失敗回数を制限する。攻撃者が同一セッション
+# コードに対してパスワード総当たりを行う経路と、PBKDF2 (100k iterations) の
+# CPU コストを連鎖呼び出しでサーバ枯渇させる経路を遮断する (CWE-307 / CWE-770)。
+_JOIN_RATE_LOCK    = threading.Lock()
+_JOIN_FAILURES: dict[str, list[float]] = defaultdict(list)
+_JOIN_RATE_WINDOW  = 60      # 秒
+_JOIN_RATE_LIMIT   = 10      # 同一 code への 60 秒以内 10 失敗で拒否
+
+
+def _check_join_rate_limit(code: str) -> None:
+    if not code:
+        return
+    now = _time.time()
+    cutoff = now - _JOIN_RATE_WINDOW
+    with _JOIN_RATE_LOCK:
+        arr = [t for t in _JOIN_FAILURES[code] if t > cutoff]
+        _JOIN_FAILURES[code] = arr
+        if len(arr) >= _JOIN_RATE_LIMIT:
+            raise HTTPException(
+                status_code=429,
+                detail=f"認証失敗が多すぎます。{_JOIN_RATE_WINDOW}秒後に再試行してください。",
+            )
+
+
+# join を GlobalAuthMiddleware の例外にした時点で、code 単位の制限だけでは
+# 足りなくなる。攻撃者が毎回違う code を試すと失敗が別々のカウンタに散り、
+# どれも閾値に届かないまま「存在する session_code」を列挙できてしまう
+# (404 と 401 の差が oracle になる)。加えて PBKDF2 100k 回を無制限に
+# 呼ばせる CPU 枯渇経路にもなる。そこで送信元単位の上限を併置する。
+_JOIN_IP_FAILURES: dict[str, list[float]] = defaultdict(list)
+_JOIN_IP_RATE_LIMIT = 20     # 同一 IP からの 60 秒以内 20 失敗で拒否
+
+
+def _check_join_ip_rate_limit(request: Optional[Request]) -> None:
+    ip = _join_client_ip(request)
+    if not ip:
+        return
+    now = _time.time()
+    cutoff = now - _JOIN_RATE_WINDOW
+    with _JOIN_RATE_LOCK:
+        arr = [t for t in _JOIN_IP_FAILURES[ip] if t > cutoff]
+        _JOIN_IP_FAILURES[ip] = arr
+        if len(arr) >= _JOIN_IP_RATE_LIMIT:
+            raise HTTPException(
+                status_code=429,
+                detail=f"認証失敗が多すぎます。{_JOIN_RATE_WINDOW}秒後に再試行してください。",
+            )
+
+
+def _join_client_ip(request: Optional[Request]) -> str:
+    if request is None:
+        return ""
+    try:
+        from backend.utils.client_ip import trusted_client_ip
+        ip = trusted_client_ip(request, default="")
+        return "" if ip == "unknown" else ip
+    except Exception:  # noqa: BLE001 - IP が取れなくても join 自体は続行させる
+        return ""
+
+
+# ─── 参加者スコープの WS 資格情報 ─────────────────────────────────────────────
+#
+# カメラ signaling WS はアプリの JWT を要求するが、スマホはアカウントを持たない。
+# join 成功時に「この session の この participant」だけを表す資格情報を発行する。
+# 平文は応答で一度だけ返し、DB には SHA-256 のみ置く。
+
+_WS_TOKEN_TTL = timedelta(hours=3)   # 1 試合 + 前後の余裕
+
+
+def _hash_ws_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _issue_participant_token(participant: SessionParticipant) -> str:
+    """参加者トークンを発行し、hash と期限を participant に載せる（commit は呼び出し側）。"""
+    token = secrets.token_urlsafe(32)
+    participant.ws_token_hash = _hash_ws_token(token)
+    participant.ws_token_expires_at = datetime.utcnow() + _WS_TOKEN_TTL
+    return token
+
+
+def _revoke_participant_token(participant: SessionParticipant) -> None:
+    """資格情報を失効させる（reject / 削除時。commit は呼び出し側）。"""
+    participant.ws_token_hash = None
+    participant.ws_token_expires_at = None
+
+
+def _revoke_all_participant_tokens(db: Session, session_id: int) -> int:
+    """セッション内の全参加者トークンを失効させる（commit は呼び出し側）。
+
+    セッション終了とパスワード再生成で使う。パスワードを変えたのに古い
+    パスワードで得た資格情報が生き続けるなら、変えた意味がない。
+    """
+    return (
+        db.query(SessionParticipant)
+        .filter(
+            SessionParticipant.session_id == session_id,
+            SessionParticipant.ws_token_hash.isnot(None),
+        )
+        .update(
+            {"ws_token_hash": None, "ws_token_expires_at": None},
+            synchronize_session=False,
+        )
+    )
+
+
+def _participant_token_valid(participant: SessionParticipant, token: str) -> bool:
+    """参加者トークンを検証する。
+
+    hash 同士の比較は compare_digest で行う。ただし参加者不在・別セッション・
+    期限切れは呼び出し側で短絡するため、関数全体が定数時間なわけではない。
+    秘密が漏れるのは hash の比較部分だけなので、そこだけを守れば足りる。
+    """
+    stored = participant.ws_token_hash or ""
+    expires = participant.ws_token_expires_at
+    candidate = _hash_ws_token(token) if token else ""
+    # stored が空でも compare_digest を通し、存在有無で応答時間が変わらないようにする
+    ok = secrets.compare_digest(stored or "\x00" * 64, candidate or "\x01" * 64)
+    if not ok or not stored:
+        return False
+    if expires is None or expires <= datetime.utcnow():
+        return False
+    return True
+
+
+def _record_join_failure(code: str, request: Optional[Request] = None) -> None:
+    now = _time.time()
+    ip = _join_client_ip(request)
+    with _JOIN_RATE_LOCK:
+        if code:
+            _JOIN_FAILURES[code].append(now)
+        if ip:
+            _JOIN_IP_FAILURES[ip].append(now)
+
+
+@router.post("/sessions/{code}/join")
+def join_session(
+    code: str,
+    body: ParticipantJoin,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """参加者登録（コーチ・ビューワーが接続時に呼ぶ）。パスワードが設定されている場合は検証する。
+
+    この endpoint は GlobalAuthMiddleware の例外である。カメラを担うスマホは
+    アプリのアカウントを持たず、セッションパスワードだけで参加するのが想定 UX
+    のため。防御は「code 単位 + 送信元 IP 単位のレート制限」と
+    「PBKDF2 によるパスワード検証」で行う。
+    """
+    # PBKDF2 検証へ流す前に code / 送信元の両方で rate limit を適用する。
+    _check_join_rate_limit(code)
+    _check_join_ip_rate_limit(request)
+
+    session = (
+        db.query(SharedSession)
+        .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
+        .first()
+    )
+    if not session:
+        # 存在しない code への brute-force もカウントして探索コストを上げる
+        _record_join_failure(code, request)
+        raise HTTPException(status_code=404, detail="セッションが見つからないか終了しています")
+
+    # パスワード検証
+    if session.password_hash:
+        if not body.session_password:
+            _record_join_failure(code, request)
+            raise HTTPException(status_code=401, detail="パスワードが必要です")
+        if not _verify_password(body.session_password, session.password_hash):
+            _record_join_failure(code, request)
+            raise HTTPException(status_code=401, detail="パスワードが正しくありません")
+
+    # デバイスタイプから source_capability / device_class を推定
+    source_cap = "none"
+    dev_class = "pc"
+    if body.device_type in ("iphone", "ipad", "usb_camera", "builtin_camera"):
+        source_cap = "camera"
+    if body.device_type == "iphone":
+        dev_class = "phone"
+    elif body.device_type == "ipad":
+        dev_class = "tablet"
+    elif body.device_type in ("usb_camera", "builtin_camera"):
+        dev_class = "camera"
+
+    # U-9: device_uid は「候補の検索」にしか使わない。
+    # 同じ participant 行（approved を含む）を再利用するには、前回 join で発行した
+    # participant_token の proof-of-possession を必須にする。token が無い/不正/期限切れ
+    # なら既存行を触らず、新しい pending participant として参加させる。
+    existing = None
+    if body.device_uid and body.participant_token:
+        candidates = (
+            db.query(SessionParticipant)
+            .filter(
+                SessionParticipant.session_id == session.id,
+                SessionParticipant.device_uid == body.device_uid,
+            )
+            .order_by(SessionParticipant.id.desc())
+            .all()
+        )
+        existing = next(
+            (p for p in candidates if _participant_token_valid(p, body.participant_token)),
+            None,
+        )
+    if existing:
+        existing.is_connected = True
+        existing.authenticated_at = datetime.utcnow()
+        existing.last_heartbeat = datetime.utcnow()
+        if body.device_name:
+            existing.device_name = body.device_name
+        # 再接続でも新しい資格情報を出す（旧トークンはこの時点で無効になる）
+        ws_token = _issue_participant_token(existing)
+        db.commit()
+        return {
+            "success": True,
+            "data": {
+                "participant_id": existing.id,
+                "session_code": code,
+                "role": existing.role,
+                "connection_role": existing.connection_role,
+                "reconnected": True,
+                "match_id": session.match_id,
+                "participant_token": ws_token,
+            },
+        }
+
+    participant = SessionParticipant(
+        session_id=session.id,
+        role=body.role,
+        device_name=body.device_name,
+        device_type=body.device_type,
+        device_uid=body.device_uid,
+        device_class=dev_class,
+        connection_role="viewer",
+        source_capability=source_cap,
+        connection_state="idle",
+        approval_status="pending",
+        viewer_permission="default",
+        display_size_class="large_tablet" if body.device_type == "ipad" else "standard",
+        authenticated_at=datetime.utcnow(),
+        last_heartbeat=datetime.utcnow(),
+        is_connected=True,
+    )
+    db.add(participant)
+    db.flush()          # participant.id を確定させてからトークンを載せる
+    ws_token = _issue_participant_token(participant)
+    db.commit()
+    return {
+        "success": True,
+        "data": {
+            "participant_id": participant.id,
+            "session_code": code,
+            "role": participant.role,
+            "connection_role": participant.connection_role,
+            # R-1: Sender 側で MediaRecorder 自動録画を開始するため match_id を返す
+            "match_id": session.match_id,
+            # WS 接続に使う参加者スコープの資格情報。平文はここでしか返らない。
+            "participant_token": ws_token,
+        },
+    }
+
+
+@router.post("/sessions/{code}/ws-ticket")
+def issue_camera_ws_ticket(
+    code: str,
+    body: WsTicketRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """カメラ signaling WS への一回限りの入場券を発行する。
+
+    この endpoint も GlobalAuthMiddleware の例外だが、認証は participant_token
+    そのもので行う（join でセッションパスワードを検証済みの参加者だけが持つ）。
+
+    ブラウザは WS に Authorization ヘッダを付けられないため資格情報はクエリに
+    載せるしかない。URL はログや Referer に残るので、そこへ置くのは寿命 30 秒・
+    使い捨ての入場券に限る。参加者トークン本体は常に本文でしか扱わない。
+    """
+    _check_join_ip_rate_limit(request)
+
+    if body.role not in ("device", "viewer"):
+        raise HTTPException(status_code=400, detail="role は device か viewer のみです")
+
+    session = (
+        db.query(SharedSession)
+        .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
+        .first()
+    )
+    if not session:
+        _record_join_failure(code, request)
+        raise HTTPException(status_code=404, detail="セッションが見つからないか終了しています")
+
+    participant = db.get(SessionParticipant, body.participant_id)
+    # 「参加者が居ない」と「トークンが違う」を応答で区別しない
+    if (
+        participant is None
+        or participant.session_id != session.id
+        or not _participant_token_valid(participant, body.participant_token)
+    ):
+        _record_join_failure(code, request)
+        raise HTTPException(status_code=401, detail="参加資格を確認できません")
+
+    # 要求された role を鵜呑みにせず、参加者の属性と突き合わせる。
+    # これを見ないと、映像を受けるだけの端末が「カメラです」と名乗って
+    # operator に offer を投げられる。
+    if participant.approval_status == "rejected":
+        raise HTTPException(status_code=403, detail="このデバイスは拒否されています")
+    if body.role == "device":
+        # `source_capability` は join 時に **クライアントが申告した device_type**
+        # からしか決まらない (`"iphone"` と名乗れば "camera" になる)。
+        # つまりこの検査は「クライアントが送った値をクライアントの申告と
+        # 突き合わせている」だけで、何も確かめていなかった。
+        #
+        # 実際に「この端末をカメラとして使ってよい」と決められるのは operator
+        # だけで、その意思は approval_status に入っている。既定は "pending" で、
+        # 旧実装は "rejected" しか弾いていなかったため、**承認前の端末が
+        # そのまま配信できた**。
+        # operator 画面には保留一覧と承認ボタンが既にあり、送信側も
+        # 「PCから開始指示を待っています」と表示する状態を持っている。
+        # 設計はもともと承認を前提にしている。
+        if participant.approval_status != "approved":
+            raise HTTPException(
+                status_code=403, detail="このデバイスはまだ承認されていません"
+            )
+        if participant.source_capability != "camera":
+            raise HTTPException(
+                status_code=403, detail="このデバイスはカメラとして登録されていません"
+            )
+    if body.role == "viewer" and participant.viewer_permission == "blocked":
+        raise HTTPException(status_code=403, detail="この端末の映像受信は停止されています")
+
+    ticket = issue_ws_ticket(code, body.role, str(participant.id))
+    return {
+        "success": True,
+        "data": {"ticket": ticket, "expires_in": TICKET_TTL_SEC},
+    }
+
+
+@router.post("/sessions/{code}/end")
+def end_session(code: str, request: Request, db: Session = Depends(get_db)):
+    """セッション終了（LAN/リモートからは operator_token が必要）"""
+    _check_operator_access(request, code)
+    session = db.query(SharedSession).filter(SharedSession.session_code == code).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="セッションが見つかりません")
+    session.is_active = False
+    # 参加者の資格情報も同時に失効させる。終了したセッションの入場券を
+    # 取り直せる状態を残さない。
+    _revoke_all_participant_tokens(db, session.id)
+    db.commit()
+    # トークンを削除（終了済みセッションを再利用できないようにする）
+    _operator_tokens.pop(code, None)
+    return {"success": True}
+
+
+# ─── ステールカメラ自動解放 ───────────────────────────────────────────────────
+
+STALE_CAMERA_THRESHOLD_SECONDS = 90  # ハートビート 3 回分（30s × 3）
+
+
+def _release_stale_active_cameras(session_id: int, db: Session) -> int:
+    """last_heartbeat が閾値を超えた active_camera を camera_candidate に降格。
+    降格した件数を返す。"""
+    threshold = datetime.utcnow() - timedelta(seconds=STALE_CAMERA_THRESHOLD_SECONDS)
+    stale = (
+        db.query(SessionParticipant)
+        .filter(
+            SessionParticipant.session_id == session_id,
+            SessionParticipant.connection_role == "active_camera",
+            SessionParticipant.last_heartbeat < threshold,
+        )
+        .all()
+    )
+    for p in stale:
+        p.connection_role = "camera_candidate"
+        p.connection_state = "idle"
+    if stale:
+        db.commit()
+    return len(stale)
+
+
+# ─── デバイス管理エンドポイント ──────────────────────────────────────────────
+
+@router.get("/sessions/{code}/devices")
+def list_devices(code: str, request: Request, db: Session = Depends(get_db)):
+    """接続デバイス（参加者）一覧を返す。
+    取得前にステールな active_camera を自動降格する。"""
+    session = (
+        db.query(SharedSession)
+        .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="セッションが見つかりません")
+    _require_session_scope(request, session, db)
+
+    _release_stale_active_cameras(session.id, db)
+
+    participants = (
+        db.query(SessionParticipant)
+        .filter(
+            SessionParticipant.session_id == session.id,
+            SessionParticipant.is_connected.is_(True),
+        )
+        .order_by(SessionParticipant.joined_at)
+        .all()
+    )
+    return {"success": True, "data": [_participant_to_dict(p) for p in participants]}
+
+
+@router.post("/sessions/{code}/devices/{participant_id}/set-role")
+def set_device_role(
+    code: str,
+    participant_id: int,
+    body: SetRoleBody,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """参加者の connection_role を変更"""
+    participant = _get_participant(code, participant_id, db)
+
+    _check_operator_access(request, code)
+    valid_roles = {"viewer", "coach", "analyst", "camera_candidate", "active_camera"}
+    if body.connection_role not in valid_roles:
+        raise HTTPException(status_code=400, detail=f"無効なロール: {body.connection_role}")
+
+    participant.connection_role = body.connection_role
+    db.commit()
+    return {"success": True, "data": _participant_to_dict(participant)}
+
+
+_MAX_ACTIVE_CAMERAS = 4  # サブモニタ使用時に全方向カバー可能な上限
+
+
+@router.post("/sessions/{code}/devices/{participant_id}/activate-camera")
+def activate_camera(
+    code: str,
+    participant_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """指定デバイスをアクティブカメラに昇格（最大 4 台同時）。
+
+    既存のアクティブカメラは降格しない。昇格済み台数が上限 (_MAX_ACTIVE_CAMERAS) に
+    達している場合は 409 を返す。降格は /deactivate-camera で手動で行う。
+    """
+    _check_operator_access(request, code)
+    session = (
+        db.query(SharedSession)
+        .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="セッションが見つかりません")
+
+    # 上限チェック
+    active_count = (
+        db.query(SessionParticipant)
+        .filter(
+            SessionParticipant.session_id == session.id,
+            SessionParticipant.connection_role == "active_camera",
+        )
+        .count()
+    )
+    if active_count >= _MAX_ACTIVE_CAMERAS:
+        raise HTTPException(
+            status_code=409,
+            detail=f"アクティブカメラが上限（{_MAX_ACTIVE_CAMERAS} 台）に達しています。先に別のカメラを降格してください。",
+        )
+
+    # 対象デバイスを昇格
+    target = db.get(SessionParticipant, participant_id)
+    if not target or target.session_id != session.id:
+        raise HTTPException(status_code=404, detail="参加者が見つかりません")
+    if target.connection_role == "active_camera":
+        # 既に active の場合は冪等に成功を返す
+        return {"success": True, "data": _participant_to_dict(target)}
+
+    target.connection_role = "active_camera"
+    target.connection_state = "sending_video"
+    db.commit()
+    return {"success": True, "data": _participant_to_dict(target)}
+
+
+@router.post("/sessions/{code}/devices/{participant_id}/deactivate-camera")
+def deactivate_camera(
+    code: str,
+    participant_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """アクティブカメラを camera_candidate に降格"""
+    _check_operator_access(request, code)
+    participant = _get_participant(code, participant_id, db)
+    participant.connection_role = "camera_candidate"
+    participant.connection_state = "idle"
+    db.commit()
+    return {"success": True, "data": _participant_to_dict(participant)}
+
+
+@router.post("/sessions/{code}/devices/{participant_id}/approve")
+def approve_device(code: str, participant_id: int, request: Request, db: Session = Depends(get_db)):
+    """デバイスを承認（approval_status → approved）"""
+    _check_operator_access(request, code)
+    participant = _get_participant(code, participant_id, db)
+    participant.approval_status = "approved"
+    db.commit()
+    return {"success": True, "data": _participant_to_dict(participant)}
+
+
+@router.post("/sessions/{code}/devices/{participant_id}/reject")
+def reject_device(code: str, participant_id: int, request: Request, db: Session = Depends(get_db)):
+    """デバイスを拒否（approval_status → rejected）"""
+    _check_operator_access(request, code)
+    participant = _get_participant(code, participant_id, db)
+    participant.approval_status = "rejected"
+    # 拒否した端末が資格情報を持ったままだと、以後も入場券を取り直せてしまう
+    _revoke_participant_token(participant)
+    db.commit()
+    # S-6 (2026-09-22): ここまでは DB を書くだけで、既に繋がっている WS には
+    # 何もしていなかった。切断は camera WS 側の **60s ごとの再検査**に相乗り
+    # していたので、拒否ボタンを押してから最大 1 分は繋がったままだった。
+    # その場で切る。WS が閉じると `disconnect_device` が operator へ
+    # `camera_stream_ended` を送り、operator 側が該当 `RTCPeerConnection` を
+    # 閉じて初めて**映像が止まる**（WS を閉じるだけでは止まらない）。
+    # 届かなかった場合は従来どおり 60s ループが拾う。
+    from backend.ws.camera import camera_manager as _cam_mgr
+    _cam_mgr.revoke_device_threadsafe(code, str(participant_id), "rejected by operator")
+    return {"success": True, "data": _participant_to_dict(participant)}
+
+
+@router.delete("/sessions/{code}/devices/{participant_id}")
+def delete_participant(code: str, participant_id: int, request: Request, db: Session = Depends(get_db)):
+    """参加者レコードを削除（切断済みデバイスのゴーストを除去）"""
+    _check_operator_access(request, code)
+    participant = _get_participant(code, participant_id, db)
+    db.delete(participant)
+    db.commit()
+    return {"success": True}
+
+
+@router.delete("/sessions/{code}/devices")
+def purge_disconnected(code: str, request: Request, db: Session = Depends(get_db)):
+    """切断済み（is_connected=False）参加者を一括削除"""
+    session = (
+        db.query(SharedSession)
+        .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="セッションが見つかりません")
+    _check_operator_access(request, code)
+    deleted = (
+        db.query(SessionParticipant)
+        .filter(
+            SessionParticipant.session_id == session.id,
+            SessionParticipant.is_connected.is_(False),
+        )
+        .all()
+    )
+    count = len(deleted)
+    for p in deleted:
+        db.delete(p)
+    db.commit()
+    return {"success": True, "data": {"deleted": count}}
+
+
+class HeartbeatBody(BaseModel):
+    """ハートビートの本文。
+
+    参加者トークンは任意。ログイン済みユーザ (JWT 経路) はこれまでどおり
+    本文なしで呼べる。QR + セッションパスワードで参加した端末は JWT を
+    持たないので、join で受け取ったトークンをここで提示する。
+    """
+    model_config = {"extra": "forbid"}
+    participant_token: Optional[str] = Field(default=None, max_length=256)
+
+
+@router.get("/sessions/{code}/devices/{participant_id}/ice-config")
+def participant_ice_config(
+    code: str,
+    participant_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """ICE config for QR/session participants without an app JWT.
+
+    The join-issued participant token proves membership in one active shared
+    session. Camera devices must also be operator-approved, and blocked viewers
+    cannot mint TURN credentials.
+    """
+    session = (
+        db.query(SharedSession)
+        .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
+        .first()
+    )
+    if session is None:
+        raise HTTPException(status_code=404, detail="セッションが見つかりません")
+
+    participant = db.get(SessionParticipant, participant_id)
+    auth = (request.headers.get("Authorization") or "").strip()
+    token = auth[len("Participant "):].strip() if auth.startswith("Participant ") else ""
+    if (
+        participant is None
+        or participant.session_id != session.id
+        or not _participant_token_valid(participant, token)
+    ):
+        # participant の存在有無と token 不一致を応答で区別しない。
+        raise HTTPException(status_code=401, detail="参加資格を確認できません")
+
+    if participant.approval_status == "rejected":
+        raise HTTPException(status_code=403, detail="このデバイスは拒否されています")
+    if participant.source_capability == "camera" and participant.approval_status != "approved":
+        raise HTTPException(status_code=403, detail="このデバイスはまだ承認されていません")
+    if participant.viewer_permission == "blocked":
+        raise HTTPException(status_code=403, detail="この端末の映像受信は停止されています")
+
+    from backend.routers.tunnel import build_ice_config_for_subject
+    return build_ice_config_for_subject(db, f"participant:{participant.id}")
+
+@router.post("/sessions/{code}/devices/{participant_id}/heartbeat")
+def device_heartbeat(
+    code: str,
+    participant_id: int,
+    request: Request,
+    body: Optional[HeartbeatBody] = None,
+    db: Session = Depends(get_db),
+):
+    """デバイスのハートビートを更新（30 秒ごとに呼ぶ）。
+    同時に同セッション内のステール active_camera を自動降格する。
+
+    **認証**: このルートはこれまで `_GLOBAL_AUTH_EXEMPT` に入っておらず、
+    JWT を持たない参加端末は 401 になっていた。`useDeviceHeartbeat` は
+    404/410 しか見ないので **401 を握り潰して再試行し続け**、
+    `last_heartbeat` が一度も更新されなかった。その結果
+    `_release_stale_active_cameras` (90 秒) が
+    **配信中のカメラを camera_candidate / idle へ降格**し、
+    DB と operator の画面が実態と乖離していた。
+
+    単に免除すると誰でも他人の端末を生存扱いにできてしまうので、
+    ws-ticket と同じく参加者トークンで認証する。
+    """
+    participant = _get_participant(code, participant_id, db)
+
+    token = (body.participant_token if body else None) or ""
+    if token:
+        if not _participant_token_valid(participant, token):
+            raise HTTPException(status_code=401, detail="参加資格を確認できません")
+    else:
+        # トークン無し = 従来どおりログイン済みユーザの経路。middleware が
+        # JWT を検証済みなので、ここでは追加の確認をしない。
+        from backend.utils.auth import get_auth
+        ctx = get_auth(request)
+        if ctx.role is None:
+            raise HTTPException(status_code=401, detail="認証が必要です")
+
+    participant.last_heartbeat = datetime.utcnow()
+    participant.is_connected = True
+    db.commit()
+    _release_stale_active_cameras(participant.session_id, db)
+    return {"success": True}
+
+
+@router.post("/sessions/{code}/devices/{participant_id}/set-viewer-permission")
+def set_viewer_permission(
+    code: str,
+    participant_id: int,
+    body: ViewerPermissionBody,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """ビューワー映像受信許可を設定
+
+    S-6: **このデバイス系エンドポイントだけ `_check_operator_access` が無かった。**
+    set-role / activate-camera / deactivate-camera / approve / reject / delete /
+    purge / heartbeat の 8 本は全て通している。`viewer_permission` は
+    「その端末が他の参加者のカメラ映像を受け取ってよいか」なので、抜けていると
+    **セッションコードを知っている LAN/リモートの誰でも blocked を allowed に
+    戻して映像を受け取り始められる**。
+    """
+    _check_operator_access(request, code)
+    valid = {"allowed", "blocked", "default"}
+    if body.viewer_permission not in valid:
+        raise HTTPException(status_code=400, detail=f"無効な値: {body.viewer_permission}")
+    participant = _get_participant(code, participant_id, db)
+    participant.viewer_permission = body.viewer_permission
+    # viewer_permission=blocked なら video_receive_enabled も無効化
+    if body.viewer_permission == "blocked":
+        participant.video_receive_enabled = False
+    db.commit()
+    return {"success": True, "data": _participant_to_dict(participant)}
+
+
+# ─── ライブソース管理エンドポイント ──────────────────────────────────────────
+
+@router.get("/sessions/{code}/sources")
+def list_sources(code: str, request: Request, db: Session = Depends(get_db)):
+    """セッションのライブソース一覧（優先度順）
+
+    S-6 の掃引で見つけた分。ライブソース系の 4 本は **認可が一切無かった**
+    (`request` すら取っていない)。読み取りは兄弟の
+    `GET /sessions/{code}/devices` と同じ team scope に揃える。
+    """
+    session = (
+        db.query(SharedSession)
+        .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="セッションが見つかりません")
+    _require_session_scope(request, session, db)
+
+    sources = (
+        db.query(LiveSource)
+        .filter(LiveSource.session_id == session.id)
+        .order_by(LiveSource.source_priority, LiveSource.id)
+        .all()
+    )
+    return {"success": True, "data": [_source_to_dict(s) for s in sources]}
+
+
+@router.post("/sessions/{code}/sources", status_code=201)
+def register_source(code: str, body: RegisterSourceBody, request: Request,
+                    db: Session = Depends(get_db)):
+    """ライブソースを登録（PC がローカルカメラや iOS を登録する）
+
+    S-6: 認可が無く、セッションコードを知っていれば他人のセッションへ
+    ソースを登録できた。兄弟のデバイス操作 8 本と同じ operator 検査を通す。
+    """
+    _check_operator_access(request, code)
+    session = (
+        db.query(SharedSession)
+        .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="セッションが見つかりません")
+
+    # ソース種別・解像度・fps からデフォルト優先度と suitability を計算
+    priority, suitability = compute_suitability(
+        body.source_kind, body.source_resolution, body.source_fps
+    )
+
+    source = LiveSource(
+        session_id=session.id,
+        participant_id=body.participant_id,
+        source_kind=body.source_kind,
+        source_priority=priority,
+        source_resolution=body.source_resolution,
+        source_fps=body.source_fps,
+        source_status="candidate",
+        suitability=suitability,
+    )
+    db.add(source)
+    db.commit()
+    return {"success": True, "data": _source_to_dict(source)}
+
+
+@router.post("/sessions/{code}/sources/{source_id}/activate")
+def activate_source(code: str, source_id: int, request: Request,
+                    db: Session = Depends(get_db)):
+    """ソースをアクティブ化（1 ソース制限 — 既存 active を inactive に降格）
+
+    S-6: **どの映像が生かを切り替える操作**に認可が無かった。
+    """
+    _check_operator_access(request, code)
+    session = (
+        db.query(SharedSession)
+        .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="セッションが見つかりません")
+
+    # 既存 active を降格
+    db.query(LiveSource).filter(
+        LiveSource.session_id == session.id,
+        LiveSource.source_status == "active",
+    ).update({"source_status": "candidate"})
+
+    # 対象ソースを昇格
+    source = db.get(LiveSource, source_id)
+    if not source or source.session_id != session.id:
+        raise HTTPException(status_code=404, detail="ソースが見つかりません")
+    source.source_status = "active"
+    db.commit()
+    return {"success": True, "data": _source_to_dict(source)}
+
+
+@router.post("/sessions/{code}/sources/{source_id}/deactivate")
+def deactivate_source(code: str, source_id: int, request: Request,
+                      db: Session = Depends(get_db)):
+    """ソースを candidate に降格
+
+    S-6: 認可が無く、セッションコードを知っていれば生中継を止められた。
+    """
+    _check_operator_access(request, code)
+    session = (
+        db.query(SharedSession)
+        .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="セッションが見つかりません")
+    source = db.get(LiveSource, source_id)
+    if not source or source.session_id != session.id:
+        raise HTTPException(status_code=404, detail="ソースが見つかりません")
+    source.source_status = "candidate"
+    db.commit()
+    return {"success": True, "data": _source_to_dict(source)}
+
+
+@router.post("/sessions/{code}/regenerate-password")
+def regenerate_password(code: str, request: Request, db: Session = Depends(get_db)):
+    """セッションパスワードを再生成。新しい平文パスワードを返す。LAN/リモートはトークン要求。"""
+    _check_operator_access(request, code)
+    session = db.query(SharedSession).filter(SharedSession.session_code == code).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="セッションが見つかりません")
+
+    plain_password = _generate_password()
+    session.password_hash = _hash_password(plain_password)
+    # 旧パスワードで得た参加者トークンを失効させる。ここを残すと
+    # パスワードを変えても既存の端末が入り続けられ、再生成の意味が消える。
+    _revoke_all_participant_tokens(db, session.id)
+    db.commit()
+    # Round 258 R25 P3 fix (R25 P3-3): operator token も同時に再発行する。
+    # 旧コードは `regenerate-password` で session password だけ更新していたが、
+    # operator token は session 作成時の値を保持していた。session password が
+    # 漏洩 → 再生成、で新 password を運用に流す経路でも、旧 operator token を
+    # 持ち続けた actor は LAN/リモートから operator API を呼べてしまう。
+    new_op_token = _generate_operator_token()
+    _operator_tokens[code] = new_op_token
+    return {
+        "success": True,
+        "data": {
+            "session_password": plain_password,
+            "operator_token": new_op_token,
+        },
+    }
+
+
+# ─── 内部ヘルパー ─────────────────────────────────────────────────────────────
+
+def _get_participant(code: str, participant_id: int, db: Session) -> SessionParticipant:
+    """セッション確認 + 参加者取得（共通バリデーション）"""
+    session = (
+        db.query(SharedSession)
+        .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="セッションが見つかりません")
+
+    participant = db.get(SessionParticipant, participant_id)
+    if not participant or participant.session_id != session.id:
+        raise HTTPException(status_code=404, detail="参加者が見つかりません")
+    return participant
+
+
+def _participant_to_dict(p: SessionParticipant) -> dict:
+    return {
+        "id": p.id,
+        "session_id": p.session_id,
+        "role": p.role,
+        "device_name": p.device_name,
+        "device_type": p.device_type,
+        "connection_role": p.connection_role,
+        "source_capability": p.source_capability,
+        "video_receive_enabled": p.video_receive_enabled,
+        "authenticated_at": p.authenticated_at.isoformat() if p.authenticated_at else None,
+        "connection_state": p.connection_state,
+        "joined_at": p.joined_at.isoformat(),
+        "last_seen_at": p.last_seen_at.isoformat(),
+        "is_connected": p.is_connected,
+        # `device_uid` は返さない。
+        # join は「セッションパスワード + 同じ device_uid」で既存の参加者行に
+        # 合流し、その行の approval_status (承認済みを含む) を引き継いだうえで
+        # 元の端末のトークンを失効させる。つまりこの値は**再接続の資格情報**
+        # として働く。読める相手を増やす理由が無い。
+        # 画面側は送信にしか使っておらず、返ってきた値は参照していない
+        # (CameraSenderPage / ViewerPage は getDeviceUid() を送るだけ)。
+        "approval_status": p.approval_status,
+        "last_heartbeat": p.last_heartbeat.isoformat() if p.last_heartbeat else None,
+        "viewer_permission": p.viewer_permission,
+        "device_class": p.device_class,
+        "display_size_class": p.display_size_class,
+    }
+
+
+def _source_to_dict(s: LiveSource) -> dict:
+    return {
+        "id": s.id,
+        "session_id": s.session_id,
+        "participant_id": s.participant_id,
+        "source_kind": s.source_kind,
+        "source_priority": s.source_priority,
+        "source_resolution": s.source_resolution,
+        "source_fps": s.source_fps,
+        "source_status": s.source_status,
+        "suitability": s.suitability,
+        "created_at": s.created_at.isoformat(),
+        "updated_at": s.updated_at.isoformat(),
+    }
+
+
+def _named_tunnel_url() -> Optional[str]:
+    """Cloudflare named tunnel が設定済 + config 認識済なら https URL を返す。
+
+    判定ロジック:
+      - settings.CLOUDFLARE_TUNNEL_HOSTNAME が空でない
+      - 共通ヘルパ _cloudflare_named_tunnel_info() が named_ready=True を返す
+        (config.yml 存在 + プレースホルダ未残 + 必須キー揃い)
+    返り値: "https://app.shuttle-scope.com" など。条件未充足時は None。
+    """
+    try:
+        host = (settings.CLOUDFLARE_TUNNEL_HOSTNAME or "").strip()
+        if not host:
+            return None
+        from backend.routers.tunnel import _cloudflare_named_tunnel_info
+        info = _cloudflare_named_tunnel_info()
+        if info.get("named_ready"):
+            return f"https://{info.get('hostname', host)}"
+    except Exception:
+        pass
+    return None
+
+
+def _session_to_dict(session: SharedSession, db: Session) -> dict:
+    from backend.ws.live import manager
+    lan_ips = _get_lan_ips()
+    port = settings.API_PORT
+    lan_mode = settings.LAN_MODE
+
+    # 共有 URL の優先順位:
+    #   1. Cloudflare named tunnel (https://app.shuttle-scope.com) — 全世界アクセス可
+    #   2. LAN IP (http://192.168.x.x:8765) — 同一 LAN
+    #   3. localhost (http://localhost:8765) — 同一 PC
+    coach_urls: list[str] = []
+    camera_sender_urls: list[str] = []
+    ws_templates: list[str] = []
+
+    tunnel_url = _named_tunnel_url()
+    if tunnel_url:
+        coach_urls.append(f"{tunnel_url}/#/annotator/{session.match_id}")
+        camera_sender_urls.append(f"{tunnel_url}/#/camera/{session.session_code}")
+        # WSS は Cloudflare が自動 upgrade、ポート不要
+        wss_host = tunnel_url.replace("https://", "")
+        ws_templates.append(f"wss://{wss_host}/ws/live/{session.session_code}")
+
+    if lan_mode and lan_ips:
+        for ip in lan_ips:
+            # LAN mode intentionally serves over plain HTTP for in-stadium use.
+            coach_urls.append(f"http://{ip}:{port}/#/annotator/{session.match_id}")  # DevSkim: ignore DS137138
+            camera_sender_urls.append(f"http://{ip}:{port}/#/camera/{session.session_code}")  # DevSkim: ignore DS137138
+    # localhost loopback fallback (同一デバイスでの確実なアクセス用、最後の fallback)
+    coach_urls.append(f"http://localhost:{port}/#/annotator/{session.match_id}")  # DevSkim: ignore DS137138
+    camera_sender_urls.append(f"http://localhost:{port}/#/camera/{session.session_code}")  # DevSkim: ignore DS137138
+    ws_templates.append(f"ws://{{LAN_IP}}:{port}/ws/live/{session.session_code}")
+
+    return {
+        "id": session.id,
+        "match_id": session.match_id,
+        "session_code": session.session_code,
+        "created_by_role": session.created_by_role,
+        "is_active": session.is_active,
+        "created_at": session.created_at.isoformat(),
+        "ws_connected": manager.connection_count(session.session_code),
+        "coach_urls": coach_urls,
+        "camera_sender_urls": camera_sender_urls,
+        # 後方互換のため単一テンプレートも残す (既存 UI が参照)。先頭は WSS 優先
+        "ws_url_template": ws_templates[0],
+        "ws_url_templates": ws_templates,
+        "has_password": session.password_hash is not None,
+        # named tunnel が起動していれば true。フロント UI が「外部公開済」表示に使う
+        "named_tunnel_active": tunnel_url is not None,
+        "named_tunnel_url": tunnel_url,
+    }

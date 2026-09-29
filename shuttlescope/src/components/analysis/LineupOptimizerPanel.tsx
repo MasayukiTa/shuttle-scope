@@ -1,0 +1,548 @@
+/**
+ * LineupOptimizerPanel — Phase S3: ラインナップ最適化
+ *
+ * ロール別に異なる表示を行う:
+ * - analyst/admin: 勝率ランキング（データあり先順・詳細比較用）
+ * - coach:   候補セット表示（順位なし・レンジ表示・意思決定を誘導しない）
+ *            ガイドライン: coach_lineup_optimization_guidance.txt 参照
+ */
+import { useState, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
+import { apiGet } from '@/api/client'
+import { SearchableSelect } from '@/components/common/SearchableSelect'
+import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { WIN, LOSS } from '@/styles/colors'
+import { MIcon } from '@/components/common/MIcon'
+import type { UserRole } from '@/types'
+
+// ── 型定義 ──────────────────────────────────────────────────────────────────
+
+interface PlayerSummary {
+  id: number
+  name: string
+  team?: string
+  match_count?: number
+}
+
+interface RankedPlayer {
+  rank: number
+  player_id: number
+  player_name: string
+  win_probability: number
+  sample_size: number
+  h2h_available: boolean
+  level_matches_available: boolean
+}
+
+interface LineupResult {
+  ranked_players: RankedPlayer[]
+  opponent_id: number | null
+  tournament_level: string | null
+  recommendation: string | null
+}
+
+interface Props {
+  players: PlayerSummary[]
+  // UserRole 全体を受ける。demo / llm も渡りうるので、判定は必ず
+  // 下の isAnalyst のような許可リストで書くこと (role !== 'player' のような
+  // 否定条件にすると demo / llm が解析者扱いで通り抜ける)。
+  role: UserRole | null
+}
+
+const LEVEL_OPTIONS = ['', 'IC', 'IS', 'SJL', '全日本', '国内', 'その他']
+
+// ── コーチ向け候補セット表示 ─────────────────────────────────────────────────
+// 順位なし・勝率レンジ・「意思決定の材料」として提示
+
+const PLAN_LABELS = ['案A', '案B', '案C']
+
+function CoachCandidateView({
+  result,
+  isLight,
+}: {
+  result: LineupResult
+  isLight: boolean
+}) {
+  const { t } = useTranslation()
+
+  const subText = isLight ? '#64748b' : '#9ca3af'
+  const neutral = isLight ? '#334155' : '#d1d5db'
+
+  // 上位 3 案のみ表示（順位付けしない = PLAN_LABELS）
+  const candidates = result.ranked_players.slice(0, 3)
+  if (candidates.length === 0) return null
+
+  return (
+    <div className="space-y-3">
+      {/* 注釈バナー */}
+      <div
+        className="flex items-start gap-2 px-3 py-2 rounded-ss-md bg-[rgba(31,111,224,0.08)] border border-[var(--ss-brand)]"
+      >
+        <MIcon name="error" size={13} className="shrink-0 mt-0.5" style={{ color: 'var(--ss-brand)' }} />
+        <p className="text-[11px] text-[var(--ss-brand)]">
+          {t('lineup.candidate_disclaimer', 'Candidate generation (reference) — not an automatic decision. Do not decide a lineup on this alone.')}
+        </p>
+      </div>
+
+      {/* 候補セット */}
+      <div className="grid gap-2">
+        {candidates.map((rp, idx) => {
+          const pct = Math.round(rp.win_probability * 100)
+          // 不確実性を加味したレンジ表示（少数サンプルほど広く）
+          const margin = rp.sample_size < 5 ? 15 : rp.sample_size < 10 ? 10 : 7
+          const lo = Math.max(0, pct - margin)
+          const hi = Math.min(100, pct + margin)
+          const stability =
+            rp.sample_size >= 10 ? '安定' : rp.sample_size >= 5 ? '中' : '荒れやすい'
+          const stabilityColor =
+            rp.sample_size >= 10
+              ? WIN
+              : rp.sample_size >= 5
+              ? '#d97706'
+              : isLight
+              ? '#64748b'
+              : '#9ca3af'
+
+          return (
+            <div
+              key={rp.player_id}
+              className="px-3 py-2.5 rounded-ss-md bg-[var(--ss-surface-1)] border border-[var(--ss-border)]"
+            >
+              {/* プラン名 + 選手名 */}
+              <div className="flex items-center gap-2 mb-1.5">
+                <span
+                  className="text-[10px] font-bold px-1.5 py-0.5 rounded-ss-sm shrink-0 bg-[rgba(37,99,235,0.08)] text-[var(--ss-brand)]"
+                >
+                  {PLAN_LABELS[idx]}
+                </span>
+                <span className="text-sm font-semibold truncate" style={{ color: neutral }}>
+                  {rp.player_name}
+                </span>
+                {rp.h2h_available && (
+                  <span
+                    className="text-[10px] px-1 rounded-ss-sm shrink-0 text-[var(--ss-brand)] bg-[rgba(37,99,235,0.08)]"
+                  >
+                    H2H
+                  </span>
+                )}
+              </div>
+
+              {/* 勝率レンジ + 安定性 + サンプル数 */}
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px]" style={{ color: subText }}>{t('auto.LineupOptimizerPanel.k1')}</span>
+                  <span className="text-sm font-bold ss-num" style={{ color: neutral }}>
+                    {lo}–{hi}%
+                  </span>
+                  {rp.sample_size < 10 && (
+                    <span className="text-[10px]" style={{ color: subText }}>
+                      {t('lineup.ref_insufficient', '(reference: insufficient data)')}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px]" style={{ color: subText }}>{t('auto.LineupOptimizerPanel.k2')}</span>
+                  <span className="text-[10px] font-medium" style={{ color: stabilityColor }}>
+                    {stability}
+                  </span>
+                </div>
+                <span className="text-[10px]" style={{ color: subText }}>
+                  {t('lineup.n_matches', { n: rp.sample_size, defaultValue: '{{n}} matches' })}
+                </span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      <p className="text-[10px]" style={{ color: subText }}>
+        {t('lineup.candidate_note', '* Candidates are reference info based on opponent and conditions. The final lineup decision is at the coach’s discretion.')}
+      </p>
+    </div>
+  )
+}
+
+// ── アナリスト向けランキング表示 ─────────────────────────────────────────────
+
+function AnalystRankingView({
+  result,
+  isLight,
+}: {
+  result: LineupResult
+  isLight: boolean
+}) {
+  // 2026-05-26: module-scope helper なので親の useTranslation の t は
+  // 見えない。自前で hook を呼ぶ (本関数も React コンポーネントなので OK)。
+  const { t } = useTranslation()
+  const subText = isLight ? '#64748b' : '#9ca3af'
+  const neutral = isLight ? '#334155' : '#d1d5db'
+
+  // データあり（勝率順）→ データなし（名前順）
+  const withData = result.ranked_players.filter((rp) => rp.sample_size > 0)
+  const noData = result.ranked_players.filter((rp) => rp.sample_size === 0)
+    .sort((a, b) => a.player_name.localeCompare(b.player_name, 'ja'))
+
+  const renderRow = (rp: RankedPlayer, displayRank: number | null) => {
+    const pct = Math.round(rp.win_probability * 100)
+    const isTop = displayRank === 1
+    return (
+      <div
+        key={rp.player_id}
+        className="flex items-center gap-3 px-3 py-2 rounded"
+        style={{
+          background: isLight ? '#f8fafc' : '#1e293b',
+          border: isTop ? `1px solid ${WIN}60` : `1px solid transparent`,
+        }}
+      >
+        <span
+          className="text-xs font-bold w-5 text-center shrink-0"
+          style={{ color: isTop ? WIN : subText }}
+        >
+          {displayRank ?? '—'}
+        </span>
+        <span
+          className="flex-1 min-w-0 text-sm font-medium truncate"
+          style={{ color: displayRank ? neutral : subText }}
+          title={rp.player_name}
+        >
+          {rp.player_name}
+        </span>
+        {/* xs: バッジ群を隠して名前領域を確保。sm+ で表示 */}
+        {rp.h2h_available && (
+          <span
+            className="hidden sm:inline-flex text-[10px] px-1 rounded-ss-sm shrink-0 text-[var(--ss-brand)] bg-[rgba(37,99,235,0.08)]"
+          >
+            H2H
+          </span>
+        )}
+        <span className="hidden sm:inline text-[11px] shrink-0 ss-num" style={{ color: subText }}>
+          {rp.sample_size > 0 ? t('lineup.n_matches', { n: rp.sample_size, defaultValue: '{{n}} matches' }) : t('lineup.no_data', 'No data')}
+        </span>
+        {rp.sample_size > 0 && (
+          <div className="flex items-center gap-1.5 shrink-0">
+            <div className="w-16 h-1.5 bg-[var(--ss-surface-2)] rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-base ease-out"
+                style={{
+                  width: `${pct}%`,
+                  background: pct >= 55 ? WIN : pct <= 45 ? LOSS : '#d97706',
+                }}
+              />
+            </div>
+            <span
+              className="text-sm font-bold w-10 text-right shrink-0 ss-num"
+              style={{ color: pct >= 55 ? WIN : pct <= 45 ? LOSS : neutral }}
+            >
+              {pct}%
+            </span>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* ランキングリスト（データあり） */}
+      <div className="space-y-1.5">
+        {withData.map((rp, idx) => renderRow(rp, idx + 1))}
+      </div>
+
+      {/* データなし（末尾に別掲） */}
+      {noData.length > 0 && (
+        <details>
+          <summary className="text-[11px] cursor-pointer select-none" style={{ color: subText }}>
+            {t('lineup.no_record_n', { count: noData.length, defaultValue: 'No record — {{count}} players (click to expand)' })}
+          </summary>
+          <div className="mt-1 space-y-1">
+            {noData.map((rp) => renderRow(rp, null))}
+          </div>
+        </details>
+      )}
+
+      <p className="text-[10px]" style={{ color: subText }}>
+        {t('lineup.winrate_note', '* Win rates are predictions from a calibrated multi-feature model.')}
+      </p>
+    </div>
+  )
+}
+
+// ── メインコンポーネント ──────────────────────────────────────────────────────
+
+export function LineupOptimizerPanel({ players, role }: Props) {
+  const { t } = useTranslation()
+  const isLight = useIsLightMode()
+  const subText = isLight ? '#64748b' : '#9ca3af'
+  const inputClass = `text-sm rounded-ss-md px-2 py-1.5 focus:outline-none bg-[var(--ss-surface-1)] border border-[var(--ss-border-strong)] text-[var(--ss-t1)]`
+
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [opponentId, setOpponentId] = useState<number | null>(null)
+  const [level, setLevel] = useState('')
+  const [enabled, setEnabled] = useState(false)
+  const [nameFilter, setNameFilter] = useState('')
+  const [teamFilter, setTeamFilter] = useState('')
+
+  const isAnalyst = role === 'analyst' || role === 'admin'
+  const canRun = selectedIds.size >= 2
+
+  // チームリスト（重複除去・ソート）
+  const teamOptions = useMemo(() => {
+    const teams = Array.from(new Set(players.map((p) => p.team).filter(Boolean) as string[]))
+    return teams.sort()
+  }, [players])
+
+  // 絞り込み後の選手リスト（選択済みは常に先頭）
+  const filteredPlayers = useMemo(() => {
+    const q = nameFilter.trim().toLowerCase()
+    return players.filter((p) => {
+      const matchName = !q || p.name.toLowerCase().includes(q)
+      const matchTeam = !teamFilter || p.team === teamFilter
+      return matchName && matchTeam
+    })
+  }, [players, nameFilter, teamFilter])
+
+  // 絞り込み後のうち選択済み / 未選択
+  const _filteredSelectedIds = useMemo(
+    () => filteredPlayers.filter((p) => selectedIds.has(p.id)).map((p) => p.id),
+    [filteredPlayers, selectedIds]
+  )
+  const allFilteredSelected =
+    filteredPlayers.length > 0 && filteredPlayers.every((p) => selectedIds.has(p.id))
+
+  const { data: resp, isLoading, isFetching } = useQuery({
+    queryKey: ['lineup-optimizer', Array.from(selectedIds).sort().join(','), opponentId, level],
+    queryFn: () =>
+      apiGet<{ success: boolean; data: LineupResult }>('/prediction/lineup_optimizer', {
+        player_ids: Array.from(selectedIds).join(','),
+        ...(opponentId ? { opponent_id: opponentId } : {}),
+        ...(level ? { tournament_level: level } : {}),
+      }),
+    enabled,
+  })
+
+  const result = resp?.data
+
+  function togglePlayer(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+    setEnabled(false)
+  }
+
+  function toggleAllFiltered() {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (allFilteredSelected) {
+        filteredPlayers.forEach((p) => next.delete(p.id))
+      } else {
+        filteredPlayers.forEach((p) => next.add(p.id))
+      }
+      return next
+    })
+    setEnabled(false)
+  }
+
+  function clearSelected() {
+    setSelectedIds(new Set())
+    setEnabled(false)
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* ── 候補選手選択 ── */}
+      <div className="space-y-2">
+        {/* 見出し + 選択済みチップ */}
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <p className="text-xs font-semibold" style={{ color: subText }}>
+            {t('prediction.lineup_add_player')}
+            <span className="ml-1 font-normal">
+              {t('lineup.selected_count', { selected: selectedIds.size, total: players.length, defaultValue: '({{selected}} selected / {{total}})' })}
+            </span>
+          </p>
+          {selectedIds.size > 0 && (
+            <button
+              onClick={clearSelected}
+              className="text-[10px] flex items-center gap-0.5 hover:opacity-70 transition-opacity"
+              style={{ color: subText }}
+            >
+              <MIcon name="close" size={10} /> {t('lineup.clear_selection', 'Clear selection')}
+            </button>
+          )}
+        </div>
+
+        {/* 選択済み選手チップ（フィルターで隠れても常に表示） */}
+        {selectedIds.size > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {players
+              .filter((p) => selectedIds.has(p.id))
+              .map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => togglePlayer(p.id)}
+                  className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full transition-colors"
+                  style={{
+                    background: isLight ? '#dbeafe' : '#1d4ed830',
+                    color: isLight ? '#1d4ed8' : '#93c5fd',
+                    border: `1px solid ${isLight ? '#93c5fd' : '#1d4ed8'}`,
+                  }}
+                >
+                  {p.name}
+                  <MIcon name="close" size={9} />
+                </button>
+              ))}
+          </div>
+        )}
+
+        {/* 絞り込みバー */}
+        <div className="flex gap-1.5 flex-wrap items-center">
+          {/* 名前検索 */}
+          <div
+            className="flex items-center gap-1 flex-1 min-w-[140px] rounded-ss-md px-2 py-1 bg-[var(--ss-surface-2)] border border-[var(--ss-border)]"
+          >
+            <MIcon name="search" size={11} style={{ color: subText }} className="shrink-0" />
+            <input
+              type="text"
+              value={nameFilter}
+              onChange={(e) => setNameFilter(e.target.value)}
+              placeholder={t('auto.LineupOptimizerPanel.k6')}
+              className="flex-1 bg-transparent text-xs outline-none min-w-0 text-[var(--ss-t1)]"
+            />
+            {nameFilter && (
+              <button onClick={() => setNameFilter('')}>
+                <MIcon name="close" size={10} style={{ color: subText }} />
+              </button>
+            )}
+          </div>
+
+          {/* チームフィルター */}
+          {teamOptions.length > 0 && (
+            <select
+              value={teamFilter}
+              onChange={(e) => setTeamFilter(e.target.value)}
+              className="text-xs rounded-ss-md px-2 py-1 focus:outline-none bg-[var(--ss-surface-2)] border border-[var(--ss-border)] text-[var(--ss-t1)]"
+            >
+              <option value="">{t('auto.LineupOptimizerPanel.k3')}</option>
+              {teamOptions.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          )}
+
+          {/* 絞り込み全選択/解除 */}
+          {filteredPlayers.length > 0 && (
+            <button
+              onClick={toggleAllFiltered}
+              className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-ss-md bg-[var(--ss-surface-2)] border border-[var(--ss-border)] transition-colors duration-base ease-out"
+              style={{ color: subText }}
+            >
+              {allFilteredSelected
+                ? <><MIcon name="check_box" size={11} /> {t('auto.LineupOptimizerPanel.k4')}</>
+                : <><MIcon name="crop_square" size={11} /> {t('auto.LineupOptimizerPanel.k5')}</>
+              }
+              {nameFilter || teamFilter ? '（絞り込み中）' : ''}
+            </button>
+          )}
+        </div>
+
+        {/* 件数表示 */}
+        {(nameFilter || teamFilter) && (
+          <p className="text-[10px]" style={{ color: subText }}>
+            {t('lineup.showing_count', { shown: filteredPlayers.length, total: players.length, defaultValue: 'Showing {{shown}} (of {{total}})' })}
+          </p>
+        )}
+
+        {/* チェックボックスリスト（最大高さ制限 + スクロール） */}
+        <div
+          className="grid grid-cols-1 md:grid-cols-2 gap-1.5 overflow-y-auto pr-1"
+          style={{ maxHeight: '280px' }}
+        >
+          {filteredPlayers.map((p) => (
+            <label
+              key={p.id}
+              className={`flex items-center gap-2 text-xs px-2 py-1.5 rounded-ss-md cursor-pointer transition-colors duration-base ease-out ${
+                selectedIds.has(p.id)
+                  ? 'bg-[var(--ss-surface-1)] border border-[var(--ss-brand)] text-[var(--ss-brand)]'
+                  : 'bg-[var(--ss-surface-1)] border border-[var(--ss-border)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]'
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={selectedIds.has(p.id)}
+                onChange={() => togglePlayer(p.id)}
+                className="accent-blue-500 shrink-0"
+              />
+              <div className="min-w-0">
+                <div className="truncate font-medium">{p.name}</div>
+                {p.team && <div className="truncate opacity-60">{p.team}</div>}
+              </div>
+            </label>
+          ))}
+          {filteredPlayers.length === 0 && (
+            <p className="col-span-2 text-xs text-center py-3" style={{ color: subText }}>
+              {t('lineup.no_matching_players', 'No matching players')}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* フィルター */}
+      <div className="flex gap-2 flex-wrap items-end">
+        <div className="flex-1 min-w-[180px]">
+          <SearchableSelect
+            options={players.map((p) => ({
+              value: p.id,
+              label: p.name,
+              searchText: p.team ?? '',
+              suffix: p.team ? `（${p.team}）` : undefined,
+            }))}
+            value={opponentId}
+            onChange={(v) => { setOpponentId(v != null ? Number(v) : null); setEnabled(false) }}
+            emptyLabel={`${t('prediction.lineup_vs_opponent')}（任意）`}
+            placeholder={t('auto.LineupOptimizerPanel.k7')}
+          />
+        </div>
+        <select
+          value={level}
+          onChange={(e) => { setLevel(e.target.value); setEnabled(false) }}
+          className={inputClass}
+        >
+          <option value="">{t('prediction.select_level')}</option>
+          {LEVEL_OPTIONS.filter(Boolean).map((lv) => {
+            const map: Record<string, [string, string]> = {
+              '全日本': ['tournament.national', '全日本'],
+              '国内':   ['tournament.domestic', '国内'],
+              'その他': ['tournament.other',    'その他'],
+            }
+            const hit = map[lv]
+            return <option key={lv} value={lv}>{hit ? t(hit[0], hit[1]) : lv}</option>
+          })}
+        </select>
+      </div>
+
+      {/* 実行ボタン */}
+      <button
+        onClick={() => { if (canRun) setEnabled(true) }}
+        disabled={!canRun || isLoading || isFetching}
+        className="w-full py-2 rounded-ss-md bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-40 text-sm font-medium text-white transition-colors duration-base ease-out"
+      >
+        {isLoading || isFetching ? '計算中...' : t('prediction.lineup_run')}
+      </button>
+      {!canRun && (
+        <p className="text-[11px]" style={{ color: subText }}>
+          {t('lineup.select_at_least_two', 'Please select at least 2 players')}
+        </p>
+      )}
+
+      {/* 結果: ロール別表示 */}
+      {result && result.ranked_players.length > 0 && (
+        isAnalyst
+          ? <AnalystRankingView result={result} isLight={isLight} />
+          : <CoachCandidateView result={result} isLight={isLight} />
+      )}
+    </div>
+  )
+}

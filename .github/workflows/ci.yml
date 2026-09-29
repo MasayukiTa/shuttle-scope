@@ -1,0 +1,128 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - develop
+      - 'feature/**'
+      - 'fix/**'
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: Build and Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    # 2026-05-08: pytest-xdist + 45 分でも GitHub Actions runner が 2 worker 限定で
+    # WS テスト hang (operator JWT 必要化 567cd64 + 旧テスト) で 45 分丸ごと食う
+    # 事象を観測したため 60 分に上げる。WS hang fix も同時 push。
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    defaults:
+      run:
+        working-directory: shuttlescope
+
+    env:
+      CI: true
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      PYTHONUNBUFFERED: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+
+      - name: Setup Node.js
+        # 2026-05-20: Node 24 + electron@39 の postinstall (install.js) が Windows runner で
+        # STATUS_STACK_BUFFER_OVERRUN (exit 3221226505) を発生して npm ci が必ず落ちる。
+        # Node 22 LTS に固定して回避。electron 39 は Node 22 対応。
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: shuttlescope/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: shuttlescope/backend/requirements.txt
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        run: python -m pip install -r backend/requirements.txt
+
+      - name: Lint (if config exists)
+        if: ${{ hashFiles('shuttlescope/eslint.config.*', 'shuttlescope/.eslintrc*') != '' }}
+        run: npm run lint
+
+      - name: Typecheck
+        # 2026-09-18: これまで tsc は CI でも check:all でも一度も走っていなかった。
+        # vite の build は型を見ないので、型エラーは全部素通りしていた。
+        # 導入時点で 158 件あり、その中に「ラリーを丸ごと捨てる」実行時欠陥
+        # (offline stash の matchId 型不一致) が埋まっていた。0 件で維持する。
+        run: npm run typecheck
+
+      - name: Build desktop app
+        run: npm run build
+
+      - name: Frontend tests
+        run: npx vitest run --config vitest.config.ts
+
+      - name: Install ffmpeg (Linux runners)
+        # ubuntu-latest ランナーイメージから ffmpeg がプリインストール対象外になったため
+        # 明示インストールする。benchmark の TrackNet ベンチ (_bench_tracknet) は
+        # SS_CV_MOCK でもフレーム生成に ffmpeg バイナリを要求するため、無いと
+        # RuntimeError("ffmpeg がインストールされていません") で落ちる。
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - name: Backend tests (Linux — parallel)
+        # 2026-05-08: pytest-xdist で並列化。45 分上限を 25 分台に短縮想定。
+        # `-n auto` は CI runner の論理 CPU 数 (= 4 通常) で並列化。
+        # 不安定 test (DB fixture / file race) があれば `--dist loadgroup` か
+        # `@pytest.mark.serial` で同期化する。
+        # 2026-05-11 R37: pytest-timeout で 1 test = 60s 上限。WS テスト hang による
+        # CI 全体 60 分 timeout を防ぐ二重防御。
+        # 2026-05-11 R37.2: Linux は signal (SIGALRM) 法に変更。`thread` 法は xdist 配下
+        # の subprocess worker では `os._exit` 経由で worker 自体を kill する形だが、
+        # coordinator がそれを正しく回収できず CI 全体が hang する事象が観測された
+        # (R37.1 で test_turnstile.py 起点で 18min hang)。POSIX なら SIGALRM 一発で
+        # 該当 test だけ TimeoutError を投げて続行できる。
+        if: runner.os != 'Windows'
+        run: python -m pytest -n auto --dist loadfile -v --timeout=60 --timeout-method=signal
+
+      - name: Backend tests (Windows — serial)
+        # 2026-05-10: Windows + xdist 3.8.0 + Python 3.10 で worker IPC が不安定
+        # (test_analysis_foundation.py 開始直後に gw0/gw1 controller が
+        # AssertionError で死ぬ既知の race; xdist#693 系)。
+        # Windows は parallel を諦めて単一プロセス走行に切替える。Linux 側で
+        # 並列カバレッジは取れているので、Windows は smoke として直列で十分。
+        # 2026-05-11 R37: pytest-timeout で 1 test = 60s 上限。test_websocket_signaling
+        # 系の threading-based テストは Windows skip 済だが、未発見の hang への保険。
+        if: runner.os == 'Windows'
+        run: python -m pytest -v --timeout=60 --timeout-method=thread
+
+      - name: Python bytecode smoke
+        run: python -m compileall backend
+
+      - name: Frontend security conventions check
+        # Phase B/C: localfile:/// 直接構築、video_local_path 漏洩、idempotency なし
+        # 等の規約違反を grep で検出する
+        run: python scripts/check_security_conventions.py

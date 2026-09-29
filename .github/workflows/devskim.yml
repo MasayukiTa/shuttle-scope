@@ -1,0 +1,69 @@
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+
+name: DevSkim
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    - cron: '26 10 * * 6'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+# Scorecard TokenPermissions: top-level は最小 read、write は job レベル
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: DevSkim
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+
+      # microsoft/DevSkim-Action は内部で Docker build → mcr.microsoft.com から
+      # dotnet/sdk:8.0 を pull するが、MCR が 403 を返して落ちる事象が継続。
+      # 代わりに .NET tool として DevSkim.CLI を直接インストールして実行する。
+      - name: Setup .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install DevSkim CLI
+        run: dotnet tool install --global Microsoft.CST.DevSkim.CLI
+
+      - name: Run DevSkim scanner
+        # 検出があっても CI は失敗させず、SARIF を Security tab に upload して
+        # GitHub 側で alert として管理する。`|| true` で exit code を握り潰す。
+        # `--exit-code-on-recommendation` は古い Action 由来の flag で 1.0.70 の
+        # CLI には存在しないため使わない。
+        run: |
+          # --ignore-rule-ids: 検証済み FP / 低リスク advisory を抑制。
+          #   DS154189 native C++ (strcpy 等) — PoC・operator 制御入力、未信頼 data の parse なし(将来 strcpy_s 化予定)
+          #   DS162092 / DS137138 — localhost/doc 用 HTTP・参照文字列
+          #   DS172411 / DS189424 / DS140021 / DS121708 — note 級の doc/参照文字列
+          # (注: CLI は .devskim.json の ignores を読まないため flag で指定する)
+          devskim analyze \
+            --source-code . \
+            --output-file devskim-results.sarif \
+            --ignore-rule-ids DS154189 DS162092 DS137138 DS172411 DS189424 DS140021 DS121708 \
+            --file-format sarif || true
+          # SARIF が生成されなかった場合 (= 真の失敗) も後段の upload で気付ける
+          # よう、ここでファイル存在のみ最終確認 (デバッグ用)。
+          ls -la devskim-results.sarif || echo "::warning::SARIF not generated"
+
+      - name: Upload DevSkim scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4
+        with:
+          sarif_file: devskim-results.sarif

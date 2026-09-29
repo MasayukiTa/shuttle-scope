@@ -1,0 +1,32 @@
+# ShuttleScope Cloudflare Tunnel SSH ingress — opt-in template
+#
+# Round 258 R7 P1 (Codex review):
+# 旧 default config に `ssh.shuttle-scope.com -> ssh://localhost:22` が同居していたが、
+# Cloudflare Access policy が未設定 / 誤設定の場合に SSH が外部公開される事故を
+# 起こす設計だった。SSH ingress は default から外し、本テンプレートを明示的に
+# main config に merge した上で **必ず Cloudflare Access policy を適用** する運用にする。
+#
+# 必須前提:
+#   1. Cloudflare Zero Trust → Access → Applications で
+#      ssh.shuttle-scope.com を SaaS / Self-hosted Application として登録
+#   2. Identity provider (GitHub OIDC など) を attach
+#   3. Policy: Require -> Email matches `kiyusama.take@gmail.com` (or 許可 list)
+#   4. Session duration: 24h 以下
+#   5. Block 既定で all-other に
+#
+# 適用手順:
+#   1. config.yml を開く
+#   2. `# NOTE: SSH ingress は config.ssh.example.yml に分離` コメントの直下に
+#      下のブロックを貼り付ける
+#   3. `- service: http_status:404` の前に来るように
+#   4. cloudflared service restart
+#
+# 取り外し手順:
+#   1. config.yml の SSH ingress ブロックを削除
+#   2. Cloudflare DNS から ssh.shuttle-scope.com を削除
+#   3. cloudflared service restart
+
+  - hostname: ssh.shuttle-scope.com
+    service: ssh://localhost:22
+    # Cloudflare Access SaaS application の auth tag は
+    # cloudflared 側ではなく Zero Trust Dashboard 側で必須 enforce すること。

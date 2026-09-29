@@ -1,0 +1,750 @@
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
+import { apiGet, apiPost, API_BASE_URL } from '@/api/client'
+import { useAuth } from '@/hooks/useAuth'
+import { useTheme } from '@/hooks/useTheme'
+
+// ─── 型定義 ───────────────────────────────────────────
+type PostureCollapse = 'none' | 'minor' | 'major'
+type WeightDistribution = 'left' | 'right' | 'center' | 'floating'
+type ShotTiming = 'early' | 'optimal' | 'late'
+type Confidence = 1 | 2 | 3
+type ActiveTab = 'labeling' | 'annotation'
+
+interface ShotAnnotation {
+  stroke_id: number
+  shot_type: string
+  confidence: Confidence
+  comment: string
+}
+
+const CANONICAL_SHOTS = [
+  'short_service','long_service','net_shot','clear','push_rush','smash',
+  'defensive','drive','lob','drop','cross_net','slice','around_head',
+  'cant_reach','flick','half_smash','block','other',
+]
+
+interface ExpertClip {
+  stroke_id: number
+  frame_index: number
+  clip_start_frame: number
+  clip_end_frame: number
+  clip_url: string
+  shot_type?: string
+  miss_type?: string
+}
+
+interface ClipsResponse {
+  clips: ExpertClip[]
+}
+
+interface ExpertLabel {
+  stroke_id: number
+  frame_index: number
+  clip_start_frame: number
+  clip_end_frame: number
+  posture_collapse: PostureCollapse
+  weight_distribution: WeightDistribution
+  shot_timing: ShotTiming
+  confidence: Confidence
+  comment: string
+  annotator_role: string
+}
+
+interface LabelsResponse {
+  labels: ExpertLabel[]
+}
+
+// ラジオ選択肢の構成
+const POSTURE_OPTIONS: { value: PostureCollapse; key: string }[] = [
+  { value: 'none', key: 'expert_labeler.posture_none' },
+  { value: 'minor', key: 'expert_labeler.posture_minor' },
+  { value: 'major', key: 'expert_labeler.posture_major' },
+]
+const WEIGHT_OPTIONS: { value: WeightDistribution; key: string }[] = [
+  { value: 'left', key: 'expert_labeler.weight_left' },
+  { value: 'right', key: 'expert_labeler.weight_right' },
+  { value: 'center', key: 'expert_labeler.weight_center' },
+  { value: 'floating', key: 'expert_labeler.weight_floating' },
+]
+const TIMING_OPTIONS: { value: ShotTiming; key: string }[] = [
+  { value: 'early', key: 'expert_labeler.timing_early' },
+  { value: 'optimal', key: 'expert_labeler.timing_optimal' },
+  { value: 'late', key: 'expert_labeler.timing_late' },
+]
+
+// 初期フォーム状態
+interface FormState {
+  posture_collapse: PostureCollapse | null
+  weight_distribution: WeightDistribution | null
+  shot_timing: ShotTiming | null
+  confidence: Confidence
+  comment: string
+}
+
+function emptyForm(): FormState {
+  return {
+    posture_collapse: null,
+    weight_distribution: null,
+    shot_timing: null,
+    confidence: 2,
+    comment: '',
+  }
+}
+
+// ─── 本体 ─────────────────────────────────────────────
+function AnnotateContent() {
+  const { matchId } = useParams<{ matchId: string }>()
+  const navigate = useNavigate()
+  const { t } = useTranslation()
+  const { role } = useAuth()
+  useTheme()
+  const queryClient = useQueryClient()
+
+  const annotatorRole = role === 'coach' ? 'coach' : 'analyst'
+
+  // クリップ一覧取得
+  const clipsQuery = useQuery<ClipsResponse>({
+    queryKey: ['expert', 'clips', matchId],
+    queryFn: () => apiGet<ClipsResponse>('/v1/expert/clips', { match_id: matchId! }),
+    enabled: !!matchId,
+  })
+
+  // 既存ラベル取得
+  const labelsQuery = useQuery<LabelsResponse>({
+    queryKey: ['expert', 'labels', matchId, annotatorRole],
+    queryFn: () =>
+      apiGet<LabelsResponse>('/v1/expert/labels', {
+        match_id: matchId!,
+        annotator_role: annotatorRole,
+      }),
+    enabled: !!matchId,
+  })
+
+  // ショット種別アノテーション取得（admin のみ）
+  const shotLabelsQuery = useQuery<ShotAnnotation[]>({
+    queryKey: ['expert', 'shot_labels', matchId],
+    queryFn: () => apiGet<ShotAnnotation[]>('/v1/expert/shot_labels', { match_id: matchId! }),
+    enabled: !!matchId && role === 'admin',
+  })
+  const shotLabelByStroke = useMemo(() => {
+    const m = new Map<number, ShotAnnotation>()
+    ;(shotLabelsQuery.data ?? []).forEach((a) => m.set(a.stroke_id, a))
+    return m
+  }, [shotLabelsQuery.data])
+
+  const clips = useMemo(() => clipsQuery.data?.clips ?? [], [clipsQuery.data?.clips])
+  const labels = useMemo(() => labelsQuery.data?.labels ?? [], [labelsQuery.data?.labels])
+
+  // stroke_id → 既存ラベルの索引
+  const labelByStroke = useMemo(() => {
+    const m = new Map<number, ExpertLabel>()
+    labels.forEach((l) => m.set(l.stroke_id, l))
+    return m
+  }, [labels])
+
+  const [index, setIndex] = useState(0)
+  const [form, setForm] = useState<FormState>(emptyForm())
+  const [toast, setToast] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<ActiveTab>('labeling')
+  const [shotAnnotation, setShotAnnotation] = useState<Omit<ShotAnnotation, 'stroke_id'>>({
+    shot_type: '',
+    confidence: 2,
+    comment: '',
+  })
+  const videoRef = useRef<HTMLVideoElement>(null)
+
+  const currentClip = clips[index]
+
+  // 初回ロード時、未完了の最初のクリップへ（再開）
+  const initialAppliedRef = useRef(false)
+  useEffect(() => {
+    if (initialAppliedRef.current) return
+    if (clipsQuery.isLoading || labelsQuery.isLoading) return
+    if (clips.length === 0) return
+    const firstUnlabeled = clips.findIndex((c) => !labelByStroke.has(c.stroke_id))
+    setIndex(firstUnlabeled >= 0 ? firstUnlabeled : 0)
+    initialAppliedRef.current = true
+  }, [clipsQuery.isLoading, labelsQuery.isLoading, clips, labelByStroke])
+
+  // index 変更時、既存ラベルがあれば prefill、無ければ空
+  useEffect(() => {
+    if (!currentClip) return
+    const existing = labelByStroke.get(currentClip.stroke_id)
+    if (existing) {
+      setForm({
+        posture_collapse: existing.posture_collapse,
+        weight_distribution: existing.weight_distribution,
+        shot_timing: existing.shot_timing,
+        confidence: (existing.confidence as Confidence) || 2,
+        comment: existing.comment || '',
+      })
+    } else {
+      setForm(emptyForm())
+    }
+    // ショット種別アノテーションも prefill
+    const existingShot = shotLabelByStroke.get(currentClip.stroke_id)
+    if (existingShot) {
+      setShotAnnotation({
+        shot_type: existingShot.shot_type,
+        confidence: (existingShot.confidence as Confidence) || 2,
+        comment: existingShot.comment || '',
+      })
+    } else {
+      setShotAnnotation({ shot_type: '', confidence: 2, comment: '' })
+    }
+  }, [currentClip, labelByStroke, shotLabelByStroke])
+
+  // 保存
+  const saveMutation = useMutation({
+    mutationFn: async (opts: { skip?: boolean }) => {
+      if (!currentClip || !matchId) throw new Error('no clip')
+      const payload = {
+        match_id: matchId,
+        stroke_id: currentClip.stroke_id,
+        frame_index: currentClip.frame_index,
+        clip_start_frame: currentClip.clip_start_frame,
+        clip_end_frame: currentClip.clip_end_frame,
+        posture_collapse: opts.skip ? 'skipped' : form.posture_collapse,
+        weight_distribution: opts.skip ? 'skipped' : form.weight_distribution,
+        shot_timing: opts.skip ? 'skipped' : form.shot_timing,
+        confidence: form.confidence,
+        comment: form.comment,
+        annotator_role: annotatorRole,
+      }
+      return apiPost('/v1/expert/labels', payload)
+    },
+    onSuccess: () => {
+      setToast(t('expert_labeler.saved'))
+      queryClient.invalidateQueries({ queryKey: ['expert', 'labels', matchId, annotatorRole] })
+      queryClient.invalidateQueries({ queryKey: ['expert', 'progress'] })
+      // 次のクリップへ
+      setIndex((i) => Math.min(i + 1, clips.length - 1))
+      window.setTimeout(() => setToast(null), 1500)
+    },
+    onError: () => {
+      setToast(t('expert_labeler.save_error'))
+      window.setTimeout(() => setToast(null), 2000)
+    },
+  })
+
+  // ショット種別アノテーション保存
+  const saveShotMutation = useMutation({
+    mutationFn: async () => {
+      if (!currentClip || !matchId) throw new Error('no clip')
+      if (!shotAnnotation.shot_type) throw new Error('no shot_type')
+      return apiPost('/v1/expert/shot_labels', {
+        match_id: Number(matchId),
+        stroke_id: currentClip.stroke_id,
+        shot_type: shotAnnotation.shot_type,
+        confidence: shotAnnotation.confidence,
+        comment: shotAnnotation.comment,
+      })
+    },
+    onSuccess: () => {
+      setToast(t('expert_labeler.shot_type_saved'))
+      queryClient.invalidateQueries({ queryKey: ['expert', 'shot_labels', matchId] })
+      setIndex((i) => Math.min(i + 1, clips.length - 1))
+      window.setTimeout(() => setToast(null), 1500)
+    },
+    onError: () => {
+      setToast(t('expert_labeler.shot_type_save_error'))
+      window.setTimeout(() => setToast(null), 2000)
+    },
+  })
+
+  const handleSave = useCallback(() => {
+    // 必須項目未選択時は保存不可
+    if (!form.posture_collapse || !form.weight_distribution || !form.shot_timing) {
+      setToast(t('expert_labeler.required_fields'))
+      window.setTimeout(() => setToast(null), 1500)
+      return
+    }
+    saveMutation.mutate({ skip: false })
+  }, [form, saveMutation, t])
+
+  const handleSaveShot = useCallback(() => {
+    if (!shotAnnotation.shot_type) {
+      setToast(t('expert_labeler.shot_type_required'))
+      window.setTimeout(() => setToast(null), 1500)
+      return
+    }
+    saveShotMutation.mutate()
+  }, [shotAnnotation, saveShotMutation, t])
+
+  const handleSkip = useCallback(() => {
+    saveMutation.mutate({ skip: true })
+  }, [saveMutation])
+
+  const goPrev = useCallback(() => setIndex((i) => Math.max(0, i - 1)), [])
+  const goNext = useCallback(
+    () => setIndex((i) => Math.min(clips.length - 1, i + 1)),
+    [clips.length]
+  )
+
+  const togglePlay = useCallback(() => {
+    const v = videoRef.current
+    if (!v) return
+    if (v.paused) void v.play()
+    else v.pause()
+  }, [])
+
+  // キーボードショートカット
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // textarea フォーカス中は Enter と数字以外処理しない（コメント入力を妨げない）
+      const target = e.target as HTMLElement | null
+      const isEditable =
+        target &&
+        (target.tagName === 'TEXTAREA' ||
+          target.tagName === 'INPUT' ||
+          target.isContentEditable)
+      if (isEditable) return
+
+      switch (e.key) {
+        case 'ArrowLeft':
+        case 'j':
+        case 'J':
+          e.preventDefault()
+          goPrev()
+          break
+        case 'ArrowRight':
+        case 'l':
+        case 'L':
+          e.preventDefault()
+          goNext()
+          break
+        case 'k':
+        case 'K':
+          e.preventDefault()
+          togglePlay()
+          break
+        // 1/2/3/Enter/s は labeling フォーム用。annotation (ショット種別) タブでは
+        // 誤って labeling フォームを編集/保存しないよう振り分ける。
+        case '1':
+          if (activeTab === 'labeling') setForm((f) => ({ ...f, confidence: 1 }))
+          break
+        case '2':
+          if (activeTab === 'labeling') setForm((f) => ({ ...f, confidence: 2 }))
+          break
+        case '3':
+          if (activeTab === 'labeling') setForm((f) => ({ ...f, confidence: 3 }))
+          break
+        case 'Enter':
+          e.preventDefault()
+          if (activeTab === 'annotation') handleSaveShot()
+          else handleSave()
+          break
+        case 's':
+        case 'S':
+          if (activeTab === 'labeling') {
+            e.preventDefault()
+            handleSkip()
+          }
+          break
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [goPrev, goNext, togglePlay, handleSave, handleSkip, handleSaveShot, activeTab])
+
+  const bgBase = 'bg-[var(--ss-bg-app)] text-[var(--ss-t1)]'
+  const panelBg = 'bg-[var(--ss-surface-1)] border-[var(--ss-border)]'
+  const btnLarge =
+    'px-4 py-3 rounded-ss-md font-medium text-base select-none'
+  const btnPrimary = 'bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white'
+  const btnSecondary = 'bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t1)]'
+
+  // ラジオボタン（iPad 向けに十分な大きさ）
+  const renderRadioGroup = <T extends string>(
+    labelKey: string,
+    options: { value: T; key: string }[],
+    value: T | null,
+    onChange: (v: T) => void
+  ) => (
+    <div className="mb-4">
+      <div className="text-sm font-semibold mb-2">{t(labelKey)}</div>
+      <div className="flex flex-wrap gap-2">
+        {options.map((opt) => {
+          const selected = value === opt.value
+          return (
+            <button
+              type="button"
+              key={opt.value}
+              onClick={() => onChange(opt.value)}
+              className={`${btnLarge} border ${
+                selected
+                  ? 'bg-[var(--ss-brand)] border-[var(--ss-brand)] text-white'
+                  : 'bg-[var(--ss-surface-1)] border-[var(--ss-border-strong)] text-[var(--ss-t1)]'
+              }`}
+              style={{ minHeight: '48px', minWidth: '64px' }}
+            >
+              {t(opt.key)}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+
+  if (clipsQuery.isLoading) {
+    return (
+      <div className={`h-full flex items-center justify-center ${bgBase}`}>
+        {t('expert_labeler.loading')}
+      </div>
+    )
+  }
+
+  if (clips.length === 0) {
+    return (
+      <div className={`h-full flex flex-col items-center justify-center gap-3 ${bgBase}`}>
+        <div>{t('expert_labeler.no_clips')}</div>
+        <button
+          className={`${btnLarge} ${btnSecondary}`}
+          onClick={() => navigate('/expert-labeler')}
+        >
+          {t('expert_labeler.back_to_list')}
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className={`h-full w-full overflow-y-auto ${bgBase}`}>
+      <div className="max-w-6xl mx-auto p-3 md:p-5">
+        {/* ヘッダ: 進捗 */}
+        <header className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+          <button
+            className={`${btnLarge} ${btnSecondary}`}
+            onClick={() => navigate('/expert-labeler')}
+            style={{ minHeight: '48px' }}
+          >
+            ← {t('expert_labeler.back_to_list')}
+          </button>
+          <div className="text-sm md:text-base font-semibold">
+            {t('expert_labeler.clip_progress', { current: index + 1, total: clips.length })}
+          </div>
+          {/* エクスポート */}
+          <div className="flex gap-2 ml-auto">
+            <a
+              href={`${API_BASE_URL}/v1/expert/export?match_id=${matchId}&fmt=json`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs px-3 py-2 rounded-ss-md border transition-colors duration-base ease-out border-[var(--ss-border-strong)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]"
+            >
+              {t('auto.ExpertLabelerAnnotatePage.json')}
+            </a>
+            <a
+              href={`${API_BASE_URL}/v1/expert/export?match_id=${matchId}&fmt=csv`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs px-3 py-2 rounded-ss-md border transition-colors duration-base ease-out border-[var(--ss-border-strong)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]"
+            >
+              {t('auto.ExpertLabelerAnnotatePage.csv')}
+            </a>
+          </div>
+        </header>
+
+        <div className="h-2 rounded-ss-pill bg-[var(--ss-surface-2)] overflow-hidden mb-4">
+          <div
+            className="h-full bg-[var(--ss-brand)]"
+            style={{ width: `${((index + 1) / clips.length) * 100}%` }}
+          />
+        </div>
+
+        {/* タブ切替（admin のみ「アノテーション改善」タブを表示） */}
+        {role === 'admin' && (
+          <div className="flex gap-1 mb-4">
+            {(['labeling', 'annotation'] as ActiveTab[]).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-4 py-2 rounded-t-ss-md text-sm font-medium border-b-2 transition-colors duration-base ease-out ${
+                  activeTab === tab
+                    ? 'border-[var(--ss-brand)] text-[var(--ss-brand)]'
+                    : 'border-transparent text-[var(--ss-t3)] hover:text-[var(--ss-t1)]'
+                }`}
+              >
+                {tab === 'labeling'
+                  ? t('expert_labeler.tab_labeling')
+                  : t('expert_labeler.tab_annotation')}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* 動画領域 */}
+          <div className={`rounded-ss-lg border p-3 ${panelBg}`}>
+            {currentClip && (
+              <>
+                <video
+                  ref={videoRef}
+                  key={currentClip.stroke_id}
+                  src={currentClip.clip_url}
+                  controls
+                  autoPlay
+                  playsInline
+                  className="w-full rounded-ss-md bg-black"
+                  style={{ aspectRatio: '16 / 9', maxHeight: '60vh' }}
+                />
+                <div className="mt-2 text-xs text-[var(--ss-t3)]">
+                  {t('auto.ExpertLabelerAnnotatePage.stroke_id', { n: currentClip.stroke_id })}
+                  {currentClip.shot_type ? ` / ${currentClip.shot_type}` : ''}
+                  {currentClip.miss_type ? ` / ${currentClip.miss_type}` : ''}
+                </div>
+              </>
+            )}
+            <div className="mt-2 text-[11px] text-[var(--ss-t3)]">
+              {t('expert_labeler.shortcut_hint')}
+            </div>
+          </div>
+
+          {/* ─ 重心ズレ検出タブ（デフォルト） ─ */}
+          {activeTab === 'labeling' && (
+          <div className={`rounded-ss-lg border p-4 ${panelBg}`}>
+            {renderRadioGroup(
+              'expert_labeler.posture_collapse',
+              POSTURE_OPTIONS,
+              form.posture_collapse,
+              (v) => setForm((f) => ({ ...f, posture_collapse: v }))
+            )}
+            {renderRadioGroup(
+              'expert_labeler.weight_dist',
+              WEIGHT_OPTIONS,
+              form.weight_distribution,
+              (v) => setForm((f) => ({ ...f, weight_distribution: v }))
+            )}
+            {renderRadioGroup(
+              'expert_labeler.shot_timing',
+              TIMING_OPTIONS,
+              form.shot_timing,
+              (v) => setForm((f) => ({ ...f, shot_timing: v }))
+            )}
+
+            {/* 確信度 1/2/3 */}
+            <div className="mb-4">
+              <div className="text-sm font-semibold mb-2">
+                {t('expert_labeler.confidence')}
+              </div>
+              <div className="flex gap-2">
+                {[1, 2, 3].map((c) => {
+                  const selected = form.confidence === c
+                  const keyMap: Record<number, string> = {
+                    1: 'expert_labeler.confidence_low',
+                    2: 'expert_labeler.confidence_mid',
+                    3: 'expert_labeler.confidence_high',
+                  }
+                  return (
+                    <button
+                      type="button"
+                      key={c}
+                      onClick={() => setForm((f) => ({ ...f, confidence: c as Confidence }))}
+                      className={`${btnLarge} border ${
+                        selected
+                          ? 'bg-[var(--ss-warn)] border-[var(--ss-warn)] text-white'
+                          : 'bg-[var(--ss-surface-1)] border-[var(--ss-border-strong)] text-[var(--ss-t1)]'
+                      }`}
+                      style={{ minHeight: '48px', minWidth: '72px' }}
+                    >
+                      {c} ({t(keyMap[c])})
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* コメント */}
+            <div className="mb-4">
+              <label className="text-sm font-semibold mb-2 block">
+                {t('expert_labeler.comment')}
+              </label>
+              <textarea
+                value={form.comment}
+                onChange={(e) => setForm((f) => ({ ...f, comment: e.target.value }))}
+                placeholder={t('expert_labeler.comment_placeholder') as string}
+                rows={2}
+                className="w-full rounded-ss-md border px-3 py-2 text-base bg-[var(--ss-surface-1)] border-[var(--ss-border-strong)] text-[var(--ss-t1)] focus:outline-none focus:border-[var(--ss-brand)] focus:ring-[3px] focus:ring-[var(--ss-focus-ring)]"
+              />
+            </div>
+
+            {/* 操作ボタン */}
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <button
+                className={`${btnLarge} ${btnSecondary}`}
+                onClick={goPrev}
+                disabled={index <= 0}
+                style={{ minHeight: '56px' }}
+              >
+                ← {t('expert_labeler.prev')}
+              </button>
+              <button
+                className={`${btnLarge} ${btnSecondary}`}
+                onClick={goNext}
+                disabled={index >= clips.length - 1}
+                style={{ minHeight: '56px' }}
+              >
+                {t('expert_labeler.next')} →
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                className={`${btnLarge} ${btnSecondary}`}
+                onClick={handleSkip}
+                style={{ minHeight: '56px' }}
+              >
+                {t('expert_labeler.skip')}
+              </button>
+              <button
+                className={`${btnLarge} ${btnPrimary}`}
+                onClick={handleSave}
+                style={{ minHeight: '56px' }}
+              >
+                {t('expert_labeler.save')}
+              </button>
+            </div>
+          </div>
+          )}
+
+          {/* ─ アノテーション改善タブ（admin のみ） ─ */}
+          {activeTab === 'annotation' && role === 'admin' && (
+          <div className={`rounded-ss-lg border p-4 ${panelBg}`}>
+            <div className="text-sm font-semibold mb-3">
+              {t('expert_labeler.shot_type_section')}
+            </div>
+            <p className="text-xs mb-4 text-[var(--ss-t3)]">
+              {t('expert_labeler.shot_type_hint')}
+            </p>
+
+            {/* ショット種別選択 */}
+            <div className="mb-4">
+              <label className="text-sm font-semibold mb-2 block">
+                {t('expert_labeler.shot_type_label')}
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {CANONICAL_SHOTS.map((shot) => {
+                  const selected = shotAnnotation.shot_type === shot
+                  return (
+                    <button
+                      type="button"
+                      key={shot}
+                      onClick={() => setShotAnnotation((s) => ({ ...s, shot_type: shot }))}
+                      className={`${btnLarge} border text-xs ${
+                        selected
+                          ? 'bg-[var(--ss-success)] border-[var(--ss-success)] text-white'
+                          : 'bg-[var(--ss-surface-1)] border-[var(--ss-border-strong)] text-[var(--ss-t1)]'
+                      }`}
+                      style={{ minHeight: '40px', minWidth: '56px' }}
+                    >
+                      {t(`shot_types.${shot}`) || shot}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* 確信度 */}
+            <div className="mb-4">
+              <div className="text-sm font-semibold mb-2">
+                {t('expert_labeler.confidence')}
+              </div>
+              <div className="flex gap-2">
+                {[1, 2, 3].map((c) => {
+                  const selected = shotAnnotation.confidence === c
+                  const keyMap: Record<number, string> = {
+                    1: 'expert_labeler.confidence_low',
+                    2: 'expert_labeler.confidence_mid',
+                    3: 'expert_labeler.confidence_high',
+                  }
+                  return (
+                    <button
+                      type="button"
+                      key={c}
+                      onClick={() => setShotAnnotation((s) => ({ ...s, confidence: c as Confidence }))}
+                      className={`${btnLarge} border ${
+                        selected
+                          ? 'bg-[var(--ss-warn)] border-[var(--ss-warn)] text-white'
+                          : 'bg-[var(--ss-surface-1)] border-[var(--ss-border-strong)] text-[var(--ss-t1)]'
+                      }`}
+                      style={{ minHeight: '48px', minWidth: '72px' }}
+                    >
+                      {c} ({t(keyMap[c])})
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* コメント */}
+            <div className="mb-4">
+              <label className="text-sm font-semibold mb-2 block">
+                {t('expert_labeler.comment')}
+              </label>
+              <textarea
+                value={shotAnnotation.comment}
+                onChange={(e) => setShotAnnotation((s) => ({ ...s, comment: e.target.value }))}
+                placeholder={t('expert_labeler.comment_placeholder') as string}
+                rows={2}
+                className="w-full rounded-ss-md border px-3 py-2 text-base bg-[var(--ss-surface-1)] border-[var(--ss-border-strong)] text-[var(--ss-t1)] focus:outline-none focus:border-[var(--ss-brand)] focus:ring-[3px] focus:ring-[var(--ss-focus-ring)]"
+              />
+            </div>
+
+            {/* 操作ボタン */}
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <button
+                className={`${btnLarge} ${btnSecondary}`}
+                onClick={goPrev}
+                disabled={index <= 0}
+                style={{ minHeight: '56px' }}
+              >
+                ← {t('expert_labeler.prev')}
+              </button>
+              <button
+                className={`${btnLarge} ${btnSecondary}`}
+                onClick={goNext}
+                disabled={index >= clips.length - 1}
+                style={{ minHeight: '56px' }}
+              >
+                {t('expert_labeler.next')} →
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <a
+                href={`/api/v1/expert/shot_labels/export?match_id=${matchId}&fmt=csv`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`flex items-center justify-center ${btnLarge} border border-[var(--ss-border-strong)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)] transition-colors duration-base ease-out`}
+                style={{ minHeight: '56px' }}
+              >
+                {t('auto.ExpertLabelerAnnotatePage.csv')}
+              </a>
+              <button
+                className={`${btnLarge} bg-[var(--ss-success)] hover:brightness-95 text-white`}
+                onClick={handleSaveShot}
+                style={{ minHeight: '56px' }}
+              >
+                {t('expert_labeler.shot_type_save')}
+              </button>
+            </div>
+          </div>
+          )}
+        </div>
+
+        {/* トースト通知 */}
+        {toast && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[color:rgba(15,23,42,0.85)] text-white px-4 py-2 rounded-ss-md shadow-pop">
+            {toast}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export function ExpertLabelerAnnotatePage() {
+  return <AnnotateContent />
+}
+
+export default ExpertLabelerAnnotatePage

@@ -1,0 +1,96 @@
+"""Growth Snapshot insights router.
+
+GET /api/insights/growth_snapshot?player_id=&period_days=30&lang=ja
+
+選手安全な「伸びしろ」プロセを返す。LLM プラガブル (現状 template)。
+"""
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from sqlalchemy.orm import Session
+
+from backend.db.database import get_db
+
+from backend.analysis.insights import (
+    InsightContext,
+    get_generator,
+)
+from backend.utils.auth import get_auth, AuthCtx, can_access_player
+
+router = APIRouter()
+
+
+def _example_analytics() -> dict:
+    """既存ルータと疎結合に保つため、最初は例示データを返す。
+
+    将来: shot_win_loss / recent_form / growth_timeline_delta を内部関数として
+    取り込み、本物の数値で置換する。meta.example=true で UI に明示する。
+    """
+    return {
+        "shot_win_loss": [
+            {"shot": "smash", "win_rate": 0.62, "delta_pp": 4.0,
+             "sample_n": 120, "alt_shot": "drop"},
+            {"shot": "clear", "win_rate": 0.55, "delta_pp": 1.5,
+             "sample_n": 90, "alt_shot": "drive"},
+        ],
+        "recent_form": {"win_rate": 0.58, "delta_pp": 6.0, "sample_n": 40},
+        "growth_timeline_delta": {
+            "metric": "serve_win_rate", "delta_pp": 3.5, "sample_n": 80,
+        },
+    }
+
+
+@router.get("/insights/growth_snapshot")
+def get_growth_snapshot(
+    request: Request,
+    player_id: int = Query(..., ge=1, le=2_147_483_647),
+    period_days: int = Query(30, ge=1, le=365),
+    lang: str = Query("ja", pattern="^(ja|en)$"),
+    ctx: AuthCtx = Depends(get_auth),
+    db: Session = Depends(get_db),
+) -> dict:
+    # ── ロール: player 以上。未認証(None)は拒否 ───────────────────
+    if ctx.role is None:
+        raise HTTPException(status_code=401, detail="auth required")
+    if ctx.role not in {"player", "coach", "analyst", "admin", "demo"}:
+        raise HTTPException(status_code=403, detail="forbidden")
+    # player は本人のみ。
+    # `ctx.player_id is not None` を条件に入れていたため、player_id を持たない
+    # player では照合そのものが飛ばされ、任意の ?player_id= を指定できていた。
+    # 実際には PlayerAccessControlMiddleware が player_id 無しの player を
+    # 全 /api/ で 401 にしているので HTTP 経由では踏めないが、**この関数自体は
+    # 「スコープが NULL なら素通し」**という形になっている。middleware の
+    # 一行に依存した守りなので、ここでも閉じる。
+    if ctx.role == "player" and ctx.player_id != player_id:
+        raise HTTPException(status_code=403, detail="player can only view own snapshot")
+    if ctx.role in {"coach", "analyst", "admin"} and not can_access_player(ctx, player_id, db):
+        raise HTTPException(status_code=403, detail="player is outside your accessible scope")
+
+    analytics = _example_analytics()
+
+    insight_ctx: InsightContext = {
+        "player_id": player_id,
+        "period_days": period_days,
+        "analytics": analytics,
+        "role": ctx.role,
+        "lang": lang,
+    }
+    if ctx.user_id is not None:
+        insight_ctx["user_id"] = int(ctx.user_id)
+    generator = get_generator()
+    result = generator.generate(insight_ctx)
+
+    return {
+        "items": result["items"],
+        "generator": result["generator"],
+        "generated_at": result.get("generated_at") or datetime.now(timezone.utc).isoformat(),
+        "meta": {
+            "example": True,
+            "disclaimer": "template-generated; LLM-pluggable",
+            "period_days": period_days,
+            "lang": lang,
+        },
+    }

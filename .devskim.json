@@ -1,0 +1,17 @@
+{
+  "_comment": "DevSkim suppressions. Rationale: docs/validation/security-code-scanning-2026-04-23.md",
+  "ignores": [
+    {
+      "rule": "DS162092",
+      "reason": "HTTP URLs are localhost dev references or documentation strings, not production endpoints."
+    },
+    {
+      "rule": "DS137138",
+      "reason": "Patterns flagged are documentation/reference strings, not executable credential material."
+    },
+    {
+      "rule": "DS176209",
+      "reason": "Flagged string literals are in maintenance scripts; not security-sensitive paths."
+    }
+  ]
+}
