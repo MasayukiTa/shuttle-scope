@@ -101,3 +101,10 @@ def test_production_bootstrap_is_not_dispatched_to_executor():
     )[0]
     assert "bootstrap_database(" in strict_branch
     assert "run_in_executor" not in strict_branch
+
+def test_production_migration_url_accepts_same_target_with_distinct_role():
+    runtime = "postgresql+psycopg://ss_user@db.example:5432/shuttlescope"
+    migration = "postgresql+psycopg://ss_migration@db.example:5432/shuttlescope"
+    guard.validate_production_migration_url(
+        runtime, migration, is_production=True
+    )
