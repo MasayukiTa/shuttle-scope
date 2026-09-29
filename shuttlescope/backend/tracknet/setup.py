@@ -178,25 +178,31 @@ def cmd_convert():
         sys.exit(1)
 
     try:
-        from openvino.tools.mo import convert_model
-        from openvino.runtime import serialize
-    except ImportError:
-        try:
-            import subprocess
+        import openvino as ov
 
-            result = subprocess.run(
-                ["mo", "--input_model", str(ONNX_PATH), "--output_dir", str(WEIGHTS_DIR), "--model_name", "tracknet"],
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode == 0:
-                print(f"[ok] OpenVINO IR saved to {WEIGHTS_DIR}")
-                return
-            print(f"[error] mo failed:\n{result.stderr}")
-            sys.exit(result.returncode)
-        except FileNotFoundError:
-            print("[error] OpenVINO not found. Install: pip install openvino")
-            sys.exit(1)
+        convert_model = getattr(ov, "convert_model")
+        serialize = getattr(ov, "serialize")
+    except (ImportError, AttributeError):
+        try:
+            from openvino.tools.mo import convert_model
+            from openvino.runtime import serialize
+        except ImportError:
+            try:
+                import subprocess
+
+                result = subprocess.run(
+                    ["mo", "--input_model", str(ONNX_PATH), "--output_dir", str(WEIGHTS_DIR), "--model_name", "tracknet"],
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode == 0:
+                    print(f"[ok] OpenVINO IR saved to {WEIGHTS_DIR}")
+                    return
+                print(f"[error] mo failed:\n{result.stderr}")
+                sys.exit(result.returncode)
+            except FileNotFoundError:
+                print("[error] OpenVINO not found. Install: pip install openvino")
+                sys.exit(1)
 
     print("Converting ONNX to OpenVINO IR ...")
     ov_model = convert_model(str(ONNX_PATH))
