@@ -25,6 +25,7 @@ def test_15fps_on_30fps_uses_consecutive_triplets_at_two_frame_starts():
         [6, 7, 8],
     ]
     assert sampler.decoded_frames == 10
+    assert [w.target_frame for w in windows] == [2, 4, 6, 8]
     assert sampler.sampled_windows == 4
 
 
@@ -32,6 +33,7 @@ def test_30fps_on_30fps_slides_one_physical_frame_at_a_time():
     sampler, windows = _collect(total_frames=8, step_frames=1)
     assert [w.start_frame for w in windows] == [0, 1, 2, 3, 4, 5]
     assert windows[-1].frames == [5, 6, 7]
+    assert [w.target_frame for w in windows] == [2, 3, 4, 5, 6, 7]
     assert sampler.sampled_windows == 6
 
 

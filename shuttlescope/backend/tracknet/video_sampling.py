@@ -20,6 +20,11 @@ class SampledWindow(Generic[T]):
     start_frame: int
     frames: list[T]
 
+    @property
+    def target_frame(self) -> int:
+        """Physical source frame whose label/prediction this window represents."""
+        return self.start_frame + len(self.frames) - 1
+
 
 class TrackNetFrameSampler(Generic[T]):
     """Incremental sampler for consecutive 3-frame TrackNet windows."""

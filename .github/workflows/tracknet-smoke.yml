@@ -86,6 +86,19 @@ jobs:
       - name: Export ONNX from TensorFlow checkpoint
         run: python -m backend.tracknet.setup export
 
+      - name: Download pinned upstream TrackNet functional vector
+        run: |
+          test_url="https://raw.githubusercontent.com/Chang-Chia-Chi/TrackNet-Badminton-Tracking-tensorflow2/d13eb075c7efcca25ede62ac4a21e18891c2f49b/test/test.mp4"
+          test_file="${RUNNER_TEMP}/tracknet-upstream-test.mp4"
+          curl --proto '=https' --tlsv1.2 --fail --location --silent --show-error \
+            "$test_url" -o "$test_file"
+          echo "b9ced4188f67f2b12068c74c96b7e3efdde2f1740bce7705b3956782e68943ce  $test_file" | sha256sum --check
+
+      - name: Validate checkpoint and ONNX on known-positive frames
+        run: |
+          python -m backend.tracknet.functional_smoke \
+            --video "${RUNNER_TEMP}/tracknet-upstream-test.mp4"
+
       - name: Smoke-load ONNX and auto backend
         run: |
           python - <<'PY'

@@ -339,8 +339,8 @@ def _run_tracknet(job: dict, video_path: str) -> None:
             if results:
                 r = results[0]
                 track.append({
-                    "frame_idx": sampled.start_frame,
-                    "timestamp_sec": round(sampled.start_frame / fps, 3),
+                    "frame_idx": sampled.target_frame,
+                    "timestamp_sec": round(sampled.target_frame / fps, 3),
                     "zone": r["zone"],
                     "confidence": r["confidence"],
                     "x_norm": r.get("x_norm"),

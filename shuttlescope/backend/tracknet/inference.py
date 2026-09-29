@@ -873,7 +873,7 @@ class TrackNetInference:
                 for j, heatmap in enumerate(heatmaps):
                     zone, conf, coords = heatmap_to_zone(heatmap)
                     results.append({
-                        "frame_idx": chunk_start + j + 1,
+                        "frame_idx": chunk_start + j + FRAME_STACK - 1,
                         "zone": zone,
                         "confidence": round(conf, 3),
                         "x_norm": round(coords[0], 4) if coords else None,
@@ -893,7 +893,7 @@ class TrackNetInference:
                     and (prev_result.get("confidence") or 0.0) >= skip_threshold
                     and skip_count < max_skip
                 ):
-                    extra = _extrapolate_position(prev_result, pprev_result, chunk_end + 1)
+                    extra = _extrapolate_position(prev_result, pprev_result, chunk_end + FRAME_STACK - 1)
                     results.append(extra)
                     pprev_result = prev_result
                     prev_result = extra
@@ -916,7 +916,7 @@ class TrackNetInference:
             heatmap = self._infer_fn(inp)
             zone, conf, coords = heatmap_to_zone(heatmap)
             results.append({
-                "frame_idx": i + 1,
+                "frame_idx": i + FRAME_STACK - 1,
                 "zone": zone,
                 "confidence": round(conf, 3),
                 "x_norm": round(coords[0], 4) if coords else None,
@@ -1214,7 +1214,7 @@ class TrackNetInference:
                 zone_results = batch_heatmap_argmax(heatmaps)
                 for j, (zone, conf, coords) in enumerate(zone_results):
                     results.append({
-                        "frame_idx": chunk_start + j + 1,
+                        "frame_idx": chunk_start + j + FRAME_STACK - 1,
                         "zone": zone,
                         "confidence": round(conf, 3),
                         "x_norm": round(coords[0], 4) if coords else None,
@@ -1237,7 +1237,7 @@ class TrackNetInference:
                     and (prev_result.get("confidence") or 0.0) >= skip_threshold
                     and skip_count < max_skip
                 ):
-                    extra = _extrapolate_position(prev_result, pprev_result, chunk_end + 1)
+                    extra = _extrapolate_position(prev_result, pprev_result, chunk_end + FRAME_STACK - 1)
                     results.append(extra)
                     pprev_result = prev_result
                     prev_result = extra
