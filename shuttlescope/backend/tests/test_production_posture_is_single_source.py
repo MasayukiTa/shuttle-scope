@@ -209,10 +209,25 @@ def test_app_csp_uses_unique_nonce_without_unsafe_inline(real_production_shape):
 
 @_NEEDS_MAIN
 def test_public_lp_keeps_existing_inline_policy_without_nonce(real_production_shape):
-    """公開 LP は既存 inline UI を持つため SPA と別ポリシーのまま維持する。"""
+    """公開 LP は inline UI + Cloudflare Analytics の限定許可だけを持つ。"""
     script = _script_src_directive(_csp_for("shuttle-scope.com"))
-    assert script == "'self' 'unsafe-inline'", script
+    assert script == (
+        "'self' 'unsafe-inline' https://static.cloudflareinsights.com"
+    ), script
     assert "'nonce-" not in script, script
+
+
+@_NEEDS_MAIN
+def test_cloudflare_analytics_allowlist_is_public_lp_only(real_production_shape):
+    """Cloudflare Analytics の外向き許可を authenticated SPA へ波及させない。"""
+    public_csp = _csp_for("shuttle-scope.com")
+    app_csp = _csp_for("app.shuttle-scope.com")
+
+    assert "https://static.cloudflareinsights.com" in _script_src_directive(public_csp)
+    assert "https://cloudflareinsights.com" in public_csp
+
+    assert "https://static.cloudflareinsights.com" not in _script_src_directive(app_csp)
+    assert "https://cloudflareinsights.com" not in app_csp
 
 
 @_NEEDS_MAIN

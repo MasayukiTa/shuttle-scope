@@ -2466,7 +2466,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             host = (request.headers.get("host") or "").split(":")[0].lower()
             is_public_lp = host in ("shuttle-scope.com", "www.shuttle-scope.com")
             if is_public_lp:
-                script_src = "script-src 'self' 'unsafe-inline'"
+                # Cloudflare Web Analytics injects its external beacon on the public
+                # marketing site. Keep the allowance narrow: only the exact script
+                # origin is added here, never a generic https: source.
+                script_src = (
+                    "script-src 'self' 'unsafe-inline' "
+                    "https://static.cloudflareinsights.com"
+                )
             else:
                 # Cloudflare Bot Fight Mode injects JavaScript Detections into HTML.
                 # With only script-src 'self', its bootstrap inline script is blocked.
@@ -2501,6 +2507,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                     "https://www.shuttle-scope.com https://shuttle-scope.com "
                     "https://cdn.shuttle-scope.com"
                 )
+                if is_public_lp:
+                    # Cloudflare Web Analytics beacon destination. This is public-LP
+                    # only; the authenticated SPA keeps the tighter connect-src.
+                    connect_src += " https://cloudflareinsights.com"
             else:
                 # 開発・テスト: 緩く (localhost backend / Vite dev server / electron-vite)
                 # 本番経路 (_is_prod) では到達しない dev-only fallback。CodeQL/DevSkim の
