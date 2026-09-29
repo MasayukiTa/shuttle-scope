@@ -15,6 +15,7 @@ ffmpeg はローカルに無いことがあるので、ここでは判定と配�
 """
 from __future__ import annotations
 
+import uuid
 from datetime import date
 from pathlib import Path
 
@@ -136,8 +137,11 @@ class TestPlaybackVariantFile:
 
 SRC_BYTES = b"SOURCE-HEVC-BYTES"
 PLAY_BYTES = b"PLAYBACK-H264-BYTES"
-UID = "0a1b2c3d4e5f60718293a4b5c6d7e8f9"
-TOKEN = "t" * 32
+# 32 桁 hex の固定文字列は API キーに見えて DevSkim (DS173237) が拾う。
+# 値そのものに意味は無い (アップロード ID と配信トークンの形だけ要る) ので、
+# 都度生成にして「秘密っぽい定数」をソースに置かない。
+UID = uuid.uuid4().hex
+TOKEN = uuid.uuid4().hex
 
 
 @pytest.fixture()
