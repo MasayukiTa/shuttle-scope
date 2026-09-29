@@ -21,6 +21,11 @@ if _ROOT not in sys.path:
 from backend.config import settings
 import backend.db.models  # noqa: F401 — モデルを import して metadata に登録
 from backend.db.database import Base
+from backend.db.migration_guard import (
+    acquire_postgres_migration_lock,
+    release_postgres_migration_lock,
+    validate_production_migration_url,
+)
 
 config = context.config
 
@@ -47,6 +52,19 @@ elif _config_url and _config_url != _ini_default:
     configured_url = _config_url  # 明示的に set_main_option で上書きされた値を使う
 else:
     configured_url = settings.DATABASE_URL or _config_url
+
+# Alembic unit tests and explicit SQLite tooling may override sqlalchemy.url.
+# Enforce the production role/target contract only when the effective Alembic
+# target is PostgreSQL. Production app startup still fails closed if the
+# dedicated migration URL is absent.
+validate_production_migration_url(
+    settings.DATABASE_URL or "",
+    _migration_url,
+    is_production=bool(
+        getattr(settings, "is_production_posture", False)
+        and configured_url.startswith("postgresql")
+    ),
+)
 config.set_main_option("sqlalchemy.url", configured_url)
 
 if config.config_file_name is not None:
@@ -74,20 +92,33 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     """実際の DB 接続で migration を実行"""
+    is_postgres = configured_url.startswith("postgresql")
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
-        connect_args={"timeout": 10} if "sqlite" in configured_url else {},
+        connect_args=(
+            {"timeout": 10}
+            if "sqlite" in configured_url
+            else ({"connect_timeout": 10} if is_postgres else {})
+        ),
     )
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-            render_as_batch=_use_batch,
-        )
-        with context.begin_transaction():
-            context.run_migrations()
+        locked = False
+        try:
+            if is_postgres:
+                acquire_postgres_migration_lock(connection)
+                locked = True
+            context.configure(
+                connection=connection,
+                target_metadata=target_metadata,
+                render_as_batch=_use_batch,
+            )
+            with context.begin_transaction():
+                context.run_migrations()
+        finally:
+            if locked:
+                release_postgres_migration_lock(connection)
 
 
 if context.is_offline_mode():

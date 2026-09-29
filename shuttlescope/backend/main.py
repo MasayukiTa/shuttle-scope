@@ -316,24 +316,31 @@ async def lifespan(app: FastAPI):
     _enforce_production_security_gate()
     strict_bootstrap = bool(app_settings.is_production_posture)
     try:
-        loop = asyncio.get_event_loop()
-        await asyncio.wait_for(
-            loop.run_in_executor(
-                None,
-                lambda: bootstrap_database(
-                    None,
-                    app_settings.DATABASE_URL,
-                    fail_on_migration_error=strict_bootstrap,
-                ),
-            ),
-            timeout=30.0,
-        )
-    except asyncio.TimeoutError:
         if strict_bootstrap:
-            logger.critical(
-                "bootstrap_database timed out in production posture; refusing startup"
+            # Production migrations must not run in a kill-impossible executor
+            # thread. asyncio.wait_for() cancels only the Future; the underlying
+            # thread keeps running and can race the next NSSM restart. PostgreSQL
+            # migration_guard provides bounded connection/DDL waits and a
+            # cross-process advisory lock instead.
+            bootstrap_database(
+                None,
+                app_settings.DATABASE_URL,
+                fail_on_migration_error=True,
             )
-            raise RuntimeError("database bootstrap timed out in production posture")
+        else:
+            loop = asyncio.get_event_loop()
+            await asyncio.wait_for(
+                loop.run_in_executor(
+                    None,
+                    lambda: bootstrap_database(
+                        None,
+                        app_settings.DATABASE_URL,
+                        fail_on_migration_error=False,
+                    ),
+                ),
+                timeout=30.0,
+            )
+    except asyncio.TimeoutError:
         logger.warning("bootstrap_database がタイムアウト（30s）— 起動を続行します")
     except Exception as exc:
         if strict_bootstrap:
