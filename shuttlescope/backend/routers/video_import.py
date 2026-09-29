@@ -328,6 +328,42 @@ def _run_tracknet(job: dict, video_path: str) -> None:
     track: list[dict] = []
     sampler = TrackNetFrameSampler(step_frames=step_frames)
 
+    # Sparse sampled windows used to be submitted one at a time, which reduced
+    # the CUDA backend to batch=1 even though TrackNetInference supports batch
+    # execution. Keep only a few source windows resident at once: for 1080p
+    # video, four independent 3-frame windows are roughly 75 MB worst-case.
+    _preferred_batch = inf.preferred_window_batch_size()
+    _requested_batch = int(os.environ.get("CV_TRACKNET_WINDOW_BATCH", "4") or "4")
+    _window_batch = max(1, min(_requested_batch, _preferred_batch))
+    pending_windows = []
+
+    def _flush_tracknet_windows() -> None:
+        if not pending_windows:
+            return
+        predictions = inf.predict_windows(
+            [sampled.frames for sampled in pending_windows]
+        )
+        if len(predictions) != len(pending_windows):
+            raise RuntimeError(
+                "TrackNet sampled-window result count mismatch: "
+                f"{len(predictions)} != {len(pending_windows)}"
+            )
+        for sampled, r in zip(pending_windows, predictions):
+            track.append({
+                "frame_idx": sampled.target_frame,
+                "timestamp_sec": round(sampled.target_frame / fps, 3),
+                "zone": r["zone"],
+                "confidence": r["confidence"],
+                "x_norm": r.get("x_norm"),
+                "y_norm": r.get("y_norm"),
+            })
+        pending_windows.clear()
+
+    logger.info(
+        "[video_import] TrackNet window batch=%d (backend=%s, preferred=%d)",
+        _window_batch, inf.backend_name(), _preferred_batch,
+    )
+
     while True:
         ret, frame = cap.read()
         if not ret:
@@ -335,24 +371,17 @@ def _run_tracknet(job: dict, video_path: str) -> None:
 
         sampled = sampler.push(frame)
         if sampled is not None:
-            results = inf.predict_frames(sampled.frames)
-            if results:
-                r = results[0]
-                track.append({
-                    "frame_idx": sampled.target_frame,
-                    "timestamp_sec": round(sampled.target_frame / fps, 3),
-                    "zone": r["zone"],
-                    "confidence": r["confidence"],
-                    "x_norm": r.get("x_norm"),
-                    "y_norm": r.get("y_norm"),
-                })
+            pending_windows.append(sampled)
+            if len(pending_windows) >= _window_batch:
+                _flush_tracknet_windows()
 
-        # decoded_frames is the physical source-frame count.  Keep progress and
+        # decoded_frames is the physical source-frame count. Keep progress and
         # timestamps tied to that real index rather than a separately advanced
         # logical counter; otherwise sampling-rate changes distort the timeline.
         job["tracknet"]["progress"] = min(sampler.decoded_frames / total, 1.0)
         job["progress"] = job["tracknet"]["progress"] * 0.5  # 全体の 0-50%
 
+    _flush_tracknet_windows()
     cap.release()
 
     # コートキャリブレーションが設定済みなら homography でゾーンを精緻化
