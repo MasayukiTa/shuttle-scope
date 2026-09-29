@@ -182,6 +182,37 @@ deny リストが「あると良い設定」ではないことがここでも確
 
 Windows Firewall は 3 プロファイルとも有効 (受信の既定動作は未構成 = 既定のブロック)。
 
+## 2026-09-29 verifier 自身の再監査
+
+実TURNを再び公開する前提で infra/turn/verify_turn_hardening.py 自体を
+再監査したところ、検証器側に「安全判定を弱くする」欠陥が残っていたため修正した。
+
+- IPv4-compatible probe が ipaddress.ip_address(n) を使っており、
+  実際には IPv6 ::x.x.x.x ではなく同じ IPv4 を再送していた。
+- コメントでは Teredo (2001::/32) も試すと書いていたが、実際のtarget列には
+  Teredo probeが無かった。
+- TURN host にDNS名を渡す通常の使い方で、自己中継probeがDNS名をそのまま
+  ipaddress() に渡し例外化し得た。A/AAAAを具体IPへ解決して検査するよう修正。
+- TURN control socketを AF_INET 固定にしていたため、IPv6-only TURN endpointを
+  検査できなかった。getaddrinfo(AF_UNSPEC) の結果に合わせる。
+- 認証なしAllocateは「401 Unauthorized」以外の任意エラーも安全扱いしていた。
+  現在は401以外を未検証としてexit 1にする。
+- TCP relayも任意の失敗を no-tcp-relay 成功と数えていた。
+  現在は明示的な拒否コード以外を未検証として扱う。
+
+回帰:
+- IPv4埋め込み6表記が全てIPv6として生成されること
+- 6to4 / NAT64 / Teredo prefixが実targetに含まれること
+- DNS A/AAAA解決と重複除去
+- IPv6 TURN control endpointのsocket family
+- coturn.conf.example の必須deny/quota/no-tcp-relay/no-admin directive
+
+focused test: backend/tests/test_turn_hardening_verifier.py 4/4 pass。
+
+なお /api/webrtc/test-turn は管理画面用のTCP到達確認に過ぎず、
+TURN Allocate/auth/peer ACL の安全性を証明しない。
+本番判定は必ず verify_turn_hardening.py の実プロトコルprobeで行う。
+
 ## 未検証 (正直に残す)
 
 - **TURN を実際に立てての本番検証は未実施。** UDP を開ける前に
@@ -218,5 +249,6 @@ PostgreSQL が loopback 限定であることも防御にならない。
 - `infra/turn/verify_turn_hardening.py` — 同じ攻撃を稼働中サーバへ仕掛ける。
   中継されたら 1、未検証が残っても 1。**既定構成で 16 件、初版ひな型で 6 件を
   検出し、現行ひな型で 0 件になることを確認済み**
-- 未修正の関連欠陥: `backend/routers/tunnel.py` が固定 TURN credential を
-  そのまま返している。短命 HMAC 方式へ変える必要がある
+- 2026-09-29 再監査: `backend/routers/tunnel.py` は `turn_static_auth_secret` から
+  1時間TTLのHMAC派生credentialを発行する方式へ移行済み。固定
+  `turn_username / turn_credential` はクライアントへ配布しない

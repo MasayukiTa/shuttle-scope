@@ -112,10 +112,20 @@ def _err_code(a: dict[int, bytes]) -> int:
 
 class Turn:
     def __init__(self, host: str, port: int, user: str, password: str) -> None:
-        self.dst, self.user, self.password = (host, port), user, password
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        # Do not force AF_INET. A TURN control endpoint may be IPv6-only, and a
+        # hostname can resolve to either family. Resolve once and bind the socket
+        # family to the selected destination.
+        infos = socket.getaddrinfo(
+            host, port, socket.AF_UNSPEC, socket.SOCK_DGRAM
+        )
+        if not infos:
+            raise OSError(f"TURN host could not be resolved: {host!r}")
+        family, socktype, proto, _canonname, sockaddr = infos[0]
+        self.dst, self.user, self.password = sockaddr, user, password
+        self.sock = socket.socket(family, socktype, proto)
         self.sock.settimeout(5)
         self.key, self.realm, self.nonce = b"", "", b""
+        self.last_error_code = 0
 
     def close(self) -> None:
         self.sock.close()
@@ -142,6 +152,7 @@ class Turn:
             _build(ALLOCATE_REQ, secrets.token_bytes(12), rt + self._auth(), self.key),
             self.dst)
         mt, a = _parse(self.sock.recvfrom(2048)[0])
+        self.last_error_code = 0 if mt == ALLOCATE_OK else _err_code(a)
         return (True, "OK") if mt == ALLOCATE_OK else (False, _errtext(a))
 
     def create_permission(self, ip: str, port: int) -> tuple[str, str]:
@@ -176,22 +187,62 @@ class Turn:
 
 
 def _v4_in_v6_notations(v4: str) -> list[tuple[str, str]]:
-    """IPv4 アドレスを IPv6 の中に埋め込む書き方を並べる。
+    """IPv4 アドレスを IPv6 の中に埋め込む代表表記を並べる。
 
-    denylist は表記ごとに書かないと効かない。`::ffff:` だけ塞いだ状態で
-    6to4 と NAT64 が ACL を通過することを実測している。
+    ACL が prefix ごとに書かれている以上、検証側も各 prefix へ実際に
+    XOR-PEER-ADDRESS を投げる必要がある。IPv4-compatible は IPv6Address
+    として構築し、Teredo は RFC 4380 の field layout を使う。
     """
-    n = int(ipaddress.ip_address(v4))
+    v4_addr = ipaddress.IPv4Address(v4)
+    n = int(v4_addr)
     hi, lo = (n >> 16) & 0xFFFF, n & 0xFFFF
+
+    # Teredo:
+    # 2001:0000:<server-v4>:<flags>:<obfuscated-port>:<obfuscated-client-v4>
+    # server には documentation prefix 192.0.2.1、port 0 の one's-complement
+    # 0xffff を使う。ACL 検査に必要なのは 2001::/32 へ到達すること。
+    teredo_prefix = int(ipaddress.IPv6Address("2001::"))
+    teredo_server = int(ipaddress.IPv4Address("192.0.2.1"))
+    obfuscated_client = (~n) & 0xFFFFFFFF
+    teredo = ipaddress.IPv6Address(
+        teredo_prefix
+        | (teredo_server << 64)
+        | (0xFFFF << 32)
+        | obfuscated_client
+    )
+
     return [
         (f"::ffff:{v4}", "IPv4-mapped ::ffff:"),
-        (str(ipaddress.ip_address(n)), "IPv4-compatible ::x.x.x.x"),
+        (str(ipaddress.IPv6Address(n)), "IPv4-compatible ::x.x.x.x"),
         (f"2002:{hi:x}:{lo:x}::1", "6to4 2002::/16"),
-        (str(ipaddress.ip_address(int(ipaddress.ip_address("64:ff9b::")) | n)),
+        (str(ipaddress.IPv6Address(int(ipaddress.IPv6Address("64:ff9b::")) | n)),
          "NAT64 well-known prefix"),
-        (str(ipaddress.ip_address(int(ipaddress.ip_address("64:ff9b:1::")) | n)),
+        (str(ipaddress.IPv6Address(int(ipaddress.IPv6Address("64:ff9b:1::")) | n)),
          "NAT64 local-use prefix"),
+        (str(teredo), "Teredo 2001::/32"),
     ]
+
+
+def _resolve_host_ips(host: str, port: int) -> list[str]:
+    """Resolve TURN's own host to concrete peer addresses for self-relay probes."""
+    out: list[str] = []
+    seen: set[str] = set()
+    try:
+        infos = socket.getaddrinfo(
+            host, port, socket.AF_UNSPEC, socket.SOCK_DGRAM
+        )
+    except socket.gaierror:
+        return out
+    for _family, _socktype, _proto, _canonname, sockaddr in infos:
+        raw = str(sockaddr[0]).split("%", 1)[0]
+        try:
+            addr = str(ipaddress.ip_address(raw))
+        except ValueError:
+            continue
+        if addr not in seen:
+            seen.add(addr)
+            out.append(addr)
+    return out
 
 
 class _SessionPool:
@@ -279,10 +330,19 @@ def main() -> int:
         if mt == ALLOCATE_OK:
             print("  [危険] 認証なしで Allocate できました")
             relayed.append("unauthenticated-allocate")
+        elif _err_code(a) == 401:
+            print(f"  [良] 認証なしの Allocate は 401 で拒否 ({_errtext(a)})")
         else:
-            print(f"  [良] 認証なしの Allocate は拒否 ({_errtext(a)})")
+            print(
+                "  [未検証] 認証なし Allocate は拒否されたが 401 ではありません "
+                f"({_errtext(a)})"
+            )
+            untested.append("unauthenticated-allocate")
     except socket.timeout:
         print("  [?] 認証なし Allocate が無応答")
+        untested.append("unauthenticated-allocate")
+    except Exception as exc:  # noqa: BLE001
+        print(f"  [未検証] 認証なし Allocate の応答を検証できません: {exc}")
         untested.append("unauthenticated-allocate")
     finally:
         t.close()
@@ -295,10 +355,19 @@ def main() -> int:
             print("  [危険] TCP リレーが有効です。内部へ TCP 接続を張られます")
             print("         no-tcp-relay を設定してください")
             relayed.append("tcp-relay")
+        elif t.last_error_code in (400, 403, 442):
+            print(f"  [良] TCP リレーは明示的に拒否 ({detail})")
         else:
-            print(f"  [良] TCP リレーは無効 ({detail})")
+            print(
+                "  [未検証] TCP Allocate は失敗したが no-tcp-relay の証明に "
+                f"ならない応答です ({detail})"
+            )
+            untested.append("tcp-relay")
     except socket.timeout:
         print("  [?] TCP allocate が無応答")
+        untested.append("tcp-relay")
+    except Exception as exc:  # noqa: BLE001
+        print(f"  [未検証] TCP allocate を検証できません: {exc}")
         untested.append("tcp-relay")
     finally:
         t.close()
@@ -314,8 +383,17 @@ def main() -> int:
             for notation, label in _v4_in_v6_notations(peer):
                 targets.append((notation, f"{peer} ({label})"))
     # 中継を試みる「宛先」であって待受アドレスではない (bind していない)
-    for extra in ("255.255.255.255", "0.0.0.0", args.host):  # nosec B104
+    for extra in ("255.255.255.255", "0.0.0.0"):  # nosec B104
         targets.append((extra, extra))
+
+    # TURN 自身への relay を DNS 名のまま ipaddress() へ渡してはいけない。
+    # A/AAAA を具体IPへ解決して両familyを検査する。
+    self_ips = _resolve_host_ips(args.host, args.port)
+    if not self_ips:
+        print(f"[未検証] TURN host {args.host!r} を自己中継probe用IPへ解決できません")
+        untested.append("turn-self-resolution")
+    for self_ip in self_ips:
+        targets.append((self_ip, f"{args.host} (TURN self {self_ip})"))
 
     pool = _SessionPool(args.host, args.port, args.user, args.password)
     for addr, label in targets:
