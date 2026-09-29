@@ -299,23 +299,21 @@ def _run_tracknet(job: dict, video_path: str) -> None:
     #   30fps -> 36 個                -> 0.81  auto_filled
     # (実際の窓は次ストロークで切られるのでこれより短い = 上の値は上限)
     #
-    # 既定は 15fps。**実測してから決めた** (2026-09-20、本番機・実試合映像)。
+    # 既定は 15fps。正常モデルへ復旧後に本番機で再測定した
+    # (2026-09-29、RTX 5060 Ti、59.94fps 実試合映像、5秒区間×4)。
     #
-    # 10fps だったのは「GPU 時間と相談して」という理由だったが、その GPU 時間は
-    # 上記のとおり **Intel iGPU で推論していたせい**で、NVIDIA のカードでは
-    # 話がまるで違う。60 分の試合 1 本あたりの実測投影:
+    #   sample  mean detection rate  mean realtime factor
+    #   15fps          0.6233                0.693
+    #   20fps          0.6591                0.835
+    #   30fps          0.6359                1.097
     #
-    #   サンプル   推論      デコード   合計      Wilson 下限 (検出 0.92)
-    #   10 fps    9.6 min   6.0 min   15.6 min   0.68  suggested
-    #   15 fps   14.4 min   6.0 min   20.4 min   0.74  auto_filled
-    #   30 fps   28.8 min   6.0 min   34.8 min   0.81  auto_filled
+    # 30fps は検出率が 15fps より平均 +1.26pt に留まる一方、処理は実時間を
+    # 超えた。20fps はこの 59.94fps ソースでは有望だったが、sampler は整数
+    # stride なので 29.97fps ソースで 20fps を指定すると step=1、実効 29.97fps
+    # に量子化される。15fps は 29.97/59.94fps の双方で step=2/4 に安定して割れ、
+    # 上の candidate 判定要件も満たすため既定値として維持する。
     #
-    # (デコードはサンプリング率によらず一定。ループは毎フレーム読むため)
-    #
-    # 15 を選ぶ理由: auto_filled の閾値に届く最小のサンプリング率。
-    # 30 にすると GPU 時間が倍になって Wilson 下限は 0.07 しか上がらない。
-    # 30 でも実時間を下回る (52 分の映像に 35 分) ので、証拠を厚くしたいなら
-    # `CV_TRACKNET_SAMPLE_FPS=30` で足りる。
+    # より高密度に解析する必要がある場合だけ CV_TRACKNET_SAMPLE_FPS を明示指定する。
     _sample_fps = float(os.environ.get("CV_TRACKNET_SAMPLE_FPS", "15"))
     if _sample_fps <= 0:
         _sample_fps = 10.0
@@ -328,42 +326,6 @@ def _run_tracknet(job: dict, video_path: str) -> None:
     track: list[dict] = []
     sampler = TrackNetFrameSampler(step_frames=step_frames)
 
-    # Sparse sampled windows used to be submitted one at a time, which reduced
-    # the CUDA backend to batch=1 even though TrackNetInference supports batch
-    # execution. Keep only a few source windows resident at once: for 1080p
-    # video, four independent 3-frame windows are roughly 75 MB worst-case.
-    _preferred_batch = inf.preferred_window_batch_size()
-    _requested_batch = int(os.environ.get("CV_TRACKNET_WINDOW_BATCH", "4") or "4")
-    _window_batch = max(1, min(_requested_batch, _preferred_batch))
-    pending_windows = []
-
-    def _flush_tracknet_windows() -> None:
-        if not pending_windows:
-            return
-        predictions = inf.predict_windows(
-            [sampled.frames for sampled in pending_windows]
-        )
-        if len(predictions) != len(pending_windows):
-            raise RuntimeError(
-                "TrackNet sampled-window result count mismatch: "
-                f"{len(predictions)} != {len(pending_windows)}"
-            )
-        for sampled, r in zip(pending_windows, predictions):
-            track.append({
-                "frame_idx": sampled.target_frame,
-                "timestamp_sec": round(sampled.target_frame / fps, 3),
-                "zone": r["zone"],
-                "confidence": r["confidence"],
-                "x_norm": r.get("x_norm"),
-                "y_norm": r.get("y_norm"),
-            })
-        pending_windows.clear()
-
-    logger.info(
-        "[video_import] TrackNet window batch=%d (backend=%s, preferred=%d)",
-        _window_batch, inf.backend_name(), _preferred_batch,
-    )
-
     while True:
         ret, frame = cap.read()
         if not ret:
@@ -371,17 +333,24 @@ def _run_tracknet(job: dict, video_path: str) -> None:
 
         sampled = sampler.push(frame)
         if sampled is not None:
-            pending_windows.append(sampled)
-            if len(pending_windows) >= _window_batch:
-                _flush_tracknet_windows()
+            results = inf.predict_frames(sampled.frames)
+            if results:
+                r = results[0]
+                track.append({
+                    "frame_idx": sampled.target_frame,
+                    "timestamp_sec": round(sampled.target_frame / fps, 3),
+                    "zone": r["zone"],
+                    "confidence": r["confidence"],
+                    "x_norm": r.get("x_norm"),
+                    "y_norm": r.get("y_norm"),
+                })
 
-        # decoded_frames is the physical source-frame count. Keep progress and
+        # decoded_frames is the physical source-frame count.  Keep progress and
         # timestamps tied to that real index rather than a separately advanced
         # logical counter; otherwise sampling-rate changes distort the timeline.
         job["tracknet"]["progress"] = min(sampler.decoded_frames / total, 1.0)
         job["progress"] = job["tracknet"]["progress"] * 0.5  # 全体の 0-50%
 
-    _flush_tracknet_windows()
     cap.release()
 
     # コートキャリブレーションが設定済みなら homography でゾーンを精緻化

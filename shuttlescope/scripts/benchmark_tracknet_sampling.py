@@ -1,4 +1,4 @@
-"""Benchmark TrackNet video sampling without writing ShuttleScope DB state.
+﻿"""Benchmark TrackNet video sampling without writing ShuttleScope DB state.
 
 Run from the shuttlescope directory, for example:
   python scripts/benchmark_tracknet_sampling.py VIDEO.mp4 --sample-fps 15 30 --max-seconds 60
@@ -22,13 +22,7 @@ from backend.tracknet.inference import get_inference
 from backend.tracknet.video_sampling import TrackNetFrameSampler, step_frames_for_fps
 
 
-def _run_one(
-    inf,
-    video: Path,
-    sample_fps: float,
-    max_seconds: float | None,
-    window_batch: int = 4,
-) -> dict:
+def _run_one(inf, video: Path, sample_fps: float, max_seconds: float | None) -> dict:
     cap = cv2.VideoCapture(str(video))
     if not cap.isOpened():
         raise RuntimeError(f"cannot open video: {video}")
@@ -48,30 +42,6 @@ def _run_one(
     inference_seconds = 0.0
     result_count = 0
 
-    preferred_batch = inf.preferred_window_batch_size()
-    effective_window_batch = max(1, min(int(window_batch), preferred_batch))
-    pending_windows = []
-
-    def flush_pending() -> None:
-        nonlocal detections, inference_seconds, result_count
-        if not pending_windows:
-            return
-        t0 = time.perf_counter()
-        results = inf.predict_windows([sampled.frames for sampled in pending_windows])
-        inference_seconds += time.perf_counter() - t0
-        if len(results) != len(pending_windows):
-            raise RuntimeError(
-                f"TrackNet returned {len(results)} results for "
-                f"{len(pending_windows)} sampled windows"
-            )
-        for result in results:
-            result_count += 1
-            conf = float(result.get("confidence") or 0.0)
-            confidences.append(conf)
-            if result.get("x_norm") is not None and result.get("y_norm") is not None:
-                detections += 1
-        pending_windows.clear()
-
     wall_start = time.perf_counter()
     try:
         while True:
@@ -85,10 +55,18 @@ def _run_one(
             if sampled is None:
                 continue
 
-            pending_windows.append(sampled)
-            if len(pending_windows) >= effective_window_batch:
-                flush_pending()
-        flush_pending()
+            t0 = time.perf_counter()
+            results = inf.predict_frames(sampled.frames)
+            inference_seconds += time.perf_counter() - t0
+            if not results:
+                continue
+
+            result_count += 1
+            result = results[0]
+            conf = float(result.get("confidence") or 0.0)
+            confidences.append(conf)
+            if result.get("x_norm") is not None and result.get("y_norm") is not None:
+                detections += 1
     finally:
         cap.release()
 
@@ -102,8 +80,6 @@ def _run_one(
         "requested_sample_fps": sample_fps,
         "effective_sample_fps": round(fps / step_frames, 4),
         "step_frames": step_frames,
-        "window_batch": effective_window_batch,
-        "preferred_window_batch": preferred_batch,
         "video_fps": round(fps, 4),
         "video_total_frames": total_frames,
         "video_duration_sec": round(duration_sec, 3),
@@ -129,12 +105,6 @@ def main() -> int:
     parser.add_argument("--sample-fps", type=float, nargs="+", default=[15.0, 30.0])
     parser.add_argument("--max-seconds", type=float, default=60.0)
     parser.add_argument("--backend", default="auto")
-    parser.add_argument(
-        "--window-batch",
-        type=int,
-        default=4,
-        help="independent sampled windows per inference call (default: 4)",
-    )
     args = parser.parse_args()
 
     if not args.video.is_file():
@@ -147,7 +117,7 @@ def main() -> int:
     load_seconds = time.perf_counter() - load_start
 
     runs = [
-        _run_one(inf, args.video, sample_fps, args.max_seconds, args.window_batch)
+        _run_one(inf, args.video, sample_fps, args.max_seconds)
         for sample_fps in args.sample_fps
     ]
     report = {
