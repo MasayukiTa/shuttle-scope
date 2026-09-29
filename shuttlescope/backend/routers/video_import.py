@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import logging
 import os
+import queue
 import re
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -248,6 +250,66 @@ def _run_pipeline(job_id: str) -> None:
         logger.exception("job %s pipeline error: %s", job_id, exc)
 
 
+def _iter_video_frames_threaded(cap, queue_size: int = 8):
+    """Decode frames on a producer thread while inference consumes them.
+
+    OpenCV decoding and native GPU inference both spend most of their time in
+    native code, so the two stages can overlap without changing frame order or
+    sampling semantics. The bounded queue prevents unbounded full-resolution
+    frame buffering. The capture is owned and released by the producer thread.
+    """
+    frame_queue: queue.Queue = queue.Queue(maxsize=max(1, int(queue_size)))
+    sentinel = object()
+    stop = threading.Event()
+    errors: list[Exception] = []
+
+    def put_until_stopped(item) -> bool:
+        while not stop.is_set():
+            try:
+                frame_queue.put(item, timeout=0.1)
+                return True
+            except queue.Full:
+                continue
+        return False
+
+    def producer() -> None:
+        try:
+            while not stop.is_set():
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                if not put_until_stopped(frame):
+                    return
+        except Exception as exc:
+            errors.append(exc)
+        finally:
+            try:
+                cap.release()
+            finally:
+                if not stop.is_set():
+                    put_until_stopped(sentinel)
+
+    thread = threading.Thread(
+        target=producer,
+        name="tracknet-video-decode",
+        daemon=True,
+    )
+    thread.start()
+    try:
+        while True:
+            item = frame_queue.get()
+            if item is sentinel:
+                break
+            yield item
+        if errors:
+            raise RuntimeError(f"video decode failed: {errors[0]}") from errors[0]
+    finally:
+        stop.set()
+        thread.join(timeout=5.0)
+        if thread.is_alive():
+            logger.warning("TrackNet video decode thread did not stop within 5s")
+
+
 def _run_tracknet(job: dict, video_path: str) -> None:
     """TrackNet でシャトル軌跡を解析（GPU優先）。コートキャリブレーションが設定済みなら homography でゾーンを精緻化する。"""
     import cv2
@@ -326,11 +388,7 @@ def _run_tracknet(job: dict, video_path: str) -> None:
     track: list[dict] = []
     sampler = TrackNetFrameSampler(step_frames=step_frames)
 
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
-
+    for frame in _iter_video_frames_threaded(cap):
         sampled = sampler.push(frame)
         if sampled is not None:
             results = inf.predict_frames(sampled.frames)
@@ -351,7 +409,7 @@ def _run_tracknet(job: dict, video_path: str) -> None:
         job["tracknet"]["progress"] = min(sampler.decoded_frames / total, 1.0)
         job["progress"] = job["tracknet"]["progress"] * 0.5  # 全体の 0-50%
 
-    cap.release()
+    # cap is released by _iter_video_frames_threaded().
 
     # コートキャリブレーションが設定済みなら homography でゾーンを精緻化
     match_id = job.get("match_id")
