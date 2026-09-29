@@ -68,3 +68,11 @@ def test_unexpected_model_remains_warning_only_when_not_enforced(tmp_path: Path)
         manifest_path=manifest,
     )
     assert result.unexpected == ["experimental.onnx"]
+
+
+def test_startup_model_integrity_uses_production_posture_single_source():
+    main_src = (
+        Path(__file__).resolve().parents[1] / "main.py"
+    ).read_text(encoding="utf-8")
+    assert "is_prod = bool(app_settings.is_production_posture)" in main_src
+    assert 'is_prod = env_norm == "production"' not in main_src

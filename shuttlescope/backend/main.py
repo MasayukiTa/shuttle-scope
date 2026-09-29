@@ -373,8 +373,10 @@ async def lifespan(app: FastAPI):
     #   していた (PermissionError や UnicodeDecodeError on manifest 等で素通し
     #   = backdoored モデルでの推論を許してしまう)。本番では unexpected exception
     #   は CRITICAL + sys.exit(3) で fail-closed に変更。
-    env_norm = (app_settings.ENVIRONMENT or "").strip().lower()
-    is_prod = env_norm == "production"
+    # Security posture is intentionally single-source. Production deployments
+    # may be identified by HIDE_API_DOCS / HIDE_STACK_TRACES / public hostname
+    # even when ENVIRONMENT itself remains "development".
+    is_prod = bool(app_settings.is_production_posture)
     try:
         from backend.utils.model_integrity import verify_and_log
         verify_and_log(
