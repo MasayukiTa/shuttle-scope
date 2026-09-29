@@ -35,6 +35,7 @@ export interface CVCandidatesResult {
     land_zone_count: number
     hit_zone_count: number
     hitter_count: number
+    preserved_count?: number
     applied_by_mode: string
     applied_fields: string[]
   } | null
@@ -64,6 +65,7 @@ export function useCVCandidates({ matchId }: Options): CVCandidatesResult {
     land_zone_count: number
     hit_zone_count: number
     hitter_count: number
+    preserved_count?: number
     applied_by_mode: string
     applied_fields: string[]
   } | null>(null)
@@ -135,6 +137,7 @@ export function useCVCandidates({ matchId }: Options): CVCandidatesResult {
           land_zone_count: number
           hit_zone_count: number
           hitter_count: number
+          preserved_count?: number
           applied_by_mode: string
           applied_fields: string[]
         }

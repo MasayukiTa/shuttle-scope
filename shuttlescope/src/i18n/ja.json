@@ -1513,6 +1513,7 @@
       "cv_apply_result_land": " (着地{{n}})",
       "cv_apply_result_hit": " (打点{{n}})",
       "cv_apply_result_hitter": " (打者{{n}})",
+      "cv_apply_result_preserved": " ・入力済みと違う{{n}}件は変更なし",
       "tunnel_pending_title": "トンネルURL取得中... しばらくお待ちください",
       "tunnel_show_qr_title": "クリックしてQRコード・URLを表示",
       "tunnel_pending_dots": "...",

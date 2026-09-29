@@ -1407,6 +1407,7 @@
       "cv_apply_result_land": " (landing {{n}})",
       "cv_apply_result_hit": " (hit zone {{n}})",
       "cv_apply_result_hitter": " (hitter {{n}})",
+      "cv_apply_result_preserved": " · {{n}} differing from your entries left unchanged",
       "tunnel_pending_title": "Fetching tunnel URL... please wait",
       "tunnel_show_qr_title": "Click to show QR code / URL",
       "tunnel_pending_dots": "...",

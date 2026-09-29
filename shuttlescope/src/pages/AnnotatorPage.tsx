@@ -2747,6 +2747,7 @@ export function AnnotatorPage() {
                   {cvApplyResult.land_zone_count > 0 && t('annotator.ui.cv_apply_result_land', { defaultValue: ' (着地{{n}})', n: cvApplyResult.land_zone_count })}
                   {cvApplyResult.hit_zone_count > 0 && t('annotator.ui.cv_apply_result_hit', { defaultValue: ' (打点{{n}})', n: cvApplyResult.hit_zone_count })}
                   {cvApplyResult.hitter_count > 0 && t('annotator.ui.cv_apply_result_hitter', { defaultValue: ' (打者{{n}})', n: cvApplyResult.hitter_count })}
+                  {(cvApplyResult.preserved_count ?? 0) > 0 && t('annotator.ui.cv_apply_result_preserved', { defaultValue: ' ・入力済みと違う{{n}}件は変更なし', n: cvApplyResult.preserved_count })}
                 </span>
               )}
               {/* ビルドエラー */}

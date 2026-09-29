@@ -340,7 +340,11 @@ def apply_cv_candidates(
     - mode="all": 全候補を適用（確認なし）
 
     A1-2: 任意の絞り込みフィルタ（min/max_confidence, exclude_reason_codes,
-    fields, rally_ids）と併用可能。フィルタ未指定時の挙動は従来どおり。
+    fields, rally_ids）と併用可能。
+
+    人の入力は書き換えない: land_zone は空欄だけ、hit_zone は空欄か CV 自身が書いた値
+    (hit_zone_source == "cv") だけ、打者(Stroke.player)は空の時だけ書く。人の値と食い違う
+    候補は変更せず、レスポンスの preserved_count に数える。
     """
     artifact = _latest_artifact(db, match_id, ARTIFACT_TYPE_CANDIDATES)
     if not artifact or not artifact.data:
@@ -367,6 +371,9 @@ def apply_cv_candidates(
     hit_zone_count = 0
     hitter_count = 0
     skipped_count = 0  # フィルタや条件で適用しなかったフィールド数
+    # 人が入力済みで CV の候補と食い違うため、変更せずに残したフィールド数。
+    # 人の入力を CV が黙って書き換えないための計数 (書き換えない理由の可視化)。
+    preserved_count = 0
 
     for rally_id_str, rally_cand in candidates.get("rallies", {}).items():
         # A1-2: rally_ids フィルタ
@@ -389,14 +396,17 @@ def apply_cv_candidates(
 
             changed = False
 
-            # 着地ゾーン書き戻し
+            # 着地ゾーン書き戻し。land_zone には入力元の記録が無いので、入っている値は
+            # 人が入力したものとして扱い、空欄だけを埋める。
             if "land_zone" in body.fields:
                 lz = sc.get("land_zone")
                 if _field_passes_filters(lz, body, apply_modes):
-                    if stroke.land_zone != lz["value"]:
+                    if not stroke.land_zone:
                         stroke.land_zone = lz["value"]
                         land_zone_count += 1
                         changed = True
+                    elif stroke.land_zone != lz["value"]:
+                        preserved_count += 1
                 elif lz:
                     skipped_count += 1
 
@@ -406,12 +416,17 @@ def apply_cv_candidates(
             if "hit_zone" in body.fields:
                 hz = sc.get("hit_zone")
                 if _field_passes_filters(hz, body, apply_modes):
-                    if stroke.hit_zone != hz["value"] or stroke.hit_zone_source != "cv":
-                        stroke.hit_zone = hz["value"]
-                        stroke.hit_zone_source = "cv"
-                        stroke.hit_zone_cv_original = hz["value"]
-                        hit_zone_count += 1
-                        changed = True
+                    # 空欄か、CV 自身が前に書いた値 (hit_zone_source == "cv") だけを更新する。
+                    # 入力元が manual または不明の値は人の入力として残す。
+                    if not stroke.hit_zone or stroke.hit_zone_source == "cv":
+                        if stroke.hit_zone != hz["value"] or stroke.hit_zone_source != "cv":
+                            stroke.hit_zone = hz["value"]
+                            stroke.hit_zone_source = "cv"
+                            stroke.hit_zone_cv_original = hz["value"]
+                            hit_zone_count += 1
+                            changed = True
+                    elif stroke.hit_zone != hz["value"]:
+                        preserved_count += 1
                 elif hz:
                     skipped_count += 1
 
@@ -419,11 +434,14 @@ def apply_cv_candidates(
             if "hitter" in body.fields:
                 ht = sc.get("hitter")
                 if _field_passes_filters(ht, body, apply_modes):
-                    # player フィールドに書き戻す
-                    if stroke.player != ht["value"]:
+                    # Stroke.player は入力時に必ず人が決める (NOT NULL)。CV の打者は
+                    # それと突き合わせる候補であって、記録済みの打者を書き換える根拠にはならない。
+                    if not stroke.player:
                         stroke.player = ht["value"]
                         hitter_count += 1
                         changed = True
+                    elif stroke.player != ht["value"]:
+                        preserved_count += 1
                 elif ht:
                     skipped_count += 1
 
@@ -441,6 +459,7 @@ def apply_cv_candidates(
             "hit_zone_count":  hit_zone_count,
             "hitter_count":    hitter_count,
             "skipped_count":   skipped_count,
+            "preserved_count": preserved_count,
             "applied_by_mode": body.mode,
             "applied_fields":  list(body.fields),
             "filters": {
