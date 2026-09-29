@@ -161,7 +161,9 @@ def cmd_export():
         sys.exit(1)
 
     model = build_tracknet_model()
-    model.load_weights(str(TF_INDEX_PATH.with_suffix(""))).expect_partial()
+    restore_status = model.load_weights(str(TF_INDEX_PATH.with_suffix("")))
+    restore_status.assert_existing_objects_matched()
+    restore_status.expect_partial()
     signature = (tf.TensorSpec((None, 3, 288, 512), tf.float32, name="input"),)
 
     print(f"Exporting ONNX to {ONNX_PATH} ...")

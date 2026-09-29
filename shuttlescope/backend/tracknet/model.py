@@ -130,7 +130,7 @@ if _TF_AVAILABLE:
 
         def __init__(self, input_shape=(3, 288, 512), structure=(3, 3, 4, 3), num_filters=(16, 32, 64, 128)):
             super().__init__()
-            self.initial = keras.Sequential(
+            self.inital = keras.Sequential(
                 [
                     keras.layers.Conv2D(64, (3, 3), padding="same", data_format="channels_first", input_shape=input_shape),
                     keras.layers.BatchNormalization(),
@@ -186,7 +186,7 @@ if _TF_AVAILABLE:
             return block
 
         def call(self, inputs):
-            x = self.initial(inputs)
+            x = self.inital(inputs)
 
             e1 = self.block_1(x)
             e2 = self.block_2(e1)

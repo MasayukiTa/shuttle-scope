@@ -1,4 +1,4 @@
-﻿"""Functional TrackNet checkpoint/ONNX parity smoke against upstream test video.
+"""Functional TrackNet checkpoint/ONNX parity smoke against upstream test video.
 
 This is intentionally separate from the production dependency set. It runs in
 TrackNet Smoke CI where TensorFlow 2.15 and ONNX Runtime are installed.
@@ -108,12 +108,19 @@ def main() -> int:
     except AssertionError as exc:
         consumed_error = str(exc)
 
-    tf_conf, tf_outputs = _max_confidences_tf(model, inputs)
+    gpu_available = bool(tf.config.list_physical_devices("GPU"))
+    tf_conf: list[float] | None = None
+    tf_outputs: list[np.ndarray] = []
+    max_abs_diff: float | None = None
+    if gpu_available:
+        tf_conf, tf_outputs = _max_confidences_tf(model, inputs)
+
     onnx_conf, onnx_outputs = _max_confidences_onnx(args.onnx, inputs)
-    max_abs_diff = max(
-        float(np.max(np.abs(a - b)))
-        for a, b in zip(tf_outputs, onnx_outputs)
-    )
+    if tf_outputs:
+        max_abs_diff = max(
+            float(np.max(np.abs(a - b)))
+            for a, b in zip(tf_outputs, onnx_outputs)
+        )
 
     report = {
         "positive_frames": list(_POSITIVE_FRAMES),
@@ -122,9 +129,14 @@ def main() -> int:
         "restore_existing_objects_error": restore_error,
         "restore_consumed": consumed_error is None,
         "restore_consumed_error": consumed_error,
-        "tensorflow_max_confidences": [round(v, 6) for v in tf_conf],
+        "tensorflow_gpu_available": gpu_available,
+        "tensorflow_max_confidences": (
+            [round(v, 6) for v in tf_conf] if tf_conf is not None else None
+        ),
         "onnx_max_confidences": [round(v, 6) for v in onnx_conf],
-        "tensorflow_detections": sum(v >= _THRESHOLD for v in tf_conf),
+        "tensorflow_detections": (
+            sum(v >= _THRESHOLD for v in tf_conf) if tf_conf is not None else None
+        ),
         "onnx_detections": sum(v >= _THRESHOLD for v in onnx_conf),
         "tf_onnx_max_abs_diff": max_abs_diff,
     }
@@ -133,11 +145,11 @@ def main() -> int:
     errors: list[str] = []
     if restore_error is not None:
         errors.append("checkpoint restore did not match all existing model objects")
-    if max(tf_conf, default=0.0) < _THRESHOLD:
+    if tf_conf is not None and max(tf_conf, default=0.0) < _THRESHOLD:
         errors.append("TensorFlow checkpoint produced no >=0.5 positive detection")
     if max(onnx_conf, default=0.0) < _THRESHOLD:
         errors.append("exported ONNX produced no >=0.5 positive detection")
-    if max_abs_diff > 1e-3:
+    if max_abs_diff is not None and max_abs_diff > 1e-3:
         errors.append(f"TensorFlow/ONNX output drift too large: {max_abs_diff:.6g}")
 
     if errors:

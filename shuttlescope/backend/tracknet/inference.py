@@ -755,7 +755,9 @@ class TrackNetInference:
                 from backend.tracknet.model import build_tracknet_model
 
                 model = build_tracknet_model()
-                model.load_weights(str(TF_CKPT_PREFIX)).expect_partial()
+                restore_status = model.load_weights(str(TF_CKPT_PREFIX))
+                restore_status.assert_existing_objects_matched()
+                restore_status.expect_partial()
                 self._infer_fn = lambda frames: self._run_tensorflow(model, frames)
                 # TF CPU も中間バッファが大きいため serial のみ
                 self._backend_name = "tensorflow_cpu"
