@@ -3964,16 +3964,24 @@ if __name__ == "__main__":
             "Refusing to start until a shared store (e.g. Redis) is wired in.\n"
         )
         _sys_wg.exit(2)
+    _reload_enabled = (
+        app_settings.ENVIRONMENT == "development"
+        and os.environ.get("SS_DISABLE_RELOAD", "0") in ("0", "false", "")
+    )
+    # reload=True の場合だけ import string が必要。reload=False の本番で
+    # "backend.main:app" を渡すと、現在 __main__ として実行中の main.py を
+    # backend.main としてもう一度 import し、module-level singleton / startup
+    # side effect を二重初期化する。production では実際に lifespan 単体は正常、
+    # string target 経由だけ startup が完了しない事象を再現したため、既存 app
+    # object を直接渡して二重 import を避ける。
+    _uvicorn_target = "backend.main:app" if _reload_enabled else app
     uvicorn.run(
-        "backend.main:app",
+        _uvicorn_target,
         host=host,
         port=app_settings.API_PORT,
         # SS_DISABLE_RELOAD=1 で dev でも reload を切れる (prod deploy で
         # ファイル更新検知 → 無限再起動ループを起こさないため)
-        reload=(
-            app_settings.ENVIRONMENT == "development"
-            and os.environ.get("SS_DISABLE_RELOAD", "0") in ("0", "false", "")
-        ),
+        reload=_reload_enabled,
         log_level="info",
         # uvicorn の dictConfig による basicConfig 上書きを防ぐ
         # （これがないとアプリ側 logger.info/warning が全て黙殺される）
