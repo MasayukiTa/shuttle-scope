@@ -207,7 +207,7 @@ Windows Firewall は 3 プロファイルとも有効 (受信の既定動作は�
 - IPv6 TURN control endpointのsocket family
 - coturn.conf.example の必須deny/quota/no-tcp-relay directiveと、web-adminがopt-inのまま無効であること
 
-focused test: backend/tests/test_turn_hardening_verifier.py 5/5 pass。
+focused test: backend/tests/test_turn_hardening_verifier.py 8/8 pass。
 
 なお /api/webrtc/test-turn は管理画面用のTCP到達確認に過ぎず、
 TURN Allocate/auth/peer ACL の安全性を証明しない。
@@ -240,10 +240,47 @@ channel競合で拒否し、偽のBLOCKEDを作り得た。現在はpeerごと�
 テンプレートから削除し、`web-admin` / `web-admin-listen-on-workers` が
 存在しないことをテストで固定した。
 
+### 2026-09-30 production host 上の実coturn検証
+
+本番アプリホストの WSL Ubuntu 上で、稼働中の coturn 自体へ
+`verify_turn_hardening.py` を当てた。これは9/29の対照用coturnではなく、
+ShuttleScope production host 上の実processである。
+
+実測状態:
+
+- coturn **4.6.1**
+- `systemctl is-active coturn` = `active`
+- UDP 3478 は `127.0.0.1` / `::1` でlisten
+- `/etc/turnserver.conf` SHA-256 = `5ff8b9397d92cb053ca83f0adb4c0489d546e8c2f4f608bcaa9eced1422d4ef0`
+- active `denied-peer-ip=` は37本
+- `static-auth-secret` から1時間TTLのHMAC credentialをその場で生成して検証
+
+negative path:
+
+- 認証なし Allocate は 401 Unauthorized
+- TCP relay は 442 で明示拒否
+- `10.0.0.1`, `172.18.0.1`, `192.168.27.1` への CreatePermission / ChannelBind は403 Forbidden IP
+- IPv4-mapped / IPv4-compatible / 6to4 / NAT64 / Teredo 表現は、現在のcoturnがIPv6 relay familyを440 Unsupported address familyとして明示拒否するためBLOCKED
+- `255.255.255.255`, `0.0.0.0`, TURN self `127.0.0.1` も403
+
+positive control:
+
+- peer `1.1.1.1:53` へ `example.com` DNS A queryをTURN越しに送信
+- matching DATA indicationを受信
+- `dns_answers=2`, `response_bytes=61`
+- したがって「全宛先を拒否する壊れたTURNだからnegative testだけ通る」状態ではないことも同時に証明
+
+最終verifier終了コードは0。
+今回のpositive control追加に伴って検討したIPv4-mapped / compatible deny rangeの緩和は不要だった。
+現行37本denyのままで外向きrelayと内部拒否が両立するため、`coturn.conf.example` は変更しない。
+
+なお、現在のcoturnはloopback bindであり、インターネット側から3478を公開した状態のend-to-end検証ではない。
+外部公開する場合はルータ/NAT/firewall経路を含めて同じverifierを外部ノードから再実行する。
+
 ## 未検証 (正直に残す)
 
-- **TURN を実際に立てての本番検証は未実施。** UDP を開ける前に
-  `verify_turn_hardening.py` を本番へ向けて走らせ、終了コード 0 を確認すること
+- **本番ホスト上の実coturn検証は完了。** ただし現在はloopback bind。
+  インターネット公開時のNAT / firewall / port-forwardingを含む外部経路は未検証
 - ルータ側のポート転送設定と、ルータ自身の管理画面が LAN から
   到達可能かは未確認
 - 帯域の踏み倒し (credential を拾われて中継に使われる) は `denied-peer-ip` では
