@@ -19,6 +19,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from backend.analysis.role_view import own_slot
 from backend.db.database import get_db
 from backend.db.models import Match, GameSet, Rally, Stroke
 from backend.utils.auth import AuthCtx, get_auth
@@ -49,7 +50,7 @@ def _shot_distribution(strokes: list[Stroke], target_role: Optional[str]) -> Cou
     """対象選手のショット種別ヒストグラム。"""
     c: Counter = Counter()
     for s in strokes:
-        if target_role is not None and s.player != target_role:
+        if target_role is not None and s.player != own_slot(target_role):
             continue
         st = (s.shot_type or "unknown").lower()
         c[st] += 1
@@ -141,7 +142,7 @@ def get_live_anomaly(
     baseline_dist: Counter = Counter()
     for s in base_strokes_all:
         role = rally_to_role.get(s.rally_id)
-        if role is None or s.player != role:
+        if role is None or s.player != own_slot(role):
             continue
         st = (s.shot_type or "unknown").lower()
         baseline_dist[st] += 1
@@ -283,7 +284,7 @@ def get_live_suggestions(
         # shot -> (rallies, wins)
         agg: dict[str, dict[str, set]] = defaultdict(lambda: {"rallies": set(), "wins": set()})
         for s in strokes:
-            if s.player != target_role:
+            if s.player != own_slot(target_role):
                 continue
             st = (s.shot_type or "unknown").lower()
             agg[st]["rallies"].add(s.rally_id)

@@ -18,6 +18,8 @@ from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
+from backend.analysis.player_context import head_to_head, involves_player
+from backend.analysis.role_view import own_slot, perspective, team_side
 from backend.utils.auth import AuthCtx
 
 
@@ -85,7 +87,7 @@ def _gather_window(db: Session, player_id: int, days: int) -> dict:
     matches = (
         db.query(Match)
         .filter(
-            (Match.player_a_id == player_id) | (Match.player_b_id == player_id),
+            involves_player(player_id),
             Match.date >= from_d,
             Match.date <= today,
             Match.deleted_at.is_(None),
@@ -99,11 +101,8 @@ def _gather_window(db: Session, player_id: int, days: int) -> dict:
             "primary_shot": None, "from_date": from_d, "to_date": today,
         }
 
-    # ロール判定 (player_a or player_b)
-    def _role(m: Match) -> str:
-        return "player_a" if m.player_a_id == player_id else "player_b"
-
-    role_by_mid = {m.id: _role(m) for m in matches}
+    # 視点 (チーム側 + 個人の枠)。ダブルスの相方も解決する
+    role_by_mid = {m.id: perspective(m, player_id) for m in matches}
     mids = [m.id for m in matches]
     sets = db.query(GameSet).filter(GameSet.match_id.in_(mids)).all()
     sid_to_mid = {s.id: s.match_id for s in sets}
@@ -124,7 +123,7 @@ def _gather_window(db: Session, player_id: int, days: int) -> dict:
         from collections import Counter
         c: Counter[str] = Counter()
         for s in strokes:
-            if s.shot_type and s.player == rid_to_role.get(s.rally_id):
+            if s.shot_type and s.player == own_slot(rid_to_role.get(s.rally_id)):
                 c[s.shot_type] += 1
         if c:
             most, cnt = c.most_common(1)[0]
@@ -226,10 +225,10 @@ def advice_post_match_save(db: Session, player_id: int, match_id: int, ctx: Auth
     """
     from backend.db.models import Match, GameSet, Rally, Stroke
     m = db.get(Match, match_id)
-    if not m or (m.player_a_id != player_id and m.player_b_id != player_id):
+    role = perspective(m, player_id) if m else None
+    if not m or role is None:
         return _empty_response("対象試合が見つかりません。")
 
-    role = "player_a" if m.player_a_id == player_id else "player_b"
     sets = db.query(GameSet).filter(GameSet.match_id == match_id).all()
     sids = [s.id for s in sets]
     rallies = db.query(Rally).filter(Rally.set_id.in_(sids)).all() if sids else []
@@ -246,7 +245,7 @@ def advice_post_match_save(db: Session, player_id: int, match_id: int, ctx: Auth
     from collections import Counter
     own = Counter()
     for s in strokes:
-        if s.shot_type and s.player == role:
+        if s.shot_type and s.player == own_slot(role):
             own[s.shot_type] += 1
     primary = None
     if own:
@@ -414,10 +413,7 @@ def advice_prediction_tab(db: Session, player_id: int, opponent_id: Optional[int
     h2h = (
         db.query(Match)
         .filter(
-            (
-                ((Match.player_a_id == player_id) & (Match.player_b_id == opponent_id)) |
-                ((Match.player_a_id == opponent_id) & (Match.player_b_id == player_id))
-            ),
+            head_to_head(player_id, opponent_id),
             Match.deleted_at.is_(None),
         )
         .all()
@@ -430,7 +426,7 @@ def advice_prediction_tab(db: Session, player_id: int, opponent_id: Optional[int
     sids = [s.id for s in sets]
     sid_to_mid = {s.id: s.match_id for s in sets}
     rallies = db.query(Rally).filter(Rally.set_id.in_(sids)).all() if sids else []
-    role_by_mid = {m.id: ("player_a" if m.player_a_id == player_id else "player_b") for m in h2h}
+    role_by_mid = {m.id: team_side(m, player_id) for m in h2h}
     wins = sum(1 for r in rallies if r.winner == role_by_mid.get(sid_to_mid.get(r.set_id)))
     rcount = len(rallies)
     if rcount < 30:
@@ -485,7 +481,7 @@ def advice_growth_timeline(db: Session, player_id: int, ctx: AuthCtx) -> dict:
         ms = (
             db.query(Match)
             .filter(
-                (Match.player_a_id == player_id) | (Match.player_b_id == player_id),
+                involves_player(player_id),
                 Match.date >= from_d, Match.date < to_d,
                 Match.deleted_at.is_(None),
             )
@@ -493,7 +489,7 @@ def advice_growth_timeline(db: Session, player_id: int, ctx: AuthCtx) -> dict:
         )
         if not ms:
             return (None, 0, 0)
-        role_by_mid = {m.id: ("player_a" if m.player_a_id == player_id else "player_b") for m in ms}
+        role_by_mid = {m.id: team_side(m, player_id) for m in ms}
         mids = [m.id for m in ms]
         sets = db.query(GameSet).filter(GameSet.match_id.in_(mids)).all()
         sids = [s.id for s in sets]
