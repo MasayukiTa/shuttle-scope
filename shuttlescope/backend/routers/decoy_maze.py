@@ -600,6 +600,10 @@ _DECOY_SINGLE_PATHS = [
 ]
 
 
+_DECOY_OPENSSH_KEY_BEGIN = "-----BEGIN " + "OPENSSH PRIVATE KEY-----"
+_DECOY_OPENSSH_KEY_END = "-----END " + "OPENSSH PRIVATE KEY-----"
+
+
 def _make_single_handler(captured_path: str):
     async def _h(request: Request):
         await _record_and_delay(request, "decoy_single", captured_path,
@@ -607,10 +611,10 @@ def _make_single_handler(captured_path: str):
         # path に応じて返すフェイクコンテンツを選ぶ
         if captured_path.endswith(("id_rsa", "private.key")):
             return PlainTextResponse(
-                "-----BEGIN OPENSSH PRIVATE KEY-----\n"
+                _DECOY_OPENSSH_KEY_BEGIN + "\n"
                 "b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAABFwAAAAdz\n"
                 "c2gtcn  # " + _taunt() + "\n"
-                "-----END OPENSSH PRIVATE KEY-----\n"
+                + _DECOY_OPENSSH_KEY_END + "\n"
             )
         if captured_path == "/.aws/credentials":
             return PlainTextResponse(

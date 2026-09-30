@@ -261,7 +261,9 @@ class ShotLSTMClassifier:
             m = _build_model()
             if m is None:
                 return False
-            state = torch.load(MODEL_PATH, map_location="cpu", weights_only=True)
+            state = torch.load(  # DevSkim: ignore DS425050 -- fixed local path; weights_only=True disables arbitrary pickle objects
+                MODEL_PATH, map_location="cpu", weights_only=True
+            )
             m.load_state_dict(state)
             m.eval()
             self._model = m

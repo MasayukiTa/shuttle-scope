@@ -20,6 +20,10 @@
 #include <stdexcept>
 #include <memory>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 namespace person_tracker_native {
 
 namespace {
@@ -35,13 +39,40 @@ namespace {
 
 #ifdef _WIN32
 std::wstring to_wstring_utf8(const char* s) {
-    // ORT (Windows) は wchar_t の path を要求
+    // FFI contract: NUL-terminated UTF-8 path. Bound the scan so malformed
+    // input cannot cause an unbounded read, then decode UTF-8 explicitly.
     if (!s) return L"";
-    size_t n = std::strlen(s);
-    std::wstring w;
-    w.reserve(n);
-    // ASCII 仮定で十分 (model path 通常 ascii)。日本語 path 想定なら MultiByteToWideChar を使う。
-    for (size_t i = 0; i < n; ++i) w.push_back(static_cast<wchar_t>(static_cast<unsigned char>(s[i])));
+    constexpr size_t kMaxPathUtf8Bytes = 32767;
+    const size_t n = ::strnlen_s(s, kMaxPathUtf8Bytes + 1);
+    if (n > kMaxPathUtf8Bytes) {
+        throw std::invalid_argument("model path is not NUL-terminated within limit");
+    }
+    if (n == 0) return L"";
+
+    const int required = ::MultiByteToWideChar(
+        CP_UTF8,
+        MB_ERR_INVALID_CHARS,
+        s,
+        static_cast<int>(n),
+        nullptr,
+        0
+    );
+    if (required <= 0) {
+        throw std::invalid_argument("model path is not valid UTF-8");
+    }
+
+    std::wstring w(static_cast<size_t>(required), L'\0');
+    const int written = ::MultiByteToWideChar(
+        CP_UTF8,
+        MB_ERR_INVALID_CHARS,
+        s,
+        static_cast<int>(n),
+        w.data(),
+        required
+    );
+    if (written != required) {
+        throw std::runtime_error("failed to convert model path to UTF-16");
+    }
     return w;
 }
 #endif
