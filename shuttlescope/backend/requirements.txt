@@ -62,8 +62,9 @@ pytest-timeout>=2.4.0        # 2026-05-11: WS テスト 54 分 hang → CI 60 �
 opencv-python>=4.13.0.92
 # OpenVINO アクセラレーション（Intel GPU / iGPU 対応）
 openvino>=2026.1.0; sys_platform != 'unsupported'
-# TensorFlow / tf2onnx は production へ入れない。
-# 旧TrackNet checkpoint互換の週次CIだけが tracknet/requirements-smoke*.txt を使う。
+# TensorFlow / tf2onnx は production / default-branch CI へ入れない。
+# 旧TensorFlow checkpoint exporter は 2026-10-01 に退役。
+# Runtime は SHA-256 承認済み ONNX と known-positive ベクトルで検証する。
 
 # ── ONNX Runtime ─────────────────────────────────────────────────
 # GPU / DirectML 版は環境依存が強いため base requirements には含めない。
