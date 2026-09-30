@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react'
 import { UserRole } from '@/types'
+import { tokenUserId } from '@/utils/mobileAnnotateQueue'
 
 const AUTH_CHANGED_EVENT = 'shuttlescope:auth-changed'
 
@@ -60,6 +61,26 @@ function getStoredRole(): UserRole | null {
   return null
 }
 
+/**
+ * ログイン中のユーザー ID。保存された値が正の整数ならそれを使い、無ければ (または 0 のような
+ * 「不明」の値なら) 送信に使うトークンの `sub` から復元する。
+ *
+ * 入力 (ラリー) の退避キューは所有者 (ユーザー ID) を持つ。ID が取れないと、保存に失敗した
+ * ラリーは退避されずに失われる。また `/auth/me` に user_id が無いと 0 が保存され、
+ * 「ユーザー 0」という共有の所有者ができて、別の人の入力を再送できてしまう。
+ */
+export function resolveUserId(stored: string | null, token: string | null): number | null {
+  if (stored) {
+    const n = parseInt(stored, 10)
+    if (Number.isInteger(n) && n > 0) return n
+  }
+  return tokenUserId(token)
+}
+
+function getStoredUserId(): number | null {
+  return resolveUserId(getStored<string>(STORAGE_KEY_USER_ID), getStored<string>(STORAGE_KEY))
+}
+
 function getStoredPlayerId(): number | null {
   const v = getStored<string>(STORAGE_KEY_PLAYER_ID)
   if (!v) return null
@@ -83,12 +104,7 @@ export function useAuth() {
   const [role, setRoleState] = useState<UserRole | null>(getStoredRole)
   const [playerId, setPlayerIdState] = useState<number | null>(getStoredPlayerId)
   const [teamName, setTeamNameState] = useState<string | null>(() => getStored(STORAGE_KEY_TEAM_NAME))
-  const [userId, setUserIdState] = useState<number | null>(() => {
-    const v = getStored<string>(STORAGE_KEY_USER_ID)
-    if (!v) return null
-    const n = parseInt(v, 10)
-    return Number.isFinite(n) ? n : null
-  })
+  const [userId, setUserIdState] = useState<number | null>(getStoredUserId)
   const [displayName, setDisplayNameState] = useState<string | null>(() => getStored(STORAGE_KEY_DISPLAY_NAME))
   const [pageAccess, setPageAccessState] = useState<string[]>(() => {
     try {
@@ -103,8 +119,7 @@ export function useAuth() {
       setRoleState(getStoredRole())
       setPlayerIdState(getStoredPlayerId())
       setTeamNameState(getStored(STORAGE_KEY_TEAM_NAME))
-      const uid = getStored<string>(STORAGE_KEY_USER_ID)
-      setUserIdState(uid ? parseInt(uid, 10) : null)
+      setUserIdState(getStoredUserId())
       setDisplayNameState(getStored(STORAGE_KEY_DISPLAY_NAME))
       try {
         const pa = readStorage(STORAGE_KEY_PAGE_ACCESS)
@@ -154,7 +169,7 @@ export function useAuth() {
     writeStorage(STORAGE_KEY_PAGE_ACCESS, JSON.stringify(pa))
     setTokenState(session.token)
     setRoleState(session.role)
-    setUserIdState(session.userId)
+    setUserIdState(resolveUserId(String(session.userId), session.token))
     setPlayerIdState(session.playerId)
     setTeamNameState(session.teamName)
     setDisplayNameState(session.displayName)
