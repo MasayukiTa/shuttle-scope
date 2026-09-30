@@ -12,7 +12,13 @@ from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import or_, and_
 
 from backend.db.models import Match, GameSet, Rally, Player, PreMatchObservation
-from backend.analysis.player_context import player_wins_match as _player_wins_match_ctx
+from backend.analysis.player_context import (
+    head_to_head,
+    involves_player,
+    opponent_player_id,
+    player_wins_match as _player_wins_match_ctx,
+)
+from backend.analysis.role_view import team_side
 
 # 大会重要度（TournamentComparison と共通）
 LEVEL_IMPORTANCE: dict[str, float] = {
@@ -47,9 +53,7 @@ def get_matches_for_player(
     q = (
         db.query(Match)
         .options(selectinload(Match.sets))
-        .filter(
-            or_(Match.player_a_id == player_id, Match.player_b_id == player_id)
-        )
+        .filter(involves_player(player_id))
         .filter(Match.result.in_(['win', 'loss']))
     )
     # R29 P2-3 / R30 P2 fix: admin 以外で ctx_team_id が **明示的に渡された** 場合に
@@ -62,12 +66,7 @@ def get_matches_for_player(
         q = q.filter(or_(Match.is_public_pool.is_(True), Match.owner_team_id == ctx_team_id))
     # else: legacy 呼出 — filter を適用しない (既存挙動を維持; 新規 caller は ctx を渡せ)
     if opponent_id is not None:
-        q = q.filter(
-            or_(
-                and_(Match.player_a_id == player_id, Match.player_b_id == opponent_id),
-                and_(Match.player_b_id == player_id, Match.player_a_id == opponent_id),
-            )
-        )
+        q = q.filter(head_to_head(player_id, opponent_id))
     if tournament_level:
         q = q.filter(Match.tournament_level == tournament_level)
     if before_date is not None:
@@ -144,11 +143,8 @@ def compute_set_distribution(
 
     for m in matches:
         sets = sorted(m.sets or [], key=lambda s: s.set_num)
-        wins_sets = sum(
-            1 for s in sets
-            if (s.winner == 'player_a' and m.player_a_id == player_id)
-            or (s.winner == 'player_b' and m.player_b_id == player_id)
-        )
+        side = team_side(m, player_id)
+        wins_sets = sum(1 for s in sets if s.winner == side)
         total_sets = len(sets)
         if total_sets == 2:
             if wins_sets == 2:
@@ -194,7 +190,7 @@ def compute_score_bands(
         for s in (m.sets or []):
             if s.set_num not in set_scores:
                 continue
-            if m.player_a_id == player_id:
+            if team_side(m, player_id) == 'player_a':
                 set_scores[s.set_num].append((s.score_a, s.score_b))
             else:
                 set_scores[s.set_num].append((s.score_b, s.score_a))
@@ -264,7 +260,7 @@ def get_observation_context(
     if match_id:
         m = db.get(Match, match_id)
         if m:
-            opponent_actual = m.player_b_id if m.player_a_id == player_id else m.player_a_id
+            opponent_actual = opponent_player_id(m, player_id)
             obs_list = (
                 db.query(PreMatchObservation)
                 .filter(PreMatchObservation.match_id == match_id)
@@ -279,10 +275,7 @@ def get_observation_context(
             db.query(Match)
             .filter(
                 Match.result.in_(['win', 'loss']),
-                or_(
-                    and_(Match.player_a_id == player_id, Match.player_b_id == opponent_id),
-                    and_(Match.player_b_id == player_id, Match.player_a_id == opponent_id),
-                )
+                head_to_head(player_id, opponent_id),
             )
             .order_by(Match.date.desc())
             .first()
@@ -675,15 +668,14 @@ def compute_calibrated_scorelines(
             continue
         parts: list[str] = []
         wins_sets = 0
+        side = team_side(m, player_id)
         for s in sets:
-            if m.player_a_id == player_id:
+            if side == 'player_a':
                 parts.append(f"{s.score_a}-{s.score_b}")
-                if s.winner == 'player_a':
-                    wins_sets += 1
             else:
                 parts.append(f"{s.score_b}-{s.score_a}")
-                if s.winner == 'player_b':
-                    wins_sets += 1
+            if s.winner == side:
+                wins_sets += 1
         total_sets = len(sets)
         outcome = f"{wins_sets}-{total_sets - wins_sets}"
         counter[(outcome, ', '.join(parts))] += 1
@@ -765,7 +757,7 @@ def compute_fatigue_risk(
         m = set_to_match.get(r.set_id)
         if not m:
             return False
-        return r.winner == ('player_a' if m.player_a_id == player_id else 'player_b')
+        return r.winner == team_side(m, player_id)
 
     # ── temporal drop ──
     early_w = early_t = late_w = late_t = 0
@@ -1122,7 +1114,7 @@ def compute_score_volatility(
             dominant += 1
 
         for s in sets:
-            if m.player_a_id == player_id:
+            if team_side(m, player_id) == 'player_a':
                 my, opp = s.score_a, s.score_b
             else:
                 my, opp = s.score_b, s.score_a
@@ -1217,7 +1209,7 @@ def find_nearest_matches(
         # プレイヤー視点のスコアサマリーを構築
         score_parts: list[str] = []
         for s in sorted(m.sets or [], key=lambda s: s.set_num):
-            if m.player_a_id == player_id:
+            if team_side(m, player_id) == 'player_a':
                 score_parts.append(f"{s.score_a}-{s.score_b}")
             else:
                 score_parts.append(f"{s.score_b}-{s.score_a}")

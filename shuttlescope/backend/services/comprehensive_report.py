@@ -60,6 +60,7 @@ def gather_player_report(
     試合単位データを追加 (JSON 用)。
     """
     from backend.db.models import Match, Player, Rally, GameSet, Stroke
+    from backend.analysis.player_context import involves_player
     role = ctx.role or "analyst"
 
     # ── 0. ヘッダ ────────────────────────────────────────────────────
@@ -247,7 +248,7 @@ def gather_player_report(
     # ── 5. 試合単位 raw (JSON のみ) ─────────────────────────────────
     if include_per_match:
         match_q = db.query(Match).filter(
-            (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
+            involves_player(player_id)
         )
         match_q = apply_match_team_scope(match_q, ctx)
         matches = (

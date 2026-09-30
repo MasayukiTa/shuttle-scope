@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from backend.analysis.role_view import opposing_ids
 from backend.db.database import get_db
 from backend.db.models import HumanForecast, Match, Player
 from backend.utils.auth import get_auth, AuthCtx, require_non_player
@@ -235,11 +236,10 @@ def get_prediction_benchmark(
         # モデル予測: この試合を除いた上での勝率
         prior_matches = [x for x in all_player_matches if x.id != m.id]
         recent = compute_recent_form(prior_matches, player_id)
+        # この試合の相手 (ダブルスなら相手の 2 人) と対戦したことのある試合
+        _opp_now = opposing_ids(m, player_id)
         h2h_m = [x for x in prior_matches
-                 if (x.player_a_id == player_id and x.player_b_id in (m.player_a_id, m.player_b_id)
-                     and x.id != m.id)
-                 or (x.player_b_id == player_id and x.player_a_id in (m.player_a_id, m.player_b_id)
-                     and x.id != m.id)]
+                 if x.id != m.id and opposing_ids(x, player_id) & _opp_now]
         obs = get_observation_context(db, player_id, match_id=m.id)
         model_prob, _ = compute_feature_win_prob(prior_matches, player_id, h2h_m, recent, obs)
         model_predicted = 'win' if model_prob >= 0.5 else 'loss'

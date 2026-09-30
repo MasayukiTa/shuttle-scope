@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 import json
+from backend.analysis.player_context import opponent_player_id
 from backend.db.database import get_db
 from backend.utils.auth import require_non_player, get_auth, require_query_scope
 from backend.db.models import Player, Match, PrematchPrediction
@@ -330,11 +331,8 @@ def get_prematch_by_match(
         return {"success": False, "error": "Match not found"}
 
     # 対戦相手を確定
-    if match.player_a_id == player_id:
-        opponent_id = match.player_b_id
-    elif match.player_b_id == player_id:
-        opponent_id = match.player_a_id
-    else:
+    opponent_id = opponent_player_id(match, player_id)
+    if opponent_id is None:
         return {"success": False, "error": "Player not in this match"}
 
     # ── DB キャッシュ確認 ──────────────────────────────────────────────────────

@@ -81,6 +81,17 @@ def team_side(match, player_id: int, default: str = "player_b") -> str:
     return str(view) if view is not None else default
 
 
+def opposing_ids(match, player_id: int) -> set:
+    """player_id から見た相手チームの選手 ID (相手の player_x と、ダブルスなら相方)。
+    試合に出ていなければ空。"""
+    view = perspective(match, player_id)
+    if view is None:
+        return set()
+    ids = (match.player_b_id, getattr(match, "partner_b_id", None)) if view == "player_a" \
+        else (match.player_a_id, getattr(match, "partner_a_id", None))
+    return {i for i in ids if i is not None}
+
+
 def match_ids_by_slot(matches, player_id: int) -> dict:
     """試合を、player_id の個人の枠 (player_a / partner_a / player_b / partner_b) ごとに分ける。
     枠ごとに Stroke.player の絞り込みが変わる集計で使う。出ていない試合は入れない。"""

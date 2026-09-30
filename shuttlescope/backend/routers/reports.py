@@ -40,6 +40,8 @@ def _safe_paragraph_text(s: object) -> str:
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
+from backend.analysis.player_context import involves_player
+from backend.analysis.role_view import own_slot, perspective
 from backend.db.database import get_db
 from backend.db.models import Match, GameSet, Rally, Stroke, Player, Condition
 from backend.utils.auth import check_export_player_scope, get_auth, require_query_scope
@@ -199,12 +201,8 @@ def sanitize_player_text(text: str) -> str:
 
 
 def _player_role_in_match(match: Match, player_id: int) -> str | None:
-    """プレイヤーIDに対応するロール (player_a / player_b) を返す"""
-    if match.player_a_id == player_id:
-        return "player_a"
-    if match.player_b_id == player_id:
-        return "player_b"
-    return None
+    """プレイヤーIDの視点 (チーム側 + 個人の枠)。ダブルスの相方も解決する。"""
+    return perspective(match, player_id)
 
 
 # ---------------------------------------------------------------------------
@@ -241,7 +239,7 @@ def get_scouting_report(
     # admin に対して「期間指定 / job queue 経由のレポート生成」へ案内する。
     _MAX_MATCHES_PER_REPORT = 200
     _q = db.query(Match).filter(
-        (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
+        involves_player(player_id)
     )
     if d_from is not None:
         _q = _q.filter(Match.date >= d_from)
@@ -290,7 +288,7 @@ def get_scouting_report(
         strokes = db.query(Stroke).filter(Stroke.rally_id.in_(rally_ids)).all()
         for stroke in strokes:
             role = rally_to_role.get(stroke.rally_id)
-            if stroke.player == role:
+            if stroke.player == own_slot(role):
                 shot_counter[stroke.shot_type] += 1
                 if stroke.hit_zone:
                     zone_counts[stroke.hit_zone] += 1
@@ -460,7 +458,7 @@ def get_player_growth_report(
     d_to = _parse_iso_date_opt(date_to, "date_to")
 
     _q = db.query(Match).filter(
-        (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
+        involves_player(player_id)
     )
     if d_from is not None:
         _q = _q.filter(Match.date >= d_from)
@@ -513,7 +511,7 @@ def get_player_growth_report(
         strokes = db.query(Stroke).filter(Stroke.rally_id.in_(rally_ids)).all()
         for stroke in strokes:
             role = rally_to_role.get(stroke.rally_id)
-            if stroke.player == role:
+            if stroke.player == own_slot(role):
                 shot_counter[stroke.shot_type] += 1
 
     top_shots = sorted(
@@ -858,7 +856,7 @@ def get_prediction_report(
     d_to = _parse_iso_date_opt(date_to, "date_to")
 
     _q = db.query(Match).filter(
-        (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
+        involves_player(player_id)
     )
     if d_from is not None:
         _q = _q.filter(Match.date >= d_from)
@@ -937,7 +935,7 @@ def get_prediction_report_pdf(
 
     matches = (
         db.query(Match)
-        .filter((Match.player_a_id == player_id) | (Match.player_b_id == player_id))
+        .filter(involves_player(player_id))
         .order_by(Match.date.desc())
         .limit(30)
         .all()

@@ -34,6 +34,23 @@ def involves_player(player_id: int):
     )
 
 
+def head_to_head(player_id: int, opponent_id: int):
+    """SQLAlchemy の条件: player_id と opponent_id が別のチームで対戦した試合。
+    どちらもダブルスの相方として出ている場合を含む。"""
+    from sqlalchemy import and_, or_
+
+    def on_a(pid):
+        return or_(Match.player_a_id == pid, Match.partner_a_id == pid)
+
+    def on_b(pid):
+        return or_(Match.player_b_id == pid, Match.partner_b_id == pid)
+
+    return or_(
+        and_(on_a(player_id), on_b(opponent_id)),
+        and_(on_b(player_id), on_a(opponent_id)),
+    )
+
+
 def player_result_filter(player_id: int, result: str):
     """SQLAlchemy の条件: player_id から見て result ('win' | 'loss') の試合。
     Match.result は A 側 (player_a と partner_a) から見た勝敗で格納されている。"""
