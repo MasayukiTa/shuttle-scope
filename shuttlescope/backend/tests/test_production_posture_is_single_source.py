@@ -238,11 +238,23 @@ def test_cloudflare_analytics_allowlist_is_public_lp_only(real_production_shape)
     app_script = _csp_directive_tokens(app_csp, "script-src")
     app_connect = _csp_directive_tokens(app_csp, "connect-src")
 
-    assert "https://static.cloudflareinsights.com" in public_script
-    assert "https://cloudflareinsights.com" in public_connect
+    assert any(
+        token == "https://static.cloudflareinsights.com"
+        for token in public_script
+    )
+    assert any(
+        token == "https://cloudflareinsights.com"
+        for token in public_connect
+    )
 
-    assert "https://static.cloudflareinsights.com" not in app_script
-    assert "https://cloudflareinsights.com" not in app_connect
+    assert all(
+        token != "https://static.cloudflareinsights.com"
+        for token in app_script
+    )
+    assert all(
+        token != "https://cloudflareinsights.com"
+        for token in app_connect
+    )
 
 
 @_NEEDS_MAIN

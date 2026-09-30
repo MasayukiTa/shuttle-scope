@@ -327,7 +327,8 @@ class ShotClipClassifier:
             m = _build_model()
             if m is None:
                 return False
-            state = torch.load(  # DevSkim: ignore DS425050 -- fixed local path; weights_only=True disables arbitrary pickle objects
+            state = torch.load(  # nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch -- fixed local model path + weights_only=True; production model directory is SHA-256 integrity-gated
+                # DevSkim: ignore DS425050 -- fixed local path; weights_only=True disables arbitrary pickle objects
                 MODEL_PATH, map_location="cpu", weights_only=True
             )
             m.load_state_dict(state)

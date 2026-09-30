@@ -114,7 +114,7 @@ def _download_verified_source(dst: Path) -> None:
     h = hashlib.sha256()
     # B310 is safe here because the immutable constant URL is validated above
     # to the exact HTTPS scheme and approved host before urlopen.
-    with urllib.request.urlopen(request, timeout=90) as response, dst.open("wb") as out:  # nosec B310
+    with urllib.request.urlopen(request, timeout=90) as response, dst.open("wb") as out:  # nosec B310  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected -- immutable URL + exact HTTPS host validation + SHA-256 verification
         while True:
             chunk = response.read(1024 * 1024)
             if not chunk:
@@ -134,7 +134,8 @@ def _download_verified_source(dst: Path) -> None:
 def _load_verified_weights(model, checkpoint: Path, torch) -> None:
     # The checkpoint is a pickle container. It reaches torch.load only after
     # cryptographic verification above. weights_only further narrows deserialization.
-    state_dict = torch.load(  # DevSkim: ignore DS425050 -- SHA-256-pinned checkpoint; weights_only=True below
+    state_dict = torch.load(  # nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch -- SHA-256-pinned checkpoint + weights_only=True
+        # DevSkim: ignore DS425050 -- SHA-256-pinned checkpoint; weights_only=True below
         str(checkpoint),
         map_location="cpu",
         weights_only=True,
