@@ -434,6 +434,37 @@ def _table_names(eng) -> set[str]:
     return set(inspect(eng).get_table_names())
 
 
+def _database_is_at_alembic_head(eng) -> bool:
+    """Return True when the runtime DB revision already matches repository head.
+
+    This check intentionally uses the runtime engine only. It lets a production
+    process that is already schema-current avoid opening the privileged
+    SS_DB_MIGRATION_URL connection on every restart. If the preflight cannot
+    prove equivalence, return False and fall back to the normal Alembic path.
+    """
+    try:
+        import pathlib
+        from alembic.config import Config
+        from alembic.runtime.migration import MigrationContext
+        from alembic.script import ScriptDirectory
+
+        alembic_ini = pathlib.Path(__file__).parent / "alembic.ini"
+        alembic_cfg = Config(str(alembic_ini))
+        script_heads = set(ScriptDirectory.from_config(alembic_cfg).get_heads())
+        if not script_heads:
+            return False
+
+        with eng.connect() as conn:
+            db_heads = set(MigrationContext.configure(conn).get_current_heads())
+        return db_heads == script_heads
+    except Exception as exc:
+        logger.warning(
+            "Alembic head preflight failed; privileged migration path will run: %s",
+            exc,
+        )
+        return False
+
+
 def stamp_db_head(db_url: str | None = None) -> None:
     """Mark the current schema as Alembic head without replaying revisions."""
     url = db_url or settings.DATABASE_URL
@@ -694,6 +725,12 @@ def bootstrap_database(
                 "PostgreSQL schema contains application tables but no alembic_version. "
                 "Refusing automatic stamp/DDL; repair the migration state explicitly."
             )
+        if has_version_table and _database_is_at_alembic_head(bind):
+            logger.info(
+                "PostgreSQL schema already at Alembic head; "
+                "skipping privileged migration connection"
+            )
+            return
         run_db_migrations(url, fail_on_error=fail_on_migration_error)
         return
 
