@@ -923,23 +923,32 @@ def get_promotion_overrides():
 @router.post("/analysis/meta/promotion_override", dependencies=[Depends(require_admin)])
 def set_promotion_override(body: PromotionOverrideBody):
     """昇格 override を保存する（既存は上書き）。tier 昇格の統治操作のため admin 限定。"""
-    from backend.analysis.promotion_override_store import save_override, VALID_STATUSES
+    from backend.analysis.promotion_override_store import (
+        save_override, VALID_STATUSES, StoreCorruptError,
+    )
     if body.status not in VALID_STATUSES:
         raise HTTPException(status_code=400, detail=f"Invalid status: {body.status}")
-    entry = save_override(
-        analysis_type=body.analysis_type,
-        status=body.status,
-        note=body.note,
-        analyst=body.analyst,
-    )
+    try:
+        entry = save_override(
+            analysis_type=body.analysis_type,
+            status=body.status,
+            note=body.note,
+            analyst=body.analyst,
+        )
+    except StoreCorruptError:
+        # 保存ファイルが壊れている。上書きせず、管理者の確認を待つ
+        raise HTTPException(status_code=503, detail="override の保存ファイルが壊れているため保存できません。管理者に連絡してください")
     return {"success": True, "data": entry}
 
 
 @router.delete("/analysis/meta/promotion_override/{analysis_type}", dependencies=[Depends(require_admin)])
 def delete_promotion_override(analysis_type: str, analyst: str = Query(default="analyst")):
     """昇格 override を削除する。tier 統治操作のため admin 限定。analyst パラメータで操作者を記録。"""
-    from backend.analysis.promotion_override_store import delete_override
-    deleted = delete_override(analysis_type, analyst=analyst)
+    from backend.analysis.promotion_override_store import delete_override, StoreCorruptError
+    try:
+        deleted = delete_override(analysis_type, analyst=analyst)
+    except StoreCorruptError:
+        raise HTTPException(status_code=503, detail="override の保存ファイルが壊れているため削除できません。管理者に連絡してください")
     return {"success": True, "deleted": deleted}
 
 
