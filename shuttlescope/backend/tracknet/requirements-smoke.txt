@@ -1,3 +1,10 @@
+# SECURITY SCOPE
+# This manifest is CI-only compatibility tooling for exporting the immutable,
+# SHA-256-pinned upstream TrackNet TensorFlow checkpoint. It is not installed by
+# backend/requirements.txt and is not part of the production runtime.
+# The workflow has contents:read only, persists no checkout credential, and
+# processes only allowlisted/hash-verified checkpoint and test-vector bytes.
+#
 # TrackNet TensorFlow-checkpoint -> ONNX export smoke only.
 # TensorFlow 2.15.1 is the final Keras 2 line used by the upstream TrackNet
 # checkpoint and therefore requires Python <=3.11 and NumPy <2.
