@@ -82,6 +82,32 @@ def opponent_role(match: Match, player_id: int) -> Optional[str]:
     return None
 
 
+# Stroke.player は個人の枠 (player_a / partner_a / player_b / partner_b)。
+# ダブルスではチームが 2 人なので、「相手の打球」を `stroke.player != role` で
+# 判定すると、自分の相方 (partner_a / partner_b) の打球まで相手扱いになる。
+_STROKE_SLOT_SIDE = {
+    "player_a": "player_a",
+    "partner_a": "player_a",
+    "player_b": "player_b",
+    "partner_b": "player_b",
+}
+
+
+def stroke_side(stroke_player: Optional[str]) -> Optional[str]:
+    """打球の個人の枠 → チーム側 ('player_a' | 'player_b')。未知の値は None。"""
+    return _STROKE_SLOT_SIDE.get(stroke_player or "")
+
+
+def is_opponent_stroke(stroke_player: Optional[str], team_side: Optional[str]) -> bool:
+    """その打球が、team_side のチームから見て相手側のものか。
+    team_side はチーム側 ('player_a' | 'player_b')。相方の打球は相手ではない。
+    枠が未知の打球は、相手とも味方とも言えないので False。"""
+    if team_side not in ("player_a", "player_b"):
+        return False
+    side = _STROKE_SLOT_SIDE.get(stroke_player or "")
+    return side is not None and side != team_side
+
+
 def resolve_doubles_roles(match: Match, player_id: int) -> dict:
     """
     ダブルス試合での各スロットを target_player 視点で解決する。

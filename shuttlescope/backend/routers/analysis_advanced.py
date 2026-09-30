@@ -16,6 +16,7 @@ from backend.analysis.router_helpers import (
     SHOT_TYPE_JA, SHOT_KEYS, SHOT_LABELS_JA, END_TYPE_JA, _shot_ja,
     _player_role_in_match, _get_player_matches, _fetch_matches_sets_rallies,
 )
+from backend.analysis.player_context import is_opponent_stroke
 from backend.analysis.analysis_config import AnalysisConfig
 from backend.analysis.response_meta import build_input_provenance
 from backend.analysis.growth_engine import (
@@ -961,7 +962,7 @@ def get_opponent_vulnerability(opponent_id: int, db: Session = Depends(get_db)):
         if not role:
             continue
         # 相手（opponent）のストロークのみ
-        opp_strokes = [s for s in stks if s.player != role]
+        opp_strokes = [s for s in stks if is_opponent_stroke(s.player, role)]
         if opp_strokes:
             last = opp_strokes[-1]
             if last.land_zone:

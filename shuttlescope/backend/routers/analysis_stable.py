@@ -15,6 +15,7 @@ from backend.analysis.router_helpers import (
     SHOT_TYPE_JA, SHOT_KEYS, SHOT_LABELS_JA, END_TYPE_JA, _shot_ja,
     _player_role_in_match, _get_player_matches, _fetch_matches_sets_rallies,
 )
+from backend.analysis.player_context import is_opponent_stroke
 from backend.analysis.analysis_config import AnalysisConfig
 from backend.analysis.analysis_registry import get_analysis_meta
 from backend.analysis.response_meta import build_input_provenance
@@ -2177,7 +2178,7 @@ def _received_vulnerability_impl(
     provenance_rally_ids: set[int] = set()
     for s in ctx.strokes:
         player_role = rally_to_role.get(s.rally_id)
-        if player_role and s.player != player_role and s.land_zone:
+        if player_role and is_opponent_stroke(s.player, player_role) and s.land_zone:
             zone_total_opp[s.land_zone] += 1
             provenance_strokes.append(s)
             provenance_rally_ids.add(s.rally_id)
@@ -2198,7 +2199,7 @@ def _received_vulnerability_impl(
         if not player_role:
             continue
         opp_strokes = sorted(
-            [s for s in strokes if s.player != player_role],
+            [s for s in strokes if is_opponent_stroke(s.player, player_role)],
             key=lambda s: s.stroke_num,
         )
         if not opp_strokes:
@@ -2391,7 +2392,7 @@ def get_received_vulnerability_zone_detail(
     ).all()
 
     # 相手（opponent）のストロークのみ
-    opp_strokes = [s for s in strokes if rally_to_role.get(s.rally_id) and s.player != rally_to_role[s.rally_id]]
+    opp_strokes = [s for s in strokes if is_opponent_stroke(s.player, rally_to_role.get(s.rally_id))]
     total_count = len(opp_strokes)
     if total_count == 0:
         return empty
