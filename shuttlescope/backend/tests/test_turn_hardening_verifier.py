@@ -185,3 +185,127 @@ def test_channel_bind_uses_a_fresh_channel_for_each_peer(monkeypatch):
         channels.append(channel)
 
     assert channels == [0x4000, 0x4001]
+
+
+
+def test_positive_dns_relay_requires_real_return_traffic(monkeypatch):
+    dns_id = 0x1234
+    monkeypatch.setattr(turn_verify.secrets, "randbelow", lambda _n: dns_id)
+
+    class FakeSocket:
+        def __init__(self):
+            self.query = None
+
+        def recvfrom(self, _size):
+            assert self.query is not None
+            qid = struct.unpack("!H", self.query[:2])[0]
+            reply = struct.pack(
+                "!HHHHHH",
+                qid,
+                0x8180,  # response + recursion desired/available, rcode=0
+                1,
+                1,
+                0,
+                0,
+            ) + b"\x00" * 8
+            packet = turn_verify._build(
+                turn_verify.DATA_IND,
+                b"x" * 12,
+                turn_verify._attr(turn_verify.A_DATA, reply),
+                None,
+            )
+            return packet, ("127.0.0.1", 3478)
+
+    class FakeTurn:
+        def __init__(self, *_args, **_kwargs):
+            self.sock = FakeSocket()
+            self.closed = False
+
+        def allocate(self, transport, family):
+            assert transport == turn_verify.TRANSPORT_UDP
+            assert family == turn_verify.FAMILY_V4
+            return True, "OK"
+
+        def create_permission_only(self, peer, port):
+            assert peer == "1.1.1.1"
+            assert port == 53
+            return True, "OK"
+
+        def send_indication(self, peer, port, payload):
+            assert peer == "1.1.1.1"
+            assert port == 53
+            self.sock.query = payload
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr(turn_verify, "Turn", FakeTurn)
+
+    ok, detail = turn_verify._positive_dns_relay(
+        "turn.example.test",
+        3478,
+        "user",
+        "password",
+        "1.1.1.1",
+        53,
+        "example.com",
+    )
+
+    assert ok is True
+    assert "dns_answers=1" in detail
+    assert "response_bytes=" in detail
+
+
+def test_ipv6_440_allocate_is_explicitly_blocked(monkeypatch):
+    class FakeTurn:
+        def __init__(self, *_args, **_kwargs):
+            self.last_error_code = 0
+            self.closed = False
+
+        def allocate(self, transport, family):
+            assert transport == turn_verify.TRANSPORT_UDP
+            assert family == turn_verify.FAMILY_V6
+            self.last_error_code = 440
+            return False, "440 Address Family not Supported"
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr(turn_verify, "Turn", FakeTurn)
+    pool = turn_verify._SessionPool(
+        "turn.example.test",
+        3478,
+        "user",
+        "password",
+    )
+    verdict, detail = turn_verify._probe(pool, "fd00::1", 5432, "perm")
+    pool.close()
+
+    assert verdict == "BLOCKED"
+    assert "explicitly unsupported" in detail
+
+
+def test_non_440_ipv6_allocate_failure_remains_untested(monkeypatch):
+    class FakeTurn:
+        def __init__(self, *_args, **_kwargs):
+            self.last_error_code = 0
+
+        def allocate(self, transport, family):
+            self.last_error_code = 443
+            return False, "443 Peer Address Family Mismatch"
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(turn_verify, "Turn", FakeTurn)
+    pool = turn_verify._SessionPool(
+        "turn.example.test",
+        3478,
+        "user",
+        "password",
+    )
+    verdict, detail = turn_verify._probe(pool, "fd00::1", 5432, "perm")
+    pool.close()
+
+    assert verdict == "UNTESTED"
+    assert "allocate" in detail
