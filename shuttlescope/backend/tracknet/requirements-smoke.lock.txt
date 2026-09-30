@@ -1,3 +1,5 @@
+# SECURITY SCOPE: CI-only legacy TrackNet export toolchain; never production.
+# Inputs are immutable + SHA-256 verified and the workflow retains no git credential.
 # Generated with uv 0.12.19 for CPython 3.11 on Linux x86_64.
 # Source: backend/tracknet/requirements-smoke.txt
 # Regenerate with --generate-hashes --no-build for x86_64-unknown-linux-gnu.
