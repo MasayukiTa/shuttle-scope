@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from backend.analysis.player_context import involves_player
 from backend.db.database import get_db
 from backend.db.models import Match, Player, GameSet, Rally, MatchCVArtifact
 from backend.utils.video_downloader import video_downloader
@@ -584,9 +585,8 @@ def list_matches(
     query = apply_match_team_scope(query, ctx)
 
     if player_id and not ctx.is_player:
-        query = query.filter(
-            (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
-        )
+        # 選手としても、ダブルスの相方としても出ている試合 (選手ロールの一覧と同じ範囲)
+        query = query.filter(involves_player(player_id))
     if tournament_level:
         query = query.filter(Match.tournament_level == tournament_level)
     if year:
