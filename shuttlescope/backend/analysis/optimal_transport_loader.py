@@ -34,6 +34,7 @@ from typing import Optional
 import numpy as np
 from sqlalchemy.orm import Session
 
+from backend.analysis.player_context import involves_player
 from backend.db.models import Match, GameSet, Rally, Stroke
 
 # ---------------------------------------------------------------------------
@@ -126,7 +127,7 @@ def load_zone_histograms(
     # ── 参照選手の試合 ─────────────────────────────────────────────────────
     ref_matches = (
         db.query(Match)
-        .filter((Match.player_a_id == player_id) | (Match.player_b_id == player_id))
+        .filter(involves_player(player_id))
         .all()
     )
     ref_match_ids: set[int] = {m.id for m in ref_matches}

@@ -12,6 +12,8 @@ from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
+from backend.analysis.role_view import own_slot, team_side
+from backend.analysis.player_context import involves_player, opponent_player_id, player_wins_match, partner_player_id
 from backend.utils.auth import (
     require_admin_or_analyst, require_query_scope, get_auth, apply_match_team_scope, AuthCtx,
 )
@@ -226,7 +228,7 @@ def _epv_impl(db: Session, player_id: int, ctx=None,
         role = rally_to_role.get(rally.id)
         won = rally_player_won.get(rally.id, False)
         stks = strokes_by_rally.get(rally.id, [])
-        player_strokes = [s for s in stks if s.player == role]
+        player_strokes = [s for s in stks if s.player == own_slot(role)]
         total_strokes += len(player_strokes)
 
         rally_data = [
@@ -526,7 +528,7 @@ def _rally_sequence_patterns_impl(db: Session, player_id: int, ctx=None):
         is_win = rally.winner == role
         rally_strokes = strokes_by_rally[rally.id]
         # プレイヤーのストロークのみ抽出 (shot_type必須)
-        player_shots = [s.shot_type for s in rally_strokes if s.player == role and s.shot_type]
+        player_shots = [s.shot_type for s in rally_strokes if s.player == own_slot(role) and s.shot_type]
         # 3連続パターン
         for i in range(len(player_shots) - 2):
             key = (player_shots[i], player_shots[i + 1], player_shots[i + 2])
@@ -704,7 +706,7 @@ def get_recommendation_ranking(
         set_id = rally_to_set.get(s.rally_id)
         mid = set_to_match.get(set_id) if set_id is not None else None
         role = role_by_match.get(mid) if mid else None
-        if not role or s.player != role:
+        if not role or s.player != own_slot(role):
             continue
         rally = rally_by_id.get(s.rally_id)
         if not rally:
@@ -924,7 +926,7 @@ def get_spatial_density(
         rally_id, s_player, hit_zone, land_zone, _source_method, _hit_zone_source = row
         mid = set_to_match.get(rally_set_map.get(rally_id, -1), -1)
         role = role_by_match.get(mid)
-        if not role or s_player != role:
+        if not role or s_player != own_slot(role):
             continue
         player_stroke_total += 1
         used_strokes.append(row)
@@ -1195,7 +1197,7 @@ def get_opponent_type_affinity(
     from collections import defaultdict
 
     q = db.query(Match).filter(
-        (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
+        involves_player(player_id)
     )
     if result:
         q = q.filter(Match.result == result)
@@ -1228,12 +1230,12 @@ def get_opponent_type_affinity(
         "バランス型": {"wins": 0, "total": 0},
     }
     for m in matches:
-        opp_id = m.player_b_id if m.player_a_id == player_id else m.player_a_id
+        opp_id = opponent_player_id(m, player_id)
         cls = classified.get(opp_id)
         if cls is None:
             continue
         opp_type = cls["axes"]["style"]
-        player_role = "player_a" if m.player_a_id == player_id else "player_b"
+        player_role = team_side(m, player_id)
         won = (player_role == "player_a" and m.result == "win") or \
               (player_role == "player_b" and m.result == "loss")
         if opp_type in type_stats:
@@ -1400,7 +1402,7 @@ def get_opponent_adaptive_shots(
     """対戦相手別ショット有効性 — 各対戦相手に対するショット種別勝率"""
     matches = (
         db.query(Match)
-        .filter((Match.player_a_id == player_id) | (Match.player_b_id == player_id))
+        .filter(involves_player(player_id))
         .all()
     )
     if not matches:
@@ -1453,7 +1455,7 @@ def get_opponent_adaptive_shots(
         if not role:
             continue
         # このストロークはプレイヤーが打ったか
-        if s.player != role:
+        if s.player != own_slot(role):
             continue
 
         match = matches_by_id.get(mid)  # O(1) 辞書引き
@@ -1461,7 +1463,7 @@ def get_opponent_adaptive_shots(
             continue
 
         # 対戦相手ID
-        opp_id = match.player_b_id if match.player_a_id == player_id else match.player_a_id
+        opp_id = opponent_player_id(match, player_id)
         won = 1 if rally.winner == role else 0
         used_strokes.append(s)
 
@@ -1529,7 +1531,7 @@ def get_pair_synergy(
     # 全試合（シングルス含む）でプレイヤー勝率を計算
     all_matches = (
         db.query(Match)
-        .filter((Match.player_a_id == player_id) | (Match.player_b_id == player_id))
+        .filter(involves_player(player_id))
         .all()
     )
     if not all_matches:
@@ -1537,11 +1539,7 @@ def get_pair_synergy(
                 "meta": {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0)}}
 
     total_matches = len(all_matches)
-    win_count = sum(
-        1 for m in all_matches
-        if (m.player_a_id == player_id and m.result == "win")
-        or (m.player_b_id == player_id and m.result == "loss")
-    )
+    win_count = sum(1 for m in all_matches if player_wins_match(m, player_id))
     player_avg_win_rate = round(win_count / total_matches, 3) if total_matches > 0 else 0.0
 
     # ダブルス試合のみ抽出
@@ -1579,7 +1577,7 @@ def get_pair_synergy(
         role = _player_role_in_match(m, player_id)
         if not role:
             continue
-        partner_id = m.partner_a_id if role == "player_a" else m.partner_b_id
+        partner_id = partner_player_id(m, player_id)
         if not partner_id:
             continue
 
@@ -1597,7 +1595,7 @@ def get_pair_synergy(
             pair_data[partner_id]["rally_count"] += 1
             for st in strokes_by_rally[rally.id]:
                 pair_data[partner_id]["total_strokes"] += 1
-                if st.player == role:
+                if st.player == own_slot(role):
                     pair_data[partner_id]["player_strokes"] += 1
 
     # パートナー名を取得

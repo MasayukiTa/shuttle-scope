@@ -20,6 +20,8 @@ from __future__ import annotations
 from typing import Optional
 from sqlalchemy.orm import Session
 
+from backend.analysis.role_view import team_side
+from backend.analysis.player_context import involves_player, opponent_player_id
 from backend.db.models import Match, GameSet, Rally, Player
 
 
@@ -45,7 +47,7 @@ def compute_opponent_strength(db: Session, opponent_id: int) -> float:
     matches = (
         db.query(Match)
         .filter(
-            (Match.player_a_id == opponent_id) | (Match.player_b_id == opponent_id),
+            involves_player(opponent_id),
             Match.result.in_(["win", "loss"]),
         )
         .all()
@@ -72,10 +74,9 @@ def build_strength_cache(
     """
     opp_ids: set[int] = set()
     for m in matches:
-        if m.player_a_id == player_id:
-            opp_ids.add(m.player_b_id)
-        else:
-            opp_ids.add(m.player_a_id)
+        opp = opponent_player_id(m, player_id)
+        if opp is not None:
+            opp_ids.add(opp)
 
     return {opp_id: compute_opponent_strength(db, opp_id) for opp_id in opp_ids}
 
@@ -106,12 +107,9 @@ def weighted_win_rate(
     for m in matches:
         if m.result not in ("win", "loss"):
             continue
-        if m.player_a_id == player_id:
-            opp_id = m.player_b_id
-            won = m.result == "win"
-        else:
-            opp_id = m.player_a_id
-            won = m.result == "loss"
+        # result は A 側 (player_a と partner_a) から見た勝敗。相方も同じチームの側で判定する
+        opp_id = opponent_player_id(m, player_id)
+        won = (m.result == "win") == (team_side(m, player_id) == "player_a")
 
         strength = strength_cache.get(opp_id, 0.5)
         total_weight += strength
@@ -168,8 +166,8 @@ def growth_points_weighted(
             rallies_by_set.setdefault(r.set_id, []).append(r)
 
     for m in matches:
-        role = "player_a" if m.player_a_id == player_id else "player_b"
-        opp_id = m.player_b_id if m.player_a_id == player_id else m.player_a_id
+        role = team_side(m, player_id)
+        opp_id = opponent_player_id(m, player_id)
 
         set_ids = sets_by_match.get(m.id, [])
         if not set_ids:

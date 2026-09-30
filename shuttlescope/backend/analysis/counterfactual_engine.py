@@ -25,6 +25,7 @@ from collections import defaultdict
 from typing import Optional
 
 from backend.analysis.analysis_config import AnalysisConfig
+from backend.analysis.role_view import is_opponent_stroke, own_slot
 
 
 # ── 文脈分類 ─────────────────────────────────────────────────────────────────
@@ -111,14 +112,14 @@ def collect_context_stats(
         stks = sorted(strokes_by_rally.get(rally.id, []), key=lambda x: x.stroke_num)
 
         for i, s in enumerate(stks):
-            if s.player != role or not s.shot_type:
+            if s.player != own_slot(role) or not s.shot_type:
                 continue
 
             # 直前の相手ショットを探す
             prev_shot = None
             prev_land_zone = None
             for j in range(i - 1, -1, -1):
-                if stks[j].player == opponent_role and stks[j].shot_type:
+                if is_opponent_stroke(stks[j].player, role) and stks[j].shot_type:
                     prev_shot = stks[j].shot_type
                     prev_land_zone = getattr(stks[j], "land_zone", None)
                     break

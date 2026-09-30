@@ -16,6 +16,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from backend.analysis.player_context import involves_player
 from backend.analysis.router_helpers import _get_player_matches, _player_role_in_match
 from backend.db.models import GameSet, Match, Rally, Stroke
 
@@ -99,14 +100,7 @@ def load_context(db: Session, player_id: int, filters: dict) -> AnalysisContext:
         rs_rally_id_set = {r.id for r in rs_rallies}
         rs_strokes = [s for s in strokes if s.rally_id in rs_rally_id_set]
     else:
-        rs_matches = (
-            db.query(Match)
-            .filter(
-                (Match.player_a_id == player_id)
-                | (Match.player_b_id == player_id)
-            )
-            .all()
-        )
+        rs_matches = db.query(Match).filter(involves_player(player_id)).all()
         rs_match_ids = [m.id for m in rs_matches]
         rs_role_by_match = {
             m.id: _player_role_in_match(m, player_id) for m in rs_matches

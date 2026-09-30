@@ -12,6 +12,8 @@ from typing import Optional
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
+from backend.analysis.role_view import perspective
+from backend.analysis.player_context import involves_player
 from backend.db.models import (
     Condition,
     GameSet,
@@ -46,11 +48,8 @@ def _parse_date(s: Optional[str]) -> Optional[date]:
 
 
 def _match_player_side(m: Match, player_id: int) -> Optional[str]:
-    if m.player_a_id == player_id:
-        return "player_a"
-    if m.player_b_id == player_id:
-        return "player_b"
-    return None
+    view = perspective(m, player_id)
+    return str(view) if view is not None else None
 
 
 def build_player_summary(
@@ -76,7 +75,7 @@ def build_player_summary(
     # 対象選手の試合を一括取得（期間フィルタ込み）
     match_q = db.query(Match).filter(
         Match.deleted_at.is_(None),
-        (Match.player_a_id == player_id) | (Match.player_b_id == player_id),
+        involves_player(player_id),
     )
     if df:
         match_q = match_q.filter(Match.date >= df)

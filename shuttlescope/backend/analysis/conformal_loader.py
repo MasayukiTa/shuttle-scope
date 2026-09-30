@@ -18,6 +18,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from backend.db.models import GameSet, Rally, Stroke
+from backend.analysis.role_view import own_slot
 from backend.analysis.router_helpers import _get_player_matches, _player_role_in_match
 from backend.analysis.state_spec import classify_score_phase, classify_player_role
 from backend.analysis.exploitability_loader import bucket_shot, coarse_state_key
@@ -30,7 +31,7 @@ def _dominant_shot_bucket(strokes: list, player_role: str) -> Optional[str]:
     """
     counts: dict[str, int] = defaultdict(int)
     for s in strokes:
-        if s.player == player_role:
+        if s.player == own_slot(player_role):
             b = bucket_shot(s.shot_type)
             if b is not None:
                 counts[b] += 1
@@ -138,7 +139,7 @@ def load_rally_outcome_samples(
         if provenance_rows is not None:
             used_rally_ids.add(rally.id)
             for stroke in strokes:
-                if stroke.player == role and bucket_shot(stroke.shot_type) is not None:
+                if stroke.player == own_slot(role) and bucket_shot(stroke.shot_type) is not None:
                     used_stroke_ids.add(stroke.id)
 
     if provenance_rows is not None:

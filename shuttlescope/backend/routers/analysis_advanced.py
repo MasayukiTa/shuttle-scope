@@ -16,7 +16,8 @@ from backend.analysis.router_helpers import (
     SHOT_TYPE_JA, SHOT_KEYS, SHOT_LABELS_JA, END_TYPE_JA, _shot_ja,
     _player_role_in_match, _get_player_matches, _fetch_matches_sets_rallies,
 )
-from backend.analysis.player_context import is_opponent_stroke
+from backend.analysis.role_view import is_opponent_stroke, own_slot, teammate_slot, team_side
+from backend.analysis.player_context import involves_player, opponent_player_id, partner_player_id
 from backend.analysis.analysis_config import AnalysisConfig
 from backend.analysis.response_meta import build_input_provenance
 from backend.analysis.growth_engine import (
@@ -529,7 +530,7 @@ def get_shot_transition_matrix(
         if not player_role:
             continue
         # プレイヤーのストロークだけ抽出（stroke_num順にソート済み）
-        player_strokes = [s for s in strokes if s.player == player_role]
+        player_strokes = [s for s in strokes if s.player == own_slot(player_role)]
         # バドミントンでは同一プレイヤーは1打おきに打つため、
         # プレイヤーのストロークのみの連続遷移（s_i → s_{i+1}）を集計する
         for i in range(len(player_strokes) - 1):
@@ -793,7 +794,7 @@ def get_opponent_stats(player_id: int, db: Session = Depends(get_db)):
     matches = (
         db.query(Match)
         .filter(
-            (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
+            involves_player(player_id)
         )
         .all()
     )
@@ -817,7 +818,7 @@ def get_opponent_stats(player_id: int, db: Session = Depends(get_db)):
     # 対戦相手IDを抽出
     opponent_map: dict[int, int] = {}  # match_id -> opponent_id
     for m in matches:
-        opp_id = m.player_b_id if m.player_a_id == player_id else m.player_a_id
+        opp_id = opponent_player_id(m, player_id)
         opponent_map[m.id] = opp_id
 
     opponent_ids = set(opponent_map.values())
@@ -892,7 +893,7 @@ def get_opponent_vulnerability(opponent_id: int, db: Session = Depends(get_db)):
     matches = (
         db.query(Match)
         .filter(
-            (Match.player_a_id == opponent_id) | (Match.player_b_id == opponent_id)
+            involves_player(opponent_id)
         )
         .all()
     )
@@ -1009,7 +1010,7 @@ def get_opponent_card(opponent_id: int, db: Session = Depends(get_db)):
     matches = (
         db.query(Match)
         .filter(
-            (Match.player_a_id == opponent_id) | (Match.player_b_id == opponent_id)
+            involves_player(opponent_id)
         )
         .all()
     )
@@ -1065,7 +1066,7 @@ def get_opponent_card(opponent_id: int, db: Session = Depends(get_db)):
         provenance_strokes: list[Stroke] = []
         for stroke in strokes:
             role = rally_to_role.get(stroke.rally_id)
-            if stroke.player == role:
+            if stroke.player == own_slot(role):
                 provenance_strokes.append(stroke)
                 shot_counter[stroke.shot_type] += 1
                 if stroke.stroke_num == 1:
@@ -1222,7 +1223,7 @@ def get_partner_comparison(player_id: int, db: Session = Depends(get_db)):
     matches = (
         db.query(Match)
         .filter(
-            (Match.player_a_id == player_id) | (Match.player_b_id == player_id),
+            involves_player(player_id),
             Match.format != "singles",
         )
         .all()
@@ -1242,10 +1243,7 @@ def get_partner_comparison(player_id: int, db: Session = Depends(get_db)):
     # パートナーIDを抽出
     partner_map: dict[int, int | None] = {}  # match_id -> partner_id
     for m in matches:
-        if m.player_a_id == player_id:
-            partner_map[m.id] = m.partner_a_id
-        else:
-            partner_map[m.id] = m.partner_b_id
+        partner_map[m.id] = partner_player_id(m, player_id)
 
     partner_ids = {pid for pid in partner_map.values() if pid is not None}
     partners_obj = db.query(Player).filter(Player.id.in_(partner_ids)).all()
@@ -1328,7 +1326,7 @@ def get_doubles_serve_receive(player_id: int, db: Session = Depends(get_db)):
     matches = (
         db.query(Match)
         .filter(
-            (Match.player_a_id == player_id) | (Match.player_b_id == player_id),
+            involves_player(player_id),
             Match.format != "singles",
         )
         .all()
@@ -1411,14 +1409,14 @@ def get_doubles_serve_receive(player_id: int, db: Session = Depends(get_db)):
 
         if is_server:
             # サーブ（stroke_num=1）のショットタイプを集計
-            serves = [s for s in stks if s.stroke_num == 1 and s.player == role]
+            serves = [s for s in stks if s.stroke_num == 1 and s.player == own_slot(role)]
             for s in serves:
                 if s.shot_type in ("short_service", "long_service"):
                     serve_style[s.shot_type] += 1
                     provenance_strokes.append(s)
         else:
             # レシーブ（stroke_num=2）のゾーンを集計
-            returns = [s for s in stks if s.stroke_num == 2 and s.player == role]
+            returns = [s for s in stks if s.stroke_num == 2 and s.player == own_slot(role)]
             for s in returns:
                 zone = s.land_zone or "unknown"
                 provenance_strokes.append(s)
@@ -1470,7 +1468,7 @@ def get_stroke_sharing(player_id: int, db: Session = Depends(get_db)):
     matches = (
         db.query(Match)
         .filter(
-            (Match.player_a_id == player_id) | (Match.player_b_id == player_id),
+            involves_player(player_id),
             Match.format != "singles",
         )
         .all()
@@ -1499,12 +1497,9 @@ def get_stroke_sharing(player_id: int, db: Session = Depends(get_db)):
         m.id: _player_role_in_match(m, player_id) for m in matches
     }
     # パートナーロール
-    partner_role_map: dict[int, str] = {}
-    for m in matches:
-        if m.player_a_id == player_id:
-            partner_role_map[m.id] = "partner_a"
-        else:
-            partner_role_map[m.id] = "partner_b"
+    partner_role_map: dict[int, str] = {
+        m.id: teammate_slot(role_by_match[m.id]) for m in matches
+    }
 
     sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
     set_to_match: dict[int, int] = {s.id: s.match_id for s in sets}
@@ -1565,8 +1560,8 @@ def get_stroke_sharing(player_id: int, db: Session = Depends(get_db)):
         partner_role = rally_to_partner.get(r_id)
         stks = strokes_by_rally.get(r_id, [])
 
-        team_strokes = [s for s in stks if s.player in (player_role, partner_role)]
-        player_count = sum(1 for s in team_strokes if s.player == player_role)
+        team_strokes = [s for s in stks if s.player in (own_slot(player_role), partner_role)]
+        player_count = sum(1 for s in team_strokes if s.player == own_slot(player_role))
         partner_count = sum(1 for s in team_strokes if s.player == partner_role)
         team_total = player_count + partner_count
         if team_total == 0:
@@ -1704,7 +1699,7 @@ def get_flash_advice(
     recent_loss_stroke_rows = [
         s for s in recent_strokes
         if s.rally_id in {r.id for r in recent_rallies if r.winner == opp_role}
-        and s.player == opp_role
+        and is_opponent_stroke(s.player, player_role)
         and s.shot_type
     ]
     provenance_stroke_ids.update(s.id for s in recent_loss_stroke_rows)
@@ -1719,7 +1714,7 @@ def get_flash_advice(
     # ── 2. opportunity: 得点率が高い自分のショット ────────────────────────────
     player_win_stroke_rows = [
         s for s in all_strokes
-        if s.rally_id in win_rallies and s.player == player_role and s.shot_type
+        if s.rally_id in win_rallies and s.player == own_slot(player_role) and s.shot_type
     ]
     provenance_stroke_ids.update(s.id for s in player_win_stroke_rows)
     player_win_shots = [s.shot_type for s in player_win_stroke_rows]
@@ -1733,7 +1728,7 @@ def get_flash_advice(
         # ならないので、その球種を打った **相異なるラリー** で数える。
         top_shot_rows = [
             s for s in all_strokes
-            if s.shot_type == top_shot and s.player == player_role
+            if s.shot_type == top_shot and s.player == own_slot(player_role)
         ]
         provenance_stroke_ids.update(s.id for s in top_shot_rows)
         rallies_with_shot = {s.rally_id for s in top_shot_rows}
@@ -1768,7 +1763,7 @@ def get_flash_advice(
     # ── 4. opponent: 相手の直近多用ショット ──────────────────────────────────
     opp_recent_rows = [
         s for s in recent_strokes
-        if s.player == opp_role and s.shot_type
+        if is_opponent_stroke(s.player, player_role) and s.shot_type
     ]
     provenance_stroke_ids.update(s.id for s in opp_recent_rows)
     opp_recent = [s.shot_type for s in opp_recent_rows]
@@ -1871,7 +1866,7 @@ def get_growth_timeline(
     # 対象試合（日付昇順）
     matches = (
         db.query(Match)
-        .filter((Match.player_a_id == player_id) | (Match.player_b_id == player_id))
+        .filter(involves_player(player_id))
         .order_by(Match.date)
         .all()
     )
@@ -1927,7 +1922,7 @@ def get_growth_judgment(
 
     matches = (
         db.query(Match)
-        .filter((Match.player_a_id == player_id) | (Match.player_b_id == player_id))
+        .filter(involves_player(player_id))
         .order_by(Match.date)
         .all()
     )
@@ -2053,7 +2048,7 @@ def get_observation_analytics(
     from backend.routers.warmup import SELF_CONDITION_TYPES
 
     matches = db.query(Match).filter(
-        (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
+        involves_player(player_id)
     ).all()
 
     if not matches:
@@ -2084,8 +2079,8 @@ def get_observation_analytics(
         obs_by_match[obs.match_id].append(obs)
 
     for m in matches:
-        is_player_a = m.player_a_id == player_id
-        opponent_id = m.player_b_id if is_player_a else m.player_a_id
+        is_player_a = team_side(m, player_id) == "player_a"
+        opponent_id = opponent_player_id(m, player_id)
         won = (is_player_a and m.result == "win") or (not is_player_a and m.result == "loss")
 
         match_obs = obs_by_match.get(m.id, [])

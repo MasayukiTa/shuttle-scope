@@ -20,6 +20,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Optional
 
+from backend.analysis.role_view import own_slot
 from backend.analysis.analysis_config import AnalysisConfig
 
 
@@ -134,7 +135,7 @@ def compute_state_epv(
         is_win = rally.winner == role
 
         stks = sorted(strokes_by_rally.get(rally.id, []), key=lambda x: x.stroke_num)
-        player_stks = [s for s in stks if s.player == role and s.shot_type]
+        player_stks = [s for s in stks if s.player == own_slot(role) and s.shot_type]
 
         if not player_stks:
             set_results[rally.set_id].append(is_win)

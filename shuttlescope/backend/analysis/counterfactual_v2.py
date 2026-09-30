@@ -25,6 +25,7 @@ from collections import defaultdict
 from typing import Optional
 
 from backend.analysis.state_spec import build_rally_state
+from backend.analysis.role_view import own_slot, perspective
 
 # ブートストラップ設定
 BOOTSTRAP_N = 500          # リサンプル回数（精度と速度のバランス）
@@ -134,7 +135,7 @@ def compute_counterfactual_v2(
         )
 
         stks = sorted(strokes_by_rally.get(rally.id, []), key=lambda x: x.stroke_num)
-        player_stks = [s for s in stks if s.player == role and s.shot_type]
+        player_stks = [s for s in stks if s.player == own_slot(role) and s.shot_type]
         if not player_stks:
             continue
 
@@ -340,7 +341,7 @@ def compute_counterfactual_cf2(
         )
 
         stks = sorted(strokes_by_rally.get(rally.id, []), key=lambda x: x.stroke_num)
-        player_stks = [s for s in stks if s.player == role and s.shot_type]
+        player_stks = [s for s in stks if s.player == own_slot(role) and s.shot_type]
         if not player_stks:
             continue
 
@@ -495,12 +496,10 @@ def _classify_match_opponent_type(
     """
     if not hasattr(match, 'player_a_id') or not hasattr(match, 'player_b_id'):
         return "unknown"
-    if match.player_a_id == player_id:
-        player_won = match.winner == 'player_a'
-    elif match.player_b_id == player_id:
-        player_won = match.winner == 'player_b'
-    else:
+    view = perspective(match, player_id)
+    if view is None:
         return "unknown"
+    player_won = match.winner == str(view)
 
     # 試合結果のみから単純分類（対戦履歴なしの単試合では "competitive" をデフォルト）
     # 実際の CF-3 では bayes_matchup の opponent_type を外部から渡す
@@ -555,7 +554,7 @@ def compute_counterfactual_cf3(
         )
 
         stks = sorted(strokes_by_rally.get(rally.id, []), key=lambda x: x.stroke_num)
-        player_stks = [s for s in stks if s.player == role and s.shot_type]
+        player_stks = [s for s in stks if s.player == own_slot(role) and s.shot_type]
         if not player_stks:
             continue
 

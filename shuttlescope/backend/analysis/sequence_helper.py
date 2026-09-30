@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import Optional
 
+from backend.analysis.role_view import own_slot
 from backend.db.models import Rally, Stroke
 
 
@@ -35,7 +36,7 @@ def player_stroke_sequence(
     for rally in rallies:
         strokes = strokes_by_rally.get(rally.id, [])
         for s in sorted(strokes, key=lambda x: x.stroke_num):
-            if s.player == player_role:
+            if s.player == own_slot(player_role):
                 seq.append(s.shot_type)
     return seq
 
@@ -49,7 +50,7 @@ def rally_stroke_sequence(
     return [
         s.shot_type
         for s in sorted(strokes, key=lambda x: x.stroke_num)
-        if s.player == player_role
+        if s.player == own_slot(player_role)
     ]
 
 
@@ -61,7 +62,7 @@ def all_player_strokes_in_rally(
     """単一ラリー内の target_player の Stroke オブジェクトリストを返す"""
     return [
         s for s in sorted(strokes, key=lambda x: x.stroke_num)
-        if s.player == player_role
+        if s.player == own_slot(player_role)
     ]
 
 
@@ -178,6 +179,6 @@ def score_context_shots(
         if score_a >= pressure_min or score_b >= pressure_min:
             strokes = strokes_by_rally.get(rally.id, [])
             for s in sorted(strokes, key=lambda x: x.stroke_num):
-                if s.player == player_role:
+                if s.player == own_slot(player_role):
                     result.append(s.shot_type)
     return result

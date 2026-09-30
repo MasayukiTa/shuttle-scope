@@ -16,6 +16,7 @@ import math
 from collections import defaultdict
 from typing import Optional
 
+from backend.analysis.role_view import is_opponent_stroke
 from backend.analysis.state_spec import build_rally_state
 
 
@@ -113,7 +114,7 @@ def compute_opponent_policy(
         # 対戦相手のショットを集計（opponent role = player でないほう）
         opp_role = "player_b" if role == "player_a" else "player_a"
         stks = sorted(strokes_by_rally.get(rally.id, []), key=lambda x: x.stroke_num)
-        opp_stks = [s for s in stks if s.player == opp_role and s.shot_type]
+        opp_stks = [s for s in stks if is_opponent_stroke(s.player, role) and s.shot_type]
 
         for stroke in opp_stks:
             zone = getattr(stroke, 'land_zone', None)

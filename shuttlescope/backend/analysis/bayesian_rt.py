@@ -4,6 +4,9 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from backend.analysis.role_view import perspective
+from backend.analysis.player_context import involves_player
+
 
 class BayesianRealTimeAnalyzer:
     """ベイズ推定を用いたリアルタイム試合解析クラス"""
@@ -35,23 +38,20 @@ class BayesianRealTimeAnalyzer:
 
             # 過去の全ラリー勝敗を取得 (現在 match を除外、opponent 指定があれば絞り込む)
             q = db.query(Match).filter(
-                (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
+                involves_player(player_id)
             )
             if exclude_match_id is not None:
                 q = q.filter(Match.id != exclude_match_id)
             if opponent_id is not None:
                 q = q.filter(
-                    (Match.player_a_id == opponent_id) | (Match.player_b_id == opponent_id)
+                    involves_player(opponent_id)
                 )
             matches = q.all()
             if not matches:
                 return {"alpha": 1.0, "beta": 1.0}
 
             match_ids = [m.id for m in matches]
-            role_by_match = {
-                m.id: ("player_a" if m.player_a_id == player_id else "player_b")
-                for m in matches
-            }
+            role_by_match = {m.id: perspective(m, player_id) for m in matches}
 
             sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
             set_to_match = {s.id: s.match_id for s in sets}

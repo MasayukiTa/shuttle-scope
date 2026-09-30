@@ -3,11 +3,14 @@ from collections import defaultdict
 from datetime import date as DateType
 from typing import Optional
 
-from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from backend.db.models import Match, GameSet, Rally
-from backend.analysis.player_context import target_role as _target_role_ctx
+from backend.analysis.player_context import (
+    involves_player as _involves_player,
+    perspective as _perspective_ctx,
+    player_result_filter as _player_result_filter,
+)
 from backend.analysis.shot_taxonomy import SHOT_TYPE_JA as _SHOT_TYPE_JA_TAXONOMY, CANONICAL_SHOTS
 
 SHOT_TYPE_JA = _SHOT_TYPE_JA_TAXONOMY
@@ -37,16 +40,15 @@ def _shot_ja(shot_type: str | None) -> str:
 
 
 def _player_role_in_match(match: Match, player_id: int) -> str | None:
-    return _target_role_ctx(match, player_id)
+    """視点 (チーム側の文字列 + 個人の枠)。ダブルスの相方も解決する。試合に出ていなければ None。"""
+    return _perspective_ctx(match, player_id)
 
 
 def _get_player_matches(
     db: Session, player_id: int, result=None, tournament_level=None,
     date_from=None, date_to=None,
 ) -> list[Match]:
-    q = db.query(Match).filter(
-        (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
-    )
+    q = db.query(Match).filter(_involves_player(player_id))
     if tournament_level:
         q = q.filter(Match.tournament_level == tournament_level)
     if date_from:
@@ -54,22 +56,12 @@ def _get_player_matches(
     if date_to:
         q = q.filter(Match.date <= date_to)
     if result in ("win", "loss"):
-        opposite = "loss" if result == "win" else "win"
-        q = q.filter(
-            or_(
-                and_(Match.player_a_id == player_id, Match.result == result),
-                and_(Match.player_b_id == player_id, Match.result == opposite),
-            )
-        )
+        q = q.filter(_player_result_filter(player_id, result))
     return q.all()
 
 
 def _fetch_matches_sets_rallies(player_id: int, db: Session, include_skipped: bool = False):
-    matches = (
-        db.query(Match)
-        .filter((Match.player_a_id == player_id) | (Match.player_b_id == player_id))
-        .all()
-    )
+    matches = db.query(Match).filter(_involves_player(player_id)).all()
     if not matches:
         return [], {}, [], {}, [], {}
     match_ids = [m.id for m in matches]

@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from backend.analysis.player_context import opponent_player_id
 from backend.db.database import get_db
 from backend.db.models import Match, GameSet, Rally, Stroke
 from backend.analysis.router_helpers import (
@@ -596,11 +597,7 @@ def get_counterfactual_cf3(
     # match_id → opponent_type マッピング
     opponent_type_by_match: dict[int, str] = {}
     for m in matches:
-        opp_id = None
-        if hasattr(m, 'player_a_id') and m.player_a_id == player_id:
-            opp_id = getattr(m, 'player_b_id', None)
-        elif hasattr(m, 'player_b_id') and m.player_b_id == player_id:
-            opp_id = getattr(m, 'player_a_id', None)
+        opp_id = opponent_player_id(m, player_id) if hasattr(m, 'player_a_id') else None
         if opp_id is not None:
             opponent_type_by_match[m.id] = opponent_type_by_opponent.get(opp_id, "all")
 
@@ -749,10 +746,9 @@ def get_promotion_evaluation(
     # 対戦相手数
     opponents: set = set()
     for m in matches:
-        if hasattr(m, 'player_a_id') and m.player_a_id != player_id:
-            opponents.add(m.player_a_id)
-        if hasattr(m, 'player_b_id') and m.player_b_id != player_id:
-            opponents.add(m.player_b_id)
+        opp = opponent_player_id(m, player_id) if hasattr(m, 'player_a_id') else None
+        if opp is not None:
+            opponents.add(opp)
     n_opponents = len(opponents)
 
     def _get_sample_count(analysis_type: str) -> int:

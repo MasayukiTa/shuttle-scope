@@ -15,7 +15,8 @@ from backend.analysis.router_helpers import (
     SHOT_TYPE_JA, SHOT_KEYS, SHOT_LABELS_JA, END_TYPE_JA, _shot_ja,
     _player_role_in_match, _get_player_matches, _fetch_matches_sets_rallies,
 )
-from backend.analysis.player_context import is_opponent_stroke
+from backend.analysis.role_view import is_opponent_stroke, match_ids_by_slot, own_slot
+from backend.analysis.player_context import involves_player
 from backend.analysis.analysis_config import AnalysisConfig
 from backend.analysis.analysis_registry import get_analysis_meta
 from backend.analysis.response_meta import build_input_provenance
@@ -181,8 +182,7 @@ def get_heatmap(
     else:
         _matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
 
-    match_ids_as_a = [m.id for m in _matches if m.player_a_id == player_id]
-    match_ids_as_b = [m.id for m in _matches if m.player_b_id == player_id]
+    match_ids_by_slot_ = match_ids_by_slot(_matches, player_id)
 
     zone_col = Stroke.hit_zone if type == "hit" else Stroke.land_zone
 
@@ -210,7 +210,7 @@ def get_heatmap(
             db.query(Stroke)
             .filter(
                 Stroke.rally_id.in_(rally_ids),
-                Stroke.player == player_role,
+                Stroke.player == own_slot(player_role),
                 zone_col.isnot(None),
             )
             .all()
@@ -221,8 +221,8 @@ def get_heatmap(
             total_strokes += 1
             provenance_strokes.append(stroke)
 
-    _count_strokes(match_ids_as_a, "player_a")
-    _count_strokes(match_ids_as_b, "player_b")
+    for _slot, _ids in match_ids_by_slot_.items():
+        _count_strokes(_ids, _slot)
 
     confidence = check_confidence("heatmap", total_strokes)
 
@@ -286,8 +286,7 @@ def get_heatmap_composite(
     else:
         _matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
 
-    match_ids_as_a = [m.id for m in _matches if m.player_a_id == player_id]
-    match_ids_as_b = [m.id for m in _matches if m.player_b_id == player_id]
+    match_ids_by_slot_ = match_ids_by_slot(_matches, player_id)
 
     hit_counts: dict[str, int] = defaultdict(int, {z: 0 for z in ALL_ZONES})
     land_counts: dict[str, int] = defaultdict(int, {z: 0 for z in ALL_ZONES})
@@ -309,7 +308,7 @@ def get_heatmap_composite(
             db.query(Stroke)
             .filter(
                 Stroke.rally_id.in_(rally_ids),
-                Stroke.player == player_role,
+                Stroke.player == own_slot(player_role),
             )
             .all()
         )
@@ -325,8 +324,8 @@ def get_heatmap_composite(
             if contributed:
                 provenance_strokes.append(stroke)
 
-    _count_zones(match_ids_as_a, "player_a")
-    _count_zones(match_ids_as_b, "player_b")
+    for _slot, _ids in match_ids_by_slot_.items():
+        _count_zones(_ids, _slot)
 
     hit_total = max(sum(hit_counts.values()), 1)
     land_total = max(sum(land_counts.values()), 1)
@@ -398,8 +397,7 @@ def get_heatmap_zone_detail(
     else:
         _matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
 
-    match_ids_as_a = [m.id for m in _matches if m.player_a_id == player_id]
-    match_ids_as_b = [m.id for m in _matches if m.player_b_id == player_id]
+    match_ids_by_slot_ = match_ids_by_slot(_matches, player_id)
 
     zone_col = Stroke.hit_zone if type == "hit" else Stroke.land_zone
 
@@ -426,7 +424,7 @@ def get_heatmap_zone_detail(
             db.query(Stroke)
             .filter(
                 Stroke.rally_id.in_(list(rally_map.keys())),
-                Stroke.player == player_role,
+                Stroke.player == own_slot(player_role),
                 zone_col == zone,
             )
             .all()
@@ -448,8 +446,8 @@ def get_heatmap_zone_detail(
             rally_map[rid] for rid in used_rally_ids if rid in rally_map
         )
 
-    _collect(match_ids_as_a, "player_a")
-    _collect(match_ids_as_b, "player_b")
+    for _slot, _ids in match_ids_by_slot_.items():
+        _collect(_ids, _slot)
 
     win_rate = round(wins / total, 3) if total > 0 else None
 
@@ -539,7 +537,7 @@ def get_shot_types(
     for stroke in all_strokes:
         r_id = stroke.rally_id
         player_role = rally_to_role.get(r_id)
-        if stroke.player == player_role:
+        if stroke.player == own_slot(player_role):
             shot_total[stroke.shot_type] += 1
 
     # 勝利ラリーにおけるプレイヤー最終打のshot_typeを集計
@@ -548,7 +546,7 @@ def get_shot_types(
         if not rally_player_won.get(r_id, False):
             continue
         player_role = rally_to_role.get(r_id)
-        player_strokes = [s for s in strokes if s.player == player_role]
+        player_strokes = [s for s in strokes if s.player == own_slot(player_role)]
         if player_strokes:
             last = player_strokes[-1]
             shot_win_last[last.shot_type] += 1
@@ -768,7 +766,7 @@ def get_shot_win_loss(
     for stroke in all_strokes:
         r_id = stroke.rally_id
         player_role = rally_to_role.get(r_id)
-        if stroke.player != player_role:
+        if stroke.player != own_slot(player_role):
             continue
         provenance_strokes.append(stroke)
         shot_rallies[stroke.shot_type].add(r_id)
@@ -1147,7 +1145,7 @@ def get_win_loss_comparison(
             if match_id is None:
                 continue
             player_role = role_by_match.get(match_id)
-            if stroke.player == player_role:
+            if stroke.player == own_slot(player_role):
                 provenance_strokes.append(stroke)
                 shot_counter[stroke.shot_type] += 1
 
@@ -1384,7 +1382,7 @@ def _pre_loss_patterns_impl(
         if not player_role:
             continue
         # プレイヤーのストロークのみ抽出（stroke_num順）
-        player_strokes = [s for s in strokes if s.player == player_role]
+        player_strokes = [s for s in strokes if s.player == own_slot(player_role)]
         if not player_strokes:
             continue
         sample_size += 1
@@ -1563,7 +1561,7 @@ def get_zone_detail(
     matches = (
         db.query(Match)
         .filter(
-            (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
+            involves_player(player_id)
         )
         .all()
     )
@@ -1633,7 +1631,7 @@ def get_zone_detail(
     for stroke in strokes:
         r_id = stroke.rally_id
         player_role = rally_to_role.get(r_id)
-        if stroke.player != player_role:
+        if stroke.player != own_slot(player_role):
             continue
         provenance_strokes.append(stroke)
         provenance_rally_ids.add(r_id)
@@ -1924,7 +1922,7 @@ def _pre_win_patterns_impl(
         player_role = rally_to_role.get(rally_id)
         if not player_role:
             continue
-        player_strokes = [s for s in strokes if s.player == player_role]
+        player_strokes = [s for s in strokes if s.player == own_slot(player_role)]
         if not player_strokes:
             continue
         sample_size += 1
@@ -2052,7 +2050,7 @@ def _effective_distribution_map_impl(
         player_role = rally_to_role.get(rally_id)
         if not player_role:
             continue
-        player_strokes = [s for s in strokes if s.player == player_role]
+        player_strokes = [s for s in strokes if s.player == own_slot(player_role)]
         if not player_strokes:
             continue
         last = player_strokes[-1]
@@ -2070,7 +2068,7 @@ def _effective_distribution_map_impl(
         if shot_type and s.shot_type != shot_type:
             continue
         player_role = rally_to_role.get(s.rally_id)
-        if player_role and s.player == player_role and s.land_zone:
+        if player_role and s.player == own_slot(player_role) and s.land_zone:
             zone_total[s.land_zone] += 1
             provenance_strokes.append(s)
             provenance_rally_ids.add(s.rally_id)
@@ -2295,7 +2293,7 @@ def get_effective_distribution_map_zone_detail(
     ).all()
 
     # 対象プレイヤーのストロークのみ
-    player_strokes = [s for s in strokes if rally_to_role.get(s.rally_id) and s.player == rally_to_role[s.rally_id]]
+    player_strokes = [s for s in strokes if rally_to_role.get(s.rally_id) and s.player == own_slot(rally_to_role[s.rally_id])]
     total_count = len(player_strokes)
     if total_count == 0:
         return empty

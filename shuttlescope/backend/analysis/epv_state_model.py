@@ -14,6 +14,7 @@ import math
 from collections import defaultdict
 from typing import Optional
 
+from backend.analysis.role_view import own_slot
 from backend.analysis.state_spec import (
     RallyState, build_rally_state,
     GameState, build_game_state,
@@ -143,7 +144,7 @@ def compute_rally_state_epv(
         # ラリー長を測ってしまう。重複なく rally 単位で 1 票投じるよう、ラリー内で
         # 出現したショット種別を set 化してから increment する。
         stks = sorted(strokes_by_rally.get(rally.id, []), key=lambda x: x.stroke_num)
-        rally_shot_types = {s.shot_type for s in stks if s.player == role and s.shot_type}
+        rally_shot_types = {s.shot_type for s in stks if s.player == own_slot(role) and s.shot_type}
         for st in rally_shot_types:
             state_shot_total[key][st] += 1
             if is_win:

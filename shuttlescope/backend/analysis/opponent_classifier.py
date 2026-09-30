@@ -17,6 +17,8 @@ from __future__ import annotations
 from typing import Optional
 from sqlalchemy.orm import Session
 
+from backend.analysis.player_context import opponent_role, opponent_player_id
+from backend.analysis.role_view import team_side
 from backend.db.models import Match, GameSet, Rally, Stroke, Player
 from backend.analysis.analysis_config import AnalysisConfig
 
@@ -202,7 +204,7 @@ def classify_opponent(
             rallies_by_set.setdefault(r.set_id, []).append(r)
 
     for m in matches_with_opponent:
-        opp_role = "player_b" if m.player_a_id == player_id else "player_a"
+        opp_role = opponent_role(m, player_id)
         set_ids = sets_by_match.get(m.id, [])
         if not set_ids:
             continue
@@ -265,7 +267,7 @@ def classify_all_opponents(
     # 相手 ID ごとに試合をグループ化
     opp_matches: dict[int, list[Match]] = {}
     for m in matches:
-        opp_id = m.player_b_id if m.player_a_id == player_id else m.player_a_id
+        opp_id = opponent_player_id(m, player_id)
         opp_matches.setdefault(opp_id, []).append(m)
 
     if provenance_rows is not None:
@@ -318,7 +320,7 @@ def aggregate_affinity_by_axis(
     stats: dict[str, dict] = {}
 
     for m in matches:
-        opp_id = m.player_b_id if m.player_a_id == player_id else m.player_a_id
+        opp_id = opponent_player_id(m, player_id)
         cls = classified.get(opp_id)
         if cls is None:
             continue
@@ -327,7 +329,7 @@ def aggregate_affinity_by_axis(
         if label not in stats:
             stats[label] = {"wins": 0, "total": 0}
 
-        player_role = "player_a" if m.player_a_id == player_id else "player_b"
+        player_role = team_side(m, player_id)
         won = (player_role == "player_a" and m.result == "win") or \
               (player_role == "player_b" and m.result == "loss")
 

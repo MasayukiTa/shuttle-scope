@@ -18,6 +18,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Optional
 
+from backend.analysis.role_view import own_slot
 from backend.analysis.state_spec import build_rally_state
 from backend.analysis.epv_state_model import wilson_ci, reliability_score
 
@@ -113,7 +114,7 @@ def compute_q_values(
         # を同じ denominator にする。total/wins は float で扱う (caller 側 wilson_ci
         # は int を要求するため round 後 int 化)。
         stks = sorted(strokes_by_rally.get(rally.id, []), key=lambda x: x.stroke_num)
-        player_stks = [s for s in stks if s.player == role and s.shot_type]
+        player_stks = [s for s in stks if s.player == own_slot(role) and s.shot_type]
         if player_stks:
             n_player = len(player_stks)
             weight = 1.0 / n_player

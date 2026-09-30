@@ -19,6 +19,8 @@ from typing import Optional, TypedDict
 
 from sqlalchemy.orm import Session
 
+from backend.analysis.role_view import own_slot, perspective
+from backend.analysis.player_context import involves_player
 from backend.db.models import (
     Match, GameSet, Rally, Stroke, Player, Team,
 )
@@ -101,7 +103,7 @@ def _player_level(db: Session, player_id: int) -> Optional[str]:
     """
     rows = (
         db.query(Match.tournament_level)
-        .filter((Match.player_a_id == player_id) | (Match.player_b_id == player_id))
+        .filter(involves_player(player_id))
         .all()
     )
     if not rows:
@@ -132,7 +134,7 @@ def _compute_per_player_metrics(
     matches が 0 の場合は None を返す。
     """
     q = db.query(Match).filter(
-        (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
+        involves_player(player_id)
     )
     if singles_doubles == "singles":
         q = q.filter(Match.format == "singles")
@@ -143,9 +145,7 @@ def _compute_per_player_metrics(
         return None
 
     match_ids = [m.id for m in matches]
-    role_by_match = {
-        m.id: ("player_a" if m.player_a_id == player_id else "player_b") for m in matches
-    }
+    role_by_match = {m.id: perspective(m, player_id) for m in matches}
     sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
     set_to_match = {s.id: s.match_id for s in sets}
     set_ids = [s.id for s in sets]
@@ -188,7 +188,7 @@ def _compute_per_player_metrics(
 
     for s in strokes:
         role = rally_to_role.get(s.rally_id)
-        if role is None or s.player != role:
+        if role is None or s.player != own_slot(role):
             continue
         total_player_strokes += 1
         if not s.shot_type:

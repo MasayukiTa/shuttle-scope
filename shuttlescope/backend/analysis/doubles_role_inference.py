@@ -25,6 +25,7 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 from typing import Optional
+from backend.analysis.role_view import own_slot
 
 
 # ── ショット種別のロール重み ────────────────────────────────────────────────
@@ -147,7 +148,7 @@ def compute_doubles_role_inference(
             continue
 
         stks = sorted(strokes_by_rally.get(rally.id, []), key=lambda x: x.stroke_num)
-        player_stks = [s for s in stks if s.player == role and s.shot_type]
+        player_stks = [s for s in stks if s.player == own_slot(role) and s.shot_type]
 
         # スコアフェーズ（ラリー前の得点から）
         player_is_a = role == "player_a"
@@ -464,7 +465,7 @@ def compute_doubles_role_stability(
         f, b, n, total = 0, 0, 0, 0
         for r in match_rallies:
             for s in strokes_by_rally.get(r.id, []):
-                if s.player != role or not s.shot_type:
+                if s.player != own_slot(role) or not s.shot_type:
                     continue
                 if s.shot_type in FRONT_SHOTS:
                     f += 1
@@ -590,7 +591,7 @@ def compute_doubles_role_db2(
             continue
 
         stks = sorted(strokes_by_rally.get(rally.id, []), key=lambda x: x.stroke_num)
-        player_stks = [s for s in stks if s.player == role and s.shot_type]
+        player_stks = [s for s in stks if s.player == own_slot(role) and s.shot_type]
 
         obs_seq = [classify_stroke_position(s.stroke_num, s.shot_type) for s in player_stks]
         if obs_seq:
