@@ -6,11 +6,17 @@ from pathlib import Path
 _BACKEND = Path(__file__).resolve().parents[1]
 
 
-def test_shot_classifier_loads_are_weights_only_and_documented_for_devskim():
+def test_shot_classifiers_use_non_pickle_npz_state():
     for name in ("shot_classifier_lstm.py", "shot_classifier_clip.py"):
         src = (_BACKEND / "analysis" / name).read_text(encoding="utf-8")
-        assert "weights_only=True" in src
-        assert "DevSkim: ignore DS425050" in src
+        assert "torch.load(" not in src
+        assert "torch.save(" not in src
+        assert "load_state_dict_npz" in src
+        assert "save_state_dict_npz" in src
+
+    helper = (_BACKEND / "utils" / "torch_state_npz.py").read_text(encoding="utf-8")
+    assert "allow_pickle=False" in helper
+    assert "np.savez_compressed" in helper
 
 
 def test_native_detector_does_not_use_unbounded_strlen_for_ffi_path():
