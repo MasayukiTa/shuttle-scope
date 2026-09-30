@@ -27,7 +27,7 @@ from typing import Optional
 logger = logging.getLogger("shuttlescope.model_integrity")
 
 # 検証対象拡張子
-MODEL_EXTENSIONS = {".onnx", ".pt", ".pth", ".safetensors"}
+MODEL_EXTENSIONS = {".onnx", ".pt", ".pth", ".npz", ".safetensors"}
 
 # trt_cache/ など実行時に再生成される一時物は除外
 EXCLUDE_DIRS = {"trt_cache", "__pycache__"}

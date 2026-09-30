@@ -17,7 +17,6 @@ import logging
 import sys
 import tempfile
 import urllib.parse
-import urllib.request
 from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -106,21 +105,27 @@ def _download_verified_source(dst: Path) -> None:
         raise RuntimeError("OSNet source URL must be HTTPS on huggingface.co")
 
     logger.info("download pinned OSNet source checkpoint: %s", SOURCE_WEIGHT_URL)
-    request = urllib.request.Request(
-        SOURCE_WEIGHT_URL,
-        headers={"User-Agent": "ShuttleScope-model-setup/1"},
-        method="GET",
-    )
+    try:
+        import httpx
+    except ImportError as exc:
+        raise RuntimeError("httpx is required for verified model download") from exc
+
     h = hashlib.sha256()
-    # B310 is safe here because the immutable constant URL is validated above
-    # to the exact HTTPS scheme and approved host before urlopen.
-    with urllib.request.urlopen(request, timeout=90) as response, dst.open("wb") as out:  # nosec B310  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected -- immutable URL + exact HTTPS host validation + SHA-256 verification
-        while True:
-            chunk = response.read(1024 * 1024)
-            if not chunk:
-                break
-            out.write(chunk)
-            h.update(chunk)
+    with httpx.Client(
+        follow_redirects=True,
+        timeout=httpx.Timeout(90.0),
+        headers={"User-Agent": "ShuttleScope-model-setup/1"},
+    ) as client:
+        with client.stream("GET", SOURCE_WEIGHT_URL) as response:
+            response.raise_for_status()
+            if response.url.scheme != "https":
+                raise RuntimeError("OSNet source redirect must remain HTTPS")
+            with dst.open("wb") as out:
+                for chunk in response.iter_bytes(chunk_size=1024 * 1024):
+                    if not chunk:
+                        continue
+                    out.write(chunk)
+                    h.update(chunk)
     actual = h.hexdigest()
     if actual != SOURCE_WEIGHT_SHA256:
         dst.unlink(missing_ok=True)
@@ -132,10 +137,24 @@ def _download_verified_source(dst: Path) -> None:
 
 
 def _load_verified_weights(model, checkpoint: Path, torch) -> None:
-    # The checkpoint is a pickle container. It reaches torch.load only after
-    # cryptographic verification above. weights_only further narrows deserialization.
-    state_dict = torch.load(  # nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch -- SHA-256-pinned checkpoint + weights_only=True
-        # DevSkim: ignore DS425050 -- SHA-256-pinned checkpoint; weights_only=True below
+    # The upstream checkpoint is a pickle container. It reaches torch.load only
+    # after exact SHA-256 verification. On modern PyTorch, additionally reject
+    # any global that is not already allowlisted by the weights-only unpickler.
+    inspect_globals = getattr(
+        getattr(torch, "serialization", None),
+        "get_unsafe_globals_in_checkpoint",
+        None,
+    )
+    if inspect_globals is not None:
+        unsafe_globals = list(inspect_globals(str(checkpoint)))
+        if unsafe_globals:
+            raise RuntimeError(
+                "OSNet checkpoint contains unsafe pickle globals: "
+                + ", ".join(sorted(str(item) for item in unsafe_globals))
+            )
+
+    state_dict = torch.load(  # nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch -- exact SHA-256 pin + unsafe-global preflight + weights_only=True
+        # DevSkim: ignore DS425050 -- verified immutable checkpoint; restricted weights-only unpickler
         str(checkpoint),
         map_location="cpu",
         weights_only=True,

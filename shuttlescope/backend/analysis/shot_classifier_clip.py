@@ -31,7 +31,7 @@ NUM_CLASSES = len(CANONICAL_SHOTS)
 SAMPLE_FRAMES = 20       # 推論時に等間隔でサンプルするフレーム数（全フレームは重い）
 
 WEIGHTS_DIR  = Path(__file__).parent.parent / "models"
-MODEL_PATH   = WEIGHTS_DIR / "shot_clip.pt"
+MODEL_PATH   = WEIGHTS_DIR / "shot_clip.npz"
 META_PATH    = WEIGHTS_DIR / "shot_clip_meta.json"
 
 
@@ -290,7 +290,9 @@ def train(
     WEIGHTS_DIR.mkdir(parents=True, exist_ok=True)
     if best_state:
         model.load_state_dict(best_state)
-    torch.save(model.state_dict(), MODEL_PATH)
+    from backend.utils.torch_state_npz import save_state_dict_npz
+
+    save_state_dict_npz(model.state_dict(), MODEL_PATH)
     meta = {
         "best_val_acc": round(best_val_acc, 4),
         "epochs": epochs,
@@ -327,10 +329,9 @@ class ShotClipClassifier:
             m = _build_model()
             if m is None:
                 return False
-            state = torch.load(  # nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch -- fixed local model path + weights_only=True; production model directory is SHA-256 integrity-gated
-                # DevSkim: ignore DS425050 -- fixed local path; weights_only=True disables arbitrary pickle objects
-                MODEL_PATH, map_location="cpu", weights_only=True
-            )
+            from backend.utils.torch_state_npz import load_state_dict_npz
+
+            state = load_state_dict_npz(MODEL_PATH, torch)
             m.load_state_dict(state)
             m.eval()
             self._model = m
