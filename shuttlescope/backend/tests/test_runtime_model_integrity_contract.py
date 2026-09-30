@@ -41,41 +41,32 @@ def test_active_gitignored_runtime_models_are_manifest_pinned():
         assert all(ch in "0123456789abcdef" for ch in digest)
 
 
-def test_reid_source_checkpoint_is_immutable_and_hash_pinned():
-    source_url = _module_string_constant(SETUP_REID_PATH, "SOURCE_WEIGHT_URL")
-    source_hash = _module_string_constant(
-        SETUP_REID_PATH,
-        "SOURCE_WEIGHT_SHA256",
+def test_reid_setup_targets_the_manifest_pinned_runtime_artifact():
+    source = SETUP_REID_PATH.read_text(encoding="utf-8")
+
+    assert _module_string_constant(SETUP_REID_PATH, "_RUNTIME_MODEL_REL") == (
+        "osnet_x0_25_reid.onnx"
     )
-
-    prefix = "https://huggingface.co/kaiyangzhou/osnet/resolve/"
-    assert source_url.startswith(prefix)
-    revision = source_url[len(prefix):].split("/", 1)[0]
-    assert len(revision) == 40
-    assert all(ch in "0123456789abcdef" for ch in revision)
-    assert len(source_hash) == 64
-    assert all(ch in "0123456789abcdef" for ch in source_hash)
+    assert "_runtime_expected_sha256" in source
+    assert "_sha256_file" in source
+    assert "actual != expected" in source
 
 
-def test_reid_setup_never_uses_torchreid_mutable_pretrained_download():
+def test_reid_setup_never_downloads_or_deserializes_model_checkpoints():
     source = SETUP_REID_PATH.read_text(encoding="utf-8")
 
-    assert "pretrained=False" in source
-    assert "weights_only=True" in source
-    assert "pretrained=True" not in source
-    assert "SOURCE_WEIGHT_SHA256" in source
+    forbidden = (
+        "torch.load",
+        "torchreid",
+        "urllib.request",
+        "urlopen(",
+        "httpx",
+        "requests.get",
+        "requests.post",
+        ".pth",
+    )
+    for token in forbidden:
+        assert token not in source
 
-
-def test_reid_setup_constrains_download_scheme_host_and_documents_scanner_exceptions():
-    source = SETUP_REID_PATH.read_text(encoding="utf-8")
-
-    assert "urllib.parse.urlsplit(SOURCE_WEIGHT_URL)" in source
-    assert 'parsed.scheme != "https"' in source
-    assert 'parsed.hostname != "huggingface.co"' in source
-    assert "parsed.username is not None" in source
-    assert "parsed.password is not None" in source
-    assert "# nosec B310" in source
-    assert "nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected" in source
-    assert "nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch" in source
-    assert "DevSkim: ignore DS173237" in source
-    assert "DevSkim: ignore DS425050" in source
+    assert "trusted artifact" in source.lower()
+    assert "must not regenerate it from pickle checkpoints" in source
