@@ -1,5 +1,7 @@
 # WASB-SBDT vs TrackNetV3 Head-to-Head — Player A Doubles (match 33)
 
+> **注記（2026-09-30）**: 本文の「TrackNetV3」「TrackNet v2」は、現行の既定検出器（`backend/tracknet`）を指す通称で、その版であることの裏付けはない。実体は Chang-Chia-Chi/TrackNet-Badminton-Tracking-tensorflow2 の**非公式**実装（ResNet + U-Net、連続 3 フレームのグレースケール、512×288）で、TrackNet V3（8 フレーム・背景画像・軌跡補正）の説明とは一致しない。数字は「現行の既定検出器」の結果として読むこと。詳細は `backend/tracknet/__init__.py`。
+
 ## TL;DR
 **WASB は TrackNetV3 を ShuttleScope の現運用において全方位で上回る**。同じPlayer Aダブルス映像 (TrackNetV3 が 0% 検出) で **WASB は 30.9% の frame でシャトル検出** + synthetic batched で **295 FPS (TrackNet 156 FPS の 1.9 倍)**。
 

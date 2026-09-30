@@ -1,5 +1,7 @@
 # 2026-05-24 — WASB-SBDT shuttle detection module
 
+> **注記（2026-09-30）**: 本文の「TrackNetV3」「TrackNet v2」は、現行の既定検出器（`backend/tracknet`）を指す通称で、その版であることの裏付けはない。実体は Chang-Chia-Chi/TrackNet-Badminton-Tracking-tensorflow2 の**非公式**実装（ResNet + U-Net、連続 3 フレームのグレースケール、512×288）で、TrackNet V3（8 フレーム・背景画像・軌跡補正）の説明とは一致しない。数字は「現行の既定検出器」の結果として読むこと。詳細は `backend/tracknet/__init__.py`。
+
 ## Goal
 
 Register the WASB-SBDT HRNet shuttle detector as an alternative to

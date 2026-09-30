@@ -1,5 +1,7 @@
 # CV Pipeline Runbook (WASB / INT8 / NVDEC)
 
+> **注記（2026-09-30）**: 本文の「TrackNetV3」「TrackNet v2」は、現行の既定検出器（`backend/tracknet`）を指す通称で、その版であることの裏付けはない。実体は Chang-Chia-Chi/TrackNet-Badminton-Tracking-tensorflow2 の**非公式**実装（ResNet + U-Net、連続 3 フレームのグレースケール、512×288）で、TrackNet V3（8 フレーム・背景画像・軌跡補正）の説明とは一致しない。数字は「現行の既定検出器」の結果として読むこと。詳細は `backend/tracknet/__init__.py`。
+
 オペレータ向け運用ハンドブック。詳細な実験ログは `docs/research/2026-05-24_wasb_vs_tracknet_player_a.md` を参照。本ドキュメントは「本番でどの env を立てるか」「異常時どこを見るか」を最短経路で示す。
 
 ---
