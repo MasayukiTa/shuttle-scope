@@ -39,7 +39,7 @@ CONFIGS = {
 
 def _plan(seed=7, n_sets=2, n_rallies=24):
     """X 側の試合内容 (中立な形)。Y は同じ内容を写して作る。"""
-    rnd = random.Random(seed)
+    rnd = random.Random(seed)  # DevSkim: ignore DS148264 -- deterministic fixture data for a test, not a security use
     sets = []
     for _ in range(n_sets):
         rallies = []
