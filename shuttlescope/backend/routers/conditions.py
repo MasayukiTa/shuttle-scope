@@ -484,13 +484,16 @@ def submit_questionnaire(body: QuestionnaireSubmit, request: Request, db: Sessio
             "ccs_score": None,
         }
 
-    # 履歴（同 player の既存 weekly CCS を古→新）
+    # 履歴（同 player の、この測定より前の weekly CCS を古→新）。
+    # 日付をさかのぼって入力した時に、未来の測定値との差や急変を計算しないよう、
+    # measured_at がこの測定より前のものだけを使う。
     history_rows = (
         db.query(Condition)
         .filter(
             Condition.player_id == body.player_id,
             Condition.condition_type == "weekly",
             Condition.ccs_score.isnot(None),
+            Condition.measured_at < body.measured_at,
         )
         .order_by(Condition.measured_at.asc(), Condition.id.asc())
         .all()
