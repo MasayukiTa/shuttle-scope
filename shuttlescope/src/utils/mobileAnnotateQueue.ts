@@ -26,13 +26,11 @@
 
 export type QueueEndpoint =
   | 'POST /api/rallies'
-  | 'PATCH /api/rallies/:id'
   | 'DELETE /api/rallies/:id'
   | 'POST /api/strokes?rally_id=:rally_id'
   | 'PUT /api/strokes/:id'
   | 'DELETE /api/strokes/:id'
   | 'PUT /api/rallies/:id'
-  | 'PATCH /api/matches/:id/video_crop'
 
 export interface QueueItem {
   /** ローカル primary key (= IndexedDB の autoincrement) */
@@ -260,8 +258,7 @@ export function queueSequenceKey(
   }
 
   if (
-    item.endpoint === 'PATCH /api/rallies/:id'
-    || item.endpoint === 'PUT /api/rallies/:id'
+    item.endpoint === 'PUT /api/rallies/:id'
     || item.endpoint === 'DELETE /api/rallies/:id'
   ) {
     const rallyId = item.pathParams?.id
