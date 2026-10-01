@@ -16,14 +16,14 @@ ffmpeg はローカルに無いことがあるので、ここでは判定と配�
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from backend.db.database import get_db
-from backend.db.models import Match, Player, Recording
+from backend.db.models import Match, Player, Recording, ServerVideoArtifact
 from backend.main import app
 from backend.services import video_variants as vv
 from backend.services.video_variants import (
@@ -172,6 +172,22 @@ def _make_match(db_session, **extra) -> Match:
     return m
 
 
+def _trust_match_server_video(db_session, m: Match, upload_id: str = UID) -> Match:
+    artifact = ServerVideoArtifact(
+        match_id=m.id,
+        upload_id=upload_id,
+        sender_user_id=None,
+        file_path="test-only-not-used-by-stream-resolver",
+        file_size_bytes=len(SRC_BYTES),
+        mime_type="video/quicktime",
+        started_at=datetime.utcnow(),
+        finalized_at=datetime.utcnow(),
+    )
+    db_session.add(artifact)
+    db_session.commit()
+    return m
+
+
 def _client(db_session) -> TestClient:
     app.dependency_overrides[get_db] = lambda: db_session
     # TrustedHostMiddleware rejects TestClient's default "testserver" host.
@@ -184,8 +200,12 @@ def _client(db_session) -> TestClient:
 
 class TestMatchStreamServesPlayableCopy:
     def _match(self, db_session):
-        return _make_match(db_session, video_local_path=f"server://{UID}.mov",
-                           video_token=TOKEN)
+        m = _make_match(
+            db_session,
+            video_local_path=f"server://{UID}.mov",
+            video_token=TOKEN,
+        )
+        return _trust_match_server_video(db_session, m)
 
     def test_a_playback_copy_replaces_an_unplayable_source(self, db_session, upload_dir):
         _add_play(upload_dir)
@@ -242,6 +262,43 @@ class TestMatchStreamServesPlayableCopy:
             app.dependency_overrides.clear()
         assert r.status_code == 200, r.text
         assert r.content == PLAY_BYTES
+
+    def test_untrusted_server_ref_is_not_served_even_when_file_exists(
+        self, db_session, upload_dir
+    ):
+        m = _make_match(
+            db_session,
+            video_local_path=f"server://{UID}.mov",
+            video_token=TOKEN,
+        )
+        try:
+            r = _client(db_session).get(
+                f"/api/v1/uploads/video/by_match/{m.id}/stream?token={TOKEN}"
+            )
+        finally:
+            app.dependency_overrides.clear()
+        assert r.status_code == 404
+        assert r.content != SRC_BYTES
+
+    def test_localfile_is_never_served_by_http_match_stream(
+        self, db_session, upload_dir
+    ):
+        local = upload_dir / "local-owned-by-someone-else.mp4"
+        local.write_bytes(b"PRIVATE")
+        local_url = "localfile:///" + str(local).replace("\\", "/")
+        m = _make_match(
+            db_session,
+            video_local_path=local_url,
+            video_token=TOKEN,
+        )
+        try:
+            r = _client(db_session).get(
+                f"/api/v1/uploads/video/by_match/{m.id}/stream?token={TOKEN}"
+            )
+        finally:
+            app.dependency_overrides.clear()
+        assert r.status_code == 404
+        assert r.content != b"PRIVATE"
 
     def test_malformed_server_ref_never_reaches_filesystem(self, db_session, upload_dir):
         outside = upload_dir.parent / "outside.mp4"
@@ -388,7 +445,12 @@ class TestMatchAvailableQualityState:
 
 class TestExplicitPlaybackQuality:
     def _match(self, db_session):
-        return _make_match(db_session, video_local_path=f"server://{UID}.mov", video_token=TOKEN)
+        m = _make_match(
+            db_session,
+            video_local_path=f"server://{UID}.mov",
+            video_token=TOKEN,
+        )
+        return _trust_match_server_video(db_session, m)
 
     def test_explicit_play_is_409_while_preparing(self, db_session, upload_dir):
         m = self._match(db_session)
@@ -411,3 +473,15 @@ class TestExplicitPlaybackQuality:
             app.dependency_overrides.clear()
         assert r.status_code == 200
         assert r.content == PLAY_BYTES
+
+
+def test_public_posture_rejects_client_localfile_assignment(monkeypatch):
+    from fastapi import HTTPException
+    from backend.config import settings
+    from backend.routers.matches import MatchUpdate, _validate_match_enums
+
+    monkeypatch.setattr(settings, "PUBLIC_MODE", True)
+    body = MatchUpdate(video_local_path="localfile:///C:/allowed/video.mp4")
+    with pytest.raises(HTTPException) as exc:
+        _validate_match_enums(body)
+    assert exc.value.status_code == 403

@@ -347,8 +347,16 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
                 status_code=422,
                 detail="video_local_path は空文字 または localfile:// のみ受理されます",
             )
-        # localfile:// は path_jail 許可ルート内に限定
+        # localfile:// is meaningful only for the desktop/server-internal
+        # workflows. On a public server, allowing an API caller to point a match
+        # at any file inside an allowed root creates a cross-match confused deputy.
         if vlp.startswith("localfile://"):
+            from backend.config import settings as _settings
+            if _settings.is_production_posture:
+                raise HTTPException(
+                    status_code=403,
+                    detail="公開環境では video_local_path の直接指定はできません",
+                )
             from backend.utils.path_jail import is_allowed_video_path, allowed_video_roots
             from pathlib import Path as _P
             _raw = vlp[len("localfile:///"):]
