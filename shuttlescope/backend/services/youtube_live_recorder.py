@@ -155,6 +155,8 @@ class RecordJob:
     started_at: float = field(default_factory=time.time)
     error: Optional[str] = None
     match_id: Optional[int] = None  # 紐付け試合 ID（アーカイブ完了時に DB を自動更新）
+    owner_user_id: Optional[int] = None
+    owner_team_id: Optional[int] = None
     # HDCP / プラットフォーム黒フレーム検出時の警告メッセージ。
     # ユーザに「録画は成功したが画面がほぼ真っ黒のため再撮影を推奨」を伝えるため。
     warning: Optional[str] = None
@@ -269,33 +271,74 @@ def start_hls_recording(
     cookie_browser: Optional[str] = None,
     cookie_file: Optional[str] = None,
     match_id: Optional[int] = None,
+    owner_user_id: Optional[int] = None,
+    owner_team_id: Optional[int] = None,
 ) -> RecordJob:
     job_id = uuid.uuid4().hex
     _RECORD_ROOT.mkdir(parents=True, exist_ok=True)
     out_path = resolve_within(_RECORD_ROOT / f"{job_id}.mp4", _RECORD_ROOT)
 
     if cookie_browser or cookie_file:
-        job = _start_ytdlp_recording(job_id, url, out_path, cookie_browser, cookie_file)
+        job = _start_ytdlp_recording(
+            job_id,
+            url,
+            out_path,
+            cookie_browser,
+            cookie_file,
+            match_id=match_id,
+            owner_user_id=owner_user_id,
+            owner_team_id=owner_team_id,
+        )
     else:
-        job = _start_ffmpeg_recording(job_id, url, out_path)
-    job.match_id = match_id
+        job = _start_ffmpeg_recording(
+            job_id,
+            url,
+            out_path,
+            match_id=match_id,
+            owner_user_id=owner_user_id,
+            owner_team_id=owner_team_id,
+        )
     return job
 
 
-def _start_ffmpeg_recording(job_id: str, url: str, out_path: Path) -> RecordJob:
+def _start_ffmpeg_recording(
+    job_id: str,
+    url: str,
+    out_path: Path,
+    *,
+    match_id: Optional[int] = None,
+    owner_user_id: Optional[int] = None,
+    owner_team_id: Optional[int] = None,
+) -> RecordJob:
     hls_url = _get_hls_url(url)
     ffmpeg = _ffmpeg_bin()
     if not hls_url or not ffmpeg:
-        job = RecordJob(job_id=job_id, url=url, out_path=out_path,
-                        method="hls", status="error",
-                        error="yt-dlp または ffmpeg が利用できません")
+        job = RecordJob(
+            job_id=job_id,
+            url=url,
+            out_path=out_path,
+            method="hls",
+            status="error",
+            error="yt-dlp または ffmpeg が利用できません",
+            match_id=match_id,
+            owner_user_id=owner_user_id,
+            owner_team_id=owner_team_id,
+        )
         _jobs[job_id] = job
         return job
     # ffmpeg `-i <url>` の url 検証 (CodeQL py/command-line-injection 対策)
     if not (hls_url.startswith("http://") or hls_url.startswith("https://")):
-        job = RecordJob(job_id=job_id, url=url, out_path=out_path,
-                        method="hls", status="error",
-                        error="hls_url が http(s):// で始まりません")
+        job = RecordJob(
+            job_id=job_id,
+            url=url,
+            out_path=out_path,
+            method="hls",
+            status="error",
+            error="hls_url が http(s):// で始まりません",
+            match_id=match_id,
+            owner_user_id=owner_user_id,
+            owner_team_id=owner_team_id,
+        )
         _jobs[job_id] = job
         return job
     proc = subprocess.Popen(
@@ -303,8 +346,16 @@ def _start_ffmpeg_recording(job_id: str, url: str, out_path: Path) -> RecordJob:
          "-c", "copy", "-movflags", "+faststart", str(out_path)],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
-    job = RecordJob(job_id=job_id, url=url, out_path=out_path,
-                    method="hls", status="recording")
+    job = RecordJob(
+        job_id=job_id,
+        url=url,
+        out_path=out_path,
+        method="hls",
+        status="recording",
+        match_id=match_id,
+        owner_user_id=owner_user_id,
+        owner_team_id=owner_team_id,
+    )
     job._proc = proc
     _jobs[job_id] = job
     logger.info("[yt_live] ffmpeg HLS started: job=%s", job_id)
@@ -312,14 +363,29 @@ def _start_ffmpeg_recording(job_id: str, url: str, out_path: Path) -> RecordJob:
 
 
 def _start_ytdlp_recording(
-    job_id: str, url: str, out_path: Path,
-    cookie_browser: Optional[str], cookie_file: Optional[str],
+    job_id: str,
+    url: str,
+    out_path: Path,
+    cookie_browser: Optional[str],
+    cookie_file: Optional[str],
+    *,
+    match_id: Optional[int] = None,
+    owner_user_id: Optional[int] = None,
+    owner_team_id: Optional[int] = None,
 ) -> RecordJob:
     ytdlp = _ytdlp()
     if not ytdlp:
-        job = RecordJob(job_id=job_id, url=url, out_path=out_path,
-                        method="hls_ytdlp", status="error",
-                        error="yt-dlp が利用できません")
+        job = RecordJob(
+            job_id=job_id,
+            url=url,
+            out_path=out_path,
+            method="hls_ytdlp",
+            status="error",
+            error="yt-dlp が利用できません",
+            match_id=match_id,
+            owner_user_id=owner_user_id,
+            owner_team_id=owner_team_id,
+        )
         _jobs[job_id] = job
         return job
     safe_url = _validate_url_for_subprocess(url)
@@ -330,8 +396,16 @@ def _start_ytdlp_recording(
     # CodeQL py/command-line-injection 対策: `--` 区切りで positional 扱いに固定
     cmd += ["--", safe_url]
     proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    job = RecordJob(job_id=job_id, url=url, out_path=out_path,
-                    method="hls_ytdlp", status="recording")
+    job = RecordJob(
+        job_id=job_id,
+        url=url,
+        out_path=out_path,
+        method="hls_ytdlp",
+        status="recording",
+        match_id=match_id,
+        owner_user_id=owner_user_id,
+        owner_team_id=owner_team_id,
+    )
     job._proc = proc
     _jobs[job_id] = job
     logger.info("[yt_live] yt-dlp recording started: job=%s cookie_browser=%s",
@@ -339,7 +413,12 @@ def _start_ytdlp_recording(
     return job
 
 
-def create_drm_job(url: str, match_id: Optional[int] = None) -> RecordJob:
+def create_drm_job(
+    url: str,
+    match_id: Optional[int] = None,
+    owner_user_id: Optional[int] = None,
+    owner_team_id: Optional[int] = None,
+) -> RecordJob:
     # round156 R156-S1 defense-in-depth:
     # ルータ側の Pydantic 層で reject するのが基本だが、別経路 (内部 caller /
     # 旧コード / pytest fixture) からも生 URL を持ち込まれない保証として、
@@ -348,8 +427,16 @@ def create_drm_job(url: str, match_id: Optional[int] = None) -> RecordJob:
     job_id = uuid.uuid4().hex
     _RECORD_ROOT.mkdir(parents=True, exist_ok=True)
     out_path = resolve_within(_RECORD_ROOT / f"{job_id}.webm", _RECORD_ROOT)
-    job = RecordJob(job_id=job_id, url=safe_url, out_path=out_path,
-                    method="drm_pending", status="probing", match_id=match_id)
+    job = RecordJob(
+        job_id=job_id,
+        url=safe_url,
+        out_path=out_path,
+        method="drm_pending",
+        status="probing",
+        match_id=match_id,
+        owner_user_id=owner_user_id,
+        owner_team_id=owner_team_id,
+    )
     _jobs[job_id] = job
     logger.info("[yt_live] DRM job created: job=%s match_id=%s", job_id, match_id)
     return job

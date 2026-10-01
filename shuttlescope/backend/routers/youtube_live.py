@@ -6,10 +6,13 @@ import logging
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
+from sqlalchemy.orm import Session
 
-from backend.utils.auth import get_auth
+from backend.db.database import get_db
+from backend.db.models import Match
+from backend.utils.auth import get_auth, user_can_access_match
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["youtube_live"])
@@ -29,6 +32,36 @@ def _require_auth(request: Request):
     if ctx.role not in ("admin", "analyst", "coach"):
         raise HTTPException(status_code=403, detail="この操作の権限がありません")
     return ctx
+
+
+def _can_access_job(ctx, job) -> bool:
+    """Admin or same-team owner may inspect/mutate a live-recording job.
+
+    Jobs are process-local and may contain absolute server paths and an active
+    recorder process, so job_id is never treated as an authorization proof.
+    Users without a team fall back to exact user ownership.
+    """
+    if ctx.is_admin:
+        return True
+    owner_team_id = getattr(job, "owner_team_id", None)
+    owner_user_id = getattr(job, "owner_user_id", None)
+    if ctx.team_id is not None and owner_team_id is not None:
+        return int(ctx.team_id) == int(owner_team_id)
+    return (
+        ctx.user_id is not None
+        and owner_user_id is not None
+        and int(ctx.user_id) == int(owner_user_id)
+    )
+
+
+def _visible_job_or_404(request: Request, job_id: str):
+    from backend.services.youtube_live_recorder import get_job
+
+    ctx = _require_auth(request)
+    job = get_job(job_id)
+    if job is None or not _can_access_job(ctx, job):
+        raise HTTPException(status_code=404, detail="job が見つかりません")
+    return job
 
 
 def _validate_public_https_url(value: str) -> str:
@@ -134,24 +167,46 @@ def _job_status(job) -> Dict[str, Any]:
 
 
 @router.post("/youtube_live/start")
-def start_recording(body: StartRequest, request: Request):
+def start_recording(
+    body: StartRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     """録画を開始する。HLS プローブ後に method を確定して返す。
 
     Returns:
         method="hls"          → バックエンドで ffmpeg 録画中
         method="drm_required" → Electron desktopCapturer fallback が必要
     """
-    _require_auth(request)
+    ctx = _require_auth(request)
+
+    # Match binding is a write-capable side effect: archive completion may update
+    # Match.video_local_path. Authorize it before any yt-dlp/ffmpeg/network probe.
+    if body.match_id is not None:
+        match = db.get(Match, body.match_id)
+        if match is None or not user_can_access_match(ctx, match):
+            raise HTTPException(status_code=404, detail="Match not found")
+
     from backend.services.youtube_live_recorder import (
         probe_hls, start_hls_recording, create_drm_job,
     )
 
     viable = probe_hls(body.url, body.cookie_browser, body.cookie_file)
+    owner_kwargs = {
+        "owner_user_id": ctx.user_id,
+        "owner_team_id": ctx.team_id,
+    }
     if viable:
-        job = start_hls_recording(body.url, body.cookie_browser, body.cookie_file, body.match_id)
+        job = start_hls_recording(
+            body.url,
+            body.cookie_browser,
+            body.cookie_file,
+            body.match_id,
+            **owner_kwargs,
+        )
         return _job_status(job)
     else:
-        job = create_drm_job(body.url, body.match_id)
+        job = create_drm_job(body.url, body.match_id, **owner_kwargs)
         resp = _job_status(job)
         resp["method"] = "drm_required"
         return resp
@@ -160,7 +215,7 @@ def start_recording(body: StartRequest, request: Request):
 @router.post("/youtube_live/{job_id}/chunk")
 async def receive_chunk(job_id: str, request: Request):
     """Electron から webm チャンクを受信する（Content-Type: application/octet-stream）。"""
-    _require_auth(request)
+    _visible_job_or_404(request, job_id)
     from backend.services.youtube_live_recorder import receive_drm_chunk
 
     body = await request.body()
@@ -175,7 +230,7 @@ async def receive_chunk(job_id: str, request: Request):
 @router.post("/youtube_live/{job_id}/stop")
 def stop_recording(job_id: str, request: Request):
     """録画を停止する。DRM の場合は webm → mp4 remux を実行する。"""
-    _require_auth(request)
+    _visible_job_or_404(request, job_id)
     from backend.services.youtube_live_recorder import stop_recording as _stop
 
     job = _stop(job_id)
@@ -187,19 +242,14 @@ def stop_recording(job_id: str, request: Request):
 @router.get("/youtube_live/{job_id}/status")
 def get_status(job_id: str, request: Request):
     """録画 job のステータスを返す（ポーリング用）。"""
-    _require_auth(request)
-    from backend.services.youtube_live_recorder import get_job
-
-    job = get_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="job が見つかりません")
+    job = _visible_job_or_404(request, job_id)
     return _job_status(job)
 
 
 @router.get("/youtube_live/jobs")
 def list_jobs(request: Request):
     """全 job の一覧を返す。"""
-    _require_auth(request)
+    ctx = _require_auth(request)
     from backend.services.youtube_live_recorder import list_jobs as _list
 
-    return [_job_status(j) for j in _list()]
+    return [_job_status(j) for j in _list() if _can_access_job(ctx, j)]
