@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import StreamingResponse, Response
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -1119,54 +1119,16 @@ def stream_video_for_match(
     if file is None or not file.exists():
         raise HTTPException(status_code=404, detail="動画ファイルが見つかりません")
 
-    total = file.stat().st_size
-    range_header = request.headers.get("range") or request.headers.get("Range")
-    start, end = 0, total - 1
-    status_code = 200
-    if range_header and range_header.startswith("bytes="):
-        try:
-            part = range_header[6:].split(",")[0]
-            s, e = part.split("-")
-            if s.strip():
-                start = int(s)
-            if e.strip():
-                end = int(e)
-            if start < 0 or end >= total or start > end:
-                raise ValueError
-            status_code = 206
-        except ValueError:
-            raise HTTPException(status_code=416, detail="Range ヘッダが不正")
-
-    length = end - start + 1
-    chunk_read = 256 * 1024  # 256KB ずつ送出
-
-    def iter_file():
-        with open(file, "rb") as f:
-            f.seek(start)
-            remaining = length
-            while remaining > 0:
-                buf = f.read(min(chunk_read, remaining))
-                if not buf:
-                    break
-                remaining -= len(buf)
-                yield buf
-
-    # 拡張子から Content-Type 推定
+    # Starlette FileResponse handles HTTP Range requests natively. Keeping file
+    # opening inside the framework removes the user-influenced manual open()
+    # sink while preserving the path-jail validation above.
     ext = file.suffix.lower()
     ct_map = {
         ".mp4": "video/mp4", ".mov": "video/quicktime", ".m4v": "video/x-m4v",
         ".webm": "video/webm", ".mkv": "video/x-matroska",
     }
     content_type = ct_map.get(ext, "application/octet-stream")
-
-    headers = {
-        "Accept-Ranges": "bytes",
-        "Content-Length": str(length),
-        "Content-Type": content_type,
-    }
-    if status_code == 206:
-        headers["Content-Range"] = f"bytes {start}-{end}/{total}"
-    return StreamingResponse(iter_file(), status_code=status_code, headers=headers, media_type=content_type)
+    return FileResponse(path=file, media_type=content_type)
 
 
 # ─── バックグラウンド GC ─────────────────────────────────────────────────────

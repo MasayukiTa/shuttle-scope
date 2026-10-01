@@ -7,10 +7,12 @@ _BACKEND = Path(__file__).resolve().parents[1]
 
 
 def test_shot_classifiers_use_non_pickle_npz_state():
+    unsafe_load = "torch." + "load("
+    unsafe_save = "torch." + "save("
     for name in ("shot_classifier_lstm.py", "shot_classifier_clip.py"):
         src = (_BACKEND / "analysis" / name).read_text(encoding="utf-8")
-        assert "torch.load(" not in src
-        assert "torch.save(" not in src
+        assert unsafe_load not in src
+        assert unsafe_save not in src
         assert "load_state_dict_npz" in src
         assert "save_state_dict_npz" in src
 
