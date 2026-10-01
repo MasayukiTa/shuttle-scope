@@ -277,6 +277,25 @@ positive control:
 なお、現在のcoturnはloopback bindであり、インターネット側から3478を公開した状態のend-to-end検証ではない。
 外部公開する場合はルータ/NAT/firewall経路を含めて同じverifierを外部ノードから再実行する。
 
+### 2026-10-01 production host 再検証
+
+9/30と同じproduction host / 同じ実coturnを再度検証した。設定やbinaryの変化で
+hardeningが退行していないことの確認であり、対照用coturnではない。
+
+- coturn 4.6.1 / `systemctl is-active coturn = active`
+- UDP/TCP 3478は `127.0.0.1` / `::1` のloopback bind
+- `/etc/turnserver.conf` SHA-256は引き続き `5ff8b9397d92cb053ca83f0adb4c0489d546e8c2f4f608bcaa9eced1422d4ef0`
+- active `denied-peer-ip=` 37本
+- 認証なしAllocateは401、TCP relayは442
+- RFC1918 / broadcast / TURN selfへのCreatePermission・ChannelBindは拒否
+- IPv4-mapped / compatible / 6to4 / NAT64 / TeredoはIPv6 relay family 440で明示拒否
+- positive controlとして `1.1.1.1:53` へ `example.com` DNS queryをrelayし、
+  `dns_answers=2`, `response_bytes=61` を受信
+- `verify_turn_hardening.py` 最終exit 0
+
+したがってACL・短命credential・positive relayの両立は10/1時点でも再現している。
+ただしloopback bindのため、ルータ/NAT/firewallを含む外部公開TURN endpointの
+end-to-end検証ではない点は9/30記録から変わらない。
 ## 未検証 (正直に残す)
 
 - **本番ホスト上の実coturn検証は完了。** ただし現在はloopback bind。
