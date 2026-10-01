@@ -25,7 +25,6 @@ from fastapi.responses import StreamingResponse
 from backend.db.database import get_db
 from backend.db.models import Recording
 from backend.services.recording_lifecycle import lock_match_for_recording, next_recording_branch_no
-from backend.utils.safe_path import safe_path
 from backend.utils.auth import get_auth, require_match_access_or_404
 
 router = APIRouter()
@@ -151,8 +150,12 @@ def _recording_file_path(recording: Recording) -> Path:
     if raw.startswith("server://"):
         # import at request time to avoid router import cycles.
         from backend.routers.uploads import UPLOAD_DIR
-        rest = raw[len("server://"):]
-        return safe_path(UPLOAD_DIR, rest)
+        from backend.utils.server_video_ref import resolve_server_video_path
+        try:
+            _ref, path = resolve_server_video_path(Path(UPLOAD_DIR), raw)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail="invalid server video reference") from exc
+        return path
     if raw.startswith("localfile:///"):
         from backend.utils.path_jail import normalize_match_local_path, assert_allowed_video_path
         candidate = normalize_match_local_path(raw)
@@ -195,9 +198,15 @@ def stream_recording(
     if (rec.video_local_path or "").startswith("server://"):
         from backend.routers.uploads import UPLOAD_DIR
         from backend.services.video_variants import playback_variant_file
-        _rest = (rec.video_local_path or "")[len("server://"):]
-        _uid = _rest.rsplit(".", 1)[0] if "." in _rest else _rest
-        _play = playback_variant_file(Path(UPLOAD_DIR), _uid)
+        from backend.utils.server_video_ref import parse_server_video_ref
+        try:
+            _ref = parse_server_video_ref(rec.video_local_path or "")
+        except ValueError:
+            _ref = None
+        _play = (
+            playback_variant_file(Path(UPLOAD_DIR), _ref.upload_id)
+            if _ref is not None else None
+        )
         if _play is not None:
             file = _play
 

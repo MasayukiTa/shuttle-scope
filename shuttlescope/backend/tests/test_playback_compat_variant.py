@@ -243,6 +243,23 @@ class TestMatchStreamServesPlayableCopy:
         assert r.status_code == 200, r.text
         assert r.content == PLAY_BYTES
 
+    def test_malformed_server_ref_never_reaches_filesystem(self, db_session, upload_dir):
+        outside = upload_dir.parent / "outside.mp4"
+        outside.write_bytes(b"secret")
+        m = _make_match(
+            db_session,
+            video_local_path="server://../outside.mp4",
+            video_token=TOKEN,
+        )
+        try:
+            r = _client(db_session).get(
+                f"/api/v1/uploads/video/by_match/{m.id}/stream?token={TOKEN}"
+            )
+        finally:
+            app.dependency_overrides.clear()
+        assert r.status_code == 404
+        assert r.content != b"secret"
+
 
 class TestRecordingStreamServesPlayableCopy:
     """二視点の 2 本目は Recording 枝番に載る。"""

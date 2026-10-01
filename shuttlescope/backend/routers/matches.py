@@ -5,6 +5,7 @@ import re
 import unicodedata
 import uuid
 from datetime import date as _date
+from pathlib import Path
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, Request
 from pydantic import BaseModel, Field
@@ -437,8 +438,6 @@ def _compute_available_qualities(m: Match) -> list:
     vlp = (m.video_local_path or "")
     if not vlp.startswith("server://"):
         return [{"quality": "source", "height": 0, "ready": bool(vlp)}]
-    rest = vlp[len("server://"):]
-    upload_id = rest.rsplit(".", 1)[0] if "." in rest else rest
     try:
         from backend.services.video_variants import (
             decide_playback,
@@ -446,9 +445,10 @@ def _compute_available_qualities(m: Match) -> list:
             probe_source,
         )
         from backend.routers.uploads import UPLOAD_DIR
-        from backend.utils.safe_path import safe_path
+        from backend.utils.server_video_ref import resolve_server_video_path
 
-        src = safe_path(UPLOAD_DIR, rest)
+        server_ref, src = resolve_server_video_path(Path(UPLOAD_DIR), vlp)
+        upload_id = server_ref.upload_id
         h = 0
         playback_h = 0
         if src is not None and src.exists():

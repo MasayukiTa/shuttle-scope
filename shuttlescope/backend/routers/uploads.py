@@ -39,6 +39,7 @@ from backend.db.database import get_db
 from backend.db.models import Match, SharedSession, SessionParticipant, UploadSession
 from backend.utils.auth import AuthCtx, get_auth
 from backend.utils.safe_path import safe_path
+from backend.utils.server_video_ref import resolve_server_video_path
 
 
 router = APIRouter(prefix="/v1/uploads", tags=["uploads"])
@@ -1057,12 +1058,19 @@ def stream_video_for_match(
     vlp = m.video_local_path or ""
     file: Optional[Path] = None
     if vlp.startswith("server://"):
-        # server://{upload_id}{ext} → UPLOAD_DIR 配下に解決
-        rest = vlp[len("server://"):]
+        # Re-parse the DB value as UUID + allowlisted extension and rebuild the
+        # filename before touching the filesystem. A compromised/stale DB value
+        # is therefore never used as a path input.
+        try:
+            server_ref, source_path = resolve_server_video_path(Path(UPLOAD_DIR), vlp)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=404,
+                detail="動画ファイル参照が不正です",
+            ) from exc
+
         # quality 指定があり、対応 variant が存在すれば variant ファイルを返す。
         # 未指定 / "source" / variant 不在 → source ファイルを返す。
-        # quality は service の variant_specs キーのみ許可 (= 任意文字列でファイル
-        # 名走査されないように厳格に validate)。
         if quality:
             from backend.services.video_variants import (
                 PLAYBACK_QUALITY,
@@ -1073,15 +1081,12 @@ def stream_video_for_match(
             if q not in ("source", "src", ""):
                 if q not in variant_specs() and q != PLAYBACK_QUALITY:
                     raise HTTPException(status_code=400, detail=f"unknown quality: {q}")
-                upload_id = rest.rsplit(".", 1)[0] if "." in rest else rest
-                # upload_id は UUID (uuid.uuid4) のはずだが、DB 由来文字列のため
-                # path traversal セーフのため安全側で jail する。defensive 二重チェック。
-                if "/" in upload_id or "\\" in upload_id or ".." in upload_id:
-                    raise HTTPException(status_code=400, detail="不正な upload_id 形式")
-                vpath = variant_path(UPLOAD_DIR, upload_id, q)
-                # safe_path で UPLOAD_DIR/variants/ 配下に jail 済かを resolve 後に検証
+                vpath = variant_path(UPLOAD_DIR, server_ref.upload_id, q)
                 try:
-                    vpath_safe = safe_path(UPLOAD_DIR, str(vpath.relative_to(Path(UPLOAD_DIR).resolve())))
+                    vpath_safe = safe_path(
+                        UPLOAD_DIR,
+                        str(vpath.relative_to(Path(UPLOAD_DIR).resolve())),
+                    )
                 except (ValueError, HTTPException):
                     vpath_safe = None
                 if vpath_safe is not None and vpath_safe.exists() and vpath_safe.stat().st_size > 0:
@@ -1094,16 +1099,10 @@ def stream_video_for_match(
                         detail="再生互換版を変換中です",
                     )
         if file is None and (quality or "").strip().lower() not in ("source", "src"):
-            # 画質を明示されていない (または要求した variant が無い) とき:
-            # source がブラウザで再生できない codec (iPhone の HEVC など) なら、
-            # 生成済みの再生互換版 (H.264) に差し替える。明示の "source" だけは
-            # 本当の元ファイルを返す。再生版が未完成の間は source を返す
-            # (= 変換が終わるまでは映らない環境がある)。
             from backend.services.video_variants import playback_variant_file
-            _uid = rest.rsplit(".", 1)[0] if "." in rest else rest
-            file = playback_variant_file(Path(UPLOAD_DIR), _uid)
+            file = playback_variant_file(Path(UPLOAD_DIR), server_ref.upload_id)
         if file is None:
-            file = safe_path(UPLOAD_DIR, rest)
+            file = source_path
     elif vlp.startswith("localfile:///"):
         # 24h 経過アーカイブ移動後の絶対パス。path_jail で
         # ss_live_archive_root / ss_video_extra_roots 内であることを確認。

@@ -11,6 +11,7 @@ import logging
 import os
 import socket
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Optional
 
 from sqlalchemy.orm import Session
@@ -404,7 +405,7 @@ def _run_video_variant_job(db: Session, match_id: int) -> dict:
     from backend.db.models import Match, Recording
     from backend.services.video_variants import generate_all_for_source
     from backend.routers.uploads import UPLOAD_DIR
-    from backend.utils.safe_path import safe_path
+    from backend.utils.server_video_ref import resolve_server_video_path
 
     m = db.get(Match, match_id)
     if m is None:
@@ -417,15 +418,16 @@ def _run_video_variant_job(db: Session, match_id: int) -> dict:
         if not vlp.startswith("server://"):
             out[label] = {"skipped": "video_local_path not server://"}
             return
-        rest = vlp[len("server://"):]
-        # upload_id は server://{upload_id}{ext} の {upload_id} 部分。拡張子を除いた basename。
-        upload_id = rest.rsplit(".", 1)[0] if "." in rest else rest
+        try:
+            server_ref, src = resolve_server_video_path(Path(UPLOAD_DIR), vlp)
+        except ValueError as exc:
+            raise RuntimeError("invalid server video reference") from exc
+        upload_id = server_ref.upload_id
         if upload_id in done:
             return
         done.add(upload_id)
-        src = safe_path(UPLOAD_DIR, rest)
-        if src is None or not src.exists():
-            raise RuntimeError(f"source file missing: {rest}")
+        if not src.exists():
+            raise RuntimeError(f"source file missing: {server_ref.filename}")
         out[label] = generate_all_for_source(src, UPLOAD_DIR, upload_id)
 
     _run(m.video_local_path or "", "variants")

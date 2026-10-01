@@ -162,15 +162,17 @@ def normalize_match_local_path(video_local_path: Optional[str]) -> Optional[Path
     if raw.startswith(("http://", "https://")):
         return None
     if raw.startswith("server://"):
-        # サーバ保管動画: UPLOAD_DIR (./videos) 配下の {filename} を返す。
-        # CV パイプライン (cv2.VideoCapture) や ffprobe 等が直接開けるようにする。
-        rest = raw[len("server://"):]
-        # path traversal 防御: 区切り文字を含まないファイル名のみ許容
-        if "/" in rest or "\\" in rest or ".." in rest:
+        # server:// is an internal UUID reference, not a generic path. Rebuild
+        # from parsed UUID + allowlisted extension before filesystem use.
+        from backend.utils.server_video_ref import resolve_server_video_path
+        try:
+            _ref, path = resolve_server_video_path(
+                Path(os.path.abspath("./videos")),
+                raw,
+            )
+        except ValueError:
             return None
-        # UPLOAD_DIR は uploads.py と同じ "./videos" を相対解決
-        upload_dir = Path(os.path.abspath("./videos"))
-        return upload_dir / rest
+        return path
     if raw.startswith("localfile:///"):
         raw = raw[len("localfile:///"):]
     return Path(raw)
