@@ -296,6 +296,26 @@ hardeningが退行していないことの確認であり、対照用coturnで�
 したがってACL・短命credential・positive relayの両立は10/1時点でも再現している。
 ただしloopback bindのため、ルータ/NAT/firewallを含む外部公開TURN endpointの
 end-to-end検証ではない点は9/30記録から変わらない。
+### 2026-10-01 古いproduction coturnを停止
+
+10/1再検証直後にアプリ設定も確認した。
+
+- `video_transport=webrtc`
+- `turn_enabled=false`
+- `turn_url` / `turn_static_auth_secret` / static username/credential は全て未設定
+- Ubuntu 26.04 apt の installed/candidate はともに coturn `4.6.1-2build2`
+- upstream latest は4.18.0で、4.17.0未満に既知のrelay resource exhaustion脆弱性が残る
+
+この状態では古いcoturnを同居hostで常駐させる便益がないため、package/configは保持したまま
+`systemctl disable --now coturn` を実行した。
+
+- 実行前: active / enabled、3478 TCP+UDP loopback listenerあり
+- 実行後: inactive / disabled、3478/5349 listenerなし
+- ShuttleScope backend `/api/health` は200のまま
+
+将来TURNを有効化するときは、この4.6.1 serviceを再公開するのではなく、隔離TURN nodeに
+current supported coturnを構築してから外部経路を含めて再検証する。
+
 ## 未検証 (正直に残す)
 
 - **本番ホスト上の実coturn検証は完了。** ただし現在はloopback bind。
@@ -304,10 +324,13 @@ end-to-end検証ではない点は9/30記録から変わらない。
   到達可能かは未確認
 - 帯域の踏み倒し (credential を拾われて中継に使われる) は `denied-peer-ip` では
   防げない。短命 credential と quota で対処する
-- coturn の既知 CVE に対する最低バージョンの精査は未実施。
-  検証に使ったのは **coturn 4.6.2** (Alpine 3.20)。
-  なお codex は「4.8.x / 4.13.0 / 4.15 / 4.17.2」といった版数を挙げたが、
-  coturn の実在バージョンは 4.5〜4.7 系であり、**この版数指定は採用しない**
+- coturn の最低バージョンは2026-10-01に再精査した。
+  upstream latest は **4.18.0**。少なくとも **4.17.0 未満は採用しない**。
+  理由は CVE-2026-73215（認証済みクライアントによる EVEN-PORT relay port pool 枯渇DoS）が
+  4.17.0 で修正されているため。加えて CVE-2026-68554 は4.15.0で修正されている。
+  Ubuntu 26.04 の apt 候補は現時点でも4.6.1-2build2のため、distro packageを
+  そのままpublic TURNに使わない。新規公開時は隔離ノード上でupstream-supported
+  4.17.0以上、原則current stableを使い、upgrade後に本verifierを再実行する。
 - 事前認証 (認証前に処理されるパケットの解析) の攻撃面は未評価
 
 ## この検証で守れないもの (codex の指摘。同意する)
