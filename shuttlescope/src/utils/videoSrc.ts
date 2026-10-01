@@ -51,6 +51,32 @@ export function getVideoSrc(match?: {
  * has_video_local が False でも token があれば試行する (= サーバに動画ファイル
  * があれば再生、無ければ <video onError> で 404 を可視化)。
  */
+export type MobileVideoQuality = 'source' | 'play' | 'uhd' | 'fhd' | 'hd'
+
+export type MobileQualityOption = {
+  quality: MobileVideoQuality
+  height: number
+  ready: boolean
+}
+
+export function chooseMobileVideoQuality(
+  options: MobileQualityOption[],
+  requested: MobileVideoQuality,
+): MobileVideoQuality {
+  const requestedOption = options.find((q) => q.quality === requested)
+  if (requestedOption?.ready) return requested
+
+  const play = options.find((q) => q.quality === 'play' && q.ready)
+  if (play) return 'play'
+
+  const readyVariant = options.find((q) => q.quality !== 'source' && q.ready)
+  if (readyVariant) return readyVariant.quality
+
+  const source = options.find((q) => q.quality === 'source' && q.ready)
+  return source?.quality ?? 'source'
+}
+
+
 export function getMobileVideoSrc(
   match?: {
     id?: number
@@ -58,13 +84,15 @@ export function getMobileVideoSrc(
     video_url?: string | null
     has_video_local?: boolean | null
   } | null,
-  quality?: 'source' | 'uhd' | 'fhd' | 'hd' | null,
+  quality?: MobileVideoQuality | null,
 ): string {
   if (!match) return ''
   if (match.id && match.video_token) {
     const base = `/api/v1/uploads/video/by_match/${match.id}/stream?token=${encodeURIComponent(match.video_token)}`
-    // quality 未指定 / "source" は base のまま (backend が source ファイルを返す)
-    if (quality && quality !== 'source') {
+    // undefined/null = backend auto selection. Once the UI names a quality,
+    // including "source", encode it explicitly so the chip label matches
+    // the bytes served.
+    if (quality) {
       return `${base}&quality=${encodeURIComponent(quality)}`
     }
     return base

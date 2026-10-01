@@ -441,18 +441,29 @@ def _compute_available_qualities(m: Match) -> list:
     upload_id = rest.rsplit(".", 1)[0] if "." in rest else rest
     try:
         from backend.services.video_variants import (
-            list_available_qualities, probe_source,
+            decide_playback,
+            list_available_qualities,
+            probe_source,
         )
         from backend.routers.uploads import UPLOAD_DIR
         from backend.utils.safe_path import safe_path
 
         src = safe_path(UPLOAD_DIR, rest)
         h = 0
+        playback_h = 0
         if src is not None and src.exists():
             pr = probe_source(src)
             if pr:
                 h = pr.height
-        return list_available_qualities(UPLOAD_DIR, upload_id, h)
+                playback_plan = decide_playback(pr)
+                if playback_plan is not None:
+                    playback_h = playback_plan.target_h
+        return list_available_qualities(
+            UPLOAD_DIR,
+            upload_id,
+            h,
+            playback_height=playback_h or None,
+        )
     except Exception:
         # 失敗時は source のみ
         return [{"quality": "source", "height": 0, "ready": True}]

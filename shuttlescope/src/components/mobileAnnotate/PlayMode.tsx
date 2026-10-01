@@ -923,6 +923,8 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
               const label =
                 q.quality === 'source'
                   ? (q.height > 0 ? `${q.height}p` : 'src')
+                  : q.quality === 'play'
+                  ? 'H.264'
                   : q.quality === 'uhd'
                   ? '4K'
                   : q.quality === 'fhd'
@@ -930,6 +932,9 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                   : q.quality === 'hd'
                   ? '720p'
                   : String(q.quality)
+              const visibleLabel = q.ready
+                ? label
+                : t('auto.PlayMode.quality_chip_preparing', { label })
               const isCurrent = (currentQuality || 'source') === q.quality
               return (
                 <button
@@ -941,7 +946,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                   title={q.ready ? t('auto.PlayMode.quality_chip', { label }) : t('auto.PlayMode.quality_chip_preparing', { label })}
                   style={!q.ready ? { opacity: 0.5 } : undefined}
                 >
-                  {label}
+                  {visibleLabel}
                 </button>
               )
             })}

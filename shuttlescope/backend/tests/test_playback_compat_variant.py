@@ -32,6 +32,7 @@ from backend.services.video_variants import (
     decide_playback,
     decide_variants,
     generate_all_for_source,
+    list_available_qualities,
     playback_variant_file,
 )
 
@@ -173,7 +174,12 @@ def _make_match(db_session, **extra) -> Match:
 
 def _client(db_session) -> TestClient:
     app.dependency_overrides[get_db] = lambda: db_session
-    return TestClient(app, raise_server_exceptions=False)
+    # TrustedHostMiddleware rejects TestClient's default "testserver" host.
+    return TestClient(
+        app,
+        base_url="http://localhost",
+        raise_server_exceptions=False,
+    )
 
 
 class TestMatchStreamServesPlayableCopy:
@@ -302,3 +308,89 @@ class TestVariantJobCoversRecordings:
 
         assert called == [UID, uid2, uid3]
         assert set(out) == {"variants", "recording_1", "recording_3"}
+
+
+class TestPlaybackQualityState:
+    def test_play_quality_is_visible_while_preparing(self, tmp_path):
+        options = list_available_qualities(
+            tmp_path, "abc", 720, playback_height=720,
+        )
+        play = next(q for q in options if q["quality"] == "play")
+        assert play == {"quality": "play", "height": 720, "ready": False}
+
+        variants = tmp_path / "variants"
+        variants.mkdir(exist_ok=True)
+        (variants / "abc_play.mp4").write_bytes(b"x" * 2048)
+        options = list_available_qualities(
+            tmp_path, "abc", 720, playback_height=720,
+        )
+        play = next(q for q in options if q["quality"] == "play")
+        assert play["ready"] is True
+
+    def test_safe_source_does_not_advertise_play(self, tmp_path):
+        options = list_available_qualities(tmp_path, "abc", 720)
+        assert all(q["quality"] != "play" for q in options)
+
+
+class TestVariantSuccessorIsCheap:
+    def test_existing_final_variant_is_not_reencoded(self, monkeypatch, tmp_path):
+        src = tmp_path / "abc.mov"
+        src.write_bytes(b"source" * 400)
+        variants = tmp_path / "variants"
+        variants.mkdir()
+        (variants / "abc_play.mp4").write_bytes(b"ready" * 300)
+
+        monkeypatch.setattr(vv, "probe_source", lambda _p: _probe("hevc", 720))
+
+        def must_not_run(*_args, **_kwargs):
+            raise AssertionError("ready variant was re-encoded")
+
+        monkeypatch.setattr(vv, "generate_variant", must_not_run)
+        out = generate_all_for_source(src, tmp_path, "abc")
+        assert out["play"] == "skip already ready"
+
+
+class TestMatchAvailableQualityState:
+    def test_match_exposes_pending_then_ready_play(
+        self, db_session, upload_dir, monkeypatch
+    ):
+        from backend.routers.matches import _compute_available_qualities
+
+        monkeypatch.setattr(vv, "probe_source", lambda _p: _probe("hevc", 720))
+        m = _make_match(db_session, video_local_path=f"server://{UID}.mov")
+
+        options = _compute_available_qualities(m)
+        play = next(q for q in options if q["quality"] == "play")
+        assert play["ready"] is False
+
+        _add_play(upload_dir)
+        options = _compute_available_qualities(m)
+        play = next(q for q in options if q["quality"] == "play")
+        assert play["ready"] is True
+
+
+class TestExplicitPlaybackQuality:
+    def _match(self, db_session):
+        return _make_match(db_session, video_local_path=f"server://{UID}.mov", video_token=TOKEN)
+
+    def test_explicit_play_is_409_while_preparing(self, db_session, upload_dir):
+        m = self._match(db_session)
+        try:
+            r = _client(db_session).get(
+                f"/api/v1/uploads/video/by_match/{m.id}/stream?token={TOKEN}&quality=play"
+            )
+        finally:
+            app.dependency_overrides.clear()
+        assert r.status_code == 409
+
+    def test_explicit_play_serves_h264_copy(self, db_session, upload_dir):
+        _add_play(upload_dir)
+        m = self._match(db_session)
+        try:
+            r = _client(db_session).get(
+                f"/api/v1/uploads/video/by_match/{m.id}/stream?token={TOKEN}&quality=play"
+            )
+        finally:
+            app.dependency_overrides.clear()
+        assert r.status_code == 200
+        assert r.content == PLAY_BYTES

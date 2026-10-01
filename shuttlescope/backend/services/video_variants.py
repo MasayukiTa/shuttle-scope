@@ -315,6 +315,8 @@ def list_available_qualities(
     upload_dir: Path,
     upload_id: str,
     source_height: Optional[int],
+    *,
+    playback_height: Optional[int] = None,
 ) -> List[Dict[str, object]]:
     """既存 variant + source の利用可能 quality リストを返す。
 
@@ -330,6 +332,23 @@ def list_available_qualities(
     out: List[Dict[str, object]] = []
     src_h = int(source_height) if source_height else 0
     out.append({"quality": "source", "height": src_h, "ready": True})
+
+    # HEVC/ProRes 等で H.264 compatibility copy が必要な場合は、完成前から
+    # ready=False で返す。UI はこれを「準備中」と表示できる。
+    play_h = int(playback_height) if playback_height else 0
+    if play_h > 0:
+        play_path = variant_path(upload_dir, upload_id, PLAYBACK_QUALITY)
+        play_ready = False
+        try:
+            play_ready = play_path.exists() and play_path.stat().st_size > 0
+        except OSError:
+            play_ready = False
+        out.append({
+            "quality": PLAYBACK_QUALITY,
+            "height": play_h,
+            "ready": play_ready,
+        })
+
     for q, target_h in _VARIANT_SPECS.items():
         if src_h and src_h <= target_h:
             # upscale 対象外: UI からも消す
@@ -475,6 +494,20 @@ def generate_all_for_source(
     }
     for plan in plans:
         target = variant_path(upload_dir, upload_id, plan.quality)
+
+        # upload_id は source ごとに不変。final variant は成功後だけ atomic
+        # rename されるので、既存の非空 final は安全に再利用できる。
+        try:
+            if target.exists() and target.stat().st_size >= 1024:
+                results[plan.quality] = "skip already ready"
+                logger.info(
+                    "[video_variants] skip ready quality=%s target=%s",
+                    plan.quality, target.name,
+                )
+                continue
+        except OSError:
+            pass
+
         crf = crf_by_q.get(plan.quality, _VARIANT_CRF_FHD)
         ok, msg = generate_variant(source, target, plan.target_h, crf)
         results[plan.quality] = ("ok " if ok else "fail ") + msg

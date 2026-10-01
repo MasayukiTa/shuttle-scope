@@ -26,13 +26,18 @@ import { MIcon } from '@/components/common/MIcon'
 import { apiGet, apiPost } from '@/api/client'
 import { useAutoTutorial } from '@/components/tutorial/useTutorial'
 import { AdviceStrip } from '@/components/common/AdviceStrip'
-import { getMobileVideoSrc } from '@/utils/videoSrc'
+import {
+  chooseMobileVideoQuality,
+  getMobileVideoSrc,
+  type MobileQualityOption,
+  type MobileVideoQuality,
+} from '@/utils/videoSrc'
 import { PlayMode } from '@/components/mobileAnnotate/PlayMode'
 import { errorMessage } from '@/utils/errors'
 
 // MobileAnnotate 用の最小型 (backend レスポンスの該当フィールドのみ)
 interface MatchLite {
-  available_qualities?: Array<{ quality: string; height: number; ready: boolean }>
+  available_qualities?: MobileQualityOption[]
   // getMobileVideoSrc が読む項目。インデックスシグネチャだけだと unknown に
   // なって渡せないので、使う分は明示しておく。
   id?: number
@@ -222,7 +227,7 @@ export function MobileAnnotatePage() {
   const [screen, setScreen] = useState<ScreenMode>('play')
   const [pausedAtSec, setPausedAtSec] = useState<number>(0)
   // 配信画質: モバイル既定は 'hd' (720p) → 帯域節約。fhd/source へユーザが任意切替可。
-  const [videoQuality, setVideoQuality] = useState<'source' | 'uhd' | 'fhd' | 'hd'>('hd')
+  const [videoQuality, setVideoQuality] = useState<MobileVideoQuality>('hd')
   const videoElRef = useRef<HTMLVideoElement | null>(null)
   // calib 編集中フラグ: PlayMode 内 state だがこちらの overlay/chip も隠したいので
   // PlayMode 側から callback で同期する
@@ -294,17 +299,32 @@ export function MobileAnnotatePage() {
   }, [cvCandidatesQuery.data, pausedAtSec])
   const match = matchQuery.data?.data
   // available_qualities は backend が `[{quality, height, ready}, ...]` で返す
-  const availableQualities: { quality: string; height: number; ready: boolean }[] = useMemo(
+  const availableQualities: MobileQualityOption[] = useMemo(
     () => match?.available_qualities || [{ quality: 'source', height: 0, ready: true }],
     [match?.available_qualities],
   )
 
-  const effectiveQuality = useMemo<'source' | 'uhd' | 'fhd' | 'hd'>(() => {
-    const found = availableQualities.find((q) => q.quality === videoQuality && q.ready)
-    if (found) return videoQuality
-    const firstReady = availableQualities.find((q) => q.ready)
-    return (firstReady?.quality || 'source') as 'source' | 'uhd' | 'fhd' | 'hd'
-  }, [availableQualities, videoQuality])
+  // Keep the requested quality separate from the temporary fallback. If the
+  // default hd is unavailable while an HEVC compatibility copy is preparing,
+  // effectiveQuality may be source now and play later. Only an explicit user
+  // choice updates videoQuality, so choosing source remains stable.
+  const effectiveQuality = useMemo(
+    () => chooseMobileVideoQuality(availableQualities, videoQuality),
+    [availableQualities, videoQuality],
+  )
+
+  const playbackPreparing = availableQualities.some(
+    (q) => q.quality === 'play' && !q.ready,
+  )
+  const refetchMatch = matchQuery.refetch
+  useEffect(() => {
+    if (!playbackPreparing) return
+    const id = window.setInterval(() => {
+      void refetchMatch()
+    }, 3000)
+    return () => window.clearInterval(id)
+  }, [playbackPreparing, refetchMatch])
+
   const videoSrc = getMobileVideoSrc(match, effectiveQuality)
 
   // セット一覧 + 既存ラリー取得 (Pass 1 用)
@@ -542,7 +562,7 @@ export function MobileAnnotatePage() {
               videoElRef={(el) => { videoElRef.current = el }}
               qualities={availableQualities}
               currentQuality={effectiveQuality}
-              onQualityChange={(q) => setVideoQuality(q as 'source' | 'uhd' | 'fhd' | 'hd')}
+              onQualityChange={(q) => setVideoQuality(q as MobileVideoQuality)}
               cvCandidateTimestamps={cvCandidateTimestamps}
               resumeFromSec={resumeFromSec}
               onRetryVideo={() => { void matchQuery.refetch() }}

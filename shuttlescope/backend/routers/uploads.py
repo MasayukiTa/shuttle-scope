@@ -1064,10 +1064,14 @@ def stream_video_for_match(
         # quality は service の variant_specs キーのみ許可 (= 任意文字列でファイル
         # 名走査されないように厳格に validate)。
         if quality:
-            from backend.services.video_variants import variant_specs, variant_path
+            from backend.services.video_variants import (
+                PLAYBACK_QUALITY,
+                variant_specs,
+                variant_path,
+            )
             q = quality.strip().lower()
             if q not in ("source", "src", ""):
-                if q not in variant_specs():
+                if q not in variant_specs() and q != PLAYBACK_QUALITY:
                     raise HTTPException(status_code=400, detail=f"unknown quality: {q}")
                 upload_id = rest.rsplit(".", 1)[0] if "." in rest else rest
                 # upload_id は UUID (uuid.uuid4) のはずだが、DB 由来文字列のため
@@ -1082,6 +1086,13 @@ def stream_video_for_match(
                     vpath_safe = None
                 if vpath_safe is not None and vpath_safe.exists() and vpath_safe.stat().st_size > 0:
                     file = vpath_safe
+                elif q == PLAYBACK_QUALITY:
+                    # Explicit H.264 means exactly that compatibility copy.
+                    # Never return an HEVC source under a "play" URL.
+                    raise HTTPException(
+                        status_code=409,
+                        detail="再生互換版を変換中です",
+                    )
         if file is None and (quality or "").strip().lower() not in ("source", "src"):
             # 画質を明示されていない (または要求した variant が無い) とき:
             # source がブラウザで再生できない codec (iPhone の HEVC など) なら、
