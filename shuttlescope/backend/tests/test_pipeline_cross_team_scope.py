@@ -41,6 +41,15 @@ def _headers(*, role: str, user_id: int, team_id: int, team_name: str) -> dict[s
     }
 
 
+def _client() -> TestClient:
+    # TrustedHostMiddleware rejects TestClient's default host (testserver).
+    return TestClient(
+        app,
+        base_url="http://localhost",
+        raise_server_exceptions=False,
+    )
+
+
 def _seed_two_teams(db):
     team_a = Team(id=8101, display_id="IDOR-A", name="IDOR Team A")
     team_b = Team(id=8102, display_id="IDOR-B", name="IDOR Team B")
@@ -155,7 +164,7 @@ def test_pipeline_job_list_is_team_scoped_for_analyst_and_coach(db_session):
     seeded = _seed_two_teams(db_session)
     app.dependency_overrides[get_db] = lambda: db_session
     try:
-        client = TestClient(app, raise_server_exceptions=False)
+        client = _client()
         for role, uid in (("analyst", 8301), ("coach", 8302)):
             response = client.get(
                 "/api/v1/pipeline/jobs",
@@ -178,7 +187,7 @@ def test_pipeline_job_detail_hides_cross_team_job_from_analyst_and_coach(db_sess
     seeded = _seed_two_teams(db_session)
     app.dependency_overrides[get_db] = lambda: db_session
     try:
-        client = TestClient(app, raise_server_exceptions=False)
+        client = _client()
         for role, uid in (("analyst", 8301), ("coach", 8302)):
             response = client.get(
                 f"/api/v1/pipeline/jobs/{seeded['foreign_job'].id}",
@@ -201,7 +210,7 @@ def test_pipeline_run_cannot_enqueue_cross_team_match(db_session):
     app.dependency_overrides[get_db] = lambda: db_session
     try:
         before = db_session.query(AnalysisJob).count()
-        client = TestClient(app, raise_server_exceptions=False)
+        client = _client()
 
         response = client.post(
             "/api/v1/pipeline/run",
@@ -234,7 +243,7 @@ def test_pipeline_run_allows_own_team_match(db_session):
     seeded = _seed_two_teams(db_session)
     app.dependency_overrides[get_db] = lambda: db_session
     try:
-        client = TestClient(app, raise_server_exceptions=False)
+        client = _client()
         response = client.post(
             "/api/v1/pipeline/run",
             json={"match_id": seeded["own_match"].id, "job_type": "full_pipeline"},
