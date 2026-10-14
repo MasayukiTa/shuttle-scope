@@ -43,7 +43,11 @@ export function useDeviceHeartbeat(
         // 404 / 410 は server 側で削除された signal とみなして onRemoved 通知 + ループ停止
         const e = err as { status?: number; message?: string }
         const status = e?.status
-        if ((status === 404 || status === 410) && !removedRef.current) {
+        // 401 (参加者トークン送信時のみ): バックエンドは列挙防止のため、削除済み参加者 /
+        // 終了済みセッションを 404/410 ではなく汎用 401 で返す。トークンを持たない
+        // 呼び出しの 401 は JWT 系の失敗なので removed 扱いにしない。
+        const revoked = status === 401 && !!participantToken
+        if ((status === 404 || status === 410 || revoked) && !removedRef.current) {
           removedRef.current = true
           if (timerRef.current) {
             clearInterval(timerRef.current)

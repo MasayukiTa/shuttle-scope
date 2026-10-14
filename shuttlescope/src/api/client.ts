@@ -243,6 +243,9 @@ function _withDefaultTimeout(
   }
 }
 
+// POST /sessions/{code}/devices/{pid}/heartbeat (参加者トークン認証)
+const PARTICIPANT_HEARTBEAT_RE = /\/sessions\/[^/?#]+\/devices\/[^/?#]+\/heartbeat(?:[?#]|$)/
+
 async function fetchWithAutoRefresh(input: string, init: RequestInit): Promise<Response> {
   const wrap = _withDefaultTimeout(input, init)
   let res: Response
@@ -265,6 +268,10 @@ async function fetchWithAutoRefresh(input: string, init: RequestInit): Promise<R
   // 「アプリのログインが切れた」ではない。素通ししないと、スマホでコードを
   // 打ち間違えただけでトークン更新が走り、失敗すればログアウトさせられる。
   if (input.includes('/join') || input.includes('/ws-ticket')) return res
+  // 参加者ハートビートも同様: 本文の participant_token で認証され、削除済み参加者 /
+  // 終了済みセッションは汎用 401 で返る。電話端末は JWT を持たないので、ここで
+  // refresh / 全体ログアウトに流してはならない (呼び出し側が removed として扱う)。
+  if (PARTICIPANT_HEARTBEAT_RE.test(input)) return res
   const refresh = await tryRefreshToken()
   if (refresh === 'invalid') {
     // refresh token も失効 = 完全失効 → 自動でログイン画面へ
