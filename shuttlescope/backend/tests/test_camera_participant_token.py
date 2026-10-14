@@ -895,7 +895,8 @@ def test_participant_ice_is_bound_to_active_session(monkeypatch):
 
         resp = _participant_ice(client, joined)
 
-    assert resp.status_code == 404, resp.text
+    # 終了済みセッションは「存在しない」と同じ 401 (有効な code の oracle にしない)
+    assert resp.status_code == 401, resp.text
 
 
 
