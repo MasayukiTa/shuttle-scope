@@ -566,9 +566,10 @@ def _run_batch(
                 for j, stroke in enumerate(strokes):
                     res = results[j] if j < len(results) else last
                     if res["confidence"] >= threshold and res["zone"]:
-                        # ROI拡張時は既存 land_zone を上書き（より広い範囲で再解析）
-                        if not stroke.land_zone or roi_widened:
+                        # ROI拡張時は CV 自身が書いた land_zone だけ上書きする（人の入力・出所不明の値は残す）
+                        if not stroke.land_zone or (roi_widened and stroke.land_zone_source == "cv"):
                             stroke.land_zone = res["zone"]
+                            stroke.land_zone_source = "cv"
                             updated += 1
 
                 db.commit()

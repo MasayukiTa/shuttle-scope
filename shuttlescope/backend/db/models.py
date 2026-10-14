@@ -587,6 +587,9 @@ class Stroke(Base):
     # Phase A: CV 元推定値 (override 後も保持してデータ品質計測)
     hit_zone_cv_original: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)
     land_zone: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)  # 同上
+    # land_zone の入力元: 'cv' = CV 自動適用が書いた値 / 'human' = 人が入力した値 /
+    # NULL = 不明 (本列の追加前の既存データ。値があれば人の入力として扱う)。
+    land_zone_source: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
 
     # 打球属性
     is_backhand: Mapped[bool] = mapped_column(Boolean, default=False)
