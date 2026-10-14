@@ -33,19 +33,34 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _require_match_team_scope(request: Request, db: Session, match_id: int) -> Match:
-    """match_id に対する team-scope 強制 + auth check.
+def _require_operator_role(request: Request) -> None:
+    """CV 候補 (不確実な CV 出力) は admin / analyst / coach 専用。
 
-    - 未認証 → 401
-    - admin → スルー
-    - coach/analyst → 自チームの match (owner/home/away に自チームがあれば OK) のみ
-    - player → 自分が出場している match のみ
-    無ければ 404 (列挙耐性)。Round 258 P1 fix のため明示。
+    player / demo / llm には読み書きとも開けない (CLAUDE.md: player に研究・CV 候補を
+    見せない)。出場試合の player を通す旧挙動では、自分の試合の cv_candidates /
+    rally_boundaries / review-queue が読めた。ミドルウェアの許可リストに頼らず
+    ルート自身で強制する (yolo.py の require_match_operator_scope と同じロール集合)。
     """
     from backend.utils.auth import get_auth as _ga
     ctx = _ga(request)
     if ctx.role is None:
         raise HTTPException(status_code=401, detail="認証が必要です")
+    if not (ctx.is_admin or ctx.is_analyst or ctx.is_coach):
+        raise HTTPException(status_code=403, detail="この操作の権限がありません")
+
+
+def _require_match_team_scope(request: Request, db: Session, match_id: int) -> Match:
+    """match_id に対する team-scope 強制 + auth check.
+
+    - 未認証 → 401
+    - player / demo / llm → 403 (CV 候補は admin/analyst/coach 専用)
+    - admin → スルー
+    - coach/analyst → 自チームの match (owner/home/away に自チームがあれば OK) のみ
+    無ければ 404 (列挙耐性)。Round 258 P1 fix のため明示。
+    """
+    _require_operator_role(request)
+    from backend.utils.auth import get_auth as _ga
+    ctx = _ga(request)
     match = db.get(Match, match_id)
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
@@ -78,6 +93,7 @@ def _require_match_team_scope(request: Request, db: Session, match_id: int) -> M
 
 def _require_rally_team_scope(request: Request, db: Session, rally_id: int) -> Rally:
     """rally_id に対する team-scope 強制 + auth check (rally → set → match で resolve)."""
+    _require_operator_role(request)  # ラリー存在の有無を player に漏らさない
     rally = db.get(Rally, rally_id)
     if not rally:
         raise HTTPException(status_code=404, detail="ラリーが見つかりません")
