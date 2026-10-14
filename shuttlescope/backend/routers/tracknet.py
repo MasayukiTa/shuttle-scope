@@ -16,6 +16,7 @@ import json
 from backend.db.database import get_db, SessionLocal
 from backend.db.models import Match, GameSet, Rally, Stroke, MatchCVArtifact
 from backend.tracknet.inference import get_inference
+from backend.utils.auth import require_match_operator_scope, require_match_scope_dep
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -100,7 +101,7 @@ class BatchJobStatus:
 # /api/tracknet/status — モデルステータス確認
 # ────────────────────────────────────────────────────────────────────
 
-@router.get("/tracknet/shuttle_track/{match_id}")
+@router.get("/tracknet/shuttle_track/{match_id}", dependencies=[Depends(require_match_scope_dep)])
 def get_shuttle_track(match_id: int, db: Session = Depends(get_db)):
     """TrackNet バッチで保存したシャトル軌跡アーティファクトを返す。
     フロントエンドの ShuttleTrackOverlay が参照する。
@@ -125,7 +126,7 @@ def get_shuttle_track(match_id: int, db: Session = Depends(get_db)):
     return {"success": True, "data": json.loads(artifact.data), "meta": meta}
 
 
-@router.get("/tracknet/resume_check/{match_id}")
+@router.get("/tracknet/resume_check/{match_id}", dependencies=[Depends(require_match_scope_dep)])
 def tracknet_resume_check(match_id: int, db: Session = Depends(get_db)):
     """TrackNet 再開ボタン表示用: ストロークに land_zone が 1 件以上あるか確認する。
     shuttle_track アーティファクトが存在しない旧バージョンのデータに対してもフォールバックとして機能する。
@@ -190,7 +191,7 @@ class BatchRequest(BaseModel):
     resume: bool = False                       # True: 解析済みラリーをスキップして途中再開
     prev_roi: Optional[RoiRectModel] = None   # 直前の ROI（ROI 拡張時に再処理強制）
 
-@router.post("/tracknet/batch/{match_id}")
+@router.post("/tracknet/batch/{match_id}", dependencies=[Depends(require_match_operator_scope)])
 def start_batch(
     match_id: int,
     body: BatchRequest,

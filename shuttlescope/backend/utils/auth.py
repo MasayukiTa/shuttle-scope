@@ -667,6 +667,47 @@ def require_match_access(
     return m
 
 
+def require_match_scope_dep(
+    match_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Match:
+    """path の match_id に対する team scope を **ハンドラ自身が** 強制する依存性 (読み取り用)。
+
+    `TeamScopeAccessControlMiddleware` の `_MATCH_ID_PATTERNS` は path 正規表現に
+    依存しており、path/正規表現の改名で守りが黙って消える。ルート側にも同じ検査を
+    置いて二重化する。判定は既存の `require_match_scope` に委譲する
+    (admin / 公開プール / owner 一致 / 自チーム選手登場 / player は出場試合のみ)。
+    検証済み demo read (`is_demo_read`) はミドルウェアと同じく所有境界のみ緩める。
+    """
+    m = db.get(Match, match_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    if is_demo_read(request):
+        return m
+    require_match_scope(request, m, db)
+    return m
+
+
+def require_match_operator_scope(
+    match_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Match:
+    """書き込み/計算/削除系ルート用: admin/analyst/coach のみ + match team scope。
+
+    realtime YOLO WS / カメラ operator と同じロール集合 (player / demo / llm は 403)。
+    """
+    ctx = get_auth(request)
+    if not (ctx.is_admin or ctx.is_analyst or ctx.is_coach):
+        raise HTTPException(status_code=403, detail="この操作の権限がありません")
+    m = db.get(Match, match_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    require_match_scope(request, m, db)
+    return m
+
+
 # ─── クエリパラメータ経由 ID の team 境界強制 ────────────────────────────────────
 # 解析系ルータ (analysis_*, reports, prediction, review, expert) は player_id /
 # match_id / rally_id / set_id を **クエリパラメータ** で受けるため、path ベースの

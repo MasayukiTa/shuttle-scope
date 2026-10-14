@@ -30,6 +30,7 @@ from backend.cv.reid import extract_embedding as _extract_reid_emb, MIN_APP_SIM 
 from backend.cv.identity_graph import track_identities as _ig_track_identities
 from backend.cv.court_adapter import CourtAdapter
 from backend.utils.error_detail import client_safe_error
+from backend.utils.auth import require_match_operator_scope, require_match_scope_dep
 
 logger = logging.getLogger(__name__)
 
@@ -167,7 +168,7 @@ def _load_device_settings(db: Session) -> tuple[int, str]:
     return cuda_idx, ov_device
 
 
-@router.post("/yolo/batch/{match_id}")
+@router.post("/yolo/batch/{match_id}", dependencies=[Depends(require_match_operator_scope)])
 def start_yolo_batch(
     match_id: int,
     body: YoloBatchRequest,
@@ -267,7 +268,7 @@ def yolo_batch_stop(job_id: str, request: Request, db: Session = Depends(get_db)
 
 # ─── 結果取得 ────────────────────────────────────────────────────────────────
 
-@router.get("/yolo/results/{match_id}")
+@router.get("/yolo/results/{match_id}", dependencies=[Depends(require_match_scope_dep)])
 def get_yolo_results(match_id: int, include_raw: bool = False, db: Session = Depends(get_db)):
     """試合の YOLO 検出結果を返す。
 
@@ -306,7 +307,7 @@ def get_yolo_results(match_id: int, include_raw: bool = False, db: Session = Dep
     return {"success": True, "data": result}
 
 
-@router.delete("/yolo/results/{match_id}")
+@router.delete("/yolo/results/{match_id}", dependencies=[Depends(require_match_operator_scope)])
 def delete_yolo_results(match_id: int, db: Session = Depends(get_db)):
     """試合の YOLO 検出結果（全アーティファクト）を削除する。
     途中まで保存された認識データを完全リセットし、0% から再実行できるようにする。
@@ -338,7 +339,7 @@ def delete_yolo_results(match_id: int, db: Session = Depends(get_db)):
     return {"success": True, "data": {"deleted": deleted}}
 
 
-@router.get("/yolo/results/{match_id}/frames")
+@router.get("/yolo/results/{match_id}/frames", dependencies=[Depends(require_match_scope_dep)])
 def get_yolo_frames(match_id: int, db: Session = Depends(get_db)):
     """フレーム別生データのみを返す（オーバーレイ表示用）"""
     artifact = (
@@ -358,7 +359,7 @@ def get_yolo_frames(match_id: int, db: Session = Depends(get_db)):
 
 # ─── TrackNet 統合アライメント ───────────────────────────────────────────────
 
-@router.post("/yolo/align/{match_id}")
+@router.post("/yolo/align/{match_id}", dependencies=[Depends(require_match_operator_scope)])
 def align_yolo_tracknet(match_id: int, db: Session = Depends(get_db)):
     """YOLO 検出と TrackNet シャトル軌跡をラリー単位でアライメントする。
 
@@ -460,7 +461,7 @@ def align_yolo_tracknet(match_id: int, db: Session = Depends(get_db)):
 
 # ─── アライメント結果取得 ─────────────────────────────────────────────────────
 
-@router.get("/yolo/alignment/{match_id}")
+@router.get("/yolo/alignment/{match_id}", dependencies=[Depends(require_match_scope_dep)])
 def get_alignment(match_id: int, db: Session = Depends(get_db)):
     artifact = (
         db.query(MatchCVArtifact)
@@ -1017,7 +1018,7 @@ class FrameDetectRequest(BaseModel):
     roi_rect: Optional[RoiRectModel] = None
 
 
-@router.post("/yolo/frame_detect/{match_id}")
+@router.post("/yolo/frame_detect/{match_id}", dependencies=[Depends(require_match_operator_scope)])
 def detect_single_frame(
     match_id: int,
     body: FrameDetectRequest,
@@ -1175,7 +1176,7 @@ class AssignAndTrackRequest(BaseModel):
     court_roi: Optional[RoiRectModel] = None
 
 
-@router.post("/yolo/assign_and_track/{match_id}")
+@router.post("/yolo/assign_and_track/{match_id}", dependencies=[Depends(require_match_operator_scope)])
 def assign_and_track(
     match_id: int,
     body: AssignAndTrackRequest,
@@ -1306,7 +1307,7 @@ def assign_and_track(
     }}
 
 
-@router.get("/yolo/identity_track/{match_id}")
+@router.get("/yolo/identity_track/{match_id}", dependencies=[Depends(require_match_scope_dep)])
 def get_identity_track(match_id: int, db: Session = Depends(get_db)):
     """保存済み選手識別トラックを返す。"""
     art = (
@@ -1325,7 +1326,7 @@ def get_identity_track(match_id: int, db: Session = Depends(get_db)):
 
 # ─── 選手移動距離統計 ────────────────────────────────────────────────────────
 
-@router.get("/yolo/movement_stats/{match_id}")
+@router.get("/yolo/movement_stats/{match_id}", dependencies=[Depends(require_match_scope_dep)])
 def get_movement_stats(match_id: int, db: Session = Depends(get_db)):
     """
     選手識別トラックから各選手のコート上移動距離・方向・速度を計算する。
@@ -1587,7 +1588,7 @@ def _track_identities(
 
 # ─── ダブルス CV 解析 ─────────────────────────────────────────────────────────
 
-@router.get("/yolo/doubles_analysis/{match_id}")
+@router.get("/yolo/doubles_analysis/{match_id}", dependencies=[Depends(require_match_scope_dep)])
 def yolo_doubles_analysis(match_id: int, db: Session = Depends(get_db)):
     """YOLO 検出を使ったダブルス・ポジション解析を返す。
 
