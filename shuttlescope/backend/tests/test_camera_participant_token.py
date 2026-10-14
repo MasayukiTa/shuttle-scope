@@ -366,6 +366,7 @@ def test_a_non_camera_participant_cannot_claim_the_device_role():
     with TestClient(app, base_url="http://localhost") as client:
         # device_type=pc → source_capability は "none" になる
         data = _join(client, code, device_type="pc", device_name="PC").json()["data"]
+        _approve(data["participant_id"])    # viewer も承認制 (operator が許可した端末)
         as_device = _ticket(client, code, data["participant_id"],
                             data["participant_token"], role="device")
         as_viewer = _ticket(client, code, data["participant_id"],
@@ -380,6 +381,7 @@ def test_blocked_participant_cannot_claim_the_viewer_role():
     _make_session(code)
     with TestClient(app, base_url="http://localhost") as client:
         data = _join(client, code).json()["data"]
+        _approve(data["participant_id"])    # 未承認の 403 ではなく blocked を検証する
         db = db_module.SessionLocal()
         try:
             p = db.get(SessionParticipant, data["participant_id"])
@@ -794,7 +796,7 @@ def test_approved_camera_participant_can_get_scoped_turn_credentials(monkeypatch
     assert "static-password" not in body
 
 
-def test_viewer_participant_can_get_turn_without_camera_approval(monkeypatch):
+def test_viewer_participant_can_get_turn_once_approved(monkeypatch):
     code = "PTICEVIEW"
     _make_session(code)
     _enable_test_turn(monkeypatch)
@@ -807,6 +809,7 @@ def test_viewer_participant_can_get_turn_without_camera_approval(monkeypatch):
             device_type="pc",
             device_name="Viewer PC",
         ).json()["data"]
+        _approve(joined["participant_id"])    # viewer も operator の承認が必要
         resp = _participant_ice(client, joined)
 
     assert resp.status_code == 200, resp.text
@@ -830,6 +833,7 @@ def test_participant_ice_rejects_wrong_token_and_blocked_viewer(monkeypatch):
         bad = _participant_ice(client, joined, token="wrong-participant-token")  # nosec B106 -- negative auth test
         assert bad.status_code == 401, bad.text
 
+        _approve(joined["participant_id"])    # 未承認の 403 ではなく blocked を検証する
         db = db_module.SessionLocal()
         try:
             p = db.get(SessionParticipant, joined["participant_id"])

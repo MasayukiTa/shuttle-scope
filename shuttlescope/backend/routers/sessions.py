@@ -100,23 +100,55 @@ def _generate_operator_token() -> str:
     return secrets.token_hex(16)          # 32 文字の hex
 
 
-def _check_operator_access(request: Request, session_code: str) -> None:
-    """ローカルからのリクエストは無条件許可。LAN/リモートには operator_token を要求。
+def _check_operator_access(request: Request, session_code: str, db: Session) -> None:
+    """本当にローカルなリクエストは無条件許可。それ以外は次のどちらかを要求する。
 
-    許可ホスト:
-      - 127.0.0.1 / ::1 / localhost: ローカルマシン（Electron 上のアナリスト）
-      - testclient: Starlette TestClient（pytest用。Uvicorn では絶対に設定されない）
+      1. operator_token (X-Session-Token)
+      2. 認証済みの書き込みロール (admin/analyst/coach の JWT) で、かつ
+         そのセッションの試合が当該ユーザの scope 内にあること
+
+    「ローカル」= socket peer が loopback **かつ** プロキシ経由の痕跡が無い。
+    cloudflared / nginx 経由ではインターネットからの通信も peer が 127.0.0.1 に
+    なるため、peer だけで判定すると tunnel 越しの全リクエストが「ローカル」になる。
+    pytest の TestClient (peer = "testclient") は開発/テスト姿勢でのみ loopback 扱い。
     """
-    client_host = request.client.host if request.client else "127.0.0.1"
-    if client_host in ("127.0.0.1", "::1", "localhost", "testclient"):
+    from backend.utils.control_plane import is_direct_local_request
+    if is_direct_local_request(request):
         return
     token = request.headers.get("X-Session-Token", "")
     stored = _operator_tokens.get(session_code, "")
-    if not stored or not secrets.compare_digest(token.encode(), stored.encode()):
-        raise HTTPException(
-            status_code=403,
-            detail="この操作にはオペレータートークンが必要です（X-Session-Token ヘッダー）",
-        )
+    if stored and secrets.compare_digest(token.encode(), stored.encode()):
+        return
+    # JWT 経路。X-Role の互換ヘッダは信用しない (tunnel 越しに偽装できるため)。
+    from backend.utils.auth import get_auth
+    ctx = get_auth(request)
+    if (
+        (request.headers.get("Authorization") or "").startswith("Bearer ")
+        and ctx.user_id is not None
+        and (ctx.is_admin or ctx.is_analyst or ctx.is_coach)
+        and (ctx.is_admin or ctx.team_id is not None or ctx.team_name)
+    ):
+        session = db.query(SharedSession).filter(SharedSession.session_code == session_code).first()
+        if session is None:
+            raise HTTPException(status_code=404, detail="セッションが見つかりません")
+        if ctx.is_admin or ctx.team_name:
+            _require_session_scope(request, session, db)   # 他チームは 403
+        else:
+            # team_name の無い JWT (team_id のみ) は require_match_scope の
+            # 「team_name 未設定 → legacy header 互換で通す」枝に落ちてしまう。
+            # loopback peer (= tunnel 越し) では誰でもそこを通れるので、
+            # team_id ベースの判定 (user_can_access_match) だけで決める。
+            from backend.utils.auth import user_can_access_match
+            match = db.get(Match, session.match_id)
+            if match is None:
+                raise HTTPException(status_code=404, detail="試合が見つかりません")
+            if not user_can_access_match(ctx, match):
+                raise HTTPException(status_code=403, detail="この試合はあなたのチームではありません")
+        return
+    raise HTTPException(
+        status_code=403,
+        detail="この操作にはオペレータートークンが必要です（X-Session-Token ヘッダー）",
+    )
 
 
 def _get_lan_ips() -> list[str]:
@@ -637,8 +669,16 @@ def issue_camera_ws_ticket(
             raise HTTPException(
                 status_code=403, detail="このデバイスはカメラとして登録されていません"
             )
-    if body.role == "viewer" and participant.viewer_permission == "blocked":
-        raise HTTPException(status_code=403, detail="この端末の映像受信は停止されています")
+    if body.role == "viewer":
+        # 映像を受ける側にも operator の承認を要求する。承認が camera だけの
+        # 関門だと、コード + パスワードを知る誰もが承認なしで生映像を受け取れた
+        # (operator UI は join 済みの viewer 全員へ自動で offer する)。
+        if participant.approval_status != "approved":
+            raise HTTPException(
+                status_code=403, detail="このデバイスはまだ承認されていません"
+            )
+        if participant.viewer_permission == "blocked":
+            raise HTTPException(status_code=403, detail="この端末の映像受信は停止されています")
 
     ticket = issue_ws_ticket(code, body.role, str(participant.id))
     return {
@@ -650,7 +690,7 @@ def issue_camera_ws_ticket(
 @router.post("/sessions/{code}/end")
 def end_session(code: str, request: Request, db: Session = Depends(get_db)):
     """セッション終了（LAN/リモートからは operator_token が必要）"""
-    _check_operator_access(request, code)
+    _check_operator_access(request, code, db)
     session = db.query(SharedSession).filter(SharedSession.session_code == code).first()
     if not session:
         raise HTTPException(status_code=404, detail="セッションが見つかりません")
@@ -661,6 +701,9 @@ def end_session(code: str, request: Request, db: Session = Depends(get_db)):
     db.commit()
     # トークンを削除（終了済みセッションを再利用できないようにする）
     _operator_tokens.pop(code, None)
+    # DB のトークンを失効させても繋がっている WS は残る。reject と同じ機構で切る。
+    from backend.ws.camera import camera_manager as _cam_mgr
+    _cam_mgr.revoke_session_participants_threadsafe(code, "session ended")
     return {"success": True}
 
 
@@ -730,7 +773,7 @@ def set_device_role(
     """参加者の connection_role を変更"""
     participant = _get_participant(code, participant_id, db)
 
-    _check_operator_access(request, code)
+    _check_operator_access(request, code, db)
     valid_roles = {"viewer", "coach", "analyst", "camera_candidate", "active_camera"}
     if body.connection_role not in valid_roles:
         raise HTTPException(status_code=400, detail=f"無効なロール: {body.connection_role}")
@@ -755,7 +798,7 @@ def activate_camera(
     既存のアクティブカメラは降格しない。昇格済み台数が上限 (_MAX_ACTIVE_CAMERAS) に
     達している場合は 409 を返す。降格は /deactivate-camera で手動で行う。
     """
-    _check_operator_access(request, code)
+    _check_operator_access(request, code, db)
     session = (
         db.query(SharedSession)
         .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
@@ -801,7 +844,7 @@ def deactivate_camera(
     db: Session = Depends(get_db),
 ):
     """アクティブカメラを camera_candidate に降格"""
-    _check_operator_access(request, code)
+    _check_operator_access(request, code, db)
     participant = _get_participant(code, participant_id, db)
     participant.connection_role = "camera_candidate"
     participant.connection_state = "idle"
@@ -812,7 +855,7 @@ def deactivate_camera(
 @router.post("/sessions/{code}/devices/{participant_id}/approve")
 def approve_device(code: str, participant_id: int, request: Request, db: Session = Depends(get_db)):
     """デバイスを承認（approval_status → approved）"""
-    _check_operator_access(request, code)
+    _check_operator_access(request, code, db)
     participant = _get_participant(code, participant_id, db)
     participant.approval_status = "approved"
     db.commit()
@@ -822,7 +865,7 @@ def approve_device(code: str, participant_id: int, request: Request, db: Session
 @router.post("/sessions/{code}/devices/{participant_id}/reject")
 def reject_device(code: str, participant_id: int, request: Request, db: Session = Depends(get_db)):
     """デバイスを拒否（approval_status → rejected）"""
-    _check_operator_access(request, code)
+    _check_operator_access(request, code, db)
     participant = _get_participant(code, participant_id, db)
     participant.approval_status = "rejected"
     # 拒否した端末が資格情報を持ったままだと、以後も入場券を取り直せてしまう
@@ -843,7 +886,7 @@ def reject_device(code: str, participant_id: int, request: Request, db: Session 
 @router.delete("/sessions/{code}/devices/{participant_id}")
 def delete_participant(code: str, participant_id: int, request: Request, db: Session = Depends(get_db)):
     """参加者レコードを削除（切断済みデバイスのゴーストを除去）"""
-    _check_operator_access(request, code)
+    _check_operator_access(request, code, db)
     participant = _get_participant(code, participant_id, db)
     db.delete(participant)
     db.commit()
@@ -860,7 +903,7 @@ def purge_disconnected(code: str, request: Request, db: Session = Depends(get_db
     )
     if not session:
         raise HTTPException(status_code=404, detail="セッションが見つかりません")
-    _check_operator_access(request, code)
+    _check_operator_access(request, code, db)
     deleted = (
         db.query(SessionParticipant)
         .filter(
@@ -921,7 +964,8 @@ def participant_ice_config(
 
     if participant.approval_status == "rejected":
         raise HTTPException(status_code=403, detail="このデバイスは拒否されています")
-    if participant.source_capability == "camera" and participant.approval_status != "approved":
+    # camera だけでなく viewer も承認制 (TURN 資格情報は映像の送受信にしか使わない)
+    if participant.approval_status != "approved":
         raise HTTPException(status_code=403, detail="このデバイスはまだ承認されていません")
     if participant.viewer_permission == "blocked":
         raise HTTPException(status_code=403, detail="この端末の映像受信は停止されています")
@@ -989,7 +1033,7 @@ def set_viewer_permission(
     **セッションコードを知っている LAN/リモートの誰でも blocked を allowed に
     戻して映像を受け取り始められる**。
     """
-    _check_operator_access(request, code)
+    _check_operator_access(request, code, db)
     valid = {"allowed", "blocked", "default"}
     if body.viewer_permission not in valid:
         raise HTTPException(status_code=400, detail=f"無効な値: {body.viewer_permission}")
@@ -1038,7 +1082,7 @@ def register_source(code: str, body: RegisterSourceBody, request: Request,
     S-6: 認可が無く、セッションコードを知っていれば他人のセッションへ
     ソースを登録できた。兄弟のデバイス操作 8 本と同じ operator 検査を通す。
     """
-    _check_operator_access(request, code)
+    _check_operator_access(request, code, db)
     session = (
         db.query(SharedSession)
         .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
@@ -1074,7 +1118,7 @@ def activate_source(code: str, source_id: int, request: Request,
 
     S-6: **どの映像が生かを切り替える操作**に認可が無かった。
     """
-    _check_operator_access(request, code)
+    _check_operator_access(request, code, db)
     session = (
         db.query(SharedSession)
         .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
@@ -1105,7 +1149,7 @@ def deactivate_source(code: str, source_id: int, request: Request,
 
     S-6: 認可が無く、セッションコードを知っていれば生中継を止められた。
     """
-    _check_operator_access(request, code)
+    _check_operator_access(request, code, db)
     session = (
         db.query(SharedSession)
         .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
@@ -1124,7 +1168,7 @@ def deactivate_source(code: str, source_id: int, request: Request,
 @router.post("/sessions/{code}/regenerate-password")
 def regenerate_password(code: str, request: Request, db: Session = Depends(get_db)):
     """セッションパスワードを再生成。新しい平文パスワードを返す。LAN/リモートはトークン要求。"""
-    _check_operator_access(request, code)
+    _check_operator_access(request, code, db)
     session = db.query(SharedSession).filter(SharedSession.session_code == code).first()
     if not session:
         raise HTTPException(status_code=404, detail="セッションが見つかりません")
@@ -1142,6 +1186,9 @@ def regenerate_password(code: str, request: Request, db: Session = Depends(get_d
     # 持ち続けた actor は LAN/リモートから operator API を呼べてしまう。
     new_op_token = _generate_operator_token()
     _operator_tokens[code] = new_op_token
+    # 旧パスワードで繋いだ既存の WS も切る (トークン失効だけでは生きたまま残る)。
+    from backend.ws.camera import camera_manager as _cam_mgr
+    _cam_mgr.revoke_session_participants_threadsafe(code, "password regenerated")
     return {
         "success": True,
         "data": {

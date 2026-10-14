@@ -172,6 +172,23 @@ def is_loopback_request(request: Request) -> bool:
     return False
 
 
+# cloudflared / nginx / SSH forward 経由のリクエストは TCP peer が必ず 127.0.0.1 に
+# なる。peer だけでは「同一マシンの Electron」と「インターネットからの tunnel 通信」を
+# 区別できない。プロキシが付ける以下のヘッダが 1 つでもあれば直結ではない。
+# (main.py GlobalAuthMiddleware の ALLOW_LOOPBACK_NO_AUTH 判定と同じ集合 + Forwarded)
+PROXY_MARKER_HEADERS = ("cf-connecting-ip", "x-forwarded-for", "x-real-ip", "forwarded")
+
+
+def has_proxy_marker(request: Request) -> bool:
+    """プロキシ経由を示すヘッダが 1 つでも付いていれば True。"""
+    return any(request.headers.get(h) for h in PROXY_MARKER_HEADERS)
+
+
+def is_direct_local_request(request: Request) -> bool:
+    """socket peer が loopback で、かつプロキシ経由の痕跡が無い (= 本当にローカル)。"""
+    return is_loopback_request(request) and not has_proxy_marker(request)
+
+
 def is_trusted_cluster_request(request: Request) -> bool:
     """リクエスト元が信頼済みクラスタサブネットかどうかを返す。
 

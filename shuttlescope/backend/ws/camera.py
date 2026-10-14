@@ -179,6 +179,50 @@ class CameraSignalingManager:
         except Exception as exc:  # noqa: BLE001
             logger.warning("camera revoke dispatch failed: %s", exc)
 
+    async def revoke_session_participants(self, session_code: str,
+                                          reason: str = "session closed") -> int:
+        """セッション内の全 device / viewer の WS を閉じる (operator は対象外)。
+
+        セッション終了・パスワード再生成で DB 上のトークンを失効させても、既に
+        繋がっているソケットは生きたままになる。`reject` と同じ機構で切る。
+        device は `revoke_device` (camera_stream_ended を operator へ送る) を通す。
+        閉じた件数を返す。
+        """
+        sess = self._sessions.get(session_code)
+        if not sess:
+            return 0
+        closed = 0
+        for pid in list(sess["devices"].keys()):
+            if await self.revoke_device(session_code, pid, reason):
+                closed += 1
+        for vid, ws in list(sess["viewers"].items()):
+            logger.info("camera viewer revoked: %s vid=%s (%s)", session_code, vid, reason)
+            try:
+                await ws.close(code=1008, reason=reason)
+            except Exception:  # noqa: BLE001 - 既に切れていることがある
+                pass
+            await self.disconnect_viewer(session_code, vid)
+            closed += 1
+        return closed
+
+    def revoke_session_participants_threadsafe(self, session_code: str,
+                                               reason: str = "session closed") -> None:
+        """同期の REST ハンドラから `revoke_session_participants` を発火する。
+
+        失敗しても REST 側は落とさない。届かなかった場合は WS 側 60s 再検査ループが
+        セッション終了 / トークン失効を検知して閉じる。
+        """
+        import asyncio as _aio
+        loop = self._loop
+        if loop is None or loop.is_closed():
+            return
+        try:
+            _aio.run_coroutine_threadsafe(
+                self.revoke_session_participants(session_code, reason), loop
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("camera session revoke dispatch failed: %s", exc)
+
     def _slock(self, session_code: str) -> "asyncio.Lock":
         import asyncio as _aio
         lk = self._session_locks.get(session_code)
@@ -809,6 +853,39 @@ async def ws_camera_handler(
         finally:
             _d.close()
 
+    def _liveness_now() -> dict:
+        """接続中の device / viewer の状態を DB から読み直す。
+
+        session_active: セッションがまだ有効か / gone: 参加者行が消えた
+        token_revoked: 参加者トークンが失効した / approval, blocked: 承認と受信停止。
+        数値でない viewer_id (未登録ビューワ) は参加者行を持たないのでセッションだけ見る。
+        """
+        from backend.db.database import SessionLocal as _SL
+        from backend.db.models import SessionParticipant as _SP3, SharedSession as _SS3
+        out = {"session_active": False, "gone": False, "token_revoked": False,
+               "approval": None, "blocked": False}
+        _d = _SL()
+        try:
+            out["session_active"] = bool(
+                _d.query(_SS3.is_active).filter(_SS3.id == _session.id).scalar()
+            )
+            try:
+                _pid = int(participant_id or viewer_id)
+            except (ValueError, TypeError):
+                return out
+            row = _d.query(
+                _SP3.approval_status, _SP3.ws_token_hash, _SP3.viewer_permission
+            ).filter(_SP3.id == _pid, _SP3.session_id == _session.id).first()
+            if row is None:
+                out["gone"] = True
+                return out
+            out["approval"] = row[0]
+            out["token_revoked"] = not row[1]
+            out["blocked"] = row[2] == "blocked"
+            return out
+        finally:
+            _d.close()
+
     async def _do_recheck_approval_and_close_if_revoked() -> bool:
         """接続中に承認が取り消されたら閉じる。
 
@@ -819,15 +896,39 @@ async def ws_camera_handler(
         間隔は operator token の再検証と同じ 60s ±jitter に相乗りさせている。
         **この 60s のあいだは取り消し後も繋がったままになる**、という意味である。
         """
-        if not participant_id or is_operator or is_viewer:
+        if is_operator or not (participant_id or is_viewer):
             return False
         try:
-            status = await _asyncio_cam.to_thread(_approval_now)
+            state = await _asyncio_cam.to_thread(_liveness_now)
         except _asyncio_cam.CancelledError:
             raise
         except OSError as _exc:
             logger.debug("camera approval recheck error: %s", _exc)
             return False
+        # device / viewer 共通: セッションが終了した、または参加者のトークンが
+        # 失効 (end / regenerate-password / reject) した接続は配信を続けさせない。
+        if not state["session_active"] or state["gone"] or state["token_revoked"]:
+            logger.info(
+                "camera WS closing: session_active=%s gone=%s token_revoked=%s session=%s id=%s",
+                state["session_active"], state["gone"], state["token_revoked"],
+                session_code, participant_id or viewer_id,
+            )
+            try:
+                await websocket.close(code=4403, reason="セッションが終了したか資格情報が失効しました")
+            except Exception:
+                pass
+            return True
+        if is_viewer:
+            # viewer は拒否・受信停止になったら閉じる (未承認では入場券が出ないので
+            # pending のまま繋がっていることは通常ない)。
+            if state["approval"] == "rejected" or state["blocked"]:
+                try:
+                    await websocket.close(code=4403, reason="この端末の映像受信は停止されています")
+                except Exception:
+                    pass
+                return True
+            return False
+        status = state["approval"]
         if status != "approved":
             logger.info(
                 "camera device WS closing: approval=%s session=%s participant=%s",
