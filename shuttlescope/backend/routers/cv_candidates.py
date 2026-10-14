@@ -342,8 +342,9 @@ def apply_cv_candidates(
     A1-2: 任意の絞り込みフィルタ（min/max_confidence, exclude_reason_codes,
     fields, rally_ids）と併用可能。
 
-    人の入力は書き換えない: land_zone は空欄だけ、hit_zone は空欄か CV 自身が書いた値
-    (hit_zone_source == "cv") だけ、打者(Stroke.player)は空の時だけ書く。人の値と食い違う
+    人の入力は書き換えない: land_zone は空欄か CV 自身が書いた値 (land_zone_source == "cv")
+    だけ、hit_zone は空欄か CV 自身が書いた値 (hit_zone_source == "cv") だけ、
+    打者(Stroke.player)は空の時だけ書く。人の値と食い違う
     候補は変更せず、レスポンスの preserved_count に数える。
     """
     artifact = _latest_artifact(db, match_id, ARTIFACT_TYPE_CANDIDATES)
@@ -396,15 +397,17 @@ def apply_cv_candidates(
 
             changed = False
 
-            # 着地ゾーン書き戻し。land_zone には入力元の記録が無いので、入っている値は
-            # 人が入力したものとして扱い、空欄だけを埋める。
+            # 着地ゾーン書き戻し。空欄か、CV 自身が前に書いた値 (land_zone_source == "cv")
+            # だけを更新する。入力元が human または不明 (NULL) の値は人の入力として残す。
             if "land_zone" in body.fields:
                 lz = sc.get("land_zone")
                 if _field_passes_filters(lz, body, apply_modes):
-                    if not stroke.land_zone:
-                        stroke.land_zone = lz["value"]
-                        land_zone_count += 1
-                        changed = True
+                    if not stroke.land_zone or stroke.land_zone_source == "cv":
+                        if stroke.land_zone != lz["value"] or stroke.land_zone_source != "cv":
+                            stroke.land_zone = lz["value"]
+                            stroke.land_zone_source = "cv"
+                            land_zone_count += 1
+                            changed = True
                     elif stroke.land_zone != lz["value"]:
                         preserved_count += 1
                 elif lz:

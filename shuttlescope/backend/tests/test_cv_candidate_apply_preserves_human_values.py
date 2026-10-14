@@ -42,7 +42,7 @@ def _artifact(land=None, hit=None, hitter=None):
 
 
 def _stroke(**kw):
-    base = dict(id=101, land_zone=None, hit_zone=None, hit_zone_source=None,
+    base = dict(id=101, land_zone=None, land_zone_source=None, hit_zone=None, hit_zone_source=None,
                 hit_zone_cv_original=None, player="player_a", source_method="manual")
     base.update(kw)
     return SimpleNamespace(**base)

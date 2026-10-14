@@ -33,6 +33,11 @@ def _stroke_require_scope(request: Request, db: Session, rally_id: int) -> Match
     return match
 
 
+def _human_land_zone_source(land_zone: Optional[str]) -> Optional[str]:
+    """人が API 経由で land_zone を指定したときの入力元。値が空なら記録しない。"""
+    return "human" if land_zone else None
+
+
 class StrokeData(BaseModel):
     # 未知フィールド silent drop 遮断
     model_config = {"extra": "forbid"}
@@ -123,6 +128,7 @@ def stroke_to_dict(s: Stroke) -> dict:
         "hit_zone_source": s.hit_zone_source,
         "hit_zone_cv_original": s.hit_zone_cv_original,
         "land_zone": s.land_zone,
+        "land_zone_source": s.land_zone_source,
         "is_backhand": s.is_backhand,
         "is_around_head": s.is_around_head,
         "above_net": s.above_net,
@@ -224,7 +230,11 @@ def batch_save_rally(
     for stroke_data in body.strokes:
         stroke_dict = stroke_data.model_dump()
         stroke_dict["shot_type"] = canonicalize_shot(stroke_dict.get("shot_type", "other"))
-        stroke = Stroke(rally_id=rally.id, **stroke_dict)
+        stroke = Stroke(
+            rally_id=rally.id,
+            land_zone_source=_human_land_zone_source(stroke_dict.get("land_zone")),
+            **stroke_dict,
+        )
         db.add(stroke)
         saved_strokes.append(stroke)
 
@@ -315,7 +325,11 @@ def create_stroke(
             detail={"code": "VALIDATION_ERROR", "message": error}
         )
 
-    stroke = Stroke(rally_id=rally_id, **body.model_dump())
+    stroke = Stroke(
+        rally_id=rally_id,
+        land_zone_source=_human_land_zone_source(body.land_zone),
+        **body.model_dump(),
+    )
     touch(stroke)
     db.add(stroke)
     db.commit()
@@ -336,7 +350,15 @@ def update_stroke(stroke_id: int, body: StrokeData, request: Request, db: Sessio
         raise HTTPException(status_code=404, detail="ストロークが見つかりません")
     _stroke_require_scope(request, db, stroke.rally_id)
     from backend.utils.db_update import apply_update
+    previous_land_zone = stroke.land_zone
     apply_update(stroke, body.model_dump())
+    # land_zone の入力元。クライアントは編集のたびに全項目を送り直すので、値が変わった時だけ
+    # 人の入力として記録する (CV が書いた値をそのまま送り返しただけなら 'cv' のまま)。
+    # 値を消したら入力元も消す。
+    if not stroke.land_zone:
+        stroke.land_zone_source = None
+    elif stroke.land_zone != previous_land_zone:
+        stroke.land_zone_source = "human"
     touch(stroke)
     db.commit()
     # 対象 stroke の rally 経由で関与選手のみ無効化
