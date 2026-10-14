@@ -91,7 +91,7 @@ def test_join_unknown_code_is_indistinguishable_from_wrong_password():
     _make_session("JHK001")
     with TestClient(app, base_url="http://localhost") as client:
         unknown = _join(client, "NOSUCH", ip="10.1.0.1")
-        wrong = _join(client, "JHK001", ip="10.1.0.2", session_password="not-the-password")
+        wrong = _join(client, "JHK001", ip="10.1.0.2", session_password="not-the-password")  # nosec B106 -- deliberate wrong test credential
         missing = _join(client, "JHK001", ip="10.1.0.3", session_password=None)
     assert unknown.status_code == 401
     assert _same(unknown, wrong)
@@ -191,9 +191,9 @@ def test_lockout_is_keyed_by_code_and_ip():
     with TestClient(app, base_url="http://localhost") as client:
         attacker = "10.4.0.66"
         for _ in range(limit):
-            assert _join(client, "JHL001", ip=attacker, session_password="wrong").status_code == 401
+            assert _join(client, "JHL001", ip=attacker, session_password="wrong").status_code == 401  # nosec B106 -- deliberate wrong test credential
         # 攻撃者はこの code についてロックされる
-        assert _join(client, "JHL001", ip=attacker, session_password="wrong").status_code == 429
+        assert _join(client, "JHL001", ip=attacker, session_password="wrong").status_code == 429  # nosec B106 -- deliberate wrong test credential
         assert _join(client, "JHL001", ip=attacker).status_code == 429
         # 別 IP の正規端末は参加できる
         ok = _join(client, "JHL001", ip="10.4.0.7")

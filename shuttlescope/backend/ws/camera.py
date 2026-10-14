@@ -908,7 +908,7 @@ async def ws_camera_handler(
         # device / viewer 共通: セッションが終了した、または参加者のトークンが
         # 失効 (end / regenerate-password / reject) した接続は配信を続けさせない。
         if not state["session_active"] or state["gone"] or state["token_revoked"]:
-            logger.info(
+            logger.info(  # nosemgrep: logger-credential-leak -- logs only the boolean revocation state, never a token
                 "camera WS closing: session_active=%s gone=%s token_revoked=%s session=%s id=%s",
                 state["session_active"], state["gone"], state["token_revoked"],
                 session_code, participant_id or viewer_id,
