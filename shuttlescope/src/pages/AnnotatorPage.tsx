@@ -31,9 +31,12 @@ import { NoticeBanner, ConfirmDialog, type NoticeState, type ConfirmState } from
 import { BottomSheet } from '@/components/annotator/BottomSheet'
 import {
   offlineStrokeIdempotencyKey,
-  removePending,
-  stashPending,
+  removeRallyAfterSave,
+  stashRallyBeforeSave,
 } from '@/utils/offlineStrokeQueue'
+import { attachRecordedVideoPath } from '@/utils/recordedVideo'
+import { useUnownedRallies } from '@/hooks/useUnownedRallies'
+import { UnownedRallyBanner } from '@/components/annotator/UnownedRallyBanner'
 import { buildBatchPayload, buildSkippedRallyPayload } from '@/utils/annotationPayload'
 import { useOfflineSync } from '@/hooks/useOfflineSync'
 import { useAuth } from '@/hooks/useAuth'
@@ -224,6 +227,9 @@ export function AnnotatorPage() {
   useAutoTutorial('desktop_annotator')
   // Phase A: オフライン未送信ラリーの自動再送
   useOfflineSync(matchId ? Number(matchId) : null, userId)
+  // S-14: ユーザー ID が不明の間に保存へ失敗したラリーの退避 (所有者不明の枠)。
+  const unowned = useUnownedRallies(matchId ? Number(matchId) : null, userId)
+  const refreshUnowned = unowned.refresh
   // Phase C speed: 触覚フィードバック (モバイル/タブレットのみ実効)
   const haptic = useHapticFeedback()
   const navigate = useNavigate()
@@ -625,21 +631,20 @@ export function AnnotatorPage() {
         isBasicMode,
       })
       // Phase A: オフライン耐性 — 認証済み user の所有権を queue に焼き込む。
-      // owner が取れない異常状態では payload を別ユーザへ誤帰属させないため stash しない。
+      // owner が取れない異常状態でも入力は捨てない (S-14)。所有者不明の枠へ退避し、
+      // 別ユーザ / ユーザー 0 には帰属させない。自動再送もしない (本人の明示操作のみ)。
       const queueOwnerUserId = userId
       const stableIdempotencyKey = queueOwnerUserId != null
         ? offlineStrokeIdempotencyKey(queueOwnerUserId, Number(matchId), setId, rallyNum)
         : undefined
-      if (queueOwnerUserId != null) {
-        void stashPending({
-          ownerUserId: queueOwnerUserId,
-          matchId: Number(matchId),
-          setId,
-          rallyNum,
-          payload: batchPayload,
-          queued_at: new Date().toISOString(),
-        })
-      }
+      const stashed = stashRallyBeforeSave(queueOwnerUserId, {
+        matchId: Number(matchId),
+        setId,
+        rallyNum,
+        payload: batchPayload,
+        queued_at: new Date().toISOString(),
+      })
+      void stashed.then((slot) => { if (slot === 'unowned') void refreshUnowned() })
       apiPost<{ success: boolean; data: { rally_id: number; stroke_count: number } }>(
         '/strokes/batch',
         batchPayload,
@@ -655,10 +660,11 @@ export function AnnotatorPage() {
           setLastSavedRallyId(res.data.rally_id)
           setReviewLaterAdded(false)
         }
-        // Phase A: 送信成功 → この user の stash だけ削除
-        if (queueOwnerUserId != null) {
-          void removePending(queueOwnerUserId, Number(matchId), setId, rallyNum)
-        }
+        // Phase A: 送信成功 → 入れた枠 (この user / 所有者不明) の stash だけ削除。
+        // 退避の書き込みが終わってから消す (書き込みが後から勝って残るのを防ぐ)。
+        void stashed
+          .then(() => removeRallyAfterSave(queueOwnerUserId, Number(matchId), setId, rallyNum))
+          .then(() => refreshUnowned())
       }).catch((err: unknown) => {
         useAnnotationStore.getState().decrementPending()
         useAnnotationStore.getState().addSaveError({
@@ -673,7 +679,7 @@ export function AnnotatorPage() {
     // 切替前の値で保存される stale closure バグがあった (annotation_mode 誤分類)。
     // autoSaveKey も同様に matchId 由来だが念のため明示。midGameShown は
     // ref 経由で読むため deps 不要。
-    [matchId, queryClient, isBasicMode, autoSaveKey, t, userId]
+    [matchId, queryClient, isBasicMode, autoSaveKey, t, userId, refreshUnowned]
   )
 
   // --- セット終了 → 次のセット作成 (K-003: サマリーモーダル表示) ---
@@ -792,10 +798,15 @@ export function AnnotatorPage() {
         const arr = new Uint8Array(await blob.arrayBuffer())
         const savedPath = await window.shuttlescope.saveRecordedVideo(arr, filename)
         if (savedPath && matchId) {
-          try {
-            await apiPut(`/matches/${matchId}`, { video_local_path: `localfile:///${savedPath}`, video_url: '' })
-            queryClient.invalidateQueries({ queryKey: ['match', matchId] })
-          } catch {}
+          // S-16: 録画ファイルの保存は成功済み。動画パスの紐付けに失敗したら黙らず通知する。
+          await attachRecordedVideoPath(matchId, savedPath, {
+            put: apiPut,
+            onAttached: () => queryClient.invalidateQueries({ queryKey: ['match', matchId] }),
+            onError: (err) => setNotice({
+              kind: 'error',
+              message: `${t('annotator.recording_path_update_failed')} ${errorMessage(err, t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' }))}`,
+            }),
+          })
         }
       } else {
         const url = URL.createObjectURL(blob)
@@ -811,7 +822,7 @@ export function AnnotatorPage() {
     rec.start(1000)
     recorderRef.current = rec
     setIsRecording(true)
-  }, [matchId, queryClient])
+  }, [matchId, queryClient, t])
 
   const stopRecording = useCallback(() => {
     recorderRef.current?.stop()
@@ -5088,6 +5099,28 @@ export function AnnotatorPage() {
 
       {/* alert() / window.confirm() の React 化代替: 全画面共通の通知バナー + 確認ダイアログ */}
       <NoticeBanner notice={notice} onDismiss={() => setNotice(null)} />
+      {/* S-14: ユーザー不明の間に保存へ失敗したラリー。送信/破棄が済むまで消えない警告 */}
+      <UnownedRallyBanner
+        count={unowned.count}
+        userKnown={userId != null}
+        onClaim={() => setPendingConfirm({
+          title: t('annotator.unowned_rally_claim_title'),
+          message: t('annotator.unowned_rally_claim_message', { n: unowned.count }),
+          confirmLabel: t('annotator.unowned_rally_claim'),
+          onConfirm: () => {
+            void unowned.claim().then((moved) => {
+              if (moved < unowned.count) showError(t('annotator.unowned_rally_claim_partial'))
+            })
+          },
+        })}
+        onDiscard={() => setPendingConfirm({
+          title: t('annotator.unowned_rally_discard_title'),
+          message: t('annotator.unowned_rally_discard_message', { n: unowned.count }),
+          confirmLabel: t('annotator.unowned_rally_discard'),
+          destructive: true,
+          onConfirm: () => { void unowned.discard() },
+        })}
+      />
       <ConfirmDialog pending={pendingConfirm} onClose={() => setPendingConfirm(null)} />
     </div>
   )
