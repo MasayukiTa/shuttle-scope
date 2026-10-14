@@ -138,8 +138,8 @@ class TestPasswordVerification:
         })
         assert resp.status_code == 401
 
-    def test_join_no_password_required_when_not_set(self, lan_client, db_session):
-        """パスワード未設定セッションはパスワードなしで参加可能"""
+    def test_join_refused_when_password_not_set(self, lan_client, db_session):
+        """パスワード未設定 (password_hash NULL) のセッションには参加できない (403)"""
         match = _make_match(db_session)
         db_session.commit()
 
@@ -153,7 +153,7 @@ class TestPasswordVerification:
         db_session.commit()
 
         resp = lan_client.post("/api/sessions/NOPASS/join", json={"role": "viewer"})
-        assert resp.status_code == 200
+        assert resp.status_code == 403
 
 
 # ─── T3: デバイス管理 API ─────────────────────────────────────────────────────

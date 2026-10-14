@@ -346,24 +346,55 @@ def session_state(code: str, request: Request, db: Session = Depends(get_db)):
 # コードに対してパスワード総当たりを行う経路と、PBKDF2 (100k iterations) の
 # CPU コストを連鎖呼び出しでサーバ枯渇させる経路を遮断する (CWE-307 / CWE-770)。
 _JOIN_RATE_LOCK    = threading.Lock()
-_JOIN_FAILURES: dict[str, list[float]] = defaultdict(list)
+# ロックアウトは (code, 送信元 IP) 単位。code だけで数えると、コードを知る誰かが
+# 10 回失敗するだけで正規の参加・再接続まで全部止められてしまう (lockout DoS)。
+_JOIN_FAILURES: dict[tuple[str, str], list[float]] = {}
 _JOIN_RATE_WINDOW  = 60      # 秒
-_JOIN_RATE_LIMIT   = 10      # 同一 code への 60 秒以内 10 失敗で拒否
+_JOIN_RATE_LIMIT   = 10      # 同一 (code, IP) への 60 秒以内 10 失敗で拒否
+# code 単位は全 IP 合算の「全体ブレーキ」としてだけ残す (閾値は 10 倍)。
+_JOIN_CODE_FAILURES: dict[str, list[float]] = {}
+_JOIN_CODE_RATE_LIMIT = _JOIN_RATE_LIMIT * 10
+# 攻撃者が code / IP を変えながら叩いてもメモリが伸びないよう、キー数に上限を置く。
+_JOIN_STATE_MAX_KEYS = 4096
 
 
-def _check_join_rate_limit(code: str) -> None:
+def _window_count(store: dict, key, cutoff: float) -> int:
+    """窓内の失敗回数を返す。空になったキーは消す (呼び出し側が _JOIN_RATE_LOCK を持つ)。"""
+    arr = store.get(key)
+    if arr is None:
+        return 0
+    arr = [t for t in arr if t > cutoff]
+    if arr:
+        store[key] = arr
+    else:
+        del store[key]
+    return len(arr)
+
+
+def _window_append(store: dict, key, now: float, cutoff: float) -> None:
+    """失敗を 1 件記録する。末尾が最新になるよう入れ直し、上限超過は古いキーから捨てる。"""
+    arr = [t for t in store.pop(key, ()) if t > cutoff]
+    arr.append(now)
+    store[key] = arr
+    while len(store) > _JOIN_STATE_MAX_KEYS:
+        del store[next(iter(store))]
+
+
+def _check_join_rate_limit(code: str, request: Optional[Request] = None) -> None:
     if not code:
         return
-    now = _time.time()
-    cutoff = now - _JOIN_RATE_WINDOW
+    ip = _join_client_ip(request)
+    cutoff = _time.time() - _JOIN_RATE_WINDOW
     with _JOIN_RATE_LOCK:
-        arr = [t for t in _JOIN_FAILURES[code] if t > cutoff]
-        _JOIN_FAILURES[code] = arr
-        if len(arr) >= _JOIN_RATE_LIMIT:
-            raise HTTPException(
-                status_code=429,
-                detail=f"認証失敗が多すぎます。{_JOIN_RATE_WINDOW}秒後に再試行してください。",
-            )
+        blocked = (
+            _window_count(_JOIN_FAILURES, (code, ip), cutoff) >= _JOIN_RATE_LIMIT
+            or _window_count(_JOIN_CODE_FAILURES, code, cutoff) >= _JOIN_CODE_RATE_LIMIT
+        )
+    if blocked:
+        raise HTTPException(
+            status_code=429,
+            detail=f"認証失敗が多すぎます。{_JOIN_RATE_WINDOW}秒後に再試行してください。",
+        )
 
 
 # join を GlobalAuthMiddleware の例外にした時点で、code 単位の制限だけでは
@@ -371,7 +402,7 @@ def _check_join_rate_limit(code: str) -> None:
 # どれも閾値に届かないまま「存在する session_code」を列挙できてしまう
 # (404 と 401 の差が oracle になる)。加えて PBKDF2 100k 回を無制限に
 # 呼ばせる CPU 枯渇経路にもなる。そこで送信元単位の上限を併置する。
-_JOIN_IP_FAILURES: dict[str, list[float]] = defaultdict(list)
+_JOIN_IP_FAILURES: dict[str, list[float]] = {}
 _JOIN_IP_RATE_LIMIT = 20     # 同一 IP からの 60 秒以内 20 失敗で拒否
 
 
@@ -379,16 +410,14 @@ def _check_join_ip_rate_limit(request: Optional[Request]) -> None:
     ip = _join_client_ip(request)
     if not ip:
         return
-    now = _time.time()
-    cutoff = now - _JOIN_RATE_WINDOW
+    cutoff = _time.time() - _JOIN_RATE_WINDOW
     with _JOIN_RATE_LOCK:
-        arr = [t for t in _JOIN_IP_FAILURES[ip] if t > cutoff]
-        _JOIN_IP_FAILURES[ip] = arr
-        if len(arr) >= _JOIN_IP_RATE_LIMIT:
-            raise HTTPException(
-                status_code=429,
-                detail=f"認証失敗が多すぎます。{_JOIN_RATE_WINDOW}秒後に再試行してください。",
-            )
+        blocked = _window_count(_JOIN_IP_FAILURES, ip, cutoff) >= _JOIN_IP_RATE_LIMIT
+    if blocked:
+        raise HTTPException(
+            status_code=429,
+            detail=f"認証失敗が多すぎます。{_JOIN_RATE_WINDOW}秒後に再試行してください。",
+        )
 
 
 def _join_client_ip(request: Optional[Request]) -> str:
@@ -469,12 +498,22 @@ def _participant_token_valid(participant: SessionParticipant, token: str) -> boo
 
 def _record_join_failure(code: str, request: Optional[Request] = None) -> None:
     now = _time.time()
+    cutoff = now - _JOIN_RATE_WINDOW
     ip = _join_client_ip(request)
     with _JOIN_RATE_LOCK:
         if code:
-            _JOIN_FAILURES[code].append(now)
+            _window_append(_JOIN_FAILURES, (code, ip), now, cutoff)
+            _window_append(_JOIN_CODE_FAILURES, code, now, cutoff)
         if ip:
-            _JOIN_IP_FAILURES[ip].append(now)
+            _window_append(_JOIN_IP_FAILURES, ip, now, cutoff)
+
+
+# join の「存在しない code」用ダミー。形式は正しい (salt:dk の hex) ので
+# _verify_password が本物と同じ PBKDF2 を実行し、必ず不一致になる。
+_DUMMY_PASSWORD_HASH = "00" * 16 + ":" + "00" * 32
+_JOIN_DENIED_DETAIL = "セッションコードまたはパスワードが正しくありません"
+# ice-config / heartbeat (参加者トークン認証) が返す唯一の 401 本文。
+_PARTICIPANT_DENIED_DETAIL = "参加資格を確認できません"
 
 
 @router.post("/sessions/{code}/join")
@@ -492,7 +531,7 @@ def join_session(
     「PBKDF2 によるパスワード検証」で行う。
     """
     # PBKDF2 検証へ流す前に code / 送信元の両方で rate limit を適用する。
-    _check_join_rate_limit(code)
+    _check_join_rate_limit(code, request)
     _check_join_ip_rate_limit(request)
 
     session = (
@@ -500,19 +539,26 @@ def join_session(
         .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
         .first()
     )
-    if not session:
+    # 存在しない code / パスワード無し / 誤パスワードを、応答 (status・本文) でも
+    # 所要時間でも区別させない。404 と 401 を分けると有効な code の oracle になる。
+    # 存在しない code でも固定のダミーハッシュに対して PBKDF2 を 1 回回す。
+    stored_hash = session.password_hash if session else None
+    supplied = body.session_password or ""
+    verified = _verify_password(supplied, stored_hash or _DUMMY_PASSWORD_HASH)
+    if not session or (stored_hash and not (supplied and verified)):
         # 存在しない code への brute-force もカウントして探索コストを上げる
         _record_join_failure(code, request)
-        raise HTTPException(status_code=404, detail="セッションが見つからないか終了しています")
+        raise HTTPException(status_code=401, detail=_JOIN_DENIED_DETAIL)
 
-    # パスワード検証
-    if session.password_hash:
-        if not body.session_password:
-            _record_join_failure(code, request)
-            raise HTTPException(status_code=401, detail="パスワードが必要です")
-        if not _verify_password(body.session_password, session.password_hash):
-            _record_join_failure(code, request)
-            raise HTTPException(status_code=401, detail="パスワードが正しくありません")
+    # パスワード未設定のセッションには誰でも入れてしまうので参加させない。
+    # 本番の作成経路 (create_session) は必ずハッシュを設定する。
+    if not stored_hash:
+        _record_join_failure(code, request)
+        raise HTTPException(
+            status_code=403,
+            detail="このセッションにはパスワードが設定されていないため参加できません。"
+                   "オペレーターがパスワードを再生成してください。",
+        )
 
     # デバイスタイプから source_capability / device_class を推定
     source_cap = "none"
@@ -943,24 +989,26 @@ def participant_ice_config(
     session. Camera devices must also be operator-approved, and blocked viewers
     cannot mint TURN credentials.
     """
+    _check_join_ip_rate_limit(request)
+
     session = (
         db.query(SharedSession)
         .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
         .first()
     )
-    if session is None:
-        raise HTTPException(status_code=404, detail="セッションが見つかりません")
-
-    participant = db.get(SessionParticipant, participant_id)
+    participant = db.get(SessionParticipant, participant_id) if session is not None else None
     auth = (request.headers.get("Authorization") or "").strip()
     token = auth[len("Participant "):].strip() if auth.startswith("Participant ") else ""
     if (
-        participant is None
+        session is None
+        or participant is None
         or participant.session_id != session.id
         or not _participant_token_valid(participant, token)
     ):
-        # participant の存在有無と token 不一致を応答で区別しない。
-        raise HTTPException(status_code=401, detail="参加資格を確認できません")
+        # セッション不在 / participant 不在 / token 不一致を応答で区別しない
+        # (有効な code や participant id の oracle にしない)。失敗は送信元 IP に数える。
+        _record_join_failure(code, request)
+        raise HTTPException(status_code=401, detail=_PARTICIPANT_DENIED_DETAIL)
 
     if participant.approval_status == "rejected":
         raise HTTPException(status_code=403, detail="このデバイスは拒否されています")
@@ -995,19 +1043,35 @@ def device_heartbeat(
     単に免除すると誰でも他人の端末を生存扱いにできてしまうので、
     ws-ticket と同じく参加者トークンで認証する。
     """
-    participant = _get_participant(code, participant_id, db)
+    _check_join_ip_rate_limit(request)
 
     token = (body.participant_token if body else None) or ""
     if token:
-        if not _participant_token_valid(participant, token):
-            raise HTTPException(status_code=401, detail="参加資格を確認できません")
+        # 参加者トークン経路: セッション不在 / participant 不在 / token 不一致を
+        # 区別しない 1 つの 401 にし、失敗は送信元 IP に数える。
+        session = (
+            db.query(SharedSession)
+            .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
+            .first()
+        )
+        participant = db.get(SessionParticipant, participant_id) if session else None
+        if (
+            session is None
+            or participant is None
+            or participant.session_id != session.id
+            or not _participant_token_valid(participant, token)
+        ):
+            _record_join_failure(code, request)
+            raise HTTPException(status_code=401, detail=_PARTICIPANT_DENIED_DETAIL)
     else:
-        # トークン無し = 従来どおりログイン済みユーザの経路。middleware が
-        # JWT を検証済みなので、ここでは追加の確認をしない。
+        # トークン無し = 従来どおりログイン済みユーザの経路。認証できない呼び出しには
+        # session / participant の有無を一切教えない (認証を先に確かめる)。
         from backend.utils.auth import get_auth
         ctx = get_auth(request)
         if ctx.role is None:
+            _record_join_failure(code, request)
             raise HTTPException(status_code=401, detail="認証が必要です")
+        participant = _get_participant(code, participant_id, db)
 
     participant.last_heartbeat = datetime.utcnow()
     participant.is_connected = True
