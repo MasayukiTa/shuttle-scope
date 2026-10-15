@@ -20,77 +20,85 @@
 <!-- 外部フォント CDN 禁止 (企業 TLS でブロックされるため): system-ui スタックのみ使用。 -->
 <!-- Material Symbols CDN も廃止済み: theme トグルはインライン SVG に置換済み。 -->
 <style>
-/* ═══ design-tokens.css インライン (DESIGN_DIRECTION_v2.md §2/§4/§5/§7 準拠)。
-   home.html.j2 は base.html.j2 を継承しない単独ドキュメントのため、ここにも
-   同じトークンをインラインする。backend/public/design-tokens.css と値を同期させること。 ═══ */
+/* ═══ このページ専用トークン。
+   home.html.j2 は base.html.j2 を継承しない単独ドキュメント。--ss-* の仕組み (light/dark を
+   [data-theme] で切替) は design-tokens.css と同じだが、トップページは「コート緑 + シャトル白 +
+   アクセント1色」の配色にするため brand / surface / text の値を意図的に変えている
+   (design-tokens.css と値を同期させる対象ではない)。他の公開ページ (base.html.j2) は従来の配色のまま。
+   文字色は WCAG AA (本文 4.5:1) を light / dark の両方で満たす値にしてある。 ═══ */
 :root,
 [data-theme="light"] {
-  --ss-brand:         #2563eb;
-  --ss-brand-hover:   #1d4fd7;
-  --ss-brand-tint:    rgba(37, 99, 235, 0.08);
-  --ss-focus-ring:    rgba(37, 99, 235, 0.32);
+  --ss-brand:         #0d6847;
+  --ss-brand-hover:   #095338;
+  --ss-on-brand:      #ffffff;
+  --ss-brand-tint:    rgba(13, 104, 71, 0.09);
+  --ss-focus-ring:    rgba(13, 104, 71, 0.38);
+  --ss-accent:        #b4480b;
+  --ss-on-accent:     #ffffff;
 
-  --ss-bg-app:        #f5f6f8;
+  --ss-bg-app:        #f5f7f3;
   --ss-surface-1:     #ffffff;
-  --ss-surface-2:     #eef1f5;
-  --ss-surface-3:     #e4e8ee;
+  --ss-surface-2:     #edf1ec;
+  --ss-surface-3:     #e1e7e0;
 
-  --ss-border:        #e3e7ec;
-  --ss-border-strong: #c9d1db;
+  --ss-border:        #dce3db;
+  --ss-border-strong: #aab8ad;
 
-  --ss-t1: #1a2028;
-  --ss-t2: #55606e;
-  --ss-t3: #8892a0;
+  --ss-t1: #15211b;
+  --ss-t2: #4b5a51;
+  --ss-t3: #637269;
 
-  --ss-good:     #1f6fe0;
-  --ss-bad:      #c2334a;
-  --ss-warn:     #b26a00;
-  --ss-success:  #197a48;
-  --ss-emphasis: #e4610f;
+  --court-out:  #14573d;
+  --court:      #1b7a55;
+  --court-line: #ffffff;
+  --heat:       #ffb94d;
+  --nav-bg:     rgba(245, 247, 243, 0.92);
 
   --r-sm:   3px;
   --r-md:   5px;
-  --r-lg:   6px;
-  --r-xl:   8px;
+  --r-lg:   10px;
+  --r-xl:   14px;
   --r-pill: 999px;
 
-  --e0: none;
-  --e1: 0 1px 2px rgba(16, 24, 40, 0.06);
-  --e2: 0 1px 3px rgba(16, 24, 40, 0.10), 0 1px 2px rgba(16, 24, 40, 0.06);
-  --e3: 0 10px 28px rgba(16, 24, 40, 0.14);
+  --e1: 0 1px 2px rgba(16, 32, 24, 0.06);
+  --e2: 0 2px 6px rgba(16, 32, 24, 0.08), 0 1px 2px rgba(16, 32, 24, 0.06);
+  --e3: 0 10px 28px rgba(16, 32, 24, 0.14);
 
   --dur-fast: 120ms;
   --dur-base: 180ms;
-  --dur-slow: 300ms;
   --ease-out: cubic-bezier(0.2, 0, 0, 1);
-  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 
   color-scheme: light;
 }
 
 [data-theme="dark"] {
-  --ss-brand:         #5c9bff;
-  --ss-brand-hover:   #7fb0ff;
-  --ss-brand-tint:    rgba(92, 155, 255, 0.14);
-  --ss-focus-ring:    rgba(92, 155, 255, 0.35);
+  --ss-brand:         #5cc596;
+  --ss-brand-hover:   #7bd4ac;
+  --ss-on-brand:      #06150d;
+  --ss-brand-tint:    rgba(92, 197, 150, 0.13);
+  --ss-focus-ring:    rgba(92, 197, 150, 0.4);
+  --ss-accent:        #f2a05a;
+  --ss-on-accent:     #1d1106;
 
-  --ss-bg-app:        #1c1f24;
-  --ss-surface-1:     #23272e;
-  --ss-surface-2:     #2a2f37;
-  --ss-surface-3:     #323842;
+  --ss-bg-app:        #101814;
+  --ss-surface-1:     #17211c;
+  --ss-surface-2:     #1d2923;
+  --ss-surface-3:     #25332c;
 
-  --ss-border:        #363c46;
-  --ss-border-strong: #454c58;
+  --ss-border:        #2c3b33;
+  --ss-border-strong: #405347;
 
-  --ss-t1: #e6e9ed;
-  --ss-t2: #a5aebb;
-  --ss-t3: #727c89;
+  --ss-t1: #e7efe9;
+  --ss-t2: #a8b8ad;
+  --ss-t3: #8a9b90;
 
-  --ss-good:     #6aa6ff;
-  --ss-bad:      #f0808a;
-  --ss-warn:     #fcd34d;
-  --ss-success:  #4bae7a;
-  --ss-emphasis: #f97316;
+  --court-out:  #0f3f2d;
+  --court:      #176247;
+  --nav-bg:     rgba(16, 24, 20, 0.92);
+
+  --e1: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --e2: 0 2px 6px rgba(0, 0, 0, 0.35);
+  --e3: 0 10px 28px rgba(0, 0, 0, 0.45);
 
   color-scheme: dark;
 }
@@ -109,13 +117,13 @@
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 
 html{scroll-behavior:smooth}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans JP","Hiragino Sans","Yu Gothic UI",sans-serif;background:var(--ss-bg-app);color:var(--ss-t1);line-height:1.65;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans JP","Hiragino Sans","Yu Gothic UI",sans-serif;background:var(--ss-bg-app);color:var(--ss-t1);line-height:1.7;overflow-x:hidden;-webkit-font-smoothing:antialiased;line-break:strict;word-break:auto-phrase}
 ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:var(--ss-bg-app)}::-webkit-scrollbar-thumb{background:var(--ss-border-strong);border-radius:var(--r-sm)}
-body,nav,.hero-panel,.feat-card,.uc-card,.sec-data,.sec-fcta{transition:background-color var(--dur-base) var(--ease-out),border-color var(--dur-base) var(--ease-out),color var(--dur-fast) var(--ease-out)}
+body,nav,.sec-features,.sec-data,.sec-fcta,.court-panel,.mini{transition:background-color var(--dur-base) var(--ease-out),border-color var(--dur-base) var(--ease-out),color var(--dur-fast) var(--ease-out)}
 :focus-visible{outline:2px solid var(--ss-brand);outline-offset:2px}
+.nb{display:inline-block}
 
-nav{position:fixed;top:0;left:0;right:0;z-index:200;height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 40px;background:rgba(245,246,248,0.92);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--ss-border)}
-[data-theme="dark"] nav{background:rgba(28,31,36,0.92)}
+nav{position:fixed;top:0;left:0;right:0;z-index:200;height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 40px;background:var(--nav-bg);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--ss-border)}
 .logo{font-size:18px;font-weight:600;letter-spacing:-.01em;color:var(--ss-t1);text-decoration:none;display:flex;align-items:center;gap:8px}
 .logo-mark{width:26px;height:26px;background:var(--ss-surface-1);border:1px solid var(--ss-border);border-radius:var(--r-sm);display:flex;align-items:center;justify-content:center;overflow:hidden}
 .logo-mark img{width:100%;height:100%;object-fit:contain;display:block}
@@ -148,61 +156,99 @@ html[lang=ja] .en{display:none}
 .mobile-menu a{font-size:14px;color:var(--ss-t1);text-decoration:none;padding:14px 24px;border-bottom:1px solid var(--ss-border);transition:color var(--dur-fast) var(--ease-out),background var(--dur-fast) var(--ease-out)}
 .mobile-menu a:hover{color:var(--ss-t1);background:var(--ss-brand-tint)}
 
-/* ── Hero: 光量の高いネイビーではなく soft gray canvas + 極薄い hairline グリッド。
-   Precision on Gray の核心表現 (§0/§7)。 ── */
-.hero{position:relative;background:var(--ss-bg-app);padding:104px 40px 72px;overflow:hidden;border-bottom:1px solid var(--ss-border)}
-.hero::before{content:'';position:absolute;inset:0;background-image:linear-gradient(var(--ss-border) 1px,transparent 1px),linear-gradient(90deg,var(--ss-border) 1px,transparent 1px);background-size:56px 56px;opacity:.5;-webkit-mask-image:radial-gradient(ellipse 70% 60% at 50% 0%,#000 40%,transparent 100%);mask-image:radial-gradient(ellipse 70% 60% at 50% 0%,#000 40%,transparent 100%);pointer-events:none;z-index:0}
-.hero-inner{position:relative;z-index:1;max-width:1160px;margin:0 auto;display:grid;grid-template-columns:1fr 520px;gap:56px;align-items:center}
-.hero-kicker{display:inline-flex;align-items:center;gap:8px;font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--ss-brand);margin-bottom:16px;text-transform:uppercase}
-.hero-kicker::before{content:'';width:18px;height:2px;background:var(--ss-brand)}
-h1.hero-h1{font-size:clamp(26px,3.2vw,40px);font-weight:600;line-height:1.2;letter-spacing:-.014em;color:var(--ss-t1);margin-bottom:14px}
-.hero-tagline{font-size:clamp(16px,1.6vw,19px);font-weight:500;color:var(--ss-t2);line-height:1.7;margin-bottom:22px;max-width:520px}
-.hero-sub{font-size:14px;color:var(--ss-t2);line-height:1.9;max-width:480px;margin-bottom:28px}
-.hero-tags{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:36px}
-.htag{font-size:11px;font-weight:500;color:var(--ss-t2);border:1px solid var(--ss-border);background:var(--ss-surface-1);padding:4px 10px;border-radius:var(--r-sm);letter-spacing:.01em}
-.hero-actions{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
-.btn-cta{display:inline-flex;align-items:center;gap:10px;font-size:14px;font-weight:600;padding:12px 28px;background:var(--ss-brand);color:#fff;border:none;border-radius:var(--r-md);text-decoration:none;cursor:pointer;letter-spacing:.01em;transition:background var(--dur-fast) var(--ease-out)}
-.btn-cta:hover{background:var(--ss-brand-hover)}
-.btn-ghost{font-size:13px;font-weight:500;color:var(--ss-t2);text-decoration:none;padding:6px 2px;border-bottom:1px solid var(--ss-border-strong);transition:color var(--dur-fast) var(--ease-out),border-color var(--dur-fast) var(--ease-out)}
-.btn-ghost:hover{color:var(--ss-t1);border-color:var(--ss-t2)}
+/* β 版のお知らせ: 1 行のコンパクトな帯。製品が最初の画面に入るよう高さを抑える。 */
+.beta-banner{background:var(--ss-brand-tint);border-bottom:1px solid var(--ss-border);padding:8px 40px;margin-top:58px}
+.beta-banner-inner{max-width:1160px;margin:0 auto;display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;text-align:center}
+.beta-badge{font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--ss-brand);border:1px solid var(--ss-brand);border-radius:var(--r-sm);padding:1px 7px;white-space:nowrap;flex-shrink:0;line-height:1.6}
+.beta-text{font-size:12.5px;color:var(--ss-t2);line-height:1.6;margin:0}
+.beta-text a{color:var(--ss-brand);font-weight:600;text-decoration:none;border-bottom:1px solid currentColor;white-space:nowrap}
+.beta-text a:hover{border-bottom-color:transparent}
 
-/* hero-panel: 実アプリ (解析ダッシュボード) のスクリーンショット。テーマに合わせて切替 */
-.hero-panel{background:var(--ss-surface-1);border:1px solid var(--ss-border);border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--e3)}
-.hero-shot{display:block;width:100%;height:auto}
-.hero-shot-dark{display:none}
-[data-theme="dark"] .hero-shot-light{display:none}
-[data-theme="dark"] .hero-shot-dark{display:block}
+/* ── Hero: 製品 (コートと配球の可視化) が主役。文字は短く、CTA は 1 つだけ。 ── */
+.hero{background:var(--ss-bg-app);padding:56px 40px 64px;border-bottom:1px solid var(--ss-border)}
+.hero-inner{max-width:1160px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr) 500px;gap:64px;align-items:center}
+h1.hero-h1{font-size:clamp(28px,3.5vw,46px);font-weight:700;line-height:1.35;letter-spacing:-.01em;color:var(--ss-t1);margin-bottom:20px;text-wrap:balance}
+.hero-sub{font-size:16px;color:var(--ss-t2);line-height:1.95;max-width:30em;margin-bottom:32px}
+.btn-cta{display:inline-flex;align-items:center;gap:10px;font-size:15px;font-weight:600;padding:13px 30px;background:var(--ss-brand);color:var(--ss-on-brand);border:none;border-radius:var(--r-md);text-decoration:none;cursor:pointer;letter-spacing:.01em;transition:background var(--dur-fast) var(--ease-out)}
+.btn-cta:hover{background:var(--ss-brand-hover)}
+
+/* court-panel: インライン SVG のコート。サンプルデータ表示であることを必ず明示する。 */
+.court-panel{background:var(--ss-surface-1);border:1px solid var(--ss-border);border-radius:var(--r-xl);padding:14px 14px 12px;box-shadow:var(--e3)}
+.court-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.tag-sample{font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--ss-accent);border:1px solid var(--ss-accent);border-radius:var(--r-sm);padding:1px 8px;line-height:1.6;white-space:nowrap}
+.court-title{font-size:13px;font-weight:600;color:var(--ss-t1)}
+.court-svg{display:block;width:100%;height:auto;border-radius:var(--r-lg)}
+.court-cap{font-size:12px;color:var(--ss-t2);line-height:1.8;margin-top:10px}
+.legend{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--ss-t2);margin-top:8px}
+.legend i{display:block;width:84px;height:8px;border-radius:4px;background:linear-gradient(90deg,rgba(255,185,77,.2),rgba(255,185,77,1));outline:1px solid var(--ss-border-strong)}
+
+/* SVG 共通 */
+.f-court{fill:var(--court)}.f-out{fill:var(--court-out)}
+.l-court{stroke:var(--court-line);fill:none;stroke-width:2;stroke-opacity:.9}
+.f-heat{fill:var(--heat)}
+.t-zone{font-size:13px;font-weight:700;fill:#fff;stroke:#0a3323;stroke-width:3px;paint-order:stroke;stroke-linejoin:round}
+.t-net{font-size:11px;font-weight:600;fill:rgba(255,255,255,.85);letter-spacing:.08em}
+.path-seg{fill:none;stroke:#fff;stroke-width:2.2;stroke-dasharray:6 4;stroke-linecap:round;stroke-linejoin:round}
+.node{fill:#fff;stroke:#0a3323;stroke-width:1.5}
+.node-end{fill:var(--heat);stroke:#0a3323;stroke-width:1.5}
+.t-node{font-size:12px;font-weight:700;fill:#0a3323;text-anchor:middle;dominant-baseline:central}
+.t-mini{font-size:10px;fill:var(--ss-t2)}
+.t-mini-w{font-size:10.5px;font-weight:600;fill:#fff}
+.m-guide{stroke:var(--ss-border-strong);stroke-width:1;fill:none}
+.m-guide-d{stroke:var(--ss-border-strong);stroke-width:1;fill:none;stroke-dasharray:3 3}
+.m-link{stroke:var(--ss-brand);stroke-width:1.6;fill:none;stroke-linejoin:round}
+.m-a{fill:var(--ss-brand);stroke:var(--ss-brand);stroke-width:1.5}
+.m-b{fill:var(--ss-surface-2);stroke:var(--ss-brand);stroke-width:1.5}
+.m-end{fill:var(--ss-accent);stroke:var(--ss-accent);stroke-width:1.5}
+.t-on-brand{font-size:10.5px;font-weight:700;fill:var(--ss-on-brand);text-anchor:middle;dominant-baseline:central}
+.t-on-b{font-size:10.5px;font-weight:700;fill:var(--ss-t1);text-anchor:middle;dominant-baseline:central}
+.t-on-accent{font-size:10.5px;font-weight:700;fill:var(--ss-on-accent);text-anchor:middle;dominant-baseline:central}
+.m-band{fill:var(--ss-brand);fill-opacity:.16;stroke:none}
+.m-line{stroke:var(--ss-brand);stroke-width:2.2;fill:none;stroke-linejoin:round;stroke-linecap:round}
+.m-seg{stroke:var(--ss-accent);stroke-width:3.4;fill:none;stroke-linejoin:round;stroke-linecap:round}
+.m-dot{fill:var(--ss-accent)}
+.t-acc{font-size:10.5px;font-weight:700;fill:var(--ss-accent)}
 
 .sec{padding:80px 40px}.sec-wrap{max-width:1160px;margin:0 auto}
-.sec-kicker{display:inline-flex;align-items:center;gap:8px;font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--ss-brand);margin-bottom:10px;text-transform:uppercase}
-.sec-kicker::before{content:'';width:18px;height:2px;background:var(--ss-brand)}
-.sec-h2{font-size:clamp(19px,2.2vw,26px);font-weight:600;letter-spacing:-.014em;color:var(--ss-t1);line-height:1.3;margin-bottom:10px}
-.sec-sub{font-size:14px;color:var(--ss-t2);line-height:1.85;max-width:520px;margin-bottom:48px}
+.sec-h2{font-size:clamp(21px,2.4vw,30px);font-weight:700;letter-spacing:-.01em;color:var(--ss-t1);line-height:1.4;margin-bottom:12px;text-wrap:balance}
+.sec-sub{font-size:15px;color:var(--ss-t2);line-height:1.9;max-width:36em;margin-bottom:44px}
 
+/* Features: 「何が得られるか」3 つ。各ブロックにそのブロック固有のミニ図とサンプル表示。 */
 .sec-features{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);border-bottom:1px solid var(--ss-border)}
-.feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--ss-border);border:1px solid var(--ss-border);border-radius:var(--r-lg);overflow:hidden}
-.feat-card{background:var(--ss-surface-1);padding:28px 24px 24px;position:relative;overflow:hidden;transition:background var(--dur-fast) var(--ease-out)}
-.feat-card:hover{background:var(--ss-surface-2)}
-.feat-icon{width:36px;height:36px;border-radius:var(--r-md);background:var(--ss-brand-tint);border:1px solid var(--ss-border);display:flex;align-items:center;justify-content:center;margin-bottom:14px}
-.feat-icon svg{width:17px;height:17px}
-.feat-h{font-size:15px;font-weight:600;color:var(--ss-t1);margin-bottom:8px}
-.feat-p{font-size:13px;color:var(--ss-t2);line-height:1.8}
+.view-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:40px}
+.mini{position:relative;background:var(--ss-surface-2);border:1px solid var(--ss-border);border-radius:var(--r-lg);padding:12px 12px 8px;margin-bottom:20px}
+.mini .tag-sample{position:absolute;top:10px;right:10px;font-size:10px;padding:0 6px;background:var(--ss-surface-1)}
+.mini svg{display:block;width:100%;height:auto}
+.mini-cap{font-size:11px;color:var(--ss-t2);line-height:1.7;margin-top:6px}
+.view-h{font-size:17px;font-weight:700;line-height:1.5;color:var(--ss-t1);margin-bottom:8px;text-wrap:balance}
+.view-p{font-size:14px;color:var(--ss-t2);line-height:1.9;margin-bottom:14px}
+.decide{font-size:13px;line-height:1.8;color:var(--ss-t1);border-top:1px solid var(--ss-border);padding-top:12px}
+.decide b{display:block;font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--ss-brand);margin-bottom:2px}
+.note{font-size:12.5px;color:var(--ss-t2);line-height:1.9;max-width:60em;margin-top:44px;padding-top:20px;border-top:1px solid var(--ss-border)}
 
+/* Usecases: 実際のアプリ画面。端のにじみ (元画像に含まれる) は切り抜いて見せない。 */
 .sec-uc{background:var(--ss-bg-app)}
-.uc-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
-.uc-card{background:var(--ss-surface-1);border:1px solid var(--ss-border);border-radius:var(--r-lg);padding:24px;display:flex;gap:18px;box-shadow:var(--e1);transition:border-color var(--dur-fast) var(--ease-out),box-shadow var(--dur-fast) var(--ease-out),transform var(--dur-fast) var(--ease-out)}
-.uc-card:hover{border-color:var(--ss-border-strong);box-shadow:var(--e2);transform:translateY(-1px)}
-.uc-h{font-size:14px;font-weight:600;color:var(--ss-t1);margin-bottom:6px}
-.uc-p{font-size:12px;color:var(--ss-t2);line-height:1.8}
+.app-fig{margin:0 auto;max-width:1100px}
+.shot-scroll{overflow-x:auto}
+.shot-frame{position:relative;overflow:hidden;aspect-ratio:1618/780;border:1px solid var(--ss-border-strong);border-radius:var(--r-lg);box-shadow:var(--e2);background:var(--ss-surface-1)}
+.shot-frame img{display:block;width:118.66%;max-width:none;height:auto;margin-left:-14.34%}
+.shot-dark{display:none}
+[data-theme="dark"] .shot-light{display:none}
+[data-theme="dark"] .shot-dark{display:block}
+.shot-cap{font-size:12px;color:var(--ss-t2);line-height:1.8;margin-top:10px}
+.roles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:40px;max-width:1100px;margin:44px auto 0}
+.role{border-top:2px solid var(--ss-brand);padding-top:14px}
+.role-h{font-size:15px;font-weight:700;color:var(--ss-t1);margin-bottom:6px}
+.role-p{font-size:13.5px;color:var(--ss-t2);line-height:1.9}
 
-.sec-data{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);border-bottom:1px solid var(--ss-border);padding:56px 40px}
-.data-body{font-size:13px;color:var(--ss-t2);line-height:1.85;max-width:640px}
-.data-body a{color:var(--ss-brand);text-decoration:none}
-.data-body a:hover{text-decoration:underline}
+.sec-data{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);border-bottom:1px solid var(--ss-border);padding:44px 40px}
+.data-body{font-size:13px;color:var(--ss-t2);line-height:1.9;max-width:44em}
+.data-body a{color:var(--ss-brand);text-decoration:none;border-bottom:1px solid currentColor}
+.data-body a:hover{border-bottom-color:transparent}
 
-.sec-fcta{background:var(--ss-bg-app);padding:88px 40px;text-align:center;border-top:1px solid var(--ss-border)}
-.fcta-h{font-size:clamp(19px,2.2vw,26px);font-weight:600;letter-spacing:-.014em;color:var(--ss-t1);margin-bottom:12px}
-.fcta-sub{font-size:14px;color:var(--ss-t2);margin-bottom:32px}
+.sec-fcta{background:var(--ss-bg-app);padding:80px 40px;text-align:center}
+.fcta-h{font-size:clamp(21px,2.4vw,30px);font-weight:700;letter-spacing:-.01em;color:var(--ss-t1);margin-bottom:10px;text-wrap:balance}
+.fcta-sub{font-size:14px;color:var(--ss-t2);margin-bottom:28px}
 
 footer{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);padding:24px 40px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;transition:background var(--dur-base) var(--ease-out)}
 .footer-logo{font-size:15px;font-weight:600;letter-spacing:-.01em;color:var(--ss-t1);text-decoration:none;display:flex;align-items:center;gap:8px}
@@ -211,42 +257,33 @@ footer{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);padd
 .footer-links a:hover{color:var(--ss-t1)}
 .footer-copy{font-size:11px;color:var(--ss-t3)}
 
-.mob-bar{display:none}
-
-.beta-banner{background:var(--ss-brand-tint);border-bottom:1px solid var(--ss-border);padding:14px 40px;margin-top:58px}
-.beta-banner-inner{max-width:1160px;margin:0 auto;display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;text-align:center}
-.beta-badge{font-size:11px;font-weight:700;letter-spacing:.14em;color:var(--ss-brand);background:transparent;border:1px solid var(--ss-brand);border-radius:var(--r-sm);padding:3px 10px;white-space:nowrap;flex-shrink:0}
-.beta-text{font-size:13px;color:var(--ss-t2);line-height:1.7;margin:0}
-.beta-text strong{color:var(--ss-t1);font-weight:600}
-.beta-text a{color:var(--ss-brand);text-decoration:none;border-bottom:1px solid var(--ss-brand);transition:border-color var(--dur-fast) var(--ease-out)}
-.beta-text a:hover{border-bottom-color:transparent}
-
 @media(max-width:767px){
-  .beta-banner{padding:12px 16px}.beta-text{font-size:12px}
+  .beta-banner{padding:7px 16px}.beta-text{font-size:12px}
   nav{padding:0 16px}.nav-links{display:none}.btn-login{display:none}.hamburger{display:flex}
-  .hero{padding:48px 20px 88px}.hero-inner{grid-template-columns:1fr;gap:0}.hero-panel{margin-top:32px}
-  h1.hero-h1{font-size:clamp(24px,7vw,32px)}.hero-tagline{font-size:clamp(15px,4.5vw,18px)}
-  .hero-sub{font-size:13px;margin-bottom:20px}.hero-actions{flex-direction:column;align-items:stretch}
-  .hero-tags{margin-bottom:28px;gap:6px}.htag{font-size:10px;padding:3px 8px}
-  .btn-cta{width:100%;justify-content:center;font-size:15px;padding:14px}.btn-ghost{display:none}
-  .sec{padding:52px 20px}.sec-sub{margin-bottom:28px}.feat-grid{grid-template-columns:1fr}
-  .uc-grid{grid-template-columns:1fr}.uc-card{padding:18px 16px;gap:12px}
-  .sec-data{padding:44px 20px}.sec-fcta{padding:56px 20px 100px}
-  footer{padding:20px 16px;flex-direction:column;padding-bottom:84px}
-  .mob-bar{display:flex;position:fixed;bottom:0;left:0;right:0;z-index:300;padding:10px 14px;background:rgba(245,246,248,0.96);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid var(--ss-border);box-shadow:0 -2px 12px rgba(16,24,40,.08);gap:10px;align-items:center;transition:background var(--dur-base) var(--ease-out)}
-  [data-theme="dark"] .mob-bar{background:rgba(28,31,36,0.96);box-shadow:0 -2px 12px rgba(0,0,0,.32)}
-  .mob-bar .btn-cta{flex:1;justify-content:center;font-size:15px;padding:13px}
-  .mob-bar-login{font-size:12px;font-weight:600;padding:12px 16px;border:1px solid var(--ss-border-strong);border-radius:var(--r-md);color:var(--ss-t2);background:var(--ss-surface-1);text-decoration:none;white-space:nowrap;transition:all var(--dur-fast) var(--ease-out)}
-  .mob-bar-login:hover{color:var(--ss-t1);border-color:var(--ss-brand)}
+  .hero{padding:28px 20px 40px}.hero-inner{grid-template-columns:minmax(0,1fr);gap:28px}
+  h1.hero-h1{font-size:clamp(26px,7.4vw,34px);margin-bottom:14px}
+  .hero-sub{font-size:14px;line-height:1.85;margin-bottom:22px}
+  .btn-cta{width:100%;justify-content:center;padding:14px}
+  .court-panel{padding:12px 12px 10px}
+  .sec{padding:52px 20px}.sec-sub{margin-bottom:28px}
+  .view-grid{grid-template-columns:minmax(0,1fr);gap:36px}
+  .roles{grid-template-columns:minmax(0,1fr);gap:24px;margin-top:32px}
+  .shot-frame{min-width:720px}
+  .sec-data{padding:36px 20px}.sec-fcta{padding:56px 20px}
+  footer{padding:20px 16px;flex-direction:column}
 }
 @media(min-width:768px) and (max-width:1023px){
   nav{padding:0 28px}.nav-links{gap:18px}.nav-links li:nth-child(3){display:none}
-  .hero{padding:88px 28px 56px}.hero-inner{grid-template-columns:1fr 380px;gap:36px}
-  h1.hero-h1{font-size:clamp(26px,4vw,34px)}.sec{padding:64px 28px}
-  .sec-data{padding:48px 28px}.sec-fcta{padding:64px 28px}footer{padding:22px 28px}
+  .hero{padding:48px 28px 56px}.hero-inner{grid-template-columns:minmax(0,1fr) 380px;gap:36px}
+  .sec{padding:64px 28px}.view-grid{gap:24px}.roles{gap:24px}
+  .sec-data{padding:40px 28px}.sec-fcta{padding:64px 28px}footer{padding:22px 28px}
 }
 @media(min-width:1024px){
-  .hamburger{display:none}.mob-bar{display:none}.mobile-menu{display:none!important}
+  .hamburger{display:none}.mobile-menu{display:none!important}
+}
+@media(min-width:768px) and (max-width:1179px){
+  .view-grid{grid-template-columns:1fr;gap:44px}
+  .view-grid .view{max-width:560px}
 }
 </style>
 </head>
@@ -283,8 +320,8 @@ footer{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);padd
   <div class="beta-banner-inner">
     <span class="beta-badge"><span class="ja">β 版</span><span class="en">BETA</span></span>
     <p class="beta-text">
-      <span class="ja">ShuttleScope は <strong>2026年中、無償</strong>にてご利用いただけます。現在、β版にご協力いただける方を募集しております。ご賛同いただける方は、<a href="/contact">お問い合わせフォーム</a>よりご連絡ください。</span>
-      <span class="en">ShuttleScope is available <strong>free of charge throughout 2026</strong>. We are currently seeking participants for our beta programme. If you are interested in joining, please reach out via the <a href="/en/contact">contact form</a>.</span>
+      <span class="ja">2026年中は無償・参加者募集中 <a href="/contact">お問い合わせ →</a></span>
+      <span class="en">Free through 2026, beta testers welcome <a href="/en/contact">Contact →</a></span>
     </p>
   </div>
 </div>
@@ -292,83 +329,179 @@ footer{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);padd
 <section class="hero">
   <div class="hero-inner">
     <div>
-      <div class="hero-kicker"><span class="ja">バドミントン分析ワークベンチ</span><span class="en">Badminton Analysis Workbench</span></div>
-      <h1 class="hero-h1"><span class="ja">試合をデータで説明する</span><span class="en">Explain the Match with Data</span></h1>
-      <p class="hero-tagline"><span class="ja">ラリーをストローク単位で記録し、配球・得点期待値・戦術傾向を統計モデルで数値化します。</span><span class="en">Record rallies stroke by stroke and quantify shot placement, scoring expectation, and tactical patterns with statistical models.</span></p>
-      <p class="hero-sub"><span class="ja">ストローク単位の記録から試合構造を統計的に可視化するバドミントン分析ワークベンチです。コーチ・アナリスト・選手それぞれの役割に応じた分析レイヤーを提供します。</span><span class="en">ShuttleScope is a sports data analysis platform for badminton match analysis. It provides statistical visualization and performance analysis tools for coaches, analysts, and players.</span></p>
-      <div class="hero-tags">
-        <span class="htag"><span class="ja">ストローク分析</span><span class="en">Stroke Analysis</span></span>
-        <span class="htag"><span class="ja">統計モデル</span><span class="en">Statistical Model</span></span>
-        <span class="htag"><span class="ja">戦術可視化</span><span class="en">Tactical Viz</span></span>
-        <span class="htag"><span class="ja">コンディション追跡</span><span class="en">Condition Tracking</span></span>
-      </div>
-      <div class="hero-actions">
-        <a href="https://app.shuttle-scope.com/login" class="btn-cta"><span class="ja">アプリに進む</span><span class="en">Open App</span></a>
-        <a href="/contact" class="btn-ghost"><span class="ja">お問い合わせ</span><span class="en">Contact</span></a>
-      </div>
+      <h1 class="hero-h1"><span class="ja"><span class="nb">どこに打ち、</span><span class="nb">どこで流れが</span><span class="nb">変わったか。</span></span><span class="en">Where did you hit it, and where did the match turn?</span></h1>
+      <p class="hero-sub"><span class="ja">ストロークごとの記録から、配球・ラリー展開・得点の流れを可視化するバドミントン分析ワークベンチ。コーチ、アナリスト、選手が、それぞれの判断に使えます。</span><span class="en">A badminton analysis workbench that turns stroke-by-stroke records into shot placement, rally flow, and the run of points. Coaches, analysts, and players each use it for their own decisions.</span></p>
+      <a href="https://app.shuttle-scope.com/login" class="btn-cta"><span class="ja">アプリに進む</span><span class="en">Open App</span></a>
     </div>
-    <div class="hero-panel">
-      <img class="hero-shot hero-shot-light" src="/hero-app-light.png" srcset="/hero-app-light.png 1x, /hero-app-light@2x.png 2x" width="1000" height="433" alt="ShuttleScope の解析ダッシュボード画面">
-      <img class="hero-shot hero-shot-dark" src="/hero-app-dark.png" srcset="/hero-app-dark.png 1x, /hero-app-dark@2x.png 2x" width="1000" height="433" alt="ShuttleScope の解析ダッシュボード画面 (ダークテーマ)" loading="lazy">
-    </div>
+    <figure class="court-panel">
+      <div class="court-head">
+        <span class="tag-sample"><span class="ja">サンプルデータ</span><span class="en">SAMPLE DATA</span></span>
+        <span class="court-title"><span class="ja">配球ゾーンと、1ラリーの配球順</span><span class="en">Placement zones and one rally's shot order</span></span>
+      </div>
+      <svg class="court-svg" viewBox="-14 -26 333 375" aria-hidden="true" focusable="false">
+        <rect class="f-out" x="-14" y="-26" width="333" height="375"/>
+        <rect class="f-court" x="0" y="0" width="305" height="335"/>
+        <!-- 9 ゾーン (手前=ネット側 / 奥=バックライン側)。値は架空の配球割合 (%) -->
+        <g class="f-heat">
+          <rect x="2" y="2" width="97.7" height="107.7" rx="4" fill-opacity=".31"/>
+          <rect x="103.7" y="2" width="97.7" height="107.7" rx="4" fill-opacity=".24"/>
+          <rect x="205.3" y="2" width="97.7" height="107.7" rx="4" fill-opacity=".37"/>
+          <rect x="2" y="113.7" width="97.7" height="107.7" rx="4" fill-opacity=".41"/>
+          <rect x="103.7" y="113.7" width="97.7" height="107.7" rx="4" fill-opacity=".34"/>
+          <rect x="205.3" y="113.7" width="97.7" height="107.7" rx="4" fill-opacity=".48"/>
+          <rect x="2" y="225.3" width="97.7" height="107.7" rx="4" fill-opacity=".82"/>
+          <rect x="103.7" y="225.3" width="97.7" height="107.7" rx="4" fill-opacity=".55"/>
+          <rect x="205.3" y="225.3" width="97.7" height="107.7" rx="4" fill-opacity=".82"/>
+        </g>
+        <g class="l-court">
+          <rect x="0" y="0" width="305" height="335"/>
+          <path d="M23 0V335M282 0V335M0 99H305M0 297H305M152.5 99V335"/>
+        </g>
+        <path d="M-10 0H315" stroke="#fff" stroke-width="3.5" stroke-linecap="round"/>
+        <text class="t-net" x="152.5" y="-9" text-anchor="middle"><tspan class="ja">ネット</tspan><tspan class="en">NET</tspan></text>
+        <g class="t-zone">
+          <text x="10" y="22">6%</text><text x="111.7" y="22">4%</text><text x="213.3" y="22">8%</text>
+          <text x="10" y="133.7">9%</text><text x="111.7" y="133.7">7%</text><text x="213.3" y="133.7">11%</text>
+          <text x="10" y="245.3">21%</text><text x="111.7" y="245.3">13%</text><text x="213.3" y="245.3">21%</text>
+        </g>
+        <polyline class="path-seg" points="254,62 48,298 58,92 250,200 150,298"/>
+        <circle class="node" cx="254" cy="62" r="10"/><text class="t-node" x="254" y="62">1</text>
+        <circle class="node" cx="48" cy="298" r="10"/><text class="t-node" x="48" y="298">2</text>
+        <circle class="node" cx="58" cy="92" r="10"/><text class="t-node" x="58" y="92">3</text>
+        <circle class="node" cx="250" cy="200" r="10"/><text class="t-node" x="250" y="200">4</text>
+        <circle class="node-end" cx="150" cy="298" r="11"/><text class="t-node" x="150" y="298">5</text>
+      </svg>
+      <div class="legend"><span class="ja">少</span><span class="en">Low</span><i></i><span class="ja">多</span><span class="en">High</span></div>
+      <figcaption class="court-cap"><span class="ja">架空の1試合データによる表示例です。数字は相手コートへの配球の割合、1〜5 は1ラリー内の着地の順番です。</span><span class="en">An illustration with made-up data from one imaginary match. Numbers are the share of shots to each zone of the opponent's court; 1-5 are landing points in order within one rally.</span></figcaption>
+    </figure>
   </div>
 </section>
 
 <section class="sec sec-features" id="features">
   <div class="sec-wrap">
-    <div>
-      <div class="sec-kicker">Core Features</div>
-      <h2 class="sec-h2"><span class="ja">主な機能</span><span class="en">Features</span></h2>
-      <p class="sec-sub"><span class="ja">アノテーション・統計解析・役割別アクセスが一体になった設計です。</span><span class="en">Annotation, statistical analysis, and role-based access — unified in one platform.</span></p>
+    <h2 class="sec-h2"><span class="ja">次の練習を考えるための、3つの見方</span><span class="en">Three views to plan your next practice</span></h2>
+    <p class="sec-sub"><span class="ja">記録した試合から、次に何を試すかの手がかりになる表示を用意しています。</span><span class="en">From the matches you record, ShuttleScope gives you views that suggest what to try next.</span></p>
+    <div class="view-grid">
+
+      <div class="view">
+        <div class="mini">
+          <span class="tag-sample"><span class="ja">サンプルデータ</span><span class="en">SAMPLE</span></span>
+          <svg viewBox="0 0 300 150" aria-hidden="true" focusable="false">
+            <rect width="300" height="150" rx="6" class="f-out"/>
+            <text class="t-mini-w" x="20" y="16"><tspan class="ja">セット1</tspan><tspan class="en">Set 1</tspan></text>
+            <text class="t-mini-w" x="170" y="16"><tspan class="ja">セット2</tspan><tspan class="en">Set 2</tspan></text>
+            <g class="f-court"><rect x="20" y="24" width="120" height="116"/><rect x="170" y="24" width="120" height="116"/></g>
+            <g class="f-heat">
+              <rect x="22" y="26" width="38" height="36" rx="2" fill-opacity=".14"/><rect x="61" y="26" width="38" height="36" rx="2" fill-opacity=".14"/><rect x="100" y="26" width="38" height="36" rx="2" fill-opacity=".18"/>
+              <rect x="22" y="64" width="38" height="36" rx="2" fill-opacity=".32"/><rect x="61" y="64" width="38" height="36" rx="2" fill-opacity=".26"/><rect x="100" y="64" width="38" height="36" rx="2" fill-opacity=".36"/>
+              <rect x="22" y="102" width="38" height="36" rx="2" fill-opacity=".92"/><rect x="61" y="102" width="38" height="36" rx="2" fill-opacity=".56"/><rect x="100" y="102" width="38" height="36" rx="2" fill-opacity=".92"/>
+              <rect x="172" y="26" width="38" height="36" rx="2" fill-opacity=".3"/><rect x="211" y="26" width="38" height="36" rx="2" fill-opacity=".24"/><rect x="250" y="26" width="38" height="36" rx="2" fill-opacity=".36"/>
+              <rect x="172" y="64" width="38" height="36" rx="2" fill-opacity=".44"/><rect x="211" y="64" width="38" height="36" rx="2" fill-opacity=".34"/><rect x="250" y="64" width="38" height="36" rx="2" fill-opacity=".48"/>
+              <rect x="172" y="102" width="38" height="36" rx="2" fill-opacity=".5"/><rect x="211" y="102" width="38" height="36" rx="2" fill-opacity=".4"/><rect x="250" y="102" width="38" height="36" rx="2" fill-opacity=".6"/>
+            </g>
+            <g class="l-court" style="stroke-width:1.4"><rect x="20" y="24" width="120" height="116"/><rect x="170" y="24" width="120" height="116"/></g>
+            <path d="M20 24H140M170 24H290" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+          </svg>
+          <p class="mini-cap"><span class="ja">ネット側が上。色が濃いほど着地が多いゾーン。</span><span class="en">Net side is up. Darker zones received more shots.</span></p>
+        </div>
+        <h3 class="view-h"><span class="ja">セット間で、配球の変化を比べる</span><span class="en">Compare placement across sets</span></h3>
+        <p class="view-p"><span class="ja">同じ選手の配球を、セットごとに9つのゾーンで並べます。どのコースが増え、どのコースが減ったかが分かります。</span><span class="en">Place the same player's shots side by side, set by set, on nine zones. See which courses grew and which shrank.</span></p>
+        <p class="decide"><b><span class="ja">決められること</span><span class="en">What it helps decide</span></b><span class="ja">次の練習で増やしたいコースの目標。</span><span class="en">Which courses to work on in the next practice.</span></p>
+      </div>
+
+      <div class="view">
+        <div class="mini">
+          <span class="tag-sample"><span class="ja">サンプルデータ</span><span class="en">SAMPLE</span></span>
+          <svg viewBox="0 0 300 150" aria-hidden="true" focusable="false">
+            <path class="m-guide-d" d="M10 52H290M10 104H290"/>
+            <polyline class="m-link" points="22,52 64,104 106,52 148,104 190,52 232,104 274,52"/>
+            <g>
+              <circle class="m-a" cx="22" cy="52" r="11"/><text class="t-on-brand" x="22" y="52">1</text>
+              <circle class="m-b" cx="64" cy="104" r="11"/><text class="t-on-b" x="64" y="104">2</text>
+              <circle class="m-a" cx="106" cy="52" r="11"/><text class="t-on-brand" x="106" y="52">3</text>
+              <circle class="m-b" cx="148" cy="104" r="11"/><text class="t-on-b" x="148" y="104">4</text>
+              <circle class="m-a" cx="190" cy="52" r="11"/><text class="t-on-brand" x="190" y="52">5</text>
+              <circle class="m-b" cx="232" cy="104" r="11"/><text class="t-on-b" x="232" y="104">6</text>
+              <circle class="m-end" cx="274" cy="52" r="11"/><text class="t-on-accent" x="274" y="52">7</text>
+            </g>
+            <g class="t-mini" text-anchor="middle">
+              <text x="22" y="31"><tspan class="ja">サーブ</tspan><tspan class="en">Serve</tspan></text>
+              <text x="106" y="31"><tspan class="ja">クリア</tspan><tspan class="en">Clear</tspan></text>
+              <text x="190" y="31"><tspan class="ja">ネット</tspan><tspan class="en">Net</tspan></text>
+              <text x="274" y="31"><tspan class="ja">スマッシュ</tspan><tspan class="en">Smash</tspan></text>
+              <text x="64" y="132"><tspan class="ja">ロブ</tspan><tspan class="en">Lob</tspan></text>
+              <text x="148" y="132"><tspan class="ja">ドロップ</tspan><tspan class="en">Drop</tspan></text>
+              <text x="232" y="132"><tspan class="ja">ロブ</tspan><tspan class="en">Lob</tspan></text>
+            </g>
+          </svg>
+          <p class="mini-cap"><span class="ja">上段(塗り)=自分、下段(白抜き)=相手。7球目(橙)で得点。</span><span class="en">Top row (filled) = you, bottom row (outlined) = opponent. Point won on shot 7 (orange).</span></p>
+        </div>
+        <h3 class="view-h"><span class="ja">ラリーを、1球ずつ並べる</span><span class="en">Lay out the rally, shot by shot</span></h3>
+        <p class="view-p"><span class="ja">サーブから決まり球まで、球種と順番を1列に。得点につながった組み立てを振り返れます。</span><span class="en">From serve to the winning shot, see shot types in order on one line, and look back at the patterns that earned points.</span></p>
+        <p class="decide"><b><span class="ja">決められること</span><span class="en">What it helps decide</span></b><span class="ja">次の試合で試す、得点につながる組み立て。</span><span class="en">Which scoring patterns to try in the next match.</span></p>
+      </div>
+
+      <div class="view">
+        <div class="mini">
+          <span class="tag-sample"><span class="ja">サンプルデータ</span><span class="en">SAMPLE</span></span>
+          <svg viewBox="0 0 300 150" aria-hidden="true" focusable="false">
+            <path class="m-guide" d="M16 112H288"/>
+            <path class="m-guide-d" d="M16 62H288M152 12V112"/>
+            <path class="m-band" d="M16.0,49.0 L29.6,47.0 L43.2,44.0 L56.8,46.0 L70.4,42.0 L84.0,38.0 L97.6,34.0 L111.2,36.0 L124.8,41.0 L138.4,47.0 L152.0,52.0 L165.6,56.0 L179.2,52.0 L192.8,46.0 L206.4,37.0 L220.0,31.0 L233.6,27.0 L247.2,26.0 L260.8,23.0 L274.4,19.0 L288.0,15.0 L288.0,21.0 L274.4,27.0 L260.8,33.0 L247.2,38.0 L233.6,41.0 L220.0,47.0 L206.4,55.0 L192.8,64.0 L179.2,72.0 L165.6,76.0 L152.0,72.0 L138.4,67.0 L124.8,63.0 L111.2,58.0 L97.6,56.0 L84.0,60.0 L70.4,66.0 L56.8,70.0 L43.2,68.0 L29.6,73.0 L16.0,75.0Z"/>
+            <path class="m-line" d="M16.0,62.0 L29.6,60.0 L43.2,56.0 L56.8,58.0 L70.4,54.0 L84.0,49.0 L97.6,45.0 L111.2,47.0 L124.8,52.0 L138.4,57.0 L152.0,62.0 L165.6,66.0 L179.2,62.0 L192.8,55.0 L206.4,46.0 L220.0,39.0 L233.6,34.0 L247.2,32.0 L260.8,28.0 L274.4,23.0 L288.0,18.0"/>
+            <path class="m-seg" d="M179.2,62.0 L192.8,55.0 L206.4,46.0 L220.0,39.0 L233.6,34.0 L247.2,32.0"/>
+            <circle class="m-dot" cx="247.2" cy="32" r="3.6"/>
+            <g class="t-mini">
+              <text x="20" y="9"><tspan class="ja">上ほど有利</tspan><tspan class="en">Higher = better for you</tspan></text>
+              <text x="16" y="129"><tspan class="ja">開始</tspan><tspan class="en">Start</tspan></text>
+              <text x="152" y="129" text-anchor="middle"><tspan class="ja">インターバル</tspan><tspan class="en">Interval</tspan></text>
+              <text x="288" y="129" text-anchor="end"><tspan class="ja">終了</tspan><tspan class="en">End</tspan></text>
+            </g>
+            <text class="t-acc" x="222" y="90" text-anchor="middle"><tspan class="ja">流れが動いた局面</tspan><tspan class="en">Momentum shift</tspan></text>
+          </svg>
+          <p class="mini-cap"><span class="ja">帯は推定の幅。記録が少ないほど広がります。</span><span class="en">The band is the estimate's range; it widens when less is recorded.</span></p>
+        </div>
+        <h3 class="view-h"><span class="ja">得点の流れを、折れ線で追う</span><span class="en">Follow the flow of points</span></h3>
+        <p class="view-p"><span class="ja">ラリーごとの優位度の推移を表示します。流れが動いた局面から、見返したい場面を選べます。</span><span class="en">See how the advantage moves rally by rally, and pick the moments where the flow changed to review.</span></p>
+        <p class="decide"><b><span class="ja">決められること</span><span class="en">What it helps decide</span></b><span class="ja">映像で見返す場面と、伸びしろのあるプレー。</span><span class="en">Which moments to review on video, and which plays have room to grow.</span></p>
+      </div>
+
     </div>
-    <div class="feat-grid">
-      <div class="feat-card">
-        <div class="feat-icon"><svg viewBox="0 0 17 17" fill="none" stroke="var(--ss-brand)" stroke-width="1.6"><polygon points="3,2.5 13.5,8.5 3,14.5"/></svg></div>
-        <div class="feat-h"><span class="ja">ストローク単位のアノテーション</span><span class="en">Stroke-level Annotation</span></div>
-        <p class="feat-p"><span class="ja">ラリーをストローク単位で記録します。配球位置・球種・着地点を逐次入力することで、統計モデルの精度が上がります。</span><span class="en">Record each rally stroke by stroke. Logging shot position, type, and landing zone improves the accuracy of statistical models.</span></p>
-      </div>
-      <div class="feat-card">
-        <div class="feat-icon"><svg viewBox="0 0 17 17" fill="none" stroke="var(--ss-brand)" stroke-width="1.6"><circle cx="8.5" cy="5.5" r="2.5"/><path d="M3 14.5c0-3.1 2.4-5.5 5.5-5.5s5.5 2.4 5.5 5.5"/></svg></div>
-        <div class="feat-h"><span class="ja">統計モデルによる試合解析</span><span class="en">Statistical Match Analysis</span></div>
-        <p class="feat-p"><span class="ja">Markov モデル・EPV・コートヒートマップ・疲労指標により試合構造を多角的に可視化します。記録が増えるほど分析の解像度が上がります。</span><span class="en">Markov models, EPV, court heatmaps, and fatigue indicators visualize match structure from multiple angles. Resolution improves as more data is recorded.</span></p>
-      </div>
-      <div class="feat-card">
-        <div class="feat-icon"><svg viewBox="0 0 17 17" fill="none" stroke="var(--ss-brand)" stroke-width="1.6"><circle cx="3" cy="8.5" r="1.8"/><circle cx="14" cy="4" r="1.8"/><circle cx="14" cy="13" r="1.8"/><line x1="4.7" y1="7.6" x2="12.3" y2="4.9"/><line x1="4.7" y1="9.4" x2="12.3" y2="12.1"/></svg></div>
-        <div class="feat-h"><span class="ja">役割に応じた分析レイヤー</span><span class="en">Role-based Analysis Layers</span></div>
-        <p class="feat-p"><span class="ja">コーチ・アナリスト・選手で参照できる情報の粒度が異なります。それぞれの判断に必要なデータを、適切な形で届けます。</span><span class="en">Coaches, analysts, and players each see a different level of detail. The right data is delivered to the right person in the right form.</span></p>
-      </div>
-    </div>
+    <p class="note"><span class="ja">どの表示も、記録された範囲の傾向を示すものです。試合数やラリー数が少ないときは信頼度を併記し、断定はしません。推定には Markov モデルと EPV (得点期待値) を用いています。</span><span class="en">Every view shows trends within what was recorded. When the number of matches or rallies is small, a confidence level is shown alongside, and nothing is stated as certain. Estimates use Markov models and EPV (expected point value).</span></p>
   </div>
 </section>
 
 <section class="sec sec-uc" id="usecases">
   <div class="sec-wrap">
-    <div>
-      <div class="sec-kicker">Analysis Capabilities</div>
-      <h2 class="sec-h2"><span class="ja">試合から読み取れること</span><span class="en">What the Match Data Reveals</span></h2>
-      <p class="sec-sub"><span class="ja">ストロークを記録するたびに統計モデルが更新され、試合の構造が可視化されます。</span><span class="en">Every stroke recorded updates the statistical model and makes match structure more visible.</span></p>
-    </div>
-    <div class="uc-grid">
-      <div class="uc-card"><div><div class="uc-h"><span class="ja">ラリー構造の分析</span><span class="en">Rally Structure Analysis</span></div><p class="uc-p"><span class="ja">どのパターンで得点・失点しているかをラリー単位で可視化します。コートヒートマップと配球傾向から試合の構造が見えます。</span><span class="en">Visualize scoring and losing patterns at the rally level. Court heatmaps and shot tendency data reveal match structure.</span></p></div></div>
-      <div class="uc-card"><div><div class="uc-h"><span class="ja">得点期待値の算出</span><span class="en">Expected Score Calculation</span></div><p class="uc-p"><span class="ja">Markov モデルと EPV により各局面の優位性を数値化します。「なんとなく苦しかった」を統計的な根拠に変えます。</span><span class="en">Markov models and EPV quantify the advantage at each stage. Turn "it felt tough" into statistical evidence.</span></p></div></div>
-      <div class="uc-card"><div><div class="uc-h"><span class="ja">戦術傾向の可視化</span><span class="en">Tactical Pattern Visualization</span></div><p class="uc-p"><span class="ja">配球パターン・反実仮想分析・セット間比較により、勝敗に影響した戦術要因を特定します。</span><span class="en">Identify tactical factors that influenced the outcome through shot patterns, counterfactual analysis, and set comparisons.</span></p></div></div>
-      <div class="uc-card"><div><div class="uc-h"><span class="ja">コンディションとの相関</span><span class="en">Correlation with Physical Condition</span></div><p class="uc-p"><span class="ja">体調指標とパフォーマンスデータを重ねて分析します。疲労が試合展開に与える影響をシーズン単位で追跡できます。</span><span class="en">Overlay condition indicators with performance data. Track the impact of fatigue on match flow across an entire season.</span></p></div></div>
+    <h2 class="sec-h2"><span class="ja">実際のアプリ画面</span><span class="en">The actual app</span></h2>
+    <p class="sec-sub"><span class="ja">同じ試合の記録を、役割ごとの見方で。参照できる情報の粒度は役割によって異なります。</span><span class="en">The same match record, viewed by role. The level of detail each person can see depends on their role.</span></p>
+    <figure class="app-fig">
+      <div class="shot-scroll">
+        <div class="shot-frame">
+          <img class="shot-light" src="/hero-app-light@2x.png" srcset="/hero-app-light.png 1000w, /hero-app-light@2x.png 1920w" sizes="(min-width:1180px) 1280px, (min-width:768px) 108vw, 720px" width="1920" height="830" alt="ShuttleScope の解析ダッシュボード画面" loading="lazy" decoding="async">
+          <img class="shot-dark" src="/hero-app-dark@2x.png" srcset="/hero-app-dark.png 1000w, /hero-app-dark@2x.png 1920w" sizes="(min-width:1180px) 1280px, (min-width:768px) 108vw, 720px" width="1920" height="830" alt="ShuttleScope の解析ダッシュボード画面 (ダークテーマ)" loading="lazy" decoding="async">
+        </div>
+      </div>
+      <figcaption class="shot-cap"><span class="ja">解析ダッシュボード。開発用のテストデータで表示しています。</span><span class="en">The analysis dashboard, shown with development test data.</span></figcaption>
+    </figure>
+    <div class="roles">
+      <div class="role"><div class="role-h"><span class="ja">コーチ</span><span class="en">Coach</span></div><p class="role-p"><span class="ja">チーム全体の傾向を見て、練習の優先順位を決める。</span><span class="en">Read team-wide tendencies and set practice priorities.</span></p></div>
+      <div class="role"><div class="role-h"><span class="ja">アナリスト</span><span class="en">Analyst</span></div><p class="role-p"><span class="ja">ストロークと局面を掘り下げ、対戦相手の傾向をまとめる。</span><span class="en">Dig into strokes and phases and summarise an opponent's tendencies.</span></p></div>
+      <div class="role"><div class="role-h"><span class="ja">選手</span><span class="en">Player</span></div><p class="role-p"><span class="ja">自分の試合を振り返り、伸びしろのあるプレーを見つける。</span><span class="en">Look back at your own matches and find plays with room to grow.</span></p></div>
     </div>
   </div>
 </section>
 
 <section class="sec-data">
   <div class="sec-wrap">
-    <div class="sec-kicker">Data Policy</div>
     <p class="data-body"><span class="ja">ShuttleScope では利用目的に応じて試合映像・レビュー情報・選手に関する入力情報を扱う場合があります。具体的な取扱方針は <a href="/privacy">プライバシーポリシー</a> を、利用条件は <a href="/terms">利用規約</a> をご確認ください。</span><span class="en">ShuttleScope may handle match footage, review information, and player input data depending on the purpose of use. See our <a href="/privacy">Privacy Policy</a> and <a href="/terms">Terms of Use</a> for details.</span></p>
   </div>
 </section>
 
 <section class="sec-fcta">
-  <div class="sec-kicker" style="justify-content:center">Get Started</div>
-  <h2 class="fcta-h"><span class="ja">利用を開始する</span><span class="en">Get started</span></h2>
-  <p class="fcta-sub"><span class="ja">アカウントをお持ちの方はそのままログインできます。</span><span class="en">Existing accounts can log in directly.</span></p>
-  <a href="https://app.shuttle-scope.com/login" class="btn-cta" style="font-size:15px;padding:14px 36px"><span class="ja">アプリを開く</span><span class="en">Open App</span></a>
+  <h2 class="fcta-h"><span class="ja">まずは1試合の記録から。</span><span class="en">Start with one recorded match.</span></h2>
+  <p class="fcta-sub"><span class="ja">アカウントをお持ちの方は、そのままログインできます。</span><span class="en">If you already have an account, you can log in directly.</span></p>
+  <a href="https://app.shuttle-scope.com/login" class="btn-cta"><span class="ja">アプリを開く</span><span class="en">Open App</span></a>
 </section>
 
 <footer>
@@ -382,11 +515,6 @@ footer{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);padd
   </ul>
   <span class="footer-copy">© 2026 ShuttleScope</span>
 </footer>
-
-<div class="mob-bar">
-  <a href="https://app.shuttle-scope.com/login" class="btn-cta"><span class="ja">アプリに進む</span><span class="en">Open App</span></a>
-  <a href="/contact" class="mob-bar-login"><span class="ja">お問い合わせ</span><span class="en">Contact</span></a>
-</div>
 
 <script>
 const html=document.documentElement;
