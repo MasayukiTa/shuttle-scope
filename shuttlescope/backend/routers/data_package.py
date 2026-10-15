@@ -75,6 +75,8 @@ def _build_match_package(
     db: Session,
     match: Match,
     sections: list[str],
+    actor_role: Optional[str] = None,
+    actor_player_id: Optional[int] = None,
 ) -> dict:
     """match 1 件分の export package を sections フィルタ付きで構築する。
 
@@ -138,17 +140,36 @@ def _build_match_package(
 
     if "conditions" in sections:
         from backend.db.models import Condition
-        if player_ids:
-            conds = (
+        if actor_role == "player":
+            # player は本人の体調だけ。試合の相手・パートナーの体重 / 睡眠 / Hooper /
+            # CCS は他人の健康データなので持ち出させない。本人分も conditions API と
+            # 同じ同意フィルタ (filter_condition_fields) を通す。
+            from backend.routers.conditions import _get_owner_body_consents
+            from backend.utils.field_sensitivity import filter_condition_fields
+            own_rows = (
                 db.query(Condition)
-                .filter(Condition.player_id.in_(player_ids))
+                .filter(Condition.player_id == actor_player_id)
                 .order_by(Condition.measured_at.desc())
                 .limit(200)
                 .all()
-            )
+            ) if actor_player_id is not None else []
+            consents = _get_owner_body_consents(db, actor_player_id) if own_rows else {}
+            payload["conditions"] = [
+                filter_condition_fields(_condition_dict(c), "player", consents)
+                for c in own_rows
+            ]
         else:
-            conds = []
-        payload["conditions"] = [_condition_dict(c) for c in conds]
+            if player_ids:
+                conds = (
+                    db.query(Condition)
+                    .filter(Condition.player_id.in_(player_ids))
+                    .order_by(Condition.measured_at.desc())
+                    .limit(200)
+                    .all()
+                )
+            else:
+                conds = []
+            payload["conditions"] = [_condition_dict(c) for c in conds]
 
     if "reports" in sections:
         # 軽量サマリーのみ。重い PDF 生成は /api/reports/* 側に委ねる。
@@ -403,7 +424,11 @@ def export_package(
             keep_keys.update(section_to_keys.get(sec, set()))
         # conditions / reports は元 payload に存在しないので _build_match_package で補う
         if "conditions" in selected_sections or "reports" in selected_sections:
-            extra = _build_match_package(db, match, [s for s in selected_sections if s in ("conditions", "reports")])
+            extra = _build_match_package(
+                db, match,
+                [s for s in selected_sections if s in ("conditions", "reports")],
+                actor_role=ctx.role, actor_player_id=ctx.player_id,
+            )
             if "conditions" in extra:
                 payload["conditions"] = extra["conditions"]
                 keep_keys.add("conditions")
@@ -411,7 +436,15 @@ def export_package(
                 payload["reports"] = extra["reports"]
                 keep_keys.add("reports")
         payload = {k: v for k, v in payload.items() if k in keep_keys}
+        if ctx.is_player:
+            # player: 勝敗 / スコア / 相手プロフィール / EPV を持ち出させない
+            from backend.utils.player_privacy import redact_export_package_for_player
+            payload = redact_export_package_for_player(payload, ctx.player_id)
     else:
+        if ctx.is_player:
+            # 署名の前に縮約する (署名は縮約後のパッケージに付く)
+            from backend.utils.player_privacy import redact_export_package_for_player
+            payload = redact_export_package_for_player(payload, ctx.player_id)
         # Phase A3: HMAC 署名 + 有効期限 24h + nonce を埋め込み、改ざん検知 + 1回利用化
         from backend.utils.export_signing import sign_package
         payload = sign_package(payload)

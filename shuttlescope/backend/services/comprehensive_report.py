@@ -222,22 +222,17 @@ def gather_player_report(
             )
         # match_preview は対戦相手指定なので skip 可
 
-    # ── 3.5 player 向けに、直接の弱点提示になる section を落とす ──────
+    # ── 3.5 player 向けは許可リスト方式 ───────────────────────────────
     #
-    # docstring と CLAUDE.md は「player には raw EPV / 勝率を出さない」
-    # 「直接の弱点提示をしない」と定めているが、実装で role を見ていたのは
-    # prediction セクションだけだった。下の 3 つはいずれも選手本人に対して
-    # 敗因・弱点・生の勝敗をそのまま示すものなので、同じ規則の対象。
-    # 1 箇所にまとめてあるのは、section が増えたときに見落とさないため。
-    _PLAYER_FORBIDDEN_SECTIONS = (
-        "shot_win_loss",        # 球種別の得点/失点 = 生の勝敗内訳
-        "pre_loss_patterns",    # 「敗北前ラリーパターン」= 直接の弱点提示
-        "pressure_performance", # 競り合い局面の成否
-        "opponent_stats",       # 上で既に除外済み (念のため)
-    )
+    # 旧実装は「落とす節」を列挙する拒否リストで、列挙漏れの節
+    # (rally_length_winrate / temporal_performance / shot_transition_matrix。
+    # 直接ルートでは player に 403) と、許可した節の中の win_rate がそのまま
+    # player に渡っていた。player に見せる節と残すキーは
+    # backend/utils/player_privacy.py の許可リストだけで決める。
+    # 各節の meta (sample_size / confidence) は縮約対象外で残る。
     if role == "player":
-        for _k in _PLAYER_FORBIDDEN_SECTIONS:
-            sections.pop(_k, None)
+        from backend.utils.player_privacy import apply_player_comprehensive_view
+        sections = apply_player_comprehensive_view(sections)
 
     # ── 4. Growth ───────────────────────────────────────────────────
     try:
@@ -288,6 +283,11 @@ def gather_player_report(
         header["matches_included"] = len(per_match)
     else:
         per_match = []
+
+    if role == "player":
+        # 勝敗・スコア・相手 ID・uuid を含めない (許可リストのキーだけ)。
+        from backend.utils.player_privacy import player_match_row
+        per_match = [player_match_row(r) for r in per_match]
 
     return {
         "success": True,

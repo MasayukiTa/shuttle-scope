@@ -881,23 +881,11 @@ def _build_player_forbidden_analysis_paths() -> frozenset[str]:
             p = getattr(route, "path", None)
             if p:
                 forbidden.add(f"/api{p}")
-    # 2) PLAYER_SENSITIVE_KEYS にマッチする individual paths (advanced + stable)
-    forbidden.update({
-        # weakness / vulnerability
-        "/api/analysis/received_vulnerability",
-        "/api/analysis/received_vulnerability/zone_detail",
-        "/api/analysis/opponent_vulnerability",
-        # 対戦相手スカウティング (rival_comparison)
-        "/api/analysis/opponent_card",
-        "/api/analysis/opponent_stats",
-        # 直接 win_rate vs opponent
-        "/api/analysis/win_loss_comparison",
-        "/api/analysis/partner_comparison",
-        # advanced-tier opponent 系 (analysis_advanced.py)
-        "/api/analysis/opponent_type_affinity",
-        "/api/analysis/opponent_adaptive_shots",
-        "/api/analysis/opponent_policy",
-    })
+    # 2) stable / advanced 内の個別パス (weakness / 対戦相手 / 直接勝率系)。
+    # 定義は backend/utils/player_privacy.py の単一の定数。包括レポートの許可リストと
+    # 同じ場所で管理し、入口ごとに規則が食い違わないようにする。
+    from backend.utils.player_privacy import PLAYER_FORBIDDEN_NAMED_ANALYSIS_PATHS
+    forbidden.update(PLAYER_FORBIDDEN_NAMED_ANALYSIS_PATHS)
     return frozenset(forbidden)
 
 
@@ -905,7 +893,7 @@ _PLAYER_FORBIDDEN_ANALYSIS_PATHS = _build_player_forbidden_analysis_paths()
 
 # Sanity check: research/spine/bundle ルーターに少なくともこの数のルートがあれば
 # import に成功している。閾値を下回ったら起動を拒否する (silent な空集合化を防止)。
-# 現状: research ~17, spine ~6, bundle ~4, sensitive paths +10 = 約 37。
+# 現状: research ~17, spine ~6, bundle ~4, 個別パス +12 = 約 39。
 # 閾値 25 は将来のルーター追加 / 削除を吸収しつつ "ほぼ空" を確実に拒否する値。
 _EXPECTED_MIN_FORBIDDEN_PATHS = 25
 if len(_PLAYER_FORBIDDEN_ANALYSIS_PATHS) < _EXPECTED_MIN_FORBIDDEN_PATHS:
@@ -914,6 +902,13 @@ if len(_PLAYER_FORBIDDEN_ANALYSIS_PATHS) < _EXPECTED_MIN_FORBIDDEN_PATHS:
         f"{len(_PLAYER_FORBIDDEN_ANALYSIS_PATHS)} entries (expected >= "
         f"{_EXPECTED_MIN_FORBIDDEN_PATHS}). research/spine/bundle ルーターの "
         f"import に失敗している可能性が高い。silent な player 公開を防ぐため起動を拒否する。"
+    )
+# 個別パスの単一定義 (player_privacy) が集合に全部入っていることも起動時に確かめる。
+from backend.utils.player_privacy import PLAYER_FORBIDDEN_NAMED_ANALYSIS_PATHS as _NAMED_FORBIDDEN
+if not _NAMED_FORBIDDEN <= _PLAYER_FORBIDDEN_ANALYSIS_PATHS:
+    raise RuntimeError(
+        "_PLAYER_FORBIDDEN_ANALYSIS_PATHS が player_privacy の禁止定義を満たしていない: "
+        f"{sorted(_NAMED_FORBIDDEN - _PLAYER_FORBIDDEN_ANALYSIS_PATHS)}"
     )
 
 
