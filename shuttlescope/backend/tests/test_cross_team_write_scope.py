@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from datetime import date
 
+import secrets
 import pytest
 from fastapi.testclient import TestClient
 
@@ -165,7 +166,7 @@ def test_f1_same_team_chain_still_works(client, db_session, actor):
 def livekit(monkeypatch):
     monkeypatch.setenv("LIVEKIT_URL", "wss://lk.invalid")
     monkeypatch.setenv("LIVEKIT_API_KEY", "devkey")
-    monkeypatch.setenv("LIVEKIT_API_SECRET", "devsecret_devsecret_devsecret_0123456789")
+    monkeypatch.setenv("LIVEKIT_API_SECRET", secrets.token_hex(24))  # generated per run, not a real secret
 
 
 @pytest.mark.parametrize("role", ["viewer", "camera", "operator"])
