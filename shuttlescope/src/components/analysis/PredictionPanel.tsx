@@ -42,7 +42,7 @@ interface PredictionData {
   win_probability_v2?: number | null
   feature_breakdown?: {
     base_wr: number
-    recent_wr: number
+    recent_wr: number | null
     h2h_wr: number | null
     weights: Record<string, number>
     obs_modifier: number
@@ -50,11 +50,11 @@ interface PredictionData {
     final: number
   }
   recent_form?: {
-    win_rate: number
+    win_rate: number | null
     sample: number
-    trend: 'improving' | 'declining' | 'stable'
+    trend: 'improving' | 'declining' | 'stable' | null
     results: string[]
-    overall_wr: number
+    overall_wr: number | null
   }
   set_model_type?: 'observed' | 'momentum'
   score_volatility?: {

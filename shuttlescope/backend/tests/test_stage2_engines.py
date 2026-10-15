@@ -201,7 +201,7 @@ class TestGrowthEngine:
         assert s == 0.6
 
     def test_strength_insufficient_matches(self):
-        """試合数 < 3 のときは 0.5 を返す"""
+        """試合数 < 3 のときは強度を None で返す (偽の中立値 0.5 を強度として出さない)"""
         from backend.analysis.growth_engine import compute_opponent_strength
         db = MagicMock()
         db.get.return_value = self._make_player(world_ranking=None)
@@ -209,7 +209,7 @@ class TestGrowthEngine:
             self._make_match_result(99, 1, "win"),
             self._make_match_result(99, 1, "loss"),
         ]
-        assert compute_opponent_strength(db, 99) == 0.5
+        assert compute_opponent_strength(db, 99) is None
 
     # ── weighted_win_rate ────────────────────────────────────────────────────
 

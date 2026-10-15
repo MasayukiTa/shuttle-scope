@@ -6,6 +6,7 @@ import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 import { WIN, LOSS, BAR, LINE, N_GRAY } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { fmtPct, isFiniteNumber } from '@/utils/format'
 
 interface PostLongRallyStatsProps {
   playerId: number
@@ -13,8 +14,9 @@ interface PostLongRallyStatsProps {
 }
 
 interface StatSummary {
-  win_rate: number
-  avg_rally_length: number
+  // 件数 0 の側は null (0% ではない)
+  win_rate: number | null
+  avg_rally_length: number | null
   count: number
 }
 
@@ -23,7 +25,7 @@ interface PostLongResponse {
   data: {
     normal: StatSummary
     post_long: StatSummary
-    diff_win_rate: number
+    diff_win_rate: number | null
   }
   meta: { sample_size: number; confidence: { level: string; stars: string; label: string } }
 }
@@ -63,11 +65,11 @@ function ComparisonCard({
       <div className="space-y-1.5">
         <div className="flex justify-between text-xs">
           <span style={{ color: labelColor }}>{t('auto.PostLongRallyStats.k1')}</span>
-          <span className="font-semibold ss-num" style={{ color: valueColor }}>{(stats.win_rate * 100).toFixed(1)}%</span>
+          <span className="font-semibold ss-num" style={{ color: valueColor }}>{fmtPct(stats.win_rate)}</span>
         </div>
         <div className="flex justify-between text-xs">
           <span style={{ color: labelColor }}>{t('auto.PostLongRallyStats.k2')}</span>
-          <span className="ss-num" style={{ color: valueColor }}>{stats.avg_rally_length.toFixed(1)}</span>
+          <span className="ss-num" style={{ color: valueColor }}>{isFiniteNumber(stats.avg_rally_length) ? stats.avg_rally_length.toFixed(1) : '—'}</span>
         </div>
         <div className="flex justify-between text-xs">
           <span style={{ color: labelColor }}>{t('auto.PostLongRallyStats.k3')}</span>
@@ -105,8 +107,11 @@ export function PostLongRallyStats({ playerId, filters = DEFAULT_FILTERS }: Post
     return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.no_data')}</div>
   }
 
-  const diffPct = (data.diff_win_rate * 100).toFixed(1)
-  const isPositive = data.diff_win_rate >= 0
+  // どちらかの側が 0 件なら差分は定義できない (null)
+  const diff = data.diff_win_rate
+  const hasDiff = isFiniteNumber(diff)
+  const diffPct = hasDiff ? (diff * 100).toFixed(1) : '—'
+  const isPositive = hasDiff && diff >= 0
 
   return (
     <div className="space-y-3">
@@ -128,9 +133,13 @@ export function PostLongRallyStats({ playerId, filters = DEFAULT_FILTERS }: Post
       {/* 差分表示 */}
       <div className="text-center text-sm">
         <span className="text-gray-400">{t('auto.PostLongRallyStats.k4')} </span>
-        <span className="font-semibold ss-num" style={{ color: isPositive ? WIN : LOSS }}>
-          {isPositive ? '+' : ''}{diffPct}%
-        </span>
+        {hasDiff ? (
+          <span className="font-semibold ss-num" style={{ color: isPositive ? WIN : LOSS }}>
+            {isPositive ? '+' : ''}{diffPct}%
+          </span>
+        ) : (
+          <span className="font-semibold ss-num text-gray-400">—</span>
+        )}
       </div>
 
       <p className="text-xs text-gray-500 text-center">

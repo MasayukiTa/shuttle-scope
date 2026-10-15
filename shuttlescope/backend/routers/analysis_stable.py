@@ -23,6 +23,9 @@ from backend.analysis.response_meta import build_input_provenance
 
 from backend.utils.auth import require_non_player, require_query_scope  # cross-team IDOR ガード
 
+# 大会レベル別の勝率を「成績」として扱える最小試合数 (相手別 OPPONENT_MIN_MATCHES と同値)
+LEVEL_MIN_MATCHES = 3
+
 router = APIRouter(dependencies=[Depends(require_query_scope)])
 
 
@@ -114,17 +117,21 @@ def get_descriptive(
             if player_won:
                 receiver_wins += 1
 
-    win_rate = round(wins / total_rallies, 3) if total_rallies else 0.0
-    avg_rally_length = round(total_length / total_rallies, 3) if total_rallies else 0.0
+    # ラリー 0 件では勝率・平均ラリー長は定義できない (0.0 を「勝率0%」と読ませない)
+    win_rate = round(wins / total_rallies, 3) if total_rallies else None
+    avg_rally_length = round(total_length / total_rallies, 3) if total_rallies else None
 
     rally_length_histogram = [
         {"length": length, "count": count}
         for length, count in sorted(length_hist.items())
     ]
 
+    # サーブ側 / レシーブ側のどちらかが 0 件ならその側の勝率は null。側ごとの件数も併記する。
     server_win_rate = {
-        "as_server": round(server_wins / server_total, 3) if server_total else 0.0,
-        "as_receiver": round(receiver_wins / receiver_total, 3) if receiver_total else 0.0,
+        "as_server": round(server_wins / server_total, 3) if server_total else None,
+        "as_receiver": round(receiver_wins / receiver_total, 3) if receiver_total else None,
+        "server_count": server_total,
+        "receiver_count": receiver_total,
     }
 
     confidence = check_confidence("descriptive_basic", total_rallies)
@@ -1164,7 +1171,8 @@ def get_win_loss_comparison(
         )[:5]
 
         avg_rally_length = round(total_length / total_rallies, 2) if total_rallies else 0.0
-        serve_win_rate = round(serve_wins / serve_total, 3) if serve_total else 0.0
+        # サーブ機会が 0 件なら null (0.0 を「サーブ勝率0%」と読ませない)
+        serve_win_rate = round(serve_wins / serve_total, 3) if serve_total else None
 
         return {
             "count": len(match_ids),
@@ -1172,6 +1180,7 @@ def get_win_loss_comparison(
             "ace_rate": 0.0,   # シンプル実装（ace タイプ別集計は後で拡張）
             "error_rate": 0.0,
             "serve_win_rate": serve_win_rate,
+            "serve_count": serve_total,
             "top_shots": top_shots,
         }
 
@@ -1270,14 +1279,16 @@ def get_tournament_level_comparison(
     for level, stats in sorted(level_stats.items()):
         match_count = len(stats["match_ids"])
         total_sample += match_count
-        win_rate = round(stats["wins"] / match_count, 3) if match_count else 0.0
-        avg_rally = round(stats["total_length"] / stats["rally_count"], 2) if stats["rally_count"] else 0.0
+        win_rate = round(stats["wins"] / match_count, 3) if match_count else None
+        avg_rally = round(stats["total_length"] / stats["rally_count"], 2) if stats["rally_count"] else None
         result_levels.append({
             "level": level,
             "match_count": match_count,
             "win_rate": win_rate,
             "avg_rally_length": avg_rally,
             "sample_size": stats["rally_count"],
+            # 試合数が少ないレベルの勝率は参考値 (フロントの n<3 灰色表示と同じ基準)
+            "insufficient": match_count < LEVEL_MIN_MATCHES,
         })
 
     confidence = check_confidence("descriptive_basic", total_sample)
@@ -1572,7 +1583,7 @@ def get_zone_detail(
     if not matches:
         return {
             "success": True,
-            "data": {"zone": zone, "total_shots": 0, "shot_breakdown": [], "win_rate": 0.0},
+            "data": {"zone": zone, "total_shots": 0, "shot_breakdown": [], "win_rate": None},
             "meta": _with_input_provenance(
                 {"sample_size": 0, "confidence": empty_confidence},
                 rallies=[],
@@ -1604,7 +1615,7 @@ def get_zone_detail(
     if not rally_ids:
         return {
             "success": True,
-            "data": {"zone": zone, "total_shots": 0, "shot_breakdown": [], "win_rate": 0.0},
+            "data": {"zone": zone, "total_shots": 0, "shot_breakdown": [], "win_rate": None},
             "meta": _with_input_provenance(
                 {"sample_size": 0, "confidence": empty_confidence},
                 rallies=[],
@@ -1657,7 +1668,8 @@ def get_zone_detail(
         reverse=True,
     )
 
-    overall_win_rate = round(total_wins / total_shots, 3) if total_shots else 0.0
+    # 打球 0 件のゾーンは勝率を定義できない (0.0 ではなく null)
+    overall_win_rate = round(total_wins / total_shots, 3) if total_shots else None
     confidence = check_confidence("heatmap", total_shots)
 
     return {
@@ -2080,8 +2092,12 @@ def _effective_distribution_map_impl(
 
     zone_effectiveness: dict[str, dict] = {}
     for zone, win_count in zone_win.items():
-        total = zone_total.get(zone, win_count)
-        win_rate = round(win_count / total, 3) if total else 0.0
+        # 分母が無いゾーンの分子を分母に流用すると勝率 100% になる。zone_total は
+        # zone_win の母集合を含むので通常は起きないが、欠けたゾーンは出さない。
+        total = zone_total.get(zone, 0)
+        if not total:
+            continue
+        win_rate = round(win_count / total, 3)
         freq = round(win_count / sample_size, 3)
         zone_effectiveness[zone] = {
             "win_count": win_count,

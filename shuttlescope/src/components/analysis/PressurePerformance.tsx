@@ -14,7 +14,8 @@ interface PressurePerformanceProps {
 }
 
 interface PressureSegment {
-  win_rate: number
+  // 件数 0 の区間は null (0% ではない)
+  win_rate: number | null
   // backend (_build_stat) は rally 数を rally_count として返す。
   rally_count: number
   sample_size: number
@@ -32,7 +33,7 @@ interface PressureResponse {
   }
 }
 
-function pctStr(v: number): string {
+function pctStr(v: number | null): string {
   return fmtPct(v)
 }
 
@@ -58,8 +59,8 @@ function SegmentCard({
 
   const empty = !hasData(segment)
   const n = segment.rally_count ?? segment.sample_size ?? 0
-  const barWidth = empty ? '0%' : `${Math.min(segment.win_rate * 100, 100).toFixed(1)}%`
-  const color = empty ? 'var(--ss-t3)' : lightSafe(perfColor(segment.win_rate), !isLight)
+  const barWidth = empty ? '0%' : `${Math.min((segment.win_rate ?? 0) * 100, 100).toFixed(1)}%`
+  const color = empty ? 'var(--ss-t3)' : lightSafe(perfColor(segment.win_rate ?? 0), !isLight)
   return (
     <div
       className={`rounded-ss-lg p-4 flex flex-col gap-2 bg-[var(--ss-surface-1)] border border-[var(--ss-border)] ${
@@ -130,7 +131,7 @@ export function PressurePerformance({ playerId, filters = DEFAULT_FILTERS }: Pre
     if (!hasData(base) || !hasData(target)) {
       return <span className="text-xs text-[var(--ss-t3)]">{t('auto.PressurePerformance.no_data')}</span>
     }
-    const delta = target.win_rate - base.win_rate
+    const delta = (target.win_rate ?? 0) - (base.win_rate ?? 0)
     const absPct = Math.abs(delta * 100).toFixed(1)
     if (Math.abs(delta) < 0.005) {
       return <span className="text-xs text-[var(--ss-t3)] ss-num">±0.0%</span>

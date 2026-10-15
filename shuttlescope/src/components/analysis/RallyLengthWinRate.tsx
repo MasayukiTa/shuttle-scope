@@ -45,6 +45,8 @@ interface RallyLengthResponse {
     // backend は player_type を文字列 (キー) で、日本語名を player_type_ja で返す
     player_type?: PlayerTypeInfo | string
     player_type_ja?: string
+    // タイプ判定の標本が足りないとき true (player_type は 'unknown')
+    insufficient_data?: boolean
   }
   meta: {
     sample_size: number
@@ -66,6 +68,32 @@ function playerTypeBadgeClass(typeKey: string): string {
     default:
       return 'bg-gray-700 border-gray-500 text-gray-300'
   }
+}
+
+// プレイヤータイプのバッジ。標本不足でタイプを決められないときは「判定保留」の注記を出す
+function PlayerTypeBadge({
+  playerType,
+  data,
+}: {
+  playerType: PlayerTypeInfo | undefined
+  data: RallyLengthResponse['data'] | undefined
+}) {
+  const { t } = useTranslation()
+  if (playerType) {
+    return (
+      <span
+        className={`inline-flex items-center px-2 py-1 rounded-ss-sm border text-xs font-medium ${playerTypeBadgeClass(
+          playerType.type_key
+        )}`}
+      >
+        {playerType.type_label}
+      </span>
+    )
+  }
+  if (data?.insufficient_data) {
+    return <span className="text-xs text-gray-400">{t('auto.RallyLengthWinRate.type_pending')}</span>
+  }
+  return null
 }
 
 // カスタムツールチップ
@@ -156,15 +184,7 @@ export function RallyLengthWinRate({ playerId, chartHeight = 220, filters = DEFA
       {/* 信頼度バッジ + プレイヤータイプバッジ */}
       <div className="flex flex-wrap items-center gap-2">
         <ConfidenceBadge sampleSize={sampleSize} unit="rallies" />
-        {playerType && (
-          <span
-            className={`inline-flex items-center px-2 py-1 rounded-ss-sm border text-xs font-medium ${playerTypeBadgeClass(
-              playerType.type_key
-            )}`}
-          >
-            {playerType.type_label}
-          </span>
-        )}
+        <PlayerTypeBadge playerType={playerType} data={resp?.data} />
       </div>
 
       {/* コンポーズドチャート */}

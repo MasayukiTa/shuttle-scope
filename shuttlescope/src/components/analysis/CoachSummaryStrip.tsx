@@ -40,8 +40,8 @@ interface CoachSummaryStripProps {
   tacticalNotes: Array<TacticalNote | string>
   sampleSize: number
   recentForm?: {
-    trend: 'improving' | 'declining' | 'stable'
-    win_rate: number
+    trend: 'improving' | 'declining' | 'stable' | null
+    win_rate: number | null
     sample: number
   }
 }
@@ -141,7 +141,7 @@ export function CoachSummaryStrip({
             </span>
             <span className="text-xs" style={{ color: tokens.textMuted }}>%</span>
           </div>
-          {recentForm && recentForm.sample > 0 && (
+          {recentForm && recentForm.sample > 0 && recentForm.trend && (
             <RecentForm trend={recentForm.trend} tokens={tokens} />
           )}
         </Cell>

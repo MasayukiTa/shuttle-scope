@@ -15,6 +15,7 @@ import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { BAR, getTooltipStyle, AXIS_TICK, AXIS_TICK_LIGHT } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
+import { fmtPct } from '@/utils/format'
 
 interface TournamentComparisonProps {
   playerId: number
@@ -24,9 +25,16 @@ interface TournamentComparisonProps {
 interface LevelData {
   level: string
   match_count: number
-  win_rate: number
-  avg_rally_length: number
+  win_rate: number | null
+  avg_rally_length: number | null
   sample_size: number
+  // 試合数が少なく勝率が参考値のとき true (OpponentStats の n<3 灰色表示と同じ基準)
+  insufficient?: boolean
+}
+
+// backend の insufficient を優先。無い古い応答は試合数 3 未満で判定する
+function isLowSample(l: LevelData): boolean {
+  return l.insufficient ?? l.match_count < 3
 }
 
 interface TournamentResponse {
@@ -71,7 +79,7 @@ export function TournamentComparison({ playerId, filters = DEFAULT_FILTERS }: To
   const chartData = levels.map((l) => ({
     name: l.level,
     label: `${l.level} (${t('auto._shared.n_matches', { n: l.match_count })})`,
-    win_rate: Math.round(l.win_rate * 100),
+    win_rate: typeof l.win_rate === 'number' ? Math.round(l.win_rate * 100) : null,
     match_count: l.match_count,
   }))
 
@@ -96,6 +104,9 @@ export function TournamentComparison({ playerId, filters = DEFAULT_FILTERS }: To
         </BarChart>
       </ResponsiveContainer>
       <p className="text-[11px] text-gray-400">{t('analysis.tournament_comparison.bar_note')}</p>
+      {levels.some(isLowSample) && (
+        <p className="text-[11px] text-gray-400">{t('analysis.tournament_comparison.low_sample_hint')}</p>
+      )}
 
       {/* テーブル */}
       <div className="overflow-x-auto">
@@ -115,10 +126,15 @@ export function TournamentComparison({ playerId, filters = DEFAULT_FILTERS }: To
                   {l.level}
                 </td>
                 <td className="py-1.5 pr-3 text-center num-cell ss-num" style={{ color: isLight ? '#334155' : '#d1d5db' }}>{l.match_count}</td>
-                <td className="py-1.5 pr-3 text-center font-semibold num-cell ss-num" style={{ color: isLight ? '#334155' : '#d1d5db' }}>
-                  {(l.win_rate * 100).toFixed(1)}%
+                <td
+                  className="py-1.5 pr-3 text-center font-semibold num-cell ss-num"
+                  style={{ color: isLowSample(l) ? (isLight ? '#64748b' : '#9ca3af') : (isLight ? '#334155' : '#d1d5db') }}
+                >
+                  {fmtPct(l.win_rate)}
                 </td>
-                <td className="py-1.5 pr-2 text-right num-cell ss-num" style={{ color: isLight ? '#334155' : '#d1d5db' }}>{l.avg_rally_length.toFixed(1)}</td>
+                <td className="py-1.5 pr-2 text-right num-cell ss-num" style={{ color: isLight ? '#334155' : '#d1d5db' }}>
+                  {typeof l.avg_rally_length === 'number' ? l.avg_rally_length.toFixed(1) : '—'}
+                </td>
               </tr>
             ))}
           </tbody>

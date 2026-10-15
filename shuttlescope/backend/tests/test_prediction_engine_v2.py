@@ -50,11 +50,13 @@ def _losses(player_id: int, n: int, level: str = 'IC') -> list[MagicMock]:
 # ── compute_recent_form ───────────────────────────────────────────────────────
 
 class TestComputeRecentForm:
-    def test_empty_returns_stable(self):
+    def test_empty_returns_no_verdict(self):
+        # 試合 0 件: 偽の 50% / 「安定」を返さず null + sample=0
         r = compute_recent_form([], 1)
-        assert r['trend'] == 'stable'
+        assert r['trend'] is None
         assert r['sample'] == 0
-        assert r['win_rate'] == 0.5
+        assert r['win_rate'] is None
+        assert r['overall_wr'] is None
 
     def test_all_wins_recent_improving(self):
         # 10試合全体5W5L, 直近5はすべて勝利 → improving

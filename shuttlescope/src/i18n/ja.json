@@ -1686,7 +1686,8 @@
       "match_count": "試合数",
       "win_rate": "勝率",
       "avg_rally": "平均ラリー長",
-      "bar_note": "棒は勝率、ラベルのカッコ内は試合数です"
+      "bar_note": "棒は勝率、ラベルのカッコ内は試合数です",
+      "low_sample_hint": "試合数が少ない大会レベルの勝率は参考値です（灰色で表示）"
     },
     "pre_loss": {
       "title": "失点前パターン",
@@ -3347,6 +3348,7 @@
       "win_rate": "勝率: {{v}}%",
       "insufficient": "データ不足（アノテーション後に解析可能）",
       "no_data": "データなし",
+      "type_pending": "タイプ判定は標本不足のため保留",
       "count_legend": "件数",
       "rate_legend": "勝率"
     },
