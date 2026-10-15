@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
@@ -46,7 +46,7 @@ import { SetIntervalSummary } from '@/components/analysis/SetIntervalSummary'
 import { SessionShareModal } from '@/components/annotation/SessionShareModal'
 import { DeviceManagerPanel } from '@/components/session/DeviceManagerPanel'
 import { WarmupNotesPanel } from '@/components/annotation/WarmupNotesPanel'
-import { useAnnotationStore } from '@/store/annotationStore'
+import { useAnnotationStore, isStoreForMatch } from '@/store/annotationStore'
 import { useKeyboard } from '@/hooks/useKeyboard'
 import { useVideo } from '@/hooks/useVideo'
 import { apiGet, apiPost, apiPut } from '@/api/client'
@@ -247,6 +247,14 @@ export function AnnotatorPage() {
   const { playbackRate, setPlaybackRate } = useVideo(videoRef)
 
   const store = useAnnotationStore()
+  // A-11: 別の試合のスコア/セット/ラリー番号が残ったまま描画されないよう、
+  // 描画前 (paint 前) に前の試合の store を破棄する。init は読み込み後に実行される。
+  useLayoutEffect(() => {
+    const cur = useAnnotationStore.getState()
+    if (cur.matchId != null && !isStoreForMatch(cur.matchId, matchId)) {
+      cur.clearMatch()
+    }
+  }, [matchId])
   // U3: 4 モード (input/review/analysis/settings) ─ 右パネル中身切替
   const annotatorMode = useAnnotatorModeStore((s) => s.mode)
   const setAnnotatorMode = useAnnotatorModeStore((s) => s.setMode)
@@ -578,6 +586,12 @@ export function AnnotatorPage() {
   const handleConfirmRally = useCallback(
     (winner: 'player_a' | 'player_b', endType: string) => {
       const s = useAnnotationStore.getState()
+      // A-11: ストアが別の試合のものなら保存しない (setId が前の試合のまま
+      // 現在の matchId の保存枠へ書かれるのを防ぐ最終防御)。
+      if (!isStoreForMatch(s.matchId, matchId)) {
+        showError(t('annotator.ui.store_match_mismatch', { defaultValue: '別の試合のデータが残っているため保存できません。ページを再読み込みしてください。' }))
+        return
+      }
       // H7: 二重 confirm 防止。confirmRally は isRallyActive=false にするので、
       // 高速ダブルクリック / ボタンとキーボードの競合等で 2 回目が走っても
       // スコア二重加算・/strokes/batch 二重保存を起こさないよう冪等化する。
@@ -1951,7 +1965,10 @@ export function AnnotatorPage() {
       : t('annotator.ui.step_label_idle', { defaultValue: 'ショットキーを押してラリー開始' }),
     land_zone: t('annotator.ui.step_label_land', {
       defaultValue: '着地ゾーンをクリック（{{shot}}）',
-      shot: store.pendingStroke.shot_type ?? '',
+      // 内部識別子 (short_service 等) ではなく表示名を出す
+      shot: store.pendingStroke.shot_type
+        ? t(`shot_types.${store.pendingStroke.shot_type}`, { defaultValue: store.pendingStroke.shot_type })
+        : '',
     }),
     rally_end: t('annotator.ui.step_label_rally_end', { defaultValue: 'ラリー終了 — 得点者と終了種別を選択' }),
   }[store.inputStep]
@@ -3076,8 +3093,10 @@ export function AnnotatorPage() {
             // 別モニタ表示中はメイン側を非表示（video-only ウィンドウで再生中）
             if (videoSourceMode === 'none') {
               return (
-                <div className="flex items-center justify-center bg-[var(--ss-surface-2)] rounded-ss-lg text-[var(--ss-t3)] text-xs border border-dashed border-[var(--ss-border)] py-6 text-center">
-                  {t('annotator.ui.external_monitor_playing', { defaultValue: '別モニタで再生中' })}
+                <div className="flex items-center justify-center bg-[var(--ss-surface-2)] rounded-ss-lg text-[var(--ss-t3)] text-xs border border-dashed border-[var(--ss-border)] py-6 px-3 text-center">
+                  {videoWindowOpen
+                    ? t('annotator.ui.external_monitor_playing', { defaultValue: '別モニタで再生中' })
+                    : t('annotator.ui.no_video_hint', { defaultValue: '映像なしモードです。映像を使うには、この下の「ローカル動画」を選び、動画ファイルまたはURLを設定してください。' })}
                 </div>
               )
             }
@@ -3523,7 +3542,12 @@ export function AnnotatorPage() {
         {/* 右: 入力パネル — 試合中モード時/モバイル時はフルスクリーン */}
         <div className={clsx(
           'flex flex-col overflow-y-auto',
-          (isMatchDayMode || isMobile) ? 'flex-1' : 'w-[40%] border-l border-[var(--ss-border)]'
+          // A-12: 映像なし (幅280の左パネルのみ) のとき 40% 固定だと右側が空白になるため、残り幅を入力列に使う
+          (isMatchDayMode || isMobile)
+            ? 'flex-1'
+            : videoSourceMode === 'none'
+              ? 'flex-1 min-w-0 border-l border-[var(--ss-border)]'
+              : 'w-[40%] border-l border-[var(--ss-border)]'
         )}>
           {/* U3: モード切替 — input モードのみ既存 UI、他モードは専用パネルへ */}
           {/* UX-R4: モバイル時 (md 未満) は BottomSheet で表示するため、ここでは renderしない */}

@@ -76,6 +76,8 @@ interface AnnotationState {
     initialServer?: 'player_a' | 'player_b'
   ) => void
   setCurrentSet: (setId: number, setNum: number) => void
+  /** 別の試合へ移るとき、前の試合のスコア/セット/ラリー/入力途中を破棄する (A-11) */
+  clearMatch: () => void
   // K-002: 保存キュー操作
   incrementPending: () => void
   decrementPending: () => void
@@ -224,6 +226,27 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
 
   setCurrentSet: (setId, setNum) =>
     set({ currentSetId: setId, currentSetNum: setNum }),
+
+  clearMatch: () =>
+    set({
+      matchId: null,
+      currentSetId: null,
+      currentSetNum: 1,
+      currentRallyNum: 1,
+      scoreA: 0,
+      scoreB: 0,
+      isRallyActive: false,
+      rallyStartTimestamp: null,
+      currentStrokes: [],
+      pendingStroke: emptyPending(),
+      inputStep: 'idle',
+      currentStrokeNum: 1,
+      currentPlayer: 'player_a',
+      currentHitter: 'player_a',
+      undoStack: [],
+      pendingSaveCount: 0,
+      saveErrors: [],
+    }),
 
   // ラリー開始: currentPlayer は前ラリー winner を引き継ぐため変更しない
   startRally: (timestamp) =>
@@ -612,3 +635,12 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
     set({ currentStrokes: updated })
   },
 }))
+
+/**
+ * ストアが現在の URL の試合のものか。ラリー保存の直前に確認し、
+ * 前の試合の setId / スコアを現在の試合に書き込まないための最終防御 (A-11)。
+ */
+export function isStoreForMatch(storeMatchId: number | null, routeMatchId: string | number | undefined): boolean {
+  if (storeMatchId == null || routeMatchId == null || routeMatchId === '') return false
+  return storeMatchId === Number(routeMatchId)
+}

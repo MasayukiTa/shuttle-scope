@@ -12,6 +12,7 @@ import { AnnotatorPage } from '@/pages/AnnotatorPage'
 import { LiveInputPage } from '@/pages/LiveInputPage'
 import { DashboardShell } from '@/pages/dashboard/DashboardShell'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
+import { KeyedByMatchId } from '@/components/common/KeyedByMatchId'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { ConditionPage } from '@/pages/ConditionPage'
 import { VideoOnlyPage } from '@/pages/VideoOnlyPage'
@@ -465,7 +466,8 @@ function AnnotatorOrMobileAnnotate() {
   if (isPhone && matchId) {
     return <Navigate to={`/m/annotate/${matchId}`} replace />
   }
-  return <AnnotatorPage />
+  // A-11: 試合 ID が変わったら再マウントし、前の試合のスコア/セット/ラリーを持ち越さない
+  return <KeyedByMatchId><AnnotatorPage /></KeyedByMatchId>
 }
 
 
@@ -503,7 +505,7 @@ function MainLayout() {
             {/* /m/annotate/:matchId は ProtectedMainRoute レベルで full-bleed
                  描画される (この Routes は MainLayout 内なので到達しない)。 */}
             {/* Phase C: 試合中専用フルブリード入力 (mobile-first MVP) */}
-            <Route path="/live/:matchId" element={<LiveInputPage />} />
+            <Route path="/live/:matchId" element={<KeyedByMatchId><LiveInputPage /></KeyedByMatchId>} />
             <Route path="/condition" element={<ConditionPage />} />
             {/* /analysis は使用しない (dashboard に統一)。古い bookmark から
                飛んできた人を考慮して dashboard へ redirect。 */}
@@ -511,7 +513,7 @@ function MainLayout() {
             <Route path="/dashboard/*" element={<DashboardShell />} />
             <Route path="/prediction" element={<PageAccessRoute pageKey="prediction"><PredictionPage /></PageAccessRoute>} />
             <Route path="/expert-labeler" element={<PageAccessRoute pageKey="expert_labeler"><ExpertLabelerPage /></PageAccessRoute>} />
-            <Route path="/expert-labeler/:matchId" element={<PageAccessRoute pageKey="expert_labeler"><ExpertLabelerAnnotatePage /></PageAccessRoute>} />
+            <Route path="/expert-labeler/:matchId" element={<PageAccessRoute pageKey="expert_labeler"><KeyedByMatchId><ExpertLabelerAnnotatePage /></KeyedByMatchId></PageAccessRoute>} />
             <Route path="/llm" element={<PageAccessRoute pageKey="llm"><LlmChatPage /></PageAccessRoute>} />
 <Route path="/notifications" element={<AdminRoute><NotificationInboxPage /></AdminRoute>} />
             <Route path="/users" element={<AdminRoute><UserManagementPage /></AdminRoute>} />
@@ -695,7 +697,9 @@ function ProtectedMainRoute() {
         path="/m/annotate/:matchId"
         element={
           <ErrorBoundary>
-            <MobileAnnotatePage />
+            <KeyedByMatchId>
+              <MobileAnnotatePage />
+            </KeyedByMatchId>
           </ErrorBoundary>
         }
       />
