@@ -6,6 +6,7 @@ import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { AnalysisFilters } from '@/types'
 import { useTranslation } from 'react-i18next'
+import { fmtPct as pct } from '@/utils/format'
 
 interface StateRow {
   state_key: string
@@ -23,8 +24,6 @@ interface Props { playerId: number; filters: AnalysisFilters }
 const SCORE_PHASE_LABELS: Record<string, string> = { early: '序盤', mid: '中盤', deuce: 'デュース', endgame: '終盤' }
 const RALLY_BUCKET_LABELS: Record<string, string> = { short: '短(〜4)', medium: '中(5-9)', long: '長(10+)' }
 const ROLE_LABELS: Record<string, string> = { server: 'サーバー', receiver: 'レシーバー' }
-function pct(v: number) { return `${(v * 100).toFixed(1)}%` }
-
 export function StateEPVCard({ playerId, filters }: Props) {
   const { t } = useTranslation()
 

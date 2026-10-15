@@ -4,6 +4,17 @@ import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { RoleGuard } from '@/components/common/RoleGuard'
+import { fmtPct } from '@/utils/format'
+
+// 試合数がこれ未満の相手は勝率を強調色にせず「参考値」とする (n=1 の 0%/100% を成績として見せない)。
+const MIN_MATCHES_FOR_RATE = 3
+
+function rateClass(opp: { win_rate: number; match_count: number }, strong: boolean): string {
+  if (opp.match_count < MIN_MATCHES_FOR_RATE) return 'text-gray-400'
+  if (opp.win_rate >= 0.6) return strong ? 'text-blue-300 font-semibold' : 'text-blue-300'
+  if (opp.win_rate <= 0.4) return 'text-red-300'
+  return 'text-gray-300'
+}
 
 interface OpponentStatsProps {
   playerId: number
@@ -50,6 +61,9 @@ function OpponentTable({ playerId }: { playerId: number }) {
   return (
     <div className="space-y-3">
       <ConfidenceBadge sampleSize={sampleSize} unit="rallies" />
+      {sorted.some((o) => o.match_count < MIN_MATCHES_FOR_RATE) && (
+        <p className="text-[11px] text-gray-400">{t('analysis.opponent_stats.low_sample_hint')}</p>
+      )}
 
       {/* モバイル: カードリスト (md 未満)。情報量を維持しつつ縦並びで横スクロール回避 */}
       <ul className="md:hidden space-y-1.5">
@@ -59,17 +73,15 @@ function OpponentTable({ playerId }: { playerId: number }) {
               <span className="text-sm text-white font-medium truncate" title={opp.opponent_name}>
                 {opp.opponent_name}
               </span>
-              <span
-                className={
-                  'text-sm font-semibold num-cell ss-num shrink-0 ' +
-                  (opp.win_rate >= 0.6 ? 'text-blue-300' : opp.win_rate <= 0.4 ? 'text-red-300' : 'text-gray-300')
-                }
-              >
-                {(opp.win_rate * 100).toFixed(1)}%
+              <span className={'text-sm font-semibold num-cell ss-num shrink-0 ' + rateClass(opp, false)}>
+                {fmtPct(opp.win_rate)}
               </span>
             </div>
             <div className="flex justify-between text-[11px] text-gray-400 num-cell ss-num mt-0.5">
-              <span>{t('analysis.opponent_stats.match_count')} {opp.match_count}</span>
+              <span className="inline-flex items-center gap-1">
+                {t('analysis.opponent_stats.match_count')} {opp.match_count}
+                <ConfidenceBadge sampleSize={opp.match_count} unit="matches" compact />
+              </span>
               <span>{t('analysis.opponent_stats.avg_rally')} {opp.avg_rally_length.toFixed(1)}</span>
             </div>
           </li>
@@ -96,19 +108,15 @@ function OpponentTable({ playerId }: { playerId: number }) {
                 <td className="py-1.5 pr-3 text-white font-medium">
                   <span className="cell-name-clip" title={opp.opponent_name}>{opp.opponent_name}</span>
                 </td>
-                <td className="py-1.5 pr-3 text-center text-gray-300 num-cell ss-num">{opp.match_count}</td>
+                <td className="py-1.5 pr-3 text-center text-gray-300 num-cell ss-num">
+                  <span className="inline-flex items-center gap-1">
+                    {opp.match_count}
+                    <ConfidenceBadge sampleSize={opp.match_count} unit="matches" compact />
+                  </span>
+                </td>
                 <td className="py-1.5 pr-3 text-center">
-                  <span
-                    className={
-                      'num-cell ss-num ' +
-                      (opp.win_rate >= 0.6
-                        ? 'text-blue-300 font-semibold'
-                        : opp.win_rate <= 0.4
-                        ? 'text-red-300'
-                        : 'text-gray-300')
-                    }
-                  >
-                    {(opp.win_rate * 100).toFixed(1)}%
+                  <span className={'num-cell ss-num ' + rateClass(opp, true)}>
+                    {fmtPct(opp.win_rate)}
                   </span>
                 </td>
                 <td className="py-1.5 pr-2 text-right text-gray-300 num-cell ss-num">{opp.avg_rally_length.toFixed(1)}</td>

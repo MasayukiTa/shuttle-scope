@@ -6,6 +6,7 @@ import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { AnalysisFilters } from '@/types'
 import { useTranslation } from 'react-i18next'
+import { fmtPct as pct } from '@/utils/format'
 import { MIcon } from '@/components/common/MIcon'
 
 interface PolicyEntry {
@@ -106,10 +107,6 @@ function getPredictabilityColor(key: string, isLight: boolean): string {
   const pair = map[key]
   if (!pair) return isLight ? 'text-gray-500' : 'text-gray-400'
   return isLight ? pair[0] : pair[1]
-}
-
-function pct(v: number | undefined) {
-  return v != null ? `${(v * 100).toFixed(1)}%` : '—'
 }
 
 /** 最終取得時刻を "X分前" 形式でフォーマット */

@@ -1685,7 +1685,8 @@
       "level": "大会レベル",
       "match_count": "試合数",
       "win_rate": "勝率",
-      "avg_rally": "平均ラリー長"
+      "avg_rally": "平均ラリー長",
+      "bar_note": "棒は勝率、ラベルのカッコ内は試合数です"
     },
     "pre_loss": {
       "title": "失点前パターン",
@@ -1765,6 +1766,7 @@
       "title": "成長",
       "judgment_label": "総合成長判定",
       "pending_reason": "試合数が不足しています（最低{{min}}試合必要）",
+      "metric_pending": "判定保留（データ不足）",
       "win_rate_label": "勝率推移",
       "serve_win_rate_label": "サーブ勝率推移",
       "pair_mode": "ペアモード",
@@ -1799,7 +1801,8 @@
       "opponent": "対戦相手",
       "match_count": "試合数",
       "win_rate": "勝率",
-      "avg_rally": "平均ラリー長"
+      "avg_rally": "平均ラリー長",
+      "low_sample_hint": "試合数が少ない相手の勝率は参考値です（★は試合数に基づく）"
     },
     "epv": {
       "title": "期待パターン価値 (EPV)",
@@ -3023,7 +3026,12 @@
       "k3": "対戦データが不足しています",
       "k4": "相手",
       "k5": "生勝率",
-      "k6": "事後勝率"
+      "k6": "事後勝率",
+      "opponent_unknown": "相手不明",
+      "type_unknown": "判定保留",
+      "type_dominating": "相手優勢",
+      "type_competitive": "拮抗",
+      "type_beatable": "自分優勢"
     },
     "CoachSummaryStrip": {
       "k1": "データ少",
@@ -3277,6 +3285,7 @@
       "k1": "読み込み中...",
       "rally_count_label": "ラリー数:",
       "insufficient": "データ不足（アノテーション後に解析可能）",
+      "no_data": "データなし",
       "vs_normal": "通常比",
       "label_normal": "通常時",
       "label_endgame": "終盤（17点以降）",
@@ -3336,6 +3345,7 @@
       "count": "件数: {{n}}",
       "win_rate": "勝率: {{v}}%",
       "insufficient": "データ不足（アノテーション後に解析可能）",
+      "no_data": "データなし",
       "count_legend": "件数",
       "rate_legend": "勝率"
     },

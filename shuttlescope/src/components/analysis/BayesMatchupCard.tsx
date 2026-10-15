@@ -6,12 +6,15 @@ import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { AnalysisFilters } from '@/types'
 import { useTranslation } from 'react-i18next'
+import { fmtPct as pct } from '@/utils/format'
 
 interface OpponentEstimate {
   opponent_id: number
-  opponent_name: string
+  // backend が相手名を解決できなかった場合は null
+  opponent_name: string | null
   n_matches: number
-  raw_win_rate: number
+  // backend の契約名は observed_win_rate (旧コードは存在しない raw_win_rate を読み NaN% を出していた)
+  observed_win_rate: number
   posterior_win_prob: number
   credible_interval: [number, number]
   shrinkage_weight: number
@@ -37,14 +40,13 @@ interface Props {
   filters: AnalysisFilters
 }
 
-const OPPONENT_TYPE_LABELS: Record<string, string> = {
-  strong: '強敵',
-  weak: '格下',
-  neutral: '均衡',
-}
-
-function pct(v: number) {
-  return `${(v * 100).toFixed(1)}%`
+// backend (classify_opponent_type) の区分。旧ラベル表は strong/weak/neutral で、
+// 実際の値 (dominating/competitive/beatable/unknown) と一致せず内部名がそのまま表示されていた。
+const OPPONENT_TYPE_KEYS: Record<string, string> = {
+  unknown: 'auto.BayesMatchupCard.type_unknown',
+  dominating: 'auto.BayesMatchupCard.type_dominating',
+  competitive: 'auto.BayesMatchupCard.type_competitive',
+  beatable: 'auto.BayesMatchupCard.type_beatable',
 }
 
 export function BayesMatchupCard({ playerId, filters }: Props) {
@@ -75,6 +77,10 @@ export function BayesMatchupCard({ playerId, filters }: Props) {
   const meta = data?.meta
   const matchupData = data?.data
   const estimates = (matchupData?.opponent_estimates ?? []).slice(0, 10)
+  const oppName = (est: OpponentEstimate) => est.opponent_name || t('auto.BayesMatchupCard.opponent_unknown')
+  const oppTypeLabel = (type: string) => (OPPONENT_TYPE_KEYS[type] ? t(OPPONENT_TYPE_KEYS[type]) : null)
+  const ciOf = (est: OpponentEstimate): [number | undefined, number | undefined] =>
+    [est.credible_interval?.[0], est.credible_interval?.[1]]
 
   return (
     <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-3`}>
@@ -110,10 +116,10 @@ export function BayesMatchupCard({ playerId, filters }: Props) {
               <li key={i} className={`rounded-ss-md border p-2 ${isLight ? 'border-gray-200 bg-white/40' : 'border-gray-700 bg-gray-800/40'}`}>
                 <div className="flex items-baseline justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <span className={`${textHeading} truncate block`} title={est.opponent_name}>{est.opponent_name}</span>
-                    {est.opponent_type !== 'neutral' && (
+                    <span className={`${textHeading} truncate block`} title={oppName(est)}>{oppName(est)}</span>
+                    {oppTypeLabel(est.opponent_type) && (
                       <span className={`text-[10px] ${textFaint}`}>
-                        {OPPONENT_TYPE_LABELS[est.opponent_type] ?? est.opponent_type}
+                        {oppTypeLabel(est.opponent_type)}
                       </span>
                     )}
                   </div>
@@ -123,8 +129,8 @@ export function BayesMatchupCard({ playerId, filters }: Props) {
                 </div>
                 <div className={`grid grid-cols-3 gap-1 mt-1 text-[10px] ${textFaint} num-cell ss-num`}>
                   <span>{t('auto.BayesMatchupCard.n_only', { n: est.n_matches })}</span>
-                  <span>{t('auto.BayesMatchupCard.k5')} {pct(est.raw_win_rate)}</span>
-                  <span className="text-right">{t('auto.BayesMatchupCard.ci_range', { lo: pct(est.credible_interval[0]), hi: pct(est.credible_interval[1]) })}</span>
+                  <span>{t('auto.BayesMatchupCard.k5')} {pct(est.observed_win_rate)}</span>
+                  <span className="text-right">{t('auto.BayesMatchupCard.ci_range', { lo: pct(ciOf(est)[0]), hi: pct(ciOf(est)[1]) })}</span>
                 </div>
               </li>
             ))}
@@ -146,22 +152,22 @@ export function BayesMatchupCard({ playerId, filters }: Props) {
                 {estimates.map((est, i) => (
                   <tr key={i} className={`${rowBorder} ${rowHover}`}>
                     <td className="py-1.5 pr-2">
-                      <span className={`${textHeading} cell-name-clip`} title={est.opponent_name}>{est.opponent_name}</span>
-                      {est.opponent_type !== 'neutral' && (
+                      <span className={`${textHeading} cell-name-clip`} title={oppName(est)}>{oppName(est)}</span>
+                      {oppTypeLabel(est.opponent_type) && (
                         <span className={`ml-1 text-[10px] ${textFaint}`}>
-                          ({OPPONENT_TYPE_LABELS[est.opponent_type] ?? est.opponent_type})
+                          ({oppTypeLabel(est.opponent_type)})
                         </span>
                       )}
                     </td>
                     <td className={`py-1.5 pr-2 text-right ${textSecondary} num-cell ss-num`}>{est.n_matches}</td>
-                    <td className={`py-1.5 pr-2 text-right ${textSecondary} num-cell ss-num`}>{pct(est.raw_win_rate)}</td>
+                    <td className={`py-1.5 pr-2 text-right ${textSecondary} num-cell ss-num`}>{pct(est.observed_win_rate)}</td>
                     <td className="py-1.5 pr-2 text-right">
                       <span className={'num-cell ss-num ' + (est.posterior_win_prob >= 0.5 ? (isLight ? 'text-emerald-600' : 'text-emerald-400') : (isLight ? 'text-orange-600' : 'text-orange-400'))}>
                         {pct(est.posterior_win_prob)}
                       </span>
                     </td>
                     <td className={`py-1.5 text-right text-[10px] ${textFaint} num-cell ss-num`}>
-                      [{pct(est.credible_interval[0])}–{pct(est.credible_interval[1])}]
+                      [{pct(ciOf(est)[0])}–{pct(ciOf(est)[1])}]
                     </td>
                   </tr>
                 ))}

@@ -366,6 +366,15 @@ def _bayes_matchup_impl(db: Session, player_id: int, ctx=None, format_filter=Non
         player_id=player_id,
         format_filter=format_filter,
     )
+    # 画面は相手名を表示する。compute_bayes_matchup は ID のみ返すので、ここで解決する
+    # (解決できない相手は opponent_name=None → フロントが「相手不明」を表示する)。
+    from backend.db.models import Player
+    opp_ids = [e["opponent_id"] for e in result_data.get("opponent_estimates", []) if e.get("opponent_id")]
+    name_by_id = {}
+    if opp_ids:
+        name_by_id = {p.id: p.name for p in db.query(Player).filter(Player.id.in_(opp_ids)).all()}
+    for e in result_data.get("opponent_estimates", []):
+        e["opponent_name"] = name_by_id.get(e.get("opponent_id"))
     meta = build_response_meta("bayes_matchup", result_data.get("total_matches", 0))
     return {"success": True, "data": result_data, "meta": meta}
 
@@ -425,6 +434,20 @@ def get_doubles_role(
                               date_from=date_from, date_to=date_to)
 
 
+# ダブルス試合が無いときの応答。フロントは front/back/neutral_ratio を必ず読むので、
+# キーを欠かさず 0 件の形で返す (欠落すると画面に NaN% が出ていた)。
+_EMPTY_DOUBLES_ROLE = {
+    "inferred_role": "unknown",
+    "confidence_score": 0.0,
+    "front_ratio": 0.0,
+    "back_ratio": 0.0,
+    "neutral_ratio": 0.0,
+    "total_shots": 0,
+    "phase_breakdown": [],
+    "note": None,
+}
+
+
 def _doubles_role_impl(db: Session, player_id: int, ctx=None,
                        result=None, tournament_level=None,
                        date_from=None, date_to=None):
@@ -447,7 +470,7 @@ def _doubles_role_impl(db: Session, player_id: int, ctx=None,
         matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
         doubles_matches = [m for m in matches if getattr(m, 'format', None) in ('womens_doubles', 'mixed_doubles')]
         if not doubles_matches:
-            return {"success": True, "data": {"inferred_role": "unknown", "confidence_score": 0.0, "total_shots": 0}, "meta": _analysis_meta("doubles_role", 0, rallies=[], strokes_by_rally={})}
+            return {"success": True, "data": dict(_EMPTY_DOUBLES_ROLE), "meta": _analysis_meta("doubles_role", 0, rallies=[], strokes_by_rally={})}
         match_ids = [m.id for m in doubles_matches]
         role_by_match = {m.id: _player_role_in_match(m, player_id) for m in doubles_matches}
         sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
@@ -458,7 +481,7 @@ def _doubles_role_impl(db: Session, player_id: int, ctx=None,
         _, strokes_by_rally = _build_aux_maps(db, doubles_matches, [], rally_ids)
 
     if not doubles_matches:
-        return {"success": True, "data": {"inferred_role": "unknown", "confidence_score": 0.0, "total_shots": 0}, "meta": _analysis_meta("doubles_role", 0, rallies=[], strokes_by_rally={})}
+        return {"success": True, "data": dict(_EMPTY_DOUBLES_ROLE), "meta": _analysis_meta("doubles_role", 0, rallies=[], strokes_by_rally={})}
 
     result_data = compute_doubles_role_inference(
         rallies=rallies,

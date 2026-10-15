@@ -23,7 +23,7 @@ from backend.analysis.response_meta import build_input_provenance
 from backend.analysis.growth_engine import (
     growth_points_weighted,
     strength_weighted_moving_avg,
-    compute_growth_trend,
+    compute_metric_growth_trend,
 )
 
 # advanced tier は player 禁止 (PLAYER_SENSITIVE_KEYS を返すケースが多い)。
@@ -260,7 +260,9 @@ def get_rally_length_vs_winrate(
     for label, _lo, _hi in buckets_def:
         total = bucket_total[label]
         wins = bucket_wins[label]
-        win_rate = round(wins / total, 3) if total else 0.0
+        # 件数 0 の区間は勝率を定義できない。0.0 を返すと「勝率0%」として
+        # 描画されるので null (フロントは線を途切れさせ「データなし」と表示する)。
+        win_rate = round(wins / total, 3) if total else None
         bucket_results.append({
             "range": label,
             "count": total,
@@ -1889,10 +1891,10 @@ def get_growth_timeline(
     )
     points = strength_weighted_moving_avg(raw_points, window_size=window_size)
 
-    # トレンド判定（通常値 + 強度補正値）
-    trend_info = compute_growth_trend(
-        points, window_size=window_size, metric=metric,
-        trend_delta=AnalysisConfig.GROWTH_TREND_DELTA,
+    # トレンド判定（通常値 + 強度補正値）。成長判定 (/analysis/growth_judgment) と
+    # 同一関数・同一の窓で算出する (window_size はグラフの平滑化専用)。
+    trend_info = compute_metric_growth_trend(
+        raw_points, min_matches=5, trend_delta=AnalysisConfig.GROWTH_TREND_DELTA, metric=metric,
     )
 
     confidence = check_confidence("descriptive_basic", len(points))
@@ -1956,19 +1958,8 @@ def get_growth_judgment(
             metric=metric,
             provenance_rows=provenance_rows,
         )
-        annotated = len(raw_pts)
-        window = max(2, annotated // 3)
-        if annotated < max(window * 2, min_matches):
-            metrics_result[metric] = {
-                "trend": "pending", "delta": 0.0,
-                "weighted_trend": "pending", "weighted_delta": 0.0,
-            }
-            continue
-
-        pts_with_avg = strength_weighted_moving_avg(raw_pts, window_size=window)
-        trend_info = compute_growth_trend(
-            pts_with_avg, window_size=window, metric=metric,
-            trend_delta=AnalysisConfig.GROWTH_TREND_DELTA,
+        trend_info = compute_metric_growth_trend(
+            raw_pts, min_matches=min_matches, trend_delta=AnalysisConfig.GROWTH_TREND_DELTA, metric=metric,
         )
         metrics_result[metric] = {
             "trend": trend_info["trend"],
@@ -1983,7 +1974,11 @@ def get_growth_judgment(
     improving_count = trends.count("improving")
     declining_count = trends.count("declining")
 
-    if not trends:
+    # 窓内の件数が足りず判定できない指標が 1 つでもあれば、残りの指標だけで
+    # 「改善傾向」と言い切らず判定保留にする (一部指標が pending のまま総合だけ
+    # 改善傾向と出る矛盾の解消)。
+    any_pending = any(v["trend"] == "pending" for v in metrics_result.values())
+    if not trends or any_pending:
         judgment = "pending"
         judgment_ja = "判定保留"
     elif improving_count >= 2 and declining_count == 0:
