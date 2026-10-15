@@ -136,14 +136,20 @@ export function ConsentManagementCard({ isLight }: { isLight: boolean }) {
                         className="text-[10px] font-bold tracking-wider px-2 py-0.5 rounded"
                         style={{ background: '#6b7280', color: '#fff' }}
                       >
-                        {t('settings.consent.status_off', 'NOT GRANTED')}
+                        {isRequired
+                          ? t('settings.consent.required_status_off', '未取得')
+                          : rec
+                            ? t('settings.consent.status_off', 'NOT GRANTED')
+                            : t('settings.consent.status_none', '未回答')}
                       </span>
                     ) : (
                       <span
                         className="text-[10px] font-bold tracking-wider px-2 py-0.5 rounded"
                         style={{ background: '#3b4cc0', color: '#fff' }}
                       >
-                        {t('settings.consent.status_on', 'GRANTED')}
+                        {isRequired
+                          ? t('settings.consent.required_status_on', '確認済み')
+                          : t('settings.consent.status_on', 'GRANTED')}
                       </span>
                     )}
                     <span className={`text-sm font-medium text-[var(--ss-t1)]`}>

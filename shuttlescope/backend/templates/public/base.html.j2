@@ -183,13 +183,17 @@ html[lang=ja] .en{display:none}
 .mobile-menu a{font-size:14px;color:var(--ss-t1);text-decoration:none;padding:14px 24px;border-bottom:1px solid var(--ss-border);transition:color var(--dur-fast) var(--ease-out),background var(--dur-fast) var(--ease-out)}
 .mobile-menu a:hover{color:var(--ss-t1);background:var(--ss-brand-tint)}
 
-.beta-banner{background:var(--ss-t1);padding:14px 40px;margin-top:58px}
+/* β バナーは専用トークンで配色する。以前は背景に --ss-t1 を使っていたが、ダークでは
+   --ss-t1 が明色 (#e6e9ed) に反転し、白文字と同化して読めなかった。 */
+:root,[data-theme="light"]{--beta-bg:#1a2028;--beta-fg:#e8ebef;--beta-fg-strong:#ffffff;--beta-badge-bg:#323a46;--beta-badge-bd:#566170;--beta-link-bd:#8f9aa8}
+[data-theme="dark"]{--beta-bg:#2a2f37;--beta-fg:#e6e9ed;--beta-fg-strong:#ffffff;--beta-badge-bg:#3a414d;--beta-badge-bd:#5b6573;--beta-link-bd:#9aa4b2}
+.beta-banner{background:var(--beta-bg);padding:14px 40px;margin-top:58px}
 .beta-banner-inner{max-width:1160px;margin:0 auto;display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;text-align:center}
-.beta-badge{font-size:11px;font-weight:700;letter-spacing:.06em;color:#fff;background:rgba(255,255,255,0.14);border:1px solid rgba(255,255,255,0.24);border-radius:var(--r-sm);padding:3px 10px;white-space:nowrap;flex-shrink:0}
-.beta-text{font-size:13px;color:rgba(255,255,255,0.86);line-height:1.7;margin:0}
-.beta-text strong{color:#ffffff;font-weight:600}
-.beta-text a{color:#fff;text-decoration:none;border-bottom:1px solid rgba(255,255,255,0.42);transition:border-color var(--dur-fast) var(--ease-out)}
-.beta-text a:hover{border-bottom-color:rgba(255,255,255,0.85)}
+.beta-badge{font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--beta-fg-strong);background:var(--beta-badge-bg);border:1px solid var(--beta-badge-bd);border-radius:var(--r-sm);padding:3px 10px;white-space:nowrap;flex-shrink:0}
+.beta-text{font-size:13px;color:var(--beta-fg);line-height:1.7;margin:0}
+.beta-text strong{color:var(--beta-fg-strong);font-weight:600}
+.beta-text a{color:var(--beta-fg-strong);text-decoration:none;border-bottom:1px solid var(--beta-link-bd);transition:border-color var(--dur-fast) var(--ease-out)}
+.beta-text a:hover{border-bottom-color:var(--beta-fg-strong)}
 
 footer{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);padding:24px 40px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;transition:background var(--dur-base) var(--ease-out)}
 .footer-logo{font-size:15px;font-weight:600;letter-spacing:-.01em;color:var(--ss-t1);text-decoration:none;display:flex;align-items:center;gap:8px}

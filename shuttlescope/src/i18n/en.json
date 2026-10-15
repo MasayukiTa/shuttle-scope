@@ -174,7 +174,7 @@
       "password_hint": "Include at least 3 of: uppercase, lowercase, digits, symbols",
       "display_name_optional": "Display name (optional)",
       "dob_optional": "Date of birth (optional)",
-      "dob_hint": "Optional. Used to apply minor-aware defaults on the consent UI (PRIVACY §IX-ter).",
+      "dob_hint": "Optional. Used to apply minor-aware defaults on the consent UI.",
       "submit": "Create account",
       "success_title": "Thanks for signing up",
       "success_body": "You can sign in and start using ShuttleScope right away. Until an administrator assigns your team and role, you will only see your own data. We will email you from shuttlescopecom@gmail.com at the address you registered with once that is done, typically within about 12 hours (longer during busy periods).",
@@ -1325,7 +1325,6 @@
       "side_arrow_bottom": "↓ bottom",
       "third_set_swap": "(11pt↔)",
       "external_monitor_playing": "Playing on external monitor",
-      "no_video_hint": "No-video mode. To use a video, choose \"Local video\" below and set a video file or URL.",
       "pc_camera_in_use": "PC camera in use",
       "ios_camera_receiving": "Receiving from iOS camera",
       "drm_webview_hint": "Use the in-browser viewing mode for DRM-protected content or login-required sites",
@@ -1443,7 +1442,6 @@
       "upload_error_prefix": "Upload error:",
       "save_error_prefix": "Save error:",
       "set_id_missing": "Set ID is missing. Please reload.",
-      "store_match_mismatch": "Data from a different match is still loaded, so this cannot be saved. Please reload the page.",
       "init_failed": "Initialization failed",
       "save_failed_message": "Save failed",
       "force_set_end_error_prefix": "Force-end set error:",
@@ -2713,6 +2711,9 @@
       "required_label": "Contractual (required)",
       "optional_label": "Optional",
       "required_note": "Cannot be withdrawn",
+      "required_status_on": "Confirmed",
+      "required_status_off": "Not obtained",
+      "status_none": "Not answered",
       "withdraw_btn": "Withdraw",
       "regrant_btn": "Re-grant",
       "withdrawn_label": "Withdrawn",
@@ -2728,7 +2729,9 @@
         "beta_agreement": "Beta data handling agreement",
         "ai_training": "Use for AI model training",
         "research_participation": "Use for academic research",
-        "cross_border_transfer": "Cross-border transfer from EU/EEA"
+        "cross_border_transfer": "Cross-border transfer from EU/EEA",
+        "body_disclose_to_analyst": "Disclose body-composition data to the analyst",
+        "body_disclose_to_coach": "Disclose body-composition data to the coach"
       }
     }
   },
@@ -4277,6 +4280,9 @@
       "tutorial_desc": "Replay how-tos. Completed items can be replayed anytime.",
       "step_count": "{{n}} steps",
       "replay_count": " · replays: {{n}}",
+      "tutorial_status_completed": "Completed",
+      "tutorial_status_skipped": "Skipped",
+      "tutorial_status_in_progress": "In progress",
       "pkg_onnxruntime_gpu": "onnxruntime-gpu",
       "pkg_onnxruntime_directml": "onnxruntime-directml",
       "ext_sspkg": ".sspkg"
@@ -4818,6 +4824,9 @@
   "onboarding": {
     "consent": {
       "title": "Data handling consent",
+      "exit_hint": "If you do not wish to consent:",
+      "back_to_site": "Back to shuttle-scope.com",
+      "back_to_login": "Back to login",
       "intro": "Before using ShuttleScope, please review the documents below and decide on the optional consents.",
       "view_privacy": "View Privacy Notice",
       "view_terms": "View Terms of Service",
@@ -4852,9 +4861,9 @@
       "research_label": "I consent to use of my data for academic research",
       "research_desc": "Allows anonymized use for sports-science research and publications. Prior notice and right of withdrawal preserved. Withdrawal: contact form or contact@shuttle-scope.com.",
       "body_disclose_to_analyst_label": "Share body-composition data with the analyst",
-      "body_disclose_to_analyst_desc": "Weight, body-fat %, muscle mass, etc. visible to your team analyst. Default is ON; toggle anytime in Settings → Condition → Body composition disclosure.",
+      "body_disclose_to_analyst_desc": "Weight, body-fat %, muscle mass, etc. visible to your team analyst. Toggle anytime in Settings → Condition → Body composition disclosure.",
       "body_disclose_to_coach_label": "Share body-composition data with the coach",
-      "body_disclose_to_coach_desc": "Weight, body-fat %, muscle mass, etc. visible to your coach. Default is ON; toggle anytime in Settings → Condition → Body composition disclosure.",
+      "body_disclose_to_coach_desc": "Weight, body-fat %, muscle mass, etc. visible to your coach. Toggle anytime in Settings → Condition → Body composition disclosure.",
       "submit": "Confirm and continue",
       "submit_optional": "Save responses",
       "later": "Decide later",
@@ -5170,12 +5179,12 @@
         "body": "Click an item in the red-boxed history strip to seek the video to that moment. Handy for fixing a wrong entry quickly."
       },
       "commandPalette": {
-        "title": "Ctrl+K runs common actions",
-        "body": "Press Ctrl+K (⌘K on Mac) anywhere to open the command palette: switch between Input / Review / Analysis / Settings, toggle match-day or annotation mode, undo the last entry, end the rally. (Ctrl+K / ⌘K)"
+        "title": "Ctrl+K finds anything",
+        "body": "Press Ctrl+K (⌘K on Mac) anywhere to open the command palette: switch matches, find players, change settings — all from here. (Ctrl+K / ⌘K)"
       },
       "flow": {
         "title": "The basic loop",
-        "body": "Play and pause the video, log scores and strokes, check in Review, then look at Analysis for patterns. Press Ctrl+K to search for an action if you get lost."
+        "body": "Play and pause the video, log scores and strokes, check in Review, then look at Analysis for patterns. Press Ctrl+K if you get lost."
       }
     },
     "analysis_reading": {
