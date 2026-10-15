@@ -9,8 +9,13 @@ import { fmtPct } from '@/utils/format'
 // 試合数がこれ未満の相手は勝率を強調色にせず「参考値」とする (n=1 の 0%/100% を成績として見せない)。
 const MIN_MATCHES_FOR_RATE = 3
 
-function rateClass(opp: { win_rate: number; match_count: number }, strong: boolean): string {
-  if (opp.match_count < MIN_MATCHES_FOR_RATE) return 'text-gray-400'
+function rateClass(
+  opp: { win_rate: number | null; match_count: number; insufficient?: boolean },
+  strong: boolean,
+): string {
+  // backend の insufficient (試合数 < 3) を優先。無い古い応答は試合数で判定する
+  const low = opp.insufficient ?? opp.match_count < MIN_MATCHES_FOR_RATE
+  if (low || typeof opp.win_rate !== 'number') return 'text-gray-400'
   if (opp.win_rate >= 0.6) return strong ? 'text-blue-300 font-semibold' : 'text-blue-300'
   if (opp.win_rate <= 0.4) return 'text-red-300'
   return 'text-gray-300'
@@ -24,9 +29,11 @@ interface OpponentData {
   opponent_id: number
   opponent_name: string
   match_count: number
-  win_rate: number
-  avg_rally_length: number
+  win_rate: number | null
+  avg_rally_length: number | null
   sample_size: number
+  // 試合数が少なく勝率が参考値のとき true
+  insufficient?: boolean
 }
 
 interface OpponentStatsResponse {
@@ -82,7 +89,7 @@ function OpponentTable({ playerId }: { playerId: number }) {
                 {t('analysis.opponent_stats.match_count')} {opp.match_count}
                 <ConfidenceBadge sampleSize={opp.match_count} unit="matches" compact />
               </span>
-              <span>{t('analysis.opponent_stats.avg_rally')} {opp.avg_rally_length.toFixed(1)}</span>
+              <span>{t('analysis.opponent_stats.avg_rally')} {typeof opp.avg_rally_length === 'number' ? opp.avg_rally_length.toFixed(1) : '—'}</span>
             </div>
           </li>
         ))}
@@ -119,7 +126,7 @@ function OpponentTable({ playerId }: { playerId: number }) {
                     {fmtPct(opp.win_rate)}
                   </span>
                 </td>
-                <td className="py-1.5 pr-2 text-right text-gray-300 num-cell ss-num">{opp.avg_rally_length.toFixed(1)}</td>
+                <td className="py-1.5 pr-2 text-right text-gray-300 num-cell ss-num">{typeof opp.avg_rally_length === 'number' ? opp.avg_rally_length.toFixed(1) : '—'}</td>
               </tr>
             ))}
           </tbody>

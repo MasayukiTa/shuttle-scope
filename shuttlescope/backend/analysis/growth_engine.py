@@ -9,7 +9,8 @@ growth_engine.py — 成長解析エンジン (Stage 2-B)
 相手強度の算出方針:
   1. Player.world_ranking が入っていれば使用（低ランク=強い）
   2. ない場合は DB 内の全試合勝率で推定
-  3. 両方なければ強度 0.5（中立）にフォールバック
+  3. 両方なければ強度は不明（None）。加重計算だけが中立重み NEUTRAL_STRENGTH を使い、
+     画面・API には 0.5 を「強度」として出さない（n<3 の偽の中立値は統計ではない）
 
 設計原則:
   - 全関数は純粋関数（副作用なし）
@@ -25,19 +26,31 @@ from backend.analysis.player_context import involves_player, opponent_player_id
 from backend.db.models import Match, GameSet, Rally, Player
 
 
+# 相手強度が不明（world_ranking なし かつ 過去 3 試合未満）のとき、加重平均の「重み」にだけ
+# 使う中立値。強度そのものとしては返さない（API には strength_weight=None で出る）。
+NEUTRAL_STRENGTH = 0.5
+# 勝率から相手強度を推定するのに必要な最小試合数
+MIN_MATCHES_FOR_STRENGTH = 3
+
+
+def _weight_of(strength: Optional[float]) -> float:
+    """加重計算用の重み。強度不明（None）は中立重み。"""
+    return NEUTRAL_STRENGTH if strength is None else strength
+
+
 # ── 相手強度計算 ─────────────────────────────────────────────────────────────
 
-def compute_opponent_strength(db: Session, opponent_id: int) -> float:
+def compute_opponent_strength(db: Session, opponent_id: int) -> Optional[float]:
     """
     相手選手の強度スコアを 0.0-1.0 の範囲で計算する。
-    1.0 = 最強、0.0 = 最弱。
+    1.0 = 最強、0.0 = 最弱。算出できない（標本不足）ときは None。
 
     算出ロジック:
       1. world_ranking が 1-500 の範囲にある場合:
          strength = 1 - (rank - 1) / 499  （1位=1.0, 500位=0.0）
       2. ranking がない場合:
          DB 内の全試合勝率を使用（全試合 win/loss のみ）
-      3. いずれもデータなしの場合: 0.5（中立）
+      3. いずれもデータなしの場合: None（0.5 を強度として返さない）
     """
     player = db.get(Player, opponent_id)
     if player and player.world_ranking and 1 <= player.world_ranking <= 500:
@@ -52,8 +65,8 @@ def compute_opponent_strength(db: Session, opponent_id: int) -> float:
         )
         .all()
     )
-    if len(matches) < 3:
-        return 0.5  # サンプル不足
+    if len(matches) < MIN_MATCHES_FOR_STRENGTH:
+        return None  # サンプル不足: 偽の中立値 0.5 を強度として返さない
 
     wins = sum(
         1 for m in matches
@@ -67,7 +80,7 @@ def build_strength_cache(
     db: Session,
     matches: list[Match],
     player_id: int,
-) -> dict[int, float]:
+) -> dict[int, Optional[float]]:
     """
     対戦相手 ID ごとの強度スコアをまとめて計算してキャッシュ dict を返す。
     N+1 を防ぐために一度に処理する。
@@ -86,7 +99,7 @@ def build_strength_cache(
 def weighted_win_rate(
     matches: list[Match],
     player_id: int,
-    strength_cache: dict[int, float],
+    strength_cache: dict[int, Optional[float]],
 ) -> Optional[float]:
     """
     相手強度で重み付けした勝率を計算する。
@@ -111,7 +124,7 @@ def weighted_win_rate(
         opp_id = opponent_player_id(m, player_id)
         won = (m.result == "win") == (team_side(m, player_id) == "player_a")
 
-        strength = strength_cache.get(opp_id, 0.5)
+        strength = _weight_of(strength_cache.get(opp_id))
         total_weight += strength
         if won:
             weighted_wins += strength
@@ -143,8 +156,10 @@ def growth_points_weighted(
             "match_id": int,
             "date": str,
             "value": float,              # 通常指標
-            "strength_weight": float,    # 相手強度 (0-1)
+            "rally_count": int,          # value の母数（この試合で集計したラリー数）
+            "strength_weight": float|None,  # 相手強度 (0-1)。標本不足は None
             "opponent_id": int,
+            "strength_insufficient": True,  # 強度が None のときだけ付く
           }, ...
         ]
     """
@@ -200,14 +215,18 @@ def growth_points_weighted(
         if provenance_rows is not None:
             provenance_rows["rallies"].extend(used_rallies)
 
-        strength = strength_cache.get(opp_id, 0.5)
-        points.append({
+        strength = strength_cache.get(opp_id)
+        point = {
             "match_id": m.id,
             "date": str(m.date),
             "value": value,
+            "rally_count": len(used_rallies),
             "strength_weight": strength,
             "opponent_id": opp_id,
-        })
+        }
+        if strength is None:
+            point["strength_insufficient"] = True
+        points.append(point)
 
     return points
 
@@ -235,10 +254,10 @@ def strength_weighted_moving_avg(
                 sum(p["value"] for p in window) / window_size, 4
             )
             # 強度重み付き移動平均
-            total_w = sum(p.get("strength_weight", 0.5) for p in window)
+            total_w = sum(_weight_of(p.get("strength_weight")) for p in window)
             if total_w > 0.01:
                 result[i]["weighted_moving_avg"] = round(
-                    sum(p["value"] * p.get("strength_weight", 0.5) for p in window) / total_w, 4
+                    sum(p["value"] * _weight_of(p.get("strength_weight")) for p in window) / total_w, 4
                 )
             else:
                 result[i]["weighted_moving_avg"] = result[i]["moving_avg"]
@@ -335,3 +354,40 @@ def compute_metric_growth_trend(
     return compute_growth_trend(
         pts_with_avg, window_size=window, metric=metric, trend_delta=trend_delta,
     )
+
+
+def decide_overall_growth(metrics: dict[str, dict]) -> tuple[str, str]:
+    """複数指標を横断した総合判定 (judgment, judgment_ja) を返す。
+
+    投票規則 (2026-10-15 オーナー承認の統計修正):
+      - 1 指標 = 1 票。票は指標自身の trend (improving / stable / declining)。
+      - weighted_trend (相手強度補正) は 2 票目ではなく「補正」: 通常の trend と補正後の
+        trend が逆向き (improving と declining) のとき、その指標は根拠が割れているので
+        stable (票なし) として数える。補正が同方向・stable・pending のときは trend のまま。
+        (旧実装は trend と weighted_trend を別々に数えたため、改善 2 票以上という条件を
+         指標 1 つだけで満たせた。)
+      - 必須指標 (metrics の全指標) のどれかが pending なら、残りの指標だけで
+        「改善傾向」などと言い切らず「判定保留」にする。
+      - 改善 2 指標以上かつ悪化 0 → 改善傾向、悪化 2 指標以上かつ改善 0 → 悪化傾向、それ以外は横ばい。
+    """
+    votes: list[str] = []
+    any_pending = False
+    for v in metrics.values():
+        trend = v.get("trend", "pending")
+        if trend == "pending":
+            any_pending = True
+            continue
+        weighted = v.get("weighted_trend", "pending")
+        if {trend, weighted} == {"improving", "declining"}:
+            trend = "stable"
+        votes.append(trend)
+    improving_count = votes.count("improving")
+    declining_count = votes.count("declining")
+
+    if not votes or any_pending:
+        return "pending", "判定保留"
+    if improving_count >= 2 and declining_count == 0:
+        return "improving", "改善傾向"
+    if declining_count >= 2 and improving_count == 0:
+        return "declining", "悪化傾向"
+    return "stable", "横ばい"

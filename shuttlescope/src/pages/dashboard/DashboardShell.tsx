@@ -20,18 +20,25 @@ import { DashboardResearchPage } from './DashboardResearchPage'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { DateRangeSlider } from '@/components/common/DateRangeSlider'
 import { MIcon } from '@/components/common/MIcon'
+import { fmtPct } from '@/utils/format'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
 interface DescriptiveSummary {
   total_matches: number
   total_rallies: number
-  win_rate: number
-  avg_rally_length: number
+  // ラリー 0 件 / サーブ(レシーブ)側 0 件の率は null (0% ではない)
+  win_rate: number | null
+  avg_rally_length: number | null
   end_type_distribution: Record<string, number>
   rally_length_histogram: { length: number; count: number }[]
   win_by_end_type: Record<string, { wins: number; total: number }>
-  server_win_rate: { as_server: number; as_receiver: number }
+  server_win_rate: {
+    as_server: number | null
+    as_receiver: number | null
+    server_count?: number
+    receiver_count?: number
+  }
 }
 
 interface SetScore {
@@ -56,8 +63,8 @@ export interface MatchSummary {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function pct(value: number) {
-  return `${(value * 100).toFixed(1)}%`
+function pct(value: number | null | undefined) {
+  return fmtPct(value)
 }
 
 function StatCard({
@@ -409,7 +416,7 @@ export function DashboardShell() {
                 <StatCard
                   icon={<MIcon name="crisis_alert" size={18} />}
                   label="平均ラリー長"
-                  value={descriptive?.avg_rally_length !== undefined ? descriptive.avg_rally_length.toFixed(1) : undefined}
+                  value={typeof descriptive?.avg_rally_length === 'number' ? descriptive.avg_rally_length.toFixed(1) : undefined}
                   sampleSize={descriptive?.total_rallies}
                 />
               </div>

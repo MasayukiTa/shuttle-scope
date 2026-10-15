@@ -9,16 +9,17 @@ import { useTranslation } from 'react-i18next'
 import { fmtPct as pct } from '@/utils/format'
 
 interface HazardData {
-  hazard_next_loss: number
-  hazard_after_long: number
-  hazard_endgame: number
-  combined_hazard: number
-  collapse_risk_band: string
+  // ラリー 0 件・該当局面 0 件の項目は null (0.5 などの偽の中立値ではない)
+  hazard_next_loss: number | null
+  hazard_after_long: number | null
+  hazard_endgame: number | null
+  combined_hazard: number | null
+  collapse_risk_band: string | null
   calibrated_confidence: number
-  baseline_loss_rate: number
+  baseline_loss_rate: number | null
   total_rallies: number
-  after_long_rally: { n_long_rallies: number; n_loss_after_long: number; loss_rate: number; vs_baseline: number }
-  endgame_analysis: { n_endgame: number; n_loss_endgame: number; loss_rate: number; vs_baseline: number }
+  after_long_rally: { n_long_rallies: number; n_loss_after_long: number; loss_rate: number | null; vs_baseline: number | null }
+  endgame_analysis: { n_endgame: number; n_loss_endgame: number; loss_rate: number | null; vs_baseline: number | null }
   window_trend: { window_start: number; window_end: number; hazard: number; band: string }[]
 }
 interface Meta { tier: string; evidence_level: string; sample_size: number; caution: string | null }
@@ -72,8 +73,8 @@ export function HazardFatigueCard({ playerId, filters }: Props) {
           <div className={`flex items-center gap-4 ${cardInner} rounded px-3 py-2`}>
             <div>
               <p className={`text-[10px] ${textMuted}`}>{t('auto.HazardFatigueCard.k4')}</p>
-              <p className={`text-lg font-bold ${BAND_COLORS[d.collapse_risk_band] ?? textSecondary}`}>
-                {BAND_LABELS[d.collapse_risk_band] ?? d.collapse_risk_band}
+              <p className={`text-lg font-bold ${BAND_COLORS[d.collapse_risk_band ?? ''] ?? textSecondary}`}>
+                {BAND_LABELS[d.collapse_risk_band ?? ''] ?? d.collapse_risk_band ?? '—'}
               </p>
               <p className={`text-[10px] ${textMuted}`}>{t('auto.HazardFatigueCard.confidence_n', { pct: pct(d.calibrated_confidence), n: d.total_rallies })}</p>
             </div>
@@ -90,7 +91,7 @@ export function HazardFatigueCard({ playerId, filters }: Props) {
             ].map(({ label, value }) => (
               <div key={label} className={`${cardInnerAlt} rounded px-2 py-2 text-center`}>
                 <p className={`text-[10px] mb-1 ${textMuted}`}>{label}</p>
-                <p className={`text-sm font-semibold ${value >= 0.5 ? 'text-red-500' : value >= 0.4 ? 'text-yellow-500' : 'text-emerald-500'}`}>
+                <p className={`text-sm font-semibold ${value === null ? textFaint : value >= 0.5 ? 'text-red-500' : value >= 0.4 ? 'text-yellow-500' : 'text-emerald-500'}`}>
                   {pct(value)}
                 </p>
               </div>
@@ -99,14 +100,14 @@ export function HazardFatigueCard({ playerId, filters }: Props) {
           <div className={`text-[11px] space-y-0.5 ${textSecondary}`}>
             <p>
               {t('auto.HazardFatigueCard.after_long', { total: d.after_long_rally.n_long_rallies, loss: d.after_long_rally.n_loss_after_long })}
-              <span className={`ml-1 ${d.after_long_rally.vs_baseline > 0.05 ? 'text-orange-500' : textFaint}`}>
-                {t('auto.HazardFatigueCard.vs_baseline', { v: `${d.after_long_rally.vs_baseline > 0 ? '+' : ''}${pct(d.after_long_rally.vs_baseline)}` })}
+              <span className={`ml-1 ${(d.after_long_rally.vs_baseline ?? 0) > 0.05 ? 'text-orange-500' : textFaint}`}>
+                {t('auto.HazardFatigueCard.vs_baseline', { v: `${(d.after_long_rally.vs_baseline ?? 0) > 0 ? '+' : ''}${pct(d.after_long_rally.vs_baseline)}` })}
               </span>
             </p>
             <p>
               {t('auto.HazardFatigueCard.endgame', { total: d.endgame_analysis.n_endgame, loss: d.endgame_analysis.n_loss_endgame })}
-              <span className={`ml-1 ${d.endgame_analysis.vs_baseline > 0.05 ? 'text-orange-500' : textFaint}`}>
-                {t('auto.HazardFatigueCard.vs_baseline', { v: `${d.endgame_analysis.vs_baseline > 0 ? '+' : ''}${pct(d.endgame_analysis.vs_baseline)}` })}
+              <span className={`ml-1 ${(d.endgame_analysis.vs_baseline ?? 0) > 0.05 ? 'text-orange-500' : textFaint}`}>
+                {t('auto.HazardFatigueCard.vs_baseline', { v: `${(d.endgame_analysis.vs_baseline ?? 0) > 0 ? '+' : ''}${pct(d.endgame_analysis.vs_baseline)}` })}
               </span>
             </p>
           </div>

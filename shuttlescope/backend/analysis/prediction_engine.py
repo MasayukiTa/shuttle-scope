@@ -475,9 +475,10 @@ def compute_match_narrative(
         deciding_parts.append('直近の調子が下降傾向（要注意）')
 
     sv = score_volatility or {}
-    if sv.get('dominant_match_rate', 0) >= 0.5 and verdict_level == 'win':
+    # 試合 0 件のとき各率は null (None >= 0.5 は TypeError) なので 0 扱いで比較する
+    if (sv.get('dominant_match_rate') or 0) >= 0.5 and verdict_level == 'win':
         deciding_parts.append('ストレート勝ちが多く圧倒しやすい相手')
-    elif sv.get('close_match_rate', 0) >= 0.5:
+    elif (sv.get('close_match_rate') or 0) >= 0.5:
         deciding_parts.append('接戦が多く終盤の集中力が鍵')
 
     opp_obs = obs_context.get('opponent', {})
@@ -494,7 +495,7 @@ def compute_match_narrative(
 
     # ── ぐだりやすい局面 ────────────────────────────────────────────────────
     risk_zones: list[str] = []
-    if sv.get('close_match_rate', 0) >= 0.4:
+    if (sv.get('close_match_rate') or 0) >= 0.4:
         risk_zones.append(f'ファイナルセットに縺れやすい（過去{round(sv["close_match_rate"]*100)}%）')
     if sv.get('typical_margin') is not None and sv['typical_margin'] <= 4 and sv.get('sample', 0) >= 3:
         risk_zones.append('点差が僅差になりやすい（平均得点差{:.1f}点）'.format(sv['typical_margin']))
@@ -869,13 +870,20 @@ def compute_recent_form(
     直近 n 試合の指数重み付き勝率とトレンド方向を返す。
     matches は日付降順（get_matches_for_player の出力）を想定。
     """
+    # 試合 0 件では直近勝率・傾向は定義できない (0.5 / 'stable' は統計ではない)。
+    # 偽の中立値を返さず null + sample=0 にする。
     if not matches:
-        return {'win_rate': 0.5, 'sample': 0, 'trend': 'stable', 'results': [], 'overall_wr': 0.5}
+        return {'win_rate': None, 'sample': 0, 'trend': None, 'results': [], 'overall_wr': None}
 
     overall_wr, _ = compute_win_probability(matches, player_id)
 
     recent = matches[:n]
     sample = len(recent)
+    if sample == 0:
+        return {
+            'win_rate': None, 'sample': 0, 'trend': None, 'results': [],
+            'overall_wr': round(overall_wr, 4),
+        }
 
     # 指数重み: index 0 = 最新, decay = 0.85
     decay = 0.85
@@ -886,7 +894,7 @@ def compute_recent_form(
         weights[i] for i, m in enumerate(recent)
         if _player_wins_match(m, player_id)
     )
-    recent_wr = weighted_wins / w_sum if w_sum > 0 else 0.5
+    recent_wr = weighted_wins / w_sum  # sample>=1 なので w_sum>0 (decay**0 = 1)
 
     # 結果列（古い順）: ['W', 'L', ...]
     results = ['W' if _player_wins_match(m, player_id) else 'L' for m in reversed(recent)]
@@ -972,8 +980,10 @@ def compute_feature_win_prob(
     観察コンテキストの修正値を加算する。
     """
     base_wr, _ = compute_win_probability(matches, player_id)
-    recent_wr = recent_form.get('win_rate', base_wr)
+    recent_wr = recent_form.get('win_rate')
     recent_n = recent_form.get('sample', 0)
+    # 直近勝率が無い (null) ときは直近項を使わず base_wr で置く (breakdown には null で出す)
+    recent_wr_used = recent_wr if recent_wr is not None else base_wr
     h2h_n = len(h2h_matches)
 
     h2h_wr: Optional[float] = None
@@ -983,10 +993,10 @@ def compute_feature_win_prob(
     # 適応的重み選択
     if h2h_wr is not None:
         weights = {'base': 0.25, 'recent': 0.35, 'h2h': 0.40}
-        raw_blend = base_wr * 0.25 + recent_wr * 0.35 + h2h_wr * 0.40
+        raw_blend = base_wr * 0.25 + recent_wr_used * 0.35 + h2h_wr * 0.40
     elif recent_n >= 3:
         weights = {'base': 0.40, 'recent': 0.60}
-        raw_blend = base_wr * 0.40 + recent_wr * 0.60
+        raw_blend = base_wr * 0.40 + recent_wr_used * 0.60
     else:
         weights = {'base': 1.0}
         raw_blend = base_wr
@@ -1006,7 +1016,7 @@ def compute_feature_win_prob(
 
     breakdown = {
         'base_wr': round(base_wr, 4),
-        'recent_wr': round(recent_wr, 4),
+        'recent_wr': round(recent_wr, 4) if recent_wr is not None else None,
         'h2h_wr': round(h2h_wr, 4) if h2h_wr is not None else None,
         'weights': weights,
         'obs_modifier': round(obs_modifier, 4),
@@ -1092,9 +1102,9 @@ def compute_score_volatility(
     """
     if not matches:
         return {
-            'volatility_score': 0.0,
-            'close_match_rate': 0.0,
-            'dominant_match_rate': 0.0,
+            'volatility_score': None,
+            'close_match_rate': None,
+            'dominant_match_rate': None,
             'typical_margin': None,
             'sample': 0,
         }
@@ -1122,8 +1132,8 @@ def compute_score_volatility(
                 margins.append(abs(my - opp))
 
     n = len(matches)
-    close_rate = round(close / n, 4) if n else 0.0
-    dominant_rate = round(dominant / n, 4) if n else 0.0
+    close_rate = round(close / n, 4)
+    dominant_rate = round(dominant / n, 4)
     typical_margin = round(sum(margins) / len(margins), 2) if margins else None
 
     # ボラティリティ: 接戦率が高いほど不安定

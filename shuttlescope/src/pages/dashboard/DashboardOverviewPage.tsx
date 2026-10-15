@@ -22,16 +22,23 @@ import { CourtHeatModal } from '@/components/analysis/CourtHeatModal'
 import { SetIntervalSummary } from '@/components/analysis/SetIntervalSummary'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { useAuth } from '@/hooks/useAuth'
+import { fmtPct } from '@/utils/format'
 
 interface DescriptiveData {
   total_matches: number
   total_rallies: number
-  win_rate: number
-  avg_rally_length: number
+  // ラリー 0 件 / サーブ(レシーブ)側 0 件の率は null (0% ではない)
+  win_rate: number | null
+  avg_rally_length: number | null
   end_type_distribution: Record<string, number>
   rally_length_histogram: { length: number; count: number }[]
   win_by_end_type: Record<string, { wins: number; total: number }>
-  server_win_rate: { as_server: number; as_receiver: number }
+  server_win_rate: {
+    as_server: number | null
+    as_receiver: number | null
+    server_count?: number
+    receiver_count?: number
+  }
 }
 
 interface HeatmapResponse {
@@ -63,8 +70,8 @@ interface MatchSummary {
 // END_TYPE_LABELS は t('shot_end_type.<key>') で参照する (関数経由で動的に解決)
 const _END_TYPE_KEYS = ['ace', 'forced_error', 'unforced_error', 'net_error', 'net', 'out', 'winner', 'cant_reach'] as const
 
-function pct(value: number) {
-  return `${(value * 100).toFixed(1)}%`
+function pct(value: number | null | undefined) {
+  return fmtPct(value)
 }
 
 type SortCol = 'date' | 'opponent' | 'tournament_level' | 'result' | 'rally_count'
@@ -380,18 +387,28 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
               {loadingDescriptive || !descriptive?.server_win_rate ? <LoadingRow /> : (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className={`text-sm ${textSecondary}`}>{t('auto.DashboardOverviewPage.k10')}</span>
+                    <span className={`text-sm ${textSecondary}`}>
+                      {t('auto.DashboardOverviewPage.k10')}
+                      {typeof descriptive.server_win_rate.server_count === 'number' && (
+                        <span className="ml-1 text-[10px] ss-num">{t('auto._shared.n_rallies', { n: descriptive.server_win_rate.server_count })}</span>
+                      )}
+                    </span>
                     <span className="ss-num text-lg font-semibold text-blue-400">{pct(descriptive.server_win_rate.as_server)}</span>
                   </div>
                   <div className={`w-full ${isLight ? 'bg-gray-200' : 'bg-gray-700'} rounded-full h-2`}>
-                    <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${(descriptive.server_win_rate.as_server * 100).toFixed(1)}%` }} />
+                    <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${((descriptive.server_win_rate.as_server ?? 0) * 100).toFixed(1)}%` }} />
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className={`text-sm ${textSecondary}`}>{t('auto.DashboardOverviewPage.k11')}</span>
+                    <span className={`text-sm ${textSecondary}`}>
+                      {t('auto.DashboardOverviewPage.k11')}
+                      {typeof descriptive.server_win_rate.receiver_count === 'number' && (
+                        <span className="ml-1 text-[10px] ss-num">{t('auto._shared.n_rallies', { n: descriptive.server_win_rate.receiver_count })}</span>
+                      )}
+                    </span>
                     <span className="ss-num text-lg font-semibold text-emerald-400">{pct(descriptive.server_win_rate.as_receiver)}</span>
                   </div>
                   <div className={`w-full ${isLight ? 'bg-gray-200' : 'bg-gray-700'} rounded-full h-2`}>
-                    <div className="bg-emerald-500 h-2 rounded-full" style={{ width: `${(descriptive.server_win_rate.as_receiver * 100).toFixed(1)}%` }} />
+                    <div className="bg-emerald-500 h-2 rounded-full" style={{ width: `${((descriptive.server_win_rate.as_receiver ?? 0) * 100).toFixed(1)}%` }} />
                   </div>
                 </div>
               )}

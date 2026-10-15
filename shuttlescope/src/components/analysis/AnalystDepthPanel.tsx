@@ -17,11 +17,12 @@ import { WIN, LOSS } from '@/styles/colors'
 // ── 型定義 ──────────────────────────────────────────────────────────────────
 
 interface RecentForm {
-  win_rate: number
+  // 試合 0 件のとき win_rate / overall_wr / trend は null (偽の 50% / 安定ではない)
+  win_rate: number | null
   sample: number
-  trend: 'improving' | 'declining' | 'stable'
+  trend: 'improving' | 'declining' | 'stable' | null
   results: string[]
-  overall_wr: number
+  overall_wr: number | null
 }
 
 interface GrowthBucket {
@@ -53,7 +54,7 @@ interface NearestMatch {
 
 interface FeatureBreakdown {
   base_wr: number
-  recent_wr: number
+  recent_wr: number | null
   h2h_wr: number | null
   weights: Record<string, number>
   obs_modifier: number
@@ -95,6 +96,18 @@ function RecentFormSection({ data, isLight }: { data: RecentForm; isLight: boole
     : data.trend === 'declining' ? t('prediction.recent_form_declining')
     : t('prediction.recent_form_stable')
 
+  // 直近の試合が 0 件: 傾向も勝率も定義できないので「—」だけを出す
+  if (data.sample === 0 || data.win_rate === null) {
+    return (
+      <div>
+        <p className="text-xs font-semibold mb-2" style={{ color: subText }}>
+          {t('prediction.recent_form')}
+        </p>
+        <span className="text-xs" style={{ color: subText }}>—</span>
+      </div>
+    )
+  }
+
   return (
     <div>
       <p className="text-xs font-semibold mb-2" style={{ color: subText }}>
@@ -128,7 +141,9 @@ function RecentFormSection({ data, isLight }: { data: RecentForm; isLight: boole
           </p>
           <p className="text-xs ss-num" style={{ color: subText }}>
             {t('auto.AnalystDepthPanel.recent_wr', { wr: Math.round(data.win_rate * 100) })}
-            <span className="ml-2">{t('auto.AnalystDepthPanel.overall_wr', { wr: Math.round(data.overall_wr * 100) })}</span>
+            {typeof data.overall_wr === 'number' && (
+              <span className="ml-2">{t('auto.AnalystDepthPanel.overall_wr', { wr: Math.round(data.overall_wr * 100) })}</span>
+            )}
           </p>
         </div>
       </div>
@@ -325,7 +340,9 @@ function FeatureBreakdownSection({ data, isLight }: { data: FeatureBreakdown; is
   type WeightEntry = { label: string; wr: number; weight: number }
   const entries: WeightEntry[] = [
     { label: t('auto.AnalystDepthPanel.k5'), wr: data.base_wr, weight: data.weights['base'] ?? 0 },
-    { label: t('auto.AnalystDepthPanel.k6'), wr: data.recent_wr, weight: data.weights['recent'] ?? 0 },
+    ...(data.recent_wr !== null
+      ? [{ label: t('auto.AnalystDepthPanel.k6'), wr: data.recent_wr, weight: data.weights['recent'] ?? 0 }]
+      : []),
     ...(data.h2h_wr !== null && data.weights['h2h']
       ? [{ label: t('auto.AnalystDepthPanel.k7'), wr: data.h2h_wr, weight: data.weights['h2h'] }]
       : []),

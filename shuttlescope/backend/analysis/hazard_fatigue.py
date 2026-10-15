@@ -109,15 +109,19 @@ def compute_hazard_model(
 
     total = len(all_results)
     if total == 0:
+        # ラリー 0 件ではハザードも失点率も定義できない。0.5 や "moderate" を返すと
+        # 「五分五分の中程度リスク」という偽の判定になるので null にする。
         return {
-            "hazard_next_loss": 0.5,
-            "hazard_after_long": 0.5,
-            "hazard_endgame": 0.5,
-            "collapse_risk_band": "moderate",
+            "hazard_next_loss": None,
+            "hazard_after_long": None,
+            "hazard_endgame": None,
+            "combined_hazard": None,
+            "collapse_risk_band": None,
             "calibrated_confidence": 0.0,
-            "after_long_rally": {"n_long_rallies": 0, "n_loss_after_long": 0, "loss_rate": 0.5, "vs_baseline": 0.0},
-            "endgame_analysis": {"n_endgame": 0, "n_loss_endgame": 0, "loss_rate": 0.5, "vs_baseline": 0.0},
+            "after_long_rally": {"n_long_rallies": 0, "n_loss_after_long": 0, "loss_rate": None, "vs_baseline": None},
+            "endgame_analysis": {"n_endgame": 0, "n_loss_endgame": 0, "loss_rate": None, "vs_baseline": None},
             "window_trend": [],
+            "baseline_loss_rate": None,
             "total_rallies": 0,
         }
 
@@ -137,12 +141,16 @@ def compute_hazard_model(
             n_after_long += 1
             if not curr_win:
                 n_loss_after_long += 1
-    loss_after_long = round(n_loss_after_long / n_after_long, 4) if n_after_long else baseline_loss_rate
+    # 観測値 (n=0 は null)。総合ハザード combined_hazard の計算だけは、観測が無い項を
+    # ベースラインで置く (= その項は全体平均と同じとみなす) ので別変数に分ける。
+    loss_after_long_obs = round(n_loss_after_long / n_after_long, 4) if n_after_long else None
+    loss_after_long = loss_after_long_obs if loss_after_long_obs is not None else baseline_loss_rate
 
     # 終盤スコア分析
     n_endgame = sum(1 for (_, _, score, _, _) in all_results if score >= ENDGAME_SCORE)
     n_loss_endgame = sum(1 for (w, _, score, _, _) in all_results if score >= ENDGAME_SCORE and not w)
-    loss_endgame = round(n_loss_endgame / n_endgame, 4) if n_endgame else baseline_loss_rate
+    loss_endgame_obs = round(n_loss_endgame / n_endgame, 4) if n_endgame else None
+    loss_endgame = loss_endgame_obs if loss_endgame_obs is not None else baseline_loss_rate
 
     # 直近ウィンドウ ハザード（全試合の最後WINDOW_SIZE件）
     last_window = all_results[-WINDOW_SIZE:]
@@ -180,22 +188,28 @@ def compute_hazard_model(
 
     return {
         "hazard_next_loss": hazard_next,
-        "hazard_after_long": loss_after_long,
-        "hazard_endgame": loss_endgame,
+        "hazard_after_long": loss_after_long_obs,
+        "hazard_endgame": loss_endgame_obs,
         "combined_hazard": combined_hazard,
         "collapse_risk_band": _collapse_risk_band(combined_hazard),
         "calibrated_confidence": confidence,
         "after_long_rally": {
             "n_long_rallies": n_after_long,
             "n_loss_after_long": n_loss_after_long,
-            "loss_rate": loss_after_long,
-            "vs_baseline": round(loss_after_long - baseline_loss_rate, 4),
+            "loss_rate": loss_after_long_obs,
+            "vs_baseline": (
+                round(loss_after_long_obs - baseline_loss_rate, 4)
+                if loss_after_long_obs is not None else None
+            ),
         },
         "endgame_analysis": {
             "n_endgame": n_endgame,
             "n_loss_endgame": n_loss_endgame,
-            "loss_rate": loss_endgame,
-            "vs_baseline": round(loss_endgame - baseline_loss_rate, 4),
+            "loss_rate": loss_endgame_obs,
+            "vs_baseline": (
+                round(loss_endgame_obs - baseline_loss_rate, 4)
+                if loss_endgame_obs is not None else None
+            ),
         },
         "window_trend": window_trend,
         "baseline_loss_rate": baseline_loss_rate,

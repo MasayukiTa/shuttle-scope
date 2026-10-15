@@ -1677,7 +1677,8 @@
       "match_count": "Matches",
       "win_rate": "Win rate",
       "avg_rally": "Avg rally length",
-      "bar_note": "Bars show win rate; the number in brackets on each label is the match count"
+      "bar_note": "Bars show win rate; the number in brackets on each label is the match count",
+      "low_sample_hint": "Win rates for tournament levels with few matches are for reference only (shown in gray)"
     },
     "pre_loss": {
       "title": "Pre-loss patterns",
@@ -3337,6 +3338,7 @@
       "win_rate": "Win rate: {{v}}%",
       "insufficient": "Insufficient data (available after annotation)",
       "no_data": "No data",
+      "type_pending": "Player type is withheld: not enough rallies",
       "count_legend": "Count",
       "rate_legend": "Win rate"
     },

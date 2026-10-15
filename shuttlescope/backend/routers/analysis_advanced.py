@@ -24,11 +24,15 @@ from backend.analysis.growth_engine import (
     growth_points_weighted,
     strength_weighted_moving_avg,
     compute_metric_growth_trend,
+    decide_overall_growth,
 )
 
 # advanced tier は player 禁止 (PLAYER_SENSITIVE_KEYS を返すケースが多い)。
 # middleware が import 失敗時に空集合化するリスクをカバーするため router-level でガード。
 router = APIRouter(dependencies=[Depends(require_non_player), Depends(require_query_scope)])
+
+# 相手別の勝率を「成績」として扱える最小試合数 (フロント OpponentStats の MIN_MATCHES_FOR_RATE と同値)
+OPPONENT_MIN_MATCHES = 3
 
 
 def _with_input_provenance(
@@ -169,13 +173,15 @@ def get_consecutive_streaks(match_id: int, db: Session = Depends(get_db)):
     deuce_sets = [s for s in sets if s.is_deuce]
     deuce_total = len(deuce_sets)
     deuce_wins = sum(1 for s in deuce_sets if s.winner == "player_a")
-    deuce_win_rate = round(deuce_wins / deuce_total, 3) if deuce_total else 0.0
+    # デュースのセットが 0 件のときは勝率を定義できない (0.0 = 「デュースで全敗」ではない)。
+    deuce_win_rate = round(deuce_wins / deuce_total, 3) if deuce_total else None
 
     return {
         "success": True,
         "data": {
             "streaks": all_streaks,
             "deuce_win_rate": deuce_win_rate,
+            "deuce_set_count": deuce_total,
             "comeback_count": comeback_count,
         },
     }
@@ -205,6 +211,9 @@ def get_rally_length_vs_winrate(
                 "buckets": [],
                 "player_type": "unknown",
                 "player_type_ja": "不明",
+                "insufficient_data": True,
+                "short_count": 0,
+                "long_count": 0,
             },
             "meta": _with_input_provenance(
                 {"sample_size": 0, "confidence": empty_confidence},
@@ -269,18 +278,30 @@ def get_rally_length_vs_winrate(
             "win_rate": win_rate,
         })
 
-    # プレイヤータイプ判定
-    short_wr = (
-        bucket_wins["1-3"] / bucket_total["1-3"]
-        if bucket_total["1-3"] else 0.0
-    )
+    # プレイヤータイプ判定。
+    # 短いラリー / 長いラリーの勝率は件数 0 では定義できないので 0.0 にせず None とし、
+    # 比較できない (どちらかの側が最小標本未満、または全体の信頼度が low) ときは
+    # タイプを決めない (1 ラリーで「短期決戦型」と出さない)。
+    short_n = bucket_total["1-3"]
+    long_n = bucket_total["11-15"] + bucket_total["16+"]
+    short_wr = bucket_wins["1-3"] / short_n if short_n else None
     long_wr = (
-        (bucket_wins["11-15"] + bucket_wins["16+"])
-        / (bucket_total["11-15"] + bucket_total["16+"])
-        if (bucket_total["11-15"] + bucket_total["16+"]) > 0 else 0.0
+        (bucket_wins["11-15"] + bucket_wins["16+"]) / long_n
+        if long_n else None
     )
 
-    if short_wr >= 0.60 and short_wr > long_wr + 0.10:
+    confidence = check_confidence("rally_vs_winrate", total_rallies)
+    min_side_n = AnalysisConfig.RECOMMENDATION_MIN_SAMPLES
+    type_insufficient = (
+        confidence["level"] == "low"
+        or short_n < min_side_n
+        or long_n < min_side_n
+    )
+
+    if type_insufficient:
+        player_type = "unknown"
+        player_type_ja = "不明"
+    elif short_wr >= 0.60 and short_wr > long_wr + 0.10:
         player_type = "short_game_specialist"
         player_type_ja = "短期決戦型"
     elif long_wr >= 0.55 and long_wr > short_wr + 0.05:
@@ -290,14 +311,15 @@ def get_rally_length_vs_winrate(
         player_type = "balanced"
         player_type_ja = "バランス型"
 
-    confidence = check_confidence("rally_vs_winrate", total_rallies)
-
     return {
         "success": True,
         "data": {
             "buckets": bucket_results,
             "player_type": player_type,
             "player_type_ja": player_type_ja,
+            "insufficient_data": type_insufficient,
+            "short_count": short_n,
+            "long_count": long_n,
         },
         "meta": _with_input_provenance(
             {
@@ -326,7 +348,8 @@ def get_pressure_performance(
     matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
 
     empty_confidence = check_confidence("pressure_performance", 0)
-    empty_stat = {"total": 0, "rally_count": 0, "sample_size": 0, "win_rate": 0.0, "avg_rally_length": 0.0}
+    # 件数 0 の区間は勝率・平均ラリー長を定義できないので null (0.0 を「勝率0%」と読ませない)
+    empty_stat = {"total": 0, "rally_count": 0, "sample_size": 0, "win_rate": None, "avg_rally_length": None}
     if not matches:
         return {
             "success": True,
@@ -381,8 +404,8 @@ def get_pressure_performance(
 
     def _build_stat(s: dict) -> dict:
         total = s["total"]
-        win_rate = round(s["wins"] / total, 3) if total else 0.0
-        avg_rally_length = round(s["total_length"] / total, 3) if total else 0.0
+        win_rate = round(s["wins"] / total, 3) if total else None
+        avg_rally_length = round(s["total_length"] / total, 3) if total else None
         # フロント (PressurePerformance.tsx) は segment.rally_count / sample_size を
         # 参照する。旧実装は total のみ返しており rally_count が undefined =
         # カードのラリー数が空表示になっていた。両名で返して契約を満たす。
@@ -667,7 +690,8 @@ def get_temporal_performance(
     for phase_name, stats in phases.items():
         total = stats["total"]
         total_sample += total
-        win_rate = round(stats["wins"] / total, 3) if total else 0.0
+        # 件数 0 のフェーズは勝率を定義できない (0.0 ではなく null)
+        win_rate = round(stats["wins"] / total, 3) if total else None
         phase_list.append({
             "phase": phase_name,
             "win_rate": win_rate,
@@ -708,9 +732,9 @@ def get_post_long_rally_stats(
         return {
             "success": True,
             "data": {
-                "normal": {"win_rate": 0.0, "avg_rally_length": 0.0, "count": 0},
-                "post_long": {"win_rate": 0.0, "avg_rally_length": 0.0, "count": 0},
-                "diff_win_rate": 0.0,
+                "normal": {"win_rate": None, "avg_rally_length": None, "count": 0},
+                "post_long": {"win_rate": None, "avg_rally_length": None, "count": 0},
+                "diff_win_rate": None,
             },
             "meta": _with_input_provenance(
                 {"sample_size": 0, "confidence": empty_confidence},
@@ -761,13 +785,18 @@ def get_post_long_rally_stats(
 
     def _build(s: dict) -> dict:
         total = s["total"]
-        win_rate = round(s["wins"] / total, 3) if total else 0.0
-        avg_len = round(s["total_length"] / total, 2) if total else 0.0
+        # 件数 0 (長ラリーが無く「長ラリー後」が 1 本も無い等) は null。0.0 にすると
+        # 差分が「通常時の勝率ぶん悪化」という偽の統計になる。
+        win_rate = round(s["wins"] / total, 3) if total else None
+        avg_len = round(s["total_length"] / total, 2) if total else None
         return {"win_rate": win_rate, "avg_rally_length": avg_len, "count": total}
 
     normal_stat = _build(normal)
     post_stat = _build(post_long)
-    diff = round(post_stat["win_rate"] - normal_stat["win_rate"], 3)
+    if normal_stat["win_rate"] is None or post_stat["win_rate"] is None:
+        diff = None
+    else:
+        diff = round(post_stat["win_rate"] - normal_stat["win_rate"], 3)
 
     total_sample = normal["total"] + post_long["total"]
     confidence = check_confidence("descriptive_basic", total_sample)
@@ -861,8 +890,8 @@ def get_opponent_stats(player_id: int, db: Session = Depends(get_db)):
     for opp_id, stats in sorted(opp_stats.items()):
         match_count = len(stats["match_ids"])
         total_sample += stats["rally_count"]
-        win_rate = round(stats["wins"] / match_count, 3) if match_count else 0.0
-        avg_rally = round(stats["total_length"] / stats["rally_count"], 2) if stats["rally_count"] else 0.0
+        win_rate = round(stats["wins"] / match_count, 3) if match_count else None
+        avg_rally = round(stats["total_length"] / stats["rally_count"], 2) if stats["rally_count"] else None
         opponents_list.append({
             "opponent_id": opp_id,
             "opponent_name": player_name_map.get(opp_id, "不明"),
@@ -870,6 +899,8 @@ def get_opponent_stats(player_id: int, db: Session = Depends(get_db)):
             "win_rate": win_rate,
             "avg_rally_length": avg_rally,
             "sample_size": stats["rally_count"],
+            # 試合数が少ない相手の勝率は参考値 (フロントの n<3 灰色表示と同じ基準)
+            "insufficient": match_count < OPPONENT_MIN_MATCHES,
         })
 
     confidence = check_confidence("opponent_analysis", total_sample)
@@ -1339,9 +1370,11 @@ def get_doubles_serve_receive(player_id: int, db: Session = Depends(get_db)):
         return {
             "success": True,
             "data": {
-                "serve_win_rate": 0.0,
-                "receive_win_rate": 0.0,
-                "serve_style": {"short_service": 0.0, "long_service": 0.0},
+                "serve_win_rate": None,
+                "receive_win_rate": None,
+                "serve_count": 0,
+                "receive_count": 0,
+                "serve_style": {},
                 "receive_zones": [],
             },
             "meta": _with_input_provenance(
@@ -1447,8 +1480,12 @@ def get_doubles_serve_receive(player_id: int, db: Session = Depends(get_db)):
     return {
         "success": True,
         "data": {
-            "serve_win_rate": round(serve_wins / serve_total, 3) if serve_total else 0.0,
-            "receive_win_rate": round(receive_wins / receive_total, 3) if receive_total else 0.0,
+            # サーブ側 / レシーブ側のどちらかが 0 件なら、その側の勝率は null (0.0 ではない)。
+            # 側ごとの件数も併記する (sample_size は両側の合算)。
+            "serve_win_rate": round(serve_wins / serve_total, 3) if serve_total else None,
+            "receive_win_rate": round(receive_wins / receive_total, 3) if receive_total else None,
+            "serve_count": serve_total,
+            "receive_count": receive_total,
             "serve_style": serve_style_rates,
             "receive_zones": receive_zones,
         },
@@ -1481,11 +1518,11 @@ def get_stroke_sharing(player_id: int, db: Session = Depends(get_db)):
         return {
             "success": True,
             "data": {
-                "balanced_win_rate": 0.0,
-                "imbalanced_win_rate": 0.0,
+                "balanced_win_rate": None,
+                "imbalanced_win_rate": None,
                 "balanced_count": 0,
                 "imbalanced_count": 0,
-                "avg_balance_ratio": 0.0,
+                "avg_balance_ratio": None,
             },
             "meta": _with_input_provenance(
                 {"sample_size": 0, "confidence": empty_confidence},
@@ -1524,11 +1561,11 @@ def get_stroke_sharing(player_id: int, db: Session = Depends(get_db)):
         return {
             "success": True,
             "data": {
-                "balanced_win_rate": 0.0,
-                "imbalanced_win_rate": 0.0,
+                "balanced_win_rate": None,
+                "imbalanced_win_rate": None,
                 "balanced_count": 0,
                 "imbalanced_count": 0,
-                "avg_balance_ratio": 0.0,
+                "avg_balance_ratio": None,
             },
             "meta": _with_input_provenance(
                 {"sample_size": 0, "confidence": empty_confidence},
@@ -1587,9 +1624,10 @@ def get_stroke_sharing(player_id: int, db: Session = Depends(get_db)):
             if player_won:
                 imbalanced_wins += 1
 
-    avg_balance_ratio = round(total_balance_ratio / total_rallies, 3) if total_rallies else 0.0
-    balanced_win_rate = round(balanced_wins / balanced_total, 3) if balanced_total else 0.0
-    imbalanced_win_rate = round(imbalanced_wins / imbalanced_total, 3) if imbalanced_total else 0.0
+    # 件数 0 の側は null (0.0 は「そのバランスのラリーは全敗」と読めてしまう)
+    avg_balance_ratio = round(total_balance_ratio / total_rallies, 3) if total_rallies else None
+    balanced_win_rate = round(balanced_wins / balanced_total, 3) if balanced_total else None
+    imbalanced_win_rate = round(imbalanced_wins / imbalanced_total, 3) if imbalanced_total else None
 
     confidence = check_confidence("descriptive_basic", total_rallies)
 
@@ -1721,6 +1759,7 @@ def get_flash_advice(
     provenance_stroke_ids.update(s.id for s in player_win_stroke_rows)
     player_win_shots = [s.shot_type for s in player_win_stroke_rows]
     opportunity_body = "有効な攻め口のデータが不足しています"
+    opportunity_ok = False
     if player_win_shots:
         shot_counts = Counter(player_win_shots)
         top_shot = shot_counts.most_common(1)[0][0]
@@ -1736,13 +1775,21 @@ def get_flash_advice(
         rallies_with_shot = {s.rally_id for s in top_shot_rows}
         rallies_with_shot_won = rallies_with_shot & win_rallies
         shot_rallies_total = len(rallies_with_shot)
-        win_pct = round(len(rallies_with_shot_won) / shot_rallies_total * 100) if shot_rallies_total else 0
         shot_label = _shot_ja(top_shot)
-        opportunity_body = (
-            f"「{shot_label}」での得点が多い"
-            f"（このセットで {shot_label} を打ったラリーの勝率 {win_pct}%"
-            f" / {len(rallies_with_shot_won)}-{shot_rallies_total}ラリー）"
-        )
+        # 母数が最小標本未満 (1 ラリー等) なら「得点が多い」と言い切らない
+        if shot_rallies_total >= AnalysisConfig.RECOMMENDATION_MIN_SAMPLES:
+            win_pct = round(len(rallies_with_shot_won) / shot_rallies_total * 100)
+            opportunity_ok = True
+            opportunity_body = (
+                f"「{shot_label}」での得点が多い"
+                f"（このセットで {shot_label} を打ったラリーの勝率 {win_pct}%"
+                f" / {len(rallies_with_shot_won)}-{shot_rallies_total}ラリー）"
+            )
+        else:
+            opportunity_body = (
+                f"「{shot_label}」を打ったラリーが{shot_rallies_total}本のため、"
+                f"有効な攻め口はまだ判断できません（{AnalysisConfig.RECOMMENDATION_MIN_SAMPLES}本以上で判定）"
+            )
 
     # ── 3. pattern: セット全体の失点前3球のショット傾向 ──────────────────────
     pre_loss_3 = []
@@ -1775,10 +1822,10 @@ def get_flash_advice(
         opponent_body = f"直近{len(recent_rallies)}ラリーで相手は「{_shot_ja(top_opp)}」を多用（{cnt}回）"
 
     # ── 5. next_action: danger + opportunity から1文推奨 ─────────────────────
-    if player_win_shots and recent_loss_shots:
+    if opportunity_ok and recent_loss_shots:
         top_win = _shot_ja(Counter(player_win_shots).most_common(1)[0][0])
         next_body = f"「{top_win}」を積極的に使い、相手の得意コースへの返球を避けること"
-    elif player_win_shots:
+    elif opportunity_ok:
         top_win = _shot_ja(Counter(player_win_shots).most_common(1)[0][0])
         next_body = f"「{top_win}」を中心に攻め続けること"
     else:
@@ -1827,7 +1874,14 @@ def get_flash_advice(
                 if r.id in long_ids:
                     nxt = rally_list[i + 1]
                     post_long_results.append(nxt.winner == player_role)
-            if post_long_results:
+            if post_long_results and len(post_long_results) < AnalysisConfig.RECOMMENDATION_MIN_SAMPLES:
+                # 長ラリー後のラリーが最小標本未満 (1 本等) では「消耗に注意」などを出さない
+                fatigue_body = (
+                    f"長ラリー後のラリーが{len(post_long_results)}本のため、"
+                    f"消耗の傾向はまだ判断できません（{AnalysisConfig.RECOMMENDATION_MIN_SAMPLES}本以上で判定）"
+                )
+                items.append({"category": "fatigue_signal", "title": "長ラリー後のパフォーマンス", "body": fatigue_body, "priority": 7})
+            elif post_long_results:
                 post_win_rate = round(sum(post_long_results) / len(post_long_results) * 100)
                 if post_win_rate < 40:
                     fatigue_body = f"長ラリー（{long_rally_threshold}球以上）後の次ラリー勝率が{post_win_rate}%と低い — 消耗に注意"
@@ -1968,28 +2022,9 @@ def get_growth_judgment(
             "weighted_delta": trend_info["weighted_trend_delta"],
         }
 
-    # 総合判定（通常 + 重み付き両方を考慮）
-    trends = [v["trend"] for v in metrics_result.values() if v["trend"] != "pending"]
-    trends += [v["weighted_trend"] for v in metrics_result.values() if v.get("weighted_trend", "pending") != "pending"]
-    improving_count = trends.count("improving")
-    declining_count = trends.count("declining")
-
-    # 窓内の件数が足りず判定できない指標が 1 つでもあれば、残りの指標だけで
-    # 「改善傾向」と言い切らず判定保留にする (一部指標が pending のまま総合だけ
-    # 改善傾向と出る矛盾の解消)。
-    any_pending = any(v["trend"] == "pending" for v in metrics_result.values())
-    if not trends or any_pending:
-        judgment = "pending"
-        judgment_ja = "判定保留"
-    elif improving_count >= 2 and declining_count == 0:
-        judgment = "improving"
-        judgment_ja = "改善傾向"
-    elif declining_count >= 2 and improving_count == 0:
-        judgment = "declining"
-        judgment_ja = "悪化傾向"
-    else:
-        judgment = "stable"
-        judgment_ja = "横ばい"
+    # 総合判定: 1 指標 = 1 票 (weighted_trend は補正であって 2 票目ではない)。
+    # 規則の詳細は growth_engine.decide_overall_growth の docstring を参照。
+    judgment, judgment_ja = decide_overall_growth(metrics_result)
 
     # アノテーション済み試合数（ラリーデータが存在する試合）
     _match_ids_all = [m.id for m in matches]
