@@ -80,7 +80,7 @@ function SegmentCard({
       <p className="text-xs text-[var(--ss-t3)]">
         {t('auto.PressurePerformance.rally_count_label')} <span className="text-[var(--ss-t2)] ss-num">{n}</span>
       </p>
-      {/* 信頼度はセグメント自身のラリー数で判定する (全体の★を各セグメントに流用しない) */}
+      {/* 信頼度はセグメント自身のラリー数で判定する (全体の信頼度表示を各セグメントに流用しない) */}
       {!empty && <ConfidenceBadge sampleSize={n} unit="rallies" compact />}
     </div>
   )
