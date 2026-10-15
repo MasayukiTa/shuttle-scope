@@ -493,6 +493,11 @@ def init_upload(
         m = db.get(Match, body.match_id)
         if m is None:
             raise HTTPException(status_code=404, detail="試合が見つかりません")
+        # JWT 書き込みロールは対象試合の team scope 内に限る (他チームの試合の動画差し替え防止)。
+        # QR 参加者は上の participant_match_id 検査で session -> match 束縛済み。
+        if actor.participant_id is None:
+            from backend.utils.auth import require_match_scope as _require_match_scope
+            _require_match_scope(request, m, db)
 
     # ディスク空き容量チェック
     try:
@@ -913,6 +918,13 @@ async def finalize_upload(
         if session is None:
             raise HTTPException(status_code=404, detail="アップロードセッションが見つかりません")
         _require_upload_owner(actor, session)
+        # 作成者本人でも、upload が指す試合へ今この呼び出し元が書けることを再確認する。
+        # (動画差し替えと CV 成果物の無効化が起きるのは finalize。QR 参加者は init で束縛済み)
+        if actor.participant_id is None and session.match_id is not None:
+            _fin_match = db.get(Match, session.match_id)
+            if _fin_match is not None:
+                from backend.utils.auth import require_match_scope as _require_match_scope_fin
+                _require_match_scope_fin(request, _fin_match, db)
 
         if session.status == "completed":
             # R39 fix (F-005): 絶対 path は返さない (basename だけ)

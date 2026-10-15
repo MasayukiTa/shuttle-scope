@@ -82,6 +82,9 @@ def create_bookmark(body: BookmarkCreate, request: Request, db: Session = Depend
     from backend.utils.auth import user_can_access_match
     if not user_can_access_match(ctx, match):
         raise HTTPException(status_code=404, detail="試合が見つかりません")
+    # 本文の rally/stroke が本文の match_id の試合に属することを検証
+    from backend.utils.match_refs import require_refs_in_match
+    require_refs_in_match(db, body.match_id, rally_id=body.rally_id, stroke_id=body.stroke_id)
     # coach_request は coach / analyst / admin のみ（WS ブロードキャスト発火の悪用を防ぐ）。
     if body.bookmark_type in _COACH_ONLY_TYPES and not (ctx.is_coach or ctx.is_analyst or ctx.is_admin):
         raise HTTPException(status_code=403, detail="coach_request はコーチ / analyst のみ作成できます")

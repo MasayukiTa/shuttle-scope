@@ -17,8 +17,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
-from backend.db.models import SharedSession
-from backend.utils.auth import get_auth
+from backend.db.models import Match, SharedSession
+from backend.utils.auth import get_auth, require_match_scope
 from backend.services.livekit_media import (
     issue_access_token,
     load_config,
@@ -56,6 +56,12 @@ def media_token(body: MediaTokenRequest, request: Request, db: Session = Depends
     )
     if not sess:
         raise HTTPException(status_code=404, detail="session not found or inactive")
+    # 4b. session -> match の team scope (他チームのライブ映像室に入れない)。
+    #     admin 素通し / coach・analyst は自チーム試合 / player は出場試合のみ (role 問わず)。
+    match = db.get(Match, sess.match_id) if sess.match_id is not None else None
+    if match is None:
+        raise HTTPException(status_code=404, detail="session not found or inactive")
+    require_match_scope(request, match, db)
     # 5. LiveKit 設定済みか
     cfg = load_config()
     if not cfg.configured:
