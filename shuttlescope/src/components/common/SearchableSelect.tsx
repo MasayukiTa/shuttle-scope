@@ -38,6 +38,11 @@ interface SearchableSelectProps {
   dropdownAlign?: 'left' | 'right'
 }
 
+/** ツールチップ用の全文 (名前 + 補助情報)。省略表示されても全文を確認できるようにする */
+function optionFullText(opt: SearchableOption): string {
+  return opt.suffix ? `${opt.label} ${opt.suffix}`.trim() : opt.label
+}
+
 export function SearchableSelect({
   options,
   value,
@@ -152,18 +157,22 @@ export function SearchableSelect({
           disabled && 'opacity-50 cursor-not-allowed',
         )}
       >
-        <span className={clsx('flex-1 truncate', !selectedOption ? 'text-[var(--ss-ctrl-placeholder)]' : 'text-[var(--ss-ctrl-text)]')}>
-          {loading ? t('common.loading', 'Loading...') : selectedOption ? (
+        {/* 名前を最優先: 名前は縮めず(max-w-full まで)、右の補助情報(suffix)から先に省略する */}
+        <span
+          className={clsx('flex-1 min-w-0 flex items-baseline', !selectedOption ? 'text-[var(--ss-ctrl-placeholder)]' : 'text-[var(--ss-ctrl-text)]')}
+          title={selectedOption ? optionFullText(selectedOption) : undefined}
+        >
+          {loading ? <span className="truncate">{t('common.loading', 'Loading...')}</span> : selectedOption ? (
             <>
               {selectedOption.prefix && (
                 selectedOption.prefixIsIcon
-                  ? <MIcon name={selectedOption.prefix} size={12} className="mr-1 inline" />
-                  : <span className="mr-1">{selectedOption.prefix}</span>
+                  ? <MIcon name={selectedOption.prefix} size={12} className="mr-1 shrink-0 self-center" />
+                  : <span className="mr-1 shrink-0">{selectedOption.prefix}</span>
               )}
-              {selectedOption.label}
-              {selectedOption.suffix && <span className="ml-1 text-[var(--ss-t3)] text-xs">{selectedOption.suffix}</span>}
+              <span data-ss-name className="shrink-0 max-w-full truncate">{selectedOption.label}</span>
+              {selectedOption.suffix && <span data-ss-suffix className="ml-1 min-w-0 truncate text-[var(--ss-t3)] text-xs">{selectedOption.suffix}</span>}
             </>
-          ) : effectiveEmptyLabel}
+          ) : <span className="truncate">{effectiveEmptyLabel}</span>}
         </span>
         {value != null && !disabled && (
           <MIcon name="close" size={14} className="text-[var(--ss-t3)] hover:text-[var(--ss-t1)] shrink-0" onClick={handleClear} />
@@ -205,6 +214,7 @@ export function SearchableSelect({
                   key={opt.value}
                   data-option
                   type="button"
+                  title={optionFullText(opt)}
                   onClick={() => handleSelect(opt.value)}
                   className={clsx(
                     'flex items-center gap-2 w-full text-left px-3 py-2 text-sm transition-colors duration-fast ease-out',
@@ -220,8 +230,11 @@ export function SearchableSelect({
                       ? <MIcon name={opt.prefix} size={12} className="shrink-0" />
                       : <span className="text-xs shrink-0">{opt.prefix}</span>
                   )}
-                  <span className="flex-1 truncate">{opt.label}</span>
-                  {opt.suffix && <span className="text-xs text-[var(--ss-t3)] shrink-0">{opt.suffix}</span>}
+                  {/* 名前を最優先: 名前は max-w-full まで縮めず、suffix 側が先に省略される */}
+                  <span className="flex-1 min-w-0 flex items-baseline gap-2">
+                    <span data-ss-name className="shrink-0 max-w-full truncate">{opt.label}</span>
+                    {opt.suffix && <span data-ss-suffix className="min-w-0 truncate text-xs text-[var(--ss-t3)]">{opt.suffix}</span>}
+                  </span>
                 </button>
               ))
             )}

@@ -397,12 +397,15 @@ export function DashboardShell() {
               <div className="grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-4 gap-3">
                 <StatCard icon={<MIcon name="emoji_events" size={18} />} label="試合数" value={descriptive?.total_matches} />
                 <StatCard icon={<MIcon name="monitor_heart" size={18} />} label="ラリー数" value={descriptive?.total_rallies} sampleSize={descriptive?.total_rallies} />
-                <StatCard
-                  icon={<MIcon name="trending_up" size={18} />}
-                  label="勝率"
-                  value={descriptive?.win_rate !== undefined ? pct(descriptive.win_rate) : undefined}
-                  sampleSize={descriptive?.total_rallies}
-                />
+                {/* 生の勝率は player に見せない (製品ルール)。analyst / coach / admin のみ */}
+                {role !== 'player' && (
+                  <StatCard
+                    icon={<MIcon name="trending_up" size={18} />}
+                    label="勝率"
+                    value={descriptive?.win_rate !== undefined ? pct(descriptive.win_rate) : undefined}
+                    sampleSize={descriptive?.total_rallies}
+                  />
+                )}
                 <StatCard
                   icon={<MIcon name="crisis_alert" size={18} />}
                   label="平均ラリー長"
@@ -414,17 +417,22 @@ export function DashboardShell() {
 
             <div className={`px-6 py-2 border-b ${borderColor}`} data-tutorial="dashboard.matchPicker">
               <div className={`flex gap-2 flex-wrap items-center rounded-ss-lg px-3 py-2 ${isLight ? 'bg-gray-100' : 'bg-gray-800/50'}`}>
-                <span className={`text-xs ${textMuted} shrink-0`}>{t('analysis.filter.result')}:</span>
-                <select
-                  className={`border text-xs rounded-ss-md px-2 py-1 focus:outline-none ${isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-700 border-gray-600 text-white'}`}
-                  value={filterResult}
-                  onChange={(e) => setFilterResult(e.target.value as 'all' | 'win' | 'loss')}
-                >
-                  <option value="all">{t('analysis.filter.all')}</option>
-                  <option value="win">{t('analysis.filter.win')}</option>
-                  <option value="loss">{t('analysis.filter.loss')}</option>
-                </select>
-                <span className={`text-xs ${textMuted} shrink-0 ml-2`}>{t('analysis.filter.level')}:</span>
+                {/* 勝敗フィルタは個別試合の勝敗を選手に列挙させるため player には出さない */}
+                {role !== 'player' && (
+                  <>
+                    <span className={`text-xs ${textMuted} shrink-0`}>{t('analysis.filter.result')}:</span>
+                    <select
+                      className={`border text-xs rounded-ss-md px-2 py-1 focus:outline-none ${isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-700 border-gray-600 text-white'}`}
+                      value={filterResult}
+                      onChange={(e) => setFilterResult(e.target.value as 'all' | 'win' | 'loss')}
+                    >
+                      <option value="all">{t('analysis.filter.all')}</option>
+                      <option value="win">{t('analysis.filter.win')}</option>
+                      <option value="loss">{t('analysis.filter.loss')}</option>
+                    </select>
+                  </>
+                )}
+                <span className={`text-xs ${textMuted} shrink-0 ${role !== 'player' ? 'ml-2' : ''}`}>{t('analysis.filter.level')}:</span>
                 <select
                   className={`border text-xs rounded-ss-md px-2 py-1 focus:outline-none ${isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-700 border-gray-600 text-white'}`}
                   value={filterLevel ?? ''}

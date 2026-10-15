@@ -21,6 +21,7 @@ import { ChartModal } from '@/components/common/ChartModal'
 import { CourtHeatModal } from '@/components/analysis/CourtHeatModal'
 import { SetIntervalSummary } from '@/components/analysis/SetIntervalSummary'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
+import { useAuth } from '@/hooks/useAuth'
 
 interface DescriptiveData {
   total_matches: number
@@ -78,6 +79,10 @@ interface Props {
 
 export function DashboardOverviewPage({ playerId, filters, filterApiParams, matches, loadingMatches }: Props) {
   const { t } = useTranslation()
+  // 製品ルール: player には個別試合の勝敗・強制/非強制エラー等の直接的な弱点枠組み・
+  // アナリスト/コーチ向けカードを出さない。
+  const { role } = useAuth()
+  const isPlayer = role === 'player'
   const { card, textHeading, textSecondary, textMuted, textFaint, loading: loadingClass, isLight } = useCardTheme()
   // テレメトリ: 滞在 dwell
   // dwell テレメトリは mount/unmount のライフサイクル計測。playerId 切替時の再計測は不要
@@ -209,7 +214,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
   const matchOptions = matches.map((m) => ({
     value: m.match_id,
     label: `${m.date ?? t('common.unknown_date', '日付不明')} vs ${m.opponent}`,
-    suffix: [m.tournament_level, m.result === 'win' ? t('common.win_short', '勝') : t('common.lose_short', '負')].filter(Boolean).join(' '),
+    suffix: [m.tournament_level, isPlayer ? null : (m.result === 'win' ? t('common.win_short', '勝') : t('common.lose_short', '負'))].filter(Boolean).join(' '),
     searchText: `${m.date ?? ''} ${m.opponent} ${m.tournament} ${m.tournament_level}`,
   }))
 
@@ -229,7 +234,8 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
         {/* 左カラム */}
         <div className="xl:col-span-2 space-y-5 min-w-0">
-          {/* ラリー終了タイプ */}
+          {/* ラリー終了タイプ (強制/非強制エラー等の件数 = 直接的な弱点枠組みのため player には出さない) */}
+          {!isPlayer && (
           <div className={`${card} rounded-ss-lg shadow-card p-4`} data-tutorial="dashboard.quickSummary">
             <div className="flex items-center justify-between mb-3">
               <SectionTitle>{t('auto.DashboardOverviewPage.k2')}</SectionTitle>
@@ -253,6 +259,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
               </ResponsiveContainer>
             )}
           </div>
+          )}
 
           {/* ラリー長分布 */}
           <div className={`${card} rounded-ss-lg shadow-card p-4`}>
@@ -338,7 +345,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                   <option value="">{t('auto.DashboardOverviewPage.k6')}</option>
                   {[...matches].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '')).map((m) => (
                     <option key={m.match_id} value={m.match_id}>
-                      {m.date ?? '日付不明'} {m.opponent} ({m.result === 'win' ? '勝' : '敗'})
+                      {m.date ?? '日付不明'} {m.opponent}{isPlayer ? '' : ` (${m.result === 'win' ? '勝' : '敗'})`}
                     </option>
                   ))}
                 </select>
@@ -362,11 +369,8 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
           {/* サーブ勝率 */}
           <RoleGuard
             allowedRoles={['analyst', 'coach']}
-            fallback={
-              <div className={`${card} rounded-ss-lg shadow-card p-4`}>
-                <p className={`text-xs ${textMuted} text-center py-2`}>{t('auto.DashboardOverviewPage.k8')}</p>
-              </div>
-            }
+            // player には「アナリスト・コーチ向け」と自称するカードの存在自体を出さない
+            fallback={null}
           >
             <div className={`${card} rounded-ss-lg shadow-card p-4`}>
               <div className="flex items-center justify-between mb-3">
@@ -397,7 +401,9 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
       </div>
 
       {/* データ品質概況 */}
-      <ConfidenceCalibration playerId={playerId} />
+      <RoleGuard allowedRoles={['analyst', 'coach']}>
+        <ConfidenceCalibration playerId={playerId} />
+      </RoleGuard>
 
       {/* スコア推移 / インターバルレポート 共通試合選択 */}
       <div className={`${card} rounded-ss-lg shadow-card p-4`}>
@@ -537,9 +543,11 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                         })}
                       </div>
                     </div>
-                    <span className={`shrink-0 inline-block px-2 py-0.5 rounded-ss-sm text-xs font-semibold ${m.result === 'win' ? 'bg-gray-800 text-blue-300' : 'bg-gray-800 text-red-300'}`}>
-                      {m.result === 'win' ? '勝' : '負'}
-                    </span>
+                    {!isPlayer && (
+                      <span className={`shrink-0 inline-block px-2 py-0.5 rounded-ss-sm text-xs font-semibold ${m.result === 'win' ? 'bg-gray-800 text-blue-300' : 'bg-gray-800 text-red-300'}`}>
+                        {m.result === 'win' ? '勝' : '負'}
+                      </span>
+                    )}
                   </div>
                 </li>
               ))}
@@ -557,7 +565,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                       { col: 'date' as const,             label: t('auto.DashboardOverviewPage.k25'),     align: 'left'   },
                       { col: 'result' as const,           label: t('auto.DashboardOverviewPage.k26'),     align: 'center' },
                       { col: 'rally_count' as const,      label: t('auto.DashboardOverviewPage.k27'),   align: 'right'  },
-                    ] as const).map(({ col, label, align }) => (
+                    ] as const).filter(({ col }) => !(isPlayer && col === 'result')).map(({ col, label, align }) => (
                       <th
                         key={label}
                         className={`py-2 pr-3 font-medium select-none ${col ? `cursor-pointer ${isLight ? 'hover:text-gray-900' : 'hover:text-gray-200'}` : ''} text-${align}`}
@@ -586,11 +594,13 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                       </td>
                       <td className="py-2 pr-3 text-center"><span className={`text-xs ${textMuted}`}>{m.tournament_level ?? '—'}</span></td>
                       <td className={`ss-num py-2 pr-3 ${textSecondary} num-cell`}>{m.date}</td>
-                      <td className="py-2 pr-3 text-center">
-                        <span className={`inline-block px-2 py-0.5 rounded-ss-sm text-xs font-semibold ${m.result === 'win' ? 'bg-gray-800 text-blue-300' : 'bg-gray-800 text-red-300'}`}>
-                          {m.result === 'win' ? '勝' : '負'}
-                        </span>
-                      </td>
+                      {!isPlayer && (
+                        <td className="py-2 pr-3 text-center">
+                          <span className={`inline-block px-2 py-0.5 rounded-ss-sm text-xs font-semibold ${m.result === 'win' ? 'bg-gray-800 text-blue-300' : 'bg-gray-800 text-red-300'}`}>
+                            {m.result === 'win' ? '勝' : '負'}
+                          </span>
+                        </td>
+                      )}
                       <td className={`ss-num py-2 text-right ${textSecondary} num-cell`}>{m.rally_count}</td>
                     </tr>
                   ))}
