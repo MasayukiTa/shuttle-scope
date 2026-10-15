@@ -16,6 +16,7 @@ import { WIN, LOSS } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import type { LandZone } from '@/types'
 import { MIcon } from '@/components/common/MIcon'
+import { useAuth } from '@/hooks/useAuth'
 
 interface MatchSummary {
   match_id: number
@@ -81,6 +82,7 @@ export function CourtHeatModal({
   onClose,
 }: CourtHeatModalProps) {
   const { t } = useTranslation()
+  const { role } = useAuth()
 
   const [mode, setMode] = useState<'hit' | 'land' | 'composite'>(initialTab)
   const [matchId, setMatchId] = useState<number | null>(initialMatchId)
@@ -261,7 +263,8 @@ export function CourtHeatModal({
                     .map((m) => ({
                       value: m.match_id,
                       label: `${m.date ?? t('court_heat_modal.match_date_unknown')} ${m.opponent}`,
-                      suffix: m.result === 'win' ? t('court_heat_modal.result_win_short') : t('court_heat_modal.result_loss_short'),
+                      // player には個別試合の勝敗を出さない (製品ルール)
+                      suffix: role === 'player' ? undefined : (m.result === 'win' ? t('court_heat_modal.result_win_short') : t('court_heat_modal.result_loss_short')),
                       searchText: `${m.date} ${m.opponent}`,
                     }))}
                   value={matchId}
