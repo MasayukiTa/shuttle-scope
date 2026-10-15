@@ -21,7 +21,7 @@ from backend.analysis.analysis_config import AnalysisConfig
 from backend.analysis.analysis_registry import get_analysis_meta
 from backend.analysis.response_meta import build_input_provenance
 
-from backend.utils.auth import require_query_scope  # cross-team IDOR ガード
+from backend.utils.auth import require_non_player, require_query_scope  # cross-team IDOR ガード
 
 router = APIRouter(dependencies=[Depends(require_query_scope)])
 
@@ -681,7 +681,8 @@ def get_confidence(player_id: int, analysis_type: str):
 # B-002: ショット別勝敗集計
 # ---------------------------------------------------------------------------
 
-@router.get("/analysis/shot_win_loss")
+# player は不可 (勝敗内訳)。定義: backend/utils/player_privacy.py。ミドルウェアと二重に守る。
+@router.get("/analysis/shot_win_loss", dependencies=[Depends(require_non_player)])
 def get_shot_win_loss(
     player_id: int,
     result: Optional[str] = Query(None),
@@ -1295,7 +1296,8 @@ def get_tournament_level_comparison(
 # C-002: 失点前パターン解析
 # ---------------------------------------------------------------------------
 
-@router.get("/analysis/pre_loss_patterns")
+# player は不可 (直接の弱点提示)。定義: backend/utils/player_privacy.py。
+@router.get("/analysis/pre_loss_patterns", dependencies=[Depends(require_non_player)])
 def get_pre_loss_patterns(
     player_id: int,
     result: Optional[str] = Query(None),
