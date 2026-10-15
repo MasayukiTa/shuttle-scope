@@ -373,7 +373,9 @@ def _routes(w):
 
 # route -> player が失うキー (analyst のキー集合 − player のキー集合)。実測で固定。
 EXPECTED_REMOVED = {
-    "descriptive": {"win_rate", "wins", "server_win_rate", "as_server", "as_receiver"},
+    # server_count / receiver_count は server_win_rate の中の件数 (率ごと落ちる)
+    "descriptive": {"win_rate", "wins", "server_win_rate", "as_server", "as_receiver",
+                    "server_count", "receiver_count"},
     "zone_detail": {"win_rate"},
     "heatmap_zone_detail": {"win_rate", "wins"},
     "shot_types": {"win_rate"},
