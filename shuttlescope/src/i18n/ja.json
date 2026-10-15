@@ -182,7 +182,7 @@
       "password_hint": "大文字・小文字・数字・記号 から少なくとも 3 種類を含めてください",
       "display_name_optional": "表示名 (任意)",
       "dob_optional": "生年月日 (任意)",
-      "dob_hint": "任意入力。AI 学習・研究利用への同意 UI で未成年配慮（PRIVACY §IX-ter）を適用するために使用します。",
+      "dob_hint": "任意入力。AI 学習・研究利用への同意 UI で未成年配慮を適用するために使用します。",
       "submit": "登録する",
       "success_title": "ご登録ありがとうございます",
       "success_body": "そのままログインしてご利用いただけます。管理者がチームと権限を確定するまでの間は、ご自身のデータのみ表示されます。確定後、ご登録のメールアドレス宛に shuttlescopecom@gmail.com からご案内メールをお送りします (12 時間以内を目安、混雑時は前後する場合があります)。",
@@ -1397,8 +1397,8 @@
       "sc_hit_zone": "打点 override",
       "sc_hit_zone_doubles": "打点 override (ダブルス時)",
       "sc_command_palette": "コマンドパレット",
-      "numpad_title_desktop": "落点入力（着地点入力中のみ）",
-      "numpad_title_mobile": "落点入力テンキー（着地点入力中）",
+      "numpad_title_desktop": "落点入力（land_zone中のみ）",
+      "numpad_title_mobile": "落点入力テンキー（land_zone中）",
       "numpad_recommended": "テンキー（推奨）",
       "numpad_hint": "0/Num0 = スキップ　Esc/BS = キャンセル",
       "letters_laptop": "文字キー（ノートPC向け）",
@@ -1426,12 +1426,11 @@
       "land_select_marker": "着地点を選択 ↓",
       "hit_zone_auto_label": "(自動)",
       "shortcut_letters_extra": "Shift+U/I/O=OB後 Shift+J/L=OB側 -/=/\\=NET",
-      "set_a_position": "第{{set}}セット: A={{pos}}",
+      "set_a_position": "Set {{set}}: A={{pos}}",
       "side_arrow_top": "↑上",
       "side_arrow_bottom": "↓下",
       "third_set_swap": "(11pt↔)",
       "external_monitor_playing": "別モニタで再生中",
-      "no_video_hint": "映像なしモードです。映像を使うには、この下の「ローカル動画」を選び、動画ファイルまたはURLを設定してください。",
       "pc_camera_in_use": "PCカメラ使用中",
       "ios_camera_receiving": "iOSカメラ受信中",
       "drm_webview_hint": "DRM保護コンテンツ／ログイン必須サイトはブラウザ内視聴モードを使用",
@@ -1459,11 +1458,11 @@
       "calib_not_found_local": "localStorage にキャリブが見つかりません",
       "calib_invalid_points": "点数不正 ({{got}}/6)",
       "manage_actions": "管理操作",
-      "set_transition_to_next": "第{{from}}セットを終了して第{{to}}セットへ移行しますか？",
-      "set_transition_to_prev": "第{{to}}セットへ戻りますか？（現在のセット進行は変わりません）",
+      "set_transition_to_next": "Set {{from}} を終了して Set {{to}} へ移行しますか？",
+      "set_transition_to_prev": "Set {{to}} へ戻りますか？（現在のセット進行は変わりません）",
       "confirm": "確定",
-      "prev_set_btn": "前のセット (第{{n}}セット)",
-      "next_set_btn": "次のセットへ (第{{n}}セット)",
+      "prev_set_btn": "前のセット (Set {{n}})",
+      "next_set_btn": "次のセットへ (Set {{n}})",
       "rally_review_label": "ラリー #{{id}}",
       "scored_winner": "{{name}} 得点",
       "cv_tools_label": "CV ツール (BBOX / 軌跡 / グリッド / 領域)",
@@ -1549,7 +1548,6 @@
       "upload_error_prefix": "アップロードエラー:",
       "save_error_prefix": "保存エラー:",
       "set_id_missing": "セットIDが未設定です。再読み込みしてください。",
-      "store_match_mismatch": "別の試合のデータが残っているため保存できません。ページを再読み込みしてください。",
       "init_failed": "初期化に失敗しました",
       "save_failed_message": "保存失敗",
       "force_set_end_error_prefix": "セット強制終了エラー:",
@@ -2657,6 +2655,9 @@
       "required_label": "契約履行（必須）",
       "optional_label": "任意",
       "required_note": "撤回不可",
+      "required_status_on": "確認済み",
+      "required_status_off": "未取得",
+      "status_none": "未回答",
       "withdraw_btn": "撤回",
       "withdrawn_label": "撤回済み",
       "state_active": "有効",
@@ -2668,7 +2669,9 @@
         "beta_agreement": "β版データ取り扱い説明書",
         "ai_training": "AI モデル学習への利用",
         "research_participation": "学術研究への利用",
-        "cross_border_transfer": "EU/EEA からの越境移転"
+        "cross_border_transfer": "EU/EEA からの越境移転",
+        "body_disclose_to_analyst": "体組成データのアナリストへの開示",
+        "body_disclose_to_coach": "体組成データのコーチへの開示"
       },
       "regrant_btn": "再承認",
       "status_on": "承認中",
@@ -4287,6 +4290,9 @@
       "tutorial_desc": "操作方法を再生できます。完了済みの項目もいつでも再生可能です。",
       "step_count": "{{n}} ステップ",
       "replay_count": " · replay 回数: {{n}}",
+      "tutorial_status_completed": "完了",
+      "tutorial_status_skipped": "スキップ済み",
+      "tutorial_status_in_progress": "途中",
       "pkg_onnxruntime_gpu": "onnxruntime-gpu",
       "pkg_onnxruntime_directml": "onnxruntime-directml",
       "ext_sspkg": ".sspkg"
@@ -4882,6 +4888,9 @@
   "onboarding": {
     "consent": {
       "title": "データ取り扱いに関する確認・同意",
+      "exit_hint": "同意せずに離れる場合:",
+      "back_to_site": "shuttle-scope.com に戻る",
+      "back_to_login": "ログイン画面に戻る",
       "intro": "本サービス (ShuttleScope) のご利用にあたり、以下の文書をお読みいただき、内容をご確認の上、任意同意項目について同意の可否をご判断ください。",
       "required_section": "必須確認事項（契約履行に基づく処理）",
       "required_hint": "これらに同意いただかないと本サービスをご利用いただけません。これらは GDPR Article 6(1)(b)（契約履行）および APPI 第18条に基づく処理であり、撤回はサービス利用の終了と等価となります。",
@@ -4896,9 +4905,9 @@
       "research_label": "学術研究への利用に同意します",
       "research_desc": "匿名化のうえスポーツ科学研究、論文発表等への利用を許可します。事前説明と同意撤回権を保持します。撤回方法：お問い合わせフォーム（https://shuttle-scope.com/contact）または contact@shuttle-scope.com 宛てメール。",
       "body_disclose_to_analyst_label": "体組成データをアナリストに開示します",
-      "body_disclose_to_analyst_desc": "体重・体脂肪率・筋肉量等のデータをチーム解析担当 (analyst) に開示します。default は ON ですが、いつでも設定画面 (体調タブ) からトグルで変更できます。OFF にした場合 analyst の画面では体組成データが非表示になります。",
+      "body_disclose_to_analyst_desc": "体重・体脂肪率・筋肉量等のデータをチーム解析担当 (analyst) に開示します。いつでも設定画面 (体調タブ) からトグルで変更できます。OFF にした場合 analyst の画面では体組成データが非表示になります。",
       "body_disclose_to_coach_label": "体組成データをコーチに開示します",
-      "body_disclose_to_coach_desc": "体重・体脂肪率・筋肉量等のデータをコーチに開示します。default は ON ですが、いつでも設定画面 (体調タブ) からトグルで変更できます。OFF にした場合 coach の画面では体組成データが非表示になります。",
+      "body_disclose_to_coach_desc": "体重・体脂肪率・筋肉量等のデータをコーチに開示します。いつでも設定画面 (体調タブ) からトグルで変更できます。OFF にした場合 coach の画面では体組成データが非表示になります。",
       "submit": "確認・同意して開始",
       "submit_optional": "回答して保存",
       "later": "任意項目は後で回答する",
@@ -5178,12 +5187,12 @@
         "body": "赤枠のヒストリーをクリックすると、その打球の瞬間に動画が飛びます。誤入力をすぐ直したいときに便利です。"
       },
       "commandPalette": {
-        "title": "Ctrl+K でよく使う操作を呼び出す",
-        "body": "どこにいても Ctrl+K (Mac は ⌘K) でコマンドパレットが開きます。入力・確認・分析・設定のモード切替、試合中モードや入力モードの切替、直前の取り消し、ラリー終了などを検索して実行できます。(Ctrl+K / ⌘K)"
+        "title": "Ctrl+K で何でも検索",
+        "body": "どこにいても Ctrl+K (Mac は ⌘K) でコマンドパレットが開きます。試合切替・選手検索・設定など全部ここから呼べます。(Ctrl+K / ⌘K)"
       },
       "flow": {
         "title": "基本の流れ",
-        "body": "①動画を再生して停止 → ②得点やストロークを記録 → ③Review で確認 → ④Analysis で傾向を見る、の繰り返しです。迷ったら Ctrl+K で操作を検索してください。"
+        "body": "①動画を再生して停止 → ②得点やストロークを記録 → ③Review で確認 → ④Analysis で傾向を見る、の繰り返しです。迷ったら Ctrl+K で機能検索してください。"
       }
     },
     "analysis_reading": {

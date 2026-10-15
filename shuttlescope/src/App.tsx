@@ -12,7 +12,6 @@ import { AnnotatorPage } from '@/pages/AnnotatorPage'
 import { LiveInputPage } from '@/pages/LiveInputPage'
 import { DashboardShell } from '@/pages/dashboard/DashboardShell'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
-import { KeyedByMatchId } from '@/components/common/KeyedByMatchId'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { ConditionPage } from '@/pages/ConditionPage'
 import { VideoOnlyPage } from '@/pages/VideoOnlyPage'
@@ -33,6 +32,7 @@ import PasswordResetRequestPage from '@/pages/PasswordResetRequestPage'
 import PasswordResetConfirmPage from '@/pages/PasswordResetConfirmPage'
 import InvitationAcceptPage from '@/pages/InvitationAcceptPage'
 import OnboardingConsentPage from '@/pages/OnboardingConsentPage'
+import { isOptionalConsentDeferred } from '@/utils/consentDeferral'
 import { NotificationInboxPage } from '@/pages/NotificationInboxPage'
 import { UserManagementPage } from '@/pages/UserManagementPage'
 import PendingUsersPage from '@/pages/PendingUsersPage'
@@ -466,8 +466,7 @@ function AnnotatorOrMobileAnnotate() {
   if (isPhone && matchId) {
     return <Navigate to={`/m/annotate/${matchId}`} replace />
   }
-  // A-11: 試合 ID が変わったら再マウントし、前の試合のスコア/セット/ラリーを持ち越さない
-  return <KeyedByMatchId><AnnotatorPage /></KeyedByMatchId>
+  return <AnnotatorPage />
 }
 
 
@@ -505,7 +504,7 @@ function MainLayout() {
             {/* /m/annotate/:matchId は ProtectedMainRoute レベルで full-bleed
                  描画される (この Routes は MainLayout 内なので到達しない)。 */}
             {/* Phase C: 試合中専用フルブリード入力 (mobile-first MVP) */}
-            <Route path="/live/:matchId" element={<KeyedByMatchId><LiveInputPage /></KeyedByMatchId>} />
+            <Route path="/live/:matchId" element={<LiveInputPage />} />
             <Route path="/condition" element={<ConditionPage />} />
             {/* /analysis は使用しない (dashboard に統一)。古い bookmark から
                飛んできた人を考慮して dashboard へ redirect。 */}
@@ -513,7 +512,7 @@ function MainLayout() {
             <Route path="/dashboard/*" element={<DashboardShell />} />
             <Route path="/prediction" element={<PageAccessRoute pageKey="prediction"><PredictionPage /></PageAccessRoute>} />
             <Route path="/expert-labeler" element={<PageAccessRoute pageKey="expert_labeler"><ExpertLabelerPage /></PageAccessRoute>} />
-            <Route path="/expert-labeler/:matchId" element={<PageAccessRoute pageKey="expert_labeler"><KeyedByMatchId><ExpertLabelerAnnotatePage /></KeyedByMatchId></PageAccessRoute>} />
+            <Route path="/expert-labeler/:matchId" element={<PageAccessRoute pageKey="expert_labeler"><ExpertLabelerAnnotatePage /></PageAccessRoute>} />
             <Route path="/llm" element={<PageAccessRoute pageKey="llm"><LlmChatPage /></PageAccessRoute>} />
 <Route path="/notifications" element={<AdminRoute><NotificationInboxPage /></AdminRoute>} />
             <Route path="/users" element={<AdminRoute><UserManagementPage /></AdminRoute>} />
@@ -596,7 +595,10 @@ function ProtectedMainRoute() {
         })
         setAwaitingApproval(!!me.awaiting_admin_approval)
         setConsentRequired(!!me.consent_required)
-        setOptionalConsentPending(!!me.optional_consent_pending)
+        // 「後で回答」を押してから一定期間は任意同意画面を再表示しない (端末ローカル)。
+        setOptionalConsentPending(
+          !!me.optional_consent_pending && !isOptionalConsentDeferred(me.user_id ?? null),
+        )
       })
       .catch((err: unknown) => {
         if (cancelled) return
@@ -697,9 +699,7 @@ function ProtectedMainRoute() {
         path="/m/annotate/:matchId"
         element={
           <ErrorBoundary>
-            <KeyedByMatchId>
-              <MobileAnnotatePage />
-            </KeyedByMatchId>
+            <MobileAnnotatePage />
           </ErrorBoundary>
         }
       />

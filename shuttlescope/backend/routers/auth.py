@@ -1510,7 +1510,7 @@ def me(request: Request, db: Session = Depends(get_db)):
             .distinct()
             .all()
         }
-        optional_pending = len(_OPTIONAL_CONSENT_TYPES - recorded_optional_types) > 0
+        optional_pending = _optional_consent_pending(recorded_optional_types)
 
     return {
         "role": ctx.role,
@@ -3255,6 +3255,15 @@ _OPTIONAL_CONSENT_TYPES = {
     "body_disclose_to_coach",
 }
 _ALL_CONSENT_TYPES = _REQUIRED_CONSENT_TYPES | _OPTIONAL_CONSENT_TYPES
+# 同意画面 (OnboardingConsentPage) が実際に提示して回答を送る任意同意。
+# cross_border_transfer は EU-Japan 十分性認定により UI に出さず送信もしないため、
+# 「未回答」判定に含めると回答しても永久に未回答のまま毎回同意画面が出直す。
+_PROMPTED_OPTIONAL_CONSENT_TYPES = _OPTIONAL_CONSENT_TYPES - {"cross_border_transfer"}
+
+
+def _optional_consent_pending(recorded_types: set[str]) -> bool:
+    """提示対象の任意同意に 1 度も回答していない type が残っているか。"""
+    return len(_PROMPTED_OPTIONAL_CONSENT_TYPES - set(recorded_types)) > 0
 
 
 def _hash_user_agent(ua: Optional[str]) -> Optional[str]:

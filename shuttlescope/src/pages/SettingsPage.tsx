@@ -3037,11 +3037,11 @@ function TutorialReplaySection({ card }: { card: string }) {
                 className="flex flex-wrap items-center justify-between gap-2 border border-gray-700 rounded p-2"
               >
                 <div className="min-w-0">
-                  <div className="text-sm font-medium truncate">{tut.title}</div>
+                  <div className="text-sm font-medium truncate">{tut.titleKey ? t(tut.titleKey) : (tut.title ?? tut.id)}</div>
                   <div className="text-xs text-gray-400">
                     {t('auto.SettingsPage.step_count', { n: tut.steps.length })}
                     {rec && (
-                      <> {t('auto.SettingsPage.k44')} <span className="text-gray-200">{rec.status}</span>{t('auto.SettingsPage.replay_count', { n: rec.replay_count })}</>
+                      <> {t('auto.SettingsPage.k44')} <span className="text-gray-200">{t(`auto.SettingsPage.tutorial_status_${rec.status}`)}</span>{t('auto.SettingsPage.replay_count', { n: rec.replay_count })}</>
                     )}
                   </div>
                 </div>
