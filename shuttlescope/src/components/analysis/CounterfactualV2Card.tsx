@@ -7,6 +7,7 @@ import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { AnalysisFilters } from '@/types'
 import { useTranslation } from 'react-i18next'
+import { fmtPct as pct } from '@/utils/format'
 import i18n from '@/i18n'
 
 interface CFComparison {
@@ -87,13 +88,6 @@ const RALLY_BUCKET_LABELS: Record<string, string> = {
 }
 const OPPONENT_TYPE_LABELS: Record<string, string> = {
   strong: '強敵', weak: '格下', neutral: '均衡', all: '全体',
-}
-
-function pct(v: number) {
-  // win_rate 等が null / undefined / NaN (例: n=0 のゼロ除算) のとき "NaN%" と
-  // 表示されるのを防ぐ。値が無い場合は「計測不能」を意味する "—" を返す。
-  if (typeof v !== 'number' || !Number.isFinite(v)) return '—'
-  return `${(v * 100).toFixed(1)}%`
 }
 
 export function CounterfactualV2Card({ playerId, filters }: Props) {

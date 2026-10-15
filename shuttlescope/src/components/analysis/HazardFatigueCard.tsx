@@ -6,6 +6,7 @@ import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { AnalysisFilters } from '@/types'
 import { useTranslation } from 'react-i18next'
+import { fmtPct as pct } from '@/utils/format'
 
 interface HazardData {
   hazard_next_loss: number
@@ -29,8 +30,6 @@ const BAND_COLORS: Record<string, string> = {
 const BAND_LABELS: Record<string, string> = {
   low: '低リスク', moderate: '中程度', high: '高リスク', critical: '危険',
 }
-function pct(v: number) { return `${(v * 100).toFixed(1)}%` }
-
 export function HazardFatigueCard({ playerId, filters }: Props) {
   const { t } = useTranslation()
 

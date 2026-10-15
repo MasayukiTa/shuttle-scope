@@ -23,10 +23,14 @@ interface RallyLengthWinRateProps {
 }
 
 interface RallyBucket {
-  bucket_label: string   // "1-3打" 等
+  // backend (analysis_advanced.get_rally_length_vs_winrate) の契約名は range ("1-3" 等)。
+  // 旧コードは存在しない bucket_label だけを読み、X 軸ラベルが全て空になっていた。
+  range?: string
+  bucket_label?: string
   count: number
-  win_count: number
-  win_rate: number
+  win_count?: number
+  // 件数 0 の区間は null (0% ではない)
+  win_rate: number | null
 }
 
 interface PlayerTypeInfo {
@@ -38,7 +42,9 @@ interface PlayerTypeInfo {
 interface RallyLengthResponse {
   data: {
     buckets: RallyBucket[]
-    player_type?: PlayerTypeInfo
+    // backend は player_type を文字列 (キー) で、日本語名を player_type_ja で返す
+    player_type?: PlayerTypeInfo | string
+    player_type_ja?: string
   }
   meta: {
     sample_size: number
@@ -50,8 +56,10 @@ interface RallyLengthResponse {
 function playerTypeBadgeClass(typeKey: string): string {
   switch (typeKey) {
     case 'short_specialist':
+    case 'short_game_specialist':
       return 'bg-gray-800 border-gray-700 text-amber-400'
     case 'long_specialist':
+    case 'endurance_player':
       return 'bg-gray-800 border-gray-700 text-gray-200'
     case 'balanced':
       return 'bg-gray-800 border-gray-700 text-blue-300'
@@ -67,15 +75,42 @@ function CustomTooltip({ active, payload, label }: import('@/utils/rechartsTypes
   const isLight = useIsLightMode()
   if (!active || !payload?.length) return null
   const count = payload.find((p) => p.dataKey === 'count')?.value ?? 0
-  const winRate = payload.find((p) => p.dataKey === 'win_rate_pct')?.value ?? 0
+  const winRate = payload.find((p) => p.dataKey === 'win_rate_pct')?.value
   const headingColor = isLight ? '#0f172a' : '#f9fafb'
   return (
     <div style={getTooltipStyle(isLight)} className="px-3 py-2">
       <p className="font-semibold mb-1" style={{ color: headingColor }}>{label}</p>
       <p className="ss-num" style={{ color: BAR }}>{t('auto.RallyLengthWinRate.count', { n: count })}</p>
-      <p className="ss-num" style={{ color: LINE }}>{t('auto.RallyLengthWinRate.win_rate', { v: typeof winRate === 'number' ? winRate.toFixed(1) : winRate })}</p>
+      <p className="ss-num" style={{ color: LINE }}>
+        {typeof winRate === 'number' ? t('auto.RallyLengthWinRate.win_rate', { v: winRate.toFixed(1) }) : `${t('auto.RallyLengthWinRate.rate_legend')}: ${t('auto.RallyLengthWinRate.no_data')}`}
+      </p>
     </div>
   )
+}
+
+// backend は player_type を文字列キーで、日本語名を player_type_ja で返す (旧型の object も許容)
+function normalizePlayerType(
+  raw: PlayerTypeInfo | string | undefined,
+  ja: string | undefined,
+): PlayerTypeInfo | undefined {
+  if (typeof raw !== 'string') return raw
+  if (raw === 'unknown') return undefined
+  return { type_key: raw, type_label: ja ?? raw }
+}
+
+// 勝率を % に変換してチャートデータを作成する。
+// - ラベルが無い区間はどのラリー長か読めないので描画しない
+// - 件数 0 (または勝率が非有限) の区間は null: 折れ線を途切れさせ 0% として描かない
+function toChartData(buckets: RallyBucket[] | undefined) {
+  return (buckets ?? [])
+    .filter((b) => (b.range ?? b.bucket_label ?? '') !== '')
+    .map((b) => ({
+      name: (b.range ?? b.bucket_label) as string,
+      count: b.count,
+      win_rate_pct: b.count > 0 && typeof b.win_rate === 'number' && Number.isFinite(b.win_rate)
+        ? +(b.win_rate * 100).toFixed(1)
+        : null,
+    }))
 }
 
 export function RallyLengthWinRate({ playerId, chartHeight = 220, filters = DEFAULT_FILTERS }: RallyLengthWinRateProps) {
@@ -103,24 +138,18 @@ export function RallyLengthWinRate({ playerId, chartHeight = 220, filters = DEFA
     )
   }
 
-  const buckets = resp?.data?.buckets ?? []
-  const playerType = resp?.data?.player_type
+  const playerType = normalizePlayerType(resp?.data?.player_type, resp?.data?.player_type_ja)
   const sampleSize = resp?.meta?.sample_size ?? 0
 
-  if (buckets.length === 0 || sampleSize === 0) {
+  const chartData = toChartData(resp?.data?.buckets)
+
+  if (chartData.length === 0 || sampleSize === 0) {
     return (
       <div className="text-gray-500 text-sm py-4 text-center">
         {t('auto.RallyLengthWinRate.insufficient')}
       </div>
     )
   }
-
-  // 勝率を % に変換してチャートデータを作成
-  const chartData = buckets.map((b) => ({
-    name: b.bucket_label,
-    count: b.count,
-    win_rate_pct: +(b.win_rate * 100).toFixed(1),
-  }))
 
   return (
     <div className="space-y-3">

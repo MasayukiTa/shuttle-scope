@@ -6,6 +6,7 @@ import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { AnalysisFilters } from '@/types'
 import { useTranslation } from 'react-i18next'
+import { fmtPct as pct } from '@/utils/format'
 
 // ─── CV ロール照合型 ──────────────────────────────────────────────────────────
 
@@ -129,17 +130,14 @@ function getConsistencyColor(label: string, isLight: boolean): string {
   return isLight ? pair[0] : pair[1]
 }
 
-function pct(v: number) {
-  return `${(v * 100).toFixed(1)}%`
-}
-
 function RatioBar({ front, back, neutral }: { front: number; back: number; neutral: number }) {
+  const w = (v: number) => `${(Number.isFinite(v) ? v : 0) * 100}%`
 
   return (
     <div className="flex h-2 w-full rounded-full overflow-hidden gap-px">
-      <div className="bg-sky-600" style={{ width: `${front * 100}%` }} title={`フロント ${pct(front)}`} />
-      <div className="bg-amber-600" style={{ width: `${back * 100}%` }} title={`バック ${pct(back)}`} />
-      <div className="bg-gray-500" style={{ width: `${neutral * 100}%` }} title={`ニュートラル ${pct(neutral)}`} />
+      <div className="bg-sky-600" style={{ width: w(front) }} title={`フロント ${pct(front)}`} />
+      <div className="bg-amber-600" style={{ width: w(back) }} title={`バック ${pct(back)}`} />
+      <div className="bg-gray-500" style={{ width: w(neutral) }} title={`ニュートラル ${pct(neutral)}`} />
     </div>
   )
 }
@@ -219,7 +217,8 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
 
       {isLoading ? (
         <p className={`text-sm text-center py-4 ${loading}`}>{t('auto.DoublesRoleCard.k2')}</p>
-      ) : !roleData ? (
+      ) : !roleData || !(roleData.total_shots > 0) ? (
+        // ダブルス試合なし / 打球 0 件: 比率が無いので数値 (NaN%) を出さず「データ不足」を表示する
         <p className={`text-sm text-center py-4 ${loading}`}>{t('auto.DoublesRoleCard.k3')}</p>
       ) : (
         <div className="space-y-3">

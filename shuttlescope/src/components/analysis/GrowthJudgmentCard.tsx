@@ -108,7 +108,12 @@ export function GrowthJudgmentCard({ playerId, minMatches = 5 }: GrowthJudgmentC
           {Object.entries(data.metrics).map(([key, m]) => {
             const ms = JUDGMENT_STYLE[m.trend] ?? JUDGMENT_STYLE.pending
             const mText = isLight ? ms.lightText : ms.text
-            const deltaStr = m.delta >= 0 ? `+${(m.delta * 100).toFixed(1)}%` : `${(m.delta * 100).toFixed(1)}%`
+            // 窓内の件数が足りない指標は delta=0.0 が入っている。「+0.0%」と出すと
+            // 実測の横ばいに見えるので、判定保留(データ不足)と明示する。
+            const isPending = m.trend === 'pending' || !Number.isFinite(m.delta)
+            const deltaStr = isPending
+              ? t('analysis.growth.metric_pending')
+              : m.delta >= 0 ? `+${(m.delta * 100).toFixed(1)}%` : `${(m.delta * 100).toFixed(1)}%`
             return (
               <div
                 key={key}

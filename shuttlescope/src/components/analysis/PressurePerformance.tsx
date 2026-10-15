@@ -6,6 +6,7 @@ import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 import { perfColor, lightSafe, WIN, LOSS } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useTranslation } from 'react-i18next'
+import { fmtPct } from '@/utils/format'
 
 interface PressurePerformanceProps {
   playerId: number
@@ -32,7 +33,12 @@ interface PressureResponse {
 }
 
 function pctStr(v: number): string {
-  return `${(v * 100).toFixed(1)}%`
+  return fmtPct(v)
+}
+
+// セグメントが比較可能か。ラリー数 0 の勝率は 0% ではなく「未定義」。
+function hasData(seg: PressureSegment | undefined): seg is PressureSegment {
+  return !!seg && Number.isFinite(seg.win_rate) && (seg.rally_count ?? seg.sample_size ?? 0) > 0
 }
 
 // 単一の圧力セグメントカード
@@ -50,8 +56,10 @@ function SegmentCard({
 }) {
   const { t } = useTranslation()
 
-  const barWidth = `${Math.min(segment.win_rate * 100, 100).toFixed(1)}%`
-  const color = lightSafe(perfColor(segment.win_rate), !isLight)
+  const empty = !hasData(segment)
+  const n = segment.rally_count ?? segment.sample_size ?? 0
+  const barWidth = empty ? '0%' : `${Math.min(segment.win_rate * 100, 100).toFixed(1)}%`
+  const color = empty ? 'var(--ss-t3)' : lightSafe(perfColor(segment.win_rate), !isLight)
   return (
     <div
       className={`rounded-ss-lg p-4 flex flex-col gap-2 bg-[var(--ss-surface-1)] border border-[var(--ss-border)] ${
@@ -60,7 +68,7 @@ function SegmentCard({
     >
       <p className="text-xs text-[var(--ss-t3)] font-medium">{label}</p>
       <p className="text-2xl font-bold ss-num" style={{ color }}>
-        {pctStr(segment.win_rate)}
+        {empty ? t('auto.PressurePerformance.no_data') : pctStr(segment.win_rate)}
       </p>
       {/* 進捗バー */}
       <div className="w-full bg-[var(--ss-surface-2)] rounded-ss-md h-1.5">
@@ -70,8 +78,10 @@ function SegmentCard({
         />
       </div>
       <p className="text-xs text-[var(--ss-t3)]">
-        {t('auto.PressurePerformance.rally_count_label')} <span className="text-[var(--ss-t2)] ss-num">{segment.rally_count}</span>
+        {t('auto.PressurePerformance.rally_count_label')} <span className="text-[var(--ss-t2)] ss-num">{n}</span>
       </p>
+      {/* 信頼度はセグメント自身のラリー数で判定する (全体の★を各セグメントに流用しない) */}
+      {!empty && <ConfidenceBadge sampleSize={n} unit="rallies" compact />}
     </div>
   )
 }
@@ -115,8 +125,12 @@ export function PressurePerformance({ playerId, filters = DEFAULT_FILTERS }: Pre
   const { normal, endgame, deuce } = resp.data
 
   // 通常時と比べた終盤・デュース時の変化を矢印で表示
-  function DeltaBadge({ base, target }: { base: number; target: number }) {
-    const delta = target - base
+  function DeltaBadge({ base, target }: { base: PressureSegment; target: PressureSegment }) {
+    // どちらかのラリー数が 0 なら差分は定義できない (0% 同士の差を赤い悪化として出さない)
+    if (!hasData(base) || !hasData(target)) {
+      return <span className="text-xs text-[var(--ss-t3)]">{t('auto.PressurePerformance.no_data')}</span>
+    }
+    const delta = target.win_rate - base.win_rate
     const absPct = Math.abs(delta * 100).toFixed(1)
     if (Math.abs(delta) < 0.005) {
       return <span className="text-xs text-[var(--ss-t3)] ss-num">±0.0%</span>
@@ -144,10 +158,10 @@ export function PressurePerformance({ playerId, filters = DEFAULT_FILTERS }: Pre
       <div className="flex gap-3 text-xs">
         <div className="flex-1" />
         <div className="flex-1 flex items-center justify-center gap-1 text-[var(--ss-t3)]">
-          {t('auto.PressurePerformance.vs_normal')} <DeltaBadge base={normal.win_rate} target={endgame.win_rate} />
+          {t('auto.PressurePerformance.vs_normal')} <DeltaBadge base={normal} target={endgame} />
         </div>
         <div className="flex-1 flex items-center justify-center gap-1 text-[var(--ss-t3)]">
-          {t('auto.PressurePerformance.vs_normal')} <DeltaBadge base={normal.win_rate} target={deuce.win_rate} />
+          {t('auto.PressurePerformance.vs_normal')} <DeltaBadge base={normal} target={deuce} />
         </div>
       </div>
     </div>

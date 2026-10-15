@@ -305,3 +305,33 @@ def compute_growth_trend(
     base["weighted_trend_delta"] = wwd
 
     return base
+
+
+def compute_metric_growth_trend(
+    raw_points: list[dict],
+    min_matches: int,
+    trend_delta: float,
+    metric: str,
+) -> dict:
+    """成長判定カードと成長推移グラフが共有する「トレンド算出」の唯一の入口。
+
+    以前は /analysis/growth_judgment が窓 = max(2, 件数//3) でトレンドを算出し、
+    /analysis/growth_timeline は窓 = クライアント指定 (既定3) で別個に算出していた。
+    同一画面で同じ指標が +4.8% と +6.9% のように食い違う原因はこの窓の不一致なので、
+    トレンドの窓と判定可否 (件数不足 → pending) はここだけで決める。
+    移動平均の描画用の窓 (window_size) はグラフの平滑化専用で、トレンドには使わない。
+    """
+    pending = {
+        "trend": "pending",
+        "trend_delta": 0.0,
+        "weighted_trend": "pending",
+        "weighted_trend_delta": 0.0,
+    }
+    annotated = len(raw_points)
+    window = max(2, annotated // 3)
+    if annotated < max(window * 2, min_matches):
+        return pending
+    pts_with_avg = strength_weighted_moving_avg(raw_points, window_size=window)
+    return compute_growth_trend(
+        pts_with_avg, window_size=window, metric=metric, trend_delta=trend_delta,
+    )

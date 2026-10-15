@@ -1676,7 +1676,8 @@
       "level": "Tournament level",
       "match_count": "Matches",
       "win_rate": "Win rate",
-      "avg_rally": "Avg rally length"
+      "avg_rally": "Avg rally length",
+      "bar_note": "Bars show win rate; the number in brackets on each label is the match count"
     },
     "pre_loss": {
       "title": "Pre-loss patterns",
@@ -1756,6 +1757,7 @@
       "title": "Growth",
       "judgment_label": "Overall growth assessment",
       "pending_reason": "Not enough matches (need at least {{min}})",
+      "metric_pending": "Undetermined (insufficient data)",
       "win_rate_label": "Win-rate trend",
       "serve_win_rate_label": "Serve win-rate trend",
       "pair_mode": "Pair mode",
@@ -1790,7 +1792,8 @@
       "opponent": "Opponent",
       "match_count": "Matches",
       "win_rate": "Win rate",
-      "avg_rally": "Avg rally length"
+      "avg_rally": "Avg rally length",
+      "low_sample_hint": "Win rates against opponents with few matches are for reference only (stars reflect match count)"
     },
     "epv": {
       "title": "Expected Pattern Value (EPV)",
@@ -3013,7 +3016,12 @@
       "k3": "Not enough matchup data",
       "k4": "Opponent",
       "k5": "Raw win rate",
-      "k6": "Posterior win rate"
+      "k6": "Posterior win rate",
+      "opponent_unknown": "Unknown opponent",
+      "type_unknown": "Undetermined",
+      "type_dominating": "Opponent ahead",
+      "type_competitive": "Even",
+      "type_beatable": "Player ahead"
     },
     "CoachSummaryStrip": {
       "k1": "Limited data",
@@ -3267,6 +3275,7 @@
       "k1": "Loading...",
       "rally_count_label": "Rallies:",
       "insufficient": "Insufficient data (available after annotation)",
+      "no_data": "No data",
       "vs_normal": "vs normal",
       "label_normal": "Normal",
       "label_endgame": "Endgame (17+)",
@@ -3326,6 +3335,7 @@
       "count": "Count: {{n}}",
       "win_rate": "Win rate: {{v}}%",
       "insufficient": "Insufficient data (available after annotation)",
+      "no_data": "No data",
       "count_legend": "Count",
       "rate_legend": "Win rate"
     },
