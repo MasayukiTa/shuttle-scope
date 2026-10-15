@@ -1397,8 +1397,8 @@
       "sc_hit_zone": "打点 override",
       "sc_hit_zone_doubles": "打点 override (ダブルス時)",
       "sc_command_palette": "コマンドパレット",
-      "numpad_title_desktop": "落点入力（land_zone中のみ）",
-      "numpad_title_mobile": "落点入力テンキー（land_zone中）",
+      "numpad_title_desktop": "落点入力（着地点入力中のみ）",
+      "numpad_title_mobile": "落点入力テンキー（着地点入力中）",
       "numpad_recommended": "テンキー（推奨）",
       "numpad_hint": "0/Num0 = スキップ　Esc/BS = キャンセル",
       "letters_laptop": "文字キー（ノートPC向け）",
@@ -1426,11 +1426,12 @@
       "land_select_marker": "着地点を選択 ↓",
       "hit_zone_auto_label": "(自動)",
       "shortcut_letters_extra": "Shift+U/I/O=OB後 Shift+J/L=OB側 -/=/\\=NET",
-      "set_a_position": "Set {{set}}: A={{pos}}",
+      "set_a_position": "第{{set}}セット: A={{pos}}",
       "side_arrow_top": "↑上",
       "side_arrow_bottom": "↓下",
       "third_set_swap": "(11pt↔)",
       "external_monitor_playing": "別モニタで再生中",
+      "no_video_hint": "映像なしモードです。映像を使うには、この下の「ローカル動画」を選び、動画ファイルまたはURLを設定してください。",
       "pc_camera_in_use": "PCカメラ使用中",
       "ios_camera_receiving": "iOSカメラ受信中",
       "drm_webview_hint": "DRM保護コンテンツ／ログイン必須サイトはブラウザ内視聴モードを使用",
@@ -1458,11 +1459,11 @@
       "calib_not_found_local": "localStorage にキャリブが見つかりません",
       "calib_invalid_points": "点数不正 ({{got}}/6)",
       "manage_actions": "管理操作",
-      "set_transition_to_next": "Set {{from}} を終了して Set {{to}} へ移行しますか？",
-      "set_transition_to_prev": "Set {{to}} へ戻りますか？（現在のセット進行は変わりません）",
+      "set_transition_to_next": "第{{from}}セットを終了して第{{to}}セットへ移行しますか？",
+      "set_transition_to_prev": "第{{to}}セットへ戻りますか？（現在のセット進行は変わりません）",
       "confirm": "確定",
-      "prev_set_btn": "前のセット (Set {{n}})",
-      "next_set_btn": "次のセットへ (Set {{n}})",
+      "prev_set_btn": "前のセット (第{{n}}セット)",
+      "next_set_btn": "次のセットへ (第{{n}}セット)",
       "rally_review_label": "ラリー #{{id}}",
       "scored_winner": "{{name}} 得点",
       "cv_tools_label": "CV ツール (BBOX / 軌跡 / グリッド / 領域)",
@@ -1548,6 +1549,7 @@
       "upload_error_prefix": "アップロードエラー:",
       "save_error_prefix": "保存エラー:",
       "set_id_missing": "セットIDが未設定です。再読み込みしてください。",
+      "store_match_mismatch": "別の試合のデータが残っているため保存できません。ページを再読み込みしてください。",
       "init_failed": "初期化に失敗しました",
       "save_failed_message": "保存失敗",
       "force_set_end_error_prefix": "セット強制終了エラー:",
@@ -5176,12 +5178,12 @@
         "body": "赤枠のヒストリーをクリックすると、その打球の瞬間に動画が飛びます。誤入力をすぐ直したいときに便利です。"
       },
       "commandPalette": {
-        "title": "Ctrl+K で何でも検索",
-        "body": "どこにいても Ctrl+K (Mac は ⌘K) でコマンドパレットが開きます。試合切替・選手検索・設定など全部ここから呼べます。(Ctrl+K / ⌘K)"
+        "title": "Ctrl+K でよく使う操作を呼び出す",
+        "body": "どこにいても Ctrl+K (Mac は ⌘K) でコマンドパレットが開きます。入力・確認・分析・設定のモード切替、試合中モードや入力モードの切替、直前の取り消し、ラリー終了などを検索して実行できます。(Ctrl+K / ⌘K)"
       },
       "flow": {
         "title": "基本の流れ",
-        "body": "①動画を再生して停止 → ②得点やストロークを記録 → ③Review で確認 → ④Analysis で傾向を見る、の繰り返しです。迷ったら Ctrl+K で機能検索してください。"
+        "body": "①動画を再生して停止 → ②得点やストロークを記録 → ③Review で確認 → ④Analysis で傾向を見る、の繰り返しです。迷ったら Ctrl+K で操作を検索してください。"
       }
     },
     "analysis_reading": {

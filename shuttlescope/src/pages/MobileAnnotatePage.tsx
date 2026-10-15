@@ -147,9 +147,7 @@ const PASS_ICONS: Record<AnnotatePass, React.ReactNode> = {
  * 横向きを促す guard。iOS Safari は CSS の orientation lock を尊重しないため、
  * 画面サイズで縦向きを検知して overlay を出す。
  */
-function LandscapeGuard({ children }: { children: React.ReactNode }) {
-  const { t } = useTranslation()
-
+export function useIsPortrait(): boolean {
   const [isPortrait, setIsPortrait] = useState<boolean>(() =>
     typeof window !== 'undefined' && window.innerHeight > window.innerWidth,
   )
@@ -163,6 +161,12 @@ function LandscapeGuard({ children }: { children: React.ReactNode }) {
       window.removeEventListener('orientationchange', onResize)
     }
   }, [])
+  return isPortrait
+}
+
+function LandscapeGuard({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation()
+  const isPortrait = useIsPortrait()
 
   // 🔧 children は常時 mount。縦向き時は overlay を上から被せるだけ。
   // 旧実装は `if (isPortrait) return <portrait/>` で children を完全 unmount
@@ -204,8 +208,11 @@ export function MobileAnnotatePage() {
   const { t } = useTranslation()
   const { matchId } = useParams<{ matchId: string }>()
   const navigate = useNavigate()
-  // 初回 mount でモバイルアノテーションのチュートリアル自動起動 (未完なら)
-  useAutoTutorial('mobile_annotate_pass')
+  // 初回 mount でモバイルアノテーションのチュートリアル自動起動 (未完なら)。
+  // A-21: 縦向きでは回転ガードが全面を覆い、ツアーが指すボタンも見えないため、
+  // 横向きになってから開始する (縦で開いた場合は回転後に自動で開始)。
+  const isPortraitNow = useIsPortrait()
+  useAutoTutorial('mobile_annotate_pass', !isPortraitNow)
   const [pass, setPass] = useState<AnnotatePass>('rally')
   // 多段レベル: localStorage (match 単位) に保持。既定 Lv1。
   const [level, setLevelState] = useState<AnnotateLevel>(() => loadLevel(matchId))

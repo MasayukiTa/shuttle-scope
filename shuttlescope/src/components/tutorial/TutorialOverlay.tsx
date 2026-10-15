@@ -15,7 +15,7 @@
  *   'skipped'    = 次回は表示しない (再表示しない)
  *   'aborted'    = 今回だけ閉じる (次回また自動表示される)
  */
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { apiPost } from '@/api/client'
 import { MIcon } from '@/components/common/MIcon'
@@ -68,6 +68,8 @@ export function TutorialOverlay({ tutorial, onClose, startStep = 0 }: Props) {
   const last = idx === tutorial.steps.length - 1
   const [geom, setGeom] = useState<TargetGeom | null>(null)
   const demoActive = useDemoModeStore((s) => s.active)
+  // 直前の移動方向 (対象要素が画面に無いステップを自動スキップする向き)
+  const dirRef = useRef<1 | -1>(1)
 
   const tutorialTitle = useMemo(
     () => resolveText(t, tutorial.titleKey, tutorial.title) || tutorial.id,
@@ -107,7 +109,16 @@ export function TutorialOverlay({ tutorial, onClose, startStep = 0 }: Props) {
       const el = document.querySelector(step.target) as HTMLElement | null
       try { el?.scrollIntoView({ behavior: 'smooth', block: 'center' }) } catch { /* ignore */ }
       const tm = window.setTimeout(recompute, 320)
-      return () => window.clearTimeout(tm)
+      // A-19: 対象要素が今の画面状態に存在しない (例: ラリー待機中は打点ゾーン/ショット種別が
+      // 未表示) ステップは、見えない物の説明になるので移動方向にスキップする。
+      // 遅れて現れる要素に備え、少し待って再確認してから判断する。
+      // 移動先が無い (先頭/末尾) ときは中央モーダルのまま表示する。
+      const skipTm = window.setTimeout(() => {
+        if (document.querySelector(step.target as string)) return
+        const nextIdx = idx + dirRef.current
+        if (nextIdx >= 0 && nextIdx < tutorial.steps.length) setIdx(nextIdx)
+      }, 900)
+      return () => { window.clearTimeout(tm); window.clearTimeout(skipTm) }
     }
     setGeom(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -137,10 +148,11 @@ export function TutorialOverlay({ tutorial, onClose, startStep = 0 }: Props) {
 
   const goNext = useCallback(() => {
     if (last) void finish('completed')
-    else setIdx((i) => i + 1)
+    else { dirRef.current = 1; setIdx((i) => i + 1) }
   }, [last, finish])
 
   const goPrev = useCallback(() => {
+    dirRef.current = -1
     setIdx((i) => Math.max(0, i - 1))
   }, [])
 

@@ -1325,6 +1325,7 @@
       "side_arrow_bottom": "↓ bottom",
       "third_set_swap": "(11pt↔)",
       "external_monitor_playing": "Playing on external monitor",
+      "no_video_hint": "No-video mode. To use a video, choose \"Local video\" below and set a video file or URL.",
       "pc_camera_in_use": "PC camera in use",
       "ios_camera_receiving": "Receiving from iOS camera",
       "drm_webview_hint": "Use the in-browser viewing mode for DRM-protected content or login-required sites",
@@ -1442,6 +1443,7 @@
       "upload_error_prefix": "Upload error:",
       "save_error_prefix": "Save error:",
       "set_id_missing": "Set ID is missing. Please reload.",
+      "store_match_mismatch": "Data from a different match is still loaded, so this cannot be saved. Please reload the page.",
       "init_failed": "Initialization failed",
       "save_failed_message": "Save failed",
       "force_set_end_error_prefix": "Force-end set error:",
@@ -5168,12 +5170,12 @@
         "body": "Click an item in the red-boxed history strip to seek the video to that moment. Handy for fixing a wrong entry quickly."
       },
       "commandPalette": {
-        "title": "Ctrl+K finds anything",
-        "body": "Press Ctrl+K (⌘K on Mac) anywhere to open the command palette: switch matches, find players, change settings — all from here. (Ctrl+K / ⌘K)"
+        "title": "Ctrl+K runs common actions",
+        "body": "Press Ctrl+K (⌘K on Mac) anywhere to open the command palette: switch between Input / Review / Analysis / Settings, toggle match-day or annotation mode, undo the last entry, end the rally. (Ctrl+K / ⌘K)"
       },
       "flow": {
         "title": "The basic loop",
-        "body": "Play and pause the video, log scores and strokes, check in Review, then look at Analysis for patterns. Press Ctrl+K if you get lost."
+        "body": "Play and pause the video, log scores and strokes, check in Review, then look at Analysis for patterns. Press Ctrl+K to search for an action if you get lost."
       }
     },
     "analysis_reading": {
