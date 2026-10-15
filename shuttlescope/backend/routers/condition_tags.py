@@ -124,6 +124,9 @@ def _can_access_player_for_condition(ctx: AuthCtx, player: Player) -> bool:
     # 招くので削除し、Player には public_pool 概念が無い旨を明示する。
     if getattr(ctx, "is_admin", False):
         return True
+    # player ロールは本人のタグだけ (GET /api/conditions と同じ: 同チームの別選手は不可)。
+    if getattr(ctx, "is_player", False) and getattr(ctx, "player_id", None) != getattr(player, "id", None):
+        return False
     # NOTE: Player に is_public_pool 概念は無い。team_id 完全一致 (or admin) のみ許可。
     p_team = getattr(player, "team_id", None)
     return p_team is not None and getattr(ctx, "team_id", None) == p_team

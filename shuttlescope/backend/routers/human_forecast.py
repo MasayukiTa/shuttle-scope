@@ -198,6 +198,19 @@ def get_prediction_benchmark(
     if not _auth.is_admin:
         q = q.filter(_or_hf(HumanForecast.team_id.is_(None), HumanForecast.team_id == _auth.team_id))
     forecasts = q.all()
+    if not _auth.is_admin and forecasts:
+        # team_id が NULL の旧予想行は所有チームを持たないため、行の team_id だけでは
+        # 他チームの試合結果 (match_id / 日付 / 勝敗) が見えてしまう。
+        # 試合単位の閲覧権限 (他の試合読み取りと同じ user_can_access_match) で絞る。
+        from backend.utils.auth import user_can_access_match as _can_match_hf
+        _scope_matches = {
+            m.id: m
+            for m in db.query(Match).filter(Match.id.in_({f.match_id for f in forecasts})).all()
+        }
+        forecasts = [
+            f for f in forecasts
+            if f.match_id in _scope_matches and _can_match_hf(_auth, _scope_matches[f.match_id])
+        ]
     if not forecasts:
         return {
             "success": True,
