@@ -150,7 +150,8 @@ def compute_rally_state_epv(
             if is_win:
                 state_shot_wins[key][st] += 1
 
-    global_win_rate = round(global_wins / global_total, 4) if global_total else 0.5
+    # 0 ラリーの全体勝率は偽の 0.5 ではなく None (統計規則 R1)。total_rallies=0 を併記
+    global_win_rate = round(global_wins / global_total, 4) if global_total else None
 
     # 状態テーブル構築
     state_table = []

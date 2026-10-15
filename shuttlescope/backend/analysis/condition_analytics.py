@@ -261,7 +261,11 @@ def best_performance_profile(
 ) -> Dict[str, Any]:
     """勝率上位 30% 試合群 vs 残りの condition 分布差から key_factors を抽出。"""
     joined = join_condition_match(conditions, matches, window_days=window_days)
-    with_match = [c for c in joined if c.get("nearby_match_count", 0) > 0]
+    # 勝率 None (勝敗不明) の行は 0% 扱いにせず除外する (統計規則 R1)
+    with_match = [
+        c for c in joined
+        if c.get("nearby_match_count", 0) > 0 and c.get("nearby_win_rate") is not None
+    ]
     if not with_match:
         return {
             "key_factors": [],
@@ -483,7 +487,10 @@ def player_growth_insights(
     """
     joined = join_condition_match(conditions, matches, window_days=window_days)
     # 試合紐付きの weekly 条件のみ対象
-    rows = [c for c in joined if c.get("nearby_match_count", 0) > 0]
+    rows = [
+        c for c in joined
+        if c.get("nearby_match_count", 0) > 0 and c.get("nearby_win_rate") is not None
+    ]
 
     cards: List[Dict[str, Any]] = []
 

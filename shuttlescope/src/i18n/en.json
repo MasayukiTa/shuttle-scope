@@ -2161,6 +2161,7 @@
     "select_level": "— Filter by tournament level —",
     "no_data": "Not enough match data",
     "win_probability": "Predicted win rate",
+    "pair_no_record": "No match record as this pair, so no win rate is computed",
     "confidence": "Confidence",
     "similar_matches": "Similar matches",
     "sample_size": "Data",

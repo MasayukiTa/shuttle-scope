@@ -94,7 +94,8 @@ def build_player_summary(
         elif side == "player_b" and m.result == "loss":
             # result は player_a 視点
             match_wins += 1
-    match_win_rate = (match_wins / n_matches) if n_matches > 0 else 0.0
+    # n=0 の率は 0.0 ではなく None (統計規則 R1)。件数は outcomes.n / n_sets に併記
+    match_win_rate = (match_wins / n_matches) if n_matches > 0 else None
 
     set_rows: list[tuple[int, Optional[str]]] = []
     if match_ids:
@@ -113,7 +114,7 @@ def build_player_summary(
         for mid, w in set_rows
         if w is not None and side_by_match.get(mid) == w
     )
-    set_win_rate = (set_wins / n_sets) if n_sets > 0 else 0.0
+    set_win_rate = (set_wins / n_sets) if n_sets > 0 else None
 
     # ── strokes 集約: shot_mix / zones / rally count ──
     set_ids: list[int] = []
@@ -272,10 +273,12 @@ def build_player_summary(
             "assisted_strokes": int(n_assisted),
         },
         "outcomes": {
-            "win_rate": round(match_win_rate, 4),
+            "win_rate": round(match_win_rate, 4) if match_win_rate is not None else None,
             "win_rate_basis": "matches",
-            "set_win_rate": round(set_win_rate, 4),
+            "set_win_rate": round(set_win_rate, 4) if set_win_rate is not None else None,
             "n": int(n_matches),
+            # R2: set_win_rate の分母 (セット数)
+            "n_sets": int(n_sets),
         },
         "shot_mix": [
             {
@@ -313,6 +316,9 @@ def build_player_summary(
                 round(last5_wr, 4) if last5_wr is not None else None
             ),
             "delta_vs_prior_5": delta,
+            # R2: 勝率の分母 (直近 5 試合 / その前 5 試合それぞれの試合数)
+            "n_last_5": len(last5),
+            "n_prior_5": len(prior5),
         },
     }
 

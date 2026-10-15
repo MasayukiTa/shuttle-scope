@@ -109,6 +109,14 @@ class TemplateGenerator:
         rt = analytics.get("recent_trend") or {}
         last5 = rt.get("last_5_match_win_rate")
         delta = rt.get("delta_vs_prior_5")
+        # 「直近5試合」「前5試合比」と書く以上、5 試合に満たない標本では出さない (統計規則 R3)。
+        # n_last_5 / n_prior_5 が無い旧ペイロードは従来どおり。
+        n_last5 = rt.get("n_last_5")
+        n_prior5 = rt.get("n_prior_5")
+        if n_last5 is not None and int(n_last5) < 5:
+            last5 = None
+        if n_prior5 is not None and int(n_prior5) < 5:
+            delta = None
         if last5 is not None:
             pct = int(round(float(last5) * 100))
             if delta is not None:

@@ -260,7 +260,8 @@ def advice_post_match_save(db: Session, player_id: int, match_id: int, ctx: Auth
         # 本試合分を差し引く
         base_rallies = max(0, base["rally_count"] - len(rallies))
         base_wins = max(0, base["wins"] - wins)
-        if base_rallies > 0:
+        # 本試合を除いた残りが少数ラリーなら比較しない (統計規則 R3: 既存の MIN_RALLIES を再利用)
+        if base_rallies >= MIN_RALLIES:
             base_wr = base_wins / base_rallies
 
     parts = [

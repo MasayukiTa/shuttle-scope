@@ -131,7 +131,7 @@ def _epv_state_table_impl(db: Session, player_id: int, ctx=None,
         _load_ctx_or_query(db, player_id, ctx, result, tournament_level, date_from, date_to)
     if not matches:
         meta = _analysis_meta("epv_state", 0, rallies=[], strokes_by_rally={})
-        return {"success": True, "data": {"state_table": [], "global_win_rate": 0.5, "total_rallies": 0}, "meta": meta}
+        return {"success": True, "data": {"state_table": [], "global_win_rate": None, "total_rallies": 0}, "meta": meta}
 
     result_data = compute_rally_state_epv(
         rallies=rallies,
@@ -438,10 +438,10 @@ def get_doubles_role(
 # キーを欠かさず 0 件の形で返す (欠落すると画面に NaN% が出ていた)。
 _EMPTY_DOUBLES_ROLE = {
     "inferred_role": "unknown",
-    "confidence_score": 0.0,
-    "front_ratio": 0.0,
-    "back_ratio": 0.0,
-    "neutral_ratio": 0.0,
+    "confidence_score": None,
+    "front_ratio": None,
+    "back_ratio": None,
+    "neutral_ratio": None,
     "total_shots": 0,
     "phase_breakdown": [],
     "note": None,
@@ -516,7 +516,7 @@ def get_doubles_role_db2(
 
     if not doubles_matches:
         meta = _analysis_meta("doubles_role", 0, rallies=[], strokes_by_rally={})
-        return {"success": True, "data": {"inferred_role": "unknown", "confidence_score": 0.0, "total_shots": 0, "db_phase": "db2"}, "meta": meta}
+        return {"success": True, "data": {"inferred_role": "unknown", "confidence_score": None, "total_shots": 0, "db_phase": "db2"}, "meta": meta}
 
     match_ids = [m.id for m in doubles_matches]
     role_by_match = {m.id: _player_role_in_match(m, player_id) for m in doubles_matches}
@@ -892,7 +892,7 @@ def get_doubles_role_stability(
         return {
             "success": True,
             "data": {
-                "role_stability_score": 0.0,
+                "role_stability_score": None,
                 "dominant_role": "unknown",
                 "n_matches_analyzed": 0,
                 "per_match_roles": [],

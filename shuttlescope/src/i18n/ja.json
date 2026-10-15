@@ -2171,6 +2171,7 @@
     "select_level": "— 大会レベル絞込 —",
     "no_data": "対戦データが不足しています",
     "win_probability": "勝率予測",
+    "pair_no_record": "ペアとしての対戦実績がないため、勝率は算出していません",
     "confidence": "信頼度",
     "similar_matches": "類似試合",
     "sample_size": "データ",

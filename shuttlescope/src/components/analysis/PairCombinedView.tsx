@@ -22,7 +22,7 @@ interface PairCombinedResponse {
     pair_win_rate: number | null
     pair_match_count: number
     shared_matches: number[]
-    stroke_share: { player_a: number; player_b: number }
+    stroke_share: { player_a: number | null; player_b: number | null }
     common_loss_pattern: string | null
     common_win_shot: string | null
   }
@@ -75,6 +75,9 @@ export function PairCombinedView({
 
   const winRate = d.pair_win_rate
   const winColor = winRate != null && winRate >= 0.5 ? WIN : LOSS
+  // ストローク 0 件のとき分担比率は null。0% のバーを描かず非表示にする
+  const shareA = d.stroke_share.player_a
+  const shareB = d.stroke_share.player_b
 
   // ライトモード対応カラー定義
   const labelColor = isLight ? '#475569' : '#9ca3af'
@@ -107,6 +110,7 @@ export function PairCombinedView({
       </div>
 
       {/* ストローク分担 */}
+      {shareA != null && shareB != null && (
       <div>
         <p className="text-xs mb-1" style={{ color: labelColor }}>{t('auto.PairCombinedView.k3')}</p>
         <div className="flex items-center gap-2">
@@ -114,16 +118,17 @@ export function PairCombinedView({
           <div className="flex-1 rounded-full h-2 overflow-hidden" style={{ backgroundColor: trackBg }}>
             <div
               className="h-2 rounded-full transition-all duration-base ease-out"
-              style={{ width: `${(d.stroke_share.player_a * 100).toFixed(0)}%`, backgroundColor: WIN }}
+              style={{ width: `${(shareA * 100).toFixed(0)}%`, backgroundColor: WIN }}
             />
           </div>
           <span className="text-xs w-20 text-right truncate" style={{ color: nameColor }}>{playerBName}</span>
         </div>
         <div className="flex justify-between mt-0.5">
-          <span className="text-[10px] ss-num" style={{ color: pctColor }}>{(d.stroke_share.player_a * 100).toFixed(0)}%</span>
-          <span className="text-[10px] ss-num" style={{ color: pctColor }}>{(d.stroke_share.player_b * 100).toFixed(0)}%</span>
+          <span className="text-[10px] ss-num" style={{ color: pctColor }}>{(shareA * 100).toFixed(0)}%</span>
+          <span className="text-[10px] ss-num" style={{ color: pctColor }}>{(shareB * 100).toFixed(0)}%</span>
         </div>
       </div>
+      )}
 
       {/* 共通の有効ショット / 失点ショット */}
       <div className="grid grid-cols-2 gap-3">

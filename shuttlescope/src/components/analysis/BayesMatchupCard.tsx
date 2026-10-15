@@ -23,7 +23,7 @@ interface OpponentEstimate {
 
 interface BayesMatchupData {
   global_prior: { alpha: number; beta: number }
-  global_win_rate: number
+  global_win_rate: number | null
   opponent_estimates: OpponentEstimate[]
   total_matches: number
 }
@@ -108,7 +108,7 @@ export function BayesMatchupCard({ playerId, filters }: Props) {
         <div className="space-y-1">
           <div className={`flex items-center justify-between text-[10px] ${textMuted} pb-1`}>
             <span>{t('auto.BayesMatchupCard.total_matches', { n: matchupData?.total_matches ?? 0 })}</span>
-            <span>{t('auto.BayesMatchupCard.global_wr', { v: pct(matchupData?.global_win_rate ?? 0) })}</span>
+            <span>{t('auto.BayesMatchupCard.global_wr', { v: pct(matchupData?.global_win_rate) })}</span>
           </div>
           {/* モバイル: カードリスト (md 未満)。情報量を維持しつつ縦並び */}
           <ul className="md:hidden space-y-1.5">

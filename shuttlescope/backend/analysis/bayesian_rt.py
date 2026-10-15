@@ -216,7 +216,7 @@ class BayesianRealTimeAnalyzer:
                     "set_num": game_set.set_num,
                     "rally_count": total_in_set,
                     "wins": wins_in_set,
-                    "win_rate_raw": round(wins_in_set / total_in_set, 3) if total_in_set else 0.0,
+                    "win_rate_raw": round(wins_in_set / total_in_set, 3) if total_in_set else None,  # n=0 は None (統計規則 R1)
                     "posterior_mean": ci["mean"],
                     "ci_low": ci["ci_low"],
                     "ci_high": ci["ci_high"],

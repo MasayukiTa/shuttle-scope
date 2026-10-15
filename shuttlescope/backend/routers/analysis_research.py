@@ -1073,10 +1073,11 @@ def get_pair_combined(
     # シンプルに player ロール別カウント
     cnt_a_role = sum(1 for s in all_strokes if s.player == "player_a")
     cnt_b_role = sum(1 for s in all_strokes if s.player == "player_b")
-    cnt_total = cnt_a_role + cnt_b_role or 1
+    cnt_total = cnt_a_role + cnt_b_role
+    # ストローク 0 件の分担比率は 0.0 ではなく None (統計規則 R1)。件数は meta.sample_size 側
     stroke_share = {
-        "player_a": round(cnt_a_role / cnt_total, 3),
-        "player_b": round(cnt_b_role / cnt_total, 3),
+        "player_a": round(cnt_a_role / cnt_total, 3) if cnt_total else None,
+        "player_b": round(cnt_b_role / cnt_total, 3) if cnt_total else None,
     }
 
     # 共通の失点前ショット
@@ -1535,12 +1536,13 @@ def get_pair_synergy(
         .all()
     )
     if not all_matches:
-        return {"success": True, "data": {"player_avg_win_rate": 0.0, "pairs": []},
+        return {"success": True, "data": {"player_avg_win_rate": None, "pairs": []},
                 "meta": {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0)}}
 
     total_matches = len(all_matches)
     win_count = sum(1 for m in all_matches if player_wins_match(m, player_id))
-    player_avg_win_rate = round(win_count / total_matches, 3) if total_matches > 0 else 0.0
+    # total_matches=0 は上で早期 return 済み。0.0 を値として返さない (統計規則 R1)
+    player_avg_win_rate = round(win_count / total_matches, 3) if total_matches > 0 else None
 
     # ダブルス試合のみ抽出
     doubles_matches = [m for m in all_matches if m.format in ("womens_doubles", "mixed_doubles", "mens_doubles")]
@@ -1608,8 +1610,9 @@ def get_pair_synergy(
             continue
         wr = round(pd["wins"] / mc, 3)
         synergy = round(wr - player_avg_win_rate, 3)
-        avg_rally = round(pd["total_rally_length"] / pd["rally_count"], 2) if pd["rally_count"] > 0 else 0.0
-        stroke_share = round(pd["player_strokes"] / pd["total_strokes"], 3) if pd["total_strokes"] > 0 else 0.0
+        # ラリー / ストロークが 0 件 (未アノテーション試合) の平均・割合は 0 ではなく None (統計規則 R1)
+        avg_rally = round(pd["total_rally_length"] / pd["rally_count"], 2) if pd["rally_count"] > 0 else None
+        stroke_share = round(pd["player_strokes"] / pd["total_strokes"], 3) if pd["total_strokes"] > 0 else None
         partner = partner_players.get(partner_id)
         pairs.append({
             "partner_id": partner_id,
