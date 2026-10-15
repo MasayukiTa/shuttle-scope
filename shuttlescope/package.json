@@ -79,6 +79,7 @@
     "js-yaml": "^4.2.0",
     "@babel/core": "^7.29.6",
     "esbuild": "^0.28.1",
+    "http-cache-semantics": "^4.3.0",
     "source-map-js": "^1.2.2",
     "postcss-selector-parser": "^7.1.6"
   }
