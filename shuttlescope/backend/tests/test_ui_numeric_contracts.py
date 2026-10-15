@@ -126,7 +126,8 @@ class TestDoublesRoleEmptyShape:
     def test_no_doubles_matches_still_returns_every_ratio_key(self, client, db_session):
         a, _ = _twelve_matches(db_session)  # singles のみ
         data = client.get(f"/api/analysis/doubles_role?player_id={a.id}").json()["data"]
+        # 打球 0 件の比率は 0.0 ではなく null (統計規則 R1)。キーは欠落させない
         for k in ("front_ratio", "back_ratio", "neutral_ratio"):
-            assert data[k] == 0.0
+            assert k in data and data[k] is None
         assert data["total_shots"] == 0
         assert data["phase_breakdown"] == []

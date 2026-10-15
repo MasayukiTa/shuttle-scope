@@ -108,6 +108,36 @@ def _register_jp_font() -> str:
     return "Helvetica"
 
 
+# 率と並べて印刷すべき件数 (n) 列のキー名
+_COUNT_KEYS = (
+    "n", "count", "total", "sample_size", "sample_n", "rally_count", "match_count",
+    "rallies", "total_rallies", "total_shots",
+)
+
+
+def _select_table_columns(rows: list[dict]) -> list[str]:
+    """表に載せる列 (最大 6)。
+
+    率の列が残るのに件数の列が 7 列目以降で落ちると、n 無しの率が印刷される
+    (統計規則 R2)。その場合は件数列を 6 列目として優先的に残す。
+    """
+    all_cols: list[str] = []
+    for x in rows[:30]:
+        for k in x.keys():
+            if k not in all_cols:
+                all_cols.append(k)
+    kept = all_cols[:6]
+    if (
+        len(all_cols) > 6
+        and any(("rate" in c) or c.endswith("_pct") for c in kept)
+        and not any(c in _COUNT_KEYS for c in kept)
+    ):
+        n_col = next((c for c in all_cols if c in _COUNT_KEYS), None)
+        if n_col is not None:
+            kept = kept[:5] + [n_col]
+    return kept
+
+
 def _fmt_cell(v) -> str:
     if v is None:
         return "—"
@@ -161,14 +191,7 @@ def _render_section_data(flow, payload, h3, body, font: str, depth: int = 0):
             flow.append(Paragraph("(空)", body))
             return
         if all(isinstance(x, dict) for x in payload):
-            cols: list[str] = []
-            for x in payload[:30]:
-                for k in x.keys():
-                    if k not in cols:
-                        cols.append(k)
-                if len(cols) >= 6:
-                    break
-            cols = cols[:6]
+            cols = _select_table_columns(payload)
             rows = [cols]
             for x in payload[:25]:
                 rows.append([_fmt_cell(x.get(c)) for c in cols])

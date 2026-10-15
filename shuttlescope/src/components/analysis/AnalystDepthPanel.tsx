@@ -68,8 +68,8 @@ interface AnalystDepthData {
   nearest_match_evidence: NearestMatch[]
   set_model_type: 'observed' | 'momentum'
   feature_breakdown: FeatureBreakdown
-  win_prob_v1: number
-  win_prob_v2: number
+  win_prob_v1: number | null
+  win_prob_v2: number | null
 }
 
 interface Props {
@@ -438,8 +438,12 @@ function Inner({ playerId, opponentId, tournamentLevel }: Props) {
         {d.set_model_type === 'observed'
           ? t('prediction.set_model_observed')
           : t('prediction.set_model_momentum')}
-        {'  '}
-        {t('auto.AnalystDepthPanel.calibration_line', { v1: Math.round(d.win_prob_v1 * 100), v2: Math.round(d.win_prob_v2 * 100) })}
+        {d.win_prob_v1 != null && d.win_prob_v2 != null && (
+          <>
+            {'  '}
+            {t('auto.AnalystDepthPanel.calibration_line', { v1: Math.round(d.win_prob_v1 * 100), v2: Math.round(d.win_prob_v2 * 100) })}
+          </>
+        )}
       </p>
     </div>
   )

@@ -134,7 +134,7 @@ def _build_analytics_context(
         return {
             "player_id": 0,
             "sample": {"matches": 0, "rallies": 0, "strokes": 0},
-            "outcomes": {"win_rate": 0.0, "set_win_rate": 0.0, "n": 0},
+            "outcomes": {"win_rate": None, "set_win_rate": None, "n": 0, "n_sets": 0},
             "shot_mix": [],
             "zones": {"hit_top": [], "land_top": []},
             "conditions": {"avg_rpe": None, "avg_hooper": None, "n": 0},

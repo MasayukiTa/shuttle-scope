@@ -173,9 +173,12 @@ def compute_doubles_role_inference(
 
     role, conf = classify_role_from_shots(front_count, back_count, total)
 
-    front_ratio = round(front_count / total, 4) if total else 0.0
-    back_ratio = round(back_count / total, 4) if total else 0.0
-    neutral_ratio = round(neutral_count / total, 4) if total else 0.0
+    # n=0 の比率は 0.0 ではなく None (統計規則 R1)。total_shots を併記済み
+    front_ratio = round(front_count / total, 4) if total else None
+    back_ratio = round(back_count / total, 4) if total else None
+    neutral_ratio = round(neutral_count / total, 4) if total else None
+    if not total:
+        conf = None
 
     # フェーズ別内訳リスト
     phase_breakdown = []
@@ -492,7 +495,7 @@ def compute_doubles_role_stability(
 
     if not per_match_roles:
         return {
-            "role_stability_score": 0.0,
+            "role_stability_score": None,
             "dominant_role": "unknown",
             "n_matches_analyzed": 0,
             "per_match_roles": [],
@@ -601,12 +604,12 @@ def compute_doubles_role_db2(
     if not all_obs:
         return {
             "inferred_role": "unknown",
-            "confidence_score": 0.0,
-            "front_ratio": 0.0,
-            "back_ratio": 0.0,
-            "neutral_ratio": 0.0,
+            "confidence_score": None,
+            "front_ratio": None,
+            "back_ratio": None,
+            "neutral_ratio": None,
             "total_shots": 0,
-            "hmm_role_sequence_summary": {"front_pct": 0.0, "back_pct": 0.0, "mixed_pct": 0.0, "n_transitions": 0},
+            "hmm_role_sequence_summary": {"front_pct": None, "back_pct": None, "mixed_pct": None, "n_transitions": 0},
             "phase_breakdown": [],
             "note": "データ不足: ストロークデータがありません。",
             "db_phase": "db2",
@@ -658,6 +661,11 @@ def compute_doubles_role_db2(
     raw_back = sum(1 for o in all_obs if o == "back")
     raw_neutral = sum(1 for o in all_obs if o == "neutral")
     n = len(all_obs)
+
+    # 最小ショット数 (v1 と同じ MIN_SHOTS_ROLE) 未満ではロール判定を出さない (統計規則 R3)
+    if n < MIN_SHOTS_ROLE:
+        final_role = "unknown"
+        conf = None
 
     bw_used = len(per_rally_obs) >= 10
     note = None

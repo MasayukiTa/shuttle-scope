@@ -144,8 +144,9 @@ def get_match_preview(
         "success": True,
         "data": {
             # 後方互換: v1 勝率を win_probability として維持
-            "win_probability": win_prob,
-            "win_probability_v2": win_prob_v2,
+            # 試合 0 件の勝率は偽の 0.5 ではなく None (統計規則 R1)。sample_size を併記
+            "win_probability": win_prob if sample_size > 0 else None,
+            "win_probability_v2": win_prob_v2 if sample_size > 0 else None,
             "feature_breakdown": feature_breakdown,
             "recent_form": recent_form,
             "set_distribution": set_dist,
@@ -250,7 +251,7 @@ def get_analyst_depth(
         n=5,
     )
 
-    win_prob_v1, _ = compute_win_probability(all_matches, player_id)
+    win_prob_v1, n_v1 = compute_win_probability(all_matches, player_id)
     win_prob_v2, feature_breakdown = compute_feature_win_prob(
         all_matches, player_id, h2h_matches, recent_form, obs_context
     )
@@ -274,8 +275,9 @@ def get_analyst_depth(
             "nearest_match_evidence": nearest_evidence,
             "set_model_type": set_model_type,
             "feature_breakdown": feature_breakdown,
-            "win_prob_v1": win_prob_v1,
-            "win_prob_v2": win_prob_v2,
+            # 試合 0 件では偽の 0.5 を返さない (統計規則 R1)
+            "win_prob_v1": win_prob_v1 if n_v1 > 0 else None,
+            "win_prob_v2": win_prob_v2 if n_v1 > 0 else None,
         },
     }
 
@@ -612,14 +614,19 @@ def get_pair_ranking(
             "partner_id": candidate.id,
             "partner_name": candidate.name,
             "partner_team": getattr(candidate, "team", None),
-            "win_probability": win_prob,
+            # 対戦実績 0 件のペアに偽の 0.5 を付けて順位づけしない (統計規則 R1)
+            "win_probability": win_prob if sample_size > 0 else None,
             "sample_size": sample_size,
             "confidence": confidence,
             "confidence_meta": confidence_meta(confidence, sample_size),
         })
 
     # 勝率降順 → サンプル数降順でソート
-    results.sort(key=lambda x: (-x["win_probability"], -x["sample_size"]))
+    results.sort(key=lambda x: (
+        x["win_probability"] is None,
+        -(x["win_probability"] if x["win_probability"] is not None else 0.0),
+        -x["sample_size"],
+    ))
     for i, r in enumerate(results):
         r["rank"] = i + 1
 
@@ -672,14 +679,14 @@ def get_pair_simulation(
         cautions.append('ペアとしての対戦データなし — 個人成績から予測できません')
     elif sample_size < 5:
         cautions.append(f'少数サンプル（{sample_size}試合） — 推定精度が低め')
-    if win_prob >= 0.60 and sample_size >= 3:
+    if win_prob is not None and win_prob >= 0.60 and sample_size >= 3:
         strengths.append(f'このペアの過去勝率は {int(win_prob * 100)}%（{sample_size}試合）')
 
     return {
         "success": True,
         "data": {
             "pair_name": pair_name,
-            "win_probability": win_prob,
+            "win_probability": win_prob if sample_size > 0 else None,
             "set_distribution": set_dist,
             "score_bands": score_bands,
             "pair_strengths": strengths,

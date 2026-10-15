@@ -182,7 +182,7 @@ def compute_bayes_matchup(
     if total_matches == 0:
         return {
             "global_prior": {"alpha": 1.0, "beta": 1.0},
-            "global_win_rate": 0.5,
+            "global_win_rate": None,  # 0 試合の全体勝率は偽の 0.5 にしない (統計規則 R1)
             "opponent_estimates": [],
             "total_matches": 0,
         }

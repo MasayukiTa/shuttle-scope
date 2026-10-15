@@ -33,13 +33,14 @@ BOOTSTRAP_MIN_SUPPORT = 10  # 最低サポート数（未満は比較をスキ�
 CONFIDENCE_Z = 1.96         # 95% CI
 
 
-def _bootstrap_win_rate(wins: list[bool], n_bootstrap: int = BOOTSTRAP_N) -> tuple[float, float]:
+def _bootstrap_win_rate(wins: list[bool], n_bootstrap: int = BOOTSTRAP_N) -> tuple[Optional[float], Optional[float]]:
     """
     ブートストラップによる勝率の95% CI を返す。
     Returns: (ci_low, ci_high)
     """
     if not wins:
-        return (0.0, 1.0)
+        # n=0 の CI は全域 (0, 1) を値として返さず None (統計規則 R1)
+        return (None, None)
     n = len(wins)
     boot_means = []
     for _ in range(n_bootstrap):
@@ -251,16 +252,16 @@ CF2_MIN_SUPPORT = 15  # CF-2 は厳密なサポート制御
 def _ipw_weighted_win_rate(
     wins: list[bool],
     weights: list[float],
-) -> tuple[float, float, float]:
+) -> tuple[Optional[float], Optional[float], float]:
     """逆確率重み付き勝率と標準誤差を計算する。
 
     Returns: (weighted_win_rate, variance, n_eff)
     """
     if not wins:
-        return 0.0, 1.0, 0.0
+        return None, None, 0.0
     total_w = sum(weights)
     if total_w <= 0:
-        return 0.0, 1.0, 0.0
+        return None, None, 0.0
     wr = sum(w * int(won) for w, won in zip(weights, wins)) / total_w
     # 有効サンプルサイズ
     n_eff = (sum(weights) ** 2) / sum(w ** 2 for w in weights)
@@ -273,10 +274,10 @@ def _bootstrap_ipw_win_rate(
     wins: list[bool],
     weights: list[float],
     n_bootstrap: int = BOOTSTRAP_N,
-) -> tuple[float, float]:
+) -> tuple[Optional[float], Optional[float]]:
     """IPW重み付きブートストラップCI。Returns (ci_low, ci_high)"""
     if not wins:
-        return 0.0, 1.0
+        return None, None
     n = len(wins)
     paired = list(zip(wins, weights))
     boot_means = []

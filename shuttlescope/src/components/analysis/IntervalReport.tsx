@@ -22,7 +22,7 @@ interface SetReport {
   set_num: number
   rally_count: number
   wins: number
-  win_rate_raw: number
+  win_rate_raw: number | null
   posterior_mean: number
   ci_low: number
   ci_high: number

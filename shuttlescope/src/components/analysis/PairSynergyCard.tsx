@@ -6,6 +6,7 @@ import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { perfColor, WIN, LOSS } from '@/styles/colors'
 import { useTranslation } from 'react-i18next'
+import { fmtPct } from '@/utils/format'
 
 interface PairSynergyCardProps {
   playerId: number
@@ -17,14 +18,14 @@ interface PairEntry {
   match_count: number
   win_rate: number
   synergy_score: number
-  avg_rally_length: number
-  stroke_share: number
+  avg_rally_length: number | null
+  stroke_share: number | null
 }
 
 interface Response {
   success: boolean
   data: {
-    player_avg_win_rate: number
+    player_avg_win_rate: number | null
     pairs: PairEntry[]
   }
   meta: { sample_size: number; confidence: { level: string; stars: string; label: string } }
@@ -72,7 +73,7 @@ function Inner({ playerId }: { playerId: number }) {
   }
 
   const pairs = resp?.data?.pairs ?? []
-  const avgWr = resp?.data?.player_avg_win_rate ?? 0
+  const avgWr = resp?.data?.player_avg_win_rate ?? null
   const sampleSize = resp?.meta?.sample_size ?? 0
 
   if (pairs.length === 0) {
@@ -83,7 +84,7 @@ function Inner({ playerId }: { playerId: number }) {
     <div className="space-y-3">
       <ConfidenceBadge sampleSize={sampleSize} unit="matches" />
       <p className="text-xs text-gray-400">
-        {t('auto.PairSynergyCard.avg_wr')} <span className="font-mono ss-num text-gray-200">{Math.round(avgWr * 100)}%</span>
+        {t('auto.PairSynergyCard.avg_wr')} <span className="font-mono ss-num text-gray-200">{fmtPct(avgWr, 0)}</span>
       </p>
 
       <div className="space-y-2">
@@ -115,8 +116,8 @@ function Inner({ playerId }: { playerId: number }) {
               </div>
             </div>
             <div className="flex gap-4 mt-1.5 text-xs text-gray-500 ss-num">
-              <span>{t('auto.PairSynergyCard.avg_rally', { n: p.avg_rally_length })}</span>
-              <span>{t('auto.PairSynergyCard.stroke_share', { n: Math.round(p.stroke_share * 100) })}</span>
+              {p.avg_rally_length != null && <span>{t('auto.PairSynergyCard.avg_rally', { n: p.avg_rally_length })}</span>}
+              {p.stroke_share != null && <span>{t('auto.PairSynergyCard.stroke_share', { n: Math.round(p.stroke_share * 100) })}</span>}
             </div>
           </div>
         ))}

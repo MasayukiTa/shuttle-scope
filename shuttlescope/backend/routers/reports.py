@@ -200,6 +200,10 @@ def sanitize_player_text(text: str) -> str:
     return text
 
 
+# check_confidence("descriptive_basic") の最小件数 (10) の半分。これ未満は最低信頼帯
+_GROWTH_MESSAGE_MIN_RALLIES = 5
+
+
 def _win_rate_fields(ctx, win_rate) -> dict:
     """player には生のラリー勝率を返さない (CLAUDE.md 非交渉ルール)。他ロールは従来どおり。"""
     if ctx.is_player:
@@ -278,8 +282,9 @@ def get_scouting_report(
             wins += 1
         total_length += rally.rally_length
 
-    win_rate = round(wins / total_rallies, 3) if total_rallies else 0.0
-    avg_rally = round(total_length / total_rallies, 2) if total_rallies else 0.0
+    # n=0 の率は 0.0 ではなく None (統計規則 R1)。件数は total_rallies / meta.sample_size に併記
+    win_rate = round(wins / total_rallies, 3) if total_rallies else None
+    avg_rally = round(total_length / total_rallies, 2) if total_rallies else None
     confidence = check_confidence("descriptive_basic", total_rallies)
 
     # ショット集計
@@ -358,8 +363,8 @@ def get_scouting_report(
             ["項目", "値"],
             ["試合数", str(len(matches))],
             ["総ラリー数", str(total_rallies)],
-            ["\u30e9\u30ea\u30fc\u52dd\u7387", f"{win_rate:.1%}"],
-            ["平均ラリー長", f"{avg_rally:.1f}打"],
+            ["\u30e9\u30ea\u30fc\u52dd\u7387", f"{win_rate:.1%}" if win_rate is not None else "—"],
+            ["平均ラリー長", f"{avg_rally:.1f}打" if avg_rally is not None else "—"],
         ]
         if ctx.is_player:
             # player には生の勝率を出さない (CLAUDE.md 非交渉ルール)
@@ -495,8 +500,9 @@ def get_player_growth_report(
             wins += 1
         total_length += rally.rally_length
 
-    win_rate = round(wins / total_rallies, 3) if total_rallies else 0.0
-    avg_rally = round(total_length / total_rallies, 2) if total_rallies else 0.0
+    # n=0 の率は 0.0 ではなく None (統計規則 R1)。件数は total_rallies / meta.sample_size に併記
+    win_rate = round(wins / total_rallies, 3) if total_rallies else None
+    avg_rally = round(total_length / total_rallies, 2) if total_rallies else None
     confidence = check_confidence("descriptive_basic", total_rallies)
 
     # 成長メッセージ生成（禁止ワード不使用）
@@ -505,6 +511,10 @@ def get_player_growth_report(
     elif ctx.is_player:
         # player の文言は勝率の閾値で出し分けない (勝率判定の言い換えになるため)。
         # 既存の中立な文言だけを返す。
+        growth_message = sanitize_player_text("バランスの取れた成長エリアがあります。継続的な練習が大切です。")
+    elif total_rallies < _GROWTH_MESSAGE_MIN_RALLIES:
+        # 最低帯 (check_confidence の警告「解析には10件以上推奨」= 5 ラリー未満) では
+        # 勝率で文言を出し分けず中立文言のみ (統計規則 R3)
         growth_message = sanitize_player_text("バランスの取れた成長エリアがあります。継続的な練習が大切です。")
     elif win_rate >= 0.6:
         growth_message = sanitize_player_text("安定した成果を出せています。さらなる伸びしろを探してみましょう。")

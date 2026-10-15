@@ -22,7 +22,7 @@ interface PairSimResponse {
   success: boolean
   data: {
     pair_name: string
-    win_probability: number
+    win_probability: number | null
     set_distribution: { '2-0': number; '2-1': number; '1-2': number; '0-2': number }
     pair_strengths: string[]
     pair_cautions: string[]
@@ -37,7 +37,7 @@ interface RankedPartner {
   partner_id: number
   partner_name: string
   partner_team: string | null
-  win_probability: number
+  win_probability: number | null
   sample_size: number
   confidence: number
   confidence_meta: { level: string; stars: string; label: string }
@@ -96,7 +96,8 @@ function PartnerRankingSection({
   const rawRanking = resp?.data?.ranked_partners ?? []
 
   // データあり（実績順）→ データなし（名前順）
-  const withData = rawRanking.filter((r) => r.sample_size > 0)
+  const withData = rawRanking
+    .filter((r): r is RankedPartner & { win_probability: number } => r.sample_size > 0 && r.win_probability != null)
     .sort((a, b) => b.win_probability - a.win_probability)
   const noData = rawRanking.filter((r) => r.sample_size === 0)
     .sort((a, b) => a.partner_name.localeCompare(b.partner_name, 'ja'))
@@ -364,12 +365,16 @@ export function PairSimulationPanel({ players }: PairSimulationPanelProps) {
             <span className="text-xs ss-num" style={{ color: subText }}>{t('lineup.n_matches', { n: d.sample_size, defaultValue: '{{n}} matches' })}</span>
           </div>
 
-          <div className="text-center">
-            <p className="text-4xl font-bold ss-num" style={{ color: winProbColor(d.win_probability, isLight) }}>
-              {Math.round(d.win_probability * 100)}%
-            </p>
-            <p className="text-xs mt-1" style={{ color: subText }}>{t('prediction.win_probability')}</p>
-          </div>
+          {d.win_probability != null ? (
+            <div className="text-center">
+              <p className="text-4xl font-bold ss-num" style={{ color: winProbColor(d.win_probability, isLight) }}>
+                {Math.round(d.win_probability * 100)}%
+              </p>
+              <p className="text-xs mt-1" style={{ color: subText }}>{t('prediction.win_probability')}</p>
+            </div>
+          ) : (
+            <p className="text-sm text-center py-2" style={{ color: subText }}>{t('prediction.pair_no_record')}</p>
+          )}
 
           {d.sample_size > 0 && (
             <div>

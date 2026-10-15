@@ -122,7 +122,10 @@ def compute_shot_influence_v2(
         set_num_by_set=set_num_by_set,
     )
     state_table = epv_result.get("state_table", [])
-    global_win_rate: float = epv_result.get("global_win_rate", 0.5)
+    global_win_rate = epv_result.get("global_win_rate")
+    if global_win_rate is None:
+        # ラリー 0 件: 状態表も空で出力に現れない内部基準値のみ
+        global_win_rate = 0.5
 
     # state_key → epv マップ
     # state_table の各行は state 単位の勝率 (win_rate) を持つ。

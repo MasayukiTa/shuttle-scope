@@ -35,10 +35,11 @@ interface PlayerSummary {
 }
 
 interface PredictionData {
-  win_probability: number
+  // 試合 0 件のとき backend は null を返す (偽の 50% を出さない)
+  win_probability: number | null
   set_distribution: { '2-0': number; '2-1': number; '1-2': number; '0-2': number }
   score_bands: Record<string, { my_low: number; my_high: number; opp_low: number; opp_high: number; sample: number }>
-  win_probability_v2?: number
+  win_probability_v2?: number | null
   feature_breakdown?: {
     base_wr: number
     recent_wr: number
@@ -191,7 +192,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
     )
   }
 
-  if (!d || d.sample_size === 0) {
+  if (!d || d.sample_size === 0 || d.win_probability == null) {
     return (
       <div className="space-y-4">
         <NoDataMessage sampleSize={0} minRequired={1} unit="試合" />
