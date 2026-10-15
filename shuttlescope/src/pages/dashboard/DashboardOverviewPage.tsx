@@ -384,7 +384,9 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                 <SectionTitle>{t('auto.DashboardOverviewPage.k9')}</SectionTitle>
                 {descriptive && <ConfidenceBadge sampleSize={descriptive.total_rallies} unit="rallies" className="text-[10px] shrink-0" />}
               </div>
-              {loadingDescriptive || !descriptive?.server_win_rate ? <LoadingRow /> : (
+              {loadingDescriptive ? <LoadingRow /> : !descriptive?.server_win_rate ? (
+                <p className={`${textMuted} text-sm text-center py-4`}>{t('auto.DashboardOverviewPage.k3')}</p>
+              ) : (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className={`text-sm ${textSecondary}`}>
@@ -422,7 +424,10 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
         <ConfidenceCalibration playerId={playerId} />
       </RoleGuard>
 
-      {/* スコア推移 / インターバルレポート 共通試合選択 */}
+      {/* スコア推移 / インターバルレポート 共通試合選択。
+          点差推移・推定勝率は試合の勝敗そのものなので player には出さない (製品ルール)。 */}
+      {!isPlayer && (
+      <>
       <div className={`${card} rounded-ss-lg shadow-card p-4`}>
         {/* 試合セレクタ（前後ナビ付き） */}
         <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
@@ -497,6 +502,8 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
           <p className={`${textMuted} text-sm text-center py-6`}>{t('auto.DashboardOverviewPage.k14')}</p>
         )}
       </div>
+      </>
+      )}
 
       {/* 試合一覧テーブル (最下部に配置) — 全試合数百件規模になると下のスコア推移
          に届かなくなるため、概要タブの最下部へ移動 (2026-05-19)。

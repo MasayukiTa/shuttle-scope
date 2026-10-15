@@ -6,6 +6,7 @@ import { useCardTheme } from '@/hooks/useCardTheme'
 import { PipelineJobBadge } from '@/components/analysis/PipelineJobBadge'
 import { statusColor, DownloadStatus } from './matchListUtils'
 import { MIcon } from '@/components/common/MIcon'
+import { useAuth } from '@/hooks/useAuth'
 
 // MatchListPage のモバイル用カード 1 件分。純粋抽出 (behavior 不変)。
 // theme / navigate / t は内部で解決し、ページ固有の操作だけ callback で受ける。
@@ -26,6 +27,10 @@ export function MatchCard({
   const navigate = useNavigate()
   const { t } = useTranslation()
   const { isLight, textMuted, textSecondary } = useCardTheme()
+  // 製品ルール: player には勝敗・スコアを見せない (API も result / final_score を返さない)。
+  // 値が無いまま描くと t('match.results.undefined') の生キーが出るため、行ごと描かない。
+  const { role } = useAuth()
+  const isPlayer = role === 'player'
 
   return (
     <div
@@ -40,12 +45,14 @@ export function MatchCard({
           {m.tournament_level}
         </span>
         <span className="font-medium text-sm truncate flex-1">{m.tournament}</span>
-        <span className={clsx(
-          'text-xs font-bold shrink-0',
-          m.result === 'win' ? 'text-green-400' : m.result === 'loss' ? 'text-red-400' : 'text-gray-400'
-        )}>
-          {t(`match.results.${m.result}`)}
-        </span>
+        {!isPlayer && (
+          <span className={clsx(
+            'text-xs font-bold shrink-0',
+            m.result === 'win' ? 'text-green-400' : m.result === 'loss' ? 'text-red-400' : 'text-gray-400'
+          )}>
+            {t(`match.results.${m.result}`)}
+          </span>
+        )}
       </div>
 
       {/* 2行目: 対戦情報 */}
@@ -58,7 +65,7 @@ export function MatchCard({
         {m.player_b?.needs_review && (
           <span className="text-[10px] text-yellow-400 bg-yellow-400/10 px-1 rounded shrink-0">{t('match.list.tentative')}</span>
         )}
-        {m.final_score && (
+        {!isPlayer && m.final_score && (
           <span className={`text-xs ${textMuted} ml-auto shrink-0`}>{m.final_score}</span>
         )}
       </div>

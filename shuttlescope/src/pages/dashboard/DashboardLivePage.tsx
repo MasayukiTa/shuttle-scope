@@ -56,6 +56,8 @@ export function DashboardLivePage({ playerId, matches }: Props) {
   const isLight = useIsLightMode()
   const { role } = useAuth()
   const isCoachish = role === 'coach' || role === 'analyst' || role === 'admin'
+  // 製品ルール: player には試合の勝敗・スコア・勝率推定を見せない
+  const isPlayer = role === 'player'
   const [benchMode, setBenchMode] = useBenchMode()
 
   // 速報用ステート
@@ -78,7 +80,7 @@ export function DashboardLivePage({ playerId, matches }: Props) {
   const matchOptions = matches.map((m) => ({
     value: m.match_id,
     label: `${m.date ?? t('common.unknown_date', 'Date unknown')} vs ${m.opponent}`,
-    suffix: m.result === 'win' ? t('common.win_short', 'W') : t('common.lose_short', 'L'),
+    suffix: isPlayer ? undefined : (m.result === 'win' ? t('common.win_short', 'W') : t('common.lose_short', 'L')),
     searchText: `${m.date ?? ''} ${m.opponent} ${m.tournament} ${m.tournament_level}`,
   }))
 
@@ -131,7 +133,7 @@ export function DashboardLivePage({ playerId, matches }: Props) {
                     return {
                       value: m.match_id,
                       label: `${m.date} vs ${m.opponent}`,
-                      suffix: scoreStr || (m.result === 'win' ? t('common.win_short', 'W') : t('common.lose_short', 'L')),
+                      suffix: isPlayer ? undefined : (scoreStr || (m.result === 'win' ? t('common.win_short', 'W') : t('common.lose_short', 'L'))),
                       searchText: `${m.date} ${m.opponent} ${m.tournament}`,
                     }
                   })}
@@ -164,6 +166,8 @@ export function DashboardLivePage({ playerId, matches }: Props) {
                 </div>
               </div>
 
+              {/* 地点 (ラリー) ピッカーは点差推移グラフ = 勝敗そのもの。player には出さない */}
+              {!isPlayer && (
               <div className="flex flex-col gap-1">
                 <label className={`text-xs ${textMuted}`}>{t('analysis.flash.rally_select')}</label>
                 <button
@@ -175,6 +179,7 @@ export function DashboardLivePage({ playerId, matches }: Props) {
                   {flashRallyNum ? `Set ${flashSet} — R.${flashRallyNum}` : t('live.all_rallies_pick_from_chart', 'All rallies (pick from chart)')}
                 </button>
               </div>
+              )}
             </div>
           </div>
 
@@ -207,7 +212,7 @@ export function DashboardLivePage({ playerId, matches }: Props) {
           {/* 推奨アドバイスランキング (ベンチモード時は非表示で集中度UP) */}
           {!benchMode && <RecommendationRanking playerId={playerId} />}
 
-          {showRallyPicker && flashMatchId && (
+          {!isPlayer && showRallyPicker && flashMatchId && (
             <RallyPickerModal
               matchId={flashMatchId}
               matchLabel={(() => {
@@ -227,8 +232,9 @@ export function DashboardLivePage({ playerId, matches }: Props) {
         </div>
       </ErrorBoundary>
 
-      {/* インターバルレポート (ベンチモード時は非表示) */}
-      {!benchMode && (
+      {/* インターバルレポート (ベンチモード時は非表示)。
+          セット別の推定勝率・勝ちラリー数 = 勝敗そのものなので player には出さない */}
+      {!benchMode && !isPlayer && (
       <ErrorBoundary>
         <div className={`${card} rounded-ss-lg shadow-card p-4`}>
           <div className="flex items-center justify-between mb-3">

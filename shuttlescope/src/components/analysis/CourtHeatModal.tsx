@@ -347,18 +347,18 @@ export function CourtHeatModal({
                 {detail && (
                   <div>
                     <p className="text-[11px] font-semibold text-[var(--ss-good)] mb-2 px-1">{t('court_heat_modal.header_hit')}</p>
-                    <ZoneDetailPanel detail={detail} mode="hit" t={t} isLight={isLight} />
+                    <ZoneDetailPanel detail={detail} mode="hit" t={t} isLight={isLight} hideOutcome={role === 'player'} />
                   </div>
                 )}
                 {detailLand && (
                   <div>
                     <p className="text-[11px] font-semibold text-[var(--ss-emphasis)] mb-2 px-1">{t('court_heat_modal.header_land_transformed')}</p>
-                    <ZoneDetailPanel detail={detailLand} mode="land" t={t} isLight={isLight} />
+                    <ZoneDetailPanel detail={detailLand} mode="land" t={t} isLight={isLight} hideOutcome={role === 'player'} />
                   </div>
                 )}
               </div>
             ) : detail ? (
-              <ZoneDetailPanel detail={detail} mode={heatmapType} t={t} isLight={isLight} />
+              <ZoneDetailPanel detail={detail} mode={heatmapType} t={t} isLight={isLight} hideOutcome={role === 'player'} />
             ) : null}
           </div>
         </div>
@@ -374,11 +374,14 @@ function ZoneDetailPanel({
   mode,
   t,
   isLight,
+  hideOutcome = false,
 }: {
   detail: ZoneDetailResponse['data']
   mode: 'hit' | 'land'
   t: ReturnType<typeof useTranslation>['t']
   isLight: boolean
+  /** true: 勝率・得点数を描かない (player ロール。API も返さない) */
+  hideOutcome?: boolean
 }) {
   const zoneName = ZONE_KEYS.includes(detail.zone as typeof ZONE_KEYS[number])
     ? t(`court_heat_modal.zones.${detail.zone}`)
@@ -406,21 +409,25 @@ function ZoneDetailPanel({
           </span>
         </div>
 
-        <div className="grid grid-cols-3 gap-3 text-center">
+        <div className={hideOutcome ? 'grid grid-cols-1 gap-3 text-center' : 'grid grid-cols-3 gap-3 text-center'}>
           <div>
             <p className="ss-num text-2xl font-bold text-[var(--ss-t1)]">{detail.count}</p>
             <p className="text-[11px] text-[var(--ss-t3)]">{t('court_heat_modal.stat_strokes')}</p>
           </div>
-          <div>
-            <p className="ss-num text-2xl font-bold" style={{ color: winRateColor }}>
-              {detail.win_rate != null ? `${(detail.win_rate * 100).toFixed(0)}%` : '—'}
-            </p>
-            <p className="text-[11px] text-[var(--ss-t3)]">{t('court_heat_modal.stat_win_rate')}</p>
-          </div>
-          <div>
-            <p className="ss-num text-2xl font-bold text-[var(--ss-t1)]">{detail.wins}</p>
-            <p className="text-[11px] text-[var(--ss-t3)]">{t('court_heat_modal.stat_wins')}</p>
-          </div>
+          {!hideOutcome && (
+            <>
+              <div>
+                <p className="ss-num text-2xl font-bold" style={{ color: winRateColor }}>
+                  {detail.win_rate != null ? `${(detail.win_rate * 100).toFixed(0)}%` : '—'}
+                </p>
+                <p className="text-[11px] text-[var(--ss-t3)]">{t('court_heat_modal.stat_win_rate')}</p>
+              </div>
+              <div>
+                <p className="ss-num text-2xl font-bold text-[var(--ss-t1)]">{detail.wins}</p>
+                <p className="text-[11px] text-[var(--ss-t3)]">{t('court_heat_modal.stat_wins')}</p>
+              </div>
+            </>
+          )}
         </div>
       </div>
 

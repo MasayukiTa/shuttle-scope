@@ -14,6 +14,7 @@ import { SetIntervalSummary } from '@/components/analysis/SetIntervalSummary'
 import { RallyClipNavigator } from '@/components/analysis/RallyClipNavigator'
 import { useReviewBundle } from '@/hooks/useReviewBundle'
 import { ReviewBundleProvider } from '@/contexts/ReviewBundleContext'
+import { useAuth } from '@/hooks/useAuth'
 
 interface MatchSummary {
   match_id: number
@@ -40,6 +41,10 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 
 export function DashboardReviewPage({ playerId, filters, matches }: Props) {
   const { t } = useTranslation()
+  // 製品ルール: player には試合の勝敗 (W/L・スコア推移) を見せない。
+  // API は player には result を返さないため、そのまま判定すると全試合が「L」になる。
+  const { role } = useAuth()
+  const isPlayer = role === 'player'
   // 振り返りタブ一括取得: 1 リクエストで 6 カード分のデータを先読みする
   const bundleQuery = useReviewBundle(playerId, filters)
   const [selectedMatchId, setSelectedMatchId] = useState<number | null>(null)
@@ -58,7 +63,7 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
   const matchOptions = matches.map((m) => ({
     value: m.match_id,
     label: `${m.date ?? t('common.unknown_date', 'Date unknown')} vs ${m.opponent}`,
-    suffix: m.result === 'win' ? t('common.win_short', 'W') : t('common.lose_short', 'L'),
+    suffix: isPlayer ? undefined : (m.result === 'win' ? t('common.win_short', 'W') : t('common.lose_short', 'L')),
     searchText: `${m.date ?? ''} ${m.opponent} ${m.tournament}`,
   }))
 
@@ -122,7 +127,8 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
         </div>
       </ErrorBoundary>
 
-      {/* STEP 3: スコア推移 */}
+      {/* STEP 3: スコア推移 (点差 = 勝敗そのものなので player には出さない) */}
+      {!isPlayer && (
       <ErrorBoundary>
         <div>
           <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider mb-2 pl-1">
@@ -149,6 +155,7 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
           </div>
         </div>
       </ErrorBoundary>
+      )}
 
       {/* STEP 3.5: ラリークリップナビゲーター */}
       <ErrorBoundary>

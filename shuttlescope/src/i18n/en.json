@@ -1723,6 +1723,7 @@
       "zone": "Zone",
       "win_rate": "Point-won rate",
       "effectiveness": "Effectiveness",
+      "count_short": "{{n}}",
       "top_zones": "Top effective zones"
     },
     "vulnerability_map": {
@@ -3403,6 +3404,7 @@
       "avg_rally": "Avg rally length: {{v}}",
       "insufficient": "Insufficient data (available after annotation)",
       "avg_strokes": "Avg {{v}} strokes",
+      "rally_count": "Rallies",
       "n_rallies": "{{n}} rallies"
     },
     "SetIntervalSummary": {

@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { A_GOOD, B_BAD, N_GRAY } from '@/styles/colors'
+import { useAuth } from '@/hooks/useAuth'
 
 interface IntervalReportProps {
   matchId: number
@@ -50,6 +51,10 @@ interface IntervalReportResponse {
 
 export function IntervalReport({ matchId, completedSet, onSetClick }: IntervalReportProps) {
   const { t } = useTranslation()
+  // 製品ルール: 推定勝率・セット別の勝ちラリー数は勝敗そのもの。player には描かず、取得もしない
+  // (読む先 /analysis/interval_report は research ルーターで player に 403)。
+  const { role } = useAuth()
+  const isPlayer = role === 'player'
 
   const { data: resp, isLoading } = useQuery({
     queryKey: ['analysis-interval-report', matchId, completedSet],
@@ -58,8 +63,10 @@ export function IntervalReport({ matchId, completedSet, onSetClick }: IntervalRe
         match_id: matchId,
         completed_set_num: completedSet,
       }),
-    enabled: !!matchId,
+    enabled: !!matchId && !isPlayer,
   })
+
+  if (isPlayer) return null
 
   if (isLoading) {
     return <div className="text-[var(--ss-t3)] text-sm py-4 text-center">{t('analysis.loading')}</div>
