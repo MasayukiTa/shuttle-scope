@@ -264,20 +264,29 @@ def advice_post_match_save(db: Session, player_id: int, match_id: int, ctx: Auth
         if base_rallies >= MIN_RALLIES:
             base_wr = base_wins / base_rallies
 
-    parts = [
-        f"本試合のラリー勝率: {round(wr * 100, 1)}% ({wins}/{len(rallies)})",
-    ]
-    if base_wr is not None:
-        diff = (wr - base_wr) * 100
-        sign = "+" if diff >= 0 else ""
-        parts.append(
-            f"直近 30 日平均 {round(base_wr * 100, 1)}% との差 {sign}{diff:.1f}pp"
-        )
+    if ctx.role == "player":
+        # 選手には生の勝率・差を出さない (製品ルール)。ラリー数のみ
+        parts = [f"本試合は {len(rallies)} ラリーが記録されています"]
+    else:
+        parts = [
+            f"本試合のラリー勝率: {round(wr * 100, 1)}% ({wins}/{len(rallies)})",
+        ]
+        if base_wr is not None:
+            diff = (wr - base_wr) * 100
+            sign = "+" if diff >= 0 else ""
+            parts.append(
+                f"直近 30 日平均 {round(base_wr * 100, 1)}% との差 {sign}{diff:.1f}pp"
+            )
     if primary:
         st, cnt, ratio = primary
         parts.append(f"最頻ショット: {st} ({cnt} 本 / {round(ratio * 100, 1)}%)")
 
-    severity = "positive" if (base_wr is not None and wr > base_wr) else "info"
+    # 選手には比較結果 (勝率が上か下か) を severity でも漏らさない
+    severity = (
+        "positive"
+        if (ctx.role != "player" and base_wr is not None and wr > base_wr)
+        else "info"
+    )
     text = " / ".join(parts) + "。"
     return _ok_response(AdviceCard(
         text=text,
@@ -512,10 +521,11 @@ def advice_growth_timeline(db: Session, player_id: int, ctx: AuthCtx) -> dict:
     diff_pp = (cur_wr - prev_wr) * 100
     sign = "+" if diff_pp >= 0 else ""
     if ctx.role == "player":
-        # 伸びしろ表現
+        # 選手には生の勝率・差を出さない (製品ルール)。集計量のみを中立に示す
         text = (
-            f"直近 8 週のラリー勝率 {round(cur_wr * 100, 1)}% は、その前 8 週 ({round(prev_wr * 100, 1)}%) と"
-            f"比較して {sign}{diff_pp:.1f}pp。試合 {cur_m} 件 / ラリー {cur_r} 件が集計対象です。"
+            f"直近 8 週は試合 {cur_m} 件 / ラリー {cur_r} 件、"
+            f"その前 8 週は試合 {prev_m} 件 / ラリー {prev_r} 件が集計対象です。"
+            "試合を振り返るときの目安にしてください。"
         )
     else:
         text = (
