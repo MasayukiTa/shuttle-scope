@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { WIN, LOSS } from '@/styles/colors'
 import { useCardTheme } from '@/hooks/useCardTheme'
+import { useAuth } from '@/hooks/useAuth'
 import { AnalysisFilters } from '@/types'
 import { MIcon } from '@/components/common/MIcon'
 
@@ -101,6 +102,9 @@ export function ZoneMapModal({
   const { t } = useTranslation()
 
   const { card, textHeading, textMuted, textFaint, isLight } = useCardTheme()
+  // 製品ルール: player には勝率 / 有効度 / 得点数を見せない (API も返さない)。件数ベースに切り替える。
+  const { role } = useAuth()
+  const isPlayer = role === 'player'
   const [selectedZone, setSelectedZone] = useState<string | null>(initialZone)
 
   const accentColor = type === 'effective' ? WIN : LOSS
@@ -146,8 +150,9 @@ export function ZoneMapModal({
     if (type === 'effective') {
       const d = effectiveZoneData[zone]
       if (!d) return 0
-      const maxEff = Math.max(...Object.values(effectiveZoneData).map((z) => z.effectiveness), 0.001)
-      return d.effectiveness / maxEff
+      const pick = (z: Partial<ZoneEffectiveness>) => (isPlayer ? z.total_count : z.effectiveness) ?? 0
+      const maxEff = Math.max(...Object.values(effectiveZoneData).map((z) => pick(z)), 0.001)
+      return pick(d) / maxEff
     } else {
       const d = vulnZoneData[zone]
       if (!d) return 0
@@ -169,6 +174,11 @@ export function ZoneMapModal({
     if (type === 'effective') {
       const d = effectiveZoneData[zone]
       if (!d) return <span className="text-[10px]" style={{ color: isLight ? '#94a3b8' : '#6b7280' }}>—</span>
+      if (isPlayer) {
+        return (
+          <p className="font-bold text-sm" style={{ color: WIN }}>{t('analysis.effective_map.count_short', { n: d.total_count ?? 0 })}</p>
+        )
+      }
       return (
         <>
           <p className="font-bold text-sm" style={{ color: WIN }}>{(d.win_rate * 100).toFixed(0)}%</p>
@@ -266,6 +276,7 @@ export function ZoneMapModal({
                 type={type}
                 data={detailData as ZoneDetailPanelProps['data']}
                 isLight={isLight}
+                hideOutcome={isPlayer && type === 'effective'}
                 card={card}
                 textHeading={textHeading}
                 textMuted={textMuted}
@@ -295,13 +306,15 @@ interface ZoneDetailPanelProps {
     hit_zones: { zone: string; count: number }[]
   }
   isLight: boolean
+  /** true: 得点率・得点数を描かない (player ロール) */
+  hideOutcome?: boolean
   card: string
   textHeading: string
   textMuted: string
   textFaint: string
 }
 
-function ZoneDetailPanel({ type, data, isLight, card, textHeading, textMuted, textFaint }: ZoneDetailPanelProps) {
+function ZoneDetailPanel({ type, data, isLight, hideOutcome = false, card, textHeading, textMuted, textFaint }: ZoneDetailPanelProps) {
   const { t } = useTranslation()
   const zoneName = ZONE_LABELS[data.zone] ?? data.zone
   const accentColor = type === 'effective' ? WIN : LOSS
@@ -325,21 +338,25 @@ function ZoneDetailPanel({ type, data, isLight, card, textHeading, textMuted, te
           <span className={`text-lg font-bold ${textHeading}`}>{zoneName}</span>
           <span className={`text-sm font-mono ${textMuted}`}>({data.zone})</span>
         </div>
-        <div className="grid grid-cols-3 gap-3 text-center">
+        <div className={hideOutcome ? 'grid grid-cols-1 gap-3 text-center' : 'grid grid-cols-3 gap-3 text-center'}>
           <div>
             <p className={`text-2xl font-bold ss-num ${textHeading}`}>{data.total_count}</p>
             <p className={`text-[11px] ${textMuted}`}>{t('auto.ZoneMapModal.k3')}</p>
           </div>
-          <div>
-            <p className="text-2xl font-bold ss-num" style={{ color: accentColor }}>
-              {rateValue != null ? `${(rateValue * 100).toFixed(0)}%` : '—'}
-            </p>
-            <p className={`text-[11px] ${textMuted}`}>{rateLabel}</p>
-          </div>
-          <div>
-            <p className="text-2xl font-bold ss-num" style={{ color: accentColor }}>{countValue ?? 0}</p>
-            <p className={`text-[11px] ${textMuted}`}>{countLabel}</p>
-          </div>
+          {!hideOutcome && (
+            <>
+              <div>
+                <p className="text-2xl font-bold ss-num" style={{ color: accentColor }}>
+                  {rateValue != null ? `${(rateValue * 100).toFixed(0)}%` : '—'}
+                </p>
+                <p className={`text-[11px] ${textMuted}`}>{rateLabel}</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold ss-num" style={{ color: accentColor }}>{countValue ?? 0}</p>
+                <p className={`text-[11px] ${textMuted}`}>{countLabel}</p>
+              </div>
+            </>
+          )}
         </div>
       </div>
 

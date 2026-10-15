@@ -392,6 +392,7 @@ export function MatchListPage() {
       round: form.round,
       date: form.date,
       format: form.format,
+      // player の編集では result を持たない (undefined は JSON から落ち、DB の値を保持する)
       result: form.result,
       player_a_id: Number(finalPlayerAId),
       player_b_id: Number(finalPlayerBId),
@@ -878,7 +879,8 @@ export function MatchListPage() {
                   <th className="text-left py-2 pr-4">{t('match.list.col_level')}</th>
                   <th className="text-left py-2 pr-4">{t('match.list.col_format')}</th>
                   <th className="text-left py-2 pr-4">{t('match.list.col_opponent')}</th>
-                  {/* ソート可能: 結果 */}
+                  {/* ソート可能: 結果 (製品ルール: player には勝敗の列・ソートを出さない) */}
+                  {role !== 'player' && (
                   <th
                     className="text-left py-2 pr-4 cursor-pointer select-none hover:opacity-80 whitespace-nowrap"
                     onClick={() => handleMatchSort('result')}
@@ -890,6 +892,7 @@ export function MatchListPage() {
                         : <MIcon name="unfold_more" size={12} className="opacity-30" />}
                     </span>
                   </th>
+                  )}
                   <th className="text-left py-2 pr-4 whitespace-nowrap">
                     <div className="relative inline-block" ref={statusDropdownRef}>
                       <button
@@ -1147,7 +1150,10 @@ export function MatchListPage() {
                   </div>
                 )}
 
-                {/* 結果 / スコア */}
+                {/* 結果 / スコア。player の編集では API が result / final_score を返さず、
+                    空の選択肢が「勝ち」に見えて誤入力を誘うため出さない (PUT にも含めない)。 */}
+                {!(role === 'player' && editingMatchId !== null) && (
+                <>
                 <div>
                   <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.result')}</label>
                   <select
@@ -1170,6 +1176,8 @@ export function MatchListPage() {
                     placeholder={t('auto.MatchListPage.k18')}
                   />
                 </div>
+                </>
+                )}
 
                 {/* 動画 */}
                 <div className="col-span-1 sm:col-span-2">

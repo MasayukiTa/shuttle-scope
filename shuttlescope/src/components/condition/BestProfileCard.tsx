@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useBestProfile } from '@/hooks/useConditionAnalytics'
 import { MIcon } from '@/components/common/MIcon'
+import { useAuth } from '@/hooks/useAuth'
 
 interface Props {
   playerId: number
@@ -64,6 +65,10 @@ function MatchConfidenceBadge({ n, isLight }: { n: number; isLight: boolean }) {
 export function BestProfileCard({ playerId, isLight }: Props) {
   const { t } = useTranslation()
   const { data, isLoading, error } = useBestProfile(playerId)
+  // 製品ルール: player には勝率 (in/outside・改善見込み) と「勝った試合/負けた試合」の対比を見せない。
+  // API は win_rate_in_profile / win_rate_outside を返さない。目標レンジ (件数・実測値) のみ表示する。
+  const { role } = useAuth()
+  const isPlayer = role === 'player'
 
   const panelBg    = 'bg-[var(--ss-surface-1)]'
   const borderColor = 'border-[var(--ss-border)]'
@@ -72,8 +77,8 @@ export function BestProfileCard({ playerId, isLight }: Props) {
   const sepColor    = 'border-[var(--ss-border)]'
   const topFactors = (data?.key_factors ?? []).slice(0, 5)
   const n = data?.n_matches ?? 0
-  const inRate  = data?.win_rate_in_profile
-  const outRate = data?.win_rate_outside
+  const inRate  = isPlayer ? null : data?.win_rate_in_profile
+  const outRate = isPlayer ? null : data?.win_rate_outside
   const rateDiff = (inRate != null && outRate != null)
     ? Math.round((inRate - outRate) * 100)
     : null
@@ -163,7 +168,7 @@ export function BestProfileCard({ playerId, isLight }: Props) {
                   const targetMean = (f as { target_mean?: number | null }).target_mean ?? null
                   const restMean = (f as { rest_mean?: number | null }).rest_mean ?? null
                   const direction = (f as { direction?: string | null }).direction ?? null
-                  const showDetail = targetMean != null && restMean != null && Math.abs(targetMean - restMean) > 0.01
+                  const showDetail = !isPlayer && targetMean != null && restMean != null && Math.abs(targetMean - restMean) > 0.01
                   let detailText: string | null = null
                   if (showDetail) {
                     const isHigherBetter = direction === 'higher_when_winning'

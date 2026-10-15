@@ -1732,6 +1732,7 @@
       "zone": "ゾーン",
       "win_rate": "得点率",
       "effectiveness": "有効度",
+      "count_short": "{{n}}件",
       "top_zones": "有効上位ゾーン"
     },
     "vulnerability_map": {
@@ -3413,6 +3414,7 @@
       "avg_rally": "平均ラリー長: {{v}}",
       "insufficient": "データ不足（アノテーション後に解析可能）",
       "avg_strokes": "平均 {{v}} 打",
+      "rally_count": "ラリー数",
       "n_rallies": "{{n}} ラリー"
     },
     "SetIntervalSummary": {

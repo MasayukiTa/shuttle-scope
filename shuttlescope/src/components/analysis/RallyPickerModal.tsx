@@ -14,6 +14,7 @@ import { apiGet } from '@/api/client'
 import { WIN, LOSS } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { catColor } from '@/styles/categoricalPalette'
+import { useAuth } from '@/hooks/useAuth'
 
 interface RallyPoint {
   rally_num: number
@@ -64,13 +65,18 @@ export function RallyPickerModal({ matchId, matchLabel, initialSet, selectedRall
   const { t } = useTranslation()
 
   const isLight = useIsLightMode()
+  const { role } = useAuth()
+  // 製品ルール: 点差推移は試合の勝敗そのもの。player には描かず、取得もしない。
+  const isPlayer = role === 'player'
   const [activeSet, setActiveSet] = useState(initialSet)
 
   const { data: resp, isLoading } = useQuery({
     queryKey: ['rally-picker-score', matchId],
     queryFn: () => apiGet<{ success: boolean; data: { sets: SetData[] } }>('/analysis/score_progression', { match_id: matchId }),
-    enabled: !!matchId,
+    enabled: !!matchId && !isPlayer,
   })
+
+  if (isPlayer) return null
 
   const sets = resp?.data?.sets ?? []
   const currentSet = sets.find((s) => s.set_num === activeSet) ?? sets[0]

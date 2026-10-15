@@ -14,6 +14,7 @@ import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { BAR, getTooltipStyle, AXIS_TICK, AXIS_TICK_LIGHT } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { useAuth } from '@/hooks/useAuth'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 import { fmtPct } from '@/utils/format'
 
@@ -49,6 +50,9 @@ interface TournamentResponse {
 export function TournamentComparison({ playerId, filters = DEFAULT_FILTERS }: TournamentComparisonProps) {
   const { t } = useTranslation()
   const isLight = useIsLightMode()
+  // 製品ルール: player には勝率を見せない。大会レベル別の試合数の比較に置き換える。
+  const { role } = useAuth()
+  const isPlayer = role === 'player'
 
   const fp = {
     ...(filters.result !== 'all' ? { result: filters.result } : {}),
@@ -91,20 +95,30 @@ export function TournamentComparison({ playerId, filters = DEFAULT_FILTERS }: To
       <ResponsiveContainer width="100%" height={180}>
         <BarChart data={chartData} margin={{ top: 5, right: 16, left: 0, bottom: 5 }}>
           <XAxis dataKey="label" tick={{ fill: isLight ? AXIS_TICK_LIGHT : AXIS_TICK, fontSize: 11 }} />
-          <YAxis
-            tick={{ fill: isLight ? AXIS_TICK_LIGHT : AXIS_TICK, fontSize: 11 }}
-            domain={[0, 100]}
-            tickFormatter={(v) => `${v}%`}
-          />
+          {isPlayer ? (
+            <YAxis allowDecimals={false} tick={{ fill: isLight ? AXIS_TICK_LIGHT : AXIS_TICK, fontSize: 11 }} />
+          ) : (
+            <YAxis
+              tick={{ fill: isLight ? AXIS_TICK_LIGHT : AXIS_TICK, fontSize: 11 }}
+              domain={[0, 100]}
+              tickFormatter={(v) => `${v}%`}
+            />
+          )}
           <Tooltip
             contentStyle={{ ...getTooltipStyle(isLight), borderRadius: 6 }}
-            formatter={(value: number) => [`${value}%`, t('analysis.tournament_comparison.win_rate')]}
+            formatter={(value: number) => isPlayer
+              ? [`${value}`, t('analysis.tournament_comparison.match_count')]
+              : [`${value}%`, t('analysis.tournament_comparison.win_rate')]}
           />
-          <Bar dataKey="win_rate" fill={BAR} radius={[3, 3, 0, 0]} name={t('analysis.tournament_comparison.win_rate')} />
+          {isPlayer ? (
+            <Bar dataKey="match_count" fill={BAR} radius={[3, 3, 0, 0]} name={t('analysis.tournament_comparison.match_count')} />
+          ) : (
+            <Bar dataKey="win_rate" fill={BAR} radius={[3, 3, 0, 0]} name={t('analysis.tournament_comparison.win_rate')} />
+          )}
         </BarChart>
       </ResponsiveContainer>
-      <p className="text-[11px] text-gray-400">{t('analysis.tournament_comparison.bar_note')}</p>
-      {levels.some(isLowSample) && (
+      {!isPlayer && <p className="text-[11px] text-gray-400">{t('analysis.tournament_comparison.bar_note')}</p>}
+      {!isPlayer && levels.some(isLowSample) && (
         <p className="text-[11px] text-gray-400">{t('analysis.tournament_comparison.low_sample_hint')}</p>
       )}
 
@@ -115,7 +129,7 @@ export function TournamentComparison({ playerId, filters = DEFAULT_FILTERS }: To
             <tr className="text-gray-400 border-b border-gray-700">
               <th className="text-left py-1.5 pr-3">{t('analysis.tournament_comparison.level')}</th>
               <th className="text-center py-1.5 pr-3">{t('analysis.tournament_comparison.match_count')}</th>
-              <th className="text-center py-1.5 pr-3">{t('analysis.tournament_comparison.win_rate')}</th>
+              {!isPlayer && <th className="text-center py-1.5 pr-3">{t('analysis.tournament_comparison.win_rate')}</th>}
               <th className="text-right py-1.5 pr-2">{t('analysis.tournament_comparison.avg_rally')}</th>
             </tr>
           </thead>
@@ -126,12 +140,14 @@ export function TournamentComparison({ playerId, filters = DEFAULT_FILTERS }: To
                   {l.level}
                 </td>
                 <td className="py-1.5 pr-3 text-center num-cell ss-num" style={{ color: isLight ? '#334155' : '#d1d5db' }}>{l.match_count}</td>
-                <td
-                  className="py-1.5 pr-3 text-center font-semibold num-cell ss-num"
-                  style={{ color: isLowSample(l) ? (isLight ? '#64748b' : '#9ca3af') : (isLight ? '#334155' : '#d1d5db') }}
-                >
-                  {fmtPct(l.win_rate)}
-                </td>
+                {!isPlayer && (
+                  <td
+                    className="py-1.5 pr-3 text-center font-semibold num-cell ss-num"
+                    style={{ color: isLowSample(l) ? (isLight ? '#64748b' : '#9ca3af') : (isLight ? '#334155' : '#d1d5db') }}
+                  >
+                    {fmtPct(l.win_rate)}
+                  </td>
+                )}
                 <td className="py-1.5 pr-2 text-right num-cell ss-num" style={{ color: isLight ? '#334155' : '#d1d5db' }}>
                   {typeof l.avg_rally_length === 'number' ? l.avg_rally_length.toFixed(1) : '—'}
                 </td>

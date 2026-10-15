@@ -6,6 +6,7 @@ import { useCardTheme } from '@/hooks/useCardTheme'
 import { PipelineJobBadge } from '@/components/analysis/PipelineJobBadge'
 import { statusColor, DownloadStatus } from './matchListUtils'
 import { MIcon } from '@/components/common/MIcon'
+import { useAuth } from '@/hooks/useAuth'
 
 // MatchListPage のデスクトップ用テーブル行 1 件分。純粋抽出 (behavior 不変)。
 export interface MatchRowProps {
@@ -27,6 +28,9 @@ export function MatchRow({
   const navigate = useNavigate()
   const { t } = useTranslation()
   const { isLight, textMuted, textSecondary } = useCardTheme()
+  // 製品ルール: player には勝敗・スコア列を出さない (ヘッダ列は MatchListPage 側で同じ条件で非表示)。
+  const { role } = useAuth()
+  const isPlayer = role === 'player'
 
   return (
     <tr className={`border-b ${isLight ? 'border-gray-100 hover:bg-gray-50' : 'border-gray-800 hover:bg-gray-800/50'}`}>
@@ -65,15 +69,17 @@ export function MatchRow({
           </span>
         )}
       </td>
-      <td className="py-2 pr-4">
-        <span className={clsx(
-          'font-medium',
-          m.result === 'win' ? 'text-green-400' : m.result === 'loss' ? 'text-red-400' : 'text-gray-400'
-        )}>
-          {t(`match.results.${m.result}`)}
-        </span>
-        {m.final_score && <span className={`${textMuted} ml-1 text-xs`}>{m.final_score}</span>}
-      </td>
+      {!isPlayer && (
+        <td className="py-2 pr-4">
+          <span className={clsx(
+            'font-medium',
+            m.result === 'win' ? 'text-green-400' : m.result === 'loss' ? 'text-red-400' : 'text-gray-400'
+          )}>
+            {t(`match.results.${m.result}`)}
+          </span>
+          {m.final_score && <span className={`${textMuted} ml-1 text-xs`}>{m.final_score}</span>}
+        </td>
+      )}
       <td className="py-2 pr-4">
         <div className="flex items-center gap-2">
           <div className={`w-20 h-1.5 ${isLight ? 'bg-gray-200' : 'bg-gray-700'} rounded-full overflow-hidden`}>

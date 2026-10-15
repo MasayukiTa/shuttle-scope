@@ -8,6 +8,7 @@ import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 import { WIN } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { useAuth } from '@/hooks/useAuth'
 import { ZoneMapModal, ZoneEffectiveness } from './ZoneMapModal'
 import { MIcon } from '@/components/common/MIcon'
 
@@ -40,6 +41,10 @@ const ZONE_LABELS: Record<string, string> = {
 export function EffectiveDistributionMap({ playerId, filters = DEFAULT_FILTERS }: EffectiveDistributionMapProps) {
   const { t } = useTranslation()
   const isLight = useIsLightMode()
+  // 製品ルール: player には勝率 / 有効度 / 得点数 (勝敗の取り出し) を見せない。
+  // API は count 系 (total_count / top_zones) だけを返すので、件数ベースの表示に切り替える。
+  const { role } = useAuth()
+  const isPlayer = role === 'player'
   const [modalOpen, setModalOpen] = useState(false)
   const [initialZone, setInitialZone] = useState<string | null>(null)
 
@@ -73,7 +78,10 @@ export function EffectiveDistributionMap({ playerId, filters = DEFAULT_FILTERS }
     return <div className="text-[var(--ss-t3)] text-sm py-4 text-center">{t('analysis.no_data')}</div>
   }
 
-  const maxEffectiveness = Math.max(...Object.values(zoneData).map((z) => z.effectiveness), 0.001)
+  // 強度の指標: 通常は effectiveness、player は件数 (total_count)。欠落値は 0 扱い (NaN にしない)。
+  const metric = (z: Partial<ZoneEffectiveness> | undefined): number =>
+    (isPlayer ? z?.total_count : z?.effectiveness) ?? 0
+  const maxEffectiveness = Math.max(...Object.values(zoneData).map((z) => metric(z)), 0.001)
 
   function handleZoneClick(zone: string) {
     setInitialZone(zone)
@@ -110,7 +118,7 @@ export function EffectiveDistributionMap({ playerId, filters = DEFAULT_FILTERS }
             <div key={ri} className="flex gap-0.5">
               {row.map((zone) => {
                 const d = zoneData[zone]
-                const intensity = d ? d.effectiveness / maxEffectiveness : 0
+                const intensity = d ? metric(d) / maxEffectiveness : 0
                 const isTop = topZones.includes(zone)
                 const bgColor = d
                   ? `rgba(${parseInt(WIN.slice(1, 3), 16)}, ${parseInt(WIN.slice(3, 5), 16)}, ${parseInt(WIN.slice(5, 7), 16)}, ${(intensity * 0.7).toFixed(2)})`
@@ -133,7 +141,11 @@ export function EffectiveDistributionMap({ playerId, filters = DEFAULT_FILTERS }
                     <p className="text-[10px] font-medium text-[var(--ss-t1)]">
                       {ZONE_LABELS[zone]}
                     </p>
-                    {d ? (
+                    {d && isPlayer ? (
+                      <p className="ss-num font-bold text-xs" style={{ color: WIN }}>
+                        {t('analysis.effective_map.count_short', { n: d.total_count ?? 0 })}
+                      </p>
+                    ) : d ? (
                       <>
                         <p className="ss-num font-bold text-xs" style={{ color: WIN }}>
                           {(d.win_rate * 100).toFixed(0)}%
@@ -162,14 +174,20 @@ export function EffectiveDistributionMap({ playerId, filters = DEFAULT_FILTERS }
               <thead>
                 <tr className="text-[var(--ss-t3)] border-b border-[var(--ss-border)]">
                   <th className="text-left py-1.5 pr-3">{t('analysis.effective_map.zone')}</th>
-                  <th className="text-center py-1.5 pr-3">{t('auto.EffectiveDistributionMap.k3')}</th>
-                  <th className="text-center py-1.5 pr-3">{t('analysis.effective_map.win_rate')}</th>
-                  <th className="text-right py-1.5">{t('analysis.effective_map.effectiveness')}</th>
+                  {isPlayer ? (
+                    <th className="text-right py-1.5">{t('auto.ZoneMapModal.k3')}</th>
+                  ) : (
+                    <>
+                      <th className="text-center py-1.5 pr-3">{t('auto.EffectiveDistributionMap.k3')}</th>
+                      <th className="text-center py-1.5 pr-3">{t('analysis.effective_map.win_rate')}</th>
+                      <th className="text-right py-1.5">{t('analysis.effective_map.effectiveness')}</th>
+                    </>
+                  )}
                 </tr>
               </thead>
               <tbody>
                 {Object.entries(zoneData)
-                  .sort((a, b) => b[1].effectiveness - a[1].effectiveness)
+                  .sort((a, b) => metric(b[1]) - metric(a[1]))
                   .slice(0, 5)
                   .map(([zone, d]) => (
                     <tr
@@ -181,11 +199,17 @@ export function EffectiveDistributionMap({ playerId, filters = DEFAULT_FILTERS }
                         {ZONE_LABELS[zone] ?? zone}
                         {topZones.includes(zone) && <MIcon name="star" size={9} className="ml-1" />}
                       </td>
-                      <td className="py-1.5 pr-3 text-center text-[var(--ss-t2)] ss-num">{d.win_count}</td>
-                      <td className="py-1.5 pr-3 text-center ss-num">
-                        <span className="font-semibold" style={{ color: WIN }}>{(d.win_rate * 100).toFixed(1)}%</span>
-                      </td>
-                      <td className="py-1.5 text-right text-[var(--ss-t3)] ss-num">{(d.effectiveness * 100).toFixed(1)}</td>
+                      {isPlayer ? (
+                        <td className="py-1.5 text-right text-[var(--ss-t2)] ss-num">{d.total_count ?? 0}</td>
+                      ) : (
+                        <>
+                          <td className="py-1.5 pr-3 text-center text-[var(--ss-t2)] ss-num">{d.win_count}</td>
+                          <td className="py-1.5 pr-3 text-center ss-num">
+                            <span className="font-semibold" style={{ color: WIN }}>{(d.win_rate * 100).toFixed(1)}%</span>
+                          </td>
+                          <td className="py-1.5 text-right text-[var(--ss-t3)] ss-num">{(d.effectiveness * 100).toFixed(1)}</td>
+                        </>
+                      )}
                     </tr>
                   ))}
               </tbody>
