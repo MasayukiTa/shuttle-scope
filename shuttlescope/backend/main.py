@@ -1429,6 +1429,8 @@ class PlayerAccessControlMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(PlayerAccessControlMiddleware)
+from backend.middleware.player_response_sanitiser import PlayerResponseSanitiserMiddleware as _PlayerRespSanMW  # player response choke point
+app.add_middleware(_PlayerRespSanMW)
 
 
 # ─── Exfil 異常検知: 大量データ要求を閾値超過で警告ログ + 極端時のみブロック ──
