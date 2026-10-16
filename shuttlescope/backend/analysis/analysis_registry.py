@@ -212,7 +212,7 @@ _RAW: list[dict] = [
         "evidence_level": "directional",
         "caution": "マルコフモデルは定常性を仮定します。実際の戦術変化は反映されません。",
         "assumptions": "1次マルコフ過程。状態はスコア差・ラリーフェーズ・モメンタムの3次元。",
-        "promotion_criteria": "校正品質（Brier score）の改善・N≥500ラリー",
+        "promotion_criteria": "予測の当たり具合（ブライアスコア）の改善・N≥500ラリー",
         "page": "dashboard",
         "section": "advanced",
     },
@@ -247,7 +247,7 @@ _RAW: list[dict] = [
         "evidence_level": "exploratory",
         "caution": "反事実的比較は仮説的シナリオです。実際に選択されなかった行動の価値は直接観測できません。",
         "assumptions": "文脈一致（前のショット種別・スコア圧力・ラリーフェーズ）による比較。交絡制御は行っていません。",
-        "promotion_criteria": "傾向スコアによる交絡制御・ブートストラップCI導入・N≥500コンテキスト一致",
+        "promotion_criteria": "傾向スコアによる交絡制御・ブートストラップ法による信頼区間の導入・N≥500コンテキスト一致",
         "page": "dashboard",
         "section": "research",
     },
@@ -287,13 +287,13 @@ _RAW: list[dict] = [
         "evidence_level": "directional",
         "caution": (
             "EPVはマルコフモデルに基づく探索的指標です。定常性仮定・独立ラリー仮定を含みます。"
-            "**球種ごとの攻撃力の大きさは、このデータから推定した値ではなく、"
-            "あらかじめ人が決めた定数表です** (epv_engine.py の _SHOT_ATTACK_WEIGHT)。"
+            "球種ごとの攻撃力の大きさは、このデータから推定した値ではなく、"
+            "あらかじめ人が決めた固定の値です。"
             "順序の傾向として読み、数値そのものを根拠にしないでください。"
         ),
         "assumptions": (
             "定常1次マルコフ過程。各ラリーは独立と仮定。"
-            "球種の攻撃力は手置きの定数表 (smash=0.85 … defensive=0.25) を使用。"
+            "球種の攻撃力は人が決めた固定値 (スマッシュ 0.85 … 守備的ショット 0.25) を使用。"
         ),
         "promotion_criteria": "校正品質改善・状態定義の安定化・N≥500ラリー",
         "page": "dashboard",
@@ -306,17 +306,16 @@ _RAW: list[dict] = [
         "evidence_level": "exploratory",
         "caution": (
             "ショット影響度は因果効果ではありません。"
-            "**「相関ベース」ですらなく、球種の攻撃重みと品質係数は"
-            "このデータに当てはめた値ではない手置きの定数表です** "
-            "(shot_influence.py の _SHOT_ATTACK_WEIGHT / _SHOT_QUALITY_WEIGHT)。"
+            "「相関ベース」ですらなく、球種の攻撃重みと品質係数は"
+            "このデータに当てはめた値ではなく、人が決めた固定値です。"
             "注釈から来るのは球種・品質・勝敗の組合せだけで、大きさは人が決めた値です。"
         ),
         "assumptions": (
             "ラリー内ポジション・攻撃重み・勝敗の積として影響度を定義します。"
-            "攻撃重み (smash=0.85 … defensive=0.25) と品質係数 (excellent=1.5 … poor=0.6) は"
-            "手置きの定数で、選手やデータに合わせた較正はしていません。"
+            "攻撃重み (スマッシュ 0.85 … 守備的ショット 0.25) と品質係数 (優 1.5 … 不良 0.6) は"
+            "人が決めた固定値で、選手やデータに合わせた調整はしていません。"
         ),
-        "promotion_criteria": "状態条件付き推定・BootstrapCIの導入",
+        "promotion_criteria": "状態条件付き推定・ブートストラップ法による信頼区間の導入",
         "page": "dashboard",
         "section": "research",
     },
@@ -335,9 +334,9 @@ _RAW: list[dict] = [
         "tier": "research",
         "evidence_level": "exploratory",
         "min_recommended_sample": 5,
-        "caution": "コミュニティ peer 比較は admin-only の experimental 機能です。k-anonymity (N>=5) と demo 除外で privacy を担保しています。",
-        "assumptions": "非デモプレイヤー全体から cohort を抽出し、p25/p50/p75/mean/sd の集計値のみ返します。個別選手の値は返しません。",
-        "promotion_criteria": "opt-in consent 機能の実装・cohort 設計の妥当性検証",
+        "caution": "コミュニティ内の比較は管理者だけが使える試験的な機能です。5 人未満の集団は表示せず、デモデータも除外して個人が特定されないようにしています。",
+        "assumptions": "デモ以外の選手全体から比較対象の集団を抽出し、四分位・平均・標準偏差の集計値だけを返します。個別選手の値は返しません。",
+        "promotion_criteria": "本人の同意を得て参加する仕組みの実装・比較対象の集団の取り方の妥当性検証",
         "page": "dashboard",
         "section": "research",
     },
@@ -358,8 +357,8 @@ _RAW: list[dict] = [
         "evidence_level": "exploratory",
         "min_recommended_sample": 20,
         "caution": (
-            "ナッシュ均衡推定は fictitious play による近似値です。"
-            "サンプルが少ない状態ではラプラス平滑化が強く効くため、"
+            "ナッシュ均衡の推定は、仮想対戦を繰り返して求めた近似値です。"
+            "サンプルが少ない状態では補正が強く効くため、"
             "推定値の分散が大きくなります。"
         ),
         "assumptions": (
@@ -368,7 +367,7 @@ _RAW: list[dict] = [
             "行動ラベルは 18 ショット種別を 7 バケットに粗化しています。"
         ),
         "promotion_criteria": (
-            "状態ごと N≥50 サンプル・Bootstrap CI 幅 0.1 以内・"
+            "状態ごと N≥50 サンプル・ブートストラップ区間の幅 0.1 以内・"
             "クロス大会安定性確認・傾向スコアによる交絡制御導入"
         ),
         "page": "analyst",
@@ -381,15 +380,15 @@ _RAW: list[dict] = [
         "evidence_level": "exploratory",
         "min_recommended_sample": 40,
         "caution": (
-            "split-conformal 法は周辺被覆保証を与えますが、"
-            "条件付き被覆（グループ別の保証）は与えません。"
-            "グループ別 P(win) はラプラス平滑化した経験的勝率であり、"
+            "コンフォーマル予測は全体としての的中率は保証しますが、"
+            "グループ別の的中率までは保証しません。"
+            "グループ別の勝率は少数でも極端な値にならないよう補正した実績値で、"
             "サンプル数が少ないグループでは不確実性が大きくなります。"
         ),
         "assumptions": (
-            "校正点とテスト点が交換可能（独立同分布）であることを仮定します。"
-            "決定論的 50/50 分割（偶数インデックス=校正、奇数=テスト）を使用します。"
-            "ベーススコアラーはグループ別 Laplace 平滑化勝率です。"
+            "校正用データと検証用データが同じ性質（独立同分布）であることを仮定します。"
+            "データは偶数番目を校正用、奇数番目を検証用に半分ずつ分けます。"
+            "基準になる予測はグループ別の補正済み勝率です。"
         ),
         "promotion_criteria": (
             "N≥200 ラリー・グループ別条件付き被覆率の検証・"
@@ -406,14 +405,14 @@ _RAW: list[dict] = [
         "evidence_level": "exploratory",
         "min_recommended_sample": 20,
         "caution": (
-            "二重頑健 (DR) オフポリシー評価の推定値です。サンプルが少ない状態では "
-            "重要度重みの分散が大きく、bootstrap CI が広がります。"
+            "二重に頑健な方策評価による推定値です。サンプルが少ない状態では "
+            "重みのばらつきが大きく、信頼区間が広がります。"
         ),
         "assumptions": (
-            "各ラリーを単段の文脈付きバンディット (状態・行動・勝敗) として扱います。"
-            "対象方策は経験的勝率の softmax (高価値行動へのシフト) です。"
+            "各ラリーを 1 回の選択 (状態・行動・勝敗) として扱います。"
+            "評価する方策は、実績の勝率が高い行動へ選択を寄せたものです。"
         ),
-        "promotion_criteria": "状態ごと N≥50・CI 幅 0.1 以内・代替方策設計の妥当性検証",
+        "promotion_criteria": "状態ごと N≥50・信頼区間の幅 0.1 以内・比較する方策の設計の妥当性検証",
         "page": "analyst",
         "section": "research",
     },
@@ -423,12 +422,12 @@ _RAW: list[dict] = [
         "evidence_level": "exploratory",
         "min_recommended_sample": 3,
         "caution": (
-            "着地点分布間の最適輸送 (エントロピー正則化 Sinkhorn) 距離による棋風比較です。"
+            "着地点の分布どうしの距離 (最適輸送) による棋風の比較です。"
             "試合数が少ない選手の分布は不安定なため、比較は試合数の十分な選手に限ります。"
         ),
         "assumptions": (
-            "9 ゾーンのコート重心座標を地点距離 (Euclidean) として使用します。"
-            "比較コホートは閲覧権限のある選手のみ (cross-team は除外)。"
+            "9 ゾーンのコート上の中心位置を使い、ゾーン間の直線距離で測ります。"
+            "比較対象は閲覧権限のある選手のみで、他チームの選手は除外します。"
         ),
         "promotion_criteria": "選手ごと N≥10 試合・ゾーン重心の実測校正・複数特徴量への拡張",
         "page": "analyst",
@@ -441,14 +440,14 @@ _RAW: list[dict] = [
         "evidence_level": "exploratory",
         "min_recommended_sample": 5,
         "caution": (
-            "階層ベイズ Bradley-Terry による対戦勝率予測です。直接対戦が少ない組では "
-            "partial pooling で全体平均へ縮約され、CI が広くなります (過信を避けるため)。"
+            "階層ベイズ (ブラッドリー・テリーモデル) による対戦勝率の予測です。直接対戦が少ない組では "
+            "全体の平均に近づけて推定するため、信頼区間が広くなります (過信を避けるため)。"
         ),
         "assumptions": (
-            "選手強度 θ_i ~ Normal(μ, τ²) の階層事前を仮定し MAP + Laplace 近似で推定。"
-            "P(i 勝ち)=σ(θ_i − θ_j)。コホートは閲覧権限のある選手のみ。"
+            "各選手の強さが全体の分布から生まれると仮定し、近似計算で推定します。"
+            "勝つ確率は 2 人の強さの差から求めます。比較対象は閲覧権限のある選手のみです。"
         ),
-        "promotion_criteria": "対戦ごと N≥5・予測較正 (reliability) 検証・共変量 (大会/コンディション) 導入",
+        "promotion_criteria": "対戦ごと N≥5・予測の当たり具合の検証・大会やコンディションなどの要因の導入",
         "page": "analyst",
         "section": "research",
     },
@@ -464,7 +463,7 @@ _RAW: list[dict] = [
         "evidence_level": "directional",
         "caution": "状態ベースEPVは状態定義の品質に強く依存します。状態数が少ない場合、推定が不安定になります。",
         "assumptions": "スコアフェーズ・セット番号・ラリーバケット・サーブ側の4次元状態を使用します。",
-        "promotion_criteria": "状態ごとN≥50・CI幅0.2以内・クロス大会安定性",
+        "promotion_criteria": "状態ごとN≥50・信頼区間の幅0.2以内・クロス大会安定性",
         "page": "analyst",
         "section": "spine_rs1",
     },
@@ -473,7 +472,7 @@ _RAW: list[dict] = [
         "sample_unit": "rallies",
         "tier": "research",
         "evidence_level": "exploratory",
-        "caution": "状態-行動価値（Q値）はサンプル不足で高分散になります。少サンプル時はCI幅が広くなります。",
+        "caution": "状態-行動価値（Q値）はサンプル不足で高分散になります。少サンプル時は信頼区間の幅が広くなります。",
         "assumptions": "行動＝ショット種別。即時報酬＝ラリー勝率とします（将来割引なし）。",
         "promotion_criteria": "状態×行動ごとN≥30・信頼区間幅0.3以内",
         "page": "analyst",
@@ -485,7 +484,7 @@ _RAW: list[dict] = [
         "tier": "research",
         "evidence_level": "exploratory",
         "caution": "ハザード推定はラリー結果の時系列パターンから計算します。実際の疲労と一致しない場合があります。",
-        "assumptions": "Cox比例ハザードを簡略化した離散ハザードを使用します。実際の体力測定は使用しません。",
+        "assumptions": "生存分析（コックス比例ハザード）を簡略化した、ラリーごとの崩れやすさの推定を使います。実際の体力測定は使用しません。",
         "promotion_criteria": "生理指標との相関確認・N≥500ラリーの安定確認",
         "page": "analyst",
         "section": "spine_rs3",
@@ -495,9 +494,9 @@ _RAW: list[dict] = [
         "sample_unit": "rallies",
         "tier": "research",
         "evidence_level": "exploratory",
-        "caution": "CF-1フェーズ: ブートストラップCIによる不確実性推定を含みます。傾向スコア制御はまだ未実装です。",
-        "assumptions": "文脈一致（多次元）でのブートストラップCI。重複サポート閾値あり。",
-        "promotion_criteria": "傾向スコア重み付け（CF-2）・N≥500コンテキスト・対戦相手条件付き（CF-3）",
+        "caution": "反事実比較の第 1 段階で、ブートストラップ法による信頼区間（不確実性）を含みます。傾向スコアによる偏りの補正は含まれません。",
+        "assumptions": "文脈が一致するプレーを多次元で比べ、ブートストラップ法で信頼区間を求めます。比較に使える最低限の重なりの基準があります。",
+        "promotion_criteria": "傾向スコアによる重み付け・N≥500コンテキスト・対戦相手のタイプ別の比較",
         "page": "analyst",
         "section": "spine_rs3",
     },
@@ -507,8 +506,8 @@ _RAW: list[dict] = [
         "tier": "research",
         "evidence_level": "exploratory",
         "caution": "経験的ベイズは事前分布をデータから推定します。データ不足時は強く事前に引っ張られます。",
-        "assumptions": "Beta-Binomial モデルによる対戦勝率の縮小推定。利き手・フォーマット情報は考慮します。",
-        "promotion_criteria": "ブリアスコア改善・N≥50試合・外部検証",
+        "assumptions": "勝ち負けの回数から事前の傾向を加味して対戦勝率を推定します（ベータ二項モデル）。利き手・試合形式の情報は考慮します。",
+        "promotion_criteria": "予測の当たり具合（ブライアスコア）の改善・N≥50試合・外部データでの検証",
         "page": "analyst",
         "section": "spine_rs4",
     },
@@ -529,8 +528,8 @@ _RAW: list[dict] = [
         "tier": "research",
         "evidence_level": "exploratory",
         "caution": "ロール推定（前衛/後衛）はラリー構造のルールベース分類です。実際のポジションとは異なる場合があります。",
-        "assumptions": "ショット種別・順番から前衛/後衛ロールをルールで判定します。HMMは未実装です。",
-        "promotion_criteria": "トラッキングデータとの照合・HMM移行（DB-2）",
+        "assumptions": "ショット種別・順番から前衛/後衛ロールをルールで判定します。状態遷移モデルによる推定は未実装です。",
+        "promotion_criteria": "トラッキングデータとの照合・状態遷移モデルによる推定への移行",
         "page": "analyst",
         "section": "spine_rs5",
     },
@@ -545,7 +544,7 @@ _RAW: list[dict] = [
         "min_recommended_sample": 10,
         "caution": "ロール安定性は試合ごとのロール推定を集約したものです。元のロール推定がルールベースである制約をそのまま引き継ぎます。",
         "assumptions": "ダブルスの試合ごとに推定したロールの一貫性を測ります。試合数が少ないと安定性は測れません。",
-        "promotion_criteria": "ロール推定自体の精度検証（DB-2）",
+        "promotion_criteria": "ロール推定自体の精度検証",
         "page": "analyst",
         "section": "spine_rs5",
     },

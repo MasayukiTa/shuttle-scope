@@ -18,6 +18,7 @@ import { GrowthInsights } from '@/components/condition/GrowthInsights'
 import { BestProfileCard } from '@/components/condition/BestProfileCard'
 import { CorrelationScatter } from '@/components/condition/CorrelationScatter'
 import { DiscrepancyAlertList } from '@/components/condition/DiscrepancyAlertList'
+import { CollapsibleSection } from '@/components/common/CollapsibleSection'
 import { ConditionTrendChart } from '@/components/condition/ConditionTrendChart'
 import { ConditionCorrelationHeatmap } from '@/components/condition/ConditionCorrelationHeatmap'
 import { ConditionLagCorrelation } from '@/components/condition/ConditionLagCorrelation'
@@ -383,8 +384,17 @@ export function ConditionPage() {
             {/* 全ロール: 時系列トレンド（全幅） */}
             <ConditionTrendChart playerId={effectivePlayerId} isLight={isLight} />
 
-            {/* 追加解析: 全ロール共通 */}
-            <>
+            {/* 乖離アラート: 該当があれば最初に気づけるよう、折り畳みの外・主要カードの直後に置く */}
+            <DiscrepancyAlertList playerId={effectivePlayerId} isLight={isLight} />
+
+            {/* 追加解析: 全ロール共通。
+                同形のカードを 10 枚以上縦に並べると見るべき所が分からなくなるため、
+                上の 3 枚 (伸びしろ・ベスト・推移) を主役にし、残りは用途別に畳む。
+                閉じている間は子を描画しない (API 取得も走らない)。 */}
+            <CollapsibleSection
+              title={t('condition.analytics_group_relations')}
+              description={t('condition.analytics_group_relations_desc')}
+            >
               {/* 全幅: ヒートマップ（幅が必要） */}
               <ConditionCorrelationHeatmap playerId={effectivePlayerId} isLight={isLight} />
 
@@ -411,14 +421,16 @@ export function ConditionPage() {
                 <ConditionOutlierWeeks playerId={effectivePlayerId} isLight={isLight} />
                 <CorrelationScatter playerId={effectivePlayerId} isLight={isLight} />
               </div>
+            </CollapsibleSection>
 
-              {/* 全幅: タグ管理・比較 */}
+            {/* タグ管理・比較 */}
+            <CollapsibleSection
+              title={t('condition.analytics_group_tags')}
+              description={t('condition.analytics_group_tags_desc')}
+            >
               <ConditionTagManager playerId={effectivePlayerId} isLight={isLight} />
               <ConditionTagCompare playerId={effectivePlayerId} isLight={isLight} />
-
-              {/* 全幅: 乖離アラート */}
-              <DiscrepancyAlertList playerId={effectivePlayerId} isLight={isLight} />
-            </>
+            </CollapsibleSection>
 
           </div>
         ) : !authPlayerId ? (

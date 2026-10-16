@@ -210,9 +210,9 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
       </div>
 
       <ResearchNotice
-        caution={meta?.caution ?? 'ロール推定はルールベース（DB-1）です。アノテーション品質・試合状況によって精度が変動します。'}
-        assumptions="フロント/バックショット種別リストによるルールベース分類。HMM（DB-2）はBaum-Welchで学習。"
-        promotionCriteria="DB-2 HMM推定の安定確認・コーチによる妥当性確認・N≥100ラリー"
+        caution={meta?.caution ?? t('auto.DoublesRoleCard.caution_fallback')}
+        assumptions={t('auto.DoublesRoleCard.assumptions')}
+        promotionCriteria={t('auto.DoublesRoleCard.promotion')}
       />
 
       {isLoading ? (

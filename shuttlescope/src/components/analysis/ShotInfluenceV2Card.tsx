@@ -6,6 +6,7 @@ import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { AnalysisFilters } from '@/types'
 import { useTranslation } from 'react-i18next'
+import { shotLabel, stateKeyLabel } from '@/utils/analysisLabels'
 
 interface ShotTypeStat {
   avg: number
@@ -140,7 +141,7 @@ export function ShotInfluenceV2Card({ playerId, filters }: Props) {
               {topShots.map(([shotType, stat], i) => (
                 <div key={shotType} className="flex items-center gap-2">
                   <span className={`text-[10px] w-4 text-right ${textFaint} ss-num`}>{i + 1}</span>
-                  <span className={`text-xs w-24 truncate ${textSecondary}`}>{shotType}</span>
+                  <span className={`text-xs w-24 truncate ${textSecondary}`} title={shotLabel(t, shotType)}>{shotLabel(t, shotType)}</span>
                   <InfluenceBar value={stat.avg} max={maxInfluence} isLight={isLight} />
                   <span className={`text-[10px] shrink-0 ${textFaint} ss-num`}>
                     {stat.ci_low != null && stat.ci_high != null
@@ -160,7 +161,7 @@ export function ShotInfluenceV2Card({ playerId, filters }: Props) {
                 {stateBreakdown.map((sb) => (
                   <div key={sb.state_key} className={`${cardInnerAlt} rounded-ss-sm px-2 py-1.5`}>
                     <div className="flex items-center justify-between mb-1">
-                      <span className={`text-[10px] font-mono ${textSecondary}`}>{sb.state_key}</span>
+                      <span className={`text-[10px] ${textSecondary}`}>{stateKeyLabel(t, sb.state_key)}</span>
                       <span className={`text-[10px] ${textFaint} ss-num`}>
                         {t('auto.ShotInfluenceV2Card.epv_n', { epv: `${(sb.state_epv * 100).toFixed(1)}%`, n: sb.n_rallies })}
                       </span>
@@ -168,7 +169,7 @@ export function ShotInfluenceV2Card({ playerId, filters }: Props) {
                     <div className="flex flex-wrap gap-2">
                       {sb.top_shots.slice(0, 3).map((ts) => (
                         <span key={ts.shot_type} className="text-[10px]">
-                          <span className={textSecondary}>{ts.shot_type}</span>
+                          <span className={textSecondary}>{shotLabel(t, ts.shot_type)}</span>
                           <span className={`ml-0.5 ${textFaint} ss-num`}>({ts.avg_influence.toFixed(3)})</span>
                         </span>
                       ))}

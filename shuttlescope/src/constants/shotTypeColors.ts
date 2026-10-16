@@ -10,7 +10,9 @@
  *     lob (黄) / drive (緑) が混在表示される — 想定通り、混在で OK。
  *
  * カラーブラインド対応: 各カテゴリに形状アイコン併記 (◆ ● ■ ★ ✕)。
- * WCAG AAA: コントラスト比 7:1 以上 (黄色 mid のみ暗文字で対応)。
+ * コントラスト: 白文字に対し全カテゴリ WCAG AA (4.5:1) 以上。背景は 700 番台を使う
+ * (600 番台は green 3.3 / cyan 3.7 / amber 3.2 で AA を割っていた)。
+ * hover は明るくせず一段暗くする (明るくすると押下前に比率が落ちる)。
  */
 import { ShotType } from '@/types'
 
@@ -34,44 +36,44 @@ export interface CategoryStyle {
 }
 
 export const CATEGORY_STYLES: Record<ShotCategory, CategoryStyle> = {
-  // ATTACK 🟢 — green-600
+  // ATTACK 🟢 — green-700 (白文字 5.0:1)
   attack: {
-    bg: 'bg-green-600',
-    bgHover: 'hover:bg-green-500',
+    bg: 'bg-green-700',
+    bgHover: 'hover:bg-green-800',
     text: 'text-white',
-    border: 'border-green-700',
+    border: 'border-green-800',
     icon: '◆',
     labelKey: 'shot_color_categories.attack',
     ringSelected: 'ring-2 ring-white ring-offset-2 ring-offset-gray-900',
   },
-  // NET 🔵 — cyan-600
+  // NET 🔵 — cyan-700 (白文字 5.4:1)
   net: {
-    bg: 'bg-cyan-600',
-    bgHover: 'hover:bg-cyan-500',
+    bg: 'bg-cyan-700',
+    bgHover: 'hover:bg-cyan-800',
     text: 'text-white',
-    border: 'border-cyan-700',
+    border: 'border-cyan-800',
     icon: '●',
     labelKey: 'shot_color_categories.net',
     ringSelected: 'ring-2 ring-white ring-offset-2 ring-offset-gray-900',
   },
-  // MID 🟠 — amber-600 (白文字でも WCAG AA 通る濃い黄色)
+  // MID 🟠 — amber-700 (白文字 5.0:1)
   // 旧 yellow-500 + text-gray-900 はカラフルタイル群で「黒文字だけ浮く」見栄え不良
-  // だったため、他カテゴリと同じく白文字に統一できる amber-600 に変更
+  // だったため白文字に統一。amber-600 は白文字 3.2:1 で AA 未満だったため 700 にした
   mid: {
-    bg: 'bg-amber-600',
-    bgHover: 'hover:bg-amber-500',
+    bg: 'bg-amber-700',
+    bgHover: 'hover:bg-amber-800',
     text: 'text-white',
-    border: 'border-amber-700',
+    border: 'border-amber-800',
     icon: '■',
     labelKey: 'shot_color_categories.mid',
     ringSelected: 'ring-2 ring-white ring-offset-2 ring-offset-gray-900',
   },
-  // SERVE 🟣 — violet-600
+  // SERVE 🟣 — violet-700 (白文字 7.1:1。600 より彩度・明度を落として画面全体の紫の主張を弱める)
   serve: {
-    bg: 'bg-violet-600',
-    bgHover: 'hover:bg-violet-500',
+    bg: 'bg-violet-700',
+    bgHover: 'hover:bg-violet-800',
     text: 'text-white',
-    border: 'border-violet-700',
+    border: 'border-violet-800',
     icon: '★',
     labelKey: 'shot_color_categories.serve',
     ringSelected: 'ring-2 ring-white ring-offset-2 ring-offset-gray-900',
@@ -79,7 +81,7 @@ export const CATEGORY_STYLES: Record<ShotCategory, CategoryStyle> = {
   // OTHER ⚫ — slate-600
   other: {
     bg: 'bg-slate-600',
-    bgHover: 'hover:bg-slate-500',
+    bgHover: 'hover:bg-slate-700',
     text: 'text-white',
     border: 'border-slate-700',
     icon: '✕',

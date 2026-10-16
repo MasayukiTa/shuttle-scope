@@ -7,10 +7,23 @@ import {
 import { MIcon } from '@/components/common/MIcon'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useAuth } from '@/hooks/useAuth'
+import { securityEventLabel, severityLabel } from '@/utils/adminLabels'
 
 // 外部からの挙動を見る画面 (アプリ内操作の監査ログ = /audit-logs とは分離)。
 // security_events / request_logs / error_logs の 3 タブ。
 type SecTab = 'request' | 'security' | 'error'
+
+// 絞り込みに出すコード (表示名は security_log.event_names / security_log.severity)
+const SECURITY_EVENT_CODES = [
+  'probe_attempt',
+  'nginx_probe_block',
+  'nginx_rate_limit',
+  'rate_limit_hit',
+  'honeytoken_hit',
+  'path_normalization_block',
+  'ip_banned',
+] as const
+const SEVERITY_CODES = ['info', 'warn', 'critical'] as const
 
 export function SecurityLogPage() {
   const { t } = useTranslation()
@@ -87,7 +100,7 @@ export function SecurityLogPage() {
   }, [role, tab])
 
   if (role !== 'admin') {
-    return <div className={`p-6 ${textSecondary}`}>{t('security_log.admin_required', 'admin 権限が必要です')}</div>
+    return <div className={`p-6 ${textSecondary}`}>{t('security_log.admin_required')}</div>
   }
 
   const fmtTs = (ts: string) =>
@@ -124,22 +137,22 @@ export function SecurityLogPage() {
       <div className="flex flex-wrap items-end gap-3 flex-shrink-0">
         {tab === 'request' && <>
           <div>
-            <label className={`block text-xs mb-1 ${textMuted}`}>Method</label>
+            <label className={`block text-xs mb-1 ${textMuted}`}>{t('security_log.col_method')}</label>
             <select value={reqMethod} onChange={(e) => setReqMethod(e.target.value)} className={inputCls}>
-              <option value="">— all —</option>
+              <option value="">{t('security_log.all')}</option>
               <option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option>
             </select>
           </div>
           <div>
-            <label className={`block text-xs mb-1 ${textMuted}`}>Path prefix</label>
+            <label className={`block text-xs mb-1 ${textMuted}`}>{t('security_log.filter_path_prefix')}</label>
             <input value={reqPath} onChange={(e) => setReqPath(e.target.value)} className={`${inputCls} w-60`} placeholder="/api/auth/" />
           </div>
           <div>
-            <label className={`block text-xs mb-1 ${textMuted}`}>Status ≥</label>
+            <label className={`block text-xs mb-1 ${textMuted}`}>{t('security_log.filter_status_min')}</label>
             <input type="number" min={100} max={599} value={reqStatusMin} onChange={(e) => setReqStatusMin(e.target.value)} className={`${inputCls} w-20`} placeholder="400" />
           </div>
           <div>
-            <label className={`block text-xs mb-1 ${textMuted}`}>Status ≤</label>
+            <label className={`block text-xs mb-1 ${textMuted}`}>{t('security_log.filter_status_max')}</label>
             <input type="number" min={100} max={599} value={reqStatusMax} onChange={(e) => setReqStatusMax(e.target.value)} className={`${inputCls} w-20`} placeholder="599" />
           </div>
           <div>
@@ -147,33 +160,31 @@ export function SecurityLogPage() {
             <input value={reqIp} onChange={(e) => setReqIp(e.target.value)} className={`${inputCls} w-40`} placeholder="192.168. or full" />
           </div>
           <div>
-            <label className={`block text-xs mb-1 ${textMuted}`}>Source</label>
+            <label className={`block text-xs mb-1 ${textMuted}`}>{t('security_log.filter_source')}</label>
             <select value={reqSource} onChange={(e) => setReqSource(e.target.value)} className={inputCls}>
-              <option value="">— all —</option>
-              <option value="nginx">nginx (edge)</option>
-              <option value="backend">backend (app)</option>
+              <option value="">{t('security_log.all')}</option>
+              <option value="nginx">{t('security_log.source_edge')}</option>
+              <option value="backend">{t('security_log.source_app')}</option>
             </select>
           </div>
         </>}
         {tab === 'security' && <>
           <div>
-            <label className={`block text-xs mb-1 ${textMuted}`}>Event type</label>
+            <label className={`block text-xs mb-1 ${textMuted}`}>{t('security_log.filter_event_type')}</label>
             <select value={secType} onChange={(e) => setSecType(e.target.value)} className={inputCls}>
-              <option value="">— all —</option>
-              <option>probe_attempt</option>
-              <option>nginx_probe_block</option>
-              <option>nginx_rate_limit</option>
-              <option>rate_limit_hit</option>
-              <option>honeytoken_hit</option>
-              <option>path_normalization_block</option>
-              <option>ip_banned</option>
+              <option value="">{t('security_log.all')}</option>
+              {SECURITY_EVENT_CODES.map((code) => (
+                <option key={code} value={code}>{securityEventLabel(t, code)}</option>
+              ))}
             </select>
           </div>
           <div>
-            <label className={`block text-xs mb-1 ${textMuted}`}>Severity</label>
+            <label className={`block text-xs mb-1 ${textMuted}`}>{t('security_log.filter_severity')}</label>
             <select value={secSeverity} onChange={(e) => setSecSeverity(e.target.value)} className={inputCls}>
-              <option value="">— all —</option>
-              <option>info</option><option>warn</option><option>critical</option>
+              <option value="">{t('security_log.all')}</option>
+              {SEVERITY_CODES.map((code) => (
+                <option key={code} value={code}>{severityLabel(t, code)}</option>
+              ))}
             </select>
           </div>
           <div>
@@ -183,16 +194,16 @@ export function SecurityLogPage() {
         </>}
         {tab === 'error' && <>
           <div>
-            <label className={`block text-xs mb-1 ${textMuted}`}>Exception type</label>
+            <label className={`block text-xs mb-1 ${textMuted}`}>{t('security_log.filter_exception_type')}</label>
             <input value={errExcType} onChange={(e) => setErrExcType(e.target.value)} className={`${inputCls} w-48`} placeholder="ValueError" />
           </div>
           <div>
-            <label className={`block text-xs mb-1 ${textMuted}`}>Path prefix</label>
+            <label className={`block text-xs mb-1 ${textMuted}`}>{t('security_log.filter_path_prefix')}</label>
             <input value={errPath} onChange={(e) => setErrPath(e.target.value)} className={`${inputCls} w-60`} placeholder="/api/" />
           </div>
         </>}
         <div>
-          <label className={`block text-xs mb-1 ${textMuted}`}>{t('auth.audit_log.limit', '件数')}</label>
+          <label className={`block text-xs mb-1 ${textMuted}`}>{t('auth.audit_log.limit')}</label>
           <input type="number" min={1} max={5000} value={limit}
             onChange={(e) => setLimit(Math.max(1, Math.min(5000, parseInt(e.target.value, 10) || 200)))}
             className={`${inputCls} w-24`} />
@@ -200,9 +211,9 @@ export function SecurityLogPage() {
         <button onClick={load} disabled={loading}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-ss-md bg-[var(--ss-brand)] text-white hover:bg-[var(--ss-brand-hover)] duration-base ease-out text-sm disabled:opacity-50`}>
           <MIcon name="refresh" size={14} className={loading ? 'animate-spin' : ''} />
-          {t('auth.audit_log.refresh', '再読込')}
+          {t('auth.audit_log.refresh')}
         </button>
-        <span className={`text-xs ${textMuted}`}>表示: {tab === 'request' ? reqRows.length : tab === 'security' ? secRows.length : errRows.length} 件</span>
+        <span className={`text-xs ${textMuted}`}>{t('security_log.shown_count', { n: tab === 'request' ? reqRows.length : tab === 'security' ? secRows.length : errRows.length })}</span>
       </div>
 
       {error && <div className="text-sm text-[var(--ss-danger-text)] flex-shrink-0">{error}</div>}
@@ -213,17 +224,17 @@ export function SecurityLogPage() {
             <thead className={`sticky top-0 z-10 bg-[var(--ss-surface-2)]`}>
               <tr className={textMuted}>
                 <th className="text-left px-2 py-2">ID</th>
-                <th className="text-left px-2 py-2">Time</th>
-                <th className="text-left px-2 py-2">Exception</th>
-                <th className="text-left px-2 py-2">Method</th>
-                <th className="text-left px-2 py-2">Path</th>
-                <th className="text-left px-2 py-2 hidden md:table-cell">Message</th>
-                <th className="text-left px-2 py-2 hidden lg:table-cell">request_id</th>
+                <th className="text-left px-2 py-2">{t('security_log.col_time')}</th>
+                <th className="text-left px-2 py-2">{t('security_log.col_exception')}</th>
+                <th className="text-left px-2 py-2">{t('security_log.col_method')}</th>
+                <th className="text-left px-2 py-2">{t('security_log.col_path')}</th>
+                <th className="text-left px-2 py-2 hidden md:table-cell">{t('security_log.col_message')}</th>
+                <th className="text-left px-2 py-2 hidden lg:table-cell">{t('security_log.col_request_id')}</th>
               </tr>
             </thead>
             <tbody>
               {errRows.length === 0 ? (
-                <tr><td colSpan={7} className={`px-3 py-6 text-center ${textMuted}`}>{t('auth.audit_log.empty', 'データなし')}</td></tr>
+                <tr><td colSpan={7} className={`px-3 py-6 text-center ${textMuted}`}>{t('auth.audit_log.empty')}</td></tr>
               ) : errRows.map((r) => (
                 <tr key={r.id} className={`border-t ${borderLine} align-top`}>
                   <td className={`px-2 py-1.5 font-mono ${textMuted}`}>{r.id}</td>
@@ -242,21 +253,21 @@ export function SecurityLogPage() {
             <thead className={`sticky top-0 z-10 bg-[var(--ss-surface-2)]`}>
               <tr className={textMuted}>
                 <th className="text-left px-2 py-2">ID</th>
-                <th className="text-left px-2 py-2">Time</th>
-                <th className="text-left px-2 py-2">Src</th>
-                <th className="text-left px-2 py-2">Method</th>
-                <th className="text-left px-2 py-2">Path</th>
-                <th className="text-left px-2 py-2">Status</th>
-                <th className="text-left px-2 py-2">Dur(ms)</th>
+                <th className="text-left px-2 py-2">{t('security_log.col_time')}</th>
+                <th className="text-left px-2 py-2">{t('security_log.col_source')}</th>
+                <th className="text-left px-2 py-2">{t('security_log.col_method')}</th>
+                <th className="text-left px-2 py-2">{t('security_log.col_path')}</th>
+                <th className="text-left px-2 py-2">{t('security_log.col_status')}</th>
+                <th className="text-left px-2 py-2">{t('security_log.col_duration')}</th>
                 <th className="text-left px-2 py-2">IP</th>
-                <th className="text-left px-2 py-2 hidden md:table-cell">User</th>
+                <th className="text-left px-2 py-2 hidden md:table-cell">{t('security_log.col_user')}</th>
                 <th className="text-left px-2 py-2 hidden lg:table-cell">UA</th>
-                <th className="text-left px-2 py-2 hidden xl:table-cell">Query</th>
+                <th className="text-left px-2 py-2 hidden xl:table-cell">{t('security_log.col_query')}</th>
               </tr>
             </thead>
             <tbody>
               {reqRows.length === 0 ? (
-                <tr><td colSpan={11} className={`px-3 py-6 text-center ${textMuted}`}>{t('auth.audit_log.empty', 'データなし')}</td></tr>
+                <tr><td colSpan={11} className={`px-3 py-6 text-center ${textMuted}`}>{t('auth.audit_log.empty')}</td></tr>
               ) : reqRows.map((r) => (
                 <tr key={r.id} className={`border-t ${borderLine}`}>
                   <td className={`px-2 py-1.5 font-mono ${textMuted}`}>{r.id}</td>
@@ -279,24 +290,24 @@ export function SecurityLogPage() {
             <thead className={`sticky top-0 z-10 bg-[var(--ss-surface-2)]`}>
               <tr className={textMuted}>
                 <th className="text-left px-2 py-2">ID</th>
-                <th className="text-left px-2 py-2">Time</th>
-                <th className="text-left px-2 py-2">Event</th>
-                <th className="text-left px-2 py-2">Sev</th>
+                <th className="text-left px-2 py-2">{t('security_log.col_time')}</th>
+                <th className="text-left px-2 py-2">{t('security_log.col_event')}</th>
+                <th className="text-left px-2 py-2">{t('security_log.col_severity')}</th>
                 <th className="text-left px-2 py-2">IP</th>
-                <th className="text-left px-2 py-2">Path</th>
-                <th className="text-left px-2 py-2 hidden md:table-cell">Method</th>
-                <th className="text-left px-2 py-2 hidden lg:table-cell">Details</th>
+                <th className="text-left px-2 py-2">{t('security_log.col_path')}</th>
+                <th className="text-left px-2 py-2 hidden md:table-cell">{t('security_log.col_method')}</th>
+                <th className="text-left px-2 py-2 hidden lg:table-cell">{t('security_log.col_details')}</th>
               </tr>
             </thead>
             <tbody>
               {secRows.length === 0 ? (
-                <tr><td colSpan={8} className={`px-3 py-6 text-center ${textMuted}`}>{t('auth.audit_log.empty', 'データなし')}</td></tr>
+                <tr><td colSpan={8} className={`px-3 py-6 text-center ${textMuted}`}>{t('auth.audit_log.empty')}</td></tr>
               ) : secRows.map((r) => (
                 <tr key={r.id} className={`border-t ${borderLine}`}>
                   <td className={`px-2 py-1.5 font-mono ${textMuted}`}>{r.id}</td>
                   <td className={`px-2 py-1.5 whitespace-nowrap ${textSecondary}`} title={r.ts}>{fmtTs(r.ts)}</td>
-                  <td className={`px-2 py-1.5 font-mono ${textHeading}`}>{r.event_type}</td>
-                  <td className={`px-2 py-1.5 font-mono ${r.severity === 'critical' ? 'text-[var(--ss-danger-text)]' : r.severity === 'warn' ? 'text-[var(--ss-warning-text)]' : textSecondary}`}>{r.severity}</td>
+                  <td className={`px-2 py-1.5 ${textHeading}`} title={r.event_type}>{securityEventLabel(t, r.event_type)}</td>
+                  <td className={`px-2 py-1.5 font-mono ${r.severity === 'critical' ? 'text-[var(--ss-danger-text)]' : r.severity === 'warn' ? 'text-[var(--ss-warning-text)]' : textSecondary}`}>{severityLabel(t, r.severity)}</td>
                   <td className={`px-2 py-1.5 font-mono whitespace-nowrap ${textSecondary}`}>{r.ip_addr || '—'}</td>
                   <td className={`px-2 py-1.5 font-mono break-all ${textSecondary}`}>{r.path || '—'}</td>
                   <td className={`px-2 py-1.5 hidden md:table-cell font-mono ${textMuted}`}>{r.method || '—'}</td>
