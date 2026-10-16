@@ -6,7 +6,13 @@ import os
 
 def test_console_mailer_returns_true(caplog):
     import logging
+    # 他のテストや import が logger を無効化・非伝播にしていても、このテストは
+    # ログ出力そのものを検証するので、対象 logger の状態を明示的に整える
+    _lg = logging.getLogger("backend.services.mailer.console")
+    _lg.disabled = False
+    _lg.propagate = True
     caplog.set_level(logging.INFO)
+    caplog.set_level(logging.INFO, logger="backend.services.mailer.console")
     from backend.services.mailer.console import ConsoleMailer
     from backend.services.mailer.base import MailMessage
     m = ConsoleMailer()
