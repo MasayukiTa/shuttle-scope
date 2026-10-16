@@ -6,6 +6,7 @@ import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 import { WIN, LOSS } from '@/styles/colors'
+import { fmtPct } from '@/utils/format'
 
 interface WinLossComparisonProps {
   playerId: number
@@ -15,9 +16,9 @@ interface WinLossComparisonProps {
 interface MatchStats {
   count: number
   avg_rally_length: number
-  ace_rate: number
-  error_rate: number
-  serve_win_rate: number
+  ace_rate: number | null   // 未算出は null
+  error_rate: number | null
+  serve_win_rate: number | null
   top_shots: { shot_type: string; shot_type_ja: string; count: number }[]
 }
 
@@ -71,7 +72,7 @@ function ComparisonContent({ playerId, filters = DEFAULT_FILTERS }: { playerId: 
     return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.no_data')}</div>
   }
 
-  const pct = (v?: number) => v != null ? `${(v * 100).toFixed(1)}%` : '—'
+  const pct = (v?: number | null) => fmtPct(v)
   const num = (v?: number) => v != null ? v.toFixed(1) : '—'
 
   return (

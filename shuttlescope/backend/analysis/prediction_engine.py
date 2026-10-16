@@ -116,13 +116,15 @@ def compute_win_probability(
     matches: list[Match],
     player_id: int,
     prior_alpha: float = 2.0,
-) -> tuple[float, int]:
+) -> tuple[Optional[float], int]:
     """
     Laplace 平滑化した勝率を返す。
     Returns: (win_probability, sample_size)
+    試合 0 件では勝率は定義できないので (None, 0)。事前分布の 0.5 を勝率として返さない
+    （呼び出し側は sample_size == 0 を「データ不足」として扱うこと）。
     """
     if not matches:
-        return 0.5, 0
+        return None, 0
     wins = sum(1 for m in matches if _player_wins_match(m, player_id))
     n = len(matches)
     p = (wins + prior_alpha / 2) / (n + prior_alpha)
@@ -973,13 +975,25 @@ def compute_feature_win_prob(
     h2h_matches: list[Match],
     recent_form: dict,
     obs_context: dict,
-) -> tuple[float, dict]:
+) -> tuple[Optional[float], dict]:
     """
     多特徴量ブレンドによるキャリブレーション済み勝率。
     base_wr / recent_wr / h2h_wr を適応的な重みで統合し、
     観察コンテキストの修正値を加算する。
+    試合 0 件では (None, 内訳全て None + insufficient_data=True)。
     """
     base_wr, _ = compute_win_probability(matches, player_id)
+    if base_wr is None:
+        return None, {
+            'base_wr': None,
+            'recent_wr': None,
+            'h2h_wr': None,
+            'weights': {},
+            'obs_modifier': None,
+            'raw_blend': None,
+            'final': None,
+            'insufficient_data': True,
+        }
     recent_wr = recent_form.get('win_rate')
     recent_n = recent_form.get('sample', 0)
     # 直近勝率が無い (null) ときは直近項を使わず base_wr で置く (breakdown には null で出す)
@@ -1175,6 +1189,7 @@ def compute_lineup_scores(
         obs = get_observation_context(db, pid, opponent_id)
         recent = compute_recent_form(all_m, pid)
         win_prob, breakdown = compute_feature_win_prob(all_m, pid, h2h_m, recent, obs)
+        # 試合 0 件の選手には勝率を付けない (None)。sample_size を併記する
         conf = compute_confidence_score(len(all_m), len(h2h_m))
         player = db.get(Player, pid)
         results.append({
@@ -1188,7 +1203,8 @@ def compute_lineup_scores(
             'feature_breakdown': breakdown,
         })
 
-    results.sort(key=lambda x: -x['win_probability'])
+    # 勝率なし (None) は末尾へ
+    results.sort(key=lambda x: (x['win_probability'] is None, -(x['win_probability'] or 0.0)))
     return results
 
 

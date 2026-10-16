@@ -23,7 +23,7 @@ interface PairSimResponse {
   data: {
     pair_name: string
     win_probability: number | null
-    set_distribution: { '2-0': number; '2-1': number; '1-2': number; '0-2': number }
+    set_distribution: { '2-0': number; '2-1': number; '1-2': number; '0-2': number } | null
     pair_strengths: string[]
     pair_cautions: string[]
     confidence: number
@@ -376,7 +376,7 @@ export function PairSimulationPanel({ players }: PairSimulationPanelProps) {
             <p className="text-sm text-center py-2" style={{ color: subText }}>{t('prediction.pair_no_record')}</p>
           )}
 
-          {d.sample_size > 0 && (
+          {d.sample_size > 0 && d.set_distribution != null && (
             <div>
               <p className="text-xs font-medium mb-2" style={{ color: subText }}>{t('prediction.set_distribution')}</p>
               <SetDistributionBar distribution={d.set_distribution} />

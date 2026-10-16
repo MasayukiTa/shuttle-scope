@@ -334,12 +334,17 @@ def get_heatmap_composite(
     for _slot, _ids in match_ids_by_slot_.items():
         _count_zones(_ids, _slot)
 
-    hit_total = max(sum(hit_counts.values()), 1)
-    land_total = max(sum(land_counts.values()), 1)
+    # 分母 (打点/着地点の総数) 0 では割合は定義できない: rate は null、各セルに分母 n を併記する
+    hit_total = sum(hit_counts.values())
+    land_total = sum(land_counts.values())
 
     # 打点データ（自コート座標系そのまま）
     hit_data = {
-        z: {"count": hit_counts[z], "rate": round(hit_counts[z] / hit_total, 4)}
+        z: {
+            "count": hit_counts[z],
+            "rate": round(hit_counts[z] / hit_total, 4) if hit_total else None,
+            "n": hit_total,
+        }
         for z in ALL_ZONES
     }
 
@@ -350,7 +355,8 @@ def get_heatmap_composite(
         dst_zone = fold_land_zone_onto_own_court(src_zone)
         land_rotated[dst_zone] = {
             "count": land_counts.get(src_zone, 0),
-            "rate": round(land_counts.get(src_zone, 0) / land_total, 4),
+            "rate": round(land_counts.get(src_zone, 0) / land_total, 4) if land_total else None,
+            "n": land_total,
             "source": "land_rotated",
         }
 
@@ -1177,8 +1183,10 @@ def get_win_loss_comparison(
         return {
             "count": len(match_ids),
             "avg_rally_length": avg_rally_length,
-            "ace_rate": 0.0,   # シンプル実装（ace タイプ別集計は後で拡張）
-            "error_rate": 0.0,
+            # ace / エラーはこの集計では算出していない。0.0 を返すと「計算した結果 0%」に
+            # 見えるため null (未算出) にする。算出するときも分母 (サーブ数・打球数) 0 は null。
+            "ace_rate": None,
+            "error_rate": None,
             "serve_win_rate": serve_win_rate,
             "serve_count": serve_total,
             "top_shots": top_shots,

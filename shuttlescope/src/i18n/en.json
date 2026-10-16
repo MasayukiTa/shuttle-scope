@@ -2225,6 +2225,7 @@
     "brier_grade_poor": "Poor",
     "nearest_evidence": "Similar-match evidence",
     "feature_breakdown": "Feature breakdown",
+    "feature_breakdown_insufficient": "No match data, so the feature breakdown cannot be computed",
     "analyst_depth": "Analyst detail",
     "set_model_momentum": "Momentum model",
     "set_model_observed": "Observed data",

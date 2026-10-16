@@ -29,7 +29,7 @@ interface RankedPlayer {
   rank: number
   player_id: number
   player_name: string
-  win_probability: number
+  win_probability: number | null   // 試合 0 件は null
   sample_size: number
   h2h_available: boolean
   level_matches_available: boolean
@@ -70,7 +70,8 @@ function CoachCandidateView({
   const neutral = isLight ? '#334155' : '#d1d5db'
 
   // 上位 3 案のみ表示（順位付けしない = PLAN_LABELS）
-  const candidates = result.ranked_players.slice(0, 3)
+  // 勝率のない (試合 0 件の) 選手は候補に出さない
+  const candidates = result.ranked_players.filter((rp) => rp.win_probability != null).slice(0, 3)
   if (candidates.length === 0) return null
 
   return (
@@ -88,7 +89,7 @@ function CoachCandidateView({
       {/* 候補セット */}
       <div className="grid gap-2">
         {candidates.map((rp, idx) => {
-          const pct = Math.round(rp.win_probability * 100)
+          const pct = Math.round((rp.win_probability ?? 0) * 100)
           // 不確実性を加味したレンジ表示（少数サンプルほど広く）
           const margin = rp.sample_size < 5 ? 15 : rp.sample_size < 10 ? 10 : 7
           const lo = Math.max(0, pct - margin)
@@ -184,7 +185,7 @@ function AnalystRankingView({
     .sort((a, b) => a.player_name.localeCompare(b.player_name, 'ja'))
 
   const renderRow = (rp: RankedPlayer, displayRank: number | null) => {
-    const pct = Math.round(rp.win_probability * 100)
+    const pct = rp.win_probability != null ? Math.round(rp.win_probability * 100) : null
     const isTop = displayRank === 1
     return (
       <div
@@ -219,7 +220,7 @@ function AnalystRankingView({
         <span className="hidden sm:inline text-[11px] shrink-0 ss-num" style={{ color: subText }}>
           {rp.sample_size > 0 ? t('lineup.n_matches', { n: rp.sample_size, defaultValue: '{{n}} matches' }) : t('lineup.no_data', 'No data')}
         </span>
-        {rp.sample_size > 0 && (
+        {rp.sample_size > 0 && pct != null && (
           <div className="flex items-center gap-1.5 shrink-0">
             <div className="w-16 h-1.5 bg-[var(--ss-surface-2)] rounded-full overflow-hidden">
               <div
