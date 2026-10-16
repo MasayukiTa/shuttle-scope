@@ -716,8 +716,15 @@ def update_condition(condition_id: int, body: ConditionUpdate, request: Request,
         pass
     data = body.model_dump(exclude_unset=True)
     if "match_id" in data and data["match_id"] is not None:
-        if not db.get(Match, data["match_id"]):
+        _m_upd = db.get(Match, data["match_id"])
+        if not _m_upd:
             raise HTTPException(status_code=404, detail="試合が見つかりません")
+        # POST /conditions と同じ規則: 自分が見られない試合には結び付けない
+        # (他チームの試合に自チーム選手の健康記録を紛れ込ませない)
+        from backend.utils.auth import get_auth as _ga_m, user_can_access_match as _ucam_upd
+        _ctx_m = _ga_m(request)
+        if _ctx_m.role is not None and not _ctx_m.is_admin and not _ucam_upd(_ctx_m, _m_upd):
+            raise HTTPException(status_code=403, detail="この試合へのアクセス権限がありません")
     from backend.utils.db_update import apply_update
     apply_update(cond, data)
     _recompute(cond)

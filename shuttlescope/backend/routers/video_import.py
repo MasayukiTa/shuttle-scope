@@ -25,8 +25,10 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
+from backend.db.database import get_db
 from backend.utils.auth import get_auth
 from backend.utils.control_plane import allow_local_file_control
 
@@ -121,12 +123,26 @@ class PathImportRequest(BaseModel):
 
 
 @router.post("/video_import/path")
-def import_from_path(body: PathImportRequest, background_tasks: BackgroundTasks, request: Request):
+def import_from_path(body: PathImportRequest, background_tasks: BackgroundTasks, request: Request,
+                     db: Session = Depends(get_db)):
     """試合動画のローカルパスと match_id を指定してバックグラウンド解析を開始。
     試合終了後に自動呼び出しされる想定。
     """
     if not allow_local_file_control(request):
         raise HTTPException(status_code=403, detail="ローカルファイル操作はローカルからのみ実行できます")
+    # 接続元が loopback / 信頼サブネットであることは «誰として» 呼んだかの代わりにならない
+    # (cloudflared 等が同居すると外部のユーザも loopback から来る)。解析結果は match_id の
+    # MatchCVArtifact に書かれるので、運用ロールであること + その試合のチーム scope を要求する。
+    _ctx_gate = get_auth(request)
+    if not (_ctx_gate.is_admin or _ctx_gate.is_analyst or _ctx_gate.is_coach):
+        raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
+    if body.match_id is not None:
+        from backend.db.models import Match as _Match
+        from backend.utils.auth import require_match_scope as _require_match_scope
+        _m = db.get(_Match, body.match_id)
+        if _m is None:
+            raise HTTPException(status_code=404, detail="試合が見つかりません")
+        _require_match_scope(request, _m, db)
     # URLスキームを持つパスを拒否（SSRF防止 — OpenCV は rtsp:// / http:// を直接開けるため）
     raw_video_path = body.video_path.strip()
     if re.match(r'^[a-zA-Z][a-zA-Z0-9+\-.]*://', raw_video_path):

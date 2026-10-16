@@ -1975,6 +1975,22 @@ def create_user(body: UserCreate, request: Request, db: Session = Depends(get_db
     # analyst は admin / analyst アカウントを作成できない（権限昇格防止）
     if ctx.is_analyst and body.role in ("admin", "analyst", "demo"):
         raise HTTPException(status_code=403, detail="admin/analyst/demo アカウントは admin のみ作成できます")
+    # analyst は **自チームにだけ** ユーザを作れる。team_id / team_name で他チームを指すと、
+    # そのチームの coach 等を自分でパスワードを決めて作れて、そのチームの全データに入れてしまう
+    # (update_user / page-access / invitation は既に自チーム限定)。admin だけが任意のチームを指せる。
+    if not ctx.is_admin:
+        _target_team_id = body.team_id
+        if _target_team_id is None and (body.team_name or "").strip():
+            _named = db.query(Team).filter(
+                Team.name == body.team_name.strip(), Team.deleted_at.is_(None)
+            ).first()
+            _target_team_id = _named.id if _named is not None else None
+        if _target_team_id is not None and _target_team_id != ctx.team_id:
+            raise HTTPException(status_code=403, detail="自チーム以外にはユーザーを作成できません")
+        if body.player_id is not None:
+            from backend.utils.auth import can_access_player as _can_access_player
+            if not _can_access_player(ctx, body.player_id, db):
+                raise HTTPException(status_code=403, detail="自チーム以外の選手にはアカウントを紐付けられません")
     # analyst/coach/player は team 必須 (cross-team 漏洩防止)。
     # admin のみ team 未指定を許容（システム横断管理者として扱う）。
     # Phase B-2: team_name もしくは team_id もしくは independent=True で OK。

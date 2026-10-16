@@ -631,6 +631,46 @@ def list_matches(
     return {"success": True, "data": result}
 
 
+def _require_own_or_scouted_player(ctx, request: Request, db: Session, player_ids) -> None:
+    """admin 以外が試合を作るとき、自チーム選手 (または自チームが登録した外部選手) が
+    最低 1 人含まれることを要求する (他チームの選手だけで試合を作って、その選手の
+    試合一覧・解析に偽の試合を紛れ込ませる cross-team 汚染の防止)。
+    POST /matches と POST /matches/quick-start で共有する。"""
+    if ctx.is_admin:
+        return
+    team = (ctx.team_name or "").strip()
+    if not team:
+        from backend.utils.control_plane import allow_legacy_header_auth
+        if not allow_legacy_header_auth(request):
+            raise HTTPException(status_code=403, detail="team_name 未設定")
+        return
+    pids = [p for p in player_ids if p]
+    if not pids:
+        return
+    team_players = db.query(Player).filter(Player.id.in_(pids)).all()
+    own_roster = any((p.team or "").strip() == team for p in team_players)
+    # 0051: スカウティング用の外部選手を自チームが登録している場合、
+    # 自チーム選手が1人も出ない試合 (相手 X 対 無関係 Y) を作れる必要がある。
+    # これが無いと「一週間前に発表された相手の過去映像を解析する」が
+    # admin 以外で成立しない。所属ではなく登録主体で許可する。
+    # 可視性は resolve_owner_team_for_match_create が
+    # owner_team_id を自チームに固定することで保たれる。
+    from backend.utils.auth import can_see_scouting_players
+    own_scouting = (
+        can_see_scouting_players(ctx)
+        and ctx.team_id is not None
+        and any(p.scouting_owner_team_id == ctx.team_id for p in team_players)
+    )
+    if not (own_roster or own_scouting):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"自チーム ({team}) の選手も、自チームが登録した外部選手も "
+                "含まれない試合は作成できません"
+            ),
+        )
+
+
 @router.post("/matches", status_code=201)
 def create_match(body: MatchCreate, request: Request, db: Session = Depends(get_db)):
     """試合登録
@@ -644,42 +684,10 @@ def create_match(body: MatchCreate, request: Request, db: Session = Depends(get_
     _validate_match_enums(body)
     _validate_match_player_refs(body, db)
     # analyst/coach は自チーム選手が含まれる試合のみ作成可能 (cross-team データ汚染防止)
-    if not ctx.is_admin:
-        team = (ctx.team_name or "").strip()
-        if not team:
-            from backend.utils.control_plane import allow_legacy_header_auth
-            if not allow_legacy_header_auth(request):
-                raise HTTPException(status_code=403, detail="team_name 未設定")
-        else:
-            pids = [p for p in (body.player_a_id, body.player_b_id,
-                                getattr(body, "partner_a_id", None),
-                                getattr(body, "partner_b_id", None)) if p]
-            if pids:
-                team_players = db.query(Player).filter(Player.id.in_(pids)).all()
-                own_roster = any((p.team or "").strip() == team for p in team_players)
-                # 0051: スカウティング用の外部選手を自チームが登録している場合、
-                # 自チーム選手が1人も出ない試合 (相手 X 対 無関係 Y) を作れる必要がある。
-                # これが無いと「一週間前に発表された相手の過去映像を解析する」が
-                # admin 以外で成立しない。所属ではなく登録主体で許可する。
-                # 可視性は下の resolve_owner_team_for_match_create が
-                # owner_team_id を自チームに固定することで保たれる。
-                from backend.utils.auth import can_see_scouting_players
-                own_scouting = (
-                    can_see_scouting_players(ctx)
-                    and ctx.team_id is not None
-                    and any(
-                        p.scouting_owner_team_id == ctx.team_id
-                        for p in team_players
-                    )
-                )
-                if not (own_roster or own_scouting):
-                    raise HTTPException(
-                        status_code=403,
-                        detail=(
-                            f"自チーム ({team}) の選手も、自チームが登録した外部選手も "
-                            "含まれない試合は作成できません"
-                        ),
-                    )
+    _require_own_or_scouted_player(ctx, request, db, [
+        body.player_a_id, body.player_b_id,
+        getattr(body, "partner_a_id", None), getattr(body, "partner_b_id", None),
+    ])
     # Phase B-5: owner_team_id / is_public_pool を解決
     owner_id, is_public = resolve_owner_team_for_match_create(
         ctx,
@@ -1129,6 +1137,8 @@ def quick_start_match(body: QuickStartBody, request: Request, db: Session = Depe
     player_a = db.get(Player, body.player_a_id)
     if not player_a:
         raise HTTPException(status_code=404, detail="自チーム選手が見つかりません")
+    # 他チームの選手 (player_a_id / opponent_id) だけで試合を作らせない。POST /matches と同じ規則。
+    _require_own_or_scouted_player(ctx, request, db, [body.player_a_id, body.opponent_id])
 
     # 相手選手の解決
     if body.opponent_id:
@@ -1283,7 +1293,8 @@ async def probe_video_url(body: ProbeUrlRequest, request: Request):
     - 多言語タイトルは Unicode のまま JSON で返す（UTF-8 一貫で文字化けしない）。
     """
     ctx = get_auth(request)
-    if ctx.role is None or ctx.is_player:
+    # demo / llm も不可 (サーバから外部へ取りに行く操作なので運用ロールに限る)
+    if not (ctx.is_admin or ctx.is_analyst or ctx.is_coach):
         raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
 
     from backend.utils.safe_path import validate_external_url

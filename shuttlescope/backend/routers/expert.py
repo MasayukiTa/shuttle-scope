@@ -284,7 +284,15 @@ def upsert_label(
     from backend.utils.auth import user_can_access_match
     if not user_can_access_match(_ctx, m):
         raise HTTPException(status_code=404, detail="試合が見つかりません")
-    if not db.get(Stroke, body.stroke_id):
+    stroke = db.get(Stroke, body.stroke_id)
+    if not stroke:
+        raise HTTPException(status_code=404, detail="ストロークが見つかりません")
+    # stroke_id が body.match_id の試合のものであること。match だけ自チームのものを指定して
+    # stroke_id に他チームのストロークを渡すと、上のチーム境界チェックをすり抜けて
+    # (stroke_id, annotator_role) の UPSERT で他チームのラベルを上書きできた。
+    _rally = db.get(Rally, stroke.rally_id)
+    _gset = db.get(GameSet, _rally.set_id) if _rally is not None else None
+    if _gset is None or _gset.match_id != body.match_id:
         raise HTTPException(status_code=404, detail="ストロークが見つかりません")
 
     existing = (
