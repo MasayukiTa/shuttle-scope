@@ -207,7 +207,9 @@ def test_f3_benchmark_same_team_still_sees_own_match(client, actor):
     r = client.get("/api/prediction/benchmark/1", headers=tok(actor))
     assert r.status_code == 200, r.text
     d = r.json()["data"]
-    assert [c["match_id"] for c in d["match_comparisons"]] == [1]
+    # 自チームの予測は見える。この試合より前の実績が無いのでモデル比較は定義できず、
+    # 比較行は作らない (0.5 を予測として比べない)。件数は自チーム分だけ数える。
+    assert d["match_comparisons"] == []
     assert d["total_forecasts"] == 1
 
 
