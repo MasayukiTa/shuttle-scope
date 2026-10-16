@@ -1056,7 +1056,7 @@ def get_opponent_card(opponent_id: int, db: Session = Depends(get_db)):
                 "name": opponent.name,
                 "match_count": 0,
                 "top_shot": None,
-                "avg_rally_length": 0.0,
+                "avg_rally_length": None,
                 "serve_style": None,
                 "serve_style_ja": None,
             },
@@ -1085,7 +1085,7 @@ def get_opponent_card(opponent_id: int, db: Session = Depends(get_db)):
 
     total_length = sum(r.rally_length for r in rallies)
     total_rallies = len(rallies)
-    avg_rally = round(total_length / total_rallies, 2) if total_rallies else 0.0
+    avg_rally = round(total_length / total_rallies, 2) if total_rallies else None
 
     # 対戦相手のショット集計
     if rally_ids:
@@ -1206,10 +1206,11 @@ def get_court_coverage_split(match_id: int, db: Session = Depends(get_db)):
 
     def _build_coverage(stats: dict) -> dict:
         total = stats["total"]
+        # ストローク 0 件の選手の前衛率などは 0% ではなく None (統計規則 R1)
         return {
-            "front_rate": round(stats["front"] / total, 3) if total else 0.0,
-            "back_rate": round(stats["back"] / total, 3) if total else 0.0,
-            "mid_rate": round(stats["mid"] / total, 3) if total else 0.0,
+            "front_rate": round(stats["front"] / total, 3) if total else None,
+            "back_rate": round(stats["back"] / total, 3) if total else None,
+            "mid_rate": round(stats["mid"] / total, 3) if total else None,
             "total_strokes": total,
         }
 
@@ -1219,7 +1220,11 @@ def get_court_coverage_split(match_id: int, db: Session = Depends(get_db)):
     cov2 = _build_coverage(area_counts[result_key2])
 
     # バランススコア: 前衛率の差が小さいほど1に近い
-    balance_score = round(1.0 - abs(cov1["front_rate"] - cov2["front_rate"]), 3)
+    # どちらかの選手のストロークが 0 件ならバランスは算出不能 (None)
+    if cov1["front_rate"] is None or cov2["front_rate"] is None:
+        balance_score = None
+    else:
+        balance_score = round(1.0 - abs(cov1["front_rate"] - cov2["front_rate"]), 3)
 
     total_sample = area_counts[result_key1]["total"] + area_counts[result_key2]["total"]
     confidence = check_confidence("descriptive_basic", total_sample)
@@ -1325,7 +1330,7 @@ def get_partner_comparison(player_id: int, db: Session = Depends(get_db)):
         win_rate = round(stats["wins"] / match_count, 3) if match_count else 0.0
         avg_rally = round(
             partner_rally[partner_id]["total_length"] / partner_rally[partner_id]["count"], 2
-        ) if partner_rally[partner_id]["count"] else 0.0
+        ) if partner_rally[partner_id]["count"] else None  # ラリー 0 件 (未アノテーション) は None
         # 相乗効果スコア: 勝率 × min(1, 試合数/5)
         synergy_score = round(win_rate * min(1.0, match_count / 5), 3)
         partners_list.append({

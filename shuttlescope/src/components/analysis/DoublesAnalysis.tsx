@@ -51,7 +51,7 @@ interface PartnerItem {
   match_count: number
   win_rate: number
   synergy_score: number
-  avg_rally_length: number
+  avg_rally_length: number | null
 }
 
 function PartnerComparison({ playerId }: { playerId: number }) {
@@ -103,7 +103,7 @@ function PartnerComparison({ playerId }: { playerId: number }) {
                 <p className="text-[10px] text-[var(--ss-t3)]">{t('doubles_analysis.synergy')}</p>
               </div>
               <div>
-                <p className="ss-num text-lg font-bold text-[var(--ss-brand)]">{p.avg_rally_length.toFixed(1)}</p>
+                <p className="ss-num text-lg font-bold text-[var(--ss-brand)]">{isFiniteNumber(p.avg_rally_length) ? p.avg_rally_length.toFixed(1) : '—'}</p>
                 <p className="text-[10px] text-[var(--ss-t3)]">{t('doubles_analysis.avg_rally')}</p>
               </div>
             </div>
@@ -316,10 +316,18 @@ function StrokeSharing({ playerId }: { playerId: number }) {
 
 // ─── コートカバレッジ (F-001) ────────────────────────────────────────────────
 
+// ストローク 0 件の選手の各率は null (0% として描かない)
+interface CoverageSide {
+  front_rate: number | null
+  back_rate: number | null
+  mid_rate: number | null
+  total_strokes: number
+}
+
 interface CoverageData {
-  balance_score: number
-  player_a?: { front_rate: number; back_rate: number; mid_rate: number; total_strokes: number }
-  partner_a?: { front_rate: number; back_rate: number; mid_rate: number; total_strokes: number }
+  balance_score: number | null
+  player_a?: CoverageSide
+  partner_a?: CoverageSide
 }
 
 function CourtCoverage({ matchId }: { matchId: number }) {
@@ -343,14 +351,14 @@ function CourtCoverage({ matchId }: { matchId: number }) {
   const players = [
     { label: t('doubles_analysis.self'), data: d.player_a },
     { label: t('doubles_analysis.partner'), data: d.partner_a },
-  ].filter((p) => p.data)
+  ].filter((p) => p.data && isFiniteNumber(p.data.front_rate) && isFiniteNumber(p.data.mid_rate) && isFiniteNumber(p.data.back_rate))
 
   if (players.length === 0) return <p className="text-[var(--ss-t3)] text-sm py-3">{t('doubles_analysis.no_court_data')}</p>
 
   const radarData = [
-    { area: t('doubles_analysis.area_front'), ...Object.fromEntries(players.map((p) => [p.label, +(p.data!.front_rate * 100).toFixed(1)])) },
-    { area: t('doubles_analysis.area_mid'), ...Object.fromEntries(players.map((p) => [p.label, +(p.data!.mid_rate * 100).toFixed(1)])) },
-    { area: t('doubles_analysis.area_back'), ...Object.fromEntries(players.map((p) => [p.label, +(p.data!.back_rate * 100).toFixed(1)])) },
+    { area: t('doubles_analysis.area_front'), ...Object.fromEntries(players.map((p) => [p.label, +((p.data!.front_rate ?? 0) * 100).toFixed(1)])) },
+    { area: t('doubles_analysis.area_mid'), ...Object.fromEntries(players.map((p) => [p.label, +((p.data!.mid_rate ?? 0) * 100).toFixed(1)])) },
+    { area: t('doubles_analysis.area_back'), ...Object.fromEntries(players.map((p) => [p.label, +((p.data!.back_rate ?? 0) * 100).toFixed(1)])) },
   ]
 
   const COLORS = [WIN, BAR]
@@ -362,14 +370,16 @@ function CourtCoverage({ matchId }: { matchId: number }) {
         <span
           className="ss-num text-sm font-bold"
           style={{
-            color: d.balance_score >= 0.8
+            color: !isFiniteNumber(d.balance_score)
+              ? 'var(--ss-t3)'
+              : d.balance_score >= 0.8
               ? 'var(--ss-success)'
               : d.balance_score >= 0.6
               ? 'var(--ss-warn)'
               : 'var(--ss-bad)',
           }}
         >
-          {(d.balance_score * 100).toFixed(0)}
+          {isFiniteNumber(d.balance_score) ? (d.balance_score * 100).toFixed(0) : '—'}
         </span>
       </div>
 

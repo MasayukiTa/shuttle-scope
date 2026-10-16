@@ -23,9 +23,9 @@ interface DirectionBreakdown {
   lateral_m: number
   depth_m: number
   diagonal_m: number
-  lateral_pct: number
-  depth_pct: number
-  diagonal_pct: number
+  lateral_pct: number | null
+  depth_pct: number | null
+  diagonal_pct: number | null
 }
 
 interface TimePoint {
@@ -108,7 +108,7 @@ const ZONE_ROWS = ['front', 'mid', 'back'] as const
 const ZONE_COLS = ['left', 'center', 'right'] as const
 const SIDES = ['A', 'B'] as const
 
-function fmt1(v: number) { return v.toFixed(1) }
+function fmt1(v: number | null) { return v == null ? '—' : v.toFixed(1) }
 function fmt2(v: number) { return v.toFixed(2) }
 
 function speedKmh(mps: number) { return (mps * 3.6).toFixed(1) }
@@ -478,21 +478,21 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
               <div>
                 <div className={`text-[9px] ${textFaint} mb-1`}>{t('auto.PlayerMovementCard.k5')}</div>
                 <div className="flex h-2 w-full rounded-ss-sm overflow-hidden gap-px">
-                  {dir.lateral_pct > 0 && (
+                  {(dir.lateral_pct ?? 0) > 0 && (
                     <div
                       className={DIR_COLORS.lateral.bar}
                       style={{ width: `${dir.lateral_pct}%` }}
                       title={t('auto.PlayerMovementCard.dir_lateral_tip', { m: fmt2(dir.lateral_m), pct: fmt1(dir.lateral_pct) })}
                     />
                   )}
-                  {dir.diagonal_pct > 0 && (
+                  {(dir.diagonal_pct ?? 0) > 0 && (
                     <div
                       className={DIR_COLORS.diagonal.bar}
                       style={{ width: `${dir.diagonal_pct}%` }}
                       title={t('auto.PlayerMovementCard.dir_diagonal_tip', { m: fmt2(dir.diagonal_m), pct: fmt1(dir.diagonal_pct) })}
                     />
                   )}
-                  {dir.depth_pct > 0 && (
+                  {(dir.depth_pct ?? 0) > 0 && (
                     <div
                       className={DIR_COLORS.depth.bar}
                       style={{ width: `${dir.depth_pct}%` }}
