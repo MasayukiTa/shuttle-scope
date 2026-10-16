@@ -34,6 +34,21 @@ from backend.utils.auth import require_match_operator_scope, require_match_scope
 
 logger = logging.getLogger(__name__)
 
+
+def _tracked_rate(lost: int, total: int):
+    """追跡成功率 (0.0〜1.0)。選手フレームが 0 件なら None (「100% 追跡」と見せない)。"""
+    if total <= 0:
+        return None
+    return round(1.0 - lost / total, 3)
+
+
+def _share_pct(part: float, whole: float):
+    """全体に占める割合 (%)。全体が 0 (移動なし) なら None (0% と区別する)。"""
+    if whole <= 0:
+        return None
+    return round(part / whole * 100, 1)
+
+
 router = APIRouter()
 
 # ─── インメモリジョブ管理 ────────────────────────────────────────────────────
@@ -1294,10 +1309,12 @@ def assign_and_track(
     lost_player_frames  = sum(
         1 for f in tracked for p in f.get("players", []) if p.get("lost", False)
     )
-    track_rate = round(1.0 - lost_player_frames / max(total_player_frames, 1), 3)
+    # 選手フレームが 0 件のとき「追跡率 100%」と見せない (None)
+    track_rate = _tracked_rate(lost_player_frames, total_player_frames)
     logger.info(
-        "assign_and_track done: match=%d frames=%d player-frames=%d lost=%d track_rate=%.1f%%",
-        match_id, len(tracked), total_player_frames, lost_player_frames, track_rate * 100,
+        "assign_and_track done: match=%d frames=%d player-frames=%d lost=%d track_rate=%s",
+        match_id, len(tracked), total_player_frames, lost_player_frames,
+        "n/a" if track_rate is None else f"{track_rate * 100:.1f}%",
     )
 
     return {"success": True, "data": {
@@ -1506,9 +1523,9 @@ def get_movement_stats(match_id: int, db: Session = Depends(get_db)):
                 "lateral_m":    round(total_lateral_m, 2),
                 "depth_m":      round(total_depth_m, 2),
                 "diagonal_m":   round(total_diagonal_m, 2),
-                "lateral_pct":  round(total_lateral_m  / total_dist_m * 100, 1) if total_dist_m > 0 else 0.0,
-                "depth_pct":    round(total_depth_m    / total_dist_m * 100, 1) if total_dist_m > 0 else 0.0,
-                "diagonal_pct": round(total_diagonal_m / total_dist_m * 100, 1) if total_dist_m > 0 else 0.0,
+                "lateral_pct":  _share_pct(total_lateral_m, total_dist_m),
+                "depth_pct":    _share_pct(total_depth_m, total_dist_m),
+                "diagonal_pct": _share_pct(total_diagonal_m, total_dist_m),
             },
             "zone_visits": zone_visits,
             "time_series": time_series,
