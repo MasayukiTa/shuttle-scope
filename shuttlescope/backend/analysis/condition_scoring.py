@@ -160,7 +160,9 @@ def calc_deviation(current_ccs: float, history_ccs_list: List[float]) -> Dict:
         result["mean_28"] = float(mean_28)
         result["sd_28"] = float(sd_28)
         result["delta_28ma"] = float(current_ccs - mean_28)
-        result["z_score"] = float((current_ccs - mean_28) / sd_28) if sd_28 > 0 else 0.0
+        # SD が 0 (履歴が全て同値) では z は定義できない。0.0 を入れると「平常通り」と
+        # 読めてしまうので null にする (factor_label_from_z が insufficient_data を返す)。
+        result["z_score"] = float((current_ccs - mean_28) / sd_28) if sd_28 > 0 else None
 
     return result
 

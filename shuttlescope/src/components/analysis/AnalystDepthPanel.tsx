@@ -60,6 +60,7 @@ interface FeatureBreakdown {
   obs_modifier: number
   raw_blend: number
   final: number
+  insufficient_data?: boolean   // 試合 0 件のとき true (数値項目は null になる)
 }
 
 interface AnalystDepthData {
@@ -438,7 +439,11 @@ function Inner({ playerId, opponentId, tournamentLevel }: Props) {
       </div>
 
       <div className={sectionClass}>
-        <FeatureBreakdownSection data={d.feature_breakdown} isLight={isLight} />
+        {!d.feature_breakdown.insufficient_data ? (
+          <FeatureBreakdownSection data={d.feature_breakdown} isLight={isLight} />
+        ) : (
+          <p className="text-xs" style={{ color: subText }}>{t('prediction.feature_breakdown_insufficient')}</p>
+        )}
       </div>
 
       <div className={sectionClass}>

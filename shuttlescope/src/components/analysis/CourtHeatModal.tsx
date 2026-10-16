@@ -10,6 +10,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { CourtDiagram } from '@/components/court/CourtDiagram'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { fmtPct } from '@/utils/format'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { apiGet } from '@/api/client'
 import { WIN, LOSS } from '@/styles/colors'
@@ -42,7 +43,8 @@ interface HeatmapResponse {
 
 interface CompositeZoneData {
   count: number
-  rate: number
+  rate: number | null   // 分母 0 のとき null
+  n?: number            // この割合の分母 (総数)
   source?: string
 }
 
@@ -418,7 +420,7 @@ function ZoneDetailPanel({
             <>
               <div>
                 <p className="ss-num text-2xl font-bold" style={{ color: winRateColor }}>
-                  {detail.win_rate != null ? `${(detail.win_rate * 100).toFixed(0)}%` : '—'}
+                  {fmtPct(detail.win_rate, 0)}
                 </p>
                 <p className="text-[11px] text-[var(--ss-t3)]">{t('court_heat_modal.stat_win_rate')}</p>
               </div>

@@ -95,6 +95,39 @@ def get_match_preview(
         all_matches, player_id, h2h_matches, recent_form, obs_context
     )
 
+    # 試合 0 件: 勝率・セット分布・スコア予測はいずれも定義できない。
+    # 事前分布 (0.5) から作った偽の予測を返さず、全て null + insufficient_data にする。
+    if win_prob is None or win_prob_v2 is None:
+        _conf0 = compute_confidence_score(0, len(h2h_matches))
+        return {
+            "success": True,
+            "data": {
+                "win_probability": None,
+                "win_probability_v2": None,
+                "insufficient_data": True,
+                "feature_breakdown": feature_breakdown,
+                "recent_form": recent_form,
+                "set_distribution": None,
+                "set_model_type": None,
+                "score_bands": None,
+                "most_likely_scorelines": [],
+                "confidence": _conf0,
+                "sample_size": 0,
+                "similar_matches": len(h2h_matches),
+                "observation_context": obs_context,
+                "tactical_notes": [],
+                "caution_flags": [],
+                "calibrated_scorelines": [],
+                "prediction_drivers": [],
+                "score_volatility": score_volatility,
+                "match_narrative": None,
+            },
+            "meta": {
+                "sample_size": 0,
+                "confidence": confidence_meta(_conf0, 0),
+            },
+        }
+
     # Phase 1: モメンタムセットモデル
     # 実測 ≥5 試合ある場合は observed を渡す
     observed_set_count = sum(1 for m in primary if len(m.sets or []) >= 2)
@@ -206,7 +239,11 @@ def get_lineup_optimizer(
             "ranked_players": ranked,
             "opponent_id": opponent_id,
             "tournament_level": tournament_level,
-            "recommendation": ranked[0]['player_name'] if ranked else None,
+            # 勝率のない (試合 0 件の) 選手は推奨しない
+            "recommendation": (
+                ranked[0]['player_name']
+                if ranked and ranked[0]['win_probability'] is not None else None
+            ),
         },
     }
 
@@ -664,7 +701,11 @@ def get_pair_simulation(
     )
 
     win_prob, sample_size = compute_win_probability(pair_matches, player_id_1)
-    set_dist = compute_set_distribution(pair_matches, player_id_1, win_prob)
+    # ペアの試合 0 件ではセット分布も定義できない (事前分布の 0.5 から作らない)
+    set_dist = (
+        compute_set_distribution(pair_matches, player_id_1, win_prob)
+        if win_prob is not None else None
+    )
     score_bands = compute_score_bands(pair_matches, player_id_1)
 
     confidence = compute_confidence_score(sample_size, sample_size)

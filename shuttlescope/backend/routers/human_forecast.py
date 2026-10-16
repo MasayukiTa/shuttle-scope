@@ -255,6 +255,9 @@ def get_prediction_benchmark(
                  if x.id != m.id and opposing_ids(x, player_id) & _opp_now]
         obs = get_observation_context(db, player_id, match_id=m.id)
         model_prob, _ = compute_feature_win_prob(prior_matches, player_id, h2h_m, recent, obs)
+        # この試合より前の実績が 0 件ならモデル予測は定義できない (0.5 を予測として比較しない)
+        if model_prob is None:
+            continue
         model_predicted = 'win' if model_prob >= 0.5 else 'loss'
         model_correct = (model_predicted == actual_outcome)
 
