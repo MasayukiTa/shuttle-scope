@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/api/client'
 import { useResearchBundleSlice } from '@/contexts/ResearchBundleContext'
@@ -8,7 +8,7 @@ import { useCardTheme } from '@/hooks/useCardTheme'
 import { AnalysisFilters } from '@/types'
 import { useTranslation } from 'react-i18next'
 import { fmtPct as pct } from '@/utils/format'
-import i18n from '@/i18n'
+import { shotLabel } from '@/utils/analysisLabels'
 
 interface CFComparison {
   context_key: string
@@ -54,30 +54,12 @@ interface Props {
 
 type CFPhase = 'cf1' | 'cf2' | 'cf3'
 
-const CF_PHASE_CONFIG: Record<CFPhase, {
-  label: string
-  endpoint: string
-  description: string
-  additionalInfo: string
-}> = {
-  cf1: {
-    label: 'CF-1 Bootstrap',
-    endpoint: '/analysis/counterfactual_v2',
-    description: 'コンテキスト一致 + Bootstrap 500回',
-    additionalInfo: 'CI幅で不確実性を確認',
-  },
-  cf2: {
-    label: 'CF-2 IPW',
-    endpoint: '/analysis/counterfactual_cf2',
-    description: '傾向スコア重み付き（IPW）',
-    additionalInfo: '有効サンプル数(N_eff)が少ない行は注意',
-  },
-  cf3: {
-    label: i18n.t('auto.CounterfactualV2Card.k2'),
-    endpoint: '/analysis/counterfactual_cf3',
-    description: '対戦相手タイプ条件付き比較',
-    additionalInfo: '強敵/格下/均衡の別に傾向が異なる場合',
-  },
+// 段階の並びとエンドポイント (表示文言は i18n。コンポーネント内で組み立てる)
+const CF_PHASES: CFPhase[] = ['cf1', 'cf2', 'cf3']
+const CF_ENDPOINTS: Record<CFPhase, string> = {
+  cf1: '/analysis/counterfactual_v2',
+  cf2: '/analysis/counterfactual_cf2',
+  cf3: '/analysis/counterfactual_cf3',
 }
 
 const SCORE_PHASE_LABELS: Record<string, string> = {
@@ -95,6 +77,32 @@ export function CounterfactualV2Card({ playerId, filters }: Props) {
 
   const { card, cardInner, textHeading, textSecondary, textMuted, textFaint, loading, isLight } = useCardTheme()
   const [cfPhase, setCfPhase] = useState<CFPhase>('cf1')
+  // 内部の段階名 (CF-1 / Bootstrap / IPW / N_eff) は画面に出さず、日本語の説明にする
+  const CF_PHASE_CONFIG = useMemo<Record<CFPhase, {
+    label: string
+    endpoint: string
+    description: string
+    additionalInfo: string
+  }>>(() => ({
+    cf1: {
+      label: t('auto.CounterfactualV2Card.cf1_label'),
+      endpoint: CF_ENDPOINTS.cf1,
+      description: t('auto.CounterfactualV2Card.cf1_desc'),
+      additionalInfo: t('auto.CounterfactualV2Card.cf1_info'),
+    },
+    cf2: {
+      label: t('auto.CounterfactualV2Card.cf2_label'),
+      endpoint: CF_ENDPOINTS.cf2,
+      description: t('auto.CounterfactualV2Card.cf2_desc'),
+      additionalInfo: t('auto.CounterfactualV2Card.cf2_info'),
+    },
+    cf3: {
+      label: t('auto.CounterfactualV2Card.k2'),
+      endpoint: CF_ENDPOINTS.cf3,
+      description: t('auto.CounterfactualV2Card.cf3_desc'),
+      additionalInfo: t('auto.CounterfactualV2Card.cf3_info'),
+    },
+  }), [t])
   const phaseConfig = CF_PHASE_CONFIG[cfPhase]
 
   const filterApiParams = {
@@ -146,7 +154,7 @@ export function CounterfactualV2Card({ playerId, filters }: Props) {
 
       {/* CF フェーズ切り替えタブ */}
       <div className="flex items-center gap-1">
-        {(Object.keys(CF_PHASE_CONFIG) as CFPhase[]).map((phase) => (
+        {CF_PHASES.map((phase) => (
           <button
             key={phase}
             className={`${tabBase} ${cfPhase === phase ? tabActive : tabInactive}`}
@@ -158,9 +166,9 @@ export function CounterfactualV2Card({ playerId, filters }: Props) {
       </div>
 
       <ResearchNotice
-        caution={meta?.caution ?? `${phaseConfig.description}。反事実的比較は仮説的シナリオです。`}
+        caution={meta?.caution ?? t('auto.CounterfactualV2Card.caution_fallback', { desc: phaseConfig.description })}
         assumptions={phaseConfig.description}
-        promotionCriteria="CF-2（IPW）実装済み・CF-3（対戦相手別）実装済み・N≥500コンテキスト"
+        promotionCriteria={t('auto.CounterfactualV2Card.promotion')}
       />
 
       <p className={`text-[10px] ${textFaint}`}>{phaseConfig.additionalInfo}</p>
@@ -178,10 +186,10 @@ export function CounterfactualV2Card({ playerId, filters }: Props) {
             <div key={i} className={`${cardInner} rounded-ss-sm px-3 py-2 space-y-1`}>
               <div className="flex items-center justify-between">
                 <div className={`text-[11px] ${textSecondary}`}>
-                  <span className={`font-medium ${textHeading}`}>{comp.actual_shot}</span>
+                  <span className={`font-medium ${textHeading}`}>{shotLabel(t, comp.actual_shot)}</span>
                   <span className={`mx-1 ${textFaint}`}>→</span>
                   <span className={`font-medium ${comp.max_lift > 0 ? liftColor : textMuted}`}>
-                    {comp.best_alternative ?? '—'}
+                    {comp.best_alternative ? shotLabel(t, comp.best_alternative) : '—'}
                   </span>
                   {comp.max_lift !== 0 && (
                     <span className={`ml-1 ${comp.max_lift > 0 ? liftColor : textMuted}`}>
@@ -202,7 +210,7 @@ export function CounterfactualV2Card({ playerId, filters }: Props) {
                 {t('auto.CounterfactualV2Card.context_label', {
                   phase: SCORE_PHASE_LABELS[comp.context.score_phase] ?? comp.context.score_phase,
                   bucket: RALLY_BUCKET_LABELS[comp.context.rally_bucket] ?? comp.context.rally_bucket,
-                  prev: comp.context.prev_shot ? ` / 直前: ${comp.context.prev_shot}` : '',
+                  prev: comp.context.prev_shot ? t('auto.CounterfactualV2Card.prev_shot', { shot: shotLabel(t, comp.context.prev_shot) }) : '',
                 })}
               </div>
               <div className={`text-[10px] ${textMuted} ss-num`}>
@@ -211,7 +219,7 @@ export function CounterfactualV2Card({ playerId, filters }: Props) {
               </div>
               {comp.alternatives.slice(0, 2).map((alt) => (
                 <div key={alt.shot_type} className={`text-[10px] ${textMuted} ml-2 ss-num`}>
-                  {t('auto.CounterfactualV2Card.alt_line', { shot: alt.shot_type, wr: pct(alt.win_rate), lo: pct(alt.ci_low), hi: pct(alt.ci_high) })}
+                  {t('auto.CounterfactualV2Card.alt_line', { shot: shotLabel(t, alt.shot_type), wr: pct(alt.win_rate), lo: pct(alt.ci_low), hi: pct(alt.ci_high) })}
                   {cfPhase === 'cf2' && alt.ipw_win_rate != null && (
                     <span className={`ml-1 ${isLight ? 'text-blue-600' : 'text-blue-400'}`}>
                       {t('auto.CounterfactualV2Card.ipw', { v: pct(alt.ipw_win_rate) })}

@@ -40,6 +40,13 @@ interface ConditionItem { question_id: string; n: number; avg_ms: number; avg_ch
 
 export default function AdminAnalyticsPage() {
   const { t } = useTranslation()
+
+  // 画面 ID (dashboard.overview など) を画面名にする。未登録の ID は元の文字列を出す
+  const viewLabel = (viewId: string): string => {
+    const key = `admin.analytics.view_names.${viewId.replace(/\./g, '_')}`
+    const v = t(key)
+    return !v || v === key ? viewId : v
+  }
   const [overview, setOverview] = useState<Overview | null>(null)
   const [funnel, setFunnel] = useState<FunnelData | null>(null)
   const [dwell, setDwell] = useState<DwellItem[]>([])
@@ -79,7 +86,7 @@ export default function AdminAnalyticsPage() {
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-[var(--ss-t1)] inline-flex items-center gap-2">
           <MIcon name="analytics" size={26} />
-          Product Analytics
+          {t('admin.analytics.title')}
         </h1>
         <div className="flex items-center gap-2 text-sm">
           <label className="text-[var(--ss-t2)]">{t('admin.analytics.period')}</label>
@@ -200,7 +207,7 @@ export default function AdminAnalyticsPage() {
             <tbody className="text-[var(--ss-t1)]">
               {dwell.map((d) => (
                 <tr key={d.view_id} className="border-t border-[var(--ss-border)]">
-                  <td className="py-1">{d.view_id}</td>
+                  <td className="py-1" title={d.view_id}>{viewLabel(d.view_id)}</td>
                   <td className="text-right">{d.view_count}</td>
                   <td className="text-right">{d.unique_users}</td>
                   <td className="text-right">{Math.round(d.avg_dwell_ms / 1000)}s</td>

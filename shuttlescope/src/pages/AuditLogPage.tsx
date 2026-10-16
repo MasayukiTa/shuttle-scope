@@ -4,6 +4,7 @@ import { authAuditLogs, authAuditLogActions, AuditLogEntry, AuditLogActionItem, 
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useAuth } from '@/hooks/useAuth'
 import { MIcon } from '@/components/common/MIcon'
+import { auditActionLabel } from '@/utils/adminLabels'
 
 type SortKey = 'created_at' | 'action' | 'user' | 'ip_addr'
 type SortDir = 'asc' | 'desc'
@@ -167,7 +168,7 @@ export function AuditLogPage() {
 
   if (role !== 'admin') {
     return (
-      <div className={`p-6 ${textSecondary}`}>admin 権限が必要です</div>
+      <div className={`p-6 ${textSecondary}`}>{t('auth.audit_log.admin_required')}</div>
     )
   }
 
@@ -197,10 +198,10 @@ export function AuditLogPage() {
             onChange={(e) => setActionFilter(e.target.value)}
             className={`${inputCls} min-w-[180px]`}
           >
-            <option value="">— すべて —</option>
+            <option value="">{t('auth.audit_log.filter_all')}</option>
             {actionOptions.map((o) => (
               <option key={o.action} value={o.action}>
-                {o.action} ({o.count})
+                {auditActionLabel(t, o.action)} ({o.count})
               </option>
             ))}
           </select>
@@ -211,7 +212,7 @@ export function AuditLogPage() {
             value={userFilter}
             onChange={(e) => setUserFilter(e.target.value)}
             className={inputCls}
-            placeholder="数値 user_id (例: 123)"
+            placeholder={t('auth.audit_log.filter_user_placeholder')}
             inputMode="numeric"
           />
         </div>
@@ -301,11 +302,11 @@ export function AuditLogPage() {
           onClick={exportCsv}
           disabled={loading || rows.length === 0}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-ss-md bg-[var(--ss-success)] text-white hover:opacity-90 duration-base ease-out text-sm disabled:opacity-50`}
-          title="現在の表示順で CSV ダウンロード"
+          title={t('auth.audit_log.csv_title')}
         >
           <MIcon name="download" size={14} /> CSV
         </button>
-        <span className={`text-xs ${textMuted}`}>表示: {tab === 'audit' ? sortedRows.length : tab === 'request' ? reqRows.length : secRows.length} 件</span>
+        <span className={`text-xs ${textMuted}`}>{t('auth.audit_log.shown_count', { n: tab === 'audit' ? sortedRows.length : tab === 'request' ? reqRows.length : secRows.length })}</span>
       </div>
 
       {error && <div className="text-sm text-[var(--ss-danger-text)] flex-shrink-0">{error}</div>}
@@ -455,7 +456,8 @@ export function AuditLogPage() {
                       return r.created_at.replace('T', ' ').slice(0, 19)
                     })()}
                   </td>
-                  <td className={`px-3 py-2 whitespace-nowrap ${textHeading}`}>{r.action}</td>
+                  {/* 内部コードは日本語ラベルにし、元のコードはホバーで確認できるようにする */}
+                  <td className={`px-3 py-2 whitespace-nowrap ${textHeading}`} title={r.action}>{auditActionLabel(t, r.action)}</td>
                   <td className={`px-3 py-2 whitespace-nowrap ${textSecondary}`}>
                     {r.username ? `${r.username} (#${r.user_id})` : (r.user_id ? `#${r.user_id}` : '—')}
                   </td>

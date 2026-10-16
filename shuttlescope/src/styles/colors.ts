@@ -58,6 +58,12 @@ export function coolwarm(ratio: number, alpha = 1): string {
 export const WIN  = CW_MIN   // '#3b4cc0'
 /** 負け / マイナス / 要改善 — coolwarm 高端（赤） */
 export const LOSS = CW_MAX   // '#b40426'
+/**
+ * 失点ヒートマップ (LOSS を半透明で重ねる) の最大不透明度。
+ * これを超えるとセル内の文字 (ライト: --ss-t1 / ダーク: --ss-t1) が
+ * WCAG AA (4.5:1) を割る。上限はテストで固定している。
+ */
+export const LOSS_HEAT_MAX_ALPHA = 0.55
 
 // ── 単系列・コンボチャート ────────────────────────────────────────────────────
 /** 単系列の棒グラフ（coolwarm 薄青） */

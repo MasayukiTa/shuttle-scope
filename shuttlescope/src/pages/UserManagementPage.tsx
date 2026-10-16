@@ -807,7 +807,8 @@ export function UserManagementPage() {
                         <div>{u.username || '—'}</div>
                         <div>
                           {t('auto.UserManagementPage.k19')} {u.team_display_name || u.team_name || '—'}
-                          {u.team_display_id ? ` (${u.team_display_id})` : ''}
+                          {/* __demo__ のような内部 ID (前後アンダースコア) は利用者向けに出さない */}
+                          {u.team_display_id && !/^__.*__$/.test(u.team_display_id) ? ` (${u.team_display_id})` : ''}
                           {u.team_is_independent ? ' ［無所属］' : ''}
                         </div>
                         {u.role === 'player' ? <div>{t('users.manage.player_prefix')}: {u.player_name || '—'}</div> : null}

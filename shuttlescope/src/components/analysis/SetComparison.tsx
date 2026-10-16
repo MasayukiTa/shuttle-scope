@@ -5,6 +5,7 @@ import {
   BarChart,
   Bar,
   Cell,
+  ReferenceLine,
   XAxis,
   YAxis,
   Tooltip,
@@ -143,10 +144,15 @@ export function SetComparison({ playerId, chartHeight = 200, filters = DEFAULT_F
               tick={{ fill: 'var(--ss-t3)', fontSize: 11 }}
             />
           )}
+          {/* 勝率 50% の基準線 (player は件数表示なので出さない) */}
+          {!isPlayer && (
+            <ReferenceLine y={50} stroke="var(--ss-t2)" strokeDasharray="4 3" strokeWidth={1} />
+          )}
           <Tooltip content={<CustomTooltip hideOutcome={isPlayer} />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
           <Bar dataKey={isPlayer ? 'total_rallies' : 'win_rate_pct'} radius={[4, 4, 0, 0]} name={isPlayer ? t('auto.SetComparison.rally_count') : '勝率'}>
+            {/* 棒は常に単色の濃色。勝率で白〜赤に塗り分けると 50% 付近で背景に溶けて読めない */}
             {chartData.map((d, i) => (
-              <Cell key={i} fill={isPlayer ? WIN : perfColor(d.win_rate_pct / 100)} />
+              <Cell key={i} fill={WIN} />
             ))}
           </Bar>
         </BarChart>

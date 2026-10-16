@@ -7,6 +7,7 @@ import { useCardTheme } from '@/hooks/useCardTheme'
 import { AnalysisFilters } from '@/types'
 import { useTranslation } from 'react-i18next'
 import { fmtPct as pct } from '@/utils/format'
+import { shotLabel } from '@/utils/analysisLabels'
 
 interface StateRow {
   state_key: string
@@ -103,7 +104,7 @@ export function StateEPVCard({ playerId, filters }: Props) {
                     {row.top_epv_shots.slice(0, 2).map((s) => (
                       <span key={s.shot_type}
                         className={`text-[10px] px-2 py-0.5 rounded-ss-sm ss-num ${s.epv > 0 ? 'bg-[var(--ss-success-tint)] text-[var(--ss-success)]' : 'bg-[var(--ss-emphasis-tint)] text-[var(--ss-emphasis)]'}`}>
-                        {t('auto.StateEPVCard.shot_pp', { shot: s.shot_type, v: `${s.epv > 0 ? '+' : ''}${(s.epv * 100).toFixed(1)}` })}
+                        {t('auto.StateEPVCard.shot_pp', { shot: shotLabel(t, s.shot_type), v: `${s.epv > 0 ? '+' : ''}${(s.epv * 100).toFixed(1)}` })}
                       </span>
                     ))}
                   </div>
@@ -142,7 +143,7 @@ export function StateEPVCard({ playerId, filters }: Props) {
                     <td className={`py-1.5 ${textMuted}`}>
                       {row.top_epv_shots.slice(0, 2).map((s) => (
                         <span key={s.shot_type} className={`mr-1 text-[10px] ss-num ${s.epv > 0 ? 'text-[var(--ss-success)]' : 'text-[var(--ss-emphasis)]'}`}>
-                          {t('auto.StateEPVCard.shot_pp_compact', { shot: s.shot_type, v: `${s.epv > 0 ? '+' : ''}${(s.epv * 100).toFixed(1)}` })}
+                          {t('auto.StateEPVCard.shot_pp_compact', { shot: shotLabel(t, s.shot_type), v: `${s.epv > 0 ? '+' : ''}${(s.epv * 100).toFixed(1)}` })}
                         </span>
                       ))}
                     </td>
