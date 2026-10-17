@@ -1148,10 +1148,19 @@ def quick_start_match(body: QuickStartBody, request: Request, db: Session = Depe
     else:
         # 相手選手を暫定作成（provisional）
         name_normalized = _normalize_name(body.opponent_name)
+        # Player.team は team_id から解決する読み取り専用の property で、代入できない。
+        # 自由入力の相手チーム名で既存チームの名簿に加えると他チームを汚染するため、
+        # 所属(team_id)は付けず、登録主体(scouting_owner_team_id)を自チームにして
+        # 作成者のチームだけに見えるスカウティング用選手として作る。
+        # チーム名は同姓同名の識別用に notes へ残す。
+        from backend.utils.auth import can_see_scouting_players
+        scouting_owner = ctx.team_id if (ctx.team_id is not None and can_see_scouting_players(ctx)) else None
+        opp_team = (body.opponent_team or "").strip()
         player_b = Player(
             name=body.opponent_name,
             name_normalized=name_normalized,
-            team=body.opponent_team or None,    # チーム名（同姓同名識別用）
+            scouting_owner_team_id=scouting_owner,
+            notes=f"相手チーム: {opp_team}" if opp_team else None,
             is_target=False,
             dominant_hand="unknown",
             profile_status="provisional",
