@@ -728,8 +728,13 @@ def adjust_role_with_cv_signals(
     shot_conf = shot_based_result.get("confidence_score", 0.0)
 
     # CV 陣形スタイル
-    fb_ratio = cv_summary.get("front_back_ratio", 0.0)
-    pa_ratio = cv_summary.get("parallel_ratio", 0.0)
+    fb_raw = cv_summary.get("front_back_ratio")
+    pa_raw = cv_summary.get("parallel_ratio")
+    if fb_raw is None and pa_raw is None:
+        # 陣形の集計対象フレームが 0 件: 比較の根拠が無い（0.0 として扱わない）
+        return {"cv_available": False, "agreement": "unknown", "agreement_score": 0.0}
+    fb_ratio = fb_raw or 0.0
+    pa_ratio = pa_raw or 0.0
     if fb_ratio > 0.5:
         cv_style = "前後陣傾向"
     elif pa_ratio > 0.5:

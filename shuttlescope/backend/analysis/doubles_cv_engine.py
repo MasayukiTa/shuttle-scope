@@ -194,24 +194,27 @@ def compute_doubles_cv_analytics(match_id: int, db: Session) -> dict:
 def _compute_formation_tendency(summary: dict) -> dict:
     """コート位置サマリーから陣形傾向を計算する。"""
     formations = summary.get("formations", {})
-    total = max(sum(formations.values()), 1)
+    total = sum(formations.values())
 
+    # 件数 0 の割合は 0.0 ではなく None
     tendency = {
-        k: {"count": v, "ratio": round(v / total, 3)}
+        k: {"count": v, "ratio": round(v / total, 3) if total > 0 else None}
         for k, v in formations.items()
     }
 
-    # 優位陣形
-    dominant = max(formations, key=formations.get) if formations else "unknown"
-    fb_ratio = summary.get("front_back_ratio", 0)
-    pa_ratio = summary.get("parallel_ratio", 0)
+    # 優位陣形（件数 0 なら決められない）
+    dominant = max(formations, key=formations.get) if formations and total > 0 else "unknown"
+    fb_ratio = summary.get("front_back_ratio")
+    pa_ratio = summary.get("parallel_ratio")
+    fb_cmp = fb_ratio or 0.0
+    pa_cmp = pa_ratio or 0.0
 
     style = "不明"
-    if fb_ratio > 0.5:
+    if fb_cmp > 0.5:
         style = "前後陣傾向"
-    elif pa_ratio > 0.5:
+    elif pa_cmp > 0.5:
         style = "平行陣傾向"
-    elif fb_ratio > 0.3 or pa_ratio > 0.3:
+    elif fb_cmp > 0.3 or pa_cmp > 0.3:
         style = "混合陣形"
 
     return {
