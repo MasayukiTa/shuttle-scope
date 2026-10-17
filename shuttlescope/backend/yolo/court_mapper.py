@@ -214,8 +214,9 @@ def summarize_frame_positions(frames_data: list[dict], court_adapter=None) -> di
         "total_frames": total,
         "frames_with_both_players": frames_both,
         "formations": formation_counts,
-        "front_back_ratio": round(formation_counts["front_back"] / max(total, 1), 3),
-        "parallel_ratio": round(formation_counts["parallel"] / max(total, 1), 3),
+        # フレーム 0 件の割合は 0.0 ではなく None（「データ無し」と「0%」を区別する）
+        "front_back_ratio": round(formation_counts["front_back"] / total, 3) if total > 0 else None,
+        "parallel_ratio": round(formation_counts["parallel"] / total, 3) if total > 0 else None,
         "player_a_avg_position": avg(pos_a),
         "player_b_avg_position": avg(pos_b),
         "player_a_frame_count": len(pos_a),
