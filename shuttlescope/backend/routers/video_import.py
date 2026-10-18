@@ -485,11 +485,20 @@ def _run_tracknet(job: dict, video_path: str) -> None:
 
     # DB 保存
     if match_id and track:
-        _save_tracknet_artifact(match_id, track, inf.backend_name())
+        _save_tracknet_artifact(
+            match_id, track, inf.backend_name(),
+            sample_fps=fps / max(1, step_frames),
+        )
 
 
-def _save_tracknet_artifact(match_id: int, track: list[dict], backend: str) -> None:
+def _save_tracknet_artifact(
+    match_id: int, track: list[dict], backend: str, sample_fps: Optional[float] = None,
+) -> None:
     """TrackNet シャトル軌跡を MatchCVArtifact に保存（再実行時は上書き）。
+
+    全体走査なので summary に coverage="full" と sample_fps・覆う時間範囲を残す。
+    ラリー窓だけのバッチ（routers/tracknet.py）の結果は coverage="rally_windows" で、
+    こちらは何が既にあっても置き換えてよい（全体走査が最も広い）。
 
     Canonical artifact_type は tracknet_shuttle_track。
     旧実装で混在した tracknet_track も拾って上書きし、読み出し互換を保つ。
@@ -502,7 +511,14 @@ def _save_tracknet_artifact(match_id: int, track: list[dict], backend: str) -> N
     db = SessionLocal()
     try:
         track_json   = json.dumps(track, ensure_ascii=False)
-        summary_json = json.dumps({"point_count": len(track), "backend": backend}, ensure_ascii=False)
+        from backend.cv.shuttle_track_meta import COVERAGE_FULL, build_track_meta
+        summary_json = json.dumps(
+            {
+                **build_track_meta(track, coverage=COVERAGE_FULL, sample_fps=sample_fps),
+                "backend": backend,
+            },
+            ensure_ascii=False,
+        )
 
         existing = (
             db.query(MatchCVArtifact)

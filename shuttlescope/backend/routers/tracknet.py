@@ -248,6 +248,9 @@ def start_batch(
         "total_rallies": 0,
         "updated_strokes": 0,
         "error": None,
+        # S-4: 処理を飛ばした / 書かなかった理由（人が読む文）。無ければ None。
+        "message": None,
+        "shuttle_track_write": None,
     }
 
     roi = body.roi_rect.model_dump() if body.roi_rect else None
@@ -495,6 +498,25 @@ def _run_batch(
         _jobs[job_id]["total_rallies"] = len(rallies)
         updated = 0
 
+        # S-4 step 8: 全ラリーの video_timestamp_start が同一値（例: 全て 0.0）なら、
+        # それは「未入力の既定値」であって本当の開始時刻ではない。処理すると動画の
+        # 同じ先頭 5 フレームを全ラリーに当て、land_zone が空のストロークへ同じ値を
+        # 書いてしまう。何も書かずに理由を残して終える（人の入力値には触れない）。
+        _starts = [r.video_timestamp_start for r in rallies if r.video_timestamp_start is not None]
+        if len(_starts) >= 2 and len(set(_starts)) == 1:
+            msg = (
+                f"全 {len(_starts)} ラリーの video_timestamp_start が同一値 ({_starts[0]}) "
+                "のため処理しませんでした。ラリーごとの開始時刻を入力してから再実行してください。"
+            )
+            logger.warning("TrackNet batch skipped: match=%d %s", match_id, msg)
+            _jobs[job_id]["message"] = msg
+            _jobs[job_id]["skipped_reason"] = "identical_rally_timestamps"
+            _jobs[job_id]["processed_rallies"] = len(rallies)
+            _jobs[job_id]["progress"] = 1.0
+            _jobs[job_id]["shuttle_track_write"] = "skipped_identical_rally_timestamps"
+            _jobs[job_id]["status"] = BatchJobStatus.COMPLETE
+            return
+
         # resume モード: 解析済みラリー数を事前にカウントして進捗の初期値を設定
         if resume and not roi_widened and rallies:
             pre_done = 0
@@ -597,7 +619,28 @@ def _run_batch(
             .first()
         )
         skip_shuttle_build = resume and existing_shuttle_art and existing_shuttle_art.data
-        if skip_shuttle_build:
+        # S-4 step 1: 動画全体を走査した成果物 (coverage=full) をラリー窓だけの結果で
+        # 置き換えない。ここで作る軌跡は Rally の窓（数十秒分）に過ぎない。
+        from backend.cv.shuttle_track_meta import (
+            COVERAGE_FULL,
+            COVERAGE_RALLY_WINDOWS,
+            build_track_meta,
+            existing_coverage,
+            merge_summary,
+        )
+        keep_full_artifact = bool(
+            existing_shuttle_art
+            and existing_coverage(existing_shuttle_art.summary, existing_shuttle_art.data) == COVERAGE_FULL
+        )
+        if keep_full_artifact and not skip_shuttle_build:
+            msg = (
+                "既存の tracknet_shuttle_track は動画全体の走査結果 (coverage=full, "
+                f"{existing_shuttle_art.frame_count} 点) のため、ラリー窓の結果で上書きしませんでした。"
+            )
+            logger.info("TrackNet shuttle_track write skipped: match=%d %s", match_id, msg)
+            _jobs[job_id]["shuttle_track_write"] = "skipped_existing_full"
+            _jobs[job_id]["message"] = msg
+        elif skip_shuttle_build:
             logger.info("TrackNet resume: shuttle_track rebuild skipped (existing artifact reused)")
         else:
             batch_fps = _load_setting_int(db, "tracknet_batch_fps", 10)
@@ -606,8 +649,12 @@ def _run_batch(
             shuttle_track = _build_shuttle_track(rallies, db, inf, threshold, video_path, roi, step=shuttle_step)
             if shuttle_track:
                 track_json = json.dumps(shuttle_track, ensure_ascii=False)
+                meta = build_track_meta(
+                    shuttle_track, coverage=COVERAGE_RALLY_WINDOWS, sample_fps=batch_fps,
+                )
                 if existing_shuttle_art:
                     existing_shuttle_art.data = track_json
+                    existing_shuttle_art.summary = merge_summary(existing_shuttle_art.summary, meta)
                     existing_shuttle_art.frame_count = len(shuttle_track)
                     existing_shuttle_art.updated_at = _dt.datetime.utcnow()
                 else:
@@ -616,9 +663,11 @@ def _run_batch(
                         artifact_type="tracknet_shuttle_track",
                         frame_count=len(shuttle_track),
                         backend_used=inf.backend_name(),
+                        summary=merge_summary(None, meta),
                         data=track_json,
                     ))
                 db.commit()
+                _jobs[job_id]["shuttle_track_write"] = "written_rally_windows"
                 logger.info("TrackNet shuttle_track saved: match=%d, points=%d", match_id, len(shuttle_track))
 
         # shuttle_track 保存完了後に status を COMPLETE に設定
