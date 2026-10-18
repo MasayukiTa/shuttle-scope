@@ -25,6 +25,18 @@ from backend.analysis.epv_state_model import wilson_ci, reliability_score
 
 MIN_CELL_Q = 10  # Q値推定の最低セル件数
 
+# 「最善手」は各 state で信頼できるセルの最大値を選ぶ。多重比較の補正は行っておらず、
+# ノイズを含む複数の推定値の最大値は真の値より楽観的になる (選択バイアス)。
+# 計算は変えず、結果を読む人に向けた注意書きとして返す。
+SELECTION_NOTE_JA = (
+    "最大値を選んでいるため、実際より良く見える傾向があります。"
+    "回数が少ないセルは参考程度に。"
+)
+SELECTION_NOTE_EN = (
+    "The best action is the maximum over several noisy estimates, so it tends to look "
+    "better than it really is. Treat cells with few samples as a rough guide only."
+)
+
 
 def compute_q_values(
     rallies: list,
@@ -59,8 +71,11 @@ def compute_q_values(
               "best_action": str,
               "best_q": float,
               "n_actions": int,
+              "selection_note": str,  # 最大値選択バイアスの注意書き(ja)
+              "selection_note_en": str,
             }
           },
+          "selection_note": str,  # 同上 (全体)。最善手は多重比較補正なしの最大値。
           "total_states": int,
           "total_reliable_cells": int,
         }
@@ -176,7 +191,8 @@ def compute_q_values(
             entry["ranking_within_state"] = rank
             q_table.append(entry)
 
-        # 最善手（reliable なものの中から最高 q_value）
+        # 最善手（reliable なものの中から最高 q_value）。
+        # 多重比較補正なしの最大値選択なので楽観側に偏る (selection_note 参照)。
         reliable_entries = [e for e in state_q_entries if e["reliable"]]
         if reliable_entries:
             best = reliable_entries[0]
@@ -188,6 +204,8 @@ def compute_q_values(
                 "best_q_ci_high": best["ci_high"],
                 "n_actions": len(state_q_entries),
                 "n_reliable_actions": len(reliable_entries),
+                "selection_note": SELECTION_NOTE_JA,
+                "selection_note_en": SELECTION_NOTE_EN,
             }
 
     # 全体 q_value 降順でソート（同一 state は内部順序維持）
@@ -198,6 +216,8 @@ def compute_q_values(
         "best_actions": best_actions,
         "total_states": len(state_obj),
         "total_reliable_cells": total_reliable,
+        "selection_note": SELECTION_NOTE_JA,
+        "selection_note_en": SELECTION_NOTE_EN,
     }
 
 

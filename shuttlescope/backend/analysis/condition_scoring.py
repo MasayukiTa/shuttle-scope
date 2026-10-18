@@ -133,7 +133,16 @@ def calc_validity(
 # ─── 本人内変動（仕様書 §7.1） ──────────────────────────────────────────────
 
 def calc_deviation(current_ccs: float, history_ccs_list: List[float]) -> Dict:
-    """前回差・3MA・28日平均/SD・zスコアを算出。欠損は None。"""
+    """前回差・3MA・直近28回平均/SD・zスコアを算出。欠損は None。
+
+    注意: 名前の「28」は日数ではなく**記録の件数**。history_ccs_list は同じ選手の
+    過去の weekly CCS (古→新) で、末尾 28 件 (記録が 28 件未満なら全件、ただし 7 件
+    未満では算出しない) の平均/SD を使う。週次調査なら約 28 週分。互換性のため
+    キー名 (delta_28ma / mean_28 / sd_28) は変えていない。
+
+    - delta_28ma = current - mean_28
+    - n_28: 実際に平均した記録の件数 (7..28)。算出しなかったときは None (0 にしない)
+    """
     result: Dict = {
         "delta_prev": None,
         "delta_3ma": None,
@@ -141,6 +150,7 @@ def calc_deviation(current_ccs: float, history_ccs_list: List[float]) -> Dict:
         "z_score": None,
         "mean_28": None,
         "sd_28": None,
+        "n_28": None,
     }
     h = list(history_ccs_list)
 
@@ -152,8 +162,9 @@ def calc_deviation(current_ccs: float, history_ccs_list: List[float]) -> Dict:
         result["delta_3ma"] = float(current_ccs - mean_3)
 
     if len(h) >= 7:
-        recent = h[-28:]
+        recent = h[-28:]  # 直近 28 件 (日数ではない)
         n = len(recent)
+        result["n_28"] = int(n)
         mean_28 = sum(recent) / n
         var_28 = sum((x - mean_28) ** 2 for x in recent) / n
         sd_28 = var_28 ** 0.5
