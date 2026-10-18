@@ -321,6 +321,10 @@ def detect_and_store_rally_boundaries(db: Session, match_id: int) -> dict:
     summary_json = json.dumps({
         "boundary_count": result.get("boundary_count", len(boundaries)),
         "fps":            result.get("fps"),
+        "sample_fps":     result.get("sample_fps"),
+        "time_axis":      result.get("time_axis"),
+        "segment_count":  len(result.get("segments", []) or []),
+        "segments_status": result.get("segments_status"),
     }, ensure_ascii=False)
 
     existing = _latest("rally_boundaries")

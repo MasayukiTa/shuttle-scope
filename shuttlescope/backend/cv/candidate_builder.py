@@ -354,15 +354,30 @@ def detect_rally_boundaries_from_cv(
             {"timestamp_sec", "confidence"(=gated_conf), "x_norm"?, "y_norm"?, ...}
         player_frames: YOLO アーティファクト data。各要素は
             {"timestamp_sec", "players": [{"label", "centroid":[x,y]}, ...]}
-        fps: 秒ベース閾値を frame ベースに換算する動画 FPS。
+        fps: 動画 FPS。成果物から実効サンプルレートが推定できないときだけ、
+            秒ベース閾値のサンプル数換算に使うフォールバック。
+
+    秒閾値の換算レート（S-4 step 2）:
+        検出器のカウンタは「シャトル成果物のサンプル 1 つにつき 1 進む」ので、
+        秒→個数の換算には動画 fps ではなく成果物の実効サンプルレート
+        （timestamp_sec の中央値間隔）を使う。10/15/30fps でサンプリングした
+        同じ実時間のプレーは同じ境界になる。推定できない場合（サンプル数不足）は
+        動画 fps にフォールバックし、time_axis="video_fps_fallback" と明示する。
+        fps_known（動画 fps を実測できたか）の意味は変えない: time_axis が
+        "sample_rate" のときは動画 fps は境界位置に影響しない。
 
     Returns:
         {
           "match_id": int,
-          "fps": float,
+          "fps": float,                 # 動画 fps（入力のまま）
+          "sample_fps": float|None,     # 成果物の実効サンプルレート
+          "time_axis": "sample_rate"|"video_fps_fallback",
+          "sample_count": int,
           "thresholds": {...},          # 実際に使った env 上書き値
           "boundary_count": int,
-          "boundaries": [BoundaryCandidate, ...]
+          "boundaries": [BoundaryCandidate, ...],
+          "segments": [...],            # rally_segments.build_rally_segments
+          "segments_status": "ok"|"no_segments"|"data_insufficient"
         }
 
     BoundaryCandidate:
@@ -392,15 +407,41 @@ def detect_rally_boundaries_from_cv(
         "min_rally_seconds":       _env_float("SS_RALLY_MIN_RALLY_SEC", 0.5),
     }
 
-    det = RallyBoundaryDetector(fps=fps, **thresholds)
+    from backend.cv.rally_segments import (
+        MIN_TOTAL_SAMPLES_FOR_SEGMENTS,
+        build_rally_segments,
+        estimate_sample_fps,
+    )
+
+    # 検出器の「フレーム」は成果物のサンプル。換算レートは実効サンプルレート。
+    sample_fps = estimate_sample_fps(f.get("timestamp_sec") for f in shuttle_frames)
+    if sample_fps is not None:
+        # timestamp_sec は小数 3 桁に丸められている（0.067/0.066 秒の交互など）ので、
+        # 整数 fps の 2% 以内なら整数に寄せる。int() 切り捨てで閾値が 1 サンプルぶれるのを防ぐ。
+        _snap = round(sample_fps)
+        if _snap >= 1 and abs(sample_fps - _snap) / _snap <= 0.02:
+            sample_fps = float(_snap)
+    if sample_fps is not None:
+        time_axis = "sample_rate"
+        detector_fps = sample_fps
+    else:
+        time_axis = "video_fps_fallback"
+        detector_fps = fps
+
+    det = RallyBoundaryDetector(fps=detector_fps, **thresholds)
 
     if not shuttle_frames:
         return {
-            "match_id":       match_id,
-            "fps":            fps,
-            "thresholds":     thresholds,
-            "boundary_count": 0,
-            "boundaries":     [],
+            "match_id":        match_id,
+            "fps":             fps,
+            "sample_fps":      None,
+            "time_axis":       time_axis,
+            "sample_count":    0,
+            "thresholds":      thresholds,
+            "boundary_count":  0,
+            "boundaries":      [],
+            "segments":        [],
+            "segments_status": "data_insufficient",
         }
 
     # プレイヤーフレームを timestamp_sec 昇順に索引化（最近傍引き当て用）
@@ -454,12 +495,31 @@ def detect_rally_boundaries_from_cv(
                 "reason_codes":  reason_codes,
             })
 
+    segments = build_rally_segments(
+        boundaries,
+        shuttle_timestamps=[float(f.get("timestamp_sec", 0.0)) for f in shuttle_sorted],
+        sample_fps=sample_fps,
+    )
+    if len(shuttle_sorted) < MIN_TOTAL_SAMPLES_FOR_SEGMENTS:
+        # サンプルが少なすぎる成果物からは区間を主張しない（0 件 = 「無い」ではなく「判断不能」）
+        segments = []
+        segments_status = "data_insufficient"
+    elif segments:
+        segments_status = "ok"
+    else:
+        segments_status = "no_segments"
+
     return {
-        "match_id":       match_id,
-        "fps":            fps,
-        "thresholds":     thresholds,
-        "boundary_count": len(boundaries),
-        "boundaries":     boundaries,
+        "match_id":        match_id,
+        "fps":             fps,
+        "sample_fps":      round(sample_fps, 3) if sample_fps is not None else None,
+        "time_axis":       time_axis,
+        "sample_count":    len(shuttle_sorted),
+        "thresholds":      thresholds,
+        "boundary_count":  len(boundaries),
+        "boundaries":      boundaries,
+        "segments":        segments,
+        "segments_status": segments_status,
     }
 
 

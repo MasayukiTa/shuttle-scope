@@ -213,6 +213,9 @@ def build_cv_candidates(match_id: int, request: Request, db: Session = Depends(g
     )
     # C-12: fps を推定できたかを成果物に残す。false のときは秒→フレーム換算が
     # ずれている可能性があり、ラリー境界候補の位置がそのぶん信用できない。
+    # S-4: 境界検出の換算レートは成果物の実効サンプルレートになった。
+    # rally_boundaries.time_axis が "sample_rate" なら動画 fps は境界位置に効かず、
+    # "video_fps_fallback" のときだけ fps_known=false が境界位置の不確かさになる。
     if isinstance(candidates, dict):
         candidates["fps_used"] = fps
         candidates["fps_known"] = fps_known
@@ -653,6 +656,10 @@ def _save_rally_boundaries_artifact(
     summary_json = json.dumps({
         "boundary_count": rally_boundaries.get("boundary_count", len(boundaries)),
         "fps":            rally_boundaries.get("fps"),
+        "sample_fps":     rally_boundaries.get("sample_fps"),
+        "time_axis":      rally_boundaries.get("time_axis"),
+        "segment_count":  len(rally_boundaries.get("segments", []) or []),
+        "segments_status": rally_boundaries.get("segments_status"),
     }, ensure_ascii=False)
 
     existing = _latest_artifact(db, match_id, ARTIFACT_TYPE_RALLY_BOUNDARIES)
