@@ -6,8 +6,18 @@
 //   - 新版: bg は常に N_GRAY (theme に追従)、warning の意味は **左罫線でなく**
 //     amber 色の **タイトル文字 + ⚠ アイコン** で示す。
 //     左罫線 縦バー方式は禁止 (詐欺サイト感)。
+import { createContext, useContext, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+
+// 研究タブのように「ページ先頭に注意バナーを 1 回だけ出す」画面向けのスコープ。
+// この Provider の内側にある ResearchNotice は描画しない (カードごとの重複を防ぐ)。
+// Provider の外 (研究タブ以外でカードを表示する場所) では従来どおり各自が表示する。
+const SuppressCtx = createContext(false)
+
+export function ResearchNoticeSuppress({ children }: { children: ReactNode }) {
+  return <SuppressCtx.Provider value={true}>{children}</SuppressCtx.Provider>
+}
 
 interface ResearchNoticeProps {
   assumptions?: string
@@ -26,6 +36,8 @@ export function ResearchNotice({
 }: ResearchNoticeProps) {
   const { t } = useTranslation()
   const isLight = useIsLightMode()
+  const suppressed = useContext(SuppressCtx)
+  if (suppressed) return null
 
   // bg / border は完全に N_GRAY (theme 連動)。
   // warning 意味は タイトル文字色 (amber) で運ぶ。
