@@ -22,6 +22,7 @@ import { ExpertLabelerPage } from '@/pages/ExpertLabelerPage'
 import { ExpertLabelerAnnotatePage } from '@/pages/ExpertLabelerAnnotatePage'
 import LlmChatPage from '@/pages/LlmChatPage'
 import { useAuth } from '@/hooks/useAuth'
+import { usePendingApprovalCount } from '@/hooks/usePendingApprovalCount'
 import { useIdleLogout } from '@/hooks/useIdleLogout'
 import { LoginPage } from '@/pages/LoginPage'
 import { MobileAnnotatePage } from '@/pages/MobileAnnotatePage'
@@ -171,6 +172,8 @@ function Sidebar() {
     refetchInterval: 30_000,
   })
   const unreadCount = unreadCountQuery.data?.data?.count ?? 0
+  // 承認待ちユーザ数 (admin のみ取得。失敗時は null でバッジを出さない)。
+  const pendingCount = usePendingApprovalCount(role)
 
   // LLM 専用ユーザ (バドミントン role を持たない = 'llm' 等) はバドミントン系ナビを出さない。
   const llmOnly = !!role && !['admin', 'analyst', 'coach', 'player', 'demo'].includes(role)
@@ -201,6 +204,13 @@ function Sidebar() {
       ? [
           { to: '/notifications', label: t('auto.App.k2'), shortLabel: '通知', icon: 'notifications', badge: unreadCount > 0 ? unreadCount : null },
           { to: '/users', label: t('nav.users'), icon: 'group' },
+          {
+            to: '/users/pending',
+            label: t('nav.pending_users'),
+            shortLabel: t('nav.pending_users_short'),
+            icon: 'how_to_reg',
+            badge: pendingCount != null && pendingCount > 0 ? pendingCount : null,
+          },
         ]
       : []),
     { to: '/settings', label: t('nav.settings'), icon: 'settings' },
@@ -290,6 +300,7 @@ function Sidebar() {
           <NavLink
             key={to}
             to={to}
+            end={to === '/users'}
             title={label}
             className={({ isActive }) =>
               clsx(
@@ -390,6 +401,7 @@ function Sidebar() {
             <NavLink
               key={to}
               to={to}
+              end={to === '/users'}
               className={({ isActive }) =>
                 clsx(
                   'flex flex-col items-center gap-0.5 py-2 px-4 text-[10px] min-w-0 transition-colors duration-base ease-out',
