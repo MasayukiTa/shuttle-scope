@@ -41,6 +41,10 @@ CONDITION_FIELD_TIERS: dict[str, int] = {
     "delta_3ma": 2,
     "delta_28ma": 2,
     "n_28": 2,  # delta_28ma の基準にした記録の件数 (delta_28ma と同じ Tier)
+    # 提出結果の平常レンジ / 因子ラベルは ccs_score・z_score から導出する値なので同じ Tier 2。
+    # 未登録だと既定の Tier 0 になり、coach/analyst (Tier 1) にも CCS 由来の値が漏れる。
+    "personal_range": 2,
+    "factor_labels": 2,
     "z_score": 2,
     "sleep_hours": 2,
     "validity_score": 2,

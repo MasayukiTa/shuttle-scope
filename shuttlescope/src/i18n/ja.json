@@ -563,6 +563,18 @@
       "validity": "回答の妥当性",
       "flags": "注意フラグ",
       "responses_breakdown": "回答内訳",
+      "validity_level": {
+        "ok": "問題なし",
+        "caution": "要確認",
+        "unreliable": "信頼性低"
+      },
+      "factor_name": {
+        "f1_physical": "身体コンディション",
+        "f2_stress": "ストレス",
+        "f3_mood": "気分",
+        "f4_motivation": "モチベーション",
+        "f5_sleep_life": "睡眠・生活"
+      },
       "label": {
         "good": "良好",
         "caution": "少し注意",

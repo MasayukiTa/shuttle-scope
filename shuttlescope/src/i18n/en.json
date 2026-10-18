@@ -554,6 +554,18 @@
       "validity": "Response validity",
       "flags": "Caution flags",
       "responses_breakdown": "Response breakdown",
+      "validity_level": {
+        "ok": "OK",
+        "caution": "Check",
+        "unreliable": "Low reliability"
+      },
+      "factor_name": {
+        "f1_physical": "Physical condition",
+        "f2_stress": "Stress",
+        "f3_mood": "Mood",
+        "f4_motivation": "Motivation",
+        "f5_sleep_life": "Sleep & daily life"
+      },
       "label": {
         "good": "Good",
         "caution": "Mild caution",
