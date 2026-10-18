@@ -4,7 +4,8 @@ opponent_policy_engine.py — 対戦相手ポリシー応答エンジン (Resear
 目的:
   - 対戦相手のショット選択ポリシー（多軸条件付き分布）を推定する
   - 単純なスタイルラベルより細粒度な戦術応答の傾向を把握する
-  - 状態条件（スコア・ラリーフェーズ・ゾーン）ごとの優先ショットを出力
+  - 状態条件（スコア・ラリーフェーズ・受けた球の着地ゾーン）ごとの優先ショットを出力
+    （ゾーンは予測対象ショット自身の着地点ではなく、直前に飛んできた球の着地点）
 
 設計:
   - 純粋関数（DB アクセスなし）
@@ -46,6 +47,25 @@ def _policy_context_key(score_phase: str, rally_bucket: str, zone: Optional[str]
     return (score_phase, rally_bucket, zone or "all")
 
 
+def _incoming_zone(ordered_strokes: list, stroke, role: str) -> Optional[str]:
+    """stroke を打つ前の状態: 直前のストロークが着地したゾーン（受ける球の着地点）。
+
+    ordered_strokes は stroke_num 昇順。直前ストロークが無い（サーブ等）、
+    直前が同じ側の打球（データ不整合）、着地ゾーン未記録のときは None
+    （コンテキストキーでは "all"）。stroke 自身の land_zone は決して返さない。
+    """
+    prev = None
+    for s in ordered_strokes:
+        if s is stroke:
+            break
+        prev = s
+    if prev is None:
+        return None
+    if is_opponent_stroke(getattr(prev, "player", None), role):
+        return None
+    return getattr(prev, "land_zone", None)
+
+
 # ── メイン計算 ───────────────────────────────────────────────────────────────
 
 def compute_opponent_policy(
@@ -68,7 +88,7 @@ def compute_opponent_policy(
           "context_policies": [
             {
               "context_key": str,
-              "context": {"score_phase": str, "rally_bucket": str, "zone": str},
+              "context": {"score_phase": str, "rally_bucket": str, "zone": str|None},  // zone = 受けた球の着地ゾーン
               "n": int,
               "shot_distribution": {shot_type: float},
               "entropy": float,
@@ -117,7 +137,10 @@ def compute_opponent_policy(
         opp_stks = [s for s in stks if is_opponent_stroke(s.player, role) and s.shot_type]
 
         for stroke in opp_stks:
-            zone = getattr(stroke, 'land_zone', None)
+            # 状況 = 打つ前に分かっている情報。直前に飛んできた球（相手側＝分析対象の
+            # 選手が打った直前ストローク）の着地ゾーン。予測対象ショット自身の
+            # land_zone は結果なので条件に使わない（結果の混入で予測可能性が膨らむ）。
+            zone = _incoming_zone(stks, stroke, role)
             ctx_key = _policy_context_key(rs.score_phase, rs.rally_bucket, zone)
             ctx_counts[ctx_key][stroke.shot_type] += 1
             ctx_obj[ctx_key] = {

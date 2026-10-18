@@ -3307,6 +3307,7 @@
       "n_strokes_filtered": "N={{n}} ストローク（フィルター適用後）",
       "context_policy_top": "コンテキスト別ポリシー（上位{{n}}件）",
       "context_label": "{{phase}} / {{bucket}}ラリー{{zone}}",
+      "incoming_zone": " / 受けた球の着地: {{zone}}",
       "n_only": "N={{n}}",
       "detail_hint": "詳細分析: OpponentStats・ShotWinLoss・PredictionPanel も併せて確認してください。"
     },

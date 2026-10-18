@@ -3297,6 +3297,7 @@
       "n_strokes_filtered": "N={{n}} strokes (after filtering)",
       "context_policy_top": "Policy by context (top {{n}})",
       "context_label": "{{phase}} / {{bucket}} rallies{{zone}}",
+      "incoming_zone": " / incoming shot landed: {{zone}}",
       "n_only": "N={{n}}",
       "detail_hint": "Details: also check OpponentStats, ShotWinLoss and PredictionPanel."
     },
