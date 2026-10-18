@@ -70,29 +70,23 @@ function renderCard(qc?: QueryClient) {
 const MOCK_POLICY_RESPONSE = {
   success: true,
   data: {
-    global_policy: {
-      dominant_shot: 'smash',
-      dominant_freq: 0.42,
-      entropy: 1.8,
-      predictability: 'mixed',
-      shot_distribution: { smash: 42, clear: 30, drop: 28 },
-      n: 100,
-    },
+    // バックエンド (compute_opponent_policy) の実際の形: global_policy は確率分布
+    global_policy: { smash: 0.42, clear: 0.3, drop: 0.28 },
+    global_entropy: 1.8,
     context_policies: [
       {
-        context_key: 'early_short',
+        context_key: "('early', 'short', 'all')",
         context: { score_phase: 'early', rally_bucket: 'short', zone: null },
-        policy: {
-          dominant_shot: 'drive',
-          dominant_freq: 0.55,
-          entropy: 1.2,
-          predictability: 'predictable',
-          shot_distribution: { drive: 55, drop: 45 },
-          n: 20,
-        },
+        n: 20,
+        shot_distribution: { drive: 0.55, drop: 0.45 },
+        entropy: 1.2,
+        dominant_shot: 'drive',
+        dominant_prob: 0.55,
+        predictability: 'mixed',
       },
     ],
-    total_strokes: 100,
+    total_opponent_shots: 100,
+    usable_contexts: 1,
   },
   meta: {
     tier: 'research',
@@ -123,7 +117,55 @@ describe('OpponentPolicyCard', () => {
     vi.mocked(apiClient.apiGet).mockResolvedValue(MOCK_POLICY_RESPONSE)
     renderCard()
     expect(await screen.findByText('smash')).toBeInTheDocument()
-    expect(await screen.findByText('混合')).toBeInTheDocument()
+    expect(await screen.findByText('(42.0%)')).toBeInTheDocument()
+    // 全体 (0.42 -> mixed) とコンテキスト (mixed) の両方
+    expect((await screen.findAllByText('混合')).length).toBe(2)
+  })
+
+  it('実バックエンド出力 (compute_opponent_policy の実測値) でコンテキストが描画される', async () => {
+    // backend/tests/test_opponent_policy_situation.py の合成ラリーを実際に compute_opponent_policy へ通した出力
+    const REAL = {
+      global_policy: { clear: 0.5, drop: 0.5 },
+      global_entropy: 1.0,
+      context_policies: [
+        {
+          context_key: "('early', 'short', 'NL')",
+          context: { score_phase: 'early', rally_bucket: 'short', zone: 'NL' },
+          n: 3,
+          shot_distribution: { clear: 1.0 },
+          entropy: 0.0,
+          dominant_shot: 'clear',
+          dominant_prob: 1.0,
+          predictability: 'predictable',
+        },
+        {
+          context_key: "('early', 'short', 'NR')",
+          context: { score_phase: 'early', rally_bucket: 'short', zone: 'NR' },
+          n: 3,
+          shot_distribution: { drop: 1.0 },
+          entropy: 0.0,
+          dominant_shot: 'drop',
+          dominant_prob: 1.0,
+          predictability: 'predictable',
+        },
+      ],
+      total_opponent_shots: 6,
+      usable_contexts: 2,
+    }
+    vi.mocked(apiClient.apiGet).mockResolvedValue({
+      success: true,
+      data: REAL,
+      meta: { tier: 'research', evidence_level: 'exploratory', sample_size: 6, caution: null },
+    })
+    renderCard()
+    // コンテキスト2件: 受けた球の着地ゾーン・n・予測可能が出る
+    expect(await screen.findByText(/NL/)).toBeInTheDocument()
+    expect(screen.getByText(/NR/)).toBeInTheDocument()
+    expect(screen.getAllByText('N=3').length).toBe(2)
+    expect(screen.getAllByText('予測可能').length).toBe(2)
+    expect(screen.getAllByText('(100.0%)').length).toBe(2)
+    expect(screen.getByText(/N=6 ストローク/)).toBeInTheDocument()
+    expect(screen.queryByText(/NaN/)).toBeNull()
   })
 
   it('正常データ: EntropyBar が表示される', async () => {
@@ -164,12 +206,23 @@ describe('OpponentPolicyCard', () => {
   it('global_policy が null のとき empty-state を表示する', async () => {
     vi.mocked(apiClient.apiGet).mockResolvedValue({
       success: true,
-      data: { global_policy: null, context_policies: [], total_strokes: 0 },
+      data: { global_policy: null, context_policies: [], total_opponent_shots: 0 },
       meta: { tier: 'research', evidence_level: 'exploratory', sample_size: 0, caution: null },
     })
     renderCard()
     expect(await screen.findByTestId('empty-state')).toBeInTheDocument()
     expect(screen.getByText(/対戦ストロークデータが不足/)).toBeInTheDocument()
+  })
+
+  it('バックエンドの空応答 (global_policy: {}) は empty-state で、0% を出さない', async () => {
+    vi.mocked(apiClient.apiGet).mockResolvedValue({
+      success: true,
+      data: { global_policy: {}, context_policies: [], total_opponent_shots: 0, usable_contexts: 0 },
+      meta: { tier: 'research', evidence_level: 'exploratory', sample_size: 0, caution: null },
+    })
+    renderCard()
+    expect(await screen.findByTestId('empty-state')).toBeInTheDocument()
+    expect(screen.queryByText(/%/)).toBeNull()
   })
 
   it('global_policy が undefined のとき empty-state を表示する（undefined 耐性）', async () => {
@@ -230,15 +283,12 @@ describe('OpponentPolicyCard', () => {
       ...MOCK_POLICY_RESPONSE,
       data: {
         ...MOCK_POLICY_RESPONSE.data,
-        global_policy: {
-          ...MOCK_POLICY_RESPONSE.data.global_policy,
-          entropy: undefined as unknown as number,
-        },
+        global_entropy: undefined as unknown as number,
       },
     }
     vi.mocked(apiClient.apiGet).mockResolvedValue(respWithUndefinedEntropy)
     renderCard()
-    // entropy=0 として 0.00 が表示される
+    // 全体の entropy が無ければ 0.00 として表示される（コンテキスト側は 1.20）
     await waitFor(() => {
       expect(screen.getByText('0.00')).toBeInTheDocument()
     })
@@ -251,10 +301,9 @@ describe('OpponentPolicyCard', () => {
       ...MOCK_POLICY_RESPONSE,
       data: {
         ...MOCK_POLICY_RESPONSE.data,
-        global_policy: {
-          ...MOCK_POLICY_RESPONSE.data.global_policy,
-          predictability: 'ultra_unpredictable',
-        },
+        context_policies: [
+          { ...MOCK_POLICY_RESPONSE.data.context_policies[0], predictability: 'ultra_unpredictable' },
+        ],
       },
     }
     vi.mocked(apiClient.apiGet).mockResolvedValue(resp)

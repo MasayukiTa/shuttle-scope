@@ -9,29 +9,63 @@ import { useTranslation } from 'react-i18next'
 import { fmtPct as pct } from '@/utils/format'
 import { MIcon } from '@/components/common/MIcon'
 
-interface PolicyEntry {
-  dominant_shot: string
-  dominant_freq: number
-  entropy: number
-  predictability: string
-  shot_distribution: Record<string, number>
-  n: number
-}
-
+// バックエンド (compute_opponent_policy) の実際の応答形。
 interface ContextPolicy {
   context_key: string
   context: {
     score_phase: string
     rally_bucket: string
+    /** 受けた球（直前ストローク）の着地ゾーン。不明は null */
     zone: string | null
   }
-  policy: PolicyEntry | undefined
+  n: number
+  shot_distribution: Record<string, number>
+  entropy: number
+  dominant_shot: string
+  dominant_prob: number
+  predictability: string
 }
 
 interface OpponentPolicyData {
-  global_policy: PolicyEntry
+  /** ショット種別 → 確率。データなしは {} */
+  global_policy: Record<string, number>
+  global_entropy?: number
   context_policies: ContextPolicy[]
-  total_strokes: number
+  total_opponent_shots?: number
+  usable_contexts?: number
+}
+
+interface GlobalSummary {
+  dominant_shot: string
+  dominant_prob: number
+  entropy: number | undefined
+  predictability: string
+  n: number | null
+}
+
+/** global_policy（分布）から全体の要約を導く。有限な確率が1つも無ければ null（空状態）。 */
+function summarizeGlobal(data: OpponentPolicyData | undefined): GlobalSummary | null {
+  const dist = data?.global_policy
+  if (!dist || typeof dist !== 'object') return null
+  let best: string | null = null
+  let bestP = -Infinity
+  for (const [shot, p] of Object.entries(dist)) {
+    if (typeof p === 'number' && Number.isFinite(p) && p > bestP) {
+      best = shot
+      bestP = p
+    }
+  }
+  if (best == null) return null
+  // バックエンドの context 判定と同じ閾値（0.60 / 0.40）
+  const predictability = bestP >= 0.6 ? 'predictable' : bestP >= 0.4 ? 'mixed' : 'unpredictable'
+  const n = data?.total_opponent_shots
+  return {
+    dominant_shot: best,
+    dominant_prob: bestP,
+    entropy: data?.global_entropy,
+    predictability,
+    n: typeof n === 'number' && Number.isFinite(n) ? n : null,
+  }
 }
 
 interface Meta {
@@ -169,8 +203,8 @@ export function OpponentPolicyCard({ playerId, filters }: Props) {
 
   const meta = data?.meta
   const policyData = data?.data
-  const global = policyData?.global_policy
-  const contexts = (policyData?.context_policies ?? []).filter(ctx => ctx.policy != null).slice(0, 8)
+  const global = summarizeGlobal(policyData)
+  const contexts = (policyData?.context_policies ?? []).filter(ctx => ctx?.dominant_shot != null).slice(0, 8)
   const errorKind = isError ? classifyError(error) : null
 
   return (
@@ -222,7 +256,7 @@ export function OpponentPolicyCard({ playerId, filters }: Props) {
 
       <ResearchNotice
         caution={meta?.caution ?? '対戦相手ポリシーはショット分布の記述統計です。戦術的意図の推定は含みません。'}
-        assumptions="ショット種別はアノテーションに依存。コンテキストはスコアフェーズ・ラリー長・ゾーンで定義。"
+        assumptions="ショット種別はアノテーションに依存。コンテキストはスコアフェーズ・ラリー長・受けた球の着地ゾーン（打つ前に分かる情報）で定義。"
         promotionCriteria="コンテキストごとN≥30ストローク・複数対戦での再現性確認"
       />
 
@@ -246,14 +280,14 @@ export function OpponentPolicyCard({ playerId, filters }: Props) {
             <div className="flex items-center justify-between">
               <span className={`text-[11px] ${textSecondary}`}>{t('auto.OpponentPolicyCard.k4')}</span>
               <span className={`text-[10px] ${textFaint}`}>
-                {t('auto.OpponentPolicyCard.n_strokes_filtered', { n: policyData?.total_strokes ?? 0 })}
+                {global.n != null ? t('auto.OpponentPolicyCard.n_strokes_filtered', { n: global.n }) : '—'}
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
               <div>
                 <span className={`text-xs ${textMuted}`}>{t('auto.OpponentPolicyCard.k5')} </span>
                 <span className={`text-xs font-medium ${textHeading}`}>{global.dominant_shot}</span>
-                <span className={`text-[10px] ml-1 ${textFaint}`}>({pct(global.dominant_freq)})</span>
+                <span className={`text-[10px] ml-1 ${textFaint}`}>({pct(global.dominant_prob)})</span>
               </div>
               <div
                 className="flex items-center gap-1"
@@ -276,7 +310,7 @@ export function OpponentPolicyCard({ playerId, filters }: Props) {
             <div className="space-y-1">
               <p className={`text-[10px] ${textMuted}`}>{t('auto.OpponentPolicyCard.context_policy_top', { n: contexts.length })}</p>
               {contexts.map((ctx, i) => {
-                const policy = ctx.policy!
+                const policy = ctx
                 return (
                   <div key={i} className={`${cardInnerAlt} rounded px-2 py-1.5 flex items-center justify-between`}>
                     <div className="space-y-0.5">
@@ -284,12 +318,12 @@ export function OpponentPolicyCard({ playerId, filters }: Props) {
                         {t('auto.OpponentPolicyCard.context_label', {
                           phase: SCORE_PHASE_LABELS[ctx.context.score_phase] ?? ctx.context.score_phase,
                           bucket: RALLY_BUCKET_LABELS[ctx.context.rally_bucket] ?? ctx.context.rally_bucket,
-                          zone: ctx.context.zone ? ` / ${ctx.context.zone}` : '',
+                          zone: ctx.context.zone ? t('auto.OpponentPolicyCard.incoming_zone', { zone: ctx.context.zone }) : '',
                         })}
                       </div>
                       <div className="text-[10px]">
                         <span className={`font-medium ${textHeading}`}>{policy.dominant_shot}</span>
-                        <span className={`ml-1 ${textFaint}`}>({pct(policy.dominant_freq)})</span>
+                        <span className={`ml-1 ${textFaint}`}>({pct(policy.dominant_prob)})</span>
                         <span
                           className={`ml-2 ${getPredictabilityColor(policy.predictability, isLight)}`}
                           title={PREDICTABILITY_HINTS[policy.predictability] ?? ''}

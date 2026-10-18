@@ -172,7 +172,7 @@ EVIDENCE_META: dict[str, dict] = {
     "opponent_policy": {
         "evidence_level": "exploratory",
         "caution": "対戦相手ポリシーは観測されたショット選択の統計です。意図的な戦術変化は反映しません。",
-        "assumptions": "多軸（スコア・ラリーフェーズ・ゾーン）条件付きショット分布を使用します。",
+        "assumptions": "多軸（スコア・ラリーフェーズ・受けた球の着地ゾーン）条件付きショット分布を使用します。ゾーンは打つ前に分かる直前ストロークの着地点で、予測対象ショット自身の着地点は使いません。",
         "promotion_criteria": "予測精度（交差検証）・N≥100対戦試合",
     },
     "doubles_role": {
