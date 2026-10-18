@@ -66,6 +66,7 @@ import { useCVCandidates } from '@/hooks/annotator/useCVCandidates'
 import { AnnotatorVideoPane } from '@/components/annotator/AnnotatorVideoPane'
 import type { RoiRect } from '@/components/video/RoiRectOverlay'
 import { CVAssistPanel } from '@/components/annotation/CVAssistPanel'
+import { CVScanPanel } from '@/components/annotation/CVScanPanel'
 import { ReviewQueuePanel as CVReviewQueuePanel } from '@/components/annotation/ReviewQueuePanel'
 import { PlayerMovementCard } from '@/components/analysis/PlayerMovementCard'
 import { uploadVideoInChunks, abortChunkUpload } from '@/utils/chunkUpload'
@@ -4364,6 +4365,17 @@ export function AnnotatorPage() {
                   />
                 )}
               </div>
+            )}
+
+            {/* 動画全体の走査結果の確認（admin/analyst/coach のみ。CVScanPanel 内の RoleGuard で門番） */}
+            {!isMobile && matchId && (
+              <CVScanPanel
+                matchId={Number(matchId)}
+                onSeek={(sec) => {
+                  const v = videoRef.current
+                  if (v) v.currentTime = sec
+                }}
+              />
             )}
 
             {/* 総移動距離・コートヒートマップカード（トラッキング済みの場合のみ表示） */}
