@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { AnalysisFilters } from '@/types'
-import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
+import { ResearchNotice, ResearchNoticeSuppress } from '@/components/dashboard/ResearchNotice'
 import { PeerComparisonCard } from '@/components/dashboard/PeerComparisonCard'
 import { AdviceChatPanel } from '@/components/dashboard/advice_chat/AdviceChatPanel'
 import { useAuth } from '@/hooks/useAuth'
@@ -76,6 +76,8 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
       />
       </div>
 
+      {/* 以降のカードごとの ResearchNotice は出さない (上のページ先頭バナー 1 回に集約) */}
+      <ResearchNoticeSuppress>
       {/* admin-only コミュニティ peer 比較 (research / experimental) */}
       <ErrorBoundary>
         <PeerComparisonCard />
@@ -250,6 +252,7 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
           <PromotionStatusCard playerId={playerId} filters={filters} />
         </RoleGuard>
       </ErrorBoundary>
+      </ResearchNoticeSuppress>
     </div>
     </ResearchBundleProvider>
   )
