@@ -481,11 +481,12 @@ def list_cloud_packages(db: Session = Depends(get_db), _ctx=Depends(require_anal
 async def copy_to_cloud(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    _ctx=Depends(require_analyst),
+    _ctx=Depends(require_admin),
 ):
     """
     クライアントがアップロードした .sspkg を sync_folder_path へコピーする。
     エクスポート後の自動コピーに使用。
+    sync_folder_path はサーバ全体で 1 つの共有フォルダなので admin 限定。
     """
     settings = _load_settings(db)
     folder = settings.get("sync_folder_path", "")
@@ -517,11 +518,12 @@ def import_from_cloud_path(
     path: str = Query(..., description="クラウドフォルダ内の .sspkg フルパス"),
     dry_run: bool = Query(False),
     db: Session = Depends(get_db),
-    _ctx=Depends(require_analyst),
+    _ctx=Depends(require_admin),
 ):
     """
     sync_folder_path 内の指定 .sspkg ファイルを直接インポート。
     dry_run=True の場合はプレビューのみ。
+    共有フォルダはサーバ全体で 1 つなので admin 限定。
     """
     # Path-injection 防止: 同期フォルダを基準に結合 → resolve → 基準配下チェックを優先
     settings_cfg = _load_settings(db)

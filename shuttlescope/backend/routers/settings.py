@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from backend.db import database as _db_module
 from backend.db.database import get_db
-from backend.utils.auth import require_analyst, get_auth
+from backend.utils.auth import require_analyst, require_admin, get_auth
 
 router = APIRouter()
 
@@ -203,12 +203,14 @@ def update_settings(
     body: SettingsUpdate,
     request: Request,
     db: Session = Depends(get_db),
-    _ctx=Depends(require_analyst),
+    _ctx=Depends(require_admin),
 ):
     """設定を部分更新（指定したキーのみ上書き）。
 
+    設定は GPU/CV バックエンド・同期フォルダ・トンネル・TURN など、サーバ全体に効く
+    ホスト設定なので admin 限定 (チームごとの値ではない)。
     sensitive keys (ngrok_authtoken / turn_* / ss_notify_webhook_url) は
-    admin のみ書換可能。analyst が書換えると SSRF 原資や credential 盗難に発展する。
+    analyst が書換えると SSRF 原資や credential 盗難に発展するため、従来から admin のみ。
     """
     ctx = get_auth(request)
     # 1) ホワイトリスト + 型検証
