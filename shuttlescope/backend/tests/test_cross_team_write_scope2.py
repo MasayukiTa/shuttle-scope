@@ -241,6 +241,14 @@ SPECS = [
     S("pipeline.run", "POST", "/api/v1/pipeline/run", WRITE_DENY + ["pA1"], dict(json=dict(match_id=1))),
     S("video_import.path", "POST", "/api/video_import/path", WRITE_DENY + ["pA1"],
       dict(json=dict(video_path="@VIDEO@", match_id=1)), allow=["cA", "aA", "admin"], loopback=True),
+    # S-4: 全体走査の入口 / 区間への人の決定 / 採用。運用ロール (自チーム coach/analyst/admin) だけ。
+    # player は自分の出る試合 (pA1) でも 403。cv_candidates モジュールは COVERED_ELSEWHERE だが、
+    # 新しい書き込み口なので他チームの総当たりにも載せる (詳細は test_cv_segments_scan.py)。
+    S("cv_candidates.scan", "POST", "/api/cv-candidates/scan/1", WRITE_DENY + ["pA1"], allow=["cA", "aA", "admin"]),
+    S("cv_candidates.segment_decision", "POST", "/api/cv-candidates/1/segments/decisions", WRITE_DENY + ["pA1"],
+      dict(json=dict(start_sec=1.0, end_sec=2.0, action="reject")), allow=["cA", "aA", "admin"]),
+    S("cv_candidates.segment_adopt", "POST", "/api/cv-candidates/1/segments/adopt", WRITE_DENY + ["pA1"],
+      dict(json=dict(start_sec=1.0, end_sec=2.0, rally_id=1)), allow=["cA", "aA", "admin"]),
     S("youtube_live.start", "POST", "/api/youtube_live/start", NON_TEAM + FOREIGN,
       dict(json=dict(url="https://www.youtube.com/watch?v=abcdefghijk", match_id=1)), observe=["pA1", "pA2"]),
     S("youtube_live.chunk", "POST", f"/api/youtube_live/{JOB_A}/chunk", NON_TEAM + FOREIGN,

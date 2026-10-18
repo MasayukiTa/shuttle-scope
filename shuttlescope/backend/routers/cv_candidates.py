@@ -6,6 +6,13 @@
   POST /cv-candidates/apply/{match_id}   — 高確信度候補をストロークに書き戻す
   PUT  /cv-candidates/review/{rally_id}  — ラリーのレビューステータスを更新
 
+S-4（ラリー 0 本の動画の全体走査。案 A: CV は Rally/Stroke/GameSet を作らない）:
+  POST /cv-candidates/scan/{match_id}                — video_import で動画全体を走査（二重起動は 409）
+  GET  /cv-candidates/scan-status/{job_id}           — 走査ジョブの進捗
+  GET  /cv-candidates/{match_id}/segments            — rally_boundaries の区間（operator 限定）
+  POST /cv-candidates/{match_id}/segments/decisions  — 人の決定を追記（rally_boundary_decisions）
+  POST /cv-candidates/{match_id}/segments/adopt      — 人が押したときだけ既存ラリーの時刻を設定
+
 Round 258 P1 fix: 旧来は router 内部で auth check を一切持たず、
 TeamScopeAccessControlMiddleware の path-pattern マッチングに依存していた。
 PUT /cv-candidates/review/{rally_id} は match_id ではなく rally_id を取るので
@@ -17,11 +24,16 @@ from __future__ import annotations
 
 import json
 import logging
+import math
+import re
+import threading
+import uuid
 from datetime import datetime
-from typing import Optional
+from pathlib import Path
+from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
@@ -591,6 +603,456 @@ def get_review_queue(match_id: int, request: Request, db: Session = Depends(get_
 
     result.sort(key=lambda r: r["rally_num"])
     return {"success": True, "data": result}
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# S-4: ラリー 0 本の動画の全体走査（案 A）
+#
+# CV は Rally / Stroke / GameSet 行を作らない。走査は video_import の既存の解析
+# (_run_pipeline → _run_tracknet / _run_yolo) を呼ぶだけで、試合単位の成果物
+# (coverage=full) に保存される。区間は rally_boundaries 成果物の `segments`。
+# 人の決定は別種別 `rally_boundary_decisions`（追記のみ・1 決定 = 1 行）に置き、
+# rally_boundaries の再ビルド（上書き）では消えない。
+# ────────────────────────────────────────────────────────────────────────────
+
+ARTIFACT_TYPE_BOUNDARY_DECISIONS = "rally_boundary_decisions"
+_SCAN_JOB_KIND = "cv_scan"
+# video_import.import_from_path と同じ拡張子集合（あちらは関数内ローカルなので写し）
+_SCAN_VIDEO_EXTS = {'.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.m4v', '.webm', '.ts', '.mts'}
+_scan_lock = threading.Lock()  # 「実行中か」の確認とジョブ登録を 1 つの不可分操作にする
+
+
+def _resolve_scan_video(match: Match) -> Path:
+    """Match.video_local_path を video_import が読めるローカルファイルに解決する。
+
+    routers/tracknet.py start_batch と同じ normalize_match_local_path を使い、
+    video_import.import_from_path と同じ path_jail / 拡張子 / サイズの検査を通す。
+    video_import は URL スキームを読めないので、読めないものはここで 400 にする。
+    """
+    from backend.utils.path_jail import normalize_match_local_path, is_allowed_video_path
+    from backend.routers import video_import as _vi
+
+    raw = (match.video_local_path or "").strip()
+    if not raw:
+        if match.video_url:
+            raise HTTPException(
+                status_code=400,
+                detail="この試合の動画は URL（外部配信）のため全体走査できません。ローカルファイルの動画が必要です",
+            )
+        raise HTTPException(status_code=400, detail="動画ファイルが設定されていません")
+    if any(ch in raw for ch in ("\x00", "\r", "\n")):
+        raise HTTPException(status_code=400, detail="パスに不正な文字が含まれています")
+    if raw.startswith(("http://", "https://")) or (
+        re.match(r'^[a-zA-Z][a-zA-Z0-9+\-.]*://', raw)
+        and not raw.startswith(("localfile:///", "server://"))
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="URL スキームの動画は全体走査できません（video_import はローカルファイルパスのみ読めます）",
+        )
+    is_server_ref = raw.startswith("server://")
+    resolved = normalize_match_local_path(raw)
+    if resolved is None:
+        raise HTTPException(
+            status_code=400,
+            detail="動画の参照（server://）をローカルファイルに解決できません。全体走査には読めるローカルファイルが必要です",
+        )
+    if Path(str(resolved)).suffix.lower() not in _SCAN_VIDEO_EXTS:
+        raise HTTPException(status_code=400, detail="動画ファイル以外は処理できません")
+    path = Path(str(resolved)).resolve()
+    if path.suffix.lower() not in _SCAN_VIDEO_EXTS:
+        raise HTTPException(status_code=400, detail="動画ファイル以外は処理できません")
+    # path_jail を存在確認より前に行う（許可ルート外の存在情報を漏らさない）
+    if not is_allowed_video_path(path):
+        if is_server_ref:
+            raise HTTPException(
+                status_code=400,
+                detail="server:// の動画は video_import が読める許可ルート外にあるため全体走査できません",
+            )
+        raise HTTPException(status_code=403, detail="動画パスが許可ルート外です")
+    if not path.exists() or not path.is_file():
+        raise HTTPException(status_code=400, detail="動画ファイルが存在しません")
+    if path.stat().st_size > _vi._MAX_VIDEO_BYTES:
+        raise HTTPException(status_code=413, detail="動画ファイルサイズが上限を超えています")
+    return path
+
+
+@router.post("/cv-candidates/scan/{match_id}")
+def start_cv_scan(
+    match_id: int,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """動画全体を TrackNet + YOLO で走査して試合単位の成果物に保存する（非同期）。
+
+    新しい CV ロジックは持たず、video_import の _run_pipeline を呼ぶだけ。Rally /
+    Stroke / GameSet 行は作らない。同じ試合の走査が実行中なら 409。
+    完了後の候補化は既存の POST /cv-candidates/build/{match_id} で行う。
+    """
+    from backend.routers import video_import as _vi
+    from backend.utils.auth import get_auth as _ga
+
+    match = _require_match_team_scope(request, db, match_id)
+    video_path = _resolve_scan_video(match)
+    ctx = _ga(request)
+    with _scan_lock:
+        for jid, j in list(_vi._jobs.items()):
+            if j.get("match_id") == match_id and j.get("phase") not in (_vi.Phase.DONE, _vi.Phase.ERROR):
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"この試合は既に動画の解析中です (job_id={jid})。",
+                )
+        job_id = uuid.uuid4().hex[:8]
+        job = _vi._new_job(
+            str(video_path), match_id,
+            owner_user_id=ctx.user_id,
+            owner_team_name=(ctx.team_name or None),
+        )
+        job["job_id"] = job_id
+        job["kind"] = _SCAN_JOB_KIND
+        _vi._jobs[job_id] = job
+    background_tasks.add_task(_vi._run_pipeline, job_id)
+    return {"success": True, "data": {"job_id": job_id, "match_id": match_id}}
+
+
+@router.get("/cv-candidates/scan-status/{job_id}")
+def get_cv_scan_status(job_id: str, request: Request, db: Session = Depends(get_db)):
+    """走査ジョブの進捗。ジョブの試合に対する operator スコープを要求し、動画パスは返さない。"""
+    from backend.routers import video_import as _vi
+
+    _require_operator_role(request)
+    job = _vi._jobs.get(job_id)
+    if not job or job.get("kind") != _SCAN_JOB_KIND or job.get("match_id") is None:
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません")
+    _require_match_team_scope(request, db, job["match_id"])
+    return {
+        "success": True,
+        "data": {
+            "job_id": job_id,
+            "match_id": job["match_id"],
+            "phase": job.get("phase"),
+            "progress": job.get("progress"),
+            "tracknet": job.get("tracknet"),
+            "yolo": job.get("yolo"),
+            "started_at": job.get("started_at"),
+            "finished_at": job.get("finished_at"),
+            "error": job.get("error"),
+        },
+    }
+
+
+def _segment_key(start_sec: Optional[float], end_sec: Optional[float]) -> tuple:
+    """決定の「時間区間キー」。小数 3 桁（成果物の timestamp_sec と同じ丸め）で比べる。"""
+    return (
+        None if start_sec is None else round(float(start_sec), 3),
+        None if end_sec is None else round(float(end_sec), 3),
+    )
+
+
+def _read_decisions(db: Session, match_id: int) -> list[dict]:
+    """rally_boundary_decisions を古い順に返す（読めない行は飛ばす）。"""
+    rows = (
+        db.query(MatchCVArtifact)
+        .filter(
+            MatchCVArtifact.match_id == match_id,
+            MatchCVArtifact.artifact_type == ARTIFACT_TYPE_BOUNDARY_DECISIONS,
+        )
+        .order_by(MatchCVArtifact.id)
+        .all()
+    )
+    out: list[dict] = []
+    for row in rows:
+        try:
+            d = json.loads(row.data or "")
+        except Exception:
+            continue
+        if isinstance(d, dict):
+            d["decision_id"] = row.id
+            out.append(d)
+    return out
+
+
+def _load_boundary_segments(db: Session, match_id: int) -> tuple[Optional[dict], Optional[str]]:
+    """(rally_boundaries の中身, 読めなかった理由)。成果物が無ければ (None, 理由)。"""
+    artifact = _latest_artifact(db, match_id, ARTIFACT_TYPE_RALLY_BOUNDARIES)
+    if not artifact or not artifact.data:
+        return None, "ラリー境界の成果物がありません（全体走査と候補生成が未実行）"
+    try:
+        data = json.loads(artifact.data)
+    except Exception:
+        return None, "ラリー境界の成果物が読めません（保存データが壊れています）"
+    if not isinstance(data, dict):
+        return None, "ラリー境界の成果物が読めません（形式が不正です）"
+    return data, None
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# GET /cv-candidates/{match_id}/segments
+# ────────────────────────────────────────────────────────────────────────────
+
+@router.get("/cv-candidates/{match_id}/segments")
+def get_cv_segments(match_id: int, request: Request, db: Session = Depends(get_db)):
+    """rally_boundaries の区間（segments）を返す。operator 限定（player には一切見せない）。
+
+    各区間の data_status / open_ended / signal_score / coverage_ratio は成果物のまま。
+    signal_score は「発火した信号数/3」の平均で統計的な確からしさではない。
+    成果物が無い・サンプル不足のときは status="insufficient_data" と理由を返す
+    （0 件を「ラリーが無い」と読ませない）。
+    """
+    _require_match_team_scope(request, db, match_id)
+    decisions = _read_decisions(db, match_id)
+    data, why = _load_boundary_segments(db, match_id)
+    if data is None:
+        return {"success": True, "data": {
+            "match_id": match_id, "status": "insufficient_data", "reason": why,
+            "segments": [], "decisions": decisions,
+        }}
+    seg_status = data.get("segments_status")
+    segments = data.get("segments")
+    if seg_status not in ("ok", "no_segments", "data_insufficient") or not isinstance(segments, list):
+        return {"success": True, "data": {
+            "match_id": match_id, "status": "insufficient_data",
+            "reason": "区間（segments）を含まない旧形式の成果物です。候補を再生成してください",
+            "segments": [], "decisions": decisions,
+        }}
+    latest: dict[tuple, dict] = {}
+    for d in decisions:
+        latest[_segment_key(d.get("start_sec"), d.get("end_sec"))] = d
+    out_segments = []
+    for seg in segments:
+        s = dict(seg)
+        s["latest_decision"] = latest.get(_segment_key(seg.get("start_sec"), seg.get("end_sec")))
+        out_segments.append(s)
+    return {"success": True, "data": {
+        "match_id": match_id,
+        "status": "insufficient_data" if seg_status == "data_insufficient" else seg_status,
+        "reason": (
+            "サンプル数が足りないため区間を主張できません" if seg_status == "data_insufficient" else None
+        ),
+        "sample_fps": data.get("sample_fps"),
+        "time_axis": data.get("time_axis"),
+        "sample_count": data.get("sample_count"),
+        "segments": out_segments,
+        "decisions": decisions,
+    }}
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# POST /cv-candidates/{match_id}/segments/decisions
+# ────────────────────────────────────────────────────────────────────────────
+
+def _finite_sec(v: Optional[float], name: str) -> None:
+    if v is not None and not math.isfinite(v):
+        raise ValueError(f"{name} は有限の数値で指定してください")
+
+
+class SegmentDecisionRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+    start_sec: Optional[float] = Field(default=None, ge=0, le=86400)
+    end_sec: Optional[float] = Field(default=None, ge=0, le=86400)
+    action: Literal["reject", "accept", "assign"]
+    rally_id: Optional[int] = Field(default=None, ge=1, le=2_147_483_647)
+
+    @model_validator(mode="after")
+    def _check(self):
+        _finite_sec(self.start_sec, "start_sec")
+        _finite_sec(self.end_sec, "end_sec")
+        if self.start_sec is None and self.end_sec is None:
+            raise ValueError("start_sec と end_sec の少なくとも一方が必要です")
+        if self.start_sec is not None and self.end_sec is not None and self.end_sec <= self.start_sec:
+            raise ValueError("end_sec は start_sec より後にしてください")
+        if self.action == "assign" and self.rally_id is None:
+            raise ValueError("action=assign には rally_id が必要です")
+        if self.action != "assign" and self.rally_id is not None:
+            raise ValueError("rally_id は action=assign のときだけ指定できます")
+        return self
+
+
+def _rally_of_match(db: Session, match_id: int, rally_id: int) -> Rally:
+    rally = (
+        db.query(Rally)
+        .join(GameSet, Rally.set_id == GameSet.id)
+        .filter(Rally.id == rally_id, GameSet.match_id == match_id)
+        .first()
+    )
+    if rally is None:
+        raise HTTPException(status_code=404, detail="ラリーが見つかりません")
+    return rally
+
+
+def _new_decision_row(
+    match_id: int, request: Request, *, start_sec, end_sec, action: str,
+    rally_id: Optional[int], adopted: bool = False,
+) -> tuple[MatchCVArtifact, dict]:
+    """決定 1 件 = 成果物 1 行（INSERT のみ）。decided_by は認証済みユーザで、本文からは受けない。"""
+    from backend.utils.auth import get_auth as _ga
+    ctx = _ga(request)
+    record = {
+        "start_sec": start_sec,
+        "end_sec": end_sec,
+        "action": action,
+        "rally_id": rally_id,
+        "decided_by_user_id": ctx.user_id,
+        "decided_at": datetime.utcnow().isoformat(),
+    }
+    if adopted:
+        record["adopted"] = True  # 採用 API だけが付ける（decisions API の本文からは付けられない）
+    row = MatchCVArtifact(
+        match_id=match_id,
+        artifact_type=ARTIFACT_TYPE_BOUNDARY_DECISIONS,
+        summary=json.dumps({"action": action}, ensure_ascii=False),
+        data=json.dumps(record, ensure_ascii=False),
+    )
+    return row, record
+
+
+@router.post("/cv-candidates/{match_id}/segments/decisions")
+def post_segment_decision(
+    match_id: int,
+    body: SegmentDecisionRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """区間への人の決定（reject / accept / assign）を追記する。operator 限定。
+
+    rally_boundary_decisions に 1 行 INSERT するだけ。Rally / Stroke / GameSet には
+    触れない。rally_boundaries の再ビルドでも消えない（別種別・CV は書かない）。
+    """
+    _require_match_team_scope(request, db, match_id)
+    if body.rally_id is not None:
+        _rally_of_match(db, match_id, body.rally_id)
+    row, record = _new_decision_row(
+        match_id, request, start_sec=body.start_sec, end_sec=body.end_sec,
+        action=body.action, rally_id=body.rally_id,
+    )
+    db.add(row)
+    db.commit()
+    record["decision_id"] = row.id
+    return {"success": True, "data": record}
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# POST /cv-candidates/{match_id}/segments/adopt
+# ────────────────────────────────────────────────────────────────────────────
+
+class SegmentAdoptRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+    start_sec: float = Field(..., ge=0, le=86400)
+    end_sec: float = Field(..., ge=0, le=86400)
+    rally_id: int = Field(..., ge=1, le=2_147_483_647)
+
+    @model_validator(mode="after")
+    def _check(self):
+        _finite_sec(self.start_sec, "start_sec")
+        _finite_sec(self.end_sec, "end_sec")
+        if self.end_sec <= self.start_sec:
+            raise ValueError("end_sec は start_sec より後にしてください")
+        return self
+
+
+def _adopt_refusal(db: Session, match_id: int, rally: Rally) -> Optional[str]:
+    """採用してはいけない理由（無ければ None）。人が入れた時刻を上書きしないための検査。
+
+    書いてよいのは次のどちらかだけ:
+      - 対象ラリーの video_timestamp_start が None（未入力）
+      - 対象ラリーが 0.0 で、試合の全ラリーが「0.0 / None / この API で採用済みの値のまま」
+        （試合 32 型: 全ラリーが 0.0 で入っている。0.0 は「未入力」と「本当に 0 秒」を
+        区別できないので、他に人が入れた時刻が 1 つでもあれば書かない）
+    end は None または 0.0 のときだけ書く（非 0 の end は人の入力として残す）。
+    """
+    cur_start = rally.video_timestamp_start
+    cur_end = rally.video_timestamp_end
+    if cur_end is not None and cur_end != 0.0:
+        return (
+            f"ラリー {rally.id} の終了時刻が既に入力されています（{cur_end}）。人が入れた値は上書きしません"
+        )
+    if cur_start is None:
+        return None
+    if cur_start != 0.0:
+        return (
+            f"ラリー {rally.id} の開始時刻が既に入力されています（{cur_start}）。人が入れた値は上書きしません"
+        )
+    # cur_start == 0.0: 全ラリーが 0.0 / None / 採用済みのままのときだけ「未入力の 0.0」とみなす
+    adopted: dict[int, float] = {}
+    for d in _read_decisions(db, match_id):
+        if d.get("adopted") and d.get("rally_id") is not None and d.get("start_sec") is not None:
+            adopted[int(d["rally_id"])] = float(d["start_sec"])
+    rallies = (
+        db.query(Rally)
+        .join(GameSet, Rally.set_id == GameSet.id)
+        .filter(GameSet.match_id == match_id)
+        .all()
+    )
+    for r in rallies:
+        s = r.video_timestamp_start
+        if s is None or s == 0.0:
+            continue
+        if r.id in adopted and abs(adopted[r.id] - s) < 1e-6:
+            continue
+        return (
+            "この試合には人が入力した開始時刻を持つラリーがあるため、0.0 を未入力とみなせません"
+            f"（ラリー {r.id} = {s}）。人が入れた値は上書きしません"
+        )
+    return None
+
+
+@router.post("/cv-candidates/{match_id}/segments/adopt")
+def adopt_segment(
+    match_id: int,
+    body: SegmentAdoptRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """人が押したときだけ、既存ラリーの video_timestamp_start/end を候補区間の時刻にする。
+
+    PUT /rallies/{id} と同じコード（routers/rallies.update_rally）で書くので、
+    sync メタデータ（updated_at / revision / content_hash）も同じ扱い。書く列は
+    video_timestamp_start / video_timestamp_end の 2 つだけで、Stroke は変えず、
+    Rally / GameSet 行は作らない。_adopt_refusal に当たれば 409。
+    """
+    _require_match_team_scope(request, db, match_id)
+    rally = _rally_of_match(db, match_id, body.rally_id)
+
+    data, why = _load_boundary_segments(db, match_id)
+    wanted = _segment_key(body.start_sec, body.end_sec)
+    found = False
+    if data is not None and isinstance(data.get("segments"), list):
+        found = any(
+            seg.get("start_sec") is not None and seg.get("end_sec") is not None
+            and _segment_key(seg["start_sec"], seg["end_sec"]) == wanted
+            for seg in data["segments"]
+        )
+    if not found:
+        raise HTTPException(
+            status_code=404,
+            detail="指定の区間は候補（rally_boundaries の segments、開始・終了が揃ったもの）にありません",
+        )
+
+    refusal = _adopt_refusal(db, match_id, rally)
+    if refusal:
+        raise HTTPException(status_code=409, detail=refusal)
+
+    row, record = _new_decision_row(
+        match_id, request, start_sec=body.start_sec, end_sec=body.end_sec,
+        action="assign", rally_id=rally.id, adopted=True,
+    )
+    from backend.routers.rallies import RallyUpdate, update_rally
+    try:
+        db.add(row)
+        db.flush()
+        # 決定の行と時刻の更新は update_rally の commit で同時に確定する
+        result = update_rally(
+            rally.id,
+            RallyUpdate(video_timestamp_start=body.start_sec, video_timestamp_end=body.end_sec),
+            request,
+            db,
+        )
+    except Exception:
+        db.rollback()
+        raise
+    record["decision_id"] = row.id
+    return {"success": True, "data": {"rally": result["data"], "decision": record}}
 
 
 # ── ヘルパー ──────────────────────────────────────────────────────────────────
