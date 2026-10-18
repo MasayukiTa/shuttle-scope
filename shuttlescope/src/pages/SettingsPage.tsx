@@ -366,7 +366,7 @@ export function SettingsPage() {
   const { data: backupsData, refetch: refetchBackups } = useQuery({
     queryKey: ['sync-backups'],
     queryFn: () => apiGet<{ success: boolean; data: Array<{ filename: string; size_bytes: number; created_at: string }> }>('/sync/backups'),
-    enabled: activeTab === 'data',
+    enabled: activeTab === 'data' && role === 'admin',
   })
 
   // データ管理: 試合一覧（エクスポート用）
