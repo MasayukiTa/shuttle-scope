@@ -96,6 +96,8 @@
     "llm": "LLM チャット",
     "players": "選手管理",
     "users": "ユーザ",
+    "pending_users": "承認待ち",
+    "pending_users_short": "承認",
     "settings": "設定",
     "dashboard_pages": {
       "overview": "概要",

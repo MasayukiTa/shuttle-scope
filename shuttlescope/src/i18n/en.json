@@ -95,6 +95,8 @@
     "expert": "Expert",
     "players": "Players",
     "users": "Users",
+    "pending_users": "Pending approvals",
+    "pending_users_short": "Pending",
     "settings": "Settings",
     "dashboard_pages": {
       "overview": "Overview",
