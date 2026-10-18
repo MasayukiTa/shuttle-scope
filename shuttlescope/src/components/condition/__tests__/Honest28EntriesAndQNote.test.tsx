@@ -46,7 +46,8 @@ import { ConditionResult } from '../ConditionResult'
 import { StateActionValueCard } from '@/components/analysis/StateActionValueCard'
 import { DEFAULT_FILTERS } from '@/types'
 
-const base = { ccs: 80, personal_range_low: 70, personal_range_high: 90, factors: [] }
+// backend の実キー (POST /conditions/questionnaire の応答)
+const base = { ccs_score: 80, personal_range: { low: 70, high: 90 }, factor_labels: {} }
 
 describe('ConditionResult: 28 entries, not 28 days', () => {
   it('28件以上: 「直近28回」と書き、日数とは書かない', () => {

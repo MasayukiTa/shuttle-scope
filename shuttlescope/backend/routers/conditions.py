@@ -577,9 +577,21 @@ def submit_questionnaire(body: QuestionnaireSubmit, request: Request, db: Sessio
     # 同意書 第5条: 提出した本人 (player) と admin のみ生データ可。
     # coach/analyst が代理提出した場合は ROLE_MAX_TIER に従って自動マスクされる。
     owner_consents = _get_owner_body_consents(db, cond.player_id)
+    # 結果カード用の平常レンジ / 因子ラベル (GET の _player_view と同じ算出)。
+    # field_sensitivity で Tier 2 に登録済みなので、filter を通すと Tier 2 を見られない
+    # ロール (coach/analyst) には出ない。
+    submit_out = _full_dict(cond)
+    if dev["mean_28"] is not None and dev["sd_28"] is not None and dev["sd_28"] > 0:
+        submit_out["personal_range"] = {
+            "low": dev["mean_28"] - dev["sd_28"],
+            "high": dev["mean_28"] + dev["sd_28"],
+        }
+    else:
+        submit_out["personal_range"] = None
+    submit_out["factor_labels"] = _factor_labels_from_cond(cond)
     # n_28 は提出時に実際に平均した記録の件数 (厳密値)。名前の 28 は日数ではなく件数。
     return {"success": True, "data": _with_n_28(
-        filter_condition_fields(_full_dict(cond), _ctx_q.role, owner_consents), dev["n_28"]
+        filter_condition_fields(submit_out, _ctx_q.role, owner_consents), dev["n_28"]
     )}
 
 

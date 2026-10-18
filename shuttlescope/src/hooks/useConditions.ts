@@ -37,36 +37,40 @@ export interface QuestionnairePayload {
   auxiliary?: Record<string, number | string | null>
 }
 
-export interface FactorResult {
-  factor: FactorKey
-  label: ResultLabel
-  z_score?: number | null
-  raw?: number | null
-}
+/** backend の因子キー (POST /conditions/questionnaire の応答、GET の factor_labels と同じ) */
+export type FactorField = 'f1_physical' | 'f2_stress' | 'f3_mood' | 'f4_motivation' | 'f5_sleep_life'
+/** backend factor_label_from_z の戻り値 */
+export type BackendFactorLabel = 'good' | 'caution_mild' | 'caution' | 'insufficient_data'
 
+/**
+ * POST /api/conditions/questionnaire の応答 (data) の実形。
+ * ロールの Tier により欠けるキーがある (coach/analyst は ccs_score 等の Tier 2 が来ない)。
+ * 欠損・null は「記録なし」であり 0 ではない。
+ */
 export interface ConditionResult {
   id?: number
   player_id?: number
   measured_at?: string
   condition_type?: ConditionType
-  ccs?: number | null
-  personal_range_low?: number | null
-  personal_range_high?: number | null
+  ccs_score?: number | null
+  /** 直近28回の記録の平均 ± SD。算出できないとき null (記録 7 件未満など) */
+  personal_range?: { low: number; high: number } | null
   delta_28ma?: number | null  // 直近28回の記録の平均との差 (28日間ではない)
   n_28?: number | null  // 実際に平均した記録の件数 (7..28)。算出なしは null
-  factors?: FactorResult[]
-  // coach+
-  f1?: number | null
-  f2?: number | null
-  f3?: number | null
-  f4?: number | null
-  f5?: number | null
+  factor_labels?: Partial<Record<FactorField, BackendFactorLabel>> | null
+  f1_physical?: number | null
+  f2_stress?: number | null
+  f3_mood?: number | null
+  f4_motivation?: number | null
+  f5_sleep_life?: number | null
   total_score?: number | null
-  validity_flag?: boolean | null
-  // analyst only
+  validity_flag?: 'ok' | 'caution' | 'unreliable' | null  // backend calc_validity。真偽値ではない
   validity_score?: number | null
-  flags_list?: string[] | null
-  questionnaire_json?: Record<string, number> | null
+  /** JSON 文字列 (例 '["straight_line"]')。履歴一覧の行でも同じ形 */
+  validity_flags_json?: string[] | string | null
+  /** analyst/admin のみ。JSON 文字列で返る */
+  questionnaire_json?: Record<string, number> | string | null
+  /** 応答には含まれない。呼び出し側 (履歴件数) が渡す */
   history_count?: number | null
 }
 
@@ -118,7 +122,7 @@ export interface ConditionRecord extends ConditionPayload {
   f4_motivation?: number | null
   f5_sleep_life?: number | null
   total_score?: number | null
-  validity_flag?: boolean | null
+  validity_flag?: 'ok' | 'caution' | 'unreliable' | null  // backend calc_validity。真偽値ではない
   validity_score?: number | null
   validity_flags_json?: string[] | string | null
   delta_prev?: number | null

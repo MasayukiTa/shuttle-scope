@@ -1,12 +1,52 @@
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/hooks/useAuth'
-import { ConditionResult as ConditionResultType } from '@/hooks/useConditions'
+import {
+  ConditionResult as ConditionResultType,
+  BackendFactorLabel,
+  FactorField,
+} from '@/hooks/useConditions'
 
 interface Props {
   result: ConditionResultType
   /** 信頼度表示用: 同一選手の過去履歴件数 */
   historyCount?: number
   isLight?: boolean
+}
+
+// backend の CCS = 200 - total (total 40..200) なので 0..160。平常レンジバーの軸に使う。
+const CCS_MAX = 160
+
+const FACTOR_FIELDS: readonly FactorField[] = [
+  'f1_physical',
+  'f2_stress',
+  'f3_mood',
+  'f4_motivation',
+  'f5_sleep_life',
+]
+
+// backend ラベル → 表示ラベル(i18n condition.result.label.*)。
+// insufficient_data などは null (= 行を出さない。「良好」と偽らない)。
+function displayLabel(l: BackendFactorLabel | string | undefined): 'good' | 'caution' | 'concern' | null {
+  if (l === 'good') return 'good'
+  if (l === 'caution_mild') return 'caution'
+  if (l === 'caution') return 'concern'
+  return null
+}
+
+// 有限な数だけを通す。null / undefined / NaN / 文字列は null (0 にしない)。
+function num(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null
+}
+
+// backend は validity_flags_json / questionnaire_json を JSON 文字列で返す。
+function parseJson<T>(v: unknown): T | null {
+  if (v == null) return null
+  if (typeof v !== 'string') return v as T
+  try {
+    return JSON.parse(v) as T
+  } catch {
+    return null
+  }
 }
 
 function labelColor(label: string): string {
@@ -23,7 +63,7 @@ export function ConditionResult({ result, historyCount, isLight }: Props) {
   const muted = 'text-[var(--ss-t2)]'
 
   // 信頼度バッジ（履歴件数ベース）
-  const hc = historyCount ?? result.history_count ?? 0
+  const hc = num(historyCount) ?? num(result.history_count) ?? 0
   let confLabel: string
   let confColor: string
   if (hc < 7) {
@@ -37,16 +77,29 @@ export function ConditionResult({ result, historyCount, isLight }: Props) {
     confColor = 'border-[var(--ss-success-border)] bg-[var(--ss-success-tint)] text-[var(--ss-success)]'
   }
 
-  const ccs = result.ccs ?? null
-  const rangeLow = result.personal_range_low ?? null
-  const rangeHigh = result.personal_range_high ?? null
-  const factors = result.factors ?? []
+  // backend の実キー: ccs_score / personal_range{low,high} / factor_labels / f1_physical…
+  // (Tier 2 なので coach/analyst には来ない。無い・null・NaN は「—」で、0 にはしない)
+  const ccs = num(result.ccs_score)
+  const rangeLow = num(result.personal_range?.low)
+  const rangeHigh = num(result.personal_range?.high)
+  const deltaRaw = num(result.delta_28ma)
+  const factors = FACTOR_FIELDS.flatMap((field) => {
+    const label = displayLabel(result.factor_labels?.[field])
+    return label ? [{ field, label, raw: num(result[field]) }] : []
+  })
   // delta_28ma / 平常レンジの基準は「直近28回の記録」(28日間ではない)。
   // 実際に平均した件数 n_28 が 28 未満ならその件数を表示する。件数 0 は値自体が null。
   const n28 = typeof result.n_28 === 'number' && result.n_28 > 0 ? result.n_28 : null
+  // backend calc_validity: 'ok' | 'caution' | 'unreliable' (真偽値ではない)
+  const validity =
+    result.validity_flag === 'ok' || result.validity_flag === 'caution' || result.validity_flag === 'unreliable'
+      ? result.validity_flag
+      : null
+  const flagsList = parseJson<string[]>(result.validity_flags_json)
+  const responses = parseJson<Record<string, number>>(result.questionnaire_json)
 
-  // 平常レンジバー計算（CCS を 0-100 仮定）
-  const pctOf = (v: number | null) => (v == null ? null : Math.max(0, Math.min(100, v)))
+  // 平常レンジバー計算（CCS は 0..160）
+  const pctOf = (v: number | null) => (v == null ? null : Math.max(0, Math.min(100, (v / CCS_MAX) * 100)))
   const ccsPct = pctOf(ccs)
   const lowPct = pctOf(rangeLow)
   const highPct = pctOf(rangeHigh)
@@ -96,11 +149,11 @@ export function ConditionResult({ result, historyCount, isLight }: Props) {
           </div>
         )}
 
-        {result.delta_28ma != null && (
+        {deltaRaw != null && (
           <div className={`text-xs mt-2 ss-num ${muted}`}>
             {n28 != null && n28 < 28
               ? t('condition.result.delta_28ma_n', { n: n28 })
-              : t('condition.result.delta_28ma')}: {result.delta_28ma >= 0 ? '+' : ''}{result.delta_28ma.toFixed(1)}
+              : t('condition.result.delta_28ma')}: {deltaRaw >= 0 ? '+' : ''}{deltaRaw.toFixed(1)}
           </div>
         )}
       </section>
@@ -111,10 +164,10 @@ export function ConditionResult({ result, historyCount, isLight }: Props) {
           <div className="text-sm font-semibold mb-3">{t('auto.ConditionResult.k1')}</div>
           <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
             {factors.map((f) => (
-              <div key={f.factor} className={`border rounded-ss-sm p-2 ${labelColor(f.label)}`}>
-                <div className="text-[10px] font-mono opacity-80">{f.factor}</div>
+              <div key={f.field} className={`border rounded-ss-sm p-2 ${labelColor(f.label)}`}>
+                <div className="text-[10px] font-mono opacity-80">{f.field.slice(0, 2).toUpperCase()}</div>
                 <div className="text-[11px] leading-tight mt-0.5">
-                  {t(`condition.factor.${f.factor}` as unknown as string)}
+                  {t(`condition.result.factor_name.${f.field}` as unknown as string)}
                 </div>
                 <div className="text-sm font-semibold mt-1">
                   {t(`condition.result.label.${f.label}` as unknown as string)}
@@ -138,27 +191,34 @@ export function ConditionResult({ result, historyCount, isLight }: Props) {
         <section className={`rounded-ss-lg border p-4 shadow-card ${panelCls}`}>
           <div className="text-sm font-semibold mb-3">{t('auto.ConditionResult.k2')}</div>
           <div className="grid grid-cols-3 md:grid-cols-6 gap-2 text-xs">
-            {(['f1', 'f2', 'f3', 'f4', 'f5'] as const).map((k) => (
-              <div key={k} className="border border-[var(--ss-border)] rounded-ss-sm px-2 py-1">
-                <div className={`text-[10px] ${muted}`}>{k.toUpperCase()}</div>
-                <div className="font-mono ss-num">{result[k] != null ? (result[k] as number).toFixed(2) : '—'}</div>
-              </div>
-            ))}
+            {FACTOR_FIELDS.map((k) => {
+              const v = num(result[k])
+              return (
+                <div key={k} className="border border-[var(--ss-border)] rounded-ss-sm px-2 py-1">
+                  <div className={`text-[10px] ${muted}`}>{k.slice(0, 2).toUpperCase()}</div>
+                  <div className="font-mono ss-num">{v != null ? v.toFixed(2) : '—'}</div>
+                </div>
+              )
+            })}
             <div className="border border-[var(--ss-border)] rounded-ss-sm px-2 py-1">
               <div className={`text-[10px] ${muted}`}>{t('auto.ConditionResult.total')}</div>
-              <div className="font-mono ss-num">{result.total_score != null ? result.total_score.toFixed(1) : '—'}</div>
+              <div className="font-mono ss-num">{num(result.total_score) != null ? (result.total_score as number).toFixed(1) : '—'}</div>
             </div>
           </div>
           <div className="mt-2">
             <span
               className={
                 'inline-flex items-center px-2 py-0.5 rounded-ss-sm text-xs border ' +
-                (result.validity_flag
+                (validity === 'ok'
                   ? 'border-[var(--ss-success-border)] text-[var(--ss-success)] bg-[var(--ss-success-tint)]'
-                  : 'border-[var(--ss-danger-border)] text-[var(--ss-bad)] bg-[var(--ss-danger-tint)]')
+                  : validity === 'caution'
+                    ? 'border-[var(--ss-warning-border)] text-[var(--ss-warn)] bg-[var(--ss-warn-tint)]'
+                    : validity === 'unreliable'
+                      ? 'border-[var(--ss-danger-border)] text-[var(--ss-bad)] bg-[var(--ss-danger-tint)]'
+                      : 'border-[var(--ss-border)] text-[var(--ss-t2)]')
               }
             >
-              {t('condition.result.validity')}: {result.validity_flag ? 'OK' : 'NG'}
+              {t('condition.result.validity')}: {validity ? t(`condition.result.validity_level.${validity}` as unknown as string) : '—'}
             </span>
           </div>
         </section>
@@ -168,16 +228,16 @@ export function ConditionResult({ result, historyCount, isLight }: Props) {
       {showAnalyst && (
         <section className={`rounded-ss-lg border p-4 shadow-card ${panelCls}`}>
           <div className="text-sm font-semibold mb-2">{t('auto.ConditionResult.k3')}</div>
-          {result.validity_score != null && (
+          {num(result.validity_score) != null && (
             <div className="text-xs mb-1">
-              {t('auto.ConditionResult.validity_score_label')} <span className="font-mono ss-num">{result.validity_score.toFixed(3)}</span>
+              {t('auto.ConditionResult.validity_score_label')} <span className="font-mono ss-num">{(result.validity_score as number).toFixed(3)}</span>
             </div>
           )}
-          {result.flags_list && result.flags_list.length > 0 && (
+          {Array.isArray(flagsList) && flagsList.length > 0 && (
             <div className="text-xs mb-1">
               <div className={muted}>{t('condition.result.flags')}:</div>
               <div className="flex flex-wrap gap-1 mt-1">
-                {result.flags_list.map((f) => (
+                {flagsList.map((f) => (
                   <span key={f} className="inline-flex px-1.5 py-0.5 rounded-ss-sm bg-[var(--ss-warn-tint)] border border-[var(--ss-warning-border)] text-[var(--ss-warn)] text-[10px]">
                     {f}
                   </span>
@@ -185,11 +245,11 @@ export function ConditionResult({ result, historyCount, isLight }: Props) {
               </div>
             </div>
           )}
-          {result.questionnaire_json && (
+          {responses && (
             <details className="text-xs mt-2">
               <summary className="cursor-pointer">{t('condition.result.responses_breakdown')}</summary>
               <pre className="mt-1 p-2 rounded-ss-sm overflow-x-auto text-[10px] bg-[var(--ss-surface-2)]">
-                {JSON.stringify(result.questionnaire_json, null, 2)}
+                {JSON.stringify(responses, null, 2)}
               </pre>
             </details>
           )}
