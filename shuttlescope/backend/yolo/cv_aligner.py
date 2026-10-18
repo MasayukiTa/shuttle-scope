@@ -303,8 +303,9 @@ def _summarize_events(events: list[dict]) -> dict:
         "hitter_a_count": hitter_a,
         "hitter_b_count": hitter_b,
         # 候補確信度平均（0 = 不明、1 = 非常に近い）
-        "hitter_a_avg_confidence": round(conf_a_sum / max(hitter_a, 1), 3),
-        "hitter_b_avg_confidence": round(conf_b_sum / max(hitter_b, 1), 3),
+        # 打球者候補が 0 件の側は 0.0 でなく None（確信度が「無い」のと「0」を区別する）
+        "hitter_a_avg_confidence": round(conf_a_sum / hitter_a, 3) if hitter_a else None,
+        "hitter_b_avg_confidence": round(conf_b_sum / hitter_b, 3) if hitter_b else None,
         "dominant_formation": dominant_formation,
         "formation_counts": formations,
         # hitter_candidate は CV 推定値。annotation truth への直接適用は不可
