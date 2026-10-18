@@ -40,6 +40,7 @@ CONDITION_FIELD_TIERS: dict[str, int] = {
     "delta_prev": 2,
     "delta_3ma": 2,
     "delta_28ma": 2,
+    "n_28": 2,  # delta_28ma の基準にした記録の件数 (delta_28ma と同じ Tier)
     "z_score": 2,
     "sleep_hours": 2,
     "validity_score": 2,

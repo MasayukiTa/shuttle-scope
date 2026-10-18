@@ -41,6 +41,9 @@ export function ConditionResult({ result, historyCount, isLight }: Props) {
   const rangeLow = result.personal_range_low ?? null
   const rangeHigh = result.personal_range_high ?? null
   const factors = result.factors ?? []
+  // delta_28ma / 平常レンジの基準は「直近28回の記録」(28日間ではない)。
+  // 実際に平均した件数 n_28 が 28 未満ならその件数を表示する。件数 0 は値自体が null。
+  const n28 = typeof result.n_28 === 'number' && result.n_28 > 0 ? result.n_28 : null
 
   // 平常レンジバー計算（CCS を 0-100 仮定）
   const pctOf = (v: number | null) => (v == null ? null : Math.max(0, Math.min(100, v)))
@@ -85,13 +88,19 @@ export function ConditionResult({ result, historyCount, isLight }: Props) {
                 style={{ left: `calc(${ccsPct}% - 2px)` }}
               />
             </div>
-            <div className={`text-[11px] mt-1 ${muted}`}>{t('condition.result.personal_range_note')}</div>
+            <div className={`text-[11px] mt-1 ${muted}`}>
+              {n28 != null && n28 < 28
+                ? t('condition.result.personal_range_note_n', { n: n28 })
+                : t('condition.result.personal_range_note')}
+            </div>
           </div>
         )}
 
         {result.delta_28ma != null && (
           <div className={`text-xs mt-2 ss-num ${muted}`}>
-            {t('condition.result.delta_28ma')}: {result.delta_28ma >= 0 ? '+' : ''}{result.delta_28ma.toFixed(1)}
+            {n28 != null && n28 < 28
+              ? t('condition.result.delta_28ma_n', { n: n28 })
+              : t('condition.result.delta_28ma')}: {result.delta_28ma >= 0 ? '+' : ''}{result.delta_28ma.toFixed(1)}
           </div>
         )}
       </section>

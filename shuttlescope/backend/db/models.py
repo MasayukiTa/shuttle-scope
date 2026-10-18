@@ -1154,6 +1154,7 @@ class Condition(Base):
     ccs_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     delta_prev: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     delta_3ma: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # 直近28「回」の記録の平均との差 (28日間ではない)。列名は互換性のため据え置き。
     delta_28ma: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     z_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     validity_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)

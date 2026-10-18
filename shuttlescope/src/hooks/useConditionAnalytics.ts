@@ -67,7 +67,7 @@ export interface GrowthCard {
 
 export interface InsightsResponse {
   growth_cards: GrowthCard[]
-  personal_trend?: { ccs_28ma?: number | null; direction?: 'up' | 'flat' | 'down' | null } | null
+  personal_trend?: { ccs_28ma?: number | null /* 直近28回の記録の平均 (現状 backend は返さない) */; direction?: 'up' | 'flat' | 'down' | null } | null
   // coach/analyst only
   raw_factor_trends?: Array<{ factor: string; series: Array<{ date: string; value: number }> }> | null
   validity_summary?: { valid_ratio?: number | null; flags?: string[] | null } | null

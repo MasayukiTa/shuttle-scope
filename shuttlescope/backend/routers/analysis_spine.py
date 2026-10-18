@@ -31,7 +31,12 @@ from backend.analysis.analysis_registry import list_registry_entries, get_tier a
 from backend.analysis.analysis_meta import EVIDENCE_META
 from backend.analysis.promotion_rules import all_criteria_as_dict, DEMOTION_CONDITIONS
 from backend.analysis.epv_state_model import compute_rally_state_epv, compute_epv_state_map
-from backend.analysis.q_value_model import compute_q_values, summarize_best_actions
+from backend.analysis.q_value_model import (
+    SELECTION_NOTE_EN,
+    SELECTION_NOTE_JA,
+    compute_q_values,
+    summarize_best_actions,
+)
 from backend.analysis.counterfactual_v2 import compute_counterfactual_v2, compute_counterfactual_cf2, compute_counterfactual_cf3
 from backend.analysis.hazard_fatigue import compute_hazard_model
 from backend.analysis.bayes_matchup import compute_bayes_matchup
@@ -210,7 +215,7 @@ def _state_action_values_impl(db: Session, player_id: int, ctx=None,
     matches, role_by_match, set_to_match, set_num_map, rallies, strokes_by_rally = \
         _load_ctx_or_query(db, player_id, ctx, result, tournament_level, date_from, date_to)
     if not matches:
-        return {"success": True, "data": {"q_table": [], "best_actions": {}, "total_states": 0, "total_reliable_cells": 0}, "meta": _analysis_meta("state_action", 0, rallies=[], strokes_by_rally={})}
+        return {"success": True, "data": {"q_table": [], "best_actions": {}, "total_states": 0, "total_reliable_cells": 0, "selection_note": SELECTION_NOTE_JA, "selection_note_en": SELECTION_NOTE_EN}, "meta": _analysis_meta("state_action", 0, rallies=[], strokes_by_rally={})}
 
     result_data = compute_q_values(
         rallies=rallies,
@@ -238,7 +243,7 @@ def get_state_best_actions(
 ):
     matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
     if not matches:
-        return {"success": True, "data": [], "meta": _analysis_meta("state_action", 0, rallies=[], strokes_by_rally={})}
+        return {"success": True, "data": [], "selection_note": SELECTION_NOTE_JA, "selection_note_en": SELECTION_NOTE_EN, "meta": _analysis_meta("state_action", 0, rallies=[], strokes_by_rally={})}
 
     match_ids = [m.id for m in matches]
     role_by_match = {m.id: _player_role_in_match(m, player_id) for m in matches}
@@ -261,7 +266,14 @@ def get_state_best_actions(
     )
     best_list = summarize_best_actions(result_data["best_actions"])
     meta = _analysis_meta("state_action", len(rallies), rallies=rallies, strokes_by_rally=strokes_by_rally)
-    return {"success": True, "data": best_list, "meta": meta}
+    # 最善手は多重比較補正なしの最大値 (選択バイアスで楽観側) — 注意書きを同梱する
+    return {
+        "success": True,
+        "data": best_list,
+        "selection_note": SELECTION_NOTE_JA,
+        "selection_note_en": SELECTION_NOTE_EN,
+        "meta": meta,
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -277,6 +277,7 @@ def _player_view(c: Condition) -> dict:
     """
     # Condition モデルには mean_28/sd_28 列は保存していないため、
     # ccs_score / delta_28ma / z_score から逆算する。
+    # (mean_28/sd_28 は「直近28回の記録」の平均/SD。28日間ではない。件数は n_28)
     mean_28 = None
     sd_28 = None
     if c.ccs_score is not None and c.delta_28ma is not None:
@@ -398,6 +399,37 @@ def _get_owner_body_consents(db: Session, player_id: int) -> dict[str, bool]:
     return result
 
 
+def _count_28_basis(db: Optional[Session], c: Condition) -> Optional[int]:
+    """delta_28ma / mean_28 / sd_28 の基準に使われた記録の件数 (7..28)。
+
+    「28」は日数ではなく**直近 28 件の記録**。件数は DB に保存していないため、
+    提出時と同じ条件 (同一選手・weekly・ccs あり・measured_at がこの測定より前) で
+    数え直して 28 で頭打ちにする。delta_28ma が無い (= 算出されなかった) 場合は
+    None を返し、0 にはしない。過去日付の記録を後から追加した場合は、提出時の
+    件数と食い違うことがある。
+    """
+    if db is None or c.delta_28ma is None or c.condition_type != "weekly":
+        return None
+    n = (
+        db.query(Condition)
+        .filter(
+            Condition.player_id == c.player_id,
+            Condition.condition_type == "weekly",
+            Condition.ccs_score.isnot(None),
+            Condition.measured_at < c.measured_at,
+        )
+        .count()
+    )
+    return min(int(n), 28) if n > 0 else None
+
+
+def _with_n_28(out: dict, n_28: Optional[int]) -> dict:
+    """delta_28ma を含む出力にだけ n_28 (平均した記録の件数) を添える。"""
+    if "delta_28ma" in out:
+        out["n_28"] = n_28
+    return out
+
+
 def _serialize(c: Condition, role: str, db: Optional[Session] = None) -> dict:
     """同意書 第5条 アライメント。
 
@@ -406,13 +438,16 @@ def _serialize(c: Condition, role: str, db: Optional[Session] = None) -> dict:
     - coach / analyst: filter_condition_fields() で Tier 1 まで縮約が default。
       ただし当該 player が 'body_disclose_to_analyst' / 'body_disclose_to_coach'
       を明示同意していれば、対応ロールには Tier 3 (体組成) まで開放。
+
+    delta_28ma / mean_28 / sd_28 は「直近28回の記録」基準。n_28 に実際の件数を添える。
     """
+    n_28 = _count_28_basis(db, c)
     if role == "player":
-        return _player_view(c)
+        return _with_n_28(_player_view(c), n_28)
     if role == "admin":
-        return _full_dict(c)
+        return _with_n_28(_full_dict(c), n_28)
     owner_consents = _get_owner_body_consents(db, c.player_id) if db is not None else None
-    return filter_condition_fields(_full_dict(c), role, owner_consents)
+    return _with_n_28(filter_condition_fields(_full_dict(c), role, owner_consents), n_28)
 
 
 # ─── マスター ────────────────────────────────────────────────────────────────
@@ -509,7 +544,7 @@ def submit_questionnaire(body: QuestionnaireSubmit, request: Request, db: Sessio
         dev = calc_deviation(float(scores["ccs_score"]), history_ccs)
     else:
         dev = {"delta_prev": None, "delta_3ma": None, "delta_28ma": None,
-               "z_score": None, "mean_28": None, "sd_28": None}
+               "z_score": None, "mean_28": None, "sd_28": None, "n_28": None}
 
     aux = body.auxiliary or AuxiliaryInput()
 
@@ -542,7 +577,10 @@ def submit_questionnaire(body: QuestionnaireSubmit, request: Request, db: Sessio
     # 同意書 第5条: 提出した本人 (player) と admin のみ生データ可。
     # coach/analyst が代理提出した場合は ROLE_MAX_TIER に従って自動マスクされる。
     owner_consents = _get_owner_body_consents(db, cond.player_id)
-    return {"success": True, "data": filter_condition_fields(_full_dict(cond), _ctx_q.role, owner_consents)}
+    # n_28 は提出時に実際に平均した記録の件数 (厳密値)。名前の 28 は日数ではなく件数。
+    return {"success": True, "data": _with_n_28(
+        filter_condition_fields(_full_dict(cond), _ctx_q.role, owner_consents), dev["n_28"]
+    )}
 
 
 # ─── 直接入力 CRUD ───────────────────────────────────────────────────────────

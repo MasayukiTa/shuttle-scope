@@ -52,7 +52,8 @@ export interface ConditionResult {
   ccs?: number | null
   personal_range_low?: number | null
   personal_range_high?: number | null
-  delta_28ma?: number | null
+  delta_28ma?: number | null  // 直近28回の記録の平均との差 (28日間ではない)
+  n_28?: number | null  // 実際に平均した記録の件数 (7..28)。算出なしは null
   factors?: FactorResult[]
   // coach+
   f1?: number | null
@@ -122,7 +123,8 @@ export interface ConditionRecord extends ConditionPayload {
   validity_flags_json?: string[] | string | null
   delta_prev?: number | null
   delta_3ma?: number | null
-  delta_28ma?: number | null
+  delta_28ma?: number | null  // 直近28回の記録の平均との差 (28日間ではない)
+  n_28?: number | null  // 実際に平均した記録の件数 (7..28)。算出なしは null
   z_score?: number | null
   questionnaire_json?: Record<string, number> | string | null
   match_id?: number | null

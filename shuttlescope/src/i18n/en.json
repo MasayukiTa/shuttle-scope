@@ -547,8 +547,10 @@
     "result": {
       "ccs": "Overall condition score",
       "personal_range": "Personal range",
-      "personal_range_note": "Evaluated against your own past 28 days",
-      "delta_28ma": "Delta vs 28-day average",
+      "personal_range_note": "Evaluated against your last 28 entries",
+      "personal_range_note_n": "Evaluated against your last {{n}} entries (fewer than 28 so far)",
+      "delta_28ma": "Delta vs average of last 28 entries",
+      "delta_28ma_n": "Delta vs average of last {{n}} entries",
       "validity": "Response validity",
       "flags": "Caution flags",
       "responses_breakdown": "Response breakdown",
@@ -943,7 +945,7 @@
       "loading": "Loading...",
       "no_data": "Collecting data",
       "accumulating": "Insights will appear once a bit more data accumulates",
-      "ccs_28ma": "CCS 28-day average",
+      "ccs_28ma": "CCS average of last 28 entries",
       "direction": {
         "up": "Trending up",
         "flat": "Stable",
@@ -3563,7 +3565,8 @@
       "k4": "State",
       "k5": "Best shot",
       "k6": "Q value",
-      "k7": "Q = win rate of the best shot within the state minus the state's baseline. Wide CIs indicate weak statistical support."
+      "k7": "Q = win rate of the best shot within the state minus the state's baseline. Wide CIs indicate weak statistical support.",
+      "selection_note": "The best shot is the maximum over several noisy estimates, so it tends to look better than it really is. Treat cells with few samples as a rough guide only."
     },
     "StateEPVCard": {
       "k1": "State-based EPV map",

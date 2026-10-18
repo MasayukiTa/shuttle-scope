@@ -95,6 +95,15 @@ export function StateActionValueCard({ playerId, filters }: Props) {
           </table>
         </div>
       )}
+      {rows.length > 0 && (
+        // 最善手 = 信頼できるセルの最大値 (多重比較補正なし)。選択バイアスの注意書き。
+        <p
+          className={`text-[11px] ${textMuted}`}
+          data-testid="state-action-selection-note"
+        >
+          {t('auto.StateActionValueCard.selection_note')}
+        </p>
+      )}
       <p className={`text-[10px] ${textFaint}`}>{t('auto.StateActionValueCard.k7')}</p>
     </div>
   )
