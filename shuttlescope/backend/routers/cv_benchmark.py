@@ -134,12 +134,12 @@ async def run_cv_benchmark(request: Request):
     """YOLO + TrackNet の推論速度を計測して返す（約10秒）。
     推論はスレッドプールで実行するため FastAPI イベントループをブロックしない。
 
-    認証: analyst / admin のみ (重い GPU/CPU 処理なので anonymous DoS を防ぐ)。
+    認証: admin のみ (重い GPU/CPU 処理。/v1/benchmark/run と揃える)。
     middleware の `_GLOBAL_AUTH_EXEMPT` 外なので Bearer 必須だが、defense-in-depth
     として明示 gate も置く。
     """
-    from backend.utils.auth import require_analyst
-    require_analyst(request)
+    from backend.utils.auth import require_admin
+    require_admin(request)
     loop = asyncio.get_event_loop()
     result = await loop.run_in_executor(None, _run_benchmark)
     return {"success": True, "data": result}

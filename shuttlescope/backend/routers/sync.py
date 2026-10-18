@@ -409,9 +409,12 @@ async def import_package_endpoint(
 @router.post("/backup")
 def backup_now(
     label: Optional[str] = Query(None, max_length=100),
-    _ctx=Depends(require_analyst),
+    _ctx=Depends(require_admin),
 ):
-    """現行 DB をバックアップ ZIP として保存 (analyst 限定)。
+    """現行 DB をバックアップ ZIP として保存 (admin 限定)。
+
+    バックアップは全チームのデータを含む DB 丸ごとなので、1 チームの担当者には許さない。
+    自分のデータの書き出しは /export/* (スコープ付き) を使う。
 
     例外文面は内部パスや実装詳細を直接返さず、サーバ log にのみ記録する。
     analyst も最終的に admin 経由で閲覧可能なロールだが、log で十分な情報が
@@ -436,8 +439,8 @@ def backup_now(
 
 
 @router.get("/backups")
-def get_backups(_ctx=Depends(require_analyst)):
-    """バックアップ一覧を返す (analyst 限定)"""
+def get_backups(_ctx=Depends(require_admin)):
+    """バックアップ一覧を返す (admin 限定)"""
     return {"success": True, "data": list_backups()}
 
 
