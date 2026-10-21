@@ -837,9 +837,14 @@ def approve_pending_user(
     # - player のまま承認: register で作った Player をそのまま使う (無ければ作る)
     # - coach / analyst として承認: register が作った Player は誰でもない行に
     #   なるので、まだ何からも参照されていなければ外して消す
-    from backend.routers.auth import ensure_player_record, release_provisional_player
+    from backend.routers.auth import (
+        confirm_provisional_player,
+        ensure_player_record,
+        release_provisional_player,
+    )
     if user.role == "player":
         ensure_player_record(db, user)
+        confirm_provisional_player(db, user)
         if user.player_id is not None and user.team_id is not None:
             p = db.get(Player, user.player_id)
             if p is not None and p.team_id is None:

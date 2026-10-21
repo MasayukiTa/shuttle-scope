@@ -5,11 +5,11 @@ import unicodedata
 from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import or_
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
-from backend.db.models import Player, Match
+from backend.db.models import Player, Match, User
 from backend.utils.auth import get_auth, require_analyst, AuthCtx
 from backend.utils.text_sanitize import reject_ctrl_and_bidi
 from fastapi import HTTPException as _HTTPException
@@ -275,6 +275,25 @@ def _own_team_or_scouting_filter(db: Session, team_name: str, ctx):
     return cond
 
 
+def exclude_unapproved_registrants(query, ctx):
+    """管理者の承認待ちユーザに紐づく Player を、選手の選択肢から外す。
+
+    自己登録は Player を先に作る (player_id が無いと全 API が 401 になるため)。
+    承認前の登録者は誰でもない人なので、候補として他人に見せない。
+    印 (profile_status) ではなく user の状態で判定する: 印が付く前に作られた
+    行も同じ規則で隠れ、承認で awaiting_admin_approval が False になれば
+    自動で戻る。選手本人は自分の行しか見ない枝なので影響しない。
+    クイックスタートの暫定相手はどの user にも紐づかないので対象外。
+    """
+    if ctx.is_player:
+        return query
+    pending_ids = (
+        select(User.player_id)
+        .where(User.awaiting_admin_approval.is_(True), User.player_id.isnot(None))
+    )
+    return query.filter(Player.id.notin_(pending_ids))
+
+
 @router.get("/players")
 def list_players(request: Request, db: Session = Depends(get_db),
                  _auth: AuthCtx = Depends(_require_auth)):
@@ -306,7 +325,8 @@ def list_players(request: Request, db: Session = Depends(get_db),
         # なので、`llm` と `demo` はどの枝にも入らず**全選手を取得できていた**。
         # ロールを足すたびに黙って漏れる形なので、既定を拒否にする。
         return {"success": True, "data": []}
-    # admin は全選手
+    # admin は全選手 (承認待ちの登録者を除く)
+    query = exclude_unapproved_registrants(query, ctx)
 
     players = query.all()
     counts = _match_counts(db, players)
@@ -326,6 +346,10 @@ def _scoped_player_query(db: Session, request: Request):
     """
     from backend.utils.auth import get_auth
     ctx = get_auth(request)
+    return exclude_unapproved_registrants(_scoped_player_query_raw(db, request, ctx), ctx)
+
+
+def _scoped_player_query_raw(db: Session, request: Request, ctx):
     query = db.query(Player)
     if ctx.is_admin:
         return query

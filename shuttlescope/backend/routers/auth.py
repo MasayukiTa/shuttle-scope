@@ -1854,11 +1854,38 @@ def ensure_player_record(db: Session, user: User) -> Optional[int]:
         name = ""
     if not name:
         name = f"user{user.id}"
-    player = Player(name=name, team_id=user.team_id)
+    # 承認待ちの登録者の Player は、クイックスタートの相手と同じ「暫定」印で作る。
+    # 一覧系 (players.exclude_unapproved_registrants) はこの時点の user 状態で
+    # 除外するので、印が無い過去の行も同じ規則で隠れる。承認で正常な状態に戻す
+    # のは confirm_provisional_player。
+    pending = bool(getattr(user, "awaiting_admin_approval", False))
+    player = Player(
+        name=name,
+        team_id=user.team_id,
+        profile_status="provisional" if pending else "verified",
+        needs_review=pending,
+    )
     db.add(player)
     db.flush()
     user.player_id = player.id
     return player.id
+
+
+def confirm_provisional_player(db: Session, user: User) -> None:
+    """player ロールのまま承認された user の Player を正常な状態に戻す。
+
+    登録時に付けた「暫定」印 (profile_status / needs_review) だけを外す。
+    クイックスタートで作られた暫定の相手選手は別物なので触らない。
+    """
+    if user.player_id is None:
+        return
+    player = db.get(Player, user.player_id)
+    if player is None or bool(getattr(player, "created_via_quick_start", False)):
+        return
+    if player.profile_status == "provisional":
+        player.profile_status = "verified"
+        player.needs_review = False
+        db.flush()
 
 
 def _player_is_unreferenced(db: Session, player_id: int) -> bool:
