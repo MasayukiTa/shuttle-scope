@@ -255,6 +255,7 @@ h1.hero-h1{font-size:clamp(28px,3.5vw,46px);font-weight:700;line-height:1.35;let
 .sec-fcta{background:var(--ss-bg-app);padding:80px 40px;text-align:center}
 .fcta-h{font-size:clamp(21px,2.4vw,30px);font-weight:700;letter-spacing:-.01em;color:var(--ss-t1);margin-bottom:10px;text-wrap:balance}
 .fcta-sub{font-size:14px;color:var(--ss-t2);margin-bottom:28px}
+.sec-fcta .cta-row{justify-content:center}
 
 footer{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);padding:24px 40px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;transition:background var(--dur-base) var(--ease-out)}
 .footer-logo{font-size:15px;font-weight:600;letter-spacing:-.01em;color:var(--ss-t1);text-decoration:none;display:flex;align-items:center;gap:8px}
@@ -306,8 +307,8 @@ footer{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);padd
   </ul>
   <div class="nav-right">
     <button class="theme-toggle" id="theme-btn" title="テーマ切り替え" aria-label="テーマ切り替え" data-label-ja="テーマ切り替え" data-label-en="Switch between light and dark theme"><svg class="ic-moon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.11-1.36a5.39 5.39 0 0 1-7.53-7.53A9.05 9.05 0 0 0 12 3z"/></svg><svg class="ic-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
-    <button class="lang-toggle" id="lang-btn">EN</button>
-    <a href="https://app.shuttle-scope.com/login" class="btn-login"><span class="ja">ログイン</span><span class="en">Login</span></a>
+    <button class="lang-toggle" id="lang-btn" title="言語を切り替える(English)" aria-label="言語を切り替える(English)" data-label-ja="言語を切り替える(English)" data-label-en="Switch language (日本語)">EN</button>
+    <a href="https://app.shuttle-scope.com/login" class="btn-login"><span class="ja">ログイン</span><span class="en">Log in</span></a>
     <button class="hamburger" id="ham" aria-label="メニュー" data-label-ja="メニュー" data-label-en="Menu"><span></span><span></span><span></span></button>
   </div>
 </nav>
@@ -318,18 +319,18 @@ footer{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);padd
   <a href="/privacy"><span class="ja">プライバシーポリシー</span><span class="en">Privacy Policy</span></a>
   <a href="/contact"><span class="ja">お問い合わせ</span><span class="en">Contact</span></a>
   <a href="/status"><span class="ja">稼働状況</span><span class="en">Status</span></a>
-{% endraw %}{% if registration_enabled %}  <a href="https://app.shuttle-scope.com/#/register"><span class="ja">新規登録</span><span class="en">Register</span></a>
-{% endif %}{% raw %}  <a href="https://app.shuttle-scope.com/login" style="color:var(--ss-brand);font-weight:600"><span class="ja">ログイン →</span><span class="en">Login →</span></a>
+{% endraw %}{% if registration_enabled %}  <a href="https://app.shuttle-scope.com/#/register"><span class="ja">無料で登録</span><span class="en">Sign up free</span></a>
+{% endif %}{% raw %}  <a href="https://app.shuttle-scope.com/login" style="color:var(--ss-brand);font-weight:600"><span class="ja">ログイン</span><span class="en">Log in</span></a>
 </nav>
 
 <div class="beta-banner">
   <div class="beta-banner-inner">
     <span class="beta-badge"><span class="ja">β 版</span><span class="en">BETA</span></span>
     <p class="beta-text">
-{% endraw %}{% if registration_enabled %}      <span class="ja">2026年中は無償・参加者募集中 <a href="https://app.shuttle-scope.com/#/register">無料で登録 →</a></span>
-      <span class="en">Free through 2026, beta testers welcome <a href="https://app.shuttle-scope.com/#/register">Sign up free →</a></span>
-{% else %}      <span class="ja">2026年中は無償・参加者募集中 <a href="/contact">お問い合わせ →</a></span>
-      <span class="en">Free through 2026, beta testers welcome <a href="/en/contact">Contact →</a></span>
+{% endraw %}{% if registration_enabled %}      <span class="ja">2026年中は無償・参加者募集中 <a href="https://app.shuttle-scope.com/#/register">無料で登録</a></span>
+      <span class="en">Free through 2026, beta testers welcome <a href="https://app.shuttle-scope.com/#/register">Sign up free</a></span>
+{% else %}      <span class="ja">2026年中は無償・参加者募集中 <a href="/contact">お問い合わせ</a></span>
+      <span class="en">Free through 2026, beta testers welcome <a href="/en/contact">Contact</a></span>
 {% endif %}{% raw %}
     </p>
   </div>
@@ -341,7 +342,7 @@ footer{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);padd
       <h1 class="hero-h1"><span class="ja"><span class="nb">どこに打ち、</span><span class="nb">どこで流れが</span><span class="nb">変わったか。</span></span><span class="en">Where did you hit it, and where did the match turn?</span></h1>
       <p class="hero-sub"><span class="ja">ストロークごとの記録から、配球・ラリー展開・得点の流れを可視化するバドミントン分析ワークベンチ。コーチ、アナリスト、選手が、それぞれの判断に使えます。</span><span class="en">A badminton analysis workbench that turns stroke-by-stroke records into shot placement, how rallies develop and how the score flows. Coaches, analysts and players can each use it to inform their own decisions.</span></p>
 {% endraw %}{% if registration_enabled %}      <div class="cta-row">
-        <a href="https://app.shuttle-scope.com/#/register" class="btn-cta"><span class="ja">β版を試す(無料で登録)</span><span class="en">Try the beta (free sign-up)</span></a>
+        <a href="https://app.shuttle-scope.com/#/register" class="btn-cta"><span class="ja">無料で登録</span><span class="en">Sign up free</span></a>
         <a href="/contact" class="btn-cta-sub"><span class="ja">研究連携・法人のご相談</span><span class="en">Research and organization inquiries</span></a>
       </div>
       <p class="cta-note"><span class="ja">登録後、内容を確認してから利用できるようになります。</span><span class="en">Your account becomes usable after it has been reviewed.</span></p>
@@ -517,9 +518,17 @@ footer{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);padd
 
 <section class="sec-fcta">
   <h2 class="fcta-h"><span class="ja">まずは1試合の記録から。</span><span class="en">Start with one recorded match.</span></h2>
-  <p class="fcta-sub"><span class="ja">アカウントをお持ちの方は、そのままログインできます。</span><span class="en">If you already have an account, you can log in directly.</span></p>
-  <a href="https://app.shuttle-scope.com/login" class="btn-cta"><span class="ja">アプリを開く</span><span class="en">Open App</span></a>
-</section>
+{% endraw %}{% if registration_enabled %}  <p class="fcta-sub"><span class="ja">2026年中は無償です。登録後、内容を確認してから利用できるようになります。</span><span class="en">Free through 2026. Your account becomes usable after it has been reviewed.</span></p>
+  <div class="cta-row">
+    <a href="https://app.shuttle-scope.com/#/register" class="btn-cta"><span class="ja">無料で登録</span><span class="en">Sign up free</span></a>
+    <a href="https://app.shuttle-scope.com/login" class="btn-cta-sub"><span class="ja">アカウントをお持ちの方はログイン</span><span class="en">Already have an account? Log in</span></a>
+  </div>
+{% else %}  <p class="fcta-sub"><span class="ja">β版への参加やご質問は、お問い合わせフォームで受け付けています。</span><span class="en">To join the beta or ask a question, use the contact form.</span></p>
+  <div class="cta-row">
+    <a href="/contact" class="btn-cta"><span class="ja">お問い合わせ</span><span class="en">Contact us</span></a>
+    <a href="https://app.shuttle-scope.com/login" class="btn-cta-sub"><span class="ja">アカウントをお持ちの方はログイン</span><span class="en">Already have an account? Log in</span></a>
+  </div>
+{% endif %}{% raw %}</section>
 
 <footer>
   <a class="footer-logo" href="/"><div class="logo-mark"><img src="/favicon.png" alt=""></div>ShuttleScope</a>
@@ -528,7 +537,7 @@ footer{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);padd
     <li><a href="/privacy"><span class="ja">プライバシーポリシー</span><span class="en">Privacy Policy</span></a></li>
     <li><a href="/contact"><span class="ja">お問い合わせ</span><span class="en">Contact</span></a></li>
     <li><a href="/status"><span class="ja">稼働状況</span><span class="en">Status</span></a></li>
-{% endraw %}{% if registration_enabled %}    <li><a href="https://app.shuttle-scope.com/#/register"><span class="ja">新規登録</span><span class="en">Register</span></a></li>
+{% endraw %}{% if registration_enabled %}    <li><a href="https://app.shuttle-scope.com/#/register"><span class="ja">無料で登録</span><span class="en">Sign up free</span></a></li>
 {% endif %}{% raw %}  </ul>
   <span class="footer-copy">© 2026 ShuttleScope</span>
 </footer>
