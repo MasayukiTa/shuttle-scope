@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -16,6 +17,7 @@ from typing import Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
+from backend.services.backup_service import create_backup
 from backend.services.merge_resolver import decide_merge, MergeDecision
 from backend.utils.sync_meta import business_payload, compute_content_hash
 from backend.utils.identity_uuid import canonical_identity_uuid
@@ -27,6 +29,8 @@ from backend.db.models import (
     SyncConflict, Condition, ConditionTag,
 )
 from datetime import date as _date
+
+logger = logging.getLogger(__name__)
 
 # ─── 解凍爆弾 (CWE-409) 対策の上限値 ───────────────────────────────────────────
 # .sspkg は通常数 MB〜数百 MB 想定。攻撃者が巨大膨張率の ZIP を投げて
@@ -118,6 +122,16 @@ class ImportSummary:
     conflicts: int = 0
     conflict_log: list[dict] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    # 書き込み中に失敗したレコード数。1 件でもあれば取り込み全体を取り消す。
+    # (不正 uuid・不可視文字の名前・権限なしのように、書き込む前に弾いて
+    # errors に記録するだけのスキップは数えない。)
+    failures: int = 0
+    # 取り込み全体を取り消した (DB は取り込み前のまま)。
+    rolled_back: bool = False
+    # 取り込み前の自動バックアップのパス。PostgreSQL など非対応の DB では None。
+    backup_path: Optional[str] = None
+    # 自動バックアップに失敗したため、何も書かずに中止した。
+    backup_failed: bool = False
 
 
 # ─── テーブル処理マップ ────────────────────────────────────────────────────────
@@ -346,7 +360,7 @@ def _apply_record(
     importer_team_id: Optional[int] = None,
 ) -> None:
     """
-    MergeDecision に従ってレコードを DB に書き込む。
+    MergeDecision に従ってレコードを DB に書き込む (commit はしない)。
 
     id_remap: {"players": {old_id: new_id}, ...} で外部キーを変換する。
     """
@@ -363,7 +377,7 @@ def _apply_record(
             if not _may_write(obj, importer_team_id):
                 return  # 他チームのレコードは静かにスキップ
             obj.deleted_at = server_now
-            db.commit()
+            db.flush()
         return
 
     # Round 258 R3 P0/P1 fix (Finding 1+2): mass-assignment 防止 + 時刻クランプ
@@ -415,7 +429,11 @@ def _apply_record(
                 # source device's integer PK.
                 id_remap.setdefault(table_key, {})[old_id] = obj.id
 
-    db.commit()
+    # commit は呼び出し側 (import_package) が全レコード適用後に 1 回だけ行う。
+    # ここで commit するとレコード単位で確定してしまい、途中失敗で
+    # 一部だけ適用された状態が残る。flush は同じトランザクション内で
+    # 後続レコードの uuid 検索・FK 解決から見えるようにするためのもの。
+    db.flush()
 
 
 def _remap_fks(data: dict, id_remap: dict[str, dict[str, int]]) -> None:
@@ -451,12 +469,65 @@ def _remap_fks(data: dict, id_remap: dict[str, dict[str, int]]) -> None:
 
 # ─── メインインポート処理 ──────────────────────────────────────────────────────
 
+class ImportBackupError(Exception):
+    """取り込み前の自動バックアップに失敗した。"""
+
+
+def _backup_before_import(db: Session) -> Optional[str]:
+    """取り込み前に DB 全体をバックアップし、そのパスを返す。
+
+    失敗したら ImportBackupError。呼び出し側はバックアップなしで取り込まない。
+    `create_backup` は SQLite 専用で、PostgreSQL では NotImplementedError を
+    出す (pg_dump は別運用)。この場合は None を返して取り込みを続ける。
+    その環境の保護は、取り込み全体を 1 トランザクションにしてあること
+    (失敗すれば全戻し) が担う。
+    パスフレーズ・pyzipper の検査 (production posture での fail-closed) は
+    `create_backup` の RuntimeError がそのまま失敗として伝わる。
+    """
+    try:
+        bind = db.get_bind()
+        if bind.dialect.name == "sqlite":
+            # create_backup は本体ファイルだけを固める。WAL に残った
+            # コミット済みの変更を先に本体へ書き出さないと、直近分が漏れる。
+            try:
+                with bind.connect() as conn:
+                    conn.execute(text("PRAGMA wal_checkpoint(TRUNCATE)"))
+            except Exception as e:  # 失敗してもバックアップ自体は試みる
+                logger.warning("pre-import wal_checkpoint failed: %s", e)
+        return str(create_backup(label="pre_import"))
+    except NotImplementedError:
+        logger.warning("pre-import backup skipped: DB engine not supported by create_backup")
+        return None
+    except Exception as e:
+        raise ImportBackupError(str(e)) from e
+
+
+def _discard_import(db: Session, summary: ImportSummary) -> None:
+    """取り込み全体を取り消す。件数は「適用した数」なので 0 に戻す。"""
+    db.rollback()
+    summary.rolled_back = True
+    summary.added = summary.updated = summary.kept = summary.deleted = 0
+
+
 def import_package(db: Session, raw: bytes, dry_run: bool = False,
-                   importer_team_id: Optional[int] = None) -> ImportSummary:
+                   importer_team_id: Optional[int] = None,
+                   backup_before_apply: bool = False) -> ImportSummary:
     """
     .sspkg バイト列を解析し DB へマージする。
 
     dry_run=True の場合は DB を変更せず ImportSummary のみ返す（プレビュー用）。
+
+    dry_run=False は **全レコードか皆無か** (1 トランザクション)。書き込みに
+    1 件でも失敗したら、それまでの適用を含めて全て rollback し、
+    `summary.rolled_back=True` と失敗の一覧 (`errors`) を返す。
+    書き込む前に弾くスキップ (不正 uuid・不可視文字の名前・権限なし) は
+    失敗ではなく、errors に記録して残りを適用する。
+    競合 (`SyncConflict`) は同じトランザクションで保存する。取り消した取り込みは
+    起きなかったことになるので、その競合行も残さない (再試行で同じ競合が
+    再検出されるため、残すと重複する)。検出した競合は `conflict_log` に残る。
+
+    backup_before_apply=True なら、書き込む前に `create_backup` を行い、
+    失敗したら何も書かずに `backup_failed=True` で返す。
 
     Round 258 R3 P0/P1 fix:
     importer_team_id を受け取り、_apply_record まで伝播する。これにより
@@ -478,8 +549,21 @@ def import_package(db: Session, raw: bytes, dry_run: bool = False,
 
             names = set(zf.namelist())
 
+            # 書き込みの前に自動バックアップ。取れなければ何も書かずに中止する。
+            if backup_before_apply and not dry_run:
+                try:
+                    summary.backup_path = _backup_before_import(db)
+                except ImportBackupError as e:
+                    summary.backup_failed = True
+                    summary.errors.append(f"取り込み前のバックアップに失敗: {e}")
+                    return summary
+
+            halt = False  # 書き込み失敗でトランザクションが無効になった
+
             # テーブル順に処理（依存関係: Player → Match → Set → Rally → Stroke）
             for table_key, model_cls in _TABLE_MAP:
+                if halt:
+                    break
                 fname = f"{table_key}.json"
                 if fname not in names:
                     continue
@@ -553,41 +637,65 @@ def import_package(db: Session, raw: bytes, dry_run: bool = False,
                                 "uuid": uuid,
                                 "reason": decision.reason,
                             })
-                            # 競合を DB に永続化
-                            try:
-                                conflict_rec = SyncConflict(
-                                    record_table=table_key,
-                                    record_uuid=uuid,
-                                    import_device=rec.get("source_device_id"),
-                                    import_updated_at=str(rec.get("updated_at") or ""),
-                                    local_updated_at=str((local_dict or {}).get("updated_at") or ""),
-                                    incoming_snapshot=json.dumps(rec, ensure_ascii=False)[:4000],
-                                    reason=decision.reason,
-                                )
-                                db.add(conflict_rec)
-                                db.commit()
-                            except Exception:
-                                db.rollback()
+                            # 競合を DB に永続化 (取り込みと同じトランザクション。
+                            # 取り消されたときは一緒に消える)
+                            conflict_rec = SyncConflict(
+                                record_table=table_key,
+                                record_uuid=uuid,
+                                import_device=rec.get("source_device_id"),
+                                import_updated_at=str(rec.get("updated_at") or ""),
+                                local_updated_at=str((local_dict or {}).get("updated_at") or ""),
+                                incoming_snapshot=json.dumps(rec, ensure_ascii=False)[:4000],
+                                reason=decision.reason,
+                            )
+                            db.add(conflict_rec)
+                            db.flush()
                             # 競合は keep（Phase 3 の UI で解決）
                             old_id = rec.get("id")
                             if old_id and local_obj:
                                 id_remap.setdefault(table_key, {})[old_id] = local_obj.id
 
                     except Exception as e:
-                        db.rollback()
+                        # ここでは rollback しない (それまでの適用を消すのは
+                        # 全体を取り消すときだけ)。失敗を数えて続行し、
+                        # 最後にまとめて取り消す。flush 自体が失敗していて
+                        # トランザクションが無効なら、以降は書けないので止める。
+                        summary.failures += 1
                         summary.errors.append(f"{table_key}[{uuid}]: {e}")
+                        if not db.is_active:
+                            halt = True
+                            break
 
             # Conditions / ConditionTags — uuid なしの自然キーマージ
-            _import_conditions(db, zf, names, id_remap, summary, dry_run, importer_team_id)
-            _import_condition_tags(db, zf, names, id_remap, summary, dry_run, importer_team_id)
+            if not halt:
+                _import_conditions(db, zf, names, id_remap, summary, dry_run, importer_team_id)
+            if not halt and db.is_active:
+                _import_condition_tags(db, zf, names, id_remap, summary, dry_run, importer_team_id)
+
+        if not dry_run:
+            if summary.failures:
+                _discard_import(db, summary)
+            else:
+                try:
+                    db.commit()
+                except Exception as e:
+                    summary.failures += 1
+                    summary.errors.append(f"commit: {e}")
+                    _discard_import(db, summary)
 
     except ZipBombError as e:
         # 申告を信じた事前検査を通り抜けた分。実測で止めた。
         summary.errors.append(str(e))
+        if not dry_run:
+            _discard_import(db, summary)
     except zipfile.BadZipFile:
         summary.errors.append("不正な ZIP ファイルです")
+        if not dry_run:
+            _discard_import(db, summary)
     except Exception as e:
         summary.errors.append(f"インポートエラー: {e}")
+        if not dry_run:
+            _discard_import(db, summary)
 
     return summary
 
@@ -670,7 +778,7 @@ def _import_conditions(
                     if k in ("created_at",):
                         continue
                     setattr(existing, k, v)
-                db.commit()
+                db.flush()
                 summary.updated += 1
             else:
                 if dry_run:
@@ -678,11 +786,14 @@ def _import_conditions(
                     continue
                 obj = Condition(**data)
                 db.add(obj)
-                db.commit()
+                db.flush()
                 summary.added += 1
         except Exception as e:
-            db.rollback()
+            # rollback はしない。失敗を数え、最後に import_package が全体を取り消す。
+            summary.failures += 1
             summary.errors.append(f"conditions: {e}")
+            if not db.is_active:
+                return
 
 
 def _import_condition_tags(
@@ -730,8 +841,10 @@ def _import_condition_tags(
                     continue
                 obj = ConditionTag(**data)
                 db.add(obj)
-                db.commit()
+                db.flush()
                 summary.added += 1
         except Exception as e:
-            db.rollback()
+            summary.failures += 1
             summary.errors.append(f"condition_tags: {e}")
+            if not db.is_active:
+                return
