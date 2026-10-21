@@ -180,13 +180,28 @@ def should_serve_public_site(request: Request) -> bool:
     return host in PUBLIC_HOSTS
 
 
+def _public_registration_enabled() -> bool:
+    """公開トップに登録 CTA を出すか。SS_REGISTRATION_ENABLED を auth_email と同じ判定で読む。
+
+    登録 API (auth_email) が無効のときに登録ボタンだけ出ると、押した人が行き止まりになる。
+    判定を読めない場合は False (問い合わせ導線に倒す)。"""
+    try:
+        from backend.routers.auth_email import _registration_enabled
+        return bool(_registration_enabled())
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("registration flag unavailable for public home: %s", exc)
+        return False
+
+
 def _render_home_str() -> str:
     """公開トップページ (旧 _V7_HOME_HTML) を Jinja テンプレートから描画する。
 
-    内容は public/home.html.j2 に移管済み。変数注入はゼロのため全体を {% raw %} で
-    囲んでおり、render 結果は旧定数とバイト同一になる。FileSystemLoader のキャッシュに
+    注入する変数は registration_enabled のみ。テンプレートは基本 {% raw %} で囲まれ、
+    その変数を使う箇所だけ raw を閉じて分岐している。FileSystemLoader のキャッシュに
     任せ、起動時プリロードは行わない (テンプレ欠落時は get_template が分かりやすく送出)。"""
-    return _jinja_env.get_template("public/home.html.j2").render()
+    return _jinja_env.get_template("public/home.html.j2").render(
+        registration_enabled=_public_registration_enabled(),
+    )
 
 
 def _inject_status_banner(home_html: str) -> str:
