@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { analyticsViewLifecycle } from '@/utils/analytics'
 import { useTranslation } from 'react-i18next'
+import { matchOutcomeLabelKey } from '@/utils/matchResult'
 import { apiGet } from '@/api/client'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { AnalysisFilters } from '@/types'
@@ -80,7 +81,7 @@ export function DashboardLivePage({ playerId, matches }: Props) {
   const matchOptions = matches.map((m) => ({
     value: m.match_id,
     label: `${m.date ?? t('common.unknown_date', 'Date unknown')} vs ${m.opponent}`,
-    suffix: isPlayer ? undefined : (m.result === 'win' ? t('common.win_short', 'W') : t('common.lose_short', 'L')),
+    suffix: isPlayer ? undefined : t(matchOutcomeLabelKey(m.result)),
     searchText: `${m.date ?? ''} ${m.opponent} ${m.tournament} ${m.tournament_level}`,
   }))
 
@@ -133,7 +134,7 @@ export function DashboardLivePage({ playerId, matches }: Props) {
                     return {
                       value: m.match_id,
                       label: `${m.date} vs ${m.opponent}`,
-                      suffix: isPlayer ? undefined : (scoreStr || (m.result === 'win' ? t('common.win_short', 'W') : t('common.lose_short', 'L'))),
+                      suffix: isPlayer ? undefined : (scoreStr || t(matchOutcomeLabelKey(m.result))),
                       searchText: `${m.date} ${m.opponent} ${m.tournament}`,
                     }
                   })}

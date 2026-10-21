@@ -17,7 +17,10 @@ from backend.analysis.router_helpers import (
     _player_role_in_match, _get_player_matches, _fetch_matches_sets_rallies,
 )
 from backend.analysis.role_view import is_opponent_stroke, own_slot, teammate_slot, team_side
-from backend.analysis.player_context import involves_player, opponent_player_id, partner_player_id
+from backend.analysis.player_context import (
+    involves_player, opponent_player_id, partner_player_id, player_wins_match,
+)
+from backend.analysis.analysis_population import split_analysis_population
 from backend.analysis.analysis_config import AnalysisConfig
 from backend.analysis.response_meta import build_input_provenance
 from backend.analysis.growth_engine import (
@@ -822,12 +825,9 @@ def get_post_long_rally_stats(
 @router.get("/analysis/opponent_stats")
 def get_opponent_stats(player_id: int, db: Session = Depends(get_db)):
     """E-001: 過去に対戦した相手ごとの勝率・ラリー長を集計する"""
-    matches = (
-        db.query(Match)
-        .filter(
-            involves_player(player_id)
-        )
-        .all()
+    # 勝敗確定かつラリー有りの試合だけを数える (analysis_population)。除外件数は meta.excluded
+    matches, excluded = split_analysis_population(
+        db, db.query(Match).filter(involves_player(player_id)).all(),
     )
 
     empty_confidence = check_confidence("opponent_analysis", 0)
@@ -836,7 +836,7 @@ def get_opponent_stats(player_id: int, db: Session = Depends(get_db)):
             "success": True,
             "data": {"opponents": []},
             "meta": _with_input_provenance(
-                {"sample_size": 0, "confidence": empty_confidence},
+                {"sample_size": 0, "confidence": empty_confidence, "excluded": excluded},
                 rallies=[],
             ),
         }
@@ -870,11 +870,7 @@ def get_opponent_stats(player_id: int, db: Session = Depends(get_db)):
     for m in matches:
         opp_id = opponent_map[m.id]
         opp_stats[opp_id]["match_ids"].add(m.id)
-        role = role_by_match[m.id]
-        result = m.result
-        if role == "player_b":
-            result = "win" if result == "loss" else ("loss" if result == "win" else result)
-        if result == "win":
+        if player_wins_match(m, player_id):
             opp_stats[opp_id]["wins"] += 1
 
     for rally in rallies:
@@ -909,7 +905,7 @@ def get_opponent_stats(player_id: int, db: Session = Depends(get_db)):
         "success": True,
         "data": {"opponents": opponents_list},
         "meta": _with_input_provenance(
-            {"sample_size": total_sample, "confidence": confidence},
+            {"sample_size": total_sample, "confidence": confidence, "excluded": excluded},
             rallies=rallies,
         ),
     }

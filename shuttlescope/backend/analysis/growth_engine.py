@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from backend.analysis.role_view import team_side
 from backend.analysis.player_context import involves_player, opponent_player_id
+from backend.analysis.analysis_population import is_decided_result
 from backend.db.models import Match, GameSet, Rally, Player
 
 
@@ -181,6 +182,9 @@ def growth_points_weighted(
             rallies_by_set.setdefault(r.set_id, []).append(r)
 
     for m in matches:
+        # 勝敗未確定の試合 (unfinished / walkover) は成長の点にしない (analysis_population)
+        if not is_decided_result(m.result):
+            continue
         role = team_side(m, player_id)
         opp_id = opponent_player_id(m, player_id)
 

@@ -12,6 +12,7 @@ DB は player_a / player_b という保存形式を持つが、
 from __future__ import annotations
 from typing import Optional
 from backend.db.models import Match
+from backend.analysis.analysis_population import is_decided_result
 from backend.analysis.role_view import (  # noqa: F401  (再公開)
     TeamSide,
     is_opponent_stroke,
@@ -79,16 +80,21 @@ def target_role(match: Match, player_id: int) -> str | None:
     return None
 
 
-def player_wins_match(match: Match, player_id: int) -> bool:
+def player_wins_match(match: Match, player_id: int) -> Optional[bool]:
     """
     試合結果を target_player_id 視点の bool に変換する。
     DB の result は player_a 基準で格納されているため、
     player_b 視点 (および partner_b 視点) では反転が必要。
 
+    勝敗が確定していない試合 (unfinished / walkover / None) は None を返す。
+    False (負け) にしない。呼び出し側は None を「数えない」として扱うこと。
+
     UR-4 fix: partner_b 側も B サイド勝敗で反転する。
     旧コードは partner_a / partner_b の両方で
     `match.result == 'win'` を返しており、partner_b の勝率が反転していた。
     """
+    if not is_decided_result(match.result):
+        return None
     role = target_role(match, player_id)
     if role == "player_a":
         return match.result == "win"

@@ -8,6 +8,7 @@
  */
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { matchOutcomeLabelKey } from '@/utils/matchResult'
 import { apiGet } from '@/api/client'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { RoleGuard } from '@/components/common/RoleGuard'
@@ -299,10 +300,10 @@ function NearestEvidenceSection({ data, isLight }: { data: NearestMatch[]; isLig
         {data.map((m, i) => (
           <div key={i} className="flex items-center gap-2 text-xs">
             <span
-              className="font-bold w-4 shrink-0"
-              style={{ color: m.result === 'win' ? WIN : LOSS }}
+              className="font-bold min-w-[1rem] shrink-0"
+              style={{ color: m.result === 'win' ? WIN : m.result === 'loss' ? LOSS : subText }}
             >
-              {m.result === 'win' ? 'W' : 'L'}
+              {t(matchOutcomeLabelKey(m.result))}
             </span>
             <span className="shrink-0 text-[10px] font-mono ss-num" style={{ color: subText }}>
               {m.date.slice(0, 7)}

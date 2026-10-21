@@ -27,8 +27,9 @@ LEVEL_IMPORTANCE: dict[str, float] = {
 }
 
 
-def _player_wins_match(match: Match, player_id: int) -> bool:
-    """試合結果をプレイヤー視点の bool に変換（player_context への委譲）"""
+def _player_wins_match(match: Match, player_id: int) -> Optional[bool]:
+    """試合結果をプレイヤー視点の bool に変換（player_context への委譲）。
+    未確定の試合は None。この関数の呼び出し元は win/loss のみを取得済み"""
     return _player_wins_match_ctx(match, player_id)
 
 

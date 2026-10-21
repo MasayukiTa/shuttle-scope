@@ -5100,6 +5100,7 @@
     "please_select_player": "選手を選択してください",
     "win_short": "勝",
     "lose_short": "負",
+    "unfinished_short": "未完了",
     "unknown_date": "日付不明",
     "all_time": "全期間",
     "recent_n_matches": "直近{{count}}試合",

@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { analyticsViewLifecycle } from '@/utils/analytics'
 import { useTranslation } from 'react-i18next'
+import { matchOutcomeLabelKey } from '@/utils/matchResult'
 import { useQuery } from '@tanstack/react-query'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -221,7 +222,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
   const matchOptions = matches.map((m) => ({
     value: m.match_id,
     label: `${m.date ?? t('common.unknown_date', '日付不明')} vs ${m.opponent}`,
-    suffix: [m.tournament_level, isPlayer ? null : (m.result === 'win' ? t('common.win_short', '勝') : t('common.lose_short', '負'))].filter(Boolean).join(' '),
+    suffix: [m.tournament_level, isPlayer ? null : t(matchOutcomeLabelKey(m.result))].filter(Boolean).join(' '),
     searchText: `${m.date ?? ''} ${m.opponent} ${m.tournament} ${m.tournament_level}`,
   }))
 
@@ -352,7 +353,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                   <option value="">{t('auto.DashboardOverviewPage.k6')}</option>
                   {[...matches].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '')).map((m) => (
                     <option key={m.match_id} value={m.match_id}>
-                      {m.date ?? '日付不明'} {m.opponent}{isPlayer ? '' : ` (${m.result === 'win' ? '勝' : '敗'})`}
+                      {m.date ?? '日付不明'} {m.opponent}{isPlayer ? '' : ` (${t(matchOutcomeLabelKey(m.result))})`}
                     </option>
                   ))}
                 </select>
@@ -568,8 +569,8 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                       </div>
                     </div>
                     {!isPlayer && (
-                      <span className={`shrink-0 inline-block px-2 py-0.5 rounded-ss-sm text-xs font-semibold ${m.result === 'win' ? 'bg-gray-800 text-blue-300' : 'bg-gray-800 text-red-300'}`}>
-                        {m.result === 'win' ? '勝' : '負'}
+                      <span className={`shrink-0 inline-block px-2 py-0.5 rounded-ss-sm text-xs font-semibold ${m.result === 'win' ? 'bg-gray-800 text-blue-300' : m.result === 'loss' ? 'bg-gray-800 text-red-300' : 'bg-gray-800 text-gray-400'}`}>
+                        {t(matchOutcomeLabelKey(m.result))}
                       </span>
                     )}
                   </div>
@@ -620,8 +621,8 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                       <td className={`ss-num py-2 pr-3 ${textSecondary} num-cell`}>{m.date}</td>
                       {!isPlayer && (
                         <td className="py-2 pr-3 text-center">
-                          <span className={`inline-block px-2 py-0.5 rounded-ss-sm text-xs font-semibold ${m.result === 'win' ? 'bg-gray-800 text-blue-300' : 'bg-gray-800 text-red-300'}`}>
-                            {m.result === 'win' ? '勝' : '負'}
+                          <span className={`inline-block px-2 py-0.5 rounded-ss-sm text-xs font-semibold ${m.result === 'win' ? 'bg-gray-800 text-blue-300' : m.result === 'loss' ? 'bg-gray-800 text-red-300' : 'bg-gray-800 text-gray-400'}`}>
+                            {t(matchOutcomeLabelKey(m.result))}
                           </span>
                         </td>
                       )}

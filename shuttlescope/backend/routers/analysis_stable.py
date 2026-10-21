@@ -14,9 +14,10 @@ from backend.utils.confidence import check_confidence
 from backend.analysis.router_helpers import (
     SHOT_TYPE_JA, SHOT_KEYS, SHOT_LABELS_JA, END_TYPE_JA, _shot_ja,
     _player_role_in_match, _get_player_matches, _fetch_matches_sets_rallies,
+    _get_player_matches_with_excluded,
 )
 from backend.analysis.role_view import is_opponent_stroke, match_ids_by_slot, own_slot
-from backend.analysis.player_context import involves_player
+from backend.analysis.player_context import involves_player, player_wins_match
 from backend.analysis.analysis_config import AnalysisConfig
 from backend.analysis.analysis_registry import get_analysis_meta
 from backend.analysis.response_meta import build_input_provenance
@@ -1226,7 +1227,9 @@ def get_tournament_level_comparison(
     db: Session = Depends(get_db),
 ):
     """B-006: 大会レベル（IC/SJL/国内等）ごとの勝率・ラリー長を比較する"""
-    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+    matches, excluded = _get_player_matches_with_excluded(
+        db, player_id, result, tournament_level, date_from, date_to,
+    )
 
     empty_confidence = check_confidence("descriptive_basic", 0)
     if not matches:
@@ -1234,14 +1237,10 @@ def get_tournament_level_comparison(
             "success": True,
             "data": {"levels": []},
             "meta": _with_input_provenance(
-                {"sample_size": 0, "confidence": empty_confidence},
+                {"sample_size": 0, "confidence": empty_confidence, "excluded": excluded},
                 rallies=[],
             ),
         }
-
-    role_by_match: dict[int, str] = {
-        m.id: _player_role_in_match(m, player_id) for m in matches
-    }
 
     match_ids = [m.id for m in matches]
     sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
@@ -1251,16 +1250,10 @@ def get_tournament_level_comparison(
 
     # 試合→大会レベルのマッピング
     level_by_match: dict[int, str] = {m.id: m.tournament_level for m in matches}
-    result_by_match: dict[int, str] = {}
-    for m in matches:
-        role = role_by_match[m.id]
-        result = m.result
-        if role == "player_b":
-            if result == "win":
-                result = "loss"
-            elif result == "loss":
-                result = "win"
-        result_by_match[m.id] = result
+    # 母集団は勝敗確定の試合だけ (analysis_population)。None (未確定) は勝ちに数えない
+    won_by_match: dict[int, Optional[bool]] = {
+        m.id: player_wins_match(m, player_id) for m in matches
+    }
 
     # レベル別に試合を集計
     level_stats: dict[str, dict] = defaultdict(lambda: {
@@ -1277,7 +1270,7 @@ def get_tournament_level_comparison(
     # 試合単位の勝ち数
     for m in matches:
         level = m.tournament_level
-        if result_by_match[m.id] == "win":
+        if won_by_match[m.id]:
             level_stats[level]["wins"] += 1
         if m.id not in level_stats[level]["match_ids"]:
             level_stats[level]["match_ids"].add(m.id)
@@ -1305,7 +1298,7 @@ def get_tournament_level_comparison(
         "success": True,
         "data": {"levels": result_levels},
         "meta": _with_input_provenance(
-            {"sample_size": total_sample, "confidence": confidence},
+            {"sample_size": total_sample, "confidence": confidence, "excluded": excluded},
             rallies=rallies,
         ),
     }
