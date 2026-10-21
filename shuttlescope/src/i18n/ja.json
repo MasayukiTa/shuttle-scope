@@ -1747,6 +1747,7 @@
     "toggle": "テーマ切替"
   },
   "analysis": {
+    "sample_size": "サンプル数: {{count}}",
     "shuttle_track": {
       "title": "シャトル軌跡",
       "empty": "未解析（シャトル軌跡データがありません）",
@@ -2289,6 +2290,7 @@
     "set_distribution": "セット分布予測",
     "score_bands": "スコア帯予測",
     "most_likely": "最頻スコアライン",
+    "scoreline_no_data": "データなし",
     "tactical_notes": "戦術メモ",
     "caution_flags": "注意事項",
     "observation_context": "観察コンテキスト",
@@ -3110,7 +3112,9 @@
     },
     "AnomalyBanner": {
       "title": "今、ふだんと違う",
-      "confidence": "確信度 {{pct}}%",
+      "sample_n": "直近 N={{n}}打球",
+      "detail_stats": "直近 N={{recent}}打球 / ふだん N={{base}}打球",
+      "shot_other": "その他",
       "detail": "詳細を見る",
       "detail_title": "ショット種別の乖離 (直近 vs 季節)",
       "dismiss": "閉じる",
@@ -5109,7 +5113,16 @@
     "measuring_title": "アドバイスは計測中です",
     "measuring_body": "データが揃い次第、具体的な観測を表示します。それまで推測ベースのコメントは出しません (信頼性最優先)。",
     "hide_basis": "根拠を隠す",
-    "show_basis": "ⓘ 根拠"
+    "show_basis": "ⓘ 根拠",
+    "basis": {
+      "period": "期間",
+      "sample_size": "サンプル数",
+      "current": "直近 8 週",
+      "previous": "その前 8 週",
+      "matches": "試合",
+      "rallies": "ラリー",
+      "entries": "記録"
+    }
   },
   "shot_end_type": {
     "ace": "エース",

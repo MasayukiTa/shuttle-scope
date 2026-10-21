@@ -68,7 +68,7 @@ interface PredictionData {
   most_likely_scorelines: Array<{
     outcome: string
     probability: number
-    set1_score?: string
+    set1_score?: string | null
     set2_score?: string
     set3_score?: string
   }>
@@ -315,7 +315,11 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
             </p>
             <div className="space-y-1">
               {d.most_likely_scorelines.map((sl, i) => {
-                const scoreText = [sl.set1_score, sl.set2_score, sl.set3_score].filter(Boolean).join(' / ')
+                // データ無しは null。過去にキャッシュされた '21-??' 形式は「?」を含むので同様に除く。
+                const scoreText =
+                  [sl.set1_score, sl.set2_score, sl.set3_score]
+                    .filter((s): s is string => !!s && !s.includes('?'))
+                    .join(' / ') || t('prediction.scoreline_no_data')
                 return (
                   <div key={i} className="flex items-center gap-2 text-xs">
                     <span

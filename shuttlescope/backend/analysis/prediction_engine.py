@@ -235,7 +235,7 @@ def compute_most_likely_scorelines(
             opp = s1['opp_low'] if is_win else s1['opp_high']
             item['set1_score'] = f'{my}-{opp}'
         else:
-            item['set1_score'] = '21-??' if is_win else '??-21'
+            item['set1_score'] = None  # データ無しは偽の値でなく null
 
         if outcome in ('2-1', '1-2'):
             if s2:

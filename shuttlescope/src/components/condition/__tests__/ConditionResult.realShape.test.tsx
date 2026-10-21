@@ -93,9 +93,12 @@ describe('ConditionResult: 実応答のキーを読む', () => {
     expect(text).toContain('straight_line_response')
     expect(text).toContain('ccs_sudden_change:-80')
     // questionnaire_json は文字列で返る -> 二重エスケープされずオブジェクトとして整形される
-    const pre = container.querySelector('pre')?.textContent ?? ''
-    expect(pre).toContain('"F1-01": 3')
-    expect(pre.startsWith('"')).toBe(false)
+    // 生の JSON ではなく「設問文 + 回答値」の一覧として出す
+    expect(container.querySelector('pre')).toBeNull()
+    const list = container.querySelector('[data-testid="condition-responses"]')?.textContent ?? ''
+    expect(list).toContain('練習や試合のあと、強い疲労を感じた') // F1-01 の設問文
+    expect(list).not.toContain('{')
+    expect(list).not.toContain('"F1-01"')
   })
 
   it('coach/analyst 相当の応答 (Tier 2 無し) では「—」と蓄積中。0 や NaN を出さない', () => {
