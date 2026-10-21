@@ -24,6 +24,7 @@ from backend.analysis.shot_taxonomy import canonicalize, ja_label
 from backend.db.database import get_db
 from backend.db.models import Match, GameSet, Rally, Stroke
 from backend.utils.auth import AuthCtx, get_auth
+from backend.utils.confidence import VERDICT_MIN_SAMPLE
 from backend.analysis.router_helpers import (
     _fetch_matches_sets_rallies,
     _player_role_in_match,
@@ -240,7 +241,10 @@ def _safe(text: str) -> str:
 
 
 def _sufficiency_score(n: int, *, cap: float) -> float:
-    """データ量の単調増加スコア (0.5〜cap)。**確率ではない。**
+    """データ量の単調増加スコア (0〜cap)。**確率ではない。**
+
+    n が VERDICT_MIN_SAMPLE 未満なら 0.5 未満、ちょうど VERDICT_MIN_SAMPLE で 0.5、
+    n=30 で cap。以前は下限が 0.5 で、呼び出し側の `conf < 0.5` の足切りが一度も効かなかった。
 
     D-5: 旧来この値は `confidence` という名前で返り、画面では
     「信頼度 NN%」として描かれていた。中身は N を 0.5〜0.95 に写す
@@ -250,7 +254,10 @@ def _sufficiency_score(n: int, *, cap: float) -> float:
     画面に出す信頼度が要るなら `backend/utils/confidence.py` の
     `check_confidence` (閾値が文書化されていて星と警告文を返す) を使う。
     """
-    return round(min(0.5 + min(n, 30) / 60.0, cap), 3)
+    n = max(n, 0)
+    if n < VERDICT_MIN_SAMPLE:
+        return round(0.5 * n / VERDICT_MIN_SAMPLE, 3)
+    return round(min(0.5 + min(n - VERDICT_MIN_SAMPLE, 25) / 50.0, cap), 3)
 
 
 @router.get("/analysis/live_suggestions")
@@ -310,7 +317,7 @@ def get_live_suggestions(
         shot_stats = []
         for st, d in agg.items():
             n = len(d["rallies"])
-            if n < 5:
+            if n < VERDICT_MIN_SAMPLE:
                 continue
             wr = len(d["wins"]) / n
             lift_pp = (wr - overall_wr) * 100

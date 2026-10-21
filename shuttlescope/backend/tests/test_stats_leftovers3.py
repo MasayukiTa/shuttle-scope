@@ -65,7 +65,8 @@ class TestPredictionEndpointsNoRecord:
         assert resp.status_code == 200, resp.text
         d = resp.json()["data"]
         assert d["sample_size"] == 0
-        assert d["win_probability"] is None and d["win_probability_v2"] is None
+        assert d["win_probability"] is None and "win_probability_v2" not in d
+        assert d["h2h_win_rate"] is None and d["h2h_n"] == 0
         assert d["set_distribution"] is None and d["match_narrative"] is None
         assert d["insufficient_data"] is True
         assert d["feature_breakdown"]["final"] is None

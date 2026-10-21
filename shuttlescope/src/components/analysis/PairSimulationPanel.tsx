@@ -11,6 +11,7 @@ import { WIN, LOSS } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useAuth } from '@/hooks/useAuth'
 import { MIcon } from '@/components/common/MIcon'
+import type { WinProbabilityInterval, WinProbabilityReference } from './winProbabilityReference'
 
 interface PlayerSummary {
   id: number
@@ -23,6 +24,8 @@ interface PairSimResponse {
   data: {
     pair_name: string
     win_probability: number | null
+    win_probability_ci?: WinProbabilityInterval | null
+    win_probability_reference?: WinProbabilityReference
     set_distribution: { '2-0': number; '2-1': number; '1-2': number; '0-2': number } | null
     pair_strengths: string[]
     pair_cautions: string[]
@@ -367,10 +370,27 @@ export function PairSimulationPanel({ players }: PairSimulationPanelProps) {
 
           {d.win_probability != null ? (
             <div className="text-center">
-              <p className="text-4xl font-bold ss-num" style={{ color: winProbColor(d.win_probability, isLight) }}>
+              <p
+                className={d.win_probability_reference?.is_reference ? 'text-2xl font-semibold ss-num' : 'text-4xl font-bold ss-num'}
+                style={{ color: winProbColor(d.win_probability, isLight) }}
+              >
                 {Math.round(d.win_probability * 100)}%
               </p>
               <p className="text-xs mt-1" style={{ color: subText }}>{t('prediction.win_probability')}</p>
+              {d.win_probability_reference?.is_reference && (
+                <p className="text-xs mt-0.5 ss-num" style={{ color: subText }}>
+                  {t('prediction.reference_value', { n: d.sample_size })}
+                </p>
+              )}
+              {d.win_probability_ci && (
+                <p className="text-[10px] mt-0.5 ss-num" style={{ color: subText }}>
+                  {t('prediction.win_probability_ci', {
+                    low: Math.round(d.win_probability_ci.low * 100),
+                    high: Math.round(d.win_probability_ci.high * 100),
+                    n: d.win_probability_ci.n,
+                  })}
+                </p>
+              )}
             </div>
           ) : (
             <p className="text-sm text-center py-2" style={{ color: subText }}>{t('prediction.pair_no_record')}</p>

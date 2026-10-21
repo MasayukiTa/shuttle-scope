@@ -33,6 +33,8 @@ interface Tokens {
 
 interface CoachSummaryStripProps {
   winProbability: number
+  // true のときは「参考値」として小さく出す (試合数不足、または Brier が基準以下)。決めるのは backend
+  isReference?: boolean
   // confidence (0-1 の手置きスコア) は意図的に受け取らない。D-5 参照。
   confidenceStars: string
   setDistribution: { '2-0': number; '2-1': number; '1-2': number; '0-2': number }
@@ -62,6 +64,7 @@ function topOutcome(dist: CoachSummaryStripProps['setDistribution']): string {
 
 export function CoachSummaryStrip({
   winProbability,
+  isReference = false,
   confidenceStars,
   setDistribution,
   cautionFlags,
@@ -134,13 +137,18 @@ export function CoachSummaryStrip({
         <Cell tokens={tokens} label={t('prediction.win_probability') || '予測勝率'} divide>
           <div className="flex items-baseline gap-1">
             <span
-              className="text-[28px] font-bold leading-none tabular-nums"
+              className={`${isReference ? 'text-[18px] font-semibold' : 'text-[28px] font-bold'} leading-none tabular-nums`}
               style={{ color: winColorVal }}
             >
               {winPct}
             </span>
             <span className="text-xs" style={{ color: tokens.textMuted }}>%</span>
           </div>
+          {isReference && (
+            <p className="mt-1 text-[10px] tabular-nums" style={{ color: tokens.textFaint }}>
+              {t('prediction.reference_value', { n: sampleSize })}
+            </p>
+          )}
           {recentForm && recentForm.sample > 0 && recentForm.trend && (
             <RecentForm trend={recentForm.trend} tokens={tokens} />
           )}

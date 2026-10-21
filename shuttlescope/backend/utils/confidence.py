@@ -13,6 +13,27 @@ import math
 from typing import Any, Optional
 
 
+# 勝ち負けの「判定」「方向」「注意」「提案」など、言い切りに近い表示を出してよい最低試合数。
+# 1〜4 試合では Laplace 平滑化した率が 0.33〜0.83 の間を飛ぶだけで、方向を読む根拠にならない
+# (n=1 の 1 勝で直近 1.0 / 全体 0.667 となり「上向き」と出た)。
+# 数値そのものは出してよいが、n と共に「参考値」として格下げする。
+# 勝率・方向ラベル・注意フラグ・成長傾向・ペア予想・ラインナップのレンジがすべてこの 1 つを参照する。
+VERDICT_MIN_SAMPLE = 5
+
+
+def wilson_ci_from_rate(p_hat: float, n: int, z: float = 1.96) -> tuple[float, float]:
+    """率 p_hat と標本数 n から Wilson スコア区間を返す (n=0 は区間を定義できず (0, 1))。
+
+    勝数が整数で分からない率 (混合後の勝率など) にも使える。
+    """
+    if n == 0:
+        return (0.0, 1.0)
+    denominator = 1 + z * z / n
+    center = (p_hat + z * z / (2 * n)) / denominator
+    margin = (z * math.sqrt(p_hat * (1 - p_hat) / n + z * z / (4 * n * n))) / denominator
+    return (round(max(0.0, center - margin), 4), round(min(1.0, center + margin), 4))
+
+
 def wilson_ci(successes: int, n: int, z: float = 1.96) -> tuple[float, float]:
     """Wilson スコア法による比率の信頼区間。
 
@@ -25,11 +46,7 @@ def wilson_ci(successes: int, n: int, z: float = 1.96) -> tuple[float, float]:
     """
     if n == 0:
         return (0.0, 1.0)
-    p_hat = successes / n
-    denominator = 1 + z * z / n
-    center = (p_hat + z * z / (2 * n)) / denominator
-    margin = (z * math.sqrt(p_hat * (1 - p_hat) / n + z * z / (4 * n * n))) / denominator
-    return (round(max(0.0, center - margin), 4), round(min(1.0, center + margin), 4))
+    return wilson_ci_from_rate(successes / n, n, z)
 
 
 def check_confidence(analysis_type: str, sample_size: int) -> dict:

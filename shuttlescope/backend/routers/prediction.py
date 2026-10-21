@@ -28,7 +28,9 @@ from backend.analysis.prediction_engine import (
     compute_growth_trend,
     compute_feature_win_prob,
     compute_set_model_v2,
-    compute_brier_score,
+    compute_brier_score_blended,
+    reference_status,
+    win_probability_interval,
     find_nearest_matches,
     # Phase S3/S4
     compute_score_volatility,
@@ -84,8 +86,10 @@ def get_match_preview(
     else:
         primary = all_matches
 
-    # v1: 既存 Laplace 勝率（後方互換）
+    # 試合数・0 件判定用の Laplace 勝率 (primary の件数)。画面に出す勝率はこれではなく下の win_prob_v2
     win_prob, sample_size = compute_win_probability(primary, player_id)
+    # 直接対戦だけの Laplace 勝率。最終勝率とは別物なので別名 (h2h_win_rate / h2h_n) で返す
+    h2h_win_rate, h2h_n = compute_win_probability(h2h_matches, player_id)
 
     # Phase S4: スコアボラティリティ
     score_volatility = compute_score_volatility(primary, player_id)
@@ -103,7 +107,11 @@ def get_match_preview(
             "success": True,
             "data": {
                 "win_probability": None,
-                "win_probability_v2": None,
+                "win_probability_ci": None,
+                "win_probability_reference": reference_status(0),
+                "h2h_win_rate": h2h_win_rate,
+                "h2h_n": h2h_n,
+                "brier_score": None,
                 "insufficient_data": True,
                 "feature_breakdown": feature_breakdown,
                 "recent_form": recent_form,
@@ -157,6 +165,10 @@ def get_match_preview(
     similar_count = len(h2h_matches)
     confidence = compute_confidence_score(sample_size, similar_count)
 
+    # 表示する勝率 (win_prob_v2) そのものの Brier。Laplace 勝率の Brier ではない
+    brier_score = compute_brier_score_blended(all_matches, player_id, h2h_matches)
+    win_reference = reference_status(sample_size, brier_score)
+
     # 試合前サマリーナレーション（決め手・ぐだり局面・スコア予測を統合）
     player_obj = db.get(Player, player_id)
     match_narrative = compute_match_narrative(
@@ -176,10 +188,15 @@ def get_match_preview(
     return {
         "success": True,
         "data": {
-            # 後方互換: v1 勝率を win_probability として維持
+            # 最終勝率はこの 1 つだけ (全体・直近・直接対戦の混合)。画面の数字はすべてこれを読む
             # 試合 0 件の勝率は偽の 0.5 ではなく None (統計規則 R1)。sample_size を併記
-            "win_probability": win_prob if sample_size > 0 else None,
-            "win_probability_v2": win_prob_v2 if sample_size > 0 else None,
+            "win_probability": win_prob_v2 if sample_size > 0 else None,
+            "win_probability_ci": win_probability_interval(win_prob_v2, sample_size),
+            "win_probability_reference": win_reference,
+            # 直接対戦だけの Laplace 勝率 (最終勝率の入力の 1 つ)。件数 h2h_n と一緒に読む
+            "h2h_win_rate": h2h_win_rate,
+            "h2h_n": h2h_n,
+            "brier_score": brier_score,
             "feature_breakdown": feature_breakdown,
             "recent_form": recent_form,
             "set_distribution": set_dist,
@@ -281,7 +298,7 @@ def get_analyst_depth(
 
     recent_form = compute_recent_form(all_matches, player_id)
     growth_trend = compute_growth_trend(all_matches, player_id)
-    brier_score = compute_brier_score(all_matches, player_id)
+    brier_score = compute_brier_score_blended(all_matches, player_id, h2h_matches)
     nearest_evidence = find_nearest_matches(
         all_matches, player_id,
         current_level=tournament_level or '',
@@ -731,6 +748,8 @@ def get_pair_simulation(
         "data": {
             "pair_name": pair_name,
             "win_probability": win_prob if sample_size > 0 else None,
+            "win_probability_ci": win_probability_interval(win_prob, sample_size),
+            "win_probability_reference": reference_status(sample_size),
             "set_distribution": set_dist,
             "score_bands": score_bands,
             "pair_strengths": strengths,
