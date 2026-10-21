@@ -71,7 +71,20 @@ def test_content_stays_under_discord_limit(captured):
     assert len(captured[0]["content"]) <= 2000
 
 
-def test_rejection_is_logged_as_error(monkeypatch, caplog):
+def test_rejection_is_logged_as_error(monkeypatch):
+    # caplog はスイート全体を流すとロガーの伝播状態に左右されるので、
+    # logger.error の呼び出し自体を記録する (test_cluster_bootstrap と同じ流儀)。
+    errors = []
+
+    class _Logger:
+        def error(self, msg, *args, **kwargs):
+            errors.append(msg % args if args else msg)
+
+        def __getattr__(self, name):
+            return lambda *a, **k: None
+
+    monkeypatch.setattr(public_site, "logger", _Logger())
+
     def fake_urlopen(req, timeout=None):
         if "discord.com" in req.full_url:
             raise urllib.error.HTTPError(
@@ -93,6 +106,5 @@ def test_rejection_is_logged_as_error(monkeypatch, caplog):
         "backend.utils.safe_path.validate_external_url",
         lambda url, field_name="": None,
     )
-    with caplog.at_level("ERROR"):
-        public_site._notify_inquiry(_inquiry())
-    assert any("rejected" in r.getMessage() and r.levelname == "ERROR" for r in caplog.records)
+    public_site._notify_inquiry(_inquiry())
+    assert any("rejected" in m and "400" in m for m in errors)
