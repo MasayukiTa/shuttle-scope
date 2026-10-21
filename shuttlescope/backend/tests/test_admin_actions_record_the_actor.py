@@ -94,7 +94,7 @@ def test_admin_reset_password_records_actor(client, test_engine):
 def test_user_delete_records_actor(client, test_engine):
     headers, admin_id = _login_admin(client)
     target_id = _create_target(client, headers)
-    resp = client.delete(f"/api/auth/users/{target_id}", headers=headers)
+    resp = client.delete(f"/api/auth/users/{target_id}?force=1", headers=headers)
     assert resp.status_code == 200, resp.text
 
     rows = _rows(test_engine, "user_deleted")
@@ -107,7 +107,7 @@ def test_user_delete_records_actor(client, test_engine):
 
 def test_player_delete_records_actor(client, test_engine):
     headers, admin_id = _login_admin(client)
-    created = client.post("/api/players", json={"name": "Audit Target"}, headers=headers)
+    created = client.post("/api/players", json={"name": "Audit Target", "team": "TestTeam"}, headers=headers)
     assert created.status_code == 201, created.text
     player_id = created.json()["data"]["id"]
     resp = client.delete(f"/api/players/{player_id}", headers=headers)
