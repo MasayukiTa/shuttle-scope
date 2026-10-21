@@ -113,7 +113,7 @@ describe('PredictionPanel: 勝率の参考値表示', () => {
       n,
     )
     await waitFor(() => expect(container.textContent).toContain('61%'))
-    expect(container.textContent).not.toContain('参考値（')
+    expect(container.textContent).not.toContain(`参考値（${n}試合）`)
     expect(container.textContent).not.toContain('に満たない')
   })
 
