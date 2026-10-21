@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from backend.db.database import get_db
 from backend.analysis.role_view import own_slot, team_side
 from backend.analysis.player_context import involves_player, opponent_player_id, player_wins_match, partner_player_id
+from backend.analysis.analysis_population import split_analysis_population
 from backend.utils.auth import (
     require_admin_or_analyst, require_query_scope, get_auth, apply_match_team_scope, AuthCtx,
 )
@@ -1530,14 +1531,14 @@ def get_pair_synergy(
 ):
     """ペアシナジースコア — ダブルスペアごとの相性指標"""
     # 全試合（シングルス含む）でプレイヤー勝率を計算
-    all_matches = (
-        db.query(Match)
-        .filter(involves_player(player_id))
-        .all()
+    # 勝敗確定かつラリー有りの試合だけを数える (analysis_population)。除外件数は meta.excluded
+    all_matches, excluded = split_analysis_population(
+        db, db.query(Match).filter(involves_player(player_id)).all(),
     )
     if not all_matches:
         return {"success": True, "data": {"player_avg_win_rate": None, "pairs": []},
-                "meta": {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0)}}
+                "meta": {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0),
+                         "excluded": excluded}}
 
     total_matches = len(all_matches)
     win_count = sum(1 for m in all_matches if player_wins_match(m, player_id))
@@ -1550,7 +1551,8 @@ def get_pair_synergy(
         return {
             "success": True,
             "data": {"player_avg_win_rate": player_avg_win_rate, "pairs": []},
-            "meta": {"sample_size": total_matches, "confidence": check_confidence("descriptive_basic", total_matches)},
+            "meta": {"sample_size": total_matches, "confidence": check_confidence("descriptive_basic", total_matches),
+                     "excluded": excluded},
         }
 
     # ペアIDごとに集計
@@ -1583,7 +1585,7 @@ def get_pair_synergy(
         if not partner_id:
             continue
 
-        is_win = (role == "player_a" and m.result == "win") or (role == "player_b" and m.result == "loss")
+        is_win = bool(player_wins_match(m, player_id))
         pair_data[partner_id]["match_ids"].append(m.id)
         if is_win:
             pair_data[partner_id]["wins"] += 1
@@ -1630,7 +1632,8 @@ def get_pair_synergy(
         "success": True,
         "data": {"player_avg_win_rate": player_avg_win_rate, "pairs": pairs},
         "meta": _with_input_provenance(
-            {"sample_size": total_matches, "confidence": check_confidence("descriptive_basic", total_matches)},
+            {"sample_size": total_matches, "confidence": check_confidence("descriptive_basic", total_matches),
+             "excluded": excluded},
             rallies=rallies,
             strokes=strokes,
         ),

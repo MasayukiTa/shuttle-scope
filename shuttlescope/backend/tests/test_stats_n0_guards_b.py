@@ -511,7 +511,8 @@ class TestResearchPairEndpoints:
         d = client.get(f"/api/analysis/pair_synergy?player_id={a.id}", headers=_headers()).json()["data"]
         assert d["player_avg_win_rate"] is None and d["pairs"] == []
 
-    def test_pair_synergy_unannotated_pair_has_null_rally_stats(self, client, db_session):
+    def test_pair_synergy_unannotated_pair_is_excluded_not_zero(self, client, db_session):
+        # ラリー 0 本の試合は解析母集団に入らない (analysis_population)。件数は meta に出る
         a = _player(db_session, "A")
         p = _player(db_session, "P")
         o1 = _player(db_session, "O1")
@@ -519,10 +520,9 @@ class TestResearchPairEndpoints:
         _match(db_session, a, o1, date(2026, 1, 1), 0, 0, fmt="womens_doubles",
                result="win", partner_a=p, partner_b=o2)
         db_session.commit()
-        d = client.get(f"/api/analysis/pair_synergy?player_id={a.id}", headers=_headers()).json()["data"]
-        pair = d["pairs"][0]
-        assert pair["match_count"] == 1 and pair["win_rate"] == 1.0
-        assert pair["avg_rally_length"] is None and pair["stroke_share"] is None
+        body = client.get(f"/api/analysis/pair_synergy?player_id={a.id}", headers=_headers()).json()
+        assert body["data"]["player_avg_win_rate"] is None and body["data"]["pairs"] == []
+        assert body["meta"]["excluded"] == {"unfinished": 0, "zero_rally": 1}
 
     def test_pair_combined_without_strokes_has_null_share(self, client, db_session):
         a = _player(db_session, "A")

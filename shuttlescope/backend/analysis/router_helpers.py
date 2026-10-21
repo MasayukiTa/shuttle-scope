@@ -11,6 +11,7 @@ from backend.analysis.player_context import (
     perspective as _perspective_ctx,
     player_result_filter as _player_result_filter,
 )
+from backend.analysis.analysis_population import split_analysis_population
 from backend.analysis.shot_taxonomy import SHOT_TYPE_JA as _SHOT_TYPE_JA_TAXONOMY, CANONICAL_SHOTS
 
 SHOT_TYPE_JA = _SHOT_TYPE_JA_TAXONOMY
@@ -44,10 +45,12 @@ def _player_role_in_match(match: Match, player_id: int) -> str | None:
     return _perspective_ctx(match, player_id)
 
 
-def _get_player_matches(
+def _get_player_matches_with_excluded(
     db: Session, player_id: int, result=None, tournament_level=None,
     date_from=None, date_to=None,
-) -> list[Match]:
+) -> tuple[list[Match], dict[str, int]]:
+    """解析母集団 (勝敗確定 かつ ラリー有り) の試合と、理由別の除外件数を返す。
+    定義は analysis_population にある。除外件数は meta の excluded に載せる。"""
     q = db.query(Match).filter(_involves_player(player_id))
     if tournament_level:
         q = q.filter(Match.tournament_level == tournament_level)
@@ -57,11 +60,22 @@ def _get_player_matches(
         q = q.filter(Match.date <= date_to)
     if result in ("win", "loss"):
         q = q.filter(_player_result_filter(player_id, result))
-    return q.all()
+    return split_analysis_population(db, q.all())
+
+
+def _get_player_matches(
+    db: Session, player_id: int, result=None, tournament_level=None,
+    date_from=None, date_to=None,
+) -> list[Match]:
+    return _get_player_matches_with_excluded(
+        db, player_id, result, tournament_level, date_from, date_to,
+    )[0]
 
 
 def _fetch_matches_sets_rallies(player_id: int, db: Session, include_skipped: bool = False):
-    matches = db.query(Match).filter(_involves_player(player_id)).all()
+    matches, _excluded = split_analysis_population(
+        db, db.query(Match).filter(_involves_player(player_id)).all(),
+    )
     if not matches:
         return [], {}, [], {}, [], {}
     match_ids = [m.id for m in matches]

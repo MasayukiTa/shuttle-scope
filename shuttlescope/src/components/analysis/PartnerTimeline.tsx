@@ -1,6 +1,7 @@
 // Phase 2: ペア別勝率推移タイムライン
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { matchOutcomeLabelKey } from '@/utils/matchResult'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts'
@@ -121,9 +122,9 @@ export function PartnerTimeline({ playerId, partnerId, partnerName }: PartnerTim
         {points.map((p) => (
           <div
             key={p.match_id}
-            title={`${p.date} ${p.tournament} ${p.result === 'win' ? '勝' : '負'}`}
+            title={`${p.date} ${p.tournament} ${t(matchOutcomeLabelKey(p.result))}`}
             className="w-2.5 h-2.5 rounded-ss-sm"
-            style={{ backgroundColor: p.result === 'win' ? 'var(--ss-good)' : 'var(--ss-bad)', opacity: 0.8 }}
+            style={{ backgroundColor: p.result === 'win' ? 'var(--ss-good)' : p.result === 'loss' ? 'var(--ss-bad)' : '#9ca3af', opacity: 0.8 }}
           />
         ))}
       </div>

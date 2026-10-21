@@ -5036,6 +5036,7 @@
     "please_select_player": "Please select a player",
     "win_short": "W",
     "lose_short": "L",
+    "unfinished_short": "Unfinished",
     "unknown_date": "Date unknown",
     "all_time": "All time",
     "recent_n_matches": "Recent {{count}} matches",
