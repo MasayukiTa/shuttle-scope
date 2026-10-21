@@ -6,6 +6,7 @@ import html
 import json
 import logging
 import re
+import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -411,8 +412,12 @@ def _notify_inquiry(inquiry: PublicInquiry) -> None:
         geo_str = f"\ncountry: {country} / {region}\norg/ISP: {org}"
     except Exception:
         pass
+    # Discord の webhook は本文を "content" で受ける。"text" (Slack 形式) だけを送ると
+    # 400 "Cannot send an empty message" で拒否され、通知が一度も届かなかった。
+    # 登録通知 (auth_email._notify_admin_webhook) と同じキーに揃える。
+    # content の上限は 2000 文字なので余裕を持って切る。
     payload = {
-        "text": (
+        "content": (
             f"[{received_jst}] New ShuttleScope inquiry\n"
             f"IP: {ip_str}{geo_str}\n"
             f"UA: {(inquiry.user_agent or '-')[:120]}\n"
@@ -422,7 +427,7 @@ def _notify_inquiry(inquiry: PublicInquiry) -> None:
             f"role: {inquiry.role or '-'}\n"
             f"contact: {inquiry.contact_reference or '-'}\n"
             f"message: {inquiry.message[:500]}"
-        )
+        )[:1900]
     }
     try:
         # Discord blocks the default Python-urllib User-Agent with 403.
@@ -436,8 +441,16 @@ def _notify_inquiry(inquiry: PublicInquiry) -> None:
             method="POST",
         )
         urllib.request.urlopen(req, timeout=5).read()
+    except urllib.error.HTTPError as exc:
+        # 通知が届かないのは取りこぼし (問い合わせの見落とし) に直結するので error で残す。
+        # 応答本文は Discord が拒否理由を返すので先頭だけ記録する (URL は出さない)。
+        try:
+            detail = exc.read()[:200]
+        except Exception:
+            detail = b""
+        logger.error("public inquiry webhook rejected: status=%s body=%r", exc.code, detail)
     except Exception as exc:
-        logger.warning("public inquiry webhook failed: %s", exc)
+        logger.error("public inquiry webhook failed: %s", exc)
 
 
 
