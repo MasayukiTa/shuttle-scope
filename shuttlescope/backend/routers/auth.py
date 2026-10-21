@@ -556,7 +556,7 @@ def _get_page_access(user_id: int, user: User, db: Session) -> list[str]:
     return list({row[0] for row in individual + team_grants})
 
 
-from backend.utils.access_log import log_access
+from backend.utils.access_log import log_access, log_admin_action
 from backend.utils.jwt_utils import (
     create_access_token,
     create_refresh_token,
@@ -1467,7 +1467,11 @@ def admin_reset_password(target_id: int, request: Request, db: Session = Depends
     except Exception as exc:
         logger.error("revoke_all_for_user failed (admin reset) user_id=%s: %s", user.id, exc)
         raise HTTPException(status_code=500, detail="access token 失効処理に失敗しました")
-    log_access(db, "password_reset_by_admin", details={"target_user_id": target_id})
+    log_admin_action(
+        db, request, "password_reset_by_admin",
+        resource_type="user", resource_id=target_id,
+        details={"target_user_id": target_id},
+    )
     return PasswordResetResponse(temporary_password=temp)
 
 
@@ -2059,7 +2063,11 @@ def create_user(body: UserCreate, request: Request, db: Session = Depends(get_db
         # username / player_id どちらの衝突かは error 文面で判別可能だが、
         # 攻撃者向けには曖昧化する (timing / reason side channel 抑制)。
         raise HTTPException(status_code=409, detail="user already exists")
-    log_access(db, "user_created", user_id=user.id, details={"role": body.role, "display_name": body.display_name, "team_id": team.id})
+    log_admin_action(
+        db, request, "user_created",
+        resource_type="user", resource_id=user.id,
+        details={"created_user_id": user.id, "role": body.role, "display_name": body.display_name, "team_id": team.id},
+    )
     return {"success": True, "data": {"id": user.id, "role": user.role, "display_name": user.display_name, "team_id": team.id}}
 
 
@@ -2389,7 +2397,11 @@ def unlock_user(target_id: int, request: Request, db: Session = Depends(get_db))
     user.failed_attempts = 0
     user.locked_until = None
     db.commit()
-    log_access(db, "account_unlocked", details={"target_user_id": target_id})
+    log_admin_action(
+        db, request, "account_unlocked",
+        resource_type="user", resource_id=target_id,
+        details={"target_user_id": target_id},
+    )
     return {"success": True}
 
 
@@ -2498,7 +2510,11 @@ def delete_user(target_id: int, request: Request, db: Session = Depends(get_db),
             status_code=409,
             detail="ユーザ削除に失敗しました (依存レコードがあります)",
         )
-    log_access(db, "user_deleted", details={"deleted_user_id": target_id})
+    log_admin_action(
+        db, request, "user_deleted",
+        resource_type="user", resource_id=target_id,
+        details={"deleted_user_id": target_id, "force": bool(force)},
+    )
     return {"success": True}
 
 
@@ -3019,7 +3035,11 @@ def create_team(body: TeamBody, request: Request, db: Session = Depends(get_db))
     except _IntegrityError:
         db.rollback()
         raise HTTPException(status_code=409, detail="team already exists")
-    log_access(db, "team_created", details={"team_id": team.id, "display_id": team.display_id})
+    log_admin_action(
+        db, request, "team_created",
+        resource_type="team", resource_id=team.id,
+        details={"team_id": team.id, "display_id": team.display_id},
+    )
     return {"success": True, "data": _team_to_dict(team, for_admin=True)}
 
 
@@ -3066,7 +3086,11 @@ def patch_team(team_id: int, body: TeamPatch, request: Request, db: Session = De
     if body.notes is not None:
         team.notes = body.notes or None
     db.commit()
-    log_access(db, "team_updated", details={"team_id": team.id})
+    log_admin_action(
+        db, request, "team_updated",
+        resource_type="team", resource_id=team.id,
+        details={"team_id": team.id},
+    )
     return {"success": True, "data": _team_to_dict(team, for_admin=ctx.is_admin)}
 
 
@@ -3223,9 +3247,12 @@ def delete_team(
     db.commit()
 
     # 監査ログ (誰がどの team を force/soft delete したか forensic 用)
-    log_access(
+    log_admin_action(
         db,
+        request,
         "team_deleted",
+        resource_type="team",
+        resource_id=team_id,
         details={
             "team_id": team_id,
             "team_name": team.name,
@@ -3477,6 +3504,9 @@ def submit_consents(
     log_access(
         db,
         "consents_submitted",
+        user_id=ctx.user_id,
+        resource_type="user",
+        resource_id=ctx.user_id,
         details={
             "consent_types": sorted(given_types.keys()),
             "privacy_policy_version": body.privacy_policy_version,
@@ -3524,5 +3554,9 @@ def withdraw_consent(consent_type: str, request: Request, db: Session = Depends(
     )
     db.add(rec)
     db.commit()
-    log_access(db, "consent_withdrawn", details={"consent_type": consent_type})
+    log_access(
+        db, "consent_withdrawn", user_id=ctx.user_id,
+        resource_type="user", resource_id=ctx.user_id,
+        details={"consent_type": consent_type},
+    )
     return {"success": True, "data": {"consent_type": consent_type, "withdrawn_at": now.isoformat()}}

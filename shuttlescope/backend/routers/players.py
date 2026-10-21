@@ -830,6 +830,13 @@ def delete_player(
         )
     db.delete(player)
     db.commit()
+    # 監査ログ: 誰がどの選手を削除したか。個人情報は残さず id のみ。
+    from backend.utils.access_log import log_admin_action
+    log_admin_action(
+        db, request, "player_deleted",
+        resource_type="player", resource_id=player_id,
+        details={"deleted_player_id": player_id},
+    )
     # 削除は全選手への可視範囲影響もあるためグローバル + 自身の両方無効化
     response_cache.bump_players([player_id])
     response_cache.bump_version()

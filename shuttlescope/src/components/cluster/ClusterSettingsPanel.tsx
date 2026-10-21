@@ -378,6 +378,7 @@ export function ClusterSettingsPanel() {
 
   const restartWorkerRay = async (ip: string, idx: number) => {
     if (!ip) return
+    if (!window.confirm(t('auto.ClusterSettingsPanel.ray_restart_confirm', { node: ip }))) return
     setRayRestartLoading(l => ({ ...l, [idx]: true }))
     setRayRestartMsg(m => { const n = { ...m }; delete n[idx]; return n })
     try {

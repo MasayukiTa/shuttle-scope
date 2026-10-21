@@ -2763,6 +2763,7 @@ export function SettingsPage() {
                 </p>
                 <button
                   onClick={() => {
+                    if (!window.confirm(t('settings.ui.restart_app_confirm'))) return
                     if (window.shuttlescope?.restartApp) {
                       window.shuttlescope.restartApp()
                     } else {

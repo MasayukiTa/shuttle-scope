@@ -45,6 +45,9 @@ def _extract_log_event_names(content: str) -> set[str]:
     # log_access 直接呼び出し
     for m in re.finditer(r'log_access\s*\(\s*[^,]+,\s*["\']([^"\']+)["\']', content):
         names.add(m.group(1))
+    # 操作者つきヘルパー: log_admin_action(db, request, "<event>", ...)
+    for m in re.finditer(r'log_admin_action\s*\(\s*[^,]+,\s*[^,]+,\s*["\']([^"\']+)["\']', content):
+        names.add(m.group(1))
     # エイリアス: log_access as <alias> → <alias>(...) を検出
     for alias_match in re.finditer(r'from\s+backend\.utils\.access_log\s+import\s+log_access\s+as\s+(\w+)', content):
         alias = alias_match.group(1)
