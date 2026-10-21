@@ -22,6 +22,7 @@ from backend.db.database import get_db
 from backend.db.models import Match, GameSet, Rally, Stroke, Player
 from backend.utils.auth import get_auth, check_export_match_scope, require_analyst
 from backend.utils.identity_uuid import canonical_identity_uuid
+from backend.utils.text_sanitize import reject_ctrl_and_bidi
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -512,6 +513,20 @@ def _require_package_uuid(value: Any, label: str) -> str:
     return canonical
 
 
+def _validate_imported_player_names(p_data: dict) -> None:
+    """パッケージ内の選手名に不可視 / 双方向制御文字が無いことを確認する。
+
+    この JSON パッケージは 1 試合を単位とする一括取り込みで、UUID 不正も
+    422 で全体を拒否している (_require_package_uuid)。名前も同じく 422 で全体を拒否し、
+    選手を一部だけ作った状態を残さない。
+    """
+    name = p_data.get("name")
+    if not isinstance(name, str):
+        raise HTTPException(status_code=422, detail="player の name が不正です")
+    reject_ctrl_and_bidi(name, "player name", max_len=100)
+    reject_ctrl_and_bidi(p_data.get("name_en"), "player name_en", max_len=100)
+
+
 def _find_reusable_import_player(db: Session, p_data: dict, ctx) -> Optional[Player]:
     """Reuse only a player already visible through the importer ownership scope."""
     player_uuid = _require_package_uuid(p_data.get("uuid"), "player")
@@ -614,6 +629,9 @@ async def import_package_endpoint(request: Request, db: Session = Depends(get_db
 
     # ── Player 解決: importer scope 内だけ再利用 / なければ scouting player 作成 ─
     player_id_map: dict[int, int] = {}  # pkg 内 player.id → ローカル DB id
+    # 名前の検査は先に全員分を済ませ、不正があれば選手を 1 人も作らずに 422 で拒否する。
+    for p_data in pkg.get("players", []):
+        _validate_imported_player_names(p_data)
     for p_data in pkg.get("players", []):
         existing = _find_reusable_import_player(db, p_data, ctx)
         if existing:

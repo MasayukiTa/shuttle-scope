@@ -33,6 +33,7 @@ from backend.db.database import get_db
 from backend.db.models import AccessLog, Player, User
 from backend.utils.access_log import log_access
 from backend.utils.auth import get_auth
+from backend.utils.text_sanitize import reject_ctrl_and_bidi
 from backend.utils.email_token import (
     issue_email_verification_token,
     consume_email_verification_token,
@@ -323,6 +324,9 @@ def register(body: RegisterRequest, request: Request, db: Session = Depends(get_
                 "ご利用希望の方は shuttle-scope.com の問い合わせフォームよりご連絡ください。"
             ),
         )
+    # display_name は後段で Player.name にそのまま写される (ensure_player_record)。
+    # 不可視 / 双方向制御文字による表示偽装をここで 422 にする。
+    reject_ctrl_and_bidi(body.display_name, "display_name", max_len=100)
     ip = _client_ip(request)
     # M-A レート制限: IP 単位 5/15min + email 単位 3/24h
     _enforce_rate_limit(
@@ -675,6 +679,7 @@ def peek_invitation(token: str = Query(..., min_length=10, max_length=200),
 def accept_invitation(body: InvitationAcceptRequest, request: Request,
                       db: Session = Depends(get_db)):
     """招待トークンで新規アカウントを作成する。"""
+    reject_ctrl_and_bidi(body.display_name, "display_name", max_len=100)
     if not _USERNAME_RE.match(body.username):
         raise HTTPException(status_code=422, detail="username の形式が不正です")
 
