@@ -615,7 +615,8 @@ export function SettingsPage() {
       form.append('file', importFile)
       const resp = await fetch('/api/sync/import', { method: 'POST', body: form })
       const json = await resp.json()
-      setImportResult(json)
+      // 失敗 (バックアップ失敗・全取り消し) は HTTP エラーで detail に理由が入る。
+      setImportResult(resp.ok ? json : { success: false, error: typeof json.detail === 'string' ? json.detail : undefined })
       queryClient.invalidateQueries()
     } catch {
       setImportResult({ success: false, error: '通信エラー' })
@@ -2438,12 +2439,43 @@ export function SettingsPage() {
                         </div>
                         <button
                           onClick={async () => {
-                            const resp = await fetch(`/api/sync/cloud/import_from_path?path=${encodeURIComponent(pkg.path)}&dry_run=false`, { method: 'POST' })
-                            const json = await resp.json()
-                            alert(json.success
-                              ? `完了: 追加${json.data.added} / 更新${json.data.updated} / 競合${json.data.conflicts}`
-                              : `エラー: ${json.detail}`)
-                            if (json.success) queryClient.invalidateQueries()
+                            // 確認なしで実取り込みしない: 先に dry_run=true で件数と競合を出し、
+                            // 利用者が了承したときだけ実行する。
+                            const base = `/api/sync/cloud/import_from_path?path=${encodeURIComponent(pkg.path)}`
+                            const detailOf = (j: { detail?: unknown }) => (typeof j.detail === 'string' ? j.detail : '')
+                            try {
+                              const preResp = await fetch(`${base}&dry_run=true`, { method: 'POST' })
+                              const pre = await preResp.json()
+                              if (!preResp.ok || !pre.success) {
+                                alert(t('settings.ui.cloud_import_preview_failed', { detail: detailOf(pre) }))
+                                return
+                              }
+                              const p = pre.data
+                              const ok = window.confirm(t('settings.ui.cloud_import_confirm', {
+                                name: pkg.filename,
+                                added: p.added,
+                                updated: p.updated,
+                                kept: p.kept,
+                                deleted: p.deleted,
+                                conflicts: p.conflicts,
+                              }))
+                              if (!ok) return
+                              const resp = await fetch(`${base}&dry_run=false`, { method: 'POST' })
+                              const json = await resp.json()
+                              if (!resp.ok || !json.success) {
+                                alert(t('settings.ui.cloud_import_failed', { detail: detailOf(json) }))
+                                return
+                              }
+                              alert(t('auto.SettingsPage.import_result_summary', {
+                                added: json.data.added,
+                                updated: json.data.updated,
+                                kept: json.data.kept,
+                                conflicts: json.data.conflicts,
+                              }))
+                              queryClient.invalidateQueries()
+                            } catch {
+                              alert(t('settings.ui.cloud_import_failed', { detail: '' }))
+                            }
                           }}
                           className="flex items-center gap-1 px-2.5 py-1.5 bg-[var(--ss-success)] hover:opacity-90 rounded-ss-sm text-white whitespace-nowrap shrink-0 transition-opacity duration-fast ease-out"
                         >

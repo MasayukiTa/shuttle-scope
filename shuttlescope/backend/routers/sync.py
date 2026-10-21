@@ -42,6 +42,37 @@ def _sanitize_errors(errors):
     return [f"{len(errors)} 件の内部エラーが発生しました"]
 
 
+def _run_import(db, raw: bytes, dry_run: bool, importer_team_id):
+    """実取り込みの共通入口 (アップロード経路とクラウドフォルダ経路で共有)。
+
+    dry_run=False は取り込み前に自動バックアップを取り、全レコード 1 トランザクションで
+    適用する。バックアップに失敗したら何も書かずに 500。適用中に 1 件でも
+    失敗したら全て取り消して 409 (データは取り込み前のまま)。
+    例外文面はログにだけ出し、応答には件数だけ載せる (_sanitize_errors と同じ方針)。
+    """
+    summary = import_package(
+        db, raw, dry_run=dry_run, importer_team_id=importer_team_id,
+        backup_before_apply=not dry_run,
+    )
+    if summary.backup_failed:
+        for e in summary.errors:
+            logger.error("import aborted, backup failed (sanitized): %s", e)
+        raise HTTPException(
+            status_code=500,
+            detail="取り込み前のバックアップに失敗したため、取り込みを中止しました。データは変更されていません",
+        )
+    if summary.rolled_back:
+        _sanitize_errors(summary.errors)
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"取り込み中に {max(summary.failures, 1)} 件のエラーが発生したため、"
+                "すべて取り消しました。データは変更されていません"
+            ),
+        )
+    return summary
+
+
 from backend.db.models import SyncConflict, Match, Player, User, UserConsent, GameSet, Rally, Stroke
 from backend.utils.auth import (
     get_auth,
@@ -388,7 +419,7 @@ async def import_package_endpoint(
 
     # Round 258 R3 P0/P1 fix: importer team を _apply_record に伝播
     importer_team_id = getattr(_ctx, "team_id", None)
-    summary = import_package(db, raw, dry_run=False, importer_team_id=importer_team_id)
+    summary = _run_import(db, raw, False, importer_team_id)
 
     return {
         "success": True,
@@ -597,7 +628,7 @@ def import_from_cloud_path(
 
     # Round 258 R3 P0/P1 fix: importer team を伝播
     importer_team_id = getattr(_ctx, "team_id", None)
-    summary = import_package(db, raw, dry_run=dry_run, importer_team_id=importer_team_id)
+    summary = _run_import(db, raw, dry_run, importer_team_id)
     return {
         "success": True,
         "data": {
