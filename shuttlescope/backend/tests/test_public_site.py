@@ -1,5 +1,7 @@
 from fastapi.testclient import TestClient
 
+from backend.config import settings
+
 from backend.db.database import get_db
 from backend.db.models import PublicInquiry
 from backend.main import app
@@ -86,3 +88,43 @@ def test_non_admin_cannot_access_inquiries(db_session):
         assert resp.status_code == 403
     finally:
         app.dependency_overrides.clear()
+
+
+def _get_contact(monkeypatch, path: str, enabled: int) -> str:
+    monkeypatch.setattr(settings, "ss_registration_enabled", enabled, raising=False)
+    resp = TestClient(app).get(path)
+    assert resp.status_code == 200
+    return resp.text
+
+
+def test_contact_page_ja_has_no_limited_offer_or_internal_notes(monkeypatch):
+    html = _get_contact(monkeypatch, "/public-preview/contact", 1)
+    assert "限定提供" not in html
+    assert "管理画面" not in html
+    assert "ご賛同" not in html
+    # 訪問者に必要なこと: 何を書くか・返信先・登録もできること
+    assert "ご記入の連絡先へ返信します" in html
+    assert "https://app.shuttle-scope.com/#/register" in html
+
+
+def test_contact_page_en_has_no_limited_offer_or_internal_notes(monkeypatch):
+    html = _get_contact(monkeypatch, "/public-preview/en/contact", 1)
+    assert "limited-availability" not in html
+    assert "administration interface" not in html
+    assert "We will reply there." in html
+    assert "https://app.shuttle-scope.com/#/register" in html
+
+
+def test_contact_page_hides_registration_when_disabled(monkeypatch):
+    for path in ("/public-preview/contact", "/public-preview/en/contact"):
+        html = _get_contact(monkeypatch, path, 0)
+        assert "無料で登録して試す" not in html
+        assert "sign up free</a>" not in html
+        assert "お問い合わせなしで" not in html
+
+
+def test_contact_language_toggle_has_localized_accessible_name(monkeypatch):
+    html = _get_contact(monkeypatch, "/public-preview/contact", 1)
+    assert 'data-label-ja="言語を切り替える(English)"' in html
+    assert 'data-label-en="Switch language (日本語)"' in html
+    assert "getAttribute('data-label-'+lang)" in html

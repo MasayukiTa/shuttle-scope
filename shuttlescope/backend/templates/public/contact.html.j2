@@ -75,17 +75,16 @@
   <section class="panel" style="margin-bottom:20px;">
     <h1>Contact</h1>
     <p>
-      For inquiries regarding ShuttleScope, please submit your message via the form below.
-      We welcome consultations on adoption, questions about features, bug reports, and other
-      feedback or requests. If you require a reply, please indicate your preferred contact
-      method in the field below.
+      Use the form below to ask about adopting ShuttleScope, ask a question about a feature,
+      report a bug, or send feedback. We review your message and reply when needed.
+      If you would like a reply, write an email address or another way to reach you
+      in the contact field. We will reply there.
     </p>
     <div class="notice">
-      ShuttleScope is currently provided as a limited-availability beta release.
-      We will review your inquiry and, where appropriate, a team member will respond.
-      <br>This form does not send email directly; submissions are received and managed through
-      an internal administration interface.
-    </div>
+      ShuttleScope is currently in beta. It is free through 2026, and we are looking for beta testers.
+{% if registration_enabled %}      <br>You do not need to contact us first. You can <a href="https://app.shuttle-scope.com/#/register">sign up free</a>
+      and try it. Your account becomes usable after it has been reviewed.
+{% endif %}    </div>
     <div class="notice" style="margin-top:12px;background:rgba(15,94,168,.07);border-color:rgba(15,94,168,.18);">
       <strong>Beta Period Data Use (2026)</strong><br>
       By participating in the beta programme, annotated match clips and label data you create
@@ -146,15 +145,14 @@
   <section class="panel" style="margin-bottom:20px;">
     <h1>お問い合わせ</h1>
     <p>
-      ShuttleScope に関するお問い合わせは、下記フォームよりご送信ください。
-      導入のご相談、機能に関するご質問、不具合のご報告、その他ご意見・ご要望を承ります。
-      ご返信をご希望の場合は、連絡先欄に希望される連絡手段をご記入ください。
+      導入のご相談、機能のご質問、不具合のご報告、ご意見・ご要望を下のフォームからお寄せください。
+      内容を確認し、必要に応じて返信します。
+      返信が必要なときは、連絡先欄にメールアドレスなど連絡できる方法をご記入ください。ご記入の連絡先へ返信します。
     </p>
     <div class="notice">
-      現在 ShuttleScope はベータ版として限定提供を行っております。
-      お寄せいただいた内容を確認のうえ、必要に応じて担当よりご連絡いたします。
-      <br>本フォームはメール送信ではなく、管理画面にて受付・管理する形式となっております。
-    </div>
+      ShuttleScope は現在β版です。2026年中は無償で、参加者を募集しています。
+{% if registration_enabled %}      <br>お問い合わせなしで、<a href="https://app.shuttle-scope.com/#/register">無料で登録</a>して試すこともできます。登録後、内容を確認してから利用できるようになります。
+{% endif %}    </div>
     <div class="notice" style="margin-top:12px;background:rgba(15,94,168,.07);border-color:rgba(15,94,168,.18);">
       <strong>β版データ利用について（2026年）</strong><br>
       β版をご利用いただく場合、アノテーションされた試合クリップおよびラベルデータを

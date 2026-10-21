@@ -320,6 +320,7 @@ def _render_contact_str(request: Request, *, preview: bool = False) -> str:
         "canonical_path": canonical_path,
         "noindex": preview,
         "login_href": _public_login_href(request),
+        "registration_enabled": _public_registration_enabled(),
     }
     # TemplateResponse は Response オブジェクトを返すので、body bytes を decode して
     # 既存の _rewrite_preview_links (str -> str) と互換にする。
@@ -509,6 +510,7 @@ def _render_contact_str_en(request: Request) -> str:
         'canonical_path': canonical_path,
         'noindex': False,
         'login_href': _public_login_href(request, lang='en'),
+        'registration_enabled': _public_registration_enabled(),
     }
     resp = _public_templates.TemplateResponse(request, 'public/contact.html.j2', context)
     return resp.body.decode('utf-8')
