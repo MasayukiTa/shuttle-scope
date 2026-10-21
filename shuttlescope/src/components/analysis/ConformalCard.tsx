@@ -186,6 +186,9 @@ function GroupRow({
   textFaint: string
   cardInner: string
 }) {
+  // n が少ないグループは勝率も勝敗チップも出さない（全体の被覆保証はグループ別を保証しない）
+  const insufficient = row.insufficient === true || row.p_win == null || row.prediction_set == null
+
   return (
     <div className={`rounded-ss-md p-2.5 border ${border} ${cardInner}`}>
       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -204,9 +207,13 @@ function GroupRow({
 
         {/* 右側: p_win + N */}
         <div className="flex items-center gap-3">
-          <span className={`text-[11px] font-mono font-semibold ss-num ${textMuted}`}>
-            {pct1(row.p_win)}
-          </span>
+          {insufficient ? (
+            <span className={`text-[11px] ${textFaint}`}>{t('auto.ConformalCard.group_insufficient')}</span>
+          ) : (
+            <span className={`text-[11px] font-mono font-semibold ss-num ${textMuted}`}>
+              {pct1(row.p_win as number)}
+            </span>
+          )}
           <span className={`text-[10px] ss-num ${textFaint}`}>
             {t('auto.ConformalCard.n_only', { n: row.n })}
           </span>
@@ -214,9 +221,11 @@ function GroupRow({
       </div>
 
       {/* 予測セットチップ */}
-      <div className="mt-1.5">
-        <PredictionSetChips predictionSet={row.prediction_set} t={t} />
-      </div>
+      {!insufficient && (
+        <div className="mt-1.5">
+          <PredictionSetChips predictionSet={row.prediction_set as Array<'win' | 'loss'>} t={t} />
+        </div>
+      )}
     </div>
   )
 }
@@ -401,7 +410,7 @@ export function ConformalCard({ playerId }: Props) {
                       test: confData!.n_test,
                     })}
                   </span>
-                  <ConfidenceBadge sampleSize={meta?.sample_size ?? 0} unit={meta?.sample_unit ?? undefined} compact />
+                  <ConfidenceBadge sampleSize={meta?.sample_size ?? 0} unit={meta?.sample_unit ?? undefined} tier={meta?.tier} evidenceLevel={meta?.evidence_level} compact />
                 </div>
               </div>
 

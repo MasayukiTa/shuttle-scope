@@ -86,7 +86,7 @@ function Inner({ playerId }: { playerId: number }) {
 
   return (
     <div className="space-y-3">
-      <ConfidenceBadge sampleSize={sampleSize} unit="strokes" />
+      <ConfidenceBadge sampleSize={sampleSize} tier="research" unit="strokes" />
 
       {/* 対戦相手タブ */}
       <div className="flex flex-wrap gap-1">

@@ -61,4 +61,54 @@ describe('ConfidenceBadge', () => {
     expect(filledStars(asMatches)).toBe(2)
     expect(filledStars(asStrokes)).toBe(1)
   })
+
+  // 監査 C5: 研究段階の解析に「高信頼（実用レベル）」が同居した
+  describe('tier / evidenceLevel', () => {
+    it('research では標本数が十分でも★1つで「参考（研究段階）」止まり', () => {
+      const { container } = render(<ConfidenceBadge sampleSize={5000} unit="strokes" tier="research" />)
+      expect(filledStars(container)).toBe(1)
+      expect(container.textContent).toContain('参考（研究段階）')
+      expect(container.textContent).not.toContain('高信頼')
+      expect(container.querySelector('[title]')?.getAttribute('title')).not.toContain('高信頼')
+    })
+
+    it('research の compact でもツールチップに実用レベルの文言を出さない', () => {
+      const { container } = render(<ConfidenceBadge sampleSize={5000} unit="strokes" tier="research" compact />)
+      expect(filledStars(container)).toBe(1)
+      expect(container.querySelector('[title]')?.getAttribute('title')).toContain('参考（研究段階）')
+      expect(container.querySelector('[title]')?.getAttribute('title')).not.toContain('実用レベル')
+    })
+
+    it('evidenceLevel=exploratory も research と同じ扱い', () => {
+      const { container } = render(
+        <ConfidenceBadge sampleSize={40} unit="matches" tier="advanced" evidenceLevel="exploratory" />,
+      )
+      expect(filledStars(container)).toBe(1)
+      expect(container.textContent).not.toContain('高信頼')
+    })
+
+    it('research でも標本が少なければ従来どおり「参考値（データ蓄積中）」', () => {
+      const { container } = render(<ConfidenceBadge sampleSize={5} unit="matches" tier="research" />)
+      expect(filledStars(container)).toBe(1)
+      expect(container.textContent).toContain('参考値')
+      expect(container.textContent).not.toContain('参考（研究段階）')
+    })
+
+    it('stable / advanced は従来どおり閾値で★3つになる', () => {
+      const { container: stable } = render(<ConfidenceBadge sampleSize={40} unit="matches" tier="stable" />)
+      expect(filledStars(stable)).toBe(3)
+      const { container: advanced } = render(<ConfidenceBadge sampleSize={40} unit="matches" tier="advanced" />)
+      expect(filledStars(advanced)).toBe(3)
+    })
+
+    it('tier を渡さない呼び出しは従来どおり', () => {
+      const { container } = render(<ConfidenceBadge sampleSize={40} unit="matches" />)
+      expect(filledStars(container)).toBe(3)
+    })
+
+    it('unit 未指定なら tier があっても★を出さない', () => {
+      const { container } = render(<ConfidenceBadge sampleSize={5000} tier="research" />)
+      expect(filledStars(container)).toBe(0)
+    })
+  })
 })

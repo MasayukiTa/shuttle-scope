@@ -1,30 +1,11 @@
-"""信頼度スコアリング（SPEC.md §6.3）"""
-from backend.config import CONFIDENCE_LEVELS
+"""信頼度スコアリング（SPEC.md §6.3）
+
+判定の実装は `backend.utils.confidence.check_confidence` の 1 つだけ。
+ここは打球数を渡す呼び出し向けの薄い入口で、閾値は持たない。
+"""
+from backend.utils.confidence import check_confidence
 
 
 def calc_confidence(n_strokes: int) -> dict:
-    """
-    全解析で必ず呼び出す共通関数。
-    ストローク数に基づいて信頼度を算出する。
-    """
-    if n_strokes < 500:
-        return {
-            "level": "low",
-            "stars": "★☆☆",
-            "label": "参考値（データ蓄積中）",
-            "warning": "サンプルが少なく推定精度が低い。傾向参考程度に留めること。",
-        }
-    elif n_strokes < 2000:
-        return {
-            "level": "medium",
-            "stars": "★★☆",
-            "label": "中程度（解釈に注意）",
-            "warning": "推定値には相当の不確実性がある。信頼区間を必ず確認すること。",
-        }
-    else:
-        return {
-            "level": "high",
-            "stars": "★★★",
-            "label": "高信頼（実用レベル）",
-            "warning": None,
-        }
+    """打球数に基づく信頼度 (500 未満=参考値 / 2000 未満=中程度 / それ以上=高信頼)。"""
+    return check_confidence("stroke_count", n_strokes)

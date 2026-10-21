@@ -283,7 +283,7 @@ export function PolicyEvalCard({ playerId }: Props) {
                     insufficient: summary.states_insufficient,
                   })}
                 </span>
-                <ConfidenceBadge sampleSize={meta?.sample_size ?? 0} unit={meta?.sample_unit ?? undefined} compact />
+                <ConfidenceBadge sampleSize={meta?.sample_size ?? 0} unit={meta?.sample_unit ?? undefined} tier={meta?.tier} evidenceLevel={meta?.evidence_level} compact />
               </div>
               {/* ベスト機会の強調表示 */}
               {bestStateLabel && summary.best_state && (
