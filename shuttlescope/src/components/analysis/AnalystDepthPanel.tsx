@@ -34,8 +34,8 @@ interface GrowthBucket {
 
 interface GrowthTrend {
   buckets: GrowthBucket[]
-  slope: number
-  direction: 'up' | 'down' | 'flat'
+  slope: number | null
+  direction: 'up' | 'down' | 'flat' | null   // 試合数が最小標本未満は null
   sample: number
 }
 
@@ -96,7 +96,8 @@ function RecentFormSection({ data, isLight }: { data: RecentForm; isLight: boole
   const trendLabel =
     data.trend === 'improving' ? t('prediction.recent_form_improving')
     : data.trend === 'declining' ? t('prediction.recent_form_declining')
-    : t('prediction.recent_form_stable')
+    : data.trend === 'stable' ? t('prediction.recent_form_stable')
+    : t('prediction.direction_insufficient')
 
   // 直近の試合が 0 件: 傾向も勝率も定義できないので「—」だけを出す
   if (data.sample === 0 || data.win_rate === null) {
@@ -160,7 +161,8 @@ function GrowthTrendSection({ data, isLight }: { data: GrowthTrend; isLight: boo
   const dirLabel =
     data.direction === 'up' ? t('prediction.growth_direction_up')
     : data.direction === 'down' ? t('prediction.growth_direction_down')
-    : t('prediction.growth_direction_flat')
+    : data.direction === 'flat' ? t('prediction.growth_direction_flat')
+    : t('prediction.direction_insufficient')
 
   const dirColor =
     data.direction === 'up' ? WIN
@@ -208,7 +210,7 @@ function GrowthTrendSection({ data, isLight }: { data: GrowthTrend; isLight: boo
         ))}
       </div>
       <p className="text-[10px] mt-1 ss-num" style={{ color: subText }}>
-        {t('auto.AnalystDepthPanel.slope_per_bucket', { v: `${data.slope > 0 ? '+' : ''}${(data.slope * 100).toFixed(1)}` })}
+        {data.slope != null && t('auto.AnalystDepthPanel.slope_per_bucket', { v: `${data.slope > 0 ? '+' : ''}${(data.slope * 100).toFixed(1)}` })}
         <span className="ml-2">{t('auto.AnalystDepthPanel.n_matches', { n: data.sample })}</span>
       </p>
     </div>
@@ -271,6 +273,11 @@ function BrierScoreSection({ data, isLight }: { data: BrierScore; isLight: boole
         </div>
       </div>
       <p className="text-[10px] mt-1 ss-num" style={{ color: subText }}>{t('auto.AnalystDepthPanel.loo_estimate', { n: data.sample })}</p>
+      {data.grade === 'poor' && (
+        <p className="text-[10px] mt-1" style={{ color: gradeColor }}>
+          {t('prediction.reference_reason_brier', { score: data.score.toFixed(3) })}
+        </p>
+      )}
     </div>
   )
 }

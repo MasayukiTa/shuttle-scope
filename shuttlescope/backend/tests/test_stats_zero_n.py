@@ -508,10 +508,10 @@ class TestPredictionEngineNoFakeNeutral:
         assert r["overall_wr"] is not None
 
     def test_valid_form_is_unchanged(self):
-        ms = [_pm("win", date(2024, 1, 5 - i)) for i in range(3)]
+        ms = [_pm("win", date(2024, 1, 9 - i)) for i in range(5)]
         r = compute_recent_form(ms, 1, n=5)
-        assert r["sample"] == 3 and r["win_rate"] == 1.0
-        assert r["trend"] == "improving" and r["results"] == ["W", "W", "W"]
+        assert r["sample"] == 5 and r["win_rate"] == 1.0
+        assert r["trend"] == "improving" and r["results"] == ["W"] * 5
 
     def test_feature_win_prob_with_null_recent_uses_base(self):
         ms = [_pm("win", date(2024, 1, i + 1)) for i in range(4)]

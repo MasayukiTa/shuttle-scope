@@ -19,6 +19,7 @@ from backend.analysis.player_context import (
     player_wins_match as _player_wins_match_ctx,
 )
 from backend.analysis.role_view import team_side
+from backend.utils.confidence import VERDICT_MIN_SAMPLE, wilson_ci_from_rate
 
 # 大会重要度（TournamentComparison と共通）
 LEVEL_IMPORTANCE: dict[str, float] = {
@@ -386,9 +387,12 @@ def build_caution_flags(
 ) -> list[str]:
     """注意フラグ（最大2件）"""
     flags: list[str] = []
-    if win_prob < 0.35:
+    # VERDICT_MIN_SAMPLE 未満では勝率が 1 試合で 0.33〜0.83 を飛ぶので、勝率からの注意は出さない
+    if sample_size < VERDICT_MIN_SAMPLE:
+        pass
+    elif win_prob < 0.35:
         flags.append('過去の対戦成績が厳しい — 戦術の再検討が必要')
-    elif win_prob > 0.70 and sample_size >= 5:
+    elif win_prob > 0.70:
         flags.append('過去の勝率が高いが油断に注意')
 
     opp = obs_context.get('opponent', {})
@@ -399,11 +403,41 @@ def build_caution_flags(
     return flags[:2]
 
 
-# D-5: 判定 (勝利有力 / 苦戦が予想 …) を出してよい最低試合数。
-# `backend/utils/confidence.py` の opponent_analysis (30) は解析全体の目安で、
-# 「勝ち負けの言い切り」はそれより慎重でよい。ここを下回るときは
-# 判定を出さず、勝率そのものだけを見せる。
-VERDICT_MIN_SAMPLE = 5
+# D-5: 判定 (勝利有力 / 苦戦が予想 …) を出してよい最低試合数 VERDICT_MIN_SAMPLE は
+# `backend/utils/confidence.py` に 1 つだけ置く (勝率・方向・注意・成長傾向・ペア・
+# ラインナップが同じ値を参照する)。ここを下回るときは判定を出さず、勝率は「参考値」に落とす。
+
+
+def reference_status(sample_size: int, brier: Optional[dict] = None) -> dict:
+    """勝率を通常の数字として前面に出してよいか。
+
+    is_reference=True なら画面は「参考値」(n 付き・小さめ) にする。理由は 2 つ:
+      sample: 試合数が VERDICT_MIN_SAMPLE 未満
+      brier : 表示している勝率そのものの Brier が 0.25 を超える
+              (0.25 は常に 50% と答えるコイントスの Brier。それより悪い = 基準以下)
+    """
+    reason = None
+    if sample_size < VERDICT_MIN_SAMPLE:
+        reason = 'sample'
+    elif brier and brier.get('grade') == 'poor':
+        reason = 'brier'
+    return {
+        'is_reference': reason is not None,
+        'reason': reason,
+        'min_sample': VERDICT_MIN_SAMPLE,
+        'sample_size': sample_size,
+    }
+
+
+def win_probability_interval(p: Optional[float], n: int) -> Optional[dict]:
+    """勝率 p (標本 n) の Wilson 区間。固定の ±幅は使わない。
+
+    p=None と、n が VERDICT_MIN_SAMPLE 未満 (n=0 を含む) は null。区間が広すぎて読み取れない。
+    """
+    if p is None or n < VERDICT_MIN_SAMPLE:
+        return None
+    lo, hi = wilson_ci_from_rate(p, n)
+    return {'low': lo, 'high': hi, 'n': n}
 
 
 def compute_match_narrative(
@@ -466,8 +500,9 @@ def compute_match_narrative(
     # ── 決め手 ─────────────────────────────────────────────────────────────
     deciding_parts: list[str] = []
     if h2h_count >= 3:
-        h2h_wr = round(win_prob * 100)
-        deciding_parts.append(f'直接対戦での実績（{h2h_count}試合 / 推定勝率{h2h_wr}%）')
+        # win_prob は直接対戦だけの勝率ではなく、全体・直近・直接対戦を混ぜた最終の推定値
+        blended_wr = round(win_prob * 100)
+        deciding_parts.append(f'直接対戦{h2h_count}試合を加味した推定勝率{blended_wr}%')
     elif sample_size >= 5:
         deciding_parts.append(f'過去の総合成績（{sample_size}試合ベース）')
 
@@ -902,8 +937,11 @@ def compute_recent_form(
     # 結果列（古い順）: ['W', 'L', ...]
     results = ['W' if _player_wins_match(m, player_id) else 'L' for m in reversed(recent)]
 
+    # 試合数が VERDICT_MIN_SAMPLE 未満では方向を言わない (n=1 の 1 勝が「上向き」になっていた)
     diff = recent_wr - overall_wr
-    if diff > 0.08:
+    if len(matches) < VERDICT_MIN_SAMPLE:
+        trend = None
+    elif diff > 0.08:
         trend = 'improving'
     elif diff < -0.08:
         trend = 'declining'
@@ -928,7 +966,7 @@ def compute_growth_trend(
     numpy.polyfit による線形回帰でスロープを計算。
     """
     if not matches:
-        return {'buckets': [], 'slope': 0.0, 'direction': 'flat', 'sample': 0}
+        return {'buckets': [], 'slope': None, 'direction': None, 'sample': 0}
 
     # 古い順にソート
     sorted_matches = sorted(matches, key=lambda m: m.date)
@@ -954,6 +992,10 @@ def compute_growth_trend(
         slope = float(np.polyfit(x, y, 1)[0])
     else:
         slope = 0.0
+
+    # 試合数が VERDICT_MIN_SAMPLE 未満では傾きも方向も出さない (2 試合のバケット 2 つの傾きは傾向ではない)
+    if n < VERDICT_MIN_SAMPLE:
+        return {'buckets': buckets, 'slope': None, 'direction': None, 'sample': n}
 
     if slope > 0.02:
         direction = 'up'
@@ -1077,11 +1119,14 @@ def compute_set_model_v2(
 def compute_brier_score(
     matches: list[Match],
     player_id: int,
+    predictor=None,
 ) -> dict:
     """
     Leave-one-out ブライアスコア。予測キャリブレーションの質を示す。
     < 0.20: 良好  /  0.20–0.25: 普通  /  > 0.25: 要注意
     5 試合未満は算出不可（score=None）。
+    predictor: 1 試合を除いた試合リストから予測勝率を返す関数。省略時は Laplace 勝率。
+    画面に出す予測 (混合後の最終勝率) を評価するときは compute_brier_score_blended を使う。
     """
     if len(matches) < 5:
         return {'score': None, 'sample': len(matches), 'grade': None}
@@ -1089,7 +1134,10 @@ def compute_brier_score(
     squared_errors: list[float] = []
     for i, m in enumerate(matches):
         holdout = [x for x in matches if x is not m]
-        pred, _ = compute_win_probability(holdout, player_id)
+        if predictor is None:
+            pred, _ = compute_win_probability(holdout, player_id)
+        else:
+            pred = predictor(holdout)
         actual = 1.0 if _player_wins_match(m, player_id) else 0.0
         squared_errors.append((pred - actual) ** 2)
 
@@ -1102,6 +1150,28 @@ def compute_brier_score(
         grade = 'poor'
 
     return {'score': round(score, 4), 'sample': len(matches), 'grade': grade}
+
+
+def compute_brier_score_blended(
+    matches: list[Match],
+    player_id: int,
+    h2h_matches: list[Match],
+) -> dict:
+    """画面に出している最終勝率 (compute_feature_win_prob) の leave-one-out Brier。
+
+    Brier の式は compute_brier_score と同じ。違うのは評価する予測だけで、
+    全体・直近・直接対戦の混合を、除いた 1 試合なしで作り直して当てる。
+    観察コンテキスト補正は試合ごとの事前入力で過去試合には無いので、ここでは 0 とする。
+    """
+    h2h_ids = {id(x) for x in h2h_matches}
+
+    def _predict(holdout: list[Match]) -> Optional[float]:
+        h2h_holdout = [x for x in holdout if id(x) in h2h_ids]
+        form = compute_recent_form(holdout, player_id)
+        p, _ = compute_feature_win_prob(holdout, player_id, h2h_holdout, form, {})
+        return p
+
+    return compute_brier_score(matches, player_id, predictor=_predict)
 
 
 def compute_score_volatility(
@@ -1197,10 +1267,13 @@ def compute_lineup_scores(
             'player_id': pid,
             'player_name': player.name if player else str(pid),
             'win_probability': win_prob,
+            # 固定の ±15/10/7 ではなく標本数から出した Wilson 区間 (VERDICT_MIN_SAMPLE 未満は null)
+            'win_probability_ci': win_probability_interval(win_prob, len(all_m)),
+            'win_probability_reference': reference_status(len(all_m)),
             'confidence': conf,
             'sample_size': len(all_m),
             'h2h_sample': len(h2h_m),
-            'recent_trend': recent.get('trend', 'stable'),
+            'recent_trend': recent.get('trend'),
             'feature_breakdown': breakdown,
         })
 

@@ -26,6 +26,7 @@ import { WIN, LOSS } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useAuth } from '@/hooks/useAuth'
 import { MIcon } from '@/components/common/MIcon'
+import type { WinProbabilityInterval, WinProbabilityReference } from './winProbabilityReference'
 
 interface PlayerSummary {
   id: number
@@ -39,7 +40,12 @@ interface PredictionData {
   win_probability: number | null
   set_distribution: { '2-0': number; '2-1': number; '1-2': number; '0-2': number }
   score_bands: Record<string, { my_low: number; my_high: number; opp_low: number; opp_high: number; sample: number }>
-  win_probability_v2?: number | null
+  // win_probability が最終の 1 つ。直接対戦だけの Laplace 値は h2h_win_rate / h2h_n (別名)
+  win_probability_ci?: WinProbabilityInterval | null
+  win_probability_reference?: WinProbabilityReference
+  h2h_win_rate?: number | null
+  h2h_n?: number
+  brier_score?: { score: number | null; sample: number; grade: 'good' | 'fair' | 'poor' | null } | null
   feature_breakdown?: {
     base_wr: number
     recent_wr: number | null
@@ -201,6 +207,8 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
   }
 
   const winPct = Math.round(d.win_probability * 100)
+  const winRef = d.win_probability_reference
+  const isRef = winRef?.is_reference ?? false
   const topOutcome = Object.entries(d.set_distribution).sort((a, b) => b[1] - a[1])[0]
   const fatigueBreakdown = fatigueResp?.data?.breakdown ?? null
 
@@ -208,7 +216,8 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
     <div className="space-y-4">
       {/* CoachSummaryStrip — 常時表示（折りたたみなし） */}
       <CoachSummaryStrip
-        winProbability={d.win_probability_v2 ?? d.win_probability}
+        winProbability={d.win_probability}
+        isReference={isRef}
         confidenceStars={meta?.confidence.stars ?? ''}
         setDistribution={d.set_distribution}
         cautionFlags={d.caution_flags}
@@ -235,7 +244,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
         <div className="grid grid-cols-3 gap-4 text-center">
           <div>
             <p
-              className="text-4xl font-bold ss-num"
+              className={isRef ? 'text-2xl font-semibold ss-num' : 'text-4xl font-bold ss-num'}
               style={{ color: winProbColor(d.win_probability, isLight) }}
             >
               {winPct}%
@@ -243,6 +252,20 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
             <p className="text-[11px] mt-1" style={{ color: subText }}>
               {t('prediction.win_probability')}
             </p>
+            {isRef && (
+              <p className="text-[11px] mt-0.5 ss-num" style={{ color: subText }}>
+                {t('prediction.reference_value', { n: d.sample_size })}
+              </p>
+            )}
+            {d.win_probability_ci && (
+              <p className="text-[10px] mt-0.5 ss-num" style={{ color: subText }}>
+                {t('prediction.win_probability_ci', {
+                  low: Math.round(d.win_probability_ci.low * 100),
+                  high: Math.round(d.win_probability_ci.high * 100),
+                  n: d.win_probability_ci.n,
+                })}
+              </p>
+            )}
           </div>
           <div>
             <p className="text-2xl font-bold ss-num" style={{ color: neutral }}>
@@ -269,6 +292,16 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
             )}
           </div>
         </div>
+
+        {isRef && winRef && (
+          <p className="text-xs" style={{ color: subText }}>
+            {winRef.reason === 'brier'
+              ? t('prediction.reference_reason_brier', {
+                  score: d.brier_score?.score != null ? d.brier_score.score.toFixed(3) : '',
+                })
+              : t('prediction.reference_reason_sample', { min: winRef.min_sample })}
+          </p>
+        )}
 
         {/* スコアボラティリティ */}
         {d.score_volatility && d.score_volatility.sample >= 3 && (

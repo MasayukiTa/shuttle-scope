@@ -30,6 +30,9 @@ interface RankedPlayer {
   player_id: number
   player_name: string
   win_probability: number | null   // 試合 0 件は null
+  // 標本数から出した Wilson 区間。最小標本未満は null (固定の ±幅は使わない)
+  win_probability_ci?: { low: number; high: number; n: number } | null
+  win_probability_reference?: { is_reference: boolean; reason: 'sample' | 'brier' | null; min_sample: number; sample_size: number }
   sample_size: number
   h2h_available: boolean
   level_matches_available: boolean
@@ -90,10 +93,11 @@ function CoachCandidateView({
       <div className="grid gap-2">
         {candidates.map((rp, idx) => {
           const pct = Math.round((rp.win_probability ?? 0) * 100)
-          // 不確実性を加味したレンジ表示（少数サンプルほど広く）
-          const margin = rp.sample_size < 5 ? 15 : rp.sample_size < 10 ? 10 : 7
-          const lo = Math.max(0, pct - margin)
-          const hi = Math.min(100, pct + margin)
+          // 不確実性は backend が標本数から出した Wilson 区間。最小標本未満は区間を出さず、点推定を参考値にする
+          const ci = rp.win_probability_ci
+          const rangeText = ci
+            ? `${Math.round(ci.low * 100)}–${Math.round(ci.high * 100)}%`
+            : `${pct}%`
           const stability =
             rp.sample_size >= 10 ? '安定' : rp.sample_size >= 5 ? '中' : '荒れやすい'
           const stabilityColor =
@@ -134,8 +138,13 @@ function CoachCandidateView({
                 <div className="flex items-center gap-1">
                   <span className="text-[10px]" style={{ color: subText }}>{t('auto.LineupOptimizerPanel.k1')}</span>
                   <span className="text-sm font-bold ss-num" style={{ color: neutral }}>
-                    {lo}–{hi}%
+                    {rangeText}
                   </span>
+                  {rp.win_probability_reference?.is_reference && (
+                    <span className="text-[10px]" style={{ color: subText }}>
+                      {t('prediction.reference_value', { n: rp.sample_size })}
+                    </span>
+                  )}
                   {rp.sample_size < 10 && (
                     <span className="text-[10px]" style={{ color: subText }}>
                       {t('lineup.ref_insufficient', '(reference: insufficient data)')}

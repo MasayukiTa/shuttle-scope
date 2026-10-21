@@ -479,7 +479,7 @@ class TestPredictionRouterNoRecord:
         assert resp.status_code == 200, resp.text
         d = resp.json()["data"]
         assert d["sample_size"] == 0
-        assert d["win_probability"] is None and d["win_probability_v2"] is None
+        assert d["win_probability"] is None and "win_probability_v2" not in d
 
     def test_match_preview_with_matches_keeps_numbers(self, client, db_session):
         a = _player(db_session, "A")
@@ -491,7 +491,7 @@ class TestPredictionRouterNoRecord:
             f"/api/prediction/match_preview?player_id={a.id}&opponent_id={b.id}", headers=_headers()
         ).json()["data"]
         assert d["sample_size"] == 3
-        assert isinstance(d["win_probability"], float) and isinstance(d["win_probability_v2"], float)
+        assert isinstance(d["win_probability"], float) and "win_probability_v2" not in d
 
     def test_analyst_depth_without_matches_is_null(self, client, db_session):
         a = _player(db_session, "A")
