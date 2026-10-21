@@ -2808,6 +2808,7 @@
       "language_en": "English",
       "restart_app": "Restart app",
       "restart_app_btn": "Restart app",
+      "restart_app_confirm": "Restart the app? Unsaved annotation data will be lost.",
       "right_handed": "Right-handed",
       "left_handed": "Left-handed",
       "backend_console": "Backend console",
@@ -2993,7 +2994,7 @@
       "validate_username": "Please enter a login ID",
       "validate_team_name": "Select a team or enter a team name (required for non-admin roles)",
       "delete_confirm": "Delete {{name}}?",
-      "reset_confirm": "Reset {{name}}'s password to a temporary value?",
+      "reset_confirm": "Reset the password for {{name}}?\n\nAll of this user's sessions will be signed out and a temporary password will be issued. The current password will stop working.",
       "pw_show": "Show",
       "pw_hide": "Hide",
       "pw_aria_show": "Show password",
@@ -3792,6 +3793,7 @@
       "wake_wol": "Wake (WOL)",
       "disable_sleep": "Disable sleep",
       "ray_restart": "Restart Ray",
+      "ray_restart_confirm": "Restart Ray on {{node}}? ray-restart.bat will be run over SSH.",
       "auto_start": "Auto-start Ray when the app launches"
     },
     "DateRangeFilter": {

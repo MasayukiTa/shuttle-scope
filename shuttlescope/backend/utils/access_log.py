@@ -128,6 +128,39 @@ def log_access(
             pass
 
 
+def log_admin_action(
+    db,
+    request,
+    action: str,
+    resource_type: Optional[str] = None,
+    resource_id: Optional[int] = None,
+    details: Optional[dict] = None,
+) -> None:
+    """操作者つきで AccessLog に 1 件書き込む（管理操作用）。
+
+    `log_access` は操作者を自動では補わないため、呼び出し側が user_id を渡し忘れると
+    「誰がやったか」が残らない。管理操作はこちらを使い、リクエストの認証コンテキスト
+    から user_id / actor_role / IP を必ず付ける。details にパスワード・トークン等の
+    秘密値を入れてはならない。ハッシュチェーンは log_access にそのまま委ねる。
+    """
+    from backend.utils.auth import get_auth
+    from backend.utils.client_ip import trusted_client_ip
+
+    ctx = get_auth(request)
+    merged = dict(details or {})
+    merged.setdefault("actor_role", getattr(ctx, "role", None))
+    ip = trusted_client_ip(request, default="")
+    log_access(
+        db,
+        action,
+        user_id=getattr(ctx, "user_id", None),
+        resource_type=resource_type,
+        resource_id=resource_id,
+        details=merged,
+        ip_addr=ip[:64] if ip else None,
+    )
+
+
 def verify_chain(db, limit: Optional[int] = None,
                  from_id: Optional[int] = None) -> dict:
     """ハッシュチェーンを再計算して食い違う最初の行を返す。
