@@ -3,7 +3,7 @@ import hashlib
 import secrets
 import uuid
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import jwt as _pyjwt
@@ -99,6 +99,21 @@ def persist_refresh_token(user_id: int, token: str, jti: str, expires_at: dateti
         raise
 
 
+def _predates_mass_revoke(issued_at: Optional[datetime], mass_ts: int) -> bool:
+    """refresh token が一斉失効 (mass_ts, epoch 秒) より前 (同時刻を含む) に発行されたか。
+
+    issued_at は naive UTC (datetime.utcnow)。読み取れないときは「前」とみなして拒否する
+    (fail closed)。DB 障害時の番兵 `_DENY_ALL_TS` は遠い未来なので、全 refresh が拒否される。
+    """
+    if issued_at is None:
+        return True
+    try:
+        issued_ts = issued_at.replace(tzinfo=timezone.utc).timestamp()
+    except Exception:
+        return True
+    return issued_ts <= mass_ts
+
+
 def rotate_refresh_token(presented_token: str) -> Optional[dict]:
     """提示された refresh token を検証し、rotation 方式で新 refresh を発行する。
 
@@ -132,16 +147,14 @@ def rotate_refresh_token(presented_token: str) -> Optional[dict]:
             # 旧来は revoke_all_tokens 後でも refresh で新 access が発行可能だった
             # ため、SECRET 漏洩や緊急 incident 時の containment が機能しなかった。
             mass_ts = _get_mass_revoke_timestamp()
-            if mass_ts is not None:
-                # RefreshToken の created_at 列が無い設計のため、jti プレフィクス
-                # に紐付く RevokedToken の created_at で代替判定する代わりに、
-                # mass_revoke 後に発行された refresh は再発行 created_at が
-                # mass_ts より新しい必要がある。`row.id` ベースの簡易判定として
-                # row が mass_ts 以前から存在していれば revoke する。
-                # (より厳密な実装は created_at 追加 + Alembic migration を要するため
-                #  ここでは mass_revoke が active な間は全 refresh を一律拒否する。
-                #  運用上 mass_revoke は緊急時のみ、ユーザは再ログインで新 refresh
-                #  を取得するためダウンタイムは限定的。)
+            # 一斉失効の時刻 (最新の sentinel) より **前に発行された** refresh だけを拒否する。
+            # RefreshToken には issued_at があるので、失効後に再ログインして発行された
+            # refresh は通す。以前は sentinel が一つでも残っていれば全 refresh を一律に
+            # 拒否していたため、一斉失効を一度実行すると (sentinel は消えない) 以後
+            # 全員の refresh が永久に 401 になり、access token の寿命 (admin は 15 分) ごとに
+            # ログイン画面へ戻されていた (2026-10-21 に本番で実測: 4/29 の sentinel が残存し、
+            # 以降に発行された refresh も 15 分後の rotation で全て拒否されていた)。
+            if mass_ts is not None and _predates_mass_revoke(row.issued_at, mass_ts):
                 logger.warning(
                     "refresh blocked by mass_revoke sentinel ts=%s user_id=%s",
                     mass_ts, row.user_id,
