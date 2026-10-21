@@ -304,9 +304,4 @@ TOURNAMENT_LEVELS = ["IC", "IS", "SJL", "全日本", "国内", "その他"]
 # demo: チュートリアル用デモ口座専用ロール（最小権限・実データ不可・編集不可）。
 USER_ROLES = ["analyst", "coach", "player", "demo", "llm"]
 
-# 信頼度レベル（ストローク数ベース）
-CONFIDENCE_LEVELS = {
-    "low": {"min": 0, "max": 500, "stars": "★☆☆", "label": "参考値（データ蓄積中）"},
-    "medium": {"min": 500, "max": 2000, "stars": "★★☆", "label": "中程度（解釈に注意）"},
-    "high": {"min": 2000, "max": float("inf"), "stars": "★★★", "label": "高信頼（実用レベル）"},
-}
+# 信頼度の閾値は backend/utils/confidence.py の 1 か所だけが持つ

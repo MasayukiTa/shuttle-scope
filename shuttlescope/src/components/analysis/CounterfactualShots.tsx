@@ -127,7 +127,7 @@ function Inner({ playerId }: { playerId: number }) {
 
   return (
     <div className="space-y-3">
-      <ConfidenceBadge sampleSize={sampleSize} unit="strokes" />
+      <ConfidenceBadge sampleSize={sampleSize} tier="research" unit="strokes" />
       <p className="text-xs text-gray-400">{t('auto.CounterfactualShots.k2')}</p>
       <div className="space-y-2">
         {comparisons.map((c, i) => (

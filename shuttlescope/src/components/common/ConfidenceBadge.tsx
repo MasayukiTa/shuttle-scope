@@ -35,8 +35,24 @@ const THRESHOLDS: Record<SampleUnit, [number, number]> = {
   matches: [10, 30],
 }
 
+/**
+ * 解析の成熟度を表す tier / evidence_level のうち、標本数が多くても実用レベルを
+ * 名乗れないもの。backend/utils/confidence.py の CAPPED_TIERS / CAPPED_EVIDENCE_LEVELS と同じ。
+ * 防ぐ事象: 研究段階・推奨非対応のカードに「高信頼（実用レベル）」が同居した（監査 C5）。
+ */
+export function isCappedAnalysis(tier?: string | null, evidenceLevel?: string | null): boolean {
+  return tier === 'research' || evidenceLevel === 'exploratory'
+}
+
 interface ConfidenceBadgeProps {
   sampleSize: number
+  /**
+   * 解析の tier（meta.tier をそのまま渡せる）。research では標本数が多くても
+   * 「参考（研究段階）」止まりで、実用レベルの文言と★3つは出さない。
+   */
+  tier?: string | null
+  /** 解析の evidence_level（meta.evidence_level）。exploratory も research と同じ扱い。 */
+  evidenceLevel?: string | null
   /**
    * 標本の単位。**既定値は無い。**
    *
@@ -64,7 +80,7 @@ interface ConfidenceBadgeProps {
  * compact=true: モバイル向けに★のみ表示（タップでツールチップ）。
  * 単位未宣言のときは compact でも数字を出す（★が無いので空になってしまうため）。
  */
-export function ConfidenceBadge({ sampleSize, unit, compact = false, className }: ConfidenceBadgeProps) {
+export function ConfidenceBadge({ sampleSize, tier, evidenceLevel, unit, compact = false, className }: ConfidenceBadgeProps) {
   const { t } = useTranslation()
 
   // undefined / null / NaN を 0 に正規化（バックエンドが sample_n を省略した場合の保険）
@@ -100,6 +116,11 @@ export function ConfidenceBadge({ sampleSize, unit, compact = false, className }
     filled = 1
     label = t('confidence.low_label')
     colorClass = 'border-[var(--ss-danger-border)] bg-[var(--ss-danger-bg)] text-[var(--ss-danger-text)]'
+  } else if (isCappedAnalysis(tier, evidenceLevel)) {
+    // 研究段階: 標本数が足りていても「参考」止まり（中程度・高信頼の文言も出さない）
+    filled = 1
+    label = t('confidence.reference_label')
+    colorClass = 'border-[var(--ss-warning-border)] bg-[var(--ss-warning-bg)] text-[var(--ss-warning-text)]'
   } else if (size < highThreshold) {
     filled = 2
     label = t('confidence.medium_label')

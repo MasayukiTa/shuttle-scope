@@ -8,14 +8,16 @@ import type { SampleUnit } from '@/types'
 export interface ConformalGroup {
   /** "<score_phase>|<role>|<shot_bucket>" の形式 */
   group: string
-  /** ラリー勝利確率 (0..1) */
-  p_win: number
-  /** 予測セット: ["win"] / ["loss"] / ["win","loss"] */
-  prediction_set: Array<'win' | 'loss'>
+  /** ラリー勝利確率 (0..1)。n が少ないグループは null */
+  p_win: number | null
+  /** 予測セット: ["win"] / ["loss"] / ["win","loss"]。n が少ないグループは null */
+  prediction_set: Array<'win' | 'loss'> | null
   /** サンプル数 */
   n: number
   /** 勝利数 */
   n_win: number
+  /** n が下限未満で結論を出さないグループ */
+  insufficient?: boolean
 }
 
 export interface ConformalValidation {
