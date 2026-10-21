@@ -4,7 +4,7 @@
  * - GET /api/analysis/live_anomaly?player_id&match_id&window=5
  * - anomaly=true の時のみ表示、30s ごとに refetch
  * - dismissible (localStorage に test 中の dismiss は保持しない / セッション中のみ)
- * - confidence chip + 詳細モーダル (diverging shot types)
+ * - 標本数 N のチップ + 詳細モーダル (diverging shot types)
  */
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -24,7 +24,7 @@ interface AnomalyResponse {
     recent_strokes?: number
     baseline_strokes?: number
     primary_shot?: string
-    shot_diffs_pp?: Array<{ shot_type: string; delta_pp: number; recent_n: number }>
+    shot_diffs_pp?: Array<{ shot_type: string; shot_key?: string; delta_pp: number; recent_n: number }>
   }
 }
 
@@ -56,7 +56,9 @@ export function AnomalyBanner({ playerId, matchId, windowSize = 5 }: Props) {
   const headline = i18n.language?.startsWith('en')
     ? (data.headline_en ?? data.headline_ja ?? '')
     : (data.headline_ja ?? data.headline_en ?? '')
-  const confPct = Math.round((data.confidence ?? 0) * 100)
+  // 手置きの確信度 % は出さず、標本数 N を出す (IntervalSuggestionsStrip と同じ方針)。
+  const sampleN = data.evidence?.recent_strokes ?? 0
+  const shotName = (key: string) => t(`shot_types.${key}`, { defaultValue: t('auto.AnomalyBanner.shot_other') })
 
   return (
     <div
@@ -69,7 +71,7 @@ export function AnomalyBanner({ playerId, matchId, windowSize = 5 }: Props) {
         <div className="text-sm mt-1 whitespace-pre-wrap">{headline}</div>
         <div className="mt-2 flex items-center gap-2 text-xs">
           <span className="inline-flex items-center rounded-ss-sm border border-[var(--ss-warning-border)] bg-[var(--ss-surface-1)] px-2 py-0.5 font-medium ss-num">
-            {t('auto.AnomalyBanner.confidence', { pct: confPct })}
+            {t('auto.AnomalyBanner.sample_n', { n: sampleN })}
           </span>
           <button
             type="button"
@@ -100,12 +102,12 @@ export function AnomalyBanner({ playerId, matchId, windowSize = 5 }: Props) {
           >
             <div className="font-semibold mb-2">{t('auto.AnomalyBanner.detail_title')}</div>
             <div className="text-xs mb-2 text-[var(--ss-t3)] ss-num">
-              KL={data.evidence?.kl ?? '-'} / threshold={data.evidence?.threshold ?? '-'} / N={data.evidence?.recent_strokes ?? 0}
+              {t('auto.AnomalyBanner.detail_stats', { recent: data.evidence?.recent_strokes ?? 0, base: data.evidence?.baseline_strokes ?? 0 })}
             </div>
             <ul className="text-sm space-y-1">
               {(data.evidence?.shot_diffs_pp ?? []).map((d) => (
                 <li key={d.shot_type} className="flex justify-between">
-                  <span>{d.shot_type}</span>
+                  <span>{shotName(d.shot_key ?? d.shot_type)}</span>
                   <span className={`ss-num ${d.delta_pp >= 0 ? 'text-[var(--ss-warning-text)]' : 'text-[var(--ss-brand)]'}`}>
                     {d.delta_pp >= 0 ? '+' : ''}
                     {d.delta_pp}pp (N={d.recent_n})

@@ -27,7 +27,7 @@ interface PrematchData {
   most_likely_scorelines: Array<{
     outcome: string
     probability: number
-    set1_score?: string
+    set1_score?: string | null
     set2_score?: string
     set3_score?: string
   }>
@@ -179,11 +179,15 @@ export function PrematchStatCard({ matchId, playerId, playerName }: Props) {
                     <span
                       className="ss-num flex-1 min-w-0 truncate"
                       style={{ color: neutral }}
-                      title={[sl.set1_score, sl.set2_score, sl.set3_score].filter(Boolean).join(' / ')}
+                      title={
+                        [sl.set1_score, sl.set2_score, sl.set3_score]
+                          .filter((s): s is string => !!s && !s.includes('?'))
+                          .join(' / ') || t('prediction.scoreline_no_data')
+                      }
                     >
                       {[sl.set1_score, sl.set2_score, sl.set3_score]
-                        .filter(Boolean)
-                        .join(' / ')}
+                        .filter((s): s is string => !!s && !s.includes('?'))
+                        .join(' / ') || t('prediction.scoreline_no_data')}
                     </span>
                     <span className="ss-num shrink-0" style={{ color: subText }}>
                       {Math.round(sl.probability * 100)}%

@@ -65,6 +65,49 @@ const SEVERITY_ICON_COLOR: Record<string, string> = {
   warning:  'text-[var(--ss-warn)]',
 }
 
+type TFn = (key: string) => string
+
+/** 件数オブジェクト ({matches, rallies, entries}) を「試合 3 / ラリー 120」の文字列にする。 */
+function formatCounts(obj: Record<string, unknown>, t: TFn): string | null {
+  const parts: string[] = []
+  const push = (k: string, key: string) => {
+    const v = obj[k]
+    if (typeof v === 'number' && Number.isFinite(v)) parts.push(`${t(key)} ${v}`)
+  }
+  push('matches', 'advice.basis.matches')
+  push('rallies', 'advice.basis.rallies')
+  push('entries', 'advice.basis.entries')
+  return parts.length > 0 ? parts.join(' / ') : null
+}
+
+/**
+ * basis を読める行にする。既知の項目だけを表示名つきで出し、未知の項目や
+ * 内部の source 名 (例: head_to_head_wilson_ci) は出さない。
+ */
+function basisRows(basis: Record<string, unknown> | null | undefined, t: TFn): Array<{ label: string; value: string }> {
+  const rows: Array<{ label: string; value: string }> = []
+  if (!basis || typeof basis !== 'object') return rows
+  if (typeof basis.period === 'string' && basis.period) {
+    rows.push({ label: t('advice.basis.period'), value: basis.period })
+  }
+  const ss = basis.sample_size
+  if (ss && typeof ss === 'object') {
+    const o = ss as Record<string, unknown>
+    const cur = o.current && typeof o.current === 'object' ? formatCounts(o.current as Record<string, unknown>, t) : null
+    const prev = o.previous && typeof o.previous === 'object' ? formatCounts(o.previous as Record<string, unknown>, t) : null
+    if (cur || prev) {
+      if (cur) rows.push({ label: t('advice.basis.current'), value: cur })
+      if (prev) rows.push({ label: t('advice.basis.previous'), value: prev })
+    } else {
+      const flat = formatCounts(o, t)
+      if (flat) rows.push({ label: t('advice.basis.sample_size'), value: flat })
+    }
+  }
+  const counts = formatCounts({ matches: basis.match_count, rallies: basis.rally_count }, t)
+  if (counts) rows.push({ label: t('advice.basis.sample_size'), value: counts })
+  return rows
+}
+
 export function AdviceStrip({
   context, playerId, matchId, opponentId, hideWhenInsufficient, className,
 }: Props) {
@@ -154,9 +197,13 @@ export function AdviceStrip({
             )}
           </div>
           {showBasis && (
-            <pre className="mt-1 text-[10px] whitespace-pre-wrap break-all opacity-80 ss-num">
-              {JSON.stringify(a.basis, null, 2)}
-            </pre>
+            <ul className="mt-1 text-[10px] opacity-80 ss-num space-y-0.5" data-testid="advice-basis">
+              {basisRows(a.basis, (k) => t(k)).map((row, i) => (
+                <li key={`${row.label}-${i}`}>
+                  {row.label}: {row.value}
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       </div>

@@ -6,7 +6,7 @@
 
 設計方針:
 - coach / analyst / admin のみ。player には絶対に公開しない（弱点露出になり得るため）。
-- "弱点 / weakness" 表現は禁止。中立的な「研究されている可能性」「試す価値あり」表現に統一。
+- "弱点 / weakness" 表現は禁止。観測事実 (何がどちらへ何ポイント動いたか・N) だけを中立に書く。原因や相手の意図は書かない。
 - 全レスポンスに confidence (0..1) を載せる。
 - データ不足時は anomaly=false / suggestions=[] を返し、UI 側で banner / strip を隠す。
 """
@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from backend.analysis.role_view import own_slot
+from backend.analysis.shot_taxonomy import canonicalize, ja_label
 from backend.db.database import get_db
 from backend.db.models import Match, GameSet, Rally, Stroke
 from backend.utils.auth import AuthCtx, get_auth
@@ -180,18 +181,26 @@ def get_live_anomaly(
         diffs.append((st, round((pr - br) * 100, 1), recent_dist.get(st, 0)))
     diffs.sort(key=lambda x: -abs(x[1]))
     primary = diffs[0]
-    pct_label = f"{'+' if primary[1] >= 0 else ''}{primary[1]}pp"
+    n_rallies = len(recent_rallies)
+    delta_abs = abs(primary[1])
+    went_up = primary[1] >= 0
+    # 表示名は shot_taxonomy の既存対応表 (SHOT_TYPE_JA) を使う。内部キーは文面に出さない。
+    shot_ja = ja_label(primary[0])
+    shot_en = canonicalize(primary[0]).replace("_", " ")
 
+    # 観測した事実だけを書く (向き・大きさ・直近ラリー数 N)。
+    # 原因や相手の意図は、検定の裏づけが無いので書かない。
     headline_ja = (
-        f"直近{len(recent_rallies)}ラリーで {primary[0]} 比率が普段の {pct_label}。"
-        "相手に研究されている可能性があります。"
+        f"直近{n_rallies}ラリー(N={n_rallies})で、{shot_ja}の比率が"
+        f"普段より{delta_abs}ポイント{'高く' if went_up else '低く'}なっています。"
     )
     headline_en = (
-        f"In last {len(recent_rallies)} rallies, {primary[0]} share shifted {pct_label} vs season baseline. "
-        "The opponent may be reading this pattern."
+        f"In the last {n_rallies} rallies (N={n_rallies}), the share of {shot_en} "
+        f"was {delta_abs} points {'higher' if went_up else 'lower'} than usual."
     )
 
-    # confidence: KL / 上限 * 観測量での減衰
+    # confidence: 手置きの式 (KL / 上限 * 観測量での減衰)。確率ではないので
+    # 画面には出さない (UI は evidence の標本数 N を表示する)。互換のため値は残す。
     raw_conf = min(kl / (threshold * 4), 1.0)
     n_factor = min(recent_total / 30.0, 1.0)
     confidence = round(raw_conf * (0.6 + 0.4 * n_factor), 3)
@@ -208,10 +217,11 @@ def get_live_anomaly(
             "recent_strokes": recent_total,
             "baseline_strokes": base_total,
             "shot_diffs_pp": [
-                {"shot_type": st, "delta_pp": dp, "recent_n": n}
+                {"shot_type": st, "shot_key": canonicalize(st), "delta_pp": dp, "recent_n": n}
                 for st, dp, n in diffs[:5]
             ],
             "primary_shot": primary[0],
+            "primary_direction": "up" if went_up else "down",
         },
     }
 

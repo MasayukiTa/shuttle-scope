@@ -369,6 +369,26 @@ def advice_condition_header(db: Session, player_id: int, ctx: AuthCtx) -> dict:
 # Context 4: prediction.tab
 # ─────────────────────────────────────────────────────────────────────
 
+def _opponent_label(db: Session, opponent_id: int, ctx: AuthCtx) -> str:
+    """文言に入れる対戦相手の呼び名。内部 ID は文面に出さない。
+
+    呼び出し側が閲覧できる選手 (can_access_player) のときだけ氏名を使い、
+    それ以外・氏名が無い場合は中立の「対戦相手」にする。
+    """
+    from backend.db.models import Player
+    from backend.utils.auth import can_access_player
+
+    try:
+        if can_access_player(ctx, opponent_id, db):
+            p = db.get(Player, opponent_id)
+            name = (p.name or "").strip() if p else ""
+            if name:
+                return f"対戦相手 {name}"
+    except Exception:
+        pass
+    return "対戦相手"
+
+
 def advice_prediction_tab(db: Session, player_id: int, opponent_id: Optional[int], ctx: AuthCtx) -> dict:
     """対戦相手指定があれば head-to-head 勝率、無ければ直近の予測根拠サマリ。
 
@@ -420,6 +440,7 @@ def advice_prediction_tab(db: Session, player_id: int, opponent_id: Optional[int
 
     # opponent_id 指定: head-to-head 実績のみ集計 (予測モデル呼び出しはエラー耐性が必要)
     from backend.db.models import Match, GameSet, Rally
+    opp_label = _opponent_label(db, opponent_id, ctx)
     h2h = (
         db.query(Match)
         .filter(
@@ -429,7 +450,7 @@ def advice_prediction_tab(db: Session, player_id: int, opponent_id: Optional[int
         .all()
     )
     if len(h2h) == 0:
-        return _empty_response(f"対戦相手 #{opponent_id} との対戦履歴がありません。")
+        return _empty_response(f"{opp_label} との対戦履歴がありません。")
 
     mids = [m.id for m in h2h]
     sets = db.query(GameSet).filter(GameSet.match_id.in_(mids)).all()
@@ -441,7 +462,7 @@ def advice_prediction_tab(db: Session, player_id: int, opponent_id: Optional[int
     rcount = len(rallies)
     if rcount < 30:
         return _empty_response(
-            f"対戦相手 #{opponent_id} との head-to-head ラリー数 {rcount} は予測根拠に不足 (30 以上必要)。"
+            f"{opp_label} との head-to-head ラリー数 {rcount} は予測根拠に不足 (30 以上必要)。"
         )
     h2h_wr = wins / rcount
     # 95% Wilson 区間
@@ -455,7 +476,7 @@ def advice_prediction_tab(db: Session, player_id: int, opponent_id: Optional[int
     hi = min(1.0, center + half)
 
     text = (
-        f"対戦相手 #{opponent_id} との過去 {len(h2h)} 試合 ({rcount} ラリー) の"
+        f"{opp_label} との過去 {len(h2h)} 試合 ({rcount} ラリー) の"
         f"ラリー勝率: {round(h2h_wr * 100, 1)}% "
         f"(95% 信頼区間 [{round(lo * 100, 1)}%, {round(hi * 100, 1)}%])"
     )

@@ -1738,6 +1738,7 @@
     "toggle": "Toggle theme"
   },
   "analysis": {
+    "sample_size": "Samples: {{count}}",
     "shuttle_track": {
       "title": "Shuttle trajectory",
       "empty": "Not analyzed (no shuttle trajectory data)",
@@ -2279,6 +2280,7 @@
     "set_distribution": "Set distribution",
     "score_bands": "Score band prediction",
     "most_likely": "Most likely scoreline",
+    "scoreline_no_data": "No data",
     "tactical_notes": "Tactical notes",
     "caution_flags": "Cautions",
     "observation_context": "Observation context",
@@ -3100,7 +3102,9 @@
     },
     "AnomalyBanner": {
       "title": "Something different right now",
-      "confidence": "Confidence {{pct}}%",
+      "sample_n": "Recent N={{n}} strokes",
+      "detail_stats": "Recent N={{recent}} strokes / Usual N={{base}} strokes",
+      "shot_other": "Other",
       "detail": "See details",
       "detail_title": "Shot-type divergence (recent vs season)",
       "dismiss": "Dismiss",
@@ -5045,7 +5049,16 @@
     "measuring_title": "Advice is being measured",
     "measuring_body": "Concrete observations will appear once enough data is collected. We do not show guess-based comments before then (reliability first).",
     "hide_basis": "Hide basis",
-    "show_basis": "ⓘ Basis"
+    "show_basis": "ⓘ Basis",
+    "basis": {
+      "period": "Period",
+      "sample_size": "Sample size",
+      "current": "Last 8 weeks",
+      "previous": "Previous 8 weeks",
+      "matches": "Matches",
+      "rallies": "Rallies",
+      "entries": "Entries"
+    }
   },
   "shot_end_type": {
     "ace": "Ace",

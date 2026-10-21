@@ -248,9 +248,17 @@ export function ConditionResult({ result, historyCount, isLight }: Props) {
           {responses && (
             <details className="text-xs mt-2">
               <summary className="cursor-pointer">{t('condition.result.responses_breakdown')}</summary>
-              <pre className="mt-1 p-2 rounded-ss-sm overflow-x-auto text-[10px] bg-[var(--ss-surface-2)]">
-                {JSON.stringify(responses, null, 2)}
-              </pre>
+              <ul
+                className="mt-1 p-2 rounded-ss-sm text-[11px] bg-[var(--ss-surface-2)] space-y-0.5"
+                data-testid="condition-responses"
+              >
+                {Object.entries(responses).map(([qid, val]) => (
+                  <li key={qid} className="flex justify-between gap-3">
+                    <span>{t(`condition.q.${qid}`, qid)}</span>
+                    <span className="ss-num">{val}</span>
+                  </li>
+                ))}
+              </ul>
             </details>
           )}
         </section>
