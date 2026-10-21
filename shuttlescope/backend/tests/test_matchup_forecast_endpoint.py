@@ -52,6 +52,17 @@ def _make_match_with_result(
     )
     db.add(m)
     db.flush()
+    # 注釈が完了した試合にはラリーがある。ラリーが 0 本の試合は解析母集団
+    # (analysis_population) から外れ、コホートが空になる。
+    gs = GameSet(match_id=m.id, set_num=1, winner="player_a" if result == "win" else "player_b",
+                 score_a=21, score_b=15)
+    db.add(gs)
+    db.flush()
+    db.add(Rally(
+        set_id=gs.id, rally_num=1, server="player_a", winner="player_a",
+        end_type="forced_error", rally_length=5,
+    ))
+    db.flush()
     return m
 
 

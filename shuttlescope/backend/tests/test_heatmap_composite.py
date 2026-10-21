@@ -233,7 +233,10 @@ def test_router_maps_land_counts_through_the_fold():
         b = _make(Player, name="B")
         db.add_all([a, b])
         db.flush()
-        m = _make(Match, player_a_id=a.id, player_b_id=b.id)
+        # result は NOT NULL なので `_make` が "t" で埋めてしまう。"t" は Match.result の
+        # 語彙 (win / loss / walkover / unfinished) に無く、解析母集団に入らない。
+        # 終わった試合として "win" を明示する。
+        m = _make(Match, player_a_id=a.id, player_b_id=b.id, result="win")
         db.add(m)
         db.flush()
         gs = _make(GameSet, match_id=m.id, set_num=1)

@@ -36,6 +36,20 @@ from backend.routers.auth import (
 from backend.utils.jwt_utils import create_access_token
 
 
+@pytest.fixture(autouse=True)
+def _reset_registration_rate_limit():
+    """登録の IP 上限 (15 分に 5 回) は、プロセス内の共有状態 `_RATE_BUCKETS` に溜まる。
+
+    このファイルは 1 つのテスト IP から 5 回を超えて登録するので、
+    各テストの前後で空にしないと後半のテストが 429 になる。
+    """
+    from backend.routers import auth_email
+
+    auth_email._RATE_BUCKETS.clear()
+    yield
+    auth_email._RATE_BUCKETS.clear()
+
+
 def _register(client, username: str, monkeypatch) -> dict:
     monkeypatch.setenv("SS_REGISTRATION_ENABLED", "1")
     from backend.config import settings
