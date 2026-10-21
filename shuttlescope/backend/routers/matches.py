@@ -18,6 +18,7 @@ from backend.db.models import Match, Player, GameSet, Rally, MatchCVArtifact
 from backend.utils.video_downloader import video_downloader
 from backend.utils import response_cache
 from backend.utils.sync_meta import touch
+from backend.utils.text_sanitize import reject_bidi_only, reject_ctrl_and_bidi
 from backend.utils.auth import (
     get_auth,
     apply_match_team_scope,
@@ -181,14 +182,8 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
     # 制御文字の拒否。null byte / CRLF はログ偽装・DB 処理バグ。BIDI override
     # (U+202E 等) と zero-width 系は表示偽装 (homograph 攻撃) の経路で、
     # round167 X5 で tournament 名に保存して GET で raw 反射されることが発覚。
-    import re as _re_ctl
     # tournament / round は業務上必須 (空/空白のみ禁止)。無意味な DB 肥大を防ぐ。
     _non_empty_required = {"tournament", "round"}
-    _BIDI_FORMAT_CHARS = (
-        "​‌‍  "        # ZWSP/ZWNJ/ZWJ/LS/PS
-        "‪‫‬‭‮"        # LRE/RLE/PDF/LRO/RLO
-        "⁦⁧⁨⁩﻿"        # LRI/RLI/FSI/PDI/BOM
-    )
     for fname, maxlen in (
         ("tournament", 200), ("tournament_grade", 100), ("round", 100),
         ("venue", 200), ("notes", 5000), ("final_score", 200),
@@ -201,16 +196,9 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
             continue
         if not isinstance(v, str):
             continue
-        if len(v) > maxlen:
-            raise HTTPException(status_code=422, detail=f"{fname} too long (max {maxlen})")
-        if _re_ctl.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", v):
-            raise HTTPException(status_code=422, detail=f"{fname} contains control characters")
-        for _ch in v:
-            if _ch in _BIDI_FORMAT_CHARS:
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"{fname} contains disallowed format character (U+{ord(_ch):04X})",
-                )
+        # 長さ・制御文字・不可視/双方向制御文字の検証は text_sanitize に一本化。
+        # 自由記述 (notes 等) の改行 / タブは許可する版を使う。
+        reject_bidi_only(v, fname, max_len=maxlen)
         if fname in _non_empty_required and not v.strip():
             raise HTTPException(status_code=422, detail=f"{fname} must not be empty or whitespace only")
     # C-8: 語彙を固定する。CV がこれを見てラベルを人物へ対応付けるので、
@@ -236,12 +224,7 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
         if vu.strip() != vu:
             raise HTTPException(status_code=422, detail="video_url must not have leading/trailing whitespace")
         # round179 N5 finding: format char (ZWSP/RTLO 等) は URL 内でも UI deception を起こすため拒否
-        for _ch in vu:
-            if _ch in _BIDI_FORMAT_CHARS:
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"video_url contains disallowed format character (U+{ord(_ch):04X})",
-                )
+        reject_ctrl_and_bidi(vu, "video_url", max_len=500)
         # URL スキーム検証: javascript: / data: / about: / mailto: / file: / ftp:
         # 等の stored XSS 経路や SSRF 原資を PUT/POST 時点で拒否する。
         # validate_external_url は download 時のみ呼ばれるため、DB には格納されてしまう。
@@ -1130,6 +1113,9 @@ def _normalize_name(name: str) -> str:
 def quick_start_match(body: QuickStartBody, request: Request, db: Session = Depends(get_db)):
     """クイックスタート: 相手選手auto-create + 試合作成を一括実行（V4）"""
     ctx = get_auth(request)
+    # opponent_name は下で Player.name としてそのまま保存される。不可視 / 双方向制御文字を 422 にする。
+    reject_ctrl_and_bidi(body.opponent_name, "opponent_name", max_len=100)
+    reject_ctrl_and_bidi(body.opponent_team, "opponent_team", max_len=100)
     if ctx.is_player:
         raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
     owner_id, is_public = resolve_owner_team_for_match_create(ctx)

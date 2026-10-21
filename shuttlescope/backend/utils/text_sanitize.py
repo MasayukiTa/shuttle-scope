@@ -15,12 +15,19 @@ from typing import Optional
 from fastapi import HTTPException
 
 
-# Unicode BIDI / 不可視 format character セット (admin 文書の表示偽装防止)
+# 不可視 / 双方向制御 (format) 文字セット。表示偽装 (RTLO・ZWSP・LRM 等) の防止。
+# 名前系フィールドの検証はすべてこのモジュールの関数を使うこと (別実装を作らない)。
+# 2026-10: LRM/RLM/ALM/WJ/SHY を追加 (従来は欠けていた)。
 _BIDI_FORMAT_CHARS = frozenset({
-    "​", "‌", "‍",          # ZWSP / ZWNJ / ZWJ
-    " ", " ",                     # Line / Paragraph separators
-    "‪", "‫", "‬", "‭", "‮",  # LRE/RLE/PDF/LRO/RLO
-    "⁦", "⁧", "⁨", "⁩", "﻿",  # LRI/RLI/FSI/PDI/BOM
+    "\u00ad",                          # SHY (soft hyphen)
+    "\u061c",                          # ALM (Arabic letter mark)
+    "\u200b", "\u200c", "\u200d",      # ZWSP / ZWNJ / ZWJ
+    "\u200e", "\u200f",                # LRM / RLM
+    "\u2028", "\u2029",                # Line / Paragraph separators
+    "\u202a", "\u202b", "\u202c", "\u202d", "\u202e",  # LRE/RLE/PDF/LRO/RLO
+    "\u2060",                          # WJ (word joiner)
+    "\u2066", "\u2067", "\u2068", "\u2069",  # LRI/RLI/FSI/PDI
+    "\ufeff",                          # BOM / ZWNBSP
 })
 
 # C0 制御文字のうち改行・タブも拒否するセット (識別子向け)

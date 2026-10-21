@@ -19,6 +19,8 @@ from sqlalchemy import text
 from backend.services.merge_resolver import decide_merge, MergeDecision
 from backend.utils.sync_meta import business_payload, compute_content_hash
 from backend.utils.identity_uuid import canonical_identity_uuid
+from fastapi import HTTPException
+from backend.utils.text_sanitize import reject_ctrl_and_bidi
 from backend.db.models import (
     Match, GameSet, Rally, Stroke, Player,
     PreMatchObservation, HumanForecast, Comment, EventBookmark,
@@ -274,6 +276,20 @@ def _sanitize_import_record(model_cls: type, incoming: dict, server_now: datetim
     return out
 
 
+def _player_name_error(rec: dict) -> Optional[str]:
+    """選手レコードの name / name_en に不可視 / 双方向制御文字があればその理由を返す。
+
+    問題なしなら None。レコード単位のエラーとして summary.errors に載せ、
+    そのレコードだけをスキップするために使う (取り込み全体は止めない)。
+    """
+    for fld in ("name", "name_en"):
+        try:
+            reject_ctrl_and_bidi(rec.get(fld), fld, max_len=100)
+        except HTTPException as e:
+            return str(e.detail)
+    return None
+
+
 def _find_by_uuid(db: Session, model_cls: type, uuid: str) -> Optional[Any]:
     return db.query(model_cls).filter_by(uuid=uuid).first()
 
@@ -481,6 +497,14 @@ def import_package(db: Session, raw: bytes, dry_run: bool = False,
                     if raw_uuid != uuid:
                         rec = dict(rec)
                         rec["uuid"] = uuid
+
+                    if table_key == "players":
+                        name_err = _player_name_error(rec)
+                        if name_err:
+                            summary.errors.append(
+                                f"players[{uuid}]: {name_err} のためスキップ"
+                            )
+                            continue
 
                     local_obj = _find_by_uuid(db, model_cls, uuid)
                     local_dict = _obj_to_dict(local_obj) if local_obj else None

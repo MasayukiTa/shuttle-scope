@@ -557,6 +557,7 @@ def _get_page_access(user_id: int, user: User, db: Session) -> list[str]:
 
 
 from backend.utils.access_log import log_access, log_admin_action
+from backend.utils.text_sanitize import reject_ctrl_and_bidi
 from backend.utils.jwt_utils import (
     create_access_token,
     create_refresh_token,
@@ -1675,27 +1676,10 @@ def _reject_control_chars(value: Optional[str], field_name: str, max_len: int = 
 
     CRLF injection（ログ偽装）、null byte（バックエンド処理バグ）、
     Unicode BIDI override（UI なりすまし）、長大値（ストレージ攻撃）を防ぐ。
+    実装は backend.utils.text_sanitize.reject_ctrl_and_bidi に一本化している
+    (文字集合を複数箇所で持つと更新漏れが起きるため、ここでは持たない)。
     """
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise HTTPException(status_code=422, detail=f"{field_name} must be a string")
-    if len(value) > max_len:
-        raise HTTPException(status_code=422, detail=f"{field_name} too long (max {max_len})")
-    # C0 制御文字 + LRO/RLO/PDF 等の BIDI override + ZWSP/ZWNJ/ZWJ
-    DISALLOWED = set(chr(i) for i in range(32)) | {
-        "\u200b", "\u200c", "\u200d", "\u2028", "\u2029",  # ZWSP/ZWNJ/ZWJ/LS/PS
-        "\u202a", "\u202b", "\u202c", "\u202d", "\u202e",  # LRE/RLE/PDF/LRO/RLO
-        "\u2066", "\u2067", "\u2068", "\u2069", "\ufeff",  # LRI/RLI/FSI/PDI/BOM
-        "\x7f",  # DEL
-    }
-    for ch in value:
-        if ch in DISALLOWED:
-            raise HTTPException(
-                status_code=422,
-                detail=f"{field_name} contains disallowed control/format character (U+{ord(ch):04X})",
-            )
-    return value
+    return reject_ctrl_and_bidi(value, field_name, max_len=max_len)
 
 
 class UserCreate(BaseModel):
@@ -1856,6 +1840,18 @@ def ensure_player_record(db: Session, user: User) -> Optional[int]:
     if user.player_id is not None:
         return user.player_id
     name = (user.display_name or user.username or "").strip()[:100]
+    # 入口 (登録 / 招待受諾 / 管理者作成) で検証済みのはずだが、過去に保存された値や
+    # 将来増える経路に備え、Player.name に入れる直前でも同じ検証を通す。
+    # 不可視 / 双方向制御文字を含むなら username、それも不可なら user<ID> にする。
+    for _cand in (name, (user.username or "").strip()[:100]):
+        try:
+            reject_ctrl_and_bidi(_cand, "name", max_len=100)
+        except HTTPException:
+            continue
+        name = _cand
+        break
+    else:
+        name = ""
     if not name:
         name = f"user{user.id}"
     player = Player(name=name, team_id=user.team_id)
