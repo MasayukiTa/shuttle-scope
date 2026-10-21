@@ -597,7 +597,10 @@ def get_pair_ranking(
     # 他チーム所有 match を含む集計を返していた。
     from backend.utils.auth import get_auth as _ga_pr
     _ctx_pr = _ga_pr(request)
-    all_players = db.query(Player).order_by(Player.name).all()
+    from backend.routers.players import exclude_unapproved_registrants
+    all_players = exclude_unapproved_registrants(
+        db.query(Player), _ctx_pr
+    ).order_by(Player.name).all()
     anchor = db.get(Player, anchor_player_id)
 
     # Perf: anchor を含むペア試合を一括取得し、候補 partner_id でグルーピング。

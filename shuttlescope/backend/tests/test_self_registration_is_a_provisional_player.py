@@ -270,3 +270,160 @@ class TestAdminNotificationDeliveryStatus:
 
         monkeypatch.setenv("SS_ADMIN_NOTIFY_WEBHOOK_URL", "http://127.0.0.1/hook")
         assert auth_email._notify_admin_webhook("test") == "invalid_url"
+
+
+def _bearer(token: str) -> dict:
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _make_admin(db_session, username: str) -> User:
+    admin = User(username=username, role="admin", display_name=username,
+                 hashed_credential=_hash_password("pw"),
+                 awaiting_admin_approval=False, consent_required=False)
+    db_session.add(admin)
+    db_session.commit()
+    return admin
+
+
+class TestPendingRegistrantIsNotACandidate:
+    """承認前の登録者の Player は、選手の選択肢 (/players・予測の候補) に出ない。
+
+    承認 (player ロールのまま) で正常な状態に戻り、候補に現れる。
+    """
+
+    def _register_pending(self, db_session, monkeypatch, username: str) -> tuple[int, int]:
+        app.dependency_overrides[get_db] = lambda: db_session
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = _register(client, username, monkeypatch)
+        assert resp.status_code == 201, resp.text
+        uid = resp.json()["data"]["user_id"]
+        db_session.expire_all()
+        return uid, db_session.get(User, uid).player_id
+
+    def test_registration_marks_the_player_like_a_quick_start_provisional(
+        self, db_session, monkeypatch,
+    ):
+        try:
+            _uid, pid = self._register_pending(db_session, monkeypatch, "mark_prov")
+        finally:
+            app.dependency_overrides.clear()
+        player = db_session.get(Player, pid)
+        assert player.profile_status == "provisional"
+        assert player.needs_review is True
+
+    def test_other_roles_are_listed_without_the_pending_player(
+        self, db_session, monkeypatch,
+    ):
+        from backend.db.models import Team
+
+        team = Team(name="候補チーム")
+        db_session.add(team)
+        db_session.flush()
+        real = Player(name="既存の選手", team_id=team.id)
+        db_session.add(real)
+        analyst = User(username="cand_analyst", role="analyst", display_name="A",
+                       hashed_credential=_hash_password("pw"), team_id=team.id,
+                       team_name=team.name, awaiting_admin_approval=False,
+                       consent_required=False)
+        db_session.add(analyst)
+        admin = _make_admin(db_session, "cand_admin")
+        try:
+            _uid, pid = self._register_pending(db_session, monkeypatch, "hidden_one")
+            # 同じチームの候補に混ざりうる状況にしておく (二重の防御の確認)
+            db_session.get(Player, pid).team_id = team.id
+            db_session.commit()
+
+            client = TestClient(app, raise_server_exceptions=False)
+            a_tok = create_access_token(user_id=analyst.id, role="analyst",
+                                        team_name=team.name, team_id=team.id)
+            adm_tok = create_access_token(user_id=admin.id, role="admin")
+
+            for tok in (a_tok, adm_tok):
+                r = client.get("/api/players", headers=_bearer(tok))
+                assert r.status_code == 200, r.text
+                ids = {p["id"] for p in r.json()["data"]}
+                assert real.id in ids
+                assert pid not in ids
+
+            # 予測の候補の元 (ペア候補) からも外れる
+            anchor = real.id
+            rk = client.get(f"/api/prediction/pair_ranking?anchor_player_id={anchor}",
+                            headers=_bearer(adm_tok))
+            assert rk.status_code == 200, rk.text
+            cand = {x["partner_id"] for x in rk.json()["data"]["ranked_partners"]}
+            assert pid not in cand
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_the_registrant_still_sees_their_own_player(self, db_session, monkeypatch):
+        try:
+            uid, pid = self._register_pending(db_session, monkeypatch, "sees_self")
+            client = TestClient(app, raise_server_exceptions=False)
+            tok = create_access_token(user_id=uid, role="player", player_id=pid)
+            r = client.get("/api/players", headers=_bearer(tok))
+            assert r.status_code == 200, r.text
+            assert [p["id"] for p in r.json()["data"]] == [pid]
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_approval_as_player_makes_the_player_a_normal_candidate(
+        self, db_session, monkeypatch,
+    ):
+        admin = _make_admin(db_session, "approve_admin")
+        try:
+            uid, pid = self._register_pending(db_session, monkeypatch, "to_approve")
+            client = TestClient(app, raise_server_exceptions=False)
+            adm_tok = create_access_token(user_id=admin.id, role="admin")
+            r = client.post(f"/api/auth/users/{uid}/approve",
+                            json={"role": "player", "team_name": "承認先チーム"},
+                            headers=_bearer(adm_tok))
+            assert r.status_code == 200, r.text
+            db_session.expire_all()
+            player = db_session.get(Player, pid)
+            assert player.profile_status == "verified"
+            assert player.needs_review is False
+            assert db_session.get(User, uid).player_id == pid
+
+            lst = client.get("/api/players", headers=_bearer(adm_tok))
+            assert pid in {p["id"] for p in lst.json()["data"]}
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_confirm_leaves_a_quick_start_provisional_player_alone(self, db_session):
+        from backend.routers.auth import confirm_provisional_player
+
+        opp = Player(name="クイックスタート相手", profile_status="provisional",
+                     needs_review=True, created_via_quick_start=True)
+        db_session.add(opp)
+        db_session.flush()
+        u = User(username="odd_link", role="player", display_name="O",
+                 hashed_credential=_hash_password("pw"), player_id=opp.id)
+        db_session.add(u)
+        db_session.flush()
+        confirm_provisional_player(db_session, u)
+        assert opp.profile_status == "provisional"
+        assert opp.needs_review is True
+
+    def test_rejection_still_removes_the_player(self, db_session, monkeypatch):
+        admin = _make_admin(db_session, "reject_admin")
+        try:
+            uid, pid = self._register_pending(db_session, monkeypatch, "to_reject")
+            client = TestClient(app, raise_server_exceptions=False)
+            adm_tok = create_access_token(user_id=admin.id, role="admin")
+            r = client.post(f"/api/auth/users/{uid}/reject", headers=_bearer(adm_tok))
+            assert r.status_code == 200, r.text
+            db_session.expire_all()
+            assert db_session.get(Player, pid) is None
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_ensure_player_record_for_an_approved_user_is_not_provisional(self, db_session):
+        u = User(username="direct_player", role="player", display_name="D",
+                 hashed_credential=_hash_password("pw"),
+                 awaiting_admin_approval=False)
+        db_session.add(u)
+        db_session.flush()
+        pid = ensure_player_record(db_session, u)
+        player = db_session.get(Player, pid)
+        assert player.profile_status == "verified"
+        assert player.needs_review is False
