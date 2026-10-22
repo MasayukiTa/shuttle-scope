@@ -128,3 +128,12 @@ def test_contact_language_toggle_has_localized_accessible_name(monkeypatch):
     assert 'data-label-ja="言語を切り替える(English)"' in html
     assert 'data-label-en="Switch language (日本語)"' in html
     assert "getAttribute('data-label-'+lang)" in html
+
+
+def test_contact_theme_toggle_has_localized_accessible_name(monkeypatch):
+    """監査 #950: 英語サブページのテーマ切替ボタンだけ日本語固定だった (共通ヘッダー base.html.j2)。"""
+    for path in ("/public-preview/contact", "/public-preview/en/contact"):
+        html = _get_contact(monkeypatch, path, 1)
+        assert 'data-label-ja="テーマ切り替え"' in html
+        assert 'data-label-en="Switch between light and dark theme"' in html
+        assert "getAttribute('data-label-'+lang)" in html

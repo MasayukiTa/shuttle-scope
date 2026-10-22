@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyStrokeOverrides,
+  conflictingLocals,
   decideUndoPending,
   finalHitterFor,
   mergeRallies,
@@ -46,6 +47,28 @@ describe('pruneConfirmed', () => {
   it('returns the same array when nothing changed', () => {
     const local = [R(1, 2)]
     expect(pruneConfirmed([R(1, 1)], local)).toBe(local)
+  })
+})
+
+describe('conflictingLocals', () => {
+  it('returns only local rallies whose content differs from the server rally with the same key', () => {
+    const server = [R(1, 1, { id: 5, score_a_after: 1, score_b_after: 0 }), R(1, 2, { id: 6, score_a_after: 2, score_b_after: 0 })]
+    const same = R(1, 1, { client_uuid: 'a', score_a_after: 1, score_b_after: 0 })
+    const other = R(1, 2, { client_uuid: 'b', winner: 'player_b', score_a_after: 2, score_b_after: 0 })
+    const unsent = R(1, 3, { client_uuid: 'c', score_a_after: 3, score_b_after: 0 })
+    expect(conflictingLocals(server, [same, other, unsent])).toEqual([other])
+  })
+
+  it('agrees with pruneConfirmed: a conflicting rally is kept there and reported here', () => {
+    const server = [R(1, 1, { id: 5, score_a_after: 1, score_b_after: 0 })]
+    const other = R(1, 1, { client_uuid: 'x', score_a_after: 0, score_b_after: 1 })
+    expect(pruneConfirmed(server, [other])).toEqual([other])
+    expect(conflictingLocals(server, [other])).toEqual([other])
+  })
+
+  it('is empty when there is no local rally or nothing conflicts', () => {
+    expect(conflictingLocals([R(1, 1, { id: 1 })], [])).toEqual([])
+    expect(conflictingLocals([R(1, 1, { id: 1 })], [R(1, 1, { client_uuid: 'x' })])).toEqual([])
   })
 })
 

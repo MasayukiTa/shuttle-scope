@@ -89,6 +89,17 @@ def _identity(inner: Any) -> Any:
     return inner
 
 
+def _first_return(inner: Any) -> Any:
+    """ファーストリターン: 直接 API (/api/analysis/first_return_analysis) と同じ規則で縮約する。
+
+    落とすキーは player_response_sanitiser の宣言テーブルが唯一の定義。ここで別のキー集合を
+    持つと、直接 API と包括レポートで規則が食い違う (監査 #949)。
+    """
+    from backend.utils.player_response_sanitiser import sanitize_for_player
+
+    return sanitize_for_player("/api/analysis/first_return_analysis", inner)
+
+
 PLAYER_COMPREHENSIVE_ALLOWED_SECTIONS: dict[str, Callable[[Any], Any]] = {
     # 件数・ラリー長・終了種別の分布のみ (win_rate / win_by_end_type / server_win_rate は落とす)
     "descriptive": _keep_keys(
@@ -99,7 +110,7 @@ PLAYER_COMPREHENSIVE_ALLOWED_SECTIONS: dict[str, Callable[[Any], Any]] = {
     "heatmap_land": _identity,
     "shot_types": _drop_keys("win_rate", "winner_end_rate", "winner_end_count"),
     "set_comparison": _drop_keys("win_rate"),
-    "first_return": _identity,
+    "first_return": _first_return,
     "tournament_comparison": _tournament_levels,
     # 得点前パターン (成功パターンの傾向。伸びしろ側の情報)
     "pre_win_patterns": _identity,

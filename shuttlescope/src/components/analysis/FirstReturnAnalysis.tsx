@@ -16,7 +16,8 @@ interface FirstReturnAnalysisProps {
 interface ZoneData {
   zone: string
   count: number
-  win_rate: number
+  /** player ロールでは backend が返さない (生の勝率は見せない)。無いときは列ごと出さない。 */
+  win_rate?: number
   freq_rate: number
 }
 
@@ -54,6 +55,7 @@ export function FirstReturnAnalysis({ playerId, filters = DEFAULT_FILTERS }: Fir
   const zones = resp?.data?.zones ?? []
   const topZones = resp?.data?.top_zones ?? []
   const sampleSize = resp?.meta?.sample_size ?? 0
+  const showWinRate = zones.some((z) => typeof z.win_rate === 'number')
 
   if (zones.length === 0 || sampleSize === 0) {
     return <NoDataMessage sampleSize={sampleSize} minRequired={5} unit="リターン" />
@@ -79,7 +81,9 @@ export function FirstReturnAnalysis({ playerId, filters = DEFAULT_FILTERS }: Fir
               <th className="text-left py-1.5 pr-3">{t('analysis.first_return.zone')}</th>
               <th className="text-center py-1.5 pr-3">{t('auto.FirstReturnAnalysis.k1')}</th>
               <th className="text-center py-1.5 pr-3">{t('analysis.first_return.freq_rate')}</th>
-              <th className="text-right py-1.5 pr-2">{t('analysis.first_return.win_rate')}</th>
+              {showWinRate && (
+                <th className="text-right py-1.5 pr-2">{t('analysis.first_return.win_rate')}</th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -94,14 +98,18 @@ export function FirstReturnAnalysis({ playerId, filters = DEFAULT_FILTERS }: Fir
                   <td className="py-1.5 pr-3 text-center text-[var(--ss-t2)] num-cell ss-num">
                     {(z.freq_rate * 100).toFixed(1)}%
                   </td>
-                  <td className="py-1.5 pr-2 text-right num-cell ss-num">
-                    <span
-                      className="font-semibold"
-                      style={{ color: lightSafe(perfColor(z.win_rate), !isLight) }}
-                    >
-                      {(z.win_rate * 100).toFixed(1)}%
-                    </span>
-                  </td>
+                  {showWinRate && (
+                    <td className="py-1.5 pr-2 text-right num-cell ss-num">
+                      {typeof z.win_rate === 'number' && (
+                        <span
+                          className="font-semibold"
+                          style={{ color: lightSafe(perfColor(z.win_rate), !isLight) }}
+                        >
+                          {(z.win_rate * 100).toFixed(1)}%
+                        </span>
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))}
           </tbody>

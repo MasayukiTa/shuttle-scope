@@ -81,6 +81,20 @@ export function pruneConfirmed<T extends RallyKeyed>(server: T[], local: T[]): T
   return next.length === local.length ? local : next
 }
 
+/**
+ * サーバに同じ (set_id, rally_num) があり、内容が食い違う端末内ラリー (= pruneConfirmed が残す競合)。
+ * mergeRallies は同じキーでサーバ側だけを表示するので、競合した入力は画面に出ない。
+ * 画面はこの一覧で「競合がある」ことを示し、セット終了を止める理由を正しく説明する (監査 #951)。
+ */
+export function conflictingLocals<T extends RallyKeyed>(server: T[], local: T[]): T[] {
+  if (local.length === 0) return local
+  const byKey = new Map(server.map((r) => [rallyKey(r), r] as const))
+  return local.filter((r) => {
+    const s = byKey.get(rallyKey(r))
+    return s !== undefined && isConflictingRally(s, r)
+  })
+}
+
 interface SetLike {
   id: number
   set_num: number
