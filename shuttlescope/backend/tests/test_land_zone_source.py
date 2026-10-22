@@ -200,10 +200,20 @@ def test_put_resending_unchanged_cv_value_keeps_cv(client, db_session, rally):
 
 def test_put_clearing_land_zone_clears_source(client, db_session, rally):
     s = _stroke(db_session, rally, land_zone="NL", land_zone_source="human")
-    body = {"stroke_num": 1, "player": "player_a", "shot_type": "clear"}
+    # PUT は送った項目だけを更新する。値を消すには明示的に null を送る (送らなかった項目は
+    # 触らない。モバイル Pass3 が 5 項目だけ送る編集で他の項目を消さないため、監査 #789)。
+    body = {"stroke_num": 1, "player": "player_a", "shot_type": "clear", "land_zone": None}
     assert client.put(f"/api/strokes/{s.id}", json=body).status_code == 200
     db_session.refresh(s)
     assert (s.land_zone, s.land_zone_source) == (None, None)
+
+
+def test_put_omitting_land_zone_keeps_it(client, db_session, rally):
+    s = _stroke(db_session, rally, land_zone="NL", land_zone_source="human")
+    body = {"stroke_num": 1, "player": "player_a", "shot_type": "clear"}
+    assert client.put(f"/api/strokes/{s.id}", json=body).status_code == 200
+    db_session.refresh(s)
+    assert (s.land_zone, s.land_zone_source) == ("NL", "human")
 
 
 # ----------------------------------------------------------------- migration
