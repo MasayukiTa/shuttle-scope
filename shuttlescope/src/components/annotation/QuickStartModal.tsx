@@ -143,7 +143,7 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
     (opponentId !== null || opponentQuery.trim().length >= 1)
 
   const handleStart = () => {
-    if (!canStart || analystSide === '') return
+    if (!canStart) return
     const resolvedName = opponentId !== null ? opponentName : opponentQuery.trim()
     quickStart.mutate({
       player_a_id: Number(playerAId),
