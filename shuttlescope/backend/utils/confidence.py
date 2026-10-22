@@ -49,6 +49,39 @@ def wilson_ci(successes: int, n: int, z: float = 1.96) -> tuple[float, float]:
     return wilson_ci_from_rate(successes / n, n, z)
 
 
+# 両側 95% の t 値 (自由度 1..30)。30 を超えたら 1.96 を使う。
+_T975 = (
+    12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228,
+    2.201, 2.179, 2.160, 2.145, 2.131, 2.120, 2.110, 2.101, 2.093, 2.086,
+    2.080, 2.074, 2.069, 2.064, 2.060, 2.056, 2.052, 2.048, 2.045, 2.042,
+)
+
+
+def cluster_rate_ci(per_cluster: list[tuple[int, int]]) -> Optional[tuple[float, float]]:
+    """試合などのまとまり (クラスタ) ごとの (成功数, 件数) から、全体の比率の 95% 区間を返す。
+
+    防ぐ事象 (監査 #302): 同じ試合のラリーは互いに独立ではないのに、全ラリー数を n として
+    Wilson 区間を当てると、区間が実際より狭くなる。ここでは試合を単位とする比推定量の
+    クラスタ頑健な標準誤差 (残差の平方和 / (件数合計^2) * m/(m-1)) と t 分布で区間を作る。
+
+    点推定は呼び出し側の「全体の比率 = 成功数合計 / 件数合計」と一致する。
+    クラスタが 2 未満、または件数合計が 0 のときは区間を作れないので None。
+    """
+    clusters = [(w, n) for w, n in per_cluster if n > 0]
+    m = len(clusters)
+    total_n = sum(n for _, n in clusters)
+    if m < 2 or total_n == 0:
+        return None
+    p_hat = sum(w for w, _ in clusters) / total_n
+    ss = sum((w - p_hat * n) ** 2 for w, n in clusters)
+    se = math.sqrt(ss * m / (m - 1)) / total_n
+    t = _T975[m - 2] if m - 1 <= len(_T975) else 1.96
+    return (
+        round(max(0.0, p_hat - t * se), 4),
+        round(min(1.0, p_hat + t * se), 4),
+    )
+
+
 # 解析種別ごとの最小標本数。「中程度」はこの件数から、「高信頼」は 5 倍から。
 _MINIMUMS: dict[str, int] = {
     "descriptive_basic": 10,

@@ -4,6 +4,10 @@ import { useAuth } from '@/hooks/useAuth'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
+import { hasSufficientSample } from '@/utils/sampleGate'
+
+/** これ未満のストローク数ではランキングを出さない (監査 #438)。 */
+const RECOMMENDATION_MIN_STROKES = 5
 import { perfColor, N_GRAY, A_GOOD } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useTranslation } from 'react-i18next'
@@ -166,8 +170,8 @@ export function RecommendationRanking({ playerId }: RecommendationRankingProps) 
         推奨アドバイスランキング
       </h3>
 
-      {items.length === 0 ? (
-        <NoDataMessage sampleSize={sampleSize} minRequired={5} unit="ストローク" />
+      {items.length === 0 || !hasSufficientSample(sampleSize, RECOMMENDATION_MIN_STROKES) ? (
+        <NoDataMessage sampleSize={sampleSize} minRequired={RECOMMENDATION_MIN_STROKES} unit="ストローク" />
       ) : (
         <div className="space-y-2">
           <ConfidenceBadge sampleSize={sampleSize} tier="research" unit="strokes" />

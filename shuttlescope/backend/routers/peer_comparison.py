@@ -2,7 +2,7 @@
 
 セーフティガード:
   - router-level Depends(require_admin) で player/coach/analyst を 403。
-  - k-anonymity (MIN_COHORT_N) は analysis 層で enforce。
+  - 最小人数の下限 (MIN_COHORT_N) は analysis 層で enforce (k-匿名性の保証ではない)。
   - demo team は analysis 層で除外。
   - 全リクエストを security_events に audit log として記録。
 """

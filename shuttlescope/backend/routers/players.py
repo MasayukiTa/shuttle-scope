@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from backend.db.database import get_db
 from backend.db.models import Player, Match, User
 from backend.utils.auth import get_auth, require_analyst, AuthCtx
-from backend.utils.text_sanitize import reject_ctrl_and_bidi
+from backend.utils.text_sanitize import reject_ctrl_and_bidi, strip_invisible_format_chars
 from fastapi import HTTPException as _HTTPException
 
 
@@ -184,9 +184,11 @@ def _parse_json_list(raw: Optional[str]) -> list:
 def player_to_dict(p: Player, match_count: int = 0) -> dict:
     return {
         "id": p.id,
-        "name": p.name,
-        "name_en": p.name_en,
-        "team": p.team,
+        # 検証を入れる前に保存された名前に不可視・双方向制御文字が残っていても、
+        # 応答では取り除く (保存値は書き換えない。監査 #10)。
+        "name": strip_invisible_format_chars(p.name),
+        "name_en": strip_invisible_format_chars(p.name_en),
+        "team": strip_invisible_format_chars(p.team),
         "nationality": p.nationality,
         "dominant_hand": p.dominant_hand,
         "birth_year": p.birth_year,

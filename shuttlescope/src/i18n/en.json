@@ -789,7 +789,7 @@
     },
     "post_match": {
       "title": "Condition change around matches",
-      "description": "Compares the 7-day average before and after each match day. Positive = improvement, negative = decline.",
+      "description": "Compares the 7-day average before and after each match day. Blue = improvement, red = decline. CCS improves when it rises; F1-F5 and the Hooper Index improve when they fall (higher values mean a worse state).",
       "no_matches": "No matches registered",
       "no_data": "Not enough data",
       "before": "Before",

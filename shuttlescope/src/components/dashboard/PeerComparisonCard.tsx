@@ -2,7 +2,7 @@
 //
 // 安全性:
 //   - role !== 'admin' の場合は何も render しない (フロント側 hard gate)。
-//   - バックエンド側でも require_admin で 403、k-anonymity (N>=5)、demo 除外を強制。
+//   - バックエンド側でも require_admin で 403、最小人数の下限 (N>=5。匿名性の保証ではない)、demo 除外を強制。
 //   - 個別選手の値は返らず、p25/p50/p75/mean/sd の集計値のみが表示される。
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'

@@ -33,6 +33,7 @@ from backend.analysis.analysis_config import AnalysisConfig
 from backend.analysis.analysis_registry import get_analysis_meta
 from backend.analysis.response_meta import build_input_provenance
 from backend.analysis.markov import MarkovAnalyzer
+from backend.analysis.service_shots import truncate_at_stray_service
 from backend.analysis.shot_influence import ShotInfluenceAnalyzer
 from backend.analysis.bayesian_rt import BayesianRealTimeAnalyzer
 from backend.analysis.analysis_tiers import all_tiers_meta
@@ -562,7 +563,10 @@ def _rally_sequence_patterns_core(db: Session, player_id: int, ctx=None):
         is_win = rally.winner == role
         rally_strokes = strokes_by_rally[rally.id]
         # プレイヤーのストロークのみ抽出 (shot_type必須)
-        player_shots = [s.shot_type for s in rally_strokes if s.player == own_slot(role) and s.shot_type]
+        # サーブはラリー先頭の 1 打だけ。途中のサーブ系は 3 連パターンに入れない (監査 #330)。
+        player_shots = truncate_at_stray_service(
+            s.shot_type for s in rally_strokes if s.player == own_slot(role) and s.shot_type
+        )
         # 3連続パターン (ラリー内で重複する並びは 1 回だけ数える)
         keys_in_rally = {
             (player_shots[i], player_shots[i + 1], player_shots[i + 2])

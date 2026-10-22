@@ -16,6 +16,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from backend.analysis.analysis_population import split_analysis_population
 from backend.analysis.player_context import involves_player
 from backend.analysis.router_helpers import _get_player_matches, _player_role_in_match
 from backend.db.models import GameSet, Match, Rally, Stroke
@@ -100,7 +101,11 @@ def load_context(db: Session, player_id: int, filters: dict) -> AnalysisContext:
         rs_rally_id_set = {r.id for r in rs_rallies}
         rs_strokes = [s for s in strokes if s.rally_id in rs_rally_id_set]
     else:
-        rs_matches = db.query(Match).filter(involves_player(player_id)).all()
+        # 絞り込みなしでも解析母集団 (勝敗確定 かつ ラリー有り) は通す。
+        # 通さないと 0 ラリーの未実施試合が候補に混ざる (監査 #324)。
+        rs_matches, _rs_excluded = split_analysis_population(
+            db, db.query(Match).filter(involves_player(player_id)).all(),
+        )
         rs_match_ids = [m.id for m in rs_matches]
         rs_role_by_match = {
             m.id: _player_role_in_match(m, player_id) for m in rs_matches

@@ -4,6 +4,10 @@ import { apiGet } from '@/api/client'
 import { useReviewBundleSlice } from '@/contexts/ReviewBundleContext'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
+import { hasSufficientSample } from '@/utils/sampleGate'
+
+/** これ未満のラリー数ではパターンを出さない (監査 #438)。 */
+const RALLY_SEQUENCE_MIN_RALLIES = 20
 import { FilterScopeNote } from '@/components/dashboard/ResearchNotice'
 import type { FilterScopeMeta } from '@/utils/analysisFilterParams'
 import { WIN, LOSS, perfColor } from '@/styles/colors'
@@ -110,11 +114,14 @@ export function RallySequencePatterns({ playerId }: RallySequencePatternsProps) 
   const totalRallies = resp?.data?.total_rallies ?? 0
   const sampleSize = resp?.meta?.sample_size ?? 0
 
-  if (winSeqs.length === 0 && lossSeqs.length === 0) {
+  if (
+    (winSeqs.length === 0 && lossSeqs.length === 0)
+    || !hasSufficientSample(totalRallies, RALLY_SEQUENCE_MIN_RALLIES)
+  ) {
     return (
       <div className="bg-gray-800 rounded-ss-lg shadow-card p-4">
         <h3 className="text-sm font-semibold text-gray-200 mb-3">{t('auto.RallySequencePatterns.k3')}</h3>
-        <NoDataMessage sampleSize={totalRallies} minRequired={20} unit="ラリー" />
+        <NoDataMessage sampleSize={totalRallies} minRequired={RALLY_SEQUENCE_MIN_RALLIES} unit="ラリー" />
       </div>
     )
   }

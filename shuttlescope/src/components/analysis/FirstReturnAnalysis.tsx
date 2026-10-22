@@ -7,6 +7,10 @@ import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 import { perfColor, lightSafe, BAR } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { hasSufficientSample } from '@/utils/sampleGate'
+
+/** これ未満のリターン数では結果を出さない (監査 #438)。 */
+const FIRST_RETURN_MIN_SAMPLES = 5
 
 interface FirstReturnAnalysisProps {
   playerId: number
@@ -57,8 +61,8 @@ export function FirstReturnAnalysis({ playerId, filters = DEFAULT_FILTERS }: Fir
   const sampleSize = resp?.meta?.sample_size ?? 0
   const showWinRate = zones.some((z) => typeof z.win_rate === 'number')
 
-  if (zones.length === 0 || sampleSize === 0) {
-    return <NoDataMessage sampleSize={sampleSize} minRequired={5} unit="リターン" />
+  if (zones.length === 0 || !hasSufficientSample(sampleSize, FIRST_RETURN_MIN_SAMPLES)) {
+    return <NoDataMessage sampleSize={sampleSize} minRequired={FIRST_RETURN_MIN_SAMPLES} unit="リターン" />
   }
 
   return (

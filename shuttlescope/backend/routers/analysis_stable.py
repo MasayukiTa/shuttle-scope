@@ -19,6 +19,7 @@ from backend.analysis.router_helpers import (
 from backend.analysis.role_view import is_opponent_stroke, match_ids_by_slot, own_slot
 from backend.analysis.player_context import involves_player, player_wins_match
 from backend.analysis.analysis_config import AnalysisConfig
+from backend.analysis.service_shots import is_service_shot
 from backend.analysis.analysis_registry import get_analysis_meta
 from backend.analysis.response_meta import build_input_provenance
 
@@ -1426,11 +1427,11 @@ def _pre_loss_patterns_impl(
         # 最後（1球前）
         if len(player_strokes) >= 1:
             pre1[player_strokes[-1].shot_type] += 1
-        # 2球前
-        if len(player_strokes) >= 2:
+        # 2球前 (サーブはラリー中盤の球ではないので数えない: 監査 #38)
+        if len(player_strokes) >= 2 and not is_service_shot(player_strokes[-2].shot_type):
             pre2[player_strokes[-2].shot_type] += 1
         # 3球前
-        if len(player_strokes) >= 3:
+        if len(player_strokes) >= 3 and not is_service_shot(player_strokes[-3].shot_type):
             pre3[player_strokes[-3].shot_type] += 1
 
     def _build_ranked(counter: dict[str, int]) -> list[dict]:
@@ -1966,9 +1967,9 @@ def _pre_win_patterns_impl(
         provenance_strokes.extend(player_strokes)
         if len(player_strokes) >= 1:
             pre1[player_strokes[-1].shot_type] += 1
-        if len(player_strokes) >= 2:
+        if len(player_strokes) >= 2 and not is_service_shot(player_strokes[-2].shot_type):
             pre2[player_strokes[-2].shot_type] += 1
-        if len(player_strokes) >= 3:
+        if len(player_strokes) >= 3 and not is_service_shot(player_strokes[-3].shot_type):
             pre3[player_strokes[-3].shot_type] += 1
 
     def _build_ranked_win(counter: dict[str, int]) -> list[dict]:

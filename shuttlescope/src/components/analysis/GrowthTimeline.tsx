@@ -8,6 +8,10 @@ import {
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
+import { hasSufficientSample } from '@/utils/sampleGate'
+
+/** これ未満の試合数ではグラフを出さない (監査 #438)。 */
+const GROWTH_TIMELINE_MIN_MATCHES = 3
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { MIcon } from '@/components/common/MIcon'
 import { N_GRAY } from '@/styles/colors'
@@ -140,8 +144,8 @@ export function GrowthTimeline({
   const earlyPeriod = resp?.data?.trend_early_period ?? null
   const recentPeriod = resp?.data?.trend_recent_period ?? null
 
-  if (sampleSize === 0 || points.length === 0) {
-    return <NoDataMessage sampleSize={sampleSize} minRequired={3} unit="試合" />
+  if (!hasSufficientSample(sampleSize, GROWTH_TIMELINE_MIN_MATCHES) || points.length === 0) {
+    return <NoDataMessage sampleSize={sampleSize} minRequired={GROWTH_TIMELINE_MIN_MATCHES} unit="試合" />
   }
 
   const cfg = METRIC_CONFIG[metric]
