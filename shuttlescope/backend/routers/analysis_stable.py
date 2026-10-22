@@ -504,6 +504,11 @@ def get_shot_types(
     date_to: Optional[DateType] = Query(None),
     db: Session = Depends(get_db),
 ):
+    """ショット種類分布。
+
+    win_rate (= winner_end_rate) = 勝ちラリーで、そのショットが自分の最終打だった数 / そのショットの総打数。
+    /analysis/shot_win_loss の win_rate (= rally_win_rate、そのショットが出たラリーの勝率) とは別の指標。
+    """
     matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
     if not matches:
         return {"success": True, "data": []}
@@ -572,7 +577,16 @@ def get_shot_types(
     for shot_type, total in sorted(shot_total.items()):
         wins = shot_win_last.get(shot_type, 0)
         win_rate = round(wins / total, 3) if total else 0.0
-        result.append({"shot_type": shot_type, "count": total, "win_rate": win_rate})
+        # win_rate は「勝ちラリーの最終打だった割合 (決め球率)」で、shot_win_loss の win_rate
+        # (そのショットが出たラリーの勝率) とは別の指標。互換のため win_rate は残し、
+        # 同じ値を意味が分かる名前でも返す (監査 #156 / #162)。
+        result.append({
+            "shot_type": shot_type,
+            "count": total,
+            "win_rate": win_rate,
+            "winner_end_count": wins,
+            "winner_end_rate": win_rate,
+        })
 
     return {"success": True, "data": result}
 
@@ -799,6 +813,8 @@ def get_shot_win_loss(
         win_count = len(shot_win_rallies[shot_type])
         lose_count = total - win_count
         win_rate = round(win_count / total, 3) if total else 0.0
+        # win_rate は「そのショットが出たラリーのうち自分が取った割合」。shot_types の win_rate
+        # (決め球率) とは分母も分子も違う。同じ値を意味が分かる名前でも返す (監査 #156)。
         result.append({
             "shot_type": shot_type,
             "shot_type_ja": SHOT_TYPE_JA.get(shot_type, shot_type),
@@ -806,6 +822,7 @@ def get_shot_win_loss(
             "win_count": win_count,
             "lose_count": lose_count,
             "win_rate": win_rate,
+            "rally_win_rate": win_rate,
         })
 
     confidence = check_confidence("win_loss_comparison", total_rallies)

@@ -91,7 +91,11 @@ function PartnerComparison({ playerId }: { playerId: number }) {
           >
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-[var(--ss-t1)]">{p.partner_name}</span>
-              <span className="text-xs text-[var(--ss-t3)]">{t('doubles_analysis.match_count', { n: p.match_count })}</span>
+              <span className="flex items-center gap-2">
+                <span className="text-xs text-[var(--ss-t3)]">{t('doubles_analysis.match_count', { n: p.match_count })}</span>
+                {/* 信頼度はそのパートナーとの試合数で判定する */}
+                <ConfidenceBadge sampleSize={p.match_count} unit="matches" compact />
+              </span>
             </div>
             <div className="grid grid-cols-3 gap-2 text-center">
               <div>

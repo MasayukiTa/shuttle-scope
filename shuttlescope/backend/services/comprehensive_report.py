@@ -154,6 +154,14 @@ def gather_player_report(
         "pre_loss_patterns", get_pre_loss_patterns,
         player_id=player_id, db=db, **_common,
     )
+    # 振り返り画面の「ラリー3連ショットパターン」と同じ値を、完全レポートから照合できるようにする
+    # (pre_win_patterns は位置ごとの単独ショットの分布しか持たず、3連の値を再現できなかった。監査 #157)。
+    # この解析は絞り込み条件を取らず、全試合で計算する。
+    from backend.routers.analysis_research import get_rally_sequence_patterns
+    sections["rally_sequence_patterns"] = _safe_call(
+        "rally_sequence_patterns", get_rally_sequence_patterns,
+        player_id=player_id, db=db,
+    )
 
     # ── 2. Advanced (rally length / pressure / transition) ──────────
     from backend.routers.analysis_advanced import (

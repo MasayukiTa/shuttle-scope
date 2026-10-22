@@ -247,3 +247,74 @@ class TestSpatialDensity:
         assert "grid" in data
         assert "grid_width" in data
         assert "grid_height" in data
+
+
+class TestRallySequenceCountsRallies:
+    """監査 #40: 3連パターンの件数は「そのパターンを含むラリー数」で、同一ラリーの重複を数えない。"""
+
+    def _client_with_repeating_rallies(self, db_session, n_rallies):
+        pa = _make_player(db_session, "連打選手")
+        opp = _make_player(db_session, "連打相手")
+        m = _make_match(db_session, pa, opp, result="win")
+        gs = GameSet(match_id=m.id, set_num=1, winner="player_a", score_a=21, score_b=10)
+        db_session.add(gs)
+        db_session.flush()
+        for i in range(1, n_rallies + 1):
+            r = Rally(set_id=gs.id, rally_num=i, server="player_a", winner="player_a",
+                      end_type="forced_error", rally_length=12,
+                      score_a_after=i, score_b_after=0)
+            db_session.add(r)
+            db_session.flush()
+            # 自分(player_a)は 6 球すべて clear: (clear, clear, clear) が 1 ラリー内に 4 回出る
+            for j in range(1, 13):
+                db_session.add(Stroke(
+                    rally_id=r.id, stroke_num=j,
+                    player="player_a" if j % 2 == 1 else "player_b",
+                    shot_type="clear", hit_zone="BC", land_zone="NL",
+                ))
+        db_session.commit()
+        app.dependency_overrides[get_db] = lambda: db_session
+        app.dependency_overrides[get_auth] = _admin_auth_ctx
+        app.dependency_overrides[require_admin_or_analyst] = _admin_auth_ctx
+        app.dependency_overrides[require_non_player] = _admin_auth_ctx
+        return TestClient(app), pa.id
+
+    def test_repeated_sequence_in_one_rally_counts_once(self, db_session):
+        client, pid = self._client_with_repeating_rallies(db_session, 6)
+        try:
+            data = client.get(f"/api/analysis/rally_sequence_patterns?player_id={pid}").json()["data"]
+        finally:
+            app.dependency_overrides.clear()
+        entries = data["win_sequences"] + data["loss_sequences"]
+        assert len(entries) == 1
+        assert entries[0]["sequence"] == ["clear", "clear", "clear"]
+        assert entries[0]["count"] == 6  # 24 ではなくラリー数
+        assert data["eligible_rallies"] == 6
+        assert data["baseline_win_rate"] == 1.0
+
+    def test_entries_carry_interval_and_n(self, research_client):
+        client, pid, *_ = research_client
+        data = client.get(f"/api/analysis/rally_sequence_patterns?player_id={pid}").json()["data"]
+        for e in data["win_sequences"] + data["loss_sequences"]:
+            assert e["win_count"] <= e["count"] <= data["eligible_rallies"]
+            assert e["ci_low"] <= e["win_rate"] <= e["ci_high"]
+
+
+class TestWinRateFieldsAreNamedByMeaning:
+    """監査 #156: shot_types と shot_win_loss の win_rate は別の指標。意味の分かる名前でも返す。"""
+
+    def test_shot_types_has_winner_end_fields(self, research_client):
+        client, pid, *_ = research_client
+        rows = client.get(f"/api/analysis/shot_types?player_id={pid}").json()["data"]
+        assert rows
+        for r in rows:
+            assert r["winner_end_rate"] == r["win_rate"]
+            assert r["winner_end_count"] <= r["count"]
+
+    def test_shot_win_loss_has_rally_win_rate(self, research_client):
+        client, pid, *_ = research_client
+        rows = client.get(f"/api/analysis/shot_win_loss?player_id={pid}").json()["data"]
+        assert rows
+        for r in rows:
+            assert r["rally_win_rate"] == r["win_rate"]
+            assert r["win_count"] <= r["total"]

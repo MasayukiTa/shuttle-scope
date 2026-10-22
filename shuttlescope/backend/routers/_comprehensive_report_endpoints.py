@@ -248,6 +248,7 @@ _SECTION_LABELS = [
     ("opponent_stats", "14. 対戦相手別統計"),
     ("temporal_performance", "15. 時系列パフォーマンス"),
     ("fatigue_risk", "16. 疲労リスク (coach/analyst のみ)"),
+    ("rally_sequence_patterns", "17. ラリー3連ショットパターン (全試合・絞り込みなし)"),
 ]
 
 

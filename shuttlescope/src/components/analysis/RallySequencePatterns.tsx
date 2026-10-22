@@ -17,6 +17,8 @@ interface SequenceEntry {
   count: number
   win_rate: number
   win_count: number
+  ci_low?: number
+  ci_high?: number
 }
 
 interface Response {
@@ -25,6 +27,8 @@ interface Response {
     win_sequences: SequenceEntry[]
     loss_sequences: SequenceEntry[]
     total_rallies: number
+    eligible_rallies?: number
+    baseline_win_rate?: number | null
   }
   meta: { sample_size: number; confidence: { level: string; stars: string; label: string } }
 }
@@ -68,6 +72,11 @@ function SequenceList({ sequences, accent, title }: { sequences: SequenceEntry[]
               <div className="flex gap-3 text-xs text-gray-400 pl-1">
                 <span className="ss-num">{t('auto._shared.n_times', { n: s.count })}</span>
                 <span className="font-mono ss-num">{Math.round(s.win_rate * 100)}%</span>
+                {typeof s.ci_low === 'number' && typeof s.ci_high === 'number' && (
+                  <span className="font-mono ss-num text-gray-500">
+                    {t('auto.RallySequencePatterns.interval', { low: Math.round(s.ci_low * 100), high: Math.round(s.ci_high * 100) })}
+                  </span>
+                )}
               </div>
             </div>
           ))}
@@ -113,6 +122,15 @@ export function RallySequencePatterns({ playerId }: RallySequencePatternsProps) 
       <h3 className="text-sm font-semibold text-gray-200 mb-1">{t('auto.RallySequencePatterns.k3')}</h3>
       <p className="text-xs text-gray-500 mb-3 ss-num">{t('auto.RallySequencePatterns.analyzed_rallies', { n: totalRallies })}</p>
       <ConfidenceBadge sampleSize={sampleSize} unit="strokes" />
+      <p className="text-[11px] text-gray-500 mt-1">{t('auto.RallySequencePatterns.unit_note')}</p>
+      {typeof resp?.data?.baseline_win_rate === 'number' && (
+        <p className="text-[11px] text-gray-400 ss-num">
+          {t('auto.RallySequencePatterns.baseline', {
+            rate: Math.round(resp.data.baseline_win_rate * 100),
+            n: resp.data.eligible_rallies ?? 0,
+          })}
+        </p>
+      )}
       <div className="flex gap-4 mt-3">
         <SequenceList sequences={winSeqs} accent={WIN} title={t('auto.RallySequencePatterns.k4')} />
         <div className="w-px bg-gray-700 self-stretch" />

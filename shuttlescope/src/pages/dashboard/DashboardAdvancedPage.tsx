@@ -26,6 +26,7 @@ import { PairPlaystyle } from '@/components/analysis/PairPlaystyle'
 import { PairSynergyCard } from '@/components/analysis/PairSynergyCard'
 import { WinLossComparison } from '@/components/analysis/WinLossComparison'
 import { TournamentComparison } from '@/components/analysis/TournamentComparison'
+import { FilterNotAppliedNote } from '@/components/common/FilterNotAppliedNote'
 import { EvidenceBadge, EvidenceLevel } from '@/components/dashboard/EvidenceBadge'
 import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { HoldGate } from '@/components/dashboard/HoldGate'
@@ -333,6 +334,7 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
               )}
               <div className={`${card} rounded-ss-lg shadow-card p-4`}>
                 <SectionTitle>{t('analysis.opponent_stats.title')}</SectionTitle>
+                <FilterNotAppliedNote filters={filters} />
                 <OpponentStats playerId={playerId} />
               </div>
               <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-2`}>
@@ -367,6 +369,7 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
         <ErrorBoundary>
           <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
           <div className="space-y-5">
+            <FilterNotAppliedNote filters={filters} />
             <DoublesAnalysis playerId={playerId} allMatches={matches} />
 
             {/* ペアモードトグル */}
