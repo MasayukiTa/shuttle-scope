@@ -62,6 +62,10 @@ PLAYER_RESPONSE_RULES: tuple[PlayerResponseRule, ...] = (
         neutral={"win_by_end_type": {}},
     ),
     _rule("analysis.shot_types", r"/api/analysis/shot_types", _WIN_RATE_KEYS),
+    # ファーストリターンはゾーンごとの win_rate を返す (件数 count / 出現率 freq_rate は残す)。
+    # 包括レポートの first_return 節も同じ規則を参照する (player_privacy)。監査 #949。
+    _rule("analysis.first_return_analysis", r"/api/analysis/first_return_analysis",
+          _WIN_RATE_KEYS),
     _rule("analysis.set_comparison", r"/api/analysis/set_comparison", _WIN_RATE_KEYS),
     _rule("analysis.tournament_level_comparison",
           r"/api/analysis/tournament_level_comparison", _WIN_RATE_KEYS),

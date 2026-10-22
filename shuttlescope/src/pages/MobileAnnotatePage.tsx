@@ -77,6 +77,7 @@ import { Pass3ShotDetail } from '@/components/mobileAnnotate/Pass3ShotDetail'
 import { startBackgroundFlush, getStatus, retryAllManual, enqueue, cancelQueued, flushNow } from '@/utils/mobileAnnotateQueue'
 import {
   applyStrokeOverrides,
+  conflictingLocals,
   decideUndoPending,
   mergeRallies,
   mergeStrokes,
@@ -414,6 +415,13 @@ export function MobileAnnotatePage() {
     () => mergeRallies(serverRallies, localRallies),
     [serverRallies, localRallies],
   )
+  // 別端末が先に同じ (set_id, rally_num) を別の内容で保存した競合 (バックエンドは 409)。
+  // mergeRallies はサーバ側だけを表示するので、競合した端末内の入力は一覧に出ない。
+  // 黙って残すと「保存中」のままセット終了が止まるので、競合として明示する (監査 #951)。
+  const conflictRallies = useMemo(
+    () => conflictingLocals(serverRallies, localRallies),
+    [serverRallies, localRallies],
+  )
 
   // 最初のラリーのサーバ (前ラリーの勝者 / 前セットの勝者 / 試合の initial_server)。
   const matchInitialServer = typeof match?.initial_server === 'string' ? match.initial_server : null
@@ -503,6 +511,11 @@ export function MobileAnnotatePage() {
       setMatchOverDismissed(false)
       return
     }
+    // 競合した入力が残っている間は、「送信待ち」ではなく競合として止める (監査 #951)。
+    if (conflictRallies.length > 0) {
+      setNextSetState({ busy: false, error: t('auto.MobileAnnotatePage.set_end_conflict') })
+      return
+    }
     // 最終ラリーが未送信のまま次のセットへ進まない (監査 #772)。
     // 送信が終わる前に進むと、失敗が続いた場合に前のセットがサーバ上で未決着になる。
     if (hasPendingLocal || queueStatus.pending > 0) {
@@ -544,6 +557,22 @@ export function MobileAnnotatePage() {
       return false
     }
     return true
+  }
+
+  // 競合した端末内の入力を捨て、サーバに保存済みの内容を採用する。
+  // 送信キューの item も取り下げる (残すと再送のたびに 409 になる)。
+  // 送信中で取り下げられないものは画面にも残し、あとでもう一度押せるようにする。
+  // 「自分の入力でサーバを上書きする」は別端末の記録を消すので、ここでは行わない。
+  const adoptServerForConflicts = async () => {
+    const dropped = new Set<string>()
+    for (const r of conflictRallies) {
+      const result = await cancelQueued(r.client_uuid)
+      if (result !== 'inflight') dropped.add(rallyKey(r))
+    }
+    if (dropped.size < conflictRallies.length) setUndoNotice(t('auto.MobileAnnotatePage.undo_busy'))
+    if (dropped.size === 0) return
+    setLocalRallies((prev) => prev.filter((r) => !dropped.has(rallyKey(r))))
+    setNextSetState({ busy: false, error: null })
   }
 
   const ensureSet = async (): Promise<SetInfo | null> => {
@@ -939,6 +968,18 @@ export function MobileAnnotatePage() {
             >
               <MIcon name="warning" size={12} />
               {queueStatus.manualRetry}
+            </button>
+          )}
+          {conflictRallies.length > 0 && (
+            <button
+              type="button"
+              onClick={() => void adoptServerForConflicts()}
+              className="flex items-center gap-1 text-[10px] px-1.5 py-1 rounded shadow ss-overlay-chip-danger"
+              title={t('auto.MobileAnnotatePage.conflict_adopt_server', { n: conflictRallies.length })}
+              aria-label={t('auto.MobileAnnotatePage.conflict_adopt_server', { n: conflictRallies.length })}
+            >
+              <MIcon name="sync_problem" size={12} />
+              {conflictRallies.length}
             </button>
           )}
         </div>

@@ -4115,6 +4115,11 @@
       "auto_start": "Auto-start Ray when the app launches"
     },
     "DateRangeFilter": {
+      "preset_1m": "1 month",
+      "preset_3m": "3 months",
+      "preset_6m": "6 months",
+      "preset_1y": "1 year",
+      "preset_all": "All time",
       "custom_range": "Custom range",
       "range_sep": "to",
       "range_reversed": "The start date must be on or before the end date"
@@ -5232,6 +5237,8 @@
       "k4": "Back",
       "landscape_only": "Mobile annotation is landscape-only.",
       "set_end_pending": "Some rallies are not sent yet. End the set after they are sent.",
+      "set_end_conflict": "Another device already saved a different result for the same rally number. Tap the conflict icon at the top left to keep the saved result, then end the set.",
+      "conflict_adopt_server": "{{n}} rally input conflicts with a saved rally — tap to discard yours and keep the saved one",
       "undo_unconfirmed": "Could not confirm that the undo reached the server. The screen is unchanged.",
       "match_saving_pending": "Saving",
       "rotate_device": "Please rotate the device.",

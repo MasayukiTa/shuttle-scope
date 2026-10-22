@@ -49,6 +49,43 @@ describe('local date helpers in Asia/Tokyo', () => {
   })
 })
 
+describe('calendar-month subtraction clamps to the end of the target month (audit #952)', () => {
+  const at = (y: number, m: number, d: number) => new Date(y, m - 1, d, 12, 0, 0)
+
+  it('Mar 31 minus 1 month is Feb 28, not Mar 3', () => {
+    expect(localDateMonthsAgo(1, at(2026, 3, 31))).toBe('2026-02-28')
+    expect(presetFromDate('1m', at(2026, 3, 31))).toBe('2026-02-28')
+  })
+
+  it('Mar 31 minus 1 month in a leap year is Feb 29', () => {
+    expect(localDateMonthsAgo(1, at(2028, 3, 31))).toBe('2028-02-29')
+  })
+
+  it('Aug 31 minus 6 months is Feb 28, and minus 3 months is May 31', () => {
+    expect(localDateMonthsAgo(6, at(2026, 8, 31))).toBe('2026-02-28')
+    expect(presetFromDate('6m', at(2026, 8, 31))).toBe('2026-02-28')
+    expect(localDateMonthsAgo(3, at(2026, 8, 31))).toBe('2026-05-31')
+  })
+
+  it('Nov 30 minus 3 months keeps Aug 30 (the day exists)', () => {
+    expect(localDateMonthsAgo(3, at(2026, 11, 30))).toBe('2026-08-30')
+  })
+
+  it('Jan 31 minus 1 month is Dec 31 of the previous year', () => {
+    expect(localDateMonthsAgo(1, at(2026, 1, 31))).toBe('2025-12-31')
+  })
+
+  it('Feb 29 minus 1 year is Feb 28 (no Mar 1 overflow)', () => {
+    expect(localDateYearsAgo(1, at(2028, 2, 29))).toBe('2027-02-28')
+    expect(presetFromDate('1y', at(2028, 2, 29))).toBe('2027-02-28')
+    expect(localDateYearsAgo(4, at(2028, 2, 29))).toBe('2024-02-29')
+  })
+
+  it('Feb 29 minus 12 months equals minus 1 year', () => {
+    expect(localDateMonthsAgo(12, at(2028, 2, 29))).toBe(localDateYearsAgo(1, at(2028, 2, 29)))
+  })
+})
+
 describe('isReversedRange', () => {
   it('rejects only a start date after the end date', () => {
     expect(isReversedRange('2026-03-01', '2026-01-01')).toBe(true)

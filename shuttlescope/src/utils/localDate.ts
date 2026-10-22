@@ -25,14 +25,20 @@ export function localDateDaysAgo(days: number, now: Date = new Date()): string {
   return formatLocalDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - days))
 }
 
-/** ローカル暦で months か月前の同じ日。存在しない日 (3/31 の 1 か月前など) は Date の繰り上げに従う。 */
+/**
+ * ローカル暦で months か月前の同じ日。移動先の月にその日が無いとき (3/31 の 1 か月前など) は
+ * 移動先の月末へ丸める。`new Date(y, m - n, d)` のままだと翌月へ繰り上がり、
+ * 期間が数日短くなって分析の母集団がずれる (監査 #952)。
+ */
 export function localDateMonthsAgo(months: number, now: Date = new Date()): string {
-  return formatLocalDate(new Date(now.getFullYear(), now.getMonth() - months, now.getDate()))
+  const first = new Date(now.getFullYear(), now.getMonth() - months, 1)
+  const lastDay = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate()
+  return formatLocalDate(new Date(first.getFullYear(), first.getMonth(), Math.min(now.getDate(), lastDay)))
 }
 
-/** ローカル暦で years 年前の同じ日。 */
+/** ローカル暦で years 年前の同じ日。うるう日 (2/29) の 1 年前は 2/28 に丸める。 */
 export function localDateYearsAgo(years: number, now: Date = new Date()): string {
-  return formatLocalDate(new Date(now.getFullYear() - years, now.getMonth(), now.getDate()))
+  return localDateMonthsAgo(years * 12, now)
 }
 
 export type RangePreset = '1m' | '3m' | '6m' | '1y' | 'all'
