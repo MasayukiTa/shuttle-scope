@@ -138,3 +138,70 @@ def test_live_suggestions_confidence_filter_no_data(db_session):
         assert body["items"] == []
     finally:
         app.dependency_overrides.pop(get_auth, None)
+
+
+def _seed_unsuggestible_shots_win(db_session):
+    """long_service / other を打ったラリーは勝ち、clear を打ったラリーは負け。
+
+    long_service と other は lift が最大になるが、打ち手が選べる行為ではない。
+    """
+    p_a = Player(name="A")
+    p_b = Player(name="B")
+    db_session.add_all([p_a, p_b])
+    db_session.flush()
+    m = Match(
+        tournament="T", tournament_level="国内", round="R16",
+        date=date(2026, 4, 16), format="singles",
+        player_a_id=p_a.id, player_b_id=p_b.id, result="win",
+    )
+    db_session.add(m)
+    db_session.flush()
+    gs = GameSet(match_id=m.id, set_num=1, score_a=21, score_b=15)
+    db_session.add(gs)
+    db_session.flush()
+    for i in range(1, 11):
+        r = Rally(set_id=gs.id, rally_num=i, server="player_a",
+                  winner="player_a", end_type="forced_error",
+                  rally_length=3, is_skipped=False)
+        db_session.add(r)
+        db_session.flush()
+        db_session.add_all([
+            Stroke(rally_id=r.id, stroke_num=1, player="player_a", shot_type="long_service"),
+            Stroke(rally_id=r.id, stroke_num=2, player="player_b", shot_type="clear"),
+            Stroke(rally_id=r.id, stroke_num=3, player="player_a", shot_type="other"),
+        ])
+    for i in range(11, 21):
+        r = Rally(set_id=gs.id, rally_num=i, server="player_a",
+                  winner="player_b", end_type="forced_error",
+                  rally_length=3, is_skipped=False)
+        db_session.add(r)
+        db_session.flush()
+        db_session.add_all([
+            Stroke(rally_id=r.id, stroke_num=1, player="player_a", shot_type="clear"),
+            Stroke(rally_id=r.id, stroke_num=2, player="player_b", shot_type="smash"),
+            Stroke(rally_id=r.id, stroke_num=3, player="player_a", shot_type="clear"),
+        ])
+    db_session.commit()
+    return p_a.id, m.id
+
+
+def test_live_suggestions_skip_unsuggestible_shots_and_use_plain_japanese(db_session):
+    pid, mid = _seed_unsuggestible_shots_win(db_session)
+    app.dependency_overrides[get_auth] = _coach
+    try:
+        client = TestClient(app, base_url="http://localhost")
+        resp = client.get(
+            "/api/analysis/live_suggestions",
+            params={"player_id": pid, "match_id": mid},
+        )
+        assert resp.status_code == 200, resp.text
+        items = resp.json()["items"]
+        ids = [it["id"] for it in items]
+        assert ids == ["swap_clear"]
+        headline = items[0]["headline_ja"]
+        assert "clear" not in headline
+        assert "_" not in headline
+        assert "クリア" in headline
+        assert "10ラリー中0ラリー" in headline
+    finally:
+        app.dependency_overrides.pop(get_auth, None)

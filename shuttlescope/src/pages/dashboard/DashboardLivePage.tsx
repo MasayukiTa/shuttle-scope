@@ -212,10 +212,15 @@ export function DashboardLivePage({ playerId, matches }: Props) {
           )}
 
           {/* 推奨アドバイスランキング (ベンチモード時は非表示で集中度UP) */}
-          {/* research 層の解析なので player には出さない */}
+          {/* research 層の解析なので player には出さない。
+              選択中の試合ではなく選手の全期間の記録から出すので、速報と取り違えないよう
+              注記と区切り線で分ける。 */}
           {!benchMode && (
             <RoleGuard allowedRoles={['analyst', 'coach']} fallback={null}>
-              <RecommendationRanking playerId={playerId} />
+              <div className={`space-y-2 border-t pt-4 ${isLight ? 'border-gray-200' : 'border-gray-700'}`}>
+                <p className={`text-xs ${textMuted}`}>{t('live.overall_trend_note')}</p>
+                <RecommendationRanking playerId={playerId} />
+              </div>
             </RoleGuard>
           )}
 
