@@ -47,14 +47,15 @@ function StatRow({ label, winVal, lossVal }: { label: string; winVal: string; lo
 function ComparisonContent({ playerId, filters = DEFAULT_FILTERS }: { playerId: number; filters?: AnalysisFilters }) {
   const { t } = useTranslation()
 
+  // このカードは勝ち試合と負け試合を並べて比べるので、結果(勝ち/負け)の絞り込みは送らない。
+  // 送ると比較群の片側が 0 試合になり、比較として成り立たない(監査 #150)。
   const fp = {
-    ...(filters.result !== 'all' ? { result: filters.result } : {}),
     ...(filters.tournamentLevel ? { tournament_level: filters.tournamentLevel } : {}),
     ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
     ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
   }
   const { data: resp, isLoading } = useQuery({
-    queryKey: ['analysis-win-loss-comparison', playerId, filters],
+    queryKey: ['analysis-win-loss-comparison', playerId, filters.tournamentLevel, filters.dateFrom, filters.dateTo],
     queryFn: () =>
       apiGet<WinLossResponse>('/analysis/win_loss_comparison', { player_id: playerId, ...fp }),
     enabled: !!playerId,
@@ -78,6 +79,11 @@ function ComparisonContent({ playerId, filters = DEFAULT_FILTERS }: { playerId: 
   return (
     <div className="space-y-3">
       <ConfidenceBadge sampleSize={sampleSize} unit="matches" />
+      {filters.result !== 'all' && (
+        <p className="text-[11px] text-gray-400" data-testid="win-loss-result-filter-note">
+          {t('analysis.win_loss_ignores_result_filter')}
+        </p>
+      )}
 
       <div className="overflow-x-auto">
         <table className="w-full text-sm">

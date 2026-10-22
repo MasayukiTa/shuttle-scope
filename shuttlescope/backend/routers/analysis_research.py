@@ -19,7 +19,7 @@ from backend.utils.auth import (
     require_admin_or_analyst, require_query_scope, get_auth, apply_match_team_scope, AuthCtx,
 )
 from backend.db.models import Match, GameSet, Rally, Stroke, Player, PreMatchObservation
-from backend.utils.confidence import check_confidence, VERDICT_MIN_SAMPLE
+from backend.utils.confidence import check_confidence, VERDICT_MIN_SAMPLE, wilson_ci
 from backend.analysis.router_helpers import (
     SHOT_TYPE_JA, SHOT_KEYS, SHOT_LABELS_JA, END_TYPE_JA, _shot_ja,
     _player_role_in_match, _get_player_matches, _fetch_matches_sets_rallies,
@@ -532,7 +532,11 @@ def _rally_sequence_patterns_impl(db: Session, player_id: int, ctx=None):
         strokes_by_rally[s.rally_id].append(s)
 
     # トライグラム集計: key=(t1,t2,t3) -> {"count":N,"wins":N}
+    # count / wins の単位は「そのパターンを含むラリー数」。同じラリーの中で同じ並びが
+    # 何度出ても 1 回と数える (長いラリーが 1 本で件数と勝率を水増ししないため。監査 #40)。
     trigram_stats: dict[tuple, dict] = defaultdict(lambda: {"count": 0, "wins": 0})
+    eligible_rallies = 0  # 自分の打球が 3 球以上あり、パターンを取り出せたラリー
+    eligible_wins = 0
 
     for rally in rallies:
         mid = set_to_match.get(rally.set_id)
@@ -545,9 +549,16 @@ def _rally_sequence_patterns_impl(db: Session, player_id: int, ctx=None):
         rally_strokes = strokes_by_rally[rally.id]
         # プレイヤーのストロークのみ抽出 (shot_type必須)
         player_shots = [s.shot_type for s in rally_strokes if s.player == own_slot(role) and s.shot_type]
-        # 3連続パターン
-        for i in range(len(player_shots) - 2):
-            key = (player_shots[i], player_shots[i + 1], player_shots[i + 2])
+        # 3連続パターン (ラリー内で重複する並びは 1 回だけ数える)
+        keys_in_rally = {
+            (player_shots[i], player_shots[i + 1], player_shots[i + 2])
+            for i in range(len(player_shots) - 2)
+        }
+        if keys_in_rally:
+            eligible_rallies += 1
+            if is_win:
+                eligible_wins += 1
+        for key in keys_in_rally:
             trigram_stats[key]["count"] += 1
             if is_win:
                 trigram_stats[key]["wins"] += 1
@@ -558,17 +569,26 @@ def _rally_sequence_patterns_impl(db: Session, player_id: int, ctx=None):
 
     def to_entry(key, vals):
         wr = round(vals["wins"] / vals["count"], 3)
+        ci_low, ci_high = wilson_ci(vals["wins"], vals["count"])
         return {
             "sequence": list(key),
             "labels": [SHOT_TYPE_JA.get(t, t) for t in key],
+            # count = そのパターンを含むラリー数 (打球数ではない)。win_rate = そのうち自分が取ったラリーの割合
             "count": vals["count"],
             "win_rate": wr,
             "win_count": vals["wins"],
+            "ci_low": ci_low,
+            "ci_high": ci_high,
         }
 
     entries = [to_entry(k, v) for k, v in filtered.items()]
-    win_seqs = sorted([e for e in entries if e["win_rate"] >= 0.5], key=lambda x: -x["win_rate"])[:8]
-    loss_seqs = sorted([e for e in entries if e["win_rate"] < 0.5], key=lambda x: x["win_rate"])[:8]
+    # 並び順は点推定でなく区間で決める。勝ち側は下限が高い順、負け側は上限が低い順。
+    # 100% でも件数が少なければ下限が低く、上位に来ない。
+    win_seqs = sorted([e for e in entries if e["win_rate"] >= 0.5], key=lambda x: (-x["ci_low"], -x["count"]))[:8]
+    loss_seqs = sorted([e for e in entries if e["win_rate"] < 0.5], key=lambda x: (x["ci_high"], -x["count"]))[:8]
+    # 比較の基準: パターンを取り出せたラリー全体の勝率。基準そのものが極端なら
+    # 個々のパターンの勝率は差を表さないので、画面で並べて見せる。
+    baseline_win_rate = round(eligible_wins / eligible_rallies, 3) if eligible_rallies > 0 else None
 
     total_rallies = len(rallies)
     total_strokes = sum(len(v) for v in strokes_by_rally.values())
@@ -578,6 +598,8 @@ def _rally_sequence_patterns_impl(db: Session, player_id: int, ctx=None):
             "win_sequences": win_seqs,
             "loss_sequences": loss_seqs,
             "total_rallies": total_rallies,
+            "eligible_rallies": eligible_rallies,
+            "baseline_win_rate": baseline_win_rate,
         },
         "meta": _with_input_provenance(
             {"sample_size": total_strokes, "confidence": _research_confidence("descriptive_basic", total_strokes)},
@@ -1726,7 +1748,7 @@ def get_exploitability(
     exploitability_values = [s["exploitability"] for s in states_ok]
     mean_exploitability: Optional[float] = None
     most_exploitable: Optional[dict] = None
-    top_prescription: Optional[dict] = None
+    largest_gap: Optional[dict] = None
 
     if exploitability_values:
         mean_exploitability = round(sum(exploitability_values) / len(exploitability_values), 4)
@@ -1735,11 +1757,13 @@ def get_exploitability(
             "state_key": top_state["state_key"],
             "exploitability": top_state["exploitability"],
         }
-        # top prescription: 最もエクスプロイタビリティが高い状態で最大シフトが必要な行動
+        # largest_gap: 最もエクスプロイタビリティが高い状態で、均衡との差が最大の行動。
+        # この解析は推奨非対応 (research / exploratory) なので観察値として返し、
+        # 「増やす / 減らす」という処方の形にはしない (監査 #141)。
         best_shift = top_state.get("best_shift", {})
         if best_shift:
             top_action = max(best_shift, key=lambda a: abs(best_shift[a]))
-            top_prescription = {
+            largest_gap = {
                 "state_key": top_state["state_key"],
                 "action": top_action,
                 "shift": best_shift[top_action],
@@ -1756,7 +1780,7 @@ def get_exploitability(
                 "states_insufficient": len(states_insufficient),
                 "mean_exploitability": mean_exploitability,
                 "most_exploitable": most_exploitable,
-                "top_prescription": top_prescription,
+                "largest_gap": largest_gap,
             },
         },
         "meta": _with_input_provenance(

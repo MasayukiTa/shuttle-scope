@@ -1777,6 +1777,8 @@
     "no_data": "Insufficient data (available after annotation)",
     "loading": "Loading...",
     "restricted": "This content is for analysts and coaches",
+    "filter_not_applied": "This card ignores the filters above and uses all matches.",
+    "win_loss_ignores_result_filter": "The result filter is not applied here, because the card compares wins with losses. Tournament level and dates are applied.",
     "player_types": {
       "short_game_specialist": "Short-game specialist",
       "balanced": "Balanced",
@@ -3536,7 +3538,10 @@
       "k3": "Rally 3-shot patterns",
       "k4": "Winning patterns",
       "k5": "Losing patterns",
-      "analyzed_rallies": "Rallies analyzed: {{n}}"
+      "analyzed_rallies": "Rallies analyzed: {{n}}",
+      "interval": "interval {{low}}-{{high}}%",
+      "unit_note": "Counts and rates are per rally that contains the sequence (a sequence repeated in one rally counts once).",
+      "baseline": "Baseline: win rate over all rallies with 3 or more of your shots {{rate}}% (n={{n}})"
     },
     "ReceivedVulnerabilityMap": {
       "k1": "Opponent court (hit point) → Home court (landing)",
@@ -3690,23 +3695,21 @@
       "summary_states": "States analyzed: {{analyzed}} / Insufficient data: {{insufficient}}",
       "mean_exploitability": "Mean exploitability: {{v}}",
       "most_exploitable_hint": "Largest → {{state}} ({{v}})",
-      "top_prescription": "Prescription: in {{state}}, shift \"{{action}}\" by {{shift}}",
+      "largest_gap": "Largest gap from equilibrium: \"{{action}}\" in {{state}} ({{shift}})",
       "ok_states_header": "Analyzed states ({{n}})",
       "insufficient_header": "Insufficient data states ({{n}})",
       "insufficient": "Insufficient data (N={{n}})",
       "n_only": "N={{n}}",
       "nash_value_label": "V*",
       "realized_label": "Realized",
-      "shift_header": "Recommended shift from equilibrium",
-      "play_more": "Play more {{action}}",
-      "play_less": "Play less {{action}}",
+      "shift_header": "Gap from equilibrium (equilibrium share minus observed share)",
       "phase_early": "Early",
       "phase_mid": "Mid",
       "phase_deuce": "Deuce",
       "phase_endgame": "Endgame",
       "role_server": "Server",
       "role_receiver": "Receiver",
-      "footnote": "Exploitability = Nash equilibrium expected value − realized value. Closer to 0 means near-optimal play. States with wide CI should be treated with caution."
+      "footnote": "Exploitability = Nash equilibrium expected value − realized value. Closer to 0 means near-optimal play. States with wide CI should be treated with caution. Gaps are observations, not instructions to play more or less."
     },
     "ConformalCard": {
       "title": "Conformal Prediction (Distribution-Free Coverage Guarantee)",

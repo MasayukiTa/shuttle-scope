@@ -97,7 +97,7 @@ PLAYER_COMPREHENSIVE_ALLOWED_SECTIONS: dict[str, Callable[[Any], Any]] = {
     ),
     "heatmap_hit": _identity,
     "heatmap_land": _identity,
-    "shot_types": _drop_keys("win_rate"),
+    "shot_types": _drop_keys("win_rate", "winner_end_rate", "winner_end_count"),
     "set_comparison": _drop_keys("win_rate"),
     "first_return": _identity,
     "tournament_comparison": _tournament_levels,

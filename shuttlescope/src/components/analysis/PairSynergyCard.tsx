@@ -82,7 +82,6 @@ function Inner({ playerId }: { playerId: number }) {
 
   return (
     <div className="space-y-3">
-      <ConfidenceBadge sampleSize={sampleSize} tier="research" unit="matches" />
       <p className="text-xs text-gray-400">
         {t('auto.PairSynergyCard.avg_wr')} <span className="font-mono ss-num text-gray-200">{fmtPct(avgWr, 0)}</span>
       </p>
@@ -92,7 +91,11 @@ function Inner({ playerId }: { playerId: number }) {
           <div key={p.partner_id} className="bg-gray-750 rounded-ss-md p-3 border border-gray-700">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-gray-200">{p.partner_name}</span>
-              <span className="text-xs text-gray-400 ss-num">{t('auto.PairSynergyCard.n_matches', { n: p.match_count })}</span>
+              <span className="flex items-center gap-2">
+                <span className="text-xs text-gray-400 ss-num">{t('auto.PairSynergyCard.n_matches', { n: p.match_count })}</span>
+                {/* 信頼度はそのペアの試合数で判定する。全体の試合数(下の見出し)を流用しない */}
+                <ConfidenceBadge sampleSize={p.match_count} tier="research" unit="matches" compact />
+              </span>
             </div>
             <div className="flex items-center gap-3 text-xs">
               <div className="flex items-center gap-1">

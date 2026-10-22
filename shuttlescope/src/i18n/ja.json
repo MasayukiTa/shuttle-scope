@@ -1786,6 +1786,8 @@
     "no_data": "データ不足（アノテーション後に解析可能）",
     "loading": "読み込み中...",
     "restricted": "このコンテンツはアナリスト・コーチ向けです",
+    "filter_not_applied": "このカードは上の絞り込みを使わず、全試合で計算しています。",
+    "win_loss_ignores_result_filter": "勝ち試合と負け試合を比べるため、結果の絞り込みは使っていません。大会レベルと期間は反映しています。",
     "player_types": {
       "short_game_specialist": "短期決戦型",
       "balanced": "バランス型",
@@ -3546,7 +3548,10 @@
       "k2": "読み込み中...",
       "k3": "ラリー3連ショットパターン",
       "k4": "勝ちパターン",
-      "k5": "負けパターン"
+      "k5": "負けパターン",
+      "interval": "区間 {{low}}〜{{high}}%",
+      "unit_note": "回数と勝率は、その並びを含むラリーの数で数えています(同じラリーで何度出ても1回)。",
+      "baseline": "比べる基準: 3球以上打ったラリー全体の勝率 {{rate}}%(n={{n}})"
     },
     "ReceivedVulnerabilityMap": {
       "own_court_received": "← 自コート（被打球エリア）　",
@@ -3700,23 +3705,21 @@
       "summary_states": "解析済み状態: {{analyzed}} / データ不足: {{insufficient}}",
       "mean_exploitability": "平均搾取可能性: {{v}}",
       "most_exploitable_hint": "最大 → {{state}} ({{v}})",
-      "top_prescription": "処方箋: {{state}} で「{{action}}」を {{shift}} 調整",
+      "largest_gap": "均衡との差が最大: {{state}}の「{{action}}」({{shift}})",
       "ok_states_header": "解析済み状態 ({{n}})",
       "insufficient_header": "データ不足の状態 ({{n}})",
       "insufficient": "データ不足 (N={{n}})",
       "n_only": "N={{n}}",
       "nash_value_label": "V*",
       "realized_label": "実現値",
-      "shift_header": "均衡からのシフト推奨",
-      "play_more": "{{action}} を増やす",
-      "play_less": "{{action}} を減らす",
+      "shift_header": "均衡との差(均衡の割合 − 実測の割合)",
       "phase_early": "序盤",
       "phase_mid": "中盤",
       "phase_deuce": "デュース",
       "phase_endgame": "終盤",
       "role_server": "サーバー",
       "role_receiver": "レシーバー",
-      "footnote": "搾取可能性 = ナッシュ均衡下期待値 − 実現値。0 に近いほど均衡に近い選択。CI幅が大きい状態は参考程度に。"
+      "footnote": "搾取可能性 = ナッシュ均衡下期待値 − 実現値。0 に近いほど均衡に近い選択。CI幅が大きい状態は参考程度に。差は観察値で、増減の指示ではありません。"
     },
     "ConformalCard": {
       "title": "コンフォーマル予測（分布フリーカバレッジ保証）",
