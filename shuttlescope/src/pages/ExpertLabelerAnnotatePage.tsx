@@ -5,6 +5,10 @@ import { useTranslation } from 'react-i18next'
 import { apiGet, apiPost, API_BASE_URL } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
 import { useTheme } from '@/hooks/useTheme'
+import {
+  buildExpertLabelRequest,
+  type ExpertLabelFormValues,
+} from '@/utils/expertLabelPayload'
 
 // ─── 型定義 ───────────────────────────────────────────
 type PostureCollapse = 'none' | 'minor' | 'major'
@@ -42,9 +46,6 @@ interface ClipsResponse {
 
 interface ExpertLabel {
   stroke_id: number
-  frame_index: number
-  clip_start_frame: number
-  clip_end_frame: number
   posture_collapse: PostureCollapse
   weight_distribution: WeightDistribution
   shot_timing: ShotTiming
@@ -199,22 +200,12 @@ function AnnotateContent() {
 
   // 保存
   const saveMutation = useMutation({
-    mutationFn: async (opts: { skip?: boolean }) => {
+    mutationFn: async (values: ExpertLabelFormValues) => {
       if (!currentClip || !matchId) throw new Error('no clip')
-      const payload = {
-        match_id: matchId,
-        stroke_id: currentClip.stroke_id,
-        frame_index: currentClip.frame_index,
-        clip_start_frame: currentClip.clip_start_frame,
-        clip_end_frame: currentClip.clip_end_frame,
-        posture_collapse: opts.skip ? 'skipped' : form.posture_collapse,
-        weight_distribution: opts.skip ? 'skipped' : form.weight_distribution,
-        shot_timing: opts.skip ? 'skipped' : form.shot_timing,
-        confidence: form.confidence,
-        comment: form.comment,
-        annotator_role: annotatorRole,
-      }
-      return apiPost('/v1/expert/labels', payload)
+      return apiPost(
+        '/v1/expert/labels',
+        buildExpertLabelRequest(matchId, currentClip.stroke_id, annotatorRole, values),
+      )
     },
     onSuccess: () => {
       setToast(t('expert_labeler.saved'))
@@ -262,7 +253,13 @@ function AnnotateContent() {
       window.setTimeout(() => setToast(null), 1500)
       return
     }
-    saveMutation.mutate({ skip: false })
+    saveMutation.mutate({
+      posture_collapse: form.posture_collapse,
+      weight_distribution: form.weight_distribution,
+      shot_timing: form.shot_timing,
+      confidence: form.confidence,
+      comment: form.comment,
+    })
   }, [form, saveMutation, t])
 
   const handleSaveShot = useCallback(() => {
@@ -274,15 +271,14 @@ function AnnotateContent() {
     saveShotMutation.mutate()
   }, [shotAnnotation, saveShotMutation, t])
 
-  const handleSkip = useCallback(() => {
-    saveMutation.mutate({ skip: true })
-  }, [saveMutation])
-
   const goPrev = useCallback(() => setIndex((i) => Math.max(0, i - 1)), [])
   const goNext = useCallback(
     () => setIndex((i) => Math.min(clips.length - 1, i + 1)),
     [clips.length]
   )
+
+  // スキップはラベルを保存しない。次のクリップへ進むだけ（未ラベルのまま残り、再開時に最初に出る）。
+  const handleSkip = goNext
 
   const togglePlay = useCallback(() => {
     const v = videoRef.current
