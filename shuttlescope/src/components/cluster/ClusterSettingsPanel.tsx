@@ -10,6 +10,7 @@ import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { MIcon } from '@/components/common/MIcon'
 import { errorMessage } from '@/utils/errors'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 
 // ────────────────────────────────────────────────────────────────────────────
 // 型定義
@@ -181,12 +182,12 @@ export function ClusterSettingsPanel() {
     queryFn: () => apiGet<ClusterConfig>('/cluster/config'),
   })
 
-  const { data: interfaces } = useQuery({
+  const { data: interfaces, isError: interfacesError, refetch: refetchInterfaces } = useQuery({
     queryKey: ['cluster-interfaces'],
     queryFn: () => apiGet<NetworkInterface[]>('/cluster/interfaces'),
   })
 
-  const { data: hardware } = useQuery({
+  const { data: hardware, isError: hardwareError, refetch: refetchHardware } = useQuery({
     queryKey: ['cluster-hardware'],
     queryFn: () => apiGet<{ system_ram_gb: number; vram_total_gb: number }>('/cluster/hardware'),
   })
@@ -784,10 +785,17 @@ export function ClusterSettingsPanel() {
               <select
                 aria-label={label}
                 className={inputCls}
+                disabled={interfacesError}
                 value={(cfg.network as Record<string, string | undefined> | undefined)?.[key] ?? ''}
                 onChange={e => updateNetwork(key, e.target.value)}
               >
                 <option value="">{t('cluster.if_placeholder')}</option>
+                {/* 一覧取得に失敗しても、保存済みの値は option として残す (未選択に見せない) */}
+                {interfacesError && (cfg.network as Record<string, string | undefined> | undefined)?.[key] && (
+                  <option value={(cfg.network as Record<string, string | undefined>)[key]}>
+                    {(cfg.network as Record<string, string | undefined>)[key]}
+                  </option>
+                )}
                 {ifOptions.map(iface => (
                   <option key={iface.name} value={iface.name}>
                     {iface.name} {iface.ip ? `(${iface.ip})` : ''} {iface.speed_mbps !== '0' ? `${iface.speed_mbps}Mbps` : ''}
@@ -796,6 +804,7 @@ export function ClusterSettingsPanel() {
               </select>
             </div>
           ))}
+          {interfacesError && <QueryErrorNotice onRetry={() => { void refetchInterfaces() }} />}
 
           <div className="flex items-center gap-2">
             <span className={`${labelCls} w-36 shrink-0`}>{t('cluster.primary_ip')}</span>
@@ -1010,10 +1019,12 @@ export function ClusterSettingsPanel() {
         </h3>
         <p className={`text-[11px] ${textMuted}`}>{t('cluster.limit_auto_hint')}</p>
         <div className="space-y-3">
+          {/* 実機容量が不明なとき (取得失敗・未取得) は固定値を仮定せず、上限スライダーを無効にする */}
+          {hardwareError && <QueryErrorNotice onRetry={() => { void refetchHardware() }} />}
           {/* ノートPC 固有のスライダー（常時表示） */}
           {[
-            { key: 'gpu_vram_limit_gb',   label: t('cluster.gpu_vram_limit'),   max: Math.max(hardware?.vram_total_gb ?? 16, 16) },
-            { key: 'system_ram_limit_gb', label: t('cluster.system_ram_limit'), max: Math.max(hardware?.system_ram_gb ?? 32, 16) },
+            { key: 'gpu_vram_limit_gb',   label: t('cluster.gpu_vram_limit'),   max: Math.max(hardware?.vram_total_gb ?? 0, 16) },
+            { key: 'system_ram_limit_gb', label: t('cluster.system_ram_limit'), max: Math.max(hardware?.system_ram_gb ?? 0, 16) },
           ].map(({ key, label, max }) => {
             const val = (cfg.resources as Record<string, number> | undefined)?.[key] ?? 0
             return (
@@ -1021,6 +1032,7 @@ export function ClusterSettingsPanel() {
                 <span className={`${labelCls} w-44 shrink-0`}>{label}</span>
                 <input
                   type="range" min={0} max={max} step={1} value={val}
+                  disabled={hardware == null}
                   aria-label={label}
                   aria-valuetext={val === 0 ? t('cluster.auto_value') : `${val}GB`}
                   onChange={e => setCfg(c => ({

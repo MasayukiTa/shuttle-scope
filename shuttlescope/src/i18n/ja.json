@@ -1407,6 +1407,7 @@
       "match_decided": "試合が決着しました",
       "next_set": "次のセットへ",
       "set_end_busy": "処理中…",
+      "set_end_waiting_save": "最終ラリーの保存が終わるまでセットを確定できません。保存中、または再送待ちです。右上の未保存の表示が消えてから押してください。",
       "set_end_failed": "セットの終了処理に失敗しました: {{reason}}"
     },
     "ux": {
@@ -2555,6 +2556,7 @@
     "close_match_rate": "3セット試合率",
     "dominant_match_rate": "ストレート決着率",
     "typical_margin": "典型的な得点差",
+    "no_forecast_matches": "この選手の対象試合はありません。",
     "lineup_optimizer": "ラインナップ最適化",
     "lineup_recommendation": "推奨選手",
     "lineup_vs_opponent": "対戦相手",
@@ -4521,6 +4523,10 @@
       "mfa_code_label": "認証コード（6 桁）",
       "mfa_submit": "認証して続行",
       "mfa_cancel": "ログイン画面に戻る",
+      "password_show": "表示",
+      "password_hide": "非表示",
+      "password_show_aria": "パスワードを表示",
+      "password_hide_aria": "パスワードを隠す",
       "mfa_use_recovery": "認証アプリが使えない場合（リカバリコードを使う）",
       "mfa_use_totp": "認証コードの入力に戻る",
       "mfa_recovery_prompt": "MFA 設定時に保管したリカバリコードを 1 つ入力してください。使用したコードは無効になります。",
@@ -4843,6 +4849,8 @@
     },
     "PairPlaystyle": {
       "playstyle_of": "{{a}} / {{b}} のプレースタイル",
+      "withheld": "判定保留",
+      "withheld_hint": "打球数 {{n}} 球では分類を確定できません（{{min}} 球以上で表示します）。",
       "k1": "ネット前配球率",
       "k2": "奥配球率",
       "k3": "中間配球率",

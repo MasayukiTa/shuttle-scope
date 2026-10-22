@@ -6,6 +6,7 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts'
 import { apiGet } from '@/api/client'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 
@@ -36,7 +37,7 @@ export function PartnerTimeline({ playerId, partnerId, partnerName }: PartnerTim
   const { t } = useTranslation()
   const isLight = useIsLightMode()
 
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError, refetch } = useQuery({
     queryKey: ['analysis-partner-timeline', playerId, partnerId],
     queryFn: () =>
       apiGet<PartnerTimelineResponse>('/analysis/partner_timeline', {
@@ -48,6 +49,10 @@ export function PartnerTimeline({ playerId, partnerId, partnerName }: PartnerTim
 
   if (isLoading) {
     return <div className="text-[var(--ss-t3)] text-sm py-4 text-center">{t('analysis.loading')}</div>
+  }
+  // timeline だけの部分障害を「データなし」にしない (監査 #737)
+  if (isError) {
+    return <QueryErrorNotice onRetry={() => { void refetch() }} />
   }
 
   const sampleSize = resp?.meta?.sample_size ?? 0

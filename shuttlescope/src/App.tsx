@@ -728,7 +728,9 @@ function ProtectedMainRoute() {
     if (checkingAuth) return
     if (token && role) return
     const currentHash = window.location.hash || ''
-    if (currentHash === '#/login' || currentHash === '#/' || currentHash === '') return
+    // `#/login?session_expired=1` 等は API client / パスワード変更後の遷移が付けた
+    // 理由フラグ。LoginPage が表示するまで消さないよう login route 配下は保持する。
+    if (currentHash === '#/login' || currentHash.startsWith('#/login?') || currentHash === '#/' || currentHash === '') return
     try {
       const cleaned = window.location.pathname + window.location.search + '#/login'
       window.history.replaceState(null, '', cleaned)

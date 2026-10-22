@@ -231,6 +231,10 @@ export function LoginPage({ onLogin }: Props) {
     if (result.mfaRequired) {
       setMfaToken(result.mfaToken)
       setMfaCode('')
+      // 第 2 段では元のパスワードを使わない。保持すると MFA をキャンセルして
+      // 戻ったときに平文表示のまま再出現し得るので、ここで破棄する。
+      setPassword('')
+      setShowPassword(false)
       setError(null)
       return
     }
@@ -281,6 +285,9 @@ export function LoginPage({ onLogin }: Props) {
     setMfaToken(null)
     setMfaCode('')
     setUseRecovery(false)
+    // 認証主体のやり直し操作なので、前回入力した credential を残さない。
+    setPassword('')
+    setShowPassword(false)
     setError(null)
   }
 
@@ -447,8 +454,12 @@ export function LoginPage({ onLogin }: Props) {
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
                 className="absolute inset-y-0 right-0 flex items-center px-3 text-[var(--ss-t3)] hover:text-[var(--ss-t2)] transition-colors duration-fast ease-out"
-                title={showPassword ? '非表示' : '表示'}
-                aria-label={showPassword ? 'パスワードを隠す' : 'パスワードを表示'}
+                title={showPassword ? t('auto.LoginPage.password_hide') : t('auto.LoginPage.password_show')}
+                aria-label={
+                  showPassword
+                    ? t('auto.LoginPage.password_hide_aria')
+                    : t('auto.LoginPage.password_show_aria')
+                }
               >
                 {showPassword ? <MIcon name="visibility_off" size={16} /> : <MIcon name="visibility" size={16} />}
               </button>

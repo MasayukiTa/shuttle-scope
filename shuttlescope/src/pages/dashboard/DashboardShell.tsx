@@ -22,6 +22,7 @@ import { DashboardResearchPage } from './DashboardResearchPage'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { DateRangeSlider } from '@/components/common/DateRangeSlider'
 import { MIcon } from '@/components/common/MIcon'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { fmtPct } from '@/utils/format'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -227,7 +228,7 @@ export function DashboardShell() {
   const descriptive = descriptiveResp?.data ?? null
 
   // ── Matches（複数サブページで共有） ──
-  const { data: matchesResp, isLoading: loadingMatches } = useQuery({
+  const { data: matchesResp, isLoading: loadingMatches, isError: matchesError, refetch: refetchMatches } = useQuery({
     queryKey: ['analysis-matches-summary', selectedPlayerId],
     queryFn: () =>
       apiGet<{ success: boolean; data: MatchSummary[] }>(
@@ -474,15 +475,20 @@ export function DashboardShell() {
                   value={filterDateTo ?? ''}
                   onChange={(e) => setFilterDateTo(e.target.value || null)}
                 />
-                <DateRangeSlider
-                  from={filterDateFrom}
-                  to={filterDateTo}
-                  minDate={sliderMin}
-                  maxDate={sliderMax}
-                  densityDates={matchDates}
-                  onChange={(f, t) => { setFilterDateFrom(f); setFilterDateTo(t) }}
-                  isLight={isLight}
-                />
+                {matchesError ? (
+                  // 試合サマリ取得失敗を「試合 0 件」の日付範囲へ変換しない (監査 #723)
+                  <QueryErrorNotice className="py-0" onRetry={() => { void refetchMatches() }} />
+                ) : (
+                  <DateRangeSlider
+                    from={filterDateFrom}
+                    to={filterDateTo}
+                    minDate={sliderMin}
+                    maxDate={sliderMax}
+                    densityDates={matchDates}
+                    onChange={(f, t) => { setFilterDateFrom(f); setFilterDateTo(t) }}
+                    isLight={isLight}
+                  />
+                )}
                 {(filterResult !== 'all' || filterLevel || filterDateFrom || filterDateTo) && (
                   <button
                     className="text-xs ml-1 transition-colors duration-base ease-out"

@@ -2,6 +2,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { seqBlue } from '@/styles/colors'
 import { useTranslation } from 'react-i18next'
 
@@ -41,11 +42,21 @@ const TIER_COLORS: Record<string, string> = {
 export function ConfidenceCalibration({ playerId }: ConfidenceCalibrationProps) {
   const { t } = useTranslation()
 
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError, refetch } = useQuery({
     queryKey: ['analysis-confidence-calibration', playerId],
     queryFn: () => apiGet<Response>('/analysis/confidence_calibration', { player_id: playerId }),
     enabled: !!playerId,
   })
+
+  // 取得失敗を「標本数 0・低信頼」へ変換しない (監査 #726)
+  if (isError) {
+    return (
+      <div className="bg-gray-800 rounded-ss-lg shadow-card p-4">
+        <h3 className="text-sm font-semibold text-gray-200 mb-2">{t('auto.ConfidenceCalibration.k1')}</h3>
+        <QueryErrorNotice onRetry={() => { void refetch() }} />
+      </div>
+    )
+  }
 
   if (isLoading) {
     return (

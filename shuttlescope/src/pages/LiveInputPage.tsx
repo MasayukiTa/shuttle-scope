@@ -38,6 +38,8 @@ import { setWinner, isMatchDecidedBySet } from '@/utils/badmintonRules'
 import { useAuth } from '@/hooks/useAuth'
 import { useOfflineSync } from '@/hooks/useOfflineSync'
 import { errorMessage } from '@/utils/errors'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
+import { isSetEndBlockedBySave, loadQueuedRallyCount } from '@/utils/liveSetEndGuard'
 import {
   offlineStrokeIdempotencyKey,
   removeRallyAfterSave,
@@ -73,7 +75,7 @@ export function LiveInputPage() {
   }, [])
 
   // match + 既存の最新 set 取得 (簡易)
-  const { data: matchData } = useQuery<{ data: Match }>({
+  const { data: matchData, isError: matchError, refetch: refetchMatch } = useQuery<{ data: Match }>({
     queryKey: ['live-match', matchId],
     queryFn: () => apiGet(`/matches/${matchId}`),
     enabled: !!matchId,
@@ -167,6 +169,32 @@ export function LiveInputPage() {
 
   const latestSet = liveSet
 
+  // 監査 #722: セットの勝敗が付いている間、このセットの端末退避 (再送待ち) 件数を読み続ける。
+  // 保存中・保存エラー・再送待ちのいずれかが残る間はセット終了と次セット作成を止める。
+  const [queuedForSet, setQueuedForSet] = useState(0)
+  const setDecided = setWinner({ scoreA: store.scoreA, scoreB: store.scoreB }) !== null
+  const latestSetId = latestSet?.id ?? null
+  useEffect(() => {
+    if (!matchId || latestSetId == null || !setDecided) return
+    let cancelled = false
+    const refresh = () => {
+      loadQueuedRallyCount(userId, matchId, latestSetId)
+        .then((n) => { if (!cancelled) setQueuedForSet(n) })
+        .catch(() => { /* 読めないときは直前の値を保つ。確定時に再確認する */ })
+    }
+    refresh()
+    const timer = setInterval(refresh, 2000)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [matchId, latestSetId, setDecided, userId, store.pendingSaveCount, store.saveErrors.length])
+  const saveBlocksSetEnd = isSetEndBlockedBySave({
+    pendingSaveCount: store.pendingSaveCount,
+    saveErrorCount: store.saveErrors.length,
+    queuedForSet,
+  })
+
   // ストローク入力直後の自動 RESULT 切替: hot-loop で即時得点判定したい場面に備えて、
   // OOB / NET 落点後 (=inputStep === 'rally_end') では RESULT モードに自動遷移
   useEffect(() => {
@@ -190,6 +218,14 @@ export function LiveInputPage() {
         >
           {t('annotator.live.init_retry')}
         </button>
+      </div>
+    )
+  }
+  // 監査 #721: 試合情報だけ取得に失敗したときに「読み込み中」で止めない。
+  if (matchError && !match) {
+    return (
+      <div className="p-4 text-[var(--ss-t1)]">
+        <QueryErrorNotice onRetry={() => { void refetchMatch() }} />
       </div>
     )
   }
@@ -228,6 +264,19 @@ export function LiveInputPage() {
     const score = { scoreA: cur.scoreA, scoreB: cur.scoreB }
     const side = setWinner(score)
     if (side === null) return
+    // 最終ラリーの保存が終わるまで確定しない。画面の値は最長 2 秒遅れるため、
+    // 押下時に退避キューを読み直して確かめる。
+    const queued = await loadQueuedRallyCount(userId, matchId, latestSet.id).catch(() => 0)
+    if (
+      isSetEndBlockedBySave({
+        pendingSaveCount: cur.pendingSaveCount,
+        saveErrorCount: useAnnotationStore.getState().saveErrors.length,
+        queuedForSet: queued,
+      })
+    ) {
+      setQueuedForSet(queued)
+      return
+    }
     setSetEndState({ busy: true, error: null, matchDecided: false })
     try {
       await apiPut(`/sets/${latestSet.id}/end`, {
@@ -410,13 +459,18 @@ export function LiveInputPage() {
           {!setEndState.matchDecided && (
             <button
               type="button"
-              disabled={setEndState.busy}
+              disabled={setEndState.busy || saveBlocksSetEnd}
               onClick={() => { void handleEndSet() }}
               className="px-3 py-2 rounded-[5px] bg-[var(--ss-brand)] text-white disabled:opacity-50"
             >
               {setEndState.busy ? t('annotator.live.set_end_busy') : t('annotator.live.next_set')}
             </button>
           )}
+        </div>
+      )}
+      {currentSetWinner !== null && !setEndState.matchDecided && saveBlocksSetEnd && (
+        <div role="status" className="shrink-0 px-3 py-1 text-xs text-[var(--ss-t2)]">
+          {t('annotator.live.set_end_waiting_save')}
         </div>
       )}
       {setEndState.error && (

@@ -13,6 +13,7 @@ import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { fmtPct } from '@/utils/format'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { apiGet } from '@/api/client'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { WIN, LOSS } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import type { LandZone } from '@/types'
@@ -110,7 +111,7 @@ export function CourtHeatModal({
   // ヒートマップデータ（通常モード: hit / land）
   // mode === 'composite' の場合はenabled=falseなので type に 'composite' が届かない
   const heatmapType = (mode === 'composite' ? 'hit' : mode) as 'hit' | 'land'
-  const { data: heatResp, isLoading: loadingHeat } = useQuery({
+  const { data: heatResp, isLoading: loadingHeat, isError: errorHeat, refetch: refetchHeat } = useQuery({
     queryKey: ['court-heat-modal', playerId, mode, matchId, lastN],
     queryFn: () =>
       apiGet<HeatmapResponse>('/analysis/heatmap', {
@@ -122,7 +123,7 @@ export function CourtHeatModal({
   })
 
   // 合成モードデータ
-  const { data: compositeResp, isLoading: loadingComposite } = useQuery({
+  const { data: compositeResp, isLoading: loadingComposite, isError: errorComposite, refetch: refetchComposite } = useQuery({
     queryKey: ['court-heat-composite', playerId, matchId, lastN],
     queryFn: () =>
       apiGet<CompositeHeatmapResponse>('/analysis/heatmap/composite', {
@@ -137,6 +138,8 @@ export function CourtHeatModal({
     ? (compositeResp?.data?.total_strokes ?? 0)
     : (heatResp?.meta?.sample_size ?? 0)
   const loadingCurrent = mode === 'composite' ? loadingComposite : loadingHeat
+  const currentError = mode === 'composite' ? errorComposite : errorHeat
+  const refetchCurrent = mode === 'composite' ? refetchComposite : refetchHeat
 
   // 合成モード用データ
   const compositeHitData = compositeResp?.data?.hit
@@ -149,7 +152,7 @@ export function CourtHeatModal({
   const compositeLandMax = compositeLandData ? Math.max(...Object.values(compositeLandData), 1) : 1
 
   // ゾーン詳細（クリック時のみ取得）— 打点 or 合成の打点側
-  const { data: detailResp, isLoading: loadingDetail } = useQuery({
+  const { data: detailResp, isLoading: loadingDetail, isError: errorDetail, refetch: refetchDetail } = useQuery({
     queryKey: ['court-heat-zone-detail', playerId, mode, selectedZone, matchId, lastN],
     queryFn: () =>
       apiGet<ZoneDetailResponse>('/analysis/heatmap_zone_detail', {
@@ -162,7 +165,7 @@ export function CourtHeatModal({
   })
 
   // 合成モード専用: 着地点ゾーン詳細
-  const { data: detailLandResp, isLoading: loadingDetailLand } = useQuery({
+  const { data: detailLandResp, isLoading: loadingDetailLand, isError: errorDetailLand, refetch: refetchDetailLand } = useQuery({
     queryKey: ['court-heat-zone-detail-land', playerId, selectedZone, matchId, lastN],
     queryFn: () =>
       apiGet<ZoneDetailResponse>('/analysis/heatmap_zone_detail', {
@@ -292,6 +295,8 @@ export function CourtHeatModal({
             {/* コート図（インタラクティブ） */}
             {loadingCurrent ? (
               <div className="text-[var(--ss-t3)] text-sm py-8">{t('court_heat_modal.loading')}</div>
+            ) : currentError ? (
+              <QueryErrorNotice onRetry={() => { void refetchCurrent() }} />
             ) : sampleSize === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <p className="text-[var(--ss-t3)] text-sm">{t('court_heat_modal.no_data')}</p>
@@ -343,6 +348,15 @@ export function CourtHeatModal({
             ) : (loadingDetail || (mode === 'composite' && loadingDetailLand)) ? (
               <div className="flex items-center justify-center h-full min-h-[200px]">
                 <div className="text-[var(--ss-t3)] text-sm">{t('court_heat_modal.loading')}</div>
+              </div>
+            ) : (errorDetail || (mode === 'composite' && errorDetailLand)) ? (
+              <div className="flex items-center justify-center h-full min-h-[200px]">
+                <QueryErrorNotice
+                  onRetry={() => {
+                    if (errorDetail) void refetchDetail()
+                    if (mode === 'composite' && errorDetailLand) void refetchDetailLand()
+                  }}
+                />
               </div>
             ) : mode === 'composite' ? (
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">

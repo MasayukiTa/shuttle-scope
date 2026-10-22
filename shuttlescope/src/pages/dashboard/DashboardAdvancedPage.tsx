@@ -397,7 +397,9 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
               </div>
             )}
 
+            {/* pair_playstyle / pair_synergy は backend が admin / analyst 専用 (監査 #743)。coach には出さない */}
             {pairMode && partnerPlayerId && (
+              <RoleGuard allowedRoles={['analyst']} fallback={null}>
               <div className={`${card} rounded-ss-lg shadow-card p-4`}>
                 <SectionTitle>{t('analysis.pair_playstyle.title')}</SectionTitle>
                 <p className={`text-xs mb-3 ${textMuted}`}>{t('analysis.pair_playstyle.subtitle')}</p>
@@ -408,17 +410,20 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                   playerBName={sortedPlayers.find((p) => p.id === partnerPlayerId)?.name}
                 />
               </div>
+              </RoleGuard>
             )}
-            {pairSynergyMeta?.caution && (
-              <ResearchNotice
-                caution={pairSynergyMeta.caution}
-                assumptions={pairSynergyMeta.assumptions ?? undefined}
-                promotionCriteria={pairSynergyMeta.promotion_criteria ?? undefined}
-              />
-            )}
-            <HoldGate suspended={isOnHold('pair_synergy')}>
-              <PairSynergyCard playerId={playerId} />
-            </HoldGate>
+            <RoleGuard allowedRoles={['analyst']} fallback={null}>
+              {pairSynergyMeta?.caution && (
+                <ResearchNotice
+                  caution={pairSynergyMeta.caution}
+                  assumptions={pairSynergyMeta.assumptions ?? undefined}
+                  promotionCriteria={pairSynergyMeta.promotion_criteria ?? undefined}
+                />
+              )}
+              <HoldGate suspended={isOnHold('pair_synergy')}>
+                <PairSynergyCard playerId={playerId} />
+              </HoldGate>
+            </RoleGuard>
           </div>
           </RoleGuard>
         </ErrorBoundary>

@@ -133,7 +133,7 @@ export function PairSynergyCard({ playerId }: PairSynergyCardProps) {
   const { t } = useTranslation()
 
   return (
-    <RoleGuard allowedRoles={['analyst', 'coach']}>
+    <RoleGuard allowedRoles={['analyst']}>
       <div className="bg-gray-800 rounded-ss-lg shadow-card p-4">
         <h3 className="text-sm font-semibold text-gray-200 mb-3">{t('auto.PairSynergyCard.k4')}</h3>
         <Inner playerId={playerId} />

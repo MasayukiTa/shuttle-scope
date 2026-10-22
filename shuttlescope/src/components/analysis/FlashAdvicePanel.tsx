@@ -2,6 +2,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { RoleGuard } from '@/components/common/RoleGuard'
@@ -134,7 +135,7 @@ export function FlashAdvicePanel({ matchId, asOfSet, asOfRallyNum, playerId }: F
     params.as_of_rally_num = asOfRallyNum
   }
 
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError, refetch } = useQuery({
     queryKey: ['analysis-flash-advice', matchId, asOfSet, asOfRallyNum, playerId],
     queryFn: () => apiGet<FlashAdviceResponse>('/analysis/flash_advice', params),
     enabled: !!matchId && !!asOfSet && !!playerId,
@@ -142,6 +143,10 @@ export function FlashAdvicePanel({ matchId, asOfSet, asOfRallyNum, playerId }: F
 
   if (isLoading) {
     return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.loading')}</div>
+  }
+  // 取得失敗を「0 ラリー / データ不足」へ変換しない (監査 #732)
+  if (isError) {
+    return <QueryErrorNotice onRetry={() => { void refetch() }} />
   }
 
   const sampleSize = resp?.meta?.sample_size ?? 0

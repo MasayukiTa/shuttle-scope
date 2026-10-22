@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 import { apiGet } from '@/api/client'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { RallyDetailBanner, type RallyPoint } from '@/components/analysis/ScoreProgression'
@@ -117,7 +118,7 @@ export function SetIntervalSummary({
   const hasPrev = rallyIdx > 0
   const hasNext = setRallies ? rallyIdx < setRallies.length - 1 : false
 
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError, refetch } = useQuery({
     queryKey: ['set-summary', setId, maxRallyNum],
     queryFn: () => apiGet<SetSummaryResponse>('/analysis/set_summary', {
       set_id: setId,
@@ -192,7 +193,9 @@ export function SetIntervalSummary({
             <p className="text-[var(--ss-t3)] text-sm text-center py-4">{t('analysis.loading')}</p>
           )}
 
-          {!isLoading && !data && (
+          {isError && <QueryErrorNotice onRetry={() => { void refetch() }} />}
+
+          {!isLoading && !isError && !data && (
             <p className="text-[var(--ss-t3)] text-sm text-center py-4">{t('analysis.no_data')}</p>
           )}
 
