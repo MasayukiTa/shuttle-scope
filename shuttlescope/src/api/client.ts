@@ -366,7 +366,7 @@ export async function apiGet<T>(
 
 // ファイル出力 (PDF / JSON レポート) 用。認証・401 refresh・タイムアウトは他の API と同じ
 // 経路を通し、HTTP 失敗は例外にする (失敗本文を正常ファイルとして保存させない)。
-export async function apiGetBlob(path: string): Promise<Blob> {
+export async function apiGetReportBlob(path: string): Promise<Blob> {
   const res = await fetchWithAutoRefresh(BASE_URL + path, { headers: authHeaders() })
   if (!res.ok) {
     const text = await res.text()
