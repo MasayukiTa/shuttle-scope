@@ -374,7 +374,7 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
           >
             {isLocalOnly ? (
               <>
-                {t('movement.grid_local_unsaved', 'Grid is set locally but not yet saved to the DB.')}
+                {t('movement.grid_local_unsaved', 'The court setup exists only on this device and is not saved yet.')}
                 {onSyncGridFromLocal && (
                   <span
                     role="button"

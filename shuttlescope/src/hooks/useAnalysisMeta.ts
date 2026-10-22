@@ -9,6 +9,8 @@ interface EvidenceMetaEntry {
   caution: string | null
   assumptions: string | null
   promotion_criteria: string | null
+  /** 昇格レビューの手動判定 (promotion_ready / requires_review / insufficient_data / hold)。無ければ null */
+  override_status?: string | null
 }
 
 /**
@@ -35,5 +37,10 @@ export function useAnalysisMeta() {
     return metaMap[analysisType]
   }
 
-  return { getMeta, isLoading, allMeta: entries }
+  /** 昇格レビューで hold にされた分析か。true のカードは数値を出さない。 */
+  function isOnHold(analysisType: string): boolean {
+    return metaMap[analysisType]?.override_status === 'hold'
+  }
+
+  return { getMeta, isOnHold, isLoading, allMeta: entries }
 }

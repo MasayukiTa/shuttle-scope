@@ -25,7 +25,7 @@ from backend.services.export_package import (
     export_conditions_only,
 )
 from backend.services.import_package import import_package
-from backend.services.backup_service import create_backup, list_backups
+from backend.services.backup_service import BackupUnavailable, backup_status, create_backup, list_backups
 from backend.routers.settings import _load_all as _load_settings
 import shutil
 from pathlib import Path
@@ -430,6 +430,8 @@ async def import_package_endpoint(
             "deleted": summary.deleted,
             "conflicts": summary.conflicts,
             "conflict_log": summary.conflict_log,
+            "backup_taken": summary.backup_path is not None,
+            "backup_skipped": summary.backup_skipped,
             "errors": _sanitize_errors(summary.errors),
         },
     }
@@ -460,8 +462,12 @@ def backup_now(
     except FileNotFoundError as e:
         logger.warning("backup_now FileNotFoundError (sanitized): %s", e)
         raise HTTPException(status_code=404, detail="バックアップ元ファイルが見つかりません")
+    except BackupUnavailable as e:
+        # pg_dump が無いなど。文面は画面に出してよいものだけで作ってある
+        logger.warning("backup_now unavailable: %s", e)
+        raise HTTPException(status_code=501, detail=str(e))
     except NotImplementedError as e:
-        # PostgreSQL 環境では SQLite ベースのバックアップは不可
+        # 対応していない DB の種類
         logger.warning("backup_now NotImplementedError (sanitized): %s", e)
         raise HTTPException(status_code=501, detail="この DB エンジンではこのバックアップ方式はサポートされていません")
     except Exception as e:
@@ -472,7 +478,7 @@ def backup_now(
 @router.get("/backups")
 def get_backups(_ctx=Depends(require_admin)):
     """バックアップ一覧を返す (admin 限定)"""
-    return {"success": True, "data": list_backups()}
+    return {"success": True, "data": list_backups(), "status": backup_status()}
 
 
 # ─── クラウドフォルダ連携 ──────────────────────────────────────────────────────
@@ -639,6 +645,8 @@ def import_from_cloud_path(
             "deleted": summary.deleted,
             "conflicts": summary.conflicts,
             "conflict_log": summary.conflict_log,
+            "backup_taken": summary.backup_path is not None,
+            "backup_skipped": summary.backup_skipped,
             "errors": _sanitize_errors(summary.errors),
         },
     }

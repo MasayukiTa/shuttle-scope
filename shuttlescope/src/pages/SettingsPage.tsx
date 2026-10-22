@@ -32,6 +32,8 @@ import {
   BenchmarkTarget,
 } from '@/api/benchmark'
 import { getDbStats, runDbMaintenance, setAutoVacuum, DbStats } from '@/api/db'
+import { formatJST } from '@/utils/datetime'
+import { classifyExportMatch } from '@/utils/exportCandidates'
 
 type PlayerSortKey = 'name' | 'team' | 'nationality' | 'world_ranking' | 'is_target'
 type BenchmarkItem = { fps: number; avg_ms: number; p95_ms: number; backend: string; samples: number } | { error: string }
@@ -365,7 +367,20 @@ export function SettingsPage() {
   // データ管理: バックアップ一覧
   const { data: backupsData, refetch: refetchBackups } = useQuery({
     queryKey: ['sync-backups'],
-    queryFn: () => apiGet<{ success: boolean; data: Array<{ filename: string; size_bytes: number; created_at: string }> }>('/sync/backups'),
+    queryFn: () => apiGet<{
+      success: boolean
+      data: Array<{ filename: string; size_bytes: number; created_at: string; encrypted?: boolean }>
+      status?: {
+        engine: string
+        supported: boolean
+        reason: string | null
+        backup_dir: string
+        count: number
+        max_generations: number
+        last_success_at: string | null
+        last_encrypted: boolean | null
+      }
+    }>('/sync/backups'),
     enabled: activeTab === 'data' && role === 'admin',
   })
 
@@ -375,7 +390,11 @@ export function SettingsPage() {
     queryFn: () => apiGet<{ data: Array<{ id: number; date: string; tournament: string; result: string }> }>('/matches'),
     enabled: activeTab === 'data',
   })
-  const exportMatchList = matchesForExport?.data ?? []
+  const allExportMatches = matchesForExport?.data ?? []
+  // 検証用・未完了・日付不正は既定で候補に出さない (「すべて選択」でも持ち出さない)
+  const [showExcludedExport, setShowExcludedExport] = useState(false)
+  const excludedExportCount = allExportMatches.filter((m) => classifyExportMatch(m) !== 'valid').length
+  const exportMatchList = showExcludedExport ? allExportMatches : allExportMatches.filter((m) => classifyExportMatch(m) === 'valid')
 
   // 競合レビュー一覧
   const { data: conflictsData, refetch: refetchConflicts } = useQuery({
@@ -2215,6 +2234,27 @@ export function SettingsPage() {
                       </button>
                     )}
                   </div>
+                  {excludedExportCount > 0 && (
+                    <div className="mb-2 space-y-0.5">
+                      <label className="flex items-center gap-1.5 text-xs text-[var(--ss-t2)]">
+                        <input
+                          type="checkbox"
+                          checked={showExcludedExport}
+                          onChange={(e) => {
+                            const on = e.target.checked
+                            setShowExcludedExport(on)
+                            if (!on) {
+                              // 隠れる試合は選択からも外す
+                              const keep = new Set(allExportMatches.filter((m) => classifyExportMatch(m) === 'valid').map((m) => String(m.id)))
+                              setExportMatchIds(exportMatchIds.split(',').map((x: string) => x.trim()).filter((x: string) => keep.has(x)).join(', '))
+                            }
+                          }}
+                        />
+                        {t('auto.SettingsPage.export_show_excluded', { count: excludedExportCount })}
+                      </label>
+                      {!showExcludedExport && <p className="text-[11px] text-[var(--ss-t3)]">{t('auto.SettingsPage.export_excluded_hint')}</p>}
+                    </div>
+                  )}
                   <div className="flex gap-2 items-start">
                     <div className="flex-1">
                       <input
@@ -2240,7 +2280,14 @@ export function SettingsPage() {
                                   ? 'bg-[var(--ss-brand-tint)] text-[var(--ss-brand)]' : 'text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]'
                               }`}
                             >
-                              <span className="ss-num">[{m.id}] {m.date} {m.tournament}</span>
+                              <span className="ss-num">
+                                [{m.id}] {m.date} {m.tournament}
+                                {classifyExportMatch(m) !== 'valid' && (
+                                  <span className="ml-1.5 text-[10px] text-[var(--ss-warn)]">
+                                    {t(`auto.SettingsPage.export_kind_${classifyExportMatch(m)}`)}
+                                  </span>
+                                )}
+                              </span>
                               <span className={`text-[10px] ${m.result === 'win' ? 'text-[var(--ss-success)]' : 'text-[var(--ss-bad)]'}`}>
                                 {m.result === 'win' ? '勝' : m.result === 'loss' ? '敗' : m.result}
                               </span>
@@ -2367,6 +2414,12 @@ export function SettingsPage() {
                       <p className="text-xs text-[var(--ss-t2)]">
                         {t('auto.SettingsPage.import_result_summary', { added: importResult.data?.added, updated: importResult.data?.updated, kept: importResult.data?.kept, conflicts: importResult.data?.conflicts })}
                       </p>
+                      {importResult.data?.backup_taken === true && (
+                        <p className="text-xs text-[var(--ss-t3)] mt-1">{t('auto.SettingsPage.import_backup_taken')}</p>
+                      )}
+                      {importResult.data?.backup_skipped === true && (
+                        <p className="text-xs text-[var(--ss-warn)] mt-1">{t('auto.SettingsPage.import_backup_skipped')}</p>
+                      )}
                     </>
                   ) : (
                     <p className="text-[var(--ss-bad)]">{importResult.error ?? 'インポートエラー'}</p>
@@ -2385,10 +2438,39 @@ export function SettingsPage() {
                 {t('auto.SettingsPage.backup_desc')}
               </p>
 
+              {backupsData?.status && (
+                <div className="text-xs text-[var(--ss-t2)] space-y-0.5">
+                  <p>
+                    <span className="text-[var(--ss-t3)]">{t('auto.SettingsPage.backup_last_success')}: </span>
+                    {backupsData.status.last_success_at
+                      ? <span className="ss-num">{formatJST(backupsData.status.last_success_at)}</span>
+                      : <span className="text-[var(--ss-warn)]">{t('auto.SettingsPage.backup_never')}</span>}
+                    {backupsData.status.last_encrypted !== null && (
+                      <span className="ml-2 text-[var(--ss-t3)]">
+                        {backupsData.status.last_encrypted ? t('auto.SettingsPage.backup_encrypted') : t('auto.SettingsPage.backup_plain')}
+                      </span>
+                    )}
+                  </p>
+                  <p className="ss-num">{t('auto.SettingsPage.backup_generations', { count: backupsData.status.count, max: backupsData.status.max_generations })}</p>
+                  <p className="truncate" title={backupsData.status.backup_dir}>
+                    <span className="text-[var(--ss-t3)]">{t('auto.SettingsPage.backup_location')}: </span>
+                    <span className="font-mono">{backupsData.status.backup_dir}</span>
+                  </p>
+                  {!backupsData.status.supported && (
+                    <p className="text-[var(--ss-warn)]">
+                      {backupsData.status.reason === 'pg_dump_missing'
+                        ? t('auto.SettingsPage.backup_unsupported_pg')
+                        : t('auto.SettingsPage.backup_unsupported_other')}
+                    </p>
+                  )}
+                  <p className="text-[var(--ss-t3)]">{t('auto.SettingsPage.backup_restore_note')}</p>
+                </div>
+              )}
+
               <div className="flex items-center gap-3">
                 <button
                   onClick={handleBackup}
-                  disabled={backupRunning}
+                  disabled={backupRunning || backupsData?.status?.supported === false}
                   className="flex items-center gap-1.5 px-4 py-2 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-40 rounded-ss-md text-sm font-medium transition-colors duration-fast ease-out text-white"
                 >
                   <MIcon name="folder_zip" size={14} />
@@ -2407,6 +2489,7 @@ export function SettingsPage() {
                     {backupsData!.data.map((b) => (
                       <div key={b.filename} className="flex items-center justify-between px-3 py-2 text-xs text-[var(--ss-t2)] gap-2">
                         <span className="truncate font-mono flex-1 min-w-0" title={b.filename}>{b.filename}</span>
+                        <span className="text-[var(--ss-t3)] shrink-0 ss-num">{formatJST(b.created_at)}</span>
                         <span className="text-[var(--ss-t3)] shrink-0 ss-num">{(b.size_bytes / 1024).toFixed(0)} KB</span>
                       </div>
                     ))}
@@ -2612,7 +2695,7 @@ export function SettingsPage() {
                     <span className={textSecondary}>{t('auto.SettingsPage.auto_vacuum_label')}</span>
                     <div className="flex items-center gap-2">
                       <span className={`font-mono text-xs ${dbStats.auto_vacuum === 2 ? 'text-[var(--ss-success)]' : 'text-[var(--ss-warn)]'}`}>
-                        {dbStats.auto_vacuum === 0 ? 'OFF' : dbStats.auto_vacuum === 1 ? 'FULL' : 'INCREMENTAL'}
+                        {dbStats.auto_vacuum === 0 ? t('auto.SettingsPage.av_mode_off') : dbStats.auto_vacuum === 1 ? t('auto.SettingsPage.av_mode_full') : t('auto.SettingsPage.av_mode_incremental')}
                       </span>
                       {/* トグルボタン */}
                       {dbStats.auto_vacuum !== 2 ? (
@@ -2622,7 +2705,7 @@ export function SettingsPage() {
                           title={t('auto.SettingsPage.k24')}
                           className="text-[10px] px-2 py-0.5 rounded-ss-sm bg-[var(--ss-warn)] hover:opacity-90 text-white disabled:opacity-40 transition-opacity duration-fast ease-out"
                         >
-                          {dbAvRunning ? <MIcon name="restart_alt" size={10} className="animate-spin inline" /> : 'INCREMENTAL に変更'}
+                          {dbAvRunning ? <MIcon name="restart_alt" size={10} className="animate-spin inline" /> : t('auto.SettingsPage.av_to_incremental')}
                         </button>
                       ) : (
                         <button
@@ -2631,7 +2714,7 @@ export function SettingsPage() {
                           title={t('auto.SettingsPage.k25')}
                           className="text-[10px] px-2 py-0.5 rounded-ss-sm bg-[var(--ss-t2)] hover:opacity-90 text-white disabled:opacity-40 transition-opacity duration-fast ease-out"
                         >
-                          {dbAvRunning ? <MIcon name="restart_alt" size={10} className="animate-spin inline" /> : 'OFF に戻す'}
+                          {dbAvRunning ? <MIcon name="restart_alt" size={10} className="animate-spin inline" /> : t('auto.SettingsPage.av_to_off')}
                         </button>
                       )}
                     </div>
@@ -2649,6 +2732,16 @@ export function SettingsPage() {
                 <span className="font-medium text-[var(--ss-t2)]">{t('auto.SettingsPage.k17')}</span>
                 {t('auto.SettingsPage.db_optimize_desc')}
               </p>
+              {dbStats?.supported ? (
+                <p className="text-xs text-[var(--ss-t2)] ss-num">
+                  {t('auto.SettingsPage.db_optimize_estimate', {
+                    mb: ((dbStats.freelist_count * dbStats.page_size) / 1_048_576).toFixed(2),
+                    pages: dbStats.freelist_count,
+                  })}
+                </p>
+              ) : (
+                dbStats && <p className="text-xs text-[var(--ss-warn)]">{t('auto.SettingsPage.db_optimize_unsupported')}</p>
+              )}
 
               {dbMaintResult && (
                 <div className={`text-xs rounded-ss-sm px-3 py-2 ${
@@ -2664,9 +2757,9 @@ export function SettingsPage() {
 
               <button
                 onClick={handleDbMaintenance}
-                disabled={dbMaintRunning || dbAvRunning}
+                disabled={dbMaintRunning || dbAvRunning || dbStats?.supported !== true}
                 className={`flex items-center gap-2 px-4 py-2 rounded-ss-md text-sm font-medium transition-colors duration-fast ease-out ${
-                  dbMaintRunning || dbAvRunning
+                  dbMaintRunning || dbAvRunning || dbStats?.supported !== true
                     ? 'bg-[var(--ss-surface-2)] text-[var(--ss-t3)] cursor-not-allowed'
                     : 'bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white'
                 }`}
