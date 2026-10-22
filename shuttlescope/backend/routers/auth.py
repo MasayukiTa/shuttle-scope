@@ -2682,6 +2682,7 @@ def list_request_logs(
     ip: Optional[str] = None,
     user_id: Optional[int] = None,
     source: Optional[str] = None,
+    include_monitoring: bool = False,
     limit: int = 200,
     db: Session = Depends(get_db),
 ):
@@ -2693,12 +2694,23 @@ def list_request_logs(
       - status_min / status_max: status 範囲 (例 400-599 でエラーのみ)
       - ip: ip_addr の部分一致
       - user_id: 該当 user_id
+      - include_monitoring: 監視画面自身が履歴を読んだ成功 GET も含める (既定は除く)
       - limit: 1..5000 (default 200)
     """
     from backend.db.models import RequestLog
+    from sqlalchemy import and_, not_
+    from backend.utils.audit_grouping import MONITORING_READ_PREFIX
     _require_admin(request)
     limit = max(1, min(int(limit or 200), 5000))
     q = db.query(RequestLog)
+    if not include_monitoring:
+        # 記録側 (RequestLogMiddleware) と同じ基準。過去に記録された行もここで除く。
+        esc_prefix = MONITORING_READ_PREFIX.replace("_", "\\_")
+        q = q.filter(not_(and_(
+            RequestLog.method == "GET",
+            RequestLog.path.like(f"{esc_prefix}%", escape="\\"),
+            RequestLog.status < 400,
+        )))
     if method:
         q = q.filter(RequestLog.method == method.upper())
     if path_prefix:
@@ -2748,6 +2760,23 @@ def list_request_logs(
 _INTERNAL_TELEMETRY_EVENT_TYPES = ("llm_call", "llm_budget")
 
 
+def _security_events_query(db: Session, event_type: Optional[str], severity: Optional[str], ip: Optional[str]):
+    """security_events の絞り込み。一覧と集約表示で同じ条件を使う。"""
+    from backend.db.models import SecurityEvent
+    q = db.query(SecurityEvent)
+    if event_type:
+        q = q.filter(SecurityEvent.event_type == event_type)
+    else:
+        q = q.filter(SecurityEvent.event_type.notin_(_INTERNAL_TELEMETRY_EVENT_TYPES))
+    if severity:
+        q = q.filter(SecurityEvent.severity == severity)
+    if ip:
+        esc = ip.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        if esc:
+            q = q.filter(SecurityEvent.ip_addr.like(f"%{esc}%", escape="\\"))
+    return q
+
+
 @router.get("/audit-logs/security")
 def list_security_events(
     request: Request,
@@ -2770,17 +2799,7 @@ def list_security_events(
     from backend.db.models import SecurityEvent
     _require_admin(request)
     limit = max(1, min(int(limit or 200), 5000))
-    q = db.query(SecurityEvent)
-    if event_type:
-        q = q.filter(SecurityEvent.event_type == event_type)
-    else:
-        q = q.filter(SecurityEvent.event_type.notin_(_INTERNAL_TELEMETRY_EVENT_TYPES))
-    if severity:
-        q = q.filter(SecurityEvent.severity == severity)
-    if ip:
-        esc = ip.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        if esc:
-            q = q.filter(SecurityEvent.ip_addr.like(f"%{esc}%", escape="\\"))
+    q = _security_events_query(db, event_type, severity, ip)
     rows = q.order_by(SecurityEvent.id.desc()).limit(limit).all()
     return {
         "success": True,
@@ -2808,6 +2827,86 @@ def list_security_events(
     }
 
 
+@router.get("/audit-logs/security/groups")
+def list_security_event_groups(
+    request: Request,
+    event_type: Optional[str] = None,
+    severity: Optional[str] = None,
+    ip: Optional[str] = None,
+    gap_seconds: int = 300,
+    limit: int = 1000,
+    db: Session = Depends(get_db),
+):
+    """admin のみ。security_events を (ip, event_type) の連続したまとまりに束ねて返す。
+
+    新しい順に最大 limit 行を読み、同じ ip と event_type で間隔が gap_seconds 以内の
+    行を 1 件にする。1 回のスキャンが一覧を占めないようにするための表示用。
+    各グループ: 回数・初回/最終・パスの種類数・パス例 (先頭数件)。
+    """
+    from backend.db.models import SecurityEvent
+    from backend.utils.audit_grouping import group_security_rows
+    _require_admin(request)
+    limit = max(1, min(int(limit or 1000), 5000))
+    gap_seconds = max(1, min(int(gap_seconds or 300), 86400))
+    q = _security_events_query(db, event_type, severity, ip)
+    rows = q.order_by(SecurityEvent.id.desc()).limit(limit).all()
+    groups = group_security_rows(
+        (
+            {
+                "id": r.id,
+                "ts": r.ts,
+                "event_type": r.event_type,
+                "severity": r.severity,
+                "ip_addr": r.ip_addr,
+                "path": r.path,
+            }
+            for r in rows
+        ),
+        gap_seconds=gap_seconds,
+    )
+    return {"success": True, "data": groups, "meta": {"rows_scanned": len(rows), "gap_seconds": gap_seconds}}
+
+
+@router.get("/audit-logs/errors/groups")
+def list_error_groups(
+    request: Request,
+    exc_type: Optional[str] = None,
+    path_prefix: Optional[str] = None,
+    limit: int = 1000,
+    db: Session = Depends(get_db),
+):
+    """admin のみ。error_logs を同じ原因 (指紋) ごとに束ねて返す。
+
+    新しい順に最大 limit 行を読み、指紋ごとに 回数・初回/最終発生・要約・直近の
+    request_id を返す。解決済みかどうかを持つ列は無いので、ここでは判定しない。
+    """
+    from backend.db.models import ErrorLog
+    from backend.utils.audit_grouping import group_error_rows
+    _require_admin(request)
+    limit = max(1, min(int(limit or 1000), 2000))
+    q = db.query(ErrorLog)
+    if exc_type:
+        q = q.filter(ErrorLog.exc_type == exc_type)
+    if path_prefix:
+        esc = path_prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        q = q.filter(ErrorLog.path.like(f"{esc}%", escape="\\"))
+    rows = q.order_by(ErrorLog.id.desc()).limit(limit).all()
+    groups = group_error_rows(
+        {
+            "id": r.id,
+            "ts": r.ts,
+            "request_id": r.request_id,
+            "method": r.method,
+            "path": r.path,
+            "status": r.status,
+            "exc_type": r.exc_type,
+            "message": r.message,
+        }
+        for r in rows
+    )
+    return {"success": True, "data": groups, "meta": {"rows_scanned": len(rows)}}
+
+
 @router.get("/audit-logs/errors")
 def list_error_logs(
     request: Request,
@@ -2826,6 +2925,7 @@ def list_error_logs(
       - limit: 1..2000 (default 200)
     """
     from backend.db.models import ErrorLog
+    from backend.utils.audit_grouping import summarize_error_message
     _require_admin(request)
     limit = max(1, min(int(limit or 200), 2000))
     q = db.query(ErrorLog)
@@ -2849,6 +2949,9 @@ def list_error_logs(
                 "status": r.status,
                 "exc_type": r.exc_type,
                 "message": r.message,
+                # 主表示用の短い要約 (生 SQL / parameters / 案内リンクを除く)。
+                # 生の message は詳細を開いたときだけ見せる。
+                "summary": summarize_error_message(r.message),
                 "traceback": r.traceback,
                 "input_repr": r.input_repr,
                 "internal_code": r.internal_code,

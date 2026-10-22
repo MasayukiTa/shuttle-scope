@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   authRequestLogs, authSecurityEvents, authErrorLogs, authAuditLogStatus,
+  authSecurityEventGroups, authErrorLogGroups,
   RequestLogEntry, SecurityEventEntry, ErrorLogEntry, AuditLogStatus,
+  SecurityEventGroup, ErrorLogGroup,
 } from '@/api/client'
 import { MIcon } from '@/components/common/MIcon'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
@@ -38,6 +40,10 @@ export function SecurityLogPage() {
   const [reqRows, setReqRows] = useState<RequestLogEntry[]>([])
   const [secRows, setSecRows] = useState<SecurityEventEntry[]>([])
   const [errRows, setErrRows] = useState<ErrorLogEntry[]>([])
+  // 同じ発信元の連続 / 同じ原因のエラーを 1 行に束ねる表示 (既定)
+  const [grouped, setGrouped] = useState(true)
+  const [secGroups, setSecGroups] = useState<SecurityEventGroup[]>([])
+  const [errGroups, setErrGroups] = useState<ErrorLogGroup[]>([])
   // 各表の記録件数と最新時刻 (一覧が 0 件のとき「未記録」と「絞り込みに合わない」を見分ける)。
   // 取得に失敗したら null のままにして、理由は断定しない。
   const [status, setStatus] = useState<AuditLogStatus | null>(null)
@@ -83,14 +89,24 @@ export function SecurityLogPage() {
         if (secType.trim()) params.event_type = secType.trim()
         if (secSeverity.trim()) params.severity = secSeverity.trim()
         if (secIp.trim()) params.ip = secIp.trim()
-        const res = await authSecurityEvents(params)
-        setSecRows(res.data)
+        if (grouped) {
+          const res = await authSecurityEventGroups(params)
+          setSecGroups(res.data)
+        } else {
+          const res = await authSecurityEvents(params)
+          setSecRows(res.data)
+        }
       } else {
         const params: { exc_type?: string; path_prefix?: string; limit?: number } = { limit }
         if (errExcType.trim()) params.exc_type = errExcType.trim()
         if (errPath.trim()) params.path_prefix = errPath.trim()
-        const res = await authErrorLogs(params)
-        setErrRows(res.data)
+        if (grouped) {
+          const res = await authErrorLogGroups(params)
+          setErrGroups(res.data)
+        } else {
+          const res = await authErrorLogs(params)
+          setErrRows(res.data)
+        }
       }
       setFetchedAt(new Date())
     } catch (err) {
@@ -109,7 +125,7 @@ export function SecurityLogPage() {
   useEffect(() => {
     if (role === 'admin') load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [role, tab])
+  }, [role, tab, grouped])
 
   if (role !== 'admin') {
     return <div className={`p-6 ${textSecondary}`}>{t('security_log.admin_required')}</div>
@@ -223,6 +239,12 @@ export function SecurityLogPage() {
             <input value={errPath} onChange={(e) => setErrPath(e.target.value)} className={`${inputCls} w-60`} placeholder="/api/" />
           </div>
         </>}
+        {tab !== 'request' && (
+          <label className={`flex items-center gap-1.5 text-xs pb-2 ${textSecondary}`}>
+            <input type="checkbox" checked={grouped} onChange={(e) => setGrouped(e.target.checked)} />
+            {t('security_log.group_view')}
+          </label>
+        )}
         <div>
           <label className={`block text-xs mb-1 ${textMuted}`}>{t('auth.audit_log.limit')}</label>
           <input type="number" min={1} max={5000} value={limit}
@@ -234,7 +256,11 @@ export function SecurityLogPage() {
           <MIcon name="refresh" size={14} className={loading ? 'animate-spin' : ''} />
           {t('auth.audit_log.refresh')}
         </button>
-        <span className={`text-xs ${textMuted}`}>{t('security_log.shown_count', { n: tab === 'request' ? reqRows.length : tab === 'security' ? secRows.length : errRows.length })}</span>
+        <span className={`text-xs ${textMuted}`}>
+          {tab !== 'request' && grouped
+            ? t('security_log.groups_shown', { n: tab === 'security' ? secGroups.length : errGroups.length })
+            : t('security_log.shown_count', { n: tab === 'request' ? reqRows.length : tab === 'security' ? secRows.length : errRows.length })}
+        </span>
       </div>
 
       <p className={`text-xs flex-shrink-0 ${textMuted}`} data-testid="security-log-status">
@@ -250,7 +276,72 @@ export function SecurityLogPage() {
       {error && <div className="text-sm text-[var(--ss-danger-text)] flex-shrink-0">{error}</div>}
 
       <div className={`flex-1 min-h-0 overflow-auto rounded-ss-lg border ${borderLine} ${cardBg}`}>
-        {tab === 'error' ? (
+        {tab === 'security' && grouped ? (
+          <table className="min-w-full text-xs">
+            <thead className={`sticky top-0 z-10 bg-[var(--ss-surface-2)]`}>
+              <tr className={textMuted}>
+                <th className="text-left px-2 py-2">{t('security_log.col_last_seen')}</th>
+                <th className="text-left px-2 py-2">{t('security_log.col_event')}</th>
+                <th className="text-left px-2 py-2">{t('security_log.col_severity')}</th>
+                <th className="text-left px-2 py-2">IP</th>
+                <th className="text-left px-2 py-2">{t('security_log.col_count')}</th>
+                <th className="text-left px-2 py-2">{t('security_log.col_paths')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {secGroups.length === 0 ? (
+                <tr><td colSpan={6} className={`px-3 py-6 text-center ${textMuted}`}>{emptyText()}</td></tr>
+              ) : secGroups.map((g) => (
+                <tr key={`${g.last_id}-${g.ip_addr}-${g.event_type}`} className={`border-t ${borderLine} align-top`}>
+                  <td className={`px-2 py-1.5 whitespace-nowrap ${textSecondary}`} title={`${g.first_ts} - ${g.last_ts}`}>{fmtTs(g.last_ts)}</td>
+                  <td className={`px-2 py-1.5 ${textHeading}`} title={g.event_type}>{securityEventLabel(t, g.event_type)}</td>
+                  <td className={`px-2 py-1.5 ${textSecondary}`}>{g.severity ? severityLabel(t, g.severity) : '—'}</td>
+                  <td className={`px-2 py-1.5 font-mono ${textSecondary}`}>{g.ip_addr || '—'}</td>
+                  <td className={`px-2 py-1.5 font-mono ${textHeading}`}>{g.count}</td>
+                  <td className={`px-2 py-1.5 text-[10px] ${textMuted}`}>
+                    <details>
+                      <summary className="cursor-pointer">{t('security_log.paths_count', { n: g.distinct_paths })}</summary>
+                      <ul className="font-mono break-all mt-1">
+                        {g.sample_paths.map((p) => <li key={p}>{p}</li>)}
+                      </ul>
+                    </details>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : tab === 'error' && grouped ? (
+          <table className="min-w-full text-xs">
+            <thead className={`sticky top-0 z-10 bg-[var(--ss-surface-2)]`}>
+              <tr className={textMuted}>
+                <th className="text-left px-2 py-2">{t('security_log.col_last_seen')}</th>
+                <th className="text-left px-2 py-2">{t('security_log.col_first_seen')}</th>
+                <th className="text-left px-2 py-2">{t('security_log.col_count')}</th>
+                <th className="text-left px-2 py-2">{t('security_log.col_exception')}</th>
+                <th className="text-left px-2 py-2">{t('security_log.col_method')}</th>
+                <th className="text-left px-2 py-2">{t('security_log.col_path')}</th>
+                <th className="text-left px-2 py-2 hidden md:table-cell">{t('security_log.col_summary')}</th>
+                <th className="text-left px-2 py-2 hidden lg:table-cell">{t('security_log.col_request_id')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {errGroups.length === 0 ? (
+                <tr><td colSpan={8} className={`px-3 py-6 text-center ${textMuted}`}>{emptyText()}</td></tr>
+              ) : errGroups.map((g) => (
+                <tr key={g.fingerprint} className={`border-t ${borderLine} align-top`}>
+                  <td className={`px-2 py-1.5 whitespace-nowrap ${textSecondary}`} title={g.last_ts}>{fmtTs(g.last_ts)}</td>
+                  <td className={`px-2 py-1.5 whitespace-nowrap ${textSecondary}`} title={g.first_ts}>{fmtTs(g.first_ts)}</td>
+                  <td className={`px-2 py-1.5 font-mono ${textHeading}`}>{g.count}</td>
+                  <td className={`px-2 py-1.5 font-mono text-[var(--ss-danger-text)]`}>{g.exc_type || '—'}</td>
+                  <td className={`px-2 py-1.5 font-mono ${textHeading}`}>{g.method || '—'}</td>
+                  <td className={`px-2 py-1.5 font-mono break-all ${textSecondary}`}>{g.path || '—'}</td>
+                  <td className={`px-2 py-1.5 hidden md:table-cell font-mono text-[10px] break-all max-w-md ${textMuted}`}>{g.summary || ''}</td>
+                  <td className={`px-2 py-1.5 hidden lg:table-cell font-mono text-[10px] ${textMuted}`}>{g.last_request_id || ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : tab === 'error' ? (
           <table className="min-w-full text-xs">
             <thead className={`sticky top-0 z-10 bg-[var(--ss-surface-2)]`}>
               <tr className={textMuted}>
@@ -273,7 +364,16 @@ export function SecurityLogPage() {
                   <td className={`px-2 py-1.5 font-mono text-[var(--ss-danger-text)]`}>{r.exc_type || '—'}</td>
                   <td className={`px-2 py-1.5 font-mono ${textHeading}`}>{r.method || '—'}</td>
                   <td className={`px-2 py-1.5 font-mono break-all ${textSecondary}`}>{r.path || '—'}</td>
-                  <td className={`px-2 py-1.5 hidden md:table-cell font-mono text-[10px] break-all max-w-md ${textMuted}`} title={r.traceback || ''}>{r.message || ''}</td>
+                  <td className={`px-2 py-1.5 hidden md:table-cell font-mono text-[10px] break-all max-w-md ${textMuted}`}>
+                    <div>{r.summary ?? r.message ?? ''}</div>
+                    {r.message && r.message !== r.summary && (
+                      <details className="mt-1">
+                        <summary className="cursor-pointer">{t('security_log.show_raw')}</summary>
+                        <div className="mt-1 whitespace-pre-wrap">{r.message}</div>
+                        {r.traceback && <div className="mt-1 whitespace-pre-wrap">{r.traceback}</div>}
+                      </details>
+                    )}
+                  </td>
                   <td className={`px-2 py-1.5 hidden lg:table-cell font-mono text-[10px] ${textMuted}`}>{r.request_id || ''}</td>
                 </tr>
               ))}
