@@ -303,6 +303,12 @@ export function ConditionLagCorrelation({ playerId, isLight }: Props) {
                 </span>
               </span>
             </div>
+            {/* 探索後の最大値 (最大 |r| のラグ) は上振れしやすい。事前に決めた仮説ではない */}
+            {bestLag && (
+              <div className={`mt-2 text-[11px] leading-snug ${textMuted}`}>
+                {t('condition.lag_corr.selection_note', { lags: LAGS.length, n: bestLag.n })}
+              </div>
+            )}
           </>
         )}
       </section>

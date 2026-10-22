@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { apiGet, apiPost, apiDelete, API_BASE_URL, newIdempotencyKey } from '@/api/client'
+import { apiGet, apiPost, API_BASE_URL } from '@/api/client'
 import { Player } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
 import { useTheme } from '@/hooks/useTheme'
@@ -361,7 +361,6 @@ export function ConditionPage() {
           <HistoryView
             list={historyList as unknown as Array<Record<string, unknown>>}
             isLight={isLight}
-            canDelete={role !== 'player'}
             onSelect={(r) => {
               // 下位互換のため latestResult も更新しつつ、詳細モーダルを開く
               setLatestResult(r as unknown as ConditionResultType)
@@ -606,15 +605,12 @@ interface HistoryRow {
 interface HistoryViewProps {
   list: Array<Record<string, unknown>>
   isLight: boolean
-  canDelete: boolean
   onSelect: (r: Record<string, unknown>) => void
 }
 
-function HistoryView({ list, isLight, canDelete, onSelect }: HistoryViewProps) {
+function HistoryView({ list, isLight, onSelect }: HistoryViewProps) {
   const { t } = useTranslation()
-  const qc = useQueryClient()
   const [filter, setFilter] = useState<HistoryFilter>('all')
-  const [deletingId, setDeletingId] = useState<number | null>(null)
   const muted = 'text-[var(--ss-t3)]'
   const panelCls = 'bg-[var(--ss-surface-1)] border-[var(--ss-border)]'
   const filterBtnBase = 'px-3 py-1 rounded-ss-md text-xs font-medium transition-colors'
@@ -631,17 +627,6 @@ function HistoryView({ list, isLight, canDelete, onSelect }: HistoryViewProps) {
       return r.condition_type === filter
     })
     .sort((a, b) => (b.measured_at ?? '').localeCompare(a.measured_at ?? ''))
-
-  const handleDelete = async (id: number) => {
-    if (!window.confirm(t('condition.history.delete_confirm') as string)) return
-    setDeletingId(id)
-    try {
-      await apiDelete(`/conditions/${id}`, { 'X-Idempotency-Key': newIdempotencyKey() })
-      qc.invalidateQueries({ queryKey: ['conditions'] })
-    } finally {
-      setDeletingId(null)
-    }
-  }
 
   const filterOpts: Array<{ key: HistoryFilter; label: string }> = [
     { key: 'all', label: t('condition.history.filter_all') },
@@ -734,18 +719,6 @@ function HistoryView({ list, isLight, canDelete, onSelect }: HistoryViewProps) {
                   </div>
                 )}
               </button>
-              {canDelete && r.id != null && (
-                <div className="px-3 pb-2 flex justify-end">
-                  <button
-                    onClick={() => handleDelete(r.id!)}
-                    disabled={deletingId === r.id}
-                    className="flex items-center gap-1 text-[11px] text-[var(--ss-bad)] hover:opacity-80 disabled:opacity-50"
-                  >
-                    <MIcon name="delete" size={12} />
-                    {t('condition.history.delete')}
-                  </button>
-                </div>
-              )}
             </div>
           ))}
         </div>
