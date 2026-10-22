@@ -22,6 +22,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from backend.analysis.exploitability_loader import load_exploitability_records
+from backend.analysis.match_filter import MatchFilter, NO_FILTER
 
 
 def load_policy_records(
@@ -30,8 +31,9 @@ def load_policy_records(
     *,
     coarse: bool = True,
     provenance_rows: Optional[dict[str, list]] = None,
+    match_filter: MatchFilter = NO_FILTER,
 ) -> dict[str, list[dict]]:
-    """player_id の全試合から DR-OPE 用レコードを状態キー別に返す。
+    """player_id の試合 (解析母集団 + match_filter) から DR-OPE 用レコードを状態キー別に返す。
 
     内部で load_exploitability_records を呼び出し、
     各レコードを {"a": str, "win": 0|1} に変換する (相手行動 "b" を除去)。
@@ -52,6 +54,7 @@ def load_policy_records(
         coarse=coarse,
         provenance_rows=provenance_rows,
         provenance_include_response=False,
+        match_filter=match_filter,
     )
 
     policy_records: dict[str, list[dict]] = {}

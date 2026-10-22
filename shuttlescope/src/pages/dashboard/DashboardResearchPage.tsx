@@ -212,35 +212,35 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
       {/* ── Research Spine: 搾取可能性 / ナッシュ均衡 ── */}
       <ErrorBoundary>
         <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
-          <ExploitabilityCard playerId={playerId} />
+          <ExploitabilityCard playerId={playerId} filters={filters} />
         </RoleGuard>
       </ErrorBoundary>
 
       {/* ── Research Spine: コンフォーマル予測（分布フリーカバレッジ保証） ── */}
       <ErrorBoundary>
         <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
-          <ConformalCard playerId={playerId} />
+          <ConformalCard playerId={playerId} filters={filters} />
         </RoleGuard>
       </ErrorBoundary>
 
       {/* ── DR-OPE ポリシー評価 ── */}
       <ErrorBoundary>
         <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
-          <PolicyEvalCard playerId={playerId} />
+          <PolicyEvalCard playerId={playerId} filters={filters} />
         </RoleGuard>
       </ErrorBoundary>
 
       {/* ── スタイル距離（最適輸送） ── */}
       <ErrorBoundary>
         <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
-          <StyleDistanceCard playerId={playerId} />
+          <StyleDistanceCard playerId={playerId} filters={filters} />
         </RoleGuard>
       </ErrorBoundary>
 
       {/* ── 対戦予測（階層ベイズ） ── */}
       <ErrorBoundary>
         <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
-          <MatchupForecastCard playerId={playerId} />
+          <MatchupForecastCard playerId={playerId} filters={filters} />
         </RoleGuard>
       </ErrorBoundary>
 

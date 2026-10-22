@@ -164,6 +164,7 @@ def gather_player_report(
     )
 
     # ── 2. Advanced (rally length / pressure / transition) ──────────
+    from backend.analysis.match_filter import MatchFilter
     from backend.routers.analysis_advanced import (
         get_rally_length_vs_winrate,
         get_pressure_performance,
@@ -183,7 +184,8 @@ def gather_player_report(
         "shot_transition_matrix", get_shot_transition_matrix,
         player_id=player_id, db=db, **_common,
     )
-    # opponent_stats は filter args を取らない
+    # opponent_stats は MatchFilter を mf で受け取る。直接呼びでは Depends の既定値が
+    # 残るため、レポートの絞り込み (大会レベル・期間) をここで明示的に渡す。
     #
     # `/api/analysis/opponent_stats` は main.py の
     # `_PLAYER_FORBIDDEN_ANALYSIS_PATHS` に入っており、player ロールには
@@ -195,6 +197,7 @@ def gather_player_report(
         sections["opponent_stats"] = _safe_call(
             "opponent_stats", get_opponent_stats,
             player_id=player_id, db=db,
+            mf=MatchFilter(tournament_level=tournament_level, date_from=date_from, date_to=date_to),
         )
     sections["temporal_performance"] = _safe_call(
         "temporal_performance", get_temporal_performance,

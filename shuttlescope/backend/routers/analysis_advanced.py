@@ -20,7 +20,9 @@ from backend.analysis.role_view import is_opponent_stroke, own_slot, teammate_sl
 from backend.analysis.player_context import (
     involves_player, opponent_player_id, partner_player_id, player_wins_match,
 )
-from backend.analysis.analysis_population import split_analysis_population
+from backend.analysis.match_filter import (
+    MatchFilter, match_filter_params, select_population, stamps_population,
+)
 from backend.analysis.analysis_config import AnalysisConfig
 from backend.analysis.response_meta import build_input_provenance
 from backend.analysis.growth_engine import (
@@ -823,12 +825,15 @@ def get_post_long_rally_stats(
 # ---------------------------------------------------------------------------
 
 @router.get("/analysis/opponent_stats")
-def get_opponent_stats(player_id: int, db: Session = Depends(get_db)):
+@stamps_population("opponent_stats")
+def get_opponent_stats(
+    player_id: int,
+    mf: MatchFilter = Depends(match_filter_params),
+    db: Session = Depends(get_db),
+):
     """E-001: 過去に対戦した相手ごとの勝率・ラリー長を集計する"""
     # 勝敗確定かつラリー有りの試合だけを数える (analysis_population)。除外件数は meta.excluded
-    matches, excluded = split_analysis_population(
-        db, db.query(Match).filter(involves_player(player_id)).all(),
-    )
+    matches, excluded = select_population(db, player_id, mf)
 
     empty_confidence = check_confidence("opponent_analysis", 0)
     if not matches:
@@ -1911,22 +1916,24 @@ def get_flash_advice(
 
 # ─── Phase 2: 継続成長ビュー ───────────────────────────────────────────────────
 
+def _sorted_by_date(matches: list) -> list:
+    """試合を日付昇順に並べる (日付なしが先頭。SQL の ORDER BY date と同じ)。"""
+    return sorted(matches, key=lambda m: (m.date is not None, m.date))
+
+
 @router.get("/analysis/growth_timeline")
+@stamps_population("growth")
 def get_growth_timeline(
     player_id: int,
     metric: str = Query("win_rate", pattern="^(win_rate|avg_rally_length|serve_win_rate)$"),
     window_size: int = Query(3, ge=2, le=10),
+    mf: MatchFilter = Depends(match_filter_params),
     db: Session = Depends(get_db),
 ):
     """試合軸×指標の時系列データと移動平均を返す。"""
 
-    # 対象試合（日付昇順）
-    matches = (
-        db.query(Match)
-        .filter(involves_player(player_id))
-        .order_by(Match.date)
-        .all()
-    )
+    # 対象試合（日付昇順）。母集団 (analysis_population) + 絞り込み
+    matches = _sorted_by_date(select_population(db, player_id, mf)[0])
     if not matches:
         return {"success": True, "data": {"points": [], "trend": "pending", "trend_delta": 0.0,
                                           "weighted_trend": "pending", "weighted_trend_delta": 0.0},
@@ -1970,19 +1977,16 @@ def get_growth_timeline(
 
 
 @router.get("/analysis/growth_judgment")
+@stamps_population("growth")
 def get_growth_judgment(
     player_id: int,
     min_matches: int = Query(5, ge=1, le=20),
+    mf: MatchFilter = Depends(match_filter_params),
     db: Session = Depends(get_db),
 ):
     """複数指標を横断した成長判定（improving/stable/declining/pending）を返す。"""
 
-    matches = (
-        db.query(Match)
-        .filter(involves_player(player_id))
-        .order_by(Match.date)
-        .all()
-    )
+    matches = _sorted_by_date(select_population(db, player_id, mf)[0])
     match_count = len(matches)
 
     if match_count < min_matches:

@@ -14,7 +14,9 @@ from sqlalchemy.orm import Session
 from backend.db.database import get_db
 from backend.analysis.role_view import own_slot, team_side
 from backend.analysis.player_context import involves_player, opponent_player_id, player_wins_match, partner_player_id
-from backend.analysis.analysis_population import split_analysis_population
+from backend.analysis.match_filter import (
+    MatchFilter, match_filter_params, select_population, stamps_population, declare_filter_scope,
+)
 from backend.utils.auth import (
     require_admin_or_analyst, require_query_scope, get_auth, apply_match_team_scope, AuthCtx,
 )
@@ -499,6 +501,14 @@ def get_rally_sequence_patterns(
 
 
 def _rally_sequence_patterns_impl(db: Session, player_id: int, ctx=None):
+    """絞り込みを使わない解析 (registry: global_only)。応答の meta にそれを書く。
+    単体エンドポイントとバンドルが同じ応答を返すよう、書き込みはここで 1 回だけ行う。"""
+    resp = _rally_sequence_patterns_core(db, player_id, ctx)
+    declare_filter_scope(resp["meta"], "rally_sequence_patterns")
+    return resp
+
+
+def _rally_sequence_patterns_core(db: Session, player_id: int, ctx=None):
     if ctx is not None:
         matches = ctx.rs_matches
         role_by_match = ctx.rs_role_by_match
@@ -1573,16 +1583,16 @@ def get_opponent_adaptive_shots(
 # ---------------------------------------------------------------------------
 
 @router.get("/analysis/pair_synergy")
+@stamps_population("pair_synergy")
 def get_pair_synergy(
     player_id: int,
+    mf: MatchFilter = Depends(match_filter_params),
     db: Session = Depends(get_db),
 ):
     """ペアシナジースコア — ダブルスペアごとの相性指標"""
     # 全試合（シングルス含む）でプレイヤー勝率を計算
     # 勝敗確定かつラリー有りの試合だけを数える (analysis_population)。除外件数は meta.excluded
-    all_matches, excluded = split_analysis_population(
-        db, db.query(Match).filter(involves_player(player_id)).all(),
-    )
+    all_matches, excluded = select_population(db, player_id, mf)
     if not all_matches:
         return {"success": True, "data": {"player_avg_win_rate": None, "pairs": []},
                 "meta": {"sample_size": 0, "confidence": _research_confidence("descriptive_basic", 0),
@@ -1701,9 +1711,11 @@ def get_pair_synergy(
 # ---------------------------------------------------------------------------
 
 @router.get("/analysis/exploitability")
+@stamps_population("exploitability")
 def get_exploitability(
     player_id: int,
     coarse: bool = Query(True),
+    mf: MatchFilter = Depends(match_filter_params),
     db: Session = Depends(get_db),
 ):
     """NE-001: ゲーム状態別ナッシュ均衡・エクスプロイタビリティ解析（アナリスト専用 research tier）
@@ -1719,6 +1731,7 @@ def get_exploitability(
             player_id,
             coarse=coarse,
             provenance_rows=provenance_rows,
+            match_filter=mf,
         )
     except Exception:
         logger.exception("exploitability_loader failed for player_id=%s", player_id)
@@ -1822,10 +1835,12 @@ CONFORMAL_MIN_GROUP_N = VERDICT_MIN_SAMPLE
 
 
 @router.get("/analysis/conformal")
+@stamps_population("conformal")
 def get_conformal(
     player_id: int,
     alpha: float = Query(0.1, ge=0.01, le=0.5),
     coarse: bool = Query(True),
+    mf: MatchFilter = Depends(match_filter_params),
     db: Session = Depends(get_db),
 ):
     """CP-001: split-conformal 予測によるラリー勝敗の分布フリー被覆保証解析
@@ -1842,6 +1857,7 @@ def get_conformal(
             player_id,
             coarse=coarse,
             provenance_rows=provenance_rows,
+            match_filter=mf,
         )
     except Exception:
         logger.exception("conformal_loader failed for player_id=%s", player_id)
@@ -1984,9 +2000,11 @@ def get_conformal(
 # ---------------------------------------------------------------------------
 
 @router.get("/analysis/policy_eval")
+@stamps_population("policy_eval")
 def get_policy_eval(
     player_id: int,
     temp: float = Query(0.25, ge=0.01, le=2.0),
+    mf: MatchFilter = Depends(match_filter_params),
     db: Session = Depends(get_db),
 ):
     """POL-001: 状態別に「高価値行動へシフトした方策」の価値を二重頑健 (DR) で
@@ -1999,6 +2017,7 @@ def get_policy_eval(
             player_id,
             coarse=True,
             provenance_rows=provenance_rows,
+            match_filter=mf,
         )
     except Exception:
         logger.exception("dr_ope_loader failed for player_id=%s", player_id)
@@ -2074,8 +2093,10 @@ def _accessible_player_ids(ctx: AuthCtx, db: Session):
 # ---------------------------------------------------------------------------
 
 @router.get("/analysis/style_distance")
+@stamps_population("style_distance")
 def get_style_distance(
     player_id: int,
+    mf: MatchFilter = Depends(match_filter_params),
     db: Session = Depends(get_db),
     ctx: AuthCtx = Depends(get_auth),
 ):
@@ -2090,6 +2111,7 @@ def get_style_distance(
             allowed_player_ids=allowed,
             min_matches=3,
             provenance_rows=provenance_rows,
+            match_filter=mf,
         )
     except Exception:
         logger.exception("optimal_transport_loader failed for player_id=%s", player_id)
@@ -2159,9 +2181,11 @@ def get_style_distance(
 # ---------------------------------------------------------------------------
 
 @router.get("/analysis/matchup_forecast")
+@stamps_population("matchup_forecast")
 def get_matchup_forecast(
     player_id: int,
     opponent_id: Optional[int] = Query(None),
+    mf: MatchFilter = Depends(match_filter_params),
     db: Session = Depends(get_db),
     ctx: AuthCtx = Depends(get_auth),
 ):
@@ -2169,7 +2193,7 @@ def get_matchup_forecast(
     不確実性付きで予測。データが疎な対戦ほど CI が広がる。コホートは team-scoped。"""
     allowed = _accessible_player_ids(ctx, db)
     try:
-        ids, pairs = load_match_pairs(db, player_id, allowed_player_ids=allowed)
+        ids, pairs = load_match_pairs(db, player_id, allowed_player_ids=allowed, match_filter=mf)
     except Exception:
         logger.exception("hier_bayes_loader failed for player_id=%s", player_id)
         ids, pairs = [], []

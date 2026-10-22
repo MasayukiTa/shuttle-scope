@@ -4,6 +4,8 @@ import { apiGet } from '@/api/client'
 import { useReviewBundleSlice } from '@/contexts/ReviewBundleContext'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
+import { FilterScopeNote } from '@/components/dashboard/ResearchNotice'
+import type { FilterScopeMeta } from '@/utils/analysisFilterParams'
 import { WIN, LOSS, perfColor } from '@/styles/colors'
 import { useTranslation } from 'react-i18next'
 
@@ -30,7 +32,7 @@ interface Response {
     eligible_rallies?: number
     baseline_win_rate?: number | null
   }
-  meta: { sample_size: number; confidence: { level: string; stars: string; label: string } }
+  meta: { sample_size: number; confidence: { level: string; stars: string; label: string } } & FilterScopeMeta
 }
 
 function SequencePill({ labels, winRate }: { labels: string[]; winRate: number }) {
@@ -121,6 +123,7 @@ export function RallySequencePatterns({ playerId }: RallySequencePatternsProps) 
     <div className="bg-gray-800 rounded-ss-lg shadow-card p-4">
       <h3 className="text-sm font-semibold text-gray-200 mb-1">{t('auto.RallySequencePatterns.k3')}</h3>
       <p className="text-xs text-gray-500 mb-3 ss-num">{t('auto.RallySequencePatterns.analyzed_rallies', { n: totalRallies })}</p>
+      <FilterScopeNote meta={resp?.meta} className="mb-2" />
       <ConfidenceBadge sampleSize={sampleSize} unit="strokes" />
       <p className="text-[11px] text-gray-500 mt-1">{t('auto.RallySequencePatterns.unit_note')}</p>
       {typeof resp?.data?.baseline_win_rate === 'number' && (

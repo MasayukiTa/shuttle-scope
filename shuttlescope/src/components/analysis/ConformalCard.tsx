@@ -10,7 +10,9 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { fetchConformal, ConformalGroup } from '@/api/conformal'
 import { EvidenceBadge } from '@/components/dashboard/EvidenceBadge'
-import { ResearchNotice, UnfilteredScopeNote } from '@/components/dashboard/ResearchNotice'
+import { ResearchNotice, FilterScopeNote } from '@/components/dashboard/ResearchNotice'
+import { DEFAULT_FILTERS, type AnalysisFilters } from '@/types'
+import { toFilterApiParams } from '@/utils/analysisFilterParams'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { MIcon } from '@/components/common/MIcon'
 import { useCardTheme } from '@/hooks/useCardTheme'
@@ -19,6 +21,8 @@ import { useCardTheme } from '@/hooks/useCardTheme'
 
 interface Props {
   playerId: number
+  /** 画面上部の絞り込み。省略時は絞り込みなし */
+  filters?: AnalysisFilters
 }
 
 // ── 定数: alpha 選択肢 ───────────────────────────────────────────────────────
@@ -262,8 +266,9 @@ function AlphaToggle({
 
 // ── メインコンポーネント ───────────────────────────────────────────────────────
 
-export function ConformalCard({ playerId }: Props) {
+export function ConformalCard({ playerId, filters = DEFAULT_FILTERS }: Props) {
   const { t } = useTranslation()
+  const filterApiParams = toFilterApiParams(filters)
   const {
     card,
     textHeading,
@@ -308,8 +313,8 @@ export function ConformalCard({ playerId }: Props) {
   )
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['conformal', playerId, alpha],
-    queryFn: () => fetchConformal(playerId, alpha),
+    queryKey: ['conformal', playerId, alpha, filterApiParams],
+    queryFn: () => fetchConformal(playerId, alpha, filters),
     enabled: !!playerId,
   })
 
@@ -346,7 +351,7 @@ export function ConformalCard({ playerId }: Props) {
         assumptions={t('auto.ConformalCard.assumptions')}
         promotionCriteria={t('auto.ConformalCard.promotion_criteria')}
       />
-      <UnfilteredScopeNote />
+      <FilterScopeNote meta={data?.meta} />
 
       {/* ─ alpha トグル ── */}
       <div className="flex items-center gap-2 flex-wrap">

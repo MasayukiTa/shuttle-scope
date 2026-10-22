@@ -9,6 +9,7 @@
 import { createContext, useContext, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+import type { FilterScopeMeta } from '@/utils/analysisFilterParams'
 
 // 研究タブのように「ページ先頭に注意バナーを 1 回だけ出す」画面向けのスコープ。
 // この Provider の内側にある ResearchNotice は、見出し (⚠ 研究段階の分析) だけを省く。
@@ -89,19 +90,46 @@ export function ResearchNotice({
 }
 
 /**
- * 上部の絞り込み (結果・大会レベル・期間) がこのカードの母集団に効かないことを示す 1 行。
+ * 上部の絞り込み (結果・大会レベル・期間) がこのカードの母集団に効くかを 1 行で示す。
+ * 表示は backend の応答 meta (filter_scope / population) だけで決まる。
+ * filter_scope は analysis_registry の宣言 (backend/analysis/analysis_registry.py)。
  * 防ぐ事象: 同じ画面で N が指標ごとに違い、画面のフィルタ状態では読み解けない (監査 #152)。
+ *   - global_only / not_wired: 「絞り込み対象外」を出す
+ *   - filtered で絞り込み中: 絞り込み後の試合数・ラリー数を出す
+ *   - それ以外 (絞り込みなし・meta なし): 何も出さない
  */
-export function UnfilteredScopeNote({ className = '' }: { className?: string }) {
+export function FilterScopeNote({
+  meta,
+  className = '',
+}: {
+  meta?: FilterScopeMeta | null
+  className?: string
+}) {
   const { t } = useTranslation()
   const isLight = useIsLightMode()
+  const scope = meta?.filter_scope
+  if (!scope) return null
+
+  let text: string | null = null
+  if (scope === 'global_only') {
+    text = t('auto.ResearchNotice.filter_scope_global_only')
+  } else if (scope === 'not_wired') {
+    text = t('auto.ResearchNotice.filter_scope_not_wired')
+  } else {
+    const pop = meta?.population
+    if (pop?.filter_applied && pop.n_matches != null && pop.n_rallies != null) {
+      text = t('auto.ResearchNotice.population_filtered', { m: pop.n_matches, r: pop.n_rallies })
+    }
+  }
+  if (!text) return null
+
   return (
     <p
       className={`text-[10px] ${className}`}
       style={{ color: isLight ? '#64748b' : '#94a3b8' }}
-      data-testid="unfiltered-scope-note"
+      data-testid="filter-scope-note"
     >
-      {t('auto.ResearchNotice.unfiltered_scope')}
+      {text}
     </p>
   )
 }

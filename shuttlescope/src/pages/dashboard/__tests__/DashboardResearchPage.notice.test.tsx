@@ -55,8 +55,8 @@ describe('ResearchNotice repetition', () => {
     expect(screen.getAllByText(HEADING)).toHaveLength(1)
     // カード間で前提が違うこと・ラリーが試合内でまとまることを 1 回だけ示す
     expect(screen.getAllByTestId('research-dependence-note')).toHaveLength(1)
-    // 絞り込みが効かないカードには、その旨を 1 行で示す
-    expect(screen.getAllByTestId('unfiltered-scope-note').length).toBeGreaterThan(0)
+    // 絞り込みの対象外かどうかは backend の応答 (meta.filter_scope) で決まる。
+    // 表示の確認は FilterScopeNote.test.tsx にある。
   })
 
   it('card used outside the research tab keeps its own warning', async () => {
