@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { apiGet, apiPost, API_BASE_URL } from '@/api/client'
+import { apiGet, apiPost } from '@/api/client'
+import { downloadReport } from '@/utils/downloadReport'
 import { Player } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
 import { useTheme } from '@/hooks/useTheme'
@@ -172,6 +173,7 @@ export function ConditionPage() {
   const [formState, setFormState] = useState<Partial<ConditionPayload>>({})
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
+  const [downloadError, setDownloadError] = useState<string | null>(null)
   const [latestResult, setLatestResult] = useState<ConditionResultType | null>(null)
   const [detailRecord, setDetailRecord] = useState<Record<string, unknown> | null>(null)
   const [glossaryOpen, setGlossaryOpen] = useState(false)
@@ -228,18 +230,10 @@ export function ConditionPage() {
   }
 
   const dlReport = (path: string, filename: string) => {
-    const token = sessionStorage.getItem('shuttlescope_token')
-    const fullUrl = API_BASE_URL + path.replace(/^\/api/, '')
-    fetch(fullUrl, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
-      .then((r) => r.blob())
-      .then((blob) => {
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = filename
-        a.click()
-        URL.revokeObjectURL(url)
-      })
+    setDownloadError(null)
+    downloadReport(path, filename).catch(() => {
+      setDownloadError(t('common.download_failed'))
+    })
   }
 
   const cardBg = 'bg-[var(--ss-bg-app)]'
@@ -332,6 +326,14 @@ export function ConditionPage() {
           >
             {t('auto.ConditionPage.k6')}
           </button>
+        </div>
+      )}
+      {downloadError && (
+        <div
+          role="alert"
+          className="mx-6 mt-2 text-sm text-[var(--ss-bad)] bg-[var(--ss-danger-tint)] border border-[var(--ss-danger-border)] rounded-ss-md px-3 py-2"
+        >
+          {downloadError}
         </div>
       )}
 

@@ -36,6 +36,7 @@ export function SessionShareModal({
   const [showPassword, setShowPassword] = useState(false)
   const [sessionPassword, setSessionPassword] = useState(initialPassword ?? '')
   const [regenerating, setRegenerating] = useState(false)
+  const [regenerateStatus, setRegenerateStatus] = useState<'ok' | 'failed' | null>(null)
   const isLight = useIsLightMode()
 
   // LAN IP URL（QRコード・他デバイス用）と localhost URL（同一PC用）を分離
@@ -108,15 +109,20 @@ export function SessionShareModal({
 
   const handleRegeneratePassword = async () => {
     setRegenerating(true)
+    setRegenerateStatus(null)
     try {
       const res = await apiPost<{ success: boolean; data: { session_password: string } }>(
         `/sessions/${sessionCode}/regenerate-password`, {}
       )
       if (res.success) {
         setSessionPassword(res.data.session_password)
+        setRegenerateStatus('ok')
+      } else {
+        setRegenerateStatus('failed')
       }
     } catch {
-      // 再生成失敗は無視
+      // 失敗時は旧パスワードのまま。利用者へ明示する
+      setRegenerateStatus('failed')
     } finally {
       setRegenerating(false)
     }
@@ -240,6 +246,16 @@ export function SessionShareModal({
               {t('lan_session.password_regenerate')}
             </button>
           </div>
+          {regenerateStatus && (
+            <p
+              role={regenerateStatus === 'failed' ? 'alert' : 'status'}
+              className={`text-[10px] mt-1 ${regenerateStatus === 'failed' ? 'text-[var(--ss-bad)]' : noteColor}`}
+            >
+              {regenerateStatus === 'failed'
+                ? t('lan_session.password_regenerate_failed')
+                : t('lan_session.password_regenerate_done')}
+            </p>
+          )}
           <p className={`text-[10px] mt-1 ${noteColor}`}>
             {t('lan_session.share_modal_password_note')}
           </p>

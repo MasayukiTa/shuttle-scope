@@ -246,18 +246,23 @@ export function useAdviceChat() {
   const resetSession = useCallback(async (): Promise<void> => {
     setError(null)
     const sid = sessionId
-    setSessionId(null)
-    setMessages([])
-    setAppliedScope(null)
-    writeStoredSid(null)
+    // サーバ側の削除が成功してから画面と保存済み sid を消す。失敗時は旧セッションを
+    // 保持したまま通知し、利用者が再試行できるようにする (404 = 既に無いので成功扱い)。
     if (sid != null) {
       try {
         await apiDelete(`/insights/chat/sessions/${sid}`,
           { 'X-Idempotency-Key': newIdempotencyKey() })
-      } catch {
-        // best-effort: ローカル状態は既に消したので無視
+      } catch (err) {
+        if (parseErrorBody(err).status !== 404) {
+          setError('auto.AdviceChat.error_reset_failed')
+          return
+        }
       }
     }
+    setSessionId(null)
+    setMessages([])
+    setAppliedScope(null)
+    writeStoredSid(null)
   }, [sessionId])
 
   return {

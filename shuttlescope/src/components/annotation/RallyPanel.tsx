@@ -56,11 +56,15 @@ export function RallyPanel({
               { winner: 'player_a' as const, label: `${playerAName} ${t('annotator.rally_point_suffix')}` },
               { winner: 'player_b' as const, label: `${playerBName} ${t('annotator.rally_point_suffix')}` },
             ].map(({ winner, label }) => (
-              <div key={winner} className="flex flex-col gap-1">
+              <div key={winner} role="group" aria-label={label} className="flex flex-col gap-1">
                 <div className="text-xs text-[var(--ss-t2)] font-medium text-center">{label}</div>
                 {END_TYPE_VALUES.map((value) => (
                   <button
                     key={value}
+                    aria-label={t('annotator.end_type_for_winner', {
+                      winner: winner === 'player_a' ? playerAName : playerBName,
+                      endType: t(`end_types.${value}`),
+                    })}
                     onClick={() => onConfirmRally(winner, value)}
                     className="px-2 py-1 bg-[var(--ss-surface-2)] hover:bg-[var(--ss-brand)] text-[var(--ss-t2)] hover:text-white rounded-ss-md text-xs transition-colors duration-fast ease-out"
                   >

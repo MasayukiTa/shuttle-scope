@@ -192,6 +192,7 @@ function OverrideForm({
   const [status, setStatus] = useState(currentOverride?.status ?? 'requires_review')
   const [note, setNote] = useState(currentOverride?.note ?? '')
   const [saving, setSaving] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
   const holdNoteRequired = status === 'hold' && note.trim() === ''
 
   const inputClass = isLight
@@ -207,6 +208,7 @@ function OverrideForm({
 
   const handleSave = async () => {
     setSaving(true)
+    setActionError(null)
     try {
       await apiPost('/analysis/meta/promotion_override', {
         analysis_type: analysisType,
@@ -216,17 +218,25 @@ function OverrideForm({
       })
       await qc.invalidateQueries({ queryKey: ['promotion-overrides'] })
       onClose()
+    } catch {
+      setActionError(t('auto.PromotionStatusCard.save_failed'))
     } finally {
       setSaving(false)
     }
   }
 
   const handleDelete = async () => {
+    // Override は昇格/保留の判断記録なので、誤クリックで消えないよう確認する
+    const analysisName = t(`auto.PromotionStatusCard.names.${analysisType}`, { defaultValue: analysisType })
+    if (!window.confirm(t('auto.PromotionStatusCard.delete_confirm', { analysis: analysisName, note: currentOverride?.note ?? '' }))) return
     setSaving(true)
+    setActionError(null)
     try {
       await apiDelete(`/analysis/meta/promotion_override/${analysisType}`, { 'X-Idempotency-Key': newIdempotencyKey() })
       await qc.invalidateQueries({ queryKey: ['promotion-overrides'] })
       onClose()
+    } catch {
+      setActionError(t('auto.PromotionStatusCard.delete_failed'))
     } finally {
       setSaving(false)
     }
@@ -261,6 +271,11 @@ function OverrideForm({
           </p>
         )}
       </div>
+      {actionError && (
+        <p role="alert" className={`text-[10px] ${isLight ? 'text-red-600' : 'text-red-400'}`}>
+          {actionError}
+        </p>
+      )}
       <div className="flex items-center gap-2 justify-end">
         {currentOverride && (
           <button

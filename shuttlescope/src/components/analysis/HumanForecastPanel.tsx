@@ -372,6 +372,12 @@ export function HumanForecastPanel({ matchId, playerId }: Props) {
         </div>
       )}
 
+      {remove.isError && (
+        <p role="alert" className="text-xs text-[var(--ss-bad)]">
+          {t('prediction.human_forecast_delete_failed')}
+        </p>
+      )}
+
       {/* 保存済み予測リスト */}
       {forecasts.length > 0 && (
         <div className="space-y-1">
@@ -400,7 +406,13 @@ export function HumanForecastPanel({ matchId, playerId }: Props) {
                 <span className="text-[10px] text-[var(--ss-t3)]">({f.confidence_level})</span>
               )}
               <button
-                onClick={() => remove.mutate(f.id)}
+                type="button"
+                aria-label={t('prediction.human_forecast_delete')}
+                onClick={() => {
+                  // 削除すると人 vs モデルのベンチマーク値も変わるため確認する
+                  if (!window.confirm(t('prediction.human_forecast_delete_confirm'))) return
+                  remove.mutate(f.id)
+                }}
                 className="ml-auto p-1 rounded-ss-md hover:bg-[var(--ss-surface-3)] text-[var(--ss-t3)] hover:text-[var(--ss-bad)] transition-colors duration-base ease-out"
               >
                 <MIcon name="delete" size={10} />
