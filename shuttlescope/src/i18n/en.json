@@ -2650,12 +2650,12 @@
     "video_list": "Match list",
     "no_videos": "No eligible matches",
     "empty_title": "No matches are displayed yet",
-    "empty_desc": "Matches satisfying all of the following appear here:",
+    "empty_desc": "Matches that meet all of the following appear here.",
     "empty_cond_1": "The match is registered and not deleted (add from the Matches page)",
-    "empty_cond_2": "A video file (video_local_path) is linked to the match",
-    "empty_cond_3": "Rallies are recorded and at least one has end_type \"unforced_error\" or \"forced_error\" (for miss labeling)",
-    "empty_cond_4": "The annotator's role is analyst or coach (current role: {{role}})",
-    "empty_hint": "Matches with 0 misses still appear in the list, but clip / label targets are only rallies with miss-type end_type.",
+    "empty_cond_2": "A video is registered for the match",
+    "empty_cond_3": "At least one rally that ended in a miss is recorded",
+    "empty_cond_4": "Your role is coach, analyst or admin",
+    "empty_hint": "Matches with no misses are listed, but review cannot be started for them.",
     "progress": "Progress",
     "miss_count": "Misses",
     "labeled_count": "Done",
@@ -2728,7 +2728,10 @@
     "right_weight": "Right weight",
     "forward_lean": "Forward lean",
     "select_stroke": "Please select a stroke",
-    "sample_warning": "Small sample — treat as indicative only"
+    "sample_warning": "Small sample — treat as indicative only",
+    "hint_select_match": "Select a match first. Then you can pick one of its miss strokes.",
+    "hint_no_clips": "This match has no strokes from rallies that ended in a miss, so there is nothing to select. Choose another match.",
+    "hint_clips_error": "Could not load the stroke list. Wait a moment and select the match again."
   },
   "pipeline": {
     "status": {

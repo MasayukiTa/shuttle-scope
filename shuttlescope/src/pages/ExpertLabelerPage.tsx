@@ -163,7 +163,7 @@ function ExpertLabelerContent() {
                   <li>{t('expert_labeler.empty_cond_1')}</li>
                   <li>{t('expert_labeler.empty_cond_2')}</li>
                   <li>{t('expert_labeler.empty_cond_3')}</li>
-                  <li>{t('expert_labeler.empty_cond_4', { role: role ?? '-' })}</li>
+                  <li>{t('expert_labeler.empty_cond_4')}</li>
                 </ul>
                 <div className={`text-xs pt-2 border-t ${borderColor} ${textMuted}`}>
                   {t('expert_labeler.empty_hint')}
