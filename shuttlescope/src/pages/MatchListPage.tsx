@@ -20,7 +20,8 @@ import { MIcon } from '@/components/common/MIcon'
 // 試合登録フォーム
 interface MatchFormData {
   tournament: string
-  tournament_level: TournamentLevel
+  // 空文字 = 未選択。もっともらしい既定値を入れると、見落としたときに偽のカテゴリ情報になる
+  tournament_level: TournamentLevel | ''
   round: string
   date: string
   format: MatchFormat
@@ -40,8 +41,8 @@ interface MatchFormData {
 
 const defaultForm = (): MatchFormData => ({
   tournament: '',
-  tournament_level: '国内',
-  round: MATCH_ROUNDS[3],
+  tournament_level: '',
+  round: '',
   date: new Date().toISOString().split('T')[0],
   format: 'singles',
   player_a_id: '',
@@ -334,6 +335,12 @@ export function MatchListPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    // 大会レベルとラウンドは未選択のまま登録させない (既定値を持たないため)
+    if (!form.tournament_level || !form.round) {
+      alert(t('common.select_placeholder'))
+      return
+    }
 
     const aTeam = playerATeam.trim()
     const bTeam = playerBTeam.trim()
@@ -990,7 +997,9 @@ export function MatchListPage() {
                     value={form.tournament_level}
                     onChange={(e) => setForm({ ...form, tournament_level: e.target.value as TournamentLevel })}
                     className={`w-full ${inputClass}`}
+                    required
                   >
+                    <option value="" disabled>{t('common.select_placeholder')}</option>
                     {['IC', 'IS', 'SJL', '全日本', '国内', 'その他'].map((l) => (
                       <option key={l} value={l}>{l}</option>
                     ))}
@@ -1003,7 +1012,9 @@ export function MatchListPage() {
                     value={form.round}
                     onChange={(e) => setForm({ ...form, round: e.target.value })}
                     className={`w-full ${inputClass}`}
+                    required
                   >
+                    <option value="" disabled>{t('common.select_placeholder')}</option>
                     {MATCH_ROUNDS.map((r) => (
                       <option key={r} value={r}>{r}</option>
                     ))}

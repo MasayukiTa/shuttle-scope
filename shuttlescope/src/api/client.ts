@@ -631,6 +631,58 @@ export function authSecurityEvents(params?: {
   return apiGet('/auth/audit-logs/security', p)
 }
 
+export interface SecurityEventGroup {
+  ip_addr: string | null
+  event_type: string
+  severity: string | null
+  count: number
+  first_ts: string
+  last_ts: string
+  last_id: number
+  distinct_paths: number
+  sample_paths: string[]
+}
+
+export function authSecurityEventGroups(params?: {
+  event_type?: string
+  severity?: string
+  ip?: string
+  limit?: number
+}): Promise<{ success: boolean; data: SecurityEventGroup[] }> {
+  const p: Record<string, string | number> = {}
+  if (params?.event_type) p.event_type = params.event_type
+  if (params?.severity) p.severity = params.severity
+  if (params?.ip) p.ip = params.ip
+  if (params?.limit != null) p.limit = params.limit
+  return apiGet('/auth/audit-logs/security/groups', p)
+}
+
+export interface ErrorLogGroup {
+  fingerprint: string
+  exc_type: string | null
+  method: string | null
+  path: string | null
+  status: number | null
+  summary: string | null
+  count: number
+  first_ts: string
+  last_ts: string
+  last_id: number
+  last_request_id: string | null
+}
+
+export function authErrorLogGroups(params?: {
+  exc_type?: string
+  path_prefix?: string
+  limit?: number
+}): Promise<{ success: boolean; data: ErrorLogGroup[] }> {
+  const p: Record<string, string | number> = {}
+  if (params?.exc_type) p.exc_type = params.exc_type
+  if (params?.path_prefix) p.path_prefix = params.path_prefix
+  if (params?.limit != null) p.limit = params.limit
+  return apiGet('/auth/audit-logs/errors/groups', p)
+}
+
 export interface ErrorLogEntry {
   id: number
   ts: string
@@ -640,6 +692,8 @@ export interface ErrorLogEntry {
   status: number | null
   exc_type: string | null
   message: string | null
+  // 主表示用の要約 (生 SQL や案内リンクを除いたもの)
+  summary?: string | null
   traceback: string | null
   input_repr: string | null
   internal_code: string | null

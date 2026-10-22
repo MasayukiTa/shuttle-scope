@@ -172,6 +172,12 @@ export function track(eventType: EventType, props: Record<string, unknown> = {})
   })
 }
 
+/** /_telemetry/ingest の応答が「未ログインのため 0 件処理」を示すか。 */
+export function wasSkippedForNoUser(body: unknown): boolean {
+  if (!body || typeof body !== 'object') return false
+  return (body as { skipped?: unknown }).skipped === 'no_user'
+}
+
 let _flushing = false
 export async function flushNow(): Promise<void> {
   if (_flushing) return
@@ -199,6 +205,14 @@ export async function flushNow(): Promise<void> {
         keepalive: true,
       })
       ok = r.ok
+      if (ok) {
+        // 未ログインで受け取られなかった (inserted 0 / skipped no_user) 場合は、
+        // 消さずに残す。消すと、ログイン前に積んだ session_start が失われ、
+        // 直近の利用者数が 0 のままになる。
+        let parsed: unknown = null
+        try { parsed = await r.json() } catch { parsed = null }
+        if (wasSkippedForNoUser(parsed)) ok = false
+      }
     } catch {
       ok = false
     }

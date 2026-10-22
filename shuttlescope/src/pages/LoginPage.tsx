@@ -193,11 +193,11 @@ export function LoginPage({ onLogin }: Props) {
 
   const handleLogin = async () => {
     if (!identifier.trim()) {
-      setError('ログインIDを入力してください')
+      setError(t('auto.LoginPage.error_identifier_required'))
       return
     }
     if (!password) {
-      setError('パスワードまたは PIN を入力してください')
+      setError(t('auto.LoginPage.error_password_required'))
       return
     }
 
@@ -241,7 +241,7 @@ export function LoginPage({ onLogin }: Props) {
         return
       }
     } else if (!/^\d{6}$/.test(code)) {
-      setError('6 桁の数字を入力してください')
+      setError(t('auto.LoginPage.error_mfa_code_format'))
       return
     }
     setLoading(true)
@@ -249,7 +249,7 @@ export function LoginPage({ onLogin }: Props) {
     const result = await apiMfaLogin(mfaToken, code, useRecovery)
     setLoading(false)
     if (result.error || !result.token) {
-      setError(result.error || 'MFA 認証に失敗しました')
+      setError(result.error || t('auto.LoginPage.error_mfa_failed'))
       // mfa_token 自体が失効した場合のみ最初からやり直す。
       // 「認証コードが無効です」「リカバリコードが無効か…」でも巻き戻ると、
       // 打ち間違えるたびにパスワード入力からやり直しになってしまう。
@@ -308,8 +308,8 @@ export function LoginPage({ onLogin }: Props) {
             }`}
           >
             {bootstrapStatus.bootstrap_configured
-              ? '初回管理者アカウントは、設定済みのログインIDとパスワードで作成されます。'
-              : '初回管理者パスワードが未設定です。BOOTSTRAP_ADMIN_PASSWORD を backend 環境変数に設定してください。'}
+              ? t('auto.LoginPage.bootstrap_pending')
+              : t('auto.LoginPage.bootstrap_not_ready')}
           </div>
         )}
 

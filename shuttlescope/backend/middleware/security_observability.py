@@ -19,6 +19,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
+from backend.utils.audit_grouping import is_monitoring_self_read
 from backend.utils.security_log import emit_request_log, emit_security_event
 
 
@@ -121,6 +122,9 @@ class RequestLogMiddleware(BaseHTTPMiddleware):
         finally:
             duration_ms = int((time.perf_counter() - start) * 1000)
             try:
+                # 監視画面が履歴を読むための成功した GET は記録しない
+                # (監視画面を開くだけで request_logs が増えるのを防ぐ)。
+                skip_log = is_monitoring_self_read(request.method, path, status)
                 ip, xff = _client_ip(request)
                 ua = request.headers.get("user-agent")
                 referer = request.headers.get("referer")
@@ -128,21 +132,22 @@ class RequestLogMiddleware(BaseHTTPMiddleware):
                 country = request.headers.get("cf-ipcountry")
                 user_id = getattr(request.state, "user_id", None)
                 query = request.url.query or None
-                emit_request_log(
-                    method=request.method,
-                    path=path,
-                    status=status,
-                    duration_ms=duration_ms,
-                    query=_truncate(query, 1024),
-                    user_id=user_id,
-                    ip_addr=ip,
-                    xff=_truncate(xff, 255),
-                    ua=_truncate(ua, 255),
-                    referer=_truncate(referer, 255),
-                    request_id=request_id,
-                    cf_ray=_truncate(cf_ray, 32),
-                    country=_truncate(country, 2),
-                )
+                if not skip_log:
+                    emit_request_log(
+                        method=request.method,
+                        path=path,
+                        status=status,
+                        duration_ms=duration_ms,
+                        query=_truncate(query, 1024),
+                        user_id=user_id,
+                        ip_addr=ip,
+                        xff=_truncate(xff, 255),
+                        ua=_truncate(ua, 255),
+                        referer=_truncate(referer, 255),
+                        request_id=request_id,
+                        cf_ray=_truncate(cf_ray, 32),
+                        country=_truncate(country, 2),
+                    )
                 # response header にも request_id を返す (運用での突き合わせ用)
                 if response is not None:
                     response.headers["x-request-id"] = request_id
