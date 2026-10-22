@@ -976,7 +976,12 @@ def mfa_login(req: MfaLoginRequest, request: Request, db: Session = Depends(get_
     ip = _get_ip(request)
     payload = verify_token(req.mfa_token)
     if not payload or payload.get("role") != "mfa_pending":
-        raise HTTPException(status_code=401, detail="MFAトークンが無効または期限切れです")
+        # frontend は文言ではなくこのコードで「初段ログインへ戻す」を判断する。
+        raise HTTPException(
+            status_code=401,
+            detail="MFAトークンが無効または期限切れです",
+            headers={"X-Error-Code": "MFA_TOKEN_INVALID_OR_EXPIRED"},
+        )
     user_id = int(payload.get("sub", 0))
     # MFA brute force 防御 (10 分 10 回上限) — mfa_confirm と共通カウンタ
     _check_mfa_brute_limit(user_id)

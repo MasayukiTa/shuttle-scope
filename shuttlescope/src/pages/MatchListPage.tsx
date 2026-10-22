@@ -17,6 +17,7 @@ import { MatchCard } from '@/components/matchList/MatchCard'
 import { MatchRow } from '@/components/matchList/MatchRow'
 import { MIcon } from '@/components/common/MIcon'
 import { isPlayableVideoUrl } from '@/utils/videoSrc'
+import { isPlayerSearchBlocked } from '@/utils/playerSearchGuard'
 
 // 試合登録フォーム
 interface MatchFormData {
@@ -171,33 +172,42 @@ export function MatchListPage() {
   const dlByMatch = activeDownloads?.data ?? {}
 
   // 選手検索（各フィールド）
-  const { data: playerASearchData } = useQuery({
+  const { data: playerASearchData, isError: playerASearchError } = useQuery({
     queryKey: ['players-search-a', playerAQuery],
     queryFn: () => apiGet<{ success: boolean; data: Player[] }>('/players/search', { q: playerAQuery }),
     enabled: playerAQuery.trim().length >= 1 && form.player_a_id === '',
   })
   const playerACandidates = playerASearchData?.data ?? []
 
-  const { data: playerBSearchData } = useQuery({
+  const { data: playerBSearchData, isError: playerBSearchError } = useQuery({
     queryKey: ['players-search-b', playerBQuery],
     queryFn: () => apiGet<{ success: boolean; data: Player[] }>('/players/search', { q: playerBQuery }),
     enabled: playerBQuery.trim().length >= 1 && form.player_b_id === '',
   })
   const playerBCandidates = playerBSearchData?.data ?? []
 
-  const { data: partnerASearchData } = useQuery({
+  const { data: partnerASearchData, isError: partnerASearchError } = useQuery({
     queryKey: ['players-search-partner-a', partnerAQuery],
     queryFn: () => apiGet<{ success: boolean; data: Player[] }>('/players/search', { q: partnerAQuery }),
     enabled: partnerAQuery.trim().length >= 1 && form.partner_a_id === '',
   })
   const partnerACandidates = partnerASearchData?.data ?? []
 
-  const { data: partnerBSearchData } = useQuery({
+  const { data: partnerBSearchData, isError: partnerBSearchError } = useQuery({
     queryKey: ['players-search-partner-b', partnerBQuery],
     queryFn: () => apiGet<{ success: boolean; data: Player[] }>('/players/search', { q: partnerBQuery }),
     enabled: partnerBQuery.trim().length >= 1 && form.partner_b_id === '',
   })
   const partnerBCandidates = partnerBSearchData?.data ?? []
+
+  // 検索 API の失敗を「候補 0 件」と区別する。失敗中に保存すると、既存選手がいても
+  // 入力文字列から暫定選手を新規作成してしまうため、該当欄が失敗していれば保存を止める。
+  const playerSearchFailed = isPlayerSearchBlocked([
+    { id: form.player_a_id, query: playerAQuery, failed: playerASearchError },
+    { id: form.player_b_id, query: playerBQuery, failed: playerBSearchError },
+    { id: form.partner_a_id, query: partnerAQuery, failed: partnerASearchError },
+    { id: form.partner_b_id, query: partnerBQuery, failed: partnerBSearchError },
+  ])
 
   // チーム候補（各側の検索結果からチーム名を抽出）
   const playerATeamSuggestions = [
@@ -346,6 +356,12 @@ export function MatchListPage() {
     // 動画 URL は http(s) のみ。mailto: 等を保存すると「動画あり」と表示されるのに再生できない。
     if (form.video_url.trim() && !isPlayableVideoUrl(form.video_url)) {
       alert(t('match.list.video_url_invalid'))
+      return
+    }
+
+    // 選手検索が失敗している欄がある間は、暫定選手の新規作成へ進ませない
+    if (playerSearchFailed) {
+      alert(t('match.list.player_search_failed_blocked'))
       return
     }
 
@@ -1083,6 +1099,12 @@ export function MatchListPage() {
                   textSecondary={textSecondary}
                   placeholder={t('auto.MatchListPage.k16')}
                 />
+
+                {playerSearchFailed && (
+                  <p role="alert" className="text-sm text-red-500">
+                    {t('match.list.player_search_failed')}
+                  </p>
+                )}
 
                 {/* ダブルス: 相方欄（自チーム左・相手チーム右） */}
                 {isDoubles && (

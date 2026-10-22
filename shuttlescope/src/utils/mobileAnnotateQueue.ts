@@ -25,6 +25,8 @@
  *   - cancelQueued(clientUuid)  → 未送信 item の取消 (Undo)
  */
 
+import { fetchWithTimeout, refreshAccessToken } from '@/api/client'
+
 export type QueueEndpoint =
   | 'POST /api/rallies'
   | 'DELETE /api/rallies/:id'
@@ -296,7 +298,13 @@ export function nextSequenceRunnableAt(
   return earliest
 }
 
-async function trySend(item: QueueItem): Promise<QueueSendResult> {
+/** 1 件の送信に掛ける上限 (ms)。応答が返らない半断状態の fetch 1 本が、直列の
+ *  runFlush 全体 (後続 item と「直前取消」の flushNow) を止めないようにする。
+ *  送信は X-Idempotency-Key 付きなので、timeout 後の再送は二重登録にならない。
+ *  超過は通常の 'retry' (backoff) として扱う。 */
+export const QUEUE_SEND_TIMEOUT_MS = 30_000
+
+export async function trySend(item: QueueItem): Promise<QueueSendResult> {
   // path placeholder 置換
   let url = item.endpoint.split(' ')[1] // "POST /api/rallies" → "/api/rallies"
   const method = item.endpoint.split(' ')[0]
@@ -325,12 +333,32 @@ async function trySend(item: QueueItem): Promise<QueueSendResult> {
   if (queueItemOwnership(item, tokenUserId(token)) !== 'mine') return 'foreign'
   headers.Authorization = `Bearer ${token}`
 
+  const sendOnce = (): Promise<Response> =>
+    fetchWithTimeout(
+      url,
+      {
+        method,
+        headers,
+        body: method === 'GET' ? undefined : JSON.stringify(item.body ?? {}),
+      },
+      QUEUE_SEND_TIMEOUT_MS,
+    )
+
   try {
-    const resp = await fetch(url, {
-      method,
-      headers,
-      body: method === 'GET' ? undefined : JSON.stringify(item.body ?? {}),
-    })
+    let resp = await sendOnce()
+    if (resp.status === 401) {
+      // access token の期限切れ。共通クライアントと同じ single-flight refresh を一度だけ
+      // 実行して再送する (refresh しないと同じ期限切れ token で 30 秒ごとに 401 を繰り返す)。
+      const refreshed = await refreshAccessToken()
+      if (refreshed === 'ok') {
+        const fresh = sessionStorage.getItem('shuttlescope_token')
+        if (!fresh) return 'auth'
+        // refresh でトークンの持ち主が変わっていないことを再確認してから送る。
+        if (queueItemOwnership(item, tokenUserId(fresh)) !== 'mine') return 'foreign'
+        headers.Authorization = `Bearer ${fresh}`
+        resp = await sendOnce()
+      }
+    }
     if (resp.ok) return 'ok'
     item.lastStatus = resp.status
     item.lastError = (await resp.text()).slice(0, 300) || `HTTP ${resp.status}`

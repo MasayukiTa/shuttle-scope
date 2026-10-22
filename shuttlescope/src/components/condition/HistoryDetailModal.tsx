@@ -70,6 +70,16 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
 
   const answerKeys = Object.keys(answers).sort()
 
+  // 本人向けレスポンスは質問票の原回答を返さない (questionnaire_json が無い)。
+  // その場合に「質問票回答がありません」と出すと、回答済みの記録を未回答と誤認させるため、
+  // フィールド自体が無いときは節ごと出さない。
+  const hasQuestionnaireField = record['questionnaire_json'] !== undefined
+
+  // けが・テーピングメモ / 自由記述。サーバがそのロールに返した場合だけ表示する (開示範囲は変えない)。
+  const textOf = (v: unknown): string => (typeof v === 'string' ? v.trim() : '')
+  const injuryNotes = textOf(record['injury_notes'])
+  const generalComment = textOf(record['general_comment'])
+
   const handleDelete = async () => {
     if (!id) return
     if (!window.confirm(t('condition.history.delete_confirm') as string)) return
@@ -157,7 +167,29 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
             </section>
           )}
 
+          {/* けが・テーピングメモ / 自由記述 */}
+          {(injuryNotes || generalComment) && (
+            <section className={`rounded-ss-md border ${sectionBorder} p-3`}>
+              <h3 className="text-xs font-semibold mb-2">{t('condition.history_detail.notes_section')}</h3>
+              <div className="space-y-2">
+                {injuryNotes && (
+                  <div>
+                    <div className={`text-xs ${muted}`}>{t('condition.history_detail.injury_notes')}</div>
+                    <p className="text-sm whitespace-pre-wrap break-words">{injuryNotes}</p>
+                  </div>
+                )}
+                {generalComment && (
+                  <div>
+                    <div className={`text-xs ${muted}`}>{t('condition.history_detail.general_comment')}</div>
+                    <p className="text-sm whitespace-pre-wrap break-words">{generalComment}</p>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
           {/* 質問票回答 */}
+          {hasQuestionnaireField && (
           <section className={`rounded-ss-md border ${sectionBorder} p-3`}>
             <h3 className="text-xs font-semibold mb-2">{t('condition.history_detail.questionnaire_section')}</h3>
             {answerKeys.length === 0 ? (
@@ -180,6 +212,7 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
               </div>
             )}
           </section>
+          )}
 
           {errorMsg && (
             <div className="text-sm text-[var(--ss-bad)] bg-[var(--ss-danger-tint)] border border-[var(--ss-danger-border)] rounded-ss-md px-3 py-2">

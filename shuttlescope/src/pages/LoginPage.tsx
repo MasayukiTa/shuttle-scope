@@ -6,6 +6,8 @@ import type { AuthSession } from '@/hooks/useAuth'
 import { UserRole } from '@/types'
 import { MIcon } from '@/components/common/MIcon'
 import { publicSiteUrl } from '@/utils/publicUrl'
+import { ApiTimeoutError, fetchWithTimeout } from '@/api/client'
+import { ERROR_CODE_HEADER, shouldRestartMfaLogin } from '@/utils/authErrorCode'
 
 const BASE_URL = (() => {
   if (
@@ -37,7 +39,7 @@ function _errSession(msg: string): AuthSession & { error: string } {
 
 async function apiLogin(body: object): Promise<LoginResult> {
   try {
-    const res = await fetch(`${BASE_URL}/auth/login`, {
+    const res = await fetchWithTimeout(`${BASE_URL}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -85,7 +87,7 @@ async function apiMfaLogin(
   mfaToken: string,
   code: string,
   useRecovery = false,
-): Promise<AuthSession & { error?: string }> {
+): Promise<AuthSession & { error?: string; restartLogin?: boolean }> {
   try {
     // /api/auth/mfa/login は _GLOBAL_AUTH_EXEMPT に含まれないため
     // GlobalAuthMiddleware が Authorization: Bearer 必須。mfa_token は
@@ -93,7 +95,7 @@ async function apiMfaLogin(
     // /api/auth/mfa/* path だけ mfa_pending role を通す)。
     // body にも mfa_token を残すのはハンドラ側 verify_token が同 token を
     // 期待しているため (重複だが冗長性で安全側)。
-    const res = await fetch(`${BASE_URL}/auth/mfa/login`, {
+    const res = await fetchWithTimeout(`${BASE_URL}/auth/mfa/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -111,7 +113,10 @@ async function apiMfaLogin(
         const data = await res.json()
         if (typeof data?.detail === 'string') msg = data.detail
       } catch { /* noop */ }
-      return _errSession(msg)
+      return {
+        ..._errSession(msg),
+        restartLogin: shouldRestartMfaLogin(res.status, res.headers.get(ERROR_CODE_HEADER)),
+      }
     }
     const data = await res.json()
     return {
@@ -125,6 +130,9 @@ async function apiMfaLogin(
       pageAccess: (data.page_access ?? []) as string[],
     }
   } catch (e) {
+    if (e instanceof ApiTimeoutError) {
+      return _errSession(i18n.t('auto.LoginPage.error_timeout'))
+    }
     return _errSession(String(e))
   }
 }
@@ -253,8 +261,8 @@ export function LoginPage({ onLogin }: Props) {
       // mfa_token 自体が失効した場合のみ最初からやり直す。
       // 「認証コードが無効です」「リカバリコードが無効か…」でも巻き戻ると、
       // 打ち間違えるたびにパスワード入力からやり直しになってしまう。
-      if ((result.error || '').includes('MFAトークンが無効')
-          || (result.error || '').includes('期限切れ')) {
+      // 判定は表示文言ではなく HTTP status とエラーコードで行う。
+      if (result.restartLogin) {
         setMfaToken(null)
         setMfaCode('')
         setUseRecovery(false)

@@ -132,6 +132,12 @@ async function tryRefreshToken(): Promise<RefreshResult> {
   return promise
 }
 
+/** 共通の single-flight token refresh を、独自の送信経路 (オフラインキュー等) から使う。
+ *  結果の意味は tryRefreshToken と同じ ('ok' なら sessionStorage の token が更新済み)。 */
+export function refreshAccessToken(): Promise<'ok' | 'invalid' | 'transient' | 'superseded'> {
+  return tryRefreshToken()
+}
+
 // セッション完全失効時に画面リダイレクトするためのフラグ (連続 401 で多重発火しないよう保護)
 let _sessionExpiredRedirecting = false
 
@@ -240,6 +246,36 @@ function _withDefaultTimeout(
     init: { ...init, signal: timeoutCtrl.signal },
     cleanup: () => clearTimeout(timer),
     isTimeout: () => timedOut,
+  }
+}
+
+/** fetchWithTimeout がタイムアウトで中断したときに投げるエラー。
+ *  通常の通信断 (TypeError) と区別して「応答がない」を利用者に示すために使う。 */
+export class ApiTimeoutError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options)
+    this.name = 'ApiTimeoutError'
+  }
+}
+
+/** token refresh を伴わない fetch に、共通クライアントと同じタイムアウトを掛ける。
+ *  ログイン前 (401 が資格情報の誤りを意味する) や、呼び出し側が自前で認証・再送を
+ *  持つ経路 (オフラインキュー、録画アップロード) 向け。 */
+export async function fetchWithTimeout(
+  input: string,
+  init: RequestInit = {},
+  timeoutMs: number = DEFAULT_API_TIMEOUT_MS,
+): Promise<Response> {
+  const wrap = _withDefaultTimeout(input, init, timeoutMs)
+  try {
+    return await fetch(input, wrap.init)
+  } catch (e) {
+    if (wrap.isTimeout()) {
+      throw new ApiTimeoutError(`API timeout (${timeoutMs}ms): ${input}`, { cause: e })
+    }
+    throw e
+  } finally {
+    wrap.cleanup()
   }
 }
 

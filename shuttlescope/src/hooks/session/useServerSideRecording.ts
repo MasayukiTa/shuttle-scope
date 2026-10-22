@@ -29,6 +29,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { resolveBaseUrl } from '@/utils/preferredEndpoint'
 import { errorMessage } from '@/utils/errors'
+import { fetchWithTimeout } from '@/api/client'
+
+// 半断 (TCP は繋がったまま応答が来ない) で fetch が永久に pending になると、直列 pump と
+// stop() の finalize 待ちが止まり、録画の確定まで届かない。用途別に上限を設ける (#662)。
+// chunk は 8 MiB (chunk_size=8_388_608) なので、約 0.5 Mbps の上り回線でも送り切れる 120 秒。
+// 超過は通常のネットワーク失敗と同じ経路 (retry queue) に流れる。
+const UPLOAD_INIT_TIMEOUT_MS = 30_000
+const UPLOAD_CHUNK_TIMEOUT_MS = 120_000
+const UPLOAD_FINALIZE_TIMEOUT_MS = 120_000
 
 
 // Round 258 R17 P3 fix (NEW-6) → R18 P1 (R18a NEW-9):
@@ -234,14 +243,14 @@ export function useServerSideRecording(
       fd.append('upload_id', uploadId)
       fd.append('chunk_index', String(chunkIndex))
       fd.append('chunk', blob, `chunk_${chunkIndex}.bin`)
-      const res = await fetch(url, {
+      const res = await fetchWithTimeout(url, {
         method: 'POST',
         headers: {
           // Content-Type は FormData が自動で multipart/form-data; boundary= を付与する
           ...getUploadAuthHeaders(),
         },
         body: fd,
-      })
+      }, UPLOAD_CHUNK_TIMEOUT_MS)
       // R18 P0 fix (R18a P0-1): await 後に uploadId が無効化されている場合は
       // 結果を採用しない。stop() と並走した chunk は破棄。
       if (uploadIdRef.current !== uploadId) {
@@ -350,7 +359,7 @@ export function useServerSideRecording(
     let initRes: InitResponse
     try {
       const base = apiBaseRef.current || ''
-      const r = await fetch(`${base}/api/v1/uploads/video/init`, {
+      const r = await fetchWithTimeout(`${base}/api/v1/uploads/video/init`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -364,7 +373,7 @@ export function useServerSideRecording(
           total_size: 50_000_000_000,
           chunk_size: 8_388_608,
         }),
-      })
+      }, UPLOAD_INIT_TIMEOUT_MS)
       if (!r.ok) {
         const body = await r.text()
         throw new Error(`HTTP ${r.status}: ${body.slice(0, 160)}`)
@@ -472,14 +481,14 @@ export function useServerSideRecording(
     }
     try {
       const base = apiBaseRef.current || ''
-      const res = await fetch(`${base}/api/v1/uploads/video/${uploadId}/finalize`, {
+      const res = await fetchWithTimeout(`${base}/api/v1/uploads/video/${uploadId}/finalize`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...getUploadAuthHeaders(),
         },
         body: '{}',
-      })
+      }, UPLOAD_FINALIZE_TIMEOUT_MS)
       if (res.ok) {
         setState('completed')
       } else {
