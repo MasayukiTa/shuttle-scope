@@ -235,6 +235,8 @@
       "done": "Password changed. Redirecting to login..."
     },
     "invitation": {
+      "team": "Team",
+      "expires_at": "Valid until",
       "title": "Accept Invitation",
       "role": "Role",
       "accept": "Create account",
@@ -1318,6 +1320,8 @@
     "provisional_badge": "Tentative"
   },
   "annotator": {
+    "set_not_finished": "This score does not end the set yet ({{a}}-{{b}}).",
+    "viewpoint_save_failed": "Could not save the viewpoint.",
     "loading": "Loading...",
     "back_to_matches": "Back to matches",
     "live": {
@@ -1390,6 +1394,19 @@
     "hitter_select": "Hitter",
     "hitter_toggle_hint": "Tab to toggle",
     "ui": {
+      "cv_backend_title": "Person detection backend: {{backend}}",
+      "yolo_backend_badge": "YOLO:{{backend}}",
+      "tracknet_backend_title": "Shuttle trajectory backend: {{backend}}",
+      "tracknet_backend_badge": "TrackNet:{{backend}}",
+      "recording_branch": "Recording branch",
+      "recording_primary": "Main video",
+      "recording_branch_option": "Branch {{branch}} · {{label}}",
+      "skip_dual_meaning_doubles": "Doubles: the 0 key selects player_b as the hitter, so use the button to skip.",
+      "skip_dual_meaning_singles": "Singles: 0 / Numpad0 also skips.",
+      "undo_pending_title": "Cancel the shot being entered (Ctrl+Z)",
+      "undo_stroke_title": "Undo the last stroke (Ctrl+Z)",
+      "store_match_mismatch": "Cannot save because data from another match is still loaded. Reload the page.",
+      "score_correction_partial": "Score correction stopped partway. Only the successful part was applied. Run it again to fill in the rest.",
       "init_error": "Initialization error",
       "skip": "Skip",
       "next": "Next",
@@ -1767,6 +1784,9 @@
     "toggle": "Toggle theme"
   },
   "analysis": {
+    "yolo": {
+      "calibration_required": "Position and formation analysis is hidden because court calibration is not set."
+    },
     "sample_size": "Samples: {{count}}",
     "shuttle_track": {
       "title": "Shuttle trajectory",
@@ -2102,6 +2122,7 @@
     "hitter_fill_rate": "Hitter fill rate",
     "avg_confidence": "Avg confidence",
     "panel": {
+      "hit_zone": "Hit point",
       "land_zone": "Landing",
       "hitter": "Hitter",
       "position": "Position",
@@ -2536,6 +2557,7 @@
     "lost_suffix": "(lost)"
   },
   "camera_sender": {
+    "removed_by_operator": "The operator ended this connection. To join again, enter the session code once more.",
     "state_a_title": "Waiting for start command from the PC",
     "state_a_hint": "This device is registered as a camera candidate",
     "state_b_title": "Use this device as the camera?",
@@ -4578,6 +4600,7 @@
     },
     "VideoOnlyPage": {},
     "ViewerPage": {
+      "removed_by_operator": "The operator ended this connection. To join again, enter the session code once more.",
       "k1": "Remote viewer",
       "k2": "Optimized video viewing on tablet / PC",
       "k3": "Session code",
@@ -5176,6 +5199,9 @@
     }
   },
   "common": {
+    "player_selector_title": "Select a player",
+    "player_selector_search": "Search by name or team",
+    "player_selector_empty": "No matching players",
     "search_placeholder": "Search...",
     "select_placeholder": "— Select —",
     "no_matches": "No matches",

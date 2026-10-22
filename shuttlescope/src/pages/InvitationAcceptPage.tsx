@@ -8,6 +8,7 @@ interface InviteInfo {
   email: string
   role: string
   team_id: number | null
+  team_name?: string | null
   expires_at: string
 }
 
@@ -56,6 +57,11 @@ export default function InvitationAcceptPage() {
     }
   }
 
+  // 期限は利用者の端末の時刻帯で表示する (backend は UTC の "Z" 付きで返す)
+  const expiresDate = info ? new Date(info.expires_at) : null
+  const expiresLabel =
+    expiresDate && !Number.isNaN(expiresDate.getTime()) ? expiresDate.toLocaleString() : ''
+
   const fieldCls =
     'w-full border border-[var(--ss-ctrl-border)] rounded-ss-md px-3 py-2.5 text-base min-h-[44px] ' +
     'bg-[var(--ss-ctrl-bg)] text-[var(--ss-ctrl-text)] outline-none transition-colors duration-fast ease-out'
@@ -94,7 +100,16 @@ export default function InvitationAcceptPage() {
 
         <div className="rounded-ss-md bg-[var(--ss-info-bg)] border border-[var(--ss-info-border)] p-3 text-sm space-y-1 text-[var(--ss-info-text)]">
           <div><span className="font-medium">{t('auth.email')}:</span> {info.email}</div>
-          <div><span className="font-medium">{t('auth.invitation.role')}:</span> {info.role}</div>
+          {info.team_name && (
+            <div><span className="font-medium">{t('auth.invitation.team')}:</span> {info.team_name}</div>
+          )}
+          <div>
+            <span className="font-medium">{t('auth.invitation.role')}:</span>{' '}
+            {t(`roles.${info.role}`, { defaultValue: info.role })}
+          </div>
+          {expiresLabel && (
+            <div><span className="font-medium">{t('auth.invitation.expires_at')}:</span> {expiresLabel}</div>
+          )}
         </div>
 
         <div>

@@ -242,6 +242,8 @@
       "done": "パスワードを変更しました。ログインページへ移動します..."
     },
     "invitation": {
+      "team": "チーム",
+      "expires_at": "有効期限",
       "title": "招待を受け入れる",
       "role": "ロール",
       "accept": "アカウントを作成",
@@ -1325,6 +1327,8 @@
     "provisional_badge": "暫定登録"
   },
   "annotator": {
+    "set_not_finished": "このスコアではセットが終了していません（{{a}}-{{b}}）",
+    "viewpoint_save_failed": "視点の保存に失敗しました",
     "loading": "読み込み中...",
     "back_to_matches": "試合一覧に戻る",
     "live": {
@@ -1495,6 +1499,18 @@
     "hitter_select": "打者",
     "hitter_toggle_hint": "Tab切替",
     "ui": {
+      "cv_backend_title": "人物検出成果物の backend: {{backend}}",
+      "yolo_backend_badge": "YOLO:{{backend}}",
+      "tracknet_backend_title": "シャトル軌跡成果物の backend: {{backend}}",
+      "tracknet_backend_badge": "TrackNet:{{backend}}",
+      "recording_branch": "録画枝",
+      "recording_primary": "主動画",
+      "recording_branch_option": "枝 {{branch}} · {{label}}",
+      "skip_dual_meaning_doubles": "ダブルス: 0 キーは player_b の打者選択に使うため、スキップはボタンで行います",
+      "skip_dual_meaning_singles": "シングルス: 0 / Numpad0 でもスキップできます",
+      "undo_pending_title": "入力中のショットをキャンセル (Ctrl+Z)",
+      "undo_stroke_title": "直前のストロークを取り消し (Ctrl+Z)",
+      "store_match_mismatch": "別の試合のデータが残っているため保存できません。ページを再読み込みしてください。",
       "back": "戻る",
       "retry": "再試行",
       "autosave_quota": "一時保存の容量超過",
@@ -1775,6 +1791,9 @@
     "toggle": "テーマ切替"
   },
   "analysis": {
+    "yolo": {
+      "calibration_required": "コートキャリブレーションが未設定のため、位置・陣形解析は表示しません。"
+    },
     "sample_size": "サンプル数: {{count}}",
     "shuttle_track": {
       "title": "シャトル軌跡",
@@ -2110,6 +2129,7 @@
     "hitter_fill_rate": "打者補完率",
     "avg_confidence": "平均信頼度",
     "panel": {
+      "hit_zone": "打点",
       "land_zone": "着地",
       "hitter": "打者",
       "position": "ポジション",
@@ -2545,6 +2565,7 @@
     "lost_suffix": "(ロスト)"
   },
   "camera_sender": {
+    "removed_by_operator": "オペレーターにより接続が終了されました。もう一度参加するには、セッションコードを入力し直してください。",
     "state_a_title": "PCから開始指示を待っています",
     "state_a_hint": "この端末はカメラ候補として登録されています",
     "state_b_title": "この端末をカメラとして使用しますか？",
@@ -4587,6 +4608,7 @@
     },
     "VideoOnlyPage": {},
     "ViewerPage": {
+      "removed_by_operator": "オペレーターにより接続が終了されました。もう一度参加するには、セッションコードを入力し直してください。",
       "k1": "リモートビューワー",
       "k2": "タブレット・PC で最適な映像視聴が可能です",
       "k3": "セッションコード",
@@ -5244,6 +5266,9 @@
     }
   },
   "common": {
+    "player_selector_title": "選手を選択",
+    "player_selector_search": "名前またはチームで検索",
+    "player_selector_empty": "該当する選手がいません",
     "loading": "読み込み中...",
     "search_placeholder": "検索...",
     "select_placeholder": "— 選択 —",
