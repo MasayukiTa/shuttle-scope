@@ -255,7 +255,7 @@ function DeviceRow({ p, isLight: _isLight, titleColor, subColor, rowBg, onApprov
             )
           )}
           {p.device_class === 'phone' && (
-            <span className="text-[9px] text-[var(--ss-t3)]">{t('viewer_relay.phone_blocked')}</span>
+            <span className="text-xs text-[var(--ss-t3)]">{t('viewer_relay.phone_blocked')}</span>
           )}
         </div>
       )}
