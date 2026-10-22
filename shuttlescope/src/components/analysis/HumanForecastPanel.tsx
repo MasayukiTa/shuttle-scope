@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 import { apiGet, apiPost, apiDelete, newIdempotencyKey } from '@/api/client'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { useAuth } from '@/hooks/useAuth'
 import { WIN, LOSS } from '@/styles/colors'
 import { MIcon } from '@/components/common/MIcon'
 
@@ -85,7 +86,12 @@ function ForecastForm({ matchId, playerId, onSaved }: Props & { onSaved: () => v
       : 'bg-gray-700 border border-gray-600 text-gray-200'
   }`
 
-  const [role, setRole] = useState('coach')
+  // 予測者ロールはログイン中のロールで固定する (サーバ側も同じ値で記録する)。
+  // admin だけが代理入力としてロールを選べる。
+  const { role: authRole } = useAuth()
+  const lockedRole = authRole === 'coach' || authRole === 'analyst' ? authRole : null
+  const [pickedRole, setRole] = useState('coach')
+  const role = lockedRole ?? pickedRole
   const [name, setName] = useState('')
   const [outcome, setOutcome] = useState<'win' | 'loss'>('win')
   const [setPath, setSetPath] = useState('')
@@ -120,7 +126,7 @@ function ForecastForm({ matchId, playerId, onSaved }: Props & { onSaved: () => v
     <div className="space-y-3">
       {/* ロール + 名前 */}
       <div className="flex gap-2">
-        <select value={role} onChange={(e) => setRole(e.target.value)} className={inputClassTokenized}>
+        <select value={role} onChange={(e) => setRole(e.target.value)} disabled={lockedRole !== null} className={inputClassTokenized}>
           {ROLE_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}

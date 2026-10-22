@@ -1760,6 +1760,33 @@ def _short_uuid_suffix() -> str:
     return uuid4().hex[:8].upper()
 
 
+def _team_name_key(name: str) -> str:
+    """チーム名の同一判定用キー。全角/半角・大文字小文字・空白の違いを無視する。"""
+    import unicodedata
+    return " ".join(unicodedata.normalize("NFKC", name).split()).casefold()
+
+
+def _find_active_team_by_name(db: Session, name: str) -> Optional[Team]:
+    """名前でチームを探す。完全一致を優先し、なければ表記揺れ (全角半角・大小文字・空白) を同一視する。
+
+    ユーザ管理でチーム名を自由入力すると、"Team A" と "team a" と "Team　A" が
+    別チームとして自動作成されていた。検索を 1 か所に集め、作成・権限判定・更新の
+    3 経路で同じ基準にする。
+    """
+    exact = db.query(Team).filter(
+        Team.name == name, Team.deleted_at.is_(None)
+    ).first()
+    if exact is not None:
+        return exact
+    key = _team_name_key(name)
+    if not key:
+        return None
+    for cand in db.query(Team).filter(Team.deleted_at.is_(None)).order_by(Team.id).all():
+        if cand.name and _team_name_key(cand.name) == key:
+            return cand
+    return None
+
+
 def _resolve_team_for_user_create(
     db: Session,
     *,
@@ -1784,9 +1811,7 @@ def _resolve_team_for_user_create(
     # team_name 指定 → 既存チーム lookup or 新規作成
     if team_name and team_name.strip():
         norm = team_name.strip()
-        existing = db.query(Team).filter(
-            Team.name == norm, Team.deleted_at.is_(None)
-        ).first()
+        existing = _find_active_team_by_name(db, norm)
         if existing:
             return existing
         # 新規作成（display_id は付けず、admin が後から /teams で付与）
@@ -2010,9 +2035,7 @@ def create_user(body: UserCreate, request: Request, db: Session = Depends(get_db
     if not ctx.is_admin:
         _target_team_id = body.team_id
         if _target_team_id is None and (body.team_name or "").strip():
-            _named = db.query(Team).filter(
-                Team.name == body.team_name.strip(), Team.deleted_at.is_(None)
-            ).first()
+            _named = _find_active_team_by_name(db, body.team_name.strip())
             _target_team_id = _named.id if _named is not None else None
         if _target_team_id is not None and _target_team_id != ctx.team_id:
             raise HTTPException(status_code=403, detail="自チーム以外にはユーザーを作成できません")
@@ -2278,9 +2301,7 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
         norm = body.team_name.strip()
         if norm and body.team_id is None:
             # 既存チーム lookup
-            existing = db.query(Team).filter(
-                Team.name == norm, Team.deleted_at.is_(None)
-            ).first()
+            existing = _find_active_team_by_name(db, norm)
             if existing:
                 if user.team_id != existing.id:
                     log_access(

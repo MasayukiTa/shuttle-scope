@@ -79,6 +79,10 @@ const ROLE_COLORS: Record<string, string> = {
   player: 'bg-[var(--ss-success-bg)] text-[var(--ss-success-text)]',
 }
 
+// チーム名の表記揺れ判定 (全角半角・大文字小文字・空白を無視)。backend の _team_name_key と同じ基準。
+const normalizeTeamName = (name: string): string =>
+  name.normalize('NFKC').split(/\s+/).filter(Boolean).join(' ').toLowerCase()
+
 const emptyForm = (): FormState => ({
   role: 'player',
   display_name: '',
@@ -91,6 +95,7 @@ const emptyForm = (): FormState => ({
 })
 
 function SecretField(props: {
+  id: string
   label: string
   value: string
   onChange: (value: string) => void
@@ -107,9 +112,10 @@ function SecretField(props: {
 
   return (
     <div>
-      <label className={`block text-xs font-medium mb-1 ${props.textMuted}`}>{props.label}</label>
+      <label htmlFor={props.id} className={`block text-xs font-medium mb-1 ${props.textMuted}`}>{props.label}</label>
       <div className="relative">
         <input
+          id={props.id}
           type={visible ? 'text' : 'password'}
           value={props.value}
           onChange={(e) => props.onChange(e.target.value)}
@@ -147,7 +153,7 @@ export function UserManagementPage() {
   const [copyDone, setCopyDone] = useState(false)
 
   const handleResetPassword = async (u: UserRow) => {
-    if (!window.confirm(t('users.manage.reset_confirm', { name: u.display_name || u.username }))) return
+    if (!window.confirm(t('users.manage.reset_confirm', { name: u.display_name || u.username, username: u.username }))) return
     setResetBusyId(u.id)
     setCopyDone(false)
     try {
@@ -474,6 +480,13 @@ export function UserManagementPage() {
   }
 
   // フォームフィールド群（新規作成・インライン編集の両方で共用）
+  // 新規作成と編集は同時に開かないので、編集対象 ID だけで一意になる。
+  const fid = (name: string) => `um-${editId ?? 'new'}-${name}`
+  const typedTeamName = form.team_name.trim()
+  const similarTeam = typedTeamName && !form.team_id
+    ? teams.find((tm) => normalizeTeamName(tm.name) === normalizeTeamName(typedTeamName))
+    : undefined
+
   const renderFormFields = () => (
     <>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -483,8 +496,9 @@ export function UserManagementPage() {
         */}
         {((editId == null && canCreate) || (editId != null && editId !== myUserId && (myRole === 'admin' || myRole === 'analyst' || myRole === 'coach'))) ? (
           <div>
-            <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.role_label')}</label>
+            <label htmlFor={fid('role')} className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.role_label')}</label>
             <select
+              id={fid('role')}
               value={form.role}
               onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
               className={inputCls}
@@ -499,8 +513,9 @@ export function UserManagementPage() {
         ) : null}
 
         <div>
-          <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.display_name')}</label>
+          <label htmlFor={fid('display_name')} className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.display_name')}</label>
           <input
+            id={fid('display_name')}
             value={form.display_name}
             onChange={(e) => setForm((f) => ({ ...f, display_name: e.target.value }))}
             className={inputCls}
@@ -510,8 +525,9 @@ export function UserManagementPage() {
 
         {!isSelfOnly && (
           <div>
-            <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.username_label')}</label>
+            <label htmlFor={fid('username')} className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.username_label')}</label>
             <input
+              id={fid('username')}
               value={form.username}
               onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
               className={inputCls}
@@ -523,6 +539,7 @@ export function UserManagementPage() {
         )}
 
         <SecretField
+          id={fid('credential')}
           label={credentialLabel}
           value={form.credential}
           onChange={(value) => setForm((f) => ({ ...f, credential: value }))}
@@ -543,10 +560,11 @@ export function UserManagementPage() {
 
         {needsTeam && myRole === 'admin' ? (
           <div className="col-span-2">
-            <label className={`block text-xs font-medium mb-1 ${textMuted}`}>
+            <label htmlFor={fid('team_id')} className={`block text-xs font-medium mb-1 ${textMuted}`}>
               {t('auto.UserManagementPage.k12')}{teamOptional ? t('auto.UserManagementPage.k13') : ''}
             </label>
             <select
+              id={fid('team_id')}
               value={form.team_id}
               onChange={(e) => {
                 const tid = e.target.value
@@ -575,15 +593,22 @@ export function UserManagementPage() {
               }))}
               className={`${inputCls} mt-2`}
               placeholder={t('users.manage.team_name_placeholder')}
+              aria-label={t('users.manage.team_name_new')}
             />
+            {similarTeam ? (
+              <p className="mt-1 text-[11px] text-[var(--ss-warning-text)]" role="alert">
+                {t('users.manage.team_name_similar', { name: similarTeam.name })}
+              </p>
+            ) : null}
             <p className={`mt-1 text-[11px] ${textMuted}`}>
               {t('auto.UserManagementPage.k14')}
             </p>
           </div>
         ) : needsTeam ? (
           <div>
-            <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.team_name')}</label>
+            <label htmlFor={fid('team_name')} className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.team_name')}</label>
             <input
+              id={fid('team_name')}
               value={form.team_name}
               onChange={(e) => setForm((f) => ({ ...f, team_name: e.target.value }))}
               className={inputCls}
@@ -594,8 +619,9 @@ export function UserManagementPage() {
 
         {isPlayerRole ? (
           <div>
-            <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.player_link')}</label>
+            <label htmlFor={fid('player_id')} className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.player_link')}</label>
             <select
+              id={fid('player_id')}
               value={form.player_id}
               onChange={(e) => setForm((f) => ({ ...f, player_id: e.target.value }))}
               className={inputCls}
@@ -625,6 +651,7 @@ export function UserManagementPage() {
                     <label className={`flex items-center gap-1.5 text-xs cursor-pointer ${textMuted}`}>
                       <input
                         type="checkbox"
+                        aria-label={t('users.manage.page_access_aria', { item: t(labelKey), scope: t('users.manage.individual') })}
                         checked={indiv}
                         onChange={(e) => {
                           setUserAccessDirty(true)
@@ -639,6 +666,7 @@ export function UserManagementPage() {
                       <label className={`flex items-center gap-1.5 text-xs cursor-pointer ${textMuted}`}>
                         <input
                           type="checkbox"
+                          aria-label={t('users.manage.page_access_aria', { item: t(labelKey), scope: t('users.manage.team_whole', { team: editingTeamName }) })}
                           checked={team}
                           onChange={(e) => {
                             setTeamAccessDirty(true)
@@ -953,6 +981,7 @@ export function UserManagementPage() {
                               onClick={() => handleResetPassword(u)}
                               disabled={resetBusyId === u.id}
                               title={t('auth.admin_reset.title')}
+                              aria-label={`${t('auth.admin_reset.title')}: ${u.display_name || u.username}`}
                               className={`${textMuted} hover:text-[var(--ss-warn)] transition-colors duration-fast ease-out disabled:opacity-50`}
                             >
                               <MIcon name="key" size={14} />
