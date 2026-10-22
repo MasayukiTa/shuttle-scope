@@ -142,11 +142,36 @@ def issue_password_reset_token(
     return plain
 
 
-def consume_password_reset_token(db: Session, token_plain: str) -> Optional[int]:
+def peek_password_reset_token(db: Session, token_plain: str) -> Optional[int]:
+    """パスワードリセットトークンを消費せずに user_id を返す (無効なら None)。
+
+    強度検証や別処理を先に済ませてから `consume_password_reset_token` で
+    確定するための読み取り専用の確認。
+    """
+    from backend.db.models import PasswordResetToken
+    rec = (
+        db.query(PasswordResetToken)
+        .filter(
+            PasswordResetToken.token_hash == _hash_token(token_plain),
+            PasswordResetToken.consumed_at.is_(None),
+            PasswordResetToken.expires_at > datetime.utcnow(),
+        )
+        .first()
+    )
+    return rec.user_id if rec else None
+
+
+def consume_password_reset_token(
+    db: Session, token_plain: str, commit: bool = True
+) -> Optional[int]:
     """パスワードリセットトークンを消費し、user_id を返す。
 
     Round 258 P1 fix: アトミック UPDATE ... WHERE consumed_at IS NULL +
     rowcount=1 チェックで並行 POST の二重消費を遮断。
+
+    commit=False のときは commit しない。呼び出し側が資格情報の更新と同じ
+    トランザクションで確定する (トークンだけ使用済みになる状態を作らない)。
+    失敗 (None) の場合は何も変更していないので、呼び出し側は rollback してよい。
     """
     from backend.db.models import PasswordResetToken
     h = _hash_token(token_plain)
@@ -161,19 +186,21 @@ def consume_password_reset_token(db: Session, token_plain: str) -> Optional[int]
         .update({"consumed_at": now}, synchronize_session=False)
     )
     if upd != 1:
-        db.commit()
+        if commit:
+            db.commit()
         return None
     rec = (
         db.query(PasswordResetToken)
         .filter(PasswordResetToken.token_hash == h)
         .first()
     )
-    db.commit()
+    if commit:
+        db.commit()
     return rec.user_id if rec else None
 
 
 def invalidate_outstanding_password_reset_tokens(
-    db: Session, user_id: int, except_hash: Optional[str] = None
+    db: Session, user_id: int, except_hash: Optional[str] = None, commit: bool = True
 ) -> int:
     """そのユーザーの未使用リセットトークンを全部使用済みにする。返り値は件数。
 
@@ -196,7 +223,8 @@ def invalidate_outstanding_password_reset_tokens(
     if except_hash:
         q = q.filter(PasswordResetToken.token_hash != except_hash)
     n = q.update({"consumed_at": now}, synchronize_session=False)
-    db.commit()
+    if commit:
+        db.commit()
     return int(n or 0)
 
 
@@ -227,12 +255,18 @@ def issue_invitation_token(
     return plain
 
 
-def consume_invitation_token(db: Session, token_plain: str, accepted_by_user_id: int):
+def consume_invitation_token(
+    db: Session, token_plain: str, accepted_by_user_id: int, commit: bool = True
+):
     """招待トークンを消費し、招待レコードを返す。失敗時は None。
 
     Round 258 P1 fix: アトミック UPDATE で並行 accept による二重ユーザ作成を遮断。
     旧来は SELECT → 属性更新 → commit の隙間に並行 POST が走ると、同じ招待から
     role/team_id が同じユーザが 2 つ作られる data integrity 事故が起きた。
+
+    commit=False のときは commit しない。呼び出し側がユーザ作成と同じ
+    トランザクションで確定する。None (期限切れ / 消費済み) の場合、呼び出し側は
+    rollback してユーザ作成を取り消すこと。
     """
     from backend.db.models import InvitationToken
     h = _hash_token(token_plain)
@@ -253,14 +287,16 @@ def consume_invitation_token(db: Session, token_plain: str, accepted_by_user_id:
         )
     )
     if upd != 1:
-        db.commit()
+        if commit:
+            db.commit()
         return None
     rec = (
         db.query(InvitationToken)
         .filter(InvitationToken.token_hash == h)
         .first()
     )
-    db.commit()
+    if commit:
+        db.commit()
     return rec
 
 
