@@ -65,11 +65,16 @@ export function ViewerPage() {
 
   useEffect(() => { viewerStateRef.current = viewerState }, [viewerState])
 
+  // server 側で参加者が削除されたとき (heartbeat が 404/410/401) の処理。
+  // 最新の ref を使うため ref 経由で呼ぶ (フックへ渡す関数の同一性を保つ)。
+  const onRemovedRef = useRef<() => void>(() => {})
+  const handleRemoved = useCallback(() => onRemovedRef.current(), [])
+
   // ─── ハートビート ─────────────────────────────────────────────────────────
   useDeviceHeartbeat(
     viewerState === 'waiting' || viewerState === 'receiving' ? activeSessionCode : null,
     participantId,
-    undefined,  // onRemoved は使っていない
+    handleRemoved,
     // JWT を持たない viewer 端末はこのトークンで認証される
     savedTokenRef.current || undefined,
   )
@@ -256,6 +261,26 @@ export function ViewerPage() {
       }
     }
   }, []) // eslint-disable-line
+
+  // オペレーターに外された (server 側で削除された) とき、受信中の表示を残さない。
+  useEffect(() => {
+    onRemovedRef.current = () => {
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
+      pcRef.current?.close()
+      pcRef.current = null
+      if (videoRef.current) videoRef.current.srcObject = null
+      // onclose を外してから閉じる (自動再接続させない)
+      if (wsRef.current?.onclose) wsRef.current.onclose = null
+      wsRef.current?.close()
+      wsRef.current = null
+      savedPidRef.current = null
+      savedTokenRef.current = ''
+      setParticipantId(null)
+      setActiveSessionCode('')
+      setErrorMsg(t('auto.ViewerPage.removed_by_operator'))
+      setViewerState('error')
+    }
+  }, [t])
 
   // アンマウント時クリーンアップ
   useEffect(() => {

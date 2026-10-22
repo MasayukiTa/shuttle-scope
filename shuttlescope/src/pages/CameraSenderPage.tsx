@@ -160,13 +160,18 @@ export function CameraSenderPage() {
 
   useEffect(() => { senderStateRef.current = senderState }, [senderState])
 
+  // server 側で参加者が削除されたとき (heartbeat が 404/410/401) の処理。
+  // 最新の state / ref を使うため ref 経由で呼ぶ (フックへ渡す関数の同一性を保つ)。
+  const onRemovedRef = useRef<() => void>(() => {})
+  const handleRemoved = useCallback(() => onRemovedRef.current(), [])
+
   // ─── ハートビート ─────────────────────────────────────────────────────────
   useDeviceHeartbeat(
     senderState === 'state_a' || senderState === 'state_b' || senderState === 'state_c'
       ? activeSessionCode
       : null,
     participantId,
-    undefined,  // onRemoved は使っていない
+    handleRemoved,
     // JWT を持たない参加端末はこのトークンで認証される
     savedTokenRef.current || undefined,
   )
@@ -520,6 +525,31 @@ export function CameraSenderPage() {
     }))
     setSenderState('state_a')
   }, [participantId, stopRttPolling, serverRecorder])
+
+  // オペレーターに外された (server 側で削除された) とき、接続中の表示を残さない。
+  // 録画の確定・カメラ停止・PeerConnection / WS の後始末をして、案内つきのエラー画面へ移る。
+  useEffect(() => {
+    onRemovedRef.current = () => {
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
+      stopRttPolling()
+      void serverRecorder.stop()
+      localStreamRef.current?.getTracks().forEach((tr) => tr.stop())
+      localStreamRef.current = null
+      pcRef.current?.close()
+      pcRef.current = null
+      // onclose を外してから閉じる (自動再接続させない)
+      if (wsRef.current?.onclose) wsRef.current.onclose = null
+      wsRef.current?.close()
+      wsRef.current = null
+      savedPidRef.current = null
+      savedTokenRef.current = ''
+      setParticipantId(null)
+      setParticipantToken('')
+      setActiveSessionCode('')
+      setErrorMsg(t('camera_sender.removed_by_operator'))
+      setSenderState('error')
+    }
+  }, [stopRttPolling, serverRecorder, t])
 
   // ─── Page Visibility API（iOS バックグラウンド復帰対応） ────────────────────
   useEffect(() => {

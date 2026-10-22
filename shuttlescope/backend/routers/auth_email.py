@@ -670,13 +670,25 @@ def peek_invitation(token: str = Query(..., min_length=10, max_length=200),
     rec = peek_invitation_token(db, token)
     if rec is None:
         raise HTTPException(status_code=400, detail="トークンが無効または期限切れです")
+    # 受諾する人が「どのチームの招待か」を確認できるよう、チーム表示名を返す。
+    # 招待トークンの持ち主に見せてよいのは名前だけ (メンバーや内部IDは返さない)。
+    team_name = None
+    if rec.team_id is not None:
+        team = (
+            db.query(Team)
+            .filter(Team.id == rec.team_id, Team.deleted_at.is_(None))
+            .first()
+        )
+        team_name = team.name if team is not None else None
     return {
         "success": True,
         "data": {
             "email": rec.email,
             "role": rec.role,
             "team_id": rec.team_id,
-            "expires_at": rec.expires_at.isoformat(),
+            "team_name": team_name,
+            # DB は naive な UTC を持つ。"Z" を付けないとブラウザが端末のローカル時刻と読む。
+            "expires_at": rec.expires_at.isoformat() + "Z",
         },
     }
 
