@@ -38,9 +38,13 @@ def client(test_engine, monkeypatch):
     from backend.config import settings
     settings.BOOTSTRAP_ADMIN_USERNAME = ADMIN_USER
     settings.BOOTSTRAP_ADMIN_PASSWORD = ADMIN_PASS
-    from backend.main import app
+    from backend.main import app, AdminWriteRateLimitMiddleware
+    # 管理者の書込み上限 (チーム作成は 30 回/分) はプロセス内の共有状態に溜まる。
+    # このファイルの各テストが世界を作り直すたびにチームを作るので、前のテストの分を持ち越さない。
+    AdminWriteRateLimitMiddleware._state.clear()
     with TestClient(app, raise_server_exceptions=False) as c:
         yield c
+    AdminWriteRateLimitMiddleware._state.clear()
 
 
 def _login(client, username: str, password: str) -> str:
