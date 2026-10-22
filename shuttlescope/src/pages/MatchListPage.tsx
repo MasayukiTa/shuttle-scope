@@ -573,12 +573,15 @@ export function MatchListPage() {
       <div className={`flex items-center justify-between gap-2 flex-wrap px-6 py-4 border-b ${borderLine}`}>
         <h1 className={`text-xl font-semibold ${textHeading}`}>{t('nav.matches')}</h1>
         <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={() => setShowQuickStart(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-[var(--ss-warn)] hover:opacity-90 text-white font-semibold rounded-[var(--r-md)] text-sm"
-          >
-            {t('quick_start.button')}
-          </button>
+          {/* backend の POST /matches/quick-start は player を 403 で拒否するため player には出さない */}
+          {role !== 'player' && (
+            <button
+              onClick={() => setShowQuickStart(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-[var(--ss-warn)] hover:opacity-90 text-white font-semibold rounded-[var(--r-md)] text-sm"
+            >
+              {t('quick_start.button')}
+            </button>
+          )}
           <button
             onClick={() => { setEditingMatchId(null); setForm(defaultForm()); resetPlayerFields(); setShowForm(true) }}
             className="flex items-center gap-2 px-4 py-2 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white rounded-[var(--r-md)] text-sm"

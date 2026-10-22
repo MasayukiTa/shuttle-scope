@@ -5,7 +5,7 @@
  * - type='effective': 自分が飛ばしたゾーン詳細（ショット種別・打点）
  * - type='vulnerability': 相手に食らったゾーン詳細（ショット種別・打点）
  */
-import { useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
@@ -107,6 +107,17 @@ export function ZoneMapModal({
   const isPlayer = role === 'player'
   const [selectedZone, setSelectedZone] = useState<string | null>(initialZone)
 
+  // dialog として公開する: 開いたらフォーカスを移し、閉じたら起動元へ戻す (#545)
+  const titleId = useId()
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    dialogRef.current?.focus()
+    return () => {
+      opener?.focus()
+    }
+  }, [])
+
   const accentColor = type === 'effective' ? WIN : LOSS
   const highlightZones = type === 'effective' ? topZones : dangerZones
   const title = type === 'effective' ? '有効配球マップ — ゾーン詳細' : '被打球弱点マップ — ゾーン詳細'
@@ -198,17 +209,31 @@ export function ZoneMapModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/85 flex flex-col">
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      tabIndex={-1}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.stopPropagation()
+          onClose()
+        }
+      }}
+      className="fixed inset-0 z-50 bg-black/85 flex flex-col focus:outline-none"
+    >
       {/* ヘッダー */}
       <div className={`flex items-center justify-between px-6 py-3 border-b shrink-0 bg-[var(--ss-surface-1)] border-[var(--ss-border)]`}>
         <div>
-          <span className={`font-semibold text-base ${textHeading}`}>{title}</span>
+          <span id={titleId} className={`font-semibold text-base ${textHeading}`}>{title}</span>
           <span className={`ml-3 text-xs ${textMuted}`}>{t('auto.ZoneMapModal.n_only', { n: sampleSize })}</span>
         </div>
         <button
           onClick={onClose}
           className="p-1.5 rounded-ss-md duration-base ease-out text-[var(--ss-t3)] hover:bg-[var(--ss-surface-2)] hover:text-[var(--ss-t1)]"
           title={t('auto.ZoneMapModal.k5')}
+          aria-label={t('auto.ZoneMapModal.k5')}
         >
           <MIcon name="close" size={18} />
         </button>
@@ -230,6 +255,7 @@ export function ZoneMapModal({
                     return (
                       <button
                         key={zone}
+                        aria-pressed={isSelected}
                         onClick={() => setSelectedZone(zone === selectedZone ? null : zone)}
                         className="flex-1 rounded-ss-md p-2 text-center duration-base ease-out cursor-pointer focus:outline-none"
                         style={{

@@ -6,6 +6,7 @@ import { MIcon } from '@/components/common/MIcon'
 import { apiDelete, apiGet, apiPost, apiPut, authAdminResetPassword, getUserPageAccess, setUserPageAccess, getTeamPageAccess, setTeamPageAccess, listTeams, type TeamDTO, newIdempotencyKey } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { canShowDeleteButton } from '@/utils/userDeletePolicy'
 
 const PAGE_ACCESS_OPTIONS = [
   { key: 'prediction', labelKey: 'users.manage.page_access_prediction' },
@@ -27,6 +28,7 @@ interface UserRow {
   has_credential: boolean
   created_at: string | null
   is_test: boolean
+  awaiting_admin_approval?: boolean
   email: string | null
   email_verified: boolean
 }
@@ -987,7 +989,7 @@ export function UserManagementPage() {
                               <MIcon name="key" size={14} />
                             </button>
                           )}
-                          {canDelete && (
+                          {canShowDeleteButton(u, myUserId, canDelete) && (
                             <button onClick={() => handleDelete(u)} className={`${textMuted} hover:text-[var(--ss-bad)] transition-colors duration-fast ease-out`}>
                               <MIcon name="delete" size={14} />
                             </button>
