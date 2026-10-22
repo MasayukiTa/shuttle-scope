@@ -112,7 +112,8 @@ class ClipInfo(BaseModel):
     rally_id: int
     timestamp_sec: Optional[float]
     frame_index: int
-    # フロントがラベル保存時にそのまま返す切り出し範囲（clip_generator と同じ fps*3 前 / fps*2 後）
+    # 切り出し範囲（clip_generator と同じ fps*3 前 / fps*2 後）。表示用で、ラベル保存では送り返さない
+    # （LabelPayload は extra=forbid。範囲はストロークの timestamp_sec から再計算できる）。
     clip_start_frame: int
     clip_end_frame: int
     clip_url: Optional[str]
@@ -197,6 +198,36 @@ def _fps_for_match(m: Match) -> int:
     return DEFAULT_FPS
 
 
+def _visible_matches_query(db: Session, ctx: AuthCtx):
+    """ctx が一覧・集計で見てよい試合の Query。見える試合が無ければ None。
+
+    admin は全試合。それ以外は自チームの選手が出る試合に限る（round127 V-W4:
+    cross-team 漏洩防止）。試合一覧と進捗集計が同じ範囲を見るよう、ここ 1 か所に置く。
+    """
+    q = db.query(Match).filter(Match.deleted_at.is_(None))
+    if ctx.is_admin:
+        return q
+    team = (getattr(ctx, "team_name", "") or "").strip()
+    if not team:
+        return None
+    from backend.db.models import Player as _P, Team as _Team
+    team_player_ids = [
+        p.id for p in db.query(_P.id)
+            .join(_Team, _Team.id == _P.team_id)
+            .filter(_Team.name == team, _Team.deleted_at.is_(None))
+            .all()
+    ]
+    if not team_player_ids:
+        return None
+    from sqlalchemy import or_ as _or
+    return q.filter(_or(
+        Match.player_a_id.in_(team_player_ids),
+        Match.player_b_id.in_(team_player_ids),
+        Match.partner_a_id.in_(team_player_ids),
+        Match.partner_b_id.in_(team_player_ids),
+    ))
+
+
 # ─── エンドポイント ─────────────────────────────────────────────────────────
 
 @router.get("/videos", response_model=list[VideoSummary])
@@ -208,28 +239,9 @@ def list_videos(
     # 権限外の閲覧者には空配列を返す（UI が隠れる前に一瞬呼ばれるケースで 403 を出さない）
     if ctx.role not in ALLOWED_ROLES:
         return []
-    q = db.query(Match).filter(Match.deleted_at.is_(None))
-    # round127 V-W4 fix: admin 以外は team scope で絞る (cross-team 漏洩防止)
-    if not ctx.is_admin:
-        team = (getattr(ctx, "team_name", "") or "").strip()
-        if not team:
-            return []
-        from backend.db.models import Player as _P, Team as _Team
-        team_player_ids = [
-            p.id for p in db.query(_P.id)
-                .join(_Team, _Team.id == _P.team_id)
-                .filter(_Team.name == team, _Team.deleted_at.is_(None))
-                .all()
-        ]
-        if not team_player_ids:
-            return []
-        from sqlalchemy import or_ as _or
-        q = q.filter(_or(
-            Match.player_a_id.in_(team_player_ids),
-            Match.player_b_id.in_(team_player_ids),
-            Match.partner_a_id.in_(team_player_ids),
-            Match.partner_b_id.in_(team_player_ids),
-        ))
+    q = _visible_matches_query(db, ctx)
+    if q is None:
+        return []
     # 並びは日付の新しい順（同日は ID の新しい順）。異常な日付の試合は対象外。
     matches = [
         m for m in q.order_by(Match.date.desc(), Match.id.desc()).all()
@@ -271,17 +283,13 @@ def list_clips(
     db: Session = Depends(get_db),
     _ctx: AuthCtx = Depends(require_labeler_role),
 ):
-    """ミスストローク一覧（クリップ URL 付き）。"""
+    """ミスストローク一覧。clip_url は配信ルートができるまで常に null。"""
     m = db.get(Match, match_id)
     if not m:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
     fps = _fps_for_match(m)
     miss_rows = iter_miss_strokes(db, match_id)
 
-    cache_map = {
-        c.stroke_id: c
-        for c in db.query(ClipCache).filter(ClipCache.match_id == match_id).all()
-    }
     # INFRA Phase B: 自動ミス検出器の結果を合流させ source を付与する
     auto_stroke_ids: set[int] = set()
     try:
@@ -294,8 +302,10 @@ def list_clips(
     manual_stroke_ids: set[int] = set()
     for rally, stroke in miss_rows:
         manual_stroke_ids.add(stroke.id)
-        cache = cache_map.get(stroke.id)
-        clip_url = f"/api/v1/expert/clip_file?stroke_id={stroke.id}" if cache else None
+        # クリップ配信ルートは存在しない（過去のどのコミットにも無い）ため URL は返さない。
+        # 返すと <video> が 404 を読みにいく。cache 行の有無は clip_ready_count 側で扱う。
+        # 配信ルートを足すときは、認証付きで取得できる経路と一緒にここを戻す。
+        clip_url = None
         is_auto = stroke.id in auto_stroke_ids
         source = "manual+auto" if is_auto else "manual"
         frame_index = compute_frame_index(stroke.timestamp_sec, fps)
@@ -414,7 +424,12 @@ def get_progress(
     """自分（指定ロール）の進捗: 全ミス件数 / ラベル済み件数。"""
     if ctx.role not in ALLOWED_ROLES:
         return {"annotator_role": annotator_role, "total": 0, "labeled": 0, "per_match": []}
-    matches = db.query(Match).filter(Match.deleted_at.is_(None)).all()
+    # 試合一覧と同じ範囲だけ数える。以前は全チームの試合を数えていたため、
+    # 他チームの match_id と件数が per_match に出ていた。
+    q = _visible_matches_query(db, ctx)
+    if q is None:
+        return {"annotator_role": annotator_role, "total": 0, "labeled": 0, "per_match": []}
+    matches = q.all()
     total = 0
     per_match: list[dict] = []
     for m in matches:
@@ -435,12 +450,12 @@ def get_progress(
             "miss_count": miss_count,
             "labeled_count": int(labeled),
         })
-    labeled_total = (
-        db.query(func.count(ExpertLabel.id))
-        .filter(ExpertLabel.annotator_role == annotator_role)
-        .scalar()
-        or 0
+    labeled_q = db.query(func.count(ExpertLabel.id)).filter(
+        ExpertLabel.annotator_role == annotator_role
     )
+    if not ctx.is_admin:
+        labeled_q = labeled_q.filter(ExpertLabel.match_id.in_([m.id for m in matches]))
+    labeled_total = labeled_q.scalar() or 0
     return {
         "annotator_role": annotator_role,
         "total": total,
