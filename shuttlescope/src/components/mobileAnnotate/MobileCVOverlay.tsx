@@ -279,7 +279,7 @@ export function MobileCVOverlay({
   // ─── shuttle track ──────────────────────────────────────────────────
   const shuttleQuery = useQuery({
     queryKey: ['mobile-shuttle-track', matchId],
-    queryFn: () => apiGet<ShuttleTrackResponse>(`/api/tracknet/shuttle_track/${matchId}`),
+    queryFn: () => apiGet<ShuttleTrackResponse>(`/tracknet/shuttle_track/${matchId}`),
     enabled: !!matchId && showShuttle,
     staleTime: 60_000,
     retry: 1,
@@ -289,7 +289,7 @@ export function MobileCVOverlay({
   // ─── player positions ──────────────────────────────────────────────
   const yoloQuery = useQuery({
     queryKey: ['mobile-yolo-frames', matchId],
-    queryFn: () => apiGet<YoloResultsResponse>(`/api/yolo/results/${matchId}`),
+    queryFn: () => apiGet<YoloResultsResponse>(`/yolo/results/${matchId}`),
     enabled: !!matchId && showPlayers,
     staleTime: 60_000,
     retry: 1,

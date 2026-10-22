@@ -608,6 +608,23 @@ def require_non_player(request: Request) -> "AuthCtx":
     return ctx
 
 
+def require_operator_role(request: Request) -> "AuthCtx":
+    """運用ロール (admin/analyst/coach) のみ許可する deny-by-default 版。
+
+    `require_non_player` は player だけを弾くため、demo / llm 等の special role も
+    通ってしまう。LAN IP や内部設定のように demo に見せる理由のない情報は、
+    こちらで明示 allowlist にする。`require_non_player` を使う解析系ルータ
+    (demo の検証済み read を許す) の挙動はここでは変えない。
+    """
+    ctx = get_auth(request)
+    # role=None は認証前の経路 (GlobalAuthMiddleware が本番では 401 で先に弾く)。
+    # 既存の挙動 (require_non_player と同じ) を保つため、ここでは判定対象にしない。
+    # ロールが確定していて運用ロールでないもの (player / demo / llm) だけを拒否する。
+    if ctx.role is not None and ctx.role not in ("admin", "analyst", "coach"):
+        raise HTTPException(status_code=403, detail="この情報は運用ロールのみ参照できます")
+    return ctx
+
+
 def require_match_scope(request: Request, match: Match, db: Session) -> "AuthCtx":
     """match に対するアクセス権を検証する（共通ヘルパー）。
     - admin: 無条件許可

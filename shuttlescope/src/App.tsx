@@ -34,6 +34,7 @@ import PasswordResetConfirmPage from '@/pages/PasswordResetConfirmPage'
 import InvitationAcceptPage from '@/pages/InvitationAcceptPage'
 import OnboardingConsentPage from '@/pages/OnboardingConsentPage'
 import { isOptionalConsentDeferred } from '@/utils/consentDeferral'
+import { canUseConditionPage } from '@/utils/roleAccess'
 import { NotificationInboxPage } from '@/pages/NotificationInboxPage'
 import { UserManagementPage } from '@/pages/UserManagementPage'
 import PendingUsersPage from '@/pages/PendingUsersPage'
@@ -182,7 +183,10 @@ function Sidebar() {
       ? [
           { to: '/getting-started', label: t('nav.getting_started'), icon: 'menu_book' },
           { to: '/matches', label: t('nav.matches'), icon: 'list' },
-          { to: '/condition', label: t('nav.condition'), icon: 'favorite' },
+          // demo は read-only 見本用ロール。Condition は本人入力が前提で成立しないので出さない。
+          ...(canUseConditionPage(role)
+            ? [{ to: '/condition', label: t('nav.condition'), icon: 'favorite' }]
+            : []),
           // 解析タブ: 全ロールが /dashboard にアクセス可。player には
           // DashboardTopNav 側で overview / growth のみ表示し、review / advanced /
           // research は個別 route で /dashboard/overview に redirect する。
@@ -521,7 +525,10 @@ function MainLayout() {
                  描画される (この Routes は MainLayout 内なので到達しない)。 */}
             {/* Phase C: 試合中専用フルブリード入力 (mobile-first MVP) */}
             <Route path="/live/:matchId" element={<LiveInputPage />} />
-            <Route path="/condition" element={<ConditionPage />} />
+            <Route
+              path="/condition"
+              element={canUseConditionPage(role) ? <ConditionPage /> : <Navigate to="/dashboard" replace />}
+            />
             {/* /analysis は使用しない (dashboard に統一)。古い bookmark から
                飛んできた人を考慮して dashboard へ redirect。 */}
             <Route path="/analysis" element={<Navigate to="/dashboard" replace />} />

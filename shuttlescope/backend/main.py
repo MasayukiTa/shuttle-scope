@@ -1754,8 +1754,11 @@ class TeamScopeAccessControlMiddleware(BaseHTTPMiddleware):
         role = payload.get("role")
         # ── demo ロール: 検証済み demo read かを判定（所有境界のみ緩める） ──
         _demo_read = _mark_demo_read(request, role, payload)
-        # admin / player はスキップ（admin は全許可、player は別ミドルウェアで処理）
-        if role not in ("coach", "analyst"):
+        # admin / player はスキップ（admin は全許可、player は別ミドルウェアで処理）。
+        # demo は coach / analyst と同じ team scope に服する（検証済み demo read だけが
+        # 下の `_demo_read` で所有境界を緩められる）。以前は対象外で素通りしており、
+        # match-id 系 API が他チームの試合に届いていた。
+        if role not in ("coach", "analyst", "demo"):
             return await call_next(request)
         team_id_raw = payload.get("team_id")
         try:
@@ -1778,8 +1781,8 @@ class TeamScopeAccessControlMiddleware(BaseHTTPMiddleware):
                 m = _db.get(Match, mid)
                 if m is None:
                     return StarletteResponse("試合が見つかりません", status_code=404)
-                # 1) public プール
-                if bool(getattr(m, "is_public_pool", False)):
+                # 1) public プール (demo は最小権限なので対象外。自チームの試合だけ)
+                if role != "demo" and bool(getattr(m, "is_public_pool", False)):
                     return await call_next(request)
                 # 2) 自チームが owner
                 if team_id is not None and getattr(m, "owner_team_id", None) == team_id:

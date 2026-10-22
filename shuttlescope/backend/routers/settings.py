@@ -176,8 +176,8 @@ def get_settings(request: Request, db: Session = Depends(get_db)):
     実値は漏らさない）。設定値そのものはアプリ内部構成情報 (sync_device_id,
     tracknet_backend 等) を含むため player ロールには一切返さない。
     """
-    from backend.utils.auth import require_non_player
-    require_non_player(request)
+    from backend.utils.auth import require_operator_role
+    require_operator_role(request)
     ctx = get_auth(request)
     _ensure_settings_table(db)
     data = _load_all(db)
