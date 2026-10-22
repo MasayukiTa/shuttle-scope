@@ -9,11 +9,14 @@ import { apiGet } from '@/api/client'
 import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 
 interface PartnerTimelineProps {
   playerId: number
   partnerId: number
   partnerName?: string
+  /** 同じ画面の絞り込み。上段のペア統計と同じ試合集合にそろえる (監査 #741) */
+  filters?: AnalysisFilters
 }
 
 interface TimelinePoint {
@@ -33,16 +36,20 @@ interface PartnerTimelineResponse {
   meta: { sample_size: number; confidence: { level: string; stars: string; label: string } }
 }
 
-export function PartnerTimeline({ playerId, partnerId, partnerName }: PartnerTimelineProps) {
+export function PartnerTimeline({ playerId, partnerId, partnerName, filters = DEFAULT_FILTERS }: PartnerTimelineProps) {
   const { t } = useTranslation()
   const isLight = useIsLightMode()
 
   const { data: resp, isLoading, isError, refetch } = useQuery({
-    queryKey: ['analysis-partner-timeline', playerId, partnerId],
+    queryKey: ['analysis-partner-timeline', playerId, partnerId, filters],
     queryFn: () =>
       apiGet<PartnerTimelineResponse>('/analysis/partner_timeline', {
         player_id: playerId,
         partner_id: partnerId,
+        ...(filters.result !== 'all' ? { result: filters.result } : {}),
+        ...(filters.tournamentLevel ? { tournament_level: filters.tournamentLevel } : {}),
+        ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
+        ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
       }),
     enabled: !!playerId && !!partnerId,
   })
