@@ -52,7 +52,9 @@ describe('ReviewQueuePanel の来歴表示', () => {
 
   it('開始サイド未設定を名指しする', () => {
     panel(data({ player_a_start_side_known: false }))
-    expect(screen.getByText(/player_a の位置が未設定/)).toBeTruthy()
+    expect(screen.getByText(/第1セット開始時の選手の位置が未設定/)).toBeTruthy()
+    // 内部ラベル (player_a) を競技者に見せない
+    expect(screen.queryByText(/player_a/)).toBeNull()
   })
 
   it('fps 不明とアライメント失敗も出す', () => {

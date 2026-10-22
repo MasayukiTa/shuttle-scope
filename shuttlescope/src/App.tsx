@@ -279,13 +279,13 @@ function Sidebar() {
 
         {/* 折りたたみ/展開トグル。Claude/ChatGPT 風。MIcon のみ (emoji/SVG 不使用)。
            collapsed: menu (≡) を出して「開く」を示す / expanded: menu_open を出して「閉じる」。
-           aria-label は i18n キー未整備のため当面は素の文字列 (英語固定) を使用。 */}
+           aria-label / title は app.sidebar_expand / app.sidebar_collapse (表示言語に追従)。 */}
         <button
           type="button"
           onClick={toggleCollapsed}
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-label={collapsed ? t('app.sidebar_expand') : t('app.sidebar_collapse')}
           aria-expanded={!collapsed}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={collapsed ? t('app.sidebar_expand') : t('app.sidebar_collapse')}
           className={clsx(
             'mx-2 mt-2 flex items-center gap-1 p-2 rounded-ss-md text-xs transition-colors duration-base ease-out',
             collapsed ? 'justify-center' : 'justify-center lg:justify-start lg:gap-3 lg:px-3',

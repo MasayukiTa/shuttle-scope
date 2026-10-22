@@ -141,7 +141,10 @@ export function DashboardLivePage({ playerId, matches }: Props) {
                   })}
                   value={flashMatchId}
                   onChange={(v) => {
-                    setFlashMatchId(v != null ? Number(v) : null)
+                    const picked = v != null ? Number(v) : null
+                    setFlashMatchId(picked)
+                    // 下のセット間速報レポートにも同じ試合を引き継ぐ (二重に選ばせない)
+                    setSelectedMatchId(picked)
                     setFlashSet(1)
                     setFlashRallyNum('')
                   }}
