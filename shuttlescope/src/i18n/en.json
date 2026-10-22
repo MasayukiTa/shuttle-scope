@@ -392,6 +392,7 @@
       "saving": "Saving...",
       "saved": "Saved",
       "save_failed": "Save failed",
+      "delete_failed": "Delete failed",
       "questionnaire_section": "Questionnaire responses",
       "no_responses": "No questionnaire responses",
       "edit_hint": "Analysts can edit each response to re-score",
@@ -689,6 +690,7 @@
       "no_data": "Not enough data",
       "insufficient": "—",
       "best_lag": "Max-correlation lag",
+      "selection_note": "This is the largest |r| picked from {{lags}} lags. It is not a pre-set hypothesis and tends to look stronger than it is at N={{n}}. Treat it as a reference only. It does not show cause and effect.",
       "weeks": "weeks",
       "tooltip_n": "N",
       "tooltip_r": "r",
@@ -842,11 +844,13 @@
     "best_profile": {
       "title_coach": "Best profile (winning-pattern analysis)",
       "title_player": "Traits when you play your best",
-      "factors_label": "Key metrics and current gap",
+      "factors_label": "Key metrics and observed range",
       "player_intro": "You tend to play well when your condition matches the following",
       "player_note": "These are tendencies only. Keep focusing on your daily effort.",
       "win_rate_compare": "Win-rate comparison",
-      "win_rate_improvement": "Moving closer to best state projects +{{diff}}% win rate",
+      "win_rate_association": "Matches in this range had a win rate {{diff}} points higher than matches outside it. This is an observed association. It does not mean that changing these values will raise the win rate.",
+      "observed_note": "The ranges shown were observed in past records. They are not targets or advice, and they do not show a cause. Do not force body or sleep values toward these ranges.",
+      "detail_compare": "In won matches: {{win}}. In lost matches: {{lose}} (difference {{diff}}).",
       "in_profile": "In range",
       "outside": "Outside range",
       "current_value": "Current",
@@ -2318,6 +2322,7 @@
     "fatigue_signals": "Risk signals",
     "recommendation": "Recommended actions",
     "fatigue_breakdown": "Breakdown",
+    "fatigue_population_note": "Only finished matches with a decided result are counted. Unfinished and walkover matches are left out, so the rally count can be lower than in other analyses.",
     "temporal_drop": "Late-set scoring drop",
     "long_rally_penalty": "Post-long-rally penalty",
     "pressure_drop": "Pressure-time drop",
@@ -3853,7 +3858,7 @@
       "n_matches_paren": "({{n}} matches)",
       "rate_diff_pp": "+{{n}}pp",
       "current_label": "Current",
-      "target_range": "Target [{{r}}]"
+      "target_range": "Observed range [{{r}}]"
     },
     "ConditionGenericScatter": {
       "k1": "Low → High"

@@ -400,6 +400,7 @@
       "saving": "保存中...",
       "saved": "保存しました",
       "save_failed": "保存に失敗しました",
+      "delete_failed": "削除に失敗しました",
       "questionnaire_section": "質問票回答",
       "no_responses": "質問票回答がありません",
       "edit_hint": "アナリストは各回答を編集して再スコアリングできます",
@@ -698,6 +699,7 @@
       "no_data": "十分なデータがありません",
       "insufficient": "—",
       "best_lag": "最大相関ラグ",
+      "selection_note": "{{lags}}通りのラグから |r| が最大のものを選んだ値です。事前に決めた仮説ではなく、N={{n}}では実際より強く出やすい参考値です。因果関係を示すものではありません。",
       "weeks": "週",
       "tooltip_n": "N",
       "tooltip_r": "r",
@@ -851,11 +853,13 @@
     "best_profile": {
       "title_coach": "ベストプロフィール（勝ちパターン分析）",
       "title_player": "あなたが良い試合をする時の特徴",
-      "factors_label": "重要指標と現状ギャップ",
+      "factors_label": "重要指標と観測された範囲",
       "player_intro": "以下のコンディションの時に良いプレーが出やすい傾向があります",
       "player_note": "これはあくまで傾向です。日々の取り組みを大切にしてください。",
       "win_rate_compare": "勝率比較",
-      "win_rate_improvement": "ベスト状態に近づくと勝率 +{{diff}}% 見込み",
+      "win_rate_association": "この範囲の試合は、範囲外の試合より勝率が{{diff}}ポイント高い傾向でした。観察された関連であり、変えれば勝率が上がるという意味ではありません。",
+      "observed_note": "表示している範囲は、過去の記録で観測された値です。目標値でも改善の指示でもなく、原因を示すものでもありません。体重や睡眠などの体調に関わる値を、この範囲に合わせて無理に変えないでください。",
+      "detail_compare": "勝った試合では {{win}}、負けた試合では {{lose}}（差 {{diff}}）。",
       "in_profile": "レンジ内",
       "outside": "レンジ外",
       "current_value": "現在値",
@@ -2328,6 +2332,7 @@
     "fatigue_signals": "リスクシグナル",
     "recommendation": "推奨アクション",
     "fatigue_breakdown": "内訳",
+    "fatigue_population_note": "終了した試合(勝敗が確定したもの)だけを数えています。未完了や棄権の試合は含まないため、他の解析よりラリー数が少ないことがあります。",
     "temporal_drop": "後半得点率低下",
     "long_rally_penalty": "長ラリー後ペナルティ",
     "pressure_drop": "プレッシャー時低下",
@@ -3863,7 +3868,7 @@
       "n_matches_paren": "({{n}}試合)",
       "rate_diff_pp": "+{{n}}pp",
       "current_label": "現在",
-      "target_range": "目標 [{{r}}]"
+      "target_range": "観測範囲 [{{r}}]"
     },
     "ConditionGenericScatter": {
       "k1": "低 → 高"

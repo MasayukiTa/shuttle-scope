@@ -93,6 +93,7 @@ function Inner({ playerId, tournamentLevel }: FatigueRiskCardProps) {
           {t('auto._shared.n_rallies', { n: d.breakdown.total_rallies })}
         </span>
       </div>
+      <p className="text-[11px] text-[var(--ss-t3)]">{t('prediction.fatigue_population_note')}</p>
 
       {/* リスクスコア大表示 */}
       <div className="text-center">

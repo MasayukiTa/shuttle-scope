@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
-import { apiPatch } from '@/api/client'
+import { apiPatch, apiDelete, newIdempotencyKey } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
 import { MIcon } from '@/components/common/MIcon'
 
@@ -40,10 +40,13 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
   const { role } = useAuth()
   const qc = useQueryClient()
   const isAnalyst = role === 'analyst' || role === 'admin'
+  // 削除は履歴一覧の各行ではなく、記録を開いたこの画面だけに置く (player には出さない)
+  const canDelete = role != null && role !== 'player'
 
   const initial = useMemo(() => parseQuestionnaire(record['questionnaire_json']), [record])
   const [answers, setAnswers] = useState<Record<string, number>>(initial)
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [savedMsg, setSavedMsg] = useState<string | null>(null)
 
@@ -90,6 +93,23 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
       setErrorMsg(`${t('condition.history_detail.save_failed')}: ${msg}`)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!id) return
+    if (!window.confirm(t('condition.history.delete_confirm') as string)) return
+    setDeleting(true)
+    setErrorMsg(null)
+    try {
+      await apiDelete(`/conditions/${id}`, { 'X-Idempotency-Key': newIdempotencyKey() })
+      qc.invalidateQueries({ queryKey: ['conditions'] })
+      onClose()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setErrorMsg(`${t('condition.history_detail.delete_failed')}: ${msg}`)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -217,7 +237,18 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
         </div>
 
         {/* フッター */}
-        <div className={`sticky bottom-0 flex justify-end gap-2 px-4 py-3 border-t ${sectionBorder} ${panelCls}`}>
+        <div className={`sticky bottom-0 flex items-center gap-2 px-4 py-3 border-t ${sectionBorder} ${panelCls}`}>
+          {canDelete && id != null && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={deleting || saving}
+              className="mr-auto flex items-center gap-1 px-2 py-1 text-xs text-[var(--ss-bad)] hover:opacity-80 disabled:opacity-50"
+            >
+              <MIcon name="delete" size={14} />
+              {t('condition.history.delete')}
+            </button>
+          )}
           <button
             type="button"
             onClick={onClose}

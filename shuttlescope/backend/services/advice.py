@@ -311,22 +311,18 @@ def advice_condition_header(db: Session, player_id: int, ctx: AuthCtx) -> dict:
     判断 (「練習強度を落とすべき」等) は出さない。
     観測した値が「注意領域」かは閾値判定ではなく自然な数字提示。
     """
-    from sqlalchemy import text as _sql_text
-    # condition_master が無い環境では skip
-    try:
-        # 直近 7 日の DailyCondition を取得 (構造は条件付き)
-        from backend.db.models import DailyCondition
-    except ImportError:
-        return _empty_response("体調モデルが利用できません。")
+    # 体調の記録は conditions テーブル (モデル名 Condition)。存在しない別名を import して
+    # 常に「利用できません」を返していたため、実在するモデルを直接使う。
+    from backend.db.models import Condition
 
     cutoff = DateType.today() - timedelta(days=14)
     rows = (
-        db.query(DailyCondition)
+        db.query(Condition)
         .filter(
-            DailyCondition.player_id == player_id,
-            DailyCondition.target_date >= cutoff,
+            Condition.player_id == player_id,
+            Condition.measured_at >= cutoff,
         )
-        .order_by(DailyCondition.target_date.desc())
+        .order_by(Condition.measured_at.desc())
         .all()
     )
     if len(rows) < 3:
@@ -334,30 +330,20 @@ def advice_condition_header(db: Session, player_id: int, ctx: AuthCtx) -> dict:
             f"直近 14 日の体調入力が {len(rows)} 件です (傾向判定には 3 件以上必要)。"
         )
 
-    # Hooper-like 集計 (fatigue / stress / mood / sleep 1-5)
-    # responses_json または個別フィールドがある前提で安全に取り出す
-    def _safe_get(r, key, default=None):
-        v = getattr(r, key, None)
-        if v is not None: return v
-        # responses dict から
-        rd = getattr(r, "responses", None) or getattr(r, "responses_json", None)
-        if isinstance(rd, dict):
-            return rd.get(key, default)
-        return default
-
+    # 最新の記録にある Hooper の値をそのまま事実として並べる (解釈・助言は付けない)。
     latest = rows[0]
-    sleep = _safe_get(latest, "sleep_score", None)
-    fatigue = _safe_get(latest, "fatigue_score", None)
-    parts = [f"直近 {len(rows)} 件の体調入力を取得 (最終: {latest.target_date.isoformat() if getattr(latest, 'target_date', None) else 'N/A'})"]
+    sleep = latest.hooper_sleep
+    fatigue = latest.hooper_fatigue
+    parts = [f"直近 {len(rows)} 件の体調入力を取得 (最終: {latest.measured_at.isoformat() if latest.measured_at else 'N/A'})"]
     if sleep is not None:
-        parts.append(f"最新 sleep スコア {sleep}")
+        parts.append(f"最新 Hooper 睡眠 {sleep}")
     if fatigue is not None:
-        parts.append(f"最新 fatigue スコア {fatigue}")
+        parts.append(f"最新 Hooper 疲労 {fatigue}")
     text = " / ".join(parts) + "。"
     return _ok_response(AdviceCard(
         text=text,
         basis={
-            "source": "daily_condition_14d",
+            "source": "conditions_14d",
             "sample_size": {"entries": len(rows)},
         },
         confidence="medium" if len(rows) >= 5 else "low",
