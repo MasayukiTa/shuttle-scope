@@ -3063,7 +3063,12 @@ export function AnnotatorPage() {
 
       {/* メインレイアウト
           U7: モバイル (<md) は縦積み (動画上 / パネル下)。≥md は従来の横並び。 */}
-      {match && !match.player_a_start_side && (
+      {match && !match.player_a_start_side && openedAsCompleted === true && !editResumed && (
+        <div className="shrink-0 border-b border-[var(--ss-border)] px-3 py-1.5 text-xs text-[var(--ss-t3)]">
+          {t('settings_general.start_side_missing_completed')}
+        </div>
+      )}
+      {match && !match.player_a_start_side && !(openedAsCompleted === true && !editResumed) && (
         <div className="shrink-0 border-b border-amber-500/40 bg-amber-500/10 px-3 py-2 flex flex-wrap items-center gap-2 text-xs">
           <MIcon name="warning" size={16} className="text-amber-400 shrink-0" />
           <span className="font-medium text-[var(--ss-t1)]">
@@ -3111,7 +3116,7 @@ export function AnnotatorPage() {
                 <div className="flex items-center justify-center bg-[var(--ss-surface-2)] rounded-ss-lg text-[var(--ss-t3)] text-xs border border-dashed border-[var(--ss-border)] py-6 px-3 text-center">
                   {videoWindowOpen
                     ? t('annotator.ui.external_monitor_playing', { defaultValue: '別モニタで再生中' })
-                    : t('annotator.ui.no_video_hint', { defaultValue: '映像なしモードです。映像を使うには、この下の「ローカル動画」を選び、動画ファイルまたはURLを設定してください。' })}
+                    : t('settings_general.no_video_hint')}
                 </div>
               )
             }

@@ -65,21 +65,29 @@
     "yes": "Yes",
     "no": "No"
   },
+  "settings_general": {
+    "save_failed": "Could not save the setting. The screen has been put back to the previous value. Check the connection and your permissions, then try again.",
+    "restart_no_unsaved": "No unsaved records.",
+    "restart_unsaved": "{{count}} unsaved record(s). They will be lost on restart.",
+    "restart_confirm_unsaved": "{{count}} unsaved record(s) will be lost on restart. Restart anyway?",
+    "start_side_missing_completed": "This match has no recorded starting side. Viewing is not affected. Set it when you re-run CV analysis.",
+    "no_video_hint": "Video is off. To use video, choose \"Recorded video\" in the video mode and set a video file or URL."
+  },
   "getting_started": {
     "title": "Getting Started",
-    "intro": "Here is the basic flow for getting started with ShuttleScope. Register players and matches, load a video, and annotate (record rallies and shots) — then the analysis views become available. Follow the steps below.",
+    "intro": "Register players and a match, load a video and record it, and the analysis becomes available. Go through the steps in order.",
     "role_note": "Creating players and matches requires the Analyst or Admin role. With your current role you can view only. Please ask an administrator to change your role.",
     "step1_title": "Register players and a team",
-    "step1_body": "Go to Settings → Players and add the players you want to analyze. Enter a team name and the player is added under that team. Add opponents the same way.",
+    "step1_body": "Under Settings → Players, add the players you want to analyze and their opponents.",
     "step1_cta": "Open Settings",
     "step2_title": "Create a match",
-    "step2_body": "From the match list, create a new match and set the two players, date, and so on. A match is the unit for annotation and analysis.",
+    "step2_body": "In the match list, create a new match and enter the two players and the date.",
     "step2_cta": "Go to Matches",
     "step3_title": "Load a video and annotate",
-    "step3_body": "Open the match you created and load the video. Recording rallies and shots (annotation) produces the source data for analysis. The annotation screen shows an interactive tutorial automatically.",
+    "step3_body": "Open the match, load the video, and record rallies and shots.",
     "step3_cta": "Pick a match to start",
     "step4_title": "View the analysis",
-    "step4_body": "Once you have annotations, the Analysis tab shows tendencies such as shot placement, rally patterns, and growth. While data is sparse, accuracy caveats are shown.",
+    "step4_body": "Once you have recorded enough, Analysis shows your tendencies. While data is sparse, notes about accuracy are shown.",
     "step4_cta": "Open Analysis",
     "back_to_matches": "Back to matches"
   },
@@ -1987,7 +1995,7 @@
     "confirm_end": "Finish"
   },
   "video_source": {
-    "mode_local": "Local video",
+    "mode_local": "Recorded video",
     "mode_webview": "Live stream (browser)",
     "mode_none": "No video (on-site)",
     "mode_label": "Video mode"
@@ -4114,8 +4122,8 @@
       "k4": "Player:",
       "k5": "PDF",
       "k6": "JSON",
-      "k7": "Condition input is only possible from your own player account",
-      "k8": "Your login user is not linked to a player record, so you cannot enter data. If you are registered as a player, ask an admin to set the player_id on your account.",
+      "k7": "You can only enter your own condition records.",
+      "k8": "We cannot confirm that this account is linked to a player. If you are registered as a player, please contact an administrator.",
       "k9": "The history and analysis tabs let you view any player's data from the player selector.",
       "k10": "Input target:",
       "k11": "Player #{{n}}",
@@ -5475,7 +5483,7 @@
       },
       "flow": {
         "title": "The basic loop",
-        "body": "Play and pause the video, log scores and strokes, check in Review, then look at Analysis for patterns. Press Ctrl+K if you get lost."
+        "body": "Play and pause the video and record scores and strokes. Check them afterwards in Review, then look at Analysis for patterns. It is a loop of these three."
       }
     },
     "analysis_reading": {
