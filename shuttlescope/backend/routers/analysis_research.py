@@ -12,8 +12,10 @@ from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
-from backend.analysis.role_view import own_slot, team_side
-from backend.analysis.player_context import involves_player, opponent_player_id, player_wins_match, partner_player_id
+from backend.analysis.role_view import own_slot, team_side, perspective
+from backend.analysis.player_context import (
+    involves_player, opponent_player_id, player_wins_match, partner_player_id, player_result_filter,
+)
 from backend.analysis.match_filter import (
     MatchFilter, match_filter_params, select_population, stamps_population, declare_filter_scope,
 )
@@ -1038,6 +1040,90 @@ def get_spatial_density(
 
 # ─── Phase 2: ダブルスペア両選手監視 ─────────────────────────────────────────
 
+def _same_side_pair_matches(
+    db: Session,
+    player_a_id: int,
+    player_b_id: int,
+    result: Optional[str] = None,
+    tournament_level: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+) -> list[Match]:
+    """2 人が同じ側 (player_a + partner_a、または player_b + partner_b) で出たダブルス試合。
+
+    防ぐ事象: 対戦相手同士 (player_a と player_b) を「同一ペア」として取り込み、
+    相手側の打球と勝敗をペアの値に混ぜる (監査 #740)。
+    result は 2 人から見た勝敗 ("win" / "loss") で、Match.result (A 側視点) の値そのものではない。
+    """
+    if player_a_id == player_b_id:
+        return []
+    q = db.query(Match).filter(
+        Match.format != "singles",
+        or_(
+            and_(Match.player_a_id == player_a_id, Match.partner_a_id == player_b_id),
+            and_(Match.player_a_id == player_b_id, Match.partner_a_id == player_a_id),
+            and_(Match.player_b_id == player_a_id, Match.partner_b_id == player_b_id),
+            and_(Match.player_b_id == player_b_id, Match.partner_b_id == player_a_id),
+        ),
+    )
+    if result in ("win", "loss"):
+        q = q.filter(player_result_filter(player_a_id, result))
+    if tournament_level:
+        q = q.filter(Match.tournament_level == tournament_level)
+    if date_from:
+        q = q.filter(Match.date >= date_from)
+    if date_to:
+        q = q.filter(Match.date <= date_to)
+    return q.order_by(Match.date).all()
+
+
+def _pair_strokes(
+    db: Session,
+    matches: list[Match],
+    player_a_id: int,
+    player_b_id: int,
+    require_land_zone: bool = False,
+):
+    """ペアの試合のラリーと、ペア 2 人の個人枠の打球だけ。
+
+    返り値: (rallies, pair_strokes, rally_team, owner) 。rally_team は rally.id -> ペアのチーム側。
+    owner は id(打球) -> "a" (player_a_id の打球) / "b" (player_b_id の打球)。
+    打球は Stroke.player (個人の枠) が試合ごとの 2 人の枠と一致するものに限る
+    (相手側の打球、相方以外の枠は入れない)。
+    """
+    if not matches:
+        return [], [], {}, {}
+    slots: dict[int, tuple[str, str, str]] = {}
+    for m in matches:
+        va = perspective(m, player_a_id)
+        vb = perspective(m, player_b_id)
+        if va is None or vb is None:
+            continue
+        slots[m.id] = (str(va), va.slot, vb.slot)
+    match_ids = list(slots)
+    sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all() if match_ids else []
+    set_to_match = {s.id: s.match_id for s in sets}
+    rallies = db.query(Rally).filter(Rally.set_id.in_(list(set_to_match))).all() if set_to_match else []
+    rally_match = {r.id: set_to_match[r.set_id] for r in rallies}
+    rally_team = {rid: slots[mid][0] for rid, mid in rally_match.items()}
+    sq = db.query(Stroke).filter(Stroke.rally_id.in_(list(rally_match))) if rally_match else None
+    if sq is not None and require_land_zone:
+        sq = sq.filter(Stroke.land_zone != None)  # noqa: E711
+    all_strokes = sq.all() if sq is not None else []
+    pair_strokes = []
+    owner: dict[int, str] = {}
+    for s in all_strokes:
+        _side, slot_a, slot_b = slots[rally_match[s.rally_id]]
+        if s.player == slot_a:
+            owner[id(s)] = "a"
+        elif s.player == slot_b:
+            owner[id(s)] = "b"
+        else:
+            continue
+        pair_strokes.append(s)
+    return rallies, pair_strokes, rally_team, owner
+
+
 @router.get("/analysis/pair_combined")
 def get_pair_combined(
     player_a_id: int,
@@ -1048,113 +1134,64 @@ def get_pair_combined(
     date_to: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
-    """ペア両選手が同一ダブルス試合に出場したラリーの合算解析。"""
+    """ペア両選手が同じ側で出場したダブルス試合のラリーの合算解析。"""
 
     from collections import Counter
 
-    # 両選手が出場したダブルス試合を抽出
-    q = db.query(Match).filter(
-        Match.format != "singles",
-        or_(
-            and_(Match.player_a_id == player_a_id, Match.player_b_id == player_b_id),
-            and_(Match.player_a_id == player_b_id, Match.player_b_id == player_a_id),
-            and_(Match.player_a_id == player_a_id, Match.partner_a_id == player_b_id),
-            and_(Match.player_a_id == player_b_id, Match.partner_a_id == player_a_id),
-            and_(Match.player_b_id == player_a_id, Match.partner_b_id == player_b_id),
-            and_(Match.player_b_id == player_b_id, Match.partner_b_id == player_a_id),
-        ),
+    matches = _same_side_pair_matches(
+        db, player_a_id, player_b_id, result, tournament_level, date_from, date_to,
     )
-    if result:
-        q = q.filter(Match.result == result)
-    if tournament_level:
-        q = q.filter(Match.tournament_level == tournament_level)
-    if date_from:
-        q = q.filter(Match.date >= date_from)
-    if date_to:
-        q = q.filter(Match.date <= date_to)
-
-    matches = q.order_by(Match.date).all()
+    filter_applied = bool(result in ("win", "loss") or tournament_level or date_from or date_to)
     if not matches:
         confidence = _research_confidence("descriptive_basic", 0)
         return {"success": True, "data": {
             "pair_win_rate": None, "pair_match_count": 0, "shared_matches": [],
-            "stroke_share": {"player_a": 0.5, "player_b": 0.5},
+            "stroke_share": {"player_a": None, "player_b": None},
             "common_loss_pattern": None, "common_win_shot": None,
         }, "meta": _with_input_provenance(
-            {"sample_size": 0, "confidence": confidence},
+            {"sample_size": 0, "confidence": confidence,
+             "population": {"n_matches": 0, "filter_applied": filter_applied}},
             rallies=[],
             strokes=[],
         )}
 
     shared_match_ids = [m.id for m in matches]
-    set_ids_all = [
-        s.id for s in db.query(GameSet).filter(GameSet.match_id.in_(shared_match_ids)).all()
-    ]
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids_all)).all() if set_ids_all else []
-    all_strokes = (
-        db.query(Stroke).filter(Stroke.rally_id.in_([r.id for r in rallies])).all()
-        if rallies else []
-    )
+    rallies, pair_strokes, rally_team, owner = _pair_strokes(db, matches, player_a_id, player_b_id)
 
-    # ペア勝率 (player_a_id 視点)
-    pair_wins = 0
-    for m in matches:
-        if m.player_a_id == player_a_id or m.partner_a_id == player_a_id:
-            if m.result == "win":
-                pair_wins += 1
-        else:
-            if m.result == "loss":
-                pair_wins += 1
-    pair_win_rate = round(pair_wins / len(matches), 3) if matches else None
+    # ペア勝率 (勝敗が確定した試合だけ。確定が 0 件なら None)
+    decided = [player_wins_match(m, player_a_id) for m in matches]
+    decided = [w for w in decided if w is not None]
+    pair_win_rate = round(sum(1 for w in decided if w) / len(decided), 3) if decided else None
 
-    # ストローク分担比率
-    strokes_a = sum(
-        1 for s in all_strokes
-        if s.player in ("player_a",) and any(
-            (m.player_a_id == player_a_id or m.partner_a_id == player_a_id)
-            for m in matches
-            if m.id == next((
-                r.set_id for r in rallies if r.id == s.rally_id
-            ), None)
-        )
-    )
-    total_strokes = len(all_strokes)
-    # シンプルに player ロール別カウント
-    cnt_a_role = sum(1 for s in all_strokes if s.player == "player_a")
-    cnt_b_role = sum(1 for s in all_strokes if s.player == "player_b")
-    cnt_total = cnt_a_role + cnt_b_role
+    # ストローク分担比率: 試合ごとの 2 人の個人枠の打球数
+    cnt_a = sum(1 for s in pair_strokes if owner[id(s)] == "a")
+    cnt_b = sum(1 for s in pair_strokes if owner[id(s)] == "b")
+    cnt_total = cnt_a + cnt_b
     # ストローク 0 件の分担比率は 0.0 ではなく None (統計規則 R1)。件数は meta.sample_size 側
     stroke_share = {
-        "player_a": round(cnt_a_role / cnt_total, 3) if cnt_total else None,
-        "player_b": round(cnt_b_role / cnt_total, 3) if cnt_total else None,
+        "player_a": round(cnt_a / cnt_total, 3) if cnt_total else None,
+        "player_b": round(cnt_b / cnt_total, 3) if cnt_total else None,
     }
 
-    # 共通の失点前ショット
-    rally_id_set = {r.id for r in rallies}
-    # N+1 解消: set_id → match_id のマップを一度だけ構築し、matches も辞書化
-    matches_by_id = {m.id: m for m in matches}
-    sets_for_lookup = db.query(GameSet).filter(GameSet.match_id.in_(shared_match_ids)).all() if shared_match_ids else []
-    set_to_match_id = {s.id: s.match_id for s in sets_for_lookup}
+    # 共通の得点前・失点前ショット (ペア 2 人の打球だけ)
     win_rally_ids: set[int] = set()
     loss_rally_ids: set[int] = set()
     for r in rallies:
-        mid = set_to_match_id.get(r.set_id)
-        m = matches_by_id.get(mid) if mid is not None else None
-        if m is None:
+        team = rally_team.get(r.id)
+        if team is None:
             continue
-        player_role = "player_a" if (m.player_a_id == player_a_id or m.partner_a_id == player_a_id) else "player_b"
-        if r.winner == player_role:
+        if r.winner == team:
             win_rally_ids.add(r.id)
         else:
             loss_rally_ids.add(r.id)
 
     common_win_shot = None
-    win_shots = [s.shot_type for s in all_strokes if s.rally_id in win_rally_ids and s.shot_type]
+    win_shots = [s.shot_type for s in pair_strokes if s.rally_id in win_rally_ids and s.shot_type]
     if win_shots:
         common_win_shot = Counter(win_shots).most_common(1)[0][0]
 
     common_loss_pattern = None
-    loss_shots = [s.shot_type for s in all_strokes if s.rally_id in loss_rally_ids and s.shot_type]
+    loss_shots = [s.shot_type for s in pair_strokes if s.rally_id in loss_rally_ids and s.shot_type]
     if loss_shots:
         common_loss_pattern = Counter(loss_shots).most_common(1)[0][0]
 
@@ -1170,9 +1207,10 @@ def get_pair_combined(
             "common_win_shot": common_win_shot,
         },
         "meta": _with_input_provenance(
-            {"sample_size": len(rallies), "confidence": confidence},
+            {"sample_size": len(rallies), "confidence": confidence,
+             "population": {"n_matches": len(matches), "filter_applied": filter_applied}},
             rallies=rallies,
-            strokes=all_strokes,
+            strokes=pair_strokes,
         ),
     }
 
@@ -1181,48 +1219,49 @@ def get_pair_combined(
 def get_partner_timeline(
     player_id: int,
     partner_id: int,
+    result: Optional[str] = None,
+    tournament_level: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
-    """ペア別試合ごとの勝率推移。"""
+    """ペア別試合ごとの勝率推移。pair_combined と同じ試合の選び方・同じ絞り込みを使う (監査 #740 / #741)。"""
 
-    q = db.query(Match).filter(
-        Match.format != "singles",
-        or_(
-            and_(Match.player_a_id == player_id, Match.player_b_id == partner_id),
-            and_(Match.player_a_id == partner_id, Match.player_b_id == player_id),
-            and_(Match.player_a_id == player_id, Match.partner_a_id == partner_id),
-            and_(Match.player_a_id == partner_id, Match.partner_a_id == player_id),
-            and_(Match.player_b_id == player_id, Match.partner_b_id == partner_id),
-            and_(Match.player_b_id == partner_id, Match.partner_b_id == player_id),
-        ),
-    ).order_by(Match.date)
-    matches = q.all()
+    matches = _same_side_pair_matches(
+        db, player_id, partner_id, result, tournament_level, date_from, date_to,
+    )
+    filter_applied = bool(result in ("win", "loss") or tournament_level or date_from or date_to)
+    population = {"n_matches": len(matches), "filter_applied": filter_applied}
 
     if not matches:
         return {"success": True, "data": {"points": [], "overall_win_rate": None},
-                "meta": {"sample_size": 0, "confidence": _research_confidence("descriptive_basic", 0)}}
+                "meta": {"sample_size": 0, "confidence": _research_confidence("descriptive_basic", 0),
+                         "population": population}}
 
     points = []
     win_count = 0
-    for i, m in enumerate(matches):
-        is_a_side = m.player_a_id == player_id or m.partner_a_id == player_id
-        won = (m.result == "win" and is_a_side) or (m.result == "loss" and not is_a_side)
+    decided_count = 0
+    for m in matches:
+        won = player_wins_match(m, player_id)
+        if won is None:
+            continue
+        decided_count += 1
         if won:
             win_count += 1
         points.append({
             "match_id": m.id,
             "date": str(m.date),
             "result": "win" if won else "loss",
-            "cumulative_win_rate": round(win_count / (i + 1), 3),
+            "cumulative_win_rate": round(win_count / decided_count, 3),
             "tournament": m.tournament,
         })
 
-    overall_win_rate = round(win_count / len(matches), 3)
-    confidence = _research_confidence("descriptive_basic", len(matches))
+    overall_win_rate = round(win_count / decided_count, 3) if decided_count else None
+    confidence = _research_confidence("descriptive_basic", decided_count)
     return {
         "success": True,
         "data": {"points": points, "overall_win_rate": overall_win_rate},
-        "meta": {"sample_size": len(matches), "confidence": confidence},
+        "meta": {"sample_size": decided_count, "confidence": confidence, "population": population},
     }
 
 
@@ -1349,19 +1388,8 @@ def get_pair_playstyle(
     """
     from collections import Counter
 
-    # 両選手が出場したダブルス試合
-    q = db.query(Match).filter(
-        Match.format != "singles",
-        or_(
-            and_(Match.player_a_id == player_a_id, Match.player_b_id == player_b_id),
-            and_(Match.player_a_id == player_b_id, Match.player_b_id == player_a_id),
-            and_(Match.player_a_id == player_a_id, Match.partner_a_id == player_b_id),
-            and_(Match.player_a_id == player_b_id, Match.partner_a_id == player_a_id),
-            and_(Match.player_b_id == player_a_id, Match.partner_b_id == player_b_id),
-            and_(Match.player_b_id == player_b_id, Match.partner_b_id == player_a_id),
-        ),
-    )
-    matches = q.all()
+    # 両選手が同じ側で出場したダブルス試合 (対戦相手同士は含めない、監査 #740)
+    matches = _same_side_pair_matches(db, player_a_id, player_b_id)
 
     if not matches:
         confidence = _research_confidence("descriptive_basic", 0)
@@ -1374,17 +1402,9 @@ def get_pair_playstyle(
             strokes=[],
         )}
 
-    match_ids = [m.id for m in matches]
-    set_ids = [
-        s.id for s in db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
-    ]
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
-    rally_ids = [r.id for r in rallies]
-    strokes = (
-        db.query(Stroke)
-        .filter(Stroke.rally_id.in_(rally_ids), Stroke.land_zone != None)
-        .all()
-        if rally_ids else []
+    # 集計する打球はペア 2 人の個人枠のものだけ (相手側の配球・着地点は混ぜない)
+    rallies, strokes, _rally_team, _owner = _pair_strokes(
+        db, matches, player_a_id, player_b_id, require_land_zone=True,
     )
 
     total_strokes = len(strokes)

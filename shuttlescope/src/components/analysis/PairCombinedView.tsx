@@ -158,6 +158,7 @@ export function PairCombinedView({
           playerId={playerAId}
           partnerId={playerBId}
           partnerName={playerBName}
+          filters={filters}
         />
       </div>
     </div>
