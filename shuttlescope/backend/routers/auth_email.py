@@ -30,7 +30,7 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
-from backend.db.models import AccessLog, Player, User
+from backend.db.models import AccessLog, Player, Team, User
 from backend.utils.access_log import log_access
 from backend.utils.auth import get_auth
 from backend.utils.text_sanitize import reject_ctrl_and_bidi
