@@ -33,6 +33,10 @@
     "voice_input": "音声入力",
     "voice_stop": "音声入力を停止",
     "voice_listening": "聞き取り中…",
+    "starters_title": "たとえば、こんなことを聞けます",
+    "starter_turning_point": "この試合の転機を整理して",
+    "starter_opponent_trend": "対戦相手の傾向を要約して",
+    "starter_practice": "次の練習で試すことを挙げて",
     "error": {
       "create": "会話の作成に失敗しました。",
       "generate": "応答の生成に失敗しました。",
@@ -1740,7 +1744,9 @@
     "copy_button": "エラー内容をコピー",
     "copied": "コピーしました ✓",
     "reload_button": "ページを再読み込み",
-    "footer_hint": "「エラー内容をコピー」して開発者に送付してください。"
+    "footer_hint": "「エラー内容をコピー」して開発者に送付してください。",
+    "public_message": "画面の表示に失敗しました。再読み込みしてください。直らないときは、下のエラー ID を管理者に伝えてください。",
+    "error_id_label": "エラー ID"
   },
   "no_data_message": {
     "unit_default": "件",
@@ -5379,6 +5385,11 @@
     "hint": "外部からの HTTP リクエスト・攻撃検知ログ。アプリ内操作の監査は「監査ログ」を参照。",
     "tab_security": "セキュリティイベント",
     "tab_request": "HTTP リクエスト",
+    "status_line": "この表の記録: 全部で {{total}} 件 / 最新の記録: {{latest}} / 取得: {{fetched}}",
+    "status_none_yet": "記録はまだありません",
+    "status_unavailable": "記録件数を取得できませんでした",
+    "empty_never_recorded": "この表には、まだ1件も記録がありません。記録が届いていないか、保持期間を過ぎて消えた可能性があります。",
+    "empty_filtered": "条件に合う記録がありません。この表の記録は全部で {{total}} 件です。",
     "admin_required": "管理者権限が必要です",
     "tab_error": "エラー",
     "all": "すべて",

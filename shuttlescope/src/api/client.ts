@@ -661,6 +661,23 @@ export function authErrorLogs(params?: {
   return apiGet('/auth/audit-logs/errors', p)
 }
 
+/** 各ログ表の記録件数と最新・最古の時刻。0 件のとき時刻は null。 */
+export interface AuditLogSourceSummary {
+  total: number
+  latest_ts: string | null
+  oldest_ts: string | null
+}
+
+export interface AuditLogStatus {
+  request: AuditLogSourceSummary
+  security: AuditLogSourceSummary
+  error: AuditLogSourceSummary
+}
+
+export function authAuditLogStatus(): Promise<{ success: boolean; data: AuditLogStatus }> {
+  return apiGet('/auth/audit-logs/status')
+}
+
 export interface AuditLogActionItem {
   action: string
   count: number

@@ -2860,6 +2860,43 @@ def list_error_logs(
     }
 
 
+@router.get("/audit-logs/status")
+def audit_log_source_status(request: Request, db: Session = Depends(get_db)):
+    """admin のみ。request / security / error 各テーブルの記録件数と最新・最古の時刻。
+
+    一覧が 0 件のとき「記録が届いていない (全体 0 件)」のか「絞り込みに合う記録が無い
+    (全体では N 件)」のかを見分けるために使う。0 件のテーブルの最新・最古は null
+    (0 件を表す値を入れない)。security は一覧の既定と同じく LLM 運用テレメトリを除く。
+    """
+    from backend.db.models import ErrorLog, RequestLog, SecurityEvent
+    from sqlalchemy import func
+    _require_admin(request)
+
+    def _summary(model, *extra_filters):
+        q = db.query(func.count(model.id), func.min(model.ts), func.max(model.ts))
+        for flt in extra_filters:
+            q = q.filter(flt)
+        total, oldest, latest = q.one()
+        total = int(total or 0)
+        return {
+            "total": total,
+            "latest_ts": latest if total > 0 else None,
+            "oldest_ts": oldest if total > 0 else None,
+        }
+
+    return {
+        "success": True,
+        "data": {
+            "request": _summary(RequestLog),
+            "security": _summary(
+                SecurityEvent,
+                SecurityEvent.event_type.notin_(_INTERNAL_TELEMETRY_EVENT_TYPES),
+            ),
+            "error": _summary(ErrorLog),
+        },
+    }
+
+
 @router.get("/audit-logs/actions")
 def list_audit_log_actions(request: Request, db: Session = Depends(get_db)):
     """admin のみ。access_logs に出現する distinct な action 名一覧 (件数付き)。

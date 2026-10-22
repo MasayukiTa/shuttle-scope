@@ -70,6 +70,7 @@ import { CVScanPanel } from '@/components/annotation/CVScanPanel'
 import { ReviewQueuePanel as CVReviewQueuePanel } from '@/components/annotation/ReviewQueuePanel'
 import { PlayerMovementCard } from '@/components/analysis/PlayerMovementCard'
 import { uploadVideoInChunks, abortChunkUpload } from '@/utils/chunkUpload'
+import { buildAutosaveKey, isAutosaveOwnedBy } from '@/utils/annotatorAutosave'
 
 // ─── 配信URL検出 ──────────────────────────────────────────────────────────────
 // Electron では配信サービスの動画を直接再生できないため、yt-dlp でダウンロードする。
@@ -305,7 +306,9 @@ export function AnnotatorPage() {
   const [pendingEndType, setPendingEndType] = useState<string | null>(null)
 
   // 一時保存（Auto-save）
-  const autoSaveKey = matchId ? `shuttlescope.autosave.${matchId}` : null
+  // キーに user_id を含める (共有端末で他人の未確定入力が復元候補に出ないように)。
+  // user_id が不明のときは null = 一時保存しない。
+  const autoSaveKey = buildAutosaveKey(matchId, userId)
   const [autoSaveRestored, setAutoSaveRestored] = useState(false)
   const [lastAutoSaveTime, setLastAutoSaveTime] = useState<number | null>(null)
   // localStorage 自動保存の失敗 (quota 超過 / private モード / disabled) を UI に出すための state
@@ -1090,6 +1093,7 @@ export function AnnotatorPage() {
       currentHitter: store.currentHitter,
       videoTimestamp: videoRef.current?.currentTime ?? null,
       savedAt: now,
+      ownerUserId: userId,
     }
     try {
       localStorage.setItem(autoSaveKey, JSON.stringify(data))
@@ -1120,6 +1124,7 @@ export function AnnotatorPage() {
     store.currentHitter,
     store.rallyStartTimestamp,
     autoSaveError,
+    userId,
     t,
   ])
 
@@ -1161,6 +1166,12 @@ export function AnnotatorPage() {
         rallyStartTimestamp?: number | null
         currentPlayer?: 'player_a' | 'player_b'
         currentHitter?: string
+        ownerUserId?: number | null
+      }
+      // 持ち主が現在のユーザーでない保存 (持ち主の記録が無い旧形式を含む) は復元候補にしない。
+      if (!isAutosaveOwnedBy(saved, userId)) {
+        setAutoSaveRestored(true)
+        return
       }
       const hasContent = saved.strokes.length > 0 || !!(saved.pendingStroke as { shot_type?: string } | undefined)?.shot_type
       if (
@@ -4690,6 +4701,7 @@ export function AnnotatorPage() {
                       inputStep: store.inputStep,
                       videoTimestamp: videoRef.current?.currentTime ?? null,
                       savedAt: now,
+                      ownerUserId: userId,
                     }
                     // 自動保存と同じく try/catch で quota/private-mode 失敗を握り、
                     // 失敗を黙って成功表示しない (手動保存は「今すぐ保存」の明示操作)。

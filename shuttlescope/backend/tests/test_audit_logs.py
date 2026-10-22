@@ -288,3 +288,44 @@ def test_security_events_hide_llm_telemetry_unless_requested(client, test_engine
         "/api/auth/audit-logs/security?event_type=llm_call", headers=headers
     ).json()["data"]
     assert [r["event_type"] for r in explicit] == ["llm_call"]
+
+
+def test_audit_log_status_tells_empty_table_from_filtered_out(client, test_engine):
+    """An empty list must be distinguishable: no records at all (total 0, times null)
+    versus records that exist but did not match the filters (total > 0).
+    """
+    from sqlalchemy.orm import sessionmaker
+    from backend.db.models import ErrorLog, SecurityEvent
+
+    Session = sessionmaker(bind=test_engine)
+    with Session() as db:
+        db.query(ErrorLog).delete()
+        db.query(SecurityEvent).delete()
+        # internal LLM telemetry is not counted, as in the default security list
+        db.add(SecurityEvent(event_type="llm_call", severity="info", details={}))
+        db.commit()
+
+    access = _login(client, ADMIN_USER, ADMIN_PASS)["access_token"]
+    headers = {"Authorization": f"Bearer {access}"}
+
+    empty = client.get("/api/auth/audit-logs/status", headers=headers)
+    assert empty.status_code == 200
+    data = empty.json()["data"]
+    for key in ("error", "security"):
+        assert data[key]["total"] == 0
+        assert data[key]["latest_ts"] is None
+        assert data[key]["oldest_ts"] is None
+    assert data["request"]["total"] >= 0
+
+    with Session() as db:
+        db.add(SecurityEvent(event_type="probe_attempt", severity="warn", details={}))
+        db.commit()
+    seen = client.get("/api/auth/audit-logs/status", headers=headers).json()["data"]
+    assert seen["security"]["total"] == 1
+    assert seen["security"]["latest_ts"] is not None
+    assert seen["security"]["oldest_ts"] is not None
+
+
+def test_audit_log_status_requires_admin(client):
+    resp = client.get("/api/auth/audit-logs/status")
+    assert resp.status_code in (401, 403)

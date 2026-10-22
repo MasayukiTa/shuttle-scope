@@ -9,6 +9,11 @@ import { useCardTheme } from '@/hooks/useCardTheme'
 interface Props {
   playerId: number
   periodDays?: number
+  /**
+   * サーバーが返す例示データ (meta.example) を画面に出すか。既定は開発ビルドだけ。
+   * 本番では作り物の数値を「今週の伸びしろ」として見せない。
+   */
+  allowSample?: boolean
 }
 
 interface InsightItemDTO {
@@ -26,7 +31,7 @@ interface InsightResultDTO {
   meta?: { example?: boolean; disclaimer?: string }
 }
 
-export function GrowthSnapshotCard({ playerId, periodDays = 30 }: Props) {
+export function GrowthSnapshotCard({ playerId, periodDays = 30, allowSample = import.meta.env.DEV }: Props) {
   const { t, i18n } = useTranslation()
   const { card, textHeading, textMuted, isLight } = useCardTheme()
   const lang = i18n.language?.startsWith('en') ? 'en' : 'ja'
@@ -49,9 +54,15 @@ export function GrowthSnapshotCard({ playerId, periodDays = 30 }: Props) {
   // さらに下の ConfidenceBadge は例示値の sample_n をそのまま星に変換するので、
   // 作り物に信頼度を付けて見せていた。example のときは出所を明示し、星は出さない。
   const isExample = data?.meta?.example === true
-  const chipLabel = isExample
+  // 例示データは allowSample のときだけ表示する。それ以外は「データなし」と同じ扱いにする。
+  const items = isExample && !allowSample ? [] : (data?.items ?? [])
+  const showSampleNotice = isExample && allowSample
+  // 例示データを隠しているときは、出所の札も出さない (出すと「サンプル」なのに中身が無いことになる)。
+  const chipLabel = showSampleNotice
     ? t('auto.GrowthSnapshotCard.sample_chip')
-    : t('auto.GrowthSnapshotCard.beta_chip')
+    : isExample
+      ? null
+      : t('auto.GrowthSnapshotCard.beta_chip')
 
   return (
     <div
@@ -60,18 +71,20 @@ export function GrowthSnapshotCard({ playerId, periodDays = 30 }: Props) {
     >
       <div className="flex items-center justify-between mb-3">
         <p className={`text-sm font-semibold ${textHeading}`}>{headerTitle}</p>
-        <span
-          className={`text-[10px] px-2 py-0.5 rounded-ss-pill border ${
-            isLight
-              ? 'border-amber-400 text-amber-700 bg-amber-50'
-              : 'border-amber-500 text-amber-300 bg-amber-900/20'
-          }`}
-        >
-          {chipLabel}
-        </span>
+        {chipLabel && (
+          <span
+            className={`text-[10px] px-2 py-0.5 rounded-ss-pill border ${
+              isLight
+                ? 'border-amber-400 text-amber-700 bg-amber-50'
+                : 'border-amber-500 text-amber-300 bg-amber-900/20'
+            }`}
+          >
+            {chipLabel}
+          </span>
+        )}
       </div>
 
-      {isExample && (
+      {showSampleNotice && (
         <p className={`text-xs mb-3 ${textMuted}`}>
           {t('auto.GrowthSnapshotCard.sample_note')}
         </p>
@@ -85,13 +98,13 @@ export function GrowthSnapshotCard({ playerId, periodDays = 30 }: Props) {
         </div>
       )}
 
-      {!isLoading && (!data || data.items.length === 0) && (
+      {!isLoading && items.length === 0 && (
         <p className={`text-xs ${textMuted}`}>{t('auto.GrowthSnapshotCard.empty')}</p>
       )}
 
-      {!isLoading && data && data.items.length > 0 && (
+      {!isLoading && items.length > 0 && (
         <ul className="space-y-3">
-          {data.items.map((it) => {
+          {items.map((it) => {
             const sampleN = typeof it.metric?.sample_n === 'number' ? (it.metric.sample_n as number) : 0
             const href = `${API_BASE_URL}${it.evidence_path}`
             return (

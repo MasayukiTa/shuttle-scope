@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  authRequestLogs, authSecurityEvents, authErrorLogs,
-  RequestLogEntry, SecurityEventEntry, ErrorLogEntry,
+  authRequestLogs, authSecurityEvents, authErrorLogs, authAuditLogStatus,
+  RequestLogEntry, SecurityEventEntry, ErrorLogEntry, AuditLogStatus,
 } from '@/api/client'
 import { MIcon } from '@/components/common/MIcon'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useAuth } from '@/hooks/useAuth'
 import { securityEventLabel, severityLabel } from '@/utils/adminLabels'
+import { auditEmptyReason } from '@/utils/auditLogStatus'
 
 // 外部からの挙動を見る画面 (アプリ内操作の監査ログ = /audit-logs とは分離)。
 // security_events / request_logs / error_logs の 3 タブ。
@@ -37,6 +38,10 @@ export function SecurityLogPage() {
   const [reqRows, setReqRows] = useState<RequestLogEntry[]>([])
   const [secRows, setSecRows] = useState<SecurityEventEntry[]>([])
   const [errRows, setErrRows] = useState<ErrorLogEntry[]>([])
+  // 各表の記録件数と最新時刻 (一覧が 0 件のとき「未記録」と「絞り込みに合わない」を見分ける)。
+  // 取得に失敗したら null のままにして、理由は断定しない。
+  const [status, setStatus] = useState<AuditLogStatus | null>(null)
+  const [fetchedAt, setFetchedAt] = useState<Date | null>(null)
   // error log フィルタ
   const [errExcType, setErrExcType] = useState('')
   const [errPath, setErrPath] = useState('')
@@ -87,10 +92,17 @@ export function SecurityLogPage() {
         const res = await authErrorLogs(params)
         setErrRows(res.data)
       }
+      setFetchedAt(new Date())
     } catch (err) {
       setError((err as Error).message || 'error')
     } finally {
       setLoading(false)
+    }
+    try {
+      const st = await authAuditLogStatus()
+      setStatus(st.data)
+    } catch {
+      setStatus(null)
     }
   }
 
@@ -105,6 +117,15 @@ export function SecurityLogPage() {
 
   const fmtTs = (ts: string) =>
     new Date(ts).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+
+  // 表ごとの状態。tab の値 (request / security / error) と status のキーは同じ。
+  const summary = status ? status[tab] : null
+  const emptyText = () => {
+    const reason = auditEmptyReason(summary)
+    if (reason === 'never_recorded') return t('security_log.empty_never_recorded')
+    if (reason === 'filtered') return t('security_log.empty_filtered', { total: summary?.total ?? 0 })
+    return t('auth.audit_log.empty')
+  }
 
   return (
     <div className="p-3 sm:p-6 space-y-4 h-full flex flex-col overflow-hidden">
@@ -216,6 +237,16 @@ export function SecurityLogPage() {
         <span className={`text-xs ${textMuted}`}>{t('security_log.shown_count', { n: tab === 'request' ? reqRows.length : tab === 'security' ? secRows.length : errRows.length })}</span>
       </div>
 
+      <p className={`text-xs flex-shrink-0 ${textMuted}`} data-testid="security-log-status">
+        {summary
+          ? t('security_log.status_line', {
+              total: summary.total,
+              latest: summary.latest_ts ? fmtTs(summary.latest_ts) : t('security_log.status_none_yet'),
+              fetched: fetchedAt ? fetchedAt.toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour12: false }) : '—',
+            })
+          : t('security_log.status_unavailable')}
+      </p>
+
       {error && <div className="text-sm text-[var(--ss-danger-text)] flex-shrink-0">{error}</div>}
 
       <div className={`flex-1 min-h-0 overflow-auto rounded-ss-lg border ${borderLine} ${cardBg}`}>
@@ -234,7 +265,7 @@ export function SecurityLogPage() {
             </thead>
             <tbody>
               {errRows.length === 0 ? (
-                <tr><td colSpan={7} className={`px-3 py-6 text-center ${textMuted}`}>{t('auth.audit_log.empty')}</td></tr>
+                <tr><td colSpan={7} className={`px-3 py-6 text-center ${textMuted}`}>{emptyText()}</td></tr>
               ) : errRows.map((r) => (
                 <tr key={r.id} className={`border-t ${borderLine} align-top`}>
                   <td className={`px-2 py-1.5 font-mono ${textMuted}`}>{r.id}</td>
@@ -267,7 +298,7 @@ export function SecurityLogPage() {
             </thead>
             <tbody>
               {reqRows.length === 0 ? (
-                <tr><td colSpan={11} className={`px-3 py-6 text-center ${textMuted}`}>{t('auth.audit_log.empty')}</td></tr>
+                <tr><td colSpan={11} className={`px-3 py-6 text-center ${textMuted}`}>{emptyText()}</td></tr>
               ) : reqRows.map((r) => (
                 <tr key={r.id} className={`border-t ${borderLine}`}>
                   <td className={`px-2 py-1.5 font-mono ${textMuted}`}>{r.id}</td>
@@ -301,7 +332,7 @@ export function SecurityLogPage() {
             </thead>
             <tbody>
               {secRows.length === 0 ? (
-                <tr><td colSpan={8} className={`px-3 py-6 text-center ${textMuted}`}>{t('auth.audit_log.empty')}</td></tr>
+                <tr><td colSpan={8} className={`px-3 py-6 text-center ${textMuted}`}>{emptyText()}</td></tr>
               ) : secRows.map((r) => (
                 <tr key={r.id} className={`border-t ${borderLine}`}>
                   <td className={`px-2 py-1.5 font-mono ${textMuted}`}>{r.id}</td>
