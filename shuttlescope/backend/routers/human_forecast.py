@@ -125,6 +125,12 @@ def get_human_forecasts(
 ):
     """特定試合の人間予測一覧を返す"""
     ctx = get_auth(request)
+    # 試合そのもののアクセス権を先に確認する (team_id=NULL の旧行が他チーム試合で見えるのを防ぐ)。
+    # 存在しない試合と権限のない試合は同じ 404 にして、試合の存在を漏らさない。
+    from backend.utils.auth import user_can_access_match
+    match = db.get(Match, match_id)
+    if match is None or not user_can_access_match(ctx, match):
+        raise HTTPException(status_code=404, detail="Match not found")
     q = db.query(HumanForecast).filter(HumanForecast.match_id == match_id, HumanForecast.deleted_at.is_(None))
     if not ctx.is_admin:
         q = q.filter(or_(HumanForecast.team_id.is_(None), HumanForecast.team_id == ctx.team_id))

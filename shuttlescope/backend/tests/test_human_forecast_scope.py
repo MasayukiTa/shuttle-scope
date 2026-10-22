@@ -124,6 +124,39 @@ def test_human_forecast_list_hides_foreign_match_even_for_legacy_null_team(db_se
         app.dependency_overrides.clear()
 
 
+def test_human_forecast_handler_checks_match_access_without_middleware(db_session):
+    # Call the handler directly so the team-scope middleware cannot mask a
+    # missing match-access check inside the handler itself.
+    import pytest
+    from fastapi import HTTPException
+    from starlette.requests import Request
+
+    from backend.routers.human_forecast import get_human_forecasts
+    from backend.utils.auth import get_auth
+
+    team_a, _own_match, foreign_match, _own_forecast, _foreign_forecast = _seed(db_session)
+    bearer = _headers(
+        user_id=9301, role="coach", team_id=team_a.id, team_name=team_a.name
+    )["Authorization"]
+    request = Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/",
+            "headers": [(b"authorization", bearer.encode("ascii"))],
+        }
+    )
+    ctx = get_auth(request)
+
+    with pytest.raises(HTTPException) as exc:
+        get_human_forecasts(request, match_id=foreign_match.id, player_id=None, db=db_session, _auth=ctx)
+    assert exc.value.status_code == 404
+
+    with pytest.raises(HTTPException) as missing:
+        get_human_forecasts(request, match_id=999999, player_id=None, db=db_session, _auth=ctx)
+    assert missing.value.status_code == 404
+
+
 def test_human_forecast_list_keeps_own_match_legacy_rows_visible(db_session):
     team_a, own_match, _foreign_match, own_forecast, _foreign_forecast = _seed(db_session)
     app.dependency_overrides[get_db] = lambda: db_session
