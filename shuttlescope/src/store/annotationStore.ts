@@ -522,6 +522,14 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
     const newScoreA = winner === 'player_a' ? scoreA + 1 : scoreA
     const newScoreB = winner === 'player_b' ? scoreB + 1 : scoreB
 
+    // ダブルス: サーブ側が得点を続けたときは同じ選手が続けてサーブする（BWF ルール）。
+    // 第1ストロークの打者がこのラリーのサーバ。サーブ権が移ったときの個人は
+    // コート位置の記録が無いと決まらないので、従来どおり勝者チームの主選手に置き、
+    // 打者は画面で選び直す。
+    const rallyServer = currentStrokes[0]?.player
+    const heldServe =
+      get().isDoubles && rallyServer !== undefined && HITTER_TO_TEAM[rallyServer] === winner
+
     set({
       currentRallyNum: currentRallyNum + 1,
       scoreA: newScoreA,
@@ -533,7 +541,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       inputStep: 'idle',
       currentStrokeNum: 1,
       currentPlayer: winner,  // 勝者が次のサーバー（ラリーポイント制）
-      currentHitter: winner,  // ダブルス: 勝者チームの主プレイヤーにリセット
+      currentHitter: heldServe && rallyServer ? rallyServer : winner,  // ダブルスで連続得点なら同じサーバ。それ以外は主選手
       // semi-auto bounce-revert 窓を次ラリーへ持ち越さない (持ち越すと次ラリー初手が
       // 500ms 以内のとき前ラリーの playerBeforeFlip で誤って server を上書きする)。
       lastFlipAt: null,

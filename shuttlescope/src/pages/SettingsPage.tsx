@@ -41,7 +41,7 @@ interface PlayerFormData {
   name_en: string
   team: string
   nationality: string
-  dominant_hand: 'R' | 'L'
+  dominant_hand: 'R' | 'L' | ''
   birth_year: string
   world_ranking: string
   is_target: boolean
@@ -53,7 +53,7 @@ const defaultPlayerForm = (): PlayerFormData => ({
   name_en: '',
   team: '',
   nationality: '',
-  dominant_hand: 'R',
+  dominant_hand: '',
   birth_year: '',
   world_ranking: '',
   is_target: false,
@@ -738,7 +738,7 @@ export function SettingsPage() {
       name_en: strOrNull(playerForm.name_en),
       team: strOrNull(playerForm.team),
       nationality: strOrNull(playerForm.nationality),
-      dominant_hand: playerForm.dominant_hand,
+      dominant_hand: playerForm.dominant_hand ? playerForm.dominant_hand : null,
       birth_year: playerForm.birth_year ? Number(playerForm.birth_year) : null,
       world_ranking: playerForm.world_ranking ? Number(playerForm.world_ranking) : null,
       is_target: playerForm.is_target,
@@ -759,7 +759,7 @@ export function SettingsPage() {
       name_en: player.name_en ?? '',
       team: player.team ?? '',
       nationality: player.nationality ?? '',
-      dominant_hand: (player.dominant_hand === 'R' || player.dominant_hand === 'L') ? player.dominant_hand : 'R',
+      dominant_hand: (player.dominant_hand === 'R' || player.dominant_hand === 'L') ? player.dominant_hand : '',
       birth_year: player.birth_year ? String(player.birth_year) : '',
       world_ranking: player.world_ranking ? String(player.world_ranking) : '',
       is_target: player.is_target,
@@ -2887,9 +2887,10 @@ export function SettingsPage() {
                   <label className={`block text-sm ${textSecondary} mb-1`}>{t('player.dominant_hand')}</label>
                   <select
                     value={playerForm.dominant_hand}
-                    onChange={(e) => setPlayerForm({ ...playerForm, dominant_hand: e.target.value as 'R' | 'L' })}
+                    onChange={(e) => setPlayerForm({ ...playerForm, dominant_hand: e.target.value as 'R' | 'L' | '' })}
                     className={`w-full ${inputClass}`}
                   >
+                    <option value="">{t('settings.ui.not_set_hand')}</option>
                     <option value="R">{t('settings.ui.right_handed')}</option>
                     <option value="L">{t('settings.ui.left_handed')}</option>
                   </select>

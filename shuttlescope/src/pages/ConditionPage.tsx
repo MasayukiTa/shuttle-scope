@@ -108,7 +108,7 @@ function BodyDataConsentToggles() {
     >
       <div className="font-semibold mb-1.5">{t('condition.body_disclose_title', 'Body composition data (weight / body fat / muscle mass etc.) disclosure')}</div>
       <div className="opacity-80 mb-2 leading-relaxed">
-        {t('condition.body_disclose_help', 'By default only you and the admin (developer) can view this. Toggle the switches below to share with analyst / coach. You can withdraw at any time.')}
+        {t('condition.body_disclose_help', 'By default only you and an administrator can view this. Toggle the switches below to share with analyst / coach. You can withdraw at any time.')}
       </div>
       {isLoading ? (
         <div className="opacity-60">{t('common.loading', 'Loading...')}</div>

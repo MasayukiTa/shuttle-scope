@@ -1386,16 +1386,22 @@ export function MatchListPage() {
 
                 {/* Phase B-13: 公開プール（admin 限定）— 全チーム閲覧可能 */}
                 {role === 'admin' && (
-                  <div className="col-span-1 sm:col-span-2">
+                  <fieldset className="col-span-1 sm:col-span-2 rounded-[var(--r-md)] border border-red-500/40 p-3">
+                    <legend className="px-1 text-sm font-medium text-red-400">{t('match.list.public_pool_section')}</legend>
+                    <p className={`text-xs ${textSecondary} mb-2`}>{t('match.list.public_pool_warning')}</p>
                     <label className="flex items-center gap-2 text-sm">
                       <input
                         type="checkbox"
                         checked={form.is_public_pool}
-                        onChange={(e) => setForm({ ...form, is_public_pool: e.target.checked })}
+                        onChange={(e) => {
+                          // 公開範囲が最も広い設定なので、ON にするときだけ確認する
+                          if (e.target.checked && !window.confirm(t('match.list.public_pool_enable_confirm'))) return
+                          setForm({ ...form, is_public_pool: e.target.checked })
+                        }}
                       />
                       <span>{t('auto.MatchListPage.k28')}</span>
                     </label>
-                  </div>
+                  </fieldset>
                 )}
               </div>
               <div className="flex gap-3 pt-2">
