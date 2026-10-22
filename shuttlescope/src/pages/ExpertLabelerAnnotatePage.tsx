@@ -31,7 +31,7 @@ interface ExpertClip {
   frame_index: number
   clip_start_frame: number
   clip_end_frame: number
-  clip_url: string
+  clip_url: string | null
   shot_type?: string
   miss_type?: string
 }
@@ -480,16 +480,25 @@ function AnnotateContent() {
           <div className={`rounded-ss-lg border p-3 ${panelBg}`}>
             {currentClip && (
               <>
-                <video
-                  ref={videoRef}
-                  key={currentClip.stroke_id}
-                  src={currentClip.clip_url}
-                  controls
-                  autoPlay
-                  playsInline
-                  className="w-full rounded-ss-md bg-black"
-                  style={{ aspectRatio: '16 / 9', maxHeight: '60vh' }}
-                />
+                {currentClip.clip_url ? (
+                  <video
+                    ref={videoRef}
+                    key={currentClip.stroke_id}
+                    src={currentClip.clip_url}
+                    controls
+                    autoPlay
+                    playsInline
+                    className="w-full rounded-ss-md bg-black"
+                    style={{ aspectRatio: '16 / 9', maxHeight: '60vh' }}
+                  />
+                ) : (
+                  <div
+                    className="w-full rounded-ss-md bg-black flex items-center justify-center text-sm text-white/80"
+                    style={{ aspectRatio: '16 / 9', maxHeight: '60vh' }}
+                  >
+                    {t('expert_labeler.clip_not_generated')}
+                  </div>
+                )}
                 <div className="mt-2 text-xs text-[var(--ss-t3)]">
                   {t('auto.ExpertLabelerAnnotatePage.stroke_id', { n: currentClip.stroke_id })}
                   {currentClip.shot_type ? ` / ${currentClip.shot_type}` : ''}
