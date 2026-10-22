@@ -36,6 +36,8 @@ export function AuditLogPage() {
   const [limit, setLimit] = useState(500)
   // action 名一覧 (dropdown 用)。backend で count desc に並べたものをそのまま表示。
   const [actionOptions, setActionOptions] = useState<AuditLogActionItem[]>([])
+  // 候補 API の失敗は「action が 0 種類」と区別して示す (主ログ一覧の取得状態とは分離)
+  const [actionOptionsFailed, setActionOptionsFailed] = useState(false)
   // ソート状態
   const [sortKey, setSortKey] = useState<SortKey>('created_at')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
@@ -84,12 +86,17 @@ export function AuditLogPage() {
     }
   }
 
+  const loadActionOptions = () => {
+    setActionOptionsFailed(false)
+    authAuditLogActions()
+      .then((r) => setActionOptions(r.data || []))
+      .catch(() => { setActionOptions([]); setActionOptionsFailed(true) })
+  }
+
   useEffect(() => {
     if (role === 'admin') {
       load()
-      authAuditLogActions()
-        .then((r) => setActionOptions(r.data || []))
-        .catch(() => { /* noop */ })
+      loadActionOptions()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role, tab])
@@ -192,10 +199,11 @@ export function AuditLogPage() {
           <label className={`block text-xs mb-1 ${textMuted}`}>{t('auth.audit_log.filter_action')}</label>
           {/* dropdown: distinct action 一覧。空 = フィルタなし。typo 防止と
              どの action が存在するかの可視化を兼ねる。dropdown 不可時の保険として
-             /audit-logs/actions が失敗したら空配列のまま (action filter 無効化)。 */}
+             /audit-logs/actions が失敗したら select を無効化し、理由と再試行を示す。 */}
           <select
             value={actionFilter}
             onChange={(e) => setActionFilter(e.target.value)}
+            disabled={actionOptionsFailed}
             className={`${inputCls} min-w-[180px]`}
           >
             <option value="">{t('auth.audit_log.filter_all')}</option>
@@ -205,6 +213,18 @@ export function AuditLogPage() {
               </option>
             ))}
           </select>
+          {actionOptionsFailed && (
+            <div role="alert" className="mt-1 flex items-center gap-2 text-xs text-[var(--ss-bad)]">
+              <span>{t('auth.audit_log.actions_failed')}</span>
+              <button
+                type="button"
+                onClick={loadActionOptions}
+                className="px-2 py-0.5 rounded-ss-sm border border-[var(--ss-border)] text-[var(--ss-t2)]"
+              >
+                {t('common_ui.query_retry')}
+              </button>
+            </div>
+          )}
         </div>
         <div>
           <label className={`block text-xs mb-1 ${textMuted}`}>{t('auth.audit_log.filter_user')}</label>

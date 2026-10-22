@@ -12,6 +12,7 @@ import {
   ReferenceLine,
 } from 'recharts'
 import { RoleGuard } from '@/components/common/RoleGuard'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { useConditions, type ConditionRecord } from '@/hooks/useConditions'
 import {
   useConditionTags,
@@ -60,8 +61,13 @@ function mean(values: number[]): number | null {
 
 export function ConditionTagCompare({ playerId, isLight }: Props) {
   const { t } = useTranslation()
-  const { data: tags = [] } = useConditionTags(playerId)
-  const { data: conditions = [] } = useConditions(playerId, { limit: 1000 })
+  const tagsQuery = useConditionTags(playerId)
+  const conditionsQuery = useConditions(playerId, { limit: 1000 })
+  const { data: tags = [] } = tagsQuery
+  const { data: conditions = [] } = conditionsQuery
+  // 取得失敗（前回成功データも無い）は「タグなし / サンプル不足」と区別して示す
+  const tagsUnavailable = tagsQuery.isError && tagsQuery.data === undefined
+  const conditionsUnavailable = conditionsQuery.isError && conditionsQuery.data === undefined
 
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const selectedTag: ConditionTag | undefined = useMemo(
@@ -146,13 +152,19 @@ export function ConditionTagCompare({ playerId, isLight }: Props) {
           </select>
         </div>
 
-        {!selectedTag && (
+        {tagsUnavailable && <QueryErrorNotice onRetry={() => { void tagsQuery.refetch() }} />}
+
+        {!tagsUnavailable && !selectedTag && (
           <div className={cardCls + ' ' + labelCls}>
             {t('condition.tags.no_tag_hint')}
           </div>
         )}
 
-        {selectedTag && (
+        {selectedTag && conditionsUnavailable && (
+          <QueryErrorNotice onRetry={() => { void conditionsQuery.refetch() }} />
+        )}
+
+        {selectedTag && !conditionsUnavailable && (
           <>
             <div className={cardCls}>
               {chartData.length === 0 ? (

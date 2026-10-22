@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
@@ -9,6 +9,11 @@ vi.mock('react-i18next', () => ({
 const pipelineJobs = vi.fn()
 vi.mock('@/api/client', () => ({
   pipelineJobs: (...args: unknown[]) => pipelineJobs(...args),
+}))
+
+let mockRole: string | null = 'analyst'
+vi.mock('@/hooks/useAuth', () => ({
+  useAuth: () => ({ role: mockRole }),
 }))
 
 import { PipelineJobBadge } from '../PipelineJobBadge'
@@ -23,6 +28,19 @@ function renderBadge() {
 }
 
 describe('PipelineJobBadge', () => {
+  beforeEach(() => {
+    mockRole = 'analyst'
+    pipelineJobs.mockReset()
+  })
+
+  it('renders nothing and does not fetch for roles the backend answers with an empty list', async () => {
+    mockRole = 'admin'
+    const { container } = renderBadge()
+    await new Promise((r) => setTimeout(r, 20))
+    expect(container.textContent).toBe('')
+    expect(pipelineJobs).not.toHaveBeenCalled()
+  })
+
   it('shows "unknown", not "none", when the job list cannot be fetched', async () => {
     pipelineJobs.mockRejectedValueOnce(new Error('500'))
     const { container } = renderBadge()

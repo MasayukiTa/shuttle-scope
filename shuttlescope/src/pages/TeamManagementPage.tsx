@@ -10,6 +10,7 @@ import {
   type TeamDependencies,
 } from '@/api/client'
 import { MIcon } from '@/components/common/MIcon'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { useAuth } from '@/hooks/useAuth'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useTranslation } from 'react-i18next'
@@ -46,6 +47,7 @@ export function TeamManagementPage() {
   const [editForm, setEditForm] = useState<FormState>(emptyForm())
   // メンバー一覧（admin: 全 user / coach: 自チーム）
   const [users, setUsers] = useState<UserBrief[]>([])
+  const [usersFailed, setUsersFailed] = useState(false)
   const [expandedTeamId, setExpandedTeamId] = useState<number | null>(null)
   const [creating, setCreating] = useState(false)
   const [savingId, setSavingId] = useState<number | null>(null)
@@ -61,12 +63,17 @@ export function TeamManagementPage() {
     try {
       const [tres, ures] = await Promise.all([
         listTeams(),
-        apiGet<{ success: boolean; data: UserBrief[] }>('/auth/users').catch(
-          () => ({ success: false, data: [] as UserBrief[] }),
-        ),
+        apiGet<{ success: boolean; data: UserBrief[] }>('/auth/users').catch(() => null),
       ])
       setTeams(tres.data || [])
-      setUsers(ures.data || [])
+      // メンバー取得の失敗を 0 人へ変換しない（失敗は別 state で示し、人数は表示しない）
+      if (ures && ures.success !== false) {
+        setUsers(ures.data || [])
+        setUsersFailed(false)
+      } else {
+        setUsers([])
+        setUsersFailed(true)
+      }
       setError(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'チーム一覧の取得に失敗しました')
@@ -336,7 +343,7 @@ export function TeamManagementPage() {
                           className="p-1.5 text-[var(--ss-t2)] border border-[var(--ss-border)] rounded-ss-md inline-flex items-center gap-1"
                         >
                           <MIcon name="group" size={14} />
-                          <span className="text-xs">{members.length}</span>
+                          <span className="text-xs">{usersFailed ? '—' : members.length}</span>
                         </button>
                         {(isAdmin || isCoach) && (
                           <button aria-label={t('app.edit')}
@@ -364,8 +371,12 @@ export function TeamManagementPage() {
                     </div>
                     {expanded && (
                       <div className="mt-3 pt-3 border-t border-[var(--ss-border)]">
-                        <div className="text-xs text-[var(--ss-t3)] mb-1">{t('auto.TeamManagementPage.k29', { n: members.length })}</div>
-                        {members.length === 0 ? (
+                        {usersFailed ? (
+                          <QueryErrorNotice onRetry={() => { void load() }} />
+                        ) : (
+                          <div className="text-xs text-[var(--ss-t3)] mb-1">{t('auto.TeamManagementPage.k29', { n: members.length })}</div>
+                        )}
+                        {usersFailed ? null : members.length === 0 ? (
                           <div className="text-xs text-[var(--ss-t3)]">{t('auto.TeamManagementPage.k14')}</div>
                         ) : (
                           <ul className="space-y-1 text-sm">
@@ -453,7 +464,7 @@ export function TeamManagementPage() {
                           title={t('auto.TeamManagementPage.k21')}
                         >
                           <MIcon name="group" size={14} />
-                          <span className="text-xs">{(usersByTeam[tm.id] || []).length}</span>
+                          <span className="text-xs">{usersFailed ? '—' : (usersByTeam[tm.id] || []).length}</span>
                         </button>
                       )}
                       {editing ? (
@@ -510,8 +521,12 @@ export function TeamManagementPage() {
               return (
                 <tr key={`${tm.id}-members-row`} className="bg-[var(--ss-surface-2)]">
                   <td colSpan={6} className="px-4 py-2">
-                    <div className="text-xs text-[var(--ss-t3)] mb-1">{t('auto.TeamManagementPage.k30', { name: tm.name, n: members.length })}</div>
-                    {members.length === 0 ? (
+                    {usersFailed ? (
+                      <QueryErrorNotice onRetry={() => { void load() }} />
+                    ) : (
+                      <div className="text-xs text-[var(--ss-t3)] mb-1">{t('auto.TeamManagementPage.k30', { name: tm.name, n: members.length })}</div>
+                    )}
+                    {usersFailed ? null : members.length === 0 ? (
                       <div className="text-xs text-[var(--ss-t3)]">{t('auto.TeamManagementPage.k14')}</div>
                     ) : (
                       <ul className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-1 text-sm">

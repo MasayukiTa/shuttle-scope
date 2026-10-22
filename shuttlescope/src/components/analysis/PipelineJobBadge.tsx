@@ -4,6 +4,8 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { clsx } from 'clsx'
 import { pipelineJobs, type AnalysisJobDTO } from '@/api/client'
+import { useAuth } from '@/hooks/useAuth'
+import { canViewPipelineJobs } from '@/utils/roleAccess'
 
 interface Props {
   matchId: number
@@ -27,6 +29,9 @@ function statusClass(status?: string): string {
 
 export function PipelineJobBadge({ matchId, className }: Props) {
   const { t } = useTranslation()
+  const { role } = useAuth()
+  // backend は analyst / coach 以外へ常に空配列を返す。権限上見えない状態を「未解析」と表示しない。
+  const canView = canViewPipelineJobs(role)
   // 旧実装は match ごとに `?match_id=N&limit=1` を発火していたため、試合一覧では
   // 行数ぶん (約80本) のリクエストが並列発火し rate-limit を枯渇させていた
   // (同時に走る /auth/me が 429 を受けて login へ弾かれる事故の引き金)。
@@ -40,6 +45,7 @@ export function PipelineJobBadge({ matchId, className }: Props) {
     // DB が空 / 未登録でも既存画面を壊さないよう再試行はしない。ただし取得失敗は
     // 「未解析」と断定せず、状態不明として別表示にする。
     retry: false,
+    enabled: canView,
   })
 
   // 降順リストなので最初のヒットが当該 match の最新ジョブ
@@ -49,6 +55,8 @@ export function PipelineJobBadge({ matchId, className }: Props) {
   const key = unknown
     ? 'pipeline.status.unknown'
     : job ? `pipeline.status.${job.status}` : 'pipeline.status.none'
+
+  if (!canView) return null
 
   return (
     <span

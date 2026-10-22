@@ -22,7 +22,7 @@ import { ExpertLabelerPage } from '@/pages/ExpertLabelerPage'
 import { ExpertLabelerAnnotatePage } from '@/pages/ExpertLabelerAnnotatePage'
 import LlmChatPage from '@/pages/LlmChatPage'
 import { useAuth } from '@/hooks/useAuth'
-import { usePendingApprovalCount } from '@/hooks/usePendingApprovalCount'
+import { usePendingApprovalBadge } from '@/hooks/usePendingApprovalCount'
 import { useIdleLogout } from '@/hooks/useIdleLogout'
 import { LoginPage } from '@/pages/LoginPage'
 import { MobileAnnotatePage } from '@/pages/MobileAnnotatePage'
@@ -121,6 +121,8 @@ type NavItem = {
   badge?: number | null
   /** 件数が取得できていない (0件ではない)。badge が無いときだけ「?」で状態不明を示す。 */
   badgeUnknown?: boolean
+  /** 「?」の説明文。未指定なら未読件数用の文言。 */
+  badgeUnknownLabel?: string
 }
 
 // サイドバー折りたたみ状態の localStorage キー。
@@ -200,7 +202,7 @@ function Sidebar() {
   // (成功済みなら react-query が前回の件数を保持するので、その値をそのまま使う)。
   const unreadCountUnknown = unreadCountQuery.isError && unreadCountQuery.data === undefined
   // 承認待ちユーザ数 (admin のみ取得。失敗時は null でバッジを出さない)。
-  const pendingCount = usePendingApprovalCount(role)
+  const { count: pendingCount, unknown: pendingCountUnknown } = usePendingApprovalBadge(role)
 
   // LLM 専用ユーザ (バドミントン role を持たない = 'llm' 等) はバドミントン系ナビを出さない。
   const llmOnly = !!role && !['admin', 'analyst', 'coach', 'player', 'demo'].includes(role)
@@ -240,6 +242,8 @@ function Sidebar() {
             shortLabel: t('nav.pending_users_short'),
             icon: 'how_to_reg',
             badge: pendingCount != null && pendingCount > 0 ? pendingCount : null,
+            badgeUnknown: pendingCountUnknown,
+            badgeUnknownLabel: t('nav.badge_unknown_pending'),
           },
         ]
       : []),
@@ -330,7 +334,7 @@ function Sidebar() {
         </button>
 
         <div className="pt-2" />
-        {navItems.map(({ to, label, shortLabel, icon, badge, badgeUnknown }) => (
+        {navItems.map(({ to, label, shortLabel, icon, badge, badgeUnknown, badgeUnknownLabel }) => (
           <NavLink
             key={to}
             to={to}
@@ -368,8 +372,8 @@ function Sidebar() {
                   ) : badgeUnknown ? (
                     <span
                       className="absolute -top-2 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-amber-500 text-white text-[9px] leading-4 text-center"
-                      title={t('nav.badge_unknown')}
-                      aria-label={t('nav.badge_unknown')}
+                      title={badgeUnknownLabel ?? t('nav.badge_unknown')}
+                      aria-label={badgeUnknownLabel ?? t('nav.badge_unknown')}
                     >
                       ?
                     </span>
@@ -439,7 +443,7 @@ function Sidebar() {
             minHeight: 'calc(56px + env(safe-area-inset-bottom, 0px))',
           }}
         >
-          {navItems.map(({ to, label, shortLabel, icon, badge, badgeUnknown }) => (
+          {navItems.map(({ to, label, shortLabel, icon, badge, badgeUnknown, badgeUnknownLabel }) => (
             <NavLink
               key={to}
               to={to}
@@ -462,8 +466,8 @@ function Sidebar() {
                 ) : badgeUnknown ? (
                   <span
                     className="absolute -top-2 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-amber-500 text-white text-[9px] leading-4 text-center"
-                    title={t('nav.badge_unknown')}
-                    aria-label={t('nav.badge_unknown')}
+                    title={badgeUnknownLabel ?? t('nav.badge_unknown')}
+                    aria-label={badgeUnknownLabel ?? t('nav.badge_unknown')}
                   >
                     ?
                   </span>

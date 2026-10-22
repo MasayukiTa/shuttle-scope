@@ -116,18 +116,17 @@ function CameraThumb({ stream }: { stream: MediaStream }) {
 
 // ─── ローカルカメラ列挙 ───────────────────────────────────────────────────────
 
+// 列挙そのものが失敗した場合は reject する（「カメラ 0 台」の空配列と区別するため）。
 async function enumerateLocalCameras(): Promise<LocalCameraSource[]> {
-  try {
-    const devices = await navigator.mediaDevices.enumerateDevices()
-    return devices.filter((d) => d.kind === 'videoinput').map((d) => ({
-      deviceId: d.deviceId,
-      label: d.label || `カメラ ${d.deviceId.slice(0, 6)}`,
-      kind: 'videoinput' as const,
-      type: d.label.toLowerCase().includes('usb') ? 'usb'
-        : d.label.toLowerCase().includes('facetime') || d.label.toLowerCase().includes('built') ? 'builtin'
-        : 'unknown',
-    }))
-  } catch { return [] }
+  const devices = await navigator.mediaDevices.enumerateDevices()
+  return devices.filter((d) => d.kind === 'videoinput').map((d) => ({
+    deviceId: d.deviceId,
+    label: d.label || `カメラ ${d.deviceId.slice(0, 6)}`,
+    kind: 'videoinput' as const,
+    type: d.label.toLowerCase().includes('usb') ? 'usb'
+      : d.label.toLowerCase().includes('facetime') || d.label.toLowerCase().includes('built') ? 'builtin'
+      : 'unknown',
+  }))
 }
 
 // ─── デバイス行コンポーネント ─────────────────────────────────────────────────
@@ -345,6 +344,8 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
   const [localActiveId, setLocalActiveId] = useState<string | null>(null)
   const [localCameraError, setLocalCameraError] = useState<string | null>(null)
+  // カメラ一覧の列挙失敗（権限・ブラウザ制約等）。「カメラ 0 台」とは区別する
+  const [localEnumFailed, setLocalEnumFailed] = useState(false)
   const [loading, setLoading] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'devices' | 'sources'>('devices')
@@ -417,7 +418,12 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
     return () => clearInterval(id)
   }, [fetchDevices])
 
-  useEffect(() => { enumerateLocalCameras().then(setLocalSources) }, [])
+  const reloadLocalSources = useCallback(() => {
+    enumerateLocalCameras()
+      .then((s) => { setLocalSources(s); setLocalEnumFailed(false) })
+      .catch(() => { setLocalSources([]); setLocalEnumFailed(true) })
+  }, [])
+  useEffect(() => { reloadLocalSources() }, [reloadLocalSources])
 
   // ─── アクションハンドラー ───────────────────────────────────────────────
 
@@ -512,7 +518,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
       setLocalStream(s)
       setLocalActiveId(src.deviceId)
       // 権限取得後にデバイス一覧を再取得してラベル・ID を正確にする
-      enumerateLocalCameras().then(setLocalSources)
+      reloadLocalSources()
     } catch {
       setLocalCameraError('カメラを起動できませんでした。OS設定でカメラへのアクセスを許可してください。')
     }
@@ -806,9 +812,18 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
           )}
 
           {/* ローカルカメラソース */}
-          {localSources.length > 0 && (
+          {(localSources.length > 0 || localEnumFailed) && (
             <div className={`border-t pt-3 mt-3 ${divider}`}>
               <p className={`text-xs font-medium mb-2 ${titleColor}`}>{t('lan_session.local_sources_label')}</p>
+              {localEnumFailed && (
+                <div role="alert" className="text-[10px] text-[var(--ss-bad)] mb-2 flex items-center gap-2">
+                  <span>{t('lan_session.local_sources_failed')}</span>
+                  <button type="button" onClick={reloadLocalSources}
+                    className="px-2 py-0.5 rounded-ss-sm border border-[var(--ss-border)] text-[var(--ss-t2)]">
+                    {t('common_ui.query_retry')}
+                  </button>
+                </div>
+              )}
               {localCameraError && (
                 <p className="text-[10px] text-[var(--ss-bad)] mb-2 flex items-center gap-1">
                   <MIcon name="cancel" size={10} />{localCameraError}

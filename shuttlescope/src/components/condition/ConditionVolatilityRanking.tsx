@@ -11,6 +11,7 @@ import {
   LabelList,
 } from 'recharts'
 import { RoleGuard } from '@/components/common/RoleGuard'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { useConditions, type ConditionRecord } from '@/hooks/useConditions'
 import { mean, sampleStd } from '@/utils/stats'
 import { catColor } from '@/styles/categoricalPalette'
@@ -54,7 +55,10 @@ function parseDate(s: string | undefined): number | null {
 
 export function ConditionVolatilityRanking({ playerId, isLight }: Props) {
   const { t } = useTranslation()
-  const { data, isLoading } = useConditions(playerId, { limit: 200 })
+  const conditionsQuery = useConditions(playerId, { limit: 200 })
+  const { data, isLoading } = conditionsQuery
+  // 取得失敗（前回成功データも無い）を「データなし」と区別する
+  const unavailable = conditionsQuery.isError && conditionsQuery.data === undefined
 
   const rows = useMemo<Row[]>(() => {
     const records = Array.isArray(data) ? [...data] : []
@@ -156,6 +160,8 @@ export function ConditionVolatilityRanking({ playerId, isLight }: Props) {
           <div className={`${textMuted} text-xs`}>
             {t('condition.volatility.loading')}
           </div>
+        ) : unavailable ? (
+          <QueryErrorNotice onRetry={() => { void conditionsQuery.refetch() }} />
         ) : rows.length === 0 ? (
           <div className={`${textMuted} text-xs`}>
             {t('condition.volatility.no_data')}

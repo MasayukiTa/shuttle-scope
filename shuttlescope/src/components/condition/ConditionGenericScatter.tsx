@@ -14,6 +14,7 @@ import {
 import { useConditions, type ConditionRecord } from '@/hooks/useConditions'
 import { pearson } from '@/utils/stats'
 import { RoleGuard } from '@/components/common/RoleGuard'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { catColor, catColorByIndex } from '@/styles/categoricalPalette'
 import { coolwarm } from '@/styles/colors'
@@ -102,7 +103,10 @@ interface Point {
 
 export function ConditionGenericScatter({ playerId, isLight }: Props) {
   const { t } = useTranslation()
-  const { data: records, isLoading } = useConditions(playerId, { limit: 200 })
+  const conditionsQuery = useConditions(playerId, { limit: 200 })
+  const { data: records, isLoading } = conditionsQuery
+  // 取得失敗（前回成功データも無い）を「データなし」と区別する
+  const unavailable = conditionsQuery.isError && conditionsQuery.data === undefined
 
   // 実データで値が 1 件以上存在する指標のみセレクト候補にする
   const availableMetrics = useMemo<MetricKey[]>(() => {
@@ -288,6 +292,8 @@ export function ConditionGenericScatter({ playerId, isLight }: Props) {
 
         {isLoading ? (
           <div className={`${textMuted} text-xs`}>...</div>
+        ) : unavailable ? (
+          <QueryErrorNotice onRetry={() => { void conditionsQuery.refetch() }} />
         ) : n < 2 ? (
           <div className={`${textMuted} text-xs`}>
             {t('condition.generic_scatter.no_data')}

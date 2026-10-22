@@ -14,6 +14,7 @@ import {
   ReferenceLine,
 } from 'recharts'
 import { RoleGuard } from '@/components/common/RoleGuard'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { apiGet } from '@/api/client'
 import { useConditions, type ConditionRecord } from '@/hooks/useConditions'
 import type { Match } from '@/types'
@@ -55,7 +56,7 @@ export function ConditionPostMatchChange({ playerId, isLight }: Props) {
   const { t } = useTranslation()
 
   // 試合一覧（当該選手）
-  const { data: matchesResp, isLoading: matchesLoading } = useQuery({
+  const matchesQuery = useQuery({
     queryKey: ['matches', 'post-match-change', playerId],
     queryFn: () =>
       apiGet<{ success: boolean; data: Match[] }>('/matches', {
@@ -65,10 +66,16 @@ export function ConditionPostMatchChange({ playerId, isLight }: Props) {
     retry: 0,
   })
 
+  const { data: matchesResp, isLoading: matchesLoading } = matchesQuery
+
   // 体調履歴
-  const { data: conditionsData, isLoading: condLoading } = useConditions(playerId, {
+  const conditionsQuery = useConditions(playerId, {
     limit: 200,
   })
+  const { data: conditionsData, isLoading: condLoading } = conditionsQuery
+  // 取得失敗（前回成功データも無い）を「試合なし / データなし」と区別する
+  const matchesUnavailable = matchesQuery.isError && matchesQuery.data === undefined
+  const conditionsUnavailable = conditionsQuery.isError && conditionsQuery.data === undefined
 
   const records = useMemo<ConditionRecord[]>(
     () => (Array.isArray(conditionsData) ? conditionsData : []),
@@ -162,6 +169,13 @@ export function ConditionPostMatchChange({ playerId, isLight }: Props) {
 
         {!expanded ? null : isLoading ? (
           <div className={`${textMuted} text-xs`}>…</div>
+        ) : matchesUnavailable || conditionsUnavailable ? (
+          <QueryErrorNotice
+            onRetry={() => {
+              if (matchesUnavailable) void matchesQuery.refetch()
+              if (conditionsUnavailable) void conditionsQuery.refetch()
+            }}
+          />
         ) : matches.length === 0 ? (
           <div className={`${textMuted} text-xs`}>
             {t('condition.post_match.no_matches')}

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { setLanguage, SUPPORTED_LANGS, type SupportedLang } from '@/i18n'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { MIcon } from '@/components/common/MIcon'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { TUTORIALS } from '@/components/tutorial/tutorials'
 import { replayTutorial, useTutorialState, useAutoTutorial } from '@/components/tutorial/useTutorial'
 import QRCode from 'qrcode'
@@ -129,26 +130,33 @@ export function SettingsPage() {
   const llmOnly = !!role && !['admin', 'analyst', 'coach', 'player', 'demo'].includes(role)
   useAutoTutorial('settings_tour', !llmOnly)
 
-  const { data: healthData } = useQuery<{ public_mode?: boolean }>({
+  const healthQuery = useQuery<{ public_mode?: boolean }>({
     queryKey: ['health'],
     queryFn: () => apiGet('/health'),
     staleTime: 60_000,
   })
+  const { data: healthData } = healthQuery
   // /auth/me から username + display_name を取得。
   // useAuth().displayName はログイン時のスナップショットなので、
   // admin が user 管理画面で表示名を編集しても反映されない。
   // /auth/me を SoT として扱い、staleTime を短くしてタブ切替直後に再取得。
-  const { data: meData } = useQuery<{ username?: string; display_name?: string | null }>({
+  const meQuery = useQuery<{ username?: string; display_name?: string | null }>({
     queryKey: ['auth-me'],
     queryFn: () => apiGet('/auth/me'),
     staleTime: 5_000,
     refetchOnWindowFocus: true,
     retry: 0,
   })
+  const { data: meData } = meQuery
+  // 取得失敗（前回成功データも無い）は「未設定 / -」と区別して示す
+  const meUnavailable = meQuery.isError && meQuery.data === undefined
   const loginUsername = meData?.username ?? null
   // SoT 優先順: /auth/me の最新 → useAuth の session キャッシュ → 'Unset'
   const effectiveDisplayName = meData?.display_name ?? displayName ?? null
   const isPublicMode = healthData?.public_mode === true
+  // 公開モード判定は unknown / true / false の 3 状態。/health が未取得・失敗の間 (unknown) は
+  // 管理タブを出さない (fail-closed)。公開モードと確定したら開いていた管理タブも閉じる。
+  const adminTabsAllowed = role === 'admin' && healthData !== undefined && !isPublicMode
 
   const [showPlayerForm, setShowPlayerForm] = useState(false)
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null)
@@ -175,10 +183,10 @@ export function SettingsPage() {
     if (!canManagePlayers && (activeTab === 'players' || activeTab === 'review')) {
       setActiveTab('account')
     }
-    if (role !== 'admin' && (activeTab === 'tracknet' || activeTab === 'sharing' || activeTab === 'cluster')) {
+    if (!adminTabsAllowed && (activeTab === 'tracknet' || activeTab === 'sharing' || activeTab === 'cluster')) {
       setActiveTab('data')
     }
-  }, [llmOnly, canManagePlayers, role, activeTab])
+  }, [llmOnly, canManagePlayers, adminTabsAllowed, activeTab])
 
   // 選手リスト: 検索・ソート（クライアントサイド、端末ごとに独立）
   const playerSearchRef = useRef<HTMLInputElement>(null)
@@ -269,36 +277,47 @@ export function SettingsPage() {
   } | null>(null)
 
   // 選手一覧取得
-  const { data: playersData } = useQuery({
+  const playersQuery = useQuery({
     queryKey: ['players'],
     queryFn: () => apiGet<{ success: boolean; data: Player[] }>('/players'),
   })
+  const { data: playersData } = playersQuery
+  // 取得失敗（前回成功データも無い）を「0 人」と区別する
+  const playersUnavailable = playersQuery.isError && playersQuery.data === undefined
 
   // V4-U-003: 要レビュー選手取得
-  const { data: reviewPlayersData } = useQuery({
+  const reviewQuery = useQuery({
     queryKey: ['players-needs-review'],
     queryFn: () => apiGet<{ success: boolean; data: Player[] }>('/players/needs_review'),
     enabled: activeTab === 'review',
   })
+  const { data: reviewPlayersData } = reviewQuery
+  // 取得失敗（前回成功データも無い）を「要レビューなし」と区別する
+  const reviewUnavailable = reviewQuery.isError && reviewQuery.data === undefined
 
   // TrackNetモデルステータス取得
-  const { data: tracknetStatus } = useQuery({
+  const tracknetQuery = useQuery({
     queryKey: ['tracknet-status'],
     queryFn: () => apiGet<{ success: boolean; data: { available: boolean; backend: string | null; loaded: boolean } }>('/tracknet/status'),
     enabled: activeTab === 'tracknet',
     refetchInterval: activeTab === 'tracknet' ? 5000 : false,
   })
+  const { data: tracknetStatus } = tracknetQuery
+  // ポーリング中の状態 API は、直近の取得が失敗したら前回値を「現在値」として出さず取得失敗にする
+  const tracknetUnavailable = tracknetQuery.isError
 
   // YOLO モデルステータス取得
-  const { data: yoloStatus } = useQuery({
+  const yoloQuery = useQuery({
     queryKey: ['yolo-status'],
     queryFn: () => apiGet<{ success: boolean; data: { available: boolean; backend: string | null; loaded: boolean; status_code: string; status_message: string | null; install_hint: string | null } }>('/yolo/status'),
     enabled: activeTab === 'tracknet',
     refetchInterval: activeTab === 'tracknet' ? 10000 : false,
   })
+  const { data: yoloStatus } = yoloQuery
+  const yoloUnavailable = yoloQuery.isError
 
   // GPU / コンピュートデバイス検出
-  const { data: computeDevices, refetch: refetchDevices, isFetching: devicesFetching } = useQuery({
+  const devicesQuery = useQuery({
     queryKey: ['compute-devices'],
     queryFn: () => apiGet<{
       success: boolean
@@ -309,13 +328,20 @@ export function SettingsPage() {
     enabled: activeTab === 'tracknet',
     staleTime: 60_000,
   })
+  const { data: computeDevices, refetch: refetchDevices, isFetching: devicesFetching } = devicesQuery
+  // 取得失敗（前回成功データも無い）を「デバイス情報なし」と区別する
+  const devicesUnavailable = devicesQuery.isError && devicesQuery.data === undefined
 
   // R-002: サーバー情報（LAN IP）
-  const { data: serverInfo, refetch: refetchServerInfo } = useQuery({
+  const serverInfoQuery = useQuery({
     queryKey: ['server-my-info'],
     queryFn: () => apiGet<{ success: boolean; data: { lan_ips: string[]; port: number; lan_mode: boolean; accessible: boolean } }>('/sessions/my-info'),
     enabled: activeTab === 'sharing',
   })
+  const { data: serverInfo, refetch: refetchServerInfo } = serverInfoQuery
+  // LAN 状態が未確認（未取得 / 取得失敗）の間は「無効」と見せず、切替操作も送らせない
+  const lanStateUnknown = serverInfo === undefined
+  const lanStateFailed = serverInfoQuery.isError && serverInfoQuery.data === undefined
 
   // Q-002/Q-008: ネットワーク診断
   const { data: netDiag, isFetching: netDiagFetching, refetch: runDiagnostics } = useQuery({
@@ -373,7 +399,7 @@ export function SettingsPage() {
   })
 
   // データ管理: バックアップ一覧
-  const { data: backupsData, refetch: refetchBackups } = useQuery({
+  const backupsQuery = useQuery({
     queryKey: ['sync-backups'],
     queryFn: () => apiGet<{
       success: boolean
@@ -391,6 +417,9 @@ export function SettingsPage() {
     }>('/sync/backups'),
     enabled: activeTab === 'data' && role === 'admin',
   })
+  const { data: backupsData, refetch: refetchBackups } = backupsQuery
+  // 状態取得失敗（前回成功データも無い）の間は、対応可否が不明なのでバックアップ実行を止める
+  const backupsUnavailable = backupsQuery.isError && backupsQuery.data === undefined
 
   // データ管理: 試合一覧（エクスポート用）
   const { data: matchesForExport } = useQuery({
@@ -405,11 +434,14 @@ export function SettingsPage() {
   const exportMatchList = showExcludedExport ? allExportMatches : allExportMatches.filter((m) => classifyExportMatch(m) === 'valid')
 
   // 競合レビュー一覧
-  const { data: conflictsData, refetch: refetchConflicts } = useQuery({
+  const conflictsQuery = useQuery({
     queryKey: ['sync-conflicts'],
     queryFn: () => apiGet<{ success: boolean; data: Array<{ id: number; record_table: string; record_uuid: string; import_device: string; import_updated_at: string; local_updated_at: string; reason: string; created_at: string }> }>('/sync/conflicts'),
     enabled: activeTab === 'data',
   })
+  const { data: conflictsData, refetch: refetchConflicts } = conflictsQuery
+  // 取得失敗（前回成功データも無い）を「競合なし」と区別する
+  const conflictsUnavailable = conflictsQuery.isError && conflictsQuery.data === undefined
   const conflicts = conflictsData?.data ?? []
 
   async function _runCvBenchmark() {
@@ -544,11 +576,14 @@ export function SettingsPage() {
   const [dbAvMessage, setDbAvMessage] = useState<string | null>(null)
 
   // クラウドフォルダ内パッケージ一覧
-  const { data: cloudPackagesData, refetch: refetchCloudPackages } = useQuery({
+  const cloudPackagesQuery = useQuery({
     queryKey: ['sync-cloud-packages'],
     queryFn: () => apiGet<{ success: boolean; data: Array<{ filename: string; path: string; size_bytes: number; modified_at: string }>; configured: boolean; folder: string }>('/sync/cloud/packages'),
     enabled: activeTab === 'data',
   })
+  const { data: cloudPackagesData, refetch: refetchCloudPackages } = cloudPackagesQuery
+  // 取得失敗（前回成功データも無い）を「クラウドフォルダ未設定」と区別する
+  const cloudPackagesUnavailable = cloudPackagesQuery.isError && cloudPackagesQuery.data === undefined
   const cloudPackages = cloudPackagesData?.data ?? []
   const cloudFolderConfigured = cloudPackagesData?.configured ?? false
 
@@ -958,12 +993,12 @@ export function SettingsPage() {
               { key: 'players' as const, label: t('auto.SettingsPage.k31') },
               { key: 'review' as const, label: t('review.title'), badge: reviewPlayersData?.data?.length ?? 0 },
             ] : []),
-            ...(role === 'admin' && !isPublicMode ? [
+            ...(adminTabsAllowed ? [
               { key: 'tracknet' as const, label: t('tracknet.tab_label') },
               { key: 'sharing' as const, label: t('sharing.tab_label') },
             ] : []),
             ...(!llmOnly ? [{ key: 'data' as const, label: t('auto.SettingsPage.k32') }] : []),
-            ...(role === 'admin' && !isPublicMode ? [
+            ...(adminTabsAllowed ? [
               { key: 'cluster' as const, label: t('cluster.tab') },
             ] : []),
             { key: 'account' as const, label: t('auto.SettingsPage.k33') },
@@ -1045,8 +1080,12 @@ export function SettingsPage() {
 
               {/* 件数表示 */}
               <span className={`text-xs ${textMuted} ml-auto`}>
-                {filteredPlayers.length}{t('player.count_suffix')}
-                {filteredPlayers.length !== players.length && ` / ${players.length}${t('player.count_suffix')}`}
+                {playersUnavailable ? '—' : (
+                  <>
+                    {filteredPlayers.length}{t('player.count_suffix')}
+                    {filteredPlayers.length !== players.length && ` / ${players.length}${t('player.count_suffix')}`}
+                  </>
+                )}
               </span>
             </div>
 
@@ -1206,7 +1245,8 @@ export function SettingsPage() {
             </div>
 
             {/* 空状態メッセージ */}
-            {players.length === 0 && (
+            {playersUnavailable && <QueryErrorNotice onRetry={() => { void playersQuery.refetch() }} />}
+            {players.length === 0 && !playersUnavailable && (
               <div className="text-center text-[var(--ss-t3)] py-8">
                 {t('settings.ui.no_players')}
               </div>
@@ -1228,7 +1268,9 @@ export function SettingsPage() {
                 <MIcon name="error" size={14} className="text-[var(--ss-warn)]" />
                 {t('review.provisional_players')}
               </h3>
-              {!reviewPlayersData?.data?.length ? (
+              {reviewUnavailable ? (
+                <QueryErrorNotice onRetry={() => { void reviewQuery.refetch() }} />
+              ) : !reviewPlayersData?.data?.length ? (
                 <div className={`text-sm ${textMuted} py-4`}>{t('review.no_items')}</div>
               ) : (
                 <div className="overflow-x-auto -mx-2 sm:mx-0"><table className="w-full text-sm min-w-[480px]">
@@ -1290,7 +1332,7 @@ export function SettingsPage() {
         )}
 
         {/* TrackNet設定タブ */}
-        {activeTab === 'tracknet' && (
+        {activeTab === 'tracknet' && adminTabsAllowed && (
           <div className="space-y-6" data-tutorial="settings.tracknet">
             <h2 className={`text-lg font-medium ${textHeading}`}>{t('tracknet.tab_label')}</h2>
 
@@ -1302,7 +1344,9 @@ export function SettingsPage() {
                 <MIcon name="bolt" size={14} className="text-[var(--ss-warn)]" />
                 {t('tracknet.model_status')}
               </h3>
-              {!tracknetStatus ? (
+              {tracknetUnavailable ? (
+                <QueryErrorNotice onRetry={() => { void tracknetQuery.refetch() }} />
+              ) : !tracknetStatus ? (
                 <p className={`text-sm ${textMuted}`}>{t('tracknet.backend_offline')}</p>
               ) : tracknetStatus.data?.available ? (
                 <div className="flex items-center gap-2">
@@ -1443,7 +1487,9 @@ export function SettingsPage() {
               {/* YOLO モデルステータス */}
               <div className="rounded-ss-md p-2.5 text-xs space-y-1.5 bg-[var(--ss-surface-2)]">
                 <p className="font-medium text-[var(--ss-t2)]">{t('settings.ui.model_state')}</p>
-                {!yoloStatus ? (
+                {yoloUnavailable ? (
+                  <QueryErrorNotice onRetry={() => { void yoloQuery.refetch() }} />
+                ) : !yoloStatus ? (
                   <p className="text-[var(--ss-t3)]">{t('settings.ui.backend_connecting')}</p>
                 ) : (() => {
                   const sc = yoloStatus.data?.status_code
@@ -1603,7 +1649,8 @@ export function SettingsPage() {
                 </div>
               )}
 
-              {!computeDevices && !devicesFetching && (
+              {devicesUnavailable && <QueryErrorNotice onRetry={() => { void refetchDevices() }} />}
+              {!computeDevices && !devicesFetching && !devicesUnavailable && (
                 <p className="text-xs text-[var(--ss-t3)]">{t('auto.SettingsPage.k6')}</p>
               )}
             </div>
@@ -1704,7 +1751,7 @@ export function SettingsPage() {
         )}
 
         {/* 共有設定タブ (R-001/R-002/Q-002/Q-008) */}
-        {activeTab === 'sharing' && (
+        {activeTab === 'sharing' && adminTabsAllowed && (
           <div className="space-y-6">
             <h2 className={`text-lg font-medium ${textHeading}`}>{t('sharing.tab_label')}</h2>
 
@@ -1728,14 +1775,17 @@ export function SettingsPage() {
                 </div>
                 <button role="switch" aria-checked={!!serverInfo?.data?.lan_mode} aria-label={t('sharing.lan_mode_label')}
                   onClick={() => toggleLanMode.mutate(!serverInfo?.data?.lan_mode)}
-                  className="flex-shrink-0"
+                  disabled={lanStateUnknown}
+                  className="flex-shrink-0 disabled:opacity-50"
                 >
                   {serverInfo?.data?.lan_mode
                     ? <MIcon name="toggle_on" size={32} className="text-[var(--ss-brand)]" />
                     : <MIcon name="toggle_off" size={32} className="text-[var(--ss-t3)]" />}
                 </button>
               </div>
-              {serverInfo?.data?.lan_mode && serverInfo.data.lan_ips.length > 0 ? (
+              {lanStateFailed ? (
+                <QueryErrorNotice onRetry={() => { void refetchServerInfo() }} />
+              ) : lanStateUnknown ? null : serverInfo?.data?.lan_mode && serverInfo.data.lan_ips.length > 0 ? (
                 <div className="bg-[var(--ss-surface-2)] rounded-ss-md p-3 space-y-3">
                   {serverInfo.data.lan_ips.map((ip) => {
                     const appUrl = `http://${ip}:${serverInfo.data.port}/`
@@ -2481,6 +2531,7 @@ export function SettingsPage() {
                 {t('auto.SettingsPage.backup_desc')}
               </p>
 
+              {backupsUnavailable && <QueryErrorNotice onRetry={() => { void refetchBackups() }} />}
               {backupsData?.status && (
                 <div className="text-xs text-[var(--ss-t2)] space-y-0.5">
                   <p>
@@ -2513,7 +2564,7 @@ export function SettingsPage() {
               <div className="flex items-center gap-3">
                 <button
                   onClick={handleBackup}
-                  disabled={backupRunning || backupsData?.status?.supported === false}
+                  disabled={backupRunning || backupsUnavailable || backupsData?.status?.supported === false}
                   className="flex items-center gap-1.5 px-4 py-2 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-40 rounded-ss-md text-sm font-medium transition-colors duration-fast ease-out text-white"
                 >
                   <MIcon name="folder_zip" size={14} />
@@ -2542,6 +2593,11 @@ export function SettingsPage() {
             </section>}
 
             {/* ── クラウドフォルダ候補 ─────────────────────── */}
+            {cloudPackagesUnavailable && (
+              <section className="bg-[var(--ss-surface-1)] rounded-ss-lg p-5 border border-[var(--ss-border)] shadow-card">
+                <QueryErrorNotice onRetry={() => { void refetchCloudPackages() }} />
+              </section>
+            )}
             {cloudFolderConfigured && (
               <section className="bg-[var(--ss-surface-1)] rounded-ss-lg p-5 space-y-4 border border-[var(--ss-border)] shadow-card">
                 <div className="flex items-center justify-between">
@@ -2616,6 +2672,11 @@ export function SettingsPage() {
             )}
 
             {/* ── 競合レビュー ─────────────────────────────── */}
+            {conflictsUnavailable && (
+              <section className="bg-[var(--ss-surface-1)] rounded-ss-lg p-5 border border-[var(--ss-border)] shadow-card">
+                <QueryErrorNotice onRetry={() => { void refetchConflicts() }} />
+              </section>
+            )}
             {conflicts.length > 0 && (
               <section className="bg-[var(--ss-surface-1)] rounded-ss-lg p-5 space-y-4 border border-[var(--ss-border)] shadow-card">
                 <div className="flex items-center justify-between">
@@ -2824,7 +2885,7 @@ export function SettingsPage() {
         )}
 
         {/* クラスタタブ */}
-        {activeTab === 'cluster' && (
+        {activeTab === 'cluster' && adminTabsAllowed && (
           <div className="space-y-6">
             <ClusterSettingsPanel />
           </div>
@@ -2897,13 +2958,14 @@ export function SettingsPage() {
               <p className={`text-xs ${textMuted} mb-3`}>
                 {t('auto.SettingsPage.account_role_note')}
               </p>
+              {meUnavailable && <QueryErrorNotice onRetry={() => { void meQuery.refetch() }} />}
               <div className={`rounded-lg border p-4 space-y-2 ${isLight ? 'border-gray-300 bg-white' : 'border-gray-600 bg-gray-800'}`}>
                 {/* "Display name" と "User ID" が両方 displayName を出していた
                    copy-paste bug の修正。User ID は /auth/me の username (= ログ
                    イン ID) と useAuth の userId (= 数値 PK) を併記する。 */}
-                <div className={`text-sm ${textSecondary}`}>{t('auto.SettingsPage.display_name_label')}<span className={textHeading}>{effectiveDisplayName ?? t('auto.SettingsPage.unset')}</span></div>
+                <div className={`text-sm ${textSecondary}`}>{t('auto.SettingsPage.display_name_label')}<span className={textHeading}>{meUnavailable ? '—' : (effectiveDisplayName ?? t('auto.SettingsPage.unset'))}</span></div>
                 <div className={`text-sm ${textSecondary}`}>{t('auto.SettingsPage.role_label')}<span className={textHeading}>{role ? t(`auth.role.${role}`) : t('auto.SettingsPage.not_logged_in')}</span></div>
-                <div className={`text-sm ${textSecondary}`}>{t('auto.SettingsPage.username_label')}<span className={textHeading}>{loginUsername ?? '-'}</span>{userId != null && <span className={`${textMuted} ml-2`}>(#{userId})</span>}</div>
+                <div className={`text-sm ${textSecondary}`}>{t('auto.SettingsPage.username_label')}<span className={textHeading}>{meUnavailable ? '—' : (loginUsername ?? '-')}</span>{userId != null && <span className={`${textMuted} ml-2`}>(#{userId})</span>}</div>
                 <div className={`text-sm ${textSecondary}`}>{t('auto.SettingsPage.team_label')}<span className={textHeading}>{teamName ?? '-'}</span></div>
               </div>
               <div className="mt-4 flex flex-col gap-3">

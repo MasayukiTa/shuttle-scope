@@ -9,6 +9,7 @@ import {
 import { MIcon } from '@/components/common/MIcon'
 import { CourtDiagram } from '@/components/court/CourtDiagram'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { apiGet } from '@/api/client'
@@ -137,7 +138,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
   } | null>(null)
 
   // ── Descriptive ──
-  const { data: descriptiveResp, isLoading: loadingDescriptive } = useQuery({
+  const descriptiveQuery = useQuery({
     queryKey: ['analysis-descriptive', playerId, filters],
     queryFn: () =>
       apiGet<{ success: boolean; data: DescriptiveData; meta?: { sample_size?: number } }>(
@@ -145,6 +146,12 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
         { player_id: playerId, ...filterApiParams }
       ),
   })
+  const { data: descriptiveResp, isLoading: loadingDescriptive } = descriptiveQuery
+  // 取得失敗（前回成功データも無い）を「データなし」と区別する
+  const descriptiveUnavailable = descriptiveQuery.isError && descriptiveQuery.data === undefined
+  const descriptiveRetry = (
+    <QueryErrorNotice onRetry={() => { void descriptiveQuery.refetch() }} />
+  )
   const descriptive: DescriptiveData | null = descriptiveResp?.data ?? null
 
   // ── Heatmap専用フィルターパラメータ ──
@@ -160,17 +167,22 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
     return {}
   })()
 
-  const { data: heatmapHitResp, isLoading: loadingHeatmapHit } = useQuery({
+  const heatmapHitQuery = useQuery({
     queryKey: ['analysis-heatmap-hit', playerId, heatmapMatchId, heatmapLastN],
     queryFn: () =>
       apiGet<HeatmapResponse>('/analysis/heatmap', { player_id: playerId, type: 'hit', ...heatmapApiParams }),
   })
+  const { data: heatmapHitResp, isLoading: loadingHeatmapHit } = heatmapHitQuery
 
-  const { data: heatmapLandResp, isLoading: loadingHeatmapLand } = useQuery({
+  const heatmapLandQuery = useQuery({
     queryKey: ['analysis-heatmap-land', playerId, heatmapMatchId, heatmapLastN],
     queryFn: () =>
       apiGet<HeatmapResponse>('/analysis/heatmap', { player_id: playerId, type: 'land', ...heatmapApiParams }),
   })
+  const { data: heatmapLandResp, isLoading: loadingHeatmapLand } = heatmapLandQuery
+  // 取得失敗（前回成功データも無い）を「空コート」と区別する
+  const heatmapActiveQuery = heatmapTab === 'hit' ? heatmapHitQuery : heatmapLandQuery
+  const heatmapUnavailable = heatmapActiveQuery.isError && heatmapActiveQuery.data === undefined
 
   const heatmapHit: Record<string, number> = heatmapHitResp?.data ?? {}
   const heatmapLand: Record<string, number> = heatmapLandResp?.data ?? {}
@@ -254,7 +266,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                 <ExpandBtn onClick={() => setExpandedChart('end_type')} />
               </div>
             </div>
-            {loadingDescriptive ? <LoadingRow /> : endTypeData.length === 0 ? (
+            {loadingDescriptive ? <LoadingRow /> : descriptiveUnavailable ? descriptiveRetry : endTypeData.length === 0 ? (
               <p className={`${textMuted} text-sm text-center py-4`}>{t('auto.DashboardOverviewPage.k3')}</p>
             ) : (
               <ResponsiveContainer width="100%" height={200}>
@@ -280,7 +292,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                 <ExpandBtn onClick={() => setExpandedChart('rally_dist')} />
               </div>
             </div>
-            {loadingDescriptive ? <LoadingRow /> : !descriptive ? (
+            {loadingDescriptive ? <LoadingRow /> : descriptiveUnavailable ? descriptiveRetry : !descriptive ? (
               <p className={`${textMuted} text-sm text-center py-4`}>{t('auto.DashboardOverviewPage.k3')}</p>
             ) : (
               <ResponsiveContainer width="100%" height={200}>
@@ -360,7 +372,9 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                 </select>
               )}
             </div>
-            {(heatmapTab === 'hit' ? loadingHeatmapHit : loadingHeatmapLand) ? <LoadingRow /> : (
+            {(heatmapTab === 'hit' ? loadingHeatmapHit : loadingHeatmapLand) ? <LoadingRow /> : heatmapUnavailable ? (
+              <QueryErrorNotice onRetry={() => { void heatmapActiveQuery.refetch() }} />
+            ) : (
               <div className="flex flex-col items-center">
                 <CourtDiagram
                   mode={heatmapTab}
@@ -386,7 +400,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                 <SectionTitle>{t('auto.DashboardOverviewPage.k9')}</SectionTitle>
                 {descriptive && <ConfidenceBadge sampleSize={descriptive.total_rallies} unit="rallies" className="text-[10px] shrink-0" />}
               </div>
-              {loadingDescriptive ? <LoadingRow /> : !descriptive?.server_win_rate ? (
+              {loadingDescriptive ? <LoadingRow /> : descriptiveUnavailable ? descriptiveRetry : !descriptive?.server_win_rate ? (
                 <p className={`${textMuted} text-sm text-center py-4`}>{t('auto.DashboardOverviewPage.k3')}</p>
               ) : (
                 <div className="space-y-3">

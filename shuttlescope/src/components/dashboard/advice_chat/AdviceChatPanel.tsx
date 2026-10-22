@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/hooks/useAuth'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { useDemoModeStore } from '@/store/demoModeStore'
 import { useAdviceChat, ChatMessage } from './useAdviceChat'
 import { ChatHeader } from './ChatHeader'
@@ -42,6 +43,8 @@ export function AdviceChatPanel({ viewedPlayerId = null }: AdviceChatPanelProps 
   const {
     messages,
     isInitializing,
+    historyFailed,
+    retryHistory,
     isSending,
     error,
     sendMessage,
@@ -198,7 +201,13 @@ export function AdviceChatPanel({ viewedPlayerId = null }: AdviceChatPanelProps 
         {isInitializing && (
           <div className="text-center text-xs text-gray-500">…</div>
         )}
-        {!isInitializing && messages.length === 0 && !isSending && (
+        {historyFailed && !isInitializing && (
+          <div>
+            <QueryErrorNotice onRetry={retryHistory} />
+            <p className="text-center text-[11px] text-gray-500">{t('auto.AdviceChat.history_failed_hint')}</p>
+          </div>
+        )}
+        {!isInitializing && !historyFailed && messages.length === 0 && !isSending && (
           <ChatEmptyState onPick={(text) => {
             setDraft(text)
             textareaRef.current?.focus()
