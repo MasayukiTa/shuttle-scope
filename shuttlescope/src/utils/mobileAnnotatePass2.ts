@@ -21,6 +21,9 @@ export type Pass2ServeStrokeBody = {
   shot_type: 'serve'
   hit_zone: ZoneCode | undefined
   land_zone: ZoneCode | undefined
+  // 人が画面で指定した入力であることを残す (未指定だと分析側で全て unknown になる)
+  source_method: 'manual'
+  hit_zone_source?: 'manual'
 }
 
 /**
@@ -38,6 +41,8 @@ export function serveOnlyRallyPayload(
       shot_type: 'serve',
       hit_zone: zones.serve_hit,
       land_zone: zones.serve_land,
+      source_method: 'manual',
+      ...(zones.serve_hit ? { hit_zone_source: 'manual' as const } : {}),
     },
     rallyLength: 1,
   }

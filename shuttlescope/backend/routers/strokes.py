@@ -404,8 +404,12 @@ def update_stroke(stroke_id: int, body: StrokeData, request: Request, db: Sessio
             )
     from backend.utils.db_update import apply_update
     previous_land_zone = stroke.land_zone
-    apply_update(stroke, body.model_dump())
-    # land_zone の入力元。クライアントは編集のたびに全項目を送り直すので、値が変わった時だけ
+    # 送られた項目だけを更新する (exclude_unset)。全項目を model_dump() で反映すると、
+    # モバイル Pass3 のように 5 項目だけ送る編集が、送らなかった座標・品質・姿勢・時刻・
+    # 移動特徴・由来を None / False で上書きして消していた (監査 #789)。
+    # 送られた項目を明示的に null にした場合は従来どおり消える。
+    apply_update(stroke, body.model_dump(exclude_unset=True))
+    # land_zone の入力元。値が変わった時だけ
     # 人の入力として記録する (CV が書いた値をそのまま送り返しただけなら 'cv' のまま)。
     # 値を消したら入力元も消す。
     if not stroke.land_zone:

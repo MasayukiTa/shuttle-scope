@@ -462,14 +462,20 @@ export function MobileAnnotatePage() {
 
   // /annotation/state を読んで、PC 側で進行中の set_num に追従する。
   // PC で第2セット中盤までやって離脱 → mobile 起動時、ここで第2セットに自動 jump。
+  // 同じ state を二度は適用しない。新しいセットを作ると allSets.length が変わって
+  // この effect が再実行され、取得済みの古い state (前のセット番号) で
+  // currentSetIdx を前のセットへ戻していた (監査 #778)。
+  const appliedAnnotStateRef = useRef<unknown>(null)
   useEffect(() => {
     const state = annotStateQuery.data?.data
     if (!state || allSets.length === 0) return
+    if (appliedAnnotStateRef.current === state) return
     const targetSetNum = state.current_set_num
     if (!targetSetNum) return
     const idx = allSets.findIndex((s) => s.set_num === targetSetNum)
-    if (idx >= 0 && idx !== currentSetIdx) {
-      setCurrentSetIdx(idx)
+    if (idx >= 0) {
+      appliedAnnotStateRef.current = state
+      if (idx !== currentSetIdx) setCurrentSetIdx(idx)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [annotStateQuery.data, allSets.length])
@@ -495,6 +501,12 @@ export function MobileAnnotatePage() {
     // 再開位置・セット数・解析母集団を汚すのを防ぐ)。結果の表示だけ出し直す。
     if (matchOver) {
       setMatchOverDismissed(false)
+      return
+    }
+    // 最終ラリーが未送信のまま次のセットへ進まない (監査 #772)。
+    // 送信が終わる前に進むと、失敗が続いた場合に前のセットがサーバ上で未決着になる。
+    if (hasPendingLocal || queueStatus.pending > 0) {
+      setNextSetState({ busy: false, error: t('auto.MobileAnnotatePage.set_end_pending') })
       return
     }
     if (currentSetIdx + 1 < allSets.length) {
@@ -772,6 +784,12 @@ export function MobileAnnotatePage() {
                       if (result === 'not_found') {
                         // すでに送信済み。サーバ側の行を探して削除を送る。
                         const fresh = await ralliesQuery.refetch()
+                        // 再取得に失敗したら「サーバに無い」とは言えない。画面から消すと、
+                        // 保存済みの得点が次の読み込みで復活する (監査 #781)。
+                        if (fresh.isError) {
+                          setUndoNotice(t('auto.MobileAnnotatePage.undo_unconfirmed'))
+                          return
+                        }
                         const hit = fresh.data?.data?.find(
                           (x) => x.set_id === last.set_id && x.rally_num === last.rally_num,
                         )
@@ -823,11 +841,15 @@ export function MobileAnnotatePage() {
               >
                 {t('auto.MobileAnnotatePage.check_result_back')}
               </button>
+              {/* 最終ラリーが端末内の未送信のうちは「保存済」と言わない (監査 #786) */}
               <div className="text-[11px] mt-2" style={{ color: 'rgba(255,255,255,0.6)' }}>
-                {t('auto.MobileAnnotatePage.match_saved_pc_edit')}
+                {hasPendingLocal || queueStatus.pending > 0
+                  ? t('auto.MobileAnnotatePage.match_saving_pending')
+                  : t('auto.MobileAnnotatePage.match_saved_pc_edit')}
               </div>
-              {/* 2. 試合保存直後の advice strip — 本試合の実測値ベース */}
-              {matchId && (
+              {/* 2. 試合保存直後の advice strip — 本試合の実測値ベース。
+                  サーバに最終ラリーが届いてから取得する。 */}
+              {matchId && !hasPendingLocal && queueStatus.pending === 0 && (
                 <div className="mt-3 w-full max-w-xs" style={{ pointerEvents: 'auto' }}>
                   <AdviceStrip
                     context="post_match_save"
