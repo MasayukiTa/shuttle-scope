@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   classifyQueueHttpFailure,
+  manualRetryTargets,
   nextSequenceRunnableAt,
   queueFlushDecision,
   queueItemOwnership,
@@ -29,6 +30,26 @@ function item(
     ...overrides,
   }
 }
+
+describe('mobileAnnotateQueue manual retry ownership', () => {
+  const mine = item(1, 'PUT /api/rallies/:id', { id: 1 }, 0, { ownerUserId: 11, manualRetry: true })
+  const foreign = item(2, 'PUT /api/rallies/:id', { id: 2 }, 0, { ownerUserId: 12, manualRetry: true })
+  const legacy = item(3, 'PUT /api/rallies/:id', { id: 3 }, 0, { manualRetry: true })
+  const notManual = item(4, 'PUT /api/rallies/:id', { id: 4 }, 0, { ownerUserId: 11 })
+
+  it('does not send ownerless input on a plain manual retry', () => {
+    expect(manualRetryTargets([mine, foreign, legacy, notManual], 11, false)).toEqual([mine])
+  })
+
+  it('sends ownerless input only after the user confirms it is theirs', () => {
+    expect(manualRetryTargets([mine, foreign, legacy, notManual], 11, true)).toEqual([mine, legacy])
+  })
+
+  it('never sends another user input and sends nothing without a known user', () => {
+    expect(manualRetryTargets([foreign], 11, true)).toEqual([])
+    expect(manualRetryTargets([mine, legacy], null, true)).toEqual([])
+  })
+})
 
 describe('mobileAnnotateQueue HTTP failure classification', () => {
   it('waits for authentication on 401 instead of poisoning the queue', () => {

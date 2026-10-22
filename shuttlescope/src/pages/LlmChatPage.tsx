@@ -12,6 +12,7 @@ import {
   getLlmModels,
   getMessages,
   listConversations,
+  llmStreamErrorKey,
   renameConversation,
   streamMessage,
   type LlmConfig,
@@ -436,8 +437,9 @@ export default function LlmChatPage() {
           errored = true
           setStreaming(false)
           // ミッドストリームエラー: 既出のストリームテキストは消さず確定バブル + エラー注記にする。
-          // backend の安定コード (budget_exceeded) は翻訳文言へ。それ以外は従来どおり。
-          setError(e.message === 'budget_exceeded' ? t('llm.error.budget_exceeded') : e.message || t('llm.error.generate'))
+          // backend の安定コード (budget_exceeded / provider_*) は翻訳文言へ。それ以外は従来どおり。
+          const errKey = llmStreamErrorKey(e.message)
+          setError(errKey ? t(errKey) : e.message || t('llm.error.generate'))
         }
       }, controller.signal, useModel, sendImages)
     } catch {

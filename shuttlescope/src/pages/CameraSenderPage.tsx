@@ -18,6 +18,7 @@ import { useTranslation } from 'react-i18next'
 import { apiPost, getParticipantIceConfig } from '@/api/client'
 import { useDeviceHeartbeat } from '@/hooks/useDeviceHeartbeat'
 import { useServerSideRecording } from '@/hooks/session/useServerSideRecording'
+import { RecordingProblemNotice } from '@/components/camera/RecordingProblemNotice'
 import { errorStatus } from '@/utils/errors'
 import { participantWsUrl } from '@/utils/cameraWs'
 import { getDeviceUid } from '@/utils/deviceUid'
@@ -406,7 +407,7 @@ export function CameraSenderPage() {
         joinSession(paramCode, pwdParam, localStorage.getItem(DEVICE_NAME_KEY) || getDeviceTypeLabel())
       } else {
         // 旧 QR コード（パスワードなし URL）→ フォームに誘導
-        setErrorMsg('QRコードを再生成するか、下のフォームにパスワードを入力してください。')
+        setErrorMsg(t('lan_session.join_password_required'))
         setSenderState('join')
       }
     }
@@ -616,6 +617,7 @@ export function CameraSenderPage() {
         </div>
         <p className="text-[var(--ss-t2)] text-sm">{t('camera_sender.join_title')}</p>
       </div>
+      <RecordingProblemNotice state={serverRecorder.state} errorMsg={serverRecorder.errorMsg} />
 
       {/* ─── State: join ────────────────── */}
       {(senderState === 'join' || (senderState === 'connecting' && !paramCode)) && (

@@ -33,6 +33,21 @@ def _stroke_require_scope(request: Request, db: Session, rally_id: int) -> Match
     return match
 
 
+# The mobile Pass 2 / Pass 3 flow saves two values that are not in the canonical shot
+# vocabulary: 'serve' for the first stroke and a placeholder for the last hit that Pass 3
+# classifies later (see Pass2ServeFinal.tsx / Pass3ShotDetail.tsx). They are the only
+# non-canonical values the single-stroke API keeps; every other value is canonicalized the
+# same way /strokes/batch does, so a raw client string never reaches the database.
+PENDING_FINAL_SHOT_TYPE = "__final_pending"
+_MOBILE_SHOT_TYPES = frozenset({"serve", PENDING_FINAL_SHOT_TYPE})
+
+
+def _normalize_shot_type(value: str) -> str:
+    if value in _MOBILE_SHOT_TYPES:
+        return value
+    return canonicalize_shot(value)
+
+
 def _human_land_zone_source(land_zone: Optional[str]) -> Optional[str]:
     """人が API 経由で land_zone を指定したときの入力元。値が空なら記録しない。"""
     return "human" if land_zone else None
@@ -318,7 +333,9 @@ def create_stroke(
 
     _stroke_require_scope(request, db, rally_id)
 
-    valid, error = validate_stroke(body.model_dump())
+    submitted = body.model_dump()
+    submitted["shot_type"] = _normalize_shot_type(submitted["shot_type"])
+    valid, error = validate_stroke(submitted)
     if not valid:
         raise HTTPException(
             status_code=422,
@@ -338,7 +355,6 @@ def create_stroke(
         .first()
     )
     if dup is not None:
-        submitted = body.model_dump()
         if any(getattr(dup, k) != v for k, v in submitted.items()):
             raise HTTPException(
                 status_code=409,
@@ -358,7 +374,7 @@ def create_stroke(
     stroke = Stroke(
         rally_id=rally_id,
         land_zone_source=_human_land_zone_source(body.land_zone),
-        **body.model_dump(),
+        **submitted,
     )
     touch(stroke)
     db.add(stroke)
@@ -408,7 +424,10 @@ def update_stroke(stroke_id: int, body: StrokeData, request: Request, db: Sessio
     # モバイル Pass3 のように 5 項目だけ送る編集が、送らなかった座標・品質・姿勢・時刻・
     # 移動特徴・由来を None / False で上書きして消していた (監査 #789)。
     # 送られた項目を明示的に null にした場合は従来どおり消える。
-    apply_update(stroke, body.model_dump(exclude_unset=True))
+    changes = body.model_dump(exclude_unset=True)
+    if "shot_type" in changes:
+        changes["shot_type"] = _normalize_shot_type(changes["shot_type"])
+    apply_update(stroke, changes)
     # land_zone の入力元。値が変わった時だけ
     # 人の入力として記録する (CV が書いた値をそのまま送り返しただけなら 'cv' のまま)。
     # 値を消したら入力元も消す。

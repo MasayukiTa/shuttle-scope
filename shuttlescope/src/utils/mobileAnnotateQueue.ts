@@ -562,10 +562,30 @@ export function startBackgroundFlush(): void {
   void flushOnce()
 }
 
+/**
+ * 手動再送の対象を決める。自分の入力は常に対象。所有者不明 (legacy) の入力は、
+ * 現在のユーザーが明示的に自分のものだと確認した (claimLegacy) ときだけ対象にする。
+ * 他人の入力は対象にしない。
+ */
+export function manualRetryTargets<T extends Pick<QueueItem, 'ownerUserId' | 'manualRetry'>>(
+  items: T[],
+  me: number | null,
+  claimLegacy: boolean,
+): T[] {
+  if (me == null) return []
+  return items.filter((it) => {
+    if (!it.manualRetry) return false
+    const o = queueItemOwnership(it, me)
+    return o === 'mine' || (o === 'legacy' && claimLegacy)
+  })
+}
+
 /** UI 表示用ステータス */
 export async function getStatus(): Promise<{
   pending: number
   manualRetry: number
+  /** 所有者不明で手動再送待ちの入力。通常の再送では送らない (確認つきの操作でだけ送れる)。 */
+  unknownOwner: number
   oldestQueuedAt: number | null
   /** 別のユーザーの未送信 (この端末に残っている。表示・操作の対象にしない) */
   otherUsers: number
@@ -576,32 +596,35 @@ export async function getStatus(): Promise<{
     const me = currentQueueOwnerId()
     const items = all.filter((i) => queueItemOwnership(i, me) !== 'foreign')
     const pending = items.filter((i) => !i.manualRetry)
-    const manual = items.filter((i) => i.manualRetry)
+    const manual = items.filter((i) => i.manualRetry && queueItemOwnership(i, me) === 'mine')
+    const unknown = items.filter((i) => i.manualRetry && queueItemOwnership(i, me) === 'legacy')
     return {
       pending: pending.length,
       manualRetry: manual.length,
+      unknownOwner: unknown.length,
       oldestQueuedAt: items.length ? Math.min(...items.map((i) => i.queuedAt)) : null,
       otherUsers: all.length - items.length,
     }
   } catch {
-    return { pending: 0, manualRetry: 0, oldestQueuedAt: null, otherUsers: 0 }
+    return { pending: 0, manualRetry: 0, unknownOwner: 0, oldestQueuedAt: null, otherUsers: 0 }
   }
 }
 
-/** UI から「手動再送」ボタンで呼ぶ */
-export async function retryAllManual(): Promise<void> {
+/**
+ * UI から「手動再送」ボタンで呼ぶ。
+ * claimLegacy を立てたときだけ、所有者不明の入力を現在のユーザーのものとして送る。
+ * 呼び出し側は、ユーザーが自分の入力だと確認した後にだけ立てること。
+ */
+export async function retryAllManual(options: { claimLegacy?: boolean } = {}): Promise<void> {
   const me = currentQueueOwnerId()
   if (me == null) return  // 誰として送るか分からない間は何もしない
   const db = await openDb()
   const items: QueueItem[] = await wrapReq(tx(db, 'readonly').getAll())
   const wstore = tx(db, 'readwrite')
   const now = Date.now()
-  for (const it of items) {
-    if (!it.manualRetry) continue
-    const ownership = queueItemOwnership(it, me)
-    if (ownership === 'foreign') continue  // 他人の入力は、その人の操作でだけ再送する
-    // 所有者不明の入力は、本人がこのボタンを押した時にだけ、その人のものになる。
-    if (ownership === 'legacy') it.ownerUserId = me
+  // 他人の入力は、その人の操作でだけ再送する。所有者不明の入力は、確認つきの操作でだけ引き受ける。
+  for (const it of manualRetryTargets(items, me, options.claimLegacy === true)) {
+    if (queueItemOwnership(it, me) === 'legacy') it.ownerUserId = me
     it.manualRetry = false
     it.attempts = 0
     it.nextAttemptAt = now

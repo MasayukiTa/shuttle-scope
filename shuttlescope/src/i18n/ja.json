@@ -42,6 +42,11 @@
       "create": "会話の作成に失敗しました。",
       "generate": "応答の生成に失敗しました。",
       "budget_exceeded": "本日のAI利用上限に達しました。日付が変わってからもう一度お試しください。",
+      "provider_timeout": "AIの応答が時間内に返りませんでした。少し待ってからもう一度お試しください。",
+      "provider_unavailable": "AIサービスに接続できませんでした。少し待ってからもう一度お試しください。",
+      "provider_rate_limited": "AIサービスが混み合っています。少し待ってからもう一度お試しください。",
+      "provider_auth": "AIサービスの認証設定に問題があります。管理者に連絡してください。",
+      "provider_rejected": "AIサービスが要求を受け付けませんでした。内容を変えてもう一度お試しください。",
       "bootstrap_failed": "AIの設定またはモデル一覧を取得できませんでした。モデルを選べない状態です。画面を開き直してください。",
       "rename": "名前の変更に失敗しました。",
       "image_too_large": "画像が大きすぎます（最大 5MB）。",
@@ -2683,8 +2688,9 @@
     "share_modal_same_pc_label": "同一PC用:",
     "share_modal_password_unset": "未設定",
     "share_modal_password_note": "参加デバイスはセッションコードとパスワードの両方が必要です",
-    "share_modal_camera_qr_hint": "iPhoneでQRを読み取るとパスワード不要で参加できます",
-    "share_modal_viewer_qr_hint": "PC・タブレットでQRを読み取ると映像受信できます"
+    "share_modal_camera_qr_hint": "iPhoneでQRを読み取り、参加画面でセッションパスワードを入力してください",
+    "share_modal_viewer_qr_hint": "PC・タブレットでQRを読み取り、参加画面でセッションパスワードを入力すると映像を受信できます",
+    "join_password_required": "参加画面でセッションパスワードを入力してください。パスワードは共有画面で確認できます。"
   },
   "player_tracking": {
     "bbox_cycle_title": "クリックで役割切り替え",
@@ -2703,6 +2709,8 @@
     "state_b_cancel": "キャンセル",
     "state_c_active": "配信中",
     "state_c_stop": "配信停止",
+    "recording_problem_title": "録画に問題があります",
+    "recording_problem_hint": "サーバへの録画保存が完了していない可能性があります。配信は続けられますが、録画を確認してください。",
     "state_c_hint": "PCに映像を送信しています",
     "join_title": "ShuttleScope カメラ送信",
     "join_code_label": "セッションコード",
@@ -5306,7 +5314,9 @@
       "undo_not_delivered": "取り消しがサーバに届きませんでした。通信を確認して、もう一度押してください",
       "video_sec": "動画 {{sec}} 秒",
       "queue_pending": "未送信 {{n}} 件 (再送中)",
-      "queue_failed": "送信失敗 {{n}} 件 — タップで再送"
+      "queue_failed": "送信失敗 {{n}} 件 — タップで再送",
+      "queue_unknown_owner": "持ち主が分からない未送信 {{n}} 件 — タップで確認",
+      "queue_unknown_owner_confirm": "この端末に、持ち主が分からない未送信の入力が {{n}} 件あります。自分が入力したものである場合だけ送信してください。他の人の入力かもしれない場合は送信しないでください。送信しますか？"
     },
     "OnboardingConsentPage": {
       "k1": "日本語",

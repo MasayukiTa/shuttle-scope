@@ -256,7 +256,7 @@ export function ViewerPage() {
         navigate({ pathname, search: '' }, { replace: true })
         joinSession(paramCode, pwdParam, localStorage.getItem(VIEWER_NAME_KEY) || 'ビューワー')
       } else {
-        setErrorMsg('QRコードを再生成するか、下のフォームにパスワードを入力してください。')
+        setErrorMsg(t('lan_session.join_password_required'))
         setViewerState('join')
       }
     }

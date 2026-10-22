@@ -42,6 +42,11 @@
       "create": "Failed to create the conversation.",
       "generate": "Failed to generate a response.",
       "budget_exceeded": "You have reached today's AI usage limit. Please try again after the date changes.",
+      "provider_timeout": "The AI did not respond in time. Please wait a moment and try again.",
+      "provider_unavailable": "Could not connect to the AI service. Please wait a moment and try again.",
+      "provider_rate_limited": "The AI service is busy. Please wait a moment and try again.",
+      "provider_auth": "The AI service has an authentication problem. Please contact an administrator.",
+      "provider_rejected": "The AI service did not accept the request. Please change the content and try again.",
       "bootstrap_failed": "Could not load the AI settings or model list, so no model can be chosen. Please reopen this page.",
       "rename": "Failed to rename the conversation.",
       "image_too_large": "Image is too large (max 5MB).",
@@ -2675,8 +2680,9 @@
     "share_modal_same_pc_label": "Same PC:",
     "share_modal_password_unset": "Not set",
     "share_modal_password_note": "Joining devices need both the session code and password",
-    "share_modal_camera_qr_hint": "Scan the QR on iPhone to join without a password",
-    "share_modal_viewer_qr_hint": "Scan the QR on a PC or tablet to receive video"
+    "share_modal_camera_qr_hint": "Scan the QR on iPhone, then enter the session password on the join screen",
+    "share_modal_viewer_qr_hint": "Scan the QR on a PC or tablet, then enter the session password on the join screen to receive video",
+    "join_password_required": "Enter the session password on the join screen. You can find it on the share screen."
   },
   "player_tracking": {
     "bbox_cycle_title": "Click to cycle roles",
@@ -2695,6 +2701,8 @@
     "state_b_cancel": "Cancel",
     "state_c_active": "Broadcasting",
     "state_c_stop": "Stop broadcast",
+    "recording_problem_title": "There is a problem with the recording",
+    "recording_problem_hint": "The recording may not have been saved to the server. Broadcasting can continue, but please check the recording.",
     "state_c_hint": "Streaming video to the PC",
     "join_title": "ShuttleScope camera sender",
     "join_code_label": "Session code",
@@ -5293,7 +5301,9 @@
       "undo_not_delivered": "The undo did not reach the server. Check the connection and try again",
       "video_sec": "Video {{sec}}s",
       "queue_pending": "{{n}} unsent (resending)",
-      "queue_failed": "{{n}} send failures — tap to resend"
+      "queue_failed": "{{n}} send failures — tap to resend",
+      "queue_unknown_owner": "{{n}} unsent inputs with unknown owner — tap to review",
+      "queue_unknown_owner_confirm": "This device holds {{n}} unsent inputs whose owner is unknown. Send them only if you entered them yourself. If they may belong to someone else, do not send them. Send now?"
     },
     "OnboardingConsentPage": {
       "k1": "Japanese",
