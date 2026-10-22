@@ -760,13 +760,19 @@ def get_nodes() -> List[Dict[str, Any]]:
         ip = w.get("ip", "")
         if ip and ip in ray_active_ips:
             # Ray クラスタに参加済み → OK
-            ping = {"reachable": True, "latency_ms": 0, "via": "ray"}
+            ping = {
+                "reachable": True, "latency_ms": 0, "via": "ray",
+                "checks": [{"kind": "ray", "ok": True, "latency_ms": 0, "reason": None}],
+            }
         elif ip:
-            # Ray 未参加 → HTTP ヘルスエンドポイントで確認
+            # Ray 未参加 → ICMP / HTTP で確認（どちらで成功したかは ping_node の via を使う）
             ping = topology.ping_node(ip)
-            ping["via"] = "http"
+            ping["checks"] = [
+                {"kind": "ray", "ok": False, "latency_ms": 0, "reason": "not_joined"},
+                *ping.get("checks", []),
+            ]
         else:
-            ping = {"reachable": False, "via": "none"}
+            ping = {"reachable": False, "via": "none", "checks": []}
         # Stack-trace-exposure 防止: ping dict からエラー詳細を除去
         if isinstance(ping, dict):
             ping.pop("error", None)

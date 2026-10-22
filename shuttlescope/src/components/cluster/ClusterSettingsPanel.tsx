@@ -79,6 +79,19 @@ interface NodePingResult {
   latency_ms: number
   via?: 'ray' | 'icmp' | 'http' | 'none'
   error?: string
+  /** 確認ごとの結果。失敗時にどの確認がなぜ失敗したかを示す */
+  checks?: Array<{ kind: 'icmp' | 'http' | 'ray'; ok: boolean; latency_ms?: number; reason?: string | null }>
+}
+
+/** 疎通確認の内訳を 1 行ずつの文字列にする（例: 「ICMP（ping）: 失敗 - 応答がありません（2003ms）」） */
+function describePingChecks(pr: NodePingResult, t: (key: string) => string): string[] {
+  return (pr.checks ?? []).map(c => {
+    const name = t(`opsHints.check_${c.kind}`)
+    const state = c.ok ? t('opsHints.check_ok') : t('opsHints.check_ng')
+    const why = !c.ok && c.reason ? ` - ${t(`opsHints.reason_${c.reason}`)}` : ''
+    const ms = c.latency_ms ? `（${c.latency_ms}ms）` : ''
+    return `${name}: ${state}${why}${ms}`
+  })
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -594,8 +607,13 @@ export function ClusterSettingsPanel() {
                   {pr === 'loading'
                     ? <MIcon name="progress_activity" size={10} className="animate-spin text-[var(--ss-brand)]" />
                     : pr
-                      ? <span className={pr.reachable ? 'text-[var(--ss-success)]' : 'text-[var(--ss-t3)]'}>
-                          {pr.reachable ? `${pr.via === 'ray' ? 'Ray' : 'ICMP'} ${pr.latency_ms}ms` : 'NG'}
+                      ? <span
+                          className={pr.reachable ? 'text-[var(--ss-success)]' : 'text-[var(--ss-t3)]'}
+                          title={describePingChecks(pr, t).join('\n')}
+                        >
+                          {pr.reachable
+                            ? `${pr.via === 'ray' ? 'Ray' : pr.via === 'http' ? 'HTTP' : 'ICMP'} ${pr.latency_ms}ms`
+                            : t('opsHints.node_unreachable')}
                         </span>
                       : null
                   }
@@ -853,7 +871,7 @@ export function ClusterSettingsPanel() {
                       {pr.reachable ? <MIcon name="check_circle" size={11} /> : <MIcon name="cancel" size={11} />}
                       {pr.reachable
                         ? `${pr.via === 'ray' ? 'Ray' : pr.via === 'icmp' ? 'ICMP' : 'HTTP'} OK${pr.latency_ms ? ` ${pr.latency_ms}ms` : ''}`
-                        : 'NG'
+                        : t('opsHints.node_unreachable')
                       }
                     </span>
                   )}
@@ -861,6 +879,11 @@ export function ClusterSettingsPanel() {
                     <MIcon name="delete" size={12} />
                   </button>
                 </div>
+                {pr && pr !== 'loading' && (pr.checks?.length ?? 0) > 0 && (
+                  <ul className="text-[11px] text-[var(--ss-t3)] space-y-0.5">
+                    {describePingChecks(pr, t).map((line, k) => <li key={k}>{line}</li>)}
+                  </ul>
+                )}
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className={`${labelCls} w-16 shrink-0`}>{t('cluster.worker_cpus')}</span>
                   <input type="number" min={1} max={64}
