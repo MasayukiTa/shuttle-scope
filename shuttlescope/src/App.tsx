@@ -213,6 +213,10 @@ function Sidebar() {
           },
         ]
       : []),
+    // チーム管理: ページ側が admin / coach だけを通す (それ以外は権限なし表示) ので、導線も同じロールにだけ出す。
+    ...(role === 'admin' || role === 'coach'
+      ? [{ to: '/teams', label: t('nav.teams'), icon: 'groups' }]
+      : []),
     { to: '/settings', label: t('nav.settings'), icon: 'settings' },
   ]
 

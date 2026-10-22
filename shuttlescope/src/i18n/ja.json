@@ -114,6 +114,7 @@
     "pending_users_short": "承認",
     "notifications_short": "通知",
     "settings": "設定",
+    "teams": "チーム管理",
     "dashboard_pages": {
       "overview": "概要",
       "live": "速報",
@@ -1204,6 +1205,8 @@
       "vs": "vs",
       "open": "開く",
       "dl_failed_retry": "失敗・再試行",
+      "export_failed": "エクスポートに失敗しました",
+      "export_denied": "エクスポートする権限がないか、再ログインが必要です",
       "delete_confirm": "削除",
       "cancel_short": "取消",
       "public_pool_badge": "共有",
@@ -2822,6 +2825,7 @@
     "run": "ベンチマーク実行",
     "running": "計測中...",
     "stop": "停止",
+    "stop_failed": "停止できませんでした。サーバ側のジョブは動き続けています",
     "result": "計測結果",
     "unavailable": "利用不可",
     "no_result": "結果なし",
@@ -3684,7 +3688,10 @@
       "select_point": "ラリー地点を選択",
       "set_n": "Set {{n}}",
       "click_hint": "グラフの点をクリックして地点を選択してください",
-      "analyze_all": "全ラリーで解析"
+      "analyze_all": "全ラリーで解析",
+      "rally_select_label": "ラリー番号で選択",
+      "rally_select_placeholder": "ラリーを選んでください",
+      "rally_select_confirm": "このラリーで解析"
     },
     "RallySequencePatterns": {
       "analyzed_rallies": "分析ラリー数: {{n}}",

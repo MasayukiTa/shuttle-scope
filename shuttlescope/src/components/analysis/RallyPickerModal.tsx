@@ -2,7 +2,7 @@
  * ラリー地点選択モーダル（速報タブ用）
  * スコア推移グラフ上の点をクリックしてラリー番号を選ぶ。
  */
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import {
@@ -69,6 +69,9 @@ export function RallyPickerModal({ matchId, matchLabel, initialSet, selectedRall
   // 製品ルール: 点差推移は試合の勝敗そのもの。player には描かず、取得もしない。
   const isPlayer = role === 'player'
   const [activeSet, setActiveSet] = useState(initialSet)
+  // キーボード / 支援技術向けの代替: グラフの点をクリックする代わりにラリー番号を select で選ぶ
+  const rallySelectId = useId()
+  const [pendingRally, setPendingRally] = useState('')
 
   const { data: resp, isLoading } = useQuery({
     queryKey: ['rally-picker-score', matchId],
@@ -179,6 +182,45 @@ export function RallyPickerModal({ matchId, matchLabel, initialSet, selectedRall
                   />
                 </LineChart>
               </ResponsiveContainer>
+              {/* グラフと同じ選択を、標準フォームコントロールでも行える */}
+              <div className="flex flex-wrap items-center gap-2">
+                <label
+                  htmlFor={rallySelectId}
+                  className="text-xs"
+                  style={{ color: isLight ? '#64748b' : '#94a3b8' }}
+                >
+                  {t('auto.RallyPickerModal.rally_select_label')}
+                </label>
+                <select
+                  id={rallySelectId}
+                  value={pendingRally}
+                  onChange={(e) => setPendingRally(e.target.value)}
+                  className="text-xs px-2 py-1 rounded-ss-sm border bg-transparent"
+                  style={{
+                    color: isLight ? '#1e293b' : '#f1f5f9',
+                    borderColor: isLight ? '#cbd5e1' : '#475569',
+                  }}
+                >
+                  <option value="">{t('auto.RallyPickerModal.rally_select_placeholder')}</option>
+                  {chartData.map((r) => (
+                    <option key={r.rally_num} value={String(r.rally_num)}>
+                      {`${t('auto.RallyPickerModal.rally_n', { n: r.rally_num })} (${r.score_a}-${r.score_b})`}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  disabled={!chartData.some((r) => String(r.rally_num) === pendingRally)}
+                  onClick={() => {
+                    const n = Number(pendingRally)
+                    onSelect(currentSet?.set_num ?? activeSet, n)
+                    onClose()
+                  }}
+                  className="text-xs px-3 py-1 rounded-ss-sm bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50 transition-colors duration-fast"
+                >
+                  {t('auto.RallyPickerModal.rally_select_confirm')}
+                </button>
+              </div>
             </>
           )}
 

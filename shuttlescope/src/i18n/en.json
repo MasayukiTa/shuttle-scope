@@ -114,6 +114,7 @@
     "pending_users_short": "Pending",
     "notifications_short": "Inbox",
     "settings": "Settings",
+    "teams": "Team management",
     "dashboard_pages": {
       "overview": "Overview",
       "live": "Live",
@@ -1185,6 +1186,8 @@
       "vs": "vs",
       "open": "Open",
       "dl_failed_retry": "Failed · Retry",
+      "export_failed": "Export failed",
+      "export_denied": "You are not permitted to export, or you need to sign in again",
       "delete_confirm": "Delete",
       "cancel_short": "Cancel",
       "public_pool_badge": "Shared",
@@ -2814,6 +2817,7 @@
     "run": "Run benchmark",
     "running": "Running...",
     "stop": "Stop",
+    "stop_failed": "Could not stop the benchmark. The job is still running on the server",
     "result": "Results",
     "unavailable": "Unavailable",
     "no_result": "No result",
@@ -3676,7 +3680,10 @@
       "select_point": "Select a rally point",
       "set_n": "Set {{n}}",
       "click_hint": "Click a point on the chart to select",
-      "analyze_all": "Analyze all rallies"
+      "analyze_all": "Analyze all rallies",
+      "rally_select_label": "Select by rally number",
+      "rally_select_placeholder": "Choose a rally",
+      "rally_select_confirm": "Analyze at this rally"
     },
     "RallySequencePatterns": {
       "k1": "No data",

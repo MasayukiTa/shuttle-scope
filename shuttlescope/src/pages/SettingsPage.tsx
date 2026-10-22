@@ -464,10 +464,17 @@ export function SettingsPage() {
     if (jobId) {
       try {
         await cancelJob(jobId)
-      } catch {
-        // キャンセル失敗は無視
+      } catch (e) {
+        // 404 = ジョブは既に無い (終了済み) ので停止扱いでよい。それ以外はサーバ側のジョブが
+        // 動き続けているため、画面だけ停止済みにせず、理由を出して実行中のままにする
+        const status = (e as { status?: number } | null)?.status
+        if (status !== 404) {
+          setBmError(t('benchmark.stop_failed'))
+          return
+        }
       }
     }
+    setBmError(null)
     bmJobIdRef.current = null
     setBmRunning(false)
     setBmJobId(null)

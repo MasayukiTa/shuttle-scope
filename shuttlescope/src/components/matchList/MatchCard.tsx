@@ -1,5 +1,8 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { apiGetBlob } from '@/api/client'
+import { saveBlobAs } from '@/utils/saveBlob'
 import { clsx } from 'clsx'
 import { Match } from '@/types'
 import { useCardTheme } from '@/hooks/useCardTheme'
@@ -39,6 +42,28 @@ export function MatchCard({
   const opponentName = m.player_b?.name ?? `#${m.player_b_id}`
   const rowLabel = [m.date, m.tournament, opponentName].filter(Boolean).join(' / ')
   const actionLabel = (action: string) => t('a11yLabels.match_action', { action, label: rowLabel })
+
+  // .sspkg の取得は Bearer 付きの fetch で行う (生リンクは Authorization を付けられず 401 になる)。
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
+  const handleExport = async () => {
+    if (exporting) return
+    setExporting(true)
+    setExportError(null)
+    try {
+      const { blob, filename } = await apiGetBlob('/export/package', { match_id: m.id })
+      saveBlobAs(blob, filename ?? `match_${m.id}.json`)
+    } catch (e) {
+      const status = (e as { status?: number } | null)?.status
+      setExportError(
+        status === 401 || status === 403
+          ? t('match.list.export_denied')
+          : t('match.list.export_failed'),
+      )
+    } finally {
+      setExporting(false)
+    }
+  }
 
   return (
     <div
@@ -155,15 +180,20 @@ export function MatchCard({
             <MIcon name="download" size={16} />
           </button>
         )}
-        <a
-          href={`/api/export/package?match_id=${m.id}`}
-          download
+        <button
+          type="button"
+          data-testid="match-export"
+          onClick={handleExport}
+          disabled={exporting}
           title={t('auto.MatchListPage.k7')}
           aria-label={actionLabel(t('auto.MatchListPage.k7'))}
-          className={`p-1 rounded ${isLight ? 'text-gray-500 hover:text-green-600 hover:bg-green-50' : 'text-gray-400 hover:text-green-400 hover:bg-gray-700'}`}
+          className={`p-1 rounded disabled:opacity-50 ${isLight ? 'text-gray-500 hover:text-green-600 hover:bg-green-50' : 'text-gray-400 hover:text-green-400 hover:bg-gray-700'}`}
         >
           <MIcon name="download" size={16} />
-        </a>
+        </button>
+        {exportError && (
+          <span role="alert" className="text-[10px] text-red-400">{exportError}</span>
+        )}
         <button
           onClick={() => onEdit(m)}
           className={`p-1 rounded ${isLight ? 'text-gray-500 hover:text-gray-700 hover:bg-gray-100' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'}`}

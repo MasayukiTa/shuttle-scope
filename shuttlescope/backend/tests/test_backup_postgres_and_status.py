@@ -89,6 +89,8 @@ def test_failed_pg_dump_hides_the_password_and_leaves_no_files(pg_env, monkeypat
 
 def test_missing_pg_dump_is_reported_as_unavailable(pg_env, monkeypatch):
     monkeypatch.setattr(bs.shutil, "which", lambda name: None)
+    monkeypatch.delenv(bs.PG_DUMP_ENV_VAR, raising=False)
+    monkeypatch.setattr(bs, "_pg_dump_candidate_dirs", lambda: [])
 
     with pytest.raises(bs.BackupUnavailable) as exc:
         bs.create_backup()
@@ -120,6 +122,8 @@ def test_backup_status_for_postgres_depends_on_pg_dump(tmp_path, monkeypatch):
     monkeypatch.setattr(bs, "get_backup_dir", lambda: tmp_path, raising=False)
 
     monkeypatch.setattr(bs.shutil, "which", lambda name: None)
+    monkeypatch.delenv(bs.PG_DUMP_ENV_VAR, raising=False)
+    monkeypatch.setattr(bs, "_pg_dump_candidate_dirs", lambda: [])
     missing = bs.backup_status()
     assert missing["engine"] == "postgresql" and missing["supported"] is False
     assert missing["reason"] == "pg_dump_missing"
