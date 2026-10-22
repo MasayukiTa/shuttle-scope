@@ -446,3 +446,33 @@ class TestOpponentClassifier:
         ]
         result = aggregate_affinity_by_axis("handedness", classified, matches, player_id)
         assert result[0]["win_rate"] >= result[-1]["win_rate"]
+
+    # ── 打球データが無い相手は型に入れない ──────────────────────────────────
+
+    def test_opponent_without_stroke_data_is_unclassified(self):
+        """打球データが1試合も無い相手を「バランス型/medium」に入れない。"""
+        from backend.analysis.opponent_classifier import UNCLASSIFIED, classify_opponent
+        db = MagicMock()
+        db.get.return_value = None
+        result = classify_opponent(db, 2, [], 1)
+        axes = result["axes"]
+        assert axes["style"] == UNCLASSIFIED
+        assert axes["pace"] == UNCLASSIFIED
+        assert axes["rally_length"] == UNCLASSIFIED
+        assert axes["court_zone"] == UNCLASSIFIED
+        assert axes["handedness"] == "unknown"
+
+    def test_aggregate_affinity_skips_unclassified(self):
+        from backend.analysis.opponent_classifier import UNCLASSIFIED, aggregate_affinity_by_axis
+        classified = {
+            2: {"axes": {"style": "攻撃型"}},
+            3: {"axes": {"style": UNCLASSIFIED}},
+        }
+        matches = [
+            self._make_match(1, 2, "win"),
+            self._make_match(1, 3, "win"),
+            self._make_match(1, 3, "loss"),
+        ]
+        result = aggregate_affinity_by_axis("style", classified, matches, 1)
+        assert [r["label"] for r in result] == ["攻撃型"]
+        assert result[0]["match_count"] == 1

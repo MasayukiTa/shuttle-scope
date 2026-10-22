@@ -40,6 +40,7 @@ interface OpponentTypeAffinityResponse {
     affinity: Record<string, AffinityEntry>
     summary: SummaryEntry[]
     axes?: Record<string, AxisEntry[]>
+    unclassified_matches?: number
   }
   meta: { sample_size: number; confidence: { level: string; stars: string; label: string } }
 }
@@ -75,6 +76,7 @@ export function OpponentTypeAffinity({ playerId, filters = DEFAULT_FILTERS }: Op
 
   const sampleSize = resp?.meta?.sample_size ?? 0
   const summary = resp?.data?.summary ?? []
+  const unclassified = resp?.data?.unclassified_matches ?? 0
 
   if (sampleSize === 0 || summary.length === 0) {
     return <NoDataMessage sampleSize={sampleSize} minRequired={3} unit="試合" />
@@ -137,6 +139,11 @@ export function OpponentTypeAffinity({ playerId, filters = DEFAULT_FILTERS }: Op
       <p className="text-[10px]" style={{ color: labelColor }}>
         {t('auto.OpponentTypeAffinity.auto_type_note')}
       </p>
+      {unclassified > 0 && (
+        <p className="text-[10px]" style={{ color: labelColor }}>
+          {t('analysis_scope.unclassified_note', { n: unclassified })}
+        </p>
+      )}
     </div>
   )
 }

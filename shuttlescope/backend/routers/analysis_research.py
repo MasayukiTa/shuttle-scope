@@ -42,6 +42,7 @@ from backend.analysis.recommendation_engine import (
 from backend.analysis.opponent_classifier import (
     classify_all_opponents,
     aggregate_affinity_by_axis,
+    UNCLASSIFIED,
 )
 from backend.analysis.counterfactual_engine import (
     collect_context_stats,
@@ -1278,12 +1279,16 @@ def get_opponent_type_affinity(
         "守備型":     {"wins": 0, "total": 0},
         "バランス型": {"wins": 0, "total": 0},
     }
+    unclassified_matches = 0  # 相手の打球データが無く型を判定できなかった試合
     for m in matches:
         opp_id = opponent_player_id(m, player_id)
         cls = classified.get(opp_id)
         if cls is None:
             continue
         opp_type = cls["axes"]["style"]
+        if opp_type == UNCLASSIFIED:
+            unclassified_matches += 1
+            continue
         player_role = team_side(m, player_id)
         won = (player_role == "player_a" and m.result == "win") or \
               (player_role == "player_b" and m.result == "loss")
@@ -1312,7 +1317,12 @@ def get_opponent_type_affinity(
     confidence = _research_confidence("descriptive_basic", sample_size)
     return {
         "success": True,
-        "data": {"affinity": affinity, "summary": summary, "axes": axes},
+        "data": {
+            "affinity": affinity,
+            "summary": summary,
+            "axes": axes,
+            "unclassified_matches": unclassified_matches,
+        },
         "meta": _with_input_provenance(
             {"sample_size": sample_size, "confidence": confidence},
             rallies=provenance_rows.get("rallies", []),

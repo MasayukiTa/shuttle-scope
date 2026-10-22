@@ -114,7 +114,7 @@ function Inner({ playerId }: { playerId: number }) {
                   className="font-mono text-xs ss-num"
                   style={{ color: p.synergy_score >= 0 ? WIN : LOSS }}
                 >
-                  {p.synergy_score >= 0 ? '+' : ''}{Math.round(p.synergy_score * 100)}%
+                  {p.synergy_score >= 0 ? '+' : ''}{Math.round(p.synergy_score * 100)}pt
                 </span>
               </div>
             </div>

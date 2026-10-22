@@ -72,6 +72,7 @@ export function ConfidenceCalibration({ playerId }: ConfidenceCalibrationProps) 
       </div>
 
       <ConfidenceBadge sampleSize={sampleSize} unit="strokes" />
+      <p className="mt-1 text-[10px] text-gray-500">{t('analysis_scope.quality_scope')}</p>
 
       {d && (
         <>

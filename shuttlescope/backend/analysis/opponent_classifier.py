@@ -36,6 +36,9 @@ _FRONT_ZONES = {"NL", "NC", "NR"}
 COURT_FRONT_THRESHOLD = 0.45   # 45% 以上 → front
 COURT_REAR_THRESHOLD = 0.25    # 25% 未満 → rear
 
+# 相手の打球データが無く、どの軸も判定できなかったときの値(集計ではどの型にも入れない)
+UNCLASSIFIED = "unclassified"
+
 
 # ── 単試合ラリーデータから相手指標を抽出 ────────────────────────────────────
 
@@ -223,14 +226,17 @@ def classify_opponent(
         used += 1
 
     if used == 0:
+        # 打球データが1試合も無い相手を「バランス型/medium」に入れると、データが無いだけの
+        # 試合が実在の分類として集計に混ざる(全試合が1つの型に集約される原因)。
+        # 判定できない相手は UNCLASSIFIED とし、集計では分類済みの試合と分けて数える。
         return {
             "opponent_id": opponent_id,
             "axes": {
-                "style": "バランス型",
-                "pace": "medium",
-                "rally_length": "medium",
+                "style": UNCLASSIFIED,
+                "pace": UNCLASSIFIED,
+                "rally_length": UNCLASSIFIED,
                 "handedness": classify_handedness(db, opponent_id),
-                "court_zone": "balanced",
+                "court_zone": UNCLASSIFIED,
             },
             "raw": agg,
             "match_count": len(matches_with_opponent),
@@ -325,6 +331,8 @@ def aggregate_affinity_by_axis(
         if cls is None:
             continue
         label = cls["axes"].get(axis, "unknown")
+        if label == UNCLASSIFIED:
+            continue
 
         if label not in stats:
             stats[label] = {"wins": 0, "total": 0}
