@@ -236,7 +236,7 @@ def get_rally_length_vs_winrate(
     set_ids = [s.id for s in sets]
     set_to_match: dict[int, int] = {s.id: s.match_id for s in sets}
 
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
+    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids), Rally.is_skipped.is_(False)).all() if set_ids else []
 
     # 区間定義: (label, min_length, max_length_inclusive)
     buckets_def = [
@@ -379,7 +379,7 @@ def get_pressure_performance(
     set_ids = [s.id for s in sets]
     set_to_match: dict[int, int] = {s.id: s.match_id for s in sets}
 
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
+    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids), Rally.is_skipped.is_(False)).all() if set_ids else []
 
     # 各シチュエーションの統計
     stats: dict[str, dict] = {
@@ -664,7 +664,7 @@ def get_temporal_performance(
     set_to_match: dict[int, int] = {s.id: s.match_id for s in sets}
     set_ids = [s.id for s in sets]
 
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
+    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids), Rally.is_skipped.is_(False)).all() if set_ids else []
 
     # フェーズ別集計: score_a_after + score_b_after でラリー後の合計点を判断
     phases = {
@@ -866,7 +866,7 @@ def get_opponent_stats(
     set_to_match: dict[int, int] = {s.id: s.match_id for s in sets}
     set_ids = [s.id for s in sets]
 
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
+    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids), Rally.is_skipped.is_(False)).all() if set_ids else []
 
     # 対戦相手ごとに集計
     opp_stats: dict[int, dict] = defaultdict(lambda: {
@@ -1312,7 +1312,7 @@ def get_partner_comparison(player_id: int, db: Session = Depends(get_db)):
     sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
     set_to_match: dict[int, int] = {s.id: s.match_id for s in sets}
     set_ids = [s.id for s in sets]
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
+    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids), Rally.is_skipped.is_(False)).all() if set_ids else []
 
     # パートナー別平均ラリー長
     partner_rally: dict[int, dict] = defaultdict(lambda: {"total_length": 0, "count": 0})
@@ -1400,7 +1400,7 @@ def get_doubles_serve_receive(player_id: int, db: Session = Depends(get_db)):
     set_to_match: dict[int, int] = {s.id: s.match_id for s in sets}
     set_ids = [s.id for s in sets]
 
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
+    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids), Rally.is_skipped.is_(False)).all() if set_ids else []
     rally_ids = [r.id for r in rallies]
 
     serve_wins = 0

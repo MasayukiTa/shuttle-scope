@@ -6,6 +6,7 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
@@ -839,6 +840,27 @@ def update_player(player_id: Annotated[int, Path(ge=1, le=2_147_483_647)], body:
     return {"success": True, "data": player_to_dict(player)}
 
 
+def _player_non_match_references(db: Session, player_id: int) -> list[tuple[str, int]]:
+    """Match 以外で players.id を直接参照する行の件数 (0 件の表は返さない)。
+
+    Condition / ConditionTag は Player.conditions / condition_tags の
+    ORM cascade (all, delete-orphan) で一緒に消えるので、ここには含めない。
+    """
+    from backend.db.models import HumanForecast, PreMatchObservation, PrematchPrediction
+    checks = [
+        ("アカウント", User, [User.player_id]),
+        ("試合前観察", PreMatchObservation, [PreMatchObservation.player_id]),
+        ("人手予測", HumanForecast, [HumanForecast.player_id]),
+        ("試合前予測", PrematchPrediction, [PrematchPrediction.player_id, PrematchPrediction.opponent_id]),
+    ]
+    found: list[tuple[str, int]] = []
+    for label, model, cols in checks:
+        n = db.query(model).filter(or_(*[c == player_id for c in cols])).count()
+        if n > 0:
+            found.append((label, n))
+    return found
+
+
 @router.delete("/players/{player_id}")
 def delete_player(
     player_id: Annotated[int, Path(ge=1, le=2_147_483_647)],
@@ -864,8 +886,25 @@ def delete_player(
             status_code=409,
             detail=f"この選手は {ref_count} 件の試合に紐づいているため削除できません。先に試合を削除してください。"
         )
-    db.delete(player)
-    db.commit()
+    # 試合以外の直接参照 (予測 / コンディション / アカウント等)。
+    # 残っていると DELETE が FK 違反になり 500 になるため、先に 409 で止める。
+    other_refs = _player_non_match_references(db, player_id)
+    if other_refs:
+        summary = "、".join(f"{label} {n} 件" for label, n in other_refs)
+        raise HTTPException(
+            status_code=409,
+            detail=f"この選手は他のデータ ({summary}) から参照されているため削除できません。先に関連データを整理してください。"
+        )
+    try:
+        db.delete(player)
+        db.commit()
+    except IntegrityError:
+        # 事前確認の後に参照が増えた場合の保険。500 ではなく 409 を返す。
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="この選手は他のデータから参照されているため削除できません。"
+        )
     # 監査ログ: 誰がどの選手を削除したか。個人情報は残さず id のみ。
     from backend.utils.access_log import log_admin_action
     log_admin_action(
@@ -898,8 +937,9 @@ def get_player_matches(player_id: Annotated[int, Path(ge=1, le=2_147_483_647)], 
             raise HTTPException(status_code=404, detail="選手が見つかりません")
     else:
         _player_scope_check(request, player)
+    from backend.analysis.player_context import involves_player
     matches = db.query(Match).filter(
-        (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
+        involves_player(player_id)
     ).order_by(Match.date.desc()).all()
     return {"success": True, "data": [
         {
@@ -933,16 +973,18 @@ def get_player_stats(player_id: Annotated[int, Path(ge=1, le=2_147_483_647)], re
             raise HTTPException(status_code=404, detail="選手が見つかりません")
     else:
         _player_scope_check(request, player)
-    total_matches = db.query(Match).filter(
-        (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
-    ).count()
-    wins = db.query(Match).filter(
-        Match.player_a_id == player_id, Match.result == "win"
-    ).count()
+    # 参加者の定義は 4 スロット (player_a/b + partner_a/b) で統一する。
+    # Match.result は A 側から見た勝敗なので、B 側の選手は反転して数える。
+    from backend.analysis.player_context import involves_player, player_result_filter
+    total_matches = db.query(Match).filter(involves_player(player_id)).count()
+    wins = db.query(Match).filter(player_result_filter(player_id, "win")).count()
+    losses = db.query(Match).filter(player_result_filter(player_id, "loss")).count()
     return {
         "success": True,
         "data": {
             "total_matches": total_matches,
             "wins": wins,
+            # 勝率の分母 (勝敗確定試合数)。未完了・不戦勝などは含めない。
+            "decided_matches": wins + losses,
         }
     }

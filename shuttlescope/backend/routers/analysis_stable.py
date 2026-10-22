@@ -80,7 +80,7 @@ def get_descriptive(
     set_to_match: dict[int, int] = {s.id: s.match_id for s in sets}
 
     # 対象セットのラリーを取得
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
+    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids), Rally.is_skipped.is_(False)).all() if set_ids else []
 
     total_rallies = len(rallies)
     wins = 0
@@ -618,7 +618,7 @@ def get_matches_summary(player_id: int, db: Session = Depends(get_db)):
     set_to_match: dict[int, int] = {s.id: s.match_id for s in sets}
     set_ids = [s.id for s in sets]
 
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
+    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids), Rally.is_skipped.is_(False)).all() if set_ids else []
 
     rally_count_by_match: dict[int, int] = defaultdict(int)
     for rally in rallies:
@@ -876,7 +876,8 @@ def _set_comparison_impl(
     role_by_match = ctx.role_by_match
     sets = ctx.sets
     set_to_match = ctx.set_to_match
-    rallies = ctx.rallies
+    # スコア補正の擬似ラリー (is_skipped) は実記録ではないので勝率・ラリー長に入れない
+    rallies = [r for r in ctx.rallies if not r.is_skipped]
 
     if not matches:
         confidence = check_confidence("descriptive_basic", 0)
@@ -1142,7 +1143,7 @@ def get_win_loss_comparison(
         set_ids = [row[0] for row in set_rows]
         set_to_match: dict[int, int] = {row[0]: row[1] for row in set_rows}
 
-        rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all()
+        rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids), Rally.is_skipped.is_(False)).all()
         if not rallies:
             return None
 
@@ -1266,7 +1267,7 @@ def get_tournament_level_comparison(
     sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
     set_to_match: dict[int, int] = {s.id: s.match_id for s in sets}
     set_ids = [s.id for s in sets]
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
+    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids), Rally.is_skipped.is_(False)).all() if set_ids else []
 
     # 試合→大会レベルのマッピング
     level_by_match: dict[int, str] = {m.id: m.tournament_level for m in matches}

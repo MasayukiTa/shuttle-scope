@@ -111,7 +111,10 @@ class MatchUpdate(BaseModel):
 
 
 # ビジネスロジック用 enum (config.py で定義された値と一致)
-_MATCH_RESULT_ALLOWED = {"win", "loss", "draw", "unknown"}
+# "retired" は Annotator の「途中終了」(AnnotatorPage.handleException) が送る値。
+# analysis_population.is_decided_result は win/loss だけを確定扱いにするため、
+# retired の試合は勝率の母集団に入らない。
+_MATCH_RESULT_ALLOWED = {"win", "loss", "draw", "unknown", "retired"}
 _MATCH_FORMAT_ALLOWED = {"singles", "doubles", "mixed"}
 _MATCH_TOURNAMENT_LEVELS = {"IC", "IS", "SJL", "全日本", "国内", "その他"}
 _MATCH_ANNOTATION_STATUS = {"not_started", "in_progress", "complete", "reviewed"}
@@ -993,11 +996,14 @@ def delete_match(match_id: int, request: Request, db: Session = Depends(get_db))
     deleted_files: list[str] = []
     deletion_errors: list[str] = []
 
+    # 物理ファイルの削除は DB commit が成功してから行う (commit 失敗で rollback
+    # しても unlink は戻せないため)。ここでは削除候補を貯めるだけ。
+    pending_unlinks: list = []
+
     def _try_unlink(p) -> None:
         try:
             if p.exists() and p.is_file():
-                p.unlink()
-                deleted_files.append(str(p))
+                pending_unlinks.append(p)
         except Exception as exc:
             deletion_errors.append(f"unlink {p}: {type(exc).__name__}")
 
@@ -1136,6 +1142,15 @@ def delete_match(match_id: int, request: Request, db: Session = Depends(get_db))
         # HTTP body にスタックトレース要素を返すのは avoid し、詳細は server log
         # からのみ追跡できるようにする。
         raise HTTPException(status_code=500, detail="試合削除に失敗しました")
+
+    # 3.5) DB の削除が確定したので、貯めておいた物理ファイルを消す
+    for _p in pending_unlinks:
+        try:
+            if _p.exists() and _p.is_file():
+                _p.unlink()
+                deleted_files.append(str(_p))
+        except Exception as exc:
+            deletion_errors.append(f"unlink {_p}: {type(exc).__name__}")
 
     # 4) commit 成功後に audit log 2 件を書く (log_access は内部で別 commit するので順次)
     try:
