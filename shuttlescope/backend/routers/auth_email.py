@@ -216,6 +216,14 @@ def _client_ip(request: Request) -> str:
     return trusted_client_ip(request, default="")[:64]
 
 
+def _app_link(path: str, token: str) -> str:
+    """Link to a SPA page from an email. The SPA uses HashRouter, so the route and its
+    query string must sit after the '#'. Without it the page is served at '/' and the
+    token never reaches the target page."""
+    from urllib.parse import quote
+    return f"{_app_base_url()}/#{path}?token={quote(token, safe='')}"
+
+
 def _app_base_url() -> str:
     try:
         from backend.config import settings
@@ -459,7 +467,7 @@ def resend_verification(request: Request, db: Session = Depends(get_db)):
     if user.email_verified_at is not None:
         return {"success": True, "data": {"already_verified": True}}
     token = issue_email_verification_token(db, user.id, user.email)
-    verify_url = f"{_app_base_url()}/verify?token={token}"
+    verify_url = _app_link("/verify", token)
     _send_email_safe(
         user.email,
         "ShuttleScope メールアドレス確認 (再送)",
@@ -504,7 +512,7 @@ def request_password_reset(body: PasswordResetRequest, request: Request,
     user = db.query(User).filter(User.email == body.email).first()
     if user is not None:
         token = issue_password_reset_token(db, user.id, requested_ip=ip)
-        reset_url = f"{_app_base_url()}/password/reset-confirm?token={token}"
+        reset_url = _app_link("/password/reset-confirm", token)
         # background_tasks で送信を非同期化し、応答時間を user の存在に依存させない
         if background_tasks is not None:
             background_tasks.add_task(
@@ -656,7 +664,7 @@ def create_invitation(body: InvitationCreateRequest, request: Request,
         db, body.email, body.role, ctx.user_id,
         team_id=(body.team_id if body.team_id is not None else ctx.team_id),
     )
-    accept_url = f"{_app_base_url()}/invite?token={token}"
+    accept_url = _app_link("/invite", token)
     _send_email_safe(
         body.email,
         "ShuttleScope への招待",

@@ -36,6 +36,8 @@ interface CourtGridOverlayProps {
   containerRef: RefObject<HTMLDivElement>
   /** グリッド全体の表示/非表示 */
   visible: boolean
+  /** 表示専用。点の再配置・ドラッグ・バックエンド保存を一切行わない（別モニタ用ミラー向け） */
+  readOnly?: boolean
   /** バックエンドへのキャリブレーション保存成功時のコールバック */
   onCalibrationSaved?: () => void
   /** キャリブレーション保存状態変更通知（'backend'=DB保存済 / 'local'=ローカルのみ / 'none'） */
@@ -110,7 +112,7 @@ function halfGridLines(
 
 type CalibSource = 'backend' | 'local' | 'none'
 
-export function CourtGridOverlay({ matchId, containerRef, visible, onCalibrationSaved, onCalibSourceChange }: CourtGridOverlayProps) {
+export function CourtGridOverlay({ matchId, containerRef, visible, readOnly = false, onCalibrationSaved, onCalibSourceChange }: CourtGridOverlayProps) {
   const { t } = useTranslation()
   const [points, setPoints] = useState<Pt[]>([])          // 設定済み点（最大6個）
   const [calibrating, setCalibrating] = useState(false)   // キャリブレーションモード
@@ -187,6 +189,8 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
   const saveAbortRef = useRef<AbortController | null>(null)
 
   const postToBackend = useCallback((pts: Pt[]) => {
+    // 表示専用では校正値を書き換えない
+    if (readOnly) return
     // 既に走っている保存があれば打ち切る (連続ドラッグの古い request 防止)
     if (saveAbortRef.current) {
       try { saveAbortRef.current.abort() } catch { /* ignore */ }
@@ -259,7 +263,7 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
           saveAbortRef.current = null
         }
       })
-  }, [matchId, containerSize, onCalibrationSaved])
+  }, [matchId, containerSize, onCalibrationSaved, readOnly])
 
   // アンマウント時に進行中保存を abort してメモリリーク防止
   useEffect(() => {
@@ -283,12 +287,13 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
   // ─── キャリブレーション操作 ────────────────────────────────────────────
 
   const startCalibration = useCallback(() => {
+    if (readOnly) return
     prevPtsRef.current = points   // キャンセル用バックアップ
     setPoints([])
     setCalibSource('none')
     localStorage.removeItem(STORAGE_KEY(matchId))
     setCalibrating(true)
-  }, [matchId, points])
+  }, [matchId, points, readOnly])
 
   const getSVGPoint = useCallback((e: React.PointerEvent<SVGSVGElement>): Pt => {
     const rect = svgRef.current!.getBoundingClientRect()
@@ -316,11 +321,11 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
   // ─── ドラッグで点を調整 ─────────────────────────────────────────────────
 
   const handlePointPointerDown = useCallback((e: React.PointerEvent<SVGCircleElement>, idx: number) => {
-    if (calibrating) return  // キャリブレーション中は干渉しない
+    if (calibrating || readOnly) return  // キャリブレーション中・表示専用では点を動かさない
     e.stopPropagation()
     e.currentTarget.setPointerCapture(e.pointerId)
     setDraggingIdx(idx)
-  }, [calibrating])
+  }, [calibrating, readOnly])
 
   const handleSVGPointerMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
     if (draggingIdx === null) return
@@ -380,7 +385,7 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
         style={{
           position: 'absolute',
           inset: 0,
-          pointerEvents: (calibrating || (isCalibrated && visible)) ? 'all' : 'none',
+          pointerEvents: readOnly ? 'none' : (calibrating || (isCalibrated && visible)) ? 'all' : 'none',
           cursor: calibrating
             ? 'crosshair'
             : draggingIdx !== null
@@ -416,7 +421,7 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
               cx={pt.x * w} cy={pt.y * h} r={6}
               fill={COLORS.point} fillOpacity={0.85}
               stroke="#000" strokeWidth={1.5}
-              style={{ cursor: calibrating ? 'default' : 'grab', pointerEvents: calibrating ? 'none' : 'all' }}
+              style={{ cursor: calibrating || readOnly ? 'default' : 'grab', pointerEvents: calibrating || readOnly ? 'none' : 'all' }}
               onPointerDown={(e) => handlePointPointerDown(e, i)}
             />
             <text
@@ -445,7 +450,7 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
       </svg>
 
       {/* ─── グリッド線再作成 + キャリブ保存状態（左上）────────── */}
-      {visible && isCalibrated && !calibrating && (
+      {!readOnly && visible && isCalibrated && !calibrating && (
         <div className="absolute top-1 left-1 flex items-center gap-1" style={{ pointerEvents: 'all' }}>
           <button
             onClick={startCalibration}
@@ -533,7 +538,7 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
       )}
 
       {/* ─── 未キャリブレーション時の案内 ───────────────────────── */}
-      {visible && !isCalibrated && !calibrating && loadFailed && (
+      {!readOnly && visible && !isCalibrated && !calibrating && loadFailed && (
         <div
           className="absolute inset-0 flex items-center justify-center"
           style={{ pointerEvents: 'all' }}
@@ -550,7 +555,7 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
           </button>
         </div>
       )}
-      {visible && !isCalibrated && !calibrating && !loadFailed && (
+      {!readOnly && visible && !isCalibrated && !calibrating && !loadFailed && (
         <div
           className="absolute inset-0 flex items-center justify-center"
           style={{ pointerEvents: 'all' }}

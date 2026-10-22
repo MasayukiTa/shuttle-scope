@@ -98,12 +98,16 @@ function ExpertLabelerContent() {
   })
 
   const videos = Array.isArray(videosQuery.data) ? videosQuery.data : []
+  // /v1/expert/videos の labeled_count は coach / analyst 全員分の合算なので、自分の役割の
+  // 進捗としては使わない。役割別の進捗が取れていない間は null (不明) にして、
+  // 他の役割の作業分を自分の完了数として表示しない。
+  const progressReady = progressQuery.isSuccess
   const merged = videos.map((v) => {
     const p = progressMap.get(String(v.match_id))
     return {
       ...v,
       miss_count: p?.miss_count ?? v.miss_count ?? 0,
-      labeled_count: p?.labeled_count ?? v.labeled_count ?? 0,
+      labeled_count: progressReady ? (p?.labeled_count ?? 0) : null,
     }
   })
 
@@ -112,7 +116,7 @@ function ExpertLabelerContent() {
   const filtered = merged.filter((v) => {
     const name = (v.title || v.opponent || v.date || `Match ${v.match_id}`).toLowerCase()
     if (needle && !name.includes(needle)) return false
-    if (incompleteOnly && !(v.miss_count > 0 && v.labeled_count < v.miss_count)) return false
+    if (incompleteOnly && !(v.miss_count > 0 && (v.labeled_count ?? 0) < v.miss_count)) return false
     return true
   })
 
@@ -173,7 +177,33 @@ function ExpertLabelerContent() {
               <div className={`text-sm ${textMuted}`}>{t('expert_labeler.loading')}</div>
             )}
 
-            {!videosQuery.isLoading && merged.length === 0 && (
+            {videosQuery.isError && (
+              <div role="alert" className={`p-4 rounded-ss-lg border text-sm space-y-2 ${cardBg}`}>
+                <div className="font-semibold text-[var(--ss-danger-text)]">{t('expert_labeler.videos_load_failed')}</div>
+                <button
+                  type="button"
+                  onClick={() => void videosQuery.refetch()}
+                  className={`px-3 py-1 text-sm rounded-ss-md border ${borderColor}`}
+                >
+                  {t('expert_labeler.retry')}
+                </button>
+              </div>
+            )}
+
+            {!videosQuery.isError && progressQuery.isError && (
+              <div role="alert" className={`mb-3 p-3 rounded-ss-lg border text-sm space-y-2 ${cardBg}`}>
+                <div className="text-[var(--ss-danger-text)]">{t('expert_labeler.progress_load_failed')}</div>
+                <button
+                  type="button"
+                  onClick={() => void progressQuery.refetch()}
+                  className={`px-3 py-1 text-sm rounded-ss-md border ${borderColor}`}
+                >
+                  {t('expert_labeler.retry')}
+                </button>
+              </div>
+            )}
+
+            {!videosQuery.isLoading && !videosQuery.isError && merged.length === 0 && (
               <div className={`p-4 rounded-ss-lg border text-sm space-y-2 ${cardBg}`}>
                 <div className="font-semibold">{t('expert_labeler.empty_title')}</div>
                 <div className={textMuted}>{t('expert_labeler.empty_desc')}</div>
@@ -225,9 +255,11 @@ function ExpertLabelerContent() {
                 const blocked = BLOCKED_STATUSES.includes(status)
                 // ミス件数 0 のときは完了率を出さない（0% と書くと未着手に見える）
                 const hasTargets = v.miss_count > 0
-                const ratio = calcRatio(v.labeled_count, v.miss_count)
+                const labeledKnown = v.labeled_count !== null
+                const labeledCount = v.labeled_count ?? 0
+                const ratio = calcRatio(labeledCount, v.miss_count)
                 const pct = Math.round(ratio * 100)
-                const done = v.miss_count > 0 && v.labeled_count >= v.miss_count
+                const done = labeledKnown && v.miss_count > 0 && labeledCount >= v.miss_count
                 const label = v.title || v.opponent || v.date || `Match ${v.match_id}`
                 return (
                   <li key={String(v.match_id)} className="flex gap-2">
@@ -247,7 +279,7 @@ function ExpertLabelerContent() {
                       </div>
                       <div className="mt-1 text-xs ss-num text-[var(--ss-t3)]">
                         {t('expert_labeler.miss_count')}: {v.miss_count} /{' '}
-                        {t('expert_labeler.labeled_count')}: {v.labeled_count} ({hasTargets ? `${pct}%` : '—'})
+                        {t('expert_labeler.labeled_count')}: {labeledKnown ? labeledCount : '—'} ({hasTargets && labeledKnown ? `${pct}%` : '—'})
                       </div>
                       {status !== 'ready' && (
                         <div className="mt-1 text-xs text-[var(--ss-t2)]">
@@ -264,7 +296,7 @@ function ExpertLabelerContent() {
                       </div>
                       {!blocked && (
                         <div className="mt-2 text-right text-sm font-medium text-[var(--ss-brand)]">
-                          {v.labeled_count > 0 && !done
+                          {labeledCount > 0 && !done
                             ? t('expert_labeler.resume')
                             : t('expert_labeler.start')}{' '}
                           →
@@ -272,7 +304,7 @@ function ExpertLabelerContent() {
                       )}
                     </button>
                     {/* エクスポートボタン（ラベルが 1 件以上のとき表示） */}
-                    {v.labeled_count > 0 && (
+                    {labeledCount > 0 && (
                       <div className="flex flex-col gap-1 justify-center">
                         <button
                           type="button"
