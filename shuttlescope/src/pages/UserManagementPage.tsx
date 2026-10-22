@@ -176,6 +176,11 @@ export function UserManagementPage() {
   const [editPageAccess, setEditPageAccess] = useState<string[]>([])
   const [editTeamPageAccess, setEditTeamPageAccess] = useState<string[]>([])
   const [editingTeamName, setEditingTeamName] = useState<string | null>(null)
+  // 権限の取得に失敗した状態で保存すると、空の配列で既存の権限を消してしまう。
+  // 失敗したら保存を止め、利用者が触った権限だけを送る。
+  const [accessLoadFailed, setAccessLoadFailed] = useState(false)
+  const [userAccessDirty, setUserAccessDirty] = useState(false)
+  const [teamAccessDirty, setTeamAccessDirty] = useState(false)
   const [teams, setTeams] = useState<TeamDTO[]>([])
 
   const panelBg = 'bg-[var(--ss-surface-1)]'
@@ -353,17 +358,24 @@ export function UserManagementPage() {
     setEditPageAccess([])
     setEditTeamPageAccess([])
     setEditingTeamName(null)
+    setAccessLoadFailed(false)
+    setUserAccessDirty(false)
+    setTeamAccessDirty(false)
     if (u.role === 'player') {
       try {
         const res = await getUserPageAccess(u.id)
         setEditPageAccess(res.data ?? [])
-      } catch { /* ignore */ }
+      } catch {
+        setAccessLoadFailed(true)
+      }
       if (u.team_name) {
         setEditingTeamName(u.team_name)
         try {
           const tr = await getTeamPageAccess(u.team_name)
           setEditTeamPageAccess(tr.data ?? [])
-        } catch { /* ignore */ }
+        } catch {
+          setAccessLoadFailed(true)
+        }
       }
     }
   }
@@ -379,6 +391,11 @@ export function UserManagementPage() {
     }
     if (form.role !== 'admin' && !form.team_name.trim() && !form.team_id.trim()) {
       setError(t('users.manage.validate_team_name'))
+      return
+    }
+
+    if (editId != null && form.role === 'player' && !isSelfOnly && accessLoadFailed) {
+      setError(t('users.manage.page_access_load_failed'))
       return
     }
 
@@ -409,8 +426,10 @@ export function UserManagementPage() {
         if (form.credential.trim()) body.password = form.credential.trim()
         await apiPut(`/auth/users/${editId}`, body)
         if (form.role === 'player' && !isSelfOnly) {
-          await setUserPageAccess(editId, editPageAccess)
-          if (editingTeamName) {
+          if (userAccessDirty) {
+            await setUserPageAccess(editId, editPageAccess)
+          }
+          if (editingTeamName && teamAccessDirty) {
             await setTeamPageAccess(editingTeamName, editTeamPageAccess)
           }
         }
@@ -607,11 +626,12 @@ export function UserManagementPage() {
                       <input
                         type="checkbox"
                         checked={indiv}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          setUserAccessDirty(true)
                           setEditPageAccess((prev) =>
                             e.target.checked ? [...prev, key] : prev.filter((k) => k !== key)
                           )
-                        }
+                        }}
                       />
                       {t('users.manage.individual')}
                     </label>
@@ -620,11 +640,12 @@ export function UserManagementPage() {
                         <input
                           type="checkbox"
                           checked={team}
-                          onChange={(e) =>
+                          onChange={(e) => {
+                            setTeamAccessDirty(true)
                             setEditTeamPageAccess((prev) =>
                               e.target.checked ? [...prev, key] : prev.filter((k) => k !== key)
                             )
-                          }
+                          }}
                         />
                         {t('users.manage.team_whole', { team: editingTeamName })}
                       </label>

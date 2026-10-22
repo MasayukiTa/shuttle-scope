@@ -10,6 +10,7 @@ import { apiGet, apiPost } from '@/api/client'
 import { Player, MATCH_ROUNDS } from '@/types'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { MIcon } from '@/components/common/MIcon'
+import { useAuth } from '@/hooks/useAuth'
 
 interface Props {
   onClose: () => void
@@ -18,6 +19,7 @@ interface Props {
 
 export function QuickStartModal({ onClose, onStarted }: Props) {
   const { t } = useTranslation()
+  const { teamName: myTeamName } = useAuth()
 
   const COMPETITION_TYPES = [
     { value: 'official', label: t('quick_start.competition_official') },
@@ -54,6 +56,15 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
   const players = playersData?.data ?? []
   const targetPlayers = players.filter((p) => p.is_target)
   const allPlayers = players
+  // 「自チーム選手」の候補。admin は全チームの選手を取得するので、既定は自分のチームに絞り、
+  // 他チームは明示して切り替える（記録中の取り違えを防ぐ）。
+  const baseCandidates = targetPlayers.length > 0 ? targetPlayers : allPlayers
+  const candidateTeams = [...new Set(baseCandidates.map((p) => p.team).filter(Boolean) as string[])].sort()
+  const [teamFilter, setTeamFilter] = useState<string | null>(null)
+  const effectiveTeamFilter =
+    teamFilter ?? (myTeamName && candidateTeams.includes(myTeamName) ? myTeamName : '')
+  const ownPlayerOptions =
+    effectiveTeamFilter === '' ? baseCandidates : baseCandidates.filter((p) => p.team === effectiveTeamFilter)
 
   // 相手選手候補検索
   const { data: searchData, isFetching: isSearching } = useQuery({
@@ -181,8 +192,24 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
             <label className="block text-sm text-[var(--ss-t2)] mb-1">
               {t('quick_start.my_player')} *
             </label>
+            {candidateTeams.length > 1 ? (
+              <select
+                value={effectiveTeamFilter}
+                onChange={(e) => {
+                  setTeamFilter(e.target.value)
+                  setPlayerAId('')
+                }}
+                aria-label={t('quick_start.team_filter')}
+                className="w-full mb-1 bg-[var(--ss-surface-1)] border border-[var(--ss-border-strong)] rounded-ss-md px-2 py-1 text-xs text-[var(--ss-t1)]"
+              >
+                <option value="">{t('quick_start.team_filter_all')}</option>
+                {candidateTeams.map((team) => (
+                  <option key={team} value={team}>{team}</option>
+                ))}
+              </select>
+            ) : null}
             <SearchableSelect
-              options={(targetPlayers.length > 0 ? targetPlayers : allPlayers).map((p) => ({
+              options={ownPlayerOptions.map((p) => ({
                 value: p.id,
                 label: p.name,
                 searchText: p.team ?? '',

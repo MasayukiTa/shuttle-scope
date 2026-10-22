@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { Link } from 'react-router-dom'
 
 import {
   publicInquiryBulkDelete,
@@ -391,6 +392,11 @@ export function NotificationInboxPage() {
                       {t('auto.NotificationInboxPage.reply_mail')}
                     </a>
                   )}
+                  {selected.pending_user_id ? (
+                    <Link to="/users/pending" className="block mt-2 text-sm text-[var(--ss-brand)] underline">
+                      {t('pendingUsers.inquiry_has_registration')}
+                    </Link>
+                  ) : null}
                 </div>
               </div>
 

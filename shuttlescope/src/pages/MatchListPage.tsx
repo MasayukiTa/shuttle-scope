@@ -282,22 +282,18 @@ export function MatchListPage() {
     },
   })
 
-  // 選手の暫定作成ヘルパー
-  const createProvisionalPlayer = async (
+  // 未登録の選手は試合と一緒にサーバで作る（POST /matches の *_new）。
+  // 先に POST /players すると、後続の失敗で試合に紐付かない選手が残るため。
+  const provisionalPlayerSpec = (
     name: string,
     opts: { isTarget?: boolean; team?: string } = {}
-  ): Promise<number> => {
-    const resp = await apiPost<{ data?: { id?: number } }>('/players', {
-      name,
-      team: opts.team || undefined,
-      is_target: opts.isTarget ?? false,
-      profile_status: 'provisional',
-      needs_review: true,
-    })
-    const id = resp?.data?.id
-    if (!id) throw new Error('IDが取得できませんでした')
-    return id
-  }
+  ) => ({
+    name,
+    team: opts.team || undefined,
+    is_target: opts.isTarget ?? false,
+    profile_status: 'provisional',
+    needs_review: true,
+  })
 
   // 編集開始: フォームを既存試合データで初期化
   const handleStartEdit = (m: Match) => {
@@ -343,48 +339,32 @@ export function MatchListPage() {
     const bTeam = playerBTeam.trim()
 
     // ── player_a（必須）──
-    let finalPlayerAId = form.player_a_id
+    const finalPlayerAId = form.player_a_id
+    let newPlayerA: ReturnType<typeof provisionalPlayerSpec> | undefined
     if (!finalPlayerAId) {
       const name = playerAQuery.trim()
       if (!name) { alert('対象選手（A）を入力または選択してください'); return }
-      try {
-        finalPlayerAId = await createProvisionalPlayer(name, { isTarget: true, team: aTeam || undefined })
-      } catch (err: unknown) {
-        alert(`対象選手登録エラー: ${errorMessage(err, '不明なエラー')}`); return
-      }
+      newPlayerA = provisionalPlayerSpec(name, { isTarget: true, team: aTeam || undefined })
     }
 
     // ── player_b（必須）──
-    let finalPlayerBId = form.player_b_id
+    const finalPlayerBId = form.player_b_id
+    let newPlayerB: ReturnType<typeof provisionalPlayerSpec> | undefined
     if (!finalPlayerBId) {
       const name = playerBQuery.trim()
       if (!name) { alert('対戦相手（B）を入力または選択してください'); return }
-      try {
-        finalPlayerBId = await createProvisionalPlayer(name, { team: bTeam || undefined })
-      } catch (err: unknown) {
-        alert(`対戦相手登録エラー: ${errorMessage(err, '不明なエラー')}`); return
-      }
+      newPlayerB = provisionalPlayerSpec(name, { team: bTeam || undefined })
     }
 
-    // ── partner_a（任意）──
-    let finalPartnerAId: number | undefined = form.partner_a_id ? Number(form.partner_a_id) : undefined
-    if (!finalPartnerAId && partnerAQuery.trim()) {
-      try {
-        finalPartnerAId = await createProvisionalPlayer(partnerAQuery.trim(), { team: aTeam || undefined })
-      } catch (err: unknown) {
-        alert(`自チーム相方登録エラー: ${errorMessage(err, '不明なエラー')}`); return
-      }
-    }
-
-    // ── partner_b（任意）──
-    let finalPartnerBId: number | undefined = form.partner_b_id ? Number(form.partner_b_id) : undefined
-    if (!finalPartnerBId && partnerBQuery.trim()) {
-      try {
-        finalPartnerBId = await createProvisionalPlayer(partnerBQuery.trim(), { team: bTeam || undefined })
-      } catch (err: unknown) {
-        alert(`相手チーム相方登録エラー: ${errorMessage(err, '不明なエラー')}`); return
-      }
-    }
+    // ── partner_a / partner_b（任意）──
+    const finalPartnerAId: number | undefined = form.partner_a_id ? Number(form.partner_a_id) : undefined
+    const newPartnerA = !finalPartnerAId && partnerAQuery.trim()
+      ? provisionalPlayerSpec(partnerAQuery.trim(), { team: aTeam || undefined })
+      : undefined
+    const finalPartnerBId: number | undefined = form.partner_b_id ? Number(form.partner_b_id) : undefined
+    const newPartnerB = !finalPartnerBId && partnerBQuery.trim()
+      ? provisionalPlayerSpec(partnerBQuery.trim(), { team: bTeam || undefined })
+      : undefined
 
     // undefinedキーはJSON.stringifyで除去される。空文字も数値フィールドには送らない
     const body: Record<string, unknown> = {
@@ -395,11 +375,15 @@ export function MatchListPage() {
       format: form.format,
       // player の編集では result を持たない (undefined は JSON から落ち、DB の値を保持する)
       result: form.result,
-      player_a_id: Number(finalPlayerAId),
-      player_b_id: Number(finalPlayerBId),
     }
+    if (finalPlayerAId) body.player_a_id = Number(finalPlayerAId)
+    if (finalPlayerBId) body.player_b_id = Number(finalPlayerBId)
+    if (newPlayerA) body.player_a_new = newPlayerA
+    if (newPlayerB) body.player_b_new = newPlayerB
     if (finalPartnerAId) body.partner_a_id = finalPartnerAId
     if (finalPartnerBId) body.partner_b_id = finalPartnerBId
+    if (newPartnerA) body.partner_a_new = newPartnerA
+    if (newPartnerB) body.partner_b_new = newPartnerB
     if (form.initial_server) body.initial_server = form.initial_server
     if (form.final_score) body.final_score = form.final_score
     if (form.video_url) body.video_url = form.video_url

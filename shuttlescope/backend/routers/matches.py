@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from backend.analysis.player_context import involves_player
 from backend.db.database import get_db
 from backend.db.models import Match, Player, GameSet, Rally, MatchCVArtifact
+from backend.routers.players import PlayerCreate
 from backend.utils.video_downloader import video_downloader
 from backend.utils import response_cache
 from backend.utils.sync_meta import touch
@@ -38,10 +39,17 @@ class MatchCreate(BaseModel):
     date: _date
     venue: Optional[str] = None
     format: str
-    player_a_id: int
-    player_b_id: int
+    # 既存選手は *_id で指定する。未登録の選手は *_new で渡すと、試合と同じ
+    # トランザクションで作る（試合の登録が失敗したら選手も残らない）。
+    # 同じ枠に *_id と *_new を同時に渡すことはできない。
+    player_a_id: Optional[int] = None
+    player_b_id: Optional[int] = None
     partner_a_id: Optional[int] = None
     partner_b_id: Optional[int] = None
+    player_a_new: Optional[PlayerCreate] = None
+    player_b_new: Optional[PlayerCreate] = None
+    partner_a_new: Optional[PlayerCreate] = None
+    partner_b_new: Optional[PlayerCreate] = None
     result: str
     final_score: Optional[str] = None
     video_url: Optional[str] = None
@@ -77,6 +85,11 @@ class MatchUpdate(BaseModel):
     player_b_id: Optional[int] = None
     partner_a_id: Optional[int] = None
     partner_b_id: Optional[int] = None
+    # 未登録の選手を差し替え先にするとき（MatchCreate と同じ。*_id との併用は不可）
+    player_a_new: Optional[PlayerCreate] = None
+    player_b_new: Optional[PlayerCreate] = None
+    partner_a_new: Optional[PlayerCreate] = None
+    partner_b_new: Optional[PlayerCreate] = None
     result: Optional[str] = None
     final_score: Optional[str] = None
     video_url: Optional[str] = None
@@ -102,6 +115,43 @@ _MATCH_RESULT_ALLOWED = {"win", "loss", "draw", "unknown"}
 _MATCH_FORMAT_ALLOWED = {"singles", "doubles", "mixed"}
 _MATCH_TOURNAMENT_LEVELS = {"IC", "IS", "SJL", "全日本", "国内", "その他"}
 _MATCH_ANNOTATION_STATUS = {"not_started", "in_progress", "complete", "reviewed"}
+
+
+# 試合の選手枠 → 未登録選手の指定フィールド
+_NEW_PLAYER_FIELDS = {
+    "player_a_id": "player_a_new",
+    "player_b_id": "player_b_new",
+    "partner_a_id": "partner_a_new",
+    "partner_b_id": "partner_b_new",
+}
+
+
+def _create_new_players_for_match(
+    body: "MatchCreate | MatchUpdate", request: Request, ctx, db: Session, *, require_both: bool = True
+) -> None:
+    """*_new で渡された未登録の選手を作り、対応する *_id に入れる（commit しない）。
+
+    選手の検証と作成は POST /players と同じ add_player_row を通す。
+    """
+    from backend.routers.players import add_player_row
+
+    wants_new = any(getattr(body, nf) is not None for nf in _NEW_PLAYER_FIELDS.values())
+    if wants_new and not (ctx.is_analyst or ctx.is_admin):
+        raise HTTPException(status_code=403, detail="選手を登録する権限がありません")
+    for id_field, new_field in _NEW_PLAYER_FIELDS.items():
+        spec = getattr(body, new_field)
+        if spec is None:
+            continue
+        if getattr(body, id_field) is not None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{id_field} and {new_field} are mutually exclusive",
+            )
+        player, _payload = add_player_row(spec, request, db)
+        setattr(body, id_field, player.id)
+    for required in ("player_a_id", "player_b_id") if require_both else ():
+        if getattr(body, required) is None:
+            raise HTTPException(status_code=422, detail=f"{required} is required")
 
 
 def _validate_match_player_refs(body: "MatchUpdate | MatchCreate", db: Session, *, match: Optional[Match] = None) -> None:
@@ -665,12 +715,19 @@ def create_match(body: MatchCreate, request: Request, db: Session = Depends(get_
     if ctx.is_player:
         raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
     _validate_match_enums(body)
-    _validate_match_player_refs(body, db)
-    # analyst/coach は自チーム選手が含まれる試合のみ作成可能 (cross-team データ汚染防止)
-    _require_own_or_scouted_player(ctx, request, db, [
-        body.player_a_id, body.player_b_id,
-        getattr(body, "partner_a_id", None), getattr(body, "partner_b_id", None),
-    ])
+    # 未登録の選手は、試合と同じトランザクションで作る。後続の検証や試合の保存が
+    # 失敗したら全部巻き戻し、試合に紐付かない選手を残さない。
+    try:
+        _create_new_players_for_match(body, request, ctx, db)
+        _validate_match_player_refs(body, db)
+        # analyst/coach は自チーム選手が含まれる試合のみ作成可能 (cross-team データ汚染防止)
+        _require_own_or_scouted_player(ctx, request, db, [
+            body.player_a_id, body.player_b_id,
+            getattr(body, "partner_a_id", None), getattr(body, "partner_b_id", None),
+        ])
+    except Exception:
+        db.rollback()
+        raise
     # Phase B-5: owner_team_id / is_public_pool を解決
     owner_id, is_public = resolve_owner_team_for_match_create(
         ctx,
@@ -678,7 +735,7 @@ def create_match(body: MatchCreate, request: Request, db: Session = Depends(get_
         requested_is_public_pool=body.is_public_pool,
         db=db,
     )
-    payload = body.model_dump()
+    payload = body.model_dump(exclude=set(_NEW_PLAYER_FIELDS.values()))
     payload["owner_team_id"] = owner_id
     payload["is_public_pool"] = is_public
     match = Match(**payload)
@@ -688,12 +745,19 @@ def create_match(body: MatchCreate, request: Request, db: Session = Depends(get_
         match.video_token = _new_video_token()
     touch(match)
     db.add(match)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     # 関与選手4枠のキャッシュのみ無効化（他選手の解析キャッシュは生かす）
     response_cache.bump_players([
         body.player_a_id, body.player_b_id,
         getattr(body, "partner_a_id", None), getattr(body, "partner_b_id", None),
     ])
+    if any(getattr(body, nf) is not None for nf in _NEW_PLAYER_FIELDS.values()):
+        # 新規選手の登録はチーム可視範囲に影響し得るため POST /players と同じく全体を無効化
+        response_cache.bump_version()
     return {"success": True, "data": match_to_dict(match, include_players=True, db=db)}
 
 
@@ -753,9 +817,15 @@ def update_match(match_id: int, body: MatchUpdate, request: Request, db: Session
     # analyst/coach は自チーム scope のみ更新可 (cross-team 改竄防止)
     from backend.utils.auth import require_match_scope as _rms
     _rms(request, match, db)
-    _validate_match_player_refs(body, db, match=match)
+    # 未登録の選手は試合の更新と同じトランザクションで作る（失敗したら残さない）
+    try:
+        _create_new_players_for_match(body, request, ctx, db, require_both=False)
+        _validate_match_player_refs(body, db, match=match)
+    except Exception:
+        db.rollback()
+        raise
     # Phase B-5: owner / public / home / away の変更は admin のみ
-    payload = body.model_dump(exclude_unset=True)
+    payload = body.model_dump(exclude_unset=True, exclude=set(_NEW_PLAYER_FIELDS.values()))
     privileged_keys = {"owner_team_id", "is_public_pool", "home_team_id", "away_team_id"}
     if any(k in payload for k in privileged_keys) and not ctx.is_admin:
         for k in list(privileged_keys):
@@ -830,6 +900,8 @@ def update_match(match_id: int, body: MatchUpdate, request: Request, db: Session
     db.commit()
     post_players = [match.player_a_id, match.player_b_id, match.partner_a_id, match.partner_b_id]
     response_cache.bump_players(pre_players + post_players)
+    if any(getattr(body, nf) is not None for nf in _NEW_PLAYER_FIELDS.values()):
+        response_cache.bump_version()
     return {"success": True, "data": match_to_dict(match, include_players=True, db=db)}
 
 

@@ -1265,7 +1265,9 @@
     "competition_practice_match": "練習試合",
     "competition_open_practice": "公開練習",
     "competition_unknown": "不明",
-    "team_suffix": "（{{team}}）"
+    "team_suffix": "（{{team}}）",
+    "team_filter": "チームで絞り込み",
+    "team_filter_all": "すべてのチーム"
   },
   "review_queue": {
     "title": "要確認ラリー",
@@ -3054,8 +3056,9 @@
       "team_name": "チーム名",
       "team_name_placeholder": "Sample Team",
       "player_link": "選手紐付け",
-      "player_unselected": "未選択",
+      "player_unselected": "選手を新しく作る（既存の選手に紐付けるなら選択）",
       "page_access": "ページアクセス",
+      "page_access_load_failed": "ページ権限を読み込めませんでした。保存すると権限が消えるおそれがあるため、閉じてもう一度開いてください。",
       "page_access_prediction": "予測・分析",
       "page_access_expert_labeler": "専門家ラベル",
       "individual": "個人",
@@ -5135,6 +5138,11 @@
     "cookieBrowserHint": "NHK+・ニコ生など要ログイン配信は、ログイン済みブラウザを選択してください"
   },
   "pendingUsers": {
+    "inquiry_found": "同じメールの問い合わせがあります。",
+    "inquiry_role": "希望の立場: {{role}}。",
+    "inquiry_open": "問い合わせを見る",
+    "inquiry_use_role": "ロールを「{{role}}」にする",
+    "inquiry_has_registration": "このメールで登録申請があります（承認待ちを見る）",
     "title": "保留中ユーザ（管理者承認待ち）",
     "description": "公開登録されたユーザは、管理者がロールと所属チームを割り当てるまでサービスを利用できません。",
     "empty": "現在、承認待ちのユーザはいません。",

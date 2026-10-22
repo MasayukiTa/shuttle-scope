@@ -120,6 +120,8 @@ class PublicInquiryOut(BaseModel):
     created_at: str
     # R42: ban_appeal 等のカテゴリ。admin UI で目立つタグ表示に使う。
     category: str = "general"
+    # 同じメールで登録申請（承認待ち）が出ているとき、そのユーザID。無ければ None。
+    pending_user_id: Optional[int] = None
 
 
 class BanAppealCreate(BaseModel):
@@ -1103,6 +1105,11 @@ async def ban_appeal_page(request: Request):
 async def list_public_inquiries(request: Request, db: Session = Depends(get_db)):
     _require_admin(request)
     items = db.query(PublicInquiry).order_by(PublicInquiry.created_at.desc()).all()
+    from backend.services.inquiry_link import normalize_email, pending_users_by_email
+
+    pending = pending_users_by_email(
+        db, [e for e in (normalize_email(i.contact_reference) for i in items) if e]
+    )
     return {
         "success": True,
         "data": [
@@ -1116,6 +1123,10 @@ async def list_public_inquiries(request: Request, db: Session = Depends(get_db))
                 status=item.status,
                 admin_note=item.admin_note,
                 category=getattr(item, "category", "general") or "general",
+                pending_user_id=(
+                    pending[normalize_email(item.contact_reference)].id
+                    if normalize_email(item.contact_reference) in pending else None
+                ),
                 created_at=(
                     item.created_at.replace(tzinfo=timezone.utc)
                     .astimezone(timezone(timedelta(hours=9)))

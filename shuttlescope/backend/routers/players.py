@@ -474,6 +474,22 @@ def create_player(
     _ctx=Depends(require_analyst),
 ):
     """選手登録"""
+    player, payload = add_player_row(body, request, db)
+    new_player_id = player.id
+    db.commit()
+    # 新規選手の登録はチーム可視範囲に影響し得るためグローバル無効化も実施
+    response_cache.bump_players([new_player_id])
+    response_cache.bump_version()
+    return {"success": True, "data": payload}
+
+
+def add_player_row(body: PlayerCreate, request: Request, db: Session):
+    """選手の検証と追加を行い、flush までで止める（commit しない）。
+
+    POST /players と POST /matches（暫定選手を試合と同じトランザクションで作る）が
+    同じ規則を共有するための入口。呼び出し側が commit か rollback を決める。
+    戻り値は (Player, 応答用 dict)。
+    """
     from backend.utils.auth import can_see_scouting_players, get_auth as _ga
     _actor = _ga(request)
 
@@ -609,11 +625,7 @@ def create_player(
     # `InvalidRequestError: Could not refresh instance` で 500 になる
     # (CI で実際に観測)。flush 済みの属性は既に揃っているので refresh は要らない。
     payload = player_to_dict(player)
-    db.commit()
-    # 新規選手の登録はチーム可視範囲に影響し得るためグローバル無効化も実施
-    response_cache.bump_players([new_player_id])
-    response_cache.bump_version()
-    return {"success": True, "data": payload}
+    return player, payload
 
 
 def _log_scope_denial(request: Request, ctx, player, *, status: int, reason: str) -> None:
