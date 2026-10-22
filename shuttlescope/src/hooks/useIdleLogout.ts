@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react'
 
-const IDLE_EVENTS = ['mousedown', 'keydown', 'touchstart', 'pointerdown', 'wheel', 'visibilitychange'] as const
+// visibilitychange is deliberately not an activity event: switching tabs back and forth
+// would otherwise reset the idle clock without any user input.
+const IDLE_EVENTS = ['mousedown', 'keydown', 'touchstart', 'pointerdown', 'wheel'] as const
 
 export interface UseIdleLogoutOptions {
   enabled: boolean

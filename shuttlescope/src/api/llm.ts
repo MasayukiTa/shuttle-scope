@@ -41,6 +41,26 @@ export type StreamEvent = {
   thinking?: boolean
 }
 
+// Stable codes the backend sends in the SSE error event (see _classify_stream_error in
+// backend/routers/llm_chat.py) and the i18n key that explains each one. Raw upstream text
+// never reaches the client, so an unknown message falls back to the generic key.
+const LLM_STREAM_ERROR_KEYS = {
+  budget_exceeded: 'llm.error.budget_exceeded',
+  provider_timeout: 'llm.error.provider_timeout',
+  provider_unavailable: 'llm.error.provider_unavailable',
+  provider_rate_limited: 'llm.error.provider_rate_limited',
+  provider_auth: 'llm.error.provider_auth',
+  provider_rejected: 'llm.error.provider_rejected',
+  generation_failed: 'llm.error.generate',
+} as const
+
+export type LlmStreamErrorKey = (typeof LLM_STREAM_ERROR_KEYS)[keyof typeof LLM_STREAM_ERROR_KEYS]
+
+export function llmStreamErrorKey(message: string | undefined): LlmStreamErrorKey | null {
+  if (!message || !Object.prototype.hasOwnProperty.call(LLM_STREAM_ERROR_KEYS, message)) return null
+  return LLM_STREAM_ERROR_KEYS[message as keyof typeof LLM_STREAM_ERROR_KEYS]
+}
+
 // backend が構造化 detail ({"error": "budget_exceeded"} 等) を返したときの安定コードを取り出す。
 // detail が文字列ならそのまま、object なら error / code、どれも無ければ null (呼び出し側で汎用文言)。
 export function extractLlmErrorDetail(detail: unknown): string | null {

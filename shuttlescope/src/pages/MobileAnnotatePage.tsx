@@ -258,7 +258,8 @@ export function MobileAnnotatePage() {
   const [queueStatus, setQueueStatus] = useState<{
     pending: number
     manualRetry: number
-  }>({ pending: 0, manualRetry: 0 })
+    unknownOwner: number
+  }>({ pending: 0, manualRetry: 0, unknownOwner: 0 })
 
   // match 情報を取得 (動画 URL を得るため)
   const matchQuery = useQuery({
@@ -636,7 +637,7 @@ export function MobileAnnotatePage() {
     let cancelled = false
     const tick = async () => {
       const s = await getStatus()
-      if (!cancelled) setQueueStatus({ pending: s.pending, manualRetry: s.manualRetry })
+      if (!cancelled) setQueueStatus({ pending: s.pending, manualRetry: s.manualRetry, unknownOwner: s.unknownOwner })
     }
     void tick()
     const id = window.setInterval(tick, 2000)
@@ -968,6 +969,23 @@ export function MobileAnnotatePage() {
             >
               <MIcon name="warning" size={12} />
               {queueStatus.manualRetry}
+            </button>
+          )}
+          {queueStatus.unknownOwner > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                // Ownerless unsent input is sent only after the user confirms it is their own.
+                if (window.confirm(t('auto.MobileAnnotatePage.queue_unknown_owner_confirm', { n: queueStatus.unknownOwner }))) {
+                  void retryAllManual({ claimLegacy: true })
+                }
+              }}
+              className="flex items-center gap-1 text-[10px] px-1.5 py-1 rounded shadow ss-overlay-chip-danger"
+              title={t('auto.MobileAnnotatePage.queue_unknown_owner', { n: queueStatus.unknownOwner })}
+              aria-label={t('auto.MobileAnnotatePage.queue_unknown_owner', { n: queueStatus.unknownOwner })}
+            >
+              <MIcon name="help" size={12} />
+              {queueStatus.unknownOwner}
             </button>
           )}
           {conflictRallies.length > 0 && (

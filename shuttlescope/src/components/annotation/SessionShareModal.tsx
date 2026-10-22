@@ -52,13 +52,8 @@ export function SessionShareModal({
     ?? cameraSenderUrls.find(isLocalhost) ?? ''
   const viewerUrl = viewerUrls.filter(u => !isLocalhost(u))[0]
     ?? viewerUrls.find(isLocalhost) ?? ''
-  // パスワードを URL に埋め込む — LAN QR スキャン時にフォーム入力不要にする
-  const cameraUrlWithPwd = cameraUrl && sessionPassword
-    ? `${cameraUrl}?pwd=${encodeURIComponent(sessionPassword)}`
-    : cameraUrl
-  const viewerUrlWithPwd = viewerUrl && sessionPassword
-    ? `${viewerUrl}?pwd=${encodeURIComponent(sessionPassword)}`
-    : viewerUrl
+  // セッションパスワードは URL / QR に埋め込まない。URL は履歴・共有・画面撮影に残るため、
+  // 参加側が参加画面でパスワードを入力する。
 
   // コーチ URL の QR
   useEffect(() => {
@@ -71,27 +66,27 @@ export function SessionShareModal({
       .catch(() => setQrFailed((p) => ({ ...p, coach: true })))
   }, [coachUrl])
 
-  // カメラ送信 URL の QR（パスワード付き）
+  // カメラ送信 URL の QR（パスワードは含めない）
   useEffect(() => {
-    if (!cameraCanvasRef.current || !cameraUrlWithPwd) return
-    QRCode.toCanvas(cameraCanvasRef.current, cameraUrlWithPwd, {
+    if (!cameraCanvasRef.current || !cameraUrl) return
+    QRCode.toCanvas(cameraCanvasRef.current, cameraUrl, {
       width: 180,
       margin: 2,
       color: { dark: '#0f172a', light: '#f8fafc' },
     }).then(() => setQrFailed((p) => ({ ...p, camera: false })))
       .catch(() => setQrFailed((p) => ({ ...p, camera: true })))
-  }, [cameraUrlWithPwd])
+  }, [cameraUrl])
 
-  // ビューワー URL の QR（パスワード付き）
+  // ビューワー URL の QR（パスワードは含めない）
   useEffect(() => {
-    if (!viewerCanvasRef.current || !viewerUrlWithPwd) return
-    QRCode.toCanvas(viewerCanvasRef.current, viewerUrlWithPwd, {
+    if (!viewerCanvasRef.current || !viewerUrl) return
+    QRCode.toCanvas(viewerCanvasRef.current, viewerUrl, {
       width: 180,
       margin: 2,
       color: { dark: '#0f172a', light: '#f8fafc' },
     }).then(() => setQrFailed((p) => ({ ...p, viewer: false })))
       .catch(() => setQrFailed((p) => ({ ...p, viewer: true })))
-  }, [viewerUrlWithPwd])
+  }, [viewerUrl])
 
   const handleCopy = (text: string, setter: (v: boolean) => void) => {
     const confirm = () => { setCopyFailed(false); setter(true); setTimeout(() => setter(false), 2000) }
@@ -298,10 +293,10 @@ export function SessionShareModal({
             )}
             <div className="flex items-center gap-1.5">
               <p className={`flex-1 text-[10px] font-mono truncate rounded-ss-sm px-2 py-1 ${urlBg} ${urlColor}`}>
-                {cameraUrlWithPwd || cameraUrl}
+                {cameraUrl}
               </p>
               <button
-                onClick={() => handleCopy(cameraUrlWithPwd || cameraUrl, setCameraUrlCopied)}
+                onClick={() => handleCopy(cameraUrl, setCameraUrlCopied)}
                 className="flex items-center gap-1 px-2 py-1 rounded-ss-md text-xs bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white whitespace-nowrap transition-colors duration-fast ease-out"
               >
                 {cameraUrlCopied ? <MIcon name="check" size={12} /> : <MIcon name="content_copy" size={12} />}
@@ -329,10 +324,10 @@ export function SessionShareModal({
             )}
             <div className="flex items-center gap-1.5">
               <p className={`flex-1 text-[10px] font-mono truncate rounded-ss-sm px-2 py-1 ${urlBg} ${urlColor}`}>
-                {viewerUrlWithPwd || viewerUrl}
+                {viewerUrl}
               </p>
               <button
-                onClick={() => handleCopy(viewerUrlWithPwd || viewerUrl, setViewerUrlCopied)}
+                onClick={() => handleCopy(viewerUrl, setViewerUrlCopied)}
                 className="flex items-center gap-1 px-2 py-1 rounded-ss-md text-xs bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white whitespace-nowrap transition-colors duration-fast ease-out"
               >
                 {viewerUrlCopied ? <MIcon name="check" size={12} /> : <MIcon name="content_copy" size={12} />}
