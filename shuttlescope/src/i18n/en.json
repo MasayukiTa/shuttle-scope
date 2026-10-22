@@ -389,14 +389,9 @@
     "history_detail": {
       "title": "Response details",
       "close": "Close",
-      "save": "Save",
-      "saving": "Saving...",
-      "saved": "Saved",
-      "save_failed": "Save failed",
       "delete_failed": "Delete failed",
       "questionnaire_section": "Questionnaire responses",
       "no_responses": "No questionnaire responses",
-      "edit_hint": "Analysts can edit each response to re-score",
       "metrics_section": "Metrics",
       "body_section": "Body metrics"
     },
