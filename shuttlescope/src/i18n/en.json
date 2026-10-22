@@ -3191,10 +3191,11 @@
     },
     "CounterfactualShots": {
       "recommended": "Recommended",
-      "lift": "lift +{{n}}%",
+      "lift": "Observed gap +{{n}}pt",
+      "observed_only": "Observed only",
       "k1": "Loading...",
-      "k2": "Compares which return is most effective in each situation",
-      "k3": "Counterfactual shot comparison"
+      "k2": "Lists past win rates for each return in each situation. Opponent and game context are not adjusted for",
+      "k3": "Past results by return"
     },
     "CounterfactualV2Card": {
       "k1": "Counterfactual shot comparison",
@@ -3277,7 +3278,7 @@
       "k7": "After long rally",
       "k8": "Late set (18+)",
       "confidence_n": "Confidence: {{pct}} (N={{n}})",
-      "after_long": "After long rally (8+ strokes): {{loss}} losses of {{total}}",
+      "after_long": "After long rally (10+ strokes): {{loss}} losses of {{total}}",
       "vs_baseline": "(vs baseline {{v}})",
       "endgame": "Endgame: {{loss}} losses of {{total}}"
     },
@@ -4213,6 +4214,7 @@
       "k5": "Complete JSON dump of all analysis items + per-match data",
       "k6": "Legacy summary scouting PDF",
       "k_n_rallies": "N={{n}} rallies",
+      "k_rally_win_rate": "Rally win rate",
       "k7": "PDF (comprehensive)",
       "k8": "JSON (complete)",
       "k9": "Summary PDF",

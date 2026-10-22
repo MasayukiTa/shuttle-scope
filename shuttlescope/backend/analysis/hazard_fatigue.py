@@ -23,9 +23,11 @@ from collections import defaultdict
 from typing import Optional
 import math
 
+from backend.analysis.analysis_config import AnalysisConfig
+
 
 # ハザード判定閾値
-LONG_RALLY_THRESHOLD = 8   # ロングラリーの定義（打数）
+LONG_RALLY_THRESHOLD = AnalysisConfig.LONG_RALLY_THRESHOLD  # ロングラリーの定義（打数）。全カード共通
 WINDOW_SIZE = 5             # 直近ウィンドウサイズ（ラリー数）
 ENDGAME_SCORE = 18          # 終盤スコア閾値
 MIN_SAMPLE_HAZARD = 30      # 信頼推定最低サンプル数

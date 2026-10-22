@@ -486,6 +486,18 @@ class TestHazardFatigue:
         }
         assert out["hazard_after_long"] == 1.0
 
+    def test_long_rally_threshold_is_the_shared_config_value(self):
+        # 基準未満のラリーは長ラリーに数えない (基準は全カード共通の AnalysisConfig)
+        from backend.analysis.analysis_config import AnalysisConfig
+        from backend.analysis import hazard_fatigue
+        assert hazard_fatigue.LONG_RALLY_THRESHOLD == AnalysisConfig.LONG_RALLY_THRESHOLD
+        rallies = [
+            _hz_rally(1, 1, "player_a", AnalysisConfig.LONG_RALLY_THRESHOLD - 1),
+            _hz_rally(1, 2, "player_b", 3),
+        ]
+        out = compute_hazard_model(rallies, {1: "player_a"}, {1: 1}, {1: 1})
+        assert out["after_long_rally"]["n_long_rallies"] == 0
+
 
 # ── prediction_engine ────────────────────────────────────────────────────────
 

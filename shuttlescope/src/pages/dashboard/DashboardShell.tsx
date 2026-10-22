@@ -408,7 +408,7 @@ export function DashboardShell() {
                 {role !== 'player' && (
                   <StatCard
                     icon={<MIcon name="trending_up" size={18} />}
-                    label="勝率"
+                    label={t('auto.DashboardShell.k_rally_win_rate')}
                     value={descriptive?.win_rate !== undefined ? pct(descriptive.win_rate) : undefined}
                     sampleSize={descriptive?.total_rallies}
                   />
