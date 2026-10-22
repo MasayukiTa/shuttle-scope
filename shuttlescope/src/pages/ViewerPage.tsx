@@ -14,7 +14,7 @@
  * 再接続: WS 切断後 5 秒で自動再接続（最大 5 回）
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useParams, useLocation } from 'react-router-dom'
+import { useParams, useLocation, useNavigate } from 'react-router-dom'
 import { apiPost, getParticipantIceConfig } from '@/api/client'
 import { useDeviceHeartbeat } from '@/hooks/useDeviceHeartbeat'
 import { useTranslation } from 'react-i18next'
@@ -33,7 +33,8 @@ const VIEWER_NAME_KEY = 'ss_viewer_name'
 export function ViewerPage() {
   const { t } = useTranslation()
   const { sessionCode: paramCode } = useParams<{ sessionCode: string }>()
-  const { search } = useLocation()
+  const { search, pathname } = useLocation()
+  const navigate = useNavigate()
   const pwdParam = new URLSearchParams(search).get('pwd') ?? ''
 
   const [viewerState, setViewerState] = useState<ViewerState>(paramCode ? 'connecting' : 'join')
@@ -246,6 +247,8 @@ export function ViewerPage() {
   useEffect(() => {
     if (paramCode && viewerState === 'connecting') {
       if (pwdParam) {
+        // 参加に使ったら URL からパスワードを消す（履歴・アドレスバー・共有に残さない）
+        navigate({ pathname, search: '' }, { replace: true })
         joinSession(paramCode, pwdParam, localStorage.getItem(VIEWER_NAME_KEY) || 'ビューワー')
       } else {
         setErrorMsg('QRコードを再生成するか、下のフォームにパスワードを入力してください。')

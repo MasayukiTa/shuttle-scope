@@ -213,6 +213,7 @@
       "title": "Password Reset",
       "description": "Enter your registered email address. We will send you a reset link.",
       "submit": "Send reset email",
+      "disabled_message": "Password reset is currently unavailable. Please contact your administrator.",
       "sent_message": "Request received. If the address is registered, an email will arrive (valid for 15 minutes)."
     },
     "password_reset_confirm": {
@@ -4472,7 +4473,7 @@
       "unset": "unset",
       "role_label": "Role: ",
       "not_logged_in": "Not signed in",
-      "username_label": "Username: ",
+      "username_label": "Login ID: ",
       "team_label": "Team: ",
       "auth_state_note": "Auth state is stored per session. Closing the app or browser brings you back to the login screen next time.",
       "restart_desc": "Restart the app after a setting change or issue. Unsaved annotation data will be lost.",

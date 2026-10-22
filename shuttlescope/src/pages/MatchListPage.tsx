@@ -49,7 +49,8 @@ const defaultForm = (): MatchFormData => ({
   partner_a_id: '',
   partner_b_id: '',
   initial_server: '',
-  result: 'win',
+  // 結果が決まるまでは未完了。勝ちを既定にすると、登録しただけの試合が勝敗確定として集計される
+  result: 'unfinished',
   final_score: '',
   video_url: '',
   video_local_path: '',
@@ -983,8 +984,9 @@ export function MatchListPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* 大会名 */}
                 <div className="col-span-1 sm:col-span-2">
-                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.tournament')} *</label>
+                  <label htmlFor="match-form-tournament" className={`block text-sm ${textSecondary} mb-1`}>{t('match.tournament')} *</label>
                   <input
+                    id="match-form-tournament"
                     value={form.tournament}
                     onChange={(e) => setForm({ ...form, tournament: e.target.value })}
                     required
@@ -995,8 +997,9 @@ export function MatchListPage() {
 
                 {/* レベル / ラウンド */}
                 <div>
-                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.tournament_level')}</label>
+                  <label htmlFor="match-form-level" className={`block text-sm ${textSecondary} mb-1`}>{t('match.tournament_level')}</label>
                   <select
+                    id="match-form-level"
                     value={form.tournament_level}
                     onChange={(e) => setForm({ ...form, tournament_level: e.target.value as TournamentLevel })}
                     className={`w-full ${inputClass}`}
@@ -1007,8 +1010,9 @@ export function MatchListPage() {
                   </select>
                 </div>
                 <div>
-                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.round')}</label>
+                  <label htmlFor="match-form-round" className={`block text-sm ${textSecondary} mb-1`}>{t('match.round')}</label>
                   <select
+                    id="match-form-round"
                     value={form.round}
                     onChange={(e) => setForm({ ...form, round: e.target.value })}
                     className={`w-full ${inputClass}`}
@@ -1021,8 +1025,9 @@ export function MatchListPage() {
 
                 {/* 日付 / 形式 */}
                 <div>
-                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.date')} *</label>
+                  <label htmlFor="match-form-date" className={`block text-sm ${textSecondary} mb-1`}>{t('match.date')} *</label>
                   <input
+                    id="match-form-date"
                     type="date"
                     value={form.date}
                     onChange={(e) => setForm({ ...form, date: e.target.value })}
@@ -1031,8 +1036,9 @@ export function MatchListPage() {
                   />
                 </div>
                 <div>
-                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.format')}</label>
+                  <label htmlFor="match-form-format" className={`block text-sm ${textSecondary} mb-1`}>{t('match.format')}</label>
                   <select
+                    id="match-form-format"
                     value={form.format}
                     onChange={(e) => setForm({ ...form, format: e.target.value as MatchFormat })}
                     className={`w-full ${inputClass}`}
@@ -1155,8 +1161,9 @@ export function MatchListPage() {
                 {!(role === 'player' && editingMatchId !== null) && (
                 <>
                 <div>
-                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.result')}</label>
+                  <label htmlFor="match-form-result" className={`block text-sm ${textSecondary} mb-1`}>{t('match.result')}</label>
                   <select
+                    id="match-form-result"
                     value={form.result}
                     onChange={(e) => setForm({ ...form, result: e.target.value as MatchResult })}
                     className={`w-full ${inputClass}`}
@@ -1168,8 +1175,9 @@ export function MatchListPage() {
                   </select>
                 </div>
                 <div>
-                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.score')}</label>
+                  <label htmlFor="match-form-score" className={`block text-sm ${textSecondary} mb-1`}>{t('match.score')}</label>
                   <input
+                    id="match-form-score"
                     value={form.final_score}
                     onChange={(e) => setForm({ ...form, final_score: e.target.value })}
                     className={`w-full ${inputClass}`}
@@ -1375,8 +1383,9 @@ export function MatchListPage() {
 
                 {/* メモ */}
                 <div className="col-span-1 sm:col-span-2">
-                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.notes')}</label>
+                  <label htmlFor="match-form-notes" className={`block text-sm ${textSecondary} mb-1`}>{t('match.notes')}</label>
                   <textarea
+                    id="match-form-notes"
                     value={form.notes}
                     onChange={(e) => setForm({ ...form, notes: e.target.value })}
                     rows={2}
