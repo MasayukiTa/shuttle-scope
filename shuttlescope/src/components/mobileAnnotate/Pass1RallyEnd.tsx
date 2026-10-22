@@ -138,6 +138,12 @@ export function Pass1RallyEnd({
   const setPoint = isSetPoint({ scoreA, scoreB })
   const deuceFlag = isDeuce({ scoreA, scoreB })
   const goldenFlag = isGoldenPoint({ scoreA, scoreB })
+  // CV が出す値は「直前に打った人」の認識結果とその確信度であり、ラリーの勝者や
+  // 勝者である確率ではない (ミスで終わるラリーでは最後に打った側が敗者になる)。
+  // 意味を限定した文言にして、A/B 得点ボタン上の数値が勝者の確率に見えないようにする。
+  const cvHitterLabel = cvHint?.confidence
+    ? t('auto.Pass1RallyEnd.cv_last_hitter_pct', { pct: Math.round(cvHint.confidence * 100) })
+    : t('auto.Pass1RallyEnd.cv_last_hitter')
 
   const submit = async (winner: 'player_a' | 'player_b') => {
     if (busyRef.current) return
@@ -270,7 +276,7 @@ export function Pass1RallyEnd({
               className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-mono"
               style={{ backgroundColor: 'rgba(245,158,11,0.95)', color: '#ffffff' }}
             >
-              CV {cvHint.confidence ? `${Math.round(cvHint.confidence * 100)}%` : ''}
+              {cvHitterLabel}
             </span>
           )}
           <div className="text-5xl font-bold text-white">A</div>
@@ -291,7 +297,7 @@ export function Pass1RallyEnd({
               className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-mono"
               style={{ backgroundColor: 'rgba(245,158,11,0.95)', color: '#ffffff' }}
             >
-              CV {cvHint.confidence ? `${Math.round(cvHint.confidence * 100)}%` : ''}
+              {cvHitterLabel}
             </span>
           )}
           <div className="text-5xl font-bold text-white">B</div>

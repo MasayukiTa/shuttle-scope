@@ -34,6 +34,7 @@ import { AnnotateOverlay, ZoneCode } from './AnnotateOverlay'
 import { enqueue } from '@/utils/mobileAnnotateQueue'
 import { finalHitterFor, type FinalShotOutcome } from '@/utils/mobileAnnotateRallies'
 import { serveOnlyRallyPayload } from '@/utils/mobileAnnotatePass2'
+import { resolveHitter, slotsOfTeam, type HitterSlot } from '@/utils/mobileAnnotateDoubles'
 
 type Step = 'serve_hit' | 'serve_land' | 'final_hit' | 'final_land'
 const STEP_ORDER: Step[] = ['serve_hit', 'serve_land', 'final_hit', 'final_land']
@@ -48,12 +49,17 @@ interface RallyTarget {
 
 interface Props {
   rally: RallyTarget
+  /** ダブルス: サーバ・最終打者を個人 slot (partner を含む) で選ばせて保存する */
+  doubles?: boolean
   onCompleted: () => void
   onCancel: () => void
 }
 
-export function Pass2ServeFinal({ rally, onCompleted, onCancel }: Props) {
+export function Pass2ServeFinal({ rally, doubles = false, onCompleted, onCancel }: Props) {
   const { t } = useTranslation()
+  const [serveSlot, setServeSlot] = useState<HitterSlot | null>(null)
+  const [finalSlot, setFinalSlot] = useState<HitterSlot | null>(null)
+  const [needSlot, setNeedSlot] = useState(false)
   const [stepIdx, setStepIdx] = useState(0)
   const [zones, setZones] = useState<Partial<Record<Step, ZoneCode>>>({})
   const [submitting, setSubmitting] = useState(false)
@@ -68,12 +74,27 @@ export function Pass2ServeFinal({ rally, onCompleted, onCancel }: Props) {
     final_land: t('auto.Pass2ServeFinal.prompt_final_land'),
   }), [t])
 
+  // 保存する打球者 (ダブルスは選択必須)。最終打者のチームは「決めた/相手のミス」で決まる。
+  const finalTeam = outcome ? finalHitterFor(rally, outcome) : null
+  const serveHitter = resolveHitter(doubles, rally.server, serveSlot)
+  const finalHitter = finalTeam ? resolveHitter(doubles, finalTeam, finalSlot) : null
+
   const handleCommit = async (zone: ZoneCode) => {
     // 最終打の入力に進む前に、ラリーの終わり方を選んでもらう (勝者から推定しない)
     if (stepIdx >= 2 && !outcome) {
       setNeedOutcome(true)
       return
     }
+    // ダブルスは実際の打球者 (主選手/パートナー) を選ばせる。A/B に潰すと誤帰属する。
+    if (stepIdx < 2 && !serveHitter) {
+      setNeedSlot(true)
+      return
+    }
+    if (stepIdx >= 2 && !finalHitter) {
+      setNeedSlot(true)
+      return
+    }
+    setNeedSlot(false)
     const next = { ...zones, [step]: zone }
     setZones(next)
     if (stepIdx < STEP_ORDER.length - 1) {
@@ -89,7 +110,7 @@ export function Pass2ServeFinal({ rally, onCompleted, onCancel }: Props) {
       // renumber する余地を持たせる。
       await enqueue('POST /api/strokes?rally_id=:rally_id', {
         stroke_num: 1,
-        player: rally.server,
+        player: serveHitter as HitterSlot,
         shot_type: 'serve',
         hit_zone: next.serve_hit,
         land_zone: next.serve_land,
@@ -97,7 +118,7 @@ export function Pass2ServeFinal({ rally, onCompleted, onCancel }: Props) {
       await enqueue('POST /api/strokes?rally_id=:rally_id', {
         stroke_num: 9999,            // sentinel: 最後尾
         // outcome は final_hit の確定時に必須にしてあるので、ここで未選択にはならない
-        player: finalHitterFor(rally, outcome as FinalShotOutcome),
+        player: finalHitter as HitterSlot,
         shot_type: '__final_pending', // Pass 3 で更新
         hit_zone: next.final_hit,
         land_zone: next.final_land,
@@ -112,9 +133,13 @@ export function Pass2ServeFinal({ rally, onCompleted, onCancel }: Props) {
   // 別 stroke を作らず serve 1 件 + rally_length=1 だけを保存する。
   const handleServeOnly = async () => {
     if (submitting || !zones.serve_hit || !zones.serve_land) return
+    if (!serveHitter) {
+      setNeedSlot(true)
+      return
+    }
     setSubmitting(true)
     try {
-      const { stroke, rallyLength } = serveOnlyRallyPayload(rally, zones)
+      const { stroke, rallyLength } = serveOnlyRallyPayload(rally, zones, serveHitter)
       await enqueue('POST /api/strokes?rally_id=:rally_id', stroke, { rally_id: rally.id })
       await enqueue('PUT /api/rallies/:id', { rally_length: rallyLength }, { id: rally.id })
       onCompleted()
@@ -153,6 +178,37 @@ export function Pass2ServeFinal({ rally, onCompleted, onCancel }: Props) {
           {t('auto.Pass2ServeFinal.save_and_back')}
         </button>
       </div>
+
+      {doubles && (stepIdx < 2 || finalTeam) && (
+        <div
+          className="bg-black/90 px-3 py-1.5 flex items-center gap-2 border-b border-gray-800 text-xs text-white"
+          role="radiogroup"
+          aria-label={stepIdx < 2 ? t('auto.Pass2ServeFinal.slot_serve_label') : t('auto.Pass2ServeFinal.slot_final_label')}
+        >
+          <span className={needSlot ? 'text-red-300 font-bold' : ''}>
+            {stepIdx < 2 ? t('auto.Pass2ServeFinal.slot_serve_label') : t('auto.Pass2ServeFinal.slot_final_label')}
+          </span>
+          {slotsOfTeam(stepIdx < 2 ? rally.server : (finalTeam as 'player_a' | 'player_b')).map((slot) => {
+            const current = stepIdx < 2 ? serveHitter : finalHitter
+            return (
+              <button
+                key={slot}
+                type="button"
+                role="radio"
+                aria-checked={current === slot}
+                onClick={() => {
+                  if (stepIdx < 2) setServeSlot(slot)
+                  else setFinalSlot(slot)
+                  setNeedSlot(false)
+                }}
+                className={`px-2 py-1 rounded ${current === slot ? 'bg-green-700' : 'bg-gray-700'}`}
+              >
+                {t(`auto.HitterSlot.${slot}`)}
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       {stepIdx >= 2 && (
         <div className="bg-black/90 px-3 py-1.5 flex items-center gap-2 border-b border-gray-800 text-xs text-white">

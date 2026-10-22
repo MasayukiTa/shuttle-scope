@@ -34,9 +34,12 @@ import {
 } from '@/utils/videoSrc'
 import { PlayMode } from '@/components/mobileAnnotate/PlayMode'
 import { errorMessage } from '@/utils/errors'
+import { isDoublesFormat, type HitterSlot } from '@/utils/mobileAnnotateDoubles'
 
 // MobileAnnotate 用の最小型 (backend レスポンスの該当フィールドのみ)
 interface MatchLite {
+  /** singles / doubles_md / doubles_wd / doubles_xd 等。ダブルスは打球者を個人 slot で保存する */
+  format?: string
   available_qualities?: MobileQualityOption[]
   // getMobileVideoSrc が読む項目。インデックスシグネチャだけだと unknown に
   // なって渡せないので、使う分は明示しておく。
@@ -840,6 +843,7 @@ export function MobileAnnotatePage() {
           {!calibEditingTop && screen === 'annotate' && !matchQuery.isLoading && !matchQuery.error && pass === 'serve_final' && visiblePasses.includes('serve_final') && (
             <div className="absolute inset-0 z-40 bg-black/85">
               <Pass2RallyPicker
+                doubles={isDoublesFormat(match?.format)}
                 rallies={mergedRallies}
                 sets={allSets}
                 pausedAtSec={pausedAtSec}
@@ -851,6 +855,7 @@ export function MobileAnnotatePage() {
           {!calibEditingTop && screen === 'annotate' && !matchQuery.isLoading && !matchQuery.error && pass === 'detail' && visiblePasses.includes('detail') && (
             <div className="absolute inset-0 z-40 bg-black/85">
               <Pass3RallyPicker
+                doubles={isDoublesFormat(match?.format)}
                 rallies={mergedRallies}
                 sets={allSets}
                 pausedAtSec={pausedAtSec}
@@ -1018,11 +1023,13 @@ export function MobileAnnotatePage() {
  * 選択するとそのラリーに対する Pass2ServeFinal step machine を起動する。
  */
 function Pass2RallyPicker({
+  doubles,
   rallies,
   sets,
   pausedAtSec,
   onCancel,
 }: {
+  doubles: boolean
   rallies: RallyLite[]
   sets: SetInfo[]
   pausedAtSec: number
@@ -1034,6 +1041,17 @@ function Pass2RallyPicker({
   // 送信完了後も id が無いまま「保存中」に見え続ける。
   const selected = selectedKey ? rallies.find((r) => rallyKey(r) === selectedKey) ?? null : null
   const setSelected = (r: RallyLite | null) => setSelectedKey(r ? rallyKey(r) : null)
+  // 選択したラリーの既存 stroke。毎回取り直す (古い「0 件」を信じて再入力させない)。
+  const existingQuery = useQuery({
+    queryKey: ['mobile-annot-pass2-existing', selected?.id],
+    queryFn: () => apiGet<{ data: Array<{ id?: number }> }>(`/strokes?rally_id=${selected!.id}`),
+    enabled: !!selected?.id,
+    staleTime: 0,
+    gcTime: 0,
+    // 入力の途中で再取得され、入力中の画面が「入力済み」表示へ切り替わらないようにする
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  })
 
   // pausedAtSec に近い順
   const sortedRallies = useMemo(() => {
@@ -1065,8 +1083,30 @@ function Pass2RallyPicker({
         </div>
       )
     }
+    // 既にこのラリーに stroke があれば Pass2 を再実行させない (serve/final の二重作成を防ぐ)。
+    // 取得前・取得失敗でも進ませない (存在を確認できないまま新規作成しない)。
+    if (existingQuery.isLoading || existingQuery.isError || (existingQuery.data?.data?.length ?? 0) > 0) {
+      const msgKey = existingQuery.isLoading
+        ? 'auto.MobileAnnotatePage.pass2_checking_existing'
+        : existingQuery.isError
+        ? 'auto.MobileAnnotatePage.pass2_check_failed'
+        : 'auto.MobileAnnotatePage.pass2_already_entered'
+      return (
+        <div className="flex-1 flex flex-col items-center justify-center text-[var(--ss-t2)] text-sm gap-3 p-4">
+          <div className="text-center">{t(msgKey)}</div>
+          <button
+            type="button"
+            onClick={() => setSelected(null)}
+            className="px-3 py-1.5 bg-[var(--ss-surface-3)] text-[var(--ss-t1)] rounded-ss-md text-xs"
+          >
+            {t('auto.MobileAnnotatePage.back_to_list')}
+          </button>
+        </div>
+      )
+    }
     return (
       <Pass2ServeFinal
+        doubles={doubles}
         rally={{
           id: selected.id,
           rally_num: selected.rally_num,
@@ -1142,11 +1182,13 @@ function Pass2RallyPicker({
  * Pass3ShotDetail を起動。
  */
 function Pass3RallyPicker({
+  doubles,
   rallies,
   sets,
   pausedAtSec,
   onCancel,
 }: {
+  doubles: boolean
   rallies: RallyLite[]
   sets: SetInfo[]
   pausedAtSec: number
@@ -1160,7 +1202,7 @@ function Pass3RallyPicker({
     id?: number | null
     rally_id: number
     stroke_num: number
-    player: 'player_a' | 'player_b'
+    player: HitterSlot
     shot_type: string
     hit_zone?: string | null
     land_zone?: string | null
@@ -1170,7 +1212,7 @@ function Pass3RallyPicker({
   // 再取得されないため、画面表示に重ねて旧内容が残らないようにする。
   const [serverStrokeEdits, setServerStrokeEdits] = useState<ReadonlyMap<number, {
     stroke_num: number
-    player: 'player_a' | 'player_b'
+    player: HitterSlot
     shot_type: string
     hit_zone?: string | null
     land_zone?: string | null
@@ -1185,7 +1227,7 @@ function Pass3RallyPicker({
       // 下の serverStrokes.rally_id が常に undefined になっていた。
       rally_id: number
       stroke_num: number
-      player: 'player_a' | 'player_b'
+      player: HitterSlot
       shot_type: string
       hit_zone?: string | null
       land_zone?: string | null
@@ -1242,6 +1284,7 @@ function Pass3RallyPicker({
           winner: selected.winner,
         }}
         strokes={all}
+        doubles={doubles}
         onStrokeAdded={(s) => {
           setLocalStrokes((prev) => [...prev, { ...s, rally_id: selected.id! }])
         }}

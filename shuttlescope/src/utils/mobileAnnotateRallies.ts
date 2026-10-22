@@ -13,6 +13,10 @@ export interface RallyKeyed {
   client_uuid?: string
   set_id: number
   rally_num: number
+  /** 内容比較用 (任意)。両方にあるときだけ、サーバ反映済みかの判定に使う */
+  winner?: string
+  score_a_after?: number
+  score_b_after?: number
 }
 
 /**
@@ -49,11 +53,31 @@ export function mergeRallies<T extends RallyKeyed>(server: T[], local: T[]): T[]
   return out.sort((a, b) => (a.set_id !== b.set_id ? a.set_id - b.set_id : a.rally_num - b.rally_num))
 }
 
-/** サーバに反映済みの未送信ラリーを取り除く (送信成功の反映)。変化が無ければ同じ配列を返す。 */
+/**
+ * 同じ (set_id, rally_num) でも勝者・得点が食い違う = 別端末が別の内容を先に保存した競合。
+ * 内容を持たない側 (undefined) があれば比較できないので競合とは見なさない。
+ */
+export function isConflictingRally(server: RallyKeyed, local: RallyKeyed): boolean {
+  const differs = (a: unknown, b: unknown) => a !== undefined && b !== undefined && a !== b
+  return (
+    differs(server.winner, local.winner)
+    || differs(server.score_a_after, local.score_a_after)
+    || differs(server.score_b_after, local.score_b_after)
+  )
+}
+
+/**
+ * サーバに反映済みの未送信ラリーを取り除く (送信成功の反映)。変化が無ければ同じ配列を返す。
+ * key が同じでも内容が違うもの (別端末との競合) は「反映済み」ではないので取り除かない。
+ * 取り除くと、負けた端末の入力が警告なしに消える。
+ */
 export function pruneConfirmed<T extends RallyKeyed>(server: T[], local: T[]): T[] {
   if (local.length === 0) return local
-  const keys = new Set(server.map(rallyKey))
-  const next = local.filter((r) => !keys.has(rallyKey(r)))
+  const byKey = new Map(server.map((r) => [rallyKey(r), r] as const))
+  const next = local.filter((r) => {
+    const s = byKey.get(rallyKey(r))
+    return !s || isConflictingRally(s, r)
+  })
   return next.length === local.length ? local : next
 }
 

@@ -5040,7 +5040,9 @@
       "server_a": "A のサーブ",
       "server_b": "B のサーブ",
       "video_sec": "動画 {{sec}} 秒",
-      "back_to_video": "動画に戻る"
+      "back_to_video": "動画に戻る",
+      "cv_last_hitter": "CV 直前の打者",
+      "cv_last_hitter_pct": "CV 直前の打者 (認識 {{pct}}%)"
     },
     "Pass2ServeFinal": {
       "header": "サーブ・決定打 · ラリー {{n}} (セット {{m}})",
@@ -5056,7 +5058,15 @@
       "prompt_final_land": "決まった一打の着地を選択",
       "primary_next": "次へ",
       "primary_submit": "送信",
-      "cancel_retry": "やり直す"
+      "cancel_retry": "やり直す",
+      "slot_serve_label": "サーブを打った選手",
+      "slot_final_label": "最後に打った選手"
+    },
+    "HitterSlot": {
+      "player_a": "A 主選手",
+      "partner_a": "A パートナー",
+      "player_b": "B 主選手",
+      "partner_b": "B パートナー"
     },
     "Pass3ShotDetail": {
       "k1": "スマッシュ",
@@ -5076,6 +5086,9 @@
       "other_later": "その他 (後で詳細入力)",
       "show_other": "その他の球種",
       "pick_title": "#{{n}} のショット種別を選択 ({{player}})",
+      "pick_hitter_title": "#{{n}} を打った選手を選択 ({{player}} チーム)",
+      "pick_hitter_label": "打球者",
+      "err_final_not_saved": "最終打がまだ保存されていないため、球を追加できません。少し待ってからもう一度お試しください",
       "edit_title": "#{{n}} のショット種別を変更",
       "final_unclassified": "(決定打: 未分類)",
       "prompt_hit_zone": "#{{n}} ({{shot}}) — 打点を選択",
@@ -5242,6 +5255,9 @@
       "rally_saving_server": "このラリーはまだサーバ保存中です。",
       "pass2_after_save": "送信が終わると、サーブ・決定打を入力できます。",
       "back_to_list": "← 一覧に戻る",
+      "pass2_checking_existing": "このラリーの入力済みデータを確認しています ...",
+      "pass2_check_failed": "入力済みデータを確認できませんでした。通信を確認して、一覧から選び直してください。",
+      "pass2_already_entered": "このラリーは入力済みです。内容の修正は「全ストローク」(Pass3)で行ってください。",
       "pass2_select_rally": "サーブ・決定打を入力するラリーを選択 (止めた位置 {{sec}} 秒に近い順)",
       "record_pass1_first": "先に得点を記録してから戻ってきてください",
       "player_point": "{{p}} 得点",
