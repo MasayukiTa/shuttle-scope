@@ -142,3 +142,31 @@ def test_human_forecast_list_keeps_own_match_legacy_rows_visible(db_session):
         assert [row["id"] for row in rows] == [own_forecast.id]
     finally:
         app.dependency_overrides.clear()
+
+
+def test_human_forecast_role_comes_from_login_not_request_body(db_session):
+    # A coach cannot file a forecast under the analyst group: the benchmark
+    # compares groups, so the group must come from the session role.
+    team_a, own_match, _foreign_match, _own_forecast, _foreign_forecast = _seed(db_session)
+    app.dependency_overrides[get_db] = lambda: db_session
+    try:
+        response = _client().post(
+            "/api/prediction/human_forecast",
+            json={
+                "match_id": own_match.id,
+                "player_id": 9201,
+                "forecaster_role": "analyst",
+                "forecaster_name": "someone else",
+                "predicted_outcome": "win",
+            },
+            headers=_headers(
+                user_id=9301,
+                role="coach",
+                team_id=team_a.id,
+                team_name=team_a.name,
+            ),
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["data"]["forecaster_role"] == "coach"
+    finally:
+        app.dependency_overrides.clear()

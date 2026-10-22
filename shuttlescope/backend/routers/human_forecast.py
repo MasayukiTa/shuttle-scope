@@ -83,10 +83,14 @@ def create_human_forecast(
     from backend.utils.auth import user_can_access_match
     if not user_can_access_match(ctx, m):
         raise HTTPException(status_code=404, detail="Match not found")
+    # 予測者ロールは自己申告ではなくログイン中のロールで確定する。
+    # coach / analyst は自分のロールに固定され、body の値は使わない。
+    # admin だけが代理入力として body の値を選べる。
+    forecaster_role = ctx.role if ctx.role in ("coach", "analyst") else body.forecaster_role
     forecast = HumanForecast(
         match_id=body.match_id,
         player_id=body.player_id,
-        forecaster_role=body.forecaster_role,
+        forecaster_role=forecaster_role,
         forecaster_name=body.forecaster_name,
         predicted_outcome=body.predicted_outcome,
         predicted_set_path=body.predicted_set_path,
