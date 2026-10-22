@@ -3,7 +3,7 @@
  * 相手選手情報が不完全な状態でも即座に試合を開始できる。
  * 未登録相手は暫定（provisional）として自動作成する。
  */
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { apiGet, apiPost } from '@/api/client'
@@ -19,6 +19,7 @@ interface Props {
 
 export function QuickStartModal({ onClose, onStarted }: Props) {
   const { t } = useTranslation()
+  const titleId = useId()
   const { teamName: myTeamName } = useAuth()
 
   const COMPETITION_TYPES = [
@@ -173,15 +174,16 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
       className="fixed inset-0 bg-[var(--ss-bg-overlay)] flex items-center justify-center z-50 p-4"
       role="dialog"
       aria-modal="true"
+      aria-labelledby={titleId}
       onClick={onClose}
     >
       <div className="bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-lg shadow-pop w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
         {/* ヘッダー */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--ss-border)]">
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold text-[var(--ss-t1)]">{t('quick_start.title')}</h2>
+            <h2 id={titleId} className="text-lg font-semibold text-[var(--ss-t1)]">{t('quick_start.title')}</h2>
           </div>
-          <button onClick={onClose} className="text-[var(--ss-t3)] hover:text-[var(--ss-t1)] transition-colors duration-fast ease-out">
+          <button onClick={onClose} aria-label={t('app.close')} className="text-[var(--ss-t3)] hover:text-[var(--ss-t1)] transition-colors duration-fast ease-out">
             <MIcon name="close" size={18} />
           </button>
         </div>

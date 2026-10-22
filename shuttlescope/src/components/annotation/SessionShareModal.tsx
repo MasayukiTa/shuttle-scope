@@ -1,7 +1,7 @@
 /**
  * セッション共有モーダル — QRコード + URL表示 + パスワード管理
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useTranslation } from 'react-i18next'
@@ -33,6 +33,10 @@ export function SessionShareModal({
   const [passwordCopied, setPasswordCopied] = useState(false)
   const [cameraUrlCopied, setCameraUrlCopied] = useState(false)
   const [viewerUrlCopied, setViewerUrlCopied] = useState(false)
+  // QR 描画失敗とクリップボード書き込み失敗を利用者へ示すための状態
+  const [qrFailed, setQrFailed] = useState({ coach: false, camera: false, viewer: false })
+  const [copyFailed, setCopyFailed] = useState(false)
+  const titleId = useId()
   const [showPassword, setShowPassword] = useState(false)
   const [sessionPassword, setSessionPassword] = useState(initialPassword ?? '')
   const [regenerating, setRegenerating] = useState(false)
@@ -63,7 +67,8 @@ export function SessionShareModal({
       width: 180,
       margin: 2,
       color: { dark: '#0f172a', light: '#f8fafc' },
-    }).catch(() => {})
+    }).then(() => setQrFailed((p) => ({ ...p, coach: false })))
+      .catch(() => setQrFailed((p) => ({ ...p, coach: true })))
   }, [coachUrl])
 
   // カメラ送信 URL の QR（パスワード付き）
@@ -73,7 +78,8 @@ export function SessionShareModal({
       width: 180,
       margin: 2,
       color: { dark: '#0f172a', light: '#f8fafc' },
-    }).catch(() => {})
+    }).then(() => setQrFailed((p) => ({ ...p, camera: false })))
+      .catch(() => setQrFailed((p) => ({ ...p, camera: true })))
   }, [cameraUrlWithPwd])
 
   // ビューワー URL の QR（パスワード付き）
@@ -83,11 +89,12 @@ export function SessionShareModal({
       width: 180,
       margin: 2,
       color: { dark: '#0f172a', light: '#f8fafc' },
-    }).catch(() => {})
+    }).then(() => setQrFailed((p) => ({ ...p, viewer: false })))
+      .catch(() => setQrFailed((p) => ({ ...p, viewer: true })))
   }, [viewerUrlWithPwd])
 
   const handleCopy = (text: string, setter: (v: boolean) => void) => {
-    const confirm = () => { setter(true); setTimeout(() => setter(false), 2000) }
+    const confirm = () => { setCopyFailed(false); setter(true); setTimeout(() => setter(false), 2000) }
     const fallback = () => {
       try {
         const el = document.createElement('textarea')
@@ -95,10 +102,14 @@ export function SessionShareModal({
         el.style.cssText = 'position:fixed;top:0;left:0;opacity:0'
         document.body.appendChild(el)
         el.select()
-        document.execCommand('copy')
+        // execCommand は失敗しても例外を投げず false を返すため、戻り値で成否を判定する
+        const ok = document.execCommand('copy')
         document.body.removeChild(el)
-        confirm()
-      } catch { /* コピー失敗は無視 */ }
+        if (ok) confirm()
+        else setCopyFailed(true)
+      } catch {
+        setCopyFailed(true)
+      }
     }
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(text).then(confirm).catch(fallback)
@@ -150,6 +161,7 @@ export function SessionShareModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
       role="dialog"
       aria-modal="true"
+      aria-labelledby={titleId}
       onClick={onClose}
     >
       <div
@@ -159,23 +171,32 @@ export function SessionShareModal({
         {/* ヘッダー */}
         <div className="flex items-center justify-between mb-4">
           <div>
-            <p className={`text-sm font-semibold ${titleColor}`}>{t('lan_session.share_modal_title')}</p>
+            <p id={titleId} className={`text-sm font-semibold ${titleColor}`}>{t('lan_session.share_modal_title')}</p>
             <p className={`text-xs mt-0.5 ${subColor}`}>
               {t('lan_session.share_modal_code_label')}{' '}
               <span className={`font-mono font-bold ${codeColor}`}>{sessionCode}</span>
             </p>
           </div>
-          <button onClick={onClose} className={`${subColor} hover:text-[var(--ss-t1)] transition-colors duration-fast ease-out`}>
+          <button onClick={onClose} aria-label={t('app.close')} className={`${subColor} hover:text-[var(--ss-t1)] transition-colors duration-fast ease-out`}>
             <MIcon name="close" size={16} />
           </button>
         </div>
 
+        {copyFailed && (
+          <p role="alert" className="text-[10px] mb-3 text-[var(--ss-bad)]">{t('common_ui.copy_failed')}</p>
+        )}
+
         {/* ─── コーチ URL / QR ─────────────────── */}
         <p className={`text-xs mb-2 ${sectionTitle}`}>{t('lan_session.share_modal_coach_view')}</p>
         {coachUrl ? (
-          <div className="flex justify-center mb-3 bg-[var(--ss-surface-2)] rounded-ss-md p-2">
-            <canvas ref={canvasRef} />
-          </div>
+          <>
+            <div className="flex justify-center mb-3 bg-[var(--ss-surface-2)] rounded-ss-md p-2">
+              <canvas ref={canvasRef} />
+            </div>
+            {qrFailed.coach && (
+              <p role="alert" className="text-[10px] text-center mb-2 text-[var(--ss-bad)]">{t('common_ui.qr_failed')}</p>
+            )}
+          </>
         ) : (
           <p className={`text-xs text-center mb-3 ${noteColor}`}>{t('lan_session.share_modal_no_url')}</p>
         )}
@@ -222,6 +243,7 @@ export function SessionShareModal({
               {sessionPassword && (
                 <button
                   onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? t('lan_session.password_hide') : t('lan_session.password_show')}
                   className={`${subColor} hover:text-[var(--ss-t1)] transition-colors duration-fast ease-out`}
                 >
                   {showPassword ? <MIcon name="visibility_off" size={12} /> : <MIcon name="visibility" size={12} />}
@@ -271,6 +293,9 @@ export function SessionShareModal({
             <div className="flex justify-center mb-3 bg-[var(--ss-surface-2)] rounded-ss-md p-2">
               <canvas ref={cameraCanvasRef} />
             </div>
+            {qrFailed.camera && (
+              <p role="alert" className="text-[10px] text-center mb-2 text-[var(--ss-bad)]">{t('common_ui.qr_failed')}</p>
+            )}
             <div className="flex items-center gap-1.5">
               <p className={`flex-1 text-[10px] font-mono truncate rounded-ss-sm px-2 py-1 ${urlBg} ${urlColor}`}>
                 {cameraUrlWithPwd || cameraUrl}
@@ -299,6 +324,9 @@ export function SessionShareModal({
             <div className="flex justify-center mb-3 bg-[var(--ss-surface-2)] rounded-ss-md p-2">
               <canvas ref={viewerCanvasRef} />
             </div>
+            {qrFailed.viewer && (
+              <p role="alert" className="text-[10px] text-center mb-2 text-[var(--ss-bad)]">{t('common_ui.qr_failed')}</p>
+            )}
             <div className="flex items-center gap-1.5">
               <p className={`flex-1 text-[10px] font-mono truncate rounded-ss-sm px-2 py-1 ${urlBg} ${urlColor}`}>
                 {viewerUrlWithPwd || viewerUrl}

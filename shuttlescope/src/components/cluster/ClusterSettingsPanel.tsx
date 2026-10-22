@@ -561,7 +561,7 @@ export function ClusterSettingsPanel() {
                 {t('auto.ClusterSettingsPanel.ray_start')}
               </button>
             )}
-            <button onClick={() => refetchStatus()} className={`text-[var(--ss-t2)] hover:text-[var(--ss-t1)]`}>
+            <button aria-label={t('common_ui.refresh')} onClick={() => refetchStatus()} className={`text-[var(--ss-t2)] hover:text-[var(--ss-t1)]`}>
               <MIcon name="refresh" size={13} />
             </button>
           </div>
@@ -671,7 +671,7 @@ export function ClusterSettingsPanel() {
               <code className="text-[11px] font-mono flex-1 break-all text-[var(--ss-good)]">
                 {`irm http://${cfg.network.primary_ip}:8765/api/cluster/ray/join-script | iex`}
               </code>
-              <button
+              <button aria-label={t('lan_session.password_copy')}
                 onClick={() => copyCmd(`irm http://${cfg.network!.primary_ip}:8765/api/cluster/ray/join-script | iex`, -1)}
                 className={`shrink-0 text-[var(--ss-t2)] hover:text-[var(--ss-t1)]`}
               >
@@ -695,7 +695,7 @@ export function ClusterSettingsPanel() {
                   <div className={`flex items-center gap-2 p-2 rounded-ss-md border ${border} bg-[var(--ss-surface-2)]`}>
                     <span className={`text-[11px] text-[var(--ss-t2)] shrink-0`}>{w.label}</span>
                     <code className="text-[11px] font-mono flex-1 break-all text-[var(--ss-good)]">{w.cmd}</code>
-                    <button onClick={() => copyCmd(w.cmd, idx)} className={`shrink-0 text-[var(--ss-t2)] hover:text-[var(--ss-t1)]`}>
+                    <button aria-label={t('lan_session.password_copy')} onClick={() => copyCmd(w.cmd, idx)} className={`shrink-0 text-[var(--ss-t2)] hover:text-[var(--ss-t1)]`}>
                       {copiedIdx === idx ? <MIcon name="check" size={12} className="text-[var(--ss-success)]" /> : <MIcon name="content_copy" size={12} />}
                     </button>
                     <button
@@ -874,7 +874,7 @@ export function ClusterSettingsPanel() {
                       }
                     </span>
                   )}
-                  <button onClick={() => removeWorker(i)} className="text-[var(--ss-danger)] hover:text-[var(--ss-danger)] shrink-0">
+                  <button aria-label={t('app.delete')} onClick={() => removeWorker(i)} className="text-[var(--ss-danger)] hover:text-[var(--ss-danger)] shrink-0">
                     <MIcon name="delete" size={12} />
                   </button>
                 </div>

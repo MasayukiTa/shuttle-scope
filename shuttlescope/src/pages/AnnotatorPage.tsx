@@ -1318,6 +1318,7 @@ export function AnnotatorPage() {
     t,
     videoRef,
     roiRect,
+    onError: showError,
   })
 
   // エラーまたは検出ゼロの場合は3秒後にタグ付けモード自動終了
@@ -1513,6 +1514,7 @@ export function AnnotatorPage() {
   } = useSessionSharing({
     matchId,
     tunnelProvider: appSettings.tunnel_provider,
+    onError: showError,
   })
 
   // CV補助アノテーション候補
@@ -1997,7 +1999,7 @@ export function AnnotatorPage() {
         match_id: Number(matchId),
         rally_id: commentRallyId ?? undefined,
         text: commentText.trim(),
-        author_role: 'analyst',
+        // author_role は送らない: backend (CommentCreate は extra=forbid) が認証主体から決める
         is_flagged: false,
       })
       setCommentText('')
@@ -2633,7 +2635,7 @@ export function AnnotatorPage() {
                     >
                       {trackingLoading ? '...' : t('annotator.ui.track_identify_confirm', { defaultValue: '識別確定（{{n}}）', n: Object.values(taggingAssignments).filter(Boolean).length })}
                     </button>
-                    <button
+                    <button aria-label={t('app.close')}
                       onClick={() => setTaggingMode(false)}
                       className="px-1 py-0.5 rounded-ss-sm text-xs text-[var(--ss-t2)] hover:bg-[var(--ss-surface-3)]"
                     ><MIcon name="close" size={12} /></button>
@@ -2987,7 +2989,7 @@ export function AnnotatorPage() {
             />
           </div>
           <span className="text-[10px] text-[var(--ss-t2)] ss-num">{Math.round((match?.annotation_progress ?? 0) * 100)}%</span>
-          <button
+          <button aria-label={t('common_ui.menu')}
             onClick={() => setShowMobileMenu((v) => !v)}
             className="p-1.5 rounded-ss-sm text-[var(--ss-t2)] hover:text-[var(--ss-t1)] hover:bg-[var(--ss-surface-3)] transition-colors"
           >

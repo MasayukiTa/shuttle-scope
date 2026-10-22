@@ -2,6 +2,7 @@
 // 会話はユーザごとに分離 (backend で所有者強制)。メモリ=各会話のターン履歴 (SSE ストリーミング)。
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { useTranslation } from 'react-i18next'
+import i18n from '@/i18n'
 import { MIcon } from '../components/common/MIcon'
 import { ChatMarkdown } from '../components/common/ChatMarkdown'
 import {
@@ -105,6 +106,8 @@ export default function LlmChatPage() {
   const [drawerOpen, setDrawerOpen] = useState(false) // モバイル会話ドロワー (<md)
   const [convListCollapsed, setConvListCollapsed] = useState(readConvListCollapsed) // デスクトップ会話リスト折りたたみ (md+, localStorage 永続)
   const [messagesLoading, setMessagesLoading] = useState(false) // 会話切替時のメッセージ取得中
+  // 履歴の取得失敗を「空の会話」と区別する (空の会話の案内を出さず、失敗として示す)
+  const [messagesFailed, setMessagesFailed] = useState(false)
   const [showScrollDown, setShowScrollDown] = useState(false) // 上にスクロール中の「最新へ」ボタン
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null) // 削除確認中の会話
   const [images, setImages] = useState<AttachedImage[]>([]) // 送信前の添付画像 (data URL)
@@ -133,6 +136,8 @@ export default function LlmChatPage() {
       setConversations(r.conversations || [])
       return r.conversations || []
     } catch {
+      // 一覧は取得済みの内容を残す (会話が無いように見せない)。失敗を知らせる
+      setError(i18n.t('common_ui.llm_list_failed'))
       return []
     }
   }, [])
@@ -189,9 +194,16 @@ export default function LlmChatPage() {
     }
     let cancelled = false
     setMessagesLoading(true)
+    setMessagesFailed(false)
     getMessages(activeId)
       .then((r) => { if (!cancelled) setMessages(r.messages || []) })
-      .catch(() => { if (!cancelled) setMessages([]) })
+      .catch(() => {
+        if (cancelled) return
+        // 履歴を読めなかった。別会話の内容を残さないよう空にした上で、失敗として示す
+        setMessages([])
+        setMessagesFailed(true)
+        setError(i18n.t('common_ui.llm_messages_failed'))
+      })
       .finally(() => { if (!cancelled) setMessagesLoading(false) })
     return () => { cancelled = true }
   }, [activeId])
@@ -748,7 +760,7 @@ export default function LlmChatPage() {
                 <p className="text-sm">{t('llm.loading')}</p>
               </div>
             ) : (
-              messages.length === 0 && !streamText && !streaming && (
+              messages.length === 0 && !streamText && !streaming && !messagesFailed && (
                 <div className="flex h-full flex-col items-center justify-center text-center text-[var(--ss-t3)]">
                   <MIcon name="smart_toy" size={40} ariaHidden className="mb-2" />
                   <p className="text-sm">{t('llm.empty')}</p>

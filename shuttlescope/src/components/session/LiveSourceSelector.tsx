@@ -71,13 +71,22 @@ export function LiveSourceSelector({ sessionCode }: Props) {
   const isLight = useIsLightMode()
   const [sources, setSources] = useState<LiveSource[]>([])
   const [loading, setLoading] = useState(false)
+  // 取得失敗を「ソースなし」と区別するための状態
+  const [fetchFailed, setFetchFailed] = useState(false)
 
   const fetchSources = useCallback(async () => {
     setLoading(true)
     try {
       const res = await apiGet<{ success: boolean; data: LiveSource[] }>(`/sessions/${sessionCode}/sources`)
-      if (res.success) setSources(res.data)
-    } catch { /* ignore */ } finally {
+      if (res.success) {
+        setSources(res.data)
+        setFetchFailed(false)
+      } else {
+        setFetchFailed(true)
+      }
+    } catch {
+      setFetchFailed(true)
+    } finally {
       setLoading(false)
     }
   }, [sessionCode])
@@ -139,7 +148,10 @@ export function LiveSourceSelector({ sessionCode }: Props) {
     <div>
       <div className="flex items-center justify-between mb-2">
         <p className={`text-xs font-medium ${titleColor}`}>{t('live_source.title')}</p>
-        <button onClick={fetchSources} className="text-[var(--ss-t3)] hover:text-[var(--ss-t1)]">
+        {fetchFailed && sources.length > 0 && (
+          <span role="alert" className="text-[10px] text-[var(--ss-warn)]">{t('common_ui.sources_stale')}</span>
+        )}
+        <button onClick={fetchSources} aria-label={t('common_ui.refresh')} className="text-[var(--ss-t3)] hover:text-[var(--ss-t1)]">
           <MIcon name="refresh" size={12} className={loading ? 'animate-spin' : ''} />
         </button>
       </div>
@@ -149,7 +161,11 @@ export function LiveSourceSelector({ sessionCode }: Props) {
       )}
 
       {sources.length === 0 ? (
-        <p className={`text-[10px] text-center py-3 ${subColor}`}>{t('live_source.no_sources')}</p>
+        fetchFailed ? (
+          <p role="alert" className="text-[10px] text-center py-3 text-[var(--ss-bad)]">{t('common_ui.sources_fetch_failed')}</p>
+        ) : (
+          <p className={`text-[10px] text-center py-3 ${subColor}`}>{t('live_source.no_sources')}</p>
+        )
       ) : (
         <div className="space-y-1.5">
           {sources.map((src) => (

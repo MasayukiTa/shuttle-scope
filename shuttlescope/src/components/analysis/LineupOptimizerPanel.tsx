@@ -422,7 +422,7 @@ export function LineupOptimizerPanel({ players, role }: Props) {
               className="flex-1 bg-transparent text-xs outline-none min-w-0 text-[var(--ss-t1)]"
             />
             {nameFilter && (
-              <button onClick={() => setNameFilter('')}>
+              <button aria-label={t('settings.ui.clear')} onClick={() => setNameFilter('')}>
                 <MIcon name="close" size={10} style={{ color: subText }} />
               </button>
             )}

@@ -535,6 +535,8 @@ export function SettingsPage() {
   })
   const [dbMaintRunning, setDbMaintRunning] = useState(false)
   const [dbMaintResult, setDbMaintResult] = useState<{ freed_mb: number; freed_pages: number } | null>(null)
+  // 最適化の実行失敗を「回収対象なし」の正常結果と区別する
+  const [dbMaintFailed, setDbMaintFailed] = useState(false)
   const [dbAvRunning, setDbAvRunning] = useState(false)
   const [dbAvMessage, setDbAvMessage] = useState<string | null>(null)
 
@@ -596,12 +598,14 @@ export function SettingsPage() {
   async function handleDbMaintenance() {
     setDbMaintRunning(true)
     setDbMaintResult(null)
+    setDbMaintFailed(false)
     try {
       const res = await runDbMaintenance()
       setDbMaintResult({ freed_mb: (res as { freed_mb?: number }).freed_mb ?? 0, freed_pages: (res as { freed_pages?: number }).freed_pages ?? 0 })
       refetchDbStats()
     } catch {
-      setDbMaintResult({ freed_mb: 0, freed_pages: 0 })
+      // 実行できなかったことを示す。0 件の成功結果には変換しない
+      setDbMaintFailed(true)
     } finally {
       setDbMaintRunning(false)
     }
@@ -1325,7 +1329,7 @@ export function SettingsPage() {
                 <p className="text-sm font-medium text-[var(--ss-t1)]">{t('tracknet.enable_toggle')}</p>
                 <p className="text-xs text-[var(--ss-t3)] mt-0.5">{t('tracknet.enable_description')}</p>
               </div>
-              <button
+              <button role="switch" aria-checked={appSettings.tracknet_enabled} aria-label={t('tracknet.enable_toggle')}
                 onClick={() => updateSettings({ tracknet_enabled: !appSettings.tracknet_enabled })}
                 disabled={settingsLoading}
                 className="flex-shrink-0"
@@ -1420,7 +1424,7 @@ export function SettingsPage() {
                   <p className="text-sm font-medium text-[var(--ss-t1)]">{t('yolo.enabled')}</p>
                   <p className="text-xs text-[var(--ss-t3)] mt-0.5">{t('yolo.enable_description')}</p>
                 </div>
-                <button
+                <button role="switch" aria-checked={appSettings.yolo_enabled} aria-label={t('yolo.enabled')}
                   onClick={() => updateSettings({ yolo_enabled: !appSettings.yolo_enabled })}
                   disabled={settingsLoading}
                   className="flex-shrink-0"
@@ -1717,7 +1721,7 @@ export function SettingsPage() {
                   <p className="text-sm font-medium text-[var(--ss-t1)]">{t('sharing.lan_mode_label')}</p>
                   <p className="text-xs text-[var(--ss-t3)] mt-0.5">{t('sharing.lan_mode_description')}</p>
                 </div>
-                <button
+                <button role="switch" aria-checked={!!serverInfo?.data?.lan_mode} aria-label={t('sharing.lan_mode_label')}
                   onClick={() => toggleLanMode.mutate(!serverInfo?.data?.lan_mode)}
                   className="flex-shrink-0"
                 >
@@ -1931,7 +1935,7 @@ export function SettingsPage() {
                       <p className={`text-xs font-medium ${textSecondary}`}>{t('sharing.turn_enable_label')}</p>
                       <p className="text-xs mt-0.5 text-[var(--ss-t3)]">{t('sharing.turn_description')}</p>
                     </div>
-                    <button onClick={() => updateSettings({ turn_enabled: !appSettings.turn_enabled })}>
+                    <button role="switch" aria-checked={appSettings.turn_enabled} aria-label={t('sharing.turn_enable_label')} onClick={() => updateSettings({ turn_enabled: !appSettings.turn_enabled })}>
                       {appSettings.turn_enabled
                         ? <MIcon name="toggle_on" size={28} className="text-[var(--ss-brand)]" />
                         : <MIcon name="toggle_off" size={28} className="text-[var(--ss-t3)]" />}
@@ -2777,6 +2781,12 @@ export function SettingsPage() {
                 dbStats && <p className="text-xs text-[var(--ss-warn)]">{t('auto.SettingsPage.db_optimize_unsupported')}</p>
               )}
 
+              {dbMaintFailed && (
+                <div role="alert" className="text-xs rounded-ss-sm px-3 py-2 bg-[var(--ss-surface-2)] text-[var(--ss-bad)]">
+                  {t('common_ui.db_maint_failed')}
+                </div>
+              )}
+
               {dbMaintResult && (
                 <div className={`text-xs rounded-ss-sm px-3 py-2 ${
                   dbMaintResult.freed_mb > 0
@@ -2967,7 +2977,7 @@ export function SettingsPage() {
           <div className={`${card} rounded-lg w-full max-w-lg max-h-[90dvh] overflow-y-auto`}>
             <div className={`flex items-center justify-between px-4 sm:px-6 py-4 border-b ${borderLine}`}>
               <h2 className={`text-lg font-semibold ${textHeading}`}>{editingPlayer ? '選手編集' : '選手追加'}</h2>
-              <button onClick={() => { setShowPlayerForm(false); setEditingPlayer(null) }} className={`${textMuted} ${isLight ? 'hover:text-gray-900' : 'hover:text-white'}`}><MIcon name="close" size={14} /></button>
+              <button aria-label={t('app.close')} onClick={() => { setShowPlayerForm(false); setEditingPlayer(null) }} className={`${textMuted} ${isLight ? 'hover:text-gray-900' : 'hover:text-white'}`}><MIcon name="close" size={14} /></button>
             </div>
             <form onSubmit={handlePlayerSubmit} className="p-4 sm:p-6 flex flex-col gap-3">
               <div>

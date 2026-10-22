@@ -196,7 +196,7 @@ export function SearchableSelect({
               className="flex-1 bg-transparent text-sm text-[var(--ss-ctrl-text)] placeholder-[var(--ss-ctrl-placeholder)] outline-none"
             />
             {query && (
-              <button onClick={() => setQuery('')} className="text-[var(--ss-t3)] hover:text-[var(--ss-t1)]">
+              <button aria-label={t('settings.ui.clear')} onClick={() => setQuery('')} className="text-[var(--ss-t3)] hover:text-[var(--ss-t1)]">
                 <MIcon name="close" size={12} />
               </button>
             )}

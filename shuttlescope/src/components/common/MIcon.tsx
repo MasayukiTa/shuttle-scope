@@ -9,6 +9,11 @@
  * 使い方:
  *   <MIcon name="edit_note" size={18} />
  *
+ * アクセシブル名: 既定で aria-hidden="true" なので、アイコンだけの <button> に
+ * 直接入れるとボタン名が空になる。IconButton (label 必須) を使うか、button に
+ * aria-label を付ける。意味を持つ単体アイコンだけ ariaLabel を渡す。
+ * 守られているかは components/common/__tests__/iconButtonNames.test.ts が検査する。
+ *
  * 利用可能な name は https://fonts.google.com/icons から検索。
  * 実体は npm package material-symbols のローカルフォント (CSP / 外部通信不要)。
  */

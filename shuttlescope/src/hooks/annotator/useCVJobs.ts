@@ -102,6 +102,8 @@ interface Options {
   videoRef: RefObject<HTMLVideoElement>
   /** TrackNet / YOLO の解析対象エリア（正規化 0-1）。未設定なら動画全体 */
   roiRect?: RoiRect | null
+  /** 停止・リセット失敗など、利用者へ知らせるべき失敗の通知先。未指定なら alert */
+  onError?: (message: string) => void
 }
 
 // ── 公開型 ───────────────────────────────────────────────────────────────────
@@ -184,7 +186,12 @@ export function useCVJobs({
   t: _t,
   videoRef,
   roiRect,
+  onError,
 }: Options): CVJobsResult {
+  const notifyError = useCallback((message: string) => {
+    if (onError) onError(message)
+    else alert(message)
+  }, [onError])
 
   // ── TrackNet ──────────────────────────────────────────────────────────────
 
@@ -407,8 +414,11 @@ export function useCVJobs({
     try {
       await apiPost(`/tracknet/batch/${tracknetJobId}/stop`, {})
       setTracknetArtifactExists(true)  // 停止後すぐに「再開」ボタンを表示
-    } catch { /* 停止失敗は無視 */ }
-  }, [tracknetJobId])
+    } catch {
+      // 停止要求が通っていないので、ジョブは走り続けている可能性がある
+      notifyError(i18n.t('common_ui.tracknet_stop_failed'))
+    }
+  }, [tracknetJobId, notifyError])
 
   // ── P3: TrackNet ポーリング ───────────────────────────────────────────────
 
@@ -512,8 +522,11 @@ export function useCVJobs({
     try {
       await apiPost(`/yolo/batch/${yoloJobId}/stop`, {})
       setYoloArtifactExists(true)  // 停止後すぐに「再開」ボタンを表示
-    } catch { /* 停止失敗は無視 */ }
-  }, [yoloJobId])
+    } catch {
+      // 停止要求が通っていないので、ジョブは走り続けている可能性がある
+      notifyError(i18n.t('common_ui.yolo_stop_failed'))
+    }
+  }, [yoloJobId, notifyError])
   const handleYoloBatchDiff = useCallback(
     () => _startYoloBatch({ prevRoi: yoloLastRoi }),
     [_startYoloBatch, yoloLastRoi]
@@ -540,16 +553,13 @@ export function useCVJobs({
       queryClient.invalidateQueries({ queryKey: ['cv-candidates', matchId] })
       queryClient.invalidateQueries({ queryKey: ['cv-review-queue', matchId] })
     } catch (err) {
+      // 内部の status / 例外詳細は利用者へ出さずログへ残す
       const status = (err as { status?: number })?.status
       const msg = err instanceof Error ? err.message : String(err)
       console.error('[YoloReset] delete failed', status, msg)
-      alert(
-        `YOLO 結果の削除に失敗しました (status=${status ?? '?'}).\n` +
-        `バックエンドが新しい DELETE エンドポイントを認識していない可能性があります。\n` +
-        `アプリを再起動してください。\n\n詳細: ${msg}`
-      )
+      notifyError(i18n.t('common_ui.yolo_reset_failed'))
     }
-  }, [matchId, yoloJobId, yoloJob, queryClient])
+  }, [matchId, yoloJobId, yoloJob, queryClient, notifyError])
 
   // ── P4: YOLO ポーリング ───────────────────────────────────────────────────
 

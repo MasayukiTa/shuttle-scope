@@ -199,3 +199,22 @@ class TestWarmupPost:
         )
         assert resp.status_code == 201
         assert resp.json()["data"]["saved_count"] == 1
+
+    def test_created_by_comes_from_principal_not_client(self, warmup_client):
+        """created_by は認証主体のロールで記録され、クライアントが送った値は使われない"""
+        client, match_id, player_a_id, player_b_id = warmup_client
+        body = {"observations": [{
+            "player_id": player_b_id,
+            "observation_type": "handedness",
+            "observation_value": "L",
+            "confidence_level": "likely",
+            "created_by": "forged_author",
+        }]}
+        assert client.post(f"/api/warmup/observations/{match_id}", json=body).status_code == 201
+        data = client.get(f"/api/warmup/observations/{match_id}").json()["data"]
+        assert [o["created_by"] for o in data] == ["admin"]
+        # 既存行の更新でも偽装値で上書きされない
+        body["observations"][0]["observation_value"] = "R"
+        assert client.post(f"/api/warmup/observations/{match_id}", json=body).status_code == 201
+        data = client.get(f"/api/warmup/observations/{match_id}").json()["data"]
+        assert [o["created_by"] for o in data] == ["admin"]

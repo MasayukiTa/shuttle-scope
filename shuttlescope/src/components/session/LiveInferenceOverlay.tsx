@@ -56,7 +56,7 @@ export function ZoneMarker({ candidate }: { candidate: LiveInferenceCandidate })
 export function LiveInferenceOverlay({ videoRef, sessionCode, className = '' }: Props) {
   const { t } = useTranslation()
   const [enabled, setEnabled] = useState(false)
-  const { candidate, inferring } = useLiveInference(videoRef, sessionCode, enabled)
+  const { candidate, inferring, error } = useLiveInference(videoRef, sessionCode, enabled)
 
   return (
     <div className={className}>
@@ -87,7 +87,9 @@ export function LiveInferenceOverlay({ videoRef, sessionCode, className = '' }: 
         {/* 推論結果表示 */}
         {enabled && (
           <div className="bg-black/80 rounded-ss-sm px-2 py-1.5 min-w-24">
-            {!candidate || !candidate.available ? (
+            {error ? (
+              <p role="alert" className="text-[9px] text-[var(--ss-bad)]">{t('common_ui.live_inference_error')}</p>
+            ) : !candidate || !candidate.available ? (
               <p className="text-[9px] text-white/60">
                 {inferring
                   ? t('live_inference.buffering')

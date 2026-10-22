@@ -191,6 +191,8 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
   const [recordState, setRecordState] = useState<RecordState>('idle')
   const [recordError, setRecordError] = useState<string>('')
   const [recordJobId, setRecordJobId] = useState<string | null>(null)
+  // 保存状態の問い合わせ (polling) が続けて失敗したときの最終成功時刻。状態不明を示す
+  const [recordStatusLostAt, setRecordStatusLostAt] = useState<number | null>(null)
   const [recordElapsedMs, setRecordElapsedMs] = useState<number>(0)
   // HDCP / プラットフォーム黒フレーム警告 (backend 側 post-processing で検出)
   const [recordWarning, setRecordWarning] = useState<string>('')
@@ -224,11 +226,16 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
   // ジョブステータスポーリング (stop 後の processing → complete を追跡)
   useEffect(() => {
     if (!recordJobId || (recordState !== 'stopping' && recordState !== 'processing')) return
+    let failures = 0
+    let lastOk = Date.now()
     const id = window.setInterval(async () => {
       try {
         const res = await apiGet<{ job_id: string; status: string; method: string; out_path: string; error?: string; warning?: string }>(
           `/youtube_live/${recordJobId}/status`,
         )
+        failures = 0
+        lastOk = Date.now()
+        setRecordStatusLostAt(null)
         // backend 側で HDCP black-frame 検出された場合、warning フィールドが返ってくる
         if (res.warning && res.warning !== recordWarning) {
           setRecordWarning(res.warning)
@@ -245,7 +252,10 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
           setRecordState('processing')
         }
       } catch {
-        // ネットワークエラーは次回ポーリングまで待機
+        // 次回ポーリングで再試行する。続けて失敗したら、保存状態が確認できていないことを示す
+        // (保存の成否は断定しない)。
+        failures += 1
+        if (failures >= 3) setRecordStatusLostAt(lastOk)
       }
     }, 2000)
     return () => window.clearInterval(id)
@@ -440,6 +450,12 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
       </div>
 
       {/* 録画エラー表示 */}
+      {recordStatusLostAt !== null && (recordState === 'stopping' || recordState === 'processing') && (
+        <p role="alert" className="text-[10px] text-[var(--ss-warn)]">
+          {t('common_ui.record_status_lost', { time: new Date(recordStatusLostAt).toLocaleTimeString() })}
+        </p>
+      )}
+
       {recordState === 'error' && recordError && (
         <div className={`flex items-start gap-2 px-3 py-1.5 shrink-0 text-xs ${errorBanner}`}>
           <MIcon name="error" size={12} className="shrink-0 mt-0.5" />

@@ -180,7 +180,9 @@ class SessionCreate(BaseModel):
     # round120 fix: extra=forbid で `expires_at`/`ttl_minutes` 等を遮断
     model_config = {"extra": "forbid"}
     match_id: int
-    created_by_role: str = "analyst"
+    # 旧クライアント互換のため受理するが、値は使わない。作成者ロールは
+    # 認証済みコンテキスト (ctx.role) からサーバ側で決める (なりすまし防止)。
+    created_by_role: Optional[str] = Field(default=None, max_length=20)
 
 
 class ParticipantJoin(BaseModel):
@@ -262,7 +264,7 @@ def create_session(body: SessionCreate, request: Request, db: Session = Depends(
     session = SharedSession(
         match_id=body.match_id,
         session_code=code,
-        created_by_role=body.created_by_role,
+        created_by_role=ctx.role or "analyst",
         password_hash=hashed,
     )
     db.add(session)
