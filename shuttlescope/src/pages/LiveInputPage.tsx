@@ -33,7 +33,8 @@ import { AttributePanel } from '@/components/annotation/AttributePanel'
 import { RallyPanel } from '@/components/annotation/RallyPanel'
 import { useAnnotationStore } from '@/store/annotationStore'
 import { buildBatchPayload, buildSkippedRallyPayload } from '@/utils/annotationPayload'
-import { apiPost } from '@/api/client'
+import { apiPost, apiPut } from '@/api/client'
+import { setWinner, isMatchDecidedBySet } from '@/utils/badmintonRules'
 import { useAuth } from '@/hooks/useAuth'
 import { useOfflineSync } from '@/hooks/useOfflineSync'
 import { errorMessage } from '@/utils/errors'
@@ -89,6 +90,10 @@ export function LiveInputPage() {
   const [initNonce, setInitNonce] = useState(0)
   // サーバ側に先サーブの情報が無いとき、入力者に選ばせる
   const [needServer, setNeedServer] = useState<null | { setId: number; setNum: number; rallyNum: number; scoreA: number; scoreB: number }>(null)
+  // セット終了 → 次セット (または試合終了) の処理状態
+  const [setEndState, setSetEndState] = useState<{ busy: boolean; error: string | null; matchDecided: boolean }>({
+    busy: false, error: null, matchDecided: false,
+  })
   const { userId } = useAuth()
   // 保存に失敗したラリーは IndexedDB に退避してあり、ここで再送する
   useOfflineSync(matchId, userId)
@@ -213,8 +218,56 @@ export function LiveInputPage() {
     store.inputShotType(shotType, ts)
   }
 
+  // セットの勝敗が成立した後は得点を積まない。次のセットへ進む操作だけを許す。
+  const currentSetWinner = setWinner({ scoreA: store.scoreA, scoreB: store.scoreB })
+
+  // セット終了: GameSet の勝者・最終スコアを確定し、試合が決着していなければ次のセットを作る。
+  const handleEndSet = async () => {
+    if (!latestSet || setEndState.busy) return
+    const cur = useAnnotationStore.getState()
+    const score = { scoreA: cur.scoreA, scoreB: cur.scoreB }
+    const side = setWinner(score)
+    if (side === null) return
+    setSetEndState({ busy: true, error: null, matchDecided: false })
+    try {
+      await apiPut(`/sets/${latestSet.id}/end`, {
+        winner: side === 'A' ? 'player_a' : 'player_b',
+        score_a: score.scoreA,
+        score_b: score.scoreB,
+      })
+      const setsRes = await apiGet<{
+        data: Array<{ id: number; set_num: number; winner?: 'player_a' | 'player_b' | null }>
+      }>(`/sets/match/${matchId}`)
+      const previous: Array<'A' | 'B'> = []
+      for (const gs of setsRes.data) {
+        if (gs.id === latestSet.id) continue
+        if (gs.winner === 'player_a') previous.push('A')
+        else if (gs.winner === 'player_b') previous.push('B')
+      }
+      if (isMatchDecidedBySet(previous, score)) {
+        setSetEndState({ busy: false, error: null, matchDecided: true })
+        return
+      }
+      const nextNum = latestSet.set_num + 1
+      const created = await apiPost<{ data: { id: number } }>('/sets', {
+        match_id: matchId,
+        set_num: nextNum,
+      })
+      useAnnotationStore.getState().nextSet(created.data.id, nextNum)
+      setLiveSet({ id: created.data.id, set_num: nextNum })
+      setSetEndState({ busy: false, error: null, matchDecided: false })
+    } catch (e: unknown) {
+      setSetEndState({
+        busy: false,
+        error: errorMessage(e, t('annotator.ui.unknown_error')),
+        matchDecided: false,
+      })
+    }
+  }
+
   const handleConfirmResult = (winner: 'player_a' | 'player_b', endType: string) => {
     if (!latestSet) return
+    if (currentSetWinner !== null) return
     const strokes = [...store.currentStrokes]
     const rallyNum = store.currentRallyNum
     const newScoreA = winner === 'player_a' ? store.scoreA + 1 : store.scoreA
@@ -345,6 +398,32 @@ export function LiveInputPage() {
           {t('annotator.live.tab_result', { defaultValue: '得点確定' })}
         </button>
       </div>
+
+      {/* セット決着: 次のセットへ (試合が決着していれば終了表示) */}
+      {currentSetWinner !== null && (
+        <div role="status" className="shrink-0 flex items-center gap-2 px-3 py-2 border-b border-[var(--ss-border)] text-sm">
+          <span className="flex-1">
+            {setEndState.matchDecided
+              ? t('annotator.live.match_decided')
+              : t('annotator.live.set_decided', { a: store.scoreA, b: store.scoreB })}
+          </span>
+          {!setEndState.matchDecided && (
+            <button
+              type="button"
+              disabled={setEndState.busy}
+              onClick={() => { void handleEndSet() }}
+              className="px-3 py-2 rounded-[5px] bg-[var(--ss-brand)] text-white disabled:opacity-50"
+            >
+              {setEndState.busy ? t('annotator.live.set_end_busy') : t('annotator.live.next_set')}
+            </button>
+          )}
+        </div>
+      )}
+      {setEndState.error && (
+        <div className="shrink-0 px-3 py-1 text-xs text-[var(--ss-bad)] break-all">
+          {t('annotator.live.set_end_failed', { reason: setEndState.error })}
+        </div>
+      )}
 
       {/* メインエリア (mode 別) */}
       <div className="flex-1 overflow-y-auto p-3">

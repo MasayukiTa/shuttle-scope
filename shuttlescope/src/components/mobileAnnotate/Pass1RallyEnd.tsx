@@ -142,6 +142,8 @@ export function Pass1RallyEnd({
   const submit = async (winner: 'player_a' | 'player_b') => {
     if (busyRef.current) return
     if (!nextServer) return
+    // セットの勝敗が成立した後は得点を積まない (22-10 のような不可能なスコアを作らない)。
+    if (setEndingSoon) return
     busyRef.current = true
     setBusy(true)
     try {
@@ -258,7 +260,7 @@ export function Pass1RallyEnd({
       <div className="flex-1 flex">
         <button
           type="button"
-          disabled={busy || !nextServer}
+          disabled={busy || !nextServer || setEndingSoon}
           onClick={() => submit('player_a')}
           data-tutorial="mobileAnnotate.scoreA"
           className="flex-1 flex flex-col items-center justify-center gap-2 m-2 rounded-2xl bg-blue-700 active:bg-blue-600 disabled:opacity-50 border-2 border-blue-400 relative"
@@ -279,7 +281,7 @@ export function Pass1RallyEnd({
         </button>
         <button
           type="button"
-          disabled={busy || !nextServer}
+          disabled={busy || !nextServer || setEndingSoon}
           onClick={() => submit('player_b')}
           data-tutorial="mobileAnnotate.scoreB"
           className="flex-1 flex flex-col items-center justify-center gap-2 m-2 rounded-2xl bg-pink-700 active:bg-pink-600 disabled:opacity-50 border-2 border-pink-400 relative"

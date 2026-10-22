@@ -10,6 +10,16 @@ import { API_BASE_URL } from '@/api/client'
  *   3. video_url (YouTube などの外部 URL)
  *   4. 空文字
  */
+/**
+ * 再生できる外部動画 URL か (http / https のみ)。
+ * 保存時にバックエンドが http(s) 以外を拒否するが、それ以前に保存された値
+ * (mailto: など) が DB に残っていると、「動画あり」と判定されて再生だけが失敗する。
+ * 読み出し側でも同じ基準で弾く。
+ */
+export function isPlayableVideoUrl(url?: string | null): boolean {
+  return typeof url === 'string' && /^https?:\/\//i.test(url.trim())
+}
+
 function _isElectron(): boolean {
   if (typeof navigator === 'undefined') return false
   return navigator.userAgent.toLowerCase().includes('electron')
@@ -35,7 +45,7 @@ export function getVideoSrc(match?: {
     return `app://video/${match.video_token}`
   }
 
-  if (match.video_url) return match.video_url
+  if (match.video_url && isPlayableVideoUrl(match.video_url)) return match.video_url
   return ''
 }
 
@@ -97,7 +107,7 @@ export function getMobileVideoSrc(
     }
     return base
   }
-  if (match.video_url) return match.video_url
+  if (match.video_url && isPlayableVideoUrl(match.video_url)) return match.video_url
   return ''
 }
 
@@ -111,7 +121,7 @@ export function hasVideo(match?: {
   has_video_local?: boolean | null
 } | null): boolean {
   if (!match) return false
-  return !!(match.video_token || match.video_url || match.has_video_local)
+  return !!(match.video_token || isPlayableVideoUrl(match.video_url) || match.has_video_local)
 }
 
 const UUID_FILENAME_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\.[A-Za-z0-9]+)?$/i
@@ -137,7 +147,7 @@ export function getVideoLabel(match?: {
   if (match.video_filename && !isInternalVideoFilename(match.video_filename)) {
     return `📁 ${match.video_filename}`
   }
-  if (match.video_url) return `🔗 ${match.video_url}`
+  if (isPlayableVideoUrl(match.video_url)) return `🔗 ${match.video_url}`
   if (match.video_filename || match.has_video_local) return '📁 (動画登録済み)'
   return ''
 }

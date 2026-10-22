@@ -16,6 +16,7 @@ import { PlayerCombobox } from '@/components/matchList/PlayerCombobox'
 import { MatchCard } from '@/components/matchList/MatchCard'
 import { MatchRow } from '@/components/matchList/MatchRow'
 import { MIcon } from '@/components/common/MIcon'
+import { isPlayableVideoUrl } from '@/utils/videoSrc'
 
 // 試合登録フォーム
 interface MatchFormData {
@@ -339,6 +340,12 @@ export function MatchListPage() {
     // 大会レベルとラウンドは未選択のまま登録させない (既定値を持たないため)
     if (!form.tournament_level || !form.round) {
       alert(t('common.select_placeholder'))
+      return
+    }
+
+    // 動画 URL は http(s) のみ。mailto: 等を保存すると「動画あり」と表示されるのに再生できない。
+    if (form.video_url.trim() && !isPlayableVideoUrl(form.video_url)) {
+      alert(t('match.list.video_url_invalid'))
       return
     }
 
