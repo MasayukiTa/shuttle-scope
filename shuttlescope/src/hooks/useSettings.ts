@@ -1,7 +1,8 @@
 /**
  * アプリ設定の読み書きフック。
  * P2/TX-2: まず localStorage に保存し、バックエンドAPIにも同期。
- * バックエンドが未起動の場合は localStorage のみで動作する。
+ * 保存 API が失敗したときは画面の値を直前の値へ戻し、saveFailed を立てる
+ * (画面だけ新しい値のまま、サーバは古い値、という食い違いを残さない)。
  */
 import { useState, useEffect, useCallback } from 'react'
 import { apiGet, apiPut } from '@/api/client'
@@ -99,6 +100,7 @@ function saveLocal(s: AppSettings) {
 export function useSettings() {
   const [settings, setSettingsState] = useState<AppSettings>(loadLocal)
   const [loading, setLoading] = useState(false)
+  const [saveFailed, setSaveFailed] = useState(false)
 
   // 初回マウント時にバックエンドから最新設定を取得
   useEffect(() => {
@@ -113,19 +115,31 @@ export function useSettings() {
       .catch(() => {/* バックエンド未起動時はlocalStorageで動作 */})
   }, [])
 
-  const updateSettings = useCallback(async (partial: Partial<AppSettings>) => {
+  const updateSettings = useCallback(async (partial: Partial<AppSettings>): Promise<boolean> => {
+    const keys = Object.keys(partial) as (keyof AppSettings)[]
+    const previous: Partial<AppSettings> = {}
+    for (const k of keys) (previous as Record<string, unknown>)[k] = settings[k]
     const next = { ...settings, ...partial }
     setSettingsState(next)
     saveLocal(next)
+    setSaveFailed(false)
     setLoading(true)
     try {
       await apiPut('/settings', { settings: partial })
+      return true
     } catch {
-      // バックエンド未起動時はlocalStorageのみで動作
+      // サーバが受け付けなかった設定を画面に残さない。直前の値へ戻す
+      setSettingsState((cur) => {
+        const reverted = { ...cur, ...previous }
+        saveLocal(reverted)
+        return reverted
+      })
+      setSaveFailed(true)
+      return false
     } finally {
       setLoading(false)
     }
   }, [settings])
 
-  return { settings, updateSettings, loading }
+  return { settings, updateSettings, loading, saveFailed }
 }

@@ -12,6 +12,7 @@ import { apiGet, apiPost, apiPut, apiDelete, newIdempotencyKey } from '@/api/cli
 import { Player, TeamHistoryEntry, NetworkDiagnostics } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
 import { useSettings } from '@/hooks/useSettings'
+import { useAnnotationStore } from '@/store/annotationStore'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useTheme } from '@/hooks/useTheme'
@@ -191,7 +192,11 @@ export function SettingsPage() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
   // クリップボードコピー済みの選手ID（一時表示用）
   const [copiedPlayerId, setCopiedPlayerId] = useState<number | null>(null)
-  const { settings: appSettings, updateSettings, loading: settingsLoading } = useSettings()
+  const { settings: appSettings, updateSettings, loading: settingsLoading, saveFailed: settingsSaveFailed } = useSettings()
+  // 再起動で失われる未保存の記録 (保存待ち + 保存失敗 + 入力途中のラリー)
+  const unsavedAnnotationCount = useAnnotationStore(
+    (st) => st.pendingSaveCount + st.saveErrors.length + (st.currentStrokes.length > 0 ? 1 : 0),
+  )
   const [_copiedUrl, _setCopiedUrl] = useState<string | null>(null)
   const navigate = useNavigate()
 
@@ -886,6 +891,11 @@ export function SettingsPage() {
 
   return (
     <div className={`flex flex-col h-full ${bodyBg} text-[var(--ss-t1)]`}>
+      {settingsSaveFailed && (
+        <div role="alert" className="shrink-0 px-4 py-2 text-xs border-b border-red-500/40 bg-red-500/10 text-red-400">
+          {t('settings_general.save_failed')}
+        </div>
+      )}
       {/* CV バッチ fps 確認ダイアログ */}
       {cvBatchConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
@@ -2892,9 +2902,20 @@ export function SettingsPage() {
                 <p className={`text-xs ${textMuted} mb-3`}>
                   {t('auto.SettingsPage.restart_desc')}
                 </p>
+                <p
+                  className={`text-xs mb-3 ${unsavedAnnotationCount > 0 ? 'text-amber-500 font-medium' : textMuted}`}
+                  role="status"
+                >
+                  {unsavedAnnotationCount > 0
+                    ? t('settings_general.restart_unsaved', { count: unsavedAnnotationCount })
+                    : t('settings_general.restart_no_unsaved')}
+                </p>
                 <button
                   onClick={() => {
-                    if (!window.confirm(t('settings.ui.restart_app_confirm'))) return
+                    const msg = unsavedAnnotationCount > 0
+                      ? t('settings_general.restart_confirm_unsaved', { count: unsavedAnnotationCount })
+                      : t('settings.ui.restart_app_confirm')
+                    if (!window.confirm(msg)) return
                     if (window.shuttlescope?.restartApp) {
                       window.shuttlescope.restartApp()
                     } else {
