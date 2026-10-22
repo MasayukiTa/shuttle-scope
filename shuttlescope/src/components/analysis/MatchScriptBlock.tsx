@@ -18,8 +18,8 @@ interface MatchScriptBlockProps {
 }
 
 interface ScriptPattern {
-  label: string
-  description: string
+  // i18n キー prediction.script.<id>.label / .description の <id>
+  id: string
   color: string
   iconName: string
 }
@@ -34,30 +34,30 @@ function derivePattern(
   const pd = bd?.pressure_drop ?? 0
 
   if (!hasFatigue) {
-    if (winProb >= 0.60) return { label: '優勢型', description: '過去実績から優勢。展開詳細は未算出。', color: WIN, iconName: 'trending_up' }
-    if (winProb <= 0.44) return { label: '苦戦型', description: '過去実績では不利。戦術の精度が鍵。', color: LOSS, iconName: 'trending_down' }
-    return { label: '拮抗型', description: '五分五分。試合当日の状態次第。', color: '#9ca3af', iconName: 'trending_flat' }
+    if (winProb >= 0.60) return { id: 'favored', color: WIN, iconName: 'trending_up' }
+    if (winProb <= 0.44) return { id: 'underdog', color: LOSS, iconName: 'trending_down' }
+    return { id: 'even', color: '#9ca3af', iconName: 'trending_flat' }
   }
 
   if (winProb >= 0.60 && td < 0.08 && lr < 0.08 && pd < 0.08)
-    return { label: '安定優勢型', description: '終盤・長ラリー・デュースいずれも安定。展開を選ばない。', color: WIN, iconName: 'trending_up' }
+    return { id: 'stable_favored', color: WIN, iconName: 'trending_up' }
 
   if (winProb >= 0.55 && td >= 0.08 && lr < 0.08)
-    return { label: '序盤優勢・後半注意型', description: '序盤で差をつけたい。後半の失速に備えた体力配分を。', color: WIN, iconName: 'show_chart' }
+    return { id: 'early_lead', color: WIN, iconName: 'show_chart' }
 
   if (winProb >= 0.55 && lr >= 0.08)
-    return { label: '短期決戦優位型', description: '長ラリーで不利。早い展開・スマッシュ多用で決着を。', color: WIN, iconName: 'bolt' }
+    return { id: 'short_match', color: WIN, iconName: 'bolt' }
 
   if (winProb >= 0.45 && pd >= 0.08)
-    return { label: '接戦・デュース弱型', description: 'デュース時の集中力維持が課題。接戦での精神的準備を。', color: LOSS, iconName: 'warning' }
+    return { id: 'deuce_risk', color: LOSS, iconName: 'warning' }
 
   if (winProb <= 0.44 && lr >= 0.08)
-    return { label: '長期戦不利型', description: '長ラリーと後半で不利。逆転には早い展開での先行が必要。', color: LOSS, iconName: 'trending_down' }
+    return { id: 'long_match_risk', color: LOSS, iconName: 'trending_down' }
 
   if (winProb <= 0.44)
-    return { label: '逆転狙い型', description: '過去実績は不利。相手の弱点を突く戦術的工夫が必要。', color: LOSS, iconName: 'trending_down' }
+    return { id: 'comeback', color: LOSS, iconName: 'trending_down' }
 
-  return { label: '標準型', description: '特段の傾向なし。基本戦術を軸に。', color: '#9ca3af', iconName: 'trending_flat' }
+  return { id: 'standard', color: '#9ca3af', iconName: 'trending_flat' }
 }
 
 export function MatchScriptBlock({ winProbability, fatigueBreakdown }: MatchScriptBlockProps) {
@@ -71,20 +71,20 @@ export function MatchScriptBlock({ winProbability, fatigueBreakdown }: MatchScri
   const signals: string[] = []
   if (hasFatigue && fatigueBreakdown) {
     if (fatigueBreakdown.temporal_drop >= 0.08)
-      signals.push(`後半失速 ${Math.round(fatigueBreakdown.temporal_drop * 100)}%`)
+      signals.push(t('prediction.script.signal_late_drop', { pct: Math.round(fatigueBreakdown.temporal_drop * 100) }))
     if (fatigueBreakdown.long_rally_penalty >= 0.08)
-      signals.push(`長ラリー後低下 ${Math.round(fatigueBreakdown.long_rally_penalty * 100)}%`)
+      signals.push(t('prediction.script.signal_long_rally_drop', { pct: Math.round(fatigueBreakdown.long_rally_penalty * 100) }))
     if (fatigueBreakdown.pressure_drop >= 0.08)
-      signals.push(`デュース弱 ${Math.round(fatigueBreakdown.pressure_drop * 100)}%`)
+      signals.push(t('prediction.script.signal_deuce_drop', { pct: Math.round(fatigueBreakdown.pressure_drop * 100) }))
   }
 
   return (
     <div className="space-y-1.5">
       <div className="flex items-center gap-2">
         <MIcon name={pattern.iconName} size={20} style={{ color: pattern.color }} />
-        <span className="text-sm font-semibold" style={{ color: pattern.color }}>{pattern.label}</span>
+        <span className="text-sm font-semibold" style={{ color: pattern.color }}>{t(`prediction.script.${pattern.id}.label`)}</span>
       </div>
-      <p className="text-xs" style={{ color: subText }}>{pattern.description}</p>
+      <p className="text-xs" style={{ color: subText }}>{t(`prediction.script.${pattern.id}.description`)}</p>
       {signals.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mt-1">
           {signals.map((s, i) => (

@@ -1,6 +1,6 @@
 {
   "llm": {
-    "title": "LLM チャット",
+    "title": "AIに質問",
     "new_chat": "新しいチャット",
     "conversations": "会話一覧",
     "open_conversations": "会話一覧を開く",
@@ -101,11 +101,12 @@
     "prediction": "予測",
     "prediction_title": "試合予測",
     "expert": "専門家",
-    "llm": "LLM チャット",
+    "llm": "AIに質問",
     "players": "選手管理",
     "users": "ユーザ",
     "pending_users": "承認待ち",
     "pending_users_short": "承認",
+    "notifications_short": "通知",
     "settings": "設定",
     "dashboard_pages": {
       "overview": "概要",
@@ -1063,7 +1064,7 @@
     "epv_state": "状態別EPV",
     "state_action": "状態行動分析",
     "hazard_fatigue": "疲労リスク",
-    "cf1": "CF-1 自助法",
+    "cf1": "CF-1 ブートストラップ法",
     "cf2": "CF-2 IPW補正",
     "cf3": "CF-3 相手別",
     "lift": "リフト（上昇率）"
@@ -2167,7 +2168,7 @@
     "guide_step2": "AnnotatorPage ヘッダーの「共有」ボタンでセッション作成",
     "guide_step3": "表示されたURLをコーチ・ベンチのスマートフォン/PCで開く",
     "guide_step4": "アナリストがラリーを保存するとコーチ画面がリアルタイム更新",
-    "network_diag_title": "ネットワーク診断（Q-002/Q-008）",
+    "network_diag_title": "ネットワーク診断",
     "run_diagnostics": "診断を実行",
     "transport_ladder": "接続推奨（Transport Ladder）",
     "diag_not_run": "「診断を実行」ボタンで接続環境を診断します",
@@ -2206,7 +2207,7 @@
     "ngrok_authtoken_label": "ngrok 認証トークン",
     "ngrok_authtoken_placeholder": "2abc...（ngrok ダッシュボードから取得）",
     "ngrok_authtoken_hint": "ngrok 3.x は認証トークンが必須です。https://dashboard.ngrok.com/get-started/your-authtoken で取得できます。",
-    "ngrok_authtoken_from_env": "環境変数から自動適用済み（.env.development）",
+    "ngrok_authtoken_from_env": "環境変数から自動で設定済みです",
     "turn_secret_placeholder": "coturn の共有鍵 (use-auth-secret)",
     "turn_secret_required": "共有鍵が未設定です。TURN の資格情報を発行できません（固定のユーザー名・パスワードは配布しません）。"
   },
@@ -2357,7 +2358,22 @@
     "tactical_ranking": "戦術推奨",
     "biggest_risk": "最大リスク",
     "top_action": "推奨アクション",
-    "script_no_rally_data": "ラリーデータ不足のため展開詳細は未算出",
+    "script_no_rally_data": "ラリーデータが足りないため、試合展開の詳細は表示していません",
+    "script": {
+      "favored": { "label": "優勢型", "description": "過去の実績では有利です。ラリー数が足りず、試合展開の詳細までは分かりません。" },
+      "underdog": { "label": "苦戦型", "description": "過去の実績では不利です。戦術の精度が鍵になります。" },
+      "even": { "label": "拮抗型", "description": "ほぼ互角です。当日の状態で結果が変わります。" },
+      "stable_favored": { "label": "安定優勢型", "description": "終盤、長いラリー、デュースのどれでも安定しています。展開を選ばず戦えます。" },
+      "early_lead": { "label": "序盤優勢・後半注意型", "description": "序盤で差をつけたい展開です。後半の失速に備えて体力配分を考えます。" },
+      "short_match": { "label": "短期決戦優位型", "description": "長いラリーでは不利です。早い展開とスマッシュで決めにいきます。" },
+      "deuce_risk": { "label": "接戦・デュース注意型", "description": "デュースで集中力を保てるかが課題です。接戦に向けて気持ちの準備をします。" },
+      "long_match_risk": { "label": "長期戦不利型", "description": "長いラリーと後半で不利です。逆転には、早い展開で先に点を取る必要があります。" },
+      "comeback": { "label": "逆転狙い型", "description": "過去の実績では不利です。相手の弱点を突く戦術の工夫が必要です。" },
+      "standard": { "label": "標準型", "description": "目立った傾向はありません。基本戦術を軸に進めます。" },
+      "signal_late_drop": "後半の失速 {{pct}}%",
+      "signal_long_rally_drop": "長いラリー後の低下 {{pct}}%",
+      "signal_deuce_drop": "デュースでの低下 {{pct}}%"
+    },
     "observation_augmented": "観察データで補強済み",
     "prediction_drivers": "予測根拠・データソース",
     "recent_form": "直近フォーム",
@@ -2413,9 +2429,9 @@
     "benchmark_human": "人間",
     "benchmark_model": "モデル",
     "benchmark_no_data": "ベンチマークデータなし（試合前予測を入力してください）",
-    "impact_high": "高",
-    "impact_mid": "中",
-    "impact_low": "低",
+    "impact_high": "影響度: 高",
+    "impact_mid": "影響度: 中",
+    "impact_low": "影響度: 低",
     "sample_n": "{{n}} 試合"
   },
   "observation_analytics": {
@@ -2682,7 +2698,7 @@
     "shot_type_saved": "ショット種別を保存しました",
     "shot_type_save_error": "保存に失敗しました",
     "shot_type_required": "ショット種別を選択してください",
-    "shot_type_admin_only": "この機能は admin のみ利用できます",
+    "shot_type_admin_only": "この機能は管理者のみ利用できます",
     "shot_type_hint": "アノテーションしたショット種別は AI モデルの学習データとして使用されます（利用規約 第9条）"
   },
   "cog_detection": {
@@ -2867,7 +2883,7 @@
       "redetect": "再検出",
       "sync_settings": "同期設定",
       "audit_logs_title": "監査ログ",
-      "audit_logs_desc": "ログイン・ユーザ管理・データ変更などの操作履歴を確認します（admin のみ）。",
+      "audit_logs_desc": "ログイン・ユーザ管理・データ変更などの操作履歴を確認します（管理者のみ）。",
       "audit_logs_open": "監査ログを開く",
       "analytics_title": "プロダクト分析",
       "analytics_desc": "週間・月間の利用者数、アノテーションの入力完了率、よく見られる分析画面、入力時間の推移、体調入力の質。個人を特定できない形で集計しています。",
@@ -2915,7 +2931,7 @@
       "import_run": "インポート実行",
       "import_complete": "インポート完了",
       "security_logs_title": "セキュリティ監視",
-      "security_logs_desc": "外部からの HTTP リクエスト・攻撃検知 (probe / rate limit 等) ログ。アプリ内操作の監査ログとは分離。",
+      "security_logs_desc": "外部からのアクセスと攻撃検知のログです。不審なアクセスの探りや、アクセス集中による制限も記録します。アプリ内の操作を記録する監査ログとは別です。",
       "security_logs_open": "セキュリティ監視を開く"
     }
   },
@@ -4201,7 +4217,7 @@
       "dependence_note": "カードごとに前提は違います。多くの指標は、同じ試合のラリーどうしを独立とみなして計算しています。実際のラリーは試合や選手ごとにまとまるため、区間は実際より狭く出ることがあります。"
     },
     "PeerComparisonCard": {
-      "title": "コミュニティ Peer 比較 (実験・admin 限定)",
+      "title": "コミュニティ比較（実験・管理者限定）",
       "banner": "research-tier / admin-only — 個別選手の値は返らず、p25/p50/p75/平均/標準偏差のみが集計されます。対象人数が5名未満の集計は表示しません。デモデータは除外されます。",
       "cohort_heading": "コホート条件 (任意)",
       "age_bucket": "年齢",
@@ -4231,6 +4247,14 @@
       "mean": "平均",
       "sd": "標準偏差",
       "unit": "単位",
+      "metric_smash_win_rate": "スマッシュ勝率",
+      "metric_net_front_win_rate": "ネット前の勝率",
+      "metric_avg_rally_length": "平均ラリー長",
+      "metric_serve_win_rate": "サーブ勝率",
+      "metric_around_head_freq": "ラウンド・ザ・ヘッドの割合",
+      "metric_unknown": "未対応の指標",
+      "unit_ratio": "割合",
+      "unit_strokes": "球",
       "n_chip": "N = {{n}}",
       "error": "集計に失敗しました"
     },
@@ -4525,7 +4549,7 @@
       "log_lines_hint": "{{n}} 行 — Ctrl+A → Ctrl+C でコピー可",
       "tutorial_desc": "操作方法を再生できます。完了済みの項目もいつでも再生可能です。",
       "step_count": "{{n}} ステップ",
-      "replay_count": " · replay 回数: {{n}}",
+      "replay_count": " · 再生回数: {{n}}",
       "tutorial_status_completed": "完了",
       "tutorial_status_skipped": "スキップ済み",
       "tutorial_status_in_progress": "途中",
@@ -5213,8 +5237,8 @@
     "confidence_medium": "信頼度: 中",
     "confidence_low": "信頼度: 低",
     "calculating": "アドバイスを計算しています…",
-    "measuring_title": "アドバイスは計測中です",
-    "measuring_body": "データが揃い次第、具体的な観測を表示します。それまで推測ベースのコメントは出しません (信頼性最優先)。",
+    "measuring_title": "アドバイスを表示するにはデータが足りません",
+    "measuring_body": "データが揃うと、具体的な観測を表示します。それまでは、推測だけのコメントは出しません。",
     "hide_basis": "根拠を隠す",
     "show_basis": "ⓘ 根拠",
     "basis": {
