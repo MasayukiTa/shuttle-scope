@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { WIN, LOSS } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 
 interface PreMatchObservationAnalyticsProps {
   playerId: number
@@ -56,7 +57,7 @@ export function PreMatchObservationAnalytics({ playerId }: PreMatchObservationAn
   const { t } = useTranslation()
   const isLight = useIsLightMode()
 
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError, refetch } = useQuery({
     queryKey: ['analysis-observation-analytics', playerId],
     queryFn: () => apiGet<ObsAnalyticsResponse>('/analysis/observation_analytics', { player_id: playerId }),
     enabled: !!playerId,
@@ -69,6 +70,10 @@ export function PreMatchObservationAnalytics({ playerId }: PreMatchObservationAn
 
   if (isLoading) {
     return <div className="text-[var(--ss-t3)] text-sm py-3 text-center">{t('analysis.loading')}</div>
+  }
+
+  if (isError) {
+    return <QueryErrorNotice onRetry={() => { void refetch() }} />
   }
 
   const splits = resp?.data?.splits ?? []

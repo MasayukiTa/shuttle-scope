@@ -2,6 +2,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 import { perfColor, lightSafe, WIN, LOSS } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
@@ -97,7 +98,7 @@ export function PressurePerformance({ playerId, filters = DEFAULT_FILTERS }: Pre
     ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
     ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
   }
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError, refetch } = useQuery({
     queryKey: ['analysis-pressure-performance', playerId, filters],
     queryFn: () =>
       apiGet<PressureResponse>('/analysis/pressure_performance', {
@@ -111,6 +112,10 @@ export function PressurePerformance({ playerId, filters = DEFAULT_FILTERS }: Pre
     return (
       <div className="text-[var(--ss-t3)] text-sm py-8 text-center">{t('auto.PressurePerformance.k1')}</div>
     )
+  }
+
+  if (isError) {
+    return <QueryErrorNotice onRetry={() => { void refetch() }} />
   }
 
   const sampleSize = resp?.meta?.sample_size ?? 0

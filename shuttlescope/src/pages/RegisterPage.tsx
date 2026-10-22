@@ -6,6 +6,7 @@ import { apiPost } from '@/api/client'
 import { TurnstileWidget } from '@/components/auth/TurnstileWidget'
 import { publicAuthErrorKey } from '@/utils/publicAuthError'
 import { publicSiteUrl } from '@/utils/publicUrl'
+import { todayLocal } from '@/utils/localDate'
 
 export default function RegisterPage() {
   const { t } = useTranslation()
@@ -141,7 +142,7 @@ export default function RegisterPage() {
             {t('auth.register.dob_optional') || '生年月日（任意）'}
           </label>
           <input type="date" value={dob} onChange={(e) => setDob(e.target.value)}
-                 max={new Date().toISOString().slice(0, 10)}
+                 max={todayLocal()}
                  autoComplete="bday"
                  className={fieldCls} />
           <p className="mt-1 text-xs text-[var(--ss-t3)]">

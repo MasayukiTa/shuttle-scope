@@ -30,7 +30,7 @@ from sqlalchemy.orm import Session
 
 from backend.analysis.analysis_population import rally_counts_by_match
 from backend.analysis.analysis_registry import FILTER_SCOPE_FILTERED, get_filter_scope
-from backend.analysis.router_helpers import _get_player_matches_with_excluded
+from backend.analysis.router_helpers import _get_player_matches_with_excluded, validate_date_range
 from backend.db.models import Match
 
 
@@ -73,7 +73,9 @@ def match_filter_params(
     date_from: Optional[DateType] = Query(None),
     date_to: Optional[DateType] = Query(None),
 ) -> MatchFilter:
-    """FastAPI 依存。解析エンドポイントはこれ 1 つで絞り込みを受け取る。"""
+    """FastAPI 依存。解析エンドポイントはこれ 1 つで絞り込みを受け取る。
+    開始日 > 終了日は 422 (監査 #797)。"""
+    validate_date_range(date_from, date_to)
     return MatchFilter(
         result=result if result in ("win", "loss") else None,
         tournament_level=tournament_level or None,

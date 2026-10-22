@@ -37,7 +37,7 @@ import { useTranslation } from 'react-i18next'
 import { MIcon } from '@/components/common/MIcon'
 import { normalizeStrikerTeam, nextStrikingTeam, teamLetter } from '@/utils/players'
 import { resolveHitter, slotsOfTeam, type HitterSlot } from '@/utils/mobileAnnotateDoubles'
-import { SERVICE_TYPES, asZoneCode, strokeValidationError } from '@/utils/mobileStrokeValidation'
+import { SERVICE_TYPES, asZoneCode, isServeDowngrade, strokeValidationError } from '@/utils/mobileStrokeValidation'
 
 // Build inside the component via useMemo so t() is bound to the current
 // i18next instance. Defining this at module scope crashes the minified
@@ -205,9 +205,6 @@ export function Pass3ShotDetail({
       shot_type: shotKey,
       hit_zone: hit,
       land_zone: land,
-      // 人が画面で指定した入力。hit_zone が無いのに由来だけ付けない
-      source_method: 'manual',
-      ...(hit ? { hit_zone_source: 'manual' } : {}),
     }
     await enqueue('POST /api/strokes?rally_id=:rally_id', body, { rally_id: rally.id })
     onStrokeAdded({
@@ -290,6 +287,11 @@ export function Pass3ShotDetail({
     }
     // cant_reach は着地点を持てない → land_zone をクリアしてから送る。
     const newLand = shotKey === 'cant_reach' ? null : newLandRaw
+    if (isServeDowngrade(s.stroke_num, s.shot_type, shotKey)) {
+      setCommitError(t('auto.Pass3ShotDetail.err_serve_locked'))
+      cancelEdit()
+      return
+    }
     const verr = strokeValidationError(shotKey, asZoneCode(newLand), s.stroke_num)
     if (verr) {
       setCommitError(t(`auto.Pass3ShotDetail.err_${verr}`))
@@ -417,6 +419,7 @@ export function Pass3ShotDetail({
         commonShots={COMMON_SHOTS}
         otherShots={OTHER_SHOTS}
         allowServices={editingStrokeNum === 1}
+        serviceOnly={editingStrokeNum === 1 && isServeDowngrade(1, editing?.shot_type, 'smash')}
         onPick={(k) => {
           // cant_reach は着地点を持てない → ゾーン選択を飛ばし、打点は現値のまま即確定。
           if (k === 'cant_reach') {
@@ -522,6 +525,7 @@ function ShotChipPicker({
   commonShots,
   otherShots,
   allowServices,
+  serviceOnly = false,
   onPick,
   onCancel,
 }: {
@@ -532,16 +536,19 @@ function ShotChipPicker({
   otherShots: ShotOption[]
   /** サーブ種別 (short/long_service) を出すか。ラリー1球目のみ true (validate_stroke 準拠)。 */
   allowServices: boolean
+  /** 1球目のサーブを編集中: サーブ種別だけ選べる (非サーブへの変更を UI で出さない, 監査 #795)。 */
+  serviceOnly?: boolean
   onPick: (key: ShotKey | 'other') => void
   onCancel: () => void
 }) {
   const { t } = useTranslation()
   const [showOther, setShowOther] = useState(false)
   // 1球目以外ではサーブ種別を隠す (送っても 422 で無言ドロップするため)。
-  const visibleOther = useMemo(
-    () => (allowServices ? otherShots : otherShots.filter((o) => !SERVICE_TYPES.includes(o.key))),
-    [otherShots, allowServices],
-  )
+  const visibleOther = useMemo(() => {
+    if (serviceOnly) return otherShots.filter((o) => SERVICE_TYPES.includes(o.key))
+    return allowServices ? otherShots : otherShots.filter((o) => !SERVICE_TYPES.includes(o.key))
+  }, [otherShots, allowServices, serviceOnly])
+  const visibleCommon = serviceOnly ? [] : commonShots
   return (
     <div className="absolute inset-0 bg-black/95 flex flex-col">
       <div className="px-3 py-2 border-b border-gray-800 text-xs text-yellow-200 font-bold">
@@ -550,7 +557,7 @@ function ShotChipPicker({
       <div className="flex-1 overflow-y-auto p-3 content-start">
         {/* 固定 8 種: 誤タップ回避で 52px 高・2 カラム */}
         <div className="grid grid-cols-2 gap-2">
-          {commonShots.map((c) => (
+          {visibleCommon.map((c) => (
             <button
               key={c.key}
               type="button"
@@ -589,14 +596,16 @@ function ShotChipPicker({
               </button>
             ))}
             {/* other は「後で詳細入力」として全幅で提供 (保存値 'other') */}
-            <button
-              type="button"
-              onClick={() => onPick('other')}
-              className="col-span-2 px-3 py-2 rounded-lg bg-gray-700 text-gray-200 text-xs"
-              style={{ minHeight: '44px' }}
-            >
-              {t('auto.Pass3ShotDetail.other_later')}
-            </button>
+            {!serviceOnly && (
+              <button
+                type="button"
+                onClick={() => onPick('other')}
+                className="col-span-2 px-3 py-2 rounded-lg bg-gray-700 text-gray-200 text-xs"
+                style={{ minHeight: '44px' }}
+              >
+                {t('auto.Pass3ShotDetail.other_later')}
+              </button>
+            )}
           </div>
         )}
       </div>

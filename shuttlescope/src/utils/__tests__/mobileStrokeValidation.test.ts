@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { asZoneCode, strokeValidationError } from '@/utils/mobileStrokeValidation'
+import { asZoneCode, isServeDowngrade, strokeValidationError } from '@/utils/mobileStrokeValidation'
 
 describe('strokeValidationError', () => {
   it('allows smash landing near the net (not physically impossible)', () => {
@@ -30,5 +30,25 @@ describe('asZoneCode', () => {
     expect(asZoneCode('OB_BC')).toBeNull()
     expect(asZoneCode(null)).toBeNull()
     expect(asZoneCode(undefined)).toBeNull()
+  })
+})
+
+describe('isServeDowngrade (audit 795)', () => {
+  it('rejects changing the first-stroke serve into a non-serve shot', () => {
+    for (const next of ['smash', 'clear', 'drop', 'net_shot', 'other', 'cant_reach']) {
+      expect(isServeDowngrade(1, 'serve', next)).toBe(true)
+      expect(isServeDowngrade(1, 'short_service', next)).toBe(true)
+    }
+  })
+
+  it('allows switching between service subtypes on the first stroke', () => {
+    expect(isServeDowngrade(1, 'serve', 'short_service')).toBe(false)
+    expect(isServeDowngrade(1, 'short_service', 'long_service')).toBe(false)
+  })
+
+  it('does not restrict later strokes or a first stroke that was never a serve', () => {
+    expect(isServeDowngrade(2, 'clear', 'smash')).toBe(false)
+    expect(isServeDowngrade(1, 'smash', 'clear')).toBe(false)
+    expect(isServeDowngrade(1, null, 'clear')).toBe(false)
   })
 })

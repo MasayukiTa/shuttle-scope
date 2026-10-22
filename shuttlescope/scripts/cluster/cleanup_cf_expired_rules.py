@@ -17,6 +17,8 @@ env:
   - SS_CF_BAN_TOKEN  (必須)
   - SS_CF_ZONE_ID    (必須)
   - SS_CF_CLEANUP_DRY_RUN=1  (任意、削除せず表示のみ)
+  - SS_CF_CA_BUNDLE  (任意、企業 CA が必要なときだけ CA bundle (PEM) のパスを明示。
+                      未設定なら標準の信頼ストアで TLS を検証する。検証の無効化は不可)
 
 実行方法:
   python scripts/cluster/cleanup_cf_expired_rules.py
@@ -88,15 +90,28 @@ def _extract_expires(notes: Optional[str]) -> Optional[int]:
         return None
 
 
+def _tls_verify():
+    """管理トークンを送る通信は常に TLS 検証する (監査 #794)。
+
+    既定は標準の信頼ストア。企業 CA が必要な環境だけ SS_CF_CA_BUNDLE に PEM のパスを置く。
+    パスが存在しなければ検証を緩めず ValueError (呼ばれる前に止まる)。
+    """
+    path = (os.environ.get("SS_CF_CA_BUNDLE") or "").strip()
+    if not path:
+        return True
+    if not os.path.isfile(path):
+        raise ValueError("SS_CF_CA_BUNDLE is not a file")
+    return path
+
+
 def main() -> int:
     import requests  # type: ignore
-    import urllib3
-    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
     token = _required("SS_CF_BAN_TOKEN")
     zone = _required("SS_CF_ZONE_ID")
     dry_run = (os.environ.get("SS_CF_CLEANUP_DRY_RUN") or "").strip() == "1"
     headers = {"Authorization": f"Bearer {token}"}
+    verify = _tls_verify()
 
     now = int(time.time())
     base = f"https://api.cloudflare.com/client/v4/zones/{zone}/firewall/access_rules/rules"
@@ -113,7 +128,7 @@ def main() -> int:
             headers=headers,
             params={"page": page, "per_page": per_page,
                     "notes": "Auto-ban via canary"},
-            timeout=20, verify=False,
+            timeout=20, verify=verify,
         )
         if r.status_code != 200:
             print(f"[cleanup] FATAL list page={page} status={r.status_code} "
@@ -141,7 +156,7 @@ def main() -> int:
             if dry_run:
                 continue
             dr = requests.delete(f"{base}/{rule_id}", headers=headers,
-                                  timeout=15, verify=False)
+                                  timeout=15, verify=verify)
             if dr.status_code in (200, 204):
                 deleted += 1
             else:
