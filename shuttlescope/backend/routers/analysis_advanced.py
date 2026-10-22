@@ -1992,7 +1992,8 @@ def get_growth_judgment(
 ):
     """複数指標を横断した成長判定（improving/stable/declining/pending）を返す。"""
 
-    matches = _sorted_by_date(select_population(db, player_id, mf)[0])
+    population_matches, excluded_before = select_population(db, player_id, mf)
+    matches = _sorted_by_date(population_matches)
     match_count = len(matches)
 
     if match_count < min_matches:
@@ -2073,7 +2074,9 @@ def get_growth_judgment(
             "annotated_match_count": annotated_match_count,
             "min_matches_required": min_matches,
             # 対象 / 使用 / 除外 (理由別)。指標ごとの使用数は metrics[*].n_matches
-            "population": summarize_growth_population(matches, population_points),
+            "population": summarize_growth_population(
+                matches, population_points, excluded_before=excluded_before,
+            ),
         },
         "meta": _with_input_provenance(
             {"sample_size": annotated_match_count},
