@@ -79,7 +79,7 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
         {t('auto.DashboardResearchPage.dependence_note')}
       </p>
 
-      {/* 以降のカードでは ⚠ 見出しを繰り返さない。カード固有の注意・前提・昇格条件は小さく残す */}
+      {/* 以降のカードでは警告の見出しを繰り返さない。カード固有の注意・前提・昇格条件は小さく残す */}
       <ResearchNoticeSuppress>
       {/* admin-only コミュニティ peer 比較 (research / experimental) */}
       <ErrorBoundary>
