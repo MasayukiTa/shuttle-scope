@@ -36,22 +36,15 @@ const CONF_COLOR: Record<string, string> = {
   unknown:   '#6b7280',
 }
 
-const CONF_LABEL: Record<string, string> = {
-  confirmed: '確認済',
-  likely:    'ほぼ確か',
-  tentative: '仮説',
-  unknown:   '不明',
-}
-
-// observation_type → 日本語ラベルマップ（ja.json の warmup キーに対応）
-const TYPE_LABEL: Record<string, string> = {
-  handedness:       '利き手',
-  physical_caution: '身体的注意',
-  tactical_style:   '戦術スタイル',
-  court_preference: 'コート位置',
-  self_condition:   '自コンディション',
-  self_timing:      '自タイミング感覚',
-}
+const KNOWN_CONFIDENCE = ['confirmed', 'likely', 'tentative', 'unknown']
+const KNOWN_TYPES = [
+  'handedness',
+  'physical_caution',
+  'tactical_style',
+  'court_preference',
+  'self_condition',
+  'self_timing',
+]
 
 export function PreMatchObservationAnalytics({ playerId }: PreMatchObservationAnalyticsProps) {
   const { t } = useTranslation()
@@ -62,6 +55,19 @@ export function PreMatchObservationAnalytics({ playerId }: PreMatchObservationAn
     queryFn: () => apiGet<ObsAnalyticsResponse>('/analysis/observation_analytics', { player_id: playerId }),
     enabled: !!playerId,
   })
+
+  // 観察種別・観察入力者の確信度ラベル。未知の値は内部コードを出さず共通表示にする
+  const typeLabel = (obsType: string): string =>
+    KNOWN_TYPES.includes(obsType)
+      ? t(`warmup.observation_${obsType}`)
+      : t('observation_analytics.unknown_value')
+  // 観察入力者が付けた確信度であり、勝率の統計的な確からしさではない
+  const confidenceBadge = (conf: string): string =>
+    t('observation_analytics.confidence_badge', {
+      label: KNOWN_CONFIDENCE.includes(conf)
+        ? t(`warmup.confidence_${conf}`)
+        : t('observation_analytics.unknown_value'),
+    })
 
   const labelColor = isLight ? '#475569' : '#9ca3af'
   const rowBg      = isLight ? '#f8fafc' : '#1f2937'
@@ -105,7 +111,7 @@ export function PreMatchObservationAnalytics({ playerId }: PreMatchObservationAn
       {Object.entries(grouped).map(([obsType, entries]) => (
         <div key={obsType}>
           <p className="text-xs font-semibold mb-1.5" style={{ color: textMain }}>
-            {TYPE_LABEL[obsType] ?? obsType}
+            {typeLabel(obsType)}
           </p>
           <div className="space-y-1.5">
             {entries.map((entry) => {
@@ -138,7 +144,7 @@ export function PreMatchObservationAnalytics({ playerId }: PreMatchObservationAn
                         className="text-[9px] px-1 rounded-ss-sm"
                         style={{ color: confColor, border: `1px solid ${confColor}`, opacity: 0.85 }}
                       >
-                        {CONF_LABEL[entry.confidence] ?? entry.confidence}
+                        {confidenceBadge(entry.confidence)}
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5">
@@ -181,7 +187,7 @@ export function PreMatchObservationAnalytics({ playerId }: PreMatchObservationAn
             return Object.entries(selfGrouped).map(([obsType, entries]) => (
               <div key={obsType} className="mb-2">
                 <p className="text-[11px] mb-1" style={{ color: labelColor }}>
-                  {TYPE_LABEL[obsType] ?? obsType}
+                  {typeLabel(obsType)}
                 </p>
                 <div className="space-y-1">
                   {entries.map((entry) => {

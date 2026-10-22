@@ -180,6 +180,18 @@ def start_recording(
     """
     ctx = _require_auth(request)
 
+    # cookie_browser makes yt-dlp read the cookies of a browser profile on the
+    # backend host (the server's own account). Only the local Electron/operator
+    # backend may use it; remote Web callers must use cookie_file instead.
+    # Same boundary as POST /matches/{id}/download.
+    if body.cookie_browser:
+        from backend.utils.control_plane import is_loopback_request
+        if not is_loopback_request(request):
+            raise HTTPException(
+                status_code=403,
+                detail="cookie_browser はローカル実行時 (Electron) のみ利用可能です。",
+            )
+
     # Match binding is a write-capable side effect: archive completion may update
     # Match.video_local_path. Authorize it before any yt-dlp/ffmpeg/network probe.
     if body.match_id is not None:

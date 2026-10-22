@@ -232,11 +232,11 @@ export function PolicyEvalCard({ playerId, filters = DEFAULT_FILTERS }: Props) {
   const insufficientStates = states.filter((s) => s.status === 'insufficient')
 
   // ベスト状態のラベル (summary から)
-  const bestStateLabel = useMemo(() => {
-    if (!summary?.best_state) return null
-    const { phase, role } = splitStateKey(summary.best_state.state_key)
+  // best_state は CI が支持する場合のみ backend が返す。支持されない最大点推定は top_candidate (不確実)
+  const stateLabel = (key: string): string => {
+    const { phase, role } = splitStateKey(key)
     return `${PHASE_LABELS[phase] ?? phase} / ${ROLE_LABELS[role] ?? role}`
-  }, [summary, PHASE_LABELS, ROLE_LABELS])
+  }
 
   return (
     <div className={`${card} rounded-ss-lg p-4 space-y-3`}>
@@ -292,15 +292,24 @@ export function PolicyEvalCard({ playerId, filters = DEFAULT_FILTERS }: Props) {
                 <ConfidenceBadge sampleSize={meta?.sample_size ?? 0} unit={meta?.sample_unit ?? undefined} tier={meta?.tier} evidenceLevel={meta?.evidence_level} compact />
               </div>
               {/* ベスト機会の強調表示 */}
-              {bestStateLabel && summary.best_state && (
+              {summary.best_state ? (
                 <p className="text-[11px] font-medium text-[var(--ss-success)]">
                   <MIcon name="star" size={12} className="align-middle mr-0.5" />
                   {t('auto.PolicyEvalCard.best_opportunity', {
-                    state: bestStateLabel,
+                    state: stateLabel(summary.best_state.state_key),
                     uplift: signedPct(summary.best_state.uplift),
                   })}
+                  {` (${t('auto.PolicyEvalCard.n_only', { n: summary.best_state.n })})`}
                 </p>
-              )}
+              ) : summary.top_candidate ? (
+                <p className={`text-[11px] ${textFaint}`}>
+                  {t('auto.PolicyEvalCard.top_candidate_uncertain', {
+                    state: stateLabel(summary.top_candidate.state_key),
+                    uplift: signedPct(summary.top_candidate.uplift),
+                    n: summary.top_candidate.n,
+                  })}
+                </p>
+              ) : null}
             </div>
           )}
 

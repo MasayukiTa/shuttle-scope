@@ -2614,7 +2614,9 @@
     "subtitle": "試合前観察記録に基づく参考傾向（少数サンプル・主観的データを含む）",
     "no_data": "観察記録が蓄積されると表示されます",
     "sample_note": "参考傾向（観察ベース）",
-    "self_section": "自コンディション条件別傾向"
+    "self_section": "自コンディション条件別傾向",
+    "confidence_badge": "観察の確信度: {{label}}",
+    "unknown_value": "不明な値"
   },
   "annotation_mode": {
     "basic": "手動記録",
@@ -3348,6 +3350,8 @@
       "safety_hint_admin": "AI 応答が安全基準で差し替えられました",
       "safety_hint": "\u5b89\u5168\u57fa\u6e96\u306b\u3088\u308b\u4ee3\u66ff\u5fdc\u7b54",
       "char_counter": "{{n}}/2000",
+      "char_limit_warning": "入力が1500文字を超えました。上限は2000文字です。",
+      "char_limit_critical": "入力が1900文字を超えました。まもなく上限の2000文字です。",
       "period": {
         "chipLabel": "期間",
         "estimated": "推定",
@@ -4034,6 +4038,7 @@
       "promotion_criteria": "状態ごとN≥200・CI幅<10pp・コーチ有用性検証",
       "summary_states": "解析済み状態: {{analyzed}} / データ不足: {{insufficient}}",
       "best_opportunity": "最大機会: {{state}} {{uplift}}",
+      "top_candidate_uncertain": "点推定で最大: {{state}} {{uplift}} (N={{n}}、信頼区間は改善を支持していません)",
       "ok_states_header": "解析済み状態 ({{n}})",
       "insufficient_header": "データ不足の状態 ({{n}})",
       "insufficient": "データ不足 (N={{n}})",

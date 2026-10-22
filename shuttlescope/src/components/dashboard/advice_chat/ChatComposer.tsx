@@ -169,6 +169,7 @@ export const ChatComposer = forwardRef<HTMLTextAreaElement, Props>(
         : n >= 1500
         ? 'text-yellow-600'
         : 'text-gray-500'
+    const limitLevel = n >= 1900 ? 2 : n >= 1500 ? 1 : 0
     const disabled = isSending || value.trim().length === 0
 
     const badgeClass =
@@ -279,11 +280,18 @@ export const ChatComposer = forwardRef<HTMLTextAreaElement, Props>(
             {showCounter && (
               <span
                 className={`absolute top-1 right-2 text-[10px] ss-num ${counterClass}`}
-                aria-live="polite"
               >
                 {t('auto.AdviceChat.char_counter', { n })}
               </span>
             )}
+            {/* 閾値 (1500 / 1900) を越えたときだけ 1 回通知する。毎入力の読み上げは行わない */}
+            <span className="sr-only" role="status" aria-live="polite">
+              {limitLevel === 2
+                ? t('auto.AdviceChat.char_limit_critical')
+                : limitLevel === 1
+                ? t('auto.AdviceChat.char_limit_warning')
+                : ''}
+            </span>
           </div>
           <button
             type="button"

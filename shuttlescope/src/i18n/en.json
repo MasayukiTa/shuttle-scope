@@ -2606,7 +2606,9 @@
     "subtitle": "Reference tendencies based on pre-match observations (may include small samples and subjective data)",
     "no_data": "Appears once observation records accumulate",
     "sample_note": "Reference tendency (observation-based)",
-    "self_section": "Tendencies by self-condition"
+    "self_section": "Tendencies by self-condition",
+    "confidence_badge": "Observer confidence: {{label}}",
+    "unknown_value": "Unknown value"
   },
   "annotation_mode": {
     "basic": "Manual",
@@ -3340,6 +3342,8 @@
       "safety_hint_admin": "AI response was replaced by safety harness",
       "safety_hint": "Safety fallback response",
       "char_counter": "{{n}}/2000",
+      "char_limit_warning": "Input is over 1500 characters. The limit is 2000.",
+      "char_limit_critical": "Input is over 1900 characters. The 2000 character limit is close.",
       "period": {
         "chipLabel": "Period",
         "estimated": "estimated",
@@ -4026,6 +4030,7 @@
       "promotion_criteria": "N≥200 per state · CI width <10pp · coach utility confirmed",
       "summary_states": "States analyzed: {{analyzed}} / Insufficient data: {{insufficient}}",
       "best_opportunity": "Biggest opportunity: {{state}} {{uplift}}",
+      "top_candidate_uncertain": "Largest point estimate: {{state}} {{uplift}} (N={{n}}; the confidence interval does not support an improvement)",
       "ok_states_header": "Analyzed states ({{n}})",
       "insufficient_header": "Insufficient data states ({{n}})",
       "insufficient": "Insufficient data (N={{n}})",
