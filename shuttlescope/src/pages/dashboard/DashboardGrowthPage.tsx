@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { analyticsViewLifecycle } from '@/utils/analytics'
 import { useTranslation } from 'react-i18next'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
+import { RoleGuard } from '@/components/common/RoleGuard'
 import { AnalysisFilters, Player } from '@/types'
 import { GrowthJudgmentCard } from '@/components/analysis/GrowthJudgmentCard'
 import { GrowthSnapshotCard } from '@/components/analysis/GrowthSnapshotCard'
@@ -104,6 +105,7 @@ export function DashboardGrowthPage({ playerId, filters, sortedPlayers }: Props)
       {/* ペアモード: PairCombinedView */}
       {pairMode && partnerPlayerId && (
         <ErrorBoundary>
+          <RoleGuard allowedRoles={['analyst', 'coach']} fallback={null}>
           <div className={`${card} rounded-ss-lg p-4 shadow-card`}>
             <p className={`text-sm font-semibold mb-3 ${textHeading}`}>{t('analysis.growth.pair_combined_title')}</p>
             <PairCombinedView
@@ -114,6 +116,7 @@ export function DashboardGrowthPage({ playerId, filters, sortedPlayers }: Props)
               filters={filters}
             />
           </div>
+          </RoleGuard>
         </ErrorBoundary>
       )}
     </div>

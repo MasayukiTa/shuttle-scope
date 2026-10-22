@@ -50,11 +50,12 @@ from backend.analysis.shot_influence_v2 import compute_shot_influence_v2
 
 from backend.utils.auth import (
     require_query_scope,  # cross-team IDOR ガード
+    require_non_player,  # research spine は player 不可 (ミドルウェアに頼らずルート自身で拒否)
     require_admin,  # 昇格 override の書込は admin 限定
     require_admin_or_analyst,  # 昇格 override の閲覧は analyst/admin 限定
 )
 
-router = APIRouter(dependencies=[Depends(require_query_scope)])
+router = APIRouter(dependencies=[Depends(require_non_player), Depends(require_query_scope)])
 
 
 def _analysis_meta(

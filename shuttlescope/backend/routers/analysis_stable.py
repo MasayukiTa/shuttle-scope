@@ -23,11 +23,14 @@ from backend.analysis.analysis_registry import get_analysis_meta
 from backend.analysis.response_meta import build_input_provenance
 
 from backend.utils.auth import require_non_player, require_query_scope  # cross-team IDOR ガード
+from backend.utils.player_privacy import deny_player_on_forbidden_named_path
 
 # 大会レベル別の勝率を「成績」として扱える最小試合数 (相手別 OPPONENT_MIN_MATCHES と同値)
 LEVEL_MIN_MATCHES = 3
 
-router = APIRouter(dependencies=[Depends(require_query_scope)])
+# player_privacy.PLAYER_FORBIDDEN_NAMED_ANALYSIS_PATHS に載るパス (win_loss_comparison /
+# received_vulnerability 等) は、ルートごとに依存を書かなくてもここで player を拒否する。
+router = APIRouter(dependencies=[Depends(deny_player_on_forbidden_named_path), Depends(require_query_scope)])
 
 
 def _with_input_provenance(
