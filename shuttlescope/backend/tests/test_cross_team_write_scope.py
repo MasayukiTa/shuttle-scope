@@ -183,12 +183,21 @@ def test_f2_players_outside_the_match_rejected(client, livekit, actor):
     assert r.status_code == 403
 
 
-@pytest.mark.parametrize("role", ["viewer", "camera", "operator"])
 @pytest.mark.parametrize("actor", SAME_TEAM_WRITERS)
-def test_f2_same_team_media_token_ok(client, livekit, actor, role):
-    r = client.post("/api/media/token", headers=tok(actor), json=dict(session_code=CODE_A, role=role))
+def test_f2_same_team_operator_media_token_ok(client, livekit, actor):
+    r = client.post("/api/media/token", headers=tok(actor), json=dict(session_code=CODE_A, role="operator"))
     assert r.status_code == 200, r.text
     assert r.json()["token"]
+
+
+@pytest.mark.parametrize("role", ["viewer", "camera"])
+@pytest.mark.parametrize("actor", SAME_TEAM_WRITERS)
+def test_f2_same_team_camera_viewer_need_participant_credential(client, livekit, actor, role):
+    # 自チームでも JWT + session_code だけでは viewer / camera の token は出ない。
+    # join 済み参加者の資格を伴う成功系は test_sec591_authz_hardening.py で検証する。
+    r = client.post("/api/media/token", headers=tok(actor), json=dict(session_code=CODE_A, role=role))
+    assert r.status_code == 403, r.text
+    assert "token" not in r.json()
 
 
 # ─── F3: prediction benchmark ───────────────────────────────────────────────

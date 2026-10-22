@@ -146,7 +146,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
   // 結果数だけ知りたいので length のみ抽出して keep。表示 toggle と独立に常時 fetch。
   const shuttleExistsQuery = useQuery({
     queryKey: ['mobile-shuttle-exists', matchId],
-    queryFn: () => apiGet<{ success?: boolean; data?: unknown[] }>(`/api/tracknet/shuttle_track/${matchId}`),
+    queryFn: () => apiGet<{ success?: boolean; data?: unknown[] }>(`/tracknet/shuttle_track/${matchId}`),
     enabled: !!matchId,
     staleTime: 60_000,
     retry: 0,
@@ -155,7 +155,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
 
   const yoloExistsQuery = useQuery({
     queryKey: ['mobile-yolo-exists', matchId],
-    queryFn: () => apiGet<{ frames?: unknown[] }>(`/api/yolo/results/${matchId}`),
+    queryFn: () => apiGet<{ frames?: unknown[] }>(`/yolo/results/${matchId}`),
     enabled: !!matchId,
     staleTime: 60_000,
     retry: 0,
