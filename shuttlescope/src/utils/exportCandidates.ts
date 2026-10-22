@@ -18,7 +18,7 @@ export interface ExportCandidate {
 // API の year クエリが受け付ける下限 (backend/routers/matches.py list_matches: ge=1900) に合わせる
 const MIN_VALID_YEAR = 1900
 
-const INTERNAL_TOURNAMENT = /^\s*(?:BIAS_SEED|DEMO|TEST|デモ|テスト)(?:[\s_\-:：]|$)/i
+const INTERNAL_TOURNAMENT = /^s*(?:(?:BIAS_SEED|DEMO|TEST)(?:[s_-:：]|$)|デモ|テスト)/i
 
 export function classifyExportMatch(m: ExportCandidate): ExportMatchKind {
   const year = Number.parseInt(String(m.date ?? '').slice(0, 4), 10)
