@@ -2157,6 +2157,7 @@ class GlobalAuthMiddleware(BaseHTTPMiddleware):
                 '{"detail":"トークンが無効または期限切れです"}',
                 status_code=401,
                 media_type="application/json",
+                headers={"X-Error-Code": "TOKEN_INVALID_OR_EXPIRED"},
             )
         # Round 258 R3 P0 fix (F7): mfa_pending JWT で MFA gate 突破を防ぐ。
         # この JWT は /api/auth/mfa/login と /api/auth/mfa/cancel のみで有効。
