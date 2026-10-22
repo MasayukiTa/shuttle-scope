@@ -2277,9 +2277,10 @@ export function AnnotatorPage() {
                   : 'bg-[var(--ss-surface-2)] text-[var(--ss-t2)] border-[var(--ss-border)] hover:bg-[var(--ss-brand-tint)]',
               )}
               aria-expanded={cvToolsExpanded}
+              aria-label={cvToolsExpanded ? t('annotator.ui.cv_tools_collapse_title', { defaultValue: 'CV ツールを折り畳む' }) : t('annotator.ui.cv_tools_expand_title', { defaultValue: 'CV ツール (TrackNet / 人物検出 / 表示) を展開' })}
               title={cvToolsExpanded ? t('annotator.ui.cv_tools_collapse_title', { defaultValue: 'CV ツールを折り畳む' }) : t('annotator.ui.cv_tools_expand_title', { defaultValue: 'CV ツール (TrackNet / 人物検出 / 表示) を展開' })}
             >
-              <span className="material-symbols-outlined" style={{ fontSize: 13 }}>{t('auto.AnnotatorPage.icon_visibility')}</span>
+              <span className="material-symbols-outlined" aria-hidden="true" style={{ fontSize: 13 }}>{t('auto.AnnotatorPage.icon_visibility')}</span>
               <span>CV</span>
               {/* 圧縮ステータス: 解析中 % または 完了 check */}
               {tracknetJob && (tracknetJob.status === 'pending' || tracknetJob.status === 'running') && (

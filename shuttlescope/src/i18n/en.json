@@ -56,6 +56,8 @@
   },
   "app": {
     "name": "ShuttleScope",
+    "sidebar_collapse": "Collapse sidebar",
+    "sidebar_expand": "Expand sidebar",
     "loading": "Loading...",
     "error": "An error occurred",
     "save": "Save",
@@ -1292,7 +1294,7 @@
     "provenance": {
       "title": "Why CV assistance is limited",
       "not_calibrated": "The court is not calibrated. Without court coordinates no landing-zone candidate can be produced; set the six points to enable it.",
-      "start_side_unknown": "Which side player_a started on is not set. CV labels cannot be mapped to people, so every hitter candidate falls to review.",
+      "start_side_unknown": "The players' starting positions for set 1 are not set. CV detections cannot be matched to players, so every hitter candidate falls to review. Specify the players on the court first.",
       "fps_unknown": "The video frame rate could not be determined. Seconds-to-frames conversion may be off, so rally boundary candidates are approximate.",
       "alignment_failed": "TrackNet and YOLO could not be aligned. Hitter inference is less reliable."
     }
@@ -1978,6 +1980,7 @@
     "interval_report": {
       "title": "Set-interval brief",
       "set": "Set",
+      "as_of_set": "After set {{n}}",
       "posterior_mean": "Estimated win rate",
       "ci": "CI",
       "current_estimate": "Current estimate",
@@ -2859,6 +2862,7 @@
     "gpu_vram_limit": "GPU VRAM limit (GB)",
     "system_ram_limit": "System RAM limit (GB)",
     "worker_ram_limit": "{{label}} RAM limit (GB)",
+    "auto_value": "Auto",
     "limit_auto_hint": "0 = auto",
     "task_routing_section": "Task routing",
     "task_auto": "Auto",

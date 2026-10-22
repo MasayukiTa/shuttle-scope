@@ -802,7 +802,7 @@ export function ClusterSettingsPanel() {
             <input
               className={inputCls}
               aria-label={t('cluster.primary_ip')}
-              placeholder="192.168.100.1"
+              placeholder="192.0.2.1"
               value={cfg.network?.primary_ip ?? ''}
               onChange={e => updateNetwork('primary_ip', e.target.value)}
             />
@@ -847,14 +847,13 @@ export function ClusterSettingsPanel() {
                   <input
                     className={`${inputCls} w-32`}
                     aria-label={t('cluster.worker_ip')}
-                    placeholder="192.168.100.2"
+                    placeholder="192.0.2.2"
                     value={w.ip}
                     onChange={e => updateWorker(i, 'ip', e.target.value)}
                   />
                   <input
                     className={inputCls}
                     aria-label={t('cluster.worker_label')}
-                    placeholder="GMKtec K10"
                     value={w.label}
                     onChange={e => updateWorker(i, 'label', e.target.value)}
                   />
@@ -890,7 +889,6 @@ export function ClusterSettingsPanel() {
                     className={`${inputCls} w-16`}
                     aria-label={t('cluster.worker_cpus')}
                     value={w.num_cpus ?? ''}
-                    placeholder="16"
                     onChange={e => updateWorker(i, 'num_cpus', e.target.value)}
                   />
                   <span className={`${labelCls} w-16 shrink-0`}>{t('cluster.worker_gpus')}</span>
@@ -898,13 +896,11 @@ export function ClusterSettingsPanel() {
                     className={`${inputCls} w-12`}
                     aria-label={t('cluster.worker_gpus')}
                     value={w.num_gpus ?? ''}
-                    placeholder="0"
                     onChange={e => updateWorker(i, 'num_gpus', e.target.value)}
                   />
                   <input
                     className={inputCls}
                     aria-label={t('a11yLabels.worker_gpu_name')}
-                    placeholder="AMD Radeon 780M Graphics"
                     value={w.gpu_label ?? ''}
                     onChange={e => updateWorker(i, 'gpu_label', e.target.value)}
                   />
@@ -995,6 +991,8 @@ export function ClusterSettingsPanel() {
                 <span className={`${labelCls} w-36 shrink-0`}>{label}</span>
                 <input
                   type="range" min={min} max={max} value={val}
+                  aria-label={label}
+                  aria-valuetext={key === 'max_concurrent_inference' ? String(val) : `${val}%`}
                   onChange={e => updateLimit(key, Number(e.target.value))}
                   className="flex-1 accent-blue-500"
                 />
@@ -1023,6 +1021,8 @@ export function ClusterSettingsPanel() {
                 <span className={`${labelCls} w-44 shrink-0`}>{label}</span>
                 <input
                   type="range" min={0} max={max} step={1} value={val}
+                  aria-label={label}
+                  aria-valuetext={val === 0 ? t('cluster.auto_value') : `${val}GB`}
                   onChange={e => setCfg(c => ({
                     ...c,
                     resources: { ...c.resources, [key]: Number(e.target.value) },
@@ -1030,7 +1030,7 @@ export function ClusterSettingsPanel() {
                   className="flex-1 accent-blue-500"
                 />
                 <span className="text-sm w-12 text-right">
-                  {val === 0 ? '自動' : `${val}GB`}
+                  {val === 0 ? t('cluster.auto_value') : `${val}GB`}
                 </span>
               </div>
             )
@@ -1048,11 +1048,13 @@ export function ClusterSettingsPanel() {
                 </span>
                 <input
                   type="range" min={0} max={64} step={1} value={val}
+                  aria-label={t('cluster.worker_ram_limit', { label: workerLabel })}
+                  aria-valuetext={val === 0 ? t('cluster.auto_value') : `${val}GB`}
                   onChange={e => updateWorkerRamLimit(workerIp, Number(e.target.value))}
                   className="flex-1 accent-blue-500"
                 />
                 <span className="text-sm w-12 text-right">
-                  {val === 0 ? '自動' : `${val}GB`}
+                  {val === 0 ? t('cluster.auto_value') : `${val}GB`}
                 </span>
               </div>
             )

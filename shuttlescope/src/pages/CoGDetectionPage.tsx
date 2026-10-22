@@ -81,8 +81,9 @@ export function CoGDetectionPage({ onBack }: { onBack?: () => void } = {}) {
           <div className="flex flex-wrap gap-4 items-end">
             {/* 試合選択 */}
             <div>
-              <label className="text-xs font-semibold block mb-1">{t('auto.CoGDetectionPage.k1')}</label>
+              <label htmlFor="cog-match-select" className="text-xs font-semibold block mb-1">{t('auto.CoGDetectionPage.k1')}</label>
               <select
+                id="cog-match-select"
                 className={selectCls}
                 value={matchId ?? ''}
                 onChange={(e) => {
@@ -100,8 +101,9 @@ export function CoGDetectionPage({ onBack }: { onBack?: () => void } = {}) {
 
             {/* ストローク選択 */}
             <div>
-              <label className="text-xs font-semibold block mb-1">{t('auto.CoGDetectionPage.k3')}</label>
+              <label htmlFor="cog-stroke-select" className="text-xs font-semibold block mb-1">{t('auto.CoGDetectionPage.k3')}</label>
               <select
+                id="cog-stroke-select"
                 className={selectCls}
                 value={strokeId ?? ''}
                 onChange={(e) => setStrokeId(Number(e.target.value) || null)}
@@ -119,8 +121,9 @@ export function CoGDetectionPage({ onBack }: { onBack?: () => void } = {}) {
 
             {/* サイドフィルタ */}
             <div>
-              <label className="text-xs font-semibold block mb-1">{t('auto.CoGDetectionPage.k5')}</label>
+              <label htmlFor="cog-side-select" className="text-xs font-semibold block mb-1">{t('auto.CoGDetectionPage.k5')}</label>
               <select
+                id="cog-side-select"
                 className={selectCls}
                 value={side ?? ''}
                 onChange={(e) => setSide(e.target.value || undefined)}

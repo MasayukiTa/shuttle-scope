@@ -56,6 +56,8 @@
   },
   "app": {
     "name": "ShuttleScope",
+    "sidebar_collapse": "サイドバーを折りたたむ",
+    "sidebar_expand": "サイドバーを展開する",
     "loading": "読み込み中...",
     "error": "エラーが発生しました",
     "save": "保存",
@@ -1299,7 +1301,7 @@
     "provenance": {
       "title": "CV 補助が効いていない理由",
       "not_calibrated": "コートキャリブレーションが未設定です。コート座標が決まらないと着地ゾーンの候補は出せません（6 点指定で表示されます）。",
-      "start_side_unknown": "セット1開始時の player_a の位置が未設定です。CV のラベルを人に対応づけられないため、打者候補はすべて要確認になります。",
+      "start_side_unknown": "第1セット開始時の選手の位置が未設定です。CV の検出を選手に対応づけられないため、打者候補はすべて要確認になります。最初にコート上の選手を指定してください。",
       "fps_unknown": "動画の fps を推定できませんでした。秒→フレーム換算がずれている可能性があり、ラリー境界候補の位置は目安です。",
       "alignment_failed": "TrackNet と YOLO のアライメント計算に失敗しました。打者推定の精度が落ちます。"
     }
@@ -1985,6 +1987,7 @@
     "interval_report": {
       "title": "セット間速報レポート",
       "set": "セット",
+      "as_of_set": "第{{n}}セット終了時",
       "posterior_mean": "推定勝率",
       "ci": "信頼区間",
       "current_estimate": "現在の推定値",
@@ -2868,6 +2871,7 @@
     "system_ram_limit": "システムRAM上限 (GB)",
     "worker_ram_limit": "{{label}} RAM上限 (GB)",
     "limit_auto_hint": "0 = 自動",
+    "auto_value": "自動",
     "task_routing_section": "タスク分散設定",
     "task_auto": "自動",
     "task_laptop_cpu": "ノートPC CPU",
