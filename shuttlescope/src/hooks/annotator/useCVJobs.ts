@@ -18,6 +18,9 @@ import { isPlayableVideoUrl } from '@/utils/videoSrc'
 import type { RoiRect } from '@/components/video/RoiRectOverlay'
 import type { TrackFrame, RawDetection } from '@/components/annotation/PlayerTrackingOverlay'
 
+/** status 取得が連続してこの回数失敗したら利用者へ知らせる (2 秒間隔のため約 6 秒、一過性の 1 回では鳴らさない)。 */
+const STATUS_POLL_FAIL_NOTIFY_AT = 3
+
 /** ROI を backend へ送る形に正規化 (extra=forbid 対策で `corners` を落とす)。
  *
  * フロントの `RoiRect` 型は表示用の `corners?: [TL,TR,BR,BL]` を持つが、backend の
@@ -192,6 +195,24 @@ export function useCVJobs({
     if (onError) onError(message)
     else alert(message)
   }, [onError])
+
+  // status ポーリングの連続失敗を数え、3 回目で 1 度だけ「状態確認不能」を通知する。
+  // 成功で数え直す。画面の進捗が古いままなのを正常値として見せ続けないため。
+  const notifyErrorRef = useRef(notifyError)
+  notifyErrorRef.current = notifyError
+  const pollFailuresRef = useRef({ tracknet: 0, yolo: 0 })
+  const notePollResult = useCallback((kind: 'tracknet' | 'yolo', ok: boolean) => {
+    if (ok) {
+      pollFailuresRef.current[kind] = 0
+      return
+    }
+    const n = ++pollFailuresRef.current[kind]
+    if (n === STATUS_POLL_FAIL_NOTIFY_AT) {
+      notifyErrorRef.current(
+        i18n.t(kind === 'tracknet' ? 'common_ui.tracknet_status_unreachable' : 'common_ui.yolo_status_unreachable'),
+      )
+    }
+  }, [])
 
   // ── TrackNet ──────────────────────────────────────────────────────────────
 
@@ -429,6 +450,7 @@ export function useCVJobs({
         const res = await apiGet<{ success: boolean; data: TracknetJob | null }>(
           `/tracknet/batch/${tracknetJobId}/status`
         )
+        notePollResult('tracknet', true)
         if (res.success && res.data) {
           setTracknetJob(res.data)
           if (res.data?.status === 'complete' || res.data?.status === 'stopped') {
@@ -459,10 +481,10 @@ export function useCVJobs({
             }
           }
         }
-      } catch { /* ポーリング失敗は無視 */ }
+      } catch { notePollResult('tracknet', false) }
     }, 2000)
     return () => clearInterval(id)
-  }, [tracknetJobId, tracknetJob?.status, queryClient, matchId])
+  }, [tracknetJobId, tracknetJob?.status, queryClient, matchId, notePollResult])
 
   // ── P4: YOLO バッチ起動（内部共通ハンドラ） ──────────────────────────────
 
@@ -570,6 +592,7 @@ export function useCVJobs({
         const res = await apiGet<{ success: boolean; data: YoloJob | null }>(
           `/yolo/batch/${yoloJobId}/status`
         )
+        notePollResult('yolo', true)
         if (res.success && res.data) {
           setYoloJob(res.data)
           const st = res.data?.status
@@ -612,10 +635,10 @@ export function useCVJobs({
             } catch { /* meta 取得失敗は無視 */ }
           }
         }
-      } catch { /* ポーリング失敗は無視 */ }
+      } catch { notePollResult('yolo', false) }
     }, 2000)
     return () => clearInterval(id)
-  }, [yoloJobId, yoloJob?.status, matchId, queryClient])
+  }, [yoloJobId, yoloJob?.status, matchId, queryClient, notePollResult])
 
   // ── P4: 動画再生位置の追跡（オーバーレイ同期） ───────────────────────────
   //

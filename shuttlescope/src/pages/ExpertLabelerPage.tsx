@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
+import { downloadExpertExport } from '@/utils/expertExport'
 import { useTheme } from '@/hooks/useTheme'
 import { useAuth } from '@/hooks/useAuth'
 import { CoGDetectionPage } from '@/pages/CoGDetectionPage'
@@ -59,6 +60,23 @@ function ExpertLabelerContent() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('matches')
   const [search, setSearch] = useState('')
   const [incompleteOnly, setIncompleteOnly] = useState(false)
+  const [exportError, setExportError] = useState<{ matchId: number | string; message: string } | null>(null)
+
+  // JSON / CSV は Bearer 付きで取得して保存する (生リンクは 401 になる)
+  const handleExport = async (matchId: number | string, fmt: 'json' | 'csv') => {
+    setExportError(null)
+    const r = await downloadExpertExport(
+      '/v1/expert/export',
+      { match_id: matchId, fmt },
+      `expert_${matchId}.${fmt}`,
+    )
+    if (r !== 'ok') {
+      setExportError({
+        matchId,
+        message: t(r === 'denied' ? 'expert_labeler.export_denied' : 'expert_labeler.export_failed'),
+      })
+    }
+  }
 
   // 試合一覧取得（バックエンドは配列を直接返す）
   const videosQuery = useQuery<VideosResponse>({
@@ -256,22 +274,25 @@ function ExpertLabelerContent() {
                     {/* エクスポートボタン（ラベルが 1 件以上のとき表示） */}
                     {v.labeled_count > 0 && (
                       <div className="flex flex-col gap-1 justify-center">
-                        <a
-                          href={`/api/v1/expert/export?match_id=${v.match_id}&fmt=json`}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <button
+                          type="button"
+                          onClick={() => void handleExport(v.match_id, 'json')}
                           className="text-[10px] px-2 py-1 rounded-ss-sm border text-center transition-colors duration-base ease-out border-[var(--ss-border-strong)] text-[var(--ss-t3)] hover:bg-[var(--ss-surface-2)]"
                         >
                           {t('auto.ExpertLabelerPage.json')}
-                        </a>
-                        <a
-                          href={`/api/v1/expert/export?match_id=${v.match_id}&fmt=csv`}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleExport(v.match_id, 'csv')}
                           className="text-[10px] px-2 py-1 rounded-ss-sm border text-center transition-colors duration-base ease-out border-[var(--ss-border-strong)] text-[var(--ss-t3)] hover:bg-[var(--ss-surface-2)]"
                         >
                           {t('auto.ExpertLabelerPage.csv')}
-                        </a>
+                        </button>
+                        {exportError?.matchId === v.match_id && (
+                          <span role="alert" className="text-[10px] text-[var(--ss-danger-text)]">
+                            {exportError.message}
+                          </span>
+                        )}
                       </div>
                     )}
                   </li>

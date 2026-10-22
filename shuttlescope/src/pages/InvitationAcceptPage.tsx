@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useSearchParams, Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { apiGet, apiPost } from '@/api/client'
-import { errorMessage } from '@/utils/errors'
+import { publicAuthErrorKey } from '@/utils/publicAuthError'
 
 interface InviteInfo {
   email: string
@@ -33,7 +33,7 @@ export default function InvitationAcceptPage() {
     setLoading(true)
     apiGet<{ success: boolean; data: InviteInfo }>(`/auth/invitation/peek?token=${encodeURIComponent(token)}`)
       .then((r) => setInfo(r.data))
-      .catch((err) => setError(err?.message ?? String(err)))
+      .catch((err: unknown) => setError(t(publicAuthErrorKey(err, 'invitation_peek'))))
       .finally(() => setLoading(false))
   }, [token, t])
 
@@ -51,7 +51,7 @@ export default function InvitationAcceptPage() {
       })
       navigate('/login')
     } catch (err: unknown) {
-      setError(errorMessage(err))
+      setError(t(publicAuthErrorKey(err, 'invitation_accept')))
     } finally {
       setSubmitting(false)
     }

@@ -35,17 +35,25 @@ export type EventType =
   | 'network_slow'
   | 'ui_event'
 
-interface PendingEvent {
+export interface PendingEvent {
   event_id: string
   event_type: EventType
   props: Record<string, unknown>
   client_ts: number  // ms epoch
+  /** 記録時のログイン利用者 (sessionStorage の user_id)。未ログイン時・旧データは無し。送信 payload には含めない。 */
+  owner?: string | null
 }
 
 const DB_NAME = 'shuttlescope_telemetry'
 const STORE = 'events'
 const FLUSH_INTERVAL_MS = 30_000
 const BATCH_SIZE = 100
+/** 未送信キューの最大件数。送信が止まっても IndexedDB が増え続けないための上限。 */
+export const MAX_QUEUED_EVENTS = 5000
+/** 未送信イベントの保持期限 (ms)。7 日以上前の利用記録は送っても分析価値が低く、端末に残す理由も無い。 */
+export const QUEUE_TTL_MS = 7 * 24 * 60 * 60 * 1000
+/** TTL 掃除の最小間隔 (ms)。件数超過は毎回確認する。 */
+const PRUNE_INTERVAL_MS = 60 * 60 * 1000
 const APP_VERSION =
   (typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : null) ||
   (typeof window !== 'undefined'
@@ -134,18 +142,84 @@ async function enqueue(ev: PendingEvent): Promise<void> {
   }
 }
 
-async function drain(limit: number): Promise<PendingEvent[]> {
+/** キュー全体を読む (上限 MAX_QUEUED_EVENTS 程度なので全件でよい)。 */
+async function readAll(): Promise<PendingEvent[]> {
   try {
     const db = await openDB()
     return await new Promise<PendingEvent[]>((resolve, reject) => {
       const tx = db.transaction(STORE, 'readonly')
-      const req = tx.objectStore(STORE).getAll(undefined, limit)
+      const req = tx.objectStore(STORE).getAll()
       req.onsuccess = () => resolve(req.result as PendingEvent[])
       req.onerror = () => reject(req.error)
     })
   } catch {
     return []
   }
+}
+
+/** 現在ログイン中の利用者 (未ログインは null)。 */
+function currentOwner(): string | null {
+  try {
+    return sessionStorage.getItem('shuttlescope_user_id') || null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 期限切れ (TTL 超過) と、件数上限を超えた古いものの event_id を返す。
+ * 上限を超えた場合は client_ts の古い順に捨てる。
+ */
+export function pickPruneIds(
+  events: ReadonlyArray<Pick<PendingEvent, 'event_id' | 'client_ts'>>,
+  now: number,
+  ttlMs: number = QUEUE_TTL_MS,
+  maxCount: number = MAX_QUEUED_EVENTS,
+): string[] {
+  const drop = new Set<string>()
+  const live: Array<Pick<PendingEvent, 'event_id' | 'client_ts'>> = []
+  for (const e of events) {
+    if (now - e.client_ts > ttlMs) drop.add(e.event_id)
+    else live.push(e)
+  }
+  if (live.length > maxCount) {
+    live.sort((a, b) => a.client_ts - b.client_ts)
+    for (const e of live.slice(0, live.length - maxCount)) drop.add(e.event_id)
+  }
+  return Array.from(drop)
+}
+
+/**
+ * 今送るイベントと、捨てるイベントを決める。
+ * 他の利用者が記録したイベントは、現在の認証主体 (別の利用者) へ誤帰属させないため
+ * 送らずに捨てる。owner 無し (未ログイン中・旧データ) は従来どおり送る。
+ * 現在が未ログインなら送れないので何も捨てず保持する。
+ */
+export function planFlush<T extends Pick<PendingEvent, 'event_id' | 'owner'>>(
+  events: ReadonlyArray<T>,
+  owner: string | null,
+  batchSize: number = BATCH_SIZE,
+): { send: T[]; dropIds: string[] } {
+  if (owner === null) return { send: events.slice(0, batchSize), dropIds: [] }
+  const send: T[] = []
+  const dropIds: string[] = []
+  for (const e of events) {
+    if (e.owner && e.owner !== owner) dropIds.push(e.event_id)
+    else if (send.length < batchSize) send.push(e)
+  }
+  return { send, dropIds }
+}
+
+let _lastPruneAt = 0
+async function pruneQueue(events: PendingEvent[]): Promise<PendingEvent[]> {
+  const now = Date.now()
+  if (events.length <= MAX_QUEUED_EVENTS && now - _lastPruneAt < PRUNE_INTERVAL_MS) return events
+  _lastPruneAt = now
+  const ids = pickPruneIds(events, now)
+  if (!ids.length) return events
+  await removeIds(ids)
+  const gone = new Set(ids)
+  return events.filter(e => !gone.has(e.event_id))
 }
 
 async function removeIds(ids: string[]): Promise<void> {
@@ -172,6 +246,7 @@ export function track(eventType: EventType, props: Record<string, unknown> = {})
     event_type: eventType,
     props,
     client_ts: Date.now(),
+    owner: currentOwner(),
   })
 }
 
@@ -186,7 +261,11 @@ export async function flushNow(): Promise<void> {
   if (_flushing) return
   _flushing = true
   try {
-    const events = await drain(BATCH_SIZE)
+    const queued = await pruneQueue(await readAll())
+    const plan = planFlush(queued, currentOwner())
+    if (plan.dropIds.length) await removeIds(plan.dropIds)
+    // owner は端末内の境界確認用。サーバへは送らない。
+    const events = plan.send.map(({ owner: _owner, ...rest }) => rest)
     if (!events.length) return
     const body = JSON.stringify({
       events,

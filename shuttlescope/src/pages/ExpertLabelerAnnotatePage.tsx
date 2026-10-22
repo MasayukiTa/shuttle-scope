@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { apiGet, apiPost, API_BASE_URL } from '@/api/client'
+import { apiGet, apiPost } from '@/api/client'
+import { downloadExpertExport } from '@/utils/expertExport'
 import { useAuth } from '@/hooks/useAuth'
 import { useTheme } from '@/hooks/useTheme'
 import {
@@ -221,6 +222,16 @@ function AnnotateContent() {
     },
   })
 
+  // JSON / CSV は Bearer 付きで取得して保存する (生リンクは 401 になる)
+  const handleExport = async (path: string, fmt: 'json' | 'csv') => {
+    if (!matchId) return
+    const r = await downloadExpertExport(path, { match_id: matchId, fmt }, `expert_${matchId}.${fmt}`)
+    if (r !== 'ok') {
+      setToast(t(r === 'denied' ? 'expert_labeler.export_denied' : 'expert_labeler.export_failed'))
+      window.setTimeout(() => setToast(null), 2000)
+    }
+  }
+
   // ショット種別アノテーション保存
   const saveShotMutation = useMutation({
     mutationFn: async () => {
@@ -424,22 +435,20 @@ function AnnotateContent() {
           </div>
           {/* エクスポート */}
           <div className="flex gap-2 ml-auto">
-            <a
-              href={`${API_BASE_URL}/v1/expert/export?match_id=${matchId}&fmt=json`}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              type="button"
+              onClick={() => void handleExport('/v1/expert/export', 'json')}
               className="text-xs px-3 py-2 rounded-ss-md border transition-colors duration-base ease-out border-[var(--ss-border-strong)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]"
             >
               {t('auto.ExpertLabelerAnnotatePage.json')}
-            </a>
-            <a
-              href={`${API_BASE_URL}/v1/expert/export?match_id=${matchId}&fmt=csv`}
-              target="_blank"
-              rel="noopener noreferrer"
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleExport('/v1/expert/export', 'csv')}
               className="text-xs px-3 py-2 rounded-ss-md border transition-colors duration-base ease-out border-[var(--ss-border-strong)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]"
             >
               {t('auto.ExpertLabelerAnnotatePage.csv')}
-            </a>
+            </button>
           </div>
         </header>
 
@@ -716,15 +725,14 @@ function AnnotateContent() {
               </button>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <a
-                href={`/api/v1/expert/shot_labels/export?match_id=${matchId}&fmt=csv`}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                type="button"
+                onClick={() => void handleExport('/v1/expert/shot_labels/export', 'csv')}
                 className={`flex items-center justify-center ${btnLarge} border border-[var(--ss-border-strong)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)] transition-colors duration-base ease-out`}
                 style={{ minHeight: '56px' }}
               >
                 {t('auto.ExpertLabelerAnnotatePage.csv')}
-              </a>
+              </button>
               <button
                 className={`${btnLarge} bg-[var(--ss-success)] hover:brightness-95 text-white`}
                 onClick={handleSaveShot}

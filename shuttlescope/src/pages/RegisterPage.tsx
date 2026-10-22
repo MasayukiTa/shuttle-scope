@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 import { apiPost } from '@/api/client'
 import { TurnstileWidget } from '@/components/auth/TurnstileWidget'
-import { errorMessage } from '@/utils/errors'
+import { publicAuthErrorKey } from '@/utils/publicAuthError'
 import { publicSiteUrl } from '@/utils/publicUrl'
 
 export default function RegisterPage() {
@@ -40,7 +40,7 @@ export default function RegisterPage() {
       })
       setSuccess(true)
     } catch (err: unknown) {
-      setError(errorMessage(err))
+      setError(t(publicAuthErrorKey(err, 'register')))
     } finally {
       setLoading(false)
     }

@@ -19,6 +19,7 @@
 import { useState, useRef, useEffect, useCallback, RefObject } from 'react'
 import { apiGet, API_BASE_URL, fetchAuthed } from '@/api/client'
 import { useTranslation } from 'react-i18next'
+import { errorStatus } from '@/utils/errors'
 import { MIcon } from '@/components/common/MIcon'
 
 // バックエンド保存のクライアント側タイムアウト (ms)。
@@ -119,6 +120,8 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
   const [saveError, setSaveError] = useState<string | null>(null)  // 保存エラーメッセージ
   const [saving, setSaving] = useState(false)             // 保存中スピナー
   const [calibSource, setCalibSource] = useState<CalibSource>('none') // 取得元
+  const [loadFailed, setLoadFailed] = useState(false)     // 既存補正の取得失敗 (未設定とは別)
+  const [loadAttempt, setLoadAttempt] = useState(0)       // 再取得トリガ
 
   // calibSource が変わるたびに親へ通知
   useEffect(() => { onCalibSourceChange?.(calibSource) }, [calibSource, onCalibSourceChange])
@@ -146,6 +149,7 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
   useEffect(() => {
     let cancelled = false
     setCalibSource('none')
+    setLoadFailed(false)
     // 旧実装は相対 URL `/api/...` を fetch していたが、Electron の renderer は
     // file:// or app:// origin で動くため相対 URL では backend に届かず "Failed
     // to fetch" になっていた。apiGet 経由で http://localhost:8765/api を使う。
@@ -160,19 +164,24 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
           try { localStorage.setItem(STORAGE_KEY(matchId), JSON.stringify(pts)) } catch { /* ignore */ }
         }
       })
-      .catch(() => {
-        // バックエンド未設定 → localStorage フォールバック
+      .catch((err: unknown) => {
+        // 取得失敗 → localStorage フォールバック
         if (cancelled) return
+        let restored = false
         try {
           const saved = localStorage.getItem(STORAGE_KEY(matchId))
           if (saved) {
             setPoints(JSON.parse(saved))
             setCalibSource('local')
+            restored = true
           }
         } catch { /* ignore */ }
+        // 404 以外 (通信断・認証・5xx) でローカルにも無い場合は「未設定」と区別する。
+        // サーバに既存補正があっても、新規作成で上書きされないよう作成導線を止める。
+        if (!restored && errorStatus(err) !== 404) setLoadFailed(true)
       })
     return () => { cancelled = true }
-  }, [matchId])
+  }, [matchId, loadAttempt])
 
   // 進行中の保存リクエストを abort できるよう ref で保持
   const saveAbortRef = useRef<AbortController | null>(null)
@@ -524,7 +533,24 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
       )}
 
       {/* ─── 未キャリブレーション時の案内 ───────────────────────── */}
-      {visible && !isCalibrated && !calibrating && (
+      {visible && !isCalibrated && !calibrating && loadFailed && (
+        <div
+          className="absolute inset-0 flex items-center justify-center"
+          style={{ pointerEvents: 'all' }}
+        >
+          <button
+            type="button"
+            role="alert"
+            onClick={() => setLoadAttempt((n) => n + 1)}
+            className="flex flex-col items-center gap-2 px-6 py-4 rounded-ss-lg text-sm border hover:opacity-80"
+            style={{ backgroundColor: 'rgba(28,31,36,0.8)', borderColor: 'rgba(194,51,74,0.7)', color: '#E6E9ED' }}
+          >
+            <span>{t('auto.CourtGridOverlay.load_failed')}</span>
+            <span className="text-xs" style={{ color: '#A5AEBB' }}>{t('auto.CourtGridOverlay.load_retry')}</span>
+          </button>
+        </div>
+      )}
+      {visible && !isCalibrated && !calibrating && !loadFailed && (
         <div
           className="absolute inset-0 flex items-center justify-center"
           style={{ pointerEvents: 'all' }}
