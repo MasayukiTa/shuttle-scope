@@ -41,6 +41,7 @@ def _safe_path_segment(s: str, max_len: int = 200) -> str:
         s = s[:max_len]
     return _SAFE_PATH_RE.sub("_", s)
 
+from backend.utils import crawler_policy as _cp
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 
@@ -89,6 +90,24 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "?"
 
 
+def _deep_not_allowed(request: Request) -> bool:
+    """True when a deep maze level must answer 404.
+
+    The /admin, /internal and /admin/legacy catch-alls used to answer 200 for
+    any path, so crawlers followed them without end. A deep level now needs the
+    server signature (?k=) of exactly this path, which only links emitted by the
+    decoy itself carry; crawlers never get past the first level."""
+    request.state.is_decoy = True
+    if _cp.is_crawler(_client_ip(request), request.headers.get("user-agent")):
+        request.state.is_crawler = True
+        return True
+    return not _cp.verify_path(request.url.path, request.query_params.get("k"))
+
+
+def _maze_not_found() -> Response:
+    return Response(status_code=404, content=b"Not Found", media_type="text/plain")
+
+
 # 同時 tarpit 数の上限 (self-DoS 防止)。これを超えたら sleep せずに即応答。
 # decoy_maze は全 path に広く効くので canary より多めに枠を取る。
 _MAZE_MAX_CONCURRENT = 128
@@ -104,6 +123,18 @@ async def _record_and_delay(request: Request, kind: str, detail: str,
     即 return する。これで flood 系攻撃でも self-DoS にならない。
     """
     ip = _client_ip(request)
+    # Every decoy handler passes through here. The outer RequestLogMiddleware
+    # reads this flag to tell a deliberate decoy 200 (decoy_hit) from a real
+    # file leak (secret_path_200); not every decoy sends X-Honeyfile.
+    request.state.is_decoy = True
+    # A crawler is not an attacker: record it once per day, never count it toward
+    # escalation or bans, and do not tarpit it (see utils/crawler_policy.py).
+    if _cp.is_crawler(ip, request.headers.get("user-agent")):
+        request.state.is_crawler = True
+        _cp.record_crawler_decoy_visit(
+            ip, request.url.path, (request.headers.get("user-agent") or "")[:255],
+            request.method)
+        return
     try:
         from backend.utils.attacker_swim import note_hit
         note_hit(ip, kind=kind, detail=detail)
@@ -143,7 +174,7 @@ async def _record_and_delay(request: Request, kind: str, detail: str,
 _FAKE_ADMIN_LOGIN = """<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"><title>Admin Login</title>
+<meta charset="UTF-8"><meta name="robots" content="noindex,nofollow"><title>Admin Login</title>
 <style>
 body{font-family:-apple-system,Segoe UI,sans-serif;background:#1a1a1a;color:#eee;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0}
 .box{background:#222;border:1px solid #333;padding:40px;border-radius:6px;width:340px}
@@ -217,7 +248,7 @@ async def fake_admin_login_submit(request: Request):
 
 # ─── 偽 admin dashboard ───────────────────────────────────────────────────
 _FAKE_DASHBOARD = """<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Admin Dashboard</title>
+<html><head><meta charset="UTF-8"><meta name="robots" content="noindex,nofollow"><title>Admin Dashboard</title>
 <style>body{font-family:Segoe UI,sans-serif;background:#0f1218;color:#cbd5e0;margin:0;padding:24px}
 h1{color:#9ec3ff} table{border-collapse:collapse;width:100%;margin-top:16px}
 td,th{border:1px solid #2a3a55;padding:8px 12px;font-size:13px;text-align:left}
@@ -254,7 +285,8 @@ async def fake_admin_dashboard(request: Request):
     html = (_FAKE_DASHBOARD
             .replace("__TAUNT__", _taunt())
             .replace("__USER__", user)
-            .replace("__LAST__", last))
+            .replace("__LAST__", last)
+            .replace("<a href=", '<a rel="nofollow" href='))
     return HTMLResponse(html)
 
 
@@ -402,7 +434,7 @@ async def fake_workers(request: Request):
 async def fake_legacy_index(request: Request):
     """迷路の深部。さらにリンクが生える。"""
     await _record_and_delay(request, "decoy_legacy", "/admin/legacy")
-    html = f"""<!DOCTYPE html><html><head><title>Legacy</title></head><body>
+    html = f"""<!DOCTYPE html><html><head><meta name="robots" content="noindex,nofollow"><title>Legacy</title></head><body>
 {_taunt()}
 <h1>Legacy Endpoints</h1>
 <ul>
@@ -419,18 +451,34 @@ async def fake_legacy_index(request: Request):
   <!-- the deeper you go the less you find / 深く潜るほど何もない -->
 </p>
 </body></html>"""
+    # Deep links are only valid with the server signature; add rel=nofollow.
+    html = _re_decoy.sub(
+        r'<a href="(/admin/legacy/[^"]+)">',
+        lambda m: '<a rel="nofollow" href="%s">' % _html.escape(_cp.signed_url(m.group(1)), quote=True),
+        html,
+    )
     return HTMLResponse(html)
+
+
+@router.get("/robots.txt", include_in_schema=False)
+async def decoy_robots_txt():
+    """Tell honest crawlers to stay out of the decoy prefixes (the main reason
+    bingbot and others walked the maze). Registered here because the decoy router
+    is included before the static-file routes."""
+    return PlainTextResponse(_cp.robots_txt())
 
 
 @router.get("/admin/legacy/{rest:path}", include_in_schema=False)
 async def fake_legacy_catchall(request: Request, rest: str):
-    """legacy 配下は何でも 200 を返して迷路を伸ばす。"""
+    """legacy 配下の迷路。署名付きリンクだけ 200 (それ以外は 404)。"""
+    if _deep_not_allowed(request):
+        return _maze_not_found()
     await _record_and_delay(request, "decoy_legacy_deep", f"/admin/legacy/{rest}",
                              min_s=1.0, max_s=5.0)
     return JSONResponse({
         "success": True,
         "data": {"path": rest, "deprecated": True,
-                 "see_also": f"/admin/legacy/{rest}/v2"},
+                 "see_also": _cp.signed_url(f"/admin/legacy/{_safe_path_segment(rest)}/v2")},
         "_admin_token_hint": _HONEYTOKENS["staged_lure"],
     })
 
@@ -483,7 +531,7 @@ async def fake_backup(request: Request):
 # は別の router が先に登録されているので match されない。残った path のみ
 # decoy が受け取る。
 
-_DEEP_RABBIT_HOLE_HTML = """<!DOCTYPE html><html><head><meta charset="UTF-8"><title>{title}</title></head>
+_DEEP_RABBIT_HOLE_HTML = """<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="robots" content="noindex,nofollow"><title>{title}</title></head>
 <body style="font-family:Segoe UI,sans-serif;background:#0a1426;color:#cbd6e6;margin:0;padding:32px">
 {taunt}
 <h2 style="color:#9ec3ff">{title}</h2>
@@ -508,7 +556,8 @@ def _gen_rabbit_links(base: str) -> str:
     for leaf in picked:
         url = f"{safe_base.rstrip('/')}/{leaf}"
         esc = _html.escape(url, quote=True)
-        items.append(f'<li><a href="{esc}">{esc}</a></li>')
+        esc_signed = _html.escape(_cp.signed_url(url), quote=True)
+        items.append(f'<li><a rel="nofollow" href="{esc_signed}">{esc}</a></li>')
     return "\n".join(items)
 
 
@@ -516,6 +565,8 @@ def _gen_rabbit_links(base: str) -> str:
 @router.api_route("/admin/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
                   include_in_schema=False)
 async def maze_admin_catchall(request: Request, rest: str):
+    if _deep_not_allowed(request):
+        return _maze_not_found()
     await _record_and_delay(request, "decoy_admin_deep", f"/admin/{rest}",
                              min_s=0.8, max_s=4.0)
     accept = (request.headers.get("accept") or "").lower()
@@ -524,7 +575,7 @@ async def maze_admin_catchall(request: Request, rest: str):
             "success": True,
             "data": {
                 "path": f"/admin/{rest}",
-                "next": f"/admin/{rest}/v2",
+                "next": _cp.signed_url(f"/admin/{_safe_path_segment(rest)}/v2"),
                 "items_count": random.randint(0, 9999),
                 "_legacy_token": _HONEYTOKENS["staged_lure"],
             },
@@ -551,6 +602,8 @@ async def maze_admin_catchall(request: Request, rest: str):
 @router.api_route("/internal/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
                   include_in_schema=False)
 async def maze_internal_catchall(request: Request, rest: str):
+    if _deep_not_allowed(request):
+        return _maze_not_found()
     await _record_and_delay(request, "decoy_internal_deep", f"/internal/{rest}",
                              min_s=0.8, max_s=4.0)
     return JSONResponse({
