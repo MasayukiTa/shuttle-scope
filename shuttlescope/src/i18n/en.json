@@ -1258,7 +1258,9 @@
     "competition_practice_match": "Practice match",
     "competition_open_practice": "Open practice",
     "competition_unknown": "Unknown",
-    "team_suffix": "({{team}})"
+    "team_suffix": "({{team}})",
+    "team_filter": "Filter by team",
+    "team_filter_all": "All teams"
   },
   "review_queue": {
     "title": "Rallies to review",
@@ -3045,8 +3047,9 @@
       "team_name": "Team name",
       "team_name_placeholder": "Sample Team",
       "player_link": "Linked player",
-      "player_unselected": "Not selected",
+      "player_unselected": "Create a new player (or pick an existing one)",
       "page_access": "Page access",
+      "page_access_load_failed": "Could not load page permissions. Saving could erase them, so close this panel and open it again.",
       "page_access_prediction": "Prediction / Analysis",
       "page_access_expert_labeler": "Expert labeler",
       "individual": "Individual",
@@ -5364,6 +5367,11 @@
     "cookieBrowserHint": "For login-required streams (NHK+, Niconico Live, etc.), pick a browser where you are already signed in"
   },
   "pendingUsers": {
+    "inquiry_found": "This email also sent an inquiry.",
+    "inquiry_role": "Stated role: {{role}}.",
+    "inquiry_open": "View inquiry",
+    "inquiry_use_role": "Set role to \"{{role}}\"",
+    "inquiry_has_registration": "A sign-up request exists for this email (view pending users)",
     "title": "Pending users (awaiting admin approval)",
     "description": "Publicly registered users cannot use the service until an admin assigns their role and team.",
     "empty": "There are no users awaiting approval.",

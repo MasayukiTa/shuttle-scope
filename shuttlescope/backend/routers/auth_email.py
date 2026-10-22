@@ -784,12 +784,33 @@ def list_pending_users(request: Request, db: Session = Depends(get_db)):
                 row.created_at.isoformat() if row.created_at else None,
             )
 
+    # 同じメールで問い合わせていれば、その希望を候補として添える（自動付与はしない）。
+    from backend.services.inquiry_link import inquiries_by_email, normalize_email, requested_role_from_text
+
+    inquiries = inquiries_by_email(
+        db, [e for e in (normalize_email(getattr(u, "email", None)) for u in users) if e]
+    )
+
+    def _inquiry_hint(u: User) -> Optional[dict]:
+        rows = inquiries.get(normalize_email(getattr(u, "email", None)) or "", [])
+        if not rows:
+            return None
+        latest = rows[0]
+        return {
+            "id": latest.id,
+            "count": len(rows),
+            "role_text": latest.role,
+            "requested_role": requested_role_from_text(latest.role),
+            "created_at": latest.created_at.isoformat() if latest.created_at else None,
+        }
+
     return {
         "success": True,
         "data": [
             {
                 "id": u.id,
                 "username": u.username,
+                "inquiry": _inquiry_hint(u),
                 "email": getattr(u, "email", None),
                 "email_verified": bool(getattr(u, "email_verified_at", None)),
                 "display_name": u.display_name,

@@ -112,3 +112,17 @@ def test_clips_and_labels_use_wrapped_shape_with_frame_range(seeded):
     r = client.get(f"/api/v1/expert/labels?match_id={old.id}")
     assert r.status_code == 200, r.text
     assert r.json() == {"labels": []}
+
+
+def test_annotator_role_is_fixed_by_the_authenticated_role():
+    from backend.routers.expert import effective_annotator_role
+
+    def ctx(role):
+        return AuthCtx(role=role, player_id=None, user_id=1, team_name=None, team_id=None)
+
+    # coach / analyst は送られた値に関わらず自分のロールで記録される
+    assert effective_annotator_role(ctx("analyst"), "coach") == "analyst"
+    assert effective_annotator_role(ctx("coach"), "analyst") == "coach"
+    # admin は立場を選べる
+    assert effective_annotator_role(ctx("admin"), "coach") == "coach"
+    assert effective_annotator_role(ctx("admin"), "analyst") == "analyst"

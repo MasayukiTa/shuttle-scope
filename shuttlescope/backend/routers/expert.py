@@ -60,6 +60,17 @@ def require_labeler_role(request: Request) -> AuthCtx:
     return ctx
 
 
+def effective_annotator_role(ctx: AuthCtx, requested: str) -> str:
+    """ラベルの annotator_role を認証済みロールから確定する。
+
+    coach / analyst は自分のロールで固定する（クライアントが送った値は使わない）。
+    admin だけは、どちらの立場で付けるかを選べるので送られた値を使う。
+    """
+    if ctx.role in ("coach", "analyst"):
+        return ctx.role
+    return requested
+
+
 def require_admin_role(request: Request) -> AuthCtx:
     """admin のみ許可する依存性。"""
     ctx = get_auth(request)
@@ -361,11 +372,12 @@ def upsert_label(
     if _gset is None or _gset.match_id != body.match_id:
         raise HTTPException(status_code=404, detail="ストロークが見つかりません")
 
+    annotator_role = effective_annotator_role(_ctx, body.annotator_role)
     existing = (
         db.query(ExpertLabel)
         .filter(
             ExpertLabel.stroke_id == body.stroke_id,
-            ExpertLabel.annotator_role == body.annotator_role,
+            ExpertLabel.annotator_role == annotator_role,
         )
         .one_or_none()
     )
@@ -384,7 +396,7 @@ def upsert_label(
         label = ExpertLabel(
             match_id=body.match_id,
             stroke_id=body.stroke_id,
-            annotator_role=body.annotator_role,
+            annotator_role=annotator_role,
             posture_collapse=body.posture_collapse,
             weight_distribution=body.weight_distribution,
             shot_timing=body.shot_timing,
