@@ -4353,7 +4353,11 @@
       "k33": "削除する対象がありません",
       "k34": "Cloudflare 自動 ban の誤検知申し立て",
       "ban_appeal": "BAN APPEAL",
-      "trash_icon": "🗑"
+      "trash_icon": "🗑",
+      "manage_open": "管理メニュー",
+      "manage_close": "管理メニューを閉じる",
+      "reply_mail": "メールで返信",
+      "danger_zone": "危険な操作"
     },
     "PredictionPage": {
       "k1": "選手：",

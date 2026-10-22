@@ -4343,7 +4343,11 @@
       "k33": "No items to delete",
       "k34": "Cloudflare auto-ban false-positive appeal",
       "ban_appeal": "BAN APPEAL",
-      "trash_icon": "🗑"
+      "trash_icon": "🗑",
+      "manage_open": "Manage",
+      "manage_close": "Close manage menu",
+      "reply_mail": "Reply by email",
+      "danger_zone": "Danger zone"
     },
     "PredictionPage": {
       "k1": "Player:",
