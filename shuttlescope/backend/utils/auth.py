@@ -625,6 +625,23 @@ def require_operator_role(request: Request) -> "AuthCtx":
     return ctx
 
 
+def require_operator_or_demo_read(
+    request: Request, ctx: "AuthCtx" = Depends(require_non_player)
+) -> "AuthCtx":
+    """運用ロール (admin/analyst/coach) か、検証済み demo read だけを許可する。
+
+    `require_non_player` は player しか弾かないため、role=demo が素通りしていた。
+    勝敗内訳・失点前パターンのような戦術統計は、demo が表示してよいのは
+    `?demo=` で対象が全て demo データと検証できた GET (`is_demo_read`) だけにする。
+    player は `require_non_player` で従来どおり常に 403 (既存テストの override も効く)。
+    role=None (認証前) の扱いは `require_operator_role` と同じ。
+    """
+    if ctx.role is not None and ctx.role not in ("admin", "analyst", "coach"):
+        if not is_demo_read(request):
+            raise HTTPException(status_code=403, detail="この情報は運用ロールのみ参照できます")
+    return ctx
+
+
 def require_match_scope(request: Request, match: Match, db: Session) -> "AuthCtx":
     """match に対するアクセス権を検証する（共通ヘルパー）。
     - admin: 無条件許可

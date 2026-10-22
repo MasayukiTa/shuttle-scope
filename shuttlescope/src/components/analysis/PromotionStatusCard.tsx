@@ -310,11 +310,14 @@ function EvaluationRow({
   entry,
   override,
   canOverride,
+  overridesUnavailable,
   theme,
 }: {
   entry: EvaluationEntry
   override: OverrideEntry | undefined
   canOverride: boolean
+  /** 現行 Override 一覧を取得できていない。既存判断が見えないまま書込みを開放しない。 */
+  overridesUnavailable: boolean
   theme: ThemeProps
 }) {
   const { t } = useTranslation()
@@ -408,7 +411,10 @@ function EvaluationRow({
               )}
             </div>
           )}
-          {canOverride && (
+          {canOverride && overridesUnavailable && (
+            <p role="alert" className={`text-[10px] ${textFaint}`}>{t('auto.PromotionStatusCard.overrides_unavailable')}</p>
+          )}
+          {canOverride && !overridesUnavailable && (
             <>
               <p className={`text-[10px] ${textFaint}`}>{t('auto.PromotionStatusCard.override_note')}</p>
               <button
@@ -449,7 +455,7 @@ export function PromotionStatusCard({ playerId, filters }: Props) {
     ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
   }
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError: evalError, refetch: refetchEval } = useQuery({
     queryKey: ['promotion-evaluation', playerId, filters],
     queryFn: () =>
       apiGet<{ success: boolean; data: EvaluationData }>(
@@ -459,7 +465,7 @@ export function PromotionStatusCard({ playerId, filters }: Props) {
     staleTime: 5 * 60 * 1000,
   })
 
-  const { data: overridesResp } = useQuery({
+  const { data: overridesResp, isError: overridesError, refetch: refetchOverrides } = useQuery({
     queryKey: ['promotion-overrides'],
     queryFn: () => apiGet<{ success: boolean; data: Record<string, OverrideEntry> }>('/analysis/meta/promotion_overrides'),
     staleTime: 30 * 1000,
@@ -486,6 +492,13 @@ export function PromotionStatusCard({ playerId, filters }: Props) {
 
       {isLoading ? (
         <p className={`text-sm text-center py-4 ${loading}`}>{t('auto.PromotionStatusCard.k5')}</p>
+      ) : evalError && !data ? (
+        <div role="alert" className={`text-sm text-center py-4 space-y-2 ${loading}`}>
+          <p>{t('auto.PromotionStatusCard.eval_load_failed')}</p>
+          <button className="text-xs underline" onClick={() => { void refetchEval() }}>
+            {t('auto.PromotionStatusCard.retry')}
+          </button>
+        </div>
       ) : (
         <div className="space-y-3">
           {/* サマリー */}
@@ -510,6 +523,15 @@ export function PromotionStatusCard({ playerId, filters }: Props) {
             {summary && t('auto.PromotionStatusCard.summary_counts', { rallies: summary.n_rallies, matches: summary.n_matches, opponents: summary.n_opponents })}
           </div>
 
+          {canOverride && overridesError && !overridesResp && (
+            <div role="alert" className={`text-[10px] ${textFaint}`}>
+              <span>{t('auto.PromotionStatusCard.overrides_unavailable')}</span>{' '}
+              <button className="underline" onClick={() => { void refetchOverrides() }}>
+                {t('auto.PromotionStatusCard.retry')}
+              </button>
+            </div>
+          )}
+
           {/* 評価リスト */}
           <div className="space-y-1.5">
             {evaluations.map((entry) => (
@@ -518,6 +540,7 @@ export function PromotionStatusCard({ playerId, filters }: Props) {
                 entry={entry}
                 override={overrides[entry.analysis_type]}
                 canOverride={canOverride}
+                overridesUnavailable={overridesError && !overridesResp}
                 theme={theme}
               />
             ))}
