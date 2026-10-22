@@ -645,6 +645,7 @@
     "subtab_analytics": "Analytics",
     "analytics_group_relations": "Explore relationships between measures",
     "analytics_group_relations_desc": "Correlation, lag, seasonality, variability, outlier weeks. Most useful once enough data has accumulated.",
+    "analytics_group_relations_exploratory": "These analyses are exploratory. Many pairs are examined, so without correction chance correlations and differences will turn up. Treat anything you find as a hypothesis until new data confirms it.",
     "analytics_group_tags": "Compare by tag",
     "analytics_group_tags_desc": "Tag matches or weeks and compare how condition differs.",
     "analytics": {
@@ -1917,6 +1918,7 @@
       "low_sample_hint": "Win rates against opponents with few matches are for reference only (stars reflect match count)"
     },
     "epv": {
+      "assumptions_fallback": "Stationary Markov process; rallies treated as independent",
       "title": "Expected Pattern Value (EPV)",
       "pattern": "Pattern",
       "epv": "EPV",
@@ -3878,7 +3880,8 @@
       "validity_score_label": "validity_score:"
     },
     "GrowthInsights": {
-      "k_effect_winrate_up": "({{effect}} win rate ↑)",
+      "k_effect_association": "(difference {{effect}}; association, not causation)",
+      "k_n_paren": "({{n}} weeks)",
       "k_winrate_paren": "(win rate {{rate}})",
       "k_low_conf_hidden_count": "{{label}} ({{n}} items)"
     },
@@ -3897,7 +3900,8 @@
       "heading": "⚠ Research-stage analysis",
       "assumptions": "Assumptions: {{v}}",
       "reason": "Exploratory rationale: {{v}}",
-      "promotion": "Promotion criteria: {{v}}"
+      "promotion": "Promotion criteria: {{v}}",
+      "unfiltered_scope": "The filters above do not apply to this analysis. It uses all matches of this player."
     },
     "DeviceManagerPanel": {
       "k1": "Remote",
@@ -4157,7 +4161,8 @@
     "DashboardResearchPage": {
       "k1": "Promotion workflow is for analysts",
       "k2": "Counterfactual shot comparison",
-      "k3": "Court spatial density map"
+      "k3": "Court spatial density map",
+      "dependence_note": "Assumptions differ from card to card. Many measures treat rallies from the same match as independent. Real rallies cluster by match and by player, so the intervals can look narrower than they should."
     },
     "PeerComparisonCard": {
       "title": "Community peer comparison (experimental, admin only)",

@@ -45,6 +45,20 @@ describe('ResearchNotice repetition', () => {
     expect(document.querySelectorAll('[data-tutorial="dashboard.researchNotice"]')).toHaveLength(1)
   })
 
+  it('research tab keeps each card own assumptions and promotion criteria, without a second heading', async () => {
+    mockRole = 'analyst'
+    wrap(<DashboardResearchPage playerId={1} filters={filters} />)
+    await waitFor(() => expect(screen.getAllByText((ja as any).auto.StateEPVCard.k1).length).toBeGreaterThan(0))
+    // StateEPVCard の昇格条件 (カード固有) は見出しなしで残る
+    expect(screen.getAllByText(/状態ごとN≥50/).length).toBeGreaterThan(0)
+    // 共通警告の見出しは 1 回のまま
+    expect(screen.getAllByText(HEADING)).toHaveLength(1)
+    // カード間で前提が違うこと・ラリーが試合内でまとまることを 1 回だけ示す
+    expect(screen.getAllByTestId('research-dependence-note')).toHaveLength(1)
+    // 絞り込みが効かないカードには、その旨を 1 行で示す
+    expect(screen.getAllByTestId('unfiltered-scope-note').length).toBeGreaterThan(0)
+  })
+
   it('card used outside the research tab keeps its own warning', async () => {
     mockRole = 'analyst'
     wrap(<StateEPVCard playerId={1} filters={filters} />)

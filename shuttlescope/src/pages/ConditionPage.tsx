@@ -394,6 +394,12 @@ export function ConditionPage() {
               title={t('condition.analytics_group_relations')}
               description={t('condition.analytics_group_relations_desc')}
             >
+              <p
+                className="text-xs text-[var(--ss-t2)] rounded-ss-md border border-[var(--ss-border)] bg-[var(--ss-surface-2)] px-3 py-2"
+                data-testid="condition-exploratory-note"
+              >
+                {t('condition.analytics_group_relations_exploratory')}
+              </p>
               {/* 全幅: ヒートマップ（幅が必要） */}
               <ConditionCorrelationHeatmap playerId={effectivePlayerId} isLight={isLight} />
 

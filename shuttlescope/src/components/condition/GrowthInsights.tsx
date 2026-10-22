@@ -93,11 +93,15 @@ function GrowthCardRow({ c, isLight, sepColor }: {
             {whenLabel}
           </span>
           <div className="flex items-center gap-1.5 text-sm whitespace-nowrap">
+            <span className={`text-xs ${labelMuted}`}>{t('condition.insights.growth_card.win_rate_high')}</span>
+            <span className={`font-mono ss-num font-semibold ${labelStrong}`}>{winHigh}</span>
+            <span className={`text-xs ${labelMuted}`}>{t('auto.GrowthInsights.k_n_paren', { n: nHigh })}</span>
+            <span className={labelMuted}>/</span>
+            <span className={`text-xs ${labelMuted}`}>{t('condition.insights.growth_card.win_rate_other')}</span>
             <span className={`font-mono ss-num ${labelMuted}`}>{winOther}</span>
-            <span className={labelMuted}>→</span>
-            <span className="font-mono ss-num font-semibold text-[var(--ss-success)]">{winHigh}</span>
+            <span className={`text-xs ${labelMuted}`}>{t('auto.GrowthInsights.k_n_paren', { n: nOther })}</span>
             {c.effect && (
-              <span className="font-bold text-[var(--ss-success)] ml-0.5">{t('auto.GrowthInsights.k_effect_winrate_up', { effect: c.effect })}</span>
+              <span className={`text-xs ${labelMuted} ml-0.5`}>{t('auto.GrowthInsights.k_effect_association', { effect: c.effect })}</span>
             )}
           </div>
         </div>

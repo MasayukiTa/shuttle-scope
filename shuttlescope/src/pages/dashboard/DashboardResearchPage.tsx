@@ -75,8 +75,11 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
         promotionCriteria="各項目が実用移行するには、十分なサンプルサイズ・CI品質・コーチ有用性の確認が必要です。"
       />
       </div>
+      <p className={`text-[11px] px-1 ${textMuted}`} data-testid="research-dependence-note">
+        {t('auto.DashboardResearchPage.dependence_note')}
+      </p>
 
-      {/* 以降のカードごとの ResearchNotice は出さない (上のページ先頭バナー 1 回に集約) */}
+      {/* 以降のカードでは ⚠ 見出しを繰り返さない。カード固有の注意・前提・昇格条件は小さく残す */}
       <ResearchNoticeSuppress>
       {/* admin-only コミュニティ peer 比較 (research / experimental) */}
       <ErrorBoundary>
@@ -95,11 +98,6 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
                 recommendationAllowed={false}
               />
             </div>
-            <ResearchNotice
-              caution={epvMeta?.caution ?? 'EPVはMarkovモデルに基づく探索的指標です。'}
-              assumptions={epvMeta?.assumptions ?? '定常マルコフ過程・独立ラリー仮定'}
-              promotionCriteria={epvMeta?.promotion_criteria ?? undefined}
-            />
             <MarkovEPV playerId={playerId} filters={filters} />
           </div>
         </RoleGuard>

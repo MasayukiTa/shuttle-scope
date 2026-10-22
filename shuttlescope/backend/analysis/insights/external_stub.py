@@ -114,7 +114,11 @@ class ExternalApiGenerator:
         #   meta / forecast / data / refusal / nonsense の 5 系統で
         #   system prompt を切替える。refusal / nonsense は NIM 呼ばず即返答。
         user_text = ctx.get("user_text") if isinstance(ctx, dict) else None  # type: ignore[union-attr]
-        intent = classify_intent(user_text or "")
+        # 質問文を持たない呼び出し (成長スナップショットなど) は「意味不明な入力」ではない。
+        # classify_intent("") は nonsense を返すため、そのまま通すと
+        # 「ご質問の意図が読み取れませんでした」という固定文がカードとして表示されていた。
+        # 質問文が渡された (空文字を含む) ときだけ分類する。
+        intent = "data" if user_text is None else classify_intent(user_text)
         # ── role-aware: player には予測 (forecast) を公開しない (prediction
         # タブを意図的に隠している運用と整合)。coach / analyst / admin は OK。
         if intent == "forecast" and role == "player":

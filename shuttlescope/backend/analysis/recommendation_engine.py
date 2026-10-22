@@ -166,15 +166,22 @@ def build_recommendation_item(
     score = score_recommendation_item(count, wins, baseline, norm_n)
     confidence_level = "★★★" if count >= 100 else "★★" if count >= 30 else "★"
 
+    # 勝率は観測された条件付きの値で、そのショットを増やす・練習すると勝率が上がる
+    # という因果は示さない (状況選択・相手・得点局面に左右される)。
+    # 「継続強化」「改善余地」のような行動の断定は使わず、傾向と n だけを述べる。
+    diff_pt = round((wr - baseline) * 100)
     if wr >= baseline:
-        title = f"{label}の継続強化"
+        title = f"{label}は勝率が高い傾向"
         body = (
-            f"{label}時の勝率{round(wr*100)}%"
-            f"（全体比{'+' if wr > baseline else ''}{round((wr - baseline) * 100)}%）。優先度高。"
+            f"{label}時の勝率{round(wr*100)}%（n={count}、全体比{'+' if diff_pt > 0 else ''}{diff_pt}ポイント）。"
+            "観測された傾向で、因果は確認していません。"
         )
     else:
-        title = f"{label}の改善余地"
-        body = f"{label}時の勝率{round(wr*100)}%。伸びしろあり。"
+        title = f"{label}は伸びしろの候補"
+        body = (
+            f"{label}時の勝率{round(wr*100)}%（n={count}、全体比{diff_pt}ポイント）。"
+            "観測された傾向で、因果は確認していません。"
+        )
 
     return {
         "category": category,

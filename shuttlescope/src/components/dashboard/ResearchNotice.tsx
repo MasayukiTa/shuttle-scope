@@ -11,8 +11,10 @@ import { useTranslation } from 'react-i18next'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 
 // 研究タブのように「ページ先頭に注意バナーを 1 回だけ出す」画面向けのスコープ。
-// この Provider の内側にある ResearchNotice は描画しない (カードごとの重複を防ぐ)。
-// Provider の外 (研究タブ以外でカードを表示する場所) では従来どおり各自が表示する。
+// この Provider の内側にある ResearchNotice は、見出し (⚠ 研究段階の分析) だけを省く。
+// カード固有の注意・前提・昇格条件は消さず、見出しなしの小さなブロックで残す
+// (防ぐ事象: ページ先頭の共通警告だけでは、カードごとに仮定が違うことが読めない)。
+// Provider の外 (研究タブ以外でカードを表示する場所) では従来どおり各自が見出し付きで表示する。
 const SuppressCtx = createContext(false)
 
 export function ResearchNoticeSuppress({ children }: { children: ReactNode }) {
@@ -37,7 +39,6 @@ export function ResearchNotice({
   const { t } = useTranslation()
   const isLight = useIsLightMode()
   const suppressed = useContext(SuppressCtx)
-  if (suppressed) return null
 
   // bg / border は完全に N_GRAY (theme 連動)。
   // warning 意味は タイトル文字色 (amber) で運ぶ。
@@ -50,6 +51,23 @@ export function ResearchNotice({
   const cautionColor = isLight ? '#374151' /* gray-700 */ : '#e2e8f0' /* gray-200 */
   const subColor = isLight ? '#64748b' /* gray-500 */ : '#94a3b8' /* gray-400 */
   const faintColor = isLight ? '#94a3b8' /* gray-400 */ : '#64748b' /* gray-500 */
+
+  if (suppressed) {
+    return (
+      <div className={`px-1 space-y-0.5 ${className}`} data-testid="research-notice-compact">
+        <p className="text-[10px]" style={{ color: cautionColor }}>{caution}</p>
+        {assumptions && (
+          <p className="text-[10px]" style={{ color: subColor }}>{t('auto.ResearchNotice.assumptions', { v: assumptions })}</p>
+        )}
+        {reason && (
+          <p className="text-[10px]" style={{ color: faintColor }}>{t('auto.ResearchNotice.reason', { v: reason })}</p>
+        )}
+        {promotionCriteria && (
+          <p className="text-[10px]" style={{ color: faintColor }}>{t('auto.ResearchNotice.promotion', { v: promotionCriteria })}</p>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className={`rounded-ss-lg px-4 py-3 space-y-1 ${containerClass} ${className}`}>
@@ -67,5 +85,23 @@ export function ResearchNotice({
         <p className="text-[10px]" style={{ color: faintColor }}>{t('auto.ResearchNotice.promotion', { v: promotionCriteria })}</p>
       )}
     </div>
+  )
+}
+
+/**
+ * 上部の絞り込み (結果・大会レベル・期間) がこのカードの母集団に効かないことを示す 1 行。
+ * 防ぐ事象: 同じ画面で N が指標ごとに違い、画面のフィルタ状態では読み解けない (監査 #152)。
+ */
+export function UnfilteredScopeNote({ className = '' }: { className?: string }) {
+  const { t } = useTranslation()
+  const isLight = useIsLightMode()
+  return (
+    <p
+      className={`text-[10px] ${className}`}
+      style={{ color: isLight ? '#64748b' : '#94a3b8' }}
+      data-testid="unfiltered-scope-note"
+    >
+      {t('auto.ResearchNotice.unfiltered_scope')}
+    </p>
   )
 }
