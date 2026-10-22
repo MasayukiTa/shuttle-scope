@@ -1955,8 +1955,10 @@ export function AnnotatorPage() {
         video_timestamp_sec: ts ?? getTimestamp(),
       })
       setLastBookmarked(rallyId)
-    } catch { /* bookmark failure is non-critical */ }
-  }, [matchId, getTimestamp])
+    } catch {
+      setNotice({ kind: 'error', message: t('annotator.bookmark_save_failed') })
+    }
+  }, [matchId, getTimestamp, t])
 
   // Review Later: 直前ラリーに review_later ノートでブックマーク
   const handleReviewLater = useCallback(async () => {
@@ -1971,8 +1973,10 @@ export function AnnotatorPage() {
       setReviewLaterAdded(true)
       setTimeout(() => setReviewLaterAdded(false), 2000)
       queryClient.invalidateQueries({ queryKey: ['bookmarks-review', matchId] })
-    } catch { /* non-critical */ }
-  }, [matchId, lastSavedRallyId, queryClient])
+    } catch {
+      setNotice({ kind: 'error', message: t('annotator.review_later_save_failed') })
+    }
+  }, [matchId, lastSavedRallyId, queryClient, t])
 
   // T6: review_later ブックマーク一覧取得
   const { data: reviewBookmarksData } = useQuery({
@@ -1999,8 +2003,11 @@ export function AnnotatorPage() {
       setCommentText('')
       setShowCommentInput(false)
       setCommentRallyId(null)
-    } catch { /* ignore */ }
-  }, [matchId, commentText, commentRallyId])
+    } catch {
+      // 入力欄とコメント本文は残したまま、未送信であることを知らせる
+      setNotice({ kind: 'error', message: t('annotator.comment_save_failed') })
+    }
+  }, [matchId, commentText, commentRallyId, t])
 
   // ステップラベル
   const stepLabel = {
@@ -3690,7 +3697,7 @@ export function AnnotatorPage() {
                   <button
                     onClick={() => setShowLegendOverlay(false)}
                     className="text-[var(--ss-t2)] hover:text-[var(--ss-t1)] text-lg leading-none"
-                    aria-label={t('auto.AnnotatorPage.k14')}
+                    aria-label={t('annotator.close_shortcut_legend')}
                   >
                     <MIcon name="close" size={12} />
                   </button>
@@ -4385,7 +4392,7 @@ export function AnnotatorPage() {
                 <button
                   onClick={() => { setShowCommentInput(false); setCommentText('') }}
                   className="px-2 py-1.5 bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] rounded-ss-md text-xs text-[var(--ss-t2)]"
-                  aria-label={t('auto.AnnotatorPage.k14')}
+                  aria-label={t('annotator.close_comment_input')}
                 >
                   <MIcon name="close" size={12} />
                 </button>
@@ -4431,7 +4438,7 @@ export function AnnotatorPage() {
                   <button
                     onClick={() => setShowCVAssistPanel(false)}
                     className="text-[var(--ss-t2)] hover:text-[var(--ss-t1)] text-xs px-1"
-                    aria-label={t('auto.AnnotatorPage.k14')}
+                    aria-label={t('annotator.close_cv_assist_panel')}
                   >
                     <MIcon name="close" size={12} />
                   </button>
@@ -4881,7 +4888,7 @@ export function AnnotatorPage() {
             <button
               onClick={() => setShowInMatchPanel(false)}
               className="text-[var(--ss-t2)] hover:text-[var(--ss-t1)] text-xs"
-              aria-label={t('auto.AnnotatorPage.k14')}
+              aria-label={t('annotator.close_match_info_panel')}
             ><MIcon name="close" size={12} /></button>
           </div>
           <div className="p-4 flex flex-col gap-3">

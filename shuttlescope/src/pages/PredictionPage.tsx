@@ -12,7 +12,8 @@ import { AdviceStrip } from '@/components/common/AdviceStrip'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
-import { apiGet, API_BASE_URL } from '@/api/client'
+import { apiGet } from '@/api/client'
+import { downloadReport } from '@/utils/downloadReport'
 import { PredictionPanel } from '@/components/analysis/PredictionPanel'
 import { PairSimulationPanel } from '@/components/analysis/PairSimulationPanel'
 import { LineupOptimizerPanel } from '@/components/analysis/LineupOptimizerPanel'
@@ -58,19 +59,12 @@ export function PredictionPage() {
 
   const LEVEL_OPTIONS = ['IC', 'IS', 'SJL', '全日本', '国内', 'その他']
 
+  const [downloadError, setDownloadError] = useState<string | null>(null)
   const dlReport = (path: string, filename: string) => {
-    const token = sessionStorage.getItem('shuttlescope_token')
-    const fullUrl = API_BASE_URL + path.replace(/^\/api/, '')
-    fetch(fullUrl, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
-      .then((r) => r.blob())
-      .then((blob) => {
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = filename
-        a.click()
-        URL.revokeObjectURL(url)
-      })
+    setDownloadError(null)
+    downloadReport(path, filename).catch(() => {
+      setDownloadError(t('common.download_failed'))
+    })
   }
 
   // URL パラメータ変化に追従
@@ -260,6 +254,14 @@ export function PredictionPage() {
             >
               {t('auto.PredictionPage.json')}
             </button>
+          </div>
+        )}
+        {downloadError && (
+          <div
+            role="alert"
+            className="mx-6 mt-2 text-sm text-[var(--ss-bad)] bg-[var(--ss-danger-tint)] border border-[var(--ss-danger-border)] rounded-ss-md px-3 py-2"
+          >
+            {downloadError}
           </div>
         )}
 

@@ -346,6 +346,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
   const [localActiveId, setLocalActiveId] = useState<string | null>(null)
   const [localCameraError, setLocalCameraError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'devices' | 'sources'>('devices')
   // handoff confirmation: participant waiting to be activated
   const [handoffTarget, setHandoffTarget] = useState<SessionParticipant | null>(null)
@@ -413,16 +414,29 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
   }
 
   const handlePurgeDisconnected = async () => {
+    const count = participants.filter((x) => !x.is_connected).length
+    if (!window.confirm(t('auto.DeviceManagerPanel.purge_confirm', { count }))) return
+    setActionError(null)
     try {
       await apiDelete(`/sessions/${sessionCode}/devices`, { 'X-Idempotency-Key': newIdempotencyKey() })
-    } catch { /* 失敗は無視 */ }
+    } catch {
+      setActionError(t('auto.DeviceManagerPanel.purge_failed'))
+    }
     fetchDevices()
   }
 
   const handleDeleteDevice = async (p: SessionParticipant) => {
+    // 接続中の端末は映像を送受信している可能性があるため、削除前に確認する
+    if (p.is_connected) {
+      const name = p.device_name ?? String(p.id)
+      if (!window.confirm(t('auto.DeviceManagerPanel.delete_connected_confirm', { name }))) return
+    }
+    setActionError(null)
     try {
       await apiDelete(`/sessions/${sessionCode}/devices/${p.id}`, { 'X-Idempotency-Key': newIdempotencyKey() })
-    } catch { /* 失敗は無視 */ }
+    } catch {
+      setActionError(t('auto.DeviceManagerPanel.delete_failed'))
+    }
     fetchDevices()
   }
 
@@ -540,6 +554,11 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
           <button onClick={onClose} className={`${subColor}`}><MIcon name="close" size={16} /></button>
         </div>
       </div>
+      {actionError && (
+        <p role="alert" className="text-[10px] text-[var(--ss-bad)] mb-2 flex items-center gap-1">
+          <MIcon name="cancel" size={10} />{actionError}
+        </p>
+      )}
 
       {/* タブ */}
       <div className={`flex border-b mb-4 ${divider}`}>

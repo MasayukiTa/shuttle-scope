@@ -364,6 +364,17 @@ export async function apiGet<T>(
   return res.json()
 }
 
+// ファイル出力 (PDF / JSON レポート) 用。認証・401 refresh・タイムアウトは他の API と同じ
+// 経路を通し、HTTP 失敗は例外にする (失敗本文を正常ファイルとして保存させない)。
+export async function apiGetBlob(path: string): Promise<Blob> {
+  const res = await fetchWithAutoRefresh(BASE_URL + path, { headers: authHeaders() })
+  if (!res.ok) {
+    const text = await res.text()
+    throw httpError(res.status, text)
+  }
+  return res.blob()
+}
+
 export async function apiPost<T>(path: string, body: unknown, extraHeaders?: Record<string, string>): Promise<T> {
   // 既定で安定 idempotency key を付与。fetchWithAutoRefresh の 401 再送は init.headers を
   // 再利用するため、最初の試行とリフレッシュ後の再送が同一キーを共有し、最初の POST が

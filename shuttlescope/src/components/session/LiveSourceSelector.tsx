@@ -86,18 +86,33 @@ export function LiveSourceSelector({ sessionCode }: Props) {
     fetchSources()
   }, [fetchSources])
 
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [busyId, setBusyId] = useState<number | null>(null)
+
   const handleActivate = async (source: LiveSource) => {
+    setActionError(null)
+    setBusyId(source.id)
     try {
       await apiPost(`/sessions/${sessionCode}/sources/${source.id}/activate`, {})
       fetchSources()
-    } catch { /* ignore */ }
+    } catch {
+      setActionError(t('live_source.activate_failed'))
+    } finally {
+      setBusyId(null)
+    }
   }
 
   const handleDeactivate = async (source: LiveSource) => {
+    setActionError(null)
+    setBusyId(source.id)
     try {
       await apiPost(`/sessions/${sessionCode}/sources/${source.id}/deactivate`, {})
       fetchSources()
-    } catch { /* ignore */ }
+    } catch {
+      setActionError(t('live_source.deactivate_failed'))
+    } finally {
+      setBusyId(null)
+    }
   }
 
   const _handleRegisterLocal = async (deviceId: string, label: string) => {
@@ -128,6 +143,10 @@ export function LiveSourceSelector({ sessionCode }: Props) {
           <MIcon name="refresh" size={12} className={loading ? 'animate-spin' : ''} />
         </button>
       </div>
+
+      {actionError && (
+        <p role="alert" className="text-[10px] mb-2 text-[var(--ss-bad)]">{actionError}</p>
+      )}
 
       {sources.length === 0 ? (
         <p className={`text-[10px] text-center py-3 ${subColor}`}>{t('live_source.no_sources')}</p>
@@ -167,14 +186,16 @@ export function LiveSourceSelector({ sessionCode }: Props) {
                   {src.source_status === 'active' ? (
                     <button
                       onClick={() => handleDeactivate(src)}
-                      className="text-[10px] px-2 py-1 rounded-ss-md bg-[var(--ss-surface-1)] border border-[var(--ss-border-strong)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-2)]"
+                      disabled={busyId === src.id}
+                      className="text-[10px] px-2 py-1 rounded-ss-md disabled:opacity-50 bg-[var(--ss-surface-1)] border border-[var(--ss-border-strong)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-2)]"
                     >
                       {t('live_source.deactivate')}
                     </button>
                   ) : (
                     <button
                       onClick={() => handleActivate(src)}
-                      className="text-[10px] px-2 py-1 rounded-ss-md bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white"
+                      disabled={busyId === src.id}
+                      className="text-[10px] px-2 py-1 rounded-ss-md disabled:opacity-50 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white"
                     >
                       {t('live_source.activate')}
                     </button>

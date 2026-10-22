@@ -2,7 +2,8 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
-import { apiGet, API_BASE_URL } from '@/api/client'
+import { apiGet } from '@/api/client'
+import { downloadReport } from '@/utils/downloadReport'
 import { Player, AnalysisFilters } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
 import { useTheme } from '@/hooks/useTheme'
@@ -167,19 +168,12 @@ export function DashboardShell() {
   // 表示する。weakness 系 (review) や信頼性低 (advanced / research) は
   // DashboardTopNav と route 側で個別に gate するため、ここでは redirect しない。
 
+  const [downloadError, setDownloadError] = useState<string | null>(null)
   const dlReport = (path: string, filename: string) => {
-    const token = sessionStorage.getItem('shuttlescope_token')
-    const fullUrl = API_BASE_URL + path.replace(/^\/api/, '')
-    fetch(fullUrl, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
-      .then((r) => r.blob())
-      .then((blob) => {
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = filename
-        a.click()
-        URL.revokeObjectURL(url)
-      })
+    setDownloadError(null)
+    downloadReport(path, filename).catch(() => {
+      setDownloadError(t('common.download_failed'))
+    })
   }
 
   // ── 共有状態 ──
@@ -398,6 +392,14 @@ export function DashboardShell() {
                   </button>
                 )}
               </div>
+              {downloadError && (
+                <div
+                  role="alert"
+                  className="mt-2 text-sm text-[var(--ss-bad)] bg-[var(--ss-danger-tint)] border border-[var(--ss-danger-border)] rounded-ss-md px-3 py-2"
+                >
+                  {downloadError}
+                </div>
+              )}
             </div>
 
             <div className={`px-6 pt-3 pb-3 border-b ${borderColor}`}>
