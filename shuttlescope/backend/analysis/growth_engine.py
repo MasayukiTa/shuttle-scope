@@ -382,17 +382,29 @@ def _period_of(points: list[dict]) -> Optional[dict]:
     return {"from": min(dates), "to": max(dates)}
 
 
-def summarize_growth_population(matches: list, used_points: list[dict]) -> dict:
+def summarize_growth_population(
+    matches: list,
+    used_points: list[dict],
+    excluded_before: Optional[dict] = None,
+) -> dict:
     """成長判定の母集団内訳: 対象 / 使用 / 除外 (理由別)。
 
-    対象 = 選手が出た全試合、使用 = 成長の点になった試合 (勝敗確定かつラリーあり)。
+    対象 = 利用者の絞り込み (日付 / 結果 / 大会) を通った全試合、
+    使用 = 成長の点になった試合 (勝敗確定かつラリーあり)。
+    matches は解析母集団 (analysis_population) を通した試合。母集団の段階で
+    外した試合は excluded_before ({"unfinished": n, "zero_rally": n}) で受け取り、
+    対象と除外に足し戻す (さもないと除外が常に 0 になる)。
     除外理由は analysis_population と同じ語彙 (unfinished / zero_rally) で数える。
     unfinished と zero_rally が重なる試合は unfinished に数える (1 試合 1 回)。
     """
-    total = len(matches)
+    pre = excluded_before or {}
+    pre_unfinished = int(pre.get("unfinished", 0))
+    pre_zero_rally = int(pre.get("zero_rally", 0))
+    total = len(matches) + pre_unfinished + pre_zero_rally
     used = len(used_points)
-    unfinished = sum(1 for m in matches if not is_decided_result(m.result))
-    zero_rally = max(0, total - used - unfinished)
+    undecided_here = sum(1 for m in matches if not is_decided_result(m.result))
+    unfinished = pre_unfinished + undecided_here
+    zero_rally = pre_zero_rally + max(0, len(matches) - used - undecided_here)
     return {
         "total": total,
         "used": used,
