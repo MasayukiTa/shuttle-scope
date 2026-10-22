@@ -192,6 +192,10 @@ export function LoginPage({ onLogin }: Props) {
   const sessionExpired =
     typeof window !== 'undefined' &&
     (window.location.hash || '').includes('session_expired=1')
+  // パスワード変更直後 (全セッション失効済み) に戻ってきた場合の案内
+  const passwordChanged =
+    typeof window !== 'undefined' &&
+    (window.location.hash || '').includes('password_changed=1')
 
   useEffect(() => {
     fetchBootstrapStatus().then((status) => {
@@ -318,6 +322,15 @@ export function LoginPage({ onLogin }: Props) {
             {bootstrapStatus.bootstrap_configured
               ? t('auto.LoginPage.bootstrap_pending')
               : t('auto.LoginPage.bootstrap_not_ready')}
+          </div>
+        )}
+
+        {passwordChanged && !sessionExpired && (
+          <div
+            role="status"
+            className="mb-4 px-4 py-3 rounded-ss-md text-sm border bg-[var(--ss-success-bg)] border-[var(--ss-success-border)] text-[var(--ss-success-text)]"
+          >
+            {t('auth.password_change.relogin')}
           </div>
         )}
 

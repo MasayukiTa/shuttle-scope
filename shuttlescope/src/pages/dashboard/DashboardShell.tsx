@@ -6,6 +6,7 @@ import { apiGet } from '@/api/client'
 import { downloadReport } from '@/utils/downloadReport'
 import { Player, AnalysisFilters } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
+import { canViewResearch } from '@/utils/researchAccess'
 import { useTheme } from '@/hooks/useTheme'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { DashboardTopNav } from '@/components/dashboard/DashboardTopNav'
@@ -576,7 +577,7 @@ export function DashboardShell() {
                   <Route
                     path="research"
                     element={
-                      role === 'player'
+                      !canViewResearch(role)
                         ? <Navigate to="/dashboard/overview" replace />
                         : <DashboardResearchPage
                             playerId={selectedPlayerId}

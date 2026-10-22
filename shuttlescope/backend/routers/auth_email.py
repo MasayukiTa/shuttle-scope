@@ -39,6 +39,7 @@ from backend.utils.email_token import (
     consume_email_verification_token,
     issue_password_reset_token,
     consume_password_reset_token,
+    peek_password_reset_token,
     issue_invitation_token,
     consume_invitation_token,
     peek_invitation_token,
@@ -582,16 +583,20 @@ def reset_password(body: PasswordResetConfirm, request: Request,
             status_code=429,
             detail="システム全体のリセット試行回数が上限に達しました。",
         )
-    user_id = consume_password_reset_token(db, body.token)
+    # 入力エラー (弱いパスワード等) で一度きりのトークンを使い切らせないよう、
+    # 強度検証をトークンの消費より先に行う。UI とスキーマが保証するのは長さと
+    # 確認欄の一致だけで、文字種 3 区分以上などはここで初めて判定される。
+    from backend.routers.auth import _validate_password_strength
+
+    _validate_password_strength(body.new_password)
+    # 消費せずに有効性だけ確認する (消費は資格情報の更新と同じ commit で行う)。
+    user_id = peek_password_reset_token(db, body.token)
     if user_id is None:
         raise HTTPException(status_code=400, detail="トークンが無効または期限切れです")
     user = db.get(User, user_id)
     if user is None:
         raise HTTPException(status_code=404, detail="ユーザーが見つかりません")
-    user.hashed_credential = _hash_password_or_422(body.new_password)
-    user.failed_attempts = 0
-    user.locked_until = None
-    db.commit()
+    new_hash = _hash_password_or_422(body.new_password)
 
     # 旧実装はここでセッションを失効させていなかった。兄弟の
     # `change_password` (auth.py:1417) と管理者リセット (:1447) は両方やっている。
@@ -599,9 +604,21 @@ def reset_password(body: PasswordResetConfirm, request: Request,
     # access token は期限まで生き、refresh token は 7 日生きて回り続ける。**
     # 「パスワードを変える」は乗っ取り対応の標準手段なので、それが対応に
     # なっていないのは効き方が悪い。同じ処理を通す。
+    #
+    # 失効は別セッションで確定するので、資格情報を commit した後に行うと、失効が
+    # 失敗した時に「500 なのにパスワードは変わり、トークンも使用済み」になる。
+    # 失効を先に済ませ、トークン消費・資格情報・他トークン失効は 1 回の commit で確定する。
     from backend.utils.jwt_utils import revoke_all_sessions_or_500
 
     revoke_all_sessions_or_500(user.id, "password reset")
+
+    if consume_password_reset_token(db, body.token, commit=False) is None:
+        # peek と消費の間に並行リクエストが先に消費した / 期限が切れた
+        db.rollback()
+        raise HTTPException(status_code=400, detail="トークンが無効または期限切れです")
+    user.hashed_credential = new_hash
+    user.failed_attempts = 0
+    user.locked_until = None
 
     # セッションだけ失効させても、**他に発行済みのリセットトークンは生きている**。
     # リセット要求は誰でも出せるので、乗っ取り犯が先に 1 通取っておけば、
@@ -609,7 +626,10 @@ def reset_password(body: PasswordResetConfirm, request: Request,
     # パスワードを変えた時点で他の鍵も落とす。
     from backend.utils.email_token import invalidate_outstanding_password_reset_tokens
 
-    revoked_tokens = invalidate_outstanding_password_reset_tokens(db, user_id)
+    revoked_tokens = invalidate_outstanding_password_reset_tokens(
+        db, user_id, commit=False
+    )
+    db.commit()
 
     log_access(db, "password_reset_completed", user_id=user_id, ip_addr=_client_ip(request),
                details={"other_reset_tokens_invalidated": revoked_tokens})
@@ -728,10 +748,17 @@ def accept_invitation(body: InvitationAcceptRequest, request: Request,
     # 招待の role が player なら、register と同じく Player を作って紐付ける。
     from backend.routers.auth import ensure_player_record
     ensure_player_record(db, user)
+    # token の atomic claim を、ユーザ作成の **commit 前に** 同じトランザクションで行う。
+    # peek は読み取りだけなので、peek から ここまでの間に期限切れ / 別リクエストでの
+    # 消費が起きうる。claim に失敗したら作成したユーザごと rollback して中止する
+    # (single-use / expiry を「作成してよいか」の認可 gate にする)。
+    db.flush()  # user.id を確定 (consumed_by_user_id に必要)。まだ commit しない。
+    if consume_invitation_token(
+        db, body.token, accepted_by_user_id=user.id, commit=False
+    ) is None:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="トークンが無効または期限切れです")
     db.commit()
-
-    # token 消費
-    consume_invitation_token(db, body.token, accepted_by_user_id=user.id)
     log_access(db, "invitation_accepted", user_id=user.id,
                details={"role": rec.role, "inviter_user_id": rec.inviter_user_id})
     return {"success": True, "data": {"user_id": user.id, "role": user.role}}

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { clsx } from 'clsx'
 import { useTheme } from '@/hooks/useTheme'
 import { useAuth } from '@/hooks/useAuth'
+import { canViewResearch } from '@/utils/researchAccess'
 
 const PAGES = [
   { path: '/dashboard/overview',  key: 'overview'  },
@@ -24,9 +25,12 @@ export function DashboardTopNav() {
   const { theme } = useTheme()
   const { role } = useAuth()
   const isLight = theme === 'light'
-  const visiblePages = role === 'player'
+  // research は backend が admin / analyst 専用 (他ロールは API が 403) なので、
+  // 該当しないロールにはタブ自体を出さない。
+  const visiblePages = (role === 'player'
     ? PAGES.filter((p) => PLAYER_ALLOWED_KEYS.has(p.key))
     : PAGES
+  ).filter((p) => p.key !== 'research' || canViewResearch(role))
 
   return (
     <div

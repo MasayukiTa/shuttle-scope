@@ -4,7 +4,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { UserRole } from '@/types'
 
@@ -44,18 +44,23 @@ vi.mock('../DashboardLivePage', () => ({ DashboardLivePage: () => null }))
 vi.mock('../DashboardReviewPage', () => ({ DashboardReviewPage: () => null }))
 vi.mock('../DashboardGrowthPage', () => ({ DashboardGrowthPage: () => null }))
 vi.mock('../DashboardAdvancedPage', () => ({ DashboardAdvancedPage: () => null }))
-vi.mock('../DashboardResearchPage', () => ({ DashboardResearchPage: () => null }))
+vi.mock('../DashboardResearchPage', () => ({
+  DashboardResearchPage: () => <div data-testid="research-page" />,
+}))
 
 import { DashboardShell } from '../DashboardShell'
 
 Element.prototype.scrollIntoView = () => {}
 
-async function renderShell() {
+async function renderShell(entry = '/dashboard/overview') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const utils = render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={['/dashboard/overview']}>
-        <DashboardShell />
+      <MemoryRouter initialEntries={[entry]}>
+        {/* 本番と同じく /dashboard/* に載せる (Shell 内の相対 Routes が解決できるように) */}
+        <Routes>
+          <Route path="/dashboard/*" element={<DashboardShell />} />
+        </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -83,5 +88,19 @@ describe('DashboardShell ロール別表示', () => {
     const { container } = await renderShell()
     await waitFor(() => expect(container.textContent).toContain('53.8%'))
     expect(Array.from(container.querySelectorAll('option')).some((o) => o.getAttribute('value') === 'win')).toBe(true)
+  })
+
+  // 研究画面の API は backend が admin / analyst 専用 (他は 403)。画面側も同じ条件で入れない。
+  it.each(['admin', 'analyst'] as UserRole[])('%s: 研究画面を表示する', async (r) => {
+    mockRole = r
+    await renderShell('/dashboard/research')
+    expect(await screen.findByTestId('research-page')).toBeTruthy()
+  })
+
+  it.each(['coach', 'demo', 'player'] as UserRole[])('%s: 研究画面は表示せず overview へ戻す', async (r) => {
+    mockRole = r
+    const { container } = await renderShell('/dashboard/research')
+    expect(screen.queryByTestId('research-page')).toBeNull()
+    expect(container.querySelector('[data-testid="research-page"]')).toBeNull()
   })
 })

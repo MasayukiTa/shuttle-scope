@@ -1431,23 +1431,18 @@ def change_password(req: PasswordChangeRequest, request: Request, db: Session = 
         raise HTTPException(status_code=401, detail="現在のパスワードが正しくありません")
 
     _validate_password_strength(req.new_password)
-    user.hashed_credential = _hash_password(req.new_password)
+    new_hash = _hash_password(req.new_password)
+    # セッション失効 (refresh + access の epoch) を **先に** 行い、成功してから
+    # 新しい資格情報を commit する。失効は別セッションで確定するため、旧順序
+    # (commit -> 失効) では失効が失敗した時に「500 を返したのにパスワードだけ
+    # 変わっている」状態が残った。この順序なら、失効に失敗した場合は資格情報が
+    # 未変更のまま 500 になり、画面の結果と実状態が一致する。
+    # 失効後に資格情報の commit が失敗した場合も、旧パスワードのまま再ログインが
+    # 必要になるだけで安全側 (fail-closed) に倒れる。
+    from backend.utils.jwt_utils import revoke_all_sessions_or_500
+    revoke_all_sessions_or_500(user.id, "password change")
+    user.hashed_credential = new_hash
     db.commit()
-    # 既存 refresh token を全失効させ、再ログインを要求
-    revoke_all_refresh_tokens_for_user(user.id)
-    # Round 258 R20 P2 fix (R20 P2-2): access token (15min) も per-user revoke epoch
-    # で即時失効させる。これで盗まれた access token が password rotation 後に
-    # 残存利用される 15 分の窓を閉じる。
-    # Round 258 R21 P0 fix (R21 P0-1): 旧コードは exception を warn ログだけで
-    # 握り潰していたため、DB 書込み失敗時に password 変更だけ成功して access
-    # token 失効が走らない silent failure があった。raise に変更して 500 で
-    # 早期検知できるようにする (sentinel uniqueness は jwt_utils 側で uuid 補強済)。
-    from backend.utils.jwt_utils import revoke_all_for_user as _revoke_all_for_user
-    try:
-        _revoke_all_for_user(user.id)
-    except Exception as exc:
-        logger.error("revoke_all_for_user failed (password change) user_id=%s: %s", user.id, exc)
-        raise HTTPException(status_code=500, detail="access token 失効処理に失敗しました")
     log_access(db, "password_changed", user_id=user.id, ip_addr=_get_ip(request))
     return {"success": True}
 
@@ -1460,19 +1455,16 @@ def admin_reset_password(target_id: int, request: Request, db: Session = Depends
     if not user:
         raise HTTPException(status_code=404, detail="user not found")
     temp = _generate_temp_password()
-    user.hashed_credential = _hash_password(temp)
+    temp_hash = _hash_password(temp)
+    # セッション失効を先に確定させ、成功してから一時パスワードを commit する。
+    # 旧順序 (commit -> 失効) では、失効が失敗すると旧パスワードだけ無効になり、
+    # 成功レスポンスでしか返さない一時パスワードが admin に渡らなかった。
+    from backend.utils.jwt_utils import revoke_all_sessions_or_500
+    revoke_all_sessions_or_500(user.id, "admin reset")
+    user.hashed_credential = temp_hash
     user.failed_attempts = 0
     user.locked_until = None
     db.commit()
-    revoke_all_refresh_tokens_for_user(user.id)
-    # Round 258 R20 P2 fix (R20 P2-2) + R21 P0 fix (R21 P0-1): access token も即時失効。
-    # silent failure を避けるため raise に倒す。
-    from backend.utils.jwt_utils import revoke_all_for_user as _revoke_all_for_user
-    try:
-        _revoke_all_for_user(user.id)
-    except Exception as exc:
-        logger.error("revoke_all_for_user failed (admin reset) user_id=%s: %s", user.id, exc)
-        raise HTTPException(status_code=500, detail="access token 失効処理に失敗しました")
     log_admin_action(
         db, request, "password_reset_by_admin",
         resource_type="user", resource_id=target_id,
