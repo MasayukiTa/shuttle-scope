@@ -1522,6 +1522,8 @@ def me(request: Request, db: Session = Depends(get_db)):
         "player_id": ctx.player_id,
         "user_id": user_id,
         "team_name": ctx.team_name,
+        # ログイン ID。設定画面のアカウント欄が参照する (無いと「-」表示になる)
+        "username": user.username if user else None,
         "display_name": (user.display_name or user.username) if user else None,
         "page_access": page_access,
         "mfa_enabled": bool(user.totp_enabled) if user else False,

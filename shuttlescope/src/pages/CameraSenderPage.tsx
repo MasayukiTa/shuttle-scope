@@ -13,7 +13,7 @@
  *   - 非技術ユーザ向け丁寧な状態テキスト
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useParams, useLocation } from 'react-router-dom'
+import { useParams, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { apiPost, getParticipantIceConfig } from '@/api/client'
 import { useDeviceHeartbeat } from '@/hooks/useDeviceHeartbeat'
@@ -106,7 +106,8 @@ const DEVICE_NAME_KEY = 'ss_device_name'
 
 export function CameraSenderPage() {
   const { sessionCode: paramCode } = useParams<{ sessionCode: string }>()
-  const { search } = useLocation()
+  const { search, pathname } = useLocation()
+  const navigate = useNavigate()
   // QR URL に埋め込まれたパスワード（?pwd=...）を読み取る
   const pwdParam = new URLSearchParams(search).get('pwd') ?? ''
   const { t } = useTranslation()
@@ -395,6 +396,8 @@ export function CameraSenderPage() {
     if (paramCode && senderState === 'connecting') {
       if (pwdParam) {
         // ?pwd= パラメータがあれば自動入力してパスワードフォームをスキップ（保存済み端末名を使用）
+        // 参加に使ったら URL からパスワードを消す（履歴・アドレスバー・共有に残さない）
+        navigate({ pathname, search: '' }, { replace: true })
         joinSession(paramCode, pwdParam, localStorage.getItem(DEVICE_NAME_KEY) || getDeviceTypeLabel())
       } else {
         // 旧 QR コード（パスワードなし URL）→ フォームに誘導

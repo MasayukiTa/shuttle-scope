@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useId, useState, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Player } from '@/types'
 import { MIcon } from '@/components/common/MIcon'
@@ -25,6 +25,8 @@ export function PlayerCombobox({
   candidates, isLight, textSecondary, placeholder = '名前を入力して検索...',
 }: PlayerComboboxProps) {
   const { t } = useTranslation()
+  // ラベルと入力欄を結ぶ (支援技術が「対象選手(A)」「対戦相手(B)」を区別できるようにする)
+  const inputId = useId()
 
   const [showDropdown, setShowDropdown] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -41,12 +43,13 @@ export function PlayerCombobox({
 
   return (
     <div className="relative" ref={containerRef}>
-      <label className={`block text-sm ${textSecondary} mb-1`}>
+      <label htmlFor={inputId} className={`block text-sm ${textSecondary} mb-1`}>
         {label}{required && ' *'}
       </label>
       <div className="relative">
         <MIcon name="search" size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
         <input
+          id={inputId}
           type="text"
           value={query}
           onChange={(e) => {
