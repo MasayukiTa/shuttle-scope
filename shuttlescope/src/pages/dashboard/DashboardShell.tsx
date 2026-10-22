@@ -403,7 +403,7 @@ export function DashboardShell() {
             <div className={`px-6 pt-3 pb-3 border-b ${borderColor}`}>
               <div className="grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-4 gap-3">
                 <StatCard icon={<MIcon name="emoji_events" size={18} />} label="試合数" value={descriptive?.total_matches} />
-                <StatCard icon={<MIcon name="monitor_heart" size={18} />} label="ラリー数" value={descriptive?.total_rallies} sampleSize={descriptive?.total_rallies} />
+                <StatCard icon={<MIcon name="monitor_heart" size={18} />} label="ラリー数" value={descriptive?.total_rallies} />
                 {/* 生の勝率は player に見せない (製品ルール)。analyst / coach / admin のみ */}
                 {role !== 'player' && (
                   <StatCard

@@ -103,8 +103,8 @@ function PartnerComparison({ playerId }: { playerId: number }) {
                 <p className="text-[10px] text-[var(--ss-t3)]">{t('doubles_analysis.win_rate')}</p>
               </div>
               <div>
-                <p className="ss-num text-lg font-bold text-[var(--ss-emphasis)]">{(p.synergy_score * 100).toFixed(0)}</p>
-                <p className="text-[10px] text-[var(--ss-t3)]">{t('doubles_analysis.synergy')}</p>
+                <p className="ss-num text-lg font-bold text-[var(--ss-emphasis)]">{(p.synergy_score * 100).toFixed(0)}%</p>
+                <p className="text-[10px] text-[var(--ss-t3)]">{t('doubles_analysis.adjusted_win_rate')}</p>
               </div>
               <div>
                 <p className="ss-num text-lg font-bold text-[var(--ss-brand)]">{isFiniteNumber(p.avg_rally_length) ? p.avg_rally_length.toFixed(1) : '—'}</p>

@@ -1205,7 +1205,7 @@
     "dominant_hand": "Dominant hand",
     "birth_year": "Birth year",
     "world_ranking": "World ranking",
-    "is_target": "Analysis target",
+    "is_target": "Priority player",
     "notes": "Notes",
     "right_hand": "Right-handed",
     "left_hand": "Left-handed",
@@ -1219,7 +1219,7 @@
     "needs_review": "Needs review",
     "aliases": "Aliases / name variants",
     "search_placeholder": "Filter by name, team or nationality",
-    "target_only": "Analysis targets only",
+    "target_only": "Priority players only",
     "sort_asc": "Ascending",
     "sort_desc": "Descending",
     "count_suffix": "players"
@@ -2348,7 +2348,7 @@
     "no_data": "Not enough match data",
     "win_probability": "Predicted win rate",
     "pair_no_record": "No match record as this pair, so no win rate is computed",
-    "confidence": "Confidence",
+    "confidence": "Prediction confidence",
     "similar_matches": "Similar matches",
     "sample_size": "Data",
     "set_distribution": "Set distribution",
@@ -2878,7 +2878,7 @@
       "add_player": "Add player",
       "create_player_require_analyst": "Adding players requires the Analyst or Admin role. Please ask an administrator to change your role.",
       "hand": "Hand",
-      "target": "Target",
+      "target": "Priority",
       "operation": "Actions",
       "no_players": "No players registered. Use the \"Add player\" button to add one.",
       "no_match_players": "No players match the current filter.",
@@ -2975,12 +2975,17 @@
       }
     }
   },
+  "analysis_scope": {
+    "unclassified_note": "{{n}} matches are left out because the opponent has no shot data, so no type could be assigned.",
+    "heatmap_scope": "Counts only your own shots that have a recorded position.",
+    "quality_scope": "Covers all shots by the player and the opponent, whether or not a position was recorded."
+  },
   "doubles_analysis": {
     "loading": "Loading...",
     "unit_doubles_match": "doubles matches",
     "match_count": "{{n}} matches",
     "win_rate": "Win rate",
-    "synergy": "Synergy",
+    "adjusted_win_rate": "Adjusted win rate",
     "avg_rally": "Avg shots",
     "serve_side": "Serving side",
     "receive_side": "Receiving side",
@@ -3472,7 +3477,7 @@
       "stroke_share": "Stroke share: {{n}}%",
       "k1": "Loading...",
       "k2": "Win rate",
-      "k3": "Synergy",
+      "k3": "Diff. from average",
       "k4": "Pair synergy score"
     },
     "PlayerMovementCard": {
@@ -3619,7 +3624,7 @@
       "k5": "Losing patterns",
       "analyzed_rallies": "Rallies analyzed: {{n}}",
       "interval": "interval {{low}}-{{high}}%",
-      "unit_note": "Counts and rates are per rally that contains the sequence (a sequence repeated in one rally counts once).",
+      "unit_note": "Counts and rates are per rally that contains the sequence (a sequence repeated in one rally counts once). All three shots are the player's own; the opponent's returns in between are not included.",
       "baseline": "Baseline: win rate over all rallies with 3 or more of your shots {{rate}}% (n={{n}})"
     },
     "ReceivedVulnerabilityMap": {
@@ -4590,7 +4595,7 @@
       "auth_state_note": "Auth state is stored per session. Closing the app or browser brings you back to the login screen next time.",
       "restart_desc": "Restart the app after a setting change or issue. Unsaved annotation data will be lost.",
       "until_prefix": "until {{until}}",
-      "is_target_suffix": " (main analysis target)",
+      "is_target_suffix": " (listed first in player pickers)",
       "backend_log_desc": "Python backend log (you can check YOLO detection errors and inference scores here)",
       "log_lines_hint": "{{n}} lines — Ctrl+A then Ctrl+C to copy",
       "tutorial_desc": "Replay how-tos. Completed items can be replayed anytime.",
@@ -5229,9 +5234,9 @@
     "clear": "Clear"
   },
   "advice": {
-    "confidence_high": "Confidence: High",
-    "confidence_medium": "Confidence: Medium",
-    "confidence_low": "Confidence: Low",
+    "confidence_high": "Advice confidence: High",
+    "confidence_medium": "Advice confidence: Medium",
+    "confidence_low": "Advice confidence: Low",
     "calculating": "Calculating advice…",
     "measuring_title": "Not enough data for advice yet",
     "measuring_body": "Specific observations will appear once enough data has been collected. Until then, we do not show comments based on guesswork.",

@@ -315,6 +315,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                 <ExpandBtn onClick={() => setCourtHeatOpen(true)} />
               </div>
             </div>
+            <p className={`text-[10px] ${textMuted} mb-2`}>{t('analysis_scope.heatmap_scope')}</p>
             <div className="flex gap-1 mb-2">
               {(['hit', 'land'] as const).map((tab) => (
                 <button

@@ -1212,7 +1212,7 @@
     "dominant_hand": "利き手",
     "birth_year": "生年",
     "world_ranking": "世界ランキング",
-    "is_target": "解析対象",
+    "is_target": "重点選手",
     "notes": "メモ",
     "right_hand": "右利き",
     "left_hand": "左利き",
@@ -1226,7 +1226,7 @@
     "needs_review": "要レビュー",
     "aliases": "別名・表記揺れ",
     "search_placeholder": "名前・チーム・国籍で絞り込み",
-    "target_only": "解析対象のみ",
+    "target_only": "重点選手のみ",
     "sort_asc": "昇順",
     "sort_desc": "降順",
     "count_suffix": "人"
@@ -2356,7 +2356,7 @@
     "no_data": "対戦データが不足しています",
     "win_probability": "勝率予測",
     "pair_no_record": "ペアとしての対戦実績がないため、勝率は算出していません",
-    "confidence": "信頼度",
+    "confidence": "予測の信頼度",
     "similar_matches": "類似試合",
     "sample_size": "データ",
     "set_distribution": "セット分布予測",
@@ -2916,7 +2916,7 @@
       "add_player": "選手追加",
       "create_player_require_analyst": "選手の追加には Analyst（アナリスト）または管理者のロールが必要です。ロールの変更は管理者にご依頼ください。",
       "hand": "手",
-      "target": "対象",
+      "target": "重点",
       "operation": "操作",
       "no_players": "選手が登録されていません。「選手追加」ボタンで追加してください。",
       "no_match_players": "絞り込み条件に一致する選手がいません。",
@@ -2983,12 +2983,17 @@
       "security_logs_open": "セキュリティ監視を開く"
     }
   },
+  "analysis_scope": {
+    "unclassified_note": "{{n}}試合は相手の打球データが無く、型を判定できないため除いています。",
+    "heatmap_scope": "自分の打球のうち、位置が記録された球だけを数えています。",
+    "quality_scope": "選手と相手の全ショットが対象です。位置の記録の有無は問いません。"
+  },
   "doubles_analysis": {
     "loading": "読み込み中...",
     "unit_doubles_match": "ダブルス試合",
     "match_count": "{{n}}試合",
     "win_rate": "勝率",
-    "synergy": "相乗効果",
+    "adjusted_win_rate": "補正勝率",
     "avg_rally": "平均打数",
     "serve_side": "サーブ側",
     "receive_side": "レシーブ側",
@@ -3480,7 +3485,7 @@
       "stroke_share": "打球分担: {{n}}%",
       "k1": "読み込み中...",
       "k2": "勝率",
-      "k3": "シナジー",
+      "k3": "平均勝率との差",
       "k4": "ペアシナジースコア"
     },
     "PlayerMovementCard": {
@@ -3627,7 +3632,7 @@
       "k4": "勝ちパターン",
       "k5": "負けパターン",
       "interval": "区間 {{low}}〜{{high}}%",
-      "unit_note": "回数と勝率は、その並びを含むラリーの数で数えています(同じラリーで何度出ても1回)。",
+      "unit_note": "回数と勝率は、その並びを含むラリーの数で数えています(同じラリーで何度出ても1回)。3球とも選手本人の打球で、間にある相手の返球は含みません。",
       "baseline": "比べる基準: 3球以上打ったラリー全体の勝率 {{rate}}%(n={{n}})"
     },
     "ReceivedVulnerabilityMap": {
@@ -4598,7 +4603,7 @@
       "auth_state_note": "認証状態はセッションごとに保存されます。アプリやブラウザを閉じると、次回起動時はログイン画面から始まります。",
       "restart_desc": "設定変更や不具合が発生した際にアプリを再起動します。未保存のアノテーションデータは失われます。",
       "until_prefix": "〜{{until}}",
-      "is_target_suffix": "（解析メイン対象）",
+      "is_target_suffix": "（選手の選択欄で上に表示）",
       "backend_log_desc": "Pythonバックエンドのログ（YOLO検出エラーや推論スコアを確認できます）",
       "log_lines_hint": "{{n}} 行 — Ctrl+A → Ctrl+C でコピー可",
       "tutorial_desc": "操作方法を再生できます。完了済みの項目もいつでも再生可能です。",
@@ -5296,9 +5301,9 @@
     "clear": "クリア"
   },
   "advice": {
-    "confidence_high": "信頼度: 高",
-    "confidence_medium": "信頼度: 中",
-    "confidence_low": "信頼度: 低",
+    "confidence_high": "助言の信頼度: 高",
+    "confidence_medium": "助言の信頼度: 中",
+    "confidence_low": "助言の信頼度: 低",
     "calculating": "アドバイスを計算しています…",
     "measuring_title": "アドバイスを表示するにはデータが足りません",
     "measuring_body": "データが揃うと、具体的な観測を表示します。それまでは、推測だけのコメントは出しません。",
