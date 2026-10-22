@@ -3,7 +3,7 @@
  *
  * 用途:
  *   - MatchListPage / AnnotatorPage / 編集ページから「DL ボタン」で開く
- *   - タブ切替で 全部 / ピン留め (Phase 2) / 手入力 の 3 モード
+ *   - タブ切替で 全部 / 手入力 の 2 モード
  *   - 共通設定: 画質 / cookies.txt / video_password
  *
  * 切り抜きの背景:
@@ -11,18 +11,19 @@
  *   全部 DL すると HDD/SSD を浪費する。`start_sec` / `end_sec` を yt-dlp の
  *   `download_ranges` callback に変換すると 5〜10 倍の容量効率になる。
  *
- * Phase 1 (本コミット):
+ * 実装済み:
  *   - 全部DL タブ (既存挙動の踏襲)
  *   - 手入力 タブ (HH:MM:SS - HH:MM:SS、推定サイズ表示)
  *   - cookies.txt / video_password / quality / cookie_browser を統合
  *
- * Phase 2 (後日):
- *   - ピン留めタブ (YouTube iframe + postMessage で `getCurrentTime` 取得)
+ * 未実装 (タブは出さない):
+ *   - ピン留め (YouTube iframe + postMessage で `getCurrentTime` 取得)
  *   - chapters 自動取得 (yt-dlp metadata)
  */
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { apiPost } from '@/api/client'
+import { errorMessage, errorStatus } from '@/utils/errors'
 import { MIcon } from '@/components/common/MIcon'
 
 // ── ヘルパ ───────────────────────────────────────────────────────────────────
@@ -67,14 +68,24 @@ function estimateSizeMB(quality: string, durationSec: number): number {
 
 // ── タブ定義 ─────────────────────────────────────────────────────────────────
 
-type TabId = 'full' | 'manual' | 'pin'
+type TabId = 'full' | 'manual'
 
 // ラベル/ヒントは render 時に t() で解決する (i18n)
-const TABS: { id: TabId; labelKey: string; hintKey?: string }[] = [
+const TABS: { id: TabId; labelKey: string }[] = [
   { id: 'full',   labelKey: 'video.dl.tab_full' },
-  { id: 'pin',    labelKey: 'video.dl.tab_pin', hintKey: 'video.dl.tab_pin_hint' },
   { id: 'manual', labelKey: 'video.dl.tab_manual' },
 ]
+
+/**
+ * DL 開始失敗を利用者向け文言へ変換する。
+ * バックエンドの detail (検証エラーの配列・内部フィールド・例外文) は表示せず、
+ * HTTP ステータスだけで案内を選ぶ。生の内容はコンソールにのみ残す。
+ */
+function downloadErrorKey(status: number | undefined): string {
+  if (status === 400 || status === 404) return 'annotator.ui.dl_err_no_source'
+  if (status === 403 || status === 413 || status === 422) return 'annotator.ui.dl_err_bad_settings'
+  return 'auto.DownloadOptionsModal.err_start_failed'
+}
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -219,20 +230,8 @@ export function DownloadOptionsModal({
       onStarted?.(jobId)
       onClose()
     } catch (err: unknown) {
-      let msg = t('auto.DownloadOptionsModal.err_start_failed')
-      if (err instanceof Error) {
-        try {
-          const parsed = JSON.parse(err.message)
-          const d = parsed?.detail
-          if (typeof d === 'string') msg = d
-          else if (Array.isArray(d)) {
-            msg = d.map((e) => e?.msg ?? JSON.stringify(e)).join('; ')
-          } else if (d) msg = JSON.stringify(d)
-          else msg = err.message
-        } catch {
-          msg = err.message
-        }
-      }
+      console.warn('[download] start failed', errorStatus(err), errorMessage(err))
+      const msg = t(downloadErrorKey(errorStatus(err)))
       setSubmitError(msg)
     } finally {
       setSubmitting(false)
@@ -285,16 +284,13 @@ export function DownloadOptionsModal({
           {TABS.map((tabDef) => (
             <button
               key={tabDef.id}
-              onClick={() => tabDef.id !== 'pin' && setTab(tabDef.id)}
-              disabled={tabDef.id === 'pin'}
-              className={`px-3 py-1.5 rounded-ss-sm text-xs font-medium transition-colors duration-base ease-out disabled:opacity-50 disabled:cursor-not-allowed ${
+              onClick={() => setTab(tabDef.id)}
+              className={`px-3 py-1.5 rounded-ss-sm text-xs font-medium transition-colors duration-base ease-out ${
                 tab === tabDef.id ? tabActive : tabInactive
               }`}
-              title={tabDef.hintKey ? t(tabDef.hintKey) : undefined}
               aria-selected={tab === tabDef.id}
             >
               {t(tabDef.labelKey)}
-              {tabDef.hintKey && <span className="ml-1 text-[10px] opacity-70">{t(tabDef.hintKey)}</span>}
             </button>
           ))}
         </div>
@@ -355,15 +351,6 @@ export function DownloadOptionsModal({
               {rangeError && (
                 <div className="text-xs text-[var(--ss-danger)]">{rangeError}</div>
               )}
-            </div>
-          )}
-
-          {tab === 'pin' && (
-            <div className={`text-sm ${labelColor}`}>
-              <p>{t('video.dl.pin_desc', 'Pinning is planned for Phase 2.')}</p>
-              <p className={`text-xs mt-1 ${muteColor}`}>
-                {t('video.dl.pin_hint', 'For now, specify HH:MM:SS in the Manual tab.')}
-              </p>
             </div>
           )}
 

@@ -114,8 +114,19 @@ export function hasVideo(match?: {
   return !!(match.video_token || match.video_url || match.has_video_local)
 }
 
+const UUID_FILENAME_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\.[A-Za-z0-9]+)?$/i
+
+/**
+ * サーバー保管時に付く内部名 (UUID.拡張子) かどうか。
+ * 利用者が付けた名前ではなく、見せても動画の識別に役立たない。
+ */
+export function isInternalVideoFilename(name?: string | null): boolean {
+  return !!name && UUID_FILENAME_RE.test(name.trim())
+}
+
 /**
  * 表示用のファイル名（パスを含まない）。video_filename 優先。
+ * 内部名 (UUID) のときはファイル名を出さず「動画登録済み」にする。
  */
 export function getVideoLabel(match?: {
   video_filename?: string | null
@@ -123,9 +134,11 @@ export function getVideoLabel(match?: {
   has_video_local?: boolean | null
 } | null): string {
   if (!match) return ''
-  if (match.video_filename) return `📁 ${match.video_filename}`
+  if (match.video_filename && !isInternalVideoFilename(match.video_filename)) {
+    return `📁 ${match.video_filename}`
+  }
   if (match.video_url) return `🔗 ${match.video_url}`
-  if (match.has_video_local) return '📁 (動画登録済み)'
+  if (match.video_filename || match.has_video_local) return '📁 (動画登録済み)'
   return ''
 }
 

@@ -3,6 +3,7 @@ import { useSearchParams, Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { apiPost } from '@/api/client'
 import { errorMessage } from '@/utils/errors'
+import { PASSWORD_RESET_ENABLED } from '@/utils/passwordReset'
 
 export default function PasswordResetConfirmPage() {
   const { t } = useTranslation()
@@ -18,6 +19,26 @@ export default function PasswordResetConfirmPage() {
   const fieldCls =
     'w-full border border-[var(--ss-ctrl-border)] rounded-ss-md px-3 py-2.5 text-base min-h-[44px] ' +
     'bg-[var(--ss-ctrl-bg)] text-[var(--ss-ctrl-text)] outline-none transition-colors duration-fast ease-out'
+
+  if (!PASSWORD_RESET_ENABLED) {
+    // 申請画面と同じく、停止中は入力フォームを出さず理由だけを示す
+    return (
+      <div
+        className="min-h-[100svh] flex items-center justify-center bg-[var(--ss-bg-app)] p-4"
+        style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+      >
+        <div className="max-w-md w-full bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-lg shadow-card p-6 space-y-4">
+          <h1 className="text-xl font-semibold tracking-[-0.014em] text-[var(--ss-t1)]">{t('auth.password_reset_confirm.title')}</h1>
+          <p className="text-sm text-[var(--ss-t2)]" role="status">
+            {t('auth.password_reset_request.disabled_message')}
+          </p>
+          <Link to="/login" className="block text-center text-sm text-[var(--ss-brand)] hover:text-[var(--ss-brand-hover)] hover:underline">
+            {t('auth.back_to_login')}
+          </Link>
+        </div>
+      </div>
+    )
+  }
 
   if (!token) {
     return (
