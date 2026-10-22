@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 
 interface PairPlaystyleProps {
@@ -38,6 +39,17 @@ const PLAYSTYLE_COLOR: Record<string, { text: string; lightText: string; bg: str
   unknown:       { text: '#6b7280', lightText: '#4b5563', bg: 'rgba(107,114,128,0.1)', border: '#6b7280' },
 }
 
+/**
+ * プレースタイル分類を確定表示する最低打球数。
+ * 防ぐ事象: 1 打でネット前に着地しただけで net_rate=100% となり「前衛主体」と表示された (監査 #745)。
+ * 根拠: ConfidenceBadge の strokes 閾値の下限 (500 未満は「参考値」) に合わせた。
+ */
+export const PLAYSTYLE_MIN_STROKES = 500
+
+export function isPlaystyleSettled(sampleSize: number): boolean {
+  return sampleSize >= PLAYSTYLE_MIN_STROKES
+}
+
 // METRIC_ROWS is constructed inside the component via useMemo because t()
 // is only valid in the useTranslation() hook context. Defining it at module
 // scope crashes the minified bundle with "ReferenceError: t is not defined".
@@ -53,7 +65,7 @@ export function PairPlaystyle({ playerAId, playerBId, playerAName = 'A', playerB
     { key: 'net_shot_rate',  label: t('auto.PairPlaystyle.k5') },
   ]), [t])
 
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError, refetch } = useQuery({
     queryKey: ['analysis-pair-playstyle', playerAId, playerBId],
     queryFn: () =>
       apiGet<PairPlaystyleResponse>('/analysis/pair_playstyle', {
@@ -66,12 +78,30 @@ export function PairPlaystyle({ playerAId, playerBId, playerAName = 'A', playerB
   if (isLoading) {
     return <div className="text-[var(--ss-t3)] text-sm py-4 text-center">{t('analysis.loading')}</div>
   }
+  if (isError) {
+    return <QueryErrorNotice onRetry={() => { void refetch() }} />
+  }
 
   const sampleSize = resp?.meta?.sample_size ?? 0
   const d = resp?.data
 
   if (!d || sampleSize === 0) {
     return <div className="text-[var(--ss-t3)] text-sm py-4 text-center">{t('analysis.no_data')}</div>
+  }
+
+  // 監査 #745: 少標本ではカテゴリ名・比率を確定表示しない (判定保留 + n のみ)。
+  if (!isPlaystyleSettled(sampleSize)) {
+    return (
+      <div className="space-y-2">
+        <ConfidenceBadge sampleSize={sampleSize} unit="strokes" />
+        <div className="rounded-ss-lg px-4 py-3 border border-[var(--ss-border)]">
+          <p className="text-lg font-bold text-[var(--ss-t2)]">{t('auto.PairPlaystyle.withheld')}</p>
+          <p className="text-xs text-[var(--ss-t3)] ss-num">
+            {t('auto.PairPlaystyle.withheld_hint', { n: sampleSize, min: PLAYSTYLE_MIN_STROKES })}
+          </p>
+        </div>
+      </div>
+    )
   }
 
   const styleKey = d.playstyle_en ?? 'unknown'

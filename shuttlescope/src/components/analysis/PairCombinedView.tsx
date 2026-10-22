@@ -2,6 +2,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 import { WIN, LOSS } from '@/styles/colors'
@@ -56,7 +57,7 @@ export function PairCombinedView({
     ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
   }
 
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError, refetch } = useQuery({
     queryKey: ['analysis-pair-combined', playerAId, playerBId, filters],
     queryFn: () => apiGet<PairCombinedResponse>('/analysis/pair_combined', fp),
     enabled: !!playerAId && !!playerBId,
@@ -64,6 +65,10 @@ export function PairCombinedView({
 
   if (isLoading) {
     return <div className="text-[var(--ss-t3)] text-sm py-4 text-center">{t('analysis.loading')}</div>
+  }
+  // 取得失敗を「ペアデータなし」へ変換しない (監査 #737)
+  if (isError) {
+    return <QueryErrorNotice onRetry={() => { void refetch() }} />
   }
 
   const sampleSize = resp?.meta?.sample_size ?? 0

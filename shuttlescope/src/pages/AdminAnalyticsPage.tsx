@@ -62,18 +62,24 @@ export default function AdminAnalyticsPage() {
     setLoading(true)
     setErr(null)
     try {
-      const [ov, fn, dw, lr, cq] = await Promise.all([
+      // 監査 #746: 1 本の失敗で他の成功分まで旧期間の値に固定しない。
+      // 期間に依存する funnel / dwell / condition は、失敗時に旧期間の値を残さず空にする。
+      const [ov, fn, dw, lr, cq] = await Promise.allSettled([
         apiGet<{ data: Overview }>('/admin/analytics/overview'),
         apiGet<{ data: FunnelData }>(`/admin/analytics/funnel?days=${days}`),
         apiGet<{ data: { items: DwellItem[] } }>(`/admin/analytics/dwell?days=${days}&limit=30`),
         apiGet<{ data: { series: LearningSeries } }>('/admin/analytics/learning?weeks=8'),
         apiGet<{ data: { items: ConditionItem[] } }>(`/admin/analytics/condition_quality?days=${days}`),
       ])
-      setOverview(ov.data)
-      setFunnel(fn.data)
-      setDwell(dw.data.items)
-      setLearning(lr.data.series)
-      setCondition(cq.data.items)
+      if (ov.status === 'fulfilled') setOverview(ov.value.data)
+      setFunnel(fn.status === 'fulfilled' ? fn.value.data : null)
+      setDwell(dw.status === 'fulfilled' ? dw.value.data.items : [])
+      if (lr.status === 'fulfilled') setLearning(lr.value.data.series)
+      setCondition(cq.status === 'fulfilled' ? cq.value.data.items : [])
+      const failed = [ov, fn, dw, lr, cq].find((r) => r.status === 'rejected')
+      if (failed && failed.status === 'rejected') {
+        setErr((failed.reason as Error)?.message ?? String(failed.reason))
+      }
     } catch (e) {
       setErr((e as Error).message)
     } finally {

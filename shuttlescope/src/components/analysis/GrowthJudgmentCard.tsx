@@ -2,6 +2,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 
@@ -65,7 +66,7 @@ export function GrowthJudgmentCard({ playerId, minMatches = 5 }: GrowthJudgmentC
   const { t } = useTranslation()
   const isLight = useIsLightMode()
 
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError, refetch } = useQuery({
     queryKey: ['analysis-growth-judgment', playerId, minMatches],
     queryFn: () =>
       apiGet<GrowthJudgmentResponse>('/analysis/growth_judgment', {
@@ -77,6 +78,10 @@ export function GrowthJudgmentCard({ playerId, minMatches = 5 }: GrowthJudgmentC
 
   if (isLoading) {
     return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.loading')}</div>
+  }
+  // 取得失敗を「判定に必要な試合数不足」へ変換しない (監査 #736)
+  if (isError) {
+    return <QueryErrorNotice onRetry={() => { void refetch() }} />
   }
 
   const sampleSize = resp?.meta?.sample_size ?? 0

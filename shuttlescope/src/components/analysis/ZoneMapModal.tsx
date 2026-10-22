@@ -9,6 +9,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { WIN, LOSS } from '@/styles/colors'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { useAuth } from '@/hooks/useAuth'
@@ -131,7 +132,7 @@ export function ZoneMapModal({
   }
 
   // ゾーン詳細クエリ（クリック時のみ）
-  const { data: effectiveDetail, isLoading: loadingEff } = useQuery({
+  const { data: effectiveDetail, isLoading: loadingEff, isError: errorEff, refetch: refetchEff } = useQuery({
     queryKey: ['effective-zone-detail', playerId, selectedZone, filters],
     queryFn: () =>
       apiGet<EffectiveZoneDetailResponse>('/analysis/effective_distribution_map/zone_detail', {
@@ -142,7 +143,7 @@ export function ZoneMapModal({
     enabled: type === 'effective' && selectedZone != null,
   })
 
-  const { data: vulnDetail, isLoading: loadingVuln } = useQuery({
+  const { data: vulnDetail, isLoading: loadingVuln, isError: errorVuln, refetch: refetchVuln } = useQuery({
     queryKey: ['vuln-zone-detail', playerId, selectedZone, filters],
     queryFn: () =>
       apiGet<VulnZoneDetailResponse>('/analysis/received_vulnerability/zone_detail', {
@@ -155,6 +156,8 @@ export function ZoneMapModal({
 
   const detailData = type === 'effective' ? effectiveDetail?.data : vulnDetail?.data
   const loadingDetail = type === 'effective' ? loadingEff : loadingVuln
+  const detailError = type === 'effective' ? errorEff : errorVuln
+  const refetchDetail = type === 'effective' ? refetchEff : refetchVuln
 
   // ゾーンの intensity 計算
   function getIntensity(zone: string): number {
@@ -296,6 +299,10 @@ export function ZoneMapModal({
             ) : loadingDetail ? (
               <div className="flex items-center justify-center h-full min-h-[200px] rounded-ss-md bg-[var(--ss-surface-2)]">
                 <p className={`text-sm ${textMuted}`}>{t('auto.ZoneMapModal.k2')}</p>
+              </div>
+            ) : detailError ? (
+              <div className="flex items-center justify-center h-full min-h-[200px] rounded-ss-md bg-[var(--ss-surface-2)]">
+                <QueryErrorNotice onRetry={() => { void refetchDetail() }} />
               </div>
             ) : detailData ? (
               <ZoneDetailPanel

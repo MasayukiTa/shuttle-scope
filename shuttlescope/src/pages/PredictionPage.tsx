@@ -24,6 +24,7 @@ import { useCardTheme } from '@/hooks/useCardTheme'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { MIcon } from '@/components/common/MIcon'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 
 interface PlayerSummary {
   id: number
@@ -73,7 +74,12 @@ export function PredictionPage() {
     if (pid) setSelectedPlayerId(Number(pid))
   }, [searchParams])
 
-  const { data: matchesResp } = useQuery({
+  const {
+    data: matchesResp,
+    isLoading: loadingForecastMatches,
+    isError: forecastMatchesError,
+    refetch: refetchForecastMatches,
+  } = useQuery({
     queryKey: ['matches-for-forecast', selectedPlayerId],
     queryFn: () =>
       apiGet<{ data: Array<{ id: number; date: string; tournament_level?: string; result?: string }> }>(
@@ -84,7 +90,12 @@ export function PredictionPage() {
   })
   const forecastMatches = matchesResp?.data ?? []
 
-  const { data: playersResp, isLoading: loadingPlayers } = useQuery({
+  const {
+    data: playersResp,
+    isLoading: loadingPlayers,
+    isError: playersError,
+    refetch: refetchPlayers,
+  } = useQuery({
     queryKey: ['players-list'],
     queryFn: () => apiGet<{ data: PlayerSummary[] }>('/players'),
   })
@@ -154,6 +165,8 @@ export function PredictionPage() {
               loading={loadingPlayers}
               className="min-w-[280px]"
             />
+            {/* 選手一覧の取得失敗を「選手未選択」に見せない (監査 #729) */}
+            {playersError && <QueryErrorNotice className="py-0" onRetry={() => { void refetchPlayers() }} />}
           </div>
 
           {/* 4. Prediction タブ: 実データ起点の advice strip (head-to-head 実績 or 過去 90 日サマリ) */}
@@ -318,8 +331,15 @@ export function PredictionPage() {
                   onChange={(v) => setForecastMatchId(v != null ? Number(v) : null)}
                   emptyLabel={t('common.select_match', 'Select match')}
                   placeholder={t('auto.PredictionPage.k7')}
-                  loading={forecastMatches.length === 0 && !!selectedPlayerId}
+                  loading={loadingForecastMatches}
                 />
+                {/* 取得失敗は再試行、成功 0 件は「対象試合なし」と区別する (監査 #728) */}
+                {forecastMatchesError && (
+                  <QueryErrorNotice onRetry={() => { void refetchForecastMatches() }} />
+                )}
+                {!forecastMatchesError && !loadingForecastMatches && matchesResp != null && forecastMatches.length === 0 && (
+                  <p className={`text-xs mt-2 ${textMuted}`}>{t('prediction.no_forecast_matches')}</p>
+                )}
               </div>
 
               {/* 試合前統計予測 */}

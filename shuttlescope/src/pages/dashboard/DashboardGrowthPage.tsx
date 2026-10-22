@@ -105,7 +105,8 @@ export function DashboardGrowthPage({ playerId, filters, sortedPlayers }: Props)
       {/* ペアモード: PairCombinedView */}
       {pairMode && partnerPlayerId && (
         <ErrorBoundary>
-          <RoleGuard allowedRoles={['analyst', 'coach']} fallback={null}>
+          {/* pair_combined / partner_timeline は backend が admin / analyst 専用 (監査 #743) */}
+          <RoleGuard allowedRoles={['analyst']} fallback={null}>
           <div className={`${card} rounded-ss-lg p-4 shadow-card`}>
             <p className={`text-sm font-semibold mb-3 ${textHeading}`}>{t('analysis.growth.pair_combined_title')}</p>
             <PairCombinedView
