@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
-import { apiPatch, apiDelete, newIdempotencyKey } from '@/api/client'
+import { apiDelete, newIdempotencyKey } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
 import { MIcon } from '@/components/common/MIcon'
 
 // 履歴詳細モーダル
 // - 全ロール: 日付 / type / ccs / f1-f5 / hooper_index / session_rpe / 身体指標を表示
-// - analyst のみ: 質問票回答を 1-5 セレクタで編集し、PATCH /api/conditions/{id} で再スコアリング
+// - 質問票回答は選手本人の主観データなので、全ロールで読み取り専用 (編集 UI は持たない。
+//   PATCH /api/conditions/{id} は questionnaire_json を受け付けず、回答の修正は選手本人の再入力のみ)
 interface Props {
   record: Record<string, unknown>
   isLight: boolean
@@ -39,22 +40,17 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
   const { t } = useTranslation()
   const { role } = useAuth()
   const qc = useQueryClient()
-  const isAnalyst = role === 'analyst' || role === 'admin'
   // 削除は履歴一覧の各行ではなく、記録を開いたこの画面だけに置く (player には出さない)
   const canDelete = role != null && role !== 'player'
 
-  const initial = useMemo(() => parseQuestionnaire(record['questionnaire_json']), [record])
-  const [answers, setAnswers] = useState<Record<string, number>>(initial)
-  const [saving, setSaving] = useState(false)
+  const answers = useMemo(() => parseQuestionnaire(record['questionnaire_json']), [record])
   const [deleting, setDeleting] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
-  const [savedMsg, setSavedMsg] = useState<string | null>(null)
 
   const overlayBg = 'bg-black/50'
   const panelCls = 'bg-[var(--ss-surface-1)] border-[var(--ss-border)] text-[var(--ss-t1)]'
   const muted = 'text-[var(--ss-t2)]'
   const sectionBorder = 'border-[var(--ss-border)]'
-  const selectCls = 'border border-[var(--ss-border-strong)] bg-[var(--ss-surface-1)] text-[var(--ss-t1)] rounded-ss-md px-2 py-1 text-sm'
 
   const id = record['id'] as number | undefined
   const measuredAt = (record['measured_at'] as string | undefined) ?? ''
@@ -73,28 +69,6 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
   }
 
   const answerKeys = Object.keys(answers).sort()
-
-  const handleChange = (qid: string, val: number) => {
-    setAnswers((prev) => ({ ...prev, [qid]: val }))
-  }
-
-  const handleSave = async () => {
-    if (!id) return
-    setSaving(true)
-    setErrorMsg(null)
-    setSavedMsg(null)
-    try {
-      await apiPatch(`/conditions/${id}`, { questionnaire_json: answers })
-      qc.invalidateQueries({ queryKey: ['conditions'] })
-      setSavedMsg(t('condition.history_detail.saved'))
-      onClose()
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      setErrorMsg(`${t('condition.history_detail.save_failed')}: ${msg}`)
-    } finally {
-      setSaving(false)
-    }
-  }
 
   const handleDelete = async () => {
     if (!id) return
@@ -186,11 +160,6 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
           {/* 質問票回答 */}
           <section className={`rounded-ss-md border ${sectionBorder} p-3`}>
             <h3 className="text-xs font-semibold mb-2">{t('condition.history_detail.questionnaire_section')}</h3>
-            {isAnalyst && answerKeys.length > 0 && (
-              <div className={`text-[11px] ${muted} mb-2`}>
-                {t('condition.history_detail.edit_hint')}
-              </div>
-            )}
             {answerKeys.length === 0 ? (
               <div className={`${muted} text-sm`}>{t('condition.history_detail.no_responses')}</div>
             ) : (
@@ -204,19 +173,7 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
                         <span className="text-xs font-mono mr-2">{qid}</span>
                         <span className="text-sm">{qText}</span>
                       </div>
-                      {isAnalyst ? (
-                        <select
-                          className={selectCls}
-                          value={val}
-                          onChange={(e) => handleChange(qid, Number(e.target.value))}
-                        >
-                          {[1, 2, 3, 4, 5].map((n) => (
-                            <option key={n} value={n}>{n}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <span className="font-mono ss-num text-sm w-8 text-right">{val}</span>
-                      )}
+                      <span className="font-mono ss-num text-sm w-8 text-right">{val}</span>
                     </div>
                   )
                 })}
@@ -229,11 +186,6 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
               {errorMsg}
             </div>
           )}
-          {savedMsg && (
-            <div className="text-sm text-[var(--ss-success)] bg-[var(--ss-success-tint)] border border-[var(--ss-success-border)] rounded-ss-md px-3 py-2">
-              {savedMsg}
-            </div>
-          )}
         </div>
 
         {/* フッター */}
@@ -242,7 +194,7 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
             <button
               type="button"
               onClick={handleDelete}
-              disabled={deleting || saving}
+              disabled={deleting}
               className="mr-auto flex items-center gap-1 px-2 py-1 text-xs text-[var(--ss-bad)] hover:opacity-80 disabled:opacity-50"
             >
               <MIcon name="delete" size={14} />
@@ -256,16 +208,6 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
           >
             {t('condition.history_detail.close')}
           </button>
-          {isAnalyst && id != null && answerKeys.length > 0 && (
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving}
-              className="px-4 py-1.5 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-50 text-white rounded-ss-md text-sm font-medium duration-base ease-out"
-            >
-              {saving ? t('condition.history_detail.saving') : t('condition.history_detail.save')}
-            </button>
-          )}
         </div>
       </div>
     </div>

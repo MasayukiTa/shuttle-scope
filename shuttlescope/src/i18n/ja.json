@@ -397,14 +397,9 @@
     "history_detail": {
       "title": "回答内容の確認",
       "close": "閉じる",
-      "save": "保存",
-      "saving": "保存中...",
-      "saved": "保存しました",
-      "save_failed": "保存に失敗しました",
       "delete_failed": "削除に失敗しました",
       "questionnaire_section": "質問票回答",
       "no_responses": "質問票回答がありません",
-      "edit_hint": "アナリストは各回答を編集して再スコアリングできます",
       "metrics_section": "指標",
       "body_section": "身体指標"
     },
