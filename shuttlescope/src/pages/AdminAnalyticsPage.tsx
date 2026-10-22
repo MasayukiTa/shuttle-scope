@@ -21,6 +21,8 @@ interface Overview {
   total_events_7d: number
   wau_by_role: Record<string, number>
   wau_by_platform: Record<string, number>
+  total_events_all: number
+  last_event_at: string | null
   as_of: string
 }
 
@@ -124,7 +126,18 @@ export default function AdminAnalyticsPage() {
             <Stat label={t('admin.analytics.stat_wau')} value={overview.wau} />
             <Stat label={t('admin.analytics.stat_mau')} value={overview.mau} />
             <Stat label={t('admin.analytics.stat_events_7d')} value={overview.total_events_7d} />
-            <Stat label={t('admin.analytics.stat_as_of')} value={new Date(overview.as_of).toLocaleString('ja-JP')} small />
+            <Stat label={t('admin.analytics.stat_as_of')} value={new Date(overview.as_of).toLocaleString()} small />
+          </div>
+          <div className="mt-3 text-xs text-[var(--ss-t2)] space-y-1">
+            <p>{t('admin.analytics.scope_note')}</p>
+            <p>
+              {overview.total_events_all === 0 || !overview.last_event_at
+                ? t('admin.analytics.no_events_recorded')
+                : t('admin.analytics.last_event', {
+                    time: new Date(overview.last_event_at).toLocaleString(),
+                    total: overview.total_events_all,
+                  })}
+            </p>
           </div>
           <div className="mt-4 grid sm:grid-cols-2 gap-4">
             <Kv title={t('admin.analytics.kv_wau_role')} data={overview.wau_by_role} />

@@ -257,3 +257,34 @@ def test_deleted_user_audit_rows_remain_orphaned_and_chain_intact(client, test_e
     body = verified.json()["data"]
     assert body["ok"] is True
     assert body["first_bad_id"] is None
+
+
+def test_security_events_hide_llm_telemetry_unless_requested(client, test_engine):
+    """llm_call / llm_budget are internal telemetry, not attack detection.
+
+    The default security list must not mix them in; an explicit event_type
+    filter still returns them so admins can inspect LLM usage.
+    """
+    from sqlalchemy.orm import sessionmaker
+    from backend.db.models import SecurityEvent
+
+    Session = sessionmaker(bind=test_engine)
+    with Session() as db:
+        db.query(SecurityEvent).delete()
+        for et in ("probe_attempt", "llm_call", "llm_budget"):
+            db.add(SecurityEvent(event_type=et, severity="info", details={}))
+        db.commit()
+
+    access = _login(client, ADMIN_USER, ADMIN_PASS)["access_token"]
+    headers = {"Authorization": f"Bearer {access}"}
+
+    default_types = {
+        r["event_type"]
+        for r in client.get("/api/auth/audit-logs/security", headers=headers).json()["data"]
+    }
+    assert default_types == {"probe_attempt"}
+
+    explicit = client.get(
+        "/api/auth/audit-logs/security?event_type=llm_call", headers=headers
+    ).json()["data"]
+    assert [r["event_type"] for r in explicit] == ["llm_call"]

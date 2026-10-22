@@ -13,6 +13,30 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _usage_from_meta(meta: object) -> dict:
+    """inner が報告した tokens / latency_ms を log_llm_call の引数に直す。
+
+    harness 側の行が tokens=0 / latency=0 の ok:true になると、実際には課金された
+    呼び出しの記録と食い違う。inner の meta に実測値があるときはそれを引き継ぐ。
+    """
+    if not isinstance(meta, dict):
+        return {}
+    out: dict = {}
+    tokens = meta.get("tokens")
+    if isinstance(tokens, dict):
+        try:
+            out["tokens_in"] = int(tokens.get("in", 0) or 0)
+            out["tokens_out"] = int(tokens.get("out", 0) or 0)
+        except (TypeError, ValueError):
+            pass
+    try:
+        if meta.get("latency_ms") is not None:
+            out["latency_ms"] = int(meta["latency_ms"])
+    except (TypeError, ValueError):
+        pass
+    return out
+
+
 class HarnessedGenerator:
     """inner ジェネレータの出力を検証し、ダメなら fallback に倒す。"""
 
@@ -64,6 +88,7 @@ class HarnessedGenerator:
                         user_id=user_id,
                         provider=self._provider,
                         validation_result={"ok": False, "reason": reason},
+                        stage="validation",
                     )
                 except Exception:  # noqa: BLE001
                     pass
@@ -87,6 +112,8 @@ class HarnessedGenerator:
                             user_id=user_id,
                             provider=self._provider,
                             validation_result=v,
+                            stage="validation",
+                            **_usage_from_meta(result.get("meta")),
                         )
                     except Exception:  # noqa: BLE001
                         pass
@@ -102,6 +129,8 @@ class HarnessedGenerator:
                     user_id=user_id,
                     provider=self._provider,
                     validation_result={"ok": True, "reason": None},
+                    stage="validation",
+                    **_usage_from_meta(result.get("meta")),
                 )
             except Exception:  # noqa: BLE001
                 pass

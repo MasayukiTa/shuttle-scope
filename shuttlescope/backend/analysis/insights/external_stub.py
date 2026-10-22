@@ -131,6 +131,7 @@ class ExternalApiGenerator:
                     provider=f"{self.name}/short_circuit_{intent}",
                     validation_result={"ok": True, "reason": f"intent_{intent}"},
                     latency_ms=0,
+                    stage="short_circuit",
                 )
             except Exception:
                 pass
@@ -270,6 +271,7 @@ class ExternalApiGenerator:
                 user_id=ctx.get("user_id") if isinstance(ctx, dict) else None,
                 provider=self.name,
                 validation_result={"ok": True, "reason": None},
+                stage="call",
                 tokens_in=tokens_in,
                 tokens_out=tokens_out,
                 latency_ms=latency_ms,

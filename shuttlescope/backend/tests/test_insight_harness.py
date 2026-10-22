@@ -418,3 +418,60 @@ def test_harness_preserves_provider_tokens_when_validation_falls_back():
     assert out["meta"]["tokens"]["total"] == 160
     assert out["meta"]["latency_ms"] == 25
     assert out["meta"]["fallback_reason"].startswith("banned_term:")
+
+
+class _UsageInner:
+    name = "usage-inner"
+
+    def generate(self, ctx):
+        return {
+            "items": [
+                {
+                    "id": "x",
+                    "prose": "Keep varying the net shots.",
+                    "evidence_path": "",
+                    "confidence": None,
+                    "metric": {},
+                    "numeric_policy": "none",
+                }
+            ],
+            "generator": self.name,
+            "generated_at": "2026-01-01T00:00:00+00:00",
+            "meta": {"tokens": {"in": 30, "out": 20, "total": 50}, "latency_ms": 123},
+        }
+
+
+def test_harness_audit_row_carries_provider_usage_and_stage():
+    """The harness row must not claim a zero-token call when the provider reported usage."""
+    calls = []
+    with patch(
+        "backend.analysis.insights.safety.harness.log_llm_call",
+        side_effect=lambda **kw: calls.append(kw),
+    ):
+        h = HarnessedGenerator(inner=_UsageInner(), fallback=TemplateGenerator())
+        h.generate(_sample_ctx())
+    assert len(calls) == 1
+    assert calls[0]["stage"] == "validation"
+    assert calls[0]["tokens_in"] == 30
+    assert calls[0]["tokens_out"] == 20
+    assert calls[0]["latency_ms"] == 123
+
+
+def test_harness_validation_failure_keeps_provider_usage():
+    calls = []
+
+    class _BannedUsage(_UsageInner):
+        def generate(self, ctx):
+            out = super().generate(ctx)
+            out["items"][0]["prose"] = "Try 10 cross-court net shots."
+            return out
+
+    with patch(
+        "backend.analysis.insights.safety.harness.log_llm_call",
+        side_effect=lambda **kw: calls.append(kw),
+    ):
+        h = HarnessedGenerator(inner=_BannedUsage(), fallback=TemplateGenerator())
+        h.generate(_sample_ctx())
+    assert len(calls) == 1
+    assert calls[0]["validation_result"]["ok"] is False
+    assert calls[0]["tokens_in"] == 30
