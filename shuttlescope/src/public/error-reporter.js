@@ -10,9 +10,9 @@
      これが出ていれば「ファイルが load されてない / CSP 拒否」は除外できる。
      白画面診断用なので、通常の利用者には出さない。URL に ?diag=1 を付けるか、
      localStorage の ss_diag を 1 にしたときだけ表示する。 */
+  var wantDiag = /[?&]diag=1(&|$)/.test(location.search);
+  try { wantDiag = wantDiag || localStorage.getItem('ss_diag') === '1'; } catch { /* ignore */ }
   try {
-    var wantDiag = /[?&]diag=1(&|$)/.test(location.search);
-    try { wantDiag = wantDiag || localStorage.getItem('ss_diag') === '1'; } catch { /* ignore */ }
     if (!wantDiag) throw new Error('diag chip off');
     var tag = document.createElement('div');
     tag.id = '__ss_diag_tag__';
@@ -28,6 +28,13 @@
   } catch { /* ignore */ }
 
   var show = function (label, msg) {
+    /* 診断モード (?diag=1 / ss_diag=1) のときだけ stack / ファイル位置を画面に出す。
+       通常の利用者には内部の関数名・URL・bundle 位置を見せない。詳細はコンソールのみ。
+       利用者向けの一般文言とエラー ID は bundle 側 (utils/globalErrorHandler.ts) が出す。 */
+    if (!wantDiag) {
+      try { console.error('[error-reporter]', label, msg); } catch { /* ignore */ }
+      return;
+    }
     try {
       var bar = document.getElementById('__ss_error_bar__');
       if (!bar) {

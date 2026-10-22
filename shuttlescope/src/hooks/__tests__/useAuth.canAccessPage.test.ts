@@ -28,4 +28,10 @@ describe('canAccessPage', () => {
     expect(canAccessPage('player', ['prediction'], 'prediction')).toBe(true)
     expect(canAccessPage('llm', ['llm'], 'llm')).toBe(true)
   })
+
+  it('llm role reaches the LLM page without a stored grant, but no other page', () => {
+    expect(canAccessPage('llm', [], 'llm')).toBe(true)
+    expect(canAccessPage('llm', [], 'prediction')).toBe(false)
+    expect(canAccessPage('llm', [], 'badminton')).toBe(false)
+  })
 })

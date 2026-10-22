@@ -11,54 +11,15 @@ import './styles/material-symbols-subset.css'
 // この import は副作用 (console.debug 1 行) しか起こさない。
 import './utils/legacyCompat'
 import { startTelemetry } from './utils/analytics'
+import { installGlobalErrorHandlers } from './utils/globalErrorHandler'
 
 // PWA 標準モードや Web Inspector を繋げない iOS 端末で render 前 throw が
 // 起きると画面が白くなるだけで原因が見えない。window.onerror で拾って画面
 // 最上部に banner として表示する (React の ErrorBoundary では捕捉できない
 // 同期エラー / async unhandledrejection もここで捕捉する)。
-if (typeof window !== 'undefined') {
-  const showError = (label: string, msg: string) => {
-    try {
-      let bar = document.getElementById('__ss_error_bar__')
-      if (!bar) {
-        bar = document.createElement('div')
-        bar.id = '__ss_error_bar__'
-        bar.style.cssText =
-          'position:fixed;top:0;left:0;right:0;z-index:99999;' +
-          'padding:10px 14px;font:12px/1.4 -apple-system,sans-serif;' +
-          'background:#7f1d1d;color:#fff;white-space:pre-wrap;' +
-          'word-break:break-all;max-height:50vh;overflow:auto;' +
-          'border-bottom:2px solid #f87171;' +
-          // pointer-events:none — bar 自体は情報表示のみで操作不要。
-          // auto のままだと max-height 50vh まで膨らんだとき画面上半分の
-          // タップ (mobile calib 6 点設置等) を z=99999 で横取りしてしまう。
-          'pointer-events:none'
-        document.body.appendChild(bar)
-      }
-      const t = new Date().toISOString().slice(11, 19)
-      bar.textContent = `[${t}] ${label}: ${msg}\n` + (bar.textContent || '')
-    } catch { /* DOM 未準備時は無視 */ }
-  }
-  window.addEventListener('error', (e) => {
-    const msg = (e.error && (e.error.stack || e.error.message)) || e.message || String(e)
-    // cross-origin script の "Script error." 系は origin 不明 (lineno 0 / filename 空)
-    // で実害なし。iOS Safari 共有シート等で自動発火するため抑止。
-    const isGeneric = /^Script error\.?$/.test(msg)
-    const noOrigin = !e.filename && (!e.lineno || e.lineno === 0)
-    if (isGeneric && noOrigin) return
-    showError('Error', `${msg}\n  at ${e.filename}:${e.lineno}:${e.colno}`)
-  })
-  window.addEventListener('unhandledrejection', (e) => {
-    const reason = e.reason as { stack?: string; message?: string; name?: string } | null | undefined
-    const msg = (reason && (reason.stack || reason.message)) || String(reason)
-    // AbortError は video unmount/seek 時に必ず出る既知良性エラー。bar に
-    // 出すと calib 出入りのたび煩雑になるので suppress (error-reporter.js
-    // 側でも同じ suppress を実装している)。
-    if (reason && reason.name === 'AbortError') return
-    if (/The operation was aborted/i.test(msg)) return
-    showError('PromiseRejection', msg)
-  })
-}
+// 本番では stack / ファイル位置を出さず、一般向けの文言とエラー ID だけを出す
+// (詳細はコンソールのみ)。実装は utils/globalErrorHandler.ts。
+installGlobalErrorHandlers()
 
 // Material Symbols フォント (3.9 MB) ロード前に MIcon の raw テキスト
 // ("play_arrow" 等) が見えてしまうのを防ぐ。fonts.ready で `ss-fonts-ready` を

@@ -1813,6 +1813,12 @@
     "public_message": "The screen could not be displayed. Please reload the page. If it keeps happening, tell an administrator the error ID below.",
     "error_id_label": "Error ID"
   },
+  "auth_unverified": {
+    "title": "Cannot confirm your sign-in",
+    "message": "The server is unreachable or not responding right now. The app stays hidden until your sign-in is confirmed. Please try again in a moment.",
+    "retry": "Retry",
+    "logout": "Log out"
+  },
   "no_data_message": {
     "unit_default": "items",
     "prefix": "Needs",
