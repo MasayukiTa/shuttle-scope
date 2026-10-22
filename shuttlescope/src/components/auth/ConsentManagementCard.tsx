@@ -4,6 +4,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getMyConsents, withdrawConsent, submitConsents, type ConsentType } from '@/api/client'
 import { MIcon } from '@/components/common/MIcon'
 
+// 同意項目 → 適用中の文書 (backend/routers/legal_docs.py の /legal/<slug>)。
+// 同意状態画面から、同意した内容をいつでも読み直せるようにする。
+const CONSENT_DOC_SLUG: Partial<Record<string, string>> = {
+  service_delivery: 'privacy',
+  beta_agreement: 'beta_agreement',
+  ai_training: 'ai_training',
+  research_participation: 'research',
+}
+
 /**
  * ユーザが任意同意を撤回できる UI。GDPR Article 7(3) /
  * APPI 第18条 4 項の「同意取得と同じくらい容易に撤回可能」要件を満たすため
