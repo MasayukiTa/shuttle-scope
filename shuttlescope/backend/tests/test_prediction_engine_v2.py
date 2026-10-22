@@ -145,6 +145,16 @@ class TestComputeGrowthTrend:
         r = compute_growth_trend(matches, 1)
         assert len(r['buckets']) <= 6
 
+    def test_buckets_carry_sample_ci_and_dates(self):
+        # 区間ごとの標本数・信頼区間・日付範囲が付く (n を見せずに率だけ並べない)
+        matches = _wins(1, 4) + _losses(1, 4)
+        r = compute_growth_trend(matches, 1)
+        assert sum(b['sample'] for b in r['buckets']) == len(matches)
+        for b in r['buckets']:
+            assert 0 <= b['wins'] <= b['sample']
+            assert 0.0 <= b['ci_low'] <= b['wins'] / b['sample'] <= b['ci_high'] <= 1.0
+            assert b['date_from'] <= b['date_to']
+
     def test_bucket_win_rates_in_range(self):
         matches = _wins(1, 4) + _losses(1, 4)
         r = compute_growth_trend(matches, 1)

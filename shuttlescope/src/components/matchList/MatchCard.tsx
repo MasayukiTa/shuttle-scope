@@ -31,6 +31,10 @@ export function MatchCard({
   // 値が無いまま描くと t('match.results.undefined') の生キーが出るため、行ごと描かない。
   const { role } = useAuth()
   const isPlayer = role === 'player'
+  // 操作ボタンの accessible name に試合 (日付 / 大会 / 相手) を含める (MatchRow と同じ形式)
+  const opponentName = m.player_b?.name ?? `#${m.player_b_id}`
+  const rowLabel = [m.date, m.tournament, opponentName].filter(Boolean).join(' / ')
+  const actionLabel = (action: string) => t('a11yLabels.match_action', { action, label: rowLabel })
 
   return (
     <div
@@ -58,8 +62,11 @@ export function MatchCard({
       {/* 2行目: 対戦情報 */}
       <div className="flex items-center gap-1 mb-1 text-sm">
         <span className={`text-[10px] ${textMuted} shrink-0`}>{t(`match.formats.${m.format}`)}</span>
-        <span className={`${textSecondary} truncate`}>
-          {t('match.list.vs', 'vs')} {m.player_b?.name ?? `#${m.player_b_id}`}
+        <span
+          className={`${textSecondary} truncate`}
+          title={`${opponentName}${m.partner_b?.name ? ` / ${m.partner_b.name}` : ''}`}
+        >
+          {t('match.list.vs', 'vs')} {opponentName}
           {m.partner_b?.name && ` / ${m.partner_b.name}`}
         </span>
         {m.player_b?.needs_review && (
@@ -93,6 +100,7 @@ export function MatchCard({
         )}
         <button
           onClick={() => navigate(`/annotator/${m.id}`)}
+          aria-label={actionLabel(t('match.start_annotation'))}
           className="flex items-center gap-1 px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-medium shrink-0"
         >
           <MIcon name="play_arrow" size={12} />
@@ -103,6 +111,7 @@ export function MatchCard({
             onClick={() => navigate(`/prediction?playerId=${m.player_a_id}`)}
             className={`p-1 rounded ${isLight ? 'text-gray-500 hover:text-blue-600 hover:bg-blue-50' : 'text-gray-400 hover:text-blue-400 hover:bg-gray-700'}`}
             title={t('auto.MatchListPage.k5')}
+            aria-label={actionLabel(t('auto.MatchListPage.k5'))}
           >
             <MIcon name="trending_up" size={16} />
           </button>
@@ -137,6 +146,7 @@ export function MatchCard({
             onClick={() => onDownload(m)}
             className={`p-1 rounded ${isLight ? 'text-gray-500 hover:text-gray-700 hover:bg-gray-100' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'}`}
             title={t('auto.MatchListPage.k6')}
+            aria-label={actionLabel(t('auto.MatchListPage.k6'))}
           >
             <MIcon name="download" size={16} />
           </button>
@@ -145,6 +155,7 @@ export function MatchCard({
           href={`/api/export/package?match_id=${m.id}`}
           download
           title={t('auto.MatchListPage.k7')}
+          aria-label={actionLabel(t('auto.MatchListPage.k7'))}
           className={`p-1 rounded ${isLight ? 'text-gray-500 hover:text-green-600 hover:bg-green-50' : 'text-gray-400 hover:text-green-400 hover:bg-gray-700'}`}
         >
           <MIcon name="download" size={16} />
@@ -153,6 +164,7 @@ export function MatchCard({
           onClick={() => onEdit(m)}
           className={`p-1 rounded ${isLight ? 'text-gray-500 hover:text-gray-700 hover:bg-gray-100' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'}`}
           title={t('auto.MatchListPage.k8')}
+          aria-label={actionLabel(t('auto.MatchListPage.k8'))}
         >
           <MIcon name="edit" size={16} />
         </button>
@@ -161,6 +173,7 @@ export function MatchCard({
             <button
               onClick={() => { onDeleteExecute(m.id); onDeleteConfirm(null) }}
               className="font-medium hover:opacity-80"
+              aria-label={actionLabel(t('match.list.delete_confirm', 'Delete'))}
             >
               {t('match.list.delete_confirm', 'Delete')}
             </button>
@@ -174,6 +187,7 @@ export function MatchCard({
             onClick={() => onDeleteConfirm(m.id)}
             className="p-1 rounded text-red-400 hover:text-red-300 hover:bg-red-900/20"
             title={t('auto.MatchListPage.k9')}
+            aria-label={actionLabel(t('auto.MatchListPage.k9'))}
           >
             <MIcon name="delete" size={16} />
           </button>

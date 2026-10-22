@@ -11,7 +11,10 @@ from datetime import date
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.analysis.growth_engine import compute_metric_growth_trend
+from backend.analysis.growth_engine import (
+    compute_metric_growth_trend,
+    summarize_growth_population,
+)
 from backend.db.database import get_db
 from backend.db.models import GameSet, Match, Player, Rally
 from backend.main import app
@@ -77,6 +80,57 @@ class TestGrowthSingleSource:
         pts = [{"value": 0.5, "strength_weight": 0.5} for _ in range(4)]
         out = compute_metric_growth_trend(pts, min_matches=5, trend_delta=0.03, metric="win_rate")
         assert out["trend"] == "pending" and out["trend_delta"] == 0.0
+
+    def test_pure_helper_reports_window_and_periods(self):
+        # 12 点 → 窓 4。trend_delta = 最後の 4 点の平均 − 最初の 4 点の平均 (ポイント差)
+        pts = [
+            {"date": f"2025-01-{i + 1:02d}", "value": 0.4 if i < 4 else 0.6, "strength_weight": 0.5}
+            for i in range(12)
+        ]
+        out = compute_metric_growth_trend(pts, min_matches=5, trend_delta=0.03, metric="win_rate")
+        assert out["window"] == 4 and out["n_points"] == 12
+        assert out["trend_delta"] == pytest.approx(0.2)
+        assert out["early_period"] == {"from": "2025-01-01", "to": "2025-01-04"}
+        assert out["recent_period"] == {"from": "2025-01-09", "to": "2025-01-12"}
+
+    def test_pending_helper_has_no_window_or_periods(self):
+        pts = [{"date": f"2025-01-0{i + 1}", "value": 0.5, "strength_weight": 0.5} for i in range(4)]
+        out = compute_metric_growth_trend(pts, min_matches=5, trend_delta=0.03, metric="win_rate")
+        assert out["trend"] == "pending"
+        assert out["n_points"] == 4
+        assert out["window"] is None
+        assert out["early_period"] is None and out["recent_period"] is None
+
+    def test_population_summary_counts_by_reason(self):
+        class _M:
+            def __init__(self, result):
+                self.result = result
+
+        matches = [_M("win"), _M("loss"), _M("loss"), _M("unfinished"), _M("walkover")]
+        # win / loss のうち 1 試合はラリーが無く、点にならなかった
+        out = summarize_growth_population(matches, used_points=[{}, {}])
+        assert out == {"total": 5, "used": 2, "excluded": {"unfinished": 2, "zero_rally": 1}}
+
+    def test_judgment_reports_window_periods_and_population(self, client, db_session):
+        a, b = _twelve_matches(db_session)
+        _match(db_session, a, b, date(2025, 2, 1), 0, n=0)  # 勝敗確定だがラリー 0
+        _match(db_session, a, b, date(2025, 2, 2), 3, n=5, result="unfinished")  # 勝敗未確定
+        db_session.commit()
+        data = client.get(f"/api/analysis/growth_judgment?player_id={a.id}").json()["data"]
+        assert data["population"] == {
+            "total": 14, "used": 12, "excluded": {"unfinished": 1, "zero_rally": 1},
+        }
+        m = data["metrics"]["win_rate"]
+        assert m["n_matches"] == 12 and m["window"] == 4
+        assert m["early_period"] == {"from": "2025-01-01", "to": "2025-01-04"}
+        assert m["recent_period"] == {"from": "2025-01-09", "to": "2025-01-12"}
+
+    def test_timeline_reports_trend_window(self, client, db_session):
+        a, _ = _twelve_matches(db_session)
+        tl = client.get(f"/api/analysis/growth_timeline?player_id={a.id}&metric=win_rate").json()["data"]
+        assert tl["trend_window"] == 4 and tl["trend_n_points"] == 12
+        assert tl["trend_early_period"]["from"] == "2025-01-01"
+        assert tl["trend_recent_period"]["to"] == "2025-01-12"
 
     def test_timeline_and_judgment_report_the_same_delta(self, client, db_session):
         a, _ = _twelve_matches(db_session)

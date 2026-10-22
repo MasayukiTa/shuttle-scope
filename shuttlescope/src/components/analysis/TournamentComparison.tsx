@@ -54,14 +54,16 @@ export function TournamentComparison({ playerId, filters = DEFAULT_FILTERS }: To
   const { role } = useAuth()
   const isPlayer = role === 'player'
 
+  // 勝敗フィルタは渡さない。「課題のある試合」(負け) で絞ると全レベルの勝率が 0%、
+  // 「勝ち」で絞ると 100% に固定され、大会レベルの比較として情報が無くなる。
+  const resultFilterIgnored = filters.result !== 'all'
   const fp = {
-    ...(filters.result !== 'all' ? { result: filters.result } : {}),
     ...(filters.tournamentLevel ? { tournament_level: filters.tournamentLevel } : {}),
     ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
     ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
   }
   const { data: resp, isLoading } = useQuery({
-    queryKey: ['analysis-tournament-comparison', playerId, filters],
+    queryKey: ['analysis-tournament-comparison', playerId, fp],
     queryFn: () =>
       apiGet<TournamentResponse>('/analysis/tournament_level_comparison', { player_id: playerId, ...fp }),
     enabled: !!playerId,
@@ -90,6 +92,11 @@ export function TournamentComparison({ playerId, filters = DEFAULT_FILTERS }: To
   return (
     <div className="space-y-3">
       <ConfidenceBadge sampleSize={sampleSize} unit="matches" />
+      {resultFilterIgnored && (
+        <p className="text-[11px] text-gray-400" data-testid="tournament-result-filter-ignored">
+          {t('analysis.tournament_comparison.result_filter_ignored')}
+        </p>
+      )}
 
       {/* 棒グラフ */}
       <ResponsiveContainer width="100%" height={180}>
