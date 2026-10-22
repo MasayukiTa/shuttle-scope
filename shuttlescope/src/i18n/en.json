@@ -4507,7 +4507,7 @@
       "k10": "Waiting for the operator to start the video.",
       "k11": "Connected",
       "k12": "(reconnected {{n}} times)",
-      "k13": "Tablets and PCs can receive video. Smartphones are summary-only.",
+      "k13": "Smartphones show a summary only, without video. To watch the video, open this page on a tablet or PC.",
       "k14": "LIVE",
       "k15": "Try again",
       "k16": "Start over"
@@ -4665,7 +4665,7 @@
       "court_uncalibrated_pre": "Court not calibrated (edit from",
       "court_uncalibrated_post": "top-right)",
       "run_shuttle_analysis": "Run shuttle analysis",
-      "tracknet_done_zero": "TrackNet finished (0 frames — record rallies in Pass 1, then re-run)",
+      "tracknet_done_zero": "TrackNet finished (0 frames — record rallies first, then re-run)",
       "tracknet_running": "TrackNet running… {{n}}%",
       "tracknet_error": "TrackNet error: {{msg}}",
       "run_player_detection": "Run player detection",
@@ -4700,7 +4700,7 @@
       "k1": "Player A scored",
       "k2": "Player B scored",
       "k3": "Undo previous rally",
-      "pass1_header": "Pass 1 — tap A / B the moment a point is scored",
+      "pass1_header": "Score — tap A / B the moment a point is scored",
       "set_n": "Set {{n}}",
       "set_ending": "Set-ending condition reached (21+2 / 30). Tap 'End set' below.",
       "golden": "29-29 golden point — the next point decides the set",
@@ -4711,7 +4711,7 @@
       "back_to_video": "Back to video"
     },
     "Pass2ServeFinal": {
-      "header": "Pass 2 · Rally {{n}} (set {{m}})",
+      "header": "Serve and finish · Rally {{n}} (set {{m}})",
       "save_and_back": "Save and back",
       "saving": "Saving ...",
       "prompt_serve_hit": "Select the serve hit point",
@@ -4731,11 +4731,11 @@
       "k6": "Drive",
       "k7": "Lob",
       "k8": "Cross",
-      "header": "Pass 3 · Rally {{rally}} (set {{set}})",
+      "header": "Stroke detail · Rally {{rally}} (set {{set}})",
       "stroke_count": "{{n}} strokes",
       "close": "Close",
-      "empty_hint": "Enter serve and finishing shot in Pass 2 before coming to Pass 3",
-      "pending": "pending",
+      "empty_hint": "Enter the serve and finishing shot first, then continue to stroke detail",
+      "pending": "Waiting to send",
       "add_stroke": "+ Add stroke #{{n}} ({{player}})",
       "other_later": "Other (fill in details later)",
       "show_other": "Other shot types",
@@ -4899,21 +4899,21 @@
       "match_over": "Match over — {{player}} wins",
       "player_a": "Player A",
       "player_b": "Player B",
-      "bestof_sets_won": "Best-of-{{n}} / sets won: A {{a}} - B {{b}}",
+      "bestof_sets_won": "Best of {{n}} games / sets won: A {{a}} - B {{b}}",
       "check_result_back": "Check result (back to video)",
       "match_saved_pc_edit": "Match data has been saved. You can review or edit it on PC later.",
       "rally_saving_server": "This rally is still being saved to the server.",
-      "pass2_after_save": "You can enter Pass 2 once the save completes.",
+      "pass2_after_save": "You can enter the serve and finishing shot once sending finishes.",
       "back_to_list": "← Back to list",
-      "pass2_select_rally": "Select a rally for Pass 2 input (sorted by closest to tap @{{sec}}s)",
-      "record_pass1_first": "Record rallies in Pass 1 first, then come back",
+      "pass2_select_rally": "Select a rally for the serve and finishing shot (closest to tap @{{sec}}s first)",
+      "record_pass1_first": "Record the points first, then come back",
       "player_point": "{{p}} scored",
       "back_to_video_arrow": "← Back to video",
-      "rally_saving_pass3": "This rally is still being saved to the server. You can enter Pass 3 once the save completes.",
-      "pass3_select_rally": "Select a rally for Pass 3 input",
+      "rally_saving_pass3": "This rally is still being saved to the server. You can enter stroke detail once sending finishes.",
+      "pass3_select_rally": "Select a rally for stroke detail",
       "set_rally_label": "S{{s}}-R{{r}}",
-      "pending": "pending",
-      "leave_confirm": "Return to the match list?\nUnsent annotations remain in the send queue (cloud_off).",
+      "pending": "Waiting to send",
+      "leave_confirm": "Return to the match list?\nUnsent entries are kept on this device and sent when the connection returns.",
       "level_title": "Input level",
       "level_lv1_short": "Lv1 Rally only",
       "level_lv2_short": "Lv2 +serve/final hit",
@@ -4925,9 +4925,9 @@
       "level_can_upgrade": "You can raise the level and add more later.",
       "level_change": "Change level",
       "level_badge": "Lv{{n}}",
-      "pass_rally": "Pass 1: Score",
-      "pass_serve_final": "Pass 2: Serve / final hit",
-      "pass_detail": "Pass 3: Detail",
+      "pass_rally": "Score",
+      "pass_serve_final": "Serve / final hit",
+      "pass_detail": "Stroke detail",
       "err_no_match_id": "matchId is not set",
       "queue_pending": "{{n}} unsent (resending)",
       "queue_failed": "{{n}} send failures — tap to resend"
@@ -5320,30 +5320,30 @@
   },
   "tutorials": {
     "mobile_annotate_pass": {
-      "_title": "Mobile annotation (Pass 1 → 2 → 3)",
+      "_title": "Mobile annotation (score → serve and finish → stroke detail)",
       "intro": {
         "title": "Start here",
-        "body": "This screen lets you annotate a match. There are three passes — Pass 1 alone already gives you a usable score timeline."
+        "body": "This screen lets you annotate a match. There are three steps — scoring alone already gives you a usable score timeline."
       },
       "passSwitch": {
-        "title": "Pass switch buttons",
-        "body": "Tap the vertical buttons on the right to switch between Pass 1 / 2 / 3. Start with whichever pass feels easiest."
+        "title": "Step switch buttons",
+        "body": "Tap the vertical buttons on the right to switch between scoring, serve and finish, and stroke detail. Start with whichever step feels easiest."
       },
       "video": {
         "title": "Tap the video to pause",
-        "body": "When a point ends, tap the video to pause at that moment. Pass 1 will open ready to record who scored."
+        "body": "When a point ends, tap the video to pause at that moment. The scoring step opens ready to record who scored."
       },
       "queueStatus": {
         "title": "Top-left: back & queue status",
         "body": "Back button, match ID and the unsent-count chip live here. If the cloud icon is gone, everything is safely on the server."
       },
       "pass1_intro": {
-        "title": "Pass 1: just mark who scored",
-        "body": "Pass 1 only records the winner of each rally. One tap per point — this is the fastest way to log a match."
+        "title": "Just mark who scored",
+        "body": "This step only records the winner of each rally. One tap per point — this is the fastest way to log a match."
       },
       "scoreA": {
         "title": "A scored → tap the left button",
-        "body": "While in Pass 1, tap the big blue A button when side A wins the rally. Score and serve side update automatically."
+        "body": "While scoring, tap the big blue A button when side A wins the rally. Score and serve side update automatically."
       },
       "scoreB": {
         "title": "B scored → tap the right button",
@@ -5359,19 +5359,19 @@
       },
       "backToVideo": {
         "title": "Back to video",
-        "body": "Closes Pass 1 and returns to playback. Already-entered scores are kept."
+        "body": "Closes the scoring step and returns to playback. Already-entered scores are kept."
       },
       "pass2_intro": {
-        "title": "Pass 2: serve & finishing shot",
-        "body": "Pass 2 adds the serve hit/land zones and the finishing shot's hit/land zones for each rally — four taps per rally."
+        "title": "Serve and finishing shot",
+        "body": "This step adds the serve hit/land zones and the finishing shot's hit/land zones for each rally — four taps per rally."
       },
       "zonePicker": {
         "title": "Pick a court zone",
         "body": "The court is divided into 9 zones. Tap where the shot was hit or where it landed. A magnifier follows your finger so you don't have to be pixel-perfect."
       },
       "pass3_intro": {
-        "title": "Pass 3: stroke detail (optional)",
-        "body": "Pass 3 is optional. Add a shot type to every stroke for richer analysis later."
+        "title": "Stroke detail (optional)",
+        "body": "This step is optional. Add a shot type to every stroke for richer analysis later."
       },
       "strokeChips": {
         "title": "Stroke list",
@@ -5387,7 +5387,7 @@
       },
       "closing": {
         "title": "All set",
-        "body": "Pass 1 alone produces a usable score timeline. Add Pass 2 / 3 later if you want more detail. Tap Done to start."
+        "body": "Scoring alone produces a usable score timeline. Add the serve and finish or the stroke detail later if you want more detail. Tap Done to start."
       }
     },
     "mobile_court_calibration": {

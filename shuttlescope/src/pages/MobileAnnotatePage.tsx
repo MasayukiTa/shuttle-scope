@@ -1022,7 +1022,7 @@ function Pass2RallyPicker({
                   @{(r.video_timestamp_end ?? 0).toFixed(1)}s
                 </span>
                 {r.pending && (
-                  <span className="text-[10px] text-[var(--ss-warn)]">{t('auto.MobileAnnotatePage.pending')}</span>
+                  <span className="text-xs text-[var(--ss-warn)]">{t('auto.MobileAnnotatePage.pending')}</span>
                 )}
               </button>
             )

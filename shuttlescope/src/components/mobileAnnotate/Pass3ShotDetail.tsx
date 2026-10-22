@@ -386,7 +386,7 @@ export function Pass3ShotDetail({
               {s.hit_zone ?? '-'} → {s.land_zone ?? '-'}
             </span>
             {s.pending && (
-              <span className="text-[10px] text-amber-400">{t('auto.Pass3ShotDetail.pending')}</span>
+              <span className="text-xs text-amber-400">{t('auto.Pass3ShotDetail.pending')}</span>
             )}
           </button>
         ))}
