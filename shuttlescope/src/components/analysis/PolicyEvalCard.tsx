@@ -13,7 +13,7 @@ import {
   PolicyEvalStateOk,
 } from '@/api/policyEval'
 import { EvidenceBadge } from '@/components/dashboard/EvidenceBadge'
-import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
+import { ResearchNotice, UnfilteredScopeNote } from '@/components/dashboard/ResearchNotice'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { MIcon } from '@/components/common/MIcon'
 import { useCardTheme } from '@/hooks/useCardTheme'
@@ -255,6 +255,7 @@ export function PolicyEvalCard({ playerId }: Props) {
         assumptions={t('auto.PolicyEvalCard.assumptions')}
         promotionCriteria={t('auto.PolicyEvalCard.promotion_criteria')}
       />
+      <UnfilteredScopeNote />
 
       {/* ─ ローディング ── */}
       {isLoading && (

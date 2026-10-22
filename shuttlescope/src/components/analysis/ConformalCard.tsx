@@ -10,7 +10,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { fetchConformal, ConformalGroup } from '@/api/conformal'
 import { EvidenceBadge } from '@/components/dashboard/EvidenceBadge'
-import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
+import { ResearchNotice, UnfilteredScopeNote } from '@/components/dashboard/ResearchNotice'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { MIcon } from '@/components/common/MIcon'
 import { useCardTheme } from '@/hooks/useCardTheme'
@@ -346,6 +346,7 @@ export function ConformalCard({ playerId }: Props) {
         assumptions={t('auto.ConformalCard.assumptions')}
         promotionCriteria={t('auto.ConformalCard.promotion_criteria')}
       />
+      <UnfilteredScopeNote />
 
       {/* ─ alpha トグル ── */}
       <div className="flex items-center gap-2 flex-wrap">

@@ -101,14 +101,20 @@ class TestRecommendationEngine:
         assert item["key"] == "smash"
         assert item["win_rate"] == 0.8
         assert item["delta_from_baseline"] == round(0.8 - 0.5, 3)
-        assert "継続強化" in item["title"]
+        assert "継続強化" not in item["title"]
+        assert "高い傾向" in item["title"]
+        assert "n=50" in item["body"]
+        assert "因果は確認していません" in item["body"]
 
     def test_build_item_below_baseline(self):
         from backend.analysis.recommendation_engine import build_recommendation_item
         item = build_recommendation_item("zone", "NL", "左前エリア", 30, 9, 0.5)
         assert item is not None
         assert item["win_rate"] == 0.3
-        assert "改善余地" in item["title"] or "伸びしろ" in item["body"]
+        assert "改善余地" not in item["title"]
+        assert "伸びしろ" in item["title"]
+        assert "n=30" in item["body"]
+        assert "因果は確認していません" in item["body"]
 
     def test_build_item_confidence_levels(self):
         from backend.analysis.recommendation_engine import build_recommendation_item

@@ -163,21 +163,19 @@ def get_epv_state_map(
     date_to: Optional[DateType] = Query(None),
     db: Session = Depends(get_db),
 ):
-    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+    return _epv_state_map_impl(db, player_id, ctx=None,
+                               result=result, tournament_level=tournament_level,
+                               date_from=date_from, date_to=date_to)
+
+
+def _epv_state_map_impl(db: Session, player_id: int, ctx=None,
+                        result=None, tournament_level=None,
+                        date_from=None, date_to=None):
+    """StateEPVCard が読む形 (状態マップの配列)。個別 endpoint と research bundle が共有する。"""
+    matches, role_by_match, set_to_match, set_num_map, rallies, strokes_by_rally = \
+        _load_ctx_or_query(db, player_id, ctx, result, tournament_level, date_from, date_to)
     if not matches:
         return {"success": True, "data": [], "meta": _analysis_meta("epv_state", 0, rallies=[], strokes_by_rally={})}
-
-    match_ids = [m.id for m in matches]
-    role_by_match = {m.id: _player_role_in_match(m, player_id) for m in matches}
-
-    sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
-    set_ids = [s.id for s in sets]
-    set_to_match = {s.id: s.match_id for s in sets}
-    set_num_map = {s.id: s.set_num for s in sets}
-
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
-    rally_ids = [r.id for r in rallies]
-    _, strokes_by_rally = _build_aux_maps(db, matches, [], rally_ids)
 
     state_result = compute_rally_state_epv(
         rallies=rallies,
@@ -241,21 +239,19 @@ def get_state_best_actions(
     date_to: Optional[DateType] = Query(None),
     db: Session = Depends(get_db),
 ):
-    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+    return _state_best_actions_impl(db, player_id, ctx=None,
+                                    result=result, tournament_level=tournament_level,
+                                    date_from=date_from, date_to=date_to)
+
+
+def _state_best_actions_impl(db: Session, player_id: int, ctx=None,
+                             result=None, tournament_level=None,
+                             date_from=None, date_to=None):
+    """StateActionValueCard が読む形 (最善手の配列)。個別 endpoint と research bundle が共有する。"""
+    matches, role_by_match, set_to_match, set_num_map, rallies, strokes_by_rally = \
+        _load_ctx_or_query(db, player_id, ctx, result, tournament_level, date_from, date_to)
     if not matches:
         return {"success": True, "data": [], "selection_note": SELECTION_NOTE_JA, "selection_note_en": SELECTION_NOTE_EN, "meta": _analysis_meta("state_action", 0, rallies=[], strokes_by_rally={})}
-
-    match_ids = [m.id for m in matches]
-    role_by_match = {m.id: _player_role_in_match(m, player_id) for m in matches}
-
-    sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
-    set_to_match = {s.id: s.match_id for s in sets}
-    set_num_map = {s.id: s.set_num for s in sets}
-    set_ids = [s.id for s in sets]
-
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
-    rally_ids = [r.id for r in rallies]
-    _, strokes_by_rally = _build_aux_maps(db, matches, [], rally_ids)
 
     result_data = compute_q_values(
         rallies=rallies,

@@ -10,7 +10,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { fetchMatchupForecast, MatchupForecastEntry } from '@/api/matchupForecast'
 import { EvidenceBadge } from '@/components/dashboard/EvidenceBadge'
-import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
+import { ResearchNotice, UnfilteredScopeNote } from '@/components/dashboard/ResearchNotice'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { MIcon } from '@/components/common/MIcon'
 import { useCardTheme } from '@/hooks/useCardTheme'
@@ -171,6 +171,7 @@ export function MatchupForecastCard({ playerId }: Props) {
         assumptions={t('auto.MatchupForecastCard.assumptions')}
         promotionCriteria={t('auto.MatchupForecastCard.promotion_criteria')}
       />
+      <UnfilteredScopeNote />
 
       {/* ─ ローディング ── */}
       {isLoading && (

@@ -37,8 +37,8 @@ from backend.routers.analysis_research import (
     _counterfactual_shots_impl,
 )
 from backend.routers.analysis_spine import (
-    _epv_state_table_impl,
-    _state_action_values_impl,
+    _epv_state_map_impl,
+    _state_best_actions_impl,
     _counterfactual_v2_impl,
     _bayes_matchup_impl,
     _opponent_policy_impl,
@@ -151,8 +151,8 @@ def get_research_bundle(
 
     jobs = [
         ("epv", lambda: _epv_impl(db, player_id, ctx=ctx)),
-        ("epv_state_table", lambda: _epv_state_table_impl(db, player_id, ctx=ctx)),
-        ("state_action_values", lambda: _state_action_values_impl(db, player_id, ctx=ctx)),
+        ("epv_state_table", lambda: _epv_state_map_impl(db, player_id, ctx=ctx)),
+        ("state_action_values", lambda: _state_best_actions_impl(db, player_id, ctx=ctx)),
         ("counterfactual_shots", lambda: _counterfactual_shots_impl(db, player_id, ctx=ctx)),
         ("counterfactual_v2", lambda: _counterfactual_v2_impl(db, player_id, ctx=ctx)),
         ("bayes_matchup", lambda: _bayes_matchup_impl(db, player_id, ctx=ctx)),

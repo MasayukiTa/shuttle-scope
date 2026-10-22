@@ -654,6 +654,7 @@
     "subtab_analytics": "解析",
     "analytics_group_relations": "指標どうしの関係を詳しく見る",
     "analytics_group_relations_desc": "相関・ラグ・季節性・変動・外れ週など。データが十分にたまってから開くと役立ちます。",
+    "analytics_group_relations_exploratory": "探索的な分析です。見る組み合わせが多いので、補正をしないと偶然の相関や差が見つかります。見つけた関係は、新しいデータで確かめるまで仮説として扱ってください。",
     "analytics_group_tags": "タグで比べる",
     "analytics_group_tags_desc": "試合や週にタグを付けて、体調の違いを比べます。",
     "analytics": {
@@ -1926,6 +1927,7 @@
       "low_sample_hint": "試合数が少ない相手の勝率は参考値です（★は試合数に基づく）"
     },
     "epv": {
+      "assumptions_fallback": "定常マルコフ過程・独立ラリー仮定",
       "title": "期待パターン価値 (EPV)",
       "pattern": "パターン",
       "epv": "EPV",
@@ -3888,7 +3890,8 @@
       "validity_score_label": "validity_score:"
     },
     "GrowthInsights": {
-      "k_effect_winrate_up": "({{effect}} 勝率↑)",
+      "k_effect_association": "（差 {{effect}}・関連であり因果ではありません）",
+      "k_n_paren": "（{{n}}回）",
       "k_winrate_paren": "(勝率 {{rate}})",
       "k_low_conf_hidden_count": "{{label}}（{{n}}件）"
     },
@@ -3907,7 +3910,8 @@
       "heading": "⚠ 研究段階の分析",
       "assumptions": "前提: {{v}}",
       "reason": "探索的理由: {{v}}",
-      "promotion": "実用移行条件: {{v}}"
+      "promotion": "実用移行条件: {{v}}",
+      "unfiltered_scope": "上部の絞り込みは、この分析には効きません。この選手の全試合を対象にしています。"
     },
     "DeviceManagerPanel": {
       "approved": "承認済み",
@@ -4167,7 +4171,8 @@
     "DashboardResearchPage": {
       "k1": "昇格ワークフローはアナリスト向けです",
       "k2": "反事実的ショット比較",
-      "k3": "コート空間密度マップ"
+      "k3": "コート空間密度マップ",
+      "dependence_note": "カードごとに前提は違います。多くの指標は、同じ試合のラリーどうしを独立とみなして計算しています。実際のラリーは試合や選手ごとにまとまるため、区間は実際より狭く出ることがあります。"
     },
     "PeerComparisonCard": {
       "title": "コミュニティ Peer 比較 (実験・admin 限定)",

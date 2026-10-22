@@ -256,3 +256,30 @@ def test_unknown_keys_are_dropped_not_forwarded():
     )
     assert "outcomes" in out
     assert "future_sensitive_field" not in out
+
+
+def test_call_without_question_text_is_not_treated_as_nonsense(env_key):
+    """質問文のない呼び出し (成長スナップショット) で失敗応答の固定文を出さない (監査 #51)。"""
+    body = {
+        "choices": [{"message": {"content": "ネット前の球の選び方が次の伸びしろです。"}}],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 10, "total_tokens": 20},
+    }
+    ctx = _ctx()
+    del ctx["user_text"]
+    gen = ExternalApiGenerator("nvidia")
+    with patch.object(httpx.Client, "post", return_value=_mock_response(200, body)) as mock_post:
+        result = gen.generate(ctx)
+
+    assert mock_post.call_count == 1
+    assert result["items"][0]["id"] == "growth_main"
+    assert "読み取れませんでした" not in result["items"][0]["prose"]
+
+
+def test_blank_question_text_is_still_nonsense(env_key):
+    ctx = _ctx()
+    ctx["user_text"] = ""
+    gen = ExternalApiGenerator("nvidia")
+    with patch.object(httpx.Client, "post") as mock_post:
+        result = gen.generate(ctx)
+    assert mock_post.call_count == 0
+    assert result["items"][0]["id"] == "intent_nonsense"
