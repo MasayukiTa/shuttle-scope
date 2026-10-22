@@ -22,6 +22,7 @@
  *   - enqueue(item)  → 即 ID 返し (ローカル commit 済として扱える)
  *   - startBackgroundFlush()  → アプリ起動時に呼ぶ
  *   - getStatus()  → UI に「未送信 N 件 / 失敗 M 件」を出す用
+ *   - cancelQueued(clientUuid)  → 未送信 item の取消 (Undo)
  */
 
 export type QueueEndpoint =
@@ -342,6 +343,33 @@ async function trySend(item: QueueItem): Promise<QueueSendResult> {
 
 let _flushing = false
 let _flushTimer: number | null = null
+// 送信中の clientUuid (取消が送信と競合しないための印)
+let _inflightUuid: string | null = null
+// 取消済みの clientUuid。flush は先に読み込んだ一覧を使い回すので、
+// DB から消しただけでは、すでに読み込まれた item が送られてしまう。
+const _cancelledUuids = new Set<string>()
+
+/**
+ * 未送信 item を取消す (ユーザーの Undo)。
+ * - 'cancelled': まだ送られておらず、キューから外した (送られない)
+ * - 'inflight': いま送信中。結果が分からないので取消せない
+ * - 'not_found': キューに無い (送信済み)。サーバ側の行を消す必要がある
+ */
+export async function cancelQueued(
+  clientUuid: string,
+): Promise<'cancelled' | 'inflight' | 'not_found'> {
+  if (_inflightUuid === clientUuid) return 'inflight'
+  const db = await openDb()
+  const items: QueueItem[] = await wrapReq(tx(db, 'readonly').getAll())
+  const hit = items.find((i) => i.clientUuid === clientUuid)
+  if (!hit || hit.localId == null) return 'not_found'
+  // await を挟んだので、送信が始まっていないかをもう一度見る。
+  // ここから delete 発行までは同期なので、flush が割り込む余地は無い。
+  if (_inflightUuid === clientUuid) return 'inflight'
+  _cancelledUuids.add(clientUuid)
+  await wrapReq(tx(db, 'readwrite').delete(hit.localId))
+  return 'cancelled'
+}
 
 /**
  * 待機中の item を 1 巡 flush する。完了後、次の最早 nextAttemptAt まで
@@ -385,7 +413,15 @@ async function flushOnce(): Promise<void> {
         continue
       }
 
-      const result = await trySend(it)
+      if (_cancelledUuids.has(it.clientUuid)) continue
+
+      _inflightUuid = it.clientUuid
+      let result: QueueSendResult
+      try {
+        result = await trySend(it)
+      } finally {
+        _inflightUuid = null
+      }
       if (result === 'foreign') continue  // 送信直前にセッションが切り替わった。何も変えない
       if (result === 'ok') {
         const wstore = tx(db, 'readwrite')

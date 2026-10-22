@@ -22,7 +22,7 @@
  *
  * これらは AnnotatorPage 側に既に実装済なので、必要になったら参照して移植する。
  */
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
@@ -34,6 +34,20 @@ import { RallyPanel } from '@/components/annotation/RallyPanel'
 import { useAnnotationStore } from '@/store/annotationStore'
 import { buildBatchPayload, buildSkippedRallyPayload } from '@/utils/annotationPayload'
 import { apiPost } from '@/api/client'
+import { useAuth } from '@/hooks/useAuth'
+import { useOfflineSync } from '@/hooks/useOfflineSync'
+import { errorMessage } from '@/utils/errors'
+import {
+  offlineStrokeIdempotencyKey,
+  removeRallyAfterSave,
+  stashRallyBeforeSave,
+} from '@/utils/offlineStrokeQueue'
+import {
+  planLiveStart,
+  shouldReinitFromServer,
+  type AnnotationStateLite,
+  type Side,
+} from '@/utils/mobileAnnotateRallies'
 import type { Match, ShotType } from '@/types'
 
 type LiveMode = 'rally' | 'result'
@@ -65,24 +79,88 @@ export function LiveInputPage() {
     staleTime: 60_000,
   })
 
-  const { data: setsData } = useQuery<{ data: Array<{ id: number; set_num: number }> }>({
-    queryKey: ['live-sets', matchId],
-    // A-3: `/sets?match_id=` は存在しないルート (実体は `/sets/match/{id}`)。
-    // 405 で latestSet が決まらず「読み込み中…」から進まなかった。
-    queryFn: () => apiGet(`/sets/match/${matchId}`),
-    enabled: !!matchId,
-    staleTime: 60_000,
-  })
-
   const match = matchData?.data
-  const latestSet = setsData?.data?.[setsData.data.length - 1]
 
-  // 初期化 (1 回だけ)
+  // 再入場時の開始位置 (ラリー番号・得点・サーバー・セット) は、サーバの
+  // /annotation/{id}/state だけを根拠にする。固定の初期値で store.init() しない。
+  // セットは配列の末尾ではなく set_num で探す (API の並び順に依存しない)。
+  const [liveSet, setLiveSet] = useState<{ id: number; set_num: number } | null>(null)
+  const [initError, setInitError] = useState<string | null>(null)
+  const [initNonce, setInitNonce] = useState(0)
+  // サーバ側に先サーブの情報が無いとき、入力者に選ばせる
+  const [needServer, setNeedServer] = useState<null | { setId: number; setNum: number; rallyNum: number; scoreA: number; scoreB: number }>(null)
+  const { userId } = useAuth()
+  // 保存に失敗したラリーは IndexedDB に退避してあり、ここで再送する
+  useOfflineSync(matchId, userId)
+
   useEffect(() => {
-    if (!matchId || !latestSet) return
-    if (store.matchId === matchId && store.currentSetId === latestSet.id) return
-    store.init(matchId, latestSet.id, latestSet.set_num, 1, 0, 0, 'player_a')
-  }, [matchId, latestSet, store])
+    if (!matchId) return
+    let cancelled = false
+    setInitError(null)
+    const run = async () => {
+      try {
+        const [stateRes, setsRes] = await Promise.all([
+          apiGet<{ data: AnnotationStateLite }>(`/annotation/${matchId}/state`),
+          apiGet<{ data: Array<{ id: number; set_num: number }> }>(`/sets/match/${matchId}`),
+        ])
+        const plan = planLiveStart(stateRes.data, setsRes.data)
+        let set = plan.set
+        if (!set) {
+          // 試合にまだセットが無い。重複作成されない API なので作成する。
+          const created = await apiPost<{ data: { id: number } }>('/sets', {
+            match_id: matchId,
+            set_num: plan.setNum,
+          })
+          set = { id: created.data.id, set_num: plan.setNum }
+        }
+        if (cancelled) return
+        const cur = useAnnotationStore.getState()
+        const reinit = shouldReinitFromServer(
+          {
+            matchId: cur.matchId,
+            currentSetId: cur.currentSetId,
+            pendingSaveCount: cur.pendingSaveCount,
+            saveErrorCount: cur.saveErrors.length,
+          },
+          matchId,
+          set.id,
+        )
+        if (reinit) {
+          if (plan.server) {
+            cur.init(matchId, set.id, set.set_num, plan.rallyNum, plan.scoreA, plan.scoreB, plan.server)
+          } else {
+            // 先サーブが不明。player_a を仮定せず、入力者に選んでもらう。
+            setNeedServer({ setId: set.id, setNum: set.set_num, rallyNum: plan.rallyNum, scoreA: plan.scoreA, scoreB: plan.scoreB })
+            return
+          }
+        }
+        setNeedServer(null)
+        setLiveSet(set)
+      } catch (e: unknown) {
+        if (!cancelled) {
+          setInitError(errorMessage(e, t('annotator.live.init_failed')))
+        }
+      }
+    }
+    void run()
+    return () => {
+      cancelled = true
+    }
+  // t は言語切替で変わるが再取得は不要
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchId, initNonce])
+
+  const chooseStartServer = useCallback((server: Side) => {
+    if (!matchId || !needServer) return
+    useAnnotationStore.getState().init(
+      matchId, needServer.setId, needServer.setNum, needServer.rallyNum,
+      needServer.scoreA, needServer.scoreB, server,
+    )
+    setLiveSet({ id: needServer.setId, set_num: needServer.setNum })
+    setNeedServer(null)
+  }, [matchId, needServer])
+
+  const latestSet = liveSet
 
   // ストローク入力直後の自動 RESULT 切替: hot-loop で即時得点判定したい場面に備えて、
   // OOB / NET 落点後 (=inputStep === 'rally_end') では RESULT モードに自動遷移
@@ -94,6 +172,36 @@ export function LiveInputPage() {
 
   if (!matchId) {
     return <div className="p-4 text-sm text-[var(--ss-t1)]">{t('auto.LiveInputPage.match_id_missing')}</div>
+  }
+  if (initError) {
+    return (
+      <div className="p-4 flex flex-col gap-3 text-sm text-[var(--ss-t1)]">
+        <div>{t('annotator.live.init_failed')}</div>
+        <div className="text-xs text-[var(--ss-t3)] break-all">{initError}</div>
+        <button
+          type="button"
+          onClick={() => setInitNonce((n) => n + 1)}
+          className="self-start px-3 py-2 rounded-[5px] bg-[var(--ss-brand)] text-white"
+        >
+          {t('annotator.live.init_retry')}
+        </button>
+      </div>
+    )
+  }
+  if (needServer && match) {
+    return (
+      <div className="p-4 flex flex-col gap-3 text-sm text-[var(--ss-t1)]">
+        <div>{t('annotator.live.choose_server')}</div>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => chooseStartServer('player_a')} className="flex-1 px-3 py-3 rounded-[5px] bg-[var(--ss-surface-2)]">
+            {match.player_a?.name ?? 'A'}
+          </button>
+          <button type="button" onClick={() => chooseStartServer('player_b')} className="flex-1 px-3 py-3 rounded-[5px] bg-[var(--ss-surface-2)]">
+            {match.player_b?.name ?? 'B'}
+          </button>
+        </div>
+      </div>
+    )
   }
   if (!match || !latestSet) {
     return <div className="p-4 text-sm text-[var(--ss-t3)]">{t('annotator.loading', { defaultValue: '読み込み中...' })}</div>
@@ -118,6 +226,7 @@ export function LiveInputPage() {
 
     store.confirmRally(winner, endType)
     store.incrementPending()
+    const setId = latestSet.id
 
     const payload = strokes.length > 0
       ? buildBatchPayload({
@@ -141,9 +250,31 @@ export function LiveInputPage() {
           isBasicMode: true,
         })
 
-    apiPost('/strokes/batch', payload).finally(() => {
-      useAnnotationStore.getState().decrementPending()
+    // 送信前に端末へ退避し、成功を確認してから消す。失敗したら画面に出し、
+    // 退避したラリーは useOfflineSync が再送する (成功扱いにしない)。
+    const ownerId = userId
+    const stableKey = ownerId != null
+      ? offlineStrokeIdempotencyKey(ownerId, matchId, setId, rallyNum)
+      : undefined
+    const stashed = stashRallyBeforeSave(ownerId, {
+      matchId,
+      setId,
+      rallyNum,
+      payload,
+      queued_at: new Date().toISOString(),
     })
+    apiPost('/strokes/batch', payload, stableKey ? { 'X-Idempotency-Key': stableKey } : undefined)
+      .then(() => {
+        useAnnotationStore.getState().decrementPending()
+        void stashed.then(() => removeRallyAfterSave(ownerId, matchId, setId, rallyNum))
+      })
+      .catch((err: unknown) => {
+        useAnnotationStore.getState().decrementPending()
+        useAnnotationStore.getState().addSaveError({
+          rallyNum,
+          error: errorMessage(err, t('annotator.ui.save_failed_message', { defaultValue: '保存失敗' })),
+        })
+      })
     setMode('rally')
   }
 
@@ -169,8 +300,23 @@ export function LiveInputPage() {
           <span className="text-3xl font-mono font-bold ss-num">{store.scoreB}</span>
           <span className="text-[var(--ss-t2)] truncate max-w-[8rem]">{playerBName}</span>
         </div>
-        <div className="text-[10px] text-[var(--ss-t3)]">
-          {t('annotator.set', { defaultValue: 'セット' })} <span className="ss-num">{store.currentSetNum}</span>
+        <div className="text-[10px] text-[var(--ss-t3)] flex flex-col items-end gap-0.5">
+          <span>
+            {t('annotator.set', { defaultValue: 'セット' })} <span className="ss-num">{store.currentSetNum}</span>
+          </span>
+          {store.pendingSaveCount > 0 && (
+            <span>{t('annotator.live.saving_count', { n: store.pendingSaveCount })}</span>
+          )}
+          {store.saveErrors.length > 0 && (
+            <button
+              type="button"
+              onClick={() => store.clearSaveErrors()}
+              className="text-[var(--ss-bad)] font-bold"
+              title={store.saveErrors.map((e) => `Rally ${e.rallyNum}: ${e.error}`).join('\n')}
+            >
+              {t('annotator.live.unsaved_count', { n: store.saveErrors.length })}
+            </button>
+          )}
         </div>
       </header>
 
