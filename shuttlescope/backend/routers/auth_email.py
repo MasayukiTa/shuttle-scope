@@ -296,6 +296,12 @@ def _registration_enabled() -> bool:
         return os.environ.get("SS_REGISTRATION_ENABLED", "0") == "1"
 
 
+_PASSWORD_RESET_DISABLED_DETAIL = (
+    "現在、パスワードリセットは受付を停止しております。"
+    "管理者までお問い合わせください。"
+)
+
+
 def _password_reset_enabled() -> bool:
     try:
         from backend.config import settings
@@ -476,13 +482,7 @@ def request_password_reset(body: PasswordResetRequest, request: Request,
     SS_PASSWORD_RESET_ENABLED=1 が必須。デフォルト無効 (503)。
     """
     if not _password_reset_enabled():
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "現在、パスワードリセットは受付を停止しております。"
-                "管理者までお問い合わせください。"
-            ),
-        )
+        raise HTTPException(status_code=503, detail=_PASSWORD_RESET_DISABLED_DETAIL)
     ip = _client_ip(request)
     # M-A レート制限: IP 単位 5/15min + email 単位 3/1h
     _enforce_rate_limit(
@@ -558,7 +558,13 @@ def request_password_reset(body: PasswordResetRequest, request: Request,
 @router.post("/auth/password/reset")
 def reset_password(body: PasswordResetConfirm, request: Request,
                    db: Session = Depends(get_db)):
-    """token + 新 password で実リセット。"""
+    """token + 新 password で実リセット。
+
+    申請 (request_reset) と同じ SS_PASSWORD_RESET_ENABLED で止める。
+    申請だけ止めて確定が通る状態だと、機能が止まっているのか否かが利用者に分からない。
+    """
+    if not _password_reset_enabled():
+        raise HTTPException(status_code=503, detail=_PASSWORD_RESET_DISABLED_DETAIL)
     # Round 258 R24 P1 fix (R24 P1): 旧コードは `request_reset` (送信側) のみに
     # rate limit をかけていたが、`reset_password` (consume 側) は無制限だった。
     # 攻撃者は token 文字列 (≥10 chars base64) を brute-force し放題で、

@@ -2020,6 +2020,21 @@ export function AnnotatorPage() {
     )
   }
 
+  // 完了済みの試合で CV 解析 (TrackNet / 人物検出) を始めるときは、実行前に確認する。
+  // 完了試合の入力はロックされているので、解析だけがその場で走ると状態が分かりにくい。
+  const runCvBatch = (run: () => void) => {
+    if (openedAsCompleted !== true) {
+      run()
+      return
+    }
+    setPendingConfirm({
+      title: t('annotator.ui.cv_completed_title', { defaultValue: '完了済みの試合です' }),
+      message: t('annotator.ui.cv_completed_message', { defaultValue: 'この試合は記録が完了しています。解析を新しく実行しますか？' }),
+      confirmLabel: t('annotator.ui.cv_completed_confirm', { defaultValue: '実行する' }),
+      onConfirm: run,
+    })
+  }
+
   // U6: Ctrl+K コマンドパレット用コマンド一覧
   const paletteCommands: PaletteCommand[] = [
     { id: 'mode-input',    label: t('annotator.ux.command_mode_input'),    icon: 'edit_note',   keywords: ['mode', 'input', '入力'],         run: () => setAnnotatorMode('input') },
@@ -2161,7 +2176,7 @@ export function AnnotatorPage() {
                 </button>
                 {appSettings.yolo_enabled && hasVideo(match) && (
                   <button
-                    onClick={handleYoloBatch}
+                    onClick={() => runCvBatch(handleYoloBatch)}
                     disabled={!!yoloJob && (yoloJob.status === 'pending' || yoloJob.status === 'running')}
                     className="flex items-center gap-2 px-2 py-1.5 rounded-ss-md text-xs font-medium text-left bg-[var(--ss-surface-1)] text-[var(--ss-brand)] hover:bg-[var(--ss-surface-2)] disabled:opacity-50"
                   >
@@ -2171,7 +2186,7 @@ export function AnnotatorPage() {
                 )}
                 {appSettings.tracknet_enabled && hasVideo(match) && (
                   <button
-                    onClick={handleTracknetBatch}
+                    onClick={() => runCvBatch(handleTracknetBatch)}
                     disabled={!!tracknetJob && (tracknetJob.status === 'pending' || tracknetJob.status === 'running')}
                     className="flex items-center gap-2 px-2 py-1.5 rounded-ss-md text-xs font-medium text-left bg-[var(--ss-surface-1)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-2)] disabled:opacity-50"
                   >
@@ -2318,7 +2333,7 @@ export function AnnotatorPage() {
             ) : (
               <div className="flex items-center gap-1">
                 <button
-                  onClick={handleTracknetBatch}
+                  onClick={() => runCvBatch(handleTracknetBatch)}
                   className="flex items-center gap-1 px-2 py-1 rounded-ss-md text-xs font-medium transition-colors bg-[var(--ss-surface-1)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-2)]"
                   title={t('tracknet.batch_start')}
                 >
@@ -2445,7 +2460,7 @@ export function AnnotatorPage() {
                     onClick={() => {
                       // バッチのみ起動。既存 seed があれば進行中に自動再適用される。
                       // 明示的に再タグ付けしたい場合は + 識別(10) ボタンを使う。
-                      handleYoloBatch()
+                      runCvBatch(handleYoloBatch)
                     }}
                     className="flex items-center gap-1 px-1.5 py-0.5 rounded-ss-sm text-xs font-medium transition-colors bg-[var(--ss-surface-1)] text-[var(--ss-brand)] hover:bg-[var(--ss-surface-2)]"
                     title={t('yolo.batch_start')}
@@ -4435,7 +4450,7 @@ export function AnnotatorPage() {
                     const key = `court-calib-${matchId}`
                     const raw = localStorage.getItem(key)
                     console.warn('[GridSync] localStorage key:', key, 'raw:', raw)
-                    if (!raw) return { ok: false, message: t('annotator.ui.calib_not_found_local', { defaultValue: 'localStorage にキャリブが見つかりません' }) }
+                    if (!raw) return { ok: false, message: t('annotator.ui.calib_not_found_local', { defaultValue: 'コート位置が未設定です。コート補正を行ってください。' }) }
                     const pts = JSON.parse(raw) as Array<{ x: number; y: number }>
                     if (!Array.isArray(pts) || pts.length !== 6) {
                       return { ok: false, message: t('annotator.ui.calib_invalid_points', { defaultValue: '点数不正 ({{got}}/6)', got: pts?.length ?? 0 }) }

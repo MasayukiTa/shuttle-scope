@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { apiPost } from '@/api/client'
 import { TurnstileWidget } from '@/components/auth/TurnstileWidget'
 import { errorMessage } from '@/utils/errors'
+import { PASSWORD_RESET_ENABLED } from '@/utils/passwordReset'
 
 export default function PasswordResetRequestPage() {
   const { t } = useTranslation()
@@ -13,8 +14,8 @@ export default function PasswordResetRequestPage() {
   const [done, setDone] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // 現状 password reset API は無効化されている (SS_PASSWORD_RESET_ENABLED=0 で 503)
-  const RESET_DISABLED = true
+  // 無効/有効は確定画面と共通 (utils/passwordReset.ts)
+  const RESET_DISABLED = !PASSWORD_RESET_ENABLED
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
