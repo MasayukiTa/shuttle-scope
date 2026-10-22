@@ -57,7 +57,9 @@ export function AnalysisModePanel({
 
         <section>
           <div className="text-[10px] uppercase tracking-wider text-[var(--ss-t3)] mb-1">
-            {t('annotator.ux.analysis_recent_5', { pct: last5.length ? Math.round((aWins / last5.length) * 100) : 0 })}
+            {last5.length > 0
+              ? t('annotator.ux.analysis_recent_5', { pct: Math.round((aWins / last5.length) * 100), n: last5.length })
+              : t('annotator.ux.analysis_recent_5_empty')}
           </div>
           <div className="flex items-center gap-1">
             {last5.length === 0 && <span className="text-[var(--ss-t3)]">{t('annotator.ux.analysis_no_data')}</span>}

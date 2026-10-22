@@ -16,8 +16,10 @@ export function GettingStartedPage() {
   const navigate = useNavigate()
   const { role } = useAuth()
 
-  // セットアップ（選手・試合作成）は analyst / admin のみ可能。
+  // 選手の新規登録は analyst / admin のみ (POST /players は require_analyst)。
+  // 試合の作成・編集は player 以外が可能 (POST /matches, PUT /matches/{id} は ctx.is_player を拒否)。
   const canSetup = role === 'analyst' || role === 'admin'
+  const isCoach = role === 'coach'
 
   const steps = useMemo(
     () => [
@@ -69,7 +71,7 @@ export function GettingStartedPage() {
         {!canSetup && (
           <div className="mb-6 rounded-ss-md border border-[var(--ss-warning-border)] bg-[var(--ss-warning-bg)] px-4 py-3 text-sm text-[var(--ss-warning-text)] flex gap-2">
             <MIcon name="info" size={18} className="shrink-0 mt-0.5" />
-            <span>{t('getting_started.role_note')}</span>
+            <span>{t(isCoach ? 'getting_started.role_note_coach' : 'getting_started.role_note')}</span>
           </div>
         )}
 

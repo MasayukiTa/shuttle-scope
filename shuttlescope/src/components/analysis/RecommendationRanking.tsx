@@ -12,16 +12,10 @@ interface RecommendationRankingProps {
   playerId: number
 }
 
-// player ロール表示時の fail-closed フィルタ用 denylist。
-// 固定文字列の置換 (改善余地→伸びしろ 等) は未知の弱点語を素通りさせるため、
-// 置換後のテキストにこれらの語が残っていた項目自体を非表示にする
-// (製品ルール: player に直接的な弱点表現を見せない)。i18n 不要のコンポーネント定数。
-const PLAYER_WEAKNESS_DENYLIST = ['弱点', '苦手', '劣って', '負けパターン', '欠点']
-
-/** player 表示用テキストに弱点語が残っていれば true（= その項目は表示しない）。 */
-function hasWeaknessLanguage(...texts: string[]): boolean {
-  return texts.some((text) => PLAYER_WEAKNESS_DENYLIST.some((w) => text.includes(w)))
-}
+// 製品ルール (CLAUDE.md): player 向け画面に勝率ベースの判定・弱点表現を見せない。
+// このランキングは win_rate / baseline から作った本文と優先度バーを持つため、
+// 語の置換 (勝率→活躍率 等) では同じ指標の別名になるだけで規則を満たせない。
+// player ロールでは取得も描画もしない (fail-closed)。
 
 interface RankItem {
   rank: number
@@ -43,22 +37,10 @@ interface Response {
   meta: { sample_size: number; confidence: { level: string; stars: string; label: string } }
 }
 
-function RankCard({ item, isPlayer }: { item: RankItem; isPlayer: boolean }) {
+function RankCard({ item }: { item: RankItem }) {
   const isLight = useIsLightMode()
-
-  // プレイヤー向けは伸びしろ言語に変換
-  const displayTitle = isPlayer
-    ? item.title.replace('改善余地', '伸びしろ').replace('要改善', '成長エリア')
-    : item.title
-  const displayBody = isPlayer
-    ? item.body.replace('勝率', '活躍率').replace('弱点', '伸びしろ')
-    : item.body
-
-  // fail-closed: player 表示時、固定置換でも消えなかった弱点語が残っていたら
-  // この項目自体を描画しない (素通り防止)。coach/analyst には影響しない。
-  if (isPlayer && hasWeaknessLanguage(displayTitle, displayBody)) {
-    return null
-  }
+  const displayTitle = item.title
+  const displayBody = item.body
 
   // Design Language v1.2 §12.4: rank 1 は title weight と badge 色で強調する。
   // **左罫線で色を立てるデザインは禁止** (詐欺サイト感が出るため)。
@@ -153,8 +135,10 @@ export function RecommendationRanking({ playerId }: RecommendationRankingProps) 
   const { data: resp, isLoading } = useQuery({
     queryKey: ['analysis-recommendation-ranking', playerId],
     queryFn: () => apiGet<Response>('/analysis/recommendation_ranking', { player_id: playerId }),
-    enabled: !!playerId,
+    enabled: !!playerId && !isPlayer,
   })
+
+  if (isPlayer) return null
 
   if (isLoading) {
     return (
@@ -179,7 +163,7 @@ export function RecommendationRanking({ playerId }: RecommendationRankingProps) 
       className="rounded-ss-lg p-4 bg-[var(--ss-surface-1)] border border-[var(--ss-border)]"
     >
       <h3 className="text-sm font-semibold mb-3" style={{ color: outerTokens.title }}>
-        {isPlayer ? '今週の成長ポイント' : '推奨アドバイスランキング'}
+        推奨アドバイスランキング
       </h3>
 
       {items.length === 0 ? (
@@ -189,7 +173,7 @@ export function RecommendationRanking({ playerId }: RecommendationRankingProps) 
           <ConfidenceBadge sampleSize={sampleSize} tier="research" unit="strokes" />
           <div className="space-y-2 mt-2">
             {items.map(item => (
-              <RankCard key={item.rank} item={item} isPlayer={isPlayer} />
+              <RankCard key={item.rank} item={item} />
             ))}
           </div>
         </div>
