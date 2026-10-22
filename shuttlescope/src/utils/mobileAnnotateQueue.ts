@@ -80,7 +80,16 @@ const STORE_QUEUE = 'queue'
 let _db: IDBDatabase | null = null
 
 function openDb(): Promise<IDBDatabase> {
-  if (_db) return Promise.resolve(_db)
+  if (_db) {
+    // ブラウザが接続を閉じた後 (別タブの更新やストレージ整理など) は、保持している接続で
+    // transaction を作ると InvalidStateError になる。使えない接続は捨てて開き直す。
+    try {
+      _db.transaction([STORE_QUEUE], 'readonly').abort()
+      return Promise.resolve(_db)
+    } catch {
+      _db = null
+    }
+  }
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION)
     req.onupgradeneeded = () => {
@@ -95,8 +104,16 @@ function openDb(): Promise<IDBDatabase> {
       }
     }
     req.onsuccess = () => {
-      _db = req.result
-      resolve(_db)
+      const db = req.result
+      db.onclose = () => {
+        if (_db === db) _db = null
+      }
+      db.onversionchange = () => {
+        db.close()
+        if (_db === db) _db = null
+      }
+      _db = db
+      resolve(db)
     }
     req.onerror = () => reject(req.error)
   })
@@ -485,9 +502,15 @@ let _flushPromise: Promise<void> | null = null
 
 function flushOnce(): Promise<void> {
   if (_flushPromise) return _flushPromise
-  const p = runFlush().finally(() => {
-    _flushPromise = null
-  })
+  // 送信の失敗は item に残るので、ここでは例外にしない。保存先を開けなかったときも
+  // 未処理の Promise 拒否にせず、次の巡回 (30 秒後・オンライン復帰時) でやり直す。
+  const p = runFlush()
+    .catch((err: unknown) => {
+      console.warn('mobile annotate queue flush failed', err)
+    })
+    .finally(() => {
+      _flushPromise = null
+    })
   _flushPromise = p
   return p
 }
