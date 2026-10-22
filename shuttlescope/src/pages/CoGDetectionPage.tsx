@@ -52,6 +52,12 @@ export function CoGDetectionPage({ onBack }: { onBack?: () => void } = {}) {
   const clips = clipsQuery.data?.clips ?? []
   const points = cogQuery.data?.points ?? []
 
+  // ストローク欄が選べないときの理由（試合未選択 / 取得失敗 / 対象ストロークなし）
+  let strokeUnavailableHint: string | null = null
+  if (!matchId) strokeUnavailableHint = t('cog_detection.hint_select_match')
+  else if (clipsQuery.isError) strokeUnavailableHint = t('cog_detection.hint_clips_error')
+  else if (!clipsQuery.isLoading && clips.length === 0) strokeUnavailableHint = t('cog_detection.hint_no_clips')
+
   return (
     <div className={`h-full w-full overflow-y-auto ${bgBase}`}>
       <div className="max-w-5xl mx-auto p-4 md:p-6">
@@ -125,6 +131,10 @@ export function CoGDetectionPage({ onBack }: { onBack?: () => void } = {}) {
               </select>
             </div>
           </div>
+          {/* ストロークが選べない理由。disabled のまま理由不明にしない */}
+          {strokeUnavailableHint && (
+            <p className="mt-3 text-xs text-[var(--ss-t2)]" role="status">{strokeUnavailableHint}</p>
+          )}
         </div>
 
         {/* CoG ビジュアライゼーション */}
