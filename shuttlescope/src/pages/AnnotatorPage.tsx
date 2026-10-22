@@ -967,9 +967,23 @@ export function AnnotatorPage() {
   const currentStrokesRef = useRef(store.currentStrokes)
   currentStrokesRef.current = store.currentStrokes
 
+  // 完了済みの試合を開いたときは、利用者が「編集を再開」を選ぶまで記録を始めさせない。
+  // 開いた時点の状態だけを見る。記録中に推定ラリー数へ達して status が complete に
+  // 変わっても、その場で入力が止まらないようにするため。
+  const [openedAsCompleted, setOpenedAsCompleted] = useState<boolean | null>(null)
+  const [editResumed, setEditResumed] = useState(false)
+  const loadedAnnotationStatus = matchData?.data?.annotation_status
+  useEffect(() => {
+    if (openedAsCompleted !== null || !loadedAnnotationStatus) return
+    setOpenedAsCompleted(loadedAnnotationStatus === 'complete' || loadedAnnotationStatus === 'reviewed')
+  }, [openedAsCompleted, loadedAnnotationStatus])
+  // 復元された入力途中のラリーがあるときは止めない
+  const editLocked = openedAsCompleted === true && !editResumed && !store.isRallyActive
+
   useKeyboard({
     videoRef,
     enabled: initialized,
+    inputLocked: editLocked,
     onEndTypeSelect: (endType) => {
       // rally_end ステップ中のみ有効（useKeyboard内でフィルタ済み）
       setPendingEndType((prev) => prev === endType ? null : endType)
@@ -2013,7 +2027,7 @@ export function AnnotatorPage() {
     { id: 'mode-analysis', label: t('annotator.ux.command_mode_analysis'), icon: 'analytics',   keywords: ['mode', 'analysis', '解析', '統計'], run: () => setAnnotatorMode('analysis') },
     { id: 'mode-settings', label: t('annotator.ux.command_mode_settings'), icon: 'settings',    keywords: ['mode', 'settings', '設定'],     run: () => setAnnotatorMode('settings') },
     { id: 'toggle-match-day',  label: t('annotator.ux.command_toggle_match_day'),  icon: 'sports', hint: isMatchDayMode ? 'ON' : 'OFF',     run: toggleMatchDayMode },
-    { id: 'toggle-annot-mode', label: t('annotator.ux.command_toggle_annot_mode'), icon: 'tune',   hint: isBasicMode ? 'manual' : 'assisted', run: toggleAnnotationMode },
+    { id: 'toggle-annot-mode', label: t('annotator.ux.command_toggle_annot_mode'), icon: 'tune',   hint: isBasicMode ? t('annotation_mode.basic') : t('annotation_mode.detailed'), run: toggleAnnotationMode },
     { id: 'open-exception',    label: t('annotator.ux.command_open_exception'),    icon: 'block', run: () => setShowExceptionDialog(true) },
     { id: 'undo-last',         label: t('annotator.ux.command_undo_last'),         icon: 'undo',  hint: 'Ctrl+Z', run: () => {
       const removed = store.undoLastStroke()
@@ -4182,21 +4196,40 @@ export function AnnotatorPage() {
             {/* ラリー開始ボタン + 見逃しラリーボタン（待機中かつラリー未開始） */}
             {initialized && !store.isRallyActive && store.inputStep === 'idle' && (
               <div className={clsx('flex gap-1.5', isMobile && 'flex-wrap')}>
-                <button
-                  onClick={() => store.startRally(getTimestamp())}
-                  className={clsx(
-                    'flex-1 bg-blue-600 hover:bg-blue-500 text-white rounded font-medium',
-                    useLargeTouch ? 'py-4 text-base' : 'py-2.5 text-sm'
-                  )}
-                >
-                  {t('annotator.ui.rally_start_btn', { defaultValue: '▶ ラリー開始' })}
-                </button>
+                {editLocked ? (
+                  <div
+                    className={clsx(
+                      'flex-1 flex items-center gap-2 bg-[var(--ss-surface-2)] border border-[var(--ss-border)] rounded',
+                      useLargeTouch ? 'px-3 py-3' : 'px-3 py-2'
+                    )}
+                    data-testid="annotator-completed-lock"
+                  >
+                    <span className="flex-1 text-xs text-[var(--ss-t2)]">{t('annotator.ui.completed_locked_notice')}</span>
+                    <button
+                      onClick={() => setEditResumed(true)}
+                      className="shrink-0 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-ss-md text-xs font-medium"
+                    >
+                      {t('annotator.ui.resume_editing')}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => store.startRally(getTimestamp())}
+                    className={clsx(
+                      'flex-1 bg-blue-600 hover:bg-blue-500 text-white rounded font-medium',
+                      useLargeTouch ? 'py-4 text-base' : 'py-2.5 text-sm'
+                    )}
+                  >
+                    {t('annotator.ui.rally_start_btn', { defaultValue: '▶ ラリー開始' })}
+                  </button>
+                )}
                 {/* モバイルでは見逃し・ブックマーク・コメント・ウォームアップを省略して画面を広く使う */}
                 {!isMobile && (
                   <>
                     <button
                       onClick={() => setShowSkipRallyDialog(true)}
-                      className="px-3 py-2.5 bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t2)] rounded-ss-md text-xs flex items-center gap-1 whitespace-nowrap"
+                      disabled={editLocked}
+                      className="px-3 py-2.5 bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t2)] rounded-ss-md text-xs flex items-center gap-1 whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
                       title={t('skip_rally.hint')}
                     >
                       <MIcon name="skip_next" size={12} />
