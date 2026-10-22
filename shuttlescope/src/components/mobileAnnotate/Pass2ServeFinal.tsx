@@ -11,8 +11,10 @@
  * 完了で 2 つの Stroke を enqueue:
  *   - stroke_num=1, shot_type='serve', player=rally.server,
  *     hit_zone=serve_hit, land_zone=serve_land
- *   - stroke_num=2, shot_type='__final_pending', player=rally.winner,
+ *   - stroke_num=9999, shot_type='__final_pending', player=最後に打った人,
  *     hit_zone=final_hit, land_zone=final_land
+ *   最後に打った人は勝者とは限らない (相手のミスで終わるラリーは敗者が最後に打つ)。
+ *   入力者が「決めた / 相手のミス」を選び、勝者から推定しない。
  *
  * Pass 3 が後で intermediate stroke を挿入する際に stroke_num を再採番する。
  *
@@ -27,6 +29,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AnnotateOverlay, ZoneCode } from './AnnotateOverlay'
 import { enqueue } from '@/utils/mobileAnnotateQueue'
+import { finalHitterFor, type FinalShotOutcome } from '@/utils/mobileAnnotateRallies'
 
 type Step = 'serve_hit' | 'serve_land' | 'final_hit' | 'final_land'
 const STEP_ORDER: Step[] = ['serve_hit', 'serve_land', 'final_hit', 'final_land']
@@ -50,6 +53,8 @@ export function Pass2ServeFinal({ rally, onCompleted, onCancel }: Props) {
   const [stepIdx, setStepIdx] = useState(0)
   const [zones, setZones] = useState<Partial<Record<Step, ZoneCode>>>({})
   const [submitting, setSubmitting] = useState(false)
+  const [outcome, setOutcome] = useState<FinalShotOutcome | null>(null)
+  const [needOutcome, setNeedOutcome] = useState(false)
   const step = STEP_ORDER[stepIdx]
   // 各 step のプロンプト文。t() はコンポーネント内のみで参照する規約。
   const STEP_PROMPT = useMemo<Record<Step, string>>(() => ({
@@ -60,6 +65,11 @@ export function Pass2ServeFinal({ rally, onCompleted, onCancel }: Props) {
   }), [t])
 
   const handleCommit = async (zone: ZoneCode) => {
+    // 最終打の入力に進む前に、ラリーの終わり方を選んでもらう (勝者から推定しない)
+    if (stepIdx >= 2 && !outcome) {
+      setNeedOutcome(true)
+      return
+    }
     const next = { ...zones, [step]: zone }
     setZones(next)
     if (stepIdx < STEP_ORDER.length - 1) {
@@ -82,7 +92,8 @@ export function Pass2ServeFinal({ rally, onCompleted, onCancel }: Props) {
       }, { rally_id: rally.id })
       await enqueue('POST /api/strokes?rally_id=:rally_id', {
         stroke_num: 9999,            // sentinel: 最後尾
-        player: rally.winner,
+        // outcome は final_hit の確定時に必須にしてあるので、ここで未選択にはならない
+        player: finalHitterFor(rally, outcome as FinalShotOutcome),
         shot_type: '__final_pending', // Pass 3 で更新
         hit_zone: next.final_hit,
         land_zone: next.final_land,
@@ -123,6 +134,30 @@ export function Pass2ServeFinal({ rally, onCompleted, onCancel }: Props) {
           {t('auto.Pass2ServeFinal.save_and_back')}
         </button>
       </div>
+
+      {stepIdx >= 2 && (
+        <div className="bg-black/90 px-3 py-1.5 flex items-center gap-2 border-b border-gray-800 text-xs text-white">
+          <span className={needOutcome && !outcome ? 'text-red-300 font-bold' : ''}>
+            {t('auto.Pass2ServeFinal.outcome_label')}
+          </span>
+          <button
+            type="button"
+            onClick={() => setOutcome('winner_shot')}
+            aria-pressed={outcome === 'winner_shot'}
+            className={`px-2 py-1 rounded ${outcome === 'winner_shot' ? 'bg-green-700' : 'bg-gray-700'}`}
+          >
+            {t('auto.Pass2ServeFinal.outcome_winner_shot')}
+          </button>
+          <button
+            type="button"
+            onClick={() => setOutcome('opponent_error')}
+            aria-pressed={outcome === 'opponent_error'}
+            className={`px-2 py-1 rounded ${outcome === 'opponent_error' ? 'bg-green-700' : 'bg-gray-700'}`}
+          >
+            {t('auto.Pass2ServeFinal.outcome_opponent_error')}
+          </button>
+        </div>
+      )}
 
       <div className="relative flex-1" data-tutorial="mobileAnnotate.zonePicker">
         <AnnotateOverlay
