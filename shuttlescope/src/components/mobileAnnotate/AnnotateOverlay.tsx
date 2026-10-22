@@ -38,6 +38,8 @@ interface Props {
   /** primary 押下時の callback。staged zone がない場合は呼ばれない */
   onCommit: (zone: ZoneCode) => void
   onCancel: () => void
+  /** 既存値の修正時に最初から選択済みにするゾーン (そのまま確定すれば既存値を保持) */
+  initialZone?: ZoneCode | null
   /** コートを描画する物理的な座標域: [0..1] x [0..1] の中央付近に置く */
   courtRect?: { x: number; y: number; w: number; h: number }
 }
@@ -49,13 +51,14 @@ export function AnnotateOverlay({
   cancelLabel,
   onCommit,
   onCancel,
-  courtRect = { x: 0.15, y: 0.10, w: 0.70, h: 0.70 },
+  initialZone = null,
+  courtRect ={ x: 0.15, y: 0.10, w: 0.70, h: 0.70 },
 }: Props) {
   const { t } = useTranslation()
   const primaryText = primaryLabel ?? t('auto.AnnotateOverlay.confirm')
   const cancelText = cancelLabel ?? t('auto.AnnotateOverlay.cancel')
   const courtRef = useRef<HTMLDivElement | null>(null)
-  const [staged, setStaged] = useState<ZoneCode | null>(null)
+  const [staged, setStaged] = useState<ZoneCode | null>(initialZone)
   const [magnifier, setMagnifier] = useState<{ x: number; y: number } | null>(null)
 
   // タップ → snap to nearest zone

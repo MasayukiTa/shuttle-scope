@@ -95,9 +95,14 @@ export function getMobileVideoSrc(
     has_video_local?: boolean | null
   } | null,
   quality?: MobileVideoQuality | null,
+  availableQualities?: readonly MobileQualityOption[] | null,
 ): string {
   if (!match) return ''
-  if (match.id && match.video_token) {
+  // backend が「どの画質も再生可能ではない」と返している (localfile:/// は HTTP stream が
+  // 必ず 404 で拒否する) 場合は stream URL を作らない。作ると MediaError だけが見える。
+  const streamable =
+    !availableQualities || availableQualities.length === 0 || availableQualities.some((q) => q.ready)
+  if (streamable && match.id && match.video_token) {
     const base = `/api/v1/uploads/video/by_match/${match.id}/stream?token=${encodeURIComponent(match.video_token)}`
     // undefined/null = backend auto selection. Once the UI names a quality,
     // including "source", encode it explicitly so the chip label matches

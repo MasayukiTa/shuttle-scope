@@ -11,6 +11,7 @@ import { Player, MATCH_ROUNDS } from '@/types'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { MIcon } from '@/components/common/MIcon'
 import { useAuth } from '@/hooks/useAuth'
+import { isPlayerSearchBlocked } from '@/utils/playerSearchGuard'
 
 interface Props {
   onClose: () => void
@@ -68,12 +69,22 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
     effectiveTeamFilter === '' ? baseCandidates : baseCandidates.filter((p) => p.team === effectiveTeamFilter)
 
   // 相手選手候補検索
-  const { data: searchData, isFetching: isSearching } = useQuery({
+  const {
+    data: searchData,
+    isFetching: isSearching,
+    isError: searchError,
+    refetch: refetchSearch,
+  } = useQuery({
     queryKey: ['players-search', opponentQuery],
     queryFn: () => apiGet<{ success: boolean; data: Player[] }>('/players/search', { q: opponentQuery }),
     enabled: opponentQuery.trim().length >= 1 && opponentId === null,
   })
   const candidates = searchData?.data ?? []
+  // 検索 API の失敗を「候補 0 件」と区別する。失敗中に暫定登録すると、既存の対戦相手が
+  // いても同一人物の暫定選手を新規作成してしまうため、暫定登録・開始を止めて再試行を促す。
+  const searchFailed = isPlayerSearchBlocked([
+    { id: opponentId, query: opponentQuery, failed: searchError },
+  ])
 
   // チーム候補 = 現在の名前検索結果から抽出（名前に紐づくチームのみ提示）
   const teamSuggestions = [...new Set(candidates.map((p) => p.team).filter(Boolean) as string[])]
@@ -141,6 +152,7 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
   const canStart =
     playerAId !== '' &&
     analystSide !== '' &&
+    !searchFailed &&
     (opponentId !== null || opponentQuery.trim().length >= 1)
 
   const handleStart = () => {
@@ -250,8 +262,25 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
               )}
             </div>
 
+            {/* 検索失敗: 候補 0 件と区別して表示し、再試行を促す (暫定登録は止める) */}
+            {searchFailed && !isSearching && (
+              <div
+                role="alert"
+                className="mt-1 flex items-center gap-2 text-xs text-[var(--ss-danger-text)] bg-[var(--ss-danger-bg)] rounded-ss-md px-3 py-2"
+              >
+                <span className="flex-1">{t('quick_start.opponent_search_failed')}</span>
+                <button
+                  type="button"
+                  onClick={() => void refetchSearch()}
+                  className="shrink-0 underline"
+                >
+                  {t('quick_start.opponent_search_retry')}
+                </button>
+              </div>
+            )}
+
             {/* 候補ドロップダウン */}
-            {showCandidates && (
+            {showCandidates && !searchFailed && (
               <div
                 ref={candidatesRef}
                 className="absolute z-10 top-full mt-1 w-full bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-md shadow-pop max-h-48 overflow-y-auto"

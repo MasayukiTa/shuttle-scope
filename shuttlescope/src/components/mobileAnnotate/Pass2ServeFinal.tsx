@@ -16,6 +16,9 @@
  *   最後に打った人は勝者とは限らない (相手のミスで終わるラリーは敗者が最後に打つ)。
  *   入力者が「決めた / 相手のミス」を選び、勝者から推定しない。
  *
+ * サーブ 1 打でラリーが終わる場合 (サービスエース等) は、サーブ着地の入力後に
+ * 「サーブで終了」を選ぶと serve 1 件 + rally_length=1 だけを保存する (最終打は別 stroke にしない)。
+ *
  * Pass 3 が後で intermediate stroke を挿入する際に stroke_num を再採番する。
  *
  * UI:
@@ -30,6 +33,7 @@ import { useTranslation } from 'react-i18next'
 import { AnnotateOverlay, ZoneCode } from './AnnotateOverlay'
 import { enqueue } from '@/utils/mobileAnnotateQueue'
 import { finalHitterFor, type FinalShotOutcome } from '@/utils/mobileAnnotateRallies'
+import { serveOnlyRallyPayload } from '@/utils/mobileAnnotatePass2'
 
 type Step = 'serve_hit' | 'serve_land' | 'final_hit' | 'final_land'
 const STEP_ORDER: Step[] = ['serve_hit', 'serve_land', 'final_hit', 'final_land']
@@ -104,6 +108,21 @@ export function Pass2ServeFinal({ rally, onCompleted, onCancel }: Props) {
     }
   }
 
+  // サーブ 1 打でラリーが終わる場合 (サービスエース等): 最終打はサーブ自身。
+  // 別 stroke を作らず serve 1 件 + rally_length=1 だけを保存する。
+  const handleServeOnly = async () => {
+    if (submitting || !zones.serve_hit || !zones.serve_land) return
+    setSubmitting(true)
+    try {
+      const { stroke, rallyLength } = serveOnlyRallyPayload(rally, zones)
+      await enqueue('POST /api/strokes?rally_id=:rally_id', stroke, { rally_id: rally.id })
+      await enqueue('PUT /api/rallies/:id', { rally_length: rallyLength }, { id: rally.id })
+      onCompleted()
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   return (
     <div className="absolute inset-0 bg-black/80 flex flex-col">
       {/* 上部: 進捗ドット + step 名 */}
@@ -155,6 +174,15 @@ export function Pass2ServeFinal({ rally, onCompleted, onCancel }: Props) {
             className={`px-2 py-1 rounded ${outcome === 'opponent_error' ? 'bg-green-700' : 'bg-gray-700'}`}
           >
             {t('auto.Pass2ServeFinal.outcome_opponent_error')}
+          </button>
+          <div className="flex-1" />
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={() => void handleServeOnly()}
+            className="px-2 py-1 rounded bg-gray-700 disabled:opacity-40"
+          >
+            {t('auto.Pass2ServeFinal.serve_only')}
           </button>
         </div>
       )}

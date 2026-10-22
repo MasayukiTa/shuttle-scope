@@ -474,14 +474,16 @@ def _compute_available_qualities(m: Match) -> list:
     """match レスポンス用の available_qualities リストを生成する。
 
     server:// 経路のサーバ保管動画のみ post-process 対象。それ以外 (localfile / 外部
-    URL) は ["source"] のみ返す。
+    URL) は ["source"] のみ返す。localfile:/// 等は HTTP stream
+    (/uploads/video/by_match/{id}/stream) が必ず 404 で拒否するため、ready=False にして
+    「再生可能」と広告しない (ready=True のまま 404 になる状態を作らない)。
 
     各要素は {"quality":"source|fhd|hd", "height": int, "ready": bool}。
     upscale 不要 (source.height <= target_h) のターゲットはリストに含めない。
     """
     vlp = (m.video_local_path or "")
     if not vlp.startswith("server://"):
-        return [{"quality": "source", "height": 0, "ready": bool(vlp)}]
+        return [{"quality": "source", "height": 0, "ready": False}]
     try:
         from backend.services.video_variants import (
             decide_playback,

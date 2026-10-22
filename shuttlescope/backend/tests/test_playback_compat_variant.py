@@ -443,6 +443,24 @@ class TestMatchAvailableQualityState:
         assert play["ready"] is True
 
 
+class TestLocalFileIsNotAdvertisedAsPlayable:
+    """localfile:/// は HTTP stream が必ず 404 で拒否する → ready=True と広告しない。"""
+
+    def test_localfile_source_is_not_ready(self, db_session):
+        from backend.routers.matches import _compute_available_qualities
+
+        m = _make_match(db_session, video_local_path="localfile:///C:/videos/a.mp4")
+        assert _compute_available_qualities(m) == [
+            {"quality": "source", "height": 0, "ready": False}
+        ]
+
+    def test_no_video_is_not_ready(self, db_session):
+        from backend.routers.matches import _compute_available_qualities
+
+        m = _make_match(db_session)
+        assert _compute_available_qualities(m)[0]["ready"] is False
+
+
 class TestExplicitPlaybackQuality:
     def _match(self, db_session):
         m = _make_match(

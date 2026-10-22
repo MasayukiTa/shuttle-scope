@@ -341,7 +341,7 @@ export function MobileAnnotatePage() {
     return () => window.clearInterval(id)
   }, [playbackPreparing, refetchMatch])
 
-  const videoSrc = getMobileVideoSrc(match, effectiveQuality)
+  const videoSrc = getMobileVideoSrc(match, effectiveQuality, availableQualities)
 
   // セット一覧 + 既存ラリー取得 (Pass 1 用)
   const setsQuery = useQuery({
