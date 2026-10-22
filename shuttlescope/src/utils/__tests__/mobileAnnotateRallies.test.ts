@@ -24,7 +24,7 @@ describe('mergeRallies', () => {
     const local = [R(1, 1, { id: null, client_uuid: 'queue-uuid', pending: true })]
     const out = mergeRallies(server, local)
     expect(out).toHaveLength(1)
-    expect(out[0].id).toBe(10)
+    expect((out[0] as { id?: number }).id).toBe(10)
   })
 
   it('keeps unsent rallies and sorts by set then rally number', () => {
