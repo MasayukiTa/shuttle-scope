@@ -1,7 +1,7 @@
 """ラリー管理API（/api/rallies）"""
 from typing import Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -45,6 +45,15 @@ class RallyCreate(BaseModel):
     is_deuce: bool = False
     video_timestamp_start: Optional[float] = Field(default=None, ge=0, le=86400)
     video_timestamp_end: Optional[float] = Field(default=None, ge=0, le=86400)
+
+    @model_validator(mode="after")
+    def _start_not_after_end(self) -> "RallyCreate":
+        # 巻き戻した位置で入力すると start > end の逆転区間が保存され、TrackNet の区間走査が
+        # 0 回になり、レビューは対象ラリーより後ろから再生していた (監査 #783)。
+        s, e = self.video_timestamp_start, self.video_timestamp_end
+        if s is not None and e is not None and s > e:
+            raise ValueError("video_timestamp_start must be <= video_timestamp_end")
+        return self
 
 
 class RallyUpdate(BaseModel):
@@ -208,7 +217,16 @@ def update_rally(rally_id: int, body: RallyUpdate, request: Request, db: Session
         raise HTTPException(status_code=404, detail="ラリーが見つかりません")
     _rally_require_scope(request, db, rally.set_id)
     from backend.utils.db_update import apply_update
-    apply_update(rally, body.model_dump(exclude_unset=True))
+    changes = body.model_dump(exclude_unset=True)
+    # 片方だけの更新でも、更新後の start <= end を保つ (監査 #783)
+    eff_start = changes.get("video_timestamp_start", rally.video_timestamp_start)
+    eff_end = changes.get("video_timestamp_end", rally.video_timestamp_end)
+    if eff_start is not None and eff_end is not None and eff_start > eff_end:
+        raise HTTPException(
+            status_code=422,
+            detail="video_timestamp_start は video_timestamp_end 以下にしてください",
+        )
+    apply_update(rally, changes)
     touch(rally)
     db.commit()
     # 対象 rally の試合の関与選手のみ無効化

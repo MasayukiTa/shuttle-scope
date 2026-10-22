@@ -156,6 +156,8 @@ export function Pass1RallyEnd({
       const newA = scoreA + (winner === 'player_a' ? 1 : 0)
       const newB = scoreB + (winner === 'player_b' ? 1 : 0)
       const rallyNum = (lastRally?.rally_num ?? 0) + 1
+      const prevEnd = lastRally?.video_timestamp_end
+      const videoStart = typeof prevEnd === 'number' && prevEnd <= pausedAtSec ? prevEnd : null
       // backend RallyCreate schema (`extra='forbid'`) に合わせる:
       // score_a_before/b_before, annotation_mode は schema 非対応のため body に含めない
       // (DB model 側で default=0 / NULL に倒れる)。
@@ -169,7 +171,9 @@ export function Pass1RallyEnd({
         score_a_after: newA,
         score_b_after: newB,
         video_timestamp_end: pausedAtSec,
-        video_timestamp_start: lastRally?.video_timestamp_end ?? null,
+        // 巻き戻した位置で入力すると前ラリーの end が現在位置より後ろになり、
+        // start > end の逆転区間が保存される。その場合は欠測 (null) にする (監査 #783)。
+        video_timestamp_start: videoStart,
         is_deuce: isDeuce({ scoreA: newA, scoreB: newB }),  // 表示と同じ正準ルールで保存
       }
       const { clientUuid } = await enqueue('POST /api/rallies', body)

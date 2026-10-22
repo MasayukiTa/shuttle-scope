@@ -205,6 +205,9 @@ export function Pass3ShotDetail({
       shot_type: shotKey,
       hit_zone: hit,
       land_zone: land,
+      // 人が画面で指定した入力。hit_zone が無いのに由来だけ付けない
+      source_method: 'manual',
+      ...(hit ? { hit_zone_source: 'manual' } : {}),
     }
     await enqueue('POST /api/strokes?rally_id=:rally_id', body, { rally_id: rally.id })
     onStrokeAdded({

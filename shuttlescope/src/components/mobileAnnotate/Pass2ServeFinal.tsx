@@ -114,6 +114,9 @@ export function Pass2ServeFinal({ rally, doubles = false, onCompleted, onCancel 
         shot_type: 'serve',
         hit_zone: next.serve_hit,
         land_zone: next.serve_land,
+        // 人が画面で指定した入力 (未指定だと分析側の由来集計で全て unknown になる)
+        source_method: 'manual',
+        hit_zone_source: 'manual',
       }, { rally_id: rally.id })
       await enqueue('POST /api/strokes?rally_id=:rally_id', {
         stroke_num: 9999,            // sentinel: 最後尾
@@ -122,6 +125,8 @@ export function Pass2ServeFinal({ rally, doubles = false, onCompleted, onCancel 
         shot_type: '__final_pending', // Pass 3 で更新
         hit_zone: next.final_hit,
         land_zone: next.final_land,
+        source_method: 'manual',
+        hit_zone_source: 'manual',
       }, { rally_id: rally.id })
       onCompleted()
     } finally {

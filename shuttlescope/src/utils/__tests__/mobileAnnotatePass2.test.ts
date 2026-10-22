@@ -14,7 +14,15 @@ describe('serveOnlyRallyPayload', () => {
       shot_type: 'serve',
       hit_zone: 'BC',
       land_zone: 'MR',
+      source_method: 'manual',
+      hit_zone_source: 'manual',
     })
+  })
+
+  it('records a hand-entered stroke as manual, and omits hit_zone_source without a hit zone', () => {
+    const noHit = serveOnlyRallyPayload({ server: 'player_a' }, { serve_land: 'MR' })
+    expect(noHit.stroke.source_method).toBe('manual')
+    expect('hit_zone_source' in noHit.stroke).toBe(false)
   })
 
   it('never emits the 9999 final sentinel', () => {

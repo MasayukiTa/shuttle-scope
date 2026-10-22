@@ -1,5 +1,6 @@
-import { useEffect, ReactNode } from 'react'
+import { useEffect, useId, useRef, ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useDialogFocus } from '@/hooks/useDialogFocus'
 import { MIcon } from '@/components/common/MIcon'
 
 interface ChartModalProps {
@@ -15,6 +16,10 @@ interface ChartModalProps {
  */
 export function ChartModal({ title, onClose, children }: ChartModalProps) {
   const { t } = useTranslation()
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const titleId = useId()
+  // 開いたらダイアログ内へフォーカスを移し、Tab を内部で循環、閉じたら元の位置へ戻す
+  useDialogFocus(dialogRef, true)
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -26,6 +31,10 @@ export function ChartModal({ title, onClose, children }: ChartModalProps) {
 
   return (
     <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
       className="fixed inset-0 z-50 bg-[var(--ss-bg-overlay)] flex flex-col"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose()
@@ -33,7 +42,7 @@ export function ChartModal({ title, onClose, children }: ChartModalProps) {
     >
       {/* ヘッダー */}
       <div className="flex items-center justify-between px-6 py-3 border-b border-[var(--ss-border)] bg-[var(--ss-surface-1)] shadow-pop shrink-0">
-        <span className="text-[var(--ss-t1)] font-semibold text-base">{title}</span>
+        <span id={titleId} className="text-[var(--ss-t1)] font-semibold text-base">{title}</span>
         <div className="flex items-center gap-3">
           {/* 元ダッシュボードへ戻るボタン */}
           <button
@@ -48,6 +57,7 @@ export function ChartModal({ title, onClose, children }: ChartModalProps) {
             onClick={onClose}
             className="text-[var(--ss-t3)] hover:text-[var(--ss-t1)] transition-colors duration-fast ease-out p-1 rounded-ss-md hover:bg-[var(--ss-surface-2)]"
             title={t('auto.ChartModal.k1')}
+            aria-label={t('auto.ChartModal.k1')}
           >
             <MIcon name="close" size={18} />
           </button>
