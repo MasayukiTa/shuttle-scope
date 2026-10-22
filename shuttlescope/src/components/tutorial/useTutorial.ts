@@ -42,27 +42,47 @@ export function useTutorialChannel(): string | null {
   return v
 }
 
-export function useTutorialState(): { state: TutorialStateEntry[]; refresh: () => Promise<void>; loading: boolean } {
+export function useTutorialState(): {
+  state: TutorialStateEntry[]
+  refresh: () => Promise<void>
+  loading: boolean
+  /** 直近の取得が失敗した (state は最後に成功した値のまま)。成功した空と区別するために持つ。 */
+  loadError: boolean
+} {
   const [state, setState] = useState<TutorialStateEntry[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const refresh = useCallback(async () => {
     setLoading(true)
     try {
       const r = await apiGet<{ data: TutorialStateEntry[] }>('/tutorials/state')
       setState(r.data || [])
+      setLoadError(false)
     } catch {
-      setState([])
+      // 取得失敗だけで既存の履歴を空配列に消さない
+      setLoadError(true)
     } finally {
       setLoading(false)
     }
   }, [])
   useEffect(() => { void refresh() }, [refresh])
-  return { state, refresh, loading }
+  return { state, refresh, loading, loadError }
 }
 
-export async function replayTutorial(id: string): Promise<void> {
-  try { await apiPost(`/tutorials/${id}/replay`, {}) } catch { /* ignore */ }
+/**
+ * チュートリアルを再実行する。サーバへの replay 記録に成功したら true。
+ * 記録に失敗してもチュートリアル自体は開始する (操作を止めない) が、
+ * false を返すので呼び出し側が「履歴に反映されていない」ことを表示する。
+ */
+export async function replayTutorial(id: string): Promise<boolean> {
+  let recorded = true
+  try {
+    await apiPost(`/tutorials/${id}/replay`, {})
+  } catch {
+    recorded = false
+  }
   openTutorial(id)
+  return recorded
 }
 
 /**

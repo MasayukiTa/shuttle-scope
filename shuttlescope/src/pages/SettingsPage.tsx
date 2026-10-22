@@ -344,7 +344,7 @@ export function SettingsPage() {
   const lanStateFailed = serverInfoQuery.isError && serverInfoQuery.data === undefined
 
   // Q-002/Q-008: ネットワーク診断
-  const { data: netDiag, isFetching: netDiagFetching, refetch: runDiagnostics } = useQuery({
+  const { data: netDiag, isFetching: netDiagFetching, isError: netDiagError, refetch: runDiagnostics } = useQuery({
     queryKey: ['network-diagnostics'],
     queryFn: () => apiGet<{ success: boolean; data: NetworkDiagnostics }>('/network/diagnostics'),
     enabled: false,
@@ -1783,6 +1783,9 @@ export function SettingsPage() {
                     : <MIcon name="toggle_off" size={32} className="text-[var(--ss-t3)]" />}
                 </button>
               </div>
+              {toggleLanMode.isError && (
+                <p role="alert" className="text-xs text-[var(--ss-bad)] mb-2">{t('sharing.action_failed')}</p>
+              )}
               {lanStateFailed ? (
                 <QueryErrorNotice onRetry={() => { void refetchServerInfo() }} />
               ) : lanStateUnknown ? null : serverInfo?.data?.lan_mode && serverInfo.data.lan_ips.length > 0 ? (
@@ -1941,6 +1944,9 @@ export function SettingsPage() {
                           {t('sharing.tunnel_stop')}
                         </button>
                       )}
+                      {(tunnelStart.isError || tunnelStop.isError) && (
+                        <span role="alert" className="self-center text-xs text-[var(--ss-bad)]">{t('sharing.action_failed')}</span>
+                      )}
                     </div>
                   </div>
 
@@ -2082,6 +2088,11 @@ export function SettingsPage() {
                             }
                           </span>
                         )}
+                        {turnTest.isError && (
+                          <span role="alert" className="text-xs flex items-center gap-1 text-[var(--ss-bad)]">
+                            <MIcon name="error" size={11} />{t('sharing.action_failed')}
+                          </span>
+                        )}
                       </div>
                     </div>
                   )}
@@ -2171,7 +2182,10 @@ export function SettingsPage() {
                 </div>
               )}
 
-              {!netDiag && !netDiagFetching && (
+              {netDiagError && !netDiagFetching && (
+                <p role="alert" className="text-xs text-[var(--ss-bad)]">{t('sharing.diag_failed')}</p>
+              )}
+              {!netDiag && !netDiagFetching && !netDiagError && (
                 <p className="text-xs text-[var(--ss-t3)]">{t('sharing.diag_not_run')}</p>
               )}
             </div>
@@ -3264,7 +3278,8 @@ function BackendConsole({
 function TutorialReplaySection({ card }: { card: string }) {
   const { t } = useTranslation()
 
-  const { state, loading, refresh } = useTutorialState()
+  const { state, loading, refresh, loadError } = useTutorialState()
+  const [replaySyncFailed, setReplaySyncFailed] = useState(false)
   return (
     <section className={`${card} rounded-lg p-5 space-y-3`} data-tutorial="settings.tutorialReplay">
       <div className="flex items-center gap-2">
@@ -3274,6 +3289,11 @@ function TutorialReplaySection({ card }: { card: string }) {
       <p className="text-xs text-gray-400">
         {t('auto.SettingsPage.tutorial_desc')}
       </p>
+      {(loadError || replaySyncFailed) && (
+        <div role="alert" className="text-xs text-red-400">
+          {loadError ? t('auto.SettingsPage.tutorial_state_failed') : t('auto.SettingsPage.tutorial_sync_failed')}
+        </div>
+      )}
       {loading ? (
         <div className="text-xs text-gray-500">{t('auto.SettingsPage.k43')}</div>
       ) : (
@@ -3295,7 +3315,11 @@ function TutorialReplaySection({ card }: { card: string }) {
                   </div>
                 </div>
                 <button
-                  onClick={async () => { await replayTutorial(tut.id); void refresh() }}
+                  onClick={async () => {
+                    const recorded = await replayTutorial(tut.id)
+                    setReplaySyncFailed(!recorded)
+                    void refresh()
+                  }}
                   // Design Language §2.7: primary CTA は bg-blue-600 + text-white (確実な
                   // AAA コントラスト)。bg-sky-* は明るすぎて mode によって白文字が読めない
                   // ケースが起きていたため変更 (2026-05-19)。
