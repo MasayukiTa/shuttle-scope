@@ -231,6 +231,14 @@ async def _canary_response(request: Request, path: str) -> JSONResponse:
     method = request.method
     referer = request.headers.get("referer", "")[:200]
     country = request.headers.get("cf-ipcountry", "?")
+    # A crawler that wandered onto a canary path is not an attacker: record it
+    # (once per day) and answer 404, with no audit hit, tarpit, escalation or ban.
+    from backend.utils import crawler_policy as _cp
+    request.state.is_decoy = True
+    if _cp.is_crawler(ip, ua_raw):
+        request.state.is_crawler = True
+        _cp.record_crawler_decoy_visit(ip, path, ua_raw, method)
+        return JSONResponse({"detail": "Not Found"}, status_code=404)
 
     # ─── audit log (HMAC chain で改ざん不可) ────────────────────────────
     # Codex policy 準拠 schema: severity / reason_code / action_taken / risk_score

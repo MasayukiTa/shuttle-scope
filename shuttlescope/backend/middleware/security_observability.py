@@ -20,6 +20,8 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from backend.utils.audit_grouping import is_monitoring_self_read
+from backend.utils.crawler_policy import ROBOTS_TAG
+from backend.utils.security_detectors import record_secret_path_response
 from backend.utils.security_log import emit_request_log, emit_security_event
 
 
@@ -99,6 +101,36 @@ def _client_ip(request: Request) -> tuple[str | None, str | None]:
     return ip, xff
 
 
+def _authenticated_user_id(request: Request) -> int | None:
+    """User id of the caller when a valid bearer token is present, else None.
+
+    request_logs.user_id was empty on every row because nothing ever set
+    request.state.user_id (the old code only read that attribute). The id comes
+    from a verified token, never from an unverified claim, so a forged token
+    cannot poison the forensic column."""
+    uid = getattr(request.state, "user_id", None)
+    if uid:
+        return uid
+    auth = request.headers.get("authorization", "")
+    if not auth.startswith("Bearer "):
+        return None
+    try:
+        from backend.utils.jwt_utils import verify_token
+        payload = verify_token(auth[7:].strip())
+        sub = str((payload or {}).get("sub", ""))
+        return int(sub) if sub.isdigit() and int(sub) > 0 else None
+    except Exception:
+        return None
+
+
+def _is_decoy_response(request: Request, response: Response | None) -> bool:
+    """True only for the deliberate decoy (decoy_maze marks request.state, and the
+    fake .env also sends `X-Honeyfile: yes`)."""
+    if getattr(request.state, "is_decoy", False):
+        return True
+    return response is not None and response.headers.get("x-honeyfile", "").lower() == "yes"
+
+
 class RequestLogMiddleware(BaseHTTPMiddleware):
     """全 HTTP request を request_logs に記録 (一部 path は除外)。"""
 
@@ -130,8 +162,26 @@ class RequestLogMiddleware(BaseHTTPMiddleware):
                 referer = request.headers.get("referer")
                 cf_ray = request.headers.get("cf-ray")
                 country = request.headers.get("cf-ipcountry")
-                user_id = getattr(request.state, "user_id", None)
+                user_id = _authenticated_user_id(request)
                 query = request.url.query or None
+                # Secret-path 200 / decoy hit. Runs for every response FastAPI
+                # produced (this middleware is the outermost one).
+                # Every decoy response (and decoy 404) tells crawlers to keep out.
+                if response is not None and getattr(request.state, "is_decoy", False):
+                    response.headers["X-Robots-Tag"] = ROBOTS_TAG
+                # A crawler on a decoy was already recorded as crawler_decoy_visit.
+                if status == 200 and not getattr(request.state, "is_crawler", False):
+                    record_secret_path_response(
+                        path=path,
+                        status=status,
+                        is_decoy=_is_decoy_response(request, response),
+                        ip=ip,
+                        method=request.method,
+                        ua=_truncate(ua, 255),
+                        request_id=request_id,
+                        country=_truncate(country, 2),
+                        authenticated=user_id is not None,
+                    )
                 if not skip_log:
                     emit_request_log(
                         method=request.method,

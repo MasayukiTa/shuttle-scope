@@ -786,14 +786,37 @@ def _pad_and_raise(start_ts: float, status_code: int, detail: str) -> None:
 def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     import time as _t_login
     _login_t0 = _t_login.perf_counter()
+    _login_since = datetime.utcnow()
     try:
-        return _login_impl(req, request, db, _login_t0)
+        _login_result = _login_impl(req, request, db, _login_t0)
+        _detect_new_ip_login(_login_result, request, _login_since, req.grant_type)
+        return _login_result
     except HTTPException as e:
         # 認証失敗系 (401/429) のみ固定時間パディングを適用してから再 raise
         # 成功 (200) は user 経験を損なわないようパッドしない
         if e.status_code in (401, 422, 429):
             _login_constant_time_pad(_login_t0)
         raise
+
+
+def _detect_new_ip_login(result, request: Request, since: datetime, method: str) -> None:
+    """Raise login_success_new_ip for a completed login (token issued, no MFA
+    step pending). `since` is taken before the login wrote its own access_logs
+    row so that row does not count as history. Never breaks the login."""
+    try:
+        if not getattr(result, "access_token", None) or getattr(result, "mfa_required", False):
+            return
+        from backend.utils.security_detectors import check_login_new_ip
+        check_login_new_ip(
+            user_id=getattr(result, "user_id", None),
+            role=getattr(result, "role", None),
+            ip=_get_ip(request),
+            country=(request.headers.get("cf-ipcountry") or "").strip()[:2] or None,
+            before=since,
+            method=method,
+        )
+    except Exception:  # noqa: BLE001 - detection must not fail a login
+        logger.warning("new-ip login detection failed", exc_info=True)
 
 
 def _mfa_challenge_if_enabled(user: User, db: Session, ip: Optional[str]):
@@ -974,6 +997,7 @@ def mfa_login(req: MfaLoginRequest, request: Request, db: Session = Depends(get_
     """credential ログイン後、MFAコードを検証してフルJWTを発行する。"""
     from backend.utils.jwt_utils import verify_token
     ip = _get_ip(request)
+    _mfa_since = datetime.utcnow()
     payload = verify_token(req.mfa_token)
     if not payload or payload.get("role") != "mfa_pending":
         # frontend は文言ではなくこのコードで「初段ログインへ戻す」を判断する。
@@ -993,7 +1017,7 @@ def mfa_login(req: MfaLoginRequest, request: Request, db: Session = Depends(get_
     if req.recovery_code:
         # 認証アプリ紛失 / 時計ズレ時の復旧経路。コードは単回使用で消費される。
         if not _consume_recovery_code(db, user_id, req.recovery_code, ip):
-            _record_mfa_failure(user_id)
+            _record_mfa_failure(user_id, ip, "recovery")
             raise HTTPException(status_code=401, detail="リカバリコードが無効か、既に使用済みです")
         remaining = _recovery_codes_remaining(db, user_id)
         # 「誰かがリカバリコードを使った」は不正アクセスの兆候にもなるため、
@@ -1013,12 +1037,12 @@ def mfa_login(req: MfaLoginRequest, request: Request, db: Session = Depends(get_
                 detail="MFA を検証できません。リカバリコードでログインし、管理者に連絡してください。",
             )
         if not _verify_totp(user.totp_secret, req.code or ""):
-            _record_mfa_failure(user_id)
+            _record_mfa_failure(user_id, ip, "totp")
             raise HTTPException(status_code=401, detail="認証コードが無効です")
     token = create_access_token(user.id, user.role, user.player_id, team_name=user.team_name, team_id=user.team_id)
     if not req.recovery_code:
         log_access(db, "login_mfa_ok", user_id=user.id, ip_addr=ip)
-    return LoginResponse(
+    _mfa_result = LoginResponse(
         access_token=token,
         refresh_token=_issue_refresh_for(user.id),
         role=user.role,
@@ -1027,6 +1051,8 @@ def mfa_login(req: MfaLoginRequest, request: Request, db: Session = Depends(get_
         team_name=user.team_name,
         display_name=user.display_name or user.username,
     )
+    _detect_new_ip_login(_mfa_result, request, _mfa_since, "recovery_code" if req.recovery_code else "mfa")
+    return _mfa_result
 
 
 # ── MFA セットアップ ─────────────────────────────────────────────────────────
@@ -1146,11 +1172,15 @@ def _check_mfa_brute_limit(user_id: int) -> None:
             )
 
 
-def _record_mfa_failure(user_id: int) -> None:
+def _record_mfa_failure(user_id: int, ip: Optional[str] = None, kind: str = "totp") -> None:
     if not user_id:
         return
     with _mfa_lock:
         _mfa_failures.setdefault(user_id, []).append(_t_mfa.time())
+    # >=3 failures in 10 minutes for this user (or this IP) raises
+    # mfa_recovery_failures. The submitted code is never passed in.
+    from backend.utils.security_detectors import record_mfa_failure
+    record_mfa_failure(user_id, ip, kind)
 
 
 @router.post("/mfa/confirm", response_model=MfaRecoveryCodesResponse)
