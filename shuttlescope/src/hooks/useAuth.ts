@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { UserRole } from '@/types'
 import { tokenUserId } from '@/utils/mobileAnnotateQueue'
+import { AUTOSAVE_PREFIX } from '@/utils/annotatorAutosave'
 
 const AUTH_CHANGED_EVENT = 'shuttlescope:auth-changed'
 
@@ -196,6 +197,8 @@ export function useAuth() {
         'court-calib-',
         'yolo-last-roi-',
         'tracknet-last-roi-',
+        // アノテータの一時保存 (未確定ラリー)。共有端末で次の利用者に残さない。
+        AUTOSAVE_PREFIX,
       ]
       const keysToRemove: string[] = []
       for (let i = 0; i < localStorage.length; i++) {

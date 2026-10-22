@@ -752,6 +752,24 @@ export default function LlmChatPage() {
                 <div className="flex h-full flex-col items-center justify-center text-center text-[var(--ss-t3)]">
                   <MIcon name="smart_toy" size={40} ariaHidden className="mb-2" />
                   <p className="text-sm">{t('llm.empty')}</p>
+                  {/* ShuttleScope の分析に沿った質問の入口。押すと入力欄に入るだけで、送信は利用者が行う。 */}
+                  <p className="mt-4 text-xs">{t('llm.starters_title')}</p>
+                  <div className="mt-2 flex flex-wrap justify-center gap-2">
+                    {(['starter_turning_point', 'starter_opponent_trend', 'starter_practice'] as const).map((k) => (
+                      <button
+                        key={k}
+                        type="button"
+                        disabled={composerDisabled}
+                        onClick={() => {
+                          setInput(t(`llm.${k}`))
+                          taRef.current?.focus()
+                        }}
+                        className="min-h-[36px] rounded-full border border-[var(--ss-border)] bg-[var(--ss-surface-2)] px-3 py-1.5 text-xs text-[var(--ss-t1)] hover:bg-[var(--ss-surface-3)] disabled:opacity-50"
+                      >
+                        {t(`llm.${k}`)}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )
             )}
@@ -886,13 +904,15 @@ export default function LlmChatPage() {
             >
               <MIcon name="add_photo_alternate" size={20} ariaHidden />
             </button>
-            {/* マイクボタン: Web Speech API 対応時のみ表示。録音中は色を変えて状態を示す。 */}
+            {/* マイクボタン: Web Speech API 対応時のみ表示。録音中は色を変えて状態を示す。
+                状態は aria-label (開始 / 停止) の切り替えで伝える。aria-pressed を付けると
+                UI Automation ではトグルボタン (TogglePattern) になり、他のボタンと違って
+                Invoke 操作が使えなくなるため付けない。 */}
             {voiceSupported && (
               <button
                 type="button"
                 onClick={onToggleVoice}
                 disabled={composerDisabled}
-                aria-pressed={listening}
                 className={`shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-[var(--r-md)] disabled:opacity-40 ${
                   listening
                     ? 'bg-[var(--ss-danger)] text-white hover:opacity-90 animate-pulse'

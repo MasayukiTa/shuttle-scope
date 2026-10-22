@@ -9,6 +9,7 @@ import { useInsights } from '@/hooks/useConditionAnalytics'
 import type { GrowthCard } from '@/hooks/useConditionAnalytics'
 import { useAuth } from '@/hooks/useAuth'
 import { catColor } from '@/styles/categoricalPalette'
+import { hasValiditySummary } from '@/utils/validitySummary'
 
 interface Props {
   playerId: number
@@ -256,7 +257,7 @@ export function GrowthInsights({ playerId, isLight }: Props) {
             </div>
           )}
 
-          {!isPlayer && data?.validity_summary && (
+          {!isPlayer && hasValiditySummary(data?.validity_summary) && data?.validity_summary && (
             <div className={`mt-3 pt-3 border-t ${borderColor} text-xs ${textMuted}`}>
               <span className="mr-2">{t('condition.insights.validity_summary')}:</span>
               {data.validity_summary.valid_ratio != null && (

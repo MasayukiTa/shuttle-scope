@@ -33,6 +33,10 @@
     "voice_input": "Voice input",
     "voice_stop": "Stop voice input",
     "voice_listening": "Listening…",
+    "starters_title": "You can ask, for example",
+    "starter_turning_point": "Summarize the turning points of this match",
+    "starter_opponent_trend": "Summarize my opponent's tendencies",
+    "starter_practice": "Suggest what to try in the next practice",
     "error": {
       "create": "Failed to create the conversation.",
       "generate": "Failed to generate a response.",
@@ -1733,7 +1737,9 @@
     "copy_button": "Copy error details",
     "copied": "Copied ✓",
     "reload_button": "Reload page",
-    "footer_hint": "Please \"Copy error details\" and send it to the developer."
+    "footer_hint": "Please \"Copy error details\" and send it to the developer.",
+    "public_message": "The screen could not be displayed. Please reload the page. If it keeps happening, tell an administrator the error ID below.",
+    "error_id_label": "Error ID"
   },
   "no_data_message": {
     "unit_default": "items",
@@ -5312,6 +5318,11 @@
     "hint": "External HTTP request & attack-detection logs. For in-app action audit, see Audit Log.",
     "tab_security": "Security events",
     "tab_request": "HTTP requests",
+    "status_line": "Records in this table: {{total}} / Latest record: {{latest}} / Fetched: {{fetched}}",
+    "status_none_yet": "No records yet",
+    "status_unavailable": "Could not load the record count",
+    "empty_never_recorded": "This table has no records at all. Records may not be arriving, or they may have been removed after the retention period.",
+    "empty_filtered": "No records match the filters. This table holds {{total}} records in all.",
     "admin_required": "Admin role required",
     "tab_error": "Errors",
     "all": "All",
