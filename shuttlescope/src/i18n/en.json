@@ -2682,6 +2682,7 @@
     "bbox_cycle_title": "Click to cycle roles",
     "detect_error_pill": "Detection error (closes in 3s)",
     "copy_error": "Copy full error to clipboard",
+    "detect_error_friendly": "No person could be detected. Check the video brightness and framing.",
     "no_person_detected": "No person detected (auto-closes in 3s)",
     "lost_suffix": "(lost)"
   },
@@ -4110,7 +4111,8 @@
     },
     "DateRangeFilter": {
       "custom_range": "Custom range",
-      "range_sep": "to"
+      "range_sep": "to",
+      "range_reversed": "The start date must be on or before the end date"
     },
     "RolePicker": {
       "k1": "Which player are you logging in as?",
@@ -5087,7 +5089,8 @@
       "dismiss": "Dismiss",
       "err_cant_reach_land": "\"Couldn't reach\" cannot have a landing point (saving without one)",
       "err_invalid_land": "That shot type cannot land in that zone. Pick another zone.",
-      "err_service_not_first": "A service can only be the first stroke of the rally"
+      "err_service_not_first": "A service can only be the first stroke of the rally",
+      "err_serve_locked": "The first-stroke serve can only be changed to another service type (short or long)"
     },
     "AnnotateOverlay": {
       "confirm": "Confirm",
@@ -5271,9 +5274,6 @@
       "err_no_match_id": "No match specified",
       "err_unknown": "Unknown error",
       "undo_busy": "Sending now, so it cannot be undone yet. Try again in a few seconds",
-      "undo_unconfirmed": "The server state could not be confirmed, so the undo is not complete. Check your connection and try again",
-      "set_end_pending": "The last rally has not finished sending. Press End set again after it has been sent",
-      "match_saving_pending": "The final rally is still being saved. Keep this screen open until sending finishes",
       "undo_not_delivered": "The undo did not reach the server. Check the connection and try again",
       "video_sec": "Video {{sec}}s",
       "queue_pending": "{{n}} unsent (resending)",

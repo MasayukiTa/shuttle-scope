@@ -14,6 +14,7 @@ import {
 import { apiGet } from '@/api/client'
 import { useReviewBundleSlice } from '@/contexts/ReviewBundleContext'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { perfColor, lightSafe, WIN, getTooltipStyle } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useAuth } from '@/hooks/useAuth'
@@ -97,11 +98,17 @@ export function SetComparison({ playerId, chartHeight = 200, filters = DEFAULT_F
   })
   const resp = bundled ?? indiv.data
   const isLoading = provided ? bundleLoading : indiv.isLoading
+  // bundle 提供時の失敗は bundle 側で扱う。個別取得の失敗だけここで示す
+  const isError = !provided && indiv.isError
 
   if (isLoading) {
     return (
       <div className="text-[var(--ss-t3)] text-sm py-8 text-center">{t('auto.SetComparison.k1')}</div>
     )
+  }
+
+  if (isError) {
+    return <QueryErrorNotice onRetry={() => { void indiv.refetch() }} />
   }
 
   const sets = resp?.data ?? []

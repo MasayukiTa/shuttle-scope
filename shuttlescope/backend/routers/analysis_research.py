@@ -27,6 +27,7 @@ from backend.utils.confidence import check_confidence, VERDICT_MIN_SAMPLE, wilso
 from backend.analysis.router_helpers import (
     SHOT_TYPE_JA, SHOT_KEYS, SHOT_LABELS_JA, END_TYPE_JA, _shot_ja,
     _player_role_in_match, _get_player_matches, _fetch_matches_sets_rallies,
+    validate_date_range,
 )
 from backend.analysis.analysis_config import AnalysisConfig
 from backend.analysis.analysis_registry import get_analysis_meta
@@ -1055,6 +1056,7 @@ def _same_side_pair_matches(
     相手側の打球と勝敗をペアの値に混ぜる (監査 #740)。
     result は 2 人から見た勝敗 ("win" / "loss") で、Match.result (A 側視点) の値そのものではない。
     """
+    validate_date_range(date_from, date_to)
     if player_a_id == player_b_id:
         return []
     q = db.query(Match).filter(
@@ -1285,6 +1287,7 @@ def get_opponent_type_affinity(
     """
     from collections import defaultdict
 
+    validate_date_range(date_from, date_to)
     q = db.query(Match).filter(
         involves_player(player_id)
     )

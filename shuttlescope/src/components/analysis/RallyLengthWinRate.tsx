@@ -12,6 +12,7 @@ import {
   } from 'recharts'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { BAR, LINE, getTooltipStyle } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
@@ -150,7 +151,7 @@ export function RallyLengthWinRate({ playerId, chartHeight = 220, filters = DEFA
     ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
     ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
   }
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError, refetch } = useQuery({
     queryKey: ['analysis-rally-length-win-rate', playerId, filters],
     queryFn: () =>
       apiGet<RallyLengthResponse>('/analysis/rally_length_vs_winrate', {
@@ -164,6 +165,10 @@ export function RallyLengthWinRate({ playerId, chartHeight = 220, filters = DEFA
     return (
       <div className="text-gray-500 text-sm py-8 text-center">{t('auto.RallyLengthWinRate.k1')}</div>
     )
+  }
+
+  if (isError) {
+    return <QueryErrorNotice onRetry={() => { void refetch() }} />
   }
 
   const playerType = normalizePlayerType(resp?.data?.player_type, resp?.data?.player_type_ja)

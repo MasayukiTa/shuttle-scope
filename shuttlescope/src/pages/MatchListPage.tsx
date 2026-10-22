@@ -19,6 +19,7 @@ import { MIcon } from '@/components/common/MIcon'
 import { isPlayableVideoUrl } from '@/utils/videoSrc'
 import { isPlayerSearchBlocked } from '@/utils/playerSearchGuard'
 import { canWriteMatch } from '@/utils/roleAccess'
+import { localDateDaysAgo, localDateMonthsAgo, todayLocal } from '@/utils/localDate'
 
 // 試合登録フォーム
 interface MatchFormData {
@@ -46,7 +47,7 @@ const defaultForm = (): MatchFormData => ({
   tournament: '',
   tournament_level: '',
   round: '',
-  date: new Date().toISOString().split('T')[0],
+  date: todayLocal(),
   format: 'singles',
   player_a_id: '',
   player_b_id: '',
@@ -527,12 +528,11 @@ export function MatchListPage() {
   // 日付プリセット
   function applyDatePreset(preset: 'week' | 'month' | 'month3') {
     const today = new Date()
-    const to = today.toISOString().split('T')[0]
-    const d = new Date(today)
-    if (preset === 'week') d.setDate(d.getDate() - 7)
-    else if (preset === 'month') d.setMonth(d.getMonth() - 1)
-    else d.setMonth(d.getMonth() - 3)
-    setFilterDateFrom(d.toISOString().split('T')[0])
+    const to = todayLocal(today)
+    const from = preset === 'week'
+      ? localDateDaysAgo(7, today)
+      : localDateMonthsAgo(preset === 'month' ? 1 : 3, today)
+    setFilterDateFrom(from)
     setFilterDateTo(to)
   }
 

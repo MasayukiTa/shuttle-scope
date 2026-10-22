@@ -32,6 +32,24 @@ export function strokeValidationError(
   return null
 }
 
+/** Pass2 が作るラリー先頭のサーブ ('serve') と、サーブ種別 (short/long_service)。 */
+const SERVE_SHOTS: readonly string[] = ['serve', ...SERVICE_TYPES]
+
+/**
+ * 1球目のサーブを Pass3 で非サーブ (smash 等) へ変えようとしているか (監査 #795)。
+ * 防ぐ事象: 正規 UI 操作だけでラリー先頭のサーブ情報を失い、サーブ勝率・3球目パターン・
+ * 遷移行列が「サーブの無いラリー」を数える。現在の球が 1 球目のサーブ系のときだけ
+ * 非サーブへの変更を拒否する (途中から記録した 1 球目の非サーブは対象外)。
+ */
+export function isServeDowngrade(
+  strokeNum: number,
+  currentShot: string | null | undefined,
+  nextShot: string,
+): boolean {
+  if (strokeNum !== 1 || !currentShot || !SERVE_SHOTS.includes(currentShot)) return false
+  return !SERVICE_TYPES.includes(nextShot)
+}
+
 const ZONE_CODES: readonly string[] = ['BL', 'BC', 'BR', 'ML', 'MC', 'MR', 'NL', 'NC', 'NR']
 
 /** 保存済みの文字列が 9 分割ゾーンのコードか (コート外・ネット接触は false)。 */

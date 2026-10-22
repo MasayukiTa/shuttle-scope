@@ -6,6 +6,7 @@
  * - densityDates を渡すと試合データ密度をバーで可視化
  */
 import { useRef, useCallback, useId, useMemo, useState } from 'react'
+import { formatLocalDate, todayLocal } from '@/utils/localDate'
 
 interface DateRangeSliderProps {
   from: string | null        // YYYY-MM-DD
@@ -28,15 +29,13 @@ function fromDay(day: number, baseTs: number): string {
   return new Date(baseTs + day * 86400000).toISOString().split('T')[0]
 }
 
+// 既定の左端・右端はローカル暦の日付 (UTC 日付だと JST 0:00-8:59 が前日になる, 監査 #796)
 function defaultMin(): string {
-  const d = new Date()
-  d.setFullYear(d.getFullYear() - 4)
-  d.setMonth(0, 1)
-  return d.toISOString().split('T')[0]
+  return formatLocalDate(new Date(new Date().getFullYear() - 4, 0, 1))
 }
 
 function defaultMax(): string {
-  return new Date().toISOString().split('T')[0]
+  return todayLocal()
 }
 
 // ─── 密度バーデータ生成 ───────────────────────────────────────────────────────

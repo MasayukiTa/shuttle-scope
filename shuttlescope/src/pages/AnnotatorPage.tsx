@@ -5224,6 +5224,8 @@ export function AnnotatorPage() {
               onSetPlayerAStart={handleViewpointChange}
               initialServer={(match?.initial_server as 'player_a' | 'player_b' | undefined) ?? 'player_a'}
               onSetInitialServer={handleInitialServerChange}
+              forceShowKeyHints={forceShowKeyHints}
+              onSetForceShowKeyHints={setForceShowKeyHints}
             />
           )}
         </BottomSheet>

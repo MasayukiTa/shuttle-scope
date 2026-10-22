@@ -3,6 +3,7 @@ from collections import defaultdict
 from datetime import date as DateType
 from typing import Optional
 
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from backend.db.models import Match, GameSet, Rally
@@ -45,12 +46,27 @@ def _player_role_in_match(match: Match, player_id: int) -> str | None:
     return _perspective_ctx(match, player_id)
 
 
+def validate_date_range(date_from, date_to) -> None:
+    """期間の開始日 > 終了日を 422 で拒否する (監査 #797)。
+
+    防ぐ事象: 逆転した期間が「正常な 0 件」として返り、期間指定ミスが
+    「データなし / サンプル不足」に見えていた。date でも YYYY-MM-DD 文字列でも
+    ISO 表記なら辞書順 = 日付順なので文字列化して比べる。
+    """
+    if date_from and date_to and str(date_from) > str(date_to):
+        raise HTTPException(
+            status_code=422,
+            detail="date_from must be on or before date_to",
+        )
+
+
 def _get_player_matches_with_excluded(
     db: Session, player_id: int, result=None, tournament_level=None,
     date_from=None, date_to=None,
 ) -> tuple[list[Match], dict[str, int]]:
     """解析母集団 (勝敗確定 かつ ラリー有り) の試合と、理由別の除外件数を返す。
     定義は analysis_population にある。除外件数は meta の excluded に載せる。"""
+    validate_date_range(date_from, date_to)
     q = db.query(Match).filter(_involves_player(player_id))
     if tournament_level:
         q = q.filter(Match.tournament_level == tournament_level)

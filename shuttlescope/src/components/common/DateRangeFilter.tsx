@@ -8,6 +8,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { clsx } from 'clsx'
 import { MIcon } from '@/components/common/MIcon'
+import { isReversedRange, presetFromDate, type RangePreset } from '@/utils/localDate'
 
 interface DateRangeFilterProps {
   from: string
@@ -16,18 +17,11 @@ interface DateRangeFilterProps {
   className?: string
 }
 
-type Preset = '1m' | '3m' | '6m' | '1y' | 'all'
+type Preset = RangePreset
 
+/** プリセットの開始日 (ローカル暦の YYYY-MM-DD)。UTC 日付に変換しない (監査 #796)。 */
 function computePresetFrom(preset: Preset): string {
-  if (preset === 'all') return ''
-  const d = new Date()
-  switch (preset) {
-    case '1m': d.setMonth(d.getMonth() - 1); break
-    case '3m': d.setMonth(d.getMonth() - 3); break
-    case '6m': d.setMonth(d.getMonth() - 6); break
-    case '1y': d.setFullYear(d.getFullYear() - 1); break
-  }
-  return d.toISOString().split('T')[0]
+  return presetFromDate(preset)
 }
 
 function detectPreset(from: string): Preset | null {
@@ -50,10 +44,22 @@ const PRESET_LABELS: Record<Preset, string> = {
 export function DateRangeFilter({ from, to, onChange, className }: DateRangeFilterProps) {
   const { t } = useTranslation()
   const [showCustom, setShowCustom] = useState(false)
+  const [rangeError, setRangeError] = useState(false)
   const activePreset = detectPreset(from)
+
+  // 開始日 > 終了日は受け付けず、その場で理由を示す (監査 #797)
+  const handleCustom = (nextFrom: string, nextTo: string) => {
+    if (isReversedRange(nextFrom, nextTo)) {
+      setRangeError(true)
+      return
+    }
+    setRangeError(false)
+    onChange(nextFrom, nextTo)
+  }
 
   const handlePreset = (p: Preset) => {
     setShowCustom(false)
+    setRangeError(false)
     onChange(computePresetFrom(p), '')
   }
 
@@ -90,16 +96,25 @@ export function DateRangeFilter({ from, to, onChange, className }: DateRangeFilt
           <input
             type="date"
             value={from}
-            onChange={(e) => onChange(e.target.value, to)}
+            max={to || undefined}
+            aria-invalid={rangeError}
+            onChange={(e) => handleCustom(e.target.value, to)}
             className="ss-num bg-[var(--ss-ctrl-bg)] border border-[var(--ss-ctrl-border)] rounded-ss-md px-1.5 py-0.5 text-xs text-[var(--ss-ctrl-text)]"
           />
           <span className="text-[var(--ss-t3)]">{t('auto.DateRangeFilter.range_sep')}</span>
           <input
             type="date"
             value={to}
-            onChange={(e) => onChange(from, e.target.value)}
+            min={from || undefined}
+            aria-invalid={rangeError}
+            onChange={(e) => handleCustom(from, e.target.value)}
             className="ss-num bg-[var(--ss-ctrl-bg)] border border-[var(--ss-ctrl-border)] rounded-ss-md px-1.5 py-0.5 text-xs text-[var(--ss-ctrl-text)]"
           />
+          {rangeError && (
+            <span role="alert" className="text-red-400">
+              {t('auto.DateRangeFilter.range_reversed')}
+            </span>
+          )}
         </div>
       )}
     </div>

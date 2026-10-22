@@ -2690,6 +2690,7 @@
     "bbox_cycle_title": "クリックで役割切り替え",
     "detect_error_pill": "検出エラー（3秒後に閉じます）",
     "copy_error": "エラー全文をクリップボードにコピー",
+    "detect_error_friendly": "人物を検出できませんでした。映像の明るさと画角を確認してください",
     "no_person_detected": "人物が検出されませんでした（3秒後に自動で閉じます）",
     "lost_suffix": "(ロスト)"
   },
@@ -4118,7 +4119,8 @@
     },
     "DateRangeFilter": {
       "custom_range": "期間指定",
-      "range_sep": "〜"
+      "range_sep": "〜",
+      "range_reversed": "開始日は終了日以前の日付にしてください"
     },
     "RolePicker": {
       "k1": "どの選手としてログインしますか？",
@@ -5099,7 +5101,8 @@
       "dismiss": "閉じる",
       "err_cant_reach_land": "「届かず」は着地点を設定できません（着地点なしで保存します）",
       "err_invalid_land": "その球種はそのゾーンに着地できません。別のゾーンを選んでください",
-      "err_service_not_first": "サーブはラリーの1球目のみ指定できます"
+      "err_service_not_first": "サーブはラリーの1球目のみ指定できます",
+      "err_serve_locked": "1球目のサーブは、サーブの種類(ショート/ロング)にだけ変更できます"
     },
     "AnnotateOverlay": {
       "confirm": "確定",
@@ -5284,9 +5287,6 @@
       "err_no_match_id": "試合が指定されていません",
       "err_unknown": "不明なエラー",
       "undo_busy": "送信中のため取り消せません。数秒後にもう一度押してください",
-      "undo_unconfirmed": "サーバ上の状態を確認できないため、取り消しを完了できません。通信を確認して、もう一度押してください",
-      "set_end_pending": "最終ラリーの送信が終わっていません。送信が終わってから、もう一度「セット終了」を押してください",
-      "match_saving_pending": "最終ラリーを保存中です。送信が終わるまでこの画面を閉じないでください",
       "undo_not_delivered": "取り消しがサーバに届きませんでした。通信を確認して、もう一度押してください",
       "video_sec": "動画 {{sec}} 秒",
       "queue_pending": "未送信 {{n}} 件 (再送中)",

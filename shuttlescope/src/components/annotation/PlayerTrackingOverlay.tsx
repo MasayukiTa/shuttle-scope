@@ -9,6 +9,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { clsx } from 'clsx'
 import { MIcon } from '@/components/common/MIcon'
+import { useAuth } from '@/hooks/useAuth'
 
 // ── 型定義 ────────────────────────────────────────────────────────────────────
 
@@ -120,6 +121,9 @@ export function PlayerTrackingOverlay({
   frameDetectDebug,
 }: Props) {
   const { t } = useTranslation()
+  // 生のエラー文字列と CV 診断値は管理者だけに見せる (監査 #791)。一般の利用者へは平易な案内にする
+  const { role } = useAuth()
+  const showDiagnostics = role === 'admin'
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null)
 
   const nearestFrame = tagging ? null : findNearest(trackFrames, currentSec)
@@ -202,6 +206,12 @@ export function PlayerTrackingOverlay({
                   <span className="bg-red-900/90 text-xs px-3 py-1.5 rounded-ss-pill pointer-events-none" style={{ color: '#fca5a5' }}>
                     {t('player_tracking.detect_error_pill')}
                   </span>
+                  {!showDiagnostics && (
+                    <span className="bg-black/85 text-xs px-3 py-1.5 rounded-ss-md pointer-events-none" style={{ color: '#fff' }}>
+                      {t('player_tracking.detect_error_friendly')}
+                    </span>
+                  )}
+                  {showDiagnostics && (
                   <div className="bg-black/85 rounded-ss-md px-2 py-1.5 flex items-start gap-2 max-w-md">
                     <pre
                       className="text-[10px] font-mono whitespace-pre-wrap break-all text-left select-text overflow-auto"
@@ -220,6 +230,7 @@ export function PlayerTrackingOverlay({
                       <MIcon name="content_copy" className="text-[14px] leading-none" />
                     </button>
                   </div>
+                  )}
                 </>
               ) : (
                 <span className="bg-black/80 text-xs px-3 py-1.5 rounded-ss-pill" style={{ color: '#fff' }}>
@@ -227,7 +238,7 @@ export function PlayerTrackingOverlay({
                 </span>
               )}
               {/* 診断情報（検出ゼロ時のみ表示） */}
-              {frameDetectDebug && (
+              {showDiagnostics && frameDetectDebug && (
                 <div className="bg-black/85 text-[9px] px-2 py-1.5 rounded-ss-md font-mono ss-num text-left" style={{ color: '#94a3b8' }}>
                   <div>{t('auto.PlayerTrackingOverlay.k_backend', { backend: frameDetectDebug.backend ?? '—' })}</div>
                   {frameDetectDebug.frame_mean_brightness !== undefined && (

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { RoleGuard } from '@/components/common/RoleGuard'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 import { WIN, LOSS } from '@/styles/colors'
 import { fmtPct } from '@/utils/format'
@@ -54,7 +55,7 @@ function ComparisonContent({ playerId, filters = DEFAULT_FILTERS }: { playerId: 
     ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
     ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
   }
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError, refetch } = useQuery({
     queryKey: ['analysis-win-loss-comparison', playerId, filters.tournamentLevel, filters.dateFrom, filters.dateTo],
     queryFn: () =>
       apiGet<WinLossResponse>('/analysis/win_loss_comparison', { player_id: playerId, ...fp }),
@@ -63,6 +64,10 @@ function ComparisonContent({ playerId, filters = DEFAULT_FILTERS }: { playerId: 
 
   if (isLoading) {
     return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.loading')}</div>
+  }
+
+  if (isError) {
+    return <QueryErrorNotice onRetry={() => { void refetch() }} />
   }
 
   const sampleSize = resp?.meta?.sample_size ?? 0
