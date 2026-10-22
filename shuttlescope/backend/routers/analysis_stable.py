@@ -22,7 +22,7 @@ from backend.analysis.analysis_config import AnalysisConfig
 from backend.analysis.analysis_registry import get_analysis_meta
 from backend.analysis.response_meta import build_input_provenance
 
-from backend.utils.auth import require_operator_or_demo_read, require_query_scope  # cross-team IDOR ガード
+from backend.utils.auth import require_non_player, require_operator_or_demo_read, require_query_scope  # cross-team IDOR ガード
 from backend.utils.player_privacy import deny_player_on_forbidden_named_path
 
 # 大会レベル別の勝率を「成績」として扱える最小試合数 (相手別 OPPONENT_MIN_MATCHES と同値)
@@ -713,7 +713,7 @@ def get_confidence(player_id: int, analysis_type: str):
 # ---------------------------------------------------------------------------
 
 # player は不可 (勝敗内訳)。定義: backend/utils/player_privacy.py。ミドルウェアと二重に守る。
-@router.get("/analysis/shot_win_loss", dependencies=[Depends(require_operator_or_demo_read)])
+@router.get("/analysis/shot_win_loss", dependencies=[Depends(require_non_player), Depends(require_operator_or_demo_read)])
 def get_shot_win_loss(
     player_id: int,
     result: Optional[str] = Query(None),
@@ -1330,7 +1330,7 @@ def get_tournament_level_comparison(
 # ---------------------------------------------------------------------------
 
 # player は不可 (直接の弱点提示)。定義: backend/utils/player_privacy.py。
-@router.get("/analysis/pre_loss_patterns", dependencies=[Depends(require_operator_or_demo_read)])
+@router.get("/analysis/pre_loss_patterns", dependencies=[Depends(require_non_player), Depends(require_operator_or_demo_read)])
 def get_pre_loss_patterns(
     player_id: int,
     result: Optional[str] = Query(None),
