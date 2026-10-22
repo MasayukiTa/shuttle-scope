@@ -8,6 +8,7 @@ import { TUTORIALS } from '@/components/tutorial/tutorials'
 import { replayTutorial, useTutorialState, useAutoTutorial } from '@/components/tutorial/useTutorial'
 import QRCode from 'qrcode'
 import { errorMessage, errorStatus } from '@/utils/errors'
+import { canDeletePlayer } from '@/utils/roleAccess'
 import { apiGet, apiPost, apiPut, apiDelete, newIdempotencyKey } from '@/api/client'
 import { Player, TeamHistoryEntry, NetworkDiagnostics } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
@@ -160,6 +161,8 @@ export function SettingsPage() {
   // 選手の新規登録は analyst / admin のみ (backend の require_analyst と一致)。
   // coach は閲覧はできるが追加はできないため、追加ボタンは出さない。
   const canCreatePlayers = role === 'analyst' || role === 'admin'
+  // 選手の削除も analyst / admin のみ (backend の DELETE /players/{id} は require_analyst)。coach には削除ボタンを出さない。
+  const canRemovePlayers = canDeletePlayer(role)
   const coachTeamFilter = role === 'coach' ? (teamName ?? '') : null
   // ロール切替用モーダル
   // ロール変更で閲覧権限が失われた場合はタブを退避
@@ -1184,6 +1187,7 @@ export function SettingsPage() {
                             >
                               <MIcon name="edit" size={12} />
                             </button>
+                            {canRemovePlayers && (
                             <button
                               onClick={() => setDeleteConfirmId(p.id)}
                               aria-label={t('a11yLabels.delete_player', { name: p.name })}
@@ -1191,6 +1195,7 @@ export function SettingsPage() {
                             >
                               <MIcon name="delete" size={12} />
                             </button>
+                            )}
                           </div>
                         )}
                       </td>

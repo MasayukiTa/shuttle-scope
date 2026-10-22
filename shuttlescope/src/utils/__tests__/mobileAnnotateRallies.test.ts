@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
+  applyStrokeOverrides,
   decideUndoPending,
   finalHitterFor,
   mergeRallies,
+  mergeStrokes,
   planLiveStart,
   pruneConfirmed,
   resolveNextServer,
@@ -128,5 +130,47 @@ describe('shouldReinitFromServer', () => {
   })
   it('takes the server state when nothing is unsaved', () => {
     expect(shouldReinitFromServer(base, 1, 2)).toBe(true)
+  })
+})
+
+const S = (rally_id: number, stroke_num: number, extra: Record<string, unknown> = {}) => ({
+  rally_id,
+  stroke_num,
+  shot_type: 'clear',
+  ...extra,
+})
+
+describe('mergeStrokes', () => {
+  it('drops a pending local stroke once the server returns the same (rally_id, stroke_num)', () => {
+    const server = [S(1, 1, { id: 10 }), S(1, 2, { id: 11 })]
+    const local = [S(1, 2, { pending: true }), S(1, 3, { pending: true })]
+    const merged = mergeStrokes(server, local)
+    expect(merged.map((s) => s.stroke_num)).toEqual([1, 2, 3])
+    expect(merged[1]).toBe(server[1])
+  })
+
+  it('keeps strokes of other rallies that share a stroke number', () => {
+    const merged = mergeStrokes([S(1, 1, { id: 10 })], [S(2, 1, { pending: true })])
+    expect(merged).toHaveLength(2)
+  })
+})
+
+describe('applyStrokeOverrides', () => {
+  it('shows the edited shot_type and land_zone for a server stroke', () => {
+    const server = [S(1, 1, { id: 10, land_zone: 'A1' }), S(1, 2, { id: 11 })]
+    const out = applyStrokeOverrides(server, new Map([[10, { shot_type: 'smash', land_zone: 'B2' }]]))
+    expect(out[0]).toMatchObject({ id: 10, shot_type: 'smash', land_zone: 'B2' })
+    expect(out[1]).toBe(server[1])
+  })
+
+  it('returns the same array when nothing was edited', () => {
+    const server = [S(1, 1, { id: 10 })]
+    expect(applyStrokeOverrides(server, new Map())).toBe(server)
+  })
+
+  it('applies a renumbered stroke_num', () => {
+    const server = [S(1, 9999, { id: 10 })]
+    const out = applyStrokeOverrides(server, new Map([[10, { stroke_num: 3 }]]))
+    expect(out[0].stroke_num).toBe(3)
   })
 })

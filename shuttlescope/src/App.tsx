@@ -92,12 +92,35 @@ const queryClient = new QueryClient({
   },
 })
 
+// 認証主体 (ログイン中のユーザ) が変わったとき (ログアウト / 別ユーザでログイン) は、
+// 前の主体の query cache を捨てる。`['players']` のように主体を key に含まない query が
+// 共有ブラウザで次のユーザへ見えるのを防ぐ。token の更新 (同一ユーザ) では消さない。
+function readAuthSubject(): string {
+  try {
+    if (!sessionStorage.getItem('shuttlescope_token')) return ''
+    return `user:${sessionStorage.getItem('shuttlescope_user_id') ?? ''}`
+  } catch {
+    return ''
+  }
+}
+if (typeof window !== 'undefined') {
+  let lastAuthSubject = readAuthSubject()
+  window.addEventListener('shuttlescope:auth-changed', () => {
+    const next = readAuthSubject()
+    if (next === lastAuthSubject) return
+    lastAuthSubject = next
+    queryClient.clear()
+  })
+}
+
 type NavItem = {
   to: string
   label: string
   shortLabel?: string
   icon: string  // Material Symbols icon name (MIcon)
   badge?: number | null
+  /** 件数が取得できていない (0件ではない)。badge が無いときだけ「?」で状態不明を示す。 */
+  badgeUnknown?: boolean
 }
 
 // サイドバー折りたたみ状態の localStorage キー。
@@ -173,6 +196,9 @@ function Sidebar() {
     refetchInterval: 30_000,
   })
   const unreadCount = unreadCountQuery.data?.data?.count ?? 0
+  // 取得失敗かつ一度も成功していない間は「未読0件」と区別して状態不明を示す
+  // (成功済みなら react-query が前回の件数を保持するので、その値をそのまま使う)。
+  const unreadCountUnknown = unreadCountQuery.isError && unreadCountQuery.data === undefined
   // 承認待ちユーザ数 (admin のみ取得。失敗時は null でバッジを出さない)。
   const pendingCount = usePendingApprovalCount(role)
 
@@ -206,7 +232,7 @@ function Sidebar() {
       : []),
     ...(role === 'admin'
       ? [
-          { to: '/notifications', label: t('auto.App.k2'), shortLabel: t('nav.notifications_short'), icon: 'notifications', badge: unreadCount > 0 ? unreadCount : null },
+          { to: '/notifications', label: t('auto.App.k2'), shortLabel: t('nav.notifications_short'), icon: 'notifications', badge: unreadCount > 0 ? unreadCount : null, badgeUnknown: unreadCountUnknown },
           { to: '/users', label: t('nav.users'), icon: 'group' },
           {
             to: '/users/pending',
@@ -304,7 +330,7 @@ function Sidebar() {
         </button>
 
         <div className="pt-2" />
-        {navItems.map(({ to, label, shortLabel, icon, badge }) => (
+        {navItems.map(({ to, label, shortLabel, icon, badge, badgeUnknown }) => (
           <NavLink
             key={to}
             to={to}
@@ -338,6 +364,14 @@ function Sidebar() {
                   {badge ? (
                     <span className="absolute -top-2 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] leading-4 text-center">
                       {badge > 99 ? '99+' : badge}
+                    </span>
+                  ) : badgeUnknown ? (
+                    <span
+                      className="absolute -top-2 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-amber-500 text-white text-[9px] leading-4 text-center"
+                      title={t('nav.badge_unknown')}
+                      aria-label={t('nav.badge_unknown')}
+                    >
+                      ?
                     </span>
                   ) : null}
                 </div>
@@ -405,7 +439,7 @@ function Sidebar() {
             minHeight: 'calc(56px + env(safe-area-inset-bottom, 0px))',
           }}
         >
-          {navItems.map(({ to, label, shortLabel, icon, badge }) => (
+          {navItems.map(({ to, label, shortLabel, icon, badge, badgeUnknown }) => (
             <NavLink
               key={to}
               to={to}
@@ -424,6 +458,14 @@ function Sidebar() {
                 {badge ? (
                   <span className="absolute -top-2 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] leading-4 text-center">
                     {badge > 99 ? '99+' : badge}
+                  </span>
+                ) : badgeUnknown ? (
+                  <span
+                    className="absolute -top-2 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-amber-500 text-white text-[9px] leading-4 text-center"
+                    title={t('nav.badge_unknown')}
+                    aria-label={t('nav.badge_unknown')}
+                  >
+                    ?
                   </span>
                 ) : null}
               </div>

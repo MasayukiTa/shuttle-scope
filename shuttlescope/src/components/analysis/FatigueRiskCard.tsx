@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { LOSS } from '@/styles/colors'
@@ -63,7 +64,7 @@ function Inner({ playerId, tournamentLevel }: FatigueRiskCardProps) {
   const { t } = useTranslation()
   const isLight = useIsLightMode()
 
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError, refetch } = useQuery({
     queryKey: ['prediction-fatigue-risk', playerId, tournamentLevel],
     queryFn: () =>
       apiGet<FatigueResponse>('/prediction/fatigue_risk', {
@@ -75,6 +76,11 @@ function Inner({ playerId, tournamentLevel }: FatigueRiskCardProps) {
 
   if (isLoading) {
     return <div className="text-[var(--ss-t3)] text-sm py-4 text-center">{t('prediction.loading')}</div>
+  }
+
+  // 取得失敗を「ラリー不足」に変換しない。
+  if (isError) {
+    return <QueryErrorNotice onRetry={() => { void refetch() }} />
   }
 
   const d = resp?.data

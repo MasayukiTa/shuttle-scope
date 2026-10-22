@@ -12,7 +12,10 @@
  * Disclosed in PRIVACY.md §テレメトリ. No popup consent; Art 21 objection
  * via contact@shuttle-scope.com.
  */
-import { API_BASE_URL, getAuthHeaders } from '@/api/client'
+import { API_BASE_URL, fetchWithTimeout, getAuthHeaders } from '@/api/client'
+
+/** telemetry 送信の timeout (ms)。flush ロックを無期限に握らないための上限。 */
+const FLUSH_TIMEOUT_MS = 15_000
 
 // ─── event taxonomy (server-side allowlist と同期させること) ────────────
 export type EventType =
@@ -197,13 +200,14 @@ export async function flushNow(): Promise<void> {
     let ok = false
     try {
       // sendBeacon は認証ヘッダ送れないので fetch を使う
-      const r = await fetch(`${API_BASE_URL}/_telemetry/ingest`, {
+      // 応答しない半断で _flushing が永久に固定されないよう有限 timeout を掛ける。
+      const r = await fetchWithTimeout(`${API_BASE_URL}/_telemetry/ingest`, {
         method: 'POST',
         headers,
         body,
         // credentials は同一オリジン default。CORS の場合は backend が許可。
         keepalive: true,
-      })
+      }, FLUSH_TIMEOUT_MS)
       ok = r.ok
       if (ok) {
         // 未ログインで受け取られなかった (inserted 0 / skipped no_user) 場合は、

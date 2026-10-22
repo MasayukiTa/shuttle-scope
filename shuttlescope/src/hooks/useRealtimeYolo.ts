@@ -29,6 +29,20 @@ const TARGET_FPS = 10
 const JPEG_QUALITY = 0.55
 const CAPTURE_W = 640
 const CAPTURE_H = 360
+/** 推論応答の deadline (ms)。この間 detections/skipped/error が来ない送信は欠落扱いにする。 */
+export const INFER_DEADLINE_MS = 5000
+/** deadline 超過がこの回数連続したら WebSocket を張り直す。 */
+export const MAX_CONSECUTIVE_TIMEOUTS = 3
+
+/** 送信済みで応答待ちの推論が deadline を超えたか (inflight を解放すべきか)。 */
+export function isInferenceOverdue(
+  inflight: number,
+  sentAtMs: number,
+  nowMs: number,
+  deadlineMs: number = INFER_DEADLINE_MS,
+): boolean {
+  return inflight >= 1 && nowMs - sentAtMs > deadlineMs
+}
 
 export function useRealtimeYolo(
   stream: MediaStream | null,
@@ -93,8 +107,12 @@ export function useRealtimeYolo(
     ws.binaryType = 'arraybuffer'
     // cleanup 由来の close で再接続をスケジュールしないためのフラグ。
     let cleanedUp = false
+    // 応答欠落 watchdog: 最後の送信時刻と、deadline 超過の連続回数。
+    let lastSentAt = 0
+    let consecutiveTimeouts = 0
 
     ws.onopen = () => {
+      consecutiveTimeouts = 0
       setConnected(true)
       setError(null)
       // ws #5 fix: reconnect 後 inflightRef が 1 のまま残ると新規キャプチャが
@@ -123,8 +141,12 @@ export function useRealtimeYolo(
     ws.onmessage = (ev) => {
       try {
         const msg = JSON.parse(ev.data)
+        if (msg.type === 'detections' || msg.type === 'skipped' || msg.type === 'error') {
+          consecutiveTimeouts = 0  // 応答が返った = サーバは生きている
+        }
         if (msg.type === 'detections') {
           setBoxes(Array.isArray(msg.boxes) ? msg.boxes : [])
+          setError(null)  // 推論が復帰した (応答欠落の警告を解除)
           if (typeof msg.infer_ms === 'number') setInferMs(msg.infer_ms)
           inflightRef.current = Math.max(0, inflightRef.current - 1)
         } else if (msg.type === 'skipped') {
@@ -143,7 +165,20 @@ export function useRealtimeYolo(
     timerRef.current = setInterval(() => {
       if (!ctx || ws.readyState !== WebSocket.OPEN) return
       if (video.readyState < 2) return
-      if (inflightRef.current >= 1) return  // 1 推論ごと同期
+      if (inflightRef.current >= 1) {
+        // 1 推論ごと同期。ただし応答が欠落すると inflight が固定され FPS=0 のまま
+        // 接続中に見えるため、deadline 超過で解放する。連続超過なら接続を張り直す。
+        if (isInferenceOverdue(inflightRef.current, lastSentAt, Date.now())) {
+          inflightRef.current = 0
+          consecutiveTimeouts += 1
+          setError('inference timeout')
+          if (consecutiveTimeouts >= MAX_CONSECUTIVE_TIMEOUTS) {
+            consecutiveTimeouts = 0
+            try { ws.close() } catch { /* ignore */ }  // onclose が backoff 再接続を予約する
+          }
+        }
+        return
+      }
       try {
         ctx.drawImage(video, 0, 0, CAPTURE_W, CAPTURE_H)
       } catch { return }
@@ -153,6 +188,7 @@ export function useRealtimeYolo(
           blob.arrayBuffer().then((ab) => {
             if (ws.readyState === WebSocket.OPEN) {
               inflightRef.current += 1
+              lastSentAt = Date.now()
               ws.send(ab)
             }
           }).catch(() => {})

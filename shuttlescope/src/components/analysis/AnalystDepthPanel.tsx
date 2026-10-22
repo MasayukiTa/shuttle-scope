@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next'
 import { matchOutcomeLabelKey } from '@/utils/matchResult'
 import { apiGet } from '@/api/client'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { WIN, LOSS } from '@/styles/colors'
@@ -441,7 +442,7 @@ function Inner({ playerId, opponentId, tournamentLevel }: Props) {
   const isLight = useIsLightMode()
   const subText = isLight ? '#64748b' : '#9ca3af'
 
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError, refetch } = useQuery({
     queryKey: ['prediction-analyst-depth', playerId, opponentId, tournamentLevel],
     queryFn: () =>
       apiGet<{ success: boolean; data: AnalystDepthData }>('/prediction/analyst_depth', {
@@ -454,6 +455,11 @@ function Inner({ playerId, opponentId, tournamentLevel }: Props) {
 
   if (isLoading) {
     return <p className="text-xs text-gray-500 py-2">{t('prediction.loading')}</p>
+  }
+
+  // 取得失敗でセクションごと無言で消えないよう、失敗を明示する。
+  if (isError) {
+    return <QueryErrorNotice onRetry={() => { void refetch() }} />
   }
 
   const d = resp?.data

@@ -66,6 +66,12 @@ type RefreshResult = 'ok' | 'invalid' | 'transient' | 'superseded'
 type RefreshFlight = { refreshToken: string; promise: Promise<RefreshResult> }
 let _refreshInflight: RefreshFlight | null = null
 
+/** /auth/refresh 専用の timeout (ms)。通常 API の 60s より短くし、refresh を待つ全 API を長く止めない。 */
+export const REFRESH_TIMEOUT_MS = 15_000
+
+/** 起動時 /health の timeout (ms)。応答しない半断で起動画面が固定されるのを防ぐ。 */
+export const HEALTH_TIMEOUT_MS = 5_000
+
 async function tryRefreshToken(): Promise<RefreshResult> {
   const rt = sessionStorage.getItem(REFRESH_KEY)
   if (!rt) return 'invalid'
@@ -79,11 +85,17 @@ async function tryRefreshToken(): Promise<RefreshResult> {
     try {
       let res: Response
       try {
-        res = await fetch(`${BASE_URL}/auth/refresh`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refresh_token: rt }),
-        })
+        // 半断 (TCP 接続のみ成立し応答しない) で single-flight 全体が固定されないよう、
+        // refresh 自体にも有限 timeout を掛ける。timeout は catch へ落ち 'transient' になる。
+        res = await fetchWithTimeout(
+          `${BASE_URL}/auth/refresh`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refresh_token: rt }),
+          },
+          REFRESH_TIMEOUT_MS,
+        )
       } catch {
         // network / timeout = transient. Never destroy a valid refresh token.
         return sessionStorage.getItem(REFRESH_KEY) === rt ? 'transient' : 'superseded'
@@ -282,15 +294,19 @@ export async function fetchWithTimeout(
 // POST /sessions/{code}/devices/{pid}/heartbeat (参加者トークン認証)
 const PARTICIPANT_HEARTBEAT_RE = /\/sessions\/[^/?#]+\/devices\/[^/?#]+\/heartbeat(?:[?#]|$)/
 
-async function fetchWithAutoRefresh(input: string, init: RequestInit): Promise<Response> {
-  const wrap = _withDefaultTimeout(input, init)
+async function fetchWithAutoRefresh(
+  input: string,
+  init: RequestInit,
+  timeoutMs: number = DEFAULT_API_TIMEOUT_MS,
+): Promise<Response> {
+  const wrap = _withDefaultTimeout(input, init, timeoutMs)
   let res: Response
   try {
     res = await fetch(input, wrap.init)
   } catch (e) {
     wrap.cleanup()
     if (wrap.isTimeout()) {
-      throw new Error(`API timeout (${DEFAULT_API_TIMEOUT_MS}ms): ${input}`, { cause: e })
+      throw new Error(`API timeout (${timeoutMs}ms): ${input}`, { cause: e })
     }
     throw e
   } finally {
@@ -330,7 +346,7 @@ async function fetchWithAutoRefresh(input: string, init: RequestInit): Promise<R
   const wrap2 = _withDefaultTimeout(input, {
     ...init,
     headers: { ...(init.headers as Record<string, string>), ...authHeaders() },
-  })
+  }, timeoutMs)
   try {
     const retryRes = await fetch(input, wrap2.init)
     // refresh 直後の再送がなお 401/403 = role 剥奪 / 新トークン拒否 → 失効扱い。
@@ -340,12 +356,27 @@ async function fetchWithAutoRefresh(input: string, init: RequestInit): Promise<R
     return retryRes
   } catch (e) {
     if (wrap2.isTimeout()) {
-      throw new Error(`API timeout (${DEFAULT_API_TIMEOUT_MS}ms after refresh): ${input}`, { cause: e })
+      throw new Error(`API timeout (${timeoutMs}ms after refresh): ${input}`, { cause: e })
     }
     throw e
   } finally {
     wrap2.cleanup()
   }
+}
+
+/** 401 時に共通の single-flight refresh を通して 1 回だけ再送する生 fetch。
+ *  SSE ストリーム (LLM) / chunk upload / コート補正保存のように、Response をそのまま
+ *  扱いたい経路向け。timeout はヘッダ受信までに掛かり、本文ストリームは打ち切らない。 */
+export function fetchAuthed(
+  input: string,
+  init: RequestInit = {},
+  timeoutMs: number = DEFAULT_API_TIMEOUT_MS,
+): Promise<Response> {
+  return fetchWithAutoRefresh(
+    input,
+    { ...init, headers: { ...authHeaders(), ...((init.headers as Record<string, string> | undefined) ?? {}) } },
+    timeoutMs,
+  )
 }
 
 export async function getParticipantIceConfig(
@@ -980,7 +1011,9 @@ export function pipelineJob(job_id: number): Promise<AnalysisJobDTO> {
 
 export async function checkHealth(): Promise<boolean> {
   try {
-    const res = await fetch(`${BASE_URL}/health`)
+    // 起動時の入口。応答しない半断で 1 回の await から戻らないよう短い timeout を掛け、
+    // timeout は false (未起動) として呼び出し側の poll 継続へ戻す。
+    const res = await fetchWithTimeout(`${BASE_URL}/health`, {}, HEALTH_TIMEOUT_MS)
     return res.ok
   } catch {
     return false

@@ -1,6 +1,6 @@
 // 汎用 LLM チャット (/#/llm) の API クライアント。
 // 会話 CRUD は通常の apiGet/apiPost、メッセージ送信のみ SSE ストリーミングを生 fetch で扱う。
-import { API_BASE_URL, apiGet, apiPost, apiPatch, apiDelete } from './client'
+import { API_BASE_URL, apiGet, apiPost, apiPatch, apiDelete, fetchAuthed } from './client'
 
 export interface LlmConversation {
   id: number
@@ -41,25 +41,17 @@ export type StreamEvent = {
   thinking?: boolean
 }
 
-// client.ts の authHeaders と同等 (token 優先、無ければ X-Role フォールバック)。
-function authHeaders(): Record<string, string> {
-  const h: Record<string, string> = {}
-  try {
-    const token = sessionStorage.getItem('shuttlescope_token')
-    if (token) {
-      h['Authorization'] = `Bearer ${token}`
-    } else {
-      const role = sessionStorage.getItem('shuttlescope_role')
-      const pid = sessionStorage.getItem('shuttlescope_player_id')
-      const team = sessionStorage.getItem('shuttlescope_team_name')
-      if (role) h['X-Role'] = role
-      if (pid) h['X-Player-Id'] = pid
-      if (team) h['X-Team-Name'] = encodeURIComponent(team)
-    }
-  } catch {
-    /* ignore */
+// backend が構造化 detail ({"error": "budget_exceeded"} 等) を返したときの安定コードを取り出す。
+// detail が文字列ならそのまま、object なら error / code、どれも無ければ null (呼び出し側で汎用文言)。
+export function extractLlmErrorDetail(detail: unknown): string | null {
+  if (typeof detail === 'string') return detail || null
+  if (detail && typeof detail === 'object') {
+    const o = detail as Record<string, unknown>
+    if (typeof o.error === 'string' && o.error) return o.error
+    if (typeof o.code === 'string' && o.code) return o.code
+    if (typeof o.message === 'string' && o.message) return o.message
   }
-  return h
+  return null
 }
 
 export function getLlmConfig() {
@@ -112,9 +104,11 @@ export async function streamMessage(
     const payload: { content: string; model?: string; images?: string[] } = { content }
     if (model) payload.model = model
     if (images.length > 0) payload.images = images
-    resp = await fetch(`${API_BASE_URL}/llm/conversations/${conversationId}/messages`, {
+    // 共通の refresh-aware 経路: access token 期限切れ (401) は single-flight refresh 後に 1 回だけ再送する。
+    // 認可失敗は生成開始前に返るため、再送で二重生成にはならない。
+    resp = await fetchAuthed(`${API_BASE_URL}/llm/conversations/${conversationId}/messages`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       signal,
     })
@@ -126,7 +120,9 @@ export async function streamMessage(
     let msg = `HTTP ${resp.status}`
     try {
       const j = await resp.json()
-      if (j && j.detail) msg = String(j.detail)
+      // detail が object のとき String() すると "[object Object]" になるため、安定コードを取り出す。
+      const d = extractLlmErrorDetail(j?.detail)
+      if (d) msg = d
     } catch {
       /* ignore */
     }

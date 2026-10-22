@@ -143,7 +143,12 @@ export default function LlmChatPage() {
   }, [])
 
   useEffect(() => {
-    getLlmConfig().then(setConfig).catch(() => setConfig(null))
+    // 設定 / モデル一覧の取得失敗は黙って握り潰さず利用者へ知らせる (モデル未選択のまま
+    // backend 既定へ暗黙送信される状態に気付けるようにする)。
+    getLlmConfig().then(setConfig).catch(() => {
+      setConfig(null)
+      setError(i18n.t('llm.error.bootstrap_failed'))
+    })
     refreshConversations()
     // モデル一覧を取得し、選択中モデルを決める:
     // localStorage の値が allowlist 内ならそれを、無ければ backend 既定を使う。
@@ -157,6 +162,7 @@ export default function LlmChatPage() {
       .catch(() => {
         setModels([])
         setSelectedModel('')
+        setError(i18n.t('llm.error.bootstrap_failed'))
       })
   }, [refreshConversations])
 
@@ -430,7 +436,8 @@ export default function LlmChatPage() {
           errored = true
           setStreaming(false)
           // ミッドストリームエラー: 既出のストリームテキストは消さず確定バブル + エラー注記にする。
-          setError(e.message || t('llm.error.generate'))
+          // backend の安定コード (budget_exceeded) は翻訳文言へ。それ以外は従来どおり。
+          setError(e.message === 'budget_exceeded' ? t('llm.error.budget_exceeded') : e.message || t('llm.error.generate'))
         }
       }, controller.signal, useModel, sendImages)
     } catch {
@@ -1110,6 +1117,7 @@ function ConversationList({
 function Bubble({ role, content, images, pending }: { role: string; content: string; images?: string[]; pending?: boolean }) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
+  const [copyFailed, setCopyFailed] = useState(false)
   const isUser = role === 'user'
   if (isUser) {
     return (
@@ -1137,12 +1145,20 @@ function Bubble({ role, content, images, pending }: { role: string; content: str
       </div>
     )
   }
-  const onCopy = () => {
+  const onCopy = async () => {
+    // 成功表示は writeText の Promise が解決してからだけ出す。
+    // 非対応環境 (http 等) / 権限拒否 (reject) は「コピーできませんでした」を出す。
     try {
-      navigator.clipboard?.writeText(content)
+      if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable')
+      await navigator.clipboard.writeText(content)
+      setCopyFailed(false)
       setCopied(true)
       window.setTimeout(() => setCopied(false), 1500)
-    } catch { /* clipboard 非対応環境 (http 等) は無視 */ }
+    } catch {
+      setCopied(false)
+      setCopyFailed(true)
+      window.setTimeout(() => setCopyFailed(false), 3000)
+    }
   }
   // assistant: Markdown 描画 (コードブロック/箇条書き等)。ChatMarkdown は未閉鎖フェンスも許容するため
   // ストリーミング中 (pending) も Markdown 描画し、確定時の再レイアウトちらつきを無くす。
@@ -1160,12 +1176,12 @@ function Bubble({ role, content, images, pending }: { role: string; content: str
           title={t('llm.copy')}
         >
           <MIcon name={copied ? 'check' : 'content_copy'} size={14} ariaHidden />
-          {copied ? t('llm.copied') : t('llm.copy')}
+          {copied ? t('llm.copied') : copyFailed ? t('llm.copy_failed') : t('llm.copy')}
         </button>
       )}
-      {/* コピー成功をスクリーンリーダーへ通知 (視覚表示はボタン側ラベルで実施)。 */}
+      {/* コピー結果をスクリーンリーダーへ通知 (視覚表示はボタン側ラベルで実施)。 */}
       <span role="status" aria-live="polite" className="sr-only">
-        {copied ? t('llm.copied') : ''}
+        {copied ? t('llm.copied') : copyFailed ? t('llm.copy_failed') : ''}
       </span>
     </div>
   )

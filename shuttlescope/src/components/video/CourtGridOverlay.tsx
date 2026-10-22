@@ -17,7 +17,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback, RefObject } from 'react'
-import { apiGet, API_BASE_URL, getAuthHeaders } from '@/api/client'
+import { apiGet, API_BASE_URL, fetchAuthed } from '@/api/client'
 import { useTranslation } from 'react-i18next'
 import { MIcon } from '@/components/common/MIcon'
 
@@ -190,18 +190,19 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
       try { ac.abort() } catch { /* ignore */ }
     }, SAVE_TIMEOUT_MS)
 
-    // apiPost は AbortSignal を渡せないため fetch を直接叩く。
-    // 仕様 (URL / ヘッダ / ボディ shape) は apiPost と同等。
-    fetch(`${API_BASE_URL}/matches/${matchId}/court_calibration`, {
+    // apiPost は AbortSignal を渡せないため fetchAuthed を使う。URL / ヘッダ / ボディ shape は
+    // apiPost と同等で、access token 期限切れ (401) は共通の single-flight refresh 後に 1 回再送する。
+    // 上のタイマー (SAVE_TIMEOUT_MS) が先に発火するよう、内側の timeout は少し長くする。
+    fetchAuthed(`${API_BASE_URL}/matches/${matchId}/court_calibration`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         points: pts.map((p) => ({ x: p.x, y: p.y })),
         container_width:  containerSize.w,
         container_height: containerSize.h,
       }),
       signal: ac.signal,
-    })
+    }, SAVE_TIMEOUT_MS + 5_000)
       .then(async (res) => {
         if (!res.ok) {
           const text = await res.text().catch(() => '')
