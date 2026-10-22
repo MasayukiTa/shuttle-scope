@@ -159,6 +159,7 @@ def classical_mds(D: np.ndarray, dims: int = 2) -> np.ndarray:
     if N == 1:
         return np.zeros((1, dims))
 
+    requested_dims = dims
     dims = min(dims, N - 1)   # MDS の自由度は N-1 まで
 
     # 二重中心化: B = -1/2 * H D^2 H,  H = I - (1/N) 11^T
@@ -177,4 +178,9 @@ def classical_mds(D: np.ndarray, dims: int = 2) -> np.ndarray:
 
     # 座標: X = V_k * diag(sqrt(λ_k))
     coords = eigvecs[:, :dims] * np.sqrt(eigvals_clipped)[None, :]
+    if dims < requested_dims:
+        # 選手が少なく自由度が足りない軸は 0 で埋め、常に (N, requested_dims) を返す。
+        # 呼び出し側 (style_distance) は x, y の 2 列を前提に添字で読むため、
+        # 2 人のコホートで列が 1 本になると IndexError になる。
+        coords = np.hstack([coords, np.zeros((N, requested_dims - dims))])
     return coords

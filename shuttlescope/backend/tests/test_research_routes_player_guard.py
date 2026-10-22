@@ -10,11 +10,13 @@ player を止めていて、ルート自身には役割の依存が無かった�
 """
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 from fastapi.testclient import TestClient
 
 from backend.db.database import get_db
-from backend.db.models import Player, Team, User
+from backend.db.models import Match, Player, Team, User
 from backend.main import app
 from backend.routers.auth import _hash_password
 from backend.utils.jwt_utils import create_access_token
@@ -107,15 +109,27 @@ def world(db_session):
     own = Player(name="Own Player", name_normalized="own", team_id=team.id)
     db.add(own)
     db.flush()
+    opp = Player(name="Opp Player", name_normalized="opp", team_id=team.id)
+    db.add(opp)
+    db.flush()
     db.add(User(
         id=_PLAYER_USER_ID, username="pl", role="player", display_name="x",
         hashed_credential=_hash_password("pw"), player_id=own.id,
         team_name="T", team_id=team.id,
     ))
+    # match_id クエリ付きの要求は、役割ガードより前にミドルウェアが試合の存在と
+    # 参加者を検証する (存在しなければ 404)。ルート自身のガードを試すには、
+    # 本人が出る実在の試合を渡す必要がある。
+    match = Match(
+        tournament="t", tournament_level="IC", round="r", date=date(2026, 1, 10),
+        format="singles", player_a_id=own.id, player_b_id=opp.id, result="win",
+        annotation_status="complete", annotation_progress=1.0,
+    )
+    db.add(match)
     db.commit()
     app.dependency_overrides[get_db] = lambda: db
     try:
-        yield {"db": db, "own": own}
+        yield {"db": db, "own": own, "opp": opp, "match": match}
     finally:
         app.dependency_overrides.clear()
 
@@ -125,8 +139,11 @@ def client():
     return TestClient(app, raise_server_exceptions=False)
 
 
-def _url(path: str, pid: int) -> str:
-    return f"{path}?player_id={pid}&match_id=1&opponent_id=1&partner_id=1"
+def _url(path: str, world: dict) -> str:
+    return (
+        f"{path}?player_id={world['own'].id}&match_id={world['match'].id}"
+        f"&opponent_id={world['opp'].id}&partner_id={world['opp'].id}"
+    )
 
 
 class TestHttp:
@@ -141,14 +158,13 @@ class TestHttp:
     def test_player_gets_403(self, world, client, path):
         pid = world["own"].id
         h = _headers("player", user_id=_PLAYER_USER_ID, player_id=pid)
-        r = client.get(_url(path, pid), headers=h)
+        r = client.get(_url(path, world), headers=h)
         assert r.status_code == 403, (path, r.status_code, r.text[:200])
 
     @pytest.mark.parametrize("path", _plain_get_paths())
     @pytest.mark.parametrize("role", ["analyst", "admin"])
     def test_analyst_and_admin_are_not_rejected(self, world, client, path, role):
-        pid = world["own"].id
-        r = client.get(_url(path, pid), headers=_headers(role))
+        r = client.get(_url(path, world), headers=_headers(role))
         # 引数が足りず 422 / データ無しで 404 になるルートはある。役割で弾かれていないことだけを見る。
         assert r.status_code not in (401, 403), (path, role, r.status_code, r.text[:200])
 
@@ -159,8 +175,7 @@ class TestHttp:
         "/api/prediction/fatigue_risk",
     ])
     def test_coach_is_not_rejected_where_coach_was_allowed(self, world, client, path):
-        pid = world["own"].id
-        r = client.get(_url(path, pid), headers=_headers("coach"))
+        r = client.get(_url(path, world), headers=_headers("coach"))
         assert r.status_code not in (401, 403), (path, r.status_code, r.text[:200])
 
     @pytest.mark.parametrize("path", [
@@ -171,7 +186,7 @@ class TestHttp:
     def test_named_stable_paths_player_403_others_ok(self, world, client, path):
         pid = world["own"].id
         h = _headers("player", user_id=_PLAYER_USER_ID, player_id=pid)
-        assert client.get(_url(path, pid), headers=h).status_code == 403
+        assert client.get(_url(path, world), headers=h).status_code == 403
         for role in ("coach", "analyst", "admin"):
-            r = client.get(_url(path, pid), headers=_headers(role))
+            r = client.get(_url(path, world), headers=_headers(role))
             assert r.status_code not in (401, 403), (path, role, r.status_code)
