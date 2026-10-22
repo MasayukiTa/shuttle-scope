@@ -2850,6 +2850,7 @@
       "status_on": "GRANTED",
       "status_off": "NOT GRANTED",
       "granted_on": "Granted on",
+      "view_doc": "View document",
       "confirm_withdraw": "Withdraw consent \"{{type}}\"?\n\nAfter withdrawal you will be excluded from the related processing (e.g. AI model training). Withdrawal history is retained for GDPR / APPI monitoring purposes.\n\nIf you also wish to have related data deleted, please contact contact@shuttle-scope.com separately (handled within 30 days per Consent Form §8(2)).",
       "error": "Failed to withdraw. Please retry.",
       "types": {
@@ -4141,7 +4142,7 @@
     },
     "PeerComparisonCard": {
       "title": "Community peer comparison (experimental, admin only)",
-      "banner": "research-tier / admin-only — individual player values are never returned; only p25/p50/p75/mean/sd aggregates. k-anonymity (N>=5) is enforced and demo data is excluded.",
+      "banner": "research-tier / admin-only — individual player values are never returned; only p25/p50/p75/mean/sd aggregates. Cohorts of fewer than 5 players are not shown. Demo data is excluded.",
       "cohort_heading": "Cohort filters (optional)",
       "age_bucket": "Age",
       "level": "Level",

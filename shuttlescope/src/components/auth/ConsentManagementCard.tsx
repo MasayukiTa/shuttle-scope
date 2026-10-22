@@ -16,7 +16,7 @@ import { MIcon } from '@/components/common/MIcon'
  * は撤回ボタン押下 → 確認ダイアログ → DELETE /api/auth/consents/{type}。
  */
 export function ConsentManagementCard({ isLight }: { isLight: boolean }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const qc = useQueryClient()
   const [pending, setPending] = useState<ConsentType | null>(null)
 
@@ -174,6 +174,16 @@ export function ConsentManagementCard({ isLight }: { isLight: boolean }) {
                     <div className={`text-xs mt-1 text-[var(--ss-t3)]`}>
                       {t('settings.consent.withdrawn_label', '撤回済み')}: {new Date(rec.withdrawn_at).toLocaleDateString()}
                     </div>
+                  )}
+                  {CONSENT_DOC_SLUG[type] && (
+                    <a
+                      href={`${i18n.language?.startsWith('en') ? '/en' : ''}/legal/${CONSENT_DOC_SLUG[type]}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs mt-1 inline-block underline text-[var(--ss-brand)]"
+                    >
+                      {t('settings.consent.view_doc', '文書の内容を確認')}
+                    </a>
                   )}
                 </div>
 
