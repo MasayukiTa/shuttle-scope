@@ -1783,8 +1783,8 @@ def get_flash_advice(
             opportunity_ok = True
             opportunity_body = (
                 f"「{shot_label}」での得点が多い"
-                f"（このセットで {shot_label} を打ったラリーの勝率 {win_pct}%"
-                f" / {len(rallies_with_shot_won)}-{shot_rallies_total}ラリー）"
+                f"（このセットで「{shot_label}」を打った{shot_rallies_total}ラリー中"
+                f"{len(rallies_with_shot_won)}ラリーで得点、{win_pct}%）"
             )
         else:
             opportunity_body = (

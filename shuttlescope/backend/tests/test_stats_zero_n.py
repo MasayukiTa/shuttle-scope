@@ -418,8 +418,8 @@ class TestFlashAdvice:
         body = _body(_flash(client, m, gs, a), "opportunity")
         assert body == (
             f"「{label}」での得点が多い"
-            f"（このセットで {label} を打ったラリーの勝率 100%"
-            f" / 6-6ラリー）"
+            f"（このセットで「{label}」を打った6ラリー中"
+            f"6ラリーで得点、100%）"
         )
 
     def test_one_long_rally_does_not_say_watch_for_fatigue(self, client, db_session):

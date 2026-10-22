@@ -1253,6 +1253,7 @@
     "analyst_side_bottom": "⬇ Bottom of screen (analyst near)",
     "analyst_side_bottom_hint": "Typical layout",
     "analyst_side_top": "⬆ Top of screen (far side)",
+    "analyst_side_required": "Choose where the home player starts Set 1 before you begin.",
     "competition_official": "Official",
     "competition_practice_match": "Practice match",
     "competition_open_practice": "Open practice",
@@ -5233,7 +5234,8 @@
   },
   "live": {
     "all_rallies_pick_from_chart": "All rallies (pick from chart)",
-    "pick_to_see_advice": "Pick a match and player to see live advice"
+    "pick_to_see_advice": "Pick a match and player to see live advice",
+    "overall_trend_note": "The advice below comes from all of this player's recorded matches, not from the match selected above."
   },
   "advanced": {
     "manual_override_notice": "Manual Override is set on {{count}} analyses",

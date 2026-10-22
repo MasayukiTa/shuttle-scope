@@ -37,7 +37,8 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
   // 試合設定
   const [initialServer, setInitialServer] = useState<'player_a' | 'player_b' | ''>('')
   // アナリスト視点: セット1開始時に自選手がいる側（top=画面上 / bottom=画面下）
-  const [analystSide, setAnalystSide] = useState<'top' | 'bottom'>('bottom')
+  // 試合の事実なので既定値は置かない。選ぶまで開始できない（'' = 未選択）。
+  const [analystSide, setAnalystSide] = useState<'top' | 'bottom' | ''>('')
   const [competitionType, setCompetitionType] = useState<string>('unknown')
   const [tournament, setTournament] = useState('')
   const [round, setRound] = useState('')
@@ -73,7 +74,9 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
       if (matchId) {
         // サーバにも保存済み (player_a_start_side)。localStorage は
         // 既存試合との互換のために残す (サーバ値が無いときのフォールバック)。
-        localStorage.setItem(`shuttlescope.viewpoint.${matchId}`, analystSide)
+        if (analystSide) {
+          localStorage.setItem(`shuttlescope.viewpoint.${matchId}`, analystSide)
+        }
         onStarted(matchId)
       }
     },
@@ -125,10 +128,11 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
 
   const canStart =
     playerAId !== '' &&
+    analystSide !== '' &&
     (opponentId !== null || opponentQuery.trim().length >= 1)
 
   const handleStart = () => {
-    if (!canStart) return
+    if (!canStart || analystSide === '') return
     const resolvedName = opponentId !== null ? opponentName : opponentQuery.trim()
     quickStart.mutate({
       player_a_id: Number(playerAId),
@@ -339,6 +343,9 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
                 </button>
               ))}
             </div>
+            {analystSide === '' && (
+              <p className="mt-1 text-xs text-[var(--ss-t3)]">{t('quick_start.analyst_side_required')}</p>
+            )}
           </div>
 
           {/* 大会区分 */}

@@ -231,6 +231,13 @@ def get_live_anomaly(
 
 _BANNED_TERMS = ("弱点", "weakness")
 
+# 提案の対象にできないショット。
+#   other / cant_reach : 打ち手が選べる行為ではない (分類外・届かなかった球)。
+#   short_service / long_service : 選べるのは自分のサーブ権があるときだけで、
+#     この提案は直前の状態 (誰のサーブか) を持たない。lift も「サーブ権を持つ
+#     ラリー」に偏るので、そのまま並べると実行できない助言になる。
+_NOT_SUGGESTIBLE_SHOTS = frozenset({"other", "cant_reach", "short_service", "long_service"})
+
 
 def _safe(text: str) -> str:
     """player 安全用語ガード (coach 向けでも一応排除)。"""
@@ -303,7 +310,10 @@ def get_live_suggestions(
         for s in strokes:
             if s.player != own_slot(target_role):
                 continue
-            st = (s.shot_type or "unknown").lower()
+            # 表記ゆれは canonical に寄せ、提案できないショットは集計から外す。
+            st = canonicalize(s.shot_type or "")
+            if st in _NOT_SUGGESTIBLE_SHOTS:
+                continue
             agg[st]["rallies"].add(s.rally_id)
             if rally_won.get(s.rally_id):
                 agg[st]["wins"].add(s.rally_id)
@@ -321,11 +331,11 @@ def get_live_suggestions(
                 continue
             wr = len(d["wins"]) / n
             lift_pp = (wr - overall_wr) * 100
-            shot_stats.append((st, wr, lift_pp, n))
+            shot_stats.append((st, wr, lift_pp, n, len(d["wins"])))
 
         # 高 lift ショット → 推奨「もっと使う」
         shot_stats.sort(key=lambda x: -x[2])
-        for st, wr, lift_pp, n in shot_stats[:3]:
+        for st, wr, lift_pp, n, n_won in shot_stats[:3]:
             if lift_pp < 5.0:
                 continue
             # D-5: これは **確率ではない**。N の単調増加関数で、0.5〜0.95 に
@@ -338,10 +348,12 @@ def get_live_suggestions(
             items.append({
                 "id": f"use_more_{st}",
                 "headline_ja": _safe(
-                    f"{st} を積極的に使う価値あり (lift +{lift_pp:.1f}pp / N={n})"
+                    f"{ja_label(st)}を使った{n}ラリー中{n_won}ラリーで得点"
+                    f"（全体より{lift_pp:.1f}ポイント高い）。使う場面を増やす余地があります。"
                 ),
                 "headline_en": _safe(
-                    f"Consider leaning on {st} (lift +{lift_pp:.1f}pp, N={n})"
+                    f"Rallies with {st.replace('_', ' ')}: points won in {n_won} of {n} "
+                    f"({lift_pp:.1f} points above the overall rate). Room to use it more."
                 ),
                 "confidence": round(conf, 3),
                 "evidence_path": f"counterfactual_shots#shot={st}",
@@ -349,23 +361,27 @@ def get_live_suggestions(
 
         # 低 lift ショット → 「代わりに別の手」
         shot_stats.sort(key=lambda x: x[2])
-        for st, wr, lift_pp, n in shot_stats[:2]:
+        for st, wr, lift_pp, n, n_won in shot_stats[:2]:
             if lift_pp > -5.0:
                 continue
-            # 代替候補: lift 最大ショット
+            # 代替候補: lift 最大ショット (shot_stats は提案できるショットだけ)
             alt_list = [s for s in shot_stats if s[2] > 0 and s[0] != st]
             alt = alt_list[-1] if alt_list else None
-            alt_label = alt[0] if alt else "別のショット"
+            alt_label_ja = ja_label(alt[0]) if alt else "別のショット"
+            alt_label_en = alt[0].replace("_", " ") if alt else "another shot"
             conf = _sufficiency_score(n, cap=0.9)  # 確率ではない。上のコメント参照
             if conf < 0.5:
                 continue
             items.append({
                 "id": f"swap_{st}",
                 "headline_ja": _safe(
-                    f"{st} の代わりに {alt_label} を試す価値あり (lift {lift_pp:.1f}pp)"
+                    f"{ja_label(st)}を使った{n}ラリー中{n_won}ラリーで得点"
+                    f"（全体より{abs(lift_pp):.1f}ポイント低い）。{alt_label_ja}を試す余地があります。"
                 ),
                 "headline_en": _safe(
-                    f"Consider {alt_label} instead of {st} (lift {lift_pp:.1f}pp)"
+                    f"Rallies with {st.replace('_', ' ')}: points won in {n_won} of {n} "
+                    f"({abs(lift_pp):.1f} points below the overall rate). "
+                    f"Room to try {alt_label_en} instead."
                 ),
                 "confidence": round(conf, 3),
                 "evidence_path": f"counterfactual_shots#shot={st}",
