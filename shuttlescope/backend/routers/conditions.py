@@ -452,6 +452,23 @@ def _serialize(c: Condition, role: str, db: Optional[Session] = None) -> dict:
 
 # ─── マスター ────────────────────────────────────────────────────────────────
 
+def _require_player_in_match(match: Match, player_id: int) -> None:
+    """condition に結び付ける試合は、その選手が出場した試合に限る。
+
+    cross-team の可否 (user_can_access_match) とは別に、同一チーム内でも
+    無関係な選手と試合の組み合わせを保存させない (監査 #518)。
+    """
+    participants = {
+        match.player_a_id, match.player_b_id,
+        match.partner_a_id, match.partner_b_id,
+    }
+    if player_id not in participants:
+        raise HTTPException(
+            status_code=422,
+            detail="この選手は指定された試合に出場していません",
+        )
+
+
 @router.get("/master")
 def get_questionnaire_master(
     condition_type: str = Query("weekly", pattern="^(weekly|pre_match)$"),
@@ -506,6 +523,7 @@ def submit_questionnaire(body: QuestionnaireSubmit, request: Request, db: Sessio
         from backend.utils.auth import user_can_access_match as _ucam_q
         if _ctx_q.role is not None and not _ucam_q(_ctx_q, _m_q):
             raise HTTPException(status_code=403, detail="この試合へのアクセス権限がありません")
+        _require_player_in_match(_m_q, body.player_id)
 
     # 採点
     if body.condition_type == "weekly":
@@ -672,6 +690,7 @@ def create_condition(body: ConditionCreate, request: Request, db: Session = Depe
             from backend.utils.auth import user_can_access_match as _ucam_cc
             if not _ucam_cc(ctx, _m_cc):
                 raise HTTPException(status_code=403, detail="この試合へのアクセス権限がありません")
+        _require_player_in_match(_m_cc, body.player_id)
 
     data = body.model_dump()
     cond = Condition(**data)
@@ -775,6 +794,7 @@ def update_condition(condition_id: int, body: ConditionUpdate, request: Request,
         _ctx_m = _ga_m(request)
         if _ctx_m.role is not None and not _ctx_m.is_admin and not _ucam_upd(_ctx_m, _m_upd):
             raise HTTPException(status_code=403, detail="この試合へのアクセス権限がありません")
+        _require_player_in_match(_m_upd, cond.player_id)
     from backend.utils.db_update import apply_update
     apply_update(cond, data)
     _recompute(cond)
