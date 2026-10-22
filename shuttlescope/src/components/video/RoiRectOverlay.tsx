@@ -31,6 +31,8 @@ interface Props {
   onChange: (rect: RoiRect | null) => void
   /** true のとき矩形を描画できる（編集モード） */
   editing: boolean
+  /** true のとき表示のみ（削除ボタンとコーナーハンドルを出さない。別モニタ用ミラー向け） */
+  readOnly?: boolean
   containerRef: RefObject<HTMLElement | null>
 }
 
@@ -60,7 +62,7 @@ function cornersToRect(corners: [Pt, Pt, Pt, Pt]): RoiRect {
 
 // ── コンポーネント ─────────────────────────────────────────────────────────────
 
-export function RoiRectOverlay({ value, onChange, editing, containerRef }: Props) {
+export function RoiRectOverlay({ value, onChange, editing, readOnly = false, containerRef }: Props) {
   const { t } = useTranslation()
   // コンテナの実ピクセルサイズ（SVG polygon の座標計算用）
   const [size, setSize] = useState({ w: 1, h: 1 })
@@ -215,7 +217,8 @@ export function RoiRectOverlay({ value, onChange, editing, containerRef }: Props
             {t('auto.RoiRectOverlay.analysis_region')}
           </div>
 
-          {/* × ボタン（TR コーナー右上・白文字） */}
+          {/* × ボタン（TR コーナー右上・白文字）。表示専用では出さない */}
+          {!readOnly && (
           <button
             className="absolute text-white p-0.5 rounded-bl hover:opacity-80 transition-colors"
             style={{
@@ -231,9 +234,10 @@ export function RoiRectOverlay({ value, onChange, editing, containerRef }: Props
           >
             <MIcon name="close" size={10} />
           </button>
+          )}
 
-          {/* 4コーナーハンドル */}
-          {corners.map((c, i) => (
+          {/* 4コーナーハンドル。表示専用では出さない */}
+          {!readOnly && corners.map((c, i) => (
             <div
               key={i}
               className="absolute w-3.5 h-3.5 rounded-full border-2 border-white shadow"

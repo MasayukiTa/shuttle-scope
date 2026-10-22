@@ -34,6 +34,23 @@ WEIGHTS_DIR  = Path(__file__).parent.parent / "models"
 MODEL_PATH   = WEIGHTS_DIR / "shot_clip.npz"
 META_PATH    = WEIGHTS_DIR / "shot_clip_meta.json"
 
+# 学習対象ストロークの取得 SQL。セット表の実名は "sets"（ORM の GameSet.__tablename__）。
+# match_id は train/validation を試合単位で分けるために返す。
+STROKE_QUERY = """
+    SELECT s.id, s.shot_type, s.timestamp_sec, m.video_local_path, m.id AS match_id
+    FROM strokes s
+    JOIN rallies r ON r.id = s.rally_id
+    JOIN sets g ON g.id = r.set_id
+    JOIN matches m ON m.id = g.match_id
+    WHERE s.shot_type IS NOT NULL AND s.shot_type != ''
+      AND m.video_local_path IS NOT NULL
+"""
+
+# matches 表に fps 列は無い（source_fps は live_sources 側）ため、打点フレームは既定 fps で求める。
+DEFAULT_FPS = 60
+
+VAL_SPLIT_SEED = 42
+
 
 # ─── ネットワーク定義 ─────────────────────────────────────────────────────────
 
@@ -160,7 +177,7 @@ def train(
     try:
         import torch
         import torch.nn as nn
-        from torch.utils.data import DataLoader, Dataset, random_split
+        from torch.utils.data import DataLoader, Dataset, Subset
         import numpy as np
         from sqlalchemy import create_engine, text
     except ImportError as e:
@@ -173,17 +190,7 @@ def train(
 
     logger.info("ShotClip: DBからストローク情報を取得中...")
     with engine.connect() as conn:
-        strokes = conn.execute(text(
-            """
-            SELECT s.id, s.shot_type, s.timestamp_sec, m.source_fps, m.video_local_path
-            FROM strokes s
-            JOIN rallies r ON r.id = s.rally_id
-            JOIN game_sets g ON g.id = r.set_id
-            JOIN matches m ON m.id = g.match_id
-            WHERE s.shot_type IS NOT NULL AND s.shot_type != ''
-              AND m.video_local_path IS NOT NULL
-            """
-        )).fetchall()
+        strokes = conn.execute(text(STROKE_QUERY)).fetchall()
 
     class ClipDataset(Dataset):
         def __init__(self, rows, label_idx, video_root, sample_n):
@@ -193,7 +200,7 @@ def train(
                 label = canonicalize(row.shot_type or "")
                 if label not in label_idx:
                     continue
-                fps = int(row.source_fps or 60)
+                fps = DEFAULT_FPS
                 contact_frame = int((row.timestamp_sec or 0) * fps)
                 vid = Path(video_root) / row.video_local_path
                 if not vid.exists():
@@ -203,6 +210,7 @@ def train(
                     "video": str(vid),
                     "contact": contact_frame,
                     "label": label_idx[label],
+                    "match_id": row.match_id,
                 })
             logger.info("ClipDataset: %d サンプル（skip=%d）", len(self.items), skipped)
 
@@ -225,9 +233,19 @@ def train(
     if len(dataset) < 10:
         raise RuntimeError(f"学習サンプル数が少なすぎます（{len(dataset)} 件）")
 
-    val_size = max(1, int(len(dataset) * val_split))
-    train_size = len(dataset) - val_size
-    train_ds, val_ds = random_split(dataset, [train_size, val_size])
+    # 同じ試合のクリップは train / validation の片側にまとめる（試合単位の分割）。
+    # stroke 単位の random_split は同一試合・同一動画の近接クリップを両側へ混ぜ、
+    # best_val_acc が未知の試合への性能を過大評価する。
+    from backend.analysis.group_split import split_indices_by_group
+    try:
+        train_idx, val_idx, val_matches = split_indices_by_group(
+            [it["match_id"] for it in dataset.items], val_split, VAL_SPLIT_SEED,
+        )
+    except ValueError as e:
+        raise RuntimeError(f"試合単位の検証データを作れません: {e}") from e
+    train_size = len(train_idx)
+    train_ds = Subset(dataset, train_idx)
+    val_ds = Subset(dataset, val_idx)
 
     def collate_fn(batch):
         import torch
@@ -302,6 +320,14 @@ def train(
         "classes": CANONICAL_SHOTS,
         "trained_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "samples": len(dataset),
+        "split": {
+            "method": "group_by_match",
+            "seed": VAL_SPLIT_SEED,
+            "val_split": val_split,
+            "train_samples": len(train_idx),
+            "val_samples": len(val_idx),
+            "val_match_ids": sorted(int(m) for m in val_matches),
+        },
     }
     META_PATH.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
     logger.info("ShotClip: 保存完了 val_acc=%.3f → %s", best_val_acc, MODEL_PATH)

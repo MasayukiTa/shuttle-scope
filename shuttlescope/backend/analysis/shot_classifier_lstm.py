@@ -33,6 +33,18 @@ WEIGHTS_DIR = Path(__file__).parent.parent / "models"
 MODEL_PATH  = WEIGHTS_DIR / "shot_lstm.npz"
 META_PATH   = WEIGHTS_DIR / "shot_lstm_meta.json"
 
+# 学習対象ストロークの取得 SQL。セット表の実名は "sets"（ORM の GameSet.__tablename__）。
+# match_id は train/validation を試合単位で分けるために返す。
+STROKE_QUERY = """
+    SELECT s.id, s.shot_type, s.timestamp_sec, g.match_id AS match_id
+    FROM strokes s
+    JOIN rallies r ON r.id = s.rally_id
+    JOIN sets g ON g.id = r.set_id
+    WHERE s.shot_type IS NOT NULL AND s.shot_type != ''
+"""
+
+VAL_SPLIT_SEED = 42
+
 
 # ─── ネットワーク定義 ─────────────────────────────────────────────────────────
 
@@ -91,7 +103,7 @@ def train(
     try:
         import torch
         import torch.nn as nn
-        from torch.utils.data import DataLoader, TensorDataset, random_split
+        from torch.utils.data import DataLoader, Subset, TensorDataset
         import numpy as np
         from sqlalchemy import create_engine, text
     except ImportError as e:
@@ -104,10 +116,7 @@ def train(
 
     logger.info("ShotLSTM: 学習データをDBから取得中...")
     with engine.connect() as conn:
-        strokes = conn.execute(text(
-            "SELECT id, shot_type, timestamp_sec FROM strokes "
-            "WHERE shot_type IS NOT NULL AND shot_type != ''"
-        )).fetchall()
+        strokes = conn.execute(text(STROKE_QUERY)).fetchall()
 
         shuttle_rows = conn.execute(text(
             "SELECT stroke_id, frame_index, x, y FROM shuttle_tracks ORDER BY stroke_id, frame_index"
@@ -127,7 +136,7 @@ def train(
         player_map.setdefault(row.stroke_id, []).append((row.frame_index, row.cx, row.cy, row.h))
 
     # シーケンス構築
-    X_list, y_list = [], []
+    X_list, y_list, group_list = [], [], []
     skipped = 0
     for stroke in strokes:
         sid = stroke.id
@@ -157,6 +166,7 @@ def train(
             seq.append([sx, sy, px, py, ph])
         X_list.append(seq)
         y_list.append(label_idx[label])
+        group_list.append(stroke.match_id)
 
     if len(X_list) < 20:
         raise RuntimeError(
@@ -173,9 +183,19 @@ def train(
     y = torch.tensor(y_list, dtype=torch.long)
 
     dataset = TensorDataset(X, y)
-    val_size = max(1, int(len(dataset) * val_split))
-    train_size = len(dataset) - val_size
-    train_ds, val_ds = random_split(dataset, [train_size, val_size])
+    # 同じ試合の系列は train / validation の片側にまとめる（試合単位の分割）。
+    # stroke 単位の random_split は同一試合・同一撮影条件の系列を両側へ混ぜ、
+    # best_val_acc が未知の試合への性能を過大評価する。
+    from backend.analysis.group_split import split_indices_by_group
+    try:
+        train_idx, val_idx, val_matches = split_indices_by_group(
+            group_list, val_split, VAL_SPLIT_SEED,
+        )
+    except ValueError as e:
+        raise RuntimeError(f"試合単位の検証データを作れません: {e}") from e
+    train_size = len(train_idx)
+    train_ds = Subset(dataset, train_idx)
+    val_ds = Subset(dataset, val_idx)
 
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
     val_loader   = DataLoader(val_ds, batch_size=batch_size)
@@ -236,6 +256,14 @@ def train(
         "classes": CANONICAL_SHOTS,
         "trained_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "samples": len(X_list),
+        "split": {
+            "method": "group_by_match",
+            "seed": VAL_SPLIT_SEED,
+            "val_split": val_split,
+            "train_samples": len(train_idx),
+            "val_samples": len(val_idx),
+            "val_match_ids": sorted(int(m) for m in val_matches),
+        },
     }
     META_PATH.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
     logger.info("ShotLSTM: 保存完了 val_acc=%.3f → %s", best_val_acc, MODEL_PATH)

@@ -261,17 +261,22 @@ export function Pass3ShotDetail({
       hit_zone: finalSentinel.hit_zone,
       land_zone: finalSentinel.land_zone,
     }, { id: finalSentinel.id }, { sequenceKey: `rally:${rally.id}` })
-    onStrokeUpdated({ ...finalSentinel, stroke_num: targetNum })
     // rally_length を実数 (= 最終 stroke の番号 = targetNum) に更新。
     await enqueue('PUT /api/rallies/:id', { rally_length: targetNum }, { id: rally.id })
+    // 画面側の stroke_num は 2 件とも積めた後で更新する。1 件目だけ積めて 2 件目が失敗した場合、
+    // 先に更新すると再試行時に sentinel が詰め済みに見えて rally_length の更新が二度と積まれない。
+    onStrokeUpdated({ ...finalSentinel, stroke_num: targetNum })
   }
 
+  // 最終化が成功したときだけ閉じる。失敗時は画面に残してエラーを見せ、もう一度閉じる操作で再試行できる。
   const handleClose = async () => {
     try {
       await renumberSentinelAndFinalize()
-    } finally {
-      onClose()
+    } catch {
+      setCommitError(t('auto.Pass3ShotDetail.err_finalize_failed'))
+      return
     }
+    onClose()
   }
 
   const editStroke = async (

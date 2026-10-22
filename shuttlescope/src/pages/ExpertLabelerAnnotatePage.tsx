@@ -257,7 +257,17 @@ function AnnotateContent() {
     },
   })
 
+  // 既存ラベルを取得できていない間は、未ラベルとして上書き保存しない
+  // (保存は同じ stroke / 役割の既存ラベルを置き換える UPSERT のため)。
+  const labelsUnavailable = labelsQuery.isError || labelsQuery.isPending
+  const shotLabelsUnavailable = role === 'admin' && (shotLabelsQuery.isError || shotLabelsQuery.isPending)
+
   const handleSave = useCallback(() => {
+    if (labelsUnavailable) {
+      setToast(t('expert_labeler.labels_load_failed'))
+      window.setTimeout(() => setToast(null), 2500)
+      return
+    }
     // 必須項目未選択時は保存不可
     if (!form.posture_collapse || !form.weight_distribution || !form.shot_timing) {
       setToast(t('expert_labeler.required_fields'))
@@ -271,16 +281,21 @@ function AnnotateContent() {
       confidence: form.confidence,
       comment: form.comment,
     })
-  }, [form, saveMutation, t])
+  }, [form, saveMutation, t, labelsUnavailable])
 
   const handleSaveShot = useCallback(() => {
+    if (shotLabelsUnavailable) {
+      setToast(t('expert_labeler.labels_load_failed'))
+      window.setTimeout(() => setToast(null), 2500)
+      return
+    }
     if (!shotAnnotation.shot_type) {
       setToast(t('expert_labeler.shot_type_required'))
       window.setTimeout(() => setToast(null), 1500)
       return
     }
     saveShotMutation.mutate()
-  }, [shotAnnotation, saveShotMutation, t])
+  }, [shotAnnotation, saveShotMutation, t, shotLabelsUnavailable])
 
   const goPrev = useCallback(() => setIndex((i) => Math.max(0, i - 1)), [])
   const goNext = useCallback(
@@ -404,6 +419,31 @@ function AnnotateContent() {
     )
   }
 
+  // 取得失敗は「対象クリップなし」と区別して見せる (0 件は 200 の空配列のときだけ)
+  if (clipsQuery.isError) {
+    return (
+      <div className={`h-full flex flex-col items-center justify-center gap-3 ${bgBase}`}>
+        <div role="alert">{t('expert_labeler.clips_load_failed')}</div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            className={`${btnLarge} ${btnPrimary}`}
+            onClick={() => void clipsQuery.refetch()}
+          >
+            {t('expert_labeler.retry')}
+          </button>
+          <button
+            type="button"
+            className={`${btnLarge} ${btnSecondary}`}
+            onClick={() => navigate('/expert-labeler')}
+          >
+            {t('expert_labeler.back_to_list')}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   if (clips.length === 0) {
     return (
       <div className={`h-full flex flex-col items-center justify-center gap-3 ${bgBase}`}>
@@ -458,6 +498,25 @@ function AnnotateContent() {
             style={{ width: `${((index + 1) / clips.length) * 100}%` }}
           />
         </div>
+
+        {(labelsQuery.isError || (role === 'admin' && shotLabelsQuery.isError)) && (
+          <div
+            role="alert"
+            className="mb-4 flex flex-wrap items-center gap-3 rounded-ss-md border p-3 text-sm border-[var(--ss-border-strong)] text-[var(--ss-danger-text)]"
+          >
+            <span className="flex-1">{t('expert_labeler.labels_load_failed')}</span>
+            <button
+              type="button"
+              className="px-3 py-1 rounded-ss-md border border-[var(--ss-border-strong)] text-[var(--ss-t1)]"
+              onClick={() => {
+                if (labelsQuery.isError) void labelsQuery.refetch()
+                if (role === 'admin' && shotLabelsQuery.isError) void shotLabelsQuery.refetch()
+              }}
+            >
+              {t('expert_labeler.retry')}
+            </button>
+          </div>
+        )}
 
         {/* タブ切替（admin のみ「アノテーション改善」タブを表示） */}
         {role === 'admin' && (
