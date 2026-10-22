@@ -19,6 +19,7 @@ import { BestProfileCard } from '@/components/condition/BestProfileCard'
 import { CorrelationScatter } from '@/components/condition/CorrelationScatter'
 import { DiscrepancyAlertList } from '@/components/condition/DiscrepancyAlertList'
 import { CollapsibleSection } from '@/components/common/CollapsibleSection'
+import { RoleGuard } from '@/components/common/RoleGuard'
 import { ConditionTrendChart } from '@/components/condition/ConditionTrendChart'
 import { ConditionCorrelationHeatmap } from '@/components/condition/ConditionCorrelationHeatmap'
 import { ConditionLagCorrelation } from '@/components/condition/ConditionLagCorrelation'
@@ -386,10 +387,12 @@ export function ConditionPage() {
             {/* 乖離アラート: 該当があれば最初に気づけるよう、折り畳みの外・主要カードの直後に置く */}
             <DiscrepancyAlertList playerId={effectivePlayerId} isLight={isLight} />
 
-            {/* 追加解析: 全ロール共通。
+            {/* 追加解析 (相関・変動などは analyst / coach のみ)。
                 同形のカードを 10 枚以上縦に並べると見るべき所が分からなくなるため、
                 上の 3 枚 (伸びしろ・ベスト・推移) を主役にし、残りは用途別に畳む。
                 閉じている間は子を描画しない (API 取得も走らない)。 */}
+            {/* 指標間の相関・変動・外れ週などの探索的な解析。player には出さない (RoleGuard で描画も取得もしない) */}
+            <RoleGuard allowedRoles={['analyst', 'coach']} fallback={null}>
             <CollapsibleSection
               title={t('condition.analytics_group_relations')}
               description={t('condition.analytics_group_relations_desc')}
@@ -427,6 +430,7 @@ export function ConditionPage() {
                 <CorrelationScatter playerId={effectivePlayerId} isLight={isLight} />
               </div>
             </CollapsibleSection>
+            </RoleGuard>
 
             {/* タグ管理・比較 */}
             <CollapsibleSection

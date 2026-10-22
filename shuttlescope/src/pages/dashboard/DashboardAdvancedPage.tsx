@@ -365,6 +365,7 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
       {/* ── ダブルス ── */}
       {section === 'doubles' && (
         <ErrorBoundary>
+          <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
           <div className="space-y-5">
             <DoublesAnalysis playerId={playerId} allMatches={matches} />
 
@@ -416,6 +417,7 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
               <PairSynergyCard playerId={playerId} />
             </HoldGate>
           </div>
+          </RoleGuard>
         </ErrorBoundary>
       )}
     </div>

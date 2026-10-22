@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { matchOutcomeLabelKey } from '@/utils/matchResult'
 import { apiGet } from '@/api/client'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
+import { RoleGuard } from '@/components/common/RoleGuard'
 import { AnalysisFilters } from '@/types'
 import { FlashAdvicePanel } from '@/components/analysis/FlashAdvicePanel'
 import { IntervalReport } from '@/components/analysis/IntervalReport'
@@ -211,7 +212,12 @@ export function DashboardLivePage({ playerId, matches }: Props) {
           )}
 
           {/* 推奨アドバイスランキング (ベンチモード時は非表示で集中度UP) */}
-          {!benchMode && <RecommendationRanking playerId={playerId} />}
+          {/* research 層の解析なので player には出さない */}
+          {!benchMode && (
+            <RoleGuard allowedRoles={['analyst', 'coach']} fallback={null}>
+              <RecommendationRanking playerId={playerId} />
+            </RoleGuard>
+          )}
 
           {!isPlayer && showRallyPicker && flashMatchId && (
             <RallyPickerModal

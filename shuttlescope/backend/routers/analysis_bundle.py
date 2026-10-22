@@ -47,11 +47,17 @@ from backend.routers.analysis_spine import (
     _hazard_fatigue_impl,
 )
 
-from backend.utils.auth import require_query_scope, require_admin_or_analyst  # cross-team IDOR ガード
+from backend.utils.auth import (
+    require_query_scope,  # cross-team IDOR ガード
+    require_admin_or_analyst,
+    require_non_player,
+)
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(dependencies=[Depends(require_query_scope)])
+# /bundle/review は pre_loss_patterns / received_vulnerability / rally_sequence_patterns を含む。
+# いずれも player 不可なので、束ねたルートも player 不可 (ミドルウェアに頼らずルート自身で拒否)。
+router = APIRouter(dependencies=[Depends(require_non_player), Depends(require_query_scope)])
 
 
 @router.get("/analysis/bundle/review")

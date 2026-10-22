@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from typing import Any, Callable, Optional
 
+from fastapi import HTTPException, Request
+
 # ─── 1. player 禁止の /api/analysis/* パス (単一の定義) ──────────────────────
 # analysis_research / analysis_spine / analysis_bundle の全ルートは main.py 側で
 # ルーターから自動収集する。ここには「stable / advanced 内の個別パス」を列挙する。
@@ -36,6 +38,22 @@ PLAYER_FORBIDDEN_NAMED_ANALYSIS_PATHS: frozenset[str] = frozenset({
     # 失点前の打球パターン = 直接の弱点提示 (同上)
     "/api/analysis/pre_loss_patterns",
 })
+
+
+def deny_player_on_forbidden_named_path(request: Request) -> None:
+    """FastAPI 依存: 禁止パスへの player のリクエストを 403 にする。
+
+    ミドルウェアは `_PLAYER_FORBIDDEN_ANALYSIS_PATHS` で同じ拒否をするが、ミドルウェアは
+    経路が増えたり差し替わったりすると外れる。この依存はルーターに付けておくだけで、
+    PLAYER_FORBIDDEN_NAMED_ANALYSIS_PATHS に載った全ルートをルート自身が拒否する。
+    パスが禁止定義に無ければ何もしない (ほかのロールと player の他ルートは従来どおり)。
+    """
+    if request.url.path not in PLAYER_FORBIDDEN_NAMED_ANALYSIS_PATHS:
+        return
+    from backend.utils.auth import get_auth  # 循環 import を避けるため遅延 import
+
+    if get_auth(request).is_player:
+        raise HTTPException(status_code=403, detail="この解析は player ロールでは参照できません")
 
 
 # ─── 2. 包括レポート: player 向け許可リスト ─────────────────────────────────

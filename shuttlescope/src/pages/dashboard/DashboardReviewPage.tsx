@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
+import { RoleGuard } from '@/components/common/RoleGuard'
 import { AnalysisFilters } from '@/types'
 import { PreLossPatterns } from '@/components/analysis/PreLossPatterns'
 import { PreWinPatterns } from '@/components/analysis/PreWinPatterns'
@@ -196,7 +197,9 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
           <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider mb-2 pl-1">
             {t('analysis.review.section_sequence', 'STEP 5 — ラリーシーケンス深掘り')}
           </p>
-          <RallySequencePatterns playerId={playerId} />
+          <RoleGuard allowedRoles={['analyst', 'coach']} fallback={null}>
+            <RallySequencePatterns playerId={playerId} />
+          </RoleGuard>
         </div>
       </ErrorBoundary>
 

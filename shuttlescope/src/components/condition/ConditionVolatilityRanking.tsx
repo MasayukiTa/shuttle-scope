@@ -133,7 +133,7 @@ export function ConditionVolatilityRanking({ playerId, isLight }: Props) {
   const chartHeight = Math.max(200, rows.length * 34 + 40)
 
   return (
-    <RoleGuard allowedRoles={['analyst', 'coach', 'player']} fallback={null}>
+    <RoleGuard allowedRoles={['analyst', 'coach']} fallback={null}>
       <section className={`rounded-ss-lg border ${borderColor} ${panelBg} p-4`}>
         <div className="flex items-baseline justify-between mb-2 flex-wrap gap-2">
           <h2 className="text-sm font-semibold text-[var(--ss-t1)]">{t('condition.volatility.title')}</h2>
