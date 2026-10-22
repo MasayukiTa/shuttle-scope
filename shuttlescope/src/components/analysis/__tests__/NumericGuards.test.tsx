@@ -244,6 +244,42 @@ describe('B-26 GrowthJudgmentCard', () => {
     const { container } = wrap(<GrowthJudgmentCard playerId={1} />)
     await waitFor(() => expect(screen.getByText('判定保留（データ不足）')).toBeInTheDocument())
     expect(container.textContent).not.toContain('+0.0%')
-    expect(container.textContent).toContain('+4.8%')
+    // 単位はポイント差 (相対変化率の % ではない)
+    expect(container.textContent).toContain('+4.8pt')
+  })
+
+  it('shows how the trend was computed and how many matches were used or excluded', async () => {
+    mockRoutes({
+      '/analysis/growth_judgment': {
+        success: true,
+        data: {
+          judgment: 'improving',
+          judgment_ja: '改善傾向',
+          metrics: {
+            win_rate: {
+              trend: 'improving',
+              delta: 0.037,
+              n_matches: 12,
+              window: 4,
+              early_period: { from: '2025-01-01', to: '2025-01-04' },
+              recent_period: { from: '2025-01-09', to: '2025-01-12' },
+            },
+          },
+          match_count: 14,
+          annotated_match_count: 12,
+          min_matches_required: 5,
+          population: { total: 14, used: 12, excluded: { unfinished: 1, zero_rally: 1 } },
+        },
+        meta: { sample_size: 12 },
+      },
+    })
+    const { container } = wrap(<GrowthJudgmentCard playerId={1} />)
+    await waitFor(() => expect(screen.getByTestId('growth-population')).toBeInTheDocument())
+    const pop = screen.getByTestId('growth-population').textContent ?? ''
+    expect(pop).toContain('14')
+    expect(pop).toContain('12')
+    expect(container.textContent).toContain('+3.7pt')
+    expect(container.textContent).toContain('2025-01-01 ~ 2025-01-04')
+    expect(container.textContent).toContain('2025-01-09 ~ 2025-01-12')
   })
 })

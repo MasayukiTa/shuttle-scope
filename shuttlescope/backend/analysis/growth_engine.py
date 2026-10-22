@@ -344,20 +344,60 @@ def compute_metric_growth_trend(
     トレンドの窓と判定可否 (件数不足 → pending) はここだけで決める。
     移動平均の描画用の窓 (window_size) はグラフの平滑化専用で、トレンドには使わない。
     """
-    pending = {
-        "trend": "pending",
-        "trend_delta": 0.0,
-        "weighted_trend": "pending",
-        "weighted_trend_delta": 0.0,
-    }
     annotated = len(raw_points)
     window = max(2, annotated // 3)
+    # 算出法を画面に出すための付帯情報。trend_delta は
+    #   (最後の window 試合の平均) − (最初の window 試合の平均)   [率の差 = ポイント]
+    # であり、回帰傾きでも相対変化率でもない。期間 (early / recent) は比較に使った試合の日付範囲。
+    # 判定保留 (件数不足) のときは窓・期間を null にする (比較していないものを比較したように見せない)。
+    info = {
+        "n_points": annotated,
+        "window": None,
+        "early_period": None,
+        "recent_period": None,
+    }
     if annotated < max(window * 2, min_matches):
-        return pending
+        return {
+            "trend": "pending",
+            "trend_delta": 0.0,
+            "weighted_trend": "pending",
+            "weighted_trend_delta": 0.0,
+            **info,
+        }
     pts_with_avg = strength_weighted_moving_avg(raw_points, window_size=window)
-    return compute_growth_trend(
+    result = compute_growth_trend(
         pts_with_avg, window_size=window, metric=metric, trend_delta=trend_delta,
     )
+    info["window"] = window
+    info["early_period"] = _period_of(raw_points[:window])
+    info["recent_period"] = _period_of(raw_points[-window:])
+    return {**result, **info}
+
+
+def _period_of(points: list[dict]) -> Optional[dict]:
+    """点の列の日付範囲 {"from", "to"}。点が無い、または日付が無ければ None。"""
+    dates = [str(p["date"]) for p in points if p.get("date")]
+    if not dates:
+        return None
+    return {"from": min(dates), "to": max(dates)}
+
+
+def summarize_growth_population(matches: list, used_points: list[dict]) -> dict:
+    """成長判定の母集団内訳: 対象 / 使用 / 除外 (理由別)。
+
+    対象 = 選手が出た全試合、使用 = 成長の点になった試合 (勝敗確定かつラリーあり)。
+    除外理由は analysis_population と同じ語彙 (unfinished / zero_rally) で数える。
+    unfinished と zero_rally が重なる試合は unfinished に数える (1 試合 1 回)。
+    """
+    total = len(matches)
+    used = len(used_points)
+    unfinished = sum(1 for m in matches if not is_decided_result(m.result))
+    zero_rally = max(0, total - used - unfinished)
+    return {
+        "total": total,
+        "used": used,
+        "excluded": {"unfinished": unfinished, "zero_rally": zero_rally},
+    }
 
 
 def decide_overall_growth(metrics: dict[str, dict]) -> tuple[str, str]:

@@ -430,13 +430,20 @@ export function DashboardShell() {
                     <span className={`text-xs ${textMuted} shrink-0`}>{t('analysis.filter.result')}:</span>
                     <select
                       className={`border text-xs rounded-ss-md px-2 py-1 focus:outline-none ${isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-700 border-gray-600 text-white'}`}
+                      title={t('analysis.filter.loss_definition')}
+                      aria-label={t('analysis.filter.result')}
                       value={filterResult}
                       onChange={(e) => setFilterResult(e.target.value as 'all' | 'win' | 'loss')}
                     >
                       <option value="all">{t('analysis.filter.all')}</option>
                       <option value="win">{t('analysis.filter.win')}</option>
-                      <option value="loss">{t('analysis.filter.loss')}</option>
+                      <option value="loss" title={t('analysis.filter.loss_definition')}>{t('analysis.filter.loss')}</option>
                     </select>
+                    {filterResult === 'loss' && (
+                      <span className={`text-[10px] ${textMuted}`} data-testid="loss-filter-definition">
+                        {t('analysis.filter.loss_definition')}
+                      </span>
+                    )}
                   </>
                 )}
                 <span className={`text-xs ${textMuted} shrink-0 ${role !== 'player' ? 'ml-2' : ''}`}>{t('analysis.filter.level')}:</span>

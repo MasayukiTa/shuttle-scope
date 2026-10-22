@@ -67,7 +67,7 @@ export function GrowthSnapshotCard({ playerId, periodDays = 30, allowSample = im
   return (
     <div
       data-tutorial="dashboard.growthSnapshot"
-      className={`${card} rounded-ss-lg shadow-card p-4`}
+      className={`${card} rounded-ss-lg shadow-card p-4 ${isExample ? 'border-2 border-dashed border-amber-400' : ''}`}
     >
       <div className="flex items-center justify-between mb-3">
         <p className={`text-sm font-semibold ${textHeading}`}>{headerTitle}</p>
@@ -86,7 +86,7 @@ export function GrowthSnapshotCard({ playerId, periodDays = 30, allowSample = im
 
       {showSampleNotice && (
         <p className={`text-xs mb-3 ${textMuted}`}>
-          {t('auto.GrowthSnapshotCard.sample_note')}
+          {t('auto.GrowthSnapshotCard.sample_note')} {t('auto.GrowthSnapshotCard.sample_boundary')}
         </p>
       )}
 

@@ -10,11 +10,28 @@ interface GrowthJudgmentCardProps {
   minMatches?: number
 }
 
+interface TrendPeriod {
+  from: string
+  to: string
+}
+
 interface MetricResult {
   trend: 'improving' | 'stable' | 'declining' | 'pending'
   delta: number
   weighted_trend?: 'improving' | 'stable' | 'declining' | 'pending'
   weighted_delta?: number
+  // 算出法の表示用 (古い応答には無い)。delta = 直近 window 試合の平均 − 最初の window 試合の平均
+  n_matches?: number
+  window?: number | null
+  early_period?: TrendPeriod | null
+  recent_period?: TrendPeriod | null
+}
+
+// 対象 (全試合) / 使用 (成長の点になった試合) / 除外 (理由別)
+interface GrowthPopulation {
+  total: number
+  used: number
+  excluded: { unfinished: number; zero_rally: number }
 }
 
 interface GrowthJudgmentResponse {
@@ -26,6 +43,7 @@ interface GrowthJudgmentResponse {
     match_count: number
     annotated_match_count?: number
     min_matches_required: number
+    population?: GrowthPopulation
   }
   meta?: { sample_size: number }
 }
@@ -37,10 +55,10 @@ const JUDGMENT_STYLE = {
   pending:   { bg: 'rgba(234,179,8,0.10)',  border: '#eab308', text: '#fbbf24', lightText: '#b45309', icon: '?' },
 } as const
 
-const METRIC_LABELS: Record<string, string> = {
-  win_rate: '勝率',
-  serve_win_rate: 'サーブ勝率',
-  avg_rally_length: '平均ラリー長',
+const METRIC_LABEL_KEYS: Record<string, string> = {
+  win_rate: 'analysis.growth.metric_win_rate',
+  serve_win_rate: 'analysis.growth.metric_serve_win_rate',
+  avg_rally_length: 'analysis.growth.metric_avg_rally_length',
 }
 
 export function GrowthJudgmentCard({ playerId, minMatches = 5 }: GrowthJudgmentCardProps) {
@@ -71,6 +89,10 @@ export function GrowthJudgmentCard({ playerId, minMatches = 5 }: GrowthJudgmentC
   const textColor = isLight ? style.lightText : style.text
   const subColor = isLight ? '#475569' : '#9ca3af'
   const mutedColor = isLight ? '#64748b' : '#6b7280'
+  const pop = data.population
+  const popExcluded = pop ? pop.excluded.unfinished + pop.excluded.zero_rally : 0
+  const fmtPeriod = (p?: TrendPeriod | null) =>
+    p ? t('analysis.growth.trend_period_range', { from: p.from, to: p.to }) : ''
 
   return (
     <div className="space-y-3">
@@ -102,6 +124,14 @@ export function GrowthJudgmentCard({ playerId, minMatches = 5 }: GrowthJudgmentC
         </div>
       </div>
 
+      {/* 母集団の内訳: どの試合を使い、何を除いたか */}
+      {pop && (
+        <p className="text-[10px] ss-num" style={{ color: mutedColor }} data-testid="growth-population">
+          {t('analysis.growth.population', { total: pop.total, used: pop.used, excluded: popExcluded })}
+          {popExcluded > 0 && t('analysis.growth.population_reasons', pop.excluded)}
+        </p>
+      )}
+
       {/* 指標別内訳 */}
       {Object.keys(data.metrics).length > 0 && (
         <div className="space-y-1.5">
@@ -111,27 +141,45 @@ export function GrowthJudgmentCard({ playerId, minMatches = 5 }: GrowthJudgmentC
             // 窓内の件数が足りない指標は delta=0.0 が入っている。「+0.0%」と出すと
             // 実測の横ばいに見えるので、判定保留(データ不足)と明示する。
             const isPending = m.trend === 'pending' || !Number.isFinite(m.delta)
+            // 単位はポイント (率の差)。相対変化率 (%) ではない
             const deltaStr = isPending
               ? t('analysis.growth.metric_pending')
-              : m.delta >= 0 ? `+${(m.delta * 100).toFixed(1)}%` : `${(m.delta * 100).toFixed(1)}%`
+              : `${m.delta >= 0 ? '+' : ''}${(m.delta * 100).toFixed(1)}pt`
+            const hasMethod = !isPending && typeof m.window === 'number' && m.early_period && m.recent_period
             return (
               <div
                 key={key}
-                className="flex items-center justify-between px-3 py-1.5 rounded-ss-sm"
+                className="px-3 py-1.5 rounded-ss-sm"
                 style={{ backgroundColor: ms.bg }}
               >
-                <span className="text-xs" style={{ color: isLight ? '#1e293b' : '#d1d5db' }}>
-                  {METRIC_LABELS[key] ?? key}
-                </span>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs" style={{ color: mText }}>{ms.icon}</span>
-                  <span className="text-xs font-mono ss-num" style={{ color: mText }}>{deltaStr}</span>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs" style={{ color: isLight ? '#1e293b' : '#d1d5db' }}>
+                    {METRIC_LABEL_KEYS[key] ? t(METRIC_LABEL_KEYS[key]) : key}
+                    {typeof m.n_matches === 'number' && (
+                      <span className="ml-1 text-[10px] ss-num" style={{ color: mutedColor }}>
+                        {t('analysis.growth.metric_n', { n: m.n_matches })}
+                      </span>
+                    )}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs" style={{ color: mText }}>{ms.icon}</span>
+                    <span className="text-xs font-mono ss-num" style={{ color: mText }}>{deltaStr}</span>
+                  </div>
                 </div>
+                {hasMethod && (
+                  <p className="text-[10px] mt-0.5 ss-num" style={{ color: mutedColor }}>
+                    {t('analysis.growth.trend_method', { w: m.window })}
+                    {' ('}
+                    {t('analysis.growth.trend_period', { early: fmtPeriod(m.early_period), recent: fmtPeriod(m.recent_period) })}
+                    {')'}
+                  </p>
+                )}
               </div>
             )
           })}
         </div>
       )}
+      <p className="text-[10px]" style={{ color: mutedColor }}>{t('analysis.growth.scope_note')}</p>
     </div>
   )
 }

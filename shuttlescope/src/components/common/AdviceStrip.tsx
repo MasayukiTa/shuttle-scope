@@ -149,12 +149,20 @@ export function AdviceStrip({
   // データ不足 → 「計測中」を素直に出す (それっぽい代替テキストは絶対に出さない)
   if (!resp || resp.status === 'insufficient_data' || !resp.advice) {
     if (hideWhenInsufficient) return null
+    // 「計測中」は、その帯が見ている期間の話であって、全データが無いという意味ではない。
+    // 期間をタイトルで明示する (長期のデータがあっても直近 30 日が 0 件ならここに来る)。
+    const measuringTitle =
+      context === 'dashboard.overview' || context === 'player.home'
+        ? t('advice.measuring_title_30d', 'Not enough data in the last 30 days')
+        : context === 'growth.timeline'
+          ? t('advice.measuring_title_8w', 'Not enough data to compare the last 8 weeks with the 8 weeks before')
+          : t('advice.measuring_title', 'Advice is being measured')
     return (
       <div className={`rounded-ss-md border border-[var(--ss-border)] bg-[var(--ss-surface-2)] px-3 py-2 ${className || ''}`}>
         <div className="flex items-start gap-2">
           <MIcon name="analytics" size={14} className="text-[var(--ss-t3)] mt-0.5 shrink-0" />
           <div className="text-xs text-[var(--ss-t2)]">
-            <div className="font-medium">{t('advice.measuring_title', 'Advice is being measured')}</div>
+            <div className="font-medium">{measuringTitle}</div>
             <div className="mt-0.5 text-[var(--ss-t3)]">
               {resp?.reason || t('advice.measuring_body', 'Concrete observations will appear once enough data is collected. We do not show guess-based comments before then (reliability first).')}
             </div>

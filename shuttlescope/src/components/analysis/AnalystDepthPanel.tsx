@@ -30,7 +30,16 @@ interface GrowthBucket {
   label: string
   win_rate: number
   sample: number
+  // 区間ごとの勝数・Wilson 95% 区間・日付範囲 (古い応答には無い)
+  wins?: number
+  ci_low?: number
+  ci_high?: number
+  date_from?: string
+  date_to?: string
 }
+
+// 区間の試合数がこれ未満の棒は薄く描き、率が参考値であることを title に書く
+const GROWTH_BUCKET_LOW_SAMPLE = 3
 
 interface GrowthTrend {
   buckets: GrowthBucket[]
@@ -192,8 +201,25 @@ function GrowthTrendSection({ data, isLight }: { data: GrowthTrend; isLight: boo
         <p className="text-xs font-medium" style={{ color: dirColor }}>{dirLabel}</p>
       </div>
       <div className="flex items-end gap-1.5">
-        {data.buckets.map((b, i) => (
-          <div key={i} className="flex flex-col items-center gap-0.5" style={{ minWidth: 28 }}>
+        {data.buckets.map((b, i) => {
+          const lowSample = b.sample < GROWTH_BUCKET_LOW_SAMPLE
+          const bucketTitle = typeof b.ci_low === 'number' && typeof b.ci_high === 'number'
+            ? t('auto.AnalystDepthPanel.bucket_title', {
+                from: b.date_from ?? b.label,
+                to: b.date_to ?? b.label,
+                n: b.sample,
+                wins: b.wins ?? 0,
+                lo: Math.round(b.ci_low * 100),
+                hi: Math.round(b.ci_high * 100),
+              })
+            : t('auto.AnalystDepthPanel.n_matches', { n: b.sample })
+          return (
+          <div
+            key={i}
+            className="flex flex-col items-center gap-0.5"
+            style={{ minWidth: 28, opacity: lowSample ? 0.5 : 1 }}
+            title={lowSample ? `${bucketTitle} ${t('auto.AnalystDepthPanel.bucket_low_sample')}` : bucketTitle}
+          >
             <span className="text-[9px] ss-num" style={{ color: subText }}>
               {Math.round(b.win_rate * 100)}%
             </span>
@@ -206,13 +232,16 @@ function GrowthTrendSection({ data, isLight }: { data: GrowthTrend; isLight: boo
               }}
             />
             <span className="text-[9px]" style={{ color: subText }}>{b.label}</span>
+            <span className="text-[9px] ss-num" style={{ color: subText }}>{t('auto.AnalystDepthPanel.n_matches', { n: b.sample })}</span>
           </div>
-        ))}
+          )
+        })}
       </div>
       <p className="text-[10px] mt-1 ss-num" style={{ color: subText }}>
         {data.slope != null && t('auto.AnalystDepthPanel.slope_per_bucket', { v: `${data.slope > 0 ? '+' : ''}${(data.slope * 100).toFixed(1)}` })}
         <span className="ml-2">{t('auto.AnalystDepthPanel.n_matches', { n: data.sample })}</span>
       </p>
+      <p className="text-[10px] mt-0.5" style={{ color: subText }}>{t('auto.AnalystDepthPanel.bucket_note')}</p>
     </div>
   )
 }

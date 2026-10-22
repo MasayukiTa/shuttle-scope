@@ -985,7 +985,19 @@ def compute_growth_trend(
         total = len(chunk)
         wr = (wins + 0.5) / (total + 1.0)  # Laplace
         label = chunk[0].date.strftime('%y/%m') if hasattr(chunk[0].date, 'strftime') else str(chunk[0].date)[:7]
-        buckets.append({'label': label, 'win_rate': round(wr, 4), 'sample': total})
+        # 区間ごとの標本数と信頼区間 (生の勝数に対する Wilson 区間)。win_rate は平滑化値なので、
+        # n が小さい区間は区間が広いことを画面で見せる。
+        ci_low, ci_high = wilson_ci_from_rate(wins / total, total)
+        buckets.append({
+            'label': label,
+            'win_rate': round(wr, 4),
+            'sample': total,
+            'wins': wins,
+            'ci_low': ci_low,
+            'ci_high': ci_high,
+            'date_from': str(chunk[0].date),
+            'date_to': str(chunk[-1].date),
+        })
 
     if len(buckets) >= 2:
         x = np.arange(len(buckets), dtype=float)

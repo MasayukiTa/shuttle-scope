@@ -519,11 +519,14 @@ def advice_growth_timeline(db: Session, player_id: int, ctx: AuthCtx) -> dict:
 
     cur_wr, cur_m, cur_r = _wr_in(a_from, today)
     prev_wr, prev_m, prev_r = _wr_in(b_from, b_to)
+    # 比較に使う 2 つの期間を明示する (全期間の成長判定とは別の集計であることが読み取れるように)
+    period = f"{a_from} ~ {today} / その前 {b_from} ~ {b_to}"
 
     if cur_wr is None or prev_wr is None:
         return _empty_response(
             f"比較に十分なデータがありません (直近 8 週: 試合 {cur_m}/ラリー {cur_r}, "
-            f"その前 8 週: 試合 {prev_m}/ラリー {prev_r}, 各期間で最低 {MIN_RALLIES} ラリー必要)。"
+            f"その前 8 週: 試合 {prev_m}/ラリー {prev_r}, 各期間で最低 {MIN_RALLIES} ラリー必要)。",
+            period=period,
         )
     diff_pp = (cur_wr - prev_wr) * 100
     sign = "+" if diff_pp >= 0 else ""
@@ -536,14 +539,15 @@ def advice_growth_timeline(db: Session, player_id: int, ctx: AuthCtx) -> dict:
         )
     else:
         text = (
-            f"直近 8 週 vs その前 8 週: ラリー勝率 {round(cur_wr * 100, 1)}% → "
-            f"{round(prev_wr * 100, 1)}% ({sign}{diff_pp:.1f}pp)。"
+            f"直近 8 週 vs その前 8 週: ラリー勝率 {round(cur_wr * 100, 1)}% "
+            f"(その前 {round(prev_wr * 100, 1)}%、差 {sign}{diff_pp:.1f}pp)。"
             f"サンプル: 直近 8 週 試合 {cur_m}/ラリー {cur_r}, その前 8 週 試合 {prev_m}/ラリー {prev_r}。"
         )
     return _ok_response(AdviceCard(
         text=text,
         basis={
             "source": "growth_8w_vs_8w",
+            "period": period,
             "sample_size": {
                 "current": {"matches": cur_m, "rallies": cur_r},
                 "previous": {"matches": prev_m, "rallies": prev_r},

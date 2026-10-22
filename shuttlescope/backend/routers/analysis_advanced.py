@@ -29,6 +29,7 @@ from backend.analysis.growth_engine import (
     growth_points_weighted,
     strength_weighted_moving_avg,
     compute_metric_growth_trend,
+    summarize_growth_population,
     decide_overall_growth,
 )
 
@@ -1968,6 +1969,11 @@ def get_growth_timeline(
             "trend_delta": trend_info["trend_delta"],
             "weighted_trend": trend_info["weighted_trend"],
             "weighted_trend_delta": trend_info["weighted_trend_delta"],
+            # トレンドの算出法 (最後の window 試合の平均 − 最初の window 試合の平均)
+            "trend_window": trend_info["window"],
+            "trend_n_points": trend_info["n_points"],
+            "trend_early_period": trend_info["early_period"],
+            "trend_recent_period": trend_info["recent_period"],
         },
         "meta": _with_input_provenance(
             {"sample_size": len(points), "confidence": confidence},
@@ -2007,6 +2013,7 @@ def get_growth_judgment(
 
     metrics_result = {}
     provenance_rows: dict[str, list] = {"rallies": []}
+    population_points: list[dict] = []
 
     for metric in ("win_rate", "serve_win_rate"):
         # growth_engine: 強度重み付きポイントで計算
@@ -2020,11 +2027,18 @@ def get_growth_judgment(
         trend_info = compute_metric_growth_trend(
             raw_pts, min_matches=min_matches, trend_delta=AnalysisConfig.GROWTH_TREND_DELTA, metric=metric,
         )
+        if metric == "win_rate":
+            population_points = raw_pts
         metrics_result[metric] = {
             "trend": trend_info["trend"],
             "delta": trend_info["trend_delta"],
             "weighted_trend": trend_info["weighted_trend"],
             "weighted_delta": trend_info["weighted_trend_delta"],
+            # この指標に使えた試合数と、比較に使った窓・期間 (画面に算出法を出すため)
+            "n_matches": trend_info["n_points"],
+            "window": trend_info["window"],
+            "early_period": trend_info["early_period"],
+            "recent_period": trend_info["recent_period"],
         }
 
     # 総合判定: 1 指標 = 1 票 (weighted_trend は補正であって 2 票目ではない)。
@@ -2058,6 +2072,8 @@ def get_growth_judgment(
             "match_count": match_count,
             "annotated_match_count": annotated_match_count,
             "min_matches_required": min_matches,
+            # 対象 / 使用 / 除外 (理由別)。指標ごとの使用数は metrics[*].n_matches
+            "population": summarize_growth_population(matches, population_points),
         },
         "meta": _with_input_provenance(
             {"sample_size": annotated_match_count},
