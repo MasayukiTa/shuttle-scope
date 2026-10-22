@@ -10,6 +10,7 @@ injection / null byte 系の処理バグを防ぐ。
 """
 from __future__ import annotations
 
+import unicodedata
 from typing import Optional
 
 from fastapi import HTTPException
@@ -29,6 +30,46 @@ _BIDI_FORMAT_CHARS = frozenset({
     "\u2066", "\u2067", "\u2068", "\u2069",  # LRI/RLI/FSI/PDI
     "\ufeff",                          # BOM / ZWNBSP
 })
+
+# 列挙漏れを防ぐため、Unicode の一般カテゴリでも判定する (監査 #10)。
+#   Cf = 書式制御 (不可視の数式演算子 U+2061-2064、廃止済み書式 U+206A-206F、
+#        言語タグ U+E0000 台、ALM など)
+#   Zl / Zp = 行・段落区切り
+# 幅を持たないのに文字として扱われ、見た目が同じで内部文字列が違う名前を作れる
+# ハングル・フィラー等は Cf ではないので別に列挙する。
+_INVISIBLE_FILLERS = frozenset({
+    "͏",                  # CGJ
+    "ᅟ", "ᅠ",        # Hangul choseong / jungseong filler
+    "឴", "឵",        # Khmer inherent vowel (不可視)
+    "ㅤ", "ﾠ",        # Hangul filler / halfwidth Hangul filler
+})
+_INVISIBLE_CATEGORIES = frozenset({"Cf", "Zl", "Zp"})
+
+
+def is_invisible_format_char(ch: str) -> bool:
+    """不可視 / 双方向制御 / 書式制御の 1 文字か (名前・表示名には入れさせない文字)。"""
+    return (
+        ch in _BIDI_FORMAT_CHARS
+        or ch in _INVISIBLE_FILLERS
+        or unicodedata.category(ch) in _INVISIBLE_CATEGORIES
+    )
+
+
+def strip_invisible_format_chars(value: Optional[str]) -> Optional[str]:
+    """表示用: 不可視・双方向制御文字と C0 制御文字を取り除き、NFC に正規化して返す。
+
+    防ぐ事象 (監査 #10): 検証を入れる前に保存された名前に不可視文字が残っていると、
+    一覧にそのまま出て、見た目が同じなのに別の文字列になる (なりすまし・重複)。
+    保存値は書き換えず、応答に載せる時だけ整える (非破壊)。None はそのまま返す。
+    """
+    if value is None:
+        return None
+    cleaned = "".join(
+        ch for ch in value
+        if not is_invisible_format_char(ch) and ch not in _C0_ALL
+    )
+    return unicodedata.normalize("NFC", cleaned)
+
 
 # C0 制御文字のうち改行・タブも拒否するセット (識別子向け)
 _C0_ALL = frozenset(chr(i) for i in range(0x20)) | {"\x7f"}
@@ -57,9 +98,9 @@ def reject_ctrl_and_bidi(
         raise HTTPException(
             status_code=422, detail=f"{field_name} too long (max {max_len})"
         )
-    disallowed = _C0_ALL | _BIDI_FORMAT_CHARS
+    disallowed = _C0_ALL
     for ch in value:
-        if ch in disallowed:
+        if ch in disallowed or is_invisible_format_char(ch):
             raise HTTPException(
                 status_code=422,
                 detail=(
@@ -88,9 +129,9 @@ def reject_bidi_only(
         raise HTTPException(
             status_code=422, detail=f"{field_name} too long (max {max_len})"
         )
-    disallowed = _C0_DANGEROUS | _BIDI_FORMAT_CHARS
+    disallowed = _C0_DANGEROUS
     for ch in value:
-        if ch in disallowed:
+        if ch in disallowed or is_invisible_format_char(ch):
             raise HTTPException(
                 status_code=422,
                 detail=(

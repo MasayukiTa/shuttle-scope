@@ -3,6 +3,10 @@ import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
+import { hasSufficientSample } from '@/utils/sampleGate'
+
+/** これ未満のストローク数では密度マップを出さない (監査 #438)。 */
+const SPATIAL_DENSITY_MIN_STROKES = 5
 import { seqBlue } from '@/styles/colors'
 import { useTranslation } from 'react-i18next'
 
@@ -46,11 +50,11 @@ export function SpatialDensityMap({ playerId }: SpatialDensityMapProps) {
   const d = resp?.data
   const sampleSize = resp?.meta?.sample_size ?? 0
 
-  if (!d || sampleSize === 0) {
+  if (!d || !hasSufficientSample(sampleSize, SPATIAL_DENSITY_MIN_STROKES)) {
     return (
       <div className="bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-lg p-4">
         <h3 className="text-sm font-semibold text-[var(--ss-t1)] mb-3">{t('auto.SpatialDensityMap.k1')}</h3>
-        <NoDataMessage sampleSize={sampleSize} minRequired={5} unit="ストローク" />
+        <NoDataMessage sampleSize={sampleSize} minRequired={SPATIAL_DENSITY_MIN_STROKES} unit="ストローク" />
       </div>
     )
   }

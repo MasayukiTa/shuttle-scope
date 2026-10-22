@@ -253,6 +253,12 @@ def _summarize(values: Sequence[float]) -> Dict[str, Optional[float]]:
     }
 
 
+# 目標レンジ・ギャップを出す最小標本 (監査 #74)。
+# top_ratio=0.3 のとき全体 10 件で上位群は 3 件になる。これ未満は範囲が 1〜2 試合の生値そのもの。
+PROFILE_TARGET_MIN_TOP = 3
+PROFILE_TARGET_MIN_TOTAL = 10
+
+
 def best_performance_profile(
     conditions: Sequence[Dict[str, Any]],
     matches: Sequence[Dict[str, Any]],
@@ -317,17 +323,28 @@ def best_performance_profile(
     win_rate_in = round(mean(wr_top), 3) if wr_top else None
     win_rate_out = round(mean(wr_rest), 3) if wr_rest else None
 
+    # 目標レンジ・ギャップは標本が足りるときだけ出す (監査 #74/#75)。
+    # 上位群が 1 件のとき min = max = 生値となり、1 試合分の値が「目標値」に見えてしまう。
+    # 上位群 PROFILE_TARGET_MIN_TOP 件以上かつ全体 PROFILE_TARGET_MIN_TOTAL 件以上でなければ
+    # target_* / gap は None (標本不足) とし、targets_withheld=True で理由を伝える。
+    targets_withheld = (
+        n_top < PROFILE_TARGET_MIN_TOP or (n_top + n_rest) < PROFILE_TARGET_MIN_TOTAL
+    )
+
     # key_factors に現在値・目標レンジを付加
     key_factors = []
     for k, v in diffs[:3]:
         tp = top_profile.get(k, {})
         rp = rest_profile.get(k, {})
         cur = current_values.get(k)
-        t_min = tp.get("min")
-        t_max = tp.get("max")
-        # 現状とベストレンジのギャップ（正: 上げる必要あり、負: 下げる必要あり）
+        t_min = None if targets_withheld else tp.get("min")
+        t_max = None if targets_withheld else tp.get("max")
+        # 現状とベストレンジのギャップ（正: 値が範囲より下、負: 範囲より上）。
+        # 観察された差であり、上げ下げの助言ではない (監査 #75)。
         gap: Optional[float] = None
-        if cur is not None:
+        if targets_withheld:
+            gap = None
+        elif cur is not None:
             if t_min is not None and cur < t_min:
                 gap = round(t_min - cur, 2)
             elif t_max is not None and cur > t_max:
@@ -342,7 +359,10 @@ def best_performance_profile(
             "direction": "higher_when_winning" if v > 0 else "lower_when_winning",
             "target_min": round(t_min, 2) if t_min is not None else None,
             "target_max": round(t_max, 2) if t_max is not None else None,
-            "target_mean": round(tp["mean"], 2) if tp.get("mean") is not None else None,
+            "target_mean": (
+                round(tp["mean"], 2)
+                if (not targets_withheld and tp.get("mean") is not None) else None
+            ),
             "rest_mean": round(rp["mean"], 2) if rp.get("mean") is not None else None,
             "current": round(cur, 2) if cur is not None else None,
             "gap": gap,
@@ -364,6 +384,7 @@ def best_performance_profile(
         "win_rate_outside": win_rate_out,
         "current_values": current_values,
         "confidence": confidence,
+        "targets_withheld": targets_withheld,
         "note": _confidence_note(n_top + n_rest),
     }
 

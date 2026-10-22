@@ -16,7 +16,7 @@ from backend.analysis.router_helpers import (
     SHOT_TYPE_JA, SHOT_KEYS, SHOT_LABELS_JA, END_TYPE_JA, _shot_ja,
     _player_role_in_match, _get_player_matches, _fetch_matches_sets_rallies,
 )
-from backend.analysis.role_view import is_opponent_stroke, own_slot, teammate_slot, team_side
+from backend.analysis.role_view import is_opponent_stroke, opposing_ids, own_slot, teammate_slot, team_side
 from backend.analysis.player_context import (
     involves_player, opponent_player_id, partner_player_id, player_wins_match,
 )
@@ -24,6 +24,7 @@ from backend.analysis.match_filter import (
     MatchFilter, match_filter_params, select_population, stamps_population,
 )
 from backend.analysis.analysis_config import AnalysisConfig
+from backend.analysis.service_shots import is_service_shot
 from backend.analysis.response_meta import build_input_provenance
 from backend.analysis.growth_engine import (
     growth_points_weighted,
@@ -852,13 +853,13 @@ def get_opponent_stats(
         m.id: _player_role_in_match(m, player_id) for m in matches
     }
 
-    # 対戦相手IDを抽出
-    opponent_map: dict[int, int] = {}  # match_id -> opponent_id
+    # 対戦相手IDを抽出。ダブルスは相手ペアの 2 人とも対戦相手に数える (監査 #181)。
+    # 1 試合は、相手 1 人につき 1 試合として数える (相手ペア 2 人にそれぞれ 1 試合)。
+    opponent_map: dict[int, list[int]] = {}  # match_id -> opponent_ids
     for m in matches:
-        opp_id = opponent_player_id(m, player_id)
-        opponent_map[m.id] = opp_id
+        opponent_map[m.id] = sorted(opposing_ids(m, player_id))
 
-    opponent_ids = set(opponent_map.values())
+    opponent_ids = {oid for ids in opponent_map.values() for oid in ids}
     players_obj = db.query(Player).filter(Player.id.in_(opponent_ids)).all()
     player_name_map: dict[int, str] = {p.id: p.name for p in players_obj}
 
@@ -874,24 +875,26 @@ def get_opponent_stats(
     })
 
     for m in matches:
-        opp_id = opponent_map[m.id]
-        opp_stats[opp_id]["match_ids"].add(m.id)
-        if player_wins_match(m, player_id):
-            opp_stats[opp_id]["wins"] += 1
+        for opp_id in opponent_map[m.id]:
+            opp_stats[opp_id]["match_ids"].add(m.id)
+            if player_wins_match(m, player_id):
+                opp_stats[opp_id]["wins"] += 1
 
+    # 相手ペアの 2 人に同じラリーを数えるので、全体の標本数は一意なラリー数で数える。
+    total_sample = 0
     for rally in rallies:
         match_id = set_to_match[rally.set_id]
-        opp_id = opponent_map.get(match_id)
-        if opp_id is None:
+        opp_ids = opponent_map.get(match_id)
+        if not opp_ids:
             continue
-        opp_stats[opp_id]["total_length"] += rally.rally_length
-        opp_stats[opp_id]["rally_count"] += 1
+        total_sample += 1
+        for opp_id in opp_ids:
+            opp_stats[opp_id]["total_length"] += rally.rally_length
+            opp_stats[opp_id]["rally_count"] += 1
 
     opponents_list = []
-    total_sample = 0
     for opp_id, stats in sorted(opp_stats.items()):
         match_count = len(stats["match_ids"])
-        total_sample += stats["rally_count"]
         win_rate = round(stats["wins"] / match_count, 3) if match_count else None
         avg_rally = round(stats["total_length"] / stats["rally_count"], 2) if stats["rally_count"] else None
         opponents_list.append({
@@ -1808,6 +1811,10 @@ def get_flash_advice(
             chosen = strokes[-3]
         elif len(strokes) >= 2:
             chosen = strokes[-2]
+        # サーブはラリー中盤の球ではない。短いラリーで先頭のサーブが選ばれても
+        # 「ラリー中盤にサーブが多い」と出さない (監査 #38)。
+        if chosen is not None and is_service_shot(chosen.shot_type):
+            chosen = None
         if chosen is not None:
             provenance_stroke_ids.add(chosen.id)
             pre_loss_3.append(chosen.shot_type)
@@ -1820,6 +1827,7 @@ def get_flash_advice(
     opp_recent_rows = [
         s for s in recent_strokes
         if is_opponent_stroke(s.player, player_role) and s.shot_type
+        and not is_service_shot(s.shot_type)
     ]
     provenance_stroke_ids.update(s.id for s in opp_recent_rows)
     opp_recent = [s.shot_type for s in opp_recent_rows]

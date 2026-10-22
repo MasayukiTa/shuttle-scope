@@ -4,6 +4,8 @@ from typing import Any
 
 import numpy as np
 
+from backend.analysis.service_shots import truncate_at_stray_service
+
 # scipy が利用可能かつ numpy バイナリ互換性がある場合のみ統計CI計算に使用
 # numpy 2.x + 古い scipy ビルドの組み合わせで ValueError が発生するケースを考慮
 try:
@@ -51,7 +53,9 @@ class MarkovAnalyzer:
         triplets = []
         for rally_strokes in strokes_list:
             # ショット種別のみのリスト
-            shots = [s["shot_type"] for s in rally_strokes if s.get("shot_type") in _SHOT_IDX]
+            shots = truncate_at_stray_service(
+                s["shot_type"] for s in rally_strokes if s.get("shot_type") in _SHOT_IDX
+            )
             for i in range(len(shots) - 2):
                 triplets.append((shots[i], shots[i + 1], shots[i + 2]))
         return triplets
@@ -67,7 +71,11 @@ class MarkovAnalyzer:
         raw = np.full((n, n), laplace_alpha, dtype=float)
 
         for rally_strokes in strokes_list:
-            shots = [s["shot_type"] for s in rally_strokes if s.get("shot_type") in _SHOT_IDX]
+            # サーブはラリー先頭の 1 打だけ。途中のサーブ系は偽の遷移 (short_service -> short_service 等)
+            # を作るので、そこで列を打ち切る (監査 #41)。
+            shots = truncate_at_stray_service(
+                s["shot_type"] for s in rally_strokes if s.get("shot_type") in _SHOT_IDX
+            )
             for i in range(len(shots) - 1):
                 i1 = _SHOT_IDX.get(shots[i])
                 i2 = _SHOT_IDX.get(shots[i + 1])
@@ -183,7 +191,11 @@ class MarkovAnalyzer:
             rally_won = rally_strokes[-1].get("player_won", False)
             total_wins += int(rally_won)
             total_rallies += 1
-            shots = [s["shot_type"] for s in rally_strokes if s.get("shot_type") in _SHOT_IDX]
+            # サーブはラリー先頭の 1 打だけ。途中のサーブ系は偽の遷移 (short_service -> short_service 等)
+            # を作るので、そこで列を打ち切る (監査 #41)。
+            shots = truncate_at_stray_service(
+                s["shot_type"] for s in rally_strokes if s.get("shot_type") in _SHOT_IDX
+            )
             for i in range(len(shots) - 1):
                 key = (shots[i], shots[i + 1])
                 pair_total[key] += 1

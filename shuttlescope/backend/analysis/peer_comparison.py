@@ -1,8 +1,10 @@
 """peer_comparison.py — admin 専用 community peer cohort 集計 (research tier)
 
 privacy 設計:
-  - k-anonymity: cohort N < MIN_COHORT_N の場合は metrics を一切返さず
-    {'available': False, 'reason': 'insufficient_cohort'} を返す。
+  - 最小人数の下限: cohort N < MIN_COHORT_N (N>=5 を要求) の場合は metrics を一切返さず
+    {'available': False, 'reason': 'insufficient_cohort'} を返す。これは小さな集団の値を
+    出さないための下限であり、k-匿名性 (準識別子の組み合わせが k 人以上に対応すること) や
+    個人が特定されないことの保証ではない (監査 #423)。
   - aggregate-only: 個別選手の値は返さない。p25/p50/p75/mean/sd のみ。
   - demo team は team.display_id == '__demo__' で識別して必ず除外する。
   - 識別側チャネル防止: min/max は返さない（個人特定の足掛かりを残さない）。
@@ -328,7 +330,7 @@ def compute_peer_cohort_stats(
     for m in metrics:
         vals = metric_values.get(m, [])
         if len(vals) < MIN_COHORT_N:
-            # 個別 metric も k-anon を満たさない場合は省く（identifying side-channel 防止）
+            # 個別 metric も最小人数 (MIN_COHORT_N) に満たない場合は省く（少人数の値を出さない）
             continue
         agg = _aggregate(vals)
         agg["unit"] = METRIC_UNITS.get(m, "")

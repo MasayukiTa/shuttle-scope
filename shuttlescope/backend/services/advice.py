@@ -451,29 +451,50 @@ def advice_prediction_tab(db: Session, player_id: int, opponent_id: Optional[int
             f"{opp_label} との head-to-head ラリー数 {rcount} は予測根拠に不足 (30 以上必要)。"
         )
     h2h_wr = wins / rcount
-    # 95% Wilson 区間
-    from math import sqrt
-    n, p = rcount, h2h_wr
-    z = 1.96
-    denom = 1 + z * z / n
-    center = (p + z * z / (2 * n)) / denom
-    half = z * sqrt((p * (1 - p) + z * z / (4 * n)) / n) / denom
-    lo = max(0.0, center - half)
-    hi = min(1.0, center + half)
+    # 95% 区間は試合を単位にしたクラスタ頑健な推定 (監査 #302)。
+    # 同じ試合のラリーは独立ではないので、全ラリー数を n とする Wilson 区間は狭すぎる。
+    from backend.utils.confidence import cluster_rate_ci
+    per_match: dict[int, list[int]] = {}
+    for r in rallies:
+        mid = sid_to_mid.get(r.set_id)
+        if mid is None:
+            continue
+        cell = per_match.setdefault(mid, [0, 0])
+        cell[1] += 1
+        if r.winner == role_by_mid.get(mid):
+            cell[0] += 1
+    ci = cluster_rate_ci([(w, n) for w, n in per_match.values()])
+    match_n = len(per_match)
 
-    text = (
-        f"{opp_label} との過去 {len(h2h)} 試合 ({rcount} ラリー) の"
-        f"ラリー勝率: {round(h2h_wr * 100, 1)}% "
-        f"(95% 信頼区間 [{round(lo * 100, 1)}%, {round(hi * 100, 1)}%])"
-    )
+    if ci is not None:
+        text = (
+            f"{opp_label} との過去 {len(h2h)} 試合 ({rcount} ラリー) の"
+            f"ラリー勝率: {round(h2h_wr * 100, 1)}% "
+            f"(95% 信頼区間 [{round(ci[0] * 100, 1)}%, {round(ci[1] * 100, 1)}%]、"
+            f"試合を単位に算出)"
+        )
+    else:
+        text = (
+            f"{opp_label} との過去 {len(h2h)} 試合 ({rcount} ラリー) の"
+            f"ラリー勝率: {round(h2h_wr * 100, 1)}% "
+            f"(1 試合分のため信頼区間は出せません)"
+        )
+    # 信頼度は試合数で決める (ラリー数では独立な標本数にならない)
+    if match_n >= 10 and rcount >= 200:
+        h2h_conf = "high"
+    elif match_n >= 5:
+        h2h_conf = "medium"
+    else:
+        h2h_conf = "low"
     return _ok_response(AdviceCard(
         text=text,
         basis={
-            "source": "head_to_head_wilson_ci",
+            "source": "head_to_head_match_cluster_ci",
             "match_count": len(h2h),
             "rally_count": rcount,
+            "ci_unit": "match",
         },
-        confidence="high" if rcount >= 200 else "medium",
+        confidence=h2h_conf,
         severity="info",
     ))
 

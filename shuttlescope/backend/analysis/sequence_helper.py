@@ -11,6 +11,7 @@ from collections import Counter
 from typing import Optional
 
 from backend.analysis.role_view import own_slot
+from backend.analysis.service_shots import truncate_at_stray_service, without_service
 from backend.db.models import Rally, Stroke
 
 
@@ -34,10 +35,9 @@ def player_stroke_sequence(
     """
     seq: list[str] = []
     for rally in rallies:
-        strokes = strokes_by_rally.get(rally.id, [])
-        for s in sorted(strokes, key=lambda x: x.stroke_num):
-            if s.player == own_slot(player_role):
-                seq.append(s.shot_type)
+        # ラリーごとに整えてから連結する。サーブはラリー先頭の 1 打だけなので、
+        # ラリー途中のサーブ系は打ち切る (監査 #327 / #330)。
+        seq.extend(rally_stroke_sequence(rally, strokes_by_rally.get(rally.id, []), player_role))
     return seq
 
 
@@ -46,12 +46,16 @@ def rally_stroke_sequence(
     strokes: list[Stroke],
     player_role: str,
 ) -> list[str]:
-    """単一ラリー内の target_player ストローク列を返す"""
-    return [
+    """単一ラリー内の target_player ストローク列を返す。
+
+    サーブ系ショットが先頭以外に現れた場合は、そこで列を打ち切る
+    (同一ラリーにサーブが 2 回ある列を作らない)。
+    """
+    return truncate_at_stray_service(
         s.shot_type
         for s in sorted(strokes, key=lambda x: x.stroke_num)
         if s.player == own_slot(player_role)
-    ]
+    )
 
 
 def all_player_strokes_in_rally(
@@ -142,12 +146,20 @@ def pre_outcome_sequences(
     """
     勝利/敗戦ラリー直前 tail_n 打のショット列を返す。
     pre-win / pre-loss 比較分析に使う。
+
+    注意 (監査 #331): 返すのは「結果が win (または loss) だったラリーだけ」の列で、
+    母集団を結果で選んでいる。この列だけから「勝率」を作ると 100% になる循環集計になる。
+    勝率を出すときは、そのパターンを含む全ラリー (勝ち負け両方) を分母にすること。
+
+    サーブ系ショットは「結果の直前の球」ではないので含めない (監査 #38)。
     """
     results: list[list[str]] = []
     for rally in rallies:
         player_won = rally.winner == player_role
         if (outcome == "win" and player_won) or (outcome == "loss" and not player_won):
-            seq = rally_stroke_sequence(rally, strokes_by_rally.get(rally.id, []), player_role)
+            seq = without_service(
+                rally_stroke_sequence(rally, strokes_by_rally.get(rally.id, []), player_role)
+            )
             if seq:
                 results.append(last_n_shots(seq, tail_n))
     return results

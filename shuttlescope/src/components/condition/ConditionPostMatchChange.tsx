@@ -18,6 +18,7 @@ import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { apiGet } from '@/api/client'
 import { useConditions, type ConditionRecord } from '@/hooks/useConditions'
 import type { Match } from '@/types'
+import { isConditionImprovement } from '@/utils/conditionDirection'
 
 // 試合前後の体調変化（coach/analyst 限定）
 // 各試合日の前7日・後7日の平均を計算し、差分を棒グラフで可視化する
@@ -223,6 +224,7 @@ export function ConditionPostMatchChange({ playerId, isLight }: Props) {
               const chartData = row.metrics.map((mrow) => ({
                 metric: t(`condition.post_match.metric.${mrow.key}`),
                 delta: mrow.delta as number,
+                improved: isConditionImprovement(mrow.key, mrow.delta as number),
                 bMean: mrow.bMean,
                 aMean: mrow.aMean,
                 bN: mrow.bN,
@@ -313,7 +315,7 @@ export function ConditionPostMatchChange({ playerId, isLight }: Props) {
                           {chartData.map((d, i) => (
                             <Cell
                               key={i}
-                              fill={d.delta >= 0 ? posColor : negColor}
+                              fill={d.improved ? posColor : negColor}
                             />
                           ))}
                         </Bar>

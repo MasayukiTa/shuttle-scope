@@ -19,6 +19,7 @@ from backend.routers.players import PlayerCreate
 from backend.utils.video_downloader import video_downloader
 from backend.utils import response_cache
 from backend.utils.sync_meta import touch
+from backend.utils.match_score import score_consistency_error
 from backend.utils.text_sanitize import reject_bidi_only, reject_ctrl_and_bidi
 from backend.utils.auth import (
     get_auth,
@@ -427,6 +428,13 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
                 raise HTTPException(status_code=422, detail=f"{fname} contains control characters")
 
 
+def _validate_score_consistency(final_score: Optional[str], result: Optional[str]) -> None:
+    """final_score と result の食い違い・成立しないセット数を 422 で拒否する (新しい書き込みだけ)。"""
+    err = score_consistency_error(final_score, result)
+    if err:
+        raise HTTPException(status_code=422, detail=err)
+
+
 def _video_filename(m: Match) -> Optional[str]:
     """video_local_path からファイル名のみを抽出する（パスは露出しない）。"""
     if not m.video_local_path:
@@ -720,6 +728,7 @@ def create_match(body: MatchCreate, request: Request, db: Session = Depends(get_
     if ctx.is_player:
         raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
     _validate_match_enums(body)
+    _validate_score_consistency(body.final_score, body.result)
     # 未登録の選手は、試合と同じトランザクションで作る。後続の検証や試合の保存が
     # 失敗したら全部巻き戻し、試合に紐付かない選手を残さない。
     try:
@@ -822,6 +831,13 @@ def update_match(match_id: int, body: MatchUpdate, request: Request, db: Session
     # analyst/coach は自チーム scope のみ更新可 (cross-team 改竄防止)
     from backend.utils.auth import require_match_scope as _rms
     _rms(request, match, db)
+    # final_score / result のどちらかを書き換えるときだけ、反映後の組み合わせを検査する。
+    # 既存の矛盾した行を、別の項目の更新で巻き込んで拒否しない (データは書き換えない: 監査 #179)。
+    if "final_score" in body.model_fields_set or "result" in body.model_fields_set:
+        _validate_score_consistency(
+            body.final_score if "final_score" in body.model_fields_set else match.final_score,
+            body.result if "result" in body.model_fields_set else match.result,
+        )
     # 未登録の選手は試合の更新と同じトランザクションで作る（失敗したら残さない）
     try:
         _create_new_players_for_match(body, request, ctx, db, require_both=False)
