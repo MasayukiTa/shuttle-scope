@@ -2791,6 +2791,15 @@
     "task_yolo": "YOLO",
     "ray_not_connected": "Ray未接続"
   },
+  "a11yLabels": {
+    "copy_player_name": "選手名をコピー: {{name}}",
+    "edit_player": "{{name}}を編集",
+    "delete_player": "{{name}}を削除",
+    "select_match": "{{label}}を選択",
+    "match_level": "大会レベル",
+    "video_quality": "動画画質",
+    "worker_gpu_name": "GPU名"
+  },
   "settings": {
     "consent": {
       "title": "同意状態と撤回",

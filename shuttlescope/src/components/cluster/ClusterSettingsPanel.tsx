@@ -764,6 +764,7 @@ export function ClusterSettingsPanel() {
             <div key={key} className="flex items-center gap-2">
               <span className={`${labelCls} w-36 shrink-0`}>{label}</span>
               <select
+                aria-label={label}
                 className={inputCls}
                 value={(cfg.network as Record<string, string | undefined> | undefined)?.[key] ?? ''}
                 onChange={e => updateNetwork(key, e.target.value)}
@@ -782,6 +783,7 @@ export function ClusterSettingsPanel() {
             <span className={`${labelCls} w-36 shrink-0`}>{t('cluster.primary_ip')}</span>
             <input
               className={inputCls}
+              aria-label={t('cluster.primary_ip')}
               placeholder="192.168.100.1"
               value={cfg.network?.primary_ip ?? ''}
               onChange={e => updateNetwork('primary_ip', e.target.value)}
@@ -819,18 +821,21 @@ export function ClusterSettingsPanel() {
                 <div className="flex items-center gap-2">
                   <input
                     className={`${inputCls} w-16`}
+                    aria-label={t('cluster.worker_id')}
                     placeholder="pc2"
                     value={w.id}
                     onChange={e => updateWorker(i, 'id', e.target.value)}
                   />
                   <input
                     className={`${inputCls} w-32`}
+                    aria-label={t('cluster.worker_ip')}
                     placeholder="192.168.100.2"
                     value={w.ip}
                     onChange={e => updateWorker(i, 'ip', e.target.value)}
                   />
                   <input
                     className={inputCls}
+                    aria-label={t('cluster.worker_label')}
                     placeholder="GMKtec K10"
                     value={w.label}
                     onChange={e => updateWorker(i, 'label', e.target.value)}
@@ -860,6 +865,7 @@ export function ClusterSettingsPanel() {
                   <span className={`${labelCls} w-16 shrink-0`}>{t('cluster.worker_cpus')}</span>
                   <input type="number" min={1} max={64}
                     className={`${inputCls} w-16`}
+                    aria-label={t('cluster.worker_cpus')}
                     value={w.num_cpus ?? ''}
                     placeholder="16"
                     onChange={e => updateWorker(i, 'num_cpus', e.target.value)}
@@ -867,12 +873,14 @@ export function ClusterSettingsPanel() {
                   <span className={`${labelCls} w-16 shrink-0`}>{t('cluster.worker_gpus')}</span>
                   <input type="number" min={0} max={8}
                     className={`${inputCls} w-12`}
+                    aria-label={t('cluster.worker_gpus')}
                     value={w.num_gpus ?? ''}
                     placeholder="0"
                     onChange={e => updateWorker(i, 'num_gpus', e.target.value)}
                   />
                   <input
                     className={inputCls}
+                    aria-label={t('a11yLabels.worker_gpu_name')}
                     placeholder="AMD Radeon 780M Graphics"
                     value={w.gpu_label ?? ''}
                     onChange={e => updateWorker(i, 'gpu_label', e.target.value)}

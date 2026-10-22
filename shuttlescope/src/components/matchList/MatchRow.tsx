@@ -39,6 +39,9 @@ export function MatchRow({
           type="checkbox"
           checked={selected}
           onChange={() => onToggleSelect(m.id)}
+          aria-label={t('a11yLabels.select_match', {
+            label: [m.date, m.tournament, m.player_b?.name ?? `#${m.player_b_id}`].filter(Boolean).join(' / '),
+          })}
           className="accent-blue-500"
         />
       </td>

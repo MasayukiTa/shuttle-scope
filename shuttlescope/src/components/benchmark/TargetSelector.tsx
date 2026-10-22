@@ -108,6 +108,7 @@ export function TargetSelector({
             {/* 数値直接入力 */}
             <input
               type="number"
+              aria-label={t('auto.TargetSelector.k1')}
               min={MIN_FRAMES}
               max={MAX_FRAMES}
               value={displayValue}
@@ -122,6 +123,7 @@ export function TargetSelector({
         <div className="relative">
           <input
             type="range"
+            aria-label={t('auto.TargetSelector.k1')}
             min={MIN_FRAMES}
             max={MAX_FRAMES}
             step={1}

@@ -2781,6 +2781,15 @@
     "task_yolo": "YOLO",
     "ray_not_connected": "Ray not connected"
   },
+  "a11yLabels": {
+    "copy_player_name": "Copy player name: {{name}}",
+    "edit_player": "Edit {{name}}",
+    "delete_player": "Delete {{name}}",
+    "select_match": "Select {{label}}",
+    "match_level": "Tournament level",
+    "video_quality": "Video quality",
+    "worker_gpu_name": "GPU name"
+  },
   "settings": {
     "ui": {
       "player_list": "Player list",

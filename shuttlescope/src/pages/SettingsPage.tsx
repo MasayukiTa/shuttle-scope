@@ -1099,6 +1099,7 @@ export function SettingsPage() {
                             onClick={() => copyPlayerName(p)}
                             className="text-left group flex items-center gap-1.5 min-w-0"
                             title={p.name}
+                            aria-label={t('a11yLabels.copy_player_name', { name: p.name })}
                           >
                             <span className="cell-name-clip">{p.name}</span>
                             {copiedPlayerId === p.id ? (
@@ -1157,12 +1158,14 @@ export function SettingsPage() {
                           <div className="flex items-center gap-1">
                             <button
                               onClick={() => openEdit(p)}
+                              aria-label={t('a11yLabels.edit_player', { name: p.name })}
                               className="p-1.5 rounded-ss-sm bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t2)] transition-colors duration-fast ease-out"
                             >
                               <MIcon name="edit" size={12} />
                             </button>
                             <button
                               onClick={() => setDeleteConfirmId(p.id)}
+                              aria-label={t('a11yLabels.delete_player', { name: p.name })}
                               className="p-1.5 rounded-ss-sm bg-[var(--ss-surface-2)] hover:bg-[var(--ss-bad)] hover:text-white text-[var(--ss-bad)] transition-colors duration-fast ease-out"
                             >
                               <MIcon name="delete" size={12} />
@@ -1379,6 +1382,7 @@ export function SettingsPage() {
               </div>
               <input
                 type="range"
+                aria-label={t('tracknet.cpu_limit_label')}
                 min={10}
                 max={90}
                 step={5}
@@ -2100,9 +2104,10 @@ export function SettingsPage() {
               </div>
               <div className="space-y-3">
                 <div>
-                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('auto.SettingsPage.k8')}</label>
+                  <label htmlFor="settings-sync-device-id" className={`block text-sm ${textSecondary} mb-1`}>{t('auto.SettingsPage.k8')}</label>
                   <div className="flex gap-2">
                     <input
+                      id="settings-sync-device-id"
                       type="text"
                       value={appSettings.sync_device_id}
                       onChange={(e) => updateSettings({ sync_device_id: e.target.value })}
@@ -2113,8 +2118,9 @@ export function SettingsPage() {
                   <p className="text-[11px] text-[var(--ss-t3)] mt-0.5">{t('auto.SettingsPage.k9')}</p>
                 </div>
                 <div>
-                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('auto.SettingsPage.k10')}</label>
+                  <label htmlFor="settings-sync-folder-path" className={`block text-sm ${textSecondary} mb-1`}>{t('auto.SettingsPage.k10')}</label>
                   <input
+                    id="settings-sync-folder-path"
                     type="text"
                     value={appSettings.sync_folder_path}
                     onChange={(e) => updateSettings({ sync_folder_path: e.target.value })}
