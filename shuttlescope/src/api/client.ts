@@ -431,6 +431,48 @@ export async function apiDelete<T>(path: string, extraHeaders?: Record<string, s
   return res.json()
 }
 
+/** Content-Disposition からファイル名を取り出す。無い・読めないときは null。 */
+export function filenameFromContentDisposition(header: string | null | undefined): string | null {
+  if (!header) return null
+  const star = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(header)
+  if (star) {
+    try {
+      return decodeURIComponent(star[1].trim())
+    } catch {
+      // 壊れたエンコードは通常の filename= へ進む
+    }
+  }
+  const plain = /filename\s*=\s*"([^"]*)"/i.exec(header) ?? /filename\s*=\s*([^;]+)/i.exec(header)
+  const name = plain ? plain[1].trim() : ''
+  return name || null
+}
+
+/**
+ * 認証付きでファイルを取得して Blob で返す (ダウンロードリンク用)。
+ * `<a href>` の直接ダウンロードは Authorization ヘッダを付けられず 401 になるため、
+ * 他の API と同じ経路 (Bearer 付与 + 401 時の自動更新) を通す。
+ * HTTP 失敗時は Blob にせず status 付きの Error を投げる。
+ */
+export async function apiGetBlob(
+  path: string,
+  params?: Record<string, string | number | boolean | null | undefined>,
+): Promise<{ blob: Blob; filename: string | null }> {
+  const url = new URL(BASE_URL + path)
+  if (params) {
+    Object.entries(params).forEach(([k, v]) => {
+      if (v === undefined || v === null) return
+      url.searchParams.set(k, String(v))
+    })
+  }
+  const res = await fetchWithAutoRefresh(url.toString(), { headers: authHeaders() })
+  if (!res.ok) {
+    const text = await res.text()
+    throw httpError(res.status, text)
+  }
+  const blob = await res.blob()
+  return { blob, filename: filenameFromContentDisposition(res.headers.get('Content-Disposition')) }
+}
+
 export interface AuthMeDTO {
   role: 'admin' | 'analyst' | 'coach' | 'player'
   user_id: number | null

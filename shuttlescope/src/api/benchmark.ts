@@ -1,7 +1,7 @@
 // ベンチマーク API クライアント
 // /api/v1/benchmark/* エンドポイントへのリクエスト関数と型定義
 
-import { apiGet, apiPost } from '@/api/client'
+import { apiDelete, apiGet, apiPost } from '@/api/client'
 
 // ─── 型定義 ──────────────────────────────────────────────────────────────────
 
@@ -75,5 +75,6 @@ export function getJob(job_id: string): Promise<BenchmarkJob> {
 
 /** 実行中のジョブをキャンセルする */
 export async function cancelJob(job_id: string): Promise<void> {
-  await fetch(`/api/v1/benchmark/jobs/${job_id}`, { method: 'DELETE' })
+  // 共通クライアント経由 (Bearer 付与・401 時の自動更新)。失敗は呼び出し側へ投げる。
+  await apiDelete<{ success: boolean; job_id: string }>(`/v1/benchmark/jobs/${job_id}`)
 }

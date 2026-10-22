@@ -219,6 +219,72 @@ def _enforce_passphrase_policy(passphrase: Optional[bytes]) -> None:
             )
 
 
+PG_DUMP_ENV_VAR = "SS_PG_DUMP_PATH"
+
+
+def _pg_dump_file_name() -> str:
+    return "pg_dump.exe" if os.name == "nt" else "pg_dump"
+
+
+def _version_dir_key(p: Path) -> tuple:
+    """PostgreSQL のバージョン名のディレクトリ (16, 9.6 など) を新しい順に並べるための鍵。"""
+    try:
+        return (1, float(p.name))
+    except ValueError:
+        return (0, 0.0)
+
+
+def _pg_install_roots() -> list:
+    """PostgreSQL が版ごとのフォルダを置く標準の親フォルダ。"""
+    roots: list = []
+    if os.name == "nt":
+        seen: set = set()
+        for raw in (os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)"), r"C:\Program Files"):
+            if raw and raw not in seen:
+                seen.add(raw)
+                roots.append(Path(raw) / "PostgreSQL")
+    else:
+        roots.append(Path("/usr/lib/postgresql"))
+    return roots
+
+
+def _pg_dump_candidate_dirs() -> list:
+    """PATH に無いときに調べる、PostgreSQL の標準的なインストール先 (新しい版が先)。"""
+    found: list = []
+    for root in _pg_install_roots():
+        try:
+            versions = [d for d in root.iterdir() if d.is_dir()]
+        except OSError:
+            continue
+        for d in sorted(versions, key=_version_dir_key, reverse=True):
+            found.append(d / "bin")
+    return found
+
+
+def find_pg_dump() -> Optional[str]:
+    """pg_dump の実行ファイルを探す。見つからなければ None。
+
+    順序: PATH → 環境変数 SS_PG_DUMP_PATH (実行ファイル、またはそれを含むフォルダ)
+    → 標準のインストール先 (Windows の Program Files\\PostgreSQL\\<版>\\bin など)。
+    """
+    exe = shutil.which("pg_dump")
+    if exe:
+        return exe
+    name = _pg_dump_file_name()
+    configured = (os.environ.get(PG_DUMP_ENV_VAR) or "").strip()
+    if configured:
+        p = Path(configured)
+        if p.is_file():
+            return str(p)
+        if (p / name).is_file():
+            return str(p / name)
+    for d in _pg_dump_candidate_dirs():
+        cand = d / name
+        if cand.is_file():
+            return str(cand)
+    return None
+
+
 def _run_pg_dump(out_path: Path) -> None:
     """DATABASE_URL の PostgreSQL を pg_dump (custom 形式) で out_path へ書き出す。
 
@@ -230,7 +296,7 @@ def _run_pg_dump(out_path: Path) -> None:
     url = make_url(settings.DATABASE_URL)
     if not url.drivername.startswith("postgres"):
         raise BackupUnavailable("この DB の種類ではバックアップに対応していません")
-    exe = shutil.which("pg_dump")
+    exe = find_pg_dump()
     if not exe:
         raise BackupUnavailable("pg_dump が見つかりません。サーバに PostgreSQL クライアントを入れてください")
 
@@ -331,7 +397,7 @@ def backup_status() -> dict:
         engine, supported, reason = "sqlite", True, None
     elif url.startswith("postgres"):
         engine = "postgresql"
-        supported = shutil.which("pg_dump") is not None
+        supported = find_pg_dump() is not None
         reason = None if supported else "pg_dump_missing"
     else:
         engine, supported, reason = "other", False, "unsupported_engine"
