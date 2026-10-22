@@ -229,7 +229,7 @@
     <span class="ss-bigdot"></span>
     <div class="ss-htxt">
       <span class="ss-htitle">{{ overall_label.get(overall, ('',''))[1 if _is_en else 0] }}</span>
-      <span class="ss-hsub">{% if _is_en %}Last checked: {% else %}最終確認: {% endif %}<time class="ss-time" datetime="{{ status.checked_at }}">{{ status.checked_at }}</time></span>
+      <span class="ss-hsub">{% if _is_en %}Last checked: {% else %}最終確認: {% endif %}<time class="ss-time" id="ss-checked-at" datetime="{{ status.checked_at }}">{{ status.checked_at }}</time></span>
     </div>
   </div>
 
@@ -239,7 +239,7 @@
   <h2>{% if _is_en %}Components{% else %}システム構成{% endif %}</h2>
   <div class="ss-components">
     {% for c in status.components %}
-    <div class="ss-comp" data-st="{{ c.status }}">
+    <div class="ss-comp" data-st="{{ c.status }}" data-key="{{ c.key }}">
       <div class="ss-comp-head">
         <span class="ss-comp-dot"></span>
         <span class="ss-comp-name">{{ c.name_en if _is_en else c.name_ja }}</span>
@@ -447,7 +447,28 @@
         || String((d.active_incidents||[]).length)!==init.a
         || String((d.maintenance||[]).length)!==init.m
         || String((d.recent_maintenance||[]).length)!==init.rm;
-      if(changed){location.reload();}
+      if(changed){location.reload();return;}
+      // 件数・overall が同じでも、最終確認時刻とコンポーネントの状態/詳細は更新する。
+      // 値は textContent / setAttribute のみで反映する (innerHTML は使わない)。
+      var chk=document.getElementById('ss-checked-at');
+      if(chk && d.checked_at){chk.setAttribute('datetime',d.checked_at);var ft=fmt(d.checked_at);chk.textContent=ft||d.checked_at;}
+      var CL={operational:['正常','Operational'],degraded:['低下','Degraded'],down:['停止','Down'],unknown:['不明','Unknown']};
+      var en=(document.documentElement.lang==='en');
+      (d.components||[]).forEach(function(c){
+        if(!c||!c.key) return;
+        var box=document.querySelector('.ss-comp[data-key="'+String(c.key).replace(/[^A-Za-z0-9_-]/g,'')+'"]');
+        if(!box) return;
+        var st=CL[c.status]?c.status:'unknown';
+        box.setAttribute('data-st',st);
+        var badge=box.querySelector('.ss-comp-badge');
+        if(badge){badge.className='ss-comp-badge st-'+st;badge.textContent=CL[st][en?1:0];}
+        var det=box.querySelector('.ss-comp-detail');
+        if(det){det.textContent=c.detail||'';}
+        else if(c.detail){
+          var right=box.querySelector('.ss-comp-right');
+          if(right){var sp=document.createElement('span');sp.className='ss-comp-detail';sp.textContent=c.detail;right.parentNode.insertBefore(sp,right);}
+        }
+      });
     }).catch(function(){});
   }
   setInterval(poll,60000);
@@ -587,7 +608,19 @@
   // 背景クリックで閉じる (ボックス内クリックは無視)
   modal.addEventListener('click', function(e){ if(e.target===modal) closeModal(); });
   document.addEventListener('keydown', function(e){
-    if(e.key==='Escape' && modal.classList.contains('open')) closeModal();
+    if(!modal.classList.contains('open')) return;
+    if(e.key==='Escape'){ closeModal(); return; }
+    // aria-modal=true に合わせ、Tab / Shift+Tab をダイアログ内で循環させる
+    if(e.key==='Tab'){
+      var f=Array.prototype.filter.call(
+        modal.querySelectorAll('button:not([disabled]),a[href],[tabindex]:not([tabindex="-1"])'),
+        function(el){ return el.offsetParent!==null || el===document.activeElement; });
+      if(!f.length){ e.preventDefault(); btnClose.focus(); return; }
+      var first=f[0], last=f[f.length-1], cur=document.activeElement;
+      if(!modal.contains(cur)){ e.preventDefault(); first.focus(); }
+      else if(e.shiftKey && cur===first){ e.preventDefault(); last.focus(); }
+      else if(!e.shiftKey && cur===last){ e.preventDefault(); first.focus(); }
+    }
   });
 })();
 </script>

@@ -2074,7 +2074,14 @@ def get_policy_eval(
     mean_uplift = (
         round(sum(s["uplift"] for s in states_ok) / len(states_ok), 4) if states_ok else None
     )
-    best_state = max(states_ok, key=lambda s: s["uplift"]) if states_ok else None
+    # The row CI is the CI of the target policy value (not of the uplift), and
+    # taking the max of many point estimates is optimistic (winner's curse).
+    # A state is only called the best opportunity when the lower CI bound of the
+    # target value still exceeds the behavior value; otherwise the largest point
+    # estimate is reported as an uncertain candidate. n is always carried.
+    supported = [s for s in states_ok if s["uplift"] > 0 and s["ci_low"] > s["value_behavior"]]
+    best_state = max(supported, key=lambda s: s["uplift"]) if supported else None
+    top_candidate = max(states_ok, key=lambda s: s["uplift"]) if states_ok else None
     confidence = _research_confidence("descriptive_basic", total)
     return {
         "success": True,
@@ -2085,8 +2092,20 @@ def get_policy_eval(
                 "states_insufficient": len(states_insuf),
                 "mean_uplift": mean_uplift,
                 "best_state": (
-                    {"state_key": best_state["state_key"], "uplift": best_state["uplift"]}
+                    {
+                        "state_key": best_state["state_key"],
+                        "uplift": best_state["uplift"],
+                        "n": best_state["n"],
+                    }
                     if best_state else None
+                ),
+                "top_candidate": (
+                    {
+                        "state_key": top_candidate["state_key"],
+                        "uplift": top_candidate["uplift"],
+                        "n": top_candidate["n"],
+                    }
+                    if top_candidate else None
                 ),
             },
         },

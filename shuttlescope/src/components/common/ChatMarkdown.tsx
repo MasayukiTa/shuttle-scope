@@ -246,10 +246,12 @@ function renderTextBlock(text: string, keyBase: string): ReactNode[] {
       flushAll()
       const level = heading[1].length
       const cls = HEADING_CLASS[level] ?? HEADING_CLASS[6]
+      // 見出し構造を支援技術へ渡す。チャット領域はページ見出しの下に入るので h3 から始める
+      const Tag = `h${Math.min(6, level + 2)}` as 'h3' | 'h4' | 'h5' | 'h6'
       out.push(
-        <p key={`${keyBase}-h${k++}`} className={`${cls} break-words`}>
+        <Tag key={`${keyBase}-h${k++}`} className={`${cls} break-words`}>
           {renderInline(heading[2], `${keyBase}-h${k}`)}
-        </p>,
+        </Tag>,
       )
       continue
     }
