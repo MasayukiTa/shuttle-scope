@@ -5028,7 +5028,9 @@
       "server_a": "A serves",
       "server_b": "B serves",
       "video_sec": "Video {{sec}}s",
-      "back_to_video": "Back to video"
+      "back_to_video": "Back to video",
+      "cv_last_hitter": "CV last hitter",
+      "cv_last_hitter_pct": "CV last hitter ({{pct}}% match)"
     },
     "Pass2ServeFinal": {
       "header": "Serve and finish · Rally {{n}} (set {{m}})",
@@ -5044,7 +5046,15 @@
       "prompt_final_land": "Select the landing point of the deciding shot",
       "primary_next": "Next",
       "primary_submit": "Submit",
-      "cancel_retry": "Redo"
+      "cancel_retry": "Redo",
+      "slot_serve_label": "Who served",
+      "slot_final_label": "Who hit last"
+    },
+    "HitterSlot": {
+      "player_a": "A main player",
+      "partner_a": "A partner",
+      "player_b": "B main player",
+      "partner_b": "B partner"
     },
     "Pass3ShotDetail": {
       "k1": "Smash",
@@ -5064,6 +5074,9 @@
       "other_later": "Other (fill in details later)",
       "show_other": "Other shot types",
       "pick_title": "Select shot type for #{{n}} ({{player}})",
+      "pick_hitter_title": "Select who hit #{{n}} (team {{player}})",
+      "pick_hitter_label": "Hitter",
+      "err_final_not_saved": "The final stroke is not saved yet, so a stroke cannot be added. Wait a moment and try again",
       "edit_title": "Change shot type for #{{n}}",
       "final_unclassified": "(Finisher: unclassified)",
       "prompt_hit_zone": "#{{n}} ({{shot}}) — Select hit point",
@@ -5229,6 +5242,9 @@
       "rally_saving_server": "This rally is still being saved to the server.",
       "pass2_after_save": "You can enter the serve and finishing shot once sending finishes.",
       "back_to_list": "← Back to list",
+      "pass2_checking_existing": "Checking existing data for this rally ...",
+      "pass2_check_failed": "Could not check existing data. Check the connection and pick the rally again.",
+      "pass2_already_entered": "This rally is already entered. Edit it in All strokes (Pass 3).",
       "pass2_select_rally": "Select a rally for the serve and finishing shot (closest to {{sec}}s first)",
       "record_pass1_first": "Record the points first, then come back",
       "player_point": "{{p}} scored",

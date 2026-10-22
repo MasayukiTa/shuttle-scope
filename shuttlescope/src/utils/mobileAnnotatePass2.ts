@@ -7,6 +7,7 @@
  * 終端ショット分析が汚れるため、1 打ラリーは serve 1 件 + rally_length=1 にする。
  */
 import type { ZoneCode } from '@/components/mobileAnnotate/AnnotateOverlay'
+import type { HitterSlot } from '@/utils/mobileAnnotateDoubles'
 
 export interface Pass2ServeZones {
   serve_hit?: ZoneCode
@@ -16,20 +17,24 @@ export interface Pass2ServeZones {
 // interface ではなく type: enqueue の body (Record<string, unknown>) へ渡せるようにする
 export type Pass2ServeStrokeBody = {
   stroke_num: 1
-  player: 'player_a' | 'player_b'
+  player: HitterSlot
   shot_type: 'serve'
   hit_zone: ZoneCode | undefined
   land_zone: ZoneCode | undefined
 }
 
+/**
+ * @param serverSlot ダブルスで選ばれたサーバの個人 slot。省略時はチーム値 (rally.server)。
+ */
 export function serveOnlyRallyPayload(
   rally: { server: 'player_a' | 'player_b' },
   zones: Pass2ServeZones,
+  serverSlot?: HitterSlot,
 ): { stroke: Pass2ServeStrokeBody; rallyLength: 1 } {
   return {
     stroke: {
       stroke_num: 1,
-      player: rally.server,
+      player: serverSlot ?? rally.server,
       shot_type: 'serve',
       hit_zone: zones.serve_hit,
       land_zone: zones.serve_land,

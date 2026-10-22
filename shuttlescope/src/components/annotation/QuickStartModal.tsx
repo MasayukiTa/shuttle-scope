@@ -21,6 +21,8 @@ interface Props {
 export function QuickStartModal({ onClose, onStarted }: Props) {
   const { t } = useTranslation()
   const titleId = useId()
+  const serverLabelId = useId()
+  const sideLabelId = useId()
   const { teamName: myTeamName } = useAuth()
 
   const COMPETITION_TYPES = [
@@ -354,16 +356,19 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
 
           {/* 先サーブ */}
           <div>
-            <label className="block text-sm text-[var(--ss-t2)] mb-1">
+            <span id={serverLabelId} className="block text-sm text-[var(--ss-t2)] mb-1">
               {t('quick_start.initial_server')}
-            </label>
-            <div className="flex gap-2">
+            </span>
+            <div className="flex gap-2" role="radiogroup" aria-labelledby={serverLabelId}>
               {[
                 { value: 'player_a', label: t('quick_start.my_side') },
                 { value: 'player_b', label: t('quick_start.opponent_side') },
               ].map((opt) => (
                 <button
                   key={opt.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={initialServer === opt.value}
                   onClick={() => setInitialServer(opt.value as 'player_a' | 'player_b')}
                   className={`flex-1 py-1.5 rounded-ss-md text-sm border transition-colors duration-fast ease-out ${
                     initialServer === opt.value
@@ -379,16 +384,19 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
 
           {/* アナリスト視点（コートのどちら側が自選手か） */}
           <div>
-            <label className="block text-sm text-[var(--ss-t2)] mb-1">
+            <span id={sideLabelId} className="block text-sm text-[var(--ss-t2)] mb-1">
               {t('quick_start.analyst_side_label')}
-            </label>
-            <div className="flex gap-2">
+            </span>
+            <div className="flex gap-2" role="radiogroup" aria-labelledby={sideLabelId} aria-required="true">
               {[
                 { value: 'bottom' as const, label: t('quick_start.analyst_side_bottom'), hint: t('quick_start.analyst_side_bottom_hint') },
                 { value: 'top' as const, label: t('quick_start.analyst_side_top'), hint: '' },
               ].map((opt) => (
                 <button
                   key={opt.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={analystSide === opt.value}
                   onClick={() => setAnalystSide(opt.value)}
                   className={`flex-1 py-1.5 rounded-ss-md text-sm border text-left px-2 transition-colors duration-fast ease-out ${
                     analystSide === opt.value

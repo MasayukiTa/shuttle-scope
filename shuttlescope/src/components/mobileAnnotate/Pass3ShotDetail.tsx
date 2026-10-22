@@ -36,6 +36,7 @@ import { enqueue } from '@/utils/mobileAnnotateQueue'
 import { useTranslation } from 'react-i18next'
 import { MIcon } from '@/components/common/MIcon'
 import { normalizeStrikerTeam, nextStrikingTeam, teamLetter } from '@/utils/players'
+import { resolveHitter, slotsOfTeam, type HitterSlot } from '@/utils/mobileAnnotateDoubles'
 import { SERVICE_TYPES, asZoneCode, strokeValidationError } from '@/utils/mobileStrokeValidation'
 
 // Build inside the component via useMemo so t() is bound to the current
@@ -64,7 +65,7 @@ type ShotKey = typeof COMMON_SHOT_KEYS[number] | typeof OTHER_SHOT_KEYS[number]
 interface StrokeLite {
   id?: number | null
   stroke_num: number
-  player: 'player_a' | 'player_b'
+  player: HitterSlot
   shot_type: string
   hit_zone?: string | null
   land_zone?: string | null
@@ -81,6 +82,8 @@ interface Props {
   }
   /** このラリーの既存 stroke (Pass 2 で作った serve + final、Pass 3 で増える分も) */
   strokes: StrokeLite[]
+  /** ダブルス: 追加する球の打球者を個人 slot (partner を含む) で選ばせて保存する */
+  doubles?: boolean
   onStrokeAdded: (s: StrokeLite) => void
   onStrokeUpdated: (s: StrokeLite) => void
   onClose: () => void
@@ -89,6 +92,7 @@ interface Props {
 export function Pass3ShotDetail({
   rally,
   strokes,
+  doubles = false,
   onStrokeAdded,
   onStrokeUpdated,
   onClose,
@@ -119,6 +123,7 @@ export function Pass3ShotDetail({
   // 「追加モード」: shot 選択 → hit_zone → land_zone
   type AddState =
     | { phase: 'idle' }
+    | { phase: 'pickHitter' }
     | { phase: 'pickShot' }
     | { phase: 'hitZone'; shot: ShotKey | 'other' }
     | { phase: 'landZone'; shot: ShotKey | 'other'; hit: ZoneCode }
@@ -139,19 +144,39 @@ export function Pass3ShotDetail({
   const [commitError, setCommitError] = useState<string | null>(null)
 
   // Pass 2 が "final" を sentinel 9999 で挿入するので、その手前に詰める。
-  // sentinel 以外の中で最大 stroke_num + 1 を採用。
-  const intermediates = sorted.filter((s) => s.stroke_num < 9000)
-  const finalSentinel = sorted.find((s) => s.stroke_num >= 9000) || null
+  // 最終打は stroke_num>=9000 の一時番号だけでなく、未分類の最終打 (shot_type が
+  // __final_pending) も同じ最終打として扱う。Pass3 を閉じると最終打は通常番号へ再採番されて
+  // 一時番号の目印を失うが、再編集で追加した中間球は必ずその手前へ入れる (#760)。
+  const isFinalStroke = (s: StrokeLite) => s.stroke_num >= 9000 || s.shot_type === '__final_pending'
+  const finalSentinel = [...sorted].reverse().find(isFinalStroke) || null
+  const intermediates = sorted.filter((s) => s !== finalSentinel)
   const nextStrokeNum = (intermediates[intermediates.length - 1]?.stroke_num ?? 0) + 1
+  // 再採番済みの最終打 (番号が次の中間球と衝突する) は、追加前に 1 つ後ろへずらす必要がある。
+  const finalNeedsShift = finalSentinel != null && finalSentinel.stroke_num < 9000 && finalSentinel.stroke_num <= nextStrokeNum
   // 前 stroke の player の逆。
   // ダブルスの stroke は player が partner_a / partner_b にもなるので、
   // 素直に反転すると `partner_a` !== `player_a` から `player_a` が返り、
   // **同じチームに打ち返したことになる**。チームへ正規化してから反転する。
+  // 追加する球は最終打の手前に入るので、直前の「中間球」(無ければサーブ側) の相手が打つ。
   const nextPlayer: 'player_a' | 'player_b' = nextStrikingTeam(
-    sorted[sorted.length - 1]?.player, rally.server,
+    intermediates[intermediates.length - 1]?.player, rally.server,
   )
+  // ダブルスは追加前に選ばれた個人 slot。シングルスは nextPlayer のまま。
+  const [hitterSlot, setHitterSlot] = useState<HitterSlot | null>(null)
+  const nextHitter = resolveHitter(doubles, nextPlayer, hitterSlot)
 
   const commitShot = async (shotKey: ShotKey | 'other', hit: ZoneCode | null, land: ZoneCode | null) => {
+    if (!nextHitter) {
+      setAdd({ phase: 'pickHitter' })
+      return
+    }
+    // 再採番済みの最終打は、追加する中間球に番号を譲るため先に 1 つ後ろへずらす。
+    // サーバ id が無い (未送信) 最終打は PUT できないので、保存させずエラーを見せる。
+    if (finalNeedsShift && finalSentinel && !finalSentinel.id) {
+      setCommitError(t('auto.Pass3ShotDetail.err_final_not_saved'))
+      setAdd({ phase: 'idle' })
+      return
+    }
     // 送信前検証: backend validate_stroke を必ず通る形だけ送る。弾かれる組合せを
     // そのまま POST すると 422 → queue が manualRetry 化し、入力が無言で失われるため。
     const verr = strokeValidationError(shotKey, land, nextStrokeNum)
@@ -161,9 +186,22 @@ export function Pass3ShotDetail({
       return
     }
     setCommitError(null)
+    if (finalNeedsShift && finalSentinel && finalSentinel.id) {
+      // 同じ rally の操作は enqueue 順に送られるため、ずらす PUT を先に積めば
+      // 中間球の POST が最終打と同じ番号で衝突しない。
+      const shifted = nextStrokeNum + 1
+      await enqueue('PUT /api/strokes/:id', {
+        stroke_num: shifted,
+        player: finalSentinel.player,
+        shot_type: finalSentinel.shot_type,
+        hit_zone: finalSentinel.hit_zone,
+        land_zone: finalSentinel.land_zone,
+      }, { id: finalSentinel.id }, { sequenceKey: `rally:${rally.id}` })
+      onStrokeUpdated({ ...finalSentinel, stroke_num: shifted })
+    }
     const body = {
       stroke_num: nextStrokeNum,
-      player: nextPlayer,
+      player: nextHitter,
       shot_type: shotKey,
       hit_zone: hit,
       land_zone: land,
@@ -172,7 +210,7 @@ export function Pass3ShotDetail({
     onStrokeAdded({
       id: null,
       stroke_num: nextStrokeNum,
-      player: nextPlayer,
+      player: nextHitter,
       shot_type: shotKey,
       hit_zone: hit,
       land_zone: land,
@@ -296,6 +334,38 @@ export function Pass3ShotDetail({
       />
     )
   }
+  if (add.phase === 'pickHitter') {
+    return (
+      <div className="absolute inset-0 bg-black/95 flex flex-col">
+        <div className="px-3 py-2 border-b border-gray-800 text-xs text-yellow-200 font-bold">
+          {t('auto.Pass3ShotDetail.pick_hitter_title', { n: nextStrokeNum, player: nextPlayer === 'player_a' ? 'A' : 'B' })}
+        </div>
+        <div className="flex-1 p-3 grid grid-cols-2 gap-2 content-start" role="radiogroup" aria-label={t('auto.Pass3ShotDetail.pick_hitter_label')}>
+          {slotsOfTeam(nextPlayer).map((slot) => (
+            <button
+              key={slot}
+              type="button"
+              role="radio"
+              aria-checked={hitterSlot === slot}
+              onClick={() => {
+                setHitterSlot(slot)
+                setAdd({ phase: 'pickShot' })
+              }}
+              className="px-3 py-3 rounded-lg bg-gray-800 hover:bg-gray-700 text-white text-sm font-medium"
+              style={{ minHeight: '52px' }}
+            >
+              {t(`auto.HitterSlot.${slot}`)}
+            </button>
+          ))}
+        </div>
+        <div className="px-3 py-2 border-t border-gray-800">
+          <button type="button" onClick={() => setAdd({ phase: 'idle' })} className="px-3 py-1.5 rounded bg-gray-700 text-white text-xs">
+            {t('auto.Pass3ShotDetail.cancel')}
+          </button>
+        </div>
+      </div>
+    )
+  }
   if (add.phase === 'pickShot') {
     return (
       <ShotChipPicker
@@ -402,7 +472,7 @@ export function Pass3ShotDetail({
             <span className={`text-xs font-bold ${
               normalizeStrikerTeam(s.player) === 'player_a' ? 'text-blue-400' : 'text-pink-400'
             }`}>
-              {teamLetter(s.player)}
+              {doubles ? t(`auto.HitterSlot.${s.player}`) : teamLetter(s.player)}
             </span>
             <span className="text-xs">
               {labelForShot.get(s.shot_type)
@@ -423,7 +493,11 @@ export function Pass3ShotDetail({
         {/* 追加ボタン */}
         <button
           type="button"
-          onClick={() => setAdd({ phase: 'pickShot' })}
+          onClick={() => {
+            // ダブルスは毎回打球者を選び直させる (前の球の slot を引き継がない)
+            setHitterSlot(null)
+            setAdd({ phase: doubles ? 'pickHitter' : 'pickShot' })
+          }}
           data-tutorial="mobileAnnotate.addStroke"
           className="w-full px-3 py-3 rounded-lg border-2 border-dashed border-gray-600 text-gray-300 text-sm hover:bg-gray-800"
         >

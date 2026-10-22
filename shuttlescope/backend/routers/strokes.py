@@ -325,6 +325,36 @@ def create_stroke(
             detail={"code": "VALIDATION_ERROR", "message": error}
         )
 
+    # (rally_id, stroke_num) は DB 上 Index だけで一意制約ではない。Pass2 を同じラリーへ
+    # 再実行すると別キーの POST で #1 / #9999 が二重に入り、分析が系列を複製する。
+    # 同じ番号が既にある場合: 内容が同じなら再送として既存行を返し、違えば 409 で拒否する。
+    dup = (
+        db.query(Stroke)
+        .filter(
+            Stroke.rally_id == rally_id,
+            Stroke.stroke_num == body.stroke_num,
+            Stroke.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if dup is not None:
+        submitted = body.model_dump()
+        if any(getattr(dup, k) != v for k, v in submitted.items()):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "STROKE_NUM_CONFLICT",
+                    "message": "このラリーには同じストローク番号が既に保存されています",
+                    "stroke_num": body.stroke_num,
+                    "existing_stroke_id": dup.id,
+                },
+            )
+        response = {"success": True, "data": stroke_to_dict(dup)}
+        if idem_key:
+            from backend.utils.idempotency import store
+            store(idem_key, ctx_for_idem.user_id, endpoint_id, response, status_code=201)
+        return response
+
     stroke = Stroke(
         rally_id=rally_id,
         land_zone_source=_human_land_zone_source(body.land_zone),
@@ -349,6 +379,29 @@ def update_stroke(stroke_id: int, body: StrokeData, request: Request, db: Sessio
     if not stroke:
         raise HTTPException(status_code=404, detail="ストロークが見つかりません")
     _stroke_require_scope(request, db, stroke.rally_id)
+    # 番号を変える更新(最終打の再採番・挿入に伴う後ろ送り)が、同じラリーの別 stroke と
+    # 衝突して同一 stroke_num を作らないようにする。番号を変えない更新は既存の重複データでも通す。
+    if body.stroke_num != stroke.stroke_num:
+        clash = (
+            db.query(Stroke.id)
+            .filter(
+                Stroke.rally_id == stroke.rally_id,
+                Stroke.stroke_num == body.stroke_num,
+                Stroke.id != stroke.id,
+                Stroke.deleted_at.is_(None),
+            )
+            .first()
+        )
+        if clash is not None:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "STROKE_NUM_CONFLICT",
+                    "message": "このラリーには同じストローク番号が既に保存されています",
+                    "stroke_num": body.stroke_num,
+                    "existing_stroke_id": clash[0],
+                },
+            )
     from backend.utils.db_update import apply_update
     previous_land_zone = stroke.land_zone
     apply_update(stroke, body.model_dump())
