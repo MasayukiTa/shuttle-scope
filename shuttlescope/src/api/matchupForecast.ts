@@ -1,6 +1,7 @@
 // 対戦予測（階層ベイズ）API クライアント
 import { apiGet } from '@/api/client'
-import type { SampleUnit } from '@/types'
+import type { AnalysisFilters, SampleUnit } from '@/types'
+import { toFilterApiParams, type FilterScopeMeta } from '@/utils/analysisFilterParams'
 
 // ── 型定義 ──────────────────────────────────────────────────────────────────
 
@@ -24,7 +25,7 @@ export interface MatchupForecastData {
   n_matches: number
 }
 
-export interface MatchupForecastMeta {
+export interface MatchupForecastMeta extends FilterScopeMeta {
   sample_size: number
   sample_unit?: SampleUnit | null
   confidence: Record<string, unknown>
@@ -48,8 +49,10 @@ export interface MatchupForecastResponse {
  */
 export function fetchMatchupForecast(
   playerId: number,
+  filters?: AnalysisFilters,
 ): Promise<MatchupForecastResponse> {
   return apiGet<MatchupForecastResponse>('/analysis/matchup_forecast', {
     player_id: playerId,
+    ...(filters ? toFilterApiParams(filters) : {}),
   })
 }

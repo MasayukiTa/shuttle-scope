@@ -4005,7 +4005,9 @@
       "assumptions": "前提: {{v}}",
       "reason": "探索的理由: {{v}}",
       "promotion": "実用移行条件: {{v}}",
-      "unfiltered_scope": "上部の絞り込みは、この分析には効きません。この選手の全試合を対象にしています。"
+      "filter_scope_global_only": "絞り込み対象外: この分析は、この選手の全試合を対象にしています。",
+      "filter_scope_not_wired": "絞り込み対象外: この分析は、まだ上部の絞り込みを受け取りません。",
+      "population_filtered": "絞り込み後の対象: {{m}} 試合、{{r}} ラリー"
     },
     "DeviceManagerPanel": {
       "approved": "承認済み",

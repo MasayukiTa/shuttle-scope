@@ -9,7 +9,9 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { fetchStyleDistance, StyleDistanceEntry, StyleMapEntry } from '@/api/styleDistance'
 import { EvidenceBadge } from '@/components/dashboard/EvidenceBadge'
-import { ResearchNotice, UnfilteredScopeNote } from '@/components/dashboard/ResearchNotice'
+import { ResearchNotice, FilterScopeNote } from '@/components/dashboard/ResearchNotice'
+import { DEFAULT_FILTERS, type AnalysisFilters } from '@/types'
+import { toFilterApiParams } from '@/utils/analysisFilterParams'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { MIcon } from '@/components/common/MIcon'
 import { useCardTheme } from '@/hooks/useCardTheme'
@@ -18,6 +20,8 @@ import { useCardTheme } from '@/hooks/useCardTheme'
 
 interface Props {
   playerId: number
+  /** 画面上部の絞り込み。省略時は絞り込みなし */
+  filters?: AnalysisFilters
 }
 
 // ── ヘルパー ─────────────────────────────────────────────────────────────────
@@ -178,8 +182,9 @@ function StyleScatterSvg({
 
 // ── メインコンポーネント ───────────────────────────────────────────────────────
 
-export function StyleDistanceCard({ playerId }: Props) {
+export function StyleDistanceCard({ playerId, filters = DEFAULT_FILTERS }: Props) {
   const { t } = useTranslation()
+  const filterApiParams = toFilterApiParams(filters)
   const {
     card,
     textHeading,
@@ -191,8 +196,8 @@ export function StyleDistanceCard({ playerId }: Props) {
   } = useCardTheme()
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['styleDistance', playerId],
-    queryFn: () => fetchStyleDistance(playerId),
+    queryKey: ['styleDistance', playerId, filterApiParams],
+    queryFn: () => fetchStyleDistance(playerId, filters),
     enabled: !!playerId,
   })
 
@@ -239,7 +244,7 @@ export function StyleDistanceCard({ playerId }: Props) {
         assumptions={t('auto.StyleDistanceCard.assumptions')}
         promotionCriteria={t('auto.StyleDistanceCard.promotion_criteria')}
       />
-      <UnfilteredScopeNote />
+      <FilterScopeNote meta={data?.meta} />
 
       {/* ─ ローディング ── */}
       {isLoading && (

@@ -3997,7 +3997,9 @@
       "assumptions": "Assumptions: {{v}}",
       "reason": "Exploratory rationale: {{v}}",
       "promotion": "Promotion criteria: {{v}}",
-      "unfiltered_scope": "The filters above do not apply to this analysis. It uses all matches of this player."
+      "filter_scope_global_only": "Not filtered: this analysis uses all matches of this player.",
+      "filter_scope_not_wired": "Not filtered: this analysis does not take the filters above yet.",
+      "population_filtered": "After filtering: {{m}} matches, {{r}} rallies"
     },
     "DeviceManagerPanel": {
       "k1": "Remote",

@@ -34,6 +34,7 @@ from typing import Optional
 import numpy as np
 from sqlalchemy.orm import Session
 
+from backend.analysis.match_filter import MatchFilter, NO_FILTER, select_population
 from backend.analysis.player_context import involves_player
 from backend.db.models import Match, GameSet, Rally, Stroke
 
@@ -97,6 +98,7 @@ def load_zone_histograms(
     allowed_player_ids: Optional[set[int]] = None,
     min_matches: int = 3,
     provenance_rows: Optional[dict[str, list]] = None,
+    match_filter: MatchFilter = NO_FILTER,
 ) -> dict[int, np.ndarray]:
     """参照選手 + コホート選手の land_zone 正規化ヒストグラム辞書を返す。
 
@@ -107,6 +109,9 @@ def load_zone_histograms(
                       【セキュリティ】エンドポイントはチームスコープ内の
                       player_id のみをここに渡す。
     min_matches     : コホートに含める最低試合数 (参照選手には適用しない)
+    match_filter    : 参照選手の試合だけに掛ける絞り込み (結果・大会レベル・期間)。
+                      コホート選手は「比較の物差し」なので全試合のまま。
+                      結果の絞り込みは参照選手視点の勝敗なので、コホートには意味を持たない。
 
     返り値: {player_id: normalized_histogram}
       - ヒストグラムは ZONE_LABELS の順で長さ 9 の ndarray
@@ -131,6 +136,10 @@ def load_zone_histograms(
         .all()
     )
     ref_match_ids: set[int] = {m.id for m in ref_matches}
+    # 絞り込みが有効なときだけ、参照選手の打球を母集団の試合に限る (None = 全試合)
+    ref_keep_ids: Optional[set[int]] = None
+    if match_filter.applied:
+        ref_keep_ids = {m.id for m in select_population(db, player_id, match_filter)[0]}
 
     # ── コホート候補: 全選手の試合数を集計 ────────────────────────────────
     # match テーブルで player_a_id / player_b_id の出現回数を数える
@@ -236,6 +245,13 @@ def load_zone_histograms(
         else:
             # ダブルス partner_a/b は現フェーズでは OT 解析対象外
             continue
+
+        if (
+            ref_keep_ids is not None
+            and actual_pid == player_id
+            and set_to_match.get(rally_to_set.get(s.rally_id)) not in ref_keep_ids
+        ):
+            continue   # 参照選手の、絞り込みから外れた試合の打球は数えない
 
         if actual_pid in counts:
             counts[actual_pid][z_idx] += 1.0

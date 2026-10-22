@@ -26,6 +26,13 @@ AnalysisTier = Literal["stable", "advanced", "research"]
 # しかもツールチップには「球」と出ていた。値も単位も誤りだった。
 SampleUnit = Literal["strokes", "rallies", "matches"]
 EvidenceLevel = Literal["exploratory", "directional", "practical_candidate", "practical_adopted"]
+# 画面上部の絞り込み (結果・大会レベル・期間) がこの解析の母集団に効くか。全エントリで宣言が必須。
+#   filtered    : エンドポイントが MatchFilter を受け取り、母集団に掛ける
+#   global_only : 設計上、絞り込みを使わない (選手の全試合が母集団)。カードは「絞り込み対象外」を出す
+#   not_wired   : 絞り込みの対象にすべきだが、エンドポイントがまだ受け取らない (git grep で確認済みの宣言)
+FilterScope = Literal["filtered", "global_only", "not_wired"]
+FILTER_SCOPE_FILTERED = "filtered"
+FILTER_SCOPES = ("filtered", "global_only", "not_wired")
 
 
 class RegistryEntry(TypedDict):
@@ -37,6 +44,7 @@ class RegistryEntry(TypedDict):
     # 推測で埋めると「単位の分からない数字」に戻るので、
     # **エンドポイントが実際に何を渡しているかを読んでから**書くこと。
     sample_unit: Optional[SampleUnit]
+    filter_scope: FilterScope
     caution: Optional[str]
     assumptions: Optional[str]
     promotion_criteria: Optional[str]
@@ -82,6 +90,7 @@ _RAW: list[dict] = [
 
     {
         "analysis_type": "descriptive",
+        "filter_scope": "filtered",
         "tier": "stable",
         "evidence_level": "practical_adopted",
         "caution": None,
@@ -92,6 +101,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "heatmap",
+        "filter_scope": "filtered",
         "sample_unit": "strokes",
         "tier": "stable",
         "evidence_level": "practical_adopted",
@@ -103,6 +113,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "score_progression",
+        "filter_scope": "not_wired",
         "tier": "stable",
         "evidence_level": "practical_adopted",
         "caution": None,
@@ -113,6 +124,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "pre_win_pre_loss",
+        "filter_scope": "filtered",
         "tier": "stable",
         "evidence_level": "practical_candidate",
         "caution": "サンプル数が少ない場合、パターンが不安定になる可能性があります。",
@@ -123,6 +135,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "first_return",
+        "filter_scope": "filtered",
         "tier": "stable",
         "evidence_level": "practical_candidate",
         "caution": "ショット種別の粒度はアノテーション入力精度に依存します。",
@@ -133,6 +146,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "set_summary",
+        "filter_scope": "not_wired",
         "tier": "stable",
         "evidence_level": "practical_adopted",
         "caution": None,
@@ -148,6 +162,7 @@ _RAW: list[dict] = [
 
     {
         "analysis_type": "pressure",
+        "filter_scope": "filtered",
         "tier": "advanced",
         "evidence_level": "practical_candidate",
         "caution": "プレッシャー定義（スコア閾値）は固定値です。実際の心理的プレッシャーとは異なる場合があります。",
@@ -158,6 +173,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "transition",
+        "filter_scope": "filtered",
         "tier": "advanced",
         "evidence_level": "practical_candidate",
         "caution": "遷移確率はサンプル不足で不安定になる可能性があります。",
@@ -168,6 +184,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "temporal",
+        "filter_scope": "filtered",
         "tier": "advanced",
         "evidence_level": "directional",
         "caution": "セット内時間帯の効果量は小さい場合があります。過度な解釈を避けてください。",
@@ -178,6 +195,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "post_long_rally",
+        "filter_scope": "filtered",
         "tier": "advanced",
         "evidence_level": "directional",
         "caution": "ロングラリー後効果のサンプルは少なくなりがちです。",
@@ -188,6 +206,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "growth",
+        "filter_scope": "filtered",
         "tier": "advanced",
         "evidence_level": "practical_candidate",
         "caution": "成長判定は過去試合の比較です。コンディション・対戦相手の変化を反映しません。",
@@ -198,6 +217,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "doubles_tactical",
+        "filter_scope": "not_wired",
         "tier": "advanced",
         "evidence_level": "directional",
         "caution": "ダブルス分析はダブルス試合のみが対象です。シングルスデータは含みません。",
@@ -208,6 +228,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "markov",
+        "filter_scope": "not_wired",
         "tier": "advanced",
         "evidence_level": "directional",
         "caution": "マルコフモデルは定常性を仮定します。実際の戦術変化は反映されません。",
@@ -218,6 +239,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "shot_quality",
+        "filter_scope": "not_wired",
         "tier": "advanced",
         "evidence_level": "directional",
         "caution": "ショット品質スコアはルールベースのヒューリスティックです。",
@@ -228,6 +250,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "movement",
+        "filter_scope": "not_wired",
         "tier": "advanced",
         "evidence_level": "directional",
         "caution": "動線解析はアノテーション精度に依存します。",
@@ -243,6 +266,7 @@ _RAW: list[dict] = [
 
     {
         "analysis_type": "counterfactual",
+        "filter_scope": "not_wired",
         "tier": "research",
         "evidence_level": "exploratory",
         "caution": "反事実的比較は仮説的シナリオです。実際に選択されなかった行動の価値は直接観測できません。",
@@ -253,6 +277,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "recommendation",
+        "filter_scope": "not_wired",
         "tier": "research",
         "evidence_level": "directional",
         "caution": "推奨スコアはパターン頻度に基づきます。因果的な有効性を保証するものではありません。",
@@ -263,6 +288,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "opponent_affinity",
+        "filter_scope": "filtered",
         "tier": "research",
         "evidence_level": "exploratory",
         "caution": "対戦相手タイプは、ラリーの長さやドライブ率などの数値を固定のしきい値で区切って分けた分類です。個別の選手特性を正確に反映しない場合があります。",
@@ -273,6 +299,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "pair_synergy",
+        "filter_scope": "filtered",
         "tier": "research",
         "evidence_level": "exploratory",
         "caution": "ペアシナジースコアはパフォーマンス差から推定します。ポジション役割は考慮されていません。",
@@ -283,6 +310,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "epv",
+        "filter_scope": "filtered",
         "tier": "research",
         "evidence_level": "directional",
         "caution": (
@@ -301,6 +329,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "shot_influence",
+        "filter_scope": "not_wired",
         "sample_unit": "rallies",
         "tier": "research",
         "evidence_level": "exploratory",
@@ -321,6 +350,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "spatial_density",
+        "filter_scope": "not_wired",
         "tier": "research",
         "evidence_level": "exploratory",
         "caution": "空間密度マップは打点・着地点の可視化です。統計的有意性検定は行っていません。",
@@ -331,6 +361,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "peer_comparison",
+        "filter_scope": "not_wired",
         "tier": "research",
         "evidence_level": "exploratory",
         "min_recommended_sample": 5,
@@ -342,6 +373,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "bayesian_rt",
+        "filter_scope": "not_wired",
         "tier": "research",
         "evidence_level": "exploratory",
         "caution": "ベイズ反応時間推定は探索段階です。",
@@ -352,6 +384,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "exploitability",
+        "filter_scope": "filtered",
         "sample_unit": "strokes",
         "tier": "research",
         "evidence_level": "exploratory",
@@ -375,6 +408,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "conformal",
+        "filter_scope": "filtered",
         "sample_unit": "rallies",
         "tier": "research",
         "evidence_level": "exploratory",
@@ -400,6 +434,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "policy_eval",
+        "filter_scope": "filtered",
         "sample_unit": "strokes",
         "tier": "research",
         "evidence_level": "exploratory",
@@ -418,6 +453,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "style_distance",
+        "filter_scope": "filtered",
         "tier": "research",
         "evidence_level": "exploratory",
         "min_recommended_sample": 3,
@@ -435,6 +471,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "matchup_forecast",
+        "filter_scope": "filtered",
         "sample_unit": "matches",
         "tier": "research",
         "evidence_level": "exploratory",
@@ -458,6 +495,7 @@ _RAW: list[dict] = [
 
     {
         "analysis_type": "epv_state",
+        "filter_scope": "filtered",
         "sample_unit": "rallies",
         "tier": "research",
         "evidence_level": "directional",
@@ -469,6 +507,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "state_action",
+        "filter_scope": "filtered",
         "sample_unit": "rallies",
         "tier": "research",
         "evidence_level": "exploratory",
@@ -480,6 +519,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "hazard_fatigue",
+        "filter_scope": "filtered",
         "sample_unit": "rallies",
         "tier": "research",
         "evidence_level": "exploratory",
@@ -491,6 +531,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "counterfactual_v2",
+        "filter_scope": "filtered",
         "sample_unit": "rallies",
         "tier": "research",
         "evidence_level": "exploratory",
@@ -502,6 +543,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "bayes_matchup",
+        "filter_scope": "not_wired",
         "sample_unit": "matches",
         "tier": "research",
         "evidence_level": "exploratory",
@@ -513,6 +555,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "opponent_policy",
+        "filter_scope": "filtered",
         "sample_unit": "strokes",
         "tier": "research",
         "evidence_level": "exploratory",
@@ -524,6 +567,7 @@ _RAW: list[dict] = [
     },
     {
         "analysis_type": "doubles_role",
+        "filter_scope": "filtered",
         "sample_unit": "strokes",
         "tier": "research",
         "evidence_level": "exploratory",
@@ -534,10 +578,36 @@ _RAW: list[dict] = [
         "section": "spine_rs5",
     },
     {
+        # 登録が無かったため get_analysis_meta は未知扱いのフォールバック (research / exploratory) を返していた。
+        # その値のまま、filter_scope だけを宣言する (tier などの判断はここでは変えない)
+        "analysis_type": "opponent_stats",
+        "filter_scope": "filtered",
+        "tier": "research",
+        "evidence_level": "exploratory",
+        "caution": "このモジュールは研究段階です。",
+        "assumptions": None,
+        "promotion_criteria": None,
+        "page": "analyst",
+        "section": "research",
+    },
+    {
+        # 選手の全試合から数える共通の素材 (bundle_context の rs_*)。絞り込みは使わない
+        "analysis_type": "rally_sequence_patterns",
+        "filter_scope": "global_only",
+        "tier": "research",
+        "evidence_level": "exploratory",
+        "caution": "このモジュールは研究段階です。",
+        "assumptions": None,
+        "promotion_criteria": None,
+        "page": "analyst",
+        "section": "research",
+    },
+    {
         # DB-3。`doubles_role` とは数えているものが違う (試合数)。
         # 同じエントリを借りていたので、**打球数向けの閾値で試合数を judge** して
         # いた。ロール推定そのものとは別の解析として登録する。
         "analysis_type": "doubles_role_stability",
+        "filter_scope": "filtered",
         "sample_unit": "matches",
         "tier": "research",
         "evidence_level": "exploratory",
@@ -562,6 +632,8 @@ def _build_registry() -> dict[str, RegistryEntry]:
             "evidence_level": raw["evidence_level"],  # type: ignore[typeddict-item]
             "min_recommended_sample": raw.get("min_recommended_sample", TIER_MIN_SAMPLES.get(tier, 50)),
             "sample_unit": raw.get("sample_unit"),
+            # 必須。書き忘れは KeyError にして、黙って "filtered" 扱いにしない
+            "filter_scope": raw["filter_scope"],  # type: ignore[typeddict-item]
             "caution": raw.get("caution"),
             "assumptions": raw.get("assumptions"),
             "promotion_criteria": raw.get("promotion_criteria"),
@@ -580,6 +652,7 @@ _FALLBACK: RegistryEntry = {
     "evidence_level": "exploratory",
     "min_recommended_sample": 50,
     "sample_unit": None,
+    "filter_scope": "not_wired",
     "caution": "このモジュールは研究段階です。",
     "assumptions": None,
     "promotion_criteria": None,
@@ -599,6 +672,11 @@ def get_analysis_meta(analysis_type: str) -> RegistryEntry:
     if analysis_type in ANALYSIS_REGISTRY:
         return ANALYSIS_REGISTRY[analysis_type]
     return {**_FALLBACK, "analysis_type": analysis_type}  # type: ignore[return-value]
+
+
+def get_filter_scope(analysis_type: str) -> str:
+    """analysis_type の filter_scope。未知の analysis_type は 'not_wired'。"""
+    return get_analysis_meta(analysis_type)["filter_scope"]
 
 
 def get_tier(analysis_type: str) -> str:

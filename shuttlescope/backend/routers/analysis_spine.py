@@ -714,6 +714,7 @@ def get_evidence_meta():
             "tier": e["tier"],
             "evidence_level": e["evidence_level"],
             "min_recommended_sample": e["min_recommended_sample"],
+            "filter_scope": e["filter_scope"],
             "caution": e["caution"],
             "assumptions": e["assumptions"],
             "promotion_criteria": e["promotion_criteria"],

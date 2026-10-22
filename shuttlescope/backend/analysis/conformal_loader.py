@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from backend.db.models import GameSet, Rally, Stroke
 from backend.analysis.role_view import own_slot
 from backend.analysis.router_helpers import _get_player_matches, _player_role_in_match
+from backend.analysis.match_filter import MatchFilter, NO_FILTER
 from backend.analysis.state_spec import classify_score_phase, classify_player_role
 from backend.analysis.exploitability_loader import bucket_shot, coarse_state_key
 
@@ -46,8 +47,9 @@ def load_rally_outcome_samples(
     *,
     coarse: bool = True,
     provenance_rows: Optional[dict[str, list]] = None,
+    match_filter: MatchFilter = NO_FILTER,
 ) -> list[dict]:
-    """player_id の全試合から per-rally サンプルを返す。
+    """player_id の試合 (解析母集団 + match_filter) から per-rally サンプルを返す。
 
     各サンプル: {"group": <feature_key_str>, "win": 0|1}
 
@@ -59,7 +61,7 @@ def load_rally_outcome_samples(
         provenance_rows.clear()
         provenance_rows.update({"rallies": [], "strokes": []})
 
-    matches = _get_player_matches(db, player_id)
+    matches = _get_player_matches(db, player_id, **match_filter.kwargs())
     if not matches:
         return []
 

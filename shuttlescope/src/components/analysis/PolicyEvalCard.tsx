@@ -13,7 +13,9 @@ import {
   PolicyEvalStateOk,
 } from '@/api/policyEval'
 import { EvidenceBadge } from '@/components/dashboard/EvidenceBadge'
-import { ResearchNotice, UnfilteredScopeNote } from '@/components/dashboard/ResearchNotice'
+import { ResearchNotice, FilterScopeNote } from '@/components/dashboard/ResearchNotice'
+import { DEFAULT_FILTERS, type AnalysisFilters } from '@/types'
+import { toFilterApiParams } from '@/utils/analysisFilterParams'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { MIcon } from '@/components/common/MIcon'
 import { useCardTheme } from '@/hooks/useCardTheme'
@@ -22,6 +24,8 @@ import { useCardTheme } from '@/hooks/useCardTheme'
 
 interface Props {
   playerId: number
+  /** 画面上部の絞り込み。省略時は絞り込みなし */
+  filters?: AnalysisFilters
 }
 
 // ── ヘルパー ─────────────────────────────────────────────────────────────────
@@ -181,8 +185,9 @@ function InsufficientRow({
 
 // ── メインコンポーネント ───────────────────────────────────────────────────────
 
-export function PolicyEvalCard({ playerId }: Props) {
+export function PolicyEvalCard({ playerId, filters = DEFAULT_FILTERS }: Props) {
   const { t } = useTranslation()
+  const filterApiParams = toFilterApiParams(filters)
   const {
     card,
     textHeading,
@@ -214,8 +219,8 @@ export function PolicyEvalCard({ playerId }: Props) {
   )
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['policyEval', playerId],
-    queryFn: () => fetchPolicyEval(playerId),
+    queryKey: ['policyEval', playerId, filterApiParams],
+    queryFn: () => fetchPolicyEval(playerId, undefined, filters),
     enabled: !!playerId,
   })
 
@@ -255,7 +260,7 @@ export function PolicyEvalCard({ playerId }: Props) {
         assumptions={t('auto.PolicyEvalCard.assumptions')}
         promotionCriteria={t('auto.PolicyEvalCard.promotion_criteria')}
       />
-      <UnfilteredScopeNote />
+      <FilterScopeNote meta={data?.meta} />
 
       {/* ─ ローディング ── */}
       {isLoading && (

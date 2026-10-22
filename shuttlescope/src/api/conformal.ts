@@ -1,6 +1,7 @@
 // コンフォーマル予測 API クライアント（分布フリーカバレッジ保証）
 import { apiGet } from '@/api/client'
-import type { SampleUnit } from '@/types'
+import type { AnalysisFilters, SampleUnit } from '@/types'
+import { toFilterApiParams, type FilterScopeMeta } from '@/utils/analysisFilterParams'
 
 // ── 型定義 ──────────────────────────────────────────────────────────────────
 
@@ -49,7 +50,7 @@ export interface ConformalData {
   status?: string
 }
 
-export interface ConformalMeta {
+export interface ConformalMeta extends FilterScopeMeta {
   sample_size: number
   sample_unit?: SampleUnit | null
   confidence: Record<string, unknown>
@@ -75,9 +76,11 @@ export interface ConformalResponse {
 export function fetchConformal(
   playerId: number,
   alpha: number = 0.1,
+  filters?: AnalysisFilters,
 ): Promise<ConformalResponse> {
   return apiGet<ConformalResponse>('/analysis/conformal', {
     player_id: playerId,
     alpha,
+    ...(filters ? toFilterApiParams(filters) : {}),
   })
 }

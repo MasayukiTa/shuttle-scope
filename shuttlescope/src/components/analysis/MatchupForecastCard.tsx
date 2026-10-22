@@ -10,7 +10,9 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { fetchMatchupForecast, MatchupForecastEntry } from '@/api/matchupForecast'
 import { EvidenceBadge } from '@/components/dashboard/EvidenceBadge'
-import { ResearchNotice, UnfilteredScopeNote } from '@/components/dashboard/ResearchNotice'
+import { ResearchNotice, FilterScopeNote } from '@/components/dashboard/ResearchNotice'
+import { DEFAULT_FILTERS, type AnalysisFilters } from '@/types'
+import { toFilterApiParams } from '@/utils/analysisFilterParams'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { MIcon } from '@/components/common/MIcon'
 import { useCardTheme } from '@/hooks/useCardTheme'
@@ -19,6 +21,8 @@ import { useCardTheme } from '@/hooks/useCardTheme'
 
 interface Props {
   playerId: number
+  /** 画面上部の絞り込み。省略時は絞り込みなし */
+  filters?: AnalysisFilters
 }
 
 // ── ヘルパー ─────────────────────────────────────────────────────────────────
@@ -120,8 +124,9 @@ function MatchupRow({
 
 // ── メインコンポーネント ───────────────────────────────────────────────────────
 
-export function MatchupForecastCard({ playerId }: Props) {
+export function MatchupForecastCard({ playerId, filters = DEFAULT_FILTERS }: Props) {
   const { t } = useTranslation()
+  const filterApiParams = toFilterApiParams(filters)
   const {
     card,
     textHeading,
@@ -133,8 +138,8 @@ export function MatchupForecastCard({ playerId }: Props) {
   } = useCardTheme()
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['matchupForecast', playerId],
-    queryFn: () => fetchMatchupForecast(playerId),
+    queryKey: ['matchupForecast', playerId, filterApiParams],
+    queryFn: () => fetchMatchupForecast(playerId, filters),
     enabled: !!playerId,
   })
 
@@ -171,7 +176,7 @@ export function MatchupForecastCard({ playerId }: Props) {
         assumptions={t('auto.MatchupForecastCard.assumptions')}
         promotionCriteria={t('auto.MatchupForecastCard.promotion_criteria')}
       />
-      <UnfilteredScopeNote />
+      <FilterScopeNote meta={data?.meta} />
 
       {/* ─ ローディング ── */}
       {isLoading && (
