@@ -28,6 +28,7 @@ import { WinLossComparison } from '@/components/analysis/WinLossComparison'
 import { TournamentComparison } from '@/components/analysis/TournamentComparison'
 import { EvidenceBadge, EvidenceLevel } from '@/components/dashboard/EvidenceBadge'
 import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
+import { HoldGate } from '@/components/dashboard/HoldGate'
 import { useAnalysisMeta } from '@/hooks/useAnalysisMeta'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { MIcon } from '@/components/common/MIcon'
@@ -58,7 +59,7 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
   const [section, setSection] = useState<AdvancedSection>('shot')
   const [pairMode, setPairMode] = useState(false)
   const [partnerPlayerId, setPartnerPlayerId] = useState<number | null>(null)
-  const { getMeta } = useAnalysisMeta()
+  const { getMeta, isOnHold } = useAnalysisMeta()
   const { card, cardInner: _cardInner, textHeading, textSecondary, textMuted, textFaint: _textFaint, badge, border: _border, isLight } = useCardTheme()
   const { role } = useAuth()
 
@@ -183,7 +184,9 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                     recommendationAllowed={false}
                   />
                 </div>
-                <PressurePerformance playerId={playerId} filters={filters} />
+                <HoldGate suspended={isOnHold('pressure')}>
+                  <PressurePerformance playerId={playerId} filters={filters} />
+                </HoldGate>
               </div>
             </div>
           </div>
@@ -210,7 +213,9 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                   promotionCriteria={transitionMeta.promotion_criteria ?? undefined}
                 />
               )}
-              <TransitionMatrix playerId={playerId} filters={filters} />
+              <HoldGate suspended={isOnHold('transition')}>
+                <TransitionMatrix playerId={playerId} filters={filters} />
+              </HoldGate>
             </div>
           </RoleGuard>
         </ErrorBoundary>
@@ -237,7 +242,9 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                     recommendationAllowed={false}
                   />
                 </div>
-                <PreLossPatterns playerId={playerId} filters={filters} />
+                <HoldGate suspended={isOnHold('pre_win_pre_loss')}>
+                  <PreLossPatterns playerId={playerId} filters={filters} />
+                </HoldGate>
               </div>
               <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-2`}>
                 <div className="flex items-center justify-between">
@@ -248,7 +255,9 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                     recommendationAllowed={false}
                   />
                 </div>
-                <FirstReturnAnalysis playerId={playerId} filters={filters} />
+                <HoldGate suspended={isOnHold('first_return')}>
+                  <FirstReturnAnalysis playerId={playerId} filters={filters} />
+                </HoldGate>
               </div>
             </div>
             <RoleGuard allowedRoles={['analyst', 'coach']}>
@@ -259,7 +268,9 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                   promotionCriteria={spatialMeta.promotion_criteria ?? undefined}
                 />
               )}
-              <SpatialDensityMap playerId={playerId} />
+              <HoldGate suspended={isOnHold('spatial_density')}>
+                <SpatialDensityMap playerId={playerId} />
+              </HoldGate>
             </RoleGuard>
           </div>
         </ErrorBoundary>
@@ -286,7 +297,9 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                     recommendationAllowed={false}
                   />
                 </div>
-                <TemporalPerformance playerId={playerId} filters={filters} />
+                <HoldGate suspended={isOnHold('temporal')}>
+                  <TemporalPerformance playerId={playerId} filters={filters} />
+                </HoldGate>
               </div>
               <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-2`}>
                 <div className="flex items-center justify-between">
@@ -297,7 +310,9 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                     recommendationAllowed={false}
                   />
                 </div>
-                <PostLongRallyStats playerId={playerId} filters={filters} />
+                <HoldGate suspended={isOnHold('post_long_rally')}>
+                  <PostLongRallyStats playerId={playerId} filters={filters} />
+                </HoldGate>
               </div>
             </div>
           </div>
@@ -330,7 +345,9 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                   />
                 </div>
                 <p className={`text-xs ${textMuted}`}>{t('analysis.opponent_type_affinity.subtitle')}</p>
-                <OpponentTypeAffinity playerId={playerId} filters={filters} />
+                <HoldGate suspended={isOnHold('opponent_affinity')}>
+                  <OpponentTypeAffinity playerId={playerId} filters={filters} />
+                </HoldGate>
               </div>
               <OpponentAdaptiveShots playerId={playerId} />
               <div className={`${card} rounded-ss-lg shadow-card p-4`}>
@@ -395,7 +412,9 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                 promotionCriteria={pairSynergyMeta.promotion_criteria ?? undefined}
               />
             )}
-            <PairSynergyCard playerId={playerId} />
+            <HoldGate suspended={isOnHold('pair_synergy')}>
+              <PairSynergyCard playerId={playerId} />
+            </HoldGate>
           </div>
         </ErrorBoundary>
       )}

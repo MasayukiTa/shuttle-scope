@@ -132,6 +132,9 @@ class ImportSummary:
     backup_path: Optional[str] = None
     # 自動バックアップに失敗したため、何も書かずに中止した。
     backup_failed: bool = False
+    # この環境ではバックアップを作れず、取らずに取り込んだ (実行した場合のみ True)。
+    # 画面でこれを知らせないと「バックアップがある」と思って取り込んでしまう。
+    backup_skipped: bool = False
 
 
 # ─── テーブル処理マップ ────────────────────────────────────────────────────────
@@ -477,8 +480,9 @@ def _backup_before_import(db: Session) -> Optional[str]:
     """取り込み前に DB 全体をバックアップし、そのパスを返す。
 
     失敗したら ImportBackupError。呼び出し側はバックアップなしで取り込まない。
-    `create_backup` は SQLite 専用で、PostgreSQL では NotImplementedError を
-    出す (pg_dump は別運用)。この場合は None を返して取り込みを続ける。
+    `create_backup` は SQLite はファイルを、PostgreSQL は pg_dump の出力を固める。
+    pg_dump が無いなど作れない環境では NotImplementedError (BackupUnavailable) を
+    出す。この場合は None を返して取り込みを続ける (画面には backup_skipped で知らせる)。
     その環境の保護は、取り込み全体を 1 トランザクションにしてあること
     (失敗すれば全戻し) が担う。
     パスフレーズ・pyzipper の検査 (production posture での fail-closed) は
@@ -553,6 +557,7 @@ def import_package(db: Session, raw: bytes, dry_run: bool = False,
             if backup_before_apply and not dry_run:
                 try:
                     summary.backup_path = _backup_before_import(db)
+                    summary.backup_skipped = summary.backup_path is None
                 except ImportBackupError as e:
                     summary.backup_failed = True
                     summary.errors.append(f"取り込み前のバックアップに失敗: {e}")

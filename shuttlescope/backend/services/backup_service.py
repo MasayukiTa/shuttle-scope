@@ -13,6 +13,7 @@ import hashlib
 import logging
 import os
 import shutil
+import subprocess
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -67,31 +68,93 @@ def _file_sha256_short(path: Path) -> str:
     return h.hexdigest()[:12]
 
 
-def create_backup(label: Optional[str] = None, max_generations: int = 10) -> Path:
-    """SQLite DB を AES-256 暗号化 ZIP に固めてバックアップする。
+DEFAULT_MAX_GENERATIONS = 10
+
+
+def create_backup(label: Optional[str] = None, max_generations: int = DEFAULT_MAX_GENERATIONS) -> Path:
+    """DB を AES-256 暗号化 ZIP に固めてバックアップする。
+
+    SQLite は DB ファイルをそのまま、PostgreSQL は pg_dump (custom 形式) の出力を入れる。
+    PostgreSQL の復元は pg_restore で手動 (restore_backup は SQLite 専用)。
 
     パスフレーズ未設定時は平文 ZIP にフォールバック（警告ログを必ず出す）。
     本番運用では SS_BACKUP_PASSPHRASE を必ず設定すること。
     """
-    # SQLite 専用: PostgreSQL 等は外部の pg_dump で別途バックアップする運用
-    if not settings.DATABASE_URL.startswith("sqlite:///"):
-        raise NotImplementedError(
-            "create_backup は SQLite 専用です。PostgreSQL 環境では pg_dump を使用してください。"
-            f" 現在の DATABASE_URL: {settings.DATABASE_URL.split('@')[-1]}"
-        )
-    db_path = Path(settings.DATABASE_URL[len("sqlite:///"):])
-    if not db_path.exists():
-        raise FileNotFoundError(f"DB ファイルが見つかりません: {db_path}")
+    passphrase = _passphrase()
+    # 平文 ZIP を作らないための検査 (production posture では fail-closed)。
+    # 重い処理 (pg_dump など) の前に行い、通らないなら何も書かない。
+    _enforce_passphrase_policy(passphrase)
 
     backup_dir = get_backup_dir()
     ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     suffix = f"_{label}" if label else ""
-    src_hash = _file_sha256_short(db_path)
-    zip_name = f"backup_{ts}{suffix}_{src_hash}.zip"
-    zip_path = backup_dir / zip_name
 
-    passphrase = _passphrase()
+    dump_tmp: Optional[Path] = None
+    if settings.DATABASE_URL.startswith("sqlite:///"):
+        src_path = Path(settings.DATABASE_URL[len("sqlite:///"):])
+        if not src_path.exists():
+            raise FileNotFoundError(f"DB ファイルが見つかりません: {src_path}")
+        arcname = src_path.name
+    else:
+        # PostgreSQL: pg_dump のカスタム形式を ZIP に入れる (pg_restore で戻せる)
+        dump_tmp = backup_dir / f".pgdump_{ts}_{os.getpid()}.tmp"
+        try:
+            _run_pg_dump(dump_tmp)
+        except BaseException:
+            dump_tmp.unlink(missing_ok=True)
+            raise
+        src_path = dump_tmp
+        arcname = "database.pgdump"
 
+    try:
+        src_hash = _file_sha256_short(src_path)
+        zip_name = f"backup_{ts}{suffix}_{src_hash}.zip"
+        zip_path = backup_dir / zip_name
+        _write_backup_zip(zip_path, src_path, arcname, passphrase)
+    finally:
+        if dump_tmp is not None:
+            dump_tmp.unlink(missing_ok=True)
+
+    _rotate_backups(backup_dir, max_generations)
+    return zip_path
+
+
+def _write_backup_zip(zip_path: Path, src_path: Path, arcname: str, passphrase: Optional[bytes]) -> None:
+    if passphrase and _HAS_PYZIPPER:
+        # AES-256 暗号化 ZIP
+        with pyzipper.AESZipFile(
+            zip_path, "w",
+            compression=pyzipper.ZIP_DEFLATED,
+            encryption=pyzipper.WZ_AES,
+        ) as zf:
+            zf.setpassword(passphrase)
+            zf.setencryption(pyzipper.WZ_AES, nbits=256)
+            zf.write(src_path, arcname)
+        logger.info("[backup] AES-256 暗号化 ZIP を作成: %s", zip_path.name)
+    else:
+        # 開発時のみ: フォールバック平文 ZIP（本番では上で raise 済み）
+        if not passphrase:
+            logger.warning(
+                "[backup] SS_BACKUP_PASSPHRASE 未設定 (dev only)。平文 ZIP で作成します。"
+            )
+        elif not _HAS_PYZIPPER:
+            logger.error(
+                "[backup] pyzipper 未インストール (dev only)。フォールバックで平文 ZIP を作成します。"
+            )
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.write(src_path, arcname)
+
+
+class BackupUnavailable(NotImplementedError):
+    """この環境ではバックアップを作れない (pg_dump が無いなど)。
+
+    NotImplementedError を継承するのは、取り込み前バックアップの「非対応 DB は
+    バックアップなしで続行する」経路 (import_package) をそのまま使うため。
+    message は画面に出してよい文面だけにする。
+    """
+
+
+def _enforce_passphrase_policy(passphrase: Optional[bytes]) -> None:
     # Round 258 R7 P2 fix (Codex review): production posture では平文 ZIP fallback
     # 禁止。SS_BACKUP_PASSPHRASE 未設定 / pyzipper 未導入なら fail-closed。
     # backup は DB 丸ごとなので漏洩時の影響範囲が大きい。「警告ログだけで平文」は
@@ -155,32 +218,43 @@ def create_backup(label: Optional[str] = None, max_generations: int = 10) -> Pat
                 "secrets.token_urlsafe(24) は自動で複数 class を含みます"
             )
 
-    if passphrase and _HAS_PYZIPPER:
-        # AES-256 暗号化 ZIP
-        with pyzipper.AESZipFile(
-            zip_path, "w",
-            compression=pyzipper.ZIP_DEFLATED,
-            encryption=pyzipper.WZ_AES,
-        ) as zf:
-            zf.setpassword(passphrase)
-            zf.setencryption(pyzipper.WZ_AES, nbits=256)
-            zf.write(db_path, db_path.name)
-        logger.info("[backup] AES-256 暗号化 ZIP を作成: %s", zip_path.name)
-    else:
-        # 開発時のみ: フォールバック平文 ZIP（本番では上で raise 済み）
-        if not passphrase:
-            logger.warning(
-                "[backup] SS_BACKUP_PASSPHRASE 未設定 (dev only)。平文 ZIP で作成します。"
-            )
-        elif not _HAS_PYZIPPER:
-            logger.error(
-                "[backup] pyzipper 未インストール (dev only)。フォールバックで平文 ZIP を作成します。"
-            )
-        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            zf.write(db_path, db_path.name)
 
-    _rotate_backups(backup_dir, max_generations)
-    return zip_path
+def _run_pg_dump(out_path: Path) -> None:
+    """DATABASE_URL の PostgreSQL を pg_dump (custom 形式) で out_path へ書き出す。
+
+    パスワードはコマンドラインにもログにも出さない。子プロセスの環境変数
+    PGPASSWORD でだけ渡す。失敗時の stderr からも念のため取り除く。
+    """
+    from sqlalchemy.engine import make_url
+
+    url = make_url(settings.DATABASE_URL)
+    if not url.drivername.startswith("postgres"):
+        raise BackupUnavailable("この DB の種類ではバックアップに対応していません")
+    exe = shutil.which("pg_dump")
+    if not exe:
+        raise BackupUnavailable("pg_dump が見つかりません。サーバに PostgreSQL クライアントを入れてください")
+
+    cmd = [exe, "--format=custom", "--no-owner", "--no-privileges", "--file", str(out_path)]
+    if url.host:
+        cmd += ["--host", url.host]
+    if url.port:
+        cmd += ["--port", str(url.port)]
+    if url.username:
+        cmd += ["--username", url.username]
+    cmd += ["--dbname", url.database or ""]
+    env = dict(os.environ)
+    env.pop("PGPASSWORD", None)
+    if url.password:
+        env["PGPASSWORD"] = url.password
+
+    proc = subprocess.run(cmd, env=env, capture_output=True, text=True)
+    if proc.returncode != 0:
+        err = (proc.stderr or "").strip()
+        if url.password:
+            err = err.replace(url.password, "***")
+        logger.error("[backup] pg_dump failed (exit %s): %s", proc.returncode, err[:500])
+        raise RuntimeError("pg_dump が失敗しました。サーバのログを確認してください")
+    logger.info("[backup] pg_dump 完了: %s", out_path.name)
 
 
 def restore_backup(zip_path: Path, target_db_path: Optional[Path] = None) -> Path:
@@ -188,6 +262,8 @@ def restore_backup(zip_path: Path, target_db_path: Optional[Path] = None) -> Pat
 
     Returns: 復元先 DB ファイルパス
     """
+    if not settings.DATABASE_URL.startswith("sqlite:///") and target_db_path is None:
+        raise NotImplementedError("restore_backup は SQLite 専用です。PostgreSQL は pg_restore で復元してください")
     if not zip_path.exists():
         raise FileNotFoundError(f"バックアップ ZIP が見つかりません: {zip_path}")
 
@@ -242,6 +318,36 @@ def list_backups() -> list[dict]:
             "encrypted": _is_aes_encrypted(f),
         })
     return result
+
+
+def backup_status() -> dict:
+    """バックアップ画面用の状態。作れるか・最後に成功した時刻・世代数を返す。
+
+    最後の成功は、保存先にある最新のバックアップ ZIP の更新時刻 (UTC) で判断する。
+    取れていないのに「最終成功」を出さないよう、ZIP が無ければ None。
+    """
+    url = settings.DATABASE_URL
+    if url.startswith("sqlite:///"):
+        engine, supported, reason = "sqlite", True, None
+    elif url.startswith("postgres"):
+        engine = "postgresql"
+        supported = shutil.which("pg_dump") is not None
+        reason = None if supported else "pg_dump_missing"
+    else:
+        engine, supported, reason = "other", False, "unsupported_engine"
+    items = list_backups()
+    latest = items[0] if items else None
+    return {
+        "engine": engine,
+        "supported": supported,
+        "reason": reason,
+        "backup_dir": str(get_backup_dir()),
+        "count": len(items),
+        "max_generations": DEFAULT_MAX_GENERATIONS,
+        "last_success_at": (latest["created_at"] + "Z") if latest else None,
+        "last_size_bytes": latest["size_bytes"] if latest else None,
+        "last_encrypted": latest["encrypted"] if latest else None,
+    }
 
 
 def _is_aes_encrypted(zip_path: Path) -> bool:

@@ -707,6 +707,10 @@ def get_evidence_meta():
     レジストリが全 analysis_type の正規ソースとなっているため、
     以前の EVIDENCE_META / _infer_tier() ベースの実装を置き換えた。
     """
+    # 昇格 override の status だけを各分析に添える (note / 操作者は governance 情報なので出さない)。
+    # 画面側はここを唯一の参照元にして、hold の分析を「利用停止中」に置き換える。
+    from backend.analysis.promotion_override_store import load_all_overrides
+    overrides = load_all_overrides()
     entries = [
         {
             "analysis_type": e["analysis_type"],
@@ -718,6 +722,7 @@ def get_evidence_meta():
             "promotion_criteria": e["promotion_criteria"],
             "page": e["page"],
             "section": e["section"],
+            "override_status": (overrides.get(e["analysis_type"]) or {}).get("status"),
         }
         for e in list_registry_entries()
     ]
