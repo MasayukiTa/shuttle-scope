@@ -8,3 +8,29 @@ import type { UserRole } from '@/types'
 export function canUseConditionPage(role: UserRole | null | undefined): boolean {
   return role !== 'demo'
 }
+
+/** ロール未確定 (null/undefined) は従来どおり表示側で扱う (サーバが最終判定する)。 */
+type RoleArg = UserRole | null | undefined
+
+/**
+ * 試合の登録 / クイックスタート / 編集の導線を出してよいか。
+ * backend の POST /matches・PUT /matches/{id}・POST /matches/quick-start は
+ * admin / coach / analyst だけを許可する (player は 403、demo は
+ * resolve_owner_team_for_match_create と user_can_access_match が拒否)。
+ */
+export function canWriteMatch(role: RoleArg): boolean {
+  if (role == null) return true
+  return role === 'admin' || role === 'coach' || role === 'analyst'
+}
+
+/** 試合削除の導線を出してよいか。backend の DELETE /matches/{id} は admin / analyst のみ (coach は 403)。 */
+export function canDeleteMatch(role: RoleArg): boolean {
+  if (role == null) return true
+  return role === 'admin' || role === 'analyst'
+}
+
+/** 選手削除の導線を出してよいか。backend の DELETE /players/{id} は require_analyst (analyst / admin のみ。coach は 403)。 */
+export function canDeletePlayer(role: RoleArg): boolean {
+  if (role == null) return true
+  return role === 'admin' || role === 'analyst'
+}

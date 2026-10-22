@@ -165,3 +165,45 @@ export function shouldReinitFromServer(store: {
   if (!same) return true
   return store.pendingSaveCount === 0 && store.saveErrorCount === 0
 }
+
+export interface StrokeKeyed {
+  id?: number | null
+  rally_id: number
+  stroke_num: number
+}
+
+/** ストロークの同一性は (rally_id, stroke_num)。サーバ採番の id は未送信の端末内 stroke には無い。 */
+export function strokeKey(s: Pick<StrokeKeyed, 'rally_id' | 'stroke_num'>): string {
+  return `${s.rally_id}:${s.stroke_num}`
+}
+
+/**
+ * 編集済みの値 (id 単位) をサーバ由来のストロークへ重ねる。
+ * 編集は送信キューへ積むだけで再取得されないため、画面側の表示を最新にするのに使う。
+ */
+export function applyStrokeOverrides<T extends StrokeKeyed>(
+  server: T[],
+  overrides: ReadonlyMap<number, Partial<T>>,
+): T[] {
+  if (overrides.size === 0) return server
+  return server.map((s) => {
+    const patch = s.id != null ? overrides.get(s.id) : undefined
+    return patch ? { ...s, ...patch } : s
+  })
+}
+
+/**
+ * サーバのストロークと端末内の未送信ストロークを 1 つの一覧にする。
+ * 送信済みで再取得後にサーバ側へ現れた stroke は、端末内の同一 (rally_id, stroke_num) を捨てて二重表示を防ぐ。
+ */
+export function mergeStrokes<T extends StrokeKeyed>(server: T[], local: T[]): T[] {
+  const seen = new Set(server.map(strokeKey))
+  const out = [...server]
+  for (const s of local) {
+    const k = strokeKey(s)
+    if (seen.has(k)) continue
+    seen.add(k)
+    out.push(s)
+  }
+  return out
+}

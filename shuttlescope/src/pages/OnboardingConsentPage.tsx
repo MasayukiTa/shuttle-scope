@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 import { publicSiteUrl } from '@/utils/publicUrl'
 import {
+  authLogout,
   ConsentRecord,
   ConsentStateDTO,
   ConsentType,
@@ -494,7 +495,15 @@ export default function OnboardingConsentPage({
             <span aria-hidden="true" className="text-[var(--ss-t3)]">{t('auto.OnboardingConsentPage.dot')}</span>
             <button
               type="button"
-              onClick={() => {
+              onClick={async () => {
+                // 通常のログアウトと同じく、まずサーバ側で refresh token を失効させる。
+                // 失敗・無応答でも離脱は妨げないよう、待つのは最大 3 秒とする。
+                try {
+                  await Promise.race([
+                    authLogout(),
+                    new Promise<void>((resolve) => setTimeout(resolve, 3000)),
+                  ])
+                } catch { /* server revoke に失敗してもローカルの認証情報は必ず消す */ }
                 // セッションをクリアしてログイン画面に戻す
                 try {
                   sessionStorage.removeItem('shuttlescope_token')

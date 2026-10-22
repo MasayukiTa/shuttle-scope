@@ -10,6 +10,7 @@ import { getPlaylist, PlaylistRally } from '@/api/review'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { useTranslation } from 'react-i18next'
 import { MIcon } from '@/components/common/MIcon'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 
 const END_TYPE_LABELS: Record<string, string> = {
   forced_error: '強制エラー',
@@ -56,7 +57,7 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
   const [popupRally, setPopupRally] = useState<PlaylistRally | null>(null)
   const [currentRallyId, setCurrentRallyId] = useState<number | null>(null)
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['review', 'playlist', matchId, filterWinner, filterEndType, filterSetNum],
     queryFn: () =>
       getPlaylist(matchId, {
@@ -128,7 +129,7 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
         <div className="flex items-center gap-2">
           <MIcon name="play_arrow" size={14} className="text-[var(--ss-brand)]" />
           <span className={`text-sm font-semibold text-[var(--ss-t1)]`}>{t('auto.RallyClipNavigator.k1')}</span>
-          {!hasVideo && (
+          {!hasVideo && !isError && (
             // Design Language v1.2: 警告状態は B_BAD 文字色 + 無彩色 bg (同色相重ね禁止)
             <span
               className={`text-xs px-2 py-0.5 rounded-ss-sm border bg-[var(--ss-surface-2)] border-[var(--ss-border)]`}
@@ -226,7 +227,11 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
         {isLoading && (
           <div className={`px-4 py-6 text-center text-sm text-[var(--ss-t3)]`}>{t('auto.RallyClipNavigator.k7')}</div>
         )}
-        {!isLoading && rallies.length === 0 && (
+        {/* 取得失敗は「動画なし / ラリー0件」と区別して示す */}
+        {isError && !isLoading && (
+          <QueryErrorNotice onRetry={() => { void refetch() }} />
+        )}
+        {!isLoading && !isError && rallies.length === 0 && (
           <div className={`px-4 py-6 text-center text-sm text-[var(--ss-t3)]`}>
             {t('rally.no_rallies', 'No matching rallies')}
           </div>

@@ -11,6 +11,7 @@ import { WIN, LOSS } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useAuth } from '@/hooks/useAuth'
 import { MIcon } from '@/components/common/MIcon'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import type { WinProbabilityInterval, WinProbabilityReference } from './winProbabilityReference'
 
 interface PlayerSummary {
@@ -85,7 +86,7 @@ function PartnerRankingSection({
 
   const selectClass = `text-xs rounded-ss-md px-2 py-1.5 focus:outline-none bg-[var(--ss-surface-1)] border border-[var(--ss-border-strong)] text-[var(--ss-t1)]`
 
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError, refetch } = useQuery({
     queryKey: ['pair-ranking', anchorId, level],
     queryFn: () =>
       apiGet<PairRankingResponse>('/prediction/pair_ranking', {
@@ -165,8 +166,13 @@ function PartnerRankingSection({
         <p className="text-xs text-center py-3" style={{ color: subText }}>{t('auto.PairSimulationPanel.k4')}</p>
       )}
 
+      {/* API 失敗を「候補0件」と区別して示す */}
+      {isError && !isLoading && (
+        <QueryErrorNotice onRetry={() => { void refetch() }} />
+      )}
+
       {/* 結果一覧 */}
-      {!isLoading && (withData.length > 0 || noData.length > 0) && (
+      {!isLoading && !isError && (withData.length > 0 || noData.length > 0) && (
         <div className="space-y-2">
           <p className="text-[11px] font-medium" style={{ color: subText }}>
             {t('pair.ranking_for', { name: anchor?.name, defaultValue: 'Pair record ranking for {{name}}' })}
@@ -283,7 +289,7 @@ export function PairSimulationPanel({ players }: PairSimulationPanelProps) {
   const neutral = isLight ? '#334155' : '#d1d5db'
   const subText = isLight ? '#64748b' : '#9ca3af'
 
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError, refetch } = useQuery({
     queryKey: ['pair-simulation', pid1, pid2, level],
     queryFn: () =>
       apiGet<PairSimResponse>('/prediction/pair_simulation', {
@@ -360,7 +366,12 @@ export function PairSimulationPanel({ players }: PairSimulationPanelProps) {
         <div className="text-[var(--ss-t3)] text-sm py-4 text-center">{t('prediction.loading')}</div>
       )}
 
-      {d && (
+      {/* API 失敗を「候補なし」と区別して示す */}
+      {isError && !isLoading && (
+        <QueryErrorNotice onRetry={() => { void refetch() }} />
+      )}
+
+      {!isError && d && (
         <div className="bg-[var(--ss-surface-2)] rounded-ss-lg p-4 space-y-4">
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-sm font-semibold min-w-0 truncate max-w-full" style={{ color: neutral }} title={d.pair_name}>{d.pair_name}</span>

@@ -18,6 +18,7 @@ import { MatchRow } from '@/components/matchList/MatchRow'
 import { MIcon } from '@/components/common/MIcon'
 import { isPlayableVideoUrl } from '@/utils/videoSrc'
 import { isPlayerSearchBlocked } from '@/utils/playerSearchGuard'
+import { canWriteMatch } from '@/utils/roleAccess'
 
 // 試合登録フォーム
 interface MatchFormData {
@@ -163,7 +164,7 @@ export function MatchListPage() {
     eta?: string
     error?: string
   }
-  const { data: activeDownloads } = useQuery({
+  const { data: activeDownloads, isError: activeDownloadsError } = useQuery({
     queryKey: ['matches', 'downloads', 'active'],
     queryFn: () => apiGet<{ success: boolean; data: Record<string, DownloadInfo> }>('/matches/downloads/active'),
     refetchInterval: 5000,
@@ -590,7 +591,7 @@ export function MatchListPage() {
         <h1 className={`text-xl font-semibold ${textHeading}`}>{t('nav.matches')}</h1>
         <div className="flex items-center gap-2 flex-wrap">
           {/* backend の POST /matches/quick-start は player を 403 で拒否するため player には出さない */}
-          {role !== 'player' && (
+          {canWriteMatch(role) && (
             <button
               onClick={() => setShowQuickStart(true)}
               className="flex items-center gap-2 px-4 py-2 bg-[var(--ss-warn)] hover:opacity-90 text-white font-semibold rounded-[var(--r-md)] text-sm"
@@ -598,6 +599,7 @@ export function MatchListPage() {
               {t('quick_start.button')}
             </button>
           )}
+          {canWriteMatch(role) && (
           <button
             onClick={() => { setEditingMatchId(null); setForm(defaultForm()); resetPlayerFields(); setShowForm(true) }}
             className="flex items-center gap-2 px-4 py-2 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white rounded-[var(--r-md)] text-sm"
@@ -605,8 +607,16 @@ export function MatchListPage() {
             <MIcon name="add" size={16} />
             {t('auto.MatchListPage.k29')}
           </button>
+          )}
         </div>
       </div>
+
+      {/* DL 状態の取得失敗は「ジョブなし」ではなく状態不明として示す (直前の成功値は react-query が保持) */}
+      {activeDownloadsError && (
+        <p role="status" className="px-6 py-1 text-xs text-[var(--ss-warn)]">
+          {t('match.list.downloads_unknown')}
+        </p>
+      )}
 
       {/* フィルター（モバイルではスクロール内へ移動するため hidden md:flex） */}
       <div className={`hidden md:flex flex-col gap-2 px-6 py-3 border-b ${borderLine} text-sm bg-[var(--ss-surface-2)]`}>

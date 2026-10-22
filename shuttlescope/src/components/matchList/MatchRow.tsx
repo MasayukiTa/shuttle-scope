@@ -8,6 +8,7 @@ import { statusColor, DownloadStatus } from './matchListUtils'
 import { MIcon } from '@/components/common/MIcon'
 import { useAuth } from '@/hooks/useAuth'
 import { isPlayableVideoUrl } from '@/utils/videoSrc'
+import { canDeleteMatch, canWriteMatch } from '@/utils/roleAccess'
 
 // MatchListPage のデスクトップ用テーブル行 1 件分。純粋抽出 (behavior 不変)。
 export interface MatchRowProps {
@@ -151,6 +152,8 @@ export function MatchRow({
               <MIcon name="download" size={14} />
             </button>
           )}
+          {/* 編集 / 削除は backend の権限 (編集: admin/coach/analyst、削除: admin/analyst) と同じ条件でだけ出す。 */}
+          {canWriteMatch(role) && (
           <button
             onClick={() => onEdit(m)}
             className={`p-1.5 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
@@ -159,7 +162,8 @@ export function MatchRow({
           >
             <MIcon name="edit" size={14} />
           </button>
-          {deleteConfirmId === m.id ? (
+          )}
+          {!canDeleteMatch(role) ? null : deleteConfirmId === m.id ? (
             <div className={`flex items-center gap-1 px-2 py-1 rounded border border-white text-xs ${isLight ? 'bg-red-50 text-red-700' : 'bg-red-900/30 text-red-400'}`}>
               <button
                 onClick={() => { onDeleteExecute(m.id); onDeleteConfirm(null) }}

@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { SetDistributionBar } from '@/components/analysis/SetDistributionBar'
 import { MatchScoreBand } from '@/components/analysis/MatchScoreBand'
 import { ScorelineHistogram } from '@/components/analysis/ScorelineHistogram'
@@ -154,7 +155,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
   const [showLayerB, setShowLayerB] = useState(!isCoach)
   const [showLayerC, setShowLayerC] = useState(!isCoach)
 
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError, refetch } = useQuery({
     queryKey: ['prediction-match-preview', playerId, opponentId, tournamentLevel],
     queryFn: () =>
       apiGet<PredictionResponse>('/prediction/match_preview', {
@@ -196,6 +197,11 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
     return (
       <div className="text-[var(--ss-t3)] text-sm py-8 text-center">{t('prediction.loading')}</div>
     )
+  }
+
+  // 取得失敗は「サンプル0件」ではなく通信・処理の失敗として示す (NoDataMessage は成功応答の少標本だけ)。
+  if (isError) {
+    return <QueryErrorNotice onRetry={() => { void refetch() }} />
   }
 
   if (!d || d.sample_size === 0 || d.win_probability == null) {

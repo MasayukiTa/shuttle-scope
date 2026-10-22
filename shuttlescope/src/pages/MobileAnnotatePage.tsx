@@ -73,8 +73,10 @@ import { Pass2ServeFinal } from '@/components/mobileAnnotate/Pass2ServeFinal'
 import { Pass3ShotDetail } from '@/components/mobileAnnotate/Pass3ShotDetail'
 import { startBackgroundFlush, getStatus, retryAllManual, enqueue, cancelQueued, flushNow } from '@/utils/mobileAnnotateQueue'
 import {
+  applyStrokeOverrides,
   decideUndoPending,
   mergeRallies,
+  mergeStrokes,
   pruneConfirmed,
   resolveNextServer,
   rallyKey,
@@ -1164,6 +1166,15 @@ function Pass3RallyPicker({
     land_zone?: string | null
     pending?: boolean
   }>>([])
+  // サーバ由来 stroke の編集内容 (stroke id → 編集後の値)。PUT は送信キューへ積むだけで
+  // 再取得されないため、画面表示に重ねて旧内容が残らないようにする。
+  const [serverStrokeEdits, setServerStrokeEdits] = useState<ReadonlyMap<number, {
+    stroke_num: number
+    player: 'player_a' | 'player_b'
+    shot_type: string
+    hit_zone?: string | null
+    land_zone?: string | null
+  }>>(new Map())
 
   // 選択ラリーの stroke を fetch
   const strokesQuery = useQuery({
@@ -1219,7 +1230,8 @@ function Pass3RallyPicker({
       pending: false,
     }))
     const local = localStrokes.filter((s) => s.rally_id === selected.id)
-    const all = [...serverStrokes, ...local]
+    // 編集済みの値を重ね、送信済みで再取得後にサーバ側へ現れた stroke は端末内の同一 stroke を落とす。
+    const all = mergeStrokes(applyStrokeOverrides(serverStrokes, serverStrokeEdits), local)
     return (
       <Pass3ShotDetail
         rally={{
@@ -1234,10 +1246,25 @@ function Pass3RallyPicker({
           setLocalStrokes((prev) => [...prev, { ...s, rally_id: selected.id! }])
         }}
         onStrokeUpdated={(s) => {
+          // サーバ由来の stroke (id あり) は編集内容を id 単位で保持して表示へ反映する。
+          if (s.id != null) {
+            const sid = s.id
+            setServerStrokeEdits((prev) => {
+              const next = new Map(prev)
+              next.set(sid, {
+                stroke_num: s.stroke_num,
+                player: s.player,
+                shot_type: s.shot_type,
+                hit_zone: s.hit_zone,
+                land_zone: s.land_zone,
+              })
+              return next
+            })
+          }
           setLocalStrokes((prev) =>
             prev.map((x) =>
               x.rally_id === selected.id! && x.stroke_num === s.stroke_num
-                ? { ...x, shot_type: s.shot_type }
+                ? { ...x, shot_type: s.shot_type, land_zone: s.land_zone }
                 : x,
             ),
           )
@@ -1245,6 +1272,8 @@ function Pass3RallyPicker({
         onClose={() => {
           setSelected(null)
           setLocalStrokes([])
+          // serverStrokeEdits は残す: PUT が queue から送信されて再取得に反映されるまでの間、
+          // ラリーを開き直しても編集後の値を表示し続けるため。
         }}
       />
     )

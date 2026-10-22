@@ -14,6 +14,7 @@ import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { WIN, LOSS } from '@/styles/colors'
 import { MIcon } from '@/components/common/MIcon'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import type { UserRole } from '@/types'
 
 // ── 型定義 ──────────────────────────────────────────────────────────────────
@@ -320,7 +321,7 @@ export function LineupOptimizerPanel({ players, role }: Props) {
   const allFilteredSelected =
     filteredPlayers.length > 0 && filteredPlayers.every((p) => selectedIds.has(p.id))
 
-  const { data: resp, isLoading, isFetching } = useQuery({
+  const { data: resp, isLoading, isFetching, isError, refetch } = useQuery({
     queryKey: ['lineup-optimizer', Array.from(selectedIds).sort().join(','), opponentId, level],
     queryFn: () =>
       apiGet<{ success: boolean; data: LineupResult }>('/prediction/lineup_optimizer', {
@@ -547,8 +548,13 @@ export function LineupOptimizerPanel({ players, role }: Props) {
         </p>
       )}
 
+      {/* 実行したのに結果が出ない状態を作らない: 失敗は明示する */}
+      {isError && !isLoading && !isFetching && (
+        <QueryErrorNotice onRetry={() => { void refetch() }} />
+      )}
+
       {/* 結果: ロール別表示 */}
-      {result && result.ranked_players.length > 0 && (
+      {!isError && result && result.ranked_players.length > 0 && (
         isAnalyst
           ? <AnalystRankingView result={result} isLight={isLight} />
           : <CoachCandidateView result={result} isLight={isLight} />

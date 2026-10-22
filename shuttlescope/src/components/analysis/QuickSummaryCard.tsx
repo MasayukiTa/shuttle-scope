@@ -18,6 +18,7 @@ import { B_BAD, N_GRAY, A_GOOD } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useTranslation } from 'react-i18next'
 import { MIcon } from '@/components/common/MIcon'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 
 interface Tokens {
   bgPanel: string
@@ -120,7 +121,7 @@ export function QuickSummaryCard({ matchId, asOfSet, asOfRally, playerSide = 'pl
   const { t } = useTranslation()
   const tokens = useTokens()
 
-  const { data, isLoading, refetch, isFetching } = useQuery({
+  const { data, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ['review', 'quick_summary', matchId, asOfSet, asOfRally, playerSide],
     queryFn: () => getQuickSummary(matchId, asOfSet, { asOfRally, playerSide }),
     enabled: matchId > 0,
@@ -177,7 +178,11 @@ export function QuickSummaryCard({ matchId, asOfSet, asOfRally, playerSide = 'pl
             {t('auto.QuickSummaryCard.k1')}
           </p>
         )}
-        {!isLoading && cards.length === 0 && (
+        {/* 取得失敗は「観測中 (カード0件)」と区別して示す。前回成功分のカードは残す */}
+        {isError && !isLoading && (
+          <QueryErrorNotice onRetry={() => { void refetch() }} />
+        )}
+        {!isLoading && !isError && cards.length === 0 && (
           <p
             className="text-xs text-center py-2 text-[var(--ss-t3)]"
           >

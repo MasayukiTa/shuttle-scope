@@ -11,6 +11,7 @@ import { statusColor, DownloadStatus } from './matchListUtils'
 import { MIcon } from '@/components/common/MIcon'
 import { useAuth } from '@/hooks/useAuth'
 import { isPlayableVideoUrl } from '@/utils/videoSrc'
+import { canDeleteMatch, canWriteMatch } from '@/utils/roleAccess'
 
 // MatchListPage のモバイル用カード 1 件分。純粋抽出 (behavior 不変)。
 // theme / navigate / t は内部で解決し、ページ固有の操作だけ callback で受ける。
@@ -194,6 +195,8 @@ export function MatchCard({
         {exportError && (
           <span role="alert" className="text-[10px] text-red-400">{exportError}</span>
         )}
+        {/* 編集 / 削除は backend の権限 (編集: admin/coach/analyst、削除: admin/analyst) と同じ条件でだけ出す。 */}
+        {canWriteMatch(role) && (
         <button
           onClick={() => onEdit(m)}
           className={`p-1 rounded ${isLight ? 'text-gray-500 hover:text-gray-700 hover:bg-gray-100' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'}`}
@@ -202,7 +205,8 @@ export function MatchCard({
         >
           <MIcon name="edit" size={16} />
         </button>
-        {deleteConfirmId === m.id ? (
+        )}
+        {!canDeleteMatch(role) ? null : deleteConfirmId === m.id ? (
           <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded border border-white text-[10px] ${isLight ? 'bg-red-50 text-red-700' : 'bg-red-900/30 text-red-400'}`}>
             <button
               onClick={() => { onDeleteExecute(m.id); onDeleteConfirm(null) }}
