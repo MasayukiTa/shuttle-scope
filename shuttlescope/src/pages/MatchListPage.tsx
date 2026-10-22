@@ -624,6 +624,7 @@ export function MatchListPage() {
           />
           <select
             value={filterLevel}
+            aria-label={t('a11yLabels.match_level')}
             onChange={(e) => setFilterLevel(e.target.value)}
             className="border rounded-[var(--r-md)] px-2 py-1.5 text-sm bg-[var(--ss-surface-1)] border-[var(--ss-border-strong)] text-[var(--ss-t1)]"
           >
@@ -645,6 +646,7 @@ export function MatchListPage() {
             <span>{t('match.list.quality')}</span>
             <select
               value={downloadQuality}
+              aria-label={t('a11yLabels.video_quality')}
               onChange={(e) => setDownloadQuality(e.target.value)}
               className="border rounded-[var(--r-md)] px-2 py-1 text-sm bg-[var(--ss-surface-1)] border-[var(--ss-border-strong)] text-[var(--ss-t1)]"
             >
@@ -766,6 +768,7 @@ export function MatchListPage() {
             />
             <select
               value={filterLevel}
+              aria-label={t('a11yLabels.match_level')}
               onChange={(e) => setFilterLevel(e.target.value)}
               className="border rounded-[var(--r-md)] px-2 py-1.5 text-sm bg-[var(--ss-surface-1)] border-[var(--ss-border-strong)] text-[var(--ss-t1)]"
             >
