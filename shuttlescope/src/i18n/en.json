@@ -1174,6 +1174,7 @@
       "fetch_title": "Fetch title from URL",
       "fetch_title_loading": "Fetching…",
       "fetch_title_empty": "Could not get a title",
+      "video_url_invalid": "The video URL is invalid. Enter a URL that starts with http:// or https://",
       "fetch_title_failed": "Failed to fetch title",
       "first_serve": "First serve",
       "analyst_view": "Analyst view",
@@ -1327,6 +1328,8 @@
   },
   "annotator": {
     "set_not_finished": "This score does not end the set yet ({{a}}-{{b}}).",
+    "set_already_decided": "This set is already decided. Use the next set button to continue",
+    "match_decided_no_next_set": "The match is decided, so no next set is created",
     "viewpoint_save_failed": "Could not save the viewpoint.",
     "loading": "Loading...",
     "back_to_matches": "Back to matches",
@@ -1337,7 +1340,12 @@
       "init_retry": "Reload",
       "choose_server": "Who serves first?",
       "saving_count": "Saving {{n}}",
-      "unsaved_count": "{{n}} not saved (retrying automatically)"
+      "unsaved_count": "{{n}} not saved (retrying automatically)",
+      "set_decided": "The set is decided ({{a}}-{{b}})",
+      "match_decided": "The match is decided",
+      "next_set": "Next set",
+      "set_end_busy": "Working...",
+      "set_end_failed": "Could not finish the set: {{reason}}"
     },
     "rally_start": "Rally start",
     "rally_confirm": "Confirm rally",
@@ -5118,6 +5126,7 @@
       "err_no_match_id": "No match specified",
       "err_unknown": "Unknown error",
       "undo_busy": "Sending now, so it cannot be undone yet. Try again in a few seconds",
+      "undo_not_delivered": "The undo did not reach the server. Check the connection and try again",
       "video_sec": "Video {{sec}}s",
       "queue_pending": "{{n}} unsent (resending)",
       "queue_failed": "{{n}} send failures — tap to resend"

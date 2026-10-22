@@ -375,7 +375,7 @@ export async function cancelQueued(
  * 待機中の item を 1 巡 flush する。完了後、次の最早 nextAttemptAt まで
  * setTimeout を再スケジュール。
  */
-async function flushOnce(): Promise<void> {
+async function runFlush(): Promise<void> {
   if (_flushing) return
   _flushing = true
   try {
@@ -450,6 +450,38 @@ async function flushOnce(): Promise<void> {
     _flushing = false
   }
   scheduleNextFlush()
+}
+
+// 実行中の flush。flushNow が「いま走っている巡回」の終了を待つために持つ。
+let _flushPromise: Promise<void> | null = null
+
+function flushOnce(): Promise<void> {
+  if (_flushPromise) return _flushPromise
+  const p = runFlush().finally(() => {
+    _flushPromise = null
+  })
+  _flushPromise = p
+  return p
+}
+
+/**
+ * 直前に enqueue した item まで含めて 1 巡送信し、終わるまで待つ。
+ * すでに巡回中の場合、その巡回は enqueue より前に一覧を読んでいる可能性があるので、
+ * 終わるのを待ってからもう 1 巡する。送信失敗は item に残り、例外にはしない。
+ */
+export async function flushNow(): Promise<void> {
+  if (_flushPromise) {
+    try {
+      await _flushPromise
+    } catch {
+      // 前の巡回の失敗は、この呼び出しの結果に関係しない
+    }
+  }
+  try {
+    await flushOnce()
+  } catch {
+    // IndexedDB を開けない等。呼び出し側は一覧の再取得で結果を確かめる
+  }
 }
 
 async function scheduleNextFlush(): Promise<void> {

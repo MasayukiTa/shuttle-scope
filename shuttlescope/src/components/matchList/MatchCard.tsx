@@ -7,6 +7,7 @@ import { PipelineJobBadge } from '@/components/analysis/PipelineJobBadge'
 import { statusColor, DownloadStatus } from './matchListUtils'
 import { MIcon } from '@/components/common/MIcon'
 import { useAuth } from '@/hooks/useAuth'
+import { isPlayableVideoUrl } from '@/utils/videoSrc'
 
 // MatchListPage のモバイル用カード 1 件分。純粋抽出 (behavior 不変)。
 // theme / navigate / t は内部で解決し、ページ固有の操作だけ callback で受ける。
@@ -29,7 +30,10 @@ export function MatchCard({
   const { isLight, textMuted, textSecondary } = useCardTheme()
   // 製品ルール: player には勝敗・スコアを見せない (API も result / final_score を返さない)。
   // 値が無いまま描くと t('match.results.undefined') の生キーが出るため、行ごと描かない。
-  const { role } = useAuth()
+  const { role, hasPageAccess } = useAuth()
+  // 予測ページは PageAccessRoute('prediction') で守られている。権限が無い利用者に
+  // ボタンを出すと、押しても説明なしに一覧へ戻されるだけになる。
+  const canOpenPrediction = hasPageAccess('prediction')
   const isPlayer = role === 'player'
   // 操作ボタンの accessible name に試合 (日付 / 大会 / 相手) を含める (MatchRow と同じ形式)
   const opponentName = m.player_b?.name ?? `#${m.player_b_id}`
@@ -106,7 +110,7 @@ export function MatchCard({
           <MIcon name="play_arrow" size={12} />
           {t('match.list.open', 'Open')}
         </button>
-        {m.player_a_id && (
+        {m.player_a_id && canOpenPrediction && (
           <button
             onClick={() => navigate(`/prediction?playerId=${m.player_a_id}`)}
             className={`p-1 rounded ${isLight ? 'text-gray-500 hover:text-blue-600 hover:bg-blue-50' : 'text-gray-400 hover:text-blue-400 hover:bg-gray-700'}`}
@@ -141,7 +145,7 @@ export function MatchCard({
             {dl.percent ?? 'DL中'}
           </span>
         )}
-        {m.video_url && !m.has_video_local && !dl && (
+        {isPlayableVideoUrl(m.video_url) && !m.has_video_local && !dl && (
           <button
             onClick={() => onDownload(m)}
             className={`p-1 rounded ${isLight ? 'text-gray-500 hover:text-gray-700 hover:bg-gray-100' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'}`}

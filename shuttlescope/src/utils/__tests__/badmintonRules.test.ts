@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   setWinner, isDeuce, isGoldenPoint, isSetPoint,
-  matchWinner, serveSide, isFinalSetMidChange, isMidGameBreak,
+  matchWinner, serveSide, isFinalSetMidChange, isMidGameBreak, isMatchDecidedBySet,
 } from '../badmintonRules'
 
 describe('badminton rules', () => {
@@ -88,6 +88,21 @@ describe('badminton rules', () => {
     })
     it('最終ゲームでも 10 点未満なら false', () => {
       expect(isFinalSetMidChange(3, 3, { scoreA: 10, scoreB: 9 })).toBe(false)
+    })
+  })
+
+  describe('isMatchDecidedBySet', () => {
+    it('2-0 になるセット終了は試合決着', () => {
+      expect(isMatchDecidedBySet(['A'], { scoreA: 21, scoreB: 15 })).toBe(true)
+    })
+    it('1-1 からの第3セット終了も試合決着', () => {
+      expect(isMatchDecidedBySet(['A', 'B'], { scoreA: 12, scoreB: 21 })).toBe(true)
+    })
+    it('1-0 から B が取り返す第2セットは試合継続', () => {
+      expect(isMatchDecidedBySet(['A'], { scoreA: 15, scoreB: 21 })).toBe(false)
+    })
+    it('現在のセットが未終了なら決着ではない', () => {
+      expect(isMatchDecidedBySet(['A'], { scoreA: 20, scoreB: 19 })).toBe(false)
     })
   })
 

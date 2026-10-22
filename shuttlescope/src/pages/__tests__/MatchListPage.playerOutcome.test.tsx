@@ -12,6 +12,7 @@ import { MemoryRouter } from 'react-router-dom'
 import type { UserRole } from '@/types'
 
 let mockRole: UserRole | null = 'player'
+let mockPageAccess: string[] = []
 
 vi.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({
@@ -19,6 +20,12 @@ vi.mock('@/hooks/useAuth', () => ({
     playerId: 1,
     teamName: null,
     hasRole: (allowed: UserRole[]) => (!mockRole ? false : mockRole === 'admin' ? true : allowed.includes(mockRole)),
+    // 実装 (useAuth.ts) と同じ規則: admin / analyst / coach は常に可、それ以外は付与されたキーのみ
+    hasPageAccess: (key: string) => {
+      if (!mockRole) return false
+      if (mockRole === 'admin' || mockRole === 'analyst' || mockRole === 'coach') return true
+      return mockPageAccess.includes(key)
+    },
   }),
 }))
 
@@ -66,6 +73,7 @@ const noop = () => {}
 
 beforeEach(() => {
   mockRole = 'player'
+  mockPageAccess = []
 })
 
 describe('MatchRow / MatchCard', () => {
@@ -114,6 +122,61 @@ describe('MatchRow / MatchCard', () => {
     const card = renderCard(coachMatch)
     expect(card.container.textContent).toContain('勝ち')
     expect(card.container.textContent).toContain('21-15, 21-10')
+  })
+})
+
+describe('MatchRow / MatchCard: 予測ボタンはページ権限に従う', () => {
+  // 予測ボタンは trending_up アイコンだけを持つ button
+  function hasPredictionButton(container: HTMLElement): boolean {
+    return Array.from(container.querySelectorAll('button')).some(
+      (b) => (b.textContent ?? '').includes('trending_up'),
+    )
+  }
+
+  it('prediction 権限の無い player には行・カードとも予測ボタンを出さない', () => {
+    mockRole = 'player'
+    mockPageAccess = []
+    const row = render(
+      <MemoryRouter>
+        <table><tbody>
+          <MatchRow match={playerMatch as Match} selected={false} onToggleSelect={noop} onDownload={noop} onEdit={noop}
+            deleteConfirmId={null} onDeleteConfirm={noop} onDeleteExecute={noop} />
+        </tbody></table>
+      </MemoryRouter>,
+    )
+    expect(hasPredictionButton(row.container)).toBe(false)
+    const card = render(
+      <MemoryRouter>
+        <MatchCard match={playerMatch as Match} onDownload={noop} onEdit={noop}
+          deleteConfirmId={null} onDeleteConfirm={noop} onDeleteExecute={noop} />
+      </MemoryRouter>,
+    )
+    expect(hasPredictionButton(card.container)).toBe(false)
+  })
+
+  it('prediction 権限を付与された player と coach には予測ボタンを出す', () => {
+    mockRole = 'player'
+    mockPageAccess = ['prediction']
+    const granted = render(
+      <MemoryRouter>
+        <MatchCard match={playerMatch as Match} onDownload={noop} onEdit={noop}
+          deleteConfirmId={null} onDeleteConfirm={noop} onDeleteExecute={noop} />
+      </MemoryRouter>,
+    )
+    expect(hasPredictionButton(granted.container)).toBe(true)
+    granted.unmount()
+
+    mockRole = 'coach'
+    mockPageAccess = []
+    const coach = render(
+      <MemoryRouter>
+        <table><tbody>
+          <MatchRow match={coachMatch as Match} selected={false} onToggleSelect={noop} onDownload={noop} onEdit={noop}
+            deleteConfirmId={null} onDeleteConfirm={noop} onDeleteExecute={noop} />
+        </tbody></table>
+      </MemoryRouter>,
+    )
+    expect(hasPredictionButton(coach.container)).toBe(true)
   })
 })
 

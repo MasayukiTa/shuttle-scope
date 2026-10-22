@@ -7,6 +7,7 @@ import { PipelineJobBadge } from '@/components/analysis/PipelineJobBadge'
 import { statusColor, DownloadStatus } from './matchListUtils'
 import { MIcon } from '@/components/common/MIcon'
 import { useAuth } from '@/hooks/useAuth'
+import { isPlayableVideoUrl } from '@/utils/videoSrc'
 
 // MatchListPage のデスクトップ用テーブル行 1 件分。純粋抽出 (behavior 不変)。
 export interface MatchRowProps {
@@ -29,7 +30,10 @@ export function MatchRow({
   const { t } = useTranslation()
   const { isLight, textMuted, textSecondary } = useCardTheme()
   // 製品ルール: player には勝敗・スコア列を出さない (ヘッダ列は MatchListPage 側で同じ条件で非表示)。
-  const { role } = useAuth()
+  const { role, hasPageAccess } = useAuth()
+  // 予測ページは PageAccessRoute('prediction') で守られている。権限が無い利用者に
+  // ボタンを出すと、押しても説明なしに一覧へ戻されるだけになる。
+  const canOpenPrediction = hasPageAccess('prediction')
   const isPlayer = role === 'player'
   // 行ごとの操作ボタンは、アイコンだけだと「どの試合の操作か」が支援技術に伝わらない。
   // 日付 / 大会 / 相手を操作名に付ける。
@@ -115,7 +119,7 @@ export function MatchRow({
           >
             <MIcon name="play_arrow" size={14} />
           </button>
-          {m.player_a_id && (
+          {m.player_a_id && canOpenPrediction && (
             <button
               onClick={() => navigate(`/prediction?playerId=${m.player_a_id}`)}
               className={`p-1.5 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
@@ -137,7 +141,7 @@ export function MatchRow({
               {dl.percent ?? 'DL中'}
             </span>
           )}
-          {m.video_url && !m.has_video_local && !dl && (
+          {isPlayableVideoUrl(m.video_url) && !m.has_video_local && !dl && (
             <button
               onClick={() => onDownload(m)}
               className={`p-1.5 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}

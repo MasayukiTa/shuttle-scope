@@ -82,6 +82,21 @@ export function matchWinner({ completedSetWinners, bestOf = 3 }: MatchProgress):
 }
 
 /**
+ * 現在のセットが終わると試合全体が決着するか。
+ * previousSetWinners は現在のセットより前に終了したセットの勝者。
+ * 現在のセットがまだ終わっていなければ false。
+ */
+export function isMatchDecidedBySet(
+  previousSetWinners: Array<'A' | 'B'>,
+  current: SetScore,
+  bestOf = 3,
+): boolean {
+  const winner = setWinner(current)
+  if (winner === null) return false
+  return matchWinner({ completedSetWinners: [...previousSetWinners, winner], bestOf }) !== null
+}
+
+/**
  * サーブ位置 (right / left service court) 判定。
  *
  * BWF ラリーポイント制:

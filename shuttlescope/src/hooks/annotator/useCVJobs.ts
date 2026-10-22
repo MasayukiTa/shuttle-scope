@@ -14,6 +14,7 @@ import i18n from '@/i18n'
 import { apiGet, apiPost, apiDelete } from '@/api/client'
 import type { ShuttleFrame } from '@/components/annotation/ShuttleTrackOverlay'
 import type { Match } from '@/types'
+import { isPlayableVideoUrl } from '@/utils/videoSrc'
 import type { RoiRect } from '@/components/video/RoiRectOverlay'
 import type { TrackFrame, RawDetection } from '@/components/annotation/PlayerTrackingOverlay'
 
@@ -358,7 +359,7 @@ export function useCVJobs({
     prevRoi?: RoiRect | null
   } = {}) => {
     if (!matchId) return
-    const hasVideo = !!(match?.video_token || match?.video_url || match?.has_video_local)
+    const hasVideo = !!(match?.video_token || isPlayableVideoUrl(match?.video_url) || match?.has_video_local)
     if (!hasVideo) {
       alert(i18n.t('tracknet.batch_no_video'))
       return
@@ -460,7 +461,7 @@ export function useCVJobs({
     prevRoi?: RoiRect | null
   } = {}) => {
     if (!matchId) return
-    const hasVideo = !!(match?.video_token || match?.video_url || match?.has_video_local)
+    const hasVideo = !!(match?.video_token || isPlayableVideoUrl(match?.video_url) || match?.has_video_local)
     if (!hasVideo) {
       alert(i18n.t('yolo.batch_no_video'))
       return

@@ -71,7 +71,7 @@ interface RallyRow {
 import { Pass1RallyEnd } from '@/components/mobileAnnotate/Pass1RallyEnd'
 import { Pass2ServeFinal } from '@/components/mobileAnnotate/Pass2ServeFinal'
 import { Pass3ShotDetail } from '@/components/mobileAnnotate/Pass3ShotDetail'
-import { startBackgroundFlush, getStatus, retryAllManual, enqueue, cancelQueued } from '@/utils/mobileAnnotateQueue'
+import { startBackgroundFlush, getStatus, retryAllManual, enqueue, cancelQueued, flushNow } from '@/utils/mobileAnnotateQueue'
 import {
   decideUndoPending,
   mergeRallies,
@@ -486,6 +486,12 @@ export function MobileAnnotatePage() {
   // (POST /sets は同じ set_num なら既存を返すので、再試行しても重複しない)。
   const handleSetEnded = async () => {
     if (!currentSet || nextSetState.busy) return
+    // 勝敗が確定した試合には次のセットを作らない (空の第 3 セット等が残って
+    // 再開位置・セット数・解析母集団を汚すのを防ぐ)。結果の表示だけ出し直す。
+    if (matchOver) {
+      setMatchOverDismissed(false)
+      return
+    }
     if (currentSetIdx + 1 < allSets.length) {
       setCurrentSetIdx(currentSetIdx + 1)
       return
@@ -505,6 +511,22 @@ export function MobileAnnotatePage() {
         error: errorMessage(e, t('auto.MobileAnnotatePage.err_unknown')).slice(0, 200),
       })
     }
+  }
+
+  // 保存済みラリーの削除。DELETE がサーバに届いて一覧から消えたことを確かめてから
+  // true を返す。届いていなければキューから取り下げて false を返す (後から DELETE が
+  // 走ると、画面に残ったラリーの次の番号で入力した分との間に欠番ができる)。
+  const deleteServerRally = async (rallyId: number): Promise<boolean> => {
+    const { clientUuid } = await enqueue('DELETE /api/rallies/:id', undefined, { id: rallyId })
+    await flushNow()
+    const fresh = await ralliesQuery.refetch()
+    const remains = fresh.isError || (fresh.data?.data ?? []).some((x) => x.id === rallyId)
+    if (remains) {
+      await cancelQueued(clientUuid)
+      setUndoNotice(t('auto.MobileAnnotatePage.undo_not_delivered'))
+      return false
+    }
+    return true
   }
 
   const ensureSet = async (): Promise<SetInfo | null> => {
@@ -732,12 +754,11 @@ export function MobileAnnotatePage() {
                     const last = setRallies[setRallies.length - 1]
                     if (!last) return
                     if (last.id) {
-                      await enqueue('DELETE /api/rallies/:id', undefined, { id: last.id })
-                      // optimistic: 一覧から消し、server fetch も refresh
+                      // 削除がサーバに届いたことを確かめてから一覧を更新する。
+                      if (!(await deleteServerRally(last.id))) return
                       setLocalRallies((prev) => prev.filter(
                         (r) => rallyKey(r) !== rallyKey(last),
                       ))
-                      ralliesQuery.refetch()
                     } else {
                       // 未送信: 画面から消す前に、送信キューの item を取消す。
                       // 画面だけ消すと、取消したはずのラリーが後から保存される。
@@ -757,8 +778,7 @@ export function MobileAnnotatePage() {
                         return
                       }
                       if (action === 'enqueue_delete' && serverId != null) {
-                        await enqueue('DELETE /api/rallies/:id', undefined, { id: serverId })
-                        ralliesQuery.refetch()
+                        if (!(await deleteServerRally(serverId))) return
                       }
                       setLocalRallies((prev) =>
                         prev.filter((r) => rallyKey(r) !== rallyKey(last)),

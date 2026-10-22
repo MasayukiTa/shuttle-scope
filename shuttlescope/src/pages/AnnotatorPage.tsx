@@ -56,7 +56,7 @@ import { useSettings } from '@/hooks/useSettings'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useCVJobs } from '@/hooks/annotator/useCVJobs'
-import { setWinner } from '@/utils/badmintonRules'
+import { setWinner, isMatchDecidedBySet } from '@/utils/badmintonRules'
 // doubles では stroke.player が partner_* にもなる。チームへ正規化する共通関数。
 import { normalizeStrikerTeam } from '@/utils/players'
 import { computePlayerASide, landingCourtMode } from '@/utils/courtSides'
@@ -606,6 +606,13 @@ export function AnnotatorPage() {
         return
       }
 
+      // セットの勝敗が成立した後は得点を積まない。「次のセットへ」を押さずに
+      // 入力を続けると 22-10 のような不可能なスコアが保存される。
+      if (setWinner({ scoreA: s.scoreA, scoreB: s.scoreB }) !== null) {
+        showError(t('annotator.set_already_decided'))
+        return
+      }
+
       // confirmRally の前にスコア・ラリー番号をキャプチャ
       const strokes = [...s.currentStrokes]
       const rallyNum = s.currentRallyNum
@@ -728,6 +735,20 @@ export function AnnotatorPage() {
         score_b: s.scoreB,
       })
 
+      // この終了で試合の勝敗が決まるなら、次のセットは作らない
+      // (2-0 の後に空の第 3 セットが残り、再開位置・セット数・解析母集団を汚す)。
+      const previousWinners: Array<'A' | 'B'> = []
+      for (const gs of setsData?.data ?? []) {
+        if (gs.id === setId) continue
+        if (gs.winner === 'player_a') previousWinners.push('A')
+        else if (gs.winner === 'player_b') previousWinners.push('B')
+      }
+      if (isMatchDecidedBySet(previousWinners, { scoreA: s.scoreA, scoreB: s.scoreB })) {
+        queryClient.invalidateQueries({ queryKey: ['sets', matchId] })
+        showError(t('annotator.match_decided_no_next_set'))
+        return
+      }
+
       // 次のセット作成
       const nextSetNum = s.currentSetNum + 1
       const res = await apiPost<{ success: boolean; data: GameSet }>('/sets', {
@@ -742,7 +763,7 @@ export function AnnotatorPage() {
     } catch (err: unknown) {
       showError(`${t('annotator.ui.set_change_error_prefix', { defaultValue: 'セット移行エラー:' })} ${errorMessage(err, t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' }))}`)
     }
-  }, [matchId, t])
+  }, [matchId, t, setsData, queryClient])
 
   // K-003: モーダルから「次のセットへ」
   const handleModalNextSet = useCallback(() => {

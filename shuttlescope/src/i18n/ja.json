@@ -1181,6 +1181,7 @@
       "fetch_title": "URLからタイトル取得",
       "fetch_title_loading": "取得中…",
       "fetch_title_empty": "タイトルを取得できませんでした",
+      "video_url_invalid": "動画URLが無効です。http:// または https:// で始まるURLを入力してください",
       "fetch_title_failed": "タイトル取得に失敗しました",
       "reissue_video_token": "動画リンクを再発行",
       "reissue_video_token_hint": "動画 URL（app://video/...）を新しい UUID に置換します",
@@ -1334,6 +1335,8 @@
   },
   "annotator": {
     "set_not_finished": "このスコアではセットが終了していません（{{a}}-{{b}}）",
+    "set_already_decided": "このセットは勝敗が決まっています。「次のセットへ」で進めてください",
+    "match_decided_no_next_set": "この試合は決着したため、次のセットは作成しません",
     "viewpoint_save_failed": "視点の保存に失敗しました",
     "loading": "読み込み中...",
     "back_to_matches": "試合一覧に戻る",
@@ -1344,7 +1347,12 @@
       "init_retry": "再読み込み",
       "choose_server": "最初のサーブはどちらですか",
       "saving_count": "保存中 {{n}} 件",
-      "unsaved_count": "未保存 {{n}} 件 (自動で再送します)"
+      "unsaved_count": "未保存 {{n}} 件 (自動で再送します)",
+      "set_decided": "セットが決着しました ({{a}}-{{b}})",
+      "match_decided": "試合が決着しました",
+      "next_set": "次のセットへ",
+      "set_end_busy": "処理中…",
+      "set_end_failed": "セットの終了処理に失敗しました: {{reason}}"
     },
     "ux": {
       "menu_label": "操作メニュー",
@@ -5131,6 +5139,7 @@
       "err_no_match_id": "試合が指定されていません",
       "err_unknown": "不明なエラー",
       "undo_busy": "送信中のため取り消せません。数秒後にもう一度押してください",
+      "undo_not_delivered": "取り消しがサーバに届きませんでした。通信を確認して、もう一度押してください",
       "video_sec": "動画 {{sec}} 秒",
       "queue_pending": "未送信 {{n}} 件 (再送中)",
       "queue_failed": "送信失敗 {{n}} 件 — タップで再送"

@@ -23,12 +23,17 @@ def _set_require_match_scope(request: Request, db: Session, match: Match) -> Non
     require_match_scope(request, match, db)
 
 
+# バドミントンは 3 セットマッチ (2 セット先取)。フロントの bestOf=3 と揃える。
+MAX_SETS = 3
+SETS_TO_WIN = 2
+
+
 class SetCreate(BaseModel):
-    # extra フィールド禁止 + set_num は 1-5 に制限 (ベスト 3 of 5 相当)
-    # これは badminton の公式ルールに従う。99 等の不正値を 422 で弾く
+    # extra フィールド禁止 + set_num は 1-3 に制限 (3 セットマッチ)。
+    # 99 等の不正値を 422 で弾く
     model_config = {"extra": "forbid"}
     match_id: int
-    set_num: int = Field(..., ge=1, le=5)
+    set_num: int = Field(..., ge=1, le=MAX_SETS)
 
 
 class SetEnd(BaseModel):
@@ -50,15 +55,34 @@ GOLDEN_POINT = 30
 def _winner_from_scores(score_a: int, score_b: int) -> Optional[str]:
     """スコアから勝者を決める。まだ終わっていなければ None。
 
-    - 30 点先取 (ゴールデンポイント) は 2 点差不要
+    - 30 点先取 (ゴールデンポイント) は 2 点差不要。30 点に届いた時点で終わるので
+      31-30 のように 30 を超えるスコアは存在しない (None)
     - それ以外は 21 点以上かつ 2 点差
     """
     hi, lo = max(score_a, score_b), min(score_a, score_b)
-    if hi >= GOLDEN_POINT:
-        return "player_a" if score_a >= GOLDEN_POINT else "player_b"
+    if hi > GOLDEN_POINT or (hi == GOLDEN_POINT and lo == GOLDEN_POINT):
+        return None
+    if hi == GOLDEN_POINT:
+        return "player_a" if score_a == GOLDEN_POINT else "player_b"
     if hi >= POINT_TARGET and hi - lo >= 2:
         return "player_a" if score_a > score_b else "player_b"
     return None
+
+
+def _decided_winner(db: Session, game_set: GameSet) -> Optional[str]:
+    """セットの勝者。確定済みならその値、未確定なら最終ラリーのスコアから判定する。
+
+    モバイルのアノテーションは PUT /sets/{id}/end を呼ばずに次のセットへ進むため、
+    GameSet.winner が空のままでもラリーのスコアでは決着していることがある。
+    """
+    if game_set.winner in ("player_a", "player_b"):
+        return game_set.winner
+    last = db.query(Rally).filter(
+        Rally.set_id == game_set.id
+    ).order_by(Rally.rally_num.desc()).first()
+    if last is None:
+        return None
+    return _winner_from_scores(last.score_a_after or 0, last.score_b_after or 0)
 
 
 def set_to_dict(s: GameSet) -> dict:
@@ -107,6 +131,18 @@ def create_set(body: SetCreate, request: Request, db: Session = Depends(get_db))
     ).first()
     if existing:
         return {"success": True, "data": set_to_dict(existing)}
+
+    # 試合が既に決着している (2 セット先取) なら、追加のセットは作らない。
+    wins = {"player_a": 0, "player_b": 0}
+    for gs in db.query(GameSet).filter(GameSet.match_id == body.match_id).all():
+        side = _decided_winner(db, gs)
+        if side is not None:
+            wins[side] += 1
+    if max(wins.values()) >= SETS_TO_WIN:
+        raise HTTPException(
+            status_code=409,
+            detail="この試合は既に決着しているため、新しいセットは作成できません",
+        )
 
     game_set = GameSet(match_id=body.match_id, set_num=body.set_num)
     touch(game_set)
