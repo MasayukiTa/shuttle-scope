@@ -13,7 +13,7 @@
  * プリマージ済みストリームのみを使用するフォールバックモードで動作する。
  * 画質が制限される場合がある。
  */
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { apiGet, apiPost } from '@/api/client'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useTranslation } from 'react-i18next'
@@ -79,6 +79,12 @@ export function StreamingDownloadPanel({
   const [progress, setProgress] = useState<ProgressInfo>({ percent: '0%', speed: '', eta: '' })
   const [errorMsg, setErrorMsg] = useState('')
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null)
+  // 機能確認の失敗は「利用可能」ではなく「確認できなかった」として扱う
+  const [capabilitiesFailed, setCapabilitiesFailed] = useState(false)
+  const [capabilitiesAttempt, setCapabilitiesAttempt] = useState(0)
+  // 進捗取得 (polling) が連続して失敗したとき、古い進捗を最新として見せない
+  const [statusLostAt, setStatusLostAt] = useState<number | null>(null)
+  const lastStatusOkRef = useRef<number | null>(null)
   // 会員限定サイト対応: cookies.txt (Netscape 形式) を Web 経由でも投入できるようにする。
   // 旧版は cookie_browser のみで、Cloudflare 経由の Web からは何も渡せなかった。
   // backend `/matches/{id}/download` は body に `cookies_txt: string` を受け付ける既存実装を活用。
@@ -93,18 +99,28 @@ export function StreamingDownloadPanel({
 
   // ── システム機能確認（ffmpeg / yt-dlp 可用性） ────────────────────────────
   useEffect(() => {
+    let cancelled = false
+    setCapabilitiesFailed(false)
     apiGet<{ success: boolean; data: Capabilities }>('/system/capabilities')
-      .then((res) => setCapabilities(res.data))
-      .catch(() => {
-        // 取得失敗時はデフォルトとして両方 true 扱い（旧バックエンド互換）
-        setCapabilities({ yt_dlp: true, ffmpeg: true })
+      .then((res) => {
+        if (cancelled) return
+        setCapabilities(res.data)
       })
-  }, [])
+      .catch(() => {
+        // 取得失敗を「両方利用可能」に倒さない。旧バックエンド (endpoint 無し) でも
+        // ダウンロード自体は試せるよう開始は止めず、確認できなかったことを示す。
+        if (!cancelled) setCapabilitiesFailed(true)
+      })
+    return () => { cancelled = true }
+  }, [capabilitiesAttempt])
 
   // ── ダウンロード進捗ポーリング ──────────────────────────────────────────────
   useEffect(() => {
     if (!jobId || (dlState !== 'downloading' && dlState !== 'processing' && dlState !== 'starting')) return
 
+    let failures = 0
+    lastStatusOkRef.current = Date.now()
+    setStatusLostAt(null)
     const poll = setInterval(async () => {
       try {
         const res = await apiGet<{
@@ -119,6 +135,9 @@ export function StreamingDownloadPanel({
         }>(`/matches/${matchId}/download/status`, { job_id: jobId })
 
         const d = res.data
+        failures = 0
+        lastStatusOkRef.current = Date.now()
+        setStatusLostAt(null)
         switch (d.status) {
           case 'complete':
             clearInterval(poll)
@@ -144,7 +163,10 @@ export function StreamingDownloadPanel({
           // pending / unknown は次のポーリングまで待機
         }
       } catch {
-        // ネットワークエラーはスキップ
+        // 一時的な失敗は次の polling で再試行する。連続して失敗したら、表示中の進捗が
+        // 最新ではないこと (状態不明) を示す。ジョブが止まったとは断定しない。
+        failures += 1
+        if (failures >= 3) setStatusLostAt(lastStatusOkRef.current)
       }
     }, 1500)
 
@@ -246,6 +268,21 @@ export function StreamingDownloadPanel({
         {url}
       </div>
 
+      {/* ── 実行環境の確認に失敗 (利用可否は不明) ── */}
+      {capabilitiesFailed && dlState === 'idle' && (
+        <div role="alert" className={`flex items-start gap-2 text-xs rounded p-2 ${bannerWarn}`}>
+          <MIcon name="error" size={13} className="shrink-0 mt-0.5" />
+          <span className="flex-1">{t('common_ui.capabilities_unknown')}</span>
+          <button
+            type="button"
+            onClick={() => setCapabilitiesAttempt((n) => n + 1)}
+            className="underline shrink-0"
+          >
+            {t('annotator.ui.retry')}
+          </button>
+        </div>
+      )}
+
       {/* ── ffmpeg 未インストール警告 ── */}
       {ffmpegMissing && dlState === 'idle' && (
         <div className={`flex items-start gap-2 text-xs rounded p-2 ${bannerWarn}`}>
@@ -320,6 +357,11 @@ export function StreamingDownloadPanel({
               style={dlState === 'downloading' ? { width: `${percentNum}%` } : undefined}
             />
           </div>
+          {statusLostAt !== null && (
+            <p role="alert" className="text-xs text-[var(--ss-warn)]">
+              {t('common_ui.download_status_lost', { time: new Date(statusLostAt).toLocaleTimeString() })}
+            </p>
+          )}
           {showCookieHint && (
             <p className={`text-xs ${muteColor}`}>
               {t('auto.StreamingDownloadPanel.using_cookie', { label: COOKIE_BROWSER_OPTIONS.find(o => o.value === cookieBrowser)?.label ?? cookieBrowser })}

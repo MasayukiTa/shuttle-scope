@@ -352,6 +352,11 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
   const [handoffTarget, setHandoffTarget] = useState<SessionParticipant | null>(null)
   // local-over-remote confirmation
   const [localSwitchPending, setLocalSwitchPending] = useState<LocalCameraSource | null>(null)
+  // 一覧取得 (10秒 polling) の失敗と最終成功時刻。古い一覧を最新状態として見せないため
+  const [devicesFetchFailed, setDevicesFetchFailed] = useState(false)
+  const [devicesUpdatedAt, setDevicesUpdatedAt] = useState<number | null>(null)
+  // 承認・拒否・カメラ切替・権限変更など操作系の失敗
+  const [deviceActionFailed, setDeviceActionFailed] = useState(false)
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
 
@@ -394,8 +399,16 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
     setLoading(true)
     try {
       const res = await apiGet<{ success: boolean; data: SessionParticipant[] }>(`/sessions/${sessionCode}/devices`)
-      if (res.success) setParticipants(res.data)
-    } catch { } finally { setLoading(false) }
+      if (res.success) {
+        setParticipants(res.data)
+        setDevicesUpdatedAt(Date.now())
+        setDevicesFetchFailed(false)
+      } else {
+        setDevicesFetchFailed(true)
+      }
+    } catch {
+      setDevicesFetchFailed(true)
+    } finally { setLoading(false) }
   }, [sessionCode])
 
   useEffect(() => {
@@ -408,9 +421,19 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
 
   // ─── アクションハンドラー ───────────────────────────────────────────────
 
-  const post = async (path: string, body: object = {}) => {
-    await apiPost(`/sessions/${sessionCode}${path}`, body)
-    fetchDevices()
+  // 成功なら true。失敗時は利用者へ知らせ、後続の処理 (カメラ要求等) を止めるため false を返す
+  const post = async (path: string, body: object = {}): Promise<boolean> => {
+    setDeviceActionFailed(false)
+    try {
+      await apiPost(`/sessions/${sessionCode}${path}`, body)
+      fetchDevices()
+      return true
+    } catch {
+      setDeviceActionFailed(true)
+      // 途中失敗で部分適用になり得るため、現在の状態を取り直す
+      fetchDevices()
+      return false
+    }
   }
 
   const handlePurgeDisconnected = async () => {
@@ -451,7 +474,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
       setHandoffTarget(p)  // 上限超過時のみ確認ダイアログ（降格先を選ぶ）
       return
     }
-    await post(`/devices/${p.id}/activate-camera`)
+    if (!(await post(`/devices/${p.id}/activate-camera`))) return
     requestCamera(p.id)
   }
 
@@ -462,15 +485,15 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
     if (actives.length >= MAX_ACTIVE_CAMERAS) {
       // 最初の active を降格
       const oldest = actives[0]
-      await post(`/devices/${oldest.id}/deactivate-camera`)
+      if (!(await post(`/devices/${oldest.id}/deactivate-camera`))) return
       sendMessage({ type: 'camera_deactivate', target_participant_id: oldest.id })
     }
-    await post(`/devices/${handoffTarget.id}/activate-camera`)
+    if (!(await post(`/devices/${handoffTarget.id}/activate-camera`))) return
     requestCamera(handoffTarget.id)
     setHandoffTarget(null)
   }
   const handleDeactivate = async (p: SessionParticipant) => {
-    await post(`/devices/${p.id}/deactivate-camera`)
+    if (!(await post(`/devices/${p.id}/deactivate-camera`))) return
     sendMessage({ type: 'camera_deactivate', target_participant_id: p.id })
   }
   const handleMakeCandidate  = (p: SessionParticipant) => post(`/devices/${p.id}/set-role`, { connection_role: 'camera_candidate' })
@@ -509,7 +532,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
     if (!localSwitchPending) return
     const activeRemote = participants.find((x) => x.connection_role === 'active_camera')
     if (activeRemote) {
-      await post(`/devices/${activeRemote.id}/deactivate-camera`)
+      if (!(await post(`/devices/${activeRemote.id}/deactivate-camera`))) return
       sendMessage({ type: 'camera_deactivate', target_participant_id: activeRemote.id })
     }
     await doSelectLocalSource(localSwitchPending)
@@ -548,10 +571,10 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
           >
             <MIcon name="delete" size={14} />
           </button>
-          <button onClick={fetchDevices} className={`${subColor}`}>
+          <button onClick={fetchDevices} aria-label={t('common_ui.refresh')} className={`${subColor}`}>
             <MIcon name="refresh" size={14} className={loading ? 'animate-spin' : ''} />
           </button>
-          <button onClick={onClose} className={`${subColor}`}><MIcon name="close" size={16} /></button>
+          <button onClick={onClose} aria-label={t('app.close')} className={`${subColor}`}><MIcon name="close" size={16} /></button>
         </div>
       </div>
       {actionError && (
@@ -574,6 +597,26 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
           </button>
         ))}
       </div>
+
+      {(devicesFetchFailed || deviceActionFailed) && (
+        <div role="alert" className="mb-3 px-3 py-2 rounded-ss-md border border-[var(--ss-warning-border)] bg-[var(--ss-warn-tint)] text-xs text-[var(--ss-warn)] space-y-1">
+          {deviceActionFailed && <p>{t('common_ui.device_action_failed')}</p>}
+          {devicesFetchFailed && (
+            <p>
+              {devicesUpdatedAt == null
+                ? t('common_ui.device_list_unavailable')
+                : t('common_ui.device_list_stale', { time: new Date(devicesUpdatedAt).toLocaleTimeString() })}
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={fetchDevices}
+            className="px-2 py-0.5 rounded-ss-sm border border-[var(--ss-warning-border)] hover:bg-[var(--ss-surface-3)]"
+          >
+            {t('annotator.ui.retry')}
+          </button>
+        </div>
+      )}
 
       {/* ─── リモート診断パネル ── */}
       <div className="mb-3 rounded-ss-md px-3 py-2 space-y-1 text-[10px] bg-[var(--ss-surface-2)] border border-[var(--ss-border)]">
@@ -662,7 +705,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
               sessionCode={sessionCode}
               className="absolute inset-0"
             />
-            {realtimeYoloOn && (
+            {realtimeYoloOn && realtimeYolo.connected && (
               <RealtimeYoloOverlay
                 videoRef={remoteVideoRef}
                 boxes={realtimeYolo.boxes}
@@ -738,7 +781,9 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
 
           {/* グループ別デバイス一覧 */}
           {participants.length === 0 ? (
-            <p className={`text-xs text-center py-4 ${subColor}`}>{t('lan_session.no_devices')}</p>
+            devicesFetchFailed ? null : (
+              <p className={`text-xs text-center py-4 ${subColor}`}>{t('lan_session.no_devices')}</p>
+            )
           ) : (
             <DeviceGroupedList
               participants={participants}

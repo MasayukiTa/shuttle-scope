@@ -190,6 +190,9 @@ export function UserManagementPage() {
   const [userAccessDirty, setUserAccessDirty] = useState(false)
   const [teamAccessDirty, setTeamAccessDirty] = useState(false)
   const [teams, setTeams] = useState<TeamDTO[]>([])
+  // 補助データ (チーム一覧 / セキュリティ制限) の取得失敗。空配列・0 値の正常状態と区別する
+  const [teamsLoadFailed, setTeamsLoadFailed] = useState(false)
+  const [limitsLoadFailed, setLimitsLoadFailed] = useState(false)
 
   const panelBg = 'bg-[var(--ss-surface-1)]'
   const border = 'border-[var(--ss-border)]'
@@ -272,11 +275,17 @@ export function UserManagementPage() {
       const [ur, pr, tr] = await Promise.all([
         apiGet<{ success: boolean; data: UserRow[] }>('/auth/users'),
         apiGet<{ success: boolean; data: { id: number; name: string }[] }>('/players?limit=500'),
-        listTeams().catch(() => ({ success: false, data: [] as TeamDTO[] })),
+        listTeams().catch(() => null),
       ])
       setUsers(ur.data ?? [])
       setPlayers(pr.data ?? [])
-      setTeams(tr?.data ?? [])
+      if (!tr || !tr.success) {
+        // 取得できなかったチーム一覧を「チームなし」にしない。前回の一覧を残して失敗を示す
+        setTeamsLoadFailed(true)
+      } else {
+        setTeams(tr.data ?? [])
+        setTeamsLoadFailed(false)
+      }
     } catch (e) {
       setError(String(e))
     } finally {
@@ -289,8 +298,10 @@ export function UserManagementPage() {
         const map: Record<number, LimitInfo> = {}
         for (const r of lr.data ?? []) map[r.user_id] = r
         setLimits(map)
+        setLimitsLoadFailed(false)
       } catch {
-        // backend 旧版で endpoint が無い場合は無視 (UI 側は欠損として処理)
+        // 取得できない間は、表示中の制限値 (0 / 前回値) が最新とは限らないことを示す
+        setLimitsLoadFailed(true)
       }
     }
   }, [myRole])
@@ -756,6 +767,12 @@ export function UserManagementPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-6">
+        {(teamsLoadFailed || limitsLoadFailed) && (
+          <div role="alert" className="mb-4 rounded-ss-md border border-[var(--ss-danger-border)] bg-[var(--ss-danger-bg)] px-3 py-2 text-xs text-[var(--ss-danger-text)] space-y-0.5">
+            {teamsLoadFailed && <p>{t('common_ui.users_teams_load_failed')}</p>}
+            {limitsLoadFailed && <p>{t('common_ui.users_limits_load_failed')}</p>}
+          </div>
+        )}
         <div className={`mb-4 ${panelBg} border ${border} rounded-ss-lg shadow-card p-4`}>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
             <div>
@@ -788,7 +805,7 @@ export function UserManagementPage() {
           <div className={`mb-6 ${panelBg} border ${border} rounded-ss-lg shadow-card p-5`}>
             <div className="flex items-center justify-between mb-4">
               <h2 className={`text-sm font-semibold ${textMain}`}>{t('users.manage.create_title')}</h2>
-              <button onClick={closeAll} className={textMuted}>
+              <button aria-label={t('app.close')} onClick={closeAll} className={textMuted}>
                 <MIcon name="close" size={16} />
               </button>
             </div>
@@ -990,7 +1007,7 @@ export function UserManagementPage() {
                             </button>
                           )}
                           {canShowDeleteButton(u, myUserId, canDelete) && (
-                            <button onClick={() => handleDelete(u)} className={`${textMuted} hover:text-[var(--ss-bad)] transition-colors duration-fast ease-out`}>
+                            <button aria-label={t('app.delete')} onClick={() => handleDelete(u)} className={`${textMuted} hover:text-[var(--ss-bad)] transition-colors duration-fast ease-out`}>
                               <MIcon name="delete" size={14} />
                             </button>
                           )}
@@ -1004,7 +1021,7 @@ export function UserManagementPage() {
                         <td colSpan={myRole === 'admin' ? 9 : 5} className={`px-4 py-4 border-b ${border} bg-[var(--ss-brand-tint)]`}>
                           <div className="flex items-center justify-between mb-3">
                             <h3 className={`text-xs font-semibold ${textMain}`}>{t('users.manage.edit_title')}: {u.display_name || u.username}</h3>
-                            <button onClick={closeAll} className={`${textMuted} hover:text-[var(--ss-bad)] transition-colors duration-fast ease-out`}>
+                            <button aria-label={t('app.close')} onClick={closeAll} className={`${textMuted} hover:text-[var(--ss-bad)] transition-colors duration-fast ease-out`}>
                               <MIcon name="close" size={14} />
                             </button>
                           </div>

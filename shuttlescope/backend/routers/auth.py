@@ -1495,6 +1495,12 @@ def me(request: Request, db: Session = Depends(get_db)):
         page_access = _get_page_access(user_id, user, db)
     else:
         page_access = list(GRANTABLE_PAGES)
+        # LLM は backend (llm_chat.require_llm_access) が admin / llm ロール以外に
+        # 実際の 'llm' grant を要求する。grant の無い analyst/coach にまで 'llm' を
+        # 返すと、ナビには出るのに API が 403 になる食い違いになる。
+        if user_id and user and not ctx.is_admin and ctx.role != "llm":
+            if "llm" not in _get_page_access(user_id, user, db):
+                page_access = [k for k in page_access if k != "llm"]
 
     # 任意同意の未回答検出: 必須同意 (consent_required) が落ちていても、optional
     # 同意で 1 度も回答していない type があれば popup を再表示する。

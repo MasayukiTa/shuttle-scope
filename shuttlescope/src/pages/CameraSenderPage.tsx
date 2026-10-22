@@ -716,7 +716,7 @@ export function CameraSenderPage() {
                     placeholder={getDeviceTypeLabel()}
                     maxLength={32}
                   />
-                  <button
+                  <button aria-label={t('app.save')}
                     onClick={() => {
                       const n = nameInput.trim() || getDeviceTypeLabel()
                       localStorage.setItem(DEVICE_NAME_KEY, n)

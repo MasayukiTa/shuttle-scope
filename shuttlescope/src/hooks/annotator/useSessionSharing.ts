@@ -15,6 +15,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { apiGet, apiPost } from '@/api/client'
+import i18n from '@/i18n'
 
 // ── 型定義 ───────────────────────────────────────────────────────────────────
 
@@ -54,6 +55,8 @@ interface TunnelData {
 interface Options {
   matchId: string | undefined
   tunnelProvider: string  // appSettings.tunnel_provider
+  /** 共有セッションの作成・取得に失敗したときの通知先 */
+  onError?: (message: string) => void
 }
 
 export interface SessionSharingResult {
@@ -90,6 +93,7 @@ export interface SessionSharingResult {
 export function useSessionSharing({
   matchId,
   tunnelProvider,
+  onError,
 }: Options): SessionSharingResult {
 
   // ── セッション ────────────────────────────────────────────────────────────
@@ -117,9 +121,14 @@ export function useSessionSharing({
           camera_sender_urls: res.data.camera_sender_urls,
           session_password: res.data.session_password,
         })
+      } else {
+        onError?.(i18n.t('common_ui.share_create_failed'))
       }
-    } catch { /* ignore */ }
-  }, [matchId])
+    } catch {
+      // 通信断・認証切れ・サーバ障害で作成できなかったことを利用者へ知らせる
+      onError?.(i18n.t('common_ui.share_create_failed'))
+    }
+  }, [matchId, onError])
 
   // ── トンネル ──────────────────────────────────────────────────────────────
 

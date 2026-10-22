@@ -104,6 +104,8 @@ export function useRealtimeYolo(
     }
     ws.onclose = () => {
       setConnected(false)
+      // 切断後に最後の人物BBoxを残すと、古い位置の枠が現在の検出結果に見える
+      setBoxes([])
       // ws #5 fix: close 時も明示的にリセット (次の reconnect で再増分されるため)
       inflightRef.current = 0
       // 一過性切断 (tunnel 瞬断 / スリープ復帰 / AP roam) では overlay が無言で
@@ -114,6 +116,7 @@ export function useRealtimeYolo(
       }
     }
     ws.onerror = () => {
+      setBoxes([])
       setError('WebSocket エラー')
       inflightRef.current = 0
     }

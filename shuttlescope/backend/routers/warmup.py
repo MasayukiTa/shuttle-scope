@@ -44,6 +44,8 @@ class ObservationIn(BaseModel):
     observation_value: str
     confidence_level: str = "tentative"
     note: Optional[str] = None
+    # 旧クライアント互換のため受理するが、値は使わない。作成者は認証済み
+    # コンテキスト (ctx.role) からサーバ側で決める (なりすまし防止)。
     created_by: Optional[str] = None
 
 
@@ -105,6 +107,8 @@ def save_warmup_observations(
     if not user_can_access_match(ctx, match):
         raise HTTPException(status_code=404, detail="試合が見つかりません")
 
+    # 作成者属性はクライアント入力でなく認証主体から決める
+    author = ctx.role
     saved = []
     for item in body.observations:
         # 観察タイプと信頼度の値チェック
@@ -140,7 +144,7 @@ def save_warmup_observations(
             existing.observation_value = item.observation_value
             existing.confidence_level = item.confidence_level
             existing.note = item.note
-            existing.created_by = item.created_by
+            existing.created_by = author
             if existing.team_id is None:
                 existing.team_id = ctx.team_id
             touch_sync_metadata(existing, payload_like=payload, device_id=device_id)
@@ -154,7 +158,7 @@ def save_warmup_observations(
                 confidence_level=item.confidence_level,
                 source="warmup",
                 note=item.note,
-                created_by=item.created_by,
+                created_by=author,
                 team_id=ctx.team_id,
             )
             db.add(obs)

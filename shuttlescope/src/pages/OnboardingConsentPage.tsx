@@ -532,7 +532,7 @@ export default function OnboardingConsentPage({
               <div className="text-sm font-semibold text-[var(--ss-t1)]">
                 {t('onboarding.consent.other_docs_title') || 'その他の規約・契約書類'}
               </div>
-              <button
+              <button aria-label={t('app.close')}
                 type="button"
                 onClick={() => setOtherDocsOpen(false)}
                 className="text-sm px-2 py-1 rounded-ss-sm hover:bg-[var(--ss-surface-2)] text-[var(--ss-t2)] transition-colors duration-fast ease-out"
@@ -849,7 +849,7 @@ function DocModal({
             >
               {t('onboarding.consent.print') || '印刷'}
             </button>
-            <button
+            <button aria-label={t('app.close')}
               type="button"
               onClick={onClose}
               className="text-sm px-2 py-1 rounded-ss-sm hover:bg-[var(--ss-surface-2)] text-[var(--ss-t2)] transition-colors duration-fast ease-out"

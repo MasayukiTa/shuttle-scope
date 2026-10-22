@@ -107,7 +107,7 @@ export function RallyPickerModal({ matchId, matchLabel, initialSet, selectedRall
               {matchLabel}
             </p>
           </div>
-          <button onClick={onClose} style={{ color: isLight ? '#64748b' : '#94a3b8' }} className="hover:opacity-70">
+          <button aria-label={t('app.close')} onClick={onClose} style={{ color: isLight ? '#64748b' : '#94a3b8' }} className="hover:opacity-70">
             <MIcon name="close" size={18} />
           </button>
         </div>

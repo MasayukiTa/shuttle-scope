@@ -417,7 +417,7 @@ export function DownloadOptionsModal({
                     className={`text-xs flex-1 ${labelColor}`}
                   />
                   {cookiesFileName && (
-                    <button
+                    <button aria-label={t('settings.ui.clear')}
                       type="button"
                       onClick={() => handleCookiesFile(null)}
                       className="text-[10px] px-2 py-1 rounded-ss-sm bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)]"

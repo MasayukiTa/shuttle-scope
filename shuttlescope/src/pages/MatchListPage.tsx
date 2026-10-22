@@ -211,6 +211,19 @@ export function MatchListPage() {
     ),
   ]
 
+  // 失敗の利用者向け文言。HTTP status・内部フィールド名・backend の detail は出さず、
+  // 原因の種類 (認証切れ / 権限 / 競合 / 入力) だけを伝える。詳細はコンソールへ残す。
+  const userFacingMatchError = (err: unknown, fallback: string): string => {
+    console.error('[MatchList] request failed', errorStatus(err), errorMessage(err, ''))
+    switch (errorStatus(err)) {
+      case 401: return t('common_ui.error_session_expired')
+      case 403: return t('common_ui.error_forbidden')
+      case 409: return t('common_ui.error_conflict')
+      case 422: return t('common_ui.error_invalid_input')
+      default: return fallback
+    }
+  }
+
   // 試合作成
   const createMatch = useMutation({
     mutationFn: (body: Record<string, unknown>) => apiPost('/matches', body),
@@ -227,6 +240,10 @@ export function MatchListPage() {
       setAnalystSide('bottom')
       resetPlayerFields()
     },
+    // 入力内容は残したまま、保存できなかったことを知らせる (編集 updateMatch と同じ契約)
+    onError: (err: unknown) => {
+      alert(userFacingMatchError(err, t('common_ui.match_save_failed')))
+    },
   })
 
   // 試合更新
@@ -241,18 +258,7 @@ export function MatchListPage() {
       resetPlayerFields()
     },
     onError: (err: unknown) => {
-      const msg = errorMessage(err)
-      let detail: string
-      try {
-        const parsed = JSON.parse(msg) as { detail?: unknown }
-        if (Array.isArray(parsed?.detail)) {
-          detail = (parsed.detail as Array<{ loc?: string[]; msg?: string }>)
-            .map((d) => `${d.loc?.join('.')}: ${d.msg}`).join('\n')
-        } else {
-          detail = (typeof parsed?.detail === 'string' ? parsed.detail : msg) || ''
-        }
-      } catch { detail = msg }
-      alert(`保存に失敗しました (HTTP ${errorStatus(err) ?? '?'}):\n${detail || '不明なエラー'}`)
+      alert(userFacingMatchError(err, t('common_ui.match_save_failed')))
     },
   })
 
@@ -262,13 +268,7 @@ export function MatchListPage() {
       apiDelete(`/matches/${id}`, { 'X-Idempotency-Key': newIdempotencyKey() }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['matches'] }),
     onError: (err: unknown) => {
-      const msg = errorMessage(err)
-      let detail: string
-      try {
-        const parsed = JSON.parse(msg) as { detail?: unknown }
-        detail = typeof parsed?.detail === 'string' ? parsed.detail : ''
-      } catch { detail = msg }
-      alert(`削除に失敗しました (HTTP ${errorStatus(err) ?? '?'}):\n${detail || '不明なエラー'}`)
+      alert(userFacingMatchError(err, t('common_ui.match_delete_failed')))
     },
   })
 
@@ -440,7 +440,7 @@ export function MatchListPage() {
         alert(t('match.list.fetch_title_empty'))
       }
     } catch (err) {
-      alert(t('match.list.fetch_title_failed') + ': ' + errorMessage(err, ''))
+      alert(userFacingMatchError(err, t('match.list.fetch_title_failed')))
     } finally {
       setFetchingTitle(false)
     }
@@ -605,7 +605,7 @@ export function MatchListPage() {
             className="w-full pl-8 pr-8 py-1.5 rounded-[var(--r-md)] border border-[var(--ss-border-strong)] text-sm bg-[var(--ss-surface-1)] text-[var(--ss-t1)] placeholder-[var(--ss-t3)]"
           />
           {filterText && (
-            <button
+            <button aria-label={t('settings.ui.clear')}
               onClick={() => setFilterText('')}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--ss-t3)] hover:text-[var(--ss-t1)]"
             >
@@ -749,7 +749,7 @@ export function MatchListPage() {
               className="w-full pl-8 pr-8 py-1.5 rounded-[var(--r-md)] border border-[var(--ss-border-strong)] text-sm bg-[var(--ss-surface-1)] text-[var(--ss-t1)] placeholder-[var(--ss-t3)]"
             />
             {filterText && (
-              <button
+              <button aria-label={t('settings.ui.clear')}
                 onClick={() => setFilterText('')}
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--ss-t3)] hover:text-[var(--ss-t1)]"
               >
@@ -982,7 +982,7 @@ export function MatchListPage() {
           <div className={`${card} rounded-[var(--r-lg)] w-full max-w-2xl max-h-[90dvh] overflow-y-auto`}>
             <div className={`flex items-center justify-between px-6 py-4 border-b ${borderLine}`}>
               <h2 className={`text-lg font-semibold ${textHeading}`}>{editingMatchId !== null ? t('auto.MatchListPage.k42') : t('auto.MatchListPage.k29')}</h2>
-              <button onClick={() => { setShowForm(false); setEditingMatchId(null); setForm(defaultForm()); resetPlayerFields() }} className={`${textMuted} hover:text-[var(--ss-t1)]`}><MIcon name="close" size={12} /></button>
+              <button aria-label={t('app.close')} onClick={() => { setShowForm(false); setEditingMatchId(null); setForm(defaultForm()); resetPlayerFields() }} className={`${textMuted} hover:text-[var(--ss-t1)]`}><MIcon name="close" size={12} /></button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 flex flex-col gap-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

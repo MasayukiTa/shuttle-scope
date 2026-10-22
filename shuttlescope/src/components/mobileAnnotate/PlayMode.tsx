@@ -850,7 +850,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                 className="px-2 py-1 rounded shadow font-mono text-[11px] ss-overlay-chip">{t('auto.PlayMode.seek_back_5')}</button>
         <button type="button" onClick={() => seekBy(-1)}
                 className="px-2 py-1 rounded shadow font-mono text-[11px] ss-overlay-chip">{t('auto.PlayMode.seek_back_1')}</button>
-        <button type="button" onClick={togglePlay}
+        <button aria-label={playing ? t('common_ui.pause') : t('common_ui.play')} type="button" onClick={togglePlay}
                 className="px-2.5 py-1.5 rounded shadow flex items-center ss-overlay-chip-accent">
           {playing ? <MIcon name="pause" size={14} /> : <MIcon name="play_arrow" size={14} />}
         </button>

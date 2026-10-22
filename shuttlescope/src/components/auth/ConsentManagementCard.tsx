@@ -77,7 +77,24 @@ export function ConsentManagementCard({ isLight }: { isLight: boolean }) {
   }
 
   if (consentQuery.error || !consentQuery.data) {
-    return null
+    // 取得失敗でセクションごと消さない (消すと「同意項目が無い」ように見え、撤回の入口も失われる)
+    return (
+      <section>
+        <h2 className={`text-lg font-medium mb-1 text-[var(--ss-t1)]`}>
+          {t('settings.consent.title')}
+        </h2>
+        <div role="alert" className="flex items-center gap-2 text-sm text-[var(--ss-danger-text)] mt-2">
+          <span>{t('common_ui.consent_load_failed')}</span>
+          <button
+            type="button"
+            onClick={() => consentQuery.refetch()}
+            className="underline"
+          >
+            {t('annotator.ui.retry')}
+          </button>
+        </div>
+      </section>
+    )
   }
 
   const data = consentQuery.data.data
@@ -242,6 +259,11 @@ export function ConsentManagementCard({ isLight }: { isLight: boolean }) {
         {withdrawMutation.isError && (
           <div className="mt-3 text-xs text-[var(--ss-danger-text)]">
             {t('settings.consent.error', '撤回に失敗しました。再試行してください。')}
+          </div>
+        )}
+        {regrantMutation.isError && (
+          <div role="alert" className="mt-3 text-xs text-[var(--ss-danger-text)]">
+            {t('common_ui.consent_regrant_failed')}
           </div>
         )}
       </div>

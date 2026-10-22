@@ -19,6 +19,8 @@ export function useLiveInference(
 ) {
   const [candidate, setCandidate] = useState<LiveInferenceCandidate | null>(null)
   const [inferring, setInferring] = useState(false)
+  // 直近の推論リクエストが失敗したか。失敗中は古い候補を残さない (現在フレームの結果に見えるため)
+  const [error, setError] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   // ws #6 fix: 旧コードは inflight gate がなく 200ms 毎に重複 POST し、古い frame
@@ -61,9 +63,17 @@ export function useLiveInference(
       if (myReqId !== lastReqIdRef.current) return
       if (res.success) {
         setCandidate(res.data)
+        setError(false)
+      } else {
+        setCandidate(null)
+        setError(true)
       }
     } catch {
-      // 推論失敗は無視
+      // 推論失敗時は直前の候補を破棄し、失敗状態を返す (古い候補を現在の結果として見せない)
+      if (myReqId === lastReqIdRef.current) {
+        setCandidate(null)
+        setError(true)
+      }
     } finally {
       inflightRef.current = false
       setInferring(false)
@@ -77,6 +87,7 @@ export function useLiveInference(
         timerRef.current = null
       }
       setCandidate(null)
+      setError(false)
       return
     }
     timerRef.current = setInterval(captureAndSend, FRAME_INTERVAL_MS)
@@ -90,5 +101,5 @@ export function useLiveInference(
 
   const reset = useCallback(() => setCandidate(null), [])
 
-  return { candidate, inferring, reset }
+  return { candidate, inferring, error, reset }
 }

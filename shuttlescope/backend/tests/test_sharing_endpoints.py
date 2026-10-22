@@ -61,6 +61,19 @@ class TestSharedSessions:
         resp = client.post("/api/sessions", json={"match_id": match_id})
         assert resp.status_code == 201
 
+    def test_create_session_role_comes_from_principal(self, sharing_client, db_session):
+        """created_by_role はクライアント入力でなく認証主体のロールで記録される"""
+        client, match_id, *_ = sharing_client
+        resp = client.post("/api/sessions", json={
+            "match_id": match_id,
+            "created_by_role": "forged_role",
+        })
+        assert resp.status_code == 201
+        code = resp.json()["data"]["session_code"]
+        row = db_session.query(SharedSession).filter(SharedSession.session_code == code).one()
+        assert row.created_by_role == "admin"
+        assert resp.json()["data"]["created_by_role"] == "admin"
+
     def test_get_session_by_code(self, sharing_client):
         client, match_id, *_ = sharing_client
         create_resp = client.post("/api/sessions", json={

@@ -384,7 +384,7 @@ export function GrowthTimeline({
                 <div className="text-sm font-semibold">
                   {t('auto.GrowthTimeline.compare_title', { date: comparePoint.date, label: cfg.label })}
                 </div>
-                <button
+                <button aria-label={t('app.close')}
                   type="button"
                   onClick={() => setComparePoint(null)}
                   className="text-sm px-2 py-0.5"

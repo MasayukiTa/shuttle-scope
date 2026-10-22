@@ -162,7 +162,7 @@ export function SetIntervalSummary({
               </span>
             ) : null}
           </div>
-          <button onClick={onClose} className="text-[var(--ss-t3)] hover:text-[var(--ss-t2)]">
+          <button aria-label={t('app.close')} onClick={onClose} className="text-[var(--ss-t3)] hover:text-[var(--ss-t2)]">
             <MIcon name="close" size={16} />
           </button>
         </div>

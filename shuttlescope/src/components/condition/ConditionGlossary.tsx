@@ -133,7 +133,7 @@ export function ConditionGlossary({ open, onClose }: Props) {
           <h2 className="text-base font-semibold" style={{ color: textTitle }}>
             {t('auto.ConditionGlossary.title')}
           </h2>
-          <button
+          <button aria-label={t('app.close')}
             type="button"
             onClick={onClose}
             className="text-sm px-2 py-1 rounded-ss-sm"

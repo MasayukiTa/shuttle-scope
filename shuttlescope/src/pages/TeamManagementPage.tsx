@@ -299,14 +299,14 @@ export function TeamManagementPage() {
                       placeholder={t('auto.TeamManagementPage.k8')}
                     />
                     <div className="flex gap-2 justify-end">
-                      <button
+                      <button aria-label={t('app.cancel')}
                         onClick={() => setEditingId(null)}
                         disabled={savingId === tm.id}
                         className="p-2 text-[var(--ss-t2)] border border-[var(--ss-border)] rounded-ss-md disabled:opacity-50"
                       >
                         <MIcon name="close" size={16} />
                       </button>
-                      <button
+                      <button aria-label={t('app.save')}
                         onClick={() => handleSave(tm.id)}
                         disabled={savingId === tm.id}
                         className="p-2 bg-[var(--ss-success)] text-white rounded-ss-md inline-flex items-center gap-1 disabled:opacity-60"
@@ -339,7 +339,7 @@ export function TeamManagementPage() {
                           <span className="text-xs">{members.length}</span>
                         </button>
                         {(isAdmin || isCoach) && (
-                          <button
+                          <button aria-label={t('app.edit')}
                             onClick={() => startEdit(tm)}
                             className="p-1.5 text-[var(--ss-brand)] border border-[var(--ss-border)] rounded-ss-md"
                           >
