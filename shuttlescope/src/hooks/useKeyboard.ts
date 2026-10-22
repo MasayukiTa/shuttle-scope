@@ -18,6 +18,12 @@ interface UseKeyboardOptions {
   onToggleHitter?: () => void
   /** ダブルスモードで 7/8/9/0 キーにより直接打者を選択 */
   onHitterSelect?: (hitter: 'player_a' | 'partner_a' | 'partner_b' | 'player_b') => void
+  /**
+   * true の間は記録操作 (ラリー開始・ショット入力など) を受け付けない。
+   * 動画の再生・シークだけは有効のまま。完了済みの試合を開いた直後のように、
+   * 利用者が「編集を再開」を選ぶまで記録を始めさせたくない場面で使う。
+   */
+  inputLocked?: boolean
 }
 
 /**
@@ -76,7 +82,9 @@ interface UseKeyboardOptions {
  *   Escape  : ラリー終了キャンセル → idle に戻る
  *
  * ─── フォーカスガード ───────────────────────────────────────────────────────────
- *   INPUT / TEXTAREA / SELECT / BUTTON / [contenteditable] 内ではすべて無効。
+ *   INPUT / TEXTAREA / SELECT / [contenteditable] 内ではすべて無効。
+ *   BUTTON・リンク・メニュー項目にフォーカスがあるときは、Enter / Tab を横取りしない
+ *   (その部品の標準動作を優先)。Space は従来どおりボタンを blur して再生/停止に使う。
  */
 
 const END_TYPE_KEYS = ['ace', 'forced_error', 'unforced_error', 'net', 'out', 'cant_reach']
@@ -122,6 +130,32 @@ const DIGIT_HIT_ZONE: Record<string, Zone9> = {
   Digit7: 'NL', Digit8: 'NC', Digit9: 'NR',
 }
 
+/**
+ * フォーカスが「押す・開く」ための部品にあるか確認。
+ * ボタン・リンク・メニュー項目で Enter / Tab を押したとき、その部品自身の
+ * 動作 (クリック・フォーカス移動) を優先し、記録用のショートカットは動かさない。
+ */
+const ACTIVATION_SELECTOR = [
+  'button',
+  'a[href]',
+  'summary',
+  '[role="button"]',
+  '[role="menu"]',
+  '[role="menuitem"]',
+  '[role="menuitemcheckbox"]',
+  '[role="menuitemradio"]',
+  '[role="tab"]',
+  '[role="link"]',
+  '[role="switch"]',
+  '[role="checkbox"]',
+  '[role="radio"]',
+].join(',')
+
+export function isInActivationContext(target: EventTarget | null): boolean {
+  if (!target || !(target instanceof Element)) return false
+  return target.closest(ACTIVATION_SELECTOR) !== null
+}
+
 /** フォーカスが入力系要素内にあるか確認 */
 function isInInputContext(target: EventTarget | null): boolean {
   if (!target || !(target instanceof Element)) return false
@@ -153,6 +187,7 @@ export function useKeyboard({
   onServerSelect,
   onToggleHitter,
   onHitterSelect,
+  inputLocked = false,
 }: UseKeyboardOptions = {}) {
   // Use refs for callbacks so handleKeyDown never needs to be recreated when they change
   const onEndTypeSelectRef = useRef(onEndTypeSelect)
@@ -170,11 +205,18 @@ export function useKeyboard({
 
   const enabledRef = useRef(enabled)
   enabledRef.current = enabled
+  const inputLockedRef = useRef(inputLocked)
+  inputLockedRef.current = inputLocked
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (!enabledRef.current) return
       if (isInInputContext(e.target)) return
+
+      // Enter / Tab は、ボタンやメニュー項目にフォーカスがあるときはその部品の
+      // 標準動作に任せる (ラリー開始・打者切替として横取りしない)。
+      // すでに他の処理が扱った (preventDefault 済み) イベントも処理しない。
+      if ((e.key === 'Enter' || e.key === 'Tab') && (e.defaultPrevented || isInActivationContext(e.target))) return
 
       // Access store state directly to avoid stale closure issues
       const store = useAnnotationStore.getState()
@@ -224,6 +266,9 @@ export function useKeyboard({
           return
         }
       }
+
+      // 記録ロック中は動画操作以外を受け付けない
+      if (inputLockedRef.current) return
 
       // ═══════════════════════════════════════════════════════════════════════
       // ステップ別処理
@@ -416,7 +461,8 @@ export function useKeyboard({
 
       // Tab: 打者切替。ダブルスはチーム内、シングルスは側の切替。
       // (振り分けは呼び出し側の onToggleHitter が持つ)
-      if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      // Shift+Tab は標準の「前へ戻る」フォーカス移動として残す。
+      if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
         e.preventDefault()
         onToggleHitterRef.current?.()
         return
