@@ -1,7 +1,7 @@
 // PDF / JSON レポートのダウンロード共通ヘルパー。
 // 以前は各画面が fetch の結果を ok / Content-Type の確認なしに blob 化して保存しており、
 // 401 / 403 / 500 のエラー本文が report_player*.pdf 等の正常なファイル名で保存されていた。
-import { apiGetBlob } from '@/api/client'
+import { apiGetReportBlob } from '@/api/client'
 
 /** 期待した種類のファイルではない応答 (HTTP 200 でも JSON/HTML のエラー本文など) */
 export class ReportContentTypeError extends Error {
@@ -29,7 +29,7 @@ export function isExpectedReportType(filename: string, mime: string): boolean {
  * path は従来どおり `/api/...` 始まりでも `/...` 始まりでもよい。
  */
 export async function downloadReport(path: string, filename: string): Promise<void> {
-  const blob = await apiGetBlob(path.replace(/^\/api/, ''))
+  const blob = await apiGetReportBlob(path.replace(/^\/api/, ''))
   if (!isExpectedReportType(filename, blob.type)) {
     throw new ReportContentTypeError(filename, blob.type)
   }

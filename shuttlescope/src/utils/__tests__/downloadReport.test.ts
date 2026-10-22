@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const apiGetBlob = vi.fn()
+const apiGetReportBlob = vi.fn()
 vi.mock('@/api/client', () => ({
-  apiGetBlob: (path: string) => apiGetBlob(path),
+  apiGetReportBlob: (path: string) => apiGetReportBlob(path),
 }))
 
 import { downloadReport, isExpectedReportType, ReportContentTypeError } from '../downloadReport'
@@ -27,7 +27,7 @@ describe('downloadReport', () => {
   let clicked = 0
 
   beforeEach(() => {
-    apiGetBlob.mockReset()
+    apiGetReportBlob.mockReset()
     createObjectURL.mockClear()
     revokeObjectURL.mockClear()
     clicked = 0
@@ -43,22 +43,22 @@ describe('downloadReport', () => {
   })
 
   it('strips the /api prefix and saves a valid report', async () => {
-    apiGetBlob.mockResolvedValue(new Blob(['%PDF'], { type: 'application/pdf' }))
+    apiGetReportBlob.mockResolvedValue(new Blob(['%PDF'], { type: 'application/pdf' }))
     await downloadReport('/api/reports/condition_pdf?player_id=1', 'condition_1.pdf')
-    expect(apiGetBlob).toHaveBeenCalledWith('/reports/condition_pdf?player_id=1')
+    expect(apiGetReportBlob).toHaveBeenCalledWith('/reports/condition_pdf?player_id=1')
     expect(clicked).toBe(1)
     expect(revokeObjectURL).toHaveBeenCalledTimes(1)
   })
 
   it('does not save anything when the request fails (401 / 500)', async () => {
-    apiGetBlob.mockRejectedValue(Object.assign(new Error('unauthorized'), { status: 401 }))
+    apiGetReportBlob.mockRejectedValue(Object.assign(new Error('unauthorized'), { status: 401 }))
     await expect(downloadReport('/api/reports/x', 'report.pdf')).rejects.toThrow('unauthorized')
     expect(createObjectURL).not.toHaveBeenCalled()
     expect(clicked).toBe(0)
   })
 
   it('does not save a 200 response whose content type is not the expected file type', async () => {
-    apiGetBlob.mockResolvedValue(new Blob(['{"detail":"x"}'], { type: 'application/json' }))
+    apiGetReportBlob.mockResolvedValue(new Blob(['{"detail":"x"}'], { type: 'application/json' }))
     await expect(downloadReport('/api/reports/x', 'report.pdf')).rejects.toBeInstanceOf(ReportContentTypeError)
     expect(createObjectURL).not.toHaveBeenCalled()
     expect(clicked).toBe(0)
