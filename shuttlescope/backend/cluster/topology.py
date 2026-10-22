@@ -264,7 +264,7 @@ def ping_icmp(ip: str, timeout: float = 2.0) -> Dict[str, Any]:
     try:
         _safe_ip = str(ipaddress.ip_address(ip))
     except (ValueError, TypeError):
-        return {"reachable": False, "latency_ms": 0, "via": "icmp", "error": "invalid ip"}
+        return {"reachable": False, "latency_ms": 0, "via": "icmp", "error": "invalid ip", "reason": "invalid_ip"}
 
     kw: dict = {"capture_output": True, "text": True}
     if sys.platform == "win32":
@@ -276,39 +276,67 @@ def ping_icmp(ip: str, timeout: float = 2.0) -> Dict[str, Any]:
     try:
         result = subprocess.run(cmd, timeout=timeout + 1, **kw)
         latency_ms = int((time.time() - started) * 1000)
-        return {"reachable": result.returncode == 0, "latency_ms": latency_ms, "via": "icmp"}
+        ok = result.returncode == 0
+        out: Dict[str, Any] = {"reachable": ok, "latency_ms": latency_ms, "via": "icmp"}
+        if not ok:
+            out["reason"] = "no_reply"
+        return out
+    except subprocess.TimeoutExpired as exc:
+        latency_ms = int((time.time() - started) * 1000)
+        return {"reachable": False, "latency_ms": latency_ms, "via": "icmp", "error": str(exc), "reason": "timeout"}
     except Exception as exc:
         latency_ms = int((time.time() - started) * 1000)
-        return {"reachable": False, "latency_ms": latency_ms, "via": "icmp", "error": str(exc)}
+        return {"reachable": False, "latency_ms": latency_ms, "via": "icmp", "error": str(exc), "reason": "error"}
 
 
 def ping_node(ip: str, port: int = 8765, timeout: float = 2.0) -> Dict[str, Any]:
     """指定ノードへの疎通確認。ICMP ping を優先し、失敗時は HTTP にフォールバック。
 
     K10 は ShuttleScope を動かしていないため HTTP ではなく ICMP で確認する。
+    結果には ``checks`` を付け、ICMP と HTTP のそれぞれについて成否・所要時間・
+    失敗理由（reason コード）を返す。画面側は「NG」の一語ではなく、どの確認が
+    なぜ失敗したかを示せる。
     """
-    result = ping_icmp(ip, timeout=timeout)
-    if result["reachable"]:
-        return result
-    # ICMP が通らない場合（ファイアウォール等）は HTTP も試みる
     import time, urllib.request, ipaddress
+
+    result = ping_icmp(ip, timeout=timeout)
+    checks: List[Dict[str, Any]] = [{
+        "kind": "icmp",
+        "ok": bool(result["reachable"]),
+        "latency_ms": result.get("latency_ms", 0),
+        "reason": result.get("reason"),
+    }]
+    if result["reachable"]:
+        return {**result, "checks": checks}
+    # ICMP が通らない場合（ファイアウォール等）は HTTP も試みる
     started = time.time()
+    http_reason = "no_response"
     try:
         # SSRF防止: ip を正規化し、プライベート/ループバック/リンクローカル限定
         _addr = ipaddress.ip_address(ip)
         if not (_addr.is_private or _addr.is_loopback or _addr.is_link_local):
+            http_reason = "blocked_address"
             raise ValueError("クラスタ外アドレスへの HTTP 疎通確認は許可されていません")
         _safe_ip = str(_addr)
         _safe_port = int(port)
         if not (1 <= _safe_port <= 65535):
+            http_reason = "invalid_port"
             raise ValueError("invalid port")
         url = f"http://{_safe_ip}:{_safe_port}/api/health"
         with urllib.request.urlopen(url, timeout=timeout) as resp:
             latency_ms = int((time.time() - started) * 1000)
-            return {"reachable": True, "latency_ms": latency_ms, "via": "http"}
-    except Exception:
-        pass
-    return result  # ICMP の結果を返す
+            checks.append({"kind": "http", "ok": True, "latency_ms": latency_ms, "reason": None})
+            return {"reachable": True, "latency_ms": latency_ms, "via": "http", "checks": checks}
+    except Exception as exc:
+        if http_reason == "no_response" and "timed out" in str(exc).lower():
+            http_reason = "timeout"
+    checks.append({
+        "kind": "http",
+        "ok": False,
+        "latency_ms": int((time.time() - started) * 1000),
+        "reason": http_reason,
+    })
+    return {**result, "checks": checks}  # ICMP の結果を主に返す
 
 
 # ────────────────────────────────────────────────────────────────────────────

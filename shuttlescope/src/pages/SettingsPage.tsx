@@ -1647,6 +1647,14 @@ export function SettingsPage() {
                 )}
               </button>
 
+              {/* 実行できない理由（実行中は表示しない） */}
+              {!bmRunning && bmSelectedDevices.length === 0 && (
+                <p className="text-xs text-[var(--ss-t3)]">{t('opsHints.benchmark_need_device')}</p>
+              )}
+              {!bmRunning && bmSelectedDevices.length > 0 && bmTargets.length === 0 && (
+                <p className="text-xs text-[var(--ss-t3)]">{t('opsHints.benchmark_need_target')}</p>
+              )}
+
               {/* 停止ボタン（実行中のみ表示） */}
               {bmRunning && (
                 <button
@@ -2041,7 +2049,7 @@ export function SettingsPage() {
                   disabled={netDiagFetching}
                   className="px-3 py-1 text-xs rounded-ss-md disabled:opacity-50 bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t2)] transition-colors duration-fast ease-out"
                 >
-                  {netDiagFetching ? '診断中...' : t('sharing.run_diagnostics')}
+                  {netDiagFetching ? t('opsHints.diag_running') : t('sharing.run_diagnostics')}
                 </button>
               </div>
 
@@ -2062,7 +2070,9 @@ export function SettingsPage() {
                         unknown: '不明',
                       }[netDiag.data.environment] ?? netDiag.data.environment}
                     </span>
-                    <span className="text-xs text-[var(--ss-t3)] ml-auto ss-num">{netDiag.data.probe_duration_ms}ms</span>
+                    <span className="text-xs text-[var(--ss-t3)] ml-auto ss-num">
+                      {t('opsHints.diag_duration')}: {netDiag.data.probe_duration_ms}ms
+                    </span>
                   </div>
 
                   {/* capabilities */}
@@ -2138,6 +2148,7 @@ export function SettingsPage() {
                     className={`w-full ${inputClass} font-mono`}
                   />
                   <p className="text-[11px] text-[var(--ss-t3)] mt-0.5">{t('auto.SettingsPage.k11')}</p>
+                  <p className="text-[11px] text-[var(--ss-t3)] mt-0.5">{t('opsHints.sync_autosave')}</p>
                 </div>
               </div>
             </section>}
