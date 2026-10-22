@@ -400,7 +400,7 @@ def advice_prediction_tab(db: Session, player_id: int, opponent_id: Optional[int
             return _empty_response(
                 f"直近 90 日: 試合 {cur['match_count']} 件 / ラリー {cur['rally_count']} 件。"
                 f"予測タブのサマリ表示には最低 {PRED_MIN_MATCHES} 試合 / "
-                f"{PRED_MIN_RALLIES} ラリーが必要です (信頼度を語れるサンプル数の下限)。"
+                f"{PRED_MIN_RALLIES} ラリーが必要です (これより少ないと、信頼できる予測を出せません)。"
             )
         if cur["match_count"] >= 60 and cur["rally_count"] >= 1500:
             conf = "high"

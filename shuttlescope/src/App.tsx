@@ -202,7 +202,7 @@ function Sidebar() {
       : []),
     ...(role === 'admin'
       ? [
-          { to: '/notifications', label: t('auto.App.k2'), shortLabel: '通知', icon: 'notifications', badge: unreadCount > 0 ? unreadCount : null },
+          { to: '/notifications', label: t('auto.App.k2'), shortLabel: t('nav.notifications_short'), icon: 'notifications', badge: unreadCount > 0 ? unreadCount : null },
           { to: '/users', label: t('nav.users'), icon: 'group' },
           {
             to: '/users/pending',
@@ -365,7 +365,7 @@ function Sidebar() {
           </button>
           <button
             onClick={toggleTheme}
-            title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+            title={theme === 'dark' ? t('theme.light') : t('theme.dark')}
             className={clsx(
               'flex items-center gap-1 p-2 rounded-ss-md text-xs w-full transition-colors duration-base ease-out',
               rowLayoutCls,
@@ -374,10 +374,10 @@ function Sidebar() {
           >
             {theme === 'dark' ? <MIcon name="light_mode" size={18} className="shrink-0" /> : <MIcon name="dark_mode" size={18} className="shrink-0" />}
             {showShortLabel && (
-              <span className="text-[9px] leading-none lg:hidden">{theme === 'dark' ? 'Light' : 'Dark'}</span>
+              <span className="text-[9px] leading-none lg:hidden">{theme === 'dark' ? t('settings.ui.light') : t('settings.ui.dark')}</span>
             )}
             {showFullLabel && (
-              <span className="hidden lg:inline">{theme === 'dark' ? 'Light' : 'Dark'}</span>
+              <span className="hidden lg:inline">{theme === 'dark' ? t('settings.ui.light') : t('settings.ui.dark')}</span>
             )}
           </button>
         </div>

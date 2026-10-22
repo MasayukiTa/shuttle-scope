@@ -38,6 +38,17 @@ interface CohortSpec {
   singles_doubles?: string
 }
 
+// バックエンド (peer_comparison.SUPPORTED_METRICS / METRIC_UNITS) が返す指標キーと単位。
+// ここに無いキーは内部名をそのまま出さず、汎用ラベルで表示する。
+const KNOWN_METRICS = [
+  'smash_win_rate',
+  'net_front_win_rate',
+  'avg_rally_length',
+  'serve_win_rate',
+  'around_head_freq',
+]
+const KNOWN_UNITS = ['ratio', 'strokes']
+
 const AGE_BUCKETS = ['18-21', '22-25', '26-29', '30+']
 const LEVELS: Array<{ value: string; key: string }> = [
   { value: 'local', key: 'local' },
@@ -208,13 +219,21 @@ export function PeerComparisonCard() {
               <tbody>
                 {Object.entries(result.metrics ?? {}).map(([name, agg]) => (
                   <tr key={name} className="border-t border-[color:var(--ss-border)]">
-                    <td className="text-left px-2 py-1">{name}</td>
+                    <td className="text-left px-2 py-1">
+                      {KNOWN_METRICS.includes(name)
+                        ? t(`auto.PeerComparisonCard.metric_${name}`)
+                        : t('auto.PeerComparisonCard.metric_unknown')}
+                    </td>
                     <td className="text-right px-2 py-1 ss-num">{agg.p25}</td>
                     <td className="text-right px-2 py-1 ss-num">{agg.p50}</td>
                     <td className="text-right px-2 py-1 ss-num">{agg.p75}</td>
                     <td className="text-right px-2 py-1 ss-num">{agg.mean}</td>
                     <td className="text-right px-2 py-1 ss-num">{agg.sd}</td>
-                    <td className="text-right px-2 py-1 ss-num">{agg.unit}</td>
+                    <td className="text-right px-2 py-1">
+                      {KNOWN_UNITS.includes(agg.unit)
+                        ? t(`auto.PeerComparisonCard.unit_${agg.unit}`)
+                        : '—'}
+                    </td>
                   </tr>
                 ))}
               </tbody>
