@@ -720,7 +720,7 @@ def get_temporal_performance(
 @router.get("/analysis/post_long_rally_stats")
 def get_post_long_rally_stats(
     player_id: int,
-    threshold: int = Query(10, ge=1),
+    threshold: int = Query(AnalysisConfig.LONG_RALLY_THRESHOLD, ge=1),
     result: Optional[str] = Query(None),
     tournament_level: Optional[str] = Query(None),
     date_from: Optional[DateType] = Query(None),

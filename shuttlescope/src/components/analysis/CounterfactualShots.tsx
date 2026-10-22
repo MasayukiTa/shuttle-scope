@@ -25,6 +25,8 @@ interface Comparison {
   prev_shot: string
   choices: ShotChoice[]
   recommended: string
+  // 1位と2位の 95% 区間が離れているときだけ true。無いときは過去実績の並びに留める
+  recommendation_supported?: boolean
   lift: number
   interpretation: string
 }
@@ -83,7 +85,7 @@ function ComparisonAccordion({ comp }: { comp: Comparison }) {
             className="text-xs px-1.5 py-0.5 rounded-ss-sm shrink-0 ss-num"
             style={{ backgroundColor: WIN + '33', color: WIN, border: `1px solid ${WIN}` }}
           >
-            {t('auto.CounterfactualShots.lift', { n: Math.round(comp.lift * 100) })}
+            {comp.recommendation_supported ? t('auto.CounterfactualShots.lift', { n: Math.round(comp.lift * 100) }) : t('auto.CounterfactualShots.observed_only')}
           </span>
         </div>
         <span className="text-gray-400 ml-2">{open ? '▲' : '▼'}</span>
@@ -92,7 +94,7 @@ function ComparisonAccordion({ comp }: { comp: Comparison }) {
         <div className="px-3 pb-3 space-y-2 border-t border-gray-700 pt-2">
           <div className="space-y-1.5">
             {comp.choices.map(c => (
-              <ChoiceBar key={c.shot_type} choice={c} recommended={comp.recommended} />
+              <ChoiceBar key={c.shot_type} choice={c} recommended={comp.recommendation_supported ? comp.recommended : ''} />
             ))}
           </div>
           <p className="text-xs text-gray-400 mt-2 italic">{comp.interpretation}</p>

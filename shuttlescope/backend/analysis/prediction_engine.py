@@ -19,6 +19,7 @@ from backend.analysis.player_context import (
     player_wins_match as _player_wins_match_ctx,
 )
 from backend.analysis.role_view import team_side
+from backend.analysis.analysis_config import AnalysisConfig
 from backend.utils.confidence import VERDICT_MIN_SAMPLE, wilson_ci_from_rate
 
 # 大会重要度（TournamentComparison と共通）
@@ -758,7 +759,7 @@ def compute_fatigue_risk(
     疲労・崩壊リスク推定 (Phase C)
     3指標の加重平均:
       - temporal_drop  (40%): 序盤(≤8点) vs 終盤(≥20点) の勝率差
-      - long_rally_penalty (30%): 長ラリー(≥7打) 直後の勝率低下
+      - long_rally_penalty (30%): 長ラリー(AnalysisConfig.LONG_RALLY_THRESHOLD 打以上) 直後の勝率低下
       - pressure_drop  (30%): デュース時の勝率低下
 
     Round 258 R32 fix (R30a P2-1 残): caller の team scope を get_matches_for_player に
@@ -817,7 +818,7 @@ def compute_fatigue_risk(
         temporal_drop = max(0.0, early_w / early_t - late_w / late_t)
 
     # ── long rally penalty ──
-    LONG_THRESHOLD = 7
+    LONG_THRESHOLD = AnalysisConfig.LONG_RALLY_THRESHOLD
     rally_lookup = {(r.set_id, r.rally_num): r for r in rallies}
     post_long_w = post_long_t = 0
     for r in rallies:

@@ -26,6 +26,7 @@ from typing import Optional
 
 from backend.analysis.analysis_config import AnalysisConfig
 from backend.analysis.role_view import is_opponent_stroke, own_slot
+from backend.utils.confidence import wilson_ci
 
 
 # ── 文脈分類 ─────────────────────────────────────────────────────────────────
@@ -191,11 +192,14 @@ def build_comparisons(
             if v["count"] < min_obs:
                 continue
             wr = round(v["wins"] / v["count"], 3)
+            ci_low, ci_high = wilson_ci(v["wins"], v["count"])
             choices.append({
                 "shot_type": resp_shot,
                 "label": shot_labels.get(resp_shot, resp_shot),
                 "count": v["count"],
                 "win_rate": wr,
+                "ci_low": ci_low,
+                "ci_high": ci_high,
             })
 
         if len(choices) < 2:
@@ -213,15 +217,23 @@ def build_comparisons(
             f"{shot_labels.get(prev_shot, prev_shot)}への返球",
         )
 
+        # 単なる条件付き観察率の差。1位と2位の 95% 区間が重なるうちは
+        # 偶然の差と区別できないので「推奨」にはしない (交絡は調整していない)。
+        supported = choices[0]["ci_low"] > choices[1]["ci_high"]
+
         entry = {
             "context_label": ctx_label,
             "prev_shot": prev_shot,
             "choices": choices,
             "recommended": choices[0]["shot_type"],
+            "recommendation_supported": supported,
             "lift": lift,
             "interpretation": (
-                f"{ctx_label}では{choices[0]['label']}が"
-                f"{choices[1]['label']}より{round(lift * 100)}%高い勝率"
+                f"{ctx_label}の過去実績: "
+                f"{choices[0]['label']} {round(choices[0]['win_rate'] * 100)}% (n={choices[0]['count']}) / "
+                f"{choices[1]['label']} {round(choices[1]['win_rate'] * 100)}% (n={choices[1]['count']})。"
+                + ("区間は重なっていません。" if supported else "標本が少なく、差は偶然の範囲かもしれません。")
+                + "相手や局面の違いは調整していません。"
             ),
         }
 

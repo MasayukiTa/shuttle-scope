@@ -55,7 +55,7 @@ EVIDENCE_META: dict[str, dict] = {
     "pressure": {
         "evidence_level": "practical_candidate",
         "caution": "プレッシャー定義（スコア閾値）は固定値です。実際の心理的プレッシャーとは異なる場合があります。",
-        "assumptions": "スコア17点以上・3点差以上を「プレッシャー局面」とします。",
+        "assumptions": "デュースと、得点後にどちらかが17点以上の終盤を、通常局面と分けて集計します。点差は見ていません。",
         "promotion_criteria": "N≥300試合・プレッシャー定義の校正",
     },
     "transition": {
@@ -73,7 +73,7 @@ EVIDENCE_META: dict[str, dict] = {
     "post_long_rally": {
         "evidence_level": "directional",
         "caution": "ロングラリー後効果のサンプルは少なくなりがちです。",
-        "assumptions": "ラリー長8+打を「ロングラリー」と定義。",
+        "assumptions": "ラリー長10打以上を「ロングラリー」と定義（全カード共通の基準値）。",
         "promotion_criteria": "N≥100ロングラリーの安定確認",
     },
     "growth": {
