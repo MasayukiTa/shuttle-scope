@@ -58,17 +58,41 @@ const DEFAULTS: AppSettings = {
 
 const LS_KEY = 'shuttlescope.settings'
 
+// ngrok / TURN の資格情報はブラウザの localStorage に残さない。
+// 共有 PC ではログアウト後も次の利用者が読め、XSS の窃取対象にもなるため。
+// 値は admin が /settings から取得した分を画面のメモリ上でだけ持つ。
+const SECRET_KEYS = [
+  'ngrok_authtoken',
+  'turn_url',
+  'turn_username',
+  'turn_credential',
+  'turn_static_auth_secret',
+] as const
+
+function stripSecrets<T extends Partial<AppSettings>>(s: T): T {
+  const out: Record<string, unknown> = { ...s }
+  for (const k of SECRET_KEYS) delete out[k]
+  return out as T
+}
+
 function loadLocal(): AppSettings {
   try {
     const raw = localStorage.getItem(LS_KEY)
-    if (raw) return { ...DEFAULTS, ...JSON.parse(raw) }
+    if (raw) {
+      const stored = JSON.parse(raw) as Partial<AppSettings>
+      // 旧版が保存した資格情報が残っていれば、読み込み時に消す
+      if (SECRET_KEYS.some((k) => k in stored)) {
+        localStorage.setItem(LS_KEY, JSON.stringify(stripSecrets(stored)))
+      }
+      return { ...DEFAULTS, ...stripSecrets(stored) }
+    }
   } catch {}
   return { ...DEFAULTS }
 }
 
 function saveLocal(s: AppSettings) {
   try {
-    localStorage.setItem(LS_KEY, JSON.stringify(s))
+    localStorage.setItem(LS_KEY, JSON.stringify(stripSecrets(s)))
   } catch {}
 }
 

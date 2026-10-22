@@ -167,6 +167,10 @@ def admin_overview(
         or 0
     )
 
+    # 計測状態: 「利用が0」と「計測されていない」を画面で見分けるための材料。
+    total_events_all = db.query(func.count(ProductEvent.event_id)).scalar() or 0
+    last_event_at = db.query(func.max(ProductEvent.server_ts)).scalar()
+
     # role 別 WAU
     by_role_rows = (
         db.query(ProductEvent.role, func.count(func.distinct(ProductEvent.user_id_hash)))
@@ -193,7 +197,11 @@ def admin_overview(
             "total_events_7d": total_events_7d,
             "wau_by_role": wau_by_role,
             "wau_by_platform": wau_by_platform,
-            "as_of": now.isoformat(),
+            "total_events_all": total_events_all,
+            # server_ts / now は naive UTC。UTC であることをクライアントへ明示する
+            # ("Z" が無いとブラウザは端末のローカル時刻として解釈してしまう)。
+            "last_event_at": (last_event_at.isoformat() + "Z") if last_event_at else None,
+            "as_of": now.isoformat() + "Z",
         },
     }
 

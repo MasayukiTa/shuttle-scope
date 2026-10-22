@@ -2720,6 +2720,13 @@ def list_request_logs(
     }
 
 
+# security_events テーブルは LLM の予算台帳 (llm_budget) と呼び出し記録 (llm_call) も
+# 同居している。これらはアプリ内部の運用テレメトリで、攻撃検知ではない。
+# 「セキュリティ監視」の既定一覧に混ぜると件数が増えて調査の S/N が落ちるため、
+# event_type を明示したとき以外は除く。
+_INTERNAL_TELEMETRY_EVENT_TYPES = ("llm_call", "llm_budget")
+
+
 @router.get("/audit-logs/security")
 def list_security_events(
     request: Request,
@@ -2732,7 +2739,9 @@ def list_security_events(
     """admin のみ。security_events を新しい順に返す。
 
     Query:
-      - event_type: probe_attempt / rate_limit_hit / honeytoken_hit 等
+      - event_type: probe_attempt / rate_limit_hit / honeytoken_hit 等。
+            省略時は LLM 運用テレメトリ (llm_call / llm_budget) を除く。
+            それらを見たいときは event_type に明示する。
       - severity: info / warn / critical
       - ip: ip_addr 部分一致
       - limit: 1..5000 (default 200)
@@ -2743,6 +2752,8 @@ def list_security_events(
     q = db.query(SecurityEvent)
     if event_type:
         q = q.filter(SecurityEvent.event_type == event_type)
+    else:
+        q = q.filter(SecurityEvent.event_type.notin_(_INTERNAL_TELEMETRY_EVENT_TYPES))
     if severity:
         q = q.filter(SecurityEvent.severity == severity)
     if ip:
