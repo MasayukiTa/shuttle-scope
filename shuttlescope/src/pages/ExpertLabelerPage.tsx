@@ -8,6 +8,9 @@ import { useAuth } from '@/hooks/useAuth'
 import { CoGDetectionPage } from '@/pages/CoGDetectionPage'
 import { MIcon } from '@/components/common/MIcon'
 
+// 一覧で「開始」を出してよいか。バックエンドの _review_status と同じ値。
+type ReviewStatus = 'no_targets' | 'no_video' | 'clips_pending' | 'ready'
+
 // バックエンドから返る試合（動画）メタデータ
 interface ExpertVideo {
   match_id: number | string
@@ -16,6 +19,8 @@ interface ExpertVideo {
   opponent?: string
   miss_count: number
   labeled_count: number
+  // 古いバックエンドでは返らないので省略可。省略時は「開始できる」として扱う。
+  review_status?: ReviewStatus
 }
 
 type VideosResponse = ExpertVideo[]
@@ -32,6 +37,8 @@ interface ProgressResponse {
   labeled: number
   per_match: ProgressEntry[]
 }
+
+const BLOCKED_STATUSES: ReviewStatus[] = ['no_targets', 'no_video']
 
 type ActiveTab = 'matches' | 'cog'
 
@@ -50,6 +57,8 @@ function ExpertLabelerContent() {
   const isAdmin = role === 'admin'
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('matches')
+  const [search, setSearch] = useState('')
+  const [incompleteOnly, setIncompleteOnly] = useState(false)
 
   // 試合一覧取得（バックエンドは配列を直接返す）
   const videosQuery = useQuery<VideosResponse>({
@@ -78,6 +87,15 @@ function ExpertLabelerContent() {
       miss_count: p?.miss_count ?? v.miss_count ?? 0,
       labeled_count: p?.labeled_count ?? v.labeled_count ?? 0,
     }
+  })
+
+  // 絞り込み（並びはバックエンドが日付の新しい順で返す）
+  const needle = search.trim().toLowerCase()
+  const filtered = merged.filter((v) => {
+    const name = (v.title || v.opponent || v.date || `Match ${v.match_id}`).toLowerCase()
+    if (needle && !name.includes(needle)) return false
+    if (incompleteOnly && !(v.miss_count > 0 && v.labeled_count < v.miss_count)) return false
+    return true
   })
 
   const pageBg = 'bg-[var(--ss-bg-app)]'
@@ -153,8 +171,42 @@ function ExpertLabelerContent() {
               </div>
             )}
 
+            {merged.length > 0 && (
+              <div className="flex flex-wrap items-center gap-3 mb-3">
+                <input
+                  type="search"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder={t('expert_labeler.search_placeholder')}
+                  aria-label={t('expert_labeler.search_placeholder')}
+                  className={`flex-1 min-w-[12rem] px-3 py-2 text-sm rounded-ss-md border bg-[var(--ss-surface-1)] ${borderColor}`}
+                />
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={incompleteOnly}
+                    onChange={(e) => setIncompleteOnly(e.target.checked)}
+                  />
+                  {t('expert_labeler.filter_incomplete')}
+                </label>
+                <span className={`text-xs ss-num ${textMuted}`}>
+                  {t('expert_labeler.result_count', { shown: filtered.length, total: merged.length })}
+                </span>
+              </div>
+            )}
+
+            {merged.length > 0 && filtered.length === 0 && (
+              <div className={`p-4 rounded-ss-lg border text-sm ${cardBg} ${textMuted}`}>
+                {t('expert_labeler.no_match_filter')}
+              </div>
+            )}
+
             <ul className="space-y-3">
-              {merged.map((v) => {
+              {filtered.map((v) => {
+                const status: ReviewStatus = v.review_status ?? 'ready'
+                const blocked = BLOCKED_STATUSES.includes(status)
+                // ミス件数 0 のときは完了率を出さない（0% と書くと未着手に見える）
+                const hasTargets = v.miss_count > 0
                 const ratio = calcRatio(v.labeled_count, v.miss_count)
                 const pct = Math.round(ratio * 100)
                 const done = v.miss_count > 0 && v.labeled_count >= v.miss_count
@@ -163,9 +215,12 @@ function ExpertLabelerContent() {
                   <li key={String(v.match_id)} className="flex gap-2">
                     <button
                       type="button"
+                      disabled={blocked}
                       onClick={() => navigate(`/expert-labeler/${v.match_id}`)}
                       // iPad 向け最小タップ領域 48px 以上
-                      className={`flex-1 text-left p-4 rounded-ss-lg border transition-colors duration-base ease-out hover:shadow-card-hover ${cardBg}`}
+                      className={`flex-1 text-left p-4 rounded-ss-lg border transition-colors duration-base ease-out ${cardBg} ${
+                        blocked ? 'opacity-60 cursor-not-allowed' : 'hover:shadow-card-hover'
+                      }`}
                       style={{ minHeight: '72px' }}
                     >
                       <div className="flex items-center justify-between gap-3">
@@ -174,8 +229,13 @@ function ExpertLabelerContent() {
                       </div>
                       <div className="mt-1 text-xs ss-num text-[var(--ss-t3)]">
                         {t('expert_labeler.miss_count')}: {v.miss_count} /{' '}
-                        {t('expert_labeler.labeled_count')}: {v.labeled_count} ({pct}%)
+                        {t('expert_labeler.labeled_count')}: {v.labeled_count} ({hasTargets ? `${pct}%` : '—'})
                       </div>
+                      {status !== 'ready' && (
+                        <div className="mt-1 text-xs text-[var(--ss-t2)]">
+                          {t(`expert_labeler.status_${status}`)}
+                        </div>
+                      )}
                       <div
                         className="mt-2 h-2 rounded-ss-pill bg-[var(--ss-surface-2)] overflow-hidden"
                       >
@@ -184,12 +244,14 @@ function ExpertLabelerContent() {
                           style={{ width: `${pct}%` }}
                         />
                       </div>
-                      <div className="mt-2 text-right text-sm font-medium text-[var(--ss-brand)]">
-                        {v.labeled_count > 0 && !done
-                          ? t('expert_labeler.resume')
-                          : t('expert_labeler.start')}{' '}
-                        →
-                      </div>
+                      {!blocked && (
+                        <div className="mt-2 text-right text-sm font-medium text-[var(--ss-brand)]">
+                          {v.labeled_count > 0 && !done
+                            ? t('expert_labeler.resume')
+                            : t('expert_labeler.start')}{' '}
+                          →
+                        </div>
+                      )}
                     </button>
                     {/* エクスポートボタン（ラベルが 1 件以上のとき表示） */}
                     {v.labeled_count > 0 && (

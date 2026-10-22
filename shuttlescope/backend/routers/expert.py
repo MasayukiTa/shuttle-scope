@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import csv
 import io
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -98,9 +98,13 @@ class LabelPayload(BaseModel):
 class VideoSummary(BaseModel):
     match_id: int
     title: str
+    date: str
     miss_count: int
     clip_ready_count: int
     labeled_count: int
+    has_video: bool
+    # no_targets / no_video / clips_pending / ready（_review_status 参照）
+    review_status: str
 
 
 class ClipInfo(BaseModel):
@@ -108,11 +112,18 @@ class ClipInfo(BaseModel):
     rally_id: int
     timestamp_sec: Optional[float]
     frame_index: int
+    # フロントがラベル保存時にそのまま返す切り出し範囲（clip_generator と同じ fps*3 前 / fps*2 後）
+    clip_start_frame: int
+    clip_end_frame: int
     clip_url: Optional[str]
     rally_context: dict
     # INFRA Phase B: ミスストロークのソース種別
     # "manual" = iter_miss_strokes 由来、"auto" = 自動検出器由来、両方なら "manual+auto"
     source: str = "manual"
+
+
+class ClipsOut(BaseModel):
+    clips: list[ClipInfo]
 
 
 class LabelOut(BaseModel):
@@ -131,6 +142,10 @@ class LabelOut(BaseModel):
         from_attributes = True
 
 
+class LabelsOut(BaseModel):
+    labels: list[LabelOut]
+
+
 # ─── ヘルパー ───────────────────────────────────────────────────────────────
 
 def _match_title(db: Session, m: Match) -> str:
@@ -140,6 +155,36 @@ def _match_title(db: Session, m: Match) -> str:
     a_name = a.name if a else "?"
     b_name = b.name if b else "?"
     return f"{m.date.isoformat()} {a_name} vs {b_name}"
+
+
+# 試合の date として受け付ける範囲。matches.py の作成・更新時の検証と同じ
+# （1970-01-01 から 2 年先まで）。0001-01-01 のような既定値・欠損値は
+# 検証導入前に作られた行にだけ残っているため、レビュー対象から外す。
+_MIN_MATCH_DATE = date(1970, 1, 1)
+_MAX_MATCH_DATE_AHEAD = timedelta(days=365 * 2)
+
+
+def _is_plausible_match_date(d: Optional[date]) -> bool:
+    if d is None:
+        return False
+    return _MIN_MATCH_DATE <= d <= date.today() + _MAX_MATCH_DATE_AHEAD
+
+
+def _review_status(miss_count: int, clip_ready_count: int, has_video: bool) -> str:
+    """一覧の「開始」を出してよいかを決める状態。
+
+    no_targets: ミス判定ストロークが 0 件（詳細画面に出せるものが無い）
+    no_video: 対象はあるが動画が紐付いていない（クリップを作れない）
+    clips_pending: 対象と動画はあるがクリップが未生成
+    ready: 対象と動画があり、クリップが 1 件以上ある
+    """
+    if miss_count <= 0:
+        return "no_targets"
+    if not has_video:
+        return "no_video"
+    if clip_ready_count <= 0:
+        return "clips_pending"
+    return "ready"
 
 
 def _fps_for_match(m: Match) -> int:
@@ -185,7 +230,11 @@ def list_videos(
             Match.partner_a_id.in_(team_player_ids),
             Match.partner_b_id.in_(team_player_ids),
         ))
-    matches = q.all()
+    # 並びは日付の新しい順（同日は ID の新しい順）。異常な日付の試合は対象外。
+    matches = [
+        m for m in q.order_by(Match.date.desc(), Match.id.desc()).all()
+        if _is_plausible_match_date(m.date)
+    ]
     out: list[VideoSummary] = []
     for m in matches:
         miss_rows = iter_miss_strokes(db, m.id)
@@ -202,17 +251,21 @@ def list_videos(
             .scalar()
             or 0
         )
+        has_video = bool((m.video_local_path or "").strip())
         out.append(VideoSummary(
             match_id=m.id,
             title=_match_title(db, m),
+            date=m.date.isoformat(),
             miss_count=miss_count,
             clip_ready_count=int(clip_ready),
             labeled_count=int(labeled),
+            has_video=has_video,
+            review_status=_review_status(miss_count, int(clip_ready), has_video),
         ))
     return out
 
 
-@router.get("/clips", response_model=list[ClipInfo])
+@router.get("/clips", response_model=ClipsOut)
 def list_clips(
     match_id: int = Query(..., ge=1, le=2_147_483_647),
     db: Session = Depends(get_db),
@@ -245,11 +298,14 @@ def list_clips(
         clip_url = f"/api/v1/expert/clip_file?stroke_id={stroke.id}" if cache else None
         is_auto = stroke.id in auto_stroke_ids
         source = "manual+auto" if is_auto else "manual"
+        frame_index = compute_frame_index(stroke.timestamp_sec, fps)
         out.append(ClipInfo(
             stroke_id=stroke.id,
             rally_id=rally.id,
             timestamp_sec=stroke.timestamp_sec,
-            frame_index=compute_frame_index(stroke.timestamp_sec, fps),
+            frame_index=frame_index,
+            clip_start_frame=max(0, frame_index - fps * 3),
+            clip_end_frame=frame_index + fps * 2,
             clip_url=clip_url,
             rally_context={
                 "end_type": rally.end_type,
@@ -260,7 +316,7 @@ def list_clips(
             },
             source=source,
         ))
-    return out
+    return ClipsOut(clips=out)
 
 
 @router.post("/labels", response_model=LabelOut)
@@ -331,7 +387,7 @@ def upsert_label(
     return label
 
 
-@router.get("/labels", response_model=list[LabelOut])
+@router.get("/labels", response_model=LabelsOut)
 def list_labels(
     match_id: int = Query(..., ge=1, le=2_147_483_647),
     annotator_role: Optional[Literal["coach", "analyst"]] = Query(None),
@@ -346,7 +402,7 @@ def list_labels(
         q = q.filter(_or(ExpertLabel.team_id.is_(None), ExpertLabel.team_id == _ctx.team_id))
     if annotator_role:
         q = q.filter(ExpertLabel.annotator_role == annotator_role)
-    return q.all()
+    return {"labels": q.all()}
 
 
 @router.get("/progress")
