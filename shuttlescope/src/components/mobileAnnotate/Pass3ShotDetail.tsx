@@ -15,7 +15,8 @@
  *   - 追加押下 → shot_type chip 選択 → AnnotateOverlay で hit_zone →
  *     land_zone → enqueue。player は前 stroke の opposite を既定にする
  *     (= ラリー中は交互打ち)。
- *   - 既存 stroke タップで shot_type だけ修正可。
+ *   - 既存 stroke タップで 球種 → 打点 → 着地点 を既存値入りで修正可
+ *     (球種だけ・ゾーンだけの変更は、該当ステップで既存値のまま確定する)。
  *
  * 注: shot_type 18 分類フル対応は backend / 既存 UI と整合する必要がある。
  *     スマホでは chip が多すぎると誤タップ多発するため、よく使う 8 種を
@@ -35,6 +36,7 @@ import { enqueue } from '@/utils/mobileAnnotateQueue'
 import { useTranslation } from 'react-i18next'
 import { MIcon } from '@/components/common/MIcon'
 import { normalizeStrikerTeam, nextStrikingTeam, teamLetter } from '@/utils/players'
+import { SERVICE_TYPES, asZoneCode, strokeValidationError } from '@/utils/mobileStrokeValidation'
 
 // Build inside the component via useMemo so t() is bound to the current
 // i18next instance. Defining this at module scope crashes the minified
@@ -56,30 +58,8 @@ const OTHER_SHOT_KEYS = [
 
 type ShotKey = typeof COMMON_SHOT_KEYS[number] | typeof OTHER_SHOT_KEYS[number]
 
-// backend/utils/validators.py と同じ整合性ルール。UI が出した値が必ず
-// validate_stroke を通る形で送られるようにし、422 → mobileAnnotateQueue の
-// manualRetry 化による「無言ドロップ (アノテ消失)」を根絶する。
-const SERVICE_TYPES: readonly string[] = ['short_service', 'long_service']
-// 各 shot_type が物理的に着地できないゾーン (INVALID_COMBINATIONS と一致)。
-const INVALID_LAND_ZONES: Record<string, readonly ZoneCode[]> = {
-  smash: ['NL', 'NC', 'NR'],          // スマッシュはネット前に落ちない
-  short_service: ['BL', 'BC', 'BR'],  // ショートサーブはバックへ届かない
-  net_shot: ['BL', 'BC', 'BR'],       // ネットショットはバックへ届かない
-}
-
-type StrokeValidationError = 'cant_reach_land' | 'invalid_land' | 'service_not_first'
-
-/** 送信前のクライアント検証。null なら OK。cant_reach は着地点を持てない。 */
-function strokeValidationError(
-  shot: string,
-  land: ZoneCode | null,
-  strokeNum: number,
-): StrokeValidationError | null {
-  if (shot === 'cant_reach') return land != null ? 'cant_reach_land' : null
-  if (land != null && INVALID_LAND_ZONES[shot]?.includes(land)) return 'invalid_land'
-  if (SERVICE_TYPES.includes(shot) && strokeNum !== 1) return 'service_not_first'
-  return null
-}
+// 送信前検証 (backend/utils/validators.py と同じルール) は utils に切り出した。
+// 422 → mobileAnnotateQueue の manualRetry 化による「無言ドロップ」を防ぐ。
 
 interface StrokeLite {
   id?: number | null
@@ -146,6 +126,15 @@ export function Pass3ShotDetail({
 
   // shot_type 更新中の stroke (= 既存 chip タップ)
   const [editingStrokeNum, setEditingStrokeNum] = useState<number | null>(null)
+  // 編集 wizard の途中状態 (球種選択後に 打点 → 着地点 を既存値入りで選び直す)
+  type EditDraft =
+    | { phase: 'hitZone'; shot: ShotKey | 'other' }
+    | { phase: 'landZone'; shot: ShotKey | 'other'; hit: ZoneCode | null }
+  const [editDraft, setEditDraft] = useState<EditDraft | null>(null)
+  const cancelEdit = () => {
+    setEditDraft(null)
+    setEditingStrokeNum(null)
+  }
   // 送信前検証で弾いた場合のユーザー向けエラー (無言ドロップの代わりに明示表示)。
   const [commitError, setCommitError] = useState<string | null>(null)
 
@@ -247,31 +236,37 @@ export function Pass3ShotDetail({
     }
   }
 
-  const editShot = async (strokeNum: number, shotKey: ShotKey | 'other') => {
+  const editStroke = async (
+    strokeNum: number,
+    shotKey: ShotKey | 'other',
+    newHit: string | null,
+    newLandRaw: string | null,
+  ) => {
     const s = strokes.find((x) => x.stroke_num === strokeNum)
     if (!s || !s.id) {
-      setEditingStrokeNum(null)
+      cancelEdit()
       return
     }
-    // cant_reach は着地点を持てない → 既存 land_zone をクリアしてから送る。
-    const newLand = shotKey === 'cant_reach' ? null : (s.land_zone ?? null)
-    const verr = strokeValidationError(shotKey, newLand as ZoneCode | null, s.stroke_num)
+    // cant_reach は着地点を持てない → land_zone をクリアしてから送る。
+    const newLand = shotKey === 'cant_reach' ? null : newLandRaw
+    const verr = strokeValidationError(shotKey, asZoneCode(newLand), s.stroke_num)
     if (verr) {
       setCommitError(t(`auto.Pass3ShotDetail.err_${verr}`))
-      setEditingStrokeNum(null)
+      cancelEdit()
       return
     }
     setCommitError(null)
-    // PUT /api/strokes/:id は StrokeData full body を要求するため、現値で再送信
+    // PUT /api/strokes/:id は StrokeData full body を要求する。球種・打点・着地点を
+    // 1 件の PUT にまとめて送る (変更しない項目は現値のまま)。
     await enqueue('PUT /api/strokes/:id', {
       stroke_num: s.stroke_num,
       player: s.player,
       shot_type: shotKey,
-      hit_zone: s.hit_zone,
+      hit_zone: newHit,
       land_zone: newLand,
     }, { id: s.id }, { sequenceKey: `rally:${rally.id}` })
-    onStrokeUpdated({ ...s, shot_type: shotKey, land_zone: newLand })
-    setEditingStrokeNum(null)
+    onStrokeUpdated({ ...s, shot_type: shotKey, hit_zone: newHit, land_zone: newLand })
+    cancelEdit()
   }
 
   // overlay プロンプト用に shot キーを表示ラベルへ解決 (other は専用ラベル)。
@@ -282,6 +277,7 @@ export function Pass3ShotDetail({
   if (add.phase === 'hitZone') {
     return (
       <AnnotateOverlay
+        key="add-hit"
         prompt={t('auto.Pass3ShotDetail.prompt_hit_zone', { n: nextStrokeNum, shot: shotLabel(add.shot) })}
         primaryLabel={t('auto.Pass3ShotDetail.next')}
         onCommit={(z) => setAdd({ phase: 'landZone', shot: add.shot, hit: z })}
@@ -292,6 +288,7 @@ export function Pass3ShotDetail({
   if (add.phase === 'landZone') {
     return (
       <AnnotateOverlay
+        key="add-land"
         prompt={t('auto.Pass3ShotDetail.prompt_land_zone', { n: nextStrokeNum, shot: shotLabel(add.shot) })}
         primaryLabel={t('auto.Pass3ShotDetail.save')}
         onCommit={(z) => void commitShot(add.shot, add.hit, z)}
@@ -316,14 +313,46 @@ export function Pass3ShotDetail({
     )
   }
   if (editingStrokeNum != null) {
+    const editing = strokes.find((x) => x.stroke_num === editingStrokeNum)
+    if (editDraft?.phase === 'hitZone') {
+      return (
+        <AnnotateOverlay
+          key="edit-hit"
+          prompt={t('auto.Pass3ShotDetail.prompt_hit_zone', { n: editingStrokeNum, shot: shotLabel(editDraft.shot) })}
+          primaryLabel={t('auto.Pass3ShotDetail.next')}
+          initialZone={asZoneCode(editing?.hit_zone)}
+          onCommit={(z) => setEditDraft({ phase: 'landZone', shot: editDraft.shot, hit: z })}
+          onCancel={cancelEdit}
+        />
+      )
+    }
+    if (editDraft?.phase === 'landZone') {
+      return (
+        <AnnotateOverlay
+          key="edit-land"
+          prompt={t('auto.Pass3ShotDetail.prompt_land_zone', { n: editingStrokeNum, shot: shotLabel(editDraft.shot) })}
+          primaryLabel={t('auto.Pass3ShotDetail.save')}
+          initialZone={asZoneCode(editing?.land_zone)}
+          onCommit={(z) => void editStroke(editingStrokeNum, editDraft.shot, editDraft.hit, z)}
+          onCancel={cancelEdit}
+        />
+      )
+    }
     return (
       <ShotChipPicker
         title={t('auto.Pass3ShotDetail.edit_title', { n: editingStrokeNum })}
         commonShots={COMMON_SHOTS}
         otherShots={OTHER_SHOTS}
         allowServices={editingStrokeNum === 1}
-        onPick={(k) => void editShot(editingStrokeNum, k)}
-        onCancel={() => setEditingStrokeNum(null)}
+        onPick={(k) => {
+          // cant_reach は着地点を持てない → ゾーン選択を飛ばし、打点は現値のまま即確定。
+          if (k === 'cant_reach') {
+            void editStroke(editingStrokeNum, k, editing?.hit_zone ?? null, null)
+            return
+          }
+          setEditDraft({ phase: 'hitZone', shot: k })
+        }}
+        onCancel={cancelEdit}
       />
     )
   }

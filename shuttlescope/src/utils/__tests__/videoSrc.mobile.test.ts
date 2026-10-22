@@ -28,6 +28,24 @@ describe('getMobileVideoSrc quality contract', () => {
   })
 })
 
+describe('getMobileVideoSrc with availability', () => {
+  it('builds no stream URL when no quality is ready (local-only video)', () => {
+    const none: MobileQualityOption[] = [{ quality: 'source', height: 0, ready: false }]
+    expect(getMobileVideoSrc(match, 'source', none)).toBe('')
+  })
+
+  it('still builds the stream URL when the source is ready', () => {
+    const ready: MobileQualityOption[] = [{ quality: 'source', height: 720, ready: true }]
+    expect(getMobileVideoSrc(match, 'source', ready)).toContain('token=opaque-video-token')
+  })
+
+  it('falls back to a playable external URL when the stored video is local-only', () => {
+    const none: MobileQualityOption[] = [{ quality: 'source', height: 0, ready: false }]
+    const withUrl = { ...match, video_url: 'https://example.com/v.mp4' }
+    expect(getMobileVideoSrc(withUrl, 'source', none)).toBe('https://example.com/v.mp4')
+  })
+})
+
 describe('chooseMobileVideoQuality', () => {
   const pendingPlay: MobileQualityOption[] = [
     { quality: 'source', height: 720, ready: true },
