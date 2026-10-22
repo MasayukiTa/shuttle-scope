@@ -767,7 +767,10 @@ def update_player(player_id: Annotated[int, Path(ge=1, le=2_147_483_647)], body:
     # team 変更時: 旧チームを team_history に自動追記
     # Phase B-15+: team 文字列カラム撤去後は team_id 経由で名前を解決。
     # PlayerUpdate.team は文字列入力 → team_id へ翻訳して書き込む。
+    team_sent = "team" in data  # 明示 null (= 所属解除) と「未指定」を区別する
     new_team_str = data.pop("team", None)  # data から消す（Player に直接 setattr しない）
+    if team_sent and new_team_str is None:
+        new_team_str = ""  # 明示 null は空文字と同じく所属解除として扱う
     old_team = player.team  # @property 経由で teams.name を返す
     if new_team_str is not None and old_team and old_team != new_team_str:
         history = _parse_json_list(player.team_history)

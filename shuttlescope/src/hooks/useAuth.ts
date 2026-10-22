@@ -67,10 +67,13 @@ function getStoredRole(): UserRole | null {
  * ただし LLM は backend (require_llm_access) が admin / llm ロール以外に実際の grant を
  * 要求するため、analyst / coach は /auth/me が返した page_access に 'llm' がある場合だけ表示する
  * (ナビには出るのに API が 403 になる食い違いを避ける)。
+ * 'llm' ロールは backend (require_llm_access) が grant 無しで通すため、LLM ページは
+ * 個別 grant を要求しない (要求すると /llm と /matches の間を行き来して入れない)。
  */
 export function canAccessPage(role: string | null, pageAccess: string[], key: string): boolean {
   if (!role) return false
   if (role === 'admin') return true
+  if (role === 'llm' && key === 'llm') return true
   if (role === 'analyst' || role === 'coach') return key === 'llm' ? pageAccess.includes('llm') : true
   return pageAccess.includes(key)
 }

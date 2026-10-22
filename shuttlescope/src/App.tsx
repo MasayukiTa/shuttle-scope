@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { HashRouter, Routes, Route, NavLink, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -613,6 +613,8 @@ function ThemeApplier({ children }: { children: React.ReactNode }) {
 }
 
 const IDLE_LOGOUT_MS = 15 * 60 * 1000
+/** /auth/me が確認できなかったときの自動再試行間隔。429 を悪化させない程度に空ける。 */
+const AUTH_RETRY_INTERVAL_MS = 10_000
 
 function ProtectedMainRoute() {
   const { t } = useTranslation()
@@ -627,6 +629,12 @@ function ProtectedMainRoute() {
   // 新規登録直後の仮登録状態 (player ロール / チーム未確定)。使えはするが
   // 自分のデータしか無いので、空に見える理由を常時表示する。
   const [awaitingApproval, setAwaitingApproval] = useState<boolean>(false)
+  // /auth/me が一過性エラー (5xx / 429 / timeout / 通信断) で確認できなかった状態。
+  // 保存済みの token / role は「確認済み」ではないので、確認できるまで保護 UI を描画しない。
+  // 認証情報は破棄しない (破棄すると login→login bounce になる) 。再試行画面を出す。
+  const [authUnverified, setAuthUnverified] = useState<boolean>(false)
+  const authUnverifiedRef = useRef<boolean>(false)
+  const [authRetryNonce, setAuthRetryNonce] = useState<number>(0)
 
   useIdleLogout({
     enabled: !!token,
@@ -641,14 +649,19 @@ function ProtectedMainRoute() {
     let cancelled = false
 
     if (!token) {
+      authUnverifiedRef.current = false
+      setAuthUnverified(false)
       setCheckingAuth(false)
       return
     }
 
-    setCheckingAuth(true)
+    // 再試行中 (確認できていない状態) は読み込み画面に戻さず、再試行画面のまま待つ。
+    if (!authUnverifiedRef.current) setCheckingAuth(true)
     authMe()
       .then((me) => {
         if (cancelled) return
+        authUnverifiedRef.current = false
+        setAuthUnverified(false)
         setSession({
           token,
           role: me.role,
@@ -673,11 +686,17 @@ function ProtectedMainRoute() {
         // 弾き返される (login→login bounce) 不具合になる。
         // 再現経路: 試合一覧が match ごとに pipeline/jobs を多数並列発火して
         // rate-limit を使い切ると、同時に走る /auth/me が 429 を返し、ここで
-        // 無条件 clearRole していた。一過性エラー時は login 時に保存済みの
-        // token/role をそのまま維持する (authMe は再検証にすぎない)。
+        // 無条件 clearRole していた。一過性エラー時は保存済みの token を破棄せず維持するが、
+        // サーバで確認できていないので「確認済み」とは扱わない。再試行画面を出し、
+        // 確認できるまで保存済み role による画面・ナビを描画しない (fail-closed)。
         const status = (err as { status?: number } | null)?.status
         if (status === 401 || status === 403) {
+          authUnverifiedRef.current = false
+          setAuthUnverified(false)
           clearRole()
+        } else {
+          authUnverifiedRef.current = true
+          setAuthUnverified(true)
         }
       })
       .finally(() => {
@@ -687,7 +706,14 @@ function ProtectedMainRoute() {
     return () => {
       cancelled = true
     }
-  }, [token, setSession, clearRole])
+  }, [token, setSession, clearRole, authRetryNonce])
+
+  // 確認できていない間は一定間隔で自動再試行する (手動の再試行ボタンも別に出す)。
+  useEffect(() => {
+    if (!authUnverified) return
+    const timer = setTimeout(() => setAuthRetryNonce((n) => n + 1), AUTH_RETRY_INTERVAL_MS)
+    return () => clearTimeout(timer)
+  }, [authUnverified, authRetryNonce])
 
   // R47: タイムアウトや 401 で未認証状態に落ちたとき、URL が
   // `#/dashboard/research` 等の保護パスのまま残ると第三者に「このパスが存在する」
@@ -713,6 +739,37 @@ function ProtectedMainRoute() {
         <div className="text-center space-y-3">
           <div className="text-2xl font-bold" style={{ color: 'var(--ss-text-primary, #f9fafb)' }}>{t('app.name')}</div>
           <p className="text-sm" style={{ color: 'var(--ss-text-muted, #9ca3af)' }}>{t('auto.App.k1')}</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (token && authUnverified) {
+    return (
+      <div className="min-h-[100svh] flex items-center justify-center px-4" style={{ backgroundColor: 'var(--ss-bg-app, #111827)' }}>
+        <div className="text-center space-y-3 max-w-sm" role="alert">
+          <div className="text-2xl font-bold" style={{ color: 'var(--ss-text-primary, #f9fafb)' }}>{t('app.name')}</div>
+          <p className="text-base font-semibold" style={{ color: 'var(--ss-text-primary, #f9fafb)' }}>{t('auth_unverified.title')}</p>
+          <p className="text-sm" style={{ color: 'var(--ss-text-muted, #9ca3af)' }}>{t('auth_unverified.message')}</p>
+          <div className="flex justify-center gap-2">
+            <button
+              type="button"
+              onClick={() => setAuthRetryNonce((n) => n + 1)}
+              className="text-sm px-3 py-1.5 bg-blue-700 hover:bg-blue-600 text-white rounded transition-colors"
+            >
+              {t('auth_unverified.retry')}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                authLogout().catch(() => { /* ignore */ })
+                clearRole()
+              }}
+              className="text-sm px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded transition-colors"
+            >
+              {t('auth_unverified.logout')}
+            </button>
+          </div>
         </div>
       </div>
     )
