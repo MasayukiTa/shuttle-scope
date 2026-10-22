@@ -34,3 +34,9 @@ export function canDeletePlayer(role: RoleArg): boolean {
   if (role == null) return true
   return role === 'admin' || role === 'analyst'
 }
+
+/** 解析ジョブ状態の閲覧可否。backend の GET /v1/pipeline/jobs は analyst / coach 以外へ常に空配列を返すため、それ以外へ「未解析」を出さない。 */
+export function canViewPipelineJobs(role: RoleArg): boolean {
+  if (role == null) return true
+  return role === 'analyst' || role === 'coach'
+}

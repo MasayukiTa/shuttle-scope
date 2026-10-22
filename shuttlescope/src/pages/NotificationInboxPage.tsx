@@ -10,6 +10,7 @@ import {
   publicInquiryUpdate,
   type PublicInquiryRow,
 } from '@/api/client'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { useAuth } from '@/hooks/useAuth'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 
@@ -311,7 +312,10 @@ export function NotificationInboxPage() {
                   </div>
                 )
               })}
-              {items.length === 0 && (
+              {inquiriesQuery.isError && (
+                <QueryErrorNotice onRetry={() => { void inquiriesQuery.refetch() }} />
+              )}
+              {items.length === 0 && !inquiriesQuery.isError && !inquiriesQuery.isLoading && (
                 <div className={`px-5 py-6 text-sm ${textMuted}`}>
                   {t('auto.NotificationInboxPage.k4')}
                 </div>

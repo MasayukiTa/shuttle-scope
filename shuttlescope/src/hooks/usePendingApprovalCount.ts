@@ -23,7 +23,18 @@ function isAuthError(err: unknown): boolean {
   return status === 401 || status === 403
 }
 
+export interface PendingApprovalBadge {
+  /** 取得済みの件数。未取得・失敗のときは null (偽の 0 は返さない)。 */
+  count: number | null
+  /** 件数が取得できていない (0 件ではない)。一度も成功していない失敗のときだけ true。 */
+  unknown: boolean
+}
+
 export function usePendingApprovalCount(role: string | null | undefined): number | null {
+  return usePendingApprovalBadge(role).count
+}
+
+export function usePendingApprovalBadge(role: string | null | undefined): PendingApprovalBadge {
   const isAdmin = role === 'admin'
   const query = useQuery({
     queryKey: ['pending-approvals-count'],
@@ -33,7 +44,10 @@ export function usePendingApprovalCount(role: string | null | undefined): number
     refetchInterval: (q) => (isAuthError(q.state.error) ? false : PENDING_APPROVAL_POLL_MS),
     refetchIntervalInBackground: false,
   })
-  if (!isAdmin || query.isError) return null
+  if (!isAdmin) return { count: null, unknown: false }
   const rows = query.data?.data
-  return Array.isArray(rows) ? rows.length : null
+  const count = Array.isArray(rows) ? rows.length : null
+  // 成功済みなら react-query が前回の件数を保持するのでその値を使い、
+  // 一度も成功していない失敗だけを「状態不明」として示す (バッジを無言で消さない)。
+  return { count, unknown: query.isError && count === null }
 }

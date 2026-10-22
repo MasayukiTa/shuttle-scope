@@ -8,6 +8,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useTheme } from '@/hooks/useTheme'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { AdviceStrip } from '@/components/common/AdviceStrip'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { ConditionGlossary } from '@/components/condition/ConditionGlossary'
 import { InBodyForm } from '@/components/condition/InBodyForm'
 import { HooperRpeForm } from '@/components/condition/HooperRpeForm'
@@ -183,7 +184,10 @@ export function ConditionPage() {
   }
 
   const createMut = useCreateCondition()
-  const { data: historyList = [] } = useConditions(effectivePlayerId ?? null, { limit: 60 })
+  const historyQuery = useConditions(effectivePlayerId ?? null, { limit: 60 })
+  const { data: historyList = [] } = historyQuery
+  // 履歴の取得失敗（前回成功データも無い）を「履歴なし」と区別する
+  const historyUnavailable = historyQuery.isError && historyQuery.data === undefined
 
   const validate = (): string | null => {
     const hooperKeys: (keyof ConditionPayload)[] = [
@@ -363,6 +367,8 @@ export function ConditionPage() {
         ) : subtab === 'history' ? (
           <HistoryView
             list={historyList as unknown as Array<Record<string, unknown>>}
+            unavailable={historyUnavailable}
+            onRetry={() => { void historyQuery.refetch() }}
             isLight={isLight}
             onSelect={(r) => {
               // 下位互換のため latestResult も更新しつつ、詳細モーダルを開く
@@ -517,7 +523,7 @@ export function ConditionPage() {
             {latestResult && (
               <ConditionResult
                 result={latestResult}
-                historyCount={historyList.length}
+                historyCount={historyUnavailable ? undefined : historyList.length}
                 isLight={isLight}
               />
             )}
@@ -616,11 +622,14 @@ interface HistoryRow {
 }
 interface HistoryViewProps {
   list: Array<Record<string, unknown>>
+  /** 履歴の取得に失敗している (履歴なしではない) */
+  unavailable?: boolean
+  onRetry?: () => void
   isLight: boolean
   onSelect: (r: Record<string, unknown>) => void
 }
 
-function HistoryView({ list, isLight, onSelect }: HistoryViewProps) {
+function HistoryView({ list, unavailable, onRetry, isLight, onSelect }: HistoryViewProps) {
   const { t } = useTranslation()
   const [filter, setFilter] = useState<HistoryFilter>('all')
   const muted = 'text-[var(--ss-t3)]'
@@ -646,6 +655,10 @@ function HistoryView({ list, isLight, onSelect }: HistoryViewProps) {
     { key: 'pre_match', label: t('condition.history.filter_prematch') },
     { key: 'body', label: t('condition.history.filter_body') },
   ]
+
+  if (unavailable) {
+    return <QueryErrorNotice onRetry={onRetry} />
+  }
 
   if (!rows || rows.length === 0) {
     return <div className={`${muted} text-sm`}>{t('condition.history_placeholder')}</div>

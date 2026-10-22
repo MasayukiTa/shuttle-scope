@@ -14,6 +14,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { MIcon } from '@/components/common/MIcon'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { trackAnalysisInteraction } from '@/utils/analytics'
 
 export type AdviceContext =
@@ -120,20 +121,24 @@ export function AdviceStrip({
   const [resp, setResp] = useState<AdviceResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [showBasis, setShowBasis] = useState(false)
+  // 取得失敗は「データ不足 / 計測中」と区別する（障害を利用者のサンプル不足に見せない）
+  const [failed, setFailed] = useState(false)
+  const [retryNonce, setRetryNonce] = useState(0)
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
+    setFailed(false)
     const params = new URLSearchParams({ context })
     if (playerId) params.set('player_id', String(playerId))
     if (matchId) params.set('match_id', String(matchId))
     if (opponentId) params.set('opponent_id', String(opponentId))
     apiGet<AdviceResponse>(`/advice?${params.toString()}`)
       .then((r) => { if (!cancelled) setResp(r) })
-      .catch(() => { if (!cancelled) setResp(null) })
+      .catch(() => { if (!cancelled) { setResp(null); setFailed(true) } })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [context, playerId, matchId, opponentId])
+  }, [context, playerId, matchId, opponentId, retryNonce])
 
   if (loading) {
     return (
@@ -142,6 +147,15 @@ export function AdviceStrip({
           <span className="inline-block w-2 h-2 rounded-full bg-[var(--ss-brand)] animate-pulse" />
           {t('advice.calculating', 'Calculating advice…')}
         </div>
+      </div>
+    )
+  }
+
+  // 通信・サーバ障害: hideWhenInsufficient でも隠さず、再試行つきで示す
+  if (failed) {
+    return (
+      <div className={`rounded-ss-md border border-[var(--ss-border)] bg-[var(--ss-surface-2)] px-3 ${className || ''}`}>
+        <QueryErrorNotice onRetry={() => setRetryNonce((n) => n + 1)} />
       </div>
     )
   }

@@ -17,6 +17,22 @@ beforeEach(() => {
   mockApi.mockReset()
 })
 
+describe('AdviceStrip fetch failure', () => {
+  it('shows a retryable error, not the insufficient-data text, and recovers on retry', async () => {
+    mockApi.mockRejectedValueOnce(new Error('500'))
+    mockApi.mockResolvedValueOnce({
+      success: true,
+      status: 'ok',
+      advice: { text: 'recovered advice', confidence: 'low', severity: 'info', basis: {} },
+    } as never)
+    render(<AdviceStrip context="dashboard.overview" hideWhenInsufficient />)
+    await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy())
+    expect(screen.queryByText(/30/)).toBeNull()
+    fireEvent.click(screen.getByRole('button'))
+    await waitFor(() => expect(screen.getByText('recovered advice')).toBeTruthy())
+  })
+})
+
 describe('AdviceStrip basis', () => {
   it('renders known fields with display names and hides raw JSON and internal source names', async () => {
     mockApi.mockResolvedValue({

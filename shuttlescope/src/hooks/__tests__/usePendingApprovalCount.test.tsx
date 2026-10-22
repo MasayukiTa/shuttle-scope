@@ -17,7 +17,7 @@ vi.mock('@/api/client', () => ({
   },
 }))
 
-import { usePendingApprovalCount } from '../usePendingApprovalCount'
+import { usePendingApprovalBadge, usePendingApprovalCount } from '../usePendingApprovalCount'
 
 function wrapper({ children }: { children: ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -74,5 +74,34 @@ describe('usePendingApprovalCount', () => {
     await waitFor(() => expect(calls.length).toBeGreaterThan(0))
     await settle()
     expect(result.current).toBeNull()
+  })
+})
+
+describe('usePendingApprovalBadge', () => {
+  beforeEach(() => {
+    calls.length = 0
+  })
+
+  it('一度も成功していない失敗は unknown (バッジを無言で消さない)', async () => {
+    handler = async () => {
+      throw Object.assign(new Error('boom'), { status: 500 })
+    }
+    const { result } = renderHook(() => usePendingApprovalBadge('admin'), { wrapper })
+    await waitFor(() => expect(result.current.unknown).toBe(true))
+    expect(result.current.count).toBeNull()
+  })
+
+  it('成功時は unknown でなく件数を返す', async () => {
+    handler = async () => rows(2)
+    const { result } = renderHook(() => usePendingApprovalBadge('admin'), { wrapper })
+    await waitFor(() => expect(result.current.count).toBe(2))
+    expect(result.current.unknown).toBe(false)
+  })
+
+  it('admin 以外は unknown にしない', async () => {
+    handler = async () => rows(2)
+    const { result } = renderHook(() => usePendingApprovalBadge('coach'), { wrapper })
+    await settle()
+    expect(result.current).toEqual({ count: null, unknown: false })
   })
 })
