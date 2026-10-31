@@ -3259,6 +3259,7 @@
       "page_access_load_failed": "Could not load page permissions. Saving could erase them, so close this panel and open it again.",
       "page_access_prediction": "Prediction / Analysis",
       "page_access_expert_labeler": "Expert labeler",
+      "page_access_llm": "Ask AI (LLM chat)",
       "individual": "Individual",
       "team_whole": "Whole team ({{team}})",
       "saving": "Saving...",
