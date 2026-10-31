@@ -165,6 +165,11 @@ export function ConditionPage() {
     role === 'player' ? authPlayerId : null,
   )
   const effectivePlayerId = role === 'player' ? authPlayerId : selectedPlayerId
+  // G17b #657 (owner 2026-10-31): 入力タブの登録対象。
+  // player / admin は本人 (authPlayerId)、coach / analyst は選択中の選手
+  // (effectivePlayerId) の記録を登録・修正できる（同チーム代理入力；バックエンド認可は別途）。
+  const inputTargetPlayerId =
+    role === 'coach' || role === 'analyst' ? effectivePlayerId : authPlayerId
 
   const [subtab, setSubtab] = useState<'input' | 'history' | 'analytics'>('input')
   // player はデフォルトで週次質問票。coach/analyst も質問票を第一選択。
@@ -205,16 +210,20 @@ export function ConditionPage() {
   const handleBodySubmit = async () => {
     setErrorMsg(null)
     setSuccessMsg(null)
-    // 入力は常にログインユーザ自身 (authPlayerId)。代理入力は不可。
-    if (!authPlayerId) {
-      setErrorMsg(t('condition.player_only_input', 'Only accounts linked to a player record can submit'))
+    // G17b: player / admin は本人、coach / analyst は選択中の選手の記録として登録する。
+    if (!inputTargetPlayerId) {
+      setErrorMsg(
+        role === 'coach' || role === 'analyst'
+          ? t('auto.ConditionPage.k1')
+          : t('condition.player_only_input', 'Only accounts linked to a player record can submit'),
+      )
       return
     }
     const err = validate()
     if (err) { setErrorMsg(err); return }
     const payload: ConditionPayload = {
       ...formState,
-      player_id: authPlayerId,
+      player_id: inputTargetPlayerId,
       measured_at: measuredAt,
       condition_type: 'weekly',
     }
@@ -289,10 +298,12 @@ export function ConditionPage() {
                 {t('condition.summary_only_notice')}
               </div>
             )}
-            {/* G2 #657 (option B): 入力タブでは選手セレクタを隠す。入力は常に
-                ログイン本人 (authPlayerId) の記録に限定するため。履歴・分析タブ
-                では従来どおり誰のデータでも選べるようセレクタを残す。 */}
-            {subtab !== 'input' && (
+            {/* G17 #657 (owner 2026-10-31): coach / analyst は入力タブでも
+                選手セレクタを出す（同チーム選手のコンディションを登録・修正できる
+                ようにするため；バックエンドの認可は別途）。admin は従来どおり
+                入力タブでは非表示。player はこの else に来ないので常に非表示。
+                履歴・分析タブは全ロールで従来どおりセレクタを残す。 */}
+            {(subtab !== 'input' || role === 'coach' || role === 'analyst') && (
               <>
                 <div className="flex items-center gap-2 shrink-0">
                   <MIcon name="person" size={16} className={`${textMuted} shrink-0`} />
@@ -460,7 +471,10 @@ export function ConditionPage() {
             </CollapsibleSection>
 
           </div>
-        ) : !authPlayerId ? (
+        ) : (role === 'coach' || role === 'analyst') && !inputTargetPlayerId ? (
+          // G17b: coach / analyst が選手未選択の間は入力をブロックし、選択を促す。
+          <div className={`${textMuted} text-sm`}>{t('auto.ConditionPage.k1')}</div>
+        ) : !inputTargetPlayerId ? (
           // 入力タブ: ログインユーザが選手として登録されていない (coach / analyst /
           // admin で player_id 未紐付) 場合、コンディション入力は無効。
           // 過去仕様: 選択した選手の代理入力ができていたが、誰のデータか曖昧になる
@@ -482,8 +496,8 @@ export function ConditionPage() {
           </div>
         ) : (
           <div className="space-y-5 max-w-4xl">
-            {/* 入力対象明示: 必ず「自分自身」(authPlayerId) のレコードになる。
-               選択した選手の代理入力はできない設計 (誰が入力したか曖昧になるのを防ぐ)。 */}
+            {/* G17b 入力対象明示。player / admin は本人固定 (代理不可)、
+               coach / analyst は選択中の選手の記録として登録することを示す。 */}
             <div
               className="text-xs px-3 py-2 rounded-ss-md border"
               style={{
@@ -492,9 +506,21 @@ export function ConditionPage() {
                 borderColor: 'var(--ss-brand)',
               }}
             >
-              {t('auto.ConditionPage.k10')} <strong>{t('auto.ConditionPage.k3')}</strong> (
-              {players.find((p) => p.id === authPlayerId)?.name ?? t('auto.ConditionPage.k11', { n: authPlayerId })}
-              {t('auto.ConditionPage.k12')}
+              {role === 'coach' || role === 'analyst' ? (
+                <>
+                  {t('auto.ConditionPage.k14')}{' '}
+                  <strong>
+                    {players.find((p) => p.id === inputTargetPlayerId)?.name ??
+                      t('auto.ConditionPage.k11', { n: inputTargetPlayerId })}
+                  </strong>
+                </>
+              ) : (
+                <>
+                  {t('auto.ConditionPage.k10')} <strong>{t('auto.ConditionPage.k3')}</strong> (
+                  {players.find((p) => p.id === authPlayerId)?.name ?? t('auto.ConditionPage.k11', { n: authPlayerId })}
+                  {t('auto.ConditionPage.k12')}
+                </>
+              )}
             </div>
 
             {/* モード切替 */}
@@ -540,7 +566,7 @@ export function ConditionPage() {
 
             {mode === 'weekly' && (
               <WeeklyQuestionnaire
-                playerId={authPlayerId!}
+                playerId={inputTargetPlayerId!}
                 measuredAt={measuredAt}
                 isLight={isLight}
                 onSubmitted={handleQuestionnaireSubmitted}
@@ -549,7 +575,7 @@ export function ConditionPage() {
 
             {mode === 'prematch' && (
               <PreMatchQuestionnaire
-                playerId={authPlayerId!}
+                playerId={inputTargetPlayerId!}
                 measuredAt={measuredAt}
                 isLight={isLight}
                 onSubmitted={handleQuestionnaireSubmitted}

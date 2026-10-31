@@ -4442,7 +4442,8 @@
       "k10": "Input target:",
       "k11": "Player #{{n}}",
       "k12": ") — proxy entry for other players is not allowed.",
-      "k13": "Measured on:"
+      "k13": "Measured on:",
+      "k14": "Recording for this player:"
     },
     "DashboardAdvancedPage": {
       "k1": "Points won / lost by shot",
