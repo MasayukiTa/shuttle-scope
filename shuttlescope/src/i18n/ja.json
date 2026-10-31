@@ -1201,6 +1201,7 @@
     "venue": "会場",
     "format": "形式",
     "result": "結果",
+    "result_auto_generated": "結果とスコアは完了したセットから自動入力されました（手動で上書きできます）",
     "score": "スコア",
     "video_url": "動画URL",
     "notes": "メモ",

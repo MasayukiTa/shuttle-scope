@@ -547,6 +547,9 @@ def match_to_dict(
         "partner_b_id": m.partner_b_id,
         "result": m.result,
         "final_score": m.final_score,
+        # G6 #524: 'manual' (人が入力) / 'auto' (完了セットから end_set が自動入力)。
+        # player 応答では player_privacy が result / final_score と一緒に落とす。
+        "result_source": m.result_source,
         "video_url": m.video_url,
         # 生のローカルパスは API レスポンスに含めない（Phase 1 セキュリティ要件）。
         # 再生は video_token を使い /api/videos/{token}/stream か app://video/{token} 経由で行う。

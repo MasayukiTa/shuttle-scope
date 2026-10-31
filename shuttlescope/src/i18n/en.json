@@ -1194,6 +1194,7 @@
     "venue": "Venue",
     "format": "Format",
     "result": "Result",
+    "result_auto_generated": "Result and score were auto-filled from the completed sets (you can override them manually).",
     "score": "Score",
     "video_url": "Video URL",
     "notes": "Notes",

@@ -396,6 +396,11 @@ class Match(Base):
     partner_b_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("players.id"), nullable=True)
     result: Mapped[str] = mapped_column(String(20), nullable=False)  # win/loss/walkover/unfinished
     final_score: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # "21-15, 18-21, 21-19"
+    # G6 #524: result / final_score の出所。'manual' = 人が入力した確定値 (絶対に
+    # 自動で上書きしない)、'auto' = 完了セットから end_set が自動入力した値。
+    # 既存行は全て人手入力とみなすため migration 0058 で 'manual' を埋める。
+    # early finish / walkover は manual のまま。
+    result_source: Mapped[str] = mapped_column(String(10), nullable=False, server_default="manual", default="manual")
     video_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     # video_local_path: 内部利用のみ。フロント / API レスポンスには露出させないこと。
     # ユーザーへ動画を提供するには video_token を使い /api/videos/{video_token}/stream 経由で配信する。
