@@ -299,10 +299,18 @@ def get_analyst_depth(
     recent_form = compute_recent_form(all_matches, player_id)
     growth_trend = compute_growth_trend(all_matches, player_id)
     brier_score = compute_brier_score_blended(all_matches, player_id, h2h_matches)
+    # 対象選手の最頻フォーマットを観測試合から導出し、類似度のフォーマット加点に使う
+    _fmt_counts: dict[str, int] = {}
+    for _m in all_matches:
+        _f = getattr(_m, 'format', None)
+        if _f:
+            _fmt_counts[_f] = _fmt_counts.get(_f, 0) + 1
+    _current_format = max(_fmt_counts, key=_fmt_counts.get) if _fmt_counts else None
     nearest_evidence = find_nearest_matches(
         all_matches, player_id,
         current_level=tournament_level or '',
         n=5,
+        current_format=_current_format,
     )
 
     win_prob_v1, n_v1 = compute_win_probability(all_matches, player_id)

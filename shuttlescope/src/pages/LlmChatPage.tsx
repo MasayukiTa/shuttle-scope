@@ -1037,6 +1037,16 @@ function ConversationList({
                 : 'hover:bg-[var(--ss-surface-2)]'
             }`}
             onClick={() => { if (renamingId !== c.id) onSelectConversation(c.id) }}
+            role={renamingId === c.id ? undefined : 'button'}
+            tabIndex={renamingId === c.id ? undefined : 0}
+            aria-current={c.id === activeId ? 'true' : undefined}
+            onKeyDown={(e) => {
+              if (renamingId === c.id) return
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onSelectConversation(c.id)
+              }
+            }}
           >
             <MIcon name="forum" size={16} ariaHidden className="text-[var(--ss-t3)] shrink-0" />
             {renamingId === c.id ? (
