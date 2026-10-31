@@ -1585,6 +1585,8 @@
     "unowned_rally_discard_title": "保管中のラリーを破棄",
     "unowned_rally_discard_message": "保存に失敗した {{n}} 件のラリーを破棄します。元に戻せません。",
     "recording_path_update_failed": "録画ファイルは保存しましたが、試合への動画パスの登録に失敗しました。",
+    "analysis_start_failed": "バックグラウンド解析の開始に失敗しました。時間をおいて再度お試しください。",
+    "analysis_video_unavailable": "この試合にはサーバ上の動画が無いため、解析を開始できません。",
     "bookmark_save_failed": "ブックマークを保存できませんでした。通信状況を確認して、もう一度お試しください。",
     "review_later_save_failed": "「あとで確認」を保存できませんでした。通信状況を確認して、もう一度お試しください。",
     "comment_save_failed": "コメントを送信できませんでした。入力内容は残してあります。通信状況を確認して、もう一度送信してください。",
