@@ -2735,7 +2735,13 @@
     "reconnect_attempt": "reconnect attempt",
     "network_quality": "Network quality",
     "battery_level": "Battery",
-    "role_display": "Device name"
+    "role_display": "Device name",
+    "camera_error_insecure": "Cannot access the camera. Open this page over HTTPS or localhost (iOS cannot use the camera over HTTP).",
+    "camera_error_permission": "Camera access is not allowed. Enable camera permission in your browser and try again.",
+    "camera_error_notfound": "No usable camera was found. Check that a camera is connected and try again.",
+    "camera_error_inuse": "Could not start the camera. Make sure no other app is using it and try again.",
+    "camera_error_generic": "Could not start the camera. Please try again.",
+    "connect_error": "The camera started, but the broadcast connection failed. Check your network and try again."
   },
   "live_source": {
     "title": "Live source",

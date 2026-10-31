@@ -417,11 +417,57 @@ export function CameraSenderPage() {
   const startCamera = useCallback(async () => {
     // iOS Safari は HTTP（非セキュアコンテキスト）では mediaDevices が undefined になる
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setErrorMsg('カメラにアクセスできません。HTTPSまたはlocalhostで開いてください（iOSはHTTPではカメラ使用不可）。')
+      setErrorMsg(t('camera_sender.camera_error_insecure'))
       return
     }
     setStartingCamera(true)
+    // カメラ取得・WebRTC 確立を段階ごとに分けて扱う。getUserMedia の失敗は端末の
+    // カメラ権限/使用状況の問題、それ以降 (PeerConnection / SDP / signaling) の失敗は
+    // 通信接続の問題として、利用者向けに別々の案内を出す。両者を同じ catch で
+    // 「カメラ権限を許可してください」と扱うと、権限を見直しても直らない誤案内になる。
+    let stream: MediaStream
     try {
+      // 前回の stream を止めてから取り直す。止めずに上書きすると
+      // 古いトラックが生き続け、端末のカメラ表示 (LED) が点いたままになり、
+      // 電池とメモリを食う。
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach((t) => {
+          try {
+            t.stop()
+          } catch { /* 既に停止している場合がある */ }
+        })
+      }
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      })
+    } catch (err) {
+      // getUserMedia の DOMException だけをカメラ取得エラーとして種別ごとに案内する。
+      const name = (err as { name?: string } | null)?.name
+      if (name === 'NotAllowedError' || name === 'SecurityError') {
+        setErrorMsg(t('camera_sender.camera_error_permission'))
+      } else if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+        setErrorMsg(t('camera_sender.camera_error_notfound'))
+      } else if (name === 'NotReadableError' || name === 'AbortError') {
+        setErrorMsg(t('camera_sender.camera_error_inuse'))
+      } else {
+        setErrorMsg(t('camera_sender.camera_error_generic'))
+      }
+      setStartingCamera(false)
+      return
+    }
+
+    try {
+      localStreamRef.current = stream
+      if (previewRef.current) {
+        previewRef.current.srcObject = stream
+      }
+
+      // R-1: サーバ自動録画 (match_id 取得済 + 自動録画 ON 時)
+      if (recordingMatchId != null) {
+        void serverRecorder.start(stream).catch(() => { /* noop */ })
+      }
+
       // ICE サーバー設定を取得（TURN が有効な場合はリレー経由）
       let iceServers: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
       try {
@@ -437,30 +483,6 @@ export function CameraSenderPage() {
           iceServers = iceCfg.data.ice_servers
         }
       } catch { /* バックエンド未起動時はデフォルト STUN を使用 */ }
-
-      // 前回の stream を止めてから取り直す。止めずに上書きすると
-      // 古いトラックが生き続け、端末のカメラ表示 (LED) が点いたままになり、
-      // 電池とメモリを食う。
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach((t) => {
-          try {
-            t.stop()
-          } catch { /* 既に停止している場合がある */ }
-        })
-      }
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false,
-      })
-      localStreamRef.current = stream
-      if (previewRef.current) {
-        previewRef.current.srcObject = stream
-      }
-
-      // R-1: サーバ自動録画 (match_id 取得済 + 自動録画 ON 時)
-      if (recordingMatchId != null) {
-        void serverRecorder.start(stream).catch(() => { /* noop */ })
-      }
 
       // 再開のたびに前の PeerConnection とトラックを閉じずに上書きしていた。
       // カメラの LED が点いたまま、メモリと電池を食い続ける。
@@ -502,14 +524,20 @@ export function CameraSenderPage() {
 
       setSenderState('state_c')
     } catch {
-      setErrorMsg('カメラの起動に失敗しました。カメラへのアクセスを許可してください。')
+      // ここに来るのはカメラ取得後の WebRTC/signaling 失敗なので、カメラ権限ではなく
+      // 接続の問題として案内する。取得済みの stream は止めてカメラを解放する。
+      try {
+        stream.getTracks().forEach((t) => t.stop())
+      } catch { /* 既に停止している場合がある */ }
+      localStreamRef.current = null
+      setErrorMsg(t('camera_sender.connect_error'))
     } finally {
       setStartingCamera(false)
     }
     // recordingMatchId / serverRecorder は read-only スナップショットとして使い、
     // 再カメラ起動時に最新値で動けばよい (callback 再生成は不要)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [participantId, startRttPolling])
+  }, [participantId, startRttPolling, t])
 
   // ─── 配信停止 ─────────────────────────────────────────────────────────────
   const stopCamera = useCallback(() => {
