@@ -1478,6 +1478,8 @@
     "unowned_rally_discard_title": "Discard kept rallies",
     "unowned_rally_discard_message": "Discard the {{n}} rally(ies) that failed to save. This cannot be undone.",
     "recording_path_update_failed": "The recording was saved, but registering its video path on the match failed.",
+    "analysis_start_failed": "Could not start background analysis. Please try again in a moment.",
+    "analysis_video_unavailable": "This match has no video on the server, so analysis cannot start.",
     "bookmark_save_failed": "Could not save the bookmark. Check your connection and try again.",
     "review_later_save_failed": "Could not save \"review later\". Check your connection and try again.",
     "comment_save_failed": "Could not send the comment. Your text has been kept; check your connection and send it again.",

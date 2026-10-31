@@ -1636,21 +1636,37 @@ export function AnnotatorPage() {
   }, [initialized, match?.format])
 
   // アノテーター離脱時: バックグラウンド解析をキックして遷移
-  const handleLeaveMatch = useCallback(() => {
-    const videoPath = getVideoSrc(match)
-    // localfile:/// プレフィックスを除去してファイルパスに変換
-    const resolvedPath = videoPath.startsWith('localfile:///')
-      ? videoPath.replace('localfile:///', '')
-      : videoPath
-    if (resolvedPath && matchId) {
-      // fire-and-forget: 失敗しても離脱は妨げない
-      apiPost('/video_import/path', {
-        video_path: resolvedPath,
-        match_id: Number(matchId),
-      }).catch(() => {})
+  // item #690 (案 A): クライアントは生の filesystem パスを組み立てず match_id だけを送る。
+  // サーバが試合レコードから動画を解決する (video_local_path は API に露出しない)。
+  // 解析の開始に失敗したときは通知を出し、もう一度押せば離脱できる (画面に閉じ込めない)。
+  const leaveWarnedRef = useRef(false)
+  const handleLeaveMatch = useCallback(async () => {
+    if (!matchId || leaveWarnedRef.current) {
+      navigate('/matches')
+      return
+    }
+    // サーバ上の動画が無い試合は解析する対象がない。そのまま離脱する。
+    if (!hasVideo(match)) {
+      navigate('/matches')
+      return
+    }
+    try {
+      await apiPost(`/video_import/by_match/${Number(matchId)}`, {})
+    } catch (err) {
+      // 失敗を握りつぶさず通知する。次に押したときは離脱する。
+      // httpError はレスポンス本文を message に入れる。サーバが no_video_on_server を
+      // 返したときだけ「動画が無い」側の文言にする (それ以外は汎用の開始失敗)。
+      const detail = err instanceof Error ? err.message : String(err)
+      if (detail.includes('no_video_on_server')) {
+        showError(t('annotator.analysis_video_unavailable'))
+      } else {
+        showError(t('annotator.analysis_start_failed'))
+      }
+      leaveWarnedRef.current = true
+      return
     }
     navigate('/matches')
-  }, [match, matchId, navigate])
+  }, [match, matchId, navigate, showError, t])
 
   // 途中終了: ダイアログ確定
   const handleException = useCallback(async () => {

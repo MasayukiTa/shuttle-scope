@@ -208,6 +208,106 @@ def import_from_path(body: PathImportRequest, background_tasks: BackgroundTasks,
     return {"success": True, "data": {"job_id": job_id}}
 
 
+@router.post("/video_import/by_match/{match_id}")
+def import_from_match(match_id: int, background_tasks: BackgroundTasks, request: Request,
+                      db: Session = Depends(get_db)):
+    """match_id だけを受け取り、サーバ側で試合レコードから動画パスを解決して
+    バックグラウンド解析を開始する (item #690 案 A)。
+
+    クライアントは生の filesystem パスも表示用ストリーム URL も送らない
+    (video_local_path は内部専用で API レスポンスに露出しない)。ロール・
+    match-scope・許可ルートのチェックは /video_import/path と同一に保つ。
+    サーバに動画が無い試合では **自動で何も始めず**、明確なエラーコードを返す。
+    """
+    if not allow_local_file_control(request):
+        raise HTTPException(status_code=403, detail="ローカルファイル操作はローカルからのみ実行できます")
+    # /video_import/path と同じく、接続元が loopback であることは «誰として» 呼んだかの
+    # 代わりにならない。運用ロール + その試合のチーム scope を要求する。
+    _ctx_gate = get_auth(request)
+    if not (_ctx_gate.is_admin or _ctx_gate.is_analyst or _ctx_gate.is_coach):
+        raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
+
+    from backend.db.models import Match as _Match
+    from backend.utils.auth import require_match_scope as _require_match_scope
+    _m = db.get(_Match, match_id)
+    if _m is None:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    _require_match_scope(request, _m, db)
+
+    # 試合レコードから動画の保存場所を解決する。無ければ自動開始しない。
+    stored = (_m.video_local_path or "").strip()
+    if not stored:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "no_video_on_server",
+                    "message": "この試合にはサーバ上の動画がありません"},
+        )
+    # 旧データに URL (http:// / mailto: 等) が残っていることがある。パス扱いしない。
+    if re.match(r'^[a-zA-Z][a-zA-Z0-9+\-.]*://', stored):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "no_video_on_server",
+                    "message": "保存された動画の場所がローカルファイルではありません"},
+        )
+    if any(ch in stored for ch in ("\x00", "\r", "\n")):
+        raise HTTPException(status_code=400, detail="保存された動画パスに不正な文字が含まれています")
+
+    ALLOWED_VIDEO_EXTS = {'.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.m4v', '.webm', '.ts', '.mts'}
+    if Path(stored).suffix.lower() not in ALLOWED_VIDEO_EXTS:
+        raise HTTPException(status_code=400, detail="動画ファイル以外は処理できません")
+    path = Path(stored).resolve()
+    if path.suffix.lower() not in ALLOWED_VIDEO_EXTS:
+        raise HTTPException(status_code=400, detail="動画ファイル以外は処理できません")
+
+    # path_jail を存在/種別チェックより前に実行する (CodeQL py/path-injection 対策)。
+    from backend.utils.path_jail import is_allowed_video_path, allowed_video_roots
+    if not is_allowed_video_path(path):
+        roots = [str(r) for r in allowed_video_roots()]
+        raise HTTPException(
+            status_code=403,
+            detail=f"動画パスが許可ルート外です。許可ルート: {roots}",
+        )
+    if not path.exists():
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "no_video_on_server",
+                    "message": "保存された動画ファイルが見つかりません"},
+        )
+    if not path.is_file():
+        raise HTTPException(status_code=400, detail="動画ファイルパスではありません（ディレクトリ）")
+
+    file_size = path.stat().st_size
+    if file_size > _MAX_VIDEO_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"動画ファイルサイズが上限（{_MAX_VIDEO_BYTES // 1024 // 1024 // 1024} GB）を超えています: {file_size / 1024**3:.1f} GB",
+        )
+
+    # 重複開始を防ぐ: 同じ match の未完了ジョブが既にあれば新規投入しない。
+    for _j in _jobs.values():
+        if _j.get("match_id") == match_id and _j.get("phase") not in (Phase.DONE, Phase.ERROR):
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "analysis_already_running",
+                        "message": "この試合の解析は既に実行中です",
+                        "job_id": _j.get("job_id")},
+            )
+
+    job_id = uuid.uuid4().hex[:8]
+    _ctx_imp = get_auth(request)
+    job = _new_job(
+        str(path),
+        match_id,
+        owner_user_id=_ctx_imp.user_id,
+        owner_team_name=(_ctx_imp.team_name or None),
+    )
+    job["job_id"] = job_id
+    _jobs[job_id] = job
+
+    background_tasks.add_task(_run_pipeline, job_id)
+    return {"success": True, "data": {"job_id": job_id}}
+
+
 @router.get("/video_import/list")
 def list_jobs(request: Request):
     """全ジョブ一覧（最新順）。Round 258 P1: cross-team 絞込 + path redact。"""
