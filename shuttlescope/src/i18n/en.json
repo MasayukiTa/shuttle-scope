@@ -1815,6 +1815,7 @@
       "overlay_pose": "Pose",
       "overlay_fullscreen": "Fullscreen",
       "bottom_sheet_aria": "Bottom sheet",
+      "bottom_sheet_handle": "Drag or tap to expand / collapse",
       "bottom_sheet_close": "Close",
       "score_aria_game": "Score {{a}} to {{b}} game {{n}}",
       "menu_aria": "Menu"

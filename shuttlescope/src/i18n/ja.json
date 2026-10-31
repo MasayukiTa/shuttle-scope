@@ -1523,6 +1523,7 @@
       "overlay_pose": "ポーズ",
       "overlay_fullscreen": "全画面",
       "bottom_sheet_aria": "ボトムシート",
+      "bottom_sheet_handle": "ドラッグまたはタップで展開 / 折り畳み",
       "bottom_sheet_close": "閉じる",
       "score_aria_game": "スコア {{a}} 対 {{b}} ゲーム {{n}}",
       "menu_aria": "メニュー"
