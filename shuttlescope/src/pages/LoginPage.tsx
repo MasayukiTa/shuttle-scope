@@ -45,18 +45,18 @@ async function apiLogin(body: object): Promise<LoginResult> {
       body: JSON.stringify(body),
     })
     if (!res.ok) {
-      let errorMessage = 'ログインに失敗しました'
+      let errorMessage = i18n.t('auto.LoginPage.error_login_failed')
       try {
         const data = await res.json()
         const detail = typeof data?.detail === 'string' ? data.detail : ''
         if (res.status === 401) {
-          errorMessage = 'IDもしくはパスワードが違います'
+          errorMessage = i18n.t('auto.LoginPage.error_invalid_credentials')
         } else if (detail) {
           errorMessage = detail
         }
       } catch {
         if (res.status === 401) {
-          errorMessage = 'IDもしくはパスワードが違います'
+          errorMessage = i18n.t('auto.LoginPage.error_invalid_credentials')
         }
       }
       return _errSession(errorMessage)
@@ -108,7 +108,7 @@ async function apiMfaLogin(
       ),
     })
     if (!res.ok) {
-      let msg = 'MFA 認証に失敗しました'
+      let msg = i18n.t('auto.LoginPage.error_mfa_failed')
       try {
         const data = await res.json()
         if (typeof data?.detail === 'string') msg = data.detail

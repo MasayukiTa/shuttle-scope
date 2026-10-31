@@ -4574,6 +4574,8 @@
       "error_password_required": "パスワードまたは PIN を入力してください",
       "error_mfa_code_format": "6 桁の数字を入力してください",
       "error_mfa_failed": "認証に失敗しました",
+      "error_login_failed": "ログインに失敗しました",
+      "error_invalid_credentials": "IDもしくはパスワードが違います",
       "error_timeout": "サーバーから応答がありません。しばらくしてからもう一度お試しください",
       "bootstrap_pending": "初回管理者アカウントを作成しています。",
       "bootstrap_not_ready": "サービスの初期設定が完了していません。管理者にお問い合わせください。",
