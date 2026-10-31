@@ -2743,7 +2743,13 @@
     "reconnect_attempt": "回目の再接続試行",
     "network_quality": "ネットワーク品質",
     "battery_level": "バッテリー残量",
-    "role_display": "端末名"
+    "role_display": "端末名",
+    "camera_error_insecure": "カメラにアクセスできません。HTTPSまたはlocalhostで開いてください（iOSはHTTPではカメラを使用できません）。",
+    "camera_error_permission": "カメラの使用が許可されていません。ブラウザのカメラ許可を有効にして、もう一度お試しください。",
+    "camera_error_notfound": "利用できるカメラが見つかりませんでした。カメラの接続を確認して、もう一度お試しください。",
+    "camera_error_inuse": "カメラを起動できませんでした。他のアプリがカメラを使用していないか確認して、もう一度お試しください。",
+    "camera_error_generic": "カメラを起動できませんでした。もう一度お試しください。",
+    "connect_error": "カメラは起動できましたが、配信の接続に失敗しました。通信状況を確認して、もう一度お試しください。"
   },
   "live_source": {
     "title": "ライブソース",
