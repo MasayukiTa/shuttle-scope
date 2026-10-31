@@ -211,3 +211,101 @@ def test_tunnel_check_skips_urlopen_for_non_http_scheme(monkeypatch):
     status, _metric, _detail, _sev = sm._check_tunnel()
     assert status in (sm.OPERATIONAL, sm.DEGRADED, sm.DOWN)
     assert not called
+
+# ── database 応答時間の表示 (F-T001-06) ──
+
+def test_format_latency_none_shows_dash():
+    assert sm._format_latency_ms(None) == "-"
+
+
+def test_format_latency_submillisecond_shows_lt_1ms_not_zero():
+    assert sm._format_latency_ms(0.0) == "<1ms"
+    assert sm._format_latency_ms(0.2) == "<1ms"
+    assert sm._format_latency_ms(0.49) == "<1ms"
+
+
+def test_format_latency_keeps_real_small_values():
+    assert sm._format_latency_ms(1.0) == "1ms"
+    assert sm._format_latency_ms(1.4) == "1ms"
+    assert sm._format_latency_ms(2.0) == "2ms"
+    assert sm._format_latency_ms(47.3) == "47ms"
+    assert sm._format_latency_ms(400.0) == "400ms"
+
+
+def test_check_database_detail_uses_lt_1ms_for_submillisecond(monkeypatch):
+    import itertools
+    import backend.services.status_monitor as _sm
+    seq = itertools.count(); vals = {0: 100.0, 1: 100.0003}
+    monkeypatch.setattr(_sm.time, "monotonic", lambda: vals[next(seq)])
+
+    class _FakeDB:
+        def execute(self, *a, **k):
+            return None
+
+    status, metric, detail, sev = _sm._check_database(_FakeDB())
+    assert status == _sm.OPERATIONAL
+    assert detail.endswith("<1ms") and "0ms" not in detail
+    assert 0.0 < metric < 1.0
+
+
+def test_check_database_detail_keeps_real_millisecond(monkeypatch):
+    import itertools
+    import backend.services.status_monitor as _sm
+    seq = itertools.count(); vals = {0: 100.0, 1: 100.012}
+    monkeypatch.setattr(_sm.time, "monotonic", lambda: vals[next(seq)])
+
+    class _FakeDB:
+        def execute(self, *a, **k):
+            return None
+
+    status, metric, detail, sev = _sm._check_database(_FakeDB())
+    assert detail == "応答 12ms" and abs(metric - 12.0) < 0.5
+
+
+def test_check_database_down_keeps_ohutsunashi_and_none_metric(monkeypatch):
+    """DB ダウン時は (DOWN, None, “応答なし”) のまま (表示もここを元にする)。"""
+    import backend.services.status_monitor as _sm
+
+    class _FakeDB:
+        def execute(self, *a, **k):
+            raise RuntimeError("down")
+
+    status, metric, detail, sev = _sm._check_database(_FakeDB())
+    assert status == _sm.DOWN
+    assert metric is None
+    assert detail == "応答なし"
+
+
+# ── 表示経路 (compute_components): 溜まった 0ms を出さず、かつ情報を削らない ──
+
+def test_compute_components_rebuilds_database_detail_from_metric_no_0ms():
+    """DB に “応答 0ms” が保存済みでも、metric(サブミリ) から “応答 <1ms” を作る。"""
+    db = _db(); now = datetime(2026, 6, 5, 12, 0, 0)
+    _add(db, "database", sm.OPERATIONAL, now, metric=0.3, detail="応答 0ms")
+    d = {c["key"]: c for c in sm.compute_components(db, now)}["database"]
+    assert d["detail"] == "応答 <1ms" and "0ms" not in d["detail"]
+    assert d["metric"] == 0.3
+
+
+def test_compute_components_database_detail_keeps_real_ms():
+    db = _db(); now = datetime(2026, 6, 5, 12, 0, 0)
+    _add(db, "database", sm.OPERATIONAL, now, metric=12.0, detail="応答 12ms")
+    d = {c["key"]: c for c in sm.compute_components(db, now)}["database"]
+    assert d["detail"] == "応答 12ms"
+
+
+def test_compute_components_preserves_down_ohutsunashi_detail():
+    """重要: ダウン時の実際の保存値 (metric=None, detail=“応答なし”) は
+    表示経路で書き換えない。“応答 -” にして「応答なし」と「未測定」を潰さない。"""
+    db = _db(); now = datetime(2026, 6, 5, 12, 0, 0)
+    _add(db, "database", sm.DOWN, now, metric=None, detail="応答なし")
+    d = {c["key"]: c for c in sm.compute_components(db, now)}["database"]
+    assert d["detail"] == "応答なし"
+    assert d["metric"] is None
+
+
+def test_compute_components_does_not_touch_other_components_detail():
+    db = _db(); now = datetime(2026, 6, 5, 12, 0, 0)
+    _add(db, "gpu", sm.OPERATIONAL, now, metric=47.0, detail="GPU 47% / VRAM 3.2/8GB")
+    d = {c["key"]: c for c in sm.compute_components(db, now)}["gpu"]
+    assert d["detail"] == "GPU 47% / VRAM 3.2/8GB"
