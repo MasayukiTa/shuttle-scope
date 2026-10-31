@@ -293,7 +293,7 @@ function Sidebar() {
   // G4 #529: 明示的なログアウト時、本人の未送信ラリーがあれば確認ダイアログを出す。
   // 件数が読めない (IndexedDB エラー) ときは 0 件として扱わず、
   // ログアウトを中断してエラーを出す (未送信データを黙って捨てない)。
-  const [pendingCount, setPendingCount] = useState<number | null>(null)
+  const [pendingLogoutCount, setPendingLogoutCount] = useState<number | null>(null)
   const [logoutError, setLogoutError] = useState<string | null>(null)
 
   const finishLogout = async () => {
@@ -317,7 +317,7 @@ function Sidebar() {
     try {
       const n = await countPendingForUserStrict(userId)
       if (n > 0) {
-        setPendingCount(n)
+        setPendingLogoutCount(n)
         return
       }
     } catch {
@@ -331,30 +331,30 @@ function Sidebar() {
   return (
     <>
       {/* G4 #529: 未送信ラリーがあるままログアウトしようとしたときの確認ダイアログ。 */}
-      {pendingCount != null && userId != null && (
+      {pendingLogoutCount != null && userId != null && (
         <PendingLogoutDialog
-          pendingCount={pendingCount}
+          pendingCount={pendingLogoutCount}
           onSend={async () => {
             // 先に送る。全件送れたらログアウト。送信が reject したら
             // ダイアログ側がエラーを出し、データは残る (ログアウトしない)。
             await flushPendingForUser(userId, (path, body, headers) =>
               apiPost<{ success?: boolean }>(path, body, headers),
             )
-            setPendingCount(null)
+            setPendingLogoutCount(null)
             await finishLogout()
           }}
           onKeep={() => {
             // 送らずに残してログアウト。次のログインで本人のみが再送できる。
-            setPendingCount(null)
+            setPendingLogoutCount(null)
             void finishLogout()
           }}
           onDelete={async () => {
             // 確認済み。本人のデータだけ消してからログアウト。
             await deletePendingForUser(userId)
-            setPendingCount(null)
+            setPendingLogoutCount(null)
             await finishLogout()
           }}
-          onCancel={() => setPendingCount(null)}
+          onCancel={() => setPendingLogoutCount(null)}
         />
       )}
       {logoutError && (

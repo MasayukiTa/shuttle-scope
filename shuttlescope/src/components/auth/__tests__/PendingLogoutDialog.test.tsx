@@ -12,16 +12,16 @@ vi.mock('react-i18next', () => ({
 import { PendingLogoutDialog } from '../PendingLogoutDialog'
 
 describe('PendingLogoutDialog', () => {
-  let onSend: ReturnType<typeof vi.fn>
-  let onKeep: ReturnType<typeof vi.fn>
-  let onDelete: ReturnType<typeof vi.fn>
-  let onCancel: ReturnType<typeof vi.fn>
+  let onSend: ReturnType<typeof vi.fn<() => Promise<void>>>
+  let onKeep: ReturnType<typeof vi.fn<() => void>>
+  let onDelete: ReturnType<typeof vi.fn<() => Promise<void>>>
+  let onCancel: ReturnType<typeof vi.fn<() => void>>
 
   beforeEach(() => {
-    onSend = vi.fn().mockResolvedValue(undefined)
-    onKeep = vi.fn()
-    onDelete = vi.fn().mockResolvedValue(undefined)
-    onCancel = vi.fn()
+    onSend = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+    onKeep = vi.fn<() => void>()
+    onDelete = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+    onCancel = vi.fn<() => void>()
   })
 
   function renderDialog() {
@@ -64,7 +64,7 @@ describe('PendingLogoutDialog', () => {
   })
 
   it('send が reject したらエラーを出して閉じない (データ保持)', async () => {
-    onSend = vi.fn().mockRejectedValue(new Error('network'))
+    onSend = vi.fn<() => Promise<void>>().mockRejectedValue(new Error('network'))
     render(
       <PendingLogoutDialog
         pendingCount={3}

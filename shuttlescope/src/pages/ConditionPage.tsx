@@ -386,7 +386,7 @@ export function ConditionPage() {
               setDetailRecord(r)
             }}
           />
-        ) : subtab === 'analytics' ? (
+        ) : subtab === 'analytics' && effectivePlayerId != null ? (
           <div className="space-y-4">
             {/* 3. 体調タブヘッダ: 実データ起点の advice strip */}
             {effectivePlayerId && (
