@@ -4,7 +4,7 @@ import pytest
 
 from backend.db.database import get_db
 from backend.main import app
-from test_human_forecast_delete_authz import (
+from backend.tests.test_human_forecast_delete_authz import (
     _client, _headers, _is_deleted, _make_forecast, _seed,
 )
 
