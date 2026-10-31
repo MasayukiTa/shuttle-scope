@@ -2582,6 +2582,7 @@
     "human_forecast_delete": "Delete this forecast",
     "human_forecast_delete_confirm": "Delete this forecast? The human vs model comparison (accuracy and Brier score) will also change.",
     "human_forecast_delete_failed": "Could not delete the forecast. Check your connection and try again.",
+    "human_forecast_delete_forbidden": "Only the creator or an administrator can delete this forecast.",
     "human_forecast_role": "Forecaster role",
     "human_forecast_outcome": "Outcome forecast",
     "human_forecast_set_path": "Set-path forecast",

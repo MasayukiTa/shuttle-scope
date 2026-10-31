@@ -2590,6 +2590,7 @@
     "human_forecast_delete": "この予測を削除",
     "human_forecast_delete_confirm": "この予測を削除しますか？ 人とモデルの比較（正解率・Brier）の集計値も変わります。",
     "human_forecast_delete_failed": "予測を削除できませんでした。通信状況を確認して、もう一度お試しください。",
+    "human_forecast_delete_forbidden": "この予測を削除できるのは作成者または管理者のみです。",
     "human_forecast_role": "予測者ロール",
     "human_forecast_outcome": "勝敗予測",
     "human_forecast_set_path": "セットパス予測",

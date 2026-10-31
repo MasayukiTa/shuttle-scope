@@ -995,6 +995,12 @@ class HumanForecast(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     # Phase B-7: 書き込みチーム
     team_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("teams.id"), nullable=True, index=True)
+    # G5 item #687: 作成者 (この予測を記録したログインユーザ)。削除可否の判定に使う。
+    # 旧行 (migration 0057 以前に作成) は NULL のまま残り、その場合は admin だけが削除できる。
+    # nullable: 既存行を backfill できない (free-text forecaster_name しか無い) ため。
+    creator_user_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=True, index=True
+    )
 
 
 
