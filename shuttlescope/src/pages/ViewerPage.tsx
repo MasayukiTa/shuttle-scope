@@ -19,6 +19,7 @@ import { apiPost, getParticipantIceConfig } from '@/api/client'
 import { useDeviceHeartbeat } from '@/hooks/useDeviceHeartbeat'
 import { useTranslation } from 'react-i18next'
 import { MIcon } from '@/components/common/MIcon'
+import { watchPeerConnection, addCandidate, flushCandidates } from './peerConnection'
 import { participantWsUrl } from '@/utils/cameraWs'
 import { getDeviceUid } from '@/utils/deviceUid'
 import { getParticipantRejoinToken, setParticipantRejoinToken } from '@/utils/participantRejoinToken'
@@ -51,6 +52,7 @@ export function ViewerPage() {
   const wsRef = useRef<WebSocket | null>(null)
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
+  const remoteStreamRef = useRef<MediaStream | null>(null)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const reconnectCountRef = useRef(0)
   const viewerStateRef = useRef<ViewerState>(viewerState)
@@ -78,6 +80,10 @@ export function ViewerPage() {
     // JWT を持たない viewer 端末はこのトークンで認証される
     savedTokenRef.current || undefined,
   )
+
+  useEffect(() => {
+    if (viewerState === 'receiving' && videoRef.current) videoRef.current.srcObject = remoteStreamRef.current
+  }, [viewerState])
 
   // ─── 再接続スケジュール ───────────────────────────────────────────────────
   const scheduleReconnect = useCallback((code: string, pid: number) => {
@@ -138,11 +144,15 @@ export function ViewerPage() {
       setViewerState('waiting')
     }
 
+    const candidates: RTCIceCandidateInit[] = []
     ws.onmessage = async (event) => {
+      let msg
+      try { msg = JSON.parse(event.data) } catch { console.warn('Invalid signaling message'); return }
       try {
-        const msg = JSON.parse(event.data)
 
         if (msg.type === 'viewer_webrtc_offer') {
+          if (pcRef.current) { pcRef.current.close(); pcRef.current = null }
+          remoteStreamRef.current = null
           // ICE config 取得（TURN 含む）
           let iceServers: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
           try {
@@ -164,11 +174,20 @@ export function ViewerPage() {
 
           const pc = new RTCPeerConnection({ iceServers })
           pcRef.current = pc
+          watchPeerConnection(pc, () => pcRef.current === pc,
+            () => setViewerState('receiving'),
+            () => {
+              pc.close()
+              pcRef.current = null
+              setErrorMsg(t('camera_sender.join_error_network'))
+              setViewerState('error')
+            })
 
           pc.ontrack = (e) => {
             if (e.streams[0]) {
+              remoteStreamRef.current = e.streams[0]
               if (videoRef.current) videoRef.current.srcObject = e.streams[0]
-              setViewerState('receiving')
+              if (pc.connectionState === 'connected') setViewerState('receiving')
             }
           }
 
@@ -185,6 +204,8 @@ export function ViewerPage() {
           }
 
           await pc.setRemoteDescription({ type: 'offer', sdp: msg.sdp })
+          if (pcRef.current !== pc) return
+          await flushCandidates(pc, candidates)
           const answer = await pc.createAnswer()
           await pc.setLocalDescription(answer)
           ws.send(JSON.stringify({
@@ -193,14 +214,21 @@ export function ViewerPage() {
             sdp: answer.sdp,
           }))
 
-        } else if (msg.type === 'viewer_ice_candidate' && pcRef.current) {
-          await pcRef.current.addIceCandidate({
+        } else if (msg.type === 'viewer_ice_candidate') {
+          await addCandidate(pcRef.current, candidates, {
             candidate: msg.candidate,
             sdpMid: msg.sdp_mid,
             sdpMLineIndex: msg.sdp_m_line_index,
-          }).catch(() => {})
+          })
         }
-      } catch { /* ignore */ }
+      } catch (error) {
+        console.warn('WebRTC signaling failed', error)
+        pcRef.current?.close()
+        pcRef.current = null
+        candidates.length = 0
+        setErrorMsg(t('camera_sender.join_error_network'))
+        setViewerState('error')
+      }
     }
 
     ws.onclose = () => {
