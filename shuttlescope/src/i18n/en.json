@@ -1746,6 +1746,8 @@
       "review_count_identity": "ID-linked {{n}}",
       "review_count_swing": "Swing {{n}}",
       "review_empty": "CV candidates, rally boundary candidates, and identity mappings appear here. Nothing shows for rallies with no data yet.",
+      "review_disconnected_badge": "Not connected",
+      "review_disconnected": "Review mode is not yet connected to live data (in development). Boundary, ID-link, and Swing counts are not shown because they would not be real measurements.",
       "analysis_header": "Analysis",
       "analysis_now": "Current",
       "analysis_recent_5": "Last {{n}} rallies (Player A win rate {{pct}}%, n={{n}})",
