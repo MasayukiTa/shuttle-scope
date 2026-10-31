@@ -1,10 +1,9 @@
 /**
- * G2 #657 (option B, own entry only): 入力タブでは選手セレクタを隠す。
- * 入力は常にログイン本人 (authPlayerId) の記録に限定されるため。
- * 履歴・分析タブでは従来どおりセレクタで誰のデータでも選べる。
- *
- * player ロールはそもそもセレクタが出ない (自分固定) のでここでは
- * coach ロールを中心に検証する。
+ * G17b #657 (owner 2026-10-31): coach / analyst は入力タブでも選手セレクタを出し、
+ * 選択中の選手 (effectivePlayerId) の記録として登録・修正できる
+ * （同チーム代理入力；バックエンドの認可は別途）。
+ * player はどのタブでもセレクタが出ず (本人固定)、入力も本人 (authPlayerId) のみ。
+ * 履歴・分析タブでは従来どおり全ロールでセレクタで誰のデータでも選べる。
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
@@ -23,7 +22,6 @@ function interp(s: string, o?: Record<string, unknown>): string {
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, o?: Record<string, unknown> | string) => {
-      // t(key) / t(key, defaultString) / t(key, options) を扱う
       const hit = lookup(ja as Dict, key)
       if (hit !== key) return interp(hit, typeof o === 'object' ? o : undefined)
       if (typeof o === 'string') return o
@@ -32,7 +30,6 @@ vi.mock('react-i18next', () => ({
   }),
 }))
 
-// ロールと本人紐付け (authPlayerId) をテストごとに切替える
 let mockRole: UserRole | null = 'coach'
 let mockAuthPlayerId: number | null = null
 vi.mock('@/hooks/useAuth', () => ({
@@ -40,25 +37,43 @@ vi.mock('@/hooks/useAuth', () => ({
 }))
 vi.mock('@/hooks/useTheme', () => ({ useTheme: () => ({ theme: 'dark' }) }))
 
-// react-query: /players は coach/analyst のみ enabled。最小ダミーを返す。
+const mockPlayers = [
+  { id: 11, name: 'Alice', team: 'A', is_target: true },
+  { id: 22, name: 'Bob', team: 'A', is_target: false },
+]
 vi.mock('@tanstack/react-query', () => ({
-  useQuery: () => ({ data: { success: true, data: [] }, isLoading: false }),
+  useQuery: () => ({ data: { success: true, data: mockPlayers }, isLoading: false }),
   useQueryClient: () => ({ invalidateQueries: vi.fn() }),
 }))
+
+const createMutateAsync = vi.fn().mockResolvedValue({})
 vi.mock('@/hooks/useConditions', () => ({
   useConditions: () => ({ data: [], isError: false, refetch: vi.fn() }),
-  useCreateCondition: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useCreateCondition: () => ({ mutateAsync: createMutateAsync, isPending: false }),
 }))
 vi.mock('@/components/tutorial/useTutorial', () => ({ useAutoTutorial: () => {} }))
 vi.mock('@/utils/downloadReport', () => ({ downloadReport: vi.fn() }))
 vi.mock('@/api/client', () => ({ apiGet: vi.fn(), apiPost: vi.fn() }))
 
-// 選手セレクタは testid で存在を判定できるよう差し替える。
 vi.mock('@/components/common/SearchableSelect', () => ({
-  SearchableSelect: () => <div data-testid="player-selector" />,
+  SearchableSelect: ({ onChange }: { onChange?: (v: number | null) => void }) => (
+    <div data-testid="player-selector">
+      <button data-testid="pick-22" onClick={() => onChange && onChange(22)}>pick22</button>
+    </div>
+  ),
 }))
 
-// 重い/無関係な子コンポーネントは空スタブにする。
+vi.mock('@/components/condition/WeeklyQuestionnaire', () => ({
+  WeeklyQuestionnaire: ({ playerId }: { playerId: number }) => (
+    <div data-testid="weekly-form" data-player-id={String(playerId)} />
+  ),
+}))
+vi.mock('@/components/condition/PreMatchQuestionnaire', () => ({
+  PreMatchQuestionnaire: ({ playerId }: { playerId: number }) => (
+    <div data-testid="prematch-form" data-player-id={String(playerId)} />
+  ),
+}))
+
 const { stub } = vi.hoisted(() => ({
   stub: (name: string) => ({ [name]: () => <div data-testid={`stub-${name}`} /> }),
 }))
@@ -68,8 +83,6 @@ vi.mock('@/components/condition/ConditionGlossary', () => stub('ConditionGlossar
 vi.mock('@/components/condition/InBodyForm', () => stub('InBodyForm'))
 vi.mock('@/components/condition/HooperRpeForm', () => stub('HooperRpeForm'))
 vi.mock('@/components/condition/AuxiliaryForm', () => stub('AuxiliaryForm'))
-vi.mock('@/components/condition/WeeklyQuestionnaire', () => stub('WeeklyQuestionnaire'))
-vi.mock('@/components/condition/PreMatchQuestionnaire', () => stub('PreMatchQuestionnaire'))
 vi.mock('@/components/condition/ConditionResult', () => stub('ConditionResult'))
 vi.mock('@/components/condition/GrowthInsights', () => stub('GrowthInsights'))
 vi.mock('@/components/condition/BestProfileCard', () => stub('BestProfileCard'))
@@ -99,39 +112,47 @@ vi.mock('@/components/common/MIcon', () => ({ MIcon: () => <span /> }))
 import { ConditionPage } from '../ConditionPage'
 
 const subtabLabel = (k: 'input' | 'history' | 'analytics') => lookup(ja as Dict, `condition.subtab_${k}`)
+const modeLabel = (m: 'weekly' | 'prematch' | 'body') => lookup(ja as Dict, `condition.mode.${m}`)
 
 beforeEach(() => {
   mockRole = 'coach'
   mockAuthPlayerId = null
+  createMutateAsync.mockClear()
   cleanup()
 })
 
-describe('ConditionPage 入力タブの選手セレクタ (G2 #657)', () => {
-  it('coach: 既定 (入力タブ) では選手セレクタを出さない', () => {
+describe('ConditionPage 入力タブの選手セレクタ (G17 #657)', () => {
+  it('coach: 既定 (入力タブ) でも選手セレクタを出す', () => {
     render(<ConditionPage />)
-    expect(screen.queryByTestId('player-selector')).toBeNull()
+    expect(screen.getByTestId('player-selector')).not.toBeNull()
   })
 
-  it('coach: 履歴タブに切替えると選手セレクタが出る', () => {
+  it('coach: 履歴タブに切替えても選手セレクタが出る', () => {
     render(<ConditionPage />)
     fireEvent.click(screen.getByText(subtabLabel('history')))
     expect(screen.getByTestId('player-selector')).not.toBeNull()
     expect(screen.getByText(lookup(ja as Dict, 'auto.ConditionPage.k1'))).not.toBeNull()
   })
 
-  it('coach: 分析タブに切替えると選手セレクタが出る', () => {
+  it('coach: 分析タブに切替えても選手セレクタが出る', () => {
     render(<ConditionPage />)
     fireEvent.click(screen.getByText(subtabLabel('analytics')))
     expect(screen.getByTestId('player-selector')).not.toBeNull()
     expect(screen.getByText(lookup(ja as Dict, 'auto.ConditionPage.k1'))).not.toBeNull()
   })
 
-  it('coach: 分析→入力に戻ると再び選手セレクタは消える', () => {
+  it('coach: 分析→入力に戻っても選手セレクタは残る', () => {
     render(<ConditionPage />)
     fireEvent.click(screen.getByText(subtabLabel('analytics')))
     expect(screen.getByTestId('player-selector')).not.toBeNull()
     fireEvent.click(screen.getByText(subtabLabel('input')))
-    expect(screen.queryByTestId('player-selector')).toBeNull()
+    expect(screen.getByTestId('player-selector')).not.toBeNull()
+  })
+
+  it('analyst: 入力タブでも選手セレクタを出す', () => {
+    mockRole = 'analyst'
+    render(<ConditionPage />)
+    expect(screen.getByTestId('player-selector')).not.toBeNull()
   })
 
   it('player: どのタブでも選手セレクタは出ない (自分固定)', () => {
@@ -142,14 +163,47 @@ describe('ConditionPage 入力タブの選手セレクタ (G2 #657)', () => {
     fireEvent.click(screen.getByText(subtabLabel('history')))
     expect(screen.queryByTestId('player-selector')).toBeNull()
   })
+})
 
-  it('coach (本人紐付けなし): 入力タブでは本人記録限定の案内を出し、k1 は出さない', () => {
+describe('ConditionPage 入力タブの登録対象 player id (G17b #657)', () => {
+  it('coach: 選択中の選手の id でフォームが構成される (週次)', () => {
+    mockRole = 'coach'
+    mockAuthPlayerId = 99
+    render(<ConditionPage />)
+    expect(screen.queryByTestId('weekly-form')).toBeNull()
+    fireEvent.click(screen.getByTestId('pick-22'))
+    const form = screen.getByTestId('weekly-form')
+    expect(form.getAttribute('data-player-id')).toBe('22')
+  })
+
+  it('player: 自分の id でフォームが構成される', () => {
+    mockRole = 'player'
+    mockAuthPlayerId = 7
+    render(<ConditionPage />)
+    const form = screen.getByTestId('weekly-form')
+    expect(form.getAttribute('data-player-id')).toBe('7')
+  })
+
+  it('coach: 選手未選択では入力できず k1 案内を出す (フォームなし)', () => {
     mockRole = 'coach'
     mockAuthPlayerId = null
     render(<ConditionPage />)
-    // 入力タブ: 選手未選択でも「選手を選んでください (k1)」ではなく
-    // 本人記録限定の案内 (k7) を出す。
-    expect(screen.queryByText(lookup(ja as Dict, 'auto.ConditionPage.k1'))).toBeNull()
-    expect(screen.getByText(lookup(ja as Dict, 'auto.ConditionPage.k7'))).not.toBeNull()
+    expect(screen.queryByTestId('weekly-form')).toBeNull()
+    expect(screen.queryByTestId('prematch-form')).toBeNull()
+    expect(screen.getByText(lookup(ja as Dict, 'auto.ConditionPage.k1'))).not.toBeNull()
+  })
+
+  it('coach: body モードの登録は選択中の選手 id で mutateAsync される', async () => {
+    mockRole = 'coach'
+    mockAuthPlayerId = 99
+    render(<ConditionPage />)
+    fireEvent.click(screen.getByTestId('pick-22'))
+    fireEvent.click(screen.getByText(modeLabel('body')))
+    fireEvent.click(screen.getByText(lookup(ja as Dict, 'condition.save')))
+    expect(createMutateAsync).toHaveBeenCalledTimes(1)
+    // mutateAsync の第 1 引数 (payload) を分解して取り出す。
+    const firstCallArgs = createMutateAsync.mock.calls[0] as Array<{ player_id: number }>
+    const payload = firstCallArgs[0]
+    expect(payload.player_id).toBe(22)
   })
 })
