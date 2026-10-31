@@ -54,6 +54,14 @@ import { SecurityLogPage } from '@/pages/SecurityLogPage'
 import { TeamManagementPage } from '@/pages/TeamManagementPage'
 import { useTheme } from '@/hooks/useTheme'
 import { authLogout, authMe, checkHealth, publicInquiryUnreadCount } from '@/api/client'
+import { apiPost } from '@/api/client'
+import { PendingLogoutDialog } from '@/components/auth/PendingLogoutDialog'
+import {
+  countPendingForUserStrict,
+  flushPendingForUser,
+  deletePendingForUser,
+} from '@/utils/offlineStrokeQueue'
+import { consumeReturnContext, resolveReturnPath } from '@/utils/returnPath'
 
 function useBackendReady() {
   const [ready, setReady] = useState(false)
@@ -146,7 +154,7 @@ function readStoredSidebarCollapsed(): boolean | null {
 function Sidebar() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { role, clearRole, hasPageAccess } = useAuth()
+  const { role, userId, clearRole, hasPageAccess } = useAuth()
   const { theme, toggleTheme } = useTheme()
   const location = useLocation()
   const isLight = theme === 'light'
@@ -282,7 +290,13 @@ function Sidebar() {
   const showFullLabel = !collapsed
   const showShortLabel = !collapsed
 
-  const handleLogout = async () => {
+  // G4 #529: 明示的なログアウト時、本人の未送信ラリーがあれば確認ダイアログを出す。
+  // 件数が読めない (IndexedDB エラー) ときは 0 件として扱わず、
+  // ログアウトを中断してエラーを出す (未送信データを黙って捨てない)。
+  const [pendingCount, setPendingCount] = useState<number | null>(null)
+  const [logoutError, setLogoutError] = useState<string | null>(null)
+
+  const finishLogout = async () => {
     try {
       await authLogout()
     } catch {
@@ -293,8 +307,64 @@ function Sidebar() {
     }
   }
 
+  const handleLogout = async () => {
+    setLogoutError(null)
+    // userId が不明なら所有者付き未送信は紐づけられないので確認不要。
+    if (userId == null) {
+      await finishLogout()
+      return
+    }
+    try {
+      const n = await countPendingForUserStrict(userId)
+      if (n > 0) {
+        setPendingCount(n)
+        return
+      }
+    } catch {
+      // 読めなかった: 0 件と混同せずログアウトを中断してエラー表示。
+      setLogoutError(t('auth.pending_error'))
+      return
+    }
+    await finishLogout()
+  }
+
   return (
     <>
+      {/* G4 #529: 未送信ラリーがあるままログアウトしようとしたときの確認ダイアログ。 */}
+      {pendingCount != null && userId != null && (
+        <PendingLogoutDialog
+          pendingCount={pendingCount}
+          onSend={async () => {
+            // 先に送る。全件送れたらログアウト。送信が reject したら
+            // ダイアログ側がエラーを出し、データは残る (ログアウトしない)。
+            await flushPendingForUser(userId, (path, body, headers) =>
+              apiPost<{ success?: boolean }>(path, body, headers),
+            )
+            setPendingCount(null)
+            await finishLogout()
+          }}
+          onKeep={() => {
+            // 送らずに残してログアウト。次のログインで本人のみが再送できる。
+            setPendingCount(null)
+            void finishLogout()
+          }}
+          onDelete={async () => {
+            // 確認済み。本人のデータだけ消してからログアウト。
+            await deletePendingForUser(userId)
+            setPendingCount(null)
+            await finishLogout()
+          }}
+          onCancel={() => setPendingCount(null)}
+        />
+      )}
+      {logoutError && (
+        <div
+          role="alert"
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 rounded bg-red-600 px-4 py-2 text-sm text-white shadow-lg"
+        >
+          {logoutError}
+        </div>
+      )}
       {/*
        * サイドバー: md (768-1023) はアイコン縦並び w-16、lg+ (1024px〜=iPad横/PC) は
        * w-56 でラベル付きの縦ナビ。AnnotatorPage では非表示維持。
@@ -798,10 +868,27 @@ function ProtectedMainRoute() {
     return <LoginPage onLogin={() => {
       // LLM 専用ユーザ (バドミントン role を持たない) はログイン後 /#/llm へ直行。
       let dest = '/matches'
+      let currentUserId: string | null = null
+      let currentRole: string | null = null
       try {
-        const r = sessionStorage.getItem('shuttlescope_role')
-        if (r && !['admin', 'analyst', 'coach', 'player', 'demo'].includes(r)) dest = '/llm'
+        currentRole = sessionStorage.getItem('shuttlescope_role')
+        currentUserId = sessionStorage.getItem('shuttlescope_user_id')
+        if (currentRole && !['admin', 'analyst', 'coach', 'player', 'demo'].includes(currentRole)) dest = '/llm'
       } catch { /* ignore */ }
+
+      // G4 #715: セッション失効前にいた in-app ページに戻る。
+      // 同一ユーザー かつ 許可ルート のときだけ。別ユーザー / 外部 URL /
+      // 不正パス は null になり、通常の dest (多くは /matches) に落ちる。
+      // 同意完了はこの時点で未確定 (authMe 後に分かる) なので、ここでは
+      // true を渡さず 「同意未完了なら consentRequired gate が OnboardingConsentPage を
+      // 出す」ことで担保する。consume は 1 回だけ (次の通常ログインで古い
+      // パスに飛ばない)。
+      try {
+        const ret = consumeReturnContext()
+        const back = resolveReturnPath(ret, currentUserId, true)
+        if (back) dest = back
+      } catch { /* ignore */ }
+
       window.location.hash = dest
     }} />
   }
