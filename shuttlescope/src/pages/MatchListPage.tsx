@@ -1213,6 +1213,11 @@ export function MatchListPage() {
                     <option value="walkover">{t('match.list.result_walkover')}</option>
                     <option value="unfinished">{t('match.list.result_unfinished')}</option>
                   </select>
+                  {/* G6 #524: 結果が完了セットから自動入力された試合では、手動で上書きできる旨を知らせる。 */}
+                  {editingMatchId !== null
+                    && matches.find((x) => x.id === editingMatchId)?.result_source === 'auto' && (
+                    <p className="text-[11px] text-blue-400 mt-0.5">{t('match.result_auto_generated')}</p>
+                  )}
                 </div>
                 <div>
                   <label htmlFor="match-form-score" className={`block text-sm ${textSecondary} mb-1`}>{t('match.score')}</label>

@@ -164,7 +164,7 @@ def redact_export_package_for_player(
     out = dict(payload)
     if isinstance(out.get("match"), dict):
         out["match"] = {
-            k: v for k, v in out["match"].items() if k not in ("result", "final_score")
+            k: v for k, v in out["match"].items() if k not in ("result", "final_score", "result_source")
         }
     if isinstance(out.get("players"), list):
         out["players"] = [

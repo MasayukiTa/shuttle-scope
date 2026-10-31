@@ -172,6 +172,8 @@ export interface Match {
   partner_b_id?: number
   result: MatchResult
   final_score?: string
+  /** G6 #524: 'manual' = 人が入力 / 'auto' = 完了セットから自動入力。player 応答では result/final_score と共に除去される。 */
+  result_source?: 'manual' | 'auto'
   video_url?: string
   /** @deprecated Phase 1 で API レスポンスから除去済み。書き込み時のみ使用（PUT 時に video_token が自動発行される）。 */
   video_local_path?: string

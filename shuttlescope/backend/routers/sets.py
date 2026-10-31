@@ -97,6 +97,80 @@ def set_to_dict(s: GameSet) -> dict:
     }
 
 
+def _set_scores(db: Session, game_set: GameSet) -> Optional[tuple[int, int]]:
+    """セットの最終スコア (player_a, player_b)。確定済みの score_a/score_b を優先し、
+    未確定 (モバイルが end を呼ばず次セットへ進んだ場合) は最終ラリーのスコアで補完する。
+    どちらも無ければ None。"""
+    if game_set.score_a is not None and game_set.score_b is not None:
+        return game_set.score_a, game_set.score_b
+    last = db.query(Rally).filter(
+        Rally.set_id == game_set.id
+    ).order_by(Rally.rally_num.desc()).first()
+    if last is None:
+        return None
+    return last.score_a_after or 0, last.score_b_after or 0
+
+
+# result が「まだ結果が入っていない」とみなせる値。これらのときだけ自動入力する。
+# win / loss / walkover は人が確定させた実結果なので空ではない (= 上書きしない)。
+_EMPTY_RESULTS = frozenset({None, "", "unfinished", "unknown"})
+
+
+def _autofill_match_result_from_sets(db: Session, match: Match) -> None:
+    """G6 #524 (option A): 完了セットが試合を決した (2-0 / 2-1) とき、match の
+    result / final_score を完了セットから自動入力する。呼び出し元の end_set と
+    同一トランザクション (commit 前) で実行すること。
+
+    spec: 「空のときだけ埋める。手入力値は絶対に上書きしない。既存値は全て manual 扱い」。
+    上書き可否の不変条件:
+    - 書くのは (A) result がまだ空 (None/''/unfinished/unknown)、または
+      (B) result_source == 'auto' (自分が前回入れた値) のときだけ。
+    - result_source == 'manual' かつ result が実結果 (win/loss/walkover) の match は
+      「人が確定させた値」なので一切触れない。試合作成/編集・early finish・walkover が該当。
+    - (B) により auto の match は毎回再計算して同じ値で上書きできる (冪等。並行で
+      複数の end_set が走っても manual を踏まない)。
+    - まだ決着していない (どちらも 2 勝未満) なら何もしない。
+    - 未完了セット (棄権・中断で winner 不明) は _decided_winner が None を返すため
+      勝利数に数えない。結果として walkover / 途中棄権は決着扱いにならず manual のまま。
+    """
+    if match is None:
+        return
+    # 人が確定させた結果 (manual かつ実結果) は上書きしない。
+    is_empty = match.result in _EMPTY_RESULTS
+    if match.result_source == "manual" and not is_empty:
+        return
+
+    sets = db.query(GameSet).filter(
+        GameSet.match_id == match.id
+    ).order_by(GameSet.set_num).all()
+
+    wins = {"player_a": 0, "player_b": 0}
+    ordered_scores: list[tuple[int, int]] = []
+    for gs in sets:
+        side = _decided_winner(db, gs)
+        if side is None:
+            continue
+        wins[side] += 1
+        sc = _set_scores(db, gs)
+        if sc is not None:
+            ordered_scores.append(sc)
+        if max(wins.values()) >= SETS_TO_WIN:
+            # 決着したセットまでで打ち切る (決着後の余分なセットは final_score に含めない)。
+            break
+
+    if max(wins.values()) < SETS_TO_WIN:
+        return  # まだ決着していない
+
+    winner_side = "player_a" if wins["player_a"] >= SETS_TO_WIN else "player_b"
+    result = "win" if winner_side == "player_a" else "loss"
+    final_score = ", ".join(f"{a}-{b}" for a, b in ordered_scores)
+
+    match.result = result
+    match.final_score = final_score
+    match.result_source = "auto"
+    touch(match)
+
+
 @router.get("/sets/match/{match_id}")
 def get_sets(match_id: int, request: Request, db: Session = Depends(get_db)):
     """試合のセット一覧。
@@ -195,6 +269,14 @@ def end_set(set_id: int, body: SetEnd, request: Request, db: Session = Depends(g
     game_set.score_b = body.score_b
     game_set.is_deuce = body.score_a >= 20 and body.score_b >= 20
     touch(game_set)
+
+    # G6 #524: このセット保存で試合が決した (2-0 / 2-1) なら、同一トランザクションで
+    # match の result / final_score を自動入力する。手入力値 (result_source='manual')
+    # は上書きしない。incomplete (棄権・中断) はここを通さず walkover/early finish は
+    # manual のまま。_autofill_* は未決着なら何もしない。
+    if not body.incomplete:
+        _autofill_match_result_from_sets(db, match)
+
     db.commit()
     # 終了したセットの試合の関与選手のみ無効化
     response_cache.bump_players(players_for_match(db, game_set.match_id))
