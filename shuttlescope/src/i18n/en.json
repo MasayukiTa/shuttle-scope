@@ -4566,6 +4566,8 @@
       "error_password_required": "Enter your password or PIN",
       "error_mfa_code_format": "Enter the 6-digit code",
       "error_mfa_failed": "Verification failed",
+      "error_login_failed": "Sign-in failed. Please try again",
+      "error_invalid_credentials": "Incorrect ID or password",
       "error_timeout": "The server did not respond. Please try again in a moment.",
       "bootstrap_pending": "The first administrator account is being set up.",
       "bootstrap_not_ready": "The service has not been set up yet. Please contact the administrator.",
