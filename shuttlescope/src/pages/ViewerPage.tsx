@@ -111,8 +111,20 @@ export function ViewerPage() {
     let wsUrl: string
     try {
       wsUrl = await participantWsUrl(code, 'viewer', pid, savedTokenRef.current)
-    } catch {
-      scheduleReconnect(code, pid)
+    } catch (e) {
+      // #665: 入場券取得失敗を握りつぶして一律再接続せず、原因で分岐する。
+      // 401/403・参加トークン欠落は再接続しても直らないので即座に再参加へ案内。
+      // 404/410 はセッション消滅。5xx/タイムアウト/ネットワーク断のみ有限回の自動再接続。
+      const status = errorStatus(e)
+      if (status === 401 || status === 403 || !savedTokenRef.current) {
+        setViewerState('error')
+        setErrorMsg(t('auto.ViewerPage.rejoin_required'))
+      } else if (status === 404 || status === 410) {
+        setViewerState('error')
+        setErrorMsg(t('auto.ViewerPage.session_gone'))
+      } else {
+        scheduleReconnect(code, pid)
+      }
       return
     }
     if (disposedRef.current) return
@@ -198,7 +210,7 @@ export function ViewerPage() {
         scheduleReconnect(code, pid)
       }
     }
-  }, [scheduleReconnect])
+  }, [scheduleReconnect, t])
 
   // ─── セッション参加 ───────────────────────────────────────────────────────
   const joinSession = useCallback(async (code: string, password: string, viewerName: string) => {

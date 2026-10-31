@@ -2744,7 +2744,9 @@
     "camera_error_notfound": "No usable camera was found. Check that a camera is connected and try again.",
     "camera_error_inuse": "Could not start the camera. Make sure no other app is using it and try again.",
     "camera_error_generic": "Could not start the camera. Please try again.",
-    "connect_error": "The camera started, but the broadcast connection failed. Check your network and try again."
+    "connect_error": "The camera started, but the broadcast connection failed. Check your network and try again.",
+    "rejoin_required": "Your session access is no longer valid. Please rejoin the session.",
+    "session_gone": "This session has ended. Check the session code and rejoin."
   },
   "live_source": {
     "title": "Live source",
@@ -4870,7 +4872,9 @@
       "k13": "Smartphones show a summary only, without video. To watch the video, open this page on a tablet or PC.",
       "k14": "LIVE",
       "k15": "Try again",
-      "k16": "Start over"
+      "k16": "Start over",
+      "rejoin_required": "Your session access is no longer valid. Please rejoin the session.",
+      "session_gone": "This session has ended. Check the session code and rejoin."
     },
     "GrowthJudgmentCard": {
       "analyzed": "Analyzed"
