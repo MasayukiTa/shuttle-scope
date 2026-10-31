@@ -28,7 +28,8 @@ def _ctx(monkeypatch, user_id, role, team_id=None, team_name=None):
     from backend.utils import auth as auth_utils
     ctx = auth_utils.AuthCtx(user_id=user_id, role=role, team_id=team_id,
                              team_name=team_name, player_id=None)
-    monkeypatch.setattr(auth_router, "get_auth", lambda request: ctx, raising=True)
+    monkeypatch.setattr(auth_utils, "get_auth", lambda request: ctx, raising=True)
+    monkeypatch.setattr(llm_chat, "get_auth", lambda request: ctx, raising=True)
     return ctx
 
 
@@ -53,13 +54,11 @@ def _grants(db, uid):
 def test_admin_grants_llm_to_analyst_and_llm_access_passes(db_session, monkeypatch):
     _seed(db_session)
     _ctx(monkeypatch, user_id=1, role="admin")
-    monkeypatch.setattr(auth_router, "get_db", lambda: db_session, raising=False)
     body = auth_router.PageAccessBody(page_keys=["llm"])
     res = auth_router.set_user_page_access(10, body, _req(), db=db_session)
     assert "llm" in res["data"]
     assert "llm" in _grants(db_session, 10)
     # require_llm_access が grant を述定で認める (analyst は role だけでは通らない)
-    monkeypatch.setattr(llm_chat, "get_auth", lambda request: auth_router.get_auth(request), raising=True)
     _ctx(monkeypatch, user_id=10, role="analyst", team_id=1, team_name="TeamOne")
     ctx = llm_chat.require_llm_access(_req(), db_session)
     assert ctx.user_id == 10
