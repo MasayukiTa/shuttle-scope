@@ -114,12 +114,14 @@ describe('ConditionPage 入力タブの選手セレクタ (G2 #657)', () => {
     render(<ConditionPage />)
     fireEvent.click(screen.getByText(subtabLabel('history')))
     expect(screen.getByTestId('player-selector')).not.toBeNull()
+    expect(screen.getByText(lookup(ja as Dict, 'auto.ConditionPage.k1'))).not.toBeNull()
   })
 
   it('coach: 分析タブに切替えると選手セレクタが出る', () => {
     render(<ConditionPage />)
     fireEvent.click(screen.getByText(subtabLabel('analytics')))
     expect(screen.getByTestId('player-selector')).not.toBeNull()
+    expect(screen.getByText(lookup(ja as Dict, 'auto.ConditionPage.k1'))).not.toBeNull()
   })
 
   it('coach: 分析→入力に戻ると再び選手セレクタは消える', () => {
