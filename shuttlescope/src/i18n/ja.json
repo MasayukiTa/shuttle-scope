@@ -1454,6 +1454,8 @@
       "review_count_identity": "ID紐付 {{n}}",
       "review_count_swing": "Swing {{n}}",
       "review_empty": "CV 候補・ラリー境界候補・identity マッピングなどがここに表示されます。データがまだ無いラリーでは何も表示されません。",
+      "review_disconnected_badge": "未接続",
+      "review_disconnected": "この確認モードはまだ実データに接続されていません（開発中）。境界候補・ID紐付・Swing の件数は実測値ではないため表示していません。",
       "analysis_header": "解析",
       "analysis_now": "現在",
       "analysis_recent_5": "直近 {{n}} ラリー (選手 A 勝率 {{pct}}%, n={{n}})",
