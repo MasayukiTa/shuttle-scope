@@ -59,7 +59,9 @@ vi.mock('@/components/common/SearchableSelect', () => ({
 }))
 
 // 重い/無関係な子コンポーネントは空スタブにする。
-const stub = (name: string) => ({ [name]: () => <div data-testid={`stub-${name}`} /> })
+const { stub } = vi.hoisted(() => ({
+  stub: (name: string) => ({ [name]: () => <div data-testid={`stub-${name}`} /> }),
+}))
 vi.mock('@/components/common/AdviceStrip', () => stub('AdviceStrip'))
 vi.mock('@/components/common/QueryErrorNotice', () => stub('QueryErrorNotice'))
 vi.mock('@/components/condition/ConditionGlossary', () => stub('ConditionGlossary'))
