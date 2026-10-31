@@ -1770,6 +1770,9 @@ class TeamScopeAccessControlMiddleware(BaseHTTPMiddleware):
         # 検証済み demo read は所有境界を緩める（demo team の試合を閲覧可能に）。
         if _demo_read:
             return await call_next(request)
+        # DELETE identifies a forecast, not a match; the handler checks its scope.
+        if request.method == "DELETE" and _re_acl.fullmatch(r"/api/prediction/human_forecast/\d+", path):
+            return await call_next(request)
         mid = _extract_id(path, _MATCH_ID_PATTERNS)
         if mid is None:
             return await call_next(request)
