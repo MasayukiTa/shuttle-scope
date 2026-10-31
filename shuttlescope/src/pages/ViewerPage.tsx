@@ -170,7 +170,9 @@ export function ViewerPage() {
           } catch { /* STUN フォールバック */ }
 
           // 既存 PC クローズ（ハンドオフ安全化）
-          if (pcRef.current) { pcRef.current.close(); pcRef.current = null }
+          // the await above can let another offer replace the peer connection; re-read it with its declared type
+          const stalePc = pcRef.current as RTCPeerConnection | null
+          if (stalePc) { stalePc.close(); pcRef.current = null }
 
           const pc = new RTCPeerConnection({ iceServers })
           pcRef.current = pc
