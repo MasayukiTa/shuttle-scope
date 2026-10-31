@@ -105,6 +105,7 @@ def _run(monkeypatch, ctx, *, window_track=None):
     job_id = "jobtest1"
     tn._jobs[job_id] = {"status": "pending", "match_id": ctx["match"].id, "progress": 0.0,
                         "processed_rallies": 0, "total_rallies": 0, "updated_strokes": 0,
+                        "skipped_no_timestamp": 0,
                         "error": None, "message": None, "shuttle_track_write": None}
     try:
         tn._run_batch(job_id, ctx["match"].id, "video.mp4", 0.5)
@@ -217,3 +218,32 @@ class TestIdenticalRallyTimestampsGuard:
         db = match_ctx["db"]
         db.expire_all()
         assert sorted(s.land_zone for s in db.query(Stroke).all()) == ["NL", "NR"]
+
+
+class TestMissingTimestampCountedSeparately:
+    """#775: video_timestamp_start が未入力 (None) のラリーは CV 解析できない。
+    これを「解析済み」に混ぜず、skipped_no_timestamp として別カウントする。
+    """
+
+    def test_none_start_is_skipped_not_analysed(self, monkeypatch, match_ctx):
+        # r1: 開始時刻あり -> 解析される。 r2: None -> 解析対象外。
+        r1 = _add_rally(match_ctx, 1, 10.0)
+        r2 = _add_rally(match_ctx, 2, None)
+        job, built = _run(monkeypatch, match_ctx)
+        db = match_ctx["db"]
+        db.expire_all()
+        # None のラリーは解析対象外として別カウントされる。
+        assert job["skipped_no_timestamp"] == 1
+        # 進捗は全ラリーを走査済み (止まって見えないよう分子に含める)。
+        assert job["processed_rallies"] == 2
+        # 解析されたのは開始時刻のある r1 のストロークのみ。
+        z1 = [s.land_zone for s in db.query(Stroke).filter(Stroke.rally_id == r1.id).all()]
+        z2 = [s.land_zone for s in db.query(Stroke).filter(Stroke.rally_id == r2.id).all()]
+        assert z1 == ["BL"]
+        assert z2 == [None]
+
+    def test_no_missing_timestamp_keeps_counter_zero(self, monkeypatch, match_ctx):
+        _add_rally(match_ctx, 1, 10.0)
+        _add_rally(match_ctx, 2, 40.0)
+        job, _ = _run(monkeypatch, match_ctx)
+        assert job["skipped_no_timestamp"] == 0

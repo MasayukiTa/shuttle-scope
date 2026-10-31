@@ -5987,6 +5987,7 @@
       "scope_note": "Counts the actions sent by every signed-in role, admins included. There is no filter by consent or by event type.",
       "no_events_recorded": "No actions have been recorded yet. Either nobody used the app or the records are not arriving.",
       "last_event": "Last record: {{time}} ({{total}} records so far)",
+      "invalid_datetime": "Date unavailable",
       "kv_wau_role": "Weekly users by role",
       "kv_wau_platform": "Weekly users by device",
       "section_b_title": "Do people finish annotating? (last {{days}} days)",
