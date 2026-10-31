@@ -3653,6 +3653,7 @@ export function AnnotatorPage() {
                 setNum={store.currentSetNum}
                 rallyNum={store.currentRallyNum}
                 recentStrokes={store.currentStrokes}
+                recentRallyResults={store.recentRallyResults}
               />
             ) : (
               <SettingsModePanel
@@ -5224,6 +5225,7 @@ export function AnnotatorPage() {
               setNum={store.currentSetNum}
               rallyNum={store.currentRallyNum}
               recentStrokes={store.currentStrokes}
+              recentRallyResults={store.recentRallyResults}
             />
           )}
           {annotatorMode === 'settings' && (
