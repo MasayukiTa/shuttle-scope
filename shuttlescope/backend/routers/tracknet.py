@@ -247,6 +247,9 @@ def start_batch(
         "processed_rallies": 0,
         "total_rallies": 0,
         "updated_strokes": 0,
+        # 解析対象外（video_timestamp_start 未入力）で飛ばしたラリー数。
+        # 「解析済み」と区別するためのカウンタ（progress の分子には数えない）。
+        "skipped_no_timestamp": 0,
         "error": None,
         # S-4: 処理を飛ばした / 書かなかった理由（人が読む文）。無ければ None。
         "message": None,
@@ -520,15 +523,21 @@ def _run_batch(
         # resume モード: 解析済みラリー数を事前にカウントして進捗の初期値を設定
         if resume and not roi_widened and rallies:
             pre_done = 0
+            pre_skipped = 0
             for rally in rallies:
                 if rally.video_timestamp_start is None:
-                    pre_done += 1
+                    # タイムスタンプ未入力のラリーは CV 解析できない。これは
+                    # 「解析済み」ではなく「解析対象外」なので done には数えない。
+                    pre_skipped += 1
                     continue
                 strokes_check = db.query(Stroke).filter(Stroke.rally_id == rally.id).all()
                 if strokes_check and all(s.land_zone for s in strokes_check):
                     pre_done += 1
-            _jobs[job_id]["processed_rallies"] = pre_done
-            _jobs[job_id]["progress"] = pre_done / max(len(rallies), 1)
+            # 進捗バーが止まって見えないよう、解析対象外 (pre_skipped) も初期進捗の
+            # 分子には含める。skipped_no_timestamp は本処理ループ側で計上するため、
+            # ここでは設定しない（二重計上を避ける）。
+            _jobs[job_id]["processed_rallies"] = pre_done + pre_skipped
+            _jobs[job_id]["progress"] = (pre_done + pre_skipped) / max(len(rallies), 1)
 
         for i, rally in enumerate(rallies):
             # 停止リクエスト確認（ユーザーが「停止」ボタンを押した場合）
@@ -543,6 +552,10 @@ def _run_batch(
 
             # タイムスタンプが設定されているラリーのみ解析
             if rally.video_timestamp_start is None:
+                # 解析対象外。進捗は進めるが「解析済み」とは別カウンタに積む。
+                _jobs[job_id]["skipped_no_timestamp"] = (
+                    _jobs[job_id].get("skipped_no_timestamp", 0) + 1
+                )
                 _jobs[job_id]["processed_rallies"] = i + 1
                 _jobs[job_id]["progress"] = (i + 1) / max(len(rallies), 1)
                 continue

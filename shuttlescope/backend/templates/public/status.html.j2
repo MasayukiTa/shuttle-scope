@@ -250,11 +250,13 @@
         </span>
       </div>
       {% if c.history %}
+      {# 日別セグメントの状態を支援技術にも渡す。色だけに頼らず aria-label に状態名を含める。 #}
+      {% set bar_st_label = {'operational': ('正常','Operational'), 'degraded': ('低下','Degraded'), 'down': ('停止','Down'), 'nodata': ('データなし','No data')} %}
       <div class="ss-bar" role="group" aria-label="{% if _is_en %}90-day uptime, select a day for 10-minute detail{% else %}直近90日の稼働履歴。日を選ぶと10分刻みの詳細を表示{% endif %}">
-        {% for d in c.history %}<button type="button" class="ss-bar-seg" data-st="{{ d.st }}"
+        {% for d in c.history %}{% set _st_lbl = bar_st_label.get(d.st, (d.st, d.st))[1 if _is_en else 0] %}<button type="button" class="ss-bar-seg" data-st="{{ d.st }}"
           {% if d.color %}style="background:{{ d.color }}"{% endif %}
           data-day="{{ d.d }}" data-comp="{{ c.key }}" data-comp-name="{{ c.name_en if _is_en else c.name_ja }}"
-          title="{{ d.d }}" aria-label="{{ c.name_en if _is_en else c.name_ja }} {{ d.d }}"></button>{% endfor %}
+          title="{{ d.d }} — {{ _st_lbl }}" aria-label="{{ c.name_en if _is_en else c.name_ja }} {{ d.d }}: {{ _st_lbl }}"></button>{% endfor %}
       </div>
       <div class="ss-bar-axis"><span>{% if _is_en %}90 days ago{% else %}90日前{% endif %}</span><span>{% if _is_en %}Today{% else %}本日{% endif %}</span></div>
       {% endif %}
