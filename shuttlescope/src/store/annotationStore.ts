@@ -51,6 +51,9 @@ interface AnnotationState {
   // アンドゥ（最大10件）
   undoStack: StrokeInput[]
 
+  // #784: 直近ラリーの勝敗履歴（解析モードの momentum 表示用）。confirmRally / skipRallyState で追記する。
+  recentRallyResults: Array<{ winner: 'player_a' | 'player_b' }>
+
   // K-002: 保存キュー状態
   pendingSaveCount: number
   saveErrors: SaveError[]
@@ -188,6 +191,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
   isDoubles: false,
   currentHitter: 'player_a',
   undoStack: [],
+  recentRallyResults: [],
   pendingSaveCount: 0,
   saveErrors: [],
   flipMode: loadFlipMode(),
@@ -220,6 +224,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       currentPlayer: initialServer ?? 'player_a',
       currentHitter: initialServer ?? 'player_a',
       undoStack: [],
+      recentRallyResults: [],
       pendingSaveCount: 0,
       saveErrors: [],
     }),
@@ -244,6 +249,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       currentPlayer: 'player_a',
       currentHitter: 'player_a',
       undoStack: [],
+      recentRallyResults: [],
       pendingSaveCount: 0,
       saveErrors: [],
     }),
@@ -537,6 +543,8 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       isRallyActive: false,
       currentStrokes: [],
       undoStack: [],
+      // #784: 解析モードの直近ラリー勝敗へ確定ラリーを追記する。
+      recentRallyResults: [...get().recentRallyResults, { winner }],
       pendingStroke: emptyPending(),
       inputStep: 'idle',
       currentStrokeNum: 1,
@@ -621,6 +629,8 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       scoreB: winner === 'player_b' ? scoreB + 1 : scoreB,
       currentPlayer: winner,  // 勝者が次のサーバー
       currentHitter: winner,  // ダブルス: 勝者チームの主プレイヤーにリセット
+      // #784: 見逃しラリー（ストロークなし得点）も直近ラリー勝敗へ反映する。
+      recentRallyResults: [...get().recentRallyResults, { winner }],
     })
   },
 
