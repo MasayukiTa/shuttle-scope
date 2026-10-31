@@ -3267,6 +3267,7 @@
       "page_access_load_failed": "ページ権限を読み込めませんでした。保存すると権限が消えるおそれがあるため、閉じてもう一度開いてください。",
       "page_access_prediction": "予測・分析",
       "page_access_expert_labeler": "専門家ラベル",
+      "page_access_llm": "AIに聞く (LLM チャット)",
       "individual": "個人",
       "team_whole": "チーム全体（{{team}}）",
       "saving": "保存中...",

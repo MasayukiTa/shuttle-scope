@@ -232,6 +232,11 @@ function Sidebar() {
     ...(hasPageAccess('llm')
       ? [{ to: '/llm', label: t('nav.llm'), icon: 'forum' }]
       : []),
+    // ユーザー管理: admin は通知等と一緒に下の admin ブロックで出す。analyst / coach は
+    // 自チームのみ操作できる (ページ側 / API 側でスコープ済) ので導線だけここで出す。
+    ...(role === 'analyst' || role === 'coach'
+      ? [{ to: '/users', label: t('nav.users'), icon: 'group' }]
+      : []),
     ...(role === 'admin'
       ? [
           { to: '/notifications', label: t('auto.App.k2'), shortLabel: t('nav.notifications_short'), icon: 'notifications', badge: unreadCount > 0 ? unreadCount : null, badgeUnknown: unreadCountUnknown },
@@ -489,6 +494,14 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+function UsersRoute({ children }: { children: React.ReactNode }) {
+  // ユーザー管理ページは admin / analyst / coach に開く (自チーム・権限内のスコープは
+  // UserManagementPage と backend /auth/users 側で強制する)。player 等は締め出す。
+  const { role } = useAuth()
+  if (role !== 'admin' && role !== 'analyst' && role !== 'coach') return <Navigate to="/matches" replace />
+  return <>{children}</>
+}
+
 function PageAccessRoute({ pageKey, children }: { pageKey: string; children: React.ReactNode }) {
 
   const { hasPageAccess } = useAuth()
@@ -584,7 +597,7 @@ function MainLayout() {
             <Route path="/expert-labeler/:matchId" element={<PageAccessRoute pageKey="expert_labeler"><ExpertLabelerAnnotatePage /></PageAccessRoute>} />
             <Route path="/llm" element={<PageAccessRoute pageKey="llm"><LlmChatPage /></PageAccessRoute>} />
 <Route path="/notifications" element={<AdminRoute><NotificationInboxPage /></AdminRoute>} />
-            <Route path="/users" element={<AdminRoute><UserManagementPage /></AdminRoute>} />
+            <Route path="/users" element={<UsersRoute><UserManagementPage /></UsersRoute>} />
             <Route path="/users/pending" element={<AdminRoute><PendingUsersPage /></AdminRoute>} />
             {/* Phase Pay-1: 課金 UI ルート。各ページは内部で BILLING_UI_ENABLED チェック */}
             <Route path="/account/orders" element={<AccountOrdersPage />} />

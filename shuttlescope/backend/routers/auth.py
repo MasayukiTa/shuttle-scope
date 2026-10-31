@@ -3108,16 +3108,41 @@ def set_user_page_access(target_id: int, body: PageAccessBody, request: Request,
     _require_manager(request)
     ctx = get_auth(request)
     user = db.get(User, target_id)
-    if not user or user.role != "player":
+    if not user:
         raise HTTPException(status_code=404, detail="player user not found")
-    # round 245 R245-E7: 旧コードは _require_manager (admin/analyst/coach) のみで
-    # cross-team scope check が無く、analyst (team A) が player (team B) の page_access
-    # を全削除できた。admin 以外は対象 player と同 team_id でのみ操作可能にする。
+    # #542 / #572: 付与対象のロールと呼び出し元ロールで場合分けする。
+    #  - player 対象: 従来通り admin / 同 team の manager (analyst/coach) が操作可。
+    #  - analyst / coach 対象: admin のみ (llm 等の page grant を信頼ロールに付与するのは admin 専権)。
+    #  - それ以外 (admin / demo / llm ロール) は対象にできない。
     # 404 で返すのは存在 leak (404 vs 403 の区別) を避けるため。
-    if not ctx.is_admin:
-        if user.team_id is None or ctx.team_id is None or user.team_id != ctx.team_id:
+    if user.role == "player":
+        # round 245 R245-E7: admin 以外は対象 player と同 team_id でのみ操作可能。
+        if not ctx.is_admin:
+            if user.team_id is None or ctx.team_id is None or user.team_id != ctx.team_id:
+                raise HTTPException(status_code=404, detail="player user not found")
+    elif user.role in ("analyst", "coach"):
+        # 信頼ロールへの page grant (llm 含む) は admin のみ。
+        if not ctx.is_admin:
             raise HTTPException(status_code=404, detail="player user not found")
+    else:
+        raise HTTPException(status_code=404, detail="player user not found")
     valid = {k for k in body.page_keys if k in GRANTABLE_PAGES}
+    # llm の付与/剥奪は admin 専権 (#572)。admin 以外の書き込みでは llm を
+    # 変更させず、既存の llm 個人 grant はそのまま保存する (default deny を広げない)。
+    if not ctx.is_admin:
+        had_llm = (
+            db.query(PlayerPageAccess)
+            .filter(
+                PlayerPageAccess.user_id == target_id,
+                PlayerPageAccess.team_name.is_(None),
+                PlayerPageAccess.page_key == "llm",
+            )
+            .first()
+            is not None
+        )
+        valid.discard("llm")
+        if had_llm:
+            valid.add("llm")
     db.query(PlayerPageAccess).filter(
         PlayerPageAccess.user_id == target_id,
         PlayerPageAccess.team_name.is_(None),
