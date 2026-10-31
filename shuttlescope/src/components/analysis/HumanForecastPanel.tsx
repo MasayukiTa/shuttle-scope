@@ -29,6 +29,8 @@ interface ForecastRecord {
   confidence_level: string | null
   notes: string | null
   created_at: string | null
+  // G5 item #687: 作成者のユーザ id。削除ボタンの表示可否に使う (作成者か admin のみ)。
+  creator_user_id: number | null
 }
 
 interface BenchmarkComparison {
@@ -323,6 +325,8 @@ export function HumanForecastPanel({ matchId, playerId }: Props) {
   const { t } = useTranslation()
   const isLight = useIsLightMode()
   const qc = useQueryClient()
+  // G5 item #687: 削除は作成者 (within team) か admin のみ。UI は許可される時だけ削除ボタンを出す。
+  const { userId, role } = useAuth()
 
   const [showForm, setShowForm] = useState(false)
   const [showBenchmark, setShowBenchmark] = useState(false)
@@ -374,7 +378,9 @@ export function HumanForecastPanel({ matchId, playerId }: Props) {
 
       {remove.isError && (
         <p role="alert" className="text-xs text-[var(--ss-bad)]">
-          {t('prediction.human_forecast_delete_failed')}
+          {(remove.error as { status?: number } | null)?.status === 403
+            ? t('prediction.human_forecast_delete_forbidden')
+            : t('prediction.human_forecast_delete_failed')}
         </p>
       )}
 
@@ -405,18 +411,24 @@ export function HumanForecastPanel({ matchId, playerId }: Props) {
               {f.confidence_level && (
                 <span className="text-[10px] text-[var(--ss-t3)]">({f.confidence_level})</span>
               )}
-              <button
-                type="button"
-                aria-label={t('prediction.human_forecast_delete')}
-                onClick={() => {
-                  // 削除すると人 vs モデルのベンチマーク値も変わるため確認する
-                  if (!window.confirm(t('prediction.human_forecast_delete_confirm'))) return
-                  remove.mutate(f.id)
-                }}
-                className="ml-auto p-1 rounded-ss-md hover:bg-[var(--ss-surface-3)] text-[var(--ss-t3)] hover:text-[var(--ss-bad)] transition-colors duration-base ease-out"
-              >
-                <MIcon name="delete" size={10} />
-              </button>
+              {/* G5 item #687 (option A): 削除ボタンは「作成者自身」か admin にだけ見せる。
+                  creator_user_id が NULL の旧行は作成者を特定できないため admin 専用。
+                  サーバ側も同じ判定をするので、これは表示上の配慮 (権限の最終判断は API)。 */}
+              {(role === 'admin' ||
+                (f.creator_user_id != null && f.creator_user_id === userId)) && (
+                <button
+                  type="button"
+                  aria-label={t('prediction.human_forecast_delete')}
+                  onClick={() => {
+                    // 削除すると人 vs モデルのベンチマーク値も変わるため確認する
+                    if (!window.confirm(t('prediction.human_forecast_delete_confirm'))) return
+                    remove.mutate(f.id)
+                  }}
+                  className="ml-auto p-1 rounded-ss-md hover:bg-[var(--ss-surface-3)] text-[var(--ss-t3)] hover:text-[var(--ss-bad)] transition-colors duration-base ease-out"
+                >
+                  <MIcon name="delete" size={10} />
+                </button>
+              )}
             </div>
           ))}
         </div>
