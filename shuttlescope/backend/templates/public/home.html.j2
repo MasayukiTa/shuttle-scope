@@ -4,18 +4,18 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ShuttleScope — バドミントン試合分析プラットフォーム</title>
-<meta name="description" content="ストローク単位の記録から試合構造を統計的に可視化するバドミントン分析ワークベンチ。コーチ・アナリスト・選手それぞれの役割に応じた分析レイヤーを提供します。">
+<meta name="description" content="バドミントンの試合をストロークごとに記録し、配球やラリー、得点の流れを振り返るツール。コーチや選手が、記録した試合を確認できます。">
 <link rel="canonical" href="https://shuttle-scope.com/">
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://shuttle-scope.com/">
 <meta property="og:title" content="ShuttleScope — バドミントン試合分析プラットフォーム">
-<meta property="og:description" content="ストローク単位の記録から試合構造を統計的に可視化するバドミントン分析ワークベンチ。">
+<meta property="og:description" content="バドミントンの試合をストロークごとに記録し、配球やラリー、得点の流れを振り返るツール。">
 <meta property="og:image" content="https://shuttle-scope.com/og-image.png">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="ShuttleScope">
-<meta name="twitter:description" content="ストローク単位の記録から試合構造を統計的に可視化するバドミントン分析ワークベンチ。">
+<meta name="twitter:description" content="バドミントンの試合をストロークごとに記録し、配球やラリー、得点の流れを振り返るツール。">
 <meta name="twitter:image" content="https://shuttle-scope.com/og-image.png">
 <!-- 外部フォント CDN 禁止 (企業 TLS でブロックされるため): system-ui スタックのみ使用。 -->
 <!-- Material Symbols CDN も廃止済み: theme トグルはインライン SVG に置換済み。 -->
@@ -275,7 +275,9 @@ footer{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);padd
   .sec{padding:52px 20px}.sec-sub{margin-bottom:28px}
   .view-grid{grid-template-columns:minmax(0,1fr);gap:36px}
   .roles{grid-template-columns:minmax(0,1fr);gap:24px;margin-top:32px}
-  .shot-frame{min-width:720px}
+  .shot-scroll{overflow-x:visible}
+  .shot-frame{min-width:0}
+  .shot-frame img{width:100%;max-width:100%;margin-left:0}
   .sec-data{padding:36px 20px}.sec-fcta{padding:56px 20px}
   footer{padding:20px 16px;flex-direction:column}
 }
@@ -340,7 +342,7 @@ footer{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);padd
   <div class="hero-inner">
     <div>
       <h1 class="hero-h1"><span class="ja"><span class="nb">どこに打ち、</span><span class="nb">どこで流れが</span><span class="nb">変わったか。</span></span><span class="en">Where did you hit it, and where did the match turn?</span></h1>
-      <p class="hero-sub"><span class="ja">ストロークごとの記録から、配球・ラリー展開・得点の流れを可視化するバドミントン分析ワークベンチ。コーチ、アナリスト、選手が、それぞれの判断に使えます。</span><span class="en">A badminton analysis workbench that turns stroke-by-stroke records into shot placement, how rallies develop and how the score flows. Coaches, analysts and players can each use it to inform their own decisions.</span></p>
+      <p class="hero-sub"><span class="ja">試合の記録から配球やラリーの展開、得点の流れを振り返れます。試合は動画を見ながら1球ずつ入力するか、試合中にその場で入力して記録します。コーチや選手が同じ記録をそれぞれの見方で確認できます。</span><span class="en">Look back at shot placement, how rallies developed and how the score flowed, from your match records. You record a match by entering each shot while watching the video, or by entering shots live during the match. Coaches and players can each view the same records in their own way.</span></p>
 {% endraw %}{% if registration_enabled %}      <div class="cta-row">
         <a href="https://app.shuttle-scope.com/#/register" class="btn-cta"><span class="ja">無料で登録</span><span class="en">Sign up free</span></a>
         <a href="/contact" class="btn-cta-sub"><span class="ja">研究連携・法人のご相談</span><span class="en">Research and organization inquiries</span></a>
@@ -396,8 +398,8 @@ footer{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);padd
 
 <section class="sec sec-features" id="features">
   <div class="sec-wrap">
-    <h2 class="sec-h2"><span class="ja">次の練習を考えるための、3つの見方</span><span class="en">Three views to plan your next practice</span></h2>
-    <p class="sec-sub"><span class="ja">記録した試合から、次に何を試すかの手がかりになる表示を用意しています。</span><span class="en">From the matches you record, ShuttleScope gives you views that suggest what to try next.</span></p>
+    <h2 class="sec-h2"><span class="ja">記録した試合を見る</span><span class="en">Review your recorded matches</span></h2>
+    <p class="sec-sub"><span class="ja">配球のかたより、ラリーの組み立て、得点の流れを表示します。次に何を試すかの手がかりになります。</span><span class="en">See where shots cluster, how rallies are built and how the score flows. It gives you something to try next.</span></p>
     <div class="view-grid">
 
       <div class="view">
@@ -405,8 +407,8 @@ footer{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);padd
           <span class="tag-sample"><span class="ja">サンプルデータ</span><span class="en">SAMPLE</span></span>
           <svg viewBox="0 0 300 150" aria-hidden="true" focusable="false">
             <rect width="300" height="150" rx="6" class="f-out"/>
-            <text class="t-mini-w" x="20" y="16"><tspan class="ja">セット1</tspan><tspan class="en">Set 1</tspan></text>
-            <text class="t-mini-w" x="170" y="16"><tspan class="ja">セット2</tspan><tspan class="en">Set 2</tspan></text>
+            <text class="t-mini-w" x="20" y="16"><tspan class="ja">試合1</tspan><tspan class="en">Match 1</tspan></text>
+            <text class="t-mini-w" x="170" y="16"><tspan class="ja">試合2</tspan><tspan class="en">Match 2</tspan></text>
             <g class="f-court"><rect x="20" y="24" width="120" height="116"/><rect x="170" y="24" width="120" height="116"/></g>
             <g class="f-heat">
               <rect x="22" y="26" width="38" height="36" rx="2" fill-opacity=".14"/><rect x="61" y="26" width="38" height="36" rx="2" fill-opacity=".14"/><rect x="100" y="26" width="38" height="36" rx="2" fill-opacity=".18"/>
@@ -421,9 +423,9 @@ footer{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);padd
           </svg>
           <p class="mini-cap"><span class="ja">ネット側が上。色が濃いほど着地が多いゾーン。</span><span class="en">Net side is up. Darker zones received more shots.</span></p>
         </div>
-        <h3 class="view-h"><span class="ja">セット間で、配球の変化を比べる</span><span class="en">Compare placement across sets</span></h3>
-        <p class="view-p"><span class="ja">同じ選手の配球を、セットごとに9つのゾーンで並べます。どのコースが増え、どのコースが減ったかが分かります。</span><span class="en">Compare one player's shot placement set by set across nine court zones, and see which areas gained shots and which lost them.</span></p>
-        <p class="decide"><b><span class="ja">決められること</span><span class="en">What it helps decide</span></b><span class="ja">次の練習で増やしたいコースの目標。</span><span class="en">Which areas of the court to work on in your next practice.</span></p>
+        <h3 class="view-h"><span class="ja">試合ごとに、配球を9ゾーンで比べる</span><span class="en">Compare placement by match across nine zones</span></h3>
+        <p class="view-p"><span class="ja">同じ選手の配球を9つのゾーンのヒートマップで表示します。試合ごと、または直近の数試合で見比べて、どのゾーンが多いかが分かります。</span><span class="en">Show one player's shot placement as a nine-zone heatmap. Compare it by match, or across the last few matches, to see which zones draw the most shots.</span></p>
+        <p class="decide"><b><span class="ja">決められること</span><span class="en">What it helps decide</span></b><span class="ja">次の練習で増やしたいコース。</span><span class="en">Which areas of the court to work on in your next practice.</span></p>
       </div>
 
       <div class="view">
@@ -480,12 +482,12 @@ footer{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);padd
         </div>
         <h3 class="view-h"><span class="ja">得点の流れを、折れ線で追う</span><span class="en">Follow the flow of points</span></h3>
         <p class="view-p"><span class="ja">ラリーごとの優位度の推移を表示します。流れが動いた局面から、見返したい場面を選べます。</span><span class="en">See how the advantage moves rally by rally, and pick the moments where the flow changed to review.</span></p>
-        <p class="decide"><b><span class="ja">決められること</span><span class="en">What it helps decide</span></b><span class="ja">映像で見返す場面と、伸びしろのあるプレー。</span><span class="en">Which moments to review on video, and which plays have room to grow.</span></p>
+        <p class="decide"><b><span class="ja">決められること</span><span class="en">What it helps decide</span></b><span class="ja">動画で見返す場面。</span><span class="en">Which moments to review on video.</span></p>
       </div>
 
     </div>
     <p class="note"><span class="ja">どの表示も、記録された範囲の傾向を示すものです。試合数やラリー数が少ないときは信頼度を併記し、断定はしません。</span><span class="en">Every view shows trends within what was recorded. When there are few matches or rallies, a confidence level is shown alongside and results are never presented as certain.</span></p>
-    <details class="method"><summary><span class="ja">分析方法</span><span class="en">How it is calculated</span></summary><p class="method-p"><span class="ja">推定には Markov モデルと EPV (得点期待値) を用いています。</span><span class="en">Estimates use Markov models and EPV (expected point value).</span></p></details>
+    <details class="method"><summary><span class="ja">分析方法</span><span class="en">How it is calculated</span></summary><p class="method-p"><span class="ja">推定には Markov モデルと EPV (得点期待値) を用いています。Markov モデルはラリー内のショットのつながりから次の展開を読みます。EPV はスコア差やラリーの局面をふまえて、その1球が得点にどれだけ近づけたかを測ります。どちらも記録したストロークから計算するため、試合やラリーが少ないほど推定の幅は広くなります。</span><span class="en">Estimates use Markov models and EPV (expected point value). The Markov model reads how shots connect within a rally to see what tends to follow. EPV measures how much a single shot moved you toward winning the point, taking the score gap and the phase of the rally into account. Both are computed from the strokes you record, so the range widens when there are fewer matches or rallies.</span></p></details>
   </div>
 </section>
 
@@ -505,7 +507,7 @@ footer{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);padd
     <div class="roles">
       <div class="role"><div class="role-h"><span class="ja">コーチ</span><span class="en">Coach</span></div><p class="role-p"><span class="ja">チーム全体の傾向を見て、練習の優先順位を決める。</span><span class="en">Read team-wide tendencies and set practice priorities.</span></p></div>
       <div class="role"><div class="role-h"><span class="ja">アナリスト</span><span class="en">Analyst</span></div><p class="role-p"><span class="ja">ストロークと局面を掘り下げ、対戦相手の傾向をまとめる。</span><span class="en">Dig into strokes and phases and summarise an opponent's tendencies.</span></p></div>
-      <div class="role"><div class="role-h"><span class="ja">選手</span><span class="en">Player</span></div><p class="role-p"><span class="ja">自分の試合を振り返り、伸びしろのあるプレーを見つける。</span><span class="en">Look back at your own matches and find plays with room to grow.</span></p></div>
+      <div class="role"><div class="role-h"><span class="ja">選手</span><span class="en">Player</span></div><p class="role-p"><span class="ja">自分の試合の記録を振り返る。</span><span class="en">Look back at the records of your own matches.</span></p></div>
     </div>
   </div>
 </section>
