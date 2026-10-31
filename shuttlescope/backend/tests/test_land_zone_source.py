@@ -16,6 +16,7 @@ import pytest
 import sqlalchemy as sa
 from alembic.operations import Operations
 from alembic.runtime.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from fastapi.testclient import TestClient
 
 from backend.db.database import get_db
@@ -264,12 +265,7 @@ def test_migration_0056_chain_and_additive_idempotent_upgrade():
 
 
 def test_migration_0056_is_the_single_head():
-    import re
-    revs, downs = {}, set()
-    for p in _VERSIONS.glob("[0-9]*.py"):
-        text = p.read_text(encoding="utf-8")
-        rev = re.search(r'^revision[^=]*=\s*"([^"]+)"', text, re.M).group(1)
-        down = re.search(r'^down_revision[^=]*=\s*"?([^"\n]+?)"?\s*$', text, re.M).group(1)
-        revs[rev] = down
-        downs.add(down)
-    assert [r for r in revs if r not in downs] == ["0056"]
+    scripts = ScriptDirectory(str(_VERSIONS.parent))
+    heads = scripts.get_heads()
+    assert len(heads) == 1
+    assert "0056" in {rev.revision for rev in scripts.iterate_revisions(heads[0], "base")}

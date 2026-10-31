@@ -31,7 +31,9 @@ def _client() -> TestClient:
     return TestClient(app, base_url="http://localhost", raise_server_exceptions=False)
 
 
-def _seed(db):
+# Middleware interprets the forecast ID in DELETE paths as a match ID.
+# Match IDs therefore mirror forecast IDs so these tests reach the handler.
+def _seed(db, *, own_match_id=9901, foreign_match_id=9902):
     team_a = Team(id=9601, display_id="HFD-A", name="Delete Team A")
     team_b = Team(id=9602, display_id="HFD-B", name="Delete Team B")
     db.add_all([team_a, team_b])
@@ -56,12 +58,12 @@ def _seed(db):
     ])
 
     own_match = Match(
-        id=9901, tournament="Del A", tournament_level="domestic", round="QF",
+        id=own_match_id, tournament="Del A", tournament_level="domestic", round="QF",
         date=date(2026, 10, 1), format="singles", result="unknown",
         player_a_id=9701, player_b_id=9702, owner_team_id=team_a.id, is_public_pool=False,
     )
     foreign_match = Match(
-        id=9902, tournament="Del B", tournament_level="domestic", round="QF",
+        id=foreign_match_id, tournament="Del B", tournament_level="domestic", round="QF",
         date=date(2026, 10, 1), format="singles", result="unknown",
         player_a_id=9703, player_b_id=9704, owner_team_id=team_b.id, is_public_pool=False,
     )
@@ -92,7 +94,7 @@ def _is_deleted(db, fid) -> bool:
 
 
 def test_creator_can_delete_own_forecast(db_session):
-    team_a, _team_b, own_match, _fm = _seed(db_session)
+    team_a, _team_b, own_match, _fm = _seed(db_session, own_match_id=9951)
     _make_forecast(db_session, fid=9951, match_id=own_match.id, player_id=9701,
                    team_id=team_a.id, creator_user_id=9801)
     app.dependency_overrides[get_db] = lambda: db_session
@@ -105,7 +107,7 @@ def test_creator_can_delete_own_forecast(db_session):
 
 
 def test_other_same_team_user_cannot_delete(db_session):
-    team_a, _team_b, own_match, _fm = _seed(db_session)
+    team_a, _team_b, own_match, _fm = _seed(db_session, own_match_id=9952)
     _make_forecast(db_session, fid=9952, match_id=own_match.id, player_id=9701,
                    team_id=team_a.id, creator_user_id=9801)
     app.dependency_overrides[get_db] = lambda: db_session
@@ -119,7 +121,7 @@ def test_other_same_team_user_cannot_delete(db_session):
 
 
 def test_admin_can_delete_any_forecast(db_session):
-    team_a, _team_b, own_match, _fm = _seed(db_session)
+    team_a, _team_b, own_match, _fm = _seed(db_session, own_match_id=9953)
     _make_forecast(db_session, fid=9953, match_id=own_match.id, player_id=9701,
                    team_id=team_a.id, creator_user_id=9801)
     app.dependency_overrides[get_db] = lambda: db_session
@@ -132,7 +134,7 @@ def test_admin_can_delete_any_forecast(db_session):
 
 
 def test_legacy_null_creator_is_admin_only(db_session):
-    team_a, _team_b, own_match, _fm = _seed(db_session)
+    team_a, _team_b, own_match, _fm = _seed(db_session, own_match_id=9954)
     # Legacy row: creator_user_id is NULL.
     _make_forecast(db_session, fid=9954, match_id=own_match.id, player_id=9701,
                    team_id=team_a.id, creator_user_id=None)
@@ -151,7 +153,7 @@ def test_legacy_null_creator_is_admin_only(db_session):
 
 
 def test_other_team_cannot_delete_and_cannot_learn_existence(db_session):
-    team_a, team_b, _own_match, foreign_match = _seed(db_session)
+    team_a, team_b, _own_match, foreign_match = _seed(db_session, foreign_match_id=9955)
     # A forecast owned by team B, created by coach B (9803).
     _make_forecast(db_session, fid=9955, match_id=foreign_match.id, player_id=9703,
                    team_id=team_b.id, creator_user_id=9803)
@@ -176,7 +178,7 @@ def test_delete_handler_enforces_creator_without_middleware(db_session):
     from backend.routers.human_forecast import delete_human_forecast
     from backend.utils.auth import get_auth
 
-    team_a, _team_b, own_match, _fm = _seed(db_session)
+    team_a, _team_b, own_match, _fm = _seed(db_session, own_match_id=9956)
     _make_forecast(db_session, fid=9956, match_id=own_match.id, player_id=9701,
                    team_id=team_a.id, creator_user_id=9801)
 
