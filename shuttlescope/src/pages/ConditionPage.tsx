@@ -289,27 +289,34 @@ export function ConditionPage() {
                 {t('condition.summary_only_notice')}
               </div>
             )}
-            <div className="flex items-center gap-2 shrink-0">
-              <MIcon name="person" size={16} className={`${textMuted} shrink-0`} />
-              <label className={`text-sm ${textMuted}`}>
-                {t('auto.ConditionPage.k4')}
-              </label>
-            </div>
-            <SearchableSelect
-              options={sortedPlayers.map((p) => ({
-                value: p.id,
-                label: p.name,
-                searchText: p.team ?? '',
-                prefix: p.is_target ? 'star' : undefined,
-                prefixIsIcon: !!p.is_target,
-                suffix: p.team ? `（${p.team}）` : undefined,
-              }))}
-              value={selectedPlayerId}
-              onChange={(v) => setSelectedPlayerId(v != null ? Number(v) : null)}
-              emptyLabel={t('common.select_player', 'Select player')}
-              placeholder={t('auto.ConditionPage.k2')}
-              className="w-full sm:min-w-[280px] sm:max-w-md"
-            />
+            {/* G2 #657 (option B): 入力タブでは選手セレクタを隠す。入力は常に
+                ログイン本人 (authPlayerId) の記録に限定するため。履歴・分析タブ
+                では従来どおり誰のデータでも選べるようセレクタを残す。 */}
+            {subtab !== 'input' && (
+              <>
+                <div className="flex items-center gap-2 shrink-0">
+                  <MIcon name="person" size={16} className={`${textMuted} shrink-0`} />
+                  <label className={`text-sm ${textMuted}`}>
+                    {t('auto.ConditionPage.k4')}
+                  </label>
+                </div>
+                <SearchableSelect
+                  options={sortedPlayers.map((p) => ({
+                    value: p.id,
+                    label: p.name,
+                    searchText: p.team ?? '',
+                    prefix: p.is_target ? 'star' : undefined,
+                    prefixIsIcon: !!p.is_target,
+                    suffix: p.team ? `（${p.team}）` : undefined,
+                  }))}
+                  value={selectedPlayerId}
+                  onChange={(v) => setSelectedPlayerId(v != null ? Number(v) : null)}
+                  emptyLabel={t('common.select_player', 'Select player')}
+                  placeholder={t('auto.ConditionPage.k2')}
+                  className="w-full sm:min-w-[280px] sm:max-w-md"
+                />
+              </>
+            )}
           </div>
         )}
       </div>
@@ -362,7 +369,10 @@ export function ConditionPage() {
 
       {/* 本体 */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 px-6 py-4">
-        {!effectivePlayerId ? (
+        {/* G2 #657: 選手セレクタが要るのは履歴・分析タブのみ。入力タブは常に
+           ログイン本人のレコードなので、選手未選択でも入力フロー (本人フォーム
+           または未紐付けの案内) を出す。 */}
+        {subtab !== 'input' && !effectivePlayerId ? (
           <div className={`${textMuted} text-sm`}>{t('auto.ConditionPage.k1')}</div>
         ) : subtab === 'history' ? (
           <HistoryView
