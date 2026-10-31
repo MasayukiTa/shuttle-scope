@@ -279,7 +279,7 @@ export default function OnboardingConsentPage({
 
           {/* 必須 checkbox 各々に inline で「文書を読む」ボタンを並置。
              - service_delivery: Privacy + Terms 両方の読了で enable
-             - beta_agreement: Terms の読了で enable (= §14 を参照)
+             - beta_agreement: Terms の読了で enable (= §9 を参照)
              各 docs ボタンは「未読/読了」を色 + check で表示。 */}
 
           <ConsentCheckbox
@@ -314,10 +314,10 @@ export default function OnboardingConsentPage({
           <ConsentCheckbox
             checked={given.beta_agreement}
             onChange={(v) => setGiven((g) => ({ ...g, beta_agreement: v }))}
-            label={t('onboarding.consent.beta_agreement_label') || 'β版データ取り扱い説明書（Terms of Service Section 14）の内容を確認しました'}
+            label={t('onboarding.consent.beta_agreement_label') || 'β版データ取り扱い説明書（Terms of Service Section 9）の内容を確認しました'}
             description={
               t('onboarding.consent.beta_agreement_desc') ||
-              'β期間中のデータ利用範囲、目的、保管期間、第三者提供の有無について記載された文書を読了したことを表明します。Terms of Service Section 14.5 の規定により、β期間中のデータ利用への異議申立ては問い合わせフォーム経由で随時受け付けます。'
+              'β期間中のデータ利用範囲、目的、保管期間、第三者提供の有無について記載された文書を読了したことを表明します。Terms of Service Section 9 の Opt-Out の規定により、β期間中のデータ利用への異議申立ては問い合わせフォーム経由で随時受け付けます。'
             }
             required
             requiredMarker={t('onboarding.consent.required_marker') || '契約履行（必須）'}
