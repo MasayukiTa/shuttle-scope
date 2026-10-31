@@ -1437,7 +1437,12 @@
       "next_set": "次のセットへ",
       "set_end_busy": "処理中…",
       "set_end_waiting_save": "最終ラリーの保存が終わるまでセットを確定できません。保存中、または再送待ちです。右上の未保存の表示が消えてから押してください。",
-      "set_end_failed": "セットの終了処理に失敗しました: {{reason}}"
+      "set_end_failed": "セットの終了処理に失敗しました: {{reason}}",
+      "undo_confirmed": "直前の得点を取り消す",
+      "undo_confirmed_busy": "取り消し中...",
+      "last_result": "直前: {{player}} / {{endType}}",
+      "undo_wait_save": "保存完了まで取り消せません",
+      "undo_failed": "取り消しに失敗しました: {{reason}}"
     },
     "ux": {
       "menu_label": "操作メニュー",

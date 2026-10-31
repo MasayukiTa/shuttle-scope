@@ -26,6 +26,17 @@ export interface SaveError {
   error: string
 }
 
+// #664: 直前に確定したラリーを取り消すために、確定の「前」に capture しておく値。
+// confirmRally は確定時に strokes を捨てるので、取り消し復元に必要な値は呼び出し側で保持する。
+export interface ConfirmedRallySnapshot {
+  scoreA: number
+  scoreB: number
+  /** 確定したラリーの番号（= 取り消し後に戻すべき currentRallyNum）。 */
+  rallyNum: number
+  /** 確定したラリーのサーバ（= 取り消し後に戻すべき currentPlayer）。 */
+  server: 'player_a' | 'player_b'
+}
+
 interface AnnotationState {
   // セット管理
   matchId: number | null
@@ -117,6 +128,12 @@ interface AnnotationState {
   // ラリー確定（DB保存はページ側で実行）
   confirmRally: (winner: 'player_a' | 'player_b', endType: string) => StrokeInput[]
   resetRally: () => void
+  // #664: 直前に確定したラリーを取り消す（LiveInputPage の誤タップ復旧用）。
+  // confirmRally は確定時に strokes を捨てるため、取り消しに必要な確定前の値は
+  // 呼び出し側が snapshot として渡す。スコア・ラリー番号・サーバを確定前へ戻し、
+  // recentRallyResults の末尾（この確定で足した 1 件）を取り除く。ラリー入力途中
+  // だった場合はクリアして idle に戻す。DB 側の削除はページが行う。
+  undoLastConfirmedRally: (snapshot: ConfirmedRallySnapshot) => void
 
   // 見逃しラリー（ストロークなしで得点だけ記録）
   skipRallyState: (winner: 'player_a' | 'player_b') => void
@@ -557,6 +574,26 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
     })
     return currentStrokes
   },
+
+  undoLastConfirmedRally: (snapshot) =>
+    set((s) => ({
+      scoreA: snapshot.scoreA,
+      scoreB: snapshot.scoreB,
+      currentRallyNum: snapshot.rallyNum,
+      currentPlayer: snapshot.server,
+      currentHitter: snapshot.server,
+      // この確定で追記した 1 件だけを取り除く（空配列なら何もしない）。
+      recentRallyResults: s.recentRallyResults.slice(0, -1),
+      // 取り消し後は確定前のラリーを入力し直せるよう、入力途中の状態を捨てて idle に戻す。
+      isRallyActive: false,
+      currentStrokes: [],
+      undoStack: [],
+      pendingStroke: emptyPending(),
+      inputStep: 'idle',
+      currentStrokeNum: 1,
+      lastFlipAt: null,
+      playerBeforeFlip: null,
+    })),
 
   resetRally: () =>
     set({

@@ -31,9 +31,9 @@ import { apiGet } from '@/api/client'
 import { ShotTypePanel } from '@/components/annotation/ShotTypePanel'
 import { AttributePanel } from '@/components/annotation/AttributePanel'
 import { RallyPanel } from '@/components/annotation/RallyPanel'
-import { useAnnotationStore } from '@/store/annotationStore'
+import { useAnnotationStore, type ConfirmedRallySnapshot } from '@/store/annotationStore'
 import { buildBatchPayload, buildSkippedRallyPayload } from '@/utils/annotationPayload'
-import { apiPost, apiPut } from '@/api/client'
+import { apiPost, apiPut, apiDelete } from '@/api/client'
 import { setWinner, isMatchDecidedBySet } from '@/utils/badmintonRules'
 import { useAuth } from '@/hooks/useAuth'
 import { useOfflineSync } from '@/hooks/useOfflineSync'
@@ -62,6 +62,21 @@ export function LiveInputPage() {
   const { t } = useTranslation()
 
   const [mode, setMode] = useState<LiveMode>('rally')
+
+  // #664: 直前に確定した得点を取り消すための導線。ワンタップ即保存のため、確定直後に
+  // 誤タップへ気づいたとき、ローカル状態を確定前へ戻し、保存済みなら server 側の
+  // ラリーも削除する。snapshot は confirmRally が strokes を捨てる前に capture する。
+  // rallyId は /strokes/batch 成功時に確定する (保存前は null)。
+  const [lastConfirmed, setLastConfirmed] = useState<null | {
+    snapshot: ConfirmedRallySnapshot
+    winner: 'player_a' | 'player_b'
+    endType: string
+    rallyId: number | null  // null = まだ保存前 / 保存されなかった (スキップ送信中)
+    saving: boolean         // batch 保存の完了待ち
+    saveFailed: boolean     // 保存に失敗した (再送は useOfflineSync に任せる)
+    undoing: boolean        // server 削除の進行中
+    undoError: string | null
+  }>(null)
 
   const store = useAnnotationStore()
 
@@ -326,8 +341,27 @@ export function LiveInputPage() {
     const server = store.currentPlayer
     const rallyStart = store.rallyStartTimestamp
 
+    // #664: 取り消しに備えて確定「前」の値を控える。confirmRally はこの直後に
+    // currentStrokes / score / server を書き換えるため、ここで capture しないと戻せない。
+    const undoSnapshot: ConfirmedRallySnapshot = {
+      scoreA: store.scoreA,
+      scoreB: store.scoreB,
+      rallyNum,
+      server,
+    }
+
     store.confirmRally(winner, endType)
     store.incrementPending()
+    setLastConfirmed({
+      snapshot: undoSnapshot,
+      winner,
+      endType,
+      rallyId: null,
+      saving: true,
+      saveFailed: false,
+      undoing: false,
+      undoError: null,
+    })
     const setId = latestSet.id
 
     const payload = strokes.length > 0
@@ -365,10 +399,18 @@ export function LiveInputPage() {
       payload,
       queued_at: new Date().toISOString(),
     })
-    apiPost('/strokes/batch', payload, stableKey ? { 'X-Idempotency-Key': stableKey } : undefined)
-      .then(() => {
+    apiPost<{ data?: { rally_id?: number } }>('/strokes/batch', payload, stableKey ? { 'X-Idempotency-Key': stableKey } : undefined)
+      .then((res) => {
         useAnnotationStore.getState().decrementPending()
         void stashed.then(() => removeRallyAfterSave(ownerId, matchId, setId, rallyNum))
+        // #664: 保存できた rally_id を取り消し用に控える。これが取れて初めて
+        // server 側の削除ができる。取り消しボタンは saving=false になって押せる。
+        const savedRallyId = res?.data?.rally_id ?? null
+        setLastConfirmed((prev) =>
+          prev && prev.snapshot.rallyNum === rallyNum
+            ? { ...prev, rallyId: savedRallyId, saving: false, saveFailed: false }
+            : prev,
+        )
       })
       .catch((err: unknown) => {
         useAnnotationStore.getState().decrementPending()
@@ -376,8 +418,56 @@ export function LiveInputPage() {
           rallyNum,
           error: errorMessage(err, t('annotator.ui.save_failed_message', { defaultValue: '保存失敗' })),
         })
+        // #664: 保存に失敗したラリーは useOfflineSync が再送する。server 側 rally は
+        // まだ存在しないので、取り消しはローカルのみ可能とし、saveFailed を立てる。
+        setLastConfirmed((prev) =>
+          prev && prev.snapshot.rallyNum === rallyNum
+            ? { ...prev, rallyId: null, saving: false, saveFailed: true }
+            : prev,
+        )
       })
     setMode('rally')
+  }
+
+  // #664: 直前に確定した得点を取り消す。
+  //  - 保存済み (rallyId あり): server の DELETE /rallies/{id} を先に成功させ、
+  //    そのうえでローカル状態を確定前へ戻す。削除が失敗したら store は戻さない
+  //    (画面と DB が食い違わないようにする)。
+  //  - 未保存で保存失敗 (saveFailed, rallyId なし): server にラリーは無い。再送
+  //    キューから除いてローカルだけ戻す。
+  //  - 保存中 (saving): まだ rallyId が確定しないので取り消しを受け付けない
+  //    (UI 側で無効化。二重押し等でここに来たら何もしない)。
+  const handleUndoLastConfirmed = async () => {
+    const lc = lastConfirmed
+    if (!lc || lc.saving || lc.undoing) return
+
+    if (lc.rallyId != null) {
+      setLastConfirmed({ ...lc, undoing: true, undoError: null })
+      try {
+        await apiDelete(`/rallies/${lc.rallyId}`)
+      } catch (err: unknown) {
+        setLastConfirmed({
+          ...lc,
+          undoing: false,
+          undoError: errorMessage(err, t('annotator.ui.unknown_error')),
+        })
+        return
+      }
+      store.undoLastConfirmedRally(lc.snapshot)
+      setLastConfirmed(null)
+      setMode('rally')
+      return
+    }
+
+    // 未保存 (保存失敗) ラリー: server には無い。退避キューから除いてローカルを戻す。
+    if (lc.saveFailed) {
+      void removeRallyAfterSave(userId, matchId, latestSet.id, lc.snapshot.rallyNum)
+      store.undoLastConfirmedRally(lc.snapshot)
+      // 保存失敗で積んだ saveError も取り消す (このラリーの分)。
+      store.clearSaveErrors()
+      setLastConfirmed(null)
+      setMode('rally')
+    }
   }
 
   const playerAName = match.player_a?.name ?? 'A'
@@ -447,6 +537,42 @@ export function LiveInputPage() {
           {t('annotator.live.tab_result', { defaultValue: '得点確定' })}
         </button>
       </div>
+
+      {/* #664: 直前に確定した得点の取り消し導線。確定直後の誤タップをその場で戻せる。
+          得点者・終了種別・保存状態を併記し、保存完了後に取り消しが押せる。 */}
+      {lastConfirmed !== null && (
+        <div role="status" className="shrink-0 flex items-center gap-2 px-3 py-2 border-b border-[var(--ss-border)] text-sm">
+          <span className="flex-1 text-[var(--ss-t2)] truncate">
+            {t('annotator.live.last_result', {
+              player: lastConfirmed.winner === 'player_a' ? playerAName : playerBName,
+              endType: t(`end_types.${lastConfirmed.endType}`, { defaultValue: lastConfirmed.endType }),
+            })}
+            {lastConfirmed.saving && (
+              <span className="ml-2 text-xs text-[var(--ss-t3)]">{t('annotator.live.saving_count', { n: 1 })}</span>
+            )}
+          </span>
+          <button
+            type="button"
+            disabled={lastConfirmed.saving || lastConfirmed.undoing}
+            onClick={() => { void handleUndoLastConfirmed() }}
+            className="px-3 py-2 rounded-[5px] bg-[var(--ss-surface-2)] text-[var(--ss-t1)] border border-[var(--ss-border-strong)] disabled:opacity-50"
+          >
+            {lastConfirmed.undoing
+              ? t('annotator.live.undo_confirmed_busy')
+              : t('annotator.live.undo_confirmed')}
+          </button>
+        </div>
+      )}
+      {lastConfirmed?.saving && (
+        <div role="status" className="shrink-0 px-3 py-1 text-xs text-[var(--ss-t2)]">
+          {t('annotator.live.undo_wait_save')}
+        </div>
+      )}
+      {lastConfirmed?.undoError && (
+        <div className="shrink-0 px-3 py-1 text-xs text-[var(--ss-bad)] break-all">
+          {t('annotator.live.undo_failed', { reason: lastConfirmed.undoError })}
+        </div>
+      )}
 
       {/* セット決着: 次のセットへ (試合が決着していれば終了表示) */}
       {currentSetWinner !== null && (
