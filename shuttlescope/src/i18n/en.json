@@ -1430,7 +1430,12 @@
       "next_set": "Next set",
       "set_end_busy": "Working...",
       "set_end_waiting_save": "The set cannot be finalized until the last rally is saved. It is saving or waiting to be resent. Press again after the unsaved indicator at the top right clears.",
-      "set_end_failed": "Could not finish the set: {{reason}}"
+      "set_end_failed": "Could not finish the set: {{reason}}",
+      "undo_confirmed": "Undo last point",
+      "undo_confirmed_busy": "Undoing...",
+      "last_result": "Last: {{player}} / {{endType}}",
+      "undo_wait_save": "Cannot undo until the save completes",
+      "undo_failed": "Could not undo: {{reason}}"
     },
     "rally_start": "Rally start",
     "rally_confirm": "Confirm rally",
