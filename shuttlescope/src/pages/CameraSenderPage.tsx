@@ -24,6 +24,7 @@ import { participantWsUrl } from '@/utils/cameraWs'
 import { getDeviceUid } from '@/utils/deviceUid'
 import { getParticipantRejoinToken, setParticipantRejoinToken } from '@/utils/participantRejoinToken'
 import { MIcon } from '@/components/common/MIcon'
+import { watchPeerConnection, addCandidate, flushCandidates } from './peerConnection'
 
 type SenderState = 'join' | 'connecting' | 'state_a' | 'state_b' | 'state_c' | 'error'
 
@@ -142,6 +143,7 @@ export function CameraSenderPage() {
 
   const wsRef = useRef<WebSocket | null>(null)
   const pcRef = useRef<RTCPeerConnection | null>(null)
+  const candidatesRef = useRef<RTCIceCandidateInit[]>([])
   const localStreamRef = useRef<MediaStream | null>(null)
   const previewRef = useRef<HTMLVideoElement>(null)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -311,8 +313,9 @@ export function CameraSenderPage() {
     }
 
     ws.onmessage = async (event) => {
+      let msg
+      try { msg = JSON.parse(event.data) } catch { console.warn('Invalid signaling message'); return }
       try {
-        const msg = JSON.parse(event.data)
         if (msg.type === 'camera_request') {
           setSenderState('state_b')
         } else if (msg.type === 'camera_deactivate') {
@@ -322,18 +325,33 @@ export function CameraSenderPage() {
           localStreamRef.current = null
           pcRef.current?.close()
           pcRef.current = null
+          setStartingCamera(false)
           if (previewRef.current) previewRef.current.srcObject = null
           setSenderState('state_a')
         } else if (msg.type === 'webrtc_answer' && pcRef.current) {
-          await pcRef.current.setRemoteDescription({ type: 'answer', sdp: msg.sdp })
+          const pc = pcRef.current
+          await pc.setRemoteDescription({ type: 'answer', sdp: msg.sdp })
+          if (pcRef.current === pc) await flushCandidates(pc, candidatesRef.current)
         } else if (msg.type === 'ice_candidate' && pcRef.current) {
-          await pcRef.current.addIceCandidate({
+          await addCandidate(pcRef.current, candidatesRef.current, {
             candidate: msg.candidate,
             sdpMid: msg.sdp_mid,
             sdpMLineIndex: msg.sdp_m_line_index,
-          }).catch(() => {})
+          })
         }
-      } catch { /* ignore */ }
+      } catch (error) {
+        console.warn('WebRTC signaling failed', error)
+        setStartingCamera(false)
+        localStreamRef.current?.getTracks().forEach((track) => track.stop())
+        localStreamRef.current = null
+        stopRttPolling()
+        void serverRecorder.stop()
+        pcRef.current?.close()
+        pcRef.current = null
+        candidatesRef.current = []
+        setErrorMsg(t('camera_sender.connect_error'))
+        setSenderState('error')
+      }
     }
 
     ws.onclose = () => {
@@ -505,6 +523,20 @@ export function CameraSenderPage() {
       }
       const pc = new RTCPeerConnection({ iceServers })
       pcRef.current = pc
+      candidatesRef.current = []
+      watchPeerConnection(pc, () => pcRef.current === pc,
+        () => { setStartingCamera(false); setSenderState('state_c') },
+        () => {
+          pc.close()
+          pcRef.current = null
+          localStreamRef.current?.getTracks().forEach((track) => track.stop())
+          localStreamRef.current = null
+          stopRttPolling()
+          void serverRecorder.stop()
+          setStartingCamera(false)
+          setErrorMsg(t('camera_sender.connect_error'))
+          setSenderState('error')
+        })
       startRttPolling(pc)
 
       stream.getTracks().forEach((track) => pc.addTrack(track, stream))
@@ -534,7 +566,6 @@ export function CameraSenderPage() {
         sdp: offer.sdp,
       }))
 
-      setSenderState('state_c')
     } catch {
       // ここに来るのはカメラ取得後の WebRTC/signaling 失敗なので、カメラ権限ではなく
       // 接続の問題として案内する。取得済みの stream は止めてカメラを解放する。
@@ -542,8 +573,10 @@ export function CameraSenderPage() {
         stream.getTracks().forEach((t) => t.stop())
       } catch { /* 既に停止している場合がある */ }
       localStreamRef.current = null
+      pcRef.current?.close()
+      pcRef.current = null
       setErrorMsg(t('camera_sender.connect_error'))
-    } finally {
+      setSenderState('error')
       setStartingCamera(false)
     }
     // recordingMatchId / serverRecorder は read-only スナップショットとして使い、
