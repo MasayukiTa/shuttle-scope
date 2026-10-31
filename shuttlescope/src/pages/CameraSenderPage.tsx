@@ -265,8 +265,20 @@ export function CameraSenderPage() {
     let wsUrl: string
     try {
       wsUrl = await participantWsUrl(code, 'device', pid, savedTokenRef.current)
-    } catch {
-      scheduleReconnect(code, pid)
+    } catch (e) {
+      // #665: 入場券取得失敗を握りつぶして一律再接続せず、原因で分岐する。
+      // 401/403・参加トークン欠落は再接続しても直らないので即座に再参加へ案内。
+      // 404/410 はセッション消滅。5xx/タイムアウト/ネットワーク断のみ有限回の自動再接続。
+      const status = errorStatus(e)
+      if (status === 401 || status === 403 || !savedTokenRef.current) {
+        setSenderState('error')
+        setErrorMsg(t('camera_sender.rejoin_required'))
+      } else if (status === 404 || status === 410) {
+        setSenderState('error')
+        setErrorMsg(t('camera_sender.session_gone'))
+      } else {
+        scheduleReconnect(code, pid)
+      }
       return
     }
     if (disposedRef.current) return
@@ -337,7 +349,7 @@ export function CameraSenderPage() {
     }
     // serverRecorder は安定参照 (custom hook の戻り値) なので deps 不要
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scheduleReconnect])
+  }, [scheduleReconnect, t])
 
   // ─── セッション参加 ───────────────────────────────────────────────────────
   const joinSession = useCallback(async (code: string, password: string, deviceName: string) => {
