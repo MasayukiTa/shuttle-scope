@@ -33,7 +33,7 @@ import { AttributePanel } from '@/components/annotation/AttributePanel'
 import { RallyPanel } from '@/components/annotation/RallyPanel'
 import { useAnnotationStore, type ConfirmedRallySnapshot } from '@/store/annotationStore'
 import { buildBatchPayload, buildSkippedRallyPayload } from '@/utils/annotationPayload'
-import { apiPost, apiPut, apiDelete } from '@/api/client'
+import { apiPost, apiPut, apiDelete, newIdempotencyKey } from '@/api/client'
 import { setWinner, isMatchDecidedBySet } from '@/utils/badmintonRules'
 import { useAuth } from '@/hooks/useAuth'
 import { useOfflineSync } from '@/hooks/useOfflineSync'
@@ -444,7 +444,7 @@ export function LiveInputPage() {
     if (lc.rallyId != null) {
       setLastConfirmed({ ...lc, undoing: true, undoError: null })
       try {
-        await apiDelete(`/rallies/${lc.rallyId}`)
+        await apiDelete(`/rallies/${lc.rallyId}`, { 'X-Idempotency-Key': newIdempotencyKey() })
       } catch (err: unknown) {
         setLastConfirmed({
           ...lc,
