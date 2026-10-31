@@ -1,3 +1,5 @@
+import { storeReturnContext } from '@/utils/returnPath'
+
 const BASE_URL = (() => {
   if (
     typeof window !== 'undefined' &&
@@ -176,6 +178,17 @@ function _handleSessionExpired(): void {
     _hadAnyToken =
       !!sessionStorage.getItem('shuttlescope_token') ||
       !!sessionStorage.getItem(REFRESH_KEY)
+  } catch {
+    /* noop */
+  }
+
+  // G4 #715: セッション失効時に、今いた in-app パスとユーザー識別子を
+  // 保存しておく (再ログイン後に同一ユーザーなら戻る)。storage を消す
+  // 前に読む必要がある。許可ルートでなければ storeReturnContext が何もしない。
+  try {
+    const uid = sessionStorage.getItem('shuttlescope_user_id')
+    const rawHash = (window.location.hash || '').replace(/^#/, '')
+    if (uid && rawHash) storeReturnContext(uid, rawHash)
   } catch {
     /* noop */
   }
