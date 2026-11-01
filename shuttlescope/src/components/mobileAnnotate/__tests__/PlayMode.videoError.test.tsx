@@ -11,6 +11,8 @@ vi.mock('@/hooks/useHapticFeedback', () => ({ useHapticFeedback: () => ({ tap: (
 vi.mock('@/api/client', () => ({ apiGet: vi.fn().mockResolvedValue({ success: true, data: [] }) }))
 vi.mock('@/components/mobileAnnotate/MobileCVOverlay', () => ({ MobileCVOverlay: () => null }))
 
+vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} })
+
 import { PlayMode } from '../PlayMode'
 
 const expected = (ja as unknown as { auto: { PlayMode: Record<string, string> } }).auto.PlayMode.playback_failed

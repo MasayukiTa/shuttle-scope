@@ -8,6 +8,8 @@ import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ setSession: vi.fn() }) }))
 
+vi.mock('@/utils/passwordReset', () => ({ PASSWORD_RESET_ENABLED: true }))
+
 import i18n from '@/i18n'
 import RegisterPage from '../RegisterPage'
 import InvitationAcceptPage from '../InvitationAcceptPage'
