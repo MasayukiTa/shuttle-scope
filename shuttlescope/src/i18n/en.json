@@ -2466,7 +2466,7 @@
     "value_group_label": "{{item}} options",
     "confidence_group_label": "{{item}} confidence",
     "confidence_option_label": "{{item}} confidence: {{level}}",
-    "button": "Open-practice notes",
+    "button": "Pre-match warm-up observations",
     "title": "Pre-match warm-up observations",
     "subtitle": "Record observations and confidence (use \"Tentative\" for uncertain items)",
     "player_a": "Player A",

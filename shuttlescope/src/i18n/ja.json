@@ -2474,7 +2474,7 @@
     "value_group_label": "{{item}}の選択肢",
     "confidence_group_label": "{{item}}の確からしさ",
     "confidence_option_label": "{{item}}の確からしさ: {{level}}",
-    "button": "公開練習メモ",
+    "button": "試合前ウォームアップ観察",
     "title": "試合前ウォームアップ観察",
     "subtitle": "観察内容と信頼度を記録します（確実でない情報は「仮説」で記録）",
     "player_a": "選手A",
