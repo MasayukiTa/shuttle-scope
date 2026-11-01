@@ -1641,6 +1641,7 @@
       "recording_branch": "録画枝",
       "recording_primary": "主動画",
       "recording_branch_option": "枝 {{branch}} · {{label}}",
+      "recording_branch_error": "録画枝を取得できません",
       "skip_dual_meaning_doubles": "ダブルス: 0 キーは player_b の打者選択に使うため、スキップはボタンで行います",
       "skip_dual_meaning_singles": "シングルス: 0 / Numpad0 でもスキップできます",
       "undo_pending_title": "入力中のショットをキャンセル (Ctrl+Z)",
