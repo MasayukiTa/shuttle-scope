@@ -591,13 +591,20 @@ function PageAccessRoute({ pageKey, children }: { pageKey: string; children: Rea
  * → 向きに依存しない「画面の物理短辺 < 768」かつ「タッチ端末 (pointer:coarse)」
  *   で判定し、横向きでもスマホは MobileAnnotatePage に留まるようにする。
  */
-function detectPhone(): boolean {
+export function detectPhone(): boolean {
   if (typeof window === 'undefined') return false
   const sw = window.screen?.width ?? window.innerWidth
   const sh = window.screen?.height ?? window.innerHeight
   const shortEdge = Math.min(sw, sh)            // 向きに依存しない短辺
   const coarse = window.matchMedia?.('(pointer: coarse)')?.matches ?? false
-  return shortEdge < 768 && coarse
+  // #792: 旧判定は shortEdge < 768 固定で、タッチ端末でも短辺が 768 以上の iPad
+  // (短辺 768 / 810 / 820 / 834 など) が専用モバイル Annotator (/m/annotate) へ
+  // 振り分けられず desktop AnnotatorPage に入っていた。アプリには iPad ベンチ運用
+  // 向けの機能 (BT キーボード前提設定 / mobile 専用 Pass1-3) があるため、coarse
+  // pointer のタッチ端末は phone だけでなく代表的な iPad viewport も含めて専用
+  // フローへ送る。短辺 1024 未満を閾値にすることで iPad Pro 12.9 の短辺 1024 以上の
+  // 大型タブレットだけを desktop 相当として除外し、それ以外の iPad を網羅する。
+  return shortEdge < 1024 && coarse
 }
 
 function AnnotatorOrMobileAnnotate() {
