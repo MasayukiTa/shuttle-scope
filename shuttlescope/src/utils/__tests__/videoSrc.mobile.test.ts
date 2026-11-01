@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   chooseMobileVideoQuality,
   getMobileVideoSrc,
+  isLocalOnlyVideo,
   type MobileQualityOption,
 } from '../videoSrc'
 
@@ -43,6 +44,33 @@ describe('getMobileVideoSrc with availability', () => {
     const none: MobileQualityOption[] = [{ quality: 'source', height: 0, ready: false }]
     const withUrl = { ...match, video_url: 'https://example.com/v.mp4' }
     expect(getMobileVideoSrc(withUrl, 'source', none)).toBe('https://example.com/v.mp4')
+  })
+})
+
+describe('isLocalOnlyVideo', () => {
+  const noneReady: MobileQualityOption[] = [{ quality: 'source', height: 0, ready: false }]
+  const sourceReady: MobileQualityOption[] = [{ quality: 'source', height: 720, ready: true }]
+
+  it('is true for a local-registered video with no ready quality and no external URL', () => {
+    expect(isLocalOnlyVideo(match, noneReady)).toBe(true)
+  })
+
+  it('is false when a quality is ready (server-stored video)', () => {
+    expect(isLocalOnlyVideo(match, sourceReady)).toBe(false)
+  })
+
+  it('is false when a playable external URL exists', () => {
+    const withUrl = { ...match, video_url: 'https://example.com/v.mp4' }
+    expect(isLocalOnlyVideo(withUrl, noneReady)).toBe(false)
+  })
+
+  it('is false when the match has no local video at all', () => {
+    const noLocal = { ...match, has_video_local: false }
+    expect(isLocalOnlyVideo(noLocal, noneReady)).toBe(false)
+  })
+
+  it('is false for a null match', () => {
+    expect(isLocalOnlyVideo(null, noneReady)).toBe(false)
   })
 })
 

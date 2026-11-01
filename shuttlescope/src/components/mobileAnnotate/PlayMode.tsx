@@ -81,9 +81,14 @@ interface Props {
   onCalibEditingChange?: (editing: boolean) => void
   /** videoSrc が無い / 失敗時の再取得トリガ (= 親の match query refetch)。 */
   onRetryVideo?: () => void
+  /**
+   * ローカル専用動画か (= 元端末にのみ存在し、Web/モバイルの HTTP stream では再生できない)。
+   * true のときは「準備中 / 再読み込み」ではなく「デスクトップアプリで再生」を案内する。
+   */
+  localOnly?: boolean
 }
 
-export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities, currentQuality, onQualityChange, cvCandidateTimestamps, resumeFromSec, onCalibEditingChange, onRetryVideo }: Props) {
+export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities, currentQuality, onQualityChange, cvCandidateTimestamps, resumeFromSec, onCalibEditingChange, onRetryVideo, localOnly }: Props) {
   const { t } = useTranslation()
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -229,14 +234,17 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
 
   // videoSrc が無い間は数秒ごとに自動で再取得を試みる (= サーバが準備完了したら
   // 自動で再生に移行)。手動「再読み込み」ボタンと併用。
+  // ただし local-only 動画 (localfile:/// は HTTP stream が必ず 404) は再取得しても
+  // 再生可能にならないため、無駄な polling を避けてスキップする。
   useEffect(() => {
     if (videoSrc) return
+    if (localOnly) return
     if (!onRetryVideo) return
     const id = window.setInterval(() => {
       onRetryVideo()
     }, 5000)
     return () => window.clearInterval(id)
-  }, [videoSrc, onRetryVideo])
+  }, [videoSrc, onRetryVideo, localOnly])
 
   // events
   useEffect(() => {
@@ -480,7 +488,23 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
         }}
         onTouchStart={cropEditing ? onCropTouch : undefined}
       >
-        {!videoSrc ? (
+        {!videoSrc && localOnly ? (
+          // ローカル専用動画: Web/モバイルの HTTP stream は localfile:/// を必ず 404 で拒否する
+          // (設計どおり)。再試行しても再生可能にはならないので「準備中 / 再読み込み」は出さず、
+          // デスクトップアプリで再生する導線を plain text で案内する。
+          <div className="absolute inset-0 flex items-center justify-center text-white text-sm p-4">
+            <div className="text-center max-w-md">
+              <div className="text-base font-bold mb-2">{t('auto.PlayMode.local_only_title')}</div>
+              <div className="text-xs text-white/80 leading-relaxed">
+                {t('auto.PlayMode.local_only_desc_1')}<br />
+                {t('auto.PlayMode.local_only_desc_2')}
+              </div>
+              <div className="text-[10px] text-white/50 mt-3 font-mono break-all">
+                {t('auto.PlayMode.match_id', { id: matchId })}
+              </div>
+            </div>
+          </div>
+        ) : !videoSrc ? (
           <div className="absolute inset-0 flex items-center justify-center text-white text-sm p-4">
             <div className="text-center max-w-md">
               <div className="text-base font-bold mb-2">{t('auto.PlayMode.k1')}</div>
