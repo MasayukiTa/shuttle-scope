@@ -1651,6 +1651,7 @@
       "autosave_quota": "一時保存の容量超過",
       "autosave_failed": "一時保存失敗",
       "init_error": "初期化エラー",
+      "load_failed": "試合データを読み込めませんでした",
       "skip": "スキップ",
       "next": "次へ",
       "record_start": "録画",
