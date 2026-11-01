@@ -445,6 +445,14 @@ class Match(Base):
     is_public_pool: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False, server_default="false", index=True
     )
+    # is_demo_public: True のときに限り、デモチーム所有の **デモ専用** 試合を
+    # 所有チーム以外のユーザーにも read-only で見せてよい、という明示マーカー。
+    # fail closed: 既定は False、既存行は全て False 扱い。実データ試合には付与しない。
+    # is_public_pool とは独立した別経路（管理者が設定する一般公開プールとは別概念）。
+    # 可視判定は単一の共有ヘルパ (utils.auth.match_is_demo_public) に集約する。
+    is_demo_public: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="false", index=True
+    )
     home_team_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("teams.id"), nullable=True)
     away_team_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("teams.id"), nullable=True)
 

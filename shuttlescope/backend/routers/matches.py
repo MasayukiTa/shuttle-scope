@@ -575,6 +575,8 @@ def match_to_dict(
         # Phase B: チーム境界情報
         "owner_team_id": m.owner_team_id,
         "is_public_pool": bool(getattr(m, "is_public_pool", False)),
+        # g26b: デモ公開マーカー。フロントの一覧ラベル表示に使う read-only の真偽値。
+        "is_demo_public": bool(getattr(m, "is_demo_public", False)),
         "home_team_id": getattr(m, "home_team_id", None),
         "away_team_id": getattr(m, "away_team_id", None),
     }

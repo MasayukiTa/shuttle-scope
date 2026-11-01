@@ -260,6 +260,20 @@ def _match_player_ids(m: Match) -> set[int]:
     return {x for x in (m.player_a_id, m.partner_a_id, m.player_b_id, m.partner_b_id) if x}
 
 
+def match_is_demo_public(m: Match) -> bool:
+    """所有チーム以外のユーザーにこの試合を read-only で見せてよいか（デモ公開）。
+
+    g26b / audit #587 / "demo public pool": fail closed。
+    明示的に永続化された `is_demo_public == True` のデモ試合だけを、所有チーム外へ
+    公開する。マーカーが無い試合は従来どおり完全に隠す（既存行は全て False）。
+    この判定は一覧 (apply_match_team_scope)・詳細・動画・派生解析の全読み取り経路で
+    共有し、挙動を一致させるための **唯一の** 関数とする。
+    実データ試合にこのマーカーを付けてはならない（付与はデモチーム所有試合に限る）。
+    is_public_pool（管理者が設定する一般公開プール）とは独立した別経路。
+    """
+    return bool(getattr(m, "is_demo_public", False))
+
+
 def user_can_access_match(ctx: AuthCtx, m: Match) -> bool:
     """現在のユーザーがこの試合にアクセスしてよいか。
 
@@ -291,6 +305,9 @@ def user_can_access_match(ctx: AuthCtx, m: Match) -> bool:
     if ctx.team_id is not None and owner_id is not None and owner_id == ctx.team_id:
         return True
     if is_public:
+        return True
+    # g26b: 明示マーカー付きのデモ試合は所有チーム外にも read-only で可視。
+    if match_is_demo_public(m):
         return True
     # public でない場合に「自チーム選手が登場」する場合も閲覧可（解析対象として）
     if ctx.team_id is not None:
@@ -340,8 +357,10 @@ def apply_match_team_scope(query, ctx: AuthCtx):
         )
     # coach / analyst
     if ctx.team_id is None:
-        # チーム未所属（移行期のみ）: public プールのみ
-        return query.filter(Match.is_public_pool.is_(True))
+        # チーム未所属（移行期のみ）: public プール or 明示マーカー付きデモ公開のみ
+        return query.filter(
+            or_(Match.is_public_pool.is_(True), Match.is_demo_public.is_(True))
+        )
     team_player_subq = (
         exists().where(
             (Player.team_id == ctx.team_id)
@@ -354,6 +373,8 @@ def apply_match_team_scope(query, ctx: AuthCtx):
         or_(
             Match.owner_team_id == ctx.team_id,
             Match.is_public_pool.is_(True),
+            # g26b: 明示マーカー付きのデモ試合は所有チーム外にも read-only で可視。
+            Match.is_demo_public.is_(True),
             team_player_subq,
         )
     )
