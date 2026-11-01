@@ -280,6 +280,12 @@ export function NotificationInboxPage() {
                         }
                         setSelectedId(item.id)
                         setDraftNote(item.admin_note ?? '')
+                        // #651: 項目を開いた時点で未読(new)なら確認中(reviewed)へ遷移させ、
+                        // Sidebar の未読バッジと実際の既読状態を同期させる。
+                        // admin_note は現在値を渡し、閲覧だけで上書き消去されないようにする。
+                        if (item.status === 'new') {
+                          updateMutation.mutate({ inquiryId: item.id, status: 'reviewed', admin_note: item.admin_note })
+                        }
                       }}
                       aria-label={[
                         item.name,
