@@ -154,7 +154,7 @@ export interface CVJobsResult {
     seedTs: number,
     assignments: { detection_index: number; player_key: string; bbox?: [number, number, number, number] | null; hist?: number[] | null }[],
     extraSeeds?: { timestamp_sec: number; assignments: { detection_index: number; player_key: string; bbox?: [number, number, number, number] | null; hist?: number[] | null }[] }[]
-  ) => Promise<void>
+  ) => Promise<boolean>
   frameDetectLoading: boolean
   trackingLoading: boolean
   /** フレーム検出エラー（APIエラー時の詳細メッセージ。nullなら正常） */
