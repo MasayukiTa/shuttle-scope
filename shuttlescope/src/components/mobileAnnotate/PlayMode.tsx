@@ -308,7 +308,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
           error: v.error?.code,
           src: v.src,
         })
-        setPlayError(msg)
+        setPlayError(t('auto.PlayMode.playback_failed'))
       })
     }
   }, [])
@@ -568,7 +568,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
               }
               const detail = `video err ${codeMap[v.error?.code ?? -1] ?? v.error?.code} net=${v.networkState} ready=${v.readyState}`
               console.error('[mobile-annot] video error', detail, { src: v.src })
-              setPlayError(detail)
+              setPlayError(t('auto.PlayMode.playback_failed'))
             }}
           />
         )}
@@ -679,7 +679,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
             style={{ top: 'max(2.6rem, calc(env(safe-area-inset-top) + 2.2rem))' }}
             onClick={(e) => { e.stopPropagation(); setPlayError('') }}
           >
-            {t('auto.PlayMode.play_error', { msg: playError })}
+            {playError}
           </div>
         )}
 

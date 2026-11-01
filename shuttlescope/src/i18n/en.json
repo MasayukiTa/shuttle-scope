@@ -5236,6 +5236,7 @@
       "ios_fs_hint_1": "iPhone Safari does not support per-element fullscreen.",
       "ios_fs_hint_2": "Launching as a PWA gives you a true fullscreen with no URL bar. (tap to close)",
       "play_error": "{{msg}} (tap to close)",
+      "playback_failed": "Cannot play the video. Check your connection and try again.",
       "cancel": "Cancel",
       "confirm": "Confirm",
       "seek_back_5": "◀◀5",
@@ -5415,6 +5416,11 @@
       "unverified": "unverified"
     },
     "TeamManagementPage": {
+      "aria_edit": "Edit \"{{name}}\"",
+      "aria_delete": "Delete \"{{name}}\"",
+      "aria_members": "Show members of \"{{name}}\"",
+      "aria_save": "Save changes to \"{{name}}\"",
+      "aria_cancel": "Cancel editing \"{{name}}\"",
       "k1": "This page is for admin / coach only.",
       "k2": "Team management",
       "k3": "Create new",
