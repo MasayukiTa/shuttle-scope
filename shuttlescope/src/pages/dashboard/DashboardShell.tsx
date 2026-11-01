@@ -202,7 +202,7 @@ export function DashboardShell() {
   // 選手が切り替わったらフィルターリセット不要だが、試合選択は各サブページで管理
 
   // ── Players ──
-  const { data: playersResp, isLoading: loadingPlayers } = useQuery({
+  const { data: playersResp, isLoading: loadingPlayers, isError: playersError, refetch: refetchPlayers } = useQuery({
     queryKey: ['players'],
     queryFn: () => apiGet<{ success: boolean; data: Player[] }>('/players'),
   })
@@ -354,7 +354,11 @@ export function DashboardShell() {
           </div>
         </div>
 
-        {!selectedPlayerId ? (
+        {playersError ? (
+          <div className="flex min-h-[40vh] items-center justify-center">
+            <QueryErrorNotice onRetry={() => refetchPlayers()} />
+          </div>
+        ) : !selectedPlayerId ? (
           <div className="flex min-h-[40vh] items-center justify-center text-gray-500 text-sm">
             {t('common.please_select_player', '選手を選択してください')}
           </div>
