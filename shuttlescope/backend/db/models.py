@@ -4,7 +4,8 @@ from typing import Optional
 from uuid import uuid4
 from sqlalchemy import (
     BigInteger, Integer, String, Float, Boolean, DateTime, Date,
-    ForeignKey, Text, UniqueConstraint, Index, LargeBinary, func, JSON, text
+    ForeignKey, Text, UniqueConstraint, Index, LargeBinary, func, JSON, text,
+    false as _sa_false
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.db.database import Base
@@ -30,7 +31,7 @@ class Team(Base):
     display_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, unique=True, index=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     short_name: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    is_independent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="false")
+    is_independent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default=_sa_false())
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -443,7 +444,7 @@ class Match(Base):
         Integer, ForeignKey("teams.id"), nullable=True, index=True
     )
     is_public_pool: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False, server_default="false", index=True
+        Boolean, default=False, nullable=False, server_default=_sa_false(), index=True
     )
     # is_demo_public: True のときに限り、デモチーム所有の **デモ専用** 試合を
     # 所有チーム以外のユーザーにも read-only で見せてよい、という明示マーカー。
@@ -451,7 +452,7 @@ class Match(Base):
     # is_public_pool とは独立した別経路（管理者が設定する一般公開プールとは別概念）。
     # 可視判定は単一の共有ヘルパ (utils.auth.match_is_demo_public) に集約する。
     is_demo_public: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False, server_default="false", index=True
+        Boolean, default=False, nullable=False, server_default=_sa_false(), index=True
     )
     # is_synthetic: True のときに限り、この試合を検証用 fixture (BIAS_SEED 等の
     # 合成データ) とみなす明示マーカー。audit #178: 検証データが通常の成長・対戦相手・
@@ -460,7 +461,7 @@ class Match(Base):
     # (analysis.analysis_population.split_analysis_population, 既定で synthetic を除外。
     # 管理ツールだけが include_synthetic=True で取り込める) に集約する。
     is_synthetic: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False, server_default="false", index=True
+        Boolean, default=False, nullable=False, server_default=_sa_false(), index=True
     )
     home_team_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("teams.id"), nullable=True)
     away_team_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("teams.id"), nullable=True)
