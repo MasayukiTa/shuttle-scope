@@ -89,13 +89,13 @@ function NetworkQualityIndicator({ rttMs }: { rttMs: number | null }) {
 
 // ─── セッション情報バッジ ────────────────────────────────────────────────────
 
-function SessionBadge({ sessionCode, role }: { sessionCode: string; role: string }) {
+function SessionBadge({ sessionCode, deviceName }: { sessionCode: string; deviceName: string }) {
   const { t } = useTranslation()
   return (
     <div className="flex items-center gap-2 text-[10px] text-[var(--ss-t3)] mb-1">
       <span>{t('camera_sender.session_label')}: <span className="font-mono ss-num text-[var(--ss-t2)]">{sessionCode}</span></span>
       <span>|</span>
-      <span>{t('camera_sender.role_display')}: <span className="text-[var(--ss-brand)]">{role}</span></span>
+      <span>{t('camera_sender.role_display')}: <span className="text-[var(--ss-brand)]">{deviceName}</span></span>
     </div>
   )
 }
@@ -669,7 +669,7 @@ export function CameraSenderPage() {
       {activeSessionCode && (
         <SessionBadge
           sessionCode={activeSessionCode}
-          role={savedDeviceNameRef.current || getDeviceTypeLabel()}
+          deviceName={savedDeviceNameRef.current || getDeviceTypeLabel()}
         />
       )}
       <div className="flex items-center gap-2 ml-auto">
