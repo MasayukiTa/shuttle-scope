@@ -115,8 +115,8 @@ class MatchUpdate(BaseModel):
 # "retired" は Annotator の「途中終了」(AnnotatorPage.handleException) が送る値。
 # analysis_population.is_decided_result は win/loss だけを確定扱いにするため、
 # retired の試合は勝率の母集団に入らない。
-_MATCH_RESULT_ALLOWED = {"win", "loss", "draw", "unknown", "retired"}
-_MATCH_FORMAT_ALLOWED = {"singles", "doubles", "mixed"}
+_MATCH_RESULT_ALLOWED = {"win", "loss", "draw", "unknown", "retired", "unfinished", "walkover"}
+_MATCH_FORMAT_ALLOWED = {"singles", "doubles", "mixed", "mens_doubles", "womens_doubles", "mixed_doubles"}
 _MATCH_TOURNAMENT_LEVELS = {"IC", "IS", "SJL", "全日本", "国内", "その他"}
 _MATCH_ANNOTATION_STATUS = {"not_started", "in_progress", "complete", "reviewed"}
 
