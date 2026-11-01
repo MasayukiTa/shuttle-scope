@@ -58,14 +58,14 @@ describe('TeamManagementPage coach PATCH payload (項目501)', () => {
   it('coach: display_id を PATCH payload に含めない', async () => {
     mockRole = 'coach'
     await openEditAndSave()
-    const payload = patchTeam.mock.calls[0]​[1] as Record<string, unknown>
+    const payload = patchTeam.mock.calls[0][1] as Record<string, unknown>
     expect(Object.prototype.hasOwnProperty.call(payload, 'display_id')).toBe(false)
   })
 
   it('admin: display_id を PATCH payload に含む', async () => {
     mockRole = 'admin'
     await openEditAndSave()
-    const payload = patchTeam.mock.calls[0]​[1] as Record<string, unknown>
+    const payload = patchTeam.mock.calls[0][1] as Record<string, unknown>
     expect(Object.prototype.hasOwnProperty.call(payload, 'display_id')).toBe(true)
   })
 })
