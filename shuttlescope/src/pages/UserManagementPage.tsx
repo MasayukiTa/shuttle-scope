@@ -7,6 +7,7 @@ import { apiDelete, apiGet, apiPost, apiPut, authAdminResetPassword, getUserPage
 import { useAuth } from '@/hooks/useAuth'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { canShowDeleteButton } from '@/utils/userDeletePolicy'
+import { errorStatus, errorMessage } from '@/utils/errors'
 
 const PAGE_ACCESS_OPTIONS = [
   { key: 'prediction', labelKey: 'users.manage.page_access_prediction' },
@@ -157,6 +158,19 @@ export function UserManagementPage() {
   const [limitResetBusyId, setLimitResetBusyId] = useState<number | null>(null)
   const [copyDone, setCopyDone] = useState(false)
 
+  // 失敗の利用者向け文言。HTTP status・backend detail・JS 例外文字列は出さず、
+  // 原因の種類だけを伝える。詳細はコンソールへ残す。
+  const userFacingUserError = (err: unknown, fallback: string): string => {
+    console.error('[Users] request failed', errorStatus(err), errorMessage(err, ''))
+    switch (errorStatus(err)) {
+      case 401: return t('common_ui.error_session_expired')
+      case 403: return t('common_ui.error_forbidden')
+      case 409: return t('common_ui.error_conflict')
+      case 422: return t('common_ui.error_invalid_input')
+      default: return fallback
+    }
+  }
+
   const handleResetPassword = async (u: UserRow) => {
     if (!window.confirm(t('users.manage.reset_confirm', { name: u.display_name || u.username, username: u.username }))) return
     setResetBusyId(u.id)
@@ -165,8 +179,7 @@ export function UserManagementPage() {
       const res = await authAdminResetPassword(u.id)
       setResetResult({ username: u.username, password: res.temporary_password })
     } catch (err) {
-      const e = err as Error
-      window.alert(e.message || 'error')
+      window.alert(userFacingUserError(err, t('users.manage.reset_password_failed')))
     } finally {
       setResetBusyId(null)
     }
@@ -327,7 +340,7 @@ export function UserManagementPage() {
       await apiPost(`/admin/security/user_limits/${u.id}/reset`, body)
       await load()
     } catch (err) {
-      window.alert((err as Error).message || 'reset error')
+      window.alert(userFacingUserError(err, t('users.manage.reset_limits_failed')))
     } finally {
       setLimitResetBusyId(null)
     }
