@@ -335,7 +335,7 @@ export function PredictionPage() {
                     value: m.id,
                     label: `${m.date} ${m.tournament_level ? `[${m.tournament_level}]` : ''}`,
                     // 製品ルール: player には勝敗を見せない (API も result を返さず、全試合「未確定」になるため出さない)
-                    suffix: role === 'player' ? undefined : (m.result ? (m.result === 'win' ? 'W' : m.result === 'loss' ? 'L' : m.result) : '未確定'),
+                    suffix: m.result ? (m.result === 'win' ? 'W' : m.result === 'loss' ? 'L' : m.result) : '未確定',
                     searchText: `${m.date} ${m.tournament_level ?? ''}`,
                   }))}
                   value={forecastMatchId}

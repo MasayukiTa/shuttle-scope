@@ -47,7 +47,7 @@ vi.mock('@/components/common/MIcon', () => ({ MIcon: () => null }))
 
 import i18n from '@/i18n'
 import { DEFAULT_FILTERS } from '@/types'
-import { DashboardAdvancedPage } from '../../DashboardAdvancedPage'
+import { DashboardAdvancedPage } from '../DashboardAdvancedPage'
 
 function wrap() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
