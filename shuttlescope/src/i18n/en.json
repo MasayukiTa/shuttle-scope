@@ -3893,7 +3893,9 @@
     },
     "RecommendationRanking": {
       "k1": "Recommended advice",
-      "k2": "Loading..."
+      "k2": "Loading...",
+      "k3": "Recommended advice ranking",
+      "k4": "strokes"
     },
     "ScorelineHistogram": {
       "k1": "Details",

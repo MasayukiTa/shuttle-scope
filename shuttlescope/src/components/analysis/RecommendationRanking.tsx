@@ -167,11 +167,11 @@ export function RecommendationRanking({ playerId }: RecommendationRankingProps) 
       className="rounded-ss-lg p-4 bg-[var(--ss-surface-1)] border border-[var(--ss-border)]"
     >
       <h3 className="text-sm font-semibold mb-3" style={{ color: outerTokens.title }}>
-        推奨アドバイスランキング
+        {t('auto.RecommendationRanking.k3')}
       </h3>
 
       {items.length === 0 || !hasSufficientSample(sampleSize, RECOMMENDATION_MIN_STROKES) ? (
-        <NoDataMessage sampleSize={sampleSize} minRequired={RECOMMENDATION_MIN_STROKES} unit="ストローク" />
+        <NoDataMessage sampleSize={sampleSize} minRequired={RECOMMENDATION_MIN_STROKES} unit={t('auto.RecommendationRanking.k4')} />
       ) : (
         <div className="space-y-2">
           <ConfidenceBadge sampleSize={sampleSize} tier="research" unit="strokes" />
