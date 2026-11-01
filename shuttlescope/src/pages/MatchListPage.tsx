@@ -18,7 +18,7 @@ import { MatchRow } from '@/components/matchList/MatchRow'
 import { MIcon } from '@/components/common/MIcon'
 import { isPlayableVideoUrl } from '@/utils/videoSrc'
 import { isPlayerSearchBlocked } from '@/utils/playerSearchGuard'
-import { canWriteMatch } from '@/utils/roleAccess'
+import { canCreatePlayer, canWriteMatch } from '@/utils/roleAccess'
 import { localDateDaysAgo, localDateMonthsAgo, todayLocal } from '@/utils/localDate'
 
 // 試合登録フォーム
@@ -1096,6 +1096,7 @@ export function MatchListPage() {
                   isLight={isLight}
                   textSecondary={textSecondary}
                   placeholder={t('auto.MatchListPage.k16')}
+                  canCreate={canCreatePlayer(role)}
                 />
                 <PlayerCombobox
                   label={t('auto.MatchListPage.k44')}
@@ -1108,6 +1109,7 @@ export function MatchListPage() {
                   isLight={isLight}
                   textSecondary={textSecondary}
                   placeholder={t('auto.MatchListPage.k16')}
+                  canCreate={canCreatePlayer(role)}
                 />
 
                 {playerSearchFailed && (
@@ -1129,6 +1131,7 @@ export function MatchListPage() {
                       isLight={isLight}
                       textSecondary={textSecondary}
                       placeholder={t('auto.MatchListPage.k16')}
+                      canCreate={canCreatePlayer(role)}
                     />
                     <PlayerCombobox
                       label={t('auto.MatchListPage.k46')}
@@ -1140,6 +1143,7 @@ export function MatchListPage() {
                       isLight={isLight}
                       textSecondary={textSecondary}
                       placeholder={t('auto.MatchListPage.k16')}
+                      canCreate={canCreatePlayer(role)}
                     />
                   </>
                 )}

@@ -35,6 +35,12 @@ export function canDeletePlayer(role: RoleArg): boolean {
   return role === 'admin' || role === 'analyst'
 }
 
+/** 選手作成 (暇定登録を含む) の導線を出してよいか。backend の POST /players は require_analyst (analyst / admin のみ。coach は 403)。 */
+export function canCreatePlayer(role: RoleArg): boolean {
+  if (role == null) return true
+  return role === 'admin' || role === 'analyst'
+}
+
 /** 解析ジョブ状態の閲覧可否。backend の GET /v1/pipeline/jobs は analyst / coach 以外へ常に空配列を返すため、それ以外へ「未解析」を出さない。 */
 export function canViewPipelineJobs(role: RoleArg): boolean {
   if (role == null) return true

@@ -18,11 +18,12 @@ export interface PlayerComboboxProps {
   isLight: boolean
   textSecondary: string
   placeholder?: string
+  canCreate: boolean
 }
 
 export function PlayerCombobox({
   label, required = false, value, query, setQuery, setValue,
-  candidates, isLight, textSecondary, placeholder = '名前を入力して検索...',
+  candidates, isLight, textSecondary, placeholder = '名前を入力して検索...', canCreate,
 }: PlayerComboboxProps) {
   const { t } = useTranslation()
   // ラベルと入力欄を結ぶ (支援技術が「対象選手(A)」「対戦相手(B)」を区別できるようにする)
@@ -90,17 +91,23 @@ export function PlayerCombobox({
               {p.needs_review && <span className="text-xs text-yellow-400 bg-yellow-400/10 px-1 rounded shrink-0">{t('match.list.tentative')}</span>}
             </button>
           ))}
-          <button
-            type="button"
-            onClick={() => {
-              setValue('')
-              setShowDropdown(false)
-            }}
-            className={`w-full text-left px-3 py-2 hover:bg-blue-500/10 text-sm flex items-center gap-2 text-blue-400 border-t ${isLight ? 'border-gray-200' : 'border-gray-600'}`}
-          >
-            <MIcon name="person_add" size={12} className="shrink-0" />
-            <span>{t('match.list.create_tentative', { name: query.trim(), defaultValue: 'Create "{{name}}" as tentative' })}</span>
-          </button>
+          {canCreate ? (
+            <button
+              type="button"
+              onClick={() => {
+                setValue('')
+                setShowDropdown(false)
+              }}
+              className={`w-full text-left px-3 py-2 hover:bg-blue-500/10 text-sm flex items-center gap-2 text-blue-400 border-t ${isLight ? 'border-gray-200' : 'border-gray-600'}`}
+            >
+              <MIcon name="person_add" size={12} className="shrink-0" />
+              <span>{t('match.list.create_tentative', { name: query.trim(), defaultValue: 'Create "{{name}}" as tentative' })}</span>
+            </button>
+          ) : (
+            <p className={`px-3 py-2 text-xs text-gray-400 border-t ${isLight ? 'border-gray-200' : 'border-gray-600'}`}>
+              {t('match.list.create_tentative_requires_analyst')}
+            </p>
+          )}
         </div>
       )}
     </div>
