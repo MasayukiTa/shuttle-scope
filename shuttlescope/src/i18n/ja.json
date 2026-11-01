@@ -2500,6 +2500,7 @@
   "prediction": {
     "title": "試合予測",
     "title_short": "予測",
+    "player_restricted_note": "この機能はご利用のアカウントでは利用できません。試合予測のみ表示します。",
     "pair_simulation_short": "ペア",
     "lineup_optimizer_short": "編成",
     "human_forecast_short": "予想",

@@ -39,6 +39,8 @@ type SubTab = 'preview' | 'pair' | 'lineup' | 'forecast'
 export function PredictionPage() {
   const { t } = useTranslation()
   const { role } = useAuth()
+  // 監査 #502: player は本人スコープのみ。ペア/編成/人間予測サブタブは出さない。
+  const isPlayer = role === 'player'
   // テレメトリ: page 滞在 dwell 計測 (view_id ベース)
   useEffect(() => analyticsViewLifecycle('prediction.page'), [])
   useCardTheme()
@@ -53,6 +55,9 @@ export function PredictionPage() {
     return pid ? Number(pid) : null
   })
   const [subTab, setSubTab] = useState<SubTab>('preview')
+  useEffect(() => {
+    if (isPlayer && subTab !== 'preview') setSubTab('preview')
+  }, [isPlayer, subTab])
   const [forecastMatchId, setForecastMatchId] = useState<number | null>(null)
   // preview サブタブ用: Page レベルで管理（PredictionPanel へ prop として渡す）
   const [opponentId, setOpponentId] = useState<number | null>(null)
@@ -234,7 +239,9 @@ export function PredictionPage() {
               { key: 'lineup' as const, label: t('prediction.lineup_optimizer'), labelShort: t('prediction.lineup_optimizer_short') },
               { key: 'forecast' as const, label: t('prediction.human_forecast'), labelShort: t('prediction.human_forecast_short') },
             ] as const
-          ).map(({ key, label, labelShort }) => (
+          )
+            .filter(({ key }) => !isPlayer || key === 'preview')
+            .map(({ key, label, labelShort }) => (
             <button
               key={key}
               onClick={() => {
@@ -297,6 +304,10 @@ export function PredictionPage() {
               </div>
               {/* 右パネル（将来的に PrematchStatCard 等を配置） */}
               <div />
+            </div>
+          ) : isPlayer ? (
+            <div className={`flex items-center justify-center h-full ${textMuted} text-sm`}>
+              {t('prediction.player_restricted_note')}
             </div>
           ) : subTab === 'pair' ? (
             <div>
