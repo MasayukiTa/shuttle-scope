@@ -850,6 +850,24 @@ def update_match(match_id: int, body: MatchUpdate, request: Request, db: Session
     except Exception:
         db.rollback()
         raise
+    # 記録済みのセットがある試合で選手 (player_a_id / player_b_id) を差し替えると、
+    # 旧選手で記録した set / rally / stroke が新選手の成績に誤って帰属する (rvm1-03)。
+    # _create_new_players_for_match で *_new は既に *_id に解決済みなので、解決後の
+    # 値を保存値と比較する。実際に A 側か B 側の選手が変わり、かつ当該 match に
+    # GameSet 行が 1 件でもあれば 409 で拒否する。選手以外の項目 (大会名など) の
+    # 変更だけなら従来どおり通す。
+    new_a = getattr(body, "player_a_id", None)
+    new_b = getattr(body, "player_b_id", None)
+    player_changed = (new_a is not None and new_a != match.player_a_id) or (
+        new_b is not None and new_b != match.player_b_id
+    )
+    if player_changed:
+        has_set = db.query(GameSet.id).filter(GameSet.match_id == match.id).first() is not None
+        if has_set:
+            raise HTTPException(
+                status_code=409,
+                detail="試合に記録済みのセットがあるため選手は変更できません",
+            )
     # Phase B-5: owner / public / home / away の変更は admin のみ
     payload = body.model_dump(exclude_unset=True, exclude=set(_NEW_PLAYER_FIELDS.values()))
     privileged_keys = {"owner_team_id", "is_public_pool", "home_team_id", "away_team_id"}
@@ -1132,6 +1150,36 @@ def delete_match(match_id: int, request: Request, db: Session = Depends(get_db))
         db.flush()
     except Exception as exc:
         deletion_errors.append(f"cm_branch: {type(exc).__name__}: {str(exc)[:80]}")
+
+    # 2.6) SharedSession の cascade (rvm1-04)。
+    #
+    # SharedSession.match_id は FK matches.id かつ nullable=False / ondelete 未設定。
+    # comments と同じく Match の relationship には cascade が無いため、共有セッション
+    # を持つ試合を削除すると PostgreSQL では ForeignKeyViolation で commit が失敗し
+    # 500 になる (SQLite では孤児が残る)。shared_sessions の子 (session_participants,
+    # live_sources) も FK のみで DB レベルの cascade が無いので、子から順に Core SQL
+    # で消す。comments.session_id は 2.5) の comments 全削除で既に消えている。
+    try:
+        from sqlalchemy import text as _sa_text_ss
+        _sess_subq = "SELECT id FROM shared_sessions WHERE match_id = :mid"
+        for table_name, where_sql in (
+            ("live_sources", f"session_id IN ({_sess_subq})"),
+            ("session_participants", f"session_id IN ({_sess_subq})"),
+            ("shared_sessions", "match_id = :mid"),
+        ):
+            try:
+                result_ss = db.execute(
+                    _sa_text_ss(f"DELETE FROM {table_name} WHERE {where_sql}"),
+                    {"mid": match_id},
+                )
+                n_ss = getattr(result_ss, "rowcount", 0) or 0
+                if n_ss:
+                    deleted_files.append(f"{table_name}: {n_ss} rows")
+            except Exception as exc:
+                deletion_errors.append(f"{table_name}_cascade: {type(exc).__name__}: {str(exc)[:80]}")
+        db.flush()
+    except Exception as exc:
+        deletion_errors.append(f"ss_branch: {type(exc).__name__}: {str(exc)[:80]}")
 
     # 3) match 自身の削除を queue → 全てを 1 commit で flush
     db.delete(match)
