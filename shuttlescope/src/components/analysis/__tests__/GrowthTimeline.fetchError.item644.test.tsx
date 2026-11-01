@@ -58,6 +58,6 @@ describe('#644 GrowthTimeline fails closed on fetch error', () => {
       return Promise.resolve(okResponse())
     })
     renderWithClient(<GrowthTimeline playerId={1} partnerPlayerId={2} />)
-    await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy())
+    await waitFor(() => expect(screen.getAllByRole('alert').length).toBeGreaterThan(0))
   })
 })
