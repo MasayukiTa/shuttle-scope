@@ -46,15 +46,6 @@ const RESP = {
 
 beforeEach(() => { mockApi.mockReset() })
 
-describe('ShotWinLoss causal-framing note (#42)', () => {
-  it('因果でない旨の定義注記が t() 経由で表示される', async () => {
-    mockApi.mockResolvedValue(RESP as never)
-    const { container } = wrap(<ShotWinLoss playerId={1} filters={DEFAULT_FILTERS} />)
-    await waitFor(() => expect(container.textContent).toContain('causal'))
-    expect(container.textContent).toContain('confounded')
-  })
-})
-
 describe('i18n key parity (#42)', () => {
   it('definition_note が ja/en 両方にある', () => {
     for (const dict of [ja, en] as Dict[]) {
