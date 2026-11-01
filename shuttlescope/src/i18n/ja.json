@@ -299,6 +299,7 @@
       "missing_token": "トークンが指定されていません",
       "success": "メールアドレスを確認しました",
       "failed": "確認に失敗しました",
+      "failed_invalid": "リンクが無効または期限切れです。確認メールを再送してください。",
       "go_login": "ログインページへ"
     },
     "password_reset_request": {

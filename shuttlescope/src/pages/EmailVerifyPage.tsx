@@ -23,8 +23,9 @@ export default function EmailVerifyPage() {
         setVerifiedEmail(r.data?.verified_email ?? null)
       })
       .catch((err) => {
+        console.error('[EmailVerifyPage] verify failed', err)
         setStatus('error')
-        setErrorMsg(err?.message ?? String(err))
+        setErrorMsg(t('auth.verify.failed_invalid'))
       })
   }, [params, t])
 
