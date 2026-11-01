@@ -355,7 +355,11 @@ export function HumanForecastPanel({ matchId, playerId }: Props) {
   const [showForm, setShowForm] = useState(false)
   const [showBenchmark, setShowBenchmark] = useState(false)
 
-  const { data: forecastsResp } = useQuery({
+  const {
+    data: forecastsResp,
+    isError: forecastsError,
+    refetch: refetchForecasts,
+  } = useQuery({
     queryKey: ['human-forecasts', matchId, playerId],
     queryFn: () =>
       apiGet<{ success: boolean; data: ForecastRecord[] }>(
@@ -408,8 +412,13 @@ export function HumanForecastPanel({ matchId, playerId }: Props) {
         </p>
       )}
 
+      {/* 一覧取得失敗時は空配列 (0 件) に変換せず、明示的なエラー状態を出す (item #649) */}
+      {forecastsError && (
+        <QueryErrorNotice onRetry={() => refetchForecasts()} />
+      )}
+
       {/* 保存済み予測リスト */}
-      {forecasts.length > 0 && (
+      {!forecastsError && forecasts.length > 0 && (
         <div className="space-y-1">
           {forecasts.map((f) => (
             <div
