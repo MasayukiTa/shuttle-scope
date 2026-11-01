@@ -207,3 +207,59 @@ describe('ConditionPage 入力タブの登録対象 player id (G17b #657)', () =
     expect(payload.player_id).toBe(22)
   })
 })
+
+
+describe('ConditionPage 身体データモード (G27 #658 option A)', () => {
+  it('player: 自分のページで身体データモードが開ける', () => {
+    mockRole = 'player'
+    mockAuthPlayerId = 7
+    render(<ConditionPage />)
+    // モード切替に body ボタンが出る
+    const bodyBtn = screen.getByText(modeLabel('body'))
+    expect(bodyBtn).not.toBeNull()
+    // body モードに切替えると身体データ入力フォームが描画される
+    fireEvent.click(bodyBtn)
+    expect(screen.getByTestId('stub-InBodyForm')).not.toBeNull()
+    expect(screen.getByTestId('stub-HooperRpeForm')).not.toBeNull()
+  })
+
+  it('player: body モードの登録は自分の id で mutateAsync される', async () => {
+    mockRole = 'player'
+    mockAuthPlayerId = 7
+    render(<ConditionPage />)
+    fireEvent.click(screen.getByText(modeLabel('body')))
+    fireEvent.click(screen.getByText(lookup(ja as Dict, 'condition.save')))
+    expect(createMutateAsync).toHaveBeenCalledTimes(1)
+    const firstCallArgs = createMutateAsync.mock.calls[0] as Array<{ player_id: number }>
+    expect(firstCallArgs[0].player_id).toBe(7)
+  })
+
+  it('player: 選手レコードに未紐付け (player_id なし) では入力できず案内を出す', () => {
+    mockRole = 'player'
+    mockAuthPlayerId = null
+    render(<ConditionPage />)
+    // 身体データフォームも質問票フォームも出ない
+    expect(screen.queryByTestId('stub-InBodyForm')).toBeNull()
+    expect(screen.queryByTestId('weekly-form')).toBeNull()
+    // 未紐付け案内 (k7) を出す
+    expect(screen.getByText(lookup(ja as Dict, 'auto.ConditionPage.k7'))).not.toBeNull()
+  })
+
+  it('coach: 身体データモードは従来どおり利用でき (選手選択後)、挙動は不変', () => {
+    mockRole = 'coach'
+    mockAuthPlayerId = 99
+    render(<ConditionPage />)
+    fireEvent.click(screen.getByTestId('pick-22'))
+    fireEvent.click(screen.getByText(modeLabel('body')))
+    expect(screen.getByTestId('stub-InBodyForm')).not.toBeNull()
+  })
+
+  it('analyst: 身体データモードは従来どおり利用でき (選手選択後)、挙動は不変', () => {
+    mockRole = 'analyst'
+    mockAuthPlayerId = 99
+    render(<ConditionPage />)
+    fireEvent.click(screen.getByTestId('pick-22'))
+    fireEvent.click(screen.getByText(modeLabel('body')))
+    expect(screen.getByTestId('stub-InBodyForm')).not.toBeNull()
+  })
+})
