@@ -421,10 +421,20 @@ export function WarmupNotesPanel({
               </span>
               {/* 選択値ボタン + 確からしさボタン（同じ行で高さ揃え） */}
               <div className="flex items-center gap-2">
-                <div className="flex flex-wrap gap-1 flex-1">
+                {/* #531: 単一選択グループを支援技術へ radiogroup/radio + aria-checked で伝える。
+                    各グループに項目名を含む aria-label を付け、同名の値ボタンが
+                    どの観察項目のものか判別できるようにする。 */}
+                <div
+                  className="flex flex-wrap gap-1 flex-1"
+                  role="radiogroup"
+                  aria-label={t('warmup.value_group_label', { item: t(`warmup.observation_${def.key}`) })}
+                >
                   {def.values.map((val) => (
                     <button
                       key={val}
+                      type="button"
+                      role="radio"
+                      aria-checked={entry.value === val}
                       onClick={() => setField(def.key, entry.value === val ? '' : val)}
                       disabled={locked}
                       className={clsx(
@@ -439,10 +449,17 @@ export function WarmupNotesPanel({
                     </button>
                   ))}
                 </div>
-                <div className="flex gap-0.5 shrink-0">
+                <div
+                  className="flex gap-0.5 shrink-0"
+                  role="radiogroup"
+                  aria-label={t('warmup.confidence_group_label', { item: t(`warmup.observation_${def.key}`) })}
+                >
                   {CONFIDENCE_LEVELS.map((lvl) => (
                     <button
                       key={lvl}
+                      type="button"
+                      role="radio"
+                      aria-checked={entry.confidence === lvl}
                       onClick={() => setConfidence(def.key, lvl)}
                       disabled={locked}
                       className={clsx(
@@ -453,6 +470,7 @@ export function WarmupNotesPanel({
                         locked && 'cursor-not-allowed opacity-50',
                       )}
                       title={t(`warmup.confidence_${lvl}`)}
+                      aria-label={t('warmup.confidence_option_label', { item: t(`warmup.observation_${def.key}`), level: t(`warmup.confidence_${lvl}`) })}
                     >
                       {t(`warmup.confidence_${lvl}`)}
                     </button>
@@ -482,10 +500,17 @@ export function WarmupNotesPanel({
                     {t(`warmup.observation_${def.key}`, def.key)}
                   </span>
                   <div className="flex items-center gap-2">
-                    <div className="flex flex-wrap gap-1 flex-1">
+                    <div
+                      className="flex flex-wrap gap-1 flex-1"
+                      role="radiogroup"
+                      aria-label={t('warmup.value_group_label', { item: t(`warmup.observation_${def.key}`, def.key) })}
+                    >
                       {def.values.map((val) => (
                         <button
                           key={val}
+                          type="button"
+                          role="radio"
+                          aria-checked={entry.value === val}
                           onClick={() => {
                             if (locked) return
                             setActiveSelfObs((prev) => ({
@@ -507,10 +532,17 @@ export function WarmupNotesPanel({
                         </button>
                       ))}
                     </div>
-                    <div className="flex gap-0.5 shrink-0">
+                    <div
+                      className="flex gap-0.5 shrink-0"
+                      role="radiogroup"
+                      aria-label={t('warmup.confidence_group_label', { item: t(`warmup.observation_${def.key}`, def.key) })}
+                    >
                       {CONFIDENCE_LEVELS.map((lvl) => (
                         <button
                           key={lvl}
+                          type="button"
+                          role="radio"
+                          aria-checked={entry.confidence === lvl}
                           onClick={() => {
                             if (locked) return
                             setActiveSelfObs((prev) => ({
@@ -528,6 +560,7 @@ export function WarmupNotesPanel({
                             locked && 'cursor-not-allowed opacity-50',
                           )}
                           title={t(`warmup.confidence_${lvl}`)}
+                          aria-label={t('warmup.confidence_option_label', { item: t(`warmup.observation_${def.key}`, def.key), level: t(`warmup.confidence_${lvl}`) })}
                         >
                           {t(`warmup.confidence_${lvl}`)}
                         </button>

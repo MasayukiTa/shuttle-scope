@@ -2460,6 +2460,9 @@
     "movement_direction_lateral": "横"
   },
   "warmup": {
+    "value_group_label": "{{item}}の選択肢",
+    "confidence_group_label": "{{item}}の確からしさ",
+    "confidence_option_label": "{{item}}の確からしさ: {{level}}",
     "button": "公開練習メモ",
     "title": "試合前ウォームアップ観察",
     "subtitle": "観察内容と信頼度を記録します（確実でない情報は「仮説」で記録）",
@@ -3092,6 +3095,7 @@
       "required_label": "契約履行（必須）",
       "optional_label": "任意",
       "required_note": "撤回不可",
+      "account_deletion_contact": "アカウント削除の申請先（contact@shuttle-scope.com）",
       "required_status_on": "確認済み",
       "required_status_off": "未取得",
       "status_none": "未回答",

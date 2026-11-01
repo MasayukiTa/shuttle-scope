@@ -2452,6 +2452,9 @@
     "movement_direction_lateral": "Lateral"
   },
   "warmup": {
+    "value_group_label": "{{item}} options",
+    "confidence_group_label": "{{item}} confidence",
+    "confidence_option_label": "{{item}} confidence: {{level}}",
     "button": "Open-practice notes",
     "title": "Pre-match warm-up observations",
     "subtitle": "Record observations and confidence (use \"Tentative\" for uncertain items)",
@@ -3155,6 +3158,7 @@
       "required_label": "Contractual (required)",
       "optional_label": "Optional",
       "required_note": "Cannot be withdrawn",
+      "account_deletion_contact": "Request account deletion (contact@shuttle-scope.com)",
       "required_status_on": "Confirmed",
       "required_status_off": "Not obtained",
       "status_none": "Not answered",
