@@ -113,7 +113,7 @@ export function RallyDetailBanner({
   // 製品ルール: player にはラリーの勝者・スコアを見せない (API も winner / score_a / score_b を返さない)
   const { role } = useAuth()
   const isPlayer = role === 'player'
-  const { data: strokesResp, isLoading } = useQuery({
+  const { data: strokesResp, isLoading, isError, refetch } = useQuery({
     queryKey: ['rally-strokes', rally.rally_id],
     queryFn: () => apiGet<RallyStrokesResponse>('/analysis/rally_strokes', { rally_id: rally.rally_id! }),
     enabled: rally.rally_id != null,
@@ -176,6 +176,14 @@ export function RallyDetailBanner({
         <p className="text-gray-500">{t('auto.ScoreProgression.k1')}</p>
       ) : isLoading ? (
         <p className="text-gray-500">{t('auto.ScoreProgression.k2')}</p>
+      ) : isError ? (
+        <div className="flex items-center gap-2">
+          <p className="text-red-400">{t('auto.ScoreProgression.k3_error')}</p>
+          <button
+            onClick={() => refetch()}
+            className="px-1.5 py-0.5 rounded-ss-sm text-[11px] leading-none bg-gray-600 hover:bg-gray-500 text-gray-200"
+          >{t('auto.ScoreProgression.k3_retry')}</button>
+        </div>
       ) : strokes.length === 0 ? (
         <p className="text-gray-500">{t('auto.ScoreProgression.k3')}</p>
       ) : (

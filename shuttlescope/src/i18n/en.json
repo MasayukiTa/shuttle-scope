@@ -3897,6 +3897,8 @@
       "k1": "No stroke data",
       "k2": "Loading...",
       "k3": "No stroke data has been recorded",
+      "k3_error": "Could not load strokes",
+      "k3_retry": "Retry",
       "k4": "Click for rally details",
       "k5": "Close",
       "k6": "Previous rally",
