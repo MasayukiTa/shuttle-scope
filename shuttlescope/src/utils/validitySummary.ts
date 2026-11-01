@@ -1,12 +1,19 @@
 /**
  * 回答妥当性の要約に、表示できる中身があるか。
- * 比率 (valid_ratio) もフラグも無いとき、ラベルだけが出ないように呼び出し側で隠す。
- * 比率が 0 の場合は「妥当な回答が 0%」という値なので、表示対象。
+ * backend は { counts: { ok, caution, unreliable }, n } を返す (監査#750)。
+ * n が 0 のときは集計対象が無いのでラベルごと隠す。
  */
+export interface ValiditySummary {
+  counts?: { ok: number; caution: number; unreliable: number } | null
+  n?: number | null
+}
+
 export function hasValiditySummary(
-  v: { valid_ratio?: number | null; flags?: string[] | null } | null | undefined,
+  v: ValiditySummary | null | undefined,
 ): boolean {
   if (!v) return false
-  if (v.valid_ratio != null) return true
-  return Array.isArray(v.flags) && v.flags.length > 0
+  if (v.n != null && v.n > 0) return true
+  const c = v.counts
+  if (!c) return false
+  return (c.ok ?? 0) + (c.caution ?? 0) + (c.unreliable ?? 0) > 0
 }

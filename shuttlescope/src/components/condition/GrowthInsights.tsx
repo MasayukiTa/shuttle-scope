@@ -234,25 +234,25 @@ export function GrowthInsights({ playerId, isLight }: Props) {
           )}
 
           {/* ── coach/analyst 向け: raw factor trend + validity ── */}
-          {!isPlayer && data?.raw_factor_trends && data.raw_factor_trends.length > 0 && (
+          {!isPlayer && data?.raw_factor_trends && Object.keys(data.raw_factor_trends).length > 0 && (
             <div className={`mt-4 pt-3 border-t ${borderColor} space-y-3`}>
               <div className={`text-xs ${textMuted}`}>
                 {t('condition.insights.raw_factor_trends')}
               </div>
-              {data.raw_factor_trends.map((ft) => (
-                <div key={ft.factor}>
+              {Object.entries(data.raw_factor_trends).map(([factor, series]) => (
+                <div key={factor}>
                   <div className="text-xs mb-1 font-medium">
-                    {t(`condition.factor.${ft.factor}`, { defaultValue: ft.factor })}
+                    {t(`condition.factor.${factor}`, { defaultValue: factor })}
                   </div>
                   <div style={{ width: '100%', height: 100 }}>
                     <ResponsiveContainer>
-                      <LineChart data={ft.series} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
+                      <LineChart data={series} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
                         <CartesianGrid
                           strokeDasharray="3 3"
                           stroke="var(--ss-border)"
                         />
                         <XAxis
-                          dataKey="date"
+                          dataKey="measured_at"
                           tick={{ fill: 'var(--ss-t2)', fontSize: 10 }}
                         />
                         <YAxis tick={{ fill: 'var(--ss-t2)', fontSize: 10 }} />
@@ -275,14 +275,18 @@ export function GrowthInsights({ playerId, isLight }: Props) {
           {!isPlayer && hasValiditySummary(data?.validity_summary) && data?.validity_summary && (
             <div className={`mt-3 pt-3 border-t ${borderColor} text-xs ${textMuted}`}>
               <span className="mr-2">{t('condition.insights.validity_summary')}:</span>
-              {data.validity_summary.valid_ratio != null && (
-                <span className="font-mono ss-num">
-                  {(data.validity_summary.valid_ratio * 100).toFixed(0)}%
+              {data.validity_summary.n != null && (
+                <span className="mr-2">
+                  {t('condition.insights.validity_total', { n: data.validity_summary.n })}
                 </span>
               )}
-              {data.validity_summary.flags && data.validity_summary.flags.length > 0 && (
-                <span className="ml-2">
-                  ({data.validity_summary.flags.join(', ')})
+              {data.validity_summary.counts && (
+                <span className="font-mono ss-num">
+                  {t('condition.insights.validity_count.ok')} {data.validity_summary.counts.ok}
+                  {' / '}
+                  {t('condition.insights.validity_count.caution')} {data.validity_summary.counts.caution}
+                  {' / '}
+                  {t('condition.insights.validity_count.unreliable')} {data.validity_summary.counts.unreliable}
                 </span>
               )}
             </div>

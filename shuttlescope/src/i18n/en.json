@@ -1064,6 +1064,12 @@
       },
       "raw_factor_trends": "Factor-level trends",
       "validity_summary": "Response validity",
+      "validity_total": "{{n}} records",
+      "validity_count": {
+        "ok": "Valid",
+        "caution": "Caution",
+        "unreliable": "Unreliable"
+      },
       "growth_card": {
         "when": {
           "default": "{{key}}",

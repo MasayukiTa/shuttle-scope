@@ -1072,6 +1072,12 @@
       },
       "raw_factor_trends": "因子別トレンド",
       "validity_summary": "回答妥当性",
+      "validity_total": "対象 {{n}} 件",
+      "validity_count": {
+        "ok": "有効",
+        "caution": "要注意",
+        "unreliable": "不適切"
+      },
       "growth_card": {
         "when": {
           "default": "{{key}}",
