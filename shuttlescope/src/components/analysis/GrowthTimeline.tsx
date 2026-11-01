@@ -8,6 +8,7 @@ import {
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { hasSufficientSample } from '@/utils/sampleGate'
 
 /** これ未満の試合数ではグラフを出さない (監査 #438)。 */
@@ -109,7 +110,7 @@ export function GrowthTimeline({
   const isPairMode = !!partnerPlayerId
 
   // メインプレイヤーのクエリ
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError, refetch } = useQuery({
     queryKey: ['analysis-growth-timeline', playerId, metric, windowSize],
     queryFn: () =>
       apiGet<GrowthTimelineResponse>('/analysis/growth_timeline', {
@@ -121,7 +122,7 @@ export function GrowthTimeline({
   })
 
   // 相方のクエリ（ペアモード時のみ）
-  const { data: partnerResp, isLoading: partnerLoading } = useQuery({
+  const { data: partnerResp, isLoading: partnerLoading, isError: partnerError, refetch: refetchPartner } = useQuery({
     queryKey: ['analysis-growth-timeline', partnerPlayerId, metric, windowSize],
     queryFn: () =>
       apiGet<GrowthTimelineResponse>('/analysis/growth_timeline', {
@@ -134,6 +135,23 @@ export function GrowthTimeline({
 
   if (isLoading || (isPairMode && partnerLoading)) {
     return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.loading')}</div>
+  }
+
+  // 取得失敗を「サンプル不足」へ変換しない (監査 #644)。本人側の取得が失敗したら
+  // 空状態ではなく明示的なエラー状態と再試行を出す。
+  if (isError) {
+    return <QueryErrorNotice onRetry={() => { void refetch() }} />
+  }
+
+  // 比較相手側だけ失敗した場合、ペア比較グラフへ入ると凡例付きの空グラフになる。
+  // 比較モードへ落ちず、比較相手を取得できない旨を明示して再試行を出す。
+  if (isPairMode && partnerError) {
+    return (
+      <div className="space-y-2">
+        <p className="text-xs text-red-400" role="alert">{t('auto.GrowthTimeline.partner_fetch_failed')}</p>
+        <QueryErrorNotice onRetry={() => { void refetchPartner() }} />
+      </div>
+    )
   }
 
   const sampleSize = resp?.meta?.sample_size ?? 0

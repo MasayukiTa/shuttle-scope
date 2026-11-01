@@ -4935,7 +4935,8 @@
       "recent5_avg": "Average of last 5 matches (excl. this match) {{val}} — diff ",
       "season_avg": "Season average (excl. this match, n={{n}}) {{val}} — diff ",
       "recent5_insufficient": "Insufficient samples in the last 5 matches (need 3+). Showing the season average comparison only.",
-      "sign_only_note": "Only the sign of the difference is shown. We intentionally avoid asserting 'what was good / needs improvement' — interpret the diff and sample size yourself, together with your coach (reliability-first policy)."
+      "sign_only_note": "Only the sign of the difference is shown. We intentionally avoid asserting 'what was good / needs improvement' — interpret the diff and sample size yourself, together with your coach (reliability-first policy).",
+      "partner_fetch_failed": "Could not load the comparison partner's data. This is a fetch failure, not an absence of a partner."
     },
     "IntervalReport": {
       "ci_interval": "95% CI [{{lo}}, {{hi}}]",
