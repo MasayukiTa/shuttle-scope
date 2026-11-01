@@ -453,6 +453,15 @@ class Match(Base):
     is_demo_public: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False, server_default="false", index=True
     )
+    # is_synthetic: True のときに限り、この試合を検証用 fixture (BIAS_SEED 等の
+    # 合成データ) とみなす明示マーカー。audit #178: 検証データが通常の成長・対戦相手・
+    # 大会・研究分析へ混入していた。fail closed: 既定は False、既存行は全て False 扱い。
+    # 実データ試合には付与しない。解析母集団からの除外は単一の共有ヘルパ
+    # (analysis.analysis_population.split_analysis_population, 既定で synthetic を除外。
+    # 管理ツールだけが include_synthetic=True で取り込める) に集約する。
+    is_synthetic: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="false", index=True
+    )
     home_team_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("teams.id"), nullable=True)
     away_team_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("teams.id"), nullable=True)
 
