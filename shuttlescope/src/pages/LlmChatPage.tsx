@@ -186,11 +186,42 @@ export default function LlmChatPage() {
     }
   }, [convListCollapsed])
 
+  // activeId の会話履歴を取得する。取得失敗は空会話へ変換せず error state (messagesFailed)
+  // として示し、再読込導線 (reloadMessages) から再試行できるようにする。401/403 は共通層
+  // (client.ts) が session-expired 処理へ接続する。
+  const loadMessages = useCallback((id: number) => {
+    let cancelled = false
+    setMessagesLoading(true)
+    setMessagesFailed(false)
+    getMessages(id)
+      .then((r) => { if (!cancelled) { setMessages(r.messages || []); setMessagesFailed(false) } })
+      .catch(() => {
+        if (cancelled) return
+        // 履歴を読めなかった。別会話の内容を残さないよう空にした上で、失敗として示す。
+        // 空会話UI (スターター質問) は messagesFailed で抑止され、代わりに再試行導線を出す。
+        setMessages([])
+        setMessagesFailed(true)
+        setError(i18n.t('common_ui.llm_messages_failed'))
+      })
+      .finally(() => { if (!cancelled) setMessagesLoading(false) })
+    return () => { cancelled = true }
+  }, [])
+
+  // 履歴取得失敗時の再読込。現在の activeId に対してもう一度 getMessages を試みる。
+  const reloadMessages = useCallback(() => {
+    if (activeId == null) return
+    setError(null)
+    forceScrollRef.current = true
+    stickToBottomRef.current = true
+    loadMessages(activeId)
+  }, [activeId, loadMessages])
+
   useEffect(() => {
     forceScrollRef.current = true // 会話を切り替えたら次回描画で最下部へ
     stickToBottomRef.current = true // 切替直後は最下部追従を有効化
     if (activeId == null) {
       setMessages([])
+      setMessagesFailed(false)
       return
     }
     // onSend が今作ったばかりの空の会話なら再取得しない (空配列で楽観表示の
@@ -199,21 +230,8 @@ export default function LlmChatPage() {
       skipNextFetchRef.current = null
       return
     }
-    let cancelled = false
-    setMessagesLoading(true)
-    setMessagesFailed(false)
-    getMessages(activeId)
-      .then((r) => { if (!cancelled) setMessages(r.messages || []) })
-      .catch(() => {
-        if (cancelled) return
-        // 履歴を読めなかった。別会話の内容を残さないよう空にした上で、失敗として示す
-        setMessages([])
-        setMessagesFailed(true)
-        setError(i18n.t('common_ui.llm_messages_failed'))
-      })
-      .finally(() => { if (!cancelled) setMessagesLoading(false) })
-    return () => { cancelled = true }
-  }, [activeId])
+    return loadMessages(activeId)
+  }, [activeId, loadMessages])
 
   // 自動スクロール: ユーザが最下部付近にいるとき (stickToBottomRef) だけ追従。
   // ただし会話切替/送信直後 (forceScrollRef) は無条件で最下部へ。
@@ -798,6 +816,23 @@ export default function LlmChatPage() {
                   </div>
                 </div>
               )
+            )}
+            {/* 履歴取得失敗: 空会話UIへ変換せず、明示的なエラー状態 + 再読込導線を出す。
+                401/403 は共通層 (client.ts) が session-expired 処理へ接続するため、ここへは
+                到達しない (到達する場合は通信/サーバ障害)。 */}
+            {messagesFailed && !messagesLoading && (
+              <div role="alert" className="flex h-full flex-col items-center justify-center text-center text-[var(--ss-t3)]">
+                <MIcon name="error_outline" size={40} ariaHidden className="mb-2 text-[var(--ss-danger)]" />
+                <p className="text-sm text-[var(--ss-t2)]">{t('common_ui.llm_messages_failed')}</p>
+                <button
+                  type="button"
+                  onClick={reloadMessages}
+                  className="mt-3 inline-flex min-h-[36px] items-center gap-1 rounded-full border border-[var(--ss-border)] bg-[var(--ss-surface-2)] px-3 py-1.5 text-xs font-medium text-[var(--ss-t1)] hover:bg-[var(--ss-surface-3)]"
+                >
+                  <MIcon name="refresh" size={16} ariaHidden />
+                  {t('common_ui.query_retry')}
+                </button>
+              </div>
             )}
             {messages.map((m) => (
               <Bubble key={m.id} role={m.role} content={m.content} images={m.images ?? undefined} />
