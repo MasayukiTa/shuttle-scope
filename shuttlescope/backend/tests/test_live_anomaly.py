@@ -35,6 +35,8 @@ def _seed_baseline_and_recent(db_session, recent_skew: bool):
         tournament="T", tournament_level="国内", round="R16",
         date=date(2026, 4, 16), format="singles",
         player_a_id=p_a.id, player_b_id=p_b.id, result="win",
+        # h18e: team 境界チェック導入後も team 無し coach が読めるよう公開プール扱い。
+        is_public_pool=True,
     )
     db_session.add(m)
     db_session.flush()
@@ -111,6 +113,8 @@ def test_live_anomaly_no_when_sample_low(db_session):
         tournament="T", tournament_level="国内", round="R16",
         date=date(2026, 4, 16), format="singles",
         player_a_id=p_a.id, player_b_id=p_b.id, result="win",
+        # h18e: team 境界チェック導入後も team 無し coach が読めるよう公開プール扱い。
+        is_public_pool=True,
     )
     db_session.add(m)
     db_session.flush()
