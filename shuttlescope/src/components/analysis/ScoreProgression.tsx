@@ -218,7 +218,7 @@ export function ScoreProgression({ matchId, onSetPointClick, initialSet }: Score
   const isPlayer = role === 'player'
   const [selectedSet, setSelectedSet] = useState<number>(initialSet ?? 1)
 
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError } = useQuery({
     queryKey: ['analysis-score-progression', matchId],
     queryFn: () =>
       apiGet<ScoreProgressionResponse>('/analysis/score_progression', { match_id: matchId }),
@@ -229,6 +229,13 @@ export function ScoreProgression({ matchId, onSetPointClick, initialSet }: Score
 
   if (isLoading) {
     return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.loading')}</div>
+  }
+
+  // 取得失敗を正常な「データなし」に落とさない (監査 #642)。
+  if (isError) {
+    return (
+      <div className="text-sm py-4 text-center" style={{ color: 'var(--ss-bad)' }}>{t('analysis.fetch_error')}</div>
+    )
   }
 
   const sets = resp?.data?.sets ?? []

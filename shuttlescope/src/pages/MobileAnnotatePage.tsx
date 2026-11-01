@@ -75,7 +75,7 @@ interface RallyRow {
 import { Pass1RallyEnd } from '@/components/mobileAnnotate/Pass1RallyEnd'
 import { Pass2ServeFinal } from '@/components/mobileAnnotate/Pass2ServeFinal'
 import { Pass3ShotDetail } from '@/components/mobileAnnotate/Pass3ShotDetail'
-import { startBackgroundFlush, getStatus, retryAllManual, enqueue, cancelQueued, flushNow } from '@/utils/mobileAnnotateQueue'
+import { startBackgroundFlush, getStatus, retryAllManual, discardLegacyManual, enqueue, cancelQueued, flushNow } from '@/utils/mobileAnnotateQueue'
 import {
   applyStrokeOverrides,
   conflictingLocals,
@@ -1025,9 +1025,10 @@ export function MobileAnnotatePage() {
             <button
               type="button"
               onClick={() => {
-                // Ownerless unsent input is sent only after the user confirms it is their own.
-                if (window.confirm(t('auto.MobileAnnotatePage.queue_unknown_owner_confirm', { n: queueStatus.unknownOwner }))) {
-                  void retryAllManual({ claimLegacy: true })
+                // Ownerless input cannot be re-sent under another user's credentials (audit #634).
+                // Offer discard only; never claim it as the current user.
+                if (window.confirm(t('auto.MobileAnnotatePage.queue_unknown_owner_discard_confirm', { n: queueStatus.unknownOwner }))) {
+                  void discardLegacyManual().then(() => { setQueueStatus((s) => ({ ...s, unknownOwner: 0 })) })
                 }
               }}
               className="flex items-center gap-1 text-[10px] px-1.5 py-1 rounded shadow ss-overlay-chip-danger"

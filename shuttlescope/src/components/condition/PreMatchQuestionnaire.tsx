@@ -16,6 +16,9 @@ interface Props {
 export function PreMatchQuestionnaire({ playerId, measuredAt, matchId, isLight, onSubmitted }: Props) {
   const { t } = useTranslation()
   const { data: master, isLoading } = useConditionMaster('pre_match')
+  // master が server から取得できず固定 fallback 質問票の場合は、
+  // どの master に基づく回答か識別できないため保存を抑止する (監査 #635)。
+  const isFallback = master?.source === 'fallback'
   const [responses, setResponses] = useState<Record<string, number>>({})
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
@@ -34,6 +37,10 @@ export function PreMatchQuestionnaire({ playerId, measuredAt, matchId, isLight, 
 
   const handleSubmit = async () => {
     setErrorMsg(null)
+    if (isFallback) {
+      setErrorMsg(t('condition.master_fallback_blocked'))
+      return
+    }
     if (!complete) {
       setErrorMsg(t('condition.weekly.incomplete'))
       return
@@ -58,8 +65,18 @@ export function PreMatchQuestionnaire({ playerId, measuredAt, matchId, isLight, 
     return <div className={labelMuted}>{t('app.loading')}</div>
   }
 
+  const fallbackBanner = isFallback ? (
+    <div
+      role="alert"
+      className="rounded-ss-md border border-[var(--ss-warning-border)] bg-[var(--ss-warning-bg)] text-[var(--ss-warning-text)] text-xs px-3 py-2"
+    >
+      {t('condition.master_fallback_warning')}
+    </div>
+  ) : null
+
   return (
     <div className="space-y-4 max-w-3xl">
+      {fallbackBanner}
       <div>
         <h2 className="text-base font-semibold text-[var(--ss-t1)]">{t('condition.prematch.title')}</h2>
         <p className={labelMuted}>{t('condition.prematch.intro')}</p>
@@ -92,7 +109,7 @@ export function PreMatchQuestionnaire({ playerId, measuredAt, matchId, isLight, 
       <div className="flex justify-end">
         <button
           onClick={handleSubmit}
-          disabled={mut.isPending || !complete}
+          disabled={mut.isPending || !complete || isFallback}
           className="px-4 py-2 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-50 text-white rounded-ss-md text-sm font-medium transition-colors duration-fast ease-out"
         >
           {mut.isPending ? '...' : t('condition.prematch.submit')}

@@ -331,7 +331,7 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
   const [syncResult, setSyncResult] = useState<string | null>(null)
   const { card, cardInner, textHeading, textSecondary, textMuted, textFaint } = useCardTheme()
 
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError } = useQuery({
     queryKey: ['movement-stats', matchId],
     queryFn: () => apiGet<{ success: boolean; data: MovementStatsData }>(`/yolo/movement_stats/${matchId}`),
     staleTime: 5_000,   // 識別確定直後にカードが表示されても古いキャッシュを返さない
@@ -344,6 +344,18 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
     return (
       <div className={`${card} rounded-ss-lg shadow-card p-4`}>
         <div className={`text-xs ${textMuted} animate-pulse`}>{t('auto.PlayerMovementCard.k1')}</div>
+      </div>
+    )
+  }
+
+  // ── 取得失敗 ───────────────────────────────────────────────────
+  // API 障害 (通信断・認証切れ・403/5xx) を「追跡データなし」と区別できないと、
+  // 解析済みの結果があるのに「追跡結果が無い」と誤認させる (監査 #641)。
+  if (isError) {
+    return (
+      <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-2`}>
+        <h3 className={`text-sm font-semibold ${textHeading}`}>{t('auto.PlayerMovementCard.k2')}</h3>
+        <p className="text-xs" style={{ color: 'var(--ss-bad)' }}>{t('auto.PlayerMovementCard.fetch_error')}</p>
       </div>
     )
   }

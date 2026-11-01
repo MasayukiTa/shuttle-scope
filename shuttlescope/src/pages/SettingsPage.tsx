@@ -270,6 +270,7 @@ export function SettingsPage() {
   const [bmNFrames, setBmNFrames] = useState(30)
   const [bmJobId, setBmJobId] = useState<string | null>(null)
   const bmJobIdRef = useRef<string | null>(null)
+  const bmPollFailRef = useRef(0)
   const [bmJob, setBmJob] = useState<BenchmarkJob | null>(null)
   const [bmRunning, setBmRunning] = useState(false)
   const [bmDetecting, setBmDetecting] = useState(false)
@@ -525,11 +526,18 @@ export function SettingsPage() {
     try {
       const job = await getJob(bmJobId)
       setBmJob(job)
+      bmPollFailRef.current = 0
+      setBmError((prev) => (prev === t('benchmark.poll_stalled') ? null : prev))
       if (job.status === 'done' || job.status === 'failed') {
         setBmRunning(false)
       }
     } catch {
-      // ポーリングエラーは無視して次のポーリングに任せる
+      // 一時的な失敗は直前値を保持し、連続失敗が続いたときだけ「取得不能」を明示する。
+      // 失敗を running=false や done へ勝手に変換しない。
+      bmPollFailRef.current += 1
+      if (bmPollFailRef.current >= 3) {
+        setBmError(t('benchmark.poll_stalled'))
+      }
     }
   }
 
