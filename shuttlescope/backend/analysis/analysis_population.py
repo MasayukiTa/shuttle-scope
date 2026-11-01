@@ -63,7 +63,11 @@ def rally_counts_by_match(db: Session, match_ids: Iterable[int]) -> dict[int, in
     rows = (
         db.query(GameSet.match_id, func.count(Rally.id))
         .join(Rally, Rally.set_id == GameSet.id)
-        .filter(GameSet.match_id.in_(ids), Rally.is_skipped == False)  # noqa: E712
+        .filter(
+            GameSet.match_id.in_(ids),
+            Rally.is_skipped == False,  # noqa: E712
+            Rally.deleted_at.is_(None),
+        )
         .group_by(GameSet.match_id)
         .all()
     )

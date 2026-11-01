@@ -759,7 +759,11 @@ def get_shot_win_loss(
             ),
         }
 
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all()
+    rallies = db.query(Rally).filter(
+        Rally.set_id.in_(set_ids),
+        Rally.is_skipped.is_(False),
+        Rally.deleted_at.is_(None),
+    ).all()
     rally_ids = [r.id for r in rallies]
 
     # ラリーごとにプレイヤーの勝敗とロールを記録
@@ -988,7 +992,11 @@ def get_score_progression(match_id: int, db: Session = Depends(get_db)):
     set_ids = [s.id for s in sets]
     rallies_all = (
         db.query(Rally)
-        .filter(Rally.set_id.in_(set_ids))
+        .filter(
+            Rally.set_id.in_(set_ids),
+            Rally.is_skipped.is_(False),
+            Rally.deleted_at.is_(None),
+        )
         .order_by(Rally.set_id, Rally.rally_num)
         .all()
     )
@@ -1504,7 +1512,11 @@ def get_first_return_analysis(
     set_to_match: dict[int, int] = {s.id: s.match_id for s in sets}
     set_ids = [s.id for s in sets]
 
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
+    rallies = db.query(Rally).filter(
+        Rally.set_id.in_(set_ids),
+        Rally.is_skipped.is_(False),
+        Rally.deleted_at.is_(None),
+    ).all() if set_ids else []
     rally_ids = [r.id for r in rallies]
 
     rally_player_won: dict[int, bool] = {}
