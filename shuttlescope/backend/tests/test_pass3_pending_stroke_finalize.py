@@ -54,7 +54,7 @@ def rally(db_session):
     gs = GameSet(match_id=m.id, set_num=1)
     db_session.add(gs)
     db_session.flush()
-    r = Rally(set_id=gs.id, rally_num=1, server="player_a", review_status="pending")
+    r = Rally(set_id=gs.id, rally_num=1, server="player_a", winner="player_a", end_type="ace", rally_length=1, review_status="pending")
     db_session.add(r)
     db_session.flush()
     db_session.commit()
