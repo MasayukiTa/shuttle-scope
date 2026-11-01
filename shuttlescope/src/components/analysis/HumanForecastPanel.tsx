@@ -93,6 +93,11 @@ function ForecastForm({ matchId, playerId, onSaved }: Props & { onSaved: () => v
   // admin だけが代理入力としてロールを選べる。
   const { role: authRole } = useAuth()
   const lockedRole = authRole === 'coach' || authRole === 'analyst' ? authRole : null
+  // Item #698: only coach/analyst/admin can save a human forecast (backend
+  // user_can_access_match allows coach/analyst; admin acts as a proxy). For any
+  // other role (e.g. demo, player) the POST would 404, so do not render an
+  // editable form that silently fails — show a read-only notice instead.
+  const canForecast = authRole === 'coach' || authRole === 'analyst' || authRole === 'admin'
   const [pickedRole, setRole] = useState('coach')
   const role = lockedRole ?? pickedRole
   const [name, setName] = useState('')
@@ -124,6 +129,12 @@ function ForecastForm({ matchId, playerId, onSaved }: Props & { onSaved: () => v
   })
 
   const inputClassTokenized = `text-sm rounded-ss-md px-2 py-1.5 focus:outline-none transition-colors duration-base ease-out border border-[var(--ss-border)] bg-[var(--ss-surface-1)] text-[var(--ss-t1)] focus:border-[var(--ss-brand)]`
+
+  if (!canForecast) {
+    return (
+      <p className="text-xs text-[var(--ss-t3)]">{t('prediction.human_forecast_demo_readonly')}</p>
+    )
+  }
 
   return (
     <div className="space-y-3">

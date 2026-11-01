@@ -65,13 +65,16 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
   const { role } = useAuth()
 
   // Override summary: admin/analyst/coach のみクエリ
-  const { data: overridesResp } = useQuery({
+  const { data: overridesResp, isError: overridesError } = useQuery({
     queryKey: ['promotion-overrides'],
     queryFn: () => apiGet<{ success: boolean; data: Record<string, { status: string; note: string; analyst: string }> }>(
       '/analysis/meta/promotion_overrides'
     ),
     staleTime: 30 * 1000,
-    enabled: role === 'admin' || role === 'analyst' || role === 'coach',
+    // Item #700: backend gates this endpoint with require_admin_or_analyst; coach
+    // gets 403. Match the backend here so a coach never issues a request that
+    // fails and is then silently rendered as "no overrides".
+    enabled: role === 'admin' || role === 'analyst',
   })
   const activeOverrides = Object.values(overridesResp?.data ?? {})
   const holdCount = activeOverrides.filter((o) => o.status === 'hold').length
@@ -111,7 +114,18 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
       {/* Override summary バナー: admin/analyst/coach のみ、active override がある場合に表示
          Design Language v1.2 §12: bg は neutral、警告意味は文字色 + warning icon で運ぶ
          (装飾 amber bg + 左罫線縦バーは禁止) */}
-      {activeOverrides.length > 0 && (role === 'admin' || role === 'analyst' || role === 'coach') && (
+      {/* Item #700: a failed fetch (e.g. permission/network) must not read as
+         an empty override list. Show an explicit error line for admin/analyst. */}
+      {overridesError && (role === 'admin' || role === 'analyst') && (
+        <div className={`flex items-center gap-2 px-3 py-2 rounded-ss-lg shadow-card border text-xs ${
+          isLight ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'
+        }`}>
+          <span className="font-medium inline-flex items-center gap-1 text-[var(--ss-bad)]">
+            <MIcon name="warning" size={12} />{t('advanced.override_fetch_failed')}
+          </span>
+        </div>
+      )}
+      {!overridesError && activeOverrides.length > 0 && (role === 'admin' || role === 'analyst') && (
         <div className={`flex items-center gap-2 px-3 py-2 rounded-ss-lg shadow-card border text-xs ${
           isLight
             ? 'bg-white border-gray-200'

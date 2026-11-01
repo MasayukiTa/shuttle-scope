@@ -2613,6 +2613,7 @@
     "human_forecast_prob": "Win probability (%)",
     "human_forecast_notes": "Notes",
     "human_forecast_save": "Save",
+    "human_forecast_demo_readonly": "Forecast entry is not available in demo mode and will not be saved.",
     "human_forecast_win": "Win",
     "human_forecast_loss": "Loss",
     "benchmark_title": "Human vs model benchmark",
@@ -5599,6 +5600,7 @@
   },
   "advanced": {
     "manual_override_notice": "Manual Override is set on {{count}} analyses",
+    "override_fetch_failed": "Could not load manual overrides. Check your permissions or connection.",
     "hold_count": "Hold: {{count}}",
     "see_research_for_detail": "See Research tab for detail",
     "hold_gate_title": "This analysis is currently suspended",
