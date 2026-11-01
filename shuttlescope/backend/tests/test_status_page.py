@@ -225,3 +225,62 @@ def test_public_status_day_accepts_public_key_rejects_internal(db_session):
         for internal in ("tunnel", "gpu", "worker", "clock", "api"):
             r = client.get("/api/public/status/day?day=2026-06-05&component=" + internal)
             assert r.status_code == 400, internal
+
+
+# ── g24: incident タイトルの内部用語を表示時に平易語へ写す ──
+#
+# 障害履歴に保存済みのタイトル (例 'GPU が利用できません') には内部コンポーネント名
+# (GPU/VRAM/CPU/RAM/tunnel/トンネル) が入っていることがある。公開表示時に平易語へ写し、
+# 保存データ (StatusIncident.title) 自体は変更しないことを固定する。
+
+from backend.routers.status_page import _map_public_title
+
+
+def test_map_public_title_known_gpu_phrase():
+    # 既知フレーズ完全一致: ja/en とも指定の平易語へ。
+    ja, en = _map_public_title("GPU が利用できません")
+    assert ja == "映像解析が利用できません"
+    assert en == "Video analysis was unavailable"
+
+
+def test_map_public_title_keyword_fallback():
+    # 完全一致しなくても内部キーワードを含むタイトルは種類別の平易文へ。
+    # GPU/VRAM -> 映像解析
+    ja, en = _map_public_title("VRAM 不足で解析ジョブが落ちました")
+    assert ja == "映像解析が利用できません" and en == "Video analysis was unavailable"
+    # tunnel/トンネル -> サイト接続
+    ja2, en2 = _map_public_title("cloudflared tunnel が切れました")
+    assert "GPU" not in ja2 and "tunnel" not in en2.lower()
+    # CPU/RAM -> 負荷
+    ja3, en3 = _map_public_title("CPU 使用率が 100% になりました")
+    assert "CPU" not in ja3 and "CPU" not in en3
+
+
+def test_map_public_title_passthrough_plain():
+    # 内部用語を含まない平易なタイトルはそのまま (ja/en 共通)。
+    ja, en = _map_public_title("一時的な接続エラー")
+    assert ja == "一時的な接続エラー" and en == "一時的な接続エラー"
+
+
+def test_public_incident_title_maps_gpu_and_keeps_stored(db_session):
+    """API 経由: GPU タイトルの incident は公開側で平易語に写り、
+    公開 JSON に 'GPU' が漏れない。保存済み title 自体は変わらない。"""
+    import json
+    from backend.db.models import StatusIncident
+    with TestClient(app) as client:
+        c = client.post("/api/status/incidents",
+                        json={"title": "GPU が利用できません", "severity": "major",
+                              "component": "gpu"},
+                        headers=_admin())
+        assert c.status_code == 201, c.text
+        inc_id = c.json()["id"]
+        s = client.get("/api/public/status").json()
+    inc = next(i for i in s["active_incidents"] if i["id"] == inc_id)
+    assert inc["title_ja"] == "映像解析が利用できません"
+    assert inc["title_en"] == "Video analysis was unavailable"
+    # 公開 title も平易語で上書きされている (公開 JSON に GPU が出ない)。
+    assert inc["title"] == "映像解析が利用できません"
+    assert "GPU" not in json.dumps(s, ensure_ascii=False)
+    # 保存データ (DB) は原文のまま。
+    stored = db_session.get(StatusIncident, inc_id)
+    assert stored.title == "GPU が利用できません"
