@@ -2492,6 +2492,7 @@
   "prediction": {
     "title": "Match prediction",
     "title_short": "Predict",
+    "player_restricted_note": "This feature is not available with your account. Only match prediction is shown.",
     "pair_simulation_short": "Pair",
     "lineup_optimizer_short": "Lineup",
     "human_forecast_short": "Forecast",

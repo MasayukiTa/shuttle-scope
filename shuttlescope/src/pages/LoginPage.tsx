@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 import { useAuth } from '@/hooks/useAuth'
+import { PASSWORD_RESET_ENABLED } from '@/utils/passwordReset'
 import type { AuthSession } from '@/hooks/useAuth'
 import { UserRole } from '@/types'
 import { MIcon } from '@/components/common/MIcon'
@@ -486,10 +487,16 @@ export function LoginPage({ onLogin }: Props) {
                className="text-[var(--ss-brand)] hover:text-[var(--ss-brand-hover)] hover:underline">
               {t('auth.register.title')}
             </a>
-            <a href="#/password/reset"
-               className="text-[var(--ss-t2)] hover:text-[var(--ss-t1)] hover:underline">
-              {t('auth.password_reset_request.title')}
-            </a>
+            {PASSWORD_RESET_ENABLED ? (
+              <a href="#/password/reset"
+                 className="text-[var(--ss-t2)] hover:text-[var(--ss-t1)] hover:underline">
+                {t('auth.password_reset_request.title')}
+              </a>
+            ) : (
+              <span className="text-[var(--ss-t3)]">
+                {t('auth.password_reset_request.disabled_message')}
+              </span>
+            )}
           </div>
         </div>
         )}
