@@ -230,6 +230,31 @@ class TestRoleFilter:
         items = r.json()["data"]["items"]
         assert len(items) == 1
 
+    def test_coach_discrepancy_response_shape(self, client, player, db_session):
+        # 監査#751: /conditions/discrepancy は {success, data:{items, n}} を返し、
+        # 各 item は {condition_id, measured_at, flags:[{type, severity}]} であることを固定する。
+        # frontend はこの契約に依存して data.items を展開する。
+        _seed_condition(db_session, player.id, date(2026, 4, 1),
+                        ecw_ratio=0.43, f1_physical=12.0)
+        db_session.commit()
+        r = client.get(
+            f"/api/conditions/discrepancy?player_id={player.id}",
+            headers={"X-Role": "coach"},
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["success"] is True
+        data = body["data"]
+        assert set(data.keys()) == {"items", "n"}
+        assert data["n"] == len(data["items"]) == 1
+        item = data["items"][0]
+        assert set(item.keys()) == {"condition_id", "measured_at", "flags"}
+        assert isinstance(item["flags"], list) and len(item["flags"]) >= 1
+        flag = item["flags"][0]
+        # coach は detail 非開示 (type/severity のみ)。
+        assert set(flag.keys()) == {"type", "severity"}
+        assert flag["severity"] in {"low", "medium", "high"}
+
     def test_player_insights_shrunk(self, client, player, db_session):
         _seed_condition(db_session, player.id, date(2026, 4, 1), ccs_score=100.0)
         db_session.commit()
