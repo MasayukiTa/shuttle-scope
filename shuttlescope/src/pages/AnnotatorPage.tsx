@@ -1448,7 +1448,12 @@ export function AnnotatorPage() {
           hist: s.detections[+i]?.hist ?? null,
         })),
     })).filter((s) => s.assignments.length > 0)
-    await handleAssignAndTrack(primary.ts, primaryAssignments, extraSeeds)
+    // #594: 識別の保存が成功したときだけ入力(割当/サンプル)を破棄する。
+    const ok = await handleAssignAndTrack(primary.ts, primaryAssignments, extraSeeds)
+    if (!ok) {
+      showError(t('annotator.identify_save_failed'))
+      return
+    }
     setTaggingMode(false)
     setSamplerSamples([])
     setSamplerIdx(0)
@@ -1566,6 +1571,8 @@ export function AnnotatorPage() {
       setTimeout(() => setInMatchSaved(false), 2000)
       queryClient.invalidateQueries({ queryKey: ['match', matchId] })
     },
+    // #599: 保存失敗を明示する。編集値は入力欄に保持されるため再試行できる。
+    onError: () => showError(t('in_match_panel.save_failed')),
   })
 
   // V4-U-001: パネルを開いたとき既存値で初期化
@@ -2659,7 +2666,7 @@ export function AnnotatorPage() {
                   <div className="flex items-center gap-1">
                     <button
                       onClick={async () => {
-                        await handleAssignAndTrack(
+                        const ok = await handleAssignAndTrack(
                           taggingSeedTs,
                           Object.entries(taggingAssignments)
                             .filter(([, k]) => k)
@@ -2670,6 +2677,11 @@ export function AnnotatorPage() {
                               hist: frameDetections[+i]?.hist ?? null,
                             }))
                         )
+                        // #594: 失敗時は割当を保持し、明示エラーを出して閉じない。
+                        if (!ok) {
+                          showError(t('annotator.identify_save_failed'))
+                          return
+                        }
                         setTaggingMode(false)
                       }}
                       disabled={trackingLoading || Object.values(taggingAssignments).filter(Boolean).length === 0}

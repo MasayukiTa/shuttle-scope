@@ -1436,13 +1436,15 @@
     "scouting_notes": "メモ",
     "save": "保存",
     "saved": "保存済み",
-    "provisional_badge": "暫定登録"
+    "provisional_badge": "暫定登録",
+    "save_failed": "相手情報の保存に失敗しました。時間をおいて再試行してください。"
   },
   "annotator": {
     "set_not_finished": "このスコアではセットが終了していません（{{a}}-{{b}}）",
     "set_already_decided": "このセットは勝敗が決まっています。「次のセットへ」で進めてください",
     "match_decided_no_next_set": "この試合は決着したため、次のセットは作成しません",
     "viewpoint_save_failed": "視点の保存に失敗しました",
+    "identify_save_failed": "選手識別の保存に失敗しました。割り当ては保持されていますので再試行してください。",
     "loading": "読み込み中...",
     "back_to_matches": "試合一覧に戻る",
     "live": {
@@ -4514,7 +4516,8 @@
       "k2": "完了セット:",
       "k3": "試合を選択するとインターバルレポートが表示されます",
       "k4": "日付・対戦相手で検索...",
-      "set_n": "Set {{n}}"
+      "set_n": "Set {{n}}",
+      "set_detail_error": "セット詳細を開けませんでした。もう一度お試しください。"
     },
     "DashboardOverviewPage": {
       "k1": "読み込み中...",

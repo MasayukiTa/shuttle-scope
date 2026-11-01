@@ -107,6 +107,8 @@ export interface CameraHubState {
    */
   deviceNames: Record<string, string>
   turnInUse: boolean | null
+  /** #595: ICE 設定取得結果。'loaded'=サーバ配布 / 'fallback'=空配布で STUN / 'error'=取得失敗で STUN。 */
+  iceConfigStatus: 'loaded' | 'fallback' | 'error'
   connect: () => Promise<void>
   disconnect: () => void
   requestCamera: (streamIdOrParticipant: string | number) => void
@@ -137,6 +139,8 @@ export function useCameraHub(sessionCode: string): CameraHubState {
     useState<Record<string, RTCIceGatheringState>>({})
   const [deviceNames, setDeviceNames] = useState<Record<string, string>>({})
   const [turnInUse, setTurnInUse] = useState<boolean | null>(null)
+  // #595: ICE 設定取得の結果を UI に漏らさず最初は fallback。
+  const [iceConfigStatus, setIceConfigStatus] = useState<'loaded' | 'fallback' | 'error'>('fallback')
 
   const publish = useCallback(() => {
     const list: CameraStream[] = []
@@ -400,8 +404,17 @@ export function useCameraHub(sessionCode: string): CameraHubState {
     try {
       const cfg = await apiGet<{ success: boolean; data: { ice_servers: RTCIceServer[] } }>(
         '/webrtc/ice-config')
-      if (cfg.success && cfg.data.ice_servers.length) iceServersRef.current = cfg.data.ice_servers
-    } catch { /* STUN のまま続行 */ }
+      if (cfg.success && cfg.data.ice_servers.length) {
+        iceServersRef.current = cfg.data.ice_servers
+        setIceConfigStatus('loaded')
+      } else {
+        // #595: 応答はあったが TURN/STUN が空->STUN のみで続行（要診断状態）。
+        setIceConfigStatus('fallback')
+      }
+    } catch {
+      // #595: 取得失敗。STUN のまま続行するが状態を表出する。
+      setIceConfigStatus('error')
+    }
 
     let ws: WebSocket
     try {
@@ -444,7 +457,7 @@ export function useCameraHub(sessionCode: string): CameraHubState {
 
   return {
     streams, wsConnected, reconnecting, reconnectCount,
-    connectionStates, iceGatheringStates, deviceNames, turnInUse, connect, disconnect,
+    connectionStates, iceGatheringStates, deviceNames, turnInUse, iceConfigStatus, connect, disconnect,
     requestCamera: (target) => send({
       type: 'camera_request',
       ...(typeof target === 'string' && target.length > 20
