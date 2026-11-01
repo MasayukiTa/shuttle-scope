@@ -920,6 +920,13 @@ function ProtectedMainRoute() {
     )
   }
 
+  // #345: 承認待ち (awaiting_admin_approval) ユーザはルートレベルで隔離する。
+  // MainLayout や各ページを一切描画せず、承認待ち専用の最小画面のみを出す。
+  // 保護 API はすでに 403 を返すが、ルート側でも二重に防ぐ (fail-closed / defence in depth)。
+  if (awaitingApproval) {
+    return <AwaitingApprovalScreen />
+  }
+
   // R48: /m/annotate/:matchId は MainLayout (Sidebar / bottom nav) を完全に
   // バイパスしてフルブリード描画する。スマホアノテで「下に設定タブが居る」
   // 「動画上部が URL バーに被る」問題を構造的に潰す。
@@ -942,8 +949,6 @@ function ProtectedMainRoute() {
         path="*"
         element={
           <>
-            {/* フルブリードのスマホアノテ画面には出さない (R48 の趣旨を壊すため) */}
-            {awaitingApproval && <PendingApprovalBanner />}
             <MainLayout />
           </>
         }
@@ -952,17 +957,30 @@ function ProtectedMainRoute() {
   )
 }
 
-/** 仮登録 (admin がチームとロールを確定する前) であることの常時表示。 */
-function PendingApprovalBanner() {
+/** #345: 承認待ち専用の最小画面。MainLayout や各ページの代わりにルートレベルで表示し、
+ *  ログアウトのみを許す。 */
+export function AwaitingApprovalScreen() {
   const { t } = useTranslation()
+  const { clearRole } = useAuth()
   return (
-    <div
-      role="status"
-      className="px-4 py-2 text-sm text-center border-b border-[var(--ss-border)] bg-[var(--ss-surface-2)] text-[var(--ss-t2)]"
-    >
-      <span className="font-medium text-[var(--ss-t1)]">{t('auth.pending_approval.title')}</span>
-      <span className="mx-2">—</span>
-      <span>{t('auth.pending_approval.body')}</span>
+    <div className="min-h-[100svh] flex items-center justify-center px-4" style={{ backgroundColor: 'var(--ss-bg-app, #111827)' }}>
+      <div className="text-center space-y-3 max-w-sm" role="status">
+        <div className="text-2xl font-bold" style={{ color: 'var(--ss-text-primary, #f9fafb)' }}>{t('app.name')}</div>
+        <p className="text-base font-semibold" style={{ color: 'var(--ss-text-primary, #f9fafb)' }}>{t('auth.pending_approval.title')}</p>
+        <p className="text-sm" style={{ color: 'var(--ss-text-muted, #9ca3af)' }}>{t('auth.pending_approval.body')}</p>
+        <div className="flex justify-center">
+          <button
+            type="button"
+            onClick={() => {
+              authLogout().catch(() => { /* ignore */ })
+              clearRole()
+            }}
+            className="text-sm px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded transition-colors"
+          >
+            {t('auth.pending_approval.logout')}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
