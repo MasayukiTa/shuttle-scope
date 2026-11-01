@@ -23,11 +23,27 @@ describe('pickPruneIds', () => {
   })
 })
 
-describe('planFlush', () => {
-  it('never sends another user\'s events and discards them', () => {
+describe('planFlush (owner boundary, same rule as offlineStrokeQueue)', () => {
+  it('sends only the current user\'s events and keeps another user\'s events (never discarded, never sent under the current user)', () => {
     const plan = planFlush([ev('a1', 1, 'A'), ev('b1', 2, 'B'), ev('b2', 3, 'B')], 'B')
     expect(plan.send.map(e => e.event_id)).toEqual(['b1', 'b2'])
-    expect(plan.dropIds).toEqual(['a1'])
+    // A\'s event is neither sent under B nor dropped: it stays for A.
+    expect(plan.dropIds).toEqual([])
+  })
+
+  it('A -> logout -> B regression: B\'s flush never carries A\'s events', () => {
+    const queued = [ev('a1', 1, 'A'), ev('a2', 2, 'A'), ev('b1', 3, 'B')]
+    const plan = planFlush(queued, 'B')
+    expect(plan.send.map(e => e.event_id)).toEqual(['b1'])
+    expect(plan.send.some(e => e.owner === 'A')).toBe(false)
+    expect(plan.dropIds).toEqual([])
+  })
+
+  it('A can send its own backlog after logging back in (kept for that owner)', () => {
+    const queued = [ev('a1', 1, 'A'), ev('a2', 2, 'A'), ev('b1', 3, 'B')]
+    const plan = planFlush(queued, 'A')
+    expect(plan.send.map(e => e.event_id)).toEqual(['a1', 'a2'])
+    expect(plan.dropIds).toEqual([])
   })
 
   it('sends events recorded before login (no owner) as before', () => {
@@ -36,8 +52,10 @@ describe('planFlush', () => {
     expect(plan.dropIds).toEqual([])
   })
 
-  it('keeps everything while logged out (nothing can be sent or attributed)', () => {
-    const plan = planFlush([ev('a1', 1, 'A')], null)
+  it('while logged out, owner-tagged events are kept (not sent, not dropped); unowned are sent', () => {
+    const plan = planFlush([ev('a1', 1, 'A'), ev('pre', 2, null)], null)
+    expect(plan.send.map(e => e.event_id)).toEqual(['pre'])
+    expect(plan.send.some(e => e.owner === 'A')).toBe(false)
     expect(plan.dropIds).toEqual([])
   })
 
@@ -45,7 +63,7 @@ describe('planFlush', () => {
     const foreign = Array.from({ length: 150 }, (_, i) => ev(`a${i}`, i, 'A'))
     const plan = planFlush([...foreign, ev('b1', 999, 'B')], 'B', 100)
     expect(plan.send.map(e => e.event_id)).toEqual(['b1'])
-    expect(plan.dropIds).toHaveLength(150)
+    expect(plan.dropIds).toEqual([])
   })
 
   it('caps the batch size', () => {

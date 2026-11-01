@@ -190,24 +190,36 @@ export function pickPruneIds(
 }
 
 /**
- * 今送るイベントと、捨てるイベントを決める。
- * 他の利用者が記録したイベントは、現在の認証主体 (別の利用者) へ誤帰属させないため
- * 送らずに捨てる。owner 無し (未ログイン中・旧データ) は従来どおり送る。
- * 現在が未ログインなら送れないので何も捨てず保持する。
+ * 今送るイベントを決める。
+ *
+ * offlineStrokeQueue の所有者境界と同じ不変条件を適用する:
+ *   - owner が現在の認証主体と一致するイベントだけを送る。
+ *   - 別の利用者 (owner が現在と異なる) のイベントは、現在の名義で
+ *     決して送らない。かつ捨てない (dropIds にも入れない)。
+ *     その所有者のために残し、後で本人が再ログインしたときに本人の
+ *     owner で送る (offlineStrokeQueue の listPendingForMatch / deletePendingForUser が
+ *     他人の行を除外するだけで削除しないのと同じ)。
+ *   - owner 無し (未ログイン中・旧データ) は従来どおり送る。
+ *   - 現在が未ログインなら owner 付きは送れないので保持し、owner 無しだけ送る。
+ *
+ * dropIds はここでは常に空 (別 owner を理由に捨てない)。機能超過・TTL による
+ * 削除は pickPruneIds / pruneQueue が別途行う。
  */
 export function planFlush<T extends Pick<PendingEvent, 'event_id' | 'owner'>>(
   events: ReadonlyArray<T>,
   owner: string | null,
   batchSize: number = BATCH_SIZE,
 ): { send: T[]; dropIds: string[] } {
-  if (owner === null) return { send: events.slice(0, batchSize), dropIds: [] }
   const send: T[] = []
-  const dropIds: string[] = []
   for (const e of events) {
-    if (e.owner && e.owner !== owner) dropIds.push(e.event_id)
-    else if (send.length < batchSize) send.push(e)
+    if (send.length >= batchSize) break
+    // owner 付きイベントは、現在の認証主体と一致するときだけ送る。
+    // 別 owner のイベントは送らず捨てず保持する (その owner のために残す)。
+    if (e.owner && e.owner !== owner) continue
+    send.push(e)
   }
-  return { send, dropIds }
+  // 別 owner 起因の破棄はしない。dropIds は prune 専用。
+  return { send, dropIds: [] }
 }
 
 let _lastPruneAt = 0
