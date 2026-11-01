@@ -1787,6 +1787,13 @@ class TeamScopeAccessControlMiddleware(BaseHTTPMiddleware):
                 # 1) public プール (demo は最小権限なので対象外。自チームの試合だけ)
                 if role != "demo" and bool(getattr(m, "is_public_pool", False)):
                     return await call_next(request)
+                # 1.5) g33: 明示マーカー付きデモ試合は所有チーム外にも read-only で可視。
+                #      共有ヘルパー match_is_demo_public を唯一の判定点として使う。
+                #      GET のみ許可 (POST/PUT/PATCH/DELETE は従来どおり拒否)。
+                if request.method == "GET":
+                    from backend.utils.auth import match_is_demo_public
+                    if match_is_demo_public(m):
+                        return await call_next(request)
                 # 2) 自チームが owner
                 if team_id is not None and getattr(m, "owner_team_id", None) == team_id:
                     return await call_next(request)
