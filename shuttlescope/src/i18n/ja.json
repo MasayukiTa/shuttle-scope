@@ -64,6 +64,9 @@
   },
   "app": {
     "name": "ShuttleScope",
+    "unreachable_title": "サーバに接続できません",
+    "unreachable_body": "アプリがサーバに接続できませんでした。通信環境を確認して、もう一度お試しください。",
+    "retry": "再読み込み",
     "sidebar_collapse": "サイドバーを折りたたむ",
     "sidebar_expand": "サイドバーを展開する",
     "loading": "読み込み中...",

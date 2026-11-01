@@ -64,6 +64,9 @@
   },
   "app": {
     "name": "ShuttleScope",
+    "unreachable_title": "Can’t reach the server",
+    "unreachable_body": "The app could not connect to the server. Check your network connection and try again.",
+    "retry": "Retry",
     "sidebar_collapse": "Collapse sidebar",
     "sidebar_expand": "Expand sidebar",
     "loading": "Loading...",

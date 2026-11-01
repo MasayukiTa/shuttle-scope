@@ -63,6 +63,11 @@ import {
 } from '@/utils/offlineStrokeQueue'
 import { consumeReturnContext, resolveReturnPath } from '@/utils/returnPath'
 
+// #677: 起動時 health poll がこの秒数を超えても ready にならなければ、無限ローディングを
+// やめて「サーバに接続できません / 再読み込み」を表示する。通常 API の 60s timeout と
+// health の 5s timeout の数回ぶんを見込んだ値。
+const BACKEND_UNREACHABLE_AFTER_SEC = 20
+
 function useBackendReady() {
   const [ready, setReady] = useState(false)
   const [elapsed, setElapsed] = useState(0)
@@ -995,18 +1000,36 @@ export function AwaitingApprovalScreen() {
 
 function App() {
   const { t } = useTranslation()
-  const { ready } = useBackendReady()
+  const { ready, elapsed } = useBackendReady()
 
   if (!ready) {
+    // #677: health check が一定時間 ready にならない半断では、無限ローディングではなく
+    // 「サーバに接続できません / 再読み込み」を明示する。useBackendReady が計測した elapsed
+    // (秒) を閾値判定に使う。閾値前は従来のローディング表示のまま。
+    const unreachable = elapsed >= BACKEND_UNREACHABLE_AFTER_SEC
     return (
       <div className="min-h-[100svh] flex items-center justify-center" style={{ backgroundColor: 'var(--ss-bg-app, #111827)' }}>
         <div className="text-center">
           <div className="text-3xl font-bold" style={{ color: 'var(--ss-text-primary, #f9fafb)' }}>{t('app.name')}</div>
-          <div className="mt-6 flex items-center justify-center gap-2">
-            <div className="w-4 h-4 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '0ms' }} />
-            <div className="w-4 h-4 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '150ms' }} />
-            <div className="w-4 h-4 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '300ms' }} />
-          </div>
+          {unreachable ? (
+            <div className="mt-6" role="alert">
+              <div className="text-base font-semibold" style={{ color: 'var(--ss-text-primary, #f9fafb)' }}>{t('app.unreachable_title')}</div>
+              <div className="mt-2 text-sm" style={{ color: 'var(--ss-text-secondary, #9ca3af)' }}>{t('app.unreachable_body')}</div>
+              <button
+                type="button"
+                onClick={() => { window.location.reload() }}
+                className="mt-4 text-sm px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
+              >
+                {t('app.retry')}
+              </button>
+            </div>
+          ) : (
+            <div className="mt-6 flex items-center justify-center gap-2">
+              <div className="w-4 h-4 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '0ms' }} />
+              <div className="w-4 h-4 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '150ms' }} />
+              <div className="w-4 h-4 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '300ms' }} />
+            </div>
+          )}
         </div>
       </div>
     )
