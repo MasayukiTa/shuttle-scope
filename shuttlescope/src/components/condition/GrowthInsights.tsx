@@ -51,10 +51,11 @@ function ConditionConfidenceBadge({ n, isLight }: { n: number; isLight: boolean 
 }
 
 // ── 一行リスト表示のインサイト行 ──────────────────────────────────────────
-function GrowthCardRow({ c, isLight, sepColor }: {
+function GrowthCardRow({ c, isLight, sepColor, isPlayer }: {
   c: GrowthCard
   isLight: boolean
   sepColor: string
+  isPlayer: boolean
 }) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
@@ -93,6 +94,14 @@ function GrowthCardRow({ c, isLight, sepColor }: {
           <span className={`text-xs ${labelMuted} whitespace-nowrap`}>
             {whenLabel}
           </span>
+          {isPlayer ? (
+            /* player には生の勝率・勝敗対比を見せない (#621): 該当した週数のみを中立表示する */
+            <div className="flex items-center gap-1.5 text-sm whitespace-nowrap">
+              <span className={`text-xs ${labelMuted}`}>{t('condition.insights.growth_card.n_high_weeks', { n: nHigh })}</span>
+              <span className={labelMuted}>/</span>
+              <span className={`text-xs ${labelMuted}`}>{t('condition.insights.growth_card.n_other_weeks', { n: nOther })}</span>
+            </div>
+          ) : (
           <div className="flex items-center gap-1.5 text-sm whitespace-nowrap">
             <span className={`text-xs ${labelMuted}`}>{t('condition.insights.growth_card.win_rate_high')}</span>
             <span className={`font-mono ss-num font-semibold ${labelStrong}`}>{winHigh}</span>
@@ -105,6 +114,7 @@ function GrowthCardRow({ c, isLight, sepColor }: {
               <span className={`text-xs ${labelMuted} ml-0.5`}>{t('auto.GrowthInsights.k_effect_association', { effect: c.effect })}</span>
             )}
           </div>
+          )}
         </div>
 
         {/* 右: 信頼度 + 詳細ボタン */}
@@ -126,11 +136,15 @@ function GrowthCardRow({ c, isLight, sepColor }: {
           <div className={`text-xs ${labelMuted} flex flex-wrap gap-4`}>
             <span>
               {t('condition.insights.growth_card.n_high_weeks', { n: nHigh })}
-              <span className="ml-1 text-[var(--ss-success)] ss-num">{t('auto.GrowthInsights.k_winrate_paren', { rate: winHigh })}</span>
+              {!isPlayer && (
+                <span className="ml-1 text-[var(--ss-success)] ss-num">{t('auto.GrowthInsights.k_winrate_paren', { rate: winHigh })}</span>
+              )}
             </span>
             <span>
               {t('condition.insights.growth_card.n_other_weeks', { n: nOther })}
-              <span className="ml-1 ss-num">{t('auto.GrowthInsights.k_winrate_paren', { rate: winOther })}</span>
+              {!isPlayer && (
+                <span className="ml-1 ss-num">{t('auto.GrowthInsights.k_winrate_paren', { rate: winOther })}</span>
+              )}
             </span>
             <span className="font-mono text-[10px] text-[var(--ss-t3)]">
               {t('condition.insights.growth_card.basis_total', { n: nTotal })}
@@ -199,6 +213,7 @@ export function GrowthInsights({ playerId, isLight }: Props) {
                     c={c}
                     isLight={isLight}
                     sepColor={sepColor}
+                    isPlayer={isPlayer}
                   />
                 ))}
               </div>
