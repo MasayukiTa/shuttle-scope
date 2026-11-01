@@ -166,9 +166,13 @@ export function TeamManagementPage() {
   const handleSave = async (id: number) => {
     setSavingId(id)
     try {
+      // display_id の変更は admin のみ (backend PATCH /auth/teams/{id} は
+      // body に display_id が含まれるだけで non-admin を 403 にする)。
+      // coach は name / short_name / notes のみ編集できるため、payload から
+      // display_id を完全に除外し、許可された編集が 403 で失敗しないようにする。
       await patchTeam(id, {
         name: editForm.name.trim() || undefined,
-        display_id: editForm.display_id.trim() || null,
+        ...(isAdmin ? { display_id: editForm.display_id.trim() || null } : {}),
         short_name: editForm.short_name.trim() || null,
         notes: editForm.notes.trim() || null,
       })
@@ -293,12 +297,14 @@ export function TeamManagementPage() {
                       className="w-full px-2 py-1.5 border border-[var(--ss-border)] rounded-ss-md text-sm bg-[var(--ss-surface-1)] text-[var(--ss-t1)]"
                       placeholder={t('auto.TeamManagementPage.k16')}
                     />
-                    <input
-                      value={editForm.display_id}
-                      onChange={(e) => setEditForm({ ...editForm, display_id: e.target.value })}
-                      className="w-full px-2 py-1.5 border border-[var(--ss-border)] rounded-ss-md text-sm bg-[var(--ss-surface-1)] text-[var(--ss-t1)]"
-                      placeholder={t('auto.TeamManagementPage.k15')}
-                    />
+                    {isAdmin && (
+                      <input
+                        value={editForm.display_id}
+                        onChange={(e) => setEditForm({ ...editForm, display_id: e.target.value })}
+                        className="w-full px-2 py-1.5 border border-[var(--ss-border)] rounded-ss-md text-sm bg-[var(--ss-surface-1)] text-[var(--ss-t1)]"
+                        placeholder={t('auto.TeamManagementPage.k15')}
+                      />
+                    )}
                     <input
                       value={editForm.short_name}
                       onChange={(e) => setEditForm({ ...editForm, short_name: e.target.value })}
@@ -416,7 +422,7 @@ export function TeamManagementPage() {
                 <tr key={tm.id} className="border-b border-[var(--ss-border)] bg-[var(--ss-surface-1)]">
                   <td className="py-2 pr-2 text-xs ss-num text-[var(--ss-t3)]">{tm.id}</td>
                   <td className="py-2 pr-2">
-                    {editing ? (
+                    {editing && isAdmin ? (
                       <input
                         value={editForm.display_id}
                         onChange={(e) => setEditForm({ ...editForm, display_id: e.target.value })}

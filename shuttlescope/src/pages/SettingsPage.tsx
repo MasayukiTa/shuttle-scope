@@ -171,6 +171,10 @@ export function SettingsPage() {
   const canCreatePlayers = role === 'analyst' || role === 'admin'
   // 選手の削除も analyst / admin のみ (backend の DELETE /players/{id} は require_analyst)。coach には削除ボタンを出さない。
   const canRemovePlayers = canDeletePlayer(role)
+  // データ同期 (export / import / JSON package import) は backend の
+  // require_analyst に合わせ analyst / admin のみ。player / coach には操作導線を
+  // 初めから表示しない (操作の末尾で 403 になる状態を避け、権限モデルに一致させる)。
+  const canSyncData = role === 'analyst' || role === 'admin'
   const coachTeamFilter = role === 'coach' ? (teamName ?? '') : null
   // ロール切替用モーダル
   // ロール変更で閲覧権限が失われた場合はタブを退避
@@ -2295,7 +2299,8 @@ export function SettingsPage() {
               </section>
             )}
 
-            {/* ── エクスポート ──────────────────────────────── */}
+            {/* ── エクスポート (analyst / admin のみ: backend require_analyst と一致) ── */}
+            {canSyncData && (
             <section className="bg-[var(--ss-surface-1)] rounded-ss-lg p-5 space-y-4 border border-[var(--ss-border)] shadow-card" data-tutorial="settings.export">
               <div className="flex items-center gap-2">
                 <MIcon name="download" size={16} className="text-[var(--ss-brand)]" />
@@ -2436,8 +2441,10 @@ export function SettingsPage() {
                 </div>
               )}
             </section>
+            )}
 
-            {/* ── インポート ────────────────────────────────── */}
+            {/* ── インポート (analyst / admin のみ: backend require_analyst と一致) ── */}
+            {canSyncData && (
             <section className="bg-[var(--ss-surface-1)] rounded-ss-lg p-5 space-y-4 border border-[var(--ss-border)] shadow-card" data-tutorial="settings.import">
               <div className="flex items-center gap-2">
                 <MIcon name="upload" size={16} className="text-[var(--ss-success)]" />
@@ -2534,6 +2541,7 @@ export function SettingsPage() {
                 </div>
               )}
             </section>
+            )}
 
             {/* ── バックアップ (admin only) ──────────────────────────────── */}
             {role === 'admin' && <section className="bg-[var(--ss-surface-1)] rounded-ss-lg p-5 space-y-4 border border-[var(--ss-border)] shadow-card">
@@ -2739,7 +2747,8 @@ export function SettingsPage() {
               </section>
             )}
 
-            {/* ── JSON パッケージ インポート ──────────────────────── */}
+            {/* ── JSON パッケージ インポート (analyst / admin のみ: backend require_analyst と一致) ── */}
+            {canSyncData && (
             <section>
               <h2 className="text-base font-semibold text-[var(--ss-t1)]">{t('settings.ui.json_package_import')}</h2>
               <p className={`text-xs ${textMuted} mt-1 mb-3`}>
@@ -2784,6 +2793,7 @@ export function SettingsPage() {
                 )}
               </div>
             </section>
+            )}
 
             {/* ── DB メンテナンス (admin only) ──────────────────────────────────── */}
             {role === 'admin' && <section className="bg-[var(--ss-surface-1)] rounded-ss-lg p-5 space-y-4 border border-[var(--ss-border)] shadow-card">
