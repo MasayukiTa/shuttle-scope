@@ -5056,7 +5056,12 @@
       "tracknet_run_failed": "TrackNet run failed",
       "yolo_run_failed": "YOLO run failed",
       "tracknet_start_failed": "Failed to start TrackNet: {{msg}}",
-      "yolo_start_failed": "Failed to start YOLO: {{msg}}"
+      "yolo_start_failed": "Failed to start YOLO: {{msg}}",
+      "tracknet_stopped": "TrackNet stopped ({{n}} partial frames)",
+      "yolo_stopped": "YOLO stopped ({{n}} partial frames)",
+      "tracknet_status_unknown": "Can't get TrackNet status (tap to retry)",
+      "yolo_status_unknown": "Can't get YOLO status (tap to retry)",
+      "status_unknown_retry": "Status unavailable - tap to retry"
     },
     "MobileCourtCalib": {
       "tap_to_place_suffix": " — tap to place ({{n}}/6)",
@@ -5098,7 +5103,9 @@
       "video_sec": "Video {{sec}}s",
       "back_to_video": "Back to video",
       "cv_last_hitter": "CV last hitter",
-      "cv_last_hitter_pct": "CV last hitter ({{pct}}% match)"
+      "cv_last_hitter_pct": "CV last hitter ({{pct}}% match)",
+      "enqueue_failed": "Could not save the point. Please enter it again",
+      "dismiss": "Dismiss"
     },
     "Pass2ServeFinal": {
       "header": "Serve and finish · Rally {{n}} (set {{m}})",
@@ -5116,7 +5123,9 @@
       "primary_submit": "Submit",
       "cancel_retry": "Redo",
       "slot_serve_label": "Who served",
-      "slot_final_label": "Who hit last"
+      "slot_final_label": "Who hit last",
+      "enqueue_failed": "Could not save the input. Please enter it again",
+      "dismiss": "Dismiss"
     },
     "HitterSlot": {
       "player_a": "A main player",
@@ -5157,7 +5166,8 @@
       "err_cant_reach_land": "\"Couldn't reach\" cannot have a landing point (saving without one)",
       "err_invalid_land": "That shot type cannot land in that zone. Pick another zone.",
       "err_service_not_first": "A service can only be the first stroke of the rally",
-      "err_serve_locked": "The first-stroke serve can only be changed to another service type (short or long)"
+      "err_serve_locked": "The first-stroke serve can only be changed to another service type (short or long)",
+      "enqueue_failed": "Could not save the shot. Please enter it again"
     },
     "AnnotateOverlay": {
       "confirm": "Confirm",
@@ -5354,7 +5364,13 @@
       "queue_pending": "{{n}} unsent (resending)",
       "queue_failed": "{{n}} send failures — tap to resend",
       "queue_unknown_owner": "{{n}} unsent inputs with unknown owner — tap to review",
-      "queue_unknown_owner_confirm": "This device holds {{n}} unsent inputs whose owner is unknown. Send them only if you entered them yourself. If they may belong to someone else, do not send them. Send now?"
+      "queue_unknown_owner_confirm": "This device holds {{n}} unsent inputs whose owner is unknown. Send them only if you entered them yourself. If they may belong to someone else, do not send them. Send now?",
+      "sets_fetch_failed": "Could not load the set list. Please check your connection and try again.",
+      "retry": "Try again",
+      "queue_storage_error": "Cannot write to this device's storage. Unsent inputs may be lost.",
+      "queue_storage_error_short": "Storage error",
+      "pass3_checking_existing": "Checking existing strokes ...",
+      "pass3_strokes_fetch_failed": "Could not load existing strokes. Please try again."
     },
     "OnboardingConsentPage": {
       "k1": "Japanese",

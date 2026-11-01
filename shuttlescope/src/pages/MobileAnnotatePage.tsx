@@ -260,7 +260,9 @@ export function MobileAnnotatePage() {
     pending: number
     manualRetry: number
     unknownOwner: number
-  }>({ pending: 0, manualRetry: 0, unknownOwner: 0 })
+    // IndexedDB からキュー状態を読めなかった (監査 #616)。true の間は件数を信頼しない。
+    storageError: boolean
+  }>({ pending: 0, manualRetry: 0, unknownOwner: 0, storageError: false })
 
   // match 情報を取得 (動画 URL を得るため)
   const matchQuery = useQuery({
@@ -641,7 +643,7 @@ export function MobileAnnotatePage() {
     let cancelled = false
     const tick = async () => {
       const s = await getStatus()
-      if (!cancelled) setQueueStatus({ pending: s.pending, manualRetry: s.manualRetry, unknownOwner: s.unknownOwner })
+      if (!cancelled) setQueueStatus({ pending: s.pending, manualRetry: s.manualRetry, unknownOwner: s.unknownOwner, storageError: !s.ok })
     }
     void tick()
     const id = window.setInterval(tick, 2000)
@@ -709,6 +711,49 @@ export function MobileAnnotatePage() {
           {/* Pass overlay: annotate モード時に PlayMode 上に被せる
              NOTE: calib 編集中は隠す (= 編集に集中させる) */}
           {!calibEditingTop && screen === 'annotate' && !matchQuery.isLoading && !matchQuery.error && pass === 'rally' && (() => {
+            // セット一覧の取得に失敗したときは、空 = 「セット未登録」と誤表示してセット
+            // 作成へ誘導しない。既存セットがあるのに取得できていないだけかもしれず、
+            // そのまま POST /sets すると二重作成になる。取得失敗を明示し再試行させる (監査 #610)。
+            if (!currentSet && setsQuery.isError) {
+              return (
+                <div
+                  className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-4 text-center"
+                  style={{
+                    backgroundColor: 'rgba(0,0,0,0.9)',
+                    color: '#ffffff',
+                    zIndex: 50,
+                    pointerEvents: 'auto',
+                    touchAction: 'manipulation',
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  onTouchStart={(e) => e.stopPropagation()}
+                >
+                  <div className="text-sm font-bold" style={{ color: '#fca5a5' }}>
+                    {t('auto.MobileAnnotatePage.sets_fetch_failed')}
+                  </div>
+                  <button
+                    type="button"
+                    disabled={setsQuery.isFetching}
+                    onClick={() => { void setsQuery.refetch() }}
+                    className="px-4 py-2 rounded-ss-md text-sm font-bold disabled:opacity-60 text-white"
+                    style={{ backgroundColor: 'var(--ss-brand)' }}
+                  >
+                    {setsQuery.isFetching ? t('auto.MobileAnnotatePage.k2') : t('auto.MobileAnnotatePage.retry')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScreen('play')}
+                    className="px-3 py-1.5 rounded-ss-md text-xs font-bold text-white"
+                    style={{ backgroundColor: 'var(--ss-t2)' }}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      <MIcon name="arrow_back" size={14} style={{ color: '#ffffff' }} />
+                      {t('auto.MobileAnnotatePage.back_to_video')}
+                    </span>
+                  </button>
+                </div>
+              )
+            }
             if (!currentSet) {
               return (
                 <div
@@ -1004,6 +1049,16 @@ export function MobileAnnotatePage() {
               <MIcon name="sync_problem" size={12} />
               {conflictRallies.length}
             </button>
+          )}
+          {queueStatus.storageError && (
+            <span
+              className="flex items-center gap-1 text-[10px] px-1.5 py-1 rounded shadow ss-overlay-chip-danger"
+              title={t('auto.MobileAnnotatePage.queue_storage_error')}
+              aria-label={t('auto.MobileAnnotatePage.queue_storage_error')}
+            >
+              <MIcon name="storage" size={12} />
+              {t('auto.MobileAnnotatePage.queue_storage_error_short')}
+            </span>
           )}
         </div>
         )}
@@ -1343,6 +1398,38 @@ function Pass3RallyPicker({
           >
             {t('auto.MobileAnnotatePage.back_to_list')}
           </button>
+        </div>
+      )
+    }
+    // 既存 stroke の取得が終わる前・取得に失敗した時は Pass3 編集を開かない。空 =
+    // 「0 球」とみなすと、既存ストロークがあるラリーに 1 球目から上書き入力され、
+    // stroke_num 衝突や既存データの取りこぼしが起きる。取得失敗は明示して再試行させる (監査 #612)。
+    if (strokesQuery.isLoading || strokesQuery.isError) {
+      return (
+        <div className="flex-1 flex flex-col items-center justify-center text-[var(--ss-t2)] text-sm gap-3 p-4">
+          <div className="text-center">
+            {t(strokesQuery.isError
+              ? 'auto.MobileAnnotatePage.pass3_strokes_fetch_failed'
+              : 'auto.MobileAnnotatePage.pass3_checking_existing')}
+          </div>
+          <div className="flex gap-2">
+            {strokesQuery.isError && (
+              <button
+                type="button"
+                onClick={() => { void strokesQuery.refetch() }}
+                className="px-3 py-1.5 bg-[var(--ss-surface-3)] text-[var(--ss-t1)] rounded-ss-md text-xs"
+              >
+                {t('auto.MobileAnnotatePage.retry')}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setSelected(null)}
+              className="px-3 py-1.5 bg-[var(--ss-surface-3)] text-[var(--ss-t1)] rounded-ss-md text-xs"
+            >
+              {t('auto.MobileAnnotatePage.back_to_list')}
+            </button>
+          </div>
         </div>
       )
     }

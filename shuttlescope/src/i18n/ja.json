@@ -5068,7 +5068,12 @@
       "tracknet_run_failed": "TrackNet 実行失敗",
       "yolo_run_failed": "YOLO 実行失敗",
       "tracknet_start_failed": "TrackNet 起動失敗: {{msg}}",
-      "yolo_start_failed": "YOLO 起動失敗: {{msg}}"
+      "yolo_start_failed": "YOLO 起動失敗: {{msg}}",
+      "tracknet_stopped": "TrackNet 停止しました (途中結果 {{n}} 件)",
+      "yolo_stopped": "YOLO 停止しました (途中結果 {{n}} 件)",
+      "tracknet_status_unknown": "TrackNet 状態を取得できません (タップで再試行)",
+      "yolo_status_unknown": "YOLO 状態を取得できません (タップで再試行)",
+      "status_unknown_retry": "状態を取得できません・タップで再試行"
     },
     "MobileCourtCalib": {
       "tap_to_place_suffix": " をタップで設置 ({{n}}/6)",
@@ -5110,7 +5115,9 @@
       "video_sec": "動画 {{sec}} 秒",
       "back_to_video": "動画に戻る",
       "cv_last_hitter": "CV 直前の打者",
-      "cv_last_hitter_pct": "CV 直前の打者 (認識 {{pct}}%)"
+      "cv_last_hitter_pct": "CV 直前の打者 (認識 {{pct}}%)",
+      "enqueue_failed": "得点を保存できませんでした。もう一度入力してください",
+      "dismiss": "閉じる"
     },
     "Pass2ServeFinal": {
       "header": "サーブ・決定打 · ラリー {{n}} (セット {{m}})",
@@ -5128,7 +5135,9 @@
       "primary_submit": "送信",
       "cancel_retry": "やり直す",
       "slot_serve_label": "サーブを打った選手",
-      "slot_final_label": "最後に打った選手"
+      "slot_final_label": "最後に打った選手",
+      "enqueue_failed": "入力を保存できませんでした。もう一度入力してください",
+      "dismiss": "閉じる"
     },
     "HitterSlot": {
       "player_a": "A 主選手",
@@ -5169,7 +5178,8 @@
       "err_cant_reach_land": "「届かず」は着地点を設定できません（着地点なしで保存します）",
       "err_invalid_land": "その球種はそのゾーンに着地できません。別のゾーンを選んでください",
       "err_service_not_first": "サーブはラリーの1球目のみ指定できます",
-      "err_serve_locked": "1球目のサーブは、サーブの種類(ショート/ロング)にだけ変更できます"
+      "err_serve_locked": "1球目のサーブは、サーブの種類(ショート/ロング)にだけ変更できます",
+      "enqueue_failed": "打球を保存できませんでした。もう一度入力してください"
     },
     "AnnotateOverlay": {
       "confirm": "確定",
@@ -5367,7 +5377,13 @@
       "queue_pending": "未送信 {{n}} 件 (再送中)",
       "queue_failed": "送信失敗 {{n}} 件 — タップで再送",
       "queue_unknown_owner": "持ち主が分からない未送信 {{n}} 件 — タップで確認",
-      "queue_unknown_owner_confirm": "この端末に、持ち主が分からない未送信の入力が {{n}} 件あります。自分が入力したものである場合だけ送信してください。他の人の入力かもしれない場合は送信しないでください。送信しますか？"
+      "queue_unknown_owner_confirm": "この端末に、持ち主が分からない未送信の入力が {{n}} 件あります。自分が入力したものである場合だけ送信してください。他の人の入力かもしれない場合は送信しないでください。送信しますか？",
+      "sets_fetch_failed": "セット一覧を取得できませんでした。通信を確認して、もう一度お試しください。",
+      "retry": "もう一度試す",
+      "queue_storage_error": "この端末の保存領域に書き込めません。未送信の入力が失われるおそれがあります。",
+      "queue_storage_error_short": "保存エラー",
+      "pass3_checking_existing": "入力済みの打球を確認しています ...",
+      "pass3_strokes_fetch_failed": "入力済みの打球を取得できませんでした。もう一度お試しください。"
     },
     "OnboardingConsentPage": {
       "k1": "日本語",

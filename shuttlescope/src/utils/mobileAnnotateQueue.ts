@@ -582,6 +582,8 @@ export function manualRetryTargets<T extends Pick<QueueItem, 'ownerUserId' | 'ma
 
 /** UI 表示用ステータス */
 export async function getStatus(): Promise<{
+  /** IndexedDB の読み取りに成功したか。false のときは件数 (pending 等) は信頼できない。 */
+  ok: boolean
   pending: number
   manualRetry: number
   /** 所有者不明で手動再送待ちの入力。通常の再送では送らない (確認つきの操作でだけ送れる)。 */
@@ -599,6 +601,7 @@ export async function getStatus(): Promise<{
     const manual = items.filter((i) => i.manualRetry && queueItemOwnership(i, me) === 'mine')
     const unknown = items.filter((i) => i.manualRetry && queueItemOwnership(i, me) === 'legacy')
     return {
+      ok: true,
       pending: pending.length,
       manualRetry: manual.length,
       unknownOwner: unknown.length,
@@ -606,7 +609,9 @@ export async function getStatus(): Promise<{
       otherUsers: all.length - items.length,
     }
   } catch {
-    return { pending: 0, manualRetry: 0, unknownOwner: 0, oldestQueuedAt: null, otherUsers: 0 }
+    // IndexedDB にアクセスできないときは 0 件を「未送信なし」として返さない。
+    // ok:false を立て、呼び出し側でストレージ異常を明示表示させる (監査 #616)。
+    return { ok: false, pending: 0, manualRetry: 0, unknownOwner: 0, oldestQueuedAt: null, otherUsers: 0 }
   }
 }
 

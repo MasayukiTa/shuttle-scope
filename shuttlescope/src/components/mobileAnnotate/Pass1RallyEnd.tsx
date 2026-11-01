@@ -96,6 +96,8 @@ export function Pass1RallyEnd({
   // state の方はボタンの disabled 表示に要るので両方持つ。
   const busyRef = useRef(false)
   const [busy, setBusy] = useState(false)
+  // enqueue (送信キューへの積み込み) が失敗したときのエラー文言。空なら非表示 (監査 #623)。
+  const [enqueueError, setEnqueueError] = useState<string>('')
   // テレメトリ: pass 開始時刻と直前入力時刻
   const passStartRef = useRef<number>(performance.now())
   const lastInputRef = useRef<number>(performance.now())
@@ -152,6 +154,7 @@ export function Pass1RallyEnd({
     if (setEndingSoon) return
     busyRef.current = true
     setBusy(true)
+    setEnqueueError('')
     try {
       const newA = scoreA + (winner === 'player_a' ? 1 : 0)
       const newB = scoreB + (winner === 'player_b' ? 1 : 0)
@@ -196,6 +199,11 @@ export function Pass1RallyEnd({
       lastInputRef.current = now
       inputCountRef.current += 1
       lastInputTypeRef.current = `rally_winner_${winner}`
+    } catch (e: unknown) {
+      // enqueue が投げた = この得点はローカルにも積めていない。onRallyAdded を呼ばず
+      // (= 幻のラリーを画面に出さず)、ユーザーに失敗を伝えて再入力を促す (監査 #623)。
+      const detail = e instanceof Error && e.message ? e.message : String(e)
+      setEnqueueError(`${t('auto.Pass1RallyEnd.enqueue_failed')} (${detail})`.slice(0, 200))
     } finally {
       busyRef.current = false
       setBusy(false)
@@ -221,6 +229,24 @@ export function Pass1RallyEnd({
           {t('auto.Pass1RallyEnd.video_sec', { sec: pausedAtSec.toFixed(1) })}
         </div>
       </div>
+
+      {/* enqueue 失敗バナー: 得点がキューに積めず静かに失われるのを防ぐ (監査 #623) */}
+      {enqueueError && (
+        <div
+          role="alert"
+          className="px-3 py-2 bg-red-900/90 text-red-100 text-xs flex items-center gap-2 border-b border-red-700"
+        >
+          <MIcon name="error" size={14} />
+          <span className="flex-1">{enqueueError}</span>
+          <button
+            type="button"
+            onClick={() => setEnqueueError('')}
+            className="px-2 py-1 rounded bg-red-800 text-red-50"
+          >
+            {t('auto.Pass1RallyEnd.dismiss')}
+          </button>
+        </div>
+      )}
 
       {/* ルール状態バナー (deuce / golden / setPoint / setEnding) */}
       {setEndingSoon ? (
