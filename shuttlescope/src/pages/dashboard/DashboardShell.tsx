@@ -262,6 +262,15 @@ export function DashboardShell() {
     setFilterDateTo(null)
   }, [selectedPlayerId])
 
+  // player ロールは自分の 1 プロフィールしか見られない。選手が 1 人に確定したら
+  // 毎回「選手を選択してください」で止めず自動選択する (監査 #611)。
+  // 複数候補がある場合や他ロールでは従来どおり手動選択を維持する。
+  useEffect(() => {
+    if (role === 'player' && selectedPlayerId == null && sortedPlayers.length === 1) {
+      setSelectedPlayerId(sortedPlayers[0].id)
+    }
+  }, [role, selectedPlayerId, sortedPlayers])
+
   const cardBg = isLight ? 'bg-gray-50' : 'bg-gray-900'
   const borderColor = isLight ? 'border-gray-200' : 'border-gray-800'
   const textPrimary = isLight ? 'text-gray-900' : 'text-white'

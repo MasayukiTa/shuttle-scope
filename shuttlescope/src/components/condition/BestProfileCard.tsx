@@ -86,7 +86,7 @@ export function BestProfileCard({ playerId, isLight }: Props) {
     <section className={`rounded-ss-lg border shadow-card ${borderColor} ${panelBg} p-4`}>
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <h2 className={`text-sm font-semibold ${textStrong}`}>
-          {t('condition.best_profile.title_coach')}
+          {t(isPlayer ? 'condition.best_profile.title_player' : 'condition.best_profile.title_coach')}
         </h2>
         {n > 0 && <MatchConfidenceBadge n={n} isLight={isLight} />}
       </div>
