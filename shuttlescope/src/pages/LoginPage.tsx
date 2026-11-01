@@ -356,7 +356,7 @@ export function LoginPage({ onLogin }: Props) {
                 : t('auto.LoginPage.mfa_prompt')}
             </div>
             <div>
-              <label className={`block text-sm font-medium mb-1 ${labelCls}`}>
+              <label id="login-mfa-code-label" className={`block text-sm font-medium mb-1 ${labelCls}`}>
                 {useRecovery
                   ? t('auto.LoginPage.mfa_recovery_label')
                   : t('auto.LoginPage.mfa_code_label')}
@@ -364,6 +364,7 @@ export function LoginPage({ onLogin }: Props) {
               {useRecovery ? (
                 <input
                   type="text"
+                  aria-labelledby="login-mfa-code-label"
                   autoComplete="one-time-code"
                   // 16 文字 + ハイフン 3 = 19
                   maxLength={19}
@@ -377,6 +378,7 @@ export function LoginPage({ onLogin }: Props) {
               ) : (
                 <input
                   type="text"
+                  aria-labelledby="login-mfa-code-label"
                   inputMode="numeric"
                   autoComplete="one-time-code"
                   pattern="[0-9]*"
@@ -429,8 +431,9 @@ export function LoginPage({ onLogin }: Props) {
         {!mfaToken && (
         <div className="space-y-4">
           <div>
-            <label className={`block text-sm font-medium mb-1 ${labelCls}`}>{t('auto.LoginPage.k1')}</label>
+            <label htmlFor="login-identifier" className={`block text-sm font-medium mb-1 ${labelCls}`}>{t('auto.LoginPage.k1')}</label>
             <input
+              id="login-identifier"
               type="text"
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
@@ -441,9 +444,10 @@ export function LoginPage({ onLogin }: Props) {
           </div>
 
           <div>
-            <label className={`block text-sm font-medium mb-1 ${labelCls}`}>{t('auto.LoginPage.password_pin')}</label>
+            <label htmlFor="login-password" className={`block text-sm font-medium mb-1 ${labelCls}`}>{t('auto.LoginPage.password_pin')}</label>
             <div className="relative">
               <input
+                id="login-password"
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

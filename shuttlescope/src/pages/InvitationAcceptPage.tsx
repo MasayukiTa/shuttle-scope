@@ -113,24 +113,24 @@ export default function InvitationAcceptPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1 text-[var(--ss-t2)]">{t('auth.register.username')}</label>
-          <input type="text" value={username} onChange={(e) => setUsername(e.target.value)}
+          <label htmlFor="invite-username" className="block text-sm font-medium mb-1 text-[var(--ss-t2)]">{t('auth.register.username')}</label>
+          <input id="invite-username" type="text" value={username} onChange={(e) => setUsername(e.target.value)}
                  required minLength={3} maxLength={64}
                  autoComplete="username" autoCapitalize="none" autoCorrect="off"
                  className={fieldCls} />
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1 text-[var(--ss-t2)]">{t('auth.register.password')}</label>
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+          <label htmlFor="invite-password" className="block text-sm font-medium mb-1 text-[var(--ss-t2)]">{t('auth.register.password')}</label>
+          <input id="invite-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
                  required minLength={8} maxLength={128}
                  autoComplete="new-password"
                  className={fieldCls} />
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1 text-[var(--ss-t2)]">{t('auth.register.display_name_optional')}</label>
-          <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)}
+          <label htmlFor="invite-display-name" className="block text-sm font-medium mb-1 text-[var(--ss-t2)]">{t('auth.register.display_name_optional')}</label>
+          <input id="invite-display-name" type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)}
                  maxLength={100}
                  autoComplete="name"
                  className={fieldCls} />

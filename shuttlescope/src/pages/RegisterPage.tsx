@@ -97,30 +97,30 @@ export default function RegisterPage() {
         </div>
 
         <div>
-          <label className={labelCls}>
+          <label htmlFor="register-username" className={labelCls}>
             {t('auth.register.username')}
           </label>
-          <input type="text" value={username} onChange={(e) => setUsername(e.target.value)}
+          <input id="register-username" type="text" value={username} onChange={(e) => setUsername(e.target.value)}
                  required minLength={3} maxLength={64}
                  autoComplete="username" autoCapitalize="none" autoCorrect="off"
                  className={fieldCls} />
         </div>
 
         <div>
-          <label className={labelCls}>
+          <label htmlFor="register-email" className={labelCls}>
             {t('auth.register.email')}
           </label>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+          <input id="register-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
                  required maxLength={255}
                  inputMode="email" autoComplete="email" autoCapitalize="none" autoCorrect="off"
                  className={fieldCls} />
         </div>
 
         <div>
-          <label className={labelCls}>
+          <label htmlFor="register-password" className={labelCls}>
             {t('auth.register.password')}
           </label>
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+          <input id="register-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
                  required minLength={8} maxLength={128}
                  autoComplete="new-password"
                  className={fieldCls} />
@@ -128,20 +128,20 @@ export default function RegisterPage() {
         </div>
 
         <div>
-          <label className={labelCls}>
+          <label htmlFor="register-display-name" className={labelCls}>
             {t('auth.register.display_name_optional')}
           </label>
-          <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)}
+          <input id="register-display-name" type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)}
                  maxLength={100}
                  autoComplete="name"
                  className={fieldCls} />
         </div>
 
         <div>
-          <label className={labelCls}>
+          <label htmlFor="register-dob" className={labelCls}>
             {t('auth.register.dob_optional') || '生年月日（任意）'}
           </label>
-          <input type="date" value={dob} onChange={(e) => setDob(e.target.value)}
+          <input id="register-dob" type="date" value={dob} onChange={(e) => setDob(e.target.value)}
                  max={todayLocal()}
                  autoComplete="bday"
                  className={fieldCls} />

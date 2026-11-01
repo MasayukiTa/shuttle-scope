@@ -356,8 +356,9 @@ export function ViewerPage() {
         <div className="w-full max-w-sm bg-[var(--ss-surface-1)] rounded-[6px] p-5 border border-[var(--ss-border)] shadow-[0_1px_2px_rgba(16,24,40,.06)]">
           <div className="space-y-3">
             <div>
-              <label className="block text-xs text-[var(--ss-t2)] mb-1">{t('auto.ViewerPage.k3')}</label>
+              <label htmlFor="viewer-join-code" className="block text-xs text-[var(--ss-t2)] mb-1">{t('auto.ViewerPage.k3')}</label>
               <input
+                id="viewer-join-code"
                 type="text"
                 value={form.sessionCode}
                 onChange={(e) => setForm((f) => ({ ...f, sessionCode: e.target.value.toUpperCase() }))}
@@ -367,8 +368,9 @@ export function ViewerPage() {
               />
             </div>
             <div>
-              <label className="block text-xs text-[var(--ss-t2)] mb-1">{t('auto.ViewerPage.k4')}</label>
+              <label htmlFor="viewer-join-password" className="block text-xs text-[var(--ss-t2)] mb-1">{t('auto.ViewerPage.k4')}</label>
               <input
+                id="viewer-join-password"
                 type="password"
                 value={form.password}
                 onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
@@ -376,8 +378,9 @@ export function ViewerPage() {
               />
             </div>
             <div>
-              <label className="block text-xs text-[var(--ss-t2)] mb-1">{t('auto.ViewerPage.k5')}</label>
+              <label htmlFor="viewer-join-name" className="block text-xs text-[var(--ss-t2)] mb-1">{t('auto.ViewerPage.k5')}</label>
               <input
+                id="viewer-join-name"
                 type="text"
                 value={form.viewerName}
                 onChange={(e) => setForm((f) => ({ ...f, viewerName: e.target.value }))}
