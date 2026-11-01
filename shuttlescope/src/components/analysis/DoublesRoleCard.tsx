@@ -89,8 +89,12 @@ interface Props {
   filters: AnalysisFilters
 }
 
-const SCORE_PHASE_LABELS: Record<string, string> = {
-  early: '序盤', mid: '中盤', deuce: 'デュース', endgame: '終盤',
+// enum 値 -> i18n キー。描画時に t() で解決する（t() はモジュールスコープでは呼ばない）。
+const SCORE_PHASE_KEYS: Record<string, string> = {
+  early: 'auto.DoublesRoleCard.phase_early',
+  mid: 'auto.DoublesRoleCard.phase_mid',
+  deuce: 'auto.DoublesRoleCard.phase_deuce',
+  endgame: 'auto.DoublesRoleCard.phase_endgame',
 }
 
 function getRoleColor(role: string, isLight: boolean): string {
@@ -105,18 +109,18 @@ function getRoleColor(role: string, isLight: boolean): string {
   return isLight ? pair[0] : pair[1]
 }
 
-const ROLE_LABELS: Record<string, string> = {
-  front: 'フロント',
-  back: 'バック',
-  mixed: 'ミックス（不定）',
-  unknown: '不明',
+const ROLE_KEYS: Record<string, string> = {
+  front: 'auto.DoublesRoleCard.role_front',
+  back: 'auto.DoublesRoleCard.role_back',
+  mixed: 'auto.DoublesRoleCard.role_mixed',
+  unknown: 'auto.DoublesRoleCard.role_unknown',
 }
 
-const CONSISTENCY_LABELS: Record<string, string> = {
-  consistent: '一貫',
-  moderate: '普通',
-  volatile: '不安定',
-  insufficient_data: 'データ不足',
+const CONSISTENCY_KEYS: Record<string, string> = {
+  consistent: 'auto.DoublesRoleCard.consistency_consistent',
+  moderate: 'auto.DoublesRoleCard.consistency_moderate',
+  volatile: 'auto.DoublesRoleCard.consistency_volatile',
+  insufficient_data: 'auto.DoublesRoleCard.consistency_insufficient',
 }
 
 function getConsistencyColor(label: string, isLight: boolean): string {
@@ -131,14 +135,14 @@ function getConsistencyColor(label: string, isLight: boolean): string {
   return isLight ? pair[0] : pair[1]
 }
 
-function RatioBar({ front, back, neutral }: { front: number; back: number; neutral: number }) {
+function RatioBar({ front, back, neutral, tr }: { front: number; back: number; neutral: number; tr: (k: string, o?: Record<string, unknown>) => string }) {
   const w = (v: number) => `${(Number.isFinite(v) ? v : 0) * 100}%`
 
   return (
     <div className="flex h-2 w-full rounded-full overflow-hidden gap-px">
-      <div className="bg-sky-600" style={{ width: w(front) }} title={`フロント ${pct(front)}`} />
-      <div className="bg-amber-600" style={{ width: w(back) }} title={`バック ${pct(back)}`} />
-      <div className="bg-gray-500" style={{ width: w(neutral) }} title={`ニュートラル ${pct(neutral)}`} />
+      <div className="bg-sky-600" style={{ width: w(front) }} title={tr('auto.DoublesRoleCard.front_pct', { v: pct(front) })} />
+      <div className="bg-amber-600" style={{ width: w(back) }} title={tr('auto.DoublesRoleCard.back_pct', { v: pct(back) })} />
+      <div className="bg-gray-500" style={{ width: w(neutral) }} title={tr('auto.DoublesRoleCard.neutral_pct', { v: pct(neutral) })} />
     </div>
   )
 }
@@ -229,7 +233,7 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
               <div>
                 <span className={`text-xs ${textSecondary}`}>{t('auto.DoublesRoleCard.k4')} </span>
                 <span className={`text-sm font-semibold ${getRoleColor(roleData.inferred_role, isLight)}`}>
-                  {ROLE_LABELS[roleData.inferred_role] ?? roleData.inferred_role}
+                  {ROLE_KEYS[roleData.inferred_role] ? t(ROLE_KEYS[roleData.inferred_role]) : roleData.inferred_role}
                 </span>
               </div>
               <div className="text-right">
@@ -244,6 +248,7 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
               front={roleData.front_ratio}
               back={roleData.back_ratio}
               neutral={roleData.neutral_ratio}
+              tr={t}
             />
 
             <div className={`flex items-center gap-3 text-[10px] ${textMuted}`}>
@@ -270,16 +275,17 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
               {(roleData.phase_breakdown ?? []).map((ph, i) => (
                 <div key={i} className="flex items-center gap-2 text-[10px]">
                   <span className={`w-12 shrink-0 ${textMuted}`}>
-                    {SCORE_PHASE_LABELS[ph.score_phase] ?? ph.score_phase}
+                    {SCORE_PHASE_KEYS[ph.score_phase] ? t(SCORE_PHASE_KEYS[ph.score_phase]) : ph.score_phase}
                   </span>
                   <span className={`w-16 font-medium ${getRoleColor(ph.inferred_role, isLight)}`}>
-                    {ROLE_LABELS[ph.inferred_role] ?? ph.inferred_role}
+                    {ROLE_KEYS[ph.inferred_role] ? t(ROLE_KEYS[ph.inferred_role]) : ph.inferred_role}
                   </span>
                   <div className="flex-1">
                     <RatioBar
                       front={ph.front_ratio}
                       back={ph.back_ratio}
                       neutral={ph.neutral_ratio}
+                      tr={t}
                     />
                   </div>
                   <span className={`shrink-0 ${textFaint}`}>{t('auto.DoublesRoleCard.n_shots', { n: ph.n_shots })}</span>
@@ -347,7 +353,7 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
               <div className="flex items-center justify-between">
                 <p className={`text-[10px] font-medium ${textSecondary}`}>{t('auto.DoublesRoleCard.k9')}</p>
                 <span className={`text-[10px] font-semibold ${getConsistencyColor(stability.consistency_label, isLight)}`}>
-                  {CONSISTENCY_LABELS[stability.consistency_label] ?? stability.consistency_label}
+                  {CONSISTENCY_KEYS[stability.consistency_label] ? t(CONSISTENCY_KEYS[stability.consistency_label]) : stability.consistency_label}
                 </span>
               </div>
               <div className="flex items-center gap-3 text-[10px]">
@@ -366,7 +372,7 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
                     <span key={sv.season} className="text-[10px]">
                       <span className={textFaint}>{sv.season}: </span>
                       <span className={`${getRoleColor(sv.dominant_role, isLight)} font-medium`}>
-                        {ROLE_LABELS[sv.dominant_role] ?? sv.dominant_role}
+                        {ROLE_KEYS[sv.dominant_role] ? t(ROLE_KEYS[sv.dominant_role]) : sv.dominant_role}
                       </span>
                       <span className={textFaint}> {t('auto.DoublesRoleCard.n_matches_short', { n: sv.n_matches })}</span>
                     </span>
