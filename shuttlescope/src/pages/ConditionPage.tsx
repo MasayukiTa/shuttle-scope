@@ -255,9 +255,10 @@ export function ConditionPage() {
   const textPrimary = 'text-[var(--ss-t1)]'
   const textMuted = 'text-[var(--ss-t3)]'
 
-  // player ロール: 身体データモードは非表示（質問票がメインフロー）
-  const availableModes: InputMode[] =
-    role === 'player' ? ['weekly', 'prematch'] : ['weekly', 'prematch', 'body']
+  // G27 #658 (owner 2026-10-31, option A): player も自分の記録に限り身体データを
+  // 入力できる。未紐付け (authPlayerId 無し) は下流の inputTargetPlayerId ガードで
+  // ブロックされる。coach / analyst / admin は従来どおり全モード。
+  const availableModes: InputMode[] = ['weekly', 'prematch', 'body']
 
   return (
     <div className={`flex flex-col h-full ${cardBg} ${textPrimary}`}>
@@ -582,7 +583,7 @@ export function ConditionPage() {
               />
             )}
 
-            {mode === 'body' && role !== 'player' && (
+            {mode === 'body' && (
               <>
                 <section className={`rounded-ss-lg border ${borderColor} ${panelBg} p-4`}>
                   <h2 className="text-sm font-semibold mb-3">{t('condition.section_inbody')}</h2>
