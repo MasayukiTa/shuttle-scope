@@ -1555,6 +1555,8 @@ export function AnnotatorPage() {
     applyCandidates,
     applyLoading: cvApplyLoading,
     applyResult: cvApplyResult,
+    applyError: cvApplyError,
+    clearApplyError: clearCVApplyError,
     reviewQueue: cvReviewQueue,
     reviewQueueLoading: cvReviewQueueLoading,
     markReviewCompleted,
@@ -2904,6 +2906,15 @@ export function AnnotatorPage() {
                   {cvApplyResult.hit_zone_count > 0 && t('annotator.ui.cv_apply_result_hit', { defaultValue: ' (打点{{n}})', n: cvApplyResult.hit_zone_count })}
                   {cvApplyResult.hitter_count > 0 && t('annotator.ui.cv_apply_result_hitter', { defaultValue: ' (打者{{n}})', n: cvApplyResult.hitter_count })}
                   {(cvApplyResult.preserved_count ?? 0) > 0 && t('annotator.ui.cv_apply_result_preserved', { defaultValue: ' ・入力済みと違う{{n}}件は変更なし', n: cvApplyResult.preserved_count })}
+                </span>
+              )}
+              {/* 適用エラー（失敗時は前回の成功件数を残さず、明示的に失敗を出す） */}
+              {cvApplyError && (
+                <span className="text-[9px] max-w-[120px] truncate cursor-pointer text-[var(--ss-bad)]"
+                  title={cvApplyError}
+                  onClick={clearCVApplyError}
+                >
+                  <span className="inline-flex items-center gap-0.5"><MIcon name="warning" size={9} />{t('annotator.ui.cv_apply_error', { defaultValue: '適用に失敗しました' })}</span>
                 </span>
               )}
               {/* ビルドエラー */}
