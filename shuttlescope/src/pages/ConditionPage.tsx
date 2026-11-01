@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost } from '@/api/client'
+import { errorStatus, errorMessage } from '@/utils/errors'
 import { downloadReport } from '@/utils/downloadReport'
 import { Player } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
@@ -102,9 +103,10 @@ function BodyDataConsentToggles() {
       await apiPost('/auth/consents', body)
       queryClient.invalidateQueries({ queryKey: ['my-consents'] })
     } catch (e) {
-      // backend が version mismatch (409) 等を返す場合はユーザに知らせる
-       
-      alert(`${t('condition.consent_update_failed', 'Failed to update consent')}: ${String(e).slice(0, 200)}`)
+      // プライバシー操作なので、内部例外文字列は出さず「変更は保存されていない/現在値は維持」を明示する。
+      // HTTP status・JS 例外文字列はコンソールへ退避する。
+      console.error('[Condition] consent update failed', errorStatus(e), errorMessage(e, ''))
+      alert(t('condition.consent_update_failed_v2'))
     }
   }
 
