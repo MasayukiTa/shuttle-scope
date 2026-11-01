@@ -73,7 +73,7 @@ export function enqueuePendingIce(
  */
 export function deviceNamesFromUpdate(
   prev: Record<string, string>,
-  devices: Array<{ participant_id?: unknown; device_name?: unknown }> | undefined,
+  devices: Array<{ participant_id?: unknown; device_name?: unknown; stream_id?: unknown }> | undefined,
 ): Record<string, string> {
   if (!Array.isArray(devices)) return prev
   const next = { ...prev }
