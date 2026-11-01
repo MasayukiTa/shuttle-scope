@@ -4719,7 +4719,8 @@
       "manage_open": "管理メニュー",
       "manage_close": "管理メニューを閉じる",
       "reply_mail": "メールで返信",
-      "danger_zone": "危険な操作"
+      "danger_zone": "危険な操作",
+      "mutation_failed": "操作に失敗しました。時間をおいて再度お試しください。"
     },
     "PredictionPage": {
       "k1": "選手：",

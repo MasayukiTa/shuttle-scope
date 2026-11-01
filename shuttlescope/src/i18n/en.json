@@ -4711,7 +4711,8 @@
       "manage_open": "Manage",
       "manage_close": "Close manage menu",
       "reply_mail": "Reply by email",
-      "danger_zone": "Danger zone"
+      "danger_zone": "Danger zone",
+      "mutation_failed": "The operation failed. Please try again later."
     },
     "PredictionPage": {
       "k1": "Player:",
