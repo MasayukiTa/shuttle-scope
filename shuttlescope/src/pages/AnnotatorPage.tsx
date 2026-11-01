@@ -3539,6 +3539,7 @@ export function AnnotatorPage() {
               ).map(({ mode, label }) => (
                 <button
                   key={mode}
+                  aria-pressed={videoSourceMode === mode}
                   onClick={() => setVideoSourceMode(mode)}
                   className={clsx(
                     'flex-1 py-0.5 rounded-ss-sm text-[10px] border transition-colors',
@@ -3627,6 +3628,7 @@ export function AnnotatorPage() {
                     ]).map(({ v, label }) => (
                       <button
                         key={v}
+                        aria-pressed={match?.initial_server === v}
                         onClick={() => handleInitialServerChange(v)}
                         className={`flex-1 py-0.5 rounded-ss-sm text-xs border ${
                           match?.initial_server === v
@@ -3648,6 +3650,7 @@ export function AnnotatorPage() {
                     ]).map(({ v, label }) => (
                       <button
                         key={v}
+                        aria-pressed={playerAStart === v}
                         onClick={() => handleViewpointChange(v)}
                         className={`flex-1 py-0.5 rounded-ss-sm text-xs border ${
                           playerAStart === v
