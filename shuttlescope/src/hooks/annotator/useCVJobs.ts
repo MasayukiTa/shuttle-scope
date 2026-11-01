@@ -157,6 +157,8 @@ export interface CVJobsResult {
   ) => Promise<boolean>
   frameDetectLoading: boolean
   trackingLoading: boolean
+  /** CV 状態の取得に失敗したか (取得失敗を未実行と見分けるための表示用) */
+  cvStatusUnknown: boolean
   /** フレーム検出エラー（APIエラー時の詳細メッセージ。nullなら正常） */
   frameDetectError: string | null
   /** フレーム検出デバッグ情報（検出ゼロ時の診断用） */
