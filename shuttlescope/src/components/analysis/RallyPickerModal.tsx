@@ -73,7 +73,7 @@ export function RallyPickerModal({ matchId, matchLabel, initialSet, selectedRall
   const rallySelectId = useId()
   const [pendingRally, setPendingRally] = useState('')
 
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError } = useQuery({
     queryKey: ['rally-picker-score', matchId],
     queryFn: () => apiGet<{ success: boolean; data: { sets: SetData[] } }>('/analysis/score_progression', { match_id: matchId }),
     enabled: !!matchId && !isPlayer,
@@ -135,6 +135,8 @@ export function RallyPickerModal({ matchId, matchLabel, initialSet, selectedRall
           {/* グラフ */}
           {isLoading ? (
             <p className="text-sm text-gray-500 py-6 text-center">{t('auto.RallyPickerModal.k2')}</p>
+          ) : isError ? (
+            <p className="text-sm py-6 text-center" style={{ color: 'var(--ss-bad)' }}>{t('analysis.fetch_error')}</p>
           ) : chartData.length === 0 ? (
             <p className="text-sm text-gray-500 py-6 text-center">{t('auto.RallyPickerModal.k3')}</p>
           ) : (

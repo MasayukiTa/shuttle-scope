@@ -200,7 +200,7 @@ export function GrowthInsights({ playerId, isLight }: Props) {
       {isLoading ? (
         <div className={`${textMuted} text-xs`}>{t('condition.insights.loading')}</div>
       ) : error ? (
-        <div className={`${textMuted} text-xs`}>{t('condition.insights.no_data')}</div>
+        <div className={`${textMuted} text-xs`} role="alert">{t('condition.error')}</div>
       ) : (
         <div>
           {/* ── growth cards（リスト形式） ── */}

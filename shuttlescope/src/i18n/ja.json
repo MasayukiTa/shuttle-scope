@@ -464,6 +464,9 @@
   },
   "condition": {
     "title": "コンディション",
+    "error": "分析結果を取得できませんでした",
+    "master_fallback_warning": "質問票マスタをサーバから取得できませんでした。端末内の暂定質問票を表示しています。最新の質問票と一致しない可能性があり、この状態では回答を保存できません。",
+    "master_fallback_blocked": "質問票マスタを確認できないため保存できません。通信状態を確認して再読み込みしてください。",
     "subtab_input": "入力",
     "subtab_history": "履歴",
     "history_placeholder": "履歴がありません",
@@ -1935,6 +1938,7 @@
       "calibration_required": "コートキャリブレーションが未設定のため、位置・陣形解析は表示しません。"
     },
     "sample_size": "サンプル数: {{count}}",
+    "fetch_error": "分析結果を取得できませんでした",
     "shuttle_track": {
       "title": "シャトル軌跡",
       "empty": "未解析（シャトル軌跡データがありません）",
@@ -2977,6 +2981,7 @@
   "pipeline_meta": {},
   "benchmark": {
     "title": "ベンチマーク",
+    "poll_stalled": "進捗を取得できません。ジョブの実行状態は不明です",
     "detect_devices": "デバイスを検出",
     "detecting": "検出中...",
     "select_targets": "計測ターゲットを選択",
@@ -3447,6 +3452,7 @@
     },
     "AnomalyBanner": {
       "title": "今、ふだんと違う",
+      "error": "異常判定を更新できません",
       "sample_n": "直近 N={{n}}打球",
       "detail_stats": "直近 N={{recent}}打球 / ふだん N={{base}}打球",
       "shot_other": "その他",
@@ -3465,7 +3471,9 @@
       "idle_hint": "11点 / セット間 / 60ラリーごとに自動表示。今すぐ提案で手動取得。",
       "loading": "提案を生成中…",
       "empty": "現時点で確信度0.5以上の提案はありません。",
-      "confidence": "確信度 {{pct}}%"
+      "confidence": "確信度 {{pct}}%",
+      "error": "提案を取得できませんでした",
+      "retry": "再試行"
     },
     "BayesMatchupCard": {
       "total_matches": "総試合数: {{n}}",
@@ -3697,6 +3705,7 @@
     },
     "PlayerMovementCard": {
       "k1": "移動距離を計算中…",
+      "fetch_error": "移動分析を取得できませんでした",
       "k2": "選手移動距離",
       "k3": "ここをクリックしてグリッドを開き同期してください。",
       "k4": "ここをクリックしてグリッドを設定してください。",
@@ -3745,6 +3754,8 @@
       "stat_pred": "統計予測 — {{date}} 以前のデータ使用",
       "h2h_count": "（対戦実績 {{n}}試合）",
       "h2h_none": "（対戦実績なし）",
+      "error": "予測を取得・再計算できませんでした",
+      "retry": "再試行",
       "computed_at": "算出: {{date}}",
       "no_prior_data": "この試合より前のデータがありません（統計予測不可）",
       "n_matches_data": "{{n}}試合のデータ",
@@ -5388,6 +5399,7 @@
       "queue_failed": "送信失敗 {{n}} 件 — タップで再送",
       "queue_unknown_owner": "持ち主が分からない未送信 {{n}} 件 — タップで確認",
       "queue_unknown_owner_confirm": "この端末に、持ち主が分からない未送信の入力が {{n}} 件あります。自分が入力したものである場合だけ送信してください。他の人の入力かもしれない場合は送信しないでください。送信しますか？",
+    "queue_unknown_owner_discard_confirm": "この端末に残った所有者不明の未送信入力 {{n}} 件は、別のユーザーの資格情報では再送できません。これらを破棄しますか？",
       "sets_fetch_failed": "セット一覧を取得できませんでした。通信を確認して、もう一度お試しください。",
       "retry": "もう一度試す",
       "queue_storage_error": "この端末の保存領域に書き込めません。未送信の入力が失われるおそれがあります。",

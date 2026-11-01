@@ -34,7 +34,7 @@ export function DiscrepancyAlertList({ playerId, isLight }: Props) {
       {isLoading ? (
         <div className={`${textMuted} text-xs`}>{t('condition.discrepancy.loading')}</div>
       ) : error ? (
-        <div className={`${textMuted} text-xs`}>{t('condition.discrepancy.no_data')}</div>
+        <div className={`${textMuted} text-xs`} role="alert">{t('condition.error')}</div>
       ) : items.length === 0 ? (
         <div className={`${textMuted} text-xs`}>{t('condition.discrepancy.no_data')}</div>
       ) : (

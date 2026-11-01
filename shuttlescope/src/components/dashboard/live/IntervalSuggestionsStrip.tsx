@@ -44,7 +44,7 @@ export function IntervalSuggestionsStrip({
   const autoShow = setScore === 11 || rallyCountSinceLast >= 60
   const visible = autoShow || forceShow
 
-  const { data, isFetching, refetch } = useQuery<SuggestionsResponse>({
+  const { data, isFetching, isError, refetch } = useQuery<SuggestionsResponse>({
     queryKey: ['live-suggestions', playerId, matchId],
     queryFn: () =>
       apiGet<SuggestionsResponse>('/analysis/live_suggestions', {
@@ -82,6 +82,18 @@ export function IntervalSuggestionsStrip({
       )}
       {visible && isFetching && !data && (
         <div className="text-xs mt-2 text-[var(--ss-t2)]">{t('auto.IntervalSuggestionsStrip.loading')}</div>
+      )}
+      {visible && isError && !data && (
+        <div className="text-xs mt-2 text-[var(--ss-danger-text)] flex items-center gap-2">
+          <span>{t('auto.IntervalSuggestionsStrip.error')}</span>
+          <button
+            type="button"
+            onClick={() => void refetch()}
+            className="underline hover:no-underline"
+          >
+            {t('auto.IntervalSuggestionsStrip.retry')}
+          </button>
+        </div>
       )}
       {visible && data && data.items.length === 0 && (
         <div className="text-xs mt-2 text-[var(--ss-t2)]">{t('auto.IntervalSuggestionsStrip.empty')}</div>

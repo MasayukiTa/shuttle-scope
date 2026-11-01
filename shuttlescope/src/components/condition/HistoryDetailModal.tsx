@@ -40,8 +40,11 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
   const { t } = useTranslation()
   const { role } = useAuth()
   const qc = useQueryClient()
-  // 削除は履歴一覧の各行ではなく、記録を開いたこの画面だけに置く (player には出さない)
-  const canDelete = role != null && role !== 'player'
+  // 削除は履歴一覧の各行ではなく、記録を開いたこの画面だけに置く。
+  // player 本人の記録削除は backend DELETE /conditions/{id} が cond.player_id == ctx.player_id で
+  // 明示的に許可しているため (監査 #640)、UI だけ塩がず全ログインロールに導線を出す。
+  // 権限外の記録はサーバが 403 を返し handleDelete の errorMsg で表示される。
+  const canDelete = role != null
 
   const answers = useMemo(() => parseQuestionnaire(record['questionnaire_json']), [record])
   const [deleting, setDeleting] = useState(false)

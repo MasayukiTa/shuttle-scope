@@ -457,6 +457,9 @@
   },
   "condition": {
     "title": "Condition",
+    "error": "Could not load analysis results",
+    "master_fallback_warning": "Could not load the questionnaire master from the server. A built-in offline questionnaire is shown. It may not match the latest questionnaire, so answers cannot be saved in this state.",
+    "master_fallback_blocked": "Cannot save because the questionnaire master could not be verified. Check your connection and reload.",
     "subtab_input": "Input",
     "subtab_history": "History",
     "history_placeholder": "No history",
@@ -1928,6 +1931,7 @@
       "calibration_required": "Position and formation analysis is hidden because court calibration is not set."
     },
     "sample_size": "Samples: {{count}}",
+    "fetch_error": "Could not load analysis results",
     "shuttle_track": {
       "title": "Shuttle trajectory",
       "empty": "Not analyzed (no shuttle trajectory data)",
@@ -2969,6 +2973,7 @@
   "pipeline_meta": {},
   "benchmark": {
     "title": "Benchmark",
+    "poll_stalled": "Could not read progress. The job's run state is unknown",
     "detect_devices": "Detect devices",
     "detecting": "Detecting...",
     "select_targets": "Select benchmark targets",
@@ -3439,6 +3444,7 @@
     },
     "AnomalyBanner": {
       "title": "Something different right now",
+      "error": "Could not update anomaly detection",
       "sample_n": "Recent N={{n}} strokes",
       "detail_stats": "Recent N={{recent}} strokes / Usual N={{base}} strokes",
       "shot_other": "Other",
@@ -3457,7 +3463,9 @@
       "idle_hint": "Auto-shows at 11 points / set break / every 60 rallies. Use Suggest now for manual fetch.",
       "loading": "Generating suggestions…",
       "empty": "No suggestions above 0.5 confidence right now.",
-      "confidence": "Confidence {{pct}}%"
+      "confidence": "Confidence {{pct}}%",
+      "error": "Could not load suggestions",
+      "retry": "Retry"
     },
     "BayesMatchupCard": {
       "total_matches": "Total matches: {{n}}",
@@ -3689,6 +3697,7 @@
     },
     "PlayerMovementCard": {
       "k1": "Calculating movement distance...",
+      "fetch_error": "Could not load movement analysis",
       "k2": "Player movement distance",
       "k3": "Click here to open the grid and synchronize.",
       "k4": "Click here to configure the grid.",
@@ -3737,6 +3746,8 @@
       "stat_pred": "Statistical prediction — using data before {{date}}",
       "h2h_count": "(H2H {{n}} matches)",
       "h2h_none": "(no H2H record)",
+      "error": "Could not load or recompute the prediction",
+      "retry": "Retry",
       "computed_at": "Computed: {{date}}",
       "no_prior_data": "No data before this match (statistical prediction unavailable)",
       "n_matches_data": "{{n}} matches of data",
@@ -5375,6 +5386,7 @@
       "queue_failed": "{{n}} send failures — tap to resend",
       "queue_unknown_owner": "{{n}} unsent inputs with unknown owner — tap to review",
       "queue_unknown_owner_confirm": "This device holds {{n}} unsent inputs whose owner is unknown. Send them only if you entered them yourself. If they may belong to someone else, do not send them. Send now?",
+    "queue_unknown_owner_discard_confirm": "The {{n}} ownerless unsent item(s) left on this device cannot be re-sent under another user's credentials. Discard them?",
       "sets_fetch_failed": "Could not load the set list. Please check your connection and try again.",
       "retry": "Try again",
       "queue_storage_error": "Cannot write to this device's storage. Unsent inputs may be lost.",

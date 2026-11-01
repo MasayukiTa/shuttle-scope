@@ -54,7 +54,7 @@ export function PrematchStatCard({ matchId, playerId, playerName }: Props) {
   const [force, setForce] = useState(false)
 
   const queryKey = ['prematch-by-match', matchId, playerId, force]
-  const { data: resp, isLoading, isFetching } = useQuery({
+  const { data: resp, isLoading, isFetching, isError } = useQuery({
     queryKey,
     queryFn: () =>
       apiGet<{ success: boolean; cached: boolean; data: PrematchData }>(
@@ -74,6 +74,27 @@ export function PrematchStatCard({ matchId, playerId, playerName }: Props) {
     return (
       <div className="text-xs text-center py-4" style={{ color: subText }}>
         {t('auto.PrematchStatCard.computing')}
+      </div>
+    )
+  }
+
+  // 取得・再計算に失敗した場合はカードを消さず、明示的なエラー状態を出す。
+  // (「予測対象外・データなし」と「通信/計算の失敗」を取り違えないため)
+  if (isError) {
+    return (
+      <div
+        className="px-4 py-3 rounded-ss-lg text-xs text-center bg-[var(--ss-surface-1)] border border-[var(--ss-danger-border)]"
+        style={{ color: subText }}
+        role="alert"
+      >
+        <p className="text-[var(--ss-danger-text)]">{t('auto.PrematchStatCard.error')}</p>
+        <button
+          onClick={handleForceRecalc}
+          disabled={isFetching}
+          className="mt-2 underline hover:no-underline disabled:opacity-40"
+        >
+          {t('auto.PrematchStatCard.retry')}
+        </button>
       </div>
     )
   }

@@ -93,7 +93,9 @@ export function BestProfileCard({ playerId, isLight }: Props) {
 
       {isLoading ? (
         <div className={`${textMuted} text-xs`}>{t('condition.best_profile.loading')}</div>
-      ) : error || !data ? (
+      ) : error ? (
+        <div className={`${textMuted} text-xs`} role="alert">{t('condition.error')}</div>
+      ) : !data ? (
         <div className={`${textMuted} text-xs`}>{t('condition.best_profile.no_data')}</div>
       ) : (
         <div className="space-y-4">

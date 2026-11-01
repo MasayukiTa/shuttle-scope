@@ -72,7 +72,7 @@ function fallbackMaster(condition_type: ConditionType): QuestionMaster {
         scale: 'agreement' as ScaleKind,
       }
     })
-    return { items, auxiliary: [] }
+    return { items, auxiliary: [], source: 'fallback' }
   }
   const items: QuestionItem[] = Object.entries(WEEKLY_SCALE_MAP).map(([id, { factor, scale }]) => ({
     id,
@@ -80,7 +80,7 @@ function fallbackMaster(condition_type: ConditionType): QuestionMaster {
     text_key: `condition.q.${id}`,
     scale,
   }))
-  return { items, auxiliary: [] }
+  return { items, auxiliary: [], source: 'fallback' }
 }
 
 export function useConditionMaster(condition_type: ConditionType) {
@@ -93,10 +93,10 @@ export function useConditionMaster(condition_type: ConditionType) {
           { condition_type },
         )
         if (resp && typeof resp === 'object' && 'items' in resp) {
-          return resp as QuestionMaster
+          return { ...(resp as QuestionMaster), source: 'server' }
         }
         const data = (resp as { data?: QuestionMaster }).data
-        if (data && Array.isArray(data.items)) return data
+        if (data && Array.isArray(data.items)) return { ...data, source: 'server' }
         return fallbackMaster(condition_type)
       } catch {
         // backend 未稼働 / エラー時はフォールバック

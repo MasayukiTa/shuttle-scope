@@ -56,7 +56,7 @@ export function IntervalReport({ matchId, completedSet, onSetClick }: IntervalRe
   const { role } = useAuth()
   const isPlayer = role === 'player'
 
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError } = useQuery({
     queryKey: ['analysis-interval-report', matchId, completedSet],
     queryFn: () =>
       apiGet<IntervalReportResponse>('/analysis/interval_report', {
@@ -70,6 +70,11 @@ export function IntervalReport({ matchId, completedSet, onSetClick }: IntervalRe
 
   if (isLoading) {
     return <div className="text-[var(--ss-t3)] text-sm py-4 text-center">{t('analysis.loading')}</div>
+  }
+
+  // 取得失敗を正常な「データなし」に落とさない (監査 #642)。
+  if (isError) {
+    return <div className="text-sm py-4 text-center" style={{ color: 'var(--ss-bad)' }}>{t('analysis.fetch_error')}</div>
   }
 
   if (!resp?.success || !resp.data) {
