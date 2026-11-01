@@ -231,9 +231,12 @@ def _render_status_str(request: Request, *, lang: str = "ja", preview: bool = Fa
     if db is not None:
         status = compute_public_status(db)
         # 日次稼働履歴 (claude status 風バー) は重いので /status ページ描画時のみ付与する。
+        # 公開ページのコンポーネントは利用者向けに束ねてあるので (F-T001-06)、内部キーの
+        # 履歴を公開コンポーネントキーへ合成してから各バーに割り当てる。
         try:
             from backend.services.status_monitor import compute_component_history
-            hist = compute_component_history(db)
+            from backend.routers.status_page import public_component_history
+            hist = public_component_history(compute_component_history(db))
             for c in status.get("components", []):
                 h = hist.get(c.get("key")) or {}
                 c["history"] = h.get("days", [])
@@ -723,9 +726,11 @@ def _compute_status_day_detail(db: Session, day: str, component: Optional[str] =
     10 分スロット (1 日 144 個) へバケットし、各スロットの公開ステータス
     (operational/degraded/down/nodata) を返す。
 
-    - component を指定するとそのコンポーネント (api/database/tunnel/gpu/worker) のみ。
+    - component を指定すると、その公開コンポーネント (web/signin/database/analysis) を
+      構成する内部コンポーネント群のみを「悪い方優先」で合成する。
       未指定なら全コンポーネントを「悪い方優先」で合成する (= 90日バー全体相当)。
-      公開ページの各バーは component 別なので、クリックされたバーの component を渡す。
+      公開ページの各バーは公開コンポーネント別なので、クリックされたバーの key を渡す。
+      内部コンポーネントキーは公開しない (URL にも出さない)。
     - HealthSample.sampled_at は naive UTC (status_monitor が datetime.utcnow() で記録)。
       day は JST 暦日として解釈し、JST 00:00 を UTC に直した窓でスロット割り当てを行う
       (90 日バー compute_component_history と同じ JST 基準)。slot の時刻は UTC ISO で返し、
@@ -751,7 +756,12 @@ def _compute_status_day_detail(db: Session, day: str, component: Optional[str] =
         .filter(HealthSample.sampled_at >= start_utc, HealthSample.sampled_at < end_utc)
     )
     if component is not None:
-        q = q.filter(HealthSample.component == component)
+        # 公開コンポーネントキー (web/signin/database/analysis) を構成する内部
+        # コンポーネント群に絞る。内部キーは公開しないので URL では受けない。
+        from backend.routers.status_page import public_members
+        members = public_members(component)
+        if members:
+            q = q.filter(HealthSample.component.in_(members))
     rows = q.all()
 
     # スロット index -> 集約済みステータス (悪い方優先) + 最悪 severity。未観測は nodata。
@@ -809,20 +819,21 @@ async def public_status_day(day: str, component: Optional[str] = None,
 
     認証不要 (/api/public/* は anon 許可)。
     - `day`: YYYY-MM-DD。形式不正/非実在日は 400。
-    - `component`: 任意。api/database/tunnel/gpu/worker のいずれか。
+    - `component`: 任意。公開コンポーネント (web/signin/database/analysis) のいずれか。
       未知の値は 400 (列挙 probe 防止 + 不正フィルタ拒否)。未指定なら全合成。
+      内部コンポーネントキー (tunnel/gpu/worker/clock 等) は公開しないので受け付けない。
     返すのは粗い状態 (operational/degraded/down/nodata) のみで、
     内部ホスト名/IP/負荷メトリクスは含めない。
     """
     if not isinstance(day, str) or not _DAY_RE.match(day):
         raise HTTPException(status_code=400, detail="invalid date format (expected YYYY-MM-DD)")
     if component is not None:
-        # 既知のコンポーネントキーのみ許可 (status_monitor の定義に追従)。
+        # 公開コンポーネントキーのみ許可 (内部キーは URL でも受け付けない: F-T001-06)。
         try:
-            from backend.services.status_monitor import COMPONENT_KEYS
-            allowed = set(COMPONENT_KEYS)
+            from backend.routers.status_page import PUBLIC_COMPONENT_KEYS
+            allowed = set(PUBLIC_COMPONENT_KEYS)
         except Exception:  # noqa: BLE001 — 監視未初期化でも公開ページは壊さない
-            allowed = {"api", "database", "tunnel", "gpu", "worker"}
+            allowed = {"web", "signin", "database", "analysis"}
         if component not in allowed:
             raise HTTPException(status_code=400, detail="unknown component")
     return _compute_status_day_detail(db, day, component=component)
