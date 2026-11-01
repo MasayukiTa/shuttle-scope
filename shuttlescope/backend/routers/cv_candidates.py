@@ -38,6 +38,10 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import Match, GameSet, Rally, Stroke, MatchCVArtifact
+from backend.analysis.pending_strokes import (
+    PENDING_FINAL_SHOT_TYPE,
+    PENDING_FINAL_STROKE_NUM,
+)
 from backend.cv.candidate_builder import build_candidates
 from backend.yolo.cv_aligner import align_match
 
@@ -514,6 +518,46 @@ class ReviewStatusUpdate(BaseModel):
     review_status: str  # "pending" | "completed"
 
 
+def _finalize_pending_strokes(db: Session, rally_id: int) -> None:
+    """rally 内の未確定 sentinel stroke を確定 (再採番) する。
+
+    Pass 2 は最終打を stroke_num=9999 / shot_type='__final_pending' で挿入する。
+    Pass 3 完了時にこれが残ると解析データを汚すので、sentinel 番号を
+    中間 stroke の最大番号 + 1 へ寄せる。shot_type が '__final_pending' のまま
+    (= 人が打球分類を確定していない) なら 409 を投げて保存自体を拒否する
+    (fail closed: 未確定のまま Pass 3 完了にしない)。
+    """
+    strokes = (
+        db.query(Stroke)
+        .filter(Stroke.rally_id == rally_id)
+        .order_by(Stroke.stroke_num)
+        .all()
+    )
+    pending = [
+        s for s in strokes
+        if s.stroke_num == PENDING_FINAL_STROKE_NUM
+        or s.shot_type == PENDING_FINAL_SHOT_TYPE
+    ]
+    if not pending:
+        return
+
+    # shot_type が未分類の sentinel が残るなら確定できない → 409
+    unclassified = [s for s in pending if s.shot_type == PENDING_FINAL_SHOT_TYPE]
+    if unclassified:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="未確定の最終打 (未分類) が残っています。Pass 3 を完了する前に打球を分類してください",
+        )
+
+    # shot_type は確定済だが stroke_num が sentinel(9999) のままの行を再採番する。
+    non_pending = [s for s in strokes if s.stroke_num != PENDING_FINAL_STROKE_NUM]
+    next_num = (max((s.stroke_num for s in non_pending), default=0)) + 1
+    for s in sorted(pending, key=lambda x: x.stroke_num):
+        s.stroke_num = next_num
+        next_num += 1
+
+
 @router.put("/cv-candidates/review/{rally_id}")
 def update_rally_review_status(
     rally_id: int,
@@ -531,6 +575,13 @@ def update_rally_review_status(
         raise HTTPException(status_code=400, detail="review_status は pending / completed のいずれかです")
 
     rally = _require_rally_team_scope(request, db, rally_id)
+
+    # Pass 3 完了 (completed) 時は、未確定 sentinel (stroke_num=9999 /
+    # shot_type='__final_pending') を同一 transaction 内で確定させる。
+    # 最終打 sentinel を「中間 stroke の最大番号 + 1」へ再採番し、
+    # placeholder の shot_type は未分類のまま残すと解析を汚すため 409 で拒否する。
+    if body.review_status == "completed":
+        _finalize_pending_strokes(db, rally_id)
 
     rally.review_status = body.review_status
     db.commit()
