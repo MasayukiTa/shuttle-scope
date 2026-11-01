@@ -17,6 +17,7 @@ WebRTC シグナリングを中継する。映像データは流れない（SDP/
   webrtc_offer    {participant_id, sdp}
   ice_candidate   {participant_id, candidate, sdp_mid, sdp_m_line_index}
   camera_stop     {participant_id}
+  device_rename   {participant_id, device_name}  # 自端末の表示名を変更する
 
 [Operator → 送信デバイス]
   camera_request      {stream_id | target_participant_id}
@@ -37,7 +38,7 @@ WebRTC シグナリングを中継する。映像データは流れない（SDP/
   viewer_ice_candidate  {viewer_id, candidate, sdp_mid, sdp_m_line_index}
 
 [Server → Operator]
-  device_list_update   {devices: [{participant_id, stream_id, status}]}
+  device_list_update   {devices: [{participant_id, stream_id, status, device_name}]}
   camera_stream_ended  {participant_id, stream_id}
   viewer_joined        {viewer_id}
   viewer_left          {viewer_id}
@@ -67,6 +68,9 @@ logger = logging.getLogger(__name__)
 _MAX_WS_MESSAGE_BYTES = 64 * 1024
 # 1 接続あたりの 1 秒間メッセージ流量 (シグナリング想定で十分なバッファ)。
 _MAX_WS_MESSAGES_PER_SEC = 60
+# device_rename (h12a): participant が自分の端末名を変更するときの上限。
+# DB 列 SessionParticipant.device_name は String(100) なのでこれに合わせる。
+_MAX_DEVICE_NAME_LEN = 100
 
 #: 送信デバイスが operator へ送ってよいメッセージ種別 (S-6)。
 #: `src/pages/CameraSenderPage.tsx` が実際に送るのはこの 5 種類だけ。
@@ -622,21 +626,114 @@ class CameraSignalingManager:
             return
         await self.relay_to_device(session_code, participant_id, message)
 
+    def _device_names_for(self, session_code: str, participant_ids: list[str]) -> dict[str, Optional[str]]:
+        """その session に属する participant の device_name を DB から引く。
+
+        participant_id は SessionParticipant.id の文字列。session_code から
+        SharedSession.id を引いて join し、**その session の行だけ** を返す
+        (他 session の同名 id を拾わない)。引けない id は dict に含めない。
+        """
+        ids: list[int] = []
+        for pid in participant_ids:
+            try:
+                ids.append(int(pid))
+            except (ValueError, TypeError):
+                continue
+        if not ids:
+            return {}
+        from backend.db.database import SessionLocal
+        from backend.db.models import SharedSession, SessionParticipant
+        db = SessionLocal()
+        try:
+            sess_row = db.query(SharedSession.id).filter(
+                SharedSession.session_code == session_code
+            ).first()
+            if sess_row is None:
+                return {}
+            rows = db.query(SessionParticipant.id, SessionParticipant.device_name).filter(
+                SessionParticipant.session_id == sess_row[0],
+                SessionParticipant.id.in_(ids),
+            ).all()
+            return {str(r[0]): r[1] for r in rows}
+        finally:
+            db.close()
+
     async def _notify_device_list(self, session_code: str) -> None:
         sess = self._sessions.get(session_code, {})
         streams = sess.get("device_streams", {})
+        pids = list(sess.get("devices", {}).keys())
+        # device_name を DB から足す (h12a)。接続時に一度読むだけだった名前を
+        # device_rename で更新できるようにしたので、通知にも含めて
+        # 他クライアントが一覧を更新できるようにする。
+        names = self._device_names_for(session_code, pids)
         devices = [
             {
                 "participant_id": pid,
                 "stream_id": streams.get(pid),
                 "status": "connected",
+                "device_name": names.get(pid),
             }
-            for pid in sess.get("devices", {}).keys()
+            for pid in pids
         ]
         await self._send_to_operator(session_code, {
             "type": "device_list_update",
             "devices": devices,
         })
+
+
+    @staticmethod
+    def _clean_device_name(raw) -> Optional[str]:
+        """ホワイトスペースを落とし、長さを制限し、空は拒否する。
+
+        有効な名前なら str、無効なら None を返す。
+        """
+        if not isinstance(raw, str):
+            return None
+        name = raw.strip()
+        if not name:
+            return None
+        return name[:_MAX_DEVICE_NAME_LEN]
+
+    async def apply_device_rename(self, session_code: str, participant_id: str,
+                                  raw_name) -> Optional[str]:
+        """participant に自分の端末名を付け替えさせる (h12a)。
+
+        - 前後空白を落とし、`_MAX_DEVICE_NAME_LEN` で切り、空は拒否。
+        - **その session に属する participant の行に限り** device_name を書く。
+          (session_code → SharedSession.id で join し、他 session の同名 id は触らない)
+        - 書けたら _notify_device_list を呼び、他クライアントに最新名を届ける。
+
+        保存した名前を返す。無効な名前 / 非所属 participant なら None。
+        """
+        name = self._clean_device_name(raw_name)
+        if name is None:
+            return None
+        try:
+            pid_int = int(participant_id)
+        except (ValueError, TypeError):
+            return None
+        from backend.db.database import SessionLocal
+        from backend.db.models import SharedSession, SessionParticipant
+        db = SessionLocal()
+        try:
+            sess_row = db.query(SharedSession.id).filter(
+                SharedSession.session_code == session_code
+            ).first()
+            if sess_row is None:
+                return None
+            participant = db.query(SessionParticipant).filter(
+                SessionParticipant.id == pid_int,
+                SessionParticipant.session_id == sess_row[0],
+            ).first()
+            if participant is None:
+                # その session に属さない participant。他人の行は書かせない。
+                return None
+            participant.device_name = name
+            db.commit()
+        finally:
+            db.close()
+        await self._notify_device_list(session_code)
+        return name
 
 
 # シングルトン
@@ -1039,6 +1136,16 @@ async def ws_camera_handler(
                     await camera_manager.relay_to_operator(session_code, msg)
 
             else:
+                # device_rename (h12a): participant が自分の端末名を付け替える。
+                # operator の hub はこの生メッセージを扱わない。書き込みと
+                # 更新通知は device_list_update (device_name を含む) に集約するので、
+                # ここで処理して relay には流さない。participant_id は接続が
+                # 持つサーバ権威の値を使う (クライアント申告は採用しない)。
+                if msg_type == "device_rename":
+                    await camera_manager.apply_device_rename(
+                        session_code, participant_id, msg.get("device_name"),
+                    )
+                    continue
                 # 送信デバイス → Operator に中継
                 #
                 # S-6 (2026-09-22): ここだけ **種別を検査していなかった**。
