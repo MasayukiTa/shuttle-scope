@@ -240,15 +240,20 @@ def _hash_password_or_422(password: str) -> str:
     return _hash_password(password)
 
 
-def _send_email_safe(to: str, subject: str, body: str, tag: str) -> None:
-    """例外を吸収してメール送信する。失敗してもユーザーフローは止めない。"""
+def _send_email_safe(to: str, subject: str, body: str, tag: str) -> bool:
+    """例外を吸収してメール送信する。失敗してもユーザーフローは止めない。
+
+    実際に配送できたかどうかを bool で返す (成功 True / 失敗 False)。
+    呼び出し元が「招待レコードは作成できたがメール配送は失敗」を区別できるようにする。
+    """
     try:
         from backend.services.mailer import get_mailer
         from backend.services.mailer.base import MailMessage
         mailer = get_mailer()
-        mailer.send(MailMessage(to=[to], subject=subject, text_body=body, tags=[tag]))
+        return bool(mailer.send(MailMessage(to=[to], subject=subject, text_body=body, tags=[tag])))
     except Exception as exc:
         logger.error("[auth_email] mail send failed (%s): %s", tag, exc)
+        return False
 
 
 def _notify_admin_webhook(content: str) -> str:
@@ -665,7 +670,7 @@ def create_invitation(body: InvitationCreateRequest, request: Request,
         team_id=(body.team_id if body.team_id is not None else ctx.team_id),
     )
     accept_url = _app_link("/invite", token)
-    _send_email_safe(
+    email_sent = _send_email_safe(
         body.email,
         "ShuttleScope への招待",
         f"ShuttleScope に招待されました ({body.role}).\n\n"
@@ -674,8 +679,13 @@ def create_invitation(body: InvitationCreateRequest, request: Request,
         tag="invitation",
     )
     log_access(db, "invitation_created", user_id=ctx.user_id,
-               details={"email_domain": body.email.split("@")[-1], "role": body.role})
-    return {"success": True, "data": {"sent": True}}
+               details={"email_domain": body.email.split("@")[-1], "role": body.role,
+                        "email_sent": email_sent})
+    # 招待レコードの生成とメール配送の成否を分離して返す。
+    # メールが失敗しても token 自体は残るため、呼び出し側は
+    # email_sent=false を見て「リンクを手動共有」等の表示に切り替えられる。
+    # sent は後方互換のため残すが、常に True ではなく実際の配送結果を反映する。
+    return {"success": True, "data": {"invitation_created": True, "email_sent": email_sent, "sent": email_sent}}
 
 
 @router.get("/auth/invitation/peek")
