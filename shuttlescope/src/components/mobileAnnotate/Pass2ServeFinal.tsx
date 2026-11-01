@@ -30,6 +30,7 @@
  */
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { MIcon } from '@/components/common/MIcon'
 import { AnnotateOverlay, ZoneCode } from './AnnotateOverlay'
 import { enqueue } from '@/utils/mobileAnnotateQueue'
 import { finalHitterFor, type FinalShotOutcome } from '@/utils/mobileAnnotateRallies'
@@ -63,6 +64,8 @@ export function Pass2ServeFinal({ rally, doubles = false, onCompleted, onCancel 
   const [stepIdx, setStepIdx] = useState(0)
   const [zones, setZones] = useState<Partial<Record<Step, ZoneCode>>>({})
   const [submitting, setSubmitting] = useState(false)
+  // enqueue (送信キューへの積み込み) が失敗したときのエラー文言。空なら非表示 (監査 #623)。
+  const [enqueueError, setEnqueueError] = useState<string>('')
   const [outcome, setOutcome] = useState<FinalShotOutcome | null>(null)
   const [needOutcome, setNeedOutcome] = useState(false)
   const step = STEP_ORDER[stepIdx]
@@ -103,6 +106,7 @@ export function Pass2ServeFinal({ rally, doubles = false, onCompleted, onCancel 
     }
     // 4 step 全部揃った → 2 stroke を enqueue
     setSubmitting(true)
+    setEnqueueError('')
     try {
       // backend POST /api/strokes は rally_id を QUERY PARAM で受ける。
       // body には StrokeData (extra='forbid') のフィールドのみ。
@@ -129,6 +133,11 @@ export function Pass2ServeFinal({ rally, doubles = false, onCompleted, onCancel 
         hit_zone_source: 'manual',
       }, { rally_id: rally.id })
       onCompleted()
+    } catch (e: unknown) {
+      // enqueue が投げた = この入力はローカルにも積めていない。onCompleted を呼ばず
+      // (= 保存済みに見せず)、ユーザーに失敗を伝えて再入力を促す (監査 #623)。
+      const detail = e instanceof Error && e.message ? e.message : String(e)
+      setEnqueueError(`${t('auto.Pass2ServeFinal.enqueue_failed')} (${detail})`.slice(0, 200))
     } finally {
       setSubmitting(false)
     }
@@ -143,11 +152,17 @@ export function Pass2ServeFinal({ rally, doubles = false, onCompleted, onCancel 
       return
     }
     setSubmitting(true)
+    setEnqueueError('')
     try {
       const { stroke, rallyLength } = serveOnlyRallyPayload(rally, zones, serveHitter)
       await enqueue('POST /api/strokes?rally_id=:rally_id', stroke, { rally_id: rally.id })
       await enqueue('PUT /api/rallies/:id', { rally_length: rallyLength }, { id: rally.id })
       onCompleted()
+    } catch (e: unknown) {
+      // enqueue が投げた = この入力はローカルにも積めていない。onCompleted を呼ばず
+      // (= 保存済みに見せず)、ユーザーに失敗を伝えて再入力を促す (監査 #623)。
+      const detail = e instanceof Error && e.message ? e.message : String(e)
+      setEnqueueError(`${t('auto.Pass2ServeFinal.enqueue_failed')} (${detail})`.slice(0, 200))
     } finally {
       setSubmitting(false)
     }
@@ -155,6 +170,23 @@ export function Pass2ServeFinal({ rally, doubles = false, onCompleted, onCancel 
 
   return (
     <div className="absolute inset-0 bg-black/80 flex flex-col">
+      {/* enqueue 失敗バナー: 入力がキューに積めず静かに失われるのを防ぐ (監査 #623) */}
+      {enqueueError && (
+        <div
+          role="alert"
+          className="px-3 py-2 bg-red-900/90 text-red-100 text-xs flex items-center gap-2 border-b border-red-700"
+        >
+          <MIcon name="error" size={14} />
+          <span className="flex-1">{enqueueError}</span>
+          <button
+            type="button"
+            onClick={() => setEnqueueError('')}
+            className="px-2 py-1 rounded bg-red-800 text-red-50"
+          >
+            {t('auto.Pass2ServeFinal.dismiss')}
+          </button>
+        </div>
+      )}
       {/* 上部: 進捗ドット + step 名 */}
       <div className="bg-black/90 px-3 py-2 flex items-center gap-3 border-b border-gray-800 text-xs">
         <div className="text-yellow-200 font-bold">

@@ -186,39 +186,47 @@ export function Pass3ShotDetail({
       return
     }
     setCommitError(null)
-    if (finalNeedsShift && finalSentinel && finalSentinel.id) {
-      // 同じ rally の操作は enqueue 順に送られるため、ずらす PUT を先に積めば
-      // 中間球の POST が最終打と同じ番号で衝突しない。
-      const shifted = nextStrokeNum + 1
-      await enqueue('PUT /api/strokes/:id', {
-        stroke_num: shifted,
-        player: finalSentinel.player,
-        shot_type: finalSentinel.shot_type,
-        hit_zone: finalSentinel.hit_zone,
-        land_zone: finalSentinel.land_zone,
-      }, { id: finalSentinel.id }, { sequenceKey: `rally:${rally.id}` })
-      onStrokeUpdated({ ...finalSentinel, stroke_num: shifted })
+    // enqueue (IndexedDB への積み込み) 失敗を握り潰さない。失敗したら onStrokeAdded を
+    // 呼ばず (= 幻の打を画面に出さず) commitError を立て、ユーザーに再入力を促す (監査 #623)。
+    try {
+      if (finalNeedsShift && finalSentinel && finalSentinel.id) {
+        // 同じ rally の操作は enqueue 順に送られるため、ずらす PUT を先に積めば
+        // 中間球の POST が最終打と同じ番号で衝突しない。
+        const shifted = nextStrokeNum + 1
+        await enqueue('PUT /api/strokes/:id', {
+          stroke_num: shifted,
+          player: finalSentinel.player,
+          shot_type: finalSentinel.shot_type,
+          hit_zone: finalSentinel.hit_zone,
+          land_zone: finalSentinel.land_zone,
+        }, { id: finalSentinel.id }, { sequenceKey: `rally:${rally.id}` })
+        onStrokeUpdated({ ...finalSentinel, stroke_num: shifted })
+      }
+      const body = {
+        stroke_num: nextStrokeNum,
+        player: nextHitter,
+        shot_type: shotKey,
+        hit_zone: hit,
+        land_zone: land,
+      }
+      await enqueue('POST /api/strokes?rally_id=:rally_id', body, { rally_id: rally.id })
+      onStrokeAdded({
+        id: null,
+        stroke_num: nextStrokeNum,
+        player: nextHitter,
+        shot_type: shotKey,
+        hit_zone: hit,
+        land_zone: land,
+        pending: true,
+      })
+      // rally.rally_length を「中間ストローク + 最終打 (sentinel が居れば +1)」に更新
+      const newLength = nextStrokeNum + (finalSentinel ? 1 : 0)
+      await enqueue('PUT /api/rallies/:id', { rally_length: newLength }, { id: rally.id })
+    } catch {
+      setCommitError(t('auto.Pass3ShotDetail.enqueue_failed'))
+      setAdd({ phase: 'idle' })
+      return
     }
-    const body = {
-      stroke_num: nextStrokeNum,
-      player: nextHitter,
-      shot_type: shotKey,
-      hit_zone: hit,
-      land_zone: land,
-    }
-    await enqueue('POST /api/strokes?rally_id=:rally_id', body, { rally_id: rally.id })
-    onStrokeAdded({
-      id: null,
-      stroke_num: nextStrokeNum,
-      player: nextHitter,
-      shot_type: shotKey,
-      hit_zone: hit,
-      land_zone: land,
-      pending: true,
-    })
-    // rally.rally_length を「中間ストローク + 最終打 (sentinel が居れば +1)」に更新
-    const newLength = nextStrokeNum + (finalSentinel ? 1 : 0)
-    await enqueue('PUT /api/rallies/:id', { rally_length: newLength }, { id: rally.id })
     setAdd({ phase: 'idle' })
   }
 

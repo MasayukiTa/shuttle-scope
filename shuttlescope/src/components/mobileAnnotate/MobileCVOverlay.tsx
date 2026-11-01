@@ -139,15 +139,27 @@ export function MobileCVOverlay({
   const [yoloJob, setYoloJob] = useState<CvJobStatus>(null)
   // 起動失敗時のエラー表示
   const [jobErr, setJobErr] = useState<string>('')
+  // status polling が連続失敗した回数 (通信断と計算中を区別するため)。閾値超で status_unknown 表示 (監査 #516)。
+  const [tracknetPollFails, setTracknetPollFails] = useState<number>(0)
+  const [yoloPollFails, setYoloPollFails] = useState<number>(0)
+  // 連続何回失敗したら「状態を取得できません」に倒すか (2 秒間隔 × 3 = 約 6 秒)。
+  const POLL_FAIL_THRESHOLD = 3
 
   const isTracknetRunning = !!tracknetJob && (tracknetJob.status === 'pending' || tracknetJob.status === 'running')
   const isYoloRunning = !!yoloJob && (yoloJob.status === 'pending' || yoloJob.status === 'running')
   const tracknetError = tracknetJob?.status === 'error' ? (tracknetJob.error || t('auto.MobileCVOverlay.tracknet_run_failed')) : null
   const yoloError = yoloJob?.status === 'error' ? (yoloJob.error || t('auto.MobileCVOverlay.yolo_run_failed')) : null
-  // ジョブが complete/stopped (= 正常終了したが結果が 0 frames だったケースを含む) を
-  // 「実行履歴あり」chip として残すため、別途追跡。ユーザがタップで dismiss できる。
-  const tracknetCompleted = tracknetJob?.status === 'complete' || tracknetJob?.status === 'stopped'
-  const yoloCompleted = yoloJob?.status === 'complete' || yoloJob?.status === 'stopped'
+  // 正常完了 (complete) と、ユーザ中断 (stopped) は別状態。stopped を「完了」と見せない (監査 #516)。
+  const tracknetDone = tracknetJob?.status === 'complete'
+  const yoloDone = yoloJob?.status === 'complete'
+  const tracknetStopped = tracknetJob?.status === 'stopped'
+  const yoloStopped = yoloJob?.status === 'stopped'
+  // 「実行履歴あり」= 完了 or 停止。入力ボタンを再表示しない判定に使う。
+  const tracknetCompleted = tracknetDone || tracknetStopped
+  const yoloCompleted = yoloDone || yoloStopped
+  // poll 連続失敗が閾値を超え、かつ最後に掴んだ状態が実行中なら「状態不明」。
+  const tracknetStatusUnknown = isTracknetRunning && tracknetPollFails >= POLL_FAIL_THRESHOLD
+  const yoloStatusUnknown = isYoloRunning && yoloPollFails >= POLL_FAIL_THRESHOLD
 
   // backend エラー (409 等) メッセージから既存 job_id を救出する正規表現
   const extractJobIdFromConflict = (msg: string): string | null => {
@@ -167,6 +179,7 @@ export function MobileCVOverlay({
       if (res.success) {
         setTracknetJobId(res.data.job_id)
         setTracknetJob({ status: 'pending', progress: 0 })
+        setTracknetPollFails(0)
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -193,6 +206,7 @@ export function MobileCVOverlay({
       if (res.success) {
         setYoloJobId(res.data.job_id)
         setYoloJob({ status: 'pending', progress: 0 })
+        setYoloPollFails(0)
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -217,11 +231,15 @@ export function MobileCVOverlay({
         )
         if (res.success && res.data) {
           setTracknetJob(res.data)
+          setTracknetPollFails(0)  // 取得成功 -> 失敗カウンタをリセット
           if (res.data.status === 'complete') {
             queryClient.invalidateQueries({ queryKey: ['mobile-shuttle-track', matchId] })
           }
         }
-      } catch { /* keep polling */ }
+      } catch {
+        // 通信失敗は握り潰さず数える。閾値超で「状態を取得できません」を表示する (監査 #516)。
+        setTracknetPollFails((n) => n + 1)
+      }
     }, 2000)
     return () => clearInterval(id)
   }, [tracknetJobId, isTracknetRunning, matchId, queryClient])
@@ -236,11 +254,15 @@ export function MobileCVOverlay({
         )
         if (res.success && res.data) {
           setYoloJob(res.data)
+          setYoloPollFails(0)  // 取得成功 -> 失敗カウンタをリセット
           if (res.data.status === 'complete') {
             queryClient.invalidateQueries({ queryKey: ['mobile-yolo-frames', matchId] })
           }
         }
-      } catch { /* keep polling */ }
+      } catch {
+        // 通信失敗は握り潰さず数える。閾値超で「状態を取得できません」を表示する (監査 #516)。
+        setYoloPollFails((n) => n + 1)
+      }
     }, 2000)
     return () => clearInterval(id)
   }, [yoloJobId, isYoloRunning, matchId, queryClient])
@@ -415,7 +437,7 @@ export function MobileCVOverlay({
           </span>
         </button>
       )}
-      {showShuttle && tracknetCompleted && shuttleFrames.length === 0 && (
+      {showShuttle && tracknetDone && shuttleFrames.length === 0 && (
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); setTracknetJob(null); setTracknetJobId(null) }}
@@ -429,7 +451,35 @@ export function MobileCVOverlay({
           </span>
         </button>
       )}
-      {showShuttle && isTracknetRunning && (
+      {showShuttle && tracknetStopped && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setTracknetJob(null); setTracknetJobId(null) }}
+          className="absolute z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-warning"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 4.5rem)', left: 'calc(env(safe-area-inset-left) + 0.5rem)' }}
+          title={t('auto.MobileCVOverlay.k2')}
+        >
+          <span className="inline-flex items-center gap-1">
+            <MIcon name="stop_circle" size={11} />
+            {t('auto.MobileCVOverlay.tracknet_stopped', { n: shuttleFrames.length })}
+          </span>
+        </button>
+      )}
+      {showShuttle && tracknetStatusUnknown && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setTracknetPollFails(0) }}
+          className="absolute z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-danger max-w-[70vw]"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 4.5rem)', left: 'calc(env(safe-area-inset-left) + 0.5rem)' }}
+          title={t('auto.MobileCVOverlay.status_unknown_retry')}
+        >
+          <span className="inline-flex items-center gap-1">
+            <MIcon name="sync_problem" size={11} />
+            {t('auto.MobileCVOverlay.tracknet_status_unknown')}
+          </span>
+        </button>
+      )}
+      {showShuttle && isTracknetRunning && !tracknetStatusUnknown && (
         <div
           className="absolute z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-accent"
           style={{ bottom: 'calc(env(safe-area-inset-bottom) + 4.5rem)', left: 'calc(env(safe-area-inset-left) + 0.5rem)' }}
@@ -465,7 +515,7 @@ export function MobileCVOverlay({
           </span>
         </button>
       )}
-      {showPlayers && yoloCompleted && yoloFrames.length === 0 && (
+      {showPlayers && yoloDone && yoloFrames.length === 0 && (
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); setYoloJob(null); setYoloJobId(null) }}
@@ -479,7 +529,35 @@ export function MobileCVOverlay({
           </span>
         </button>
       )}
-      {showPlayers && isYoloRunning && (
+      {showPlayers && yoloStopped && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setYoloJob(null); setYoloJobId(null) }}
+          className="absolute z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-warning"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 7rem)', left: 'calc(env(safe-area-inset-left) + 0.5rem)' }}
+          title={t('auto.MobileCVOverlay.k2')}
+        >
+          <span className="inline-flex items-center gap-1">
+            <MIcon name="stop_circle" size={11} />
+            {t('auto.MobileCVOverlay.yolo_stopped', { n: yoloFrames.length })}
+          </span>
+        </button>
+      )}
+      {showPlayers && yoloStatusUnknown && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setYoloPollFails(0) }}
+          className="absolute z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-danger max-w-[70vw]"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 7rem)', left: 'calc(env(safe-area-inset-left) + 0.5rem)' }}
+          title={t('auto.MobileCVOverlay.status_unknown_retry')}
+        >
+          <span className="inline-flex items-center gap-1">
+            <MIcon name="sync_problem" size={11} />
+            {t('auto.MobileCVOverlay.yolo_status_unknown')}
+          </span>
+        </button>
+      )}
+      {showPlayers && isYoloRunning && !yoloStatusUnknown && (
         <div
           className="absolute z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-accent"
           style={{ bottom: 'calc(env(safe-area-inset-bottom) + 7rem)', left: 'calc(env(safe-area-inset-left) + 0.5rem)' }}
