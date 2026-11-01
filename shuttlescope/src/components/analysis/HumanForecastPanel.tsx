@@ -14,6 +14,7 @@ import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useAuth } from '@/hooks/useAuth'
 import { WIN, LOSS } from '@/styles/colors'
 import { MIcon } from '@/components/common/MIcon'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 
 // ── 型定義 ──────────────────────────────────────────────────────────────────
 
@@ -217,13 +218,25 @@ function ForecastForm({ matchId, playerId, onSaved }: Props & { onSaved: () => v
 function BenchmarkSection({ playerId, isLight }: { playerId: number; isLight: boolean }) {
   const { t } = useTranslation()
 
-  const { data: resp } = useQuery({
+  const { data: resp, isLoading, isError, refetch } = useQuery({
     queryKey: ['human-benchmark', playerId],
     queryFn: () =>
       apiGet<{ success: boolean; data: { summary: BenchmarkSummary[]; match_comparisons: BenchmarkComparison[]; total_forecasts: number } }>(
         `/prediction/benchmark/${playerId}`
       ),
   })
+
+  if (isLoading) {
+    return (
+      <p className="text-xs text-[var(--ss-t3)]">
+        {t('app.loading')}
+      </p>
+    )
+  }
+  // 取得失敗を 0 件 (benchmark_no_data) に変換しない。障害は明示し再試行させる。
+  if (isError) {
+    return <QueryErrorNotice onRetry={() => refetch()} />
+  }
 
   const d = resp?.data
   if (!d || d.total_forecasts === 0) {

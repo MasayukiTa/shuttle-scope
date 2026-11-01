@@ -41,7 +41,11 @@ export default function PendingUsersPage() {
   })
 
   // 既存チーム一覧を取得して datalist に使用する
-  const { data: teamsData } = useQuery({
+  const {
+    data: teamsData,
+    isError: teamsError,
+    refetch: refetchTeams,
+  } = useQuery({
     queryKey: ['teams_list'],
     queryFn: () => listTeams(),
   })
@@ -80,6 +84,8 @@ export default function PendingUsersPage() {
             key={u.id}
             user={u}
             teams={teams}
+            teamsError={teamsError}
+            onRetryTeams={() => refetchTeams()}
             onChange={() => qc.invalidateQueries({ queryKey: ['pending_users'] })}
           />
         ))}
@@ -91,10 +97,14 @@ export default function PendingUsersPage() {
 function PendingUserRow({
   user,
   teams,
+  teamsError,
+  onRetryTeams,
   onChange,
 }: {
   user: PendingUser
   teams: TeamDTO[]
+  teamsError: boolean
+  onRetryTeams: () => void
   onChange: () => void
 }) {
   const { t } = useTranslation()
@@ -248,6 +258,21 @@ function PendingUserRow({
           <p className="mt-1 text-[10px] text-[var(--ss-t3)]">
             {t('pendingUsers.team_name_hint')}
           </p>
+          {/* チーム一覧の取得失敗を「候補0件」と区別する。沈黙すると表記揺れ・重複チーム作成を誘発する。 */}
+          {teamsError && (
+            <div className="mt-1" role="alert">
+              <p className="text-[10px] text-[var(--ss-danger-text)]">
+                {t('pendingUsers.team_fetch_error')}
+              </p>
+              <button
+                type="button"
+                onClick={onRetryTeams}
+                className="mt-1 px-2 py-0.5 rounded-ss-md border border-[var(--ss-border)] text-[10px] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]"
+              >
+                {t('common_ui.query_retry')}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

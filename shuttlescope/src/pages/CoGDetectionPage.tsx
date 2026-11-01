@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { apiGet } from '@/api/client'
 import { CoGTimeline, CoGPoint } from '@/components/analysis/CoGTimeline'
 import { MIcon } from '@/components/common/MIcon'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 
 interface MatchSummary {
   match_id: number
@@ -99,6 +100,18 @@ export function CoGDetectionPage({ onBack }: { onBack?: () => void } = {}) {
                   <option key={m.match_id} value={m.match_id}>{m.title}</option>
                 ))}
               </select>
+              {matchesQuery.isError && (
+                <div className="mt-1">
+                  <p className="text-xs text-red-400" role="alert">{t('cog_detection.hint_matches_error')}</p>
+                  <button
+                    type="button"
+                    onClick={() => matchesQuery.refetch()}
+                    className="mt-1 px-2 py-1 rounded-[5px] border border-[var(--ss-border)] text-xs text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]"
+                  >
+                    {t('common_ui.query_retry')}
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* ストローク選択 */}
@@ -154,7 +167,10 @@ export function CoGDetectionPage({ onBack }: { onBack?: () => void } = {}) {
               {t('cog_detection.loading')}
             </div>
           )}
-          {strokeId && !cogQuery.isLoading && (
+          {strokeId && !cogQuery.isLoading && cogQuery.isError && (
+            <QueryErrorNotice onRetry={() => cogQuery.refetch()} className="h-24 flex flex-col items-center justify-center" />
+          )}
+          {strokeId && !cogQuery.isLoading && !cogQuery.isError && (
             <>
               {filteredPoints.length < 10 && filteredPoints.length > 0 && (
                 <p className="text-xs text-[var(--ss-warn)] mb-2 inline-flex items-center gap-1"><MIcon name="warning" size={12} />{t('cog_detection.sample_warning')}</p>

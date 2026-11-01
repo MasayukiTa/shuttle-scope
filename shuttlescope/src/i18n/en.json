@@ -2936,7 +2936,8 @@
     "sample_warning": "Small sample — treat as indicative only",
     "hint_select_match": "Select a match first. Then you can pick one of its miss strokes.",
     "hint_no_clips": "This match has no strokes from rallies that ended in a miss, so there is nothing to select. Choose another match.",
-    "hint_clips_error": "Could not load the stroke list. Wait a moment and select the match again."
+    "hint_clips_error": "Could not load the stroke list. Wait a moment and select the match again.",
+    "hint_matches_error": "Could not load the match list. This is a retrieval failure, not an absence of matches."
   },
   "pipeline": {
     "status": {
@@ -5754,6 +5755,7 @@
     "team_name_label": "Team",
     "team_name_hint": "Pick an existing team or type a new team name",
     "team_name_required": "Please enter a team name for the chosen role",
+    "team_fetch_error": "Could not load the team list. This is a retrieval failure, not an absence of teams. Retry before approving to avoid creating a duplicate team.",
     "notify_warning": "{{count}} pending user(s) have an undelivered or unknown admin notification. Review this list instead of relying on Discord alone.",
     "notify_delivered": "Admin notification: delivered",
     "notify_unconfigured": "Admin notification: webhook not configured",
