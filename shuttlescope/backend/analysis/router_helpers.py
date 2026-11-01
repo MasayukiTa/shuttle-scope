@@ -62,10 +62,11 @@ def validate_date_range(date_from, date_to) -> None:
 
 def _get_player_matches_with_excluded(
     db: Session, player_id: int, result=None, tournament_level=None,
-    date_from=None, date_to=None,
+    date_from=None, date_to=None, include_synthetic: bool = False,
 ) -> tuple[list[Match], dict[str, int]]:
     """解析母集団 (勝敗確定 かつ ラリー有り) の試合と、理由別の除外件数を返す。
-    定義は analysis_population にある。除外件数は meta の excluded に載せる。"""
+    定義は analysis_population にある。除外件数は meta の excluded に載せる。
+    include_synthetic=True は管理ツール向けで、検証用 fixture (is_synthetic) も取り込む。"""
     validate_date_range(date_from, date_to)
     q = db.query(Match).filter(_involves_player(player_id))
     if tournament_level:
@@ -76,21 +77,26 @@ def _get_player_matches_with_excluded(
         q = q.filter(Match.date <= date_to)
     if result in ("win", "loss"):
         q = q.filter(_player_result_filter(player_id, result))
-    return split_analysis_population(db, q.all())
+    return split_analysis_population(db, q.all(), include_synthetic=include_synthetic)
 
 
 def _get_player_matches(
     db: Session, player_id: int, result=None, tournament_level=None,
-    date_from=None, date_to=None,
+    date_from=None, date_to=None, include_synthetic: bool = False,
 ) -> list[Match]:
     return _get_player_matches_with_excluded(
         db, player_id, result, tournament_level, date_from, date_to,
+        include_synthetic=include_synthetic,
     )[0]
 
 
-def _fetch_matches_sets_rallies(player_id: int, db: Session, include_skipped: bool = False):
+def _fetch_matches_sets_rallies(
+    player_id: int, db: Session, include_skipped: bool = False,
+    include_synthetic: bool = False,
+):
     matches, _excluded = split_analysis_population(
         db, db.query(Match).filter(_involves_player(player_id)).all(),
+        include_synthetic=include_synthetic,
     )
     if not matches:
         return [], {}, [], {}, [], {}
