@@ -58,7 +58,7 @@ def _make_world(code: str) -> dict:
         db.add(session)
         db.flush()
 
-        def _user(suffix, role, team_id):
+        def _user(suffix, role, team_id, team_name):
             u = User(
                 username=f"{code.lower()}-{suffix}", role=role, team_id=team_id,
                 awaiting_admin_approval=False, consent_required=False, is_test=True,
@@ -66,14 +66,14 @@ def _make_world(code: str) -> dict:
             db.add(u)
             db.flush()
             tok = create_access_token(
-                user_id=u.id, role=role, team_id=team_id, minutes=10,
+                user_id=u.id, role=role, team_id=team_id, team_name=team_name, minutes=10,
             )
             return {"Authorization": f"Bearer {tok}"}
 
         world = {
             "session_id": session.id,
-            "same_team": _user("a-analyst", "analyst", team_a.id),
-            "other_team": _user("b-analyst", "analyst", team_b.id),
+            "same_team": _user("a-analyst", "analyst", team_a.id, team_a.name),
+            "other_team": _user("b-analyst", "analyst", team_b.id, team_b.name),
         }
         db.commit()
         return world
