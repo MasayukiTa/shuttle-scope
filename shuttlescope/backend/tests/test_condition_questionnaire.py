@@ -207,6 +207,26 @@ class TestRoleFilter:
         assert "validity_flag" not in data
         assert "validity_flags_json" not in data
 
+    def test_player_view_includes_questionnaire_json(self, client, player):
+        """player は自身の質問票原回答 (questionnaire_json) を履歴で読み返せる (監査 #654)。
+        以前は _player_view が questionnaire_json を欠落させ、UI が「回答なし」と誤表示していた。
+        """
+        resp = _submit(client, player.id, _all_threes())
+        cid = resp.json()["data"]["id"]
+        r = client.get(
+            f"/api/conditions/{cid}",
+            headers={"X-Role": "player", "X-Player-Id": str(player.id)},
+        )
+        assert r.status_code == 200
+        data = r.json()["data"]
+        # 原回答フィールドが本人レスポンスに含まれる
+        assert "questionnaire_json" in data
+        import json as _json
+        answers = _json.loads(data["questionnaire_json"])
+        # 送信した全項目が復元できる (全て 3 で提出)
+        for qid in WEEKLY_REQUIRED_IDS:
+            assert answers[qid] == 3
+
     def test_coach_view_only_tier_le_1(self, client, player):
         """coach=Tier 1: validity_flag (Tier 1) のみ。Tier 2+ は drop。"""
         resp = _submit(client, player.id, _all_threes())

@@ -338,6 +338,9 @@ def _player_view(c: Condition) -> dict:
         # 医療・自由記述 (本人=○)
         "injury_notes": c.injury_notes,
         "general_comment": c.general_comment,
+        # 質問票の原回答 (本人=○ per 同意書 第5条)。
+        # 本人が自身の入力済み回答を履歴で読み返せるよう含める (監査 #654)。
+        "questionnaire_json": c.questionnaire_json,
         # 妥当性: 同意書 5条で本人=× → 含めない（呼び出し側 fields に含めない）
     }
 

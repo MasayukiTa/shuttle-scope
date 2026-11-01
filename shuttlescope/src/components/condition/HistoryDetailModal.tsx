@@ -73,9 +73,10 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
 
   const answerKeys = Object.keys(answers).sort()
 
-  // 本人向けレスポンスは質問票の原回答を返さない (questionnaire_json が無い)。
-  // その場合に「質問票回答がありません」と出すと、回答済みの記録を未回答と誤認させるため、
-  // フィールド自体が無いときは節ごと出さない。
+  // 本人向けレスポンスは質問票の原回答 (questionnaire_json) を返す (監査 #654)。
+  // ただし開示範囲はロールにより異なり、サーバがフィールド自体を返さないロールもある。
+  // フィールドが無いときに「質問票回答がありません」と出すと回答済みを未回答と誤認させるため、
+  // フィールドが無いときは節ごと出さない。フィールドがあって中身が空のときだけ no_responses を出す。
   const hasQuestionnaireField = record['questionnaire_json'] !== undefined
 
   // けが・テーピングメモ / 自由記述。サーバがそのロールに返した場合だけ表示する (開示範囲は変えない)。
