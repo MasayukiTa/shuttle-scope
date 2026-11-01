@@ -29,6 +29,7 @@ import { AdviceStrip } from '@/components/common/AdviceStrip'
 import {
   chooseMobileVideoQuality,
   getMobileVideoSrc,
+  hasVideo,
   isLocalOnlyVideo,
   type MobileQualityOption,
   type MobileVideoQuality,
@@ -353,6 +354,10 @@ export function MobileAnnotatePage() {
   // ローカル専用動画 (元端末にのみ存在し、HTTP stream が必ず 404 で拒否する) を判定する。
   // この場合 PlayMode は「準備中 / 再読み込み」ではなく「デスクトップアプリで再生」を案内する。
   const localOnly = isLocalOnlyVideo(match, availableQualities)
+  // 動画は登録されているのに、まだ再生可能な URL が得られていない状態か
+  // (= サーバ側で変換/準備中の可能性がある)。このときだけ PlayMode の自動再取得を許す。
+  // 動画未登録 (hasVideo=false) や local-only では false を渡し、無駄な polling を避ける。
+  const videoPending = !videoSrc && !localOnly && hasVideo(match)
 
   // セット一覧 + 既存ラリー取得 (Pass 1 用)
   const setsQuery = useQuery({
@@ -686,6 +691,7 @@ export function MobileAnnotatePage() {
               matchId={matchId ?? ''}
               videoSrc={videoSrc}
               localOnly={localOnly}
+              videoPending={videoPending}
               onTapVideo={(t) => {
                 setPausedAtSec(t)
                 setScreen('annotate')

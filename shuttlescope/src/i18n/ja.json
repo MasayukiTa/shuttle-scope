@@ -5299,6 +5299,8 @@
       "no_video_preparing": "サーバで動画を準備中の可能性があります。",
       "no_video_retry": "再読み込み",
       "no_video_retrying": "自動で再試行しています…",
+      "no_video_unreachable_title": "動画を取得できませんでした",
+      "no_video_unreachable_desc": "自動再取得を繰り返しましたが再生できませんでした。しばらくしてから再読み込みしてください。",
       "match_id": "match_id={{id}}",
       "crop_drag_hint": "切り抜き範囲をドラッグで指定 → 右下 ✓ で確定",
       "resume_from": "▶ {{time}} から再開",
