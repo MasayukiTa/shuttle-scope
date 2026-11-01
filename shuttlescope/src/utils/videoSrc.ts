@@ -118,6 +118,32 @@ export function getMobileVideoSrc(
 
 
 /**
+ * ローカル専用動画か (= この試合はローカルファイルとして登録済みだが、Web/モバイルの
+ * HTTP stream 経路では再生できない) を判定する。
+ *
+ * backend は localfile:/// 動画を `available_qualities` の全要素 `ready=false` で返し、
+ * HTTP stream endpoint は `localfile:///` を必ず 404 で拒否する (設計どおり)。この状態で
+ * stream URL を作っても <video> は MediaError になるだけなので、UI は「デスクトップアプリで
+ * 再生」と案内する必要がある。
+ *
+ * 条件: has_video_local=true かつ 再生可能な画質が一つも無く、かつ再生可能な外部 URL も無い。
+ * 外部 URL (YouTube など) があればそちらで再生できるので local-only ではない。
+ */
+export function isLocalOnlyVideo(
+  match?: {
+    video_url?: string | null
+    has_video_local?: boolean | null
+  } | null,
+  availableQualities?: readonly MobileQualityOption[] | null,
+): boolean {
+  if (!match) return false
+  if (!match.has_video_local) return false
+  if (match.video_url && isPlayableVideoUrl(match.video_url)) return false
+  const anyReady = !!availableQualities && availableQualities.some((q) => q.ready)
+  return !anyReady
+}
+
+/**
  * 動画が登録されているかを判定する。
  */
 export function hasVideo(match?: {
