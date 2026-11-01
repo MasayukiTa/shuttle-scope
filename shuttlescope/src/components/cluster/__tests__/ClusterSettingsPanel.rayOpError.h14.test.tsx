@@ -72,7 +72,7 @@ describe('ClusterSettingsPanel #602 ray op error', () => {
       return Promise.resolve({ ok: true })
     })
     renderPanel()
-    const startButtons = await screen.findAllByRole('button', { name: 'cluster.ray_start' })
+    const startButtons = await screen.findAllByText('cluster.ray_start')
     fireEvent.click(startButtons[0])
     await waitFor(() => {
       const alert = screen.getByRole('alert')
