@@ -208,6 +208,48 @@ def _inc_dict(i: StatusIncident) -> dict:
     }
 
 
+# ── 公開用: incident タイトル/本文の内部用語を平易語へ写す (F-T001-06 続き) ──
+# 障害履歴に保存済みのタイトルには 'GPU が利用できません' のような内部コンポーネント名
+# (GPU/VRAM/CPU/RAM/tunnel/トンネル) がそのまま入っていることがある。保存データは変えず、
+# 公開ページに出すときだけ利用者が意味を取れる平易な表現へ写す。まず既知フレーズを
+# 完全一致で写し、無ければ内部キーワードを含むタイトルを種類ごとの汎用文へ写す。
+# どれにも当たらなければ原文のまま返す (運用者が書いた平易なタイトルを壊さない)。
+
+# 既知フレーズの完全一致マップ (前後空白は呼び出し側で strip 済み)。
+_PUBLIC_TITLE_EXACT = {
+    "GPU が利用できません": ("映像解析が利用できません", "Video analysis was unavailable"),
+}
+
+# 内部キーワード (大小無視) -> 公開カテゴリの平易文 (ja, en)。
+# 上から順に最初に含まれたものを採用する。
+_PUBLIC_TITLE_KEYWORDS = [
+    (("gpu", "vram"), ("映像解析が利用できません", "Video analysis was unavailable")),
+    (("tunnel", "トンネル"), ("サイトに接続しづらい状態が発生しました", "The site was hard to reach")),
+    (("cpu", "ram"), ("サーバーに負荷がかかっていました", "The service was under heavy load")),
+]
+
+
+def _map_public_title(text: Optional[str]) -> tuple:
+    """内部用語を含みうる incident タイトルを (ja, en) の平易表現へ写す。
+
+    - None/空はそのまま (そのままの値, None) を返す。
+    - 既知フレーズ完全一致を最優先。
+    - 次に内部キーワード (GPU/VRAM/CPU/RAM/tunnel/トンネル) の包含で種類別の汎用文へ。
+    - どれにも当たらなければ原文を ja/en 共通で返す (平易な運用者入力を壊さない)。
+    保存データは変更しない。表示時のみの写像。"""
+    if not text:
+        return text, text
+    stripped = text.strip()
+    exact = _PUBLIC_TITLE_EXACT.get(stripped)
+    if exact is not None:
+        return exact
+    low = stripped.lower()
+    for keywords, (ja, en) in _PUBLIC_TITLE_KEYWORDS:
+        if any(k in low for k in keywords):
+            return ja, en
+    return text, text
+
+
 def _public_inc_dict(i: StatusIncident) -> dict:
     """公開ページ用の incident 射影。_inc_dict と同形だが、内部コンポーネントキー
     (例 'tunnel'/'gpu') を公開ラベルへ写し、内部キーそのものは出さない (F-T001-06)。
@@ -217,6 +259,15 @@ def _public_inc_dict(i: StatusIncident) -> dict:
     d.pop("component", None)
     d["component_ja"] = _public_component_label(i.component, en=False)
     d["component_en"] = _public_component_label(i.component, en=True)
+    # 保存済みタイトルに内部用語 (GPU/VRAM/CPU/RAM/tunnel/トンネル) が
+    # 含まれる場合は平易語へ写す。公開側では表示 (status.html.j2) も公開 API
+    # (/api/public/status) もこの辞書を使うので、内部用語が公開出力に漏れないよう
+    # title も ja の平易語で上書きする (元の title は admin 用 _inc_dict 側に残る)。
+    # 保存データ (StatusIncident.title) 自体は変更しない — 表示時の写像のみ。
+    ja, en = _map_public_title(i.title)
+    d["title"] = ja
+    d["title_ja"] = ja
+    d["title_en"] = en
     return d
 
 

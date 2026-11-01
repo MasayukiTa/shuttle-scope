@@ -294,7 +294,7 @@
   {% for i in status.active_incidents %}
   <div class="ss-card">
     <div class="ss-row">
-      <span class="ss-title">{{ i.title }}</span>
+      <span class="ss-title">{{ i.title_en if _is_en else i.title_ja }}</span>
       <span class="ss-badge sev-{{ i.severity }}">{{ sev_label.get(i.severity, (i.severity, i.severity))[1 if _is_en else 0] }}</span>
       <span class="ss-badge st-{{ i.status }}">{{ inc_st_label.get(i.status, (i.status, i.status))[1 if _is_en else 0] }}</span>
       {% set _i_comp = (i.component_en if _is_en else i.component_ja) %}{% if _i_comp %}<span class="ss-badge outline">{{ _i_comp }}</span>{% endif %}
@@ -342,7 +342,7 @@
       <summary class="ss-inc-sum">
         <span class="ss-when">{% if i.began_at %}<time class="ss-time" datetime="{{ i.began_at }}">{{ i.began_at }}</time>{% endif %}</span>
         <div class="ss-body">
-          <div class="ss-h"><span class="t">{{ i.title }}</span><span class="ss-badge sev-{{ i.severity }}">{{ sev_label.get(i.severity, (i.severity, i.severity))[1 if _is_en else 0] }}</span>{% set _i_comp = (i.component_en if _is_en else i.component_ja) %}{% if _i_comp %}<span class="ss-badge outline">{{ _i_comp }}</span>{% endif %}<span class="ss-inc-toggle"><span class="lbl-closed">{% if _is_en %}Details{% else %}詳細{% endif %}</span><span class="lbl-open">{% if _is_en %}Close{% else %}閉じる{% endif %}</span></span></div>
+          <div class="ss-h"><span class="t">{{ i.title_en if _is_en else i.title_ja }}</span><span class="ss-badge sev-{{ i.severity }}">{{ sev_label.get(i.severity, (i.severity, i.severity))[1 if _is_en else 0] }}</span>{% set _i_comp = (i.component_en if _is_en else i.component_ja) %}{% if _i_comp %}<span class="ss-badge outline">{{ _i_comp }}</span>{% endif %}<span class="ss-inc-toggle"><span class="lbl-closed">{% if _is_en %}Details{% else %}詳細{% endif %}</span><span class="lbl-open">{% if _is_en %}Close{% else %}閉じる{% endif %}</span></span></div>
         </div>
       </summary>
       <div class="ss-inc-detail">{{ i.reason }}</div>
@@ -351,7 +351,7 @@
     <div class="ss-item">
       <span class="ss-when">{% if i.began_at %}<time class="ss-time" datetime="{{ i.began_at }}">{{ i.began_at }}</time>{% endif %}</span>
       <div class="ss-body">
-        <div class="ss-h"><span class="t">{{ i.title }}</span><span class="ss-badge sev-{{ i.severity }}">{{ sev_label.get(i.severity, (i.severity, i.severity))[1 if _is_en else 0] }}</span>{% set _i_comp = (i.component_en if _is_en else i.component_ja) %}{% if _i_comp %}<span class="ss-badge outline">{{ _i_comp }}</span>{% endif %}</div>
+        <div class="ss-h"><span class="t">{{ i.title_en if _is_en else i.title_ja }}</span><span class="ss-badge sev-{{ i.severity }}">{{ sev_label.get(i.severity, (i.severity, i.severity))[1 if _is_en else 0] }}</span>{% set _i_comp = (i.component_en if _is_en else i.component_ja) %}{% if _i_comp %}<span class="ss-badge outline">{{ _i_comp }}</span>{% endif %}</div>
       </div>
     </div>
     {% endif %}
