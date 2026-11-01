@@ -68,7 +68,7 @@ def test_migration_0060_adds_column_and_backfills(tmp_path):
             "(3, 'DEMO 大会'), (4, 'デモ'), (5, 'TEST-CUP'), (6, 'Japan Open')"))
 
     def _run(fn):
-        with engine.connect() as conn:
+        with engine.begin() as conn:
             ctx = MigrationContext.configure(conn)
             with Operations.context(ctx):
                 fn()
