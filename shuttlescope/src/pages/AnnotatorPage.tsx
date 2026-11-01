@@ -497,7 +497,12 @@ export function AnnotatorPage() {
     refetchInterval: 5_000,
   })
 
-  const { data: annotationStateData } = useQuery({
+  const {
+    data: annotationStateData,
+    isError: annotationStateIsError,
+    error: annotationStateError,
+    refetch: refetchAnnotationState,
+  } = useQuery({
     queryKey: ['annotation-state', matchId],
     queryFn: () =>
       apiGet<{
@@ -515,7 +520,12 @@ export function AnnotatorPage() {
     enabled: !!matchId,
   })
 
-  const { data: setsData } = useQuery({
+  const {
+    data: setsData,
+    isError: setsIsError,
+    error: setsError,
+    refetch: refetchSets,
+  } = useQuery({
     queryKey: ['sets', matchId],
     queryFn: () => apiGet<{ success: boolean; data: GameSet[] }>(`/sets/match/${matchId}`),
     enabled: !!matchId,
@@ -572,6 +582,20 @@ export function AnnotatorPage() {
     doInit()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId, annotationStateData, setsData, initRetryNonce])
+
+  // #646: annotation-state / sets query の取得失敗を明示的な
+  // エラー状態へ変える。これがないと doInit の先頭ガード
+  // (annotationStateData / setsData が未取得なら return) により、
+  // 通信断・401/403・5xx 時は初期化が起きず initialized=false のまま
+  // 「読み込み中…」が永続する。
+  useEffect(() => {
+    if (!annotationStateIsError && !setsIsError) return
+    if (initialized) return
+    const err = annotationStateError ?? setsError
+    setInitError(
+      errorMessage(err, t('annotator.ui.load_failed', { defaultValue: '試合データを読み込めませんでした' })),
+    )
+  }, [annotationStateIsError, setsIsError, annotationStateError, setsError, initialized, t])
 
   // M-001: 初期化完了後、?seek= パラメータでビデオをシーク
   useEffect(() => {
@@ -2058,6 +2082,10 @@ export function AnnotatorPage() {
                 // 再実行されない。initRetryNonce を bump して effect を確実に再発火させる。
                 setInitError(null)
                 initStartedRef.current = false
+                // #646: query 失敗が原因の場合は refetch しないと data が来ず
+                // doInit が再度走らないため、失敗した query を明示的に再取得する。
+                if (annotationStateIsError) void refetchAnnotationState()
+                if (setsIsError) void refetchSets()
                 setInitRetryNonce((n) => n + 1)
               }}
               className="px-4 py-2 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white rounded-ss-md text-sm transition-colors duration-base ease-out"

@@ -1538,6 +1538,7 @@
       "store_match_mismatch": "Cannot save because data from another match is still loaded. Reload the page.",
       "score_correction_partial": "Score correction stopped partway. Only the successful part was applied. Run it again to fill in the rest.",
       "init_error": "Initialization error",
+      "load_failed": "Could not load the match data",
       "skip": "Skip",
       "next": "Next",
       "record_start": "Record",
