@@ -312,14 +312,14 @@ export function TeamManagementPage() {
                       placeholder={t('auto.TeamManagementPage.k8')}
                     />
                     <div className="flex gap-2 justify-end">
-                      <button aria-label={t('app.cancel')}
+                      <button aria-label={t('auto.TeamManagementPage.aria_cancel', { name: tm.name })}
                         onClick={() => setEditingId(null)}
                         disabled={savingId === tm.id}
                         className="p-2 text-[var(--ss-t2)] border border-[var(--ss-border)] rounded-ss-md disabled:opacity-50"
                       >
                         <MIcon name="close" size={16} />
                       </button>
-                      <button aria-label={t('app.save')}
+                      <button aria-label={t('auto.TeamManagementPage.aria_save', { name: tm.name })}
                         onClick={() => handleSave(tm.id)}
                         disabled={savingId === tm.id}
                         className="p-2 bg-[var(--ss-success)] text-white rounded-ss-md inline-flex items-center gap-1 disabled:opacity-60"
@@ -345,6 +345,7 @@ export function TeamManagementPage() {
                       </div>
                       <div className="flex gap-1 shrink-0">
                         <button
+                          aria-label={t('auto.TeamManagementPage.aria_members', { name: tm.name })}
                           onClick={() => setExpandedTeamId((cur) => (cur === tm.id ? null : tm.id))}
                           className="p-1.5 text-[var(--ss-t2)] border border-[var(--ss-border)] rounded-ss-md inline-flex items-center gap-1"
                         >
@@ -352,7 +353,7 @@ export function TeamManagementPage() {
                           <span className="text-xs">{usersFailed ? '—' : members.length}</span>
                         </button>
                         {(isAdmin || isCoach) && (
-                          <button aria-label={t('app.edit')}
+                          <button aria-label={t('auto.TeamManagementPage.aria_edit', { name: tm.name })}
                             onClick={() => startEdit(tm)}
                             className="p-1.5 text-[var(--ss-brand)] border border-[var(--ss-border)] rounded-ss-md"
                           >
@@ -361,6 +362,7 @@ export function TeamManagementPage() {
                         )}
                         {isAdmin && (
                           <button
+                            aria-label={t('auto.TeamManagementPage.aria_delete', { name: tm.name })}
                             onClick={() => startDelete(tm)}
                             disabled={deletingId === tm.id}
                             className="p-1.5 text-[var(--ss-danger-text)] border border-[var(--ss-border)] rounded-ss-md disabled:opacity-50"
@@ -465,6 +467,7 @@ export function TeamManagementPage() {
                     <div className="flex gap-1 justify-end items-center">
                       {!editing && (
                         <button
+                          aria-label={t('auto.TeamManagementPage.aria_members', { name: tm.name })}
                           onClick={() => setExpandedTeamId((cur) => (cur === tm.id ? null : tm.id))}
                           className="p-1 text-[var(--ss-t2)] border border-[var(--ss-border)] rounded-ss-md inline-flex items-center gap-1"
                           title={t('auto.TeamManagementPage.k21')}
@@ -476,6 +479,7 @@ export function TeamManagementPage() {
                       {editing ? (
                         <>
                           <button
+                            aria-label={t('auto.TeamManagementPage.aria_save', { name: tm.name })}
                             onClick={() => handleSave(tm.id)}
                             disabled={savingId === tm.id}
                             className="p-1 text-[var(--ss-success)] border border-[var(--ss-border)] rounded-ss-md disabled:opacity-50"
@@ -484,6 +488,7 @@ export function TeamManagementPage() {
                             {savingId === tm.id ? <MIcon name="progress_activity" size={16} className="animate-spin" /> : <MIcon name="check" size={16} />}
                           </button>
                           <button
+                            aria-label={t('auto.TeamManagementPage.aria_cancel', { name: tm.name })}
                             onClick={() => setEditingId(null)}
                             className="p-1 text-[var(--ss-t2)] border border-[var(--ss-border)] rounded-ss-md"
                             title={t('auto.TeamManagementPage.k23')}
@@ -494,6 +499,7 @@ export function TeamManagementPage() {
                       ) : canEdit || isCoach ? (
                         <>
                           <button
+                            aria-label={t('auto.TeamManagementPage.aria_edit', { name: tm.name })}
                             onClick={() => startEdit(tm)}
                             className="p-1 text-[var(--ss-brand)] border border-[var(--ss-border)] rounded-ss-md"
                             title={t('auto.TeamManagementPage.k24')}
@@ -502,6 +508,7 @@ export function TeamManagementPage() {
                           </button>
                           {isAdmin && (
                             <button
+                              aria-label={t('auto.TeamManagementPage.aria_delete', { name: tm.name })}
                               onClick={() => startDelete(tm)}
                               className="p-1 text-[var(--ss-danger-text)] border border-[var(--ss-border)] rounded-ss-md"
                               title={t('auto.TeamManagementPage.k20')}

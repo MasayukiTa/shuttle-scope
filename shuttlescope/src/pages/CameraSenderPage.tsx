@@ -756,7 +756,7 @@ export function CameraSenderPage() {
             )}
             <button
               onClick={() => joinSession(form.sessionCode, form.password, form.deviceName)}
-              disabled={!form.sessionCode || senderState === 'connecting'}
+              disabled={!form.sessionCode || !form.password || senderState === 'connecting'}
               className="w-full py-2.5 rounded-[5px] bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium text-white inline-flex items-center justify-center gap-2"
             >
               {senderState === 'connecting' && <MIcon name="progress_activity" size={14} className="animate-spin" />}

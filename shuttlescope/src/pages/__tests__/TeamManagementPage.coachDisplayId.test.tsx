@@ -13,9 +13,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import ja from '@/i18n/ja.json'
 
-const app = (ja as unknown as { app: Record<string, string> }).app
-const editLabel = app.edit
-const saveLabel = app.save
+const tmLabels = (ja as unknown as { auto: { TeamManagementPage: Record<string, string> } }).auto.TeamManagementPage
+// edit button now carries a team-named aria-label (item 512)
+const editLabel = tmLabels.aria_edit.replace('{{name}}', 'Team A')
+const saveLabel = tmLabels.aria_save.replace('{{name}}', 'Team A')
 
 let mockRole: 'admin' | 'coach' = 'coach'
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ role: mockRole, teamName: 'チームA' }) }))

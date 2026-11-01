@@ -396,7 +396,7 @@ export function ViewerPage() {
             )}
             <button
               onClick={() => joinSession(form.sessionCode, form.password, form.viewerName)}
-              disabled={!form.sessionCode}
+              disabled={!form.sessionCode || !form.password}
               className="w-full py-2.5 rounded-[5px] bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium text-white"
             >
               {t('auto.ViewerPage.k9')}

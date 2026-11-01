@@ -47,6 +47,11 @@ export default function RegisterPage() {
     }
   }
 
+  const formValid =
+    username.trim().length >= 3 &&
+    email.trim().length > 0 &&
+    password.length >= 8
+
   const fieldCls =
     'w-full border border-[var(--ss-ctrl-border)] rounded-ss-md px-3 py-2.5 text-base min-h-[44px] ' +
     'bg-[var(--ss-ctrl-bg)] text-[var(--ss-ctrl-text)] outline-none transition-colors duration-fast ease-out'
@@ -159,7 +164,7 @@ export default function RegisterPage() {
           </div>
         )}
 
-        <button type="submit" disabled={loading}
+        <button type="submit" disabled={loading || !formValid}
                 className="w-full bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white text-sm font-medium px-4 py-2 rounded-ss-md disabled:opacity-50 transition-colors duration-fast ease-out">
           {loading ? t('app.loading') : t('auth.register.submit')}
         </button>
