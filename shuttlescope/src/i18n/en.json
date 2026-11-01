@@ -5287,6 +5287,8 @@
       "no_video_preparing": "The video may still be processing on the server.",
       "no_video_retry": "Reload",
       "no_video_retrying": "Retrying automatically…",
+      "no_video_unreachable_title": "Could not load the video",
+      "no_video_unreachable_desc": "Automatic retries did not succeed. Please wait a moment and reload.",
       "match_id": "match_id={{id}}",
       "crop_drag_hint": "Drag to set crop area → confirm with ✓ (bottom-right)",
       "resume_from": "▶ Resume from {{time}}",
