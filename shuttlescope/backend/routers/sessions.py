@@ -822,7 +822,10 @@ def set_device_role(
     participant = _get_participant(code, participant_id, db)
 
     _check_operator_access(request, code, db)
-    valid_roles = {"viewer", "coach", "analyst", "camera_candidate", "active_camera"}
+    # active_camera への昇格は 4 台上限 (_MAX_ACTIVE_CAMERAS) を課す activate-camera
+    # 経由に一本化する。set-role から直接許すと上限チェックを迂回して 5 台目以降を
+    # active 化できてしまうため、ここでは受け付けない (fail closed)。
+    valid_roles = {"viewer", "coach", "analyst", "camera_candidate"}
     if body.connection_role not in valid_roles:
         raise HTTPException(status_code=400, detail=f"無効なロール: {body.connection_role}")
 
@@ -1074,6 +1077,13 @@ def device_heartbeat(
             _record_join_failure(code, request)
             raise HTTPException(status_code=401, detail="認証が必要です")
         participant = _get_participant(code, participant_id, db)
+        # 認証済みでも、当該セッションの試合が呼び出し元の scope 内であることを
+        # 要求する。これが無いと他チームの認証ユーザが他端末の heartbeat を打て
+        # (IDOR)、last_heartbeat/is_connected を更新できてしまう。
+        session = db.get(SharedSession, participant.session_id)
+        if session is None:
+            raise HTTPException(status_code=404, detail="セッションが見つかりません")
+        _require_session_scope(request, session, db)
 
     participant.last_heartbeat = datetime.utcnow()
     participant.is_connected = True
@@ -1156,6 +1166,13 @@ def register_source(code: str, body: RegisterSourceBody, request: Request,
     )
     if not session:
         raise HTTPException(status_code=404, detail="セッションが見つかりません")
+
+    # participant_id が指定されている場合、その参加者が当該セッションに属することを
+    # 確認する。別セッションの participant_id を関連付けられるのを防ぐ (fail closed)。
+    if body.participant_id is not None:
+        p = db.get(SessionParticipant, body.participant_id)
+        if p is None or p.session_id != session.id:
+            raise HTTPException(status_code=404, detail="参加者が見つかりません")
 
     # ソース種別・解像度・fps からデフォルト優先度と suitability を計算
     priority, suitability = compute_suitability(
