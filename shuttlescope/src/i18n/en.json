@@ -4906,6 +4906,7 @@
       "title": "This week's points (reference)",
       "beta_chip": "Reference",
       "empty": "Need a bit more data to surface growth areas",
+      "not_available": "This feature is not available yet. It will appear once real data is provided.",
       "details": "→ Details",
       "sample_chip": "Sample data",
       "sample_note": "Placeholder data for smoke-testing. The numbers are not real.",

@@ -440,6 +440,9 @@ export default function LlmChatPage() {
           // backend の安定コード (budget_exceeded / provider_*) は翻訳文言へ。それ以外は従来どおり。
           const errKey = llmStreamErrorKey(e.message)
           setError(errKey ? t(errKey) : e.message || t('llm.error.generate'))
+          // 生成失敗 (provider/SSE エラー): 失敗プロンプトを再試行可能にする (#695)。
+          // user turn は既に保存済みなので再送は同内容の再生成で、重複は履歴で許容する。
+          setRetryPrompt(content)
         }
       }, controller.signal, useModel, sendImages)
     } catch {
@@ -450,6 +453,8 @@ export default function LlmChatPage() {
       } else {
         errored = true
         setError(t('llm.error.generate'))
+        // ストリーム reject 時も再試行導線を出す (#695)。
+        setRetryPrompt(content)
       }
     }
 
