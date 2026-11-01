@@ -153,8 +153,28 @@ class TestDemoPublicVisibility:
         assert r.status_code == 200
         assert r.json()["data"]["is_demo_public"] is True
         r = client.get("/api/matches/" + str(mid) + "/rallies", headers=_h(other_tok))
-        assert r.status_code in (200, 404)  # 404 until the access middleware shares the demo decision (follow-up g33)
+        assert r.status_code == 200, r.text  # g33: access middleware now shares the demo decision
         r = client.put("/api/matches/" + str(mid), json={"tournament": "hacked"}, headers=_h(other_tok))
+        assert r.status_code in (403, 404), r.text
+
+    def test_write_to_marked_demo_match_from_other_team_is_denied(self, client):
+        # g33: a marked demo match is read-only to other teams. Writes (PUT/
+        # PATCH/DELETE) from another team must stay denied (403/404), even
+        # though GET is now allowed through the shared demo decision.
+        at, demo_team, other_team, other_tok = _setup_two_teams(client)
+        pa = _create_player(client, at, "D-A4", team="DemoTeam")
+        pb = _create_player(client, at, "D-B4", team="DemoTeam")
+        m = _create_match(client, at, player_a_id=pa, player_b_id=pb, owner_team_id=demo_team)
+        mid = m["id"]
+        _mark_demo_public(client, mid, True)
+        # GET is allowed (read-only visibility).
+        r = client.get("/api/matches/" + str(mid), headers=_h(other_tok))
+        assert r.status_code == 200, r.text
+        # PUT must be rejected.
+        r = client.put("/api/matches/" + str(mid), json={"tournament": "hacked"}, headers=_h(other_tok))
+        assert r.status_code in (403, 404), r.text
+        # DELETE must be rejected.
+        r = client.delete("/api/matches/" + str(mid), headers=_h(other_tok))
         assert r.status_code in (403, 404), r.text
 
     def test_real_team_match_never_visible_to_other_team(self, client):
