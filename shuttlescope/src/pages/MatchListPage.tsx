@@ -246,6 +246,7 @@ export function MatchListPage() {
         localStorage.setItem(`shuttlescope.viewpoint.${newMatchId}`, analystSide)
       }
       queryClient.invalidateQueries({ queryKey: ['matches'] })
+      queryClient.invalidateQueries({ queryKey: ['players'] })
       setShowForm(false)
       setEditingMatchId(null)
       setForm(defaultForm())
@@ -263,6 +264,7 @@ export function MatchListPage() {
     mutationFn: ({ id, body }: { id: number; body: Record<string, unknown> }) => apiPut(`/matches/${id}`, body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['matches'] })
+      queryClient.invalidateQueries({ queryKey: ['players'] })
       setShowForm(false)
       setEditingMatchId(null)
       setForm(defaultForm())
@@ -1091,7 +1093,16 @@ export function MatchListPage() {
                   <select
                     id="match-form-format"
                     value={form.format}
-                    onChange={(e) => setForm({ ...form, format: e.target.value as MatchFormat })}
+                    onChange={(e) => {
+                      const nextFormat = e.target.value as MatchFormat
+                      if (nextFormat === 'singles') {
+                        setForm({ ...form, format: nextFormat, partner_a_id: '', partner_b_id: '' })
+                        setPartnerAQuery('')
+                        setPartnerBQuery('')
+                      } else {
+                        setForm({ ...form, format: nextFormat })
+                      }
+                    }}
                     className={`w-full ${inputClass}`}
                   >
                     <option value="singles">{t('match.list.format_singles')}</option>
