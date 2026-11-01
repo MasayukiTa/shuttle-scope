@@ -42,7 +42,7 @@ vi.mock('@/components/common/DateRangeSlider', () => ({ DateRangeSlider: () => n
 vi.mock('../DashboardOverviewPage', () => ({ DashboardOverviewPage: () => null }))
 vi.mock('../DashboardLivePage', () => ({ DashboardLivePage: () => null }))
 vi.mock('../DashboardReviewPage', () => ({ DashboardReviewPage: () => null }))
-vi.mock('../DashboardGrowthPage', () => ({ DashboardGrowthPage: () => null }))
+vi.mock('../DashboardGrowthPage', () => ({ DashboardGrowthPage: () => <div data-testid="growth-page" /> }))
 vi.mock('../DashboardAdvancedPage', () => ({ DashboardAdvancedPage: () => null }))
 vi.mock('../DashboardResearchPage', () => ({
   DashboardResearchPage: () => <div data-testid="research-page" />,
@@ -102,5 +102,20 @@ describe('DashboardShell ロール別表示', () => {
     const { container } = await renderShell('/dashboard/research')
     expect(screen.queryByTestId('research-page')).toBeNull()
     expect(container.querySelector('[data-testid="research-page"]')).toBeNull()
+  })
+
+  // 監査#748: growth API は backend が require_non_player 配下で player は 403。
+  // 画面側も player には growth を出さず overview へ戻す。
+  it.each(['analyst', 'coach', 'admin', 'demo'] as UserRole[])('%s: growth 画面を表示する', async (r) => {
+    mockRole = r
+    await renderShell('/dashboard/growth')
+    expect(await screen.findByTestId('growth-page')).toBeTruthy()
+  })
+
+  it.each(['player'] as UserRole[])('%s: growth 画面は表示せず overview へ戻す', async (r) => {
+    mockRole = r
+    const { container } = await renderShell('/dashboard/growth')
+    expect(screen.queryByTestId('growth-page')).toBeNull()
+    expect(container.querySelector('[data-testid="growth-page"]')).toBeNull()
   })
 })

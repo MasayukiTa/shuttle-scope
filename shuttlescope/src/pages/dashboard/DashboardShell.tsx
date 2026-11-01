@@ -569,11 +569,13 @@ export function DashboardShell() {
                   <Route
                     path="growth"
                     element={
-                      <DashboardGrowthPage
-                        playerId={selectedPlayerId}
-                        filters={filters}
-                        sortedPlayers={sortedPlayers}
-                      />
+                      role === 'player'
+                        ? <Navigate to="/dashboard/overview" replace />
+                        : <DashboardGrowthPage
+                            playerId={selectedPlayerId}
+                            filters={filters}
+                            sortedPlayers={sortedPlayers}
+                          />
                     }
                   />
                   <Route

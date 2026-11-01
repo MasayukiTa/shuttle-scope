@@ -9,7 +9,7 @@
  * analyst / coach / admin の表示は従来どおり。
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, waitFor } from '@testing-library/react'
+import { render, waitFor, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { UserRole } from '@/types'
 
@@ -33,8 +33,8 @@ vi.mock('@/api/client', () => ({
 
 // 子コンポーネントは目印だけ出す。SearchableSelect は選択肢の「ラベル + 接尾辞」を全部描く。
 vi.mock('@/components/common/SearchableSelect', () => ({
-  SearchableSelect: ({ options }: { options: { label: string; suffix?: string }[] }) => (
-    <div>{options.map((o, i) => <span key={i} data-testid="opt">{`${o.label}|${o.suffix ?? ''}`}</span>)}</div>
+  SearchableSelect: ({ options, onChange }: { options: { label: string; suffix?: string; value?: unknown }[]; onChange?: (v: unknown) => void }) => (
+    <div>{options.map((o, i) => <span key={i} data-testid="opt" onClick={() => onChange?.(o.value)}>{`${o.label}|${o.suffix ?? ''}`}</span>)}</div>
   ),
 }))
 vi.mock('@/components/analysis/ScoreProgression', () => ({ ScoreProgression: () => <div>MOCK_SCORE_PROGRESSION</div> }))
@@ -51,7 +51,7 @@ vi.mock('@/components/analysis/ReceivedVulnerabilityMap', () => ({ ReceivedVulne
 vi.mock('@/components/analysis/SetComparison', () => ({ SetComparison: () => null }))
 vi.mock('@/components/analysis/RallySequencePatterns', () => ({ RallySequencePatterns: () => null }))
 vi.mock('@/components/analysis/RallyClipNavigator', () => ({ RallyClipNavigator: () => null }))
-vi.mock('@/components/analysis/FlashAdvicePanel', () => ({ FlashAdvicePanel: () => null }))
+vi.mock('@/components/analysis/FlashAdvicePanel', () => ({ FlashAdvicePanel: () => <div>MOCK_FLASH_ADVICE</div> }))
 vi.mock('@/components/analysis/RecommendationRanking', () => ({ RecommendationRanking: () => null }))
 vi.mock('@/components/analysis/QuickSummaryCard', () => ({ QuickSummaryCard: () => null }))
 vi.mock('@/components/dashboard/live/AnomalyBanner', () => ({ AnomalyBanner: () => null }))
@@ -137,6 +137,21 @@ describe('DashboardLivePage', () => {
     expect(o.some((s) => s.endsWith('|L') || s.endsWith('|12-21●'))).toBe(true)
     expect(container.textContent).toContain(pickLabel)
     expect(container.textContent).toContain(reportTitle)
+  })
+
+  // 監査#749: flash_advice API は backend が require_non_player 配下で player は 403。
+  // player Live から FlashAdvicePanel を出さず、選択案内の案内プレースホルダを出す。
+  it('player: 試合を選んでも FlashAdvicePanel を出さない', () => {
+    const { container, getAllByTestId } = wrap(<DashboardLivePage playerId={1} filters={filters} matches={playerMatches as never} />)
+    fireEvent.click(getAllByTestId('opt')[0])
+    expect(container.textContent).not.toContain('MOCK_FLASH_ADVICE')
+  })
+
+  it.each(['analyst', 'coach', 'admin'] as UserRole[])('%s: 試合を選ぶと FlashAdvicePanel を出す', (r) => {
+    mockRole = r
+    const { container, getAllByTestId } = wrap(<DashboardLivePage playerId={1} filters={filters} matches={coachMatches as never} />)
+    fireEvent.click(getAllByTestId('opt')[0])
+    expect(container.textContent).toContain('MOCK_FLASH_ADVICE')
   })
 })
 
