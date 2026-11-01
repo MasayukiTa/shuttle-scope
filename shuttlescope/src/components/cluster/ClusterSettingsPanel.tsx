@@ -177,7 +177,7 @@ export function ClusterSettingsPanel() {
   })
 
   // ── リモートデータ ────────────────────────────────────────────────────────
-  const { data: remoteCfg, isLoading: cfgLoading } = useQuery({
+  const { data: remoteCfg, isLoading: cfgLoading, isError: cfgError, refetch: refetchCfg } = useQuery({
     queryKey: ['cluster-config'],
     queryFn: () => apiGet<ClusterConfig>('/cluster/config'),
   })
@@ -509,6 +509,13 @@ export function ClusterSettingsPanel() {
 
   if (cfgLoading) {
     return <div className="flex justify-center py-12"><MIcon name="progress_activity" className="animate-spin text-[var(--ss-brand)]" /></div>
+  }
+
+  // 設定取得に失敗したときは初期値 {mode:'single'} を編集・保存可能にしない。
+  // そのまま保存すると既存のクラスタ設定を single で上書きしてしまうため、
+  // 取得成功までは編集 UI を出さずエラーと再試行だけを表示する（fail closed）。
+  if (cfgError) {
+    return <QueryErrorNotice onRetry={() => { void refetchCfg() }} />
   }
 
   const rayRunning = status?.ray.status === 'running'

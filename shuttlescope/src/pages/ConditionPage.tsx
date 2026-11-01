@@ -69,7 +69,7 @@ function BodyDataConsentToggles() {
   // 体組成データ開示トグル初回表示時にチュートリアルを自動起動
   useAutoTutorial('body_disclosure_toggle')
 
-  const { data, isLoading } = useQuery<{
+  const { data, isLoading, isError } = useQuery<{
     data?: {
       consents?: Array<{ consent_type: string; consent_given: boolean }>
       current_versions?: { privacy_policy?: string; terms?: string }
@@ -86,6 +86,12 @@ function BodyDataConsentToggles() {
   const coachOn = consents.some((c) => c.consent_type === 'body_disclose_to_coach' && c.consent_given)
 
   const submit = async (consent_type: string, consent_given: boolean) => {
+    // バージョンが未取得（取得失敗・未ロード）のまま POST すると空バージョンで
+    // 同意が記録され、どのポリシーに同意したか追跡できなくなる。読み込み完了まで拒否する。
+    if (!vPrivacy || !vTerms) {
+      alert(t('condition.consent_load_failed'))
+      return
+    }
     // 既存の他 type の同意も同じバージョンで再送する必要があるため、現在の dict を構成
     const body = {
       privacy_policy_version: vPrivacy,
@@ -115,6 +121,10 @@ function BodyDataConsentToggles() {
       </div>
       {isLoading ? (
         <div className="opacity-60">{t('common.loading', 'Loading...')}</div>
+      ) : isError ? (
+        // 取得失敗を both-OFF と区別する。失敗を OFF 表示すると開示済みでも未開示に見え、
+        // 誤った再同意・撤回を招くため、トグルは出さずエラーと再試行のみ表示する。
+        <QueryErrorNotice onRetry={() => { void queryClient.invalidateQueries({ queryKey: ['my-consents'] }) }} />
       ) : (
         <div className="space-y-1.5">
           <label className="flex items-center gap-2 cursor-pointer select-none">

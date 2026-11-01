@@ -32,6 +32,8 @@ export function ConditionTagManager({ playerId, isLight }: Props) {
   const [endDate, setEndDate] = useState('')
   const [color, setColor] = useState<string>('#3b82f6')
   const [error, setError] = useState<string | null>(null)
+  // 削除失敗したタグ ID -> 行内にエラーを出す。失敗を黙殺すると消えたように見えて二重操作を招く
+  const [deleteErrorId, setDeleteErrorId] = useState<number | null>(null)
 
   const inputCls = 'border border-[var(--ss-border-strong)] bg-[var(--ss-surface-1)] text-[var(--ss-t1)] rounded-ss-md px-2 py-1.5 text-base'
   const labelCls = 'text-xs text-[var(--ss-t2)]'
@@ -155,7 +157,7 @@ export function ConditionTagManager({ playerId, isLight }: Props) {
           {!isLoading && tags.length > 0 && (
             <ul className="divide-y divide-[var(--ss-border)] dark:divide-gray-700">
               {tags.map((tag: ConditionTag) => (
-                <li key={tag.id} className="flex items-center gap-3 py-2">
+                <li key={tag.id} className="flex items-center flex-wrap gap-3 py-2">
                   <span
                     className="inline-block w-3 h-3 rounded-ss-sm"
                     style={{ backgroundColor: tag.color }}
@@ -170,15 +172,24 @@ export function ConditionTagManager({ playerId, isLight }: Props) {
                   </span>
                   <button
                     type="button"
+                    disabled={del.isPending && del.variables === tag.id}
                     onClick={() => {
                       if (confirm(t('condition.tags.confirm_delete', { label: tag.label }))) {
-                        del.mutate(tag.id)
+                        setDeleteErrorId(null)
+                        del.mutate(tag.id, {
+                          onError: () => setDeleteErrorId(tag.id),
+                        })
                       }
                     }}
-                    className="text-xs text-[var(--ss-bad)] hover:opacity-80"
+                    className="text-xs text-[var(--ss-bad)] hover:opacity-80 disabled:opacity-50"
                   >
                     {t('condition.tags.delete')}
                   </button>
+                  {deleteErrorId === tag.id && (
+                    <span role="alert" className="basis-full text-xs text-[var(--ss-bad)]">
+                      {t('condition.tags.delete_failed')}
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>

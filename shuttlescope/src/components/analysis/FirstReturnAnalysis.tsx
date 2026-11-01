@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 import { perfColor, lightSafe, BAR } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
@@ -45,7 +46,7 @@ export function FirstReturnAnalysis({ playerId, filters = DEFAULT_FILTERS }: Fir
     ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
     ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
   }
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError, refetch } = useQuery({
     queryKey: ['analysis-first-return', playerId, filters],
     queryFn: () =>
       apiGet<FirstReturnResponse>('/analysis/first_return_analysis', { player_id: playerId, ...fp }),
@@ -54,6 +55,12 @@ export function FirstReturnAnalysis({ playerId, filters = DEFAULT_FILTERS }: Fir
 
   if (isLoading) {
     return <div className="text-[var(--ss-t3)] text-sm py-4 text-center">{t('analysis.loading')}</div>
+  }
+
+  // A failed fetch must not fall through to NoDataMessage (success-empty);
+  // surface an explicit error with retry instead of masking it as no data.
+  if (isError) {
+    return <QueryErrorNotice onRetry={() => { void refetch() }} />
   }
 
   const zones = resp?.data?.zones ?? []

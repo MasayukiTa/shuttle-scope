@@ -7,6 +7,7 @@ import { useCardTheme } from '@/hooks/useCardTheme'
 import { AnalysisFilters } from '@/types'
 import { useTranslation } from 'react-i18next'
 import { fmtPct as pct } from '@/utils/format'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 
 // ─── CV ロール照合型 ──────────────────────────────────────────────────────────
 
@@ -168,7 +169,7 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
   const data = bundled ?? indiv.data
   const isLoading = provided ? bundleLoading : indiv.isLoading
 
-  const { data: stabilityResp } = useQuery({
+  const { data: stabilityResp, isError: stabilityError, refetch: refetchStability } = useQuery({
     queryKey: ['doubles-role-stability', playerId, filters],
     queryFn: () =>
       apiGet<{ success: boolean; data: StabilityData; meta: Meta }>(
@@ -178,14 +179,14 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
   })
 
   // CV ロール照合: 最新試合の cv_role_signal を取得
-  const { data: matchesResp } = useQuery({
+  const { data: matchesResp, isError: matchesError, refetch: refetchMatches } = useQuery({
     queryKey: ['player-matches-for-cv-role', playerId],
     queryFn: () =>
       apiGet<{ success: boolean; data: RecentMatchRef[] }>('/matches', { player_id: playerId }),
     enabled: !!playerId,
   })
   const recentMatchId = matchesResp?.data?.[0]?.id ?? null
-  const { data: cvResp } = useQuery({
+  const { data: cvResp, isError: cvError, refetch: refetchCv } = useQuery({
     queryKey: ['yolo-doubles-analysis-for-role', recentMatchId],
     queryFn: () =>
       apiGet<{ success: boolean; data: CVAnalysisResp }>(`/yolo/doubles_analysis/${recentMatchId}`),
@@ -292,6 +293,9 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
           )}
 
           {/* CV 位置照合セクション */}
+          {(matchesError || cvError) && (
+            <QueryErrorNotice onRetry={() => { void (matchesError ? refetchMatches() : refetchCv()) }} />
+          )}
           {cvRoleSignal?.cv_available && (
             <div className={`${cardInnerAlt} rounded px-3 py-2 space-y-1.5`}>
               <div className="flex items-center justify-between">
@@ -335,6 +339,9 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
           )}
 
           {/* DB-3 安定性セクション */}
+          {stabilityError && (
+            <QueryErrorNotice onRetry={() => { void refetchStability() }} />
+          )}
           {stability && stability.n_matches_analyzed > 0 && (
             <div className={`${cardInnerAlt} rounded px-3 py-2 space-y-1.5`}>
               <div className="flex items-center justify-between">
