@@ -11,7 +11,7 @@ import { statusColor, DownloadStatus } from './matchListUtils'
 import { MIcon } from '@/components/common/MIcon'
 import { useAuth } from '@/hooks/useAuth'
 import { isPlayableVideoUrl } from '@/utils/videoSrc'
-import { canDeleteMatch, canWriteMatch } from '@/utils/roleAccess'
+import { canAnnotate, canDeleteMatch, canWriteMatch } from '@/utils/roleAccess'
 
 // MatchListPage のモバイル用カード 1 件分。純粋抽出 (behavior 不変)。
 // theme / navigate / t は内部で解決し、ページ固有の操作だけ callback で受ける。
@@ -128,6 +128,8 @@ export function MatchCard({
             {t(`match.statuses.${m.annotation_status}`)}
           </span>
         )}
+        {/* #669: アノテーション入力は書込み導線。backend が demo を 403 で拒否するため read-only の demo には出さない。 */}
+        {canAnnotate(role) && (
         <button
           onClick={() => navigate(`/annotator/${m.id}`)}
           aria-label={actionLabel(t('match.start_annotation'))}
@@ -136,6 +138,7 @@ export function MatchCard({
           <MIcon name="play_arrow" size={12} />
           {t('match.list.open', 'Open')}
         </button>
+        )}
         {m.player_a_id && canOpenPrediction && (
           <button
             onClick={() => navigate(`/prediction?playerId=${m.player_a_id}`)}

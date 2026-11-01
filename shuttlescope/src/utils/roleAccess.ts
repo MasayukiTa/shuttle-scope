@@ -46,3 +46,14 @@ export function canViewPipelineJobs(role: RoleArg): boolean {
   if (role == null) return true
   return role === 'analyst' || role === 'coach'
 }
+
+/**
+ * 試合のアノテーション入力 (/annotator/:matchId) 導線を出してよいか。
+ * backend は Set/Rally/Stroke 書込みを require_match_scope() で demo 拒否するため、
+ * demo に CTA を出すと最後に 403 で行き止まる。read-only の見本用ロールには出さない。
+ * ロール未確定 (null/undefined) は従来どおりサーバに最終判定させる。
+ */
+export function canAnnotate(role: RoleArg): boolean {
+  if (role == null) return true
+  return role !== 'demo'
+}
