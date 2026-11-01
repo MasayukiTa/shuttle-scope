@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { downloadExpertExport } from '@/utils/expertExport'
+import { isValidMatchDate } from '@/utils/exportCandidates'
 import { useTheme } from '@/hooks/useTheme'
 import { useAuth } from '@/hooks/useAuth'
 import { CoGDetectionPage } from '@/pages/CoGDetectionPage'
@@ -260,7 +261,9 @@ function ExpertLabelerContent() {
                 const ratio = calcRatio(labeledCount, v.miss_count)
                 const pct = Math.round(ratio * 100)
                 const done = labeledKnown && v.miss_count > 0 && labeledCount >= v.miss_count
-                const label = v.title || v.opponent || v.date || `Match ${v.match_id}`
+                // 無効日付 (0001-01-01 等) はラベルに出さず、明示的に「日付未設定」を出す
+                const safeDate = isValidMatchDate(v.date) ? v.date : undefined
+                const label = v.title || v.opponent || safeDate || t('expert_labeler.date_unset')
                 return (
                   <li key={String(v.match_id)} className="flex gap-2">
                     <button
