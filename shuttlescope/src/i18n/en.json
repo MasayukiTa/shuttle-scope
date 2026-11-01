@@ -2198,9 +2198,9 @@
     "confirm_end": "Finish"
   },
   "video_source": {
-    "mode_local": "Recorded video",
-    "mode_webview": "Live stream (browser)",
-    "mode_none": "No video (on-site)",
+    "mode_local": "Use a recorded video",
+    "mode_webview": "Use another device's camera",
+    "mode_none": "Record without video",
     "mode_label": "Video mode"
   },
   "timer": {

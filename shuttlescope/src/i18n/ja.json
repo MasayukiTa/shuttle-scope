@@ -2205,9 +2205,9 @@
     "confirm_end": "終了する"
   },
   "video_source": {
-    "mode_local": "録画済み動画",
-    "mode_webview": "中継（ブラウザ）",
-    "mode_none": "映像なし（現地）",
+    "mode_local": "録画済み動画を使う",
+    "mode_webview": "別端末のカメラを使う",
+    "mode_none": "映像なしで記録する",
     "mode_label": "映像モード"
   },
   "timer": {
