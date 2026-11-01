@@ -233,6 +233,8 @@ export function useCVJobs({
   const [yoloOverlayVisible, setYoloOverlayVisible] = useState(false)
   const [yoloArtifactMeta, setYoloArtifactMeta] = useState<CVArtifactMeta | null>(null)
   const [yoloArtifactExists, setYoloArtifactExists] = useState(false)
+  // #596: 取得障害(通信/401/403/5xx)を「成果物なし」と区別するフラグ。
+  const [cvStatusUnknown, setCvStatusUnknown] = useState(false)
 
   // 前回実行時の ROI（localStorage per matchId）
   const [yoloLastRoi, setYoloLastRoi] = useState<RoiRect | null>(() => {
@@ -288,8 +290,10 @@ export function useCVJobs({
     seedTs: number,
     assignments: { detection_index: number; player_key: string; bbox?: [number, number, number, number] | null; hist?: number[] | null }[],
     extraSeeds?: { timestamp_sec: number; assignments: { detection_index: number; player_key: string; bbox?: [number, number, number, number] | null; hist?: number[] | null }[] }[]
-  ) => {
-    if (!matchId) return
+  ): Promise<boolean> => {
+    // #594: assign の保存と結果 readback を分け、POST が失敗したら
+    // false を返して呼出側が入力を破棄しないようにする。
+    if (!matchId) return false
     setTrackingLoading(true)
     try {
       await apiPost(`/yolo/assign_and_track/${matchId}`, {
@@ -299,20 +303,27 @@ export function useCVJobs({
         // コート ROI を送って、追跡時にコート外候補（観客等）を reject する
         court_roi: _normalizeRoiForApi(roiRect),
       })
-      // 保存後すぐ取得
+    } catch {
+      // POST 自体の失敗: 追跡は保存されていない。呼出側で入力を保持させる。
+      setTrackingLoading(false)
+      return false
+    }
+    try {
+      // 保存後すぐ取得（readback 失敗は POST 成功を覆さない）
       const res = await apiGet<{ success: boolean; data: TrackFrame[] }>(
         `/yolo/identity_track/${matchId}`
       )
       if (res.success && res.data.length > 0) {
         setTrackFrames(res.data)
       }
-      // 識別確定後は常にトラック表示ON（データがなくても表示状態にしておく）
+      // 識別確定後は常にトラック表示ＯＮ（データがなくても表示状態にしておく）
       setTrackingVisible(true)
       // 移動距離カードのキャッシュを無効化して即時再取得
       queryClient.invalidateQueries({ queryKey: ['movement-stats', matchId] })
-    } catch { /* 追跡失敗は無視 */ } finally {
+    } catch { /* readback のみ失敗: 追跡は受理済。結果は後で再取得できる */ } finally {
       setTrackingLoading(false)
     }
+    return true
   }, [matchId, queryClient, roiRect])
 
   // マウント時: 保存済みトラックを取得
@@ -347,6 +358,7 @@ export function useCVJobs({
     setYoloArtifactExists(false)
     setTracknetArtifactExists(false)
     setShuttleFrames([])
+    setCvStatusUnknown(false)
 
     apiGet<{ success: boolean; data: CVArtifactMeta | null }>(`/yolo/results/${matchId}`)
       .then(res => {
@@ -354,7 +366,8 @@ export function useCVJobs({
         setYoloArtifactExists(!!(res.success && res.data))
         if (res.success && res.data) setYoloArtifactMeta(res.data)
       })
-      .catch(() => {})
+      // #596: 取得失敗は「未解析」と断定せず、状態未確認として扱う。
+      .catch(() => { if (!cancelled) setCvStatusUnknown(true) })
     // shuttle_track を優先確認。なければ tracknet_resume_check（ストロークに land_zone が
     // 設定済みかどうか）で判定する。これにより旧バージョンで shuttle_track が保存されていない
     // 場合でも「再開」ボタンを表示できる。
@@ -373,10 +386,11 @@ export function useCVJobs({
             `/tracknet/resume_check/${matchId}`
           ).then(r => {
             if (!cancelled && r.success && r.data?.has_land_zone) setTracknetArtifactExists(true)
-          }).catch(() => {})
+          }).catch(() => { if (!cancelled) setCvStatusUnknown(true) })
         }
       })
-      .catch(() => {})
+      // #596: 取得失敗は「未解析」と断定せず、状態未確認として扱う。
+      .catch(() => { if (!cancelled) setCvStatusUnknown(true) })
     return () => { cancelled = true }
   }, [matchId])
 
@@ -686,6 +700,8 @@ export function useCVJobs({
     handleTracknetBatchResume,
     handleTracknetBatchStop,
     tracknetArtifactExists,
+    // #596: CV成果物の状態を確認できなかった(未解析とは別)
+    cvStatusUnknown,
     // YOLO
     yoloJobId,
     yoloJob,

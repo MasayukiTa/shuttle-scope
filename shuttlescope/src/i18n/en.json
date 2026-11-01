@@ -1429,13 +1429,15 @@
     "scouting_notes": "Notes",
     "save": "Save",
     "saved": "Saved",
-    "provisional_badge": "Tentative"
+    "provisional_badge": "Tentative",
+    "save_failed": "Failed to save opponent info. Please try again shortly."
   },
   "annotator": {
     "set_not_finished": "This score does not end the set yet ({{a}}-{{b}}).",
     "set_already_decided": "This set is already decided. Use the next set button to continue",
     "match_decided_no_next_set": "The match is decided, so no next set is created",
     "viewpoint_save_failed": "Could not save the viewpoint.",
+    "identify_save_failed": "Failed to save player identification. Your assignments are kept - please try again.",
     "loading": "Loading...",
     "back_to_matches": "Back to matches",
     "live": {
@@ -4506,7 +4508,8 @@
       "k2": "Completed sets:",
       "k3": "Select a match to see the interval report",
       "k4": "Search by date or opponent...",
-      "set_n": "Set {{n}}"
+      "set_n": "Set {{n}}",
+      "set_detail_error": "Could not open the set details. Please try again."
     },
     "DashboardOverviewPage": {
       "k1": "Loading...",
