@@ -137,3 +137,12 @@ def test_contact_theme_toggle_has_localized_accessible_name(monkeypatch):
         assert 'data-label-ja="テーマ切り替え"' in html
         assert 'data-label-en="Switch between light and dark theme"' in html
         assert "getAttribute('data-label-'+lang)" in html
+
+
+def test_contact_hamburger_button_has_localized_accessible_name(monkeypatch):
+    """監査 #36: 共通ヘッダー base.html.j2 のハンバーガーボタンだけ data-label が欠けていた。"""
+    for path in ("/public-preview/contact", "/public-preview/en/contact"):
+        html = _get_contact(monkeypatch, path, 1)
+        assert 'data-label-ja="メニュー"' in html
+        assert 'data-label-en="Menu"' in html
+        assert "getAttribute('data-label-'+lang)" in html

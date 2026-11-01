@@ -4007,6 +4007,7 @@
     },
     "ShotWinLoss": {
       "k1": "Loading...",
+      "definition_note": "Share of rally outcomes (win/loss) for rallies that included each shot. These rates are confounded by situation, opponent and surrounding shots, so they do not indicate the shot's own (causal) effect.",
       "points_won": "Won: {{n}}",
       "points_lost": "Lost: {{n}}",
       "win_rate": "Win rate: {{n}}%",
@@ -4537,7 +4538,7 @@
       "k14": "Recording for this player:"
     },
     "DashboardAdvancedPage": {
-      "k1": "Points won / lost by shot",
+      "k1": "Rally outcomes when shot was used",
       "k2": "Wins vs matches with issues",
       "k3": "Comparison by tournament level",
       "k4": "Win rate by rally length",
