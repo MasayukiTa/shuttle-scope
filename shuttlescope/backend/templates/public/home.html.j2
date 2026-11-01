@@ -153,7 +153,7 @@ html[lang=ja] .en{display:none}
 .beta-banner-inner{max-width:1160px;margin:0 auto;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;text-align:center}
 .beta-badge{font-size:14px;font-weight:700;letter-spacing:.08em;color:var(--ss-brand);border:1px solid var(--ss-brand);border-radius:var(--r);padding:2px 8px;white-space:nowrap;flex-shrink:0;line-height:1.4}
 .beta-text{font-size:14px;color:var(--ss-t2);line-height:1.5;margin:0}
-.beta-text a{color:var(--ss-brand);font-weight:600;text-decoration:none;border-bottom:1px solid currentColor;white-space:nowrap}
+.beta-text a{color:var(--ss-brand);font-weight:600;text-decoration:none;border-bottom:1px solid currentColor;white-space:nowrap;display:inline-block;min-height:24px;padding:2px 2px}
 .beta-text a:hover{border-bottom-color:transparent}
 
 /* ── Hero: コート図を横に置き、見出しはしたいことをそのまま述べる。 ── */
@@ -211,8 +211,8 @@ h1.hero-h1{font-size:clamp(28px,3.2vw,32px);font-weight:700;line-height:1.25;let
 /* Usecases: 実際のアプリ画面を大きく 1 枚。上部の集計カウンターは切り抜いて見せない。 */
 .sec-uc{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);border-bottom:1px solid var(--ss-border)}
 .app-fig{margin:0;max-width:1100px}
-.shot-frame{position:relative;overflow:hidden;aspect-ratio:16/7;border:1px solid var(--ss-border-strong);border-radius:var(--r);box-shadow:var(--shadow);background:var(--ss-surface-1)}
-.shot-frame img{display:block;width:100%;height:100%;object-fit:cover;object-position:12% 92%}
+.shot-frame{position:relative;overflow:hidden;aspect-ratio:1000/320;border:1px solid var(--ss-border);border-radius:var(--r);background:var(--ss-surface-1)}
+.shot-frame img{display:block;width:100%;height:100%;object-fit:cover;object-position:50% 100%}
 .shot-dark{display:none}
 [data-theme="dark"] .shot-light{display:none}
 [data-theme="dark"] .shot-dark{display:block}
@@ -261,7 +261,7 @@ h1.hero-h1{font-size:clamp(28px,3.2vw,32px);font-weight:700;line-height:1.25;let
 footer{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);padding:24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;transition:background var(--dur-base) var(--ease-out)}
 .footer-logo{font-size:16px;font-weight:600;letter-spacing:-.01em;color:var(--ss-t1);text-decoration:none;display:flex;align-items:center;gap:8px}
 .footer-links{display:flex;flex-wrap:wrap;justify-content:center;gap:16px;list-style:none}
-.footer-links a{font-size:14px;color:var(--ss-t2);text-decoration:none;white-space:nowrap;padding:8px 0;min-height:24px;display:inline-flex;align-items:center;transition:color var(--dur-fast) var(--ease-out)}
+.footer-links a{font-size:14px;color:var(--ss-t2);text-decoration:none;white-space:nowrap;padding:8px 6px;min-height:24px;min-width:24px;display:inline-flex;align-items:center;justify-content:center;transition:color var(--dur-fast) var(--ease-out)}
 .footer-links a:hover{color:var(--ss-t1)}
 .footer-copy{font-size:14px;color:var(--ss-t3)}
 
@@ -274,8 +274,6 @@ footer{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);padd
   .vrow,.vrow.rev,.vwide,.vnarrow{grid-template-columns:minmax(0,1fr);gap:16px;max-width:none;margin-left:0}
   .vrow.rev .vfig{order:1}.vrow.rev .vtext{order:2}
   .shot-points{grid-template-columns:minmax(0,1fr);gap:16px}
-  .shot-frame{aspect-ratio:4/3}
-  .shot-frame img{object-position:12% 92%}
   .role{grid-template-columns:minmax(0,1fr);gap:4px}
   .sec-data{padding:24px 16px}.sec-fcta{padding:48px 16px}
   footer{padding:24px 16px;flex-direction:column;align-items:flex-start}
