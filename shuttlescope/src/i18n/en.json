@@ -292,6 +292,7 @@
       "missing_token": "Token is not specified",
       "success": "Email address verified",
       "failed": "Verification failed",
+      "failed_invalid": "The link is invalid or has expired. Please request a new verification email.",
       "go_login": "Go to Login"
     },
     "password_reset_request": {
