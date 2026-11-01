@@ -54,8 +54,11 @@ export function GrowthSnapshotCard({ playerId, periodDays = 30, allowSample = im
   // さらに下の ConfidenceBadge は例示値の sample_n をそのまま星に変換するので、
   // 作り物に信頼度を付けて見せていた。example のときは出所を明示し、星は出さない。
   const isExample = data?.meta?.example === true
-  // 例示データは allowSample のときだけ表示する。それ以外は「データなし」と同じ扱いにする。
-  const items = isExample && !allowSample ? [] : (data?.items ?? [])
+  // 例示データは allowSample のときだけ表示する。それ以外は隠す。
+  // 本番で例示を隠したときは「データ不足」ではなく「準備中 (提供外)」を明示する (#752):
+  //  backend がまだ実データ経路を持たないため、空枠を n=0 と誤認させない。
+  const notAvailable = isExample && !allowSample
+  const items = notAvailable ? [] : (data?.items ?? [])
   const showSampleNotice = isExample && allowSample
   // 例示データを隠しているときは、出所の札も出さない (出すと「サンプル」なのに中身が無いことになる)。
   const chipLabel = showSampleNotice
@@ -99,7 +102,11 @@ export function GrowthSnapshotCard({ playerId, periodDays = 30, allowSample = im
       )}
 
       {!isLoading && items.length === 0 && (
-        <p className={`text-xs ${textMuted}`}>{t('auto.GrowthSnapshotCard.empty')}</p>
+        <p className={`text-xs ${textMuted}`}>
+          {notAvailable
+            ? t('auto.GrowthSnapshotCard.not_available')
+            : t('auto.GrowthSnapshotCard.empty')}
+        </p>
       )}
 
       {!isLoading && items.length > 0 && (

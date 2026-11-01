@@ -38,13 +38,15 @@ function renderCard(allowSample: boolean) {
 }
 
 describe('GrowthSnapshotCard with example data', () => {
-  it('hides the example prose and shows the empty message when samples are not allowed', async () => {
+  it('hides the example prose and shows the not-available message when samples are not allowed', async () => {
     const { container } = renderCard(false)
     await waitFor(() => {
       expect(container.querySelector('.animate-pulse')).toBeNull()
     })
     expect(screen.queryByText('FAKE_EXAMPLE_PROSE')).toBeNull()
-    expect(screen.getByText('もう少しデータが集まると伸びしろが出せます')).toBeTruthy()
+    // 本番で例示を隠すときは「データ不足」ではなく「準備中」を出す (#752)。
+    expect(screen.getByText('この機能は準備中です。実データの提供を開始するまでお待ちください。')).toBeTruthy()
+    expect(screen.queryByText('もう少しデータが集まると伸びしろが出せます')).toBeNull()
     expect(screen.queryByText('サンプルデータ')).toBeNull()
   })
 
