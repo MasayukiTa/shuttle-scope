@@ -139,7 +139,7 @@ export function MatchListPage() {
   }
 
   // 試合一覧取得
-  const { data: matchesData, isLoading } = useQuery({
+  const { data: matchesData, isLoading, isError: matchesError, refetch: refetchMatches } = useQuery({
     queryKey: ['matches', filterPlayer, filterLevel, filterIncompleteOnly, role, playerId, teamName],
     queryFn: () => {
       const params: Record<string, string | boolean> = {}
@@ -840,6 +840,18 @@ export function MatchListPage() {
         </div>
         {isLoading ? (
           <div className={`text-center ${textMuted} py-8`}>{t('app.loading')}</div>
+        ) : matchesError ? (
+          <div role="alert" className={`text-center ${textMuted} py-10`}>
+            <p className="mb-1 font-medium">{t('auto.MatchListPage.k64')}</p>
+            <p className="mb-4">{t('auto.MatchListPage.k65')}</p>
+            <button
+              onClick={() => { void refetchMatches() }}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white rounded-[var(--r-md)] text-sm"
+            >
+              <MIcon name="refresh" size={16} />
+              {t('auto.MatchListPage.k66')}
+            </button>
+          </div>
         ) : matches.length === 0 ? (
           <div className={`text-center ${textMuted} py-10`}>
             <p className="mb-4">{t('auto.MatchListPage.k37')}</p>

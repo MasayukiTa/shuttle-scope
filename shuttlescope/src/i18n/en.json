@@ -4696,7 +4696,10 @@
       "k60": "Register",
       "k61": "Vivaldi",
       "k62": "Chromium",
-      "k63": "●"
+      "k63": "●",
+      "k64": "Could not load the match list.",
+      "k65": "Check your connection and try again.",
+      "k66": "Retry"
     },
     "NotificationInboxPage": {
       "k1": "Notification review is for the admin role only.",
