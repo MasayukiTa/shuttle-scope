@@ -155,7 +155,11 @@ export function ConditionPage() {
   const { theme } = useTheme()
   const isLight = theme === 'light'
 
-  const { data: playersResp } = useQuery({
+  const {
+    data: playersResp,
+    isError: playersError,
+    refetch: refetchPlayers,
+  } = useQuery({
     queryKey: ['players'],
     queryFn: () => apiGet<{ success: boolean; data: Player[] }>('/players'),
     enabled: role !== 'player',
@@ -337,6 +341,14 @@ export function ConditionPage() {
                   placeholder={t('auto.ConditionPage.k2')}
                   className="w-full sm:min-w-[280px] sm:max-w-md"
                 />
+                {playersError && (
+                  <QueryErrorNotice
+                    className="py-0"
+                    onRetry={() => {
+                      void refetchPlayers()
+                    }}
+                  />
+                )}
               </>
             )}
           </div>
