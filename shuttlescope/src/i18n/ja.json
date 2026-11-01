@@ -1293,7 +1293,8 @@
       "public_pool_title": "全チームから閲覧可能な公開プール試合",
       "demo_public_badge": "デモ",
       "demo_public_title": "デモ用の試合で、他チームからも閲覧のみ可能です。",
-      "create_tentative": "「{{name}}」を暫定登録して作成"
+      "create_tentative": "「{{name}}」を暫定登録して作成",
+      "create_tentative_requires_analyst": "暇定登録には Analyst（アナリスト）または管理者権限が必要です。登録は管理者またはアナリストにご依頼ください。"
     }
   },
   "player": {
@@ -1348,6 +1349,7 @@
     "provisional": "暫定",
     "match_count": "{{count}}試合",
     "provisional_register_and_start": "「{{name}}」を暫定登録して開始",
+    "provisional_requires_analyst": "選手の暫定登録には Analyst（アナリスト）または管理者のロールが必要です。登録は管理者またはアナリストにご依頼ください。",
     "opponent_team": "相手チーム名",
     "opponent_team_hint": "（同姓同名の識別に使用）",
     "opponent_team_placeholder": "例: ○○クラブ、△△大学",

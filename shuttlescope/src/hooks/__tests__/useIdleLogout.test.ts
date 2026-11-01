@@ -39,4 +39,24 @@ describe('useIdleLogout', () => {
     vi.advanceTimersByTime(2 * MIN)
     expect(onIdle).not.toHaveBeenCalled()
   })
+
+  it('treats foreground video playback (timeupdate) as activity', () => {
+    const onIdle = vi.fn()
+    renderHook(() => useIdleLogout({ enabled: true, timeoutMs: TIMEOUT, onIdle }))
+    vi.advanceTimersByTime(14 * MIN)
+    document.dispatchEvent(new Event('timeupdate'))
+    vi.advanceTimersByTime(2 * MIN)
+    expect(onIdle).not.toHaveBeenCalled()
+  })
+
+  it('does not keep the session alive for a video playing in a hidden tab', () => {
+    const onIdle = vi.fn()
+    const hiddenSpy = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true)
+    renderHook(() => useIdleLogout({ enabled: true, timeoutMs: TIMEOUT, onIdle }))
+    vi.advanceTimersByTime(14 * MIN)
+    document.dispatchEvent(new Event('timeupdate'))
+    vi.advanceTimersByTime(2 * MIN)
+    expect(onIdle).toHaveBeenCalled()
+    hiddenSpy.mockRestore()
+  })
 })

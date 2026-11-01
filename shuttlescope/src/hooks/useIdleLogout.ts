@@ -3,6 +3,10 @@ import { useEffect, useRef } from 'react'
 // visibilitychange is deliberately not an activity event: switching tabs back and forth
 // would otherwise reset the idle clock without any user input.
 const IDLE_EVENTS = ['mousedown', 'keydown', 'touchstart', 'pointerdown', 'wheel'] as const
+// Media playback counts as activity so watching a long match video does not trigger idle logout.
+// These fire on media elements and do not bubble, so they are attached on document in the capture phase.
+// timeupdate is ignored while the tab is hidden so a video left playing in a background tab does not keep the session alive forever.
+const MEDIA_ACTIVITY_EVENTS = ['play', 'playing', 'timeupdate'] as const
 
 export interface UseIdleLogoutOptions {
   enabled: boolean
@@ -35,6 +39,12 @@ export function useIdleLogout({ enabled, timeoutMs, onIdle }: UseIdleLogoutOptio
 
     IDLE_EVENTS.forEach(ev => window.addEventListener(ev, bump, { passive: true }))
 
+    const bumpMedia = (e: Event) => {
+      if (e.type === 'timeupdate' && document.hidden) return
+      lastActivityRef.current = Date.now()
+    }
+    MEDIA_ACTIVITY_EVENTS.forEach(ev => document.addEventListener(ev, bumpMedia, { capture: true, passive: true }))
+
     const interval = window.setInterval(() => {
       if (Date.now() - lastActivityRef.current >= timeoutMs) {
         onIdleRef.current()
@@ -43,6 +53,7 @@ export function useIdleLogout({ enabled, timeoutMs, onIdle }: UseIdleLogoutOptio
 
     return () => {
       IDLE_EVENTS.forEach(ev => window.removeEventListener(ev, bump))
+      MEDIA_ACTIVITY_EVENTS.forEach(ev => document.removeEventListener(ev, bumpMedia, { capture: true } as EventListenerOptions))
       window.clearInterval(interval)
     }
   }, [enabled, timeoutMs])
