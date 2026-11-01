@@ -20,6 +20,13 @@ const MIN_VALID_YEAR = 1900
 
 const INTERNAL_TOURNAMENT = /^\s*(?:(?:BIAS_SEED|DEMO|TEST)(?:[\s_\-:：]|$)|デモ|テスト)/i
 
+// 一覧表示用: 試合日付が有効か (year >= 1900 でパースできるか)。
+// 0001-01-01 等の欠損値を UI にそのまま出さないための共通判定。
+export function isValidMatchDate(date?: string | null): boolean {
+  const year = Number.parseInt(String(date ?? '').slice(0, 4), 10)
+  return Number.isFinite(year) && year >= MIN_VALID_YEAR
+}
+
 export function classifyExportMatch(m: ExportCandidate): ExportMatchKind {
   const year = Number.parseInt(String(m.date ?? '').slice(0, 4), 10)
   if (!Number.isFinite(year) || year < MIN_VALID_YEAR) return 'invalid_date'

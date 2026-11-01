@@ -668,8 +668,12 @@ export function MatchListPage() {
             />
             <span className={textSecondary}>{t('match.list.only_unfinished')}</span>
           </label>
-          <div className={`ml-auto flex items-center gap-2 text-sm ${textMuted}`}>
-            <MIcon name="download" size={13} />
+          <details className="ml-auto">
+            <summary className={`flex items-center gap-1 text-sm cursor-pointer select-none ${textMuted}`}>
+              <MIcon name="download" size={13} />
+              <span>{t('match.list.download_settings')}</span>
+            </summary>
+            <div className={`flex items-center gap-2 text-sm mt-2 ${textMuted}`}>
             <span>{t('match.list.quality')}</span>
             <select
               value={downloadQuality}
@@ -698,7 +702,8 @@ export function MatchListPage() {
               <option value="vivaldi">{t('auto.MatchListPage.k61')}</option>
               <option value="chromium">{t('auto.MatchListPage.k62')}</option>
             </select>
-          </div>
+            </div>
+          </details>
         </div>
         {/* 期間フィルター */}
         <div className="flex items-center gap-3 flex-wrap">
