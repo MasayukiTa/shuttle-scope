@@ -111,6 +111,9 @@ describe('NotificationInboxPage mutation feedback (#486/#487)', () => {
   it('disables the status buttons while an update is in flight', async () => {
     // 解決しない Promise で isPending を維持
     publicInquiryUpdate.mockReturnValue(new Promise(() => {}))
+    // #651 の自動既読化が走らないよう、ここでは reviewed 済みの行を使う
+    // （本テストの対象は status ボタン連打の disable であり、開封時の自動更新ではない）
+    publicInquiryList.mockResolvedValue({ data: [{ ...row, status: 'reviewed' }] })
     renderPage()
 
     // 通知を選択（一覧の名前をクリック）
@@ -127,5 +130,33 @@ describe('NotificationInboxPage mutation feedback (#486/#487)', () => {
       expect(screen.getByRole('button', { name: '対応済み' })).toBeDisabled()
     })
     expect(publicInquiryUpdate).toHaveBeenCalledTimes(1)
+  })
+
+  // #651: new の項目を開いたら自動で reviewed に遷移させ、未読バッジを消す
+  it('marks a new inquiry as reviewed when it is opened', async () => {
+    publicInquiryUpdate.mockResolvedValue({ success: true })
+    publicInquiryList.mockResolvedValue({ data: [{ ...row, status: 'new', admin_note: 'keep-me' }] })
+    renderPage()
+
+    const nameNodes = await screen.findAllByText('山田太郎')
+    fireEvent.click(nameNodes[0])
+
+    await waitFor(() => expect(publicInquiryUpdate).toHaveBeenCalledTimes(1))
+    // status は reviewed、admin_note は既存値を保持して渡す
+    expect(publicInquiryUpdate).toHaveBeenCalledWith(1, { status: 'reviewed', admin_note: 'keep-me' })
+  })
+
+  // #651: すでに reviewed/resolved の項目を開いても自動更新しない
+  it('does not auto-update an inquiry that is not new when opened', async () => {
+    publicInquiryUpdate.mockResolvedValue({ success: true })
+    publicInquiryList.mockResolvedValue({ data: [{ ...row, status: 'reviewed' }] })
+    renderPage()
+
+    const nameNodes = await screen.findAllByText('山田太郎')
+    fireEvent.click(nameNodes[0])
+
+    // 詳細が開くのを待ってから、自動更新が呼ばれていないことを確認
+    await screen.findByRole('button', { name: '確認中' })
+    expect(publicInquiryUpdate).not.toHaveBeenCalled()
   })
 })
