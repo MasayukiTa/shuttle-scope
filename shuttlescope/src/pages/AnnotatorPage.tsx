@@ -487,7 +487,7 @@ export function AnnotatorPage() {
     enabled: !!matchId,
   })
 
-  const { data: recordingsData } = useQuery({
+  const { data: recordingsData, isError: recordingsError } = useQuery({
     queryKey: ['recordings', matchId],
     queryFn: () =>
       apiGet<{ success: boolean; data: RecordingInfo[] }>(`/matches/${matchId}/recordings`),
@@ -3461,6 +3461,20 @@ export function AnnotatorPage() {
             {hasVideo(match) && (
               <div className="mt-1 text-[var(--ss-t3)] truncate inline-flex items-center gap-1">
                 {getVideoLabel(match) || (<><MIcon name="link" size={11} />{match?.video_url}</>)}
+              </div>
+            )}
+            {recordingsError && (
+              <div className="mt-1.5 flex items-center gap-2 text-[10px] text-[var(--ss-bad)]">
+                <span className="shrink-0">
+                  {t('annotator.ui.recording_branch_error', { defaultValue: '録画枝を取得できません' })}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => queryClient.invalidateQueries({ queryKey: ['recordings', matchId] })}
+                  className="shrink-0 rounded-ss-sm border border-[var(--ss-border)] bg-[var(--ss-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--ss-t1)]"
+                >
+                  {t('annotator.ui.retry')}
+                </button>
               </div>
             )}
             {playableRecordings.length > 0 && (

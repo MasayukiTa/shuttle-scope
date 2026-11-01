@@ -1531,6 +1531,7 @@
       "recording_branch": "Recording branch",
       "recording_primary": "Main video",
       "recording_branch_option": "Branch {{branch}} · {{label}}",
+      "recording_branch_error": "Recording branches unavailable",
       "skip_dual_meaning_doubles": "Doubles: the 0 key selects player_b as the hitter, so use the button to skip.",
       "skip_dual_meaning_singles": "Singles: 0 / Numpad0 also skips.",
       "undo_pending_title": "Cancel the shot being entered (Ctrl+Z)",
