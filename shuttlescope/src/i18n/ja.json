@@ -2621,6 +2621,7 @@
     "human_forecast_prob": "勝率見込み（%）",
     "human_forecast_notes": "メモ",
     "human_forecast_save": "保存",
+    "human_forecast_demo_readonly": "デモロールでは予測の入力・保存はできません。",
     "human_forecast_win": "勝ち",
     "human_forecast_loss": "負け",
     "benchmark_title": "人間 vs モデル ベンチマーク",
@@ -5667,6 +5668,7 @@
   },
   "advanced": {
     "manual_override_notice": "{{count}}件の分析に手動 Override が設定されています",
+    "override_fetch_failed": "手動overrideの取得に失敗しました。権限または通信状況を確認してください。",
     "hold_count": "保留 {{count}}件",
     "see_research_for_detail": "Research タブで詳細確認",
     "hold_gate_title": "この分析は現在、利用を停止しています",
