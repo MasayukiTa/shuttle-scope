@@ -61,13 +61,13 @@ def upgrade() -> None:
                 _COLUMN,
                 sa.Boolean(),
                 nullable=False,
-                server_default=sa.text("0"),
+                server_default=sa.false(),
             ),
         )
 
     # 既存行 (create_all 経路で NULL が残り得る) を明示的に False へ寄せる。
     op.execute(
-        sa.text(f"UPDATE {_TABLE} SET {_COLUMN} = 0 WHERE {_COLUMN} IS NULL")
+        sa.text(f"UPDATE {_TABLE} SET {_COLUMN} = false WHERE {_COLUMN} IS NULL")
     )
 
     # 検証用 fixture を backfill: tournament 名が規約に合致する行だけ True。
@@ -77,8 +77,8 @@ def upgrade() -> None:
     for pat in _SEED_LIKE:
         op.execute(
             sa.text(
-                f"UPDATE {_TABLE} SET {_COLUMN} = 1 "
-                f"WHERE {_COLUMN} = 0 AND UPPER(tournament) LIKE :p"
+                f"UPDATE {_TABLE} SET {_COLUMN} = true "
+                f"WHERE {_COLUMN} = false AND UPPER(tournament) LIKE :p"
             ).bindparams(p=pat.upper())
         )
 
