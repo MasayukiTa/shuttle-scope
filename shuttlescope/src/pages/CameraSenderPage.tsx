@@ -663,6 +663,25 @@ export function CameraSenderPage() {
     }
   }, [stopRttPolling])
 
+  // ─── 端末名の保存 ─────────────────────────────────────────────────────────
+  // 名前を localStorage と ref に保存し、WS が開いていればサーバへ device_rename を
+  // 送る。サーバは参加者行の名前を更新し、device_list_update で operator に配る。
+  // connectWs / PeerConnection には触れない (この 1 本の送信だけ)。
+  const saveDeviceName = useCallback((raw: string) => {
+    const n = raw.trim() || getDeviceTypeLabel()
+    localStorage.setItem(DEVICE_NAME_KEY, n)
+    savedDeviceNameRef.current = n
+    const pid = participantId ?? savedPidRef.current
+    if (pid != null && wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'device_rename',
+        participant_id: pid,
+        device_name: n,
+      }))
+    }
+    setEditingName(false)
+  }, [participantId])
+
   // ─── ステータスバー（全状態共通） ─────────────────────────────────────────
   const StatusBar = () => (
     <div className="flex items-center justify-between w-full max-w-sm mb-3 px-1">
@@ -779,12 +798,7 @@ export function CameraSenderPage() {
                     value={nameInput}
                     onChange={(e) => setNameInput(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        const n = nameInput.trim() || getDeviceTypeLabel()
-                        localStorage.setItem(DEVICE_NAME_KEY, n)
-                        savedDeviceNameRef.current = n
-                        setEditingName(false)
-                      }
+                      if (e.key === 'Enter') saveDeviceName(nameInput)
                       if (e.key === 'Escape') setEditingName(false)
                     }}
                     className="flex-1 bg-[var(--ss-surface-2)] rounded-[5px] px-2 py-1 text-sm text-[var(--ss-t1)] text-center border border-[var(--ss-border)] focus:outline-none focus:ring-2 focus:ring-[var(--ss-focus-ring)]"
@@ -792,12 +806,7 @@ export function CameraSenderPage() {
                     maxLength={32}
                   />
                   <button aria-label={t('app.save')}
-                    onClick={() => {
-                      const n = nameInput.trim() || getDeviceTypeLabel()
-                      localStorage.setItem(DEVICE_NAME_KEY, n)
-                      savedDeviceNameRef.current = n
-                      setEditingName(false)
-                    }}
+                    onClick={() => saveDeviceName(nameInput)}
                     className="p-1 text-[var(--ss-success)] hover:text-[var(--ss-good)]"
                   >
                     <MIcon name="check" size={16} />

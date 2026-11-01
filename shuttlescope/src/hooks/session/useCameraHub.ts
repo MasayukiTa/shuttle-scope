@@ -65,6 +65,34 @@ export function enqueuePendingIce(
   queue.push(candidate)
 }
 
+/**
+ * h12b: `device_list_update` 通知に含まれる device_name を participant_id ごとに
+ * 取り込む。サーバが端末のリネーム (device_rename) を受けると、この通知で最新名を
+ * 配る。REST の 10 秒 polling を待たずに表示を更新するための純関数。
+ * device_name が欠落・空・非文字列のエントリは無視し、既存の名前を保つ。
+ */
+export function deviceNamesFromUpdate(
+  prev: Record<string, string>,
+  devices: Array<{ participant_id?: unknown; device_name?: unknown }> | undefined,
+): Record<string, string> {
+  if (!Array.isArray(devices)) return prev
+  const next = { ...prev }
+  let changed = false
+  for (const d of devices) {
+    const pid = d?.participant_id
+    const name = d?.device_name
+    if (pid == null || typeof name !== 'string') continue
+    const trimmed = name.trim()
+    if (!trimmed) continue
+    const key = String(pid)
+    if (next[key] !== trimmed) {
+      next[key] = trimmed
+      changed = true
+    }
+  }
+  return changed ? next : prev
+}
+
 export interface CameraHubState {
   streams: CameraStream[]
   wsConnected: boolean
@@ -73,6 +101,11 @@ export interface CameraHubState {
   connectionStates: Record<string, RTCPeerConnectionState>
   /** ICE 候補収集の進行状況。接続が張れないときの切り分けに使う。 */
   iceGatheringStates: Record<string, RTCIceGatheringState>
+  /**
+   * h12b: `device_list_update` 通知から得た participant_id → device_name。
+   * 端末のリネームを REST polling より早く表示へ反映するために使う。
+   */
+  deviceNames: Record<string, string>
   turnInUse: boolean | null
   connect: () => Promise<void>
   disconnect: () => void
@@ -102,6 +135,7 @@ export function useCameraHub(sessionCode: string): CameraHubState {
     useState<Record<string, RTCPeerConnectionState>>({})
   const [iceGatheringStates, setIceGatheringStates] =
     useState<Record<string, RTCIceGatheringState>>({})
+  const [deviceNames, setDeviceNames] = useState<Record<string, string>>({})
   const [turnInUse, setTurnInUse] = useState<boolean | null>(null)
 
   const publish = useCallback(() => {
@@ -265,6 +299,13 @@ export function useCameraHub(sessionCode: string): CameraHubState {
   // ─── メッセージ処理 (直列) ────────────────────────────────────────────────
   const handle = useCallback(async (msg: Record<string, unknown>) => {
     const type = msg.type as string
+    if (type === 'device_list_update') {
+      // h12b: サーバの端末一覧通知に含まれる device_name で表示名を更新する。
+      // peer-connection の確立とは独立 (signaling には触れない)。
+      setDeviceNames((prev) => deviceNamesFromUpdate(
+        prev, msg.devices as Array<{ participant_id?: unknown; device_name?: unknown }>))
+      return
+    }
     if (type === 'webrtc_offer') {
       await acceptCameraOffer(msg as never)
     } else if (type === 'ice_candidate') {
@@ -403,7 +444,7 @@ export function useCameraHub(sessionCode: string): CameraHubState {
 
   return {
     streams, wsConnected, reconnecting, reconnectCount,
-    connectionStates, iceGatheringStates, turnInUse, connect, disconnect,
+    connectionStates, iceGatheringStates, deviceNames, turnInUse, connect, disconnect,
     requestCamera: (target) => send({
       type: 'camera_request',
       ...(typeof target === 'string' && target.length > 20

@@ -363,7 +363,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
 
   const {
     streams, wsConnected, reconnecting: wsReconnecting, reconnectCount: wsReconnectCount,
-    connectionStates, iceGatheringStates, turnInUse, connect, requestCamera, sendMessage,
+    connectionStates, iceGatheringStates, deviceNames, turnInUse, connect, requestCamera, sendMessage,
   } = useCameraHub(sessionCode)
 
   // 主表示にするカメラ。未選択なら最初に届いたもの。
@@ -377,6 +377,16 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
   const activeParticipantId = primary?.participantId ?? null
   const connectionState = primary ? (connectionStates[primary.streamId] ?? null) : null
   const iceGatheringState = primary ? (iceGatheringStates[primary.streamId] ?? null) : null
+
+  // h12b: 端末が自分で付け替えた名前は `device_list_update` 通知で先に届く。
+  // REST 一覧 (10 秒 polling) より新しい device_name があればそれを優先して表示する。
+  const displayParticipants = useMemo(
+    () => participants.map((p) => {
+      const fresh = deviceNames[String(p.id)]
+      return fresh && fresh !== p.device_name ? { ...p, device_name: fresh } : p
+    }),
+    [participants, deviceNames],
+  )
 
   // リアルタイム YOLO トグル（オペレーター PC 側のみ。ViewerPage では使わない）
   const [realtimeYoloOn, setRealtimeYoloOn] = useState(false)
@@ -792,7 +802,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
             )
           ) : (
             <DeviceGroupedList
-              participants={participants}
+              participants={displayParticipants}
               isLight={isLight}
               titleColor={titleColor}
               subColor={subColor}
