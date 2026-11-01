@@ -14,7 +14,7 @@ type Dict = Record<string, unknown>
 function lookup(dict: Dict, key: string, vars?: Record<string, unknown>): string {
   const v = key.split('.').reduce<unknown>((o, k) => (o as Dict | undefined)?.[k], dict)
   let s = typeof v === 'string' ? v : key
-  if (vars) for (const [k, val] of Object.entries(vars)) s = s.replace(new RegExp('{{\s*' + k + '\s*}}', 'g'), String(val))
+  if (vars) for (const [k, val] of Object.entries(vars)) s = s.replace(new RegExp('{{\\s*' + k + '\\s*}}', 'g'), String(val))
   return s
 }
 
