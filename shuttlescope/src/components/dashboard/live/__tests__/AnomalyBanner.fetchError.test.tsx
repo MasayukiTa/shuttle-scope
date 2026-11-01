@@ -18,13 +18,13 @@ describe('AnomalyBanner fetch error (#636)', () => {
   it('shows an explicit error instead of hiding on fetch failure', () => {
     qref.value = { data: undefined, isError: true }
     render(<AnomalyBanner playerId={1} matchId={2} />)
-    expect(screen.getByText(i18n.t('auto.AnomalyBanner.fetch_error'))).toBeTruthy()
+    expect(screen.getByText(i18n.t('auto.AnomalyBanner.error'))).toBeTruthy()
   })
 
   it('stays hidden on success with anomaly=false (true empty)', () => {
     qref.value = { data: { anomaly: false }, isError: false }
     const { container } = render(<AnomalyBanner playerId={1} matchId={2} />)
     expect(container.firstChild).toBeNull()
-    expect(screen.queryByText(i18n.t('auto.AnomalyBanner.fetch_error'))).toBeNull()
+    expect(screen.queryByText(i18n.t('auto.AnomalyBanner.error'))).toBeNull()
   })
 })
