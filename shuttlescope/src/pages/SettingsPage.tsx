@@ -1900,8 +1900,8 @@ export function SettingsPage() {
                       </div>
                       <div className="mt-1 text-[var(--ss-brand)]">
                         {tunnelStatus.data.providers.cloudflare.named_ready
-                          ? 'named tunnel 設定を検出しました。Cloudflare 選択時は固定ドメインを優先します。'
-                          : 'named tunnel 設定は未完了です。repo外の Desktop\\cloudflare-shuttle-scope または ~/.cloudflared を使う想定です。'}
+                          ? t('auto.SettingsPage.cloudflare_named_tunnel_ready')
+                          : t('auto.SettingsPage.cloudflare_named_tunnel_not_ready')}
                       </div>
                       {tunnelStatus.data.providers.cloudflare.config_path && (
                         <div className="mt-1 break-all text-[var(--ss-brand)]">
