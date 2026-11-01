@@ -716,8 +716,9 @@ export function CameraSenderPage() {
         <div className="w-full max-w-sm bg-[var(--ss-surface-1)] rounded-[6px] p-5 border border-[var(--ss-border)] shadow-[0_1px_2px_rgba(16,24,40,.06)]">
           <div className="space-y-3">
             <div>
-              <label className="block text-xs text-[var(--ss-t2)] mb-1">{t('camera_sender.join_code_label')}</label>
+              <label htmlFor="cs-join-code" className="block text-xs text-[var(--ss-t2)] mb-1">{t('camera_sender.join_code_label')}</label>
               <input
+                id="cs-join-code"
                 type="text"
                 value={form.sessionCode}
                 onChange={(e) => setForm((f) => ({ ...f, sessionCode: e.target.value.toUpperCase() }))}
@@ -727,8 +728,9 @@ export function CameraSenderPage() {
               />
             </div>
             <div>
-              <label className="block text-xs text-[var(--ss-t2)] mb-1">{t('camera_sender.join_password_label')}</label>
+              <label htmlFor="cs-join-password" className="block text-xs text-[var(--ss-t2)] mb-1">{t('camera_sender.join_password_label')}</label>
               <input
+                id="cs-join-password"
                 type="password"
                 value={form.password}
                 onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
@@ -736,8 +738,9 @@ export function CameraSenderPage() {
               />
             </div>
             <div>
-              <label className="block text-xs text-[var(--ss-t2)] mb-1">{t('camera_sender.join_device_label')}</label>
+              <label htmlFor="cs-join-device" className="block text-xs text-[var(--ss-t2)] mb-1">{t('camera_sender.join_device_label')}</label>
               <input
+                id="cs-join-device"
                 type="text"
                 value={form.deviceName}
                 onChange={(e) => setForm((f) => ({ ...f, deviceName: e.target.value }))}

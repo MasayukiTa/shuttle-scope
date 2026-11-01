@@ -104,20 +104,20 @@ export default function PasswordResetConfirmPage() {
         <h1 className="text-xl font-semibold tracking-[-0.014em] text-[var(--ss-t1)]">{t('auth.password_reset_confirm.title')}</h1>
 
         <div>
-          <label className="block text-sm font-medium mb-1 text-[var(--ss-t2)]">
+          <label htmlFor="reset-new-password" className="block text-sm font-medium mb-1 text-[var(--ss-t2)]">
             {t('auth.password_reset_confirm.new_password')}
           </label>
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+          <input id="reset-new-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
                  required minLength={8} maxLength={128}
                  autoComplete="new-password"
                  className={fieldCls} />
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1 text-[var(--ss-t2)]">
+          <label htmlFor="reset-confirm-password" className="block text-sm font-medium mb-1 text-[var(--ss-t2)]">
             {t('auth.password_reset_confirm.confirm_password')}
           </label>
-          <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)}
+          <input id="reset-confirm-password" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)}
                  required minLength={8} maxLength={128}
                  autoComplete="new-password"
                  className={fieldCls} />
