@@ -451,7 +451,8 @@
     "password": "Password",
     "pending_approval": {
       "title": "Your account is provisional",
-      "body": "Thanks for registering. Until an administrator assigns your team and role, you will only see your own data. We will email you from shuttlescopecom@gmail.com once that is done."
+      "body": "Thanks for registering. Until an administrator assigns your team and role, you will only see your own data. We will email you from shuttlescopecom@gmail.com once that is done.",
+      "logout": "Log out"
     }
   },
   "condition": {
