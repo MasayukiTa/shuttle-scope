@@ -261,7 +261,7 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                 </HoldGate>
               </div>
             </div>
-            <RoleGuard allowedRoles={['analyst', 'coach']}>
+            <RoleGuard allowedRoles={['analyst']}>
               {spatialMeta?.caution && (
                 <ResearchNotice
                   caution={spatialMeta.caution}
@@ -337,20 +337,25 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                 <FilterNotAppliedNote filters={filters} />
                 <OpponentStats playerId={playerId} />
               </div>
-              <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-2`}>
-                <div className="flex items-center justify-between">
-                  <SectionTitle>{t('analysis.opponent_type_affinity.title')}</SectionTitle>
-                  <EvidenceBadge
-                    tier="research"
-                    evidenceLevel={(opponentAffinityMeta?.evidence_level as EvidenceLevel) ?? 'exploratory'}
-                    recommendationAllowed={false}
-                  />
+              {/* 監査#747: opponent_type_affinity は research tier の backend endpoint
+                  (require_admin_or_analyst) を呼ぶため coach では 403 になる。
+                  coach には出さず analyst のみに限定して capability を一致させる。 */}
+              <RoleGuard allowedRoles={['analyst']} fallback={null}>
+                <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-2`}>
+                  <div className="flex items-center justify-between">
+                    <SectionTitle>{t('analysis.opponent_type_affinity.title')}</SectionTitle>
+                    <EvidenceBadge
+                      tier="research"
+                      evidenceLevel={(opponentAffinityMeta?.evidence_level as EvidenceLevel) ?? 'exploratory'}
+                      recommendationAllowed={false}
+                    />
+                  </div>
+                  <p className={`text-xs ${textMuted}`}>{t('analysis.opponent_type_affinity.subtitle')}</p>
+                  <HoldGate suspended={isOnHold('opponent_affinity')}>
+                    <OpponentTypeAffinity playerId={playerId} filters={filters} />
+                  </HoldGate>
                 </div>
-                <p className={`text-xs ${textMuted}`}>{t('analysis.opponent_type_affinity.subtitle')}</p>
-                <HoldGate suspended={isOnHold('opponent_affinity')}>
-                  <OpponentTypeAffinity playerId={playerId} filters={filters} />
-                </HoldGate>
-              </div>
+              </RoleGuard>
               <OpponentAdaptiveShots playerId={playerId} />
               <div className={`${card} rounded-ss-lg shadow-card p-4`}>
                 <div className="flex items-center justify-between mb-3">

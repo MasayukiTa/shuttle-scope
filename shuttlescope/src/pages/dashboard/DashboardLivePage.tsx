@@ -199,7 +199,7 @@ export function DashboardLivePage({ playerId, matches }: Props) {
             />
           )}
 
-          {flashMatchId ? (
+          {flashMatchId && !isPlayer ? (
             <div className={`${card} rounded-ss-lg shadow-card p-4`}>
               <FlashAdvicePanel
                 matchId={flashMatchId}
