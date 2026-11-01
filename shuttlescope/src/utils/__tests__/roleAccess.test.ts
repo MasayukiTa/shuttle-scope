@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canCreatePlayer, canDeleteMatch, canDeletePlayer, canUseConditionPage, canWriteMatch } from '../roleAccess'
+import { canAnnotate, canCreatePlayer, canDeleteMatch, canDeletePlayer, canUseConditionPage, canWriteMatch } from '../roleAccess'
 
 describe('canUseConditionPage', () => {
   it('hides the Condition page from the read-only demo role', () => {
@@ -53,5 +53,20 @@ describe('match / player write capabilities (mirror the backend role rules)', ()
     expect(canDeleteMatch(undefined)).toBe(true)
     expect(canDeletePlayer(null)).toBe(true)
     expect(canCreatePlayer(null)).toBe(true)
+  })
+})
+
+describe('canAnnotate (mirror backend require_match_scope demo rejection)', () => {
+  it('hides the annotation entry from the read-only demo role', () => {
+    expect(canAnnotate('demo')).toBe(false)
+  })
+
+  it.each(['admin', 'analyst', 'coach', 'player'] as const)('keeps it for %s', (role) => {
+    expect(canAnnotate(role)).toBe(true)
+  })
+
+  it('leaves an unresolved role to the server', () => {
+    expect(canAnnotate(null)).toBe(true)
+    expect(canAnnotate(undefined)).toBe(true)
   })
 })

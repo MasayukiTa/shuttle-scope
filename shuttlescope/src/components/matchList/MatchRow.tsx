@@ -8,7 +8,7 @@ import { statusColor, DownloadStatus } from './matchListUtils'
 import { MIcon } from '@/components/common/MIcon'
 import { useAuth } from '@/hooks/useAuth'
 import { isPlayableVideoUrl } from '@/utils/videoSrc'
-import { canDeleteMatch, canWriteMatch } from '@/utils/roleAccess'
+import { canAnnotate, canDeleteMatch, canWriteMatch } from '@/utils/roleAccess'
 
 // MatchListPage のデスクトップ用テーブル行 1 件分。純粋抽出 (behavior 不変)。
 export interface MatchRowProps {
@@ -117,6 +117,8 @@ export function MatchRow({
       </td>
       <td className="py-2">
         <div className="flex items-center gap-1">
+          {/* #669: アノテーション入力は書込み導線。backend が demo を 403 で拒否するため read-only の demo には出さない。 */}
+          {canAnnotate(role) && (
           <button
             onClick={() => navigate(`/annotator/${m.id}`)}
             className="p-1.5 rounded bg-blue-700 hover:bg-blue-600 text-white"
@@ -125,6 +127,7 @@ export function MatchRow({
           >
             <MIcon name="play_arrow" size={14} />
           </button>
+          )}
           {m.player_a_id && canOpenPrediction && (
             <button
               onClick={() => navigate(`/prediction?playerId=${m.player_a_id}`)}
