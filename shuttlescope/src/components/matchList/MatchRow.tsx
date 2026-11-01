@@ -62,6 +62,11 @@ export function MatchRow({
             {t('match.list.public_pool_badge', 'Shared')}
           </span>
         )}
+        {m.is_demo_public && (
+          <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] bg-sky-500/20 text-sky-400" title={t('match.list.demo_public_title', 'Demo match visible read-only to other teams')}>
+            {t('match.list.demo_public_badge', 'Demo')}
+          </span>
+        )}
         {m.owner_team_display_id && (
           <span className={`ml-1 text-[10px] ${textSecondary}`} title={`登録チーム: ${m.owner_team_display_name ?? ''}`}>
             [{m.owner_team_display_id}]

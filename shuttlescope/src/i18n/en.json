@@ -1272,6 +1272,8 @@
       "cancel_short": "Cancel",
       "public_pool_badge": "Shared",
       "public_pool_title": "Public-pool match visible to all teams",
+      "demo_public_badge": "Demo",
+      "demo_public_title": "Demo match visible read-only to other teams",
       "create_tentative": "Create \"{{name}}\" as tentative",
       "reissue_video_token": "Reissue video link",
       "reissue_video_token_hint": "Replaces the video URL (app://video/...) with a new UUID",

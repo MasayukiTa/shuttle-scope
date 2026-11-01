@@ -209,6 +209,7 @@ export interface Match {
   // Phase B: チーム境界
   owner_team_id?: number | null
   is_public_pool?: boolean
+  is_demo_public?: boolean
   home_team_id?: number | null
   away_team_id?: number | null
   owner_team_display_id?: string | null
