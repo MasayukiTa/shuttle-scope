@@ -13,6 +13,7 @@ import {
 } from 'recharts'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { perfColor, lightSafe, getTooltipStyle } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
@@ -49,7 +50,7 @@ export function TemporalPerformance({ playerId, chartHeight = 180, filters = DEF
     ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
     ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
   }
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError, refetch } = useQuery({
     queryKey: ['analysis-temporal-performance', playerId, filters],
     queryFn: () =>
       apiGet<TemporalResponse>('/analysis/temporal_performance', { player_id: playerId, ...fp }),
@@ -58,6 +59,12 @@ export function TemporalPerformance({ playerId, chartHeight = 180, filters = DEF
 
   if (isLoading) {
     return <div className="text-[var(--ss-t3)] text-sm py-4 text-center">{t('analysis.loading')}</div>
+  }
+
+  // A failed fetch must not fall through to the no_data state (success-empty);
+  // surface an explicit error with retry instead of masking it as no data.
+  if (isError) {
+    return <QueryErrorNotice onRetry={() => { void refetch() }} />
   }
 
   const phases = resp?.data?.phases ?? []

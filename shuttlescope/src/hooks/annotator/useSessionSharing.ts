@@ -73,6 +73,8 @@ export interface SessionSharingResult {
   tunnelToggle: ReturnType<typeof useMutation<unknown, Error, void, unknown>>
   tunnelBase: string | null
   tunnelPending: boolean
+  /** トンネル状態の取得が未確定（ロード中/失敗）。true の間はトグルを無効化する */
+  tunnelUnconfirmed: boolean
   tunnelLastError: string | null
   rebaseUrl: (url: string) => string
   // リモートストリーム
@@ -132,18 +134,32 @@ export function useSessionSharing({
 
   // ── トンネル ──────────────────────────────────────────────────────────────
 
-  const { data: tunnelStatus, refetch: refetchTunnel } = useQuery({
+  const {
+    data: tunnelStatus,
+    refetch: refetchTunnel,
+    isError: tunnelStatusError,
+    isLoading: tunnelStatusLoading,
+  } = useQuery({
     queryKey: ['tunnel-status'],
     queryFn: () =>
       apiGet<{ success: boolean; data: TunnelData }>('/tunnel/status'),
     refetchInterval: 5000,
   })
 
+  // 状態取得が未確定（初回ロード中 or 失敗）の間は running を判断できない。
+  // false(=停止) と誤認して /tunnel/start を再送すると二重起動になるため、トグルを止める。
+  const tunnelUnconfirmed = tunnelStatusLoading || tunnelStatusError || tunnelStatus === undefined
+
   const tunnelToggle = useMutation({
-    mutationFn: () =>
-      tunnelStatus?.data?.running
+    mutationFn: () => {
+      // 状態未確定のまま start/stop を送らない（停止と誤認した再送を防ぐ）
+      if (tunnelUnconfirmed) {
+        return Promise.reject(new Error('tunnel status unconfirmed'))
+      }
+      return tunnelStatus?.data?.running
         ? apiPost('/tunnel/stop', {})
-        : apiPost(`/tunnel/start?provider=${tunnelProvider}`, {}),
+        : apiPost(`/tunnel/start?provider=${tunnelProvider}`, {})
+    },
     onSuccess: () => { refetchTunnel() },
   })
 
@@ -240,6 +256,7 @@ export function useSessionSharing({
     tunnelToggle,
     tunnelBase,
     tunnelPending,
+    tunnelUnconfirmed,
     tunnelLastError,
     rebaseUrl,
     // リモートストリーム

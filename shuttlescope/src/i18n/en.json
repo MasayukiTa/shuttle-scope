@@ -536,6 +536,7 @@
       "single_day": "Single day",
       "add": "Add",
       "delete": "Delete",
+      "delete_failed": "Failed to delete. Please try again later.",
       "confirm_delete": "Delete \"{{label}}\"?",
       "empty": "No tags yet",
       "error_required": "Label and start date are required",
@@ -1129,6 +1130,7 @@
       }
     },
     "consent_update_failed": "Failed to update consent",
+    "consent_load_failed": "Could not load your current consent settings. Please reload before changing them.",
     "body_disclose_title": "Body composition data (weight / body fat / muscle mass etc.) disclosure",
     "body_disclose_help": "By default only you and an administrator can view this. Toggle the switches below to share with analyst / coach. You can withdraw at any time.",
     "body_disclose_to_analyst": "Disclose to analyst",

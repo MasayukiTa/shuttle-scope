@@ -543,6 +543,7 @@
       "single_day": "単発",
       "add": "追加",
       "delete": "削除",
+      "delete_failed": "削除に失敗しました。時間をおいて再試行してください。",
       "confirm_delete": "「{{label}}」を削除しますか？",
       "empty": "まだタグはありません",
       "error_required": "ラベルと開始日は必須です",
@@ -1137,6 +1138,7 @@
       }
     },
     "consent_update_failed": "同意の更新に失敗しました",
+    "consent_load_failed": "現在の同意設定を取得できませんでした。設定を変更する前に再読み込みしてください。",
     "body_disclose_title": "体組成データ (体重・体脂肪率・筋肉量等) の開示設定",
     "body_disclose_help": "通常は本人と管理者のみが閲覧できます。アナリスト / コーチに開示する場合は下のスイッチを ON にしてください。いつでも撤回できます。",
     "body_disclose_to_analyst": "アナリストに開示する",
