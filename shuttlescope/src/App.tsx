@@ -233,7 +233,10 @@ function Sidebar() {
     ...(!llmOnly && role !== 'player' && hasPageAccess('prediction')
       ? [{ to: '/prediction', label: t('nav.prediction'), icon: 'trending_up' }]
       : []),
-    ...(!llmOnly && role !== 'player' && hasPageAccess('expert_labeler')
+    // expert_labeler は backend (ALLOWED_ROLES={analyst,coach,admin}) と同じロールにだけ出す。
+    // demo 等が grant だけ持って導線に入っても API は 403/空になり行き止まりになるため、
+    // grant に加えて labeler ロールを必須にする。
+    ...(!llmOnly && (role === 'admin' || role === 'analyst' || role === 'coach') && hasPageAccess('expert_labeler')
       ? [{ to: '/expert-labeler', label: t('nav.expert'), icon: 'assignment_turned_in' }]
       : []),
     // 汎用 LLM チャット: llm grant を持つユーザ (admin/analyst/coach 自動 or LLM 専用)。
@@ -574,8 +577,13 @@ function UsersRoute({ children }: { children: React.ReactNode }) {
 
 function PageAccessRoute({ pageKey, children }: { pageKey: string; children: React.ReactNode }) {
 
-  const { hasPageAccess } = useAuth()
+  const { role, hasPageAccess } = useAuth()
   if (!hasPageAccess(pageKey)) return <Navigate to="/matches" replace />
+  // expert_labeler は backend ALLOWED_ROLES={analyst,coach,admin} に合わせる。grant だけ持つ
+  // demo 等が入っても API は 403/空になるため、ここで fail closed にして /matches へ戻す。
+  if (pageKey === 'expert_labeler' && role !== 'admin' && role !== 'analyst' && role !== 'coach') {
+    return <Navigate to="/matches" replace />
+  }
   return <>{children}</>
 }
 

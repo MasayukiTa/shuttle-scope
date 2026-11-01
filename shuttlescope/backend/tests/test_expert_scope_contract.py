@@ -143,3 +143,27 @@ def test_clip_url_is_never_a_dangling_link(client, db_session):
         url = clip["clip_url"]
         if url is not None:
             assert client.get(url, headers=tok("cA")).status_code != 404, url
+
+
+def test_progress_role_cannot_be_spoofed_by_non_admin(client, db_session):
+    """h4 #498: a coach asking for annotator_role=analyst must still get the
+    coach's own counts. annotator_role is derived server-side from the
+    authenticated role for non-admins; only admin may pass an explicit role.
+    Seed an analyst label on match 1 that the coach must never be able to count."""
+    db_session.add(M.ExpertLabel(
+        match_id=1, stroke_id=11, annotator_role="analyst", posture_collapse="none",
+        weight_distribution="left", shot_timing="late", confidence=2, comment="A-analyst",
+        team_id=TA,
+    ))
+    db_session.commit()
+    # coach already has one coach label on match 1 (fixture). Asking as analyst
+    # must return the coach view, i.e. the coach's own one label, not analyst's.
+    r = client.get("/api/v1/expert/progress?annotator_role=analyst", headers=tok("cA"))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["annotator_role"] == "coach", body
+    assert body["labeled"] == 1, body
+    # admin may still choose the analyst view explicitly.
+    radm = client.get("/api/v1/expert/progress?annotator_role=analyst", headers=tok("admin"))
+    assert radm.status_code == 200, radm.text
+    assert radm.json()["annotator_role"] == "analyst", radm.json()
