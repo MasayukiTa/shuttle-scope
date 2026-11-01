@@ -276,6 +276,7 @@ def batch_save_rally(
         .filter(
             Rally.set_id == body.rally.set_id,
             Rally.rally_num == body.rally.rally_num - 1,
+            Rally.deleted_at.is_(None),
         )
         .first()
     )
