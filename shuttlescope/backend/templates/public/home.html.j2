@@ -4,18 +4,18 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ShuttleScope — バドミントン試合分析プラットフォーム</title>
-<meta name="description" content="バドミントンの試合をストロークごとに記録し、配球やラリー、得点の流れを振り返るツール。コーチや選手が、記録した試合を確認できます。">
+<meta name="description" content="バドミントンの試合をストロークごとに記録するツール。配球やラリー、得点の動きを見返せます。コーチや選手が記録した試合を確認できます。">
 <link rel="canonical" href="https://shuttle-scope.com/">
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://shuttle-scope.com/">
 <meta property="og:title" content="ShuttleScope — バドミントン試合分析プラットフォーム">
-<meta property="og:description" content="バドミントンの試合をストロークごとに記録し、配球やラリー、得点の流れを振り返るツール。">
+<meta property="og:description" content="バドミントンの試合をストロークごとに記録するツール。配球やラリー、得点の動きを見返せます。">
 <meta property="og:image" content="https://shuttle-scope.com/og-image.png">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="ShuttleScope">
-<meta name="twitter:description" content="バドミントンの試合をストロークごとに記録し、配球やラリー、得点の流れを振り返るツール。">
+<meta name="twitter:description" content="バドミントンの試合をストロークごとに記録するツール。配球やラリー、得点の動きを見返せます。">
 <meta name="twitter:image" content="https://shuttle-scope.com/og-image.png">
 <!-- 外部フォント CDN 禁止 (企業 TLS でブロックされるため): ページ全体で 1 つの system-ui スタックのみ使う。 -->
 <style>
@@ -328,8 +328,8 @@ footer{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);padd
 <section class="hero">
   <div class="hero-inner">
     <div>
-      <h1 class="hero-h1"><span class="ja">バドミントンの試合を、1球ずつ記録して見返す</span><span class="en">Record a badminton match shot by shot, and review it later.</span></h1>
-      <p class="hero-sub"><span class="ja">配球やラリーの展開、得点の推移を、あとから確かめられます。試合は動画を見ながら1球ずつ入力するか、試合中にその場で入力します。同じ記録を、コーチも選手もそれぞれの見方で確認できます。</span><span class="en">Placement, rally development and the score trend can be checked afterwards. Enter each shot while watching the video, or enter shots live during the match. Coaches and players then read the same record, each in their own way.</span></p>
+      <h1 class="hero-h1"><span class="ja">バドミントンの試合を1球ずつ記録して配球や得点を見返す</span><span class="en">Record a badminton match shot by shot, and review it later.</span></h1>
+      <p class="hero-sub"><span class="ja">配球やラリーの展開、得点の動きをあとから見返せます。動画を見ながら1球ずつ、または試合中にその場で入力します。同じ記録をコーチも選手もそれぞれの見方で読み取れます。</span><span class="en">Placement, rally development and the score trend can be checked afterwards. Enter each shot while watching the video, or enter shots live during the match. Coaches and players then read the same record, each in their own way.</span></p>
 {% endraw %}{% if registration_enabled %}      <div class="cta-row">
         <a href="https://app.shuttle-scope.com/#/register" class="btn-cta"><span class="ja">無料で登録</span><span class="en">Sign up free</span></a>
         <a href="/contact" class="btn-cta-sub"><span class="ja">研究連携・法人のご相談</span><span class="en">Research and organization inquiries</span></a>
@@ -342,7 +342,7 @@ footer{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);padd
     <figure class="court-panel">
       <div class="court-head">
         <span class="tag-sample"><span class="ja">サンプルデータ</span><span class="en">SAMPLE DATA</span></span>
-        <span class="court-title"><span class="ja">配球ゾーンと、1ラリーの配球順</span><span class="en">Placement zones and one rally's shot order</span></span>
+        <span class="court-title"><span class="ja">配球ゾーンと1ラリーの配球順</span><span class="en">Placement zones and one rally's shot order</span></span>
       </div>
       <svg class="court-svg" viewBox="-14 -26 333 375" aria-hidden="true" focusable="false">
         <rect class="f-out" x="-14" y="-26" width="333" height="375"/>
@@ -377,7 +377,7 @@ footer{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);padd
         <circle class="node-end" cx="150" cy="298" r="11"/><text class="t-node" x="150" y="298">5</text>
       </svg>
       <div class="legend"><span class="ja">少</span><span class="en">Low</span><i></i><span class="ja">多</span><span class="en">High</span></div>
-      <figcaption class="court-cap"><span class="ja">架空の1試合データによる表示例です。数字は相手コートへの配球の割合、1〜5 は1ラリー内の着地の順番です。</span><span class="en">An illustration with made-up data from one imaginary match. Numbers are the share of shots to each zone of the opponent's court; 1-5 are landing points in order within one rally.</span></figcaption>
+      <figcaption class="court-cap"><span class="ja">架空の1試合データによる表示例です。数字は相手コートへの配球の割合を示します。1〜5 は1ラリー内の着地順です。</span><span class="en">An illustration with made-up data from one imaginary match. Numbers are the share of shots to each zone of the opponent's court; 1-5 are landing points in order within one rally.</span></figcaption>
     </figure>
   </div>
 </section>
@@ -385,31 +385,31 @@ footer{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);padd
 <section class="sec sec-uc" id="usecases">
   <div class="sec-wrap">
     <h2 class="sec-h2"><span class="ja">実際のアプリ画面</span><span class="en">The actual app</span></h2>
-    <p class="sec-sub"><span class="ja">1つの解析ダッシュボードに、試合の読み方がまとまっています。参照できる粒度は役割によって異なります。</span><span class="en">One analysis dashboard brings the ways of reading a match together. How much detail you see depends on your role.</span></p>
+    <p class="sec-sub"><span class="ja">1つの解析ダッシュボードに試合を見る方法がまとまっています。役割によって参照できる詳しさは異なります。</span><span class="en">One analysis dashboard brings the ways of reading a match together. How much detail you see depends on your role.</span></p>
     <figure class="app-fig">
       <div class="shot-frame">
         <img class="shot-light" src="/hero-app-light@2x.png" srcset="/hero-app-light.png 1000w, /hero-app-light@2x.png 1920w" sizes="(min-width:1180px) 1100px, 100vw" width="1920" height="830" alt="ShuttleScope の解析ダッシュボード画面" loading="lazy" decoding="async">
         <img class="shot-dark" src="/hero-app-dark@2x.png" srcset="/hero-app-dark.png 1000w, /hero-app-dark@2x.png 1920w" sizes="(min-width:1180px) 1100px, 100vw" width="1920" height="830" alt="ShuttleScope の解析ダッシュボード画面 (ダークテーマ)" loading="lazy" decoding="async">
       </div>
-      <figcaption class="shot-cap"><span class="ja">解析ダッシュボード。開発用のテストデータで表示しています。</span><span class="en">The analysis dashboard, shown with development test data.</span></figcaption>
+      <figcaption class="shot-cap"><span class="ja">解析ダッシュボードを開発用のテストデータで表示しています。</span><span class="en">The analysis dashboard, shown with development test data.</span></figcaption>
     </figure>
     <ol class="shot-points">
-      <li><span class="ja"><b>コートのヒートマップ</b>が、配球のかたよりをゾーンごとの濃淡で示します。</span><span class="en"><b>A court heatmap</b> shows where shots cluster, by zone.</span></li>
-      <li><span class="ja"><b>ラリーの終わり方</b>が、横棒グラフで種類別に並びます。</span><span class="en"><b>Rally endings</b> line up by type in a bar chart.</span></li>
-      <li><span class="ja"><b>ラリー長の分布</b>が、下段のグラフで見えます。</span><span class="en"><b>Rally length</b> appears as a distribution in the lower chart.</span></li>
+      <li><span class="ja"><b>コートのヒートマップ</b>はゾーンごとの濃淡で配球のかたよりを示します。</span><span class="en"><b>A court heatmap</b> shows where shots cluster, by zone.</span></li>
+      <li><span class="ja"><b>ラリーの終わり方</b>は種類別に横棒グラフで並びます。</span><span class="en"><b>Rally endings</b> line up by type in a bar chart.</span></li>
+      <li><span class="ja"><b>ラリー長の分布</b>は下段のグラフで見られます。</span><span class="en"><b>Rally length</b> appears as a distribution in the lower chart.</span></li>
     </ol>
     <div class="roles">
-      <div class="role"><div class="role-h"><span class="ja">コーチ</span><span class="en">Coach</span></div><p class="role-p"><span class="ja">チーム全体の傾向を見て、練習の優先順位を決めます。</span><span class="en">Read team-wide tendencies and set practice priorities.</span></p></div>
-      <div class="role"><div class="role-h"><span class="ja">アナリスト</span><span class="en">Analyst</span></div><p class="role-p"><span class="ja">ストロークと局面を掘り下げ、対戦相手の傾向をまとめます。</span><span class="en">Dig into strokes and phases and summarise an opponent's tendencies.</span></p></div>
-      <div class="role"><div class="role-h"><span class="ja">選手</span><span class="en">Player</span></div><p class="role-p"><span class="ja">自分の試合の記録を振り返ります。</span><span class="en">Look back at the records of your own matches.</span></p></div>
+      <div class="role"><div class="role-h"><span class="ja">コーチ</span><span class="en">Coach</span></div><p class="role-p"><span class="ja">チーム全体の記録から特徴をつかみ、練習の優先順位を決めます。</span><span class="en">Read team-wide tendencies and set practice priorities.</span></p></div>
+      <div class="role"><div class="role-h"><span class="ja">アナリスト</span><span class="en">Analyst</span></div><p class="role-p"><span class="ja">ストロークと局面を詳しく調べ、対戦相手の特徴をまとめます。</span><span class="en">Dig into strokes and phases and summarise an opponent's tendencies.</span></p></div>
+      <div class="role"><div class="role-h"><span class="ja">選手</span><span class="en">Player</span></div><p class="role-p"><span class="ja">自分の試合の記録を見返します。</span><span class="en">Look back at the records of your own matches.</span></p></div>
     </div>
   </div>
 </section>
 
 <section class="sec sec-features" id="features">
   <div class="sec-wrap">
-    <h2 class="sec-h2"><span class="ja">記録した試合を、三つの角度で読む</span><span class="en">Read a recorded match from three angles</span></h2>
-    <p class="sec-sub"><span class="ja">配球のかたより、ラリーの組み立て、そして得点の推移。次に何を試すかの手がかりになります。</span><span class="en">Shot placement, how rallies are built, and how the score moves. Each one gives you a clue about what to try next.</span></p>
+    <h2 class="sec-h2"><span class="ja">記録した試合を配球とラリーと得点から読む</span><span class="en">Read a recorded match from three angles</span></h2>
+    <p class="sec-sub"><span class="ja">配球のかたよりやラリーの組み立て、得点の動きから次に試すことを考えられます。</span><span class="en">Shot placement, how rallies are built, and how the score moves. Each one gives you a clue about what to try next.</span></p>
 
     <div class="vrow vwide">
       <div class="vfig">
@@ -431,12 +431,12 @@ footer{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);padd
             <g class="l-court" style="stroke-width:1.4"><rect x="20" y="24" width="120" height="116"/><rect x="170" y="24" width="120" height="116"/></g>
             <path d="M20 24H140M170 24H290" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
           </svg>
-          <p class="mini-cap"><span class="ja">ネット側が上。色が濃いほど着地が多いゾーン。</span><span class="en">Net side is up. Darker zones received more shots.</span></p>
+          <p class="mini-cap"><span class="ja">上がネット側です。色が濃いゾーンほど着地が多いことを示します。</span><span class="en">Net side is up. Darker zones received more shots.</span></p>
         </div>
       </div>
       <div class="vtext">
-        <h3 class="view-h"><span class="ja">試合ごとに、配球を9ゾーンで比べる</span><span class="en">Compare placement by match across nine zones</span></h3>
-        <p class="view-p"><span class="ja">同じ選手の配球を9つのゾーンのヒートマップで示します。試合ごと、または直近の数試合で見比べると、次の練習で増やしたいコースが見えてきます。</span><span class="en">Show one player's placement as a nine-zone heatmap. Compare it by match, or across the last few matches, and the placements to use more in your next practice stand out.</span></p>
+        <h3 class="view-h"><span class="ja">試合ごとの配球を9ゾーンで比べる</span><span class="en">Compare placement by match across nine zones</span></h3>
+        <p class="view-p"><span class="ja">同じ選手の配球を9ゾーンのヒートマップで示します。試合ごとや直近の数試合で比べると、次の練習で増やしたいコースが見えてきます。</span><span class="en">Show one player's placement as a nine-zone heatmap. Compare it by match, or across the last few matches, and the placements to use more in your next practice stand out.</span></p>
       </div>
     </div>
 
@@ -466,12 +466,12 @@ footer{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);padd
               <text x="232" y="132"><tspan class="ja">ロブ</tspan><tspan class="en">Lob</tspan></text>
             </g>
           </svg>
-          <p class="mini-cap"><span class="ja">上段(塗り)=自分、下段(白抜き)=相手。7球目(橙)で得点。</span><span class="en">Top row (filled) = you, bottom row (outlined) = opponent. Point won on shot 7 (orange).</span></p>
+          <p class="mini-cap"><span class="ja">上段(塗り)は自分で下段(白抜き)は相手です。7球目(橙)で得点しています。</span><span class="en">Top row (filled) = you, bottom row (outlined) = opponent. Point won on shot 7 (orange).</span></p>
         </div>
       </div>
       <div class="vtext">
-        <h3 class="view-h"><span class="ja">ラリーを、1球ずつ並べる</span><span class="en">Lay out the rally, shot by shot</span></h3>
-        <p class="view-p"><span class="ja">サーブから決まり球まで、球種と順番を1列に並べます。得点につながった組み立てを振り返り、次の試合で試す型を選べます。</span><span class="en">Every shot from the serve to the finishing stroke, in order and by type. Look back at the build-up that won the point and pick the pattern to try in your next match.</span></p>
+        <h3 class="view-h"><span class="ja">ラリーを1球ずつ並べる</span><span class="en">Lay out the rally, shot by shot</span></h3>
+        <p class="view-p"><span class="ja">サーブから決まり球まで球種と順番を1列に並べます。得点につながった組み立てから、次の試合で試す型を選べます。</span><span class="en">Every shot from the serve to the finishing stroke, in order and by type. Look back at the build-up that won the point and pick the pattern to try in your next match.</span></p>
       </div>
     </div>
 
@@ -492,19 +492,19 @@ footer{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);padd
               <text x="152" y="129" text-anchor="middle"><tspan class="ja">インターバル</tspan><tspan class="en">Interval</tspan></text>
               <text x="288" y="129" text-anchor="end"><tspan class="ja">終了</tspan><tspan class="en">End</tspan></text>
             </g>
-            <text class="t-acc" x="222" y="90" text-anchor="middle"><tspan class="ja">優勢が動いた局面</tspan><tspan class="en">Where the lead moved</tspan></text>
+            <text class="t-acc" x="222" y="90" text-anchor="middle"><tspan class="ja">優勢が変わった局面</tspan><tspan class="en">Where the lead moved</tspan></text>
           </svg>
-          <p class="mini-cap"><span class="ja">帯は推定の幅。記録が少ないほど広がります。</span><span class="en">The band shows the range of the estimate and widens when less is recorded.</span></p>
+          <p class="mini-cap"><span class="ja">帯は推定の幅を示します。記録が少ないほど広がります。</span><span class="en">The band shows the range of the estimate and widens when less is recorded.</span></p>
         </div>
       </div>
       <div class="vtext">
-        <h3 class="view-h"><span class="ja">得点の推移を、折れ線で追う</span><span class="en">Follow the score progression on a line graph</span></h3>
-        <p class="view-p"><span class="ja">ラリーごとの優勢度の推移を折れ線で表示します。優勢が大きく動いた局面から、動画で見返したい場面を選べます。</span><span class="en">Plot how the advantage shifts rally by rally. From the points where the lead swung most, jump to the moment you want to review on video.</span></p>
+        <h3 class="view-h"><span class="ja">得点の動きを折れ線で追う</span><span class="en">Follow the score progression on a line graph</span></h3>
+        <p class="view-p"><span class="ja">ラリーごとの優勢度の変化を折れ線で示します。優勢が大きく動いた場面から、動画で見返したいところを選べます。</span><span class="en">Plot how the advantage shifts rally by rally. From the points where the lead swung most, jump to the moment you want to review on video.</span></p>
       </div>
     </div>
 
-    <p class="note"><span class="ja">どの表示も、記録された範囲の傾向を示すものです。試合数やラリー数が少ないときは信頼度を併記し、断定はしません。</span><span class="en">Every view shows trends within what was recorded. When there are few matches or rallies, a confidence level is shown alongside and results are never presented as certain.</span></p>
-    <details class="method"><summary><span class="ja">分析方法</span><span class="en">How it is calculated</span></summary><p class="method-p"><span class="ja">推定には Markov モデルと EPV (得点期待値) を用いています。Markov モデルはラリー内のショットのつながりから次の展開を読みます。EPV はその1球が得点にどれだけ近づけたかを測ります。どちらも記録したストロークから計算するため、試合やラリーが少ないほど推定の幅は広くなります。</span><span class="en">Estimates use a Markov model and EPV (expected point value). The Markov model reads how shots connect within a rally to see what tends to follow. EPV measures how much a single shot moved you toward winning the point. Both are computed from the strokes you record, so the range widens when there are fewer matches or rallies.</span></p></details>
+    <p class="note"><span class="ja">どの表示も記録された範囲の傾向を示します。試合数やラリー数が少ないときは信頼度を併記し、断定しません。</span><span class="en">Every view shows trends within what was recorded. When there are few matches or rallies, a confidence level is shown alongside and results are never presented as certain.</span></p>
+    <details class="method"><summary><span class="ja">分析方法</span><span class="en">How it is calculated</span></summary><p class="method-p"><span class="ja">推定には Markov モデルと EPV (得点期待値) を使います。Markov モデルはラリー内のショットのつながりから次の展開を読みます。EPV はその1球が得点にどれだけ近づけたかを測ります。どちらも記録したストロークから計算します。試合やラリーが少ないほど推定の幅は広くなります。</span><span class="en">Estimates use a Markov model and EPV (expected point value). The Markov model reads how shots connect within a rally to see what tends to follow. EPV measures how much a single shot moved you toward winning the point. Both are computed from the strokes you record, so the range widens when there are fewer matches or rallies.</span></p></details>
   </div>
 </section>
 
@@ -516,13 +516,13 @@ footer{background:var(--ss-surface-1);border-top:1px solid var(--ss-border);padd
 
 <section class="sec-fcta">
   <div class="fcta-wrap">
-    <h2 class="fcta-h"><span class="ja">まずは1試合の記録から。</span><span class="en">Start with one recorded match.</span></h2>
-{% endraw %}{% if registration_enabled %}    <p class="fcta-sub"><span class="ja">2026年中は無償です。登録すると管理者が内容を確認して承認し、承認後にアカウントを使えます。</span><span class="en">Free through 2026. After you register, an administrator reviews and approves your account, and you can use it once it is approved.</span></p>
+    <h2 class="fcta-h"><span class="ja">まずは1試合の記録から</span><span class="en">Start with one recorded match.</span></h2>
+{% endraw %}{% if registration_enabled %}    <p class="fcta-sub"><span class="ja">2026年中は無償です。登録後に管理者が内容を確認して承認します。承認後にアカウントを使えます。</span><span class="en">Free through 2026. After you register, an administrator reviews and approves your account, and you can use it once it is approved.</span></p>
     <div class="cta-row">
       <a href="https://app.shuttle-scope.com/#/register" class="btn-cta"><span class="ja">無料で登録</span><span class="en">Sign up free</span></a>
       <a href="https://app.shuttle-scope.com/login" class="btn-cta-sub"><span class="ja">アカウントをお持ちの方はログイン</span><span class="en">Already have an account? Log in</span></a>
     </div>
-{% else %}    <p class="fcta-sub"><span class="ja">β版への参加やご質問は、お問い合わせフォームで受け付けています。</span><span class="en">To join the beta or ask a question, use the contact form.</span></p>
+{% else %}    <p class="fcta-sub"><span class="ja">β版への参加やご質問はお問い合わせフォームで受け付けています。</span><span class="en">To join the beta or ask a question, use the contact form.</span></p>
     <div class="cta-row">
       <a href="/contact" class="btn-cta"><span class="ja">お問い合わせ</span><span class="en">Contact us</span></a>
       <a href="https://app.shuttle-scope.com/login" class="btn-cta-sub"><span class="ja">アカウントをお持ちの方はログイン</span><span class="en">Already have an account? Log in</span></a>
