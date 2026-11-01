@@ -20,6 +20,7 @@ from backend.analysis.analysis_population import split_analysis_population
 from backend.analysis.player_context import involves_player
 from backend.analysis.router_helpers import _get_player_matches, _player_role_in_match
 from backend.db.models import GameSet, Match, Rally, Stroke
+from backend.analysis.pending_strokes import exclude_pending_strokes
 
 
 @dataclass
@@ -77,7 +78,9 @@ def load_context(db: Session, player_id: int, filters: dict) -> AnalysisContext:
     )
     rally_ids = [r.id for r in rallies]
     strokes = (
-        db.query(Stroke).filter(Stroke.rally_id.in_(rally_ids)).all()
+        exclude_pending_strokes(
+            db.query(Stroke).filter(Stroke.rally_id.in_(rally_ids))
+        ).all()
         if rally_ids else []
     )
 
@@ -127,7 +130,9 @@ def load_context(db: Session, player_id: int, filters: dict) -> AnalysisContext:
             rs_rallies = []
         rs_rally_ids = [r.id for r in rs_rallies]
         rs_strokes = (
-            db.query(Stroke).filter(Stroke.rally_id.in_(rs_rally_ids)).all()
+            exclude_pending_strokes(
+                db.query(Stroke).filter(Stroke.rally_id.in_(rs_rally_ids))
+            ).all()
             if rs_rally_ids else []
         )
 
