@@ -51,9 +51,14 @@ export default function AdminAnalyticsPage() {
   }
   // 不正・未parse の日時文字列を toLocaleString() に渡すと 'Invalid Date' が出る。
   // parse 可能なものだけ整形し、失敗時は利用者に意味のある代替文言を出す。
+  // 監査 #77: as_of 等の集計時刻はタイムゾーン指定子のない UTC naive 文字列で返ることがあり、
+  // そのまま new Date() に渡すとローカル解釈され、UTC の壁時計がそのまま出て「端末の時刻」ラベルと矛盾する。
+  // ゾーン指定子 (Z または ±HH:MM) がなければ UTC とみなして Z を補い、端末ローカルに換算する。
   const fmtDateTime = (value: string | null | undefined): string => {
     if (!value) return t('admin.analytics.invalid_datetime')
-    const d = new Date(value)
+    const hasTz = /[zZ]$|[+-]\d{2}:?\d{2}$/.test(value.trim())
+    const normalized = hasTz ? value : `${value.trim()}Z`
+    const d = new Date(normalized)
     return isNaN(d.getTime()) ? t('admin.analytics.invalid_datetime') : d.toLocaleString()
   }
   const [overview, setOverview] = useState<Overview | null>(null)

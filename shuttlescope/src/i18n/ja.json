@@ -973,6 +973,7 @@
       "gap_no_data": "—",
       "loading": "読み込み中...",
       "no_data": "データ蓄積中です",
+      "model_unavailable": "体調モデルがまだ利用できません（勝敗と結びつく記録が不足しています）。推奨レンジはデータが蓄積されると表示されます。",
       "key": {
         "ccs_score": "CCSスコア",
         "f1_physical": "身体コンディション",
@@ -4291,7 +4292,8 @@
       "n_matches_paren": "({{n}}試合)",
       "rate_diff_pp": "+{{n}}pp",
       "current_label": "現在",
-      "target_range": "観測範囲 [{{r}}]"
+      "target_range": "観測範囲 [{{r}}]",
+      "observed_single": "観測値 {{v}}"
     },
     "ConditionGenericScatter": {
       "k1": "低 → 高"
