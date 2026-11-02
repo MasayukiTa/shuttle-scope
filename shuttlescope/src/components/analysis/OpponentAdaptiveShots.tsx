@@ -36,12 +36,14 @@ interface Response {
   meta: { sample_size: number; confidence: { level: string; stars: string; label: string } }
 }
 
-function ShotBar({ label, winRate, lift, count }: { label: string; winRate: number; lift: number; count: number }) {
+const LOW_SAMPLE_THRESHOLD = 30
+
+function ShotBar({ label, winRate, lift, count, lowSample, referenceLabel }: { label: string; winRate: number; lift: number; count: number; lowSample: boolean; referenceLabel: string }) {
 
   const pct = Math.round(winRate * 100)
   const liftPositive = lift >= 0
   return (
-    <div className="flex items-center gap-2 text-xs">
+    <div className={`flex items-center gap-2 text-xs ${lowSample ? 'opacity-50' : ''}`}>
       <span className="w-28 text-right text-gray-300 truncate shrink-0">{label}</span>
       <div className="flex-1 bg-gray-700 rounded-ss-sm h-4 relative overflow-hidden">
         <div
@@ -56,6 +58,9 @@ function ShotBar({ label, winRate, lift, count }: { label: string; winRate: numb
         {liftPositive ? '+' : ''}{Math.round(lift * 100)}%
       </span>
       <span className="text-gray-500 text-xs w-8 text-right ss-num">{count}</span>
+      {lowSample && (
+        <span className="text-amber-400 text-xs w-10 text-right shrink-0">{referenceLabel}</span>
+      )}
     </div>
   )
 }
@@ -116,15 +121,22 @@ function Inner({ playerId }: { playerId: number }) {
           {activeOpp.shot_effectiveness.length === 0 ? (
             <NoDataMessage sampleSize={0} minRequired={3} unit="回" />
           ) : (
-            activeOpp.shot_effectiveness.map(s => (
-              <ShotBar
-                key={s.shot_type}
-                label={s.shot_label}
-                winRate={s.win_rate}
-                lift={s.lift}
-                count={s.count}
-              />
-            ))
+            <>
+              {activeOpp.shot_effectiveness.some(s => s.count < LOW_SAMPLE_THRESHOLD) && (
+                <p className="text-amber-400 text-xs">{t('auto.OpponentAdaptiveShots.reference_hint', { n: LOW_SAMPLE_THRESHOLD })}</p>
+              )}
+              {activeOpp.shot_effectiveness.map(s => (
+                <ShotBar
+                  key={s.shot_type}
+                  label={s.shot_label}
+                  winRate={s.win_rate}
+                  lift={s.lift}
+                  count={s.count}
+                  lowSample={s.count < LOW_SAMPLE_THRESHOLD}
+                  referenceLabel={t('auto.OpponentAdaptiveShots.reference')}
+                />
+              ))}
+            </>
           )}
         </div>
       )}

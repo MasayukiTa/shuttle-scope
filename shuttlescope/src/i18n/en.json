@@ -203,6 +203,7 @@
     "other": "Other"
   },
   "analysis_labels": {
+    "unclassified": "Unclassified",
     "state": {
       "early": "Early",
       "mid": "Mid",
@@ -1990,7 +1991,9 @@
       "loss_matches": "Losses (matches with issues)",
       "avg_rally": "Avg rally length",
       "serve_win_rate": "Serve win rate",
-      "top_shots": "Top shots"
+      "top_shots": "Top shots",
+      "population": "Comparing {{used}} matches ({{excluded}} of {{total}} excluded)",
+      "population_reasons": " ({{unfinished}} unfinished, {{zero_rally}} with no rallies recorded)"
     },
     "tournament_comparison": {
       "title": "Comparison by tournament level",
@@ -3535,6 +3538,8 @@
       "recommended": "Recommended",
       "lift": "Observed gap +{{n}}pt",
       "observed_only": "Observed only",
+      "degenerate_badge": "Needs review (degenerate)",
+      "degenerate_warning": "The win rate is pinned near 100%, which may indicate too small a sample, perfect separation, or target leakage. It cannot be treated as an improvement gap.",
       "k1": "Loading...",
       "k2": "Lists past win rates for each return in each situation. Opponent and game context are not adjusted for",
       "k3": "Past results by return"
@@ -3684,6 +3689,8 @@
       "percentile_band": "25–75 percentile band"
     },
     "OpponentAdaptiveShots": {
+      "reference": "reference",
+      "reference_hint": "Shots with fewer than {{n}} strokes have small samples; their win rate and lift are reference values only. The section-wide confidence does not apply to individual opponent x shot cells.",
       "k1": "Loading...",
       "k2": "lift = vs overall",
       "k3": "Shot effectiveness by opponent",
@@ -4064,6 +4071,9 @@
       "ci_header": "CI"
     },
     "TransitionMatrix": {
+      "diagonal_note": "The diagonal (grey) is the same shot type in succession; it is counted separately as a property of half-court strokes, so it is hidden here.",
+      "coverage": "Scope {{inScope}} / {{total}} rallies ({{pct}}%)",
+      "coverage_tip": "Only rallies where a transition can be formed (the target player hit at least twice) are counted.",
       "insufficient": "Insufficient data (available after annotation)",
       "total_transitions": "Total transitions: {{n}}",
       "n_times": "{{n}}",
@@ -4133,10 +4143,10 @@
       "coverage_section_label": "Coverage Guarantee (held-out empirical)",
       "target_label": "Target",
       "empirical_label": "Empirical",
-      "guarantee_met": "Guarantee met",
-      "guarantee_not_met": "Guarantee not met",
+      "guarantee_met": "Target met (held-out empirical)",
+      "guarantee_not_met": "Target not met (held-out empirical)",
       "avg_set_size": "Average prediction set size: {{v}}",
-      "coverage_hint": "If empirical coverage ≥ target, the distribution-free guarantee holds on the held-out data.",
+      "coverage_hint": "This is an empirical check: held-out coverage met the target. The distribution-free theoretical guarantee depends on assumptions (e.g. exchangeability) and the procedure; a single empirical result does not by itself establish that it holds.",
       "sample_summary": "Total N={{total}} (calibration: {{calib}} / test: {{test}})",
       "group_header": "Per-group predictions ({{n}})",
       "no_groups": "No per-group data available",
@@ -5033,7 +5043,7 @@
       "improve_patterns": "(growth-area patterns)"
     },
     "OpponentTypeAffinity": {
-      "auto_type_note": "* Opponent type auto-classified by rally length and smash rate"
+      "auto_type_note": "* Opponent type is decided in two stages: (1) grouping — opponents are grouped by rally length and smash rate; (2) naming — each group is labeled (attacker / defender / balanced) by threshold rules. No statistical clustering is used."
     },
     "PairPlaystyle": {
       "playstyle_of": "Playstyle of {{a}} / {{b}}",

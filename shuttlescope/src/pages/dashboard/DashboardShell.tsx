@@ -129,13 +129,6 @@ function StatCard({
   )
 }
 
-const ROLE_LABELS: Record<string, string> = {
-  admin: '管理者',
-  analyst: 'アナリスト',
-  coach: 'コーチ',
-  player: '選手',
-}
-
 // ロールバッジ: 元はダーク基調しか想定していなかった hardcoded 色。
 // ライトモードでも読めるよう 2 セット用意し、isLight で切替える (2026-05-19)。
 // 色設計: admin だけ B_BAD (= 警告/特権操作の含意)、それ以外は無彩色 + テキスト色のみ。
@@ -311,7 +304,7 @@ export function DashboardShell() {
             </span>
             {role && (
               <span className={`${ROLE_BADGE_SHAPE} text-[10px] ${(isLight ? ROLE_BADGE_CLASS_LIGHT : ROLE_BADGE_CLASS_DARK)[role] ?? (isLight ? 'bg-white border-gray-300 text-gray-700' : 'bg-gray-800 border-gray-600 text-gray-200')}`}>
-                {ROLE_LABELS[role] ?? role}
+                {t('roles.' + role, role)}
               </span>
             )}
           </div>
@@ -325,7 +318,7 @@ export function DashboardShell() {
             <h1 className="text-xl font-semibold">{t('nav.dashboard_title', 'ダッシュボード')}</h1>
             {role && (
               <span className={`${ROLE_BADGE_SHAPE} ${(isLight ? ROLE_BADGE_CLASS_LIGHT : ROLE_BADGE_CLASS_DARK)[role] ?? (isLight ? 'bg-white border-gray-300 text-gray-700' : 'bg-gray-800 border-gray-600 text-gray-200')}`}>
-                {ROLE_LABELS[role] ?? role}
+                {t('roles.' + role, role)}
               </span>
             )}
           </div>

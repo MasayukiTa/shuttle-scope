@@ -167,3 +167,61 @@ describe('WinLossComparison: 未算出の ace_rate / error_rate と null のサ�
     expect(container.textContent).toContain('40.0%')
   })
 })
+
+describe('WinLossComparison: audit #137 母集団(除外)表示', () => {
+  const stats = {
+    count: 25, avg_rally_length: 4.5, ace_rate: null, error_rate: null,
+    serve_win_rate: 0.5, serve_count: 10, top_shots: [],
+  }
+
+  it('shows how many matches were compared and excluded when excluded > 0', async () => {
+    mockRoutes({
+      '/analysis/win_loss_comparison': {
+        success: true,
+        data: { win_matches: stats, loss_matches: stats },
+        meta: {
+          sample_size: 50,
+          confidence: { level: 'high', stars: '', label: '' },
+          excluded: { unfinished: 3, zero_rally: 0 },
+        },
+      },
+    })
+    const { container } = wrap(<WinLossComparison playerId={1} filters={DEFAULT_FILTERS} />)
+    const note = await screen.findByTestId('win-loss-population')
+    // used=50 / total=53 / excluded=3 / 未完了3 が反映される
+    expect(note.textContent).toContain('50')
+    expect(note.textContent).toContain('53')
+    expect(note.textContent).toContain('3')
+    expect(container.textContent).toContain('未完了')
+  })
+
+  it('hides the population note when nothing is excluded', async () => {
+    mockRoutes({
+      '/analysis/win_loss_comparison': {
+        success: true,
+        data: { win_matches: stats, loss_matches: stats },
+        meta: {
+          sample_size: 50,
+          confidence: { level: 'high', stars: '', label: '' },
+          excluded: { unfinished: 0, zero_rally: 0 },
+        },
+      },
+    })
+    const { container } = wrap(<WinLossComparison playerId={1} filters={DEFAULT_FILTERS} />)
+    await waitFor(() => expect(container.textContent).toContain('50.0%'))
+    expect(screen.queryByTestId('win-loss-population')).toBeNull()
+  })
+
+  it('hides the population note when meta.excluded is absent (back-compat)', async () => {
+    mockRoutes({
+      '/analysis/win_loss_comparison': {
+        success: true,
+        data: { win_matches: stats, loss_matches: stats },
+        meta: { sample_size: 50, confidence: { level: 'high', stars: '', label: '' } },
+      },
+    })
+    const { container } = wrap(<WinLossComparison playerId={1} filters={DEFAULT_FILTERS} />)
+    await waitFor(() => expect(container.textContent).toContain('50.0%'))
+    expect(screen.queryByTestId('win-loss-population')).toBeNull()
+  })
+})

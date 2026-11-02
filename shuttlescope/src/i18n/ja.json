@@ -203,6 +203,7 @@
     "other": "その他"
   },
   "analysis_labels": {
+    "unclassified": "未分類",
     "state": {
       "early": "序盤",
       "mid": "中盤",
@@ -1997,7 +1998,9 @@
       "loss_matches": "負け試合（課題のある試合）",
       "avg_rally": "平均ラリー長",
       "serve_win_rate": "サーブ勝率",
-      "top_shots": "主要ショット"
+      "top_shots": "主要ショット",
+      "population": "{{used}}試合を比較（{{total}}試合中{{excluded}}試合を除外）",
+      "population_reasons": "（未完了 {{unfinished}}試合、ラリー記録なし {{zero_rally}}試合）"
     },
     "tournament_comparison": {
       "title": "大会レベル別比較",
@@ -3543,6 +3546,8 @@
       "recommended": "推奨",
       "lift": "観察差 +{{n}}pt",
       "observed_only": "観察のみ",
+      "degenerate_badge": "要検証（縮退）",
+      "degenerate_warning": "勝率が100%付近に張り付いており、標本過少・完全分離・ターゲットリークの可能性があります。改善幅としては扱えません。",
       "k1": "読み込み中...",
       "k2": "各状況で、返球ごとの過去の勝率を並べます。相手や局面の違いは調整していません",
       "k3": "返球別の過去実績"
@@ -3692,6 +3697,8 @@
       "percentile_band": "25–75 パーセンタイル帯"
     },
     "OpponentAdaptiveShots": {
+      "reference": "参考値",
+      "reference_hint": "{{n}}球未満のショットは標本が少なく、勝率とliftは参考値です。セクション全体の信頼度は個々の相手×ショットには当てはまりません。",
       "shot_winrate_vs": "ショット種別 勝率 vs {{name}}",
       "k1": "読み込み中...",
       "k2": "lift=全体比",
@@ -4072,6 +4079,9 @@
       "ci_header": "CI"
     },
     "TransitionMatrix": {
+      "diagonal_note": "対角線（グレー）は同じショット種の連続で、半軸打球の性質上別集計となるためここでは隠しています。",
+      "coverage": "対象 {{inScope}} / 全 {{total}} ラリー（{{pct}}%）",
+      "coverage_tip": "遷移を作れる（対象プレイヤーが2打以上打った）ラリーのみを集計対象としています。",
       "insufficient": "データ不足（アノテーション後に解析可能）",
       "total_transitions": "総遷移数: {{n}} 回",
       "n_times": "{{n}}回",
@@ -4141,10 +4151,10 @@
       "coverage_section_label": "カバレッジ保証（ヘルドアウト実測）",
       "target_label": "目標",
       "empirical_label": "実測",
-      "guarantee_met": "保証成立",
-      "guarantee_not_met": "保証未達",
+      "guarantee_met": "目標達成（ホールドアウト実測）",
+      "guarantee_not_met": "目標未達（ホールドアウト実測）",
       "avg_set_size": "平均予測セットサイズ: {{v}}",
-      "coverage_hint": "実測カバレッジが目標以上であれば、分布フリー保証がホールドアウトデータ上で成立しています。",
+      "coverage_hint": "これはホールドアウトでの実測カバレッジが目標以上だったという経験的検証です。分布フリーの理論保証は交換可能性等の前提と手順に依存し、単一の実測だけで「成立」を示すものではありません。",
       "sample_summary": "総N={{total}}（校正: {{calib}} / テスト: {{test}}）",
       "group_header": "グループ別予測 ({{n}})",
       "no_groups": "グループ別データがありません",
@@ -5041,7 +5051,7 @@
       "improve_patterns": "（要改善パターン）"
     },
     "OpponentTypeAffinity": {
-      "auto_type_note": "※ 相手タイプはラリー長・スマッシュ率から自動判定"
+      "auto_type_note": "※ 相手タイプは2段階で決定します。(1) グループ生成: ラリー長・スマッシュ率でグループ分け。(2) グループ命名: 各グループにラベル（攻撃型／守備型／バランス型）をしきい値ルールで割り当て。統計的クラスタリングは使用していません。"
     },
     "PairPlaystyle": {
       "playstyle_of": "{{a}} / {{b}} のプレースタイル",

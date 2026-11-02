@@ -151,6 +151,8 @@ def get_descriptive(
             "end_type_distribution": dict(end_type_dist),
             "rally_length_histogram": rally_length_histogram,
             "win_by_end_type": {k: v for k, v in win_by_end_type.items()},
+            # 187: ラリー長の合計から導く総球数。input_provenance.strokes.total（個々の打球入力）とは別指標であることを明示する。
+            "total_strokes_from_rally_length": total_length,
             "server_win_rate": server_win_rate,
         },
         "meta": _with_input_provenance(
@@ -1120,7 +1122,7 @@ def get_win_loss_comparison(
     db: Session = Depends(get_db),
 ):
     """B-004: 勝ち試合と負け試合で主要統計を比較する"""
-    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+    matches, excluded = _get_player_matches_with_excluded(db, player_id, result, tournament_level, date_from, date_to)
 
     empty_confidence = check_confidence("win_loss_comparison", 0)
     if not matches:
@@ -1128,7 +1130,7 @@ def get_win_loss_comparison(
             "success": True,
             "data": {"win_matches": None, "loss_matches": None},
             "meta": _with_input_provenance(
-                {"sample_size": 0, "confidence": empty_confidence},
+                {"sample_size": 0, "confidence": empty_confidence, "excluded": excluded},
                 rallies=[],
                 strokes=[],
             ),
@@ -1253,7 +1255,7 @@ def get_win_loss_comparison(
             "loss_matches": loss_stats,
         },
         "meta": _with_input_provenance(
-            {"sample_size": total_matches, "confidence": confidence},
+            {"sample_size": total_matches, "confidence": confidence, "excluded": excluded},
             rallies=provenance_rallies,
             strokes=provenance_strokes,
         ),
