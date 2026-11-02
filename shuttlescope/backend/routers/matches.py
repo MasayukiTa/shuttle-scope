@@ -19,7 +19,7 @@ from backend.routers.players import PlayerCreate
 from backend.utils.video_downloader import video_downloader
 from backend.utils import response_cache
 from backend.utils.sync_meta import touch
-from backend.utils.match_score import score_consistency_error
+from backend.utils.match_score import score_consistency_error, set_count_consistency_error
 from backend.utils.text_sanitize import reject_bidi_only, reject_ctrl_and_bidi
 from backend.utils.auth import (
     get_auth,
@@ -843,6 +843,17 @@ def update_match(match_id: int, body: MatchUpdate, request: Request, db: Session
             body.final_score if "final_score" in body.model_fields_set else match.final_score,
             body.result if "result" in body.model_fields_set else match.result,
         )
+        # 監査 #155: final_score のセット数が、実際に記録済みの GameSet 数を
+        # 超えていないかを検査する (0-ラリーの「勝ち」を fail closed で拒否)。
+        # 記録セットが 0 の段階は判定しない (クイック入力を壊さない)。
+        _eff_final = body.final_score if "final_score" in body.model_fields_set else match.final_score
+        _eff_result = body.result if "result" in body.model_fields_set else match.result
+        _recorded_sets = (
+            db.query(GameSet.id).filter(GameSet.match_id == match.id).count()
+        )
+        _sc_err = set_count_consistency_error(_eff_final, _recorded_sets, _eff_result)
+        if _sc_err:
+            raise HTTPException(status_code=422, detail=_sc_err)
     # 未登録の選手は試合の更新と同じトランザクションで作る（失敗したら残さない）
     try:
         _create_new_players_for_match(body, request, ctx, db, require_both=False)

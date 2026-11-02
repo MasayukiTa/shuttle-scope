@@ -343,6 +343,22 @@ def get_heatmap_composite(
     hit_total = sum(hit_counts.values())
     land_total = sum(land_counts.values())
 
+    # 項目161: 打点ヒートマップと着地点ヒートマップの対象球数が食い違う問題。
+    # どちらの標本も同じ stroke 集合から数えているが、hit_zone / land_zone の
+    # どちらか一方だけが入力された stroke があると hit_total と land_total がずれる。
+    # ずれの量と欠損率を data.missingness で明示し、UI/レポートが欠損を隠さずに
+    # 示せるようにする (可視化専用の合成表示でも標本不一致を黙らせない)。
+    missing_hit = max(land_total - hit_total, 0)
+    missing_land = max(hit_total - land_total, 0)
+    missingness = {
+        "hit_n": hit_total,
+        "land_n": land_total,
+        "missing_hit": missing_hit,
+        "missing_hit_rate": round(missing_hit / land_total, 4) if land_total else None,
+        "missing_land": missing_land,
+        "missing_land_rate": round(missing_land / hit_total, 4) if hit_total else None,
+    }
+
     # 打点データ（自コート座標系そのまま）
     hit_data = {
         z: {
@@ -373,6 +389,7 @@ def get_heatmap_composite(
             "hit": hit_data,
             "land_rotated": land_rotated,
             "total_strokes": total_strokes,
+            "missingness": missingness,
             "note": (
                 "着地点データをネット線で折り返して自コート座標系に重ねています"
                 "（行はネット基準・列は画面基準なので、ゾーン名は変わりません）。"

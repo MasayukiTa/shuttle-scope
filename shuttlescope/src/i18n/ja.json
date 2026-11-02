@@ -3264,6 +3264,7 @@
     "tab_land": "着地点",
     "tab_composite": "合成",
     "composite_note": "着地点はネット中心で点対称変換し、自コート座標に重ね合わせています。タイルをクリックして打点・着地点の詳細を確認できます。",
+    "missingness_hit": "打点が未入力の球が {{missing}} 球あります（着地点 {{land}} 球中、欠損率 {{pct}}）。打点ヒートマップはこれらを含みません。",
     "period_all": "全期間",
     "period_last_n": "直近{{n}}試合",
     "match_select_empty": "試合を選択（個別）",
