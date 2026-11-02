@@ -118,12 +118,6 @@ export function PredictionPage() {
   const tabActive = 'bg-[var(--ss-surface-3)] text-[var(--ss-t1)]'
   const tabInactive = 'text-[var(--ss-t3)] hover:text-[var(--ss-t1)] hover:bg-[var(--ss-surface-2)]'
 
-  const ROLE_LABELS: Record<string, string> = {
-    admin: '管理者',
-    analyst: 'アナリスト',
-    coach: 'コーチ',
-    player: '選手',
-  }
   const ROLE_BADGE_CLASS: Record<string, string> = {
     admin: 'bg-[var(--ss-danger-bg)] border-[var(--ss-danger-border)] text-[var(--ss-danger-text)]',
     analyst: 'bg-[var(--ss-info-bg)] border-[var(--ss-info-border)] text-[var(--ss-info-text)]',
@@ -145,7 +139,7 @@ export function PredictionPage() {
                   ROLE_BADGE_CLASS[role] ?? 'bg-[var(--ss-surface-2)] border-[var(--ss-border)] text-[var(--ss-t2)]'
                 }`}
               >
-                {ROLE_LABELS[role] ?? role}
+                {t('roles.' + role, role)}
               </span>
             )}
           </div>

@@ -24,7 +24,7 @@ export function shotLabel(t: TFn, code: string | null | undefined): string {
   return (
     lookup(t, `shot_types.${code}`) ??
     lookup(t, `shot_categories.${code}`) ??
-    code
+    (lookup(t, 'analysis_labels.unclassified') ?? '—')
   )
 }
 

@@ -164,6 +164,40 @@ class TestNewAnalysisEndpoints:
         assert "sample_size" in data["meta"]
         assert "confidence" in data["meta"]
 
+    def test_win_loss_comparison_exposes_excluded_meta(self, client_with_data):
+        """audit #137: meta.excluded を公開し、除外ゼロ時も構造を保つ。"""
+        client, player_id, _ = client_with_data
+        resp = client.get(f"/api/analysis/win_loss_comparison?player_id={player_id}")
+        assert resp.status_code == 200
+        meta = resp.json()["meta"]
+        assert "excluded" in meta
+        assert meta["excluded"] == {"unfinished": 0, "zero_rally": 0}
+        # 勝ち1 + 負け1 = 2 試合が比較対象
+        assert meta["sample_size"] == 2
+
+    def test_win_loss_comparison_counts_unfinished_excluded(
+        self, client_with_data, db_session
+    ):
+        """audit #137: 未完了試合は比較から除外され meta.excluded.unfinished に計上される。"""
+        client, player_id, _ = client_with_data
+        # 既存の選手に未完了試合(ラリーあり)を1件追加する。
+        player_a = db_session.query(Player).filter(Player.id == player_id).one()
+        player_b = (
+            db_session.query(Player).filter(Player.id != player_id).first()
+        )
+        unfinished = make_test_match(
+            db_session, player_a, player_b, result="unfinished"
+        )
+        make_test_set_and_rallies(db_session, unfinished, n_rallies=8)
+        db_session.commit()
+
+        resp = client.get(f"/api/analysis/win_loss_comparison?player_id={player_id}")
+        assert resp.status_code == 200
+        meta = resp.json()["meta"]
+        # 比較対象は依然 2 試合(勝ち1/負け1)で、未完了は除外カウントに入る。
+        assert meta["sample_size"] == 2
+        assert meta["excluded"]["unfinished"] >= 1
+
     def test_tournament_level_comparison_returns_200(self, client_with_data):
         """tournament_level_comparison が200を返すこと"""
         client, player_id, _ = client_with_data

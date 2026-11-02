@@ -178,6 +178,72 @@ class TestPairSynergy:
         assert resp.status_code == 200
 
 
+class TestPairSynergyConfidencePopulation:
+    """監査 #136: ペアシナジーの信頼度はダブルス対象試合数で判定する。
+    全試合数 (シングルス含む) を信頼度の母集団に使わない。"""
+
+    def _build(self, db):
+        from backend.db.models import Match
+        pa = _make_player(db, "P136_A")
+        partner = _make_player(db, "P136_PT")
+        opp = _make_player(db, "P136_OP")
+        opp2 = _make_player(db, "P136_OP2")
+        # シングルス 3 試合 (ダブルス母集団には入らない)
+        for i, res in enumerate(["win", "loss", "win"]):
+            ms = _make_match(db, pa, opp, result=res, match_date=date(2025, 1, 10 + i))
+            _make_rallies(db, ms, n=12, avg_len=6)
+        # ダブルス 2 試合 (同一パートナー)
+        for i, res in enumerate(["win", "loss"]):
+            md = _make_match(db, pa, opp2, result=res, partner_a=partner,
+                             match_date=date(2025, 2, 10 + i))
+            md.format = "womens_doubles"
+            db.add(md)
+            _make_rallies(db, md, n=12, avg_len=6)
+        db.commit()
+        return pa, partner
+
+    def test_meta_reports_doubles_sample_size_not_all_matches(self, db_session):
+        pa, _partner = self._build(db_session)
+        app.dependency_overrides[get_db] = lambda: db_session
+        app.dependency_overrides[get_auth] = _admin_auth_ctx
+        app.dependency_overrides[require_admin_or_analyst] = _admin_auth_ctx
+        app.dependency_overrides[require_non_player] = _admin_auth_ctx
+        try:
+            client = TestClient(app)
+            body = client.get(f"/api/analysis/pair_synergy?player_id={pa.id}").json()
+        finally:
+            app.dependency_overrides.clear()
+        meta = body["meta"]
+        # 全試合数は 5 (シングルス 3 + ダブルス 2) のまま後方互換で残す
+        assert meta["sample_size"] == 5
+        # ペア推定に寄与するダブルス対象試合数は 2
+        assert meta["doubles_sample_size"] == 2
+        # 信頼度はダブルス母集団 (2) 基準。全試合 5 ではない
+        assert meta["confidence"]["n_used"] == 2
+        # research tier かつ低 N なので実用レベルを名乗らない
+        assert meta["confidence"]["level"] == "low"
+
+    def test_pair_confidence_uses_pair_n_within_doubles_population(self, db_session):
+        pa, partner = self._build(db_session)
+        app.dependency_overrides[get_db] = lambda: db_session
+        app.dependency_overrides[get_auth] = _admin_auth_ctx
+        app.dependency_overrides[require_admin_or_analyst] = _admin_auth_ctx
+        app.dependency_overrides[require_non_player] = _admin_auth_ctx
+        try:
+            client = TestClient(app)
+            body = client.get(f"/api/analysis/pair_synergy?player_id={pa.id}").json()
+        finally:
+            app.dependency_overrides.clear()
+        pairs = body["data"]["pairs"]
+        assert len(pairs) == 1
+        pair = pairs[0]
+        assert pair["partner_id"] == partner.id
+        assert pair["match_count"] == 2
+        # ペア自身の試合数 (2) で判定される
+        assert pair["confidence"]["n_used"] == 2
+        assert pair["confidence"]["level"] == "low"
+
+
 class TestOpponentAdaptiveShots:
     def test_returns_200(self, research_client):
         client, pid, _, opp_id, *_ = research_client

@@ -474,6 +474,8 @@ def get_shot_transition_matrix(
                 "shot_keys": SHOT_KEYS,
                 "raw_counts": empty_raw,
                 "total_transitions": 0,
+                "rallies_in_scope": 0,
+                "rallies_total": 0,
                 "top_sequences": [],
             },
             "meta": _with_input_provenance(
@@ -501,6 +503,8 @@ def get_shot_transition_matrix(
                 "shot_keys": SHOT_KEYS,
                 "raw_counts": empty_raw,
                 "total_transitions": 0,
+                "rallies_in_scope": 0,
+                "rallies_total": 0,
                 "top_sequences": [],
             },
             "meta": _with_input_provenance(
@@ -523,6 +527,8 @@ def get_shot_transition_matrix(
                 "shot_keys": SHOT_KEYS,
                 "raw_counts": empty_raw,
                 "total_transitions": 0,
+                "rallies_in_scope": 0,
+                "rallies_total": 0,
                 "top_sequences": [],
             },
             "meta": _with_input_provenance(
@@ -616,6 +622,8 @@ def get_shot_transition_matrix(
             "shot_keys": SHOT_KEYS,
             "raw_counts": raw_counts,
             "total_transitions": total_transitions,
+            "rallies_in_scope": len(provenance_rally_ids),
+            "rallies_total": len(rally_rows),
             "top_sequences": top_sequences,
         },
         "meta": _with_input_provenance(

@@ -13,6 +13,7 @@ import {
 } from 'recharts'
 import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
+import { shotLabel } from '@/utils/analysisLabels'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { WIN, LOSS, getTooltipStyle } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
@@ -191,7 +192,7 @@ export function RallyDetailBanner({
           <div className="flex gap-1 items-center w-max">
             {strokes.map((s, i) => {
               const isA = s.player === 'player_a'
-              const shotLabel = t(`shot_types.${s.shot_type}`, s.shot_type)
+              const shotLabelText = shotLabel(t, s.shot_type)
               const isLast = i === strokes.length - 1
               return (
                 <span key={s.stroke_num} className="flex items-center gap-1 shrink-0">
@@ -202,8 +203,8 @@ export function RallyDetailBanner({
                       color: '#ffffff',
                     }}
                   >
-                    {isA ? 'A' : 'B'} {shotLabel}
-                    {s.hit_zone && <span className="text-[10px] opacity-70 ml-0.5">{s.hit_zone}</span>}
+                    {isA ? 'A' : 'B'} {shotLabelText}
+                    {s.hit_zone && <span className="text-[10px] opacity-70 ml-0.5">{t(`zones.${s.hit_zone}`, s.hit_zone ?? '')}</span>}
                   </span>
                   {!isLast && <span className="text-gray-500">→</span>}
                 </span>

@@ -69,9 +69,26 @@ function ChoiceBar({ choice, recommended }: { choice: ShotChoice; recommended: s
   )
 }
 
+// 縮退検出: 代替ショットの勝率が 100%（または 0%）に張り付いている、
+// あるいは全候補が同一勝率で差が付いていないとき、観察率は信頼できない
+// (完全分離 / ターゲットリーク / 標本過少)。この場合「改善幅」として見せない。
+function isDegenerate(comp: Comparison): boolean {
+  const choices = comp.choices
+  if (choices.length < 2) return true
+  const top = choices[0]
+  // 1位の勝率が境界値 (100% / 0%) に張り付いている
+  if (top.win_rate >= 1 || top.win_rate <= 0) return true
+  // 全候補の勝率が同一 (差分 0) に縮退している
+  const allSame = choices.every(c => c.win_rate === top.win_rate)
+  if (allSame) return true
+  return false
+}
+
 function ComparisonAccordion({ comp }: { comp: Comparison }) {
   const { t } = useTranslation()
 
+  const degenerate = isDegenerate(comp)
+  const showLift = comp.recommendation_supported && !degenerate
   const [open, setOpen] = useState(false)
   return (
     <div className="border border-gray-700 rounded-ss-lg overflow-hidden">
@@ -81,12 +98,21 @@ function ComparisonAccordion({ comp }: { comp: Comparison }) {
       >
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-sm text-gray-200 truncate">{comp.context_label}</span>
-          <span
-            className="text-xs px-1.5 py-0.5 rounded-ss-sm shrink-0 ss-num"
-            style={{ backgroundColor: WIN + '33', color: WIN, border: `1px solid ${WIN}` }}
-          >
-            {comp.recommendation_supported ? t('auto.CounterfactualShots.lift', { n: Math.round(comp.lift * 100) }) : t('auto.CounterfactualShots.observed_only')}
-          </span>
+          {degenerate ? (
+            <span
+              className="text-xs px-1.5 py-0.5 rounded-ss-sm shrink-0"
+              style={{ backgroundColor: '#78350f', color: '#fbbf24', border: '1px solid #f59e0b' }}
+            >
+              {t('auto.CounterfactualShots.degenerate_badge')}
+            </span>
+          ) : (
+            <span
+              className="text-xs px-1.5 py-0.5 rounded-ss-sm shrink-0 ss-num"
+              style={{ backgroundColor: WIN + '33', color: WIN, border: `1px solid ${WIN}` }}
+            >
+              {showLift ? t('auto.CounterfactualShots.lift', { n: Math.round(comp.lift * 100) }) : t('auto.CounterfactualShots.observed_only')}
+            </span>
+          )}
         </div>
         <span className="text-gray-400 ml-2">{open ? '▲' : '▼'}</span>
       </button>
@@ -94,9 +120,14 @@ function ComparisonAccordion({ comp }: { comp: Comparison }) {
         <div className="px-3 pb-3 space-y-2 border-t border-gray-700 pt-2">
           <div className="space-y-1.5">
             {comp.choices.map(c => (
-              <ChoiceBar key={c.shot_type} choice={c} recommended={comp.recommendation_supported ? comp.recommended : ''} />
+              <ChoiceBar key={c.shot_type} choice={c} recommended={showLift ? comp.recommended : ''} />
             ))}
           </div>
+          {degenerate && (
+            <p className="text-xs mt-2" style={{ color: '#fbbf24' }}>
+              {t('auto.CounterfactualShots.degenerate_warning')}
+            </p>
+          )}
           <p className="text-xs text-gray-400 mt-2 italic">{comp.interpretation}</p>
         </div>
       )}
