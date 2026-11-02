@@ -844,6 +844,7 @@
     "pca": {
       "title": "Principal component analysis (PCA 2D)",
       "description": "Standardizes numeric metrics and plots the top two principal components. Color = month (1-12).",
+      "low_sample_warning": "Note: with N={{n}} usable rows against p={{p}} columns, the samples are few and the principal components and loadings are unstable. Read the directions and distances as a rough reference only.",
       "no_data": "Not enough samples (need ≥10 valid rows and ≥3 columns)",
       "variance_explained": "Variance explained",
       "pc1": "PC1",
@@ -919,6 +920,7 @@
     "corr_heatmap": {
       "title": "Factor correlation heatmap",
       "note_no_factors": "Note: the list API doesn't return f1-f5 / ccs, so this table is limited to raw data such as Hooper/RPE/Sleep/InBody.",
+      "exploratory_caveat": "Exploratory view (not corrected for multiple comparisons). Many pairs are examined at once, so even strong correlations may be due to chance. Confidence intervals, p-values and multiple-comparison corrections are not shown. Treat these as hypothesis-generating only, not as findings.",
       "records": "{{n}} records",
       "loading": "Loading...",
       "no_data": "Not enough data",
@@ -1037,6 +1039,9 @@
       "col_mean": "Mean",
       "no_value": "—",
       "min_n_note": "Each cell shows N. When N<{{n}}, — is displayed.",
+      "dist_inline": "SD={{sd}} range {{lo}}-{{hi}}",
+      "dist_cell": "SD {{sd}} / {{lo}}-{{hi}}",
+      "dist_note": "Besides the mean we also show SD and the observed range (min-max). Monthly means from small samples vary a lot; do not read differences from point estimates alone.",
       "month_label": "{{n}}",
       "mode": {
         "month": "Monthly",
@@ -4303,7 +4308,8 @@
       "rate_diff_pp": "+{{n}}pp",
       "current_label": "Current",
       "target_range": "Observed range [{{r}}]",
-      "observed_single": "Observed {{v}}"
+      "observed_single": "Observed {{v}}",
+      "effect_size": "Effect size d={{d}}"
     },
     "ConditionGenericScatter": {
       "k1": "Low → High"
@@ -4678,6 +4684,7 @@
       "k5": "Complete JSON dump of all analysis items + per-match data",
       "k6": "Legacy summary scouting PDF",
       "k_n_rallies": "N={{n}} rallies",
+      "k_n_matches": "N={{n}} matches",
       "k_rally_win_rate": "Rally win rate",
       "k7": "PDF (comprehensive)",
       "k8": "JSON (complete)",

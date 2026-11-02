@@ -75,17 +75,22 @@ function StatCard({
   label,
   value,
   sampleSize,
+  sampleUnit = 'rallies',
 }: {
   icon: React.ReactNode
   label: string
   value: string | number | undefined
   sampleSize?: number
+  // 標本単位: 勝率は試合単位 (= matches)、ラリー由来の指標は rallies。
+  // 監査 #224: 勝率の下に N=ラリー数 を出すと確からしさを過大表示するため分ける。
+  sampleUnit?: 'rallies' | 'matches'
 }) {
   const { t } = useTranslation()
   // 旧版は bg-gray-800 を完全ハードコードしていてライトモードでも濃紺カード
   // のままになっていた (2026-05-19 修正)。
   const isLight = useIsLightMode()
-  const starsFilled = sampleSize === undefined ? null
+  // 星は rally 件数向けに調整された閾値。試合単位では意味が変わるため付けない。
+  const starsFilled = sampleSize === undefined || sampleUnit !== 'rallies' ? null
     : sampleSize < 500 ? 1
     : sampleSize < 2000 ? 2
     : 3
@@ -121,7 +126,9 @@ function StatCard({
                 {Array.from({ length: 3 }, (_, i) => <MIcon key={i} name={i < starsFilled ? 'star' : 'star_border'} size={10} />)}
               </span>
             )}
-            {t('auto.DashboardShell.k_n_rallies', { n: sampleSize.toLocaleString() })}
+            {sampleUnit === 'matches'
+              ? t('auto.DashboardShell.k_n_matches', { n: sampleSize.toLocaleString() })
+              : t('auto.DashboardShell.k_n_rallies', { n: sampleSize.toLocaleString() })}
           </p>
         )}
       </div>
@@ -420,7 +427,8 @@ export function DashboardShell() {
                     icon={<MIcon name="trending_up" size={18} />}
                     label={t('auto.DashboardShell.k_rally_win_rate')}
                     value={descriptive?.win_rate !== undefined ? pct(descriptive.win_rate) : undefined}
-                    sampleSize={descriptive?.total_rallies}
+                    sampleSize={descriptive?.total_matches}
+                    sampleUnit="matches"
                   />
                 )}
                 <StatCard
