@@ -3939,7 +3939,9 @@
       "analyzed_rallies": "Rallies analyzed: {{n}}",
       "interval": "interval {{low}}-{{high}}%",
       "unit_note": "Counts and rates are per rally that contains the sequence (a sequence repeated in one rally counts once). All three shots are the player's own; the opponent's returns in between are not included.",
-      "baseline": "Baseline: win rate over all rallies with 3 or more of your shots {{rate}}% (n={{n}})"
+      "baseline": "Baseline: win rate over all rallies with 3 or more of your shots {{rate}}% (n={{n}})",
+      "reference_badge": "Reference",
+      "reference_hint": "Fewer than {{n}} occurrences, so the interval is wide and this win rate is only indicative. The section-level confidence does not apply to individual patterns."
     },
     "ReceivedVulnerabilityMap": {
       "k1": "Opponent court (hit point) → Home court (landing)",
