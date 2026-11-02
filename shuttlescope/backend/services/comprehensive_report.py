@@ -61,6 +61,13 @@ def gather_player_report(
     """
     from backend.db.models import Match, Player, Rally, GameSet, Stroke
     from backend.analysis.player_context import involves_player
+    # audit #154: per_match に解析母集団への適格性 (eligibility) を明示する。
+    # 判定は解析本体と同じ analysis_population の語彙 (勝敗確定 かつ 有効ラリー有り)
+    # を使い、検証用 fixture (is_synthetic) は不適格に数える。
+    from backend.analysis.analysis_population import (
+        exclusion_reason as _ap_exclusion_reason,
+        is_synthetic_match as _ap_is_synthetic_match,
+    )
     role = ctx.role or "analyst"
 
     # ── 0. ヘッダ ────────────────────────────────────────────────────
@@ -264,6 +271,9 @@ def gather_player_report(
             .all()
         )
         per_match: list[dict] = []
+        # audit #154: 解析母集団への適格性を試合ごとに数える。合計は matches_included
+        # と一致し、eligible + 各除外理由 (unfinished / zero_rally / synthetic) に分かれる。
+        eligibility = {"eligible": 0, "unfinished": 0, "zero_rally": 0, "synthetic": 0}
         for m in matches:
             mset_ids = [s.id for s in db.query(GameSet).filter(GameSet.match_id == m.id).all()]
             r_count = (
@@ -291,7 +301,18 @@ def gather_player_report(
                 "captured_minor_flag": m.captured_minor_flag,
                 "created_at": m.created_at.isoformat() if m.created_at else None,
             })
+            # audit #154: この試合が解析母集団に入るか (eligibility)。合成 fixture は
+            # 先に synthetic へ、それ以外は勝敗確定 + 有効ラリーで eligible/除外理由に振る。
+            if _ap_is_synthetic_match(m):
+                eligibility["synthetic"] += 1
+            else:
+                _reason = _ap_exclusion_reason(m.result, r_count)
+                eligibility["eligible" if _reason is None else _reason] += 1
         header["matches_included"] = len(per_match)
+        # audit #154: 「含めた試合数」だけでは未完了・未解析・検証用 fixture が
+        # 解析母集団と混ざって見える。レポート生成時点の適格性内訳を明示する
+        # (解析本体と同じ analysis_population の定義で数える)。
+        header["matches_eligibility"] = eligibility
     else:
         per_match = []
 
