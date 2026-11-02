@@ -2045,6 +2045,7 @@
       "zone": "Zone",
       "win_rate": "Point-won rate",
       "effectiveness": "Effectiveness",
+      "effectiveness_help": "Effectiveness = point-won rate x frequency. Shown on a 0-100 scale; higher means a zone you use often and win from. It is a composite metric, distinct from the point-won rate.",
       "count_short": "{{n}}",
       "top_zones": "Top effective zones"
     },

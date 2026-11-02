@@ -180,7 +180,7 @@ export function EffectiveDistributionMap({ playerId, filters = DEFAULT_FILTERS }
                     <>
                       <th className="text-center py-1.5 pr-3">{t('auto.EffectiveDistributionMap.k3')}</th>
                       <th className="text-center py-1.5 pr-3">{t('analysis.effective_map.win_rate')}</th>
-                      <th className="text-right py-1.5">{t('analysis.effective_map.effectiveness')}</th>
+                      <th className="text-right py-1.5" title={t('analysis.effective_map.effectiveness_help')}>{t('analysis.effective_map.effectiveness')}</th>
                     </>
                   )}
                 </tr>
