@@ -3256,6 +3256,7 @@
     "tab_land": "Landing point",
     "tab_composite": "Composite",
     "composite_note": "Landing points are point-symmetrically mapped around the net and overlaid on the home-court coordinates. Click a tile for hit- and landing-point details.",
+    "missingness_hit": "{{missing}} shots have no recorded hit point (of {{land}} landing points; {{pct}} missing). The hit-point heatmap excludes them.",
     "period_all": "All time",
     "period_last_n": "Last {{n}} matches",
     "match_select_empty": "Select a match (individual)",
