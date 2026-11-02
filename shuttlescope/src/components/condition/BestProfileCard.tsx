@@ -76,6 +76,10 @@ export function BestProfileCard({ playerId, isLight }: Props) {
   const sepColor    = 'border-[var(--ss-border)]'
   const topFactors = (data?.key_factors ?? []).slice(0, 5)
   const n = data?.n_matches ?? 0
+  // 監査 #73: backend が confidence="none" を返すときは体調モデルが成立していない
+  // (勝敗が紐づく記録が無い)。推奨レンジや勝率関連を出すと「モデル不可」と同居して
+  // しまうため、ここでは明示的な不可状態だけを出す (fail closed)。
+  const modelUnavailable = !!data && data.confidence === 'none'
   const inRate  = isPlayer ? null : data?.win_rate_in_profile
   const outRate = isPlayer ? null : data?.win_rate_outside
   const rateDiff = (inRate != null && outRate != null)
@@ -88,7 +92,7 @@ export function BestProfileCard({ playerId, isLight }: Props) {
         <h2 className={`text-sm font-semibold ${textStrong}`}>
           {t(isPlayer ? 'condition.best_profile.title_player' : 'condition.best_profile.title_coach')}
         </h2>
-        {n > 0 && <MatchConfidenceBadge n={n} isLight={isLight} />}
+        {!modelUnavailable && n > 0 && <MatchConfidenceBadge n={n} isLight={isLight} />}
       </div>
 
       {isLoading ? (
@@ -97,6 +101,10 @@ export function BestProfileCard({ playerId, isLight }: Props) {
         <div className={`${textMuted} text-xs`} role="alert">{t('condition.error')}</div>
       ) : !data ? (
         <div className={`${textMuted} text-xs`}>{t('condition.best_profile.no_data')}</div>
+      ) : modelUnavailable ? (
+        <div className={`${textMuted} text-xs`} role="status">
+          {t('condition.best_profile.model_unavailable')}
+        </div>
       ) : (
         <div className="space-y-4">
           {/* 勝率サマリー */}
@@ -135,8 +143,14 @@ export function BestProfileCard({ playerId, isLight }: Props) {
                   const tMin = f.target_min
                   const tMax = f.target_max
 
-                  const targetRange = (tMin != null || tMax != null)
+                  // zero-width (tMin===tMax) is not an interval estimate; do not promote to target range.
+                  // Showing a single observed point as X~X is false precision (audit #74), so suppress it.
+                  const isZeroWidth = tMin != null && tMax != null && tMin === tMax
+                  const targetRange = ((tMin != null || tMax != null) && !isZeroWidth)
                     ? `${tMin != null ? tMin.toFixed(1) : '—'}〜${tMax != null ? tMax.toFixed(1) : '—'}${unit ? unit : ''}`
+                    : null
+                  const observedSingle = isZeroWidth && tMin != null
+                    ? `${tMin.toFixed(1)}${unit ? unit : ''}`
                     : null
 
                   // 詳細説明: target_mean / rest_mean から自動生成 (実数値ベース)。
@@ -165,6 +179,11 @@ export function BestProfileCard({ playerId, isLight }: Props) {
                         {targetRange && (
                           <span className={`text-[11px] font-mono ss-num ${textMuted} shrink-0`}>
                             {t('auto.BestProfileCard.target_range', { r: targetRange })}
+                          </span>
+                        )}
+                        {observedSingle && (
+                          <span className={`text-[11px] font-mono ss-num ${textMuted} shrink-0`}>
+                            {t('auto.BestProfileCard.observed_single', { v: observedSingle })}
                           </span>
                         )}
                       </div>

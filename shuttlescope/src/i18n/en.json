@@ -965,6 +965,7 @@
       "gap_no_data": "—",
       "loading": "Loading...",
       "no_data": "Collecting data",
+      "model_unavailable": "The condition model is not available yet (not enough records linked to match outcomes). Recommended ranges appear once enough data is collected.",
       "key": {
         "ccs_score": "CCS score",
         "f1_physical": "Physical condition",
@@ -4283,7 +4284,8 @@
       "n_matches_paren": "({{n}} matches)",
       "rate_diff_pp": "+{{n}}pp",
       "current_label": "Current",
-      "target_range": "Observed range [{{r}}]"
+      "target_range": "Observed range [{{r}}]",
+      "observed_single": "Observed {{v}}"
     },
     "ConditionGenericScatter": {
       "k1": "Low → High"
