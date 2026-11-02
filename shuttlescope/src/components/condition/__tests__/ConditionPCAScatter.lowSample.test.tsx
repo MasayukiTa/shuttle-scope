@@ -63,6 +63,13 @@ beforeEach(() => {
   mockData = []
 })
 
+class RO {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+;(globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = RO
+
 describe('ConditionPCAScatter low-sample warning (item 220)', () => {
   it('n/p < 5 (16 rows, 9 vars): 参考表示の注記バナーを出す', () => {
     mockData = Array.from({ length: 16 }, (_, i) => rowFull(i))

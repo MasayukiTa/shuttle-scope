@@ -20,6 +20,13 @@ vi.mock('@/hooks/useConditions', () => ({
 
 import { ConditionSeasonality } from '../ConditionSeasonality'
 
+class RO {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+;(globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = RO
+
 describe('ConditionSeasonality: 少標本で分布を併記', () => {
   it('月別セルに SD と min〜max の範囲を表示する', () => {
     const { container } = render(<ConditionSeasonality playerId={1} isLight={false} />)

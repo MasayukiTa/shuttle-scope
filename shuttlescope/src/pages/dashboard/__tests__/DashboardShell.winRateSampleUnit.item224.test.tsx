@@ -55,6 +55,13 @@ import { DashboardShell } from '../DashboardShell'
 
 Element.prototype.scrollIntoView = () => {}
 
+class RO {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+;(globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = RO
+
 describe('DashboardShell KPI: \u52dd\u7387\u306e\u6a19\u672c\u5358\u4f4d\u306f\u8a66\u5408 (#224)', () => {
   it('\u52dd\u7387\u30ab\u30fc\u30c9\u306f N=53\u8a66\u5408 \u3092\u51fa\u3057 N=4,449\u30e9\u30ea\u30fc \u3092\u51fa\u3055\u306a\u3044', async () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
