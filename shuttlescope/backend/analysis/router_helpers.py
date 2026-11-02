@@ -13,7 +13,7 @@ from backend.analysis.player_context import (
     player_result_filter as _player_result_filter,
 )
 from backend.analysis.analysis_population import split_analysis_population
-from backend.analysis.shot_taxonomy import SHOT_TYPE_JA as _SHOT_TYPE_JA_TAXONOMY, CANONICAL_SHOTS
+from backend.analysis.shot_taxonomy import SHOT_TYPE_JA as _SHOT_TYPE_JA_TAXONOMY, CANONICAL_SHOTS, canonicalize as _canonicalize_shot
 
 SHOT_TYPE_JA = _SHOT_TYPE_JA_TAXONOMY
 SHOT_KEYS = CANONICAL_SHOTS
@@ -30,15 +30,12 @@ END_TYPE_JA = {
 
 
 def _shot_ja(shot_type: str | None) -> str:
-    _MAP = {
-        "smash": "スマッシュ", "clear": "クリア", "drop": "ドロップ",
-        "net": "ネット", "drive": "ドライブ", "lob": "ロブ",
-        "serve": "サーブ", "push": "プッシュ", "lift": "リフト",
-        "hair_pin": "ヘアピン", "hairpin": "ヘアピン", "flick": "フリック",
-    }
+    # 速報等の文章生成で内部ショット名 (short_service / net_shot 等) が
+    # そのまま露出しないよう、canonical な日本語ラベルに委譲する
+    # (監査 #146)。未知キーは canonicalize 経由で 「その他」 に落ち、生名は返さない。
     if not shot_type:
         return "不明"
-    return _MAP.get(shot_type.lower(), shot_type)
+    return _SHOT_TYPE_JA_TAXONOMY.get(_canonicalize_shot(shot_type), "その他")
 
 
 def _player_role_in_match(match: Match, player_id: int) -> str | None:

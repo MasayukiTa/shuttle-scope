@@ -24,7 +24,7 @@ from backend.analysis.match_filter import (
     MatchFilter, match_filter_params, select_population, stamps_population,
 )
 from backend.analysis.analysis_config import AnalysisConfig
-from backend.analysis.service_shots import is_service_shot
+from backend.analysis.service_shots import is_service_shot, truncate_at_stray_service
 from backend.analysis.response_meta import build_input_provenance
 from backend.analysis.growth_engine import (
     growth_points_weighted,
@@ -1805,14 +1805,19 @@ def get_flash_advice(
     pre_loss_3 = []
     for rid in loss_rallies:
         strokes = strokes_by_rally.get(rid, [])
+        # ラリー連結や記録の食い違いでラリー途中に混入したサーブ系ショットは
+        # ラリー中盤の球ではない。先頭以外のサーブで列を打ち切り、それ以降の
+        # 偽の球を捨ててから失点直前の球を選ぶ (監査 #38 / #147)。
+        kept = truncate_at_stray_service([s.shot_type for s in strokes])
+        strokes = strokes[: len(kept)]
         # 最後から3球目以前のショット（失点直前）
         chosen = None
         if len(strokes) >= 3:
             chosen = strokes[-3]
         elif len(strokes) >= 2:
             chosen = strokes[-2]
-        # サーブはラリー中盤の球ではない。短いラリーで先頭のサーブが選ばれても
-        # 「ラリー中盤にサーブが多い」と出さない (監査 #38)。
+        # 短いラリーで先頭のサーブが選ばれても
+        # 「ラリー中盤にサーブが多い」と出さない。
         if chosen is not None and is_service_shot(chosen.shot_type):
             chosen = None
         if chosen is not None:
