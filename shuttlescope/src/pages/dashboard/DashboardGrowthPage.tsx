@@ -10,6 +10,7 @@ import { GrowthTimeline } from '@/components/analysis/GrowthTimeline'
 import { PairCombinedView } from '@/components/analysis/PairCombinedView'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { AdviceStrip } from '@/components/common/AdviceStrip'
+import { FilterNotAppliedNote } from '@/components/common/FilterNotAppliedNote'
 import { useAuth } from '@/hooks/useAuth'
 
 interface Props {
@@ -36,6 +37,8 @@ export function DashboardGrowthPage({ playerId, filters, sortedPlayers }: Props)
 
   return (
     <div className="space-y-5">
+      {/* タブ全体への注記: 成長タブのカードは上部の絞り込みを使わず全試合で集計する (監査 #122) */}
+      <FilterNotAppliedNote filters={filters} />
       {/* 伸びしろ Snapshot (テンプレ生成・LLM プラガブル) */}
       {playerId && (
         <ErrorBoundary>

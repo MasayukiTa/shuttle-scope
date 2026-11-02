@@ -3953,7 +3953,10 @@
       "k1": "Recommended advice",
       "k2": "Loading...",
       "k3": "Recommended advice ranking",
-      "k4": "strokes"
+      "k4": "strokes",
+      "score_legend": "Priority score (0-100). An internal ranking metric, not a win rate.",
+      "score_unit": "/100",
+      "scope_note": "This list reflects the player's all-time overall tendencies. It is not tied to the currently selected match, set, or rally."
     },
     "ScorelineHistogram": {
       "k1": "Details",
