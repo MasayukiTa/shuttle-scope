@@ -1703,7 +1703,7 @@
       "numpad_title_mobile": "着地点の入力テンキー（ショットキーの後だけ）",
       "numpad_recommended": "テンキー（推奨）",
       "numpad_hint": "0/Num0 = スキップ　Esc/BS = キャンセル",
-      "letters_laptop": "文字キー（ノートPC向け）",
+      "letters_laptop": "文字キー（ノートPC向け・着地点入力中のみ）",
       "court_change": "コートチェンジ",
       "first_serve": "先サーブ",
       "analyst_view": "アナリスト視点",
@@ -2075,7 +2075,8 @@
         "trend": "セット内勝率トレンド",
         "fatigue_signal": "長ラリー後のパフォーマンス"
       },
-      "extended_label": "★ 高確信度の追加示唆"
+      "extended_label": "★ 高確信度の追加示唆",
+      "extended_note": "追加示唆を含む"
     },
     "opponent_type_affinity": {
       "title": "相手タイプ別相性",
@@ -4178,7 +4179,7 @@
       "n_only": "N={{n}}",
       "value_behavior_label": "現在",
       "value_target_label": "目標",
-      "ci_range": "95% CI: {{low}} 〜 {{high}}（幅 {{width}}）",
+      "ci_range": "目標勝率の95% CI: {{low}} 〜 {{high}}（幅 {{width}}）",
       "phase_early": "序盤",
       "phase_mid": "中盤",
       "phase_deuce": "デュース",
@@ -5503,8 +5504,8 @@
       "check_mark": "✅"
     },
     "PendingUsersPage": {
-      "verified": "verified",
-      "unverified": "unverified"
+      "verified": "確認済み",
+      "unverified": "メール未確認"
     },
     "TeamManagementPage": {
       "aria_edit": "「{{name}}」を編集",

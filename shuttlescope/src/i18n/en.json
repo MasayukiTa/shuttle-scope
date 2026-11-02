@@ -1579,7 +1579,7 @@
       "numpad_title_mobile": "Landing spot numpad (only right after a shot key)",
       "numpad_recommended": "Numpad (recommended)",
       "numpad_hint": "0/Num0 = skip　Esc/BS = cancel",
-      "letters_laptop": "Letter keys (for laptops)",
+      "letters_laptop": "Letter keys (for laptops, during landing input only)",
       "court_change": "Court change",
       "first_serve": "First serve",
       "analyst_view": "Analyst view",
@@ -2068,7 +2068,8 @@
         "trend": "In-set win-rate trend",
         "fatigue_signal": "Performance after long rallies"
       },
-      "extended_label": "★ High-confidence additional insights"
+      "extended_label": "★ High-confidence additional insights",
+      "extended_note": "Includes additional insights"
     },
     "opponent_type_affinity": {
       "title": "Affinity by opponent type",
@@ -4170,7 +4171,7 @@
       "n_only": "N={{n}}",
       "value_behavior_label": "Current",
       "value_target_label": "Target",
-      "ci_range": "95% CI: {{low}} – {{high}} (width {{width}})",
+      "ci_range": "Target win-rate 95% CI: {{low}} – {{high}} (width {{width}})",
       "phase_early": "Early",
       "phase_mid": "Mid",
       "phase_deuce": "Deuce",
@@ -5490,8 +5491,8 @@
       "check_mark": "✅"
     },
     "PendingUsersPage": {
-      "verified": "verified",
-      "unverified": "unverified"
+      "verified": "Verified",
+      "unverified": "Not verified"
     },
     "TeamManagementPage": {
       "aria_edit": "Edit \"{{name}}\"",

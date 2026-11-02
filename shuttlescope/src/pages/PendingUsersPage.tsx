@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, listTeams, newIdempotencyKey, type TeamDTO } from '@/api/client'
 import { errorMessage } from '@/utils/errors'
+import { formatJST } from '@/utils/datetime'
 
 type AssignableRole = 'player' | 'coach' | 'analyst'
 
@@ -176,7 +177,7 @@ function PendingUserRow({
               <span className="ml-2 text-[var(--ss-warn)]">{t('auto.PendingUsersPage.unverified')}</span>
             )}
           </div>
-          <div className="text-[10px] text-[var(--ss-t3)] ss-num">{user.created_at}</div>
+          <div className="text-[10px] text-[var(--ss-t3)] ss-num">{formatJST(user.created_at)}</div>
           {user.inquiry ? (
             <div className="mt-1 text-xs text-[var(--ss-t2)]">
               {t('pendingUsers.inquiry_found')}

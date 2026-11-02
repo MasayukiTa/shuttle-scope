@@ -40,7 +40,15 @@ interface ProgressResponse {
   per_match: ProgressEntry[]
 }
 
-const BLOCKED_STATUSES: ReviewStatus[] = ['no_targets', 'no_video']
+// audit #176: clips_pending (対象・動画はあるがクリップ未生成) も開始をブロックする。
+// 開始すると詳細画面が no_clips (「クリップがありません」) の行き止まりになるため、
+// 一覧上は status_clips_pending を示して CTA を無効化する (fail closed)。
+const BLOCKED_STATUSES: ReviewStatus[] = ['no_targets', 'no_video', 'clips_pending']
+
+// 一覧の「開始」CTA を出せない (= 行き止まり) 状態か。単体テスト用に export する。
+export function isStartBlocked(status: ReviewStatus): boolean {
+  return BLOCKED_STATUSES.includes(status)
+}
 
 type ActiveTab = 'matches' | 'cog'
 
@@ -253,7 +261,7 @@ function ExpertLabelerContent() {
             <ul className="space-y-3">
               {filtered.map((v) => {
                 const status: ReviewStatus = v.review_status ?? 'ready'
-                const blocked = BLOCKED_STATUSES.includes(status)
+                const blocked = isStartBlocked(status)
                 // ミス件数 0 のときは完了率を出さない（0% と書くと未着手に見える）
                 const hasTargets = v.miss_count > 0
                 const labeledKnown = v.labeled_count !== null
