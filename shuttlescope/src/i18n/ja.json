@@ -852,6 +852,7 @@
     "pca": {
       "title": "主成分分析（PCA 2D）",
       "description": "数値指標を標準化し、上位2主成分の散布を表示。色は月（1〜12）。",
+      "low_sample_warning": "注: 有効行 N={{n}} に対し列 p={{p}} と標本が少なく、主成分と負荷量（loadings）は不安定です。配置の向きや距離は参考程度にとどめてください。",
       "no_data": "サンプル不足（有効行 ≥10 かつ 列 ≥3 が必要）",
       "variance_explained": "寄与率",
       "pc1": "第1主成分",
@@ -927,6 +928,7 @@
     "corr_heatmap": {
       "title": "因子相関ヒートマップ",
       "note_no_factors": "注: list API は f1〜f5 / ccs を返さないため、本表の対象は Hooper/RPE/睡眠/InBody などの生データに限定されます。",
+      "exploratory_caveat": "探索的表示（多重比較未補正）。多数のペアを同時に見ているため、強い相関も偶然の可能性があります。CI・p値・多重比較補正は未表示です。発見として扱わず、仮説生成の参考にとどめてください。",
       "records": "{{n}} 件の記録",
       "loading": "読み込み中...",
       "no_data": "データが不足しています",
@@ -1045,6 +1047,9 @@
       "col_mean": "平均",
       "no_value": "—",
       "min_n_note": "各セルに N を併記。N<{{n}} の場合は — を表示します。",
+      "dist_inline": "SD={{sd}} 範囲 {{lo}}〜{{hi}}",
+      "dist_cell": "SD {{sd}} / {{lo}}〜{{hi}}",
+      "dist_note": "平均のみでなく SDと実測範囲（最小〜最大）も併記します。少標本の月別平均はばらつきが大きく、点推定だけで差を読まないでください。",
       "month_label": "{{n}}月",
       "mode": {
         "month": "月次",
@@ -4311,7 +4316,8 @@
       "rate_diff_pp": "+{{n}}pp",
       "current_label": "現在",
       "target_range": "観測範囲 [{{r}}]",
-      "observed_single": "観測値 {{v}}"
+      "observed_single": "観測値 {{v}}",
+      "effect_size": "効果量 d={{d}}"
     },
     "ConditionGenericScatter": {
       "k1": "低 → 高"
@@ -4686,6 +4692,7 @@
       "k5": "解析全項目 + 試合単位データの完全 JSON dump",
       "k6": "従来の要約スカウティング PDF",
       "k_n_rallies": "N={{n}}ラリー",
+      "k_n_matches": "N={{n}}試合",
       "k_rally_win_rate": "ラリー勝率",
       "k7": "PDF (包括)",
       "k8": "JSON (完全)",

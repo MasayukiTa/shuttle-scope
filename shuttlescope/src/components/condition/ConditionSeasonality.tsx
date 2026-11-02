@@ -11,7 +11,7 @@ import {
   CartesianGrid,
 } from 'recharts'
 import { useConditions, ConditionRecord } from '@/hooks/useConditions'
-import { mean } from '@/utils/stats'
+import { mean, sampleStd } from '@/utils/stats'
 import { catColor } from '@/styles/categoricalPalette'
 
 // 平均からの偏差 d (-1..1) → 赤・灰・青の 3 色 divergent。
@@ -160,7 +160,10 @@ export function ConditionSeasonality({ playerId, isLight }: Props) {
       const arr = b.values[effectiveMetric] ?? []
       const n = arr.length
       const m = n >= MIN_N ? mean(arr) : null
-      return { label: b.label, n, value: m as number | null }
+      const sd = n >= MIN_N ? sampleStd(arr) : null
+      const lo = n >= MIN_N && arr.length > 0 ? Math.min(...arr) : null
+      const hi = n >= MIN_N && arr.length > 0 ? Math.max(...arr) : null
+      return { label: b.label, n, value: m as number | null, sd, lo, hi }
     })
     // 全 bucket の平均と min/max から divergent スケールの正規化幅を決める
     const valid = points.map((p) => p.value).filter((v): v is number => v != null)
@@ -253,10 +256,25 @@ export function ConditionSeasonality({ playerId, isLight }: Props) {
                     borderRadius: 6,
                   }}
                   formatter={(v: unknown, _name, payload) => {
-                    const n = (payload?.payload as { n?: number } | undefined)?.n ?? 0
+                    const pp = payload?.payload as
+                      | { n?: number; sd?: number | null; lo?: number | null; hi?: number | null }
+                      | undefined
+                    const n = pp?.n ?? 0
                     if (v == null) return ['—', t('condition.seasonality.col_mean')]
+                    const sd = pp?.sd
+                    const lo = pp?.lo
+                    const hi = pp?.hi
+                    const dist =
+                      sd != null && lo != null && hi != null
+                        ? ' ' +
+                          t('condition.seasonality.dist_inline', {
+                            sd: sd.toFixed(2),
+                            lo: lo.toFixed(2),
+                            hi: hi.toFixed(2),
+                          })
+                        : ''
                     return [
-                      `${(v as number).toFixed(2)} (N=${n})`,
+                      `${(v as number).toFixed(2)} (N=${n})${dist}`,
                       t('condition.seasonality.col_mean'),
                     ]
                   }}
@@ -299,6 +317,9 @@ export function ConditionSeasonality({ playerId, isLight }: Props) {
                       const arr = b.values[k] ?? []
                       const n = arr.length
                       const m = n >= MIN_N ? mean(arr) : null
+                      const sd = n >= MIN_N ? sampleStd(arr) : null
+                      const lo = n >= MIN_N && arr.length > 0 ? Math.min(...arr) : null
+                      const hi = n >= MIN_N && arr.length > 0 ? Math.max(...arr) : null
                       return (
                         <td key={k} className="px-2 py-1 text-right num-cell ss-num">
                           {m == null ? (
@@ -310,6 +331,15 @@ export function ConditionSeasonality({ playerId, isLight }: Props) {
                             <>
                               {m.toFixed(2)}
                               <span className={`ml-1 ${muted}`}>{t('auto.ConditionSeasonality.n_count', { n })}</span>
+                              {sd != null && lo != null && hi != null && (
+                                <div className={`text-[10px] ${muted}`}>
+                                  {t('condition.seasonality.dist_cell', {
+                                    sd: sd.toFixed(2),
+                                    lo: lo.toFixed(2),
+                                    hi: hi.toFixed(2),
+                                  })}
+                                </div>
+                              )}
                             </>
                           )}
                         </td>
@@ -322,6 +352,8 @@ export function ConditionSeasonality({ playerId, isLight }: Props) {
           </div>
           <div className={`${muted} text-[11px] mt-2`}>
             {t('condition.seasonality.min_n_note', { n: MIN_N })}
+            {' '}
+            {t('condition.seasonality.dist_note')}
           </div>
         </>
       )}

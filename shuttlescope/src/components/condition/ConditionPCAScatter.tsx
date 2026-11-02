@@ -211,6 +211,14 @@ export function ConditionPCAScatter({ playerId, isLight }: Props) {
           <div className={`${textMuted} text-xs`}>{t('condition.pca.no_data')}</div>
         ) : (
           <>
+            {pca.points.length < pca.usableKeys.length * 5 && (
+              <div
+                role="note"
+                className={`mb-3 rounded-ss border ${borderColor} bg-[var(--ss-surface-2)] px-3 py-2 text-[11px] ${textMuted}`}
+              >
+                {t('condition.pca.low_sample_warning', { n: pca.points.length, p: pca.usableKeys.length })}
+              </div>
+            )}
             <div style={{ width: '100%', height: 320 }}>
               <ResponsiveContainer>
                 <ScatterChart margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>

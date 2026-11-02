@@ -152,6 +152,12 @@ export function BestProfileCard({ playerId, isLight }: Props) {
                   const observedSingle = isZeroWidth && tMin != null
                     ? `${tMin.toFixed(1)}${unit ? unit : ''}`
                     : null
+                  // 効果量 (標準化差 |d|) を併記する (監査 #223)。範囲を「最適な目標値」
+                  // ではなく「勝ち試合群と残りの間で観測された差の大きさ」として読ませる。
+                  // 分析指標なので player には出さない (coach 以上)。
+                  const effectSize = !isPlayer && f.importance != null
+                    ? Math.abs(f.importance).toFixed(2)
+                    : null
 
                   // 詳細説明: target_mean / rest_mean から自動生成 (実数値ベース)。
                   // 値の差は観察された関連であり、上げる・下げるといった助言には変換しない。
@@ -184,6 +190,11 @@ export function BestProfileCard({ playerId, isLight }: Props) {
                         {observedSingle && (
                           <span className={`text-[11px] font-mono ss-num ${textMuted} shrink-0`}>
                             {t('auto.BestProfileCard.observed_single', { v: observedSingle })}
+                          </span>
+                        )}
+                        {effectSize && (targetRange || observedSingle) && (
+                          <span className={`text-[11px] font-mono ss-num ${textMuted} shrink-0`}>
+                            {t('auto.BestProfileCard.effect_size', { d: effectSize })}
                           </span>
                         )}
                       </div>
