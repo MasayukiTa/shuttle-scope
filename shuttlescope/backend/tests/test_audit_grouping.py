@@ -62,6 +62,33 @@ def test_fingerprint_ignores_ids_and_numbers_but_not_type():
     assert a != error_fingerprint("ValueError", "GET", "/api/players/12", "bad id 12")
 
 
+def test_fingerprint_matches_known_sha1_truncation():
+    # usedforsecurity=False に切り替えても値 (grouping 結果) が変わらないことを固定する。
+    # 期待値は sha1("ValueError|GET|/api/matches/:id|bad id #")[:16]。
+    import hashlib
+
+    raw = "ValueError|GET|/api/matches/:id|bad id #"
+    expected = hashlib.sha1(raw.encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
+    assert error_fingerprint("ValueError", "GET", "/api/matches/12", "bad id 12") == expected
+
+
+def test_fingerprint_declares_non_security_use():
+    # weak-hash 警告 (Bandit B324 / Semgrep weak-hash / devskim DS126858) を
+    # 抑制コメントだけで黙らせる退行を防ぐ。sha1 を使い続けるなら用途宣言
+    # (usedforsecurity=False) が必須で、素の sha1(...) 呼び出しは残さない。
+    from pathlib import Path
+
+    src = Path(__file__).resolve().parents[1] / "utils" / "audit_grouping.py"
+    text = src.read_text(encoding="utf-8")
+    assert "usedforsecurity=False" in text
+    # hashlib.sha1( の全呼び出しが用途宣言 (usedforsecurity=) を伴うこと。
+    # コメント行は除外し、呼び出し行ごとに検査する (引数内の括弧に強い)。
+    for line in text.splitlines():
+        code = line.split("#", 1)[0]
+        if "hashlib.sha1(" in code:
+            assert "usedforsecurity=" in code, line
+
+
 def test_group_error_rows_counts_and_first_last():
     base = datetime(2026, 10, 1, 12, 0, 0)
     msg = "'Depends' object has no attribute 'get'"
