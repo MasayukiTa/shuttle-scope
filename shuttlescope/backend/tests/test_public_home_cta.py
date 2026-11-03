@@ -24,14 +24,15 @@ def _hero(html: str) -> str:
 def test_home_shows_registration_cta_when_enabled(monkeypatch):
     html = _render(monkeypatch, 1)
     hero = _hero(html)
-    # 主 CTA は登録。リンク先はアプリの実在ルート (#/register)
-    assert f'<a href="{REGISTER_HREF}" class="btn-cta">' in hero
+    # 主 CTA はログイン (登録済みの利用者が最初に押す)。登録は副 CTA。
+    assert 'href="https://app.shuttle-scope.com/login" class="btn-cta"' in hero
+    assert f'<a href="{REGISTER_HREF}" class="btn-cta-sub">' in hero
     assert '<span class="ja">無料で登録</span><span class="en">Sign up free</span>' in hero
     # 承認制の説明が CTA の近くにある
     assert "管理者が内容を確認して承認します。" in hero
     assert "reviews and approves your account" in hero
-    # お問い合わせは副 CTA として残る
-    assert 'href="/contact" class="btn-cta-sub"' in hero
+    # 研究連携・法人の相談リンクは先頭の CTA に置かない (お問い合わせはナビとフッターにある)
+    assert "研究連携・法人のご相談" not in hero
     # フッターの新規登録リンクも出る
     assert html.count(REGISTER_HREF) >= 4
 
