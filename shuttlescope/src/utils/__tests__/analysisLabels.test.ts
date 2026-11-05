@@ -39,7 +39,7 @@ describe('shotLabel', () => {
 describe('stateKeyLabel', () => {
   it("'early|second|medium|receiver' を日本語の並びにする", () => {
     expect(stateKeyLabel(t, 'early|second|medium|receiver')).toBe(
-      '序盤 / 第2セット / 中くらいのラリー / レシーバー',
+      '序盤 / 第2ゲーム / 中くらいのラリー / レシーバー',
     )
   })
 

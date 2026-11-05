@@ -23,7 +23,7 @@ def _stroke_require_scope(request: Request, db: Session, rally_id: int) -> Match
         raise HTTPException(status_code=404, detail="ラリーが見つかりません")
     gs = db.get(GameSet, rally.set_id)
     if not gs:
-        raise HTTPException(status_code=404, detail="セットが見つかりません")
+        raise HTTPException(status_code=404, detail="ゲームが見つかりません")
     match = db.get(Match, gs.match_id)
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
@@ -261,7 +261,7 @@ def batch_save_rally(
     # セット存在確認 + team scope (R48: player は自分の試合のみ可、scope 経由判定)
     game_set = db.get(GameSet, body.rally.set_id)
     if not game_set:
-        raise HTTPException(status_code=404, detail="セットが見つかりません")
+        raise HTTPException(status_code=404, detail="ゲームが見つかりません")
     match = db.get(Match, game_set.match_id)
     if match:
         require_match_scope(request, match, db)

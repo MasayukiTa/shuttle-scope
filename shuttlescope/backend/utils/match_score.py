@@ -40,9 +40,9 @@ def score_consistency_error(final_score: Optional[str], result: Optional[str]) -
     a_sets = b_sets = 0
     for a, b in sets:
         if a == b:
-            return "final_score に引き分けのセットがあります"
+            return "final_score に引き分けのゲームがあります"
         if a_sets >= _SETS_TO_WIN or b_sets >= _SETS_TO_WIN:
-            return "final_score は 2 セット先取で決着した後にセットが続いています (3 セットマッチとして成立しません)"
+            return "final_score は 2 ゲーム先取で決着した後にゲームが続いています (3 ゲームマッチとして成立しません)"
         if a > b:
             a_sets += 1
         else:
@@ -81,7 +81,7 @@ def set_count_consistency_error(
         return (
             "final_score は "
             + str(len(sets))
-            + " セットですが、記録済みのセットは "
+            + " ゲームですが、記録済みのゲームは "
             + str(recorded_set_count)
             + " しかありません (スコアと記録が矛盾しています)"
         )
