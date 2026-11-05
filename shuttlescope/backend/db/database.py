@@ -166,6 +166,9 @@ def add_columns_if_missing(eng) -> None:
         ("rallies", "review_status",             "TEXT"),
         # 入力ソース
         ("strokes", "source_method",             "TEXT"),
+        # 要望6: ショットの意図メモ（選択式タグ + 短い自由記述）
+        ("strokes", "intent_tag",                "TEXT"),
+        ("strokes", "intent_note",               "TEXT"),
         # LAN セッション認証・デバイス制御 (migration 0003)
         ("shared_sessions",    "password_hash",           "TEXT"),
         ("session_participants", "device_type",           "TEXT"),
