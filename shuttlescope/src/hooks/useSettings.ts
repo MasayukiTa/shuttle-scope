@@ -104,8 +104,11 @@ export function useSettings() {
 
   // 初回マウント時にバックエンドから最新設定を取得
   useEffect(() => {
+    // アンマウント後の setState (teardown 済み環境) を中断フラグで抑止。
+    let active = true
     apiGet<{ success: boolean; data: Record<string, unknown> }>('/settings')
       .then((res) => {
+        if (!active) return
         if (res.success) {
           const merged = { ...DEFAULTS, ...(res.data as Partial<AppSettings>) }
           setSettingsState(merged)
@@ -113,6 +116,9 @@ export function useSettings() {
         }
       })
       .catch(() => {/* バックエンド未起動時はlocalStorageで動作 */})
+    return () => {
+      active = false
+    }
   }, [])
 
   const updateSettings = useCallback(async (partial: Partial<AppSettings>): Promise<boolean> => {

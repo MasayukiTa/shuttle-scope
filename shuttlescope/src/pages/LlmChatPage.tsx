@@ -146,7 +146,10 @@ export default function LlmChatPage() {
   useEffect(() => {
     // 設定 / モデル一覧の取得失敗は黙って握り潰さず利用者へ知らせる (モデル未選択のまま
     // backend 既定へ暗黙送信される状態に気付けるようにする)。
-    getLlmConfig().then(setConfig).catch(() => {
+    // アンマウント後の setState (teardown 済み環境) を中断フラグで抑止。
+    let active = true
+    getLlmConfig().then((v) => { if (active) setConfig(v) }).catch(() => {
+      if (!active) return
       setConfig(null)
       setError(i18n.t('llm.error.bootstrap_failed'))
     })
@@ -155,16 +158,21 @@ export default function LlmChatPage() {
     // localStorage の値が allowlist 内ならそれを、無ければ backend 既定を使う。
     getLlmModels()
       .then(({ models: list, default: def }) => {
+        if (!active) return
         setModels(list)
         const saved = readModelPref()
         const valid = saved && list.some((m) => m.id === saved) ? saved : def
         setSelectedModel(valid)
       })
       .catch(() => {
+        if (!active) return
         setModels([])
         setSelectedModel('')
         setError(i18n.t('llm.error.bootstrap_failed'))
       })
+    return () => {
+      active = false
+    }
   }, [refreshConversations])
 
   // 選択中モデルを localStorage に永続化 (未確定の空文字は保存しない)。

@@ -428,12 +428,16 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
     return () => clearInterval(id)
   }, [fetchDevices])
 
-  const reloadLocalSources = useCallback(() => {
+  const reloadLocalSources = useCallback((isActive?: () => boolean) => {
     enumerateLocalCameras()
-      .then((s) => { setLocalSources(s); setLocalEnumFailed(false) })
-      .catch(() => { setLocalSources([]); setLocalEnumFailed(true) })
+      .then((s) => { if (!isActive || isActive()) { setLocalSources(s); setLocalEnumFailed(false) } })
+      .catch(() => { if (!isActive || isActive()) { setLocalSources([]); setLocalEnumFailed(true) } })
   }, [])
-  useEffect(() => { reloadLocalSources() }, [reloadLocalSources])
+  useEffect(() => {
+    let active = true
+    reloadLocalSources(() => active)
+    return () => { active = false }
+  }, [reloadLocalSources])
 
   // ─── アクションハンドラー ───────────────────────────────────────────────
 

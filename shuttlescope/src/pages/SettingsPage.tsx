@@ -3213,9 +3213,11 @@ function BackendConsole({
   // 初回開いたときにバッファを取得
   useEffect(() => {
     if (!open) return
+    let active = true
     if (window.shuttlescope?.getBackendLog) {
-      window.shuttlescope.getBackendLog().then(setLines).catch(() => {})
+      window.shuttlescope.getBackendLog().then((v) => { if (active) setLines(v) }).catch(() => {})
     }
+    return () => { active = false }
   }, [open])
 
   // リアルタイム受信

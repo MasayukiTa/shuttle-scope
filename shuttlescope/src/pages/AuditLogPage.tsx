@@ -86,18 +86,20 @@ export function AuditLogPage() {
     }
   }
 
-  const loadActionOptions = () => {
+  const loadActionOptions = (isActive?: () => boolean) => {
     setActionOptionsFailed(false)
     authAuditLogActions()
-      .then((r) => setActionOptions(r.data || []))
-      .catch(() => { setActionOptions([]); setActionOptionsFailed(true) })
+      .then((r) => { if (!isActive || isActive()) setActionOptions(r.data || []) })
+      .catch(() => { if (!isActive || isActive()) { setActionOptions([]); setActionOptionsFailed(true) } })
   }
 
   useEffect(() => {
+    let active = true
     if (role === 'admin') {
       load()
-      loadActionOptions()
+      loadActionOptions(() => active)
     }
+    return () => { active = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role, tab])
 
