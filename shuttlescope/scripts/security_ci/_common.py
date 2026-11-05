@@ -6,7 +6,7 @@
   SS_ATTACK_PORT  対象ポート (default: 443)
   SS_ATTACK_INSECURE  "1" で TLS 検証をスキップ (ローカル backend 用)
 """
-import json, ssl, http.client, sys, io, os
+import json, ssl, http.client, sys, io, os, time, socket
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
 HOST = os.environ.get("SS_ATTACK_HOST", "app.shuttle-scope.com")
@@ -20,22 +20,97 @@ else:
     CTX = ssl.create_default_context()
 
 
-def req(m, p, body=None, headers=None, host=None, port=None, timeout=30):
+# Transient network failures that justify a retry. These are faults of the
+# transport (production edge cold path / jitter), NOT of the app's auth
+# decision. An HTTP status is never retried: that would change what the attack
+# suite concludes. Only connection/read-level transport errors are retried.
+_TRANSIENT = (
+    TimeoutError,
+    socket.timeout,
+    ConnectionError,                     # incl. ConnectionReset/Refused/Aborted
+    http.client.RemoteDisconnected,
+    http.client.BadStatusLine,           # peer closed before status line
+)
+
+# Per-attempt timeout (seconds). Kept short so a single stalled edge connection
+# fails fast and is retried on a fresh connection, instead of blocking the whole
+# attempt for the old 30s. Total worst-case wall time across retries
+# (15+15+15 + backoff 1+2 = ~48s) is of the same order as the former single 30s
+# hang, so this hardens the client without merely inflating the timeout.
+DEFAULT_TIMEOUT = float(os.environ.get("SS_ATTACK_TIMEOUT", "15"))
+MAX_ATTEMPTS = int(os.environ.get("SS_ATTACK_RETRIES", "3"))
+
+
+def _connect(_h, _p, timeout):
+    if _p == 443:
+        return http.client.HTTPSConnection(_h, context=CTX, timeout=timeout)
+    elif _p == 80:
+        return http.client.HTTPConnection(_h, timeout=timeout)
+    return http.client.HTTPSConnection(_h, _p, context=CTX, timeout=timeout)
+
+
+def req(m, p, body=None, headers=None, host=None, port=None, timeout=None,
+        attempts=None):
+    """Send one request, retrying only on transient transport errors.
+
+    Returns (status, headers_dict, body) exactly as before. A read/connect
+    timeout no longer escapes as an uncaught exception on the first blip; it is
+    retried on a fresh connection with exponential backoff. If every attempt
+    hits a transient transport error, the last exception is re-raised so a
+    genuinely unreachable target still surfaces (callers decide WARN vs fail).
+    """
     h = {"Content-Type": "application/json"}
     if headers: h.update(headers)
     _h = host or HOST
     _p = port or PORT
-    if _p == 443:
-        c = http.client.HTTPSConnection(_h, context=CTX, timeout=timeout)
-    elif _p == 80:
-        c = http.client.HTTPConnection(_h, timeout=timeout)
-    else:
-        c = http.client.HTTPSConnection(_h, _p, context=CTX, timeout=timeout)
+    _timeout = DEFAULT_TIMEOUT if timeout is None else timeout
+    _attempts = MAX_ATTEMPTS if attempts is None else attempts
     if isinstance(body, dict): body = json.dumps(body).encode()
     elif isinstance(body, str): body = body.encode()
-    c.request(m, p, body=body, headers=h)
-    r = c.getresponse()
-    return r.status, dict(r.getheaders()), r.read()
+
+    last_exc = None
+    for attempt in range(_attempts):
+        c = None
+        try:
+            c = _connect(_h, _p, _timeout)
+            c.request(m, p, body=body, headers=h)
+            r = c.getresponse()
+            return r.status, dict(r.getheaders()), r.read()
+        except _TRANSIENT as e:
+            last_exc = e
+            try:
+                if c is not None: c.close()
+            except Exception:
+                pass
+            if attempt < _attempts - 1:
+                time.sleep(2 ** attempt)  # 1s, 2s, ... backoff before retry
+            continue
+    raise last_exc
+
+
+def wait_until_ready(path="/api/health", attempts=6, timeout=None):
+    """Warm up the target before the suites run.
+
+    The first request to a cold production edge path is the slow one (it is what
+    timed out intermittently). We poll /api/health until it answers so that the
+    heavy first round-trip is paid here, once, with its own generous retry
+    budget, rather than inside an attack probe that has no try/except.
+
+    Returns True if the target answered (any HTTP status means the edge is up),
+    False if it never answered within the budget. Never raises.
+    """
+    _timeout = DEFAULT_TIMEOUT if timeout is None else timeout
+    for attempt in range(attempts):
+        try:
+            status, _, _ = req("GET", path, timeout=_timeout, attempts=1)
+            print(f"[*] warmup {path}: HTTP {status} (attempt {attempt + 1})")
+            return True
+        except Exception as e:
+            print(f"[*] warmup {path}: {type(e).__name__} (attempt {attempt + 1})")
+            if attempt < attempts - 1:
+                time.sleep(2 ** min(attempt, 3))  # 1,2,4,8,8,8 backoff
+    print(f"[!] warmup {path}: target not ready after {attempts} attempts")
+    return False
 
 
 def hget(headers, name, default=""):

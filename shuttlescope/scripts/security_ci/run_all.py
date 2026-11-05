@@ -9,6 +9,8 @@
 環境変数で attack 対象を切替可能。admin 認証情報は不要。
 """
 import subprocess, sys, os, time, io
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _common import wait_until_ready
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace", line_buffering=True)
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace", line_buffering=True)
 
@@ -26,6 +28,14 @@ def main():
     print(f"[*] Target: {os.environ.get('SS_ATTACK_HOST', 'app.shuttle-scope.com')}:{os.environ.get('SS_ATTACK_PORT', '443')}")
     print(f"[*] Insecure TLS: {os.environ.get('SS_ATTACK_INSECURE', '0')}")
     print(f"[*] Suites: {len(SUITES)}\n")
+
+    # Warm up the target once before any suite. The first request to a cold
+    # production edge path is the slow one that intermittently timed out inside
+    # a probe with no try/except. Paying it here (with its own retry budget)
+    # keeps the per-suite probes fast. A not-ready target is reported but does
+    # not by itself fail the run — the suites still run and decide.
+    if not wait_until_ready():
+        print("[!] warmup did not confirm readiness; running suites anyway")
 
     failures = []
     t_start = time.time()
