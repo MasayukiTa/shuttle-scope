@@ -27,7 +27,7 @@ MIN_N_CI = 5       # CI を計算する最低サンプル数
 # ブートストラップ用の乱数生成器。固定シードで実行間の再現性を確保する
 # (旧 random.choices 実装はシード非固定だったが、リサンプル数 300 で平均を
 #  取るため CI はほぼ安定しており、固定シード化による実害は無い)。
-_BOOT_RNG = np.random.default_rng(12345)
+_BOOT_SEED = 12345
 
 
 def _bootstrap_mean_ci(
@@ -57,7 +57,9 @@ def _bootstrap_mean_ci(
     n = len(values)
     arr = np.asarray(values, dtype=np.float64)
     # (n_bootstrap, n) のリサンプルインデックスを一括生成し、行ごとに平均を取る
-    idx = _BOOT_RNG.integers(0, n, size=(n_bootstrap, n))
+    # 呼び出しごとに固定シードで作り直す。共有の生成器だと呼び出し順で値が変わり、
+    # 視点違いの 2 回の呼び出しで区間が食い違う (対称性試験が失敗した原因)。
+    idx = np.random.default_rng(_BOOT_SEED).integers(0, n, size=(n_bootstrap, n))
     boot_means = arr[idx].mean(axis=1)
     boot_means.sort()
     lo = int(n_bootstrap * 0.025)
