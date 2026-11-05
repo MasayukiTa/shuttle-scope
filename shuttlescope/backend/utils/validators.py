@@ -47,6 +47,31 @@ VALID_LAND_ZONES = COURT_ZONES | OOB_ZONES | NET_ZONES
 # 打点は «打った位置» なのでコート内のみ
 VALID_HIT_ZONES = COURT_ZONES
 
+# ── 打球の高さ語彙（要望8 / SD-08）────────────────────────────────────────────
+# hit_zone（打者の床面位置）とは別概念。ネットを基準にした相対的な打球の高さを
+# 4 段階で表す。任意入力なので NULL を許す。ダブルスの簡易分析では、この 4 段階を
+# 0〜3 の整数に写像して「打った側」と「受けた側」の高さ差を取る。
+#   above_net      = ネットより上  → 0
+#   slightly_above = やや上        → 1
+#   slightly_below = やや下        → 2
+#   below          = 下            → 3
+# 整数はネットから下へ向かって単調増加する。差の絶対値が «高さのずれ» を表す。
+HIT_HEIGHT_ORDER: tuple[str, ...] = (
+    "above_net",
+    "slightly_above",
+    "slightly_below",
+    "below",
+)
+HIT_HEIGHT_LEVEL: dict[str, int] = {name: i for i, name in enumerate(HIT_HEIGHT_ORDER)}
+VALID_HIT_HEIGHTS = frozenset(HIT_HEIGHT_ORDER)
+
+
+def hit_height_level(value: Optional[str]) -> Optional[int]:
+    """4 段階の高さラベルを 0〜3 の整数に写す。未知・NULL は None。"""
+    if value is None:
+        return None
+    return HIT_HEIGHT_LEVEL.get(value)
+
 
 def validate_stroke(stroke_data: dict) -> tuple[bool, Optional[str]]:
     """
@@ -85,6 +110,9 @@ def validate_stroke(stroke_data: dict) -> tuple[bool, Optional[str]]:
     hit_zone = stroke_data.get("hit_zone")
     if hit_zone is not None and hit_zone not in VALID_HIT_ZONES:
         return False, f"打点ゾーン '{hit_zone}' は定義されていません"
+    hit_height = stroke_data.get("hit_height")
+    if hit_height is not None and hit_height not in VALID_HIT_HEIGHTS:
+        return False, f"打球の高さ '{hit_height}' は定義されていません"
 
     return True, warning
 

@@ -1484,7 +1484,7 @@
     "rally_cancel": "Cancel",
     "undo": "Undo",
     "timestamp": "Record timestamp",
-    "hit_zone": "Hit point",
+    "hit_zone": "Shot location",
     "land_zone": "Landing point",
     "land_zone_skip": "Skip landing (Numpad0)",
     "shot_type": "Shot type",
@@ -1498,8 +1498,8 @@
     "stroke_none": "No strokes recorded",
     "team_tooltip_prefix": "Team:",
     "missing_land_zone": "No landing point",
-    "hit_zone_manual_badge": "Manual hit-zone",
-    "hit_zone_manual_tooltip": "Hit zone manually overridden (CV={{cv}} → picked={{picked}})",
+    "hit_zone_manual_badge": "Manual shot-location",
+    "hit_zone_manual_tooltip": "Shot location manually overridden (CV={{cv}} → picked={{picked}})",
     "rally_end_select_hint": "Select scorer and end type:",
     "rally_point_suffix": "point",
     "score": "Score",
@@ -1511,7 +1511,7 @@
     "input_step": {
       "idle": "Press Space to start a rally",
       "timestamp": "Recording timestamp...",
-      "hit_zone": "Click the hit zone",
+      "hit_zone": "Click the shot location",
       "land_zone": "Click the landing zone",
       "shot_type": "Press a shot-type key",
       "attributes": "Confirm attributes and press Enter",
@@ -1549,6 +1549,14 @@
     "doubles_mode": "Doubles mode",
     "hitter_select": "Hitter",
     "hitter_toggle_hint": "Tab to toggle",
+    "hit_height_label": "Shot height",
+    "hit_height_hint": "Optional. Shot height relative to the net",
+    "hit_height_none": "Not set",
+    "hit_height_above_net": "Above the net",
+    "hit_height_slightly_above": "Slightly above",
+    "hit_height_slightly_below": "Slightly below",
+    "hit_height_below": "Below",
+    "hit_height_aria": "Select shot height (optional)",
     "ui": {
       "cv_backend_title": "Person detection backend: {{backend}}",
       "yolo_backend_badge": "YOLO:{{backend}}",
@@ -1874,7 +1882,7 @@
       "menu_aria": "Menu"
     },
     "hit_zone_overridden": "Manual",
-    "hit_zone_aria": "Hit zone selector",
+    "hit_zone_aria": "Shot-location zone selector",
     "hit_zone_cell": "Zone {{zone}}",
     "hit_zone_cv_label": "CV estimate: zone {{zone}}",
     "shot_color_legend": "Color legend",
@@ -2317,7 +2325,7 @@
     "hitter_fill_rate": "Hitter fill rate",
     "avg_confidence": "Avg confidence",
     "panel": {
-      "hit_zone": "Hit point",
+      "hit_zone": "Shot location",
       "land_zone": "Landing",
       "hitter": "Hitter",
       "position": "Position",
@@ -6322,5 +6330,18 @@
       "adopt_done": "Adopted video timestamps for rally {{id}}.",
       "row_failed": "Action failed: {{message}}"
     }
+  },
+  "simple_analysis": {
+    "height_diff_title": "Shot-height difference (simple analysis)",
+    "height_diff_desc": "Maps the shot height of the hitting side and the receiving side to 0-3 and aggregates the absolute difference. Only returns where both heights were entered are counted. In doubles, taps to a partner are not counted.",
+    "pairs": "Returns counted",
+    "pairs_unit": "{{n}}",
+    "mean_diff": "Average height difference",
+    "distribution": "Difference breakdown",
+    "diff_bucket": "Diff {{level}}",
+    "bucket_unit": "{{n}}",
+    "no_data": "No returns with an entered shot height yet. Enter the optional shot height to see this analysis.",
+    "loading": "Aggregating...",
+    "error": "Could not load the simple analysis."
   }
 }

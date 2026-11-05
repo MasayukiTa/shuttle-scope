@@ -154,6 +154,8 @@ def add_columns_if_missing(eng) -> None:
         # G2: 返球品質・打点高さ（ストローク確定後オプション入力）
         ("strokes", "return_quality",            "TEXT"),
         ("strokes", "contact_height",            "TEXT"),
+        # 要望8 (SD-08): 打球の高さ（ネット基準の4段階、任意入力）。hit_zone(位置)とは別概念。
+        ("strokes", "hit_height",                "TEXT"),
         # 移動系コンテキスト（4.1 Movement Features）
         ("strokes", "contact_zone",              "TEXT"),
         ("strokes", "movement_burden",           "TEXT"),
