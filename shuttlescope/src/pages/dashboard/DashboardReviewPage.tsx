@@ -80,7 +80,7 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
           {[
             t('analysis.review.guide_step1', '① 受け側の弱点・有効配球を確認'),
             t('analysis.review.guide_step2', '② 失点・得点前パターンを比較'),
-            t('analysis.review.guide_step3', '③ セット別パフォーマンスで変化点を特定'),
+            t('analysis.review.guide_step3', '③ ゲーム別パフォーマンスで変化点を特定'),
             t('analysis.review.guide_step4', '④ ラリーシーケンスで繰り返しパターンを深掘り'),
           ].map((step) => (
             <li key={step} className="text-[11px] text-gray-400">{step}</li>
@@ -182,7 +182,7 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
       <ErrorBoundary>
         <div>
           <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider mb-2 pl-1">
-            {t('analysis.review.section_sets', 'STEP 4 — セット別変化点')}
+            {t('analysis.review.section_sets', 'STEP 4 — ゲーム別変化点')}
           </p>
           <div className="bg-gray-800 rounded-ss-lg shadow-card p-4">
             <SectionTitle>{t('auto.DashboardReviewPage.k3')}</SectionTitle>

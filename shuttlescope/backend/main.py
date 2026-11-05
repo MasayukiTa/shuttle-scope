@@ -3655,7 +3655,7 @@ function renderSnapshot(data) {
   }
   const badges = document.getElementById('setBadges');
   badges.innerHTML = sets.slice(0, -1).map(s =>
-    `<span class="set-badge ${s.winner ? 'win' : ''}">${escHtml(s.set_num)}セット ${escHtml(s.score_a)}-${escHtml(s.score_b)}</span>`
+    `<span class="set-badge ${s.winner ? 'win' : ''}">${escHtml(s.set_num)}ゲーム ${escHtml(s.score_a)}-${escHtml(s.score_b)}</span>`
   ).join('');
   const progress = Math.round((data.annotation_progress || 0) * 100);
   document.getElementById('progressFill').style.width = progress + '%';

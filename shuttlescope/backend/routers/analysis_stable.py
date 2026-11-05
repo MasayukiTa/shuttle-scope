@@ -963,7 +963,7 @@ def _set_comparison_impl(
     by_set_formatted = [
         {
             "set_number": item["set_num"],
-            "label": f"第{item['set_num']}セット",
+            "label": f"第{item['set_num']}ゲーム",
             "total_rallies": item["total_rallies"],
             "win_rate": item["win_rate"],
             "avg_rally_length": item["avg_rally_length"],
@@ -1753,7 +1753,7 @@ def get_set_summary(set_id: int, max_rally_num: Optional[int] = None, db: Sessio
     max_rally_num: 指定した場合、そのラリー番号以前のデータのみで解析（途中地点解析用）"""
     game_set = db.get(GameSet, set_id)
     if not game_set:
-        return {"success": False, "error": "セットが見つかりません"}
+        return {"success": False, "error": "ゲームが見つかりません"}
 
     q = db.query(Rally).filter(Rally.set_id == set_id)
     if max_rally_num is not None:

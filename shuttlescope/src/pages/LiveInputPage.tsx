@@ -515,7 +515,7 @@ export function LiveInputPage() {
         </div>
         <div className="text-[10px] text-[var(--ss-t3)] flex flex-col items-end gap-0.5">
           <span>
-            {t('annotator.set', { defaultValue: 'セット' })} <span className="ss-num">{store.currentSetNum}</span>
+            {t('annotator.set', { defaultValue: 'ゲーム' })} <span className="ss-num">{store.currentSetNum}</span>
           </span>
           {store.pendingSaveCount > 0 && (
             <span>{t('annotator.live.saving_count', { n: store.pendingSaveCount })}</span>

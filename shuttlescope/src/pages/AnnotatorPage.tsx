@@ -626,7 +626,7 @@ export function AnnotatorPage() {
       if (!s.isRallyActive) return
       const setId = s.currentSetId
       if (!setId) {
-        showError(t('annotator.ui.set_id_missing', { defaultValue: 'セットIDが未設定です。再読み込みしてください。' }))
+        showError(t('annotator.ui.set_id_missing', { defaultValue: 'ゲームIDが未設定です。再読み込みしてください。' }))
         return
       }
 
@@ -745,7 +745,7 @@ export function AnnotatorPage() {
       // ルール上まだ終わっていない。棄権・中断ならその旨を記録する経路
       // (試合の exception_reason) を使う。ここで黙って «勝者» を作らない。
       showError(t('annotator.set_not_finished', {
-        defaultValue: 'このスコアではセットが終了していません（{{a}}-{{b}}）',
+        defaultValue: 'このスコアではゲームが終了していません（{{a}}-{{b}}）',
         a: s.scoreA, b: s.scoreB,
       }))
       return
@@ -785,7 +785,7 @@ export function AnnotatorPage() {
       setNextSetPending({ id: res.data.id, num: nextSetNum })
       setShowIntervalSummary(true)
     } catch (err: unknown) {
-      showError(`${t('annotator.ui.set_change_error_prefix', { defaultValue: 'セット移行エラー:' })} ${errorMessage(err, t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' }))}`)
+      showError(`${t('annotator.ui.set_change_error_prefix', { defaultValue: 'ゲーム移行エラー:' })} ${errorMessage(err, t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' }))}`)
     }
   }, [matchId, t, setsData, queryClient])
 
@@ -833,7 +833,7 @@ export function AnnotatorPage() {
       setMidGameShown(false)
       setShowMidGameSummary(false)
     } catch (err: unknown) {
-      showError(`${t('annotator.ui.prev_set_error_prefix', { defaultValue: '前セット移行エラー:' })} ${errorMessage(err, t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' }))}`)
+      showError(`${t('annotator.ui.prev_set_error_prefix', { defaultValue: '前ゲーム移行エラー:' })} ${errorMessage(err, t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' }))}`)
     }
   }, [matchId, setsData, queryClient, t])
 
@@ -1892,7 +1892,7 @@ export function AnnotatorPage() {
       // セット終了フロー（handleNextSet と同じ）
       await handleNextSet()
     } catch (err: unknown) {
-      showError(`${t('annotator.ui.force_set_end_error_prefix', { defaultValue: 'セット強制終了エラー:' })} ${errorMessage(err, t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' }))}`)
+      showError(`${t('annotator.ui.force_set_end_error_prefix', { defaultValue: 'ゲーム強制終了エラー:' })} ${errorMessage(err, t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' }))}`)
     } finally {
       useAnnotationStore.getState().decrementPending()
     }
@@ -4929,7 +4929,7 @@ export function AnnotatorPage() {
                             to: store.currentSetNum + 1,
                           })
                         : t('annotator.ui.set_transition_to_prev', {
-                            defaultValue: 'Set {{to}} へ戻りますか？（現在のセット進行は変わりません）',
+                            defaultValue: 'Game {{to}} へ戻りますか？（現在のゲーム進行は変わりません）',
                             to: store.currentSetNum - 1,
                           })
                       }
@@ -4962,14 +4962,14 @@ export function AnnotatorPage() {
                       className="flex items-center gap-1 flex-1 py-1.5 bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t2)] rounded-ss-sm justify-center disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       <MIcon name="chevron_left" size={12} />
-                      {t('annotator.ui.prev_set_btn', { defaultValue: '前のセット (Set {{n}})', n: store.currentSetNum - 1 })}
+                      {t('annotator.ui.prev_set_btn', { defaultValue: '前のゲーム (Game {{n}})', n: store.currentSetNum - 1 })}
                     </button>
                     <button
                       onClick={() => setSetNavConfirm({ direction: 'next' })}
                       className="flex items-center gap-1 flex-1 py-1.5 bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t2)] rounded-ss-sm justify-center"
                     >
                       <MIcon name="chevron_right" size={12} />
-                      {t('annotator.ui.next_set_btn', { defaultValue: '次のセットへ (Set {{n}})', n: store.currentSetNum + 1 })}
+                      {t('annotator.ui.next_set_btn', { defaultValue: '次のゲームへ (Game {{n}})', n: store.currentSetNum + 1 })}
                     </button>
                   </div>
                 )}
