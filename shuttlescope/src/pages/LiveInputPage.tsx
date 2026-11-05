@@ -39,7 +39,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useOfflineSync } from '@/hooks/useOfflineSync'
 import { errorMessage } from '@/utils/errors'
 import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
-import { isSetEndBlockedBySave, loadQueuedRallyCount } from '@/utils/liveSetEndGuard'
+import { isSetEndBlockedBySave, loadQueuedRallyCount, classifyConfirmSaveFailure } from '@/utils/liveSetEndGuard'
 import {
   offlineStrokeIdempotencyKey,
   removeRallyAfterSave,
@@ -73,7 +73,11 @@ export function LiveInputPage() {
     endType: string
     rallyId: number | null  // null = まだ保存前 / 保存されなかった (スキップ送信中)
     saving: boolean         // batch 保存の完了待ち
-    saveFailed: boolean     // 保存に失敗した (再送は useOfflineSync に任せる)
+    saveFailed: boolean     // 恒久的な保存失敗 (冪等キーで送り直しても直らない 4xx)。
+    // 一過性の失敗 (タイムアウト・通信断・5xx 等)。サーバは保存済みのことがあり、
+    // 退避キューに残して useOfflineSync が同じ冪等キーで自動再送する。「失敗」ではなく
+    // 「再送待ち」として扱い、赤い保存失敗表示は出さない。
+    pendingResend: boolean
     undoing: boolean        // server 削除の進行中
     undoError: string | null
   }>(null)
@@ -359,6 +363,7 @@ export function LiveInputPage() {
       rallyId: null,
       saving: true,
       saveFailed: false,
+      pendingResend: false,
       undoing: false,
       undoError: null,
     })
@@ -408,21 +413,35 @@ export function LiveInputPage() {
         const savedRallyId = res?.data?.rally_id ?? null
         setLastConfirmed((prev) =>
           prev && prev.snapshot.rallyNum === rallyNum
-            ? { ...prev, rallyId: savedRallyId, saving: false, saveFailed: false }
+            ? { ...prev, rallyId: savedRallyId, saving: false, saveFailed: false, pendingResend: false }
             : prev,
         )
       })
       .catch((err: unknown) => {
         useAnnotationStore.getState().decrementPending()
-        useAnnotationStore.getState().addSaveError({
-          rallyNum,
-          error: errorMessage(err, t('annotator.ui.save_failed_message', { defaultValue: '保存失敗' })),
-        })
-        // #664: 保存に失敗したラリーは useOfflineSync が再送する。server 側 rally は
-        // まだ存在しないので、取り消しはローカルのみ可能とし、saveFailed を立てる。
+        // 要望2: 「保存し終わったはずが保存失敗と出る」の是正。
+        // 失敗を一過性 (タイムアウト・通信断・5xx・429・408) と恒久的 (4xx) に分ける。
+        // - 一過性: サーバはこのラリーを既に保存している可能性があり、退避は端末に残って
+        //   useOfflineSync が同じ冪等キーで再送するため二重にならず最終的に整合する。
+        //   「保存失敗」と赤く断定せず、「再送待ち (自動で再送)」として扱う (saveErrors に積まない)。
+        // - 恒久的: 冪等キーで送り直しても同じ 4xx になる本当の失敗。saveErrors に積んで確認させる。
+        const decision = classifyConfirmSaveFailure(err)
+        if (decision.pushSaveError) {
+          useAnnotationStore.getState().addSaveError({
+            rallyNum,
+            error: errorMessage(err, t('annotator.ui.save_failed_message', { defaultValue: '保存失敗' })),
+          })
+        }
+        // #664: server 側 rally はまだ存在しないので、取り消しはローカルのみ可能とする。
         setLastConfirmed((prev) =>
           prev && prev.snapshot.rallyNum === rallyNum
-            ? { ...prev, rallyId: null, saving: false, saveFailed: true }
+            ? {
+                ...prev,
+                rallyId: null,
+                saving: false,
+                saveFailed: decision.saveFailed,
+                pendingResend: decision.pendingResend,
+              }
             : prev,
         )
       })
@@ -459,8 +478,10 @@ export function LiveInputPage() {
       return
     }
 
-    // 未保存 (保存失敗) ラリー: server には無い。退避キューから除いてローカルを戻す。
-    if (lc.saveFailed) {
+    // 保存に至っていないラリー (恒久的な保存失敗、または一過性で再送待ち): 取り消しは
+    // 退避キューから除いてローカルを戻す。rallyId が無いため server の DELETE は呼べない
+    // (保存できていれば次の再送で入るが、取り消しの意思表示として再送キューからは外す)。
+    if (lc.saveFailed || lc.pendingResend) {
       void removeRallyAfterSave(userId, matchId, latestSet.id, lc.snapshot.rallyNum)
       store.undoLastConfirmedRally(lc.snapshot)
       // 保存失敗で積んだ saveError も取り消す (このラリーの分)。
@@ -549,6 +570,9 @@ export function LiveInputPage() {
             })}
             {lastConfirmed.saving && (
               <span className="ml-2 text-xs text-[var(--ss-t3)]">{t('annotator.live.saving_count', { n: 1 })}</span>
+            )}
+            {lastConfirmed.pendingResend && (
+              <span className="ml-2 text-xs text-[var(--ss-t2)]">{t('annotator.live.result_pending_resend')}</span>
             )}
           </span>
           <button
