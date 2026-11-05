@@ -26,6 +26,7 @@ from backend.db.models import Match, GameSet, Rally, Stroke
 from backend.analysis.router_helpers import (
     _player_role_in_match, _get_player_matches, _fetch_matches_sets_rallies,
 )
+from backend.analysis.light_stroke import load_light_strokes
 from backend.analysis.response_meta import build_input_provenance, build_response_meta
 from backend.analysis.analysis_registry import list_registry_entries, get_tier as _registry_get_tier
 from backend.analysis.analysis_meta import EVIDENCE_META
@@ -84,7 +85,9 @@ def _build_aux_maps(db: Session, matches: list, set_ids: list, rally_ids: list) 
     set_num_map = {s.id: s.set_num for s in sets}
     strokes_by_rally: dict[int, list] = {}
     if rally_ids:
-        stks = db.query(Stroke).filter(Stroke.rally_id.in_(rally_ids)).all()
+        # SD-09b 504 fix: full ORM materialize (約2.6s/2.9万件) を避け、Core select +
+        # __slots__ 軽量オブジェクトで読む。出力は full ORM と完全一致 (実測検証済み)。
+        stks = load_light_strokes(db, rally_ids)
         for s in stks:
             strokes_by_rally.setdefault(s.rally_id, []).append(s)
     return set_num_map, strokes_by_rally
