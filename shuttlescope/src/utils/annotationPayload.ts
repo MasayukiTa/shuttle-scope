@@ -43,6 +43,8 @@ export interface BatchStrokePayload {
   contact_zone?: string
   movement_burden?: string
   movement_direction?: string
+  intent_tag?: string
+  intent_note?: string
   source_method: 'manual' | 'assisted'
 }
 
@@ -163,6 +165,9 @@ export function buildBatchPayload(args: BuildBatchPayloadArgs): BatchPayload {
       contact_zone: st.contact_zone,
       movement_burden: st.movement_burden,
       movement_direction: st.movement_direction,
+      // 要望6: ショットの意図メモ
+      intent_tag: st.intent_tag,
+      intent_note: st.intent_note,
       source_method: isBasicMode ? 'manual' : 'assisted',
     })),
   }

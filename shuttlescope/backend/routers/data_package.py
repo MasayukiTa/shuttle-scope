@@ -314,6 +314,8 @@ def _stroke_dict(s: Stroke) -> dict:
         "contact_zone": s.contact_zone,
         "epv": s.epv,
         "source_method": s.source_method,
+        "intent_tag": s.intent_tag,
+        "intent_note": s.intent_note,
     }
 
 
@@ -762,6 +764,8 @@ async def import_package_endpoint(request: Request, db: Session = Depends(get_db
             contact_zone=s_data.get("contact_zone"),
             epv=s_data.get("epv"),
             source_method=s_data.get("source_method"),
+            intent_tag=s_data.get("intent_tag"),
+            intent_note=s_data.get("intent_note"),
         )
         db.add(s)
         stroke_count += 1

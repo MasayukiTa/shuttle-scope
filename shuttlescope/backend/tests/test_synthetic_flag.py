@@ -47,7 +47,8 @@ def test_migration_0060_revision_identifiers():
 def test_migration_0060_is_the_single_head():
     scripts = ScriptDirectory(str(_VERSIONS.parent))
     heads = scripts.get_heads()
-    assert len(heads) == 1 and heads[0] == "0060"
+    # 後続の移行が増えても成り立つよう、最新が 1 つで 0060 がその履歴に含まれることを確かめる
+    assert len(heads) == 1
     chain = {rev.revision for rev in scripts.iterate_revisions(heads[0], "base")}
     assert "0060" in chain and "0059" in chain
 

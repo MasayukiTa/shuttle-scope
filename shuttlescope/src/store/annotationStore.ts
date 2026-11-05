@@ -153,6 +153,8 @@ interface AnnotationState {
     contactZone?: string
     movementBurden?: string
     movementDirection?: string
+    intentTag?: string
+    intentNote?: string
   }) => void
 
   // セット移行
@@ -676,7 +678,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
     set({ scoreA, scoreB, currentRallyNum: rallyNum }),
 
   // G2+移動系: 直前確定ストロークのエンリッチメント更新（落点確定直後のオプション入力）
-  updateLastStrokeEnrichment: ({ returnQuality, contactHeight, contactZone, movementBurden, movementDirection }) => {
+  updateLastStrokeEnrichment: ({ returnQuality, contactHeight, contactZone, movementBurden, movementDirection, intentTag, intentNote }) => {
     const { currentStrokes } = get()
     if (currentStrokes.length === 0) return
     const updated = [...currentStrokes]
@@ -686,6 +688,8 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
     if (contactZone !== undefined) last.contact_zone = contactZone
     if (movementBurden !== undefined) last.movement_burden = movementBurden
     if (movementDirection !== undefined) last.movement_direction = movementDirection
+    if (intentTag !== undefined) last.intent_tag = intentTag
+    if (intentNote !== undefined) last.intent_note = intentNote
     updated[updated.length - 1] = last
     set({ currentStrokes: updated })
   },

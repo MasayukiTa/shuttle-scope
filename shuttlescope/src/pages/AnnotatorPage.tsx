@@ -4651,6 +4651,17 @@ export function AnnotatorPage() {
                 { value: 'backward',  key: 'enrichment.movement_direction_backward' },
                 { value: 'lateral',   key: 'enrichment.movement_direction_lateral' },
               ]
+              // 要望6: ショットの意図メモ（ミス・無得点ショットの「何を狙ったか」）
+              const INTENT_TAG = [
+                { value: 'deep',       key: 'enrichment.intent_tag_deep' },
+                { value: 'net',        key: 'enrichment.intent_tag_net' },
+                { value: 'body',       key: 'enrichment.intent_tag_body' },
+                { value: 'sideline',   key: 'enrichment.intent_tag_sideline' },
+                { value: 'cross',      key: 'enrichment.intent_tag_cross' },
+                { value: 'deception',  key: 'enrichment.intent_tag_deception' },
+                { value: 'clear_safe', key: 'enrichment.intent_tag_clear_safe' },
+                { value: 'other',      key: 'enrichment.intent_tag_other' },
+              ]
               const chipClass = (active: boolean) => clsx(
                 'px-2.5 py-1.5 rounded-ss-sm border text-xs transition-colors',
                 active
@@ -4730,6 +4741,31 @@ export function AnnotatorPage() {
                         {t(key)}
                       </button>
                     ))}
+                  </div>
+                  {/* 要望6: ショットの意図（何を狙ったか）。1タップの選択式タグ + 任意の短い自由記述 */}
+                  <div className="flex items-start gap-1.5 flex-wrap">
+                    <span className="text-[var(--ss-t2)] min-w-[56px] text-xs pt-1">{t('enrichment.intent_tag')}:</span>
+                    <div className="flex items-center gap-1.5 flex-wrap flex-1">
+                      {INTENT_TAG.map(({ value, key }) => (
+                        <button key={value} onClick={() => {
+                          const next = last.intent_tag === value ? undefined : value
+                          store.updateLastStrokeEnrichment({ intentTag: next })
+                        }} className={chipClass(last.intent_tag === value)}>
+                          {t(key)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[var(--ss-t2)] min-w-[56px] text-xs">{t('enrichment.intent_note')}:</span>
+                    <input
+                      type="text"
+                      value={last.intent_note ?? ''}
+                      maxLength={200}
+                      placeholder={t('enrichment.intent_note_placeholder')}
+                      onChange={(e) => store.updateLastStrokeEnrichment({ intentNote: e.target.value })}
+                      className="flex-1 px-2 py-1 text-xs rounded-ss-sm border border-[var(--ss-border)] bg-[var(--ss-surface-3)] text-[var(--ss-t1)] placeholder:text-[var(--ss-t3)]"
+                    />
                   </div>
                   <div className="text-[10px] text-[var(--ss-t3)]">{t('enrichment.expires_hint')}</div>
                 </div>
