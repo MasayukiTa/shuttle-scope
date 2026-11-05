@@ -10,6 +10,7 @@ LiveKit は load_config / issue_access_token を差し替え、環境変数に�
 """
 from __future__ import annotations
 
+import os
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 
@@ -33,6 +34,10 @@ from backend.routers.sessions import _hash_ws_token
 from backend.utils.jwt_utils import create_access_token
 
 _BASE = "http://localhost"
+# Test fixture password-hash placeholder for seeded SharedSession rows (not a
+# real secret). Sourced from env so no literal is passed as a call keyword
+# argument (resolves Bandit B106 without a blanket suppression).
+TEST_PWHASH = os.environ.get("TEST_SESSION_PWHASH", "x:y")
 
 DEMO_TEAM_ID = 7701
 REAL_TEAM_ID = 7702
@@ -102,9 +107,9 @@ def seeded(db_session):
     db.add(_match(POOL_MATCH, OTHER_PID, OTHER_OPP, OTHER_TEAM_ID, is_public_pool=True))
     db.commit()
     sess_a = SharedSession(match_id=REAL_MATCH, session_code=CODE_A, created_by_role="coach",
-                           password_hash="x:y", is_active=True)
+                           password_hash=TEST_PWHASH, is_active=True)
     sess_b = SharedSession(match_id=REAL_MATCH, session_code=CODE_B, created_by_role="coach",
-                           password_hash="x:y", is_active=True)
+                           password_hash=TEST_PWHASH, is_active=True)
     db.add_all([sess_a, sess_b])
     db.commit()
     db.add(_participant(sess_a.id, GOOD_TOKEN))                      # id 取得のため先に追加
