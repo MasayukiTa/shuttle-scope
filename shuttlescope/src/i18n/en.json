@@ -2474,7 +2474,18 @@
     "movement_direction": "Movement direction",
     "movement_direction_forward": "Forward",
     "movement_direction_backward": "Backward",
-    "movement_direction_lateral": "Lateral"
+    "movement_direction_lateral": "Lateral",
+    "intent_tag": "Intent",
+    "intent_tag_deep": "Aimed deep",
+    "intent_tag_net": "Aimed at the net",
+    "intent_tag_body": "Aimed at the body",
+    "intent_tag_sideline": "Aimed at the sideline",
+    "intent_tag_cross": "Aimed cross-court",
+    "intent_tag_deception": "Deception / disruption",
+    "intent_tag_clear_safe": "Reset / safe return",
+    "intent_tag_other": "Other",
+    "intent_note": "Note",
+    "intent_note_placeholder": "e.g. tried to go deep but hit the net"
   },
   "warmup": {
     "value_group_label": "{{item}} options",

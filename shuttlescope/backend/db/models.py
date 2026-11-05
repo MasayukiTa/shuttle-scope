@@ -638,6 +638,13 @@ class Stroke(Base):
     # 入力ソース (manual / assisted / corrected)
     source_method: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
+    # 要望6 (仙台大 2026-11-05): ショットの意図メモ。
+    # ミスや無得点に終わった打球について「何を狙って打ったのか」という人間の推測を残す。
+    # 選択式タグ (deep/net/body/sideline/cross/deception/clear_safe/other) と短い自由記述。
+    # 入力は任意。既存行は NULL のまま (意図メモ未入力として扱う)。
+    intent_tag: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    intent_note: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+
     # リレーション
     rally: Mapped["Rally"] = relationship("Rally", back_populates="strokes")
 

@@ -300,6 +300,9 @@ export interface StrokeInput {
   contact_zone?: string       // front/mid/rear
   movement_burden?: string    // low/medium/high
   movement_direction?: string // forward/backward/lateral
+  // 要望6: ショットの意図メモ（ミス・無得点ショットの「何を狙ったか」）
+  intent_tag?: string         // deep/net/body/sideline/cross/deception/clear_safe/other
+  intent_note?: string        // 短い自由記述（任意）
 }
 
 // G3: ウォームアップ観察信頼度

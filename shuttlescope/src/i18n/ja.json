@@ -2482,7 +2482,18 @@
     "movement_direction": "移動方向",
     "movement_direction_forward": "前",
     "movement_direction_backward": "後",
-    "movement_direction_lateral": "横"
+    "movement_direction_lateral": "横",
+    "intent_tag": "狙い",
+    "intent_tag_deep": "奥を狙った",
+    "intent_tag_net": "ネット前を狙った",
+    "intent_tag_body": "相手の体を狙った",
+    "intent_tag_sideline": "サイドを狙った",
+    "intent_tag_cross": "クロスを狙った",
+    "intent_tag_deception": "フェイント・崩し",
+    "intent_tag_clear_safe": "つなぎ・立て直し",
+    "intent_tag_other": "その他",
+    "intent_note": "ひとこと",
+    "intent_note_placeholder": "例: 奥に打とうとしてネットにかけた"
   },
   "warmup": {
     "value_group_label": "{{item}}の選択肢",
