@@ -613,6 +613,10 @@ class Stroke(Base):
     # land_zone の入力元: 'cv' = CV 自動適用が書いた値 / 'human' = 人が入力した値 /
     # NULL = 不明 (本列の追加前の既存データ。値があれば人の入力として扱う)。
     land_zone_source: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    # 要望8 (SD-08): 打球の高さ（ネット基準の相対高さ）。任意入力。
+    # 値: above_net / slightly_above / slightly_below / below（4段階）。
+    # NULL=未入力。hit_zone（打者の床面位置）とは別概念で、識別子も別。
+    hit_height: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
 
     # 打球属性
     is_backhand: Mapped[bool] = mapped_column(Boolean, default=False)
