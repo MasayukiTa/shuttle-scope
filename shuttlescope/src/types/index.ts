@@ -292,6 +292,8 @@ export interface StrokeInput {
   is_backhand: boolean
   is_around_head: boolean
   above_net?: boolean
+  /** 仙台大要望: 打球の高さ 4 段階 (0..3)。任意。未選択なら undefined。 */
+  hit_height?: number
   timestamp_sec?: number
   // G2: 返球品質・打点高さ（ストローク確定後オプション入力）
   return_quality?: string   // attack/neutral/defensive/emergency
@@ -323,6 +325,8 @@ export interface StrokeAttributes {
   is_backhand: boolean
   is_around_head: boolean
   above_net?: boolean
+  /** 仙台大要望: 打球の高さ 4 段階 (0=ネットより上 / 1=やや上 / 2=やや下 / 3=下)。任意。 */
+  hit_height?: number
 }
 
 // APIレスポンス共通形式

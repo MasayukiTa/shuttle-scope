@@ -4361,6 +4361,7 @@ export function AnnotatorPage() {
                   is_backhand: store.pendingStroke.is_backhand,
                   is_around_head: store.pendingStroke.is_around_head,
                   above_net: store.pendingStroke.above_net,
+                  hit_height: store.pendingStroke.hit_height,
                 }}
                 onChange={(attrs) => {
                   if (attrs.is_backhand !== store.pendingStroke.is_backhand)
@@ -4369,6 +4370,8 @@ export function AnnotatorPage() {
                     store.toggleAttribute('is_around_head')
                   if (attrs.above_net !== store.pendingStroke.above_net)
                     store.setAboveNet(attrs.above_net)
+                  if (attrs.hit_height !== store.pendingStroke.hit_height)
+                    store.setHitHeight(attrs.hit_height)
                 }}
                 disabled={store.inputStep === 'land_zone'}
               />

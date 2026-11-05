@@ -60,6 +60,17 @@ export function StrokeHistory({ strokes, playerAName = 'A', playerBName = 'B', p
         const hitLabel = stroke.hit_zone ? `(${stroke.hit_zone})` : ''
         const num = circledNumbers[(stroke.stroke_num - 1) % 10]
         const isLatest = idx === recent.length - 1
+        // 仙台大要望: 打球の高さ 4 段階 (0..3) を一覧でも確認できるようにする。
+        const HIT_HEIGHT_KEYS = [
+          'hit_height_above_net',
+          'hit_height_slightly_above',
+          'hit_height_slightly_below',
+          'hit_height_below',
+        ] as const
+        const hitHeightLabel =
+          typeof stroke.hit_height === 'number' && HIT_HEIGHT_KEYS[stroke.hit_height]
+            ? t(`annotator.${HIT_HEIGHT_KEYS[stroke.hit_height]}`)
+            : null
         // Phase A: 打点を CV からユーザが override したストロークを区別
         const isHitZoneOverridden =
           stroke.hit_zone_source === 'manual' &&
@@ -86,6 +97,15 @@ export function StrokeHistory({ strokes, playerAName = 'A', playerBName = 'B', p
             )}
             {missingLand && (
               <span className="text-[9px] text-[var(--ss-warn)] border border-[var(--ss-warning-border)] rounded-ss-sm px-1 shrink-0">{t('annotator.missing_land_zone')}</span>
+            )}
+            {hitHeightLabel && (
+              <span
+                className="text-[9px] text-[var(--ss-t2)] border border-[var(--ss-border-strong)] rounded-ss-sm px-1 shrink-0"
+                title={t('annotator.hit_height_label')}
+                data-testid="stroke-hit-height-badge"
+              >
+                {hitHeightLabel}
+              </span>
             )}
           </div>
         )
