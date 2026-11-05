@@ -70,7 +70,7 @@ import { CVScanPanel } from '@/components/annotation/CVScanPanel'
 import { ReviewQueuePanel as CVReviewQueuePanel } from '@/components/annotation/ReviewQueuePanel'
 import { PlayerMovementCard } from '@/components/analysis/PlayerMovementCard'
 import { uploadVideoInChunks, abortChunkUpload } from '@/utils/chunkUpload'
-import { buildAutosaveKey, isAutosaveOwnedBy } from '@/utils/annotatorAutosave'
+import { buildAutosaveKey, isAutosaveOwnedBy, AUTOSAVE_FLUSH_EVENT } from '@/utils/annotatorAutosave'
 
 // ─── 配信URL検出 ──────────────────────────────────────────────────────────────
 // Electron では配信サービスの動画を直接再生できないため、yt-dlp でダウンロードする。
@@ -1116,26 +1116,31 @@ export function AnnotatorPage() {
   }, [store.inputStep, store.currentStrokes])
 
   // ─── 一時保存（Auto-save） ───────────────────────────────────────────────────
-  // すべての入力操作（ショット種入力・落点入力・属性変更）で保存する
-  useEffect(() => {
-    if (!autoSaveKey || !store.isRallyActive) return
+  // すべての入力操作（ショット種入力・落点入力・属性変更）で保存する。
+  // 保存本体は saveAutosaveNow に抽出し、通常の入力変化 (下の useEffect) と、
+  // 無操作タイムアウト警告時の flush イベント (さらに下の useEffect) の両方から呼ぶ。
+  // 最新の store 値は getState() で読むので、イベント発火時点の状態を確実に保存できる。
+  const saveAutosaveNow = useCallback(() => {
+    if (!autoSaveKey) return
+    const s = useAnnotationStore.getState()
+    if (!s.isRallyActive) return
     // ストロークが1本もなく pendingStroke も空なら保存しない（ラリー開始直後の空振り防止）
-    const hasPending = !!store.pendingStroke.shot_type
-    if (store.currentStrokes.length === 0 && !hasPending) return
+    const hasPending = !!s.pendingStroke.shot_type
+    if (s.currentStrokes.length === 0 && !hasPending) return
     const now = Date.now()
     const data = {
-      setId: store.currentSetId,
-      rallyNum: store.currentRallyNum,
-      strokes: store.currentStrokes,
-      pendingStroke: store.pendingStroke,
-      inputStep: store.inputStep,
+      setId: s.currentSetId,
+      rallyNum: s.currentRallyNum,
+      strokes: s.currentStrokes,
+      pendingStroke: s.pendingStroke,
+      inputStep: s.inputStep,
       // ラリーの開始位置。これを落とすと復元時に «動画の先頭で始まった»
       // ことになり、そのまま `video_timestamp_start` として保存される。
-      rallyStartTimestamp: store.rallyStartTimestamp,
+      rallyStartTimestamp: s.rallyStartTimestamp,
       // 次に打つのは誰か。ストロークごとに入れ替わるので、復元で
       // 生のストローク配列を積み直しても再現されない (打数が奇数なら必ずずれる)。
-      currentPlayer: store.currentPlayer,
-      currentHitter: store.currentHitter,
+      currentPlayer: s.currentPlayer,
+      currentHitter: s.currentHitter,
       videoTimestamp: videoRef.current?.currentTime ?? null,
       savedAt: now,
       ownerUserId: userId,
@@ -1144,7 +1149,7 @@ export function AnnotatorPage() {
       localStorage.setItem(autoSaveKey, JSON.stringify(data))
       setLastAutoSaveTime(now)
       // 一度成功したら過去の error は消す
-      if (autoSaveError) setAutoSaveError(null)
+      setAutoSaveError((prev) => (prev ? null : prev))
     } catch (err: unknown) {
       // QuotaExceededError / SecurityError / private mode の disabled etc.
       // ユーザがリアルタイムで「保存されてない」を知る経路として error を残す
@@ -1152,11 +1157,15 @@ export function AnnotatorPage() {
         ? t('annotator.ui.autosave_quota')
         : t('annotator.ui.autosave_failed', { defaultValue: '一時保存失敗' })
       setAutoSaveError(msg)
-       
+
       console.warn('[autosave] localStorage failed:', err)
     }
+  }, [autoSaveKey, userId, t])
+
+  useEffect(() => {
+    saveAutosaveNow()
   }, [
-    autoSaveKey,
+    saveAutosaveNow,
     store.currentStrokes,
     store.pendingStroke,
     store.inputStep,
@@ -1168,10 +1177,16 @@ export function AnnotatorPage() {
     store.currentPlayer,
     store.currentHitter,
     store.rallyStartTimestamp,
-    autoSaveError,
-    userId,
-    t,
   ])
+
+  // 無操作タイムアウトの警告が出た瞬間 (App が AUTOSAVE_FLUSH_EVENT を dispatch) に、
+  // 入力中のラリーを今すぐ一時保存へ書き出す。これにより失効前に必ず退避が済み、
+  // 再ログイン後に復元できる。
+  useEffect(() => {
+    const onFlush = () => saveAutosaveNow()
+    window.addEventListener(AUTOSAVE_FLUSH_EVENT, onFlush)
+    return () => window.removeEventListener(AUTOSAVE_FLUSH_EVENT, onFlush)
+  }, [saveAutosaveNow])
 
   // タブを閉じる・リロードする前に引き止める。
   // 入力途中のラリーは **確定するまでサーバに存在しない**ので、閉じれば消える。

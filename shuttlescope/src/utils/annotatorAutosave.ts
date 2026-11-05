@@ -8,6 +8,16 @@
 
 export const AUTOSAVE_PREFIX = 'shuttlescope.autosave.'
 
+/**
+ * 「入力中のラリーを今すぐ一時保存して」と依頼する window イベント名。
+ *
+ * 無操作タイムアウトの警告が出た瞬間に App 側がこれを dispatch し、アノテータ画面が
+ * 受け取って現在の未確定入力を localStorage へ書き出す。これにより、失効する前に必ず
+ * 退避が済み、再ログイン後に復元できる。アノテータが開いていないときは誰も拾わないので
+ * 無害 (no-op)。
+ */
+export const AUTOSAVE_FLUSH_EVENT = 'shuttlescope:autosave-flush'
+
 /** user_id が分からないとき (null) はキーを作らない = 一時保存をしない。持ち主不明の入力を残さないため。 */
 export function buildAutosaveKey(
   matchId: string | number | null | undefined,
