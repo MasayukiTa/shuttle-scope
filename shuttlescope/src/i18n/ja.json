@@ -1473,6 +1473,7 @@
       "choose_server": "最初のサーブはどちらですか",
       "saving_count": "保存中 {{n}} 件",
       "unsaved_count": "未保存 {{n}} 件 (自動で再送します)",
+      "result_pending_resend": "保存は続いています（自動で再送します）",
       "set_decided": "セットが決着しました ({{a}}-{{b}})",
       "match_decided": "試合が決着しました",
       "next_set": "次のセットへ",

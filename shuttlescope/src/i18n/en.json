@@ -1466,6 +1466,7 @@
       "choose_server": "Who serves first?",
       "saving_count": "Saving {{n}}",
       "unsaved_count": "{{n}} not saved (retrying automatically)",
+      "result_pending_resend": "Still saving (retrying automatically)",
       "set_decided": "The set is decided ({{a}}-{{b}})",
       "match_decided": "The match is decided",
       "next_set": "Next set",
