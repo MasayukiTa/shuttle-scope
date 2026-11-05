@@ -114,6 +114,19 @@ describe('buildBatchPayload', () => {
     })
   })
 
+  it('仙台大要望: hit_height (打球の高さ) を取りこぼさない', () => {
+    const withHeight: StrokeInput = { ...baseStroke, hit_height: 2 }
+    const payload = buildBatchPayload({ ...baseArgs, strokes: [withHeight] })
+    expect(payload.strokes[0].hit_height).toBe(2)
+  })
+
+  it('hit_height 未指定なら payload でも undefined（任意項目なので強制しない）', () => {
+    const noHeight: StrokeInput = { ...baseStroke }
+    delete noHeight.hit_height
+    const payload = buildBatchPayload({ ...baseArgs, strokes: [noHeight] })
+    expect(payload.strokes[0].hit_height).toBeUndefined()
+  })
+
   it('rally メタ (set_id / rally_num / winner / end_type / rally_length / score / video_timestamp_start) を保持する', () => {
     const payload = buildBatchPayload(baseArgs)
     expect(payload.rally).toMatchObject({
