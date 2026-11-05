@@ -1800,7 +1800,7 @@ def get_flash_advice(
             opportunity_ok = True
             opportunity_body = (
                 f"「{shot_label}」での得点が多い"
-                f"（このセットで「{shot_label}」を打った{shot_rallies_total}ラリー中"
+                f"（このゲームで「{shot_label}」を打った{shot_rallies_total}ラリー中"
                 f"{len(rallies_with_shot_won)}ラリーで得点、{win_pct}%）"
             )
         else:
@@ -1888,7 +1888,7 @@ def get_flash_advice(
             trend_body = f"後半の勝率が低下傾向（前半{wr_first*100:.0f}% → 後半{wr_second*100:.0f}%）"
         else:
             trend_body = f"前後半で勝率に大きな変化なし（前半{wr_first*100:.0f}%・後半{wr_second*100:.0f}%）"
-        items.append({"category": "trend", "title": "セット内勝率トレンド", "body": trend_body, "priority": 6})
+        items.append({"category": "trend", "title": "ゲーム内勝率トレンド", "body": trend_body, "priority": 6})
 
         # 7. fatigue_signal: 長ラリー後のパフォーマンス低下
         long_rally_threshold = AnalysisConfig.LONG_RALLY_THRESHOLD

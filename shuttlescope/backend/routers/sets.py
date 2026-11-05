@@ -215,7 +215,7 @@ def create_set(body: SetCreate, request: Request, db: Session = Depends(get_db))
     if max(wins.values()) >= SETS_TO_WIN:
         raise HTTPException(
             status_code=409,
-            detail="この試合は既に決着しているため、新しいセットは作成できません",
+            detail="この試合は既に決着しているため、新しいゲームは作成できません",
         )
 
     game_set = GameSet(match_id=body.match_id, set_num=body.set_num)
@@ -232,7 +232,7 @@ def end_set(set_id: int, body: SetEnd, request: Request, db: Session = Depends(g
     """セット終了（スコア・勝者確定）"""
     game_set = db.get(GameSet, set_id)
     if not game_set:
-        raise HTTPException(status_code=404, detail="セットが見つかりません")
+        raise HTTPException(status_code=404, detail="ゲームが見つかりません")
     match = db.get(Match, game_set.match_id)
     if match:
         _set_require_match_scope(request, db, match)
@@ -250,7 +250,7 @@ def end_set(set_id: int, body: SetEnd, request: Request, db: Session = Depends(g
         raise HTTPException(
             status_code=422,
             detail=(
-                f"スコア {body.score_a}-{body.score_b} ではセットは終了していません "
+                f"スコア {body.score_a}-{body.score_b} ではゲームは終了していません "
                 f"(21点以上かつ2点差、または30点先取)。"
                 f" 棄権・中断で閉じる場合は incomplete=true を指定してください"
             ),
@@ -296,7 +296,7 @@ def get_rally_count(set_id: int, request: Request, db: Session = Depends(get_db)
     """
     gs = db.get(GameSet, set_id)
     if not gs:
-        raise HTTPException(status_code=404, detail="セットが見つかりません")
+        raise HTTPException(status_code=404, detail="ゲームが見つかりません")
     match = db.get(Match, gs.match_id)
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")

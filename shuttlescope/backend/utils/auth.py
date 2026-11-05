@@ -859,7 +859,7 @@ def require_query_scope(
         s = db.get(GameSet, sid)
         m = db.get(Match, s.match_id) if s is not None and getattr(s, "match_id", None) else None
         if m is None or not user_can_access_match(ctx, m):
-            raise HTTPException(status_code=403, detail="このセットへのアクセス権限がありません")
+            raise HTTPException(status_code=403, detail="このゲームへのアクセス権限がありません")
 
     return ctx
 

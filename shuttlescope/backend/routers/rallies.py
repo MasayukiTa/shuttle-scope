@@ -19,7 +19,7 @@ def _rally_require_scope(request: Request, db: Session, set_id: int) -> Match:
     admin 無条件許可、player は参加試合のみ。"""
     gs = db.get(GameSet, set_id)
     if not gs:
-        raise HTTPException(status_code=404, detail="セットが見つかりません")
+        raise HTTPException(status_code=404, detail="ゲームが見つかりません")
     match = db.get(Match, gs.match_id)
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
