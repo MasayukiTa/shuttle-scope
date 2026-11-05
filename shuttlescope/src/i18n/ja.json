@@ -1583,9 +1583,9 @@
     "rally_cancel": "取消",
     "undo": "アンドゥ",
     "timestamp": "タイムスタンプ記録",
-    "hit_zone": "打点",
+    "hit_zone": "打球位置",
     "hit_zone_overridden": "手動",
-    "hit_zone_aria": "打点ゾーン選択",
+    "hit_zone_aria": "打球位置ゾーン選択",
     "hit_zone_cell": "ゾーン {{zone}}",
     "hit_zone_cv_label": "CV推定: ゾーン {{zone}}",
     "shot_color_legend": "色凡例",
@@ -1608,8 +1608,8 @@
     "stroke_none": "ストローク未記録",
     "team_tooltip_prefix": "所属:",
     "missing_land_zone": "着地点なし",
-    "hit_zone_manual_badge": "手動打点",
-    "hit_zone_manual_tooltip": "打点を手動で修正済 (CV={{cv}} → 手動={{picked}})",
+    "hit_zone_manual_badge": "手動で修正",
+    "hit_zone_manual_tooltip": "打球位置を手動で修正済 (CV={{cv}} → 手動={{picked}})",
     "rally_end_select_hint": "得点者と終了種別を選択:",
     "rally_point_suffix": "得点",
     "score": "スコア",
@@ -1621,7 +1621,7 @@
     "input_step": {
       "idle": "Space でラリー開始",
       "timestamp": "タイムスタンプ記録中...",
-      "hit_zone": "打点ゾーンをクリック",
+      "hit_zone": "打球位置ゾーンをクリック",
       "land_zone": "着地ゾーンをクリック",
       "shot_type": "ショット種別をキー入力",
       "attributes": "属性を確認してEnter",
@@ -1659,6 +1659,14 @@
     "doubles_mode": "ダブルスモード",
     "hitter_select": "打者",
     "hitter_toggle_hint": "Tab切替",
+    "hit_height_label": "打球の高さ",
+    "hit_height_hint": "任意。ネットを基準にした打球の高さ",
+    "hit_height_none": "未入力",
+    "hit_height_above_net": "ネットより上",
+    "hit_height_slightly_above": "やや上",
+    "hit_height_slightly_below": "やや下",
+    "hit_height_below": "下",
+    "hit_height_aria": "打球の高さを選択（任意）",
     "ui": {
       "cv_backend_title": "人物検出成果物の backend: {{backend}}",
       "yolo_backend_badge": "YOLO:{{backend}}",
@@ -2324,7 +2332,7 @@
     "hitter_fill_rate": "打者補完率",
     "avg_confidence": "平均信頼度",
     "panel": {
-      "hit_zone": "打点",
+      "hit_zone": "打球位置",
       "land_zone": "着地",
       "hitter": "打者",
       "position": "ポジション",
@@ -6328,5 +6336,18 @@
       "adopt_done": "ラリー {{id}} の動画時刻を採用しました。",
       "row_failed": "操作に失敗しました: {{message}}"
     }
+  },
+  "simple_analysis": {
+    "height_diff_title": "打球の高さ差（簡易分析）",
+    "height_diff_desc": "打った側と受けた側の打球の高さを 0〜3 に置き換え、その差（絶対値）を集計します。両方の高さが入力された返球だけを数えます。ダブルスでは味方へのつなぎは数えません。",
+    "pairs": "対象の返球",
+    "pairs_unit": "{{n}} 組",
+    "mean_diff": "高さ差の平均",
+    "distribution": "高さ差の内訳",
+    "diff_bucket": "差 {{level}}",
+    "bucket_unit": "{{n}} 組",
+    "no_data": "高さが入力された返球がまだありません。打球の高さ（任意項目）を入力すると集計されます。",
+    "loading": "集計中…",
+    "error": "簡易分析を取得できませんでした。"
   }
 }
