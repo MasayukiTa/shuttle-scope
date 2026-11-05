@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { HashRouter, Routes, Route, NavLink, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -23,7 +23,7 @@ import { ExpertLabelerAnnotatePage } from '@/pages/ExpertLabelerAnnotatePage'
 import LlmChatPage from '@/pages/LlmChatPage'
 import { useAuth } from '@/hooks/useAuth'
 import { usePendingApprovalBadge } from '@/hooks/usePendingApprovalCount'
-import { useIdleLogout } from '@/hooks/useIdleLogout'
+import { useIdleLogout, IDLE_LAST_ACTIVITY_KEY } from '@/hooks/useIdleLogout'
 import { LoginPage } from '@/pages/LoginPage'
 import { MobileAnnotatePage } from '@/pages/MobileAnnotatePage'
 // M-A6: Self-service auth pages (register / verify / password reset / invitation)
@@ -56,6 +56,8 @@ import { useTheme } from '@/hooks/useTheme'
 import { authLogout, authMe, checkHealth, publicInquiryUnreadCount } from '@/api/client'
 import { apiPost } from '@/api/client'
 import { PendingLogoutDialog } from '@/components/auth/PendingLogoutDialog'
+import { IdleWarningDialog } from '@/components/auth/IdleWarningDialog'
+import { AUTOSAVE_FLUSH_EVENT } from '@/utils/annotatorAutosave'
 import {
   countPendingForUserStrict,
   flushPendingForUser,
@@ -720,6 +722,10 @@ function ThemeApplier({ children }: { children: React.ReactNode }) {
 }
 
 const IDLE_LOGOUT_MS = 15 * 60 * 1000
+// 自動ログアウトの何ミリ秒前に警告ダイアログを出すか。
+// 警告と同時に入力中のラリーを一時保存へ退避するので、ここで失効しても入力は失われない。
+// 警告間隔 (useIdleLogout の interval) が 30 秒なので、警告は失効の 60〜90 秒前に出る。
+const IDLE_WARN_BEFORE_MS = 60 * 1000
 /** /auth/me が確認できなかったときの自動再試行間隔。429 を悪化させない程度に空ける。 */
 const AUTH_RETRY_INTERVAL_MS = 10_000
 
@@ -743,12 +749,46 @@ function ProtectedMainRoute() {
   const authUnverifiedRef = useRef<boolean>(false)
   const [authRetryNonce, setAuthRetryNonce] = useState<number>(0)
 
+  // 無操作タイムアウトの警告ダイアログ。null のときは出さない。
+  // deadline は自動ログアウトが発火する予定時刻 (epoch ms) で、カウントダウン表示に使う。
+  const [idleWarnDeadline, setIdleWarnDeadline] = useState<number | null>(null)
+  const [idleRemainingSec, setIdleRemainingSec] = useState<number>(0)
+
+  // 警告が出ている間だけ 1 秒ごとに残り秒数を更新する。
+  useEffect(() => {
+    if (idleWarnDeadline == null) return
+    const tick = () => {
+      setIdleRemainingSec(Math.max(0, Math.ceil((idleWarnDeadline - Date.now()) / 1000)))
+    }
+    tick()
+    const id = window.setInterval(tick, 1000)
+    return () => window.clearInterval(id)
+  }, [idleWarnDeadline])
+
+  const doIdleLogout = useCallback(() => {
+    setIdleWarnDeadline(null)
+    authLogout().catch(() => { /* ignore */ })
+    // 無操作による失効では一時保存 (未確定ラリー) を残し、再ログイン後に復元できるようにする。
+    // 本人が明示的に押すログアウトは従来どおり一時保存も消す (keepAutosave を渡さない)。
+    clearRole({ keepAutosave: true })
+  }, [clearRole])
+
   useIdleLogout({
     enabled: !!token,
     timeoutMs: IDLE_LOGOUT_MS,
+    warnMs: IDLE_WARN_BEFORE_MS,
+    onWarn: () => {
+      // 失効の前に、入力中のラリーを今すぐ一時保存へ書き出させる。
+      // アノテータ画面が開いていればこのイベントで flush する。開いていなければ無害 (no-op)。
+      try { window.dispatchEvent(new Event(AUTOSAVE_FLUSH_EVENT)) } catch { /* ignore */ }
+      setIdleWarnDeadline(Date.now() + IDLE_WARN_BEFORE_MS)
+    },
+    onWarnCleared: () => {
+      // 操作が戻った (このタブ / 別タブのどちらでも) ので猶予を取り消す。
+      setIdleWarnDeadline(null)
+    },
     onIdle: () => {
-      authLogout().catch(() => { /* ignore */ })
-      clearRole()
+      doIdleLogout()
     },
   })
 
@@ -949,24 +989,38 @@ function ProtectedMainRoute() {
   // では Safari Web Inspector に繋ぐ手段が無いユーザのため、画面に出すのが
   // 唯一の診断パス)。
   return (
-    <Routes>
-      <Route
-        path="/m/annotate/:matchId"
-        element={
-          <ErrorBoundary>
-            <MobileAnnotatePage />
-          </ErrorBoundary>
-        }
-      />
-      <Route
-        path="*"
-        element={
-          <>
-            <MainLayout />
-          </>
-        }
-      />
-    </Routes>
+    <>
+      <Routes>
+        <Route
+          path="/m/annotate/:matchId"
+          element={
+            <ErrorBoundary>
+              <MobileAnnotatePage />
+            </ErrorBoundary>
+          }
+        />
+        <Route
+          path="*"
+          element={
+            <>
+              <MainLayout />
+            </>
+          }
+        />
+      </Routes>
+      {idleWarnDeadline != null && (
+        <IdleWarningDialog
+          remainingSec={idleRemainingSec}
+          onStay={() => {
+            // 「作業を続ける」= 操作とみなして猶予を取り消す。
+            // localStorage の最終操作時刻も更新し、全タブで猶予が解けるようにする。
+            try { localStorage.setItem(IDLE_LAST_ACTIVITY_KEY, String(Date.now())) } catch { /* ignore */ }
+            setIdleWarnDeadline(null)
+          }}
+          onLogoutNow={() => doIdleLogout()}
+        />
+      )}
+    </>
   )
 }
 
