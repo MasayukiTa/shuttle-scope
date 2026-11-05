@@ -1576,7 +1576,9 @@
       "bottom_sheet_handle": "ドラッグまたはタップで展開 / 折り畳み",
       "bottom_sheet_close": "閉じる",
       "score_aria_game": "スコア {{a}} 対 {{b}} ゲーム {{n}}",
-      "menu_aria": "メニュー"
+      "menu_aria": "メニュー",
+      "settings_simple_shots_label": "簡易ショット入力（9 大分類）",
+      "settings_simple_shots_hint": "スマッシュ等を細かく分けず、サーブ・ネット前・ドロップ・クリア・スマッシュ・ドライブ・ロブ・守備・その他 の 9 分類で入力します。保存時は従来の詳細分類の代表値に変換するので、これまでの分析結果と矛盾しません。"
     },
     "rally_start": "ラリー開始",
     "rally_confirm": "ラリー確定",
@@ -6349,5 +6351,16 @@
     "no_data": "高さが入力された返球がまだありません。打球の高さ（任意項目）を入力すると集計されます。",
     "loading": "集計中…",
     "error": "簡易分析を取得できませんでした。"
+  },
+  "shot_major": {
+    "serve": "サーブ",
+    "net": "ネット前",
+    "drop": "ドロップ",
+    "clear": "クリア",
+    "smash": "スマッシュ",
+    "drive": "ドライブ",
+    "lob": "ロブ",
+    "defensive": "守備",
+    "other": "その他"
   }
 }
