@@ -224,3 +224,65 @@ export function calibratedTapToCell(
   const row = Math.min(2, Math.max(0, Math.floor(vLocal * 3)))
   return { row, col }
 }
+
+// ─── 保存済みキャリブ (6 点) → 入力 UI 用の courtQuad / half ──────────────────
+//
+// MobileCourtCalib / CourtGridOverlay は localStorage `court-calib-{matchId}` に
+// 6 点 [TL, TR, BR, BL, NL, NR] を正規化座標で保存する (先頭 4 点がコート 4 隅、
+// 末尾 2 点がネット左右)。入力画面 (Pass2/Pass3 の AnnotateOverlay) はコート 4 隅
+// (courtQuad) と「その片面が画面の near/far どちらに写っているか」(half) だけを使う。
+// ここは画面側の配線を純関数に寄せ、撮影方向ごとの挙動を単体テストで守るために置く。
+
+/** 1 点が有限な正規化座標 (x,y が数値) か。 */
+function isFinitePoint(p: unknown): p is Point2 {
+  return !!p && typeof (p as Point2).x === 'number' && typeof (p as Point2).y === 'number'
+    && Number.isFinite((p as Point2).x) && Number.isFinite((p as Point2).y)
+}
+
+/**
+ * 保存済みキャリブ点列 (localStorage の生パース結果) から、入力 UI 用の
+ * courtQuad (先頭 4 点 = TL, TR, BR, BL) を取り出す。
+ *
+ * - 4 点以上あり、先頭 4 点がすべて有限座標で、かつ退化していない (quadToUnit が
+ *   中心で解を返す) ときだけ Quad を返す。
+ * - それ以外 (未校正・点不足・壊れた保存値・退化配置) は null。呼び出し側は null の
+ *   とき従来の固定枠フォールバックで動く。
+ *
+ * 退化判定を入れるのは、3 点が一直線などの壊れた保存値をそのまま courtQuad として
+ * 渡すと calibratedTapToCell が全タップで null を返し «何も選べない» 画面になるため。
+ * その場合は固定枠に落とすほうが入力を止めない。
+ */
+export function courtQuadFromCalibPoints(pts: unknown): Quad | null {
+  if (!Array.isArray(pts) || pts.length < 4) return null
+  const first4 = pts.slice(0, 4)
+  if (!first4.every(isFinitePoint)) return null
+  const quad = first4 as Quad
+  // 退化 (3 点共線・面積ゼロ等) なら中心の逆写像が解けない → フォールバックさせる。
+  if (quadToUnit(quad, 0.5, 0.5) === null) return null
+  return quad
+}
+
+/**
+ * キャリブ 6 点から、入力する «コート片面» が画面の near/far どちらに写っているかを
+ * 推定する。記録入力の 9 ゾーン (B/M/N × L/C/R) は «ベースライン→ネット» の片面で、
+ * コート全体 quad のうちネット (v=0.5) を境に手前/奥どちらを 3×3 に割るかを half が決める。
+ *
+ * 判定: ネット線の画面 y (NL,NR の平均) が、コート 4 隅の重心 y より «下» (画面で手前,
+ * y 大) にあれば、その試合の入力片面は手前に写っている → 'near'。ネットが重心より上
+ * (奥, y 小) なら 'far'。これにより:
+ *   - 正面 / 斜め / 後方撮影 (ネットが画面中ほど〜上): far
+ *   - 選手の背後から手前ベースライン越しに撮る等 (ネットが画面下寄り): near
+ * ネット 2 点が無い・壊れている場合は、情報が足りないので既定の 'far' を返す
+ * (AnnotateOverlay の half 既定は 'near' だが、俯瞰撮影で最も多いのは far 側に
+ *  コートが開くケースなので、ここでは明示に far を既定とする)。
+ */
+export function inferCourtHalfFromCalibPoints(pts: unknown): CourtHalf {
+  if (!Array.isArray(pts) || pts.length < 6) return 'far'
+  const corners = pts.slice(0, 4)
+  const net = pts.slice(4, 6)
+  if (!corners.every(isFinitePoint) || !net.every(isFinitePoint)) return 'far'
+  const cornerCy = (corners as Point2[]).reduce((s, p) => s + p.y, 0) / 4
+  const netCy = (net as Point2[]).reduce((s, p) => s + p.y, 0) / 2
+  // ネットが重心より下 (y 大) = 手前に写っている → near。
+  return netCy > cornerCy ? 'near' : 'far'
+}
