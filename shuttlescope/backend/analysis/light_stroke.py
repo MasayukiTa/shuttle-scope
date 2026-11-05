@@ -38,6 +38,14 @@ LIGHT_STROKE_FIELDS = (
     "opponent_contact_x", "opponent_contact_y",
     "player_contact_x", "player_contact_y",
     "return_target_x", "return_target_y",
+    # 来歴(source_method)・高さ・移動系など、残りの列も全て含める。足りない列は
+    # getattr の既定値で黙って None になり、出力が静かに変わる (CI で来歴の判定が壊れた)。
+    "uuid", "created_at", "updated_at", "deleted_at", "revision",
+    "source_device_id", "content_hash", "hit_zone_cv_original",
+    "is_backhand", "is_around_head", "above_net", "hit_height", "is_cross",
+    "timestamp_sec", "return_quality", "contact_height", "contact_zone",
+    "movement_burden", "movement_direction", "epv", "shot_influence",
+    "source_method",
 )
 
 
