@@ -58,34 +58,49 @@ export function SessionShareModal({
   // コーチ URL の QR
   useEffect(() => {
     if (!canvasRef.current || !coachUrl) return
+    // アンマウント後の setState (teardown 済み環境) を中断フラグで抑止。
+    let active = true
     QRCode.toCanvas(canvasRef.current, coachUrl, {
       width: 180,
       margin: 2,
       color: { dark: '#0f172a', light: '#f8fafc' },
-    }).then(() => setQrFailed((p) => ({ ...p, coach: false })))
-      .catch(() => setQrFailed((p) => ({ ...p, coach: true })))
+    }).then(() => { if (active) setQrFailed((p) => ({ ...p, coach: false })) })
+      .catch(() => { if (active) setQrFailed((p) => ({ ...p, coach: true })) })
+    return () => {
+      active = false
+    }
   }, [coachUrl])
 
   // カメラ送信 URL の QR（パスワードは含めない）
   useEffect(() => {
     if (!cameraCanvasRef.current || !cameraUrl) return
+    // アンマウント後の setState (teardown 済み環境) を中断フラグで抑止。
+    let active = true
     QRCode.toCanvas(cameraCanvasRef.current, cameraUrl, {
       width: 180,
       margin: 2,
       color: { dark: '#0f172a', light: '#f8fafc' },
-    }).then(() => setQrFailed((p) => ({ ...p, camera: false })))
-      .catch(() => setQrFailed((p) => ({ ...p, camera: true })))
+    }).then(() => { if (active) setQrFailed((p) => ({ ...p, camera: false })) })
+      .catch(() => { if (active) setQrFailed((p) => ({ ...p, camera: true })) })
+    return () => {
+      active = false
+    }
   }, [cameraUrl])
 
   // ビューワー URL の QR（パスワードは含めない）
   useEffect(() => {
     if (!viewerCanvasRef.current || !viewerUrl) return
+    // アンマウント後の setState (teardown 済み環境) を中断フラグで抑止。
+    let active = true
     QRCode.toCanvas(viewerCanvasRef.current, viewerUrl, {
       width: 180,
       margin: 2,
       color: { dark: '#0f172a', light: '#f8fafc' },
-    }).then(() => setQrFailed((p) => ({ ...p, viewer: false })))
-      .catch(() => setQrFailed((p) => ({ ...p, viewer: true })))
+    }).then(() => { if (active) setQrFailed((p) => ({ ...p, viewer: false })) })
+      .catch(() => { if (active) setQrFailed((p) => ({ ...p, viewer: true })) })
+    return () => {
+      active = false
+    }
   }, [viewerUrl])
 
   const handleCopy = (text: string, setter: (v: boolean) => void) => {
