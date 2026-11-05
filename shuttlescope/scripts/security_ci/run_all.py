@@ -11,8 +11,9 @@
 import subprocess, sys, os, time, io
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _common import wait_until_ready
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace", line_buffering=True)
-sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace", line_buffering=True)
+# _common が標準出力を包み直すため、ここでは包み直さず設定だけ変える（二重に包むと先の包みの破棄で出力先が閉じる）
+sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
+sys.stderr.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SUITES = [
