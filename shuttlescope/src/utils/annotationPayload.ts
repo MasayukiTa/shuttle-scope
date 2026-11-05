@@ -37,6 +37,7 @@ export interface BatchStrokePayload {
   is_backhand: boolean
   is_around_head: boolean
   above_net?: boolean
+  hit_height?: number
   timestamp_sec?: number
   return_quality?: string
   contact_height?: string
@@ -158,6 +159,7 @@ export function buildBatchPayload(args: BuildBatchPayloadArgs): BatchPayload {
       is_backhand: st.is_backhand,
       is_around_head: st.is_around_head,
       above_net: st.above_net,
+      hit_height: st.hit_height,
       timestamp_sec: st.timestamp_sec,
       // G2+ 移動系: オプションエンリッチメント
       return_quality: st.return_quality,

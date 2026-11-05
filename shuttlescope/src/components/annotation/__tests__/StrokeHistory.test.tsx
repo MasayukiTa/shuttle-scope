@@ -116,3 +116,30 @@ describe('StrokeHistory hit_zone override badge', () => {
     expect(tooltip).toContain('NL')
   })
 })
+
+describe('StrokeHistory 打球の高さ (hit_height) バッジ', () => {
+  it('hit_height 未指定ならバッジを表示しない', () => {
+    render(<StrokeHistory strokes={[{ ...baseStroke }]} />)
+    expect(screen.queryByTestId('stroke-hit-height-badge')).toBeNull()
+  })
+
+  it('hit_height=0 で「ネットより上」を表示する', () => {
+    render(<StrokeHistory strokes={[{ ...baseStroke, hit_height: 0 }]} />)
+    expect(screen.getByText('ネットより上')).toBeTruthy()
+  })
+
+  it('hit_height=1 で「やや上」を表示する', () => {
+    render(<StrokeHistory strokes={[{ ...baseStroke, hit_height: 1 }]} />)
+    expect(screen.getByText('やや上')).toBeTruthy()
+  })
+
+  it('hit_height=2 で「やや下」を表示する', () => {
+    render(<StrokeHistory strokes={[{ ...baseStroke, hit_height: 2 }]} />)
+    expect(screen.getByText('やや下')).toBeTruthy()
+  })
+
+  it('hit_height=3 で「下」を表示する', () => {
+    render(<StrokeHistory strokes={[{ ...baseStroke, hit_height: 3 }]} />)
+    expect(screen.getByText('下')).toBeTruthy()
+  })
+})
