@@ -220,7 +220,7 @@ export function AuditLogPage() {
               <span>{t('auth.audit_log.actions_failed')}</span>
               <button
                 type="button"
-                onClick={loadActionOptions}
+                onClick={() => loadActionOptions()}
                 className="px-2 py-0.5 rounded-ss-sm border border-[var(--ss-border)] text-[var(--ss-t2)]"
               >
                 {t('common_ui.query_retry')}

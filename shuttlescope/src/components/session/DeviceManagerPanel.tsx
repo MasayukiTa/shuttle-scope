@@ -832,7 +832,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
               {localEnumFailed && (
                 <div role="alert" className="text-[10px] text-[var(--ss-bad)] mb-2 flex items-center gap-2">
                   <span>{t('lan_session.local_sources_failed')}</span>
-                  <button type="button" onClick={reloadLocalSources}
+                  <button type="button" onClick={() => reloadLocalSources()}
                     className="px-2 py-0.5 rounded-ss-sm border border-[var(--ss-border)] text-[var(--ss-t2)]">
                     {t('common_ui.query_retry')}
                   </button>
