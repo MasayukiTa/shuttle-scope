@@ -30,11 +30,16 @@ export default function InvitationAcceptPage() {
       setError(t('auth.verify.missing_token'))
       return
     }
+    // アンマウント後の setState (teardown 済み環境) を中断フラグで抑止。
+    let active = true
     setLoading(true)
     apiGet<{ success: boolean; data: InviteInfo }>(`/auth/invitation/peek?token=${encodeURIComponent(token)}`)
-      .then((r) => setInfo(r.data))
-      .catch((err: unknown) => setError(t(publicAuthErrorKey(err, 'invitation_peek'))))
-      .finally(() => setLoading(false))
+      .then((r) => { if (active) setInfo(r.data) })
+      .catch((err: unknown) => { if (active) setError(t(publicAuthErrorKey(err, 'invitation_peek'))) })
+      .finally(() => { if (active) setLoading(false) })
+    return () => {
+      active = false
+    }
   }, [token, t])
 
   const handleSubmit = async (e: React.FormEvent) => {
