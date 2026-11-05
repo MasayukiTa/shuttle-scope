@@ -249,6 +249,12 @@
     "operator": "Operator"
   },
   "auth": {
+    "idle_warning": {
+      "title": "You will be signed out soon",
+      "body": "You have been inactive for a while, so you will be signed out automatically in {{sec}} seconds. Any rally you are entering has been saved locally, so you can restore it the next time you sign in. Choose “Keep working” to stay signed in.",
+      "stay": "Keep working",
+      "logout_now": "Sign out now"
+    },
     "subtitle": "Please log in",
     "role": {
       "admin": "Admin",
