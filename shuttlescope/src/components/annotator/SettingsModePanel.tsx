@@ -38,6 +38,9 @@ interface SettingsModePanelProps {
   /** モバイルでもショットタイルのキーヒントを表示する (BT keyboard 接続 iPad ベンチ用) */
   forceShowKeyHints?: boolean
   onSetForceShowKeyHints?: (v: boolean) => void
+  /** 簡易ショット入力モード (9 大分類) */
+  simpleShotMode?: boolean
+  onSetSimpleShotMode?: (v: boolean) => void
 }
 
 export function SettingsModePanel({
@@ -55,6 +58,8 @@ export function SettingsModePanel({
   onSetInitialServer,
   forceShowKeyHints,
   onSetForceShowKeyHints,
+  simpleShotMode,
+  onSetSimpleShotMode,
 }: SettingsModePanelProps) {
   const { t } = useTranslation()
   const flipMode = useAnnotationStore((s) => s.flipMode)
@@ -91,6 +96,12 @@ export function SettingsModePanel({
               : t('annotator.ux.settings_assist_hint_assisted')}
             on={!isBasicMode}
             onClick={onToggleAnnotationMode}
+          />
+          <ToggleControl
+            label={t('annotator.ux.settings_simple_shots_label', { defaultValue: '簡易ショット入力（9 大分類）' })}
+            hint={t('annotator.ux.settings_simple_shots_hint', { defaultValue: 'スマッシュ等を細かく分けず、サーブ/ネット前/ドロップ/クリア/スマッシュ/ドライブ/ロブ/守備/その他 の 9 分類で入力。保存は従来の詳細分類の代表値。' })}
+            on={!!simpleShotMode}
+            onClick={() => onSetSimpleShotMode?.(!simpleShotMode)}
           />
           <SegmentedControl
             label={t('annotator.ux.settings_step_focus_label')}

@@ -1879,7 +1879,9 @@
       "bottom_sheet_handle": "Drag or tap to expand / collapse",
       "bottom_sheet_close": "Close",
       "score_aria_game": "Score {{a}} to {{b}} game {{n}}",
-      "menu_aria": "Menu"
+      "menu_aria": "Menu",
+      "settings_simple_shots_label": "Simple shot input (9 categories)",
+      "settings_simple_shots_hint": "Record with 9 broad categories (Serve/Net/Drop/Clear/Smash/Drive/Lob/Defensive/Other) instead of fine-grained types. Saved as the representative detailed type, so it stays consistent with existing analysis."
     },
     "hit_zone_overridden": "Manual",
     "hit_zone_aria": "Shot-location zone selector",
@@ -6343,5 +6345,16 @@
     "no_data": "No returns with an entered shot height yet. Enter the optional shot height to see this analysis.",
     "loading": "Aggregating...",
     "error": "Could not load the simple analysis."
+  },
+  "shot_major": {
+    "serve": "Serve",
+    "net": "Net",
+    "drop": "Drop",
+    "clear": "Clear",
+    "smash": "Smash",
+    "drive": "Drive",
+    "lob": "Lob",
+    "defensive": "Defensive",
+    "other": "Other"
   }
 }

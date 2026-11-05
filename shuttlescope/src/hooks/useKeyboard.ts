@@ -1,6 +1,7 @@
 import { useEffect, useCallback, useRef } from 'react'
 import { useAnnotationStore } from '@/store/annotationStore'
-import { KEYBOARD_MAP, getValidShotTypes } from '@/components/annotation/ShotTypePanel'
+import { KEYBOARD_MAP, getValidShotTypes, MAJOR_KEYBOARD_MAP, getValidMajorShots } from '@/components/annotation/ShotTypePanel'
+import { representativeOf } from '@/constants/shotMajorCategories'
 import { ShotType, Zone9, ZoneOOB, ZoneNet } from '@/types'
 
 interface UseKeyboardOptions {
@@ -24,6 +25,12 @@ interface UseKeyboardOptions {
    * 利用者が「編集を再開」を選ぶまで記録を始めさせたくない場面で使う。
    */
   inputLocked?: boolean
+  /**
+   * 簡易入力モード。true の間はショットキーを 9 大分類キー
+   * (MAJOR_KEYBOARD_MAP) として解釈し、代表 canonical 小分類に変換して
+   * 入力する。ShotTypePanel の simpleMode 表示と整合させる。
+   */
+  simpleMode?: boolean
 }
 
 /**
@@ -188,6 +195,7 @@ export function useKeyboard({
   onToggleHitter,
   onHitterSelect,
   inputLocked = false,
+  simpleMode = false,
 }: UseKeyboardOptions = {}) {
   // Use refs for callbacks so handleKeyDown never needs to be recreated when they change
   const onEndTypeSelectRef = useRef(onEndTypeSelect)
@@ -207,6 +215,8 @@ export function useKeyboard({
   enabledRef.current = enabled
   const inputLockedRef = useRef(inputLocked)
   inputLockedRef.current = inputLocked
+  const simpleModeRef = useRef(simpleMode)
+  simpleModeRef.current = simpleMode
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -501,6 +511,24 @@ export function useKeyboard({
       // ショットキー（テンキーは除外）
       if (!e.shiftKey && !e.code.startsWith('Numpad')) {
         const key = e.key.toLowerCase()
+
+        // 簡易モード: 9 大分類キーとして解釈し、代表 canonical 小分類へ変換して入力。
+        // 18 小分類キー (KEYBOARD_MAP) にはフォールバックしない。
+        if (simpleModeRef.current) {
+          const major = MAJOR_KEYBOARD_MAP[key]
+          if (major) {
+            const validMajors = getValidMajorShots(currentStrokeNum)
+            if (!validMajors.has(major)) return  // このストローク文脈では無効
+
+            e.preventDefault()
+            const v = videoRef?.current
+            if (v && !v.paused) v.pause()
+            store.inputShotType(representativeOf(major), v?.currentTime ?? 0)
+            return
+          }
+          return  // 簡易モードでは未知キーをここで止める（18分類キーに落とさない）
+        }
+
         const shotType = KEYBOARD_MAP[key] as ShotType | undefined
         if (shotType) {
           // コンテキストに応じた有効ショット種別でフィルタ
