@@ -5288,7 +5288,9 @@
       "slot_serve_label": "サーブを打った選手",
       "slot_final_label": "最後に打った選手",
       "enqueue_failed": "入力を保存できませんでした。もう一度入力してください",
-      "dismiss": "閉じる"
+      "dismiss": "閉じる",
+      "calib_hint": "コートを校正すると、撮影方向に合わせて動画のコート上を直接タップで選べます",
+      "calib_cta": "動画に戻って校正"
     },
     "HitterSlot": {
       "player_a": "A 主選手",
@@ -5330,7 +5332,9 @@
       "err_invalid_land": "その球種はそのゾーンに着地できません。別のゾーンを選んでください",
       "err_service_not_first": "サーブはラリーの1球目のみ指定できます",
       "err_serve_locked": "1球目のサーブは、サーブの種類(ショート/ロング)にだけ変更できます",
-      "enqueue_failed": "打球を保存できませんでした。もう一度入力してください"
+      "enqueue_failed": "打球を保存できませんでした。もう一度入力してください",
+      "calib_hint": "コートを校正すると、撮影方向に合わせて動画のコート上を直接タップで選べます",
+      "calib_cta": "動画に戻って校正"
     },
     "AnnotateOverlay": {
       "confirm": "確定",

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   quadToUnit, unitToCell, isInsideQuad,
   fallbackTapToCell, calibratedTapToCell,
+  courtQuadFromCalibPoints, inferCourtHalfFromCalibPoints,
   type Quad,
 } from '@/utils/courtHomography'
 
@@ -151,4 +152,161 @@ describe('calibratedTapToCell — 斜め撮影の台形でも中央を拾う', (
     ]
     expect(calibratedTapToCell(degenerate, 0.5, 0.5, 'near')).toBeNull()
   })
+})
+
+// ─── courtQuadFromCalibPoints — 保存済み 6 点から courtQuad を取り出す ────────
+describe('courtQuadFromCalibPoints', () => {
+  // localStorage に保存される形: [TL, TR, BR, BL, NL, NR] (正規化座標)。
+  const sixPoints = [
+    { x: 0.30, y: 0.20 }, // TL
+    { x: 0.70, y: 0.20 }, // TR
+    { x: 0.90, y: 0.80 }, // BR
+    { x: 0.10, y: 0.80 }, // BL
+    { x: 0.20, y: 0.50 }, // NL (ネット左)
+    { x: 0.80, y: 0.50 }, // NR (ネット右)
+  ]
+
+  it('先頭 4 点 (コート 4 隅) を Quad として返す', () => {
+    const quad = courtQuadFromCalibPoints(sixPoints)
+    expect(quad).not.toBeNull()
+    expect(quad).toEqual(sixPoints.slice(0, 4))
+  })
+
+  it('4 点ちょうど (ネット無し) でも Quad を返す', () => {
+    const quad = courtQuadFromCalibPoints(sixPoints.slice(0, 4))
+    expect(quad).not.toBeNull()
+  })
+
+  it('未校正 (null / 非配列 / 点不足) は null', () => {
+    expect(courtQuadFromCalibPoints(null)).toBeNull()
+    expect(courtQuadFromCalibPoints(undefined)).toBeNull()
+    expect(courtQuadFromCalibPoints('court-calib')).toBeNull()
+    expect(courtQuadFromCalibPoints([{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }])).toBeNull()
+  })
+
+  it('壊れた座標 (NaN / 数値以外) を含む先頭 4 点は null', () => {
+    const bad = [
+      { x: 0.3, y: 0.2 }, { x: Number.NaN, y: 0.2 },
+      { x: 0.9, y: 0.8 }, { x: 0.1, y: 0.8 },
+    ]
+    expect(courtQuadFromCalibPoints(bad)).toBeNull()
+    const bad2 = [
+      { x: 0.3, y: 0.2 }, { x: '0.7', y: 0.2 },
+      { x: 0.9, y: 0.8 }, { x: 0.1, y: 0.8 },
+    ]
+    expect(courtQuadFromCalibPoints(bad2)).toBeNull()
+  })
+
+  it('退化配置 (4 隅が共線) は null → 呼び出し側は固定枠に落ちる', () => {
+    const collinear = [
+      { x: 0, y: 0 }, { x: 0.33, y: 0 }, { x: 0.66, y: 0 }, { x: 1, y: 0 },
+    ]
+    expect(courtQuadFromCalibPoints(collinear)).toBeNull()
+  })
+
+  it('返した Quad は calibratedTapToCell にそのまま渡せる (中央→中央マス)', () => {
+    const quad = courtQuadFromCalibPoints(sixPoints)!
+    // 台形の重心付近 = コート中央。near 半面の中央あたりを拾う。
+    const cell = calibratedTapToCell(quad, 0.5, 0.65, 'near')
+    expect(cell).not.toBeNull()
+    expect(cell!.col).toBe(1)
+  })
+})
+
+// ─── inferCourtHalfFromCalibPoints — ネット位置から near/far を推定 ───────────
+describe('inferCourtHalfFromCalibPoints — 撮影方向で入力片面の写り方が変わる', () => {
+  // 俯瞰: 奥が狭く手前が広い。ネットはコート中ほど〜上 (y 小) に写る → far。
+  it('俯瞰 (ネットが 4 隅重心より上) は far', () => {
+    const pts = [
+      { x: 0.30, y: 0.20 }, { x: 0.70, y: 0.20 }, // 奥ベースライン
+      { x: 0.90, y: 0.80 }, { x: 0.10, y: 0.80 }, // 手前ベースライン
+      { x: 0.25, y: 0.45 }, { x: 0.75, y: 0.45 }, // ネット (重心 y=0.5 より上)
+    ]
+    expect(inferCourtHalfFromCalibPoints(pts)).toBe('far')
+  })
+
+  // 選手背後から手前ベースライン越しに撮る等: ネットが画面下寄り (y 大) → near。
+  it('ネットが 4 隅重心より下 (手前に写る) は near', () => {
+    const pts = [
+      { x: 0.30, y: 0.20 }, { x: 0.70, y: 0.20 },
+      { x: 0.90, y: 0.80 }, { x: 0.10, y: 0.80 },
+      { x: 0.25, y: 0.65 }, { x: 0.75, y: 0.65 }, // ネット (重心 y=0.5 より下)
+    ]
+    expect(inferCourtHalfFromCalibPoints(pts)).toBe('near')
+  })
+
+  it('ネット 2 点が無い / 壊れている / 点不足のときは既定 far', () => {
+    expect(inferCourtHalfFromCalibPoints(null)).toBe('far')
+    expect(inferCourtHalfFromCalibPoints([{ x: 0, y: 0 }])).toBe('far')
+    const netBroken = [
+      { x: 0.3, y: 0.2 }, { x: 0.7, y: 0.2 }, { x: 0.9, y: 0.8 }, { x: 0.1, y: 0.8 },
+      { x: Number.NaN, y: 0.5 }, { x: 0.75, y: 0.5 },
+    ]
+    expect(inferCourtHalfFromCalibPoints(netBroken)).toBe('far')
+  })
+})
+
+// ─── calibratedTapToCell — 撮影 4 方向の台形でも中央/端を正しく拾う ───────────
+// 配線の目的は «撮影方向が変わっても動画のコート上を直接タップで選べる» こと。
+// 各方向で «コート中央タップ→中央列» «左右端→col0/col2» を回帰ガードする。
+describe('calibratedTapToCell — 撮影 4 方向で中央と左右端を拾う', () => {
+  // (1) 正面やや俯瞰: 奥狭・手前広の対称台形。
+  const front: Quad = [
+    { x: 0.30, y: 0.20 }, { x: 0.70, y: 0.20 },
+    { x: 0.90, y: 0.80 }, { x: 0.10, y: 0.80 },
+  ]
+  // (2) 斜め (右寄りアングル): 右側が圧縮された非対称四角形。
+  const diagonal: Quad = [
+    { x: 0.35, y: 0.18 }, { x: 0.78, y: 0.25 },
+    { x: 0.82, y: 0.78 }, { x: 0.12, y: 0.82 },
+  ]
+  // (3) 後方 (反対エンドから): 上下が入れ替わり手前が狭く奥が広い。
+  const behind: Quad = [
+    { x: 0.10, y: 0.20 }, { x: 0.90, y: 0.20 },
+    { x: 0.70, y: 0.80 }, { x: 0.30, y: 0.80 },
+  ]
+  // (4) 横 (サイドライン側から): コートが横長に倒れ、左右が奥/手前になる平行四辺形。
+  const side: Quad = [
+    { x: 0.15, y: 0.35 }, { x: 0.80, y: 0.25 },
+    { x: 0.85, y: 0.65 }, { x: 0.20, y: 0.75 },
+  ]
+
+  // quad の (u,v) パラメタ上で «半面中央・左右端» を作り、画面座標へ戻してタップする。
+  // これにより «どの方向でも、コート自身の中央/左右端を指せば中央列/端列に入る» を
+  // 方向非依存に検証できる (画面 x の大小ではなく、コート幾何に沿う)。
+  const bilerp = (q: Quad, u: number, v: number) => {
+    const top = { x: q[0].x + (q[1].x - q[0].x) * u, y: q[0].y + (q[1].y - q[0].y) * u }
+    const bot = { x: q[3].x + (q[2].x - q[3].x) * u, y: q[3].y + (q[2].y - q[3].y) * u }
+    return { x: top.x + (bot.x - top.x) * v, y: top.y + (bot.y - top.y) * v }
+  }
+
+  const cases: Array<{ name: string; quad: Quad }> = [
+    { name: '正面', quad: front },
+    { name: '斜め', quad: diagonal },
+    { name: '後方', quad: behind },
+    { name: '横', quad: side },
+  ]
+
+  for (const { name, quad } of cases) {
+    it(`${name}: far 半面のコート中央タップは中央列 (col1)`, () => {
+      const p = bilerp(quad, 0.5, 0.25) // far 半面 (v∈[0,0.5]) の中央あたり
+      const cell = calibratedTapToCell(quad, p.x, p.y, 'far')!
+      expect(cell.col).toBe(1)
+      expect(cell.row).toBe(1)
+    })
+
+    it(`${name}: near 半面のコート中央タップは中央列 (col1)`, () => {
+      const p = bilerp(quad, 0.5, 0.75) // near 半面 (v∈[0.5,1]) の中央あたり
+      const cell = calibratedTapToCell(quad, p.x, p.y, 'near')!
+      expect(cell.col).toBe(1)
+      expect(cell.row).toBe(1)
+    })
+
+    it(`${name}: コート左端→col0 / 右端→col2 (u の順序を保つ)`, () => {
+      const left = bilerp(quad, 1 / 6, 0.25)
+      const right = bilerp(quad, 5 / 6, 0.25)
+      expect(calibratedTapToCell(quad, left.x, left.y, 'far')!.col).toBe(0)
+      expect(calibratedTapToCell(quad, right.x, right.y, 'far')!.col).toBe(2)
+    })
+  }
 })

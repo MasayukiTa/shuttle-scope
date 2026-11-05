@@ -5276,7 +5276,9 @@
       "slot_serve_label": "Who served",
       "slot_final_label": "Who hit last",
       "enqueue_failed": "Could not save the input. Please enter it again",
-      "dismiss": "Dismiss"
+      "dismiss": "Dismiss",
+      "calib_hint": "Calibrate the court to tap directly on the court in the video, matched to the camera angle",
+      "calib_cta": "Back to video to calibrate"
     },
     "HitterSlot": {
       "player_a": "A main player",
@@ -5318,7 +5320,9 @@
       "err_invalid_land": "That shot type cannot land in that zone. Pick another zone.",
       "err_service_not_first": "A service can only be the first stroke of the rally",
       "err_serve_locked": "The first-stroke serve can only be changed to another service type (short or long)",
-      "enqueue_failed": "Could not save the shot. Please enter it again"
+      "enqueue_failed": "Could not save the shot. Please enter it again",
+      "calib_hint": "Calibrate the court to tap directly on the court in the video, matched to the camera angle",
+      "calib_cta": "Back to video to calibrate"
     },
     "AnnotateOverlay": {
       "confirm": "Confirm",
