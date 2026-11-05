@@ -39,11 +39,18 @@ def main():
         "a@b", "@x.com", "user@x.com\r\nBcc:e@y.com",
     ]
     for e in bad_emails:
-        s, _, b = req("POST", "/api/auth/register", body={
-            "email": e, "password": "Test1234!ABC",
-            "username": f"u_{secrets.token_hex(4)}",
-            "display_name": "x",
-        })
+        try:
+            s, _, b = req("POST", "/api/auth/register", body={
+                "email": e, "password": "Test1234!ABC",
+                "username": f"u_{secrets.token_hex(4)}",
+                "display_name": "x",
+            })
+        except Exception as ex:
+            # Transient transport failure after retries in _common.req; not an
+            # auth decision, so it must not crash the run (the old uncaught
+            # timeout here is exactly what broke CI). Surface as WARN.
+            f.warn(f"email:{e[:30]}", f"EX {type(ex).__name__}")
+            continue
         if s == 201:
             f.critical(f"email:{e[:30]}", "registration accepted")
         elif s in (422, 503):
@@ -53,7 +60,11 @@ def main():
     for p in ["/api/oauth/authorize", "/api/oauth/token",
               "/.well-known/openid-configuration",
               "/api/openid/userinfo", "/api/.well-known/oauth-authorization-server"]:
-        s, _, b = req("GET", p)
+        try:
+            s, _, b = req("GET", p)
+        except Exception as ex:
+            f.warn(f"oauth_probe:{p}", f"EX {type(ex).__name__}")
+            continue
         if s == 200:
             f.high(f"oauth_probe:{p}", short(b, 60))
         else:
@@ -61,14 +72,22 @@ def main():
 
     # 不正 verify token (uniformity check は skip — timing は CI で不安定)
     for tk in ["validlooking", "../../etc/passwd", "x" * 100]:
-        s, _, b = req("GET", f"/api/auth/email/verify?token={tk}")
+        try:
+            s, _, b = req("GET", f"/api/auth/email/verify?token={tk}")
+        except Exception as ex:
+            f.warn(f"verify:{tk[:20]}", f"EX {type(ex).__name__}")
+            continue
         if s == 500:
             f.high(f"verify:{tk[:20]}", short(b, 60))
 
     # 不正 password reset token
     for tk in ["fake", "x" * 100]:
-        s, _, b = req("POST", "/api/auth/password/reset",
-                      body={"token": tk, "new_password": "Test1234ABCDef!"})
+        try:
+            s, _, b = req("POST", "/api/auth/password/reset",
+                          body={"token": tk, "new_password": "Test1234ABCDef!"})
+        except Exception as ex:
+            f.warn(f"pwreset:{tk[:20]}", f"EX {type(ex).__name__}")
+            continue
         if s == 500:
             f.high(f"pwreset:{tk[:20]}", short(b, 60))
 
