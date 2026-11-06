@@ -57,37 +57,72 @@ def _require_job_scope(request: Request, job_id: str, db: Session) -> dict:
 
 
 def _load_setting_int(db, key: str, default: int) -> int:
-    """app_settings テーブルから整数設定値を読み込む"""
+    """app_settings テーブルから整数設定値を読み込む。
+
+    2026-11-06 idle-in-transaction 修正:
+    この関数は autocommit=False のセッションで SELECT を実行する。呼び出し元の
+    ``_run_batch`` は ``SessionLocal()`` を動画 1 本の処理が終わるまで (数分〜数時間)
+    閉じないため、ここで commit/rollback しないと app_settings の SELECT が
+    「最後の文」のまま接続が ``idle in transaction`` に居座る。本番で最長 1 日 20 時間
+    残っていた接続の正体がこれ。読み終えたら必ずトランザクションを閉じる。
+    値は app_settings_cache に短期キャッシュして、バッチが同じ鍵を何度も読んでも
+    読み取りトランザクションを開き直さないようにする。
+    """
     import json as _json
     from sqlalchemy import text as _text
-    try:
-        row = db.execute(_text("SELECT value FROM app_settings WHERE key = :k"), {"k": key}).fetchone()
-        if row:
-            return int(_json.loads(row[0]))
-    except Exception:
-        pass
-    return default
+    from backend.db import app_settings_cache
+
+    def _loader():
+        try:
+            row = db.execute(_text("SELECT value FROM app_settings WHERE key = :k"), {"k": key}).fetchone()
+            if row:
+                return int(_json.loads(row[0]))
+        except Exception:
+            pass
+        finally:
+            # read-only: 開いた暗黙トランザクションを即解放する。
+            try:
+                db.rollback()
+            except Exception:
+                pass
+        return default
+
+    return app_settings_cache.get_or_load(f"int:{key}", _loader)
 
 
 def _load_device_settings(db) -> tuple[int, str]:
-    """DB から cuda_device_index / openvino_device を読み込む"""
+    """DB から cuda_device_index / openvino_device を読み込む。
+
+    ``_load_setting_int`` と同じ idle-in-transaction 対策を施す
+    (読み終えたら rollback し、短期キャッシュを経由する)。
+    """
     import json as _json
     from sqlalchemy import text as _text
-    cuda_idx = 0
-    ov_device = "GPU"
-    try:
-        rows = db.execute(
-            _text("SELECT key, value FROM app_settings WHERE key IN ('cuda_device_index','openvino_device')")
-        ).fetchall()
-        for k, v in rows:
-            val = _json.loads(v)
-            if k == "cuda_device_index":
-                cuda_idx = int(val)
-            elif k == "openvino_device":
-                ov_device = str(val)
-    except Exception:
-        pass
-    return cuda_idx, ov_device
+    from backend.db import app_settings_cache
+
+    def _loader():
+        cuda_idx = 0
+        ov_device = "GPU"
+        try:
+            rows = db.execute(
+                _text("SELECT key, value FROM app_settings WHERE key IN ('cuda_device_index','openvino_device')")
+            ).fetchall()
+            for k, v in rows:
+                val = _json.loads(v)
+                if k == "cuda_device_index":
+                    cuda_idx = int(val)
+                elif k == "openvino_device":
+                    ov_device = str(val)
+        except Exception:
+            pass
+        finally:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+        return (cuda_idx, ov_device)
+
+    return app_settings_cache.get_or_load("device_settings", _loader)
 
 
 class BatchJobStatus:

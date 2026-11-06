@@ -150,37 +150,68 @@ class YoloBatchRequest(BaseModel):
 
 
 def _load_setting_int(db: Session, key: str, default: int) -> int:
-    """app_settings テーブルから整数設定値を読み込む"""
+    """app_settings テーブルから整数設定値を読み込む。
+
+    2026-11-06 idle-in-transaction 修正:
+    autocommit=False のセッションで SELECT を実行するため、読み終えたら
+    ``db.rollback()`` で開いた読み取りトランザクションを即解放する。放置すると
+    呼び出し元が長命セッション (``_run_batch`` の ``SessionLocal()``) の場合に
+    接続が ``idle in transaction`` に居座る。値は短期キャッシュを経由する。
+    """
     import json as _json
     from sqlalchemy import text as _text
-    try:
-        row = db.execute(_text("SELECT value FROM app_settings WHERE key = :k"), {"k": key}).fetchone()
-        if row:
-            return int(_json.loads(row[0]))
-    except Exception:
-        pass
-    return default
+    from backend.db import app_settings_cache
+
+    def _loader():
+        try:
+            row = db.execute(_text("SELECT value FROM app_settings WHERE key = :k"), {"k": key}).fetchone()
+            if row:
+                return int(_json.loads(row[0]))
+        except Exception:
+            pass
+        finally:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+        return default
+
+    return app_settings_cache.get_or_load(f"int:{key}", _loader)
 
 
 def _load_device_settings(db: Session) -> tuple[int, str]:
-    """DB から cuda_device_index / openvino_device を読み込む"""
+    """DB から cuda_device_index / openvino_device を読み込む。
+
+    ``_load_setting_int`` と同じ idle-in-transaction 対策 (読み終えたら rollback、
+    短期キャッシュ経由) を施す。
+    """
     import json as _json
     from sqlalchemy import text as _text
-    cuda_idx = 0
-    ov_device = "GPU"
-    try:
-        rows = db.execute(
-            _text("SELECT key, value FROM app_settings WHERE key IN ('cuda_device_index','openvino_device')")
-        ).fetchall()
-        for k, v in rows:
-            val = _json.loads(v)
-            if k == "cuda_device_index":
-                cuda_idx = int(val)
-            elif k == "openvino_device":
-                ov_device = str(val)
-    except Exception:
-        pass
-    return cuda_idx, ov_device
+    from backend.db import app_settings_cache
+
+    def _loader():
+        cuda_idx = 0
+        ov_device = "GPU"
+        try:
+            rows = db.execute(
+                _text("SELECT key, value FROM app_settings WHERE key IN ('cuda_device_index','openvino_device')")
+            ).fetchall()
+            for k, v in rows:
+                val = _json.loads(v)
+                if k == "cuda_device_index":
+                    cuda_idx = int(val)
+                elif k == "openvino_device":
+                    ov_device = str(val)
+        except Exception:
+            pass
+        finally:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+        return (cuda_idx, ov_device)
+
+    return app_settings_cache.get_or_load("device_settings", _loader)
 
 
 @router.post("/yolo/batch/{match_id}", dependencies=[Depends(require_match_operator_scope)])
