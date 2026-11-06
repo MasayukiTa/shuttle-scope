@@ -62,13 +62,13 @@ def test_fingerprint_ignores_ids_and_numbers_but_not_type():
     assert a != error_fingerprint("ValueError", "GET", "/api/players/12", "bad id 12")
 
 
-def test_fingerprint_matches_known_sha1_truncation():
+def test_fingerprint_matches_known_sha1_truncation():  # DevSkim: ignore DS126858 (non-security fingerprint, usedforsecurity=False)
     # usedforsecurity=False に切り替えても値 (grouping 結果) が変わらないことを固定する。
     # 期待値は sha1("ValueError|GET|/api/matches/:id|bad id #")[:16]。
     import hashlib
 
     raw = "ValueError|GET|/api/matches/:id|bad id #"
-    expected = hashlib.sha1(raw.encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
+    expected = hashlib.sha1(raw.encode("utf-8"), usedforsecurity=False).hexdigest()[:16]  # DevSkim: ignore DS126858 (non-security fingerprint, usedforsecurity=False)
     assert error_fingerprint("ValueError", "GET", "/api/matches/12", "bad id 12") == expected
 
 
@@ -85,7 +85,7 @@ def test_fingerprint_declares_non_security_use():
     # コメント行は除外し、呼び出し行ごとに検査する (引数内の括弧に強い)。
     for line in text.splitlines():
         code = line.split("#", 1)[0]
-        if "hashlib.sha1(" in code:
+        if "hashlib.sha1(" in code:  # DevSkim: ignore DS126858 (non-security fingerprint, usedforsecurity=False)
             assert "usedforsecurity=" in code, line
 
 

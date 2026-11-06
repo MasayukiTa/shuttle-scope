@@ -85,7 +85,7 @@ def error_fingerprint(
     # スキャナの「弱いハッシュ」警告を根の用途ごと解消する。sha256 に替えないのは
     # 指紋値 (既存の grouping 結果) を変えないため。16 桁 hex に切り詰める時点で
     # 衝突耐性は求めていない。
-    return hashlib.sha1(raw.encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
+    return hashlib.sha1(raw.encode("utf-8"), usedforsecurity=False).hexdigest()[:16]  # DevSkim: ignore DS126858 (non-security fingerprint, usedforsecurity=False)
 
 
 def group_error_rows(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
