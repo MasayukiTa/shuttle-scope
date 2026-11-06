@@ -114,13 +114,13 @@ def test_non_admin_cannot_create_announcement():
 
 # ── F-T001-06: 公開ステータスの浄化 (内部名/生メトリクスを匿名者に見せない) ──
 #
-# 匿名の公開ページは「利用者に意味のある」公開コンポーネント (web/signin/database/
+# 匿名の公開ページは「利用者に意味のある」公開コンポーネント (web/database/
 # analysis) の状態色・最終確認時刻・劣化時の平易な一文のみを返す。
 # tunnel/GPU/VRAM/CPU/RAM などの内部名・生数値は公開出力に含めない。
 
 from backend.db.models import HealthSample
 
-_PUBLIC_KEYS = {"web", "signin", "database", "analysis"}
+_PUBLIC_KEYS = {"web", "database", "analysis"}
 # 公開コンポーネント dict が持つキーはこれだけ (生メトリクスキーを追加しない)。
 _PUBLIC_COMP_KEYS = {"key", "name_ja", "name_en", "status", "note_ja", "note_en",
                      "uptime_24h", "sampled_at"}
@@ -186,7 +186,7 @@ def test_public_components_use_plain_names(db_session):
     with TestClient(app) as client:
         comps = {c["key"]: c for c in client.get("/api/public/status").json()["components"]}
     assert comps["web"]["name_ja"] == "ウェブサイト" and comps["web"]["name_en"] == "Web site"
-    assert comps["signin"]["name_en"] == "Sign-in"
+    assert "signin" not in comps  # server clock is no longer shown (owner request 2026-11-06)
     assert comps["database"]["name_en"] == "Database"
     assert comps["analysis"]["name_en"] == "Video analysis"
 
@@ -284,3 +284,19 @@ def test_public_incident_title_maps_gpu_and_keeps_stored(db_session):
     # 保存データ (DB) は原文のまま。
     stored = db_session.get(StatusIncident, inc_id)
     assert stored.title == "GPU が利用できません"
+
+
+def test_public_status_hides_clock_incidents_but_keeps_the_data(db_session):
+    """サーバ時刻ずれ (component=clock) の障害は公開ページに出さない (オーナー指示 2026-11-06)。
+    行は DB に残る (表示だけ外す)。"""
+    with TestClient(app) as client:
+        c = client.post("/api/status/incidents",
+                        json={"title": "clock drift", "severity": "minor", "component": "clock"},
+                        headers=_admin())
+        assert c.status_code == 201, c.text
+        s = client.get("/api/public/status").json()
+    assert s["active_incidents"] == []
+    assert s["recent_incidents"] == []
+    assert s["overall"] == "operational"
+    from backend.db.models import StatusIncident
+    assert db_session.query(StatusIncident).filter(StatusIncident.component == "clock").count() == 1
