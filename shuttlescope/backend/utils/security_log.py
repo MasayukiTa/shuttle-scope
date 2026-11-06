@@ -15,7 +15,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from backend.db.database import SessionLocal
-from backend.db.models import RequestLog, SecurityEvent, ErrorLog
+from backend.db.models import RequestLog, SecurityEvent, ErrorLog, AuditEvent
 
 
 _log = logging.getLogger("shuttlescope.security_log")
@@ -125,6 +125,75 @@ def emit_request_log(
             db.close()
     except Exception as exc:
         _log.warning("emit_request_log failed: %s (path=%s)", exc, path)
+
+
+def emit_audit_event(
+    *,
+    action: str,
+    method: str,
+    path: str,
+    status: int,
+    user_id: Optional[int] = None,
+    role: Optional[str] = None,
+    ip_addr: Optional[str] = None,
+    request_id: Optional[str] = None,
+    entity_type: Optional[str] = None,
+    entity_id: Optional[str] = None,
+    changed_fields: Optional[list] = None,
+    field_count: Optional[int] = None,
+    body_hash: Optional[str] = None,
+    ts: Optional[datetime] = None,
+) -> None:
+    """audit_events に 1 行追加。データ変更の主体を追跡する。
+
+    設計上の約束:
+      - 本処理(元の作成/更新/削除)とは別セッションで INSERT する。監査の
+        書き込み失敗が本来の操作を巻き込んで失敗させてはならない。
+      - 例外は握りつぶさず stdlib logger に warning で残す(握りつぶして無言に
+        すると「監査が無言で欠落する」事故に気づけない)。
+      - 値そのもの(変更後の選手名など)は保存しない。changed_fields は列名の
+        一覧のみ、field_count は件数、body_hash は照合用の SHA-256 指紋。
+    """
+    try:
+        cf_str: Optional[str] = None
+        if changed_fields is not None:
+            # 値は入れない。列名のみを JSON 配列文字列で保存(最大 2KB に抑える)。
+            try:
+                cf_str = json.dumps(sorted({str(c) for c in changed_fields}), ensure_ascii=False)
+            except Exception:
+                cf_str = None
+            if cf_str is not None and len(cf_str.encode("utf-8")) > 2048:
+                cf_str = cf_str.encode("utf-8")[:2048].decode("utf-8", "ignore")
+        # テストが conftest で backend.db.database.SessionLocal を差し替えるため、
+        # インポート時に束縛したシンボルではなく database モジュール越しに
+        # 都度参照する(本番では同一オブジェクトなので挙動は変わらない)。
+        from backend.db import database as _dbmod
+        db: Session = _dbmod.SessionLocal()
+        try:
+            kwargs = dict(
+                action=(action or "")[:10],
+                method=(method or "")[:8],
+                path=(path or "")[:512],
+                status=int(status),
+                user_id=user_id,
+                role=(role or "")[:32] or None,
+                ip_addr=(ip_addr or "")[:64] or None,
+                request_id=(request_id or "")[:36] or None,
+                entity_type=(entity_type or "")[:40] or None,
+                entity_id=(str(entity_id) if entity_id is not None else "")[:64] or None,
+                changed_fields=cf_str,
+                field_count=field_count,
+                body_hash=(body_hash or "")[:64] or None,
+            )
+            if ts is not None:
+                kwargs["ts"] = ts
+            row = AuditEvent(**kwargs)
+            db.add(row)
+            db.commit()
+        finally:
+            db.close()
+    except Exception as exc:
+        _log.warning("emit_audit_event failed: %s (path=%s)", exc, path)
 
 
 def emit_error_log(

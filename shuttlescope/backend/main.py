@@ -2891,9 +2891,15 @@ app.add_middleware(StagedHoneytokenResponseMiddleware)
 from backend.middleware.security_observability import (
     RequestLogMiddleware as _RequestLogMW,
     ProbeDetectionMiddleware as _ProbeDetectionMW,
+    AuditEventMiddleware as _AuditEventMW,
 )
 app.add_middleware(_ProbeDetectionMW)
 app.add_middleware(_RequestLogMW)
+# AuditEventMiddleware は最外 (最後に add) に置く。変更系の body を他の
+# middleware が消費する前に読み、request._body にキャッシュしておくことで
+# 下流の FastAPI バリデーションを壊さず、かつ「成功した変更」を漏れなく
+# audit_events に残す。書き込みは別セッションなので応答には影響しない。
+app.add_middleware(_AuditEventMW)
 
 
 # Round 258 R41: Canary endpoints — 攻撃者だけが叩く path を register。
