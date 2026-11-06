@@ -1089,8 +1089,11 @@ class MatchCVArtifact(Base):
     backend_used: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     # summary: コート位置サマリーなど（軽量、常時読み込み）
     summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)   # JSON
-    # data: フレーム別生データ（大容量、オンデマンド読み込み）
-    data: Mapped[Optional[str]] = mapped_column(Text, nullable=True)       # JSON
+    # data: フレーム別生データ（大容量、オンデマンド読み込み）。
+    # PR1: 本番で 1 行あたり約 6GB の TEXT JSON。deferred=True により通常の
+    # db.query(MatchCVArtifact) では data 列を SELECT せず、.data を実際に
+    # アクセスした行だけ個別 SELECT する。data を使う箇所は undefer() を明示する。
+    data: Mapped[Optional[str]] = mapped_column(Text, nullable=True, deferred=True)  # JSON
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
