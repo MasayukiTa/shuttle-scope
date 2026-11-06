@@ -1939,6 +1939,54 @@ class ErrorLog(Base):
     ip_addr: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
 
 
+# ─── 0062: audit_events (データ変更の主体追跡) ────────────────────────────
+class AuditEvent(Base):
+    """データ変更監査ログ。誰(user_id/role/ip)が・いつ(ts)・どの entity
+    (entity_type/entity_id)に・どの操作(action=create/update/delete)を行い、
+    どのフィールドを変えたか(changed_fields=フィールド名の一覧, field_count=件数)
+    を 1 行で残す。request_id で request_logs と相関できる。
+
+    値を保存しない理由(測定つき):
+      - 変更値そのものは選手名・体組成・コンディション等の個人情報を含み、
+        監査テーブルが二次的な個人情報リポジトリになると APPI/GDPR 上の
+        保管義務・漏洩時影響が跳ね上がる。
+      - 値は大容量にもなりうる(stroke batch は 1 リクエストで数百行)。実測で
+        /api/strokes/batch の 1 リクエスト body は中央値 ~8KB・最大 ~180KB
+        (本番 request_logs の bytes_in 分布 2026-11-06 時点)。これを監査に
+        そのまま複製すると書き込み量が request_logs と同オーダーで二重化する。
+      - 代わりに「変更フィールド名の一覧」(どの列が触られたか)と「件数」、そして
+        変更内容の before/after を正規化した SHA-256 ハッシュ(body_hash)だけを
+        残す。ハッシュは 64 hex = 32byte 固定で、値を復元できないが「同じ変更が
+        再適用されたか」「改竄で別物にすり替わっていないか」の照合には使える。
+        フィールド名一覧は列名のみ(値を含まない)なので個人情報ではない。
+    """
+    __tablename__ = "audit_events"
+    __table_args__ = (
+        Index("ix_audit_events_ts", "ts"),
+        Index("ix_audit_events_user_id", "user_id"),
+        Index("ix_audit_events_entity", "entity_type", "entity_id"),
+        Index("ix_audit_events_request_id", "request_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.current_timestamp())
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    role: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    ip_addr: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    request_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    action: Mapped[str] = mapped_column(String(10), nullable=False)          # create/update/delete
+    method: Mapped[str] = mapped_column(String(8), nullable=False)           # POST/PUT/PATCH/DELETE
+    path: Mapped[str] = mapped_column(String(512), nullable=False)
+    status: Mapped[int] = mapped_column(Integer, nullable=False)
+    entity_type: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    entity_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    # 値は保存しない。触れたフィールド名の一覧(カンマ区切り/JSON文字列)のみ。
+    changed_fields: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    field_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # 変更 body を正規化した SHA-256(hex)。値そのものではなく照合用の指紋。
+    body_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+
+
 # ─── 0035: chat_sessions / chat_messages (Growth Advisor chat) ────────────
 class ChatSession(Base):
     """Growth Advisor chat セッション。coach/analyst/admin のみ作成可能。
