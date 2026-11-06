@@ -161,7 +161,7 @@ export function FlashAdvicePanel({ matchId, asOfSet, asOfRallyNum, playerId }: F
     <div className="space-y-3">
       {/* 監査#145: 速報ページ内の信頼度は backend の meta.confidence 一本に統一する。
           以前は ConfidenceBadge が unit="rallies"(閾値60/250)で独自に再計算し、
-          同じ標本で片や「参考値」、片や「★高確信度の追加示唆」と矛盾していた。
+          同じ標本で片や「参考値」、片や「星付き(高確信度)の追加示唆」と矛盾していた。
           拡張項目(trend/fatigue)が付くのは backend が confidence>=medium のときなので、
           その判定結果(stars/label)をそのまま見せ、断定的な「高確信度」表記はやめる。 */}
       <div className="flex items-center justify-between gap-2">

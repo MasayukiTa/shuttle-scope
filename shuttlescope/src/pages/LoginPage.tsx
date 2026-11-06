@@ -199,9 +199,19 @@ export function LoginPage({ onLogin }: Props) {
     (window.location.hash || '').includes('password_changed=1')
 
   useEffect(() => {
+    // 非同期の bootstrap-status 取得は、解決前にアンマウントされると
+    // teardown 済みの環境で setState が走り、jsdom では
+    // "ReferenceError: window is not defined" が未捕捉の Unhandled Rejection
+    // として立ち上がる(全件合格でも CI を落とす)。中断フラグで
+    // アンマウント後の setState を発生させない(エラーの握り潰しではない)。
+    let active = true
     fetchBootstrapStatus().then((status) => {
+      if (!active) return
       setBootstrapStatus(status)
     })
+    return () => {
+      active = false
+    }
   }, [])
 
   const handleLogin = async () => {

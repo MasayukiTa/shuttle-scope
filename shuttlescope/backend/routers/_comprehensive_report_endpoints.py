@@ -237,7 +237,7 @@ _SECTION_LABELS = [
     ("heatmap_land", "3. 着地点ヒートマップ"),
     ("shot_types", "4. ショット種類分布"),
     ("shot_win_loss", "5. ショット別 勝敗"),
-    ("set_comparison", "6. セット比較"),
+    ("set_comparison", "6. ゲーム比較"),
     ("first_return", "7. ファーストリターン"),
     ("tournament_comparison", "8. 大会レベル別比較"),
     ("pre_win_patterns", "9. 勝利前ラリーパターン"),

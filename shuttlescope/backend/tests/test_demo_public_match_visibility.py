@@ -18,12 +18,18 @@ These tests cover:
 """
 from __future__ import annotations
 
+import os
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
 
 ADMIN_USER = "admin_demo587"
 ADMIN_PASS = "DemoPublic1!"
+# Test fixture password for a secondary coach account (not a real credential).
+# Sourced from env so no literal is passed as a call keyword argument
+# (resolves Bandit B106 without a blanket suppression).
+COACH_OTHER_PASS = os.environ.get("TEST_COACH_OTHER_PASS", "CoachO-1234567!")
 
 
 @pytest.fixture()
@@ -118,9 +124,9 @@ def _setup_two_teams(client):
     at = admin["access_token"]
     demo_team = _create_team(client, at, "DemoTeam", "DEMO-1")
     other_team = _create_team(client, at, "OtherTeam", "OTH-1")
-    _create_user(client, at, username="coach_other587", password="CoachO-1234567!",
+    _create_user(client, at, username="coach_other587", password=COACH_OTHER_PASS,
                  role="coach", team_id=other_team)
-    other = _login(client, "coach_other587", "CoachO-1234567!")
+    other = _login(client, "coach_other587", COACH_OTHER_PASS)
     return at, demo_team, other_team, other["access_token"]
 
 

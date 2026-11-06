@@ -392,7 +392,7 @@ describe('AnalystDepthPanel: null の v1/v2 勝率でキャリブレーション
   it('omits the calibration line when either value is null', async () => {
     mockRoutes({ '/prediction/analyst_depth': depth(null, null) })
     const { container } = wrap(<AnalystDepthPanel playerId={1} />)
-    await waitFor(() => expect(container.textContent).toContain('セットモデル'))
+    await waitFor(() => expect(container.textContent).toContain('ゲームモデル'))
     expect(container.textContent).not.toContain('v1勝率')
   })
 

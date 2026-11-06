@@ -17,6 +17,13 @@ import { useTranslation } from 'react-i18next'
 import { clsx } from 'clsx'
 import { ShotType } from '@/types'
 import { getStyleForShot } from '@/constants/shotTypeColors'
+import {
+  MAJOR_SHOTS,
+  MAJOR_SHOT_JA,
+  majorOf,
+  representativeOf,
+  type MajorShot,
+} from '@/constants/shotMajorCategories'
 
 interface ShotTypePanelProps {
   selected: ShotType | null
@@ -30,6 +37,11 @@ interface ShotTypePanelProps {
   isMatchDayMode?: boolean
   /** モバイルでも常にキーヒントを表示する (BT keyboard 接続の iPad 等) */
   forceShowKeyHints?: boolean
+  /**
+   * 簡易入力モード。true のとき 9 大分類タイルを表示し、
+   * 選ぶと代表 canonical 小分類 (representativeOf) を onSelect に渡す。
+   */
+  simpleMode?: boolean
 }
 
 // ─── キーボードショートカットマップ（useKeyboard.ts と同期すること） ──────────
@@ -138,8 +150,51 @@ function buildGroups(context: ShotContext): ShotGroup[] {
 
 // ─── コンポーネント ──────────────────────────────────────────────────────────
 
-export function ShotTypePanel({ selected, onSelect, disabled = false, strokeNum, lastShotType, isMatchDayMode = false, forceShowKeyHints = false }: ShotTypePanelProps) {
+export function ShotTypePanel({ selected, onSelect, disabled = false, strokeNum, lastShotType, isMatchDayMode = false, forceShowKeyHints = false, simpleMode = false }: ShotTypePanelProps) {
   const { t } = useTranslation()
+
+  // 簡易モード: 9 大分類タイル。選ぶと代表 canonical 小分類を onSelect に渡す。
+  // 選択中ハイライトは「選ばれている shot_type が属する大分類」を点灯する。
+  if (simpleMode) {
+    const validMajors = getValidMajorShots(strokeNum)
+    const selectedMajor: MajorShot | null = selected ? majorOf(selected) : null
+    const majors = MAJOR_SHOTS.filter((m) => validMajors.has(m))
+    return (
+      <div className="flex flex-col gap-2" data-tutorial="annotator.shotTypes">
+        <div className={clsx('grid gap-1', isMatchDayMode ? 'grid-cols-2' : 'grid-cols-2 md:grid-cols-3')}>
+          {majors.map((major) => {
+            const rep = representativeOf(major)
+            const key = Object.entries(MAJOR_KEYBOARD_MAP).find(([, v]) => v === major)?.[0] ?? ''
+            const style = getStyleForShot(rep)
+            const isSelected = selectedMajor === major
+            const label = t(`shot_major.${major}`, { defaultValue: MAJOR_SHOT_JA[major] })
+            return (
+              <button
+                key={major}
+                data-tile="true"
+                data-major={major}
+                onClick={() => !disabled && onSelect(rep)}
+                disabled={disabled}
+                aria-pressed={isSelected}
+                className={clsx(
+                  'relative px-2 rounded-ss-md font-medium transition-colors border',
+                  isMatchDayMode ? 'py-3 text-sm' : 'py-3 text-sm md:py-1.5 md:text-xs',
+                  style.bg, style.bgHover, style.text, style.border,
+                  isSelected && style.ringSelected,
+                  disabled && 'opacity-40 cursor-not-allowed'
+                )}
+                title={`${label} (${key.toUpperCase()})`}
+              >
+                <span className={clsx('absolute top-0.5 right-1 text-[9px] ss-num opacity-60 font-mono', forceShowKeyHints ? 'inline' : 'hidden md:inline')}>{key.toUpperCase()}</span>
+                <span className="absolute top-0.5 left-1 text-[10px] opacity-80" aria-hidden>{style.icon}</span>
+                <span className="block text-center leading-tight">{label}</span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
 
   const context = getShotContext(strokeNum, lastShotType)
   const groups = buildGroups(context)
@@ -194,4 +249,31 @@ export function getValidShotTypes(strokeNum: number, lastShotType: ShotType | nu
   return new Set(groups.flatMap((g) => g.shots))
 }
 
-export { KEYBOARD_MAP }
+// ─── 簡易モード（9 大分類） ─────────────────────────────────────────────
+//
+// 大分類キーマップ。KEYBOARD_MAP の小分類キーとは独立に定義する。
+// useKeyboard.ts が simpleMode 時にこちらを引く。キーは小分類側の
+// 代表文字と揃える（serve=s は smash と衝突するため 1/2 をサーブに割当）。
+const MAJOR_KEYBOARD_MAP: Record<string, MajorShot> = {
+  '1': 'serve',
+  'n': 'net',
+  'o': 'drop',
+  'c': 'clear',
+  's': 'smash',
+  'v': 'drive',
+  'l': 'lob',
+  'd': 'defensive',
+  'g': 'other',
+}
+
+/**
+ * 簡易モードで現在有効な大分類セット。
+ * 1 球目はサーブのみ。2 球目以降はサーブを除く残り 8 種。
+ * (18 分類側の「サーブはラリー 1 球目のみ」制約と整合させる)
+ */
+export function getValidMajorShots(strokeNum: number): Set<MajorShot> {
+  if (strokeNum === 1) return new Set<MajorShot>(['serve'])
+  return new Set<MajorShot>(MAJOR_SHOTS.filter((m) => m !== 'serve'))
+}
+
+export { KEYBOARD_MAP, MAJOR_KEYBOARD_MAP }

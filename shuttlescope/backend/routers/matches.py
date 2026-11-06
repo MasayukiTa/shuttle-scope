@@ -877,7 +877,7 @@ def update_match(match_id: int, body: MatchUpdate, request: Request, db: Session
         if has_set:
             raise HTTPException(
                 status_code=409,
-                detail="試合に記録済みのセットがあるため選手は変更できません",
+                detail="試合に記録済みのゲームがあるため選手は変更できません",
             )
     # Phase B-5: owner / public / home / away の変更は admin のみ
     payload = body.model_dump(exclude_unset=True, exclude=set(_NEW_PLAYER_FIELDS.values()))

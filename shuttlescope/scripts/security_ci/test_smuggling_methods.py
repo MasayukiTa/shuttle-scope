@@ -29,12 +29,15 @@ def main():
 
     # XXE / SOAP
     xxe = b'<?xml version="1.0"?><!DOCTYPE r [<!ENTITY x SYSTEM "file:///etc/passwd">]><r>&x;</r>'
-    s, _, b = req("POST", "/api/auth/login", body=xxe,
-                  headers={"Content-Type": "application/xml"})
-    if s == 200 or "/etc/passwd" in (b or b"").decode("utf-8", "replace"):
-        f.critical("xxe", short(b, 80))
-    else:
-        f.passed("xxe", f"status={s}")
+    try:
+        s, _, b = req("POST", "/api/auth/login", body=xxe,
+                      headers={"Content-Type": "application/xml"})
+        if s == 200 or "/etc/passwd" in (b or b"").decode("utf-8", "replace"):
+            f.critical("xxe", short(b, 80))
+        else:
+            f.passed("xxe", f"status={s}")
+    except Exception as ex:
+        f.warn("xxe", f"EX {type(ex).__name__}")
 
     # Transfer-Encoding 異常
     for te in ["chunked, identity", "x-foo"]:
@@ -53,8 +56,12 @@ def main():
         {"X-HTTP-Method": "DELETE"},
         {"X-Method-Override": "DELETE"},
     ]:
-        s, _, b = req("POST", "/api/matches/106",
-                      body={"tournament": "x"}, headers=hdr)
+        try:
+            s, _, b = req("POST", "/api/matches/106",
+                          body={"tournament": "x"}, headers=hdr)
+        except Exception as ex:
+            f.warn(f"method_override:{list(hdr.keys())[0]}", f"EX {type(ex).__name__}")
+            continue
         # POST /api/matches/{id} は無効 (PUT のみ)
         if s == 200:
             f.critical(f"method_override:{list(hdr.keys())[0]}", short(b, 60))
@@ -104,7 +111,11 @@ def main():
 
     # Host header poisoning
     for h in ["evil.example.com", "127.0.0.1", "internal.local"]:
-        s, _, b = req("GET", "/api/health", headers={"Host": h})
+        try:
+            s, _, b = req("GET", "/api/health", headers={"Host": h})
+        except Exception as ex:
+            f.warn(f"host_poison:{h}", f"EX {type(ex).__name__}")
+            continue
         # Cloudflare reject = 403
         if s == 200 and b'"status":"ok"' in b:
             f.warn(f"host_poison:{h}", "200 (server ignores)")

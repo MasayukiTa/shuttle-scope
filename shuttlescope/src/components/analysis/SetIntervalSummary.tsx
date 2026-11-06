@@ -147,7 +147,7 @@ export function SetIntervalSummary({
                 ? titleOverride
                 : isMidGame
                 ? `Set ${data?.set_num ?? ''} インターバル（11点）`
-                : data ? `Set ${data.set_num} 終了` : 'セット終了サマリー'}
+                : data ? `Game ${data.set_num} 終了` : 'ゲーム終了サマリー'}
             </span>
             {isMidGame && midGameScoreA !== undefined && midGameScoreB !== undefined ? (
               <span className="text-xs text-[var(--ss-t2)]">

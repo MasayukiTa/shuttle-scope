@@ -3,7 +3,7 @@
  *
  * 目的:
  *   hit_zone_source === 'manual' かつ CV 元値と現在値が異なるストロークに
- *   「手動打点」バッジが描画されることを契約として固定する。
+ *   「手動で修正」バッジが描画されることを契約として固定する。
  *   将来 hit_zone_source の値域や条件式を変えるリファクタで、
  *   override 可視性が黙って消えないようにする。
  */
@@ -36,7 +36,7 @@ describe('StrokeHistory hit_zone override badge', () => {
       hit_zone_cv_original: 'MC',
     }
     render(<StrokeHistory strokes={[stroke]} />)
-    expect(screen.queryByText('手動打点')).toBeNull()
+    expect(screen.queryByText('手動で修正')).toBeNull()
   })
 
   it('hit_zone_source = "manual" + CV 元値と現在値が違うときバッジを表示する', () => {
@@ -47,7 +47,7 @@ describe('StrokeHistory hit_zone override badge', () => {
       hit_zone_cv_original: 'MC',
     }
     render(<StrokeHistory strokes={[stroke]} />)
-    expect(screen.getByText('手動打点')).toBeTruthy()
+    expect(screen.getByText('手動で修正')).toBeTruthy()
   })
 
   it('hit_zone_source = "manual" でも CV 元値と現在値が同じならバッジを出さない', () => {
@@ -60,7 +60,7 @@ describe('StrokeHistory hit_zone override badge', () => {
       hit_zone_cv_original: 'MC',
     }
     render(<StrokeHistory strokes={[stroke]} />)
-    expect(screen.queryByText('手動打点')).toBeNull()
+    expect(screen.queryByText('手動で修正')).toBeNull()
   })
 
   it('hit_zone_cv_original が null/undefined なら override 判定しない', () => {
@@ -72,7 +72,7 @@ describe('StrokeHistory hit_zone override badge', () => {
       hit_zone_cv_original: null,
     }
     render(<StrokeHistory strokes={[stroke]} />)
-    expect(screen.queryByText('手動打点')).toBeNull()
+    expect(screen.queryByText('手動で修正')).toBeNull()
   })
 
   it('複数ストロークの中で override したものだけにバッジが付く', () => {
@@ -98,7 +98,7 @@ describe('StrokeHistory hit_zone override badge', () => {
       hit_zone_cv_original: 'ML',
     }
     render(<StrokeHistory strokes={[cv, overridden, cv2]} />)
-    const badges = screen.getAllByText('手動打点')
+    const badges = screen.getAllByText('手動で修正')
     expect(badges).toHaveLength(1)
   })
 
@@ -110,9 +110,36 @@ describe('StrokeHistory hit_zone override badge', () => {
       hit_zone_cv_original: 'BC',
     }
     render(<StrokeHistory strokes={[stroke]} />)
-    const badge = screen.getByText('手動打点')
+    const badge = screen.getByText('手動で修正')
     const tooltip = badge.getAttribute('title') ?? ''
     expect(tooltip).toContain('BC')
     expect(tooltip).toContain('NL')
+  })
+})
+
+describe('StrokeHistory 打球の高さ (hit_height) バッジ', () => {
+  it('hit_height 未指定ならバッジを表示しない', () => {
+    render(<StrokeHistory strokes={[{ ...baseStroke }]} />)
+    expect(screen.queryByTestId('stroke-hit-height-badge')).toBeNull()
+  })
+
+  it('hit_height=0 で「ネットより上」を表示する', () => {
+    render(<StrokeHistory strokes={[{ ...baseStroke, hit_height: 0 }]} />)
+    expect(screen.getByText('ネットより上')).toBeTruthy()
+  })
+
+  it('hit_height=1 で「やや上」を表示する', () => {
+    render(<StrokeHistory strokes={[{ ...baseStroke, hit_height: 1 }]} />)
+    expect(screen.getByText('やや上')).toBeTruthy()
+  })
+
+  it('hit_height=2 で「やや下」を表示する', () => {
+    render(<StrokeHistory strokes={[{ ...baseStroke, hit_height: 2 }]} />)
+    expect(screen.getByText('やや下')).toBeTruthy()
+  })
+
+  it('hit_height=3 で「下」を表示する', () => {
+    render(<StrokeHistory strokes={[{ ...baseStroke, hit_height: 3 }]} />)
+    expect(screen.getByText('下')).toBeTruthy()
   })
 })

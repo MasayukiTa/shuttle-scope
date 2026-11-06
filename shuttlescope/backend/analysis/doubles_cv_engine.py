@@ -18,7 +18,7 @@ import logging
 from collections import defaultdict
 from typing import Optional
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, undefer
 
 from backend.db.models import Match, GameSet, Rally, Stroke, MatchCVArtifact
 from backend.analysis.doubles_role_inference import adjust_role_with_cv_signals
@@ -50,6 +50,7 @@ def compute_doubles_cv_analytics(match_id: int, db: Session) -> dict:
     # YOLO artifact を取得
     yolo_artifact = (
         db.query(MatchCVArtifact)
+        .options(undefer(MatchCVArtifact.data))
         .filter(
             MatchCVArtifact.match_id == match_id,
             MatchCVArtifact.artifact_type == "yolo_player_detections",
@@ -88,6 +89,7 @@ def compute_doubles_cv_analytics(match_id: int, db: Session) -> dict:
     # アライメント artifact（あれば）
     alignment_artifact = (
         db.query(MatchCVArtifact)
+        .options(undefer(MatchCVArtifact.data))
         .filter(
             MatchCVArtifact.match_id == match_id,
             MatchCVArtifact.artifact_type == "cv_alignment",

@@ -123,7 +123,7 @@ export function SetComparison({ playerId, chartHeight = 200, filters = DEFAULT_F
   }
 
   const chartData = sets.map((s) => ({
-    name: s.label || `第${s.set_number}セット`,
+    name: s.label || `第${s.set_number}ゲーム`,
     win_rate_pct: typeof s.win_rate === 'number' ? +(s.win_rate * 100).toFixed(1) : 0,
     avg_rally_length: +s.avg_rally_length.toFixed(1),
     total_rallies: s.total_rallies,
@@ -173,7 +173,7 @@ export function SetComparison({ playerId, chartHeight = 200, filters = DEFAULT_F
             className="bg-[var(--ss-surface-2)] border border-[var(--ss-border)] rounded-ss-md px-3 py-2 text-center"
           >
             <p className="text-xs text-[var(--ss-t3)] mb-1">
-              {s.label || `第${s.set_number}セット`}
+              {s.label || `第${s.set_number}ゲーム`}
             </p>
             {!isPlayer && typeof s.win_rate === 'number' && (
               <p

@@ -76,6 +76,12 @@ interface RallyRow {
 import { Pass1RallyEnd } from '@/components/mobileAnnotate/Pass1RallyEnd'
 import { Pass2ServeFinal } from '@/components/mobileAnnotate/Pass2ServeFinal'
 import { Pass3ShotDetail } from '@/components/mobileAnnotate/Pass3ShotDetail'
+import {
+  courtQuadFromCalibPoints,
+  inferCourtHalfFromCalibPoints,
+  type Quad,
+  type CourtHalf,
+} from '@/utils/courtHomography'
 import { startBackgroundFlush, getStatus, retryAllManual, discardLegacyManual, enqueue, cancelQueued, flushNow } from '@/utils/mobileAnnotateQueue'
 import {
   applyStrokeOverrides,
@@ -254,6 +260,26 @@ export function MobileAnnotatePage() {
   // calib 編集中フラグ: PlayMode 内 state だがこちらの overlay/chip も隠したいので
   // PlayMode 側から callback で同期する
   const [calibEditingTop, setCalibEditingTop] = useState(false)
+  // 入力画面 (Pass2/Pass3 の AnnotateOverlay) に渡すコート校正。
+  // MobileCourtCalib / PlayMode が localStorage `court-calib-{matchId}` に保存した
+  // 6 点 [TL,TR,BR,BL,NL,NR] を読み、先頭 4 点を courtQuad、ネット 2 点から half を導く。
+  // 校正が無い / 壊れている / 退化しているときは courtQuad=null となり、AnnotateOverlay は
+  // 従来の固定枠で動く (入力を止めない)。校正は PlayMode 側で保存されるため、校正編集を
+  // 閉じて annotate に戻った直後に再読込されるよう calibEditingTop を依存に含める。
+  const courtCalib = useMemo<{ quad: Quad | null; half: CourtHalf }>(() => {
+    if (!matchId) return { quad: null, half: 'far' }
+    try {
+      const raw = localStorage.getItem(`court-calib-${matchId}`)
+      if (!raw) return { quad: null, half: 'far' }
+      const pts = JSON.parse(raw)
+      return {
+        quad: courtQuadFromCalibPoints(pts),
+        half: inferCourtHalfFromCalibPoints(pts),
+      }
+    } catch {
+      return { quad: null, half: 'far' }
+    }
+  }, [matchId, calibEditingTop])
   // 診断: calib 中に "セット未登録" バナー等が裏で render されていないか確認。
   // 本来 !calibEditingTop で gate しているが、user 報告で center タップ阻害の
   // 可能性指摘あり。実機検証用 console.log は削除済み。
@@ -955,6 +981,8 @@ export function MobileAnnotatePage() {
                 rallies={mergedRallies}
                 sets={allSets}
                 pausedAtSec={pausedAtSec}
+                courtQuad={courtCalib.quad}
+                courtHalf={courtCalib.half}
                 onCancel={() => setScreen('play')}
               />
             </div>
@@ -967,6 +995,8 @@ export function MobileAnnotatePage() {
                 rallies={mergedRallies}
                 sets={allSets}
                 pausedAtSec={pausedAtSec}
+                courtQuad={courtCalib.quad}
+                courtHalf={courtCalib.half}
                 onCancel={() => setScreen('play')}
               />
             </div>
@@ -1175,12 +1205,18 @@ function Pass2RallyPicker({
   rallies,
   sets,
   pausedAtSec,
+  courtQuad,
+  courtHalf,
   onCancel,
 }: {
   doubles: boolean
   rallies: RallyLite[]
   sets: SetInfo[]
   pausedAtSec: number
+  /** 保存済みコート校正 (先頭 4 隅)。無ければ null → AnnotateOverlay は固定枠で動く。 */
+  courtQuad: Quad | null
+  /** 校正を使うとき、入力片面が画面の near/far どちらに写っているか。 */
+  courtHalf: CourtHalf
   onCancel: () => void
 }) {
   const { t } = useTranslation()
@@ -1262,6 +1298,9 @@ function Pass2RallyPicker({
           server: selected.server,
           winner: selected.winner,
         }}
+        courtQuad={courtQuad}
+        courtHalf={courtHalf}
+        onNeedCalibration={onCancel}
         onCompleted={() => setSelected(null)}
         onCancel={() => setSelected(null)}
       />
@@ -1334,12 +1373,18 @@ function Pass3RallyPicker({
   rallies,
   sets,
   pausedAtSec,
+  courtQuad,
+  courtHalf,
   onCancel,
 }: {
   doubles: boolean
   rallies: RallyLite[]
   sets: SetInfo[]
   pausedAtSec: number
+  /** 保存済みコート校正 (先頭 4 隅)。無ければ null → AnnotateOverlay は固定枠で動く。 */
+  courtQuad: Quad | null
+  /** 校正を使うとき、入力片面が画面の near/far どちらに写っているか。 */
+  courtHalf: CourtHalf
   onCancel: () => void
 }) {
   const { t } = useTranslation()
@@ -1465,6 +1510,9 @@ function Pass3RallyPicker({
         }}
         strokes={all}
         doubles={doubles}
+        courtQuad={courtQuad}
+        courtHalf={courtHalf}
+        onNeedCalibration={onCancel}
         onStrokeAdded={(s) => {
           setLocalStrokes((prev) => [...prev, { ...s, rally_id: selected.id! }])
         }}

@@ -418,7 +418,7 @@ class TestFlashAdvice:
         body = _body(_flash(client, m, gs, a), "opportunity")
         assert body == (
             f"「{label}」での得点が多い"
-            f"（このセットで「{label}」を打った6ラリー中"
+            f"（このゲームで「{label}」を打った6ラリー中"
             f"6ラリーで得点、100%）"
         )
 

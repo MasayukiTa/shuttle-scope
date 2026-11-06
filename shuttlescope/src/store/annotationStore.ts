@@ -17,6 +17,8 @@ export interface PendingStroke {
   is_backhand: boolean
   is_around_head: boolean
   above_net?: boolean
+  /** 仙台大要望: 打球の高さ 4 段階 (0..3)。任意。未選択なら undefined。 */
+  hit_height?: number
   timestamp_sec?: number
 }
 
@@ -116,6 +118,7 @@ interface AnnotationState {
   toggleAttribute: (key: 'is_backhand' | 'is_around_head') => void
   setAboveNet: (v: boolean | undefined) => void
   cycleAboveNet: () => void              // ネット上下サイクル（未指定→上→下→未指定）
+  setHitHeight: (v: number | undefined) => void  // 打球の高さ 4 段階（任意・トグルで解除可）
 
   // プレイヤー制御
   togglePlayer: () => void
@@ -153,6 +156,8 @@ interface AnnotationState {
     contactZone?: string
     movementBurden?: string
     movementDirection?: string
+    intentTag?: string
+    intentNote?: string
   }) => void
 
   // セット移行
@@ -179,6 +184,7 @@ const emptyPending = (): PendingStroke => ({
   is_backhand: false,
   is_around_head: false,
   above_net: undefined,
+  hit_height: undefined,
 })
 
 // hitter id (player_a/partner_a/player_b/partner_b) → 所属チーム (player_a/player_b)。
@@ -388,6 +394,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       is_backhand: state.pendingStroke.is_backhand,
       is_around_head: state.pendingStroke.is_around_head,
       above_net: state.pendingStroke.above_net,
+      hit_height: state.pendingStroke.hit_height,
       timestamp_sec: state.pendingStroke.timestamp_sec,
     }
 
@@ -450,6 +457,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       is_backhand: state.pendingStroke.is_backhand,
       is_around_head: state.pendingStroke.is_around_head,
       above_net: state.pendingStroke.above_net,
+      hit_height: state.pendingStroke.hit_height,
       timestamp_sec: state.pendingStroke.timestamp_sec,
     }
 
@@ -502,6 +510,15 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
 
   setAboveNet: (v) =>
     set((s) => ({ pendingStroke: { ...s.pendingStroke, above_net: v } })),
+
+  // 打球の高さ 4 段階（任意）。同じ値を再度渡すと解除（undefined）してトグル挙動にする。
+  setHitHeight: (v) =>
+    set((s) => ({
+      pendingStroke: {
+        ...s.pendingStroke,
+        hit_height: s.pendingStroke.hit_height === v ? undefined : v,
+      },
+    })),
 
   // ネット上下サイクル: 未指定 → 上（true）→ 下（false）→ 未指定
   cycleAboveNet: () =>
@@ -676,7 +693,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
     set({ scoreA, scoreB, currentRallyNum: rallyNum }),
 
   // G2+移動系: 直前確定ストロークのエンリッチメント更新（落点確定直後のオプション入力）
-  updateLastStrokeEnrichment: ({ returnQuality, contactHeight, contactZone, movementBurden, movementDirection }) => {
+  updateLastStrokeEnrichment: ({ returnQuality, contactHeight, contactZone, movementBurden, movementDirection, intentTag, intentNote }) => {
     const { currentStrokes } = get()
     if (currentStrokes.length === 0) return
     const updated = [...currentStrokes]
@@ -686,6 +703,8 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
     if (contactZone !== undefined) last.contact_zone = contactZone
     if (movementBurden !== undefined) last.movement_burden = movementBurden
     if (movementDirection !== undefined) last.movement_direction = movementDirection
+    if (intentTag !== undefined) last.intent_tag = intentTag
+    if (intentNote !== undefined) last.intent_note = intentNote
     updated[updated.length - 1] = last
     set({ currentStrokes: updated })
   },

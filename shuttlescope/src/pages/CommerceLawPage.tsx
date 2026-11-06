@@ -26,10 +26,15 @@ function CommerceLawPageInner() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    // アンマウント後の setState (teardown 済み環境) を中断フラグで抑止。
+    let active = true
     getLegalInfo()
-      .then(setInfo)
-      .catch((e) => setError(e?.message ?? String(e)))
-      .finally(() => setLoading(false))
+      .then((v) => { if (active) setInfo(v) })
+      .catch((e) => { if (active) setError(e?.message ?? String(e)) })
+      .finally(() => { if (active) setLoading(false) })
+    return () => {
+      active = false
+    }
   }, [])
 
   if (loading) return <div className="p-8">{t('auto.CommerceLawPage.k1')}</div>

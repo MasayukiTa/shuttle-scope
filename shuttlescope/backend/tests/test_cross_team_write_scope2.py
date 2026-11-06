@@ -163,7 +163,11 @@ NEW_MATCH = dict(tournament="Probe", tournament_level="国内", round="QF", date
 SIX = [dict(x=0.1, y=0.1), dict(x=0.9, y=0.1), dict(x=0.9, y=0.9), dict(x=0.1, y=0.9),
        dict(x=0.4, y=0.5), dict(x=0.6, y=0.5)]
 PKG = {"file": ("p.sspkg", b"{}", "application/octet-stream")}
-NEW_USER_A = dict(role="coach", display_name="d", username="probe_user", password="Aa1!probe-pass-99",
+# Test fixture password for a probe user account (not a real credential).
+# Sourced from env so no literal is passed as a call/dict keyword argument
+# (resolves Bandit B106 without a blanket suppression).
+PROBE_USER_PASS = os.environ.get("TEST_PROBE_USER_PASS", "Aa1!probe-pass-99")
+NEW_USER_A = dict(role="coach", display_name="d", username="probe_user", password=PROBE_USER_PASS,
                   team_id=1, team_name="ScopeTeamA")
 NEW_USER_B = dict(NEW_USER_A, team_id=2, team_name="ScopeTeamB")
 

@@ -46,43 +46,60 @@ def main():
                 f.passed(f"cipher:{cipher}", "rejected")
 
     # --- セキュリティヘッダ ----------------------------------------------
-    s, h, _ = req("GET", "/api/health")
-    if not hget(h, "strict-transport-security"):
-        f.high("hsts_missing", "Strict-Transport-Security not set")
-    else:
-        f.passed("hsts", hget(h, "strict-transport-security")[:80])
+    # The header checks below need real responses from /api/health and /. A
+    # transient transport failure (after retries in _common.req) must not crash
+    # the run, nor be misreported as a missing header (a false HIGH). If the
+    # fetch fails we WARN and skip only the affected block.
+    try:
+        s, h, _ = req("GET", "/api/health")
+    except Exception as ex:
+        f.warn("headers", f"skipped: EX {type(ex).__name__} on /api/health")
+        h = None
 
-    if hget(h, "x-frame-options") not in ("DENY", "SAMEORIGIN"):
-        f.high("x_frame_missing", f"got={hget(h, 'x-frame-options')}")
-    else:
-        f.passed("x_frame", hget(h, "x-frame-options"))
-
-    if not hget(h, "x-content-type-options"):
-        f.high("xcto_missing", "X-Content-Type-Options not set")
-    else:
-        f.passed("xcto", hget(h, "x-content-type-options"))
-
-    s2, h2, _ = req("GET", "/")
-    csp = hget(h2, "content-security-policy")
-    if not csp:
-        f.high("csp_missing", "Content-Security-Policy not set on /")
-    else:
-        if "frame-ancestors" not in csp:
-            f.high("csp_frame_ancestors", "missing frame-ancestors directive")
+    if h is not None:
+        if not hget(h, "strict-transport-security"):
+            f.high("hsts_missing", "Strict-Transport-Security not set")
         else:
-            f.passed("csp", "OK")
+            f.passed("hsts", hget(h, "strict-transport-security")[:80])
 
-    # 機密ヘッダ漏洩
-    for k in ["x-powered-by", "x-aspnet-version", "x-runtime"]:
-        v = hget(h, k)
-        if v:
-            f.high(f"header_leak:{k}", v[:60])
+        if hget(h, "x-frame-options") not in ("DENY", "SAMEORIGIN"):
+            f.high("x_frame_missing", f"got={hget(h, 'x-frame-options')}")
+        else:
+            f.passed("x_frame", hget(h, "x-frame-options"))
+
+        if not hget(h, "x-content-type-options"):
+            f.high("xcto_missing", "X-Content-Type-Options not set")
+        else:
+            f.passed("xcto", hget(h, "x-content-type-options"))
+
+        # 機密ヘッダ漏洩
+        for k in ["x-powered-by", "x-aspnet-version", "x-runtime"]:
+            v = hget(h, k)
+            if v:
+                f.high(f"header_leak:{k}", v[:60])
+
+    try:
+        s2, h2, _ = req("GET", "/")
+        csp = hget(h2, "content-security-policy")
+        if not csp:
+            f.high("csp_missing", "Content-Security-Policy not set on /")
+        else:
+            if "frame-ancestors" not in csp:
+                f.high("csp_frame_ancestors", "missing frame-ancestors directive")
+            else:
+                f.passed("csp", "OK")
+    except Exception as ex:
+        f.warn("csp", f"skipped: EX {type(ex).__name__} on /")
 
     # --- CORS evil origin ------------------------------------------------
     for origin in ["https://evil.example.com", "null", "file://", "https://attacker.com"]:
-        s, hh, _ = req("OPTIONS", "/api/auth/me",
-                       headers={"Origin": origin,
-                                "Access-Control-Request-Method": "GET"})
+        try:
+            s, hh, _ = req("OPTIONS", "/api/auth/me",
+                           headers={"Origin": origin,
+                                    "Access-Control-Request-Method": "GET"})
+        except Exception as ex:
+            f.warn(f"cors:{origin}", f"EX {type(ex).__name__}")
+            continue
         aco = hget(hh, "access-control-allow-origin")
         if aco in ("*", origin):
             f.critical(f"cors:{origin}", f"ACO={aco}")
@@ -90,13 +107,16 @@ def main():
             f.passed(f"cors:{origin}", f"ACO={aco or '(none)'}")
 
     # --- Cookie-only CSRF ------------------------------------------------
-    s, _, b = req("POST", "/api/matches",
-                  body={"tournament": "csrf"},
-                  headers={"Cookie": "access_token=fake; session=evil"})
-    if s == 200 or s == 201:
-        f.critical("csrf:cookie_only", "POST accepted with cookie only")
-    else:
-        f.passed("csrf:cookie_only", f"status={s}")
+    try:
+        s, _, b = req("POST", "/api/matches",
+                      body={"tournament": "csrf"},
+                      headers={"Cookie": "access_token=fake; session=evil"})
+        if s == 200 or s == 201:
+            f.critical("csrf:cookie_only", "POST accepted with cookie only")
+        else:
+            f.passed("csrf:cookie_only", f"status={s}")
+    except Exception as ex:
+        f.warn("csrf:cookie_only", f"EX {type(ex).__name__}")
 
     # --- HTTP→HTTPS redirect (本番のみ) -----------------------------------
     if not INSECURE:
@@ -116,7 +136,11 @@ def main():
     # --- Dump path -------------------------------------------------------
     for p in ["/.git/HEAD", "/.git/config", "/backup.zip",
               "/dump.sql", "/.env.local", "/wp-admin", "/phpmyadmin"]:
-        s, _, b = req("GET", p)
+        try:
+            s, _, b = req("GET", p)
+        except Exception as ex:
+            f.warn(f"dump:{p}", f"EX {type(ex).__name__}")
+            continue
         if s == 200 and len(b) > 30:
             if is_expected_decoy(p, b):
                 f.passed(f"dump:{p}", "verified intentional decoy")

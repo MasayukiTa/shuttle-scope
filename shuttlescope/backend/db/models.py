@@ -613,6 +613,10 @@ class Stroke(Base):
     # land_zone の入力元: 'cv' = CV 自動適用が書いた値 / 'human' = 人が入力した値 /
     # NULL = 不明 (本列の追加前の既存データ。値があれば人の入力として扱う)。
     land_zone_source: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    # 要望8 (SD-08): 打球の高さ（ネット基準の相対高さ）。任意入力。
+    # 値: above_net / slightly_above / slightly_below / below（4段階）。
+    # NULL=未入力。hit_zone（打者の床面位置）とは別概念で、識別子も別。
+    hit_height: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
 
     # 打球属性
     is_backhand: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -637,6 +641,13 @@ class Stroke(Base):
 
     # 入力ソース (manual / assisted / corrected)
     source_method: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+
+    # 要望6 (仙台大 2026-11-05): ショットの意図メモ。
+    # ミスや無得点に終わった打球について「何を狙って打ったのか」という人間の推測を残す。
+    # 選択式タグ (deep/net/body/sideline/cross/deception/clear_safe/other) と短い自由記述。
+    # 入力は任意。既存行は NULL のまま (意図メモ未入力として扱う)。
+    intent_tag: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    intent_note: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
 
     # リレーション
     rally: Mapped["Rally"] = relationship("Rally", back_populates="strokes")
@@ -1078,8 +1089,11 @@ class MatchCVArtifact(Base):
     backend_used: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     # summary: コート位置サマリーなど（軽量、常時読み込み）
     summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)   # JSON
-    # data: フレーム別生データ（大容量、オンデマンド読み込み）
-    data: Mapped[Optional[str]] = mapped_column(Text, nullable=True)       # JSON
+    # data: フレーム別生データ（大容量、オンデマンド読み込み）。
+    # PR1: 本番で 1 行あたり約 6GB の TEXT JSON。deferred=True により通常の
+    # db.query(MatchCVArtifact) では data 列を SELECT せず、.data を実際に
+    # アクセスした行だけ個別 SELECT する。data を使う箇所は undefer() を明示する。
+    data: Mapped[Optional[str]] = mapped_column(Text, nullable=True, deferred=True)  # JSON
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow

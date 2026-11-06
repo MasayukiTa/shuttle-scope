@@ -5,11 +5,18 @@ frontend (LoginPage) は日本語の本文を部分一致で見るのをやめ�
 """
 from __future__ import annotations
 
+import os
+
 import pytest
 from fastapi import HTTPException
 from starlette.requests import Request
 
 from backend.routers.auth import MfaLoginRequest, mfa_login
+
+# Test fixture value (not a credential): a deliberately malformed MFA token used
+# to exercise the "invalid/expired" path. Sourced from env so no literal secret
+# sits in a call's keyword argument (resolves Bandit B106 without suppression).
+INVALID_MFA_TOKEN = os.environ.get("TEST_INVALID_MFA_TOKEN", "not-a-jwt")
 
 
 def _request() -> Request:
@@ -22,7 +29,7 @@ def _request() -> Request:
 
 
 def test_invalid_mfa_token_returns_stable_error_code():
-    req = MfaLoginRequest(mfa_token="not-a-jwt", code="000000")
+    req = MfaLoginRequest(mfa_token=INVALID_MFA_TOKEN, code="000000")
     with pytest.raises(HTTPException) as ei:
         mfa_login(req, _request(), db=None)  # type: ignore[arg-type]
     assert ei.value.status_code == 401

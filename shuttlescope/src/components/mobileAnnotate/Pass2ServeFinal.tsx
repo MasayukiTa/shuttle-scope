@@ -32,6 +32,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { MIcon } from '@/components/common/MIcon'
 import { AnnotateOverlay, ZoneCode } from './AnnotateOverlay'
+import type { Quad, CourtHalf } from '@/utils/courtHomography'
 import { enqueue } from '@/utils/mobileAnnotateQueue'
 import { finalHitterFor, type FinalShotOutcome } from '@/utils/mobileAnnotateRallies'
 import { serveOnlyRallyPayload } from '@/utils/mobileAnnotatePass2'
@@ -52,11 +53,20 @@ interface Props {
   rally: RallyTarget
   /** ダブルス: サーバ・最終打者を個人 slot (partner を含む) で選ばせて保存する */
   doubles?: boolean
+  /**
+   * 保存済みコート校正 (先頭 4 隅)。渡すと AnnotateOverlay が撮影方向に合わせた
+   * タップ判定を行う。null / 未指定のときは従来の固定枠で動く。
+   */
+  courtQuad?: Quad | null
+  /** 校正を使うとき、入力片面が画面の near/far どちらに写っているか。既定 'near'。 */
+  courtHalf?: CourtHalf
+  /** 「動画に戻って校正する」導線 (未校正バナーから呼ぶ)。未指定なら案内を出さない。 */
+  onNeedCalibration?: () => void
   onCompleted: () => void
   onCancel: () => void
 }
 
-export function Pass2ServeFinal({ rally, doubles = false, onCompleted, onCancel }: Props) {
+export function Pass2ServeFinal({ rally, doubles = false, courtQuad = null, courtHalf = 'near', onNeedCalibration, onCompleted, onCancel }: Props) {
   const { t } = useTranslation()
   const [serveSlot, setServeSlot] = useState<HitterSlot | null>(null)
   const [finalSlot, setFinalSlot] = useState<HitterSlot | null>(null)
@@ -280,9 +290,28 @@ export function Pass2ServeFinal({ rally, doubles = false, onCompleted, onCancel 
         </div>
       )}
 
+      {/* 未校正の案内 (入力の邪魔にならない細いバナー)。
+         校正があれば撮影方向に合わせてタップできる旨と、動画に戻って校正する導線。
+         courtQuad があるときは出さない。onNeedCalibration が無ければ導線ボタンも出さない。 */}
+      {!courtQuad && onNeedCalibration && (
+        <div className="bg-sky-950/80 px-3 py-1.5 flex items-center gap-2 border-b border-sky-800 text-[11px] text-sky-100">
+          <MIcon name="info" size={13} />
+          <span className="flex-1">{t('auto.Pass2ServeFinal.calib_hint')}</span>
+          <button
+            type="button"
+            onClick={onNeedCalibration}
+            className="px-2 py-1 rounded bg-sky-800 text-sky-50"
+          >
+            {t('auto.Pass2ServeFinal.calib_cta')}
+          </button>
+        </div>
+      )}
+
       <div className="relative flex-1" data-tutorial="mobileAnnotate.zonePicker">
         <AnnotateOverlay
           prompt={STEP_PROMPT[step]}
+          courtQuad={courtQuad}
+          half={courtHalf}
           primaryLabel={stepIdx === STEP_ORDER.length - 1 ? t('auto.Pass2ServeFinal.primary_submit') : t('auto.Pass2ServeFinal.primary_next')}
           cancelLabel={t('auto.Pass2ServeFinal.cancel_retry')}
           onCommit={(z) => {
