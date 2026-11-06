@@ -34,6 +34,18 @@ _INC_STATUS = {"investigating", "identified", "monitoring", "resolved"}
 _MNT_STATUS = {"scheduled", "in_progress", "completed", "canceled"}
 _ANN_STATUS = {"published", "draft"}
 
+# 公開ステータスページに出さない incident の component。
+# "clock" (サーバ時刻ズレ) は NTP で同期済みで利用者に意味のある障害ではなく、
+# 障害履歴に過去行が残っていても公開ページには表示しない (データは削除せず表示のみ除外)。
+# オーナー指示 (2026-11-06): 「サーバ時刻がずれています」は status ページに不要。
+_HIDDEN_INCIDENT_COMPONENTS = {"clock"}
+
+
+def _is_public_incident(i) -> bool:
+    """公開ページに出してよい incident か。非公開 component の行は除外する。
+    component 未設定 (運用者の手動の汎用障害) は公開する。"""
+    return i.component not in _HIDDEN_INCIDENT_COMPONENTS
+
 # ── 公開コンポーネントへの射影 (F-T001-06) ─────────────────────────────────
 # muse F-T001-06: 匿名の閲覧者に内部コンポーネント名 (公開トンネル/GPU/解析ワーカー/
 # サーバ時刻…) と生インフラ数値 (CPU%/RAM%/VRAM/GPU%/edge 接続数/時刻ズレ秒) を
@@ -49,11 +61,6 @@ _PUBLIC_COMPONENTS = [
      "degraded_en": "Some visitors may have trouble reaching the site.",
      "down_ja": "サイトに接続できない状態が発生しています。",
      "down_en": "The site is currently unreachable for some visitors."},
-    {"key": "signin",   "ja": "サインイン",   "en": "Sign-in",        "members": ("clock",),
-     "degraded_ja": "サインインが一時的に失敗する場合があります。",
-     "degraded_en": "Signing in may intermittently fail.",
-     "down_ja": "サインインできない状態が発生しています。",
-     "down_en": "Signing in is currently unavailable."},
     {"key": "database", "ja": "データベース", "en": "Database",       "members": ("database",),
      "degraded_ja": "データの読み込みが遅くなる場合があります。",
      "degraded_en": "Data may load more slowly than usual.",
@@ -135,7 +142,7 @@ _RANK_DAY = {0: "operational", 1: "degraded", 2: "down"}
 
 def public_component_history(internal_history: dict) -> dict:
     """compute_component_history (内部キー -> {days, uptime_pct}) を、公開コンポーネント
-    キー (web/signin/database/analysis) へ合成する。
+    キー (web/database/analysis) へ合成する。
 
     各日のステータスは束ねた内部コンポーネントの「最も悪い」もの (observed のみ;
     全て nodata の日は nodata)。色はその最悪日の内部 color をそのまま採る。
@@ -347,6 +354,7 @@ def compute_public_status(db: Session) -> dict:
         .order_by(StatusIncident.began_at.desc())
         .all()
     )
+    unresolved = [i for i in unresolved if _is_public_incident(i)]
     if any(i.severity in ("critical", "major") for i in unresolved):
         overall = "down" if any(i.severity == "critical" for i in unresolved) else "degraded"
     elif unresolved:
@@ -354,7 +362,7 @@ def compute_public_status(db: Session) -> dict:
     else:
         overall = "operational"
     recent = (
-        db.query(StatusIncident).order_by(StatusIncident.began_at.desc()).limit(20).all()
+        db.query(StatusIncident).order_by(StatusIncident.began_at.desc()).limit(100).all()
     )
     now = datetime.utcnow()
     maint = (
@@ -395,7 +403,7 @@ def compute_public_status(db: Session) -> dict:
         "overall": overall,
         "components": components,
         "active_incidents": [_public_inc_dict(i) for i in unresolved],
-        "recent_incidents": [_public_inc_dict(i) for i in recent],
+        "recent_incidents": [_public_inc_dict(i) for i in [r for r in recent if _is_public_incident(r)][:20]],
         "maintenance": [_mnt_dict(m) for m in maint],
         "recent_maintenance": [_mnt_dict(m) for m in recent_maint],
         "announcements": [_ann_dict(a) for a in announcements],
