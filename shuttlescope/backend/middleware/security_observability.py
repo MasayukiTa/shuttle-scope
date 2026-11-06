@@ -11,6 +11,7 @@
 """
 from __future__ import annotations
 
+import logging
 import time
 import uuid
 from typing import Iterable
@@ -22,7 +23,13 @@ from starlette.responses import Response
 from backend.utils.audit_grouping import is_monitoring_self_read
 from backend.utils.crawler_policy import ROBOTS_TAG
 from backend.utils.security_detectors import record_secret_path_response
-from backend.utils.security_log import emit_request_log, emit_security_event
+from backend.utils.security_log import emit_request_log, emit_security_event, emit_audit_event
+from backend.utils.audit_targets import (
+    should_audit,
+    classify_path,
+    action_for_method,
+    summarize_body,
+)
 
 
 # 高頻度かつ攻撃判定に寄与しない endpoint は request_log から除外
@@ -234,3 +241,120 @@ class ProbeDetectionMiddleware(BaseHTTPMiddleware):
             # 攻撃者にこちらの存在を匂わせない: 単純な 404 を返す
             return Response(status_code=404, content=b"Not Found", media_type="text/plain")
         return await call_next(request)
+
+
+# body ハッシュ化のために読み取る上限。これを超える body はハッシュを取らず
+# (fields/count/hash を None にして) 行だけ残す。strokes batch の実測最大 ~180KB を
+# 十分カバーしつつ、動画 multipart のような巨大 body をメモリに載せない。
+_AUDIT_BODY_MAX_BYTES = 512 * 1024
+
+_audit_log = logging.getLogger("shuttlescope.audit_events")
+
+
+class AuditEventMiddleware(BaseHTTPMiddleware):
+    """対象エンティティ(試合/セット/ラリー/ストローク/選手/ユーザー/設定)の
+    作成・更新・削除が成功したとき、audit_events に 1 行残す。
+
+    「誰が・いつ・どの entity に・どの操作を・どのフィールドに対して行ったか」を
+    漏れなく記録するための共通フック。個別の router に log_access を足して回る
+    方式は書き漏れが構造的に避けられない(実測: HEAD 時点で matches/sets/rallies/
+    strokes/settings/conditions は変更系なのに log_access 呼び出し 0)。そこで
+    横断的な middleware 1 箇所で担保する。
+
+    値は保存しない。変更内容は changed_fields(列名のみ)/field_count/body_hash に
+    要約する(理由と測定は AuditEvent モデルの docstring を参照)。
+
+    本処理との独立性: 監査書き込みは emit_audit_event が別 DB セッションで行い、
+    失敗しても元のレスポンスには影響しない。
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        method = request.method
+        path = request.url.path
+
+        # 対象メソッド以外は body を触らず素通し(GET 等のホットパスを汚さない)。
+        if method.upper() not in ("POST", "PUT", "PATCH", "DELETE"):
+            return await call_next(request)
+        if classify_path(path) is None:
+            return await call_next(request)
+
+        # body を先に読む。Starlette は Request.body() を request._body に
+        # キャッシュし、下流ハンドラの再読み取りでも同じ bytes を返すため、
+        # ここで読んでも後段の FastAPI バリデーションは壊れない。
+        # ただし Content-Length が上限超なら読まない(巨大 multipart 保護)。
+        raw: bytes | None = None
+        try:
+            cl = request.headers.get("content-length")
+            too_big = cl is not None and cl.isdigit() and int(cl) > _AUDIT_BODY_MAX_BYTES
+            if not too_big:
+                raw = await request.body()
+                if raw is not None and len(raw) > _AUDIT_BODY_MAX_BYTES:
+                    raw = None  # 実測で超過したら破棄(ハッシュ無し)
+        except Exception:
+            raw = None
+
+        response = await call_next(request)
+
+        try:
+            status = response.status_code
+            if should_audit(method, path, status):
+                cls = classify_path(path)
+                entity_type, entity_id = (cls if cls else (None, None))
+                action = action_for_method(method)
+                fields, count, body_hash = summarize_body(raw)
+                ip, _xff = _client_ip(request)
+                request_id = getattr(request.state, "request_id", None)
+                # GlobalAuthMiddleware(内側)が request.state に user_id を載せる。
+                # AuditEventMiddleware は最外なので call_next 後に読めば確定済み。
+                # state に無い場合は検証済みトークンから解決する(_caller_* は
+                # 自己申告ではなく verify_token 済みの値のみを返す)。
+                user_id = getattr(request.state, "user_id", None)
+                if user_id is None:
+                    user_id = _caller_user_id(request)
+                role = getattr(request.state, "role", None) or _caller_role(request)
+                emit_audit_event(
+                    action=action or "",
+                    method=method,
+                    path=path,
+                    status=status,
+                    user_id=user_id,
+                    role=role,
+                    ip_addr=ip,
+                    request_id=request_id,
+                    entity_type=entity_type,
+                    entity_id=entity_id,
+                    changed_fields=fields,
+                    field_count=count,
+                    body_hash=body_hash,
+                )
+        except Exception as exc:
+            # 監査の失敗で本来のレスポンスを壊さない。ただし無言にはしない。
+            _audit_log.warning("AuditEventMiddleware failed: %s (path=%s)", exc, path)
+        return response
+
+
+def _caller_role(request: Request) -> str | None:
+    """呼び出し元の role を解決する。auth.get_auth と同じ入口を使い、
+    自己申告(X-Role)ではなく検証済みトークンの role を優先する。失敗時 None。"""
+    try:
+        from backend.utils.auth import get_auth
+        ctx = get_auth(request)
+        return getattr(ctx, "role", None)
+    except Exception:
+        return None
+
+
+def _caller_user_id(request: Request) -> int | None:
+    """呼び出し元の user_id を解決する。request.state に無い場合のフォールバック。
+    Authorization の Bearer を verify_token で検証した sub からのみ取り、
+    偽造トークンが監査の主体列を汚さないようにする。失敗時 None。"""
+    try:
+        auth = request.headers.get("authorization", "")
+        if not auth.startswith("Bearer "):
+            return None
+        from backend.utils.jwt_utils import verify_token
+        payload = verify_token(auth[7:].strip())
+        sub = str((payload or {}).get("sub", ""))
+        return int(sub) if sub.isdigit() and int(sub) > 0 else None
+    except Exception:
+        return None
