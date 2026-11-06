@@ -49,6 +49,18 @@ export default function AdminAnalyticsPage() {
     const v = t(key)
     return !v || v === key ? viewId : v
   }
+  // 不正・未parse の日時文字列を toLocaleString() に渡すと 'Invalid Date' が出る。
+  // parse 可能なものだけ整形し、失敗時は利用者に意味のある代替文言を出す。
+  // 監査 #77: as_of 等の集計時刻はタイムゾーン指定子のない UTC naive 文字列で返ることがあり、
+  // そのまま new Date() に渡すとローカル解釈され、UTC の壁時計がそのまま出て「端末の時刻」ラベルと矛盾する。
+  // ゾーン指定子 (Z または ±HH:MM) がなければ UTC とみなして Z を補い、端末ローカルに換算する。
+  const fmtDateTime = (value: string | null | undefined): string => {
+    if (!value) return t('admin.analytics.invalid_datetime')
+    const hasTz = /[zZ]$|[+-]\d{2}:?\d{2}$/.test(value.trim())
+    const normalized = hasTz ? value : `${value.trim()}Z`
+    const d = new Date(normalized)
+    return isNaN(d.getTime()) ? t('admin.analytics.invalid_datetime') : d.toLocaleString()
+  }
   const [overview, setOverview] = useState<Overview | null>(null)
   const [funnel, setFunnel] = useState<FunnelData | null>(null)
   const [dwell, setDwell] = useState<DwellItem[]>([])
@@ -132,7 +144,7 @@ export default function AdminAnalyticsPage() {
             <Stat label={t('admin.analytics.stat_wau')} value={overview.wau} />
             <Stat label={t('admin.analytics.stat_mau')} value={overview.mau} />
             <Stat label={t('admin.analytics.stat_events_7d')} value={overview.total_events_7d} />
-            <Stat label={t('admin.analytics.stat_as_of')} value={new Date(overview.as_of).toLocaleString()} small />
+            <Stat label={t('admin.analytics.stat_as_of')} value={fmtDateTime(overview.as_of)} small />
           </div>
           <div className="mt-3 text-xs text-[var(--ss-t2)] space-y-1">
             <p>{t('admin.analytics.scope_note')}</p>
@@ -140,7 +152,7 @@ export default function AdminAnalyticsPage() {
               {overview.total_events_all === 0 || !overview.last_event_at
                 ? t('admin.analytics.no_events_recorded')
                 : t('admin.analytics.last_event', {
-                    time: new Date(overview.last_event_at).toLocaleString(),
+                    time: fmtDateTime(overview.last_event_at),
                     total: overview.total_events_all,
                   })}
             </p>

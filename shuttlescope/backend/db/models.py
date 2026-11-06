@@ -4,7 +4,8 @@ from typing import Optional
 from uuid import uuid4
 from sqlalchemy import (
     BigInteger, Integer, String, Float, Boolean, DateTime, Date,
-    ForeignKey, Text, UniqueConstraint, Index, LargeBinary, func, JSON, text
+    ForeignKey, Text, UniqueConstraint, Index, LargeBinary, func, JSON, text,
+    false as _sa_false
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.db.database import Base
@@ -30,7 +31,7 @@ class Team(Base):
     display_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, unique=True, index=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     short_name: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    is_independent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="false")
+    is_independent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default=_sa_false())
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -396,6 +397,11 @@ class Match(Base):
     partner_b_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("players.id"), nullable=True)
     result: Mapped[str] = mapped_column(String(20), nullable=False)  # win/loss/walkover/unfinished
     final_score: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # "21-15, 18-21, 21-19"
+    # G6 #524: result / final_score の出所。'manual' = 人が入力した確定値 (絶対に
+    # 自動で上書きしない)、'auto' = 完了セットから end_set が自動入力した値。
+    # 既存行は全て人手入力とみなすため migration 0058 で 'manual' を埋める。
+    # early finish / walkover は manual のまま。
+    result_source: Mapped[str] = mapped_column(String(10), nullable=False, server_default="manual", default="manual")
     video_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     # video_local_path: 内部利用のみ。フロント / API レスポンスには露出させないこと。
     # ユーザーへ動画を提供するには video_token を使い /api/videos/{video_token}/stream 経由で配信する。
@@ -438,7 +444,24 @@ class Match(Base):
         Integer, ForeignKey("teams.id"), nullable=True, index=True
     )
     is_public_pool: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False, server_default="false", index=True
+        Boolean, default=False, nullable=False, server_default=_sa_false(), index=True
+    )
+    # is_demo_public: True のときに限り、デモチーム所有の **デモ専用** 試合を
+    # 所有チーム以外のユーザーにも read-only で見せてよい、という明示マーカー。
+    # fail closed: 既定は False、既存行は全て False 扱い。実データ試合には付与しない。
+    # is_public_pool とは独立した別経路（管理者が設定する一般公開プールとは別概念）。
+    # 可視判定は単一の共有ヘルパ (utils.auth.match_is_demo_public) に集約する。
+    is_demo_public: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default=_sa_false(), index=True
+    )
+    # is_synthetic: True のときに限り、この試合を検証用 fixture (BIAS_SEED 等の
+    # 合成データ) とみなす明示マーカー。audit #178: 検証データが通常の成長・対戦相手・
+    # 大会・研究分析へ混入していた。fail closed: 既定は False、既存行は全て False 扱い。
+    # 実データ試合には付与しない。解析母集団からの除外は単一の共有ヘルパ
+    # (analysis.analysis_population.split_analysis_population, 既定で synthetic を除外。
+    # 管理ツールだけが include_synthetic=True で取り込める) に集約する。
+    is_synthetic: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default=_sa_false(), index=True
     )
     home_team_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("teams.id"), nullable=True)
     away_team_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("teams.id"), nullable=True)
@@ -590,6 +613,10 @@ class Stroke(Base):
     # land_zone の入力元: 'cv' = CV 自動適用が書いた値 / 'human' = 人が入力した値 /
     # NULL = 不明 (本列の追加前の既存データ。値があれば人の入力として扱う)。
     land_zone_source: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    # 要望8 (SD-08): 打球の高さ（ネット基準の相対高さ）。任意入力。
+    # 値: above_net / slightly_above / slightly_below / below（4段階）。
+    # NULL=未入力。hit_zone（打者の床面位置）とは別概念で、識別子も別。
+    hit_height: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
 
     # 打球属性
     is_backhand: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -614,6 +641,13 @@ class Stroke(Base):
 
     # 入力ソース (manual / assisted / corrected)
     source_method: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+
+    # 要望6 (仙台大 2026-11-05): ショットの意図メモ。
+    # ミスや無得点に終わった打球について「何を狙って打ったのか」という人間の推測を残す。
+    # 選択式タグ (deep/net/body/sideline/cross/deception/clear_safe/other) と短い自由記述。
+    # 入力は任意。既存行は NULL のまま (意図メモ未入力として扱う)。
+    intent_tag: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    intent_note: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
 
     # リレーション
     rally: Mapped["Rally"] = relationship("Rally", back_populates="strokes")
@@ -995,6 +1029,12 @@ class HumanForecast(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     # Phase B-7: 書き込みチーム
     team_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("teams.id"), nullable=True, index=True)
+    # G5 item #687: 作成者 (この予測を記録したログインユーザ)。削除可否の判定に使う。
+    # 旧行 (migration 0057 以前に作成) は NULL のまま残り、その場合は admin だけが削除できる。
+    # nullable: 既存行を backfill できない (free-text forecaster_name しか無い) ため。
+    creator_user_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=True, index=True
+    )
 
 
 
@@ -1049,8 +1089,11 @@ class MatchCVArtifact(Base):
     backend_used: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     # summary: コート位置サマリーなど（軽量、常時読み込み）
     summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)   # JSON
-    # data: フレーム別生データ（大容量、オンデマンド読み込み）
-    data: Mapped[Optional[str]] = mapped_column(Text, nullable=True)       # JSON
+    # data: フレーム別生データ（大容量、オンデマンド読み込み）。
+    # PR1: 本番で 1 行あたり約 6GB の TEXT JSON。deferred=True により通常の
+    # db.query(MatchCVArtifact) では data 列を SELECT せず、.data を実際に
+    # アクセスした行だけ個別 SELECT する。data を使う箇所は undefer() を明示する。
+    data: Mapped[Optional[str]] = mapped_column(Text, nullable=True, deferred=True)  # JSON
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow

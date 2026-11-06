@@ -94,42 +94,48 @@ function classifyError(err: unknown): ErrorKind {
   return 'unknown'
 }
 
-const ERROR_META: Record<ErrorKind, { icon: React.ReactNode; title: string; hint: string }> = {
+const ERROR_META: Record<ErrorKind, { icon: React.ReactNode; titleKey: string; hintKey: string }> = {
   network: {
     icon: <MIcon name="wifi_off" size={14} />,
-    title: 'ネットワーク接続に失敗しました',
-    hint: 'バックエンドが起動しているか確認してください。',
+    titleKey: 'auto.OpponentPolicyCard.err_network_title',
+    hintKey: 'auto.OpponentPolicyCard.err_network_hint',
   },
   server: {
     icon: <MIcon name="cloud_off" size={14} />,
-    title: 'サーバーエラーが発生しました',
-    hint: '一時的な問題の可能性があります。再取得してください。',
+    titleKey: 'auto.OpponentPolicyCard.err_server_title',
+    hintKey: 'auto.OpponentPolicyCard.err_server_hint',
   },
   unknown: {
     icon: <MIcon name="help" size={14} />,
-    title: 'データ取得に失敗しました',
-    hint: '再取得ボタンで再試行できます。',
+    titleKey: 'auto.OpponentPolicyCard.err_unknown_title',
+    hintKey: 'auto.OpponentPolicyCard.err_unknown_hint',
   },
 }
 
 // ─── ユーティリティ ──────────────────────────────────────────────────────────
 
-const SCORE_PHASE_LABELS: Record<string, string> = {
-  early: '序盤', mid: '中盤', deuce: 'デュース', endgame: '終盤',
+// enum 値 -> i18n キー。描画時に t() で解決する（t() はモジュールスコープでは呼ばない）。
+const SCORE_PHASE_KEYS: Record<string, string> = {
+  early: 'auto.OpponentPolicyCard.phase_early',
+  mid: 'auto.OpponentPolicyCard.phase_mid',
+  deuce: 'auto.OpponentPolicyCard.phase_deuce',
+  endgame: 'auto.OpponentPolicyCard.phase_endgame',
 }
-const RALLY_BUCKET_LABELS: Record<string, string> = {
-  short: '短', medium: '中', long: '長',
+const RALLY_BUCKET_KEYS: Record<string, string> = {
+  short: 'auto.OpponentPolicyCard.bucket_short',
+  medium: 'auto.OpponentPolicyCard.bucket_medium',
+  long: 'auto.OpponentPolicyCard.bucket_long',
 }
-const PREDICTABILITY_LABELS: Record<string, string> = {
-  predictable: '予測可能',
-  mixed: '混合',
-  unpredictable: '予測困難',
+const PREDICTABILITY_KEYS: Record<string, string> = {
+  predictable: 'auto.OpponentPolicyCard.pred_predictable',
+  mixed: 'auto.OpponentPolicyCard.pred_mixed',
+  unpredictable: 'auto.OpponentPolicyCard.pred_unpredictable',
 }
 // 予測性の簡易説明（tooltip / aria-label 用）
-const PREDICTABILITY_HINTS: Record<string, string> = {
-  predictable: '特定ショットへの集中度が高い（エントロピー低）',
-  mixed: 'ショット選択にやや傾向がある',
-  unpredictable: 'ショット選択が多様で読みにくい（エントロピー高）',
+const PREDICTABILITY_HINT_KEYS: Record<string, string> = {
+  predictable: 'auto.OpponentPolicyCard.predhint_predictable',
+  mixed: 'auto.OpponentPolicyCard.predhint_mixed',
+  unpredictable: 'auto.OpponentPolicyCard.predhint_unpredictable',
 }
 
 function getPredictabilityColor(key: string, isLight: boolean): string {
@@ -143,15 +149,15 @@ function getPredictabilityColor(key: string, isLight: boolean): string {
   return isLight ? pair[0] : pair[1]
 }
 
-/** 最終取得時刻を "X分前" 形式でフォーマット */
-function formatUpdatedAt(ts: number): string {
+/** 最終取得時刻を "X分前" 形式でフォーマット。表示文言は t() で解決するため呼び出し側から渡す。 */
+function formatUpdatedAt(ts: number, tr: (k: string, o?: Record<string, unknown>) => string, locale: string): string {
   if (!ts) return ''
   const diffMin = Math.floor((Date.now() - ts) / 60000)
-  if (diffMin < 1) return 'たった今'
-  if (diffMin < 60) return `${diffMin}分前`
+  if (diffMin < 1) return tr('auto.OpponentPolicyCard.just_now')
+  if (diffMin < 60) return tr('auto.OpponentPolicyCard.minutes_ago', { n: diffMin })
   const diffH = Math.floor(diffMin / 60)
-  if (diffH < 24) return `${diffH}時間前`
-  return new Date(ts).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' })
+  if (diffH < 24) return tr('auto.OpponentPolicyCard.hours_ago', { n: diffH })
+  return new Date(ts).toLocaleDateString(locale, { month: 'short', day: 'numeric' })
 }
 
 // ─── EntropyBar ──────────────────────────────────────────────────────────────
@@ -176,7 +182,7 @@ function EntropyBar({ entropy, maxEntropy = 2.5, isLight }: { entropy: number | 
 // ─── メインコンポーネント ─────────────────────────────────────────────────────
 
 export function OpponentPolicyCard({ playerId, filters }: Props) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
 
   const { card, cardInner, cardInnerAlt, textHeading, textSecondary, textMuted, textFaint, loading, isLight } = useCardTheme()
   const filterApiParams = {
@@ -234,7 +240,7 @@ export function OpponentPolicyCard({ playerId, filters }: Props) {
       {/* 最終取得時刻 */}
       {dataUpdatedAt > 0 && !isError && (
         <p className={`text-[10px] ${textFaint} ss-num`} data-testid="last-fetched">
-          {t('auto.OpponentPolicyCard.last_fetched', { ts: formatUpdatedAt(dataUpdatedAt) })}
+          {t('auto.OpponentPolicyCard.last_fetched', { ts: formatUpdatedAt(dataUpdatedAt, t, i18n.language) })}
         </p>
       )}
 
@@ -248,16 +254,16 @@ export function OpponentPolicyCard({ playerId, filters }: Props) {
         >
           <span className="mt-0.5 shrink-0">{ERROR_META[errorKind].icon}</span>
           <div className="space-y-0.5">
-            <p className="font-medium">{ERROR_META[errorKind].title}</p>
-            <p className={isLight ? 'text-red-600' : 'text-red-500'}>{ERROR_META[errorKind].hint}</p>
+            <p className="font-medium">{t(ERROR_META[errorKind].titleKey)}</p>
+            <p className={isLight ? 'text-red-600' : 'text-red-500'}>{t(ERROR_META[errorKind].hintKey)}</p>
           </div>
         </div>
       )}
 
       <ResearchNotice
-        caution={meta?.caution ?? '対戦相手ポリシーはショット分布の記述統計です。戦術的意図の推定は含みません。'}
-        assumptions="ショット種別はアノテーションに依存。コンテキストはスコアフェーズ・ラリー長・受けた球の着地ゾーン（打つ前に分かる情報）で定義。"
-        promotionCriteria="コンテキストごとN≥30ストローク・複数対戦での再現性確認"
+        caution={meta?.caution ?? t('auto.OpponentPolicyCard.caution_fallback')}
+        assumptions={t('auto.OpponentPolicyCard.assumptions')}
+        promotionCriteria={t('auto.OpponentPolicyCard.promotion')}
       />
 
       {isLoading ? (
@@ -291,11 +297,11 @@ export function OpponentPolicyCard({ playerId, filters }: Props) {
               </div>
               <div
                 className="flex items-center gap-1"
-                title={PREDICTABILITY_HINTS[global.predictability] ?? ''}
+                title={PREDICTABILITY_HINT_KEYS[global.predictability] ? t(PREDICTABILITY_HINT_KEYS[global.predictability]) : ''}
               >
                 <span className={`text-xs ${textMuted}`}>{t('auto.OpponentPolicyCard.k6')}</span>
                 <span className={`text-xs font-medium ${getPredictabilityColor(global.predictability, isLight)}`}>
-                  {PREDICTABILITY_LABELS[global.predictability] ?? global.predictability}
+                  {PREDICTABILITY_KEYS[global.predictability] ? t(PREDICTABILITY_KEYS[global.predictability]) : global.predictability}
                 </span>
               </div>
             </div>
@@ -316,8 +322,8 @@ export function OpponentPolicyCard({ playerId, filters }: Props) {
                     <div className="space-y-0.5">
                       <div className={`text-[10px] ${textSecondary}`}>
                         {t('auto.OpponentPolicyCard.context_label', {
-                          phase: SCORE_PHASE_LABELS[ctx.context.score_phase] ?? ctx.context.score_phase,
-                          bucket: RALLY_BUCKET_LABELS[ctx.context.rally_bucket] ?? ctx.context.rally_bucket,
+                          phase: SCORE_PHASE_KEYS[ctx.context.score_phase] ? t(SCORE_PHASE_KEYS[ctx.context.score_phase]) : ctx.context.score_phase,
+                          bucket: RALLY_BUCKET_KEYS[ctx.context.rally_bucket] ? t(RALLY_BUCKET_KEYS[ctx.context.rally_bucket]) : ctx.context.rally_bucket,
                           zone: ctx.context.zone ? t('auto.OpponentPolicyCard.incoming_zone', { zone: ctx.context.zone }) : '',
                         })}
                       </div>
@@ -326,9 +332,9 @@ export function OpponentPolicyCard({ playerId, filters }: Props) {
                         <span className={`ml-1 ${textFaint}`}>({pct(policy.dominant_prob)})</span>
                         <span
                           className={`ml-2 ${getPredictabilityColor(policy.predictability, isLight)}`}
-                          title={PREDICTABILITY_HINTS[policy.predictability] ?? ''}
+                          title={PREDICTABILITY_HINT_KEYS[policy.predictability] ? t(PREDICTABILITY_HINT_KEYS[policy.predictability]) : ''}
                         >
-                          {PREDICTABILITY_LABELS[policy.predictability] ?? policy.predictability}
+                          {PREDICTABILITY_KEYS[policy.predictability] ? t(PREDICTABILITY_KEYS[policy.predictability]) : policy.predictability}
                         </span>
                       </div>
                     </div>

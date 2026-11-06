@@ -8,7 +8,7 @@ const SECTIONS: { key: AdvancedSection; label: string }[] = [
   { key: 'rally',      label: 'ラリー' },
   { key: 'transition', label: '遷移' },
   { key: 'spatial',    label: '空間' },
-  { key: 'temporal',   label: '時間' },
+  { key: 'temporal',   label: 'スコアフェーズ' },
   { key: 'opponent',   label: '対戦相手' },
   { key: 'doubles',    label: 'ダブルス' },
 ]

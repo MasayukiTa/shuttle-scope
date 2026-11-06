@@ -118,6 +118,40 @@ _WINRATE_LIKE = {
 }
 
 
+def _walk_strings(o):
+    """JSON 木の全文字列値 (入れ子含む) を列挙する。"""
+    if isinstance(o, dict):
+        for v in o.values():
+            yield from _walk_strings(v)
+    elif isinstance(o, list):
+        for x in o:
+            yield from _walk_strings(x)
+    elif isinstance(o, str):
+        yield o
+
+
+def _json_has_string_value(body, needle):
+    """パース済み JSON のいずれかの文字列値が needle を含むなら True。
+    生テキストの部分一致 (uuid/タイムスタンプ/16進署名に偶然混ざる) を避ける。"""
+    return any(needle in v for v in _walk_strings(body))
+
+
+def _json_has_birth_year(o, year):
+    """JSON 木のどこかに birth_year キーがあり、その値が year と一致すれば True。
+    文字列化した値 (例 "1999") も一致とみなす。"""
+    if isinstance(o, dict):
+        for k, v in o.items():
+            if k == "birth_year" and (v == year or str(v) == str(year)):
+                return True
+            if _json_has_birth_year(v, year):
+                return True
+    elif isinstance(o, list):
+        for x in o:
+            if _json_has_birth_year(x, year):
+                return True
+    return False
+
+
 # ─── (a) export/package ──────────────────────────────────────────────────────
 
 class TestExportPackage:
@@ -156,7 +190,11 @@ class TestExportPackage:
         body = r.json()
         assert "result" not in body["match"] and "final_score" not in body["match"]
         assert [p["id"] for p in body["players"]] == [w["own"].id]
-        assert "Opp Player" not in r.text and "1999" not in r.text
+        # 相手名・生年は構造化された JSON 値のどこにも現れない。
+        # 生テキストだと uuid/タイムスタンプ/16進署名に "1999" が偶然混ざり得るため
+        # パース済みの値だけを調べる。
+        assert not _json_has_string_value(body, "Opp Player")
+        assert not _json_has_birth_year(body, 1999)
         assert all("winner" not in s and "score_a" not in s for s in body["sets"])
         assert body["rallies"] and all(
             "winner" not in x and "score_a_after" not in x for x in body["rallies"]
@@ -208,7 +246,7 @@ class TestComprehensive:
                           "pressure_performance", "opponent_stats"):
             assert forbidden not in body["sections"]
         assert not (_walk_keys(body["sections"]) & _WINRATE_LIKE)
-        assert "Opp Player" not in r.text
+        assert not _json_has_string_value(body, "Opp Player")
         # サンプル数 / 信頼度メタは残る
         d = body["sections"]["descriptive"]["data"]
         assert d["data"]["total_rallies"] == 5
@@ -358,3 +396,16 @@ class TestAnalysisForbiddenDefinition:
         for route in routes:
             deps = [d.call for d in route.dependant.dependencies]
             assert require_non_player in deps
+
+
+def test_json_privacy_helpers_detect_planted_values():
+    """ヘルパーが本物の漏えいを検出することの証明 (植え込みテスト)。
+    相手名・生年を JSON 値として埋めれば検出し、
+    uuid/署名文字列に偶然混ざった "1999" は (birth_year 値でない限り) 検出しない。"""
+    leaked = {"players": [{"name": "Opp Player", "birth_year": 1999}]}
+    assert _json_has_string_value(leaked, "Opp Player")
+    assert _json_has_birth_year(leaked, 1999)
+    assert _json_has_birth_year({"p": {"birth_year": "1999"}}, 1999)
+    clean = {"_signature": "a1999ff", "uuid": "1999-0000", "ts": "2026-01-01T19:99:00"}
+    assert not _json_has_string_value(clean, "Opp Player")
+    assert not _json_has_birth_year(clean, 1999)

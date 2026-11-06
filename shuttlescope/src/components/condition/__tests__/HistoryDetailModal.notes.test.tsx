@@ -62,4 +62,16 @@ describe('HistoryDetailModal notes and questionnaire section', () => {
     })
     expect(container.textContent).toContain(lookup(ja as Dict, 'condition.history_detail.no_responses'))
   })
+
+  it('shows the saved questionnaire answers for the player when the server returned them (#654)', () => {
+    const { container } = renderModal({
+      id: 4,
+      measured_at: '2026-10-01',
+      condition_type: 'weekly',
+      questionnaire_json: JSON.stringify({ q1: 3, q2: 5 }),
+    })
+    expect(container.textContent).not.toContain(lookup(ja as Dict, 'condition.history_detail.no_responses'))
+    expect(container.textContent).toContain('q1')
+    expect(container.textContent).toContain('5')
+  })
 })

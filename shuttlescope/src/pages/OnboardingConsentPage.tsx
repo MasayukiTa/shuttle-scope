@@ -111,16 +111,35 @@ export default function OnboardingConsentPage({
         if (r.data?.viewer_is_minor) {
           setGiven((g) => ({ ...g, ai_training: false }))
         }
-        // 既存 consent record の反映ポリシー:
-        //   - 現行 terms_version ('1.3' 等) の record のみ尊重する。
-        //   - 旧 version の record は文書改定で stale になっているため
-        //     initial (= 未チェック) に戻す。
-        //   - ユーザが現行版で意図的に外した record (consent_given=false) は
-        //     そのまま尊重 (GDPR Article 7(3) withdraw)。
+        // 既存 consent record の反映ポリシー (owner 方針 2026-10-31):
+        //   文書が改定されたとき、再同意を求めるのは「改定された文書に紐づく
+        //   同意」だけで、改定されていない文書に紐づく同意は過去の回答を保持する。
+        //   しかし任意同意の所属文書は一意に定まらない (各補足規約は Privacy /
+        //   Terms / Data Contribution すべてに従属し、かつ同意レコードが保持する
+        //   バージョンは privacy_policy_version と terms_version の 2 つのみで、
+        //   補足規約・Data Contribution の個別版は記録されない)。所属文書が
+        //   不明瞭なので、ここでは保守側に倒す = 「記録が付随する privacy_policy /
+        //   terms の両方が現行版と一致する record だけ」prefill 対象とし、
+        //   いずれかが改定 (= 現行版と不一致) されていれば再回答扱い (未チェック)。
+        //   version が欠落している record も「一致を確認できない」= 未回答扱い。
+        //   現行版で意図的に外した record (consent_given=false) はそのまま尊重
+        //   (GDPR Article 7(3) withdraw)。
+        const currentPrivacy = r.data.current_versions?.privacy_policy
         const currentTerms = r.data.current_versions?.terms
+        // record の付随バージョンがすべて現行版と一致するか (= その同意が依拠した
+        // どの文書も改定されていない) を判定。欠落は不一致扱い。
+        const allDocsUnchanged = (c: ConsentRecord): boolean => {
+          if (!currentPrivacy || !c.privacy_policy_version || c.privacy_policy_version !== currentPrivacy) {
+            return false
+          }
+          if (!currentTerms || !c.terms_version || c.terms_version !== currentTerms) {
+            return false
+          }
+          return true
+        }
         const existing: Record<string, ConsentRecord> = {}
         for (const c of r.data.consents) {
-          if (!currentTerms || c.terms_version === currentTerms) {
+          if (allDocsUnchanged(c)) {
             existing[c.consent_type] = c
           }
         }
@@ -131,7 +150,7 @@ export default function OnboardingConsentPage({
             if (rec) {
               next[t] = !!rec.consent_given
             }
-            // rec 無し / stale 版のみ → initial (未チェック) を保持
+            // rec 無し / いずれかの文書が改定された版のみ → initial (未チェック) を保持
           }
           return next
         })
@@ -260,7 +279,7 @@ export default function OnboardingConsentPage({
 
           {/* 必須 checkbox 各々に inline で「文書を読む」ボタンを並置。
              - service_delivery: Privacy + Terms 両方の読了で enable
-             - beta_agreement: Terms の読了で enable (= §14 を参照)
+             - beta_agreement: Terms の読了で enable (= §9 を参照)
              各 docs ボタンは「未読/読了」を色 + check で表示。 */}
 
           <ConsentCheckbox
@@ -295,10 +314,10 @@ export default function OnboardingConsentPage({
           <ConsentCheckbox
             checked={given.beta_agreement}
             onChange={(v) => setGiven((g) => ({ ...g, beta_agreement: v }))}
-            label={t('onboarding.consent.beta_agreement_label') || 'β版データ取り扱い説明書（Terms of Service Section 14）の内容を確認しました'}
+            label={t('onboarding.consent.beta_agreement_label') || 'β版データ取り扱い説明書（Terms of Service Section 9）の内容を確認しました'}
             description={
               t('onboarding.consent.beta_agreement_desc') ||
-              'β期間中のデータ利用範囲、目的、保管期間、第三者提供の有無について記載された文書を読了したことを表明します。Terms of Service Section 14.5 の規定により、β期間中のデータ利用への異議申立ては問い合わせフォーム経由で随時受け付けます。'
+              'β期間中のデータ利用範囲、目的、保管期間、第三者提供の有無について記載された文書を読了したことを表明します。Terms of Service Section 9 の Opt-Out の規定により、β期間中のデータ利用への異議申立ては問い合わせフォーム経由で随時受け付けます。'
             }
             required
             requiredMarker={t('onboarding.consent.required_marker') || '契約履行（必須）'}

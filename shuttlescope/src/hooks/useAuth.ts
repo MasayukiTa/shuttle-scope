@@ -194,7 +194,8 @@ export function useAuth() {
     window.dispatchEvent(new Event(AUTH_CHANGED_EVENT))
   }, [])
 
-  const clearRole = useCallback(() => {
+  const clearRole = useCallback((options?: { keepAutosave?: boolean }) => {
+    const keepAutosave = options?.keepAutosave === true
     removeStorage(STORAGE_KEY)
     removeStorage(STORAGE_KEY_REFRESH)
     removeStorage(STORAGE_KEY_ROLE)
@@ -207,15 +208,23 @@ export function useAuth() {
     // Round 236 #10: 共有 PC で前 user の match-specific UI state が残ると
     // (court calibration / yolo ROI memory / viewpoint 等) 次 user に引き継がれるため
     // logout 時にまとめて消す。
+    //
+    // 無操作タイムアウトによる失効 (keepAutosave=true) のときだけは、アノテータの
+    // 一時保存 (未確定ラリー) を残す。同じ人が再ログインしたときに入力中のラリーを
+    // 復元できるようにするため。一時保存には ownerUserId が入っていて、復元時に
+    // 本人かどうか照合する (isAutosaveOwnedBy) ので、別の利用者に中身が出ることはない。
+    // 本人が明示的にログアウトしたとき (keepAutosave=false) は従来どおり消す。
     try {
       const matchScopedPrefixes = [
         'shuttlescope.viewpoint.',
         'court-calib-',
         'yolo-last-roi-',
         'tracknet-last-roi-',
-        // アノテータの一時保存 (未確定ラリー)。共有端末で次の利用者に残さない。
-        AUTOSAVE_PREFIX,
       ]
+      if (!keepAutosave) {
+        // アノテータの一時保存 (未確定ラリー)。共有端末で次の利用者に残さない。
+        matchScopedPrefixes.push(AUTOSAVE_PREFIX)
+      }
       const keysToRemove: string[] = []
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i)

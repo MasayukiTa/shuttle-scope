@@ -56,6 +56,14 @@ interface CompositeHeatmapResponse {
     land_rotated: Record<string, CompositeZoneData>
     total_strokes: number
     note: string
+    missingness?: {
+      hit_n: number
+      land_n: number
+      missing_hit: number
+      missing_hit_rate: number | null
+      missing_land: number
+      missing_land_rate: number | null
+    }
   }
   meta: { sample_size: number; confidence: { level: string; stars: string; label: string } }
 }
@@ -243,6 +251,22 @@ export function CourtHeatModal({
                 <MIcon name="warning" size={13} className="text-[var(--ss-warn)] mt-0.5 shrink-0" />
                 <div className="text-[var(--ss-warn)]">
                   {t('court_heat_modal.composite_note')}
+                </div>
+              </div>
+            )}
+
+            {/* 項目161: 打点/着地点の対象球数が食い違うとき、欠損数と欠損率を明示する */}
+            {mode === 'composite'
+              && compositeResp?.data?.missingness != null
+              && compositeResp.data.missingness.missing_hit > 0 && (
+              <div className="flex items-start gap-2 p-3 bg-[var(--ss-warn-tint)] border border-[var(--ss-warning-border)] rounded-ss-lg text-xs max-w-xs">
+                <MIcon name="info" size={13} className="text-[var(--ss-t3)] mt-0.5 shrink-0" />
+                <div className="text-[var(--ss-t3)]">
+                  {t('court_heat_modal.missingness_hit', {
+                    missing: compositeResp.data.missingness.missing_hit,
+                    land: compositeResp.data.missingness.land_n,
+                    pct: fmtPct(compositeResp.data.missingness.missing_hit_rate),
+                  })}
                 </div>
               </div>
             )}

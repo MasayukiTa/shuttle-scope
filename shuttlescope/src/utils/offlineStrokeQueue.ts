@@ -333,3 +333,89 @@ export async function removeRallyAfterSave(
   if (ownerUserId != null) await removePending(ownerUserId, matchId, setId, rallyNum)
   else await removeUnowned(matchId, setId, rallyNum)
 }
+
+/**
+ * 現在のユーザー本人の未送信ラリーを、試合をまたいで全件返す。
+ *
+ * countPendingForUser と違い、IndexedDB の読み取りに失敗したら 0 を返さず
+ * **例外を投げる**。ログアウト確認 (G4 #529) では「0 件だから黙ってログアウト」と
+ * 「読めなかった」を取り違えると、未送信データを残したまま次の人に端末を渡したり、
+ * 逆に本当に 0 件なのに毎回ダイアログを出したりする。呼び出し側が失敗を検知して
+ * ログアウトを中断できるよう、ここでは握りつぶさない。
+ */
+export async function listPendingForUserStrict(
+  ownerUserId: number,
+): Promise<PendingRally[]> {
+  const db = await openDb()
+  try {
+    const items = await new Promise<StoredPendingRally[]>((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readonly')
+      const req = tx.objectStore(STORE).getAll()
+      req.onsuccess = () => resolve((req.result ?? []) as StoredPendingRally[])
+      req.onerror = () => reject(req.error ?? new Error('list error'))
+    })
+    return items
+      .filter((it): it is PendingRally =>
+        Number.isInteger(it.ownerUserId) &&
+        Number(it.ownerUserId) === ownerUserId &&
+        Number.isFinite(Number(it.matchId)) &&
+        Number.isFinite(Number(it.setId)) &&
+        Number.isFinite(Number(it.rallyNum)),
+      )
+      .sort((a, b) => (a.queued_at < b.queued_at ? -1 : 1))
+  } finally {
+    db.close()
+  }
+}
+
+/**
+ * 本人の未送信ラリー件数。読み取りに失敗したら 0 と偽らず例外を投げる
+ * (ログアウト確認で「0 件」と「読めなかった」を取り違えないため)。
+ */
+export async function countPendingForUserStrict(ownerUserId: number): Promise<number> {
+  const items = await listPendingForUserStrict(ownerUserId)
+  return items.length
+}
+
+/**
+ * 本人の未送信ラリーを送信する。1 件ずつ送り、サーバが成功を返したものだけ
+ * キューから消す。再送時の二重登録を防ぐため、useOfflineSync と同じ安定
+ * idempotency key を使う。1 件でも送れなかったら reject し、呼び出し側が
+ * 「送信に失敗した。データは残っている」と伝えられるようにする
+ * (G4 #529: send に失敗したらログアウトしない、データは保持する)。
+ *
+ * post: 実際の送信を行う関数 (api/client の apiPost を注入する。hook の外から
+ *   呼ぶため、import の循環と i18n 束縛を避けて DI にしている)。
+ */
+export async function flushPendingForUser(
+  ownerUserId: number,
+  post: (path: string, body: unknown, headers: Record<string, string>) => Promise<{ success?: boolean } | null>,
+): Promise<void> {
+  const items = await listPendingForUserStrict(ownerUserId)
+  for (const it of items) {
+    const stableKey = offlineStrokeIdempotencyKey(
+      ownerUserId,
+      it.matchId,
+      it.setId,
+      it.rallyNum,
+    )
+    const res = await post('/strokes/batch', it.payload, { 'X-Idempotency-Key': stableKey })
+    if (!res?.success) {
+      throw new Error('offline flush: send did not succeed')
+    }
+    await removePending(ownerUserId, it.matchId, it.setId, it.rallyNum)
+  }
+}
+
+/**
+ * 本人の未送信ラリーを全件削除する (G4 #529: delete は確認の後にだけ呼ぶ)。
+ * 消すのは ownerUserId 本人の行だけ。所有者不明 (unowned) の行や他人の行には
+ * 触れない。消した件数を返す。
+ */
+export async function deletePendingForUser(ownerUserId: number): Promise<number> {
+  const items = await listPendingForUserStrict(ownerUserId)
+  for (const it of items) {
+    await removePending(ownerUserId, it.matchId, it.setId, it.rallyNum)
+  }
+  return items.length
+}

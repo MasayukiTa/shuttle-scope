@@ -418,7 +418,7 @@ class TestFlashAdvice:
         body = _body(_flash(client, m, gs, a), "opportunity")
         assert body == (
             f"「{label}」での得点が多い"
-            f"（このセットで「{label}」を打った6ラリー中"
+            f"（このゲームで「{label}」を打った6ラリー中"
             f"6ラリーで得点、100%）"
         )
 
@@ -434,6 +434,31 @@ class TestFlashAdvice:
         # 長ラリー後の次ラリーは 5 本とも負け → 勝率 0%
         body = _body(_flash(client, m, gs, a), "fatigue_signal")
         assert body == "長ラリー（10球以上）後の次ラリー勝率が0%と低い — 消耗に注意"
+
+    def test_stray_service_in_losing_rally_is_not_counted_as_mid_rally_shot(self, client, db_session):
+        # 監査 #147: ラリー連結や記録の食い違いでラリー途中に混入した
+        # サーブ系ショットは「ラリー中盤の球」ではない。truncate_at_stray_service で
+        # 先頭以外のサーブ以降を捨て、その後ろの偽の球を pattern に数えない。
+        a = _player(db_session, "山田")
+        b = _player(db_session, "標本 桃子")
+        # 全て負けラリー(player_b 勝ち)。各ラリーの球列は
+        # [short_service, smash, short_service, clear]。旧実装は strokes[-3]=smash を
+        # 「ラリー中盤の失点直前球」として数えたが、混入サーブ以降は偽なので
+        # 新実装は捨てる→ pattern に smash/サーブは出ない。
+        rows = [(4, "player_b", 0, i + 1) for i in range(6)]
+        while len(rows) < 12:
+            rows.append((3, "player_a", len(rows), 6))
+        m, gs, rallies = _custom_match(db_session, a, b, rows)
+        seq = ["short_service", "smash", "short_service", "clear"]
+        for r in rallies:
+            if r.winner == "player_b":
+                for n, st in enumerate(seq, start=1):
+                    db_session.add(Stroke(rally_id=r.id, stroke_num=n, player="player_a", shot_type=st))
+        db_session.commit()
+        body = _body(_flash(client, m, gs, a), "pattern")
+        assert _shot_ja("smash") not in body
+        assert _shot_ja("short_service") not in body
+        assert "short_service" not in body
 
 
 # ── hazard_fatigue ───────────────────────────────────────────────────────────
@@ -549,3 +574,28 @@ class TestPredictionEngineNoFakeNeutral:
         assert v["volatility_score"] is None
         assert v["close_match_rate"] is None and v["dominant_match_rate"] is None
         assert v["sample"] == 0
+
+
+class TestShotJaNeverLeaksInternalName:
+    """監査 #146: 速報の文章に内部ショット名 (short_service / net_shot 等) が
+    そのまま出ないことを固定する。_shot_ja は canonical な
+    日本語ラベルを返し、未知キーでも生名を返さない。"""
+
+    def test_canonical_internal_names_are_japanese(self):
+        assert _shot_ja("short_service") == "ショートサーブ"
+        assert _shot_ja("net_shot") == "ネットショット"
+        assert _shot_ja("push_rush") == "プッシュ/ラッシュ"
+
+    def test_no_raw_underscore_token_is_returned_for_known_shots(self):
+        for st in ("short_service", "long_service", "net_shot", "push_rush",
+                   "cross_net", "around_head", "half_smash"):
+            out = _shot_ja(st)
+            assert "_" not in out
+            assert out != st
+
+    def test_unknown_shot_falls_back_without_leaking(self):
+        assert _shot_ja("totally_unknown_shot") == "その他"
+
+    def test_empty_or_none_is_unknown(self):
+        assert _shot_ja(None) == "不明"
+        assert _shot_ja("") == "不明"

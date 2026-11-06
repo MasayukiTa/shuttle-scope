@@ -40,9 +40,9 @@ def score_consistency_error(final_score: Optional[str], result: Optional[str]) -
     a_sets = b_sets = 0
     for a, b in sets:
         if a == b:
-            return "final_score に引き分けのセットがあります"
+            return "final_score に引き分けのゲームがあります"
         if a_sets >= _SETS_TO_WIN or b_sets >= _SETS_TO_WIN:
-            return "final_score は 2 セット先取で決着した後にセットが続いています (3 セットマッチとして成立しません)"
+            return "final_score は 2 ゲーム先取で決着した後にゲームが続いています (3 ゲームマッチとして成立しません)"
         if a > b:
             a_sets += 1
         else:
@@ -51,4 +51,38 @@ def score_consistency_error(final_score: Optional[str], result: Optional[str]) -
         return "result=win ですが final_score の勝者は player_a ではありません"
     if result == "loss" and b_sets <= a_sets:
         return "result=loss ですが final_score の勝者は player_b ではありません"
+    return None
+
+
+def set_count_consistency_error(
+    final_score: Optional[str],
+    recorded_set_count: Optional[int],
+    result: Optional[str],
+) -> Optional[str]:
+    """記録済みのセット数と final_score のセット数が矛盾する書き込みを拒否する (監査 #155)。
+
+    監査 #155: id=104 は final_score が 2 セットなのに記録済みセットは 1 、rally_count=0で
+    result=win だった (予測エビデンスで 0-0 の勝ちとして表示されていた)。
+
+    判定するのは「記録済みセットが 1 つ以上存在し、かつ final_score が解釈できて
+    result が win/loss 」のときだけ。そのとき final_score のセット数が
+    記録済みセット数を超えていたら、実測データと矛盾するので拒否する。
+    記録セットが 0 (クイック入力でスコアを先に入れた段階) や解釈できない
+    書式は、通常の注釈フローを壊さないため判定せず通す。
+    """
+    if recorded_set_count is None or recorded_set_count <= 0:
+        return None
+    if result not in ("win", "loss"):
+        return None
+    sets = parse_set_scores(final_score)
+    if sets is None:
+        return None
+    if len(sets) > recorded_set_count:
+        return (
+            "final_score は "
+            + str(len(sets))
+            + " ゲームですが、記録済みのゲームは "
+            + str(recorded_set_count)
+            + " しかありません (スコアと記録が矛盾しています)"
+        )
     return None

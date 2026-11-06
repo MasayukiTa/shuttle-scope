@@ -41,11 +41,16 @@ export function CoGTimeline({ points, side, width = 360, height = 140, className
     )
   }
 
-  // left_pct (0-1) を y に、frame_index を x に変換
+  // left_pct (0-1) を y に、frame_index を x に変換。
+  // 欠測・間引きで frame_index が不連続な場合でも実際の時間間隔を保つため、
+  // 配列インデックスではなく frame_index の min/max を基準に x を配置する。
   const n = filtered.length
+  const frameMin = Math.min(...filtered.map((p) => p.frame_index))
+  const frameMax = Math.max(...filtered.map((p) => p.frame_index))
+  const frameSpan = Math.max(frameMax - frameMin, 1)
   const path = filtered
     .map((p, i) => {
-      const x = (i / Math.max(n - 1, 1)) * (width - 20) + 10
+      const x = ((p.frame_index - frameMin) / frameSpan) * (width - 20) + 10
       const y = (1 - p.left_pct) * (height - 20) + 10
       return `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`
     })

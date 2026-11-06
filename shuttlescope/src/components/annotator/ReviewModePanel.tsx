@@ -19,6 +19,12 @@ import { MIcon } from '@/components/common/MIcon'
 interface ReviewModePanelProps {
   /** 既存の CVAssistPanel JSX をそのまま inject するためのスロット */
   cvAssist?: ReactNode
+  /**
+   * 実データ配線が済んでいるかどうか。default false。
+   * false のときは件数バッジ（常に 0）を実測値のように見せず、
+   * 「未接続（開発中）」を明示する。
+   */
+  connected?: boolean
   rallyBoundaryCount?: number
   identityMappingCount?: number
   swingEventCount?: number
@@ -26,6 +32,7 @@ interface ReviewModePanelProps {
 
 export function ReviewModePanel({
   cvAssist,
+  connected = false,
   rallyBoundaryCount = 0,
   identityMappingCount = 0,
   swingEventCount = 0,
@@ -38,18 +45,26 @@ export function ReviewModePanel({
           <MIcon name="visibility" size={18} />
           {t('annotator.ux.review_header')}
         </div>
-        <div className="flex items-center gap-3 text-[10px] text-[var(--ss-t3)] ss-num">
-          <span>{t('annotator.ux.review_count_boundary', { n: rallyBoundaryCount })}</span>
-          <span>{t('annotator.ux.review_count_identity', { n: identityMappingCount })}</span>
-          <span>{t('annotator.ux.review_count_swing', { n: swingEventCount })}</span>
-        </div>
+        {connected ? (
+          <div className="flex items-center gap-3 text-[10px] text-[var(--ss-t3)] ss-num">
+            <span>{t('annotator.ux.review_count_boundary', { n: rallyBoundaryCount })}</span>
+            <span>{t('annotator.ux.review_count_identity', { n: identityMappingCount })}</span>
+            <span>{t('annotator.ux.review_count_swing', { n: swingEventCount })}</span>
+          </div>
+        ) : (
+          <span className="text-[10px] text-[var(--ss-t3)]">{t('annotator.ux.review_disconnected_badge')}</span>
+        )}
       </header>
       <div className="flex-1 px-3 py-2 space-y-3">
-        {cvAssist ?? (
+        {!connected ? (
+          <div className="text-xs text-[var(--ss-t3)] leading-relaxed">
+            {t('annotator.ux.review_disconnected')}
+          </div>
+        ) : (cvAssist ?? (
           <div className="text-xs text-[var(--ss-t3)] leading-relaxed">
             {t('annotator.ux.review_empty')}
           </div>
-        )}
+        ))}
       </div>
     </div>
   )

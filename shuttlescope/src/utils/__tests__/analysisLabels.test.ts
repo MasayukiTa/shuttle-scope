@@ -20,8 +20,16 @@ describe('shotLabel', () => {
     expect(shotLabel(t, 'net')).toBe('ネット前')
   })
 
-  it('未知のコードは黙って消さず元の文字列を返す。空は —', () => {
-    expect(shotLabel(t, 'unknown_shot_zzz')).toBe('unknown_shot_zzz')
+  it('既知のショット種別・バケットは未分類にならない', () => {
+    expect(shotLabel(t, 'drive')).not.toBe('未分類')
+    expect(shotLabel(t, 'serve')).not.toBe('未分類')
+    expect(shotLabel(t, 'net')).not.toBe('未分類')
+  })
+
+  it('未知のコードは「未分類」に統一する。空は —', () => {
+    expect(shotLabel(t, 'unknown_shot_zzz')).toBe('未分類')
+    expect(shotLabel(t, 'unknown')).toBe('未分類')
+    expect(shotLabel(t, 'NET_C')).toBe('未分類')
     expect(shotLabel(t, null)).toBe('—')
     expect(shotLabel(t, undefined)).toBe('—')
     expect(shotLabel(t, '')).toBe('—')
@@ -31,7 +39,7 @@ describe('shotLabel', () => {
 describe('stateKeyLabel', () => {
   it("'early|second|medium|receiver' を日本語の並びにする", () => {
     expect(stateKeyLabel(t, 'early|second|medium|receiver')).toBe(
-      '序盤 / 第2セット / 中くらいのラリー / レシーバー',
+      '序盤 / 第2ゲーム / 中くらいのラリー / レシーバー',
     )
   })
 

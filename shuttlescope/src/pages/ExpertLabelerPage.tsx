@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { downloadExpertExport } from '@/utils/expertExport'
+import { isValidMatchDate } from '@/utils/exportCandidates'
 import { useTheme } from '@/hooks/useTheme'
 import { useAuth } from '@/hooks/useAuth'
 import { CoGDetectionPage } from '@/pages/CoGDetectionPage'
@@ -39,7 +40,15 @@ interface ProgressResponse {
   per_match: ProgressEntry[]
 }
 
-const BLOCKED_STATUSES: ReviewStatus[] = ['no_targets', 'no_video']
+// audit #176: clips_pending (対象・動画はあるがクリップ未生成) も開始をブロックする。
+// 開始すると詳細画面が no_clips (「クリップがありません」) の行き止まりになるため、
+// 一覧上は status_clips_pending を示して CTA を無効化する (fail closed)。
+const BLOCKED_STATUSES: ReviewStatus[] = ['no_targets', 'no_video', 'clips_pending']
+
+// 一覧の「開始」CTA を出せない (= 行き止まり) 状態か。単体テスト用に export する。
+export function isStartBlocked(status: ReviewStatus): boolean {
+  return BLOCKED_STATUSES.includes(status)
+}
 
 type ActiveTab = 'matches' | 'cog'
 
@@ -252,7 +261,7 @@ function ExpertLabelerContent() {
             <ul className="space-y-3">
               {filtered.map((v) => {
                 const status: ReviewStatus = v.review_status ?? 'ready'
-                const blocked = BLOCKED_STATUSES.includes(status)
+                const blocked = isStartBlocked(status)
                 // ミス件数 0 のときは完了率を出さない（0% と書くと未着手に見える）
                 const hasTargets = v.miss_count > 0
                 const labeledKnown = v.labeled_count !== null
@@ -260,7 +269,9 @@ function ExpertLabelerContent() {
                 const ratio = calcRatio(labeledCount, v.miss_count)
                 const pct = Math.round(ratio * 100)
                 const done = labeledKnown && v.miss_count > 0 && labeledCount >= v.miss_count
-                const label = v.title || v.opponent || v.date || `Match ${v.match_id}`
+                // 無効日付 (0001-01-01 等) はラベルに出さず、明示的に「日付未設定」を出す
+                const safeDate = isValidMatchDate(v.date) ? v.date : undefined
+                const label = v.title || v.opponent || safeDate || t('expert_labeler.date_unset')
                 return (
                   <li key={String(v.match_id)} className="flex gap-2">
                     <button

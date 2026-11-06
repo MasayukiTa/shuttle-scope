@@ -171,6 +171,10 @@ export function SettingsPage() {
   const canCreatePlayers = role === 'analyst' || role === 'admin'
   // 選手の削除も analyst / admin のみ (backend の DELETE /players/{id} は require_analyst)。coach には削除ボタンを出さない。
   const canRemovePlayers = canDeletePlayer(role)
+  // データ同期 (export / import / JSON package import) は backend の
+  // require_analyst に合わせ analyst / admin のみ。player / coach には操作導線を
+  // 初めから表示しない (操作の末尾で 403 になる状態を避け、権限モデルに一致させる)。
+  const canSyncData = role === 'analyst' || role === 'admin'
   const coachTeamFilter = role === 'coach' ? (teamName ?? '') : null
   // ロール切替用モーダル
   // ロール変更で閲覧権限が失われた場合はタブを退避
@@ -266,6 +270,7 @@ export function SettingsPage() {
   const [bmNFrames, setBmNFrames] = useState(30)
   const [bmJobId, setBmJobId] = useState<string | null>(null)
   const bmJobIdRef = useRef<string | null>(null)
+  const bmPollFailRef = useRef(0)
   const [bmJob, setBmJob] = useState<BenchmarkJob | null>(null)
   const [bmRunning, setBmRunning] = useState(false)
   const [bmDetecting, setBmDetecting] = useState(false)
@@ -521,11 +526,18 @@ export function SettingsPage() {
     try {
       const job = await getJob(bmJobId)
       setBmJob(job)
+      bmPollFailRef.current = 0
+      setBmError((prev) => (prev === t('benchmark.poll_stalled') ? null : prev))
       if (job.status === 'done' || job.status === 'failed') {
         setBmRunning(false)
       }
     } catch {
-      // ポーリングエラーは無視して次のポーリングに任せる
+      // 一時的な失敗は直前値を保持し、連続失敗が続いたときだけ「取得不能」を明示する。
+      // 失敗を running=false や done へ勝手に変換しない。
+      bmPollFailRef.current += 1
+      if (bmPollFailRef.current >= 3) {
+        setBmError(t('benchmark.poll_stalled'))
+      }
     }
   }
 
@@ -713,6 +725,19 @@ export function SettingsPage() {
     }
   }
 
+  // 失敗の利用者向け文言。HTTP status・内部フィールド名・backend の detail は出さず、
+  // 原因の種類 (認証切れ / 権限 / 競合 / 入力) だけを伝える。詳細はコンソールへ残す。
+  const userFacingPlayerError = (err: unknown, fallback: string): string => {
+    console.error('[Settings] player request failed', errorStatus(err), errorMessage(err, ''))
+    switch (errorStatus(err)) {
+      case 401: return t('common_ui.error_session_expired')
+      case 403: return t('common_ui.error_forbidden')
+      case 409: return t('common_ui.error_conflict')
+      case 422: return t('common_ui.error_invalid_input')
+      default: return fallback
+    }
+  }
+
   // 選手作成
   const createPlayer = useMutation({
     mutationFn: (body: Record<string, unknown>) => apiPost('/players', body),
@@ -723,19 +748,12 @@ export function SettingsPage() {
     },
     onError: (err: unknown) => {
       // 権限不足 (403) は「Analyst ロールが必要」と具体的に案内する。
-      // それ以外は updatePlayer と同じくサーバ detail を表示する。
-      const status = errorStatus(err)
-      if (status === 403) {
+      // それ以外は安定した利用者向け文言へ変換し、HTTP status・backend detail は出さない。
+      if (errorStatus(err) === 403) {
         alert(t('settings.ui.create_player_require_analyst'))
         return
       }
-      const msg = errorMessage(err)
-      let detail: string
-      try {
-        const parsed = JSON.parse(msg) as { detail?: unknown }
-        detail = typeof parsed?.detail === 'string' ? parsed.detail : ''
-      } catch { detail = msg }
-      alert(`保存に失敗しました (HTTP ${status ?? '?'}):\n${detail || '不明なエラー'}`)
+      alert(userFacingPlayerError(err, t('common_ui.player_save_failed')))
     },
   })
 
@@ -749,13 +767,7 @@ export function SettingsPage() {
       setPlayerForm(defaultPlayerForm())
     },
     onError: (err: unknown) => {
-      const msg = errorMessage(err)
-      let detail: string
-      try {
-        const parsed = JSON.parse(msg) as { detail?: unknown }
-        detail = typeof parsed?.detail === 'string' ? parsed.detail : ''
-      } catch { detail = msg }
-      alert(`保存に失敗しました (HTTP ${errorStatus(err) ?? '?'}):\n${detail || '不明なエラー'}`)
+      alert(userFacingPlayerError(err, t('common_ui.player_save_failed')))
     },
   })
 
@@ -765,19 +777,14 @@ export function SettingsPage() {
       apiDelete(`/players/${id}`, { 'X-Idempotency-Key': newIdempotencyKey() }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['players'] }),
     onError: (err: unknown, playerId: number) => {
-      // err.message はサーバーが返したJSONテキスト ("{"detail":"..."}") or プレーンテキスト
-      const msg = errorMessage(err)
-      let detail: string
-      try {
-        const parsed = JSON.parse(msg) as { detail?: unknown }
-        detail = typeof parsed?.detail === 'string' ? parsed.detail : ''
-      } catch { detail = msg }
-      const isReferenced = errorStatus(err) === 409
-      if (isReferenced) {
-        const go = window.confirm(`${detail}\n\n試合一覧でこの選手の試合を確認しますか？`)
+      console.error('[Settings] player delete failed', errorStatus(err), errorMessage(err, ''))
+      // 409 はこの選手が試合に参照されている。backend detail は出さず利用者向け文言で案内し、
+      // 試合一覧への導線を出す。それ以外は安定した利用者向け文言へ変換する。
+      if (errorStatus(err) === 409) {
+        const go = window.confirm(`${t('common_ui.player_in_use')}\n\n${t('settings.ui.player_delete_open_matches')}`)
         if (go) navigate(`/matches?player_id=${playerId}`)
       } else {
-        alert(`削除できません: ${detail || '不明なエラー'}`)
+        alert(userFacingPlayerError(err, t('common_ui.player_delete_failed')))
       }
     },
   })
@@ -791,13 +798,7 @@ export function SettingsPage() {
       queryClient.invalidateQueries({ queryKey: ['players-needs-review'] })
     },
     onError: (err: unknown) => {
-      const msg = errorMessage(err)
-      let detail: string
-      try {
-        const parsed = JSON.parse(msg) as { detail?: unknown }
-        detail = typeof parsed?.detail === 'string' ? parsed.detail : ''
-      } catch { detail = msg }
-      alert(`確認済み設定に失敗しました: ${detail || '不明なエラー'}`)
+      alert(userFacingPlayerError(err, t('common_ui.player_verify_failed')))
     },
   })
 
@@ -1899,8 +1900,8 @@ export function SettingsPage() {
                       </div>
                       <div className="mt-1 text-[var(--ss-brand)]">
                         {tunnelStatus.data.providers.cloudflare.named_ready
-                          ? 'named tunnel 設定を検出しました。Cloudflare 選択時は固定ドメインを優先します。'
-                          : 'named tunnel 設定は未完了です。repo外の Desktop\\cloudflare-shuttle-scope または ~/.cloudflared を使う想定です。'}
+                          ? t('auto.SettingsPage.cloudflare_named_tunnel_ready')
+                          : t('auto.SettingsPage.cloudflare_named_tunnel_not_ready')}
                       </div>
                       {tunnelStatus.data.providers.cloudflare.config_path && (
                         <div className="mt-1 break-all text-[var(--ss-brand)]">
@@ -2295,7 +2296,8 @@ export function SettingsPage() {
               </section>
             )}
 
-            {/* ── エクスポート ──────────────────────────────── */}
+            {/* ── エクスポート (analyst / admin のみ: backend require_analyst と一致) ── */}
+            {canSyncData && (
             <section className="bg-[var(--ss-surface-1)] rounded-ss-lg p-5 space-y-4 border border-[var(--ss-border)] shadow-card" data-tutorial="settings.export">
               <div className="flex items-center gap-2">
                 <MIcon name="download" size={16} className="text-[var(--ss-brand)]" />
@@ -2436,8 +2438,10 @@ export function SettingsPage() {
                 </div>
               )}
             </section>
+            )}
 
-            {/* ── インポート ────────────────────────────────── */}
+            {/* ── インポート (analyst / admin のみ: backend require_analyst と一致) ── */}
+            {canSyncData && (
             <section className="bg-[var(--ss-surface-1)] rounded-ss-lg p-5 space-y-4 border border-[var(--ss-border)] shadow-card" data-tutorial="settings.import">
               <div className="flex items-center gap-2">
                 <MIcon name="upload" size={16} className="text-[var(--ss-success)]" />
@@ -2534,6 +2538,7 @@ export function SettingsPage() {
                 </div>
               )}
             </section>
+            )}
 
             {/* ── バックアップ (admin only) ──────────────────────────────── */}
             {role === 'admin' && <section className="bg-[var(--ss-surface-1)] rounded-ss-lg p-5 space-y-4 border border-[var(--ss-border)] shadow-card">
@@ -2739,7 +2744,8 @@ export function SettingsPage() {
               </section>
             )}
 
-            {/* ── JSON パッケージ インポート ──────────────────────── */}
+            {/* ── JSON パッケージ インポート (analyst / admin のみ: backend require_analyst と一致) ── */}
+            {canSyncData && (
             <section>
               <h2 className="text-base font-semibold text-[var(--ss-t1)]">{t('settings.ui.json_package_import')}</h2>
               <p className={`text-xs ${textMuted} mt-1 mb-3`}>
@@ -2784,6 +2790,7 @@ export function SettingsPage() {
                 )}
               </div>
             </section>
+            )}
 
             {/* ── DB メンテナンス (admin only) ──────────────────────────────────── */}
             {role === 'admin' && <section className="bg-[var(--ss-surface-1)] rounded-ss-lg p-5 space-y-4 border border-[var(--ss-border)] shadow-card">
@@ -3206,9 +3213,11 @@ function BackendConsole({
   // 初回開いたときにバッファを取得
   useEffect(() => {
     if (!open) return
+    let active = true
     if (window.shuttlescope?.getBackendLog) {
-      window.shuttlescope.getBackendLog().then(setLines).catch(() => {})
+      window.shuttlescope.getBackendLog().then((v) => { if (active) setLines(v) }).catch(() => {})
     }
+    return () => { active = false }
   }, [open])
 
   // リアルタイム受信

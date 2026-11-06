@@ -11,6 +11,7 @@ from datetime import date
 from fastapi.testclient import TestClient
 
 from backend.main import app
+from backend.routers.analysis_research import CONFORMAL_MIN_GROUP_N
 from backend.db.database import get_db
 from backend.db.models import Player, Match, GameSet, Rally, Stroke
 from backend.utils.auth import (
@@ -274,3 +275,134 @@ class TestConformalEndpoint:
         if data.get("status") == "insufficient":
             pytest.skip("サンプル不足のためスキップ")
         assert "coverage_guarantee_met" in data["validation"]
+
+
+# ── 監査 #140: 極小 N グループに方向ラベルを出さない ────────────────
+
+def _seed_small_and_large_group_player(db):
+    """1 つの大 N グループ (smash, N=40) と 1 つの極小 N グループ (drive, N=2) を生成する。
+
+    すべて score_a_after=5 / score_b_after=3 (early) ・ server=player_b (target は receiver) なので
+    グループキーは dominant_shot_bucket だけで分かれる:
+      "early|receiver|smash" (N=40) / "early|receiver|drive" (N=2)
+    n_total=42 ≥ MIN_SAMPLES(40)。drive グループは N=2 < CONFORMAL_MIN_GROUP_N(5) なので
+    方向ラベル (勝ち寄り / 負け寄り) を出さないことを検証する。
+    """
+    p_target = Player(name="ConformalSmallGroup", dominant_hand="R")
+    p_opp = Player(name="ConformalSmallGroupOpp", dominant_hand="R")
+    db.add(p_target)
+    db.add(p_opp)
+    db.flush()
+
+    match = Match(
+        tournament="CP SmallGroup Test",
+        tournament_level="IC",
+        round="R1",
+        date=date(2025, 7, 2),
+        format="singles",
+        player_a_id=p_target.id,
+        player_b_id=p_opp.id,
+        result="win",
+        annotation_status="complete",
+        annotation_progress=1.0,
+    )
+    db.add(match)
+    db.flush()
+
+    gs = GameSet(
+        match_id=match.id,
+        set_num=1,
+        winner="player_a",
+        score_a=21,
+        score_b=15,
+    )
+    db.add(gs)
+    db.flush()
+
+    rally_num = 0
+
+    def _add_rally(dominant_shot, win):
+        nonlocal rally_num
+        rally_num += 1
+        rally = Rally(
+            set_id=gs.id,
+            rally_num=rally_num,
+            server="player_b",          # target は receiver
+            winner="player_a" if win else "player_b",
+            end_type="forced_error",
+            rally_length=4,
+            score_a_after=5,
+            score_b_after=3,
+        )
+        db.add(rally)
+        db.flush()
+        for snum in range(1, 4):
+            db.add(Stroke(
+                rally_id=rally.id,
+                stroke_num=snum,
+                player="player_a",
+                shot_type=dominant_shot,
+                hit_zone="BC",
+                land_zone="NL",
+                hit_y=0.2,
+            ))
+        db.add(Stroke(
+            rally_id=rally.id,
+            stroke_num=4,
+            player="player_b",
+            shot_type="net_shot",
+            hit_zone="NC",
+            land_zone="BC",
+            hit_y=0.8,
+        ))
+        db.flush()
+
+    # 大 N グループ: smash × 40 (半数勝ち)
+    for i in range(40):
+        _add_rally("smash", win=(i % 2 == 0))
+    # 極小 N グループ: drive × 2
+    _add_rally("drive", win=True)
+    _add_rally("drive", win=False)
+
+    db.flush()
+    return p_target.id
+
+
+class TestConformalSmallGroupGating:
+    """監査 #140: 極小 N (N=1〜3) の subgroup セルに方向ラベルを出さない。"""
+
+    def _fetch(self, db_session):
+        player_id = _seed_small_and_large_group_player(db_session)
+        db_session.commit()
+        app.dependency_overrides[get_db] = lambda: db_session
+        app.dependency_overrides[get_auth] = _admin_ctx
+        app.dependency_overrides[require_admin_or_analyst] = _admin_ctx
+        app.dependency_overrides[require_non_player] = _admin_ctx
+        try:
+            client = TestClient(app)
+            resp = client.get(f"/api/analysis/conformal?player_id={player_id}")
+        finally:
+            app.dependency_overrides.clear()
+        assert resp.status_code == 200
+        return resp.json()["data"]
+
+    def test_small_group_has_no_direction_label(self, db_session):
+        """N<CONFORMAL_MIN_GROUP_N のグループは insufficient で prediction_set / p_win が None。"""
+        data = self._fetch(db_session)
+        assert data.get("status") != "insufficient"
+        small = [g for g in data["per_group"] if g["n"] < CONFORMAL_MIN_GROUP_N]
+        assert small, "極小 N グループが per_group に存在すること"
+        for g in small:
+            assert g["insufficient"] is True
+            assert g["p_win"] is None
+            assert g["prediction_set"] is None
+
+    def test_large_group_keeps_direction_label(self, db_session):
+        """N≥CONFORMAL_MIN_GROUP_N のグループは prediction_set を持ち insufficient でない。"""
+        data = self._fetch(db_session)
+        large = [g for g in data["per_group"] if g["n"] >= CONFORMAL_MIN_GROUP_N]
+        assert large, "大 N グループが per_group に存在すること"
+        for g in large:
+            assert g["insufficient"] is False
+            assert g["prediction_set"] is not None
+            assert isinstance(g["prediction_set"], list)

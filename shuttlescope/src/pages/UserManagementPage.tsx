@@ -7,10 +7,14 @@ import { apiDelete, apiGet, apiPost, apiPut, authAdminResetPassword, getUserPage
 import { useAuth } from '@/hooks/useAuth'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { canShowDeleteButton } from '@/utils/userDeletePolicy'
+import { errorStatus, errorMessage } from '@/utils/errors'
 
 const PAGE_ACCESS_OPTIONS = [
   { key: 'prediction', labelKey: 'users.manage.page_access_prediction' },
   { key: 'expert_labeler', labelKey: 'users.manage.page_access_expert_labeler' },
+  // #572: 汎用 LLM チャットへのアクセス。付与/剥奪は admin のみ (下の showPageAccess /
+  // handleSave と backend set_user_page_access が admin 限定を強制する)。
+  { key: 'llm', labelKey: 'users.manage.page_access_llm' },
 ] as const
 
 interface UserRow {
@@ -154,6 +158,19 @@ export function UserManagementPage() {
   const [limitResetBusyId, setLimitResetBusyId] = useState<number | null>(null)
   const [copyDone, setCopyDone] = useState(false)
 
+  // 失敗の利用者向け文言。HTTP status・backend detail・JS 例外文字列は出さず、
+  // 原因の種類だけを伝える。詳細はコンソールへ残す。
+  const userFacingUserError = (err: unknown, fallback: string): string => {
+    console.error('[Users] request failed', errorStatus(err), errorMessage(err, ''))
+    switch (errorStatus(err)) {
+      case 401: return t('common_ui.error_session_expired')
+      case 403: return t('common_ui.error_forbidden')
+      case 409: return t('common_ui.error_conflict')
+      case 422: return t('common_ui.error_invalid_input')
+      default: return fallback
+    }
+  }
+
   const handleResetPassword = async (u: UserRow) => {
     if (!window.confirm(t('users.manage.reset_confirm', { name: u.display_name || u.username, username: u.username }))) return
     setResetBusyId(u.id)
@@ -162,8 +179,7 @@ export function UserManagementPage() {
       const res = await authAdminResetPassword(u.id)
       setResetResult({ username: u.username, password: res.temporary_password })
     } catch (err) {
-      const e = err as Error
-      window.alert(e.message || 'error')
+      window.alert(userFacingUserError(err, t('users.manage.reset_password_failed')))
     } finally {
       setResetBusyId(null)
     }
@@ -324,7 +340,7 @@ export function UserManagementPage() {
       await apiPost(`/admin/security/user_limits/${u.id}/reset`, body)
       await load()
     } catch (err) {
-      window.alert((err as Error).message || 'reset error')
+      window.alert(userFacingUserError(err, t('users.manage.reset_limits_failed')))
     } finally {
       setLimitResetBusyId(null)
     }
@@ -444,11 +460,17 @@ export function UserManagementPage() {
         }
         if (form.credential.trim()) body.password = form.credential.trim()
         await apiPut(`/auth/users/${editId}`, body)
-        if (form.role === 'player' && !isSelfOnly) {
+        // ページアクセス保存 (#572):
+        //  - player: 従来どおり個人 + チーム grant を manager が保存。
+        //  - analyst / coach: admin のみが個人 grant を保存できる (llm の付与/剥奪は admin 専権)。
+        const canSaveAccess =
+          (form.role === 'player' && !isSelfOnly) ||
+          ((form.role === 'analyst' || form.role === 'coach') && myRole === 'admin')
+        if (canSaveAccess) {
           if (userAccessDirty) {
             await setUserPageAccess(editId, editPageAccess)
           }
-          if (editingTeamName && teamAccessDirty) {
+          if (form.role === 'player' && editingTeamName && teamAccessDirty) {
             await setTeamPageAccess(editingTeamName, editTeamPageAccess)
           }
         }
@@ -495,6 +517,14 @@ export function UserManagementPage() {
   // フォームフィールド群（新規作成・インライン編集の両方で共用）
   // 新規作成と編集は同時に開かないので、編集対象 ID だけで一意になる。
   const fid = (name: string) => `um-${editId ?? 'new'}-${name}`
+  // ページアクセス欄の表示条件 (#572):
+  //  - player を編集中: 従来どおり manager (admin/analyst/coach、自分以外) に出す。
+  //  - analyst / coach を編集中: admin のみに出す (llm 等の付与は admin 専権)。
+  const isAnalystOrCoachForm = form.role === 'analyst' || form.role === 'coach'
+  const showPageAccess =
+    editId != null && !isSelfOnly && (
+      (isPlayerRole) || (isAnalystOrCoachForm && myRole === 'admin')
+    )
   const typedTeamName = form.team_name.trim()
   const similarTeam = typedTeamName && !form.team_id
     ? teams.find((tm) => normalizeTeamName(tm.name) === normalizeTeamName(typedTeamName))
@@ -650,7 +680,7 @@ export function UserManagementPage() {
         ) : null}
       </div>
 
-      {isPlayerRole && editId != null && !isSelfOnly ? (
+      {showPageAccess ? (
         <div className={`mt-4 pt-4 border-t ${border}`}>
           <p className={`text-xs font-semibold mb-2 ${textMain}`}>{t('users.manage.page_access')}</p>
           <div className="space-y-3">

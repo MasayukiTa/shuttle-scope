@@ -26,6 +26,7 @@ from backend.db.models import Match, GameSet, Rally, Stroke
 from backend.analysis.router_helpers import (
     _player_role_in_match, _get_player_matches, _fetch_matches_sets_rallies,
 )
+from backend.analysis.light_stroke import load_light_strokes
 from backend.analysis.response_meta import build_input_provenance, build_response_meta
 from backend.analysis.analysis_registry import list_registry_entries, get_tier as _registry_get_tier
 from backend.analysis.analysis_meta import EVIDENCE_META
@@ -84,7 +85,9 @@ def _build_aux_maps(db: Session, matches: list, set_ids: list, rally_ids: list) 
     set_num_map = {s.id: s.set_num for s in sets}
     strokes_by_rally: dict[int, list] = {}
     if rally_ids:
-        stks = db.query(Stroke).filter(Stroke.rally_id.in_(rally_ids)).all()
+        # SD-09b 504 fix: full ORM materialize (約2.6s/2.9万件) を避け、Core select +
+        # __slots__ 軽量オブジェクトで読む。出力は full ORM と完全一致 (実測検証済み)。
+        stks = load_light_strokes(db, rally_ids)
         for s in stks:
             strokes_by_rally.setdefault(s.rally_id, []).append(s)
     return set_num_map, strokes_by_rally
@@ -95,11 +98,23 @@ def _build_aux_maps(db: Session, matches: list, set_ids: list, rally_ids: list) 
 # ---------------------------------------------------------------------------
 
 def _load_ctx_or_query(db, player_id, ctx, result, tournament_level, date_from, date_to):
-    """ctx が渡されれば共有データを返し、なければ個別 endpoint と同じ形で取得する。"""
+    """ctx が渡されれば共有データを返し、なければ個別 endpoint と同じ形で取得する。
+
+    #522: スコア補正の擬似ラリー (is_skipped) は実記録ではないので、state / 系列 /
+    反事実などの研究解析の母集団からは一律に除外する。ここは spine 系の共通入力層
+    なので、ctx 経由・直接クエリの両経路でフィルタを強制する。strokes_by_rally も
+    除外後のラリーに対応するものだけ残す (擬似ラリーにストロークは無いが念のため)。
+    """
     if ctx is not None:
+        rallies = [r for r in ctx.rallies if not r.is_skipped]
+        rally_id_set = {r.id for r in rallies}
+        strokes_by_rally = {
+            rid: stks for rid, stks in ctx.strokes_by_rally.items()
+            if rid in rally_id_set
+        }
         return (
             ctx.matches, ctx.role_by_match, ctx.set_to_match,
-            ctx.set_num_map, ctx.rallies, ctx.strokes_by_rally,
+            ctx.set_num_map, rallies, strokes_by_rally,
         )
     matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
     if not matches:
@@ -110,7 +125,12 @@ def _load_ctx_or_query(db, player_id, ctx, result, tournament_level, date_from, 
     set_ids = [s.id for s in sets]
     set_to_match = {s.id: s.match_id for s in sets}
     set_num_map = {s.id: s.set_num for s in sets}
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
+    rallies = (
+        db.query(Rally)
+        .filter(Rally.set_id.in_(set_ids), Rally.is_skipped.is_(False))
+        .all()
+        if set_ids else []
+    )
     rally_ids = [r.id for r in rallies]
     _, strokes_by_rally = _build_aux_maps(db, matches, [], rally_ids)
     return matches, role_by_match, set_to_match, set_num_map, rallies, strokes_by_rally

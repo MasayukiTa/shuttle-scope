@@ -65,6 +65,34 @@ export function enqueuePendingIce(
   queue.push(candidate)
 }
 
+/**
+ * h12b: `device_list_update` 通知に含まれる device_name を participant_id ごとに
+ * 取り込む。サーバが端末のリネーム (device_rename) を受けると、この通知で最新名を
+ * 配る。REST の 10 秒 polling を待たずに表示を更新するための純関数。
+ * device_name が欠落・空・非文字列のエントリは無視し、既存の名前を保つ。
+ */
+export function deviceNamesFromUpdate(
+  prev: Record<string, string>,
+  devices: Array<{ participant_id?: unknown; device_name?: unknown; stream_id?: unknown }> | undefined,
+): Record<string, string> {
+  if (!Array.isArray(devices)) return prev
+  const next = { ...prev }
+  let changed = false
+  for (const d of devices) {
+    const pid = d?.participant_id
+    const name = d?.device_name
+    if (pid == null || typeof name !== 'string') continue
+    const trimmed = name.trim()
+    if (!trimmed) continue
+    const key = String(pid)
+    if (next[key] !== trimmed) {
+      next[key] = trimmed
+      changed = true
+    }
+  }
+  return changed ? next : prev
+}
+
 export interface CameraHubState {
   streams: CameraStream[]
   wsConnected: boolean
@@ -73,7 +101,14 @@ export interface CameraHubState {
   connectionStates: Record<string, RTCPeerConnectionState>
   /** ICE 候補収集の進行状況。接続が張れないときの切り分けに使う。 */
   iceGatheringStates: Record<string, RTCIceGatheringState>
+  /**
+   * h12b: `device_list_update` 通知から得た participant_id → device_name。
+   * 端末のリネームを REST polling より早く表示へ反映するために使う。
+   */
+  deviceNames: Record<string, string>
   turnInUse: boolean | null
+  /** #595: ICE 設定取得結果。'loaded'=サーバ配布 / 'fallback'=空配布で STUN / 'error'=取得失敗で STUN。 */
+  iceConfigStatus: 'loaded' | 'fallback' | 'error'
   connect: () => Promise<void>
   disconnect: () => void
   requestCamera: (streamIdOrParticipant: string | number) => void
@@ -102,7 +137,10 @@ export function useCameraHub(sessionCode: string): CameraHubState {
     useState<Record<string, RTCPeerConnectionState>>({})
   const [iceGatheringStates, setIceGatheringStates] =
     useState<Record<string, RTCIceGatheringState>>({})
+  const [deviceNames, setDeviceNames] = useState<Record<string, string>>({})
   const [turnInUse, setTurnInUse] = useState<boolean | null>(null)
+  // #595: ICE 設定取得の結果を UI に漏らさず最初は fallback。
+  const [iceConfigStatus, setIceConfigStatus] = useState<'loaded' | 'fallback' | 'error'>('fallback')
 
   const publish = useCallback(() => {
     const list: CameraStream[] = []
@@ -265,6 +303,13 @@ export function useCameraHub(sessionCode: string): CameraHubState {
   // ─── メッセージ処理 (直列) ────────────────────────────────────────────────
   const handle = useCallback(async (msg: Record<string, unknown>) => {
     const type = msg.type as string
+    if (type === 'device_list_update') {
+      // h12b: サーバの端末一覧通知に含まれる device_name で表示名を更新する。
+      // peer-connection の確立とは独立 (signaling には触れない)。
+      setDeviceNames((prev) => deviceNamesFromUpdate(
+        prev, msg.devices as Array<{ participant_id?: unknown; device_name?: unknown }>))
+      return
+    }
     if (type === 'webrtc_offer') {
       await acceptCameraOffer(msg as never)
     } else if (type === 'ice_candidate') {
@@ -359,8 +404,17 @@ export function useCameraHub(sessionCode: string): CameraHubState {
     try {
       const cfg = await apiGet<{ success: boolean; data: { ice_servers: RTCIceServer[] } }>(
         '/webrtc/ice-config')
-      if (cfg.success && cfg.data.ice_servers.length) iceServersRef.current = cfg.data.ice_servers
-    } catch { /* STUN のまま続行 */ }
+      if (cfg.success && cfg.data.ice_servers.length) {
+        iceServersRef.current = cfg.data.ice_servers
+        setIceConfigStatus('loaded')
+      } else {
+        // #595: 応答はあったが TURN/STUN が空->STUN のみで続行（要診断状態）。
+        setIceConfigStatus('fallback')
+      }
+    } catch {
+      // #595: 取得失敗。STUN のまま続行するが状態を表出する。
+      setIceConfigStatus('error')
+    }
 
     let ws: WebSocket
     try {
@@ -403,7 +457,7 @@ export function useCameraHub(sessionCode: string): CameraHubState {
 
   return {
     streams, wsConnected, reconnecting, reconnectCount,
-    connectionStates, iceGatheringStates, turnInUse, connect, disconnect,
+    connectionStates, iceGatheringStates, deviceNames, turnInUse, iceConfigStatus, connect, disconnect,
     requestCamera: (target) => send({
       type: 'camera_request',
       ...(typeof target === 'string' && target.length > 20

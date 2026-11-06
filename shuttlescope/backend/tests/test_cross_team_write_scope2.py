@@ -241,6 +241,11 @@ SPECS = [
     S("pipeline.run", "POST", "/api/v1/pipeline/run", WRITE_DENY + ["pA1"], dict(json=dict(match_id=1))),
     S("video_import.path", "POST", "/api/video_import/path", WRITE_DENY + ["pA1"],
       dict(json=dict(video_path="@VIDEO@", match_id=1)), allow=["cA", "aA", "admin"], loopback=True),
+    # item #690 (案 A): match_id だけを受け取りサーバが試合から動画パスを解決して解析を開始。
+    # /video_import/path と同じく運用ロール (自チーム coach/analyst/admin) のみ。player (pA1) も deny。
+    # 詳細な状態遷移・409 コードは test_video_import_by_match.py で検証。body は送らず match_id のみ。
+    S("video_import.by_match", "POST", "/api/video_import/by_match/1", WRITE_DENY + ["pA1"],
+      allow=["cA", "aA", "admin"], loopback=True),
     # S-4: 全体走査の入口 / 区間への人の決定 / 採用。運用ロール (自チーム coach/analyst/admin) だけ。
     # player は自分の出る試合 (pA1) でも 403。cv_candidates モジュールは COVERED_ELSEWHERE だが、
     # 新しい書き込み口なので他チームの総当たりにも載せる (詳細は test_cv_segments_scan.py)。

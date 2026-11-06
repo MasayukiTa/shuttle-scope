@@ -32,6 +32,7 @@ interface WinLossResponse {
   meta: {
     sample_size: number
     confidence: { level: string; stars: string; label: string; warning?: string }
+    excluded?: { unfinished: number; zero_rally: number }
   }
 }
 
@@ -71,6 +72,8 @@ function ComparisonContent({ playerId, filters = DEFAULT_FILTERS }: { playerId: 
   }
 
   const sampleSize = resp?.meta?.sample_size ?? 0
+  const excluded = resp?.meta?.excluded
+  const excludedCount = excluded ? excluded.unfinished + excluded.zero_rally : 0
   const winStats = resp?.data?.win_matches
   const lossStats = resp?.data?.loss_matches
 
@@ -84,6 +87,19 @@ function ComparisonContent({ playerId, filters = DEFAULT_FILTERS }: { playerId: 
   return (
     <div className="space-y-3">
       <ConfidenceBadge sampleSize={sampleSize} unit="matches" />
+      {excludedCount > 0 && (
+        <p className="text-[11px] text-gray-400" data-testid="win-loss-population">
+          {t('analysis.win_loss_comparison.population', {
+            used: sampleSize,
+            total: sampleSize + excludedCount,
+            excluded: excludedCount,
+          })}
+          {t('analysis.win_loss_comparison.population_reasons', {
+            unfinished: excluded?.unfinished ?? 0,
+            zero_rally: excluded?.zero_rally ?? 0,
+          })}
+        </p>
+      )}
       {filters.result !== 'all' && (
         <p className="text-[11px] text-gray-400" data-testid="win-loss-result-filter-note">
           {t('analysis.win_loss_ignores_result_filter')}

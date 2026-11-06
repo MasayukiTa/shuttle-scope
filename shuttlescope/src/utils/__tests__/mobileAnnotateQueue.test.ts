@@ -37,17 +37,21 @@ describe('mobileAnnotateQueue manual retry ownership', () => {
   const legacy = item(3, 'PUT /api/rallies/:id', { id: 3 }, 0, { manualRetry: true })
   const notManual = item(4, 'PUT /api/rallies/:id', { id: 4 }, 0, { ownerUserId: 11 })
 
-  it('does not send ownerless input on a plain manual retry', () => {
-    expect(manualRetryTargets([mine, foreign, legacy, notManual], 11, false)).toEqual([mine])
+  // Audit #634: ownerless (legacy) input must never be re-sent under the current
+  // user's credentials, even on an explicit manual retry. Only the user's own
+  // input is a manual-retry target.
+  it('sends only the current user own input on a manual retry', () => {
+    expect(manualRetryTargets([mine, foreign, legacy, notManual], 11)).toEqual([mine])
   })
 
-  it('sends ownerless input only after the user confirms it is theirs', () => {
-    expect(manualRetryTargets([mine, foreign, legacy, notManual], 11, true)).toEqual([mine, legacy])
+  it('never sends ownerless (legacy) input, even for a logged-in user', () => {
+    expect(manualRetryTargets([legacy], 11)).toEqual([])
+    expect(manualRetryTargets([mine, legacy], 11)).toEqual([mine])
   })
 
   it('never sends another user input and sends nothing without a known user', () => {
-    expect(manualRetryTargets([foreign], 11, true)).toEqual([])
-    expect(manualRetryTargets([mine, legacy], null, true)).toEqual([])
+    expect(manualRetryTargets([foreign], 11)).toEqual([])
+    expect(manualRetryTargets([mine, legacy], null)).toEqual([])
   })
 })
 

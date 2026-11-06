@@ -19,6 +19,7 @@ import { apiPost, getParticipantIceConfig } from '@/api/client'
 import { useDeviceHeartbeat } from '@/hooks/useDeviceHeartbeat'
 import { useTranslation } from 'react-i18next'
 import { MIcon } from '@/components/common/MIcon'
+import { watchPeerConnection, addCandidate, flushCandidates } from './peerConnection'
 import { participantWsUrl } from '@/utils/cameraWs'
 import { getDeviceUid } from '@/utils/deviceUid'
 import { getParticipantRejoinToken, setParticipantRejoinToken } from '@/utils/participantRejoinToken'
@@ -51,6 +52,7 @@ export function ViewerPage() {
   const wsRef = useRef<WebSocket | null>(null)
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
+  const remoteStreamRef = useRef<MediaStream | null>(null)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const reconnectCountRef = useRef(0)
   const viewerStateRef = useRef<ViewerState>(viewerState)
@@ -78,6 +80,10 @@ export function ViewerPage() {
     // JWT を持たない viewer 端末はこのトークンで認証される
     savedTokenRef.current || undefined,
   )
+
+  useEffect(() => {
+    if (viewerState === 'receiving' && videoRef.current) videoRef.current.srcObject = remoteStreamRef.current
+  }, [viewerState])
 
   // ─── 再接続スケジュール ───────────────────────────────────────────────────
   const scheduleReconnect = useCallback((code: string, pid: number) => {
@@ -111,8 +117,20 @@ export function ViewerPage() {
     let wsUrl: string
     try {
       wsUrl = await participantWsUrl(code, 'viewer', pid, savedTokenRef.current)
-    } catch {
-      scheduleReconnect(code, pid)
+    } catch (e) {
+      // #665: 入場券取得失敗を握りつぶして一律再接続せず、原因で分岐する。
+      // 401/403・参加トークン欠落は再接続しても直らないので即座に再参加へ案内。
+      // 404/410 はセッション消滅。5xx/タイムアウト/ネットワーク断のみ有限回の自動再接続。
+      const status = errorStatus(e)
+      if (status === 401 || status === 403 || !savedTokenRef.current) {
+        setViewerState('error')
+        setErrorMsg(t('auto.ViewerPage.rejoin_required'))
+      } else if (status === 404 || status === 410) {
+        setViewerState('error')
+        setErrorMsg(t('auto.ViewerPage.session_gone'))
+      } else {
+        scheduleReconnect(code, pid)
+      }
       return
     }
     if (disposedRef.current) return
@@ -126,11 +144,15 @@ export function ViewerPage() {
       setViewerState('waiting')
     }
 
+    const candidates: RTCIceCandidateInit[] = []
     ws.onmessage = async (event) => {
+      let msg
+      try { msg = JSON.parse(event.data) } catch { console.warn('Invalid signaling message'); return }
       try {
-        const msg = JSON.parse(event.data)
 
         if (msg.type === 'viewer_webrtc_offer') {
+          if (pcRef.current) { pcRef.current.close(); pcRef.current = null }
+          remoteStreamRef.current = null
           // ICE config 取得（TURN 含む）
           let iceServers: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
           try {
@@ -148,15 +170,26 @@ export function ViewerPage() {
           } catch { /* STUN フォールバック */ }
 
           // 既存 PC クローズ（ハンドオフ安全化）
-          if (pcRef.current) { pcRef.current.close(); pcRef.current = null }
+          // the await above can let another offer replace the peer connection; re-read it with its declared type
+          const stalePc = pcRef.current as RTCPeerConnection | null
+          if (stalePc) { stalePc.close(); pcRef.current = null }
 
           const pc = new RTCPeerConnection({ iceServers })
           pcRef.current = pc
+          watchPeerConnection(pc, () => pcRef.current === pc,
+            () => setViewerState('receiving'),
+            () => {
+              pc.close()
+              pcRef.current = null
+              setErrorMsg(t('camera_sender.join_error_network'))
+              setViewerState('error')
+            })
 
           pc.ontrack = (e) => {
             if (e.streams[0]) {
+              remoteStreamRef.current = e.streams[0]
               if (videoRef.current) videoRef.current.srcObject = e.streams[0]
-              setViewerState('receiving')
+              if (pc.connectionState === 'connected') setViewerState('receiving')
             }
           }
 
@@ -173,6 +206,8 @@ export function ViewerPage() {
           }
 
           await pc.setRemoteDescription({ type: 'offer', sdp: msg.sdp })
+          if (pcRef.current !== pc) return
+          await flushCandidates(pc, candidates)
           const answer = await pc.createAnswer()
           await pc.setLocalDescription(answer)
           ws.send(JSON.stringify({
@@ -181,14 +216,21 @@ export function ViewerPage() {
             sdp: answer.sdp,
           }))
 
-        } else if (msg.type === 'viewer_ice_candidate' && pcRef.current) {
-          await pcRef.current.addIceCandidate({
+        } else if (msg.type === 'viewer_ice_candidate') {
+          await addCandidate(pcRef.current, candidates, {
             candidate: msg.candidate,
             sdpMid: msg.sdp_mid,
             sdpMLineIndex: msg.sdp_m_line_index,
-          }).catch(() => {})
+          })
         }
-      } catch { /* ignore */ }
+      } catch (error) {
+        console.warn('WebRTC signaling failed', error)
+        pcRef.current?.close()
+        pcRef.current = null
+        candidates.length = 0
+        setErrorMsg(t('camera_sender.join_error_network'))
+        setViewerState('error')
+      }
     }
 
     ws.onclose = () => {
@@ -198,7 +240,7 @@ export function ViewerPage() {
         scheduleReconnect(code, pid)
       }
     }
-  }, [scheduleReconnect])
+  }, [scheduleReconnect, t])
 
   // ─── セッション参加 ───────────────────────────────────────────────────────
   const joinSession = useCallback(async (code: string, password: string, viewerName: string) => {
@@ -314,8 +356,9 @@ export function ViewerPage() {
         <div className="w-full max-w-sm bg-[var(--ss-surface-1)] rounded-[6px] p-5 border border-[var(--ss-border)] shadow-[0_1px_2px_rgba(16,24,40,.06)]">
           <div className="space-y-3">
             <div>
-              <label className="block text-xs text-[var(--ss-t2)] mb-1">{t('auto.ViewerPage.k3')}</label>
+              <label htmlFor="viewer-join-code" className="block text-xs text-[var(--ss-t2)] mb-1">{t('auto.ViewerPage.k3')}</label>
               <input
+                id="viewer-join-code"
                 type="text"
                 value={form.sessionCode}
                 onChange={(e) => setForm((f) => ({ ...f, sessionCode: e.target.value.toUpperCase() }))}
@@ -325,8 +368,9 @@ export function ViewerPage() {
               />
             </div>
             <div>
-              <label className="block text-xs text-[var(--ss-t2)] mb-1">{t('auto.ViewerPage.k4')}</label>
+              <label htmlFor="viewer-join-password" className="block text-xs text-[var(--ss-t2)] mb-1">{t('auto.ViewerPage.k4')}</label>
               <input
+                id="viewer-join-password"
                 type="password"
                 value={form.password}
                 onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
@@ -334,8 +378,9 @@ export function ViewerPage() {
               />
             </div>
             <div>
-              <label className="block text-xs text-[var(--ss-t2)] mb-1">{t('auto.ViewerPage.k5')}</label>
+              <label htmlFor="viewer-join-name" className="block text-xs text-[var(--ss-t2)] mb-1">{t('auto.ViewerPage.k5')}</label>
               <input
+                id="viewer-join-name"
                 type="text"
                 value={form.viewerName}
                 onChange={(e) => setForm((f) => ({ ...f, viewerName: e.target.value }))}
@@ -351,7 +396,7 @@ export function ViewerPage() {
             )}
             <button
               onClick={() => joinSession(form.sessionCode, form.password, form.viewerName)}
-              disabled={!form.sessionCode}
+              disabled={!form.sessionCode || !form.password}
               className="w-full py-2.5 rounded-[5px] bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium text-white"
             >
               {t('auto.ViewerPage.k9')}

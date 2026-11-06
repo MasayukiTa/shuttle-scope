@@ -98,6 +98,8 @@ def create_human_forecast(
         confidence_level=body.confidence_level,
         notes=body.notes,
         team_id=ctx.team_id,
+        # G5 item #687: 認証済みユーザを作成者として記録する。削除可否の判定に使う。
+        creator_user_id=ctx.user_id,
     )
     db.add(forecast)
     payload = {
@@ -168,6 +170,16 @@ def delete_human_forecast(
         from backend.utils.auth import user_can_access_match
         if not user_can_access_match(ctx, m):
             raise HTTPException(status_code=404, detail="Forecast not found")
+        # G5 item #687 (option A): admin 以外は「自分が作成した予測」だけ削除できる。
+        # creator_user_id が NULL の旧行は作成者を特定できないため admin 専用。
+        # チーム境界を越えた行は上で 404 済み。ここに来るのは同チーム (または
+        # team_id=NULL の旧行) だけで、その予測は既に一覧に見えている。存在を隠す意味が
+        # 無いので 404 ではなく 403 (forbidden) を返し、削除権限が無いことを明示する。
+        if f.creator_user_id is None or ctx.user_id is None or f.creator_user_id != ctx.user_id:
+            raise HTTPException(
+                status_code=403,
+                detail="この予測を削除できるのは作成者または管理者のみです",
+            )
     # Round 258 R8 P1 fix (deep audit V-3):
     # 旧コードは f.deleted_at を **設定せず** に touch_sync_metadata + commit して
     # success を返していた。結果として:
@@ -357,4 +369,6 @@ def _forecast_to_dict(f: HumanForecast) -> dict:
         'confidence_level': f.confidence_level,
         'notes': f.notes,
         'created_at': f.created_at.isoformat() if f.created_at else None,
+        # G5 item #687: UI が「削除ボタンを出すか」を判定するために作成者 id を返す。
+        'creator_user_id': f.creator_user_id,
     }

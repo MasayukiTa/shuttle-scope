@@ -1642,11 +1642,14 @@ def get_pair_synergy(
 
     # ダブルス試合のみ抽出
     doubles_matches = [m for m in all_matches if m.format in ("womens_doubles", "mixed_doubles", "mens_doubles")]
+    # 信頼度はダブルス対象試合数で判定する。全試合数 (シングルス含む) を流用しない (監査 #136)
+    doubles_count = len(doubles_matches)
     if not doubles_matches:
         return {
             "success": True,
             "data": {"player_avg_win_rate": player_avg_win_rate, "pairs": []},
-            "meta": {"sample_size": total_matches, "confidence": _research_confidence("descriptive_basic", total_matches),
+            "meta": {"sample_size": total_matches, "doubles_sample_size": 0,
+                     "confidence": _research_confidence("descriptive_basic", 0),
                      "excluded": excluded},
         }
 
@@ -1715,8 +1718,8 @@ def get_pair_synergy(
             "partner_id": partner_id,
             "partner_name": partner.name if partner else str(partner_id),
             "match_count": mc,
-            # ペア自身の試合数で判定する (全体の試合数ではない)
-            "confidence": _research_confidence("descriptive_basic", total_matches, unit_n=mc),
+            # ペア自身の試合数で判定する。母集団はダブルス対象試合数 (全試合数ではない) (監査 #136)
+            "confidence": _research_confidence("descriptive_basic", doubles_count, unit_n=mc),
             "win_rate": wr,
             "synergy_score": synergy,
             "avg_rally_length": avg_rally,
@@ -1731,9 +1734,11 @@ def get_pair_synergy(
         "meta": _with_input_provenance(
             {
                 "sample_size": total_matches,
+                # ペア推定に実際に寄与するのはダブルス対象試合数 (監査 #136)
+                "doubles_sample_size": doubles_count,
                 "confidence": _research_confidence(
-                    "descriptive_basic", total_matches,
-                    unit_n=_median_n([p["match_count"] for p in pairs], total_matches),
+                    "descriptive_basic", doubles_count,
+                    unit_n=_median_n([p["match_count"] for p in pairs], doubles_count),
                 ),
                 "excluded": excluded,
             },

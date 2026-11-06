@@ -1249,12 +1249,23 @@ video::-webkit-media-controls-play-button {
   -webkit-appearance: none !important;
 }
 
-/* チュートリアル: target を赤くチカチカ強調するリング (TutorialOverlay 用)
- * 注意誘導を最大化: 内側固定リング + 外側 glow + 周期 0.85s + 倍率の大きい縮緩 */
+/* チュートリアル: 対象を切り抜いて明るく見せる暗幕 (TutorialOverlay 用)
+ * 全面 1 枚の矩形に巨大な box-shadow を付け、矩形の形に穴を開けて
+ * 周囲だけを暗くする。穴の内側 (対象) は暗幕が一切かからず明るいまま。
+ * この矩形はクリックを拾わない (穴の外のクリック吸収は別の 4 枠が担う)。 */
+.tutorial-spotlight-hole {
+  border-radius: 10px;
+  pointer-events: none;
+  z-index: 300;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6);
+}
+
+/* チュートリアル: 対象の外周だけを赤く強調するリング (TutorialOverlay 用)
+ * glow は全て spread 正値 = 外側のみ。穴の内側 (対象) には食い込ませない。 */
 @keyframes tutorial-ring-pulse {
-  0%   { box-shadow: 0 0 0 3px rgba(220, 38, 38, 1), 0 0 0 8px rgba(220, 38, 38, 0.50), 0 0 18px 6px rgba(220, 38, 38, 0.45); }
-  50%  { box-shadow: 0 0 0 5px rgba(255, 80, 80, 1), 0 0 0 14px rgba(220, 38, 38, 0.30), 0 0 32px 12px rgba(255, 80, 80, 0.75); }
-  100% { box-shadow: 0 0 0 3px rgba(220, 38, 38, 1), 0 0 0 8px rgba(220, 38, 38, 0.50), 0 0 18px 6px rgba(220, 38, 38, 0.45); }
+  0%   { box-shadow: 0 0 0 3px rgba(220, 38, 38, 1), 0 0 0 8px rgba(220, 38, 38, 0.45); }
+  50%  { box-shadow: 0 0 0 5px rgba(255, 80, 80, 1), 0 0 0 13px rgba(220, 38, 38, 0.28); }
+  100% { box-shadow: 0 0 0 3px rgba(220, 38, 38, 1), 0 0 0 8px rgba(220, 38, 38, 0.45); }
 }
 .tutorial-ring {
   position: fixed;

@@ -298,6 +298,12 @@ def list_clips(
     m = db.get(Match, match_id)
     if not m:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
+    # 一覧 /videos や /labels・/export と同じく team/match スコープを必須にする。
+    # これが無いと、一覧に出ない他チーム試合 ID を知るだけでラリー・ストローク文脈を
+    # 取得できた（GET だけ認可が抜けた非対称実装）。fail closed。
+    from backend.utils.auth import user_can_access_match
+    if not user_can_access_match(_ctx, m):
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
     fps = _fps_for_match(m)
     miss_rows = iter_miss_strokes(db, match_id)
 
@@ -436,6 +442,10 @@ def get_progress(
     """自分（指定ロール）の進捗: 全ミス件数 / ラベル済み件数。"""
     if ctx.role not in ALLOWED_ROLES:
         return {"annotator_role": annotator_role, "total": 0, "labeled": 0, "per_match": []}
+    # annotator_role は認証済みロールからサーバ側で確定する。coach / analyst が
+    # 相手ロールの進捗（他ロールの作業量）を指定して覗けないようにする。admin だけは
+    # どちらの立場の進捗を見るか明示指定できる（upsert_label と同じ規則）。
+    annotator_role = effective_annotator_role(ctx, annotator_role)
     # 試合一覧と同じ範囲だけ数える。以前は全チームの試合を数えていたため、
     # 他チームの match_id と件数が per_match に出ていた。
     q = _visible_matches_query(db, ctx)

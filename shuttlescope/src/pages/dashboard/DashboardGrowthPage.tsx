@@ -10,6 +10,8 @@ import { GrowthTimeline } from '@/components/analysis/GrowthTimeline'
 import { PairCombinedView } from '@/components/analysis/PairCombinedView'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { AdviceStrip } from '@/components/common/AdviceStrip'
+import { FilterNotAppliedNote } from '@/components/common/FilterNotAppliedNote'
+import { useAuth } from '@/hooks/useAuth'
 
 interface Props {
   playerId: number
@@ -20,6 +22,10 @@ interface Props {
 export function DashboardGrowthPage({ playerId, filters, sortedPlayers }: Props) {
   useEffect(() => analyticsViewLifecycle('dashboard.growth'), [])
   const { t } = useTranslation()
+  const { role } = useAuth()
+  // 製品ルール: player には生の勝率・「悪化傾向」文言を見せない (監査 #614)。
+  // 勝率推移 / サーブ勝率推移 (GrowthTimeline) は player では描画しない。
+  const isPlayer = role === 'player'
   const [pairMode, setPairMode] = useState(false)
   const [partnerPlayerId, setPartnerPlayerId] = useState<number | null>(null)
   const { card, textHeading, textSecondary, textMuted, isLight } = useCardTheme()
@@ -31,6 +37,8 @@ export function DashboardGrowthPage({ playerId, filters, sortedPlayers }: Props)
 
   return (
     <div className="space-y-5">
+      {/* タブ全体への注記: 成長タブのカードは上部の絞り込みを使わず全試合で集計する (監査 #122) */}
+      <FilterNotAppliedNote filters={filters} />
       {/* 伸びしろ Snapshot (テンプレ生成・LLM プラガブル) */}
       {playerId && (
         <ErrorBoundary>
@@ -74,7 +82,8 @@ export function DashboardGrowthPage({ playerId, filters, sortedPlayers }: Props)
         </div>
       </ErrorBoundary>
 
-      {/* 勝率推移 */}
+      {/* 勝率推移 (player には非表示: 生の勝率・trend declining を見せない #614) */}
+      {!isPlayer && (
       <ErrorBoundary>
         <div className={`${card} rounded-ss-lg p-4 shadow-card`} data-tutorial="dashboard.growthTimeline">
           <p className={`text-xs font-semibold mb-2 ${textMuted}`}>{t('analysis.growth.win_rate_label')}</p>
@@ -87,8 +96,10 @@ export function DashboardGrowthPage({ playerId, filters, sortedPlayers }: Props)
           />
         </div>
       </ErrorBoundary>
+      )}
 
-      {/* サーブ勝率推移 */}
+      {/* サーブ勝率推移 (player には非表示 #614) */}
+      {!isPlayer && (
       <ErrorBoundary>
         <div className={`${card} rounded-ss-lg p-4 shadow-card`}>
           <p className={`text-xs font-semibold mb-2 ${textMuted}`}>{t('analysis.growth.serve_win_rate_label')}</p>
@@ -101,6 +112,7 @@ export function DashboardGrowthPage({ playerId, filters, sortedPlayers }: Props)
           />
         </div>
       </ErrorBoundary>
+      )}
 
       {/* ペアモード: PairCombinedView */}
       {pairMode && partnerPlayerId && (

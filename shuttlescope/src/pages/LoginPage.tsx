@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 import { useAuth } from '@/hooks/useAuth'
+import { PASSWORD_RESET_ENABLED } from '@/utils/passwordReset'
 import type { AuthSession } from '@/hooks/useAuth'
 import { UserRole } from '@/types'
 import { MIcon } from '@/components/common/MIcon'
@@ -45,18 +46,18 @@ async function apiLogin(body: object): Promise<LoginResult> {
       body: JSON.stringify(body),
     })
     if (!res.ok) {
-      let errorMessage = 'ログインに失敗しました'
+      let errorMessage = i18n.t('auto.LoginPage.error_login_failed')
       try {
         const data = await res.json()
         const detail = typeof data?.detail === 'string' ? data.detail : ''
         if (res.status === 401) {
-          errorMessage = 'IDもしくはパスワードが違います'
+          errorMessage = i18n.t('auto.LoginPage.error_invalid_credentials')
         } else if (detail) {
           errorMessage = detail
         }
       } catch {
         if (res.status === 401) {
-          errorMessage = 'IDもしくはパスワードが違います'
+          errorMessage = i18n.t('auto.LoginPage.error_invalid_credentials')
         }
       }
       return _errSession(errorMessage)
@@ -108,7 +109,7 @@ async function apiMfaLogin(
       ),
     })
     if (!res.ok) {
-      let msg = 'MFA 認証に失敗しました'
+      let msg = i18n.t('auto.LoginPage.error_mfa_failed')
       try {
         const data = await res.json()
         if (typeof data?.detail === 'string') msg = data.detail
@@ -198,9 +199,19 @@ export function LoginPage({ onLogin }: Props) {
     (window.location.hash || '').includes('password_changed=1')
 
   useEffect(() => {
+    // 非同期の bootstrap-status 取得は、解決前にアンマウントされると
+    // teardown 済みの環境で setState が走り、jsdom では
+    // "ReferenceError: window is not defined" が未捕捉の Unhandled Rejection
+    // として立ち上がる(全件合格でも CI を落とす)。中断フラグで
+    // アンマウント後の setState を発生させない(エラーの握り潰しではない)。
+    let active = true
     fetchBootstrapStatus().then((status) => {
+      if (!active) return
       setBootstrapStatus(status)
     })
+    return () => {
+      active = false
+    }
   }, [])
 
   const handleLogin = async () => {
@@ -355,7 +366,7 @@ export function LoginPage({ onLogin }: Props) {
                 : t('auto.LoginPage.mfa_prompt')}
             </div>
             <div>
-              <label className={`block text-sm font-medium mb-1 ${labelCls}`}>
+              <label id="login-mfa-code-label" className={`block text-sm font-medium mb-1 ${labelCls}`}>
                 {useRecovery
                   ? t('auto.LoginPage.mfa_recovery_label')
                   : t('auto.LoginPage.mfa_code_label')}
@@ -363,6 +374,7 @@ export function LoginPage({ onLogin }: Props) {
               {useRecovery ? (
                 <input
                   type="text"
+                  aria-labelledby="login-mfa-code-label"
                   autoComplete="one-time-code"
                   // 16 文字 + ハイフン 3 = 19
                   maxLength={19}
@@ -376,6 +388,7 @@ export function LoginPage({ onLogin }: Props) {
               ) : (
                 <input
                   type="text"
+                  aria-labelledby="login-mfa-code-label"
                   inputMode="numeric"
                   autoComplete="one-time-code"
                   pattern="[0-9]*"
@@ -428,8 +441,9 @@ export function LoginPage({ onLogin }: Props) {
         {!mfaToken && (
         <div className="space-y-4">
           <div>
-            <label className={`block text-sm font-medium mb-1 ${labelCls}`}>{t('auto.LoginPage.k1')}</label>
+            <label htmlFor="login-identifier" className={`block text-sm font-medium mb-1 ${labelCls}`}>{t('auto.LoginPage.k1')}</label>
             <input
+              id="login-identifier"
               type="text"
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
@@ -440,9 +454,10 @@ export function LoginPage({ onLogin }: Props) {
           </div>
 
           <div>
-            <label className={`block text-sm font-medium mb-1 ${labelCls}`}>{t('auto.LoginPage.password_pin')}</label>
+            <label htmlFor="login-password" className={`block text-sm font-medium mb-1 ${labelCls}`}>{t('auto.LoginPage.password_pin')}</label>
             <div className="relative">
               <input
+                id="login-password"
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -486,10 +501,16 @@ export function LoginPage({ onLogin }: Props) {
                className="text-[var(--ss-brand)] hover:text-[var(--ss-brand-hover)] hover:underline">
               {t('auth.register.title')}
             </a>
-            <a href="#/password/reset"
-               className="text-[var(--ss-t2)] hover:text-[var(--ss-t1)] hover:underline">
-              {t('auth.password_reset_request.title')}
-            </a>
+            {PASSWORD_RESET_ENABLED ? (
+              <a href="#/password/reset"
+                 className="text-[var(--ss-t2)] hover:text-[var(--ss-t1)] hover:underline">
+                {t('auth.password_reset_request.title')}
+              </a>
+            ) : (
+              <span className="text-[var(--ss-t3)]">
+                {t('auth.password_reset_request.disabled_message')}
+              </span>
+            )}
           </div>
         </div>
         )}

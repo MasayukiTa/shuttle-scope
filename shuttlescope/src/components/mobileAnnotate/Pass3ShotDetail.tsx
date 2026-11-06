@@ -32,6 +32,7 @@
  */
 import { useMemo, useState } from 'react'
 import { AnnotateOverlay, ZoneCode } from './AnnotateOverlay'
+import type { Quad, CourtHalf } from '@/utils/courtHomography'
 import { enqueue } from '@/utils/mobileAnnotateQueue'
 import { useTranslation } from 'react-i18next'
 import { MIcon } from '@/components/common/MIcon'
@@ -84,6 +85,15 @@ interface Props {
   strokes: StrokeLite[]
   /** ダブルス: 追加する球の打球者を個人 slot (partner を含む) で選ばせて保存する */
   doubles?: boolean
+  /**
+   * 保存済みコート校正 (先頭 4 隅)。渡すと AnnotateOverlay が撮影方向に合わせた
+   * タップ判定を行う。null / 未指定のときは従来の固定枠で動く。
+   */
+  courtQuad?: Quad | null
+  /** 校正を使うとき、入力片面が画面の near/far どちらに写っているか。既定 'near'。 */
+  courtHalf?: CourtHalf
+  /** 「動画に戻って校正する」導線 (未校正バナーから呼ぶ)。未指定なら案内を出さない。 */
+  onNeedCalibration?: () => void
   onStrokeAdded: (s: StrokeLite) => void
   onStrokeUpdated: (s: StrokeLite) => void
   onClose: () => void
@@ -93,6 +103,9 @@ export function Pass3ShotDetail({
   rally,
   strokes,
   doubles = false,
+  courtQuad = null,
+  courtHalf = 'near',
+  onNeedCalibration,
   onStrokeAdded,
   onStrokeUpdated,
   onClose,
@@ -186,39 +199,47 @@ export function Pass3ShotDetail({
       return
     }
     setCommitError(null)
-    if (finalNeedsShift && finalSentinel && finalSentinel.id) {
-      // 同じ rally の操作は enqueue 順に送られるため、ずらす PUT を先に積めば
-      // 中間球の POST が最終打と同じ番号で衝突しない。
-      const shifted = nextStrokeNum + 1
-      await enqueue('PUT /api/strokes/:id', {
-        stroke_num: shifted,
-        player: finalSentinel.player,
-        shot_type: finalSentinel.shot_type,
-        hit_zone: finalSentinel.hit_zone,
-        land_zone: finalSentinel.land_zone,
-      }, { id: finalSentinel.id }, { sequenceKey: `rally:${rally.id}` })
-      onStrokeUpdated({ ...finalSentinel, stroke_num: shifted })
+    // enqueue (IndexedDB への積み込み) 失敗を握り潰さない。失敗したら onStrokeAdded を
+    // 呼ばず (= 幻の打を画面に出さず) commitError を立て、ユーザーに再入力を促す (監査 #623)。
+    try {
+      if (finalNeedsShift && finalSentinel && finalSentinel.id) {
+        // 同じ rally の操作は enqueue 順に送られるため、ずらす PUT を先に積めば
+        // 中間球の POST が最終打と同じ番号で衝突しない。
+        const shifted = nextStrokeNum + 1
+        await enqueue('PUT /api/strokes/:id', {
+          stroke_num: shifted,
+          player: finalSentinel.player,
+          shot_type: finalSentinel.shot_type,
+          hit_zone: finalSentinel.hit_zone,
+          land_zone: finalSentinel.land_zone,
+        }, { id: finalSentinel.id }, { sequenceKey: `rally:${rally.id}` })
+        onStrokeUpdated({ ...finalSentinel, stroke_num: shifted })
+      }
+      const body = {
+        stroke_num: nextStrokeNum,
+        player: nextHitter,
+        shot_type: shotKey,
+        hit_zone: hit,
+        land_zone: land,
+      }
+      await enqueue('POST /api/strokes?rally_id=:rally_id', body, { rally_id: rally.id })
+      onStrokeAdded({
+        id: null,
+        stroke_num: nextStrokeNum,
+        player: nextHitter,
+        shot_type: shotKey,
+        hit_zone: hit,
+        land_zone: land,
+        pending: true,
+      })
+      // rally.rally_length を「中間ストローク + 最終打 (sentinel が居れば +1)」に更新
+      const newLength = nextStrokeNum + (finalSentinel ? 1 : 0)
+      await enqueue('PUT /api/rallies/:id', { rally_length: newLength }, { id: rally.id })
+    } catch {
+      setCommitError(t('auto.Pass3ShotDetail.enqueue_failed'))
+      setAdd({ phase: 'idle' })
+      return
     }
-    const body = {
-      stroke_num: nextStrokeNum,
-      player: nextHitter,
-      shot_type: shotKey,
-      hit_zone: hit,
-      land_zone: land,
-    }
-    await enqueue('POST /api/strokes?rally_id=:rally_id', body, { rally_id: rally.id })
-    onStrokeAdded({
-      id: null,
-      stroke_num: nextStrokeNum,
-      player: nextHitter,
-      shot_type: shotKey,
-      hit_zone: hit,
-      land_zone: land,
-      pending: true,
-    })
-    // rally.rally_length を「中間ストローク + 最終打 (sentinel が居れば +1)」に更新
-    const newLength = nextStrokeNum + (finalSentinel ? 1 : 0)
-    await enqueue('PUT /api/rallies/:id', { rally_length: newLength }, { id: rally.id })
     setAdd({ phase: 'idle' })
   }
 
@@ -327,6 +348,8 @@ export function Pass3ShotDetail({
       <AnnotateOverlay
         key="add-hit"
         prompt={t('auto.Pass3ShotDetail.prompt_hit_zone', { n: nextStrokeNum, shot: shotLabel(add.shot) })}
+        courtQuad={courtQuad}
+        half={courtHalf}
         primaryLabel={t('auto.Pass3ShotDetail.next')}
         onCommit={(z) => setAdd({ phase: 'landZone', shot: add.shot, hit: z })}
         onCancel={() => setAdd({ phase: 'idle' })}
@@ -338,6 +361,8 @@ export function Pass3ShotDetail({
       <AnnotateOverlay
         key="add-land"
         prompt={t('auto.Pass3ShotDetail.prompt_land_zone', { n: nextStrokeNum, shot: shotLabel(add.shot) })}
+        courtQuad={courtQuad}
+        half={courtHalf}
         primaryLabel={t('auto.Pass3ShotDetail.save')}
         onCommit={(z) => void commitShot(add.shot, add.hit, z)}
         onCancel={() => setAdd({ phase: 'idle' })}
@@ -399,6 +424,8 @@ export function Pass3ShotDetail({
         <AnnotateOverlay
           key="edit-hit"
           prompt={t('auto.Pass3ShotDetail.prompt_hit_zone', { n: editingStrokeNum, shot: shotLabel(editDraft.shot) })}
+          courtQuad={courtQuad}
+          half={courtHalf}
           primaryLabel={t('auto.Pass3ShotDetail.next')}
           initialZone={asZoneCode(editing?.hit_zone)}
           onCommit={(z) => setEditDraft({ phase: 'landZone', shot: editDraft.shot, hit: z })}
@@ -411,6 +438,8 @@ export function Pass3ShotDetail({
         <AnnotateOverlay
           key="edit-land"
           prompt={t('auto.Pass3ShotDetail.prompt_land_zone', { n: editingStrokeNum, shot: shotLabel(editDraft.shot) })}
+          courtQuad={courtQuad}
+          half={courtHalf}
           primaryLabel={t('auto.Pass3ShotDetail.save')}
           initialZone={asZoneCode(editing?.land_zone)}
           onCommit={(z) => void editStroke(editingStrokeNum, editDraft.shot, editDraft.hit, z)}
@@ -462,6 +491,18 @@ export function Pass3ShotDetail({
           <span className="flex-1">{commitError}</span>
           <button type="button" onClick={() => setCommitError(null)} className="text-red-200 underline">
             {t('auto.Pass3ShotDetail.dismiss')}
+          </button>
+        </div>
+      )}
+
+      {/* 未校正の案内 (入力の邪魔にならない細いバナー)。校正があれば撮影方向に合わせて
+         タップできる旨と、動画に戻って校正する導線。courtQuad があるときは出さない。 */}
+      {!courtQuad && onNeedCalibration && (
+        <div className="bg-sky-950/80 text-sky-100 text-[11px] px-3 py-1.5 flex items-center gap-2 border-b border-sky-800">
+          <MIcon name="info" size={13} />
+          <span className="flex-1">{t('auto.Pass3ShotDetail.calib_hint')}</span>
+          <button type="button" onClick={onNeedCalibration} className="px-2 py-1 rounded bg-sky-800 text-sky-50">
+            {t('auto.Pass3ShotDetail.calib_cta')}
           </button>
         </div>
       )}

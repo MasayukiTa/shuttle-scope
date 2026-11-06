@@ -35,8 +35,25 @@ export function canDeletePlayer(role: RoleArg): boolean {
   return role === 'admin' || role === 'analyst'
 }
 
+/** 選手作成 (暇定登録を含む) の導線を出してよいか。backend の POST /players は require_analyst (analyst / admin のみ。coach は 403)。 */
+export function canCreatePlayer(role: RoleArg): boolean {
+  if (role == null) return true
+  return role === 'admin' || role === 'analyst'
+}
+
 /** 解析ジョブ状態の閲覧可否。backend の GET /v1/pipeline/jobs は analyst / coach 以外へ常に空配列を返すため、それ以外へ「未解析」を出さない。 */
 export function canViewPipelineJobs(role: RoleArg): boolean {
   if (role == null) return true
   return role === 'analyst' || role === 'coach'
+}
+
+/**
+ * 試合のアノテーション入力 (/annotator/:matchId) 導線を出してよいか。
+ * backend は Set/Rally/Stroke 書込みを require_match_scope() で demo 拒否するため、
+ * demo に CTA を出すと最後に 403 で行き止まる。read-only の見本用ロールには出さない。
+ * ロール未確定 (null/undefined) は従来どおりサーバに最終判定させる。
+ */
+export function canAnnotate(role: RoleArg): boolean {
+  if (role == null) return true
+  return role !== 'demo'
 }

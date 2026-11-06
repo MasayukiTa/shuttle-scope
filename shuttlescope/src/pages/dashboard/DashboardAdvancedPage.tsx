@@ -65,13 +65,16 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
   const { role } = useAuth()
 
   // Override summary: admin/analyst/coach のみクエリ
-  const { data: overridesResp } = useQuery({
+  const { data: overridesResp, isError: overridesError } = useQuery({
     queryKey: ['promotion-overrides'],
     queryFn: () => apiGet<{ success: boolean; data: Record<string, { status: string; note: string; analyst: string }> }>(
       '/analysis/meta/promotion_overrides'
     ),
     staleTime: 30 * 1000,
-    enabled: role === 'admin' || role === 'analyst' || role === 'coach',
+    // Item #700: backend gates this endpoint with require_admin_or_analyst; coach
+    // gets 403. Match the backend here so a coach never issues a request that
+    // fails and is then silently rendered as "no overrides".
+    enabled: role === 'admin' || role === 'analyst',
   })
   const activeOverrides = Object.values(overridesResp?.data ?? {})
   const holdCount = activeOverrides.filter((o) => o.status === 'hold').length
@@ -111,7 +114,18 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
       {/* Override summary バナー: admin/analyst/coach のみ、active override がある場合に表示
          Design Language v1.2 §12: bg は neutral、警告意味は文字色 + warning icon で運ぶ
          (装飾 amber bg + 左罫線縦バーは禁止) */}
-      {activeOverrides.length > 0 && (role === 'admin' || role === 'analyst' || role === 'coach') && (
+      {/* Item #700: a failed fetch (e.g. permission/network) must not read as
+         an empty override list. Show an explicit error line for admin/analyst. */}
+      {overridesError && (role === 'admin' || role === 'analyst') && (
+        <div className={`flex items-center gap-2 px-3 py-2 rounded-ss-lg shadow-card border text-xs ${
+          isLight ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'
+        }`}>
+          <span className="font-medium inline-flex items-center gap-1 text-[var(--ss-bad)]">
+            <MIcon name="warning" size={12} />{t('advanced.override_fetch_failed')}
+          </span>
+        </div>
+      )}
+      {!overridesError && activeOverrides.length > 0 && (role === 'admin' || role === 'analyst') && (
         <div className={`flex items-center gap-2 px-3 py-2 rounded-ss-lg shadow-card border text-xs ${
           isLight
             ? 'bg-white border-gray-200'
@@ -261,7 +275,7 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                 </HoldGate>
               </div>
             </div>
-            <RoleGuard allowedRoles={['analyst', 'coach']}>
+            <RoleGuard allowedRoles={['analyst']}>
               {spatialMeta?.caution && (
                 <ResearchNotice
                   caution={spatialMeta.caution}
@@ -337,20 +351,25 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                 <FilterNotAppliedNote filters={filters} />
                 <OpponentStats playerId={playerId} />
               </div>
-              <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-2`}>
-                <div className="flex items-center justify-between">
-                  <SectionTitle>{t('analysis.opponent_type_affinity.title')}</SectionTitle>
-                  <EvidenceBadge
-                    tier="research"
-                    evidenceLevel={(opponentAffinityMeta?.evidence_level as EvidenceLevel) ?? 'exploratory'}
-                    recommendationAllowed={false}
-                  />
+              {/* 監査#747: opponent_type_affinity は research tier の backend endpoint
+                  (require_admin_or_analyst) を呼ぶため coach では 403 になる。
+                  coach には出さず analyst のみに限定して capability を一致させる。 */}
+              <RoleGuard allowedRoles={['analyst']} fallback={null}>
+                <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-2`}>
+                  <div className="flex items-center justify-between">
+                    <SectionTitle>{t('analysis.opponent_type_affinity.title')}</SectionTitle>
+                    <EvidenceBadge
+                      tier="research"
+                      evidenceLevel={(opponentAffinityMeta?.evidence_level as EvidenceLevel) ?? 'exploratory'}
+                      recommendationAllowed={false}
+                    />
+                  </div>
+                  <p className={`text-xs ${textMuted}`}>{t('analysis.opponent_type_affinity.subtitle')}</p>
+                  <HoldGate suspended={isOnHold('opponent_affinity')}>
+                    <OpponentTypeAffinity playerId={playerId} filters={filters} />
+                  </HoldGate>
                 </div>
-                <p className={`text-xs ${textMuted}`}>{t('analysis.opponent_type_affinity.subtitle')}</p>
-                <HoldGate suspended={isOnHold('opponent_affinity')}>
-                  <OpponentTypeAffinity playerId={playerId} filters={filters} />
-                </HoldGate>
-              </div>
+              </RoleGuard>
               <OpponentAdaptiveShots playerId={playerId} />
               <div className={`${card} rounded-ss-lg shadow-card p-4`}>
                 <div className="flex items-center justify-between mb-3">

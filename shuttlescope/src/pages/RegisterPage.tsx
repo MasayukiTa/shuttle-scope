@@ -47,6 +47,11 @@ export default function RegisterPage() {
     }
   }
 
+  const formValid =
+    username.trim().length >= 3 &&
+    email.trim().length > 0 &&
+    password.length >= 8
+
   const fieldCls =
     'w-full border border-[var(--ss-ctrl-border)] rounded-ss-md px-3 py-2.5 text-base min-h-[44px] ' +
     'bg-[var(--ss-ctrl-bg)] text-[var(--ss-ctrl-text)] outline-none transition-colors duration-fast ease-out'
@@ -97,30 +102,30 @@ export default function RegisterPage() {
         </div>
 
         <div>
-          <label className={labelCls}>
+          <label htmlFor="register-username" className={labelCls}>
             {t('auth.register.username')}
           </label>
-          <input type="text" value={username} onChange={(e) => setUsername(e.target.value)}
+          <input id="register-username" type="text" value={username} onChange={(e) => setUsername(e.target.value)}
                  required minLength={3} maxLength={64}
                  autoComplete="username" autoCapitalize="none" autoCorrect="off"
                  className={fieldCls} />
         </div>
 
         <div>
-          <label className={labelCls}>
+          <label htmlFor="register-email" className={labelCls}>
             {t('auth.register.email')}
           </label>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+          <input id="register-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
                  required maxLength={255}
                  inputMode="email" autoComplete="email" autoCapitalize="none" autoCorrect="off"
                  className={fieldCls} />
         </div>
 
         <div>
-          <label className={labelCls}>
+          <label htmlFor="register-password" className={labelCls}>
             {t('auth.register.password')}
           </label>
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+          <input id="register-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
                  required minLength={8} maxLength={128}
                  autoComplete="new-password"
                  className={fieldCls} />
@@ -128,20 +133,20 @@ export default function RegisterPage() {
         </div>
 
         <div>
-          <label className={labelCls}>
+          <label htmlFor="register-display-name" className={labelCls}>
             {t('auth.register.display_name_optional')}
           </label>
-          <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)}
+          <input id="register-display-name" type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)}
                  maxLength={100}
                  autoComplete="name"
                  className={fieldCls} />
         </div>
 
         <div>
-          <label className={labelCls}>
+          <label htmlFor="register-dob" className={labelCls}>
             {t('auth.register.dob_optional') || '生年月日（任意）'}
           </label>
-          <input type="date" value={dob} onChange={(e) => setDob(e.target.value)}
+          <input id="register-dob" type="date" value={dob} onChange={(e) => setDob(e.target.value)}
                  max={todayLocal()}
                  autoComplete="bday"
                  className={fieldCls} />
@@ -159,7 +164,7 @@ export default function RegisterPage() {
           </div>
         )}
 
-        <button type="submit" disabled={loading}
+        <button type="submit" disabled={loading || !formValid}
                 className="w-full bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white text-sm font-medium px-4 py-2 rounded-ss-md disabled:opacity-50 transition-colors duration-fast ease-out">
           {loading ? t('app.loading') : t('auth.register.submit')}
         </button>

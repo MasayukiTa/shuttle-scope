@@ -137,6 +137,21 @@ def _check_api() -> tuple[str, Optional[float], Optional[str], Optional[float]]:
     return status, float(cpu), f"CPU {cpu:.0f}% / RAM {ram:.0f}%", sev
 
 
+def _format_latency_ms(ms):
+    """実測した応答時間 (ms) を公開ステータス表示用の文字列にする。
+
+    - ms が None (測定できていない / 未測定) なら ‘-’。
+    - 実測値が 0ms に丸まる (= 1ms 未満のサブミリ応答) 場合は ‘<1ms’。
+      0ms と表示して「実測 0」のように見せない。
+    - 1ms 以上の実値はそのまま丸めて ‘{n}ms’ (1ms は 1ms のまま)。
+    """
+    if ms is None:
+        return "-"
+    if round(ms) <= 0:
+        return "<1ms"
+    return f"{ms:.0f}ms"
+
+
 def _check_database(db) -> tuple[str, Optional[float], Optional[str], Optional[float]]:
     from sqlalchemy import text
     t0 = time.monotonic()
@@ -147,7 +162,8 @@ def _check_database(db) -> tuple[str, Optional[float], Optional[str], Optional[f
         return DOWN, None, "応答なし", 1.0
     status = DEGRADED if ms >= 400 else OPERATIONAL
     sev = _piecewise_severity(ms, 50, 400, 1500)  # 緑50ms / 黄400ms / 赤1500ms
-    return status, float(ms), f"応答 {ms:.0f}ms", sev
+    # metric には生値 (float ms) を残し、detail の表示だけサブミリを <1ms にする。
+    return status, float(ms), f"応答 {_format_latency_ms(ms)}", sev
 
 
 def _check_gpu() -> tuple[str, Optional[float], Optional[str], Optional[float]]:
@@ -471,11 +487,18 @@ def compute_components(db, now: Optional[datetime] = None) -> list[dict]:
               .filter(HealthSample.component == key, HealthSample.sampled_at >= since,
                       HealthSample.status == OPERATIONAL).scalar() or 0)
         uptime = round(100.0 * up / total, 2) if total else None
+        detail = latest.detail if latest else None
+        # 表示経路での正規化 (F-T001-06): database が実測できた (metric が数値) 場合のみ、
+        # DB に溜まった「応答 0ms」文字列をそのまま出さず、metric (float ms) から detail を再構築する。
+        # これでサブミリは <1ms になる。metric が None (例: ダウン時の detail="応答なし") のときは
+        # 保存済み detail をそのまま残す (「応答なし」と「未測定」を潰さない = 情報を削らない)。
+        if latest is not None and key == "database" and latest.metric is not None:
+            detail = f"応答 {_format_latency_ms(latest.metric)}"
         out.append({
             "key": key, "name_ja": comp["ja"], "name_en": comp["en"],
             "status": latest.status if latest else "unknown",
             "metric": latest.metric if latest else None,
-            "detail": latest.detail if latest else None,
+            "detail": detail,
             "uptime_24h": uptime,
             "sampled_at": latest.sampled_at.isoformat() if latest and latest.sampled_at else None,
         })

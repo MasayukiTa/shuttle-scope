@@ -81,7 +81,7 @@ export function CorrelationScatter({ playerId, isLight }: Props) {
       {isLoading ? (
         <div className={`${textMuted} text-xs`}>{t('condition.correlation.loading')}</div>
       ) : error ? (
-        <div className={`${textMuted} text-xs`}>{t('condition.correlation.no_data')}</div>
+        <div className={`${textMuted} text-xs`} role="alert">{t('condition.error')}</div>
       ) : points.length === 0 ? (
         <div className={`${textMuted} text-xs`}>{t('condition.correlation.no_data')}</div>
       ) : (

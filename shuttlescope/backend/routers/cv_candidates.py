@@ -34,10 +34,14 @@ from typing import Literal, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, undefer
 
 from backend.db.database import get_db
 from backend.db.models import Match, GameSet, Rally, Stroke, MatchCVArtifact
+from backend.analysis.pending_strokes import (
+    PENDING_FINAL_SHOT_TYPE,
+    PENDING_FINAL_STROKE_NUM,
+)
 from backend.cv.candidate_builder import build_candidates
 from backend.yolo.cv_aligner import align_match
 
@@ -137,9 +141,9 @@ def build_cv_candidates(match_id: int, request: Request, db: Session = Depends(g
     match = _require_match_team_scope(request, db, match_id)
 
     # ── アーティファクト取得 ──────────────────────────────────────────────────
-    tracknet_artifact = _latest_artifact(db, match_id, ARTIFACT_TYPE_TRACKNET)
-    yolo_artifact     = _latest_artifact(db, match_id, ARTIFACT_TYPE_YOLO)
-    alignment_artifact = _latest_artifact(db, match_id, ARTIFACT_TYPE_ALIGNMENT)
+    tracknet_artifact = _latest_artifact(db, match_id, ARTIFACT_TYPE_TRACKNET, with_data=True)
+    yolo_artifact     = _latest_artifact(db, match_id, ARTIFACT_TYPE_YOLO, with_data=True)
+    alignment_artifact = _latest_artifact(db, match_id, ARTIFACT_TYPE_ALIGNMENT, with_data=True)
 
     tracknet_frames: list[dict] = []
     yolo_frames: list[dict]     = []
@@ -298,7 +302,7 @@ def build_cv_candidates(match_id: int, request: Request, db: Session = Depends(g
 def get_cv_candidates(match_id: int, request: Request, db: Session = Depends(get_db)):
     """生成済み CV 候補を返す。未生成の場合は data: null を返す。"""
     _require_match_team_scope(request, db, match_id)  # Round 258 P1
-    artifact = _latest_artifact(db, match_id, ARTIFACT_TYPE_CANDIDATES)
+    artifact = _latest_artifact(db, match_id, ARTIFACT_TYPE_CANDIDATES, with_data=True)
     if not artifact or not artifact.data:
         return {"success": True, "data": None}
 
@@ -378,7 +382,7 @@ def apply_cv_candidates(
     打者(Stroke.player)は空の時だけ書く。人の値と食い違う
     候補は変更せず、レスポンスの preserved_count に数える。
     """
-    artifact = _latest_artifact(db, match_id, ARTIFACT_TYPE_CANDIDATES)
+    artifact = _latest_artifact(db, match_id, ARTIFACT_TYPE_CANDIDATES, with_data=True)
     if not artifact or not artifact.data:
         raise HTTPException(status_code=404, detail="CV 候補がありません。先にビルドを実行してください。")
 
@@ -514,6 +518,46 @@ class ReviewStatusUpdate(BaseModel):
     review_status: str  # "pending" | "completed"
 
 
+def _finalize_pending_strokes(db: Session, rally_id: int) -> None:
+    """rally 内の未確定 sentinel stroke を確定 (再採番) する。
+
+    Pass 2 は最終打を stroke_num=9999 / shot_type='__final_pending' で挿入する。
+    Pass 3 完了時にこれが残ると解析データを汚すので、sentinel 番号を
+    中間 stroke の最大番号 + 1 へ寄せる。shot_type が '__final_pending' のまま
+    (= 人が打球分類を確定していない) なら 409 を投げて保存自体を拒否する
+    (fail closed: 未確定のまま Pass 3 完了にしない)。
+    """
+    strokes = (
+        db.query(Stroke)
+        .filter(Stroke.rally_id == rally_id)
+        .order_by(Stroke.stroke_num)
+        .all()
+    )
+    pending = [
+        s for s in strokes
+        if s.stroke_num == PENDING_FINAL_STROKE_NUM
+        or s.shot_type == PENDING_FINAL_SHOT_TYPE
+    ]
+    if not pending:
+        return
+
+    # shot_type が未分類の sentinel が残るなら確定できない → 409
+    unclassified = [s for s in pending if s.shot_type == PENDING_FINAL_SHOT_TYPE]
+    if unclassified:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="未確定の最終打 (未分類) が残っています。Pass 3 を完了する前に打球を分類してください",
+        )
+
+    # shot_type は確定済だが stroke_num が sentinel(9999) のままの行を再採番する。
+    non_pending = [s for s in strokes if s.stroke_num != PENDING_FINAL_STROKE_NUM]
+    next_num = (max((s.stroke_num for s in non_pending), default=0)) + 1
+    for s in sorted(pending, key=lambda x: x.stroke_num):
+        s.stroke_num = next_num
+        next_num += 1
+
+
 @router.put("/cv-candidates/review/{rally_id}")
 def update_rally_review_status(
     rally_id: int,
@@ -531,6 +575,13 @@ def update_rally_review_status(
         raise HTTPException(status_code=400, detail="review_status は pending / completed のいずれかです")
 
     rally = _require_rally_team_scope(request, db, rally_id)
+
+    # Pass 3 完了 (completed) 時は、未確定 sentinel (stroke_num=9999 /
+    # shot_type='__final_pending') を同一 transaction 内で確定させる。
+    # 最終打 sentinel を「中間 stroke の最大番号 + 1」へ再採番し、
+    # placeholder の shot_type は未分類のまま残すと解析を汚すため 409 で拒否する。
+    if body.review_status == "completed":
+        _finalize_pending_strokes(db, rally_id)
 
     rally.review_status = body.review_status
     db.commit()
@@ -567,7 +618,7 @@ def get_review_queue(match_id: int, request: Request, db: Session = Depends(get_
     )
 
     # CV 候補からも review_required フラグを取得
-    artifact = _latest_artifact(db, match_id, ARTIFACT_TYPE_CANDIDATES)
+    artifact = _latest_artifact(db, match_id, ARTIFACT_TYPE_CANDIDATES, with_data=True)
     cv_review_reasons: dict[int, list[str]] = {}
     if artifact and artifact.data:
         try:
@@ -753,7 +804,7 @@ def _segment_key(start_sec: Optional[float], end_sec: Optional[float]) -> tuple:
 def _read_decisions(db: Session, match_id: int) -> list[dict]:
     """rally_boundary_decisions を古い順に返す（読めない行は飛ばす）。"""
     rows = (
-        db.query(MatchCVArtifact)
+        db.query(MatchCVArtifact).options(undefer(MatchCVArtifact.data))
         .filter(
             MatchCVArtifact.match_id == match_id,
             MatchCVArtifact.artifact_type == ARTIFACT_TYPE_BOUNDARY_DECISIONS,
@@ -775,7 +826,7 @@ def _read_decisions(db: Session, match_id: int) -> list[dict]:
 
 def _load_boundary_segments(db: Session, match_id: int) -> tuple[Optional[dict], Optional[str]]:
     """(rally_boundaries の中身, 読めなかった理由)。成果物が無ければ (None, 理由)。"""
-    artifact = _latest_artifact(db, match_id, ARTIFACT_TYPE_RALLY_BOUNDARIES)
+    artifact = _latest_artifact(db, match_id, ARTIFACT_TYPE_RALLY_BOUNDARIES, with_data=True)
     if not artifact or not artifact.data:
         return None, "ラリー境界の成果物がありません（全体走査と候補生成が未実行）"
     try:
@@ -1057,10 +1108,17 @@ def adopt_segment(
 
 # ── ヘルパー ──────────────────────────────────────────────────────────────────
 
-def _latest_artifact(db: Session, match_id: int, artifact_type: str) -> Optional[MatchCVArtifact]:
+def _latest_artifact(
+    db: Session, match_id: int, artifact_type: str, *, with_data: bool = False
+) -> Optional[MatchCVArtifact]:
+    # PR1: MatchCVArtifact.data は deferred（本番で約 6GB/行）。data を実際に
+    # json.loads する呼び出しだけ with_data=True を渡し、undefer で 1 クエリに
+    # まとめる。upsert（既存行への代入）では data を読まないので既定の False。
+    q = db.query(MatchCVArtifact)
+    if with_data:
+        q = q.options(undefer(MatchCVArtifact.data))
     return (
-        db.query(MatchCVArtifact)
-        .filter(
+        q.filter(
             MatchCVArtifact.match_id == match_id,
             MatchCVArtifact.artifact_type == artifact_type,
         )

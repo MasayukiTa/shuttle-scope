@@ -30,7 +30,9 @@
  */
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { MIcon } from '@/components/common/MIcon'
 import { AnnotateOverlay, ZoneCode } from './AnnotateOverlay'
+import type { Quad, CourtHalf } from '@/utils/courtHomography'
 import { enqueue } from '@/utils/mobileAnnotateQueue'
 import { finalHitterFor, type FinalShotOutcome } from '@/utils/mobileAnnotateRallies'
 import { serveOnlyRallyPayload } from '@/utils/mobileAnnotatePass2'
@@ -51,11 +53,20 @@ interface Props {
   rally: RallyTarget
   /** ダブルス: サーバ・最終打者を個人 slot (partner を含む) で選ばせて保存する */
   doubles?: boolean
+  /**
+   * 保存済みコート校正 (先頭 4 隅)。渡すと AnnotateOverlay が撮影方向に合わせた
+   * タップ判定を行う。null / 未指定のときは従来の固定枠で動く。
+   */
+  courtQuad?: Quad | null
+  /** 校正を使うとき、入力片面が画面の near/far どちらに写っているか。既定 'near'。 */
+  courtHalf?: CourtHalf
+  /** 「動画に戻って校正する」導線 (未校正バナーから呼ぶ)。未指定なら案内を出さない。 */
+  onNeedCalibration?: () => void
   onCompleted: () => void
   onCancel: () => void
 }
 
-export function Pass2ServeFinal({ rally, doubles = false, onCompleted, onCancel }: Props) {
+export function Pass2ServeFinal({ rally, doubles = false, courtQuad = null, courtHalf = 'near', onNeedCalibration, onCompleted, onCancel }: Props) {
   const { t } = useTranslation()
   const [serveSlot, setServeSlot] = useState<HitterSlot | null>(null)
   const [finalSlot, setFinalSlot] = useState<HitterSlot | null>(null)
@@ -63,6 +74,8 @@ export function Pass2ServeFinal({ rally, doubles = false, onCompleted, onCancel 
   const [stepIdx, setStepIdx] = useState(0)
   const [zones, setZones] = useState<Partial<Record<Step, ZoneCode>>>({})
   const [submitting, setSubmitting] = useState(false)
+  // enqueue (送信キューへの積み込み) が失敗したときのエラー文言。空なら非表示 (監査 #623)。
+  const [enqueueError, setEnqueueError] = useState<string>('')
   const [outcome, setOutcome] = useState<FinalShotOutcome | null>(null)
   const [needOutcome, setNeedOutcome] = useState(false)
   const step = STEP_ORDER[stepIdx]
@@ -103,6 +116,7 @@ export function Pass2ServeFinal({ rally, doubles = false, onCompleted, onCancel 
     }
     // 4 step 全部揃った → 2 stroke を enqueue
     setSubmitting(true)
+    setEnqueueError('')
     try {
       // backend POST /api/strokes は rally_id を QUERY PARAM で受ける。
       // body には StrokeData (extra='forbid') のフィールドのみ。
@@ -129,6 +143,11 @@ export function Pass2ServeFinal({ rally, doubles = false, onCompleted, onCancel 
         hit_zone_source: 'manual',
       }, { rally_id: rally.id })
       onCompleted()
+    } catch (e: unknown) {
+      // enqueue が投げた = この入力はローカルにも積めていない。onCompleted を呼ばず
+      // (= 保存済みに見せず)、ユーザーに失敗を伝えて再入力を促す (監査 #623)。
+      const detail = e instanceof Error && e.message ? e.message : String(e)
+      setEnqueueError(`${t('auto.Pass2ServeFinal.enqueue_failed')} (${detail})`.slice(0, 200))
     } finally {
       setSubmitting(false)
     }
@@ -143,11 +162,17 @@ export function Pass2ServeFinal({ rally, doubles = false, onCompleted, onCancel 
       return
     }
     setSubmitting(true)
+    setEnqueueError('')
     try {
       const { stroke, rallyLength } = serveOnlyRallyPayload(rally, zones, serveHitter)
       await enqueue('POST /api/strokes?rally_id=:rally_id', stroke, { rally_id: rally.id })
       await enqueue('PUT /api/rallies/:id', { rally_length: rallyLength }, { id: rally.id })
       onCompleted()
+    } catch (e: unknown) {
+      // enqueue が投げた = この入力はローカルにも積めていない。onCompleted を呼ばず
+      // (= 保存済みに見せず)、ユーザーに失敗を伝えて再入力を促す (監査 #623)。
+      const detail = e instanceof Error && e.message ? e.message : String(e)
+      setEnqueueError(`${t('auto.Pass2ServeFinal.enqueue_failed')} (${detail})`.slice(0, 200))
     } finally {
       setSubmitting(false)
     }
@@ -155,6 +180,23 @@ export function Pass2ServeFinal({ rally, doubles = false, onCompleted, onCancel 
 
   return (
     <div className="absolute inset-0 bg-black/80 flex flex-col">
+      {/* enqueue 失敗バナー: 入力がキューに積めず静かに失われるのを防ぐ (監査 #623) */}
+      {enqueueError && (
+        <div
+          role="alert"
+          className="px-3 py-2 bg-red-900/90 text-red-100 text-xs flex items-center gap-2 border-b border-red-700"
+        >
+          <MIcon name="error" size={14} />
+          <span className="flex-1">{enqueueError}</span>
+          <button
+            type="button"
+            onClick={() => setEnqueueError('')}
+            className="px-2 py-1 rounded bg-red-800 text-red-50"
+          >
+            {t('auto.Pass2ServeFinal.dismiss')}
+          </button>
+        </div>
+      )}
       {/* 上部: 進捗ドット + step 名 */}
       <div className="bg-black/90 px-3 py-2 flex items-center gap-3 border-b border-gray-800 text-xs">
         <div className="text-yellow-200 font-bold">
@@ -248,9 +290,28 @@ export function Pass2ServeFinal({ rally, doubles = false, onCompleted, onCancel 
         </div>
       )}
 
+      {/* 未校正の案内 (入力の邪魔にならない細いバナー)。
+         校正があれば撮影方向に合わせてタップできる旨と、動画に戻って校正する導線。
+         courtQuad があるときは出さない。onNeedCalibration が無ければ導線ボタンも出さない。 */}
+      {!courtQuad && onNeedCalibration && (
+        <div className="bg-sky-950/80 px-3 py-1.5 flex items-center gap-2 border-b border-sky-800 text-[11px] text-sky-100">
+          <MIcon name="info" size={13} />
+          <span className="flex-1">{t('auto.Pass2ServeFinal.calib_hint')}</span>
+          <button
+            type="button"
+            onClick={onNeedCalibration}
+            className="px-2 py-1 rounded bg-sky-800 text-sky-50"
+          >
+            {t('auto.Pass2ServeFinal.calib_cta')}
+          </button>
+        </div>
+      )}
+
       <div className="relative flex-1" data-tutorial="mobileAnnotate.zonePicker">
         <AnnotateOverlay
           prompt={STEP_PROMPT[step]}
+          courtQuad={courtQuad}
+          half={courtHalf}
           primaryLabel={stepIdx === STEP_ORDER.length - 1 ? t('auto.Pass2ServeFinal.primary_submit') : t('auto.Pass2ServeFinal.primary_next')}
           cancelLabel={t('auto.Pass2ServeFinal.cancel_retry')}
           onCommit={(z) => {

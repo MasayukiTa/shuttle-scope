@@ -216,10 +216,22 @@ export function ConsentManagementCard({ isLight }: { isLight: boolean }) {
                 <div className="flex items-center">
                   {isRequired ? (
                     <span
-                      className={`flex items-center gap-1 text-xs text-[var(--ss-t3)]`}
+                      className={`flex flex-col items-end gap-1 text-xs text-[var(--ss-t3)]`}
                     >
-                      <MIcon name="error" size={12} />
-                      {t('settings.consent.required_note', '撤回不可')}
+                      <span className="flex items-center gap-1">
+                        <MIcon name="error" size={12} />
+                        {t('settings.consent.required_note', '撤回不可')}
+                      </span>
+                      {/* #530: 「撤回にはアカウント削除が必要」とだけ案内して導線が無く、
+                          利用者が削除/退会先を見つけられない状態を解消する。自己削除機能は
+                          未提供のため、具体的な申請先 (contact) をその場に示す。法的文言は変更しない。 */}
+                      <a
+                        href="mailto:contact@shuttle-scope.com"
+                        className="inline-flex items-center gap-1 underline text-[var(--ss-brand)]"
+                      >
+                        <MIcon name="mail" size={12} />
+                        {t('settings.consent.account_deletion_contact')}
+                      </a>
                     </span>
                   ) : isWithdrawn ? (
                     // 撤回後の再承認ボタン (一方向ではなく双方向に修正、2026-05-19)

@@ -8,6 +8,12 @@ import { hasSufficientSample } from '@/utils/sampleGate'
 
 /** これ未満のラリー数ではパターンを出さない (監査 #438)。 */
 const RALLY_SEQUENCE_MIN_RALLIES = 20
+/**
+ * 個別パターンの出現ラリー数がこれ未満なら「参考値」として扱う (監査 #127)。
+ * バックエンドは出現 5 回以上のパターンを返すが (MIN_SEQUENCES_PATTERN)、
+ * 5〜数回の 100% は区間が広く、セクション全体の総球数を根拠に高信頼には見せない。
+ */
+const PATTERN_REFERENCE_MAX_COUNT = 20
 import { FilterScopeNote } from '@/components/dashboard/ResearchNotice'
 import type { FilterScopeMeta } from '@/utils/analysisFilterParams'
 import { WIN, LOSS, perfColor } from '@/styles/colors'
@@ -72,20 +78,32 @@ function SequenceList({ sequences, accent, title }: { sequences: SequenceEntry[]
         <p className="text-xs text-gray-500 py-2">{t('auto.RallySequencePatterns.k1')}</p>
       ) : (
         <div className="space-y-2">
-          {sequences.map((s, i) => (
-            <div key={i} className="space-y-1">
-              <SequencePill labels={s.labels} winRate={s.win_rate} />
-              <div className="flex gap-3 text-xs text-gray-400 pl-1">
-                <span className="ss-num">{t('auto._shared.n_times', { n: s.count })}</span>
-                <span className="font-mono ss-num">{Math.round(s.win_rate * 100)}%</span>
-                {typeof s.ci_low === 'number' && typeof s.ci_high === 'number' && (
-                  <span className="font-mono ss-num text-gray-500">
-                    {t('auto.RallySequencePatterns.interval', { low: Math.round(s.ci_low * 100), high: Math.round(s.ci_high * 100) })}
-                  </span>
-                )}
+          {sequences.map((s, i) => {
+            // 出現ラリー数が少ないパターンは区間が広く点推定が不安定。参考値として明示する (監査 #127)。
+            const isReference = s.count < PATTERN_REFERENCE_MAX_COUNT
+            return (
+              <div key={i} className="space-y-1">
+                <SequencePill labels={s.labels} winRate={s.win_rate} />
+                <div className="flex gap-3 text-xs text-gray-400 pl-1 items-center flex-wrap">
+                  <span className="ss-num">{t('auto._shared.n_times', { n: s.count })}</span>
+                  <span className="font-mono ss-num">{Math.round(s.win_rate * 100)}%</span>
+                  {typeof s.ci_low === 'number' && typeof s.ci_high === 'number' && (
+                    <span className="font-mono ss-num text-gray-500">
+                      {t('auto.RallySequencePatterns.interval', { low: Math.round(s.ci_low * 100), high: Math.round(s.ci_high * 100) })}
+                    </span>
+                  )}
+                  {isReference && (
+                    <span
+                      className="px-1.5 py-0.5 rounded-ss-sm text-[10px] border border-[var(--ss-warning-border)] bg-[var(--ss-warning-bg)] text-[var(--ss-warning-text)]"
+                      title={t('auto.RallySequencePatterns.reference_hint', { n: PATTERN_REFERENCE_MAX_COUNT })}
+                    >
+                      {t('auto.RallySequencePatterns.reference_badge')}
+                    </span>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

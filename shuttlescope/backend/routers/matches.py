@@ -19,7 +19,7 @@ from backend.routers.players import PlayerCreate
 from backend.utils.video_downloader import video_downloader
 from backend.utils import response_cache
 from backend.utils.sync_meta import touch
-from backend.utils.match_score import score_consistency_error
+from backend.utils.match_score import score_consistency_error, set_count_consistency_error
 from backend.utils.text_sanitize import reject_bidi_only, reject_ctrl_and_bidi
 from backend.utils.auth import (
     get_auth,
@@ -115,8 +115,8 @@ class MatchUpdate(BaseModel):
 # "retired" は Annotator の「途中終了」(AnnotatorPage.handleException) が送る値。
 # analysis_population.is_decided_result は win/loss だけを確定扱いにするため、
 # retired の試合は勝率の母集団に入らない。
-_MATCH_RESULT_ALLOWED = {"win", "loss", "draw", "unknown", "retired"}
-_MATCH_FORMAT_ALLOWED = {"singles", "doubles", "mixed"}
+_MATCH_RESULT_ALLOWED = {"win", "loss", "draw", "unknown", "retired", "unfinished", "walkover"}
+_MATCH_FORMAT_ALLOWED = {"singles", "doubles", "mixed", "mens_doubles", "womens_doubles", "mixed_doubles"}
 _MATCH_TOURNAMENT_LEVELS = {"IC", "IS", "SJL", "全日本", "国内", "その他"}
 _MATCH_ANNOTATION_STATUS = {"not_started", "in_progress", "complete", "reviewed"}
 
@@ -547,6 +547,9 @@ def match_to_dict(
         "partner_b_id": m.partner_b_id,
         "result": m.result,
         "final_score": m.final_score,
+        # G6 #524: 'manual' (人が入力) / 'auto' (完了セットから end_set が自動入力)。
+        # player 応答では player_privacy が result / final_score と一緒に落とす。
+        "result_source": m.result_source,
         "video_url": m.video_url,
         # 生のローカルパスは API レスポンスに含めない（Phase 1 セキュリティ要件）。
         # 再生は video_token を使い /api/videos/{token}/stream か app://video/{token} 経由で行う。
@@ -572,6 +575,8 @@ def match_to_dict(
         # Phase B: チーム境界情報
         "owner_team_id": m.owner_team_id,
         "is_public_pool": bool(getattr(m, "is_public_pool", False)),
+        # g26b: デモ公開マーカー。フロントの一覧ラベル表示に使う read-only の真偽値。
+        "is_demo_public": bool(getattr(m, "is_demo_public", False)),
         "home_team_id": getattr(m, "home_team_id", None),
         "away_team_id": getattr(m, "away_team_id", None),
     }
@@ -838,6 +843,17 @@ def update_match(match_id: int, body: MatchUpdate, request: Request, db: Session
             body.final_score if "final_score" in body.model_fields_set else match.final_score,
             body.result if "result" in body.model_fields_set else match.result,
         )
+        # 監査 #155: final_score のセット数が、実際に記録済みの GameSet 数を
+        # 超えていないかを検査する (0-ラリーの「勝ち」を fail closed で拒否)。
+        # 記録セットが 0 の段階は判定しない (クイック入力を壊さない)。
+        _eff_final = body.final_score if "final_score" in body.model_fields_set else match.final_score
+        _eff_result = body.result if "result" in body.model_fields_set else match.result
+        _recorded_sets = (
+            db.query(GameSet.id).filter(GameSet.match_id == match.id).count()
+        )
+        _sc_err = set_count_consistency_error(_eff_final, _recorded_sets, _eff_result)
+        if _sc_err:
+            raise HTTPException(status_code=422, detail=_sc_err)
     # 未登録の選手は試合の更新と同じトランザクションで作る（失敗したら残さない）
     try:
         _create_new_players_for_match(body, request, ctx, db, require_both=False)
@@ -845,6 +861,24 @@ def update_match(match_id: int, body: MatchUpdate, request: Request, db: Session
     except Exception:
         db.rollback()
         raise
+    # 記録済みのセットがある試合で選手 (player_a_id / player_b_id) を差し替えると、
+    # 旧選手で記録した set / rally / stroke が新選手の成績に誤って帰属する (rvm1-03)。
+    # _create_new_players_for_match で *_new は既に *_id に解決済みなので、解決後の
+    # 値を保存値と比較する。実際に A 側か B 側の選手が変わり、かつ当該 match に
+    # GameSet 行が 1 件でもあれば 409 で拒否する。選手以外の項目 (大会名など) の
+    # 変更だけなら従来どおり通す。
+    new_a = getattr(body, "player_a_id", None)
+    new_b = getattr(body, "player_b_id", None)
+    player_changed = (new_a is not None and new_a != match.player_a_id) or (
+        new_b is not None and new_b != match.player_b_id
+    )
+    if player_changed:
+        has_set = db.query(GameSet.id).filter(GameSet.match_id == match.id).first() is not None
+        if has_set:
+            raise HTTPException(
+                status_code=409,
+                detail="試合に記録済みのゲームがあるため選手は変更できません",
+            )
     # Phase B-5: owner / public / home / away の変更は admin のみ
     payload = body.model_dump(exclude_unset=True, exclude=set(_NEW_PLAYER_FIELDS.values()))
     privileged_keys = {"owner_team_id", "is_public_pool", "home_team_id", "away_team_id"}
@@ -1127,6 +1161,36 @@ def delete_match(match_id: int, request: Request, db: Session = Depends(get_db))
         db.flush()
     except Exception as exc:
         deletion_errors.append(f"cm_branch: {type(exc).__name__}: {str(exc)[:80]}")
+
+    # 2.6) SharedSession の cascade (rvm1-04)。
+    #
+    # SharedSession.match_id は FK matches.id かつ nullable=False / ondelete 未設定。
+    # comments と同じく Match の relationship には cascade が無いため、共有セッション
+    # を持つ試合を削除すると PostgreSQL では ForeignKeyViolation で commit が失敗し
+    # 500 になる (SQLite では孤児が残る)。shared_sessions の子 (session_participants,
+    # live_sources) も FK のみで DB レベルの cascade が無いので、子から順に Core SQL
+    # で消す。comments.session_id は 2.5) の comments 全削除で既に消えている。
+    try:
+        from sqlalchemy import text as _sa_text_ss
+        _sess_subq = "SELECT id FROM shared_sessions WHERE match_id = :mid"
+        for table_name, where_sql in (
+            ("live_sources", f"session_id IN ({_sess_subq})"),
+            ("session_participants", f"session_id IN ({_sess_subq})"),
+            ("shared_sessions", "match_id = :mid"),
+        ):
+            try:
+                result_ss = db.execute(
+                    _sa_text_ss(f"DELETE FROM {table_name} WHERE {where_sql}"),
+                    {"mid": match_id},
+                )
+                n_ss = getattr(result_ss, "rowcount", 0) or 0
+                if n_ss:
+                    deleted_files.append(f"{table_name}: {n_ss} rows")
+            except Exception as exc:
+                deletion_errors.append(f"{table_name}_cascade: {type(exc).__name__}: {str(exc)[:80]}")
+        db.flush()
+    except Exception as exc:
+        deletion_errors.append(f"ss_branch: {type(exc).__name__}: {str(exc)[:80]}")
 
     # 3) match 自身の削除を queue → 全てを 1 commit で flush
     db.delete(match)

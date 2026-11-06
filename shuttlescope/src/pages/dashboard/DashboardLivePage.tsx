@@ -78,6 +78,8 @@ export function DashboardLivePage({ playerId, matches }: Props) {
   // セット間解析モーダル用ステート
   const [intervalSummarySetId, setIntervalSummarySetIdValue] = useState<number | null>(null)
   const [showIntervalSummary, setShowIntervalSummary] = useState(false)
+  // #597: セット詳細を開けなかったとき（取得失敗/該当なし）のエラー文。
+  const [setDetailError, setSetDetailError] = useState<string | null>(null)
 
   const matchOptions = matches.map((m) => ({
     value: m.match_id,
@@ -199,7 +201,7 @@ export function DashboardLivePage({ playerId, matches }: Props) {
             />
           )}
 
-          {flashMatchId ? (
+          {flashMatchId && !isPlayer ? (
             <div className={`${card} rounded-ss-lg shadow-card p-4`}>
               <FlashAdvicePanel
                 matchId={flashMatchId}
@@ -273,6 +275,8 @@ export function DashboardLivePage({ playerId, matches }: Props) {
               completedSet={intervalSet}
               onSetClick={async (setNum) => {
                 if (!selectedMatchId) return
+                // #597: クリックごとに前回エラーをクリアする。
+                setSetDetailError(null)
                 try {
                   // match の sets 一覧から set_num に対応する set_id を解決
                   const resp = await apiGet<{ success: boolean; data: Array<{ id: number; set_num: number }> }>(
@@ -282,14 +286,21 @@ export function DashboardLivePage({ playerId, matches }: Props) {
                   if (found) {
                     setIntervalSummarySetIdValue(found.id)
                     setShowIntervalSummary(true)
+                  } else {
+                    // #597: 該当セットが解決できないときは無反応にせず明示する。
+                    setSetDetailError(t('auto.DashboardLivePage.set_detail_error'))
                   }
                 } catch {
-                  /* 失敗時は静かに無視 (ユーザに虚偽情報を出さない) */
+                  // #597: 取得失敗を沈黙させず、再試行を促すエラーを出す。
+                  setSetDetailError(t('auto.DashboardLivePage.set_detail_error'))
                 }
               }}
             />
           ) : (
             <p className={`text-sm text-center py-6 ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>{t('auto.DashboardLivePage.k3')}</p>
+          )}
+          {setDetailError && (
+            <p className="text-sm text-center py-2 text-red-500" role="alert">{setDetailError}</p>
           )}
         </div>
       </ErrorBoundary>

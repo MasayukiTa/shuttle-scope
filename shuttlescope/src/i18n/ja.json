@@ -64,6 +64,9 @@
   },
   "app": {
     "name": "ShuttleScope",
+    "unreachable_title": "サーバに接続できません",
+    "unreachable_body": "アプリがサーバに接続できませんでした。通信環境を確認して、もう一度お試しください。",
+    "retry": "再読み込み",
     "sidebar_collapse": "サイドバーを折りたたむ",
     "sidebar_expand": "サイドバーを展開する",
     "loading": "読み込み中...",
@@ -106,6 +109,10 @@
     "error_forbidden": "この操作を行う権限がありません。",
     "error_conflict": "他の操作と競合しました。画面を更新してから、もう一度お試しください。",
     "error_invalid_input": "入力内容を確認してください。",
+    "player_save_failed": "選手を保存できませんでした。入力内容は残しています。接続と権限を確認して、もう一度お試しください。",
+    "player_delete_failed": "選手を削除できませんでした。接続と権限を確認して、もう一度お試しください。",
+    "player_verify_failed": "確認済みにできませんでした。接続と権限を確認して、もう一度お試しください。",
+    "player_in_use": "この選手は試合で使われているため削除できません。",
     "match_save_failed": "試合を保存できませんでした。入力内容は残しています。接続を確認して、もう一度お試しください。",
     "match_delete_failed": "試合を削除できませんでした。もう一度お試しください。",
     "llm_list_failed": "会話一覧を取得できませんでした。表示は古い内容の可能性があります。",
@@ -196,14 +203,15 @@
     "other": "その他"
   },
   "analysis_labels": {
+    "unclassified": "未分類",
     "state": {
       "early": "序盤",
       "mid": "中盤",
       "deuce": "デュース",
       "endgame": "終盤",
-      "first": "第1セット",
-      "second": "第2セット",
-      "third": "第3セット",
+      "first": "第1ゲーム",
+      "second": "第2ゲーム",
+      "third": "第3ゲーム",
       "short": "短いラリー",
       "medium": "中くらいのラリー",
       "long": "長いラリー",
@@ -248,6 +256,12 @@
     "operator": "運用"
   },
   "auth": {
+    "idle_warning": {
+      "title": "まもなく自動的にログアウトします",
+      "body": "しばらく操作がなかったため、あと{{sec}}秒で自動的にログアウトします。入力中のラリーは一時保存してありますので、ログアウトしても次回ログイン時に復元できます。作業を続けるには「作業を続ける」を押してください。",
+      "stay": "作業を続ける",
+      "logout_now": "今すぐログアウト"
+    },
     "subtitle": "ログインしてください",
     "role": {
       "admin": "管理者",
@@ -292,6 +306,7 @@
       "missing_token": "トークンが指定されていません",
       "success": "メールアドレスを確認しました",
       "failed": "確認に失敗しました",
+      "failed_invalid": "リンクが無効または期限切れです。確認メールを再送してください。",
       "go_login": "ログインページへ"
     },
     "password_reset_request": {
@@ -329,6 +344,15 @@
     "login_button": "ログイン",
     "logging_in": "ログイン中...",
     "logout": "ログアウト",
+    "pending_logout_title": "未送信の入力があります",
+    "pending_logout_body": "まだサーバに送られていないラリーが {{count}} 件あります。どうしますか？",
+    "pending_send": "送信してからログアウト",
+    "pending_keep": "この端末に残してログアウト",
+    "pending_delete": "削除してログアウト",
+    "pending_delete_confirm": "本当に削除しますか？ (もう一度押すと確定)",
+    "pending_cancel": "ログアウトをやめる",
+    "pending_error": "送信に失敗しました。データはこの端末に残しています",
+    "return_unavailable": "元のページには戻れませんでした。試合一覧を開いています",
     "error": {
       "login_failed": "ログインに失敗しました",
       "select_player": "選手を選択してください",
@@ -449,11 +473,15 @@
     },
     "pending_approval": {
       "title": "仮登録の状態です",
-      "body": "ご登録ありがとうございます。管理者がチームと権限を確定するまでの間は、ご自身のデータのみ表示されます。確定後、shuttlescopecom@gmail.com からご案内メールをお送りします。"
+      "body": "ご登録ありがとうございます。管理者がチームと権限を確定するまでの間は、ご自身のデータのみ表示されます。確定後、shuttlescopecom@gmail.com からご案内メールをお送りします。",
+      "logout": "ログアウト"
     }
   },
   "condition": {
     "title": "コンディション",
+    "error": "分析結果を取得できませんでした",
+    "master_fallback_warning": "質問票マスタをサーバから取得できませんでした。端末内の暂定質問票を表示しています。最新の質問票と一致しない可能性があり、この状態では回答を保存できません。",
+    "master_fallback_blocked": "質問票マスタを確認できないため保存できません。通信状態を確認して再読み込みしてください。",
     "subtab_input": "入力",
     "subtab_history": "履歴",
     "history_placeholder": "履歴がありません",
@@ -533,6 +561,7 @@
       "single_day": "単発",
       "add": "追加",
       "delete": "削除",
+      "delete_failed": "削除に失敗しました。時間をおいて再試行してください。",
       "confirm_delete": "「{{label}}」を削除しますか？",
       "empty": "まだタグはありません",
       "error_required": "ラベルと開始日は必須です",
@@ -829,6 +858,7 @@
     "pca": {
       "title": "主成分分析（PCA 2D）",
       "description": "数値指標を標準化し、上位2主成分の散布を表示。色は月（1〜12）。",
+      "low_sample_warning": "注: 有効行 N={{n}} に対し列 p={{p}} と標本が少なく、主成分と負荷量（loadings）は不安定です。配置の向きや距離は参考程度にとどめてください。",
       "no_data": "サンプル不足（有効行 ≥10 かつ 列 ≥3 が必要）",
       "variance_explained": "寄与率",
       "pc1": "第1主成分",
@@ -904,6 +934,7 @@
     "corr_heatmap": {
       "title": "因子相関ヒートマップ",
       "note_no_factors": "注: list API は f1〜f5 / ccs を返さないため、本表の対象は Hooper/RPE/睡眠/InBody などの生データに限定されます。",
+      "exploratory_caveat": "探索的表示（多重比較未補正）。多数のペアを同時に見ているため、強い相関も偶然の可能性があります。CI・p値・多重比較補正は未表示です。発見として扱わず、仮説生成の参考にとどめてください。",
       "records": "{{n}} 件の記録",
       "loading": "読み込み中...",
       "no_data": "データが不足しています",
@@ -951,6 +982,7 @@
       "gap_no_data": "—",
       "loading": "読み込み中...",
       "no_data": "データ蓄積中です",
+      "model_unavailable": "体調モデルがまだ利用できません（勝敗と結びつく記録が不足しています）。推奨レンジはデータが蓄積されると表示されます。",
       "key": {
         "ccs_score": "CCSスコア",
         "f1_physical": "身体コンディション",
@@ -1021,6 +1053,9 @@
       "col_mean": "平均",
       "no_value": "—",
       "min_n_note": "各セルに N を併記。N<{{n}} の場合は — を表示します。",
+      "dist_inline": "SD={{sd}} 範囲 {{lo}}〜{{hi}}",
+      "dist_cell": "SD {{sd}} / {{lo}}〜{{hi}}",
+      "dist_note": "平均のみでなく SDと実測範囲（最小〜最大）も併記します。少標本の月別平均はばらつきが大きく、点推定だけで差を読まないでください。",
       "month_label": "{{n}}月",
       "mode": {
         "month": "月次",
@@ -1061,6 +1096,12 @@
       },
       "raw_factor_trends": "因子別トレンド",
       "validity_summary": "回答妥当性",
+      "validity_total": "対象 {{n}} 件",
+      "validity_count": {
+        "ok": "有効",
+        "caution": "要注意",
+        "unreliable": "不適切"
+      },
       "growth_card": {
         "when": {
           "default": "{{key}}",
@@ -1127,6 +1168,8 @@
       }
     },
     "consent_update_failed": "同意の更新に失敗しました",
+    "consent_update_failed_v2": "同意の変更を保存できませんでした。変更は保存されておらず、現在の共有設定は維持されています。接続を確認して、もう一度お試しください。",
+    "consent_load_failed": "現在の同意設定を取得できませんでした。設定を変更する前に再読み込みしてください。",
     "body_disclose_title": "体組成データ (体重・体脂肪率・筋肉量等) の開示設定",
     "body_disclose_help": "通常は本人と管理者のみが閲覧できます。アナリスト / コーチに開示する場合は下のスイッチを ON にしてください。いつでも撤回できます。",
     "body_disclose_to_analyst": "アナリストに開示する",
@@ -1172,7 +1215,7 @@
     "growth_label": "成長",
     "scout": "スカウティングレポート",
     "growth": "成長レポート",
-    "interval": "セット間速報"
+    "interval": "ゲーム間速報"
   },
   "exception": {
     "title": "途中終了",
@@ -1192,6 +1235,7 @@
     "venue": "会場",
     "format": "形式",
     "result": "結果",
+    "result_auto_generated": "結果とスコアは完了したゲームから自動入力されました（手動で上書きできます）",
     "score": "スコア",
     "video_url": "動画URL",
     "notes": "メモ",
@@ -1232,6 +1276,7 @@
       "quality_720": "720p (推奨)",
       "quality_best": "最高画質",
       "cookie_none": "Cookie: なし",
+      "download_settings": "動画取り込み設定",
       "col_level": "レベル",
       "col_format": "形式",
       "col_opponent": "対戦相手",
@@ -1280,7 +1325,10 @@
       "cancel_short": "取消",
       "public_pool_badge": "共有",
       "public_pool_title": "全チームから閲覧可能な公開プール試合",
-      "create_tentative": "「{{name}}」を暫定登録して作成"
+      "demo_public_badge": "デモ",
+      "demo_public_title": "デモ用の試合で、他チームからも閲覧のみ可能です。",
+      "create_tentative": "「{{name}}」を暫定登録して作成",
+      "create_tentative_requires_analyst": "暇定登録には Analyst（アナリスト）または管理者権限が必要です。登録は管理者またはアナリストにご依頼ください。"
     }
   },
   "player": {
@@ -1335,15 +1383,16 @@
     "provisional": "暫定",
     "match_count": "{{count}}試合",
     "provisional_register_and_start": "「{{name}}」を暫定登録して開始",
+    "provisional_requires_analyst": "選手の暫定登録には Analyst（アナリスト）または管理者のロールが必要です。登録は管理者またはアナリストにご依頼ください。",
     "opponent_team": "相手チーム名",
     "opponent_team_hint": "（同姓同名の識別に使用）",
     "opponent_team_placeholder": "例: ○○クラブ、△△大学",
     "existing_team_editable": "既存選手のチーム（変更可）",
-    "analyst_side_label": "セット1開始時の自選手の位置",
+    "analyst_side_label": "第1ゲーム開始時の自選手の位置",
     "analyst_side_bottom": "⬇ 画面下（アナリスト手前）",
     "analyst_side_bottom_hint": "一般的な配置",
     "analyst_side_top": "⬆ 画面上（奥側）",
-    "analyst_side_required": "開始前に、セット1開始時の自選手の位置を選んでください。",
+    "analyst_side_required": "開始前に、第1ゲーム開始時の自選手の位置を選んでください。",
     "competition_official": "公式戦",
     "competition_practice_match": "練習試合",
     "competition_open_practice": "公開練習",
@@ -1376,7 +1425,7 @@
     "provenance": {
       "title": "CV 補助が効いていない理由",
       "not_calibrated": "コートキャリブレーションが未設定です。コート座標が決まらないと着地ゾーンの候補は出せません（6 点指定で表示されます）。",
-      "start_side_unknown": "第1セット開始時の選手の位置が未設定です。CV の検出を選手に対応づけられないため、打者候補はすべて要確認になります。最初にコート上の選手を指定してください。",
+      "start_side_unknown": "第1ゲーム開始時の選手の位置が未設定です。CV の検出を選手に対応づけられないため、打者候補はすべて要確認になります。最初にコート上の選手を指定してください。",
       "fps_unknown": "動画の fps を推定できませんでした。秒→フレーム換算がずれている可能性があり、ラリー境界候補の位置は目安です。",
       "alignment_failed": "TrackNet と YOLO のアライメント計算に失敗しました。打者推定の精度が落ちます。"
     }
@@ -1405,13 +1454,15 @@
     "scouting_notes": "メモ",
     "save": "保存",
     "saved": "保存済み",
-    "provisional_badge": "暫定登録"
+    "provisional_badge": "暫定登録",
+    "save_failed": "相手情報の保存に失敗しました。時間をおいて再試行してください。"
   },
   "annotator": {
-    "set_not_finished": "このスコアではセットが終了していません（{{a}}-{{b}}）",
-    "set_already_decided": "このセットは勝敗が決まっています。「次のセットへ」で進めてください",
-    "match_decided_no_next_set": "この試合は決着したため、次のセットは作成しません",
+    "set_not_finished": "このスコアではゲームが終了していません（{{a}}-{{b}}）",
+    "set_already_decided": "このゲームは勝敗が決まっています。「次のゲームへ」で進めてください",
+    "match_decided_no_next_set": "この試合は決着したため、次のゲームは作成しません",
     "viewpoint_save_failed": "視点の保存に失敗しました",
+    "identify_save_failed": "選手識別の保存に失敗しました。割り当ては保持されていますので再試行してください。",
     "loading": "読み込み中...",
     "back_to_matches": "試合一覧に戻る",
     "live": {
@@ -1422,12 +1473,18 @@
       "choose_server": "最初のサーブはどちらですか",
       "saving_count": "保存中 {{n}} 件",
       "unsaved_count": "未保存 {{n}} 件 (自動で再送します)",
-      "set_decided": "セットが決着しました ({{a}}-{{b}})",
+      "result_pending_resend": "保存は続いています（自動で再送します）",
+      "set_decided": "ゲームが決着しました ({{a}}-{{b}})",
       "match_decided": "試合が決着しました",
-      "next_set": "次のセットへ",
+      "next_set": "次のゲームへ",
       "set_end_busy": "処理中…",
-      "set_end_waiting_save": "最終ラリーの保存が終わるまでセットを確定できません。保存中、または再送待ちです。右上の未保存の表示が消えてから押してください。",
-      "set_end_failed": "セットの終了処理に失敗しました: {{reason}}"
+      "set_end_waiting_save": "最終ラリーの保存が終わるまでゲームを確定できません。保存中、または再送待ちです。右上の未保存の表示が消えてから押してください。",
+      "set_end_failed": "ゲームの終了処理に失敗しました: {{reason}}",
+      "undo_confirmed": "直前の得点を取り消す",
+      "undo_confirmed_busy": "取り消し中...",
+      "last_result": "直前: {{player}} / {{endType}}",
+      "undo_wait_save": "保存完了まで取り消せません",
+      "undo_failed": "取り消しに失敗しました: {{reason}}"
     },
     "ux": {
       "menu_label": "操作メニュー",
@@ -1445,6 +1502,8 @@
       "review_count_identity": "ID紐付 {{n}}",
       "review_count_swing": "Swing {{n}}",
       "review_empty": "CV 候補・ラリー境界候補・identity マッピングなどがここに表示されます。データがまだ無いラリーでは何も表示されません。",
+      "review_disconnected_badge": "未接続",
+      "review_disconnected": "この確認モードはまだ実データに接続されていません（開発中）。境界候補・ID紐付・Swing の件数は実測値ではないため表示していません。",
       "analysis_header": "解析",
       "analysis_now": "現在",
       "analysis_recent_5": "直近 {{n}} ラリー (選手 A 勝率 {{pct}}%, n={{n}})",
@@ -1469,11 +1528,11 @@
       "settings_player_a_start_label": "解析対象 (A) の初期コート",
       "settings_player_a_start_hint": "コートチェンジ前の A の側 (画面の上下)",
       "start_side_required_title": "開始サイドを設定してください",
-      "start_side_required_hint": "CV の選手対応付けに必要です。1セット目開始時の A の位置を選んでください。",
+      "start_side_required_hint": "CV の選手対応付けに必要です。第1ゲーム開始時の A の位置を選んでください。",
       "settings_side_top": "↑ 上",
       "settings_side_bottom": "↓ 下",
-      "settings_initial_server_label": "最初のサーバー (1セット目)",
-      "settings_initial_server_hint": "1セット目開始時のサーバー (A/B)",
+      "settings_initial_server_label": "最初のサーバー (第1ゲーム)",
+      "settings_initial_server_hint": "第1ゲーム開始時のサーバー (A/B)",
       "settings_section_court": "コートキャリブレーション",
       "settings_section_keys": "キーボード",
       "settings_match_day_label": "試合中モード",
@@ -1493,7 +1552,7 @@
       "settings_keys_legend": "凡例を表示",
       "history_title": "直近のストローク ({{n}})",
       "history_empty": "まだストロークがありません",
-      "command_placeholder": "アクションを検索 (例: 次のラリー / セット終了)",
+      "command_placeholder": "アクションを検索 (例: 次のラリー / ゲーム終了)",
       "command_no_match": "該当なし",
       "command_help": "↑↓ 選択 / Enter 実行",
       "command_hint_global": "Ctrl+K でいつでも",
@@ -1514,18 +1573,21 @@
       "overlay_pose": "ポーズ",
       "overlay_fullscreen": "全画面",
       "bottom_sheet_aria": "ボトムシート",
+      "bottom_sheet_handle": "ドラッグまたはタップで展開 / 折り畳み",
       "bottom_sheet_close": "閉じる",
       "score_aria_game": "スコア {{a}} 対 {{b}} ゲーム {{n}}",
-      "menu_aria": "メニュー"
+      "menu_aria": "メニュー",
+      "settings_simple_shots_label": "簡易ショット入力（9 大分類）",
+      "settings_simple_shots_hint": "スマッシュ等を細かく分けず、サーブ・ネット前・ドロップ・クリア・スマッシュ・ドライブ・ロブ・守備・その他 の 9 分類で入力します。保存時は従来の詳細分類の代表値に変換するので、これまでの分析結果と矛盾しません。"
     },
     "rally_start": "ラリー開始",
     "rally_confirm": "ラリー確定",
     "rally_cancel": "取消",
     "undo": "アンドゥ",
     "timestamp": "タイムスタンプ記録",
-    "hit_zone": "打点",
+    "hit_zone": "打球位置",
     "hit_zone_overridden": "手動",
-    "hit_zone_aria": "打点ゾーン選択",
+    "hit_zone_aria": "打球位置ゾーン選択",
     "hit_zone_cell": "ゾーン {{zone}}",
     "hit_zone_cv_label": "CV推定: ゾーン {{zone}}",
     "shot_color_legend": "色凡例",
@@ -1548,12 +1610,12 @@
     "stroke_none": "ストローク未記録",
     "team_tooltip_prefix": "所属:",
     "missing_land_zone": "着地点なし",
-    "hit_zone_manual_badge": "手動打点",
-    "hit_zone_manual_tooltip": "打点を手動で修正済 (CV={{cv}} → 手動={{picked}})",
+    "hit_zone_manual_badge": "手動で修正",
+    "hit_zone_manual_tooltip": "打球位置を手動で修正済 (CV={{cv}} → 手動={{picked}})",
     "rally_end_select_hint": "得点者と終了種別を選択:",
     "rally_point_suffix": "得点",
     "score": "スコア",
-    "set": "セット",
+    "set": "ゲーム",
     "rally": "ラリー",
     "server": "サーバー",
     "winner_a": "A",
@@ -1561,7 +1623,7 @@
     "input_step": {
       "idle": "Space でラリー開始",
       "timestamp": "タイムスタンプ記録中...",
-      "hit_zone": "打点ゾーンをクリック",
+      "hit_zone": "打球位置ゾーンをクリック",
       "land_zone": "着地ゾーンをクリック",
       "shot_type": "ショット種別をキー入力",
       "attributes": "属性を確認してEnter",
@@ -1585,6 +1647,8 @@
     "unowned_rally_discard_title": "保管中のラリーを破棄",
     "unowned_rally_discard_message": "保存に失敗した {{n}} 件のラリーを破棄します。元に戻せません。",
     "recording_path_update_failed": "録画ファイルは保存しましたが、試合への動画パスの登録に失敗しました。",
+    "analysis_start_failed": "バックグラウンド解析の開始に失敗しました。時間をおいて再度お試しください。",
+    "analysis_video_unavailable": "この試合にはサーバ上の動画が無いため、解析を開始できません。",
     "bookmark_save_failed": "ブックマークを保存できませんでした。通信状況を確認して、もう一度お試しください。",
     "review_later_save_failed": "「あとで確認」を保存できませんでした。通信状況を確認して、もう一度お試しください。",
     "comment_save_failed": "コメントを送信できませんでした。入力内容は残してあります。通信状況を確認して、もう一度送信してください。",
@@ -1597,6 +1661,14 @@
     "doubles_mode": "ダブルスモード",
     "hitter_select": "打者",
     "hitter_toggle_hint": "Tab切替",
+    "hit_height_label": "打球の高さ",
+    "hit_height_hint": "任意。ネットを基準にした打球の高さ",
+    "hit_height_none": "未入力",
+    "hit_height_above_net": "ネットより上",
+    "hit_height_slightly_above": "やや上",
+    "hit_height_slightly_below": "やや下",
+    "hit_height_below": "下",
+    "hit_height_aria": "打球の高さを選択（任意）",
     "ui": {
       "cv_backend_title": "人物検出成果物の backend: {{backend}}",
       "yolo_backend_badge": "YOLO:{{backend}}",
@@ -1605,6 +1677,7 @@
       "recording_branch": "録画枝",
       "recording_primary": "主動画",
       "recording_branch_option": "枝 {{branch}} · {{label}}",
+      "recording_branch_error": "録画枝を取得できません",
       "skip_dual_meaning_doubles": "ダブルス: 0 キーは player_b の打者選択に使うため、スキップはボタンで行います",
       "skip_dual_meaning_singles": "シングルス: 0 / Numpad0 でもスキップできます",
       "undo_pending_title": "入力中のショットをキャンセル (Ctrl+Z)",
@@ -1615,6 +1688,7 @@
       "autosave_quota": "一時保存の容量超過",
       "autosave_failed": "一時保存失敗",
       "init_error": "初期化エラー",
+      "load_failed": "試合データを読み込めませんでした",
       "skip": "スキップ",
       "next": "次へ",
       "record_start": "録画",
@@ -1652,7 +1726,7 @@
       "numpad_title_mobile": "着地点の入力テンキー（ショットキーの後だけ）",
       "numpad_recommended": "テンキー（推奨）",
       "numpad_hint": "0/Num0 = スキップ　Esc/BS = キャンセル",
-      "letters_laptop": "文字キー（ノートPC向け）",
+      "letters_laptop": "文字キー（ノートPC向け・着地点入力中のみ）",
       "court_change": "コートチェンジ",
       "first_serve": "先サーブ",
       "analyst_view": "アナリスト視点",
@@ -1677,7 +1751,7 @@
       "land_select_marker": "着地点を選択 ↓",
       "hit_zone_auto_label": "(自動)",
       "shortcut_letters_extra": "Shift+U/I/O=OB後 Shift+J/L=OB側 -/=/\\=NET",
-      "set_a_position": "第{{set}}セット: A={{pos}}",
+      "set_a_position": "第{{set}}ゲーム: A={{pos}}",
       "side_arrow_top": "↑上",
       "side_arrow_bottom": "↓下",
       "third_set_swap": "(11pt↔)",
@@ -1714,11 +1788,11 @@
       "dl_err_bad_settings": "ダウンロード設定を確認してください (cookies.txt、Cookie ブラウザ)。",
       "calib_invalid_points": "点数不正 ({{got}}/6)",
       "manage_actions": "管理操作",
-      "set_transition_to_next": "第{{from}}セットを終了して、第{{to}}セットへ移りますか？",
-      "set_transition_to_prev": "第{{to}}セットへ戻りますか？（今のセットの進み具合は変わりません）",
+      "set_transition_to_next": "第{{from}}ゲームを終了して、第{{to}}ゲームへ移りますか？",
+      "set_transition_to_prev": "第{{to}}ゲームへ戻りますか？（今のゲームの進み具合は変わりません）",
       "confirm": "確定",
-      "prev_set_btn": "前のセット（第{{n}}セット）",
-      "next_set_btn": "次のセットへ（第{{n}}セット）",
+      "prev_set_btn": "前のゲーム（第{{n}}ゲーム）",
+      "next_set_btn": "次のゲームへ（第{{n}}ゲーム）",
       "rally_review_label": "ラリー #{{id}}",
       "scored_winner": "{{name}} 得点",
       "cv_tools_label": "CV ツール (BBOX / 軌跡 / グリッド / 領域)",
@@ -1780,6 +1854,7 @@
       "cv_apply_result_hit": " (打点{{n}})",
       "cv_apply_result_hitter": " (打者{{n}})",
       "cv_apply_result_preserved": " ・入力済みと違う{{n}}件は変更なし",
+      "cv_apply_error": "適用に失敗しました",
       "tunnel_pending_title": "トンネルURL取得中... しばらくお待ちください",
       "tunnel_show_qr_title": "クリックしてQRコード・URLを表示",
       "tunnel_pending_dots": "...",
@@ -1796,17 +1871,17 @@
       "player_toggle_title": "プレイヤー切替",
       "exception_alert_warning": "⚠",
       "fallback_app_title": "ShuttleScope",
-      "set_change_error_prefix": "セット移行エラー:",
-      "prev_set_error_prefix": "前セット移行エラー:",
+      "set_change_error_prefix": "ゲーム移行エラー:",
+      "prev_set_error_prefix": "前ゲーム移行エラー:",
       "first_serve_change_error_prefix": "先サーブ変更エラー:",
       "video_only_video_files": "動画ファイルのみアップロードできます",
       "video_max_size": "ファイルサイズは最大 5GB までです",
       "upload_error_prefix": "アップロードエラー:",
       "save_error_prefix": "保存エラー:",
-      "set_id_missing": "セットIDが未設定です。再読み込みしてください。",
+      "set_id_missing": "ゲームIDが未設定です。再読み込みしてください。",
       "init_failed": "初期化に失敗しました",
       "save_failed_message": "保存失敗",
-      "force_set_end_error_prefix": "セット強制終了エラー:",
+      "force_set_end_error_prefix": "ゲーム強制終了エラー:",
       "score_correction_error_prefix": "スコア補正エラー:",
       "score_correction_partial": "スコア補正が途中で止まりました。成功した分だけ反映しています。もう一度実行すると残りを補います。",
       "exception_save_failed_prefix": "途中終了の保存に失敗しました:",
@@ -1902,6 +1977,7 @@
       "calibration_required": "コートキャリブレーションが未設定のため、位置・陣形解析は表示しません。"
     },
     "sample_size": "サンプル数: {{count}}",
+    "fetch_error": "分析結果を取得できませんでした",
     "shuttle_track": {
       "title": "シャトル軌跡",
       "empty": "未解析（シャトル軌跡データがありません）",
@@ -1934,7 +2010,7 @@
     },
     "score_progression": {
       "title": "スコア推移",
-      "set_selector": "セット",
+      "set_selector": "ゲーム",
       "point_diff": "点差",
       "rally_num": "ラリー番号"
     },
@@ -1944,7 +2020,9 @@
       "loss_matches": "負け試合（課題のある試合）",
       "avg_rally": "平均ラリー長",
       "serve_win_rate": "サーブ勝率",
-      "top_shots": "主要ショット"
+      "top_shots": "主要ショット",
+      "population": "{{used}}試合を比較（{{total}}試合中{{excluded}}試合を除外）",
+      "population_reasons": "（未完了 {{unfinished}}試合、ラリー記録なし {{zero_rally}}試合）"
     },
     "tournament_comparison": {
       "title": "大会レベル別比較",
@@ -1988,17 +2066,18 @@
       "guide_title": "推奨レビュー順序",
       "guide_step1": "① 受け側の弱点・有効配球を確認",
       "guide_step2": "② 失点・得点前パターンを比較",
-      "guide_step3": "③ セット別パフォーマンスで変化点を特定",
+      "guide_step3": "③ ゲーム別パフォーマンスで変化点を特定",
       "guide_step4": "④ ラリーシーケンスで繰り返しパターンを深掘り",
       "section_maps": "弱点・配球マップ",
       "section_patterns": "失点・得点前パターン",
-      "section_sets": "セット別変化点",
+      "section_sets": "ゲーム別変化点",
       "section_sequence": "ラリーシーケンス深掘り"
     },
     "effective_map": {
       "zone": "ゾーン",
       "win_rate": "得点率",
       "effectiveness": "有効度",
+      "effectiveness_help": "有効度 = 得点率 × 出現頻度。0〜100で表示し、高いほど「よく使い、かつ得点に繋がっている」ゾーンです。得点率とは別の複合指標です。",
       "count_short": "{{n}}件",
       "top_zones": "有効上位ゾーン"
     },
@@ -2009,7 +2088,7 @@
     },
     "flash": {
       "title": "速報",
-      "set_select": "セット",
+      "set_select": "ゲーム",
       "rally_select": "地点（ラリー番号）",
       "no_match": "試合を選択してください",
       "categories": {
@@ -2018,10 +2097,11 @@
         "pattern": "傾向：ラリー展開",
         "opponent": "相手の多用ショット",
         "next_action": "次に試す戦術",
-        "trend": "セット内勝率トレンド",
+        "trend": "ゲーム内勝率トレンド",
         "fatigue_signal": "長ラリー後のパフォーマンス"
       },
-      "extended_label": "★ 高確信度の追加示唆"
+      "extended_label": "★ 高確信度の追加示唆",
+      "extended_note": "追加示唆を含む"
     },
     "opponent_type_affinity": {
       "title": "相手タイプ別相性",
@@ -2100,9 +2180,9 @@
       "caution_fallback": "EPV はマルコフモデルに基づく探索的指標です。球種ごとの攻撃力の大きさは、このデータから推定した値ではなく、あらかじめ人が決めた定数表です。順序の傾向として読み、数値そのものを根拠にしないでください。"
     },
     "interval_report": {
-      "title": "セット間速報レポート",
-      "set": "セット",
-      "as_of_set": "第{{n}}セット終了時",
+      "title": "ゲーム間速報レポート",
+      "set": "ゲーム",
+      "as_of_set": "第{{n}}ゲーム終了時",
       "posterior_mean": "推定勝率",
       "ci": "信頼区間",
       "current_estimate": "現在の推定値",
@@ -2120,7 +2200,7 @@
       "all_levels": "全レベル"
     },
     "set_summary": {
-      "title": "セット終了サマリー",
+      "title": "ゲーム終了サマリー",
       "interval_title": "インターバル速報（11点）",
       "recent_loss_patterns": "直近失点パターン",
       "effective_shots": "有効ショット",
@@ -2129,7 +2209,7 @@
       "growth_hint": "継続して練習中",
       "skip": "スキップ",
       "resume": "試合に戻る",
-      "next_set": "次のセットへ"
+      "next_set": "次のゲームへ"
     },
     "shot_influence_v2": {
       "ci_unavailable": "標本不足"
@@ -2146,16 +2226,16 @@
     "target": "修正後",
     "apply": "補正実行",
     "cannot_decrease": "スコアを下げることはできません",
-    "force_set_end": "セット強制終了",
-    "force_set_end_title": "セット強制終了",
+    "force_set_end": "ゲーム強制終了",
+    "force_set_end_title": "ゲーム強制終了",
     "force_set_end_hint": "実際の最終スコアを入力して終了します",
     "final_score": "最終スコア",
     "confirm_end": "終了する"
   },
   "video_source": {
-    "mode_local": "録画済み動画",
-    "mode_webview": "中継（ブラウザ）",
-    "mode_none": "映像なし（現地）",
+    "mode_local": "録画済み動画を使う",
+    "mode_webview": "別端末のカメラを使う",
+    "mode_none": "映像なしで記録する",
     "mode_label": "映像モード"
   },
   "timer": {
@@ -2254,7 +2334,7 @@
     "hitter_fill_rate": "打者補完率",
     "avg_confidence": "平均信頼度",
     "panel": {
-      "hit_zone": "打点",
+      "hit_zone": "打球位置",
       "land_zone": "着地",
       "hitter": "打者",
       "position": "ポジション",
@@ -2281,7 +2361,7 @@
         "landing_zone_ambiguous": "着地ゾーン不明確",
         "hitter_undetected": "打者検出不可",
         "multiple_near_players": "打者候補競合",
-        "player_identity_unmapped": "打った人を特定できません（試合の「セット1開始時の自選手の位置」が未設定）",
+        "player_identity_unmapped": "打った人を特定できません（試合の「第1ゲーム開始時の自選手の位置」が未設定）",
         "role_state_unstable": "ロール状態不安定",
         "track_present_high_confidence": "高確信度トラック"
       },
@@ -2418,10 +2498,24 @@
     "movement_direction": "移動方向",
     "movement_direction_forward": "前",
     "movement_direction_backward": "後",
-    "movement_direction_lateral": "横"
+    "movement_direction_lateral": "横",
+    "intent_tag": "狙い",
+    "intent_tag_deep": "奥を狙った",
+    "intent_tag_net": "ネット前を狙った",
+    "intent_tag_body": "相手の体を狙った",
+    "intent_tag_sideline": "サイドを狙った",
+    "intent_tag_cross": "クロスを狙った",
+    "intent_tag_deception": "フェイント・崩し",
+    "intent_tag_clear_safe": "つなぎ・立て直し",
+    "intent_tag_other": "その他",
+    "intent_note": "ひとこと",
+    "intent_note_placeholder": "例: 奥に打とうとしてネットにかけた"
   },
   "warmup": {
-    "button": "公開練習メモ",
+    "value_group_label": "{{item}}の選択肢",
+    "confidence_group_label": "{{item}}の確からしさ",
+    "confidence_option_label": "{{item}}の確からしさ: {{level}}",
+    "button": "試合前ウォームアップ観察",
     "title": "試合前ウォームアップ観察",
     "subtitle": "観察内容と信頼度を記録します（確実でない情報は「仮説」で記録）",
     "player_a": "選手A",
@@ -2473,6 +2567,7 @@
   "prediction": {
     "title": "試合予測",
     "title_short": "予測",
+    "player_restricted_note": "この機能はご利用のアカウントでは利用できません。試合予測のみ表示します。",
     "pair_simulation_short": "ペア",
     "lineup_optimizer_short": "編成",
     "human_forecast_short": "予想",
@@ -2486,7 +2581,7 @@
     "confidence": "予測の信頼度",
     "similar_matches": "類似試合",
     "sample_size": "データ",
-    "set_distribution": "セット分布予測",
+    "set_distribution": "ゲーム分布予測",
     "score_bands": "スコア帯予測",
     "most_likely": "最頻スコアライン",
     "scoreline_no_data": "データなし",
@@ -2511,7 +2606,7 @@
     "data_source_all": "全試合データで推計",
     "role_coach_hint": "コーチ向け: 勝率・最頻結果のみ表示",
     "layer_a": "要約",
-    "layer_b": "セット分布",
+    "layer_b": "ゲーム分布",
     "layer_c": "根拠・詳細",
     "fatigue_risk": "疲労・崩壊リスク",
     "fatigue_risk_score": "リスクスコア",
@@ -2574,7 +2669,7 @@
     "score_volatility": "試合展開の荒れやすさ",
     "volatility_stable": "安定型",
     "volatility_volatile": "接戦型",
-    "close_match_rate": "3セット試合率",
+    "close_match_rate": "3ゲーム試合率",
     "dominant_match_rate": "ストレート決着率",
     "typical_margin": "典型的な得点差",
     "no_forecast_matches": "この選手の対象試合はありません。",
@@ -2588,13 +2683,15 @@
     "human_forecast_delete": "この予測を削除",
     "human_forecast_delete_confirm": "この予測を削除しますか？ 人とモデルの比較（正解率・Brier）の集計値も変わります。",
     "human_forecast_delete_failed": "予測を削除できませんでした。通信状況を確認して、もう一度お試しください。",
+    "human_forecast_delete_forbidden": "この予測を削除できるのは作成者または管理者のみです。",
     "human_forecast_role": "予測者ロール",
     "human_forecast_outcome": "勝敗予測",
-    "human_forecast_set_path": "セットパス予測",
+    "human_forecast_set_path": "ゲームパス予測",
     "human_forecast_confidence": "確信度",
     "human_forecast_prob": "勝率見込み（%）",
     "human_forecast_notes": "メモ",
     "human_forecast_save": "保存",
+    "human_forecast_demo_readonly": "デモロールでは予測の入力・保存はできません。",
     "human_forecast_win": "勝ち",
     "human_forecast_loss": "負け",
     "benchmark_title": "人間 vs モデル ベンチマーク",
@@ -2730,7 +2827,15 @@
     "reconnect_attempt": "回目の再接続試行",
     "network_quality": "ネットワーク品質",
     "battery_level": "バッテリー残量",
-    "role_display": "端末名"
+    "role_display": "端末名",
+    "camera_error_insecure": "カメラにアクセスできません。HTTPSまたはlocalhostで開いてください（iOSはHTTPではカメラを使用できません）。",
+    "camera_error_permission": "カメラの使用が許可されていません。ブラウザのカメラ許可を有効にして、もう一度お試しください。",
+    "camera_error_notfound": "利用できるカメラが見つかりませんでした。カメラの接続を確認して、もう一度お試しください。",
+    "camera_error_inuse": "カメラを起動できませんでした。他のアプリがカメラを使用していないか確認して、もう一度お試しください。",
+    "camera_error_generic": "カメラを起動できませんでした。もう一度お試しください。",
+    "connect_error": "カメラは起動できましたが、配信の接続に失敗しました。通信状況を確認して、もう一度お試しください。",
+    "rejoin_required": "セッションへの参加が無効になりました。セッションに参加し直してください。",
+    "session_gone": "このセッションは終了しています。セッションコードを確認して、参加し直してください。"
   },
   "live_source": {
     "title": "ライブソース",
@@ -2827,6 +2932,7 @@
     "export_failed": "エクスポートに失敗しました",
     "export_denied": "エクスポートする権限がないか、再ログインが必要です",
     "video_list": "試合一覧",
+    "date_unset": "日付未設定",
     "no_videos": "対象の試合がありません",
     "empty_title": "表示される試合がまだありません",
     "empty_desc": "次の条件をすべて満たす試合が表示されます。",
@@ -2910,7 +3016,8 @@
     "sample_warning": "サンプル数が少ないため、参考値としてご覧ください",
     "hint_select_match": "先に試合を選んでください。選ぶと、その試合のミスのストロークを選べます。",
     "hint_no_clips": "この試合にはミスで終わったラリーのストロークがないため、選べるストロークがありません。別の試合を選んでください。",
-    "hint_clips_error": "ストローク一覧を読み込めませんでした。時間をおいて、もう一度試合を選んでください。"
+    "hint_clips_error": "ストローク一覧を読み込めませんでした。時間をおいて、もう一度試合を選んでください。",
+    "hint_matches_error": "試合一覧を読み込めませんでした。試合がないのではなく、取得に失敗しています。"
   },
   "pipeline": {
     "status": {
@@ -2932,6 +3039,7 @@
   "pipeline_meta": {},
   "benchmark": {
     "title": "ベンチマーク",
+    "poll_stalled": "進捗を取得できません。ジョブの実行状態は不明です",
     "detect_devices": "デバイスを検出",
     "detecting": "検出中...",
     "select_targets": "計測ターゲットを選択",
@@ -3008,6 +3116,9 @@
     "ray_starting": "接続中...",
     "ray_stopping": "停止中...",
     "ray_connecting": "Ray確認中...",
+    "ray_op_error": "Ray操作に失敗しました: {{message}}",
+    "ray_start_failed": "Rayを起動できませんでした",
+    "ray_stop_failed": "Rayを停止できませんでした",
     "resources_section": "リソース上限",
     "gpu_vram_limit": "GPU VRAM上限 (GB)",
     "system_ram_limit": "システムRAM上限 (GB)",
@@ -3040,6 +3151,7 @@
       "required_label": "契約履行（必須）",
       "optional_label": "任意",
       "required_note": "撤回不可",
+      "account_deletion_contact": "アカウント削除の申請先（contact@shuttle-scope.com）",
       "required_status_on": "確認済み",
       "required_status_off": "未取得",
       "status_none": "未回答",
@@ -3068,6 +3180,7 @@
       "player_list": "選手一覧",
       "add_player": "選手追加",
       "create_player_require_analyst": "選手の追加には Analyst（アナリスト）または管理者のロールが必要です。ロールの変更は管理者にご依頼ください。",
+      "player_delete_open_matches": "試合一覧でこの選手の試合を確認しますか？",
       "hand": "手",
       "target": "重点",
       "operation": "操作",
@@ -3188,6 +3301,7 @@
     "tab_land": "着地点",
     "tab_composite": "合成",
     "composite_note": "着地点はネット中心で点対称変換し、自コート座標に重ね合わせています。タイルをクリックして打点・着地点の詳細を確認できます。",
+    "missingness_hit": "打点が未入力の球が {{missing}} 球あります（着地点 {{land}} 球中、欠損率 {{pct}}）。打点ヒートマップはこれらを含みません。",
     "period_all": "全期間",
     "period_last_n": "直近{{n}}試合",
     "match_select_empty": "試合を選択（個別）",
@@ -3267,6 +3381,7 @@
       "page_access_load_failed": "ページ権限を読み込めませんでした。保存すると権限が消えるおそれがあるため、閉じてもう一度開いてください。",
       "page_access_prediction": "予測・分析",
       "page_access_expert_labeler": "専門家ラベル",
+      "page_access_llm": "AIに聞く (LLM チャット)",
       "individual": "個人",
       "team_whole": "チーム全体（{{team}}）",
       "saving": "保存中...",
@@ -3288,6 +3403,8 @@
       "validate_team_name": "所属チームを選択するかチーム名を入力してください（admin 以外は必須）",
       "delete_confirm": "{{name}} を削除しますか？",
       "reset_confirm": "{{name}}（ログインID: {{username}}）のパスワードをリセットしますか？\n\nこのユーザーのすべてのセッションがサインアウトされ、一時パスワードが発行されます。現在のパスワードは使えなくなります。",
+      "reset_password_failed": "パスワードをリセットできませんでした。変更はされていません。接続と権限を確認して、もう一度お試しください。",
+      "reset_limits_failed": "セキュリティ制限をリセットできませんでした。変更はされていません。接続と権限を確認して、もう一度お試しください。",
       "pw_show": "表示",
       "pw_hide": "非表示",
       "pw_aria_show": "パスワードを表示",
@@ -3396,11 +3513,12 @@
       "n_matches": "{{n}}試合",
       "brier_insufficient": "データ不足（{{n}}試合 / 最低5試合必要）",
       "loo_estimate": "{{n}}試合のLOO推定",
-      "set_model_label": "セットモデル:",
+      "set_model_label": "ゲームモデル:",
       "calibration_line": "v1勝率 {{v1}}% → キャリブレーション済み {{v2}}%"
     },
     "AnomalyBanner": {
       "title": "今、ふだんと違う",
+      "error": "異常判定を更新できません",
       "sample_n": "直近 N={{n}}打球",
       "detail_stats": "直近 N={{recent}}打球 / ふだん N={{base}}打球",
       "shot_other": "その他",
@@ -3416,10 +3534,12 @@
     "IntervalSuggestionsStrip": {
       "title": "インターバル戦術提案 (Top 3)",
       "refresh_now": "今すぐ提案",
-      "idle_hint": "11点 / セット間 / 60ラリーごとに自動表示。今すぐ提案で手動取得。",
+      "idle_hint": "11点 / ゲーム間 / 60ラリーごとに自動表示。今すぐ提案で手動取得。",
       "loading": "提案を生成中…",
       "empty": "現時点で確信度0.5以上の提案はありません。",
-      "confidence": "確信度 {{pct}}%"
+      "confidence": "確信度 {{pct}}%",
+      "error": "提案を取得できませんでした",
+      "retry": "再試行"
     },
     "BayesMatchupCard": {
       "total_matches": "総試合数: {{n}}",
@@ -3459,6 +3579,8 @@
       "recommended": "推奨",
       "lift": "観察差 +{{n}}pt",
       "observed_only": "観察のみ",
+      "degenerate_badge": "要検証（縮退）",
+      "degenerate_warning": "勝率が100%付近に張り付いており、標本過少・完全分離・ターゲットリークの可能性があります。改善幅としては扱えません。",
       "k1": "読み込み中...",
       "k2": "各状況で、返球ごとの過去の勝率を並べます。相手や局面の違いは調整していません",
       "k3": "返球別の過去実績"
@@ -3518,7 +3640,19 @@
       "stability_score": "安定性スコア:",
       "analyzed_matches": "（{{n}}試合で分析）",
       "n_matches_short": "（{{n}}試）",
-      "bar_legend": "バー左（青）= フロント系ショット比率、中央（橙）= バック系、右（灰）= ニュートラル。"
+      "bar_legend": "バー左（青）= フロント系ショット比率、中央（橙）= バック系、右（灰）= ニュートラル。",
+      "phase_early": "序盤",
+      "phase_mid": "中盤",
+      "phase_deuce": "デュース",
+      "phase_endgame": "終盤",
+      "role_front": "フロント",
+      "role_back": "バック",
+      "role_mixed": "ミックス（不定）",
+      "role_unknown": "不明",
+      "consistency_consistent": "一貫",
+      "consistency_moderate": "普通",
+      "consistency_volatile": "不安定",
+      "consistency_insufficient": "データ不足"
     },
     "EffectiveDistributionMap": {
       "k1": "相手コート（着地点）",
@@ -3556,7 +3690,7 @@
       "actual_label": "実:",
       "human_label": "人:",
       "model_label": "機:",
-      "k1": "セットパス（任意）",
+      "k1": "ゲームパス（任意）",
       "k2": "保存に失敗しました",
       "k3": "ロール",
       "k4": "正解率(人)",
@@ -3590,12 +3724,14 @@
       "knowns": "試合前に分かっていること"
     },
     "MatchScoreBand": {
-      "k1": "セット",
+      "k1": "ゲーム",
       "no_score_data": "スコアデータが不足しています",
       "set_n": "Set {{n}}",
       "percentile_band": "25–75 パーセンタイル帯"
     },
     "OpponentAdaptiveShots": {
+      "reference": "参考値",
+      "reference_hint": "{{n}}球未満のショットは標本が少なく、勝率とliftは参考値です。セクション全体の信頼度は個々の相手×ショットには当てはまりません。",
       "shot_winrate_vs": "ショット種別 勝率 vs {{name}}",
       "k1": "読み込み中...",
       "k2": "lift=全体比",
@@ -3620,7 +3756,32 @@
       "context_label": "{{phase}} / {{bucket}}ラリー{{zone}}",
       "incoming_zone": " / 受けた球の着地: {{zone}}",
       "n_only": "N={{n}}",
-      "detail_hint": "詳細分析: OpponentStats・ShotWinLoss・PredictionPanel も併せて確認してください。"
+      "detail_hint": "詳細分析: OpponentStats・ShotWinLoss・PredictionPanel も併せて確認してください。",
+      "err_network_title": "ネットワーク接続に失敗しました",
+      "err_network_hint": "バックエンドが起動しているか確認してください。",
+      "err_server_title": "サーバーエラーが発生しました",
+      "err_server_hint": "一時的な問題の可能性があります。再取得してください。",
+      "err_unknown_title": "データ取得に失敗しました",
+      "err_unknown_hint": "再取得ボタンで再試行できます。",
+      "phase_early": "序盤",
+      "phase_mid": "中盤",
+      "phase_deuce": "デュース",
+      "phase_endgame": "終盤",
+      "bucket_short": "短",
+      "bucket_medium": "中",
+      "bucket_long": "長",
+      "pred_predictable": "予測可能",
+      "pred_mixed": "混合",
+      "pred_unpredictable": "予測困難",
+      "predhint_predictable": "特定ショットへの集中度が高い（エントロピー低）",
+      "predhint_mixed": "ショット選択にやや傾向がある",
+      "predhint_unpredictable": "ショット選択が多様で読みにくい（エントロピー高）",
+      "caution_fallback": "対戦相手ポリシーはショット分布の記述統計です。戦術的意図の推定は含みません。",
+      "assumptions": "ショット種別はアノテーションに依存。コンテキストはスコアフェーズ・ラリー長・受けた球の着地ゾーン（打つ前に分かる情報）で定義。",
+      "promotion": "コンテキストごとN≥30ストローク・複数対戦での再現性確認",
+      "just_now": "たった今",
+      "minutes_ago": "{{n}}分前",
+      "hours_ago": "{{n}}時間前"
     },
     "PairCombinedView": {
       "k1": "ペア勝率",
@@ -3651,6 +3812,7 @@
     },
     "PlayerMovementCard": {
       "k1": "移動距離を計算中…",
+      "fetch_error": "移動分析を取得できませんでした",
       "k2": "選手移動距離",
       "k3": "ここをクリックしてグリッドを開き同期してください。",
       "k4": "ここをクリックしてグリッドを設定してください。",
@@ -3699,6 +3861,8 @@
       "stat_pred": "統計予測 — {{date}} 以前のデータ使用",
       "h2h_count": "（対戦実績 {{n}}試合）",
       "h2h_none": "（対戦実績なし）",
+      "error": "予測を取得・再計算できませんでした",
+      "retry": "再試行",
       "computed_at": "算出: {{date}}",
       "no_prior_data": "この試合より前のデータがありません（統計予測不可）",
       "n_matches_data": "{{n}}試合のデータ",
@@ -3788,8 +3952,8 @@
       "k2": "勝者",
       "k3": "すべて",
       "k4": "終了種別",
-      "k5": "セット",
-      "k6": "全セット",
+      "k5": "ゲーム",
+      "k6": "全ゲーム",
       "k7": "読み込み中..."
     },
     "RallyLengthWinRate": {
@@ -3826,7 +3990,9 @@
       "k5": "負けパターン",
       "interval": "区間 {{low}}〜{{high}}%",
       "unit_note": "回数と勝率は、その並びを含むラリーの数で数えています(同じラリーで何度出ても1回)。3球とも選手本人の打球で、間にある相手の返球は含みません。",
-      "baseline": "比べる基準: 3球以上打ったラリー全体の勝率 {{rate}}%(n={{n}})"
+      "baseline": "比べる基準: 3球以上打ったラリー全体の勝率 {{rate}}%(n={{n}})",
+      "reference_badge": "参考値",
+      "reference_hint": "出現回数が{{n}}回未満のため区間が広く、勝率は参考値です。セクション全体の信頼度は個々のパターンには当てはまりません。"
     },
     "ReceivedVulnerabilityMap": {
       "own_court_received": "← 自コート（被打球エリア）　",
@@ -3838,7 +4004,12 @@
     },
     "RecommendationRanking": {
       "k1": "推奨アドバイス",
-      "k2": "読み込み中..."
+      "k2": "読み込み中...",
+      "k3": "推奨アドバイスランキング",
+      "k4": "ストローク",
+      "score_legend": "優先度スコア（0〜100）。推奨順位の内部指標で、勝率そのものではありません",
+      "score_unit": "／100",
+      "scope_note": "この一覧は選手全体の全期間傾向です。選択中の試合・ゲーム・ラリーとは連動しません。"
     },
     "ScorelineHistogram": {
       "freq_note": " — 実測スコアライン（統計ベース）",
@@ -3848,6 +4019,8 @@
       "k1": "ストロークデータなし",
       "k2": "読み込み中...",
       "k3": "ストロークデータが記録されていません",
+      "k3_error": "ストロークを取得できませんでした",
+      "k3_retry": "再試行",
       "k4": "クリックでラリー詳細",
       "k5": "閉じる",
       "k6": "前のラリー",
@@ -3894,6 +4067,7 @@
     },
     "ShotWinLoss": {
       "k1": "読み込み中...",
+      "definition_note": "各ショットが含まれたラリーの結果（勝敗）の割合です。局面・相手・前後のショットと交絡するため、ショット自体の効果（因果）を示すものではありません。",
       "points_won": "得点: {{n}}",
       "points_lost": "失点: {{n}}",
       "win_rate": "勝率: {{n}}%",
@@ -3938,6 +4112,9 @@
       "ci_header": "CI"
     },
     "TransitionMatrix": {
+      "diagonal_note": "対角線（グレー）は同じショット種の連続で、半軸打球の性質上別集計となるためここでは隠しています。",
+      "coverage": "対象 {{inScope}} / 全 {{total}} ラリー（{{pct}}%）",
+      "coverage_tip": "遷移を作れる（対象プレイヤーが2打以上打った）ラリーのみを集計対象としています。",
       "insufficient": "データ不足（アノテーション後に解析可能）",
       "total_transitions": "総遷移数: {{n}} 回",
       "n_times": "{{n}}回",
@@ -4007,10 +4184,10 @@
       "coverage_section_label": "カバレッジ保証（ヘルドアウト実測）",
       "target_label": "目標",
       "empirical_label": "実測",
-      "guarantee_met": "保証成立",
-      "guarantee_not_met": "保証未達",
+      "guarantee_met": "目標達成（ホールドアウト実測）",
+      "guarantee_not_met": "目標未達（ホールドアウト実測）",
       "avg_set_size": "平均予測セットサイズ: {{v}}",
-      "coverage_hint": "実測カバレッジが目標以上であれば、分布フリー保証がホールドアウトデータ上で成立しています。",
+      "coverage_hint": "これはホールドアウトでの実測カバレッジが目標以上だったという経験的検証です。分布フリーの理論保証は交換可能性等の前提と手順に依存し、単一の実測だけで「成立」を示すものではありません。",
       "sample_summary": "総N={{total}}（校正: {{calib}} / テスト: {{test}}）",
       "group_header": "グループ別予測 ({{n}})",
       "no_groups": "グループ別データがありません",
@@ -4045,7 +4222,7 @@
       "n_only": "N={{n}}",
       "value_behavior_label": "現在",
       "value_target_label": "目標",
-      "ci_range": "95% CI: {{low}} 〜 {{high}}（幅 {{width}}）",
+      "ci_range": "目標勝率の95% CI: {{low}} 〜 {{high}}（幅 {{width}}）",
       "phase_early": "序盤",
       "phase_mid": "中盤",
       "phase_deuce": "デュース",
@@ -4166,7 +4343,9 @@
       "n_matches_paren": "({{n}}試合)",
       "rate_diff_pp": "+{{n}}pp",
       "current_label": "現在",
-      "target_range": "観測範囲 [{{r}}]"
+      "target_range": "観測範囲 [{{r}}]",
+      "observed_single": "観測値 {{v}}",
+      "effect_size": "効果量 d={{d}}"
     },
     "ConditionGenericScatter": {
       "k1": "低 → 高"
@@ -4420,10 +4599,11 @@
       "k10": "入力対象:",
       "k11": "選手 #{{n}}",
       "k12": ") — 他選手の代理入力はできません。",
-      "k13": "測定日："
+      "k13": "測定日：",
+      "k14": "この選手の記録として登録します："
     },
     "DashboardAdvancedPage": {
-      "k1": "ショット別 得点・失点",
+      "k1": "ショット使用時のラリー結果",
       "k2": "勝ち/課題のある試合比較",
       "k3": "大会レベル別比較",
       "k4": "ラリー長別 勝率",
@@ -4435,10 +4615,11 @@
     },
     "DashboardLivePage": {
       "k1": "試合",
-      "k2": "完了セット:",
+      "k2": "完了ゲーム:",
       "k3": "試合を選択するとインターバルレポートが表示されます",
       "k4": "日付・対戦相手で検索...",
-      "set_n": "Set {{n}}"
+      "set_n": "Set {{n}}",
+      "set_detail_error": "ゲーム詳細を開けませんでした。もう一度お試しください。"
     },
     "DashboardOverviewPage": {
       "k1": "読み込み中...",
@@ -4526,7 +4707,7 @@
     "DashboardReviewPage": {
       "k1": "試合を選択するとスコア推移が表示されます",
       "k2": "試合を選択するとラリー動画ジャンプが使えます",
-      "k3": "セット別パフォーマンス",
+      "k3": "ゲーム別パフォーマンス",
       "k4": "日付・対戦相手で検索...",
       "step3_score": "スコア推移",
       "step35_clip": "ラリークリップ動画ジャンプ"
@@ -4539,6 +4720,7 @@
       "k5": "解析全項目 + 試合単位データの完全 JSON dump",
       "k6": "従来の要約スカウティング PDF",
       "k_n_rallies": "N={{n}}ラリー",
+      "k_n_matches": "N={{n}}試合",
       "k_rally_win_rate": "ラリー勝率",
       "k7": "PDF (包括)",
       "k8": "JSON (完全)",
@@ -4560,6 +4742,8 @@
       "error_password_required": "パスワードまたは PIN を入力してください",
       "error_mfa_code_format": "6 桁の数字を入力してください",
       "error_mfa_failed": "認証に失敗しました",
+      "error_login_failed": "ログインに失敗しました",
+      "error_invalid_credentials": "IDもしくはパスワードが違います",
       "error_timeout": "サーバーから応答がありません。しばらくしてからもう一度お試しください",
       "bootstrap_pending": "初回管理者アカウントを作成しています。",
       "bootstrap_not_ready": "サービスの初期設定が完了していません。管理者にお問い合わせください。",
@@ -4641,7 +4825,10 @@
       "k60": "登録",
       "k61": "Vivaldi",
       "k62": "Chromium",
-      "k63": "●"
+      "k63": "●",
+      "k64": "試合一覧を取得できませんでした。",
+      "k65": "通信状況を確認して、再試行してください。",
+      "k66": "再試行"
     },
     "NotificationInboxPage": {
       "k1": "通知の確認は admin ロール専用です。",
@@ -4683,7 +4870,8 @@
       "manage_open": "管理メニュー",
       "manage_close": "管理メニューを閉じる",
       "reply_mail": "メールで返信",
-      "danger_zone": "危険な操作"
+      "danger_zone": "危険な操作",
+      "mutation_failed": "操作に失敗しました。時間をおいて再度お試しください。"
     },
     "PredictionPage": {
       "k1": "選手：",
@@ -4721,8 +4909,8 @@
       "k21": "コピー",
       "k22": "クリックでコピー",
       "k23": "編集",
-      "k24": "INCREMENTAL に変更（VACUUM を実行・数秒かかります）",
-      "k25": "OFF に戻す",
+      "k24": "空き領域の自動回収を有効にする（数秒かかります）",
+      "k25": "自動回収を無効に戻す",
       "k26": "自動生成されます",
       "k27": "例: C:\\Users\\YourName\\OneDrive\\ShuttleScope",
       "k28": "例: 1, 3, 7",
@@ -4769,6 +4957,8 @@
       "gpu_hint_directml_suffix": "（DirectML）をインストールしてください",
       "tunnel_connected": "トンネル接続中 — このURLを使用してください",
       "cloudflare_named_tunnel": "Cloudflare named tunnel",
+      "cloudflare_named_tunnel_ready": "named tunnel 設定を検出しました。Cloudflare 選択時は固定ドメインを優先します。",
+      "cloudflare_named_tunnel_not_ready": "named tunnel は未設定です。設定すると固定ドメインで公開できます。",
       "lan_ip": "LAN IP: {{ips}}",
       "export_desc_prefix": "試合データを ",
       "export_desc_suffix": " 形式でダウンロード。別 PC へのデータ持ち運びや引き継ぎに使用します。",
@@ -4850,10 +5040,12 @@
       "k10": "オペレーターが映像を開始するまでお待ちください。",
       "k11": "接続済み",
       "k12": "(再接続 {{n}} 回)",
-      "k13": "スマートフォンでは映像を表示せず、要約だけを表示します。映像を見るときは、タブレットまたはPCで開いてください。",
+      "k13": "映像はタブレットまたはPCでの視聴を推奨します。画面サイズの小さい端末では見づらい場合があります。",
       "k14": "LIVE",
       "k15": "もう一度試す",
-      "k16": "最初から"
+      "k16": "最初から",
+      "rejoin_required": "セッションへの参加が無効になりました。セッションに参加し直してください。",
+      "session_gone": "このセッションは終了しています。セッションコードを確認して、参加し直してください。"
     },
     "GrowthJudgmentCard": {
       "analyzed": "分析済"
@@ -4862,6 +5054,7 @@
       "title": "今週のポイント（参考）",
       "beta_chip": "参考",
       "empty": "もう少しデータが集まると伸びしろが出せます",
+      "not_available": "この機能は準備中です。実データの提供を開始するまでお待ちください。",
       "details": "→ 詳細",
       "sample_chip": "サンプルデータ",
       "sample_note": "動作確認用の疑似データです。数値に意味はありません",
@@ -4877,13 +5070,14 @@
       "recent5_avg": "直近 5 試合の平均 (この試合除く) {{val}} — 差分 ",
       "season_avg": "全期間平均 (この試合除く、n={{n}}) {{val}} — 差分 ",
       "recent5_insufficient": "直近 5 試合のサンプルが不足 (3 件以上必要)。比較は全期間平均のみ表示。",
-      "sign_only_note": "数値の符号のみを示します。「何が良かった/改善が必要」の断言は意図的に行いません — 差分とサンプル数から、コーチ・選手で判断してください (信頼性最優先方針)。"
+      "sign_only_note": "数値の符号のみを示します。「何が良かった/改善が必要」の断言は意図的に行いません — 差分とサンプル数から、コーチ・選手で判断してください (信頼性最優先方針)。",
+      "partner_fetch_failed": "比較相手のデータを取得できませんでした。比較相手がいないのではなく、取得に失敗しています。"
     },
     "IntervalReport": {
       "ci_interval": "95% CI [{{lo}}, {{hi}}]",
       "bayes_note": "※ ベイズ推定による勝率推定。このデータは相関を示すものであり、因果関係を示すものではありません。",
       "k1": "詳細 ›",
-      "k2": "セットの詳細解析を開く"
+      "k2": "ゲームの詳細解析を開く"
     },
     "MarkovEPV": {
       "n_times": "{{n}}回",
@@ -4892,7 +5086,7 @@
       "improve_patterns": "（要改善パターン）"
     },
     "OpponentTypeAffinity": {
-      "auto_type_note": "※ 相手タイプはラリー長・スマッシュ率から自動判定"
+      "auto_type_note": "※ 相手タイプは2段階で決定します。(1) グループ生成: ラリー長・スマッシュ率でグループ分け。(2) グループ命名: 各グループにラベル（攻撃型／守備型／バランス型）をしきい値ルールで割り当て。統計的クラスタリングは使用していません。"
     },
     "PairPlaystyle": {
       "playstyle_of": "{{a}} / {{b}} のプレースタイル",
@@ -4959,7 +5153,7 @@
       "key_esc": "Esc"
     },
     "ScoreboardCompact": {
-      "set_n": "第{{n}}セット",
+      "set_n": "第{{n}}ゲーム",
       "rally_n": "第{{n}}ラリー",
       "shots_n": "{{n}} ショット"
     },
@@ -5025,7 +5219,12 @@
       "tracknet_run_failed": "TrackNet 実行失敗",
       "yolo_run_failed": "YOLO 実行失敗",
       "tracknet_start_failed": "TrackNet 起動失敗: {{msg}}",
-      "yolo_start_failed": "YOLO 起動失敗: {{msg}}"
+      "yolo_start_failed": "YOLO 起動失敗: {{msg}}",
+      "tracknet_stopped": "TrackNet 停止しました (途中結果 {{n}} 件)",
+      "yolo_stopped": "YOLO 停止しました (途中結果 {{n}} 件)",
+      "tracknet_status_unknown": "TrackNet 状態を取得できません (タップで再試行)",
+      "yolo_status_unknown": "YOLO 状態を取得できません (タップで再試行)",
+      "status_unknown_retry": "状態を取得できません・タップで再試行"
     },
     "MobileCourtCalib": {
       "tap_to_place_suffix": " をタップで設置 ({{n}}/6)",
@@ -5052,25 +5251,27 @@
       "k3": "直前のラリーを取消",
       "pass1_header": "得点 — 得点が入った瞬間に A / B",
       "set_n": "Set {{n}}",
-      "set_ending": "このセットは終了条件 (21+2 / 30) を満たしました。下の「セット終了」を押してください。",
+      "set_ending": "このゲームは終了条件 (21+2 / 30) を満たしました。下の「ゲーム終了」を押してください。",
       "golden": "29-29 ゴールデンポイント — 次の 1 点で勝敗確定",
       "deuce": "デュース ({{a}}-{{b}}) — 2 点差で勝ち / 30 点先取",
-      "set_point": "{{side}} のセットポイント",
+      "set_point": "{{side}} のゲームポイント",
       "undo_last": "直前取消",
-      "set_end": "セット終了",
-      "set_end_busy": "次のセットを作成中 ...",
+      "set_end": "ゲーム終了",
+      "set_end_busy": "次のゲームを作成中 ...",
       "set_end_retry": "もう一度試す",
-      "set_end_failed": "次のセットを作れませんでした ({{reason}})。通信を確認して、もう一度押してください。",
+      "set_end_failed": "次のゲームを作れませんでした ({{reason}})。通信を確認して、もう一度押してください。",
       "choose_server": "最初のサーブはどちらですか",
       "server_a": "A のサーブ",
       "server_b": "B のサーブ",
       "video_sec": "動画 {{sec}} 秒",
       "back_to_video": "動画に戻る",
       "cv_last_hitter": "CV 直前の打者",
-      "cv_last_hitter_pct": "CV 直前の打者 (認識 {{pct}}%)"
+      "cv_last_hitter_pct": "CV 直前の打者 (認識 {{pct}}%)",
+      "enqueue_failed": "得点を保存できませんでした。もう一度入力してください",
+      "dismiss": "閉じる"
     },
     "Pass2ServeFinal": {
-      "header": "サーブ・決定打 · ラリー {{n}} (セット {{m}})",
+      "header": "サーブ・決定打 · ラリー {{n}} (ゲーム {{m}})",
       "save_and_back": "途中保存して戻る",
       "outcome_label": "ラリーの終わり方",
       "outcome_winner_shot": "決めた",
@@ -5085,7 +5286,11 @@
       "primary_submit": "送信",
       "cancel_retry": "やり直す",
       "slot_serve_label": "サーブを打った選手",
-      "slot_final_label": "最後に打った選手"
+      "slot_final_label": "最後に打った選手",
+      "enqueue_failed": "入力を保存できませんでした。もう一度入力してください",
+      "dismiss": "閉じる",
+      "calib_hint": "コートを校正すると、撮影方向に合わせて動画のコート上を直接タップで選べます",
+      "calib_cta": "動画に戻って校正"
     },
     "HitterSlot": {
       "player_a": "A 主選手",
@@ -5102,7 +5307,7 @@
       "k6": "ドライブ",
       "k7": "ロブ",
       "k8": "クロス",
-      "header": "ストローク詳細 · ラリー {{rally}} (セット {{set}})",
+      "header": "ストローク詳細 · ラリー {{rally}} (ゲーム {{set}})",
       "stroke_count": "ストローク {{n}} 件",
       "close": "閉じる",
       "empty_hint": "先にサーブと決定打を入力してから、ストローク詳細に進んでください",
@@ -5126,7 +5331,10 @@
       "err_cant_reach_land": "「届かず」は着地点を設定できません（着地点なしで保存します）",
       "err_invalid_land": "その球種はそのゾーンに着地できません。別のゾーンを選んでください",
       "err_service_not_first": "サーブはラリーの1球目のみ指定できます",
-      "err_serve_locked": "1球目のサーブは、サーブの種類(ショート/ロング)にだけ変更できます"
+      "err_serve_locked": "1球目のサーブは、サーブの種類(ショート/ロング)にだけ変更できます",
+      "enqueue_failed": "打球を保存できませんでした。もう一度入力してください",
+      "calib_hint": "コートを校正すると、撮影方向に合わせて動画のコート上を直接タップで選べます",
+      "calib_cta": "動画に戻って校正"
     },
     "AnnotateOverlay": {
       "confirm": "確定",
@@ -5150,6 +5358,9 @@
       "k14": "フルスクリーン",
       "k15": "切り抜き編集",
       "k16": "全画面に戻す",
+      "local_only_title": "この動画は元の端末でのみ再生できます",
+      "local_only_desc_1": "Web・モバイルブラウザからは再生できません。",
+      "local_only_desc_2": "デスクトップアプリで開くか、サーバへアップロードすると再生できます。",
       "no_video_cause_title": "考えられる原因:",
       "no_video_cause_1": "・この試合にまだ動画が登録されていない",
       "no_video_cause_2": "・動画 token (video_token) が発行されていない",
@@ -5157,12 +5368,15 @@
       "no_video_preparing": "サーバで動画を準備中の可能性があります。",
       "no_video_retry": "再読み込み",
       "no_video_retrying": "自動で再試行しています…",
+      "no_video_unreachable_title": "動画を取得できませんでした",
+      "no_video_unreachable_desc": "自動再取得を繰り返しましたが再生できませんでした。しばらくしてから再読み込みしてください。",
       "match_id": "match_id={{id}}",
       "crop_drag_hint": "切り抜き範囲をドラッグで指定 → 右下 ✓ で確定",
       "resume_from": "▶ {{time}} から再開",
       "ios_fs_hint_1": "iPhone Safari は要素単位の全画面非対応です。",
       "ios_fs_hint_2": "で PWA 起動すると URL バー無しの本物フルスクリーンになります。(タップで閉じる)",
       "play_error": "{{msg}} (タップで閉じる)",
+      "playback_failed": "動画を再生できません。通信環境を確認して再試行してください。",
       "cancel": "取消",
       "confirm": "確定",
       "seek_back_5": "◀◀5",
@@ -5262,8 +5476,8 @@
       "k3": "試合一覧に戻る (確認あり)",
       "k4": "戻る",
       "landscape_only": "スマホアノテーションは横向き専用です。",
-      "set_end_pending": "未送信のラリーがあります。送信が終わってからセットを終了してください。",
-      "set_end_conflict": "同じラリー番号に、別の端末が先に違う結果を保存しています。左上の競合アイコンを押して保存済みの内容を採用してから、セットを終了してください。",
+      "set_end_pending": "未送信のラリーがあります。送信が終わってからゲームを終了してください。",
+      "set_end_conflict": "同じラリー番号に、別の端末が先に違う結果を保存しています。左上の競合アイコンを押して保存済みの内容を採用してから、ゲームを終了してください。",
       "conflict_adopt_server": "保存済みのラリーと食い違う入力が {{n}} 件あります — タップで自分の入力を捨てて保存済みを採用",
       "undo_unconfirmed": "取り消しがサーバーに届いたか確認できませんでした。画面はそのままにしています。",
       "match_saving_pending": "保存中です",
@@ -5272,16 +5486,16 @@
       "safari_addressbar_2": "画面下から上にスワイプすると一時的に隠れます。",
       "add_to_home": "長期的にはホーム画面に追加 (aA → 共有 → 「ホーム画面に追加」) でフルスクリーン化を推奨。",
       "match_fetch_failed": "試合情報の取得に失敗しました",
-      "no_sets_registered": "この試合にはまだセットが登録されていません",
-      "creating_set": "セット作成中…",
-      "create_set1_start": "セット 1 を作成して開始",
+      "no_sets_registered": "この試合にはまだゲームが登録されていません",
+      "creating_set": "ゲーム作成中…",
+      "create_set1_start": "第1ゲームを作成して開始",
       "back_to_video": "動画に戻る",
       "calib_hint_1": "先にコートグリッドを設定するなら、右上の",
       "calib_hint_2": "ボタンから 6 点キャリブできます",
       "match_over": "マッチ終了 — {{player}} 勝利",
       "player_a": "プレイヤーA",
       "player_b": "プレイヤーB",
-      "bestof_sets_won": "{{n}}ゲームマッチ / セット獲得: A {{a}} - B {{b}}",
+      "bestof_sets_won": "{{n}}ゲームマッチ / ゲーム獲得: A {{a}} - B {{b}}",
       "check_result_back": "結果を確認 (動画に戻る)",
       "match_saved_pc_edit": "試合データは保存済です。後から PC で詳細確認・修正できます。",
       "rally_saving_server": "このラリーはまだサーバ保存中です。",
@@ -5296,7 +5510,7 @@
       "back_to_video_arrow": "← 動画に戻る",
       "rally_saving_pass3": "このラリーはまだサーバ保存中です。送信が終わると、ストローク詳細を入力できます。",
       "pass3_select_rally": "ストローク詳細を入力するラリーを選択",
-      "set_rally_label": "セット{{s}} ラリー{{r}}",
+      "set_rally_label": "ゲーム{{s}} ラリー{{r}}",
       "pending": "送信待ち",
       "leave_confirm": "試合一覧に戻りますか？\n未送信の入力は端末に保存され、通信が戻ると送信されます。",
       "level_title": "入力レベル",
@@ -5321,7 +5535,14 @@
       "queue_pending": "未送信 {{n}} 件 (再送中)",
       "queue_failed": "送信失敗 {{n}} 件 — タップで再送",
       "queue_unknown_owner": "持ち主が分からない未送信 {{n}} 件 — タップで確認",
-      "queue_unknown_owner_confirm": "この端末に、持ち主が分からない未送信の入力が {{n}} 件あります。自分が入力したものである場合だけ送信してください。他の人の入力かもしれない場合は送信しないでください。送信しますか？"
+      "queue_unknown_owner_confirm": "この端末に、持ち主が分からない未送信の入力が {{n}} 件あります。自分が入力したものである場合だけ送信してください。他の人の入力かもしれない場合は送信しないでください。送信しますか？",
+    "queue_unknown_owner_discard_confirm": "この端末に残った所有者不明の未送信入力 {{n}} 件は、別のユーザーの資格情報では再送できません。これらを破棄しますか？",
+      "sets_fetch_failed": "ゲーム一覧を取得できませんでした。通信を確認して、もう一度お試しください。",
+      "retry": "もう一度試す",
+      "queue_storage_error": "この端末の保存領域に書き込めません。未送信の入力が失われるおそれがあります。",
+      "queue_storage_error_short": "保存エラー",
+      "pass3_checking_existing": "入力済みの打球を確認しています ...",
+      "pass3_strokes_fetch_failed": "入力済みの打球を取得できませんでした。もう一度お試しください。"
     },
     "OnboardingConsentPage": {
       "k1": "日本語",
@@ -5332,10 +5553,15 @@
       "check_mark": "✅"
     },
     "PendingUsersPage": {
-      "verified": "verified",
-      "unverified": "unverified"
+      "verified": "確認済み",
+      "unverified": "メール未確認"
     },
     "TeamManagementPage": {
+      "aria_edit": "「{{name}}」を編集",
+      "aria_delete": "「{{name}}」を削除",
+      "aria_members": "「{{name}}」のメンバーを表示",
+      "aria_save": "「{{name}}」の編集を保存",
+      "aria_cancel": "「{{name}}」の編集をキャンセル",
       "k1": "このページは admin / coach のみ利用できます。",
       "k2": "チーム管理",
       "k3": "新規作成",
@@ -5460,6 +5686,7 @@
     "team_name_label": "所属チーム",
     "team_name_hint": "既存チームを選択するか、新しいチーム名を入力してください",
     "team_name_required": "ロールに合ったチーム名を入力してください",
+    "team_fetch_error": "チーム一覧を読み込めませんでした。既存チームがないのではなく、取得に失敗しています。重複登録を避けるため、再試行してから承認してください。",
     "notify_warning": "通知未達または状態不明の承認待ちユーザが {{count}} 件あります。Discord 通知だけに依存せず、この一覧を確認してください。",
     "notify_delivered": "管理者通知: 配信済み",
     "notify_unconfigured": "管理者通知: Webhook 未設定",
@@ -5485,8 +5712,8 @@
       "optional_hint": "以下の任意同意は GDPR Article 6(1)(a) / APPI に基づく同意です。撤回はお問い合わせフォームまたは contact@shuttle-scope.com 宛てメールで受け付けます（受領から 14 日以内に処理）。",
       "service_delivery_label": "Privacy Notice および Terms of Service の内容を確認しました",
       "service_delivery_desc": "これらの文書に記載されたデータ処理（試合データ・選手プロフィール・解析結果の処理、認証、監査ログ等）は本サービス提供に必要な処理であり、GDPR Article 6(1)(b) および APPI 第18条に基づき行われます。これらの処理を停止する場合はサービスの利用終了をお選びください。",
-      "beta_agreement_label": "β版データ取り扱い説明書（Terms of Service Section 14）の内容を確認しました",
-      "beta_agreement_desc": "β期間中のデータ利用範囲、目的、保管期間、第三者提供の有無について記載された文書を読了したことを表明します。Terms of Service Section 14.5 の規定により、β期間中のデータ利用への異議申立ては問い合わせフォーム経由で随時受け付けます。",
+      "beta_agreement_label": "β版データ取り扱い説明書（Terms of Service Section 9）の内容を確認しました",
+      "beta_agreement_desc": "β期間中のデータ利用範囲、目的、保管期間、第三者提供の有無について記載された文書を読了したことを表明します。Terms of Service Section 9 の Opt-Out の規定により、β期間中のデータ利用への異議申立ては問い合わせフォーム経由で随時受け付けます。",
       "ai_training_label": "AI モデル学習への利用に同意します",
       "ai_training_desc": "匿名化・集計化されたデータを将来的なモデル精度向上のために利用します。同意は任意であり、いつでも撤回できます。撤回時は以後の学習対象から除外されます。撤回方法：お問い合わせフォーム（https://shuttle-scope.com/contact）または contact@shuttle-scope.com 宛てメール。",
       "research_label": "学術研究への利用に同意します",
@@ -5621,6 +5848,7 @@
   },
   "advanced": {
     "manual_override_notice": "{{count}}件の分析に手動 Override が設定されています",
+    "override_fetch_failed": "手動overrideの取得に失敗しました。権限または通信状況を確認してください。",
     "hold_count": "保留 {{count}}件",
     "see_research_for_detail": "Research タブで詳細確認",
     "hold_gate_title": "この分析は現在、利用を停止しています",
@@ -5764,8 +5992,8 @@
         "body": "直前の入力を 1 つ戻せます。誤タップしても落ち着いてここを押せば OK です。"
       },
       "setEnd": {
-        "title": "セット終了ボタン",
-        "body": "21 点 + 2 点差などでセットが決着すると、このボタンが黄色く点灯します。タップで次のセットへ進みます。"
+        "title": "ゲーム終了ボタン",
+        "body": "21 点 + 2 点差などでゲームが決着すると、このボタンが黄色く点灯します。タップで次のゲームへ進みます。"
       },
       "backToVideo": {
         "title": "動画に戻る",
@@ -5980,6 +6208,7 @@
       "scope_note": "数えるのは、ログイン済みの全ロール (管理者を含む) が送った操作の記録です。同意の有無や特定のイベントでの絞り込みはしていません。",
       "no_events_recorded": "操作の記録がまだ1件もありません。利用がないか、記録が届いていません。",
       "last_event": "最後の記録: {{time}} (これまでの記録 {{total}} 件)",
+      "invalid_datetime": "日時を取得できませんでした",
       "kv_wau_role": "週間利用者数 (ロール別)",
       "kv_wau_platform": "週間利用者数 (端末別)",
       "section_b_title": "アノテーションを最後まで入力できているか (直近{{days}}日)",
@@ -6113,5 +6342,29 @@
       "adopt_done": "ラリー {{id}} の動画時刻を採用しました。",
       "row_failed": "操作に失敗しました: {{message}}"
     }
+  },
+  "simple_analysis": {
+    "height_diff_title": "打球の高さ差（簡易分析）",
+    "height_diff_desc": "打った側と受けた側の打球の高さを 0〜3 に置き換え、その差（絶対値）を集計します。両方の高さが入力された返球だけを数えます。ダブルスでは味方へのつなぎは数えません。",
+    "pairs": "対象の返球",
+    "pairs_unit": "{{n}} 組",
+    "mean_diff": "高さ差の平均",
+    "distribution": "高さ差の内訳",
+    "diff_bucket": "差 {{level}}",
+    "bucket_unit": "{{n}} 組",
+    "no_data": "高さが入力された返球がまだありません。打球の高さ（任意項目）を入力すると集計されます。",
+    "loading": "集計中…",
+    "error": "簡易分析を取得できませんでした。"
+  },
+  "shot_major": {
+    "serve": "サーブ",
+    "net": "ネット前",
+    "drop": "ドロップ",
+    "clear": "クリア",
+    "smash": "スマッシュ",
+    "drive": "ドライブ",
+    "lob": "ロブ",
+    "defensive": "守備",
+    "other": "その他"
   }
 }

@@ -24,6 +24,7 @@ import { participantWsUrl } from '@/utils/cameraWs'
 import { getDeviceUid } from '@/utils/deviceUid'
 import { getParticipantRejoinToken, setParticipantRejoinToken } from '@/utils/participantRejoinToken'
 import { MIcon } from '@/components/common/MIcon'
+import { watchPeerConnection, addCandidate, flushCandidates } from './peerConnection'
 
 type SenderState = 'join' | 'connecting' | 'state_a' | 'state_b' | 'state_c' | 'error'
 
@@ -88,13 +89,13 @@ function NetworkQualityIndicator({ rttMs }: { rttMs: number | null }) {
 
 // ─── セッション情報バッジ ────────────────────────────────────────────────────
 
-function SessionBadge({ sessionCode, role }: { sessionCode: string; role: string }) {
+function SessionBadge({ sessionCode, deviceName }: { sessionCode: string; deviceName: string }) {
   const { t } = useTranslation()
   return (
     <div className="flex items-center gap-2 text-[10px] text-[var(--ss-t3)] mb-1">
       <span>{t('camera_sender.session_label')}: <span className="font-mono ss-num text-[var(--ss-t2)]">{sessionCode}</span></span>
       <span>|</span>
-      <span>{t('camera_sender.role_display')}: <span className="text-[var(--ss-brand)]">{role}</span></span>
+      <span>{t('camera_sender.role_display')}: <span className="text-[var(--ss-brand)]">{deviceName}</span></span>
     </div>
   )
 }
@@ -142,6 +143,7 @@ export function CameraSenderPage() {
 
   const wsRef = useRef<WebSocket | null>(null)
   const pcRef = useRef<RTCPeerConnection | null>(null)
+  const candidatesRef = useRef<RTCIceCandidateInit[]>([])
   const localStreamRef = useRef<MediaStream | null>(null)
   const previewRef = useRef<HTMLVideoElement>(null)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -265,8 +267,20 @@ export function CameraSenderPage() {
     let wsUrl: string
     try {
       wsUrl = await participantWsUrl(code, 'device', pid, savedTokenRef.current)
-    } catch {
-      scheduleReconnect(code, pid)
+    } catch (e) {
+      // #665: 入場券取得失敗を握りつぶして一律再接続せず、原因で分岐する。
+      // 401/403・参加トークン欠落は再接続しても直らないので即座に再参加へ案内。
+      // 404/410 はセッション消滅。5xx/タイムアウト/ネットワーク断のみ有限回の自動再接続。
+      const status = errorStatus(e)
+      if (status === 401 || status === 403 || !savedTokenRef.current) {
+        setSenderState('error')
+        setErrorMsg(t('camera_sender.rejoin_required'))
+      } else if (status === 404 || status === 410) {
+        setSenderState('error')
+        setErrorMsg(t('camera_sender.session_gone'))
+      } else {
+        scheduleReconnect(code, pid)
+      }
       return
     }
     if (disposedRef.current) return
@@ -299,8 +313,9 @@ export function CameraSenderPage() {
     }
 
     ws.onmessage = async (event) => {
+      let msg
+      try { msg = JSON.parse(event.data) } catch { console.warn('Invalid signaling message'); return }
       try {
-        const msg = JSON.parse(event.data)
         if (msg.type === 'camera_request') {
           setSenderState('state_b')
         } else if (msg.type === 'camera_deactivate') {
@@ -310,18 +325,33 @@ export function CameraSenderPage() {
           localStreamRef.current = null
           pcRef.current?.close()
           pcRef.current = null
+          setStartingCamera(false)
           if (previewRef.current) previewRef.current.srcObject = null
           setSenderState('state_a')
         } else if (msg.type === 'webrtc_answer' && pcRef.current) {
-          await pcRef.current.setRemoteDescription({ type: 'answer', sdp: msg.sdp })
+          const pc = pcRef.current
+          await pc.setRemoteDescription({ type: 'answer', sdp: msg.sdp })
+          if (pcRef.current === pc) await flushCandidates(pc, candidatesRef.current)
         } else if (msg.type === 'ice_candidate' && pcRef.current) {
-          await pcRef.current.addIceCandidate({
+          await addCandidate(pcRef.current, candidatesRef.current, {
             candidate: msg.candidate,
             sdpMid: msg.sdp_mid,
             sdpMLineIndex: msg.sdp_m_line_index,
-          }).catch(() => {})
+          })
         }
-      } catch { /* ignore */ }
+      } catch (error) {
+        console.warn('WebRTC signaling failed', error)
+        setStartingCamera(false)
+        localStreamRef.current?.getTracks().forEach((track) => track.stop())
+        localStreamRef.current = null
+        stopRttPolling()
+        void serverRecorder.stop()
+        pcRef.current?.close()
+        pcRef.current = null
+        candidatesRef.current = []
+        setErrorMsg(t('camera_sender.connect_error'))
+        setSenderState('error')
+      }
     }
 
     ws.onclose = () => {
@@ -337,7 +367,7 @@ export function CameraSenderPage() {
     }
     // serverRecorder は安定参照 (custom hook の戻り値) なので deps 不要
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scheduleReconnect])
+  }, [scheduleReconnect, t])
 
   // ─── セッション参加 ───────────────────────────────────────────────────────
   const joinSession = useCallback(async (code: string, password: string, deviceName: string) => {
@@ -417,11 +447,57 @@ export function CameraSenderPage() {
   const startCamera = useCallback(async () => {
     // iOS Safari は HTTP（非セキュアコンテキスト）では mediaDevices が undefined になる
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setErrorMsg('カメラにアクセスできません。HTTPSまたはlocalhostで開いてください（iOSはHTTPではカメラ使用不可）。')
+      setErrorMsg(t('camera_sender.camera_error_insecure'))
       return
     }
     setStartingCamera(true)
+    // カメラ取得・WebRTC 確立を段階ごとに分けて扱う。getUserMedia の失敗は端末の
+    // カメラ権限/使用状況の問題、それ以降 (PeerConnection / SDP / signaling) の失敗は
+    // 通信接続の問題として、利用者向けに別々の案内を出す。両者を同じ catch で
+    // 「カメラ権限を許可してください」と扱うと、権限を見直しても直らない誤案内になる。
+    let stream: MediaStream
     try {
+      // 前回の stream を止めてから取り直す。止めずに上書きすると
+      // 古いトラックが生き続け、端末のカメラ表示 (LED) が点いたままになり、
+      // 電池とメモリを食う。
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach((t) => {
+          try {
+            t.stop()
+          } catch { /* 既に停止している場合がある */ }
+        })
+      }
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      })
+    } catch (err) {
+      // getUserMedia の DOMException だけをカメラ取得エラーとして種別ごとに案内する。
+      const name = (err as { name?: string } | null)?.name
+      if (name === 'NotAllowedError' || name === 'SecurityError') {
+        setErrorMsg(t('camera_sender.camera_error_permission'))
+      } else if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+        setErrorMsg(t('camera_sender.camera_error_notfound'))
+      } else if (name === 'NotReadableError' || name === 'AbortError') {
+        setErrorMsg(t('camera_sender.camera_error_inuse'))
+      } else {
+        setErrorMsg(t('camera_sender.camera_error_generic'))
+      }
+      setStartingCamera(false)
+      return
+    }
+
+    try {
+      localStreamRef.current = stream
+      if (previewRef.current) {
+        previewRef.current.srcObject = stream
+      }
+
+      // R-1: サーバ自動録画 (match_id 取得済 + 自動録画 ON 時)
+      if (recordingMatchId != null) {
+        void serverRecorder.start(stream).catch(() => { /* noop */ })
+      }
+
       // ICE サーバー設定を取得（TURN が有効な場合はリレー経由）
       let iceServers: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
       try {
@@ -438,30 +514,6 @@ export function CameraSenderPage() {
         }
       } catch { /* バックエンド未起動時はデフォルト STUN を使用 */ }
 
-      // 前回の stream を止めてから取り直す。止めずに上書きすると
-      // 古いトラックが生き続け、端末のカメラ表示 (LED) が点いたままになり、
-      // 電池とメモリを食う。
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach((t) => {
-          try {
-            t.stop()
-          } catch { /* 既に停止している場合がある */ }
-        })
-      }
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false,
-      })
-      localStreamRef.current = stream
-      if (previewRef.current) {
-        previewRef.current.srcObject = stream
-      }
-
-      // R-1: サーバ自動録画 (match_id 取得済 + 自動録画 ON 時)
-      if (recordingMatchId != null) {
-        void serverRecorder.start(stream).catch(() => { /* noop */ })
-      }
-
       // 再開のたびに前の PeerConnection とトラックを閉じずに上書きしていた。
       // カメラの LED が点いたまま、メモリと電池を食い続ける。
       if (pcRef.current) {
@@ -471,6 +523,20 @@ export function CameraSenderPage() {
       }
       const pc = new RTCPeerConnection({ iceServers })
       pcRef.current = pc
+      candidatesRef.current = []
+      watchPeerConnection(pc, () => pcRef.current === pc,
+        () => { setStartingCamera(false); setSenderState('state_c') },
+        () => {
+          pc.close()
+          pcRef.current = null
+          localStreamRef.current?.getTracks().forEach((track) => track.stop())
+          localStreamRef.current = null
+          stopRttPolling()
+          void serverRecorder.stop()
+          setStartingCamera(false)
+          setErrorMsg(t('camera_sender.connect_error'))
+          setSenderState('error')
+        })
       startRttPolling(pc)
 
       stream.getTracks().forEach((track) => pc.addTrack(track, stream))
@@ -500,16 +566,23 @@ export function CameraSenderPage() {
         sdp: offer.sdp,
       }))
 
-      setSenderState('state_c')
     } catch {
-      setErrorMsg('カメラの起動に失敗しました。カメラへのアクセスを許可してください。')
-    } finally {
+      // ここに来るのはカメラ取得後の WebRTC/signaling 失敗なので、カメラ権限ではなく
+      // 接続の問題として案内する。取得済みの stream は止めてカメラを解放する。
+      try {
+        stream.getTracks().forEach((t) => t.stop())
+      } catch { /* 既に停止している場合がある */ }
+      localStreamRef.current = null
+      pcRef.current?.close()
+      pcRef.current = null
+      setErrorMsg(t('camera_sender.connect_error'))
+      setSenderState('error')
       setStartingCamera(false)
     }
     // recordingMatchId / serverRecorder は read-only スナップショットとして使い、
     // 再カメラ起動時に最新値で動けばよい (callback 再生成は不要)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [participantId, startRttPolling])
+  }, [participantId, startRttPolling, t])
 
   // ─── 配信停止 ─────────────────────────────────────────────────────────────
   const stopCamera = useCallback(() => {
@@ -590,13 +663,32 @@ export function CameraSenderPage() {
     }
   }, [stopRttPolling])
 
+  // ─── 端末名の保存 ─────────────────────────────────────────────────────────
+  // 名前を localStorage と ref に保存し、WS が開いていればサーバへ device_rename を
+  // 送る。サーバは参加者行の名前を更新し、device_list_update で operator に配る。
+  // connectWs / PeerConnection には触れない (この 1 本の送信だけ)。
+  const saveDeviceName = useCallback((raw: string) => {
+    const n = raw.trim() || getDeviceTypeLabel()
+    localStorage.setItem(DEVICE_NAME_KEY, n)
+    savedDeviceNameRef.current = n
+    const pid = participantId ?? savedPidRef.current
+    if (pid != null && wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'device_rename',
+        participant_id: pid,
+        device_name: n,
+      }))
+    }
+    setEditingName(false)
+  }, [participantId])
+
   // ─── ステータスバー（全状態共通） ─────────────────────────────────────────
   const StatusBar = () => (
     <div className="flex items-center justify-between w-full max-w-sm mb-3 px-1">
       {activeSessionCode && (
         <SessionBadge
           sessionCode={activeSessionCode}
-          role={savedDeviceNameRef.current || getDeviceTypeLabel()}
+          deviceName={savedDeviceNameRef.current || getDeviceTypeLabel()}
         />
       )}
       <div className="flex items-center gap-2 ml-auto">
@@ -624,8 +716,9 @@ export function CameraSenderPage() {
         <div className="w-full max-w-sm bg-[var(--ss-surface-1)] rounded-[6px] p-5 border border-[var(--ss-border)] shadow-[0_1px_2px_rgba(16,24,40,.06)]">
           <div className="space-y-3">
             <div>
-              <label className="block text-xs text-[var(--ss-t2)] mb-1">{t('camera_sender.join_code_label')}</label>
+              <label htmlFor="cs-join-code" className="block text-xs text-[var(--ss-t2)] mb-1">{t('camera_sender.join_code_label')}</label>
               <input
+                id="cs-join-code"
                 type="text"
                 value={form.sessionCode}
                 onChange={(e) => setForm((f) => ({ ...f, sessionCode: e.target.value.toUpperCase() }))}
@@ -635,8 +728,9 @@ export function CameraSenderPage() {
               />
             </div>
             <div>
-              <label className="block text-xs text-[var(--ss-t2)] mb-1">{t('camera_sender.join_password_label')}</label>
+              <label htmlFor="cs-join-password" className="block text-xs text-[var(--ss-t2)] mb-1">{t('camera_sender.join_password_label')}</label>
               <input
+                id="cs-join-password"
                 type="password"
                 value={form.password}
                 onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
@@ -644,8 +738,9 @@ export function CameraSenderPage() {
               />
             </div>
             <div>
-              <label className="block text-xs text-[var(--ss-t2)] mb-1">{t('camera_sender.join_device_label')}</label>
+              <label htmlFor="cs-join-device" className="block text-xs text-[var(--ss-t2)] mb-1">{t('camera_sender.join_device_label')}</label>
               <input
+                id="cs-join-device"
                 type="text"
                 value={form.deviceName}
                 onChange={(e) => setForm((f) => ({ ...f, deviceName: e.target.value }))}
@@ -661,7 +756,7 @@ export function CameraSenderPage() {
             )}
             <button
               onClick={() => joinSession(form.sessionCode, form.password, form.deviceName)}
-              disabled={!form.sessionCode || senderState === 'connecting'}
+              disabled={!form.sessionCode || !form.password || senderState === 'connecting'}
               className="w-full py-2.5 rounded-[5px] bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium text-white inline-flex items-center justify-center gap-2"
             >
               {senderState === 'connecting' && <MIcon name="progress_activity" size={14} className="animate-spin" />}
@@ -706,12 +801,7 @@ export function CameraSenderPage() {
                     value={nameInput}
                     onChange={(e) => setNameInput(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        const n = nameInput.trim() || getDeviceTypeLabel()
-                        localStorage.setItem(DEVICE_NAME_KEY, n)
-                        savedDeviceNameRef.current = n
-                        setEditingName(false)
-                      }
+                      if (e.key === 'Enter') saveDeviceName(nameInput)
                       if (e.key === 'Escape') setEditingName(false)
                     }}
                     className="flex-1 bg-[var(--ss-surface-2)] rounded-[5px] px-2 py-1 text-sm text-[var(--ss-t1)] text-center border border-[var(--ss-border)] focus:outline-none focus:ring-2 focus:ring-[var(--ss-focus-ring)]"
@@ -719,12 +809,7 @@ export function CameraSenderPage() {
                     maxLength={32}
                   />
                   <button aria-label={t('app.save')}
-                    onClick={() => {
-                      const n = nameInput.trim() || getDeviceTypeLabel()
-                      localStorage.setItem(DEVICE_NAME_KEY, n)
-                      savedDeviceNameRef.current = n
-                      setEditingName(false)
-                    }}
+                    onClick={() => saveDeviceName(nameInput)}
                     className="p-1 text-[var(--ss-success)] hover:text-[var(--ss-good)]"
                   >
                     <MIcon name="check" size={16} />

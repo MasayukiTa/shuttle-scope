@@ -42,6 +42,7 @@ interface Response {
 }
 
 function RankCard({ item }: { item: RankItem }) {
+  const { t } = useTranslation()
   const isLight = useIsLightMode()
   const displayTitle = item.title
   const displayBody = item.body
@@ -117,8 +118,9 @@ function RankCard({ item }: { item: RankItem }) {
           <span
             className="text-xs font-mono ss-num"
             style={{ color: tokens.textMuted }}
+            title={t('auto.RecommendationRanking.score_legend')}
           >
-            {Math.round(item.priority_score * 100)}pt
+            {Math.round(item.priority_score * 100)}{t('auto.RecommendationRanking.score_unit')}
           </span>
         </div>
       </div>
@@ -166,12 +168,15 @@ export function RecommendationRanking({ playerId }: RecommendationRankingProps) 
     <div
       className="rounded-ss-lg p-4 bg-[var(--ss-surface-1)] border border-[var(--ss-border)]"
     >
-      <h3 className="text-sm font-semibold mb-3" style={{ color: outerTokens.title }}>
-        推奨アドバイスランキング
+      <h3 className="text-sm font-semibold mb-1" style={{ color: outerTokens.title }}>
+        {t('auto.RecommendationRanking.k3')}
       </h3>
+      <p className="text-xs mb-3" style={{ color: outerTokens.muted }}>
+        {t('auto.RecommendationRanking.scope_note')}
+      </p>
 
       {items.length === 0 || !hasSufficientSample(sampleSize, RECOMMENDATION_MIN_STROKES) ? (
-        <NoDataMessage sampleSize={sampleSize} minRequired={RECOMMENDATION_MIN_STROKES} unit="ストローク" />
+        <NoDataMessage sampleSize={sampleSize} minRequired={RECOMMENDATION_MIN_STROKES} unit={t('auto.RecommendationRanking.k4')} />
       ) : (
         <div className="space-y-2">
           <ConfidenceBadge sampleSize={sampleSize} tier="research" unit="strokes" />

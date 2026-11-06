@@ -151,6 +151,8 @@ def get_descriptive(
             "end_type_distribution": dict(end_type_dist),
             "rally_length_histogram": rally_length_histogram,
             "win_by_end_type": {k: v for k, v in win_by_end_type.items()},
+            # 187: ラリー長の合計から導く総球数。input_provenance.strokes.total（個々の打球入力）とは別指標であることを明示する。
+            "total_strokes_from_rally_length": total_length,
             "server_win_rate": server_win_rate,
         },
         "meta": _with_input_provenance(
@@ -343,6 +345,22 @@ def get_heatmap_composite(
     hit_total = sum(hit_counts.values())
     land_total = sum(land_counts.values())
 
+    # 項目161: 打点ヒートマップと着地点ヒートマップの対象球数が食い違う問題。
+    # どちらの標本も同じ stroke 集合から数えているが、hit_zone / land_zone の
+    # どちらか一方だけが入力された stroke があると hit_total と land_total がずれる。
+    # ずれの量と欠損率を data.missingness で明示し、UI/レポートが欠損を隠さずに
+    # 示せるようにする (可視化専用の合成表示でも標本不一致を黙らせない)。
+    missing_hit = max(land_total - hit_total, 0)
+    missing_land = max(hit_total - land_total, 0)
+    missingness = {
+        "hit_n": hit_total,
+        "land_n": land_total,
+        "missing_hit": missing_hit,
+        "missing_hit_rate": round(missing_hit / land_total, 4) if land_total else None,
+        "missing_land": missing_land,
+        "missing_land_rate": round(missing_land / hit_total, 4) if hit_total else None,
+    }
+
     # 打点データ（自コート座標系そのまま）
     hit_data = {
         z: {
@@ -373,6 +391,7 @@ def get_heatmap_composite(
             "hit": hit_data,
             "land_rotated": land_rotated,
             "total_strokes": total_strokes,
+            "missingness": missingness,
             "note": (
                 "着地点データをネット線で折り返して自コート座標系に重ねています"
                 "（行はネット基準・列は画面基準なので、ゾーン名は変わりません）。"
@@ -759,7 +778,11 @@ def get_shot_win_loss(
             ),
         }
 
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all()
+    rallies = db.query(Rally).filter(
+        Rally.set_id.in_(set_ids),
+        Rally.is_skipped.is_(False),
+        Rally.deleted_at.is_(None),
+    ).all()
     rally_ids = [r.id for r in rallies]
 
     # ラリーごとにプレイヤーの勝敗とロールを記録
@@ -940,7 +963,7 @@ def _set_comparison_impl(
     by_set_formatted = [
         {
             "set_number": item["set_num"],
-            "label": f"第{item['set_num']}セット",
+            "label": f"第{item['set_num']}ゲーム",
             "total_rallies": item["total_rallies"],
             "win_rate": item["win_rate"],
             "avg_rally_length": item["avg_rally_length"],
@@ -988,7 +1011,11 @@ def get_score_progression(match_id: int, db: Session = Depends(get_db)):
     set_ids = [s.id for s in sets]
     rallies_all = (
         db.query(Rally)
-        .filter(Rally.set_id.in_(set_ids))
+        .filter(
+            Rally.set_id.in_(set_ids),
+            Rally.is_skipped.is_(False),
+            Rally.deleted_at.is_(None),
+        )
         .order_by(Rally.set_id, Rally.rally_num)
         .all()
     )
@@ -1095,7 +1122,7 @@ def get_win_loss_comparison(
     db: Session = Depends(get_db),
 ):
     """B-004: 勝ち試合と負け試合で主要統計を比較する"""
-    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+    matches, excluded = _get_player_matches_with_excluded(db, player_id, result, tournament_level, date_from, date_to)
 
     empty_confidence = check_confidence("win_loss_comparison", 0)
     if not matches:
@@ -1103,7 +1130,7 @@ def get_win_loss_comparison(
             "success": True,
             "data": {"win_matches": None, "loss_matches": None},
             "meta": _with_input_provenance(
-                {"sample_size": 0, "confidence": empty_confidence},
+                {"sample_size": 0, "confidence": empty_confidence, "excluded": excluded},
                 rallies=[],
                 strokes=[],
             ),
@@ -1228,7 +1255,7 @@ def get_win_loss_comparison(
             "loss_matches": loss_stats,
         },
         "meta": _with_input_provenance(
-            {"sample_size": total_matches, "confidence": confidence},
+            {"sample_size": total_matches, "confidence": confidence, "excluded": excluded},
             rallies=provenance_rallies,
             strokes=provenance_strokes,
         ),
@@ -1504,7 +1531,11 @@ def get_first_return_analysis(
     set_to_match: dict[int, int] = {s.id: s.match_id for s in sets}
     set_ids = [s.id for s in sets]
 
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
+    rallies = db.query(Rally).filter(
+        Rally.set_id.in_(set_ids),
+        Rally.is_skipped.is_(False),
+        Rally.deleted_at.is_(None),
+    ).all() if set_ids else []
     rally_ids = [r.id for r in rallies]
 
     rally_player_won: dict[int, bool] = {}
@@ -1722,7 +1753,7 @@ def get_set_summary(set_id: int, max_rally_num: Optional[int] = None, db: Sessio
     max_rally_num: 指定した場合、そのラリー番号以前のデータのみで解析（途中地点解析用）"""
     game_set = db.get(GameSet, set_id)
     if not game_set:
-        return {"success": False, "error": "セットが見つかりません"}
+        return {"success": False, "error": "ゲームが見つかりません"}
 
     q = db.query(Rally).filter(Rally.set_id == set_id)
     if max_rally_num is not None:

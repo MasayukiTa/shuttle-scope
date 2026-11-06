@@ -148,6 +148,10 @@ export function ClusterSettingsPanel() {
   const [saveMsg, setSaveMsg] = useState<string | null>(null)
   const [pingResults, setPingResults] = useState<Record<string, NodePingResult | 'loading'>>({})
   const [rayConnecting, setRayConnecting] = useState(false)
+  // 通常 Ray の起動/停止失敗を表示するための共通エラー。start/stop どちらの
+  // mutation も onError でここに積む (旧実装は onError が無く、失敗しても
+  // ボタンが元に戻るだけで管理者に理由が出なかった)。
+  const [rayOpError, setRayOpError] = useState<string | null>(null)
   const [detectingWorkers, setDetectingWorkers] = useState<Record<number, boolean>>({})
   const [detectErrors, setDetectErrors] = useState<Record<number, string>>({})
   const [_arpDevices, setArpDevices] = useState<Array<{ ip: string; known_label?: string }>>([])
@@ -177,7 +181,7 @@ export function ClusterSettingsPanel() {
   })
 
   // ── リモートデータ ────────────────────────────────────────────────────────
-  const { data: remoteCfg, isLoading: cfgLoading } = useQuery({
+  const { data: remoteCfg, isLoading: cfgLoading, isError: cfgError, refetch: refetchCfg } = useQuery({
     queryKey: ['cluster-config'],
     queryFn: () => apiGet<ClusterConfig>('/cluster/config'),
   })
@@ -283,13 +287,21 @@ export function ClusterSettingsPanel() {
   const rayStartMutation = useMutation({
     mutationFn: () => apiPost<{ ok: boolean; status: string }>('/cluster/ray/start', {}),
     onSuccess: (data) => {
+      setRayOpError(null)
       if (data.status === 'connecting') setRayConnecting(true)
       refetchStatus()
+    },
+    onError: (err: unknown) => {
+      setRayConnecting(false)
+      setRayOpError(err instanceof Error ? err.message : t('cluster.ray_start_failed', { defaultValue: 'Rayを起動できませんでした' }))
     },
   })
   const rayStopMutation = useMutation({
     mutationFn: () => apiPost<{ ok: boolean; message: string }>('/cluster/ray/stop', {}),
-    onSuccess: () => { refetchStatus() },
+    onSuccess: () => { setRayOpError(null); refetchStatus() },
+    onError: (err: unknown) => {
+      setRayOpError(err instanceof Error ? err.message : t('cluster.ray_stop_failed', { defaultValue: 'Rayを停止できませんでした' }))
+    },
   })
 
   const pingWorker = async (ip: string, idx: number) => {
@@ -509,6 +521,13 @@ export function ClusterSettingsPanel() {
 
   if (cfgLoading) {
     return <div className="flex justify-center py-12"><MIcon name="progress_activity" className="animate-spin text-[var(--ss-brand)]" /></div>
+  }
+
+  // 設定取得に失敗したときは初期値 {mode:'single'} を編集・保存可能にしない。
+  // そのまま保存すると既存のクラスタ設定を single で上書きしてしまうため、
+  // 取得成功までは編集 UI を出さずエラーと再試行だけを表示する（fail closed）。
+  if (cfgError) {
+    return <QueryErrorNotice onRetry={() => { void refetchCfg() }} />
   }
 
   const rayRunning = status?.ray.status === 'running'
@@ -1162,6 +1181,17 @@ export function ClusterSettingsPanel() {
                 </button>
               )}
             </div>
+            {rayOpError && (
+              <div
+                className="text-xs text-red-400 flex items-start gap-1 cursor-pointer"
+                title={rayOpError}
+                onClick={() => setRayOpError(null)}
+                role="alert"
+              >
+                <MIcon name="warning" size={12} className="shrink-0 mt-0.5" />
+                <span className="break-all">{t('cluster.ray_op_error', { defaultValue: 'Ray操作に失敗しました', message: rayOpError })}</span>
+              </div>
+            )}
             <GaugeBar
               value={status.load.cpu_percent}
               limit={status.load.cpu_limit}

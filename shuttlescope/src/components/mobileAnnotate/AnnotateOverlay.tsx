@@ -17,6 +17,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { MIcon } from '@/components/common/MIcon'
+import { calibratedTapToCell, fallbackTapToCell, type Quad } from '@/utils/courtHomography'
 
 export type ZoneCode =
   | 'BL' | 'BC' | 'BR'
@@ -42,6 +43,21 @@ interface Props {
   initialZone?: ZoneCode | null
   /** コートを描画する物理的な座標域: [0..1] x [0..1] の中央付近に置く */
   courtRect?: { x: number; y: number; w: number; h: number }
+  /**
+   * 動画上の実コート 4 隅 (TL, TR, BR, BL) を正規化座標 [0,1] で渡すと、
+   * タップ判定とグリッド描画をその四角形 (= 実際のコート) に合わせる。
+   * これにより撮影方向が斜め・後方・横でも、動画に写ったコートの «真ん中» を
+   * そのままタップして選べる。未指定なら従来の軸平行な固定枠にフォールバックする。
+   * court-calib-{matchId} の 6 点のうち先頭 4 点がこれに相当する。
+   */
+  courtQuad?: Quad | null
+  /**
+   * courtQuad を使うとき、入力対象がコートのどちら半面か。
+   *   'near' = 手前 (ネット〜手前ベースライン)。
+   *   'far'  = 奥   (ネット〜奥ベースライン)。
+   * 片半面を 3×3 に割り当てる。未指定時は 'near'。
+   */
+  half?: 'near' | 'far'
 }
 
 /** ベース台 (動画 pause 状態の) 上に重ねるコート + 9 zone + 入力 UI */
@@ -53,25 +69,46 @@ export function AnnotateOverlay({
   onCancel,
   initialZone = null,
   courtRect ={ x: 0.15, y: 0.10, w: 0.70, h: 0.70 },
+  courtQuad = null,
+  half = 'near',
 }: Props) {
   const { t } = useTranslation()
   const primaryText = primaryLabel ?? t('auto.AnnotateOverlay.confirm')
   const cancelText = cancelLabel ?? t('auto.AnnotateOverlay.cancel')
   const courtRef = useRef<HTMLDivElement | null>(null)
+  const containerRef = useRef<HTMLDivElement | null>(null)
   const [staged, setStaged] = useState<ZoneCode | null>(initialZone)
   const [magnifier, setMagnifier] = useState<{ x: number; y: number } | null>(null)
 
   // タップ → snap to nearest zone
   const handleTap = useCallback((clientX: number, clientY: number) => {
+    // (1) キャリブ済みコート四角形がある場合: コンテナ全体を基準に正規化し、
+    //     実コートの四角形へ逆写像して (u,v) を得る。撮影方向が斜め・後方・横でも
+    //     動画に写ったコートの «真ん中» がそのまま中央マスに当たる。
+    if (courtQuad) {
+      const crect = containerRef.current?.getBoundingClientRect()
+      if (!crect) return
+      const px = (clientX - crect.left) / crect.width
+      const py = (clientY - crect.top) / crect.height
+      const cell = calibratedTapToCell(courtQuad, px, py, half)
+      if (!cell) return
+      // calibratedTapToCell の row は «画面上の並び» (0=上, 2=下)。ZONE_GRID は
+      // row0=back(ベースライン) / row2=net(ネット際)。
+      //   far 半面  = 画面上の row がそのまま back→net
+      //   near 半面 = 画面上の row を反転 (2-row): 上(ネット際)→net, 下(ベースライン)→back
+      const zoneRow = half === 'far' ? cell.row : 2 - cell.row
+      setStaged(ZONE_GRID[zoneRow][cell.col])
+      return
+    }
+    // (2) フォールバック: 従来の軸平行な固定枠。枠内で 3×3 に割り当てる。
+    //     枠外は «無視» せず端マスへ丸める (旧実装の死角を解消)。
     const rect = courtRef.current?.getBoundingClientRect()
     if (!rect) return
     const nx = (clientX - rect.left) / rect.width
     const ny = (clientY - rect.top) / rect.height
-    if (nx < 0 || nx > 1 || ny < 0 || ny > 1) return
-    const col = Math.min(2, Math.max(0, Math.floor(nx * 3)))
-    const row = Math.min(2, Math.max(0, Math.floor(ny * 3)))
+    const { row, col } = fallbackTapToCell(nx, ny)
     setStaged(ZONE_GRID[row][col])
-  }, [])
+  }, [courtQuad, half])
 
   const onTouchStart: React.TouchEventHandler<HTMLDivElement> = (e) => {
     const t = e.touches[0]
@@ -112,47 +149,60 @@ export function AnnotateOverlay({
       </div>
 
       {/* コート + 9 zone */}
-      <div className="flex-1 relative" onClick={onClick}>
-        <div
-          ref={courtRef}
-          className="absolute"
-          style={{
-            left: `${courtRect.x * 100}%`,
-            top: `${courtRect.y * 100}%`,
-            width: `${courtRect.w * 100}%`,
-            height: `${courtRect.h * 100}%`,
-            touchAction: 'none',
-          }}
-          onTouchStart={onTouchStart}
-          onTouchMove={onTouchMove}
-          onTouchEnd={onTouchEnd}
-        >
-          {/* 9 マスのグリッド */}
-          <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 border-2 border-white/70">
-            {ZONE_GRID.flat().map((z) => {
-              const isStaged = staged === z
-              return (
-                <div
-                  key={z}
-                  className={`relative flex items-center justify-center border border-white/50 ${
-                    isStaged ? 'bg-red-500/50' : 'bg-blue-500/10'
-                  }`}
-                  style={{ minHeight: '44px', minWidth: '44px' }}
-                >
-                  <span className="text-[10px] text-white/80 absolute top-0.5 left-1 font-mono">
-                    {z}
-                  </span>
-                  {isStaged && (
-                    <span className="text-[11px] text-white font-bold inline-flex items-center gap-1">
-                      <MIcon name="check" size={11} />
-                      {t(`zones.${z}`)}
+      <div
+        ref={containerRef}
+        className="flex-1 relative"
+        onClick={onClick}
+        onTouchStart={courtQuad ? onTouchStart : undefined}
+        onTouchMove={courtQuad ? onTouchMove : undefined}
+        onTouchEnd={courtQuad ? onTouchEnd : undefined}
+        style={courtQuad ? { touchAction: 'none' } : undefined}
+      >
+        {courtQuad ? (
+          // ── キャリブ済み: 実コート四角形に沿って 9 マスを描く ──────────────
+          <CalibratedCourtGrid quad={courtQuad} half={half} staged={staged} t={t} />
+        ) : (
+          <div
+            ref={courtRef}
+            className="absolute"
+            style={{
+              left: `${courtRect.x * 100}%`,
+              top: `${courtRect.y * 100}%`,
+              width: `${courtRect.w * 100}%`,
+              height: `${courtRect.h * 100}%`,
+              touchAction: 'none',
+            }}
+            onTouchStart={onTouchStart}
+            onTouchMove={onTouchMove}
+            onTouchEnd={onTouchEnd}
+          >
+            {/* 9 マスのグリッド */}
+            <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 border-2 border-white/70">
+              {ZONE_GRID.flat().map((z) => {
+                const isStaged = staged === z
+                return (
+                  <div
+                    key={z}
+                    className={`relative flex items-center justify-center border border-white/50 ${
+                      isStaged ? 'bg-red-500/50' : 'bg-blue-500/10'
+                    }`}
+                    style={{ minHeight: '44px', minWidth: '44px' }}
+                  >
+                    <span className="text-[10px] text-white/80 absolute top-0.5 left-1 font-mono">
+                      {z}
                     </span>
-                  )}
-                </div>
-              )
-            })}
+                    {isStaged && (
+                      <span className="text-[11px] text-white font-bold inline-flex items-center gap-1">
+                        <MIcon name="check" size={11} />
+                        {t(`zones.${z}`)}
+                      </span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* touch magnifier: 指の周辺を 1.5x で別レイヤに表示 */}
         {magnifier && (
@@ -205,5 +255,86 @@ export function AnnotateOverlay({
         </button>
       </div>
     </div>
+  )
+}
+
+// ─── キャリブ済みコートの 9 マス描画 ──────────────────────────────────────
+//
+// 実コート四角形 quad の指定半面を 3×3 に分け、各セルを SVG polygon で描く。
+// セル角は双一次写像 P(u,v) でコンテナ正規化座標 (0..1) に戻し、SVG の
+// viewBox 0..1 (preserveAspectRatio=none) にそのまま載せる。これで動画上の
+// 実際のコート形状 (斜め・後方・横) に沿った格子になり、タップ判定 (handleTap)
+// と見た目が一致する。
+function bilerp(quad: Quad, u: number, v: number): { x: number; y: number } {
+  const [tl, tr, br, bl] = quad
+  const x = (1 - u) * (1 - v) * tl.x + u * (1 - v) * tr.x + u * v * br.x + (1 - u) * v * bl.x
+  const y = (1 - u) * (1 - v) * tl.y + u * (1 - v) * tr.y + u * v * br.y + (1 - u) * v * bl.y
+  return { x, y }
+}
+
+function CalibratedCourtGrid({
+  quad,
+  half,
+  staged,
+  t,
+}: {
+  quad: Quad
+  half: 'near' | 'far'
+  staged: ZoneCode | null
+  t: (k: string) => string
+}) {
+  // gridRow/gridCol は画面上の並び (0=上, 2=下 / 0=左, 2=右)。
+  // それを ZONE_GRID の意味ラベルに割り当てる (handleTap と同じ規則)。
+  const cells: Array<{ pts: string; zone: ZoneCode; cx: number; cy: number }> = []
+  for (let gr = 0; gr < 3; gr++) {
+    for (let gc = 0; gc < 3; gc++) {
+      // この半面内でのセル角 (u, v は quad 全体座標)。
+      const u0 = gc / 3
+      const u1 = (gc + 1) / 3
+      const vTop = half === 'far' ? (gr / 3) * 0.5 : 0.5 + (gr / 3) * 0.5
+      const vBot = half === 'far' ? ((gr + 1) / 3) * 0.5 : 0.5 + ((gr + 1) / 3) * 0.5
+      const p00 = bilerp(quad, u0, vTop)
+      const p10 = bilerp(quad, u1, vTop)
+      const p11 = bilerp(quad, u1, vBot)
+      const p01 = bilerp(quad, u0, vBot)
+      const pts = `${p00.x},${p00.y} ${p10.x},${p10.y} ${p11.x},${p11.y} ${p01.x},${p01.y}`
+      const zoneRow = half === 'far' ? gr : 2 - gr
+      const zone = ZONE_GRID[zoneRow][gc]
+      const cx = (p00.x + p10.x + p11.x + p01.x) / 4
+      const cy = (p00.y + p10.y + p11.y + p01.y) / 4
+      cells.push({ pts, zone, cx, cy })
+    }
+  }
+  return (
+    <svg
+      className="absolute inset-0 w-full h-full pointer-events-none"
+      viewBox="0 0 1 1"
+      preserveAspectRatio="none"
+    >
+      {cells.map((c) => {
+        const isStaged = staged === c.zone
+        return (
+          <g key={c.zone}>
+            <polygon
+              points={c.pts}
+              fill={isStaged ? 'rgba(239,68,68,0.5)' : 'rgba(59,130,246,0.1)'}
+              stroke="rgba(255,255,255,0.6)"
+              strokeWidth={0.004}
+            />
+            <text
+              x={c.cx}
+              y={c.cy}
+              fill="rgba(255,255,255,0.85)"
+              fontSize={0.035}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              style={{ fontFamily: 'monospace' }}
+            >
+              {isStaged ? t(`zones.${c.zone}`) : c.zone}
+            </text>
+          </g>
+        )
+      })}
+    </svg>
   )
 }

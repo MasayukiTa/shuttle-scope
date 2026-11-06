@@ -75,17 +75,22 @@ function StatCard({
   label,
   value,
   sampleSize,
+  sampleUnit = 'rallies',
 }: {
   icon: React.ReactNode
   label: string
   value: string | number | undefined
   sampleSize?: number
+  // 標本単位: 勝率は試合単位 (= matches)、ラリー由来の指標は rallies。
+  // 監査 #224: 勝率の下に N=ラリー数 を出すと確からしさを過大表示するため分ける。
+  sampleUnit?: 'rallies' | 'matches'
 }) {
   const { t } = useTranslation()
   // 旧版は bg-gray-800 を完全ハードコードしていてライトモードでも濃紺カード
   // のままになっていた (2026-05-19 修正)。
   const isLight = useIsLightMode()
-  const starsFilled = sampleSize === undefined ? null
+  // 星は rally 件数向けに調整された閾値。試合単位では意味が変わるため付けない。
+  const starsFilled = sampleSize === undefined || sampleUnit !== 'rallies' ? null
     : sampleSize < 500 ? 1
     : sampleSize < 2000 ? 2
     : 3
@@ -121,19 +126,14 @@ function StatCard({
                 {Array.from({ length: 3 }, (_, i) => <MIcon key={i} name={i < starsFilled ? 'star' : 'star_border'} size={10} />)}
               </span>
             )}
-            {t('auto.DashboardShell.k_n_rallies', { n: sampleSize.toLocaleString() })}
+            {sampleUnit === 'matches'
+              ? t('auto.DashboardShell.k_n_matches', { n: sampleSize.toLocaleString() })
+              : t('auto.DashboardShell.k_n_rallies', { n: sampleSize.toLocaleString() })}
           </p>
         )}
       </div>
     </div>
   )
-}
-
-const ROLE_LABELS: Record<string, string> = {
-  admin: '管理者',
-  analyst: 'アナリスト',
-  coach: 'コーチ',
-  player: '選手',
 }
 
 // ロールバッジ: 元はダーク基調しか想定していなかった hardcoded 色。
@@ -202,7 +202,7 @@ export function DashboardShell() {
   // 選手が切り替わったらフィルターリセット不要だが、試合選択は各サブページで管理
 
   // ── Players ──
-  const { data: playersResp, isLoading: loadingPlayers } = useQuery({
+  const { data: playersResp, isLoading: loadingPlayers, isError: playersError, refetch: refetchPlayers } = useQuery({
     queryKey: ['players'],
     queryFn: () => apiGet<{ success: boolean; data: Player[] }>('/players'),
   })
@@ -262,6 +262,15 @@ export function DashboardShell() {
     setFilterDateTo(null)
   }, [selectedPlayerId])
 
+  // player ロールは自分の 1 プロフィールしか見られない。選手が 1 人に確定したら
+  // 毎回「選手を選択してください」で止めず自動選択する (監査 #611)。
+  // 複数候補がある場合や他ロールでは従来どおり手動選択を維持する。
+  useEffect(() => {
+    if (role === 'player' && selectedPlayerId == null && sortedPlayers.length === 1) {
+      setSelectedPlayerId(sortedPlayers[0].id)
+    }
+  }, [role, selectedPlayerId, sortedPlayers])
+
   const cardBg = isLight ? 'bg-gray-50' : 'bg-gray-900'
   const borderColor = isLight ? 'border-gray-200' : 'border-gray-800'
   const textPrimary = isLight ? 'text-gray-900' : 'text-white'
@@ -302,7 +311,7 @@ export function DashboardShell() {
             </span>
             {role && (
               <span className={`${ROLE_BADGE_SHAPE} text-[10px] ${(isLight ? ROLE_BADGE_CLASS_LIGHT : ROLE_BADGE_CLASS_DARK)[role] ?? (isLight ? 'bg-white border-gray-300 text-gray-700' : 'bg-gray-800 border-gray-600 text-gray-200')}`}>
-                {ROLE_LABELS[role] ?? role}
+                {t('roles.' + role, role)}
               </span>
             )}
           </div>
@@ -316,7 +325,7 @@ export function DashboardShell() {
             <h1 className="text-xl font-semibold">{t('nav.dashboard_title', 'ダッシュボード')}</h1>
             {role && (
               <span className={`${ROLE_BADGE_SHAPE} ${(isLight ? ROLE_BADGE_CLASS_LIGHT : ROLE_BADGE_CLASS_DARK)[role] ?? (isLight ? 'bg-white border-gray-300 text-gray-700' : 'bg-gray-800 border-gray-600 text-gray-200')}`}>
-                {ROLE_LABELS[role] ?? role}
+                {t('roles.' + role, role)}
               </span>
             )}
           </div>
@@ -345,7 +354,11 @@ export function DashboardShell() {
           </div>
         </div>
 
-        {!selectedPlayerId ? (
+        {playersError ? (
+          <div className="flex min-h-[40vh] items-center justify-center">
+            <QueryErrorNotice onRetry={() => refetchPlayers()} />
+          </div>
+        ) : !selectedPlayerId ? (
           <div className="flex min-h-[40vh] items-center justify-center text-gray-500 text-sm">
             {t('common.please_select_player', '選手を選択してください')}
           </div>
@@ -414,7 +427,8 @@ export function DashboardShell() {
                     icon={<MIcon name="trending_up" size={18} />}
                     label={t('auto.DashboardShell.k_rally_win_rate')}
                     value={descriptive?.win_rate !== undefined ? pct(descriptive.win_rate) : undefined}
-                    sampleSize={descriptive?.total_rallies}
+                    sampleSize={descriptive?.total_matches}
+                    sampleUnit="matches"
                   />
                 )}
                 <StatCard
@@ -560,11 +574,13 @@ export function DashboardShell() {
                   <Route
                     path="growth"
                     element={
-                      <DashboardGrowthPage
-                        playerId={selectedPlayerId}
-                        filters={filters}
-                        sortedPlayers={sortedPlayers}
-                      />
+                      role === 'player'
+                        ? <Navigate to="/dashboard/overview" replace />
+                        : <DashboardGrowthPage
+                            playerId={selectedPlayerId}
+                            filters={filters}
+                            sortedPlayers={sortedPlayers}
+                          />
                     }
                   />
                   <Route

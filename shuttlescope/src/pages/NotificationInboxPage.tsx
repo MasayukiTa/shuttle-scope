@@ -71,6 +71,9 @@ export function NotificationInboxPage() {
     mutationFn: ({ inquiryId, status, admin_note }: { inquiryId: number; status: PublicInquiryRow['status']; admin_note?: string | null }) =>
       publicInquiryUpdate(inquiryId, { status, admin_note }),
     onSuccess: invalidateAll,
+    onError: () => {
+      window.alert(t('auto.NotificationInboxPage.mutation_failed'))
+    },
   })
 
   const deleteMutation = useMutation({
@@ -78,6 +81,9 @@ export function NotificationInboxPage() {
     onSuccess: async (_r, id) => {
       if (selectedId === id) setSelectedId(null)
       await invalidateAll()
+    },
+    onError: () => {
+      window.alert(t('auto.NotificationInboxPage.mutation_failed'))
     },
   })
 
@@ -89,10 +95,18 @@ export function NotificationInboxPage() {
       if (selectedId != null && deletedIds.has(selectedId)) setSelectedId(null)
       setSelectedIds(new Set())
       setSelectionMode(false)
+      // 期間指定削除の入力条件とモーダルは、API 成功後にのみ閉じて消す
+      setDateModalOpen(false)
+      setDateFrom('')
+      setDateTo('')
       await invalidateAll()
       // 件数フィードバック（通知方式はプロジェクト内の toast/alert を使用）
       // 今は最小限で alert に寄せる
       window.alert(t('auto.NotificationInboxPage.k32', { n: resp.data?.deleted ?? 0 }))
+    },
+    onError: () => {
+      // 失敗時は入力条件・選択状態を保持したままエラーを明示する
+      window.alert(t('auto.NotificationInboxPage.mutation_failed'))
     },
   })
 
@@ -146,9 +160,6 @@ export function NotificationInboxPage() {
     if (dateFrom) body.created_after = new Date(dateFrom).toISOString()
     if (dateTo) body.created_before = new Date(dateTo).toISOString()
     bulkDeleteMutation.mutate(body)
-    setDateModalOpen(false)
-    setDateFrom('')
-    setDateTo('')
   }
 
   // ── レイアウト用フラグ ──────────────────────────────────────
@@ -269,6 +280,12 @@ export function NotificationInboxPage() {
                         }
                         setSelectedId(item.id)
                         setDraftNote(item.admin_note ?? '')
+                        // #651: 項目を開いた時点で未読(new)なら確認中(reviewed)へ遷移させ、
+                        // Sidebar の未読バッジと実際の既読状態を同期させる。
+                        // admin_note は現在値を渡し、閲覧だけで上書き消去されないようにする。
+                        if (item.status === 'new') {
+                          updateMutation.mutate({ inquiryId: item.id, status: 'reviewed', admin_note: item.admin_note })
+                        }
                       }}
                       aria-label={[
                         item.name,
@@ -364,7 +381,8 @@ export function NotificationInboxPage() {
                       key={status}
                       type="button"
                       onClick={() => updateMutation.mutate({ inquiryId: selected.id, status, admin_note: draftNote })}
-                      className={`px-3 py-2 rounded-ss-md text-sm font-medium border ${
+                      disabled={updateMutation.isPending}
+                      className={`px-3 py-2 rounded-ss-md text-sm font-medium border disabled:opacity-50 disabled:cursor-not-allowed ${
                         selected.status === status
                           ? 'bg-[var(--ss-brand)] text-white border-[var(--ss-brand)]'
                           : 'bg-[var(--ss-surface-2)] text-[var(--ss-t1)] border-[var(--ss-border)]'

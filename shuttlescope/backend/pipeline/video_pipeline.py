@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, undefer
 
 from backend.db.models import (
     AnalysisJob,
@@ -265,8 +265,11 @@ def detect_and_store_rally_boundaries(db: Session, match_id: int) -> dict:
     from backend.db.models import MatchCVArtifact, Recording
 
     def _latest(atype: str):
+        # PR1: この関数の戻り値は .data を json.loads する（shuttle/player frames）ため
+        # undefer で data 列を 1 クエリで取得する。
         return (
             db.query(MatchCVArtifact)
+            .options(undefer(MatchCVArtifact.data))
             .filter(
                 MatchCVArtifact.match_id == match_id,
                 MatchCVArtifact.artifact_type == atype,

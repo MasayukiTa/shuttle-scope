@@ -12,6 +12,7 @@ import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { MIcon } from '@/components/common/MIcon'
 import { useAuth } from '@/hooks/useAuth'
 import { isPlayerSearchBlocked } from '@/utils/playerSearchGuard'
+import { canCreatePlayer } from '@/utils/roleAccess'
 
 interface Props {
   onClose: () => void
@@ -23,7 +24,7 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
   const titleId = useId()
   const serverLabelId = useId()
   const sideLabelId = useId()
-  const { teamName: myTeamName } = useAuth()
+  const { teamName: myTeamName, role } = useAuth()
 
   const COMPETITION_TYPES = [
     { value: 'official', label: t('quick_start.competition_official') },
@@ -313,15 +314,23 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
                       </button>
                     ))}
                     {/* 新規作成オプション */}
-                    {opponentQuery.trim().length >= 1 && (
-                      <button
-                        onClick={useNewOpponent}
-                        className="w-full text-left px-3 py-2 hover:bg-[var(--ss-brand-tint)] text-sm flex items-center gap-2 text-[var(--ss-brand)] border-t border-[var(--ss-border)] transition-colors duration-fast ease-out"
-                      >
-                        <MIcon name="person_add" size={12} className="shrink-0" />
-                        <span>{t('quick_start.provisional_register_and_start', { name: opponentQuery.trim() })}</span>
-                      </button>
-                    )}
+                    {opponentQuery.trim().length >= 1 &&
+                      (canCreatePlayer(role) ? (
+                        <button
+                          onClick={useNewOpponent}
+                          className="w-full text-left px-3 py-2 hover:bg-[var(--ss-brand-tint)] text-sm flex items-center gap-2 text-[var(--ss-brand)] border-t border-[var(--ss-border)] transition-colors duration-fast ease-out"
+                        >
+                          <MIcon name="person_add" size={12} className="shrink-0" />
+                          <span>{t('quick_start.provisional_register_and_start', { name: opponentQuery.trim() })}</span>
+                        </button>
+                      ) : (
+                        <p
+                          role="note"
+                          className="px-3 py-2 text-xs border-t border-[var(--ss-border)] text-[var(--ss-t3)]"
+                        >
+                          {t('quick_start.provisional_requires_analyst')}
+                        </p>
+                      ))}
                   </>
                 )}
               </div>

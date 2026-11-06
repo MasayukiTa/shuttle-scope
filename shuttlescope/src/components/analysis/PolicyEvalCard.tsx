@@ -138,8 +138,8 @@ function OkStateRow({
       {/* ─ CI 帯 ── */}
       <p className={`text-[10px] ss-num ${textFaint}`}>
         {t('auto.PolicyEvalCard.ci_range', {
-          low: signedPct(row.ci_low),
-          high: signedPct(row.ci_high),
+          low: pct1(row.ci_low),
+          high: pct1(row.ci_high),
           width: pct1(ciWidth),
         })}
       </p>

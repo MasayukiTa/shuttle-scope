@@ -39,7 +39,7 @@ export function AnomalyBanner({ playerId, matchId, windowSize = 5 }: Props) {
   const [dismissed, setDismissed] = useState(false)
   const [detailOpen, setDetailOpen] = useState(false)
 
-  const { data } = useQuery<AnomalyResponse>({
+  const { data, isError } = useQuery<AnomalyResponse>({
     queryKey: ['live-anomaly', playerId, matchId, windowSize],
     queryFn: () =>
       apiGet<AnomalyResponse>('/analysis/live_anomaly', {
@@ -51,7 +51,23 @@ export function AnomalyBanner({ playerId, matchId, windowSize = 5 }: Props) {
     enabled: !!playerId && !!matchId,
   })
 
-  if (!data || !data.anomaly || dismissed) return null
+  if (dismissed) return null
+
+  // 取得失敗時は警告領域を消さず、更新できない旨を明示する (empty と区別する)。
+  if (isError) {
+    return (
+      <div
+        data-tutorial="dashboard.anomaly"
+        role="alert"
+        className="rounded-ss-lg border border-[var(--ss-warning-border)] bg-[var(--ss-warning-bg)] text-[var(--ss-warning-text)] p-3 flex items-start gap-3"
+      >
+        <MIcon name="warning" size={24} aria-hidden />
+        <div className="flex-1 text-sm">{t('auto.AnomalyBanner.error')}</div>
+      </div>
+    )
+  }
+
+  if (!data || !data.anomaly) return null
 
   const headline = i18n.language?.startsWith('en')
     ? (data.headline_en ?? data.headline_ja ?? '')

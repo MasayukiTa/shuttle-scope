@@ -81,9 +81,20 @@ interface Props {
   onCalibEditingChange?: (editing: boolean) => void
   /** videoSrc が無い / 失敗時の再取得トリガ (= 親の match query refetch)。 */
   onRetryVideo?: () => void
+  /**
+   * 動画は登録されているが、まだ再生可能な URL が得られていない状態か
+   * (= サーバ側で変換/準備中の可能性がある)。true のときだけ自動再取得を行う。
+   * 動画未登録や恒久エラーでは false を渡し、無駄な polling を避ける。
+   */
+  videoPending?: boolean
+  /**
+   * ローカル専用動画か (= 元端末にのみ存在し、Web/モバイルの HTTP stream では再生できない)。
+   * true のときは「準備中 / 再読み込み」ではなく「デスクトップアプリで再生」を案内する。
+   */
+  localOnly?: boolean
 }
 
-export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities, currentQuality, onQualityChange, cvCandidateTimestamps, resumeFromSec, onCalibEditingChange, onRetryVideo }: Props) {
+export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities, currentQuality, onQualityChange, cvCandidateTimestamps, resumeFromSec, onCalibEditingChange, onRetryVideo, localOnly, videoPending }: Props) {
   const { t } = useTranslation()
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -100,6 +111,9 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
   const [fitMode, setFitMode] = useState<'cover' | 'contain'>('contain')
   // 再生エラーを onscreen に出す (β: Safari Web Inspector に繋げない端末でも見えるよう)
   const [playError, setPlayError] = useState<string>('')
+  // 動画未配信の自動再取得を試行上限まで行った後の「取得できませんでした」状態。
+  // true の間は自動 polling を止め、明示エラーと手動再試行だけを出す。
+  const [pollExhausted, setPollExhausted] = useState(false)
   // iOS Safari は要素単位 requestFullscreen を持たないため、ホーム画面追加を促す
   const [iosFsHint, setIosFsHint] = useState(false)
   // 画質切替時に「現在の currentTime + 再生中フラグ」を保持して、新 src の
@@ -220,6 +234,8 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
   // 無い場合 (= サーバ準備中で URL 未発行) は親に match 再取得を促す。
   const retryVideo = useCallback(() => {
     setPlayError('')
+    // 手動再試行は打ち切り状態を解除し、自動再取得を再開できるようにする。
+    setPollExhausted(false)
     onRetryVideo?.()
     const v = videoRef.current
     if (v && videoSrc) {
@@ -227,16 +243,38 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
     }
   }, [onRetryVideo, videoSrc])
 
-  // videoSrc が無い間は数秒ごとに自動で再取得を試みる (= サーバが準備完了したら
-  // 自動で再生に移行)。手動「再読み込み」ボタンと併用。
+  // videoSrc が無い間の自動再取得。サーバ側で動画を変換/準備中の可能性がある
+  // (= videoPending) ときだけ試みる。恒久的に動画が無い・local-only・恒久エラーの
+  // ときは polling しない (長時間開いた端末からの無駄な試合 API 要求を防ぐ)。
+  //
+  // さらに指数 backoff (5s から倍々で最大 60s) と総試行回数の上限を設け、上限に
+  // 達したら polling を止めて pollExhausted = true にする。以後は「取得できません
+  // でした」という明示エラー状態を出し、手動「再読み込み」でのみ再試行する。
   useEffect(() => {
     if (videoSrc) return
+    if (localOnly) return
+    if (!videoPending) return
+    if (pollExhausted) return
     if (!onRetryVideo) return
-    const id = window.setInterval(() => {
-      onRetryVideo()
-    }, 5000)
-    return () => window.clearInterval(id)
-  }, [videoSrc, onRetryVideo])
+    const BASE_DELAY_MS = 5000
+    const MAX_DELAY_MS = 60000
+    const MAX_ATTEMPTS = 8
+    let attempts = 0
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const schedule = (delay: number) => {
+      timer = setTimeout(() => {
+        attempts += 1
+        onRetryVideo()
+        if (attempts >= MAX_ATTEMPTS) {
+          setPollExhausted(true)
+          return
+        }
+        schedule(Math.min(delay * 2, MAX_DELAY_MS))
+      }, delay)
+    }
+    schedule(BASE_DELAY_MS)
+    return () => { if (timer !== undefined) clearTimeout(timer) }
+  }, [videoSrc, onRetryVideo, localOnly, videoPending, pollExhausted])
 
   // events
   useEffect(() => {
@@ -300,7 +338,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
           error: v.error?.code,
           src: v.src,
         })
-        setPlayError(msg)
+        setPlayError(t('auto.PlayMode.playback_failed'))
       })
     }
   }, [])
@@ -480,19 +518,44 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
         }}
         onTouchStart={cropEditing ? onCropTouch : undefined}
       >
-        {!videoSrc ? (
+        {!videoSrc && localOnly ? (
+          // ローカル専用動画: Web/モバイルの HTTP stream は localfile:/// を必ず 404 で拒否する
+          // (設計どおり)。再試行しても再生可能にはならないので「準備中 / 再読み込み」は出さず、
+          // デスクトップアプリで再生する導線を plain text で案内する。
           <div className="absolute inset-0 flex items-center justify-center text-white text-sm p-4">
             <div className="text-center max-w-md">
-              <div className="text-base font-bold mb-2">{t('auto.PlayMode.k1')}</div>
-              <div className="text-xs text-white/80 mb-3">{t('auto.PlayMode.no_video_preparing')}</div>
+              <div className="text-base font-bold mb-2">{t('auto.PlayMode.local_only_title')}</div>
+              <div className="text-xs text-white/80 leading-relaxed">
+                {t('auto.PlayMode.local_only_desc_1')}<br />
+                {t('auto.PlayMode.local_only_desc_2')}
+              </div>
+              <div className="text-[10px] text-white/50 mt-3 font-mono break-all">
+                {t('auto.PlayMode.match_id', { id: matchId })}
+              </div>
+            </div>
+          </div>
+        ) : !videoSrc ? (
+          <div className="absolute inset-0 flex items-center justify-center text-white text-sm p-4">
+            <div className="text-center max-w-md">
+              {videoPending && !pollExhausted ? (
+                <>
+                  <div className="text-base font-bold mb-2">{t('auto.PlayMode.k1')}</div>
+                  <div className="text-xs text-white/80 mb-3">{t('auto.PlayMode.no_video_preparing')}</div>
+                </>
+              ) : (
+                <>
+                  <div className="text-base font-bold mb-2">{t('auto.PlayMode.no_video_unreachable_title')}</div>
+                  <div className="text-xs text-white/80 mb-3">{t('auto.PlayMode.no_video_unreachable_desc')}</div>
+                </>
+              )}
               <div className="text-xs text-white/80 leading-relaxed">
                 {t('auto.PlayMode.no_video_cause_title')}<br />
                 {t('auto.PlayMode.no_video_cause_1')}<br />
                 {t('auto.PlayMode.no_video_cause_2')}<br />
                 {t('auto.PlayMode.no_video_cause_3')}
               </div>
-              {/* 再読み込みボタン (手動)。自動で 5 秒ごとにも再試行している。
-                  タッチターゲット 44px を確保。 */}
+              {/* 再読み込みボタン (手動)。自動再取得は準備中のときだけ行い、
+                  上限到達後は手動のみ。タッチターゲット 44px を確保。 */}
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); retryVideo() }}
@@ -502,7 +565,9 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                 <MIcon name="refresh" size={18} />
                 {t('auto.PlayMode.no_video_retry')}
               </button>
-              <div className="text-[10px] text-white/60 mt-2">{t('auto.PlayMode.no_video_retrying')}</div>
+              {videoPending && !pollExhausted ? (
+                <div className="text-[10px] text-white/60 mt-2">{t('auto.PlayMode.no_video_retrying')}</div>
+              ) : null}
               <div className="text-[10px] text-white/50 mt-3 font-mono break-all">
                 {t('auto.PlayMode.match_id', { id: matchId })}
               </div>
@@ -544,7 +609,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
               }
               const detail = `video err ${codeMap[v.error?.code ?? -1] ?? v.error?.code} net=${v.networkState} ready=${v.readyState}`
               console.error('[mobile-annot] video error', detail, { src: v.src })
-              setPlayError(detail)
+              setPlayError(t('auto.PlayMode.playback_failed'))
             }}
           />
         )}
@@ -655,7 +720,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
             style={{ top: 'max(2.6rem, calc(env(safe-area-inset-top) + 2.2rem))' }}
             onClick={(e) => { e.stopPropagation(); setPlayError('') }}
           >
-            {t('auto.PlayMode.play_error', { msg: playError })}
+            {playError}
           </div>
         )}
 

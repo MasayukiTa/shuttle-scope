@@ -18,7 +18,7 @@ import { MatchRow } from '@/components/matchList/MatchRow'
 import { MIcon } from '@/components/common/MIcon'
 import { isPlayableVideoUrl } from '@/utils/videoSrc'
 import { isPlayerSearchBlocked } from '@/utils/playerSearchGuard'
-import { canWriteMatch } from '@/utils/roleAccess'
+import { canCreatePlayer, canWriteMatch } from '@/utils/roleAccess'
 import { localDateDaysAgo, localDateMonthsAgo, todayLocal } from '@/utils/localDate'
 
 // 試合登録フォーム
@@ -139,7 +139,7 @@ export function MatchListPage() {
   }
 
   // 試合一覧取得
-  const { data: matchesData, isLoading } = useQuery({
+  const { data: matchesData, isLoading, isError: matchesError, refetch: refetchMatches } = useQuery({
     queryKey: ['matches', filterPlayer, filterLevel, filterIncompleteOnly, role, playerId, teamName],
     queryFn: () => {
       const params: Record<string, string | boolean> = {}
@@ -246,6 +246,7 @@ export function MatchListPage() {
         localStorage.setItem(`shuttlescope.viewpoint.${newMatchId}`, analystSide)
       }
       queryClient.invalidateQueries({ queryKey: ['matches'] })
+      queryClient.invalidateQueries({ queryKey: ['players'] })
       setShowForm(false)
       setEditingMatchId(null)
       setForm(defaultForm())
@@ -263,6 +264,7 @@ export function MatchListPage() {
     mutationFn: ({ id, body }: { id: number; body: Record<string, unknown> }) => apiPut(`/matches/${id}`, body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['matches'] })
+      queryClient.invalidateQueries({ queryKey: ['players'] })
       setShowForm(false)
       setEditingMatchId(null)
       setForm(defaultForm())
@@ -668,8 +670,12 @@ export function MatchListPage() {
             />
             <span className={textSecondary}>{t('match.list.only_unfinished')}</span>
           </label>
-          <div className={`ml-auto flex items-center gap-2 text-sm ${textMuted}`}>
-            <MIcon name="download" size={13} />
+          <details className="ml-auto">
+            <summary className={`flex items-center gap-1 text-sm cursor-pointer select-none ${textMuted}`}>
+              <MIcon name="download" size={13} />
+              <span>{t('match.list.download_settings')}</span>
+            </summary>
+            <div className={`flex items-center gap-2 text-sm mt-2 ${textMuted}`}>
             <span>{t('match.list.quality')}</span>
             <select
               value={downloadQuality}
@@ -698,7 +704,8 @@ export function MatchListPage() {
               <option value="vivaldi">{t('auto.MatchListPage.k61')}</option>
               <option value="chromium">{t('auto.MatchListPage.k62')}</option>
             </select>
-          </div>
+            </div>
+          </details>
         </div>
         {/* 期間フィルター */}
         <div className="flex items-center gap-3 flex-wrap">
@@ -840,6 +847,18 @@ export function MatchListPage() {
         </div>
         {isLoading ? (
           <div className={`text-center ${textMuted} py-8`}>{t('app.loading')}</div>
+        ) : matchesError ? (
+          <div role="alert" className={`text-center ${textMuted} py-10`}>
+            <p className="mb-1 font-medium">{t('auto.MatchListPage.k64')}</p>
+            <p className="mb-4">{t('auto.MatchListPage.k65')}</p>
+            <button
+              onClick={() => { void refetchMatches() }}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white rounded-[var(--r-md)] text-sm"
+            >
+              <MIcon name="refresh" size={16} />
+              {t('auto.MatchListPage.k66')}
+            </button>
+          </div>
         ) : matches.length === 0 ? (
           <div className={`text-center ${textMuted} py-10`}>
             <p className="mb-4">{t('auto.MatchListPage.k37')}</p>
@@ -1074,7 +1093,16 @@ export function MatchListPage() {
                   <select
                     id="match-form-format"
                     value={form.format}
-                    onChange={(e) => setForm({ ...form, format: e.target.value as MatchFormat })}
+                    onChange={(e) => {
+                      const nextFormat = e.target.value as MatchFormat
+                      if (nextFormat === 'singles') {
+                        setForm({ ...form, format: nextFormat, partner_a_id: '', partner_b_id: '' })
+                        setPartnerAQuery('')
+                        setPartnerBQuery('')
+                      } else {
+                        setForm({ ...form, format: nextFormat })
+                      }
+                    }}
                     className={`w-full ${inputClass}`}
                   >
                     <option value="singles">{t('match.list.format_singles')}</option>
@@ -1096,6 +1124,7 @@ export function MatchListPage() {
                   isLight={isLight}
                   textSecondary={textSecondary}
                   placeholder={t('auto.MatchListPage.k16')}
+                  canCreate={canCreatePlayer(role)}
                 />
                 <PlayerCombobox
                   label={t('auto.MatchListPage.k44')}
@@ -1108,6 +1137,7 @@ export function MatchListPage() {
                   isLight={isLight}
                   textSecondary={textSecondary}
                   placeholder={t('auto.MatchListPage.k16')}
+                  canCreate={canCreatePlayer(role)}
                 />
 
                 {playerSearchFailed && (
@@ -1129,6 +1159,7 @@ export function MatchListPage() {
                       isLight={isLight}
                       textSecondary={textSecondary}
                       placeholder={t('auto.MatchListPage.k16')}
+                      canCreate={canCreatePlayer(role)}
                     />
                     <PlayerCombobox
                       label={t('auto.MatchListPage.k46')}
@@ -1140,6 +1171,7 @@ export function MatchListPage() {
                       isLight={isLight}
                       textSecondary={textSecondary}
                       placeholder={t('auto.MatchListPage.k16')}
+                      canCreate={canCreatePlayer(role)}
                     />
                   </>
                 )}
@@ -1213,6 +1245,11 @@ export function MatchListPage() {
                     <option value="walkover">{t('match.list.result_walkover')}</option>
                     <option value="unfinished">{t('match.list.result_unfinished')}</option>
                   </select>
+                  {/* G6 #524: 結果が完了セットから自動入力された試合では、手動で上書きできる旨を知らせる。 */}
+                  {editingMatchId !== null
+                    && matches.find((x) => x.id === editingMatchId)?.result_source === 'auto' && (
+                    <p className="text-[11px] text-blue-400 mt-0.5">{t('match.result_auto_generated')}</p>
+                  )}
                 </div>
                 <div>
                   <label htmlFor="match-form-score" className={`block text-sm ${textSecondary} mb-1`}>{t('match.score')}</label>

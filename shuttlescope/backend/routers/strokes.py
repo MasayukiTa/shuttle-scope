@@ -2,6 +2,7 @@
 from typing import Literal, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
@@ -22,7 +23,7 @@ def _stroke_require_scope(request: Request, db: Session, rally_id: int) -> Match
         raise HTTPException(status_code=404, detail="ラリーが見つかりません")
     gs = db.get(GameSet, rally.set_id)
     if not gs:
-        raise HTTPException(status_code=404, detail="セットが見つかりません")
+        raise HTTPException(status_code=404, detail="ゲームが見つかりません")
     match = db.get(Match, gs.match_id)
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
@@ -51,6 +52,33 @@ def _normalize_shot_type(value: str) -> str:
 def _human_land_zone_source(land_zone: Optional[str]) -> Optional[str]:
     """人が API 経由で land_zone を指定したときの入力元。値が空なら記録しない。"""
     return "human" if land_zone else None
+
+
+# 要望6 (仙台大 2026-11-05): ショットの意図タグの固定語彙。
+# shot_type / hit_zone_source と同じ思想で、自由文字列を DB に素通しさせない
+# (任意のクライアントが綴り違いや未知の値を保存でき、後の集計・AI 分析が壊れる)。
+# 未知の非空値は 'other' に寄せる。空・None は「意図未入力」として NULL のまま。
+INTENT_TAGS = frozenset(
+    {"deep", "net", "body", "sideline", "cross", "deception", "clear_safe", "other"}
+)
+
+
+def _canonicalize_intent_tag(value: Optional[str]) -> Optional[str]:
+    """意図タグを固定語彙へ正規化する。空なら NULL、未知の非空値は 'other'。"""
+    if value is None:
+        return None
+    v = value.strip()
+    if not v:
+        return None
+    return v if v in INTENT_TAGS else "other"
+
+
+def _clean_intent_note(value: Optional[str]) -> Optional[str]:
+    """自由記述の前後空白を除き、空なら NULL。長さは Pydantic 層で制限済み。"""
+    if value is None:
+        return None
+    v = value.strip()
+    return v or None
 
 
 class StrokeData(BaseModel):
@@ -96,6 +124,10 @@ class StrokeData(BaseModel):
     contact_zone: Optional[str] = Field(default=None, max_length=32)     # front/mid/rear
     movement_burden: Optional[str] = Field(default=None, max_length=32)  # low/medium/high
     movement_direction: Optional[str] = Field(default=None, max_length=32)  # forward/backward/lateral
+    # 要望6: ショットの意図メモ（選択式タグ + 短い自由記述）。どちらも任意。
+    # タグはハンドラ側で固定語彙へ正規化する (未知値は 'other')。
+    intent_tag: Optional[str] = Field(default=None, max_length=32)
+    intent_note: Optional[str] = Field(default=None, max_length=200)
     # アノテーション記録方式 (manual / assisted / corrected)
     source_method: Optional[str] = Field(default=None, max_length=32)
 
@@ -162,8 +194,40 @@ def stroke_to_dict(s: Stroke) -> dict:
         "contact_zone":       s.contact_zone,
         "movement_burden":    s.movement_burden,
         "movement_direction": s.movement_direction,
+        "intent_tag":         s.intent_tag,
+        "intent_note":        s.intent_note,
         "source_method":      s.source_method,
     }
+
+
+def _batch_existing_response(
+    db: Session,
+    existing: Rally,
+    idem_key: Optional[str],
+    user_id,
+    endpoint_id: str,
+) -> dict:
+    """同じ (set_id, rally_num) のラリーが既にある再送時の応答。
+
+    初回保存と同じ形 ({"success": True, "data": {"rally_id", "stroke_count"}}) を返す。
+    打球は足し直さず、既存の非削除ストローク数をそのまま返す。
+    """
+    stroke_count = (
+        db.query(Stroke)
+        .filter(Stroke.rally_id == existing.id, Stroke.deleted_at.is_(None))
+        .count()
+    )
+    response = {
+        "success": True,
+        "data": {
+            "rally_id": existing.id,
+            "stroke_count": stroke_count,
+        },
+    }
+    if idem_key:
+        from backend.utils.idempotency import store
+        store(idem_key, user_id, endpoint_id, response, status_code=201)
+    return response
 
 
 @router.post("/strokes/batch", status_code=201)
@@ -197,7 +261,7 @@ def batch_save_rally(
     # セット存在確認 + team scope (R48: player は自分の試合のみ可、scope 経由判定)
     game_set = db.get(GameSet, body.rally.set_id)
     if not game_set:
-        raise HTTPException(status_code=404, detail="セットが見つかりません")
+        raise HTTPException(status_code=404, detail="ゲームが見つかりません")
     match = db.get(Match, game_set.match_id)
     if match:
         require_match_scope(request, match, db)
@@ -221,12 +285,31 @@ def batch_save_rally(
                 detail={"code": "VALIDATION_ERROR", "message": error}
             )
 
+    # (set_id, rally_num) は一意 (migration 0053 / uq_rallies_set_id_rally_num_active)。
+    # sibling の POST /api/rallies と同じく、X-Idempotency-Key 無しでも同じ番号が
+    # 既にあればそれを返す。再開・再送・複数端末で同じ番号が二重に入ると、ラリー数と
+    # 下流の全指標が静かに壊れる。再送では打球を足さず、初回保存と同じ形の成功を返す。
+    existing = (
+        db.query(Rally)
+        .filter(
+            Rally.set_id == body.rally.set_id,
+            Rally.rally_num == body.rally.rally_num,
+            Rally.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if existing is not None:
+        return _batch_existing_response(
+            db, existing, idem_key, ctx_for_idem.user_id, endpoint_id
+        )
+
     # score_before を前のラリーから自動計算
     prev_rally = (
         db.query(Rally)
         .filter(
             Rally.set_id == body.rally.set_id,
             Rally.rally_num == body.rally.rally_num - 1,
+            Rally.deleted_at.is_(None),
         )
         .first()
     )
@@ -238,13 +321,35 @@ def batch_save_rally(
     rally.score_a_before = score_a_before
     rally.score_b_before = score_b_before
     db.add(rally)
-    db.flush()  # IDを取得するため先にflush
+    try:
+        db.flush()  # IDを取得するため先にflush
+    except IntegrityError:
+        # 上の検査と flush の間に別リクエストが同じ (set_id, rally_num) を入れた場合。
+        # 一意インデックスが最終的な砦。rollback して勝った側の行を再送として返す。
+        db.rollback()
+        existing = (
+            db.query(Rally)
+            .filter(
+                Rally.set_id == body.rally.set_id,
+                Rally.rally_num == body.rally.rally_num,
+                Rally.deleted_at.is_(None),
+            )
+            .first()
+        )
+        if existing is None:
+            raise
+        return _batch_existing_response(
+            db, existing, idem_key, ctx_for_idem.user_id, endpoint_id
+        )
 
     # ストローク一括保存（shot_type を canonical 化）
     saved_strokes = []
     for stroke_data in body.strokes:
         stroke_dict = stroke_data.model_dump()
         stroke_dict["shot_type"] = canonicalize_shot(stroke_dict.get("shot_type", "other"))
+        # 要望6: 意図タグは固定語彙へ正規化、自由記述は前後空白除去 (空は NULL)
+        stroke_dict["intent_tag"] = _canonicalize_intent_tag(stroke_dict.get("intent_tag"))
+        stroke_dict["intent_note"] = _clean_intent_note(stroke_dict.get("intent_note"))
         stroke = Stroke(
             rally_id=rally.id,
             land_zone_source=_human_land_zone_source(stroke_dict.get("land_zone")),
@@ -335,6 +440,9 @@ def create_stroke(
 
     submitted = body.model_dump()
     submitted["shot_type"] = _normalize_shot_type(submitted["shot_type"])
+    # 要望6: 意図タグ正規化・自由記述クリーンアップ
+    submitted["intent_tag"] = _canonicalize_intent_tag(submitted.get("intent_tag"))
+    submitted["intent_note"] = _clean_intent_note(submitted.get("intent_note"))
     valid, error = validate_stroke(submitted)
     if not valid:
         raise HTTPException(
@@ -427,6 +535,12 @@ def update_stroke(stroke_id: int, body: StrokeData, request: Request, db: Sessio
     changes = body.model_dump(exclude_unset=True)
     if "shot_type" in changes:
         changes["shot_type"] = _normalize_shot_type(changes["shot_type"])
+    # 要望6: 送られた場合のみ意図タグを正規化・自由記述をクリーンアップする
+    # (exclude_unset で送られていない項目は触らない=既存値を保持)。
+    if "intent_tag" in changes:
+        changes["intent_tag"] = _canonicalize_intent_tag(changes["intent_tag"])
+    if "intent_note" in changes:
+        changes["intent_note"] = _clean_intent_note(changes["intent_note"])
     apply_update(stroke, changes)
     # land_zone の入力元。値が変わった時だけ
     # 人の入力として記録する (CV が書いた値をそのまま送り返しただけなら 'cv' のまま)。

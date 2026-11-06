@@ -7,6 +7,14 @@ Match.result の語彙は win / loss / walkover / unfinished (db/models.py)。
 
 除外した試合は黙って捨てず、理由別の件数 (unfinished / zero_rally) を返す。
 unfinished と zero_rally が重なる試合は unfinished に数える (1 試合 1 回だけ)。
+
+audit #178: 検証用 fixture (BIAS_SEED 等の合成データ) は matches.is_synthetic で
+明示タグ付けされる。通常の母集団はこれを既定で除外する。管理ツールだけが
+include_synthetic=True で取り込める。synthetic は母集団に入る前の段階で外すため、
+excluded 件数 dict (unfinished / zero_rally の 2 キー) の形は変えない。この除外判定は
+ここ 1 か所 (split_analysis_population) に集約し、母集団を数える全ての解析
+(opponent_stats / tournament_level_comparison / pair_synergy / router_helpers 経由の
+各エンドポイント) が同じ定義を使う。
 """
 from typing import Iterable, Optional
 
@@ -30,8 +38,16 @@ def empty_excluded() -> dict[str, int]:
     return {EXCLUDED_UNFINISHED: 0, EXCLUDED_ZERO_RALLY: 0}
 
 
+def is_synthetic_match(match: Match) -> bool:
+    """検証用 fixture (合成データ) か。matches.is_synthetic が True のときだけ True。
+    False / NULL / 属性なし (旧データ) は実データ扱い (fail closed)。"""
+    return getattr(match, "is_synthetic", False) is True
+
+
 def exclusion_reason(result: Optional[str], rally_count: int) -> Optional[str]:
-    """解析母集団から外す理由。入れてよい試合は None。"""
+    """解析母集団から外す理由 (unfinished / zero_rally)。入れてよい試合は None。
+    synthetic (検証用 fixture) の除外は split_analysis_population 側で母集団に入る前に
+    行うため、ここには含めない (excluded 件数 dict の形を変えないため)。"""
     if not is_decided_result(result):
         return EXCLUDED_UNFINISHED
     if rally_count <= 0:
@@ -47,7 +63,11 @@ def rally_counts_by_match(db: Session, match_ids: Iterable[int]) -> dict[int, in
     rows = (
         db.query(GameSet.match_id, func.count(Rally.id))
         .join(Rally, Rally.set_id == GameSet.id)
-        .filter(GameSet.match_id.in_(ids), Rally.is_skipped == False)  # noqa: E712
+        .filter(
+            GameSet.match_id.in_(ids),
+            Rally.is_skipped == False,  # noqa: E712
+            Rally.deleted_at.is_(None),
+        )
         .group_by(GameSet.match_id)
         .all()
     )
@@ -55,12 +75,20 @@ def rally_counts_by_match(db: Session, match_ids: Iterable[int]) -> dict[int, in
 
 
 def split_analysis_population(
-    db: Session, matches: list[Match],
+    db: Session, matches: list[Match], include_synthetic: bool = False,
 ) -> tuple[list[Match], dict[str, int]]:
-    """試合一覧を (解析母集団に入る試合, 理由別の除外件数) に分ける。順序は保つ。"""
+    """試合一覧を (解析母集団に入る試合, 理由別の除外件数) に分ける。順序は保つ。
+
+    include_synthetic=False (既定): 検証用 fixture (is_synthetic) を母集団から外す。
+    include_synthetic=True: 管理ツール向け。synthetic も取り込む (他の除外理由は従来通り)。
+    """
     excluded = empty_excluded()
     if not matches:
         return [], excluded
+    # synthetic (検証用 fixture) は既定で母集団に入れない。include_synthetic=True の
+    # ときだけ取り込む。synthetic は excluded 件数 (unfinished / zero_rally) には数えない。
+    if not include_synthetic:
+        matches = [m for m in matches if not is_synthetic_match(m)]
     counts = rally_counts_by_match(db, (m.id for m in matches))
     included: list[Match] = []
     for m in matches:

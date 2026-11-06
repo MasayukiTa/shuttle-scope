@@ -87,9 +87,9 @@ PLAYER_RESPONSE_RULES: tuple[PlayerResponseRule, ...] = (
           neutral={"recent_loss_patterns": [], "risky_shots": []}),
     # --- 試合・選手一覧 ---
     _rule("matches.list_and_detail", r"/api/matches(/needs_review|/\d+)?",
-          {"result", "final_score"}),
+          {"result", "final_score", "result_source"}),
     _rule("matches.rallies", r"/api/matches/\d+/rallies", _RALLY_OUTCOME_KEYS),
-    _rule("players.matches", r"/api/players/\d+/matches", {"result", "final_score"}),
+    _rule("players.matches", r"/api/players/\d+/matches", {"result", "final_score", "result_source"}),
     _rule("players.stats", r"/api/players/\d+/stats", {"wins", "losses", "win_rate"}),
     # --- レビュー ---
     # winner= で絞り込むと自分が取ったラリーが分かるため、パラメータ自体を無視する

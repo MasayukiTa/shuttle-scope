@@ -17,15 +17,23 @@ export default function EmailVerifyPage() {
       setErrorMsg(t('auth.verify.missing_token'))
       return
     }
+    // アンマウント後の setState (teardown 済み環境) を中断フラグで抑止。
+    let active = true
     apiGet<{ success: boolean; data: { verified_email: string } }>(`/auth/email/verify?token=${encodeURIComponent(token)}`)
       .then((r) => {
+        if (!active) return
         setStatus('ok')
         setVerifiedEmail(r.data?.verified_email ?? null)
       })
       .catch((err) => {
+        if (!active) return
+        console.error('[EmailVerifyPage] verify failed', err)
         setStatus('error')
-        setErrorMsg(err?.message ?? String(err))
+        setErrorMsg(t('auth.verify.failed_invalid'))
       })
+    return () => {
+      active = false
+    }
   }, [params, t])
 
   return (

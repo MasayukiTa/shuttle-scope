@@ -26,6 +26,9 @@ export interface AuxiliaryItem {
 export interface QuestionMaster {
   items: QuestionItem[]
   auxiliary: AuxiliaryItem[]
+  // master の出所: 'server' = API から取得、'fallback' = クライアント内固定質問票 (監査 #635)。
+  // fallback は server master/version 未確認のため、記録の保存には使わない。
+  source?: 'server' | 'fallback'
 }
 
 export interface QuestionnairePayload {

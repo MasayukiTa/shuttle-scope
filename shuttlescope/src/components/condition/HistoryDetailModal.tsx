@@ -40,8 +40,11 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
   const { t } = useTranslation()
   const { role } = useAuth()
   const qc = useQueryClient()
-  // 削除は履歴一覧の各行ではなく、記録を開いたこの画面だけに置く (player には出さない)
-  const canDelete = role != null && role !== 'player'
+  // 削除は履歴一覧の各行ではなく、記録を開いたこの画面だけに置く。
+  // player 本人の記録削除は backend DELETE /conditions/{id} が cond.player_id == ctx.player_id で
+  // 明示的に許可しているため (監査 #640)、UI だけ塩がず全ログインロールに導線を出す。
+  // 権限外の記録はサーバが 403 を返し handleDelete の errorMsg で表示される。
+  const canDelete = role != null
 
   const answers = useMemo(() => parseQuestionnaire(record['questionnaire_json']), [record])
   const [deleting, setDeleting] = useState(false)
@@ -70,9 +73,10 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
 
   const answerKeys = Object.keys(answers).sort()
 
-  // 本人向けレスポンスは質問票の原回答を返さない (questionnaire_json が無い)。
-  // その場合に「質問票回答がありません」と出すと、回答済みの記録を未回答と誤認させるため、
-  // フィールド自体が無いときは節ごと出さない。
+  // 本人向けレスポンスは質問票の原回答 (questionnaire_json) を返す (監査 #654)。
+  // ただし開示範囲はロールにより異なり、サーバがフィールド自体を返さないロールもある。
+  // フィールドが無いときに「質問票回答がありません」と出すと回答済みを未回答と誤認させるため、
+  // フィールドが無いときは節ごと出さない。フィールドがあって中身が空のときだけ no_responses を出す。
   const hasQuestionnaireField = record['questionnaire_json'] !== undefined
 
   // けが・テーピングメモ / 自由記述。サーバがそのロールに返した場合だけ表示する (開示範囲は変えない)。

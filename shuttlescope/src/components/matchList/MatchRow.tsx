@@ -8,7 +8,7 @@ import { statusColor, DownloadStatus } from './matchListUtils'
 import { MIcon } from '@/components/common/MIcon'
 import { useAuth } from '@/hooks/useAuth'
 import { isPlayableVideoUrl } from '@/utils/videoSrc'
-import { canDeleteMatch, canWriteMatch } from '@/utils/roleAccess'
+import { canAnnotate, canDeleteMatch, canWriteMatch } from '@/utils/roleAccess'
 
 // MatchListPage のデスクトップ用テーブル行 1 件分。純粋抽出 (behavior 不変)。
 export interface MatchRowProps {
@@ -62,6 +62,11 @@ export function MatchRow({
             {t('match.list.public_pool_badge', 'Shared')}
           </span>
         )}
+        {m.is_demo_public && (
+          <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] bg-sky-500/20 text-sky-400" title={t('match.list.demo_public_title', 'Demo match visible read-only to other teams')}>
+            {t('match.list.demo_public_badge', 'Demo')}
+          </span>
+        )}
         {m.owner_team_display_id && (
           <span className={`ml-1 text-[10px] ${textSecondary}`} title={`登録チーム: ${m.owner_team_display_name ?? ''}`}>
             [{m.owner_team_display_id}]
@@ -112,6 +117,8 @@ export function MatchRow({
       </td>
       <td className="py-2">
         <div className="flex items-center gap-1">
+          {/* #669: アノテーション入力は書込み導線。backend が demo を 403 で拒否するため read-only の demo には出さない。 */}
+          {canAnnotate(role) && (
           <button
             onClick={() => navigate(`/annotator/${m.id}`)}
             className="p-1.5 rounded bg-blue-700 hover:bg-blue-600 text-white"
@@ -120,6 +127,7 @@ export function MatchRow({
           >
             <MIcon name="play_arrow" size={14} />
           </button>
+          )}
           {m.player_a_id && canOpenPrediction && (
             <button
               onClick={() => navigate(`/prediction?playerId=${m.player_a_id}`)}

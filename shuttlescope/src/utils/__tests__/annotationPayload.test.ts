@@ -86,6 +86,19 @@ describe('buildBatchPayload', () => {
     })
   })
 
+  it('要望6: 意図メモ (intent_tag / intent_note) を取りこぼさない', () => {
+    const withIntent: StrokeInput = {
+      ...baseStroke,
+      intent_tag: 'deep',
+      intent_note: '奥に打とうとしてネットにかけた',
+    }
+    const payload = buildBatchPayload({ ...baseArgs, strokes: [withIntent] })
+    expect(payload.strokes[0]).toMatchObject({
+      intent_tag: 'deep',
+      intent_note: '奥に打とうとしてネットにかけた',
+    })
+  })
+
   it('basic stroke 属性 (player / shot_type / hit_zone / land_zone / is_backhand / is_around_head / above_net / timestamp_sec) を保持する', () => {
     const payload = buildBatchPayload(baseArgs)
     expect(payload.strokes[0]).toMatchObject({
@@ -99,6 +112,19 @@ describe('buildBatchPayload', () => {
       above_net: true,
       timestamp_sec: 12.5,
     })
+  })
+
+  it('仙台大要望: hit_height (打球の高さ) を取りこぼさない', () => {
+    const withHeight: StrokeInput = { ...baseStroke, hit_height: 2 }
+    const payload = buildBatchPayload({ ...baseArgs, strokes: [withHeight] })
+    expect(payload.strokes[0].hit_height).toBe(2)
+  })
+
+  it('hit_height 未指定なら payload でも undefined（任意項目なので強制しない）', () => {
+    const noHeight: StrokeInput = { ...baseStroke }
+    delete noHeight.hit_height
+    const payload = buildBatchPayload({ ...baseArgs, strokes: [noHeight] })
+    expect(payload.strokes[0].hit_height).toBeUndefined()
   })
 
   it('rally メタ (set_id / rally_num / winner / end_type / rally_length / score / video_timestamp_start) を保持する', () => {

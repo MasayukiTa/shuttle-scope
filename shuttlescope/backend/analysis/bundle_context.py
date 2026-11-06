@@ -19,7 +19,8 @@ from sqlalchemy.orm import Session
 from backend.analysis.analysis_population import split_analysis_population
 from backend.analysis.player_context import involves_player
 from backend.analysis.router_helpers import _get_player_matches, _player_role_in_match
-from backend.db.models import GameSet, Match, Rally, Stroke
+from backend.db.models import GameSet, Match, Rally
+from backend.analysis.light_stroke import load_light_strokes
 
 
 @dataclass
@@ -76,10 +77,8 @@ def load_context(db: Session, player_id: int, filters: dict) -> AnalysisContext:
         if set_ids else []
     )
     rally_ids = [r.id for r in rallies]
-    strokes = (
-        db.query(Stroke).filter(Stroke.rally_id.in_(rally_ids)).all()
-        if rally_ids else []
-    )
+    # SD-09b 504 fix: full ORM materialize を避け軽量ロード (出力同一を実測検証済み)。
+    strokes = load_light_strokes(db, rally_ids)
 
     # --- rally_sequence_patterns 用 (フィルタなし + is_skipped=False) ---
     # フィルタがすべて default (None/"all") で matches と同一とみなせる場合は
@@ -126,10 +125,8 @@ def load_context(db: Session, player_id: int, filters: dict) -> AnalysisContext:
         else:
             rs_rallies = []
         rs_rally_ids = [r.id for r in rs_rallies]
-        rs_strokes = (
-            db.query(Stroke).filter(Stroke.rally_id.in_(rs_rally_ids)).all()
-            if rs_rally_ids else []
-        )
+        # SD-09b 504 fix: 軽量ロード (出力同一を実測検証済み)。
+        rs_strokes = load_light_strokes(db, rs_rally_ids)
 
     return AnalysisContext(
         player_id=player_id,

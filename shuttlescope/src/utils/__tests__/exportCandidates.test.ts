@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { classifyExportMatch } from '../exportCandidates'
+import { classifyExportMatch, isValidMatchDate } from '../exportCandidates'
 
 describe('classifyExportMatch', () => {
   it('通常の試合は valid', () => {
@@ -25,5 +25,19 @@ describe('classifyExportMatch', () => {
 
   it('複数に当てはまるときは日付不正を優先する', () => {
     expect(classifyExportMatch({ date: '0001-01-01', tournament: 'BIAS_SEED_1', result: 'unfinished' })).toBe('invalid_date')
+  })
+})
+
+
+describe('isValidMatchDate', () => {
+  it('1900 年以降のパース可能な日付は true', () => {
+    expect(isValidMatchDate('2026-04-15')).toBe(true)
+    expect(isValidMatchDate('1900-01-01')).toBe(true)
+  })
+
+  it('0001-01-01 や欠損・不正値は false', () => {
+    for (const date of ['0001-01-01', '1899-12-31', '', null, undefined, 'abc']) {
+      expect(isValidMatchDate(date)).toBe(false)
+    }
   })
 })

@@ -29,6 +29,8 @@ import { AdviceStrip } from '@/components/common/AdviceStrip'
 import {
   chooseMobileVideoQuality,
   getMobileVideoSrc,
+  hasVideo,
+  isLocalOnlyVideo,
   type MobileQualityOption,
   type MobileVideoQuality,
 } from '@/utils/videoSrc'
@@ -74,7 +76,13 @@ interface RallyRow {
 import { Pass1RallyEnd } from '@/components/mobileAnnotate/Pass1RallyEnd'
 import { Pass2ServeFinal } from '@/components/mobileAnnotate/Pass2ServeFinal'
 import { Pass3ShotDetail } from '@/components/mobileAnnotate/Pass3ShotDetail'
-import { startBackgroundFlush, getStatus, retryAllManual, enqueue, cancelQueued, flushNow } from '@/utils/mobileAnnotateQueue'
+import {
+  courtQuadFromCalibPoints,
+  inferCourtHalfFromCalibPoints,
+  type Quad,
+  type CourtHalf,
+} from '@/utils/courtHomography'
+import { startBackgroundFlush, getStatus, retryAllManual, discardLegacyManual, enqueue, cancelQueued, flushNow } from '@/utils/mobileAnnotateQueue'
 import {
   applyStrokeOverrides,
   conflictingLocals,
@@ -252,6 +260,26 @@ export function MobileAnnotatePage() {
   // calib 編集中フラグ: PlayMode 内 state だがこちらの overlay/chip も隠したいので
   // PlayMode 側から callback で同期する
   const [calibEditingTop, setCalibEditingTop] = useState(false)
+  // 入力画面 (Pass2/Pass3 の AnnotateOverlay) に渡すコート校正。
+  // MobileCourtCalib / PlayMode が localStorage `court-calib-{matchId}` に保存した
+  // 6 点 [TL,TR,BR,BL,NL,NR] を読み、先頭 4 点を courtQuad、ネット 2 点から half を導く。
+  // 校正が無い / 壊れている / 退化しているときは courtQuad=null となり、AnnotateOverlay は
+  // 従来の固定枠で動く (入力を止めない)。校正は PlayMode 側で保存されるため、校正編集を
+  // 閉じて annotate に戻った直後に再読込されるよう calibEditingTop を依存に含める。
+  const courtCalib = useMemo<{ quad: Quad | null; half: CourtHalf }>(() => {
+    if (!matchId) return { quad: null, half: 'far' }
+    try {
+      const raw = localStorage.getItem(`court-calib-${matchId}`)
+      if (!raw) return { quad: null, half: 'far' }
+      const pts = JSON.parse(raw)
+      return {
+        quad: courtQuadFromCalibPoints(pts),
+        half: inferCourtHalfFromCalibPoints(pts),
+      }
+    } catch {
+      return { quad: null, half: 'far' }
+    }
+  }, [matchId, calibEditingTop])
   // 診断: calib 中に "セット未登録" バナー等が裏で render されていないか確認。
   // 本来 !calibEditingTop で gate しているが、user 報告で center タップ阻害の
   // 可能性指摘あり。実機検証用 console.log は削除済み。
@@ -259,7 +287,9 @@ export function MobileAnnotatePage() {
     pending: number
     manualRetry: number
     unknownOwner: number
-  }>({ pending: 0, manualRetry: 0, unknownOwner: 0 })
+    // IndexedDB からキュー状態を読めなかった (監査 #616)。true の間は件数を信頼しない。
+    storageError: boolean
+  }>({ pending: 0, manualRetry: 0, unknownOwner: 0, storageError: false })
 
   // match 情報を取得 (動画 URL を得るため)
   const matchQuery = useQuery({
@@ -347,6 +377,13 @@ export function MobileAnnotatePage() {
   }, [playbackPreparing, refetchMatch])
 
   const videoSrc = getMobileVideoSrc(match, effectiveQuality, availableQualities)
+  // ローカル専用動画 (元端末にのみ存在し、HTTP stream が必ず 404 で拒否する) を判定する。
+  // この場合 PlayMode は「準備中 / 再読み込み」ではなく「デスクトップアプリで再生」を案内する。
+  const localOnly = isLocalOnlyVideo(match, availableQualities)
+  // 動画は登録されているのに、まだ再生可能な URL が得られていない状態か
+  // (= サーバ側で変換/準備中の可能性がある)。このときだけ PlayMode の自動再取得を許す。
+  // 動画未登録 (hasVideo=false) や local-only では false を渡し、無駄な polling を避ける。
+  const videoPending = !videoSrc && !localOnly && hasVideo(match)
 
   // セット一覧 + 既存ラリー取得 (Pass 1 用)
   const setsQuery = useQuery({
@@ -637,7 +674,7 @@ export function MobileAnnotatePage() {
     let cancelled = false
     const tick = async () => {
       const s = await getStatus()
-      if (!cancelled) setQueueStatus({ pending: s.pending, manualRetry: s.manualRetry, unknownOwner: s.unknownOwner })
+      if (!cancelled) setQueueStatus({ pending: s.pending, manualRetry: s.manualRetry, unknownOwner: s.unknownOwner, storageError: !s.ok })
     }
     void tick()
     const id = window.setInterval(tick, 2000)
@@ -679,6 +716,8 @@ export function MobileAnnotatePage() {
             <PlayMode
               matchId={matchId ?? ''}
               videoSrc={videoSrc}
+              localOnly={localOnly}
+              videoPending={videoPending}
               onTapVideo={(t) => {
                 setPausedAtSec(t)
                 setScreen('annotate')
@@ -704,6 +743,49 @@ export function MobileAnnotatePage() {
           {/* Pass overlay: annotate モード時に PlayMode 上に被せる
              NOTE: calib 編集中は隠す (= 編集に集中させる) */}
           {!calibEditingTop && screen === 'annotate' && !matchQuery.isLoading && !matchQuery.error && pass === 'rally' && (() => {
+            // セット一覧の取得に失敗したときは、空 = 「セット未登録」と誤表示してセット
+            // 作成へ誘導しない。既存セットがあるのに取得できていないだけかもしれず、
+            // そのまま POST /sets すると二重作成になる。取得失敗を明示し再試行させる (監査 #610)。
+            if (!currentSet && setsQuery.isError) {
+              return (
+                <div
+                  className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-4 text-center"
+                  style={{
+                    backgroundColor: 'rgba(0,0,0,0.9)',
+                    color: '#ffffff',
+                    zIndex: 50,
+                    pointerEvents: 'auto',
+                    touchAction: 'manipulation',
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  onTouchStart={(e) => e.stopPropagation()}
+                >
+                  <div className="text-sm font-bold" style={{ color: '#fca5a5' }}>
+                    {t('auto.MobileAnnotatePage.sets_fetch_failed')}
+                  </div>
+                  <button
+                    type="button"
+                    disabled={setsQuery.isFetching}
+                    onClick={() => { void setsQuery.refetch() }}
+                    className="px-4 py-2 rounded-ss-md text-sm font-bold disabled:opacity-60 text-white"
+                    style={{ backgroundColor: 'var(--ss-brand)' }}
+                  >
+                    {setsQuery.isFetching ? t('auto.MobileAnnotatePage.k2') : t('auto.MobileAnnotatePage.retry')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScreen('play')}
+                    className="px-3 py-1.5 rounded-ss-md text-xs font-bold text-white"
+                    style={{ backgroundColor: 'var(--ss-t2)' }}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      <MIcon name="arrow_back" size={14} style={{ color: '#ffffff' }} />
+                      {t('auto.MobileAnnotatePage.back_to_video')}
+                    </span>
+                  </button>
+                </div>
+              )
+            }
             if (!currentSet) {
               return (
                 <div
@@ -899,6 +981,8 @@ export function MobileAnnotatePage() {
                 rallies={mergedRallies}
                 sets={allSets}
                 pausedAtSec={pausedAtSec}
+                courtQuad={courtCalib.quad}
+                courtHalf={courtCalib.half}
                 onCancel={() => setScreen('play')}
               />
             </div>
@@ -911,6 +995,8 @@ export function MobileAnnotatePage() {
                 rallies={mergedRallies}
                 sets={allSets}
                 pausedAtSec={pausedAtSec}
+                courtQuad={courtCalib.quad}
+                courtHalf={courtCalib.half}
                 onCancel={() => setScreen('play')}
               />
             </div>
@@ -975,9 +1061,10 @@ export function MobileAnnotatePage() {
             <button
               type="button"
               onClick={() => {
-                // Ownerless unsent input is sent only after the user confirms it is their own.
-                if (window.confirm(t('auto.MobileAnnotatePage.queue_unknown_owner_confirm', { n: queueStatus.unknownOwner }))) {
-                  void retryAllManual({ claimLegacy: true })
+                // Ownerless input cannot be re-sent under another user's credentials (audit #634).
+                // Offer discard only; never claim it as the current user.
+                if (window.confirm(t('auto.MobileAnnotatePage.queue_unknown_owner_discard_confirm', { n: queueStatus.unknownOwner }))) {
+                  void discardLegacyManual().then(() => { setQueueStatus((s) => ({ ...s, unknownOwner: 0 })) })
                 }
               }}
               className="flex items-center gap-1 text-[10px] px-1.5 py-1 rounded shadow ss-overlay-chip-danger"
@@ -999,6 +1086,16 @@ export function MobileAnnotatePage() {
               <MIcon name="sync_problem" size={12} />
               {conflictRallies.length}
             </button>
+          )}
+          {queueStatus.storageError && (
+            <span
+              className="flex items-center gap-1 text-[10px] px-1.5 py-1 rounded shadow ss-overlay-chip-danger"
+              title={t('auto.MobileAnnotatePage.queue_storage_error')}
+              aria-label={t('auto.MobileAnnotatePage.queue_storage_error')}
+            >
+              <MIcon name="storage" size={12} />
+              {t('auto.MobileAnnotatePage.queue_storage_error_short')}
+            </span>
           )}
         </div>
         )}
@@ -1108,12 +1205,18 @@ function Pass2RallyPicker({
   rallies,
   sets,
   pausedAtSec,
+  courtQuad,
+  courtHalf,
   onCancel,
 }: {
   doubles: boolean
   rallies: RallyLite[]
   sets: SetInfo[]
   pausedAtSec: number
+  /** 保存済みコート校正 (先頭 4 隅)。無ければ null → AnnotateOverlay は固定枠で動く。 */
+  courtQuad: Quad | null
+  /** 校正を使うとき、入力片面が画面の near/far どちらに写っているか。 */
+  courtHalf: CourtHalf
   onCancel: () => void
 }) {
   const { t } = useTranslation()
@@ -1195,6 +1298,9 @@ function Pass2RallyPicker({
           server: selected.server,
           winner: selected.winner,
         }}
+        courtQuad={courtQuad}
+        courtHalf={courtHalf}
+        onNeedCalibration={onCancel}
         onCompleted={() => setSelected(null)}
         onCancel={() => setSelected(null)}
       />
@@ -1267,12 +1373,18 @@ function Pass3RallyPicker({
   rallies,
   sets,
   pausedAtSec,
+  courtQuad,
+  courtHalf,
   onCancel,
 }: {
   doubles: boolean
   rallies: RallyLite[]
   sets: SetInfo[]
   pausedAtSec: number
+  /** 保存済みコート校正 (先頭 4 隅)。無ければ null → AnnotateOverlay は固定枠で動く。 */
+  courtQuad: Quad | null
+  /** 校正を使うとき、入力片面が画面の near/far どちらに写っているか。 */
+  courtHalf: CourtHalf
   onCancel: () => void
 }) {
   const { t } = useTranslation()
@@ -1341,6 +1453,38 @@ function Pass3RallyPicker({
         </div>
       )
     }
+    // 既存 stroke の取得が終わる前・取得に失敗した時は Pass3 編集を開かない。空 =
+    // 「0 球」とみなすと、既存ストロークがあるラリーに 1 球目から上書き入力され、
+    // stroke_num 衝突や既存データの取りこぼしが起きる。取得失敗は明示して再試行させる (監査 #612)。
+    if (strokesQuery.isLoading || strokesQuery.isError) {
+      return (
+        <div className="flex-1 flex flex-col items-center justify-center text-[var(--ss-t2)] text-sm gap-3 p-4">
+          <div className="text-center">
+            {t(strokesQuery.isError
+              ? 'auto.MobileAnnotatePage.pass3_strokes_fetch_failed'
+              : 'auto.MobileAnnotatePage.pass3_checking_existing')}
+          </div>
+          <div className="flex gap-2">
+            {strokesQuery.isError && (
+              <button
+                type="button"
+                onClick={() => { void strokesQuery.refetch() }}
+                className="px-3 py-1.5 bg-[var(--ss-surface-3)] text-[var(--ss-t1)] rounded-ss-md text-xs"
+              >
+                {t('auto.MobileAnnotatePage.retry')}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setSelected(null)}
+              className="px-3 py-1.5 bg-[var(--ss-surface-3)] text-[var(--ss-t1)] rounded-ss-md text-xs"
+            >
+              {t('auto.MobileAnnotatePage.back_to_list')}
+            </button>
+          </div>
+        </div>
+      )
+    }
     const setInfo = sets.find((s) => s.id === selected.set_id)
     const serverStrokes = (strokesQuery.data?.data ?? []).map((s) => ({
       id: s.id,
@@ -1366,6 +1510,9 @@ function Pass3RallyPicker({
         }}
         strokes={all}
         doubles={doubles}
+        courtQuad={courtQuad}
+        courtHalf={courtHalf}
+        onNeedCalibration={onCancel}
         onStrokeAdded={(s) => {
           setLocalStrokes((prev) => [...prev, { ...s, rally_id: selected.id! }])
         }}

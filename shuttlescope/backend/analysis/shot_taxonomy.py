@@ -144,3 +144,115 @@ def canonicalize(shot_type: str) -> str:
 def ja_label(shot_type: str) -> str:
     """canonical shot_type から日本語ラベルを返す"""
     return SHOT_TYPE_JA.get(canonicalize(shot_type), "その他")
+
+
+# ── 大分類（簡易入力モード）─────────────────────────────────────────────────
+#
+# 仙台大学との打合せ (2026-11-05) で、研究者・アナリストから
+# 「同じスマッシュでもそこまで細かく分類できない」という要望が出た。
+# 18 canonical 小分類は、現場での素早い入力には細かすぎる場面がある。
+#
+# そこで「大分類（簡易モード）」を用意する:
+#   - 入力は 9 大分類（MAJOR_SHOTS）の粒度で行える。
+#   - ただし保存は従来どおり 18 canonical 小分類で行う。大分類は「入力の束ね」
+#     にすぎず、選ぶと代表 canonical 小分類（MAJOR_REPRESENTATIVE）へ写像して
+#     保存する。これにより遷移行列・EPV など 18 分類前提の解析はそのまま動く。
+#   - 小分類 → 大分類は MAJOR_OF_CANONICAL（18→9 の逆写像）。解析側で 18 分類を
+#     大分類へ畳んで集計したい場合に使う。
+#
+# フロント側ミラー: src/constants/shotMajorCategories.ts。両者がずれると、
+# 簡易モードで選んだ大分類がサーバで別の小分類に落ち、画面と解析が食い違う。
+# frontend のテスト (shotMajorCategories.test.ts) と backend のテスト
+# (test_shot_major_categories.py) で両者の一致を検査している。
+
+MAJOR_SHOTS: list[str] = [
+    "serve",
+    "net",
+    "drop",
+    "clear",
+    "smash",
+    "drive",
+    "lob",
+    "defensive",
+    "other",
+]
+
+MAJOR_SET: frozenset[str] = frozenset(MAJOR_SHOTS)
+
+MAJOR_SHOT_JA: dict[str, str] = {
+    "serve":     "サーブ",
+    "net":       "ネット前",
+    "drop":      "ドロップ",
+    "clear":     "クリア",
+    "smash":     "スマッシュ",
+    "drive":     "ドライブ",
+    "lob":       "ロブ",
+    "defensive": "守備",
+    "other":     "その他",
+}
+
+# 大分類 → 代表 canonical 小分類（簡易モードでの既定保存値）。
+MAJOR_REPRESENTATIVE: dict[str, str] = {
+    "serve":     "short_service",
+    "net":       "net_shot",
+    "drop":      "drop",
+    "clear":     "clear",
+    "smash":     "smash",
+    "drive":     "drive",
+    "lob":       "lob",
+    "defensive": "defensive",
+    "other":     "other",
+}
+
+# canonical 小分類 → 大分類（18→9 の逆写像）。CANONICAL_SHOTS を全て覆う。
+MAJOR_OF_CANONICAL: dict[str, str] = {
+    "short_service": "serve",
+    "long_service":  "serve",
+    "net_shot":      "net",
+    "cross_net":     "net",
+    "push_rush":     "net",
+    "flick":         "net",
+    "block":         "net",
+    "drop":          "drop",
+    "clear":         "clear",
+    "slice":         "clear",
+    "smash":         "smash",
+    "half_smash":    "smash",
+    "around_head":   "smash",
+    "drive":         "drive",
+    "lob":           "lob",
+    "defensive":     "defensive",
+    "cant_reach":    "other",
+    "other":         "other",
+}
+
+
+def major_of(shot_type: str) -> str:
+    """canonical / 表記ゆれの小分類を大分類へ畳む。未知は 'other'。
+
+    >>> major_of("half_smash")
+    'smash'
+    >>> major_of("Jump Smash")
+    'smash'
+    >>> major_of("unknown")
+    'other'
+    """
+    return MAJOR_OF_CANONICAL.get(canonicalize(shot_type), "other")
+
+
+def representative_of(major: str) -> str:
+    """大分類の代表 canonical 小分類を返す。未知は 'other'。
+
+    >>> representative_of("serve")
+    'short_service'
+    >>> representative_of("NET")
+    'net_shot'
+    >>> representative_of("bogus")
+    'other'
+    """
+    return MAJOR_REPRESENTATIVE.get(major.strip().lower(), "other")
+
+
+def major_ja_label(major: str) -> str:
+    """大分類コードから日本語ラベルを返す。"""
+    return MAJOR_SHOT_JA.get(major.strip().lower(), "その他")

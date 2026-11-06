@@ -23,7 +23,7 @@ from backend.analysis.role_view import own_slot
 from backend.analysis.shot_taxonomy import canonicalize, ja_label
 from backend.db.database import get_db
 from backend.db.models import Match, GameSet, Rally, Stroke
-from backend.utils.auth import AuthCtx, get_auth
+from backend.utils.auth import AuthCtx, get_auth, user_can_access_match
 from backend.utils.confidence import VERDICT_MIN_SAMPLE
 from backend.analysis.router_helpers import (
     _fetch_matches_sets_rallies,
@@ -94,6 +94,10 @@ def get_live_anomaly(
     # ── 対象試合 + 直近 N ラリー
     match = db.query(Match).filter(Match.id == match_id).first()
     if not match:
+        raise HTTPException(status_code=404, detail="match not found")
+    # Phase B-6 team 境界: 他チームの試合を match_id 直指定で読ませない。
+    # enumeration 防御のため 403 ではなく 404 を返す (他 router と揃える)。
+    if not user_can_access_match(ctx, match):
         raise HTTPException(status_code=404, detail="match not found")
     role_in_match = _player_role_in_match(match, player_id)
     if role_in_match is None:
@@ -283,6 +287,10 @@ def get_live_suggestions(
 
     match = db.query(Match).filter(Match.id == match_id).first()
     if not match:
+        raise HTTPException(status_code=404, detail="match not found")
+    # Phase B-6 team 境界: 他チームの試合を match_id 直指定で読ませない。
+    # enumeration 防御のため 403 ではなく 404 を返す (他 router と揃える)。
+    if not user_can_access_match(ctx, match):
         raise HTTPException(status_code=404, detail="match not found")
     target_role = _player_role_in_match(match, player_id)
     if target_role is None:

@@ -34,6 +34,160 @@ _INC_STATUS = {"investigating", "identified", "monitoring", "resolved"}
 _MNT_STATUS = {"scheduled", "in_progress", "completed", "canceled"}
 _ANN_STATUS = {"published", "draft"}
 
+# ── 公開コンポーネントへの射影 (F-T001-06) ─────────────────────────────────
+# muse F-T001-06: 匿名の閲覧者に内部コンポーネント名 (公開トンネル/GPU/解析ワーカー/
+# サーバ時刻…) と生インフラ数値 (CPU%/RAM%/VRAM/GPU%/edge 接続数/時刻ズレ秒) を
+# そのまま見せていた。公開ページには「利用者が意味を取れる」粒度のコンポーネントだけを
+# 平易な名前で出し、状態色と最終確認時刻、劣化時の平易な一文のみを示す。
+# 内部キー/ホスト名/生メトリクスは公開出力から除く (認証付き admin ビューは存在しないため
+# compute_public_status 側で射影する。内部集計 compute_components は不変)。
+#
+# 各公開コンポーネントは複数の内部コンポーネントを束ね、状態は「最も悪い」ものを採る。
+_PUBLIC_COMPONENTS = [
+    {"key": "web",      "ja": "ウェブサイト", "en": "Web site",       "members": ("api", "tunnel"),
+     "degraded_ja": "一部でアクセスしづらい状態が発生しています。",
+     "degraded_en": "Some visitors may have trouble reaching the site.",
+     "down_ja": "サイトに接続できない状態が発生しています。",
+     "down_en": "The site is currently unreachable for some visitors."},
+    {"key": "signin",   "ja": "サインイン",   "en": "Sign-in",        "members": ("clock",),
+     "degraded_ja": "サインインが一時的に失敗する場合があります。",
+     "degraded_en": "Signing in may intermittently fail.",
+     "down_ja": "サインインできない状態が発生しています。",
+     "down_en": "Signing in is currently unavailable."},
+    {"key": "database", "ja": "データベース", "en": "Database",       "members": ("database",),
+     "degraded_ja": "データの読み込みが遅くなる場合があります。",
+     "degraded_en": "Data may load more slowly than usual.",
+     "down_ja": "データの読み込みに問題が発生しています。",
+     "down_en": "We are having trouble loading data."},
+    {"key": "analysis", "ja": "映像解析",     "en": "Video analysis", "members": ("gpu", "worker"),
+     "degraded_ja": "映像の解析に通常より時間がかかる場合があります。",
+     "degraded_en": "Video analysis may take longer than usual.",
+     "down_ja": "映像の解析が一時的に利用できない状態です。",
+     "down_en": "Video analysis is temporarily unavailable."},
+]
+# 内部コンポーネントキー -> 公開コンポーネントキー (incident バッジの射影に使う)。
+_PUBLIC_OF_MEMBER = {m: pc["key"] for pc in _PUBLIC_COMPONENTS for m in pc["members"]}
+_PUBLIC_LABEL = {pc["key"]: (pc["ja"], pc["en"]) for pc in _PUBLIC_COMPONENTS}
+
+_STATUS_RANK = {"operational": 0, "degraded": 1, "down": 2}
+
+
+def _worst_status(statuses) -> str:
+    """内部コンポーネント状態群の「最も悪い」状態を返す。
+    観測のある (operational/degraded/down) もののみで判定し、
+    1 つも観測が無ければ 'unknown' を返す。"""
+    known = [s for s in statuses if s in _STATUS_RANK]
+    if not known:
+        return "unknown"
+    return max(known, key=lambda s: _STATUS_RANK[s])
+
+
+def _public_component_label(internal_component: Optional[str], *, en: bool = False) -> Optional[str]:
+    """内部コンポーネントキー (incident.component) を公開ラベルへ写す。
+    公開グループに属さない / 未知のキーは None (= 公開ページに出さない)。"""
+    if not internal_component:
+        return None
+    pub = _PUBLIC_OF_MEMBER.get(internal_component)
+    if pub is None:
+        return None
+    ja, en_label = _PUBLIC_LABEL[pub]
+    return en_label if en else ja
+
+
+def public_components(internal_components: list) -> list:
+    """内部コンポーネント集計 (compute_components の戻り) を、公開ページ用の
+    利用者向けコンポーネントへ射影する。
+
+    - 状態 (status) は束ねた内部コンポーネントの最悪値。
+    - 稼働率 (uptime_24h) は観測のある内部コンポーネントの平均。
+    - 最終確認 (sampled_at) は束ねた中で最新。
+    - 生インフラ数値 (detail/metric) は一切含めない。劣化/停止のときだけ
+      平易な一文 (note_ja/note_en) を付ける。
+    内部キー・ホスト名・生メトリクスは出力に含めない。"""
+    by_key = {c.get("key"): c for c in (internal_components or [])}
+    out = []
+    for pc in _PUBLIC_COMPONENTS:
+        members = [by_key[m] for m in pc["members"] if m in by_key]
+        status = _worst_status([m.get("status") for m in members])
+        uptimes = [m.get("uptime_24h") for m in members if m.get("uptime_24h") is not None]
+        uptime = round(sum(uptimes) / len(uptimes), 2) if uptimes else None
+        sampled = [m.get("sampled_at") for m in members if m.get("sampled_at")]
+        sampled_at = max(sampled) if sampled else None
+        note_ja = note_en = None
+        if status == "down":
+            note_ja, note_en = pc["down_ja"], pc["down_en"]
+        elif status == "degraded":
+            note_ja, note_en = pc["degraded_ja"], pc["degraded_en"]
+        out.append({
+            "key": pc["key"],
+            "name_ja": pc["ja"], "name_en": pc["en"],
+            "status": status,
+            "note_ja": note_ja, "note_en": note_en,
+            "uptime_24h": uptime,
+            "sampled_at": sampled_at,
+        })
+    return out
+
+
+_DAY_RANK = {"operational": 0, "degraded": 1, "down": 2}
+_RANK_DAY = {0: "operational", 1: "degraded", 2: "down"}
+
+
+def public_component_history(internal_history: dict) -> dict:
+    """compute_component_history (内部キー -> {days, uptime_pct}) を、公開コンポーネント
+    キー (web/signin/database/analysis) へ合成する。
+
+    各日のステータスは束ねた内部コンポーネントの「最も悪い」もの (observed のみ;
+    全て nodata の日は nodata)。色はその最悪日の内部 color をそのまま採る。
+    uptime_pct は観測のある内部コンポーネントの平均。公開キーだけを返す
+    (内部キー・内部 detail は出さない)。"""
+    out = {}
+    for pc in _PUBLIC_COMPONENTS:
+        members = [internal_history.get(m) for m in pc["members"] if internal_history.get(m)]
+        if not members:
+            out[pc["key"]] = {"days": [], "uptime_pct": None}
+            continue
+        n_days = max(len(m.get("days", [])) for m in members)
+        days = []
+        for i in range(n_days):
+            worst_rank = -1
+            worst_cell = None
+            date_label = None
+            for m in members:
+                mdays = m.get("days", [])
+                if i >= len(mdays):
+                    continue
+                cell = mdays[i]
+                date_label = date_label or cell.get("d")
+                st = cell.get("st")
+                if st in _DAY_RANK and _DAY_RANK[st] > worst_rank:
+                    worst_rank = _DAY_RANK[st]
+                    worst_cell = cell
+            if worst_cell is None:
+                days.append({"d": date_label, "st": "nodata", "sev": None, "color": None})
+            else:
+                days.append({
+                    "d": worst_cell.get("d", date_label),
+                    "st": _RANK_DAY[worst_rank],
+                    "sev": worst_cell.get("sev"),
+                    "color": worst_cell.get("color"),
+                })
+        uptimes = [m.get("uptime_pct") for m in members if m.get("uptime_pct") is not None]
+        uptime = round(sum(uptimes) / len(uptimes), 2) if uptimes else None
+        out[pc["key"]] = {"days": days, "uptime_pct": uptime}
+    return out
+
+
+# 公開コンポーネントキー -> 内部メンバーキー集合 (/api/public/status/day のフィルタ用)。
+def public_members(public_key: str) -> tuple:
+    for pc in _PUBLIC_COMPONENTS:
+        if pc["key"] == public_key:
+            return pc["members"]
+    return ()
+
+
+PUBLIC_COMPONENT_KEYS = [pc["key"] for pc in _PUBLIC_COMPONENTS]
+
 
 def _require_admin(request: Request):
     ctx = get_auth(request)
@@ -52,6 +206,69 @@ def _inc_dict(i: StatusIncident) -> dict:
         "began_at": i.began_at.isoformat() if i.began_at else None,
         "resolved_at": i.resolved_at.isoformat() if i.resolved_at else None,
     }
+
+
+# ── 公開用: incident タイトル/本文の内部用語を平易語へ写す (F-T001-06 続き) ──
+# 障害履歴に保存済みのタイトルには 'GPU が利用できません' のような内部コンポーネント名
+# (GPU/VRAM/CPU/RAM/tunnel/トンネル) がそのまま入っていることがある。保存データは変えず、
+# 公開ページに出すときだけ利用者が意味を取れる平易な表現へ写す。まず既知フレーズを
+# 完全一致で写し、無ければ内部キーワードを含むタイトルを種類ごとの汎用文へ写す。
+# どれにも当たらなければ原文のまま返す (運用者が書いた平易なタイトルを壊さない)。
+
+# 既知フレーズの完全一致マップ (前後空白は呼び出し側で strip 済み)。
+_PUBLIC_TITLE_EXACT = {
+    "GPU が利用できません": ("映像解析が利用できません", "Video analysis was unavailable"),
+}
+
+# 内部キーワード (大小無視) -> 公開カテゴリの平易文 (ja, en)。
+# 上から順に最初に含まれたものを採用する。
+_PUBLIC_TITLE_KEYWORDS = [
+    (("gpu", "vram"), ("映像解析が利用できません", "Video analysis was unavailable")),
+    (("tunnel", "トンネル"), ("サイトに接続しづらい状態が発生しました", "The site was hard to reach")),
+    (("cpu", "ram"), ("サーバーに負荷がかかっていました", "The service was under heavy load")),
+]
+
+
+def _map_public_title(text: Optional[str]) -> tuple:
+    """内部用語を含みうる incident タイトルを (ja, en) の平易表現へ写す。
+
+    - None/空はそのまま (そのままの値, None) を返す。
+    - 既知フレーズ完全一致を最優先。
+    - 次に内部キーワード (GPU/VRAM/CPU/RAM/tunnel/トンネル) の包含で種類別の汎用文へ。
+    - どれにも当たらなければ原文を ja/en 共通で返す (平易な運用者入力を壊さない)。
+    保存データは変更しない。表示時のみの写像。"""
+    if not text:
+        return text, text
+    stripped = text.strip()
+    exact = _PUBLIC_TITLE_EXACT.get(stripped)
+    if exact is not None:
+        return exact
+    low = stripped.lower()
+    for keywords, (ja, en) in _PUBLIC_TITLE_KEYWORDS:
+        if any(k in low for k in keywords):
+            return ja, en
+    return text, text
+
+
+def _public_inc_dict(i: StatusIncident) -> dict:
+    """公開ページ用の incident 射影。_inc_dict と同形だが、内部コンポーネントキー
+    (例 'tunnel'/'gpu') を公開ラベルへ写し、内部キーそのものは出さない (F-T001-06)。
+    公開グループに属さない component は None にして公開ページに出さない。
+    reason/title は運用者入力か公開用 auto 文言なのでそのまま公開する。"""
+    d = _inc_dict(i)
+    d.pop("component", None)
+    d["component_ja"] = _public_component_label(i.component, en=False)
+    d["component_en"] = _public_component_label(i.component, en=True)
+    # 保存済みタイトルに内部用語 (GPU/VRAM/CPU/RAM/tunnel/トンネル) が
+    # 含まれる場合は平易語へ写す。公開側では表示 (status.html.j2) も公開 API
+    # (/api/public/status) もこの辞書を使うので、内部用語が公開出力に漏れないよう
+    # title も ja の平易語で上書きする (元の title は admin 用 _inc_dict 側に残る)。
+    # 保存データ (StatusIncident.title) 自体は変更しない — 表示時の写像のみ。
+    ja, en = _map_public_title(i.title)
+    d["title"] = ja
+    d["title_ja"] = ja
+    d["title_en"] = en
+    return d
 
 
 def _mnt_dict(m: MaintenanceWindow) -> dict:
@@ -171,14 +388,14 @@ def compute_public_status(db: Session) -> dict:
     )
     try:
         from backend.services.status_monitor import compute_components
-        components = compute_components(db, now)
+        components = public_components(compute_components(db, now))
     except Exception:  # noqa: BLE001 — 監視未初期化でも公開ステータスは返す
         components = []
     return {
         "overall": overall,
         "components": components,
-        "active_incidents": [_inc_dict(i) for i in unresolved],
-        "recent_incidents": [_inc_dict(i) for i in recent],
+        "active_incidents": [_public_inc_dict(i) for i in unresolved],
+        "recent_incidents": [_public_inc_dict(i) for i in recent],
         "maintenance": [_mnt_dict(m) for m in maint],
         "recent_maintenance": [_mnt_dict(m) for m in recent_maint],
         "announcements": [_ann_dict(a) for a in announcements],

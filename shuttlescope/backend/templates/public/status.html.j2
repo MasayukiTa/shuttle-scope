@@ -243,18 +243,20 @@
       <div class="ss-comp-head">
         <span class="ss-comp-dot"></span>
         <span class="ss-comp-name">{{ c.name_en if _is_en else c.name_ja }}</span>
-        {% if c.detail %}<span class="ss-comp-detail">{{ c.detail }}</span>{% endif %}
+        {% set _c_note = (c.note_en if _is_en else c.note_ja) %}{% if _c_note %}<span class="ss-comp-detail">{{ _c_note }}</span>{% endif %}
         <span class="ss-comp-right">
           {% if c.uptime_pct is not none %}<span class="ss-comp-uptime">{{ '%.2f'|format(c.uptime_pct) }}%{% if not _is_en %} 稼働{% else %} uptime{% endif %}</span>{% endif %}
           <span class="ss-comp-badge st-{{ c.status }}">{{ comp_label.get(c.status, (c.status, c.status))[1 if _is_en else 0] }}</span>
         </span>
       </div>
       {% if c.history %}
+      {# 日別セグメントの状態を支援技術にも渡す。色だけに頼らず aria-label に状態名を含める。 #}
+      {% set bar_st_label = {'operational': ('正常','Operational'), 'degraded': ('低下','Degraded'), 'down': ('停止','Down'), 'nodata': ('データなし','No data')} %}
       <div class="ss-bar" role="group" aria-label="{% if _is_en %}90-day uptime, select a day for 10-minute detail{% else %}直近90日の稼働履歴。日を選ぶと10分刻みの詳細を表示{% endif %}">
-        {% for d in c.history %}<button type="button" class="ss-bar-seg" data-st="{{ d.st }}"
+        {% for d in c.history %}{% set _st_lbl = bar_st_label.get(d.st, (d.st, d.st))[1 if _is_en else 0] %}<button type="button" class="ss-bar-seg" data-st="{{ d.st }}"
           {% if d.color %}style="background:{{ d.color }}"{% endif %}
           data-day="{{ d.d }}" data-comp="{{ c.key }}" data-comp-name="{{ c.name_en if _is_en else c.name_ja }}"
-          title="{{ d.d }}" aria-label="{{ c.name_en if _is_en else c.name_ja }} {{ d.d }}"></button>{% endfor %}
+          title="{{ d.d }} — {{ _st_lbl }}" aria-label="{{ c.name_en if _is_en else c.name_ja }} {{ d.d }}: {{ _st_lbl }}"></button>{% endfor %}
       </div>
       <div class="ss-bar-axis"><span>{% if _is_en %}90 days ago{% else %}90日前{% endif %}</span><span>{% if _is_en %}Today{% else %}本日{% endif %}</span></div>
       {% endif %}
@@ -292,10 +294,10 @@
   {% for i in status.active_incidents %}
   <div class="ss-card">
     <div class="ss-row">
-      <span class="ss-title">{{ i.title }}</span>
+      <span class="ss-title">{{ i.title_en if _is_en else i.title_ja }}</span>
       <span class="ss-badge sev-{{ i.severity }}">{{ sev_label.get(i.severity, (i.severity, i.severity))[1 if _is_en else 0] }}</span>
       <span class="ss-badge st-{{ i.status }}">{{ inc_st_label.get(i.status, (i.status, i.status))[1 if _is_en else 0] }}</span>
-      {% if i.component %}<span class="ss-badge outline">{{ i.component }}</span>{% endif %}
+      {% set _i_comp = (i.component_en if _is_en else i.component_ja) %}{% if _i_comp %}<span class="ss-badge outline">{{ _i_comp }}</span>{% endif %}
       {% if i.source == 'auto' %}<span class="ss-badge outline">{% if _is_en %}auto-detected{% else %}自動検知{% endif %}</span>{% endif %}
     </div>
     {% if i.reason %}<div class="ss-reason">{{ i.reason }}</div>{% endif %}
@@ -340,7 +342,7 @@
       <summary class="ss-inc-sum">
         <span class="ss-when">{% if i.began_at %}<time class="ss-time" datetime="{{ i.began_at }}">{{ i.began_at }}</time>{% endif %}</span>
         <div class="ss-body">
-          <div class="ss-h"><span class="t">{{ i.title }}</span><span class="ss-badge sev-{{ i.severity }}">{{ sev_label.get(i.severity, (i.severity, i.severity))[1 if _is_en else 0] }}</span>{% if i.component %}<span class="ss-badge outline">{{ i.component }}</span>{% endif %}<span class="ss-inc-toggle"><span class="lbl-closed">{% if _is_en %}Details{% else %}詳細{% endif %}</span><span class="lbl-open">{% if _is_en %}Close{% else %}閉じる{% endif %}</span></span></div>
+          <div class="ss-h"><span class="t">{{ i.title_en if _is_en else i.title_ja }}</span><span class="ss-badge sev-{{ i.severity }}">{{ sev_label.get(i.severity, (i.severity, i.severity))[1 if _is_en else 0] }}</span>{% set _i_comp = (i.component_en if _is_en else i.component_ja) %}{% if _i_comp %}<span class="ss-badge outline">{{ _i_comp }}</span>{% endif %}<span class="ss-inc-toggle"><span class="lbl-closed">{% if _is_en %}Details{% else %}詳細{% endif %}</span><span class="lbl-open">{% if _is_en %}Close{% else %}閉じる{% endif %}</span></span></div>
         </div>
       </summary>
       <div class="ss-inc-detail">{{ i.reason }}</div>
@@ -349,7 +351,7 @@
     <div class="ss-item">
       <span class="ss-when">{% if i.began_at %}<time class="ss-time" datetime="{{ i.began_at }}">{{ i.began_at }}</time>{% endif %}</span>
       <div class="ss-body">
-        <div class="ss-h"><span class="t">{{ i.title }}</span><span class="ss-badge sev-{{ i.severity }}">{{ sev_label.get(i.severity, (i.severity, i.severity))[1 if _is_en else 0] }}</span>{% if i.component %}<span class="ss-badge outline">{{ i.component }}</span>{% endif %}</div>
+        <div class="ss-h"><span class="t">{{ i.title_en if _is_en else i.title_ja }}</span><span class="ss-badge sev-{{ i.severity }}">{{ sev_label.get(i.severity, (i.severity, i.severity))[1 if _is_en else 0] }}</span>{% set _i_comp = (i.component_en if _is_en else i.component_ja) %}{% if _i_comp %}<span class="ss-badge outline">{{ _i_comp }}</span>{% endif %}</div>
       </div>
     </div>
     {% endif %}
@@ -462,11 +464,12 @@
         box.setAttribute('data-st',st);
         var badge=box.querySelector('.ss-comp-badge');
         if(badge){badge.className='ss-comp-badge st-'+st;badge.textContent=CL[st][en?1:0];}
+        var note=(en?c.note_en:c.note_ja)||'';
         var det=box.querySelector('.ss-comp-detail');
-        if(det){det.textContent=c.detail||'';}
-        else if(c.detail){
+        if(det){det.textContent=note;}
+        else if(note){
           var right=box.querySelector('.ss-comp-right');
-          if(right){var sp=document.createElement('span');sp.className='ss-comp-detail';sp.textContent=c.detail;right.parentNode.insertBefore(sp,right);}
+          if(right){var sp=document.createElement('span');sp.className='ss-comp-detail';sp.textContent=note;right.parentNode.insertBefore(sp,right);}
         }
       });
     }).catch(function(){});

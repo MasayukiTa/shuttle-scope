@@ -35,7 +35,7 @@ def test_normal_names_still_pass(name):
 
 
 def test_strip_removes_hidden_chars_and_normalizes():
-    assert strip_invisible_format_chars("Taro​Yama‮da") == "TaroYamada"
+    assert strip_invisible_format_chars("Taro\u200bYama\u202eda") == "TaroYamada"
     assert strip_invisible_format_chars("TaroㅤYamada") == "TaroYamada"
     assert strip_invisible_format_chars(None) is None
     # NFD (濁点が分離) は NFC にそろえる
@@ -44,12 +44,12 @@ def test_strip_removes_hidden_chars_and_normalizes():
 
 
 def test_player_list_hides_legacy_hidden_chars_without_rewriting_storage(client, db_session):
-    p = _player(db_session, "Legacy​Name‮")
+    p = _player(db_session, "Legacy\u200bName\u202e")
     db_session.commit()
     r = client.get("/api/players", headers=_headers())
     assert r.status_code == 200, r.text
     names = [row["name"] for row in r.json()["data"]]
     assert "LegacyName" in names
-    assert all("​" not in n and "‮" not in n for n in names)
+    assert all("\u200b" not in n and "\u202e" not in n for n in names)
     db_session.refresh(p)
-    assert p.name == "Legacy​Name‮"  # 保存値はそのまま
+    assert p.name == "Legacy\u200bName\u202e"  # 保存値はそのまま

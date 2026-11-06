@@ -351,6 +351,36 @@ class TestFindNearestMatches:
         result = find_nearest_matches([m], 1, 'IC', n=1)
         assert result[0]['result'] == 'loss'
 
+    def test_format_match_adds_one_point(self):
+        # 大会レベル一致(+2) かつ フォーマット一致(+1) => 3点
+        m = _match(1, 'win', date(2024, 1, 1), 'IC', fmt='singles')
+        result = find_nearest_matches(
+            [m], 1, 'IC', n=1, current_format='singles'
+        )
+        assert result[0]['similarity_score'] == 3
+
+    def test_format_mismatch_no_bonus(self):
+        # 大会レベル一致(+2) のみ、フォーマット不一致 => 2点
+        m = _match(1, 'win', date(2024, 1, 1), 'IC', fmt='mens_doubles')
+        result = find_nearest_matches(
+            [m], 1, 'IC', n=1, current_format='singles'
+        )
+        assert result[0]['similarity_score'] == 2
+
+    def test_format_only_match_scores_one(self):
+        # 大会レベル不一致、フォーマットのみ一致 => 1点
+        m = _match(1, 'win', date(2024, 1, 1), 'SJL', fmt='singles')
+        result = find_nearest_matches(
+            [m], 1, 'IC', n=1, current_format='singles'
+        )
+        assert result[0]['similarity_score'] == 1
+
+    def test_no_current_format_is_backward_compatible(self):
+        # current_format 未指定: 従来どおり大会レベルのみ(+2)
+        m = _match(1, 'win', date(2024, 1, 1), 'IC', fmt='singles')
+        result = find_nearest_matches([m], 1, 'IC', n=1)
+        assert result[0]['similarity_score'] == 2
+
 
 # ── 最小標本 VERDICT_MIN_SAMPLE: 方向・注意・成長傾向・勝率の格下げ ───────────────────
 

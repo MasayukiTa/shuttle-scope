@@ -68,7 +68,8 @@ export interface QueueItem {
   /**
    * この入力を作った認証ユーザー (JWT の sub)。共有端末で別ユーザーの資格情報を
    * 使って再送しないための所有者。未設定 (旧データ / 所有者を特定できなかった入力)
-   * は自動再送せず、本人が「手動再送」を押した時にだけ、その時のユーザーのものになる。
+   * は自動でも手動でも再送しない。別ユーザーの資格情報で送らないため、所有者を
+   * 特定できない入力は現在のユーザーのものへ移し替えず、破棄確認へ回す (監査 #634)。
    */
   ownerUserId?: number
 }
@@ -563,25 +564,25 @@ export function startBackgroundFlush(): void {
 }
 
 /**
- * 手動再送の対象を決める。自分の入力は常に対象。所有者不明 (legacy) の入力は、
- * 現在のユーザーが明示的に自分のものだと確認した (claimLegacy) ときだけ対象にする。
- * 他人の入力は対象にしない。
+ * 手動再送の対象を決める。対象は現在のユーザー本人 (mine) の入力だけ。
+ * 所有者不明 (legacy) の入力は、別ユーザーの資格情報で送らないため手動再送でも
+ * 現在のユーザーのものへ移し替えない (監査 #634)。他人の入力も対象にしない。
  */
 export function manualRetryTargets<T extends Pick<QueueItem, 'ownerUserId' | 'manualRetry'>>(
   items: T[],
   me: number | null,
-  claimLegacy: boolean,
 ): T[] {
   if (me == null) return []
   return items.filter((it) => {
     if (!it.manualRetry) return false
-    const o = queueItemOwnership(it, me)
-    return o === 'mine' || (o === 'legacy' && claimLegacy)
+    return queueItemOwnership(it, me) === 'mine'
   })
 }
 
 /** UI 表示用ステータス */
 export async function getStatus(): Promise<{
+  /** IndexedDB の読み取りに成功したか。false のときは件数 (pending 等) は信頼できない。 */
+  ok: boolean
   pending: number
   manualRetry: number
   /** 所有者不明で手動再送待ちの入力。通常の再送では送らない (確認つきの操作でだけ送れる)。 */
@@ -599,6 +600,7 @@ export async function getStatus(): Promise<{
     const manual = items.filter((i) => i.manualRetry && queueItemOwnership(i, me) === 'mine')
     const unknown = items.filter((i) => i.manualRetry && queueItemOwnership(i, me) === 'legacy')
     return {
+      ok: true,
       pending: pending.length,
       manualRetry: manual.length,
       unknownOwner: unknown.length,
@@ -606,25 +608,25 @@ export async function getStatus(): Promise<{
       otherUsers: all.length - items.length,
     }
   } catch {
-    return { pending: 0, manualRetry: 0, unknownOwner: 0, oldestQueuedAt: null, otherUsers: 0 }
+    // IndexedDB にアクセスできないときは 0 件を「未送信なし」として返さない。
+    // ok:false を立て、呼び出し側でストレージ異常を明示表示させる (監査 #616)。
+    return { ok: false, pending: 0, manualRetry: 0, unknownOwner: 0, oldestQueuedAt: null, otherUsers: 0 }
   }
 }
 
 /**
- * UI から「手動再送」ボタンで呼ぶ。
- * claimLegacy を立てたときだけ、所有者不明の入力を現在のユーザーのものとして送る。
- * 呼び出し側は、ユーザーが自分の入力だと確認した後にだけ立てること。
+ * UI から「手動再送」ボタンで呼ぶ。再送するのは現在のユーザー本人の入力だけ。
+ * 所有者不明 (legacy) の入力は現在のユーザーのものへ移し替えず、再送もしない (監査 #634)。
  */
-export async function retryAllManual(options: { claimLegacy?: boolean } = {}): Promise<void> {
+export async function retryAllManual(): Promise<void> {
   const me = currentQueueOwnerId()
   if (me == null) return  // 誰として送るか分からない間は何もしない
   const db = await openDb()
   const items: QueueItem[] = await wrapReq(tx(db, 'readonly').getAll())
   const wstore = tx(db, 'readwrite')
   const now = Date.now()
-  // 他人の入力は、その人の操作でだけ再送する。所有者不明の入力は、確認つきの操作でだけ引き受ける。
-  for (const it of manualRetryTargets(items, me, options.claimLegacy === true)) {
-    if (queueItemOwnership(it, me) === 'legacy') it.ownerUserId = me
+  // 本人の入力だけを再送対象にする。他人・所有者不明の入力はここでは送らない。
+  for (const it of manualRetryTargets(items, me)) {
     it.manualRetry = false
     it.attempts = 0
     it.nextAttemptAt = now
@@ -633,6 +635,26 @@ export async function retryAllManual(options: { claimLegacy?: boolean } = {}): P
     await wrapReq(wstore.put(it))
   }
   void flushOnce()
+}
+
+/**
+ * 所有者不明 (legacy) で手動再送待ちの入力を破棄する。別ユーザーの資格情報では
+ * 送れないため、本人確認で復旧できない入力はユーザーの確認のうえ削除する (監査 #634)。
+ * 削除した件数を返す。現在のユーザー本人・他人の入力は対象にしない。
+ */
+export async function discardLegacyManual(): Promise<number> {
+  const me = currentQueueOwnerId()
+  const db = await openDb()
+  const items: QueueItem[] = await wrapReq(tx(db, 'readonly').getAll())
+  const wstore = tx(db, 'readwrite')
+  let removed = 0
+  for (const it of items) {
+    if (it.manualRetry && queueItemOwnership(it, me) === 'legacy' && it.localId != null) {
+      await wrapReq(wstore.delete(it.localId))
+      removed++
+    }
+  }
+  return removed
 }
 
 /** 開発・テスト用: キュー全消去 */

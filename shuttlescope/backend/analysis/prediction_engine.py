@@ -1300,10 +1300,13 @@ def find_nearest_matches(
     player_id: int,
     current_level: str,
     n: int = 5,
+    current_format: str | None = None,
 ) -> list[dict]:
     """
     特徴量類似度に基づく最近傍試合エビデンスの取得。
     similarity_score: 同大会レベル +2 / 同フォーマット +1
+    current_format が与えられた場合のみフォーマット一致 +1 を加点する
+    （未指定時は後方互換で大会レベルのみ）。
     """
     if not matches:
         return []
@@ -1313,6 +1316,8 @@ def find_nearest_matches(
         score = 0
         if (m.tournament_level or '') == current_level:
             score += 2
+        if current_format and (m.format or '') == current_format:
+            score += 1
         scored.append((score, m))
 
     scored.sort(key=lambda x: -x[0])

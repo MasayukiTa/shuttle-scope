@@ -1770,6 +1770,9 @@ class TeamScopeAccessControlMiddleware(BaseHTTPMiddleware):
         # 検証済み demo read は所有境界を緩める（demo team の試合を閲覧可能に）。
         if _demo_read:
             return await call_next(request)
+        # DELETE identifies a forecast, not a match; the handler checks its scope.
+        if request.method == "DELETE" and _re_acl.fullmatch(r"/api/prediction/human_forecast/\d+", path):
+            return await call_next(request)
         mid = _extract_id(path, _MATCH_ID_PATTERNS)
         if mid is None:
             return await call_next(request)
@@ -1784,6 +1787,13 @@ class TeamScopeAccessControlMiddleware(BaseHTTPMiddleware):
                 # 1) public プール (demo は最小権限なので対象外。自チームの試合だけ)
                 if role != "demo" and bool(getattr(m, "is_public_pool", False)):
                     return await call_next(request)
+                # 1.5) g33: 明示マーカー付きデモ試合は所有チーム外にも read-only で可視。
+                #      共有ヘルパー match_is_demo_public を唯一の判定点として使う。
+                #      GET のみ許可 (POST/PUT/PATCH/DELETE は従来どおり拒否)。
+                if request.method == "GET":
+                    from backend.utils.auth import match_is_demo_public
+                    if match_is_demo_public(m):
+                        return await call_next(request)
                 # 2) 自チームが owner
                 if team_id is not None and getattr(m, "owner_team_id", None) == team_id:
                     return await call_next(request)
@@ -3645,7 +3655,7 @@ function renderSnapshot(data) {
   }
   const badges = document.getElementById('setBadges');
   badges.innerHTML = sets.slice(0, -1).map(s =>
-    `<span class="set-badge ${s.winner ? 'win' : ''}">${escHtml(s.set_num)}セット ${escHtml(s.score_a)}-${escHtml(s.score_b)}</span>`
+    `<span class="set-badge ${s.winner ? 'win' : ''}">${escHtml(s.set_num)}ゲーム ${escHtml(s.score_a)}-${escHtml(s.score_b)}</span>`
   ).join('');
   const progress = Math.round((data.annotation_progress || 0) * 100);
   document.getElementById('progressFill').style.width = progress + '%';
