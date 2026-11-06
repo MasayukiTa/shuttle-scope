@@ -16,7 +16,7 @@ import cv2
 
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, Request
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, undefer
 
 from backend.db.database import get_db, SessionLocal
 from backend.db.models import Match, GameSet, Rally, MatchCVArtifact
@@ -290,7 +290,7 @@ def get_yolo_results(match_id: int, include_raw: bool = False, db: Session = Dep
     include_raw=True の場合、フレーム別生データも返す（大容量）。
     """
     artifact = (
-        db.query(MatchCVArtifact)
+        db.query(MatchCVArtifact).options(undefer(MatchCVArtifact.data))
         .filter(
             MatchCVArtifact.match_id == match_id,
             MatchCVArtifact.artifact_type == "yolo_player_detections",
@@ -358,7 +358,7 @@ def delete_yolo_results(match_id: int, db: Session = Depends(get_db)):
 def get_yolo_frames(match_id: int, db: Session = Depends(get_db)):
     """フレーム別生データのみを返す（オーバーレイ表示用）"""
     artifact = (
-        db.query(MatchCVArtifact)
+        db.query(MatchCVArtifact).options(undefer(MatchCVArtifact.data))
         .filter(
             MatchCVArtifact.match_id == match_id,
             MatchCVArtifact.artifact_type == "yolo_player_detections",
@@ -383,7 +383,7 @@ def align_yolo_tracknet(match_id: int, db: Session = Depends(get_db)):
     """
     # YOLO artifact
     yolo_artifact = (
-        db.query(MatchCVArtifact)
+        db.query(MatchCVArtifact).options(undefer(MatchCVArtifact.data))
         .filter(
             MatchCVArtifact.match_id == match_id,
             MatchCVArtifact.artifact_type == "yolo_player_detections",
@@ -398,7 +398,7 @@ def align_yolo_tracknet(match_id: int, db: Session = Depends(get_db)):
 
     # TrackNet artifact（あれば使用、なければ空）
     tracknet_artifact = (
-        db.query(MatchCVArtifact)
+        db.query(MatchCVArtifact).options(undefer(MatchCVArtifact.data))
         .filter(
             MatchCVArtifact.match_id == match_id,
             MatchCVArtifact.artifact_type == "tracknet_shuttle_track",
@@ -479,7 +479,7 @@ def align_yolo_tracknet(match_id: int, db: Session = Depends(get_db)):
 @router.get("/yolo/alignment/{match_id}", dependencies=[Depends(require_match_scope_dep)])
 def get_alignment(match_id: int, db: Session = Depends(get_db)):
     artifact = (
-        db.query(MatchCVArtifact)
+        db.query(MatchCVArtifact).options(undefer(MatchCVArtifact.data))
         .filter(
             MatchCVArtifact.match_id == match_id,
             MatchCVArtifact.artifact_type == "cv_alignment",
@@ -687,7 +687,7 @@ def _reapply_identity_track(db, match_id: int, frames_data: list[dict]) -> None:
     import datetime as _dt
     try:
         seed_art = (
-            db.query(MatchCVArtifact)
+            db.query(MatchCVArtifact).options(undefer(MatchCVArtifact.data))
             .filter(
                 MatchCVArtifact.match_id == match_id,
                 MatchCVArtifact.artifact_type == "player_identity_seed",
@@ -819,7 +819,7 @@ def _run_batch(
         existing_by_idx: dict[int, dict] = {}
         if resume or prev_roi:
             art = (
-                db.query(MatchCVArtifact)
+                db.query(MatchCVArtifact).options(undefer(MatchCVArtifact.data))
                 .filter(
                     MatchCVArtifact.match_id == match_id,
                     MatchCVArtifact.artifact_type == "yolo_player_detections",
@@ -1199,7 +1199,7 @@ def assign_and_track(
 ):
     """シードフレームの選手割り当てを全バッチフレームに IoU 追跡で伝播し保存する。"""
     art = (
-        db.query(MatchCVArtifact)
+        db.query(MatchCVArtifact).options(undefer(MatchCVArtifact.data))
         .filter(
             MatchCVArtifact.match_id == match_id,
             MatchCVArtifact.artifact_type == "yolo_player_detections",
@@ -1328,7 +1328,7 @@ def assign_and_track(
 def get_identity_track(match_id: int, db: Session = Depends(get_db)):
     """保存済み選手識別トラックを返す。"""
     art = (
-        db.query(MatchCVArtifact)
+        db.query(MatchCVArtifact).options(undefer(MatchCVArtifact.data))
         .filter(
             MatchCVArtifact.match_id == match_id,
             MatchCVArtifact.artifact_type == "player_identity_track",
@@ -1360,7 +1360,7 @@ def get_movement_stats(match_id: int, db: Session = Depends(get_db)):
 
     # ── identity_track artifact ──────────────────────────────────────────────
     track_art = (
-        db.query(MatchCVArtifact)
+        db.query(MatchCVArtifact).options(undefer(MatchCVArtifact.data))
         .filter(
             MatchCVArtifact.match_id == match_id,
             MatchCVArtifact.artifact_type == "player_identity_track",

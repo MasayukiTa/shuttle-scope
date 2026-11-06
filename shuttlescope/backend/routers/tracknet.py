@@ -9,7 +9,7 @@ import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, Request
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, undefer
 
 import json
 
@@ -108,6 +108,7 @@ def get_shuttle_track(match_id: int, db: Session = Depends(get_db)):
     """
     artifact = (
         db.query(MatchCVArtifact)
+        .options(undefer(MatchCVArtifact.data))
         .filter(
             MatchCVArtifact.match_id == match_id,
             MatchCVArtifact.artifact_type == "tracknet_shuttle_track",
@@ -631,7 +632,12 @@ def _run_batch(
             )
             .first()
         )
-        skip_shuttle_build = resume and existing_shuttle_art and existing_shuttle_art.data
+        # PR1: data 列は deferred（本番で約 6GB/行）。ここは「既存の軌跡があるか」を
+        # 見たいだけなので、6GB を遅延ロードする .data ではなく frame_count
+        # （保存時に必ず設定）で存在判定する。
+        skip_shuttle_build = bool(
+            resume and existing_shuttle_art and (existing_shuttle_art.frame_count or 0) > 0
+        )
         # S-4 step 1: 動画全体を走査した成果物 (coverage=full) をラリー窓だけの結果で
         # 置き換えない。ここで作る軌跡は Rally の窓（数十秒分）に過ぎない。
         from backend.cv.shuttle_track_meta import (
