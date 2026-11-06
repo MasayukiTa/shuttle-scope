@@ -34,7 +34,7 @@ from typing import Literal, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, undefer
 
 from backend.db.database import get_db
 from backend.db.models import Match, GameSet, Rally, Stroke, MatchCVArtifact
@@ -141,9 +141,9 @@ def build_cv_candidates(match_id: int, request: Request, db: Session = Depends(g
     match = _require_match_team_scope(request, db, match_id)
 
     # ── アーティファクト取得 ──────────────────────────────────────────────────
-    tracknet_artifact = _latest_artifact(db, match_id, ARTIFACT_TYPE_TRACKNET)
-    yolo_artifact     = _latest_artifact(db, match_id, ARTIFACT_TYPE_YOLO)
-    alignment_artifact = _latest_artifact(db, match_id, ARTIFACT_TYPE_ALIGNMENT)
+    tracknet_artifact = _latest_artifact(db, match_id, ARTIFACT_TYPE_TRACKNET, with_data=True)
+    yolo_artifact     = _latest_artifact(db, match_id, ARTIFACT_TYPE_YOLO, with_data=True)
+    alignment_artifact = _latest_artifact(db, match_id, ARTIFACT_TYPE_ALIGNMENT, with_data=True)
 
     tracknet_frames: list[dict] = []
     yolo_frames: list[dict]     = []
@@ -302,7 +302,7 @@ def build_cv_candidates(match_id: int, request: Request, db: Session = Depends(g
 def get_cv_candidates(match_id: int, request: Request, db: Session = Depends(get_db)):
     """生成済み CV 候補を返す。未生成の場合は data: null を返す。"""
     _require_match_team_scope(request, db, match_id)  # Round 258 P1
-    artifact = _latest_artifact(db, match_id, ARTIFACT_TYPE_CANDIDATES)
+    artifact = _latest_artifact(db, match_id, ARTIFACT_TYPE_CANDIDATES, with_data=True)
     if not artifact or not artifact.data:
         return {"success": True, "data": None}
 
@@ -382,7 +382,7 @@ def apply_cv_candidates(
     打者(Stroke.player)は空の時だけ書く。人の値と食い違う
     候補は変更せず、レスポンスの preserved_count に数える。
     """
-    artifact = _latest_artifact(db, match_id, ARTIFACT_TYPE_CANDIDATES)
+    artifact = _latest_artifact(db, match_id, ARTIFACT_TYPE_CANDIDATES, with_data=True)
     if not artifact or not artifact.data:
         raise HTTPException(status_code=404, detail="CV 候補がありません。先にビルドを実行してください。")
 
@@ -618,7 +618,7 @@ def get_review_queue(match_id: int, request: Request, db: Session = Depends(get_
     )
 
     # CV 候補からも review_required フラグを取得
-    artifact = _latest_artifact(db, match_id, ARTIFACT_TYPE_CANDIDATES)
+    artifact = _latest_artifact(db, match_id, ARTIFACT_TYPE_CANDIDATES, with_data=True)
     cv_review_reasons: dict[int, list[str]] = {}
     if artifact and artifact.data:
         try:
@@ -804,7 +804,7 @@ def _segment_key(start_sec: Optional[float], end_sec: Optional[float]) -> tuple:
 def _read_decisions(db: Session, match_id: int) -> list[dict]:
     """rally_boundary_decisions を古い順に返す（読めない行は飛ばす）。"""
     rows = (
-        db.query(MatchCVArtifact)
+        db.query(MatchCVArtifact).options(undefer(MatchCVArtifact.data))
         .filter(
             MatchCVArtifact.match_id == match_id,
             MatchCVArtifact.artifact_type == ARTIFACT_TYPE_BOUNDARY_DECISIONS,
@@ -826,7 +826,7 @@ def _read_decisions(db: Session, match_id: int) -> list[dict]:
 
 def _load_boundary_segments(db: Session, match_id: int) -> tuple[Optional[dict], Optional[str]]:
     """(rally_boundaries の中身, 読めなかった理由)。成果物が無ければ (None, 理由)。"""
-    artifact = _latest_artifact(db, match_id, ARTIFACT_TYPE_RALLY_BOUNDARIES)
+    artifact = _latest_artifact(db, match_id, ARTIFACT_TYPE_RALLY_BOUNDARIES, with_data=True)
     if not artifact or not artifact.data:
         return None, "ラリー境界の成果物がありません（全体走査と候補生成が未実行）"
     try:
@@ -1108,10 +1108,17 @@ def adopt_segment(
 
 # ── ヘルパー ──────────────────────────────────────────────────────────────────
 
-def _latest_artifact(db: Session, match_id: int, artifact_type: str) -> Optional[MatchCVArtifact]:
+def _latest_artifact(
+    db: Session, match_id: int, artifact_type: str, *, with_data: bool = False
+) -> Optional[MatchCVArtifact]:
+    # PR1: MatchCVArtifact.data は deferred（本番で約 6GB/行）。data を実際に
+    # json.loads する呼び出しだけ with_data=True を渡し、undefer で 1 クエリに
+    # まとめる。upsert（既存行への代入）では data を読まないので既定の False。
+    q = db.query(MatchCVArtifact)
+    if with_data:
+        q = q.options(undefer(MatchCVArtifact.data))
     return (
-        db.query(MatchCVArtifact)
-        .filter(
+        q.filter(
             MatchCVArtifact.match_id == match_id,
             MatchCVArtifact.artifact_type == artifact_type,
         )
