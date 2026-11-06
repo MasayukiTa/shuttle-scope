@@ -235,6 +235,13 @@ def update_settings(
             {"k": key, "v": json.dumps(value)},
         )
     db.commit()
+    # tracknet/yolo の read-only ヘルパが参照する短期キャッシュを無効化し、
+    # 設定変更が次の読み出しで確実に反映されるようにする。
+    try:
+        from backend.db import app_settings_cache
+        app_settings_cache.invalidate()
+    except Exception:
+        pass
     # 3) レスポンスも redact（将来 admin-only キーが追加された際の漏洩を予防）
     return {"success": True, "data": _redact_sensitive(_load_all(db), ctx)}
 
