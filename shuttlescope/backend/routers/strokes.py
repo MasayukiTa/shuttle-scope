@@ -246,19 +246,60 @@ def batch_save_rally(
     モバイル注釈キューが想定している iOS の背景化・弱電波の状況。結果として
     **ラリーと打球が二重に入り、ラリー数と下流の全指標が静かに壊れていた**。
     """
-    from backend.utils.auth import require_match_scope
-
     endpoint_id = "batch_save_rally"
     from backend.utils.auth import get_auth
     ctx_for_idem = get_auth(request)
+    # 冪等キーを「処理の最初」に予約する。commit 成功後にしか冪等レコードを
+    # 残さなかった旧方式では、commit 前に失敗した再送が本処理を最初から
+    # やり直し、(set_id, rally_num) の一意制約や strokes の重複を踏んでいた。
+    # 予約方式では、同じキーの近接再送は「処理中(409)」で入口から弾き、
+    # commit 前に失敗した経路では予約を解放して再送を許す。
+    reserved_key = None  # release すべきキー。store/409 が走ったら None に戻す。
     if idem_key:
-        from backend.utils.idempotency import is_valid_key, get_cached, replay_response
+        from backend.utils.idempotency import (
+            is_valid_key, reserve, replay_response, REPLAY, IN_PROGRESS,
+        )
         if not is_valid_key(idem_key):
             raise HTTPException(status_code=400, detail="X-Idempotency-Key の形式が不正です")
-        cached = get_cached(idem_key, ctx_for_idem.user_id, endpoint_id)
-        if cached is not None:
+        status, cached = reserve(idem_key, ctx_for_idem.user_id, endpoint_id)
+        if status == REPLAY:
             return replay_response(cached)
+        if status == IN_PROGRESS:
+            # 同じキーの処理が進行中 (または別ユーザ/別エンドポイントとの衝突)。
+            # 二重処理を入口で止める。再送側はしばらく待って再試行すればよい。
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "IDEMPOTENT_REQUEST_IN_PROGRESS",
+                    "message": "同じリクエストを処理中です。しばらく待って再送してください。",
+                },
+            )
+        # status == RESERVED: 予約を取得した。失敗経路で解放するため控える。
+        reserved_key = idem_key
 
+    try:
+        return _batch_save_rally_body(
+            body, request, db, idem_key, endpoint_id, ctx_for_idem
+        )
+    except Exception:
+        # commit 前に失敗した (DB 一時エラーの 503、バリデーション 422、
+        # scope 404/403、予期せぬ例外)。予約を解放して再送を許す。成功経路は
+        # store() が予約を完了へ昇格済みなので、ここには到達しない。
+        if reserved_key is not None:
+            from backend.utils.idempotency import release
+            release(reserved_key, ctx_for_idem.user_id, endpoint_id)
+        raise
+
+
+def _batch_save_rally_body(
+    body: BatchSaveRequest,
+    request: Request,
+    db: Session,
+    idem_key: Optional[str],
+    endpoint_id: str,
+    ctx_for_idem,
+):
+    from backend.utils.auth import require_match_scope
     # セット存在確認 + team scope (R48: player は自分の試合のみ可、scope 経由判定)
     game_set = db.get(GameSet, body.rally.set_id)
     if not game_set:
