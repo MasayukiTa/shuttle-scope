@@ -135,19 +135,18 @@ class TestPass3Finalize:
 
 class TestPendingStrokeHelper:
     def test_is_pending_detects_either_sentinel(self, db_session, rally):
-        full = _add_stroke(
-            db_session, rally.id, PENDING_FINAL_STROKE_NUM, PENDING_FINAL_SHOT_TYPE
-        )
+        # num だけ sentinel / type だけ sentinel をそれぞれ検出することを確認する。
+        # 両 sentinel のケースは OR 判定なので only_num / only_type で網羅される。
+        # 同一ラリーで stroke_num を重複させない (uq_strokes_rally_id_stroke_num_active)。
         only_num = _add_stroke(db_session, rally.id, PENDING_FINAL_STROKE_NUM, "smash")
         only_type = _add_stroke(db_session, rally.id, 2, PENDING_FINAL_SHOT_TYPE)
         normal = _add_stroke(db_session, rally.id, 1, "serve")
         db_session.commit()
-        assert is_pending_stroke(full)
         assert is_pending_stroke(only_num)
         assert is_pending_stroke(only_type)
         assert not is_pending_stroke(normal)
         assert filter_non_pending(
-            [full, only_num, only_type, normal]
+            [only_num, only_type, normal]
         ) == [normal]
 
     def test_exclude_pending_strokes_query(self, db_session, rally):
