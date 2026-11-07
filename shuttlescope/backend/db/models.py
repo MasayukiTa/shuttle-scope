@@ -396,6 +396,11 @@ class Match(Base):
     partner_b_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("players.id"), nullable=True)
     result: Mapped[str] = mapped_column(String(20), nullable=False)  # win/loss/walkover/unfinished
     final_score: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # "21-15, 18-21, 21-19"
+    # G6 #524: result / final_score の出所。'manual' = 人が入力した確定値 (絶対に
+    # 自動で上書きしない)、'auto' = 完了セットから end_set が自動入力した値。
+    # 既存行は全て人手入力とみなすため migration 0058 で 'manual' を埋める。
+    # early finish / walkover は manual のまま。
+    result_source: Mapped[str] = mapped_column(String(10), nullable=False, server_default="manual", default="manual")
     video_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     # video_local_path: 内部利用のみ。フロント / API レスポンスには露出させないこと。
     # ユーザーへ動画を提供するには video_token を使い /api/videos/{video_token}/stream 経由で配信する。
@@ -438,6 +443,23 @@ class Match(Base):
         Integer, ForeignKey("teams.id"), nullable=True, index=True
     )
     is_public_pool: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="false", index=True
+    )
+    # is_demo_public: True のときに限り、デモチーム所有の **デモ専用** 試合を
+    # 所有チーム以外のユーザーにも read-only で見せてよい、という明示マーカー。
+    # fail closed: 既定は False、既存行は全て False 扱い。実データ試合には付与しない。
+    # is_public_pool とは独立した別経路（管理者が設定する一般公開プールとは別概念）。
+    # 可視判定は単一の共有ヘルパ (utils.auth.match_is_demo_public) に集約する。
+    is_demo_public: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="false", index=True
+    )
+    # is_synthetic: True のときに限り、この試合を検証用 fixture (BIAS_SEED 等の
+    # 合成データ) とみなす明示マーカー。audit #178: 検証データが通常の成長・対戦相手・
+    # 大会・研究分析へ混入していた。fail closed: 既定は False、既存行は全て False 扱い。
+    # 実データ試合には付与しない。解析母集団からの除外は単一の共有ヘルパ
+    # (analysis.analysis_population.split_analysis_population, 既定で synthetic を除外。
+    # 管理ツールだけが include_synthetic=True で取り込める) に集約する。
+    is_synthetic: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False, server_default="false", index=True
     )
     home_team_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("teams.id"), nullable=True)
@@ -541,6 +563,16 @@ class Stroke(Base):
         Index("ix_strokes_shot_type",           "shot_type"),
         Index("ix_strokes_hit_zone",            "hit_zone"),
         Index("ix_strokes_land_zone",           "land_zone"),
+        # (rally_id, stroke_num) の一意性。論理削除 (deleted_at) された行とは
+        # 衝突させない部分一意インデックス。migration 0062 と同名・同定義で、
+        # bootstrap の create_all と alembic のどちらが先に作っても二重にならない。
+        Index(
+            "uq_strokes_rally_id_stroke_num_active",
+            "rally_id", "stroke_num",
+            unique=True,
+            sqlite_where=text("deleted_at IS NULL"),
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -587,11 +619,16 @@ class Stroke(Base):
     # Phase A: CV 元推定値 (override 後も保持してデータ品質計測)
     hit_zone_cv_original: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)
     land_zone: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)  # 同上
+    # land_zone の入力元: 'cv' = CV 自動適用が書いた値 / 'human' = 人が入力した値 /
+    # NULL = 不明 (本列の追加前の既存データ。値があれば人の入力として扱う)。
+    land_zone_source: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
 
     # 打球属性
     is_backhand: Mapped[bool] = mapped_column(Boolean, default=False)
     is_around_head: Mapped[bool] = mapped_column(Boolean, default=False)
     above_net: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)  # True=ネット上 False=ネット下
+    # 打球の高さ（任意・4段階）0=ネットより上 1=やや上 2=やや下 3=下。未入力は NULL。
+    hit_height: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     is_cross: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # タイミング
@@ -992,6 +1029,12 @@ class HumanForecast(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     # Phase B-7: 書き込みチーム
     team_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("teams.id"), nullable=True, index=True)
+    # G5 item #687: 作成者 (この予測を記録したログインユーザ)。削除可否の判定に使う。
+    # 旧行 (migration 0057 以前に作成) は NULL のまま残り、その場合は admin だけが削除できる。
+    # nullable: 既存行を backfill できない (free-text forecaster_name しか無い) ため。
+    creator_user_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=True, index=True
+    )
 
 
 
@@ -1151,6 +1194,7 @@ class Condition(Base):
     ccs_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     delta_prev: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     delta_3ma: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # 直近28「回」の記録の平均との差 (28日間ではない)。列名は互換性のため据え置き。
     delta_28ma: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     z_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     validity_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)

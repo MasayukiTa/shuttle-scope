@@ -22,7 +22,7 @@ def _stroke_require_scope(request: Request, db: Session, rally_id: int) -> Match
         raise HTTPException(status_code=404, detail="ラリーが見つかりません")
     gs = db.get(GameSet, rally.set_id)
     if not gs:
-        raise HTTPException(status_code=404, detail="セットが見つかりません")
+        raise HTTPException(status_code=404, detail="ゲームが見つかりません")
     match = db.get(Match, gs.match_id)
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
@@ -31,6 +31,26 @@ def _stroke_require_scope(request: Request, db: Session, rally_id: int) -> Match
     from backend.utils.auth import require_match_scope
     require_match_scope(request, match, db)
     return match
+
+
+# The mobile Pass 2 / Pass 3 flow saves two values that are not in the canonical shot
+# vocabulary: 'serve' for the first stroke and a placeholder for the last hit that Pass 3
+# classifies later (see Pass2ServeFinal.tsx / Pass3ShotDetail.tsx). They are the only
+# non-canonical values the single-stroke API keeps; every other value is canonicalized the
+# same way /strokes/batch does, so a raw client string never reaches the database.
+PENDING_FINAL_SHOT_TYPE = "__final_pending"
+_MOBILE_SHOT_TYPES = frozenset({"serve", PENDING_FINAL_SHOT_TYPE})
+
+
+def _normalize_shot_type(value: str) -> str:
+    if value in _MOBILE_SHOT_TYPES:
+        return value
+    return canonicalize_shot(value)
+
+
+def _human_land_zone_source(land_zone: Optional[str]) -> Optional[str]:
+    """人が API 経由で land_zone を指定したときの入力元。値が空なら記録しない。"""
+    return "human" if land_zone else None
 
 
 class StrokeData(BaseModel):
@@ -60,6 +80,8 @@ class StrokeData(BaseModel):
     is_backhand: bool = False
     is_around_head: bool = False
     above_net: Optional[bool] = None
+    # 打球の高さ（任意・4段階）0=ネットより上 1=やや上 2=やや下 3=下。範囲外は validate_stroke で弾く。
+    hit_height: Optional[int] = Field(default=None, ge=0, le=3)
     is_cross: bool = False
     timestamp_sec: Optional[float] = None
     # N-002: 空間座標拡張
@@ -123,9 +145,11 @@ def stroke_to_dict(s: Stroke) -> dict:
         "hit_zone_source": s.hit_zone_source,
         "hit_zone_cv_original": s.hit_zone_cv_original,
         "land_zone": s.land_zone,
+        "land_zone_source": s.land_zone_source,
         "is_backhand": s.is_backhand,
         "is_around_head": s.is_around_head,
         "above_net": s.above_net,
+        "hit_height": s.hit_height,
         "is_cross": s.is_cross,
         "timestamp_sec": s.timestamp_sec,
         "epv": s.epv,
@@ -176,7 +200,7 @@ def batch_save_rally(
     # セット存在確認 + team scope (R48: player は自分の試合のみ可、scope 経由判定)
     game_set = db.get(GameSet, body.rally.set_id)
     if not game_set:
-        raise HTTPException(status_code=404, detail="セットが見つかりません")
+        raise HTTPException(status_code=404, detail="ゲームが見つかりません")
     match = db.get(Match, game_set.match_id)
     if match:
         require_match_scope(request, match, db)
@@ -224,16 +248,41 @@ def batch_save_rally(
     for stroke_data in body.strokes:
         stroke_dict = stroke_data.model_dump()
         stroke_dict["shot_type"] = canonicalize_shot(stroke_dict.get("shot_type", "other"))
-        stroke = Stroke(rally_id=rally.id, **stroke_dict)
+        stroke = Stroke(
+            rally_id=rally.id,
+            land_zone_source=_human_land_zone_source(stroke_dict.get("land_zone")),
+            **stroke_dict,
+        )
         db.add(stroke)
         saved_strokes.append(stroke)
 
     # アノテーション進捗を更新
     _update_annotation_progress(game_set.match_id, db)
 
+    response = {
+        "success": True,
+        "data": {
+            "rally_id": rally.id,
+            "stroke_count": len(saved_strokes),
+        }
+    }
+    # 穴(1): 冪等キーを**同じトランザクション**に積んでから commit する。
+    # 以前は db.commit() の後に別セッションで store() しており、commit は
+    # 成功したのにレスポンス返送前/プロセス再起動でキーが残らず、再送が
+    # cache miss で本処理を再実行していた。ここで同じ db に add しておけば、
+    # 下の db.commit() でラリー・打球と一緒に commit され、原子的になる。
+    if idem_key:
+        from backend.utils.idempotency import store_in_session
+        store_in_session(db, idem_key, ctx_for_idem.user_id, endpoint_id, response, status_code=201)
+
     db.commit()
     # 試合の関与選手のみキャッシュ無効化（他選手の解析結果は保持）
     response_cache.bump_players(players_for_match(db, game_set.match_id))
+    # commit 成功後にだけ in-memory cache へ取り込む（rollback 時に
+    # in-memory だけ残って DB とズレるのを避ける）。
+    if idem_key:
+        from backend.utils.idempotency import remember_in_memory
+        remember_in_memory(idem_key, ctx_for_idem.user_id, endpoint_id, response, status_code=201)
 
     # S-001: アクティブセッションへスコア更新をブロードキャスト（非同期）
     import asyncio
@@ -265,16 +314,6 @@ def batch_save_rally(
         except Exception:
             pass
 
-    response = {
-        "success": True,
-        "data": {
-            "rally_id": rally.id,
-            "stroke_count": len(saved_strokes),
-        }
-    }
-    if idem_key:
-        from backend.utils.idempotency import store
-        store(idem_key, ctx_for_idem.user_id, endpoint_id, response, status_code=201)
     return response
 
 
@@ -308,14 +347,49 @@ def create_stroke(
 
     _stroke_require_scope(request, db, rally_id)
 
-    valid, error = validate_stroke(body.model_dump())
+    submitted = body.model_dump()
+    submitted["shot_type"] = _normalize_shot_type(submitted["shot_type"])
+    valid, error = validate_stroke(submitted)
     if not valid:
         raise HTTPException(
             status_code=422,
             detail={"code": "VALIDATION_ERROR", "message": error}
         )
 
-    stroke = Stroke(rally_id=rally_id, **body.model_dump())
+    # (rally_id, stroke_num) は DB 上 Index だけで一意制約ではない。Pass2 を同じラリーへ
+    # 再実行すると別キーの POST で #1 / #9999 が二重に入り、分析が系列を複製する。
+    # 同じ番号が既にある場合: 内容が同じなら再送として既存行を返し、違えば 409 で拒否する。
+    dup = (
+        db.query(Stroke)
+        .filter(
+            Stroke.rally_id == rally_id,
+            Stroke.stroke_num == body.stroke_num,
+            Stroke.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if dup is not None:
+        if any(getattr(dup, k) != v for k, v in submitted.items()):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "STROKE_NUM_CONFLICT",
+                    "message": "このラリーには同じストローク番号が既に保存されています",
+                    "stroke_num": body.stroke_num,
+                    "existing_stroke_id": dup.id,
+                },
+            )
+        response = {"success": True, "data": stroke_to_dict(dup)}
+        if idem_key:
+            from backend.utils.idempotency import store
+            store(idem_key, ctx_for_idem.user_id, endpoint_id, response, status_code=201)
+        return response
+
+    stroke = Stroke(
+        rally_id=rally_id,
+        land_zone_source=_human_land_zone_source(body.land_zone),
+        **submitted,
+    )
     touch(stroke)
     db.add(stroke)
     db.commit()
@@ -335,8 +409,46 @@ def update_stroke(stroke_id: int, body: StrokeData, request: Request, db: Sessio
     if not stroke:
         raise HTTPException(status_code=404, detail="ストロークが見つかりません")
     _stroke_require_scope(request, db, stroke.rally_id)
+    # 番号を変える更新(最終打の再採番・挿入に伴う後ろ送り)が、同じラリーの別 stroke と
+    # 衝突して同一 stroke_num を作らないようにする。番号を変えない更新は既存の重複データでも通す。
+    if body.stroke_num != stroke.stroke_num:
+        clash = (
+            db.query(Stroke.id)
+            .filter(
+                Stroke.rally_id == stroke.rally_id,
+                Stroke.stroke_num == body.stroke_num,
+                Stroke.id != stroke.id,
+                Stroke.deleted_at.is_(None),
+            )
+            .first()
+        )
+        if clash is not None:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "STROKE_NUM_CONFLICT",
+                    "message": "このラリーには同じストローク番号が既に保存されています",
+                    "stroke_num": body.stroke_num,
+                    "existing_stroke_id": clash[0],
+                },
+            )
     from backend.utils.db_update import apply_update
-    apply_update(stroke, body.model_dump())
+    previous_land_zone = stroke.land_zone
+    # 送られた項目だけを更新する (exclude_unset)。全項目を model_dump() で反映すると、
+    # モバイル Pass3 のように 5 項目だけ送る編集が、送らなかった座標・品質・姿勢・時刻・
+    # 移動特徴・由来を None / False で上書きして消していた (監査 #789)。
+    # 送られた項目を明示的に null にした場合は従来どおり消える。
+    changes = body.model_dump(exclude_unset=True)
+    if "shot_type" in changes:
+        changes["shot_type"] = _normalize_shot_type(changes["shot_type"])
+    apply_update(stroke, changes)
+    # land_zone の入力元。値が変わった時だけ
+    # 人の入力として記録する (CV が書いた値をそのまま送り返しただけなら 'cv' のまま)。
+    # 値を消したら入力元も消す。
+    if not stroke.land_zone:
+        stroke.land_zone_source = None
+    elif stroke.land_zone != previous_land_zone:
+        stroke.land_zone_source = "human"
     touch(stroke)
     db.commit()
     # 対象 stroke の rally 経由で関与選手のみ無効化

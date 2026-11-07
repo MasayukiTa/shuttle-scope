@@ -228,6 +228,115 @@ def store(
         _db_store(rec)
 
 
+def store_in_session(
+    db: Any,
+    key: str,
+    user_id: Optional[int],
+    endpoint: str,
+    response_obj: Any,
+    status_code: int = 201,
+) -> None:
+    """冒等キーを**呼び出し側のセッション**で持続化する (commit はしない)。
+
+    なぜ別関数か
+    ----------
+    既存の `store()` は専用の `SessionLocal` で別トランザクションを開いて
+    commit するため、**業務書き込みの commit とは別のタイミング**で永続化
+    される。strokes/batch は `store()` を `db.commit()` の **後** に呼んでいたので:
+
+      1. 業務書き込み (rally/strokes) は commit されたが
+      2. レスポンスが次の store() 前に落ちる / プロセスが死ぬと
+      3. 冒等キーが残らず、再送が cache miss で本処理を再実行する
+
+    これが ELN の指す「冒等キーの保存が commit 成功後にしか行われず、
+    commit 前に失敗した再送が本処理を再実行する」穴。キーを業務行と
+    **同じ db セッション**に add しておき、呼び出し側の `db.commit()` で
+    一緒に commit させることで、キーの永続化と業務書き込みを原子化する。
+    in-memory cache への取り込みは commit 成功後に別途 `store()` で行う
+    (ここで _records に入れると、commit が rollback されたときに
+    in-memory だけ残って DB とズレるため)。
+
+    衝突時の振舞いは `_db_store` と同じ: 別ユーザ / 別エンドポイントの
+    既存キーは上書きせず warn のみ (元レコードの replay 情報を守る)。
+    """
+    from datetime import datetime, timedelta
+    from backend.db.models import AnalysisCache
+
+    meta = {
+        "user_id": user_id,
+        "endpoint": endpoint,
+        "response_json": json.dumps(response_obj, ensure_ascii=False),
+        "status_code": status_code,
+        "created_at": time.time(),
+    }
+    meta_json = json.dumps(meta, ensure_ascii=False)
+    now = datetime.utcnow()
+    expires = now + timedelta(seconds=_TTL_SECONDS)
+    cache_key = _IDEM_KEY_PREFIX + key
+
+    existing = (
+        db.query(AnalysisCache)
+        .filter(AnalysisCache.cache_key == cache_key)
+        .first()
+    )
+    if existing is not None:
+        try:
+            existing_meta = json.loads(existing.result_json or "{}")
+            if (
+                existing_meta.get("user_id") != user_id
+                or existing_meta.get("endpoint") != endpoint
+            ):
+                logger.warning(
+                    "idempotency key collision across users/endpoints (session store): "
+                    "key=%s existing_user=%s requesting_user=%s \u2014 refusing overwrite",
+                    key, existing_meta.get("user_id"), user_id,
+                )
+                return
+        except Exception:
+            logger.warning(
+                "idempotency existing meta unparsable for key=%s; refusing overwrite", key
+            )
+            return
+        existing.result_json = meta_json
+        existing.expires_at = expires
+        existing.computed_at = now
+    else:
+        db.add(AnalysisCache(
+            cache_key=cache_key,
+            player_id=0,  # idempotency 用 sentinel
+            analysis_type="idempotency",
+            filters_json="{}",
+            result_json=meta_json,
+            sample_size=0,
+            confidence_level=0.0,
+            computed_at=now,
+            expires_at=expires,
+        ))
+    # commit はしない。呼び出し側の db.commit() で業務行と原子的に書く。
+
+
+def remember_in_memory(
+    key: str,
+    user_id: Optional[int],
+    endpoint: str,
+    response_obj: Any,
+    status_code: int = 201,
+) -> None:
+    """commit 成功後に in-memory cache にだけ取り込む (DB には書かない)。
+
+    `store_in_session` で DB 側は業務行と同じ commit で永続化済み。こちらは
+    read 高速化用の短期キャッシュ。commit が成功した後に呼ぶこと。
+    """
+    with _lock:
+        _records[key] = IdempotencyRecord(
+            key=key,
+            user_id=user_id,
+            endpoint=endpoint,
+            response_json=json.dumps(response_obj, ensure_ascii=False),
+            status_code=status_code,
+        )
+
+
 def replay_response(rec: IdempotencyRecord) -> Any:
     """保存済みレスポンスを返す。"""
     try:
