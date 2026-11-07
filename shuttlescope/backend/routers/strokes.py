@@ -2,7 +2,7 @@
 from typing import Literal, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError, DBAPIError
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
@@ -222,6 +222,7 @@ def _batch_existing_response(
         "data": {
             "rally_id": existing.id,
             "stroke_count": stroke_count,
+            "already_saved": True,
         },
     }
     if idem_key:
@@ -341,6 +342,19 @@ def batch_save_rally(
         return _batch_existing_response(
             db, existing, idem_key, ctx_for_idem.user_id, endpoint_id
         )
+    except (OperationalError, DBAPIError):
+        # 本番 2026-11-05: flush() の一過性 DB エラー（接続断・ロックタイムアウト・
+        # pool pre-ping 失敗）が未捕捉のまま 500 に化けていた（POST /api/strokes/batch
+        # が 92 回 500）。何も保存していないので rollback し、再送可能を明示した 503 を返す。
+        db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "DB_UNAVAILABLE_RETRYABLE",
+                "message": "データベースが一時的に利用できません。再送してください。",
+                "saved": {"rally": False, "strokes": 0},
+            },
+        )
 
     # ストローク一括保存（shot_type を canonical 化）
     saved_strokes = []
@@ -361,7 +375,39 @@ def batch_save_rally(
     # アノテーション進捗を更新
     _update_annotation_progress(game_set.match_id, db)
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # flush を通過したのに commit で一意制約に当たる競合（別端末が同じ
+        # (set_id, rally_num) を同時に確定した等）。strokes 自体に一意制約は無いが、
+        # ラリーの uq_rallies_set_id_rally_num_active が最終防壁になる。再送扱いで
+        # 既存ラリーを already_saved の冪等応答として返す。
+        db.rollback()
+        existing = (
+            db.query(Rally)
+            .filter(
+                Rally.set_id == body.rally.set_id,
+                Rally.rally_num == body.rally.rally_num,
+                Rally.deleted_at.is_(None),
+            )
+            .first()
+        )
+        if existing is None:
+            raise
+        return _batch_existing_response(
+            db, existing, idem_key, ctx_for_idem.user_id, endpoint_id
+        )
+    except (OperationalError, DBAPIError):
+        # commit 時の一過性 DB エラーも 500 に化けさせず、再送可能な 503 を返す。
+        db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "DB_UNAVAILABLE_RETRYABLE",
+                "message": "データベースが一時的に利用できません。再送してください。",
+                "saved": {"rally": False, "strokes": 0},
+            },
+        )
     # 試合の関与選手のみキャッシュ無効化（他選手の解析結果は保持）
     response_cache.bump_players(players_for_match(db, game_set.match_id))
 
