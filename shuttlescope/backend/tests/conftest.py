@@ -90,12 +90,16 @@ def _reset_idempotency_cache():
     try:
         from backend.utils import idempotency as _idem
         _idem._records.clear()
+        # 予約テーブルも in-memory でプロセス全体に 1 つ。残骸が後続テストの
+        # 同一キー予約を IN_PROGRESS で弾かないよう、_records と一緒にクリアする。
+        _idem._reservations.clear()
     except Exception:
         pass
     yield
     try:
         from backend.utils import idempotency as _idem
         _idem._records.clear()
+        _idem._reservations.clear()
     except Exception:
         pass
 
