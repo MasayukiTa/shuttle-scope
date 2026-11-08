@@ -23,7 +23,7 @@ from datetime import date
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import DataError, OperationalError
 
 from backend.db.database import get_db
 from backend.db.models import GameSet, Match, Player, Rally, Stroke, User
@@ -167,3 +167,18 @@ class TestDbOutageReturns503NotTransparent500:
         assert (
             db_session.query(Rally).filter(Rally.set_id == game_set.id).count() == 0
         )
+
+
+def test_commit_dataerror_returns_422(client, db_session, game_set, monkeypatch):
+    def rejected_commit():
+        raise DataError("COMMIT", {}, ValueError("invalid value"))
+
+    monkeypatch.setattr(db_session, "commit", rejected_commit)
+    res = client.post("/api/strokes/batch", json=_body(game_set.id))
+    assert res.status_code == 422, res.text
+    assert res.json()["detail"] == {
+        "code": "BATCH_DATA_REJECTED",
+        "message": "保存できない値が含まれています。",
+        "error_type": "DataError",
+        "saved": {"rally": False, "strokes": 0},
+    }

@@ -1,8 +1,9 @@
 """ストローク管理API（/api/strokes）"""
+import logging
 from typing import Literal, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
-from sqlalchemy.exc import IntegrityError, OperationalError, DBAPIError
+from sqlalchemy.exc import DBAPIError, DisconnectionError, IntegrityError, InterfaceError, OperationalError
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
@@ -13,6 +14,7 @@ from backend.analysis.shot_taxonomy import canonicalize as canonicalize_shot
 from backend.utils import response_cache
 from backend.utils.match_players import players_for_match, players_for_rally
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -231,6 +233,35 @@ def _batch_existing_response(
     return response
 
 
+def _raise_batch_db_error(db: Session, body: BatchSaveRequest, exc: Exception, phase: str):
+    logger.exception(
+        "Batch save %s failed: set_id=%s rally_num=%s stroke_count=%s error_type=%s error=%s orig=%s",
+        phase, body.rally.set_id, body.rally.rally_num, len(body.strokes),
+        type(exc).__name__, str(exc), getattr(exc, "orig", None),
+    )
+    db.rollback()
+    if isinstance(exc, (OperationalError, InterfaceError, DisconnectionError)) or getattr(
+        exc, "connection_invalidated", False
+    ):
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "DB_UNAVAILABLE_RETRYABLE",
+                "message": "データベースが一時的に利用できません。再送してください。",
+                "saved": {"rally": False, "strokes": 0},
+            },
+        ) from exc
+    raise HTTPException(
+        status_code=422,
+        detail={
+            "code": "BATCH_DATA_REJECTED",
+            "message": "保存できない値が含まれています。",
+            "error_type": type(exc).__name__,
+            "saved": {"rally": False, "strokes": 0},
+        },
+    ) from exc
+
+
 @router.post("/strokes/batch", status_code=201)
 def batch_save_rally(
     body: BatchSaveRequest,
@@ -324,7 +355,14 @@ def batch_save_rally(
     db.add(rally)
     try:
         db.flush()  # IDを取得するため先にflush
-    except IntegrityError:
+    except IntegrityError as exc:
+        logger.exception(
+            "Batch save flush failed: set_id=%s rally_num=%s stroke_count=%s error_type=%s error=%s orig=%s",
+            body.rally.set_id, body.rally.rally_num, len(body.strokes),
+            type(exc).__name__, str(exc), exc.orig,
+        )
+        if exc.connection_invalidated:
+            _raise_batch_db_error(db, body, exc, "flush")
         # 上の検査と flush の間に別リクエストが同じ (set_id, rally_num) を入れた場合。
         # 一意インデックスが最終的な砦。rollback して勝った側の行を再送として返す。
         db.rollback()
@@ -338,23 +376,12 @@ def batch_save_rally(
             .first()
         )
         if existing is None:
-            raise
+            _raise_batch_db_error(db, body, exc, "flush")
         return _batch_existing_response(
             db, existing, idem_key, ctx_for_idem.user_id, endpoint_id
         )
-    except (OperationalError, DBAPIError):
-        # 本番 2026-11-05: flush() の一過性 DB エラー（接続断・ロックタイムアウト・
-        # pool pre-ping 失敗）が未捕捉のまま 500 に化けていた（POST /api/strokes/batch
-        # が 92 回 500）。何も保存していないので rollback し、再送可能を明示した 503 を返す。
-        db.rollback()
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "code": "DB_UNAVAILABLE_RETRYABLE",
-                "message": "データベースが一時的に利用できません。再送してください。",
-                "saved": {"rally": False, "strokes": 0},
-            },
-        )
+    except (DBAPIError, DisconnectionError) as exc:
+        _raise_batch_db_error(db, body, exc, "flush")
 
     # ストローク一括保存（shot_type を canonical 化）
     saved_strokes = []
@@ -377,7 +404,14 @@ def batch_save_rally(
 
     try:
         db.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
+        logger.exception(
+            "Batch save commit failed: set_id=%s rally_num=%s stroke_count=%s error_type=%s error=%s orig=%s",
+            body.rally.set_id, body.rally.rally_num, len(body.strokes),
+            type(exc).__name__, str(exc), exc.orig,
+        )
+        if exc.connection_invalidated:
+            _raise_batch_db_error(db, body, exc, "commit")
         # flush を通過したのに commit で一意制約に当たる競合（別端末が同じ
         # (set_id, rally_num) を同時に確定した等）。strokes 自体に一意制約は無いが、
         # ラリーの uq_rallies_set_id_rally_num_active が最終防壁になる。再送扱いで
@@ -393,21 +427,13 @@ def batch_save_rally(
             .first()
         )
         if existing is None:
-            raise
+            _raise_batch_db_error(db, body, exc, "commit")
         return _batch_existing_response(
             db, existing, idem_key, ctx_for_idem.user_id, endpoint_id
         )
-    except (OperationalError, DBAPIError):
-        # commit 時の一過性 DB エラーも 500 に化けさせず、再送可能な 503 を返す。
-        db.rollback()
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "code": "DB_UNAVAILABLE_RETRYABLE",
-                "message": "データベースが一時的に利用できません。再送してください。",
-                "saved": {"rally": False, "strokes": 0},
-            },
-        )
+    except (DBAPIError, DisconnectionError) as exc:
+        _raise_batch_db_error(db, body, exc, "commit")
+
     # 試合の関与選手のみキャッシュ無効化（他選手の解析結果は保持）
     response_cache.bump_players(players_for_match(db, game_set.match_id))
 
