@@ -47,6 +47,37 @@ class IdempotencyRecord:
 _records: Dict[str, IdempotencyRecord] = {}
 _lock = Lock()
 
+# 予約中 (処理開始〜完了/失敗) のキーを保持する process-local なテーブル。
+# key -> (user_id, endpoint, reserved_at)。
+#
+# なぜ必要か (2026-11-05 の穴):
+#   `store()` は commit 成功後にしか呼ばれないため、commit より前に失敗した
+#   リクエストは冪等レコードを残さない。レスポンス喪失後の自動再送は本処理を
+#   最初からやり直し、(set_id, rally_num) の一意制約や strokes の重複を踏む。
+#   予約を「処理の最初」に取り、完了するまで同じキーの近接再送を弾くことで、
+#   二重処理そのものを入口で止める。
+#
+# 設計:
+#   - 予約は in-memory のみ (完了レコードのような DB 永続化はしない)。守りたいのは
+#     レスポンス喪失後の自動再送 = 同一プロセスへの近接再送であり、これは
+#     in-memory で十分。プロセス再起動後の replay は従来どおり完了レコード
+#     (_db_store) が担う。
+#   - 予約には TTL を設け、クラッシュ等で release されなかった予約が永久に
+#     キーを塞がないようにする (_RESERVATION_TTL_SECONDS)。
+_reservations: Dict[str, "_Reservation"] = {}
+
+# 予約の有効期間。これを過ぎた予約は「処理が落ちて release されなかった」と
+# みなして上書き可能にする。batch_save_rally は数秒で終わるので短くてよいが、
+# 遅い DB でも処理が終わるだけの余裕をみて 120 秒とする。
+_RESERVATION_TTL_SECONDS = 120
+
+
+@dataclass
+class _Reservation:
+    user_id: Optional[int]
+    endpoint: str
+    reserved_at: float = field(default_factory=time.time)
+
 # Round 258 R9 V6 fix (deep audit): DB 永続化のために AnalysisCache テーブルを
 # 流用する (idempotency 専用 model + alembic migration を別途用意するより軽量)。
 # key プレフィクスで namespace を分ける: "idem:" + key
@@ -59,11 +90,18 @@ def is_valid_key(key: str) -> bool:
 
 
 def _gc_expired() -> None:
-    """期限切れエントリを破棄する。"""
+    """期限切れエントリを破棄する (完了レコードと予約の両方)。"""
     now = time.time()
     expired = [k for k, r in _records.items() if now - r.created_at > _TTL_SECONDS]
     for k in expired:
         _records.pop(k, None)
+    stale = [
+        k
+        for k, rv in _reservations.items()
+        if now - rv.reserved_at > _RESERVATION_TTL_SECONDS
+    ]
+    for k in stale:
+        _reservations.pop(k, None)
 
 
 def _db_get(key: str) -> Optional[IdempotencyRecord]:
@@ -226,6 +264,76 @@ def store(
         )
         _records[key] = rec
         _db_store(rec)
+        # 完了したので予約を解放する (予約→完了への昇格)。
+        _reservations.pop(key, None)
+
+
+RESERVED = "reserved"
+REPLAY = "replay"
+IN_PROGRESS = "in_progress"
+
+
+def reserve(
+    key: str, user_id: Optional[int], endpoint: str
+) -> tuple[str, Optional[IdempotencyRecord]]:
+    """処理の最初にキーを予約する。
+
+    戻り値 (status, record):
+      - (REPLAY, rec): 同じ (key, user_id, endpoint) の **完了** レコードが既に
+        ある。呼び出し側は replay_response(rec) を返すこと。
+      - (IN_PROGRESS, None): 同じキーが別の処理で予約中 (まだ完了も失敗もして
+        いない)。呼び出し側は 409 を返すこと。TTL 超過の予約は残骸とみなし、
+        奪って (RESERVED, None) を返す。
+      - (RESERVED, None): 予約に成功した。呼び出し側は本処理へ進み、
+        成功時は store()、commit 前の失敗時は release() を呼ぶこと。
+
+    別ユーザ/別エンドポイントが同じ key を使っている場合は衝突とみなし、
+    予約を与えず IN_PROGRESS を返して本処理を進ませない (get_cached が
+    ミスマッチ時に None を返して二重副作用を許していた穴と同じ轍を踏まない)。
+    """
+    with _lock:
+        _gc_expired()
+        # 既に完了レコードがあるなら replay させる (DB からも hydrate)。
+        rec = _records.get(key)
+        if rec is None:
+            rec = _db_get(key)
+            if rec is not None:
+                _records[key] = rec
+        if rec is not None:
+            if rec.user_id == user_id and rec.endpoint == endpoint:
+                if time.time() - rec.created_at <= _TTL_SECONDS:
+                    return (REPLAY, rec)
+                # 期限切れの完了レコードは捨てて、新規予約に進む。
+                _records.pop(key, None)
+            else:
+                # 別ユーザ/別エンドポイントのキー衝突。予約を与えない。
+                return (IN_PROGRESS, None)
+
+        now = time.time()
+        existing = _reservations.get(key)
+        if existing is not None:
+            if now - existing.reserved_at <= _RESERVATION_TTL_SECONDS:
+                # 進行中の予約がある。自分が所有者かどうかに関わらず、まだ
+                # 処理中なので本処理を二重に走らせない。
+                return (IN_PROGRESS, None)
+            # TTL 超過: release されずに残った残骸。奪ってよい。
+        _reservations[key] = _Reservation(user_id=user_id, endpoint=endpoint)
+        return (RESERVED, None)
+
+
+def release(key: str, user_id: Optional[int], endpoint: str) -> None:
+    """予約を解放し、同じキーでの再送を可能にする。
+
+    commit 前に失敗した経路 (DB 一時エラーで 503 を返す等) で呼ぶ。自分が所有
+    する予約のときだけ消す (別処理が奪った予約を誤って消さない)。完了レコード
+    (store 済み) には触れない。
+    """
+    with _lock:
+        existing = _reservations.get(key)
+        if existing is None:
+            return
+        if existing.user_id == user_id and existing.endpoint == endpoint:
+            _reservations.pop(key, None)
 
 
 def replay_response(rec: IdempotencyRecord) -> Any:
