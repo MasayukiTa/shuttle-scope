@@ -75,8 +75,11 @@ class TestCourtCoverageNoStrokes:
         b = _player(db_session, "B")
         m = _match(db_session, a, b, date(2026, 1, 1), 1, 2)
         for r in db_session.query(Rally).all():
-            for slot in with_strokes_for:
-                db_session.add(Stroke(rally_id=r.id, stroke_num=1, player=slot, shot_type="clear", hit_y=0.2))
+            for idx, slot in enumerate(with_strokes_for):
+                # 同一ラリー内で stroke_num を重複させない (1 選手 1 打のまま番号だけ分ける)。
+                # (rally_id, stroke_num) の部分一意インデックスに適合させるための調整で、
+                # 各選手がそのラリーで 1 打を持つという試験の意図は変えない。
+                db_session.add(Stroke(rally_id=r.id, stroke_num=idx + 1, player=slot, shot_type="clear", hit_y=0.2))
         db_session.commit()
         return m
 

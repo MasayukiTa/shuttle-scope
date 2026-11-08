@@ -564,6 +564,19 @@ class Stroke(Base):
         Index("ix_strokes_shot_type",           "shot_type"),
         Index("ix_strokes_hit_zone",            "hit_zone"),
         Index("ix_strokes_land_zone",           "land_zone"),
+        # (rally_id, stroke_num) は 1 ラリー内で一意であるべき。以前は Index のみで
+        # 一意制約が無く、Pass2 の再実行や再送で同じ番号の打球が二重に入り、
+        # rally_length と下流のカウントが静かにずれた。rallies の
+        # uq_rallies_set_id_rally_num_active と同じく、論理削除 (deleted_at) された
+        # 行とは衝突させたくないので **active 行だけの部分一意インデックス** にする。
+        # PostgreSQL も SQLite (3.8.0+) も部分インデックスに対応。migration 0064 と対。
+        Index(
+            "uq_strokes_rally_id_stroke_num_active",
+            "rally_id", "stroke_num",
+            unique=True,
+            sqlite_where=text("deleted_at IS NULL"),
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
