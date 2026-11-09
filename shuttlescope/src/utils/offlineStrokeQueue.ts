@@ -419,3 +419,132 @@ export async function deletePendingForUser(ownerUserId: number): Promise<number>
   }
   return items.length
 }
+
+/**
+ * 入力中（ラリー未確定）の下書きを 1 打ごとに IndexedDB へ退避する。
+ *
+ * 背景:
+ *   確定前のストロークは localStorage にしか退避されておらず、localStorage は
+ *   容量超過・プライベートモード・無効化で書き込みが例外になり得た
+ *   (「保存し終わったはずが保存失敗」)。IndexedDB へも二重に退避することで、
+ *   タブを閉じた・クラッシュ・通信断・ログアウトのいずれでも入力が残る。
+ *
+ * 本キュー (owned/unowned) とは別の `draft/` prefix で保持する。確定すると
+ *   AnnotatorPage が removeDraftRally で消し、確定済みラリーは通常の退避キュー
+ *   (stashRallyBeforeSave) と /strokes/batch の安定冪等キーで送られる。自動再送
+ *   (useOfflineSync) は draft 行を読まない — 未確定ラリーはサーバーに送れないため。
+ */
+export interface DraftRally {
+  /** 持ち主。不明 (null) のときは退避しない (共有端末で他人に残さない)。 */
+  ownerUserId: number
+  matchId: number
+  setId: number
+  rallyNum: number
+  /** 入力中スナップショット (strokes / pendingStroke / 打順 / 動画位置 等)。 */
+  snapshot: unknown
+  updated_at: string
+}
+
+const DRAFT_PREFIX = 'draft/'
+
+export function draftQueueKey(
+  ownerUserId: number,
+  matchId: number,
+  setId: number,
+  rallyNum: number,
+): string {
+  return `${DRAFT_PREFIX}${ownerUserId}/${matchId}/${setId}/${rallyNum}`
+}
+
+/**
+ * 入力中下書きを IndexedDB へ退避する。書けたかどうかを返す
+ * (呼び出し側が失敗を画面に出せるように)。所有者が正の整数でなければ退避しない。
+ */
+export async function stashDraftRally(p: DraftRally): Promise<boolean> {
+  if (!Number.isInteger(p.ownerUserId) || p.ownerUserId <= 0) return false
+  try {
+    const db = await openDb()
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite')
+      tx.objectStore(STORE).put({
+        ...p,
+        key: draftQueueKey(p.ownerUserId, p.matchId, p.setId, p.rallyNum),
+      })
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error ?? new Error('draft stash error'))
+    })
+    db.close()
+    return true
+  } catch (err) {
+    if (typeof console !== 'undefined') console.warn('[offline] draft stash failed:', err)
+    return false
+  }
+}
+
+/** ラリー確定後・破棄後に入力中下書きを消す。 */
+export async function removeDraftRally(
+  ownerUserId: number,
+  matchId: number,
+  setId: number,
+  rallyNum: number,
+): Promise<void> {
+  if (!Number.isInteger(ownerUserId) || ownerUserId <= 0) return
+  try {
+    const db = await openDb()
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite')
+      tx.objectStore(STORE).delete(draftQueueKey(ownerUserId, matchId, setId, rallyNum))
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error ?? new Error('draft remove error'))
+    })
+    db.close()
+  } catch (err) {
+    if (typeof console !== 'undefined') console.warn('[offline] draft remove failed:', err)
+  }
+}
+
+/**
+ * ある試合・本人の入力中下書きを返す (復帰後の復元候補)。
+ * owner 付きの draft 行だけを対象にし、他人の下書きは読まない。
+ */
+export async function getDraftRally(
+  ownerUserId: number,
+  matchId: number,
+  setId: number,
+  rallyNum: number,
+): Promise<DraftRally | null> {
+  if (!Number.isInteger(ownerUserId) || ownerUserId <= 0) return null
+  try {
+    const db = await openDb()
+    const row = await new Promise<StoredPendingRally | undefined>((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readonly')
+      const req = tx.objectStore(STORE).get(
+        draftQueueKey(ownerUserId, matchId, setId, rallyNum),
+      )
+      req.onsuccess = () => resolve(req.result as StoredPendingRally | undefined)
+      req.onerror = () => reject(req.error ?? new Error('draft get error'))
+    })
+    db.close()
+    if (!row) return null
+    const r = row as unknown as Partial<DraftRally>
+    if (
+      Number(r.ownerUserId) !== ownerUserId ||
+      Number(r.matchId) !== matchId ||
+      Number(r.setId) !== setId ||
+      Number(r.rallyNum) !== rallyNum
+    ) {
+      return null
+    }
+    return {
+      ownerUserId,
+      matchId,
+      setId,
+      rallyNum,
+      snapshot: r.snapshot,
+      updated_at: String(r.updated_at ?? ''),
+    }
+  } catch (err) {
+    if (typeof console !== 'undefined') console.warn('[offline] draft get failed:', err)
+    return null
+  }
+}
