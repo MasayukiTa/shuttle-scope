@@ -32,19 +32,19 @@ function resp(status: number, body: unknown = {}): Response {
 
 describe('mobileAnnotateQueue.trySend', () => {
   beforeEach(() => {
-    sessionStorage.clear()
+    localStorage.clear()
   })
   afterEach(() => {
     vi.useRealTimers()
     vi.unstubAllGlobals()
-    sessionStorage.clear()
+    localStorage.clear()
   })
 
   it('refreshes the token once on 401 and resends with the new token', async () => {
     const oldTok = jwt({ sub: 9 })
     const newTok = jwt({ sub: 9, n: 2 })
-    sessionStorage.setItem('shuttlescope_token', oldTok)
-    sessionStorage.setItem('shuttlescope_refresh_token', 'rt-1')
+    localStorage.setItem('shuttlescope_token', oldTok)
+    localStorage.setItem('shuttlescope_refresh_token', 'rt-1')
     const calls: Array<{ url: string; auth?: string }> = []
     vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
       const headers = (init.headers ?? {}) as Record<string, string>
@@ -64,8 +64,8 @@ describe('mobileAnnotateQueue.trySend', () => {
   })
 
   it('keeps the item for later (auth) when refresh is rejected', async () => {
-    sessionStorage.setItem('shuttlescope_token', jwt({ sub: 9 }))
-    sessionStorage.setItem('shuttlescope_refresh_token', 'rt-1')
+    localStorage.setItem('shuttlescope_token', jwt({ sub: 9 }))
+    localStorage.setItem('shuttlescope_refresh_token', 'rt-1')
     vi.stubGlobal('fetch', vi.fn(async (url: string) => (
       url.includes('/auth/refresh') ? resp(401) : resp(401)
     )))
@@ -74,7 +74,7 @@ describe('mobileAnnotateQueue.trySend', () => {
 
   it('does not hang on a half-open connection: times out and is retried', async () => {
     vi.useFakeTimers()
-    sessionStorage.setItem('shuttlescope_token', jwt({ sub: 9 }))
+    localStorage.setItem('shuttlescope_token', jwt({ sub: 9 }))
     vi.stubGlobal('fetch', vi.fn((_url: string, init: RequestInit) => new Promise((_res, rej) => {
       init.signal?.addEventListener('abort', () => rej(new DOMException('aborted', 'AbortError')))
     })))

@@ -18,7 +18,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 describe('refresh retries once on a transient network failure', () => {
   beforeEach(() => {
-    sessionStorage.clear()
+    localStorage.clear()
     vi.resetModules()
   })
 
@@ -26,12 +26,12 @@ describe('refresh retries once on a transient network failure', () => {
     vi.useRealTimers()
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
-    sessionStorage.clear()
+    localStorage.clear()
   })
 
   it('retries the refresh POST after a network error and then succeeds', async () => {
-    sessionStorage.setItem('shuttlescope_token', 'access-old')
-    sessionStorage.setItem('shuttlescope_refresh_token', 'refresh-old')
+    localStorage.setItem('shuttlescope_token', 'access-old')
+    localStorage.setItem('shuttlescope_refresh_token', 'refresh-old')
 
     let refreshAttempts = 0
     const refreshTokensSeen: string[] = []
@@ -65,13 +65,13 @@ describe('refresh retries once on a transient network failure', () => {
     expect(refreshAttempts).toBe(2)
     expect(refreshTokensSeen).toEqual(['refresh-old', 'refresh-old'])
     // 2 回目の成功で token は更新され、元リクエストは新 access token で replay された。
-    expect(sessionStorage.getItem('shuttlescope_refresh_token')).toBe('refresh-new')
+    expect(localStorage.getItem('shuttlescope_refresh_token')).toBe('refresh-new')
     expect(authSeen).toEqual(['Bearer access-old', 'Bearer access-new'])
   })
 
   it('gives up (keeps the refresh token) when both attempts fail', async () => {
-    sessionStorage.setItem('shuttlescope_token', 'access-old')
-    sessionStorage.setItem('shuttlescope_refresh_token', 'refresh-old')
+    localStorage.setItem('shuttlescope_token', 'access-old')
+    localStorage.setItem('shuttlescope_refresh_token', 'refresh-old')
 
     let refreshAttempts = 0
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
@@ -89,7 +89,7 @@ describe('refresh retries once on a transient network failure', () => {
 
     // 2 回試行して諦める。valid な refresh token は決して捨てない (transient 扱い)。
     expect(refreshAttempts).toBe(2)
-    expect(sessionStorage.getItem('shuttlescope_refresh_token')).toBe('refresh-old')
-    expect(sessionStorage.getItem('shuttlescope_token')).toBe('access-old')
+    expect(localStorage.getItem('shuttlescope_refresh_token')).toBe('refresh-old')
+    expect(localStorage.getItem('shuttlescope_token')).toBe('access-old')
   })
 })

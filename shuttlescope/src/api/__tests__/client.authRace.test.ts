@@ -24,7 +24,7 @@ function deferred<T>() {
 
 describe('api client auth refresh races', () => {
   beforeEach(() => {
-    sessionStorage.clear()
+    localStorage.clear()
     localStorage.clear()
     vi.resetModules()
   })
@@ -32,14 +32,14 @@ describe('api client auth refresh races', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
-    sessionStorage.clear()
+    localStorage.clear()
     localStorage.clear()
   })
 
   it('single-flights concurrent 401 refresh and retries both requests with the rotated token', async () => {
-    sessionStorage.setItem('shuttlescope_token', 'access-old')
     localStorage.setItem('shuttlescope_token', 'access-old')
-    sessionStorage.setItem('shuttlescope_refresh_token', 'refresh-old')
+    localStorage.setItem('shuttlescope_token', 'access-old')
+    localStorage.setItem('shuttlescope_refresh_token', 'refresh-old')
     localStorage.setItem('shuttlescope_refresh_token', 'refresh-old')
 
     const refreshGate = deferred<Response>()
@@ -81,14 +81,14 @@ describe('api client auth refresh races', () => {
     expect(dataCalls).toBe(4)
     expect(authSeen.slice(0, 2)).toEqual(['Bearer access-old', 'Bearer access-old'])
     expect(authSeen.slice(2)).toEqual(['Bearer access-new', 'Bearer access-new'])
-    expect(sessionStorage.getItem('shuttlescope_token')).toBe('access-new')
-    expect(sessionStorage.getItem('shuttlescope_refresh_token')).toBe('refresh-new')
+    expect(localStorage.getItem('shuttlescope_token')).toBe('access-new')
+    expect(localStorage.getItem('shuttlescope_refresh_token')).toBe('refresh-new')
   })
 
   it('does not let an old refresh success overwrite a newly logged-in user', async () => {
-    sessionStorage.setItem('shuttlescope_token', 'access-user-a')
     localStorage.setItem('shuttlescope_token', 'access-user-a')
-    sessionStorage.setItem('shuttlescope_refresh_token', 'refresh-user-a')
+    localStorage.setItem('shuttlescope_token', 'access-user-a')
+    localStorage.setItem('shuttlescope_refresh_token', 'refresh-user-a')
     localStorage.setItem('shuttlescope_refresh_token', 'refresh-user-a')
 
     const refreshGate = deferred<Response>()
@@ -111,9 +111,9 @@ describe('api client auth refresh races', () => {
     await vi.waitFor(() => expect(refreshCalls).toBe(1))
 
     // Simulate logout + login as a different user before the old refresh returns.
-    sessionStorage.setItem('shuttlescope_token', 'access-user-b')
     localStorage.setItem('shuttlescope_token', 'access-user-b')
-    sessionStorage.setItem('shuttlescope_refresh_token', 'refresh-user-b')
+    localStorage.setItem('shuttlescope_token', 'access-user-b')
+    localStorage.setItem('shuttlescope_refresh_token', 'refresh-user-b')
     localStorage.setItem('shuttlescope_refresh_token', 'refresh-user-b')
 
     refreshGate.resolve(jsonResponse({
@@ -124,14 +124,14 @@ describe('api client auth refresh races', () => {
     await expect(pending).rejects.toMatchObject({ status: 401 })
 
     expect(resourceCalls).toBe(1)
-    expect(sessionStorage.getItem('shuttlescope_token')).toBe('access-user-b')
-    expect(sessionStorage.getItem('shuttlescope_refresh_token')).toBe('refresh-user-b')
+    expect(localStorage.getItem('shuttlescope_token')).toBe('access-user-b')
+    expect(localStorage.getItem('shuttlescope_refresh_token')).toBe('refresh-user-b')
   })
 
   it('does not let an old refresh 401 log out a newly logged-in user', async () => {
-    sessionStorage.setItem('shuttlescope_token', 'access-user-a')
     localStorage.setItem('shuttlescope_token', 'access-user-a')
-    sessionStorage.setItem('shuttlescope_refresh_token', 'refresh-user-a')
+    localStorage.setItem('shuttlescope_token', 'access-user-a')
+    localStorage.setItem('shuttlescope_refresh_token', 'refresh-user-a')
     localStorage.setItem('shuttlescope_refresh_token', 'refresh-user-a')
 
     const refreshGate = deferred<Response>()
@@ -153,9 +153,9 @@ describe('api client auth refresh races', () => {
 
     await vi.waitFor(() => expect(refreshCalls).toBe(1))
 
-    sessionStorage.setItem('shuttlescope_token', 'access-user-b')
     localStorage.setItem('shuttlescope_token', 'access-user-b')
-    sessionStorage.setItem('shuttlescope_refresh_token', 'refresh-user-b')
+    localStorage.setItem('shuttlescope_token', 'access-user-b')
+    localStorage.setItem('shuttlescope_refresh_token', 'refresh-user-b')
     localStorage.setItem('shuttlescope_refresh_token', 'refresh-user-b')
 
     refreshGate.resolve(jsonResponse({ detail: 'old refresh revoked' }, 401))
@@ -163,14 +163,14 @@ describe('api client auth refresh races', () => {
     await expect(pending).rejects.toMatchObject({ status: 401 })
 
     expect(resourceCalls).toBe(1)
-    expect(sessionStorage.getItem('shuttlescope_token')).toBe('access-user-b')
-    expect(sessionStorage.getItem('shuttlescope_refresh_token')).toBe('refresh-user-b')
+    expect(localStorage.getItem('shuttlescope_token')).toBe('access-user-b')
+    expect(localStorage.getItem('shuttlescope_refresh_token')).toBe('refresh-user-b')
   })
 
   it('allows the new auth generation to refresh while the old generation is still in flight', async () => {
-    sessionStorage.setItem('shuttlescope_token', 'access-user-a')
     localStorage.setItem('shuttlescope_token', 'access-user-a')
-    sessionStorage.setItem('shuttlescope_refresh_token', 'refresh-user-a')
+    localStorage.setItem('shuttlescope_token', 'access-user-a')
+    localStorage.setItem('shuttlescope_refresh_token', 'refresh-user-a')
     localStorage.setItem('shuttlescope_refresh_token', 'refresh-user-a')
 
     const oldRefreshGate = deferred<Response>()
@@ -218,9 +218,9 @@ describe('api client auth refresh races', () => {
     await vi.waitFor(() => expect(refreshTokensSeen).toContain('refresh-user-a'))
 
     // Switch accounts while A's refresh is still pending.
-    sessionStorage.setItem('shuttlescope_token', 'access-user-b')
     localStorage.setItem('shuttlescope_token', 'access-user-b')
-    sessionStorage.setItem('shuttlescope_refresh_token', 'refresh-user-b')
+    localStorage.setItem('shuttlescope_token', 'access-user-b')
+    localStorage.setItem('shuttlescope_refresh_token', 'refresh-user-b')
     localStorage.setItem('shuttlescope_refresh_token', 'refresh-user-b')
 
     const newResult = await apiGet<{ ok: boolean }>('/new-generation')
@@ -236,8 +236,8 @@ describe('api client auth refresh races', () => {
 
     expect(oldResourceCalls).toBe(1)
     expect(newResourceCalls).toBe(2)
-    expect(sessionStorage.getItem('shuttlescope_token')).toBe('access-user-b-rotated')
-    expect(sessionStorage.getItem('shuttlescope_refresh_token')).toBe('refresh-user-b-rotated')
+    expect(localStorage.getItem('shuttlescope_token')).toBe('access-user-b-rotated')
+    expect(localStorage.getItem('shuttlescope_refresh_token')).toBe('refresh-user-b-rotated')
   })
 
 })
