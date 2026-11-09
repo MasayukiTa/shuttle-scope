@@ -5542,7 +5542,7 @@ interface NoVideoCalibCanvasProps {
   t: (key: string, opts?: Record<string, unknown>) => string
 }
 
-function NoVideoCalibCanvas({
+export function NoVideoCalibCanvas({
   matchId,
   containerRef,
   onClose,

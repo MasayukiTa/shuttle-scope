@@ -12,3 +12,4 @@ src/i18n/__tests__/contactHeightLabels.t003.test.ts
 src/utils/__tests__/syncStatus.test.ts
 src/utils/__tests__/offlineStrokeQueue.resync.test.ts
 src/i18n/__tests__/hitZonePadLabels.t003.test.ts
+src/pages/__tests__/AnnotatorPage.noVideoCalib.t003_05.test.tsx
