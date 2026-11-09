@@ -1,5 +1,5 @@
 # CI test manifest (方針C)
-# このリストに挻げた vitest テストは、vitest.config.ts の include
+# このリストに掘げた vitest テストは、vitest.config.ts の include
 # (src/**/__tests__/**/*.test.{ts,tsx}) に必ず合致し、CI の
 # `npx vitest run` で確実に収集・実行されることを
 # scripts/check_ci_test_manifest.py が検査する。
@@ -13,3 +13,4 @@ src/utils/__tests__/syncStatus.test.ts
 src/utils/__tests__/offlineStrokeQueue.resync.test.ts
 src/i18n/__tests__/hitZonePadLabels.t003.test.ts
 src/store/__tests__/annotationStore.strokeEnrichmentAt.t003.test.ts
+src/utils/__tests__/midRallyAutosave.test.ts
