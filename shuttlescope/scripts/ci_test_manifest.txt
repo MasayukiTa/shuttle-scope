@@ -5,3 +5,5 @@
 # scripts/check_ci_test_manifest.py が検査する。
 # パスは shuttlescope/ からの相対 (src/ 始まり)。
 src/api/__tests__/proactiveRefresh.test.ts
+src/api/__tests__/client.refreshRetry.test.ts
+src/api/__tests__/authStorage.crossTab.test.ts

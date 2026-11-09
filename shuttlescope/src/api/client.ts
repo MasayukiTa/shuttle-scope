@@ -1,4 +1,29 @@
 import { storeReturnContext } from '@/utils/returnPath'
+import {
+  AUTH_CHANGED_EVENT,
+  TOKEN_KEY,
+  REFRESH_KEY,
+  ROLE_KEY,
+  PLAYER_ID_KEY,
+  TEAM_NAME_KEY,
+  USER_ID_KEY,
+  DISPLAY_NAME_KEY,
+  PAGE_ACCESS_KEY,
+  getAuthItem,
+  setAuthItem,
+  removeAuthItem,
+  migrateSessionToLocal,
+  installCrossTabAuthSync,
+  broadcastAuthChange,
+  withRefreshLock,
+} from '@/api/authStorage'
+
+// fix/auth-session-persist: 認証情報を localStorage に移し、全タブで共有する。
+// 旧 sessionStorage の値は初回に localStorage へ移行し、他タブの変化 (ログイン・
+// refresh・ログアウト) は storage イベントで受けて同期する。モジュール読み込み時に
+// 一度だけ実行する (副作用は冪等)。
+migrateSessionToLocal()
+installCrossTabAuthSync()
 
 const BASE_URL = (() => {
   if (
@@ -9,10 +34,6 @@ const BASE_URL = (() => {
   }
   return 'http://localhost:8765/api'
 })()
-
-const TOKEN_KEY = 'shuttlescope_token'
-const REFRESH_KEY = 'shuttlescope_refresh_token'
-const AUTH_CHANGED_EVENT = 'shuttlescope:auth-changed'
 
 export const API_BASE_URL = BASE_URL
 
@@ -34,13 +55,13 @@ export function getAuthHeaders(): Record<string, string> {
 function authHeaders(): Record<string, string> {
   const h: Record<string, string> = {}
   try {
-    const token = sessionStorage.getItem(TOKEN_KEY)
+    const token = getAuthItem(TOKEN_KEY)
     if (token) {
       h['Authorization'] = `Bearer ${token}`
     } else {
-      const role = sessionStorage.getItem('shuttlescope_role')
-      const pid = sessionStorage.getItem('shuttlescope_player_id')
-      const team = sessionStorage.getItem('shuttlescope_team_name')
+      const role = getAuthItem(ROLE_KEY)
+      const pid = getAuthItem(PLAYER_ID_KEY)
+      const team = getAuthItem(TEAM_NAME_KEY)
       if (role) h['X-Role'] = role
       if (pid) h['X-Player-Id'] = pid
       if (team) h['X-Team-Name'] = encodeURIComponent(team)
@@ -74,8 +95,74 @@ export const REFRESH_TIMEOUT_MS = 15_000
 /** 起動時 /health の timeout (ms)。応答しない半断で起動画面が固定されるのを防ぐ。 */
 export const HEALTH_TIMEOUT_MS = 5_000
 
+/** transient の refresh 失敗を短い待機のあと 1 回だけ再試行する際の待ち時間 (ms)。
+ *  fix/auth-session-persist: refresh 応答が通信で失われた (network error) とき、
+ *  サーバ側は猚予時間内の再提示を冪等化しているので、同じ refresh token でもう一度
+ *  試すと同じ後継を受け取れる。ログアウトを回避する。 */
+export const REFRESH_RETRY_DELAY_MS = 150
+
+type RefreshOnce = RefreshResult | 'retryable'
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/** refresh を 1 回だけ試す。network error (fetch 自体の reject) は 'retryable' を返し、
+ *  timeout / 5xx / 429 は 'transient'、401/403 は 'invalid'、成功は 'ok' 。 */
+async function _doRefreshOnce(rt: string): Promise<RefreshOnce> {
+  let res: Response
+  let timedOut = false
+  try {
+    // 半断 (TCP 接続のみ成立し応答しない) で single-flight 全体が固定されないよう、
+    // refresh 自体にも有限 timeout を掛ける。
+    res = await fetchWithTimeout(
+      `${BASE_URL}/auth/refresh`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: rt }),
+      },
+      REFRESH_TIMEOUT_MS,
+    )
+  } catch (e) {
+    // timeout (ApiTimeoutError) は再試行しない (応答が常に遅いサーバを 2 回待たない)。
+    // それ以外の network error (fetch の TypeError 等) は応答が通信で失われたケースとして
+    // retryable 扱いにする。どちらも有効な refresh token は決して捨てない。
+    timedOut = e instanceof ApiTimeoutError
+    return timedOut ? 'transient' : 'retryable'
+  }
+
+  if (res.ok) {
+    const data: { access_token: string; refresh_token: string } = await res.json()
+    // The user may have logged out or switched accounts while this refresh
+    // request was in flight. Never let an old session's delayed response
+    // overwrite the newer authentication generation.
+    if (getAuthItem(REFRESH_KEY) !== rt) {
+      return 'superseded'
+    }
+    setAuthItem(TOKEN_KEY, data.access_token)
+    setAuthItem(REFRESH_KEY, data.refresh_token)
+    broadcastAuthChange()
+    return 'ok'
+  }
+
+  if (res.status === 401 || res.status === 403) {
+    // A stale refresh failure must not log out a newer user/session.
+    if (getAuthItem(REFRESH_KEY) !== rt) {
+      return 'superseded'
+    }
+    removeAuthItem(TOKEN_KEY)
+    removeAuthItem(REFRESH_KEY)
+    broadcastAuthChange()
+    return 'invalid'
+  }
+
+  // 429 / 503 / other 5xx are transient.
+  return 'transient'
+}
+
 async function tryRefreshToken(): Promise<RefreshResult> {
-  const rt = sessionStorage.getItem(REFRESH_KEY)
+  const rt = getAuthItem(REFRESH_KEY)
   if (!rt) return 'invalid'
 
   // Single-flight only within the same auth generation. If user B logs in while
@@ -83,54 +170,28 @@ async function tryRefreshToken(): Promise<RefreshResult> {
   if (_refreshInflight?.refreshToken === rt) return _refreshInflight.promise
 
   const flight = {} as RefreshFlight
-  const promise = (async (): Promise<RefreshResult> => {
+  // navigator.locks で全タブを通じて refresh を 1 本に束ねる (非対応ブラウザは
+  // 下の module-level single-flight が同一タブ内の多重 refresh を 1 本にまとめる)。
+  const promise = withRefreshLock(async (): Promise<RefreshResult> => {
     try {
-      let res: Response
-      try {
-        // 半断 (TCP 接続のみ成立し応答しない) で single-flight 全体が固定されないよう、
-        // refresh 自体にも有限 timeout を掛ける。timeout は catch へ落ち 'transient' になる。
-        res = await fetchWithTimeout(
-          `${BASE_URL}/auth/refresh`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ refresh_token: rt }),
-          },
-          REFRESH_TIMEOUT_MS,
-        )
-      } catch {
-        // network / timeout = transient. Never destroy a valid refresh token.
-        return sessionStorage.getItem(REFRESH_KEY) === rt ? 'transient' : 'superseded'
-      }
-
-      if (res.ok) {
-        const data: { access_token: string; refresh_token: string } = await res.json()
-        // The user may have logged out or switched accounts while this refresh
-        // request was in flight. Never let an old session's delayed response
-        // overwrite the newer authentication generation.
-        if (sessionStorage.getItem(REFRESH_KEY) !== rt) {
-          return 'superseded'
+      let outcome = await _doRefreshOnce(rt)
+      if (outcome === 'retryable') {
+        // 応答が通信で失われた。セッションが切り替わっていなければ、短い待機のあと
+        // 同じ refresh token で 1 回だけ再試行する (サーバが猚予内なら同じ後継を返す)。
+        if (getAuthItem(REFRESH_KEY) !== rt) return 'superseded'
+        await sleep(REFRESH_RETRY_DELAY_MS)
+        if (getAuthItem(REFRESH_KEY) !== rt) return 'superseded'
+        outcome = await _doRefreshOnce(rt)
+        // 2 回目も network error で失敗したら、有効な refresh token は捨てず transient 扱いにする。
+        if (outcome === 'retryable') {
+          outcome = getAuthItem(REFRESH_KEY) === rt ? 'transient' : 'superseded'
         }
-        sessionStorage.setItem(TOKEN_KEY, data.access_token)
-        sessionStorage.setItem(REFRESH_KEY, data.refresh_token)
-        try { window.dispatchEvent(new Event(AUTH_CHANGED_EVENT)) } catch {}
-        return 'ok'
       }
-
-      if (res.status === 401 || res.status === 403) {
-        // A stale refresh failure must not log out a newer user/session.
-        if (sessionStorage.getItem(REFRESH_KEY) !== rt) {
-          return 'superseded'
-        }
-        sessionStorage.removeItem(TOKEN_KEY)
-        sessionStorage.removeItem(REFRESH_KEY)
-        try { window.dispatchEvent(new Event(AUTH_CHANGED_EVENT)) } catch {}
-        return 'invalid'
+      // transient でも、待ち時間中にユーザが切り替わっていたら superseded 扱いにする。
+      if (outcome === 'transient' && getAuthItem(REFRESH_KEY) !== rt) {
+        return 'superseded'
       }
-
-      // 429 / 503 / other 5xx are transient. If the user switched while
-      // waiting, mark this result superseded so the old request is not replayed.
-      return sessionStorage.getItem(REFRESH_KEY) === rt ? 'transient' : 'superseded'
+      return outcome
     } finally {
       // Clear only the flight that is actually finishing. A newer auth
       // generation may already have installed its own in-flight refresh.
@@ -138,7 +199,7 @@ async function tryRefreshToken(): Promise<RefreshResult> {
         if (_refreshInflight === flight) _refreshInflight = null
       }, 0)
     }
-  })()
+  })
 
   flight.refreshToken = rt
   flight.promise = promise
@@ -176,8 +237,8 @@ function _handleSessionExpired(): void {
   let _hadAnyToken = false
   try {
     _hadAnyToken =
-      !!sessionStorage.getItem('shuttlescope_token') ||
-      !!sessionStorage.getItem(REFRESH_KEY)
+      !!getAuthItem(TOKEN_KEY) ||
+      !!getAuthItem(REFRESH_KEY)
   } catch {
     /* noop */
   }
@@ -186,24 +247,26 @@ function _handleSessionExpired(): void {
   // 保存しておく (再ログイン後に同一ユーザーなら戻る)。storage を消す
   // 前に読む必要がある。許可ルートでなければ storeReturnContext が何もしない。
   try {
-    const uid = sessionStorage.getItem('shuttlescope_user_id')
+    const uid = getAuthItem(USER_ID_KEY)
     const rawHash = (window.location.hash || '').replace(/^#/, '')
     if (uid && rawHash) storeReturnContext(uid, rawHash)
   } catch {
     /* noop */
   }
   try {
-    sessionStorage.removeItem('shuttlescope_token')
-    sessionStorage.removeItem(REFRESH_KEY)
-    sessionStorage.removeItem('shuttlescope_role')
-    sessionStorage.removeItem('shuttlescope_player_id')
-    sessionStorage.removeItem('shuttlescope_team_name')
+    // removeAuthItem は localStorage と sessionStorage の両方から消す。localStorage から
+    // 消えることで他タブに storage イベントが届き、ログアウトが全タブに伝わる。
+    removeAuthItem(TOKEN_KEY)
+    removeAuthItem(REFRESH_KEY)
+    removeAuthItem(ROLE_KEY)
+    removeAuthItem(PLAYER_ID_KEY)
+    removeAuthItem(TEAM_NAME_KEY)
     // 残りの auth 関連 storage も全て掃除する。掃除漏れがあると `useAuth` の
     // 内部 state が "token は null だが userId/displayName は残っている" 状態
     // になり、リログイン後の表示が一貫しない。
-    sessionStorage.removeItem('shuttlescope_user_id')
-    sessionStorage.removeItem('shuttlescope_display_name')
-    sessionStorage.removeItem('shuttlescope_page_access')
+    removeAuthItem(USER_ID_KEY)
+    removeAuthItem(DISPLAY_NAME_KEY)
+    removeAuthItem(PAGE_ACCESS_KEY)
   } catch {
     /* noop */
   }
@@ -212,9 +275,7 @@ function _handleSessionExpired(): void {
   // 残った状態で `<ProtectedMainRoute>` の `token != null` チェックを通過し続け、
   // hash が `/login?session_expired=1` に変わっても <LoginPage /> がレンダーされなかった
   // (2026-05-07 報告)。
-  try {
-    window.dispatchEvent(new Event(AUTH_CHANGED_EVENT))
-  } catch { /* noop */ }
+  broadcastAuthChange()
   // 既に未認証ページにいるならリダイレクト不要
   const currentHash = (window.location.hash || '').slice(1).split('?')[0]
   const SKIP_PATHS = [
@@ -875,7 +936,7 @@ export function authAuditLogActions(): Promise<{ success: boolean; data: AuditLo
 }
 
 export function authLogout(): Promise<{ success: boolean }> {
-  const rt = (() => { try { return sessionStorage.getItem(REFRESH_KEY) } catch { return null } })()
+  const rt = getAuthItem(REFRESH_KEY)
   return apiPost<{ success: boolean }>('/auth/logout', rt ? { refresh_token: rt } : {})
 }
 
