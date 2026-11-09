@@ -1524,6 +1524,12 @@
     "match_day_mode_off": "Match-day mode OFF",
     "pending_saves": "Saving",
     "save_error_title": "Save failed",
+    "sync_status_saved": "Saved",
+    "sync_status_offline": "Offline — {{n}} unsent",
+    "sync_status_failed": "Send failed (retrying) — {{n}} unsent",
+    "sync_status_tooltip_saved": "All rallies saved to the server.",
+    "sync_status_tooltip_offline": "Offline. {{n}} rally(ies) are kept on this device and will be sent automatically when the connection returns.",
+    "sync_status_tooltip_failed": "The last send failed. {{n}} rally(ies) are kept on this device and will be retried automatically.",
     "offline_sync_rejected": "The server rejected this rally on offline resend (HTTP {{status}}). It is NOT saved.",
     "unowned_rally_warning": "{{n}} rally(ies) failed to save while the signed-in user could not be identified. They were NOT sent to the server and are kept on this device.",
     "unowned_rally_warning_login": "{{n}} rally(ies) failed to save while the signed-in user could not be identified. They were NOT sent to the server. Sign in again to send or discard them.",
@@ -1663,9 +1669,9 @@
       "rally_end_cancel_paren_esc": "(Esc)",
       "doubles_hitter_hint": "Doubles: confirm / change hitter (keys",
       "doubles_hitter_hint_close": ")",
-      "hit_zone_hint_doubles": "Hit zone:",
+      "hit_zone_hint_doubles": "Shot location:",
       "hit_zone_hint_doubles_extra": "／ 7-9 are",
-      "hit_zone_hint_singles": "Hit zone: top row",
+      "hit_zone_hint_singles": "Shot location: top row",
       "cv_assist_label": "CV assist candidates",
       "cv_assist_finish_rally": "Finish the rally to see candidates",
       "cv_assist_no_candidate": "No candidates for this rally (re-run 'Generate candidates')",
@@ -1676,6 +1682,9 @@
       "dl_err_no_source": "Could not find the video URL for this match. Please check the match details.",
       "dl_err_bad_settings": "Please check the download settings (cookies.txt, cookie browser).",
       "calib_invalid_points": "Invalid points ({{got}}/6)",
+      "calib_no_video_title": "Court calibration (no video)",
+      "calib_no_video_close": "Close",
+      "calib_no_video_hint": "Even without video, you can calibrate by placing the 6 points at the 4 court corners and both net ends.",
       "manage_actions": "Management actions",
       "set_transition_to_next": "End Game {{from}} and move to Game {{to}}?",
       "set_transition_to_prev": "Go back to Game {{to}}? (Current game progress is preserved)",
@@ -6092,7 +6101,7 @@
       },
       "flow": {
         "title": "The basic loop",
-        "body": "Play and pause the video and record scores and strokes. Check them afterwards in Review, then look at Analysis for patterns. It is a loop of these three."
+        "body": "Play and pause the video and record scores and strokes in Input. Check them afterwards in Review, then look at Analysis for patterns. It is a loop of these three."
       }
     },
     "analysis_reading": {

@@ -1655,6 +1655,12 @@
     "match_day_mode_off": "試合中モード OFF",
     "pending_saves": "保存中",
     "save_error_title": "保存失敗",
+    "sync_status_saved": "保存済み",
+    "sync_status_offline": "オフライン — 未送信 {{n}} 件",
+    "sync_status_failed": "送信失敗(再試行) — 未送信 {{n}} 件",
+    "sync_status_tooltip_saved": "すべてのラリーをサーバーに保存済みです。",
+    "sync_status_tooltip_offline": "オフラインです。未送信 {{n}} 件はこの端末に保持され、通信が復帰すると自動で送信されます。",
+    "sync_status_tooltip_failed": "直近の送信が失敗しました。未送信 {{n}} 件はこの端末に保持され、自動で再送されます。",
     "offline_sync_rejected": "オフライン再送がサーバに拒否されました (HTTP {{status}})。このラリーは未保存です。",
     "unowned_rally_warning": "ログイン中のユーザーを確認できないまま保存に失敗したラリーが {{n}} 件あります。サーバーには送られていません。この端末に保管しています。",
     "unowned_rally_warning_login": "ログイン中のユーザーを確認できないまま保存に失敗したラリーが {{n}} 件あります。サーバーには送られていません。ログインし直すと、送信か破棄を選べます。",
@@ -1793,9 +1799,9 @@
       "rally_end_cancel_paren_esc": "(Esc)",
       "doubles_hitter_hint": "ダブルス: 打者を確認・変更 (キー",
       "doubles_hitter_hint_close": ")",
-      "hit_zone_hint_doubles": "打点:",
+      "hit_zone_hint_doubles": "打球位置:",
       "hit_zone_hint_doubles_extra": "／ 7-9 は",
-      "hit_zone_hint_singles": "打点: トップ行",
+      "hit_zone_hint_singles": "打球位置: トップ行",
       "cv_assist_label": "CV補助候補",
       "cv_assist_finish_rally": "ラリーを完了すると候補が表示されます",
       "cv_assist_no_candidate": "このラリーの候補がありません（「候補生成」を再実行してください）",
@@ -1806,6 +1812,9 @@
       "dl_err_no_source": "この試合の動画URLを確認できませんでした。試合情報を見直してください。",
       "dl_err_bad_settings": "ダウンロード設定を確認してください (cookies.txt、Cookie ブラウザ)。",
       "calib_invalid_points": "点数不正 ({{got}}/6)",
+      "calib_no_video_title": "コートキャリブレーション（映像なし）",
+      "calib_no_video_close": "閉じる",
+      "calib_no_video_hint": "映像が無くても、コートの 4 隅とネット両端の 6 点を置いてキャリブレーションできます。",
       "manage_actions": "管理操作",
       "set_transition_to_next": "第{{from}}ゲームを終了して、第{{to}}ゲームへ移りますか？",
       "set_transition_to_prev": "第{{to}}ゲームへ戻りますか？（今のゲームの進み具合は変わりません）",
@@ -6098,7 +6107,7 @@
       },
       "flow": {
         "title": "基本の流れ",
-        "body": "動画を再生して止め、得点やストロークを「記録」します。あとで「振り返り」で確認し、「解析」で傾向を見ます。この3つの繰り返しです。"
+        "body": "動画を再生して止め、得点やストロークを「入力」します。あとで「確認」で見直し、「解析」で傾向を見ます。この3つの繰り返しです。"
       }
     },
     "analysis_reading": {

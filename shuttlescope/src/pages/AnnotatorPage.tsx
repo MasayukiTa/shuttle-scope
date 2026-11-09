@@ -66,6 +66,7 @@ import type { RawDetection } from '@/components/annotation/PlayerTrackingOverlay
 import { useSessionSharing } from '@/hooks/annotator/useSessionSharing'
 import { useCVCandidates } from '@/hooks/annotator/useCVCandidates'
 import { AnnotatorVideoPane } from '@/components/annotator/AnnotatorVideoPane'
+import { CourtGridOverlay } from '@/components/video/CourtGridOverlay'
 import type { RoiRect } from '@/components/video/RoiRectOverlay'
 import { CVAssistPanel } from '@/components/annotation/CVAssistPanel'
 import { CVScanPanel } from '@/components/annotation/CVScanPanel'
@@ -248,6 +249,9 @@ export function AnnotatorPage() {
   const videoRef = useRef<HTMLVideoElement>(null)
   // 動画＋オーバーレイの aspect-ratio 箱（別モニタ拡張のクロップ対象）
   const videoAreaRef = useRef<HTMLDivElement>(null)
+  // 映像なしモードでも「キャリブレーションを開く」が機能するよう、空の校正
+  // キャンバスに CourtGridOverlay を乗せるためのコンテナ ref (T003-05)。
+  const noVideoCalibRef = useRef<HTMLDivElement>(null)
   const { playbackRate, setPlaybackRate } = useVideo(videoRef)
 
   const store = useAnnotationStore()
@@ -2375,6 +2379,27 @@ export function AnnotatorPage() {
 
         {/* デスクトップ: 全ボタン表示 */}
         <div className="hidden md:flex items-center gap-2 text-xs text-[var(--ss-t2)] shrink-0">
+          {/* unsent-indicator: 送信状態を常時表示 (未送信 N 件 / 保存済み / 送信失敗(再試行))。
+              オフライン・送信失敗は目立つ赤系で出す。 */}
+          <span
+            className={clsx(
+              'font-medium px-1.5 py-0.5 rounded',
+              store.syncState === 'saved'
+                ? 'text-emerald-400'
+                : 'bg-red-500/20 text-red-300 ring-1 ring-red-500/50'
+            )}
+            title={t(`annotator.sync_status_tooltip_${store.syncState}`, {
+              defaultValue: '',
+              n: store.unsentCount,
+            })}
+            aria-live="polite"
+          >
+            {store.syncState === 'saved'
+              ? t('annotator.sync_status_saved')
+              : store.syncState === 'offline'
+                ? t('annotator.sync_status_offline', { n: store.unsentCount })
+                : t('annotator.sync_status_failed', { n: store.unsentCount })}
+          </span>
           {/* K-002: 保存中バッジ */}
           {store.pendingSaveCount > 0 && (
             <span className="text-yellow-400 font-medium">
@@ -3185,6 +3210,22 @@ export function AnnotatorPage() {
                 {t('in_match_panel.opponent_info')}
               </button>
             )}
+            {/* unsent-indicator (モバイル): 送信状態を常時表示。 */}
+            <div
+              className={clsx(
+                'w-full flex items-center gap-2 px-3 py-2.5 text-sm',
+                store.syncState === 'saved'
+                  ? 'text-[var(--ss-t2)]'
+                  : 'text-[var(--ss-bad)] font-medium'
+              )}
+              aria-live="polite"
+            >
+              {store.syncState === 'saved'
+                ? t('annotator.sync_status_saved')
+                : store.syncState === 'offline'
+                  ? t('annotator.sync_status_offline', { n: store.unsentCount })
+                  : t('annotator.sync_status_failed', { n: store.unsentCount })}
+            </div>
             {/* エラー表示 */}
             {store.saveErrors.length > 0 && (
               <button
@@ -3305,6 +3346,21 @@ export function AnnotatorPage() {
           {(() => {
             // 別モニタ表示中はメイン側を非表示（video-only ウィンドウで再生中）
             if (videoSourceMode === 'none') {
+              // T003-05: 映像なしモードでもキャリブレーションを機能させる。
+              if (courtGridVisible && matchId && !videoWindowOpen) {
+                return (
+                  <NoVideoCalibCanvas
+                    matchId={matchId}
+                    containerRef={noVideoCalibRef}
+                    onClose={() => setCourtGridVisible(false)}
+                    onCalibrationSaved={() => {
+                      queryClient.invalidateQueries({ queryKey: ['movement-stats', matchId] })
+                    }}
+                    onCalibSourceChange={setCalibSource}
+                    t={t}
+                  />
+                )
+              }
               return (
                 <div className="flex items-center justify-center bg-[var(--ss-surface-2)] rounded-ss-lg text-[var(--ss-t3)] text-xs border border-dashed border-[var(--ss-border)] py-6 px-3 text-center">
                   {videoWindowOpen
@@ -3391,6 +3447,21 @@ export function AnnotatorPage() {
             }
 
             if (!videoSrc) {
+              // T003-05: 動画未設定でもキャリブレーションを機能させる。
+              if (courtGridVisible && matchId) {
+                return (
+                  <NoVideoCalibCanvas
+                    matchId={matchId}
+                    containerRef={noVideoCalibRef}
+                    onClose={() => setCourtGridVisible(false)}
+                    onCalibrationSaved={() => {
+                      queryClient.invalidateQueries({ queryKey: ['movement-stats', matchId] })
+                    }}
+                    onCalibSourceChange={setCalibSource}
+                    t={t}
+                  />
+                )
+              }
               return (
                 <div className="flex items-center justify-center bg-[var(--ss-surface-2)] rounded-ss-md text-[var(--ss-t2)] text-sm border-2 border-dashed border-[var(--ss-border)] py-6 px-4 text-center gap-2 flex-col">
                   <span>{t('annotator.ui.video_not_set')}</span>
@@ -4314,12 +4385,12 @@ export function AnnotatorPage() {
                     <span className="text-[10px] text-[var(--ss-t2)] hidden md:inline">
                       {store.isDoubles ? (
                         <>
-                          {t('annotator.ui.hit_zone_hint_doubles', { defaultValue: '打点:' })} <kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">1</kbd>-<kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">6</kbd>
+                          {t('annotator.ui.hit_zone_hint_doubles', { defaultValue: '打球位置:' })} <kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">1</kbd>-<kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">6</kbd>
                           {' '}{t('annotator.ui.hit_zone_hint_doubles_extra', { defaultValue: '／ 7-9 は' })} <kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">{t('auto.AnnotatorPage.kbd_shift_7')}</kbd>-<kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">9</kbd>
                         </>
                       ) : (
                         <>
-                          {t('annotator.ui.hit_zone_hint_singles', { defaultValue: '打点: トップ行' })} <kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">1</kbd>-<kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">9</kbd>
+                          {t('annotator.ui.hit_zone_hint_singles', { defaultValue: '打球位置: トップ行' })} <kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">1</kbd>-<kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">9</kbd>
                         </>
                       )}
                     </span>
@@ -5455,6 +5526,62 @@ export function AnnotatorPage() {
         })}
       />
       <ConfirmDialog pending={pendingConfirm} onClose={() => setPendingConfirm(null)} />
+    </div>
+  )
+}
+
+// ─── NoVideoCalibCanvas ───────────────────────────────────
+// T003-05: 映像なしモードでも「キャリブレーションを開く」導線を成立させる。
+// CourtGridOverlay はコンテナ div の寸法に対する正規化座標で 6 点を置くだけ。
+interface NoVideoCalibCanvasProps {
+  matchId: string
+  containerRef: React.RefObject<HTMLDivElement>
+  onClose: () => void
+  onCalibrationSaved?: () => void
+  onCalibSourceChange?: (source: 'backend' | 'local' | 'none') => void
+  t: (key: string, opts?: Record<string, unknown>) => string
+}
+
+function NoVideoCalibCanvas({
+  matchId,
+  containerRef,
+  onClose,
+  onCalibrationSaved,
+  onCalibSourceChange,
+  t,
+}: NoVideoCalibCanvasProps) {
+  return (
+    <div className="w-full flex flex-col gap-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs text-[var(--ss-t2)] flex items-center gap-1">
+          <MIcon name="crop_square" size={13} />
+          {t('annotator.ui.calib_no_video_title', { defaultValue: 'コートキャリブレーション（映像なし）' })}
+        </span>
+        <button
+          type="button"
+          onClick={onClose}
+          className="flex items-center gap-1 px-2 py-1 rounded-ss-sm text-xs bg-[var(--ss-surface-2)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-3)]"
+        >
+          <MIcon name="close" size={12} />
+          {t('annotator.ui.calib_no_video_close', { defaultValue: '閉じる' })}
+        </button>
+      </div>
+      <div
+        ref={containerRef}
+        className="relative w-full bg-black rounded-ss-md overflow-hidden border border-[var(--ss-border)]"
+        style={{ aspectRatio: '16 / 9' }}
+      >
+        <CourtGridOverlay
+          matchId={matchId}
+          containerRef={containerRef}
+          visible
+          onCalibrationSaved={onCalibrationSaved}
+          onCalibSourceChange={onCalibSourceChange}
+        />
+      </div>
+      <span className="text-[10px] text-[var(--ss-t3)] leading-snug">
+        {t('annotator.ui.calib_no_video_hint', { defaultValue: '映像が無くても、コートの 4 隅とネット両端の 6 点を置いてキャリブレーションできます。' })}
+      </span>
     </div>
   )
 }
