@@ -66,6 +66,7 @@ import type { RawDetection } from '@/components/annotation/PlayerTrackingOverlay
 import { useSessionSharing } from '@/hooks/annotator/useSessionSharing'
 import { useCVCandidates } from '@/hooks/annotator/useCVCandidates'
 import { AnnotatorVideoPane } from '@/components/annotator/AnnotatorVideoPane'
+import { CourtGridOverlay } from '@/components/video/CourtGridOverlay'
 import type { RoiRect } from '@/components/video/RoiRectOverlay'
 import { CVAssistPanel } from '@/components/annotation/CVAssistPanel'
 import { CVScanPanel } from '@/components/annotation/CVScanPanel'
@@ -3305,11 +3306,60 @@ export function AnnotatorPage() {
           {(() => {
             // 別モニタ表示中はメイン側を非表示（video-only ウィンドウで再生中）
             if (videoSourceMode === 'none') {
+              // F-T003-05: 映像なしモードでも「キャリブレーションを開く」からコート
+              // 校正を行えるようにする。CourtGridOverlay は映像非依存（コンテナ上の
+              // SVG で 4 隅 + ネット 2 点を合わせる）ため、空の 16:9 枠にマウントすれば
+              // そのまま校正・保存できる。courtGridVisible が false のときは従来どおり
+              // 案内テキスト + 起動ボタンのみ。
+              if (courtGridVisible) {
+                return (
+                  <div className="w-full flex flex-col gap-1">
+                    <div
+                      ref={videoAreaRef}
+                      className="relative w-full bg-[var(--ss-surface-2)] rounded-ss-md overflow-hidden border border-[var(--ss-border)]"
+                      style={{ aspectRatio: '16/9' }}
+                    >
+                      <CourtGridOverlay
+                        matchId={matchId ? String(matchId) : ''}
+                        containerRef={videoAreaRef}
+                        visible={courtGridVisible}
+                        onCalibrationSaved={() => {
+                          queryClient.invalidateQueries({ queryKey: ['movement-stats', matchId] })
+                        }}
+                        onCalibSourceChange={setCalibSource}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] text-[var(--ss-t3)]">
+                        {t('annotator.ui.calib_no_video_hint', { defaultValue: '映像なしでコート補正中。4 隅とネット支柱 2 点をクリックして配置します。' })}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setCourtGridVisible(false)}
+                        className="shrink-0 flex items-center gap-1 px-2 py-1 rounded-ss-md text-xs bg-[var(--ss-surface-3)] hover:bg-[var(--ss-surface-2)] text-[var(--ss-t1)]"
+                      >
+                        <MIcon name="close" size={12} />
+                        {t('annotator.ui.calib_close', { defaultValue: 'コート補正を閉じる' })}
+                      </button>
+                    </div>
+                  </div>
+                )
+              }
               return (
-                <div className="flex items-center justify-center bg-[var(--ss-surface-2)] rounded-ss-lg text-[var(--ss-t3)] text-xs border border-dashed border-[var(--ss-border)] py-6 px-3 text-center">
-                  {videoWindowOpen
-                    ? t('annotator.ui.external_monitor_playing', { defaultValue: '別モニタで再生中' })
-                    : t('settings_general.no_video_hint')}
+                <div className="flex flex-col items-center justify-center gap-2 bg-[var(--ss-surface-2)] rounded-ss-lg text-[var(--ss-t3)] text-xs border border-dashed border-[var(--ss-border)] py-6 px-3 text-center">
+                  <span>
+                    {videoWindowOpen
+                      ? t('annotator.ui.external_monitor_playing', { defaultValue: '別モニタで再生中' })
+                      : t('settings_general.no_video_hint')}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setCourtGridVisible(true)}
+                    className="flex items-center gap-1 px-2 py-1 rounded-ss-md text-xs bg-[var(--ss-surface-3)] hover:bg-[var(--ss-surface-1)] text-[var(--ss-t1)]"
+                  >
+                    <MIcon name="crop_square" size={12} />
+                    {t('annotator.ui.calib_open_no_video', { defaultValue: '映像なしでコート補正を開く' })}
+                  </button>
                 </div>
               )
             }
