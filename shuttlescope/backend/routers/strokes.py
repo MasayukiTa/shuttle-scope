@@ -684,6 +684,32 @@ def delete_stroke(stroke_id: int, request: Request, db: Session = Depends(get_db
     return {"success": True, "data": {"id": stroke_id}}
 
 
+@router.get("/rallies/{rally_id}/strokes")
+def list_rally_strokes(rally_id: int, request: Request, db: Session = Depends(get_db)):
+    """ラリーの保存済みストローク一覧（確認モードの実データ表示・編集用）。
+
+    `GET /analysis/rally_strokes` は id を返さず team scope 検証も無いため、
+    確認モードから個別ストロークを編集する用途には使えない。ここは編集に必要な
+    全フィールドを `stroke_to_dict` で返し、閲覧権限は既存の `PUT /strokes/{id}`
+    と同じ `_stroke_require_scope`（= `require_match_scope`）に従う。
+    削除済み (soft-delete) ストロークは除外する。
+    """
+    _stroke_require_scope(request, db, rally_id)
+    strokes = (
+        db.query(Stroke)
+        .filter(Stroke.rally_id == rally_id, Stroke.deleted_at.is_(None))
+        .order_by(Stroke.stroke_num)
+        .all()
+    )
+    return {
+        "success": True,
+        "data": {
+            "rally_id": rally_id,
+            "strokes": [stroke_to_dict(s) for s in strokes],
+        },
+    }
+
+
 def _update_annotation_progress(match_id: int, db: Session) -> None:
     """アノテーション進捗を更新（推定総ラリー数ベース）"""
     match = db.get(Match, match_id)
