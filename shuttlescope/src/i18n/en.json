@@ -2495,6 +2495,11 @@
   },
   "enrichment": {
     "strip_label": "Return note (optional)",
+    "target_stroke": "Detail target: #{{n}} / {{total}}",
+    "target_latest": "(latest)",
+    "target_prev": "Previous stroke",
+    "target_next": "Next stroke",
+    "target_no_shot": "No shot set",
     "return_quality": "Return quality",
     "contact_height": "Contact height",
     "return_quality_attack": "Attack",
