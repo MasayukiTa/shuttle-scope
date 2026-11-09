@@ -33,6 +33,8 @@ import {
   offlineStrokeIdempotencyKey,
   removeRallyAfterSave,
   stashRallyBeforeSave,
+  stashDraftRally,
+  removeDraftRally,
 } from '@/utils/offlineStrokeQueue'
 import { attachRecordedVideoPath } from '@/utils/recordedVideo'
 import { useUnownedRallies } from '@/hooks/useUnownedRallies'
@@ -664,8 +666,13 @@ export function AnnotatorPage() {
       // UI を即時更新（fire-and-forget）
       s.confirmRally(winner, endType)
       setPendingEndType(null)
-      // 一時保存をクリア
+      // 一時保存をクリア（localStorage と IndexedDB の draft 両方）。確定済みラリーは
+      // 下の stashRallyBeforeSave で本退避キューへ移り、安定冪等キーで送られるので、
+      // 入力中 draft は残さない。
       if (autoSaveKey) localStorage.removeItem(autoSaveKey)
+      if (userId != null) {
+        void removeDraftRally(userId, Number(matchId), setId, rallyNum)
+      }
       setLastAutoSaveTime(null)
 
       // 11点インターバル: どちらかが11点に到達したとき（BWFルール）
@@ -1161,20 +1168,51 @@ export function AnnotatorPage() {
       savedAt: now,
       ownerUserId: userId,
     }
+    // localStorage への同期退避を試みる。失敗 (容量超過・プライベートモード) しても
+    // すぐには「保存失敗」にしない — 下の IndexedDB 退避が成功すれば入力は残るため。
+    let localOk = false
+    let localErr: unknown = null
     try {
       localStorage.setItem(autoSaveKey, JSON.stringify(data))
-      setLastAutoSaveTime(now)
-      // 一度成功したら過去の error は消す
-      setAutoSaveError((prev) => (prev ? null : prev))
+      localOk = true
     } catch (err: unknown) {
-      // QuotaExceededError / SecurityError / private mode の disabled etc.
-      // ユーザがリアルタイムで「保存されてない」を知る経路として error を残す
-      const msg = (err as { name?: string } | null)?.name === 'QuotaExceededError'
+      localErr = err
+      console.warn('[autosave] localStorage failed:', err)
+    }
+
+    // 1 打ごとに IndexedDB へも退避する。localStorage が失敗しても、タブを閉じた・
+    // クラッシュ・通信断・ログアウトのいずれでも入力が残るようにする。
+    // 所有者が分かるときだけ (userId が正の整数) 本人の draft 枠へ書く。
+    if (s.currentSetId != null && userId != null) {
+      void stashDraftRally({
+        ownerUserId: userId,
+        matchId: s.matchId ?? 0,
+        setId: s.currentSetId,
+        rallyNum: s.currentRallyNum,
+        snapshot: data,
+        updated_at: new Date(now).toISOString(),
+      }).then((idbOk) => {
+        // どちらかの層に書けていれば退避済み。両方失敗したときだけ「保存失敗」を出す。
+        if (localOk || idbOk) {
+          setLastAutoSaveTime(now)
+          setAutoSaveError((prev) => (prev ? null : prev))
+        } else {
+          const msg = (localErr as { name?: string } | null)?.name === 'QuotaExceededError'
+            ? t('annotator.ui.autosave_quota')
+            : t('annotator.ui.autosave_failed', { defaultValue: '一時保存失敗' })
+          setAutoSaveError(msg)
+        }
+      })
+    } else if (localOk) {
+      // 所有者不明でも localStorage には書けた (buildAutosaveKey は userId 必須なので
+      // 実際にはここへ来ないが、防御的に成功扱いにする)。
+      setLastAutoSaveTime(now)
+      setAutoSaveError((prev) => (prev ? null : prev))
+    } else {
+      const msg = (localErr as { name?: string } | null)?.name === 'QuotaExceededError'
         ? t('annotator.ui.autosave_quota')
         : t('annotator.ui.autosave_failed', { defaultValue: '一時保存失敗' })
       setAutoSaveError(msg)
-
-      console.warn('[autosave] localStorage failed:', err)
     }
   }, [autoSaveKey, userId, t])
 
