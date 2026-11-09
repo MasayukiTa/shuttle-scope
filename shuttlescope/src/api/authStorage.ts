@@ -5,10 +5,14 @@
 //   (3) 1 タブでも refresh 応答が通信で失われると次の refresh が使い回し扱いで失効
 // が起きていた。localStorage を主ストレージにして全タブで 1 つの認証世代を共有する。
 //
-// 既存の多数の vitest は sessionStorage に直接 set / get して検証しているため、
-// 読みは「localStorage 優先・無ければ sessionStorage フォールバック」、書きは
-// 「localStorage と sessionStorage の両方」に行い、互換を保ちつつ本番では
-// localStorage が storage イベントで他タブへ伝播する。
+// localStorage が使える環境では読み書きとも localStorage だけを使う。sessionStorage は
+// localStorage が使えないとき (Safari private mode 等) の代替としてのみ使う。
+// 以前は互換のため書きを localStorage と sessionStorage の両方に行い、読みを
+// 「localStorage 優先・無ければ sessionStorage フォールバック」にしていたが、これだと
+// 他タブでログアウトして localStorage が空になっても、そのタブに残った sessionStorage の
+// ミラーを読んでログイン状態が残り、cross-tab logout が成立しなかった。そのため
+// タブ固有の sessionStorage ミラーは残さない方針に変更した (移行時・他タブログアウト時に消す)。
+// 本番では localStorage への書き込みが storage イベントで他タブへ伝播する。
 
 export const AUTH_CHANGED_EVENT = 'shuttlescope:auth-changed'
 
@@ -50,17 +54,21 @@ function safeSession(): Storage | null {
 }
 
 /**
- * 認証値を 1 つ読む。localStorage を優先し、無ければ sessionStorage をフォールバックで読む。
- * 旧バージョン (sessionStorage のみ) で開かれたタブや、既存テストの setup との互換のため。
+ * 認証値を 1 つ読む。localStorage が使える環境では localStorage だけを読む
+ * (sessionStorage には落ちない)。sessionStorage は localStorage が使えないとき
+ * (Safari private mode 等) の代替としてのみ読む。
+ *
+ * 以前は localStorage に無ければ常に sessionStorage をフォールバックで読んでいたため、
+ * 他タブでログアウトして localStorage の token が消えても、そのタブに残った
+ * sessionStorage のミラーを拾ってログイン状態が残ってしまった (cross-tab logout 不成立)。
  */
 export function getAuthItem(key: string): string | null {
   const ls = safeLocal()
   if (ls) {
     try {
-      const v = ls.getItem(key)
-      if (v !== null) return v
+      return ls.getItem(key)
     } catch {
-      /* fall through to sessionStorage */
+      /* localStorage 自体が不可 → sessionStorage 代替へ */
     }
   }
   const ss = safeSession()
@@ -75,13 +83,20 @@ export function getAuthItem(key: string): string | null {
 }
 
 /**
- * 認証値を 1 つ書く。localStorage (全タブ共有・主) と sessionStorage (互換ミラー) の
- * 両方に書く。localStorage への書き込みは他タブで storage イベントを発火させる。
+ * 認証値を 1 つ書く。localStorage が使える環境では localStorage だけに書く
+ * (全タブ共有・主ストレージ。書き込みは他タブで storage イベントを発火させる)。
+ * sessionStorage には書かない — タブ固有の sessionStorage にミラーを残すと、
+ * 他タブでのログアウト (localStorage から消える) 後もそのタブに値が残り、
+ * getAuthItem がそれを拾ってログアウトが伝わらないため。
+ * localStorage が使えないとき (Safari private mode 等) だけ sessionStorage を代替に使う。
  */
 export function setAuthItem(key: string, value: string): void {
   const ls = safeLocal()
   if (ls) {
-    try { ls.setItem(key, value) } catch { /* ignore quota / private mode */ }
+    try {
+      ls.setItem(key, value)
+      return
+    } catch { /* localStorage 自体が不可 → sessionStorage 代替へ */ }
   }
   const ss = safeSession()
   if (ss) {
@@ -113,9 +128,12 @@ export function migrateSessionToLocal(): void {
   if (!ls || !ss) return
   for (const key of AUTH_KEYS) {
     try {
-      if (ls.getItem(key) !== null) continue
       const v = ss.getItem(key)
-      if (v !== null) ls.setItem(key, v)
+      // localStorage に既に値があるキーは上書きしない (他タブが書いた最新を尊重)。
+      if (v !== null && ls.getItem(key) === null) ls.setItem(key, v)
+      // 移行後は sessionStorage の認証値を消す。タブ固有のミラーを残すと、
+      // 他タブのログアウトが getAuthItem のフォールバックで無効化されてしまうため。
+      if (v !== null) ss.removeItem(key)
     } catch {
       /* ignore individual key */
     }
@@ -153,6 +171,29 @@ export function installCrossTabAuthSync(): void {
   window.addEventListener('storage', (e: StorageEvent) => {
     // key === null は clear() 由来。認証キーの変化のみ React state 再同期の対象にする。
     if (e.key !== null && !AUTH_KEYS.includes(e.key)) return
+    // 他タブでのログアウト (token / refresh token が localStorage から消えた) の検知。
+    const loggedOut =
+      (e.key === TOKEN_KEY || e.key === REFRESH_KEY) && e.newValue === null
+    if (loggedOut || e.key === null) {
+      // 他タブでログアウトされた。このタブが未認証へ切り替わる前に、入力中のラリーを
+      // 今すぐ一時保存へ書き出させる (PR 243 と同じ退避。アノテータ画面が開いていれば拾う。
+      // 開いていなければ無害)。AUTOSAVE_FLUSH_EVENT の値を文字列直書きにして
+      // annotatorAutosave への依存を持たない (authStorage を UI 層から疎に保つ)。
+      try {
+        window.dispatchEvent(new Event('shuttlescope:autosave-flush'))
+      } catch {
+        /* ignore */
+      }
+      // このタブに残っている sessionStorage の認証ミラーも消す。消さないと getAuthItem が
+      // localStorage 不可時の代替として、あるいは移行前の旧値としてそれを拾い、
+      // 読み込み直してもログインが続いてしまう。
+      const ss = safeSession()
+      if (ss) {
+        for (const key of AUTH_KEYS) {
+          try { ss.removeItem(key) } catch { /* ignore */ }
+        }
+      }
+    }
     try {
       window.dispatchEvent(new Event(AUTH_CHANGED_EVENT))
     } catch {
