@@ -31,13 +31,12 @@ describe('AttributePanel 打球の高さ (hit_height)', () => {
     expect(screen.getByTestId('hit-height-3')).toBeTruthy()
   })
 
-  it('日本語ラベル（ネットより上 / やや上 / やや下 / 下）を表示する', () => {
+  it('日本語ラベル（ネットより上 / ネットよりやや上 / ネットよりやや下 / ネットより下）を表示する', () => {
     render(<AttributePanel attributes={baseAttrs} onChange={() => {}} />)
-    expect(screen.getByText('ネットより上')).toBeTruthy()
-    expect(screen.getByText('やや上')).toBeTruthy()
-    expect(screen.getByText('やや下')).toBeTruthy()
-    // 「下」は「やや下」にも含まれるため、完全一致のボタンで確認
-    expect(screen.getByTestId('hit-height-3').textContent).toBe('下')
+    expect(screen.getByTestId('hit-height-0').textContent).toBe('ネットより上')
+    expect(screen.getByTestId('hit-height-1').textContent).toBe('ネットよりやや上')
+    expect(screen.getByTestId('hit-height-2').textContent).toBe('ネットよりやや下')
+    expect(screen.getByTestId('hit-height-3').textContent).toBe('ネットより下')
   })
 
   it('未選択ボタンのクリックで onChange に hit_height=index を載せる', () => {

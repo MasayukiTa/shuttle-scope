@@ -128,18 +128,18 @@ describe('StrokeHistory 打球の高さ (hit_height) バッジ', () => {
     expect(screen.getByText('ネットより上')).toBeTruthy()
   })
 
-  it('hit_height=1 で「やや上」を表示する', () => {
+  it('hit_height=1 で「ネットよりやや上」を表示する', () => {
     render(<StrokeHistory strokes={[{ ...baseStroke, hit_height: 1 }]} />)
-    expect(screen.getByText('やや上')).toBeTruthy()
+    expect(screen.getByText('ネットよりやや上')).toBeTruthy()
   })
 
-  it('hit_height=2 で「やや下」を表示する', () => {
+  it('hit_height=2 で「ネットよりやや下」を表示する', () => {
     render(<StrokeHistory strokes={[{ ...baseStroke, hit_height: 2 }]} />)
-    expect(screen.getByText('やや下')).toBeTruthy()
+    expect(screen.getByText('ネットよりやや下')).toBeTruthy()
   })
 
-  it('hit_height=3 で「下」を表示する', () => {
+  it('hit_height=3 で「ネットより下」を表示する', () => {
     render(<StrokeHistory strokes={[{ ...baseStroke, hit_height: 3 }]} />)
-    expect(screen.getByText('下')).toBeTruthy()
+    expect(screen.getByText('ネットより下')).toBeTruthy()
   })
 })

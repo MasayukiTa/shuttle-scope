@@ -13,6 +13,7 @@ import { WebViewPlayer } from '@/components/video/WebViewPlayer'
 import { CourtDiagram } from '@/components/court/CourtDiagram'
 import { ShotTypePanel } from '@/components/annotation/ShotTypePanel'
 import { AttributePanel } from '@/components/annotation/AttributePanel'
+import { EnrichmentTargetHeader } from '@/components/annotation/EnrichmentTargetHeader'
 import { HitZoneSelector } from '@/components/annotation/HitZoneSelector'
 // U1/U2 (UX redesign): 上バー圧縮用ドロップダウン menu + 大型 Score 表示 + モードタブ
 import { TopBarMenu, TopBarMenuSection } from '@/components/annotator/TopBarMenu'
@@ -4675,22 +4676,10 @@ export function AnnotatorPage() {
                 ? strokeCount - 1
                 : Math.min(Math.max(0, enrichmentTargetIndex), strokeCount - 1)
               const last = store.currentStrokes[targetIndex]
-              const targetStroke = last
-              const canPrev = targetIndex > 0
-              const canNext = targetIndex < strokeCount - 1
               const nameA = match?.player_a?.name ?? 'A'
               const nameB = match?.player_b?.name ?? 'B'
               const namePartnerA = match?.partner_a?.name
               const namePartnerB = match?.partner_b?.name
-              const resolveHitterLabel = (player: string): string => {
-                if (player === 'player_a') return nameA
-                if (player === 'player_b') return nameB
-                if (player === 'partner_a') return namePartnerA ?? `${nameA}P`
-                if (player === 'partner_b') return namePartnerB ?? `${nameB}P`
-                return player
-              }
-              const targetShotLabel = t(`shot_types.${targetStroke.shot_type}`, { defaultValue: String(targetStroke.shot_type ?? '') })
-              const targetHitterLabel = resolveHitterLabel(targetStroke.player)
               const RETURN_QUALITY = [
                 { value: 'attack',    key: 'enrichment.return_quality_attack' },
                 { value: 'neutral',   key: 'enrichment.return_quality_neutral' },
@@ -4751,45 +4740,16 @@ export function AnnotatorPage() {
                   </div>
                   {/* T003 F-T003-01: いまどのストロークへ付けるかを常に表示し、前後へ切り替えられる。
                       既定は末尾（直前に確定したストローク）。 */}
-                  <div
-                    className="flex items-center justify-between gap-2 rounded-ss-sm bg-[var(--ss-surface-3)] px-2 py-1"
-                    data-testid="enrichment-target"
-                  >
-                    <button
-                      type="button"
-                      disabled={!canPrev}
-                      onClick={() => setEnrichmentTargetIndex(Math.max(0, targetIndex - 1))}
-                      aria-label={t('enrichment.target_prev', { defaultValue: '前のストローク' })}
-                      title={t('enrichment.target_prev', { defaultValue: '前のストローク' })}
-                      className={clsx(
-                        'flex items-center px-1 py-0.5 rounded-ss-sm',
-                        canPrev ? 'text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]' : 'text-[var(--ss-t3)] opacity-40 cursor-not-allowed',
-                      )}
-                    >
-                      <MIcon name="chevron_left" size={14} />
-                    </button>
-                    <span className="flex-1 text-center text-[11px] text-[var(--ss-t1)]" data-testid="enrichment-target-label">
-                      {t('enrichment.target_label', {
-                        defaultValue: '対象: {{num}}本目 {{shot}}（{{hitter}}）',
-                        num: targetStroke.stroke_num,
-                        shot: targetShotLabel,
-                        hitter: targetHitterLabel,
-                      })}
-                    </span>
-                    <button
-                      type="button"
-                      disabled={!canNext}
-                      onClick={() => setEnrichmentTargetIndex(Math.min(strokeCount - 1, targetIndex + 1))}
-                      aria-label={t('enrichment.target_next', { defaultValue: '次のストローク' })}
-                      title={t('enrichment.target_next', { defaultValue: '次のストローク' })}
-                      className={clsx(
-                        'flex items-center px-1 py-0.5 rounded-ss-sm',
-                        canNext ? 'text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]' : 'text-[var(--ss-t3)] opacity-40 cursor-not-allowed',
-                      )}
-                    >
-                      <MIcon name="chevron_right" size={14} />
-                    </button>
-                  </div>
+                  <EnrichmentTargetHeader
+                    strokes={store.currentStrokes}
+                    targetIndex={targetIndex}
+                    onPrev={() => setEnrichmentTargetIndex(Math.max(0, targetIndex - 1))}
+                    onNext={() => setEnrichmentTargetIndex(Math.min(strokeCount - 1, targetIndex + 1))}
+                    playerAName={nameA}
+                    playerBName={nameB}
+                    partnerAName={namePartnerA}
+                    partnerBName={namePartnerB}
+                  />
                   {/* 返球品質 */}
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-[var(--ss-t2)] min-w-[56px] text-xs">{t('enrichment.return_quality')}:</span>

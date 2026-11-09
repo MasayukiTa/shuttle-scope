@@ -7,3 +7,6 @@
 src/api/__tests__/proactiveRefresh.test.ts
 src/api/__tests__/client.refreshRetry.test.ts
 src/api/__tests__/authStorage.crossTab.test.ts
+src/components/annotation/__tests__/EnrichmentTargetHeader.test.tsx
+src/components/annotation/__tests__/StrokeHistory.test.tsx
+src/components/annotation/__tests__/AttributePanel.test.tsx
