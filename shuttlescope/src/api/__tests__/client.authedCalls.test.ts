@@ -8,7 +8,7 @@ function newToken(): string {
 
 describe('authenticated blob download and benchmark cancel', () => {
   beforeEach(() => {
-    sessionStorage.clear()
+    localStorage.clear()
     localStorage.clear()
     vi.resetModules()
   })
@@ -16,13 +16,13 @@ describe('authenticated blob download and benchmark cancel', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
-    sessionStorage.clear()
+    localStorage.clear()
     localStorage.clear()
   })
 
   it('apiGetBlob sends the Bearer token and returns the blob with the server file name', async () => {
     const token = newToken()
-    sessionStorage.setItem('shuttlescope_token', token)
+    localStorage.setItem('shuttlescope_token', token)
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       new Response('payload', {
         status: 200,
@@ -42,7 +42,7 @@ describe('authenticated blob download and benchmark cancel', () => {
   })
 
   it('apiGetBlob rejects with the HTTP status instead of returning an error body as a file', async () => {
-    sessionStorage.setItem('shuttlescope_token', newToken())
+    localStorage.setItem('shuttlescope_token', newToken())
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{"detail":"forbidden"}', { status: 403 })))
 
     const { apiGetBlob } = await import('@/api/client')
@@ -59,7 +59,7 @@ describe('authenticated blob download and benchmark cancel', () => {
 
   it('cancelJob goes through the shared client with the Bearer token', async () => {
     const token = newToken()
-    sessionStorage.setItem('shuttlescope_token', token)
+    localStorage.setItem('shuttlescope_token', token)
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       new Response(JSON.stringify({ success: true, job_id: 'j1' }), {
         status: 200,
@@ -78,7 +78,7 @@ describe('authenticated blob download and benchmark cancel', () => {
   })
 
   it('cancelJob surfaces a failure so the caller does not pretend the job stopped', async () => {
-    sessionStorage.setItem('shuttlescope_token', newToken())
+    localStorage.setItem('shuttlescope_token', newToken())
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{"detail":"nope"}', { status: 500 })))
 
     const { cancelJob } = await import('@/api/benchmark')
