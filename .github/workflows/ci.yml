@@ -85,6 +85,12 @@ jobs:
       - name: Frontend tests
         run: npx vitest run --config vitest.config.ts
 
+      - name: CI test manifest check
+        # 方針C: scripts/ci_test_manifest.txt に挻げた vitest テストが
+        # vitest.config.ts の include グロブに合致し、上の Frontend tests で
+        # 確実に収集・実行されることを検査する (素通り防止)。
+        run: python scripts/check_ci_test_manifest.py
+
       - name: Install ffmpeg (Linux runners)
         # ubuntu-latest ランナーイメージから ffmpeg がプリインストール対象外になったため
         # 明示インストールする。benchmark の TrackNet ベンチ (_bench_tracknet) は
