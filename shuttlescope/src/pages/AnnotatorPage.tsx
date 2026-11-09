@@ -4385,12 +4385,12 @@ export function AnnotatorPage() {
                     <span className="text-[10px] text-[var(--ss-t2)] hidden md:inline">
                       {store.isDoubles ? (
                         <>
-                          {t('annotator.ui.hit_zone_hint_doubles', { defaultValue: '打点:' })} <kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">1</kbd>-<kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">6</kbd>
+                          {t('annotator.ui.hit_zone_hint_doubles', { defaultValue: '打球位置:' })} <kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">1</kbd>-<kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">6</kbd>
                           {' '}{t('annotator.ui.hit_zone_hint_doubles_extra', { defaultValue: '／ 7-9 は' })} <kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">{t('auto.AnnotatorPage.kbd_shift_7')}</kbd>-<kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">9</kbd>
                         </>
                       ) : (
                         <>
-                          {t('annotator.ui.hit_zone_hint_singles', { defaultValue: '打点: トップ行' })} <kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">1</kbd>-<kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">9</kbd>
+                          {t('annotator.ui.hit_zone_hint_singles', { defaultValue: '打球位置: トップ行' })} <kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">1</kbd>-<kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">9</kbd>
                         </>
                       )}
                     </span>
