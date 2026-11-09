@@ -94,6 +94,12 @@ interface Props {
   courtHalf?: CourtHalf
   /** 「動画に戻って校正する」導線 (未校正バナーから呼ぶ)。未指定なら案内を出さない。 */
   onNeedCalibration?: () => void
+  /**
+   * CV 由来の着地ゾーン候補 (stroke_num -> ZoneCode)。渡すと追加時の着地点入力で
+   * 候補ゾーンを initialZone として先出しする (人が確定するまで保存しない)。
+   * 未校正・モデル無しで null / 空のときは従来どおり初期選択なし。
+   */
+  landZoneSuggestions?: ReadonlyMap<number, ZoneCode> | null
   onStrokeAdded: (s: StrokeLite) => void
   onStrokeUpdated: (s: StrokeLite) => void
   onClose: () => void
@@ -106,6 +112,7 @@ export function Pass3ShotDetail({
   courtQuad = null,
   courtHalf = 'near',
   onNeedCalibration,
+  landZoneSuggestions = null,
   onStrokeAdded,
   onStrokeUpdated,
   onClose,
@@ -364,6 +371,7 @@ export function Pass3ShotDetail({
         courtQuad={courtQuad}
         half={courtHalf}
         primaryLabel={t('auto.Pass3ShotDetail.save')}
+        initialZone={landZoneSuggestions ? landZoneSuggestions.get(nextStrokeNum) ?? null : null}
         onCommit={(z) => void commitShot(add.shot, add.hit, z)}
         onCancel={() => setAdd({ phase: 'idle' })}
       />
