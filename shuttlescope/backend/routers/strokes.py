@@ -159,6 +159,16 @@ class BatchSaveRequest(BaseModel):
     """ラリー確定時の一括保存リクエスト"""
     rally: RallyData
     strokes: list[StrokeData]
+    # 途中保存 (mid-rally autosave) 対応。
+    #   replace_strokes=True: 既存ラリーがあるとき already_saved で捨てず、既存の
+    #     非削除ストロークを soft delete して送られたストロークを入れ直し、ラリーの
+    #     項目 (勝者・終了種別・スコア) も更新する。uq_strokes_rally_id_stroke_num_active
+    #     は非削除だけに掛かるので、soft delete してから入れ直せば当たらない。
+    #   final=False (途中保存): 送られたストローク数が既存の非削除数より少ない場合は、
+    #     古い途中保存が遅れて着いたものとみなし何も変えず既存を返す (確定後に縮めない)。
+    # replace_strokes=False (既定) のときは従来どおり already_saved を返す。
+    replace_strokes: bool = False
+    final: bool = True
 
 
 def stroke_to_dict(s: Stroke) -> dict:
@@ -225,6 +235,99 @@ def _batch_existing_response(
             "rally_id": existing.id,
             "stroke_count": stroke_count,
             "already_saved": True,
+        },
+    }
+    if idem_key:
+        from backend.utils.idempotency import store
+        store(idem_key, user_id, endpoint_id, response, status_code=201)
+    return response
+
+
+def _insert_strokes_for_rally(db: Session, rally_id: int, strokes: list["StrokeData"]) -> list[Stroke]:
+    """送られたストロークを rally_id に新規挿入する。batch 初回保存と同じ正規化を使う。"""
+    saved = []
+    for stroke_data in strokes:
+        stroke_dict = stroke_data.model_dump()
+        stroke_dict["shot_type"] = canonicalize_shot(stroke_dict.get("shot_type", "other"))
+        stroke_dict["intent_tag"] = _canonicalize_intent_tag(stroke_dict.get("intent_tag"))
+        stroke_dict["intent_note"] = _clean_intent_note(stroke_dict.get("intent_note"))
+        stroke = Stroke(
+            rally_id=rally_id,
+            land_zone_source=_human_land_zone_source(stroke_dict.get("land_zone")),
+            **stroke_dict,
+        )
+        db.add(stroke)
+        saved.append(stroke)
+    return saved
+
+
+def _batch_replace_existing(
+    db: Session,
+    existing: Rally,
+    body: BatchSaveRequest,
+    game_set: GameSet,
+    idem_key: Optional[str],
+    user_id,
+    endpoint_id: str,
+) -> dict:
+    """replace_strokes=True の既存ラリーへの途中/最終保存。
+
+    既存の非削除ストロークを soft delete して送られたストロークを入れ直し、ラリーの
+    項目 (勝者・終了種別・スコア・長さ) を更新する。uq_strokes_rally_id_stroke_num_active
+    は非削除だけに掛かるので、soft delete してから入れ直せば当たらない。
+
+    別端末が同じ (set_id, rally_num) を作った場合に上書きしないよう、置き換えは
+    require_match_scope を通過した同じ試合の同じユーザーの書き込みに限る (呼び出し元で
+    検証済み)。Rally に作成者列が無いため、これがスコープ上の作成者一致にあたる。
+    """
+    from datetime import datetime
+    active = (
+        db.query(Stroke)
+        .filter(Stroke.rally_id == existing.id, Stroke.deleted_at.is_(None))
+        .all()
+    )
+    # 途中保存 (final=False) が既存の非削除ストローク数より少ない場合は、古い途中保存が
+    # 遅れて着いたものとみなし何も変えず既存を返す (確定後に縮めない)。
+    if not body.final and len(body.strokes) < len(active):
+        return _batch_existing_response(db, existing, idem_key, user_id, endpoint_id)
+
+    now = datetime.utcnow()
+    for s in active:
+        s.deleted_at = now
+    db.flush()  # soft delete を確定してから入れ直し、active 部分一意に当てない
+
+    saved = _insert_strokes_for_rally(db, existing.id, body.strokes)
+
+    # ラリーの項目を更新 (勝者・終了種別・スコアは最終送信で確定する)。score_before は
+    # 既存値を保持する (前ラリー依存で初回保存時に計算済み)。
+    existing.server = body.rally.server
+    existing.winner = body.rally.winner
+    existing.end_type = body.rally.end_type
+    existing.rally_length = body.rally.rally_length
+    existing.duration_sec = body.rally.duration_sec
+    existing.score_a_after = body.rally.score_a_after
+    existing.score_b_after = body.rally.score_b_after
+    existing.is_deuce = body.rally.is_deuce
+    existing.video_timestamp_start = body.rally.video_timestamp_start
+    existing.video_timestamp_end = body.rally.video_timestamp_end
+    existing.is_skipped = body.rally.is_skipped
+    if body.rally.annotation_mode is not None:
+        existing.annotation_mode = body.rally.annotation_mode
+    if body.rally.review_status is not None:
+        existing.review_status = body.rally.review_status
+
+    _update_annotation_progress(game_set.match_id, db)
+    db.commit()
+
+    response_cache.bump_players(players_for_match(db, game_set.match_id))
+
+    response = {
+        "success": True,
+        "data": {
+            "rally_id": existing.id,
+            "stroke_count": len(saved),
+            "replaced": True,
+            "final": body.final,
         },
     }
     if idem_key:
@@ -372,6 +475,14 @@ def _batch_save_rally_body(
         .first()
     )
     if existing is not None:
+        # replace_strokes=True のときは already_saved で捨てず、既存ラリーの
+        # ストロークを置き換える (途中保存 / 最終保存)。require_match_scope を
+        # 通過しているので、同じ試合の同じユーザーの書き込みに限られる。
+        if body.replace_strokes:
+            return _batch_replace_existing(
+                db, existing, body, game_set, idem_key,
+                ctx_for_idem.user_id, endpoint_id,
+            )
         return _batch_existing_response(
             db, existing, idem_key, ctx_for_idem.user_id, endpoint_id
         )
@@ -418,6 +529,11 @@ def _batch_save_rally_body(
         )
         if existing is None:
             _raise_batch_db_error(db, body, exc, "flush")
+        if body.replace_strokes:
+            return _batch_replace_existing(
+                db, existing, body, game_set, idem_key,
+                ctx_for_idem.user_id, endpoint_id,
+            )
         return _batch_existing_response(
             db, existing, idem_key, ctx_for_idem.user_id, endpoint_id
         )
@@ -469,6 +585,11 @@ def _batch_save_rally_body(
         )
         if existing is None:
             _raise_batch_db_error(db, body, exc, "commit")
+        if body.replace_strokes:
+            return _batch_replace_existing(
+                db, existing, body, game_set, idem_key,
+                ctx_for_idem.user_id, endpoint_id,
+            )
         return _batch_existing_response(
             db, existing, idem_key, ctx_for_idem.user_id, endpoint_id
         )
