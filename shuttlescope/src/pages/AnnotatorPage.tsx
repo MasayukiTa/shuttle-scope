@@ -3782,7 +3782,7 @@ export function AnnotatorPage() {
           {/* U3: モード切替 — input モードのみ既存 UI、他モードは専用パネルへ */}
           {/* UX-R4: モバイル時 (md 未満) は BottomSheet で表示するため、ここでは renderしない */}
           {annotatorMode !== 'input' && !isMobile && (
-            annotatorMode === 'review' ? <ReviewModePanel /> :
+            annotatorMode === 'review' ? <ReviewModePanel matchId={matchId ? Number(matchId) : null} /> :
             annotatorMode === 'analysis' ? (
               <AnalysisModePanel
                 scoreA={store.scoreA}
@@ -5396,7 +5396,7 @@ export function AnnotatorPage() {
           defaultOpen
           onClose={() => setAnnotatorMode('input')}
         >
-          {annotatorMode === 'review' && <ReviewModePanel />}
+          {annotatorMode === 'review' && <ReviewModePanel matchId={matchId ? Number(matchId) : null} />}
           {annotatorMode === 'analysis' && (
             <AnalysisModePanel
               scoreA={store.scoreA}
