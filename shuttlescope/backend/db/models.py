@@ -270,6 +270,11 @@ class RefreshToken(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     replaced_by_jti: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    # fix/auth-session-persist: rotation 冪等化。rotation 時に発行した後継 refresh の
+    # 平文を Fernet 暗号化して一定の猶予時間 (既定 60s) だけ復元できるようにする。
+    # 平文のまま置くと token_hash (ハッシュのみ保存) 方針を破るので、鍵がある環境でのみ
+    # 暗号文を入れる。鍵が無ければ NULL のままで、冪等再提示は諦めて従来の reuse 判定に倒す。
+    successor_token_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 class PlayerPageAccess(Base):
