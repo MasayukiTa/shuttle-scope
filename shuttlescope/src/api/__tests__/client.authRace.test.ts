@@ -1,5 +1,10 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 
+// fix/auth-session-persist: CI/ローカルの高負荷時でも forks ワーカー起動や
+// 実時間 sleep(150ms)×再試行で既定 5s を超えることがあるため、待機上限のみ広げる
+// (アサーションは不変)。
+vi.setConfig({ testTimeout: 20000 })
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,

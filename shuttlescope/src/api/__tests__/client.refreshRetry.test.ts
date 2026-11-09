@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+// fix/auth-session-persist: CI/ローカルの高負荷時でも forks ワーカー起動や
+// 実時間 sleep(150ms)×再試行で既定 5s を超えることがあるため、待機上限のみ広げる
+// (アサーションは不変)。
+vi.setConfig({ testTimeout: 20000 })
+
 // fix/auth-session-persist: refresh が一過性の network error で落ちたとき、同じ
 // refresh token で短い待機のあと 1 回だけ再試行する挙動を検証する。サーバ側は
 // 猶予時間内の再提示を冪等化している (同じ後継 refresh を返す) ので、再送しても安全。
