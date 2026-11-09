@@ -6070,7 +6070,7 @@
       },
       "modeTabs": {
         "title": "Mode タブで作業を切り替え",
-        "body": "赤枠の Input / Review / Analysis / Settings タブを押すと、右側のパネルが切り替わります。入力中は Input を選んでください。"
+        "body": "赤枠の 入力 / 確認 / 解析 / 設定 タブを押すと、右側のパネルが切り替わります。入力中は 入力 を選んでください。"
       },
       "videoPane": {
         "title": "動画プレイヤー",
