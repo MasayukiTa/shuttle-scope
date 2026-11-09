@@ -149,7 +149,18 @@ interface AnnotationState {
   // ペンディング中のストロークをキャンセル（落点待ち中にEsc/Backspace/Ctrl+Z）
   cancelPendingStroke: () => void
 
-  // G2+移動系: 直前確定ストロークのエンリッチメント更新
+  // G2+移動系: 指定インデックスのストロークのエンリッチメント更新。
+  // T003 F-T003-01: どのストロークへ付けるかを常に明示できるよう index 指定を基本にする。
+  updateStrokeEnrichmentAt: (index: number, fields: {
+    returnQuality?: string
+    contactHeight?: string
+    contactZone?: string
+    movementBurden?: string
+    movementDirection?: string
+    intentTag?: string
+    intentNote?: string
+  }) => void
+  // 後方互換: 直前確定ストローク（末尾）への更新。updateStrokeEnrichmentAt へ委譲する。
   updateLastStrokeEnrichment: (fields: {
     returnQuality?: string
     contactHeight?: string
@@ -692,21 +703,31 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
   applyScoreCorrection: (scoreA, scoreB, rallyNum) =>
     set({ scoreA, scoreB, currentRallyNum: rallyNum }),
 
-  // G2+移動系: 直前確定ストロークのエンリッチメント更新（落点確定直後のオプション入力）
-  updateLastStrokeEnrichment: ({ returnQuality, contactHeight, contactZone, movementBurden, movementDirection, intentTag, intentNote }) => {
+  // G2+移動系: 指定インデックスのストロークのエンリッチメント更新（落点確定直後のオプション入力）。
+  // T003 F-T003-01: 以前は常に末尾ストロークへ書いていたため、サーブへ付けた意図タグ・メモ・
+  // 打点の高さが、次に入力したネットショットには付かず、しかも対象がどれか画面に出なかった。
+  // 対象を index で明示できるようにし、UI は対象ストロークを常時表示して前後へ切り替えられる。
+  updateStrokeEnrichmentAt: (index, { returnQuality, contactHeight, contactZone, movementBurden, movementDirection, intentTag, intentNote }) => {
+    const { currentStrokes } = get()
+    if (index < 0 || index >= currentStrokes.length) return
+    const updated = [...currentStrokes]
+    const target = { ...updated[index] }
+    if (returnQuality !== undefined) target.return_quality = returnQuality
+    if (contactHeight !== undefined) target.contact_height = contactHeight
+    if (contactZone !== undefined) target.contact_zone = contactZone
+    if (movementBurden !== undefined) target.movement_burden = movementBurden
+    if (movementDirection !== undefined) target.movement_direction = movementDirection
+    if (intentTag !== undefined) target.intent_tag = intentTag
+    if (intentNote !== undefined) target.intent_note = intentNote
+    updated[index] = target
+    set({ currentStrokes: updated })
+  },
+
+  // 後方互換: 直前確定ストローク（末尾）への更新を updateStrokeEnrichmentAt へ委譲する。
+  updateLastStrokeEnrichment: (fields) => {
     const { currentStrokes } = get()
     if (currentStrokes.length === 0) return
-    const updated = [...currentStrokes]
-    const last = { ...updated[updated.length - 1] }
-    if (returnQuality !== undefined) last.return_quality = returnQuality
-    if (contactHeight !== undefined) last.contact_height = contactHeight
-    if (contactZone !== undefined) last.contact_zone = contactZone
-    if (movementBurden !== undefined) last.movement_burden = movementBurden
-    if (movementDirection !== undefined) last.movement_direction = movementDirection
-    if (intentTag !== undefined) last.intent_tag = intentTag
-    if (intentNote !== undefined) last.intent_note = intentNote
-    updated[updated.length - 1] = last
-    set({ currentStrokes: updated })
+    get().updateStrokeEnrichmentAt(currentStrokes.length - 1, fields)
   },
 }))
 

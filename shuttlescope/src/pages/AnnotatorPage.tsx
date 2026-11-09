@@ -465,6 +465,9 @@ export function AnnotatorPage() {
   // G2: 直前確定ストロークへのエンリッチメント入力（return_quality / contact_height）
   // 落点確定後に表示し、次のショットキー押下で自動消滅
   const [enrichmentActive, setEnrichmentActive] = useState(false)
+  // T003 F-T003-01: エンリッチメントを付ける対象ストロークの index。
+  // null = 末尾（直前に確定したストローク。既定の挙動）。対象を前後に切り替えると具体値が入る。
+  const [enrichmentTargetIndex, setEnrichmentTargetIndex] = useState<number | null>(null)
 
   // G3: ウォームアップメモパネル
   const [showWarmupPanel, setShowWarmupPanel] = useState(false)
@@ -1093,6 +1096,8 @@ export function AnnotatorPage() {
   useEffect(() => {
     if (store.inputStep === 'land_zone') {
       setEnrichmentActive(false)
+      // T003: 次のショット入力に入ったら対象を末尾（既定）へ戻す。
+      setEnrichmentTargetIndex(null)
     }
   }, [store.inputStep])
 
@@ -1107,11 +1112,14 @@ export function AnnotatorPage() {
     if (prev === 'land_zone' && store.inputStep === 'idle' && store.isRallyActive && store.currentStrokes.length > 0) {
       if (annotationMode === 'detailed') {
         setEnrichmentActive(true)
+        // T003: 落点確定直後は、いま確定したストローク（末尾）を既定の対象にする。
+        setEnrichmentTargetIndex(null)
       }
     }
     // rally_end や rally 終了でリセット
     if (store.inputStep === 'rally_end' || !store.isRallyActive) {
       setEnrichmentActive(false)
+      setEnrichmentTargetIndex(null)
     }
   }, [store.inputStep, store.isRallyActive, store.currentStrokes.length, annotationMode])
 
@@ -4276,12 +4284,12 @@ export function AnnotatorPage() {
                     <span className="text-[10px] text-[var(--ss-t2)] hidden md:inline">
                       {store.isDoubles ? (
                         <>
-                          {t('annotator.ui.hit_zone_hint_doubles', { defaultValue: '打点:' })} <kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">1</kbd>-<kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">6</kbd>
+                          {t('annotator.ui.hit_zone_hint_doubles', { defaultValue: '打球位置:' })} <kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">1</kbd>-<kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">6</kbd>
                           {' '}{t('annotator.ui.hit_zone_hint_doubles_extra', { defaultValue: '／ 7-9 は' })} <kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">{t('auto.AnnotatorPage.kbd_shift_7')}</kbd>-<kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">9</kbd>
                         </>
                       ) : (
                         <>
-                          {t('annotator.ui.hit_zone_hint_singles', { defaultValue: '打点: トップ行' })} <kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">1</kbd>-<kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">9</kbd>
+                          {t('annotator.ui.hit_zone_hint_singles', { defaultValue: '打球位置: トップ行' })} <kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">1</kbd>-<kbd className="font-mono px-1 bg-[var(--ss-surface-3)] rounded-ss-sm">9</kbd>
                         </>
                       )}
                     </span>
@@ -4650,7 +4658,7 @@ export function AnnotatorPage() {
             {/* T2: Basic モード用 エンリッチメント手動展開ボタン */}
             {!isMobile && isBasicMode && store.isRallyActive && store.inputStep !== 'rally_end' && store.currentStrokes.length > 0 && !enrichmentActive && (
               <button
-                onClick={() => setEnrichmentActive(true)}
+                onClick={() => { setEnrichmentActive(true); setEnrichmentTargetIndex(null) }}
                 className="w-full flex items-center justify-center gap-1.5 py-1 text-[11px] text-[var(--ss-t3)] hover:text-[var(--ss-t2)] border border-[var(--ss-border)] rounded-ss-md transition-colors"
               >
                 <MIcon name="expand_more" size={11} />
@@ -4660,7 +4668,29 @@ export function AnnotatorPage() {
 
             {/* G2+移動系: エンリッチメントストリップ（デスクトップのみ — モバイルでは省略） */}
             {!isMobile && enrichmentActive && store.currentStrokes.length > 0 && (() => {
-              const last = store.currentStrokes[store.currentStrokes.length - 1]
+              // T003 F-T003-01: 対象ストロークを index で明示する。null は末尾（直前のストローク）。
+              // 範囲外になった場合（アンドゥ等）は末尾へ丸める。
+              const strokeCount = store.currentStrokes.length
+              const targetIndex = enrichmentTargetIndex == null
+                ? strokeCount - 1
+                : Math.min(Math.max(0, enrichmentTargetIndex), strokeCount - 1)
+              const last = store.currentStrokes[targetIndex]
+              const targetStroke = last
+              const canPrev = targetIndex > 0
+              const canNext = targetIndex < strokeCount - 1
+              const nameA = match?.player_a?.name ?? 'A'
+              const nameB = match?.player_b?.name ?? 'B'
+              const namePartnerA = match?.partner_a?.name
+              const namePartnerB = match?.partner_b?.name
+              const resolveHitterLabel = (player: string): string => {
+                if (player === 'player_a') return nameA
+                if (player === 'player_b') return nameB
+                if (player === 'partner_a') return namePartnerA ?? `${nameA}P`
+                if (player === 'partner_b') return namePartnerB ?? `${nameB}P`
+                return player
+              }
+              const targetShotLabel = t(`shot_types.${targetStroke.shot_type}`, { defaultValue: String(targetStroke.shot_type ?? '') })
+              const targetHitterLabel = resolveHitterLabel(targetStroke.player)
               const RETURN_QUALITY = [
                 { value: 'attack',    key: 'enrichment.return_quality_attack' },
                 { value: 'neutral',   key: 'enrichment.return_quality_neutral' },
@@ -4719,13 +4749,54 @@ export function AnnotatorPage() {
                       {t('annotator.ui.fold_up', { defaultValue: '折りたたむ' })}
                     </button>
                   </div>
+                  {/* T003 F-T003-01: いまどのストロークへ付けるかを常に表示し、前後へ切り替えられる。
+                      既定は末尾（直前に確定したストローク）。 */}
+                  <div
+                    className="flex items-center justify-between gap-2 rounded-ss-sm bg-[var(--ss-surface-3)] px-2 py-1"
+                    data-testid="enrichment-target"
+                  >
+                    <button
+                      type="button"
+                      disabled={!canPrev}
+                      onClick={() => setEnrichmentTargetIndex(Math.max(0, targetIndex - 1))}
+                      aria-label={t('enrichment.target_prev', { defaultValue: '前のストローク' })}
+                      title={t('enrichment.target_prev', { defaultValue: '前のストローク' })}
+                      className={clsx(
+                        'flex items-center px-1 py-0.5 rounded-ss-sm',
+                        canPrev ? 'text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]' : 'text-[var(--ss-t3)] opacity-40 cursor-not-allowed',
+                      )}
+                    >
+                      <MIcon name="chevron_left" size={14} />
+                    </button>
+                    <span className="flex-1 text-center text-[11px] text-[var(--ss-t1)]" data-testid="enrichment-target-label">
+                      {t('enrichment.target_label', {
+                        defaultValue: '対象: {{num}}本目 {{shot}}（{{hitter}}）',
+                        num: targetStroke.stroke_num,
+                        shot: targetShotLabel,
+                        hitter: targetHitterLabel,
+                      })}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={!canNext}
+                      onClick={() => setEnrichmentTargetIndex(Math.min(strokeCount - 1, targetIndex + 1))}
+                      aria-label={t('enrichment.target_next', { defaultValue: '次のストローク' })}
+                      title={t('enrichment.target_next', { defaultValue: '次のストローク' })}
+                      className={clsx(
+                        'flex items-center px-1 py-0.5 rounded-ss-sm',
+                        canNext ? 'text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]' : 'text-[var(--ss-t3)] opacity-40 cursor-not-allowed',
+                      )}
+                    >
+                      <MIcon name="chevron_right" size={14} />
+                    </button>
+                  </div>
                   {/* 返球品質 */}
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-[var(--ss-t2)] min-w-[56px] text-xs">{t('enrichment.return_quality')}:</span>
                     {RETURN_QUALITY.map(({ value, key }) => (
                       <button key={value} onClick={() => {
                         const next = last.return_quality === value ? undefined : value
-                        store.updateLastStrokeEnrichment({ returnQuality: next })
+                        store.updateStrokeEnrichmentAt(targetIndex, { returnQuality: next })
                       }} className={chipClass(last.return_quality === value)}>
                         {t(key)}
                       </button>
@@ -4737,7 +4808,7 @@ export function AnnotatorPage() {
                     {CONTACT_HEIGHT.map(({ value, key }) => (
                       <button key={value} onClick={() => {
                         const next = last.contact_height === value ? undefined : value
-                        store.updateLastStrokeEnrichment({ contactHeight: next })
+                        store.updateStrokeEnrichmentAt(targetIndex, { contactHeight: next })
                       }} className={chipClass(last.contact_height === value)}>
                         {t(key)}
                       </button>
@@ -4749,7 +4820,7 @@ export function AnnotatorPage() {
                     {CONTACT_ZONE.map(({ value, key }) => (
                       <button key={value} onClick={() => {
                         const next = last.contact_zone === value ? undefined : value
-                        store.updateLastStrokeEnrichment({ contactZone: next })
+                        store.updateStrokeEnrichmentAt(targetIndex, { contactZone: next })
                       }} className={chipClass(last.contact_zone === value)}>
                         {t(key)}
                       </button>
@@ -4761,7 +4832,7 @@ export function AnnotatorPage() {
                     {MOVEMENT_BURDEN.map(({ value, key }) => (
                       <button key={value} onClick={() => {
                         const next = last.movement_burden === value ? undefined : value
-                        store.updateLastStrokeEnrichment({ movementBurden: next })
+                        store.updateStrokeEnrichmentAt(targetIndex, { movementBurden: next })
                       }} className={chipClass(last.movement_burden === value)}>
                         {t(key)}
                       </button>
@@ -4773,7 +4844,7 @@ export function AnnotatorPage() {
                     {MOVEMENT_DIRECTION.map(({ value, key }) => (
                       <button key={value} onClick={() => {
                         const next = last.movement_direction === value ? undefined : value
-                        store.updateLastStrokeEnrichment({ movementDirection: next })
+                        store.updateStrokeEnrichmentAt(targetIndex, { movementDirection: next })
                       }} className={chipClass(last.movement_direction === value)}>
                         {t(key)}
                       </button>
@@ -4786,7 +4857,7 @@ export function AnnotatorPage() {
                       {INTENT_TAG.map(({ value, key }) => (
                         <button key={value} onClick={() => {
                           const next = last.intent_tag === value ? undefined : value
-                          store.updateLastStrokeEnrichment({ intentTag: next })
+                          store.updateStrokeEnrichmentAt(targetIndex, { intentTag: next })
                         }} className={chipClass(last.intent_tag === value)}>
                           {t(key)}
                         </button>
@@ -4800,7 +4871,7 @@ export function AnnotatorPage() {
                       value={last.intent_note ?? ''}
                       maxLength={200}
                       placeholder={t('enrichment.intent_note_placeholder')}
-                      onChange={(e) => store.updateLastStrokeEnrichment({ intentNote: e.target.value })}
+                      onChange={(e) => store.updateStrokeEnrichmentAt(targetIndex, { intentNote: e.target.value })}
                       className="flex-1 px-2 py-1 text-xs rounded-ss-sm border border-[var(--ss-border)] bg-[var(--ss-surface-3)] text-[var(--ss-t1)] placeholder:text-[var(--ss-t3)]"
                     />
                   </div>
