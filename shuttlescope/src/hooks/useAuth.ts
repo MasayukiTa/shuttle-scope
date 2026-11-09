@@ -2,40 +2,39 @@ import { useState, useCallback, useEffect } from 'react'
 import { UserRole } from '@/types'
 import { tokenUserId } from '@/utils/mobileAnnotateQueue'
 import { AUTOSAVE_PREFIX } from '@/utils/annotatorAutosave'
+import {
+  AUTH_CHANGED_EVENT,
+  TOKEN_KEY as STORAGE_KEY,
+  REFRESH_KEY as STORAGE_KEY_REFRESH,
+  ROLE_KEY as STORAGE_KEY_ROLE,
+  PLAYER_ID_KEY as STORAGE_KEY_PLAYER_ID,
+  TEAM_NAME_KEY as STORAGE_KEY_TEAM_NAME,
+  USER_ID_KEY as STORAGE_KEY_USER_ID,
+  DISPLAY_NAME_KEY as STORAGE_KEY_DISPLAY_NAME,
+  PAGE_ACCESS_KEY as STORAGE_KEY_PAGE_ACCESS,
+  getAuthItem,
+  setAuthItem,
+  removeAuthItem,
+  migrateSessionToLocal,
+  installCrossTabAuthSync,
+} from '@/api/authStorage'
 
-const AUTH_CHANGED_EVENT = 'shuttlescope:auth-changed'
-
-const STORAGE_KEY = 'shuttlescope_token'
-const STORAGE_KEY_REFRESH = 'shuttlescope_refresh_token'
-const STORAGE_KEY_ROLE = 'shuttlescope_role'
-const STORAGE_KEY_PLAYER_ID = 'shuttlescope_player_id'
-const STORAGE_KEY_TEAM_NAME = 'shuttlescope_team_name'
-const STORAGE_KEY_USER_ID = 'shuttlescope_user_id'
-const STORAGE_KEY_DISPLAY_NAME = 'shuttlescope_display_name'
-const STORAGE_KEY_PAGE_ACCESS = 'shuttlescope_page_access'
+// fix/auth-session-persist: 認証情報を localStorage で全タブ共有する。旧 sessionStorage の
+// 値を初回に移行し、他タブの storage イベントを AUTH_CHANGED_EVENT に橋渡して
+// React state を再同期する (どちらも冪等)。
+migrateSessionToLocal()
+installCrossTabAuthSync()
 
 function readStorage(key: string): string | null {
-  try {
-    return sessionStorage.getItem(key)
-  } catch {
-    return null
-  }
+  return getAuthItem(key)
 }
 
 function writeStorage(key: string, value: string): void {
-  try {
-    sessionStorage.setItem(key, value)
-  } catch {
-    // ignore storage failures and keep in-memory state authoritative for this render
-  }
+  setAuthItem(key, value)
 }
 
 function removeStorage(key: string): void {
-  try {
-    sessionStorage.removeItem(key)
-  } catch {
-    // ignore
-  }
+  removeAuthItem(key)
 }
 
 function getStored<T>(key: string, parse?: (v: string) => T): T | null {
