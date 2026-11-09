@@ -104,6 +104,39 @@ export function SimpleHeightDiffCard({ matchId }: SimpleHeightDiffCardProps) {
               ))}
             </ul>
           </div>
+
+          {state.data.top_rallies.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-[var(--ss-t3)]">
+                {t('simple_analysis.top_rallies')}
+              </span>
+              <ul className="flex flex-col gap-1">
+                {state.data.top_rallies.map((r, i) => (
+                  <li
+                    key={`${r.set_num ?? '-'}-${r.rally_num ?? '-'}-${i}`}
+                    className="flex items-center justify-between rounded-ss-sm border border-[var(--ss-border)] bg-[var(--ss-surface-2)] px-2 py-1"
+                  >
+                    <span className="text-xs text-[var(--ss-t2)]">
+                      {r.set_num == null || r.rally_num == null
+                        ? t('simple_analysis.rally_unknown')
+                        : t('simple_analysis.rally_label', {
+                            set: r.set_num,
+                            rally: r.rally_num,
+                          })}
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <span className="ss-num text-sm font-bold text-[var(--ss-t1)]">
+                        {t('simple_analysis.max_diff_unit', { n: r.max_diff })}
+                      </span>
+                      <span className="text-[10px] text-[var(--ss-t3)]">
+                        {t('simple_analysis.pairs_unit', { n: r.pairs })}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
     </section>

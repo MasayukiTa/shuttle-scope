@@ -6373,7 +6373,11 @@
     "bucket_unit": "{{n}} 組",
     "no_data": "高さが入力された返球がまだありません。打球の高さ（任意項目）を入力すると集計されます。",
     "loading": "集計中…",
-    "error": "簡易分析を取得できませんでした。"
+    "error": "簡易分析を取得できませんでした。",
+    "top_rallies": "差が大きかったラリー",
+    "rally_label": "第{{set}}ゲーム {{rally}}本目",
+    "rally_unknown": "ラリー不明",
+    "max_diff_unit": "最大差 {{n}}"
   },
   "shot_major": {
     "serve": "サーブ",

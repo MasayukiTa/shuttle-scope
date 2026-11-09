@@ -6367,7 +6367,11 @@
     "bucket_unit": "{{n}}",
     "no_data": "No returns with an entered shot height yet. Enter the optional shot height to see this analysis.",
     "loading": "Aggregating...",
-    "error": "Could not load the simple analysis."
+    "error": "Could not load the simple analysis.",
+    "top_rallies": "Rallies with the largest difference",
+    "rally_label": "Game {{set}}, rally {{rally}}",
+    "rally_unknown": "Unknown rally",
+    "max_diff_unit": "Max diff {{n}}"
   },
   "shot_major": {
     "serve": "Serve",

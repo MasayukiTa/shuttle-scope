@@ -53,6 +53,10 @@ SHOT_TYPES = [
 ]
 ZONES = ["BL", "BC", "BR", "ML", "MC", "MR", "NL", "NC", "NR"]
 END_TYPES = ["ace", "forced_error", "unforced_error", "net", "out", "winner"]
+# 打球の高さ 4 段階（ネット基準）。backend.utils.validators.HIT_HEIGHT_ORDER と同じ順序 0〜3。
+#   above_net=ネットより上 / slightly_above=やや上 / slightly_below=やや下 / below=下
+# 保存するのはこの文字列。表示名の i18n はフロントが持ち、ここでは触らない。
+HEIGHTS = ["above_net", "slightly_above", "slightly_below", "below"]
 
 
 def _rand_name(rng: random.Random) -> str:
@@ -124,10 +128,27 @@ def _make_players(db, team_id: int, rng: random.Random, n: int) -> list[Player]:
     return players
 
 
-def _make_strokes(rng: random.Random, rally: Rally, length: int) -> list[Stroke]:
+def _make_strokes(
+    rng: random.Random,
+    rally: Rally,
+    length: int,
+    slots: list[str] | None = None,
+) -> list[Stroke]:
+    """1 ラリー分の打球列を作る。
+
+    slots は打つ順に回す «個人の枠» の並び。既定はシングルス
+    (player_a, player_b の交互)。ダブルスでは 4 枠
+    (player_a, player_b, partner_a, partner_b) を渡すと、返球ごとに
+    チームが入れ替わりつつ相方も打つ並びになる。
+
+    各打球に «打球の高さ» (hit_height) を 4 段階から付ける。これが無いと
+    簡易分析「打球の高さ差」が 1 組も測れないため、デモでは全打に入れる。
+    """
+    if slots is None:
+        slots = ["player_a", "player_b"]
     strokes = []
     for n in range(length):
-        who = "player_a" if n % 2 == 0 else "player_b"
+        who = slots[n % len(slots)]
         st = "short_service" if n == 0 else rng.choice(SHOT_TYPES[2:])
         strokes.append(Stroke(
             rally_id=rally.id,
@@ -143,6 +164,7 @@ def _make_strokes(rng: random.Random, rally: Rally, length: int) -> list[Stroke]
             is_backhand=rng.random() < 0.3,
             is_around_head=rng.random() < 0.15,
             is_cross=rng.random() < 0.4,
+            hit_height=rng.choice(HEIGHTS),
             timestamp_sec=float((n + 1) * 3),
         ))
     return strokes
@@ -207,6 +229,77 @@ def _make_match(db, team_id: int, rng: random.Random, pa: Player, pb: Player,
     return m
 
 
+def _make_doubles_match(db, team_id: int, rng: random.Random,
+                        pa: Player, partner_a: Player,
+                        pb: Player, partner_b: Player, idx: int) -> Match:
+    """ダブルスのデモ試合を 1 件作る。
+
+    4 人（player_a + partner_a 対 player_b + partner_b）。ストロークの player は
+    4 枠 (player_a / partner_a / player_b / partner_b) を回し、各打に «打球の高さ»
+    を入れる。これで «打った側と受けた側の高さの差» の簡易分析を、ダブルスの
+    試合で確かめられる（シングルスのデモ試合だけでは確かめられなかった）。
+    """
+    d = date(2025, 1, 1) + timedelta(days=rng.randint(0, 300))
+    m = Match(
+        tournament=f"デモ・ダブルス大会 {idx + 1}",
+        tournament_level=rng.choice(["IC", "IS", "国内", "その他"]),
+        round=rng.choice(["R32", "R16", "QF", "SF", "F"]),
+        date=d,
+        venue="デモ体育館",
+        format="womens_doubles",
+        player_a_id=pa.id,
+        player_b_id=pb.id,
+        partner_a_id=partner_a.id,
+        partner_b_id=partner_b.id,
+        result=rng.choice(["win", "loss"]),
+        annotation_status="complete",
+        annotation_progress=1.0,
+        owner_team_id=team_id,
+        is_public_pool=False,
+        competition_type="practice_match",
+        notes="デモデータ（ダブルス・ランダム生成）",
+    )
+    db.add(m)
+    db.flush()
+
+    # 打つ順に回す 4 枠。返球ごとにチーム(a/b)が入れ替わり、相方も打つ。
+    slots = ["player_a", "player_b", "partner_a", "partner_b"]
+    n_sets = rng.choice([2, 3])
+    for s_num in range(1, n_sets + 1):
+        gs = GameSet(match_id=m.id, set_num=s_num)
+        db.add(gs)
+        db.flush()
+        score_a = score_b = 0
+        n_rallies = rng.randint(12, 24)
+        for r_num in range(1, n_rallies + 1):
+            winner = rng.choice(["player_a", "player_b"])
+            if winner == "player_a":
+                score_a += 1
+            else:
+                score_b += 1
+            length = rng.randint(2, 12)
+            rally = Rally(
+                set_id=gs.id,
+                rally_num=r_num,
+                server="player_a" if r_num % 2 else "player_b",
+                winner=winner,
+                end_type=rng.choice(END_TYPES),
+                rally_length=length,
+                score_a_after=score_a,
+                score_b_after=score_b,
+                is_deuce=(score_a >= 20 and score_b >= 20),
+                video_timestamp_start=float(r_num * 30),
+            )
+            db.add(rally)
+            db.flush()
+            for stk in _make_strokes(rng, rally, length, slots=slots):
+                db.add(stk)
+        gs.winner = "player_a" if score_a > score_b else "player_b"
+        gs.score_a = score_a
+        gs.score_b = score_b
+    return m
+
+
 def _make_conditions(db, rng: random.Random, player: Player, n: int) -> None:
     base = date(2025, 1, 6)
     for i in range(n):
@@ -259,6 +352,8 @@ def main():
     ap.add_argument("--seed", type=int, default=20260521, help="乱数シード")
     ap.add_argument("--players", type=int, default=6)
     ap.add_argument("--matches", type=int, default=8)
+    ap.add_argument("--doubles", type=int, default=1,
+                    help="作るダブルスのデモ試合数（選手が 4 人以上のとき）")
     args = ap.parse_args()
 
     rng = random.Random(args.seed)
@@ -290,7 +385,19 @@ def main():
             pa = players[0]  # 解析対象は常に demo player A
             pb = rng.choice(players[1:])
             _make_match(db, team.id, rng, pa, pb, idx)
-        print(f"  [+] デモ試合 {args.matches} 件作成")
+        print(f"  [+] デモ試合（シングルス）{args.matches} 件作成")
+
+        # ダブルスのデモ試合。打球の高さ 4 段階を含むので «高さの差» の簡易分析を
+        # ダブルスで確かめられる。選手が 4 人以上いるときだけ作る。
+        n_doubles = 0
+        if len(players) >= 4:
+            for idx in range(args.doubles):
+                _make_doubles_match(
+                    db, team.id, rng,
+                    players[0], players[1], players[2], players[3], idx,
+                )
+                n_doubles += 1
+            print(f"  [+] デモ試合（ダブルス）{n_doubles} 件作成")
 
         # コンディションは解析対象選手中心に
         _make_conditions(db, rng, players[0], 16)

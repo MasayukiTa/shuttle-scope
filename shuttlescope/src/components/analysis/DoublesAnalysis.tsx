@@ -20,6 +20,7 @@ import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { WIN, LOSS, BAR, perfColor, getTooltipStyle, AXIS_TICK, AXIS_TICK_LIGHT } from '@/styles/colors'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
+import { SimpleHeightDiffCard } from '@/components/analysis/SimpleHeightDiffCard'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import type { AnalysisMeta } from '@/types'
 import { isFiniteNumber } from '@/utils/format'
@@ -474,6 +475,21 @@ export function DoublesAnalysis({ playerId, allMatches }: DoublesAnalysisProps) 
             </p>
           )}
         </div>
+      </div>
+
+      {/* 簡易分析「打球の高さ差」(要望8 / SD-08)。選んだダブルス試合について、
+          差の分布と «差が大きかったラリー» の一覧を出す。 */}
+      <div className="bg-[var(--ss-surface-1)] rounded-ss-lg border border-[var(--ss-border)] p-4">
+        <h3 className="text-sm font-semibold text-[var(--ss-t1)] mb-3">
+          {t('simple_analysis.height_diff_title')}
+        </h3>
+        {selectedDoubleMatchId ? (
+          <SimpleHeightDiffCard matchId={selectedDoubleMatchId} />
+        ) : (
+          <p className="text-[var(--ss-t3)] text-sm text-center py-4">
+            {t('doubles_analysis.no_match_selected')}
+          </p>
+        )}
       </div>
     </div>
   )
