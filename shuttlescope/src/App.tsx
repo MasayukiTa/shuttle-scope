@@ -58,6 +58,7 @@ import { apiPost } from '@/api/client'
 import { PendingLogoutDialog } from '@/components/auth/PendingLogoutDialog'
 import { IdleWarningDialog } from '@/components/auth/IdleWarningDialog'
 import { AUTOSAVE_FLUSH_EVENT } from '@/utils/annotatorAutosave'
+import { startProactiveRefresh } from '@/api/proactiveRefresh'
 import {
   countPendingForUserStrict,
   flushPendingForUser,
@@ -791,6 +792,17 @@ function ProtectedMainRoute() {
       doIdleLogout()
     },
   })
+
+  // 方針C: ログイン中はアクセストークンを失効 2 分前に先行 refresh し、
+  // タブが非表示から表示へ戻ったときも残り時間が少なければ即 refresh する。
+  // refresh の実体は client.ts の single-flight な refreshAccessToken() に委ねるため、
+  // navigator.locks / storage で 1 本化された refresh 経路に相乗りする (多重発火しない)。
+  // token が変わる (ログイン / refresh 成功 / ログアウト) たびに貼り直す。
+  useEffect(() => {
+    if (!token) return
+    const handle = startProactiveRefresh({ getToken: () => token })
+    return () => handle.stop()
+  }, [token])
 
   useEffect(() => {
     let cancelled = false
