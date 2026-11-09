@@ -8,3 +8,4 @@ src/api/__tests__/proactiveRefresh.test.ts
 src/api/__tests__/client.refreshRetry.test.ts
 src/api/__tests__/authStorage.crossTab.test.ts
 src/utils/__tests__/strokeDraftDurability.test.ts
+src/i18n/__tests__/contactHeightLabels.t003.test.ts
