@@ -6101,7 +6101,7 @@
       },
       "flow": {
         "title": "The basic loop",
-        "body": "Play and pause the video and record scores and strokes. Check them afterwards in Review, then look at Analysis for patterns. It is a loop of these three."
+        "body": "Play and pause the video and record scores and strokes in Input. Check them afterwards in Review, then look at Analysis for patterns. It is a loop of these three."
       }
     },
     "analysis_reading": {
