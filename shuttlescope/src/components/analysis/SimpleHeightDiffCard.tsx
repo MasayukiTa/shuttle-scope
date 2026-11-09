@@ -105,13 +105,13 @@ export function SimpleHeightDiffCard({ matchId }: SimpleHeightDiffCardProps) {
             </ul>
           </div>
 
-          {state.data.top_rallies.length > 0 && (
+          {(state.data.top_rallies ?? []).length > 0 && (
             <div className="flex flex-col gap-1">
               <span className="text-xs text-[var(--ss-t3)]">
                 {t('simple_analysis.top_rallies')}
               </span>
               <ul className="flex flex-col gap-1">
-                {state.data.top_rallies.map((r, i) => (
+                {(state.data.top_rallies ?? []).map((r, i) => (
                   <li
                     key={`${r.set_num ?? '-'}-${r.rally_num ?? '-'}-${i}`}
                     className="flex items-center justify-between rounded-ss-sm border border-[var(--ss-border)] bg-[var(--ss-surface-2)] px-2 py-1"
