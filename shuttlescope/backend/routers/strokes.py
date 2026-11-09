@@ -153,6 +153,11 @@ class RallyData(BaseModel):
     annotation_mode: Optional[str] = Field(default=None, max_length=32)
     # レビューステータス (pending / completed)
     review_status: Optional[str] = Field(default=None, max_length=32)
+    # 同期端末識別子。replace_strokes による置き換え時の所有者判定に使う。
+    # Rally に作成者 (user_id) 列が無いため、同じ端末 (= 実質同じユーザー) からの
+    # 書き込みに置き換えを限定する代理キーとして用いる。未指定 (None) の場合は
+    # require_match_scope 通過 (= 同じ試合) をもって許可する (固定条件のフォールバック)。
+    source_device_id: Optional[str] = Field(default=None, max_length=100)
 
 
 class BatchSaveRequest(BaseModel):
@@ -281,6 +286,20 @@ def _batch_replace_existing(
     検証済み)。Rally に作成者列が無いため、これがスコープ上の作成者一致にあたる。
     """
     from datetime import datetime
+    # 所有者ガード: 別端末 (= 別ユーザー) が作ったラリーを上書きしない。
+    # Rally に作成者 (user_id) 列が無いため source_device_id を代理キーとする。
+    # 既存と今回の device が両方わかっていて食い違う場合だけ拒否する。どちらかが
+    # 未設定なら require_match_scope 通過 (同じ試合) を根拠に許可する (固定条件の
+    # 「できなければ同じ試合の同じユーザーの書き込みに限る」フォールバック)。
+    incoming_device = body.rally.source_device_id
+    if (
+        existing.source_device_id
+        and incoming_device
+        and existing.source_device_id != incoming_device
+    ):
+        # 別端末からの置き換え要求は捨て、既存ラリーを already_saved として返す。
+        return _batch_existing_response(db, existing, idem_key, user_id, endpoint_id)
+
     active = (
         db.query(Stroke)
         .filter(Stroke.rally_id == existing.id, Stroke.deleted_at.is_(None))
@@ -315,6 +334,10 @@ def _batch_replace_existing(
         existing.annotation_mode = body.rally.annotation_mode
     if body.rally.review_status is not None:
         existing.review_status = body.rally.review_status
+    # 所有端末を記録 (既存が未設定なら今回の端末を所有者として刻む)。上の所有者ガードで
+    # 食い違う端末は既に弾いているので、ここでの代入は同じ端末か未設定時のみ到達する。
+    if incoming_device:
+        existing.source_device_id = incoming_device
 
     _update_annotation_progress(game_set.match_id, db)
     db.commit()

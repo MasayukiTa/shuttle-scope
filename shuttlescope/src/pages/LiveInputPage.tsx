@@ -36,6 +36,7 @@ import { buildBatchPayload, buildSkippedRallyPayload } from '@/utils/annotationP
 import { apiPost, apiPut, apiDelete, newIdempotencyKey } from '@/api/client'
 import { setWinner, isMatchDecidedBySet } from '@/utils/badmintonRules'
 import { useAuth } from '@/hooks/useAuth'
+import { useSettings } from '@/hooks/useSettings'
 import { useOfflineSync } from '@/hooks/useOfflineSync'
 import { errorMessage } from '@/utils/errors'
 import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
@@ -61,6 +62,7 @@ export function LiveInputPage() {
   const navigate = useNavigate()
   const { t } = useTranslation()
 
+  const { settings: appSettings } = useSettings()
   const [mode, setMode] = useState<LiveMode>('rally')
 
   // #664: 直前に確定した得点を取り消すための導線。ワンタップ即保存のため、確定直後に
@@ -380,6 +382,8 @@ export function LiveInputPage() {
           scoreBAfter: newScoreB,
           rallyStartTimestamp: rallyStart,
           isBasicMode: true,  // LiveInputPage は basic mode 固定 (試合中の素早い入力前提)
+          // 置き換え時の所有者ガード用に送信端末を刻む (別端末のラリーを上書きしない)。
+          sourceDeviceId: appSettings.sync_device_id || undefined,
         })
       : buildSkippedRallyPayload({
           setId: latestSet.id,

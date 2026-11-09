@@ -84,20 +84,23 @@ def _stroke(n: int) -> dict:
 
 
 def _body(set_id: int, count: int, *, replace: bool, final: bool,
-          rally_num: int = 1) -> dict:
+          rally_num: int = 1, device: str | None = None) -> dict:
+    rally = {
+        "set_id": set_id,
+        "rally_num": rally_num,
+        "server": "player_a",
+        "winner": "player_a",
+        "end_type": "winner",
+        "rally_length": count,
+        "score_a_after": 1,
+        "score_b_after": 0,
+        "is_deuce": False,
+        "annotation_mode": "manual_record",
+    }
+    if device is not None:
+        rally["source_device_id"] = device
     return {
-        "rally": {
-            "set_id": set_id,
-            "rally_num": rally_num,
-            "server": "player_a",
-            "winner": "player_a",
-            "end_type": "winner",
-            "rally_length": count,
-            "score_a_after": 1,
-            "score_b_after": 0,
-            "is_deuce": False,
-            "annotation_mode": "manual_record",
-        },
+        "rally": rally,
         "strokes": [_stroke(i) for i in range(1, count + 1)],
         "replace_strokes": replace,
         "final": final,
@@ -178,3 +181,67 @@ def test_replace_false_keeps_already_saved(client, db_session, game_set):
     assert r2.json()["data"]["rally_id"] == rally_id
     assert r2.json()["data"].get("already_saved") is True
     assert len(_active_strokes(db_session, rally_id)) == 3
+
+
+def test_replace_rejected_from_different_device(client, db_session, game_set):
+    # 端末 dev-A が最終 6 本で確定
+    r1 = client.post(
+        "/api/strokes/batch",
+        json=_body(game_set.id, 6, replace=True, final=True, device="dev-A"),
+    )
+    assert r1.status_code in (200, 201), r1.text
+    rally_id = r1.json()["data"]["rally_id"]
+    assert len(_active_strokes(db_session, rally_id)) == 6
+
+    # 別端末 dev-B が同じ (set_id, rally_num) を 3 本で置き換えようとする -> 拒否。
+    # 既存ラリーを already_saved として返し、打球は 6 本のまま上書きしない。
+    r2 = client.post(
+        "/api/strokes/batch",
+        json=_body(game_set.id, 3, replace=True, final=True, device="dev-B"),
+    )
+    assert r2.status_code in (200, 201), r2.text
+    assert r2.json()["data"]["rally_id"] == rally_id
+    assert r2.json()["data"].get("already_saved") is True
+    assert len(_active_strokes(db_session, rally_id)) == 6
+    db_session.expire_all()
+    assert db_session.get(Rally, rally_id).source_device_id == "dev-A"
+
+
+def test_replace_allowed_from_same_device(client, db_session, game_set):
+    # 同じ端末 dev-A なら途中 3 本 -> 最終 6 本の置き換えが通る
+    r1 = client.post(
+        "/api/strokes/batch",
+        json=_body(game_set.id, 3, replace=True, final=False, device="dev-A"),
+    )
+    assert r1.status_code in (200, 201), r1.text
+    rally_id = r1.json()["data"]["rally_id"]
+
+    r2 = client.post(
+        "/api/strokes/batch",
+        json=_body(game_set.id, 6, replace=True, final=True, device="dev-A"),
+    )
+    assert r2.status_code in (200, 201), r2.text
+    assert r2.json()["data"]["rally_id"] == rally_id
+    assert len(_active_strokes(db_session, rally_id)) == 6
+
+
+def test_replace_allowed_when_existing_device_unknown(client, db_session, game_set):
+    # 既存ラリーに device が無い (従来データ) 場合、今回の device 付き送信で置き換えを
+    # 許可し、所有端末を刻む (以後その端末が所有者)。
+    r1 = client.post(
+        "/api/strokes/batch",
+        json=_body(game_set.id, 3, replace=True, final=False),  # device 無し
+    )
+    assert r1.status_code in (200, 201), r1.text
+    rally_id = r1.json()["data"]["rally_id"]
+    db_session.expire_all()
+    assert db_session.get(Rally, rally_id).source_device_id is None
+
+    r2 = client.post(
+        "/api/strokes/batch",
+        json=_body(game_set.id, 6, replace=True, final=True, device="dev-A"),
+    )
+    assert r2.status_code in (200, 201), r2.text
+    assert len(_active_strokes(db_session, rally_id)) == 6
+    db_session.expire_all()
+    assert db_session.get(Rally, rally_id).source_device_id == "dev-A"

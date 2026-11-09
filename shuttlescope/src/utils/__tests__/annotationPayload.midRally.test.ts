@@ -77,4 +77,18 @@ describe('mid-rally autosave payload flags', () => {
     expect(fin.rally.set_id).toBe(mid.rally.set_id)
     expect(fin.rally.rally_num).toBe(mid.rally.rally_num)
   })
+
+  it('sourceDeviceId を渡すと rally.source_device_id に載る (置き換え時の所有者ガード用)', () => {
+    const p = buildBatchPayload({ ...baseArgs, strokes: strokesOf(6), sourceDeviceId: 'dev-A' })
+    expect(p.rally.source_device_id).toBe('dev-A')
+    const m = buildMidRallyPayload({ ...baseArgs, strokes: strokesOf(3), sourceDeviceId: 'dev-A' })
+    expect(m.rally.source_device_id).toBe('dev-A')
+  })
+
+  it('sourceDeviceId 未指定なら source_device_id は省略される (従来互換)', () => {
+    const p = buildBatchPayload({ ...baseArgs, strokes: strokesOf(6) })
+    expect('source_device_id' in p.rally).toBe(false)
+    const empty = buildBatchPayload({ ...baseArgs, strokes: strokesOf(6), sourceDeviceId: '' })
+    expect('source_device_id' in empty.rally).toBe(false)
+  })
 })

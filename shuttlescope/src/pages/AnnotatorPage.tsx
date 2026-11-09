@@ -707,6 +707,8 @@ export function AnnotatorPage() {
         scoreBAfter: newScoreB,
         rallyStartTimestamp: rallyStart,
         isBasicMode,
+        // 置き換え時の所有者ガード用に送信端末を刻む (別端末のラリーを上書きしない)。
+        sourceDeviceId: appSettings.sync_device_id || undefined,
       })
       // Phase A: オフライン耐性 — 認証済み user の所有権を queue に焼き込む。
       // owner が取れない異常状態でも入力は捨てない (S-14)。所有者不明の枠へ退避し、

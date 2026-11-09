@@ -24,6 +24,12 @@ export interface BuildBatchPayloadArgs {
   rallyStartTimestamp: number | null
   /** true = 基本 (manual_record / manual)、false = 詳細 (assisted_record / assisted) */
   isBasicMode: boolean
+  /**
+   * 同期端末識別子 (settings.sync_device_id)。サーバーの replace_strokes 置き換え時の
+   * 所有者ガードに使う。別端末が作ったラリーを上書きしないため、送信端末を rally に刻む。
+   * 未設定なら省略され、サーバーは同じ試合 (match scope) を根拠に置き換えを許可する。
+   */
+  sourceDeviceId?: string | null
 }
 
 export interface BatchStrokePayload {
@@ -61,6 +67,8 @@ export interface BatchRallyPayload {
   is_deuce: boolean
   video_timestamp_start?: number
   annotation_mode: 'manual_record' | 'assisted_record'
+  // 送信端末 (settings.sync_device_id)。replace_strokes 置き換え時の所有者ガード用。
+  source_device_id?: string
 }
 
 export interface BatchPayload {
@@ -136,6 +144,7 @@ export function buildBatchPayload(args: BuildBatchPayloadArgs): BatchPayload {
     scoreBAfter,
     rallyStartTimestamp,
     isBasicMode,
+    sourceDeviceId,
   } = args
 
   return {
@@ -151,6 +160,8 @@ export function buildBatchPayload(args: BuildBatchPayloadArgs): BatchPayload {
       is_deuce: scoreAAfter >= 20 && scoreBAfter >= 20,
       video_timestamp_start: rallyStartTimestamp ?? undefined,
       annotation_mode: isBasicMode ? 'manual_record' : 'assisted_record',
+      // 送信端末を刻む (置き換え時の所有者ガード用)。未設定なら省略。
+      ...(sourceDeviceId ? { source_device_id: sourceDeviceId } : {}),
     },
     // ラリー確定時の最終保存。途中保存 (final=false) が先に入っていても、確定時に
     // 全ストロークへ置き換える。replace_strokes=true でサーバーは already_saved で
