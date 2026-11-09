@@ -1815,6 +1815,8 @@
       "calib_no_video_title": "コートキャリブレーション（映像なし）",
       "calib_no_video_close": "閉じる",
       "calib_no_video_hint": "映像が無くても、コートの 4 隅とネット両端の 6 点を置いてキャリブレーションできます。",
+      "calib_blocked_external": "別モニタで再生中はコート校正を開けません。別モニタのウィンドウを閉じてからもう一度お試しください。",
+      "calib_blocked_no_match": "この試合がまだ保存されていないため、コート校正を開けません。試合を保存してからもう一度お試しください。",
       "manage_actions": "管理操作",
       "set_transition_to_next": "第{{from}}ゲームを終了して、第{{to}}ゲームへ移りますか？",
       "set_transition_to_prev": "第{{to}}ゲームへ戻りますか？（今のゲームの進み具合は変わりません）",

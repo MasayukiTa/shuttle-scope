@@ -67,6 +67,7 @@ import { useSessionSharing } from '@/hooks/annotator/useSessionSharing'
 import { useCVCandidates } from '@/hooks/annotator/useCVCandidates'
 import { AnnotatorVideoPane } from '@/components/annotator/AnnotatorVideoPane'
 import { CourtGridOverlay } from '@/components/video/CourtGridOverlay'
+import { noVideoCalibState } from '@/pages/annotatorCalibState'
 import type { RoiRect } from '@/components/video/RoiRectOverlay'
 import { CVAssistPanel } from '@/components/annotation/CVAssistPanel'
 import { CVScanPanel } from '@/components/annotation/CVScanPanel'
@@ -3346,20 +3347,40 @@ export function AnnotatorPage() {
           {(() => {
             // 別モニタ表示中はメイン側を非表示（video-only ウィンドウで再生中）
             if (videoSourceMode === 'none') {
-              // T003-05: 映像なしモードでもキャリブレーションを機能させる。
-              if (courtGridVisible && matchId && !videoWindowOpen) {
-                return (
-                  <NoVideoCalibCanvas
-                    matchId={matchId}
-                    containerRef={noVideoCalibRef}
-                    onClose={() => setCourtGridVisible(false)}
-                    onCalibrationSaved={() => {
-                      queryClient.invalidateQueries({ queryKey: ['movement-stats', matchId] })
-                    }}
-                    onCalibSourceChange={setCalibSource}
-                    t={t}
-                  />
-                )
+              // F-T003-05: 映像なしモードでも「キャリブレーションを開く」を押したら
+              // 必ず反応する。開ける場合は校正画面を、開けない場合は理由を出す
+              // (以前は matchId 無し / 別モニタ再生中に無言で案内に落ち、押しても
+              //  何も起きず理由も出なかった)。判定は noVideoCalibState に集約。
+              switch (noVideoCalibState({ courtGridVisible, matchId, videoWindowOpen })) {
+                case 'calib':
+                  return (
+                    <NoVideoCalibCanvas
+                      matchId={matchId as string}
+                      containerRef={noVideoCalibRef}
+                      onClose={() => setCourtGridVisible(false)}
+                      onCalibrationSaved={() => {
+                        queryClient.invalidateQueries({ queryKey: ['movement-stats', matchId] })
+                      }}
+                      onCalibSourceChange={setCalibSource}
+                      t={t}
+                    />
+                  )
+                case 'blocked_external':
+                  return (
+                    <NoVideoCalibBlocked
+                      reason={t('annotator.ui.calib_blocked_external', { defaultValue: '別モニタで再生中はコート校正を開けません。別モニタのウィンドウを閉じてからもう一度お試しください。' })}
+                      onClose={() => setCourtGridVisible(false)}
+                      t={t}
+                    />
+                  )
+                case 'blocked_no_match':
+                  return (
+                    <NoVideoCalibBlocked
+                      reason={t('annotator.ui.calib_blocked_no_match', { defaultValue: 'この試合がまだ保存されていないため、コート校正を開けません。試合を保存してからもう一度お試しください。' })}
+                      onClose={() => setCourtGridVisible(false)}
+                      t={t}
+                    />
+                  )
               }
               return (
                 <div className="flex items-center justify-center bg-[var(--ss-surface-2)] rounded-ss-lg text-[var(--ss-t3)] text-xs border border-dashed border-[var(--ss-border)] py-6 px-3 text-center">
@@ -3447,20 +3468,31 @@ export function AnnotatorPage() {
             }
 
             if (!videoSrc) {
-              // T003-05: 動画未設定でもキャリブレーションを機能させる。
-              if (courtGridVisible && matchId) {
-                return (
-                  <NoVideoCalibCanvas
-                    matchId={matchId}
-                    containerRef={noVideoCalibRef}
-                    onClose={() => setCourtGridVisible(false)}
-                    onCalibrationSaved={() => {
-                      queryClient.invalidateQueries({ queryKey: ['movement-stats', matchId] })
-                    }}
-                    onCalibSourceChange={setCalibSource}
-                    t={t}
-                  />
-                )
+              // F-T003-05: 動画未設定でも「キャリブレーションを開く」が無反応に
+              // ならないようにする。開けなければ理由を出す。videoWindowOpen は
+              // この分岐 (videoSrc 未設定) では無関係なので false 固定で判定する。
+              switch (noVideoCalibState({ courtGridVisible, matchId, videoWindowOpen: false })) {
+                case 'calib':
+                  return (
+                    <NoVideoCalibCanvas
+                      matchId={matchId as string}
+                      containerRef={noVideoCalibRef}
+                      onClose={() => setCourtGridVisible(false)}
+                      onCalibrationSaved={() => {
+                        queryClient.invalidateQueries({ queryKey: ['movement-stats', matchId] })
+                      }}
+                      onCalibSourceChange={setCalibSource}
+                      t={t}
+                    />
+                  )
+                case 'blocked_no_match':
+                  return (
+                    <NoVideoCalibBlocked
+                      reason={t('annotator.ui.calib_blocked_no_match', { defaultValue: 'この試合がまだ保存されていないため、コート校正を開けません。試合を保存してからもう一度お試しください。' })}
+                      onClose={() => setCourtGridVisible(false)}
+                      t={t}
+                    />
+                  )
               }
               return (
                 <div className="flex items-center justify-center bg-[var(--ss-surface-2)] rounded-ss-md text-[var(--ss-t2)] text-sm border-2 border-dashed border-[var(--ss-border)] py-6 px-4 text-center gap-2 flex-col">
@@ -5526,6 +5558,39 @@ export function AnnotatorPage() {
         })}
       />
       <ConfirmDialog pending={pendingConfirm} onClose={() => setPendingConfirm(null)} />
+    </div>
+  )
+}
+
+// ─── NoVideoCalibBlocked ──────────────────────────────────
+// F-T003-05: 映像なしモードで「キャリブレーションを開く」を押したが開けない
+// 場合に、理由と閉じる導線を出す。無言で案内テキストに落ちて「押しても何も
+// 起きない」状態を作らないためのもの。
+interface NoVideoCalibBlockedProps {
+  reason: string
+  onClose: () => void
+  t: (key: string, opts?: Record<string, unknown>) => string
+}
+
+function NoVideoCalibBlocked({ reason, onClose, t }: NoVideoCalibBlockedProps) {
+  return (
+    <div
+      className="flex flex-col items-center justify-center gap-2 bg-[var(--ss-surface-2)] rounded-ss-md text-[var(--ss-t2)] text-xs border border-dashed border-[var(--ss-border)] py-6 px-4 text-center"
+      role="status"
+    >
+      <span className="flex items-center gap-1 text-[var(--ss-t1)]">
+        <MIcon name="info" size={14} />
+        {t('annotator.ui.calib_no_video_title', { defaultValue: 'コートキャリブレーション（映像なし）' })}
+      </span>
+      <span className="leading-snug text-[var(--ss-t3)]">{reason}</span>
+      <button
+        type="button"
+        onClick={onClose}
+        className="flex items-center gap-1 px-2 py-1 rounded-ss-sm text-xs bg-[var(--ss-surface-3)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-2)]"
+      >
+        <MIcon name="close" size={12} />
+        {t('annotator.ui.calib_no_video_close', { defaultValue: '閉じる' })}
+      </button>
     </div>
   )
 }

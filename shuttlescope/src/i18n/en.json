@@ -1685,6 +1685,8 @@
       "calib_no_video_title": "Court calibration (no video)",
       "calib_no_video_close": "Close",
       "calib_no_video_hint": "Even without video, you can calibrate by placing the 6 points at the 4 court corners and both net ends.",
+      "calib_blocked_external": "Court calibration can't be opened while a video is playing on the other monitor. Close the other-monitor window and try again.",
+      "calib_blocked_no_match": "Court calibration can't be opened because this match hasn't been saved yet. Save the match and try again.",
       "manage_actions": "Management actions",
       "set_transition_to_next": "End Game {{from}} and move to Game {{to}}?",
       "set_transition_to_prev": "Go back to Game {{to}}? (Current game progress is preserved)",
