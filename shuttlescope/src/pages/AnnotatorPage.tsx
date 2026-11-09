@@ -2379,6 +2379,27 @@ export function AnnotatorPage() {
 
         {/* デスクトップ: 全ボタン表示 */}
         <div className="hidden md:flex items-center gap-2 text-xs text-[var(--ss-t2)] shrink-0">
+          {/* unsent-indicator: 送信状態を常時表示 (未送信 N 件 / 保存済み / 送信失敗(再試行))。
+              オフライン・送信失敗は目立つ赤系で出す。 */}
+          <span
+            className={clsx(
+              'font-medium px-1.5 py-0.5 rounded',
+              store.syncState === 'saved'
+                ? 'text-emerald-400'
+                : 'bg-red-500/20 text-red-300 ring-1 ring-red-500/50'
+            )}
+            title={t(`annotator.sync_status_tooltip_${store.syncState}`, {
+              defaultValue: '',
+              n: store.unsentCount,
+            })}
+            aria-live="polite"
+          >
+            {store.syncState === 'saved'
+              ? t('annotator.sync_status_saved')
+              : store.syncState === 'offline'
+                ? t('annotator.sync_status_offline', { n: store.unsentCount })
+                : t('annotator.sync_status_failed', { n: store.unsentCount })}
+          </span>
           {/* K-002: 保存中バッジ */}
           {store.pendingSaveCount > 0 && (
             <span className="text-yellow-400 font-medium">
@@ -3189,6 +3210,22 @@ export function AnnotatorPage() {
                 {t('in_match_panel.opponent_info')}
               </button>
             )}
+            {/* unsent-indicator (モバイル): 送信状態を常時表示。 */}
+            <div
+              className={clsx(
+                'w-full flex items-center gap-2 px-3 py-2.5 text-sm',
+                store.syncState === 'saved'
+                  ? 'text-[var(--ss-t2)]'
+                  : 'text-[var(--ss-bad)] font-medium'
+              )}
+              aria-live="polite"
+            >
+              {store.syncState === 'saved'
+                ? t('annotator.sync_status_saved')
+                : store.syncState === 'offline'
+                  ? t('annotator.sync_status_offline', { n: store.unsentCount })
+                  : t('annotator.sync_status_failed', { n: store.unsentCount })}
+            </div>
             {/* エラー表示 */}
             {store.saveErrors.length > 0 && (
               <button

@@ -1,4 +1,8 @@
 import '@testing-library/jest-dom'
+// unsent-indicator: jsdom には IndexedDB が無い。offlineStrokeQueue の永続性
+// (タブを閉じて開き直しても未送信が残る) を実 DB で検証するため、
+// メモリ内 IndexedDB 実装をグローバルに生やす。
+import 'fake-indexeddb/auto'
 import { afterEach, vi } from 'vitest'
 // `b505952 Migrate annotation UI labels to i18n` 以降、ReviewQueuePanel /
 // CVAssistPanel など多くのコンポーネントが `useTranslation()` を使用する。
