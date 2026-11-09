@@ -19,25 +19,44 @@ describe('authStorage cross-tab sharing', () => {
     sessionStorage.clear()
   })
 
-  it('writes auth values to localStorage so another tab can read them', async () => {
+  it('writes auth values to localStorage only (no sessionStorage mirror) when localStorage works', async () => {
     const { setAuthItem, getAuthItem, TOKEN_KEY } = await import('@/api/authStorage')
     setAuthItem(TOKEN_KEY, 'access-shared')
     // localStorage が主ストレージ (他タブと共有される)。
     expect(localStorage.getItem(TOKEN_KEY)).toBe('access-shared')
-    // sessionStorage にも互換ミラーされる (旧テスト・旧タブ互換)。
-    expect(sessionStorage.getItem(TOKEN_KEY)).toBe('access-shared')
-    // 読みは localStorage 優先。
+    // localStorage が使えるので sessionStorage には書かない (タブ固有のミラーを残さない)。
+    // ミラーを残すと他タブでのログアウト後もそのタブに値が残り、cross-tab logout が不成立になる。
+    expect(sessionStorage.getItem(TOKEN_KEY)).toBeNull()
     expect(getAuthItem(TOKEN_KEY)).toBe('access-shared')
   })
 
-  it('reads from localStorage first, falling back to sessionStorage', async () => {
+  it('reads from localStorage only when localStorage works (does not fall back to sessionStorage)', async () => {
     const { getAuthItem, REFRESH_KEY } = await import('@/api/authStorage')
-    // 旧タブ由来の sessionStorage のみの値もフォールバックで読める。
+    // localStorage が使える環境では、sessionStorage にしか無い値は読まない。
+    // (他タブのログアウトで localStorage が空になったとき、残った sessionStorage を拾わない。)
     sessionStorage.setItem(REFRESH_KEY, 'refresh-session-only')
-    expect(getAuthItem(REFRESH_KEY)).toBe('refresh-session-only')
-    // localStorage に値があればそちらが優先される。
+    expect(getAuthItem(REFRESH_KEY)).toBeNull()
+    // localStorage に値があればそれを読む。
     localStorage.setItem(REFRESH_KEY, 'refresh-local')
     expect(getAuthItem(REFRESH_KEY)).toBe('refresh-local')
+  })
+
+  it('uses sessionStorage as a fallback only when localStorage is unavailable', async () => {
+    // localStorage を使用不可 (getItem/setItem が throw) に差し替え、sessionStorage 代替を検証する。
+    const throwing = {
+      getItem() { throw new Error('ls disabled') },
+      setItem() { throw new Error('ls disabled') },
+      removeItem() { throw new Error('ls disabled') },
+      key() { return null },
+      clear() {},
+      length: 0,
+    } as unknown as Storage
+    vi.stubGlobal('localStorage', throwing)
+    const { setAuthItem, getAuthItem, TOKEN_KEY } = await import('@/api/authStorage')
+    setAuthItem(TOKEN_KEY, 'ls-off-value')
+    // localStorage が使えないので sessionStorage に書かれ、そこから読める。
+    expect(sessionStorage.getItem(TOKEN_KEY)).toBe('ls-off-value')
+    expect(getAuthItem(TOKEN_KEY)).toBe('ls-off-value')
   })
 
   it('migrates existing sessionStorage auth values into localStorage on first load', async () => {
@@ -49,6 +68,11 @@ describe('authStorage cross-tab sharing', () => {
     expect(localStorage.getItem('shuttlescope_token')).toBe('migrate-access')
     expect(localStorage.getItem('shuttlescope_refresh_token')).toBe('migrate-refresh')
     expect(localStorage.getItem('shuttlescope_role')).toBe('annotator')
+    // 移行後は sessionStorage の認証値を消す。タブ固有のミラーを残すと、
+    // 他タブのログアウトが getAuthItem のフォールバックで無効化されなくなるため。
+    expect(sessionStorage.getItem('shuttlescope_token')).toBeNull()
+    expect(sessionStorage.getItem('shuttlescope_refresh_token')).toBeNull()
+    expect(sessionStorage.getItem('shuttlescope_role')).toBeNull()
   })
 
   it('does not overwrite a newer localStorage value during migration', async () => {
@@ -111,6 +135,40 @@ describe('authStorage cross-tab sharing', () => {
     const storageRegistrations = addSpy.mock.calls.filter(([type]) => type === 'storage')
     expect(storageRegistrations.length).toBe(1)
     addSpy.mockRestore()
+  })
+
+  // 2 タブ模擬 (本件の中心シナリオ): タブ A と B がログイン (localStorage 共有)。
+  // タブ B がログアウトで localStorage の token を消す → タブ A に storage イベントが届く。
+  // 期待: タブ A では getAuthItem(token) が null になり (= 未認証化)、残った sessionStorage の
+  // ミラーを拾わない。さらに入力中ラリー退避のため AUTOSAVE_FLUSH_EVENT が発火する。
+  it('cross-tab logout: other tab clearing the token logs this tab out and does not resurrect from sessionStorage', async () => {
+    const { installCrossTabAuthSync, getAuthItem, TOKEN_KEY, REFRESH_KEY } = await import('@/api/authStorage')
+    installCrossTabAuthSync()
+
+    // タブ A がログイン済み: 本番では localStorage に入るが、ここでは「過去に sessionStorage の
+    // ミラーが残ってしまっている」状況も併せて再現し、それを拾わないことを示す。
+    localStorage.setItem(TOKEN_KEY, 'access-A')
+    localStorage.setItem(REFRESH_KEY, 'refresh-A')
+    sessionStorage.setItem(TOKEN_KEY, 'stale-mirror-A')
+    sessionStorage.setItem(REFRESH_KEY, 'stale-mirror-refresh-A')
+
+    const flush = vi.fn()
+    window.addEventListener('shuttlescope:autosave-flush', flush)
+
+    try {
+      // タブ B がログアウト = localStorage から token が消える。タブ A に storage イベントが届く。
+      localStorage.removeItem(TOKEN_KEY)
+      window.dispatchEvent(new StorageEvent('storage', { key: TOKEN_KEY, newValue: null }))
+
+      // 退避イベントが発火している (アノテータが開いていれば入力中ラリーを書き出す)。
+      expect(flush).toHaveBeenCalled()
+      // タブ A の sessionStorage ミラーは消され、getAuthItem は復活しない。
+      expect(sessionStorage.getItem(TOKEN_KEY)).toBeNull()
+      expect(sessionStorage.getItem(REFRESH_KEY)).toBeNull()
+      expect(getAuthItem(TOKEN_KEY)).toBeNull()
+    } finally {
+      window.removeEventListener('shuttlescope:autosave-flush', flush)
+    }
   })
 })
 

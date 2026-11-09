@@ -26,6 +26,7 @@
  */
 
 import { fetchWithTimeout, refreshAccessToken } from '@/api/client'
+import { getAuthItem, TOKEN_KEY } from '@/api/authStorage'
 
 export type QueueEndpoint =
   | 'POST /api/rallies'
@@ -174,7 +175,7 @@ export function tokenUserId(token: string | null | undefined): number | null {
 /** 現在ログイン中 (= 送信に使われるトークンの) ユーザー。 */
 export function currentQueueOwnerId(): number | null {
   try {
-    return tokenUserId(sessionStorage.getItem('shuttlescope_token'))
+    return tokenUserId(getAuthItem(TOKEN_KEY))
   } catch {
     return null
   }
@@ -332,7 +333,7 @@ export async function trySend(item: QueueItem): Promise<QueueSendResult> {
     }
   }
 
-  const token = sessionStorage.getItem('shuttlescope_token')
+  const token = getAuthItem(TOKEN_KEY)
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'X-Idempotency-Key': item.clientUuid,
@@ -369,7 +370,7 @@ export async function trySend(item: QueueItem): Promise<QueueSendResult> {
       // 実行して再送する (refresh しないと同じ期限切れ token で 30 秒ごとに 401 を繰り返す)。
       const refreshed = await refreshAccessToken()
       if (refreshed === 'ok') {
-        const fresh = sessionStorage.getItem('shuttlescope_token')
+        const fresh = getAuthItem(TOKEN_KEY)
         if (!fresh) return 'auth'
         // refresh でトークンの持ち主が変わっていないことを再確認してから送る。
         if (queueItemOwnership(item, tokenUserId(fresh)) !== 'mine') return 'foreign'
