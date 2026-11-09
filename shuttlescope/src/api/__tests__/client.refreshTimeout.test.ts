@@ -16,7 +16,7 @@ function hangingFetch(_url: string, init?: RequestInit): Promise<Response> {
 
 describe('api client timeouts on the refresh and health paths', () => {
   beforeEach(() => {
-    sessionStorage.clear()
+    localStorage.clear()
     vi.resetModules()
   })
 
@@ -24,13 +24,13 @@ describe('api client timeouts on the refresh and health paths', () => {
     vi.useRealTimers()
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
-    sessionStorage.clear()
+    localStorage.clear()
   })
 
   it('does not freeze an API call when /auth/refresh never answers', async () => {
     vi.useFakeTimers()
-    sessionStorage.setItem('shuttlescope_token', 'access-old')
-    sessionStorage.setItem('shuttlescope_refresh_token', 'refresh-old')
+    localStorage.setItem('shuttlescope_token', 'access-old')
+    localStorage.setItem('shuttlescope_refresh_token', 'refresh-old')
 
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
@@ -46,8 +46,8 @@ describe('api client timeouts on the refresh and health paths', () => {
     await assertion
 
     // transient 扱い: 有効な refresh token を捨てない (login-bounce 対策)
-    expect(sessionStorage.getItem('shuttlescope_refresh_token')).toBe('refresh-old')
-    expect(sessionStorage.getItem('shuttlescope_token')).toBe('access-old')
+    expect(localStorage.getItem('shuttlescope_refresh_token')).toBe('refresh-old')
+    expect(localStorage.getItem('shuttlescope_token')).toBe('access-old')
   })
 
   it('checkHealth returns false instead of hanging when /health never answers', async () => {
@@ -67,8 +67,8 @@ describe('api client timeouts on the refresh and health paths', () => {
   })
 
   it('fetchAuthed refreshes once on 401 and replays the request with the new token', async () => {
-    sessionStorage.setItem('shuttlescope_token', 'access-old')
-    sessionStorage.setItem('shuttlescope_refresh_token', 'refresh-old')
+    localStorage.setItem('shuttlescope_token', 'access-old')
+    localStorage.setItem('shuttlescope_refresh_token', 'refresh-old')
 
     const authSeen: string[] = []
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
