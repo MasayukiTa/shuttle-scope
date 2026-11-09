@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { ShotType, StrokeInput, Zone9, LandZone, ZoneNet } from '@/types'
+import type { SyncState } from '@/utils/syncStatus'
 
 export type InputStep =
   | 'idle'        // 待機中（ショットキーでラリー開始）
@@ -71,6 +72,12 @@ interface AnnotationState {
   pendingSaveCount: number
   saveErrors: SaveError[]
 
+  // unsent-indicator: サーバー未送信ラリー (IndexedDB owned キュー) の件数と送信状態。
+  // IndexedDB の実データ由来で useOfflineSync が都度上書きするため、試合リセット
+  // (init / clearMatch 等) では 0 に戻さない。
+  unsentCount: number
+  syncState: SyncState
+
   // Phase C speed: セミ自動 flip 制御
   // 'auto'      = 既存挙動 (常に flip)
   // 'semi-auto' = flip するが 500ms 以内の次ショット tap で revert
@@ -99,6 +106,8 @@ interface AnnotationState {
   decrementPending: () => void
   addSaveError: (err: SaveError) => void
   clearSaveErrors: () => void
+  // unsent-indicator: 未送信件数と送信状態を更新する (useOfflineSync が呼ぶ)。
+  setSyncStatus: (unsentCount: number, syncState: SyncState) => void
 
   // ラリー操作
   /** 一時保存からの復元では動画位置が分からないことがある。
@@ -217,6 +226,8 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
   recentRallyResults: [],
   pendingSaveCount: 0,
   saveErrors: [],
+  unsentCount: 0,
+  syncState: 'saved',
   flipMode: loadFlipMode(),
   lastFlipAt: null,
   playerBeforeFlip: null,
@@ -226,6 +237,8 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
   decrementPending: () => set((s) => ({ pendingSaveCount: Math.max(0, s.pendingSaveCount - 1) })),
   addSaveError: (err) => set((s) => ({ saveErrors: [...s.saveErrors, err] })),
   clearSaveErrors: () => set({ saveErrors: [] }),
+  setSyncStatus: (unsentCount, syncState) =>
+    set({ unsentCount: Math.max(0, Math.floor(unsentCount)), syncState }),
 
   init: (matchId, setId, setNum, rallyNum, scoreA, scoreB, initialServer) =>
     set({

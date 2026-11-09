@@ -60,6 +60,7 @@
     "eslint": "^10.11.0",
     "eslint-plugin-i18next": "^6.1.5",
     "eslint-plugin-react-hooks": "^7.1.1",
+    "fake-indexeddb": "^6.2.8",
     "globals": "^17.12.0",
     "jsdom": "^29.1.1",
     "postcss": "^8.5.28",

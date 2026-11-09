@@ -13,10 +13,12 @@ import { useEffect, useRef } from 'react'
 
 import { apiPost } from '@/api/client'
 import {
+  countPendingForUserStrict,
   listPendingForMatch,
   offlineStrokeIdempotencyKey,
   removePending,
 } from '@/utils/offlineStrokeQueue'
+import { deriveSyncStatus } from '@/utils/syncStatus'
 import { useAnnotationStore } from '@/store/annotationStore'
 // hook の外では useTranslation の t が束縛されない。CLAUDE.md の規約どおり
 // 修飾済みの i18n.t を使う。
@@ -35,10 +37,30 @@ export function useOfflineSync(matchId: number | null, ownerUserId: number | nul
   useEffect(() => {
     if (matchId == null || ownerUserId == null) return
 
+    // 表示更新: 本人の未送信件数を IndexedDB から数え直し、navigator.onLine と
+    // 直近の送信が失敗したかから表示状態を導き、store へ反映する。
+    const refreshStatus = async (lastSendFailed: boolean) => {
+      let unsentCount = 0
+      try {
+        unsentCount = await countPendingForUserStrict(ownerUserId)
+      } catch {
+        // 読み取りに失敗したら前の件数を維持する (0 と偽らない)。
+        unsentCount = useAnnotationStore.getState().unsentCount
+      }
+      const offline = typeof navigator !== 'undefined' && navigator.onLine === false
+      const view = deriveSyncStatus({ unsentCount, offline, lastSendFailed })
+      useAnnotationStore.getState().setSyncStatus(view.unsentCount, view.state)
+    }
+
     const sync = async () => {
       if (inflightRef.current) return
-      if (typeof navigator !== 'undefined' && navigator.onLine === false) return
+      // オフラインでも未送信件数・状態は常時更新する (表示を出し続ける)。
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        await refreshStatus(false)
+        return
+      }
       inflightRef.current = true
+      let sendFailed = false
       try {
         const items = await listPendingForMatch(matchId, ownerUserId)
         for (const it of items) {
@@ -92,11 +114,15 @@ export function useOfflineSync(matchId: number | null, ownerUserId: number | nul
               }
               continue
             }
+            // 再試行で直る種類 (ネットワーク / 5xx / 429 / 408)。未送信が残るので
+            // 表示を failed にする。次回の online / ポーリングで再送される。
+            sendFailed = true
             break
           }
         }
       } finally {
         inflightRef.current = false
+        await refreshStatus(sendFailed)
       }
     }
 
