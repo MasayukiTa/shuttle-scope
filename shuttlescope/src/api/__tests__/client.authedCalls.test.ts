@@ -9,6 +9,7 @@ function newToken(): string {
 describe('authenticated blob download and benchmark cancel', () => {
   beforeEach(() => {
     sessionStorage.clear()
+    localStorage.clear()
     vi.resetModules()
   })
 
@@ -16,6 +17,7 @@ describe('authenticated blob download and benchmark cancel', () => {
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
     sessionStorage.clear()
+    localStorage.clear()
   })
 
   it('apiGetBlob sends the Bearer token and returns the blob with the server file name', async () => {
