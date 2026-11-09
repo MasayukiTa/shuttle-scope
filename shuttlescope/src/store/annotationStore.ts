@@ -169,6 +169,22 @@ interface AnnotationState {
     intentNote?: string
   }) => void
 
+  // F-T003-01: 任意の確定ストローク (index 指定) のエンリッチメント更新。
+  // 詳細分析パネルで «直前以外» のストロークを後から補完できるようにする。
+  // index が範囲外のときは何もしない (壊れた入力でストローク配列を汚さない)。
+  updateStrokeEnrichmentAt: (
+    index: number,
+    fields: {
+      returnQuality?: string
+      contactHeight?: string
+      contactZone?: string
+      movementBurden?: string
+      movementDirection?: string
+      intentTag?: string
+      intentNote?: string
+    },
+  ) => void
+
   // セット移行
   nextSet: (setId: number, setNum: number) => void
 
@@ -706,19 +722,29 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
     set({ scoreA, scoreB, currentRallyNum: rallyNum }),
 
   // G2+移動系: 直前確定ストロークのエンリッチメント更新（落点確定直後のオプション入力）
-  updateLastStrokeEnrichment: ({ returnQuality, contactHeight, contactZone, movementBurden, movementDirection, intentTag, intentNote }) => {
+  // F-T003-01: 実体は updateStrokeEnrichmentAt に委譲。既定の «直前» 挙動は維持する。
+  updateLastStrokeEnrichment: (fields) => {
     const { currentStrokes } = get()
     if (currentStrokes.length === 0) return
+    get().updateStrokeEnrichmentAt(currentStrokes.length - 1, fields)
+  },
+
+  // F-T003-01: index 指定のエンリッチメント更新。詳細分析パネルから
+  // «直前以外» のストロークも後から補完できるようにする共通実装。
+  updateStrokeEnrichmentAt: (index, { returnQuality, contactHeight, contactZone, movementBurden, movementDirection, intentTag, intentNote }) => {
+    const { currentStrokes } = get()
+    // 範囲外 index は無視 (壊れた入力でストローク配列を汚さない)。
+    if (index < 0 || index >= currentStrokes.length) return
     const updated = [...currentStrokes]
-    const last = { ...updated[updated.length - 1] }
-    if (returnQuality !== undefined) last.return_quality = returnQuality
-    if (contactHeight !== undefined) last.contact_height = contactHeight
-    if (contactZone !== undefined) last.contact_zone = contactZone
-    if (movementBurden !== undefined) last.movement_burden = movementBurden
-    if (movementDirection !== undefined) last.movement_direction = movementDirection
-    if (intentTag !== undefined) last.intent_tag = intentTag
-    if (intentNote !== undefined) last.intent_note = intentNote
-    updated[updated.length - 1] = last
+    const target = { ...updated[index] }
+    if (returnQuality !== undefined) target.return_quality = returnQuality
+    if (contactHeight !== undefined) target.contact_height = contactHeight
+    if (contactZone !== undefined) target.contact_zone = contactZone
+    if (movementBurden !== undefined) target.movement_burden = movementBurden
+    if (movementDirection !== undefined) target.movement_direction = movementDirection
+    if (intentTag !== undefined) target.intent_tag = intentTag
+    if (intentNote !== undefined) target.intent_note = intentNote
+    updated[index] = target
     set({ currentStrokes: updated })
   },
 }))

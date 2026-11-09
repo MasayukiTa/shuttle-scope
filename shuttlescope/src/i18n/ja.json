@@ -2503,6 +2503,11 @@
   },
   "enrichment": {
     "strip_label": "返球メモ（任意）",
+    "target_stroke": "詳細入力の対象: #{{n}} / {{total}}",
+    "target_latest": "(直前)",
+    "target_prev": "前のストローク",
+    "target_next": "次のストローク",
+    "target_no_shot": "ショット未設定",
     "return_quality": "返球品質",
     "contact_height": "打点高さ",
     "return_quality_attack": "攻撃",
