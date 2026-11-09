@@ -852,7 +852,14 @@ function ProtectedMainRoute() {
         if (status === 401 || status === 403) {
           authUnverifiedRef.current = false
           setAuthUnverified(false)
-          clearRole()
+          // トークンが 401/403 で意図せず失効したときも、無操作失効 (doIdleLogout) と
+          // 同じく、セッションを破棄する前に入力中のラリーを一時保存へ書き出させ、かつ
+          // 一時保存を残す (keepAutosave: true)。これをしないと、未確定の入力は store に
+          // しか無いため失効と同時に完全に失われる («保存し終わったはずが失効で消えた»)。
+          // 一時保存には ownerUserId が入っていて復元時に本人かを照合する
+          // (isAutosaveOwnedBy) ので、共有端末で別の利用者に中身は出ない。
+          try { window.dispatchEvent(new Event(AUTOSAVE_FLUSH_EVENT)) } catch { /* ignore */ }
+          clearRole({ keepAutosave: true })
         } else {
           authUnverifiedRef.current = true
           setAuthUnverified(true)

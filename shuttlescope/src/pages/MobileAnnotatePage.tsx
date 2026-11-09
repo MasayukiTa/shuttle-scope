@@ -52,8 +52,12 @@ interface MatchLite {
   [key: string]: unknown
 }
 interface CvStroke {
+  stroke_num?: number
   timestamp_sec?: number
   hitter?: { value?: 'player_a' | 'player_b'; confidence_score?: number; decision_mode?: string }
+  // backend/cv/candidate_builder.py が返す着地ゾーン候補。宣言から漏れていたため
+  // buildLandZoneSuggestions へ CvRally をそのまま渡すと型が合わなかった。
+  land_zone?: { value?: string | null; confidence_score?: number | null; decision_mode?: string | null } | null
 }
 interface CvRally {
   strokes?: CvStroke[]
@@ -94,6 +98,7 @@ import {
   rallyKey,
 } from '@/utils/mobileAnnotateRallies'
 import { setWinner, matchWinner } from '@/utils/badmintonRules'
+import { buildLandZoneSuggestions } from '@/utils/mobileAnnotateCvSuggest'
 
 type ScreenMode = 'play' | 'annotate'
 
@@ -997,6 +1002,7 @@ export function MobileAnnotatePage() {
                 pausedAtSec={pausedAtSec}
                 courtQuad={courtCalib.quad}
                 courtHalf={courtCalib.half}
+                cvRallies={cvCandidatesQuery.data?.rallies}
                 onCancel={() => setScreen('play')}
               />
             </div>
@@ -1375,6 +1381,7 @@ function Pass3RallyPicker({
   pausedAtSec,
   courtQuad,
   courtHalf,
+  cvRallies,
   onCancel,
 }: {
   doubles: boolean
@@ -1385,6 +1392,8 @@ function Pass3RallyPicker({
   courtQuad: Quad | null
   /** 校正を使うとき、入力片面が画面の near/far どちらに写っているか。 */
   courtHalf: CourtHalf
+  /** CV 候補 (cv_candidates の rallies)。未取得・未校正・モデル無しのときは undefined で、補助は出さない。 */
+  cvRallies?: Record<string, CvRally>
   onCancel: () => void
 }) {
   const { t } = useTranslation()
@@ -1499,6 +1508,8 @@ function Pass3RallyPicker({
     const local = localStrokes.filter((s) => s.rally_id === selected.id)
     // 編集済みの値を重ね、送信済みで再取得後にサーバ側へ現れた stroke は端末内の同一 stroke を落とす。
     const all = mergeStrokes(applyStrokeOverrides(serverStrokes, serverStrokeEdits), local)
+    // CV 候補 (着地ゾーン) を stroke_num -> ZoneCode に畳む。未取得・未校正・モデル無しなら空 Map。
+    const landZoneSuggestions = buildLandZoneSuggestions(cvRallies?.[String(selected.id)])
     return (
       <Pass3ShotDetail
         rally={{
@@ -1512,6 +1523,7 @@ function Pass3RallyPicker({
         doubles={doubles}
         courtQuad={courtQuad}
         courtHalf={courtHalf}
+        landZoneSuggestions={landZoneSuggestions}
         onNeedCalibration={onCancel}
         onStrokeAdded={(s) => {
           setLocalStrokes((prev) => [...prev, { ...s, rally_id: selected.id! }])
