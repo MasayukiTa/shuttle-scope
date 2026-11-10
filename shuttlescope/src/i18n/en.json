@@ -1305,6 +1305,8 @@
       "downloads_unknown": "Could not refresh the video download status. What is shown is the last known state.",
       "delete_confirm": "Delete",
       "cancel_short": "Cancel",
+      "empty_filtered": "No matches fit the current filters. Try changing them.",
+      "clear_filters": "Clear filters",
       "public_pool_badge": "Shared",
       "public_pool_title": "Public-pool match visible to all teams",
       "demo_public_badge": "Demo",
