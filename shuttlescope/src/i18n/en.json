@@ -5598,7 +5598,10 @@
       "queue_storage_error": "Cannot write to this device's storage. Unsent inputs may be lost.",
       "queue_storage_error_short": "Storage error",
       "pass3_checking_existing": "Checking existing strokes ...",
-      "pass3_strokes_fetch_failed": "Could not load existing strokes. Please try again."
+      "pass3_strokes_fetch_failed": "Could not load existing strokes. Please try again.",
+      "menu": "Menu",
+      "tutorial_replay": "Replay the tutorial",
+      "tutorial_replay_unrecorded": "Tutorial started. The replay count is not reflected in your records yet."
     },
     "OnboardingConsentPage": {
       "k1": "Japanese",
