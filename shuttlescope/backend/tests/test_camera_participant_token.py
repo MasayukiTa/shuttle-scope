@@ -262,6 +262,24 @@ def _approve(pid: int) -> None:
         db.close()
 
 
+def _activate_camera(pid: int) -> None:
+    """operator が activate-camera で行う昇格と等価に connection_role を上げる。
+
+    録画アップロード認可 (_resolve_upload_actor) は approved かつ
+    connection_role == "active_camera" を要求する。source_capability は
+    join 時の device_type 申告から決まるだけなので、昇格の意思は
+    connection_role にしか無い。
+    """
+    db = db_module.SessionLocal()
+    try:
+        p = db.get(SessionParticipant, pid)
+        if p is not None:
+            p.connection_role = "active_camera"
+            db.commit()
+    finally:
+        db.close()
+
+
 def _ticket(client: TestClient, code: str, pid: int, token: str, role: str = "device",
             approved: bool = True):
     if role == "device" and approved:
@@ -563,6 +581,7 @@ def test_approved_qr_camera_can_init_upload_and_session_is_bound_to_participant(
     with TestClient(app, base_url="http://localhost") as client:
         joined = _join(client, code).json()["data"]
         _approve(joined["participant_id"])
+        _activate_camera(joined["participant_id"])
         resp = _init_participant_upload(client, joined)
 
     assert resp.status_code == 200, resp.text
@@ -576,6 +595,36 @@ def test_approved_qr_camera_can_init_upload_and_session_is_bound_to_participant(
         assert upload.match_id == joined["match_id"]
     finally:
         db.close()
+
+
+def test_approved_but_not_activated_camera_cannot_init_upload(tmp_path, monkeypatch):
+    """承認済みでも active_camera に昇格していない端末は録画 init を拒否される。
+
+    approval_status == "approved" かつ source_capability == "camera" でも、
+    operator が activate-camera で明示昇格するまでは connection_role は
+    camera_candidate のまま。昇格前の端末が大きな録画を書き込めてしまうと
+    4 台上限や「どの端末が録画中か」という operator の管理が迂回される。
+    昇格後に同じ端末が init できることも併せて確かめ、ゲートが昇格状態
+    だけに依存していることを示す。
+    """
+    from backend.routers import uploads as uploads_router
+
+    code = "PTUPCAND"
+    _make_session(code)
+    monkeypatch.setattr(uploads_router, "UPLOAD_DIR", tmp_path)
+    monkeypatch.setattr(uploads_router, "MIN_FREE_DISK_BYTES", 0)
+
+    with TestClient(app, base_url="http://localhost") as client:
+        joined = _join(client, code).json()["data"]
+        _approve(joined["participant_id"])
+        # まだ activate-camera していない (connection_role は既定のまま)。
+        not_activated = _init_participant_upload(client, joined)
+        assert not_activated.status_code == 403, not_activated.text
+
+        # operator が昇格させると同じ資格情報で init できるようになる。
+        _activate_camera(joined["participant_id"])
+        activated = _init_participant_upload(client, joined)
+        assert activated.status_code == 200, activated.text
 
 
 def test_participant_upload_rejects_bad_token_pending_device_and_match_mismatch(
@@ -595,6 +644,7 @@ def test_participant_upload_rejects_bad_token_pending_device_and_match_mismatch(
         assert pending.status_code == 403, pending.text
 
         _approve(joined["participant_id"])
+        _activate_camera(joined["participant_id"])
         bad_token = client.post(
             "/api/v1/uploads/video/init",
             json={
@@ -659,6 +709,8 @@ def test_two_qr_cameras_create_distinct_recording_branches_and_keep_first_primar
         second = _join(client, code, device_name="Court Camera B").json()["data"]
         _approve(first["participant_id"])
         _approve(second["participant_id"])
+        _activate_camera(first["participant_id"])
+        _activate_camera(second["participant_id"])
 
         upload_a, payload_a, final_a = _finalize_participant_recording(client, first)
         upload_b, payload_b, final_b = _finalize_participant_recording(client, second)
@@ -722,6 +774,8 @@ def test_participant_cannot_manage_another_participants_upload(
         second = _join(client, "PTUP03B").json()["data"]
         _approve(first["participant_id"])
         _approve(second["participant_id"])
+        _activate_camera(first["participant_id"])
+        _activate_camera(second["participant_id"])
 
         init = _init_participant_upload(client, first)
         assert init.status_code == 200, init.text
@@ -958,6 +1012,15 @@ def test_qr_camera_full_lifecycle_join_approve_stream_upload_rejoin_rotate_rejec
         )
         assert approved.status_code == 200, approved.text
         assert approved.json()["data"]["approval_status"] == "approved"
+
+        # 3b) Operator promotes the approved device to an active camera. Recording
+        # upload is gated on active_camera, so this REST step is part of the real
+        # golden path (approve alone does not grant the recording capability).
+        activated = client.post(
+            f"/api/sessions/{code}/devices/{joined['participant_id']}/activate-camera",
+        )
+        assert activated.status_code == 200, activated.text
+        assert activated.json()["data"]["connection_role"] == "active_camera"
 
         # 4) Approved participant receives a one-shot WS ticket and can connect.
         ticket_resp = _ticket(

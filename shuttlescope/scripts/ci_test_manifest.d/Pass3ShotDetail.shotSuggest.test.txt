@@ -1,0 +1,1 @@
+src/components/mobileAnnotate/__tests__/Pass3ShotDetail.shotSuggest.test.tsx

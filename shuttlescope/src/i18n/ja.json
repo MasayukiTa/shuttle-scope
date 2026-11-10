@@ -2777,6 +2777,7 @@
     "password_regenerate": "再生成",
     "password_regenerate_done": "新しいパスワードを発行しました。",
     "password_regenerate_failed": "パスワードを再生成できませんでした。以前のパスワードは変更されていません。もう一度お試しください。",
+    "join_pending_cap": "承認待ちのデバイスが上限に達しています。オペレーターが承認・整理するまで少し待ってから再試行してください。",
     "camera_sender_url_label": "カメラ送信URL",
     "device_manager_title": "接続デバイス管理",
     "device_type_iphone": "iPhone",
@@ -5366,6 +5367,11 @@
       "partner_b": "B パートナー"
     },
     "Pass3ShotDetail": {
+      "suggest_title": "次のショット候補",
+      "suggest_badge": "候補（未確定）",
+      "tier_auto_filled": "確度高",
+      "tier_suggested": "確度中",
+      "tier_review_required": "要確認",
       "k1": "スマッシュ",
       "k2": "クリア",
       "k3": "ドロップ",
@@ -5609,7 +5615,10 @@
       "queue_storage_error": "この端末の保存領域に書き込めません。未送信の入力が失われるおそれがあります。",
       "queue_storage_error_short": "保存エラー",
       "pass3_checking_existing": "入力済みの打球を確認しています ...",
-      "pass3_strokes_fetch_failed": "入力済みの打球を取得できませんでした。もう一度お試しください。"
+      "pass3_strokes_fetch_failed": "入力済みの打球を取得できませんでした。もう一度お試しください。",
+      "menu": "メニュー",
+      "tutorial_replay": "チュートリアルをもう一度見る",
+      "tutorial_replay_unrecorded": "チュートリアルを開始しました。再生回数はまだ記録に反映されていません。"
     },
     "OnboardingConsentPage": {
       "k1": "日本語",

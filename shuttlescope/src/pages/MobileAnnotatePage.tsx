@@ -24,7 +24,7 @@ import { useQuery } from '@tanstack/react-query'
 // CLAUDE.md / メモリ規約: 新規 UI は Material Symbols (MIcon)。lucide は段階廃止。
 import { MIcon } from '@/components/common/MIcon'
 import { apiGet, apiPost } from '@/api/client'
-import { useAutoTutorial } from '@/components/tutorial/useTutorial'
+import { useAutoTutorial, replayTutorial } from '@/components/tutorial/useTutorial'
 import { AdviceStrip } from '@/components/common/AdviceStrip'
 import {
   chooseMobileVideoQuality,
@@ -99,6 +99,8 @@ import {
 } from '@/utils/mobileAnnotateRallies'
 import { setWinner, matchWinner } from '@/utils/badmintonRules'
 import { buildLandZoneSuggestions } from '@/utils/mobileAnnotateCvSuggest'
+import { buildShotTypeSuggestions, canSuggestShotType, type ShotSuggestion } from '@/utils/mobileAnnotateShotSuggest'
+import { useAuth } from '@/hooks/useAuth'
 
 type ScreenMode = 'play' | 'annotate'
 
@@ -233,6 +235,7 @@ function LandscapeGuard({ children }: { children: React.ReactNode }) {
 export function MobileAnnotatePage() {
   const { t } = useTranslation()
   const { matchId } = useParams<{ matchId: string }>()
+  const { role } = useAuth()
   const navigate = useNavigate()
   // 初回 mount でモバイルアノテーションのチュートリアル自動起動 (未完なら)。
   // A-21: 縦向きでは回転ガードが全面を覆い、ツアーが指すボタンも見えないため、
@@ -244,6 +247,10 @@ export function MobileAnnotatePage() {
   const [level, setLevelState] = useState<AnnotateLevel>(() => loadLevel(matchId))
   // 「レベル選択 picker を開いているか」。初回 mount で開いて軽い体験を案内する。
   const [levelPickerOpen, setLevelPickerOpen] = useState(false)
+  // 操作メニュー (⋮): チュートリアル再生など。初回自動表示を終えた後でも、ここからチュートリアルを何度でも見直せる。
+  const [menuOpen, setMenuOpen] = useState(false)
+  // 再生は開始するが replay 記録がサーバに残らなかったときだけ通知する。
+  const [replayNotice, setReplayNotice] = useState(false)
   const visiblePasses = useMemo(() => PASSES_FOR_LEVEL[level], [level])
   // Pass ラベルは t() で解決 (言語切替に追従)。module-scope では t() を呼べないため component 内で。
   const PASS_LABELS = useMemo<Record<AnnotatePass, string>>(() => ({
@@ -420,6 +427,35 @@ export function MobileAnnotatePage() {
     enabled: !!matchId,
     staleTime: 5_000,
   })
+
+  // v2 AI input assist: next shot_type candidates. Build the markov transition row on the
+  // client from this match's already-recorded strokes (one aggregate fetch, not per-stroke).
+  // Only for operator roles (analyst/coach); players never see suggestions. Gated + empty on
+  // insufficient support so sparse matches fall back to the full 18-chip grid.
+  const canSuggest = canSuggestShotType(role)
+  const matchRallyIds = useMemo(
+    () => (ralliesQuery.data?.data ?? []).map((r) => r.id).filter((id): id is number => typeof id === 'number'),
+    [ralliesQuery.data],
+  )
+  const shotSuggestQuery = useQuery({
+    queryKey: ['mobile-shot-suggest-strokes', matchId, matchRallyIds],
+    queryFn: async () => {
+      const results = await Promise.all(
+        matchRallyIds.map((rid) =>
+          apiGet<{ data: Array<{ stroke_num: number; shot_type: string }> }>(`/strokes?rally_id=${rid}`)
+            .then((res) => ({ strokes: res.data ?? [] }))
+            .catch(() => ({ strokes: [] as Array<{ stroke_num: number; shot_type: string }> })),
+        ),
+      )
+      return results
+    },
+    enabled: !!matchId && canSuggest && matchRallyIds.length > 0,
+    staleTime: 60_000,
+  })
+  const shotTypeSuggestions = useMemo(
+    () => (canSuggest ? buildShotTypeSuggestions(shotSuggestQuery.data) : null),
+    [canSuggest, shotSuggestQuery.data],
+  )
 
   const [currentSetIdx, setCurrentSetIdx] = useState<number>(0)
 
@@ -1003,6 +1039,7 @@ export function MobileAnnotatePage() {
                 courtQuad={courtCalib.quad}
                 courtHalf={courtCalib.half}
                 cvRallies={cvCandidatesQuery.data?.rallies}
+                shotTypeSuggestions={shotTypeSuggestions}
                 onCancel={() => setScreen('play')}
               />
             </div>
@@ -1103,6 +1140,16 @@ export function MobileAnnotatePage() {
               {t('auto.MobileAnnotatePage.queue_storage_error_short')}
             </span>
           )}
+          {/* 操作メニュー (⋮): チュートリアルを何度でも見直せる入口。 */}
+          <button
+            type="button"
+            onClick={() => setMenuOpen(true)}
+            className="p-2 rounded shadow ss-overlay-chip"
+            aria-label={t('auto.MobileAnnotatePage.menu')}
+            title={t('auto.MobileAnnotatePage.menu')}
+          >
+            <MIcon name="more_vert" size={16} />
+          </button>
         </div>
         )}
 
@@ -1194,6 +1241,51 @@ export function MobileAnnotatePage() {
                 </span>
               </button>
             </div>
+          </div>
+        )}
+        {/* 操作メニュー本体: ⋮ ボタンから開くドロップダウン。
+            初回自動表示を終えたアカウントでも、ここからチュートリアルを再生できる。 */}
+        {menuOpen && (
+          <div
+            className="absolute inset-0 flex items-start justify-start"
+            style={{ zIndex: 60, background: 'rgba(0,0,0,0.35)' }}
+            onClick={() => setMenuOpen(false)}
+            role="presentation"
+          >
+            <div
+              className="m-3 min-w-[220px] rounded-lg shadow-lg ss-overlay-panel"
+              onClick={(e) => e.stopPropagation()}
+              role="menu"
+              aria-label={t('auto.MobileAnnotatePage.menu')}
+            >
+              <button
+                type="button"
+                role="menuitem"
+                className="w-full text-left px-4 py-3 flex items-center gap-2"
+                onClick={async () => {
+                  setMenuOpen(false)
+                  // replay 記録がサーバに残らなくてもチュートリアル自体は始まる。
+                  const recorded = await replayTutorial('mobile_annotate_pass')
+                  if (!recorded) {
+                    setReplayNotice(true)
+                    window.setTimeout(() => setReplayNotice(false), 4000)
+                  }
+                }}
+              >
+                <MIcon name="replay" size={16} />
+                {t('auto.MobileAnnotatePage.tutorial_replay')}
+              </button>
+            </div>
+          </div>
+        )}
+        {/* replay 記録が残らなかったときだけの軽い通知。 */}
+        {replayNotice && (
+          <div
+            className="absolute left-1/2 top-3 -translate-x-1/2 px-3 py-2 rounded shadow text-[12px] ss-overlay-chip"
+            style={{ zIndex: 61 }}
+            role="status"
+          >
+            {t('auto.MobileAnnotatePage.tutorial_replay_unrecorded')}
           </div>
         )}
       </div>
@@ -1382,6 +1474,7 @@ function Pass3RallyPicker({
   courtQuad,
   courtHalf,
   cvRallies,
+  shotTypeSuggestions,
   onCancel,
 }: {
   doubles: boolean
@@ -1393,6 +1486,8 @@ function Pass3RallyPicker({
   /** 校正を使うとき、入力片面が画面の near/far どちらに写っているか。 */
   courtHalf: CourtHalf
   /** CV 候補 (cv_candidates の rallies)。未取得・未校正・モデル無しのときは undefined で、補助は出さない。 */
+  /** v2: prev shot_type -> top-3 next shot_type candidates. null when disabled (player role) or insufficient data. */
+  shotTypeSuggestions?: ReadonlyMap<string, ShotSuggestion[]> | null
   cvRallies?: Record<string, CvRally>
   onCancel: () => void
 }) {
@@ -1524,6 +1619,7 @@ function Pass3RallyPicker({
         courtQuad={courtQuad}
         courtHalf={courtHalf}
         landZoneSuggestions={landZoneSuggestions}
+        shotTypeSuggestions={shotTypeSuggestions}
         onNeedCalibration={onCancel}
         onStrokeAdded={(s) => {
           setLocalStrokes((prev) => [...prev, { ...s, rally_id: selected.id! }])
