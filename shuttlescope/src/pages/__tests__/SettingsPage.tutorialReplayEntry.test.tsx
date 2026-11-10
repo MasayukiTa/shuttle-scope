@@ -140,8 +140,12 @@ describe('SettingsPage アカウントタブ チュートリアル再生入口 (
   it('再生ボタンを押すとチュートリアルが始まる (openTutorial 発火)', async () => {
     const { container, getByTestId } = await renderAccountTab()
     const section = container.querySelector('[data-tutorial="settings.tutorialReplay"]')!
-    // 再生前はチャンネルは空
-    expect(getByTestId('tutorial-channel').getAttribute('data-channel')).toBe('')
+    // account タブ表示で自動ツアー (settings_tour) が走り得るので、再生ボタンの
+    // 効果を厳密に見るため一度チャンネルを閉じてから押す。
+    closeTutorial()
+    await waitFor(() => {
+      expect(getByTestId('tutorial-channel').getAttribute('data-channel')).toBe('')
+    })
     // セクション内の「再生」ボタンを押す
     const playBtn = Array.from(section.querySelectorAll('button')).find(
       (b) => b.textContent?.trim().includes(playLabel),
