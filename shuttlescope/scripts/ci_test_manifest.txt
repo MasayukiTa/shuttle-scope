@@ -15,3 +15,4 @@ src/i18n/__tests__/hitZonePadLabels.t003.test.ts
 src/store/__tests__/annotationStore.strokeEnrichmentAt.t003.test.ts
 src/utils/__tests__/draftAgeLabel.test.ts
 src/api/__tests__/appAuthReaders.test.ts
+src/components/session/__tests__/youtubeLivePanelAuthReader.test.ts
