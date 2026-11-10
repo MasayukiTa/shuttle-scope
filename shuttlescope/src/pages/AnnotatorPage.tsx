@@ -35,6 +35,8 @@ import {
   stashRallyBeforeSave,
   stashDraftRally,
   removeDraftRally,
+  holdResendForRally,
+  releaseResendForRally,
 } from '@/utils/offlineStrokeQueue'
 import { attachRecordedVideoPath } from '@/utils/recordedVideo'
 import { useUnownedRallies } from '@/hooks/useUnownedRallies'
@@ -1342,6 +1344,8 @@ export function AnnotatorPage() {
             // ことになり、それが `video_timestamp_start` として保存されていた。
             // 一時保存に入っていなければ (この項目より前の保存) **null のまま**
             // 通す。欠けている方が、嘘の 0 より扱える。
+            // 復元する。このラリーはこの後確定時に安定冪等キーで送られるので、保留を解く。
+            releaseResendForRally(Number(matchId), saved.setId, saved.rallyNum)
             store.startRally(saved.rallyStartTimestamp ?? null)
             for (const stroke of saved.strokes) {
               useAnnotationStore.setState((s) => ({
@@ -1371,9 +1375,15 @@ export function AnnotatorPage() {
             }
           },
           onCancel: () => {
+            // 破棄する。保留を解く (本ラリーの owned 行が残っていれば次回 sync で通常通り送られる)。
+            releaseResendForRally(Number(matchId), saved.setId, saved.rallyNum)
             try { localStorage.removeItem(autoSaveKey) } catch { /* private mode */ }
           },
         }
+        // 復元ダイアログを出す間は、このラリーの owned 行が online 復帰で
+        // 自動再送されて「保存失敗」と数えられないよう、復元/破棄が
+        // 決まるまで再送を保留する (muse 実機 13:08)。解除は onConfirm / onCancel の両方で行う。
+        holdResendForRally(Number(matchId), saved.setId, saved.rallyNum)
         setPendingConfirm(restorePending)
       }
     } catch {
