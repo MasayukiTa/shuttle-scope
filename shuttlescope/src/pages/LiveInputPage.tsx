@@ -37,6 +37,7 @@ import { apiPost, apiPut, apiDelete, newIdempotencyKey } from '@/api/client'
 import { setWinner, isMatchDecidedBySet } from '@/utils/badmintonRules'
 import { useAuth } from '@/hooks/useAuth'
 import { useOfflineSync } from '@/hooks/useOfflineSync'
+import { useMidRallyAutosave, type MidRallySnapshot } from '@/utils/midRallyAutosave'
 import { errorMessage } from '@/utils/errors'
 import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { isSetEndBlockedBySave, loadQueuedRallyCount, classifyConfirmSaveFailure } from '@/utils/liveSetEndGuard'
@@ -118,6 +119,34 @@ export function LiveInputPage() {
   const { userId } = useAuth()
   // 保存に失敗したラリーは IndexedDB に退避してあり、ここで再送する
   useOfflineSync(matchId, userId)
+
+  // 途中保存 (mid-rally autosave): 入力から 5 秒後に現ラリーの未保存ストロークを
+  // replace_strokes=true / final=false で送る。確定時の最終保存 (final=true) とは別の冒等キー。
+  useMidRallyAutosave({
+    inputSignal: store.currentStrokes.length,
+    enabled: store.isRallyActive && store.inputStep !== 'rally_end' && store.currentStrokes.length > 0,
+    getSnapshot: (): MidRallySnapshot | null => {
+      const s = useAnnotationStore.getState()
+      if (matchId == null || !s.isRallyActive || s.currentSetId == null || s.currentStrokes.length === 0) return null
+      return {
+        matchId,
+        payloadArgs: {
+          setId: s.currentSetId,
+          rallyNum: s.currentRallyNum,
+          winner: 'player_a',
+          endType: 'in_progress',
+          strokes: [...s.currentStrokes],
+          scoreAAfter: s.scoreA,
+          scoreBAfter: s.scoreB,
+          rallyStartTimestamp: s.rallyStartTimestamp,
+          isBasicMode: true,
+        },
+      }
+    },
+    getOwnerUserId: () => (userId != null ? userId : null),
+    post: (path, body, headers) => apiPost(path, body, headers),
+    makeIdempotencyKey: (o, m, sId, r) => 'midrally-' + offlineStrokeIdempotencyKey(o, m, sId, r),
+  })
 
   useEffect(() => {
     if (!matchId) return
