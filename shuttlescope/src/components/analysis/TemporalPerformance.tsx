@@ -13,9 +13,11 @@ import {
 } from 'recharts'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { perfColor, lightSafe, getTooltipStyle } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
+import { fmtPct } from '@/utils/format'
 
 interface TemporalPerformanceProps {
   playerId: number
@@ -25,7 +27,8 @@ interface TemporalPerformanceProps {
 
 interface PhaseData {
   phase: string
-  win_rate: number
+  // 件数 0 のフェーズは null (0% ではない)
+  win_rate: number | null
   rally_count: number
 }
 
@@ -47,7 +50,7 @@ export function TemporalPerformance({ playerId, chartHeight = 180, filters = DEF
     ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
     ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
   }
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError, refetch } = useQuery({
     queryKey: ['analysis-temporal-performance', playerId, filters],
     queryFn: () =>
       apiGet<TemporalResponse>('/analysis/temporal_performance', { player_id: playerId, ...fp }),
@@ -56,6 +59,12 @@ export function TemporalPerformance({ playerId, chartHeight = 180, filters = DEF
 
   if (isLoading) {
     return <div className="text-[var(--ss-t3)] text-sm py-4 text-center">{t('analysis.loading')}</div>
+  }
+
+  // A failed fetch must not fall through to the no_data state (success-empty);
+  // surface an explicit error with retry instead of masking it as no data.
+  if (isError) {
+    return <QueryErrorNotice onRetry={() => { void refetch() }} />
   }
 
   const phases = resp?.data?.phases ?? []
@@ -67,10 +76,10 @@ export function TemporalPerformance({ playerId, chartHeight = 180, filters = DEF
 
   const chartData = phases.map((p) => ({
     name: p.phase,
-    win_rate_pct: Math.round(p.win_rate * 100),
+    win_rate_pct: p.win_rate === null ? null : Math.round(p.win_rate * 100),
     rally_count: p.rally_count,
     // ライトモードではコントラスト補正（perfColor中間値が白背景で不可視になるため）
-    color: lightSafe(perfColor(p.win_rate), !isLight),
+    color: p.win_rate === null ? 'var(--ss-t3)' : lightSafe(perfColor(p.win_rate), !isLight),
   }))
 
   return (
@@ -123,7 +132,7 @@ export function TemporalPerformance({ playerId, chartHeight = 180, filters = DEF
             </span>
             <span className="text-[var(--ss-t3)] ss-num">{t('auto._shared.n_rallies', { n: p.rally_count })}</span>
             <span className="font-semibold ss-num" style={{ color: chartData[i]?.color }}>
-              {(p.win_rate * 100).toFixed(1)}%
+              {fmtPct(p.win_rate)}
             </span>
           </div>
         ))}

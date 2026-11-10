@@ -4,6 +4,8 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { clsx } from 'clsx'
 import { pipelineJobs, type AnalysisJobDTO } from '@/api/client'
+import { useAuth } from '@/hooks/useAuth'
+import { canViewPipelineJobs } from '@/utils/roleAccess'
 
 interface Props {
   matchId: number
@@ -27,23 +29,34 @@ function statusClass(status?: string): string {
 
 export function PipelineJobBadge({ matchId, className }: Props) {
   const { t } = useTranslation()
+  const { role } = useAuth()
+  // backend は analyst / coach 以外へ常に空配列を返す。権限上見えない状態を「未解析」と表示しない。
+  const canView = canViewPipelineJobs(role)
   // 旧実装は match ごとに `?match_id=N&limit=1` を発火していたため、試合一覧では
   // 行数ぶん (約80本) のリクエストが並列発火し rate-limit を枯渇させていた
   // (同時に走る /auth/me が 429 を受けて login へ弾かれる事故の引き金)。
   // 全バッジで queryKey を共有し、最新ジョブ一覧 1 リクエストに集約する。
   // 注意: enqueued_at 降順の先頭 500 件に乗らない古い match のジョブは
   // 「未解析」表示になる (limit 上限は backend 仕様)。
-  const { data } = useQuery<AnalysisJobDTO[]>({
+  const { data, isError } = useQuery<AnalysisJobDTO[]>({
     queryKey: ['pipeline-jobs-all'],
     queryFn: () => pipelineJobs({ limit: 500 }),
     staleTime: 15_000,
-    // DB が空 / 未登録でも既存画面を壊さないため、エラーは握り潰す
+    // DB が空 / 未登録でも既存画面を壊さないよう再試行はしない。ただし取得失敗は
+    // 「未解析」と断定せず、状態不明として別表示にする。
     retry: false,
+    enabled: canView,
   })
 
   // 降順リストなので最初のヒットが当該 match の最新ジョブ
   const job = data?.find((j) => j.match_id === matchId)
-  const key = job ? `pipeline.status.${job.status}` : 'pipeline.status.none'
+  // 取得に失敗し、前回成功した一覧も無いときだけ「不明」。成功済みの一覧があればそれを使い続ける。
+  const unknown = isError && !data
+  const key = unknown
+    ? 'pipeline.status.unknown'
+    : job ? `pipeline.status.${job.status}` : 'pipeline.status.none'
+
+  if (!canView) return null
 
   return (
     <span

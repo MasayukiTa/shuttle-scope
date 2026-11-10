@@ -1,0 +1,120 @@
+"""公開トップ (home.html.j2) の主 CTA・分析方法の置き場所・aria-label 日英化の検証。
+
+トップは日英を 1 つの HTML に持ち、html[lang] と JS で切り替える。
+そのためここでは描画した HTML 文字列を直接検査する (DB 不要)。
+"""
+import re
+
+from backend.config import settings
+from backend.routers import public_site
+
+REGISTER_HREF = "https://app.shuttle-scope.com/#/register"
+
+
+def _render(monkeypatch, enabled: int) -> str:
+    monkeypatch.setattr(settings, "ss_registration_enabled", enabled, raising=False)
+    return public_site._render_home_str()
+
+
+def _hero(html: str) -> str:
+    start = html.index('<section class="hero">')
+    return html[start:html.index("</section>", start)]
+
+
+def test_home_shows_registration_cta_when_enabled(monkeypatch):
+    html = _render(monkeypatch, 1)
+    hero = _hero(html)
+    # 主 CTA はログイン (登録済みの利用者が最初に押す)。登録は副 CTA。
+    assert 'href="https://app.shuttle-scope.com/login" class="btn-cta"' in hero
+    assert f'<a href="{REGISTER_HREF}" class="btn-cta-sub">' in hero
+    assert '<span class="ja">無料で登録</span><span class="en">Sign up free</span>' in hero
+    # 承認制の説明が CTA の近くにある
+    assert "管理者が内容を確認して承認します。" in hero
+    assert "reviews and approves your account" in hero
+    # 研究連携・法人の相談リンクは先頭の CTA に置かない (お問い合わせはナビとフッターにある)
+    assert "研究連携・法人のご相談" not in hero
+    # フッターの新規登録リンクも出る
+    assert html.count(REGISTER_HREF) >= 4
+
+
+def test_home_falls_back_to_contact_cta_when_registration_disabled(monkeypatch):
+    html = _render(monkeypatch, 0)
+    hero = _hero(html)
+    assert f'href="{REGISTER_HREF}"' not in html
+    assert "無料で登録" not in html
+    assert '<a href="/contact" class="btn-cta">' in hero
+    assert "お問い合わせ" in hero
+
+
+def test_home_registration_flag_failure_falls_back_to_contact(monkeypatch):
+    def boom():
+        raise RuntimeError("flag unavailable")
+
+    monkeypatch.setattr("backend.routers.auth_email._registration_enabled", boom)
+    html = public_site._render_home_str()
+    assert f'href="{REGISTER_HREF}"' not in html
+    assert '<a href="/contact" class="btn-cta">' in _hero(html)
+
+
+def test_algorithm_names_are_not_in_main_body(monkeypatch):
+    html = _render(monkeypatch, 1)
+    details = re.search(r'<details class="method">.*?</details>', html, re.S)
+    assert details is not None
+    body_without_method = html.replace(details.group(0), "")
+    for name in ("Markov", "EPV"):
+        assert name not in body_without_method
+        assert name in details.group(0)
+    # 本文には不確実性の方針が残る
+    assert "断定はしません" in body_without_method
+    assert "never presented as certain" in body_without_method
+
+
+def test_theme_toggle_aria_label_is_localized(monkeypatch):
+    html = _render(monkeypatch, 1)
+    button = re.search(r'<button class="theme-toggle"[^>]*>', html).group(0)
+    assert 'aria-label="テーマ切り替え"' in button
+    assert 'data-label-ja="テーマ切り替え"' in button
+    assert 'data-label-en="Switch between light and dark theme"' in button
+    # 英語表示のときに data-label-<lang> を aria-label へ反映するスクリプトがある
+    assert "getAttribute('data-label-'+lang)" in html
+    assert "setAttribute('aria-label',t)" in html
+
+
+def _final_cta(html: str) -> str:
+    start = html.index('<section class="sec-fcta">')
+    return html[start:html.index("</section>", start)]
+
+
+def test_final_cta_is_registration_when_enabled(monkeypatch):
+    final = _final_cta(_render(monkeypatch, 1))
+    assert f'<a href="{REGISTER_HREF}" class="btn-cta">' in final
+    # ログインは副リンクに下げる。主 CTA の遷移先ではない。
+    assert 'href="https://app.shuttle-scope.com/login" class="btn-cta-sub"' in final
+    assert 'login" class="btn-cta"' not in final
+    assert "アプリを開く" not in final
+    assert "Open App" not in final
+
+
+def test_final_cta_falls_back_to_contact_when_registration_disabled(monkeypatch):
+    final = _final_cta(_render(monkeypatch, 0))
+    assert REGISTER_HREF not in final
+    assert '<a href="/contact" class="btn-cta">' in final
+    assert 'href="https://app.shuttle-scope.com/login" class="btn-cta-sub"' in final
+
+
+def test_cta_wording_is_unified(monkeypatch):
+    html = _render(monkeypatch, 1)
+    # 登録は「無料で登録」/ Sign up free、ログインは「ログイン」/ Log in の 1 つずつ。
+    for old in ("アプリに進む", "アプリを開く", "Open App", "新規登録", "ログイン →", "Login"):
+        assert old not in html
+    assert "Register</span>" not in html
+    assert '<span class="ja">ログイン</span><span class="en">Log in</span>' in html
+
+
+def test_language_toggle_has_localized_accessible_name(monkeypatch):
+    html = _render(monkeypatch, 1)
+    button = re.search(r'<button class="lang-toggle"[^>]*>', html).group(0)
+    assert 'aria-label="言語を切り替える(English)"' in button
+    assert 'data-label-ja="言語を切り替える(English)"' in button
+    assert 'data-label-en="Switch language (日本語)"' in button
+    assert 'title="言語を切り替える(English)"' in button

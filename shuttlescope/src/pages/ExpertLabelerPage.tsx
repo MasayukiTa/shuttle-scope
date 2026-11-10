@@ -3,10 +3,15 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
+import { downloadExpertExport } from '@/utils/expertExport'
+import { isValidMatchDate } from '@/utils/exportCandidates'
 import { useTheme } from '@/hooks/useTheme'
 import { useAuth } from '@/hooks/useAuth'
 import { CoGDetectionPage } from '@/pages/CoGDetectionPage'
 import { MIcon } from '@/components/common/MIcon'
+
+// 一覧で「開始」を出してよいか。バックエンドの _review_status と同じ値。
+type ReviewStatus = 'no_targets' | 'no_video' | 'clips_pending' | 'ready'
 
 // バックエンドから返る試合（動画）メタデータ
 interface ExpertVideo {
@@ -16,6 +21,8 @@ interface ExpertVideo {
   opponent?: string
   miss_count: number
   labeled_count: number
+  // 古いバックエンドでは返らないので省略可。省略時は「開始できる」として扱う。
+  review_status?: ReviewStatus
 }
 
 type VideosResponse = ExpertVideo[]
@@ -31,6 +38,16 @@ interface ProgressResponse {
   total: number
   labeled: number
   per_match: ProgressEntry[]
+}
+
+// audit #176: clips_pending (対象・動画はあるがクリップ未生成) も開始をブロックする。
+// 開始すると詳細画面が no_clips (「クリップがありません」) の行き止まりになるため、
+// 一覧上は status_clips_pending を示して CTA を無効化する (fail closed)。
+const BLOCKED_STATUSES: ReviewStatus[] = ['no_targets', 'no_video', 'clips_pending']
+
+// 一覧の「開始」CTA を出せない (= 行き止まり) 状態か。単体テスト用に export する。
+export function isStartBlocked(status: ReviewStatus): boolean {
+  return BLOCKED_STATUSES.includes(status)
 }
 
 type ActiveTab = 'matches' | 'cog'
@@ -50,6 +67,25 @@ function ExpertLabelerContent() {
   const isAdmin = role === 'admin'
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('matches')
+  const [search, setSearch] = useState('')
+  const [incompleteOnly, setIncompleteOnly] = useState(false)
+  const [exportError, setExportError] = useState<{ matchId: number | string; message: string } | null>(null)
+
+  // JSON / CSV は Bearer 付きで取得して保存する (生リンクは 401 になる)
+  const handleExport = async (matchId: number | string, fmt: 'json' | 'csv') => {
+    setExportError(null)
+    const r = await downloadExpertExport(
+      '/v1/expert/export',
+      { match_id: matchId, fmt },
+      `expert_${matchId}.${fmt}`,
+    )
+    if (r !== 'ok') {
+      setExportError({
+        matchId,
+        message: t(r === 'denied' ? 'expert_labeler.export_denied' : 'expert_labeler.export_failed'),
+      })
+    }
+  }
 
   // 試合一覧取得（バックエンドは配列を直接返す）
   const videosQuery = useQuery<VideosResponse>({
@@ -71,13 +107,26 @@ function ExpertLabelerContent() {
   })
 
   const videos = Array.isArray(videosQuery.data) ? videosQuery.data : []
+  // /v1/expert/videos の labeled_count は coach / analyst 全員分の合算なので、自分の役割の
+  // 進捗としては使わない。役割別の進捗が取れていない間は null (不明) にして、
+  // 他の役割の作業分を自分の完了数として表示しない。
+  const progressReady = progressQuery.isSuccess
   const merged = videos.map((v) => {
     const p = progressMap.get(String(v.match_id))
     return {
       ...v,
       miss_count: p?.miss_count ?? v.miss_count ?? 0,
-      labeled_count: p?.labeled_count ?? v.labeled_count ?? 0,
+      labeled_count: progressReady ? (p?.labeled_count ?? 0) : null,
     }
+  })
+
+  // 絞り込み（並びはバックエンドが日付の新しい順で返す）
+  const needle = search.trim().toLowerCase()
+  const filtered = merged.filter((v) => {
+    const name = (v.title || v.opponent || v.date || `Match ${v.match_id}`).toLowerCase()
+    if (needle && !name.includes(needle)) return false
+    if (incompleteOnly && !(v.miss_count > 0 && (v.labeled_count ?? 0) < v.miss_count)) return false
+    return true
   })
 
   const pageBg = 'bg-[var(--ss-bg-app)]'
@@ -137,7 +186,33 @@ function ExpertLabelerContent() {
               <div className={`text-sm ${textMuted}`}>{t('expert_labeler.loading')}</div>
             )}
 
-            {!videosQuery.isLoading && merged.length === 0 && (
+            {videosQuery.isError && (
+              <div role="alert" className={`p-4 rounded-ss-lg border text-sm space-y-2 ${cardBg}`}>
+                <div className="font-semibold text-[var(--ss-danger-text)]">{t('expert_labeler.videos_load_failed')}</div>
+                <button
+                  type="button"
+                  onClick={() => void videosQuery.refetch()}
+                  className={`px-3 py-1 text-sm rounded-ss-md border ${borderColor}`}
+                >
+                  {t('expert_labeler.retry')}
+                </button>
+              </div>
+            )}
+
+            {!videosQuery.isError && progressQuery.isError && (
+              <div role="alert" className={`mb-3 p-3 rounded-ss-lg border text-sm space-y-2 ${cardBg}`}>
+                <div className="text-[var(--ss-danger-text)]">{t('expert_labeler.progress_load_failed')}</div>
+                <button
+                  type="button"
+                  onClick={() => void progressQuery.refetch()}
+                  className={`px-3 py-1 text-sm rounded-ss-md border ${borderColor}`}
+                >
+                  {t('expert_labeler.retry')}
+                </button>
+              </div>
+            )}
+
+            {!videosQuery.isLoading && !videosQuery.isError && merged.length === 0 && (
               <div className={`p-4 rounded-ss-lg border text-sm space-y-2 ${cardBg}`}>
                 <div className="font-semibold">{t('expert_labeler.empty_title')}</div>
                 <div className={textMuted}>{t('expert_labeler.empty_desc')}</div>
@@ -145,7 +220,7 @@ function ExpertLabelerContent() {
                   <li>{t('expert_labeler.empty_cond_1')}</li>
                   <li>{t('expert_labeler.empty_cond_2')}</li>
                   <li>{t('expert_labeler.empty_cond_3')}</li>
-                  <li>{t('expert_labeler.empty_cond_4', { role: role ?? '-' })}</li>
+                  <li>{t('expert_labeler.empty_cond_4')}</li>
                 </ul>
                 <div className={`text-xs pt-2 border-t ${borderColor} ${textMuted}`}>
                   {t('expert_labeler.empty_hint')}
@@ -153,19 +228,60 @@ function ExpertLabelerContent() {
               </div>
             )}
 
+            {merged.length > 0 && (
+              <div className="flex flex-wrap items-center gap-3 mb-3">
+                <input
+                  type="search"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder={t('expert_labeler.search_placeholder')}
+                  aria-label={t('expert_labeler.search_placeholder')}
+                  className={`flex-1 min-w-[12rem] px-3 py-2 text-sm rounded-ss-md border bg-[var(--ss-surface-1)] ${borderColor}`}
+                />
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={incompleteOnly}
+                    onChange={(e) => setIncompleteOnly(e.target.checked)}
+                  />
+                  {t('expert_labeler.filter_incomplete')}
+                </label>
+                <span className={`text-xs ss-num ${textMuted}`}>
+                  {t('expert_labeler.result_count', { shown: filtered.length, total: merged.length })}
+                </span>
+              </div>
+            )}
+
+            {merged.length > 0 && filtered.length === 0 && (
+              <div className={`p-4 rounded-ss-lg border text-sm ${cardBg} ${textMuted}`}>
+                {t('expert_labeler.no_match_filter')}
+              </div>
+            )}
+
             <ul className="space-y-3">
-              {merged.map((v) => {
-                const ratio = calcRatio(v.labeled_count, v.miss_count)
+              {filtered.map((v) => {
+                const status: ReviewStatus = v.review_status ?? 'ready'
+                const blocked = isStartBlocked(status)
+                // ミス件数 0 のときは完了率を出さない（0% と書くと未着手に見える）
+                const hasTargets = v.miss_count > 0
+                const labeledKnown = v.labeled_count !== null
+                const labeledCount = v.labeled_count ?? 0
+                const ratio = calcRatio(labeledCount, v.miss_count)
                 const pct = Math.round(ratio * 100)
-                const done = v.miss_count > 0 && v.labeled_count >= v.miss_count
-                const label = v.title || v.opponent || v.date || `Match ${v.match_id}`
+                const done = labeledKnown && v.miss_count > 0 && labeledCount >= v.miss_count
+                // 無効日付 (0001-01-01 等) はラベルに出さず、明示的に「日付未設定」を出す
+                const safeDate = isValidMatchDate(v.date) ? v.date : undefined
+                const label = v.title || v.opponent || safeDate || t('expert_labeler.date_unset')
                 return (
                   <li key={String(v.match_id)} className="flex gap-2">
                     <button
                       type="button"
+                      disabled={blocked}
                       onClick={() => navigate(`/expert-labeler/${v.match_id}`)}
                       // iPad 向け最小タップ領域 48px 以上
-                      className={`flex-1 text-left p-4 rounded-ss-lg border transition-colors duration-base ease-out hover:shadow-card-hover ${cardBg}`}
+                      className={`flex-1 text-left p-4 rounded-ss-lg border transition-colors duration-base ease-out ${cardBg} ${
+                        blocked ? 'opacity-60 cursor-not-allowed' : 'hover:shadow-card-hover'
+                      }`}
                       style={{ minHeight: '72px' }}
                     >
                       <div className="flex items-center justify-between gap-3">
@@ -174,8 +290,13 @@ function ExpertLabelerContent() {
                       </div>
                       <div className="mt-1 text-xs ss-num text-[var(--ss-t3)]">
                         {t('expert_labeler.miss_count')}: {v.miss_count} /{' '}
-                        {t('expert_labeler.labeled_count')}: {v.labeled_count} ({pct}%)
+                        {t('expert_labeler.labeled_count')}: {labeledKnown ? labeledCount : '—'} ({hasTargets && labeledKnown ? `${pct}%` : '—'})
                       </div>
+                      {status !== 'ready' && (
+                        <div className="mt-1 text-xs text-[var(--ss-t2)]">
+                          {t(`expert_labeler.status_${status}`)}
+                        </div>
+                      )}
                       <div
                         className="mt-2 h-2 rounded-ss-pill bg-[var(--ss-surface-2)] overflow-hidden"
                       >
@@ -184,32 +305,37 @@ function ExpertLabelerContent() {
                           style={{ width: `${pct}%` }}
                         />
                       </div>
-                      <div className="mt-2 text-right text-sm font-medium text-[var(--ss-brand)]">
-                        {v.labeled_count > 0 && !done
-                          ? t('expert_labeler.resume')
-                          : t('expert_labeler.start')}{' '}
-                        →
-                      </div>
+                      {!blocked && (
+                        <div className="mt-2 text-right text-sm font-medium text-[var(--ss-brand)]">
+                          {labeledCount > 0 && !done
+                            ? t('expert_labeler.resume')
+                            : t('expert_labeler.start')}{' '}
+                          →
+                        </div>
+                      )}
                     </button>
                     {/* エクスポートボタン（ラベルが 1 件以上のとき表示） */}
-                    {v.labeled_count > 0 && (
+                    {labeledCount > 0 && (
                       <div className="flex flex-col gap-1 justify-center">
-                        <a
-                          href={`/api/v1/expert/export?match_id=${v.match_id}&fmt=json`}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <button
+                          type="button"
+                          onClick={() => void handleExport(v.match_id, 'json')}
                           className="text-[10px] px-2 py-1 rounded-ss-sm border text-center transition-colors duration-base ease-out border-[var(--ss-border-strong)] text-[var(--ss-t3)] hover:bg-[var(--ss-surface-2)]"
                         >
                           {t('auto.ExpertLabelerPage.json')}
-                        </a>
-                        <a
-                          href={`/api/v1/expert/export?match_id=${v.match_id}&fmt=csv`}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleExport(v.match_id, 'csv')}
                           className="text-[10px] px-2 py-1 rounded-ss-sm border text-center transition-colors duration-base ease-out border-[var(--ss-border-strong)] text-[var(--ss-t3)] hover:bg-[var(--ss-surface-2)]"
                         >
                           {t('auto.ExpertLabelerPage.csv')}
-                        </a>
+                        </button>
+                        {exportError?.matchId === v.match_id && (
+                          <span role="alert" className="text-[10px] text-[var(--ss-danger-text)]">
+                            {exportError.message}
+                          </span>
+                        )}
                       </div>
                     )}
                   </li>

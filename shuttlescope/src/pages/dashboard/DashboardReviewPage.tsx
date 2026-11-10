@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
+import { RoleGuard } from '@/components/common/RoleGuard'
 import { AnalysisFilters } from '@/types'
 import { PreLossPatterns } from '@/components/analysis/PreLossPatterns'
 import { PreWinPatterns } from '@/components/analysis/PreWinPatterns'
@@ -14,6 +15,7 @@ import { SetIntervalSummary } from '@/components/analysis/SetIntervalSummary'
 import { RallyClipNavigator } from '@/components/analysis/RallyClipNavigator'
 import { useReviewBundle } from '@/hooks/useReviewBundle'
 import { ReviewBundleProvider } from '@/contexts/ReviewBundleContext'
+import { useAuth } from '@/hooks/useAuth'
 
 interface MatchSummary {
   match_id: number
@@ -40,6 +42,10 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 
 export function DashboardReviewPage({ playerId, filters, matches }: Props) {
   const { t } = useTranslation()
+  // 製品ルール: player には試合の勝敗 (W/L・スコア推移) を見せない。
+  // API は player には result を返さないため、そのまま判定すると全試合が「L」になる。
+  const { role } = useAuth()
+  const isPlayer = role === 'player'
   // 振り返りタブ一括取得: 1 リクエストで 6 カード分のデータを先読みする
   const bundleQuery = useReviewBundle(playerId, filters)
   const [selectedMatchId, setSelectedMatchId] = useState<number | null>(null)
@@ -58,7 +64,7 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
   const matchOptions = matches.map((m) => ({
     value: m.match_id,
     label: `${m.date ?? t('common.unknown_date', 'Date unknown')} vs ${m.opponent}`,
-    suffix: m.result === 'win' ? t('common.win_short', 'W') : t('common.lose_short', 'L'),
+    suffix: isPlayer ? undefined : (m.result === 'win' ? t('common.win_short', 'W') : t('common.lose_short', 'L')),
     searchText: `${m.date ?? ''} ${m.opponent} ${m.tournament}`,
   }))
 
@@ -74,7 +80,7 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
           {[
             t('analysis.review.guide_step1', '① 受け側の弱点・有効配球を確認'),
             t('analysis.review.guide_step2', '② 失点・得点前パターンを比較'),
-            t('analysis.review.guide_step3', '③ セット別パフォーマンスで変化点を特定'),
+            t('analysis.review.guide_step3', '③ ゲーム別パフォーマンスで変化点を特定'),
             t('analysis.review.guide_step4', '④ ラリーシーケンスで繰り返しパターンを深掘り'),
           ].map((step) => (
             <li key={step} className="text-[11px] text-gray-400">{step}</li>
@@ -122,7 +128,8 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
         </div>
       </ErrorBoundary>
 
-      {/* STEP 3: スコア推移 */}
+      {/* STEP 3: スコア推移 (点差 = 勝敗そのものなので player には出さない) */}
+      {!isPlayer && (
       <ErrorBoundary>
         <div>
           <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider mb-2 pl-1">
@@ -149,6 +156,7 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
           </div>
         </div>
       </ErrorBoundary>
+      )}
 
       {/* STEP 3.5: ラリークリップナビゲーター */}
       <ErrorBoundary>
@@ -174,7 +182,7 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
       <ErrorBoundary>
         <div>
           <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider mb-2 pl-1">
-            {t('analysis.review.section_sets', 'STEP 4 — セット別変化点')}
+            {t('analysis.review.section_sets', 'STEP 4 — ゲーム別変化点')}
           </p>
           <div className="bg-gray-800 rounded-ss-lg shadow-card p-4">
             <SectionTitle>{t('auto.DashboardReviewPage.k3')}</SectionTitle>
@@ -189,7 +197,9 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
           <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider mb-2 pl-1">
             {t('analysis.review.section_sequence', 'STEP 5 — ラリーシーケンス深掘り')}
           </p>
-          <RallySequencePatterns playerId={playerId} />
+          <RoleGuard allowedRoles={['analyst', 'coach']} fallback={null}>
+            <RallySequencePatterns playerId={playerId} />
+          </RoleGuard>
         </div>
       </ErrorBoundary>
 

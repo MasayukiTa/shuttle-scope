@@ -161,3 +161,54 @@ async def test_new_session_first_user_id_none_does_not_lock_owner(manager):
     ok2 = await manager.connect_operator("S7", ws2, user_id=33)
     assert ok2 is True
     assert manager._operator_owners["S7"] == 33
+
+
+@pytest.mark.asyncio
+async def test_truly_concurrent_operator_connect_has_exactly_one_winner(manager):
+    """P2 chaos: simultaneous connect attempts must serialize to one operator slot."""
+    ws1 = _FakeWebSocket()
+    ws2 = _FakeWebSocket()
+    gate = asyncio.Event()
+
+    async def attempt(ws, user_id):
+        await gate.wait()
+        return await manager.connect_operator("S_RACE", ws, user_id=user_id)
+
+    t1 = asyncio.create_task(attempt(ws1, 501))
+    t2 = asyncio.create_task(attempt(ws2, 501))
+    gate.set()
+    results = await asyncio.gather(t1, t2)
+
+    assert sorted(results) == [False, True]
+    accepted = [ws for ws in (ws1, ws2) if ws.accepted]
+    rejected = [ws for ws in (ws1, ws2) if ws.closed and not ws.accepted]
+    assert len(accepted) == 1
+    assert len(rejected) == 1
+    assert manager._sessions["S_RACE"]["operator"] is accepted[0]
+    assert manager._operator_owners["S_RACE"] == 501
+
+
+@pytest.mark.asyncio
+async def test_concurrent_different_users_cannot_race_owner_assignment(manager):
+    """P2 chaos: first slot winner also atomically establishes session ownership."""
+    ws1 = _FakeWebSocket()
+    ws2 = _FakeWebSocket()
+    gate = asyncio.Event()
+
+    async def attempt(ws, user_id):
+        await gate.wait()
+        return await manager.connect_operator("S_OWNER_RACE", ws, user_id=user_id)
+
+    t1 = asyncio.create_task(attempt(ws1, 601))
+    t2 = asyncio.create_task(attempt(ws2, 602))
+    gate.set()
+    results = await asyncio.gather(t1, t2)
+
+    assert results.count(True) == 1
+    owner = manager._operator_owners["S_OWNER_RACE"]
+    assert owner in (601, 602)
+    winning_ws = ws1 if results[0] else ws2
+    losing_ws = ws2 if results[0] else ws1
+    assert manager._sessions["S_OWNER_RACE"]["operator"] is winning_ws
+    assert losing_ws.accepted is False
+    assert losing_ws.closed is True

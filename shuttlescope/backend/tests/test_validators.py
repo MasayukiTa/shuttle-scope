@@ -14,15 +14,33 @@ class TestValidateStroke:
         assert valid is True
         assert error is None
 
-    def test_smash_cannot_land_near_net(self):
+    @pytest.mark.parametrize("zone", ["NL", "NC", "NR"])
+    def test_smash_near_net_is_saved_with_warning(self, zone):
+        # 急角度のスマッシュがネット寄りに落ちるのは競技上成立する。
+        # 拒否せず (valid=True)、確認用の警告だけを返す。
         stroke = {
             "stroke_num": 2,
             "shot_type": "smash",
-            "land_zone": "NL",
+            "land_zone": zone,
         }
-        valid, error = validate_stroke(stroke)
+        valid, message = validate_stroke(stroke)
+        assert valid is True
+        assert message is not None
+        assert zone in message
+
+    def test_smash_to_back_has_no_warning(self):
+        valid, message = validate_stroke(
+            {"stroke_num": 2, "shot_type": "smash", "land_zone": "BC"}
+        )
+        assert valid is True
+        assert message is None
+
+    def test_smash_near_net_still_checked_for_unknown_hit_zone(self):
+        # 警告で早期 return せず、後続の検証 (ゾーン語彙) も続ける
+        valid, _ = validate_stroke(
+            {"stroke_num": 2, "shot_type": "smash", "land_zone": "NL", "hit_zone": "ZZ"}
+        )
         assert valid is False
-        assert error is not None
 
     def test_short_service_cannot_land_at_back(self):
         stroke = {

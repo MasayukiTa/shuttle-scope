@@ -1,11 +1,12 @@
 """TrackNet inference wrapper.
 
 Runtime priority (auto モード):
-1. ONNX CUDA  — CUDAExecutionProvider（torch cu128 DLL 経由、RTX 5060 Ti sm_120 確認済み）
-2. DirectML   — DmlExecutionProvider（onnxruntime-directml 環境のみ）
-3. OpenVINO   — Intel GPU / CPU
-4. ONNX CPU   — CPUExecutionProvider
-5. TensorFlow — CPU / Intel バックエンド
+1. Native TensorRT — prebuilt tracknet.engine（RTX 5060 Ti sm_120 確認済み）
+2. ONNX CUDA       — CUDAExecutionProvider（FP16 ONNX）
+3. DirectML        — DmlExecutionProvider（onnxruntime-directml 環境のみ）
+4. OpenVINO        — Intel GPU / CPU
+5. ONNX CPU        — CPUExecutionProvider
+6. TensorFlow      — CPU / Intel バックエンド
 
 前提: main.py 起動時に torch をインポートして cublasLt64_12.dll 等を PATH に追加済み。
 """
@@ -293,6 +294,9 @@ ONNX_CANDIDATES = [
 ONNX_FP16_CANDIDATES = [
     WEIGHTS_DIR / "tracknet_fp16.onnx",
 ]
+TRT_ENGINE_CANDIDATES = [
+    WEIGHTS_DIR / "tracknet.engine",
+]
 OPENVINO_XML_CANDIDATES = [
     WEIGHTS_DIR / "tracknet.xml",
     WEIGHTS_DIR / "tracknet_v2.xml",
@@ -332,6 +336,15 @@ class TrackNetInference:
         self._iob_output_name: str = ""
         # Phase-3: CUDA Stream 非同期プリフェッチ
         self._preproc_stream: Optional[object] = None   # torch.cuda.Stream
+        # Native TensorRT backend. Keep all runtime objects alive for the
+        # lifetime of this wrapper because TensorRT contexts reference them.
+        self._trt_logger: Optional[object] = None
+        self._trt_runtime: Optional[object] = None
+        self._trt_engine: Optional[object] = None
+        self._trt_context: Optional[object] = None
+        self._trt_input_tensor: Optional[object] = None
+        self._trt_output_tensor: Optional[object] = None
+        self._trt_stream: Optional[object] = None
 
     def get_stage_timings(self) -> dict:
         """最後の predict_frames() 呼び出しのステージ別平均時間を ms 単位で返す。"""
@@ -350,6 +363,7 @@ class TrackNetInference:
                           TF_CKPT_PREFIX.parent.joinpath("TrackNet.data-00000-of-00001").exists())
         return (
             tf_ckpt_exists
+            or _existing_path(TRT_ENGINE_CANDIDATES) is not None
             or _existing_path(ONNX_CANDIDATES) is not None
             or _existing_path(OPENVINO_XML_CANDIDATES) is not None
         )
@@ -382,6 +396,25 @@ class TrackNetInference:
                         logger.info("TrackNet: SS_USE_GPU=0 のため ONNX CPU を直接選択")
                 except Exception:
                     pass
+
+        # Native TensorRT engine is preferred in auto mode. The regular ORT
+        # TensorRT EP currently fails to build this model on the RTX 5060 Ti
+        # (TensorRT 10.16 / ORT 1.24.4), while the same ONNX builds and runs
+        # correctly through the native TensorRT API.
+        trt_engine = _existing_path(TRT_ENGINE_CANDIDATES)
+        if effective_backend in ("auto", "tensorrt", "trt", "tensorrt_native"):
+            if trt_engine is not None:
+                try:
+                    self._load_tensorrt_native(trt_engine)
+                    return True
+                except Exception as exc:
+                    tried.append(f"tensorrt_native: {exc}")
+                    self._gpu_load_error = str(exc)
+                    logger.warning("Native TensorRT load failed: %s", exc)
+            elif effective_backend in ("tensorrt", "trt", "tensorrt_native"):
+                tried.append("tensorrt_native: tracknet.engine が見つかりません")
+            if effective_backend in ("tensorrt", "trt", "tensorrt_native"):
+                effective_backend = "auto"
 
         onnx_model = _existing_path(ONNX_CANDIDATES)
         # GPU 実行時: TRT は FP32 ONNX + trt_fp16_enable=True の方が安定（FP16 ONNX の
@@ -424,11 +457,74 @@ class TrackNetInference:
                         # 初回はエンジンコンパイルに数分かかるが 2 回目以降はキャッシュから即ロード。
                         _trt_cache = str(WEIGHTS_DIR / "trt_cache")
                         os.makedirs(_trt_cache, exist_ok=True)
+                        # ORT TensorRT EP is opt-in only. On the production
+                        # RTX 5060 Ti / TensorRT 10.16 / ORT 1.24.4 stack it
+                        # fails engine creation even though native TensorRT
+                        # builds the same ONNX successfully.
                         _use_trt = (
                             _TRT_AVAILABLE
                             and "TensorrtExecutionProvider" in available_providers
-                            and os.environ.get("SS_DISABLE_TRT", "0") not in ("1", "true", "True")
+                            and os.environ.get("SS_ENABLE_ORT_TRT", "0")
+                            in ("1", "true", "True")
+                            and os.environ.get("SS_DISABLE_TRT", "0")
+                            not in ("1", "true", "True")
                         )
+
+                        def _fallback_to_cuda_after_trt(reason: str) -> bool:
+                            """Rebuild this backend with TRT disabled and adopt CUDA EP."""
+                            if not _use_trt or onnx_model_gpu is None:
+                                return False
+                            tried.append(f"onnx_trt: {reason} — CUDA EP にフォールバック")
+                            previous = os.environ.get("SS_DISABLE_TRT")
+                            os.environ["SS_DISABLE_TRT"] = "1"
+                            try:
+                                fallback = TrackNetInference(
+                                    backend="cuda",
+                                    device=self._device,
+                                    cuda_device_index=self._cuda_device_index,
+                                    openvino_device=self._openvino_device,
+                                )
+                                if not fallback.load() or not fallback.backend_name().startswith("onnx_cuda"):
+                                    tried.append(
+                                        "onnx_cuda retry: "
+                                        + (fallback.get_load_error() or fallback.backend_name())
+                                    )
+                                    return False
+                                sess_fallback = fallback._sess_onnx_cuda
+                                if sess_fallback is None:
+                                    tried.append("onnx_cuda retry: CUDA session was not retained")
+                                    return False
+                                input_fallback = sess_fallback.get_inputs()[0].name
+                                self._max_batch = fallback._max_batch
+                                self._infer_fn = (
+                                    lambda frames, _s=sess_fallback, _n=input_fallback:
+                                    self._run_onnx(_s, _n, frames)
+                                )
+                                self._batch_infer_fn = (
+                                    lambda batch, _s=sess_fallback, _n=input_fallback:
+                                    self._run_onnx_batch(_s, _n, batch)
+                                )
+                                self._backend_name = fallback.backend_name()
+                                self._load_error = None
+                                self._gpu_load_error = reason
+                                self._sess_onnx_cuda = sess_fallback
+                                self._init_gpu_preproc(
+                                    sess_fallback, input_fallback, self._cuda_device_index
+                                )
+                                logger.warning(
+                                    "TrackNet TensorRT failed (%s); using %s instead",
+                                    reason,
+                                    self._backend_name,
+                                )
+                                return True
+                            except Exception as exc:
+                                tried.append(f"onnx_cuda retry: {exc}")
+                                return False
+                            finally:
+                                if previous is None:
+                                    os.environ.pop("SS_DISABLE_TRT", None)
+                                else:
+                                    os.environ["SS_DISABLE_TRT"] = previous
                         # TRT 向けモデル: FP32 ONNX を優先（TRT 側で FP16 化）。
                         # リアルタイム目的のため opt_shapes は batch=1、max=8。
                         # 実測: opt=8/max=16/ws=6GB が RTX 5060 Ti で最速 (133 fps / 7.5ms per batch=8)
@@ -491,29 +587,11 @@ class TrackNetInference:
                             if effective_backend in ("cuda", "onnx_cuda"):
                                 effective_backend = "auto"
                         elif _err_holder[0] is not None:
-                            # TRT 付きで失敗した場合、TRT を外して CUDA EP 単体で再試行
-                            # （TrackNet の FP16 ONNX は TRT の ForeignNode 実装が無い）
-                            _retry_ok = False
-                            if _use_trt:
-                                tried.append(f"onnx_trt: {_err_holder[0]} — CUDA EP にフォールバック")
-                                try:
-                                    # CUDA 再試行時は FP16 ONNX を使用
-                                    _sess_holder[0] = ort.InferenceSession(
-                                        str(onnx_model_gpu),
-                                        sess_options=sess_opts,
-                                        providers=[
-                                            ("CUDAExecutionProvider", cuda_opts),
-                                            "CPUExecutionProvider",
-                                        ],
-                                    )
-                                    _err_holder[0] = None
-                                    _retry_ok = True
-                                except Exception as _e2:
-                                    tried.append(f"onnx_cuda retry: {_e2}")
-                            if not _retry_ok:
-                                tried.append(f"onnx_cuda: {_err_holder[0]}")
-                                if effective_backend in ("cuda", "onnx_cuda"):
-                                    effective_backend = "auto"
+                            if _fallback_to_cuda_after_trt(str(_err_holder[0])):
+                                return True
+                            tried.append(f"onnx_cuda: {_err_holder[0]}")
+                            if effective_backend in ("cuda", "onnx_cuda"):
+                                effective_backend = "auto"
                         else:
                             sess = _sess_holder[0]
                             input_name = sess.get_inputs()[0].name
@@ -543,6 +621,8 @@ class TrackNetInference:
                                     "CUDA 初回推論タイムアウト（60s）— Blackwell 等の新 GPU は"
                                     " onnxruntime のバージョンアップが必要な場合があります"
                                 )
+                                if _fallback_to_cuda_after_trt(_reason):
+                                    return True
                                 tried.append(_reason)
                                 self._gpu_load_error = _reason
                                 if effective_backend in ("cuda", "onnx_cuda"):
@@ -551,6 +631,8 @@ class TrackNetInference:
                                 _reason = (
                                     f"CUDA 初回推論失敗: {_run_err[0]}"
                                 )
+                                if _fallback_to_cuda_after_trt(_reason):
+                                    return True
                                 tried.append(_reason)
                                 self._gpu_load_error = _reason
                                 if effective_backend in ("cuda", "onnx_cuda"):
@@ -755,7 +837,9 @@ class TrackNetInference:
                 from backend.tracknet.model import build_tracknet_model
 
                 model = build_tracknet_model()
-                model.load_weights(str(TF_CKPT_PREFIX)).expect_partial()
+                restore_status = model.load_weights(str(TF_CKPT_PREFIX))
+                restore_status.assert_existing_objects_matched()
+                restore_status.expect_partial()
                 self._infer_fn = lambda frames: self._run_tensorflow(model, frames)
                 # TF CPU も中間バッファが大きいため serial のみ
                 self._backend_name = "tensorflow_cpu"
@@ -772,6 +856,117 @@ class TrackNetInference:
         self._load_error = "使えるバックエンドがありません。試みたバックエンド: " + "; ".join(tried) if tried else "重みファイルが見つかりません"
         logger.error("TrackNet: no usable inference backend found. %s", self._load_error)
         return False
+
+    def _load_tensorrt_native(self, engine_path: Path) -> None:
+        """Load a fixed batch=1 TensorRT engine using torch CUDA buffers."""
+        import tensorrt as trt
+        import torch
+
+        if not torch.cuda.is_available():
+            raise RuntimeError("torch.cuda is unavailable")
+
+        device = torch.device(f"cuda:{self._cuda_device_index}")
+        torch.cuda.set_device(device)
+
+        trt_logger = trt.Logger(trt.Logger.ERROR)
+        runtime = trt.Runtime(trt_logger)
+        engine = runtime.deserialize_cuda_engine(engine_path.read_bytes())
+        if engine is None:
+            raise RuntimeError(f"failed to deserialize TensorRT engine: {engine_path}")
+
+        context = engine.create_execution_context()
+        if context is None:
+            raise RuntimeError("failed to create TensorRT execution context")
+
+        input_names = []
+        output_names = []
+        for i in range(engine.num_io_tensors):
+            name = engine.get_tensor_name(i)
+            mode = engine.get_tensor_mode(name)
+            if mode == trt.TensorIOMode.INPUT:
+                input_names.append(name)
+            elif mode == trt.TensorIOMode.OUTPUT:
+                output_names.append(name)
+        if len(input_names) != 1 or len(output_names) != 1:
+            raise RuntimeError(
+                f"expected one TensorRT input/output, got {input_names}/{output_names}"
+            )
+
+        input_name = input_names[0]
+        output_name = output_names[0]
+        input_shape = tuple(int(x) for x in engine.get_tensor_shape(input_name))
+        output_shape = tuple(int(x) for x in engine.get_tensor_shape(output_name))
+        expected_input = (1, FRAME_STACK, INPUT_H, INPUT_W)
+        expected_output = (1, 1, INPUT_H, INPUT_W)
+        if input_shape != expected_input or output_shape != expected_output:
+            raise RuntimeError(
+                f"unexpected TensorRT shapes: input={input_shape}, output={output_shape}"
+            )
+
+        input_tensor = torch.empty(
+            expected_input, dtype=torch.float32, device=device
+        )
+        output_tensor = torch.empty(
+            expected_output, dtype=torch.float32, device=device
+        )
+        stream = torch.cuda.Stream(device=device)
+
+        if not context.set_tensor_address(input_name, input_tensor.data_ptr()):
+            raise RuntimeError("failed to bind TensorRT input")
+        if not context.set_tensor_address(output_name, output_tensor.data_ptr()):
+            raise RuntimeError("failed to bind TensorRT output")
+
+        with torch.cuda.stream(stream):
+            input_tensor.zero_()
+            if not context.execute_async_v3(stream_handle=stream.cuda_stream):
+                raise RuntimeError("TensorRT warmup execution failed")
+        stream.synchronize()
+
+        self._trt_logger = trt_logger
+        self._trt_runtime = runtime
+        self._trt_engine = engine
+        self._trt_context = context
+        self._trt_input_tensor = input_tensor
+        self._trt_output_tensor = output_tensor
+        self._trt_stream = stream
+        self._cuda_device_obj = device
+        self._max_batch = 1
+        self._batch_infer_fn = None
+        self._infer_fn = self._run_tensorrt_native
+        self._backend_name = f"tensorrt_native:{self._cuda_device_index}"
+        self._load_error = None
+        logger.info(
+            "TrackNet loaded via native TensorRT (device=%d, engine=%s)",
+            self._cuda_device_index,
+            engine_path.name,
+        )
+
+    def _run_tensorrt_native(self, inp: np.ndarray) -> np.ndarray:
+        """Run one preprocessed TrackNet tensor through native TensorRT."""
+        import torch
+
+        if (
+            self._trt_context is None
+            or self._trt_input_tensor is None
+            or self._trt_output_tensor is None
+            or self._trt_stream is None
+        ):
+            raise RuntimeError("native TensorRT backend is not initialized")
+
+        arr = np.ascontiguousarray(inp, dtype=np.float32)
+        expected = (1, FRAME_STACK, INPUT_H, INPUT_W)
+        if arr.shape != expected:
+            raise ValueError(f"TensorRT input shape must be {expected}, got {arr.shape}")
+
+        source = torch.from_numpy(arr)
+        with torch.cuda.stream(self._trt_stream):
+            self._trt_input_tensor.copy_(source, non_blocking=False)
+            if not self._trt_context.execute_async_v3(
+                stream_handle=self._trt_stream.cuda_stream
+            ):
+                raise RuntimeError("TensorRT execution failed")
+        self._trt_stream.synchronize()
+        return self._trt_output_tensor[0, 0].detach().cpu().numpy().copy()
 
     def backend_name(self) -> str:
         return self._backend_name
@@ -873,7 +1068,7 @@ class TrackNetInference:
                 for j, heatmap in enumerate(heatmaps):
                     zone, conf, coords = heatmap_to_zone(heatmap)
                     results.append({
-                        "frame_idx": chunk_start + j + 1,
+                        "frame_idx": chunk_start + j + FRAME_STACK - 1,
                         "zone": zone,
                         "confidence": round(conf, 3),
                         "x_norm": round(coords[0], 4) if coords else None,
@@ -893,7 +1088,7 @@ class TrackNetInference:
                     and (prev_result.get("confidence") or 0.0) >= skip_threshold
                     and skip_count < max_skip
                 ):
-                    extra = _extrapolate_position(prev_result, pprev_result, chunk_end + 1)
+                    extra = _extrapolate_position(prev_result, pprev_result, chunk_end + FRAME_STACK - 1)
                     results.append(extra)
                     pprev_result = prev_result
                     prev_result = extra
@@ -916,7 +1111,7 @@ class TrackNetInference:
             heatmap = self._infer_fn(inp)
             zone, conf, coords = heatmap_to_zone(heatmap)
             results.append({
-                "frame_idx": i + 1,
+                "frame_idx": i + FRAME_STACK - 1,
                 "zone": zone,
                 "confidence": round(conf, 3),
                 "x_norm": round(coords[0], 4) if coords else None,
@@ -1214,7 +1409,7 @@ class TrackNetInference:
                 zone_results = batch_heatmap_argmax(heatmaps)
                 for j, (zone, conf, coords) in enumerate(zone_results):
                     results.append({
-                        "frame_idx": chunk_start + j + 1,
+                        "frame_idx": chunk_start + j + FRAME_STACK - 1,
                         "zone": zone,
                         "confidence": round(conf, 3),
                         "x_norm": round(coords[0], 4) if coords else None,
@@ -1237,7 +1432,7 @@ class TrackNetInference:
                     and (prev_result.get("confidence") or 0.0) >= skip_threshold
                     and skip_count < max_skip
                 ):
-                    extra = _extrapolate_position(prev_result, pprev_result, chunk_end + 1)
+                    extra = _extrapolate_position(prev_result, pprev_result, chunk_end + FRAME_STACK - 1)
                     results.append(extra)
                     pprev_result = prev_result
                     prev_result = extra

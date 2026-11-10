@@ -13,18 +13,20 @@
  *   - 非技術ユーザ向け丁寧な状態テキスト
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useParams, useLocation } from 'react-router-dom'
+import { useParams, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { apiPost, getParticipantIceConfig } from '@/api/client'
 import { useDeviceHeartbeat } from '@/hooks/useDeviceHeartbeat'
 import { useServerSideRecording } from '@/hooks/session/useServerSideRecording'
-import { errorStatus } from '@/utils/errors'
+import { RecordingProblemNotice } from '@/components/camera/RecordingProblemNotice'
+import { errorStatus, errorMessage } from '@/utils/errors'
 import { participantWsUrl } from '@/utils/cameraWs'
 import { getDeviceUid } from '@/utils/deviceUid'
 import { getParticipantRejoinToken, setParticipantRejoinToken } from '@/utils/participantRejoinToken'
 import { MIcon } from '@/components/common/MIcon'
+import { watchPeerConnection, addCandidate, flushCandidates } from './peerConnection'
 
-type SenderState = 'join' | 'connecting' | 'state_a' | 'state_b' | 'state_c' | 'error'
+type SenderState = 'join' | 'connecting' | 'waiting_approval' | 'state_a' | 'state_b' | 'state_c' | 'error'
 
 interface JoinForm {
   sessionCode: string
@@ -38,6 +40,23 @@ interface BatteryManager {
   charging: boolean
   addEventListener: (event: string, cb: () => void) => void
   removeEventListener: (event: string, cb: () => void) => void
+}
+
+// 入場券取得の 403 本文から機械可読なエラーコードを取り出す。
+// サーバー (backend/routers/sessions.py issue_camera_ws_ticket) は未承認・拒否を
+// detail={code, message} で返す。文言に依存せずコードで待機/拒否/再参加を分ける。
+function approvalErrorCode(e: unknown): string | null {
+  const body = errorMessage(e)
+  if (!body) return null
+  try {
+    const parsed = JSON.parse(body) as { detail?: unknown }
+    const detail = parsed?.detail
+    if (detail && typeof detail === 'object') {
+      const code = (detail as { code?: unknown }).code
+      if (typeof code === 'string') return code
+    }
+  } catch { /* detail が文字列などコードを含まない形式 */ }
+  return null
 }
 
 function getDeviceType(): string {
@@ -87,13 +106,13 @@ function NetworkQualityIndicator({ rttMs }: { rttMs: number | null }) {
 
 // ─── セッション情報バッジ ────────────────────────────────────────────────────
 
-function SessionBadge({ sessionCode, role }: { sessionCode: string; role: string }) {
+function SessionBadge({ sessionCode, deviceName }: { sessionCode: string; deviceName: string }) {
   const { t } = useTranslation()
   return (
     <div className="flex items-center gap-2 text-[10px] text-[var(--ss-t3)] mb-1">
       <span>{t('camera_sender.session_label')}: <span className="font-mono ss-num text-[var(--ss-t2)]">{sessionCode}</span></span>
       <span>|</span>
-      <span>{t('camera_sender.role_display')}: <span className="text-[var(--ss-brand)]">{role}</span></span>
+      <span>{t('camera_sender.role_display')}: <span className="text-[var(--ss-brand)]">{deviceName}</span></span>
     </div>
   )
 }
@@ -102,11 +121,13 @@ function SessionBadge({ sessionCode, role }: { sessionCode: string; role: string
 
 const MAX_RECONNECT = 10
 const RECONNECT_DELAY_MS = 5_000
+const APPROVAL_RECHECK_DELAY_MS = 3_000
 const DEVICE_NAME_KEY = 'ss_device_name'
 
 export function CameraSenderPage() {
   const { sessionCode: paramCode } = useParams<{ sessionCode: string }>()
-  const { search } = useLocation()
+  const { search, pathname } = useLocation()
+  const navigate = useNavigate()
   // QR URL に埋め込まれたパスワード（?pwd=...）を読み取る
   const pwdParam = new URLSearchParams(search).get('pwd') ?? ''
   const { t } = useTranslation()
@@ -118,6 +139,9 @@ export function CameraSenderPage() {
     deviceName: localStorage.getItem(DEVICE_NAME_KEY) || getDeviceTypeLabel(),
   })
   const [errorMsg, setErrorMsg] = useState('')
+  // error 画面で Wi-Fi 確認の案内を出すかどうか。通信エラー起因の失敗のときだけ true。
+  // 承認待ち・拒否・再参加要求は通信の問題ではないので Wi-Fi 案内を出さない。
+  const [showWifiHint, setShowWifiHint] = useState(false)
   // 端末名インライン編集用
   const [editingName, setEditingName] = useState(false)
   const [nameInput, setNameInput] = useState('')
@@ -140,9 +164,11 @@ export function CameraSenderPage() {
 
   const wsRef = useRef<WebSocket | null>(null)
   const pcRef = useRef<RTCPeerConnection | null>(null)
+  const candidatesRef = useRef<RTCIceCandidateInit[]>([])
   const localStreamRef = useRef<MediaStream | null>(null)
   const previewRef = useRef<HTMLVideoElement>(null)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const approvalRecheckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const rttTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   // 再接続判定用 ref（stale closure 回避）
   const senderStateRef = useRef<SenderState>(senderState)
@@ -159,13 +185,18 @@ export function CameraSenderPage() {
 
   useEffect(() => { senderStateRef.current = senderState }, [senderState])
 
+  // server 側で参加者が削除されたとき (heartbeat が 404/410/401) の処理。
+  // 最新の state / ref を使うため ref 経由で呼ぶ (フックへ渡す関数の同一性を保つ)。
+  const onRemovedRef = useRef<() => void>(() => {})
+  const handleRemoved = useCallback(() => onRemovedRef.current(), [])
+
   // ─── ハートビート ─────────────────────────────────────────────────────────
   useDeviceHeartbeat(
     senderState === 'state_a' || senderState === 'state_b' || senderState === 'state_c'
       ? activeSessionCode
       : null,
     participantId,
-    undefined,  // onRemoved は使っていない
+    handleRemoved,
     // JWT を持たない参加端末はこのトークンで認証される
     savedTokenRef.current || undefined,
   )
@@ -231,6 +262,8 @@ export function CameraSenderPage() {
     if (count > MAX_RECONNECT) {
       setSenderState('error')
       setErrorMsg(t('camera_sender.reconnect_failed'))
+      // 再接続が尽きた = 通信の問題。ここでだけ Wi-Fi 確認の案内を出す。
+      setShowWifiHint(true)
       return
     }
     reconnectCountRef.current = count
@@ -242,6 +275,21 @@ export function CameraSenderPage() {
     // connectWs is defined below and used via closure (mutually recursive callbacks)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [t])
+
+  // ─── 承認待ちの再確認 ─────────────────────────────────────────────────────
+  // operator がまだ承認していない端末は 403(device_not_approved) で弾かれる。
+  // これは通信エラーではないので reconnectCount を消費せず、一定間隔で入場券を
+  // 取り直す。承認された瞬間に connectWs が成功し、通常の接続フローへ進む。
+  const scheduleApprovalRecheck = useCallback((code: string, pid: number) => {
+    if (approvalRecheckTimerRef.current) {
+      clearTimeout(approvalRecheckTimerRef.current)
+    }
+    approvalRecheckTimerRef.current = setTimeout(() => {
+      void connectWs(code, pid)
+    }, APPROVAL_RECHECK_DELAY_MS)
+    // connectWs is defined below and used via closure (mutually recursive callbacks)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ─── WebSocket 接続 ───────────────────────────────────────────────────────
    
@@ -258,8 +306,40 @@ export function CameraSenderPage() {
     let wsUrl: string
     try {
       wsUrl = await participantWsUrl(code, 'device', pid, savedTokenRef.current)
-    } catch {
-      scheduleReconnect(code, pid)
+    } catch (e) {
+      // #665 / 承認フロー: 入場券取得の失敗を握りつぶして一律再接続せず、原因で分ける。
+      //   403 + code=device_not_approved → まだ承認されていない。エラーにせず『承認待ち』
+      //     画面を出し、3 秒ごとに入場券を取り直す。operator が承認した瞬間に接続へ進む。
+      //   403 + code=device_rejected    → 拒否。再試行しても直らないので専用の案内。
+      //   その他の 401/403・参加トークン欠落 → 再参加案内 (rejoin_required)。
+      //   404/410 → セッション消滅。
+      //   5xx/タイムアウト/ネットワーク断のみ → 有限回の自動再接続。
+      const status = errorStatus(e)
+      const approvalCode = approvalErrorCode(e)
+      if (status === 403 && approvalCode === 'device_not_approved') {
+        // 承認待ちは通信エラーではない。待機画面を出し Wi-Fi 案内は出さない。
+        // 確認するたびに時刻つきで『まだ承認されていません』を言い直す (手動/自動とも)。
+        setShowWifiHint(false)
+        setErrorMsg('')
+        setSenderState('waiting_approval')
+        scheduleApprovalRecheck(code, pid)
+        return
+      }
+      if (status === 403 && approvalCode === 'device_rejected') {
+        setShowWifiHint(false)
+        setSenderState('error')
+        setErrorMsg(t('camera_sender.device_rejected'))
+      } else if (status === 401 || status === 403 || !savedTokenRef.current) {
+        setShowWifiHint(false)
+        setSenderState('error')
+        setErrorMsg(t('camera_sender.rejoin_required'))
+      } else if (status === 404 || status === 410) {
+        setShowWifiHint(false)
+        setSenderState('error')
+        setErrorMsg(t('camera_sender.session_gone'))
+      } else {
+        scheduleReconnect(code, pid)
+      }
       return
     }
     if (disposedRef.current) return
@@ -270,6 +350,12 @@ export function CameraSenderPage() {
     ws.onopen = () => {
       reconnectCountRef.current = 0
       setReconnectCount(0)
+      // 接続できた = 承認済みで通信も回復。承認待ち再確認と Wi-Fi 案内を止める。
+      if (approvalRecheckTimerRef.current) {
+        clearTimeout(approvalRecheckTimerRef.current)
+        approvalRecheckTimerRef.current = null
+      }
+      setShowWifiHint(false)
       // 再接続時、サーバ側は **新しい stream_id を採番して古い対応を捨てる**
       // (ws/camera.py の _new_stream_id)。旧実装はここで device_hello を
       // 送って state_a に戻すだけで、**古い RTCPeerConnection を閉じも
@@ -292,8 +378,9 @@ export function CameraSenderPage() {
     }
 
     ws.onmessage = async (event) => {
+      let msg
+      try { msg = JSON.parse(event.data) } catch { console.warn('Invalid signaling message'); return }
       try {
-        const msg = JSON.parse(event.data)
         if (msg.type === 'camera_request') {
           setSenderState('state_b')
         } else if (msg.type === 'camera_deactivate') {
@@ -303,18 +390,33 @@ export function CameraSenderPage() {
           localStreamRef.current = null
           pcRef.current?.close()
           pcRef.current = null
+          setStartingCamera(false)
           if (previewRef.current) previewRef.current.srcObject = null
           setSenderState('state_a')
         } else if (msg.type === 'webrtc_answer' && pcRef.current) {
-          await pcRef.current.setRemoteDescription({ type: 'answer', sdp: msg.sdp })
+          const pc = pcRef.current
+          await pc.setRemoteDescription({ type: 'answer', sdp: msg.sdp })
+          if (pcRef.current === pc) await flushCandidates(pc, candidatesRef.current)
         } else if (msg.type === 'ice_candidate' && pcRef.current) {
-          await pcRef.current.addIceCandidate({
+          await addCandidate(pcRef.current, candidatesRef.current, {
             candidate: msg.candidate,
             sdpMid: msg.sdp_mid,
             sdpMLineIndex: msg.sdp_m_line_index,
-          }).catch(() => {})
+          })
         }
-      } catch { /* ignore */ }
+      } catch (error) {
+        console.warn('WebRTC signaling failed', error)
+        setStartingCamera(false)
+        localStreamRef.current?.getTracks().forEach((track) => track.stop())
+        localStreamRef.current = null
+        stopRttPolling()
+        void serverRecorder.stop()
+        pcRef.current?.close()
+        pcRef.current = null
+        candidatesRef.current = []
+        setErrorMsg(t('camera_sender.connect_error'))
+        setSenderState('error')
+      }
     }
 
     ws.onclose = () => {
@@ -330,7 +432,7 @@ export function CameraSenderPage() {
     }
     // serverRecorder は安定参照 (custom hook の戻り値) なので deps 不要
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scheduleReconnect])
+  }, [scheduleReconnect, t])
 
   // ─── セッション参加 ───────────────────────────────────────────────────────
   const joinSession = useCallback(async (code: string, password: string, deviceName: string) => {
@@ -395,10 +497,12 @@ export function CameraSenderPage() {
     if (paramCode && senderState === 'connecting') {
       if (pwdParam) {
         // ?pwd= パラメータがあれば自動入力してパスワードフォームをスキップ（保存済み端末名を使用）
+        // 参加に使ったら URL からパスワードを消す（履歴・アドレスバー・共有に残さない）
+        navigate({ pathname, search: '' }, { replace: true })
         joinSession(paramCode, pwdParam, localStorage.getItem(DEVICE_NAME_KEY) || getDeviceTypeLabel())
       } else {
         // 旧 QR コード（パスワードなし URL）→ フォームに誘導
-        setErrorMsg('QRコードを再生成するか、下のフォームにパスワードを入力してください。')
+        setErrorMsg(t('lan_session.join_password_required'))
         setSenderState('join')
       }
     }
@@ -408,11 +512,57 @@ export function CameraSenderPage() {
   const startCamera = useCallback(async () => {
     // iOS Safari は HTTP（非セキュアコンテキスト）では mediaDevices が undefined になる
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setErrorMsg('カメラにアクセスできません。HTTPSまたはlocalhostで開いてください（iOSはHTTPではカメラ使用不可）。')
+      setErrorMsg(t('camera_sender.camera_error_insecure'))
       return
     }
     setStartingCamera(true)
+    // カメラ取得・WebRTC 確立を段階ごとに分けて扱う。getUserMedia の失敗は端末の
+    // カメラ権限/使用状況の問題、それ以降 (PeerConnection / SDP / signaling) の失敗は
+    // 通信接続の問題として、利用者向けに別々の案内を出す。両者を同じ catch で
+    // 「カメラ権限を許可してください」と扱うと、権限を見直しても直らない誤案内になる。
+    let stream: MediaStream
     try {
+      // 前回の stream を止めてから取り直す。止めずに上書きすると
+      // 古いトラックが生き続け、端末のカメラ表示 (LED) が点いたままになり、
+      // 電池とメモリを食う。
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach((t) => {
+          try {
+            t.stop()
+          } catch { /* 既に停止している場合がある */ }
+        })
+      }
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      })
+    } catch (err) {
+      // getUserMedia の DOMException だけをカメラ取得エラーとして種別ごとに案内する。
+      const name = (err as { name?: string } | null)?.name
+      if (name === 'NotAllowedError' || name === 'SecurityError') {
+        setErrorMsg(t('camera_sender.camera_error_permission'))
+      } else if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+        setErrorMsg(t('camera_sender.camera_error_notfound'))
+      } else if (name === 'NotReadableError' || name === 'AbortError') {
+        setErrorMsg(t('camera_sender.camera_error_inuse'))
+      } else {
+        setErrorMsg(t('camera_sender.camera_error_generic'))
+      }
+      setStartingCamera(false)
+      return
+    }
+
+    try {
+      localStreamRef.current = stream
+      if (previewRef.current) {
+        previewRef.current.srcObject = stream
+      }
+
+      // R-1: サーバ自動録画 (match_id 取得済 + 自動録画 ON 時)
+      if (recordingMatchId != null) {
+        void serverRecorder.start(stream).catch(() => { /* noop */ })
+      }
+
       // ICE サーバー設定を取得（TURN が有効な場合はリレー経由）
       let iceServers: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
       try {
@@ -429,30 +579,6 @@ export function CameraSenderPage() {
         }
       } catch { /* バックエンド未起動時はデフォルト STUN を使用 */ }
 
-      // 前回の stream を止めてから取り直す。止めずに上書きすると
-      // 古いトラックが生き続け、端末のカメラ表示 (LED) が点いたままになり、
-      // 電池とメモリを食う。
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach((t) => {
-          try {
-            t.stop()
-          } catch { /* 既に停止している場合がある */ }
-        })
-      }
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false,
-      })
-      localStreamRef.current = stream
-      if (previewRef.current) {
-        previewRef.current.srcObject = stream
-      }
-
-      // R-1: サーバ自動録画 (match_id 取得済 + 自動録画 ON 時)
-      if (recordingMatchId != null) {
-        void serverRecorder.start(stream).catch(() => { /* noop */ })
-      }
-
       // 再開のたびに前の PeerConnection とトラックを閉じずに上書きしていた。
       // カメラの LED が点いたまま、メモリと電池を食い続ける。
       if (pcRef.current) {
@@ -462,6 +588,20 @@ export function CameraSenderPage() {
       }
       const pc = new RTCPeerConnection({ iceServers })
       pcRef.current = pc
+      candidatesRef.current = []
+      watchPeerConnection(pc, () => pcRef.current === pc,
+        () => { setStartingCamera(false); setSenderState('state_c') },
+        () => {
+          pc.close()
+          pcRef.current = null
+          localStreamRef.current?.getTracks().forEach((track) => track.stop())
+          localStreamRef.current = null
+          stopRttPolling()
+          void serverRecorder.stop()
+          setStartingCamera(false)
+          setErrorMsg(t('camera_sender.connect_error'))
+          setSenderState('error')
+        })
       startRttPolling(pc)
 
       stream.getTracks().forEach((track) => pc.addTrack(track, stream))
@@ -491,16 +631,23 @@ export function CameraSenderPage() {
         sdp: offer.sdp,
       }))
 
-      setSenderState('state_c')
     } catch {
-      setErrorMsg('カメラの起動に失敗しました。カメラへのアクセスを許可してください。')
-    } finally {
+      // ここに来るのはカメラ取得後の WebRTC/signaling 失敗なので、カメラ権限ではなく
+      // 接続の問題として案内する。取得済みの stream は止めてカメラを解放する。
+      try {
+        stream.getTracks().forEach((t) => t.stop())
+      } catch { /* 既に停止している場合がある */ }
+      localStreamRef.current = null
+      pcRef.current?.close()
+      pcRef.current = null
+      setErrorMsg(t('camera_sender.connect_error'))
+      setSenderState('error')
       setStartingCamera(false)
     }
     // recordingMatchId / serverRecorder は read-only スナップショットとして使い、
     // 再カメラ起動時に最新値で動けばよい (callback 再生成は不要)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [participantId, startRttPolling])
+  }, [participantId, startRttPolling, t])
 
   // ─── 配信停止 ─────────────────────────────────────────────────────────────
   const stopCamera = useCallback(() => {
@@ -517,6 +664,32 @@ export function CameraSenderPage() {
     }))
     setSenderState('state_a')
   }, [participantId, stopRttPolling, serverRecorder])
+
+  // オペレーターに外された (server 側で削除された) とき、接続中の表示を残さない。
+  // 録画の確定・カメラ停止・PeerConnection / WS の後始末をして、案内つきのエラー画面へ移る。
+  useEffect(() => {
+    onRemovedRef.current = () => {
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
+      if (approvalRecheckTimerRef.current) clearTimeout(approvalRecheckTimerRef.current)
+      stopRttPolling()
+      void serverRecorder.stop()
+      localStreamRef.current?.getTracks().forEach((tr) => tr.stop())
+      localStreamRef.current = null
+      pcRef.current?.close()
+      pcRef.current = null
+      // onclose を外してから閉じる (自動再接続させない)
+      if (wsRef.current?.onclose) wsRef.current.onclose = null
+      wsRef.current?.close()
+      wsRef.current = null
+      savedPidRef.current = null
+      savedTokenRef.current = ''
+      setParticipantId(null)
+      setParticipantToken('')
+      setActiveSessionCode('')
+      setErrorMsg(t('camera_sender.removed_by_operator'))
+      setSenderState('error')
+    }
+  }, [stopRttPolling, serverRecorder, t])
 
   // ─── Page Visibility API（iOS バックグラウンド復帰対応） ────────────────────
   useEffect(() => {
@@ -548,6 +721,7 @@ export function CameraSenderPage() {
     return () => {
       disposedRef.current = true
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
+      if (approvalRecheckTimerRef.current) clearTimeout(approvalRecheckTimerRef.current)
       stopRttPolling()
       localStreamRef.current?.getTracks().forEach((t) => t.stop())
       pcRef.current?.close()
@@ -556,13 +730,32 @@ export function CameraSenderPage() {
     }
   }, [stopRttPolling])
 
+  // ─── 端末名の保存 ─────────────────────────────────────────────────────────
+  // 名前を localStorage と ref に保存し、WS が開いていればサーバへ device_rename を
+  // 送る。サーバは参加者行の名前を更新し、device_list_update で operator に配る。
+  // connectWs / PeerConnection には触れない (この 1 本の送信だけ)。
+  const saveDeviceName = useCallback((raw: string) => {
+    const n = raw.trim() || getDeviceTypeLabel()
+    localStorage.setItem(DEVICE_NAME_KEY, n)
+    savedDeviceNameRef.current = n
+    const pid = participantId ?? savedPidRef.current
+    if (pid != null && wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'device_rename',
+        participant_id: pid,
+        device_name: n,
+      }))
+    }
+    setEditingName(false)
+  }, [participantId])
+
   // ─── ステータスバー（全状態共通） ─────────────────────────────────────────
   const StatusBar = () => (
     <div className="flex items-center justify-between w-full max-w-sm mb-3 px-1">
       {activeSessionCode && (
         <SessionBadge
           sessionCode={activeSessionCode}
-          role={savedDeviceNameRef.current || getDeviceTypeLabel()}
+          deviceName={savedDeviceNameRef.current || getDeviceTypeLabel()}
         />
       )}
       <div className="flex items-center gap-2 ml-auto">
@@ -583,14 +776,16 @@ export function CameraSenderPage() {
         </div>
         <p className="text-[var(--ss-t2)] text-sm">{t('camera_sender.join_title')}</p>
       </div>
+      <RecordingProblemNotice state={serverRecorder.state} errorMsg={serverRecorder.errorMsg} />
 
       {/* ─── State: join ────────────────── */}
       {(senderState === 'join' || (senderState === 'connecting' && !paramCode)) && (
         <div className="w-full max-w-sm bg-[var(--ss-surface-1)] rounded-[6px] p-5 border border-[var(--ss-border)] shadow-[0_1px_2px_rgba(16,24,40,.06)]">
           <div className="space-y-3">
             <div>
-              <label className="block text-xs text-[var(--ss-t2)] mb-1">{t('camera_sender.join_code_label')}</label>
+              <label htmlFor="cs-join-code" className="block text-xs text-[var(--ss-t2)] mb-1">{t('camera_sender.join_code_label')}</label>
               <input
+                id="cs-join-code"
                 type="text"
                 value={form.sessionCode}
                 onChange={(e) => setForm((f) => ({ ...f, sessionCode: e.target.value.toUpperCase() }))}
@@ -600,8 +795,9 @@ export function CameraSenderPage() {
               />
             </div>
             <div>
-              <label className="block text-xs text-[var(--ss-t2)] mb-1">{t('camera_sender.join_password_label')}</label>
+              <label htmlFor="cs-join-password" className="block text-xs text-[var(--ss-t2)] mb-1">{t('camera_sender.join_password_label')}</label>
               <input
+                id="cs-join-password"
                 type="password"
                 value={form.password}
                 onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
@@ -609,8 +805,9 @@ export function CameraSenderPage() {
               />
             </div>
             <div>
-              <label className="block text-xs text-[var(--ss-t2)] mb-1">{t('camera_sender.join_device_label')}</label>
+              <label htmlFor="cs-join-device" className="block text-xs text-[var(--ss-t2)] mb-1">{t('camera_sender.join_device_label')}</label>
               <input
+                id="cs-join-device"
                 type="text"
                 value={form.deviceName}
                 onChange={(e) => setForm((f) => ({ ...f, deviceName: e.target.value }))}
@@ -626,7 +823,7 @@ export function CameraSenderPage() {
             )}
             <button
               onClick={() => joinSession(form.sessionCode, form.password, form.deviceName)}
-              disabled={!form.sessionCode || senderState === 'connecting'}
+              disabled={!form.sessionCode || !form.password || senderState === 'connecting'}
               className="w-full py-2.5 rounded-[5px] bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium text-white inline-flex items-center justify-center gap-2"
             >
               {senderState === 'connecting' && <MIcon name="progress_activity" size={14} className="animate-spin" />}
@@ -671,25 +868,15 @@ export function CameraSenderPage() {
                     value={nameInput}
                     onChange={(e) => setNameInput(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        const n = nameInput.trim() || getDeviceTypeLabel()
-                        localStorage.setItem(DEVICE_NAME_KEY, n)
-                        savedDeviceNameRef.current = n
-                        setEditingName(false)
-                      }
+                      if (e.key === 'Enter') saveDeviceName(nameInput)
                       if (e.key === 'Escape') setEditingName(false)
                     }}
                     className="flex-1 bg-[var(--ss-surface-2)] rounded-[5px] px-2 py-1 text-sm text-[var(--ss-t1)] text-center border border-[var(--ss-border)] focus:outline-none focus:ring-2 focus:ring-[var(--ss-focus-ring)]"
                     placeholder={getDeviceTypeLabel()}
                     maxLength={32}
                   />
-                  <button
-                    onClick={() => {
-                      const n = nameInput.trim() || getDeviceTypeLabel()
-                      localStorage.setItem(DEVICE_NAME_KEY, n)
-                      savedDeviceNameRef.current = n
-                      setEditingName(false)
-                    }}
+                  <button aria-label={t('app.save')}
+                    onClick={() => saveDeviceName(nameInput)}
                     className="p-1 text-[var(--ss-success)] hover:text-[var(--ss-good)]"
                   >
                     <MIcon name="check" size={16} />
@@ -793,20 +980,39 @@ export function CameraSenderPage() {
         </div>
       )}
 
+      {/* ─── State: waiting_approval（承認待ち。エラーではない） ───────────────── */}
+      {senderState === 'waiting_approval' && (
+        <div className="w-full max-w-sm text-center">
+          <div className="bg-[var(--ss-surface-1)] rounded-[6px] p-6 border border-[var(--ss-border)] shadow-[0_1px_2px_rgba(16,24,40,.06)]">
+            <MIcon name="hourglass_top" size={36} className="text-[var(--ss-brand)] mx-auto mb-3" />
+            <p className="text-lg font-semibold text-[var(--ss-t1)] mb-2">{t('camera_sender.waiting_approval_title')}</p>
+            <p className="text-[var(--ss-t2)] text-sm leading-relaxed">{t('camera_sender.waiting_approval_hint')}</p>
+            <div className="mt-4 flex items-center justify-center gap-1 text-xs text-[var(--ss-t3)]">
+              <MIcon name="progress_activity" size={14} className="animate-spin" />
+              {t('camera_sender.status_connected')}
+            </div>
+            <SessionBadge sessionCode={activeSessionCode} deviceName={savedDeviceNameRef.current} />
+          </div>
+        </div>
+      )}
+
       {/* ─── State: error ───────────────── */}
       {senderState === 'error' && (
         <div className="w-full max-w-sm text-center">
           <div className="bg-[var(--ss-surface-1)] rounded-[6px] p-6 border border-[var(--ss-border)] shadow-[0_1px_2px_rgba(16,24,40,.06)]">
-            <MIcon name="wifi_off" size={36} className="text-[var(--ss-bad)] mx-auto mb-3" />
+            <MIcon name={showWifiHint ? 'wifi_off' : 'error_outline'} size={36} className="text-[var(--ss-bad)] mx-auto mb-3" />
             <p className="text-sm text-[var(--ss-t2)] mb-1">{errorMsg || t('camera_sender.join_error_network')}</p>
-            <p className="text-xs text-[var(--ss-t3)] mb-4">
-              {t('auto.CameraSenderPage.k_wifi_check')}
-            </p>
-            <div className="flex gap-2 justify-center">
+            {showWifiHint && (
+              <p className="text-xs text-[var(--ss-t3)] mb-4">
+                {t('auto.CameraSenderPage.k_wifi_check')}
+              </p>
+            )}
+            <div className={`flex gap-2 justify-center${showWifiHint ? '' : ' mt-4'}`}>
               <button
                 onClick={() => {
                   reconnectCountRef.current = 0
                   setReconnectCount(0)
+                  setShowWifiHint(false)
                   const code = savedCodeRef.current
                   const pid = savedPidRef.current
                   if (code && pid) {
@@ -820,7 +1026,7 @@ export function CameraSenderPage() {
                 {t('auto.CameraSenderPage.k_retry')}
               </button>
               <button
-                onClick={() => { setSenderState('join'); setErrorMsg('') }}
+                onClick={() => { setSenderState('join'); setErrorMsg(''); setShowWifiHint(false) }}
                 className="px-4 py-2 rounded-[5px] bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-sm text-[var(--ss-t1)] border border-[var(--ss-border)]"
               >
                 {t('auto.CameraSenderPage.k_restart')}

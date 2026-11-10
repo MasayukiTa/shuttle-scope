@@ -4,6 +4,18 @@ import { apiGet } from '@/api/client'
 import { useReviewBundleSlice } from '@/contexts/ReviewBundleContext'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
+import { hasSufficientSample } from '@/utils/sampleGate'
+
+/** これ未満のラリー数ではパターンを出さない (監査 #438)。 */
+const RALLY_SEQUENCE_MIN_RALLIES = 20
+/**
+ * 個別パターンの出現ラリー数がこれ未満なら「参考値」として扱う (監査 #127)。
+ * バックエンドは出現 5 回以上のパターンを返すが (MIN_SEQUENCES_PATTERN)、
+ * 5〜数回の 100% は区間が広く、セクション全体の総球数を根拠に高信頼には見せない。
+ */
+const PATTERN_REFERENCE_MAX_COUNT = 20
+import { FilterScopeNote } from '@/components/dashboard/ResearchNotice'
+import type { FilterScopeMeta } from '@/utils/analysisFilterParams'
 import { WIN, LOSS, perfColor } from '@/styles/colors'
 import { useTranslation } from 'react-i18next'
 
@@ -17,6 +29,8 @@ interface SequenceEntry {
   count: number
   win_rate: number
   win_count: number
+  ci_low?: number
+  ci_high?: number
 }
 
 interface Response {
@@ -25,8 +39,10 @@ interface Response {
     win_sequences: SequenceEntry[]
     loss_sequences: SequenceEntry[]
     total_rallies: number
+    eligible_rallies?: number
+    baseline_win_rate?: number | null
   }
-  meta: { sample_size: number; confidence: { level: string; stars: string; label: string } }
+  meta: { sample_size: number; confidence: { level: string; stars: string; label: string } } & FilterScopeMeta
 }
 
 function SequencePill({ labels, winRate }: { labels: string[]; winRate: number }) {
@@ -62,15 +78,32 @@ function SequenceList({ sequences, accent, title }: { sequences: SequenceEntry[]
         <p className="text-xs text-gray-500 py-2">{t('auto.RallySequencePatterns.k1')}</p>
       ) : (
         <div className="space-y-2">
-          {sequences.map((s, i) => (
-            <div key={i} className="space-y-1">
-              <SequencePill labels={s.labels} winRate={s.win_rate} />
-              <div className="flex gap-3 text-xs text-gray-400 pl-1">
-                <span className="ss-num">{t('auto._shared.n_times', { n: s.count })}</span>
-                <span className="font-mono ss-num">{Math.round(s.win_rate * 100)}%</span>
+          {sequences.map((s, i) => {
+            // 出現ラリー数が少ないパターンは区間が広く点推定が不安定。参考値として明示する (監査 #127)。
+            const isReference = s.count < PATTERN_REFERENCE_MAX_COUNT
+            return (
+              <div key={i} className="space-y-1">
+                <SequencePill labels={s.labels} winRate={s.win_rate} />
+                <div className="flex gap-3 text-xs text-gray-400 pl-1 items-center flex-wrap">
+                  <span className="ss-num">{t('auto._shared.n_times', { n: s.count })}</span>
+                  <span className="font-mono ss-num">{Math.round(s.win_rate * 100)}%</span>
+                  {typeof s.ci_low === 'number' && typeof s.ci_high === 'number' && (
+                    <span className="font-mono ss-num text-gray-500">
+                      {t('auto.RallySequencePatterns.interval', { low: Math.round(s.ci_low * 100), high: Math.round(s.ci_high * 100) })}
+                    </span>
+                  )}
+                  {isReference && (
+                    <span
+                      className="px-1.5 py-0.5 rounded-ss-sm text-[10px] border border-[var(--ss-warning-border)] bg-[var(--ss-warning-bg)] text-[var(--ss-warning-text)]"
+                      title={t('auto.RallySequencePatterns.reference_hint', { n: PATTERN_REFERENCE_MAX_COUNT })}
+                    >
+                      {t('auto.RallySequencePatterns.reference_badge')}
+                    </span>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
@@ -99,11 +132,14 @@ export function RallySequencePatterns({ playerId }: RallySequencePatternsProps) 
   const totalRallies = resp?.data?.total_rallies ?? 0
   const sampleSize = resp?.meta?.sample_size ?? 0
 
-  if (winSeqs.length === 0 && lossSeqs.length === 0) {
+  if (
+    (winSeqs.length === 0 && lossSeqs.length === 0)
+    || !hasSufficientSample(totalRallies, RALLY_SEQUENCE_MIN_RALLIES)
+  ) {
     return (
       <div className="bg-gray-800 rounded-ss-lg shadow-card p-4">
         <h3 className="text-sm font-semibold text-gray-200 mb-3">{t('auto.RallySequencePatterns.k3')}</h3>
-        <NoDataMessage sampleSize={totalRallies} minRequired={20} unit="ラリー" />
+        <NoDataMessage sampleSize={totalRallies} minRequired={RALLY_SEQUENCE_MIN_RALLIES} unit="ラリー" />
       </div>
     )
   }
@@ -112,7 +148,17 @@ export function RallySequencePatterns({ playerId }: RallySequencePatternsProps) 
     <div className="bg-gray-800 rounded-ss-lg shadow-card p-4">
       <h3 className="text-sm font-semibold text-gray-200 mb-1">{t('auto.RallySequencePatterns.k3')}</h3>
       <p className="text-xs text-gray-500 mb-3 ss-num">{t('auto.RallySequencePatterns.analyzed_rallies', { n: totalRallies })}</p>
+      <FilterScopeNote meta={resp?.meta} className="mb-2" />
       <ConfidenceBadge sampleSize={sampleSize} unit="strokes" />
+      <p className="text-[11px] text-gray-500 mt-1">{t('auto.RallySequencePatterns.unit_note')}</p>
+      {typeof resp?.data?.baseline_win_rate === 'number' && (
+        <p className="text-[11px] text-gray-400 ss-num">
+          {t('auto.RallySequencePatterns.baseline', {
+            rate: Math.round(resp.data.baseline_win_rate * 100),
+            n: resp.data.eligible_rallies ?? 0,
+          })}
+        </p>
+      )}
       <div className="flex gap-4 mt-3">
         <SequenceList sequences={winSeqs} accent={WIN} title={t('auto.RallySequencePatterns.k4')} />
         <div className="w-px bg-gray-700 self-stretch" />

@@ -16,8 +16,11 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from backend.analysis.analysis_population import split_analysis_population
+from backend.analysis.player_context import involves_player
 from backend.analysis.router_helpers import _get_player_matches, _player_role_in_match
-from backend.db.models import GameSet, Match, Rally, Stroke
+from backend.db.models import GameSet, Match, Rally
+from backend.analysis.light_stroke import load_light_strokes
 
 
 @dataclass
@@ -74,10 +77,8 @@ def load_context(db: Session, player_id: int, filters: dict) -> AnalysisContext:
         if set_ids else []
     )
     rally_ids = [r.id for r in rallies]
-    strokes = (
-        db.query(Stroke).filter(Stroke.rally_id.in_(rally_ids)).all()
-        if rally_ids else []
-    )
+    # SD-09b 504 fix: full ORM materialize を避け軽量ロード (出力同一を実測検証済み)。
+    strokes = load_light_strokes(db, rally_ids)
 
     # --- rally_sequence_patterns 用 (フィルタなし + is_skipped=False) ---
     # フィルタがすべて default (None/"all") で matches と同一とみなせる場合は
@@ -99,13 +100,10 @@ def load_context(db: Session, player_id: int, filters: dict) -> AnalysisContext:
         rs_rally_id_set = {r.id for r in rs_rallies}
         rs_strokes = [s for s in strokes if s.rally_id in rs_rally_id_set]
     else:
-        rs_matches = (
-            db.query(Match)
-            .filter(
-                (Match.player_a_id == player_id)
-                | (Match.player_b_id == player_id)
-            )
-            .all()
+        # 絞り込みなしでも解析母集団 (勝敗確定 かつ ラリー有り) は通す。
+        # 通さないと 0 ラリーの未実施試合が候補に混ざる (監査 #324)。
+        rs_matches, _rs_excluded = split_analysis_population(
+            db, db.query(Match).filter(involves_player(player_id)).all(),
         )
         rs_match_ids = [m.id for m in rs_matches]
         rs_role_by_match = {
@@ -127,10 +125,8 @@ def load_context(db: Session, player_id: int, filters: dict) -> AnalysisContext:
         else:
             rs_rallies = []
         rs_rally_ids = [r.id for r in rs_rallies]
-        rs_strokes = (
-            db.query(Stroke).filter(Stroke.rally_id.in_(rs_rally_ids)).all()
-            if rs_rally_ids else []
-        )
+        # SD-09b 504 fix: 軽量ロード (出力同一を実測検証済み)。
+        rs_strokes = load_light_strokes(db, rs_rally_ids)
 
     return AnalysisContext(
         player_id=player_id,

@@ -60,6 +60,14 @@ def gather_player_report(
     試合単位データを追加 (JSON 用)。
     """
     from backend.db.models import Match, Player, Rally, GameSet, Stroke
+    from backend.analysis.player_context import involves_player
+    # audit #154: per_match に解析母集団への適格性 (eligibility) を明示する。
+    # 判定は解析本体と同じ analysis_population の語彙 (勝敗確定 かつ 有効ラリー有り)
+    # を使い、検証用 fixture (is_synthetic) は不適格に数える。
+    from backend.analysis.analysis_population import (
+        exclusion_reason as _ap_exclusion_reason,
+        is_synthetic_match as _ap_is_synthetic_match,
+    )
     role = ctx.role or "analyst"
 
     # ── 0. ヘッダ ────────────────────────────────────────────────────
@@ -153,8 +161,17 @@ def gather_player_report(
         "pre_loss_patterns", get_pre_loss_patterns,
         player_id=player_id, db=db, **_common,
     )
+    # 振り返り画面の「ラリー3連ショットパターン」と同じ値を、完全レポートから照合できるようにする
+    # (pre_win_patterns は位置ごとの単独ショットの分布しか持たず、3連の値を再現できなかった。監査 #157)。
+    # この解析は絞り込み条件を取らず、全試合で計算する。
+    from backend.routers.analysis_research import get_rally_sequence_patterns
+    sections["rally_sequence_patterns"] = _safe_call(
+        "rally_sequence_patterns", get_rally_sequence_patterns,
+        player_id=player_id, db=db,
+    )
 
     # ── 2. Advanced (rally length / pressure / transition) ──────────
+    from backend.analysis.match_filter import MatchFilter
     from backend.routers.analysis_advanced import (
         get_rally_length_vs_winrate,
         get_pressure_performance,
@@ -174,7 +191,8 @@ def gather_player_report(
         "shot_transition_matrix", get_shot_transition_matrix,
         player_id=player_id, db=db, **_common,
     )
-    # opponent_stats は filter args を取らない
+    # opponent_stats は MatchFilter を mf で受け取る。直接呼びでは Depends の既定値が
+    # 残るため、レポートの絞り込み (大会レベル・期間) をここで明示的に渡す。
     #
     # `/api/analysis/opponent_stats` は main.py の
     # `_PLAYER_FORBIDDEN_ANALYSIS_PATHS` に入っており、player ロールには
@@ -186,6 +204,7 @@ def gather_player_report(
         sections["opponent_stats"] = _safe_call(
             "opponent_stats", get_opponent_stats,
             player_id=player_id, db=db,
+            mf=MatchFilter(tournament_level=tournament_level, date_from=date_from, date_to=date_to),
         )
     sections["temporal_performance"] = _safe_call(
         "temporal_performance", get_temporal_performance,
@@ -221,22 +240,17 @@ def gather_player_report(
             )
         # match_preview は対戦相手指定なので skip 可
 
-    # ── 3.5 player 向けに、直接の弱点提示になる section を落とす ──────
+    # ── 3.5 player 向けは許可リスト方式 ───────────────────────────────
     #
-    # docstring と CLAUDE.md は「player には raw EPV / 勝率を出さない」
-    # 「直接の弱点提示をしない」と定めているが、実装で role を見ていたのは
-    # prediction セクションだけだった。下の 3 つはいずれも選手本人に対して
-    # 敗因・弱点・生の勝敗をそのまま示すものなので、同じ規則の対象。
-    # 1 箇所にまとめてあるのは、section が増えたときに見落とさないため。
-    _PLAYER_FORBIDDEN_SECTIONS = (
-        "shot_win_loss",        # 球種別の得点/失点 = 生の勝敗内訳
-        "pre_loss_patterns",    # 「敗北前ラリーパターン」= 直接の弱点提示
-        "pressure_performance", # 競り合い局面の成否
-        "opponent_stats",       # 上で既に除外済み (念のため)
-    )
+    # 旧実装は「落とす節」を列挙する拒否リストで、列挙漏れの節
+    # (rally_length_winrate / temporal_performance / shot_transition_matrix。
+    # 直接ルートでは player に 403) と、許可した節の中の win_rate がそのまま
+    # player に渡っていた。player に見せる節と残すキーは
+    # backend/utils/player_privacy.py の許可リストだけで決める。
+    # 各節の meta (sample_size / confidence) は縮約対象外で残る。
     if role == "player":
-        for _k in _PLAYER_FORBIDDEN_SECTIONS:
-            sections.pop(_k, None)
+        from backend.utils.player_privacy import apply_player_comprehensive_view
+        sections = apply_player_comprehensive_view(sections)
 
     # ── 4. Growth ───────────────────────────────────────────────────
     try:
@@ -247,7 +261,7 @@ def gather_player_report(
     # ── 5. 試合単位 raw (JSON のみ) ─────────────────────────────────
     if include_per_match:
         match_q = db.query(Match).filter(
-            (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
+            involves_player(player_id)
         )
         match_q = apply_match_team_scope(match_q, ctx)
         matches = (
@@ -257,6 +271,9 @@ def gather_player_report(
             .all()
         )
         per_match: list[dict] = []
+        # audit #154: 解析母集団への適格性を試合ごとに数える。合計は matches_included
+        # と一致し、eligible + 各除外理由 (unfinished / zero_rally / synthetic) に分かれる。
+        eligibility = {"eligible": 0, "unfinished": 0, "zero_rally": 0, "synthetic": 0}
         for m in matches:
             mset_ids = [s.id for s in db.query(GameSet).filter(GameSet.match_id == m.id).all()]
             r_count = (
@@ -284,9 +301,25 @@ def gather_player_report(
                 "captured_minor_flag": m.captured_minor_flag,
                 "created_at": m.created_at.isoformat() if m.created_at else None,
             })
+            # audit #154: この試合が解析母集団に入るか (eligibility)。合成 fixture は
+            # 先に synthetic へ、それ以外は勝敗確定 + 有効ラリーで eligible/除外理由に振る。
+            if _ap_is_synthetic_match(m):
+                eligibility["synthetic"] += 1
+            else:
+                _reason = _ap_exclusion_reason(m.result, r_count)
+                eligibility["eligible" if _reason is None else _reason] += 1
         header["matches_included"] = len(per_match)
+        # audit #154: 「含めた試合数」だけでは未完了・未解析・検証用 fixture が
+        # 解析母集団と混ざって見える。レポート生成時点の適格性内訳を明示する
+        # (解析本体と同じ analysis_population の定義で数える)。
+        header["matches_eligibility"] = eligibility
     else:
         per_match = []
+
+    if role == "player":
+        # 勝敗・スコア・相手 ID・uuid を含めない (許可リストのキーだけ)。
+        from backend.utils.player_privacy import player_match_row
+        per_match = [player_match_row(r) for r in per_match]
 
     return {
         "success": True,

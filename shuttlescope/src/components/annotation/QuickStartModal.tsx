@@ -3,13 +3,16 @@
  * 相手選手情報が不完全な状態でも即座に試合を開始できる。
  * 未登録相手は暫定（provisional）として自動作成する。
  */
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { apiGet, apiPost } from '@/api/client'
 import { Player, MATCH_ROUNDS } from '@/types'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { MIcon } from '@/components/common/MIcon'
+import { useAuth } from '@/hooks/useAuth'
+import { isPlayerSearchBlocked } from '@/utils/playerSearchGuard'
+import { canCreatePlayer } from '@/utils/roleAccess'
 
 interface Props {
   onClose: () => void
@@ -18,6 +21,10 @@ interface Props {
 
 export function QuickStartModal({ onClose, onStarted }: Props) {
   const { t } = useTranslation()
+  const titleId = useId()
+  const serverLabelId = useId()
+  const sideLabelId = useId()
+  const { teamName: myTeamName, role } = useAuth()
 
   const COMPETITION_TYPES = [
     { value: 'official', label: t('quick_start.competition_official') },
@@ -37,7 +44,8 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
   // 試合設定
   const [initialServer, setInitialServer] = useState<'player_a' | 'player_b' | ''>('')
   // アナリスト視点: セット1開始時に自選手がいる側（top=画面上 / bottom=画面下）
-  const [analystSide, setAnalystSide] = useState<'top' | 'bottom'>('bottom')
+  // 試合の事実なので既定値は置かない。選ぶまで開始できない（'' = 未選択）。
+  const [analystSide, setAnalystSide] = useState<'top' | 'bottom' | ''>('')
   const [competitionType, setCompetitionType] = useState<string>('unknown')
   const [tournament, setTournament] = useState('')
   const [round, setRound] = useState('')
@@ -53,14 +61,33 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
   const players = playersData?.data ?? []
   const targetPlayers = players.filter((p) => p.is_target)
   const allPlayers = players
+  // 「自チーム選手」の候補。admin は全チームの選手を取得するので、既定は自分のチームに絞り、
+  // 他チームは明示して切り替える（記録中の取り違えを防ぐ）。
+  const baseCandidates = targetPlayers.length > 0 ? targetPlayers : allPlayers
+  const candidateTeams = [...new Set(baseCandidates.map((p) => p.team).filter(Boolean) as string[])].sort()
+  const [teamFilter, setTeamFilter] = useState<string | null>(null)
+  const effectiveTeamFilter =
+    teamFilter ?? (myTeamName && candidateTeams.includes(myTeamName) ? myTeamName : '')
+  const ownPlayerOptions =
+    effectiveTeamFilter === '' ? baseCandidates : baseCandidates.filter((p) => p.team === effectiveTeamFilter)
 
   // 相手選手候補検索
-  const { data: searchData, isFetching: isSearching } = useQuery({
+  const {
+    data: searchData,
+    isFetching: isSearching,
+    isError: searchError,
+    refetch: refetchSearch,
+  } = useQuery({
     queryKey: ['players-search', opponentQuery],
     queryFn: () => apiGet<{ success: boolean; data: Player[] }>('/players/search', { q: opponentQuery }),
     enabled: opponentQuery.trim().length >= 1 && opponentId === null,
   })
   const candidates = searchData?.data ?? []
+  // 検索 API の失敗を「候補 0 件」と区別する。失敗中に暫定登録すると、既存の対戦相手が
+  // いても同一人物の暫定選手を新規作成してしまうため、暫定登録・開始を止めて再試行を促す。
+  const searchFailed = isPlayerSearchBlocked([
+    { id: opponentId, query: opponentQuery, failed: searchError },
+  ])
 
   // チーム候補 = 現在の名前検索結果から抽出（名前に紐づくチームのみ提示）
   const teamSuggestions = [...new Set(candidates.map((p) => p.team).filter(Boolean) as string[])]
@@ -73,7 +100,9 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
       if (matchId) {
         // サーバにも保存済み (player_a_start_side)。localStorage は
         // 既存試合との互換のために残す (サーバ値が無いときのフォールバック)。
-        localStorage.setItem(`shuttlescope.viewpoint.${matchId}`, analystSide)
+        if (analystSide) {
+          localStorage.setItem(`shuttlescope.viewpoint.${matchId}`, analystSide)
+        }
         onStarted(matchId)
       }
     },
@@ -125,6 +154,8 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
 
   const canStart =
     playerAId !== '' &&
+    analystSide !== '' &&
+    !searchFailed &&
     (opponentId !== null || opponentQuery.trim().length >= 1)
 
   const handleStart = () => {
@@ -158,15 +189,16 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
       className="fixed inset-0 bg-[var(--ss-bg-overlay)] flex items-center justify-center z-50 p-4"
       role="dialog"
       aria-modal="true"
+      aria-labelledby={titleId}
       onClick={onClose}
     >
       <div className="bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-lg shadow-pop w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
         {/* ヘッダー */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--ss-border)]">
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold text-[var(--ss-t1)]">{t('quick_start.title')}</h2>
+            <h2 id={titleId} className="text-lg font-semibold text-[var(--ss-t1)]">{t('quick_start.title')}</h2>
           </div>
-          <button onClick={onClose} className="text-[var(--ss-t3)] hover:text-[var(--ss-t1)] transition-colors duration-fast ease-out">
+          <button onClick={onClose} aria-label={t('app.close')} className="text-[var(--ss-t3)] hover:text-[var(--ss-t1)] transition-colors duration-fast ease-out">
             <MIcon name="close" size={18} />
           </button>
         </div>
@@ -177,8 +209,24 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
             <label className="block text-sm text-[var(--ss-t2)] mb-1">
               {t('quick_start.my_player')} *
             </label>
+            {candidateTeams.length > 1 ? (
+              <select
+                value={effectiveTeamFilter}
+                onChange={(e) => {
+                  setTeamFilter(e.target.value)
+                  setPlayerAId('')
+                }}
+                aria-label={t('quick_start.team_filter')}
+                className="w-full mb-1 bg-[var(--ss-surface-1)] border border-[var(--ss-border-strong)] rounded-ss-md px-2 py-1 text-xs text-[var(--ss-t1)]"
+              >
+                <option value="">{t('quick_start.team_filter_all')}</option>
+                {candidateTeams.map((team) => (
+                  <option key={team} value={team}>{team}</option>
+                ))}
+              </select>
+            ) : null}
             <SearchableSelect
-              options={(targetPlayers.length > 0 ? targetPlayers : allPlayers).map((p) => ({
+              options={ownPlayerOptions.map((p) => ({
                 value: p.id,
                 label: p.name,
                 searchText: p.team ?? '',
@@ -217,8 +265,25 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
               )}
             </div>
 
+            {/* 検索失敗: 候補 0 件と区別して表示し、再試行を促す (暫定登録は止める) */}
+            {searchFailed && !isSearching && (
+              <div
+                role="alert"
+                className="mt-1 flex items-center gap-2 text-xs text-[var(--ss-danger-text)] bg-[var(--ss-danger-bg)] rounded-ss-md px-3 py-2"
+              >
+                <span className="flex-1">{t('quick_start.opponent_search_failed')}</span>
+                <button
+                  type="button"
+                  onClick={() => void refetchSearch()}
+                  className="shrink-0 underline"
+                >
+                  {t('quick_start.opponent_search_retry')}
+                </button>
+              </div>
+            )}
+
             {/* 候補ドロップダウン */}
-            {showCandidates && (
+            {showCandidates && !searchFailed && (
               <div
                 ref={candidatesRef}
                 className="absolute z-10 top-full mt-1 w-full bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-md shadow-pop max-h-48 overflow-y-auto"
@@ -249,15 +314,23 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
                       </button>
                     ))}
                     {/* 新規作成オプション */}
-                    {opponentQuery.trim().length >= 1 && (
-                      <button
-                        onClick={useNewOpponent}
-                        className="w-full text-left px-3 py-2 hover:bg-[var(--ss-brand-tint)] text-sm flex items-center gap-2 text-[var(--ss-brand)] border-t border-[var(--ss-border)] transition-colors duration-fast ease-out"
-                      >
-                        <MIcon name="person_add" size={12} className="shrink-0" />
-                        <span>{t('quick_start.provisional_register_and_start', { name: opponentQuery.trim() })}</span>
-                      </button>
-                    )}
+                    {opponentQuery.trim().length >= 1 &&
+                      (canCreatePlayer(role) ? (
+                        <button
+                          onClick={useNewOpponent}
+                          className="w-full text-left px-3 py-2 hover:bg-[var(--ss-brand-tint)] text-sm flex items-center gap-2 text-[var(--ss-brand)] border-t border-[var(--ss-border)] transition-colors duration-fast ease-out"
+                        >
+                          <MIcon name="person_add" size={12} className="shrink-0" />
+                          <span>{t('quick_start.provisional_register_and_start', { name: opponentQuery.trim() })}</span>
+                        </button>
+                      ) : (
+                        <p
+                          role="note"
+                          className="px-3 py-2 text-xs border-t border-[var(--ss-border)] text-[var(--ss-t3)]"
+                        >
+                          {t('quick_start.provisional_requires_analyst')}
+                        </p>
+                      ))}
                   </>
                 )}
               </div>
@@ -292,16 +365,19 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
 
           {/* 先サーブ */}
           <div>
-            <label className="block text-sm text-[var(--ss-t2)] mb-1">
+            <span id={serverLabelId} className="block text-sm text-[var(--ss-t2)] mb-1">
               {t('quick_start.initial_server')}
-            </label>
-            <div className="flex gap-2">
+            </span>
+            <div className="flex gap-2" role="radiogroup" aria-labelledby={serverLabelId}>
               {[
                 { value: 'player_a', label: t('quick_start.my_side') },
                 { value: 'player_b', label: t('quick_start.opponent_side') },
               ].map((opt) => (
                 <button
                   key={opt.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={initialServer === opt.value}
                   onClick={() => setInitialServer(opt.value as 'player_a' | 'player_b')}
                   className={`flex-1 py-1.5 rounded-ss-md text-sm border transition-colors duration-fast ease-out ${
                     initialServer === opt.value
@@ -317,16 +393,19 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
 
           {/* アナリスト視点（コートのどちら側が自選手か） */}
           <div>
-            <label className="block text-sm text-[var(--ss-t2)] mb-1">
+            <span id={sideLabelId} className="block text-sm text-[var(--ss-t2)] mb-1">
               {t('quick_start.analyst_side_label')}
-            </label>
-            <div className="flex gap-2">
+            </span>
+            <div className="flex gap-2" role="radiogroup" aria-labelledby={sideLabelId} aria-required="true">
               {[
                 { value: 'bottom' as const, label: t('quick_start.analyst_side_bottom'), hint: t('quick_start.analyst_side_bottom_hint') },
                 { value: 'top' as const, label: t('quick_start.analyst_side_top'), hint: '' },
               ].map((opt) => (
                 <button
                   key={opt.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={analystSide === opt.value}
                   onClick={() => setAnalystSide(opt.value)}
                   className={`flex-1 py-1.5 rounded-ss-md text-sm border text-left px-2 transition-colors duration-fast ease-out ${
                     analystSide === opt.value
@@ -339,6 +418,9 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
                 </button>
               ))}
             </div>
+            {analystSide === '' && (
+              <p className="mt-1 text-xs text-[var(--ss-t3)]">{t('quick_start.analyst_side_required')}</p>
+            )}
           </div>
 
           {/* 大会区分 */}

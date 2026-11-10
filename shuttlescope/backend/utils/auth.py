@@ -260,6 +260,20 @@ def _match_player_ids(m: Match) -> set[int]:
     return {x for x in (m.player_a_id, m.partner_a_id, m.player_b_id, m.partner_b_id) if x}
 
 
+def match_is_demo_public(m: Match) -> bool:
+    """所有チーム以外のユーザーにこの試合を read-only で見せてよいか（デモ公開）。
+
+    g26b / audit #587 / "demo public pool": fail closed。
+    明示的に永続化された `is_demo_public == True` のデモ試合だけを、所有チーム外へ
+    公開する。マーカーが無い試合は従来どおり完全に隠す（既存行は全て False）。
+    この判定は一覧 (apply_match_team_scope)・詳細・動画・派生解析の全読み取り経路で
+    共有し、挙動を一致させるための **唯一の** 関数とする。
+    実データ試合にこのマーカーを付けてはならない（付与はデモチーム所有試合に限る）。
+    is_public_pool（管理者が設定する一般公開プール）とは独立した別経路。
+    """
+    return bool(getattr(m, "is_demo_public", False))
+
+
 def user_can_access_match(ctx: AuthCtx, m: Match) -> bool:
     """現在のユーザーがこの試合にアクセスしてよいか。
 
@@ -291,6 +305,9 @@ def user_can_access_match(ctx: AuthCtx, m: Match) -> bool:
     if ctx.team_id is not None and owner_id is not None and owner_id == ctx.team_id:
         return True
     if is_public:
+        return True
+    # g26b: 明示マーカー付きのデモ試合は所有チーム外にも read-only で可視。
+    if match_is_demo_public(m):
         return True
     # public でない場合に「自チーム選手が登場」する場合も閲覧可（解析対象として）
     if ctx.team_id is not None:
@@ -340,8 +357,10 @@ def apply_match_team_scope(query, ctx: AuthCtx):
         )
     # coach / analyst
     if ctx.team_id is None:
-        # チーム未所属（移行期のみ）: public プールのみ
-        return query.filter(Match.is_public_pool.is_(True))
+        # チーム未所属（移行期のみ）: public プール or 明示マーカー付きデモ公開のみ
+        return query.filter(
+            or_(Match.is_public_pool.is_(True), Match.is_demo_public.is_(True))
+        )
     team_player_subq = (
         exists().where(
             (Player.team_id == ctx.team_id)
@@ -354,6 +373,8 @@ def apply_match_team_scope(query, ctx: AuthCtx):
         or_(
             Match.owner_team_id == ctx.team_id,
             Match.is_public_pool.is_(True),
+            # g26b: 明示マーカー付きのデモ試合は所有チーム外にも read-only で可視。
+            Match.is_demo_public.is_(True),
             team_player_subq,
         )
     )
@@ -608,6 +629,40 @@ def require_non_player(request: Request) -> "AuthCtx":
     return ctx
 
 
+def require_operator_role(request: Request) -> "AuthCtx":
+    """運用ロール (admin/analyst/coach) のみ許可する deny-by-default 版。
+
+    `require_non_player` は player だけを弾くため、demo / llm 等の special role も
+    通ってしまう。LAN IP や内部設定のように demo に見せる理由のない情報は、
+    こちらで明示 allowlist にする。`require_non_player` を使う解析系ルータ
+    (demo の検証済み read を許す) の挙動はここでは変えない。
+    """
+    ctx = get_auth(request)
+    # role=None は認証前の経路 (GlobalAuthMiddleware が本番では 401 で先に弾く)。
+    # 既存の挙動 (require_non_player と同じ) を保つため、ここでは判定対象にしない。
+    # ロールが確定していて運用ロールでないもの (player / demo / llm) だけを拒否する。
+    if ctx.role is not None and ctx.role not in ("admin", "analyst", "coach"):
+        raise HTTPException(status_code=403, detail="この情報は運用ロールのみ参照できます")
+    return ctx
+
+
+def require_operator_or_demo_read(
+    request: Request, ctx: "AuthCtx" = Depends(require_non_player)
+) -> "AuthCtx":
+    """運用ロール (admin/analyst/coach) か、検証済み demo read だけを許可する。
+
+    `require_non_player` は player しか弾かないため、role=demo が素通りしていた。
+    勝敗内訳・失点前パターンのような戦術統計は、demo が表示してよいのは
+    `?demo=` で対象が全て demo データと検証できた GET (`is_demo_read`) だけにする。
+    player は `require_non_player` で従来どおり常に 403 (既存テストの override も効く)。
+    role=None (認証前) の扱いは `require_operator_role` と同じ。
+    """
+    if ctx.role is not None and ctx.role not in ("admin", "analyst", "coach"):
+        if not is_demo_read(request):
+            raise HTTPException(status_code=403, detail="この情報は運用ロールのみ参照できます")
+    return ctx
+
+
 def require_match_scope(request: Request, match: Match, db: Session) -> "AuthCtx":
     """match に対するアクセス権を検証する（共通ヘルパー）。
     - admin: 無条件許可
@@ -664,6 +719,47 @@ def require_match_access(
             status_code=403,
             detail="この試合へのアクセス権限がありません",
         )
+    return m
+
+
+def require_match_scope_dep(
+    match_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Match:
+    """path の match_id に対する team scope を **ハンドラ自身が** 強制する依存性 (読み取り用)。
+
+    `TeamScopeAccessControlMiddleware` の `_MATCH_ID_PATTERNS` は path 正規表現に
+    依存しており、path/正規表現の改名で守りが黙って消える。ルート側にも同じ検査を
+    置いて二重化する。判定は既存の `require_match_scope` に委譲する
+    (admin / 公開プール / owner 一致 / 自チーム選手登場 / player は出場試合のみ)。
+    検証済み demo read (`is_demo_read`) はミドルウェアと同じく所有境界のみ緩める。
+    """
+    m = db.get(Match, match_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    if is_demo_read(request):
+        return m
+    require_match_scope(request, m, db)
+    return m
+
+
+def require_match_operator_scope(
+    match_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Match:
+    """書き込み/計算/削除系ルート用: admin/analyst/coach のみ + match team scope。
+
+    realtime YOLO WS / カメラ operator と同じロール集合 (player / demo / llm は 403)。
+    """
+    ctx = get_auth(request)
+    if not (ctx.is_admin or ctx.is_analyst or ctx.is_coach):
+        raise HTTPException(status_code=403, detail="この操作の権限がありません")
+    m = db.get(Match, match_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    require_match_scope(request, m, db)
     return m
 
 
@@ -763,7 +859,7 @@ def require_query_scope(
         s = db.get(GameSet, sid)
         m = db.get(Match, s.match_id) if s is not None and getattr(s, "match_id", None) else None
         if m is None or not user_can_access_match(ctx, m):
-            raise HTTPException(status_code=403, detail="このセットへのアクセス権限がありません")
+            raise HTTPException(status_code=403, detail="このゲームへのアクセス権限がありません")
 
     return ctx
 

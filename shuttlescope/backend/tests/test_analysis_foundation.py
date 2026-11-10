@@ -58,6 +58,19 @@ class TestPlayerContext:
         m = self._make_match(1, 2, 'loss')
         assert player_wins_match(m, 1) is False
 
+    def test_player_wins_match_undecided_is_none_not_false(self):
+        from backend.analysis.player_context import player_wins_match
+        for result in ('unfinished', 'walkover', None):
+            m = self._make_match(1, 2, result, partner_a_id=3, partner_b_id=4)
+            for pid in (1, 2, 3, 4):
+                assert player_wins_match(m, pid) is None, (result, pid)
+
+    def test_player_wins_match_doubles_partner_sides(self):
+        from backend.analysis.player_context import player_wins_match
+        m = self._make_match(1, 2, 'win', partner_a_id=3, partner_b_id=4)
+        assert player_wins_match(m, 3) is True
+        assert player_wins_match(m, 4) is False
+
     def test_opponent_player_id_from_a(self):
         from backend.analysis.player_context import opponent_player_id
         m = self._make_match(1, 2, 'win')

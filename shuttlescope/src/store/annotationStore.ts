@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { ShotType, StrokeInput, Zone9, LandZone, ZoneNet } from '@/types'
+import type { SyncState } from '@/utils/syncStatus'
 
 export type InputStep =
   | 'idle'        // 待機中（ショットキーでラリー開始）
@@ -17,6 +18,8 @@ export interface PendingStroke {
   is_backhand: boolean
   is_around_head: boolean
   above_net?: boolean
+  /** 仙台大要望: 打球の高さ 4 段階 (0..3)。任意。未選択なら undefined。 */
+  hit_height?: number
   timestamp_sec?: number
 }
 
@@ -24,6 +27,17 @@ export interface PendingStroke {
 export interface SaveError {
   rallyNum: number
   error: string
+}
+
+// #664: 直前に確定したラリーを取り消すために、確定の「前」に capture しておく値。
+// confirmRally は確定時に strokes を捨てるので、取り消し復元に必要な値は呼び出し側で保持する。
+export interface ConfirmedRallySnapshot {
+  scoreA: number
+  scoreB: number
+  /** 確定したラリーの番号（= 取り消し後に戻すべき currentRallyNum）。 */
+  rallyNum: number
+  /** 確定したラリーのサーバ（= 取り消し後に戻すべき currentPlayer）。 */
+  server: 'player_a' | 'player_b'
 }
 
 interface AnnotationState {
@@ -51,9 +65,18 @@ interface AnnotationState {
   // アンドゥ（最大10件）
   undoStack: StrokeInput[]
 
+  // #784: 直近ラリーの勝敗履歴（解析モードの momentum 表示用）。confirmRally / skipRallyState で追記する。
+  recentRallyResults: Array<{ winner: 'player_a' | 'player_b' }>
+
   // K-002: 保存キュー状態
   pendingSaveCount: number
   saveErrors: SaveError[]
+
+  // unsent-indicator: サーバー未送信ラリー (IndexedDB owned キュー) の件数と送信状態。
+  // IndexedDB の実データ由来で useOfflineSync が都度上書きするため、試合リセット
+  // (init / clearMatch 等) では 0 に戻さない。
+  unsentCount: number
+  syncState: SyncState
 
   // Phase C speed: セミ自動 flip 制御
   // 'auto'      = 既存挙動 (常に flip)
@@ -76,11 +99,17 @@ interface AnnotationState {
     initialServer?: 'player_a' | 'player_b'
   ) => void
   setCurrentSet: (setId: number, setNum: number) => void
+  /** 別の試合へ移るとき、前の試合のスコア/セット/ラリー/入力途中を破棄する (A-11) */
+  clearMatch: () => void
   // K-002: 保存キュー操作
   incrementPending: () => void
   decrementPending: () => void
   addSaveError: (err: SaveError) => void
   clearSaveErrors: () => void
+  /** 同じラリーの保存が成功したら、そのラリーの失敗記録だけを消す。 */
+  clearSaveErrorForRally: (rallyNum: number) => void
+  // unsent-indicator: 未送信件数と送信状態を更新する (useOfflineSync が呼ぶ)。
+  setSyncStatus: (unsentCount: number, syncState: SyncState) => void
 
   // ラリー操作
   /** 一時保存からの復元では動画位置が分からないことがある。
@@ -100,6 +129,7 @@ interface AnnotationState {
   toggleAttribute: (key: 'is_backhand' | 'is_around_head') => void
   setAboveNet: (v: boolean | undefined) => void
   cycleAboveNet: () => void              // ネット上下サイクル（未指定→上→下→未指定）
+  setHitHeight: (v: number | undefined) => void  // 打球の高さ 4 段階（任意・トグルで解除可）
 
   // プレイヤー制御
   togglePlayer: () => void
@@ -112,6 +142,12 @@ interface AnnotationState {
   // ラリー確定（DB保存はページ側で実行）
   confirmRally: (winner: 'player_a' | 'player_b', endType: string) => StrokeInput[]
   resetRally: () => void
+  // #664: 直前に確定したラリーを取り消す（LiveInputPage の誤タップ復旧用）。
+  // confirmRally は確定時に strokes を捨てるため、取り消しに必要な確定前の値は
+  // 呼び出し側が snapshot として渡す。スコア・ラリー番号・サーバを確定前へ戻し、
+  // recentRallyResults の末尾（この確定で足した 1 件）を取り除く。ラリー入力途中
+  // だった場合はクリアして idle に戻す。DB 側の削除はページが行う。
+  undoLastConfirmedRally: (snapshot: ConfirmedRallySnapshot) => void
 
   // 見逃しラリー（ストロークなしで得点だけ記録）
   skipRallyState: (winner: 'player_a' | 'player_b') => void
@@ -131,7 +167,25 @@ interface AnnotationState {
     contactZone?: string
     movementBurden?: string
     movementDirection?: string
+    intentTag?: string
+    intentNote?: string
   }) => void
+
+  // F-T003-01: 任意の確定ストローク (index 指定) のエンリッチメント更新。
+  // 詳細分析パネルで «直前以外» のストロークを後から補完できるようにする。
+  // index が範囲外のときは何もしない (壊れた入力でストローク配列を汚さない)。
+  updateStrokeEnrichmentAt: (
+    index: number,
+    fields: {
+      returnQuality?: string
+      contactHeight?: string
+      contactZone?: string
+      movementBurden?: string
+      movementDirection?: string
+      intentTag?: string
+      intentNote?: string
+    },
+  ) => void
 
   // セット移行
   nextSet: (setId: number, setNum: number) => void
@@ -157,6 +211,7 @@ const emptyPending = (): PendingStroke => ({
   is_backhand: false,
   is_around_head: false,
   above_net: undefined,
+  hit_height: undefined,
 })
 
 // hitter id (player_a/partner_a/player_b/partner_b) → 所属チーム (player_a/player_b)。
@@ -186,8 +241,11 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
   isDoubles: false,
   currentHitter: 'player_a',
   undoStack: [],
+  recentRallyResults: [],
   pendingSaveCount: 0,
   saveErrors: [],
+  unsentCount: 0,
+  syncState: 'saved',
   flipMode: loadFlipMode(),
   lastFlipAt: null,
   playerBeforeFlip: null,
@@ -197,6 +255,10 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
   decrementPending: () => set((s) => ({ pendingSaveCount: Math.max(0, s.pendingSaveCount - 1) })),
   addSaveError: (err) => set((s) => ({ saveErrors: [...s.saveErrors, err] })),
   clearSaveErrors: () => set({ saveErrors: [] }),
+  clearSaveErrorForRally: (rallyNum) =>
+    set((s) => ({ saveErrors: s.saveErrors.filter((e) => e.rallyNum !== rallyNum) })),
+  setSyncStatus: (unsentCount, syncState) =>
+    set({ unsentCount: Math.max(0, Math.floor(unsentCount)), syncState }),
 
   init: (matchId, setId, setNum, rallyNum, scoreA, scoreB, initialServer) =>
     set({
@@ -218,12 +280,35 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       currentPlayer: initialServer ?? 'player_a',
       currentHitter: initialServer ?? 'player_a',
       undoStack: [],
+      recentRallyResults: [],
       pendingSaveCount: 0,
       saveErrors: [],
     }),
 
   setCurrentSet: (setId, setNum) =>
     set({ currentSetId: setId, currentSetNum: setNum }),
+
+  clearMatch: () =>
+    set({
+      matchId: null,
+      currentSetId: null,
+      currentSetNum: 1,
+      currentRallyNum: 1,
+      scoreA: 0,
+      scoreB: 0,
+      isRallyActive: false,
+      rallyStartTimestamp: null,
+      currentStrokes: [],
+      pendingStroke: emptyPending(),
+      inputStep: 'idle',
+      currentStrokeNum: 1,
+      currentPlayer: 'player_a',
+      currentHitter: 'player_a',
+      undoStack: [],
+      recentRallyResults: [],
+      pendingSaveCount: 0,
+      saveErrors: [],
+    }),
 
   // ラリー開始: currentPlayer は前ラリー winner を引き継ぐため変更しない
   startRally: (timestamp) =>
@@ -342,6 +427,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       is_backhand: state.pendingStroke.is_backhand,
       is_around_head: state.pendingStroke.is_around_head,
       above_net: state.pendingStroke.above_net,
+      hit_height: state.pendingStroke.hit_height,
       timestamp_sec: state.pendingStroke.timestamp_sec,
     }
 
@@ -404,6 +490,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       is_backhand: state.pendingStroke.is_backhand,
       is_around_head: state.pendingStroke.is_around_head,
       above_net: state.pendingStroke.above_net,
+      hit_height: state.pendingStroke.hit_height,
       timestamp_sec: state.pendingStroke.timestamp_sec,
     }
 
@@ -457,6 +544,15 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
   setAboveNet: (v) =>
     set((s) => ({ pendingStroke: { ...s.pendingStroke, above_net: v } })),
 
+  // 打球の高さ 4 段階（任意）。同じ値を再度渡すと解除（undefined）してトグル挙動にする。
+  setHitHeight: (v) =>
+    set((s) => ({
+      pendingStroke: {
+        ...s.pendingStroke,
+        hit_height: s.pendingStroke.hit_height === v ? undefined : v,
+      },
+    })),
+
   // ネット上下サイクル: 未指定 → 上（true）→ 下（false）→ 未指定
   cycleAboveNet: () =>
     set((s) => {
@@ -499,6 +595,14 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
     const newScoreA = winner === 'player_a' ? scoreA + 1 : scoreA
     const newScoreB = winner === 'player_b' ? scoreB + 1 : scoreB
 
+    // ダブルス: サーブ側が得点を続けたときは同じ選手が続けてサーブする（BWF ルール）。
+    // 第1ストロークの打者がこのラリーのサーバ。サーブ権が移ったときの個人は
+    // コート位置の記録が無いと決まらないので、従来どおり勝者チームの主選手に置き、
+    // 打者は画面で選び直す。
+    const rallyServer = currentStrokes[0]?.player
+    const heldServe =
+      get().isDoubles && rallyServer !== undefined && HITTER_TO_TEAM[rallyServer] === winner
+
     set({
       currentRallyNum: currentRallyNum + 1,
       scoreA: newScoreA,
@@ -506,11 +610,13 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       isRallyActive: false,
       currentStrokes: [],
       undoStack: [],
+      // #784: 解析モードの直近ラリー勝敗へ確定ラリーを追記する。
+      recentRallyResults: [...get().recentRallyResults, { winner }],
       pendingStroke: emptyPending(),
       inputStep: 'idle',
       currentStrokeNum: 1,
       currentPlayer: winner,  // 勝者が次のサーバー（ラリーポイント制）
-      currentHitter: winner,  // ダブルス: 勝者チームの主プレイヤーにリセット
+      currentHitter: heldServe && rallyServer ? rallyServer : winner,  // ダブルスで連続得点なら同じサーバ。それ以外は主選手
       // semi-auto bounce-revert 窓を次ラリーへ持ち越さない (持ち越すと次ラリー初手が
       // 500ms 以内のとき前ラリーの playerBeforeFlip で誤って server を上書きする)。
       lastFlipAt: null,
@@ -518,6 +624,26 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
     })
     return currentStrokes
   },
+
+  undoLastConfirmedRally: (snapshot) =>
+    set((s) => ({
+      scoreA: snapshot.scoreA,
+      scoreB: snapshot.scoreB,
+      currentRallyNum: snapshot.rallyNum,
+      currentPlayer: snapshot.server,
+      currentHitter: snapshot.server,
+      // この確定で追記した 1 件だけを取り除く（空配列なら何もしない）。
+      recentRallyResults: s.recentRallyResults.slice(0, -1),
+      // 取り消し後は確定前のラリーを入力し直せるよう、入力途中の状態を捨てて idle に戻す。
+      isRallyActive: false,
+      currentStrokes: [],
+      undoStack: [],
+      pendingStroke: emptyPending(),
+      inputStep: 'idle',
+      currentStrokeNum: 1,
+      lastFlipAt: null,
+      playerBeforeFlip: null,
+    })),
 
   resetRally: () =>
     set({
@@ -590,6 +716,8 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       scoreB: winner === 'player_b' ? scoreB + 1 : scoreB,
       currentPlayer: winner,  // 勝者が次のサーバー
       currentHitter: winner,  // ダブルス: 勝者チームの主プレイヤーにリセット
+      // #784: 見逃しラリー（ストロークなし得点）も直近ラリー勝敗へ反映する。
+      recentRallyResults: [...get().recentRallyResults, { winner }],
     })
   },
 
@@ -598,17 +726,38 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
     set({ scoreA, scoreB, currentRallyNum: rallyNum }),
 
   // G2+移動系: 直前確定ストロークのエンリッチメント更新（落点確定直後のオプション入力）
-  updateLastStrokeEnrichment: ({ returnQuality, contactHeight, contactZone, movementBurden, movementDirection }) => {
+  // F-T003-01: 実体は updateStrokeEnrichmentAt に委譲。既定の «直前» 挙動は維持する。
+  updateLastStrokeEnrichment: (fields) => {
     const { currentStrokes } = get()
     if (currentStrokes.length === 0) return
+    get().updateStrokeEnrichmentAt(currentStrokes.length - 1, fields)
+  },
+
+  // F-T003-01: index 指定のエンリッチメント更新。詳細分析パネルから
+  // «直前以外» のストロークも後から補完できるようにする共通実装。
+  updateStrokeEnrichmentAt: (index, { returnQuality, contactHeight, contactZone, movementBurden, movementDirection, intentTag, intentNote }) => {
+    const { currentStrokes } = get()
+    // 範囲外 index は無視 (壊れた入力でストローク配列を汚さない)。
+    if (index < 0 || index >= currentStrokes.length) return
     const updated = [...currentStrokes]
-    const last = { ...updated[updated.length - 1] }
-    if (returnQuality !== undefined) last.return_quality = returnQuality
-    if (contactHeight !== undefined) last.contact_height = contactHeight
-    if (contactZone !== undefined) last.contact_zone = contactZone
-    if (movementBurden !== undefined) last.movement_burden = movementBurden
-    if (movementDirection !== undefined) last.movement_direction = movementDirection
-    updated[updated.length - 1] = last
+    const target = { ...updated[index] }
+    if (returnQuality !== undefined) target.return_quality = returnQuality
+    if (contactHeight !== undefined) target.contact_height = contactHeight
+    if (contactZone !== undefined) target.contact_zone = contactZone
+    if (movementBurden !== undefined) target.movement_burden = movementBurden
+    if (movementDirection !== undefined) target.movement_direction = movementDirection
+    if (intentTag !== undefined) target.intent_tag = intentTag
+    if (intentNote !== undefined) target.intent_note = intentNote
+    updated[index] = target
     set({ currentStrokes: updated })
   },
 }))
+
+/**
+ * ストアが現在の URL の試合のものか。ラリー保存の直前に確認し、
+ * 前の試合の setId / スコアを現在の試合に書き込まないための最終防御 (A-11)。
+ */
+export function isStoreForMatch(storeMatchId: number | null, routeMatchId: string | number | undefined): boolean {
+  if (storeMatchId == null || routeMatchId == null || routeMatchId === '') return false
+  return storeMatchId === Number(routeMatchId)
+}

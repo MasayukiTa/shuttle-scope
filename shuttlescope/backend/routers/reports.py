@@ -40,6 +40,8 @@ def _safe_paragraph_text(s: object) -> str:
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
+from backend.analysis.player_context import involves_player
+from backend.analysis.role_view import own_slot, perspective
 from backend.db.database import get_db
 from backend.db.models import Match, GameSet, Rally, Stroke, Player, Condition
 from backend.utils.auth import check_export_player_scope, get_auth, require_query_scope
@@ -198,13 +200,20 @@ def sanitize_player_text(text: str) -> str:
     return text
 
 
+# check_confidence("descriptive_basic") の最小件数 (10) の半分。これ未満は最低信頼帯
+_GROWTH_MESSAGE_MIN_RALLIES = 5
+
+
+def _win_rate_fields(ctx, win_rate) -> dict:
+    """player には生のラリー勝率を返さない (CLAUDE.md 非交渉ルール)。他ロールは従来どおり。"""
+    if ctx.is_player:
+        return {}
+    return {"win_rate": win_rate, "win_rate_basis": "rallies"}
+
+
 def _player_role_in_match(match: Match, player_id: int) -> str | None:
-    """プレイヤーIDに対応するロール (player_a / player_b) を返す"""
-    if match.player_a_id == player_id:
-        return "player_a"
-    if match.player_b_id == player_id:
-        return "player_b"
-    return None
+    """プレイヤーIDの視点 (チーム側 + 個人の枠)。ダブルスの相方も解決する。"""
+    return perspective(match, player_id)
 
 
 # ---------------------------------------------------------------------------
@@ -241,7 +250,7 @@ def get_scouting_report(
     # admin に対して「期間指定 / job queue 経由のレポート生成」へ案内する。
     _MAX_MATCHES_PER_REPORT = 200
     _q = db.query(Match).filter(
-        (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
+        involves_player(player_id)
     )
     if d_from is not None:
         _q = _q.filter(Match.date >= d_from)
@@ -273,8 +282,9 @@ def get_scouting_report(
             wins += 1
         total_length += rally.rally_length
 
-    win_rate = round(wins / total_rallies, 3) if total_rallies else 0.0
-    avg_rally = round(total_length / total_rallies, 2) if total_rallies else 0.0
+    # n=0 の率は 0.0 ではなく None (統計規則 R1)。件数は total_rallies / meta.sample_size に併記
+    win_rate = round(wins / total_rallies, 3) if total_rallies else None
+    avg_rally = round(total_length / total_rallies, 2) if total_rallies else None
     confidence = check_confidence("descriptive_basic", total_rallies)
 
     # ショット集計
@@ -290,7 +300,7 @@ def get_scouting_report(
         strokes = db.query(Stroke).filter(Stroke.rally_id.in_(rally_ids)).all()
         for stroke in strokes:
             role = rally_to_role.get(stroke.rally_id)
-            if stroke.player == role:
+            if stroke.player == own_slot(role):
                 shot_counter[stroke.shot_type] += 1
                 if stroke.hit_zone:
                     zone_counts[stroke.hit_zone] += 1
@@ -353,9 +363,12 @@ def get_scouting_report(
             ["項目", "値"],
             ["試合数", str(len(matches))],
             ["総ラリー数", str(total_rallies)],
-            ["\u30e9\u30ea\u30fc\u52dd\u7387", f"{win_rate:.1%}"],
-            ["平均ラリー長", f"{avg_rally:.1f}打"],
+            ["\u30e9\u30ea\u30fc\u52dd\u7387", f"{win_rate:.1%}" if win_rate is not None else "—"],
+            ["平均ラリー長", f"{avg_rally:.1f}打" if avg_rally is not None else "—"],
         ]
+        if ctx.is_player:
+            # player には生の勝率を出さない (CLAUDE.md 非交渉ルール)
+            stats_data = [r for r in stats_data if r[0] != "\u30e9\u30ea\u30fc\u52dd\u7387"]
         table = Table(stats_data, colWidths=[60*mm, 60*mm])
         table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e40af")),
@@ -421,8 +434,7 @@ def get_scouting_report(
                     "player_name": player.name,
                     "total_matches": len(matches),
                     "total_rallies": total_rallies,
-                    "win_rate": win_rate,
-                    "win_rate_basis": "rallies",
+                    **_win_rate_fields(ctx, win_rate),
                     "avg_rally_length": avg_rally,
                     "top_shots": top_shots,
                     "disclaimer": DISCLAIMER_JA,
@@ -460,7 +472,7 @@ def get_player_growth_report(
     d_to = _parse_iso_date_opt(date_to, "date_to")
 
     _q = db.query(Match).filter(
-        (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
+        involves_player(player_id)
     )
     if d_from is not None:
         _q = _q.filter(Match.date >= d_from)
@@ -488,13 +500,22 @@ def get_player_growth_report(
             wins += 1
         total_length += rally.rally_length
 
-    win_rate = round(wins / total_rallies, 3) if total_rallies else 0.0
-    avg_rally = round(total_length / total_rallies, 2) if total_rallies else 0.0
+    # n=0 の率は 0.0 ではなく None (統計規則 R1)。件数は total_rallies / meta.sample_size に併記
+    win_rate = round(wins / total_rallies, 3) if total_rallies else None
+    avg_rally = round(total_length / total_rallies, 2) if total_rallies else None
     confidence = check_confidence("descriptive_basic", total_rallies)
 
     # 成長メッセージ生成（禁止ワード不使用）
     if total_rallies == 0:
         growth_message = sanitize_player_text("データ蓄積中です。試合後にアノテーションを完了させてください。")
+    elif ctx.is_player:
+        # player の文言は勝率の閾値で出し分けない (勝率判定の言い換えになるため)。
+        # 既存の中立な文言だけを返す。
+        growth_message = sanitize_player_text("バランスの取れた成長エリアがあります。継続的な練習が大切です。")
+    elif total_rallies < _GROWTH_MESSAGE_MIN_RALLIES:
+        # 最低帯 (check_confidence の警告「解析には10件以上推奨」= 5 ラリー未満) では
+        # 勝率で文言を出し分けず中立文言のみ (統計規則 R3)
+        growth_message = sanitize_player_text("バランスの取れた成長エリアがあります。継続的な練習が大切です。")
     elif win_rate >= 0.6:
         growth_message = sanitize_player_text("安定した成果を出せています。さらなる伸びしろを探してみましょう。")
     elif win_rate >= 0.4:
@@ -513,7 +534,7 @@ def get_player_growth_report(
         strokes = db.query(Stroke).filter(Stroke.rally_id.in_(rally_ids)).all()
         for stroke in strokes:
             role = rally_to_role.get(stroke.rally_id)
-            if stroke.player == role:
+            if stroke.player == own_slot(role):
                 shot_counter[stroke.shot_type] += 1
 
     top_shots = sorted(
@@ -533,8 +554,7 @@ def get_player_growth_report(
             "growth_message": safe_message,
             "total_matches": len(matches),
             "total_rallies": total_rallies,
-            "win_rate": win_rate,
-            "win_rate_basis": "rallies",
+            **_win_rate_fields(ctx, win_rate),
             "avg_rally_length": avg_rally,
             "top_shots": top_shots,
             "disclaimer": sanitize_player_text(DISCLAIMER_JA),
@@ -858,7 +878,7 @@ def get_prediction_report(
     d_to = _parse_iso_date_opt(date_to, "date_to")
 
     _q = db.query(Match).filter(
-        (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
+        involves_player(player_id)
     )
     if d_from is not None:
         _q = _q.filter(Match.date >= d_from)
@@ -902,9 +922,15 @@ def get_prediction_report(
         "success": True,
         "data": {
             "player_name": player.name,
-            "overall": {"total_matches": len(matches), "total_rallies": total, "win_rate": win_rate, "win_rate_basis": "rallies"},
+            "overall": {"total_matches": len(matches), "total_rallies": total, **_win_rate_fields(ctx, win_rate)},
             "by_level": [
-                {"level": lv, "win_rate": round(v["wins"] / v["total"], 3) if v["total"] else None, "win_rate_basis": "rallies", "rallies": v["total"]}
+                {
+                    "level": lv,
+                    **_win_rate_fields(
+                        ctx, round(v["wins"] / v["total"], 3) if v["total"] else None
+                    ),
+                    "rallies": v["total"],
+                }
                 for lv, v in levels.items()
             ],
             "fatigue_hooper_avg_recent4": fatigue,
@@ -937,7 +963,7 @@ def get_prediction_report_pdf(
 
     matches = (
         db.query(Match)
-        .filter((Match.player_a_id == player_id) | (Match.player_b_id == player_id))
+        .filter(involves_player(player_id))
         .order_by(Match.date.desc())
         .limit(30)
         .all()
@@ -1008,6 +1034,12 @@ def get_prediction_report_pdf(
                 ["ラリー数", str(total)],
                 ["ラリー勝率", f"{win_rate_pct}%" if win_rate_pct is not None else "—"],
                 ["疲労 Hooper (直近4回平均)", str(fatigue) if fatigue is not None else "—"],
+            ] if not ctx.is_player else [
+                # player には生のラリー勝率を出さない (CLAUDE.md 非交渉ルール)
+                ["項目", "値"],
+                ["試合数", str(len(matches))],
+                ["ラリー数", str(total)],
+                ["疲労 Hooper (直近4回平均)", str(fatigue) if fatigue is not None else "—"],
             ],
             colWidths=[80*mm, 60*mm],
         )
@@ -1023,7 +1055,7 @@ def get_prediction_report_pdf(
         ]))
         content.append(overall_tbl)
 
-        if levels:
+        if levels and not ctx.is_player:
             content.append(Spacer(1, 5*mm))
             content.append(Paragraph("■ 大会レベル別勝率", body_s))
             lv_data = [["大会レベル", "ラリー勝率", "ラリー数"]]

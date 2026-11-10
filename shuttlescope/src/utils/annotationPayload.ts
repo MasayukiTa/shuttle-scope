@@ -37,12 +37,15 @@ export interface BatchStrokePayload {
   is_backhand: boolean
   is_around_head: boolean
   above_net?: boolean
+  hit_height?: number
   timestamp_sec?: number
   return_quality?: string
   contact_height?: string
   contact_zone?: string
   movement_burden?: string
   movement_direction?: string
+  intent_tag?: string
+  intent_note?: string
   source_method: 'manual' | 'assisted'
 }
 
@@ -156,6 +159,7 @@ export function buildBatchPayload(args: BuildBatchPayloadArgs): BatchPayload {
       is_backhand: st.is_backhand,
       is_around_head: st.is_around_head,
       above_net: st.above_net,
+      hit_height: st.hit_height,
       timestamp_sec: st.timestamp_sec,
       // G2+ 移動系: オプションエンリッチメント
       return_quality: st.return_quality,
@@ -163,6 +167,9 @@ export function buildBatchPayload(args: BuildBatchPayloadArgs): BatchPayload {
       contact_zone: st.contact_zone,
       movement_burden: st.movement_burden,
       movement_direction: st.movement_direction,
+      // 要望6: ショットの意図メモ
+      intent_tag: st.intent_tag,
+      intent_note: st.intent_note,
       source_method: isBasicMode ? 'manual' : 'assisted',
     })),
   }

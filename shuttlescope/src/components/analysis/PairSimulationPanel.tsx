@@ -11,6 +11,8 @@ import { WIN, LOSS } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useAuth } from '@/hooks/useAuth'
 import { MIcon } from '@/components/common/MIcon'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
+import type { WinProbabilityInterval, WinProbabilityReference } from './winProbabilityReference'
 
 interface PlayerSummary {
   id: number
@@ -22,8 +24,10 @@ interface PairSimResponse {
   success: boolean
   data: {
     pair_name: string
-    win_probability: number
-    set_distribution: { '2-0': number; '2-1': number; '1-2': number; '0-2': number }
+    win_probability: number | null
+    win_probability_ci?: WinProbabilityInterval | null
+    win_probability_reference?: WinProbabilityReference
+    set_distribution: { '2-0': number; '2-1': number; '1-2': number; '0-2': number } | null
     pair_strengths: string[]
     pair_cautions: string[]
     confidence: number
@@ -37,7 +41,7 @@ interface RankedPartner {
   partner_id: number
   partner_name: string
   partner_team: string | null
-  win_probability: number
+  win_probability: number | null
   sample_size: number
   confidence: number
   confidence_meta: { level: string; stars: string; label: string }
@@ -82,7 +86,7 @@ function PartnerRankingSection({
 
   const selectClass = `text-xs rounded-ss-md px-2 py-1.5 focus:outline-none bg-[var(--ss-surface-1)] border border-[var(--ss-border-strong)] text-[var(--ss-t1)]`
 
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError, refetch } = useQuery({
     queryKey: ['pair-ranking', anchorId, level],
     queryFn: () =>
       apiGet<PairRankingResponse>('/prediction/pair_ranking', {
@@ -96,7 +100,8 @@ function PartnerRankingSection({
   const rawRanking = resp?.data?.ranked_partners ?? []
 
   // データあり（実績順）→ データなし（名前順）
-  const withData = rawRanking.filter((r) => r.sample_size > 0)
+  const withData = rawRanking
+    .filter((r): r is RankedPartner & { win_probability: number } => r.sample_size > 0 && r.win_probability != null)
     .sort((a, b) => b.win_probability - a.win_probability)
   const noData = rawRanking.filter((r) => r.sample_size === 0)
     .sort((a, b) => a.partner_name.localeCompare(b.partner_name, 'ja'))
@@ -161,8 +166,13 @@ function PartnerRankingSection({
         <p className="text-xs text-center py-3" style={{ color: subText }}>{t('auto.PairSimulationPanel.k4')}</p>
       )}
 
+      {/* API 失敗を「候補0件」と区別して示す */}
+      {isError && !isLoading && (
+        <QueryErrorNotice onRetry={() => { void refetch() }} />
+      )}
+
       {/* 結果一覧 */}
-      {!isLoading && (withData.length > 0 || noData.length > 0) && (
+      {!isLoading && !isError && (withData.length > 0 || noData.length > 0) && (
         <div className="space-y-2">
           <p className="text-[11px] font-medium" style={{ color: subText }}>
             {t('pair.ranking_for', { name: anchor?.name, defaultValue: 'Pair record ranking for {{name}}' })}
@@ -279,7 +289,7 @@ export function PairSimulationPanel({ players }: PairSimulationPanelProps) {
   const neutral = isLight ? '#334155' : '#d1d5db'
   const subText = isLight ? '#64748b' : '#9ca3af'
 
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError, refetch } = useQuery({
     queryKey: ['pair-simulation', pid1, pid2, level],
     queryFn: () =>
       apiGet<PairSimResponse>('/prediction/pair_simulation', {
@@ -356,7 +366,12 @@ export function PairSimulationPanel({ players }: PairSimulationPanelProps) {
         <div className="text-[var(--ss-t3)] text-sm py-4 text-center">{t('prediction.loading')}</div>
       )}
 
-      {d && (
+      {/* API 失敗を「候補なし」と区別して示す */}
+      {isError && !isLoading && (
+        <QueryErrorNotice onRetry={() => { void refetch() }} />
+      )}
+
+      {!isError && d && (
         <div className="bg-[var(--ss-surface-2)] rounded-ss-lg p-4 space-y-4">
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-sm font-semibold min-w-0 truncate max-w-full" style={{ color: neutral }} title={d.pair_name}>{d.pair_name}</span>
@@ -364,14 +379,35 @@ export function PairSimulationPanel({ players }: PairSimulationPanelProps) {
             <span className="text-xs ss-num" style={{ color: subText }}>{t('lineup.n_matches', { n: d.sample_size, defaultValue: '{{n}} matches' })}</span>
           </div>
 
-          <div className="text-center">
-            <p className="text-4xl font-bold ss-num" style={{ color: winProbColor(d.win_probability, isLight) }}>
-              {Math.round(d.win_probability * 100)}%
-            </p>
-            <p className="text-xs mt-1" style={{ color: subText }}>{t('prediction.win_probability')}</p>
-          </div>
+          {d.win_probability != null ? (
+            <div className="text-center">
+              <p
+                className={d.win_probability_reference?.is_reference ? 'text-2xl font-semibold ss-num' : 'text-4xl font-bold ss-num'}
+                style={{ color: winProbColor(d.win_probability, isLight) }}
+              >
+                {Math.round(d.win_probability * 100)}%
+              </p>
+              <p className="text-xs mt-1" style={{ color: subText }}>{t('prediction.win_probability')}</p>
+              {d.win_probability_reference?.is_reference && (
+                <p className="text-xs mt-0.5 ss-num" style={{ color: subText }}>
+                  {t('prediction.reference_value', { n: d.sample_size })}
+                </p>
+              )}
+              {d.win_probability_ci && (
+                <p className="text-[10px] mt-0.5 ss-num" style={{ color: subText }}>
+                  {t('prediction.win_probability_ci', {
+                    low: Math.round(d.win_probability_ci.low * 100),
+                    high: Math.round(d.win_probability_ci.high * 100),
+                    n: d.win_probability_ci.n,
+                  })}
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-center py-2" style={{ color: subText }}>{t('prediction.pair_no_record')}</p>
+          )}
 
-          {d.sample_size > 0 && (
+          {d.sample_size > 0 && d.set_distribution != null && (
             <div>
               <p className="text-xs font-medium mb-2" style={{ color: subText }}>{t('prediction.set_distribution')}</p>
               <SetDistributionBar distribution={d.set_distribution} />

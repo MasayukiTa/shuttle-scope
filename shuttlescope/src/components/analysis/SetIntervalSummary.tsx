@@ -4,11 +4,13 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 import { apiGet } from '@/api/client'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { RallyDetailBanner, type RallyPoint } from '@/components/analysis/ScoreProgression'
 import { WIN, LOSS, BAR, LINE } from '@/styles/colors'
 import { MIcon } from '@/components/common/MIcon'
+import { useAuth } from '@/hooks/useAuth'
 
 interface SetIntervalSummaryProps {
   setId: number
@@ -96,6 +98,11 @@ export function SetIntervalSummary({
   setRallies,
 }: SetIntervalSummaryProps) {
   const { t } = useTranslation()
+  // 製品ルール: player には セット結果 (スコア・勝者) と失点/ショット勝敗タブを見せない。
+  // API も score_a/score_b/winner/win_rate 等を返さない。概要 (ラリー数・平均球数) のみ表示する。
+  const { role } = useAuth()
+  const isPlayer = role === 'player'
+  const visibleTabs = isPlayer ? TABS.filter((tab) => tab.key === 'overview') : TABS
   const [activeTab, setActiveTab] = useState<TabKey>('overview')
 
   // ←→ナビ: 初期インデックスをrallyから算出
@@ -111,7 +118,7 @@ export function SetIntervalSummary({
   const hasPrev = rallyIdx > 0
   const hasNext = setRallies ? rallyIdx < setRallies.length - 1 : false
 
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError, refetch } = useQuery({
     queryKey: ['set-summary', setId, maxRallyNum],
     queryFn: () => apiGet<SetSummaryResponse>('/analysis/set_summary', {
       set_id: setId,
@@ -140,7 +147,7 @@ export function SetIntervalSummary({
                 ? titleOverride
                 : isMidGame
                 ? `Set ${data?.set_num ?? ''} インターバル（11点）`
-                : data ? `Set ${data.set_num} 終了` : 'セット終了サマリー'}
+                : data ? `Game ${data.set_num} 終了` : 'ゲーム終了サマリー'}
             </span>
             {isMidGame && midGameScoreA !== undefined && midGameScoreB !== undefined ? (
               <span className="text-xs text-[var(--ss-t2)]">
@@ -148,7 +155,7 @@ export function SetIntervalSummary({
                 {' — '}
                 <span className="font-bold text-[var(--ss-t1)] ss-num">{midGameScoreB}</span> {playerBName}
               </span>
-            ) : data && !isMidGame ? (
+            ) : data && !isMidGame && !isPlayer ? (
               <span className="text-xs text-[var(--ss-t2)]">
                 {playerAName} <span style={{ color: data.winner === 'player_a' ? WIN : LOSS }} className="font-bold ss-num">{data.score_a}</span>
                 {' — '}
@@ -156,15 +163,15 @@ export function SetIntervalSummary({
               </span>
             ) : null}
           </div>
-          <button onClick={onClose} className="text-[var(--ss-t3)] hover:text-[var(--ss-t2)]">
+          <button aria-label={t('app.close')} onClick={onClose} className="text-[var(--ss-t3)] hover:text-[var(--ss-t2)]">
             <MIcon name="close" size={16} />
           </button>
         </div>
 
         {/* タブ */}
-        {data && (
+        {data && visibleTabs.length > 1 && (
           <div className="flex gap-1 px-4 pt-3">
-            {TABS.map((tab) => (
+            {visibleTabs.map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
@@ -186,7 +193,9 @@ export function SetIntervalSummary({
             <p className="text-[var(--ss-t3)] text-sm text-center py-4">{t('analysis.loading')}</p>
           )}
 
-          {!isLoading && !data && (
+          {isError && <QueryErrorNotice onRetry={() => { void refetch() }} />}
+
+          {!isLoading && !isError && !data && (
             <p className="text-[var(--ss-t3)] text-sm text-center py-4">{t('analysis.no_data')}</p>
           )}
 

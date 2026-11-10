@@ -556,7 +556,8 @@ def _get_page_access(user_id: int, user: User, db: Session) -> list[str]:
     return list({row[0] for row in individual + team_grants})
 
 
-from backend.utils.access_log import log_access
+from backend.utils.access_log import log_access, log_admin_action
+from backend.utils.text_sanitize import reject_ctrl_and_bidi
 from backend.utils.jwt_utils import (
     create_access_token,
     create_refresh_token,
@@ -785,14 +786,37 @@ def _pad_and_raise(start_ts: float, status_code: int, detail: str) -> None:
 def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     import time as _t_login
     _login_t0 = _t_login.perf_counter()
+    _login_since = datetime.utcnow()
     try:
-        return _login_impl(req, request, db, _login_t0)
+        _login_result = _login_impl(req, request, db, _login_t0)
+        _detect_new_ip_login(_login_result, request, _login_since, req.grant_type)
+        return _login_result
     except HTTPException as e:
         # 認証失敗系 (401/429) のみ固定時間パディングを適用してから再 raise
         # 成功 (200) は user 経験を損なわないようパッドしない
         if e.status_code in (401, 422, 429):
             _login_constant_time_pad(_login_t0)
         raise
+
+
+def _detect_new_ip_login(result, request: Request, since: datetime, method: str) -> None:
+    """Raise login_success_new_ip for a completed login (token issued, no MFA
+    step pending). `since` is taken before the login wrote its own access_logs
+    row so that row does not count as history. Never breaks the login."""
+    try:
+        if not getattr(result, "access_token", None) or getattr(result, "mfa_required", False):
+            return
+        from backend.utils.security_detectors import check_login_new_ip
+        check_login_new_ip(
+            user_id=getattr(result, "user_id", None),
+            role=getattr(result, "role", None),
+            ip=_get_ip(request),
+            country=(request.headers.get("cf-ipcountry") or "").strip()[:2] or None,
+            before=since,
+            method=method,
+        )
+    except Exception:  # noqa: BLE001 - detection must not fail a login
+        logger.warning("new-ip login detection failed", exc_info=True)
 
 
 def _mfa_challenge_if_enabled(user: User, db: Session, ip: Optional[str]):
@@ -973,9 +997,15 @@ def mfa_login(req: MfaLoginRequest, request: Request, db: Session = Depends(get_
     """credential ログイン後、MFAコードを検証してフルJWTを発行する。"""
     from backend.utils.jwt_utils import verify_token
     ip = _get_ip(request)
+    _mfa_since = datetime.utcnow()
     payload = verify_token(req.mfa_token)
     if not payload or payload.get("role") != "mfa_pending":
-        raise HTTPException(status_code=401, detail="MFAトークンが無効または期限切れです")
+        # frontend は文言ではなくこのコードで「初段ログインへ戻す」を判断する。
+        raise HTTPException(
+            status_code=401,
+            detail="MFAトークンが無効または期限切れです",
+            headers={"X-Error-Code": "MFA_TOKEN_INVALID_OR_EXPIRED"},
+        )
     user_id = int(payload.get("sub", 0))
     # MFA brute force 防御 (10 分 10 回上限) — mfa_confirm と共通カウンタ
     _check_mfa_brute_limit(user_id)
@@ -987,7 +1017,7 @@ def mfa_login(req: MfaLoginRequest, request: Request, db: Session = Depends(get_
     if req.recovery_code:
         # 認証アプリ紛失 / 時計ズレ時の復旧経路。コードは単回使用で消費される。
         if not _consume_recovery_code(db, user_id, req.recovery_code, ip):
-            _record_mfa_failure(user_id)
+            _record_mfa_failure(user_id, ip, "recovery")
             raise HTTPException(status_code=401, detail="リカバリコードが無効か、既に使用済みです")
         remaining = _recovery_codes_remaining(db, user_id)
         # 「誰かがリカバリコードを使った」は不正アクセスの兆候にもなるため、
@@ -1007,12 +1037,12 @@ def mfa_login(req: MfaLoginRequest, request: Request, db: Session = Depends(get_
                 detail="MFA を検証できません。リカバリコードでログインし、管理者に連絡してください。",
             )
         if not _verify_totp(user.totp_secret, req.code or ""):
-            _record_mfa_failure(user_id)
+            _record_mfa_failure(user_id, ip, "totp")
             raise HTTPException(status_code=401, detail="認証コードが無効です")
     token = create_access_token(user.id, user.role, user.player_id, team_name=user.team_name, team_id=user.team_id)
     if not req.recovery_code:
         log_access(db, "login_mfa_ok", user_id=user.id, ip_addr=ip)
-    return LoginResponse(
+    _mfa_result = LoginResponse(
         access_token=token,
         refresh_token=_issue_refresh_for(user.id),
         role=user.role,
@@ -1021,6 +1051,8 @@ def mfa_login(req: MfaLoginRequest, request: Request, db: Session = Depends(get_
         team_name=user.team_name,
         display_name=user.display_name or user.username,
     )
+    _detect_new_ip_login(_mfa_result, request, _mfa_since, "recovery_code" if req.recovery_code else "mfa")
+    return _mfa_result
 
 
 # ── MFA セットアップ ─────────────────────────────────────────────────────────
@@ -1140,11 +1172,15 @@ def _check_mfa_brute_limit(user_id: int) -> None:
             )
 
 
-def _record_mfa_failure(user_id: int) -> None:
+def _record_mfa_failure(user_id: int, ip: Optional[str] = None, kind: str = "totp") -> None:
     if not user_id:
         return
     with _mfa_lock:
         _mfa_failures.setdefault(user_id, []).append(_t_mfa.time())
+    # >=3 failures in 10 minutes for this user (or this IP) raises
+    # mfa_recovery_failures. The submitted code is never passed in.
+    from backend.utils.security_detectors import record_mfa_failure
+    record_mfa_failure(user_id, ip, kind)
 
 
 @router.post("/mfa/confirm", response_model=MfaRecoveryCodesResponse)
@@ -1425,23 +1461,18 @@ def change_password(req: PasswordChangeRequest, request: Request, db: Session = 
         raise HTTPException(status_code=401, detail="現在のパスワードが正しくありません")
 
     _validate_password_strength(req.new_password)
-    user.hashed_credential = _hash_password(req.new_password)
+    new_hash = _hash_password(req.new_password)
+    # セッション失効 (refresh + access の epoch) を **先に** 行い、成功してから
+    # 新しい資格情報を commit する。失効は別セッションで確定するため、旧順序
+    # (commit -> 失効) では失効が失敗した時に「500 を返したのにパスワードだけ
+    # 変わっている」状態が残った。この順序なら、失効に失敗した場合は資格情報が
+    # 未変更のまま 500 になり、画面の結果と実状態が一致する。
+    # 失効後に資格情報の commit が失敗した場合も、旧パスワードのまま再ログインが
+    # 必要になるだけで安全側 (fail-closed) に倒れる。
+    from backend.utils.jwt_utils import revoke_all_sessions_or_500
+    revoke_all_sessions_or_500(user.id, "password change")
+    user.hashed_credential = new_hash
     db.commit()
-    # 既存 refresh token を全失効させ、再ログインを要求
-    revoke_all_refresh_tokens_for_user(user.id)
-    # Round 258 R20 P2 fix (R20 P2-2): access token (15min) も per-user revoke epoch
-    # で即時失効させる。これで盗まれた access token が password rotation 後に
-    # 残存利用される 15 分の窓を閉じる。
-    # Round 258 R21 P0 fix (R21 P0-1): 旧コードは exception を warn ログだけで
-    # 握り潰していたため、DB 書込み失敗時に password 変更だけ成功して access
-    # token 失効が走らない silent failure があった。raise に変更して 500 で
-    # 早期検知できるようにする (sentinel uniqueness は jwt_utils 側で uuid 補強済)。
-    from backend.utils.jwt_utils import revoke_all_for_user as _revoke_all_for_user
-    try:
-        _revoke_all_for_user(user.id)
-    except Exception as exc:
-        logger.error("revoke_all_for_user failed (password change) user_id=%s: %s", user.id, exc)
-        raise HTTPException(status_code=500, detail="access token 失効処理に失敗しました")
     log_access(db, "password_changed", user_id=user.id, ip_addr=_get_ip(request))
     return {"success": True}
 
@@ -1454,20 +1485,21 @@ def admin_reset_password(target_id: int, request: Request, db: Session = Depends
     if not user:
         raise HTTPException(status_code=404, detail="user not found")
     temp = _generate_temp_password()
-    user.hashed_credential = _hash_password(temp)
+    temp_hash = _hash_password(temp)
+    # セッション失効を先に確定させ、成功してから一時パスワードを commit する。
+    # 旧順序 (commit -> 失効) では、失効が失敗すると旧パスワードだけ無効になり、
+    # 成功レスポンスでしか返さない一時パスワードが admin に渡らなかった。
+    from backend.utils.jwt_utils import revoke_all_sessions_or_500
+    revoke_all_sessions_or_500(user.id, "admin reset")
+    user.hashed_credential = temp_hash
     user.failed_attempts = 0
     user.locked_until = None
     db.commit()
-    revoke_all_refresh_tokens_for_user(user.id)
-    # Round 258 R20 P2 fix (R20 P2-2) + R21 P0 fix (R21 P0-1): access token も即時失効。
-    # silent failure を避けるため raise に倒す。
-    from backend.utils.jwt_utils import revoke_all_for_user as _revoke_all_for_user
-    try:
-        _revoke_all_for_user(user.id)
-    except Exception as exc:
-        logger.error("revoke_all_for_user failed (admin reset) user_id=%s: %s", user.id, exc)
-        raise HTTPException(status_code=500, detail="access token 失効処理に失敗しました")
-    log_access(db, "password_reset_by_admin", details={"target_user_id": target_id})
+    log_admin_action(
+        db, request, "password_reset_by_admin",
+        resource_type="user", resource_id=target_id,
+        details={"target_user_id": target_id},
+    )
     return PasswordResetResponse(temporary_password=temp)
 
 
@@ -1490,6 +1522,12 @@ def me(request: Request, db: Session = Depends(get_db)):
         page_access = _get_page_access(user_id, user, db)
     else:
         page_access = list(GRANTABLE_PAGES)
+        # LLM は backend (llm_chat.require_llm_access) が admin / llm ロール以外に
+        # 実際の 'llm' grant を要求する。grant の無い analyst/coach にまで 'llm' を
+        # 返すと、ナビには出るのに API が 403 になる食い違いになる。
+        if user_id and user and not ctx.is_admin and ctx.role != "llm":
+            if "llm" not in _get_page_access(user_id, user, db):
+                page_access = [k for k in page_access if k != "llm"]
 
     # 任意同意の未回答検出: 必須同意 (consent_required) が落ちていても、optional
     # 同意で 1 度も回答していない type があれば popup を再表示する。
@@ -1510,13 +1548,15 @@ def me(request: Request, db: Session = Depends(get_db)):
             .distinct()
             .all()
         }
-        optional_pending = len(_OPTIONAL_CONSENT_TYPES - recorded_optional_types) > 0
+        optional_pending = _optional_consent_pending(recorded_optional_types)
 
     return {
         "role": ctx.role,
         "player_id": ctx.player_id,
         "user_id": user_id,
         "team_name": ctx.team_name,
+        # ログイン ID。設定画面のアカウント欄が参照する (無いと「-」表示になる)
+        "username": user.username if user else None,
         "display_name": (user.display_name or user.username) if user else None,
         "page_access": page_access,
         "mfa_enabled": bool(user.totp_enabled) if user else False,
@@ -1671,27 +1711,10 @@ def _reject_control_chars(value: Optional[str], field_name: str, max_len: int = 
 
     CRLF injection（ログ偽装）、null byte（バックエンド処理バグ）、
     Unicode BIDI override（UI なりすまし）、長大値（ストレージ攻撃）を防ぐ。
+    実装は backend.utils.text_sanitize.reject_ctrl_and_bidi に一本化している
+    (文字集合を複数箇所で持つと更新漏れが起きるため、ここでは持たない)。
     """
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise HTTPException(status_code=422, detail=f"{field_name} must be a string")
-    if len(value) > max_len:
-        raise HTTPException(status_code=422, detail=f"{field_name} too long (max {max_len})")
-    # C0 制御文字 + LRO/RLO/PDF 等の BIDI override + ZWSP/ZWNJ/ZWJ
-    DISALLOWED = set(chr(i) for i in range(32)) | {
-        "\u200b", "\u200c", "\u200d", "\u2028", "\u2029",  # ZWSP/ZWNJ/ZWJ/LS/PS
-        "\u202a", "\u202b", "\u202c", "\u202d", "\u202e",  # LRE/RLE/PDF/LRO/RLO
-        "\u2066", "\u2067", "\u2068", "\u2069", "\ufeff",  # LRI/RLI/FSI/PDI/BOM
-        "\x7f",  # DEL
-    }
-    for ch in value:
-        if ch in DISALLOWED:
-            raise HTTPException(
-                status_code=422,
-                detail=f"{field_name} contains disallowed control/format character (U+{ord(ch):04X})",
-            )
-    return value
+    return reject_ctrl_and_bidi(value, field_name, max_len=max_len)
 
 
 class UserCreate(BaseModel):
@@ -1770,6 +1793,33 @@ def _short_uuid_suffix() -> str:
     return uuid4().hex[:8].upper()
 
 
+def _team_name_key(name: str) -> str:
+    """チーム名の同一判定用キー。全角/半角・大文字小文字・空白の違いを無視する。"""
+    import unicodedata
+    return " ".join(unicodedata.normalize("NFKC", name).split()).casefold()
+
+
+def _find_active_team_by_name(db: Session, name: str) -> Optional[Team]:
+    """名前でチームを探す。完全一致を優先し、なければ表記揺れ (全角半角・大小文字・空白) を同一視する。
+
+    ユーザ管理でチーム名を自由入力すると、"Team A" と "team a" と "Team　A" が
+    別チームとして自動作成されていた。検索を 1 か所に集め、作成・権限判定・更新の
+    3 経路で同じ基準にする。
+    """
+    exact = db.query(Team).filter(
+        Team.name == name, Team.deleted_at.is_(None)
+    ).first()
+    if exact is not None:
+        return exact
+    key = _team_name_key(name)
+    if not key:
+        return None
+    for cand in db.query(Team).filter(Team.deleted_at.is_(None)).order_by(Team.id).all():
+        if cand.name and _team_name_key(cand.name) == key:
+            return cand
+    return None
+
+
 def _resolve_team_for_user_create(
     db: Session,
     *,
@@ -1794,9 +1844,7 @@ def _resolve_team_for_user_create(
     # team_name 指定 → 既存チーム lookup or 新規作成
     if team_name and team_name.strip():
         norm = team_name.strip()
-        existing = db.query(Team).filter(
-            Team.name == norm, Team.deleted_at.is_(None)
-        ).first()
+        existing = _find_active_team_by_name(db, norm)
         if existing:
             return existing
         # 新規作成（display_id は付けず、admin が後から /teams で付与）
@@ -1852,13 +1900,52 @@ def ensure_player_record(db: Session, user: User) -> Optional[int]:
     if user.player_id is not None:
         return user.player_id
     name = (user.display_name or user.username or "").strip()[:100]
+    # 入口 (登録 / 招待受諾 / 管理者作成) で検証済みのはずだが、過去に保存された値や
+    # 将来増える経路に備え、Player.name に入れる直前でも同じ検証を通す。
+    # 不可視 / 双方向制御文字を含むなら username、それも不可なら user<ID> にする。
+    for _cand in (name, (user.username or "").strip()[:100]):
+        try:
+            reject_ctrl_and_bidi(_cand, "name", max_len=100)
+        except HTTPException:
+            continue
+        name = _cand
+        break
+    else:
+        name = ""
     if not name:
         name = f"user{user.id}"
-    player = Player(name=name, team_id=user.team_id)
+    # 承認待ちの登録者の Player は、クイックスタートの相手と同じ「暫定」印で作る。
+    # 一覧系 (players.exclude_unapproved_registrants) はこの時点の user 状態で
+    # 除外するので、印が無い過去の行も同じ規則で隠れる。承認で正常な状態に戻す
+    # のは confirm_provisional_player。
+    pending = bool(getattr(user, "awaiting_admin_approval", False))
+    player = Player(
+        name=name,
+        team_id=user.team_id,
+        profile_status="provisional" if pending else "verified",
+        needs_review=pending,
+    )
     db.add(player)
     db.flush()
     user.player_id = player.id
     return player.id
+
+
+def confirm_provisional_player(db: Session, user: User) -> None:
+    """player ロールのまま承認された user の Player を正常な状態に戻す。
+
+    登録時に付けた「暫定」印 (profile_status / needs_review) だけを外す。
+    クイックスタートで作られた暫定の相手選手は別物なので触らない。
+    """
+    if user.player_id is None:
+        return
+    player = db.get(Player, user.player_id)
+    if player is None or bool(getattr(player, "created_via_quick_start", False)):
+        return
+    if player.profile_status == "provisional":
+        player.profile_status = "verified"
+        player.needs_review = False
+        db.flush()
 
 
 def _player_is_unreferenced(db: Session, player_id: int) -> bool:
@@ -1975,6 +2062,20 @@ def create_user(body: UserCreate, request: Request, db: Session = Depends(get_db
     # analyst は admin / analyst アカウントを作成できない（権限昇格防止）
     if ctx.is_analyst and body.role in ("admin", "analyst", "demo"):
         raise HTTPException(status_code=403, detail="admin/analyst/demo アカウントは admin のみ作成できます")
+    # analyst は **自チームにだけ** ユーザを作れる。team_id / team_name で他チームを指すと、
+    # そのチームの coach 等を自分でパスワードを決めて作れて、そのチームの全データに入れてしまう
+    # (update_user / page-access / invitation は既に自チーム限定)。admin だけが任意のチームを指せる。
+    if not ctx.is_admin:
+        _target_team_id = body.team_id
+        if _target_team_id is None and (body.team_name or "").strip():
+            _named = _find_active_team_by_name(db, body.team_name.strip())
+            _target_team_id = _named.id if _named is not None else None
+        if _target_team_id is not None and _target_team_id != ctx.team_id:
+            raise HTTPException(status_code=403, detail="自チーム以外にはユーザーを作成できません")
+        if body.player_id is not None:
+            from backend.utils.auth import can_access_player as _can_access_player
+            if not _can_access_player(ctx, body.player_id, db):
+                raise HTTPException(status_code=403, detail="自チーム以外の選手にはアカウントを紐付けられません")
     # analyst/coach/player は team 必須 (cross-team 漏洩防止)。
     # admin のみ team 未指定を許容（システム横断管理者として扱う）。
     # Phase B-2: team_name もしくは team_id もしくは independent=True で OK。
@@ -2043,7 +2144,11 @@ def create_user(body: UserCreate, request: Request, db: Session = Depends(get_db
         # username / player_id どちらの衝突かは error 文面で判別可能だが、
         # 攻撃者向けには曖昧化する (timing / reason side channel 抑制)。
         raise HTTPException(status_code=409, detail="user already exists")
-    log_access(db, "user_created", user_id=user.id, details={"role": body.role, "display_name": body.display_name, "team_id": team.id})
+    log_admin_action(
+        db, request, "user_created",
+        resource_type="user", resource_id=user.id,
+        details={"created_user_id": user.id, "role": body.role, "display_name": body.display_name, "team_id": team.id},
+    )
     return {"success": True, "data": {"id": user.id, "role": user.role, "display_name": user.display_name, "team_id": team.id}}
 
 
@@ -2229,9 +2334,7 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
         norm = body.team_name.strip()
         if norm and body.team_id is None:
             # 既存チーム lookup
-            existing = db.query(Team).filter(
-                Team.name == norm, Team.deleted_at.is_(None)
-            ).first()
+            existing = _find_active_team_by_name(db, norm)
             if existing:
                 if user.team_id != existing.id:
                     log_access(
@@ -2373,7 +2476,11 @@ def unlock_user(target_id: int, request: Request, db: Session = Depends(get_db))
     user.failed_attempts = 0
     user.locked_until = None
     db.commit()
-    log_access(db, "account_unlocked", details={"target_user_id": target_id})
+    log_admin_action(
+        db, request, "account_unlocked",
+        resource_type="user", resource_id=target_id,
+        details={"target_user_id": target_id},
+    )
     return {"success": True}
 
 
@@ -2482,7 +2589,11 @@ def delete_user(target_id: int, request: Request, db: Session = Depends(get_db),
             status_code=409,
             detail="ユーザ削除に失敗しました (依存レコードがあります)",
         )
-    log_access(db, "user_deleted", details={"deleted_user_id": target_id})
+    log_admin_action(
+        db, request, "user_deleted",
+        resource_type="user", resource_id=target_id,
+        details={"deleted_user_id": target_id, "force": bool(force)},
+    )
     return {"success": True}
 
 
@@ -2604,6 +2715,7 @@ def list_request_logs(
     ip: Optional[str] = None,
     user_id: Optional[int] = None,
     source: Optional[str] = None,
+    include_monitoring: bool = False,
     limit: int = 200,
     db: Session = Depends(get_db),
 ):
@@ -2615,12 +2727,23 @@ def list_request_logs(
       - status_min / status_max: status 範囲 (例 400-599 でエラーのみ)
       - ip: ip_addr の部分一致
       - user_id: 該当 user_id
+      - include_monitoring: 監視画面自身が履歴を読んだ成功 GET も含める (既定は除く)
       - limit: 1..5000 (default 200)
     """
     from backend.db.models import RequestLog
+    from sqlalchemy import and_, not_
+    from backend.utils.audit_grouping import MONITORING_READ_PREFIX
     _require_admin(request)
     limit = max(1, min(int(limit or 200), 5000))
     q = db.query(RequestLog)
+    if not include_monitoring:
+        # 記録側 (RequestLogMiddleware) と同じ基準。過去に記録された行もここで除く。
+        esc_prefix = MONITORING_READ_PREFIX.replace("_", "\\_")
+        q = q.filter(not_(and_(
+            RequestLog.method == "GET",
+            RequestLog.path.like(f"{esc_prefix}%", escape="\\"),
+            RequestLog.status < 400,
+        )))
     if method:
         q = q.filter(RequestLog.method == method.upper())
     if path_prefix:
@@ -2663,6 +2786,30 @@ def list_request_logs(
     }
 
 
+# security_events テーブルは LLM の予算台帳 (llm_budget) と呼び出し記録 (llm_call) も
+# 同居している。これらはアプリ内部の運用テレメトリで、攻撃検知ではない。
+# 「セキュリティ監視」の既定一覧に混ぜると件数が増えて調査の S/N が落ちるため、
+# event_type を明示したとき以外は除く。
+_INTERNAL_TELEMETRY_EVENT_TYPES = ("llm_call", "llm_budget")
+
+
+def _security_events_query(db: Session, event_type: Optional[str], severity: Optional[str], ip: Optional[str]):
+    """security_events の絞り込み。一覧と集約表示で同じ条件を使う。"""
+    from backend.db.models import SecurityEvent
+    q = db.query(SecurityEvent)
+    if event_type:
+        q = q.filter(SecurityEvent.event_type == event_type)
+    else:
+        q = q.filter(SecurityEvent.event_type.notin_(_INTERNAL_TELEMETRY_EVENT_TYPES))
+    if severity:
+        q = q.filter(SecurityEvent.severity == severity)
+    if ip:
+        esc = ip.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        if esc:
+            q = q.filter(SecurityEvent.ip_addr.like(f"%{esc}%", escape="\\"))
+    return q
+
+
 @router.get("/audit-logs/security")
 def list_security_events(
     request: Request,
@@ -2675,7 +2822,9 @@ def list_security_events(
     """admin のみ。security_events を新しい順に返す。
 
     Query:
-      - event_type: probe_attempt / rate_limit_hit / honeytoken_hit 等
+      - event_type: probe_attempt / rate_limit_hit / honeytoken_hit 等。
+            省略時は LLM 運用テレメトリ (llm_call / llm_budget) を除く。
+            それらを見たいときは event_type に明示する。
       - severity: info / warn / critical
       - ip: ip_addr 部分一致
       - limit: 1..5000 (default 200)
@@ -2683,15 +2832,7 @@ def list_security_events(
     from backend.db.models import SecurityEvent
     _require_admin(request)
     limit = max(1, min(int(limit or 200), 5000))
-    q = db.query(SecurityEvent)
-    if event_type:
-        q = q.filter(SecurityEvent.event_type == event_type)
-    if severity:
-        q = q.filter(SecurityEvent.severity == severity)
-    if ip:
-        esc = ip.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        if esc:
-            q = q.filter(SecurityEvent.ip_addr.like(f"%{esc}%", escape="\\"))
+    q = _security_events_query(db, event_type, severity, ip)
     rows = q.order_by(SecurityEvent.id.desc()).limit(limit).all()
     return {
         "success": True,
@@ -2719,6 +2860,86 @@ def list_security_events(
     }
 
 
+@router.get("/audit-logs/security/groups")
+def list_security_event_groups(
+    request: Request,
+    event_type: Optional[str] = None,
+    severity: Optional[str] = None,
+    ip: Optional[str] = None,
+    gap_seconds: int = 300,
+    limit: int = 1000,
+    db: Session = Depends(get_db),
+):
+    """admin のみ。security_events を (ip, event_type) の連続したまとまりに束ねて返す。
+
+    新しい順に最大 limit 行を読み、同じ ip と event_type で間隔が gap_seconds 以内の
+    行を 1 件にする。1 回のスキャンが一覧を占めないようにするための表示用。
+    各グループ: 回数・初回/最終・パスの種類数・パス例 (先頭数件)。
+    """
+    from backend.db.models import SecurityEvent
+    from backend.utils.audit_grouping import group_security_rows
+    _require_admin(request)
+    limit = max(1, min(int(limit or 1000), 5000))
+    gap_seconds = max(1, min(int(gap_seconds or 300), 86400))
+    q = _security_events_query(db, event_type, severity, ip)
+    rows = q.order_by(SecurityEvent.id.desc()).limit(limit).all()
+    groups = group_security_rows(
+        (
+            {
+                "id": r.id,
+                "ts": r.ts,
+                "event_type": r.event_type,
+                "severity": r.severity,
+                "ip_addr": r.ip_addr,
+                "path": r.path,
+            }
+            for r in rows
+        ),
+        gap_seconds=gap_seconds,
+    )
+    return {"success": True, "data": groups, "meta": {"rows_scanned": len(rows), "gap_seconds": gap_seconds}}
+
+
+@router.get("/audit-logs/errors/groups")
+def list_error_groups(
+    request: Request,
+    exc_type: Optional[str] = None,
+    path_prefix: Optional[str] = None,
+    limit: int = 1000,
+    db: Session = Depends(get_db),
+):
+    """admin のみ。error_logs を同じ原因 (指紋) ごとに束ねて返す。
+
+    新しい順に最大 limit 行を読み、指紋ごとに 回数・初回/最終発生・要約・直近の
+    request_id を返す。解決済みかどうかを持つ列は無いので、ここでは判定しない。
+    """
+    from backend.db.models import ErrorLog
+    from backend.utils.audit_grouping import group_error_rows
+    _require_admin(request)
+    limit = max(1, min(int(limit or 1000), 2000))
+    q = db.query(ErrorLog)
+    if exc_type:
+        q = q.filter(ErrorLog.exc_type == exc_type)
+    if path_prefix:
+        esc = path_prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        q = q.filter(ErrorLog.path.like(f"{esc}%", escape="\\"))
+    rows = q.order_by(ErrorLog.id.desc()).limit(limit).all()
+    groups = group_error_rows(
+        {
+            "id": r.id,
+            "ts": r.ts,
+            "request_id": r.request_id,
+            "method": r.method,
+            "path": r.path,
+            "status": r.status,
+            "exc_type": r.exc_type,
+            "message": r.message,
+        }
+        for r in rows
+    )
+    return {"success": True, "data": groups, "meta": {"rows_scanned": len(rows)}}
+
+
 @router.get("/audit-logs/errors")
 def list_error_logs(
     request: Request,
@@ -2737,6 +2958,7 @@ def list_error_logs(
       - limit: 1..2000 (default 200)
     """
     from backend.db.models import ErrorLog
+    from backend.utils.audit_grouping import summarize_error_message
     _require_admin(request)
     limit = max(1, min(int(limit or 200), 2000))
     q = db.query(ErrorLog)
@@ -2760,6 +2982,9 @@ def list_error_logs(
                 "status": r.status,
                 "exc_type": r.exc_type,
                 "message": r.message,
+                # 主表示用の短い要約 (生 SQL / parameters / 案内リンクを除く)。
+                # 生の message は詳細を開いたときだけ見せる。
+                "summary": summarize_error_message(r.message),
                 "traceback": r.traceback,
                 "input_repr": r.input_repr,
                 "internal_code": r.internal_code,
@@ -2768,6 +2993,43 @@ def list_error_logs(
             }
             for r in rows
         ],
+    }
+
+
+@router.get("/audit-logs/status")
+def audit_log_source_status(request: Request, db: Session = Depends(get_db)):
+    """admin のみ。request / security / error 各テーブルの記録件数と最新・最古の時刻。
+
+    一覧が 0 件のとき「記録が届いていない (全体 0 件)」のか「絞り込みに合う記録が無い
+    (全体では N 件)」のかを見分けるために使う。0 件のテーブルの最新・最古は null
+    (0 件を表す値を入れない)。security は一覧の既定と同じく LLM 運用テレメトリを除く。
+    """
+    from backend.db.models import ErrorLog, RequestLog, SecurityEvent
+    from sqlalchemy import func
+    _require_admin(request)
+
+    def _summary(model, *extra_filters):
+        q = db.query(func.count(model.id), func.min(model.ts), func.max(model.ts))
+        for flt in extra_filters:
+            q = q.filter(flt)
+        total, oldest, latest = q.one()
+        total = int(total or 0)
+        return {
+            "total": total,
+            "latest_ts": latest if total > 0 else None,
+            "oldest_ts": oldest if total > 0 else None,
+        }
+
+    return {
+        "success": True,
+        "data": {
+            "request": _summary(RequestLog),
+            "security": _summary(
+                SecurityEvent,
+                SecurityEvent.event_type.notin_(_INTERNAL_TELEMETRY_EVENT_TYPES),
+            ),
+            "error": _summary(ErrorLog),
+        },
     }
 
 
@@ -2846,16 +3108,41 @@ def set_user_page_access(target_id: int, body: PageAccessBody, request: Request,
     _require_manager(request)
     ctx = get_auth(request)
     user = db.get(User, target_id)
-    if not user or user.role != "player":
+    if not user:
         raise HTTPException(status_code=404, detail="player user not found")
-    # round 245 R245-E7: 旧コードは _require_manager (admin/analyst/coach) のみで
-    # cross-team scope check が無く、analyst (team A) が player (team B) の page_access
-    # を全削除できた。admin 以外は対象 player と同 team_id でのみ操作可能にする。
+    # #542 / #572: 付与対象のロールと呼び出し元ロールで場合分けする。
+    #  - player 対象: 従来通り admin / 同 team の manager (analyst/coach) が操作可。
+    #  - analyst / coach 対象: admin のみ (llm 等の page grant を信頼ロールに付与するのは admin 専権)。
+    #  - それ以外 (admin / demo / llm ロール) は対象にできない。
     # 404 で返すのは存在 leak (404 vs 403 の区別) を避けるため。
-    if not ctx.is_admin:
-        if user.team_id is None or ctx.team_id is None or user.team_id != ctx.team_id:
+    if user.role == "player":
+        # round 245 R245-E7: admin 以外は対象 player と同 team_id でのみ操作可能。
+        if not ctx.is_admin:
+            if user.team_id is None or ctx.team_id is None or user.team_id != ctx.team_id:
+                raise HTTPException(status_code=404, detail="player user not found")
+    elif user.role in ("analyst", "coach"):
+        # 信頼ロールへの page grant (llm 含む) は admin のみ。
+        if not ctx.is_admin:
             raise HTTPException(status_code=404, detail="player user not found")
+    else:
+        raise HTTPException(status_code=404, detail="player user not found")
     valid = {k for k in body.page_keys if k in GRANTABLE_PAGES}
+    # llm の付与/剥奪は admin 専権 (#572)。admin 以外の書き込みでは llm を
+    # 変更させず、既存の llm 個人 grant はそのまま保存する (default deny を広げない)。
+    if not ctx.is_admin:
+        had_llm = (
+            db.query(PlayerPageAccess)
+            .filter(
+                PlayerPageAccess.user_id == target_id,
+                PlayerPageAccess.team_name.is_(None),
+                PlayerPageAccess.page_key == "llm",
+            )
+            .first()
+            is not None
+        )
+        valid.discard("llm")
+        if had_llm:
+            valid.add("llm")
     db.query(PlayerPageAccess).filter(
         PlayerPageAccess.user_id == target_id,
         PlayerPageAccess.team_name.is_(None),
@@ -3003,7 +3290,11 @@ def create_team(body: TeamBody, request: Request, db: Session = Depends(get_db))
     except _IntegrityError:
         db.rollback()
         raise HTTPException(status_code=409, detail="team already exists")
-    log_access(db, "team_created", details={"team_id": team.id, "display_id": team.display_id})
+    log_admin_action(
+        db, request, "team_created",
+        resource_type="team", resource_id=team.id,
+        details={"team_id": team.id, "display_id": team.display_id},
+    )
     return {"success": True, "data": _team_to_dict(team, for_admin=True)}
 
 
@@ -3050,7 +3341,11 @@ def patch_team(team_id: int, body: TeamPatch, request: Request, db: Session = De
     if body.notes is not None:
         team.notes = body.notes or None
     db.commit()
-    log_access(db, "team_updated", details={"team_id": team.id})
+    log_admin_action(
+        db, request, "team_updated",
+        resource_type="team", resource_id=team.id,
+        details={"team_id": team.id},
+    )
     return {"success": True, "data": _team_to_dict(team, for_admin=ctx.is_admin)}
 
 
@@ -3207,9 +3502,12 @@ def delete_team(
     db.commit()
 
     # 監査ログ (誰がどの team を force/soft delete したか forensic 用)
-    log_access(
+    log_admin_action(
         db,
+        request,
         "team_deleted",
+        resource_type="team",
+        resource_id=team_id,
         details={
             "team_id": team_id,
             "team_name": team.name,
@@ -3255,6 +3553,15 @@ _OPTIONAL_CONSENT_TYPES = {
     "body_disclose_to_coach",
 }
 _ALL_CONSENT_TYPES = _REQUIRED_CONSENT_TYPES | _OPTIONAL_CONSENT_TYPES
+# 同意画面 (OnboardingConsentPage) が実際に提示して回答を送る任意同意。
+# cross_border_transfer は EU-Japan 十分性認定により UI に出さず送信もしないため、
+# 「未回答」判定に含めると回答しても永久に未回答のまま毎回同意画面が出直す。
+_PROMPTED_OPTIONAL_CONSENT_TYPES = _OPTIONAL_CONSENT_TYPES - {"cross_border_transfer"}
+
+
+def _optional_consent_pending(recorded_types: set[str]) -> bool:
+    """提示対象の任意同意に 1 度も回答していない type が残っているか。"""
+    return len(_PROMPTED_OPTIONAL_CONSENT_TYPES - set(recorded_types)) > 0
 
 
 def _hash_user_agent(ua: Optional[str]) -> Optional[str]:
@@ -3452,6 +3759,9 @@ def submit_consents(
     log_access(
         db,
         "consents_submitted",
+        user_id=ctx.user_id,
+        resource_type="user",
+        resource_id=ctx.user_id,
         details={
             "consent_types": sorted(given_types.keys()),
             "privacy_policy_version": body.privacy_policy_version,
@@ -3499,5 +3809,9 @@ def withdraw_consent(consent_type: str, request: Request, db: Session = Depends(
     )
     db.add(rec)
     db.commit()
-    log_access(db, "consent_withdrawn", details={"consent_type": consent_type})
+    log_access(
+        db, "consent_withdrawn", user_id=ctx.user_id,
+        resource_type="user", resource_id=ctx.user_id,
+        details={"consent_type": consent_type},
+    )
     return {"success": True, "data": {"consent_type": consent_type, "withdrawn_at": now.isoformat()}}

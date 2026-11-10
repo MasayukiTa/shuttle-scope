@@ -1,12 +1,15 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { apiGet, apiPost, apiDelete, API_BASE_URL, newIdempotencyKey } from '@/api/client'
+import { apiGet, apiPost } from '@/api/client'
+import { errorStatus, errorMessage } from '@/utils/errors'
+import { downloadReport } from '@/utils/downloadReport'
 import { Player } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
 import { useTheme } from '@/hooks/useTheme'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { AdviceStrip } from '@/components/common/AdviceStrip'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { ConditionGlossary } from '@/components/condition/ConditionGlossary'
 import { InBodyForm } from '@/components/condition/InBodyForm'
 import { HooperRpeForm } from '@/components/condition/HooperRpeForm'
@@ -18,6 +21,8 @@ import { GrowthInsights } from '@/components/condition/GrowthInsights'
 import { BestProfileCard } from '@/components/condition/BestProfileCard'
 import { CorrelationScatter } from '@/components/condition/CorrelationScatter'
 import { DiscrepancyAlertList } from '@/components/condition/DiscrepancyAlertList'
+import { CollapsibleSection } from '@/components/common/CollapsibleSection'
+import { RoleGuard } from '@/components/common/RoleGuard'
 import { ConditionTrendChart } from '@/components/condition/ConditionTrendChart'
 import { ConditionCorrelationHeatmap } from '@/components/condition/ConditionCorrelationHeatmap'
 import { ConditionLagCorrelation } from '@/components/condition/ConditionLagCorrelation'
@@ -65,7 +70,7 @@ function BodyDataConsentToggles() {
   // 体組成データ開示トグル初回表示時にチュートリアルを自動起動
   useAutoTutorial('body_disclosure_toggle')
 
-  const { data, isLoading } = useQuery<{
+  const { data, isLoading, isError } = useQuery<{
     data?: {
       consents?: Array<{ consent_type: string; consent_given: boolean }>
       current_versions?: { privacy_policy?: string; terms?: string }
@@ -82,6 +87,12 @@ function BodyDataConsentToggles() {
   const coachOn = consents.some((c) => c.consent_type === 'body_disclose_to_coach' && c.consent_given)
 
   const submit = async (consent_type: string, consent_given: boolean) => {
+    // バージョンが未取得（取得失敗・未ロード）のまま POST すると空バージョンで
+    // 同意が記録され、どのポリシーに同意したか追跡できなくなる。読み込み完了まで拒否する。
+    if (!vPrivacy || !vTerms) {
+      alert(t('condition.consent_load_failed'))
+      return
+    }
     // 既存の他 type の同意も同じバージョンで再送する必要があるため、現在の dict を構成
     const body = {
       privacy_policy_version: vPrivacy,
@@ -92,9 +103,10 @@ function BodyDataConsentToggles() {
       await apiPost('/auth/consents', body)
       queryClient.invalidateQueries({ queryKey: ['my-consents'] })
     } catch (e) {
-      // backend が version mismatch (409) 等を返す場合はユーザに知らせる
-       
-      alert(`${t('condition.consent_update_failed', 'Failed to update consent')}: ${String(e).slice(0, 200)}`)
+      // プライバシー操作なので、内部例外文字列は出さず「変更は保存されていない/現在値は維持」を明示する。
+      // HTTP status・JS 例外文字列はコンソールへ退避する。
+      console.error('[Condition] consent update failed', errorStatus(e), errorMessage(e, ''))
+      alert(t('condition.consent_update_failed_v2'))
     }
   }
 
@@ -107,10 +119,14 @@ function BodyDataConsentToggles() {
     >
       <div className="font-semibold mb-1.5">{t('condition.body_disclose_title', 'Body composition data (weight / body fat / muscle mass etc.) disclosure')}</div>
       <div className="opacity-80 mb-2 leading-relaxed">
-        {t('condition.body_disclose_help', 'By default only you and the admin (developer) can view this. Toggle the switches below to share with analyst / coach. You can withdraw at any time.')}
+        {t('condition.body_disclose_help', 'By default only you and an administrator can view this. Toggle the switches below to share with analyst / coach. You can withdraw at any time.')}
       </div>
       {isLoading ? (
         <div className="opacity-60">{t('common.loading', 'Loading...')}</div>
+      ) : isError ? (
+        // 取得失敗を both-OFF と区別する。失敗を OFF 表示すると開示済みでも未開示に見え、
+        // 誤った再同意・撤回を招くため、トグルは出さずエラーと再試行のみ表示する。
+        <QueryErrorNotice onRetry={() => { void queryClient.invalidateQueries({ queryKey: ['my-consents'] }) }} />
       ) : (
         <div className="space-y-1.5">
           <label className="flex items-center gap-2 cursor-pointer select-none">
@@ -141,7 +157,11 @@ export function ConditionPage() {
   const { theme } = useTheme()
   const isLight = theme === 'light'
 
-  const { data: playersResp } = useQuery({
+  const {
+    data: playersResp,
+    isError: playersError,
+    refetch: refetchPlayers,
+  } = useQuery({
     queryKey: ['players'],
     queryFn: () => apiGet<{ success: boolean; data: Player[] }>('/players'),
     enabled: role !== 'player',
@@ -161,6 +181,11 @@ export function ConditionPage() {
     role === 'player' ? authPlayerId : null,
   )
   const effectivePlayerId = role === 'player' ? authPlayerId : selectedPlayerId
+  // G17b #657 (owner 2026-10-31): 入力タブの登録対象。
+  // player / admin は本人 (authPlayerId)、coach / analyst は選択中の選手
+  // (effectivePlayerId) の記録を登録・修正できる（同チーム代理入力；バックエンド認可は別途）。
+  const inputTargetPlayerId =
+    role === 'coach' || role === 'analyst' ? effectivePlayerId : authPlayerId
 
   const [subtab, setSubtab] = useState<'input' | 'history' | 'analytics'>('input')
   // player はデフォルトで週次質問票。coach/analyst も質問票を第一選択。
@@ -170,6 +195,7 @@ export function ConditionPage() {
   const [formState, setFormState] = useState<Partial<ConditionPayload>>({})
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
+  const [downloadError, setDownloadError] = useState<string | null>(null)
   const [latestResult, setLatestResult] = useState<ConditionResultType | null>(null)
   const [detailRecord, setDetailRecord] = useState<Record<string, unknown> | null>(null)
   const [glossaryOpen, setGlossaryOpen] = useState(false)
@@ -179,7 +205,10 @@ export function ConditionPage() {
   }
 
   const createMut = useCreateCondition()
-  const { data: historyList = [] } = useConditions(effectivePlayerId ?? null, { limit: 60 })
+  const historyQuery = useConditions(effectivePlayerId ?? null, { limit: 60 })
+  const { data: historyList = [] } = historyQuery
+  // 履歴の取得失敗（前回成功データも無い）を「履歴なし」と区別する
+  const historyUnavailable = historyQuery.isError && historyQuery.data === undefined
 
   const validate = (): string | null => {
     const hooperKeys: (keyof ConditionPayload)[] = [
@@ -197,16 +226,20 @@ export function ConditionPage() {
   const handleBodySubmit = async () => {
     setErrorMsg(null)
     setSuccessMsg(null)
-    // 入力は常にログインユーザ自身 (authPlayerId)。代理入力は不可。
-    if (!authPlayerId) {
-      setErrorMsg(t('condition.player_only_input', 'Only accounts linked to a player record can submit'))
+    // G17b: player / admin は本人、coach / analyst は選択中の選手の記録として登録する。
+    if (!inputTargetPlayerId) {
+      setErrorMsg(
+        role === 'coach' || role === 'analyst'
+          ? t('auto.ConditionPage.k1')
+          : t('condition.player_only_input', 'Only accounts linked to a player record can submit'),
+      )
       return
     }
     const err = validate()
     if (err) { setErrorMsg(err); return }
     const payload: ConditionPayload = {
       ...formState,
-      player_id: authPlayerId,
+      player_id: inputTargetPlayerId,
       measured_at: measuredAt,
       condition_type: 'weekly',
     }
@@ -226,18 +259,10 @@ export function ConditionPage() {
   }
 
   const dlReport = (path: string, filename: string) => {
-    const token = sessionStorage.getItem('shuttlescope_token')
-    const fullUrl = API_BASE_URL + path.replace(/^\/api/, '')
-    fetch(fullUrl, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
-      .then((r) => r.blob())
-      .then((blob) => {
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = filename
-        a.click()
-        URL.revokeObjectURL(url)
-      })
+    setDownloadError(null)
+    downloadReport(path, filename).catch(() => {
+      setDownloadError(t('common.download_failed'))
+    })
   }
 
   const cardBg = 'bg-[var(--ss-bg-app)]'
@@ -246,9 +271,10 @@ export function ConditionPage() {
   const textPrimary = 'text-[var(--ss-t1)]'
   const textMuted = 'text-[var(--ss-t3)]'
 
-  // player ロール: 身体データモードは非表示（質問票がメインフロー）
-  const availableModes: InputMode[] =
-    role === 'player' ? ['weekly', 'prematch'] : ['weekly', 'prematch', 'body']
+  // G27 #658 (owner 2026-10-31, option A): player も自分の記録に限り身体データを
+  // 入力できる。未紐付け (authPlayerId 無し) は下流の inputTargetPlayerId ガードで
+  // ブロックされる。coach / analyst / admin は従来どおり全モード。
+  const availableModes: InputMode[] = ['weekly', 'prematch', 'body']
 
   return (
     <div className={`flex flex-col h-full ${cardBg} ${textPrimary}`}>
@@ -289,27 +315,44 @@ export function ConditionPage() {
                 {t('condition.summary_only_notice')}
               </div>
             )}
-            <div className="flex items-center gap-2 shrink-0">
-              <MIcon name="person" size={16} className={`${textMuted} shrink-0`} />
-              <label className={`text-sm ${textMuted}`}>
-                {t('auto.ConditionPage.k4')}
-              </label>
-            </div>
-            <SearchableSelect
-              options={sortedPlayers.map((p) => ({
-                value: p.id,
-                label: p.name,
-                searchText: p.team ?? '',
-                prefix: p.is_target ? 'star' : undefined,
-                prefixIsIcon: !!p.is_target,
-                suffix: p.team ? `（${p.team}）` : undefined,
-              }))}
-              value={selectedPlayerId}
-              onChange={(v) => setSelectedPlayerId(v != null ? Number(v) : null)}
-              emptyLabel={t('common.select_player', 'Select player')}
-              placeholder={t('auto.ConditionPage.k2')}
-              className="w-full sm:min-w-[280px] sm:max-w-md"
-            />
+            {/* G17 #657 (owner 2026-10-31): coach / analyst は入力タブでも
+                選手セレクタを出す（同チーム選手のコンディションを登録・修正できる
+                ようにするため；バックエンドの認可は別途）。admin は従来どおり
+                入力タブでは非表示。player はこの else に来ないので常に非表示。
+                履歴・分析タブは全ロールで従来どおりセレクタを残す。 */}
+            {(subtab !== 'input' || role === 'coach' || role === 'analyst') && (
+              <>
+                <div className="flex items-center gap-2 shrink-0">
+                  <MIcon name="person" size={16} className={`${textMuted} shrink-0`} />
+                  <label className={`text-sm ${textMuted}`}>
+                    {t('auto.ConditionPage.k4')}
+                  </label>
+                </div>
+                <SearchableSelect
+                  options={sortedPlayers.map((p) => ({
+                    value: p.id,
+                    label: p.name,
+                    searchText: p.team ?? '',
+                    prefix: p.is_target ? 'star' : undefined,
+                    prefixIsIcon: !!p.is_target,
+                    suffix: p.team ? `（${p.team}）` : undefined,
+                  }))}
+                  value={selectedPlayerId}
+                  onChange={(v) => setSelectedPlayerId(v != null ? Number(v) : null)}
+                  emptyLabel={t('common.select_player', 'Select player')}
+                  placeholder={t('auto.ConditionPage.k2')}
+                  className="w-full sm:min-w-[280px] sm:max-w-md"
+                />
+                {playersError && (
+                  <QueryErrorNotice
+                    className="py-0"
+                    onRetry={() => {
+                      void refetchPlayers()
+                    }}
+                  />
+                )}
+              </>
+            )}
           </div>
         )}
       </div>
@@ -330,6 +373,14 @@ export function ConditionPage() {
           >
             {t('auto.ConditionPage.k6')}
           </button>
+        </div>
+      )}
+      {downloadError && (
+        <div
+          role="alert"
+          className="mx-6 mt-2 text-sm text-[var(--ss-bad)] bg-[var(--ss-danger-tint)] border border-[var(--ss-danger-border)] rounded-ss-md px-3 py-2"
+        >
+          {downloadError}
         </div>
       )}
 
@@ -354,20 +405,24 @@ export function ConditionPage() {
 
       {/* 本体 */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 px-6 py-4">
-        {!effectivePlayerId ? (
+        {/* G2 #657: 選手セレクタが要るのは履歴・分析タブのみ。入力タブは常に
+           ログイン本人のレコードなので、選手未選択でも入力フロー (本人フォーム
+           または未紐付けの案内) を出す。 */}
+        {subtab !== 'input' && !effectivePlayerId ? (
           <div className={`${textMuted} text-sm`}>{t('auto.ConditionPage.k1')}</div>
         ) : subtab === 'history' ? (
           <HistoryView
             list={historyList as unknown as Array<Record<string, unknown>>}
+            unavailable={historyUnavailable}
+            onRetry={() => { void historyQuery.refetch() }}
             isLight={isLight}
-            canDelete={role !== 'player'}
             onSelect={(r) => {
               // 下位互換のため latestResult も更新しつつ、詳細モーダルを開く
               setLatestResult(r as unknown as ConditionResultType)
               setDetailRecord(r)
             }}
           />
-        ) : subtab === 'analytics' ? (
+        ) : subtab === 'analytics' && effectivePlayerId != null ? (
           <div className="space-y-4">
             {/* 3. 体調タブヘッダ: 実データ起点の advice strip */}
             {effectivePlayerId && (
@@ -383,8 +438,25 @@ export function ConditionPage() {
             {/* 全ロール: 時系列トレンド（全幅） */}
             <ConditionTrendChart playerId={effectivePlayerId} isLight={isLight} />
 
-            {/* 追加解析: 全ロール共通 */}
-            <>
+            {/* 乖離アラート: 該当があれば最初に気づけるよう、折り畳みの外・主要カードの直後に置く */}
+            <DiscrepancyAlertList playerId={effectivePlayerId} isLight={isLight} />
+
+            {/* 追加解析 (相関・変動などは analyst / coach のみ)。
+                同形のカードを 10 枚以上縦に並べると見るべき所が分からなくなるため、
+                上の 3 枚 (伸びしろ・ベスト・推移) を主役にし、残りは用途別に畳む。
+                閉じている間は子を描画しない (API 取得も走らない)。 */}
+            {/* 指標間の相関・変動・外れ週などの探索的な解析。player には出さない (RoleGuard で描画も取得もしない) */}
+            <RoleGuard allowedRoles={['analyst', 'coach']} fallback={null}>
+            <CollapsibleSection
+              title={t('condition.analytics_group_relations')}
+              description={t('condition.analytics_group_relations_desc')}
+            >
+              <p
+                className="text-xs text-[var(--ss-t2)] rounded-ss-md border border-[var(--ss-border)] bg-[var(--ss-surface-2)] px-3 py-2"
+                data-testid="condition-exploratory-note"
+              >
+                {t('condition.analytics_group_relations_exploratory')}
+              </p>
               {/* 全幅: ヒートマップ（幅が必要） */}
               <ConditionCorrelationHeatmap playerId={effectivePlayerId} isLight={isLight} />
 
@@ -411,17 +483,23 @@ export function ConditionPage() {
                 <ConditionOutlierWeeks playerId={effectivePlayerId} isLight={isLight} />
                 <CorrelationScatter playerId={effectivePlayerId} isLight={isLight} />
               </div>
+            </CollapsibleSection>
+            </RoleGuard>
 
-              {/* 全幅: タグ管理・比較 */}
+            {/* タグ管理・比較 */}
+            <CollapsibleSection
+              title={t('condition.analytics_group_tags')}
+              description={t('condition.analytics_group_tags_desc')}
+            >
               <ConditionTagManager playerId={effectivePlayerId} isLight={isLight} />
               <ConditionTagCompare playerId={effectivePlayerId} isLight={isLight} />
-
-              {/* 全幅: 乖離アラート */}
-              <DiscrepancyAlertList playerId={effectivePlayerId} isLight={isLight} />
-            </>
+            </CollapsibleSection>
 
           </div>
-        ) : !authPlayerId ? (
+        ) : (role === 'coach' || role === 'analyst') && !inputTargetPlayerId ? (
+          // G17b: coach / analyst が選手未選択の間は入力をブロックし、選択を促す。
+          <div className={`${textMuted} text-sm`}>{t('auto.ConditionPage.k1')}</div>
+        ) : !inputTargetPlayerId ? (
           // 入力タブ: ログインユーザが選手として登録されていない (coach / analyst /
           // admin で player_id 未紐付) 場合、コンディション入力は無効。
           // 過去仕様: 選択した選手の代理入力ができていたが、誰のデータか曖昧になる
@@ -443,8 +521,8 @@ export function ConditionPage() {
           </div>
         ) : (
           <div className="space-y-5 max-w-4xl">
-            {/* 入力対象明示: 必ず「自分自身」(authPlayerId) のレコードになる。
-               選択した選手の代理入力はできない設計 (誰が入力したか曖昧になるのを防ぐ)。 */}
+            {/* G17b 入力対象明示。player / admin は本人固定 (代理不可)、
+               coach / analyst は選択中の選手の記録として登録することを示す。 */}
             <div
               className="text-xs px-3 py-2 rounded-ss-md border"
               style={{
@@ -453,9 +531,21 @@ export function ConditionPage() {
                 borderColor: 'var(--ss-brand)',
               }}
             >
-              {t('auto.ConditionPage.k10')} <strong>{t('auto.ConditionPage.k3')}</strong> (
-              {players.find((p) => p.id === authPlayerId)?.name ?? t('auto.ConditionPage.k11', { n: authPlayerId })}
-              {t('auto.ConditionPage.k12')}
+              {role === 'coach' || role === 'analyst' ? (
+                <>
+                  {t('auto.ConditionPage.k14')}{' '}
+                  <strong>
+                    {players.find((p) => p.id === inputTargetPlayerId)?.name ??
+                      t('auto.ConditionPage.k11', { n: inputTargetPlayerId })}
+                  </strong>
+                </>
+              ) : (
+                <>
+                  {t('auto.ConditionPage.k10')} <strong>{t('auto.ConditionPage.k3')}</strong> (
+                  {players.find((p) => p.id === authPlayerId)?.name ?? t('auto.ConditionPage.k11', { n: authPlayerId })}
+                  {t('auto.ConditionPage.k12')}
+                </>
+              )}
             </div>
 
             {/* モード切替 */}
@@ -494,14 +584,14 @@ export function ConditionPage() {
             {latestResult && (
               <ConditionResult
                 result={latestResult}
-                historyCount={historyList.length}
+                historyCount={historyUnavailable ? undefined : historyList.length}
                 isLight={isLight}
               />
             )}
 
             {mode === 'weekly' && (
               <WeeklyQuestionnaire
-                playerId={authPlayerId!}
+                playerId={inputTargetPlayerId!}
                 measuredAt={measuredAt}
                 isLight={isLight}
                 onSubmitted={handleQuestionnaireSubmitted}
@@ -510,14 +600,14 @@ export function ConditionPage() {
 
             {mode === 'prematch' && (
               <PreMatchQuestionnaire
-                playerId={authPlayerId!}
+                playerId={inputTargetPlayerId!}
                 measuredAt={measuredAt}
                 isLight={isLight}
                 onSubmitted={handleQuestionnaireSubmitted}
               />
             )}
 
-            {mode === 'body' && role !== 'player' && (
+            {mode === 'body' && (
               <>
                 <section className={`rounded-ss-lg border ${borderColor} ${panelBg} p-4`}>
                   <h2 className="text-sm font-semibold mb-3">{t('condition.section_inbody')}</h2>
@@ -593,16 +683,16 @@ interface HistoryRow {
 }
 interface HistoryViewProps {
   list: Array<Record<string, unknown>>
+  /** 履歴の取得に失敗している (履歴なしではない) */
+  unavailable?: boolean
+  onRetry?: () => void
   isLight: boolean
-  canDelete: boolean
   onSelect: (r: Record<string, unknown>) => void
 }
 
-function HistoryView({ list, isLight, canDelete, onSelect }: HistoryViewProps) {
+function HistoryView({ list, unavailable, onRetry, isLight, onSelect }: HistoryViewProps) {
   const { t } = useTranslation()
-  const qc = useQueryClient()
   const [filter, setFilter] = useState<HistoryFilter>('all')
-  const [deletingId, setDeletingId] = useState<number | null>(null)
   const muted = 'text-[var(--ss-t3)]'
   const panelCls = 'bg-[var(--ss-surface-1)] border-[var(--ss-border)]'
   const filterBtnBase = 'px-3 py-1 rounded-ss-md text-xs font-medium transition-colors'
@@ -620,23 +710,16 @@ function HistoryView({ list, isLight, canDelete, onSelect }: HistoryViewProps) {
     })
     .sort((a, b) => (b.measured_at ?? '').localeCompare(a.measured_at ?? ''))
 
-  const handleDelete = async (id: number) => {
-    if (!window.confirm(t('condition.history.delete_confirm') as string)) return
-    setDeletingId(id)
-    try {
-      await apiDelete(`/conditions/${id}`, { 'X-Idempotency-Key': newIdempotencyKey() })
-      qc.invalidateQueries({ queryKey: ['conditions'] })
-    } finally {
-      setDeletingId(null)
-    }
-  }
-
   const filterOpts: Array<{ key: HistoryFilter; label: string }> = [
     { key: 'all', label: t('condition.history.filter_all') },
     { key: 'weekly', label: t('condition.history.filter_weekly') },
     { key: 'pre_match', label: t('condition.history.filter_prematch') },
     { key: 'body', label: t('condition.history.filter_body') },
   ]
+
+  if (unavailable) {
+    return <QueryErrorNotice onRetry={onRetry} />
+  }
 
   if (!rows || rows.length === 0) {
     return <div className={`${muted} text-sm`}>{t('condition.history_placeholder')}</div>
@@ -722,18 +805,6 @@ function HistoryView({ list, isLight, canDelete, onSelect }: HistoryViewProps) {
                   </div>
                 )}
               </button>
-              {canDelete && r.id != null && (
-                <div className="px-3 pb-2 flex justify-end">
-                  <button
-                    onClick={() => handleDelete(r.id!)}
-                    disabled={deletingId === r.id}
-                    className="flex items-center gap-1 text-[11px] text-[var(--ss-bad)] hover:opacity-80 disabled:opacity-50"
-                  >
-                    <MIcon name="delete" size={12} />
-                    {t('condition.history.delete')}
-                  </button>
-                </div>
-              )}
             </div>
           ))}
         </div>

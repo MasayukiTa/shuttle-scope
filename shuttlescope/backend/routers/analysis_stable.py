@@ -14,14 +14,24 @@ from backend.utils.confidence import check_confidence
 from backend.analysis.router_helpers import (
     SHOT_TYPE_JA, SHOT_KEYS, SHOT_LABELS_JA, END_TYPE_JA, _shot_ja,
     _player_role_in_match, _get_player_matches, _fetch_matches_sets_rallies,
+    _get_player_matches_with_excluded,
 )
+from backend.analysis.role_view import is_opponent_stroke, match_ids_by_slot, own_slot
+from backend.analysis.player_context import involves_player, player_wins_match
 from backend.analysis.analysis_config import AnalysisConfig
+from backend.analysis.service_shots import is_service_shot
 from backend.analysis.analysis_registry import get_analysis_meta
 from backend.analysis.response_meta import build_input_provenance
 
-from backend.utils.auth import require_query_scope  # cross-team IDOR ガード
+from backend.utils.auth import require_non_player, require_operator_or_demo_read, require_query_scope  # cross-team IDOR ガード
+from backend.utils.player_privacy import deny_player_on_forbidden_named_path
 
-router = APIRouter(dependencies=[Depends(require_query_scope)])
+# 大会レベル別の勝率を「成績」として扱える最小試合数 (相手別 OPPONENT_MIN_MATCHES と同値)
+LEVEL_MIN_MATCHES = 3
+
+# player_privacy.PLAYER_FORBIDDEN_NAMED_ANALYSIS_PATHS に載るパス (win_loss_comparison /
+# received_vulnerability 等) は、ルートごとに依存を書かなくてもここで player を拒否する。
+router = APIRouter(dependencies=[Depends(deny_player_on_forbidden_named_path), Depends(require_query_scope)])
 
 
 def _with_input_provenance(
@@ -71,7 +81,7 @@ def get_descriptive(
     set_to_match: dict[int, int] = {s.id: s.match_id for s in sets}
 
     # 対象セットのラリーを取得
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
+    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids), Rally.is_skipped.is_(False)).all() if set_ids else []
 
     total_rallies = len(rallies)
     wins = 0
@@ -112,17 +122,21 @@ def get_descriptive(
             if player_won:
                 receiver_wins += 1
 
-    win_rate = round(wins / total_rallies, 3) if total_rallies else 0.0
-    avg_rally_length = round(total_length / total_rallies, 3) if total_rallies else 0.0
+    # ラリー 0 件では勝率・平均ラリー長は定義できない (0.0 を「勝率0%」と読ませない)
+    win_rate = round(wins / total_rallies, 3) if total_rallies else None
+    avg_rally_length = round(total_length / total_rallies, 3) if total_rallies else None
 
     rally_length_histogram = [
         {"length": length, "count": count}
         for length, count in sorted(length_hist.items())
     ]
 
+    # サーブ側 / レシーブ側のどちらかが 0 件ならその側の勝率は null。側ごとの件数も併記する。
     server_win_rate = {
-        "as_server": round(server_wins / server_total, 3) if server_total else 0.0,
-        "as_receiver": round(receiver_wins / receiver_total, 3) if receiver_total else 0.0,
+        "as_server": round(server_wins / server_total, 3) if server_total else None,
+        "as_receiver": round(receiver_wins / receiver_total, 3) if receiver_total else None,
+        "server_count": server_total,
+        "receiver_count": receiver_total,
     }
 
     confidence = check_confidence("descriptive_basic", total_rallies)
@@ -137,6 +151,8 @@ def get_descriptive(
             "end_type_distribution": dict(end_type_dist),
             "rally_length_histogram": rally_length_histogram,
             "win_by_end_type": {k: v for k, v in win_by_end_type.items()},
+            # 187: ラリー長の合計から導く総球数。input_provenance.strokes.total（個々の打球入力）とは別指標であることを明示する。
+            "total_strokes_from_rally_length": total_length,
             "server_win_rate": server_win_rate,
         },
         "meta": _with_input_provenance(
@@ -180,8 +196,7 @@ def get_heatmap(
     else:
         _matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
 
-    match_ids_as_a = [m.id for m in _matches if m.player_a_id == player_id]
-    match_ids_as_b = [m.id for m in _matches if m.player_b_id == player_id]
+    match_ids_by_slot_ = match_ids_by_slot(_matches, player_id)
 
     zone_col = Stroke.hit_zone if type == "hit" else Stroke.land_zone
 
@@ -209,7 +224,7 @@ def get_heatmap(
             db.query(Stroke)
             .filter(
                 Stroke.rally_id.in_(rally_ids),
-                Stroke.player == player_role,
+                Stroke.player == own_slot(player_role),
                 zone_col.isnot(None),
             )
             .all()
@@ -220,8 +235,8 @@ def get_heatmap(
             total_strokes += 1
             provenance_strokes.append(stroke)
 
-    _count_strokes(match_ids_as_a, "player_a")
-    _count_strokes(match_ids_as_b, "player_b")
+    for _slot, _ids in match_ids_by_slot_.items():
+        _count_strokes(_ids, _slot)
 
     confidence = check_confidence("heatmap", total_strokes)
 
@@ -285,8 +300,7 @@ def get_heatmap_composite(
     else:
         _matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
 
-    match_ids_as_a = [m.id for m in _matches if m.player_a_id == player_id]
-    match_ids_as_b = [m.id for m in _matches if m.player_b_id == player_id]
+    match_ids_by_slot_ = match_ids_by_slot(_matches, player_id)
 
     hit_counts: dict[str, int] = defaultdict(int, {z: 0 for z in ALL_ZONES})
     land_counts: dict[str, int] = defaultdict(int, {z: 0 for z in ALL_ZONES})
@@ -308,7 +322,7 @@ def get_heatmap_composite(
             db.query(Stroke)
             .filter(
                 Stroke.rally_id.in_(rally_ids),
-                Stroke.player == player_role,
+                Stroke.player == own_slot(player_role),
             )
             .all()
         )
@@ -324,15 +338,36 @@ def get_heatmap_composite(
             if contributed:
                 provenance_strokes.append(stroke)
 
-    _count_zones(match_ids_as_a, "player_a")
-    _count_zones(match_ids_as_b, "player_b")
+    for _slot, _ids in match_ids_by_slot_.items():
+        _count_zones(_ids, _slot)
 
-    hit_total = max(sum(hit_counts.values()), 1)
-    land_total = max(sum(land_counts.values()), 1)
+    # 分母 (打点/着地点の総数) 0 では割合は定義できない: rate は null、各セルに分母 n を併記する
+    hit_total = sum(hit_counts.values())
+    land_total = sum(land_counts.values())
+
+    # 項目161: 打点ヒートマップと着地点ヒートマップの対象球数が食い違う問題。
+    # どちらの標本も同じ stroke 集合から数えているが、hit_zone / land_zone の
+    # どちらか一方だけが入力された stroke があると hit_total と land_total がずれる。
+    # ずれの量と欠損率を data.missingness で明示し、UI/レポートが欠損を隠さずに
+    # 示せるようにする (可視化専用の合成表示でも標本不一致を黙らせない)。
+    missing_hit = max(land_total - hit_total, 0)
+    missing_land = max(hit_total - land_total, 0)
+    missingness = {
+        "hit_n": hit_total,
+        "land_n": land_total,
+        "missing_hit": missing_hit,
+        "missing_hit_rate": round(missing_hit / land_total, 4) if land_total else None,
+        "missing_land": missing_land,
+        "missing_land_rate": round(missing_land / hit_total, 4) if hit_total else None,
+    }
 
     # 打点データ（自コート座標系そのまま）
     hit_data = {
-        z: {"count": hit_counts[z], "rate": round(hit_counts[z] / hit_total, 4)}
+        z: {
+            "count": hit_counts[z],
+            "rate": round(hit_counts[z] / hit_total, 4) if hit_total else None,
+            "n": hit_total,
+        }
         for z in ALL_ZONES
     }
 
@@ -343,7 +378,8 @@ def get_heatmap_composite(
         dst_zone = fold_land_zone_onto_own_court(src_zone)
         land_rotated[dst_zone] = {
             "count": land_counts.get(src_zone, 0),
-            "rate": round(land_counts.get(src_zone, 0) / land_total, 4),
+            "rate": round(land_counts.get(src_zone, 0) / land_total, 4) if land_total else None,
+            "n": land_total,
             "source": "land_rotated",
         }
 
@@ -355,6 +391,7 @@ def get_heatmap_composite(
             "hit": hit_data,
             "land_rotated": land_rotated,
             "total_strokes": total_strokes,
+            "missingness": missingness,
             "note": (
                 "着地点データをネット線で折り返して自コート座標系に重ねています"
                 "（行はネット基準・列は画面基準なので、ゾーン名は変わりません）。"
@@ -397,8 +434,7 @@ def get_heatmap_zone_detail(
     else:
         _matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
 
-    match_ids_as_a = [m.id for m in _matches if m.player_a_id == player_id]
-    match_ids_as_b = [m.id for m in _matches if m.player_b_id == player_id]
+    match_ids_by_slot_ = match_ids_by_slot(_matches, player_id)
 
     zone_col = Stroke.hit_zone if type == "hit" else Stroke.land_zone
 
@@ -425,7 +461,7 @@ def get_heatmap_zone_detail(
             db.query(Stroke)
             .filter(
                 Stroke.rally_id.in_(list(rally_map.keys())),
-                Stroke.player == player_role,
+                Stroke.player == own_slot(player_role),
                 zone_col == zone,
             )
             .all()
@@ -447,8 +483,8 @@ def get_heatmap_zone_detail(
             rally_map[rid] for rid in used_rally_ids if rid in rally_map
         )
 
-    _collect(match_ids_as_a, "player_a")
-    _collect(match_ids_as_b, "player_b")
+    for _slot, _ids in match_ids_by_slot_.items():
+        _collect(_ids, _slot)
 
     win_rate = round(wins / total, 3) if total > 0 else None
 
@@ -488,6 +524,11 @@ def get_shot_types(
     date_to: Optional[DateType] = Query(None),
     db: Session = Depends(get_db),
 ):
+    """ショット種類分布。
+
+    win_rate (= winner_end_rate) = 勝ちラリーで、そのショットが自分の最終打だった数 / そのショットの総打数。
+    /analysis/shot_win_loss の win_rate (= rally_win_rate、そのショットが出たラリーの勝率) とは別の指標。
+    """
     matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
     if not matches:
         return {"success": True, "data": []}
@@ -538,7 +579,7 @@ def get_shot_types(
     for stroke in all_strokes:
         r_id = stroke.rally_id
         player_role = rally_to_role.get(r_id)
-        if stroke.player == player_role:
+        if stroke.player == own_slot(player_role):
             shot_total[stroke.shot_type] += 1
 
     # 勝利ラリーにおけるプレイヤー最終打のshot_typeを集計
@@ -547,7 +588,7 @@ def get_shot_types(
         if not rally_player_won.get(r_id, False):
             continue
         player_role = rally_to_role.get(r_id)
-        player_strokes = [s for s in strokes if s.player == player_role]
+        player_strokes = [s for s in strokes if s.player == own_slot(player_role)]
         if player_strokes:
             last = player_strokes[-1]
             shot_win_last[last.shot_type] += 1
@@ -556,7 +597,16 @@ def get_shot_types(
     for shot_type, total in sorted(shot_total.items()):
         wins = shot_win_last.get(shot_type, 0)
         win_rate = round(wins / total, 3) if total else 0.0
-        result.append({"shot_type": shot_type, "count": total, "win_rate": win_rate})
+        # win_rate は「勝ちラリーの最終打だった割合 (決め球率)」で、shot_win_loss の win_rate
+        # (そのショットが出たラリーの勝率) とは別の指標。互換のため win_rate は残し、
+        # 同じ値を意味が分かる名前でも返す (監査 #156 / #162)。
+        result.append({
+            "shot_type": shot_type,
+            "count": total,
+            "win_rate": win_rate,
+            "winner_end_count": wins,
+            "winner_end_rate": win_rate,
+        })
 
     return {"success": True, "data": result}
 
@@ -588,7 +638,7 @@ def get_matches_summary(player_id: int, db: Session = Depends(get_db)):
     set_to_match: dict[int, int] = {s.id: s.match_id for s in sets}
     set_ids = [s.id for s in sets]
 
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
+    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids), Rally.is_skipped.is_(False)).all() if set_ids else []
 
     rally_count_by_match: dict[int, int] = defaultdict(int)
     for rally in rallies:
@@ -682,7 +732,8 @@ def get_confidence(player_id: int, analysis_type: str):
 # B-002: ショット別勝敗集計
 # ---------------------------------------------------------------------------
 
-@router.get("/analysis/shot_win_loss")
+# player は不可 (勝敗内訳)。定義: backend/utils/player_privacy.py。ミドルウェアと二重に守る。
+@router.get("/analysis/shot_win_loss", dependencies=[Depends(require_non_player), Depends(require_operator_or_demo_read)])
 def get_shot_win_loss(
     player_id: int,
     result: Optional[str] = Query(None),
@@ -727,7 +778,11 @@ def get_shot_win_loss(
             ),
         }
 
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all()
+    rallies = db.query(Rally).filter(
+        Rally.set_id.in_(set_ids),
+        Rally.is_skipped.is_(False),
+        Rally.deleted_at.is_(None),
+    ).all()
     rally_ids = [r.id for r in rallies]
 
     # ラリーごとにプレイヤーの勝敗とロールを記録
@@ -767,7 +822,7 @@ def get_shot_win_loss(
     for stroke in all_strokes:
         r_id = stroke.rally_id
         player_role = rally_to_role.get(r_id)
-        if stroke.player != player_role:
+        if stroke.player != own_slot(player_role):
             continue
         provenance_strokes.append(stroke)
         shot_rallies[stroke.shot_type].add(r_id)
@@ -782,6 +837,8 @@ def get_shot_win_loss(
         win_count = len(shot_win_rallies[shot_type])
         lose_count = total - win_count
         win_rate = round(win_count / total, 3) if total else 0.0
+        # win_rate は「そのショットが出たラリーのうち自分が取った割合」。shot_types の win_rate
+        # (決め球率) とは分母も分子も違う。同じ値を意味が分かる名前でも返す (監査 #156)。
         result.append({
             "shot_type": shot_type,
             "shot_type_ja": SHOT_TYPE_JA.get(shot_type, shot_type),
@@ -789,6 +846,7 @@ def get_shot_win_loss(
             "win_count": win_count,
             "lose_count": lose_count,
             "win_rate": win_rate,
+            "rally_win_rate": win_rate,
         })
 
     confidence = check_confidence("win_loss_comparison", total_rallies)
@@ -842,7 +900,8 @@ def _set_comparison_impl(
     role_by_match = ctx.role_by_match
     sets = ctx.sets
     set_to_match = ctx.set_to_match
-    rallies = ctx.rallies
+    # スコア補正の擬似ラリー (is_skipped) は実記録ではないので勝率・ラリー長に入れない
+    rallies = [r for r in ctx.rallies if not r.is_skipped]
 
     if not matches:
         confidence = check_confidence("descriptive_basic", 0)
@@ -904,7 +963,7 @@ def _set_comparison_impl(
     by_set_formatted = [
         {
             "set_number": item["set_num"],
-            "label": f"第{item['set_num']}セット",
+            "label": f"第{item['set_num']}ゲーム",
             "total_rallies": item["total_rallies"],
             "win_rate": item["win_rate"],
             "avg_rally_length": item["avg_rally_length"],
@@ -952,7 +1011,11 @@ def get_score_progression(match_id: int, db: Session = Depends(get_db)):
     set_ids = [s.id for s in sets]
     rallies_all = (
         db.query(Rally)
-        .filter(Rally.set_id.in_(set_ids))
+        .filter(
+            Rally.set_id.in_(set_ids),
+            Rally.is_skipped.is_(False),
+            Rally.deleted_at.is_(None),
+        )
         .order_by(Rally.set_id, Rally.rally_num)
         .all()
     )
@@ -1059,7 +1122,7 @@ def get_win_loss_comparison(
     db: Session = Depends(get_db),
 ):
     """B-004: 勝ち試合と負け試合で主要統計を比較する"""
-    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+    matches, excluded = _get_player_matches_with_excluded(db, player_id, result, tournament_level, date_from, date_to)
 
     empty_confidence = check_confidence("win_loss_comparison", 0)
     if not matches:
@@ -1067,7 +1130,7 @@ def get_win_loss_comparison(
             "success": True,
             "data": {"win_matches": None, "loss_matches": None},
             "meta": _with_input_provenance(
-                {"sample_size": 0, "confidence": empty_confidence},
+                {"sample_size": 0, "confidence": empty_confidence, "excluded": excluded},
                 rallies=[],
                 strokes=[],
             ),
@@ -1108,7 +1171,7 @@ def get_win_loss_comparison(
         set_ids = [row[0] for row in set_rows]
         set_to_match: dict[int, int] = {row[0]: row[1] for row in set_rows}
 
-        rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all()
+        rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids), Rally.is_skipped.is_(False)).all()
         if not rallies:
             return None
 
@@ -1146,7 +1209,7 @@ def get_win_loss_comparison(
             if match_id is None:
                 continue
             player_role = role_by_match.get(match_id)
-            if stroke.player == player_role:
+            if stroke.player == own_slot(player_role):
                 provenance_strokes.append(stroke)
                 shot_counter[stroke.shot_type] += 1
 
@@ -1164,14 +1227,18 @@ def get_win_loss_comparison(
         )[:5]
 
         avg_rally_length = round(total_length / total_rallies, 2) if total_rallies else 0.0
-        serve_win_rate = round(serve_wins / serve_total, 3) if serve_total else 0.0
+        # サーブ機会が 0 件なら null (0.0 を「サーブ勝率0%」と読ませない)
+        serve_win_rate = round(serve_wins / serve_total, 3) if serve_total else None
 
         return {
             "count": len(match_ids),
             "avg_rally_length": avg_rally_length,
-            "ace_rate": 0.0,   # シンプル実装（ace タイプ別集計は後で拡張）
-            "error_rate": 0.0,
+            # ace / エラーはこの集計では算出していない。0.0 を返すと「計算した結果 0%」に
+            # 見えるため null (未算出) にする。算出するときも分母 (サーブ数・打球数) 0 は null。
+            "ace_rate": None,
+            "error_rate": None,
             "serve_win_rate": serve_win_rate,
+            "serve_count": serve_total,
             "top_shots": top_shots,
         }
 
@@ -1188,7 +1255,7 @@ def get_win_loss_comparison(
             "loss_matches": loss_stats,
         },
         "meta": _with_input_provenance(
-            {"sample_size": total_matches, "confidence": confidence},
+            {"sample_size": total_matches, "confidence": confidence, "excluded": excluded},
             rallies=provenance_rallies,
             strokes=provenance_strokes,
         ),
@@ -1209,7 +1276,9 @@ def get_tournament_level_comparison(
     db: Session = Depends(get_db),
 ):
     """B-006: 大会レベル（IC/SJL/国内等）ごとの勝率・ラリー長を比較する"""
-    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+    matches, excluded = _get_player_matches_with_excluded(
+        db, player_id, result, tournament_level, date_from, date_to,
+    )
 
     empty_confidence = check_confidence("descriptive_basic", 0)
     if not matches:
@@ -1217,33 +1286,23 @@ def get_tournament_level_comparison(
             "success": True,
             "data": {"levels": []},
             "meta": _with_input_provenance(
-                {"sample_size": 0, "confidence": empty_confidence},
+                {"sample_size": 0, "confidence": empty_confidence, "excluded": excluded},
                 rallies=[],
             ),
         }
-
-    role_by_match: dict[int, str] = {
-        m.id: _player_role_in_match(m, player_id) for m in matches
-    }
 
     match_ids = [m.id for m in matches]
     sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
     set_to_match: dict[int, int] = {s.id: s.match_id for s in sets}
     set_ids = [s.id for s in sets]
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
+    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids), Rally.is_skipped.is_(False)).all() if set_ids else []
 
     # 試合→大会レベルのマッピング
     level_by_match: dict[int, str] = {m.id: m.tournament_level for m in matches}
-    result_by_match: dict[int, str] = {}
-    for m in matches:
-        role = role_by_match[m.id]
-        result = m.result
-        if role == "player_b":
-            if result == "win":
-                result = "loss"
-            elif result == "loss":
-                result = "win"
-        result_by_match[m.id] = result
+    # 母集団は勝敗確定の試合だけ (analysis_population)。None (未確定) は勝ちに数えない
+    won_by_match: dict[int, Optional[bool]] = {
+        m.id: player_wins_match(m, player_id) for m in matches
+    }
 
     # レベル別に試合を集計
     level_stats: dict[str, dict] = defaultdict(lambda: {
@@ -1260,7 +1319,7 @@ def get_tournament_level_comparison(
     # 試合単位の勝ち数
     for m in matches:
         level = m.tournament_level
-        if result_by_match[m.id] == "win":
+        if won_by_match[m.id]:
             level_stats[level]["wins"] += 1
         if m.id not in level_stats[level]["match_ids"]:
             level_stats[level]["match_ids"].add(m.id)
@@ -1270,14 +1329,16 @@ def get_tournament_level_comparison(
     for level, stats in sorted(level_stats.items()):
         match_count = len(stats["match_ids"])
         total_sample += match_count
-        win_rate = round(stats["wins"] / match_count, 3) if match_count else 0.0
-        avg_rally = round(stats["total_length"] / stats["rally_count"], 2) if stats["rally_count"] else 0.0
+        win_rate = round(stats["wins"] / match_count, 3) if match_count else None
+        avg_rally = round(stats["total_length"] / stats["rally_count"], 2) if stats["rally_count"] else None
         result_levels.append({
             "level": level,
             "match_count": match_count,
             "win_rate": win_rate,
             "avg_rally_length": avg_rally,
             "sample_size": stats["rally_count"],
+            # 試合数が少ないレベルの勝率は参考値 (フロントの n<3 灰色表示と同じ基準)
+            "insufficient": match_count < LEVEL_MIN_MATCHES,
         })
 
     confidence = check_confidence("descriptive_basic", total_sample)
@@ -1286,7 +1347,7 @@ def get_tournament_level_comparison(
         "success": True,
         "data": {"levels": result_levels},
         "meta": _with_input_provenance(
-            {"sample_size": total_sample, "confidence": confidence},
+            {"sample_size": total_sample, "confidence": confidence, "excluded": excluded},
             rallies=rallies,
         ),
     }
@@ -1296,7 +1357,8 @@ def get_tournament_level_comparison(
 # C-002: 失点前パターン解析
 # ---------------------------------------------------------------------------
 
-@router.get("/analysis/pre_loss_patterns")
+# player は不可 (直接の弱点提示)。定義: backend/utils/player_privacy.py。
+@router.get("/analysis/pre_loss_patterns", dependencies=[Depends(require_non_player), Depends(require_operator_or_demo_read)])
 def get_pre_loss_patterns(
     player_id: int,
     result: Optional[str] = Query(None),
@@ -1383,7 +1445,7 @@ def _pre_loss_patterns_impl(
         if not player_role:
             continue
         # プレイヤーのストロークのみ抽出（stroke_num順）
-        player_strokes = [s for s in strokes if s.player == player_role]
+        player_strokes = [s for s in strokes if s.player == own_slot(player_role)]
         if not player_strokes:
             continue
         sample_size += 1
@@ -1392,11 +1454,11 @@ def _pre_loss_patterns_impl(
         # 最後（1球前）
         if len(player_strokes) >= 1:
             pre1[player_strokes[-1].shot_type] += 1
-        # 2球前
-        if len(player_strokes) >= 2:
+        # 2球前 (サーブはラリー中盤の球ではないので数えない: 監査 #38)
+        if len(player_strokes) >= 2 and not is_service_shot(player_strokes[-2].shot_type):
             pre2[player_strokes[-2].shot_type] += 1
         # 3球前
-        if len(player_strokes) >= 3:
+        if len(player_strokes) >= 3 and not is_service_shot(player_strokes[-3].shot_type):
             pre3[player_strokes[-3].shot_type] += 1
 
     def _build_ranked(counter: dict[str, int]) -> list[dict]:
@@ -1469,7 +1531,11 @@ def get_first_return_analysis(
     set_to_match: dict[int, int] = {s.id: s.match_id for s in sets}
     set_ids = [s.id for s in sets]
 
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
+    rallies = db.query(Rally).filter(
+        Rally.set_id.in_(set_ids),
+        Rally.is_skipped.is_(False),
+        Rally.deleted_at.is_(None),
+    ).all() if set_ids else []
     rally_ids = [r.id for r in rallies]
 
     rally_player_won: dict[int, bool] = {}
@@ -1562,7 +1628,7 @@ def get_zone_detail(
     matches = (
         db.query(Match)
         .filter(
-            (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
+            involves_player(player_id)
         )
         .all()
     )
@@ -1571,7 +1637,7 @@ def get_zone_detail(
     if not matches:
         return {
             "success": True,
-            "data": {"zone": zone, "total_shots": 0, "shot_breakdown": [], "win_rate": 0.0},
+            "data": {"zone": zone, "total_shots": 0, "shot_breakdown": [], "win_rate": None},
             "meta": _with_input_provenance(
                 {"sample_size": 0, "confidence": empty_confidence},
                 rallies=[],
@@ -1603,7 +1669,7 @@ def get_zone_detail(
     if not rally_ids:
         return {
             "success": True,
-            "data": {"zone": zone, "total_shots": 0, "shot_breakdown": [], "win_rate": 0.0},
+            "data": {"zone": zone, "total_shots": 0, "shot_breakdown": [], "win_rate": None},
             "meta": _with_input_provenance(
                 {"sample_size": 0, "confidence": empty_confidence},
                 rallies=[],
@@ -1632,7 +1698,7 @@ def get_zone_detail(
     for stroke in strokes:
         r_id = stroke.rally_id
         player_role = rally_to_role.get(r_id)
-        if stroke.player != player_role:
+        if stroke.player != own_slot(player_role):
             continue
         provenance_strokes.append(stroke)
         provenance_rally_ids.add(r_id)
@@ -1656,7 +1722,8 @@ def get_zone_detail(
         reverse=True,
     )
 
-    overall_win_rate = round(total_wins / total_shots, 3) if total_shots else 0.0
+    # 打球 0 件のゾーンは勝率を定義できない (0.0 ではなく null)
+    overall_win_rate = round(total_wins / total_shots, 3) if total_shots else None
     confidence = check_confidence("heatmap", total_shots)
 
     return {
@@ -1686,7 +1753,7 @@ def get_set_summary(set_id: int, max_rally_num: Optional[int] = None, db: Sessio
     max_rally_num: 指定した場合、そのラリー番号以前のデータのみで解析（途中地点解析用）"""
     game_set = db.get(GameSet, set_id)
     if not game_set:
-        return {"success": False, "error": "セットが見つかりません"}
+        return {"success": False, "error": "ゲームが見つかりません"}
 
     q = db.query(Rally).filter(Rally.set_id == set_id)
     if max_rally_num is not None:
@@ -1923,7 +1990,7 @@ def _pre_win_patterns_impl(
         player_role = rally_to_role.get(rally_id)
         if not player_role:
             continue
-        player_strokes = [s for s in strokes if s.player == player_role]
+        player_strokes = [s for s in strokes if s.player == own_slot(player_role)]
         if not player_strokes:
             continue
         sample_size += 1
@@ -1931,9 +1998,9 @@ def _pre_win_patterns_impl(
         provenance_strokes.extend(player_strokes)
         if len(player_strokes) >= 1:
             pre1[player_strokes[-1].shot_type] += 1
-        if len(player_strokes) >= 2:
+        if len(player_strokes) >= 2 and not is_service_shot(player_strokes[-2].shot_type):
             pre2[player_strokes[-2].shot_type] += 1
-        if len(player_strokes) >= 3:
+        if len(player_strokes) >= 3 and not is_service_shot(player_strokes[-3].shot_type):
             pre3[player_strokes[-3].shot_type] += 1
 
     def _build_ranked_win(counter: dict[str, int]) -> list[dict]:
@@ -2051,7 +2118,7 @@ def _effective_distribution_map_impl(
         player_role = rally_to_role.get(rally_id)
         if not player_role:
             continue
-        player_strokes = [s for s in strokes if s.player == player_role]
+        player_strokes = [s for s in strokes if s.player == own_slot(player_role)]
         if not player_strokes:
             continue
         last = player_strokes[-1]
@@ -2069,7 +2136,7 @@ def _effective_distribution_map_impl(
         if shot_type and s.shot_type != shot_type:
             continue
         player_role = rally_to_role.get(s.rally_id)
-        if player_role and s.player == player_role and s.land_zone:
+        if player_role and s.player == own_slot(player_role) and s.land_zone:
             zone_total[s.land_zone] += 1
             provenance_strokes.append(s)
             provenance_rally_ids.add(s.rally_id)
@@ -2079,8 +2146,12 @@ def _effective_distribution_map_impl(
 
     zone_effectiveness: dict[str, dict] = {}
     for zone, win_count in zone_win.items():
-        total = zone_total.get(zone, win_count)
-        win_rate = round(win_count / total, 3) if total else 0.0
+        # 分母が無いゾーンの分子を分母に流用すると勝率 100% になる。zone_total は
+        # zone_win の母集合を含むので通常は起きないが、欠けたゾーンは出さない。
+        total = zone_total.get(zone, 0)
+        if not total:
+            continue
+        win_rate = round(win_count / total, 3)
         freq = round(win_count / sample_size, 3)
         zone_effectiveness[zone] = {
             "win_count": win_count,
@@ -2177,7 +2248,7 @@ def _received_vulnerability_impl(
     provenance_rally_ids: set[int] = set()
     for s in ctx.strokes:
         player_role = rally_to_role.get(s.rally_id)
-        if player_role and s.player != player_role and s.land_zone:
+        if player_role and is_opponent_stroke(s.player, player_role) and s.land_zone:
             zone_total_opp[s.land_zone] += 1
             provenance_strokes.append(s)
             provenance_rally_ids.add(s.rally_id)
@@ -2198,7 +2269,7 @@ def _received_vulnerability_impl(
         if not player_role:
             continue
         opp_strokes = sorted(
-            [s for s in strokes if s.player != player_role],
+            [s for s in strokes if is_opponent_stroke(s.player, player_role)],
             key=lambda s: s.stroke_num,
         )
         if not opp_strokes:
@@ -2294,7 +2365,7 @@ def get_effective_distribution_map_zone_detail(
     ).all()
 
     # 対象プレイヤーのストロークのみ
-    player_strokes = [s for s in strokes if rally_to_role.get(s.rally_id) and s.player == rally_to_role[s.rally_id]]
+    player_strokes = [s for s in strokes if rally_to_role.get(s.rally_id) and s.player == own_slot(rally_to_role[s.rally_id])]
     total_count = len(player_strokes)
     if total_count == 0:
         return empty
@@ -2391,7 +2462,7 @@ def get_received_vulnerability_zone_detail(
     ).all()
 
     # 相手（opponent）のストロークのみ
-    opp_strokes = [s for s in strokes if rally_to_role.get(s.rally_id) and s.player != rally_to_role[s.rally_id]]
+    opp_strokes = [s for s in strokes if is_opponent_stroke(s.player, rally_to_role.get(s.rally_id))]
     total_count = len(opp_strokes)
     if total_count == 0:
         return empty

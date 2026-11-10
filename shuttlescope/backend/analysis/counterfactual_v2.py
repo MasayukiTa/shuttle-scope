@@ -25,6 +25,7 @@ from collections import defaultdict
 from typing import Optional
 
 from backend.analysis.state_spec import build_rally_state
+from backend.analysis.role_view import own_slot, perspective
 
 # ブートストラップ設定
 BOOTSTRAP_N = 500          # リサンプル回数（精度と速度のバランス）
@@ -32,13 +33,14 @@ BOOTSTRAP_MIN_SUPPORT = 10  # 最低サポート数（未満は比較をスキ�
 CONFIDENCE_Z = 1.96         # 95% CI
 
 
-def _bootstrap_win_rate(wins: list[bool], n_bootstrap: int = BOOTSTRAP_N) -> tuple[float, float]:
+def _bootstrap_win_rate(wins: list[bool], n_bootstrap: int = BOOTSTRAP_N) -> tuple[Optional[float], Optional[float]]:
     """
     ブートストラップによる勝率の95% CI を返す。
     Returns: (ci_low, ci_high)
     """
     if not wins:
-        return (0.0, 1.0)
+        # n=0 の CI は全域 (0, 1) を値として返さず None (統計規則 R1)
+        return (None, None)
     n = len(wins)
     boot_means = []
     for _ in range(n_bootstrap):
@@ -134,7 +136,7 @@ def compute_counterfactual_v2(
         )
 
         stks = sorted(strokes_by_rally.get(rally.id, []), key=lambda x: x.stroke_num)
-        player_stks = [s for s in stks if s.player == role and s.shot_type]
+        player_stks = [s for s in stks if s.player == own_slot(role) and s.shot_type]
         if not player_stks:
             continue
 
@@ -250,16 +252,16 @@ CF2_MIN_SUPPORT = 15  # CF-2 は厳密なサポート制御
 def _ipw_weighted_win_rate(
     wins: list[bool],
     weights: list[float],
-) -> tuple[float, float, float]:
+) -> tuple[Optional[float], Optional[float], float]:
     """逆確率重み付き勝率と標準誤差を計算する。
 
     Returns: (weighted_win_rate, variance, n_eff)
     """
     if not wins:
-        return 0.0, 1.0, 0.0
+        return None, None, 0.0
     total_w = sum(weights)
     if total_w <= 0:
-        return 0.0, 1.0, 0.0
+        return None, None, 0.0
     wr = sum(w * int(won) for w, won in zip(weights, wins)) / total_w
     # 有効サンプルサイズ
     n_eff = (sum(weights) ** 2) / sum(w ** 2 for w in weights)
@@ -272,10 +274,10 @@ def _bootstrap_ipw_win_rate(
     wins: list[bool],
     weights: list[float],
     n_bootstrap: int = BOOTSTRAP_N,
-) -> tuple[float, float]:
+) -> tuple[Optional[float], Optional[float]]:
     """IPW重み付きブートストラップCI。Returns (ci_low, ci_high)"""
     if not wins:
-        return 0.0, 1.0
+        return None, None
     n = len(wins)
     paired = list(zip(wins, weights))
     boot_means = []
@@ -340,7 +342,7 @@ def compute_counterfactual_cf2(
         )
 
         stks = sorted(strokes_by_rally.get(rally.id, []), key=lambda x: x.stroke_num)
-        player_stks = [s for s in stks if s.player == role and s.shot_type]
+        player_stks = [s for s in stks if s.player == own_slot(role) and s.shot_type]
         if not player_stks:
             continue
 
@@ -495,12 +497,10 @@ def _classify_match_opponent_type(
     """
     if not hasattr(match, 'player_a_id') or not hasattr(match, 'player_b_id'):
         return "unknown"
-    if match.player_a_id == player_id:
-        player_won = match.winner == 'player_a'
-    elif match.player_b_id == player_id:
-        player_won = match.winner == 'player_b'
-    else:
+    view = perspective(match, player_id)
+    if view is None:
         return "unknown"
+    player_won = match.winner == str(view)
 
     # 試合結果のみから単純分類（対戦履歴なしの単試合では "competitive" をデフォルト）
     # 実際の CF-3 では bayes_matchup の opponent_type を外部から渡す
@@ -555,7 +555,7 @@ def compute_counterfactual_cf3(
         )
 
         stks = sorted(strokes_by_rally.get(rally.id, []), key=lambda x: x.stroke_num)
-        player_stks = [s for s in stks if s.player == role and s.shot_type]
+        player_stks = [s for s in stks if s.player == own_slot(role) and s.shot_type]
         if not player_stks:
             continue
 

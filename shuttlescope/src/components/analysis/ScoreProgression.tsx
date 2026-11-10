@@ -13,11 +13,13 @@ import {
 } from 'recharts'
 import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
+import { shotLabel } from '@/utils/analysisLabels'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { WIN, LOSS, getTooltipStyle } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { catColor } from '@/styles/categoricalPalette'
 import { MIcon } from '@/components/common/MIcon'
+import { useAuth } from '@/hooks/useAuth'
 
 interface ScoreProgressionProps {
   matchId: number
@@ -109,7 +111,10 @@ export function RallyDetailBanner({
   hasNext?: boolean
 }) {
   const { t } = useTranslation()
-  const { data: strokesResp, isLoading } = useQuery({
+  // 製品ルール: player にはラリーの勝者・スコアを見せない (API も winner / score_a / score_b を返さない)
+  const { role } = useAuth()
+  const isPlayer = role === 'player'
+  const { data: strokesResp, isLoading, isError, refetch } = useQuery({
     queryKey: ['rally-strokes', rally.rally_id],
     queryFn: () => apiGet<RallyStrokesResponse>('/analysis/rally_strokes', { rally_id: rally.rally_id! }),
     enabled: rally.rally_id != null,
@@ -155,12 +160,16 @@ export function RallyDetailBanner({
         <span className="text-gray-500 text-[10px]">{t('auto.ScoreProgression.server_serve', { label: serverLabel })}</span>
         <span className="text-gray-500 text-[10px] ss-num">{t('auto.ScoreProgression.rally_strokes', { n: rally.rally_length })}</span>
         <span className="text-gray-500 text-[10px]">{endTypeLabel}</span>
-        <span style={{ color: rally.winner === 'player_a' ? WIN : LOSS }} className="font-medium">
-          {t('auto.ScoreProgression.winner_point', { label: winnerLabel })}
-        </span>
-        <span className="ml-auto text-gray-400 text-[10px] ss-num">
-          {rally.score_a} – {rally.score_b}
-        </span>
+        {!isPlayer && (
+          <>
+            <span style={{ color: rally.winner === 'player_a' ? WIN : LOSS }} className="font-medium">
+              {t('auto.ScoreProgression.winner_point', { label: winnerLabel })}
+            </span>
+            <span className="ml-auto text-gray-400 text-[10px] ss-num">
+              {rally.score_a} – {rally.score_b}
+            </span>
+          </>
+        )}
       </div>
 
       {/* ストローク列 — 横スクロールで多球数ラリーに対応 */}
@@ -168,6 +177,14 @@ export function RallyDetailBanner({
         <p className="text-gray-500">{t('auto.ScoreProgression.k1')}</p>
       ) : isLoading ? (
         <p className="text-gray-500">{t('auto.ScoreProgression.k2')}</p>
+      ) : isError ? (
+        <div className="flex items-center gap-2">
+          <p className="text-red-400">{t('auto.ScoreProgression.k3_error')}</p>
+          <button
+            onClick={() => refetch()}
+            className="px-1.5 py-0.5 rounded-ss-sm text-[11px] leading-none bg-gray-600 hover:bg-gray-500 text-gray-200"
+          >{t('auto.ScoreProgression.k3_retry')}</button>
+        </div>
       ) : strokes.length === 0 ? (
         <p className="text-gray-500">{t('auto.ScoreProgression.k3')}</p>
       ) : (
@@ -175,7 +192,7 @@ export function RallyDetailBanner({
           <div className="flex gap-1 items-center w-max">
             {strokes.map((s, i) => {
               const isA = s.player === 'player_a'
-              const shotLabel = t(`shot_types.${s.shot_type}`, s.shot_type)
+              const shotLabelText = shotLabel(t, s.shot_type)
               const isLast = i === strokes.length - 1
               return (
                 <span key={s.stroke_num} className="flex items-center gap-1 shrink-0">
@@ -186,8 +203,8 @@ export function RallyDetailBanner({
                       color: '#ffffff',
                     }}
                   >
-                    {isA ? 'A' : 'B'} {shotLabel}
-                    {s.hit_zone && <span className="text-[10px] opacity-70 ml-0.5">{s.hit_zone}</span>}
+                    {isA ? 'A' : 'B'} {shotLabelText}
+                    {s.hit_zone && <span className="text-[10px] opacity-70 ml-0.5">{t(`zones.${s.hit_zone}`, s.hit_zone ?? '')}</span>}
                   </span>
                   {!isLast && <span className="text-gray-500">→</span>}
                 </span>
@@ -205,17 +222,29 @@ export function RallyDetailBanner({
 export function ScoreProgression({ matchId, onSetPointClick, initialSet }: ScoreProgressionProps) {
   const { t } = useTranslation()
   const isLight = useIsLightMode()
+  const { role } = useAuth()
+  // 製品ルール: スコア推移 (点差・モメンタム) は試合の勝敗そのもの。player には描かず、取得もしない。
+  const isPlayer = role === 'player'
   const [selectedSet, setSelectedSet] = useState<number>(initialSet ?? 1)
 
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError } = useQuery({
     queryKey: ['analysis-score-progression', matchId],
     queryFn: () =>
       apiGet<ScoreProgressionResponse>('/analysis/score_progression', { match_id: matchId }),
-    enabled: !!matchId,
+    enabled: !!matchId && !isPlayer,
   })
+
+  if (isPlayer) return null
 
   if (isLoading) {
     return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.loading')}</div>
+  }
+
+  // 取得失敗を正常な「データなし」に落とさない (監査 #642)。
+  if (isError) {
+    return (
+      <div className="text-sm py-4 text-center" style={{ color: 'var(--ss-bad)' }}>{t('analysis.fetch_error')}</div>
+    )
   }
 
   const sets = resp?.data?.sets ?? []

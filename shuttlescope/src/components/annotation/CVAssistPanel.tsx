@@ -28,6 +28,7 @@ interface Props {
 const SOURCE_LABELS: Record<CVSource, string> = {
   tracknet:  'TN',
   yolo:      'YOLO',
+  yolo_footpoint: 'YOLO-FP',
   alignment: 'ALN',
   fusion:    'FUS',
 }
@@ -105,9 +106,10 @@ function StrokeRow({
   const reasonLabel = (code: string): string =>
     t(`cv_assist.panel.reason_label.${code}`, { defaultValue: code })
 
-  const hasAny = sc.land_zone || sc.hitter
+  const hasAny = sc.land_zone || sc.hit_zone || sc.hitter
   const allReasonCodes = [
     ...(sc.land_zone?.reason_codes ?? []),
+    ...(sc.hit_zone?.reason_codes ?? []),
     ...(sc.hitter?.reason_codes ?? []),
   ].filter((c) => c !== 'track_present_high_confidence') // 高確信度コードは表示しない（ノイズ）
 
@@ -146,6 +148,15 @@ function StrokeRow({
               field={sc.land_zone}
               onAccept={onAcceptLandZone ? () => onAcceptLandZone(sc.stroke_num, sc.land_zone!.value) : undefined}
               acceptTitle={t('cv_assist.panel.accept_land_zone')}
+            />
+          )}
+
+
+          {/* 打点ゾーン — 空中シャトルではなく打者の床面位置 */}
+          {sc.hit_zone && (
+            <CVFieldChip
+              label={t('cv_assist.panel.hit_zone', { defaultValue: '打点' })}
+              field={sc.hit_zone}
             />
           )}
 
@@ -258,6 +269,19 @@ export function CVAssistPanel({
             {Math.round(summary.land_zone_fill_rate * 100)}%
           </span>
         </div>
+        {summary.hit_zone_fill_rate != null && (
+          <div className="flex items-center gap-1 text-[10px] text-[var(--ss-t2)]">
+            <MIcon name="bolt" size={11} className="text-[var(--ss-brand)]" />
+            <span>{t('cv_assist.panel.hit_zone', { defaultValue: '打点' })}</span>
+            <span className={clsx(
+              'font-semibold ml-0.5 ss-num',
+              summary.hit_zone_fill_rate >= 0.7 ? 'text-[var(--ss-success)]' :
+              summary.hit_zone_fill_rate >= 0.4 ? 'text-[var(--ss-brand)]' : 'text-[var(--ss-warn)]'
+            )}>
+              {Math.round(summary.hit_zone_fill_rate * 100)}%
+            </span>
+          </div>
+        )}
         <div className="flex items-center gap-1 text-[10px] text-[var(--ss-t2)]">
           <MIcon name="bolt" size={11} className="text-[var(--ss-brand)]" />
           <span>{t('cv_assist.panel.hitter')}</span>

@@ -182,18 +182,155 @@ deny リストが「あると良い設定」ではないことがここでも確
 
 Windows Firewall は 3 プロファイルとも有効 (受信の既定動作は未構成 = 既定のブロック)。
 
+## 2026-09-29 verifier 自身の再監査
+
+実TURNを再び公開する前提で infra/turn/verify_turn_hardening.py 自体を
+再監査したところ、検証器側に「安全判定を弱くする」欠陥が残っていたため修正した。
+
+- IPv4-compatible probe が ipaddress.ip_address(n) を使っており、
+  実際には IPv6 ::x.x.x.x ではなく同じ IPv4 を再送していた。
+- コメントでは Teredo (2001::/32) も試すと書いていたが、実際のtarget列には
+  Teredo probeが無かった。
+- TURN host にDNS名を渡す通常の使い方で、自己中継probeがDNS名をそのまま
+  ipaddress() に渡し例外化し得た。A/AAAAを具体IPへ解決して検査するよう修正。
+- TURN control socketを AF_INET 固定にしていたため、IPv6-only TURN endpointを
+  検査できなかった。getaddrinfo(AF_UNSPEC) の結果に合わせる。
+- 認証なしAllocateは「401 Unauthorized」以外の任意エラーも安全扱いしていた。
+  現在は401以外を未検証としてexit 1にする。
+- TCP relayも任意の失敗を no-tcp-relay 成功と数えていた。
+  現在は明示的な拒否コード以外を未検証として扱う。
+
+回帰:
+- IPv4埋め込み6表記が全てIPv6として生成されること
+- 6to4 / NAT64 / Teredo prefixが実targetに含まれること
+- DNS A/AAAA解決と重複除去
+- IPv6 TURN control endpointのsocket family
+- coturn.conf.example の必須deny/quota/no-tcp-relay directiveと、web-adminがopt-inのまま無効であること
+
+focused test: backend/tests/test_turn_hardening_verifier.py 8/8 pass。
+
+なお /api/webrtc/test-turn は管理画面用のTCP到達確認に過ぎず、
+TURN Allocate/auth/peer ACL の安全性を証明しない。
+本番判定は必ず verify_turn_hardening.py の実プロトコルprobeで行う。
+
+### 2026-09-29 実coturn対照試験（verifierの実効性確認）
+
+WSL上のcoturn 4.6.2を実際に2構成で起動し、同じ資格情報・同じpeer集合へ
+`verify_turn_hardening.py` を当てた。
+
+- hardened構成: 現行denylist + `no-tcp-relay` + quotaを適用。
+  CreatePermission / ChannelBindとも、RFC1918、IPv4-mapped、IPv4-compatible、
+  6to4、NAT64 2種、Teredo、ULA、broadcastを全て拒否。verifier終了コード0。
+- vulnerable control: denylistを外した対照構成。
+  同じprobeのうち32経路でCreatePermissionまたはChannelBindが実際に成功し、
+  verifier終了コード1。
+- `0.0.0.0` とTURN自身への中継はcoturn既定で403になり、対照構成でも通らない。
+
+この対照試験で、verifierが単に「エラーが返ったから安全」と判定しているのではなく、
+防御有無に応じて実際のrelay許可/拒否を識別できることを再確認した。
+
+同時にverifier側の欠陥を1件修正した。以前は複数peerのChannelBindで
+channel number `0x4000` を再利用していたため、2つ目以降はACL評価前にcoturnが
+channel競合で拒否し、偽のBLOCKEDを作り得た。現在はpeerごとに
+`0x4000..0x7FFF` のfresh channel numberを採番する。
+
+またcoturn 4.6.2には `no-web-admin` directiveは存在しない。
+`web-admin` はopt-inで既定無効なので、`no-web-admin` を書くと
+`Bad configuration format` 警告になるだけで防御にはならない。
+テンプレートから削除し、`web-admin` / `web-admin-listen-on-workers` が
+存在しないことをテストで固定した。
+
+### 2026-09-30 production host 上の実coturn検証
+
+本番アプリホストの WSL Ubuntu 上で、稼働中の coturn 自体へ
+`verify_turn_hardening.py` を当てた。これは9/29の対照用coturnではなく、
+ShuttleScope production host 上の実processである。
+
+実測状態:
+
+- coturn **4.6.1**
+- `systemctl is-active coturn` = `active`
+- UDP 3478 は `127.0.0.1` / `::1` でlisten
+- `/etc/turnserver.conf` SHA-256 = `5ff8b9397d92cb053ca83f0adb4c0489d546e8c2f4f608bcaa9eced1422d4ef0`
+- active `denied-peer-ip=` は37本
+- `static-auth-secret` から1時間TTLのHMAC credentialをその場で生成して検証
+
+negative path:
+
+- 認証なし Allocate は 401 Unauthorized
+- TCP relay は 442 で明示拒否
+- `10.0.0.1`, `172.18.0.1`, `192.168.27.1` への CreatePermission / ChannelBind は403 Forbidden IP
+- IPv4-mapped / IPv4-compatible / 6to4 / NAT64 / Teredo 表現は、現在のcoturnがIPv6 relay familyを440 Unsupported address familyとして明示拒否するためBLOCKED
+- `255.255.255.255`, `0.0.0.0`, TURN self `127.0.0.1` も403
+
+positive control:
+
+- peer `1.1.1.1:53` へ `example.com` DNS A queryをTURN越しに送信
+- matching DATA indicationを受信
+- `dns_answers=2`, `response_bytes=61`
+- したがって「全宛先を拒否する壊れたTURNだからnegative testだけ通る」状態ではないことも同時に証明
+
+最終verifier終了コードは0。
+今回のpositive control追加に伴って検討したIPv4-mapped / compatible deny rangeの緩和は不要だった。
+現行37本denyのままで外向きrelayと内部拒否が両立するため、`coturn.conf.example` は変更しない。
+
+なお、現在のcoturnはloopback bindであり、インターネット側から3478を公開した状態のend-to-end検証ではない。
+外部公開する場合はルータ/NAT/firewall経路を含めて同じverifierを外部ノードから再実行する。
+
+### 2026-10-01 production host 再検証
+
+9/30と同じproduction host / 同じ実coturnを再度検証した。設定やbinaryの変化で
+hardeningが退行していないことの確認であり、対照用coturnではない。
+
+- coturn 4.6.1 / `systemctl is-active coturn = active`
+- UDP/TCP 3478は `127.0.0.1` / `::1` のloopback bind
+- `/etc/turnserver.conf` SHA-256は引き続き `5ff8b9397d92cb053ca83f0adb4c0489d546e8c2f4f608bcaa9eced1422d4ef0`
+- active `denied-peer-ip=` 37本
+- 認証なしAllocateは401、TCP relayは442
+- RFC1918 / broadcast / TURN selfへのCreatePermission・ChannelBindは拒否
+- IPv4-mapped / compatible / 6to4 / NAT64 / TeredoはIPv6 relay family 440で明示拒否
+- positive controlとして `1.1.1.1:53` へ `example.com` DNS queryをrelayし、
+  `dns_answers=2`, `response_bytes=61` を受信
+- `verify_turn_hardening.py` 最終exit 0
+
+したがってACL・短命credential・positive relayの両立は10/1時点でも再現している。
+ただしloopback bindのため、ルータ/NAT/firewallを含む外部公開TURN endpointの
+end-to-end検証ではない点は9/30記録から変わらない。
+### 2026-10-01 古いproduction coturnを停止
+
+10/1再検証直後にアプリ設定も確認した。
+
+- `video_transport=webrtc`
+- `turn_enabled=false`
+- `turn_url` / `turn_static_auth_secret` / static username/credential は全て未設定
+- Ubuntu 26.04 apt の installed/candidate はともに coturn `4.6.1-2build2`
+- upstream latest は4.18.0で、4.17.0未満に既知のrelay resource exhaustion脆弱性が残る
+
+この状態では古いcoturnを同居hostで常駐させる便益がないため、package/configは保持したまま
+`systemctl disable --now coturn` を実行した。
+
+- 実行前: active / enabled、3478 TCP+UDP loopback listenerあり
+- 実行後: inactive / disabled、3478/5349 listenerなし
+- ShuttleScope backend `/api/health` は200のまま
+
+将来TURNを有効化するときは、この4.6.1 serviceを再公開するのではなく、隔離TURN nodeに
+current supported coturnを構築してから外部経路を含めて再検証する。
+
 ## 未検証 (正直に残す)
 
-- **TURN を実際に立てての本番検証は未実施。** UDP を開ける前に
-  `verify_turn_hardening.py` を本番へ向けて走らせ、終了コード 0 を確認すること
+- **本番ホスト上の実coturn検証は完了。** ただし現在はloopback bind。
+  インターネット公開時のNAT / firewall / port-forwardingを含む外部経路は未検証
 - ルータ側のポート転送設定と、ルータ自身の管理画面が LAN から
   到達可能かは未確認
 - 帯域の踏み倒し (credential を拾われて中継に使われる) は `denied-peer-ip` では
   防げない。短命 credential と quota で対処する
-- coturn の既知 CVE に対する最低バージョンの精査は未実施。
-  検証に使ったのは **coturn 4.6.2** (Alpine 3.20)。
-  なお codex は「4.8.x / 4.13.0 / 4.15 / 4.17.2」といった版数を挙げたが、
-  coturn の実在バージョンは 4.5〜4.7 系であり、**この版数指定は採用しない**
+- coturn の最低バージョンは2026-10-01に再精査した。
+  upstream latest は **4.18.0**。少なくとも **4.17.0 未満は採用しない**。
+  理由は CVE-2026-73215（認証済みクライアントによる EVEN-PORT relay port pool 枯渇DoS）が
+  4.17.0 で修正されているため。加えて CVE-2026-68554 は4.15.0で修正されている。
+  Ubuntu 26.04 の apt 候補は現時点でも4.6.1-2build2のため、distro packageを
+  そのままpublic TURNに使わない。新規公開時は隔離ノード上でupstream-supported
+  4.17.0以上、原則current stableを使い、upgrade後に本verifierを再実行する。
 - 事前認証 (認証前に処理されるパケットの解析) の攻撃面は未評価
 
 ## この検証で守れないもの (codex の指摘。同意する)
@@ -218,5 +355,6 @@ PostgreSQL が loopback 限定であることも防御にならない。
 - `infra/turn/verify_turn_hardening.py` — 同じ攻撃を稼働中サーバへ仕掛ける。
   中継されたら 1、未検証が残っても 1。**既定構成で 16 件、初版ひな型で 6 件を
   検出し、現行ひな型で 0 件になることを確認済み**
-- 未修正の関連欠陥: `backend/routers/tunnel.py` が固定 TURN credential を
-  そのまま返している。短命 HMAC 方式へ変える必要がある
+- 2026-09-29 再監査: `backend/routers/tunnel.py` は `turn_static_auth_secret` から
+  1時間TTLのHMAC派生credentialを発行する方式へ移行済み。固定
+  `turn_username / turn_credential` はクライアントへ配布しない

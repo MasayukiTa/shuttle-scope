@@ -45,6 +45,14 @@ StrokeCVCandidate:
     "reason_codes": [str]
   } | None,
 
+  "hit_zone": {
+    "value": str,
+    "confidence_score": float,
+    "source": "yolo_footpoint",
+    "decision_mode": "auto_filled"|"suggested"|"review_required",
+    "reason_codes": [str]
+  } | None,
+
   "hitter": {
     "value": "player_a"|"player_b",
     "confidence_score": float,
@@ -237,6 +245,12 @@ def build_candidates(
                 score_a_before=rally.get("score_a_before"),
                 score_b_before=rally.get("score_b_before"),
             )
+            hit_zone = _infer_hit_zone_from_hitter(
+                rally_yolo,
+                stroke_ts=ts,
+                hitter=hitter,
+                court_adapter=court_adapter,
+            )
             role = _infer_front_back_role(rally_yolo, stroke_ts=ts, court_adapter=court_adapter) if rally_yolo else None
 
             if land and land["confidence_score"] is not None:
@@ -249,6 +263,7 @@ def build_candidates(
                 "stroke_num":   stroke.get("stroke_num"),
                 "timestamp_sec": ts,
                 "land_zone":    land,
+                "hit_zone":     hit_zone,
                 "hitter":       hitter,
                 "front_back_role": role,
             })
@@ -264,6 +279,10 @@ def build_candidates(
         h_fill = sum(
             1 for s in stroke_candidates
             if s["hitter"] and s["hitter"]["decision_mode"] != "review_required"
+        ) / max(len(stroke_candidates), 1)
+        hz_fill = sum(
+            1 for s in stroke_candidates
+            if s.get("hit_zone") and s["hit_zone"]["decision_mode"] != "review_required"
         ) / max(len(stroke_candidates), 1)
         avg_conf = (
             statistics.mean(land_confs + hitter_confs)
@@ -282,6 +301,7 @@ def build_candidates(
             "cv_assist_available": len(rally_tracknet) > 0 or len(rally_yolo) > 0,
             "cv_confidence_summary": {
                 "land_zone_fill_rate": round(lz_fill, 3),
+                "hit_zone_fill_rate":  round(hz_fill, 3),
                 "hitter_fill_rate":    round(h_fill, 3),
                 # A0: avg_confidence は gated_conf 由来の実効値（gate ON 時）。
                 # quality_gated フラグで「生の検出率%ではなく減衰後の実効値」だと
@@ -334,15 +354,30 @@ def detect_rally_boundaries_from_cv(
             {"timestamp_sec", "confidence"(=gated_conf), "x_norm"?, "y_norm"?, ...}
         player_frames: YOLO アーティファクト data。各要素は
             {"timestamp_sec", "players": [{"label", "centroid":[x,y]}, ...]}
-        fps: 秒ベース閾値を frame ベースに換算する動画 FPS。
+        fps: 動画 FPS。成果物から実効サンプルレートが推定できないときだけ、
+            秒ベース閾値のサンプル数換算に使うフォールバック。
+
+    秒閾値の換算レート（S-4 step 2）:
+        検出器のカウンタは「シャトル成果物のサンプル 1 つにつき 1 進む」ので、
+        秒→個数の換算には動画 fps ではなく成果物の実効サンプルレート
+        （timestamp_sec の中央値間隔）を使う。10/15/30fps でサンプリングした
+        同じ実時間のプレーは同じ境界になる。推定できない場合（サンプル数不足）は
+        動画 fps にフォールバックし、time_axis="video_fps_fallback" と明示する。
+        fps_known（動画 fps を実測できたか）の意味は変えない: time_axis が
+        "sample_rate" のときは動画 fps は境界位置に影響しない。
 
     Returns:
         {
           "match_id": int,
-          "fps": float,
+          "fps": float,                 # 動画 fps（入力のまま）
+          "sample_fps": float|None,     # 成果物の実効サンプルレート
+          "time_axis": "sample_rate"|"video_fps_fallback",
+          "sample_count": int,
           "thresholds": {...},          # 実際に使った env 上書き値
           "boundary_count": int,
-          "boundaries": [BoundaryCandidate, ...]
+          "boundaries": [BoundaryCandidate, ...],
+          "segments": [...],            # rally_segments.build_rally_segments
+          "segments_status": "ok"|"no_segments"|"data_insufficient"
         }
 
     BoundaryCandidate:
@@ -372,15 +407,41 @@ def detect_rally_boundaries_from_cv(
         "min_rally_seconds":       _env_float("SS_RALLY_MIN_RALLY_SEC", 0.5),
     }
 
-    det = RallyBoundaryDetector(fps=fps, **thresholds)
+    from backend.cv.rally_segments import (
+        MIN_TOTAL_SAMPLES_FOR_SEGMENTS,
+        build_rally_segments,
+        estimate_sample_fps,
+    )
+
+    # 検出器の「フレーム」は成果物のサンプル。換算レートは実効サンプルレート。
+    sample_fps = estimate_sample_fps(f.get("timestamp_sec") for f in shuttle_frames)
+    if sample_fps is not None:
+        # timestamp_sec は小数 3 桁に丸められている（0.067/0.066 秒の交互など）ので、
+        # 整数 fps の 2% 以内なら整数に寄せる。int() 切り捨てで閾値が 1 サンプルぶれるのを防ぐ。
+        _snap = round(sample_fps)
+        if _snap >= 1 and abs(sample_fps - _snap) / _snap <= 0.02:
+            sample_fps = float(_snap)
+    if sample_fps is not None:
+        time_axis = "sample_rate"
+        detector_fps = sample_fps
+    else:
+        time_axis = "video_fps_fallback"
+        detector_fps = fps
+
+    det = RallyBoundaryDetector(fps=detector_fps, **thresholds)
 
     if not shuttle_frames:
         return {
-            "match_id":       match_id,
-            "fps":            fps,
-            "thresholds":     thresholds,
-            "boundary_count": 0,
-            "boundaries":     [],
+            "match_id":        match_id,
+            "fps":             fps,
+            "sample_fps":      None,
+            "time_axis":       time_axis,
+            "sample_count":    0,
+            "thresholds":      thresholds,
+            "boundary_count":  0,
+            "boundaries":      [],
+            "segments":        [],
+            "segments_status": "data_insufficient",
         }
 
     # プレイヤーフレームを timestamp_sec 昇順に索引化（最近傍引き当て用）
@@ -434,12 +495,31 @@ def detect_rally_boundaries_from_cv(
                 "reason_codes":  reason_codes,
             })
 
+    segments = build_rally_segments(
+        boundaries,
+        shuttle_timestamps=[float(f.get("timestamp_sec", 0.0)) for f in shuttle_sorted],
+        sample_fps=sample_fps,
+    )
+    if len(shuttle_sorted) < MIN_TOTAL_SAMPLES_FOR_SEGMENTS:
+        # サンプルが少なすぎる成果物からは区間を主張しない（0 件 = 「無い」ではなく「判断不能」）
+        segments = []
+        segments_status = "data_insufficient"
+    elif segments:
+        segments_status = "ok"
+    else:
+        segments_status = "no_segments"
+
     return {
-        "match_id":       match_id,
-        "fps":            fps,
-        "thresholds":     thresholds,
-        "boundary_count": len(boundaries),
-        "boundaries":     boundaries,
+        "match_id":        match_id,
+        "fps":             fps,
+        "sample_fps":      round(sample_fps, 3) if sample_fps is not None else None,
+        "time_axis":       time_axis,
+        "sample_count":    len(shuttle_sorted),
+        "thresholds":      thresholds,
+        "boundary_count":  len(boundaries),
+        "boundaries":      boundaries,
+        "segments":        segments,
+        "segments_status": segments_status,
     }
 
 
@@ -736,6 +816,103 @@ def _infer_hitter(
         "source":           "fusion",
         "decision_mode":    decision_mode,
         "reason_codes":     reason_codes,
+    }
+
+
+def _infer_hit_zone_from_hitter(
+    yolo_frames: list[dict],
+    stroke_ts: Optional[float],
+    hitter: Optional[dict],
+    court_adapter=None,
+) -> Optional[dict]:
+    """打球時の「打者の床面位置」を Zone9 として推定する。
+
+    D-1: hit_zone を空中シャトルの3D接触点とは定義しない。単眼映像で
+    シャトルを床 homography に落とすと高さ由来の系統誤差が入るためである。
+    ここで扱う hit_zone は「打球時に打者が立っていた床面 Zone9」。
+
+    観測に使うのは YOLO の foot_point（無ければ bbox 下辺中央）だけで、
+    homography が無い試合では推測しない。
+    """
+    if (
+        stroke_ts is None
+        or not hitter
+        or court_adapter is None
+        or not getattr(court_adapter, "is_calibrated", False)
+        or not yolo_frames
+    ):
+        return None
+
+    screen_label = hitter.get("screen_label") or hitter.get("value")
+    if screen_label not in ("player_a", "player_b"):
+        return None
+
+    ts_list = [f.get("timestamp_sec", 0.0) for f in yolo_frames]
+    idx = bisect.bisect_left(ts_list, stroke_ts)
+    best_frame = None
+    best_gap = float("inf")
+    for i in (idx - 1, idx):
+        if 0 <= i < len(yolo_frames):
+            gap = abs(ts_list[i] - stroke_ts)
+            if gap < best_gap and gap <= HITTER_MATCH_WINDOW_SEC:
+                best_gap = gap
+                best_frame = yolo_frames[i]
+    if best_frame is None:
+        return None
+
+    player = next(
+        (p for p in best_frame.get("players", []) if p.get("label") == screen_label),
+        None,
+    )
+    if player is None:
+        return None
+
+    foot = player.get("foot_point")
+    if foot and len(foot) >= 2:
+        x_norm, y_norm = foot[0], foot[1]
+    else:
+        bbox = player.get("bbox")
+        if not bbox or len(bbox) < 4:
+            return None
+        x_norm = (bbox[0] + bbox[2]) / 2.0
+        y_norm = bbox[3]
+
+    try:
+        court_x, court_y = court_adapter.pixel_to_court(float(x_norm), float(y_norm))
+    except (TypeError, ValueError, ZeroDivisionError, FloatingPointError):
+        return None
+
+    from backend.tracknet.zone_mapper import court_to_zone9
+
+    side_zone = court_to_zone9(court_x, court_y)
+    if side_zone is None:
+        return None
+    side, zone = side_zone
+
+    # screen label は上側=player_a / 下側=player_b という幾何ラベル。
+    # homography結果と食い違う場合、ラベル又は検出が怪しいので自動採用しない。
+    expected_side = "A" if screen_label == "player_a" else "B"
+    if side != expected_side:
+        return None
+
+    hitter_conf = hitter.get("confidence_score")
+    if hitter_conf is None:
+        return None
+    det_conf = player.get("confidence")
+    conf = float(hitter_conf)
+    if isinstance(det_conf, (int, float)):
+        conf = min(conf, float(det_conf))
+    conf = round(max(0.0, min(conf, 1.0)), 3)
+    decision_mode, reason_codes = _conf_to_decision(conf)
+    reason_codes.append("hit_zone:hitter_footpoint_homography")
+
+    return {
+        "value": zone,
+        "confidence_score": conf,
+        "source": "yolo_footpoint",
+        "decision_mode": decision_mode,
+        "reason_codes": reason_codes,
+        "coordinate_definition": "hitter_floor_position",
     }
 
 

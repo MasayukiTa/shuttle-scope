@@ -253,10 +253,13 @@ def test_inv13_normalize_url_schemes():
     # 外部 URL は path_jail の対象外
     assert normalize_match_local_path("https://example.com/v.mp4") is None
     assert normalize_match_local_path("http://localhost/v.mp4") is None
-    # server:// は UPLOAD_DIR (./videos) 配下に解決される
-    p_server = normalize_match_local_path("server://abc.mp4")
+    # server:// は内部 UUID + allowlisted 動画拡張子だけを受理する
+    import uuid as _uuid
+    _uid = str(_uuid.uuid4())
+    p_server = normalize_match_local_path(f"server://{_uid}.mp4")
     assert p_server is not None
-    assert p_server.name == "abc.mp4"
+    assert p_server.name == f"{_uid}.mp4"
+    assert normalize_match_local_path("server://abc.mp4") is None
     # path traversal 入りの server:// は None で reject
     assert normalize_match_local_path("server://../etc/passwd") is None
     assert normalize_match_local_path("server://sub/dir/file.mp4") is None

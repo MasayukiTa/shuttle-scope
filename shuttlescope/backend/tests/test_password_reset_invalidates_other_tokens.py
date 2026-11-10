@@ -130,3 +130,18 @@ def test_the_route_invalidates_the_others():
 def test_peek_does_not_consume(db):
     """招待の peek は消費しない（表示用）ことを確認しておく。"""
     assert peek_invitation_token(db, "no-such-token") is None
+
+
+def test_confirm_route_is_stopped_by_the_same_flag_as_the_request_route():
+    """申請を止めているのに確定だけ通る、という状態分裂を作らないこと。"""
+    import pathlib
+
+    src = (
+        pathlib.Path(__file__).resolve().parents[1] / "routers" / "auth_email.py"
+    ).read_text(encoding="utf-8")
+    body = src[src.index("def reset_password("):]
+    body = body[: body.index("\n@router.")]
+    head = body[: body.index("consume_password_reset_token")]
+    assert "_password_reset_enabled()" in head, (
+        "確定ルートが SS_PASSWORD_RESET_ENABLED を見ずにトークンを消費している"
+    )

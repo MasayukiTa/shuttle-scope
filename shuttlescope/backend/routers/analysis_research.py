@@ -12,19 +12,28 @@ from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
+from backend.analysis.role_view import own_slot, team_side, perspective
+from backend.analysis.player_context import (
+    involves_player, opponent_player_id, player_wins_match, partner_player_id, player_result_filter,
+)
+from backend.analysis.match_filter import (
+    MatchFilter, match_filter_params, select_population, stamps_population, declare_filter_scope,
+)
 from backend.utils.auth import (
     require_admin_or_analyst, require_query_scope, get_auth, apply_match_team_scope, AuthCtx,
 )
 from backend.db.models import Match, GameSet, Rally, Stroke, Player, PreMatchObservation
-from backend.utils.confidence import check_confidence
+from backend.utils.confidence import check_confidence, VERDICT_MIN_SAMPLE, wilson_ci
 from backend.analysis.router_helpers import (
     SHOT_TYPE_JA, SHOT_KEYS, SHOT_LABELS_JA, END_TYPE_JA, _shot_ja,
     _player_role_in_match, _get_player_matches, _fetch_matches_sets_rallies,
+    validate_date_range,
 )
 from backend.analysis.analysis_config import AnalysisConfig
 from backend.analysis.analysis_registry import get_analysis_meta
 from backend.analysis.response_meta import build_input_provenance
 from backend.analysis.markov import MarkovAnalyzer
+from backend.analysis.service_shots import truncate_at_stray_service
 from backend.analysis.shot_influence import ShotInfluenceAnalyzer
 from backend.analysis.bayesian_rt import BayesianRealTimeAnalyzer
 from backend.analysis.analysis_tiers import all_tiers_meta
@@ -37,6 +46,7 @@ from backend.analysis.recommendation_engine import (
 from backend.analysis.opponent_classifier import (
     classify_all_opponents,
     aggregate_affinity_by_axis,
+    UNCLASSIFIED,
 )
 from backend.analysis.counterfactual_engine import (
     collect_context_stats,
@@ -77,6 +87,21 @@ from backend.analysis.hier_bayes_loader import load_match_pairs
 # research tier は admin/analyst のみ。middleware (_PLAYER_FORBIDDEN_ANALYSIS_PATHS) は
 # import 失敗時に silent に空集合化するため、router-level dependency でも明示ガードする。
 router = APIRouter(dependencies=[Depends(require_admin_or_analyst), Depends(require_query_scope)])
+
+
+def _research_confidence(analysis_type: str, sample_size: int, **kwargs) -> dict:
+    """このルータの解析はすべて research tier。信頼度は check_confidence の 1 関数で決め、
+    標本数が多くても「高信頼（実用レベル）」は付けない。unit_n / interval_width は
+    表示単位 (ペア・対戦相手・対戦) ごとの値を渡す。"""
+    return check_confidence(analysis_type, sample_size, tier="research", **kwargs)
+
+
+def _median_n(values: list[int], fallback: int) -> int:
+    """表示単位ごとの n の中央値 (小さい側)。単位が無ければ fallback。"""
+    if not values:
+        return fallback
+    ordered = sorted(values)
+    return ordered[(len(ordered) - 1) // 2]
 
 
 def _with_input_provenance(
@@ -157,7 +182,7 @@ def _epv_impl(db: Session, player_id: int, ctx=None,
     else:
         matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
 
-    empty_confidence = check_confidence("shot_transition", 0)
+    empty_confidence = _research_confidence("shot_transition", 0)
     if not matches:
         return {
             "success": True,
@@ -226,7 +251,7 @@ def _epv_impl(db: Session, player_id: int, ctx=None,
         role = rally_to_role.get(rally.id)
         won = rally_player_won.get(rally.id, False)
         stks = strokes_by_rally.get(rally.id, [])
-        player_strokes = [s for s in stks if s.player == role]
+        player_strokes = [s for s in stks if s.player == own_slot(role)]
         total_strokes += len(player_strokes)
 
         rally_data = [
@@ -257,7 +282,7 @@ def _epv_impl(db: Session, player_id: int, ctx=None,
         rallies, strokes_by_rally, role_by_match, set_to_match,
     )
 
-    confidence = check_confidence("shot_transition", total_strokes)
+    confidence = _research_confidence("shot_transition", total_strokes)
 
     return {
         "success": True,
@@ -298,7 +323,7 @@ def get_shot_influence(match_id: int, db: Session = Depends(get_db)):
             "success": True,
             "data": {"rallies": [], "shot_type_summary": {}},
             "meta": _with_input_provenance(
-                {"sample_size": 0, "confidence": check_confidence("shot_transition", 0)},
+                {"sample_size": 0, "confidence": _research_confidence("shot_transition", 0)},
                 rallies=rallies,
                 strokes=[],
             ),
@@ -398,7 +423,7 @@ def get_shot_influence(match_id: int, db: Session = Depends(get_db)):
     }
 
     total_strokes = sum(len(rd["strokes"]) for rd in all_rally_data)
-    confidence = check_confidence("shot_transition", total_strokes)
+    confidence = _research_confidence("shot_transition", total_strokes)
 
     return {
         "success": True,
@@ -447,7 +472,7 @@ def get_interval_report(
     # sample_size を計算して meta に付与
     _sets = result.get("data", {}).get("sets", [])
     total_rallies = sum(s.get("rally_count", 0) for s in _sets)
-    confidence = check_confidence("descriptive_basic", total_rallies)
+    confidence = _research_confidence("descriptive_basic", total_rallies)
 
     # Stack-trace-exposure 防止: 返却 data を必要フィールドのみに再構築
     _data = result.get("data", {})
@@ -481,6 +506,14 @@ def get_rally_sequence_patterns(
 
 
 def _rally_sequence_patterns_impl(db: Session, player_id: int, ctx=None):
+    """絞り込みを使わない解析 (registry: global_only)。応答の meta にそれを書く。
+    単体エンドポイントとバンドルが同じ応答を返すよう、書き込みはここで 1 回だけ行う。"""
+    resp = _rally_sequence_patterns_core(db, player_id, ctx)
+    declare_filter_scope(resp["meta"], "rally_sequence_patterns")
+    return resp
+
+
+def _rally_sequence_patterns_core(db: Session, player_id: int, ctx=None):
     if ctx is not None:
         matches = ctx.rs_matches
         role_by_match = ctx.rs_role_by_match
@@ -492,7 +525,7 @@ def _rally_sequence_patterns_impl(db: Session, player_id: int, ctx=None):
     if not rallies:
         return {"success": True, "data": {"win_sequences": [], "loss_sequences": [], "total_rallies": 0},
                 "meta": _with_input_provenance(
-                    {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0)},
+                    {"sample_size": 0, "confidence": _research_confidence("descriptive_basic", 0)},
                     rallies=[],
                     strokes=[],
                 )}
@@ -514,7 +547,11 @@ def _rally_sequence_patterns_impl(db: Session, player_id: int, ctx=None):
         strokes_by_rally[s.rally_id].append(s)
 
     # トライグラム集計: key=(t1,t2,t3) -> {"count":N,"wins":N}
+    # count / wins の単位は「そのパターンを含むラリー数」。同じラリーの中で同じ並びが
+    # 何度出ても 1 回と数える (長いラリーが 1 本で件数と勝率を水増ししないため。監査 #40)。
     trigram_stats: dict[tuple, dict] = defaultdict(lambda: {"count": 0, "wins": 0})
+    eligible_rallies = 0  # 自分の打球が 3 球以上あり、パターンを取り出せたラリー
+    eligible_wins = 0
 
     for rally in rallies:
         mid = set_to_match.get(rally.set_id)
@@ -526,10 +563,20 @@ def _rally_sequence_patterns_impl(db: Session, player_id: int, ctx=None):
         is_win = rally.winner == role
         rally_strokes = strokes_by_rally[rally.id]
         # プレイヤーのストロークのみ抽出 (shot_type必須)
-        player_shots = [s.shot_type for s in rally_strokes if s.player == role and s.shot_type]
-        # 3連続パターン
-        for i in range(len(player_shots) - 2):
-            key = (player_shots[i], player_shots[i + 1], player_shots[i + 2])
+        # サーブはラリー先頭の 1 打だけ。途中のサーブ系は 3 連パターンに入れない (監査 #330)。
+        player_shots = truncate_at_stray_service(
+            s.shot_type for s in rally_strokes if s.player == own_slot(role) and s.shot_type
+        )
+        # 3連続パターン (ラリー内で重複する並びは 1 回だけ数える)
+        keys_in_rally = {
+            (player_shots[i], player_shots[i + 1], player_shots[i + 2])
+            for i in range(len(player_shots) - 2)
+        }
+        if keys_in_rally:
+            eligible_rallies += 1
+            if is_win:
+                eligible_wins += 1
+        for key in keys_in_rally:
             trigram_stats[key]["count"] += 1
             if is_win:
                 trigram_stats[key]["wins"] += 1
@@ -540,17 +587,26 @@ def _rally_sequence_patterns_impl(db: Session, player_id: int, ctx=None):
 
     def to_entry(key, vals):
         wr = round(vals["wins"] / vals["count"], 3)
+        ci_low, ci_high = wilson_ci(vals["wins"], vals["count"])
         return {
             "sequence": list(key),
             "labels": [SHOT_TYPE_JA.get(t, t) for t in key],
+            # count = そのパターンを含むラリー数 (打球数ではない)。win_rate = そのうち自分が取ったラリーの割合
             "count": vals["count"],
             "win_rate": wr,
             "win_count": vals["wins"],
+            "ci_low": ci_low,
+            "ci_high": ci_high,
         }
 
     entries = [to_entry(k, v) for k, v in filtered.items()]
-    win_seqs = sorted([e for e in entries if e["win_rate"] >= 0.5], key=lambda x: -x["win_rate"])[:8]
-    loss_seqs = sorted([e for e in entries if e["win_rate"] < 0.5], key=lambda x: x["win_rate"])[:8]
+    # 並び順は点推定でなく区間で決める。勝ち側は下限が高い順、負け側は上限が低い順。
+    # 100% でも件数が少なければ下限が低く、上位に来ない。
+    win_seqs = sorted([e for e in entries if e["win_rate"] >= 0.5], key=lambda x: (-x["ci_low"], -x["count"]))[:8]
+    loss_seqs = sorted([e for e in entries if e["win_rate"] < 0.5], key=lambda x: (x["ci_high"], -x["count"]))[:8]
+    # 比較の基準: パターンを取り出せたラリー全体の勝率。基準そのものが極端なら
+    # 個々のパターンの勝率は差を表さないので、画面で並べて見せる。
+    baseline_win_rate = round(eligible_wins / eligible_rallies, 3) if eligible_rallies > 0 else None
 
     total_rallies = len(rallies)
     total_strokes = sum(len(v) for v in strokes_by_rally.values())
@@ -560,9 +616,11 @@ def _rally_sequence_patterns_impl(db: Session, player_id: int, ctx=None):
             "win_sequences": win_seqs,
             "loss_sequences": loss_seqs,
             "total_rallies": total_rallies,
+            "eligible_rallies": eligible_rallies,
+            "baseline_win_rate": baseline_win_rate,
         },
         "meta": _with_input_provenance(
-            {"sample_size": total_strokes, "confidence": check_confidence("descriptive_basic", total_strokes)},
+            {"sample_size": total_strokes, "confidence": _research_confidence("descriptive_basic", total_strokes)},
             rallies=rallies,
             strokes=strokes,
         ),
@@ -655,7 +713,7 @@ def get_confidence_calibration(
             "current_match_count": match_count,
         },
         "meta": _with_input_provenance(
-            {"sample_size": total_strokes, "confidence": check_confidence("descriptive_basic", total_strokes)},
+            {"sample_size": total_strokes, "confidence": _research_confidence("descriptive_basic", total_strokes)},
             rallies=rallies,
             strokes=strokes,
         ),
@@ -677,7 +735,7 @@ def get_recommendation_ranking(
     if not rallies:
         return {"success": True, "data": {"items": [], "baseline": 0.5},
                 "meta": _with_input_provenance(
-                    {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0)},
+                    {"sample_size": 0, "confidence": _research_confidence("descriptive_basic", 0)},
                     rallies=[],
                     strokes=[],
                 )}
@@ -704,7 +762,7 @@ def get_recommendation_ranking(
         set_id = rally_to_set.get(s.rally_id)
         mid = set_to_match.get(set_id) if set_id is not None else None
         role = role_by_match.get(mid) if mid else None
-        if not role or s.player != role:
+        if not role or s.player != own_slot(role):
             continue
         rally = rally_by_id.get(s.rally_id)
         if not rally:
@@ -759,7 +817,7 @@ def get_recommendation_ranking(
         "success": True,
         "data": {"items": ranked, "baseline": round(baseline, 3)},
         "meta": _with_input_provenance(
-            {"sample_size": total, "confidence": check_confidence("descriptive_basic", total)},
+            {"sample_size": total, "confidence": _research_confidence("descriptive_basic", total)},
             rallies=rallies,
             strokes=strokes,
             uses_hit_zone=True,
@@ -791,7 +849,7 @@ def _counterfactual_shots_impl(db: Session, player_id: int, ctx=None):
     if not rallies:
         return {"success": True, "data": {"comparisons": [], "extended_comparisons": [], "context_summary": {}},
                 "meta": _with_input_provenance(
-                    {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0)},
+                    {"sample_size": 0, "confidence": _research_confidence("descriptive_basic", 0)},
                     rallies=[],
                     strokes_by_rally={},
                 )}
@@ -855,7 +913,7 @@ def _counterfactual_shots_impl(db: Session, player_id: int, ctx=None):
             "context_summary": context_summary,
         },
         "meta": _with_input_provenance(
-            {"sample_size": total, "confidence": check_confidence("descriptive_basic", total)},
+            {"sample_size": total, "confidence": _research_confidence("descriptive_basic", total)},
             rallies=rallies,
             strokes_by_rally=strokes_by_rally,
         ),
@@ -880,7 +938,7 @@ def get_spatial_density(
             "success": True,
             "data": {"grid": empty_grid, "grid_width": 30, "grid_height": 60, "zone_counts": {}},
             "meta": _with_input_provenance(
-                {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0)},
+                {"sample_size": 0, "confidence": _research_confidence("descriptive_basic", 0)},
                 rallies=[],
                 strokes=[],
             ),
@@ -924,7 +982,7 @@ def get_spatial_density(
         rally_id, s_player, hit_zone, land_zone, _source_method, _hit_zone_source = row
         mid = set_to_match.get(rally_set_map.get(rally_id, -1), -1)
         role = role_by_match.get(mid)
-        if not role or s_player != role:
+        if not role or s_player != own_slot(role):
             continue
         player_stroke_total += 1
         used_strokes.append(row)
@@ -977,7 +1035,7 @@ def get_spatial_density(
             "zone_counts": dict(zone_counts),
         },
         "meta": _with_input_provenance(
-            {"sample_size": total, "confidence": check_confidence("descriptive_basic", total)},
+            {"sample_size": total, "confidence": _research_confidence("descriptive_basic", total)},
             rallies=rallies,
             strokes=used_strokes,
             uses_hit_zone=True,
@@ -986,6 +1044,91 @@ def get_spatial_density(
 
 
 # ─── Phase 2: ダブルスペア両選手監視 ─────────────────────────────────────────
+
+def _same_side_pair_matches(
+    db: Session,
+    player_a_id: int,
+    player_b_id: int,
+    result: Optional[str] = None,
+    tournament_level: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+) -> list[Match]:
+    """2 人が同じ側 (player_a + partner_a、または player_b + partner_b) で出たダブルス試合。
+
+    防ぐ事象: 対戦相手同士 (player_a と player_b) を「同一ペア」として取り込み、
+    相手側の打球と勝敗をペアの値に混ぜる (監査 #740)。
+    result は 2 人から見た勝敗 ("win" / "loss") で、Match.result (A 側視点) の値そのものではない。
+    """
+    validate_date_range(date_from, date_to)
+    if player_a_id == player_b_id:
+        return []
+    q = db.query(Match).filter(
+        Match.format != "singles",
+        or_(
+            and_(Match.player_a_id == player_a_id, Match.partner_a_id == player_b_id),
+            and_(Match.player_a_id == player_b_id, Match.partner_a_id == player_a_id),
+            and_(Match.player_b_id == player_a_id, Match.partner_b_id == player_b_id),
+            and_(Match.player_b_id == player_b_id, Match.partner_b_id == player_a_id),
+        ),
+    )
+    if result in ("win", "loss"):
+        q = q.filter(player_result_filter(player_a_id, result))
+    if tournament_level:
+        q = q.filter(Match.tournament_level == tournament_level)
+    if date_from:
+        q = q.filter(Match.date >= date_from)
+    if date_to:
+        q = q.filter(Match.date <= date_to)
+    return q.order_by(Match.date).all()
+
+
+def _pair_strokes(
+    db: Session,
+    matches: list[Match],
+    player_a_id: int,
+    player_b_id: int,
+    require_land_zone: bool = False,
+):
+    """ペアの試合のラリーと、ペア 2 人の個人枠の打球だけ。
+
+    返り値: (rallies, pair_strokes, rally_team, owner) 。rally_team は rally.id -> ペアのチーム側。
+    owner は id(打球) -> "a" (player_a_id の打球) / "b" (player_b_id の打球)。
+    打球は Stroke.player (個人の枠) が試合ごとの 2 人の枠と一致するものに限る
+    (相手側の打球、相方以外の枠は入れない)。
+    """
+    if not matches:
+        return [], [], {}, {}
+    slots: dict[int, tuple[str, str, str]] = {}
+    for m in matches:
+        va = perspective(m, player_a_id)
+        vb = perspective(m, player_b_id)
+        if va is None or vb is None:
+            continue
+        slots[m.id] = (str(va), va.slot, vb.slot)
+    match_ids = list(slots)
+    sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all() if match_ids else []
+    set_to_match = {s.id: s.match_id for s in sets}
+    rallies = db.query(Rally).filter(Rally.set_id.in_(list(set_to_match))).all() if set_to_match else []
+    rally_match = {r.id: set_to_match[r.set_id] for r in rallies}
+    rally_team = {rid: slots[mid][0] for rid, mid in rally_match.items()}
+    sq = db.query(Stroke).filter(Stroke.rally_id.in_(list(rally_match))) if rally_match else None
+    if sq is not None and require_land_zone:
+        sq = sq.filter(Stroke.land_zone != None)  # noqa: E711
+    all_strokes = sq.all() if sq is not None else []
+    pair_strokes = []
+    owner: dict[int, str] = {}
+    for s in all_strokes:
+        _side, slot_a, slot_b = slots[rally_match[s.rally_id]]
+        if s.player == slot_a:
+            owner[id(s)] = "a"
+        elif s.player == slot_b:
+            owner[id(s)] = "b"
+        else:
+            continue
+        pair_strokes.append(s)
+    return rallies, pair_strokes, rally_team, owner
+
 
 @router.get("/analysis/pair_combined")
 def get_pair_combined(
@@ -997,116 +1140,68 @@ def get_pair_combined(
     date_to: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
-    """ペア両選手が同一ダブルス試合に出場したラリーの合算解析。"""
+    """ペア両選手が同じ側で出場したダブルス試合のラリーの合算解析。"""
 
     from collections import Counter
 
-    # 両選手が出場したダブルス試合を抽出
-    q = db.query(Match).filter(
-        Match.format != "singles",
-        or_(
-            and_(Match.player_a_id == player_a_id, Match.player_b_id == player_b_id),
-            and_(Match.player_a_id == player_b_id, Match.player_b_id == player_a_id),
-            and_(Match.player_a_id == player_a_id, Match.partner_a_id == player_b_id),
-            and_(Match.player_a_id == player_b_id, Match.partner_a_id == player_a_id),
-            and_(Match.player_b_id == player_a_id, Match.partner_b_id == player_b_id),
-            and_(Match.player_b_id == player_b_id, Match.partner_b_id == player_a_id),
-        ),
+    matches = _same_side_pair_matches(
+        db, player_a_id, player_b_id, result, tournament_level, date_from, date_to,
     )
-    if result:
-        q = q.filter(Match.result == result)
-    if tournament_level:
-        q = q.filter(Match.tournament_level == tournament_level)
-    if date_from:
-        q = q.filter(Match.date >= date_from)
-    if date_to:
-        q = q.filter(Match.date <= date_to)
-
-    matches = q.order_by(Match.date).all()
+    filter_applied = bool(result in ("win", "loss") or tournament_level or date_from or date_to)
     if not matches:
-        confidence = check_confidence("descriptive_basic", 0)
+        confidence = _research_confidence("descriptive_basic", 0)
         return {"success": True, "data": {
             "pair_win_rate": None, "pair_match_count": 0, "shared_matches": [],
-            "stroke_share": {"player_a": 0.5, "player_b": 0.5},
+            "stroke_share": {"player_a": None, "player_b": None},
             "common_loss_pattern": None, "common_win_shot": None,
         }, "meta": _with_input_provenance(
-            {"sample_size": 0, "confidence": confidence},
+            {"sample_size": 0, "confidence": confidence,
+             "population": {"n_matches": 0, "filter_applied": filter_applied}},
             rallies=[],
             strokes=[],
         )}
 
     shared_match_ids = [m.id for m in matches]
-    set_ids_all = [
-        s.id for s in db.query(GameSet).filter(GameSet.match_id.in_(shared_match_ids)).all()
-    ]
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids_all)).all() if set_ids_all else []
-    all_strokes = (
-        db.query(Stroke).filter(Stroke.rally_id.in_([r.id for r in rallies])).all()
-        if rallies else []
-    )
+    rallies, pair_strokes, rally_team, owner = _pair_strokes(db, matches, player_a_id, player_b_id)
 
-    # ペア勝率 (player_a_id 視点)
-    pair_wins = 0
-    for m in matches:
-        if m.player_a_id == player_a_id or m.partner_a_id == player_a_id:
-            if m.result == "win":
-                pair_wins += 1
-        else:
-            if m.result == "loss":
-                pair_wins += 1
-    pair_win_rate = round(pair_wins / len(matches), 3) if matches else None
+    # ペア勝率 (勝敗が確定した試合だけ。確定が 0 件なら None)
+    decided = [player_wins_match(m, player_a_id) for m in matches]
+    decided = [w for w in decided if w is not None]
+    pair_win_rate = round(sum(1 for w in decided if w) / len(decided), 3) if decided else None
 
-    # ストローク分担比率
-    strokes_a = sum(
-        1 for s in all_strokes
-        if s.player in ("player_a",) and any(
-            (m.player_a_id == player_a_id or m.partner_a_id == player_a_id)
-            for m in matches
-            if m.id == next((
-                r.set_id for r in rallies if r.id == s.rally_id
-            ), None)
-        )
-    )
-    total_strokes = len(all_strokes)
-    # シンプルに player ロール別カウント
-    cnt_a_role = sum(1 for s in all_strokes if s.player == "player_a")
-    cnt_b_role = sum(1 for s in all_strokes if s.player == "player_b")
-    cnt_total = cnt_a_role + cnt_b_role or 1
+    # ストローク分担比率: 試合ごとの 2 人の個人枠の打球数
+    cnt_a = sum(1 for s in pair_strokes if owner[id(s)] == "a")
+    cnt_b = sum(1 for s in pair_strokes if owner[id(s)] == "b")
+    cnt_total = cnt_a + cnt_b
+    # ストローク 0 件の分担比率は 0.0 ではなく None (統計規則 R1)。件数は meta.sample_size 側
     stroke_share = {
-        "player_a": round(cnt_a_role / cnt_total, 3),
-        "player_b": round(cnt_b_role / cnt_total, 3),
+        "player_a": round(cnt_a / cnt_total, 3) if cnt_total else None,
+        "player_b": round(cnt_b / cnt_total, 3) if cnt_total else None,
     }
 
-    # 共通の失点前ショット
-    rally_id_set = {r.id for r in rallies}
-    # N+1 解消: set_id → match_id のマップを一度だけ構築し、matches も辞書化
-    matches_by_id = {m.id: m for m in matches}
-    sets_for_lookup = db.query(GameSet).filter(GameSet.match_id.in_(shared_match_ids)).all() if shared_match_ids else []
-    set_to_match_id = {s.id: s.match_id for s in sets_for_lookup}
+    # 共通の得点前・失点前ショット (ペア 2 人の打球だけ)
     win_rally_ids: set[int] = set()
     loss_rally_ids: set[int] = set()
     for r in rallies:
-        mid = set_to_match_id.get(r.set_id)
-        m = matches_by_id.get(mid) if mid is not None else None
-        if m is None:
+        team = rally_team.get(r.id)
+        if team is None:
             continue
-        player_role = "player_a" if (m.player_a_id == player_a_id or m.partner_a_id == player_a_id) else "player_b"
-        if r.winner == player_role:
+        if r.winner == team:
             win_rally_ids.add(r.id)
         else:
             loss_rally_ids.add(r.id)
 
     common_win_shot = None
-    win_shots = [s.shot_type for s in all_strokes if s.rally_id in win_rally_ids and s.shot_type]
+    win_shots = [s.shot_type for s in pair_strokes if s.rally_id in win_rally_ids and s.shot_type]
     if win_shots:
         common_win_shot = Counter(win_shots).most_common(1)[0][0]
 
     common_loss_pattern = None
-    loss_shots = [s.shot_type for s in all_strokes if s.rally_id in loss_rally_ids and s.shot_type]
+    loss_shots = [s.shot_type for s in pair_strokes if s.rally_id in loss_rally_ids and s.shot_type]
     if loss_shots:
         common_loss_pattern = Counter(loss_shots).most_common(1)[0][0]
 
-    confidence = check_confidence("descriptive_basic", len(rallies))
+    confidence = _research_confidence("descriptive_basic", len(rallies))
     return {
         "success": True,
         "data": {
@@ -1118,9 +1213,10 @@ def get_pair_combined(
             "common_win_shot": common_win_shot,
         },
         "meta": _with_input_provenance(
-            {"sample_size": len(rallies), "confidence": confidence},
+            {"sample_size": len(rallies), "confidence": confidence,
+             "population": {"n_matches": len(matches), "filter_applied": filter_applied}},
             rallies=rallies,
-            strokes=all_strokes,
+            strokes=pair_strokes,
         ),
     }
 
@@ -1129,48 +1225,49 @@ def get_pair_combined(
 def get_partner_timeline(
     player_id: int,
     partner_id: int,
+    result: Optional[str] = None,
+    tournament_level: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
-    """ペア別試合ごとの勝率推移。"""
+    """ペア別試合ごとの勝率推移。pair_combined と同じ試合の選び方・同じ絞り込みを使う (監査 #740 / #741)。"""
 
-    q = db.query(Match).filter(
-        Match.format != "singles",
-        or_(
-            and_(Match.player_a_id == player_id, Match.player_b_id == partner_id),
-            and_(Match.player_a_id == partner_id, Match.player_b_id == player_id),
-            and_(Match.player_a_id == player_id, Match.partner_a_id == partner_id),
-            and_(Match.player_a_id == partner_id, Match.partner_a_id == player_id),
-            and_(Match.player_b_id == player_id, Match.partner_b_id == partner_id),
-            and_(Match.player_b_id == partner_id, Match.partner_b_id == player_id),
-        ),
-    ).order_by(Match.date)
-    matches = q.all()
+    matches = _same_side_pair_matches(
+        db, player_id, partner_id, result, tournament_level, date_from, date_to,
+    )
+    filter_applied = bool(result in ("win", "loss") or tournament_level or date_from or date_to)
+    population = {"n_matches": len(matches), "filter_applied": filter_applied}
 
     if not matches:
         return {"success": True, "data": {"points": [], "overall_win_rate": None},
-                "meta": {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0)}}
+                "meta": {"sample_size": 0, "confidence": _research_confidence("descriptive_basic", 0),
+                         "population": population}}
 
     points = []
     win_count = 0
-    for i, m in enumerate(matches):
-        is_a_side = m.player_a_id == player_id or m.partner_a_id == player_id
-        won = (m.result == "win" and is_a_side) or (m.result == "loss" and not is_a_side)
+    decided_count = 0
+    for m in matches:
+        won = player_wins_match(m, player_id)
+        if won is None:
+            continue
+        decided_count += 1
         if won:
             win_count += 1
         points.append({
             "match_id": m.id,
             "date": str(m.date),
             "result": "win" if won else "loss",
-            "cumulative_win_rate": round(win_count / (i + 1), 3),
+            "cumulative_win_rate": round(win_count / decided_count, 3),
             "tournament": m.tournament,
         })
 
-    overall_win_rate = round(win_count / len(matches), 3)
-    confidence = check_confidence("descriptive_basic", len(matches))
+    overall_win_rate = round(win_count / decided_count, 3) if decided_count else None
+    confidence = _research_confidence("descriptive_basic", decided_count)
     return {
         "success": True,
         "data": {"points": points, "overall_win_rate": overall_win_rate},
-        "meta": {"sample_size": len(matches), "confidence": confidence},
+        "meta": {"sample_size": decided_count, "confidence": confidence, "population": population},
     }
 
 
@@ -1194,8 +1291,9 @@ def get_opponent_type_affinity(
     """
     from collections import defaultdict
 
+    validate_date_range(date_from, date_to)
     q = db.query(Match).filter(
-        (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
+        involves_player(player_id)
     )
     if result:
         q = q.filter(Match.result == result)
@@ -1208,7 +1306,7 @@ def get_opponent_type_affinity(
     matches = q.all()
 
     if not matches:
-        confidence = check_confidence("descriptive_basic", 0)
+        confidence = _research_confidence("descriptive_basic", 0)
         return {"success": True, "data": {"affinity": {}, "summary": [], "axes": {}},
                 "meta": {"sample_size": 0, "confidence": confidence}}
 
@@ -1227,13 +1325,17 @@ def get_opponent_type_affinity(
         "守備型":     {"wins": 0, "total": 0},
         "バランス型": {"wins": 0, "total": 0},
     }
+    unclassified_matches = 0  # 相手の打球データが無く型を判定できなかった試合
     for m in matches:
-        opp_id = m.player_b_id if m.player_a_id == player_id else m.player_a_id
+        opp_id = opponent_player_id(m, player_id)
         cls = classified.get(opp_id)
         if cls is None:
             continue
         opp_type = cls["axes"]["style"]
-        player_role = "player_a" if m.player_a_id == player_id else "player_b"
+        if opp_type == UNCLASSIFIED:
+            unclassified_matches += 1
+            continue
+        player_role = team_side(m, player_id)
         won = (player_role == "player_a" and m.result == "win") or \
               (player_role == "player_b" and m.result == "loss")
         if opp_type in type_stats:
@@ -1258,10 +1360,15 @@ def get_opponent_type_affinity(
         axes[axis] = aggregate_affinity_by_axis(axis, classified, matches, player_id)
 
     sample_size = sum(s["total"] for s in type_stats.values())
-    confidence = check_confidence("descriptive_basic", sample_size)
+    confidence = _research_confidence("descriptive_basic", sample_size)
     return {
         "success": True,
-        "data": {"affinity": affinity, "summary": summary, "axes": axes},
+        "data": {
+            "affinity": affinity,
+            "summary": summary,
+            "axes": axes,
+            "unclassified_matches": unclassified_matches,
+        },
         "meta": _with_input_provenance(
             {"sample_size": sample_size, "confidence": confidence},
             rallies=provenance_rows.get("rallies", []),
@@ -1288,22 +1395,11 @@ def get_pair_playstyle(
     """
     from collections import Counter
 
-    # 両選手が出場したダブルス試合
-    q = db.query(Match).filter(
-        Match.format != "singles",
-        or_(
-            and_(Match.player_a_id == player_a_id, Match.player_b_id == player_b_id),
-            and_(Match.player_a_id == player_b_id, Match.player_b_id == player_a_id),
-            and_(Match.player_a_id == player_a_id, Match.partner_a_id == player_b_id),
-            and_(Match.player_a_id == player_b_id, Match.partner_a_id == player_a_id),
-            and_(Match.player_b_id == player_a_id, Match.partner_b_id == player_b_id),
-            and_(Match.player_b_id == player_b_id, Match.partner_b_id == player_a_id),
-        ),
-    )
-    matches = q.all()
+    # 両選手が同じ側で出場したダブルス試合 (対戦相手同士は含めない、監査 #740)
+    matches = _same_side_pair_matches(db, player_a_id, player_b_id)
 
     if not matches:
-        confidence = check_confidence("descriptive_basic", 0)
+        confidence = _research_confidence("descriptive_basic", 0)
         return {"success": True, "data": {
             "playstyle": "不明", "playstyle_en": "unknown",
             "zone_distribution": {}, "metrics": {},
@@ -1313,22 +1409,14 @@ def get_pair_playstyle(
             strokes=[],
         )}
 
-    match_ids = [m.id for m in matches]
-    set_ids = [
-        s.id for s in db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
-    ]
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
-    rally_ids = [r.id for r in rallies]
-    strokes = (
-        db.query(Stroke)
-        .filter(Stroke.rally_id.in_(rally_ids), Stroke.land_zone != None)
-        .all()
-        if rally_ids else []
+    # 集計する打球はペア 2 人の個人枠のものだけ (相手側の配球・着地点は混ぜない)
+    rallies, strokes, _rally_team, _owner = _pair_strokes(
+        db, matches, player_a_id, player_b_id, require_land_zone=True,
     )
 
     total_strokes = len(strokes)
     if total_strokes == 0:
-        confidence = check_confidence("descriptive_basic", 0)
+        confidence = _research_confidence("descriptive_basic", 0)
         return {"success": True, "data": {
             "playstyle": "不明", "playstyle_en": "unknown",
             "zone_distribution": {}, "metrics": {},
@@ -1371,7 +1459,7 @@ def get_pair_playstyle(
         "match_count":     len(matches),
     }
 
-    confidence = check_confidence("descriptive_basic", total_strokes)
+    confidence = _research_confidence("descriptive_basic", total_strokes)
     return {
         "success": True,
         "data": {
@@ -1400,13 +1488,13 @@ def get_opponent_adaptive_shots(
     """対戦相手別ショット有効性 — 各対戦相手に対するショット種別勝率"""
     matches = (
         db.query(Match)
-        .filter((Match.player_a_id == player_id) | (Match.player_b_id == player_id))
+        .filter(involves_player(player_id))
         .all()
     )
     if not matches:
         return {"success": True, "data": {"global_shot_winrates": {}, "opponents": []},
                 "meta": _with_input_provenance(
-                    {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0)},
+                    {"sample_size": 0, "confidence": _research_confidence("descriptive_basic", 0)},
                     rallies=[],
                     strokes=[],
                 )}
@@ -1453,7 +1541,7 @@ def get_opponent_adaptive_shots(
         if not role:
             continue
         # このストロークはプレイヤーが打ったか
-        if s.player != role:
+        if s.player != own_slot(role):
             continue
 
         match = matches_by_id.get(mid)  # O(1) 辞書引き
@@ -1461,7 +1549,7 @@ def get_opponent_adaptive_shots(
             continue
 
         # 対戦相手ID
-        opp_id = match.player_b_id if match.player_a_id == player_id else match.player_a_id
+        opp_id = opponent_player_id(match, player_id)
         won = 1 if rally.winner == role else 0
         used_strokes.append(s)
 
@@ -1480,6 +1568,7 @@ def get_opponent_adaptive_shots(
     # 対戦相手リスト（試合数上位順）
     opp_players = {p.id: p for p in db.query(Player).filter(Player.id.in_(list(opp_shot.keys()))).all()}
 
+    total_strokes_all = sum(global_counts.values())
     opponents = []
     for opp_id, shot_data in sorted(opp_shot.items(), key=lambda x: -len(opp_match_ids[x[0]])):
         opp = opp_players.get(opp_id)
@@ -1501,15 +1590,25 @@ def get_opponent_adaptive_shots(
             "opponent_id": opp_id,
             "opponent_name": opp.name if opp else str(opp_id),
             "match_count": len(opp_match_ids[opp_id]),
+            # 相手自身の試合数で判定する (全体の打球数ではない)
+            "confidence": _research_confidence(
+                "descriptive_basic", total_strokes_all, unit_n=len(opp_match_ids[opp_id]),
+            ),
             "shot_effectiveness": effectiveness,
         })
 
-    total = sum(global_counts.values())
+    total = total_strokes_all
     return {
         "success": True,
         "data": {"global_shot_winrates": global_winrates, "opponents": opponents},
         "meta": _with_input_provenance(
-            {"sample_size": total, "confidence": check_confidence("descriptive_basic", total)},
+            {
+                "sample_size": total,
+                "confidence": _research_confidence(
+                    "descriptive_basic", total,
+                    unit_n=_median_n([o["match_count"] for o in opponents], total),
+                ),
+            },
             rallies=rallies,
             strokes=used_strokes,
         ),
@@ -1521,36 +1620,37 @@ def get_opponent_adaptive_shots(
 # ---------------------------------------------------------------------------
 
 @router.get("/analysis/pair_synergy")
+@stamps_population("pair_synergy")
 def get_pair_synergy(
     player_id: int,
+    mf: MatchFilter = Depends(match_filter_params),
     db: Session = Depends(get_db),
 ):
     """ペアシナジースコア — ダブルスペアごとの相性指標"""
     # 全試合（シングルス含む）でプレイヤー勝率を計算
-    all_matches = (
-        db.query(Match)
-        .filter((Match.player_a_id == player_id) | (Match.player_b_id == player_id))
-        .all()
-    )
+    # 勝敗確定かつラリー有りの試合だけを数える (analysis_population)。除外件数は meta.excluded
+    all_matches, excluded = select_population(db, player_id, mf)
     if not all_matches:
-        return {"success": True, "data": {"player_avg_win_rate": 0.0, "pairs": []},
-                "meta": {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0)}}
+        return {"success": True, "data": {"player_avg_win_rate": None, "pairs": []},
+                "meta": {"sample_size": 0, "confidence": _research_confidence("descriptive_basic", 0),
+                         "excluded": excluded}}
 
     total_matches = len(all_matches)
-    win_count = sum(
-        1 for m in all_matches
-        if (m.player_a_id == player_id and m.result == "win")
-        or (m.player_b_id == player_id and m.result == "loss")
-    )
-    player_avg_win_rate = round(win_count / total_matches, 3) if total_matches > 0 else 0.0
+    win_count = sum(1 for m in all_matches if player_wins_match(m, player_id))
+    # total_matches=0 は上で早期 return 済み。0.0 を値として返さない (統計規則 R1)
+    player_avg_win_rate = round(win_count / total_matches, 3) if total_matches > 0 else None
 
     # ダブルス試合のみ抽出
     doubles_matches = [m for m in all_matches if m.format in ("womens_doubles", "mixed_doubles", "mens_doubles")]
+    # 信頼度はダブルス対象試合数で判定する。全試合数 (シングルス含む) を流用しない (監査 #136)
+    doubles_count = len(doubles_matches)
     if not doubles_matches:
         return {
             "success": True,
             "data": {"player_avg_win_rate": player_avg_win_rate, "pairs": []},
-            "meta": {"sample_size": total_matches, "confidence": check_confidence("descriptive_basic", total_matches)},
+            "meta": {"sample_size": total_matches, "doubles_sample_size": 0,
+                     "confidence": _research_confidence("descriptive_basic", 0),
+                     "excluded": excluded},
         }
 
     # ペアIDごとに集計
@@ -1579,11 +1679,11 @@ def get_pair_synergy(
         role = _player_role_in_match(m, player_id)
         if not role:
             continue
-        partner_id = m.partner_a_id if role == "player_a" else m.partner_b_id
+        partner_id = partner_player_id(m, player_id)
         if not partner_id:
             continue
 
-        is_win = (role == "player_a" and m.result == "win") or (role == "player_b" and m.result == "loss")
+        is_win = bool(player_wins_match(m, player_id))
         pair_data[partner_id]["match_ids"].append(m.id)
         if is_win:
             pair_data[partner_id]["wins"] += 1
@@ -1597,7 +1697,7 @@ def get_pair_synergy(
             pair_data[partner_id]["rally_count"] += 1
             for st in strokes_by_rally[rally.id]:
                 pair_data[partner_id]["total_strokes"] += 1
-                if st.player == role:
+                if st.player == own_slot(role):
                     pair_data[partner_id]["player_strokes"] += 1
 
     # パートナー名を取得
@@ -1610,13 +1710,16 @@ def get_pair_synergy(
             continue
         wr = round(pd["wins"] / mc, 3)
         synergy = round(wr - player_avg_win_rate, 3)
-        avg_rally = round(pd["total_rally_length"] / pd["rally_count"], 2) if pd["rally_count"] > 0 else 0.0
-        stroke_share = round(pd["player_strokes"] / pd["total_strokes"], 3) if pd["total_strokes"] > 0 else 0.0
+        # ラリー / ストロークが 0 件 (未アノテーション試合) の平均・割合は 0 ではなく None (統計規則 R1)
+        avg_rally = round(pd["total_rally_length"] / pd["rally_count"], 2) if pd["rally_count"] > 0 else None
+        stroke_share = round(pd["player_strokes"] / pd["total_strokes"], 3) if pd["total_strokes"] > 0 else None
         partner = partner_players.get(partner_id)
         pairs.append({
             "partner_id": partner_id,
             "partner_name": partner.name if partner else str(partner_id),
             "match_count": mc,
+            # ペア自身の試合数で判定する。母集団はダブルス対象試合数 (全試合数ではない) (監査 #136)
+            "confidence": _research_confidence("descriptive_basic", doubles_count, unit_n=mc),
             "win_rate": wr,
             "synergy_score": synergy,
             "avg_rally_length": avg_rally,
@@ -1629,7 +1732,16 @@ def get_pair_synergy(
         "success": True,
         "data": {"player_avg_win_rate": player_avg_win_rate, "pairs": pairs},
         "meta": _with_input_provenance(
-            {"sample_size": total_matches, "confidence": check_confidence("descriptive_basic", total_matches)},
+            {
+                "sample_size": total_matches,
+                # ペア推定に実際に寄与するのはダブルス対象試合数 (監査 #136)
+                "doubles_sample_size": doubles_count,
+                "confidence": _research_confidence(
+                    "descriptive_basic", doubles_count,
+                    unit_n=_median_n([p["match_count"] for p in pairs], doubles_count),
+                ),
+                "excluded": excluded,
+            },
             rallies=rallies,
             strokes=strokes,
         ),
@@ -1641,9 +1753,11 @@ def get_pair_synergy(
 # ---------------------------------------------------------------------------
 
 @router.get("/analysis/exploitability")
+@stamps_population("exploitability")
 def get_exploitability(
     player_id: int,
     coarse: bool = Query(True),
+    mf: MatchFilter = Depends(match_filter_params),
     db: Session = Depends(get_db),
 ):
     """NE-001: ゲーム状態別ナッシュ均衡・エクスプロイタビリティ解析（アナリスト専用 research tier）
@@ -1659,6 +1773,7 @@ def get_exploitability(
             player_id,
             coarse=coarse,
             provenance_rows=provenance_rows,
+            match_filter=mf,
         )
     except Exception:
         logger.exception("exploitability_loader failed for player_id=%s", player_id)
@@ -1688,7 +1803,7 @@ def get_exploitability(
     exploitability_values = [s["exploitability"] for s in states_ok]
     mean_exploitability: Optional[float] = None
     most_exploitable: Optional[dict] = None
-    top_prescription: Optional[dict] = None
+    largest_gap: Optional[dict] = None
 
     if exploitability_values:
         mean_exploitability = round(sum(exploitability_values) / len(exploitability_values), 4)
@@ -1697,17 +1812,19 @@ def get_exploitability(
             "state_key": top_state["state_key"],
             "exploitability": top_state["exploitability"],
         }
-        # top prescription: 最もエクスプロイタビリティが高い状態で最大シフトが必要な行動
+        # largest_gap: 最もエクスプロイタビリティが高い状態で、均衡との差が最大の行動。
+        # この解析は推奨非対応 (research / exploratory) なので観察値として返し、
+        # 「増やす / 減らす」という処方の形にはしない (監査 #141)。
         best_shift = top_state.get("best_shift", {})
         if best_shift:
             top_action = max(best_shift, key=lambda a: abs(best_shift[a]))
-            top_prescription = {
+            largest_gap = {
                 "state_key": top_state["state_key"],
                 "action": top_action,
                 "shift": best_shift[top_action],
             }
 
-    confidence = check_confidence("descriptive_basic", total_records)
+    confidence = _research_confidence("descriptive_basic", total_records)
 
     return {
         "success": True,
@@ -1718,7 +1835,7 @@ def get_exploitability(
                 "states_insufficient": len(states_insufficient),
                 "mean_exploitability": mean_exploitability,
                 "most_exploitable": most_exploitable,
-                "top_prescription": top_prescription,
+                "largest_gap": largest_gap,
             },
         },
         "meta": _with_input_provenance(
@@ -1752,11 +1869,20 @@ def get_analysis_tiers():
 # Research: コンフォーマル予測 (CP-001) — 分布フリー保証付き不確実性定量化
 # ---------------------------------------------------------------------------
 
+# グループ別の行に結論 (勝率・勝敗チップ) を出してよい最小の n。
+# 言い切りに近い表示を出してよい最低試合数 VERDICT_MIN_SAMPLE (utils/confidence.py) と同じ値を使う。
+# 防ぐ事象: n=1〜3 のグループに「勝ち寄り / 負け寄り」が出た (監査 #50)。
+# 全体の被覆保証はグループ別の被覆を保証しない (registry の caution 参照)。
+CONFORMAL_MIN_GROUP_N = VERDICT_MIN_SAMPLE
+
+
 @router.get("/analysis/conformal")
+@stamps_population("conformal")
 def get_conformal(
     player_id: int,
     alpha: float = Query(0.1, ge=0.01, le=0.5),
     coarse: bool = Query(True),
+    mf: MatchFilter = Depends(match_filter_params),
     db: Session = Depends(get_db),
 ):
     """CP-001: split-conformal 予測によるラリー勝敗の分布フリー被覆保証解析
@@ -1773,6 +1899,7 @@ def get_conformal(
             player_id,
             coarse=coarse,
             provenance_rows=provenance_rows,
+            match_filter=mf,
         )
     except Exception:
         logger.exception("conformal_loader failed for player_id=%s", player_id)
@@ -1782,7 +1909,7 @@ def get_conformal(
     MIN_SAMPLES = 40  # 校正用 20 + テスト用 20 の最小要件
 
     if n_total < MIN_SAMPLES:
-        confidence = check_confidence("descriptive_basic", n_total)
+        confidence = _research_confidence("descriptive_basic", n_total)
         return {
             "success": True,
             "data": {
@@ -1840,10 +1967,13 @@ def get_conformal(
     empirical_coverage = coverage_result["empirical_coverage"]
     avg_set_size = coverage_result["avg_set_size"]
 
-    # 保証判定 (有限サンプルの揺らぎとして 0.05 のマージンを許容)
+    # 保証判定: 実測被覆率が目標に届いたかを許容幅なしで比べる。
+    # 以前は 0.05 の許容幅があり、目標 90% に対し 85% でも「保証成立」と出ていた。
+    # コード内にこの値の根拠 (測定・導出) が無かったので外した。
+    # 有限の検証集合 (n_test) による揺らぎは、n_test を一緒に返して利用者が読む。
     coverage_guarantee_met: Optional[bool] = None
     if empirical_coverage is not None:
-        coverage_guarantee_met = bool(empirical_coverage >= target_coverage - 0.05)
+        coverage_guarantee_met = bool(empirical_coverage >= target_coverage)
 
     # ── グループ別予測集合 (全サンプルのグループを対象) ────────────────────
     # グループ別集計 (全サンプル)
@@ -1856,17 +1986,26 @@ def get_conformal(
 
     per_group: list[dict] = []
     for g in sorted(group_counts.keys()):
+        n_g = group_counts[g]
+        if n_g < CONFORMAL_MIN_GROUP_N:
+            # n が少ないグループは勝率も勝敗チップも出さない (n=0 を 0.5 にしない規則と同じ扱い)
+            per_group.append({
+                "group": g, "p_win": None, "prediction_set": None,
+                "n": n_g, "n_win": group_wins.get(g, 0), "insufficient": True,
+            })
+            continue
         p_win = winrate_map.get(g, 0.5)
         pset = _conformal_prediction_set(p_win, q)
         per_group.append({
             "group": g,
             "p_win": round(p_win, 4),
             "prediction_set": pset,
-            "n": group_counts[g],
+            "n": n_g,
             "n_win": group_wins.get(g, 0),
+            "insufficient": False,
         })
 
-    confidence = check_confidence("descriptive_basic", n_total)
+    confidence = _research_confidence("descriptive_basic", n_total)
 
     return {
         "success": True,
@@ -1903,9 +2042,11 @@ def get_conformal(
 # ---------------------------------------------------------------------------
 
 @router.get("/analysis/policy_eval")
+@stamps_population("policy_eval")
 def get_policy_eval(
     player_id: int,
     temp: float = Query(0.25, ge=0.01, le=2.0),
+    mf: MatchFilter = Depends(match_filter_params),
     db: Session = Depends(get_db),
 ):
     """POL-001: 状態別に「高価値行動へシフトした方策」の価値を二重頑健 (DR) で
@@ -1918,6 +2059,7 @@ def get_policy_eval(
             player_id,
             coarse=True,
             provenance_rows=provenance_rows,
+            match_filter=mf,
         )
     except Exception:
         logger.exception("dr_ope_loader failed for player_id=%s", player_id)
@@ -1937,8 +2079,15 @@ def get_policy_eval(
     mean_uplift = (
         round(sum(s["uplift"] for s in states_ok) / len(states_ok), 4) if states_ok else None
     )
-    best_state = max(states_ok, key=lambda s: s["uplift"]) if states_ok else None
-    confidence = check_confidence("descriptive_basic", total)
+    # The row CI is the CI of the target policy value (not of the uplift), and
+    # taking the max of many point estimates is optimistic (winner's curse).
+    # A state is only called the best opportunity when the lower CI bound of the
+    # target value still exceeds the behavior value; otherwise the largest point
+    # estimate is reported as an uncertain candidate. n is always carried.
+    supported = [s for s in states_ok if s["uplift"] > 0 and s["ci_low"] > s["value_behavior"]]
+    best_state = max(supported, key=lambda s: s["uplift"]) if supported else None
+    top_candidate = max(states_ok, key=lambda s: s["uplift"]) if states_ok else None
+    confidence = _research_confidence("descriptive_basic", total)
     return {
         "success": True,
         "data": {
@@ -1948,8 +2097,20 @@ def get_policy_eval(
                 "states_insufficient": len(states_insuf),
                 "mean_uplift": mean_uplift,
                 "best_state": (
-                    {"state_key": best_state["state_key"], "uplift": best_state["uplift"]}
+                    {
+                        "state_key": best_state["state_key"],
+                        "uplift": best_state["uplift"],
+                        "n": best_state["n"],
+                    }
                     if best_state else None
+                ),
+                "top_candidate": (
+                    {
+                        "state_key": top_candidate["state_key"],
+                        "uplift": top_candidate["uplift"],
+                        "n": top_candidate["n"],
+                    }
+                    if top_candidate else None
                 ),
             },
         },
@@ -1993,8 +2154,10 @@ def _accessible_player_ids(ctx: AuthCtx, db: Session):
 # ---------------------------------------------------------------------------
 
 @router.get("/analysis/style_distance")
+@stamps_population("style_distance")
 def get_style_distance(
     player_id: int,
+    mf: MatchFilter = Depends(match_filter_params),
     db: Session = Depends(get_db),
     ctx: AuthCtx = Depends(get_auth),
 ):
@@ -2009,12 +2172,13 @@ def get_style_distance(
             allowed_player_ids=allowed,
             min_matches=3,
             provenance_rows=provenance_rows,
+            match_filter=mf,
         )
     except Exception:
         logger.exception("optimal_transport_loader failed for player_id=%s", player_id)
         hists = {}
 
-    confidence = check_confidence("descriptive_basic", len(hists))
+    confidence = _research_confidence("descriptive_basic", len(hists))
     if player_id not in hists or len(hists) < 2:
         return {
             "success": True,
@@ -2078,9 +2242,11 @@ def get_style_distance(
 # ---------------------------------------------------------------------------
 
 @router.get("/analysis/matchup_forecast")
+@stamps_population("matchup_forecast")
 def get_matchup_forecast(
     player_id: int,
     opponent_id: Optional[int] = Query(None),
+    mf: MatchFilter = Depends(match_filter_params),
     db: Session = Depends(get_db),
     ctx: AuthCtx = Depends(get_auth),
 ):
@@ -2088,12 +2254,12 @@ def get_matchup_forecast(
     不確実性付きで予測。データが疎な対戦ほど CI が広がる。コホートは team-scoped。"""
     allowed = _accessible_player_ids(ctx, db)
     try:
-        ids, pairs = load_match_pairs(db, player_id, allowed_player_ids=allowed)
+        ids, pairs = load_match_pairs(db, player_id, allowed_player_ids=allowed, match_filter=mf)
     except Exception:
         logger.exception("hier_bayes_loader failed for player_id=%s", player_id)
         ids, pairs = [], []
 
-    confidence = check_confidence("descriptive_basic", len(pairs))
+    confidence = _research_confidence("descriptive_basic", len(pairs))
     if player_id not in ids or len(ids) < 2 or not pairs:
         return {
             "success": True,
@@ -2124,9 +2290,22 @@ def get_matchup_forecast(
         if pid not in idx or pid == player_id:
             continue
         pr = predict_matchup(float(theta[ti]), float(var[ti]), float(theta[idx[pid]]), float(var[idx[pid]]))
-        matchups.append({"opponent_id": pid, "opponent_name": name_map.get(pid),
-                         "n_h2h": _h2h(pid), **pr})
+        n_h2h = _h2h(pid)
+        matchups.append({
+            "opponent_id": pid, "opponent_name": name_map.get(pid),
+            "n_h2h": n_h2h,
+            # この対戦自身の対戦数と区間幅で判定する (コホート全体の件数ではない)
+            "confidence": _research_confidence(
+                "descriptive_basic", len(pairs),
+                unit_n=n_h2h, interval_width=float(pr["ci_high"]) - float(pr["ci_low"]),
+            ),
+            **pr,
+        })
     matchups.sort(key=lambda m: -m["p_win"])
+
+    if opponent_id is not None and matchups:
+        # 1 対戦だけを表示するときは、その対戦の信頼度を全体の信頼度にする
+        confidence = matchups[0]["confidence"]
 
     _se = math.sqrt(max(0.0, float(var[ti])))
     strength = {"value": round(float(theta[ti]), 4),

@@ -11,8 +11,10 @@ import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 import { apiGet, apiPost, apiDelete, newIdempotencyKey } from '@/api/client'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { useAuth } from '@/hooks/useAuth'
 import { WIN, LOSS } from '@/styles/colors'
 import { MIcon } from '@/components/common/MIcon'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 
 // ── 型定義 ──────────────────────────────────────────────────────────────────
 
@@ -28,6 +30,8 @@ interface ForecastRecord {
   confidence_level: string | null
   notes: string | null
   created_at: string | null
+  // G5 item #687: 作成者のユーザ id。削除ボタンの表示可否に使う (作成者か admin のみ)。
+  creator_user_id: number | null
 }
 
 interface BenchmarkComparison {
@@ -85,7 +89,17 @@ function ForecastForm({ matchId, playerId, onSaved }: Props & { onSaved: () => v
       : 'bg-gray-700 border border-gray-600 text-gray-200'
   }`
 
-  const [role, setRole] = useState('coach')
+  // 予測者ロールはログイン中のロールで固定する (サーバ側も同じ値で記録する)。
+  // admin だけが代理入力としてロールを選べる。
+  const { role: authRole } = useAuth()
+  const lockedRole = authRole === 'coach' || authRole === 'analyst' ? authRole : null
+  // Item #698: only coach/analyst/admin can save a human forecast (backend
+  // user_can_access_match allows coach/analyst; admin acts as a proxy). For any
+  // other role (e.g. demo, player) the POST would 404, so do not render an
+  // editable form that silently fails — show a read-only notice instead.
+  const canForecast = authRole === 'coach' || authRole === 'analyst' || authRole === 'admin'
+  const [pickedRole, setRole] = useState('coach')
+  const role = lockedRole ?? pickedRole
   const [name, setName] = useState('')
   const [outcome, setOutcome] = useState<'win' | 'loss'>('win')
   const [setPath, setSetPath] = useState('')
@@ -116,11 +130,17 @@ function ForecastForm({ matchId, playerId, onSaved }: Props & { onSaved: () => v
 
   const inputClassTokenized = `text-sm rounded-ss-md px-2 py-1.5 focus:outline-none transition-colors duration-base ease-out border border-[var(--ss-border)] bg-[var(--ss-surface-1)] text-[var(--ss-t1)] focus:border-[var(--ss-brand)]`
 
+  if (!canForecast) {
+    return (
+      <p className="text-xs text-[var(--ss-t3)]">{t('prediction.human_forecast_demo_readonly')}</p>
+    )
+  }
+
   return (
     <div className="space-y-3">
       {/* ロール + 名前 */}
       <div className="flex gap-2">
-        <select value={role} onChange={(e) => setRole(e.target.value)} className={inputClassTokenized}>
+        <select value={role} onChange={(e) => setRole(e.target.value)} disabled={lockedRole !== null} className={inputClassTokenized}>
           {ROLE_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
@@ -209,13 +229,25 @@ function ForecastForm({ matchId, playerId, onSaved }: Props & { onSaved: () => v
 function BenchmarkSection({ playerId, isLight }: { playerId: number; isLight: boolean }) {
   const { t } = useTranslation()
 
-  const { data: resp } = useQuery({
+  const { data: resp, isLoading, isError, refetch } = useQuery({
     queryKey: ['human-benchmark', playerId],
     queryFn: () =>
       apiGet<{ success: boolean; data: { summary: BenchmarkSummary[]; match_comparisons: BenchmarkComparison[]; total_forecasts: number } }>(
         `/prediction/benchmark/${playerId}`
       ),
   })
+
+  if (isLoading) {
+    return (
+      <p className="text-xs text-[var(--ss-t3)]">
+        {t('app.loading')}
+      </p>
+    )
+  }
+  // 取得失敗を 0 件 (benchmark_no_data) に変換しない。障害は明示し再試行させる。
+  if (isError) {
+    return <QueryErrorNotice onRetry={() => refetch()} />
+  }
 
   const d = resp?.data
   if (!d || d.total_forecasts === 0) {
@@ -317,11 +349,17 @@ export function HumanForecastPanel({ matchId, playerId }: Props) {
   const { t } = useTranslation()
   const isLight = useIsLightMode()
   const qc = useQueryClient()
+  // G5 item #687: 削除は作成者 (within team) か admin のみ。UI は許可される時だけ削除ボタンを出す。
+  const { userId, role } = useAuth()
 
   const [showForm, setShowForm] = useState(false)
   const [showBenchmark, setShowBenchmark] = useState(false)
 
-  const { data: forecastsResp } = useQuery({
+  const {
+    data: forecastsResp,
+    isError: forecastsError,
+    refetch: refetchForecasts,
+  } = useQuery({
     queryKey: ['human-forecasts', matchId, playerId],
     queryFn: () =>
       apiGet<{ success: boolean; data: ForecastRecord[] }>(
@@ -366,8 +404,21 @@ export function HumanForecastPanel({ matchId, playerId }: Props) {
         </div>
       )}
 
+      {remove.isError && (
+        <p role="alert" className="text-xs text-[var(--ss-bad)]">
+          {(remove.error as { status?: number } | null)?.status === 403
+            ? t('prediction.human_forecast_delete_forbidden')
+            : t('prediction.human_forecast_delete_failed')}
+        </p>
+      )}
+
+      {/* 一覧取得失敗時は空配列 (0 件) に変換せず、明示的なエラー状態を出す (item #649) */}
+      {forecastsError && (
+        <QueryErrorNotice onRetry={() => refetchForecasts()} />
+      )}
+
       {/* 保存済み予測リスト */}
-      {forecasts.length > 0 && (
+      {!forecastsError && forecasts.length > 0 && (
         <div className="space-y-1">
           {forecasts.map((f) => (
             <div
@@ -393,12 +444,24 @@ export function HumanForecastPanel({ matchId, playerId }: Props) {
               {f.confidence_level && (
                 <span className="text-[10px] text-[var(--ss-t3)]">({f.confidence_level})</span>
               )}
-              <button
-                onClick={() => remove.mutate(f.id)}
-                className="ml-auto p-1 rounded-ss-md hover:bg-[var(--ss-surface-3)] text-[var(--ss-t3)] hover:text-[var(--ss-bad)] transition-colors duration-base ease-out"
-              >
-                <MIcon name="delete" size={10} />
-              </button>
+              {/* G5 item #687 (option A): 削除ボタンは「作成者自身」か admin にだけ見せる。
+                  creator_user_id が NULL の旧行は作成者を特定できないため admin 専用。
+                  サーバ側も同じ判定をするので、これは表示上の配慮 (権限の最終判断は API)。 */}
+              {(role === 'admin' ||
+                (f.creator_user_id != null && f.creator_user_id === userId)) && (
+                <button
+                  type="button"
+                  aria-label={t('prediction.human_forecast_delete')}
+                  onClick={() => {
+                    // 削除すると人 vs モデルのベンチマーク値も変わるため確認する
+                    if (!window.confirm(t('prediction.human_forecast_delete_confirm'))) return
+                    remove.mutate(f.id)
+                  }}
+                  className="ml-auto p-1 rounded-ss-md hover:bg-[var(--ss-surface-3)] text-[var(--ss-t3)] hover:text-[var(--ss-bad)] transition-colors duration-base ease-out"
+                >
+                  <MIcon name="delete" size={10} />
+                </button>
+              )}
             </div>
           ))}
         </div>

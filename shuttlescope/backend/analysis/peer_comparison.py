@@ -1,8 +1,10 @@
 """peer_comparison.py — admin 専用 community peer cohort 集計 (research tier)
 
 privacy 設計:
-  - k-anonymity: cohort N < MIN_COHORT_N の場合は metrics を一切返さず
-    {'available': False, 'reason': 'insufficient_cohort'} を返す。
+  - 最小人数の下限: cohort N < MIN_COHORT_N (N>=5 を要求) の場合は metrics を一切返さず
+    {'available': False, 'reason': 'insufficient_cohort'} を返す。これは小さな集団の値を
+    出さないための下限であり、k-匿名性 (準識別子の組み合わせが k 人以上に対応すること) や
+    個人が特定されないことの保証ではない (監査 #423)。
   - aggregate-only: 個別選手の値は返さない。p25/p50/p75/mean/sd のみ。
   - demo team は team.display_id == '__demo__' で識別して必ず除外する。
   - 識別側チャネル防止: min/max は返さない（個人特定の足掛かりを残さない）。
@@ -19,6 +21,8 @@ from typing import Optional, TypedDict
 
 from sqlalchemy.orm import Session
 
+from backend.analysis.role_view import own_slot, perspective
+from backend.analysis.player_context import involves_player
 from backend.db.models import (
     Match, GameSet, Rally, Stroke, Player, Team,
 )
@@ -101,7 +105,7 @@ def _player_level(db: Session, player_id: int) -> Optional[str]:
     """
     rows = (
         db.query(Match.tournament_level)
-        .filter((Match.player_a_id == player_id) | (Match.player_b_id == player_id))
+        .filter(involves_player(player_id))
         .all()
     )
     if not rows:
@@ -132,7 +136,7 @@ def _compute_per_player_metrics(
     matches が 0 の場合は None を返す。
     """
     q = db.query(Match).filter(
-        (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
+        involves_player(player_id)
     )
     if singles_doubles == "singles":
         q = q.filter(Match.format == "singles")
@@ -143,9 +147,7 @@ def _compute_per_player_metrics(
         return None
 
     match_ids = [m.id for m in matches]
-    role_by_match = {
-        m.id: ("player_a" if m.player_a_id == player_id else "player_b") for m in matches
-    }
+    role_by_match = {m.id: perspective(m, player_id) for m in matches}
     sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
     set_to_match = {s.id: s.match_id for s in sets}
     set_ids = [s.id for s in sets]
@@ -188,7 +190,7 @@ def _compute_per_player_metrics(
 
     for s in strokes:
         role = rally_to_role.get(s.rally_id)
-        if role is None or s.player != role:
+        if role is None or s.player != own_slot(role):
             continue
         total_player_strokes += 1
         if not s.shot_type:
@@ -328,7 +330,7 @@ def compute_peer_cohort_stats(
     for m in metrics:
         vals = metric_values.get(m, [])
         if len(vals) < MIN_COHORT_N:
-            # 個別 metric も k-anon を満たさない場合は省く（identifying side-channel 防止）
+            # 個別 metric も最小人数 (MIN_COHORT_N) に満たない場合は省く（少人数の値を出さない）
             continue
         agg = _aggregate(vals)
         agg["unit"] = METRIC_UNITS.get(m, "")

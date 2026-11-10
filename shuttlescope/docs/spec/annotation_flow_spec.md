@@ -216,11 +216,17 @@ NET_L  NET_C  NET_R  ← ネットライン（y=193-207）上に配置
 | ZoneOOB（コート外）| `rally_end`（アウト確定・即終了確認） |
 | ZoneNet（ネット接触）| `rally_end`（ネット確定・即終了確認） |
 
-### 4.4 autoHitZone（打点自動推定）
+### 4.4 hit_zone の定義と autoHitZone
 
-前ストロークの `land_zone` を今ストロークの `hit_zone` として自動設定。
+`hit_zone` は「空中シャトルの3D接触点」ではなく、**打球時の打者の床面位置 Zone9** と定義する。
+単眼映像の空中点を床ホモグラフィへ落とすと高さ由来の系統誤差が入るため、CVはその方法を使わない。
+CV候補はコートキャリブレーション済みの場合に限り、YOLOの `foot_point`（なければ bbox 下辺中央）を
+homography で床面へ投影して生成する。未キャリブレーションでは推測しない。
 
-- 前 `land_zone` が Zone9 → そのまま hit_zone に使用
+手入力フローでは速度優先の補助として、前ストロークの `land_zone` を今ストロークの
+`hit_zone` に carried-over 値として自動設定する。これはCV推定ではない。
+
+- 前 `land_zone` が Zone9 → そのまま hit_zone に使用（source=`carried_over`）
 - 前 `land_zone` が OOB（`OB_`始まり）→ 使用しない（undefined）
 - 前 `land_zone` が NET（`NET_`始まり）→ 使用しない（undefined）
 

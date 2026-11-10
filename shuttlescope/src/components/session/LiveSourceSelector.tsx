@@ -71,13 +71,22 @@ export function LiveSourceSelector({ sessionCode }: Props) {
   const isLight = useIsLightMode()
   const [sources, setSources] = useState<LiveSource[]>([])
   const [loading, setLoading] = useState(false)
+  // 取得失敗を「ソースなし」と区別するための状態
+  const [fetchFailed, setFetchFailed] = useState(false)
 
   const fetchSources = useCallback(async () => {
     setLoading(true)
     try {
       const res = await apiGet<{ success: boolean; data: LiveSource[] }>(`/sessions/${sessionCode}/sources`)
-      if (res.success) setSources(res.data)
-    } catch { /* ignore */ } finally {
+      if (res.success) {
+        setSources(res.data)
+        setFetchFailed(false)
+      } else {
+        setFetchFailed(true)
+      }
+    } catch {
+      setFetchFailed(true)
+    } finally {
       setLoading(false)
     }
   }, [sessionCode])
@@ -86,18 +95,33 @@ export function LiveSourceSelector({ sessionCode }: Props) {
     fetchSources()
   }, [fetchSources])
 
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [busyId, setBusyId] = useState<number | null>(null)
+
   const handleActivate = async (source: LiveSource) => {
+    setActionError(null)
+    setBusyId(source.id)
     try {
       await apiPost(`/sessions/${sessionCode}/sources/${source.id}/activate`, {})
       fetchSources()
-    } catch { /* ignore */ }
+    } catch {
+      setActionError(t('live_source.activate_failed'))
+    } finally {
+      setBusyId(null)
+    }
   }
 
   const handleDeactivate = async (source: LiveSource) => {
+    setActionError(null)
+    setBusyId(source.id)
     try {
       await apiPost(`/sessions/${sessionCode}/sources/${source.id}/deactivate`, {})
       fetchSources()
-    } catch { /* ignore */ }
+    } catch {
+      setActionError(t('live_source.deactivate_failed'))
+    } finally {
+      setBusyId(null)
+    }
   }
 
   const _handleRegisterLocal = async (deviceId: string, label: string) => {
@@ -124,13 +148,24 @@ export function LiveSourceSelector({ sessionCode }: Props) {
     <div>
       <div className="flex items-center justify-between mb-2">
         <p className={`text-xs font-medium ${titleColor}`}>{t('live_source.title')}</p>
-        <button onClick={fetchSources} className="text-[var(--ss-t3)] hover:text-[var(--ss-t1)]">
+        {fetchFailed && sources.length > 0 && (
+          <span role="alert" className="text-[10px] text-[var(--ss-warn)]">{t('common_ui.sources_stale')}</span>
+        )}
+        <button onClick={fetchSources} aria-label={t('common_ui.refresh')} className="text-[var(--ss-t3)] hover:text-[var(--ss-t1)]">
           <MIcon name="refresh" size={12} className={loading ? 'animate-spin' : ''} />
         </button>
       </div>
 
+      {actionError && (
+        <p role="alert" className="text-[10px] mb-2 text-[var(--ss-bad)]">{actionError}</p>
+      )}
+
       {sources.length === 0 ? (
-        <p className={`text-[10px] text-center py-3 ${subColor}`}>{t('live_source.no_sources')}</p>
+        fetchFailed ? (
+          <p role="alert" className="text-[10px] text-center py-3 text-[var(--ss-bad)]">{t('common_ui.sources_fetch_failed')}</p>
+        ) : (
+          <p className={`text-[10px] text-center py-3 ${subColor}`}>{t('live_source.no_sources')}</p>
+        )
       ) : (
         <div className="space-y-1.5">
           {sources.map((src) => (
@@ -167,14 +202,16 @@ export function LiveSourceSelector({ sessionCode }: Props) {
                   {src.source_status === 'active' ? (
                     <button
                       onClick={() => handleDeactivate(src)}
-                      className="text-[10px] px-2 py-1 rounded-ss-md bg-[var(--ss-surface-1)] border border-[var(--ss-border-strong)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-2)]"
+                      disabled={busyId === src.id}
+                      className="text-[10px] px-2 py-1 rounded-ss-md disabled:opacity-50 bg-[var(--ss-surface-1)] border border-[var(--ss-border-strong)] text-[var(--ss-t1)] hover:bg-[var(--ss-surface-2)]"
                     >
                       {t('live_source.deactivate')}
                     </button>
                   ) : (
                     <button
                       onClick={() => handleActivate(src)}
-                      className="text-[10px] px-2 py-1 rounded-ss-md bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white"
+                      disabled={busyId === src.id}
+                      className="text-[10px] px-2 py-1 rounded-ss-md disabled:opacity-50 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white"
                     >
                       {t('live_source.activate')}
                     </button>

@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
+from backend.analysis.player_context import involves_player
 from backend.db.database import get_db
 from backend.db.models import Match
 from backend.routers.data_package import (
@@ -84,7 +85,7 @@ def export_period(
     selected_sections, sections_csv = _parse_sections(sections)
 
     q = db.query(Match).filter(
-        (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
+        involves_player(player_id)
     )
     if d_from is not None:
         q = q.filter(Match.date >= d_from)

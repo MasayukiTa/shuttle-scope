@@ -87,7 +87,10 @@ def test_the_allowlist_still_covers_what_the_sender_actually_sends():
     # 送信側のファイルには WebRTC ローカル用の 'offer'/'answer' 等も出てくるので、
     # シグナリングで送っているものだけを対象にする。
     signalling = {t for t in sent if t.startswith(("camera_", "webrtc_", "ice_", "device_"))}
-    missing = signalling - _DEVICE_TO_OPERATOR_TYPES
+    # device_rename はサーバが自分で処理して relay に流さない (camera.py の device 分岐)。
+    # 許可リストの対象は operator へ中継する種別だけなので、ここでは除く。
+    server_handled = {"device_rename"}
+    missing = signalling - _DEVICE_TO_OPERATOR_TYPES - server_handled
     assert not missing, f"送信端末が送る種別が許可リストから落ちている: {sorted(missing)}"
 
 

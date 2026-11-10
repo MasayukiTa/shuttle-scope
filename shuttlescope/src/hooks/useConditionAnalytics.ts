@@ -53,6 +53,23 @@ export interface DiscrepancyItem {
   detail?: string | null
 }
 
+// backend /conditions/discrepancy の生レスポンス (success/data/items)。
+// 1 condition に複数の flag が付くため、フック側で DiscrepancyItem へ平坦化する。
+interface DiscrepancyFlag {
+  type: string
+  severity: 'low' | 'medium' | 'high'
+  detail?: string | null
+}
+interface DiscrepancyRow {
+  condition_id: number
+  measured_at: string
+  flags: DiscrepancyFlag[]
+}
+interface DiscrepancyRaw {
+  success?: boolean
+  data?: { items?: DiscrepancyRow[]; n?: number } | null
+}
+
 export interface GrowthCard {
   when_key: string
   factor_key?: string | null
@@ -67,10 +84,12 @@ export interface GrowthCard {
 
 export interface InsightsResponse {
   growth_cards: GrowthCard[]
-  personal_trend?: { ccs_28ma?: number | null; direction?: 'up' | 'flat' | 'down' | null } | null
-  // coach/analyst only
-  raw_factor_trends?: Array<{ factor: string; series: Array<{ date: string; value: number }> }> | null
-  validity_summary?: { valid_ratio?: number | null; flags?: string[] | null } | null
+  personal_trend?: { ccs_28ma?: number | null /* 直近28回の記録の平均 (現状 backend は返さない) */; direction?: 'up' | 'flat' | 'down' | null } | null
+  // admin only: backend returns a dict keyed by factor, each a list of points.
+  // backend/routers/conditions.py: data["raw_factor_trends"] = { f1_physical: [{measured_at, value}], ... }
+  raw_factor_trends?: Record<string, Array<{ measured_at: string; value: number | null }>> | null
+  // backend returns { counts: { ok, caution, unreliable }, n }
+  validity_summary?: { counts?: { ok: number; caution: number; unreliable: number } | null; n?: number | null } | null
 }
 
 // backend は {success, data} ラッパで返すケースと裸で返すケースがあるため正規化
@@ -190,14 +209,28 @@ export function useDiscrepancy(playerId: number | null, limit = 50) {
   return useQuery({
     queryKey: ['condition-discrepancy', playerId, limit],
     queryFn: async (): Promise<DiscrepancyItem[]> => {
-      // backend は配列を直接返す場合と {success, data:[...]} 形式の場合があり得るため正規化
-      const resp = await apiGet<DiscrepancyItem[] | { success?: boolean; data?: DiscrepancyItem[] }>(
-        '/conditions/discrepancy',
-        { player_id: playerId!, limit },
-      )
-      if (Array.isArray(resp)) return resp
-      const data = (resp as { data?: DiscrepancyItem[] })?.data
-      return Array.isArray(data) ? data : []
+      // backend は {success, data:{items:[{condition_id, measured_at, flags:[{type,severity,detail?}]}], n}} を返す。
+      // 旧実装は resp.data を配列と誤読して常に [] になっていた (監査#751)。
+      // data.items を取り出し、各 condition の flags を 1 行ずつ DiscrepancyItem に平坦化する。
+      const resp = await apiGet<DiscrepancyRaw>('/conditions/discrepancy', {
+        player_id: playerId!,
+        limit,
+      })
+      const items = resp?.data?.items
+      if (!Array.isArray(items)) return []
+      const out: DiscrepancyItem[] = []
+      for (const row of items) {
+        for (const f of row.flags ?? []) {
+          out.push({
+            condition_id: row.condition_id,
+            date: row.measured_at,
+            type: f.type,
+            severity: f.severity,
+            detail: f.detail ?? null,
+          })
+        }
+      }
+      return out
     },
     // player には絶対に取得させない（ボタンも非表示）
     enabled: !!playerId && (role === 'coach' || role === 'analyst' || role === 'admin'),

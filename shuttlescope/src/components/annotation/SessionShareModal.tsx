@@ -1,7 +1,7 @@
 /**
  * セッション共有モーダル — QRコード + URL表示 + パスワード管理
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useTranslation } from 'react-i18next'
@@ -13,6 +13,8 @@ interface Props {
   coachUrls: string[]
   cameraSenderUrls?: string[]
   viewerUrls?: string[]
+  /** 画面を開いている公開 HTTPS オリジン。あればこれを使って別ネットワーク可の URL を QR にする */
+  publicOrigin?: string | null
   sessionPassword?: string
   onClose: () => void
 }
@@ -22,6 +24,7 @@ export function SessionShareModal({
   coachUrls,
   cameraSenderUrls = [],
   viewerUrls = [],
+  publicOrigin = null,
   sessionPassword: initialPassword,
   onClose,
 }: Props) {
@@ -33,60 +36,94 @@ export function SessionShareModal({
   const [passwordCopied, setPasswordCopied] = useState(false)
   const [cameraUrlCopied, setCameraUrlCopied] = useState(false)
   const [viewerUrlCopied, setViewerUrlCopied] = useState(false)
+  // QR 描画失敗とクリップボード書き込み失敗を利用者へ示すための状態
+  const [qrFailed, setQrFailed] = useState({ coach: false, camera: false, viewer: false })
+  const [copyFailed, setCopyFailed] = useState(false)
+  const titleId = useId()
   const [showPassword, setShowPassword] = useState(false)
   const [sessionPassword, setSessionPassword] = useState(initialPassword ?? '')
   const [regenerating, setRegenerating] = useState(false)
+  const [regenerateStatus, setRegenerateStatus] = useState<'ok' | 'failed' | null>(null)
   const isLight = useIsLightMode()
 
-  // LAN IP URL（QRコード・他デバイス用）と localhost URL（同一PC用）を分離
+  // localhost URL（同一PC用）と LAN IP URL（同一ネットワーク用）を分離する
   const isLocalhost = (u: string) => /localhost|127\.0\.0\.1/.test(u)
-  const lanCoachUrls = coachUrls.filter(u => !isLocalhost(u))
+  // 公開 HTTPS オリジンで開いている場合、LAN URL のパス（hash 含む）を流用して
+  // オリジンだけを公開ドメインに差し替えた URL を返す。別ネットワーク（携帯回線）の
+  // 端末でも開ける。origin が無い / 組み立て失敗時は null。
+  const toPublic = (u: string): string | null => {
+    if (!publicOrigin) return null
+    try {
+      const parsed = new URL(u)
+      return publicOrigin + parsed.pathname + parsed.search + parsed.hash
+    } catch {
+      return null
+    }
+  }
+  // 各種の LAN IP URL（localhost を除いた先頭）と localhost URL
+  const lanCoachUrl = coachUrls.filter(u => !isLocalhost(u))[0] ?? ''
   const localCoachUrl = coachUrls.find(isLocalhost) ?? ''
-  const coachUrl = lanCoachUrls[0] ?? localCoachUrl  // LAN IP 優先、なければ localhost
-  const cameraUrl = cameraSenderUrls.filter(u => !isLocalhost(u))[0]
-    ?? cameraSenderUrls.find(isLocalhost) ?? ''
-  const viewerUrl = viewerUrls.filter(u => !isLocalhost(u))[0]
-    ?? viewerUrls.find(isLocalhost) ?? ''
-  // パスワードを URL に埋め込む — LAN QR スキャン時にフォーム入力不要にする
-  const cameraUrlWithPwd = cameraUrl && sessionPassword
-    ? `${cameraUrl}?pwd=${encodeURIComponent(sessionPassword)}`
-    : cameraUrl
-  const viewerUrlWithPwd = viewerUrl && sessionPassword
-    ? `${viewerUrl}?pwd=${encodeURIComponent(sessionPassword)}`
-    : viewerUrl
+  const lanCameraUrl = cameraSenderUrls.filter(u => !isLocalhost(u))[0] ?? ''
+  const lanViewerUrl = viewerUrls.filter(u => !isLocalhost(u))[0] ?? ''
+  // QR に使う URL：公開 origin があれば公開 URL、無ければ従来通り LAN→localhost の順
+  const coachUrl = toPublic(lanCoachUrl || localCoachUrl) || lanCoachUrl || localCoachUrl
+  const cameraUrl = toPublic(lanCameraUrl) || lanCameraUrl || (cameraSenderUrls.find(isLocalhost) ?? '')
+  const viewerUrl = toPublic(lanViewerUrl) || lanViewerUrl || (viewerUrls.find(isLocalhost) ?? '')
+  // 公開 URL を QR に使っているか（「同じネットワーク用」の LAN URL を別表示するかの判定）
+  const usingPublicOrigin = !!publicOrigin && !!toPublic(lanCoachUrl || localCoachUrl)
+  // セッションパスワードは URL / QR に埋め込まない。URL は履歴・共有・画面撮影に残るため、
+  // 参加側が参加画面でパスワードを入力する。
 
   // コーチ URL の QR
   useEffect(() => {
     if (!canvasRef.current || !coachUrl) return
+    // アンマウント後の setState (teardown 済み環境) を中断フラグで抑止。
+    let active = true
     QRCode.toCanvas(canvasRef.current, coachUrl, {
       width: 180,
       margin: 2,
       color: { dark: '#0f172a', light: '#f8fafc' },
-    }).catch(() => {})
+    }).then(() => { if (active) setQrFailed((p) => ({ ...p, coach: false })) })
+      .catch(() => { if (active) setQrFailed((p) => ({ ...p, coach: true })) })
+    return () => {
+      active = false
+    }
   }, [coachUrl])
 
-  // カメラ送信 URL の QR（パスワード付き）
+  // カメラ送信 URL の QR（パスワードは含めない）
   useEffect(() => {
-    if (!cameraCanvasRef.current || !cameraUrlWithPwd) return
-    QRCode.toCanvas(cameraCanvasRef.current, cameraUrlWithPwd, {
+    if (!cameraCanvasRef.current || !cameraUrl) return
+    // アンマウント後の setState (teardown 済み環境) を中断フラグで抑止。
+    let active = true
+    QRCode.toCanvas(cameraCanvasRef.current, cameraUrl, {
       width: 180,
       margin: 2,
       color: { dark: '#0f172a', light: '#f8fafc' },
-    }).catch(() => {})
-  }, [cameraUrlWithPwd])
+    }).then(() => { if (active) setQrFailed((p) => ({ ...p, camera: false })) })
+      .catch(() => { if (active) setQrFailed((p) => ({ ...p, camera: true })) })
+    return () => {
+      active = false
+    }
+  }, [cameraUrl])
 
-  // ビューワー URL の QR（パスワード付き）
+  // ビューワー URL の QR（パスワードは含めない）
   useEffect(() => {
-    if (!viewerCanvasRef.current || !viewerUrlWithPwd) return
-    QRCode.toCanvas(viewerCanvasRef.current, viewerUrlWithPwd, {
+    if (!viewerCanvasRef.current || !viewerUrl) return
+    // アンマウント後の setState (teardown 済み環境) を中断フラグで抑止。
+    let active = true
+    QRCode.toCanvas(viewerCanvasRef.current, viewerUrl, {
       width: 180,
       margin: 2,
       color: { dark: '#0f172a', light: '#f8fafc' },
-    }).catch(() => {})
-  }, [viewerUrlWithPwd])
+    }).then(() => { if (active) setQrFailed((p) => ({ ...p, viewer: false })) })
+      .catch(() => { if (active) setQrFailed((p) => ({ ...p, viewer: true })) })
+    return () => {
+      active = false
+    }
+  }, [viewerUrl])
 
   const handleCopy = (text: string, setter: (v: boolean) => void) => {
-    const confirm = () => { setter(true); setTimeout(() => setter(false), 2000) }
+    const confirm = () => { setCopyFailed(false); setter(true); setTimeout(() => setter(false), 2000) }
     const fallback = () => {
       try {
         const el = document.createElement('textarea')
@@ -94,10 +131,14 @@ export function SessionShareModal({
         el.style.cssText = 'position:fixed;top:0;left:0;opacity:0'
         document.body.appendChild(el)
         el.select()
-        document.execCommand('copy')
+        // execCommand は失敗しても例外を投げず false を返すため、戻り値で成否を判定する
+        const ok = document.execCommand('copy')
         document.body.removeChild(el)
-        confirm()
-      } catch { /* コピー失敗は無視 */ }
+        if (ok) confirm()
+        else setCopyFailed(true)
+      } catch {
+        setCopyFailed(true)
+      }
     }
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(text).then(confirm).catch(fallback)
@@ -108,15 +149,20 @@ export function SessionShareModal({
 
   const handleRegeneratePassword = async () => {
     setRegenerating(true)
+    setRegenerateStatus(null)
     try {
       const res = await apiPost<{ success: boolean; data: { session_password: string } }>(
         `/sessions/${sessionCode}/regenerate-password`, {}
       )
       if (res.success) {
         setSessionPassword(res.data.session_password)
+        setRegenerateStatus('ok')
+      } else {
+        setRegenerateStatus('failed')
       }
     } catch {
-      // 再生成失敗は無視
+      // 失敗時は旧パスワードのまま。利用者へ明示する
+      setRegenerateStatus('failed')
     } finally {
       setRegenerating(false)
     }
@@ -144,6 +190,7 @@ export function SessionShareModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
       role="dialog"
       aria-modal="true"
+      aria-labelledby={titleId}
       onClick={onClose}
     >
       <div
@@ -153,23 +200,35 @@ export function SessionShareModal({
         {/* ヘッダー */}
         <div className="flex items-center justify-between mb-4">
           <div>
-            <p className={`text-sm font-semibold ${titleColor}`}>{t('lan_session.share_modal_title')}</p>
+            <p id={titleId} className={`text-sm font-semibold ${titleColor}`}>{t('lan_session.share_modal_title')}</p>
             <p className={`text-xs mt-0.5 ${subColor}`}>
               {t('lan_session.share_modal_code_label')}{' '}
               <span className={`font-mono font-bold ${codeColor}`}>{sessionCode}</span>
             </p>
           </div>
-          <button onClick={onClose} className={`${subColor} hover:text-[var(--ss-t1)] transition-colors duration-fast ease-out`}>
+          <button onClick={onClose} aria-label={t('app.close')} className={`${subColor} hover:text-[var(--ss-t1)] transition-colors duration-fast ease-out`}>
             <MIcon name="close" size={16} />
           </button>
         </div>
 
+        {copyFailed && (
+          <p role="alert" className="text-[10px] mb-3 text-[var(--ss-bad)]">{t('common_ui.copy_failed')}</p>
+        )}
+
         {/* ─── コーチ URL / QR ─────────────────── */}
         <p className={`text-xs mb-2 ${sectionTitle}`}>{t('lan_session.share_modal_coach_view')}</p>
+        {usingPublicOrigin && coachUrl && (
+          <p className={`text-[10px] mb-2 ${noteColor}`}>{t('lan_session.share_modal_public_url_label')}</p>
+        )}
         {coachUrl ? (
-          <div className="flex justify-center mb-3 bg-[var(--ss-surface-2)] rounded-ss-md p-2">
-            <canvas ref={canvasRef} />
-          </div>
+          <>
+            <div className="flex justify-center mb-3 bg-[var(--ss-surface-2)] rounded-ss-md p-2">
+              <canvas ref={canvasRef} />
+            </div>
+            {qrFailed.coach && (
+              <p role="alert" className="text-[10px] text-center mb-2 text-[var(--ss-bad)]">{t('common_ui.qr_failed')}</p>
+            )}
+          </>
         ) : (
           <p className={`text-xs text-center mb-3 ${noteColor}`}>{t('lan_session.share_modal_no_url')}</p>
         )}
@@ -188,6 +247,19 @@ export function SessionShareModal({
           </div>
         )}
         {/* 同一PC用 localhost URL（他デバイスへの QR とは別に常に表示） */}
+        {usingPublicOrigin && lanCoachUrl && (
+          <div className="flex items-center gap-1.5 mb-2">
+            <p className={`text-[10px] ${noteColor} whitespace-nowrap`}>{t('lan_session.share_modal_lan_url_label')}</p>
+            <a
+              href={lanCoachUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`flex-1 text-[10px] font-mono truncate rounded-ss-sm px-2 py-1 ${urlBg} text-[var(--ss-brand)] hover:text-[var(--ss-brand-hover)] transition-colors duration-fast ease-out`}
+            >
+              {lanCoachUrl}
+            </a>
+          </div>
+        )}
         {localCoachUrl && (
           <div className="flex items-center gap-1.5 mb-4">
             <p className={`text-[10px] ${noteColor} whitespace-nowrap`}>{t('lan_session.share_modal_same_pc_label')}</p>
@@ -216,6 +288,7 @@ export function SessionShareModal({
               {sessionPassword && (
                 <button
                   onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? t('lan_session.password_hide') : t('lan_session.password_show')}
                   className={`${subColor} hover:text-[var(--ss-t1)] transition-colors duration-fast ease-out`}
                 >
                   {showPassword ? <MIcon name="visibility_off" size={12} /> : <MIcon name="visibility" size={12} />}
@@ -240,6 +313,16 @@ export function SessionShareModal({
               {t('lan_session.password_regenerate')}
             </button>
           </div>
+          {regenerateStatus && (
+            <p
+              role={regenerateStatus === 'failed' ? 'alert' : 'status'}
+              className={`text-[10px] mt-1 ${regenerateStatus === 'failed' ? 'text-[var(--ss-bad)]' : noteColor}`}
+            >
+              {regenerateStatus === 'failed'
+                ? t('lan_session.password_regenerate_failed')
+                : t('lan_session.password_regenerate_done')}
+            </p>
+          )}
           <p className={`text-[10px] mt-1 ${noteColor}`}>
             {t('lan_session.share_modal_password_note')}
           </p>
@@ -252,15 +335,21 @@ export function SessionShareModal({
               <MIcon name="photo_camera" size={12} className={subColor} />
               <p className={`text-xs ${sectionTitle}`}>{t('lan_session.camera_sender_url_label')}</p>
             </div>
+            {usingPublicOrigin && (
+              <p className={`text-[10px] ${noteColor}`}>{t('lan_session.share_modal_public_url_label')}</p>
+            )}
             <div className="flex justify-center mb-3 bg-[var(--ss-surface-2)] rounded-ss-md p-2">
               <canvas ref={cameraCanvasRef} />
             </div>
+            {qrFailed.camera && (
+              <p role="alert" className="text-[10px] text-center mb-2 text-[var(--ss-bad)]">{t('common_ui.qr_failed')}</p>
+            )}
             <div className="flex items-center gap-1.5">
               <p className={`flex-1 text-[10px] font-mono truncate rounded-ss-sm px-2 py-1 ${urlBg} ${urlColor}`}>
-                {cameraUrlWithPwd || cameraUrl}
+                {cameraUrl}
               </p>
               <button
-                onClick={() => handleCopy(cameraUrlWithPwd || cameraUrl, setCameraUrlCopied)}
+                onClick={() => handleCopy(cameraUrl, setCameraUrlCopied)}
                 className="flex items-center gap-1 px-2 py-1 rounded-ss-md text-xs bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white whitespace-nowrap transition-colors duration-fast ease-out"
               >
                 {cameraUrlCopied ? <MIcon name="check" size={12} /> : <MIcon name="content_copy" size={12} />}
@@ -270,6 +359,12 @@ export function SessionShareModal({
             <p className={`text-[10px] text-center mt-2 ${noteColor}`}>
               {t('lan_session.share_modal_camera_qr_hint')}
             </p>
+            {usingPublicOrigin && lanCameraUrl && (
+              <div className="flex items-center gap-1.5 mt-2">
+                <p className={`text-[10px] ${noteColor} whitespace-nowrap`}>{t('lan_session.share_modal_lan_url_label')}</p>
+                <p className={`flex-1 text-[10px] font-mono truncate rounded-ss-sm px-2 py-1 ${urlBg} ${urlColor}`}>{lanCameraUrl}</p>
+              </div>
+            )}
           </div>
         )}
 
@@ -280,15 +375,21 @@ export function SessionShareModal({
               <MIcon name="monitor" size={12} className={subColor} />
               <p className={`text-xs ${sectionTitle}`}>{t('sharing.viewer_url_label')}</p>
             </div>
+            {usingPublicOrigin && (
+              <p className={`text-[10px] ${noteColor}`}>{t('lan_session.share_modal_public_url_label')}</p>
+            )}
             <div className="flex justify-center mb-3 bg-[var(--ss-surface-2)] rounded-ss-md p-2">
               <canvas ref={viewerCanvasRef} />
             </div>
+            {qrFailed.viewer && (
+              <p role="alert" className="text-[10px] text-center mb-2 text-[var(--ss-bad)]">{t('common_ui.qr_failed')}</p>
+            )}
             <div className="flex items-center gap-1.5">
               <p className={`flex-1 text-[10px] font-mono truncate rounded-ss-sm px-2 py-1 ${urlBg} ${urlColor}`}>
-                {viewerUrlWithPwd || viewerUrl}
+                {viewerUrl}
               </p>
               <button
-                onClick={() => handleCopy(viewerUrlWithPwd || viewerUrl, setViewerUrlCopied)}
+                onClick={() => handleCopy(viewerUrl, setViewerUrlCopied)}
                 className="flex items-center gap-1 px-2 py-1 rounded-ss-md text-xs bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white whitespace-nowrap transition-colors duration-fast ease-out"
               >
                 {viewerUrlCopied ? <MIcon name="check" size={12} /> : <MIcon name="content_copy" size={12} />}
@@ -298,6 +399,12 @@ export function SessionShareModal({
             <p className={`text-[10px] text-center mt-2 ${noteColor}`}>
               {t('lan_session.share_modal_viewer_qr_hint')}
             </p>
+            {usingPublicOrigin && lanViewerUrl && (
+              <div className="flex items-center gap-1.5 mt-2">
+                <p className={`text-[10px] ${noteColor} whitespace-nowrap`}>{t('lan_session.share_modal_lan_url_label')}</p>
+                <p className={`flex-1 text-[10px] font-mono truncate rounded-ss-sm px-2 py-1 ${urlBg} ${urlColor}`}>{lanViewerUrl}</p>
+              </div>
+            )}
           </div>
         )}
       </div>

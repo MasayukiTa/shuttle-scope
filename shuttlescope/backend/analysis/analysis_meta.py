@@ -55,7 +55,7 @@ EVIDENCE_META: dict[str, dict] = {
     "pressure": {
         "evidence_level": "practical_candidate",
         "caution": "プレッシャー定義（スコア閾値）は固定値です。実際の心理的プレッシャーとは異なる場合があります。",
-        "assumptions": "スコア17点以上・3点差以上を「プレッシャー局面」とします。",
+        "assumptions": "デュースと、得点後にどちらかが17点以上の終盤を、通常局面と分けて集計します。点差は見ていません。",
         "promotion_criteria": "N≥300試合・プレッシャー定義の校正",
     },
     "transition": {
@@ -66,14 +66,14 @@ EVIDENCE_META: dict[str, dict] = {
     },
     "temporal": {
         "evidence_level": "directional",
-        "caution": "セット内時間帯の効果量は小さい場合があります。過度な解釈を避けてください。",
-        "assumptions": "セット内ラリー順番を時間代理として使用。実際の時間は不使用。",
+        "caution": "ゲーム内時間帯の効果量は小さい場合があります。過度な解釈を避けてください。",
+        "assumptions": "ゲーム内ラリー順番を時間代理として使用。実際の時間は不使用。",
         "promotion_criteria": "N≥300ラリー・大会レベル別再現性確認",
     },
     "post_long_rally": {
         "evidence_level": "directional",
         "caution": "ロングラリー後効果のサンプルは少なくなりがちです。",
-        "assumptions": "ラリー長8+打を「ロングラリー」と定義。",
+        "assumptions": "ラリー長10打以上を「ロングラリー」と定義（全カード共通の基準値）。",
         "promotion_criteria": "N≥100ロングラリーの安定確認",
     },
     "growth": {
@@ -110,8 +110,8 @@ EVIDENCE_META: dict[str, dict] = {
     },
     "opponent_affinity": {
         "evidence_level": "exploratory",
-        "caution": "対戦相手タイプ分類は統計的クラスタリングです。個別の選手特性を正確に反映しない場合があります。",
-        "assumptions": "スタイルラベル（攻撃型/守備型等）はルールベースで割り当てています。",
+        "caution": "対戦相手タイプは、ラリーの長さやドライブ率などの数値を固定のしきい値で区切って分けた分類です。個別の選手特性を正確に反映しない場合があります。",
+        "assumptions": "統計的なクラスタリングは使っていません。攻撃型・守備型などのラベルは、しきい値のルールで割り当てています。",
         "promotion_criteria": "分類器の精度検証・外部ラベルとの照合",
     },
     "pair_synergy": {
@@ -142,7 +142,7 @@ EVIDENCE_META: dict[str, dict] = {
     "epv_state": {
         "evidence_level": "directional",
         "caution": "状態ベースEPVは状態定義の品質に強く依存します。状態数が少ない場合、推定が不安定になります。",
-        "assumptions": "スコアフェーズ・セット番号・ラリーバケット・サーブ側の4次元状態を使用します。",
+        "assumptions": "スコアフェーズ・ゲーム番号・ラリーバケット・サーブ側の4次元状態を使用します。",
         "promotion_criteria": "状態ごとN≥50・CI幅0.2以内・クロス大会安定性",
     },
     "state_action": {
@@ -172,7 +172,7 @@ EVIDENCE_META: dict[str, dict] = {
     "opponent_policy": {
         "evidence_level": "exploratory",
         "caution": "対戦相手ポリシーは観測されたショット選択の統計です。意図的な戦術変化は反映しません。",
-        "assumptions": "多軸（スコア・ラリーフェーズ・ゾーン）条件付きショット分布を使用します。",
+        "assumptions": "多軸（スコア・ラリーフェーズ・受けた球の着地ゾーン）条件付きショット分布を使用します。ゾーンは打つ前に分かる直前ストロークの着地点で、予測対象ショット自身の着地点は使いません。",
         "promotion_criteria": "予測精度（交差検証）・N≥100対戦試合",
     },
     "doubles_role": {

@@ -23,12 +23,17 @@ def _set_require_match_scope(request: Request, db: Session, match: Match) -> Non
     require_match_scope(request, match, db)
 
 
+# バドミントンは 3 セットマッチ (2 セット先取)。フロントの bestOf=3 と揃える。
+MAX_SETS = 3
+SETS_TO_WIN = 2
+
+
 class SetCreate(BaseModel):
-    # extra フィールド禁止 + set_num は 1-5 に制限 (ベスト 3 of 5 相当)
-    # これは badminton の公式ルールに従う。99 等の不正値を 422 で弾く
+    # extra フィールド禁止 + set_num は 1-3 に制限 (3 セットマッチ)。
+    # 99 等の不正値を 422 で弾く
     model_config = {"extra": "forbid"}
     match_id: int
-    set_num: int = Field(..., ge=1, le=5)
+    set_num: int = Field(..., ge=1, le=MAX_SETS)
 
 
 class SetEnd(BaseModel):
@@ -50,15 +55,34 @@ GOLDEN_POINT = 30
 def _winner_from_scores(score_a: int, score_b: int) -> Optional[str]:
     """スコアから勝者を決める。まだ終わっていなければ None。
 
-    - 30 点先取 (ゴールデンポイント) は 2 点差不要
+    - 30 点先取 (ゴールデンポイント) は 2 点差不要。30 点に届いた時点で終わるので
+      31-30 のように 30 を超えるスコアは存在しない (None)
     - それ以外は 21 点以上かつ 2 点差
     """
     hi, lo = max(score_a, score_b), min(score_a, score_b)
-    if hi >= GOLDEN_POINT:
-        return "player_a" if score_a >= GOLDEN_POINT else "player_b"
+    if hi > GOLDEN_POINT or (hi == GOLDEN_POINT and lo == GOLDEN_POINT):
+        return None
+    if hi == GOLDEN_POINT:
+        return "player_a" if score_a == GOLDEN_POINT else "player_b"
     if hi >= POINT_TARGET and hi - lo >= 2:
         return "player_a" if score_a > score_b else "player_b"
     return None
+
+
+def _decided_winner(db: Session, game_set: GameSet) -> Optional[str]:
+    """セットの勝者。確定済みならその値、未確定なら最終ラリーのスコアから判定する。
+
+    モバイルのアノテーションは PUT /sets/{id}/end を呼ばずに次のセットへ進むため、
+    GameSet.winner が空のままでもラリーのスコアでは決着していることがある。
+    """
+    if game_set.winner in ("player_a", "player_b"):
+        return game_set.winner
+    last = db.query(Rally).filter(
+        Rally.set_id == game_set.id
+    ).order_by(Rally.rally_num.desc()).first()
+    if last is None:
+        return None
+    return _winner_from_scores(last.score_a_after or 0, last.score_b_after or 0)
 
 
 def set_to_dict(s: GameSet) -> dict:
@@ -71,6 +95,80 @@ def set_to_dict(s: GameSet) -> dict:
         "score_b": s.score_b,
         "is_deuce": s.is_deuce,
     }
+
+
+def _set_scores(db: Session, game_set: GameSet) -> Optional[tuple[int, int]]:
+    """セットの最終スコア (player_a, player_b)。確定済みの score_a/score_b を優先し、
+    未確定 (モバイルが end を呼ばず次セットへ進んだ場合) は最終ラリーのスコアで補完する。
+    どちらも無ければ None。"""
+    if game_set.score_a is not None and game_set.score_b is not None:
+        return game_set.score_a, game_set.score_b
+    last = db.query(Rally).filter(
+        Rally.set_id == game_set.id
+    ).order_by(Rally.rally_num.desc()).first()
+    if last is None:
+        return None
+    return last.score_a_after or 0, last.score_b_after or 0
+
+
+# result が「まだ結果が入っていない」とみなせる値。これらのときだけ自動入力する。
+# win / loss / walkover は人が確定させた実結果なので空ではない (= 上書きしない)。
+_EMPTY_RESULTS = frozenset({None, "", "unfinished", "unknown"})
+
+
+def _autofill_match_result_from_sets(db: Session, match: Match) -> None:
+    """G6 #524 (option A): 完了セットが試合を決した (2-0 / 2-1) とき、match の
+    result / final_score を完了セットから自動入力する。呼び出し元の end_set と
+    同一トランザクション (commit 前) で実行すること。
+
+    spec: 「空のときだけ埋める。手入力値は絶対に上書きしない。既存値は全て manual 扱い」。
+    上書き可否の不変条件:
+    - 書くのは (A) result がまだ空 (None/''/unfinished/unknown)、または
+      (B) result_source == 'auto' (自分が前回入れた値) のときだけ。
+    - result_source == 'manual' かつ result が実結果 (win/loss/walkover) の match は
+      「人が確定させた値」なので一切触れない。試合作成/編集・early finish・walkover が該当。
+    - (B) により auto の match は毎回再計算して同じ値で上書きできる (冪等。並行で
+      複数の end_set が走っても manual を踏まない)。
+    - まだ決着していない (どちらも 2 勝未満) なら何もしない。
+    - 未完了セット (棄権・中断で winner 不明) は _decided_winner が None を返すため
+      勝利数に数えない。結果として walkover / 途中棄権は決着扱いにならず manual のまま。
+    """
+    if match is None:
+        return
+    # 人が確定させた結果 (manual かつ実結果) は上書きしない。
+    is_empty = match.result in _EMPTY_RESULTS
+    if match.result_source == "manual" and not is_empty:
+        return
+
+    sets = db.query(GameSet).filter(
+        GameSet.match_id == match.id
+    ).order_by(GameSet.set_num).all()
+
+    wins = {"player_a": 0, "player_b": 0}
+    ordered_scores: list[tuple[int, int]] = []
+    for gs in sets:
+        side = _decided_winner(db, gs)
+        if side is None:
+            continue
+        wins[side] += 1
+        sc = _set_scores(db, gs)
+        if sc is not None:
+            ordered_scores.append(sc)
+        if max(wins.values()) >= SETS_TO_WIN:
+            # 決着したセットまでで打ち切る (決着後の余分なセットは final_score に含めない)。
+            break
+
+    if max(wins.values()) < SETS_TO_WIN:
+        return  # まだ決着していない
+
+    winner_side = "player_a" if wins["player_a"] >= SETS_TO_WIN else "player_b"
+    result = "win" if winner_side == "player_a" else "loss"
+    final_score = ", ".join(f"{a}-{b}" for a, b in ordered_scores)
+
+    match.result = result
+    match.final_score = final_score
+    match.result_source = "auto"
+    touch(match)
 
 
 @router.get("/sets/match/{match_id}")
@@ -108,6 +206,18 @@ def create_set(body: SetCreate, request: Request, db: Session = Depends(get_db))
     if existing:
         return {"success": True, "data": set_to_dict(existing)}
 
+    # 試合が既に決着している (2 セット先取) なら、追加のセットは作らない。
+    wins = {"player_a": 0, "player_b": 0}
+    for gs in db.query(GameSet).filter(GameSet.match_id == body.match_id).all():
+        side = _decided_winner(db, gs)
+        if side is not None:
+            wins[side] += 1
+    if max(wins.values()) >= SETS_TO_WIN:
+        raise HTTPException(
+            status_code=409,
+            detail="この試合は既に決着しているため、新しいゲームは作成できません",
+        )
+
     game_set = GameSet(match_id=body.match_id, set_num=body.set_num)
     touch(game_set)
     db.add(game_set)
@@ -122,7 +232,7 @@ def end_set(set_id: int, body: SetEnd, request: Request, db: Session = Depends(g
     """セット終了（スコア・勝者確定）"""
     game_set = db.get(GameSet, set_id)
     if not game_set:
-        raise HTTPException(status_code=404, detail="セットが見つかりません")
+        raise HTTPException(status_code=404, detail="ゲームが見つかりません")
     match = db.get(Match, game_set.match_id)
     if match:
         _set_require_match_scope(request, db, match)
@@ -140,7 +250,7 @@ def end_set(set_id: int, body: SetEnd, request: Request, db: Session = Depends(g
         raise HTTPException(
             status_code=422,
             detail=(
-                f"スコア {body.score_a}-{body.score_b} ではセットは終了していません "
+                f"スコア {body.score_a}-{body.score_b} ではゲームは終了していません "
                 f"(21点以上かつ2点差、または30点先取)。"
                 f" 棄権・中断で閉じる場合は incomplete=true を指定してください"
             ),
@@ -159,6 +269,14 @@ def end_set(set_id: int, body: SetEnd, request: Request, db: Session = Depends(g
     game_set.score_b = body.score_b
     game_set.is_deuce = body.score_a >= 20 and body.score_b >= 20
     touch(game_set)
+
+    # G6 #524: このセット保存で試合が決した (2-0 / 2-1) なら、同一トランザクションで
+    # match の result / final_score を自動入力する。手入力値 (result_source='manual')
+    # は上書きしない。incomplete (棄権・中断) はここを通さず walkover/early finish は
+    # manual のまま。_autofill_* は未決着なら何もしない。
+    if not body.incomplete:
+        _autofill_match_result_from_sets(db, match)
+
     db.commit()
     # 終了したセットの試合の関与選手のみ無効化
     response_cache.bump_players(players_for_match(db, game_set.match_id))
@@ -178,7 +296,7 @@ def get_rally_count(set_id: int, request: Request, db: Session = Depends(get_db)
     """
     gs = db.get(GameSet, set_id)
     if not gs:
-        raise HTTPException(status_code=404, detail="セットが見つかりません")
+        raise HTTPException(status_code=404, detail="ゲームが見つかりません")
     match = db.get(Match, gs.match_id)
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")

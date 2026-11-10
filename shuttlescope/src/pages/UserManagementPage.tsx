@@ -6,10 +6,15 @@ import { MIcon } from '@/components/common/MIcon'
 import { apiDelete, apiGet, apiPost, apiPut, authAdminResetPassword, getUserPageAccess, setUserPageAccess, getTeamPageAccess, setTeamPageAccess, listTeams, type TeamDTO, newIdempotencyKey } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { canShowDeleteButton } from '@/utils/userDeletePolicy'
+import { errorStatus, errorMessage } from '@/utils/errors'
 
 const PAGE_ACCESS_OPTIONS = [
   { key: 'prediction', labelKey: 'users.manage.page_access_prediction' },
   { key: 'expert_labeler', labelKey: 'users.manage.page_access_expert_labeler' },
+  // #572: 汎用 LLM チャットへのアクセス。付与/剥奪は admin のみ (下の showPageAccess /
+  // handleSave と backend set_user_page_access が admin 限定を強制する)。
+  { key: 'llm', labelKey: 'users.manage.page_access_llm' },
 ] as const
 
 interface UserRow {
@@ -27,6 +32,7 @@ interface UserRow {
   has_credential: boolean
   created_at: string | null
   is_test: boolean
+  awaiting_admin_approval?: boolean
   email: string | null
   email_verified: boolean
 }
@@ -79,6 +85,10 @@ const ROLE_COLORS: Record<string, string> = {
   player: 'bg-[var(--ss-success-bg)] text-[var(--ss-success-text)]',
 }
 
+// チーム名の表記揺れ判定 (全角半角・大文字小文字・空白を無視)。backend の _team_name_key と同じ基準。
+const normalizeTeamName = (name: string): string =>
+  name.normalize('NFKC').split(/\s+/).filter(Boolean).join(' ').toLowerCase()
+
 const emptyForm = (): FormState => ({
   role: 'player',
   display_name: '',
@@ -91,6 +101,7 @@ const emptyForm = (): FormState => ({
 })
 
 function SecretField(props: {
+  id: string
   label: string
   value: string
   onChange: (value: string) => void
@@ -107,9 +118,10 @@ function SecretField(props: {
 
   return (
     <div>
-      <label className={`block text-xs font-medium mb-1 ${props.textMuted}`}>{props.label}</label>
+      <label htmlFor={props.id} className={`block text-xs font-medium mb-1 ${props.textMuted}`}>{props.label}</label>
       <div className="relative">
         <input
+          id={props.id}
           type={visible ? 'text' : 'password'}
           value={props.value}
           onChange={(e) => props.onChange(e.target.value)}
@@ -146,16 +158,28 @@ export function UserManagementPage() {
   const [limitResetBusyId, setLimitResetBusyId] = useState<number | null>(null)
   const [copyDone, setCopyDone] = useState(false)
 
+  // 失敗の利用者向け文言。HTTP status・backend detail・JS 例外文字列は出さず、
+  // 原因の種類だけを伝える。詳細はコンソールへ残す。
+  const userFacingUserError = (err: unknown, fallback: string): string => {
+    console.error('[Users] request failed', errorStatus(err), errorMessage(err, ''))
+    switch (errorStatus(err)) {
+      case 401: return t('common_ui.error_session_expired')
+      case 403: return t('common_ui.error_forbidden')
+      case 409: return t('common_ui.error_conflict')
+      case 422: return t('common_ui.error_invalid_input')
+      default: return fallback
+    }
+  }
+
   const handleResetPassword = async (u: UserRow) => {
-    if (!window.confirm(t('users.manage.reset_confirm', { name: u.display_name || u.username }))) return
+    if (!window.confirm(t('users.manage.reset_confirm', { name: u.display_name || u.username, username: u.username }))) return
     setResetBusyId(u.id)
     setCopyDone(false)
     try {
       const res = await authAdminResetPassword(u.id)
       setResetResult({ username: u.username, password: res.temporary_password })
     } catch (err) {
-      const e = err as Error
-      window.alert(e.message || 'error')
+      window.alert(userFacingUserError(err, t('users.manage.reset_password_failed')))
     } finally {
       setResetBusyId(null)
     }
@@ -176,7 +200,15 @@ export function UserManagementPage() {
   const [editPageAccess, setEditPageAccess] = useState<string[]>([])
   const [editTeamPageAccess, setEditTeamPageAccess] = useState<string[]>([])
   const [editingTeamName, setEditingTeamName] = useState<string | null>(null)
+  // 権限の取得に失敗した状態で保存すると、空の配列で既存の権限を消してしまう。
+  // 失敗したら保存を止め、利用者が触った権限だけを送る。
+  const [accessLoadFailed, setAccessLoadFailed] = useState(false)
+  const [userAccessDirty, setUserAccessDirty] = useState(false)
+  const [teamAccessDirty, setTeamAccessDirty] = useState(false)
   const [teams, setTeams] = useState<TeamDTO[]>([])
+  // 補助データ (チーム一覧 / セキュリティ制限) の取得失敗。空配列・0 値の正常状態と区別する
+  const [teamsLoadFailed, setTeamsLoadFailed] = useState(false)
+  const [limitsLoadFailed, setLimitsLoadFailed] = useState(false)
 
   const panelBg = 'bg-[var(--ss-surface-1)]'
   const border = 'border-[var(--ss-border)]'
@@ -259,11 +291,17 @@ export function UserManagementPage() {
       const [ur, pr, tr] = await Promise.all([
         apiGet<{ success: boolean; data: UserRow[] }>('/auth/users'),
         apiGet<{ success: boolean; data: { id: number; name: string }[] }>('/players?limit=500'),
-        listTeams().catch(() => ({ success: false, data: [] as TeamDTO[] })),
+        listTeams().catch(() => null),
       ])
       setUsers(ur.data ?? [])
       setPlayers(pr.data ?? [])
-      setTeams(tr?.data ?? [])
+      if (!tr || !tr.success) {
+        // 取得できなかったチーム一覧を「チームなし」にしない。前回の一覧を残して失敗を示す
+        setTeamsLoadFailed(true)
+      } else {
+        setTeams(tr.data ?? [])
+        setTeamsLoadFailed(false)
+      }
     } catch (e) {
       setError(String(e))
     } finally {
@@ -276,8 +314,10 @@ export function UserManagementPage() {
         const map: Record<number, LimitInfo> = {}
         for (const r of lr.data ?? []) map[r.user_id] = r
         setLimits(map)
+        setLimitsLoadFailed(false)
       } catch {
-        // backend 旧版で endpoint が無い場合は無視 (UI 側は欠損として処理)
+        // 取得できない間は、表示中の制限値 (0 / 前回値) が最新とは限らないことを示す
+        setLimitsLoadFailed(true)
       }
     }
   }, [myRole])
@@ -300,7 +340,7 @@ export function UserManagementPage() {
       await apiPost(`/admin/security/user_limits/${u.id}/reset`, body)
       await load()
     } catch (err) {
-      window.alert((err as Error).message || 'reset error')
+      window.alert(userFacingUserError(err, t('users.manage.reset_limits_failed')))
     } finally {
       setLimitResetBusyId(null)
     }
@@ -353,17 +393,24 @@ export function UserManagementPage() {
     setEditPageAccess([])
     setEditTeamPageAccess([])
     setEditingTeamName(null)
+    setAccessLoadFailed(false)
+    setUserAccessDirty(false)
+    setTeamAccessDirty(false)
     if (u.role === 'player') {
       try {
         const res = await getUserPageAccess(u.id)
         setEditPageAccess(res.data ?? [])
-      } catch { /* ignore */ }
+      } catch {
+        setAccessLoadFailed(true)
+      }
       if (u.team_name) {
         setEditingTeamName(u.team_name)
         try {
           const tr = await getTeamPageAccess(u.team_name)
           setEditTeamPageAccess(tr.data ?? [])
-        } catch { /* ignore */ }
+        } catch {
+          setAccessLoadFailed(true)
+        }
       }
     }
   }
@@ -379,6 +426,11 @@ export function UserManagementPage() {
     }
     if (form.role !== 'admin' && !form.team_name.trim() && !form.team_id.trim()) {
       setError(t('users.manage.validate_team_name'))
+      return
+    }
+
+    if (editId != null && form.role === 'player' && !isSelfOnly && accessLoadFailed) {
+      setError(t('users.manage.page_access_load_failed'))
       return
     }
 
@@ -408,9 +460,17 @@ export function UserManagementPage() {
         }
         if (form.credential.trim()) body.password = form.credential.trim()
         await apiPut(`/auth/users/${editId}`, body)
-        if (form.role === 'player' && !isSelfOnly) {
-          await setUserPageAccess(editId, editPageAccess)
-          if (editingTeamName) {
+        // ページアクセス保存 (#572):
+        //  - player: 従来どおり個人 + チーム grant を manager が保存。
+        //  - analyst / coach: admin のみが個人 grant を保存できる (llm の付与/剥奪は admin 専権)。
+        const canSaveAccess =
+          (form.role === 'player' && !isSelfOnly) ||
+          ((form.role === 'analyst' || form.role === 'coach') && myRole === 'admin')
+        if (canSaveAccess) {
+          if (userAccessDirty) {
+            await setUserPageAccess(editId, editPageAccess)
+          }
+          if (form.role === 'player' && editingTeamName && teamAccessDirty) {
             await setTeamPageAccess(editingTeamName, editTeamPageAccess)
           }
         }
@@ -455,6 +515,21 @@ export function UserManagementPage() {
   }
 
   // フォームフィールド群（新規作成・インライン編集の両方で共用）
+  // 新規作成と編集は同時に開かないので、編集対象 ID だけで一意になる。
+  const fid = (name: string) => `um-${editId ?? 'new'}-${name}`
+  // ページアクセス欄の表示条件 (#572):
+  //  - player を編集中: 従来どおり manager (admin/analyst/coach、自分以外) に出す。
+  //  - analyst / coach を編集中: admin のみに出す (llm 等の付与は admin 専権)。
+  const isAnalystOrCoachForm = form.role === 'analyst' || form.role === 'coach'
+  const showPageAccess =
+    editId != null && !isSelfOnly && (
+      (isPlayerRole) || (isAnalystOrCoachForm && myRole === 'admin')
+    )
+  const typedTeamName = form.team_name.trim()
+  const similarTeam = typedTeamName && !form.team_id
+    ? teams.find((tm) => normalizeTeamName(tm.name) === normalizeTeamName(typedTeamName))
+    : undefined
+
   const renderFormFields = () => (
     <>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -464,8 +539,9 @@ export function UserManagementPage() {
         */}
         {((editId == null && canCreate) || (editId != null && editId !== myUserId && (myRole === 'admin' || myRole === 'analyst' || myRole === 'coach'))) ? (
           <div>
-            <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.role_label')}</label>
+            <label htmlFor={fid('role')} className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.role_label')}</label>
             <select
+              id={fid('role')}
               value={form.role}
               onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
               className={inputCls}
@@ -480,8 +556,9 @@ export function UserManagementPage() {
         ) : null}
 
         <div>
-          <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.display_name')}</label>
+          <label htmlFor={fid('display_name')} className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.display_name')}</label>
           <input
+            id={fid('display_name')}
             value={form.display_name}
             onChange={(e) => setForm((f) => ({ ...f, display_name: e.target.value }))}
             className={inputCls}
@@ -491,8 +568,9 @@ export function UserManagementPage() {
 
         {!isSelfOnly && (
           <div>
-            <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.username_label')}</label>
+            <label htmlFor={fid('username')} className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.username_label')}</label>
             <input
+              id={fid('username')}
               value={form.username}
               onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
               className={inputCls}
@@ -504,6 +582,7 @@ export function UserManagementPage() {
         )}
 
         <SecretField
+          id={fid('credential')}
           label={credentialLabel}
           value={form.credential}
           onChange={(value) => setForm((f) => ({ ...f, credential: value }))}
@@ -524,10 +603,11 @@ export function UserManagementPage() {
 
         {needsTeam && myRole === 'admin' ? (
           <div className="col-span-2">
-            <label className={`block text-xs font-medium mb-1 ${textMuted}`}>
+            <label htmlFor={fid('team_id')} className={`block text-xs font-medium mb-1 ${textMuted}`}>
               {t('auto.UserManagementPage.k12')}{teamOptional ? t('auto.UserManagementPage.k13') : ''}
             </label>
             <select
+              id={fid('team_id')}
               value={form.team_id}
               onChange={(e) => {
                 const tid = e.target.value
@@ -556,15 +636,22 @@ export function UserManagementPage() {
               }))}
               className={`${inputCls} mt-2`}
               placeholder={t('users.manage.team_name_placeholder')}
+              aria-label={t('users.manage.team_name_new')}
             />
+            {similarTeam ? (
+              <p className="mt-1 text-[11px] text-[var(--ss-warning-text)]" role="alert">
+                {t('users.manage.team_name_similar', { name: similarTeam.name })}
+              </p>
+            ) : null}
             <p className={`mt-1 text-[11px] ${textMuted}`}>
               {t('auto.UserManagementPage.k14')}
             </p>
           </div>
         ) : needsTeam ? (
           <div>
-            <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.team_name')}</label>
+            <label htmlFor={fid('team_name')} className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.team_name')}</label>
             <input
+              id={fid('team_name')}
               value={form.team_name}
               onChange={(e) => setForm((f) => ({ ...f, team_name: e.target.value }))}
               className={inputCls}
@@ -575,8 +662,9 @@ export function UserManagementPage() {
 
         {isPlayerRole ? (
           <div>
-            <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.player_link')}</label>
+            <label htmlFor={fid('player_id')} className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.player_link')}</label>
             <select
+              id={fid('player_id')}
               value={form.player_id}
               onChange={(e) => setForm((f) => ({ ...f, player_id: e.target.value }))}
               className={inputCls}
@@ -592,7 +680,7 @@ export function UserManagementPage() {
         ) : null}
       </div>
 
-      {isPlayerRole && editId != null && !isSelfOnly ? (
+      {showPageAccess ? (
         <div className={`mt-4 pt-4 border-t ${border}`}>
           <p className={`text-xs font-semibold mb-2 ${textMain}`}>{t('users.manage.page_access')}</p>
           <div className="space-y-3">
@@ -606,12 +694,14 @@ export function UserManagementPage() {
                     <label className={`flex items-center gap-1.5 text-xs cursor-pointer ${textMuted}`}>
                       <input
                         type="checkbox"
+                        aria-label={t('users.manage.page_access_aria', { item: t(labelKey), scope: t('users.manage.individual') })}
                         checked={indiv}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          setUserAccessDirty(true)
                           setEditPageAccess((prev) =>
                             e.target.checked ? [...prev, key] : prev.filter((k) => k !== key)
                           )
-                        }
+                        }}
                       />
                       {t('users.manage.individual')}
                     </label>
@@ -619,12 +709,14 @@ export function UserManagementPage() {
                       <label className={`flex items-center gap-1.5 text-xs cursor-pointer ${textMuted}`}>
                         <input
                           type="checkbox"
+                          aria-label={t('users.manage.page_access_aria', { item: t(labelKey), scope: t('users.manage.team_whole', { team: editingTeamName }) })}
                           checked={team}
-                          onChange={(e) =>
+                          onChange={(e) => {
+                            setTeamAccessDirty(true)
                             setEditTeamPageAccess((prev) =>
                               e.target.checked ? [...prev, key] : prev.filter((k) => k !== key)
                             )
-                          }
+                          }}
                         />
                         {t('users.manage.team_whole', { team: editingTeamName })}
                       </label>
@@ -705,6 +797,12 @@ export function UserManagementPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-6">
+        {(teamsLoadFailed || limitsLoadFailed) && (
+          <div role="alert" className="mb-4 rounded-ss-md border border-[var(--ss-danger-border)] bg-[var(--ss-danger-bg)] px-3 py-2 text-xs text-[var(--ss-danger-text)] space-y-0.5">
+            {teamsLoadFailed && <p>{t('common_ui.users_teams_load_failed')}</p>}
+            {limitsLoadFailed && <p>{t('common_ui.users_limits_load_failed')}</p>}
+          </div>
+        )}
         <div className={`mb-4 ${panelBg} border ${border} rounded-ss-lg shadow-card p-4`}>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
             <div>
@@ -737,7 +835,7 @@ export function UserManagementPage() {
           <div className={`mb-6 ${panelBg} border ${border} rounded-ss-lg shadow-card p-5`}>
             <div className="flex items-center justify-between mb-4">
               <h2 className={`text-sm font-semibold ${textMain}`}>{t('users.manage.create_title')}</h2>
-              <button onClick={closeAll} className={textMuted}>
+              <button aria-label={t('app.close')} onClick={closeAll} className={textMuted}>
                 <MIcon name="close" size={16} />
               </button>
             </div>
@@ -807,7 +905,8 @@ export function UserManagementPage() {
                         <div>{u.username || '—'}</div>
                         <div>
                           {t('auto.UserManagementPage.k19')} {u.team_display_name || u.team_name || '—'}
-                          {u.team_display_id ? ` (${u.team_display_id})` : ''}
+                          {/* __demo__ のような内部 ID (前後アンダースコア) は利用者向けに出さない */}
+                          {u.team_display_id && !/^__.*__$/.test(u.team_display_id) ? ` (${u.team_display_id})` : ''}
                           {u.team_is_independent ? ' ［無所属］' : ''}
                         </div>
                         {u.role === 'player' ? <div>{t('users.manage.player_prefix')}: {u.player_name || '—'}</div> : null}
@@ -931,13 +1030,14 @@ export function UserManagementPage() {
                               onClick={() => handleResetPassword(u)}
                               disabled={resetBusyId === u.id}
                               title={t('auth.admin_reset.title')}
+                              aria-label={`${t('auth.admin_reset.title')}: ${u.display_name || u.username}`}
                               className={`${textMuted} hover:text-[var(--ss-warn)] transition-colors duration-fast ease-out disabled:opacity-50`}
                             >
                               <MIcon name="key" size={14} />
                             </button>
                           )}
-                          {canDelete && (
-                            <button onClick={() => handleDelete(u)} className={`${textMuted} hover:text-[var(--ss-bad)] transition-colors duration-fast ease-out`}>
+                          {canShowDeleteButton(u, myUserId, canDelete) && (
+                            <button aria-label={t('app.delete')} onClick={() => handleDelete(u)} className={`${textMuted} hover:text-[var(--ss-bad)] transition-colors duration-fast ease-out`}>
                               <MIcon name="delete" size={14} />
                             </button>
                           )}
@@ -951,7 +1051,7 @@ export function UserManagementPage() {
                         <td colSpan={myRole === 'admin' ? 9 : 5} className={`px-4 py-4 border-b ${border} bg-[var(--ss-brand-tint)]`}>
                           <div className="flex items-center justify-between mb-3">
                             <h3 className={`text-xs font-semibold ${textMain}`}>{t('users.manage.edit_title')}: {u.display_name || u.username}</h3>
-                            <button onClick={closeAll} className={`${textMuted} hover:text-[var(--ss-bad)] transition-colors duration-fast ease-out`}>
+                            <button aria-label={t('app.close')} onClick={closeAll} className={`${textMuted} hover:text-[var(--ss-bad)] transition-colors duration-fast ease-out`}>
                               <MIcon name="close" size={14} />
                             </button>
                           </div>

@@ -11,9 +11,14 @@ POCフェーズ: shuttlescope/backend/data/promotion_overrides.json に保存。
 """
 from __future__ import annotations
 import json
+import logging
+import os
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
+
+logger = logging.getLogger(__name__)
 
 # データ保存先（backend/ 直下の data/ ディレクトリ）
 _DATA_DIR = Path(__file__).parent.parent / "data"
@@ -27,35 +32,70 @@ VALID_STATUSES = {"promotion_ready", "requires_review", "insufficient_data", "ho
 HOLD_NOTE_REQUIRED = True
 
 
-def _load() -> dict[str, dict]:
-    if not _OVERRIDE_FILE.exists():
-        return {}
+class StoreCorruptError(RuntimeError):
+    """保存ファイルはあるが読めない。空として扱うと次の保存で全件を失うので、書き込みは止める。"""
+
+
+# 読み込み→変更→保存を 1 まとまりにする (同時に 2 つの操作が走ると片方が失われる)
+_LOCK = threading.RLock()
+
+
+def _read_json(path: Path, default: Any, *, strict: bool) -> Any:
+    """JSON を読む。ファイルが無ければ default。
+
+    壊れていて読めない場合:
+      strict=True  (書き込み側)  StoreCorruptError。壊れたファイルは上書きせず残す
+      strict=False (読み取り側)  default を返す。ファイルには触らない
+    どちらも、壊れたファイルを空として扱ったまま保存してしまうことはない。
+    """
+    if not path.exists():
+        return default
     try:
-        with open(_OVERRIDE_FILE, encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             return json.load(f)
-    except Exception:
-        return {}
+    except (OSError, ValueError) as exc:
+        logger.error("promotion store: cannot read %s: %s", path, exc)
+        if strict:
+            raise StoreCorruptError(
+                f"{path.name} が読めません。内容を確認してから手で直してください (上書きはしていません)"
+            ) from exc
+        return default
+
+
+def _write_json_atomic(path: Path, data: Any) -> None:
+    """同じディレクトリの一時ファイルに書いてから置き換える。途中で落ちても元のファイルは残る。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f"{path.name}.tmp-{os.getpid()}-{threading.get_ident()}")
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    finally:
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+
+
+def _load(*, strict: bool = False) -> dict[str, dict]:
+    data = _read_json(_OVERRIDE_FILE, {}, strict=strict)
+    return data if isinstance(data, dict) else {}
 
 
 def _save(data: dict[str, dict]) -> None:
-    _DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with open(_OVERRIDE_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    _write_json_atomic(_OVERRIDE_FILE, data)
 
 
 def _append_audit(action: dict) -> None:
     """全アクションを追記する（削除後も参照可能にするためのグローバルログ）。"""
-    _DATA_DIR.mkdir(parents=True, exist_ok=True)
-    log: list[dict] = []
-    if _AUDIT_LOG_FILE.exists():
-        try:
-            with open(_AUDIT_LOG_FILE, encoding="utf-8") as f:
-                log = json.load(f)
-        except Exception:
-            log = []
+    log = _read_json(_AUDIT_LOG_FILE, [], strict=True)
+    if not isinstance(log, list):
+        raise StoreCorruptError(f"{_AUDIT_LOG_FILE.name} が一覧ではありません (上書きはしていません)")
     log.append(action)
-    with open(_AUDIT_LOG_FILE, "w", encoding="utf-8") as f:
-        json.dump(log, f, ensure_ascii=False, indent=2)
+    _write_json_atomic(_AUDIT_LOG_FILE, log)
 
 
 def load_all_overrides() -> dict[str, dict]:
@@ -78,12 +118,8 @@ def get_audit_log(analysis_type: Optional[str] = None) -> list[dict]:
     Returns:
         アクション履歴のリスト（新しい順）
     """
-    if not _AUDIT_LOG_FILE.exists():
-        return []
-    try:
-        with open(_AUDIT_LOG_FILE, encoding="utf-8") as f:
-            log: list[dict] = json.load(f)
-    except Exception:
+    log = _read_json(_AUDIT_LOG_FILE, [], strict=False)
+    if not isinstance(log, list):
         return []
     if analysis_type:
         log = [e for e in log if e.get("analysis_type") == analysis_type]
@@ -112,7 +148,12 @@ def save_override(
     if status not in VALID_STATUSES:
         raise ValueError(f"Invalid status: {status}. Must be one of {VALID_STATUSES}")
 
-    overrides = _load()
+    with _LOCK:
+        return _save_override_locked(analysis_type, status, note, analyst)
+
+
+def _save_override_locked(analysis_type: str, status: str, note: str, analyst: str) -> dict:
+    overrides = _load(strict=True)
     old_entry = overrides.get(analysis_type)
     timestamp = datetime.now(timezone.utc).isoformat()
 
@@ -140,8 +181,9 @@ def save_override(
         "audit_log": entry_audit_log,
     }
     overrides[analysis_type] = entry
-    _save(overrides)
+    # 監査ログを先に書く: 記録の無い変更を作らない (ログが壊れていれば、ここで止まり何も変えない)
     _append_audit(audit_action)
+    _save(overrides)
     return entry
 
 
@@ -150,7 +192,12 @@ def delete_override(analysis_type: str, analyst: str = "analyst") -> bool:
     Override を削除する。削除できたら True を返す。
     削除アクションはグローバル監査ログに記録される。
     """
-    overrides = _load()
+    with _LOCK:
+        return _delete_override_locked(analysis_type, analyst)
+
+
+def _delete_override_locked(analysis_type: str, analyst: str) -> bool:
+    overrides = _load(strict=True)
     if analysis_type not in overrides:
         return False
 
@@ -168,6 +215,6 @@ def delete_override(analysis_type: str, analyst: str = "analyst") -> bool:
     }
 
     del overrides[analysis_type]
-    _save(overrides)
     _append_audit(audit_action)
+    _save(overrides)
     return True

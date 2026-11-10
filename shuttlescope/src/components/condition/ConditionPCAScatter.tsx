@@ -13,6 +13,7 @@ import {
   ReferenceLine,
 } from 'recharts'
 import { RoleGuard } from '@/components/common/RoleGuard'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { useConditions, type ConditionRecord } from '@/hooks/useConditions'
 import { zScore, covMatrix, powerIterationPCA } from '@/utils/stats'
 import { catColor } from '@/styles/categoricalPalette'
@@ -77,7 +78,10 @@ function monthFromDate(d: string | null | undefined): number | null {
 
 export function ConditionPCAScatter({ playerId, isLight }: Props) {
   const { t } = useTranslation()
-  const { data, isLoading } = useConditions(playerId, { limit: 200 })
+  const conditionsQuery = useConditions(playerId, { limit: 200 })
+  const { data, isLoading } = conditionsQuery
+  // 取得失敗（前回成功データも無い）を「データなし」と区別する
+  const unavailable = conditionsQuery.isError && conditionsQuery.data === undefined
 
   const records: ConditionRecord[] = useMemo(() => {
     const list = Array.isArray(data) ? [...data] : []
@@ -201,10 +205,20 @@ export function ConditionPCAScatter({ playerId, isLight }: Props) {
 
         {isLoading ? (
           <div className={`${textMuted} text-xs`}>…</div>
+        ) : unavailable ? (
+          <QueryErrorNotice onRetry={() => { void conditionsQuery.refetch() }} />
         ) : !pca.ok ? (
           <div className={`${textMuted} text-xs`}>{t('condition.pca.no_data')}</div>
         ) : (
           <>
+            {pca.points.length < pca.usableKeys.length * 5 && (
+              <div
+                role="note"
+                className={`mb-3 rounded-ss border ${borderColor} bg-[var(--ss-surface-2)] px-3 py-2 text-[11px] ${textMuted}`}
+              >
+                {t('condition.pca.low_sample_warning', { n: pca.points.length, p: pca.usableKeys.length })}
+              </div>
+            )}
             <div style={{ width: '100%', height: 320 }}>
               <ResponsiveContainer>
                 <ScatterChart margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>

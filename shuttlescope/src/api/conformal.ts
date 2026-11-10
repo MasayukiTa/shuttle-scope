@@ -1,6 +1,7 @@
 // コンフォーマル予測 API クライアント（分布フリーカバレッジ保証）
 import { apiGet } from '@/api/client'
-import type { SampleUnit } from '@/types'
+import type { AnalysisFilters, SampleUnit } from '@/types'
+import { toFilterApiParams, type FilterScopeMeta } from '@/utils/analysisFilterParams'
 
 // ── 型定義 ──────────────────────────────────────────────────────────────────
 
@@ -8,14 +9,16 @@ import type { SampleUnit } from '@/types'
 export interface ConformalGroup {
   /** "<score_phase>|<role>|<shot_bucket>" の形式 */
   group: string
-  /** ラリー勝利確率 (0..1) */
-  p_win: number
-  /** 予測セット: ["win"] / ["loss"] / ["win","loss"] */
-  prediction_set: Array<'win' | 'loss'>
+  /** ラリー勝利確率 (0..1)。n が少ないグループは null */
+  p_win: number | null
+  /** 予測セット: ["win"] / ["loss"] / ["win","loss"]。n が少ないグループは null */
+  prediction_set: Array<'win' | 'loss'> | null
   /** サンプル数 */
   n: number
   /** 勝利数 */
   n_win: number
+  /** n が下限未満で結論を出さないグループ */
+  insufficient?: boolean
 }
 
 export interface ConformalValidation {
@@ -47,7 +50,7 @@ export interface ConformalData {
   status?: string
 }
 
-export interface ConformalMeta {
+export interface ConformalMeta extends FilterScopeMeta {
   sample_size: number
   sample_unit?: SampleUnit | null
   confidence: Record<string, unknown>
@@ -73,9 +76,11 @@ export interface ConformalResponse {
 export function fetchConformal(
   playerId: number,
   alpha: number = 0.1,
+  filters?: AnalysisFilters,
 ): Promise<ConformalResponse> {
   return apiGet<ConformalResponse>('/analysis/conformal', {
     player_id: playerId,
     alpha,
+    ...(filters ? toFilterApiParams(filters) : {}),
   })
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { HashRouter, Routes, Route, NavLink, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -22,7 +22,8 @@ import { ExpertLabelerPage } from '@/pages/ExpertLabelerPage'
 import { ExpertLabelerAnnotatePage } from '@/pages/ExpertLabelerAnnotatePage'
 import LlmChatPage from '@/pages/LlmChatPage'
 import { useAuth } from '@/hooks/useAuth'
-import { useIdleLogout } from '@/hooks/useIdleLogout'
+import { usePendingApprovalBadge } from '@/hooks/usePendingApprovalCount'
+import { useIdleLogout, IDLE_LAST_ACTIVITY_KEY } from '@/hooks/useIdleLogout'
 import { LoginPage } from '@/pages/LoginPage'
 import { MobileAnnotatePage } from '@/pages/MobileAnnotatePage'
 // M-A6: Self-service auth pages (register / verify / password reset / invitation)
@@ -32,6 +33,8 @@ import PasswordResetRequestPage from '@/pages/PasswordResetRequestPage'
 import PasswordResetConfirmPage from '@/pages/PasswordResetConfirmPage'
 import InvitationAcceptPage from '@/pages/InvitationAcceptPage'
 import OnboardingConsentPage from '@/pages/OnboardingConsentPage'
+import { isOptionalConsentDeferred } from '@/utils/consentDeferral'
+import { canUseConditionPage } from '@/utils/roleAccess'
 import { NotificationInboxPage } from '@/pages/NotificationInboxPage'
 import { UserManagementPage } from '@/pages/UserManagementPage'
 import PendingUsersPage from '@/pages/PendingUsersPage'
@@ -51,6 +54,23 @@ import { SecurityLogPage } from '@/pages/SecurityLogPage'
 import { TeamManagementPage } from '@/pages/TeamManagementPage'
 import { useTheme } from '@/hooks/useTheme'
 import { authLogout, authMe, checkHealth, publicInquiryUnreadCount } from '@/api/client'
+import { apiPost } from '@/api/client'
+import { getAuthItem, TOKEN_KEY, ROLE_KEY, USER_ID_KEY } from '@/api/authStorage'
+import { PendingLogoutDialog } from '@/components/auth/PendingLogoutDialog'
+import { IdleWarningDialog } from '@/components/auth/IdleWarningDialog'
+import { AUTOSAVE_FLUSH_EVENT } from '@/utils/annotatorAutosave'
+import { startProactiveRefresh } from '@/api/proactiveRefresh'
+import {
+  countPendingForUserStrict,
+  flushPendingForUser,
+  deletePendingForUser,
+} from '@/utils/offlineStrokeQueue'
+import { consumeReturnContext, resolveReturnPath } from '@/utils/returnPath'
+
+// #677: 起動時 health poll がこの秒数を超えても ready にならなければ、無限ローディングを
+// やめて「サーバに接続できません / 再読み込み」を表示する。通常 API の 60s timeout と
+// health の 5s timeout の数回ぶんを見込んだ値。
+const BACKEND_UNREACHABLE_AFTER_SEC = 20
 
 function useBackendReady() {
   const [ready, setReady] = useState(false)
@@ -89,12 +109,37 @@ const queryClient = new QueryClient({
   },
 })
 
+// 認証主体 (ログイン中のユーザ) が変わったとき (ログアウト / 別ユーザでログイン) は、
+// 前の主体の query cache を捨てる。`['players']` のように主体を key に含まない query が
+// 共有ブラウザで次のユーザへ見えるのを防ぐ。token の更新 (同一ユーザ) では消さない。
+function readAuthSubject(): string {
+  try {
+    if (!getAuthItem(TOKEN_KEY)) return ''
+    return `user:${getAuthItem(USER_ID_KEY) ?? ''}`
+  } catch {
+    return ''
+  }
+}
+if (typeof window !== 'undefined') {
+  let lastAuthSubject = readAuthSubject()
+  window.addEventListener('shuttlescope:auth-changed', () => {
+    const next = readAuthSubject()
+    if (next === lastAuthSubject) return
+    lastAuthSubject = next
+    queryClient.clear()
+  })
+}
+
 type NavItem = {
   to: string
   label: string
   shortLabel?: string
   icon: string  // Material Symbols icon name (MIcon)
   badge?: number | null
+  /** 件数が取得できていない (0件ではない)。badge が無いときだけ「?」で状態不明を示す。 */
+  badgeUnknown?: boolean
+  /** 「?」の説明文。未指定なら未読件数用の文言。 */
+  badgeUnknownLabel?: string
 }
 
 // サイドバー折りたたみ状態の localStorage キー。
@@ -118,7 +163,7 @@ function readStoredSidebarCollapsed(): boolean | null {
 function Sidebar() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { role, clearRole, hasPageAccess } = useAuth()
+  const { role, userId, clearRole, hasPageAccess } = useAuth()
   const { theme, toggleTheme } = useTheme()
   const location = useLocation()
   const isLight = theme === 'light'
@@ -170,6 +215,11 @@ function Sidebar() {
     refetchInterval: 30_000,
   })
   const unreadCount = unreadCountQuery.data?.data?.count ?? 0
+  // 取得失敗かつ一度も成功していない間は「未読0件」と区別して状態不明を示す
+  // (成功済みなら react-query が前回の件数を保持するので、その値をそのまま使う)。
+  const unreadCountUnknown = unreadCountQuery.isError && unreadCountQuery.data === undefined
+  // 承認待ちユーザ数 (admin のみ取得。失敗時は null でバッジを出さない)。
+  const { count: pendingCount, unknown: pendingCountUnknown } = usePendingApprovalBadge(role)
 
   // LLM 専用ユーザ (バドミントン role を持たない = 'llm' 等) はバドミントン系ナビを出さない。
   const llmOnly = !!role && !['admin', 'analyst', 'coach', 'player', 'demo'].includes(role)
@@ -178,7 +228,10 @@ function Sidebar() {
       ? [
           { to: '/getting-started', label: t('nav.getting_started'), icon: 'menu_book' },
           { to: '/matches', label: t('nav.matches'), icon: 'list' },
-          { to: '/condition', label: t('nav.condition'), icon: 'favorite' },
+          // demo は read-only 見本用ロール。Condition は本人入力が前提で成立しないので出さない。
+          ...(canUseConditionPage(role)
+            ? [{ to: '/condition', label: t('nav.condition'), icon: 'favorite' }]
+            : []),
           // 解析タブ: 全ロールが /dashboard にアクセス可。player には
           // DashboardTopNav 側で overview / growth のみ表示し、review / advanced /
           // research は個別 route で /dashboard/overview に redirect する。
@@ -189,18 +242,39 @@ function Sidebar() {
     ...(!llmOnly && role !== 'player' && hasPageAccess('prediction')
       ? [{ to: '/prediction', label: t('nav.prediction'), icon: 'trending_up' }]
       : []),
-    ...(!llmOnly && role !== 'player' && hasPageAccess('expert_labeler')
+    // expert_labeler は backend (ALLOWED_ROLES={analyst,coach,admin}) と同じロールにだけ出す。
+    // demo 等が grant だけ持って導線に入っても API は 403/空になり行き止まりになるため、
+    // grant に加えて labeler ロールを必須にする。
+    ...(!llmOnly && (role === 'admin' || role === 'analyst' || role === 'coach') && hasPageAccess('expert_labeler')
       ? [{ to: '/expert-labeler', label: t('nav.expert'), icon: 'assignment_turned_in' }]
       : []),
     // 汎用 LLM チャット: llm grant を持つユーザ (admin/analyst/coach 自動 or LLM 専用)。
     ...(hasPageAccess('llm')
       ? [{ to: '/llm', label: t('nav.llm'), icon: 'forum' }]
       : []),
+    // ユーザー管理: admin は通知等と一緒に下の admin ブロックで出す。analyst / coach は
+    // 自チームのみ操作できる (ページ側 / API 側でスコープ済) ので導線だけここで出す。
+    ...(role === 'analyst' || role === 'coach'
+      ? [{ to: '/users', label: t('nav.users'), icon: 'group' }]
+      : []),
     ...(role === 'admin'
       ? [
-          { to: '/notifications', label: t('auto.App.k2'), shortLabel: '通知', icon: 'notifications', badge: unreadCount > 0 ? unreadCount : null },
+          { to: '/notifications', label: t('auto.App.k2'), shortLabel: t('nav.notifications_short'), icon: 'notifications', badge: unreadCount > 0 ? unreadCount : null, badgeUnknown: unreadCountUnknown },
           { to: '/users', label: t('nav.users'), icon: 'group' },
+          {
+            to: '/users/pending',
+            label: t('nav.pending_users'),
+            shortLabel: t('nav.pending_users_short'),
+            icon: 'how_to_reg',
+            badge: pendingCount != null && pendingCount > 0 ? pendingCount : null,
+            badgeUnknown: pendingCountUnknown,
+            badgeUnknownLabel: t('nav.badge_unknown_pending'),
+          },
         ]
+      : []),
+    // チーム管理: ページ側が admin / coach だけを通す (それ以外は権限なし表示) ので、導線も同じロールにだけ出す。
+    ...(role === 'admin' || role === 'coach'
+      ? [{ to: '/teams', label: t('nav.teams'), icon: 'groups' }]
       : []),
     { to: '/settings', label: t('nav.settings'), icon: 'settings' },
   ]
@@ -228,7 +302,13 @@ function Sidebar() {
   const showFullLabel = !collapsed
   const showShortLabel = !collapsed
 
-  const handleLogout = async () => {
+  // G4 #529: 明示的なログアウト時、本人の未送信ラリーがあれば確認ダイアログを出す。
+  // 件数が読めない (IndexedDB エラー) ときは 0 件として扱わず、
+  // ログアウトを中断してエラーを出す (未送信データを黙って捨てない)。
+  const [pendingLogoutCount, setPendingLogoutCount] = useState<number | null>(null)
+  const [logoutError, setLogoutError] = useState<string | null>(null)
+
+  const finishLogout = async () => {
     try {
       await authLogout()
     } catch {
@@ -239,8 +319,64 @@ function Sidebar() {
     }
   }
 
+  const handleLogout = async () => {
+    setLogoutError(null)
+    // userId が不明なら所有者付き未送信は紐づけられないので確認不要。
+    if (userId == null) {
+      await finishLogout()
+      return
+    }
+    try {
+      const n = await countPendingForUserStrict(userId)
+      if (n > 0) {
+        setPendingLogoutCount(n)
+        return
+      }
+    } catch {
+      // 読めなかった: 0 件と混同せずログアウトを中断してエラー表示。
+      setLogoutError(t('auth.pending_error'))
+      return
+    }
+    await finishLogout()
+  }
+
   return (
     <>
+      {/* G4 #529: 未送信ラリーがあるままログアウトしようとしたときの確認ダイアログ。 */}
+      {pendingLogoutCount != null && userId != null && (
+        <PendingLogoutDialog
+          pendingCount={pendingLogoutCount}
+          onSend={async () => {
+            // 先に送る。全件送れたらログアウト。送信が reject したら
+            // ダイアログ側がエラーを出し、データは残る (ログアウトしない)。
+            await flushPendingForUser(userId, (path, body, headers) =>
+              apiPost<{ success?: boolean }>(path, body, headers),
+            )
+            setPendingLogoutCount(null)
+            await finishLogout()
+          }}
+          onKeep={() => {
+            // 送らずに残してログアウト。次のログインで本人のみが再送できる。
+            setPendingLogoutCount(null)
+            void finishLogout()
+          }}
+          onDelete={async () => {
+            // 確認済み。本人のデータだけ消してからログアウト。
+            await deletePendingForUser(userId)
+            setPendingLogoutCount(null)
+            await finishLogout()
+          }}
+          onCancel={() => setPendingLogoutCount(null)}
+        />
+      )}
+      {logoutError && (
+        <div
+          role="alert"
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 rounded bg-red-600 px-4 py-2 text-sm text-white shadow-lg"
+        >
+          {logoutError}
+        </div>
+      )}
       {/*
        * サイドバー: md (768-1023) はアイコン縦並び w-16、lg+ (1024px〜=iPad横/PC) は
        * w-56 でラベル付きの縦ナビ。AnnotatorPage では非表示維持。
@@ -268,13 +404,13 @@ function Sidebar() {
 
         {/* 折りたたみ/展開トグル。Claude/ChatGPT 風。MIcon のみ (emoji/SVG 不使用)。
            collapsed: menu (≡) を出して「開く」を示す / expanded: menu_open を出して「閉じる」。
-           aria-label は i18n キー未整備のため当面は素の文字列 (英語固定) を使用。 */}
+           aria-label / title は app.sidebar_expand / app.sidebar_collapse (表示言語に追従)。 */}
         <button
           type="button"
           onClick={toggleCollapsed}
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-label={collapsed ? t('app.sidebar_expand') : t('app.sidebar_collapse')}
           aria-expanded={!collapsed}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={collapsed ? t('app.sidebar_expand') : t('app.sidebar_collapse')}
           className={clsx(
             'mx-2 mt-2 flex items-center gap-1 p-2 rounded-ss-md text-xs transition-colors duration-base ease-out',
             collapsed ? 'justify-center' : 'justify-center lg:justify-start lg:gap-3 lg:px-3',
@@ -285,10 +421,11 @@ function Sidebar() {
         </button>
 
         <div className="pt-2" />
-        {navItems.map(({ to, label, shortLabel, icon, badge }) => (
+        {navItems.map(({ to, label, shortLabel, icon, badge, badgeUnknown, badgeUnknownLabel }) => (
           <NavLink
             key={to}
             to={to}
+            end={to === '/users'}
             title={label}
             className={({ isActive }) =>
               clsx(
@@ -318,6 +455,14 @@ function Sidebar() {
                   {badge ? (
                     <span className="absolute -top-2 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] leading-4 text-center">
                       {badge > 99 ? '99+' : badge}
+                    </span>
+                  ) : badgeUnknown ? (
+                    <span
+                      className="absolute -top-2 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-amber-500 text-white text-[9px] leading-4 text-center"
+                      title={badgeUnknownLabel ?? t('nav.badge_unknown')}
+                      aria-label={badgeUnknownLabel ?? t('nav.badge_unknown')}
+                    >
+                      ?
                     </span>
                   ) : null}
                 </div>
@@ -353,7 +498,7 @@ function Sidebar() {
           </button>
           <button
             onClick={toggleTheme}
-            title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+            title={theme === 'dark' ? t('theme.light') : t('theme.dark')}
             className={clsx(
               'flex items-center gap-1 p-2 rounded-ss-md text-xs w-full transition-colors duration-base ease-out',
               rowLayoutCls,
@@ -362,10 +507,10 @@ function Sidebar() {
           >
             {theme === 'dark' ? <MIcon name="light_mode" size={18} className="shrink-0" /> : <MIcon name="dark_mode" size={18} className="shrink-0" />}
             {showShortLabel && (
-              <span className="text-[9px] leading-none lg:hidden">{theme === 'dark' ? 'Light' : 'Dark'}</span>
+              <span className="text-[9px] leading-none lg:hidden">{theme === 'dark' ? t('settings.ui.light') : t('settings.ui.dark')}</span>
             )}
             {showFullLabel && (
-              <span className="hidden lg:inline">{theme === 'dark' ? 'Light' : 'Dark'}</span>
+              <span className="hidden lg:inline">{theme === 'dark' ? t('settings.ui.light') : t('settings.ui.dark')}</span>
             )}
           </button>
         </div>
@@ -385,10 +530,11 @@ function Sidebar() {
             minHeight: 'calc(56px + env(safe-area-inset-bottom, 0px))',
           }}
         >
-          {navItems.map(({ to, label, shortLabel, icon, badge }) => (
+          {navItems.map(({ to, label, shortLabel, icon, badge, badgeUnknown, badgeUnknownLabel }) => (
             <NavLink
               key={to}
               to={to}
+              end={to === '/users'}
               className={({ isActive }) =>
                 clsx(
                   'flex flex-col items-center gap-0.5 py-2 px-4 text-[10px] min-w-0 transition-colors duration-base ease-out',
@@ -403,6 +549,14 @@ function Sidebar() {
                 {badge ? (
                   <span className="absolute -top-2 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] leading-4 text-center">
                     {badge > 99 ? '99+' : badge}
+                  </span>
+                ) : badgeUnknown ? (
+                  <span
+                    className="absolute -top-2 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-amber-500 text-white text-[9px] leading-4 text-center"
+                    title={badgeUnknownLabel ?? t('nav.badge_unknown')}
+                    aria-label={badgeUnknownLabel ?? t('nav.badge_unknown')}
+                  >
+                    ?
                   </span>
                 ) : null}
               </div>
@@ -422,10 +576,23 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+function UsersRoute({ children }: { children: React.ReactNode }) {
+  // ユーザー管理ページは admin / analyst / coach に開く (自チーム・権限内のスコープは
+  // UserManagementPage と backend /auth/users 側で強制する)。player 等は締め出す。
+  const { role } = useAuth()
+  if (role !== 'admin' && role !== 'analyst' && role !== 'coach') return <Navigate to="/matches" replace />
+  return <>{children}</>
+}
+
 function PageAccessRoute({ pageKey, children }: { pageKey: string; children: React.ReactNode }) {
 
-  const { hasPageAccess } = useAuth()
+  const { role, hasPageAccess } = useAuth()
   if (!hasPageAccess(pageKey)) return <Navigate to="/matches" replace />
+  // expert_labeler は backend ALLOWED_ROLES={analyst,coach,admin} に合わせる。grant だけ持つ
+  // demo 等が入っても API は 403/空になるため、ここで fail closed にして /matches へ戻す。
+  if (pageKey === 'expert_labeler' && role !== 'admin' && role !== 'analyst' && role !== 'coach') {
+    return <Navigate to="/matches" replace />
+  }
   return <>{children}</>
 }
 
@@ -441,13 +608,20 @@ function PageAccessRoute({ pageKey, children }: { pageKey: string; children: Rea
  * → 向きに依存しない「画面の物理短辺 < 768」かつ「タッチ端末 (pointer:coarse)」
  *   で判定し、横向きでもスマホは MobileAnnotatePage に留まるようにする。
  */
-function detectPhone(): boolean {
+export function detectPhone(): boolean {
   if (typeof window === 'undefined') return false
   const sw = window.screen?.width ?? window.innerWidth
   const sh = window.screen?.height ?? window.innerHeight
   const shortEdge = Math.min(sw, sh)            // 向きに依存しない短辺
   const coarse = window.matchMedia?.('(pointer: coarse)')?.matches ?? false
-  return shortEdge < 768 && coarse
+  // #792: 旧判定は shortEdge < 768 固定で、タッチ端末でも短辺が 768 以上の iPad
+  // (短辺 768 / 810 / 820 / 834 など) が専用モバイル Annotator (/m/annotate) へ
+  // 振り分けられず desktop AnnotatorPage に入っていた。アプリには iPad ベンチ運用
+  // 向けの機能 (BT キーボード前提設定 / mobile 専用 Pass1-3) があるため、coarse
+  // pointer のタッチ端末は phone だけでなく代表的な iPad viewport も含めて専用
+  // フローへ送る。短辺 1024 未満を閾値にすることで iPad Pro 12.9 の短辺 1024 以上の
+  // 大型タブレットだけを desktop 相当として除外し、それ以外の iPad を網羅する。
+  return shortEdge < 1024 && coarse
 }
 
 function AnnotatorOrMobileAnnotate() {
@@ -504,7 +678,10 @@ function MainLayout() {
                  描画される (この Routes は MainLayout 内なので到達しない)。 */}
             {/* Phase C: 試合中専用フルブリード入力 (mobile-first MVP) */}
             <Route path="/live/:matchId" element={<LiveInputPage />} />
-            <Route path="/condition" element={<ConditionPage />} />
+            <Route
+              path="/condition"
+              element={canUseConditionPage(role) ? <ConditionPage /> : <Navigate to="/dashboard" replace />}
+            />
             {/* /analysis は使用しない (dashboard に統一)。古い bookmark から
                飛んできた人を考慮して dashboard へ redirect。 */}
             <Route path="/analysis" element={<Navigate to="/dashboard" replace />} />
@@ -514,7 +691,7 @@ function MainLayout() {
             <Route path="/expert-labeler/:matchId" element={<PageAccessRoute pageKey="expert_labeler"><ExpertLabelerAnnotatePage /></PageAccessRoute>} />
             <Route path="/llm" element={<PageAccessRoute pageKey="llm"><LlmChatPage /></PageAccessRoute>} />
 <Route path="/notifications" element={<AdminRoute><NotificationInboxPage /></AdminRoute>} />
-            <Route path="/users" element={<AdminRoute><UserManagementPage /></AdminRoute>} />
+            <Route path="/users" element={<UsersRoute><UserManagementPage /></UsersRoute>} />
             <Route path="/users/pending" element={<AdminRoute><PendingUsersPage /></AdminRoute>} />
             {/* Phase Pay-1: 課金 UI ルート。各ページは内部で BILLING_UI_ENABLED チェック */}
             <Route path="/account/orders" element={<AccountOrdersPage />} />
@@ -547,6 +724,12 @@ function ThemeApplier({ children }: { children: React.ReactNode }) {
 }
 
 const IDLE_LOGOUT_MS = 15 * 60 * 1000
+// 自動ログアウトの何ミリ秒前に警告ダイアログを出すか。
+// 警告と同時に入力中のラリーを一時保存へ退避するので、ここで失効しても入力は失われない。
+// 警告間隔 (useIdleLogout の interval) が 30 秒なので、警告は失効の 60〜90 秒前に出る。
+const IDLE_WARN_BEFORE_MS = 60 * 1000
+/** /auth/me が確認できなかったときの自動再試行間隔。429 を悪化させない程度に空ける。 */
+const AUTH_RETRY_INTERVAL_MS = 10_000
 
 function ProtectedMainRoute() {
   const { t } = useTranslation()
@@ -561,28 +744,84 @@ function ProtectedMainRoute() {
   // 新規登録直後の仮登録状態 (player ロール / チーム未確定)。使えはするが
   // 自分のデータしか無いので、空に見える理由を常時表示する。
   const [awaitingApproval, setAwaitingApproval] = useState<boolean>(false)
+  // /auth/me が一過性エラー (5xx / 429 / timeout / 通信断) で確認できなかった状態。
+  // 保存済みの token / role は「確認済み」ではないので、確認できるまで保護 UI を描画しない。
+  // 認証情報は破棄しない (破棄すると login→login bounce になる) 。再試行画面を出す。
+  const [authUnverified, setAuthUnverified] = useState<boolean>(false)
+  const authUnverifiedRef = useRef<boolean>(false)
+  const [authRetryNonce, setAuthRetryNonce] = useState<number>(0)
+
+  // 無操作タイムアウトの警告ダイアログ。null のときは出さない。
+  // deadline は自動ログアウトが発火する予定時刻 (epoch ms) で、カウントダウン表示に使う。
+  const [idleWarnDeadline, setIdleWarnDeadline] = useState<number | null>(null)
+  const [idleRemainingSec, setIdleRemainingSec] = useState<number>(0)
+
+  // 警告が出ている間だけ 1 秒ごとに残り秒数を更新する。
+  useEffect(() => {
+    if (idleWarnDeadline == null) return
+    const tick = () => {
+      setIdleRemainingSec(Math.max(0, Math.ceil((idleWarnDeadline - Date.now()) / 1000)))
+    }
+    tick()
+    const id = window.setInterval(tick, 1000)
+    return () => window.clearInterval(id)
+  }, [idleWarnDeadline])
+
+  const doIdleLogout = useCallback(() => {
+    setIdleWarnDeadline(null)
+    authLogout().catch(() => { /* ignore */ })
+    // 無操作による失効では一時保存 (未確定ラリー) を残し、再ログイン後に復元できるようにする。
+    // 本人が明示的に押すログアウトは従来どおり一時保存も消す (keepAutosave を渡さない)。
+    clearRole({ keepAutosave: true })
+  }, [clearRole])
 
   useIdleLogout({
     enabled: !!token,
     timeoutMs: IDLE_LOGOUT_MS,
+    warnMs: IDLE_WARN_BEFORE_MS,
+    onWarn: () => {
+      // 失効の前に、入力中のラリーを今すぐ一時保存へ書き出させる。
+      // アノテータ画面が開いていればこのイベントで flush する。開いていなければ無害 (no-op)。
+      try { window.dispatchEvent(new Event(AUTOSAVE_FLUSH_EVENT)) } catch { /* ignore */ }
+      setIdleWarnDeadline(Date.now() + IDLE_WARN_BEFORE_MS)
+    },
+    onWarnCleared: () => {
+      // 操作が戻った (このタブ / 別タブのどちらでも) ので猶予を取り消す。
+      setIdleWarnDeadline(null)
+    },
     onIdle: () => {
-      authLogout().catch(() => { /* ignore */ })
-      clearRole()
+      doIdleLogout()
     },
   })
+
+  // 方針C: ログイン中はアクセストークンを失効 2 分前に先行 refresh し、
+  // タブが非表示から表示へ戻ったときも残り時間が少なければ即 refresh する。
+  // refresh の実体は client.ts の single-flight な refreshAccessToken() に委ねるため、
+  // navigator.locks / storage で 1 本化された refresh 経路に相乗りする (多重発火しない)。
+  // token が変わる (ログイン / refresh 成功 / ログアウト) たびに貼り直す。
+  useEffect(() => {
+    if (!token) return
+    const handle = startProactiveRefresh({ getToken: () => token })
+    return () => handle.stop()
+  }, [token])
 
   useEffect(() => {
     let cancelled = false
 
     if (!token) {
+      authUnverifiedRef.current = false
+      setAuthUnverified(false)
       setCheckingAuth(false)
       return
     }
 
-    setCheckingAuth(true)
+    // 再試行中 (確認できていない状態) は読み込み画面に戻さず、再試行画面のまま待つ。
+    if (!authUnverifiedRef.current) setCheckingAuth(true)
     authMe()
       .then((me) => {
         if (cancelled) return
+        authUnverifiedRef.current = false
+        setAuthUnverified(false)
         setSession({
           token,
           role: me.role,
@@ -594,7 +833,10 @@ function ProtectedMainRoute() {
         })
         setAwaitingApproval(!!me.awaiting_admin_approval)
         setConsentRequired(!!me.consent_required)
-        setOptionalConsentPending(!!me.optional_consent_pending)
+        // 「後で回答」を押してから一定期間は任意同意画面を再表示しない (端末ローカル)。
+        setOptionalConsentPending(
+          !!me.optional_consent_pending && !isOptionalConsentDeferred(me.user_id ?? null),
+        )
       })
       .catch((err: unknown) => {
         if (cancelled) return
@@ -604,11 +846,24 @@ function ProtectedMainRoute() {
         // 弾き返される (login→login bounce) 不具合になる。
         // 再現経路: 試合一覧が match ごとに pipeline/jobs を多数並列発火して
         // rate-limit を使い切ると、同時に走る /auth/me が 429 を返し、ここで
-        // 無条件 clearRole していた。一過性エラー時は login 時に保存済みの
-        // token/role をそのまま維持する (authMe は再検証にすぎない)。
+        // 無条件 clearRole していた。一過性エラー時は保存済みの token を破棄せず維持するが、
+        // サーバで確認できていないので「確認済み」とは扱わない。再試行画面を出し、
+        // 確認できるまで保存済み role による画面・ナビを描画しない (fail-closed)。
         const status = (err as { status?: number } | null)?.status
         if (status === 401 || status === 403) {
-          clearRole()
+          authUnverifiedRef.current = false
+          setAuthUnverified(false)
+          // トークンが 401/403 で意図せず失効したときも、無操作失効 (doIdleLogout) と
+          // 同じく、セッションを破棄する前に入力中のラリーを一時保存へ書き出させ、かつ
+          // 一時保存を残す (keepAutosave: true)。これをしないと、未確定の入力は store に
+          // しか無いため失効と同時に完全に失われる («保存し終わったはずが失効で消えた»)。
+          // 一時保存には ownerUserId が入っていて復元時に本人かを照合する
+          // (isAutosaveOwnedBy) ので、共有端末で別の利用者に中身は出ない。
+          try { window.dispatchEvent(new Event(AUTOSAVE_FLUSH_EVENT)) } catch { /* ignore */ }
+          clearRole({ keepAutosave: true })
+        } else {
+          authUnverifiedRef.current = true
+          setAuthUnverified(true)
         }
       })
       .finally(() => {
@@ -618,7 +873,14 @@ function ProtectedMainRoute() {
     return () => {
       cancelled = true
     }
-  }, [token, setSession, clearRole])
+  }, [token, setSession, clearRole, authRetryNonce])
+
+  // 確認できていない間は一定間隔で自動再試行する (手動の再試行ボタンも別に出す)。
+  useEffect(() => {
+    if (!authUnverified) return
+    const timer = setTimeout(() => setAuthRetryNonce((n) => n + 1), AUTH_RETRY_INTERVAL_MS)
+    return () => clearTimeout(timer)
+  }, [authUnverified, authRetryNonce])
 
   // R47: タイムアウトや 401 で未認証状態に落ちたとき、URL が
   // `#/dashboard/research` 等の保護パスのまま残ると第三者に「このパスが存在する」
@@ -629,7 +891,9 @@ function ProtectedMainRoute() {
     if (checkingAuth) return
     if (token && role) return
     const currentHash = window.location.hash || ''
-    if (currentHash === '#/login' || currentHash === '#/' || currentHash === '') return
+    // `#/login?session_expired=1` 等は API client / パスワード変更後の遷移が付けた
+    // 理由フラグ。LoginPage が表示するまで消さないよう login route 配下は保持する。
+    if (currentHash === '#/login' || currentHash.startsWith('#/login?') || currentHash === '#/' || currentHash === '') return
     try {
       const cleaned = window.location.pathname + window.location.search + '#/login'
       window.history.replaceState(null, '', cleaned)
@@ -649,14 +913,62 @@ function ProtectedMainRoute() {
     )
   }
 
+  if (token && authUnverified) {
+    return (
+      <div className="min-h-[100svh] flex items-center justify-center px-4" style={{ backgroundColor: 'var(--ss-bg-app, #111827)' }}>
+        <div className="text-center space-y-3 max-w-sm" role="alert">
+          <div className="text-2xl font-bold" style={{ color: 'var(--ss-text-primary, #f9fafb)' }}>{t('app.name')}</div>
+          <p className="text-base font-semibold" style={{ color: 'var(--ss-text-primary, #f9fafb)' }}>{t('auth_unverified.title')}</p>
+          <p className="text-sm" style={{ color: 'var(--ss-text-muted, #9ca3af)' }}>{t('auth_unverified.message')}</p>
+          <div className="flex justify-center gap-2">
+            <button
+              type="button"
+              onClick={() => setAuthRetryNonce((n) => n + 1)}
+              className="text-sm px-3 py-1.5 bg-blue-700 hover:bg-blue-600 text-white rounded transition-colors"
+            >
+              {t('auth_unverified.retry')}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                authLogout().catch(() => { /* ignore */ })
+                clearRole()
+              }}
+              className="text-sm px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded transition-colors"
+            >
+              {t('auth_unverified.logout')}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (!token || !role) {
     return <LoginPage onLogin={() => {
       // LLM 専用ユーザ (バドミントン role を持たない) はログイン後 /#/llm へ直行。
       let dest = '/matches'
+      let currentUserId: string | null = null
+      let currentRole: string | null = null
       try {
-        const r = sessionStorage.getItem('shuttlescope_role')
-        if (r && !['admin', 'analyst', 'coach', 'player', 'demo'].includes(r)) dest = '/llm'
+        currentRole = getAuthItem(ROLE_KEY)
+        currentUserId = getAuthItem(USER_ID_KEY)
+        if (currentRole && !['admin', 'analyst', 'coach', 'player', 'demo'].includes(currentRole)) dest = '/llm'
       } catch { /* ignore */ }
+
+      // G4 #715: セッション失効前にいた in-app ページに戻る。
+      // 同一ユーザー かつ 許可ルート のときだけ。別ユーザー / 外部 URL /
+      // 不正パス は null になり、通常の dest (多くは /matches) に落ちる。
+      // 同意完了はこの時点で未確定 (authMe 後に分かる) なので、ここでは
+      // true を渡さず 「同意未完了なら consentRequired gate が OnboardingConsentPage を
+      // 出す」ことで担保する。consume は 1 回だけ (次の通常ログインで古い
+      // パスに飛ばない)。
+      try {
+        const ret = consumeReturnContext()
+        const back = resolveReturnPath(ret, currentUserId, true)
+        if (back) dest = back
+      } catch { /* ignore */ }
+
       window.location.hash = dest
     }} />
   }
@@ -681,6 +993,13 @@ function ProtectedMainRoute() {
     )
   }
 
+  // #345: 承認待ち (awaiting_admin_approval) ユーザはルートレベルで隔離する。
+  // MainLayout や各ページを一切描画せず、承認待ち専用の最小画面のみを出す。
+  // 保護 API はすでに 403 を返すが、ルート側でも二重に防ぐ (fail-closed / defence in depth)。
+  if (awaitingApproval) {
+    return <AwaitingApprovalScreen />
+  }
+
   // R48: /m/annotate/:matchId は MainLayout (Sidebar / bottom nav) を完全に
   // バイパスしてフルブリード描画する。スマホアノテで「下に設定タブが居る」
   // 「動画上部が URL バーに被る」問題を構造的に潰す。
@@ -690,58 +1009,101 @@ function ProtectedMainRoute() {
   // では Safari Web Inspector に繋ぐ手段が無いユーザのため、画面に出すのが
   // 唯一の診断パス)。
   return (
-    <Routes>
-      <Route
-        path="/m/annotate/:matchId"
-        element={
-          <ErrorBoundary>
-            <MobileAnnotatePage />
-          </ErrorBoundary>
-        }
-      />
-      <Route
-        path="*"
-        element={
-          <>
-            {/* フルブリードのスマホアノテ画面には出さない (R48 の趣旨を壊すため) */}
-            {awaitingApproval && <PendingApprovalBanner />}
-            <MainLayout />
-          </>
-        }
-      />
-    </Routes>
+    <>
+      <Routes>
+        <Route
+          path="/m/annotate/:matchId"
+          element={
+            <ErrorBoundary>
+              <MobileAnnotatePage />
+            </ErrorBoundary>
+          }
+        />
+        <Route
+          path="*"
+          element={
+            <>
+              <MainLayout />
+            </>
+          }
+        />
+      </Routes>
+      {idleWarnDeadline != null && (
+        <IdleWarningDialog
+          remainingSec={idleRemainingSec}
+          onStay={() => {
+            // 「作業を続ける」= 操作とみなして猶予を取り消す。
+            // localStorage の最終操作時刻も更新し、全タブで猶予が解けるようにする。
+            try { localStorage.setItem(IDLE_LAST_ACTIVITY_KEY, String(Date.now())) } catch { /* ignore */ }
+            setIdleWarnDeadline(null)
+          }}
+          onLogoutNow={() => doIdleLogout()}
+        />
+      )}
+    </>
   )
 }
 
-/** 仮登録 (admin がチームとロールを確定する前) であることの常時表示。 */
-function PendingApprovalBanner() {
+/** #345: 承認待ち専用の最小画面。MainLayout や各ページの代わりにルートレベルで表示し、
+ *  ログアウトのみを許す。 */
+export function AwaitingApprovalScreen() {
   const { t } = useTranslation()
+  const { clearRole } = useAuth()
   return (
-    <div
-      role="status"
-      className="px-4 py-2 text-sm text-center border-b border-[var(--ss-border)] bg-[var(--ss-surface-2)] text-[var(--ss-t2)]"
-    >
-      <span className="font-medium text-[var(--ss-t1)]">{t('auth.pending_approval.title')}</span>
-      <span className="mx-2">—</span>
-      <span>{t('auth.pending_approval.body')}</span>
+    <div className="min-h-[100svh] flex items-center justify-center px-4" style={{ backgroundColor: 'var(--ss-bg-app, #111827)' }}>
+      <div className="text-center space-y-3 max-w-sm" role="status">
+        <div className="text-2xl font-bold" style={{ color: 'var(--ss-text-primary, #f9fafb)' }}>{t('app.name')}</div>
+        <p className="text-base font-semibold" style={{ color: 'var(--ss-text-primary, #f9fafb)' }}>{t('auth.pending_approval.title')}</p>
+        <p className="text-sm" style={{ color: 'var(--ss-text-muted, #9ca3af)' }}>{t('auth.pending_approval.body')}</p>
+        <div className="flex justify-center">
+          <button
+            type="button"
+            onClick={() => {
+              authLogout().catch(() => { /* ignore */ })
+              clearRole()
+            }}
+            className="text-sm px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded transition-colors"
+          >
+            {t('auth.pending_approval.logout')}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
 
 function App() {
   const { t } = useTranslation()
-  const { ready } = useBackendReady()
+  const { ready, elapsed } = useBackendReady()
 
   if (!ready) {
+    // #677: health check が一定時間 ready にならない半断では、無限ローディングではなく
+    // 「サーバに接続できません / 再読み込み」を明示する。useBackendReady が計測した elapsed
+    // (秒) を閾値判定に使う。閾値前は従来のローディング表示のまま。
+    const unreachable = elapsed >= BACKEND_UNREACHABLE_AFTER_SEC
     return (
       <div className="min-h-[100svh] flex items-center justify-center" style={{ backgroundColor: 'var(--ss-bg-app, #111827)' }}>
         <div className="text-center">
           <div className="text-3xl font-bold" style={{ color: 'var(--ss-text-primary, #f9fafb)' }}>{t('app.name')}</div>
-          <div className="mt-6 flex items-center justify-center gap-2">
-            <div className="w-4 h-4 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '0ms' }} />
-            <div className="w-4 h-4 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '150ms' }} />
-            <div className="w-4 h-4 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '300ms' }} />
-          </div>
+          {unreachable ? (
+            <div className="mt-6" role="alert">
+              <div className="text-base font-semibold" style={{ color: 'var(--ss-text-primary, #f9fafb)' }}>{t('app.unreachable_title')}</div>
+              <div className="mt-2 text-sm" style={{ color: 'var(--ss-text-secondary, #9ca3af)' }}>{t('app.unreachable_body')}</div>
+              <button
+                type="button"
+                onClick={() => { window.location.reload() }}
+                className="mt-4 text-sm px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
+              >
+                {t('app.retry')}
+              </button>
+            </div>
+          ) : (
+            <div className="mt-6 flex items-center justify-center gap-2">
+              <div className="w-4 h-4 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '0ms' }} />
+              <div className="w-4 h-4 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '150ms' }} />
+              <div className="w-4 h-4 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '300ms' }} />
+            </div>
+          )}
         </div>
       </div>
     )

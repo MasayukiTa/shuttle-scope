@@ -6,8 +6,11 @@ start_job_runner() は冪等（多重起動防止）。
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
+import threading
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -23,36 +26,122 @@ _RUNNER_TASK: Optional[asyncio.Task] = None
 _RUNNER_LOCK = asyncio.Lock() if False else None  # 参照保持用。実体は start で生成
 _POLL_INTERVAL_SEC = 2.0
 
+# API process 内の同時 enqueue を直列化する。PostgreSQL では下の advisory
+# lock も併用し、複数 API process / worker からの同時 enqueue にも耐える。
+_ENQUEUE_PROCESS_LOCK = threading.Lock()
+
+
+def _enqueue_advisory_key(match_id: int, job_type: str) -> int:
+    """Stable signed bigint key for PostgreSQL pg_advisory_lock()."""
+    raw = f"analysis-job:{int(match_id)}:{job_type}".encode("utf-8")
+    return int.from_bytes(
+        hashlib.blake2b(raw, digest_size=8).digest(),
+        byteorder="big",
+        signed=True,
+    )
+
+
+@contextmanager
+def _serialize_enqueue(db: Session, match_id: int, job_type: str):
+    """Serialize enqueue for one process and, on PostgreSQL, across processes.
+
+    PostgreSQL uses a transaction-scoped advisory lock on a dedicated pinned
+    connection. The caller Session may commit when it inserts a job or return
+    early when it finds an existing one; neither path controls the lock
+    transaction. Ending the dedicated transaction always releases the lock,
+    including exception paths, and cannot leak a session lock into the pool.
+    """
+    with _ENQUEUE_PROCESS_LOCK:
+        dialect = ""
+        try:
+            dialect = (db.bind.dialect.name if db.bind else "").lower()
+        except Exception:
+            dialect = ""
+
+        if dialect != "postgresql":
+            yield
+            return
+
+        from sqlalchemy import text
+
+        bind = db.get_bind()
+        lock_engine = bind if hasattr(bind, "connect") else getattr(bind, "engine", None)
+        if lock_engine is None:
+            raise RuntimeError("PostgreSQL enqueue lock requires a connectable bind")
+
+        with lock_engine.connect() as lock_conn:
+            with lock_conn.begin():
+                lock_conn.execute(
+                    text("SELECT pg_advisory_xact_lock(:key)"),
+                    {"key": _enqueue_advisory_key(match_id, job_type)},
+                )
+                yield
+
 
 def enqueue(db: Session, match_id: int, job_type: str = "full_pipeline") -> AnalysisJob:
     """新しいジョブをキューに投入する。
 
-    Idempotency: 同 match_id + 同 job_type で `queued` or `running` 状態のジョブが
-    既に存在する場合は新規 enqueue せず既存を返す。これは finalize や DL 完了 hook
-    が複数回呼ばれた場合に variant 生成が重複起動するのを防ぐため。
+    通常ジョブは queued/running を同一 logical request として重複排除する。
+    video_variant だけは running 中に新しい Recording が増え得るため、running の
+    後ろに queued successor を最大1件残す。
     """
-    existing = (
-        db.query(AnalysisJob)
-        .filter(
-            AnalysisJob.match_id == match_id,
-            AnalysisJob.job_type == job_type,
-            AnalysisJob.status.in_(("queued", "running")),
+    with _serialize_enqueue(db, match_id, job_type):
+        queued = (
+            db.query(AnalysisJob)
+            .filter(
+                AnalysisJob.match_id == match_id,
+                AnalysisJob.job_type == job_type,
+                AnalysisJob.status == "queued",
+            )
+            .order_by(AnalysisJob.enqueued_at.desc(), AnalysisJob.id.desc())
+            .first()
         )
-        .order_by(AnalysisJob.enqueued_at.desc())
-        .first()
-    )
-    if existing is not None:
-        logger.info(
-            "enqueue noop (already %s) id=%d match_id=%d type=%s",
-            existing.status, existing.id, match_id, job_type,
+        if queued is not None:
+            logger.info(
+                "enqueue noop (already queued) id=%d match_id=%d type=%s",
+                queued.id, match_id, job_type,
+            )
+            return queued
+
+        running = (
+            db.query(AnalysisJob)
+            .filter(
+                AnalysisJob.match_id == match_id,
+                AnalysisJob.job_type == job_type,
+                AnalysisJob.status == "running",
+            )
+            .order_by(AnalysisJob.started_at.desc(), AnalysisJob.id.desc())
+            .first()
         )
-        return existing
-    job = AnalysisJob(match_id=match_id, job_type=job_type, status="queued", progress=0.0)
-    db.add(job)
-    db.flush()
-    db.commit()
-    logger.info("enqueued job id=%d match_id=%d type=%s", job.id, match_id, job_type)
-    return job
+
+        if running is not None and job_type != "video_variant":
+            logger.info(
+                "enqueue noop (already running) id=%d match_id=%d type=%s",
+                running.id, match_id, job_type,
+            )
+            return running
+
+        job = AnalysisJob(
+            match_id=match_id,
+            job_type=job_type,
+            status="queued",
+            progress=0.0,
+        )
+        db.add(job)
+        db.flush()
+        db.commit()
+        if running is not None:
+            logger.info(
+                "enqueued successor job id=%d behind running id=%d "
+                "match_id=%d type=%s",
+                job.id, running.id, match_id, job_type,
+            )
+        else:
+            logger.info(
+                "enqueued job id=%d match_id=%d type=%s",
+                job.id, match_id, job_type,
+            )
+        return job
 
 
 def _claim_next(db: Session) -> Optional[AnalysisJob]:

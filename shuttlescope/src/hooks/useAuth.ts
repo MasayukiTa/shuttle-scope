@@ -1,39 +1,40 @@
 import { useState, useCallback, useEffect } from 'react'
 import { UserRole } from '@/types'
+import { tokenUserId } from '@/utils/mobileAnnotateQueue'
+import { AUTOSAVE_PREFIX } from '@/utils/annotatorAutosave'
+import {
+  AUTH_CHANGED_EVENT,
+  TOKEN_KEY as STORAGE_KEY,
+  REFRESH_KEY as STORAGE_KEY_REFRESH,
+  ROLE_KEY as STORAGE_KEY_ROLE,
+  PLAYER_ID_KEY as STORAGE_KEY_PLAYER_ID,
+  TEAM_NAME_KEY as STORAGE_KEY_TEAM_NAME,
+  USER_ID_KEY as STORAGE_KEY_USER_ID,
+  DISPLAY_NAME_KEY as STORAGE_KEY_DISPLAY_NAME,
+  PAGE_ACCESS_KEY as STORAGE_KEY_PAGE_ACCESS,
+  getAuthItem,
+  setAuthItem,
+  removeAuthItem,
+  migrateSessionToLocal,
+  installCrossTabAuthSync,
+} from '@/api/authStorage'
 
-const AUTH_CHANGED_EVENT = 'shuttlescope:auth-changed'
-
-const STORAGE_KEY = 'shuttlescope_token'
-const STORAGE_KEY_REFRESH = 'shuttlescope_refresh_token'
-const STORAGE_KEY_ROLE = 'shuttlescope_role'
-const STORAGE_KEY_PLAYER_ID = 'shuttlescope_player_id'
-const STORAGE_KEY_TEAM_NAME = 'shuttlescope_team_name'
-const STORAGE_KEY_USER_ID = 'shuttlescope_user_id'
-const STORAGE_KEY_DISPLAY_NAME = 'shuttlescope_display_name'
-const STORAGE_KEY_PAGE_ACCESS = 'shuttlescope_page_access'
+// fix/auth-session-persist: 認証情報を localStorage で全タブ共有する。旧 sessionStorage の
+// 値を初回に移行し、他タブの storage イベントを AUTH_CHANGED_EVENT に橋渡して
+// React state を再同期する (どちらも冪等)。
+migrateSessionToLocal()
+installCrossTabAuthSync()
 
 function readStorage(key: string): string | null {
-  try {
-    return sessionStorage.getItem(key)
-  } catch {
-    return null
-  }
+  return getAuthItem(key)
 }
 
 function writeStorage(key: string, value: string): void {
-  try {
-    sessionStorage.setItem(key, value)
-  } catch {
-    // ignore storage failures and keep in-memory state authoritative for this render
-  }
+  setAuthItem(key, value)
 }
 
 function removeStorage(key: string): void {
-  try {
-    sessionStorage.removeItem(key)
-  } catch {
-    // ignore
-  }
+  removeAuthItem(key)
 }
 
 function getStored<T>(key: string, parse?: (v: string) => T): T | null {
@@ -60,6 +61,42 @@ function getStoredRole(): UserRole | null {
   return null
 }
 
+/**
+ * ページ表示の可否。admin / analyst / coach は原則すべて可。
+ * ただし LLM は backend (require_llm_access) が admin / llm ロール以外に実際の grant を
+ * 要求するため、analyst / coach は /auth/me が返した page_access に 'llm' がある場合だけ表示する
+ * (ナビには出るのに API が 403 になる食い違いを避ける)。
+ * 'llm' ロールは backend (require_llm_access) が grant 無しで通すため、LLM ページは
+ * 個別 grant を要求しない (要求すると /llm と /matches の間を行き来して入れない)。
+ */
+export function canAccessPage(role: string | null, pageAccess: string[], key: string): boolean {
+  if (!role) return false
+  if (role === 'admin') return true
+  if (role === 'llm' && key === 'llm') return true
+  if (role === 'analyst' || role === 'coach') return key === 'llm' ? pageAccess.includes('llm') : true
+  return pageAccess.includes(key)
+}
+
+/**
+ * ログイン中のユーザー ID。保存された値が正の整数ならそれを使い、無ければ (または 0 のような
+ * 「不明」の値なら) 送信に使うトークンの `sub` から復元する。
+ *
+ * 入力 (ラリー) の退避キューは所有者 (ユーザー ID) を持つ。ID が取れないと、保存に失敗した
+ * ラリーは退避されずに失われる。また `/auth/me` に user_id が無いと 0 が保存され、
+ * 「ユーザー 0」という共有の所有者ができて、別の人の入力を再送できてしまう。
+ */
+export function resolveUserId(stored: string | null, token: string | null): number | null {
+  if (stored) {
+    const n = parseInt(stored, 10)
+    if (Number.isInteger(n) && n > 0) return n
+  }
+  return tokenUserId(token)
+}
+
+function getStoredUserId(): number | null {
+  return resolveUserId(getStored<string>(STORAGE_KEY_USER_ID), getStored<string>(STORAGE_KEY))
+}
+
 function getStoredPlayerId(): number | null {
   const v = getStored<string>(STORAGE_KEY_PLAYER_ID)
   if (!v) return null
@@ -83,12 +120,7 @@ export function useAuth() {
   const [role, setRoleState] = useState<UserRole | null>(getStoredRole)
   const [playerId, setPlayerIdState] = useState<number | null>(getStoredPlayerId)
   const [teamName, setTeamNameState] = useState<string | null>(() => getStored(STORAGE_KEY_TEAM_NAME))
-  const [userId, setUserIdState] = useState<number | null>(() => {
-    const v = getStored<string>(STORAGE_KEY_USER_ID)
-    if (!v) return null
-    const n = parseInt(v, 10)
-    return Number.isFinite(n) ? n : null
-  })
+  const [userId, setUserIdState] = useState<number | null>(getStoredUserId)
   const [displayName, setDisplayNameState] = useState<string | null>(() => getStored(STORAGE_KEY_DISPLAY_NAME))
   const [pageAccess, setPageAccessState] = useState<string[]>(() => {
     try {
@@ -103,8 +135,7 @@ export function useAuth() {
       setRoleState(getStoredRole())
       setPlayerIdState(getStoredPlayerId())
       setTeamNameState(getStored(STORAGE_KEY_TEAM_NAME))
-      const uid = getStored<string>(STORAGE_KEY_USER_ID)
-      setUserIdState(uid ? parseInt(uid, 10) : null)
+      setUserIdState(getStoredUserId())
       setDisplayNameState(getStored(STORAGE_KEY_DISPLAY_NAME))
       try {
         const pa = readStorage(STORAGE_KEY_PAGE_ACCESS)
@@ -154,7 +185,7 @@ export function useAuth() {
     writeStorage(STORAGE_KEY_PAGE_ACCESS, JSON.stringify(pa))
     setTokenState(session.token)
     setRoleState(session.role)
-    setUserIdState(session.userId)
+    setUserIdState(resolveUserId(String(session.userId), session.token))
     setPlayerIdState(session.playerId)
     setTeamNameState(session.teamName)
     setDisplayNameState(session.displayName)
@@ -162,7 +193,8 @@ export function useAuth() {
     window.dispatchEvent(new Event(AUTH_CHANGED_EVENT))
   }, [])
 
-  const clearRole = useCallback(() => {
+  const clearRole = useCallback((options?: { keepAutosave?: boolean }) => {
+    const keepAutosave = options?.keepAutosave === true
     removeStorage(STORAGE_KEY)
     removeStorage(STORAGE_KEY_REFRESH)
     removeStorage(STORAGE_KEY_ROLE)
@@ -175,6 +207,12 @@ export function useAuth() {
     // Round 236 #10: 共有 PC で前 user の match-specific UI state が残ると
     // (court calibration / yolo ROI memory / viewpoint 等) 次 user に引き継がれるため
     // logout 時にまとめて消す。
+    //
+    // 無操作タイムアウトによる失効 (keepAutosave=true) のときだけは、アノテータの
+    // 一時保存 (未確定ラリー) を残す。同じ人が再ログインしたときに入力中のラリーを
+    // 復元できるようにするため。一時保存には ownerUserId が入っていて、復元時に
+    // 本人かどうか照合する (isAutosaveOwnedBy) ので、別の利用者に中身が出ることはない。
+    // 本人が明示的にログアウトしたとき (keepAutosave=false) は従来どおり消す。
     try {
       const matchScopedPrefixes = [
         'shuttlescope.viewpoint.',
@@ -182,6 +220,10 @@ export function useAuth() {
         'yolo-last-roi-',
         'tracknet-last-roi-',
       ]
+      if (!keepAutosave) {
+        // アノテータの一時保存 (未確定ラリー)。共有端末で次の利用者に残さない。
+        matchScopedPrefixes.push(AUTOSAVE_PREFIX)
+      }
       const keysToRemove: string[] = []
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i)
@@ -215,11 +257,7 @@ export function useAuth() {
   )
 
   const hasPageAccess = useCallback(
-    (key: string): boolean => {
-      if (!role) return false
-      if (role === 'admin' || role === 'analyst' || role === 'coach') return true
-      return pageAccess.includes(key)
-    },
+    (key: string): boolean => canAccessPage(role, pageAccess, key),
     [role, pageAccess]
   )
 

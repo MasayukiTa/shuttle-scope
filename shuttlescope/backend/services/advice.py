@@ -18,6 +18,8 @@ from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
+from backend.analysis.player_context import head_to_head, involves_player
+from backend.analysis.role_view import own_slot, perspective, team_side
 from backend.utils.auth import AuthCtx
 
 
@@ -85,7 +87,7 @@ def _gather_window(db: Session, player_id: int, days: int) -> dict:
     matches = (
         db.query(Match)
         .filter(
-            (Match.player_a_id == player_id) | (Match.player_b_id == player_id),
+            involves_player(player_id),
             Match.date >= from_d,
             Match.date <= today,
             Match.deleted_at.is_(None),
@@ -99,11 +101,8 @@ def _gather_window(db: Session, player_id: int, days: int) -> dict:
             "primary_shot": None, "from_date": from_d, "to_date": today,
         }
 
-    # ロール判定 (player_a or player_b)
-    def _role(m: Match) -> str:
-        return "player_a" if m.player_a_id == player_id else "player_b"
-
-    role_by_mid = {m.id: _role(m) for m in matches}
+    # 視点 (チーム側 + 個人の枠)。ダブルスの相方も解決する
+    role_by_mid = {m.id: perspective(m, player_id) for m in matches}
     mids = [m.id for m in matches]
     sets = db.query(GameSet).filter(GameSet.match_id.in_(mids)).all()
     sid_to_mid = {s.id: s.match_id for s in sets}
@@ -124,7 +123,7 @@ def _gather_window(db: Session, player_id: int, days: int) -> dict:
         from collections import Counter
         c: Counter[str] = Counter()
         for s in strokes:
-            if s.shot_type and s.player == rid_to_role.get(s.rally_id):
+            if s.shot_type and s.player == own_slot(rid_to_role.get(s.rally_id)):
                 c[s.shot_type] += 1
         if c:
             most, cnt = c.most_common(1)[0]
@@ -226,10 +225,10 @@ def advice_post_match_save(db: Session, player_id: int, match_id: int, ctx: Auth
     """
     from backend.db.models import Match, GameSet, Rally, Stroke
     m = db.get(Match, match_id)
-    if not m or (m.player_a_id != player_id and m.player_b_id != player_id):
+    role = perspective(m, player_id) if m else None
+    if not m or role is None:
         return _empty_response("対象試合が見つかりません。")
 
-    role = "player_a" if m.player_a_id == player_id else "player_b"
     sets = db.query(GameSet).filter(GameSet.match_id == match_id).all()
     sids = [s.id for s in sets]
     rallies = db.query(Rally).filter(Rally.set_id.in_(sids)).all() if sids else []
@@ -246,7 +245,7 @@ def advice_post_match_save(db: Session, player_id: int, match_id: int, ctx: Auth
     from collections import Counter
     own = Counter()
     for s in strokes:
-        if s.shot_type and s.player == role:
+        if s.shot_type and s.player == own_slot(role):
             own[s.shot_type] += 1
     primary = None
     if own:
@@ -261,23 +260,33 @@ def advice_post_match_save(db: Session, player_id: int, match_id: int, ctx: Auth
         # 本試合分を差し引く
         base_rallies = max(0, base["rally_count"] - len(rallies))
         base_wins = max(0, base["wins"] - wins)
-        if base_rallies > 0:
+        # 本試合を除いた残りが少数ラリーなら比較しない (統計規則 R3: 既存の MIN_RALLIES を再利用)
+        if base_rallies >= MIN_RALLIES:
             base_wr = base_wins / base_rallies
 
-    parts = [
-        f"本試合のラリー勝率: {round(wr * 100, 1)}% ({wins}/{len(rallies)})",
-    ]
-    if base_wr is not None:
-        diff = (wr - base_wr) * 100
-        sign = "+" if diff >= 0 else ""
-        parts.append(
-            f"直近 30 日平均 {round(base_wr * 100, 1)}% との差 {sign}{diff:.1f}pp"
-        )
+    if ctx.role == "player":
+        # 選手には生の勝率・差を出さない (製品ルール)。ラリー数のみ
+        parts = [f"本試合は {len(rallies)} ラリーが記録されています"]
+    else:
+        parts = [
+            f"本試合のラリー勝率: {round(wr * 100, 1)}% ({wins}/{len(rallies)})",
+        ]
+        if base_wr is not None:
+            diff = (wr - base_wr) * 100
+            sign = "+" if diff >= 0 else ""
+            parts.append(
+                f"直近 30 日平均 {round(base_wr * 100, 1)}% との差 {sign}{diff:.1f}pp"
+            )
     if primary:
         st, cnt, ratio = primary
         parts.append(f"最頻ショット: {st} ({cnt} 本 / {round(ratio * 100, 1)}%)")
 
-    severity = "positive" if (base_wr is not None and wr > base_wr) else "info"
+    # 選手には比較結果 (勝率が上か下か) を severity でも漏らさない
+    severity = (
+        "positive"
+        if (ctx.role != "player" and base_wr is not None and wr > base_wr)
+        else "info"
+    )
     text = " / ".join(parts) + "。"
     return _ok_response(AdviceCard(
         text=text,
@@ -302,22 +311,18 @@ def advice_condition_header(db: Session, player_id: int, ctx: AuthCtx) -> dict:
     判断 (「練習強度を落とすべき」等) は出さない。
     観測した値が「注意領域」かは閾値判定ではなく自然な数字提示。
     """
-    from sqlalchemy import text as _sql_text
-    # condition_master が無い環境では skip
-    try:
-        # 直近 7 日の DailyCondition を取得 (構造は条件付き)
-        from backend.db.models import DailyCondition
-    except ImportError:
-        return _empty_response("体調モデルが利用できません。")
+    # 体調の記録は conditions テーブル (モデル名 Condition)。存在しない別名を import して
+    # 常に「利用できません」を返していたため、実在するモデルを直接使う。
+    from backend.db.models import Condition
 
     cutoff = DateType.today() - timedelta(days=14)
     rows = (
-        db.query(DailyCondition)
+        db.query(Condition)
         .filter(
-            DailyCondition.player_id == player_id,
-            DailyCondition.target_date >= cutoff,
+            Condition.player_id == player_id,
+            Condition.measured_at >= cutoff,
         )
-        .order_by(DailyCondition.target_date.desc())
+        .order_by(Condition.measured_at.desc())
         .all()
     )
     if len(rows) < 3:
@@ -325,30 +330,20 @@ def advice_condition_header(db: Session, player_id: int, ctx: AuthCtx) -> dict:
             f"直近 14 日の体調入力が {len(rows)} 件です (傾向判定には 3 件以上必要)。"
         )
 
-    # Hooper-like 集計 (fatigue / stress / mood / sleep 1-5)
-    # responses_json または個別フィールドがある前提で安全に取り出す
-    def _safe_get(r, key, default=None):
-        v = getattr(r, key, None)
-        if v is not None: return v
-        # responses dict から
-        rd = getattr(r, "responses", None) or getattr(r, "responses_json", None)
-        if isinstance(rd, dict):
-            return rd.get(key, default)
-        return default
-
+    # 最新の記録にある Hooper の値をそのまま事実として並べる (解釈・助言は付けない)。
     latest = rows[0]
-    sleep = _safe_get(latest, "sleep_score", None)
-    fatigue = _safe_get(latest, "fatigue_score", None)
-    parts = [f"直近 {len(rows)} 件の体調入力を取得 (最終: {latest.target_date.isoformat() if getattr(latest, 'target_date', None) else 'N/A'})"]
+    sleep = latest.hooper_sleep
+    fatigue = latest.hooper_fatigue
+    parts = [f"直近 {len(rows)} 件の体調入力を取得 (最終: {latest.measured_at.isoformat() if latest.measured_at else 'N/A'})"]
     if sleep is not None:
-        parts.append(f"最新 sleep スコア {sleep}")
+        parts.append(f"最新 Hooper 睡眠 {sleep}")
     if fatigue is not None:
-        parts.append(f"最新 fatigue スコア {fatigue}")
+        parts.append(f"最新 Hooper 疲労 {fatigue}")
     text = " / ".join(parts) + "。"
     return _ok_response(AdviceCard(
         text=text,
         basis={
-            "source": "daily_condition_14d",
+            "source": "conditions_14d",
             "sample_size": {"entries": len(rows)},
         },
         confidence="medium" if len(rows) >= 5 else "low",
@@ -359,6 +354,26 @@ def advice_condition_header(db: Session, player_id: int, ctx: AuthCtx) -> dict:
 # ─────────────────────────────────────────────────────────────────────
 # Context 4: prediction.tab
 # ─────────────────────────────────────────────────────────────────────
+
+def _opponent_label(db: Session, opponent_id: int, ctx: AuthCtx) -> str:
+    """文言に入れる対戦相手の呼び名。内部 ID は文面に出さない。
+
+    呼び出し側が閲覧できる選手 (can_access_player) のときだけ氏名を使い、
+    それ以外・氏名が無い場合は中立の「対戦相手」にする。
+    """
+    from backend.db.models import Player
+    from backend.utils.auth import can_access_player
+
+    try:
+        if can_access_player(ctx, opponent_id, db):
+            p = db.get(Player, opponent_id)
+            name = (p.name or "").strip() if p else ""
+            if name:
+                return f"対戦相手 {name}"
+    except Exception:
+        pass
+    return "対戦相手"
+
 
 def advice_prediction_tab(db: Session, player_id: int, opponent_id: Optional[int], ctx: AuthCtx) -> dict:
     """対戦相手指定があれば head-to-head 勝率、無ければ直近の予測根拠サマリ。
@@ -385,7 +400,7 @@ def advice_prediction_tab(db: Session, player_id: int, opponent_id: Optional[int
             return _empty_response(
                 f"直近 90 日: 試合 {cur['match_count']} 件 / ラリー {cur['rally_count']} 件。"
                 f"予測タブのサマリ表示には最低 {PRED_MIN_MATCHES} 試合 / "
-                f"{PRED_MIN_RALLIES} ラリーが必要です (信頼度を語れるサンプル数の下限)。"
+                f"{PRED_MIN_RALLIES} ラリーが必要です (これより少ないと、信頼できる予測を出せません)。"
             )
         if cur["match_count"] >= 60 and cur["rally_count"] >= 1500:
             conf = "high"
@@ -411,56 +426,75 @@ def advice_prediction_tab(db: Session, player_id: int, opponent_id: Optional[int
 
     # opponent_id 指定: head-to-head 実績のみ集計 (予測モデル呼び出しはエラー耐性が必要)
     from backend.db.models import Match, GameSet, Rally
+    opp_label = _opponent_label(db, opponent_id, ctx)
     h2h = (
         db.query(Match)
         .filter(
-            (
-                ((Match.player_a_id == player_id) & (Match.player_b_id == opponent_id)) |
-                ((Match.player_a_id == opponent_id) & (Match.player_b_id == player_id))
-            ),
+            head_to_head(player_id, opponent_id),
             Match.deleted_at.is_(None),
         )
         .all()
     )
     if len(h2h) == 0:
-        return _empty_response(f"対戦相手 #{opponent_id} との対戦履歴がありません。")
+        return _empty_response(f"{opp_label} との対戦履歴がありません。")
 
     mids = [m.id for m in h2h]
     sets = db.query(GameSet).filter(GameSet.match_id.in_(mids)).all()
     sids = [s.id for s in sets]
     sid_to_mid = {s.id: s.match_id for s in sets}
     rallies = db.query(Rally).filter(Rally.set_id.in_(sids)).all() if sids else []
-    role_by_mid = {m.id: ("player_a" if m.player_a_id == player_id else "player_b") for m in h2h}
+    role_by_mid = {m.id: team_side(m, player_id) for m in h2h}
     wins = sum(1 for r in rallies if r.winner == role_by_mid.get(sid_to_mid.get(r.set_id)))
     rcount = len(rallies)
     if rcount < 30:
         return _empty_response(
-            f"対戦相手 #{opponent_id} との head-to-head ラリー数 {rcount} は予測根拠に不足 (30 以上必要)。"
+            f"{opp_label} との head-to-head ラリー数 {rcount} は予測根拠に不足 (30 以上必要)。"
         )
     h2h_wr = wins / rcount
-    # 95% Wilson 区間
-    from math import sqrt
-    n, p = rcount, h2h_wr
-    z = 1.96
-    denom = 1 + z * z / n
-    center = (p + z * z / (2 * n)) / denom
-    half = z * sqrt((p * (1 - p) + z * z / (4 * n)) / n) / denom
-    lo = max(0.0, center - half)
-    hi = min(1.0, center + half)
+    # 95% 区間は試合を単位にしたクラスタ頑健な推定 (監査 #302)。
+    # 同じ試合のラリーは独立ではないので、全ラリー数を n とする Wilson 区間は狭すぎる。
+    from backend.utils.confidence import cluster_rate_ci
+    per_match: dict[int, list[int]] = {}
+    for r in rallies:
+        mid = sid_to_mid.get(r.set_id)
+        if mid is None:
+            continue
+        cell = per_match.setdefault(mid, [0, 0])
+        cell[1] += 1
+        if r.winner == role_by_mid.get(mid):
+            cell[0] += 1
+    ci = cluster_rate_ci([(w, n) for w, n in per_match.values()])
+    match_n = len(per_match)
 
-    text = (
-        f"対戦相手 #{opponent_id} との過去 {len(h2h)} 試合 ({rcount} ラリー) の"
-        f"ラリー勝率: {round(h2h_wr * 100, 1)}% "
-        f"(95% 信頼区間 [{round(lo * 100, 1)}%, {round(hi * 100, 1)}%])"
-    )
+    if ci is not None:
+        text = (
+            f"{opp_label} との過去 {len(h2h)} 試合 ({rcount} ラリー) の"
+            f"ラリー勝率: {round(h2h_wr * 100, 1)}% "
+            f"(95% 信頼区間 [{round(ci[0] * 100, 1)}%, {round(ci[1] * 100, 1)}%]、"
+            f"試合を単位に算出)"
+        )
+    else:
+        text = (
+            f"{opp_label} との過去 {len(h2h)} 試合 ({rcount} ラリー) の"
+            f"ラリー勝率: {round(h2h_wr * 100, 1)}% "
+            f"(1 試合分のため信頼区間は出せません)"
+        )
+    # 信頼度は試合数で決める (ラリー数では独立な標本数にならない)
+    if match_n >= 10 and rcount >= 200:
+        h2h_conf = "high"
+    elif match_n >= 5:
+        h2h_conf = "medium"
+    else:
+        h2h_conf = "low"
     return _ok_response(AdviceCard(
         text=text,
         basis={
-            "source": "head_to_head_wilson_ci",
+            "source": "head_to_head_match_cluster_ci",
             "match_count": len(h2h),
             "rally_count": rcount,
+            "ci_unit": "match",
         },
-        confidence="high" if rcount >= 200 else "medium",
+        confidence=h2h_conf,
         severity="info",
     ))
 
@@ -485,7 +519,7 @@ def advice_growth_timeline(db: Session, player_id: int, ctx: AuthCtx) -> dict:
         ms = (
             db.query(Match)
             .filter(
-                (Match.player_a_id == player_id) | (Match.player_b_id == player_id),
+                involves_player(player_id),
                 Match.date >= from_d, Match.date < to_d,
                 Match.deleted_at.is_(None),
             )
@@ -493,7 +527,7 @@ def advice_growth_timeline(db: Session, player_id: int, ctx: AuthCtx) -> dict:
         )
         if not ms:
             return (None, 0, 0)
-        role_by_mid = {m.id: ("player_a" if m.player_a_id == player_id else "player_b") for m in ms}
+        role_by_mid = {m.id: team_side(m, player_id) for m in ms}
         mids = [m.id for m in ms]
         sets = db.query(GameSet).filter(GameSet.match_id.in_(mids)).all()
         sids = [s.id for s in sets]
@@ -506,30 +540,35 @@ def advice_growth_timeline(db: Session, player_id: int, ctx: AuthCtx) -> dict:
 
     cur_wr, cur_m, cur_r = _wr_in(a_from, today)
     prev_wr, prev_m, prev_r = _wr_in(b_from, b_to)
+    # 比較に使う 2 つの期間を明示する (全期間の成長判定とは別の集計であることが読み取れるように)
+    period = f"{a_from} ~ {today} / その前 {b_from} ~ {b_to}"
 
     if cur_wr is None or prev_wr is None:
         return _empty_response(
             f"比較に十分なデータがありません (直近 8 週: 試合 {cur_m}/ラリー {cur_r}, "
-            f"その前 8 週: 試合 {prev_m}/ラリー {prev_r}, 各期間で最低 {MIN_RALLIES} ラリー必要)。"
+            f"その前 8 週: 試合 {prev_m}/ラリー {prev_r}, 各期間で最低 {MIN_RALLIES} ラリー必要)。",
+            period=period,
         )
     diff_pp = (cur_wr - prev_wr) * 100
     sign = "+" if diff_pp >= 0 else ""
     if ctx.role == "player":
-        # 伸びしろ表現
+        # 選手には生の勝率・差を出さない (製品ルール)。集計量のみを中立に示す
         text = (
-            f"直近 8 週のラリー勝率 {round(cur_wr * 100, 1)}% は、その前 8 週 ({round(prev_wr * 100, 1)}%) と"
-            f"比較して {sign}{diff_pp:.1f}pp。試合 {cur_m} 件 / ラリー {cur_r} 件が集計対象です。"
+            f"直近 8 週は試合 {cur_m} 件 / ラリー {cur_r} 件、"
+            f"その前 8 週は試合 {prev_m} 件 / ラリー {prev_r} 件が集計対象です。"
+            "試合を振り返るときの目安にしてください。"
         )
     else:
         text = (
-            f"直近 8 週 vs その前 8 週: ラリー勝率 {round(cur_wr * 100, 1)}% → "
-            f"{round(prev_wr * 100, 1)}% ({sign}{diff_pp:.1f}pp)。"
+            f"直近 8 週 vs その前 8 週: ラリー勝率 {round(cur_wr * 100, 1)}% "
+            f"(その前 {round(prev_wr * 100, 1)}%、差 {sign}{diff_pp:.1f}pp)。"
             f"サンプル: 直近 8 週 試合 {cur_m}/ラリー {cur_r}, その前 8 週 試合 {prev_m}/ラリー {prev_r}。"
         )
     return _ok_response(AdviceCard(
         text=text,
         basis={
             "source": "growth_8w_vs_8w",
+            "period": period,
             "sample_size": {
                 "current": {"matches": cur_m, "rallies": cur_r},
                 "previous": {"matches": prev_m, "rallies": prev_r},

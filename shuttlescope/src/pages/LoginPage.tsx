@@ -2,10 +2,13 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 import { useAuth } from '@/hooks/useAuth'
+import { PASSWORD_RESET_ENABLED } from '@/utils/passwordReset'
 import type { AuthSession } from '@/hooks/useAuth'
 import { UserRole } from '@/types'
 import { MIcon } from '@/components/common/MIcon'
 import { publicSiteUrl } from '@/utils/publicUrl'
+import { ApiTimeoutError, fetchWithTimeout } from '@/api/client'
+import { ERROR_CODE_HEADER, shouldRestartMfaLogin } from '@/utils/authErrorCode'
 
 const BASE_URL = (() => {
   if (
@@ -37,24 +40,24 @@ function _errSession(msg: string): AuthSession & { error: string } {
 
 async function apiLogin(body: object): Promise<LoginResult> {
   try {
-    const res = await fetch(`${BASE_URL}/auth/login`, {
+    const res = await fetchWithTimeout(`${BASE_URL}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     })
     if (!res.ok) {
-      let errorMessage = 'ログインに失敗しました'
+      let errorMessage = i18n.t('auto.LoginPage.error_login_failed')
       try {
         const data = await res.json()
         const detail = typeof data?.detail === 'string' ? data.detail : ''
         if (res.status === 401) {
-          errorMessage = 'IDもしくはパスワードが違います'
+          errorMessage = i18n.t('auto.LoginPage.error_invalid_credentials')
         } else if (detail) {
           errorMessage = detail
         }
       } catch {
         if (res.status === 401) {
-          errorMessage = 'IDもしくはパスワードが違います'
+          errorMessage = i18n.t('auto.LoginPage.error_invalid_credentials')
         }
       }
       return _errSession(errorMessage)
@@ -85,7 +88,7 @@ async function apiMfaLogin(
   mfaToken: string,
   code: string,
   useRecovery = false,
-): Promise<AuthSession & { error?: string }> {
+): Promise<AuthSession & { error?: string; restartLogin?: boolean }> {
   try {
     // /api/auth/mfa/login は _GLOBAL_AUTH_EXEMPT に含まれないため
     // GlobalAuthMiddleware が Authorization: Bearer 必須。mfa_token は
@@ -93,7 +96,7 @@ async function apiMfaLogin(
     // /api/auth/mfa/* path だけ mfa_pending role を通す)。
     // body にも mfa_token を残すのはハンドラ側 verify_token が同 token を
     // 期待しているため (重複だが冗長性で安全側)。
-    const res = await fetch(`${BASE_URL}/auth/mfa/login`, {
+    const res = await fetchWithTimeout(`${BASE_URL}/auth/mfa/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -106,12 +109,15 @@ async function apiMfaLogin(
       ),
     })
     if (!res.ok) {
-      let msg = 'MFA 認証に失敗しました'
+      let msg = i18n.t('auto.LoginPage.error_mfa_failed')
       try {
         const data = await res.json()
         if (typeof data?.detail === 'string') msg = data.detail
       } catch { /* noop */ }
-      return _errSession(msg)
+      return {
+        ..._errSession(msg),
+        restartLogin: shouldRestartMfaLogin(res.status, res.headers.get(ERROR_CODE_HEADER)),
+      }
     }
     const data = await res.json()
     return {
@@ -125,6 +131,9 @@ async function apiMfaLogin(
       pageAccess: (data.page_access ?? []) as string[],
     }
   } catch (e) {
+    if (e instanceof ApiTimeoutError) {
+      return _errSession(i18n.t('auto.LoginPage.error_timeout'))
+    }
     return _errSession(String(e))
   }
 }
@@ -184,20 +193,34 @@ export function LoginPage({ onLogin }: Props) {
   const sessionExpired =
     typeof window !== 'undefined' &&
     (window.location.hash || '').includes('session_expired=1')
+  // パスワード変更直後 (全セッション失効済み) に戻ってきた場合の案内
+  const passwordChanged =
+    typeof window !== 'undefined' &&
+    (window.location.hash || '').includes('password_changed=1')
 
   useEffect(() => {
+    // 非同期の bootstrap-status 取得は、解決前にアンマウントされると
+    // teardown 済みの環境で setState が走り、jsdom では
+    // "ReferenceError: window is not defined" が未捕捉の Unhandled Rejection
+    // として立ち上がる(全件合格でも CI を落とす)。中断フラグで
+    // アンマウント後の setState を発生させない(エラーの握り潰しではない)。
+    let active = true
     fetchBootstrapStatus().then((status) => {
+      if (!active) return
       setBootstrapStatus(status)
     })
+    return () => {
+      active = false
+    }
   }, [])
 
   const handleLogin = async () => {
     if (!identifier.trim()) {
-      setError('ログインIDを入力してください')
+      setError(t('auto.LoginPage.error_identifier_required'))
       return
     }
     if (!password) {
-      setError('パスワードまたは PIN を入力してください')
+      setError(t('auto.LoginPage.error_password_required'))
       return
     }
 
@@ -219,6 +242,10 @@ export function LoginPage({ onLogin }: Props) {
     if (result.mfaRequired) {
       setMfaToken(result.mfaToken)
       setMfaCode('')
+      // 第 2 段では元のパスワードを使わない。保持すると MFA をキャンセルして
+      // 戻ったときに平文表示のまま再出現し得るので、ここで破棄する。
+      setPassword('')
+      setShowPassword(false)
       setError(null)
       return
     }
@@ -241,7 +268,7 @@ export function LoginPage({ onLogin }: Props) {
         return
       }
     } else if (!/^\d{6}$/.test(code)) {
-      setError('6 桁の数字を入力してください')
+      setError(t('auto.LoginPage.error_mfa_code_format'))
       return
     }
     setLoading(true)
@@ -249,12 +276,12 @@ export function LoginPage({ onLogin }: Props) {
     const result = await apiMfaLogin(mfaToken, code, useRecovery)
     setLoading(false)
     if (result.error || !result.token) {
-      setError(result.error || 'MFA 認証に失敗しました')
+      setError(result.error || t('auto.LoginPage.error_mfa_failed'))
       // mfa_token 自体が失効した場合のみ最初からやり直す。
       // 「認証コードが無効です」「リカバリコードが無効か…」でも巻き戻ると、
       // 打ち間違えるたびにパスワード入力からやり直しになってしまう。
-      if ((result.error || '').includes('MFAトークンが無効')
-          || (result.error || '').includes('期限切れ')) {
+      // 判定は表示文言ではなく HTTP status とエラーコードで行う。
+      if (result.restartLogin) {
         setMfaToken(null)
         setMfaCode('')
         setUseRecovery(false)
@@ -269,6 +296,9 @@ export function LoginPage({ onLogin }: Props) {
     setMfaToken(null)
     setMfaCode('')
     setUseRecovery(false)
+    // 認証主体のやり直し操作なので、前回入力した credential を残さない。
+    setPassword('')
+    setShowPassword(false)
     setError(null)
   }
 
@@ -308,8 +338,17 @@ export function LoginPage({ onLogin }: Props) {
             }`}
           >
             {bootstrapStatus.bootstrap_configured
-              ? '初回管理者アカウントは、設定済みのログインIDとパスワードで作成されます。'
-              : '初回管理者パスワードが未設定です。BOOTSTRAP_ADMIN_PASSWORD を backend 環境変数に設定してください。'}
+              ? t('auto.LoginPage.bootstrap_pending')
+              : t('auto.LoginPage.bootstrap_not_ready')}
+          </div>
+        )}
+
+        {passwordChanged && !sessionExpired && (
+          <div
+            role="status"
+            className="mb-4 px-4 py-3 rounded-ss-md text-sm border bg-[var(--ss-success-bg)] border-[var(--ss-success-border)] text-[var(--ss-success-text)]"
+          >
+            {t('auth.password_change.relogin')}
           </div>
         )}
 
@@ -327,7 +366,7 @@ export function LoginPage({ onLogin }: Props) {
                 : t('auto.LoginPage.mfa_prompt')}
             </div>
             <div>
-              <label className={`block text-sm font-medium mb-1 ${labelCls}`}>
+              <label id="login-mfa-code-label" className={`block text-sm font-medium mb-1 ${labelCls}`}>
                 {useRecovery
                   ? t('auto.LoginPage.mfa_recovery_label')
                   : t('auto.LoginPage.mfa_code_label')}
@@ -335,6 +374,7 @@ export function LoginPage({ onLogin }: Props) {
               {useRecovery ? (
                 <input
                   type="text"
+                  aria-labelledby="login-mfa-code-label"
                   autoComplete="one-time-code"
                   // 16 文字 + ハイフン 3 = 19
                   maxLength={19}
@@ -348,6 +388,7 @@ export function LoginPage({ onLogin }: Props) {
               ) : (
                 <input
                   type="text"
+                  aria-labelledby="login-mfa-code-label"
                   inputMode="numeric"
                   autoComplete="one-time-code"
                   pattern="[0-9]*"
@@ -400,8 +441,9 @@ export function LoginPage({ onLogin }: Props) {
         {!mfaToken && (
         <div className="space-y-4">
           <div>
-            <label className={`block text-sm font-medium mb-1 ${labelCls}`}>{t('auto.LoginPage.k1')}</label>
+            <label htmlFor="login-identifier" className={`block text-sm font-medium mb-1 ${labelCls}`}>{t('auto.LoginPage.k1')}</label>
             <input
+              id="login-identifier"
               type="text"
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
@@ -412,9 +454,10 @@ export function LoginPage({ onLogin }: Props) {
           </div>
 
           <div>
-            <label className={`block text-sm font-medium mb-1 ${labelCls}`}>{t('auto.LoginPage.password_pin')}</label>
+            <label htmlFor="login-password" className={`block text-sm font-medium mb-1 ${labelCls}`}>{t('auto.LoginPage.password_pin')}</label>
             <div className="relative">
               <input
+                id="login-password"
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -426,8 +469,12 @@ export function LoginPage({ onLogin }: Props) {
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
                 className="absolute inset-y-0 right-0 flex items-center px-3 text-[var(--ss-t3)] hover:text-[var(--ss-t2)] transition-colors duration-fast ease-out"
-                title={showPassword ? '非表示' : '表示'}
-                aria-label={showPassword ? 'パスワードを隠す' : 'パスワードを表示'}
+                title={showPassword ? t('auto.LoginPage.password_hide') : t('auto.LoginPage.password_show')}
+                aria-label={
+                  showPassword
+                    ? t('auto.LoginPage.password_hide_aria')
+                    : t('auto.LoginPage.password_show_aria')
+                }
               >
                 {showPassword ? <MIcon name="visibility_off" size={16} /> : <MIcon name="visibility" size={16} />}
               </button>
@@ -454,10 +501,16 @@ export function LoginPage({ onLogin }: Props) {
                className="text-[var(--ss-brand)] hover:text-[var(--ss-brand-hover)] hover:underline">
               {t('auth.register.title')}
             </a>
-            <a href="#/password/reset"
-               className="text-[var(--ss-t2)] hover:text-[var(--ss-t1)] hover:underline">
-              {t('auth.password_reset_request.title')}
-            </a>
+            {PASSWORD_RESET_ENABLED ? (
+              <a href="#/password/reset"
+                 className="text-[var(--ss-t2)] hover:text-[var(--ss-t1)] hover:underline">
+                {t('auth.password_reset_request.title')}
+              </a>
+            ) : (
+              <span className="text-[var(--ss-t3)]">
+                {t('auth.password_reset_request.disabled_message')}
+              </span>
+            )}
           </div>
         </div>
         )}

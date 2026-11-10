@@ -12,7 +12,7 @@
  *   - コート      (キャリブレーション起動)
  *   - キーボード   (legend 起動)
  */
-import { ReactNode, useState } from 'react'
+import { ReactNode, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { MIcon } from '@/components/common/MIcon'
 import { useAnnotationStore } from '@/store/annotationStore'
@@ -38,6 +38,9 @@ interface SettingsModePanelProps {
   /** モバイルでもショットタイルのキーヒントを表示する (BT keyboard 接続 iPad ベンチ用) */
   forceShowKeyHints?: boolean
   onSetForceShowKeyHints?: (v: boolean) => void
+  /** 簡易ショット入力モード (9 大分類) */
+  simpleShotMode?: boolean
+  onSetSimpleShotMode?: (v: boolean) => void
 }
 
 export function SettingsModePanel({
@@ -55,6 +58,8 @@ export function SettingsModePanel({
   onSetInitialServer,
   forceShowKeyHints,
   onSetForceShowKeyHints,
+  simpleShotMode,
+  onSetSimpleShotMode,
 }: SettingsModePanelProps) {
   const { t } = useTranslation()
   const flipMode = useAnnotationStore((s) => s.flipMode)
@@ -92,6 +97,12 @@ export function SettingsModePanel({
             on={!isBasicMode}
             onClick={onToggleAnnotationMode}
           />
+          <ToggleControl
+            label={t('annotator.ux.settings_simple_shots_label', { defaultValue: '簡易ショット入力（9 大分類）' })}
+            hint={t('annotator.ux.settings_simple_shots_hint', { defaultValue: 'スマッシュ等を細かく分けず、サーブ/ネット前/ドロップ/クリア/スマッシュ/ドライブ/ロブ/守備/その他 の 9 分類で入力。保存は従来の詳細分類の代表値。' })}
+            on={!!simpleShotMode}
+            onClick={() => onSetSimpleShotMode?.(!simpleShotMode)}
+          />
           <SegmentedControl
             label={t('annotator.ux.settings_step_focus_label')}
             hint={t('annotator.ux.settings_step_focus_hint')}
@@ -111,7 +122,7 @@ export function SettingsModePanel({
           alwaysOpen={isWide}
         >
           <SegmentedControl
-            label={t('annotator.ux.settings_section_flip')}
+            label={t('annotator.ux.settings_flip_label')}
             hint={t('annotator.ux.settings_flip_hint')}
             value={flipMode}
             options={[
@@ -257,6 +268,8 @@ function ToggleControl({
   return (
     <button
       type="button"
+      role="switch"
+      aria-checked={on}
       onClick={onClick}
       className="w-full flex items-center justify-between gap-2 px-2 py-2 rounded-ss-md bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-left text-[var(--ss-t1)]"
     >
@@ -293,14 +306,22 @@ function SegmentedControl({
   onChange: (v: string) => void
   disabled?: boolean
 }) {
+  const labelId = useId()
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-[11px] text-[var(--ss-t3)]">{label}</span>
-      <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
+      <span id={labelId} className="text-[11px] text-[var(--ss-t3)]">{label}</span>
+      <div
+        role="radiogroup"
+        aria-labelledby={labelId}
+        className="grid gap-1"
+        style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
+      >
         {options.map((o) => (
           <button
             key={o.value}
             type="button"
+            role="radio"
+            aria-checked={value === o.value}
             onClick={() => onChange(o.value)}
             disabled={disabled}
             className={

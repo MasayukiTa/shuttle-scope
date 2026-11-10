@@ -30,14 +30,16 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
-from backend.db.models import AccessLog, Player, User
+from backend.db.models import AccessLog, Player, Team, User
 from backend.utils.access_log import log_access
 from backend.utils.auth import get_auth
+from backend.utils.text_sanitize import reject_ctrl_and_bidi
 from backend.utils.email_token import (
     issue_email_verification_token,
     consume_email_verification_token,
     issue_password_reset_token,
     consume_password_reset_token,
+    peek_password_reset_token,
     issue_invitation_token,
     consume_invitation_token,
     peek_invitation_token,
@@ -214,6 +216,14 @@ def _client_ip(request: Request) -> str:
     return trusted_client_ip(request, default="")[:64]
 
 
+def _app_link(path: str, token: str) -> str:
+    """Link to a SPA page from an email. The SPA uses HashRouter, so the route and its
+    query string must sit after the '#'. Without it the page is served at '/' and the
+    token never reaches the target page."""
+    from urllib.parse import quote
+    return f"{_app_base_url()}/#{path}?token={quote(token, safe='')}"
+
+
 def _app_base_url() -> str:
     try:
         from backend.config import settings
@@ -230,15 +240,20 @@ def _hash_password_or_422(password: str) -> str:
     return _hash_password(password)
 
 
-def _send_email_safe(to: str, subject: str, body: str, tag: str) -> None:
-    """例外を吸収してメール送信する。失敗してもユーザーフローは止めない。"""
+def _send_email_safe(to: str, subject: str, body: str, tag: str) -> bool:
+    """例外を吸収してメール送信する。失敗してもユーザーフローは止めない。
+
+    実際に配送できたかどうかを bool で返す (成功 True / 失敗 False)。
+    呼び出し元が「招待レコードは作成できたがメール配送は失敗」を区別できるようにする。
+    """
     try:
         from backend.services.mailer import get_mailer
         from backend.services.mailer.base import MailMessage
         mailer = get_mailer()
-        mailer.send(MailMessage(to=[to], subject=subject, text_body=body, tags=[tag]))
+        return bool(mailer.send(MailMessage(to=[to], subject=subject, text_body=body, tags=[tag])))
     except Exception as exc:
         logger.error("[auth_email] mail send failed (%s): %s", tag, exc)
+        return False
 
 
 def _notify_admin_webhook(content: str) -> str:
@@ -295,6 +310,12 @@ def _registration_enabled() -> bool:
         return os.environ.get("SS_REGISTRATION_ENABLED", "0") == "1"
 
 
+_PASSWORD_RESET_DISABLED_DETAIL = (
+    "現在、パスワードリセットは受付を停止しております。"
+    "管理者までお問い合わせください。"
+)
+
+
 def _password_reset_enabled() -> bool:
     try:
         from backend.config import settings
@@ -323,6 +344,9 @@ def register(body: RegisterRequest, request: Request, db: Session = Depends(get_
                 "ご利用希望の方は shuttle-scope.com の問い合わせフォームよりご連絡ください。"
             ),
         )
+    # display_name は後段で Player.name にそのまま写される (ensure_player_record)。
+    # 不可視 / 双方向制御文字による表示偽装をここで 422 にする。
+    reject_ctrl_and_bidi(body.display_name, "display_name", max_len=100)
     ip = _client_ip(request)
     # M-A レート制限: IP 単位 5/15min + email 単位 3/24h
     _enforce_rate_limit(
@@ -448,7 +472,7 @@ def resend_verification(request: Request, db: Session = Depends(get_db)):
     if user.email_verified_at is not None:
         return {"success": True, "data": {"already_verified": True}}
     token = issue_email_verification_token(db, user.id, user.email)
-    verify_url = f"{_app_base_url()}/verify?token={token}"
+    verify_url = _app_link("/verify", token)
     _send_email_safe(
         user.email,
         "ShuttleScope メールアドレス確認 (再送)",
@@ -472,13 +496,7 @@ def request_password_reset(body: PasswordResetRequest, request: Request,
     SS_PASSWORD_RESET_ENABLED=1 が必須。デフォルト無効 (503)。
     """
     if not _password_reset_enabled():
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "現在、パスワードリセットは受付を停止しております。"
-                "管理者までお問い合わせください。"
-            ),
-        )
+        raise HTTPException(status_code=503, detail=_PASSWORD_RESET_DISABLED_DETAIL)
     ip = _client_ip(request)
     # M-A レート制限: IP 単位 5/15min + email 単位 3/1h
     _enforce_rate_limit(
@@ -499,7 +517,7 @@ def request_password_reset(body: PasswordResetRequest, request: Request,
     user = db.query(User).filter(User.email == body.email).first()
     if user is not None:
         token = issue_password_reset_token(db, user.id, requested_ip=ip)
-        reset_url = f"{_app_base_url()}/password/reset-confirm?token={token}"
+        reset_url = _app_link("/password/reset-confirm", token)
         # background_tasks で送信を非同期化し、応答時間を user の存在に依存させない
         if background_tasks is not None:
             background_tasks.add_task(
@@ -554,7 +572,13 @@ def request_password_reset(body: PasswordResetRequest, request: Request,
 @router.post("/auth/password/reset")
 def reset_password(body: PasswordResetConfirm, request: Request,
                    db: Session = Depends(get_db)):
-    """token + 新 password で実リセット。"""
+    """token + 新 password で実リセット。
+
+    申請 (request_reset) と同じ SS_PASSWORD_RESET_ENABLED で止める。
+    申請だけ止めて確定が通る状態だと、機能が止まっているのか否かが利用者に分からない。
+    """
+    if not _password_reset_enabled():
+        raise HTTPException(status_code=503, detail=_PASSWORD_RESET_DISABLED_DETAIL)
     # Round 258 R24 P1 fix (R24 P1): 旧コードは `request_reset` (送信側) のみに
     # rate limit をかけていたが、`reset_password` (consume 側) は無制限だった。
     # 攻撃者は token 文字列 (≥10 chars base64) を brute-force し放題で、
@@ -572,16 +596,20 @@ def reset_password(body: PasswordResetConfirm, request: Request,
             status_code=429,
             detail="システム全体のリセット試行回数が上限に達しました。",
         )
-    user_id = consume_password_reset_token(db, body.token)
+    # 入力エラー (弱いパスワード等) で一度きりのトークンを使い切らせないよう、
+    # 強度検証をトークンの消費より先に行う。UI とスキーマが保証するのは長さと
+    # 確認欄の一致だけで、文字種 3 区分以上などはここで初めて判定される。
+    from backend.routers.auth import _validate_password_strength
+
+    _validate_password_strength(body.new_password)
+    # 消費せずに有効性だけ確認する (消費は資格情報の更新と同じ commit で行う)。
+    user_id = peek_password_reset_token(db, body.token)
     if user_id is None:
         raise HTTPException(status_code=400, detail="トークンが無効または期限切れです")
     user = db.get(User, user_id)
     if user is None:
         raise HTTPException(status_code=404, detail="ユーザーが見つかりません")
-    user.hashed_credential = _hash_password_or_422(body.new_password)
-    user.failed_attempts = 0
-    user.locked_until = None
-    db.commit()
+    new_hash = _hash_password_or_422(body.new_password)
 
     # 旧実装はここでセッションを失効させていなかった。兄弟の
     # `change_password` (auth.py:1417) と管理者リセット (:1447) は両方やっている。
@@ -589,9 +617,21 @@ def reset_password(body: PasswordResetConfirm, request: Request,
     # access token は期限まで生き、refresh token は 7 日生きて回り続ける。**
     # 「パスワードを変える」は乗っ取り対応の標準手段なので、それが対応に
     # なっていないのは効き方が悪い。同じ処理を通す。
+    #
+    # 失効は別セッションで確定するので、資格情報を commit した後に行うと、失効が
+    # 失敗した時に「500 なのにパスワードは変わり、トークンも使用済み」になる。
+    # 失効を先に済ませ、トークン消費・資格情報・他トークン失効は 1 回の commit で確定する。
     from backend.utils.jwt_utils import revoke_all_sessions_or_500
 
     revoke_all_sessions_or_500(user.id, "password reset")
+
+    if consume_password_reset_token(db, body.token, commit=False) is None:
+        # peek と消費の間に並行リクエストが先に消費した / 期限が切れた
+        db.rollback()
+        raise HTTPException(status_code=400, detail="トークンが無効または期限切れです")
+    user.hashed_credential = new_hash
+    user.failed_attempts = 0
+    user.locked_until = None
 
     # セッションだけ失効させても、**他に発行済みのリセットトークンは生きている**。
     # リセット要求は誰でも出せるので、乗っ取り犯が先に 1 通取っておけば、
@@ -599,7 +639,10 @@ def reset_password(body: PasswordResetConfirm, request: Request,
     # パスワードを変えた時点で他の鍵も落とす。
     from backend.utils.email_token import invalidate_outstanding_password_reset_tokens
 
-    revoked_tokens = invalidate_outstanding_password_reset_tokens(db, user_id)
+    revoked_tokens = invalidate_outstanding_password_reset_tokens(
+        db, user_id, commit=False
+    )
+    db.commit()
 
     log_access(db, "password_reset_completed", user_id=user_id, ip_addr=_client_ip(request),
                details={"other_reset_tokens_invalidated": revoked_tokens})
@@ -626,8 +669,8 @@ def create_invitation(body: InvitationCreateRequest, request: Request,
         db, body.email, body.role, ctx.user_id,
         team_id=(body.team_id if body.team_id is not None else ctx.team_id),
     )
-    accept_url = f"{_app_base_url()}/invite?token={token}"
-    _send_email_safe(
+    accept_url = _app_link("/invite", token)
+    email_sent = _send_email_safe(
         body.email,
         "ShuttleScope への招待",
         f"ShuttleScope に招待されました ({body.role}).\n\n"
@@ -636,8 +679,13 @@ def create_invitation(body: InvitationCreateRequest, request: Request,
         tag="invitation",
     )
     log_access(db, "invitation_created", user_id=ctx.user_id,
-               details={"email_domain": body.email.split("@")[-1], "role": body.role})
-    return {"success": True, "data": {"sent": True}}
+               details={"email_domain": body.email.split("@")[-1], "role": body.role,
+                        "email_sent": email_sent})
+    # 招待レコードの生成とメール配送の成否を分離して返す。
+    # メールが失敗しても token 自体は残るため、呼び出し側は
+    # email_sent=false を見て「リンクを手動共有」等の表示に切り替えられる。
+    # sent は後方互換のため残すが、常に True ではなく実際の配送結果を反映する。
+    return {"success": True, "data": {"invitation_created": True, "email_sent": email_sent, "sent": email_sent}}
 
 
 @router.get("/auth/invitation/peek")
@@ -660,13 +708,25 @@ def peek_invitation(token: str = Query(..., min_length=10, max_length=200),
     rec = peek_invitation_token(db, token)
     if rec is None:
         raise HTTPException(status_code=400, detail="トークンが無効または期限切れです")
+    # 受諾する人が「どのチームの招待か」を確認できるよう、チーム表示名を返す。
+    # 招待トークンの持ち主に見せてよいのは名前だけ (メンバーや内部IDは返さない)。
+    team_name = None
+    if rec.team_id is not None:
+        team = (
+            db.query(Team)
+            .filter(Team.id == rec.team_id, Team.deleted_at.is_(None))
+            .first()
+        )
+        team_name = team.name if team is not None else None
     return {
         "success": True,
         "data": {
             "email": rec.email,
             "role": rec.role,
             "team_id": rec.team_id,
-            "expires_at": rec.expires_at.isoformat(),
+            "team_name": team_name,
+            # DB は naive な UTC を持つ。"Z" を付けないとブラウザが端末のローカル時刻と読む。
+            "expires_at": rec.expires_at.isoformat() + "Z",
         },
     }
 
@@ -675,6 +735,7 @@ def peek_invitation(token: str = Query(..., min_length=10, max_length=200),
 def accept_invitation(body: InvitationAcceptRequest, request: Request,
                       db: Session = Depends(get_db)):
     """招待トークンで新規アカウントを作成する。"""
+    reject_ctrl_and_bidi(body.display_name, "display_name", max_len=100)
     if not _USERNAME_RE.match(body.username):
         raise HTTPException(status_code=422, detail="username の形式が不正です")
 
@@ -705,10 +766,17 @@ def accept_invitation(body: InvitationAcceptRequest, request: Request,
     # 招待の role が player なら、register と同じく Player を作って紐付ける。
     from backend.routers.auth import ensure_player_record
     ensure_player_record(db, user)
+    # token の atomic claim を、ユーザ作成の **commit 前に** 同じトランザクションで行う。
+    # peek は読み取りだけなので、peek から ここまでの間に期限切れ / 別リクエストでの
+    # 消費が起きうる。claim に失敗したら作成したユーザごと rollback して中止する
+    # (single-use / expiry を「作成してよいか」の認可 gate にする)。
+    db.flush()  # user.id を確定 (consumed_by_user_id に必要)。まだ commit しない。
+    if consume_invitation_token(
+        db, body.token, accepted_by_user_id=user.id, commit=False
+    ) is None:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="トークンが無効または期限切れです")
     db.commit()
-
-    # token 消費
-    consume_invitation_token(db, body.token, accepted_by_user_id=user.id)
     log_access(db, "invitation_accepted", user_id=user.id,
                details={"role": rec.role, "inviter_user_id": rec.inviter_user_id})
     return {"success": True, "data": {"user_id": user.id, "role": user.role}}
@@ -773,12 +841,33 @@ def list_pending_users(request: Request, db: Session = Depends(get_db)):
                 row.created_at.isoformat() if row.created_at else None,
             )
 
+    # 同じメールで問い合わせていれば、その希望を候補として添える（自動付与はしない）。
+    from backend.services.inquiry_link import inquiries_by_email, normalize_email, requested_role_from_text
+
+    inquiries = inquiries_by_email(
+        db, [e for e in (normalize_email(getattr(u, "email", None)) for u in users) if e]
+    )
+
+    def _inquiry_hint(u: User) -> Optional[dict]:
+        rows = inquiries.get(normalize_email(getattr(u, "email", None)) or "", [])
+        if not rows:
+            return None
+        latest = rows[0]
+        return {
+            "id": latest.id,
+            "count": len(rows),
+            "role_text": latest.role,
+            "requested_role": requested_role_from_text(latest.role),
+            "created_at": latest.created_at.isoformat() if latest.created_at else None,
+        }
+
     return {
         "success": True,
         "data": [
             {
                 "id": u.id,
                 "username": u.username,
+                "inquiry": _inquiry_hint(u),
                 "email": getattr(u, "email", None),
                 "email_verified": bool(getattr(u, "email_verified_at", None)),
                 "display_name": u.display_name,
@@ -832,9 +921,14 @@ def approve_pending_user(
     # - player のまま承認: register で作った Player をそのまま使う (無ければ作る)
     # - coach / analyst として承認: register が作った Player は誰でもない行に
     #   なるので、まだ何からも参照されていなければ外して消す
-    from backend.routers.auth import ensure_player_record, release_provisional_player
+    from backend.routers.auth import (
+        confirm_provisional_player,
+        ensure_player_record,
+        release_provisional_player,
+    )
     if user.role == "player":
         ensure_player_record(db, user)
+        confirm_provisional_player(db, user)
         if user.player_id is not None and user.team_id is not None:
             p = db.get(Player, user.player_id)
             if p is not None and p.team_id is None:

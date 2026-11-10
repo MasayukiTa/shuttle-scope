@@ -19,8 +19,15 @@ import random
 from dataclasses import dataclass, field
 from typing import Any
 
+import numpy as np
+
 BOOTSTRAP_N = 300  # CI 計算用リサンプル回数（速度とのトレードオフ）
 MIN_N_CI = 5       # CI を計算する最低サンプル数
+
+# ブートストラップ用の乱数生成器。固定シードで実行間の再現性を確保する
+# (旧 random.choices 実装はシード非固定だったが、リサンプル数 300 で平均を
+#  取るため CI はほぼ安定しており、固定シード化による実害は無い)。
+_BOOT_SEED = 12345
 
 
 def _bootstrap_mean_ci(
@@ -36,18 +43,28 @@ def _bootstrap_mean_ci(
     「区間が出ている」こと自体が根拠の主張になる以上、根拠が無いときは
     数字を出さないのが正しい。CLAUDE.md の
     「データが足りないならそう言う。確からしさを装わない」に従う。
+
+    実装メモ (性能):
+      旧実装は純 Python の `random.choices` を n_bootstrap 回ループし、
+      大きな状態セルでは 1 リクエストで 2,600 万回規模の乱数抽選に達して
+      shot_influence_v2 だけで ~30s かかっていた。numpy のインデックス
+      行列で一括リサンプルするようベクトル化し、パーセンタイル順位は
+      旧実装と同一 (int(n_bootstrap*0.025) / int(n_bootstrap*0.975)) に
+      保つことで出力互換を維持する。
     """
     if len(values) < MIN_N_CI:
         return (None, None)
     n = len(values)
-    boot_means = []
-    for _ in range(n_bootstrap):
-        sample = random.choices(values, k=n)
-        boot_means.append(sum(sample) / n)
+    arr = np.asarray(values, dtype=np.float64)
+    # (n_bootstrap, n) のリサンプルインデックスを一括生成し、行ごとに平均を取る
+    # 呼び出しごとに固定シードで作り直す。共有の生成器だと呼び出し順で値が変わり、
+    # 視点違いの 2 回の呼び出しで区間が食い違う (対称性試験が失敗した原因)。
+    idx = np.random.default_rng(_BOOT_SEED).integers(0, n, size=(n_bootstrap, n))
+    boot_means = arr[idx].mean(axis=1)
     boot_means.sort()
     lo = int(n_bootstrap * 0.025)
     hi = int(n_bootstrap * 0.975)
-    return (round(boot_means[lo], 4), round(boot_means[hi], 4))
+    return (round(float(boot_means[lo]), 4), round(float(boot_means[hi]), 4))
 
 from backend.analysis.state_spec import build_rally_state, RallyState
 from backend.analysis.epv_state_model import compute_rally_state_epv
@@ -122,7 +139,10 @@ def compute_shot_influence_v2(
         set_num_by_set=set_num_by_set,
     )
     state_table = epv_result.get("state_table", [])
-    global_win_rate: float = epv_result.get("global_win_rate", 0.5)
+    global_win_rate = epv_result.get("global_win_rate")
+    if global_win_rate is None:
+        # ラリー 0 件: 状態表も空で出力に現れない内部基準値のみ
+        global_win_rate = 0.5
 
     # state_key → epv マップ
     # state_table の各行は state 単位の勝率 (win_rate) を持つ。

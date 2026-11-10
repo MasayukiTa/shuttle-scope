@@ -11,8 +11,13 @@
  * 完了で 2 つの Stroke を enqueue:
  *   - stroke_num=1, shot_type='serve', player=rally.server,
  *     hit_zone=serve_hit, land_zone=serve_land
- *   - stroke_num=2, shot_type='__final_pending', player=rally.winner,
+ *   - stroke_num=9999, shot_type='__final_pending', player=最後に打った人,
  *     hit_zone=final_hit, land_zone=final_land
+ *   最後に打った人は勝者とは限らない (相手のミスで終わるラリーは敗者が最後に打つ)。
+ *   入力者が「決めた / 相手のミス」を選び、勝者から推定しない。
+ *
+ * サーブ 1 打でラリーが終わる場合 (サービスエース等) は、サーブ着地の入力後に
+ * 「サーブで終了」を選ぶと serve 1 件 + rally_length=1 だけを保存する (最終打は別 stroke にしない)。
  *
  * Pass 3 が後で intermediate stroke を挿入する際に stroke_num を再採番する。
  *
@@ -25,8 +30,13 @@
  */
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { MIcon } from '@/components/common/MIcon'
 import { AnnotateOverlay, ZoneCode } from './AnnotateOverlay'
+import type { Quad, CourtHalf } from '@/utils/courtHomography'
 import { enqueue } from '@/utils/mobileAnnotateQueue'
+import { finalHitterFor, type FinalShotOutcome } from '@/utils/mobileAnnotateRallies'
+import { serveOnlyRallyPayload } from '@/utils/mobileAnnotatePass2'
+import { resolveHitter, slotsOfTeam, type HitterSlot } from '@/utils/mobileAnnotateDoubles'
 
 type Step = 'serve_hit' | 'serve_land' | 'final_hit' | 'final_land'
 const STEP_ORDER: Step[] = ['serve_hit', 'serve_land', 'final_hit', 'final_land']
@@ -41,15 +51,33 @@ interface RallyTarget {
 
 interface Props {
   rally: RallyTarget
+  /** ダブルス: サーバ・最終打者を個人 slot (partner を含む) で選ばせて保存する */
+  doubles?: boolean
+  /**
+   * 保存済みコート校正 (先頭 4 隅)。渡すと AnnotateOverlay が撮影方向に合わせた
+   * タップ判定を行う。null / 未指定のときは従来の固定枠で動く。
+   */
+  courtQuad?: Quad | null
+  /** 校正を使うとき、入力片面が画面の near/far どちらに写っているか。既定 'near'。 */
+  courtHalf?: CourtHalf
+  /** 「動画に戻って校正する」導線 (未校正バナーから呼ぶ)。未指定なら案内を出さない。 */
+  onNeedCalibration?: () => void
   onCompleted: () => void
   onCancel: () => void
 }
 
-export function Pass2ServeFinal({ rally, onCompleted, onCancel }: Props) {
+export function Pass2ServeFinal({ rally, doubles = false, courtQuad = null, courtHalf = 'near', onNeedCalibration, onCompleted, onCancel }: Props) {
   const { t } = useTranslation()
+  const [serveSlot, setServeSlot] = useState<HitterSlot | null>(null)
+  const [finalSlot, setFinalSlot] = useState<HitterSlot | null>(null)
+  const [needSlot, setNeedSlot] = useState(false)
   const [stepIdx, setStepIdx] = useState(0)
   const [zones, setZones] = useState<Partial<Record<Step, ZoneCode>>>({})
   const [submitting, setSubmitting] = useState(false)
+  // enqueue (送信キューへの積み込み) が失敗したときのエラー文言。空なら非表示 (監査 #623)。
+  const [enqueueError, setEnqueueError] = useState<string>('')
+  const [outcome, setOutcome] = useState<FinalShotOutcome | null>(null)
+  const [needOutcome, setNeedOutcome] = useState(false)
   const step = STEP_ORDER[stepIdx]
   // 各 step のプロンプト文。t() はコンポーネント内のみで参照する規約。
   const STEP_PROMPT = useMemo<Record<Step, string>>(() => ({
@@ -59,7 +87,27 @@ export function Pass2ServeFinal({ rally, onCompleted, onCancel }: Props) {
     final_land: t('auto.Pass2ServeFinal.prompt_final_land'),
   }), [t])
 
+  // 保存する打球者 (ダブルスは選択必須)。最終打者のチームは「決めた/相手のミス」で決まる。
+  const finalTeam = outcome ? finalHitterFor(rally, outcome) : null
+  const serveHitter = resolveHitter(doubles, rally.server, serveSlot)
+  const finalHitter = finalTeam ? resolveHitter(doubles, finalTeam, finalSlot) : null
+
   const handleCommit = async (zone: ZoneCode) => {
+    // 最終打の入力に進む前に、ラリーの終わり方を選んでもらう (勝者から推定しない)
+    if (stepIdx >= 2 && !outcome) {
+      setNeedOutcome(true)
+      return
+    }
+    // ダブルスは実際の打球者 (主選手/パートナー) を選ばせる。A/B に潰すと誤帰属する。
+    if (stepIdx < 2 && !serveHitter) {
+      setNeedSlot(true)
+      return
+    }
+    if (stepIdx >= 2 && !finalHitter) {
+      setNeedSlot(true)
+      return
+    }
+    setNeedSlot(false)
     const next = { ...zones, [step]: zone }
     setZones(next)
     if (stepIdx < STEP_ORDER.length - 1) {
@@ -68,6 +116,7 @@ export function Pass2ServeFinal({ rally, onCompleted, onCancel }: Props) {
     }
     // 4 step 全部揃った → 2 stroke を enqueue
     setSubmitting(true)
+    setEnqueueError('')
     try {
       // backend POST /api/strokes は rally_id を QUERY PARAM で受ける。
       // body には StrokeData (extra='forbid') のフィールドのみ。
@@ -75,19 +124,55 @@ export function Pass2ServeFinal({ rally, onCompleted, onCancel }: Props) {
       // renumber する余地を持たせる。
       await enqueue('POST /api/strokes?rally_id=:rally_id', {
         stroke_num: 1,
-        player: rally.server,
+        player: serveHitter as HitterSlot,
         shot_type: 'serve',
         hit_zone: next.serve_hit,
         land_zone: next.serve_land,
+        // 人が画面で指定した入力 (未指定だと分析側の由来集計で全て unknown になる)
+        source_method: 'manual',
+        hit_zone_source: 'manual',
       }, { rally_id: rally.id })
       await enqueue('POST /api/strokes?rally_id=:rally_id', {
         stroke_num: 9999,            // sentinel: 最後尾
-        player: rally.winner,
+        // outcome は final_hit の確定時に必須にしてあるので、ここで未選択にはならない
+        player: finalHitter as HitterSlot,
         shot_type: '__final_pending', // Pass 3 で更新
         hit_zone: next.final_hit,
         land_zone: next.final_land,
+        source_method: 'manual',
+        hit_zone_source: 'manual',
       }, { rally_id: rally.id })
       onCompleted()
+    } catch (e: unknown) {
+      // enqueue が投げた = この入力はローカルにも積めていない。onCompleted を呼ばず
+      // (= 保存済みに見せず)、ユーザーに失敗を伝えて再入力を促す (監査 #623)。
+      const detail = e instanceof Error && e.message ? e.message : String(e)
+      setEnqueueError(`${t('auto.Pass2ServeFinal.enqueue_failed')} (${detail})`.slice(0, 200))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // サーブ 1 打でラリーが終わる場合 (サービスエース等): 最終打はサーブ自身。
+  // 別 stroke を作らず serve 1 件 + rally_length=1 だけを保存する。
+  const handleServeOnly = async () => {
+    if (submitting || !zones.serve_hit || !zones.serve_land) return
+    if (!serveHitter) {
+      setNeedSlot(true)
+      return
+    }
+    setSubmitting(true)
+    setEnqueueError('')
+    try {
+      const { stroke, rallyLength } = serveOnlyRallyPayload(rally, zones, serveHitter)
+      await enqueue('POST /api/strokes?rally_id=:rally_id', stroke, { rally_id: rally.id })
+      await enqueue('PUT /api/rallies/:id', { rally_length: rallyLength }, { id: rally.id })
+      onCompleted()
+    } catch (e: unknown) {
+      // enqueue が投げた = この入力はローカルにも積めていない。onCompleted を呼ばず
+      // (= 保存済みに見せず)、ユーザーに失敗を伝えて再入力を促す (監査 #623)。
+      const detail = e instanceof Error && e.message ? e.message : String(e)
+      setEnqueueError(`${t('auto.Pass2ServeFinal.enqueue_failed')} (${detail})`.slice(0, 200))
     } finally {
       setSubmitting(false)
     }
@@ -95,6 +180,23 @@ export function Pass2ServeFinal({ rally, onCompleted, onCancel }: Props) {
 
   return (
     <div className="absolute inset-0 bg-black/80 flex flex-col">
+      {/* enqueue 失敗バナー: 入力がキューに積めず静かに失われるのを防ぐ (監査 #623) */}
+      {enqueueError && (
+        <div
+          role="alert"
+          className="px-3 py-2 bg-red-900/90 text-red-100 text-xs flex items-center gap-2 border-b border-red-700"
+        >
+          <MIcon name="error" size={14} />
+          <span className="flex-1">{enqueueError}</span>
+          <button
+            type="button"
+            onClick={() => setEnqueueError('')}
+            className="px-2 py-1 rounded bg-red-800 text-red-50"
+          >
+            {t('auto.Pass2ServeFinal.dismiss')}
+          </button>
+        </div>
+      )}
       {/* 上部: 進捗ドット + step 名 */}
       <div className="bg-black/90 px-3 py-2 flex items-center gap-3 border-b border-gray-800 text-xs">
         <div className="text-yellow-200 font-bold">
@@ -124,9 +226,92 @@ export function Pass2ServeFinal({ rally, onCompleted, onCancel }: Props) {
         </button>
       </div>
 
+      {doubles && (stepIdx < 2 || finalTeam) && (
+        <div
+          className="bg-black/90 px-3 py-1.5 flex items-center gap-2 border-b border-gray-800 text-xs text-white"
+          role="radiogroup"
+          aria-label={stepIdx < 2 ? t('auto.Pass2ServeFinal.slot_serve_label') : t('auto.Pass2ServeFinal.slot_final_label')}
+        >
+          <span className={needSlot ? 'text-red-300 font-bold' : ''}>
+            {stepIdx < 2 ? t('auto.Pass2ServeFinal.slot_serve_label') : t('auto.Pass2ServeFinal.slot_final_label')}
+          </span>
+          {slotsOfTeam(stepIdx < 2 ? rally.server : (finalTeam as 'player_a' | 'player_b')).map((slot) => {
+            const current = stepIdx < 2 ? serveHitter : finalHitter
+            return (
+              <button
+                key={slot}
+                type="button"
+                role="radio"
+                aria-checked={current === slot}
+                onClick={() => {
+                  if (stepIdx < 2) setServeSlot(slot)
+                  else setFinalSlot(slot)
+                  setNeedSlot(false)
+                }}
+                className={`px-2 py-1 rounded ${current === slot ? 'bg-green-700' : 'bg-gray-700'}`}
+              >
+                {t(`auto.HitterSlot.${slot}`)}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {stepIdx >= 2 && (
+        <div className="bg-black/90 px-3 py-1.5 flex items-center gap-2 border-b border-gray-800 text-xs text-white">
+          <span className={needOutcome && !outcome ? 'text-red-300 font-bold' : ''}>
+            {t('auto.Pass2ServeFinal.outcome_label')}
+          </span>
+          <button
+            type="button"
+            onClick={() => setOutcome('winner_shot')}
+            aria-pressed={outcome === 'winner_shot'}
+            className={`px-2 py-1 rounded ${outcome === 'winner_shot' ? 'bg-green-700' : 'bg-gray-700'}`}
+          >
+            {t('auto.Pass2ServeFinal.outcome_winner_shot')}
+          </button>
+          <button
+            type="button"
+            onClick={() => setOutcome('opponent_error')}
+            aria-pressed={outcome === 'opponent_error'}
+            className={`px-2 py-1 rounded ${outcome === 'opponent_error' ? 'bg-green-700' : 'bg-gray-700'}`}
+          >
+            {t('auto.Pass2ServeFinal.outcome_opponent_error')}
+          </button>
+          <div className="flex-1" />
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={() => void handleServeOnly()}
+            className="px-2 py-1 rounded bg-gray-700 disabled:opacity-40"
+          >
+            {t('auto.Pass2ServeFinal.serve_only')}
+          </button>
+        </div>
+      )}
+
+      {/* 未校正の案内 (入力の邪魔にならない細いバナー)。
+         校正があれば撮影方向に合わせてタップできる旨と、動画に戻って校正する導線。
+         courtQuad があるときは出さない。onNeedCalibration が無ければ導線ボタンも出さない。 */}
+      {!courtQuad && onNeedCalibration && (
+        <div className="bg-sky-950/80 px-3 py-1.5 flex items-center gap-2 border-b border-sky-800 text-[11px] text-sky-100">
+          <MIcon name="info" size={13} />
+          <span className="flex-1">{t('auto.Pass2ServeFinal.calib_hint')}</span>
+          <button
+            type="button"
+            onClick={onNeedCalibration}
+            className="px-2 py-1 rounded bg-sky-800 text-sky-50"
+          >
+            {t('auto.Pass2ServeFinal.calib_cta')}
+          </button>
+        </div>
+      )}
+
       <div className="relative flex-1" data-tutorial="mobileAnnotate.zonePicker">
         <AnnotateOverlay
           prompt={STEP_PROMPT[step]}
+          courtQuad={courtQuad}
+          half={courtHalf}
           primaryLabel={stepIdx === STEP_ORDER.length - 1 ? t('auto.Pass2ServeFinal.primary_submit') : t('auto.Pass2ServeFinal.primary_next')}
           cancelLabel={t('auto.Pass2ServeFinal.cancel_retry')}
           onCommit={(z) => {

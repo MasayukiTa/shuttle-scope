@@ -53,6 +53,32 @@ from backend.analysis.insights.safety.budget import (
 from backend.utils.auth import get_auth
 
 logger = logging.getLogger(__name__)
+
+
+def _classify_stream_error(exc: BaseException) -> str:
+    """Map a provider failure to a stable, non-leaky code for the SSE error event.
+
+    The code never carries the exception text, URL, key or upstream body; the
+    details stay in the server log. The client translates the code.
+    """
+    try:
+        import httpx
+    except Exception:  # noqa: BLE001
+        return "generation_failed"
+    if isinstance(exc, httpx.TimeoutException):
+        return "provider_timeout"
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+        if status in (401, 403):
+            return "provider_auth"
+        if status == 429:
+            return "provider_rate_limited"
+        if status >= 500:
+            return "provider_unavailable"
+        return "provider_rejected"
+    if isinstance(exc, httpx.TransportError):
+        return "provider_unavailable"
+    return "generation_failed"
 router = APIRouter()
 
 MAX_CONTEXT_TURNS = 40
@@ -499,7 +525,7 @@ def post_message(cid: int, body: MessageCreate, request: Request, db: Session = 
             yield _sse({"type": "done"})
         except Exception as exc:  # noqa: BLE001
             logger.warning("llm stream failed: %s", exc)
-            yield _sse({"type": "error", "message": "生成中にエラーが発生しました"})
+            yield _sse({"type": "error", "message": _classify_stream_error(exc)})
         finally:
             text = "".join(acc)
             actual_tokens = _estimate_chat_tokens(

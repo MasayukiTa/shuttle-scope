@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react'
 import { useSearchParams, Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { apiGet, apiPost } from '@/api/client'
-import { errorMessage } from '@/utils/errors'
+import { publicAuthErrorKey } from '@/utils/publicAuthError'
 
 interface InviteInfo {
   email: string
   role: string
   team_id: number | null
+  team_name?: string | null
   expires_at: string
 }
 
@@ -29,11 +30,16 @@ export default function InvitationAcceptPage() {
       setError(t('auth.verify.missing_token'))
       return
     }
+    // アンマウント後の setState (teardown 済み環境) を中断フラグで抑止。
+    let active = true
     setLoading(true)
     apiGet<{ success: boolean; data: InviteInfo }>(`/auth/invitation/peek?token=${encodeURIComponent(token)}`)
-      .then((r) => setInfo(r.data))
-      .catch((err) => setError(err?.message ?? String(err)))
-      .finally(() => setLoading(false))
+      .then((r) => { if (active) setInfo(r.data) })
+      .catch((err: unknown) => { if (active) setError(t(publicAuthErrorKey(err, 'invitation_peek'))) })
+      .finally(() => { if (active) setLoading(false) })
+    return () => {
+      active = false
+    }
   }, [token, t])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -50,11 +56,16 @@ export default function InvitationAcceptPage() {
       })
       navigate('/login')
     } catch (err: unknown) {
-      setError(errorMessage(err))
+      setError(t(publicAuthErrorKey(err, 'invitation_accept')))
     } finally {
       setSubmitting(false)
     }
   }
+
+  // 期限は利用者の端末の時刻帯で表示する (backend は UTC の "Z" 付きで返す)
+  const expiresDate = info ? new Date(info.expires_at) : null
+  const expiresLabel =
+    expiresDate && !Number.isNaN(expiresDate.getTime()) ? expiresDate.toLocaleString() : ''
 
   const fieldCls =
     'w-full border border-[var(--ss-ctrl-border)] rounded-ss-md px-3 py-2.5 text-base min-h-[44px] ' +
@@ -94,28 +105,37 @@ export default function InvitationAcceptPage() {
 
         <div className="rounded-ss-md bg-[var(--ss-info-bg)] border border-[var(--ss-info-border)] p-3 text-sm space-y-1 text-[var(--ss-info-text)]">
           <div><span className="font-medium">{t('auth.email')}:</span> {info.email}</div>
-          <div><span className="font-medium">{t('auth.invitation.role')}:</span> {info.role}</div>
+          {info.team_name && (
+            <div><span className="font-medium">{t('auth.invitation.team')}:</span> {info.team_name}</div>
+          )}
+          <div>
+            <span className="font-medium">{t('auth.invitation.role')}:</span>{' '}
+            {t(`roles.${info.role}`, { defaultValue: info.role })}
+          </div>
+          {expiresLabel && (
+            <div><span className="font-medium">{t('auth.invitation.expires_at')}:</span> {expiresLabel}</div>
+          )}
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1 text-[var(--ss-t2)]">{t('auth.register.username')}</label>
-          <input type="text" value={username} onChange={(e) => setUsername(e.target.value)}
+          <label htmlFor="invite-username" className="block text-sm font-medium mb-1 text-[var(--ss-t2)]">{t('auth.register.username')}</label>
+          <input id="invite-username" type="text" value={username} onChange={(e) => setUsername(e.target.value)}
                  required minLength={3} maxLength={64}
                  autoComplete="username" autoCapitalize="none" autoCorrect="off"
                  className={fieldCls} />
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1 text-[var(--ss-t2)]">{t('auth.register.password')}</label>
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+          <label htmlFor="invite-password" className="block text-sm font-medium mb-1 text-[var(--ss-t2)]">{t('auth.register.password')}</label>
+          <input id="invite-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
                  required minLength={8} maxLength={128}
                  autoComplete="new-password"
                  className={fieldCls} />
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1 text-[var(--ss-t2)]">{t('auth.register.display_name_optional')}</label>
-          <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)}
+          <label htmlFor="invite-display-name" className="block text-sm font-medium mb-1 text-[var(--ss-t2)]">{t('auth.register.display_name_optional')}</label>
+          <input id="invite-display-name" type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)}
                  maxLength={100}
                  autoComplete="name"
                  className={fieldCls} />

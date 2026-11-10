@@ -157,6 +157,9 @@ export function ConditionCorrelationHeatmap({ playerId, isLight }: Props) {
         <div className={`${textMuted} text-xs`}>{t('condition.corr_heatmap.insufficient')}</div>
       ) : (
         <>
+          <p className={`mb-3 text-[11px] leading-snug ${textMuted}`}>
+            {t('condition.corr_heatmap.exploratory_caveat')}
+          </p>
           <div className="overflow-x-auto">
             <table className="border-collapse text-[11px]">
               <tbody>

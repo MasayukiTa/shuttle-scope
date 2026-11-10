@@ -6,6 +6,7 @@ import html
 import json
 import logging
 import re
+import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -119,6 +120,8 @@ class PublicInquiryOut(BaseModel):
     created_at: str
     # R42: ban_appeal 等のカテゴリ。admin UI で目立つタグ表示に使う。
     category: str = "general"
+    # 同じメールで登録申請（承認待ち）が出ているとき、そのユーザID。無ければ None。
+    pending_user_id: Optional[int] = None
 
 
 class BanAppealCreate(BaseModel):
@@ -179,13 +182,28 @@ def should_serve_public_site(request: Request) -> bool:
     return host in PUBLIC_HOSTS
 
 
+def _public_registration_enabled() -> bool:
+    """公開トップに登録 CTA を出すか。SS_REGISTRATION_ENABLED を auth_email と同じ判定で読む。
+
+    登録 API (auth_email) が無効のときに登録ボタンだけ出ると、押した人が行き止まりになる。
+    判定を読めない場合は False (問い合わせ導線に倒す)。"""
+    try:
+        from backend.routers.auth_email import _registration_enabled
+        return bool(_registration_enabled())
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("registration flag unavailable for public home: %s", exc)
+        return False
+
+
 def _render_home_str() -> str:
     """公開トップページ (旧 _V7_HOME_HTML) を Jinja テンプレートから描画する。
 
-    内容は public/home.html.j2 に移管済み。変数注入はゼロのため全体を {% raw %} で
-    囲んでおり、render 結果は旧定数とバイト同一になる。FileSystemLoader のキャッシュに
+    注入する変数は registration_enabled のみ。テンプレートは基本 {% raw %} で囲まれ、
+    その変数を使う箇所だけ raw を閉じて分岐している。FileSystemLoader のキャッシュに
     任せ、起動時プリロードは行わない (テンプレ欠落時は get_template が分かりやすく送出)。"""
-    return _jinja_env.get_template("public/home.html.j2").render()
+    return _jinja_env.get_template("public/home.html.j2").render(
+        registration_enabled=_public_registration_enabled(),
+    )
 
 
 def _inject_status_banner(home_html: str) -> str:
@@ -213,9 +231,12 @@ def _render_status_str(request: Request, *, lang: str = "ja", preview: bool = Fa
     if db is not None:
         status = compute_public_status(db)
         # 日次稼働履歴 (claude status 風バー) は重いので /status ページ描画時のみ付与する。
+        # 公開ページのコンポーネントは利用者向けに束ねてあるので (F-T001-06)、内部キーの
+        # 履歴を公開コンポーネントキーへ合成してから各バーに割り当てる。
         try:
             from backend.services.status_monitor import compute_component_history
-            hist = compute_component_history(db)
+            from backend.routers.status_page import public_component_history
+            hist = public_component_history(compute_component_history(db))
             for c in status.get("components", []):
                 h = hist.get(c.get("key")) or {}
                 c["history"] = h.get("days", [])
@@ -304,6 +325,7 @@ def _render_contact_str(request: Request, *, preview: bool = False) -> str:
         "canonical_path": canonical_path,
         "noindex": preview,
         "login_href": _public_login_href(request),
+        "registration_enabled": _public_registration_enabled(),
     }
     # TemplateResponse は Response オブジェクトを返すので、body bytes を decode して
     # 既存の _rewrite_preview_links (str -> str) と互換にする。
@@ -411,8 +433,12 @@ def _notify_inquiry(inquiry: PublicInquiry) -> None:
         geo_str = f"\ncountry: {country} / {region}\norg/ISP: {org}"
     except Exception:
         pass
+    # Discord の webhook は本文を "content" で受ける。"text" (Slack 形式) だけを送ると
+    # 400 "Cannot send an empty message" で拒否され、通知が一度も届かなかった。
+    # 登録通知 (auth_email._notify_admin_webhook) と同じキーに揃える。
+    # content の上限は 2000 文字なので余裕を持って切る。
     payload = {
-        "text": (
+        "content": (
             f"[{received_jst}] New ShuttleScope inquiry\n"
             f"IP: {ip_str}{geo_str}\n"
             f"UA: {(inquiry.user_agent or '-')[:120]}\n"
@@ -422,7 +448,7 @@ def _notify_inquiry(inquiry: PublicInquiry) -> None:
             f"role: {inquiry.role or '-'}\n"
             f"contact: {inquiry.contact_reference or '-'}\n"
             f"message: {inquiry.message[:500]}"
-        )
+        )[:1900]
     }
     try:
         # Discord blocks the default Python-urllib User-Agent with 403.
@@ -436,8 +462,16 @@ def _notify_inquiry(inquiry: PublicInquiry) -> None:
             method="POST",
         )
         urllib.request.urlopen(req, timeout=5).read()
+    except urllib.error.HTTPError as exc:
+        # 通知が届かないのは取りこぼし (問い合わせの見落とし) に直結するので error で残す。
+        # 応答本文は Discord が拒否理由を返すので先頭だけ記録する (URL は出さない)。
+        try:
+            detail = exc.read()[:200]
+        except Exception:
+            detail = b""
+        logger.error("public inquiry webhook rejected: status=%s body=%r", exc.code, detail)
     except Exception as exc:
-        logger.warning("public inquiry webhook failed: %s", exc)
+        logger.error("public inquiry webhook failed: %s", exc)
 
 
 
@@ -481,6 +515,7 @@ def _render_contact_str_en(request: Request) -> str:
         'canonical_path': canonical_path,
         'noindex': False,
         'login_href': _public_login_href(request, lang='en'),
+        'registration_enabled': _public_registration_enabled(),
     }
     resp = _public_templates.TemplateResponse(request, 'public/contact.html.j2', context)
     return resp.body.decode('utf-8')
@@ -691,9 +726,11 @@ def _compute_status_day_detail(db: Session, day: str, component: Optional[str] =
     10 分スロット (1 日 144 個) へバケットし、各スロットの公開ステータス
     (operational/degraded/down/nodata) を返す。
 
-    - component を指定するとそのコンポーネント (api/database/tunnel/gpu/worker) のみ。
+    - component を指定すると、その公開コンポーネント (web/signin/database/analysis) を
+      構成する内部コンポーネント群のみを「悪い方優先」で合成する。
       未指定なら全コンポーネントを「悪い方優先」で合成する (= 90日バー全体相当)。
-      公開ページの各バーは component 別なので、クリックされたバーの component を渡す。
+      公開ページの各バーは公開コンポーネント別なので、クリックされたバーの key を渡す。
+      内部コンポーネントキーは公開しない (URL にも出さない)。
     - HealthSample.sampled_at は naive UTC (status_monitor が datetime.utcnow() で記録)。
       day は JST 暦日として解釈し、JST 00:00 を UTC に直した窓でスロット割り当てを行う
       (90 日バー compute_component_history と同じ JST 基準)。slot の時刻は UTC ISO で返し、
@@ -719,7 +756,12 @@ def _compute_status_day_detail(db: Session, day: str, component: Optional[str] =
         .filter(HealthSample.sampled_at >= start_utc, HealthSample.sampled_at < end_utc)
     )
     if component is not None:
-        q = q.filter(HealthSample.component == component)
+        # 公開コンポーネントキー (web/signin/database/analysis) を構成する内部
+        # コンポーネント群に絞る。内部キーは公開しないので URL では受けない。
+        from backend.routers.status_page import public_members
+        members = public_members(component)
+        if members:
+            q = q.filter(HealthSample.component.in_(members))
     rows = q.all()
 
     # スロット index -> 集約済みステータス (悪い方優先) + 最悪 severity。未観測は nodata。
@@ -777,20 +819,21 @@ async def public_status_day(day: str, component: Optional[str] = None,
 
     認証不要 (/api/public/* は anon 許可)。
     - `day`: YYYY-MM-DD。形式不正/非実在日は 400。
-    - `component`: 任意。api/database/tunnel/gpu/worker のいずれか。
+    - `component`: 任意。公開コンポーネント (web/signin/database/analysis) のいずれか。
       未知の値は 400 (列挙 probe 防止 + 不正フィルタ拒否)。未指定なら全合成。
+      内部コンポーネントキー (tunnel/gpu/worker/clock 等) は公開しないので受け付けない。
     返すのは粗い状態 (operational/degraded/down/nodata) のみで、
     内部ホスト名/IP/負荷メトリクスは含めない。
     """
     if not isinstance(day, str) or not _DAY_RE.match(day):
         raise HTTPException(status_code=400, detail="invalid date format (expected YYYY-MM-DD)")
     if component is not None:
-        # 既知のコンポーネントキーのみ許可 (status_monitor の定義に追従)。
+        # 公開コンポーネントキーのみ許可 (内部キーは URL でも受け付けない: F-T001-06)。
         try:
-            from backend.services.status_monitor import COMPONENT_KEYS
-            allowed = set(COMPONENT_KEYS)
+            from backend.routers.status_page import PUBLIC_COMPONENT_KEYS
+            allowed = set(PUBLIC_COMPONENT_KEYS)
         except Exception:  # noqa: BLE001 — 監視未初期化でも公開ページは壊さない
-            allowed = {"api", "database", "tunnel", "gpu", "worker"}
+            allowed = {"web", "signin", "database", "analysis"}
         if component not in allowed:
             raise HTTPException(status_code=400, detail="unknown component")
     return _compute_status_day_detail(db, day, component=component)
@@ -1073,6 +1116,11 @@ async def ban_appeal_page(request: Request):
 async def list_public_inquiries(request: Request, db: Session = Depends(get_db)):
     _require_admin(request)
     items = db.query(PublicInquiry).order_by(PublicInquiry.created_at.desc()).all()
+    from backend.services.inquiry_link import normalize_email, pending_users_by_email
+
+    pending = pending_users_by_email(
+        db, [e for e in (normalize_email(i.contact_reference) for i in items) if e]
+    )
     return {
         "success": True,
         "data": [
@@ -1086,6 +1134,10 @@ async def list_public_inquiries(request: Request, db: Session = Depends(get_db))
                 status=item.status,
                 admin_note=item.admin_note,
                 category=getattr(item, "category", "general") or "general",
+                pending_user_id=(
+                    pending[normalize_email(item.contact_reference)].id
+                    if normalize_email(item.contact_reference) in pending else None
+                ),
                 created_at=(
                     item.created_at.replace(tzinfo=timezone.utc)
                     .astimezone(timezone(timedelta(hours=9)))

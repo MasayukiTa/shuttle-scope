@@ -27,6 +27,12 @@ import re
 
 SRC = (pathlib.Path(__file__).resolve().parents[1]
        / "routers" / "video_import.py").read_text(encoding="utf-8")
+MODEL_SRC = (pathlib.Path(__file__).resolve().parents[1]
+             / "tracknet" / "model.py").read_text(encoding="utf-8")
+SETUP_SRC = (pathlib.Path(__file__).resolve().parents[1]
+             / "tracknet" / "setup.py").read_text(encoding="utf-8")
+INFERENCE_SRC = (pathlib.Path(__file__).resolve().parents[1]
+                 / "tracknet" / "inference.py").read_text(encoding="utf-8")
 
 
 class TestTheBackendIsNotPinnedToOpenvino:
@@ -62,3 +68,28 @@ class TestTheSamplingDefaultReachesAutoFilled:
         実際には Intel iGPU の速度と相談していたことに誰も気づかなかった。
         """
         assert "1557.9" in SRC and "16.0" in SRC, "実測値がコメントに残っていない"
+
+
+class TestCheckpointObjectPathCompatibility:
+    """Guard the upstream TensorFlow object-checkpoint attribute path."""
+
+    def test_upstream_inital_spelling_is_preserved(self):
+        assert "self.inital = keras.Sequential(" in MODEL_SRC
+        assert "x = self.inital(inputs)" in MODEL_SRC
+        assert "self.initial = keras.Sequential(" not in MODEL_SRC
+
+    def test_export_fails_if_model_objects_do_not_match_checkpoint(self):
+        assert "assert_existing_objects_matched()" in SETUP_SRC
+
+
+class TestTensorRtBackendContract:
+    def test_native_engine_is_supported_and_preferred(self):
+        assert "TRT_ENGINE_CANDIDATES" in INFERENCE_SRC
+        assert "tensorrt_native" in INFERENCE_SRC
+        assert "def _load_tensorrt_native" in INFERENCE_SRC
+        assert '"trt": cmd_trt' in SETUP_SRC
+        assert "TRT_ENGINE_PATH" in SETUP_SRC
+
+    def test_ort_tensorrt_is_explicit_opt_in(self):
+        assert 'SS_ENABLE_ORT_TRT' in INFERENCE_SRC
+        assert "def _fallback_to_cuda_after_trt" in INFERENCE_SRC

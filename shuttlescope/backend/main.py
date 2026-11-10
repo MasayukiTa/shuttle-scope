@@ -1,6 +1,7 @@
 """ShuttleScope FastAPI メインアプリケーション"""
 import sys
 import os
+import secrets
 
 # Windows の CP932 デフォルトエンコーディングを UTF-8 に強制する。
 # Electron の Node.js 側が data.toString('utf8') で受け取るため、
@@ -208,6 +209,14 @@ def _enforce_production_security_gate() -> None:
             "(a) DATABASE_URL is SQLite in production posture. "
             "Use postgresql+psycopg://... or unset PUBLIC_MODE/ENVIRONMENT=production."
         )
+    elif db_url.startswith("postgresql") and not (
+        getattr(app_settings, "SS_DB_MIGRATION_URL", "") or ""
+    ).strip():
+        errors.append(
+            "(a2) SS_DB_MIGRATION_URL is missing for PostgreSQL production posture. "
+            "Runtime ss_user must not own schema objects; configure the dedicated "
+            "ss_migration connection before starting."
+        )
 
     sec = (getattr(app_settings, "SECRET_KEY", "") or "").strip()
     if not sec or sec in ("dev", "default", "change-me", "secret") or len(sec) < 32:
@@ -305,15 +314,40 @@ async def lifespan(app: FastAPI):
     """アプリ起動時にテーブル作成 + stale cleanup タスク開始"""
     # R40-1: 本番姿勢構成ミスは起動を拒否する
     _enforce_production_security_gate()
+    strict_bootstrap = bool(app_settings.is_production_posture)
     try:
-        loop = asyncio.get_event_loop()
-        await asyncio.wait_for(
-            loop.run_in_executor(None, lambda: bootstrap_database(None, app_settings.DATABASE_URL)),
-            timeout=30.0,
-        )
+        if strict_bootstrap:
+            # Production migrations must not run in a kill-impossible executor
+            # thread. asyncio.wait_for() cancels only the Future; the underlying
+            # thread keeps running and can race the next NSSM restart. PostgreSQL
+            # migration_guard provides bounded connection/DDL waits and a
+            # cross-process advisory lock instead.
+            bootstrap_database(
+                None,
+                app_settings.DATABASE_URL,
+                fail_on_migration_error=True,
+            )
+        else:
+            loop = asyncio.get_event_loop()
+            await asyncio.wait_for(
+                loop.run_in_executor(
+                    None,
+                    lambda: bootstrap_database(
+                        None,
+                        app_settings.DATABASE_URL,
+                        fail_on_migration_error=False,
+                    ),
+                ),
+                timeout=30.0,
+            )
     except asyncio.TimeoutError:
         logger.warning("bootstrap_database がタイムアウト（30s）— 起動を続行します")
     except Exception as exc:
+        if strict_bootstrap:
+            logger.critical(
+                "bootstrap_database failed in production posture: %s", exc
+            )
+            raise
         logger.warning("bootstrap_database エラー: %s — 起動を続行します", exc)
 
     # R47: Tor 出口 IP リストを起動時に読み込む (env で path 指定されている場合のみ)
@@ -363,8 +397,8 @@ async def lifespan(app: FastAPI):
 
     # ── Round 258 #8: モデルファイル整合性検証 ─────────────────────────────
     # backend/models/ 配下のモデル hash を SHA256SUMS と照合。
-    # MISMATCH/MISSING は CRITICAL ログ。本番 (ENVIRONMENT=production) では
-    # 起動を拒否する (バックドア入りモデルでの推論を防止)。
+    # MISMATCH/MISSING は CRITICAL。本番 (ENVIRONMENT=production) では
+    # UNEXPECTED も未承認モデルの追加として起動拒否する。
     #
     # Round 258 P0/P1 fix:
     # - ENVIRONMENT のスペース/大小文字ゆらぎを strip().lower() で吸収
@@ -372,11 +406,16 @@ async def lifespan(app: FastAPI):
     #   していた (PermissionError や UnicodeDecodeError on manifest 等で素通し
     #   = backdoored モデルでの推論を許してしまう)。本番では unexpected exception
     #   は CRITICAL + sys.exit(3) で fail-closed に変更。
-    env_norm = (app_settings.ENVIRONMENT or "").strip().lower()
-    is_prod = env_norm == "production"
+    # Security posture is intentionally single-source. Production deployments
+    # may be identified by HIDE_API_DOCS / HIDE_STACK_TRACES / public hostname
+    # even when ENVIRONMENT itself remains "development".
+    is_prod = bool(app_settings.is_production_posture)
     try:
         from backend.utils.model_integrity import verify_and_log
-        verify_and_log(fail_on_mismatch=is_prod)
+        verify_and_log(
+            fail_on_mismatch=is_prod,
+            fail_on_unexpected=is_prod,
+        )
     except SystemExit:
         raise  # production fail-closed: そのまま落とす
     except Exception as exc:
@@ -842,23 +881,11 @@ def _build_player_forbidden_analysis_paths() -> frozenset[str]:
             p = getattr(route, "path", None)
             if p:
                 forbidden.add(f"/api{p}")
-    # 2) PLAYER_SENSITIVE_KEYS にマッチする individual paths (advanced + stable)
-    forbidden.update({
-        # weakness / vulnerability
-        "/api/analysis/received_vulnerability",
-        "/api/analysis/received_vulnerability/zone_detail",
-        "/api/analysis/opponent_vulnerability",
-        # 対戦相手スカウティング (rival_comparison)
-        "/api/analysis/opponent_card",
-        "/api/analysis/opponent_stats",
-        # 直接 win_rate vs opponent
-        "/api/analysis/win_loss_comparison",
-        "/api/analysis/partner_comparison",
-        # advanced-tier opponent 系 (analysis_advanced.py)
-        "/api/analysis/opponent_type_affinity",
-        "/api/analysis/opponent_adaptive_shots",
-        "/api/analysis/opponent_policy",
-    })
+    # 2) stable / advanced 内の個別パス (weakness / 対戦相手 / 直接勝率系)。
+    # 定義は backend/utils/player_privacy.py の単一の定数。包括レポートの許可リストと
+    # 同じ場所で管理し、入口ごとに規則が食い違わないようにする。
+    from backend.utils.player_privacy import PLAYER_FORBIDDEN_NAMED_ANALYSIS_PATHS
+    forbidden.update(PLAYER_FORBIDDEN_NAMED_ANALYSIS_PATHS)
     return frozenset(forbidden)
 
 
@@ -866,7 +893,7 @@ _PLAYER_FORBIDDEN_ANALYSIS_PATHS = _build_player_forbidden_analysis_paths()
 
 # Sanity check: research/spine/bundle ルーターに少なくともこの数のルートがあれば
 # import に成功している。閾値を下回ったら起動を拒否する (silent な空集合化を防止)。
-# 現状: research ~17, spine ~6, bundle ~4, sensitive paths +10 = 約 37。
+# 現状: research ~17, spine ~6, bundle ~4, 個別パス +12 = 約 39。
 # 閾値 25 は将来のルーター追加 / 削除を吸収しつつ "ほぼ空" を確実に拒否する値。
 _EXPECTED_MIN_FORBIDDEN_PATHS = 25
 if len(_PLAYER_FORBIDDEN_ANALYSIS_PATHS) < _EXPECTED_MIN_FORBIDDEN_PATHS:
@@ -875,6 +902,13 @@ if len(_PLAYER_FORBIDDEN_ANALYSIS_PATHS) < _EXPECTED_MIN_FORBIDDEN_PATHS:
         f"{len(_PLAYER_FORBIDDEN_ANALYSIS_PATHS)} entries (expected >= "
         f"{_EXPECTED_MIN_FORBIDDEN_PATHS}). research/spine/bundle ルーターの "
         f"import に失敗している可能性が高い。silent な player 公開を防ぐため起動を拒否する。"
+    )
+# 個別パスの単一定義 (player_privacy) が集合に全部入っていることも起動時に確かめる。
+from backend.utils.player_privacy import PLAYER_FORBIDDEN_NAMED_ANALYSIS_PATHS as _NAMED_FORBIDDEN
+if not _NAMED_FORBIDDEN <= _PLAYER_FORBIDDEN_ANALYSIS_PATHS:
+    raise RuntimeError(
+        "_PLAYER_FORBIDDEN_ANALYSIS_PATHS が player_privacy の禁止定義を満たしていない: "
+        f"{sorted(_NAMED_FORBIDDEN - _PLAYER_FORBIDDEN_ANALYSIS_PATHS)}"
     )
 
 
@@ -1235,6 +1269,16 @@ class PlayerAccessControlMiddleware(BaseHTTPMiddleware):
             # ついていても通すのが自然。
             if method == "POST" and path == "/api/public/content_report":
                 _player_write_allowed = True
+            # R48 mobile annotation: player may edit annotations only through
+            # routers that enforce require_match_scope(request, ...). Keep the
+            # middleware allow-list exact so this does not become a generic
+            # player write bypass.
+            if method == "POST" and path in ("/api/rallies", "/api/strokes", "/api/strokes/batch"):
+                _player_write_allowed = True
+            if method in ("PUT", "DELETE") and _re_acl.fullmatch(r"/api/rallies/\d+", path):
+                _player_write_allowed = True
+            if method in ("PUT", "DELETE") and _re_acl.fullmatch(r"/api/strokes/\d+", path):
+                _player_write_allowed = True
             if not _player_write_allowed:
                 try:
                     from backend.utils.access_log import log_access
@@ -1385,6 +1429,8 @@ class PlayerAccessControlMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(PlayerAccessControlMiddleware)
+from backend.middleware.player_response_sanitiser import PlayerResponseSanitiserMiddleware as _PlayerRespSanMW  # player response choke point
+app.add_middleware(_PlayerRespSanMW)
 
 
 # ─── Exfil 異常検知: 大量データ要求を閾値超過で警告ログ + 極端時のみブロック ──
@@ -1708,8 +1754,11 @@ class TeamScopeAccessControlMiddleware(BaseHTTPMiddleware):
         role = payload.get("role")
         # ── demo ロール: 検証済み demo read かを判定（所有境界のみ緩める） ──
         _demo_read = _mark_demo_read(request, role, payload)
-        # admin / player はスキップ（admin は全許可、player は別ミドルウェアで処理）
-        if role not in ("coach", "analyst"):
+        # admin / player はスキップ（admin は全許可、player は別ミドルウェアで処理）。
+        # demo は coach / analyst と同じ team scope に服する（検証済み demo read だけが
+        # 下の `_demo_read` で所有境界を緩められる）。以前は対象外で素通りしており、
+        # match-id 系 API が他チームの試合に届いていた。
+        if role not in ("coach", "analyst", "demo"):
             return await call_next(request)
         team_id_raw = payload.get("team_id")
         try:
@@ -1720,6 +1769,9 @@ class TeamScopeAccessControlMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         # 検証済み demo read は所有境界を緩める（demo team の試合を閲覧可能に）。
         if _demo_read:
+            return await call_next(request)
+        # DELETE identifies a forecast, not a match; the handler checks its scope.
+        if request.method == "DELETE" and _re_acl.fullmatch(r"/api/prediction/human_forecast/\d+", path):
             return await call_next(request)
         mid = _extract_id(path, _MATCH_ID_PATTERNS)
         if mid is None:
@@ -1732,9 +1784,16 @@ class TeamScopeAccessControlMiddleware(BaseHTTPMiddleware):
                 m = _db.get(Match, mid)
                 if m is None:
                     return StarletteResponse("試合が見つかりません", status_code=404)
-                # 1) public プール
-                if bool(getattr(m, "is_public_pool", False)):
+                # 1) public プール (demo は最小権限なので対象外。自チームの試合だけ)
+                if role != "demo" and bool(getattr(m, "is_public_pool", False)):
                     return await call_next(request)
+                # 1.5) g33: 明示マーカー付きデモ試合は所有チーム外にも read-only で可視。
+                #      共有ヘルパー match_is_demo_public を唯一の判定点として使う。
+                #      GET のみ許可 (POST/PUT/PATCH/DELETE は従来どおり拒否)。
+                if request.method == "GET":
+                    from backend.utils.auth import match_is_demo_public
+                    if match_is_demo_public(m):
+                        return await call_next(request)
                 # 2) 自チームが owner
                 if team_id is not None and getattr(m, "owner_team_id", None) == team_id:
                     return await call_next(request)
@@ -2108,6 +2167,7 @@ class GlobalAuthMiddleware(BaseHTTPMiddleware):
                 '{"detail":"トークンが無効または期限切れです"}',
                 status_code=401,
                 media_type="application/json",
+                headers={"X-Error-Code": "TOKEN_INVALID_OR_EXPIRED"},
             )
         # Round 258 R3 P0 fix (F7): mfa_pending JWT で MFA gate 突破を防ぐ。
         # この JWT は /api/auth/mfa/login と /api/auth/mfa/cancel のみで有効。
@@ -2454,7 +2514,24 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             # SPA (app.shuttle-scope.com) は厳格 CSP のまま。
             host = (request.headers.get("host") or "").split(":")[0].lower()
             is_public_lp = host in ("shuttle-scope.com", "www.shuttle-scope.com")
-            script_src = "script-src 'self' 'unsafe-inline'" if is_public_lp else "script-src 'self'"
+            if is_public_lp:
+                # Cloudflare Web Analytics injects its external beacon on the public
+                # marketing site. Keep the allowance narrow: only the exact script
+                # origin is added here, never a generic https: source.
+                script_src = (
+                    "script-src 'self' 'unsafe-inline' "
+                    "https://static.cloudflareinsights.com"
+                )
+            else:
+                # Cloudflare Bot Fight Mode injects JavaScript Detections into HTML.
+                # With only script-src 'self', its bootstrap inline script is blocked.
+                # Cloudflare explicitly supports nonce-based CSP and copies the nonce
+                # from the origin response header onto injected script tags. Keep
+                # 'self' for ShuttleScope's external bundles and add a per-response
+                # nonce solely for Cloudflare's injected bootstrap; never relax to
+                # unsafe-inline on the authenticated SPA.
+                csp_nonce = secrets.token_urlsafe(24)
+                script_src = f"script-src 'self' 'nonce-{csp_nonce}'"
             # 公開 LP は Google Fonts CSS も使うので style-src に https: を追加
             style_src = (
                 "style-src 'self' 'unsafe-inline' https:"
@@ -2479,6 +2556,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                     "https://www.shuttle-scope.com https://shuttle-scope.com "
                     "https://cdn.shuttle-scope.com"
                 )
+                if is_public_lp:
+                    # Cloudflare Web Analytics beacon destination. This is public-LP
+                    # only; the authenticated SPA keeps the tighter connect-src.
+                    connect_src += " https://cloudflareinsights.com"
             else:
                 # 開発・テスト: 緩く (localhost backend / Vite dev server / electron-vite)
                 # 本番経路 (_is_prod) では到達しない dev-only fallback。CodeQL/DevSkim の
@@ -2810,9 +2891,15 @@ app.add_middleware(StagedHoneytokenResponseMiddleware)
 from backend.middleware.security_observability import (
     RequestLogMiddleware as _RequestLogMW,
     ProbeDetectionMiddleware as _ProbeDetectionMW,
+    AuditEventMiddleware as _AuditEventMW,
 )
 app.add_middleware(_ProbeDetectionMW)
 app.add_middleware(_RequestLogMW)
+# AuditEventMiddleware は最外 (最後に add) に置く。変更系の body を他の
+# middleware が消費する前に読み、request._body にキャッシュしておくことで
+# 下流の FastAPI バリデーションを壊さず、かつ「成功した変更」を漏れなく
+# audit_events に残す。書き込みは別セッションなので応答には影響しない。
+app.add_middleware(_AuditEventMW)
 
 
 # Round 258 R41: Canary endpoints — 攻撃者だけが叩く path を register。
@@ -3574,7 +3661,7 @@ function renderSnapshot(data) {
   }
   const badges = document.getElementById('setBadges');
   badges.innerHTML = sets.slice(0, -1).map(s =>
-    `<span class="set-badge ${s.winner ? 'win' : ''}">${escHtml(s.set_num)}セット ${escHtml(s.score_a)}-${escHtml(s.score_b)}</span>`
+    `<span class="set-badge ${s.winner ? 'win' : ''}">${escHtml(s.set_num)}ゲーム ${escHtml(s.score_a)}-${escHtml(s.score_b)}</span>`
   ).join('');
   const progress = Math.round((data.annotation_progress || 0) * 100);
   document.getElementById('progressFill').style.width = progress + '%';
@@ -3901,16 +3988,24 @@ if __name__ == "__main__":
             "Refusing to start until a shared store (e.g. Redis) is wired in.\n"
         )
         _sys_wg.exit(2)
+    _reload_enabled = (
+        app_settings.ENVIRONMENT == "development"
+        and os.environ.get("SS_DISABLE_RELOAD", "0") in ("0", "false", "")
+    )
+    # reload=True の場合だけ import string が必要。reload=False の本番で
+    # "backend.main:app" を渡すと、現在 __main__ として実行中の main.py を
+    # backend.main としてもう一度 import し、module-level singleton / startup
+    # side effect を二重初期化する。production では実際に lifespan 単体は正常、
+    # string target 経由だけ startup が完了しない事象を再現したため、既存 app
+    # object を直接渡して二重 import を避ける。
+    _uvicorn_target = "backend.main:app" if _reload_enabled else app
     uvicorn.run(
-        "backend.main:app",
+        _uvicorn_target,
         host=host,
         port=app_settings.API_PORT,
         # SS_DISABLE_RELOAD=1 で dev でも reload を切れる (prod deploy で
         # ファイル更新検知 → 無限再起動ループを起こさないため)
-        reload=(
-            app_settings.ENVIRONMENT == "development"
-            and os.environ.get("SS_DISABLE_RELOAD", "0") in ("0", "false", "")
-        ),
+        reload=_reload_enabled,
         log_level="info",
         # uvicorn の dictConfig による basicConfig 上書きを防ぐ
         # （これがないとアプリ側 logger.info/warning が全て黙殺される）

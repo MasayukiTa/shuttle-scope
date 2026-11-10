@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
-import { apiPatch } from '@/api/client'
+import { apiDelete, newIdempotencyKey } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
 import { MIcon } from '@/components/common/MIcon'
 
 // 履歴詳細モーダル
 // - 全ロール: 日付 / type / ccs / f1-f5 / hooper_index / session_rpe / 身体指標を表示
-// - analyst のみ: 質問票回答を 1-5 セレクタで編集し、PATCH /api/conditions/{id} で再スコアリング
+// - 質問票回答は選手本人の主観データなので、全ロールで読み取り専用 (編集 UI は持たない。
+//   PATCH /api/conditions/{id} は questionnaire_json を受け付けず、回答の修正は選手本人の再入力のみ)
 interface Props {
   record: Record<string, unknown>
   isLight: boolean
@@ -39,19 +40,20 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
   const { t } = useTranslation()
   const { role } = useAuth()
   const qc = useQueryClient()
-  const isAnalyst = role === 'analyst' || role === 'admin'
+  // 削除は履歴一覧の各行ではなく、記録を開いたこの画面だけに置く。
+  // player 本人の記録削除は backend DELETE /conditions/{id} が cond.player_id == ctx.player_id で
+  // 明示的に許可しているため (監査 #640)、UI だけ塩がず全ログインロールに導線を出す。
+  // 権限外の記録はサーバが 403 を返し handleDelete の errorMsg で表示される。
+  const canDelete = role != null
 
-  const initial = useMemo(() => parseQuestionnaire(record['questionnaire_json']), [record])
-  const [answers, setAnswers] = useState<Record<string, number>>(initial)
-  const [saving, setSaving] = useState(false)
+  const answers = useMemo(() => parseQuestionnaire(record['questionnaire_json']), [record])
+  const [deleting, setDeleting] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
-  const [savedMsg, setSavedMsg] = useState<string | null>(null)
 
   const overlayBg = 'bg-black/50'
   const panelCls = 'bg-[var(--ss-surface-1)] border-[var(--ss-border)] text-[var(--ss-t1)]'
   const muted = 'text-[var(--ss-t2)]'
   const sectionBorder = 'border-[var(--ss-border)]'
-  const selectCls = 'border border-[var(--ss-border-strong)] bg-[var(--ss-surface-1)] text-[var(--ss-t1)] rounded-ss-md px-2 py-1 text-sm'
 
   const id = record['id'] as number | undefined
   const measuredAt = (record['measured_at'] as string | undefined) ?? ''
@@ -71,25 +73,31 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
 
   const answerKeys = Object.keys(answers).sort()
 
-  const handleChange = (qid: string, val: number) => {
-    setAnswers((prev) => ({ ...prev, [qid]: val }))
-  }
+  // 本人向けレスポンスは質問票の原回答 (questionnaire_json) を返す (監査 #654)。
+  // ただし開示範囲はロールにより異なり、サーバがフィールド自体を返さないロールもある。
+  // フィールドが無いときに「質問票回答がありません」と出すと回答済みを未回答と誤認させるため、
+  // フィールドが無いときは節ごと出さない。フィールドがあって中身が空のときだけ no_responses を出す。
+  const hasQuestionnaireField = record['questionnaire_json'] !== undefined
 
-  const handleSave = async () => {
+  // けが・テーピングメモ / 自由記述。サーバがそのロールに返した場合だけ表示する (開示範囲は変えない)。
+  const textOf = (v: unknown): string => (typeof v === 'string' ? v.trim() : '')
+  const injuryNotes = textOf(record['injury_notes'])
+  const generalComment = textOf(record['general_comment'])
+
+  const handleDelete = async () => {
     if (!id) return
-    setSaving(true)
+    if (!window.confirm(t('condition.history.delete_confirm') as string)) return
+    setDeleting(true)
     setErrorMsg(null)
-    setSavedMsg(null)
     try {
-      await apiPatch(`/conditions/${id}`, { questionnaire_json: answers })
+      await apiDelete(`/conditions/${id}`, { 'X-Idempotency-Key': newIdempotencyKey() })
       qc.invalidateQueries({ queryKey: ['conditions'] })
-      setSavedMsg(t('condition.history_detail.saved'))
       onClose()
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      setErrorMsg(`${t('condition.history_detail.save_failed')}: ${msg}`)
+      setErrorMsg(`${t('condition.history_detail.delete_failed')}: ${msg}`)
     } finally {
-      setSaving(false)
+      setDeleting(false)
     }
   }
 
@@ -163,14 +171,31 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
             </section>
           )}
 
+          {/* けが・テーピングメモ / 自由記述 */}
+          {(injuryNotes || generalComment) && (
+            <section className={`rounded-ss-md border ${sectionBorder} p-3`}>
+              <h3 className="text-xs font-semibold mb-2">{t('condition.history_detail.notes_section')}</h3>
+              <div className="space-y-2">
+                {injuryNotes && (
+                  <div>
+                    <div className={`text-xs ${muted}`}>{t('condition.history_detail.injury_notes')}</div>
+                    <p className="text-sm whitespace-pre-wrap break-words">{injuryNotes}</p>
+                  </div>
+                )}
+                {generalComment && (
+                  <div>
+                    <div className={`text-xs ${muted}`}>{t('condition.history_detail.general_comment')}</div>
+                    <p className="text-sm whitespace-pre-wrap break-words">{generalComment}</p>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
           {/* 質問票回答 */}
+          {hasQuestionnaireField && (
           <section className={`rounded-ss-md border ${sectionBorder} p-3`}>
             <h3 className="text-xs font-semibold mb-2">{t('condition.history_detail.questionnaire_section')}</h3>
-            {isAnalyst && answerKeys.length > 0 && (
-              <div className={`text-[11px] ${muted} mb-2`}>
-                {t('condition.history_detail.edit_hint')}
-              </div>
-            )}
             {answerKeys.length === 0 ? (
               <div className={`${muted} text-sm`}>{t('condition.history_detail.no_responses')}</div>
             ) : (
@@ -184,40 +209,35 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
                         <span className="text-xs font-mono mr-2">{qid}</span>
                         <span className="text-sm">{qText}</span>
                       </div>
-                      {isAnalyst ? (
-                        <select
-                          className={selectCls}
-                          value={val}
-                          onChange={(e) => handleChange(qid, Number(e.target.value))}
-                        >
-                          {[1, 2, 3, 4, 5].map((n) => (
-                            <option key={n} value={n}>{n}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <span className="font-mono ss-num text-sm w-8 text-right">{val}</span>
-                      )}
+                      <span className="font-mono ss-num text-sm w-8 text-right">{val}</span>
                     </div>
                   )
                 })}
               </div>
             )}
           </section>
+          )}
 
           {errorMsg && (
             <div className="text-sm text-[var(--ss-bad)] bg-[var(--ss-danger-tint)] border border-[var(--ss-danger-border)] rounded-ss-md px-3 py-2">
               {errorMsg}
             </div>
           )}
-          {savedMsg && (
-            <div className="text-sm text-[var(--ss-success)] bg-[var(--ss-success-tint)] border border-[var(--ss-success-border)] rounded-ss-md px-3 py-2">
-              {savedMsg}
-            </div>
-          )}
         </div>
 
         {/* フッター */}
-        <div className={`sticky bottom-0 flex justify-end gap-2 px-4 py-3 border-t ${sectionBorder} ${panelCls}`}>
+        <div className={`sticky bottom-0 flex items-center gap-2 px-4 py-3 border-t ${sectionBorder} ${panelCls}`}>
+          {canDelete && id != null && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={deleting}
+              className="mr-auto flex items-center gap-1 px-2 py-1 text-xs text-[var(--ss-bad)] hover:opacity-80 disabled:opacity-50"
+            >
+              <MIcon name="delete" size={14} />
+              {t('condition.history.delete')}
+            </button>
+          )}
           <button
             type="button"
             onClick={onClose}
@@ -225,16 +245,6 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
           >
             {t('condition.history_detail.close')}
           </button>
-          {isAnalyst && id != null && answerKeys.length > 0 && (
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving}
-              className="px-4 py-1.5 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-50 text-white rounded-ss-md text-sm font-medium duration-base ease-out"
-            >
-              {saving ? t('condition.history_detail.saving') : t('condition.history_detail.save')}
-            </button>
-          )}
         </div>
       </div>
     </div>

@@ -30,21 +30,25 @@ export interface CVCandidatesResult {
 
   // 適用
   applyLoading: boolean
+  applyError: string | null
   applyResult: {
     updated_strokes: number
     land_zone_count: number
+    hit_zone_count: number
     hitter_count: number
+    preserved_count?: number
     applied_by_mode: string
     applied_fields: string[]
   } | null
   applyCandidates: (
     mode?: 'auto_filled' | 'suggested' | 'all',
-    fields?: ('land_zone' | 'hitter')[]
+    fields?: ('land_zone' | 'hit_zone' | 'hitter')[]
   ) => Promise<void>
 
   // レビューキュー
   reviewQueue: ReviewQueueItem[]
   reviewQueueLoading: boolean
+  reviewError: string | null
   markReviewCompleted: (rallyId: number) => Promise<void>
 
   // ラリー候補ルックアップ
@@ -52,16 +56,22 @@ export interface CVCandidatesResult {
 
   // 状態リセット
   clearBuildError: () => void
+  clearApplyError: () => void
+  clearReviewError: () => void
 }
 
 export function useCVCandidates({ matchId }: Options): CVCandidatesResult {
   const queryClient = useQueryClient()
 
   const [buildError, setBuildError] = useState<string | null>(null)
+  const [applyError, setApplyError] = useState<string | null>(null)
+  const [reviewError, setReviewError] = useState<string | null>(null)
   const [applyResult, setApplyResult] = useState<{
     updated_strokes: number
     land_zone_count: number
+    hit_zone_count: number
     hitter_count: number
+    preserved_count?: number
     applied_by_mode: string
     applied_fields: string[]
   } | null>(null)
@@ -131,7 +141,9 @@ export function useCVCandidates({ matchId }: Options): CVCandidatesResult {
         data: {
           updated_strokes: number
           land_zone_count: number
+          hit_zone_count: number
           hitter_count: number
+          preserved_count?: number
           applied_by_mode: string
           applied_fields: string[]
         }
@@ -142,16 +154,29 @@ export function useCVCandidates({ matchId }: Options): CVCandidatesResult {
     onSuccess: (res) => {
       if (res.success) {
         setApplyResult(res.data)
+        setApplyError(null)
         queryClient.invalidateQueries({ queryKey: ['strokes'] })
+      } else {
+        // success=false は適用が確定していないので、前回の成功件数を残さない。
+        setApplyResult(null)
+        setApplyError('候補の適用に失敗しました')
       }
+    },
+    onError: (err: unknown) => {
+      setApplyResult(null)
+      setApplyError(err instanceof Error ? err.message : '候補の適用に失敗しました')
     },
   })
 
   const applyCandidates = useCallback(async (
     mode: 'auto_filled' | 'suggested' | 'all' = 'auto_filled',
-    fields: ('land_zone' | 'hitter')[] = ['land_zone', 'hitter']
+    fields: ('land_zone' | 'hit_zone' | 'hitter')[] = ['land_zone', 'hitter']
   ) => {
     if (!matchId) return
+    // 新しい適用を開始する時点で前回の success / error 表示を消す。
+    // これをしないと、2 回目が失敗しても 1 回目の「○件適用」が残り続ける。
+    setApplyResult(null)
+    setApplyError(null)
     await applyMutation.mutateAsync({ mode, fields })
   }, [matchId, applyMutation])
 
@@ -160,11 +185,16 @@ export function useCVCandidates({ matchId }: Options): CVCandidatesResult {
     mutationFn: (rallyId: number) =>
       apiPut(`/cv-candidates/review/${rallyId}`, { review_status: 'completed' }),
     onSuccess: () => {
+      setReviewError(null)
       queryClient.invalidateQueries({ queryKey: ['cv-review-queue', matchId] })
+    },
+    onError: (err: unknown) => {
+      setReviewError(err instanceof Error ? err.message : 'レビュー完了を保存できませんでした')
     },
   })
 
   const markReviewCompleted = useCallback(async (rallyId: number) => {
+    setReviewError(null)
     await reviewMutation.mutateAsync(rallyId)
   }, [reviewMutation])
 
@@ -184,12 +214,16 @@ export function useCVCandidates({ matchId }: Options): CVCandidatesResult {
     buildError,
     buildCandidates,
     applyLoading: applyMutation.isPending,
+    applyError,
     applyResult,
     applyCandidates,
     reviewQueue,
     reviewQueueLoading,
+    reviewError,
     markReviewCompleted,
     getCandidateForRally,
     clearBuildError: () => setBuildError(null),
+    clearApplyError: () => setApplyError(null),
+    clearReviewError: () => setReviewError(null),
   }
 }

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 
@@ -23,7 +23,7 @@ from backend.db.models import (
     ShuttleTrack,
     Stroke,
 )
-from backend.pipeline.jobs import drain_for_tests, enqueue
+from backend.pipeline.jobs import _serialize_enqueue, drain_for_tests, enqueue
 from backend.pipeline.video_pipeline import run_pipeline
 
 
@@ -121,3 +121,129 @@ def test_start_job_runner_is_idempotent():
     r1 = start_job_runner()
     r2 = start_job_runner()
     assert r1 is None or r1 is r2 or r1.done() or not r1.done()
+
+
+def test_video_variant_running_job_leaves_one_successor(db_session, _seed_match):
+    """A camera upload finalized mid-run must not disappear behind dedup."""
+    running = AnalysisJob(
+        match_id=_seed_match.id,
+        job_type="video_variant",
+        status="running",
+        progress=0.5,
+        started_at=datetime.utcnow(),
+    )
+    db_session.add(running)
+    db_session.commit()
+
+    successor = enqueue(db_session, _seed_match.id, job_type="video_variant")
+    same = enqueue(db_session, _seed_match.id, job_type="video_variant")
+
+    assert successor.status == "queued"
+    assert successor.id != running.id
+    assert same.id == successor.id
+    rows = (
+        db_session.query(AnalysisJob)
+        .filter(
+            AnalysisJob.match_id == _seed_match.id,
+            AnalysisJob.job_type == "video_variant",
+            AnalysisJob.status.in_(("queued", "running")),
+        )
+        .all()
+    )
+    assert sorted(row.status for row in rows) == ["queued", "running"]
+
+
+def test_non_variant_running_job_still_deduplicates(db_session, _seed_match):
+    running = AnalysisJob(
+        match_id=_seed_match.id,
+        job_type="full_pipeline",
+        status="running",
+        progress=0.5,
+        started_at=datetime.utcnow(),
+    )
+    db_session.add(running)
+    db_session.commit()
+
+    returned = enqueue(db_session, _seed_match.id, job_type="full_pipeline")
+    assert returned.id == running.id
+    assert (
+        db_session.query(AnalysisJob)
+        .filter(
+            AnalysisJob.match_id == _seed_match.id,
+            AnalysisJob.job_type == "full_pipeline",
+        )
+        .count()
+        == 1
+    )
+
+
+
+
+def test_postgres_enqueue_lock_uses_dedicated_transaction():
+    """The advisory lock must auto-release with its dedicated transaction."""
+
+    class _Dialect:
+        name = "postgresql"
+
+    class _Tx:
+        def __init__(self, conn):
+            self.conn = conn
+
+        def __enter__(self):
+            self.conn.tx_entered += 1
+            return self
+
+        def __exit__(self, *_exc):
+            self.conn.tx_exited += 1
+
+    class _LockConnection:
+        def __init__(self):
+            self.sql = []
+            self.closed = False
+            self.tx_entered = 0
+            self.tx_exited = 0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc):
+            self.closed = True
+
+        def begin(self):
+            return _Tx(self)
+
+        def execute(self, statement, params):
+            self.sql.append((str(statement), params))
+
+    class _Bind:
+        dialect = _Dialect()
+
+        def __init__(self, conn):
+            self.conn = conn
+
+        def connect(self):
+            return self.conn
+
+    class _FakeSession:
+        def __init__(self):
+            self.conn = _LockConnection()
+            self.bind = _Bind(self.conn)
+
+        def get_bind(self):
+            return self.bind
+
+        def execute(self, *_args, **_kwargs):
+            raise AssertionError("Session connection must not hold the advisory lock")
+
+    db = _FakeSession()
+    with _serialize_enqueue(db, 42, "video_variant"):
+        pass
+
+    assert db.conn.closed is True
+    assert db.conn.tx_entered == 1
+    assert db.conn.tx_exited == 1
+    assert len(db.conn.sql) == 1
+    lock_sql, lock_params = db.conn.sql[0]
+    assert "pg_advisory_xact_lock" in lock_sql
+    assert "pg_advisory_unlock" not in lock_sql
+    assert isinstance(lock_params["key"], int)

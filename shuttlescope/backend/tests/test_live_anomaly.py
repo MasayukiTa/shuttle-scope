@@ -35,6 +35,8 @@ def _seed_baseline_and_recent(db_session, recent_skew: bool):
         tournament="T", tournament_level="国内", round="R16",
         date=date(2026, 4, 16), format="singles",
         player_a_id=p_a.id, player_b_id=p_b.id, result="win",
+        # h18e: team 境界チェック導入後も team 無し coach が読めるよう公開プール扱い。
+        is_public_pool=True,
     )
     db_session.add(m)
     db_session.flush()
@@ -85,6 +87,18 @@ def test_live_anomaly_detected_when_divergence_high(db_session):
         assert "弱点" not in body["headline_ja"]
         assert "weakness" not in body["headline_en"].lower()
         assert body["evidence"]["primary_shot"] in {"smash", "clear"}
+        # 観測事実だけを書く: 原因・相手の意図の断定は無い
+        assert "研究されている" not in body["headline_ja"]
+        assert "reading this pattern" not in body["headline_en"]
+        # 内部の shot 名 (英語キー) を文面に出さない
+        for key in ("smash", "clear", "net_shot", "unknown"):
+            assert key not in body["headline_ja"]
+        # 直近ラリー数 N (window=5) が入っている
+        assert "N=5" in body["headline_ja"]
+        assert "ポイント" in body["headline_ja"]
+        assert body["evidence"]["primary_direction"] in {"up", "down"}
+        for d in body["evidence"]["shot_diffs_pp"]:
+            assert d["shot_key"]
     finally:
         app.dependency_overrides.pop(get_auth, None)
 
@@ -99,6 +113,8 @@ def test_live_anomaly_no_when_sample_low(db_session):
         tournament="T", tournament_level="国内", round="R16",
         date=date(2026, 4, 16), format="singles",
         player_a_id=p_a.id, player_b_id=p_b.id, result="win",
+        # h18e: team 境界チェック導入後も team 無し coach が読めるよう公開プール扱い。
+        is_public_pool=True,
     )
     db_session.add(m)
     db_session.flush()

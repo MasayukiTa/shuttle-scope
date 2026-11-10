@@ -17,6 +17,7 @@ WebRTC シグナリングを中継する。映像データは流れない（SDP/
   webrtc_offer    {participant_id, sdp}
   ice_candidate   {participant_id, candidate, sdp_mid, sdp_m_line_index}
   camera_stop     {participant_id}
+  device_rename   {participant_id, device_name}  # 自端末の表示名を変更する
 
 [Operator → 送信デバイス]
   camera_request      {stream_id | target_participant_id}
@@ -37,7 +38,7 @@ WebRTC シグナリングを中継する。映像データは流れない（SDP/
   viewer_ice_candidate  {viewer_id, candidate, sdp_mid, sdp_m_line_index}
 
 [Server → Operator]
-  device_list_update   {devices: [{participant_id, stream_id, status}]}
+  device_list_update   {devices: [{participant_id, stream_id, status, device_name}]}
   camera_stream_ended  {participant_id, stream_id}
   viewer_joined        {viewer_id}
   viewer_left          {viewer_id}
@@ -67,6 +68,9 @@ logger = logging.getLogger(__name__)
 _MAX_WS_MESSAGE_BYTES = 64 * 1024
 # 1 接続あたりの 1 秒間メッセージ流量 (シグナリング想定で十分なバッファ)。
 _MAX_WS_MESSAGES_PER_SEC = 60
+# device_rename (h12a): participant が自分の端末名を変更するときの上限。
+# DB 列 SessionParticipant.device_name は String(100) なのでこれに合わせる。
+_MAX_DEVICE_NAME_LEN = 100
 
 #: 送信デバイスが operator へ送ってよいメッセージ種別 (S-6)。
 #: `src/pages/CameraSenderPage.tsx` が実際に送るのはこの 5 種類だけ。
@@ -178,6 +182,50 @@ class CameraSignalingManager:
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("camera revoke dispatch failed: %s", exc)
+
+    async def revoke_session_participants(self, session_code: str,
+                                          reason: str = "session closed") -> int:
+        """セッション内の全 device / viewer の WS を閉じる (operator は対象外)。
+
+        セッション終了・パスワード再生成で DB 上のトークンを失効させても、既に
+        繋がっているソケットは生きたままになる。`reject` と同じ機構で切る。
+        device は `revoke_device` (camera_stream_ended を operator へ送る) を通す。
+        閉じた件数を返す。
+        """
+        sess = self._sessions.get(session_code)
+        if not sess:
+            return 0
+        closed = 0
+        for pid in list(sess["devices"].keys()):
+            if await self.revoke_device(session_code, pid, reason):
+                closed += 1
+        for vid, ws in list(sess["viewers"].items()):
+            logger.info("camera viewer revoked: %s vid=%s (%s)", session_code, vid, reason)
+            try:
+                await ws.close(code=1008, reason=reason)
+            except Exception:  # noqa: BLE001 - 既に切れていることがある
+                pass
+            await self.disconnect_viewer(session_code, vid)
+            closed += 1
+        return closed
+
+    def revoke_session_participants_threadsafe(self, session_code: str,
+                                               reason: str = "session closed") -> None:
+        """同期の REST ハンドラから `revoke_session_participants` を発火する。
+
+        失敗しても REST 側は落とさない。届かなかった場合は WS 側 60s 再検査ループが
+        セッション終了 / トークン失効を検知して閉じる。
+        """
+        import asyncio as _aio
+        loop = self._loop
+        if loop is None or loop.is_closed():
+            return
+        try:
+            _aio.run_coroutine_threadsafe(
+                self.revoke_session_participants(session_code, reason), loop
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("camera session revoke dispatch failed: %s", exc)
 
     def _slock(self, session_code: str) -> "asyncio.Lock":
         import asyncio as _aio
@@ -487,6 +535,48 @@ class CameraSignalingManager:
     async def relay_to_operator(self, session_code: str, message: dict) -> None:
         await self._send_to_operator(session_code, message)
 
+    async def relay_current_device_to_operator(
+        self,
+        session_code: str,
+        participant_id: str,
+        ws: WebSocket,
+        message: dict,
+    ) -> bool:
+        """Relay a device message only while this websocket is still current.
+
+        Device reconnect replaces the participant socket and creates a new
+        stream_id. A late ICE/offer from the old socket must never inherit that
+        new stream_id. This operation shares the session guard with reconnect,
+        so signaling is ordered before replacement or dropped after replacement.
+        """
+        pid = str(participant_id)
+        async with self._session_guard(session_code):
+            sess = self._sessions.get(session_code)
+            if sess is None or sess.get("devices", {}).get(pid) is not ws:
+                logger.info(
+                    "camera stale device message dropped: session=%s pid=%s",
+                    session_code,
+                    pid,
+                )
+                return False
+
+            stream_id = sess.get("device_streams", {}).get(pid)
+            if not stream_id:
+                return False
+
+            operator = sess.get("operator")
+            if operator is None:
+                return True
+
+            outbound = dict(message)
+            outbound["participant_id"] = pid
+            outbound["stream_id"] = stream_id
+            try:
+                await operator.send_text(json.dumps(outbound))
+            except Exception:
+                sess["operator"] = None
+            return True
+
     async def relay_to_device(self, session_code: str, participant_id: str, message: dict) -> None:
         if session_code not in self._sessions:
             return
@@ -536,21 +626,114 @@ class CameraSignalingManager:
             return
         await self.relay_to_device(session_code, participant_id, message)
 
+    def _device_names_for(self, session_code: str, participant_ids: list[str]) -> dict[str, Optional[str]]:
+        """その session に属する participant の device_name を DB から引く。
+
+        participant_id は SessionParticipant.id の文字列。session_code から
+        SharedSession.id を引いて join し、**その session の行だけ** を返す
+        (他 session の同名 id を拾わない)。引けない id は dict に含めない。
+        """
+        ids: list[int] = []
+        for pid in participant_ids:
+            try:
+                ids.append(int(pid))
+            except (ValueError, TypeError):
+                continue
+        if not ids:
+            return {}
+        from backend.db.database import SessionLocal
+        from backend.db.models import SharedSession, SessionParticipant
+        db = SessionLocal()
+        try:
+            sess_row = db.query(SharedSession.id).filter(
+                SharedSession.session_code == session_code
+            ).first()
+            if sess_row is None:
+                return {}
+            rows = db.query(SessionParticipant.id, SessionParticipant.device_name).filter(
+                SessionParticipant.session_id == sess_row[0],
+                SessionParticipant.id.in_(ids),
+            ).all()
+            return {str(r[0]): r[1] for r in rows}
+        finally:
+            db.close()
+
     async def _notify_device_list(self, session_code: str) -> None:
         sess = self._sessions.get(session_code, {})
         streams = sess.get("device_streams", {})
+        pids = list(sess.get("devices", {}).keys())
+        # device_name を DB から足す (h12a)。接続時に一度読むだけだった名前を
+        # device_rename で更新できるようにしたので、通知にも含めて
+        # 他クライアントが一覧を更新できるようにする。
+        names = self._device_names_for(session_code, pids)
         devices = [
             {
                 "participant_id": pid,
                 "stream_id": streams.get(pid),
                 "status": "connected",
+                "device_name": names.get(pid),
             }
-            for pid in sess.get("devices", {}).keys()
+            for pid in pids
         ]
         await self._send_to_operator(session_code, {
             "type": "device_list_update",
             "devices": devices,
         })
+
+
+    @staticmethod
+    def _clean_device_name(raw) -> Optional[str]:
+        """ホワイトスペースを落とし、長さを制限し、空は拒否する。
+
+        有効な名前なら str、無効なら None を返す。
+        """
+        if not isinstance(raw, str):
+            return None
+        name = raw.strip()
+        if not name:
+            return None
+        return name[:_MAX_DEVICE_NAME_LEN]
+
+    async def apply_device_rename(self, session_code: str, participant_id: str,
+                                  raw_name) -> Optional[str]:
+        """participant に自分の端末名を付け替えさせる (h12a)。
+
+        - 前後空白を落とし、`_MAX_DEVICE_NAME_LEN` で切り、空は拒否。
+        - **その session に属する participant の行に限り** device_name を書く。
+          (session_code → SharedSession.id で join し、他 session の同名 id は触らない)
+        - 書けたら _notify_device_list を呼び、他クライアントに最新名を届ける。
+
+        保存した名前を返す。無効な名前 / 非所属 participant なら None。
+        """
+        name = self._clean_device_name(raw_name)
+        if name is None:
+            return None
+        try:
+            pid_int = int(participant_id)
+        except (ValueError, TypeError):
+            return None
+        from backend.db.database import SessionLocal
+        from backend.db.models import SharedSession, SessionParticipant
+        db = SessionLocal()
+        try:
+            sess_row = db.query(SharedSession.id).filter(
+                SharedSession.session_code == session_code
+            ).first()
+            if sess_row is None:
+                return None
+            participant = db.query(SessionParticipant).filter(
+                SessionParticipant.id == pid_int,
+                SessionParticipant.session_id == sess_row[0],
+            ).first()
+            if participant is None:
+                # その session に属さない participant。他人の行は書かせない。
+                return None
+            participant.device_name = name
+            db.commit()
+        finally:
+            db.close()
+        await self._notify_device_list(session_code)
+        return name
 
 
 # シングルトン
@@ -767,6 +950,39 @@ async def ws_camera_handler(
         finally:
             _d.close()
 
+    def _liveness_now() -> dict:
+        """接続中の device / viewer の状態を DB から読み直す。
+
+        session_active: セッションがまだ有効か / gone: 参加者行が消えた
+        token_revoked: 参加者トークンが失効した / approval, blocked: 承認と受信停止。
+        数値でない viewer_id (未登録ビューワ) は参加者行を持たないのでセッションだけ見る。
+        """
+        from backend.db.database import SessionLocal as _SL
+        from backend.db.models import SessionParticipant as _SP3, SharedSession as _SS3
+        out = {"session_active": False, "gone": False, "token_revoked": False,
+               "approval": None, "blocked": False}
+        _d = _SL()
+        try:
+            out["session_active"] = bool(
+                _d.query(_SS3.is_active).filter(_SS3.id == _session.id).scalar()
+            )
+            try:
+                _pid = int(participant_id or viewer_id)
+            except (ValueError, TypeError):
+                return out
+            row = _d.query(
+                _SP3.approval_status, _SP3.ws_token_hash, _SP3.viewer_permission
+            ).filter(_SP3.id == _pid, _SP3.session_id == _session.id).first()
+            if row is None:
+                out["gone"] = True
+                return out
+            out["approval"] = row[0]
+            out["token_revoked"] = not row[1]
+            out["blocked"] = row[2] == "blocked"
+            return out
+        finally:
+            _d.close()
+
     async def _do_recheck_approval_and_close_if_revoked() -> bool:
         """接続中に承認が取り消されたら閉じる。
 
@@ -777,15 +993,39 @@ async def ws_camera_handler(
         間隔は operator token の再検証と同じ 60s ±jitter に相乗りさせている。
         **この 60s のあいだは取り消し後も繋がったままになる**、という意味である。
         """
-        if not participant_id or is_operator or is_viewer:
+        if is_operator or not (participant_id or is_viewer):
             return False
         try:
-            status = await _asyncio_cam.to_thread(_approval_now)
+            state = await _asyncio_cam.to_thread(_liveness_now)
         except _asyncio_cam.CancelledError:
             raise
         except OSError as _exc:
             logger.debug("camera approval recheck error: %s", _exc)
             return False
+        # device / viewer 共通: セッションが終了した、または参加者のトークンが
+        # 失効 (end / regenerate-password / reject) した接続は配信を続けさせない。
+        if not state["session_active"] or state["gone"] or state["token_revoked"]:
+            logger.info(
+                "camera WS closing: session_active=%s gone=%s revoked=%s session=%s id=%s",
+                state["session_active"], state["gone"], state["token_revoked"],
+                session_code, participant_id or viewer_id,
+            )
+            try:
+                await websocket.close(code=4403, reason="セッションが終了したか資格情報が失効しました")
+            except Exception:
+                pass
+            return True
+        if is_viewer:
+            # viewer は拒否・受信停止になったら閉じる (未承認では入場券が出ないので
+            # pending のまま繋がっていることは通常ない)。
+            if state["approval"] == "rejected" or state["blocked"]:
+                try:
+                    await websocket.close(code=4403, reason="この端末の映像受信は停止されています")
+                except Exception:
+                    pass
+                return True
+            return False
+        status = state["approval"]
         if status != "approved":
             logger.info(
                 "camera device WS closing: approval=%s session=%s participant=%s",
@@ -896,6 +1136,16 @@ async def ws_camera_handler(
                     await camera_manager.relay_to_operator(session_code, msg)
 
             else:
+                # device_rename (h12a): participant が自分の端末名を付け替える。
+                # operator の hub はこの生メッセージを扱わない。書き込みと
+                # 更新通知は device_list_update (device_name を含む) に集約するので、
+                # ここで処理して relay には流さない。participant_id は接続が
+                # 持つサーバ権威の値を使う (クライアント申告は採用しない)。
+                if msg_type == "device_rename":
+                    await camera_manager.apply_device_rename(
+                        session_code, participant_id, msg.get("device_name"),
+                    )
+                    continue
                 # 送信デバイス → Operator に中継
                 #
                 # S-6 (2026-09-22): ここだけ **種別を検査していなかった**。
@@ -918,9 +1168,15 @@ async def ws_camera_handler(
                     continue
                 # participant_id と stream_id はサーバが上書きする。
                 # クライアント申告を採用すると他カメラを騙れる。
-                msg["participant_id"] = participant_id
-                msg["stream_id"] = camera_manager.stream_id_for(session_code, participant_id)
-                await camera_manager.relay_to_operator(session_code, msg)
+                relayed = await camera_manager.relay_current_device_to_operator(
+                    session_code,
+                    participant_id,
+                    websocket,
+                    msg,
+                )
+                if not relayed:
+                    # A newer connection already owns this participant slot.
+                    return
 
                 if msg_type == "camera_stop":
                     break

@@ -25,7 +25,7 @@ from backend.services.export_package import (
     export_conditions_only,
 )
 from backend.services.import_package import import_package
-from backend.services.backup_service import create_backup, list_backups
+from backend.services.backup_service import BackupUnavailable, backup_status, create_backup, list_backups
 from backend.routers.settings import _load_all as _load_settings
 import shutil
 from pathlib import Path
@@ -40,6 +40,37 @@ def _sanitize_errors(errors):
     for e in errors:
         logger.warning("import error (sanitized): %s", e)
     return [f"{len(errors)} 件の内部エラーが発生しました"]
+
+
+def _run_import(db, raw: bytes, dry_run: bool, importer_team_id):
+    """実取り込みの共通入口 (アップロード経路とクラウドフォルダ経路で共有)。
+
+    dry_run=False は取り込み前に自動バックアップを取り、全レコード 1 トランザクションで
+    適用する。バックアップに失敗したら何も書かずに 500。適用中に 1 件でも
+    失敗したら全て取り消して 409 (データは取り込み前のまま)。
+    例外文面はログにだけ出し、応答には件数だけ載せる (_sanitize_errors と同じ方針)。
+    """
+    summary = import_package(
+        db, raw, dry_run=dry_run, importer_team_id=importer_team_id,
+        backup_before_apply=not dry_run,
+    )
+    if summary.backup_failed:
+        for e in summary.errors:
+            logger.error("import aborted, backup failed (sanitized): %s", e)
+        raise HTTPException(
+            status_code=500,
+            detail="取り込み前のバックアップに失敗したため、取り込みを中止しました。データは変更されていません",
+        )
+    if summary.rolled_back:
+        _sanitize_errors(summary.errors)
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"取り込み中に {max(summary.failures, 1)} 件のエラーが発生したため、"
+                "すべて取り消しました。データは変更されていません"
+            ),
+        )
+    return summary
 
 
 from backend.db.models import SyncConflict, Match, Player, User, UserConsent, GameSet, Rally, Stroke
@@ -388,7 +419,7 @@ async def import_package_endpoint(
 
     # Round 258 R3 P0/P1 fix: importer team を _apply_record に伝播
     importer_team_id = getattr(_ctx, "team_id", None)
-    summary = import_package(db, raw, dry_run=False, importer_team_id=importer_team_id)
+    summary = _run_import(db, raw, False, importer_team_id)
 
     return {
         "success": True,
@@ -399,6 +430,8 @@ async def import_package_endpoint(
             "deleted": summary.deleted,
             "conflicts": summary.conflicts,
             "conflict_log": summary.conflict_log,
+            "backup_taken": summary.backup_path is not None,
+            "backup_skipped": summary.backup_skipped,
             "errors": _sanitize_errors(summary.errors),
         },
     }
@@ -409,9 +442,12 @@ async def import_package_endpoint(
 @router.post("/backup")
 def backup_now(
     label: Optional[str] = Query(None, max_length=100),
-    _ctx=Depends(require_analyst),
+    _ctx=Depends(require_admin),
 ):
-    """現行 DB をバックアップ ZIP として保存 (analyst 限定)。
+    """現行 DB をバックアップ ZIP として保存 (admin 限定)。
+
+    バックアップは全チームのデータを含む DB 丸ごとなので、1 チームの担当者には許さない。
+    自分のデータの書き出しは /export/* (スコープ付き) を使う。
 
     例外文面は内部パスや実装詳細を直接返さず、サーバ log にのみ記録する。
     analyst も最終的に admin 経由で閲覧可能なロールだが、log で十分な情報が
@@ -426,8 +462,12 @@ def backup_now(
     except FileNotFoundError as e:
         logger.warning("backup_now FileNotFoundError (sanitized): %s", e)
         raise HTTPException(status_code=404, detail="バックアップ元ファイルが見つかりません")
+    except BackupUnavailable as e:
+        # pg_dump が無いなど。文面は画面に出してよいものだけで作ってある
+        logger.warning("backup_now unavailable: %s", e)
+        raise HTTPException(status_code=501, detail=str(e))
     except NotImplementedError as e:
-        # PostgreSQL 環境では SQLite ベースのバックアップは不可
+        # 対応していない DB の種類
         logger.warning("backup_now NotImplementedError (sanitized): %s", e)
         raise HTTPException(status_code=501, detail="この DB エンジンではこのバックアップ方式はサポートされていません")
     except Exception as e:
@@ -436,9 +476,9 @@ def backup_now(
 
 
 @router.get("/backups")
-def get_backups(_ctx=Depends(require_analyst)):
-    """バックアップ一覧を返す (analyst 限定)"""
-    return {"success": True, "data": list_backups()}
+def get_backups(_ctx=Depends(require_admin)):
+    """バックアップ一覧を返す (admin 限定)"""
+    return {"success": True, "data": list_backups(), "status": backup_status()}
 
 
 # ─── クラウドフォルダ連携 ──────────────────────────────────────────────────────
@@ -481,11 +521,12 @@ def list_cloud_packages(db: Session = Depends(get_db), _ctx=Depends(require_anal
 async def copy_to_cloud(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    _ctx=Depends(require_analyst),
+    _ctx=Depends(require_admin),
 ):
     """
     クライアントがアップロードした .sspkg を sync_folder_path へコピーする。
     エクスポート後の自動コピーに使用。
+    sync_folder_path はサーバ全体で 1 つの共有フォルダなので admin 限定。
     """
     settings = _load_settings(db)
     folder = settings.get("sync_folder_path", "")
@@ -517,11 +558,12 @@ def import_from_cloud_path(
     path: str = Query(..., description="クラウドフォルダ内の .sspkg フルパス"),
     dry_run: bool = Query(False),
     db: Session = Depends(get_db),
-    _ctx=Depends(require_analyst),
+    _ctx=Depends(require_admin),
 ):
     """
     sync_folder_path 内の指定 .sspkg ファイルを直接インポート。
     dry_run=True の場合はプレビューのみ。
+    共有フォルダはサーバ全体で 1 つなので admin 限定。
     """
     # Path-injection 防止: 同期フォルダを基準に結合 → resolve → 基準配下チェックを優先
     settings_cfg = _load_settings(db)
@@ -592,7 +634,7 @@ def import_from_cloud_path(
 
     # Round 258 R3 P0/P1 fix: importer team を伝播
     importer_team_id = getattr(_ctx, "team_id", None)
-    summary = import_package(db, raw, dry_run=dry_run, importer_team_id=importer_team_id)
+    summary = _run_import(db, raw, dry_run, importer_team_id)
     return {
         "success": True,
         "data": {
@@ -603,6 +645,8 @@ def import_from_cloud_path(
             "deleted": summary.deleted,
             "conflicts": summary.conflicts,
             "conflict_log": summary.conflict_log,
+            "backup_taken": summary.backup_path is not None,
+            "backup_skipped": summary.backup_skipped,
             "errors": _sanitize_errors(summary.errors),
         },
     }

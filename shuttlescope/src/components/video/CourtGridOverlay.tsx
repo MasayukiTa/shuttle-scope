@@ -17,8 +17,9 @@
  */
 
 import { useState, useRef, useEffect, useCallback, RefObject } from 'react'
-import { apiGet, API_BASE_URL, getAuthHeaders } from '@/api/client'
+import { apiGet, API_BASE_URL, fetchAuthed } from '@/api/client'
 import { useTranslation } from 'react-i18next'
+import { errorStatus } from '@/utils/errors'
 import { MIcon } from '@/components/common/MIcon'
 
 // バックエンド保存のクライアント側タイムアウト (ms)。
@@ -35,6 +36,8 @@ interface CourtGridOverlayProps {
   containerRef: RefObject<HTMLDivElement>
   /** グリッド全体の表示/非表示 */
   visible: boolean
+  /** 表示専用。点の再配置・ドラッグ・バックエンド保存を一切行わない（別モニタ用ミラー向け） */
+  readOnly?: boolean
   /** バックエンドへのキャリブレーション保存成功時のコールバック */
   onCalibrationSaved?: () => void
   /** キャリブレーション保存状態変更通知（'backend'=DB保存済 / 'local'=ローカルのみ / 'none'） */
@@ -109,7 +112,7 @@ function halfGridLines(
 
 type CalibSource = 'backend' | 'local' | 'none'
 
-export function CourtGridOverlay({ matchId, containerRef, visible, onCalibrationSaved, onCalibSourceChange }: CourtGridOverlayProps) {
+export function CourtGridOverlay({ matchId, containerRef, visible, readOnly = false, onCalibrationSaved, onCalibSourceChange }: CourtGridOverlayProps) {
   const { t } = useTranslation()
   const [points, setPoints] = useState<Pt[]>([])          // 設定済み点（最大6個）
   const [calibrating, setCalibrating] = useState(false)   // キャリブレーションモード
@@ -119,6 +122,8 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
   const [saveError, setSaveError] = useState<string | null>(null)  // 保存エラーメッセージ
   const [saving, setSaving] = useState(false)             // 保存中スピナー
   const [calibSource, setCalibSource] = useState<CalibSource>('none') // 取得元
+  const [loadFailed, setLoadFailed] = useState(false)     // 既存補正の取得失敗 (未設定とは別)
+  const [loadAttempt, setLoadAttempt] = useState(0)       // 再取得トリガ
 
   // calibSource が変わるたびに親へ通知
   useEffect(() => { onCalibSourceChange?.(calibSource) }, [calibSource, onCalibSourceChange])
@@ -146,6 +151,7 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
   useEffect(() => {
     let cancelled = false
     setCalibSource('none')
+    setLoadFailed(false)
     // 旧実装は相対 URL `/api/...` を fetch していたが、Electron の renderer は
     // file:// or app:// origin で動くため相対 URL では backend に届かず "Failed
     // to fetch" になっていた。apiGet 経由で http://localhost:8765/api を使う。
@@ -160,24 +166,31 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
           try { localStorage.setItem(STORAGE_KEY(matchId), JSON.stringify(pts)) } catch { /* ignore */ }
         }
       })
-      .catch(() => {
-        // バックエンド未設定 → localStorage フォールバック
+      .catch((err: unknown) => {
+        // 取得失敗 → localStorage フォールバック
         if (cancelled) return
+        let restored = false
         try {
           const saved = localStorage.getItem(STORAGE_KEY(matchId))
           if (saved) {
             setPoints(JSON.parse(saved))
             setCalibSource('local')
+            restored = true
           }
         } catch { /* ignore */ }
+        // 404 以外 (通信断・認証・5xx) でローカルにも無い場合は「未設定」と区別する。
+        // サーバに既存補正があっても、新規作成で上書きされないよう作成導線を止める。
+        if (!restored && errorStatus(err) !== 404) setLoadFailed(true)
       })
     return () => { cancelled = true }
-  }, [matchId])
+  }, [matchId, loadAttempt])
 
   // 進行中の保存リクエストを abort できるよう ref で保持
   const saveAbortRef = useRef<AbortController | null>(null)
 
   const postToBackend = useCallback((pts: Pt[]) => {
+    // 表示専用では校正値を書き換えない
+    if (readOnly) return
     // 既に走っている保存があれば打ち切る (連続ドラッグの古い request 防止)
     if (saveAbortRef.current) {
       try { saveAbortRef.current.abort() } catch { /* ignore */ }
@@ -190,18 +203,19 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
       try { ac.abort() } catch { /* ignore */ }
     }, SAVE_TIMEOUT_MS)
 
-    // apiPost は AbortSignal を渡せないため fetch を直接叩く。
-    // 仕様 (URL / ヘッダ / ボディ shape) は apiPost と同等。
-    fetch(`${API_BASE_URL}/matches/${matchId}/court_calibration`, {
+    // apiPost は AbortSignal を渡せないため fetchAuthed を使う。URL / ヘッダ / ボディ shape は
+    // apiPost と同等で、access token 期限切れ (401) は共通の single-flight refresh 後に 1 回再送する。
+    // 上のタイマー (SAVE_TIMEOUT_MS) が先に発火するよう、内側の timeout は少し長くする。
+    fetchAuthed(`${API_BASE_URL}/matches/${matchId}/court_calibration`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         points: pts.map((p) => ({ x: p.x, y: p.y })),
         container_width:  containerSize.w,
         container_height: containerSize.h,
       }),
       signal: ac.signal,
-    })
+    }, SAVE_TIMEOUT_MS + 5_000)
       .then(async (res) => {
         if (!res.ok) {
           const text = await res.text().catch(() => '')
@@ -249,7 +263,7 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
           saveAbortRef.current = null
         }
       })
-  }, [matchId, containerSize, onCalibrationSaved])
+  }, [matchId, containerSize, onCalibrationSaved, readOnly])
 
   // アンマウント時に進行中保存を abort してメモリリーク防止
   useEffect(() => {
@@ -273,12 +287,13 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
   // ─── キャリブレーション操作 ────────────────────────────────────────────
 
   const startCalibration = useCallback(() => {
+    if (readOnly) return
     prevPtsRef.current = points   // キャンセル用バックアップ
     setPoints([])
     setCalibSource('none')
     localStorage.removeItem(STORAGE_KEY(matchId))
     setCalibrating(true)
-  }, [matchId, points])
+  }, [matchId, points, readOnly])
 
   const getSVGPoint = useCallback((e: React.PointerEvent<SVGSVGElement>): Pt => {
     const rect = svgRef.current!.getBoundingClientRect()
@@ -306,11 +321,11 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
   // ─── ドラッグで点を調整 ─────────────────────────────────────────────────
 
   const handlePointPointerDown = useCallback((e: React.PointerEvent<SVGCircleElement>, idx: number) => {
-    if (calibrating) return  // キャリブレーション中は干渉しない
+    if (calibrating || readOnly) return  // キャリブレーション中・表示専用では点を動かさない
     e.stopPropagation()
     e.currentTarget.setPointerCapture(e.pointerId)
     setDraggingIdx(idx)
-  }, [calibrating])
+  }, [calibrating, readOnly])
 
   const handleSVGPointerMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
     if (draggingIdx === null) return
@@ -370,7 +385,7 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
         style={{
           position: 'absolute',
           inset: 0,
-          pointerEvents: (calibrating || (isCalibrated && visible)) ? 'all' : 'none',
+          pointerEvents: readOnly ? 'none' : (calibrating || (isCalibrated && visible)) ? 'all' : 'none',
           cursor: calibrating
             ? 'crosshair'
             : draggingIdx !== null
@@ -406,7 +421,7 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
               cx={pt.x * w} cy={pt.y * h} r={6}
               fill={COLORS.point} fillOpacity={0.85}
               stroke="#000" strokeWidth={1.5}
-              style={{ cursor: calibrating ? 'default' : 'grab', pointerEvents: calibrating ? 'none' : 'all' }}
+              style={{ cursor: calibrating || readOnly ? 'default' : 'grab', pointerEvents: calibrating || readOnly ? 'none' : 'all' }}
               onPointerDown={(e) => handlePointPointerDown(e, i)}
             />
             <text
@@ -435,7 +450,7 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
       </svg>
 
       {/* ─── グリッド線再作成 + キャリブ保存状態（左上）────────── */}
-      {visible && isCalibrated && !calibrating && (
+      {!readOnly && visible && isCalibrated && !calibrating && (
         <div className="absolute top-1 left-1 flex items-center gap-1" style={{ pointerEvents: 'all' }}>
           <button
             onClick={startCalibration}
@@ -523,7 +538,24 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
       )}
 
       {/* ─── 未キャリブレーション時の案内 ───────────────────────── */}
-      {visible && !isCalibrated && !calibrating && (
+      {!readOnly && visible && !isCalibrated && !calibrating && loadFailed && (
+        <div
+          className="absolute inset-0 flex items-center justify-center"
+          style={{ pointerEvents: 'all' }}
+        >
+          <button
+            type="button"
+            role="alert"
+            onClick={() => setLoadAttempt((n) => n + 1)}
+            className="flex flex-col items-center gap-2 px-6 py-4 rounded-ss-lg text-sm border hover:opacity-80"
+            style={{ backgroundColor: 'rgba(28,31,36,0.8)', borderColor: 'rgba(194,51,74,0.7)', color: '#E6E9ED' }}
+          >
+            <span>{t('auto.CourtGridOverlay.load_failed')}</span>
+            <span className="text-xs" style={{ color: '#A5AEBB' }}>{t('auto.CourtGridOverlay.load_retry')}</span>
+          </button>
+        </div>
+      )}
+      {!readOnly && visible && !isCalibrated && !calibrating && !loadFailed && (
         <div
           className="absolute inset-0 flex items-center justify-center"
           style={{ pointerEvents: 'all' }}

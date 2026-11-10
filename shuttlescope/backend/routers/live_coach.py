@@ -6,7 +6,7 @@
 
 設計方針:
 - coach / analyst / admin のみ。player には絶対に公開しない（弱点露出になり得るため）。
-- "弱点 / weakness" 表現は禁止。中立的な「研究されている可能性」「試す価値あり」表現に統一。
+- "弱点 / weakness" 表現は禁止。観測事実 (何がどちらへ何ポイント動いたか・N) だけを中立に書く。原因や相手の意図は書かない。
 - 全レスポンスに confidence (0..1) を載せる。
 - データ不足時は anomaly=false / suggestions=[] を返し、UI 側で banner / strip を隠す。
 """
@@ -19,9 +19,12 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from backend.analysis.role_view import own_slot
+from backend.analysis.shot_taxonomy import canonicalize, ja_label
 from backend.db.database import get_db
 from backend.db.models import Match, GameSet, Rally, Stroke
-from backend.utils.auth import AuthCtx, get_auth
+from backend.utils.auth import AuthCtx, get_auth, user_can_access_match
+from backend.utils.confidence import VERDICT_MIN_SAMPLE
 from backend.analysis.router_helpers import (
     _fetch_matches_sets_rallies,
     _player_role_in_match,
@@ -49,7 +52,7 @@ def _shot_distribution(strokes: list[Stroke], target_role: Optional[str]) -> Cou
     """対象選手のショット種別ヒストグラム。"""
     c: Counter = Counter()
     for s in strokes:
-        if target_role is not None and s.player != target_role:
+        if target_role is not None and s.player != own_slot(target_role):
             continue
         st = (s.shot_type or "unknown").lower()
         c[st] += 1
@@ -91,6 +94,10 @@ def get_live_anomaly(
     # ── 対象試合 + 直近 N ラリー
     match = db.query(Match).filter(Match.id == match_id).first()
     if not match:
+        raise HTTPException(status_code=404, detail="match not found")
+    # Phase B-6 team 境界: 他チームの試合を match_id 直指定で読ませない。
+    # enumeration 防御のため 403 ではなく 404 を返す (他 router と揃える)。
+    if not user_can_access_match(ctx, match):
         raise HTTPException(status_code=404, detail="match not found")
     role_in_match = _player_role_in_match(match, player_id)
     if role_in_match is None:
@@ -141,7 +148,7 @@ def get_live_anomaly(
     baseline_dist: Counter = Counter()
     for s in base_strokes_all:
         role = rally_to_role.get(s.rally_id)
-        if role is None or s.player != role:
+        if role is None or s.player != own_slot(role):
             continue
         st = (s.shot_type or "unknown").lower()
         baseline_dist[st] += 1
@@ -179,18 +186,26 @@ def get_live_anomaly(
         diffs.append((st, round((pr - br) * 100, 1), recent_dist.get(st, 0)))
     diffs.sort(key=lambda x: -abs(x[1]))
     primary = diffs[0]
-    pct_label = f"{'+' if primary[1] >= 0 else ''}{primary[1]}pp"
+    n_rallies = len(recent_rallies)
+    delta_abs = abs(primary[1])
+    went_up = primary[1] >= 0
+    # 表示名は shot_taxonomy の既存対応表 (SHOT_TYPE_JA) を使う。内部キーは文面に出さない。
+    shot_ja = ja_label(primary[0])
+    shot_en = canonicalize(primary[0]).replace("_", " ")
 
+    # 観測した事実だけを書く (向き・大きさ・直近ラリー数 N)。
+    # 原因や相手の意図は、検定の裏づけが無いので書かない。
     headline_ja = (
-        f"直近{len(recent_rallies)}ラリーで {primary[0]} 比率が普段の {pct_label}。"
-        "相手に研究されている可能性があります。"
+        f"直近{n_rallies}ラリー(N={n_rallies})で、{shot_ja}の比率が"
+        f"普段より{delta_abs}ポイント{'高く' if went_up else '低く'}なっています。"
     )
     headline_en = (
-        f"In last {len(recent_rallies)} rallies, {primary[0]} share shifted {pct_label} vs season baseline. "
-        "The opponent may be reading this pattern."
+        f"In the last {n_rallies} rallies (N={n_rallies}), the share of {shot_en} "
+        f"was {delta_abs} points {'higher' if went_up else 'lower'} than usual."
     )
 
-    # confidence: KL / 上限 * 観測量での減衰
+    # confidence: 手置きの式 (KL / 上限 * 観測量での減衰)。確率ではないので
+    # 画面には出さない (UI は evidence の標本数 N を表示する)。互換のため値は残す。
     raw_conf = min(kl / (threshold * 4), 1.0)
     n_factor = min(recent_total / 30.0, 1.0)
     confidence = round(raw_conf * (0.6 + 0.4 * n_factor), 3)
@@ -207,10 +222,11 @@ def get_live_anomaly(
             "recent_strokes": recent_total,
             "baseline_strokes": base_total,
             "shot_diffs_pp": [
-                {"shot_type": st, "delta_pp": dp, "recent_n": n}
+                {"shot_type": st, "shot_key": canonicalize(st), "delta_pp": dp, "recent_n": n}
                 for st, dp, n in diffs[:5]
             ],
             "primary_shot": primary[0],
+            "primary_direction": "up" if went_up else "down",
         },
     }
 
@@ -218,6 +234,13 @@ def get_live_anomaly(
 # ─────────────────────────── Feature 2: live_suggestions ─────────────────
 
 _BANNED_TERMS = ("弱点", "weakness")
+
+# 提案の対象にできないショット。
+#   other / cant_reach : 打ち手が選べる行為ではない (分類外・届かなかった球)。
+#   short_service / long_service : 選べるのは自分のサーブ権があるときだけで、
+#     この提案は直前の状態 (誰のサーブか) を持たない。lift も「サーブ権を持つ
+#     ラリー」に偏るので、そのまま並べると実行できない助言になる。
+_NOT_SUGGESTIBLE_SHOTS = frozenset({"other", "cant_reach", "short_service", "long_service"})
 
 
 def _safe(text: str) -> str:
@@ -229,7 +252,10 @@ def _safe(text: str) -> str:
 
 
 def _sufficiency_score(n: int, *, cap: float) -> float:
-    """データ量の単調増加スコア (0.5〜cap)。**確率ではない。**
+    """データ量の単調増加スコア (0〜cap)。**確率ではない。**
+
+    n が VERDICT_MIN_SAMPLE 未満なら 0.5 未満、ちょうど VERDICT_MIN_SAMPLE で 0.5、
+    n=30 で cap。以前は下限が 0.5 で、呼び出し側の `conf < 0.5` の足切りが一度も効かなかった。
 
     D-5: 旧来この値は `confidence` という名前で返り、画面では
     「信頼度 NN%」として描かれていた。中身は N を 0.5〜0.95 に写す
@@ -239,7 +265,10 @@ def _sufficiency_score(n: int, *, cap: float) -> float:
     画面に出す信頼度が要るなら `backend/utils/confidence.py` の
     `check_confidence` (閾値が文書化されていて星と警告文を返す) を使う。
     """
-    return round(min(0.5 + min(n, 30) / 60.0, cap), 3)
+    n = max(n, 0)
+    if n < VERDICT_MIN_SAMPLE:
+        return round(0.5 * n / VERDICT_MIN_SAMPLE, 3)
+    return round(min(0.5 + min(n - VERDICT_MIN_SAMPLE, 25) / 50.0, cap), 3)
 
 
 @router.get("/analysis/live_suggestions")
@@ -258,6 +287,10 @@ def get_live_suggestions(
 
     match = db.query(Match).filter(Match.id == match_id).first()
     if not match:
+        raise HTTPException(status_code=404, detail="match not found")
+    # Phase B-6 team 境界: 他チームの試合を match_id 直指定で読ませない。
+    # enumeration 防御のため 403 ではなく 404 を返す (他 router と揃える)。
+    if not user_can_access_match(ctx, match):
         raise HTTPException(status_code=404, detail="match not found")
     target_role = _player_role_in_match(match, player_id)
     if target_role is None:
@@ -283,9 +316,12 @@ def get_live_suggestions(
         # shot -> (rallies, wins)
         agg: dict[str, dict[str, set]] = defaultdict(lambda: {"rallies": set(), "wins": set()})
         for s in strokes:
-            if s.player != target_role:
+            if s.player != own_slot(target_role):
                 continue
-            st = (s.shot_type or "unknown").lower()
+            # 表記ゆれは canonical に寄せ、提案できないショットは集計から外す。
+            st = canonicalize(s.shot_type or "")
+            if st in _NOT_SUGGESTIBLE_SHOTS:
+                continue
             agg[st]["rallies"].add(s.rally_id)
             if rally_won.get(s.rally_id):
                 agg[st]["wins"].add(s.rally_id)
@@ -299,15 +335,15 @@ def get_live_suggestions(
         shot_stats = []
         for st, d in agg.items():
             n = len(d["rallies"])
-            if n < 5:
+            if n < VERDICT_MIN_SAMPLE:
                 continue
             wr = len(d["wins"]) / n
             lift_pp = (wr - overall_wr) * 100
-            shot_stats.append((st, wr, lift_pp, n))
+            shot_stats.append((st, wr, lift_pp, n, len(d["wins"])))
 
         # 高 lift ショット → 推奨「もっと使う」
         shot_stats.sort(key=lambda x: -x[2])
-        for st, wr, lift_pp, n in shot_stats[:3]:
+        for st, wr, lift_pp, n, n_won in shot_stats[:3]:
             if lift_pp < 5.0:
                 continue
             # D-5: これは **確率ではない**。N の単調増加関数で、0.5〜0.95 に
@@ -320,10 +356,12 @@ def get_live_suggestions(
             items.append({
                 "id": f"use_more_{st}",
                 "headline_ja": _safe(
-                    f"{st} を積極的に使う価値あり (lift +{lift_pp:.1f}pp / N={n})"
+                    f"{ja_label(st)}を使った{n}ラリー中{n_won}ラリーで得点"
+                    f"（全体より{lift_pp:.1f}ポイント高い）。使う場面を増やす余地があります。"
                 ),
                 "headline_en": _safe(
-                    f"Consider leaning on {st} (lift +{lift_pp:.1f}pp, N={n})"
+                    f"Rallies with {st.replace('_', ' ')}: points won in {n_won} of {n} "
+                    f"({lift_pp:.1f} points above the overall rate). Room to use it more."
                 ),
                 "confidence": round(conf, 3),
                 "evidence_path": f"counterfactual_shots#shot={st}",
@@ -331,23 +369,27 @@ def get_live_suggestions(
 
         # 低 lift ショット → 「代わりに別の手」
         shot_stats.sort(key=lambda x: x[2])
-        for st, wr, lift_pp, n in shot_stats[:2]:
+        for st, wr, lift_pp, n, n_won in shot_stats[:2]:
             if lift_pp > -5.0:
                 continue
-            # 代替候補: lift 最大ショット
+            # 代替候補: lift 最大ショット (shot_stats は提案できるショットだけ)
             alt_list = [s for s in shot_stats if s[2] > 0 and s[0] != st]
             alt = alt_list[-1] if alt_list else None
-            alt_label = alt[0] if alt else "別のショット"
+            alt_label_ja = ja_label(alt[0]) if alt else "別のショット"
+            alt_label_en = alt[0].replace("_", " ") if alt else "another shot"
             conf = _sufficiency_score(n, cap=0.9)  # 確率ではない。上のコメント参照
             if conf < 0.5:
                 continue
             items.append({
                 "id": f"swap_{st}",
                 "headline_ja": _safe(
-                    f"{st} の代わりに {alt_label} を試す価値あり (lift {lift_pp:.1f}pp)"
+                    f"{ja_label(st)}を使った{n}ラリー中{n_won}ラリーで得点"
+                    f"（全体より{abs(lift_pp):.1f}ポイント低い）。{alt_label_ja}を試す余地があります。"
                 ),
                 "headline_en": _safe(
-                    f"Consider {alt_label} instead of {st} (lift {lift_pp:.1f}pp)"
+                    f"Rallies with {st.replace('_', ' ')}: points won in {n_won} of {n} "
+                    f"({abs(lift_pp):.1f} points below the overall rate). "
+                    f"Room to try {alt_label_en} instead."
                 ),
                 "confidence": round(conf, 3),
                 "evidence_path": f"counterfactual_shots#shot={st}",

@@ -1,6 +1,6 @@
 // 汎用 LLM チャット (/#/llm) の API クライアント。
 // 会話 CRUD は通常の apiGet/apiPost、メッセージ送信のみ SSE ストリーミングを生 fetch で扱う。
-import { API_BASE_URL, apiGet, apiPost, apiPatch, apiDelete } from './client'
+import { API_BASE_URL, apiGet, apiPost, apiPatch, apiDelete, fetchAuthed } from './client'
 
 export interface LlmConversation {
   id: number
@@ -41,25 +41,37 @@ export type StreamEvent = {
   thinking?: boolean
 }
 
-// client.ts の authHeaders と同等 (token 優先、無ければ X-Role フォールバック)。
-function authHeaders(): Record<string, string> {
-  const h: Record<string, string> = {}
-  try {
-    const token = sessionStorage.getItem('shuttlescope_token')
-    if (token) {
-      h['Authorization'] = `Bearer ${token}`
-    } else {
-      const role = sessionStorage.getItem('shuttlescope_role')
-      const pid = sessionStorage.getItem('shuttlescope_player_id')
-      const team = sessionStorage.getItem('shuttlescope_team_name')
-      if (role) h['X-Role'] = role
-      if (pid) h['X-Player-Id'] = pid
-      if (team) h['X-Team-Name'] = encodeURIComponent(team)
-    }
-  } catch {
-    /* ignore */
+// Stable codes the backend sends in the SSE error event (see _classify_stream_error in
+// backend/routers/llm_chat.py) and the i18n key that explains each one. Raw upstream text
+// never reaches the client, so an unknown message falls back to the generic key.
+const LLM_STREAM_ERROR_KEYS = {
+  budget_exceeded: 'llm.error.budget_exceeded',
+  provider_timeout: 'llm.error.provider_timeout',
+  provider_unavailable: 'llm.error.provider_unavailable',
+  provider_rate_limited: 'llm.error.provider_rate_limited',
+  provider_auth: 'llm.error.provider_auth',
+  provider_rejected: 'llm.error.provider_rejected',
+  generation_failed: 'llm.error.generate',
+} as const
+
+export type LlmStreamErrorKey = (typeof LLM_STREAM_ERROR_KEYS)[keyof typeof LLM_STREAM_ERROR_KEYS]
+
+export function llmStreamErrorKey(message: string | undefined): LlmStreamErrorKey | null {
+  if (!message || !Object.prototype.hasOwnProperty.call(LLM_STREAM_ERROR_KEYS, message)) return null
+  return LLM_STREAM_ERROR_KEYS[message as keyof typeof LLM_STREAM_ERROR_KEYS]
+}
+
+// backend が構造化 detail ({"error": "budget_exceeded"} 等) を返したときの安定コードを取り出す。
+// detail が文字列ならそのまま、object なら error / code、どれも無ければ null (呼び出し側で汎用文言)。
+export function extractLlmErrorDetail(detail: unknown): string | null {
+  if (typeof detail === 'string') return detail || null
+  if (detail && typeof detail === 'object') {
+    const o = detail as Record<string, unknown>
+    if (typeof o.error === 'string' && o.error) return o.error
+    if (typeof o.code === 'string' && o.code) return o.code
+    if (typeof o.message === 'string' && o.message) return o.message
   }
-  return h
+  return null
 }
 
 export function getLlmConfig() {
@@ -112,9 +124,11 @@ export async function streamMessage(
     const payload: { content: string; model?: string; images?: string[] } = { content }
     if (model) payload.model = model
     if (images.length > 0) payload.images = images
-    resp = await fetch(`${API_BASE_URL}/llm/conversations/${conversationId}/messages`, {
+    // 共通の refresh-aware 経路: access token 期限切れ (401) は single-flight refresh 後に 1 回だけ再送する。
+    // 認可失敗は生成開始前に返るため、再送で二重生成にはならない。
+    resp = await fetchAuthed(`${API_BASE_URL}/llm/conversations/${conversationId}/messages`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       signal,
     })
@@ -126,7 +140,9 @@ export async function streamMessage(
     let msg = `HTTP ${resp.status}`
     try {
       const j = await resp.json()
-      if (j && j.detail) msg = String(j.detail)
+      // detail が object のとき String() すると "[object Object]" になるため、安定コードを取り出す。
+      const d = extractLlmErrorDetail(j?.detail)
+      if (d) msg = d
     } catch {
       /* ignore */
     }

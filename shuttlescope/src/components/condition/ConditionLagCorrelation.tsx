@@ -12,6 +12,7 @@ import {
   ReferenceLine,
 } from 'recharts'
 import { RoleGuard } from '@/components/common/RoleGuard'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { useConditions, type ConditionRecord } from '@/hooks/useConditions'
 import { pearson } from '@/utils/stats'
 
@@ -51,7 +52,10 @@ function weekIndex(dateStr: string): number {
 
 export function ConditionLagCorrelation({ playerId, isLight }: Props) {
   const { t } = useTranslation()
-  const { data, isLoading } = useConditions(playerId, { limit: 200 })
+  const conditionsQuery = useConditions(playerId, { limit: 200 })
+  const { data, isLoading } = conditionsQuery
+  // 取得失敗（前回成功データも無い）を「データなし」と区別する
+  const unavailable = conditionsQuery.isError && conditionsQuery.data === undefined
 
   const records: ConditionRecord[] = useMemo(() => {
     const list = Array.isArray(data) ? [...data] : []
@@ -169,7 +173,7 @@ export function ConditionLagCorrelation({ playerId, isLight }: Props) {
   const hasAny = lagResults.some((row) => row.r != null)
 
   return (
-    <RoleGuard allowedRoles={['analyst', 'coach', 'player']} fallback={null}>
+    <RoleGuard allowedRoles={['analyst', 'coach']} fallback={null}>
       <section className={`rounded-ss-lg border ${borderColor} ${panelBg} p-4`}>
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <h2 className="text-sm font-semibold text-[var(--ss-t1)]">{t('condition.lag_corr.title')}</h2>
@@ -210,6 +214,8 @@ export function ConditionLagCorrelation({ playerId, isLight }: Props) {
 
         {isLoading ? (
           <div className={`${textMuted} text-xs`}>…</div>
+        ) : unavailable ? (
+          <QueryErrorNotice onRetry={() => { void conditionsQuery.refetch() }} />
         ) : availableKeys.length < 1 || !hasAny ? (
           <div className={`${textMuted} text-xs`}>{t('condition.lag_corr.no_data')}</div>
         ) : (
@@ -303,6 +309,12 @@ export function ConditionLagCorrelation({ playerId, isLight }: Props) {
                 </span>
               </span>
             </div>
+            {/* 探索後の最大値 (最大 |r| のラグ) は上振れしやすい。事前に決めた仮説ではない */}
+            {bestLag && (
+              <div className={`mt-2 text-[11px] leading-snug ${textMuted}`}>
+                {t('condition.lag_corr.selection_note', { lags: LAGS.length, n: bestLag.n })}
+              </div>
+            )}
           </>
         )}
       </section>

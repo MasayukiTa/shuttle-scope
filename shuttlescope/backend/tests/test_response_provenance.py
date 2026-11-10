@@ -121,3 +121,27 @@ def test_epv_empty_response_still_declares_zero_input_provenance(monkeypatch):
     assert provenance["has_assisted_annotations"] is False
     assert "hit_zones" not in provenance
     assert "has_cv_hit_zones" not in provenance
+
+
+def _no_matches(monkeypatch):
+    monkeypatch.setattr(
+        analysis_spine,
+        "_load_ctx_or_query",
+        lambda *_args, **_kwargs: ([], {}, {}, {}, [], {}),
+    )
+
+
+def test_research_bundle_uses_the_same_shape_the_cards_read(monkeypatch):
+    """研究バンドルの epv_state_table / state_action_values は、カードが読む配列と同じ形。
+
+    防ぐ事象 (監査 #49): バンドルが dict (state_table / q_table) を返し、
+    個別取得の配列を後から上書きして、同じ画面で行が出たあと
+    「十分なデータがありません」に変わった。
+    """
+    from backend.routers import analysis_bundle
+
+    _no_matches(monkeypatch)
+    assert analysis_bundle._epv_state_map_impl is analysis_spine._epv_state_map_impl
+    assert analysis_bundle._state_best_actions_impl is analysis_spine._state_best_actions_impl
+    assert analysis_spine._epv_state_map_impl(None, player_id=1)["data"] == []
+    assert analysis_spine._state_best_actions_impl(None, player_id=1)["data"] == []

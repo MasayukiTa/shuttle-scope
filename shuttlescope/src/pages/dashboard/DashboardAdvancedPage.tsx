@@ -26,8 +26,10 @@ import { PairPlaystyle } from '@/components/analysis/PairPlaystyle'
 import { PairSynergyCard } from '@/components/analysis/PairSynergyCard'
 import { WinLossComparison } from '@/components/analysis/WinLossComparison'
 import { TournamentComparison } from '@/components/analysis/TournamentComparison'
+import { FilterNotAppliedNote } from '@/components/common/FilterNotAppliedNote'
 import { EvidenceBadge, EvidenceLevel } from '@/components/dashboard/EvidenceBadge'
 import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
+import { HoldGate } from '@/components/dashboard/HoldGate'
 import { useAnalysisMeta } from '@/hooks/useAnalysisMeta'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { MIcon } from '@/components/common/MIcon'
@@ -58,18 +60,21 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
   const [section, setSection] = useState<AdvancedSection>('shot')
   const [pairMode, setPairMode] = useState(false)
   const [partnerPlayerId, setPartnerPlayerId] = useState<number | null>(null)
-  const { getMeta } = useAnalysisMeta()
+  const { getMeta, isOnHold } = useAnalysisMeta()
   const { card, cardInner: _cardInner, textHeading, textSecondary, textMuted, textFaint: _textFaint, badge, border: _border, isLight } = useCardTheme()
   const { role } = useAuth()
 
   // Override summary: admin/analyst/coach のみクエリ
-  const { data: overridesResp } = useQuery({
+  const { data: overridesResp, isError: overridesError } = useQuery({
     queryKey: ['promotion-overrides'],
     queryFn: () => apiGet<{ success: boolean; data: Record<string, { status: string; note: string; analyst: string }> }>(
       '/analysis/meta/promotion_overrides'
     ),
     staleTime: 30 * 1000,
-    enabled: role === 'admin' || role === 'analyst' || role === 'coach',
+    // Item #700: backend gates this endpoint with require_admin_or_analyst; coach
+    // gets 403. Match the backend here so a coach never issues a request that
+    // fails and is then silently rendered as "no overrides".
+    enabled: role === 'admin' || role === 'analyst',
   })
   const activeOverrides = Object.values(overridesResp?.data ?? {})
   const holdCount = activeOverrides.filter((o) => o.status === 'hold').length
@@ -109,7 +114,18 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
       {/* Override summary バナー: admin/analyst/coach のみ、active override がある場合に表示
          Design Language v1.2 §12: bg は neutral、警告意味は文字色 + warning icon で運ぶ
          (装飾 amber bg + 左罫線縦バーは禁止) */}
-      {activeOverrides.length > 0 && (role === 'admin' || role === 'analyst' || role === 'coach') && (
+      {/* Item #700: a failed fetch (e.g. permission/network) must not read as
+         an empty override list. Show an explicit error line for admin/analyst. */}
+      {overridesError && (role === 'admin' || role === 'analyst') && (
+        <div className={`flex items-center gap-2 px-3 py-2 rounded-ss-lg shadow-card border text-xs ${
+          isLight ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'
+        }`}>
+          <span className="font-medium inline-flex items-center gap-1 text-[var(--ss-bad)]">
+            <MIcon name="warning" size={12} />{t('advanced.override_fetch_failed')}
+          </span>
+        </div>
+      )}
+      {!overridesError && activeOverrides.length > 0 && (role === 'admin' || role === 'analyst') && (
         <div className={`flex items-center gap-2 px-3 py-2 rounded-ss-lg shadow-card border text-xs ${
           isLight
             ? 'bg-white border-gray-200'
@@ -183,7 +199,9 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                     recommendationAllowed={false}
                   />
                 </div>
-                <PressurePerformance playerId={playerId} filters={filters} />
+                <HoldGate suspended={isOnHold('pressure')}>
+                  <PressurePerformance playerId={playerId} filters={filters} />
+                </HoldGate>
               </div>
             </div>
           </div>
@@ -210,7 +228,9 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                   promotionCriteria={transitionMeta.promotion_criteria ?? undefined}
                 />
               )}
-              <TransitionMatrix playerId={playerId} filters={filters} />
+              <HoldGate suspended={isOnHold('transition')}>
+                <TransitionMatrix playerId={playerId} filters={filters} />
+              </HoldGate>
             </div>
           </RoleGuard>
         </ErrorBoundary>
@@ -237,7 +257,9 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                     recommendationAllowed={false}
                   />
                 </div>
-                <PreLossPatterns playerId={playerId} filters={filters} />
+                <HoldGate suspended={isOnHold('pre_win_pre_loss')}>
+                  <PreLossPatterns playerId={playerId} filters={filters} />
+                </HoldGate>
               </div>
               <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-2`}>
                 <div className="flex items-center justify-between">
@@ -248,10 +270,12 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                     recommendationAllowed={false}
                   />
                 </div>
-                <FirstReturnAnalysis playerId={playerId} filters={filters} />
+                <HoldGate suspended={isOnHold('first_return')}>
+                  <FirstReturnAnalysis playerId={playerId} filters={filters} />
+                </HoldGate>
               </div>
             </div>
-            <RoleGuard allowedRoles={['analyst', 'coach']}>
+            <RoleGuard allowedRoles={['analyst']}>
               {spatialMeta?.caution && (
                 <ResearchNotice
                   caution={spatialMeta.caution}
@@ -259,7 +283,9 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                   promotionCriteria={spatialMeta.promotion_criteria ?? undefined}
                 />
               )}
-              <SpatialDensityMap playerId={playerId} />
+              <HoldGate suspended={isOnHold('spatial_density')}>
+                <SpatialDensityMap playerId={playerId} />
+              </HoldGate>
             </RoleGuard>
           </div>
         </ErrorBoundary>
@@ -286,7 +312,9 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                     recommendationAllowed={false}
                   />
                 </div>
-                <TemporalPerformance playerId={playerId} filters={filters} />
+                <HoldGate suspended={isOnHold('temporal')}>
+                  <TemporalPerformance playerId={playerId} filters={filters} />
+                </HoldGate>
               </div>
               <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-2`}>
                 <div className="flex items-center justify-between">
@@ -297,7 +325,9 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                     recommendationAllowed={false}
                   />
                 </div>
-                <PostLongRallyStats playerId={playerId} filters={filters} />
+                <HoldGate suspended={isOnHold('post_long_rally')}>
+                  <PostLongRallyStats playerId={playerId} filters={filters} />
+                </HoldGate>
               </div>
             </div>
           </div>
@@ -318,20 +348,28 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
               )}
               <div className={`${card} rounded-ss-lg shadow-card p-4`}>
                 <SectionTitle>{t('analysis.opponent_stats.title')}</SectionTitle>
+                <FilterNotAppliedNote filters={filters} />
                 <OpponentStats playerId={playerId} />
               </div>
-              <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-2`}>
-                <div className="flex items-center justify-between">
-                  <SectionTitle>{t('analysis.opponent_type_affinity.title')}</SectionTitle>
-                  <EvidenceBadge
-                    tier="research"
-                    evidenceLevel={(opponentAffinityMeta?.evidence_level as EvidenceLevel) ?? 'exploratory'}
-                    recommendationAllowed={false}
-                  />
+              {/* 監査#747: opponent_type_affinity は research tier の backend endpoint
+                  (require_admin_or_analyst) を呼ぶため coach では 403 になる。
+                  coach には出さず analyst のみに限定して capability を一致させる。 */}
+              <RoleGuard allowedRoles={['analyst']} fallback={null}>
+                <div className={`${card} rounded-ss-lg shadow-card p-4 space-y-2`}>
+                  <div className="flex items-center justify-between">
+                    <SectionTitle>{t('analysis.opponent_type_affinity.title')}</SectionTitle>
+                    <EvidenceBadge
+                      tier="research"
+                      evidenceLevel={(opponentAffinityMeta?.evidence_level as EvidenceLevel) ?? 'exploratory'}
+                      recommendationAllowed={false}
+                    />
+                  </div>
+                  <p className={`text-xs ${textMuted}`}>{t('analysis.opponent_type_affinity.subtitle')}</p>
+                  <HoldGate suspended={isOnHold('opponent_affinity')}>
+                    <OpponentTypeAffinity playerId={playerId} filters={filters} />
+                  </HoldGate>
                 </div>
-                <p className={`text-xs ${textMuted}`}>{t('analysis.opponent_type_affinity.subtitle')}</p>
-                <OpponentTypeAffinity playerId={playerId} filters={filters} />
-              </div>
+              </RoleGuard>
               <OpponentAdaptiveShots playerId={playerId} />
               <div className={`${card} rounded-ss-lg shadow-card p-4`}>
                 <div className="flex items-center justify-between mb-3">
@@ -348,7 +386,9 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
       {/* ── ダブルス ── */}
       {section === 'doubles' && (
         <ErrorBoundary>
+          <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
           <div className="space-y-5">
+            <FilterNotAppliedNote filters={filters} />
             <DoublesAnalysis playerId={playerId} allMatches={matches} />
 
             {/* ペアモードトグル */}
@@ -376,7 +416,9 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
               </div>
             )}
 
+            {/* pair_playstyle / pair_synergy は backend が admin / analyst 専用 (監査 #743)。coach には出さない */}
             {pairMode && partnerPlayerId && (
+              <RoleGuard allowedRoles={['analyst']} fallback={null}>
               <div className={`${card} rounded-ss-lg shadow-card p-4`}>
                 <SectionTitle>{t('analysis.pair_playstyle.title')}</SectionTitle>
                 <p className={`text-xs mb-3 ${textMuted}`}>{t('analysis.pair_playstyle.subtitle')}</p>
@@ -387,16 +429,22 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                   playerBName={sortedPlayers.find((p) => p.id === partnerPlayerId)?.name}
                 />
               </div>
+              </RoleGuard>
             )}
-            {pairSynergyMeta?.caution && (
-              <ResearchNotice
-                caution={pairSynergyMeta.caution}
-                assumptions={pairSynergyMeta.assumptions ?? undefined}
-                promotionCriteria={pairSynergyMeta.promotion_criteria ?? undefined}
-              />
-            )}
-            <PairSynergyCard playerId={playerId} />
+            <RoleGuard allowedRoles={['analyst']} fallback={null}>
+              {pairSynergyMeta?.caution && (
+                <ResearchNotice
+                  caution={pairSynergyMeta.caution}
+                  assumptions={pairSynergyMeta.assumptions ?? undefined}
+                  promotionCriteria={pairSynergyMeta.promotion_criteria ?? undefined}
+                />
+              )}
+              <HoldGate suspended={isOnHold('pair_synergy')}>
+                <PairSynergyCard playerId={playerId} />
+              </HoldGate>
+            </RoleGuard>
           </div>
+          </RoleGuard>
         </ErrorBoundary>
       )}
     </div>

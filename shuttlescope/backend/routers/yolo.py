@@ -16,7 +16,7 @@ import cv2
 
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, Request
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, undefer
 
 from backend.db.database import get_db, SessionLocal
 from backend.db.models import Match, GameSet, Rally, MatchCVArtifact
@@ -30,8 +30,24 @@ from backend.cv.reid import extract_embedding as _extract_reid_emb, MIN_APP_SIM 
 from backend.cv.identity_graph import track_identities as _ig_track_identities
 from backend.cv.court_adapter import CourtAdapter
 from backend.utils.error_detail import client_safe_error
+from backend.utils.auth import require_match_operator_scope, require_match_scope_dep
 
 logger = logging.getLogger(__name__)
+
+
+def _tracked_rate(lost: int, total: int):
+    """追跡成功率 (0.0〜1.0)。選手フレームが 0 件なら None (「100% 追跡」と見せない)。"""
+    if total <= 0:
+        return None
+    return round(1.0 - lost / total, 3)
+
+
+def _share_pct(part: float, whole: float):
+    """全体に占める割合 (%)。全体が 0 (移動なし) なら None (0% と区別する)。"""
+    if whole <= 0:
+        return None
+    return round(part / whole * 100, 1)
+
 
 router = APIRouter()
 
@@ -134,40 +150,71 @@ class YoloBatchRequest(BaseModel):
 
 
 def _load_setting_int(db: Session, key: str, default: int) -> int:
-    """app_settings テーブルから整数設定値を読み込む"""
+    """app_settings テーブルから整数設定値を読み込む。
+
+    2026-11-06 idle-in-transaction 修正:
+    autocommit=False のセッションで SELECT を実行するため、読み終えたら
+    ``db.rollback()`` で開いた読み取りトランザクションを即解放する。放置すると
+    呼び出し元が長命セッション (``_run_batch`` の ``SessionLocal()``) の場合に
+    接続が ``idle in transaction`` に居座る。値は短期キャッシュを経由する。
+    """
     import json as _json
     from sqlalchemy import text as _text
-    try:
-        row = db.execute(_text("SELECT value FROM app_settings WHERE key = :k"), {"k": key}).fetchone()
-        if row:
-            return int(_json.loads(row[0]))
-    except Exception:
-        pass
-    return default
+    from backend.db import app_settings_cache
+
+    def _loader():
+        try:
+            row = db.execute(_text("SELECT value FROM app_settings WHERE key = :k"), {"k": key}).fetchone()
+            if row:
+                return int(_json.loads(row[0]))
+        except Exception:
+            pass
+        finally:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+        return default
+
+    return app_settings_cache.get_or_load(f"int:{key}", _loader)
 
 
 def _load_device_settings(db: Session) -> tuple[int, str]:
-    """DB から cuda_device_index / openvino_device を読み込む"""
+    """DB から cuda_device_index / openvino_device を読み込む。
+
+    ``_load_setting_int`` と同じ idle-in-transaction 対策 (読み終えたら rollback、
+    短期キャッシュ経由) を施す。
+    """
     import json as _json
     from sqlalchemy import text as _text
-    cuda_idx = 0
-    ov_device = "GPU"
-    try:
-        rows = db.execute(
-            _text("SELECT key, value FROM app_settings WHERE key IN ('cuda_device_index','openvino_device')")
-        ).fetchall()
-        for k, v in rows:
-            val = _json.loads(v)
-            if k == "cuda_device_index":
-                cuda_idx = int(val)
-            elif k == "openvino_device":
-                ov_device = str(val)
-    except Exception:
-        pass
-    return cuda_idx, ov_device
+    from backend.db import app_settings_cache
+
+    def _loader():
+        cuda_idx = 0
+        ov_device = "GPU"
+        try:
+            rows = db.execute(
+                _text("SELECT key, value FROM app_settings WHERE key IN ('cuda_device_index','openvino_device')")
+            ).fetchall()
+            for k, v in rows:
+                val = _json.loads(v)
+                if k == "cuda_device_index":
+                    cuda_idx = int(val)
+                elif k == "openvino_device":
+                    ov_device = str(val)
+        except Exception:
+            pass
+        finally:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+        return (cuda_idx, ov_device)
+
+    return app_settings_cache.get_or_load("device_settings", _loader)
 
 
-@router.post("/yolo/batch/{match_id}")
+@router.post("/yolo/batch/{match_id}", dependencies=[Depends(require_match_operator_scope)])
 def start_yolo_batch(
     match_id: int,
     body: YoloBatchRequest,
@@ -267,14 +314,14 @@ def yolo_batch_stop(job_id: str, request: Request, db: Session = Depends(get_db)
 
 # ─── 結果取得 ────────────────────────────────────────────────────────────────
 
-@router.get("/yolo/results/{match_id}")
+@router.get("/yolo/results/{match_id}", dependencies=[Depends(require_match_scope_dep)])
 def get_yolo_results(match_id: int, include_raw: bool = False, db: Session = Depends(get_db)):
     """試合の YOLO 検出結果を返す。
 
     include_raw=True の場合、フレーム別生データも返す（大容量）。
     """
     artifact = (
-        db.query(MatchCVArtifact)
+        db.query(MatchCVArtifact).options(undefer(MatchCVArtifact.data))
         .filter(
             MatchCVArtifact.match_id == match_id,
             MatchCVArtifact.artifact_type == "yolo_player_detections",
@@ -306,7 +353,7 @@ def get_yolo_results(match_id: int, include_raw: bool = False, db: Session = Dep
     return {"success": True, "data": result}
 
 
-@router.delete("/yolo/results/{match_id}")
+@router.delete("/yolo/results/{match_id}", dependencies=[Depends(require_match_operator_scope)])
 def delete_yolo_results(match_id: int, db: Session = Depends(get_db)):
     """試合の YOLO 検出結果（全アーティファクト）を削除する。
     途中まで保存された認識データを完全リセットし、0% から再実行できるようにする。
@@ -338,11 +385,11 @@ def delete_yolo_results(match_id: int, db: Session = Depends(get_db)):
     return {"success": True, "data": {"deleted": deleted}}
 
 
-@router.get("/yolo/results/{match_id}/frames")
+@router.get("/yolo/results/{match_id}/frames", dependencies=[Depends(require_match_scope_dep)])
 def get_yolo_frames(match_id: int, db: Session = Depends(get_db)):
     """フレーム別生データのみを返す（オーバーレイ表示用）"""
     artifact = (
-        db.query(MatchCVArtifact)
+        db.query(MatchCVArtifact).options(undefer(MatchCVArtifact.data))
         .filter(
             MatchCVArtifact.match_id == match_id,
             MatchCVArtifact.artifact_type == "yolo_player_detections",
@@ -358,7 +405,7 @@ def get_yolo_frames(match_id: int, db: Session = Depends(get_db)):
 
 # ─── TrackNet 統合アライメント ───────────────────────────────────────────────
 
-@router.post("/yolo/align/{match_id}")
+@router.post("/yolo/align/{match_id}", dependencies=[Depends(require_match_operator_scope)])
 def align_yolo_tracknet(match_id: int, db: Session = Depends(get_db)):
     """YOLO 検出と TrackNet シャトル軌跡をラリー単位でアライメントする。
 
@@ -367,7 +414,7 @@ def align_yolo_tracknet(match_id: int, db: Session = Depends(get_db)):
     """
     # YOLO artifact
     yolo_artifact = (
-        db.query(MatchCVArtifact)
+        db.query(MatchCVArtifact).options(undefer(MatchCVArtifact.data))
         .filter(
             MatchCVArtifact.match_id == match_id,
             MatchCVArtifact.artifact_type == "yolo_player_detections",
@@ -382,7 +429,7 @@ def align_yolo_tracknet(match_id: int, db: Session = Depends(get_db)):
 
     # TrackNet artifact（あれば使用、なければ空）
     tracknet_artifact = (
-        db.query(MatchCVArtifact)
+        db.query(MatchCVArtifact).options(undefer(MatchCVArtifact.data))
         .filter(
             MatchCVArtifact.match_id == match_id,
             MatchCVArtifact.artifact_type == "tracknet_shuttle_track",
@@ -460,10 +507,10 @@ def align_yolo_tracknet(match_id: int, db: Session = Depends(get_db)):
 
 # ─── アライメント結果取得 ─────────────────────────────────────────────────────
 
-@router.get("/yolo/alignment/{match_id}")
+@router.get("/yolo/alignment/{match_id}", dependencies=[Depends(require_match_scope_dep)])
 def get_alignment(match_id: int, db: Session = Depends(get_db)):
     artifact = (
-        db.query(MatchCVArtifact)
+        db.query(MatchCVArtifact).options(undefer(MatchCVArtifact.data))
         .filter(
             MatchCVArtifact.match_id == match_id,
             MatchCVArtifact.artifact_type == "cv_alignment",
@@ -671,7 +718,7 @@ def _reapply_identity_track(db, match_id: int, frames_data: list[dict]) -> None:
     import datetime as _dt
     try:
         seed_art = (
-            db.query(MatchCVArtifact)
+            db.query(MatchCVArtifact).options(undefer(MatchCVArtifact.data))
             .filter(
                 MatchCVArtifact.match_id == match_id,
                 MatchCVArtifact.artifact_type == "player_identity_seed",
@@ -803,7 +850,7 @@ def _run_batch(
         existing_by_idx: dict[int, dict] = {}
         if resume or prev_roi:
             art = (
-                db.query(MatchCVArtifact)
+                db.query(MatchCVArtifact).options(undefer(MatchCVArtifact.data))
                 .filter(
                     MatchCVArtifact.match_id == match_id,
                     MatchCVArtifact.artifact_type == "yolo_player_detections",
@@ -1017,7 +1064,7 @@ class FrameDetectRequest(BaseModel):
     roi_rect: Optional[RoiRectModel] = None
 
 
-@router.post("/yolo/frame_detect/{match_id}")
+@router.post("/yolo/frame_detect/{match_id}", dependencies=[Depends(require_match_operator_scope)])
 def detect_single_frame(
     match_id: int,
     body: FrameDetectRequest,
@@ -1175,7 +1222,7 @@ class AssignAndTrackRequest(BaseModel):
     court_roi: Optional[RoiRectModel] = None
 
 
-@router.post("/yolo/assign_and_track/{match_id}")
+@router.post("/yolo/assign_and_track/{match_id}", dependencies=[Depends(require_match_operator_scope)])
 def assign_and_track(
     match_id: int,
     body: AssignAndTrackRequest,
@@ -1183,7 +1230,7 @@ def assign_and_track(
 ):
     """シードフレームの選手割り当てを全バッチフレームに IoU 追跡で伝播し保存する。"""
     art = (
-        db.query(MatchCVArtifact)
+        db.query(MatchCVArtifact).options(undefer(MatchCVArtifact.data))
         .filter(
             MatchCVArtifact.match_id == match_id,
             MatchCVArtifact.artifact_type == "yolo_player_detections",
@@ -1293,10 +1340,12 @@ def assign_and_track(
     lost_player_frames  = sum(
         1 for f in tracked for p in f.get("players", []) if p.get("lost", False)
     )
-    track_rate = round(1.0 - lost_player_frames / max(total_player_frames, 1), 3)
+    # 選手フレームが 0 件のとき「追跡率 100%」と見せない (None)
+    track_rate = _tracked_rate(lost_player_frames, total_player_frames)
     logger.info(
-        "assign_and_track done: match=%d frames=%d player-frames=%d lost=%d track_rate=%.1f%%",
-        match_id, len(tracked), total_player_frames, lost_player_frames, track_rate * 100,
+        "assign_and_track done: match=%d frames=%d player-frames=%d lost=%d track_rate=%s",
+        match_id, len(tracked), total_player_frames, lost_player_frames,
+        "n/a" if track_rate is None else f"{track_rate * 100:.1f}%",
     )
 
     return {"success": True, "data": {
@@ -1306,11 +1355,11 @@ def assign_and_track(
     }}
 
 
-@router.get("/yolo/identity_track/{match_id}")
+@router.get("/yolo/identity_track/{match_id}", dependencies=[Depends(require_match_scope_dep)])
 def get_identity_track(match_id: int, db: Session = Depends(get_db)):
     """保存済み選手識別トラックを返す。"""
     art = (
-        db.query(MatchCVArtifact)
+        db.query(MatchCVArtifact).options(undefer(MatchCVArtifact.data))
         .filter(
             MatchCVArtifact.match_id == match_id,
             MatchCVArtifact.artifact_type == "player_identity_track",
@@ -1325,7 +1374,7 @@ def get_identity_track(match_id: int, db: Session = Depends(get_db)):
 
 # ─── 選手移動距離統計 ────────────────────────────────────────────────────────
 
-@router.get("/yolo/movement_stats/{match_id}")
+@router.get("/yolo/movement_stats/{match_id}", dependencies=[Depends(require_match_scope_dep)])
 def get_movement_stats(match_id: int, db: Session = Depends(get_db)):
     """
     選手識別トラックから各選手のコート上移動距離・方向・速度を計算する。
@@ -1342,7 +1391,7 @@ def get_movement_stats(match_id: int, db: Session = Depends(get_db)):
 
     # ── identity_track artifact ──────────────────────────────────────────────
     track_art = (
-        db.query(MatchCVArtifact)
+        db.query(MatchCVArtifact).options(undefer(MatchCVArtifact.data))
         .filter(
             MatchCVArtifact.match_id == match_id,
             MatchCVArtifact.artifact_type == "player_identity_track",
@@ -1505,9 +1554,9 @@ def get_movement_stats(match_id: int, db: Session = Depends(get_db)):
                 "lateral_m":    round(total_lateral_m, 2),
                 "depth_m":      round(total_depth_m, 2),
                 "diagonal_m":   round(total_diagonal_m, 2),
-                "lateral_pct":  round(total_lateral_m  / total_dist_m * 100, 1) if total_dist_m > 0 else 0.0,
-                "depth_pct":    round(total_depth_m    / total_dist_m * 100, 1) if total_dist_m > 0 else 0.0,
-                "diagonal_pct": round(total_diagonal_m / total_dist_m * 100, 1) if total_dist_m > 0 else 0.0,
+                "lateral_pct":  _share_pct(total_lateral_m, total_dist_m),
+                "depth_pct":    _share_pct(total_depth_m, total_dist_m),
+                "diagonal_pct": _share_pct(total_diagonal_m, total_dist_m),
             },
             "zone_visits": zone_visits,
             "time_series": time_series,
@@ -1587,7 +1636,7 @@ def _track_identities(
 
 # ─── ダブルス CV 解析 ─────────────────────────────────────────────────────────
 
-@router.get("/yolo/doubles_analysis/{match_id}")
+@router.get("/yolo/doubles_analysis/{match_id}", dependencies=[Depends(require_match_scope_dep)])
 def yolo_doubles_analysis(match_id: int, db: Session = Depends(get_db)):
     """YOLO 検出を使ったダブルス・ポジション解析を返す。
 

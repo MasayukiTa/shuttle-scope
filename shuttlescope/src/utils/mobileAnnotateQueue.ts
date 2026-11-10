@@ -22,17 +22,19 @@
  *   - enqueue(item)  → 即 ID 返し (ローカル commit 済として扱える)
  *   - startBackgroundFlush()  → アプリ起動時に呼ぶ
  *   - getStatus()  → UI に「未送信 N 件 / 失敗 M 件」を出す用
+ *   - cancelQueued(clientUuid)  → 未送信 item の取消 (Undo)
  */
+
+import { fetchWithTimeout, refreshAccessToken } from '@/api/client'
+import { getAuthItem, TOKEN_KEY } from '@/api/authStorage'
 
 export type QueueEndpoint =
   | 'POST /api/rallies'
-  | 'PATCH /api/rallies/:id'
   | 'DELETE /api/rallies/:id'
   | 'POST /api/strokes?rally_id=:rally_id'
   | 'PUT /api/strokes/:id'
   | 'DELETE /api/strokes/:id'
   | 'PUT /api/rallies/:id'
-  | 'PATCH /api/matches/:id/video_crop'
 
 export interface QueueItem {
   /** ローカル primary key (= IndexedDB の autoincrement) */
@@ -64,6 +66,13 @@ export interface QueueItem {
   manualRetry: boolean
   /** queued 時刻 */
   queuedAt: number
+  /**
+   * この入力を作った認証ユーザー (JWT の sub)。共有端末で別ユーザーの資格情報を
+   * 使って再送しないための所有者。未設定 (旧データ / 所有者を特定できなかった入力)
+   * は自動でも手動でも再送しない。別ユーザーの資格情報で送らないため、所有者を
+   * 特定できない入力は現在のユーザーのものへ移し替えず、破棄確認へ回す (監査 #634)。
+   */
+  ownerUserId?: number
 }
 
 const DB_NAME = 'shuttlescope-mobile-annot'
@@ -73,7 +82,16 @@ const STORE_QUEUE = 'queue'
 let _db: IDBDatabase | null = null
 
 function openDb(): Promise<IDBDatabase> {
-  if (_db) return Promise.resolve(_db)
+  if (_db) {
+    // ブラウザが接続を閉じた後 (別タブの更新やストレージ整理など) は、保持している接続で
+    // transaction を作ると InvalidStateError になる。使えない接続は捨てて開き直す。
+    try {
+      _db.transaction([STORE_QUEUE], 'readonly').abort()
+      return Promise.resolve(_db)
+    } catch {
+      _db = null
+    }
+  }
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION)
     req.onupgradeneeded = () => {
@@ -88,8 +106,16 @@ function openDb(): Promise<IDBDatabase> {
       }
     }
     req.onsuccess = () => {
-      _db = req.result
-      resolve(_db)
+      const db = req.result
+      db.onclose = () => {
+        if (_db === db) _db = null
+      }
+      db.onversionchange = () => {
+        db.close()
+        if (_db === db) _db = null
+      }
+      _db = db
+      resolve(db)
     }
     req.onerror = () => reject(req.error)
   })
@@ -128,6 +154,56 @@ export function newClientUuid(): string {
     `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-` +
     `${hex.slice(16, 20)}-${hex.slice(20, 32)}`
   )
+}
+
+/** JWT の payload から user id (sub) を取り出す。検証はサーバー側の責務で、ここは
+ *  「今送ろうとしているトークンは誰のものか」を入力の所有者と突き合わせるためだけに使う。 */
+export function tokenUserId(token: string | null | undefined): number | null {
+  if (!token) return null
+  const part = token.split('.')[1]
+  if (!part) return null
+  try {
+    const b64 = part.replace(/-/g, '+').replace(/_/g, '/')
+    const json = atob(b64.padEnd(Math.ceil(b64.length / 4) * 4, '='))
+    const sub = Number((JSON.parse(json) as { sub?: unknown }).sub)
+    return Number.isInteger(sub) && sub > 0 ? sub : null
+  } catch {
+    return null
+  }
+}
+
+/** 現在ログイン中 (= 送信に使われるトークンの) ユーザー。 */
+export function currentQueueOwnerId(): number | null {
+  try {
+    return tokenUserId(getAuthItem(TOKEN_KEY))
+  } catch {
+    return null
+  }
+}
+
+export type QueueOwnership = 'mine' | 'foreign' | 'legacy'
+
+/** 入力が現在のユーザーのものか。legacy = 所有者不明 (自動では誰のものにもしない)。 */
+export function queueItemOwnership(
+  item: Pick<QueueItem, 'ownerUserId'>,
+  currentUserId: number | null,
+): QueueOwnership {
+  if (item.ownerUserId == null) return 'legacy'
+  return currentUserId != null && item.ownerUserId === currentUserId ? 'mine' : 'foreign'
+}
+
+/**
+ * flush が 1 件をどう扱うか。
+ *   skip = 他のユーザーの入力。何も変えず、順序の遮断もしない
+ *   hold = 所有者不明。自動では送らず、手動再送待ちにして残す
+ *   send = 現在のユーザー本人の入力。送信対象
+ */
+export function queueFlushDecision(
+  item: Pick<QueueItem, 'ownerUserId'>,
+  currentUserId: number | null,
+): 'skip' | 'hold' | 'send' {
+  const o = queueItemOwnership(item, currentUserId)
+  return o === 'foreign' ? 'skip' : o === 'legacy' ? 'hold' : 'send'
 }
 
 /** backoff schedule: 試行回数 → 次の遅延 (ms) */
@@ -170,6 +246,9 @@ export async function enqueue(
     nextAttemptAt: Date.now(),
     manualRetry: false,
     queuedAt: Date.now(),
+    // 所有者が取れない時 (セッション切れの直後など) も入力は捨てない。所有者なしで
+    // 保存し、自動再送はせず本人の手動再送を待つ。
+    ownerUserId: currentQueueOwnerId() ?? undefined,
   }
   const store = tx(db, 'readwrite')
   const localId = (await wrapReq(store.add(item))) as IDBValidKey as number
@@ -180,9 +259,11 @@ export async function enqueue(
  * 単一 item を送信。成功なら DB から削除、失敗なら attempts を更新して
  * 次回スケジュール時刻を仕込む。manualRetry に到達したら停止して UI 通知させる。
  */
-export type QueueSendResult = 'ok' | 'retry' | 'manual' | 'auth'
+export type QueueSendResult = 'ok' | 'retry' | 'manual' | 'auth' | 'foreign'
 
-export function classifyQueueHttpFailure(status: number): Exclude<QueueSendResult, 'ok'> {
+export function classifyQueueHttpFailure(
+  status: number,
+): Exclude<QueueSendResult, 'ok' | 'foreign'> {
   if (status === 401) return 'auth'
   if (status >= 400 && status < 500 && status !== 429) return 'manual'
   return 'retry'
@@ -199,8 +280,7 @@ export function queueSequenceKey(
   }
 
   if (
-    item.endpoint === 'PATCH /api/rallies/:id'
-    || item.endpoint === 'PUT /api/rallies/:id'
+    item.endpoint === 'PUT /api/rallies/:id'
     || item.endpoint === 'DELETE /api/rallies/:id'
   ) {
     const rallyId = item.pathParams?.id
@@ -210,11 +290,19 @@ export function queueSequenceKey(
   return null
 }
 
-export function nextSequenceRunnableAt(items: QueueItem[]): number | null {
+/**
+ * ownerUserId を渡すと、そのユーザー本人の入力だけで次回送信時刻を決める
+ * (他ユーザー・所有者不明の入力は自動送信されないので、待っても無意味)。
+ */
+export function nextSequenceRunnableAt(
+  items: QueueItem[],
+  ownerUserId?: number | null,
+): number | null {
   const blockedSequenceKeys = new Set<string>()
   let earliest: number | null = null
 
   for (const it of [...items].sort((a, b) => (a.localId ?? 0) - (b.localId ?? 0))) {
+    if (ownerUserId !== undefined && queueItemOwnership(it, ownerUserId) !== 'mine') continue
     const sequenceKey = queueSequenceKey(it)
     if (sequenceKey) {
       if (blockedSequenceKeys.has(sequenceKey)) continue
@@ -229,7 +317,13 @@ export function nextSequenceRunnableAt(items: QueueItem[]): number | null {
   return earliest
 }
 
-async function trySend(item: QueueItem): Promise<QueueSendResult> {
+/** 1 件の送信に掛ける上限 (ms)。応答が返らない半断状態の fetch 1 本が、直列の
+ *  runFlush 全体 (後続 item と「直前取消」の flushNow) を止めないようにする。
+ *  送信は X-Idempotency-Key 付きなので、timeout 後の再送は二重登録にならない。
+ *  超過は通常の 'retry' (backoff) として扱う。 */
+export const QUEUE_SEND_TIMEOUT_MS = 30_000
+
+export async function trySend(item: QueueItem): Promise<QueueSendResult> {
   // path placeholder 置換
   let url = item.endpoint.split(' ')[1] // "POST /api/rallies" → "/api/rallies"
   const method = item.endpoint.split(' ')[0]
@@ -239,7 +333,7 @@ async function trySend(item: QueueItem): Promise<QueueSendResult> {
     }
   }
 
-  const token = sessionStorage.getItem('shuttlescope_token')
+  const token = getAuthItem(TOKEN_KEY)
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'X-Idempotency-Key': item.clientUuid,
@@ -252,14 +346,38 @@ async function trySend(item: QueueItem): Promise<QueueSendResult> {
     item.lastError = 'authentication required'
     return 'auth'
   }
+  // 送る直前に、トークンの持ち主が入力の所有者と同じかを確かめる。ここが
+  // 「別ユーザーの資格情報で再送しない」ことの最終的な保証 (flush 側の判定と
+  // この間にセッションが切り替わっても、この照合が止める)。
+  if (queueItemOwnership(item, tokenUserId(token)) !== 'mine') return 'foreign'
   headers.Authorization = `Bearer ${token}`
 
+  const sendOnce = (): Promise<Response> =>
+    fetchWithTimeout(
+      url,
+      {
+        method,
+        headers,
+        body: method === 'GET' ? undefined : JSON.stringify(item.body ?? {}),
+      },
+      QUEUE_SEND_TIMEOUT_MS,
+    )
+
   try {
-    const resp = await fetch(url, {
-      method,
-      headers,
-      body: method === 'GET' ? undefined : JSON.stringify(item.body ?? {}),
-    })
+    let resp = await sendOnce()
+    if (resp.status === 401) {
+      // access token の期限切れ。共通クライアントと同じ single-flight refresh を一度だけ
+      // 実行して再送する (refresh しないと同じ期限切れ token で 30 秒ごとに 401 を繰り返す)。
+      const refreshed = await refreshAccessToken()
+      if (refreshed === 'ok') {
+        const fresh = getAuthItem(TOKEN_KEY)
+        if (!fresh) return 'auth'
+        // refresh でトークンの持ち主が変わっていないことを再確認してから送る。
+        if (queueItemOwnership(item, tokenUserId(fresh)) !== 'mine') return 'foreign'
+        headers.Authorization = `Bearer ${fresh}`
+        resp = await sendOnce()
+      }
+    }
     if (resp.ok) return 'ok'
     item.lastStatus = resp.status
     item.lastError = (await resp.text()).slice(0, 300) || `HTTP ${resp.status}`
@@ -272,12 +390,39 @@ async function trySend(item: QueueItem): Promise<QueueSendResult> {
 
 let _flushing = false
 let _flushTimer: number | null = null
+// 送信中の clientUuid (取消が送信と競合しないための印)
+let _inflightUuid: string | null = null
+// 取消済みの clientUuid。flush は先に読み込んだ一覧を使い回すので、
+// DB から消しただけでは、すでに読み込まれた item が送られてしまう。
+const _cancelledUuids = new Set<string>()
+
+/**
+ * 未送信 item を取消す (ユーザーの Undo)。
+ * - 'cancelled': まだ送られておらず、キューから外した (送られない)
+ * - 'inflight': いま送信中。結果が分からないので取消せない
+ * - 'not_found': キューに無い (送信済み)。サーバ側の行を消す必要がある
+ */
+export async function cancelQueued(
+  clientUuid: string,
+): Promise<'cancelled' | 'inflight' | 'not_found'> {
+  if (_inflightUuid === clientUuid) return 'inflight'
+  const db = await openDb()
+  const items: QueueItem[] = await wrapReq(tx(db, 'readonly').getAll())
+  const hit = items.find((i) => i.clientUuid === clientUuid)
+  if (!hit || hit.localId == null) return 'not_found'
+  // await を挟んだので、送信が始まっていないかをもう一度見る。
+  // ここから delete 発行までは同期なので、flush が割り込む余地は無い。
+  if (_inflightUuid === clientUuid) return 'inflight'
+  _cancelledUuids.add(clientUuid)
+  await wrapReq(tx(db, 'readwrite').delete(hit.localId))
+  return 'cancelled'
+}
 
 /**
  * 待機中の item を 1 巡 flush する。完了後、次の最早 nextAttemptAt まで
  * setTimeout を再スケジュール。
  */
-async function flushOnce(): Promise<void> {
+async function runFlush(): Promise<void> {
   if (_flushing) return
   _flushing = true
   try {
@@ -287,10 +432,27 @@ async function flushOnce(): Promise<void> {
     items.sort((a, b) => (a.localId ?? 0) - (b.localId ?? 0))
     const now = Date.now()
     const blockedSequenceKeys = new Set<string>()
+    const me = currentQueueOwnerId()
 
     for (const it of items) {
+      const decision = queueFlushDecision(it, me)
+      // 他のユーザーの入力は触らない。順序の遮断もしない (自分の入力を止めない)。
+      // 本人が次にログインした時に、本人の資格情報で送られる。
+      if (decision === 'skip') continue
+
       const sequenceKey = queueSequenceKey(it)
       if (sequenceKey && blockedSequenceKeys.has(sequenceKey)) continue
+
+      // 所有者不明の入力は、誰のものか推測して送らない。手動再送待ちにして残す。
+      if (decision === 'hold') {
+        if (!it.manualRetry) {
+          it.manualRetry = true
+          it.lastError = 'owner unknown: retry manually to send it as the current user'
+          await wrapReq(tx(db, 'readwrite').put(it))
+        }
+        if (sequenceKey) blockedSequenceKeys.add(sequenceKey)
+        continue
+      }
 
       // 同じ rally の後続操作は、先行操作が manual/backoff 中なら追い越させない。
       if (it.manualRetry || it.nextAttemptAt > now) {
@@ -298,7 +460,16 @@ async function flushOnce(): Promise<void> {
         continue
       }
 
-      const result = await trySend(it)
+      if (_cancelledUuids.has(it.clientUuid)) continue
+
+      _inflightUuid = it.clientUuid
+      let result: QueueSendResult
+      try {
+        result = await trySend(it)
+      } finally {
+        _inflightUuid = null
+      }
+      if (result === 'foreign') continue  // 送信直前にセッションが切り替わった。何も変えない
       if (result === 'ok') {
         const wstore = tx(db, 'readwrite')
         await wrapReq(wstore.delete(it.localId!))
@@ -328,6 +499,44 @@ async function flushOnce(): Promise<void> {
   scheduleNextFlush()
 }
 
+// 実行中の flush。flushNow が「いま走っている巡回」の終了を待つために持つ。
+let _flushPromise: Promise<void> | null = null
+
+function flushOnce(): Promise<void> {
+  if (_flushPromise) return _flushPromise
+  // 送信の失敗は item に残るので、ここでは例外にしない。保存先を開けなかったときも
+  // 未処理の Promise 拒否にせず、次の巡回 (30 秒後・オンライン復帰時) でやり直す。
+  const p = runFlush()
+    .catch((err: unknown) => {
+      console.warn('mobile annotate queue flush failed', err)
+    })
+    .finally(() => {
+      _flushPromise = null
+    })
+  _flushPromise = p
+  return p
+}
+
+/**
+ * 直前に enqueue した item まで含めて 1 巡送信し、終わるまで待つ。
+ * すでに巡回中の場合、その巡回は enqueue より前に一覧を読んでいる可能性があるので、
+ * 終わるのを待ってからもう 1 巡する。送信失敗は item に残り、例外にはしない。
+ */
+export async function flushNow(): Promise<void> {
+  if (_flushPromise) {
+    try {
+      await _flushPromise
+    } catch {
+      // 前の巡回の失敗は、この呼び出しの結果に関係しない
+    }
+  }
+  try {
+    await flushOnce()
+  } catch {
+    // IndexedDB を開けない等。呼び出し側は一覧の再取得で結果を確かめる
+  }
+}
+
 async function scheduleNextFlush(): Promise<void> {
   if (_flushTimer != null) {
     window.clearTimeout(_flushTimer)
@@ -337,7 +546,7 @@ async function scheduleNextFlush(): Promise<void> {
     const db = await openDb()
     const store = tx(db, 'readonly')
     const items: QueueItem[] = await wrapReq(store.getAll())
-    const earliest = nextSequenceRunnableAt(items)
+    const earliest = nextSequenceRunnableAt(items, currentQueueOwnerId())
     if (earliest == null) {
       // 何も自動送信できない (空 or manualRetry で sequence が塞がれている)。
       _flushTimer = window.setTimeout(flushOnce, 30_000)
@@ -355,35 +564,70 @@ export function startBackgroundFlush(): void {
   void flushOnce()
 }
 
+/**
+ * 手動再送の対象を決める。対象は現在のユーザー本人 (mine) の入力だけ。
+ * 所有者不明 (legacy) の入力は、別ユーザーの資格情報で送らないため手動再送でも
+ * 現在のユーザーのものへ移し替えない (監査 #634)。他人の入力も対象にしない。
+ */
+export function manualRetryTargets<T extends Pick<QueueItem, 'ownerUserId' | 'manualRetry'>>(
+  items: T[],
+  me: number | null,
+): T[] {
+  if (me == null) return []
+  return items.filter((it) => {
+    if (!it.manualRetry) return false
+    return queueItemOwnership(it, me) === 'mine'
+  })
+}
+
 /** UI 表示用ステータス */
 export async function getStatus(): Promise<{
+  /** IndexedDB の読み取りに成功したか。false のときは件数 (pending 等) は信頼できない。 */
+  ok: boolean
   pending: number
   manualRetry: number
+  /** 所有者不明で手動再送待ちの入力。通常の再送では送らない (確認つきの操作でだけ送れる)。 */
+  unknownOwner: number
   oldestQueuedAt: number | null
+  /** 別のユーザーの未送信 (この端末に残っている。表示・操作の対象にしない) */
+  otherUsers: number
 }> {
   try {
     const db = await openDb()
-    const items: QueueItem[] = await wrapReq(tx(db, 'readonly').getAll())
+    const all: QueueItem[] = await wrapReq(tx(db, 'readonly').getAll())
+    const me = currentQueueOwnerId()
+    const items = all.filter((i) => queueItemOwnership(i, me) !== 'foreign')
     const pending = items.filter((i) => !i.manualRetry)
-    const manual = items.filter((i) => i.manualRetry)
+    const manual = items.filter((i) => i.manualRetry && queueItemOwnership(i, me) === 'mine')
+    const unknown = items.filter((i) => i.manualRetry && queueItemOwnership(i, me) === 'legacy')
     return {
+      ok: true,
       pending: pending.length,
       manualRetry: manual.length,
+      unknownOwner: unknown.length,
       oldestQueuedAt: items.length ? Math.min(...items.map((i) => i.queuedAt)) : null,
+      otherUsers: all.length - items.length,
     }
   } catch {
-    return { pending: 0, manualRetry: 0, oldestQueuedAt: null }
+    // IndexedDB にアクセスできないときは 0 件を「未送信なし」として返さない。
+    // ok:false を立て、呼び出し側でストレージ異常を明示表示させる (監査 #616)。
+    return { ok: false, pending: 0, manualRetry: 0, unknownOwner: 0, oldestQueuedAt: null, otherUsers: 0 }
   }
 }
 
-/** UI から「手動再送」ボタンで呼ぶ */
+/**
+ * UI から「手動再送」ボタンで呼ぶ。再送するのは現在のユーザー本人の入力だけ。
+ * 所有者不明 (legacy) の入力は現在のユーザーのものへ移し替えず、再送もしない (監査 #634)。
+ */
 export async function retryAllManual(): Promise<void> {
+  const me = currentQueueOwnerId()
+  if (me == null) return  // 誰として送るか分からない間は何もしない
   const db = await openDb()
   const items: QueueItem[] = await wrapReq(tx(db, 'readonly').getAll())
   const wstore = tx(db, 'readwrite')
   const now = Date.now()
-  for (const it of items) {
-    if (!it.manualRetry) continue
+  // 本人の入力だけを再送対象にする。他人・所有者不明の入力はここでは送らない。
+  for (const it of manualRetryTargets(items, me)) {
     it.manualRetry = false
     it.attempts = 0
     it.nextAttemptAt = now
@@ -392,6 +636,26 @@ export async function retryAllManual(): Promise<void> {
     await wrapReq(wstore.put(it))
   }
   void flushOnce()
+}
+
+/**
+ * 所有者不明 (legacy) で手動再送待ちの入力を破棄する。別ユーザーの資格情報では
+ * 送れないため、本人確認で復旧できない入力はユーザーの確認のうえ削除する (監査 #634)。
+ * 削除した件数を返す。現在のユーザー本人・他人の入力は対象にしない。
+ */
+export async function discardLegacyManual(): Promise<number> {
+  const me = currentQueueOwnerId()
+  const db = await openDb()
+  const items: QueueItem[] = await wrapReq(tx(db, 'readonly').getAll())
+  const wstore = tx(db, 'readwrite')
+  let removed = 0
+  for (const it of items) {
+    if (it.manualRetry && queueItemOwnership(it, me) === 'legacy' && it.localId != null) {
+      await wrapReq(wstore.delete(it.localId))
+      removed++
+    }
+  }
+  return removed
 }
 
 /** 開発・テスト用: キュー全消去 */

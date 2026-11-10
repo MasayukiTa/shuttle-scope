@@ -29,7 +29,7 @@ def client(test_engine, monkeypatch):
     settings.BOOTSTRAP_ADMIN_USERNAME = ADMIN_USER
     settings.BOOTSTRAP_ADMIN_PASSWORD = ADMIN_PASS
     from backend.main import app
-    with TestClient(app, raise_server_exceptions=False) as c:
+    with TestClient(app, base_url="http://localhost", raise_server_exceptions=False) as c:
         yield c
 
 
@@ -178,3 +178,154 @@ class TestAuditLogHashChain:
             headers={"Authorization": f"Bearer {analyst['access_token']}"},
         )
         assert resp.status_code == 403
+
+
+def test_deleted_user_audit_rows_remain_orphaned_and_chain_intact(client, test_engine):
+    """B-2: user deletion must not rewrite append-only audit rows.
+
+    access_logs.user_id intentionally becomes an orphan integer reference after
+    user deletion. Nulling/deleting it would change the canonical row bytes and
+    break the HMAC chain. Audit API may no longer resolve a username, but the
+    immutable actor identifier and chain must remain intact.
+    """
+    from sqlalchemy.orm import sessionmaker
+    from backend.db.models import AccessLog, User
+    from backend.routers.auth import _hash_password
+
+    admin = _login(client, ADMIN_USER, ADMIN_PASS)
+    admin_access = admin["access_token"]
+
+    Session = sessionmaker(bind=test_engine)
+    with Session() as db:
+        target = User(
+            username="audit_orphan_target",
+            role="analyst",
+            display_name="Audit Orphan Target",
+            hashed_credential=_hash_password("AuditTarget1!"),
+            is_test=True,
+            awaiting_admin_approval=False,
+            consent_required=False,
+        )
+        db.add(target)
+        db.commit()
+        target_id = target.id
+
+    target_login = _login(client, "audit_orphan_target", "AuditTarget1!")
+    assert target_login["role"] == "analyst"
+
+    with Session() as db:
+        before_ids = [
+            row.id
+            for row in db.query(AccessLog)
+            .filter(AccessLog.user_id == target_id)
+            .order_by(AccessLog.id.asc())
+            .all()
+        ]
+        assert before_ids, "target login should have produced an audit row"
+
+    deleted = client.delete(
+        f"/api/auth/users/{target_id}",
+        headers={"Authorization": f"Bearer {admin_access}"},
+    )
+    assert deleted.status_code == 200, deleted.text
+
+    with Session() as db:
+        assert db.get(User, target_id) is None
+        after_rows = (
+            db.query(AccessLog)
+            .filter(AccessLog.user_id == target_id)
+            .order_by(AccessLog.id.asc())
+            .all()
+        )
+        assert [row.id for row in after_rows] == before_ids
+
+    listed = client.get(
+        f"/api/auth/audit-logs?user_id={target_id}&limit=50",
+        headers={"Authorization": f"Bearer {admin_access}"},
+    )
+    assert listed.status_code == 200, listed.text
+    rows = listed.json()["data"]
+    assert rows
+    assert all(row["user_id"] == target_id for row in rows)
+    assert all(row["username"] is None for row in rows)
+
+    verified = client.get(
+        "/api/auth/audit-logs/verify",
+        headers={"Authorization": f"Bearer {admin_access}"},
+    )
+    assert verified.status_code == 200, verified.text
+    body = verified.json()["data"]
+    assert body["ok"] is True
+    assert body["first_bad_id"] is None
+
+
+def test_security_events_hide_llm_telemetry_unless_requested(client, test_engine):
+    """llm_call / llm_budget are internal telemetry, not attack detection.
+
+    The default security list must not mix them in; an explicit event_type
+    filter still returns them so admins can inspect LLM usage.
+    """
+    from sqlalchemy.orm import sessionmaker
+    from backend.db.models import SecurityEvent
+
+    Session = sessionmaker(bind=test_engine)
+    with Session() as db:
+        db.query(SecurityEvent).delete()
+        for et in ("probe_attempt", "llm_call", "llm_budget"):
+            db.add(SecurityEvent(event_type=et, severity="info", details={}))
+        db.commit()
+
+    access = _login(client, ADMIN_USER, ADMIN_PASS)["access_token"]
+    headers = {"Authorization": f"Bearer {access}"}
+
+    default_types = {
+        r["event_type"]
+        for r in client.get("/api/auth/audit-logs/security", headers=headers).json()["data"]
+    }
+    assert default_types == {"probe_attempt"}
+
+    explicit = client.get(
+        "/api/auth/audit-logs/security?event_type=llm_call", headers=headers
+    ).json()["data"]
+    assert [r["event_type"] for r in explicit] == ["llm_call"]
+
+
+def test_audit_log_status_tells_empty_table_from_filtered_out(client, test_engine):
+    """An empty list must be distinguishable: no records at all (total 0, times null)
+    versus records that exist but did not match the filters (total > 0).
+    """
+    from sqlalchemy.orm import sessionmaker
+    from backend.db.models import ErrorLog, SecurityEvent
+
+    Session = sessionmaker(bind=test_engine)
+    with Session() as db:
+        db.query(ErrorLog).delete()
+        db.query(SecurityEvent).delete()
+        # internal LLM telemetry is not counted, as in the default security list
+        db.add(SecurityEvent(event_type="llm_call", severity="info", details={}))
+        db.commit()
+
+    access = _login(client, ADMIN_USER, ADMIN_PASS)["access_token"]
+    headers = {"Authorization": f"Bearer {access}"}
+
+    empty = client.get("/api/auth/audit-logs/status", headers=headers)
+    assert empty.status_code == 200
+    data = empty.json()["data"]
+    for key in ("error", "security"):
+        assert data[key]["total"] == 0
+        assert data[key]["latest_ts"] is None
+        assert data[key]["oldest_ts"] is None
+    assert data["request"]["total"] >= 0
+
+    with Session() as db:
+        db.add(SecurityEvent(event_type="probe_attempt", severity="warn", details={}))
+        db.commit()
+    seen = client.get("/api/auth/audit-logs/status", headers=headers).json()["data"]
+    assert seen["security"]["total"] == 1
+    assert seen["security"]["latest_ts"] is not None
+    assert seen["security"]["oldest_ts"] is not None
+
+
+def test_audit_log_status_requires_admin(client):
+    resp = client.get("/api/auth/audit-logs/status")
+    assert resp.status_code in (401, 403)

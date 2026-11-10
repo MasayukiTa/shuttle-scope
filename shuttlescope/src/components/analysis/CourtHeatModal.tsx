@@ -10,12 +10,15 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { CourtDiagram } from '@/components/court/CourtDiagram'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { fmtPct } from '@/utils/format'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { apiGet } from '@/api/client'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { WIN, LOSS } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import type { LandZone } from '@/types'
 import { MIcon } from '@/components/common/MIcon'
+import { useAuth } from '@/hooks/useAuth'
 
 interface MatchSummary {
   match_id: number
@@ -41,7 +44,8 @@ interface HeatmapResponse {
 
 interface CompositeZoneData {
   count: number
-  rate: number
+  rate: number | null   // 分母 0 のとき null
+  n?: number            // この割合の分母 (総数)
   source?: string
 }
 
@@ -52,6 +56,14 @@ interface CompositeHeatmapResponse {
     land_rotated: Record<string, CompositeZoneData>
     total_strokes: number
     note: string
+    missingness?: {
+      hit_n: number
+      land_n: number
+      missing_hit: number
+      missing_hit_rate: number | null
+      missing_land: number
+      missing_land_rate: number | null
+    }
   }
   meta: { sample_size: number; confidence: { level: string; stars: string; label: string } }
 }
@@ -81,6 +93,7 @@ export function CourtHeatModal({
   onClose,
 }: CourtHeatModalProps) {
   const { t } = useTranslation()
+  const { role } = useAuth()
 
   const [mode, setMode] = useState<'hit' | 'land' | 'composite'>(initialTab)
   const [matchId, setMatchId] = useState<number | null>(initialMatchId)
@@ -106,7 +119,7 @@ export function CourtHeatModal({
   // ヒートマップデータ（通常モード: hit / land）
   // mode === 'composite' の場合はenabled=falseなので type に 'composite' が届かない
   const heatmapType = (mode === 'composite' ? 'hit' : mode) as 'hit' | 'land'
-  const { data: heatResp, isLoading: loadingHeat } = useQuery({
+  const { data: heatResp, isLoading: loadingHeat, isError: errorHeat, refetch: refetchHeat } = useQuery({
     queryKey: ['court-heat-modal', playerId, mode, matchId, lastN],
     queryFn: () =>
       apiGet<HeatmapResponse>('/analysis/heatmap', {
@@ -118,7 +131,7 @@ export function CourtHeatModal({
   })
 
   // 合成モードデータ
-  const { data: compositeResp, isLoading: loadingComposite } = useQuery({
+  const { data: compositeResp, isLoading: loadingComposite, isError: errorComposite, refetch: refetchComposite } = useQuery({
     queryKey: ['court-heat-composite', playerId, matchId, lastN],
     queryFn: () =>
       apiGet<CompositeHeatmapResponse>('/analysis/heatmap/composite', {
@@ -133,6 +146,8 @@ export function CourtHeatModal({
     ? (compositeResp?.data?.total_strokes ?? 0)
     : (heatResp?.meta?.sample_size ?? 0)
   const loadingCurrent = mode === 'composite' ? loadingComposite : loadingHeat
+  const currentError = mode === 'composite' ? errorComposite : errorHeat
+  const refetchCurrent = mode === 'composite' ? refetchComposite : refetchHeat
 
   // 合成モード用データ
   const compositeHitData = compositeResp?.data?.hit
@@ -145,7 +160,7 @@ export function CourtHeatModal({
   const compositeLandMax = compositeLandData ? Math.max(...Object.values(compositeLandData), 1) : 1
 
   // ゾーン詳細（クリック時のみ取得）— 打点 or 合成の打点側
-  const { data: detailResp, isLoading: loadingDetail } = useQuery({
+  const { data: detailResp, isLoading: loadingDetail, isError: errorDetail, refetch: refetchDetail } = useQuery({
     queryKey: ['court-heat-zone-detail', playerId, mode, selectedZone, matchId, lastN],
     queryFn: () =>
       apiGet<ZoneDetailResponse>('/analysis/heatmap_zone_detail', {
@@ -158,7 +173,7 @@ export function CourtHeatModal({
   })
 
   // 合成モード専用: 着地点ゾーン詳細
-  const { data: detailLandResp, isLoading: loadingDetailLand } = useQuery({
+  const { data: detailLandResp, isLoading: loadingDetailLand, isError: errorDetailLand, refetch: refetchDetailLand } = useQuery({
     queryKey: ['court-heat-zone-detail-land', playerId, selectedZone, matchId, lastN],
     queryFn: () =>
       apiGet<ZoneDetailResponse>('/analysis/heatmap_zone_detail', {
@@ -240,6 +255,22 @@ export function CourtHeatModal({
               </div>
             )}
 
+            {/* 項目161: 打点/着地点の対象球数が食い違うとき、欠損数と欠損率を明示する */}
+            {mode === 'composite'
+              && compositeResp?.data?.missingness != null
+              && compositeResp.data.missingness.missing_hit > 0 && (
+              <div className="flex items-start gap-2 p-3 bg-[var(--ss-warn-tint)] border border-[var(--ss-warning-border)] rounded-ss-lg text-xs max-w-xs">
+                <MIcon name="info" size={13} className="text-[var(--ss-t3)] mt-0.5 shrink-0" />
+                <div className="text-[var(--ss-t3)]">
+                  {t('court_heat_modal.missingness_hit', {
+                    missing: compositeResp.data.missingness.missing_hit,
+                    land: compositeResp.data.missingness.land_n,
+                    pct: fmtPct(compositeResp.data.missingness.missing_hit_rate),
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* 期間・試合フィルター */}
             <div className="space-y-2 w-full max-w-xs">
               <div className="flex gap-1 flex-wrap justify-center">
@@ -261,7 +292,8 @@ export function CourtHeatModal({
                     .map((m) => ({
                       value: m.match_id,
                       label: `${m.date ?? t('court_heat_modal.match_date_unknown')} ${m.opponent}`,
-                      suffix: m.result === 'win' ? t('court_heat_modal.result_win_short') : t('court_heat_modal.result_loss_short'),
+                      // player には個別試合の勝敗を出さない (製品ルール)
+                      suffix: role === 'player' ? undefined : (m.result === 'win' ? t('court_heat_modal.result_win_short') : t('court_heat_modal.result_loss_short')),
                       searchText: `${m.date} ${m.opponent}`,
                     }))}
                   value={matchId}
@@ -287,6 +319,8 @@ export function CourtHeatModal({
             {/* コート図（インタラクティブ） */}
             {loadingCurrent ? (
               <div className="text-[var(--ss-t3)] text-sm py-8">{t('court_heat_modal.loading')}</div>
+            ) : currentError ? (
+              <QueryErrorNotice onRetry={() => { void refetchCurrent() }} />
             ) : sampleSize === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <p className="text-[var(--ss-t3)] text-sm">{t('court_heat_modal.no_data')}</p>
@@ -339,23 +373,32 @@ export function CourtHeatModal({
               <div className="flex items-center justify-center h-full min-h-[200px]">
                 <div className="text-[var(--ss-t3)] text-sm">{t('court_heat_modal.loading')}</div>
               </div>
+            ) : (errorDetail || (mode === 'composite' && errorDetailLand)) ? (
+              <div className="flex items-center justify-center h-full min-h-[200px]">
+                <QueryErrorNotice
+                  onRetry={() => {
+                    if (errorDetail) void refetchDetail()
+                    if (mode === 'composite' && errorDetailLand) void refetchDetailLand()
+                  }}
+                />
+              </div>
             ) : mode === 'composite' ? (
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                 {detail && (
                   <div>
                     <p className="text-[11px] font-semibold text-[var(--ss-good)] mb-2 px-1">{t('court_heat_modal.header_hit')}</p>
-                    <ZoneDetailPanel detail={detail} mode="hit" t={t} isLight={isLight} />
+                    <ZoneDetailPanel detail={detail} mode="hit" t={t} isLight={isLight} hideOutcome={role === 'player'} />
                   </div>
                 )}
                 {detailLand && (
                   <div>
                     <p className="text-[11px] font-semibold text-[var(--ss-emphasis)] mb-2 px-1">{t('court_heat_modal.header_land_transformed')}</p>
-                    <ZoneDetailPanel detail={detailLand} mode="land" t={t} isLight={isLight} />
+                    <ZoneDetailPanel detail={detailLand} mode="land" t={t} isLight={isLight} hideOutcome={role === 'player'} />
                   </div>
                 )}
               </div>
             ) : detail ? (
-              <ZoneDetailPanel detail={detail} mode={heatmapType} t={t} isLight={isLight} />
+              <ZoneDetailPanel detail={detail} mode={heatmapType} t={t} isLight={isLight} hideOutcome={role === 'player'} />
             ) : null}
           </div>
         </div>
@@ -371,11 +414,14 @@ function ZoneDetailPanel({
   mode,
   t,
   isLight,
+  hideOutcome = false,
 }: {
   detail: ZoneDetailResponse['data']
   mode: 'hit' | 'land'
   t: ReturnType<typeof useTranslation>['t']
   isLight: boolean
+  /** true: 勝率・得点数を描かない (player ロール。API も返さない) */
+  hideOutcome?: boolean
 }) {
   const zoneName = ZONE_KEYS.includes(detail.zone as typeof ZONE_KEYS[number])
     ? t(`court_heat_modal.zones.${detail.zone}`)
@@ -403,21 +449,25 @@ function ZoneDetailPanel({
           </span>
         </div>
 
-        <div className="grid grid-cols-3 gap-3 text-center">
+        <div className={hideOutcome ? 'grid grid-cols-1 gap-3 text-center' : 'grid grid-cols-3 gap-3 text-center'}>
           <div>
             <p className="ss-num text-2xl font-bold text-[var(--ss-t1)]">{detail.count}</p>
             <p className="text-[11px] text-[var(--ss-t3)]">{t('court_heat_modal.stat_strokes')}</p>
           </div>
-          <div>
-            <p className="ss-num text-2xl font-bold" style={{ color: winRateColor }}>
-              {detail.win_rate != null ? `${(detail.win_rate * 100).toFixed(0)}%` : '—'}
-            </p>
-            <p className="text-[11px] text-[var(--ss-t3)]">{t('court_heat_modal.stat_win_rate')}</p>
-          </div>
-          <div>
-            <p className="ss-num text-2xl font-bold text-[var(--ss-t1)]">{detail.wins}</p>
-            <p className="text-[11px] text-[var(--ss-t3)]">{t('court_heat_modal.stat_wins')}</p>
-          </div>
+          {!hideOutcome && (
+            <>
+              <div>
+                <p className="ss-num text-2xl font-bold" style={{ color: winRateColor }}>
+                  {fmtPct(detail.win_rate, 0)}
+                </p>
+                <p className="text-[11px] text-[var(--ss-t3)]">{t('court_heat_modal.stat_win_rate')}</p>
+              </div>
+              <div>
+                <p className="ss-num text-2xl font-bold text-[var(--ss-t1)]">{detail.wins}</p>
+                <p className="text-[11px] text-[var(--ss-t3)]">{t('court_heat_modal.stat_wins')}</p>
+              </div>
+            </>
+          )}
         </div>
       </div>
 

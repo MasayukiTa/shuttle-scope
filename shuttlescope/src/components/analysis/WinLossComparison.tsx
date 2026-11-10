@@ -4,8 +4,10 @@ import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { RoleGuard } from '@/components/common/RoleGuard'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 import { WIN, LOSS } from '@/styles/colors'
+import { fmtPct } from '@/utils/format'
 
 interface WinLossComparisonProps {
   playerId: number
@@ -15,9 +17,9 @@ interface WinLossComparisonProps {
 interface MatchStats {
   count: number
   avg_rally_length: number
-  ace_rate: number
-  error_rate: number
-  serve_win_rate: number
+  ace_rate: number | null   // 未算出は null
+  error_rate: number | null
+  serve_win_rate: number | null
   top_shots: { shot_type: string; shot_type_ja: string; count: number }[]
 }
 
@@ -30,6 +32,7 @@ interface WinLossResponse {
   meta: {
     sample_size: number
     confidence: { level: string; stars: string; label: string; warning?: string }
+    excluded?: { unfinished: number; zero_rally: number }
   }
 }
 
@@ -46,14 +49,15 @@ function StatRow({ label, winVal, lossVal }: { label: string; winVal: string; lo
 function ComparisonContent({ playerId, filters = DEFAULT_FILTERS }: { playerId: number; filters?: AnalysisFilters }) {
   const { t } = useTranslation()
 
+  // このカードは勝ち試合と負け試合を並べて比べるので、結果(勝ち/負け)の絞り込みは送らない。
+  // 送ると比較群の片側が 0 試合になり、比較として成り立たない(監査 #150)。
   const fp = {
-    ...(filters.result !== 'all' ? { result: filters.result } : {}),
     ...(filters.tournamentLevel ? { tournament_level: filters.tournamentLevel } : {}),
     ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
     ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
   }
-  const { data: resp, isLoading } = useQuery({
-    queryKey: ['analysis-win-loss-comparison', playerId, filters],
+  const { data: resp, isLoading, isError, refetch } = useQuery({
+    queryKey: ['analysis-win-loss-comparison', playerId, filters.tournamentLevel, filters.dateFrom, filters.dateTo],
     queryFn: () =>
       apiGet<WinLossResponse>('/analysis/win_loss_comparison', { player_id: playerId, ...fp }),
     enabled: !!playerId,
@@ -63,7 +67,13 @@ function ComparisonContent({ playerId, filters = DEFAULT_FILTERS }: { playerId: 
     return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.loading')}</div>
   }
 
+  if (isError) {
+    return <QueryErrorNotice onRetry={() => { void refetch() }} />
+  }
+
   const sampleSize = resp?.meta?.sample_size ?? 0
+  const excluded = resp?.meta?.excluded
+  const excludedCount = excluded ? excluded.unfinished + excluded.zero_rally : 0
   const winStats = resp?.data?.win_matches
   const lossStats = resp?.data?.loss_matches
 
@@ -71,12 +81,30 @@ function ComparisonContent({ playerId, filters = DEFAULT_FILTERS }: { playerId: 
     return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.no_data')}</div>
   }
 
-  const pct = (v?: number) => v != null ? `${(v * 100).toFixed(1)}%` : '—'
+  const pct = (v?: number | null) => fmtPct(v)
   const num = (v?: number) => v != null ? v.toFixed(1) : '—'
 
   return (
     <div className="space-y-3">
       <ConfidenceBadge sampleSize={sampleSize} unit="matches" />
+      {excludedCount > 0 && (
+        <p className="text-[11px] text-gray-400" data-testid="win-loss-population">
+          {t('analysis.win_loss_comparison.population', {
+            used: sampleSize,
+            total: sampleSize + excludedCount,
+            excluded: excludedCount,
+          })}
+          {t('analysis.win_loss_comparison.population_reasons', {
+            unfinished: excluded?.unfinished ?? 0,
+            zero_rally: excluded?.zero_rally ?? 0,
+          })}
+        </p>
+      )}
+      {filters.result !== 'all' && (
+        <p className="text-[11px] text-gray-400" data-testid="win-loss-result-filter-note">
+          {t('analysis.win_loss_ignores_result_filter')}
+        </p>
+      )}
 
       <div className="overflow-x-auto">
         <table className="w-full text-sm">

@@ -8,6 +8,11 @@ import {
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
+import { hasSufficientSample } from '@/utils/sampleGate'
+
+/** これ未満の試合数ではグラフを出さない (監査 #438)。 */
+const GROWTH_TIMELINE_MIN_MATCHES = 3
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { MIcon } from '@/components/common/MIcon'
 import { N_GRAY } from '@/styles/colors'
@@ -39,6 +44,11 @@ interface GrowthTimelineResponse {
     trend_delta: number
     weighted_trend?: 'improving' | 'stable' | 'declining' | 'pending'
     weighted_trend_delta?: number
+    // トレンドの算出法 (最後の window 試合の平均 − 最初の window 試合の平均)。古い応答には無い
+    trend_window?: number | null
+    trend_n_points?: number
+    trend_early_period?: { from: string; to: string } | null
+    trend_recent_period?: { from: string; to: string } | null
   }
   meta: { sample_size: number; confidence: { level: string; stars: string; label: string } }
 }
@@ -50,12 +60,12 @@ type MetricConfig = Record<Metric, { label: string; colorA: string; colorB: stri
 // bundle with "ReferenceError: t is not defined" (t exists only in the
 // useTranslation() hook context).
 
-const TREND_LABELS = {
-  improving: '改善傾向',
-  stable:    '横ばい',
-  declining: '悪化傾向',
-  pending:   '判定保留',
-}
+const TREND_LABEL_KEYS = {
+  improving: 'analysis.growth.trend_improving',
+  stable:    'analysis.growth.trend_stable',
+  declining: 'analysis.growth.trend_declining',
+  pending:   'analysis.growth.trend_pending',
+} as const
 const TREND_COLORS = {
   improving: '#3b82f6',
   stable:    '#6b7280',
@@ -100,7 +110,7 @@ export function GrowthTimeline({
   const isPairMode = !!partnerPlayerId
 
   // メインプレイヤーのクエリ
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError, refetch } = useQuery({
     queryKey: ['analysis-growth-timeline', playerId, metric, windowSize],
     queryFn: () =>
       apiGet<GrowthTimelineResponse>('/analysis/growth_timeline', {
@@ -112,7 +122,7 @@ export function GrowthTimeline({
   })
 
   // 相方のクエリ（ペアモード時のみ）
-  const { data: partnerResp, isLoading: partnerLoading } = useQuery({
+  const { data: partnerResp, isLoading: partnerLoading, isError: partnerError, refetch: refetchPartner } = useQuery({
     queryKey: ['analysis-growth-timeline', partnerPlayerId, metric, windowSize],
     queryFn: () =>
       apiGet<GrowthTimelineResponse>('/analysis/growth_timeline', {
@@ -127,13 +137,33 @@ export function GrowthTimeline({
     return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.loading')}</div>
   }
 
+  // 取得失敗を「サンプル不足」へ変換しない (監査 #644)。本人側の取得が失敗したら
+  // 空状態ではなく明示的なエラー状態と再試行を出す。
+  if (isError) {
+    return <QueryErrorNotice onRetry={() => { void refetch() }} />
+  }
+
+  // 比較相手側だけ失敗した場合、ペア比較グラフへ入ると凡例付きの空グラフになる。
+  // 比較モードへ落ちず、比較相手を取得できない旨を明示して再試行を出す。
+  if (isPairMode && partnerError) {
+    return (
+      <div className="space-y-2">
+        <p className="text-xs text-red-400" role="alert">{t('auto.GrowthTimeline.partner_fetch_failed')}</p>
+        <QueryErrorNotice onRetry={() => { void refetchPartner() }} />
+      </div>
+    )
+  }
+
   const sampleSize = resp?.meta?.sample_size ?? 0
   const points = resp?.data?.points ?? []
   const trend = resp?.data?.trend ?? 'pending'
   const trendDelta = resp?.data?.trend_delta ?? 0
+  const trendWindow = resp?.data?.trend_window ?? null
+  const earlyPeriod = resp?.data?.trend_early_period ?? null
+  const recentPeriod = resp?.data?.trend_recent_period ?? null
 
-  if (sampleSize === 0 || points.length === 0) {
-    return <NoDataMessage sampleSize={sampleSize} minRequired={3} unit="試合" />
+  if (!hasSufficientSample(sampleSize, GROWTH_TIMELINE_MIN_MATCHES) || points.length === 0) {
+    return <NoDataMessage sampleSize={sampleSize} minRequired={GROWTH_TIMELINE_MIN_MATCHES} unit="試合" />
   }
 
   const cfg = METRIC_CONFIG[metric]
@@ -225,10 +255,11 @@ export function GrowthTimeline({
         <span className="text-xs text-gray-400">{cfg.label}</span>
         {!isPairMode && (
           <span className="text-xs font-semibold" style={{ color: trendColor }}>
-            {TREND_LABELS[trend]}
+            {t(TREND_LABEL_KEYS[trend])}
             {trend !== 'pending' && (
               <span className="ml-1 font-mono">
-                ({trendDelta >= 0 ? '+' : ''}{isRate ? (trendDelta * 100).toFixed(1) : trendDelta.toFixed(2)}{cfg.unit})
+                {/* 率は「ポイント差」(相対変化率ではない) */}
+                ({trendDelta >= 0 ? '+' : ''}{isRate ? `${(trendDelta * 100).toFixed(1)}pt` : `${trendDelta.toFixed(2)}${cfg.unit}`})
               </span>
             )}
           </span>
@@ -246,6 +277,18 @@ export function GrowthTimeline({
           </div>
         )}
       </div>
+
+      {/* 傾向の算出法: どの試合とどの試合を比べたか */}
+      {!isPairMode && (
+        <p className="text-[10px] text-gray-400 ss-num" data-testid="growth-trend-method">
+          {trend !== 'pending' && trendWindow != null && earlyPeriod && recentPeriod
+            ? `${t('analysis.growth.trend_method', { w: trendWindow })} (${t('analysis.growth.trend_period', {
+                early: t('analysis.growth.trend_period_range', { from: earlyPeriod.from, to: earlyPeriod.to }),
+                recent: t('analysis.growth.trend_period_range', { from: recentPeriod.from, to: recentPeriod.to }),
+              })})`
+            : t('analysis.growth.trend_pending_detail', { n: resp?.data?.trend_n_points ?? points.length })}
+        </p>
+      )}
 
       <ResponsiveContainer width="100%" height={180}>
         <LineChart
@@ -363,7 +406,7 @@ export function GrowthTimeline({
                 <div className="text-sm font-semibold">
                   {t('auto.GrowthTimeline.compare_title', { date: comparePoint.date, label: cfg.label })}
                 </div>
-                <button
+                <button aria-label={t('app.close')}
                   type="button"
                   onClick={() => setComparePoint(null)}
                   className="text-sm px-2 py-0.5"

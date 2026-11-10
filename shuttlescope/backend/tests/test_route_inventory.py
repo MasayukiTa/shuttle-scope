@@ -14,8 +14,11 @@
 """
 from __future__ import annotations
 
+import ast
 import re
+from pathlib import Path
 from typing import Iterable
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -244,4 +247,92 @@ class TestGlobalAuthExemptRegex:
         from backend.main import _GLOBAL_AUTH_EXEMPT
         assert _GLOBAL_AUTH_EXEMPT.match(path) is not None, (
             f"正規 public path `{path}` が exempt regex に match しない。R39 で broke した可能性。"
+        )
+
+
+# ─── production no-auth attack suite drift guard ──────────────────────────────
+
+def _load_strict_noauth_probes() -> list[tuple[str, str, object]]:
+    """security_ci の literal probe list を副作用なしで読む。"""
+    script = (
+        Path(__file__).resolve().parents[2]
+        / "scripts"
+        / "security_ci"
+        / "test_no_auth_endpoints.py"
+    )
+    tree = ast.parse(script.read_text(encoding="utf-8"), filename=str(script))
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "STRICT_AUTH_PROBES":
+                    value = ast.literal_eval(node.value)
+                    return list(value)
+    raise AssertionError("STRICT_AUTH_PROBES が security_ci に見つからない")
+
+
+def _route_template_matches(template: str, concrete: str) -> bool:
+    """FastAPI の /x/{id} template と concrete attack path を照合する。"""
+    concrete_path = urlsplit(concrete).path
+    t_parts = [p for p in template.split("/") if p]
+    c_parts = [p for p in concrete_path.split("/") if p]
+    if len(t_parts) != len(c_parts):
+        return False
+    for expected, actual in zip(t_parts, c_parts):
+        if expected.startswith("{") and expected.endswith("}"):
+            if not actual:
+                return False
+            continue
+        if expected != actual:
+            return False
+    return True
+
+
+class TestProductionNoAuthProbeCoverage:
+    """本番 attack suite が route/method drift で空振りしないことを保証する。"""
+
+    REQUIRED_PREFIXES = (
+        "/api/auth/",
+        "/api/matches",
+        "/api/players",
+        "/api/sessions",
+        "/api/admin/",
+        "/api/cluster/",
+        "/api/db/",
+        "/api/settings",
+        "/api/insights/",
+        "/api/llm/",
+        "/api/cv-candidates/",
+        "/api/webrtc/",
+        "/api/sync/",
+        "/api/reports/",
+        "/api/v1/uploads/",
+        "/api/export/",
+    )
+
+    def test_strict_probe_methods_match_real_routes(self):
+        routes = list(_all_api_routes())
+        missing: list[tuple[str, str]] = []
+        for method, concrete, _body in _load_strict_noauth_probes():
+            method = str(method).upper()
+            if not any(
+                _route_template_matches(template, concrete) and method in methods
+                for template, methods in routes
+            ):
+                missing.append((method, concrete))
+        assert not missing, (
+            "security_ci strict probe が実 route/method から drift している: "
+            f"{missing}"
+        )
+
+    def test_high_risk_route_families_have_strict_probes(self):
+        probes = _load_strict_noauth_probes()
+        paths = [urlsplit(str(path)).path for _method, path, _body in probes]
+        uncovered = [
+            prefix
+            for prefix in self.REQUIRED_PREFIXES
+            if not any(path.startswith(prefix) for path in paths)
+        ]
+        assert not uncovered, (
+            "正しいHTTP methodで401/403を要求する strict probe が無い high-risk family: "
+            f"{uncovered}"
         )

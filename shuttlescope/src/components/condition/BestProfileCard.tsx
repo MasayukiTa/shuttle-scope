@@ -1,7 +1,7 @@
-import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useBestProfile } from '@/hooks/useConditionAnalytics'
 import { MIcon } from '@/components/common/MIcon'
+import { useAuth } from '@/hooks/useAuth'
 
 interface Props {
   playerId: number
@@ -64,6 +64,10 @@ function MatchConfidenceBadge({ n, isLight }: { n: number; isLight: boolean }) {
 export function BestProfileCard({ playerId, isLight }: Props) {
   const { t } = useTranslation()
   const { data, isLoading, error } = useBestProfile(playerId)
+  // 製品ルール: player には勝率 (in/outside・改善見込み) と「勝った試合/負けた試合」の対比を見せない。
+  // API は win_rate_in_profile / win_rate_outside を返さない。目標レンジ (件数・実測値) のみ表示する。
+  const { role } = useAuth()
+  const isPlayer = role === 'player'
 
   const panelBg    = 'bg-[var(--ss-surface-1)]'
   const borderColor = 'border-[var(--ss-border)]'
@@ -72,8 +76,12 @@ export function BestProfileCard({ playerId, isLight }: Props) {
   const sepColor    = 'border-[var(--ss-border)]'
   const topFactors = (data?.key_factors ?? []).slice(0, 5)
   const n = data?.n_matches ?? 0
-  const inRate  = data?.win_rate_in_profile
-  const outRate = data?.win_rate_outside
+  // 監査 #73: backend が confidence="none" を返すときは体調モデルが成立していない
+  // (勝敗が紐づく記録が無い)。推奨レンジや勝率関連を出すと「モデル不可」と同居して
+  // しまうため、ここでは明示的な不可状態だけを出す (fail closed)。
+  const modelUnavailable = !!data && data.confidence === 'none'
+  const inRate  = isPlayer ? null : data?.win_rate_in_profile
+  const outRate = isPlayer ? null : data?.win_rate_outside
   const rateDiff = (inRate != null && outRate != null)
     ? Math.round((inRate - outRate) * 100)
     : null
@@ -82,15 +90,21 @@ export function BestProfileCard({ playerId, isLight }: Props) {
     <section className={`rounded-ss-lg border shadow-card ${borderColor} ${panelBg} p-4`}>
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <h2 className={`text-sm font-semibold ${textStrong}`}>
-          {t('condition.best_profile.title_coach')}
+          {t(isPlayer ? 'condition.best_profile.title_player' : 'condition.best_profile.title_coach')}
         </h2>
-        {n > 0 && <MatchConfidenceBadge n={n} isLight={isLight} />}
+        {!modelUnavailable && n > 0 && <MatchConfidenceBadge n={n} isLight={isLight} />}
       </div>
 
       {isLoading ? (
         <div className={`${textMuted} text-xs`}>{t('condition.best_profile.loading')}</div>
-      ) : error || !data ? (
+      ) : error ? (
+        <div className={`${textMuted} text-xs`} role="alert">{t('condition.error')}</div>
+      ) : !data ? (
         <div className={`${textMuted} text-xs`}>{t('condition.best_profile.no_data')}</div>
+      ) : modelUnavailable ? (
+        <div className={`${textMuted} text-xs`} role="status">
+          {t('condition.best_profile.model_unavailable')}
+        </div>
       ) : (
         <div className="space-y-4">
           {/* 勝率サマリー */}
@@ -128,48 +142,35 @@ export function BestProfileCard({ playerId, isLight }: Props) {
                   const cur = f.current
                   const tMin = f.target_min
                   const tMax = f.target_max
-                  const gap = f.gap
 
-                  const targetRange = (tMin != null || tMax != null)
+                  // zero-width (tMin===tMax) is not an interval estimate; do not promote to target range.
+                  // Showing a single observed point as X~X is false precision (audit #74), so suppress it.
+                  const isZeroWidth = tMin != null && tMax != null && tMin === tMax
+                  const targetRange = ((tMin != null || tMax != null) && !isZeroWidth)
                     ? `${tMin != null ? tMin.toFixed(1) : '—'}〜${tMax != null ? tMax.toFixed(1) : '—'}${unit ? unit : ''}`
                     : null
+                  const observedSingle = isZeroWidth && tMin != null
+                    ? `${tMin.toFixed(1)}${unit ? unit : ''}`
+                    : null
+                  // 効果量 (標準化差 |d|) を併記する (監査 #223)。範囲を「最適な目標値」
+                  // ではなく「勝ち試合群と残りの間で観測された差の大きさ」として読ませる。
+                  // 分析指標なので player には出さない (coach 以上)。
+                  const effectSize = !isPlayer && f.importance != null
+                    ? Math.abs(f.importance).toFixed(2)
+                    : null
 
-                  let gapNode: ReactNode
-                  if (gap === null || gap === undefined) {
-                    gapNode = null
-                  } else if (gap === 0) {
-                    gapNode = (
-                      <span className="font-medium text-[var(--ss-success)]">
-                        <MIcon name="check" size={14} />
-                      </span>
-                    )
-                  } else if (gap > 0) {
-                    gapNode = (
-                      <span className="text-[var(--ss-warn)] ss-num">
-                        ↑{gap.toFixed(1)}{unit}
-                      </span>
-                    )
-                  } else {
-                    gapNode = (
-                      <span className="text-[var(--ss-brand)] ss-num">
-                        ↓{Math.abs(gap).toFixed(1)}{unit}
-                      </span>
-                    )
-                  }
-
-                  // 詳細説明: target_mean / rest_mean / direction から自動生成
-                  // (それっぽい文言ではなく実数値ベース)。サンプル数下限を満たさない
-                  // factor は文章を出さず数値だけ並べる。
+                  // 詳細説明: target_mean / rest_mean から自動生成 (実数値ベース)。
+                  // 値の差は観察された関連であり、上げる・下げるといった助言には変換しない。
                   const targetMean = (f as { target_mean?: number | null }).target_mean ?? null
                   const restMean = (f as { rest_mean?: number | null }).rest_mean ?? null
-                  const direction = (f as { direction?: string | null }).direction ?? null
-                  const showDetail = targetMean != null && restMean != null && Math.abs(targetMean - restMean) > 0.01
+                  const showDetail = !isPlayer && targetMean != null && restMean != null && Math.abs(targetMean - restMean) > 0.01
                   let detailText: string | null = null
                   if (showDetail) {
-                    const isHigherBetter = direction === 'higher_when_winning'
-                    const winSide = isHigherBetter ? '高い' : '低い'
-                    const diffPp = Math.abs(targetMean - restMean).toFixed(1)
-                    detailText = `勝った試合では ${targetMean.toFixed(1)}${unit}、負けた試合では ${restMean.toFixed(1)}${unit}（差 ${diffPp}${unit}、勝つときの方が${winSide}）。`
+                    detailText = t('condition.best_profile.detail_compare', {
+                      win: `${targetMean.toFixed(1)}${unit}`,
+                      lose: `${restMean.toFixed(1)}${unit}`,
+                      diff: `${Math.abs(targetMean - restMean).toFixed(1)}${unit}`,
+                    })
                   }
 
                   return (
@@ -186,7 +187,16 @@ export function BestProfileCard({ playerId, isLight }: Props) {
                             {t('auto.BestProfileCard.target_range', { r: targetRange })}
                           </span>
                         )}
-                        {gapNode && <span className="text-xs shrink-0">{gapNode}</span>}
+                        {observedSingle && (
+                          <span className={`text-[11px] font-mono ss-num ${textMuted} shrink-0`}>
+                            {t('auto.BestProfileCard.observed_single', { v: observedSingle })}
+                          </span>
+                        )}
+                        {effectSize && (targetRange || observedSingle) && (
+                          <span className={`text-[11px] font-mono ss-num ${textMuted} shrink-0`}>
+                            {t('auto.BestProfileCard.effect_size', { d: effectSize })}
+                          </span>
+                        )}
                       </div>
                       {detailText && (
                         <div className={`text-[11px] mt-0.5 leading-snug ${textMuted}`}>
@@ -197,17 +207,20 @@ export function BestProfileCard({ playerId, isLight }: Props) {
                   )
                 })}
               </ul>
+              <div className={`text-[11px] mt-2 leading-snug ${textMuted}`}>
+                {t('condition.best_profile.observed_note')}
+              </div>
             </div>
           ) : (
             <div className={`${textMuted} text-xs`}>{t('condition.best_profile.no_data')}</div>
           )}
 
-          {/* 期待勝率改善 */}
+          {/* 勝率の差 (観察された関連。改善見込みとしては出さない) */}
           {rateDiff != null && rateDiff > 0 && (
             <div className={`pt-2 border-t ${sepColor} flex items-start gap-1.5 text-xs ${textMuted}`}>
               <MIcon name="info" size={11} className="shrink-0 mt-0.5" />
               <span>
-                {t('condition.best_profile.win_rate_improvement', { diff: rateDiff })}
+                {t('condition.best_profile.win_rate_association', { diff: rateDiff })}
               </span>
             </div>
           )}

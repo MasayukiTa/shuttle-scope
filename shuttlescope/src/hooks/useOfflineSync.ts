@@ -13,10 +13,13 @@ import { useEffect, useRef } from 'react'
 
 import { apiPost } from '@/api/client'
 import {
+  countPendingForUserStrict,
+  isResendHeld,
   listPendingForMatch,
   offlineStrokeIdempotencyKey,
   removePending,
 } from '@/utils/offlineStrokeQueue'
+import { deriveSyncStatus } from '@/utils/syncStatus'
 import { useAnnotationStore } from '@/store/annotationStore'
 // hook の外では useTranslation の t が束縛されない。CLAUDE.md の規約どおり
 // 修飾済みの i18n.t を使う。
@@ -35,13 +38,42 @@ export function useOfflineSync(matchId: number | null, ownerUserId: number | nul
   useEffect(() => {
     if (matchId == null || ownerUserId == null) return
 
+    // 表示更新: 本人の未送信件数を IndexedDB から数え直し、navigator.onLine と
+    // 直近の送信が失敗したかから表示状態を導き、store へ反映する。
+    const refreshStatus = async (lastSendFailed: boolean) => {
+      let unsentCount = 0
+      try {
+        unsentCount = await countPendingForUserStrict(ownerUserId)
+      } catch {
+        // 読み取りに失敗したら前の件数を維持する (0 と偽らない)。
+        unsentCount = useAnnotationStore.getState().unsentCount
+      }
+      const offline = typeof navigator !== 'undefined' && navigator.onLine === false
+      const view = deriveSyncStatus({ unsentCount, offline, lastSendFailed })
+      useAnnotationStore.getState().setSyncStatus(view.unsentCount, view.state)
+    }
+
     const sync = async () => {
       if (inflightRef.current) return
-      if (typeof navigator !== 'undefined' && navigator.onLine === false) return
+      // オフラインでも未送信件数・状態は常時更新する (表示を出し続ける)。
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        await refreshStatus(false)
+        return
+      }
       inflightRef.current = true
+      let sendFailed = false
       try {
         const items = await listPendingForMatch(matchId, ownerUserId)
         for (const it of items) {
+          // \u5fa9\u5143\u30c0\u30a4\u30a2\u30ed\u30b0\u304c\u51fa\u3066\u3044\u308b\u30e9\u30ea\u30fc\u306f\u3001\u5fa9\u5143\u304b\u7834\u68c4\u304c\u6c7a\u307e\u308b\u307e\u3067
+          // \u9001\u3089\u306a\u3044\u3002\u3053\u3053\u3067\u9001\u308b\u3068\u3001\u307e\u3060\u5fa9\u5143\u5f85\u3061\u306e\u30e9\u30ea\u30fc\u306e owned \u884c\u304c
+          // online \u5fa9\u5e30\u76f4\u5f8c\u306b\u518d\u9001\u3055\u308c\u3001\u5931\u6557\u6271\u3044\u3055\u308c\u3066\u300c\u4fdd\u5b58\u5931\u6557\u300d\u304c\u51fa\u308b
+          // (muse \u5b9f\u6a5f 13:08)\u3002sendFailed \u306f\u7acb\u3066\u305a\u3001\u5f8c\u7d9a\u306f\u901a\u5e38\u901a\u308a\u51e6\u7406\u3059\u308b\u3002
+          if (isResendHeld(it.matchId, it.setId, it.rallyNum)) continue
+          // 本文 (payload) の無い行は送らない。draft 行などが所有権フィルタを
+          // すり抜けても、ここで本文空の POST /strokes/batch (422) を出さずに残す。
+          // (listPendingForMatch は既に payload 欠落を除外するが、二重の防御。)
+          if (it.payload == null) continue
           try {
             // apiPost は既定で**毎回新しい** idempotency key を作る。再送のたびに
             // キーが変わると、サーバが「処理済みだが応答を失った」最初の送信と
@@ -92,11 +124,15 @@ export function useOfflineSync(matchId: number | null, ownerUserId: number | nul
               }
               continue
             }
+            // 再試行で直る種類 (ネットワーク / 5xx / 429 / 408)。未送信が残るので
+            // 表示を failed にする。次回の online / ポーリングで再送される。
+            sendFailed = true
             break
           }
         }
       } finally {
         inflightRef.current = false
+        await refreshStatus(sendFailed)
       }
     }
 

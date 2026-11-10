@@ -8,6 +8,7 @@ import {
   getCategoryForShot,
   getStyleForShot,
 } from '../shotTypeColors'
+import { contrastRatio, hexToRgb } from '@/utils/contrast'
 
 describe('shotTypeColors', () => {
   it('all 5 categories have a style entry', () => {
@@ -68,11 +69,30 @@ describe('shotTypeColors', () => {
     }
   })
 
-  it('mid category uses white text on amber-600 (WCAG AA, ユーザ要望で全カテゴリ統一白文字)', () => {
+  it('mid category uses white text on amber-700 (WCAG AA)', () => {
     // 旧 yellow-500 + text-gray-900 はカラフルタイル群で「黒文字だけ浮く」見栄え不良
-    // のため amber-600 + text-white に変更 (white と amber-600 #d97706 で contrast ≈ 3.6:1, AA pass)
+    // のため白文字に統一。amber-600 (#d97706) は白文字 3.2:1 で AA 未満だったため 700 にした
     expect(CATEGORY_STYLES.mid.text).toBe('text-white')
-    expect(CATEGORY_STYLES.mid.bg).toBe('bg-amber-600')
+    expect(CATEGORY_STYLES.mid.bg).toBe('bg-amber-700')
+  })
+
+  it('全カテゴリの背景は通常状態・hover とも白文字で WCAG AA (4.5:1) 以上', () => {
+    // Tailwind の既定パレット値 (使用している 700/800 番台と slate-600)
+    const hex: Record<string, string> = {
+      'green-700': '#15803d', 'green-800': '#166534',
+      'cyan-700': '#0e7490', 'cyan-800': '#155e75',
+      'amber-700': '#b45309', 'amber-800': '#92400e',
+      'violet-700': '#6d28d9', 'violet-800': '#5b21b6',
+      'slate-600': '#475569', 'slate-700': '#334155',
+    }
+    const white = hexToRgb('#ffffff')
+    for (const [cat, style] of Object.entries(CATEGORY_STYLES)) {
+      for (const cls of [style.bg, style.bgHover.replace('hover:', '')]) {
+        const key = cls.replace('bg-', '')
+        expect(hex[key], `${cat}: ${cls} の色定義`).toBeDefined()
+        expect(contrastRatio(white, hexToRgb(hex[key])), `${cat}: ${cls}`).toBeGreaterThanOrEqual(4.5)
+      }
+    }
   })
 
   it('全カテゴリーが白文字 (タイル群でテキスト色を統一する規約)', () => {

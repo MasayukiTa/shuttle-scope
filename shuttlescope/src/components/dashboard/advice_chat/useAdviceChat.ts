@@ -134,6 +134,11 @@ export function useAdviceChat() {
   // 同一マウント中の race condition 防止用
   const tempIdRef = useRef(0)
 
+  // 履歴の復元に失敗した保存済み sid (404/403 以外 = 通信断・5xx 等)。
+  // 非 null の間は、旧会話から無言で分岐しないよう送信を止め、再試行か明示的な「新しい会話」(リセット) を促す。
+  const [historyFailedSid, setHistoryFailedSid] = useState<number | null>(null)
+  const [historyRetryNonce, setHistoryRetryNonce] = useState(0)
+
   // ── 初回マウント: localStorage の session_id があれば履歴を取得 ──
   useEffect(() => {
     const sid = readStoredSid()
@@ -146,13 +151,18 @@ export function useAdviceChat() {
         setSessionId(sid)
         setMessages(resp.messages ?? [])
         setAppliedScope(resp.applied_scope ?? null)
+        setHistoryFailedSid(null)
       })
       .catch((err: unknown) => {
+        if (cancelled) return
         const { status } = parseErrorBody(err)
         if (status === 404 || status === 403) {
           writeStoredSid(null)
+          setHistoryFailedSid(null)
+        } else {
+          // 旧 sid は保持したまま「履歴を取得できなかった」状態にする
+          setHistoryFailedSid(sid)
         }
-        // それ以外の error は無視 (ユーザが話しかけるまで session 未作成扱い)
       })
       .finally(() => {
         if (!cancelled) setIsInitializing(false)
@@ -160,6 +170,10 @@ export function useAdviceChat() {
     return () => {
       cancelled = true
     }
+  }, [historyRetryNonce])
+
+  const retryHistory = useCallback(() => {
+    setHistoryRetryNonce((n) => n + 1)
   }, [])
 
   const ensureSession = useCallback(async (): Promise<number> => {
@@ -177,6 +191,11 @@ export function useAdviceChat() {
     ): Promise<void> => {
       const trimmed = content.trim()
       if (!trimmed || isSending) return
+      if (historyFailedSid != null) {
+        // 履歴を復元できていない間は新規 session を作らない (旧会話から無言で分岐させない)
+        setError('auto.AdviceChat.error_history_failed')
+        return
+      }
       setError(null)
       setIsSending(true)
 
@@ -240,30 +259,39 @@ export function useAdviceChat() {
         setIsSending(false)
       }
     },
-    [ensureSession, isSending],
+    [ensureSession, isSending, historyFailedSid],
   )
 
   const resetSession = useCallback(async (): Promise<void> => {
     setError(null)
     const sid = sessionId
-    setSessionId(null)
-    setMessages([])
-    setAppliedScope(null)
-    writeStoredSid(null)
+    // サーバ側の削除が成功してから画面と保存済み sid を消す。失敗時は旧セッションを
+    // 保持したまま通知し、利用者が再試行できるようにする (404 = 既に無いので成功扱い)。
     if (sid != null) {
       try {
         await apiDelete(`/insights/chat/sessions/${sid}`,
           { 'X-Idempotency-Key': newIdempotencyKey() })
-      } catch {
-        // best-effort: ローカル状態は既に消したので無視
+      } catch (err) {
+        if (parseErrorBody(err).status !== 404) {
+          setError('auto.AdviceChat.error_reset_failed')
+          return
+        }
       }
     }
+    setSessionId(null)
+    setMessages([])
+    setAppliedScope(null)
+    // 履歴を復元できなかった旧会話の保存済み sid もここで明示的に手放す (= 利用者が選んだ「新しい会話」)
+    setHistoryFailedSid(null)
+    writeStoredSid(null)
   }, [sessionId])
 
   return {
     sessionId,
     messages,
     isInitializing,
+    historyFailed: historyFailedSid != null,
+    retryHistory,
     isSending,
     error,
     sendMessage,

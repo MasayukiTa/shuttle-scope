@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { A_GOOD, B_BAD, N_GRAY } from '@/styles/colors'
+import { useAuth } from '@/hooks/useAuth'
 
 interface IntervalReportProps {
   matchId: number
@@ -22,7 +23,7 @@ interface SetReport {
   set_num: number
   rally_count: number
   wins: number
-  win_rate_raw: number
+  win_rate_raw: number | null
   posterior_mean: number
   ci_low: number
   ci_high: number
@@ -50,19 +51,30 @@ interface IntervalReportResponse {
 
 export function IntervalReport({ matchId, completedSet, onSetClick }: IntervalReportProps) {
   const { t } = useTranslation()
+  // 製品ルール: 推定勝率・セット別の勝ちラリー数は勝敗そのもの。player には描かず、取得もしない
+  // (読む先 /analysis/interval_report は research ルーターで player に 403)。
+  const { role } = useAuth()
+  const isPlayer = role === 'player'
 
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError } = useQuery({
     queryKey: ['analysis-interval-report', matchId, completedSet],
     queryFn: () =>
       apiGet<IntervalReportResponse>('/analysis/interval_report', {
         match_id: matchId,
         completed_set_num: completedSet,
       }),
-    enabled: !!matchId,
+    enabled: !!matchId && !isPlayer,
   })
+
+  if (isPlayer) return null
 
   if (isLoading) {
     return <div className="text-[var(--ss-t3)] text-sm py-4 text-center">{t('analysis.loading')}</div>
+  }
+
+  // 取得失敗を正常な「データなし」に落とさない (監査 #642)。
+  if (isError) {
+    return <div className="text-sm py-4 text-center" style={{ color: 'var(--ss-bad)' }}>{t('analysis.fetch_error')}</div>
   }
 
   if (!resp?.success || !resp.data) {
@@ -109,7 +121,7 @@ export function IntervalReport({ matchId, completedSet, onSetClick }: IntervalRe
               <>
                 <div>
                   <span className="text-sm font-medium text-[var(--ss-t1)]">
-                    {t('analysis.interval_report.set')} {setReport.set_num}
+                    {t('analysis.interval_report.as_of_set', { n: setReport.set_num })}
                   </span>
                   <span className="text-xs text-[var(--ss-t3)] ml-2">
                     {setReport.wins}/{t('auto._shared.n_rallies', { n: setReport.rally_count })}

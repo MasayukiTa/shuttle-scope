@@ -8,8 +8,10 @@
  */
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { matchOutcomeLabelKey } from '@/utils/matchResult'
 import { apiGet } from '@/api/client'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { WIN, LOSS } from '@/styles/colors'
@@ -17,23 +19,33 @@ import { WIN, LOSS } from '@/styles/colors'
 // ── 型定義 ──────────────────────────────────────────────────────────────────
 
 interface RecentForm {
-  win_rate: number
+  // 試合 0 件のとき win_rate / overall_wr / trend は null (偽の 50% / 安定ではない)
+  win_rate: number | null
   sample: number
-  trend: 'improving' | 'declining' | 'stable'
+  trend: 'improving' | 'declining' | 'stable' | null
   results: string[]
-  overall_wr: number
+  overall_wr: number | null
 }
 
 interface GrowthBucket {
   label: string
   win_rate: number
   sample: number
+  // 区間ごとの勝数・Wilson 95% 区間・日付範囲 (古い応答には無い)
+  wins?: number
+  ci_low?: number
+  ci_high?: number
+  date_from?: string
+  date_to?: string
 }
+
+// 区間の試合数がこれ未満の棒は薄く描き、率が参考値であることを title に書く
+const GROWTH_BUCKET_LOW_SAMPLE = 3
 
 interface GrowthTrend {
   buckets: GrowthBucket[]
-  slope: number
-  direction: 'up' | 'down' | 'flat'
+  slope: number | null
+  direction: 'up' | 'down' | 'flat' | null   // 試合数が最小標本未満は null
   sample: number
 }
 
@@ -53,12 +65,13 @@ interface NearestMatch {
 
 interface FeatureBreakdown {
   base_wr: number
-  recent_wr: number
+  recent_wr: number | null
   h2h_wr: number | null
   weights: Record<string, number>
   obs_modifier: number
   raw_blend: number
   final: number
+  insufficient_data?: boolean   // 試合 0 件のとき true (数値項目は null になる)
 }
 
 interface AnalystDepthData {
@@ -68,8 +81,8 @@ interface AnalystDepthData {
   nearest_match_evidence: NearestMatch[]
   set_model_type: 'observed' | 'momentum'
   feature_breakdown: FeatureBreakdown
-  win_prob_v1: number
-  win_prob_v2: number
+  win_prob_v1: number | null
+  win_prob_v2: number | null
 }
 
 interface Props {
@@ -93,7 +106,20 @@ function RecentFormSection({ data, isLight }: { data: RecentForm; isLight: boole
   const trendLabel =
     data.trend === 'improving' ? t('prediction.recent_form_improving')
     : data.trend === 'declining' ? t('prediction.recent_form_declining')
-    : t('prediction.recent_form_stable')
+    : data.trend === 'stable' ? t('prediction.recent_form_stable')
+    : t('prediction.direction_insufficient')
+
+  // 直近の試合が 0 件: 傾向も勝率も定義できないので「—」だけを出す
+  if (data.sample === 0 || data.win_rate === null) {
+    return (
+      <div>
+        <p className="text-xs font-semibold mb-2" style={{ color: subText }}>
+          {t('prediction.recent_form')}
+        </p>
+        <span className="text-xs" style={{ color: subText }}>—</span>
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -128,7 +154,9 @@ function RecentFormSection({ data, isLight }: { data: RecentForm; isLight: boole
           </p>
           <p className="text-xs ss-num" style={{ color: subText }}>
             {t('auto.AnalystDepthPanel.recent_wr', { wr: Math.round(data.win_rate * 100) })}
-            <span className="ml-2">{t('auto.AnalystDepthPanel.overall_wr', { wr: Math.round(data.overall_wr * 100) })}</span>
+            {typeof data.overall_wr === 'number' && (
+              <span className="ml-2">{t('auto.AnalystDepthPanel.overall_wr', { wr: Math.round(data.overall_wr * 100) })}</span>
+            )}
           </p>
         </div>
       </div>
@@ -143,7 +171,8 @@ function GrowthTrendSection({ data, isLight }: { data: GrowthTrend; isLight: boo
   const dirLabel =
     data.direction === 'up' ? t('prediction.growth_direction_up')
     : data.direction === 'down' ? t('prediction.growth_direction_down')
-    : t('prediction.growth_direction_flat')
+    : data.direction === 'flat' ? t('prediction.growth_direction_flat')
+    : t('prediction.direction_insufficient')
 
   const dirColor =
     data.direction === 'up' ? WIN
@@ -173,8 +202,25 @@ function GrowthTrendSection({ data, isLight }: { data: GrowthTrend; isLight: boo
         <p className="text-xs font-medium" style={{ color: dirColor }}>{dirLabel}</p>
       </div>
       <div className="flex items-end gap-1.5">
-        {data.buckets.map((b, i) => (
-          <div key={i} className="flex flex-col items-center gap-0.5" style={{ minWidth: 28 }}>
+        {data.buckets.map((b, i) => {
+          const lowSample = b.sample < GROWTH_BUCKET_LOW_SAMPLE
+          const bucketTitle = typeof b.ci_low === 'number' && typeof b.ci_high === 'number'
+            ? t('auto.AnalystDepthPanel.bucket_title', {
+                from: b.date_from ?? b.label,
+                to: b.date_to ?? b.label,
+                n: b.sample,
+                wins: b.wins ?? 0,
+                lo: Math.round(b.ci_low * 100),
+                hi: Math.round(b.ci_high * 100),
+              })
+            : t('auto.AnalystDepthPanel.n_matches', { n: b.sample })
+          return (
+          <div
+            key={i}
+            className="flex flex-col items-center gap-0.5"
+            style={{ minWidth: 28, opacity: lowSample ? 0.5 : 1 }}
+            title={lowSample ? `${bucketTitle} ${t('auto.AnalystDepthPanel.bucket_low_sample')}` : bucketTitle}
+          >
             <span className="text-[9px] ss-num" style={{ color: subText }}>
               {Math.round(b.win_rate * 100)}%
             </span>
@@ -187,13 +233,16 @@ function GrowthTrendSection({ data, isLight }: { data: GrowthTrend; isLight: boo
               }}
             />
             <span className="text-[9px]" style={{ color: subText }}>{b.label}</span>
+            <span className="text-[9px] ss-num" style={{ color: subText }}>{t('auto.AnalystDepthPanel.n_matches', { n: b.sample })}</span>
           </div>
-        ))}
+          )
+        })}
       </div>
       <p className="text-[10px] mt-1 ss-num" style={{ color: subText }}>
-        {t('auto.AnalystDepthPanel.slope_per_bucket', { v: `${data.slope > 0 ? '+' : ''}${(data.slope * 100).toFixed(1)}` })}
+        {data.slope != null && t('auto.AnalystDepthPanel.slope_per_bucket', { v: `${data.slope > 0 ? '+' : ''}${(data.slope * 100).toFixed(1)}` })}
         <span className="ml-2">{t('auto.AnalystDepthPanel.n_matches', { n: data.sample })}</span>
       </p>
+      <p className="text-[10px] mt-0.5" style={{ color: subText }}>{t('auto.AnalystDepthPanel.bucket_note')}</p>
     </div>
   )
 }
@@ -254,6 +303,11 @@ function BrierScoreSection({ data, isLight }: { data: BrierScore; isLight: boole
         </div>
       </div>
       <p className="text-[10px] mt-1 ss-num" style={{ color: subText }}>{t('auto.AnalystDepthPanel.loo_estimate', { n: data.sample })}</p>
+      {data.grade === 'poor' && (
+        <p className="text-[10px] mt-1" style={{ color: gradeColor }}>
+          {t('prediction.reference_reason_brier', { score: data.score.toFixed(3) })}
+        </p>
+      )}
     </div>
   )
 }
@@ -283,10 +337,10 @@ function NearestEvidenceSection({ data, isLight }: { data: NearestMatch[]; isLig
         {data.map((m, i) => (
           <div key={i} className="flex items-center gap-2 text-xs">
             <span
-              className="font-bold w-4 shrink-0"
-              style={{ color: m.result === 'win' ? WIN : LOSS }}
+              className="font-bold min-w-[1rem] shrink-0"
+              style={{ color: m.result === 'win' ? WIN : m.result === 'loss' ? LOSS : subText }}
             >
-              {m.result === 'win' ? 'W' : 'L'}
+              {t(matchOutcomeLabelKey(m.result))}
             </span>
             <span className="shrink-0 text-[10px] font-mono ss-num" style={{ color: subText }}>
               {m.date.slice(0, 7)}
@@ -325,7 +379,9 @@ function FeatureBreakdownSection({ data, isLight }: { data: FeatureBreakdown; is
   type WeightEntry = { label: string; wr: number; weight: number }
   const entries: WeightEntry[] = [
     { label: t('auto.AnalystDepthPanel.k5'), wr: data.base_wr, weight: data.weights['base'] ?? 0 },
-    { label: t('auto.AnalystDepthPanel.k6'), wr: data.recent_wr, weight: data.weights['recent'] ?? 0 },
+    ...(data.recent_wr !== null
+      ? [{ label: t('auto.AnalystDepthPanel.k6'), wr: data.recent_wr, weight: data.weights['recent'] ?? 0 }]
+      : []),
     ...(data.h2h_wr !== null && data.weights['h2h']
       ? [{ label: t('auto.AnalystDepthPanel.k7'), wr: data.h2h_wr, weight: data.weights['h2h'] }]
       : []),
@@ -386,7 +442,7 @@ function Inner({ playerId, opponentId, tournamentLevel }: Props) {
   const isLight = useIsLightMode()
   const subText = isLight ? '#64748b' : '#9ca3af'
 
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError, refetch } = useQuery({
     queryKey: ['prediction-analyst-depth', playerId, opponentId, tournamentLevel],
     queryFn: () =>
       apiGet<{ success: boolean; data: AnalystDepthData }>('/prediction/analyst_depth', {
@@ -399,6 +455,11 @@ function Inner({ playerId, opponentId, tournamentLevel }: Props) {
 
   if (isLoading) {
     return <p className="text-xs text-gray-500 py-2">{t('prediction.loading')}</p>
+  }
+
+  // 取得失敗でセクションごと無言で消えないよう、失敗を明示する。
+  if (isError) {
+    return <QueryErrorNotice onRetry={() => { void refetch() }} />
   }
 
   const d = resp?.data
@@ -421,7 +482,11 @@ function Inner({ playerId, opponentId, tournamentLevel }: Props) {
       </div>
 
       <div className={sectionClass}>
-        <FeatureBreakdownSection data={d.feature_breakdown} isLight={isLight} />
+        {!d.feature_breakdown.insufficient_data ? (
+          <FeatureBreakdownSection data={d.feature_breakdown} isLight={isLight} />
+        ) : (
+          <p className="text-xs" style={{ color: subText }}>{t('prediction.feature_breakdown_insufficient')}</p>
+        )}
       </div>
 
       <div className={sectionClass}>
@@ -438,8 +503,12 @@ function Inner({ playerId, opponentId, tournamentLevel }: Props) {
         {d.set_model_type === 'observed'
           ? t('prediction.set_model_observed')
           : t('prediction.set_model_momentum')}
-        {'  '}
-        {t('auto.AnalystDepthPanel.calibration_line', { v1: Math.round(d.win_prob_v1 * 100), v2: Math.round(d.win_prob_v2 * 100) })}
+        {d.win_prob_v1 != null && d.win_prob_v2 != null && (
+          <>
+            {'  '}
+            {t('auto.AnalystDepthPanel.calibration_line', { v1: Math.round(d.win_prob_v1 * 100), v2: Math.round(d.win_prob_v2 * 100) })}
+          </>
+        )}
       </p>
     </div>
   )

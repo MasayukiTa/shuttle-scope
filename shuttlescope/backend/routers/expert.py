@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import csv
 import io
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -60,6 +60,17 @@ def require_labeler_role(request: Request) -> AuthCtx:
     return ctx
 
 
+def effective_annotator_role(ctx: AuthCtx, requested: str) -> str:
+    """ラベルの annotator_role を認証済みロールから確定する。
+
+    coach / analyst は自分のロールで固定する（クライアントが送った値は使わない）。
+    admin だけは、どちらの立場で付けるかを選べるので送られた値を使う。
+    """
+    if ctx.role in ("coach", "analyst"):
+        return ctx.role
+    return requested
+
+
 def require_admin_role(request: Request) -> AuthCtx:
     """admin のみ許可する依存性。"""
     ctx = get_auth(request)
@@ -98,9 +109,13 @@ class LabelPayload(BaseModel):
 class VideoSummary(BaseModel):
     match_id: int
     title: str
+    date: str
     miss_count: int
     clip_ready_count: int
     labeled_count: int
+    has_video: bool
+    # no_targets / no_video / clips_pending / ready（_review_status 参照）
+    review_status: str
 
 
 class ClipInfo(BaseModel):
@@ -108,11 +123,19 @@ class ClipInfo(BaseModel):
     rally_id: int
     timestamp_sec: Optional[float]
     frame_index: int
+    # 切り出し範囲（clip_generator と同じ fps*3 前 / fps*2 後）。表示用で、ラベル保存では送り返さない
+    # （LabelPayload は extra=forbid。範囲はストロークの timestamp_sec から再計算できる）。
+    clip_start_frame: int
+    clip_end_frame: int
     clip_url: Optional[str]
     rally_context: dict
     # INFRA Phase B: ミスストロークのソース種別
     # "manual" = iter_miss_strokes 由来、"auto" = 自動検出器由来、両方なら "manual+auto"
     source: str = "manual"
+
+
+class ClipsOut(BaseModel):
+    clips: list[ClipInfo]
 
 
 class LabelOut(BaseModel):
@@ -131,6 +154,10 @@ class LabelOut(BaseModel):
         from_attributes = True
 
 
+class LabelsOut(BaseModel):
+    labels: list[LabelOut]
+
+
 # ─── ヘルパー ───────────────────────────────────────────────────────────────
 
 def _match_title(db: Session, m: Match) -> str:
@@ -142,6 +169,36 @@ def _match_title(db: Session, m: Match) -> str:
     return f"{m.date.isoformat()} {a_name} vs {b_name}"
 
 
+# 試合の date として受け付ける範囲。matches.py の作成・更新時の検証と同じ
+# （1970-01-01 から 2 年先まで）。0001-01-01 のような既定値・欠損値は
+# 検証導入前に作られた行にだけ残っているため、レビュー対象から外す。
+_MIN_MATCH_DATE = date(1970, 1, 1)
+_MAX_MATCH_DATE_AHEAD = timedelta(days=365 * 2)
+
+
+def _is_plausible_match_date(d: Optional[date]) -> bool:
+    if d is None:
+        return False
+    return _MIN_MATCH_DATE <= d <= date.today() + _MAX_MATCH_DATE_AHEAD
+
+
+def _review_status(miss_count: int, clip_ready_count: int, has_video: bool) -> str:
+    """一覧の「開始」を出してよいかを決める状態。
+
+    no_targets: ミス判定ストロークが 0 件（詳細画面に出せるものが無い）
+    no_video: 対象はあるが動画が紐付いていない（クリップを作れない）
+    clips_pending: 対象と動画はあるがクリップが未生成
+    ready: 対象と動画があり、クリップが 1 件以上ある
+    """
+    if miss_count <= 0:
+        return "no_targets"
+    if not has_video:
+        return "no_video"
+    if clip_ready_count <= 0:
+        return "clips_pending"
+    return "ready"
+
+
 def _fps_for_match(m: Match) -> int:
     fps = getattr(m, "source_fps", None)
     try:
@@ -150,6 +207,36 @@ def _fps_for_match(m: Match) -> int:
     except (TypeError, ValueError):
         pass
     return DEFAULT_FPS
+
+
+def _visible_matches_query(db: Session, ctx: AuthCtx):
+    """ctx が一覧・集計で見てよい試合の Query。見える試合が無ければ None。
+
+    admin は全試合。それ以外は自チームの選手が出る試合に限る（round127 V-W4:
+    cross-team 漏洩防止）。試合一覧と進捗集計が同じ範囲を見るよう、ここ 1 か所に置く。
+    """
+    q = db.query(Match).filter(Match.deleted_at.is_(None))
+    if ctx.is_admin:
+        return q
+    team = (getattr(ctx, "team_name", "") or "").strip()
+    if not team:
+        return None
+    from backend.db.models import Player as _P, Team as _Team
+    team_player_ids = [
+        p.id for p in db.query(_P.id)
+            .join(_Team, _Team.id == _P.team_id)
+            .filter(_Team.name == team, _Team.deleted_at.is_(None))
+            .all()
+    ]
+    if not team_player_ids:
+        return None
+    from sqlalchemy import or_ as _or
+    return q.filter(_or(
+        Match.player_a_id.in_(team_player_ids),
+        Match.player_b_id.in_(team_player_ids),
+        Match.partner_a_id.in_(team_player_ids),
+        Match.partner_b_id.in_(team_player_ids),
+    ))
 
 
 # ─── エンドポイント ─────────────────────────────────────────────────────────
@@ -163,29 +250,14 @@ def list_videos(
     # 権限外の閲覧者には空配列を返す（UI が隠れる前に一瞬呼ばれるケースで 403 を出さない）
     if ctx.role not in ALLOWED_ROLES:
         return []
-    q = db.query(Match).filter(Match.deleted_at.is_(None))
-    # round127 V-W4 fix: admin 以外は team scope で絞る (cross-team 漏洩防止)
-    if not ctx.is_admin:
-        team = (getattr(ctx, "team_name", "") or "").strip()
-        if not team:
-            return []
-        from backend.db.models import Player as _P, Team as _Team
-        team_player_ids = [
-            p.id for p in db.query(_P.id)
-                .join(_Team, _Team.id == _P.team_id)
-                .filter(_Team.name == team, _Team.deleted_at.is_(None))
-                .all()
-        ]
-        if not team_player_ids:
-            return []
-        from sqlalchemy import or_ as _or
-        q = q.filter(_or(
-            Match.player_a_id.in_(team_player_ids),
-            Match.player_b_id.in_(team_player_ids),
-            Match.partner_a_id.in_(team_player_ids),
-            Match.partner_b_id.in_(team_player_ids),
-        ))
-    matches = q.all()
+    q = _visible_matches_query(db, ctx)
+    if q is None:
+        return []
+    # 並びは日付の新しい順（同日は ID の新しい順）。異常な日付の試合は対象外。
+    matches = [
+        m for m in q.order_by(Match.date.desc(), Match.id.desc()).all()
+        if _is_plausible_match_date(m.date)
+    ]
     out: list[VideoSummary] = []
     for m in matches:
         miss_rows = iter_miss_strokes(db, m.id)
@@ -202,33 +274,39 @@ def list_videos(
             .scalar()
             or 0
         )
+        has_video = bool((m.video_local_path or "").strip())
         out.append(VideoSummary(
             match_id=m.id,
             title=_match_title(db, m),
+            date=m.date.isoformat(),
             miss_count=miss_count,
             clip_ready_count=int(clip_ready),
             labeled_count=int(labeled),
+            has_video=has_video,
+            review_status=_review_status(miss_count, int(clip_ready), has_video),
         ))
     return out
 
 
-@router.get("/clips", response_model=list[ClipInfo])
+@router.get("/clips", response_model=ClipsOut)
 def list_clips(
     match_id: int = Query(..., ge=1, le=2_147_483_647),
     db: Session = Depends(get_db),
     _ctx: AuthCtx = Depends(require_labeler_role),
 ):
-    """ミスストローク一覧（クリップ URL 付き）。"""
+    """ミスストローク一覧。clip_url は配信ルートができるまで常に null。"""
     m = db.get(Match, match_id)
     if not m:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    # 一覧 /videos や /labels・/export と同じく team/match スコープを必須にする。
+    # これが無いと、一覧に出ない他チーム試合 ID を知るだけでラリー・ストローク文脈を
+    # 取得できた（GET だけ認可が抜けた非対称実装）。fail closed。
+    from backend.utils.auth import user_can_access_match
+    if not user_can_access_match(_ctx, m):
         raise HTTPException(status_code=404, detail="試合が見つかりません")
     fps = _fps_for_match(m)
     miss_rows = iter_miss_strokes(db, match_id)
 
-    cache_map = {
-        c.stroke_id: c
-        for c in db.query(ClipCache).filter(ClipCache.match_id == match_id).all()
-    }
     # INFRA Phase B: 自動ミス検出器の結果を合流させ source を付与する
     auto_stroke_ids: set[int] = set()
     try:
@@ -241,15 +319,20 @@ def list_clips(
     manual_stroke_ids: set[int] = set()
     for rally, stroke in miss_rows:
         manual_stroke_ids.add(stroke.id)
-        cache = cache_map.get(stroke.id)
-        clip_url = f"/api/v1/expert/clip_file?stroke_id={stroke.id}" if cache else None
+        # クリップ配信ルートは存在しない（過去のどのコミットにも無い）ため URL は返さない。
+        # 返すと <video> が 404 を読みにいく。cache 行の有無は clip_ready_count 側で扱う。
+        # 配信ルートを足すときは、認証付きで取得できる経路と一緒にここを戻す。
+        clip_url = None
         is_auto = stroke.id in auto_stroke_ids
         source = "manual+auto" if is_auto else "manual"
+        frame_index = compute_frame_index(stroke.timestamp_sec, fps)
         out.append(ClipInfo(
             stroke_id=stroke.id,
             rally_id=rally.id,
             timestamp_sec=stroke.timestamp_sec,
-            frame_index=compute_frame_index(stroke.timestamp_sec, fps),
+            frame_index=frame_index,
+            clip_start_frame=max(0, frame_index - fps * 3),
+            clip_end_frame=frame_index + fps * 2,
             clip_url=clip_url,
             rally_context={
                 "end_type": rally.end_type,
@@ -260,7 +343,7 @@ def list_clips(
             },
             source=source,
         ))
-    return out
+    return ClipsOut(clips=out)
 
 
 @router.post("/labels", response_model=LabelOut)
@@ -284,14 +367,23 @@ def upsert_label(
     from backend.utils.auth import user_can_access_match
     if not user_can_access_match(_ctx, m):
         raise HTTPException(status_code=404, detail="試合が見つかりません")
-    if not db.get(Stroke, body.stroke_id):
+    stroke = db.get(Stroke, body.stroke_id)
+    if not stroke:
+        raise HTTPException(status_code=404, detail="ストロークが見つかりません")
+    # stroke_id が body.match_id の試合のものであること。match だけ自チームのものを指定して
+    # stroke_id に他チームのストロークを渡すと、上のチーム境界チェックをすり抜けて
+    # (stroke_id, annotator_role) の UPSERT で他チームのラベルを上書きできた。
+    _rally = db.get(Rally, stroke.rally_id)
+    _gset = db.get(GameSet, _rally.set_id) if _rally is not None else None
+    if _gset is None or _gset.match_id != body.match_id:
         raise HTTPException(status_code=404, detail="ストロークが見つかりません")
 
+    annotator_role = effective_annotator_role(_ctx, body.annotator_role)
     existing = (
         db.query(ExpertLabel)
         .filter(
             ExpertLabel.stroke_id == body.stroke_id,
-            ExpertLabel.annotator_role == body.annotator_role,
+            ExpertLabel.annotator_role == annotator_role,
         )
         .one_or_none()
     )
@@ -310,7 +402,7 @@ def upsert_label(
         label = ExpertLabel(
             match_id=body.match_id,
             stroke_id=body.stroke_id,
-            annotator_role=body.annotator_role,
+            annotator_role=annotator_role,
             posture_collapse=body.posture_collapse,
             weight_distribution=body.weight_distribution,
             shot_timing=body.shot_timing,
@@ -323,7 +415,7 @@ def upsert_label(
     return label
 
 
-@router.get("/labels", response_model=list[LabelOut])
+@router.get("/labels", response_model=LabelsOut)
 def list_labels(
     match_id: int = Query(..., ge=1, le=2_147_483_647),
     annotator_role: Optional[Literal["coach", "analyst"]] = Query(None),
@@ -338,7 +430,7 @@ def list_labels(
         q = q.filter(_or(ExpertLabel.team_id.is_(None), ExpertLabel.team_id == _ctx.team_id))
     if annotator_role:
         q = q.filter(ExpertLabel.annotator_role == annotator_role)
-    return q.all()
+    return {"labels": q.all()}
 
 
 @router.get("/progress")
@@ -350,7 +442,16 @@ def get_progress(
     """自分（指定ロール）の進捗: 全ミス件数 / ラベル済み件数。"""
     if ctx.role not in ALLOWED_ROLES:
         return {"annotator_role": annotator_role, "total": 0, "labeled": 0, "per_match": []}
-    matches = db.query(Match).filter(Match.deleted_at.is_(None)).all()
+    # annotator_role は認証済みロールからサーバ側で確定する。coach / analyst が
+    # 相手ロールの進捗（他ロールの作業量）を指定して覗けないようにする。admin だけは
+    # どちらの立場の進捗を見るか明示指定できる（upsert_label と同じ規則）。
+    annotator_role = effective_annotator_role(ctx, annotator_role)
+    # 試合一覧と同じ範囲だけ数える。以前は全チームの試合を数えていたため、
+    # 他チームの match_id と件数が per_match に出ていた。
+    q = _visible_matches_query(db, ctx)
+    if q is None:
+        return {"annotator_role": annotator_role, "total": 0, "labeled": 0, "per_match": []}
+    matches = q.all()
     total = 0
     per_match: list[dict] = []
     for m in matches:
@@ -371,12 +472,12 @@ def get_progress(
             "miss_count": miss_count,
             "labeled_count": int(labeled),
         })
-    labeled_total = (
-        db.query(func.count(ExpertLabel.id))
-        .filter(ExpertLabel.annotator_role == annotator_role)
-        .scalar()
-        or 0
+    labeled_q = db.query(func.count(ExpertLabel.id)).filter(
+        ExpertLabel.annotator_role == annotator_role
     )
+    if not ctx.is_admin:
+        labeled_q = labeled_q.filter(ExpertLabel.match_id.in_([m.id for m in matches]))
+    labeled_total = labeled_q.scalar() or 0
     return {
         "annotator_role": annotator_role,
         "total": total,

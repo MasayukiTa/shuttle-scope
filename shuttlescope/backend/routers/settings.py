@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from backend.db import database as _db_module
 from backend.db.database import get_db
-from backend.utils.auth import require_analyst, get_auth
+from backend.utils.auth import require_analyst, require_admin, get_auth
 
 router = APIRouter()
 
@@ -176,8 +176,8 @@ def get_settings(request: Request, db: Session = Depends(get_db)):
     実値は漏らさない）。設定値そのものはアプリ内部構成情報 (sync_device_id,
     tracknet_backend 等) を含むため player ロールには一切返さない。
     """
-    from backend.utils.auth import require_non_player
-    require_non_player(request)
+    from backend.utils.auth import require_operator_role
+    require_operator_role(request)
     ctx = get_auth(request)
     _ensure_settings_table(db)
     data = _load_all(db)
@@ -203,12 +203,14 @@ def update_settings(
     body: SettingsUpdate,
     request: Request,
     db: Session = Depends(get_db),
-    _ctx=Depends(require_analyst),
+    _ctx=Depends(require_admin),
 ):
     """設定を部分更新（指定したキーのみ上書き）。
 
+    設定は GPU/CV バックエンド・同期フォルダ・トンネル・TURN など、サーバ全体に効く
+    ホスト設定なので admin 限定 (チームごとの値ではない)。
     sensitive keys (ngrok_authtoken / turn_* / ss_notify_webhook_url) は
-    admin のみ書換可能。analyst が書換えると SSRF 原資や credential 盗難に発展する。
+    analyst が書換えると SSRF 原資や credential 盗難に発展するため、従来から admin のみ。
     """
     ctx = get_auth(request)
     # 1) ホワイトリスト + 型検証
@@ -233,6 +235,13 @@ def update_settings(
             {"k": key, "v": json.dumps(value)},
         )
     db.commit()
+    # tracknet/yolo の read-only ヘルパが参照する短期キャッシュを無効化し、
+    # 設定変更が次の読み出しで確実に反映されるようにする。
+    try:
+        from backend.db import app_settings_cache
+        app_settings_cache.invalidate()
+    except Exception:
+        pass
     # 3) レスポンスも redact（将来 admin-only キーが追加された際の漏洩を予防）
     return {"success": True, "data": _redact_sensitive(_load_all(db), ctx)}
 

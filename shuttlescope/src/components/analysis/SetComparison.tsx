@@ -5,6 +5,7 @@ import {
   BarChart,
   Bar,
   Cell,
+  ReferenceLine,
   XAxis,
   YAxis,
   Tooltip,
@@ -13,8 +14,10 @@ import {
 import { apiGet } from '@/api/client'
 import { useReviewBundleSlice } from '@/contexts/ReviewBundleContext'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { perfColor, lightSafe, WIN, getTooltipStyle } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { useAuth } from '@/hooks/useAuth'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 
 interface SetComparisonProps {
@@ -27,7 +30,8 @@ interface SetData {
   set_number: number     // 1, 2, 3
   label: string          // "第1セット" 等
   total_rallies: number
-  win_rate: number
+  /** player ロールでは API が返さない (勝敗は見せない製品ルール) */
+  win_rate?: number
   avg_rally_length: number
 }
 
@@ -39,7 +43,7 @@ interface SetComparisonResponse {
   }
 }
 
-function CustomTooltip({ active, payload, label }: import('@/utils/rechartsTypes').RechartsTooltipProps) {
+function CustomTooltip({ active, payload, label, hideOutcome = false }: import('@/utils/rechartsTypes').RechartsTooltipProps & { hideOutcome?: boolean }) {
   const { t } = useTranslation()
 
   const isLight = useIsLightMode()
@@ -48,7 +52,7 @@ function CustomTooltip({ active, payload, label }: import('@/utils/rechartsTypes
   // payload には系列として現れない。dataKey 検索だと avgRally が常に 0 になり
   // 「平均ラリー長 0.0」とカード値が食い違う。データ行全体 (payload[0].payload)
   // から両値を読む。
-  const row = (payload[0]?.payload ?? {}) as { win_rate_pct?: number; avg_rally_length?: number }
+  const row = (payload[0]?.payload ?? {}) as { win_rate_pct?: number; avg_rally_length?: number; total_rallies?: number }
   const winRate = row.win_rate_pct ?? 0
   const avgRally = row.avg_rally_length ?? 0
   const headingColor = isLight ? 'var(--ss-t1)' : 'var(--ss-t1)'
@@ -56,7 +60,11 @@ function CustomTooltip({ active, payload, label }: import('@/utils/rechartsTypes
   return (
     <div style={getTooltipStyle(isLight)} className="px-3 py-2">
       <p className="font-semibold mb-1" style={{ color: headingColor }}>{label}</p>
-      <p style={{ color: WIN }} className="ss-num">{t('auto.SetComparison.win_rate', { v: typeof winRate === 'number' ? winRate.toFixed(1) : winRate })}</p>
+      {hideOutcome ? (
+        <p style={{ color: WIN }} className="ss-num">{t('auto.SetComparison.n_rallies', { n: row.total_rallies ?? 0 })}</p>
+      ) : (
+        <p style={{ color: WIN }} className="ss-num">{t('auto.SetComparison.win_rate', { v: typeof winRate === 'number' ? winRate.toFixed(1) : winRate })}</p>
+      )}
       <p style={{ color: subColor }} className="ss-num">{t('auto.SetComparison.avg_rally', { v: typeof avgRally === 'number' ? avgRally.toFixed(1) : avgRally })}</p>
     </div>
   )
@@ -68,6 +76,9 @@ export function SetComparison({ playerId, chartHeight = 200, filters = DEFAULT_F
   const { t } = useTranslation()
 
   const isLight = useIsLightMode()
+  // 製品ルール: player には勝敗に紐づく勝率を見せない。ラリー数 (件数) の推移に置き換える。
+  const { role } = useAuth()
+  const isPlayer = role === 'player'
   const fp = {
     ...(filters.result !== 'all' ? { result: filters.result } : {}),
     ...(filters.tournamentLevel ? { tournament_level: filters.tournamentLevel } : {}),
@@ -87,11 +98,17 @@ export function SetComparison({ playerId, chartHeight = 200, filters = DEFAULT_F
   })
   const resp = bundled ?? indiv.data
   const isLoading = provided ? bundleLoading : indiv.isLoading
+  // bundle 提供時の失敗は bundle 側で扱う。個別取得の失敗だけここで示す
+  const isError = !provided && indiv.isError
 
   if (isLoading) {
     return (
       <div className="text-[var(--ss-t3)] text-sm py-8 text-center">{t('auto.SetComparison.k1')}</div>
     )
+  }
+
+  if (isError) {
+    return <QueryErrorNotice onRetry={() => { void indiv.refetch() }} />
   }
 
   const sets = resp?.data ?? []
@@ -106,8 +123,8 @@ export function SetComparison({ playerId, chartHeight = 200, filters = DEFAULT_F
   }
 
   const chartData = sets.map((s) => ({
-    name: s.label || `第${s.set_number}セット`,
-    win_rate_pct: +(s.win_rate * 100).toFixed(1),
+    name: s.label || `第${s.set_number}ゲーム`,
+    win_rate_pct: typeof s.win_rate === 'number' ? +(s.win_rate * 100).toFixed(1) : 0,
     avg_rally_length: +s.avg_rally_length.toFixed(1),
     total_rallies: s.total_rallies,
   }))
@@ -125,15 +142,24 @@ export function SetComparison({ playerId, chartHeight = 200, filters = DEFAULT_F
           barCategoryGap="35%"
         >
           <XAxis dataKey="name" tick={{ fill: 'var(--ss-t3)', fontSize: 12 }} />
-          <YAxis
-            domain={[0, 100]}
-            tickFormatter={(v) => `${v}%`}
-            tick={{ fill: 'var(--ss-t3)', fontSize: 11 }}
-          />
-          <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
-          <Bar dataKey="win_rate_pct" radius={[4, 4, 0, 0]} name="勝率">
+          {isPlayer ? (
+            <YAxis allowDecimals={false} tick={{ fill: 'var(--ss-t3)', fontSize: 11 }} />
+          ) : (
+            <YAxis
+              domain={[0, 100]}
+              tickFormatter={(v) => `${v}%`}
+              tick={{ fill: 'var(--ss-t3)', fontSize: 11 }}
+            />
+          )}
+          {/* 勝率 50% の基準線 (player は件数表示なので出さない) */}
+          {!isPlayer && (
+            <ReferenceLine y={50} stroke="var(--ss-t2)" strokeDasharray="4 3" strokeWidth={1} />
+          )}
+          <Tooltip content={<CustomTooltip hideOutcome={isPlayer} />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+          <Bar dataKey={isPlayer ? 'total_rallies' : 'win_rate_pct'} radius={[4, 4, 0, 0]} name={isPlayer ? t('auto.SetComparison.rally_count') : '勝率'}>
+            {/* 棒は常に単色の濃色。勝率で白〜赤に塗り分けると 50% 付近で背景に溶けて読めない */}
             {chartData.map((d, i) => (
-              <Cell key={i} fill={perfColor(d.win_rate_pct / 100)} />
+              <Cell key={i} fill={WIN} />
             ))}
           </Bar>
         </BarChart>
@@ -147,14 +173,16 @@ export function SetComparison({ playerId, chartHeight = 200, filters = DEFAULT_F
             className="bg-[var(--ss-surface-2)] border border-[var(--ss-border)] rounded-ss-md px-3 py-2 text-center"
           >
             <p className="text-xs text-[var(--ss-t3)] mb-1">
-              {s.label || `第${s.set_number}セット`}
+              {s.label || `第${s.set_number}ゲーム`}
             </p>
-            <p
-              className="text-lg font-bold ss-num"
-              style={{ color: lightSafe(perfColor(s.win_rate), !isLight) }}
-            >
-              {(s.win_rate * 100).toFixed(1)}%
-            </p>
+            {!isPlayer && typeof s.win_rate === 'number' && (
+              <p
+                className="text-lg font-bold ss-num"
+                style={{ color: lightSafe(perfColor(s.win_rate), !isLight) }}
+              >
+                {(s.win_rate * 100).toFixed(1)}%
+              </p>
+            )}
             <p className="text-xs text-[var(--ss-t3)] mt-0.5">
               {t('auto.SetComparison.avg_strokes', { v: s.avg_rally_length.toFixed(1) })}
             </p>

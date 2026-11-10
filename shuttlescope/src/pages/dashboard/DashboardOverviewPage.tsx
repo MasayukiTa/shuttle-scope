@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { analyticsViewLifecycle } from '@/utils/analytics'
 import { useTranslation } from 'react-i18next'
+import { matchOutcomeLabelKey } from '@/utils/matchResult'
 import { useQuery } from '@tanstack/react-query'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -8,6 +9,7 @@ import {
 import { MIcon } from '@/components/common/MIcon'
 import { CourtDiagram } from '@/components/court/CourtDiagram'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { apiGet } from '@/api/client'
@@ -16,21 +18,30 @@ import { BAR, TOOLTIP_STYLE as _CW_TOOLTIP, getTooltipStyle, AXIS_TICK_LIGHT } f
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { ScoreProgression, type RallyPoint } from '@/components/analysis/ScoreProgression'
 import { IntervalReport } from '@/components/analysis/IntervalReport'
+import { SimpleHeightDiffCard } from '@/components/analysis/SimpleHeightDiffCard'
 import { ConfidenceCalibration } from '@/components/analysis/ConfidenceCalibration'
 import { ChartModal } from '@/components/common/ChartModal'
 import { CourtHeatModal } from '@/components/analysis/CourtHeatModal'
 import { SetIntervalSummary } from '@/components/analysis/SetIntervalSummary'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
+import { useAuth } from '@/hooks/useAuth'
+import { fmtPct } from '@/utils/format'
 
 interface DescriptiveData {
   total_matches: number
   total_rallies: number
-  win_rate: number
-  avg_rally_length: number
+  // ラリー 0 件 / サーブ(レシーブ)側 0 件の率は null (0% ではない)
+  win_rate: number | null
+  avg_rally_length: number | null
   end_type_distribution: Record<string, number>
   rally_length_histogram: { length: number; count: number }[]
   win_by_end_type: Record<string, { wins: number; total: number }>
-  server_win_rate: { as_server: number; as_receiver: number }
+  server_win_rate: {
+    as_server: number | null
+    as_receiver: number | null
+    server_count?: number
+    receiver_count?: number
+  }
 }
 
 interface HeatmapResponse {
@@ -62,8 +73,8 @@ interface MatchSummary {
 // END_TYPE_LABELS は t('shot_end_type.<key>') で参照する (関数経由で動的に解決)
 const _END_TYPE_KEYS = ['ace', 'forced_error', 'unforced_error', 'net_error', 'net', 'out', 'winner', 'cant_reach'] as const
 
-function pct(value: number) {
-  return `${(value * 100).toFixed(1)}%`
+function pct(value: number | null | undefined) {
+  return fmtPct(value)
 }
 
 type SortCol = 'date' | 'opponent' | 'tournament_level' | 'result' | 'rally_count'
@@ -78,6 +89,10 @@ interface Props {
 
 export function DashboardOverviewPage({ playerId, filters, filterApiParams, matches, loadingMatches }: Props) {
   const { t } = useTranslation()
+  // 製品ルール: player には個別試合の勝敗・強制/非強制エラー等の直接的な弱点枠組み・
+  // アナリスト/コーチ向けカードを出さない。
+  const { role } = useAuth()
+  const isPlayer = role === 'player'
   const { card, textHeading, textSecondary, textMuted, textFaint, loading: loadingClass, isLight } = useCardTheme()
   // テレメトリ: 滞在 dwell
   // dwell テレメトリは mount/unmount のライフサイクル計測。playerId 切替時の再計測は不要
@@ -124,7 +139,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
   } | null>(null)
 
   // ── Descriptive ──
-  const { data: descriptiveResp, isLoading: loadingDescriptive } = useQuery({
+  const descriptiveQuery = useQuery({
     queryKey: ['analysis-descriptive', playerId, filters],
     queryFn: () =>
       apiGet<{ success: boolean; data: DescriptiveData; meta?: { sample_size?: number } }>(
@@ -132,6 +147,12 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
         { player_id: playerId, ...filterApiParams }
       ),
   })
+  const { data: descriptiveResp, isLoading: loadingDescriptive } = descriptiveQuery
+  // 取得失敗（前回成功データも無い）を「データなし」と区別する
+  const descriptiveUnavailable = descriptiveQuery.isError && descriptiveQuery.data === undefined
+  const descriptiveRetry = (
+    <QueryErrorNotice onRetry={() => { void descriptiveQuery.refetch() }} />
+  )
   const descriptive: DescriptiveData | null = descriptiveResp?.data ?? null
 
   // ── Heatmap専用フィルターパラメータ ──
@@ -147,17 +168,22 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
     return {}
   })()
 
-  const { data: heatmapHitResp, isLoading: loadingHeatmapHit } = useQuery({
+  const heatmapHitQuery = useQuery({
     queryKey: ['analysis-heatmap-hit', playerId, heatmapMatchId, heatmapLastN],
     queryFn: () =>
       apiGet<HeatmapResponse>('/analysis/heatmap', { player_id: playerId, type: 'hit', ...heatmapApiParams }),
   })
+  const { data: heatmapHitResp, isLoading: loadingHeatmapHit } = heatmapHitQuery
 
-  const { data: heatmapLandResp, isLoading: loadingHeatmapLand } = useQuery({
+  const heatmapLandQuery = useQuery({
     queryKey: ['analysis-heatmap-land', playerId, heatmapMatchId, heatmapLastN],
     queryFn: () =>
       apiGet<HeatmapResponse>('/analysis/heatmap', { player_id: playerId, type: 'land', ...heatmapApiParams }),
   })
+  const { data: heatmapLandResp, isLoading: loadingHeatmapLand } = heatmapLandQuery
+  // 取得失敗（前回成功データも無い）を「空コート」と区別する
+  const heatmapActiveQuery = heatmapTab === 'hit' ? heatmapHitQuery : heatmapLandQuery
+  const heatmapUnavailable = heatmapActiveQuery.isError && heatmapActiveQuery.data === undefined
 
   const heatmapHit: Record<string, number> = heatmapHitResp?.data ?? {}
   const heatmapLand: Record<string, number> = heatmapLandResp?.data ?? {}
@@ -209,7 +235,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
   const matchOptions = matches.map((m) => ({
     value: m.match_id,
     label: `${m.date ?? t('common.unknown_date', '日付不明')} vs ${m.opponent}`,
-    suffix: [m.tournament_level, m.result === 'win' ? t('common.win_short', '勝') : t('common.lose_short', '負')].filter(Boolean).join(' '),
+    suffix: [m.tournament_level, isPlayer ? null : t(matchOutcomeLabelKey(m.result))].filter(Boolean).join(' '),
     searchText: `${m.date ?? ''} ${m.opponent} ${m.tournament} ${m.tournament_level}`,
   }))
 
@@ -229,7 +255,8 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
         {/* 左カラム */}
         <div className="xl:col-span-2 space-y-5 min-w-0">
-          {/* ラリー終了タイプ */}
+          {/* ラリー終了タイプ (強制/非強制エラー等の件数 = 直接的な弱点枠組みのため player には出さない) */}
+          {!isPlayer && (
           <div className={`${card} rounded-ss-lg shadow-card p-4`} data-tutorial="dashboard.quickSummary">
             <div className="flex items-center justify-between mb-3">
               <SectionTitle>{t('auto.DashboardOverviewPage.k2')}</SectionTitle>
@@ -240,7 +267,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                 <ExpandBtn onClick={() => setExpandedChart('end_type')} />
               </div>
             </div>
-            {loadingDescriptive ? <LoadingRow /> : endTypeData.length === 0 ? (
+            {loadingDescriptive ? <LoadingRow /> : descriptiveUnavailable ? descriptiveRetry : endTypeData.length === 0 ? (
               <p className={`${textMuted} text-sm text-center py-4`}>{t('auto.DashboardOverviewPage.k3')}</p>
             ) : (
               <ResponsiveContainer width="100%" height={200}>
@@ -253,6 +280,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
               </ResponsiveContainer>
             )}
           </div>
+          )}
 
           {/* ラリー長分布 */}
           <div className={`${card} rounded-ss-lg shadow-card p-4`}>
@@ -265,7 +293,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                 <ExpandBtn onClick={() => setExpandedChart('rally_dist')} />
               </div>
             </div>
-            {loadingDescriptive ? <LoadingRow /> : !descriptive ? (
+            {loadingDescriptive ? <LoadingRow /> : descriptiveUnavailable ? descriptiveRetry : !descriptive ? (
               <p className={`${textMuted} text-sm text-center py-4`}>{t('auto.DashboardOverviewPage.k3')}</p>
             ) : (
               <ResponsiveContainer width="100%" height={200}>
@@ -300,6 +328,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                 <ExpandBtn onClick={() => setCourtHeatOpen(true)} />
               </div>
             </div>
+            <p className={`text-[10px] ${textMuted} mb-2`}>{t('analysis_scope.heatmap_scope')}</p>
             <div className="flex gap-1 mb-2">
               {(['hit', 'land'] as const).map((tab) => (
                 <button
@@ -338,13 +367,15 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                   <option value="">{t('auto.DashboardOverviewPage.k6')}</option>
                   {[...matches].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '')).map((m) => (
                     <option key={m.match_id} value={m.match_id}>
-                      {m.date ?? '日付不明'} {m.opponent} ({m.result === 'win' ? '勝' : '敗'})
+                      {m.date ?? '日付不明'} {m.opponent}{isPlayer ? '' : ` (${t(matchOutcomeLabelKey(m.result))})`}
                     </option>
                   ))}
                 </select>
               )}
             </div>
-            {(heatmapTab === 'hit' ? loadingHeatmapHit : loadingHeatmapLand) ? <LoadingRow /> : (
+            {(heatmapTab === 'hit' ? loadingHeatmapHit : loadingHeatmapLand) ? <LoadingRow /> : heatmapUnavailable ? (
+              <QueryErrorNotice onRetry={() => { void heatmapActiveQuery.refetch() }} />
+            ) : (
               <div className="flex flex-col items-center">
                 <CourtDiagram
                   mode={heatmapTab}
@@ -362,32 +393,41 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
           {/* サーブ勝率 */}
           <RoleGuard
             allowedRoles={['analyst', 'coach']}
-            fallback={
-              <div className={`${card} rounded-ss-lg shadow-card p-4`}>
-                <p className={`text-xs ${textMuted} text-center py-2`}>{t('auto.DashboardOverviewPage.k8')}</p>
-              </div>
-            }
+            // player には「アナリスト・コーチ向け」と自称するカードの存在自体を出さない
+            fallback={null}
           >
             <div className={`${card} rounded-ss-lg shadow-card p-4`}>
               <div className="flex items-center justify-between mb-3">
                 <SectionTitle>{t('auto.DashboardOverviewPage.k9')}</SectionTitle>
                 {descriptive && <ConfidenceBadge sampleSize={descriptive.total_rallies} unit="rallies" className="text-[10px] shrink-0" />}
               </div>
-              {loadingDescriptive || !descriptive?.server_win_rate ? <LoadingRow /> : (
+              {loadingDescriptive ? <LoadingRow /> : descriptiveUnavailable ? descriptiveRetry : !descriptive?.server_win_rate ? (
+                <p className={`${textMuted} text-sm text-center py-4`}>{t('auto.DashboardOverviewPage.k3')}</p>
+              ) : (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className={`text-sm ${textSecondary}`}>{t('auto.DashboardOverviewPage.k10')}</span>
+                    <span className={`text-sm ${textSecondary}`}>
+                      {t('auto.DashboardOverviewPage.k10')}
+                      {typeof descriptive.server_win_rate.server_count === 'number' && (
+                        <span className="ml-1 text-[10px] ss-num">{t('auto._shared.n_rallies', { n: descriptive.server_win_rate.server_count })}</span>
+                      )}
+                    </span>
                     <span className="ss-num text-lg font-semibold text-blue-400">{pct(descriptive.server_win_rate.as_server)}</span>
                   </div>
                   <div className={`w-full ${isLight ? 'bg-gray-200' : 'bg-gray-700'} rounded-full h-2`}>
-                    <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${(descriptive.server_win_rate.as_server * 100).toFixed(1)}%` }} />
+                    <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${((descriptive.server_win_rate.as_server ?? 0) * 100).toFixed(1)}%` }} />
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className={`text-sm ${textSecondary}`}>{t('auto.DashboardOverviewPage.k11')}</span>
+                    <span className={`text-sm ${textSecondary}`}>
+                      {t('auto.DashboardOverviewPage.k11')}
+                      {typeof descriptive.server_win_rate.receiver_count === 'number' && (
+                        <span className="ml-1 text-[10px] ss-num">{t('auto._shared.n_rallies', { n: descriptive.server_win_rate.receiver_count })}</span>
+                      )}
+                    </span>
                     <span className="ss-num text-lg font-semibold text-emerald-400">{pct(descriptive.server_win_rate.as_receiver)}</span>
                   </div>
                   <div className={`w-full ${isLight ? 'bg-gray-200' : 'bg-gray-700'} rounded-full h-2`}>
-                    <div className="bg-emerald-500 h-2 rounded-full" style={{ width: `${(descriptive.server_win_rate.as_receiver * 100).toFixed(1)}%` }} />
+                    <div className="bg-emerald-500 h-2 rounded-full" style={{ width: `${((descriptive.server_win_rate.as_receiver ?? 0) * 100).toFixed(1)}%` }} />
                   </div>
                 </div>
               )}
@@ -397,9 +437,14 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
       </div>
 
       {/* データ品質概況 */}
-      <ConfidenceCalibration playerId={playerId} />
+      <RoleGuard allowedRoles={['analyst', 'coach']}>
+        <ConfidenceCalibration playerId={playerId} />
+      </RoleGuard>
 
-      {/* スコア推移 / インターバルレポート 共通試合選択 */}
+      {/* スコア推移 / インターバルレポート 共通試合選択。
+          点差推移・推定勝率は試合の勝敗そのものなので player には出さない (製品ルール)。 */}
+      {!isPlayer && (
+      <>
       <div className={`${card} rounded-ss-lg shadow-card p-4`}>
         {/* 試合セレクタ（前後ナビ付き） */}
         <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
@@ -475,6 +520,13 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
         )}
       </div>
 
+      {/* 簡易分析: 打球の高さ差 (SD-08) */}
+      {selectedMatchId && (
+        <SimpleHeightDiffCard matchId={selectedMatchId} />
+      )}
+      </>
+      )}
+
       {/* 試合一覧テーブル (最下部に配置) — 全試合数百件規模になると下のスコア推移
          に届かなくなるため、概要タブの最下部へ移動 (2026-05-19)。
          また期間フィルタ (mlFrom/mlTo) をこのセクション専用に持ち、ほかの
@@ -537,9 +589,11 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                         })}
                       </div>
                     </div>
-                    <span className={`shrink-0 inline-block px-2 py-0.5 rounded-ss-sm text-xs font-semibold ${m.result === 'win' ? 'bg-gray-800 text-blue-300' : 'bg-gray-800 text-red-300'}`}>
-                      {m.result === 'win' ? '勝' : '負'}
-                    </span>
+                    {!isPlayer && (
+                      <span className={`shrink-0 inline-block px-2 py-0.5 rounded-ss-sm text-xs font-semibold ${m.result === 'win' ? 'bg-gray-800 text-blue-300' : m.result === 'loss' ? 'bg-gray-800 text-red-300' : 'bg-gray-800 text-gray-400'}`}>
+                        {t(matchOutcomeLabelKey(m.result))}
+                      </span>
+                    )}
                   </div>
                 </li>
               ))}
@@ -557,7 +611,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                       { col: 'date' as const,             label: t('auto.DashboardOverviewPage.k25'),     align: 'left'   },
                       { col: 'result' as const,           label: t('auto.DashboardOverviewPage.k26'),     align: 'center' },
                       { col: 'rally_count' as const,      label: t('auto.DashboardOverviewPage.k27'),   align: 'right'  },
-                    ] as const).map(({ col, label, align }) => (
+                    ] as const).filter(({ col }) => !(isPlayer && col === 'result')).map(({ col, label, align }) => (
                       <th
                         key={label}
                         className={`py-2 pr-3 font-medium select-none ${col ? `cursor-pointer ${isLight ? 'hover:text-gray-900' : 'hover:text-gray-200'}` : ''} text-${align}`}
@@ -586,11 +640,13 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                       </td>
                       <td className="py-2 pr-3 text-center"><span className={`text-xs ${textMuted}`}>{m.tournament_level ?? '—'}</span></td>
                       <td className={`ss-num py-2 pr-3 ${textSecondary} num-cell`}>{m.date}</td>
-                      <td className="py-2 pr-3 text-center">
-                        <span className={`inline-block px-2 py-0.5 rounded-ss-sm text-xs font-semibold ${m.result === 'win' ? 'bg-gray-800 text-blue-300' : 'bg-gray-800 text-red-300'}`}>
-                          {m.result === 'win' ? '勝' : '負'}
-                        </span>
-                      </td>
+                      {!isPlayer && (
+                        <td className="py-2 pr-3 text-center">
+                          <span className={`inline-block px-2 py-0.5 rounded-ss-sm text-xs font-semibold ${m.result === 'win' ? 'bg-gray-800 text-blue-300' : m.result === 'loss' ? 'bg-gray-800 text-red-300' : 'bg-gray-800 text-gray-400'}`}>
+                            {t(matchOutcomeLabelKey(m.result))}
+                          </span>
+                        </td>
+                      )}
                       <td className={`ss-num py-2 text-right ${textSecondary} num-cell`}>{m.rally_count}</td>
                     </tr>
                   ))}

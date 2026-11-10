@@ -157,9 +157,14 @@ export function WarmupNotesPanel({
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // 既存観察の読込状態。失敗を「観察なし」と区別し、未読込のまま保存して既存記録を上書きしないため
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [loadAttempt, setLoadAttempt] = useState(0)
 
   // マウント時に既存の観察データを読み込む
   useEffect(() => {
+    let cancelled = false
+    setLoadState('loading')
     apiGet<{ success: boolean; data: Array<{
       player_id: number
       observation_type: string
@@ -167,6 +172,8 @@ export function WarmupNotesPanel({
       confidence_level: string
     }> }>(`/warmup/observations/${matchId}`)
       .then((resp) => {
+        if (cancelled) return
+        setLoadState('ready')
         if (!resp?.data?.length) return
         const newObsA = initObs(playerAHand)
         const newObsB = initObs(playerBHand)
@@ -203,9 +210,12 @@ export function WarmupNotesPanel({
         setSelfObs(newSelfObs)
         setSelfObsPartnerA(newSelfObsPartnerA)
       })
-      .catch(() => {})
+      .catch(() => {
+        if (!cancelled) setLoadState('error')
+      })
+    return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matchId])
+  }, [matchId, loadAttempt])
 
   const obsMap: Record<PlayerKey, PlayerObs> = {
     player_a: obsA,
@@ -248,7 +258,7 @@ export function WarmupNotesPanel({
   }
 
   const handleSave = async () => {
-    if (locked) return
+    if (locked || loadState !== 'ready') return
     setSaving(true)
     setError(null)
     try {
@@ -262,7 +272,6 @@ export function WarmupNotesPanel({
             observation_type: def.key,
             observation_value: obs[def.key].value,
             confidence_level: obs[def.key].confidence,
-            created_by: 'analyst',
           }))
       }
 
@@ -275,7 +284,6 @@ export function WarmupNotesPanel({
             observation_type: def.key,
             observation_value: obs[def.key].value,
             confidence_level: obs[def.key].confidence,
-            created_by: 'analyst',
           }))
 
       const allObs = [
@@ -413,10 +421,20 @@ export function WarmupNotesPanel({
               </span>
               {/* 選択値ボタン + 確からしさボタン（同じ行で高さ揃え） */}
               <div className="flex items-center gap-2">
-                <div className="flex flex-wrap gap-1 flex-1">
+                {/* #531: 単一選択グループを支援技術へ radiogroup/radio + aria-checked で伝える。
+                    各グループに項目名を含む aria-label を付け、同名の値ボタンが
+                    どの観察項目のものか判別できるようにする。 */}
+                <div
+                  className="flex flex-wrap gap-1 flex-1"
+                  role="radiogroup"
+                  aria-label={t('warmup.value_group_label', { item: t(`warmup.observation_${def.key}`) })}
+                >
                   {def.values.map((val) => (
                     <button
                       key={val}
+                      type="button"
+                      role="radio"
+                      aria-checked={entry.value === val}
                       onClick={() => setField(def.key, entry.value === val ? '' : val)}
                       disabled={locked}
                       className={clsx(
@@ -431,10 +449,17 @@ export function WarmupNotesPanel({
                     </button>
                   ))}
                 </div>
-                <div className="flex gap-0.5 shrink-0">
+                <div
+                  className="flex gap-0.5 shrink-0"
+                  role="radiogroup"
+                  aria-label={t('warmup.confidence_group_label', { item: t(`warmup.observation_${def.key}`) })}
+                >
                   {CONFIDENCE_LEVELS.map((lvl) => (
                     <button
                       key={lvl}
+                      type="button"
+                      role="radio"
+                      aria-checked={entry.confidence === lvl}
                       onClick={() => setConfidence(def.key, lvl)}
                       disabled={locked}
                       className={clsx(
@@ -445,6 +470,7 @@ export function WarmupNotesPanel({
                         locked && 'cursor-not-allowed opacity-50',
                       )}
                       title={t(`warmup.confidence_${lvl}`)}
+                      aria-label={t('warmup.confidence_option_label', { item: t(`warmup.observation_${def.key}`), level: t(`warmup.confidence_${lvl}`) })}
                     >
                       {t(`warmup.confidence_${lvl}`)}
                     </button>
@@ -474,10 +500,17 @@ export function WarmupNotesPanel({
                     {t(`warmup.observation_${def.key}`, def.key)}
                   </span>
                   <div className="flex items-center gap-2">
-                    <div className="flex flex-wrap gap-1 flex-1">
+                    <div
+                      className="flex flex-wrap gap-1 flex-1"
+                      role="radiogroup"
+                      aria-label={t('warmup.value_group_label', { item: t(`warmup.observation_${def.key}`, def.key) })}
+                    >
                       {def.values.map((val) => (
                         <button
                           key={val}
+                          type="button"
+                          role="radio"
+                          aria-checked={entry.value === val}
                           onClick={() => {
                             if (locked) return
                             setActiveSelfObs((prev) => ({
@@ -499,10 +532,17 @@ export function WarmupNotesPanel({
                         </button>
                       ))}
                     </div>
-                    <div className="flex gap-0.5 shrink-0">
+                    <div
+                      className="flex gap-0.5 shrink-0"
+                      role="radiogroup"
+                      aria-label={t('warmup.confidence_group_label', { item: t(`warmup.observation_${def.key}`, def.key) })}
+                    >
                       {CONFIDENCE_LEVELS.map((lvl) => (
                         <button
                           key={lvl}
+                          type="button"
+                          role="radio"
+                          aria-checked={entry.confidence === lvl}
                           onClick={() => {
                             if (locked) return
                             setActiveSelfObs((prev) => ({
@@ -520,6 +560,7 @@ export function WarmupNotesPanel({
                             locked && 'cursor-not-allowed opacity-50',
                           )}
                           title={t(`warmup.confidence_${lvl}`)}
+                          aria-label={t('warmup.confidence_option_label', { item: t(`warmup.observation_${def.key}`, def.key), level: t(`warmup.confidence_${lvl}`) })}
                         >
                           {t(`warmup.confidence_${lvl}`)}
                         </button>
@@ -533,6 +574,23 @@ export function WarmupNotesPanel({
         )
       })()}
 
+      {/* 既存観察の読込状態（失敗時は保存を止めて再試行を出す） */}
+      {loadState === 'loading' && (
+        <div role="status" className="text-[var(--ss-t3)] text-[11px]">{t('common_ui.warmup_loading')}</div>
+      )}
+      {loadState === 'error' && (
+        <div role="alert" className="flex items-center gap-2 text-[var(--ss-bad)] text-[11px]">
+          <span>{t('common_ui.warmup_load_failed')}</span>
+          <button
+            type="button"
+            onClick={() => setLoadAttempt((n) => n + 1)}
+            className="px-2 py-0.5 rounded-ss-sm border border-[var(--ss-border-strong)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-3)]"
+          >
+            {t('annotator.ui.retry')}
+          </button>
+        </div>
+      )}
+
       {/* エラー */}
       {error && (
         <div className="text-[var(--ss-bad)] text-[11px]">{error}</div>
@@ -543,7 +601,7 @@ export function WarmupNotesPanel({
         <div className="flex gap-2">
           <button
             onClick={handleSave}
-            disabled={saving || saved}
+            disabled={saving || saved || loadState !== 'ready'}
             className={clsx(
               'flex-1 py-1.5 rounded-ss-md text-xs font-medium transition-colors duration-fast ease-out',
               saved

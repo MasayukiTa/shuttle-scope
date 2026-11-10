@@ -10,6 +10,7 @@ import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { MIcon } from '@/components/common/MIcon'
 import { errorMessage } from '@/utils/errors'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 
 // ────────────────────────────────────────────────────────────────────────────
 // 型定義
@@ -79,6 +80,19 @@ interface NodePingResult {
   latency_ms: number
   via?: 'ray' | 'icmp' | 'http' | 'none'
   error?: string
+  /** 確認ごとの結果。失敗時にどの確認がなぜ失敗したかを示す */
+  checks?: Array<{ kind: 'icmp' | 'http' | 'ray'; ok: boolean; latency_ms?: number; reason?: string | null }>
+}
+
+/** 疎通確認の内訳を 1 行ずつの文字列にする（例: 「ICMP（ping）: 失敗 - 応答がありません（2003ms）」） */
+function describePingChecks(pr: NodePingResult, t: (key: string) => string): string[] {
+  return (pr.checks ?? []).map(c => {
+    const name = t(`opsHints.check_${c.kind}`)
+    const state = c.ok ? t('opsHints.check_ok') : t('opsHints.check_ng')
+    const why = !c.ok && c.reason ? ` - ${t(`opsHints.reason_${c.reason}`)}` : ''
+    const ms = c.latency_ms ? `（${c.latency_ms}ms）` : ''
+    return `${name}: ${state}${why}${ms}`
+  })
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -134,6 +148,10 @@ export function ClusterSettingsPanel() {
   const [saveMsg, setSaveMsg] = useState<string | null>(null)
   const [pingResults, setPingResults] = useState<Record<string, NodePingResult | 'loading'>>({})
   const [rayConnecting, setRayConnecting] = useState(false)
+  // 通常 Ray の起動/停止失敗を表示するための共通エラー。start/stop どちらの
+  // mutation も onError でここに積む (旧実装は onError が無く、失敗しても
+  // ボタンが元に戻るだけで管理者に理由が出なかった)。
+  const [rayOpError, setRayOpError] = useState<string | null>(null)
   const [detectingWorkers, setDetectingWorkers] = useState<Record<number, boolean>>({})
   const [detectErrors, setDetectErrors] = useState<Record<number, string>>({})
   const [_arpDevices, setArpDevices] = useState<Array<{ ip: string; known_label?: string }>>([])
@@ -163,17 +181,17 @@ export function ClusterSettingsPanel() {
   })
 
   // ── リモートデータ ────────────────────────────────────────────────────────
-  const { data: remoteCfg, isLoading: cfgLoading } = useQuery({
+  const { data: remoteCfg, isLoading: cfgLoading, isError: cfgError, refetch: refetchCfg } = useQuery({
     queryKey: ['cluster-config'],
     queryFn: () => apiGet<ClusterConfig>('/cluster/config'),
   })
 
-  const { data: interfaces } = useQuery({
+  const { data: interfaces, isError: interfacesError, refetch: refetchInterfaces } = useQuery({
     queryKey: ['cluster-interfaces'],
     queryFn: () => apiGet<NetworkInterface[]>('/cluster/interfaces'),
   })
 
-  const { data: hardware } = useQuery({
+  const { data: hardware, isError: hardwareError, refetch: refetchHardware } = useQuery({
     queryKey: ['cluster-hardware'],
     queryFn: () => apiGet<{ system_ram_gb: number; vram_total_gb: number }>('/cluster/hardware'),
   })
@@ -269,13 +287,21 @@ export function ClusterSettingsPanel() {
   const rayStartMutation = useMutation({
     mutationFn: () => apiPost<{ ok: boolean; status: string }>('/cluster/ray/start', {}),
     onSuccess: (data) => {
+      setRayOpError(null)
       if (data.status === 'connecting') setRayConnecting(true)
       refetchStatus()
+    },
+    onError: (err: unknown) => {
+      setRayConnecting(false)
+      setRayOpError(err instanceof Error ? err.message : t('cluster.ray_start_failed', { defaultValue: 'Rayを起動できませんでした' }))
     },
   })
   const rayStopMutation = useMutation({
     mutationFn: () => apiPost<{ ok: boolean; message: string }>('/cluster/ray/stop', {}),
-    onSuccess: () => { refetchStatus() },
+    onSuccess: () => { setRayOpError(null); refetchStatus() },
+    onError: (err: unknown) => {
+      setRayOpError(err instanceof Error ? err.message : t('cluster.ray_stop_failed', { defaultValue: 'Rayを停止できませんでした' }))
+    },
   })
 
   const pingWorker = async (ip: string, idx: number) => {
@@ -378,6 +404,7 @@ export function ClusterSettingsPanel() {
 
   const restartWorkerRay = async (ip: string, idx: number) => {
     if (!ip) return
+    if (!window.confirm(t('auto.ClusterSettingsPanel.ray_restart_confirm', { node: ip }))) return
     setRayRestartLoading(l => ({ ...l, [idx]: true }))
     setRayRestartMsg(m => { const n = { ...m }; delete n[idx]; return n })
     try {
@@ -496,6 +523,13 @@ export function ClusterSettingsPanel() {
     return <div className="flex justify-center py-12"><MIcon name="progress_activity" className="animate-spin text-[var(--ss-brand)]" /></div>
   }
 
+  // 設定取得に失敗したときは初期値 {mode:'single'} を編集・保存可能にしない。
+  // そのまま保存すると既存のクラスタ設定を single で上書きしてしまうため、
+  // 取得成功までは編集 UI を出さずエラーと再試行だけを表示する（fail closed）。
+  if (cfgError) {
+    return <QueryErrorNotice onRetry={() => { void refetchCfg() }} />
+  }
+
   const rayRunning = status?.ray.status === 'running'
   const needsIp = cfg.mode === 'primary' && !cfg.network?.primary_ip
 
@@ -547,7 +581,7 @@ export function ClusterSettingsPanel() {
                 {t('auto.ClusterSettingsPanel.ray_start')}
               </button>
             )}
-            <button onClick={() => refetchStatus()} className={`text-[var(--ss-t2)] hover:text-[var(--ss-t1)]`}>
+            <button aria-label={t('common_ui.refresh')} onClick={() => refetchStatus()} className={`text-[var(--ss-t2)] hover:text-[var(--ss-t1)]`}>
               <MIcon name="refresh" size={13} />
             </button>
           </div>
@@ -593,8 +627,13 @@ export function ClusterSettingsPanel() {
                   {pr === 'loading'
                     ? <MIcon name="progress_activity" size={10} className="animate-spin text-[var(--ss-brand)]" />
                     : pr
-                      ? <span className={pr.reachable ? 'text-[var(--ss-success)]' : 'text-[var(--ss-t3)]'}>
-                          {pr.reachable ? `${pr.via === 'ray' ? 'Ray' : 'ICMP'} ${pr.latency_ms}ms` : 'NG'}
+                      ? <span
+                          className={pr.reachable ? 'text-[var(--ss-success)]' : 'text-[var(--ss-t3)]'}
+                          title={describePingChecks(pr, t).join('\n')}
+                        >
+                          {pr.reachable
+                            ? `${pr.via === 'ray' ? 'Ray' : pr.via === 'http' ? 'HTTP' : 'ICMP'} ${pr.latency_ms}ms`
+                            : t('opsHints.node_unreachable')}
                         </span>
                       : null
                   }
@@ -652,7 +691,7 @@ export function ClusterSettingsPanel() {
               <code className="text-[11px] font-mono flex-1 break-all text-[var(--ss-good)]">
                 {`irm http://${cfg.network.primary_ip}:8765/api/cluster/ray/join-script | iex`}
               </code>
-              <button
+              <button aria-label={t('lan_session.password_copy')}
                 onClick={() => copyCmd(`irm http://${cfg.network!.primary_ip}:8765/api/cluster/ray/join-script | iex`, -1)}
                 className={`shrink-0 text-[var(--ss-t2)] hover:text-[var(--ss-t1)]`}
               >
@@ -676,7 +715,7 @@ export function ClusterSettingsPanel() {
                   <div className={`flex items-center gap-2 p-2 rounded-ss-md border ${border} bg-[var(--ss-surface-2)]`}>
                     <span className={`text-[11px] text-[var(--ss-t2)] shrink-0`}>{w.label}</span>
                     <code className="text-[11px] font-mono flex-1 break-all text-[var(--ss-good)]">{w.cmd}</code>
-                    <button onClick={() => copyCmd(w.cmd, idx)} className={`shrink-0 text-[var(--ss-t2)] hover:text-[var(--ss-t1)]`}>
+                    <button aria-label={t('lan_session.password_copy')} onClick={() => copyCmd(w.cmd, idx)} className={`shrink-0 text-[var(--ss-t2)] hover:text-[var(--ss-t1)]`}>
                       {copiedIdx === idx ? <MIcon name="check" size={12} className="text-[var(--ss-success)]" /> : <MIcon name="content_copy" size={12} />}
                     </button>
                     <button
@@ -763,11 +802,19 @@ export function ClusterSettingsPanel() {
             <div key={key} className="flex items-center gap-2">
               <span className={`${labelCls} w-36 shrink-0`}>{label}</span>
               <select
+                aria-label={label}
                 className={inputCls}
+                disabled={interfacesError}
                 value={(cfg.network as Record<string, string | undefined> | undefined)?.[key] ?? ''}
                 onChange={e => updateNetwork(key, e.target.value)}
               >
                 <option value="">{t('cluster.if_placeholder')}</option>
+                {/* 一覧取得に失敗しても、保存済みの値は option として残す (未選択に見せない) */}
+                {interfacesError && (cfg.network as Record<string, string | undefined> | undefined)?.[key] && (
+                  <option value={(cfg.network as Record<string, string | undefined>)[key]}>
+                    {(cfg.network as Record<string, string | undefined>)[key]}
+                  </option>
+                )}
                 {ifOptions.map(iface => (
                   <option key={iface.name} value={iface.name}>
                     {iface.name} {iface.ip ? `(${iface.ip})` : ''} {iface.speed_mbps !== '0' ? `${iface.speed_mbps}Mbps` : ''}
@@ -776,12 +823,14 @@ export function ClusterSettingsPanel() {
               </select>
             </div>
           ))}
+          {interfacesError && <QueryErrorNotice onRetry={() => { void refetchInterfaces() }} />}
 
           <div className="flex items-center gap-2">
             <span className={`${labelCls} w-36 shrink-0`}>{t('cluster.primary_ip')}</span>
             <input
               className={inputCls}
-              placeholder="192.168.100.1"
+              aria-label={t('cluster.primary_ip')}
+              placeholder="192.0.2.1"
               value={cfg.network?.primary_ip ?? ''}
               onChange={e => updateNetwork('primary_ip', e.target.value)}
             />
@@ -818,19 +867,21 @@ export function ClusterSettingsPanel() {
                 <div className="flex items-center gap-2">
                   <input
                     className={`${inputCls} w-16`}
+                    aria-label={t('cluster.worker_id')}
                     placeholder="pc2"
                     value={w.id}
                     onChange={e => updateWorker(i, 'id', e.target.value)}
                   />
                   <input
                     className={`${inputCls} w-32`}
-                    placeholder="192.168.100.2"
+                    aria-label={t('cluster.worker_ip')}
+                    placeholder="192.0.2.2"
                     value={w.ip}
                     onChange={e => updateWorker(i, 'ip', e.target.value)}
                   />
                   <input
                     className={inputCls}
-                    placeholder="GMKtec K10"
+                    aria-label={t('cluster.worker_label')}
                     value={w.label}
                     onChange={e => updateWorker(i, 'label', e.target.value)}
                   />
@@ -847,32 +898,37 @@ export function ClusterSettingsPanel() {
                       {pr.reachable ? <MIcon name="check_circle" size={11} /> : <MIcon name="cancel" size={11} />}
                       {pr.reachable
                         ? `${pr.via === 'ray' ? 'Ray' : pr.via === 'icmp' ? 'ICMP' : 'HTTP'} OK${pr.latency_ms ? ` ${pr.latency_ms}ms` : ''}`
-                        : 'NG'
+                        : t('opsHints.node_unreachable')
                       }
                     </span>
                   )}
-                  <button onClick={() => removeWorker(i)} className="text-[var(--ss-danger)] hover:text-[var(--ss-danger)] shrink-0">
+                  <button aria-label={t('app.delete')} onClick={() => removeWorker(i)} className="text-[var(--ss-danger)] hover:text-[var(--ss-danger)] shrink-0">
                     <MIcon name="delete" size={12} />
                   </button>
                 </div>
+                {pr && pr !== 'loading' && (pr.checks?.length ?? 0) > 0 && (
+                  <ul className="text-[11px] text-[var(--ss-t3)] space-y-0.5">
+                    {describePingChecks(pr, t).map((line, k) => <li key={k}>{line}</li>)}
+                  </ul>
+                )}
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className={`${labelCls} w-16 shrink-0`}>{t('cluster.worker_cpus')}</span>
                   <input type="number" min={1} max={64}
                     className={`${inputCls} w-16`}
+                    aria-label={t('cluster.worker_cpus')}
                     value={w.num_cpus ?? ''}
-                    placeholder="16"
                     onChange={e => updateWorker(i, 'num_cpus', e.target.value)}
                   />
                   <span className={`${labelCls} w-16 shrink-0`}>{t('cluster.worker_gpus')}</span>
                   <input type="number" min={0} max={8}
                     className={`${inputCls} w-12`}
+                    aria-label={t('cluster.worker_gpus')}
                     value={w.num_gpus ?? ''}
-                    placeholder="0"
                     onChange={e => updateWorker(i, 'num_gpus', e.target.value)}
                   />
                   <input
                     className={inputCls}
-                    placeholder="AMD Radeon 780M Graphics"
+                    aria-label={t('a11yLabels.worker_gpu_name')}
                     value={w.gpu_label ?? ''}
                     onChange={e => updateWorker(i, 'gpu_label', e.target.value)}
                   />
@@ -963,6 +1019,8 @@ export function ClusterSettingsPanel() {
                 <span className={`${labelCls} w-36 shrink-0`}>{label}</span>
                 <input
                   type="range" min={min} max={max} value={val}
+                  aria-label={label}
+                  aria-valuetext={key === 'max_concurrent_inference' ? String(val) : `${val}%`}
                   onChange={e => updateLimit(key, Number(e.target.value))}
                   className="flex-1 accent-blue-500"
                 />
@@ -980,10 +1038,12 @@ export function ClusterSettingsPanel() {
         </h3>
         <p className={`text-[11px] ${textMuted}`}>{t('cluster.limit_auto_hint')}</p>
         <div className="space-y-3">
+          {/* 実機容量が不明なとき (取得失敗・未取得) は固定値を仮定せず、上限スライダーを無効にする */}
+          {hardwareError && <QueryErrorNotice onRetry={() => { void refetchHardware() }} />}
           {/* ノートPC 固有のスライダー（常時表示） */}
           {[
-            { key: 'gpu_vram_limit_gb',   label: t('cluster.gpu_vram_limit'),   max: Math.max(hardware?.vram_total_gb ?? 16, 16) },
-            { key: 'system_ram_limit_gb', label: t('cluster.system_ram_limit'), max: Math.max(hardware?.system_ram_gb ?? 32, 16) },
+            { key: 'gpu_vram_limit_gb',   label: t('cluster.gpu_vram_limit'),   max: Math.max(hardware?.vram_total_gb ?? 0, 16) },
+            { key: 'system_ram_limit_gb', label: t('cluster.system_ram_limit'), max: Math.max(hardware?.system_ram_gb ?? 0, 16) },
           ].map(({ key, label, max }) => {
             const val = (cfg.resources as Record<string, number> | undefined)?.[key] ?? 0
             return (
@@ -991,6 +1051,9 @@ export function ClusterSettingsPanel() {
                 <span className={`${labelCls} w-44 shrink-0`}>{label}</span>
                 <input
                   type="range" min={0} max={max} step={1} value={val}
+                  disabled={hardware == null}
+                  aria-label={label}
+                  aria-valuetext={val === 0 ? t('cluster.auto_value') : `${val}GB`}
                   onChange={e => setCfg(c => ({
                     ...c,
                     resources: { ...c.resources, [key]: Number(e.target.value) },
@@ -998,7 +1061,7 @@ export function ClusterSettingsPanel() {
                   className="flex-1 accent-blue-500"
                 />
                 <span className="text-sm w-12 text-right">
-                  {val === 0 ? '自動' : `${val}GB`}
+                  {val === 0 ? t('cluster.auto_value') : `${val}GB`}
                 </span>
               </div>
             )
@@ -1016,11 +1079,13 @@ export function ClusterSettingsPanel() {
                 </span>
                 <input
                   type="range" min={0} max={64} step={1} value={val}
+                  aria-label={t('cluster.worker_ram_limit', { label: workerLabel })}
+                  aria-valuetext={val === 0 ? t('cluster.auto_value') : `${val}GB`}
                   onChange={e => updateWorkerRamLimit(workerIp, Number(e.target.value))}
                   className="flex-1 accent-blue-500"
                 />
                 <span className="text-sm w-12 text-right">
-                  {val === 0 ? '自動' : `${val}GB`}
+                  {val === 0 ? t('cluster.auto_value') : `${val}GB`}
                 </span>
               </div>
             )
@@ -1116,6 +1181,17 @@ export function ClusterSettingsPanel() {
                 </button>
               )}
             </div>
+            {rayOpError && (
+              <div
+                className="text-xs text-red-400 flex items-start gap-1 cursor-pointer"
+                title={rayOpError}
+                onClick={() => setRayOpError(null)}
+                role="alert"
+              >
+                <MIcon name="warning" size={12} className="shrink-0 mt-0.5" />
+                <span className="break-all">{t('cluster.ray_op_error', { defaultValue: 'Ray操作に失敗しました', message: rayOpError })}</span>
+              </div>
+            )}
             <GaugeBar
               value={status.load.cpu_percent}
               limit={status.load.cpu_limit}

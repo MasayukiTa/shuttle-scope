@@ -4,14 +4,17 @@ import { useTranslation } from 'react-i18next'
 import { setLanguage, SUPPORTED_LANGS, type SupportedLang } from '@/i18n'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { MIcon } from '@/components/common/MIcon'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { TUTORIALS } from '@/components/tutorial/tutorials'
 import { replayTutorial, useTutorialState, useAutoTutorial } from '@/components/tutorial/useTutorial'
 import QRCode from 'qrcode'
 import { errorMessage, errorStatus } from '@/utils/errors'
+import { canDeletePlayer } from '@/utils/roleAccess'
 import { apiGet, apiPost, apiPut, apiDelete, newIdempotencyKey } from '@/api/client'
 import { Player, TeamHistoryEntry, NetworkDiagnostics } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
 import { useSettings } from '@/hooks/useSettings'
+import { useAnnotationStore } from '@/store/annotationStore'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useTheme } from '@/hooks/useTheme'
@@ -32,6 +35,8 @@ import {
   BenchmarkTarget,
 } from '@/api/benchmark'
 import { getDbStats, runDbMaintenance, setAutoVacuum, DbStats } from '@/api/db'
+import { formatJST } from '@/utils/datetime'
+import { classifyExportMatch } from '@/utils/exportCandidates'
 
 type PlayerSortKey = 'name' | 'team' | 'nationality' | 'world_ranking' | 'is_target'
 type BenchmarkItem = { fps: number; avg_ms: number; p95_ms: number; backend: string; samples: number } | { error: string }
@@ -41,7 +46,7 @@ interface PlayerFormData {
   name_en: string
   team: string
   nationality: string
-  dominant_hand: 'R' | 'L'
+  dominant_hand: 'R' | 'L' | ''
   birth_year: string
   world_ranking: string
   is_target: boolean
@@ -53,7 +58,7 @@ const defaultPlayerForm = (): PlayerFormData => ({
   name_en: '',
   team: '',
   nationality: '',
-  dominant_hand: 'R',
+  dominant_hand: '',
   birth_year: '',
   world_ranking: '',
   is_target: false,
@@ -125,26 +130,33 @@ export function SettingsPage() {
   const llmOnly = !!role && !['admin', 'analyst', 'coach', 'player', 'demo'].includes(role)
   useAutoTutorial('settings_tour', !llmOnly)
 
-  const { data: healthData } = useQuery<{ public_mode?: boolean }>({
+  const healthQuery = useQuery<{ public_mode?: boolean }>({
     queryKey: ['health'],
     queryFn: () => apiGet('/health'),
     staleTime: 60_000,
   })
+  const { data: healthData } = healthQuery
   // /auth/me から username + display_name を取得。
   // useAuth().displayName はログイン時のスナップショットなので、
   // admin が user 管理画面で表示名を編集しても反映されない。
   // /auth/me を SoT として扱い、staleTime を短くしてタブ切替直後に再取得。
-  const { data: meData } = useQuery<{ username?: string; display_name?: string | null }>({
+  const meQuery = useQuery<{ username?: string; display_name?: string | null }>({
     queryKey: ['auth-me'],
     queryFn: () => apiGet('/auth/me'),
     staleTime: 5_000,
     refetchOnWindowFocus: true,
     retry: 0,
   })
+  const { data: meData } = meQuery
+  // 取得失敗（前回成功データも無い）は「未設定 / -」と区別して示す
+  const meUnavailable = meQuery.isError && meQuery.data === undefined
   const loginUsername = meData?.username ?? null
   // SoT 優先順: /auth/me の最新 → useAuth の session キャッシュ → 'Unset'
   const effectiveDisplayName = meData?.display_name ?? displayName ?? null
   const isPublicMode = healthData?.public_mode === true
+  // 公開モード判定は unknown / true / false の 3 状態。/health が未取得・失敗の間 (unknown) は
+  // 管理タブを出さない (fail-closed)。公開モードと確定したら開いていた管理タブも閉じる。
+  const adminTabsAllowed = role === 'admin' && healthData !== undefined && !isPublicMode
 
   const [showPlayerForm, setShowPlayerForm] = useState(false)
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null)
@@ -157,6 +169,12 @@ export function SettingsPage() {
   // 選手の新規登録は analyst / admin のみ (backend の require_analyst と一致)。
   // coach は閲覧はできるが追加はできないため、追加ボタンは出さない。
   const canCreatePlayers = role === 'analyst' || role === 'admin'
+  // 選手の削除も analyst / admin のみ (backend の DELETE /players/{id} は require_analyst)。coach には削除ボタンを出さない。
+  const canRemovePlayers = canDeletePlayer(role)
+  // データ同期 (export / import / JSON package import) は backend の
+  // require_analyst に合わせ analyst / admin のみ。player / coach には操作導線を
+  // 初めから表示しない (操作の末尾で 403 になる状態を避け、権限モデルに一致させる)。
+  const canSyncData = role === 'analyst' || role === 'admin'
   const coachTeamFilter = role === 'coach' ? (teamName ?? '') : null
   // ロール切替用モーダル
   // ロール変更で閲覧権限が失われた場合はタブを退避
@@ -169,10 +187,10 @@ export function SettingsPage() {
     if (!canManagePlayers && (activeTab === 'players' || activeTab === 'review')) {
       setActiveTab('account')
     }
-    if (role !== 'admin' && (activeTab === 'tracknet' || activeTab === 'sharing' || activeTab === 'cluster')) {
+    if (!adminTabsAllowed && (activeTab === 'tracknet' || activeTab === 'sharing' || activeTab === 'cluster')) {
       setActiveTab('data')
     }
-  }, [llmOnly, canManagePlayers, role, activeTab])
+  }, [llmOnly, canManagePlayers, adminTabsAllowed, activeTab])
 
   // 選手リスト: 検索・ソート（クライアントサイド、端末ごとに独立）
   const playerSearchRef = useRef<HTMLInputElement>(null)
@@ -189,7 +207,11 @@ export function SettingsPage() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
   // クリップボードコピー済みの選手ID（一時表示用）
   const [copiedPlayerId, setCopiedPlayerId] = useState<number | null>(null)
-  const { settings: appSettings, updateSettings, loading: settingsLoading } = useSettings()
+  const { settings: appSettings, updateSettings, loading: settingsLoading, saveFailed: settingsSaveFailed } = useSettings()
+  // 再起動で失われる未保存の記録 (保存待ち + 保存失敗 + 入力途中のラリー)
+  const unsavedAnnotationCount = useAnnotationStore(
+    (st) => st.pendingSaveCount + st.saveErrors.length + (st.currentStrokes.length > 0 ? 1 : 0),
+  )
   const [_copiedUrl, _setCopiedUrl] = useState<string | null>(null)
   const navigate = useNavigate()
 
@@ -248,6 +270,7 @@ export function SettingsPage() {
   const [bmNFrames, setBmNFrames] = useState(30)
   const [bmJobId, setBmJobId] = useState<string | null>(null)
   const bmJobIdRef = useRef<string | null>(null)
+  const bmPollFailRef = useRef(0)
   const [bmJob, setBmJob] = useState<BenchmarkJob | null>(null)
   const [bmRunning, setBmRunning] = useState(false)
   const [bmDetecting, setBmDetecting] = useState(false)
@@ -259,36 +282,47 @@ export function SettingsPage() {
   } | null>(null)
 
   // 選手一覧取得
-  const { data: playersData } = useQuery({
+  const playersQuery = useQuery({
     queryKey: ['players'],
     queryFn: () => apiGet<{ success: boolean; data: Player[] }>('/players'),
   })
+  const { data: playersData } = playersQuery
+  // 取得失敗（前回成功データも無い）を「0 人」と区別する
+  const playersUnavailable = playersQuery.isError && playersQuery.data === undefined
 
   // V4-U-003: 要レビュー選手取得
-  const { data: reviewPlayersData } = useQuery({
+  const reviewQuery = useQuery({
     queryKey: ['players-needs-review'],
     queryFn: () => apiGet<{ success: boolean; data: Player[] }>('/players/needs_review'),
     enabled: activeTab === 'review',
   })
+  const { data: reviewPlayersData } = reviewQuery
+  // 取得失敗（前回成功データも無い）を「要レビューなし」と区別する
+  const reviewUnavailable = reviewQuery.isError && reviewQuery.data === undefined
 
   // TrackNetモデルステータス取得
-  const { data: tracknetStatus } = useQuery({
+  const tracknetQuery = useQuery({
     queryKey: ['tracknet-status'],
     queryFn: () => apiGet<{ success: boolean; data: { available: boolean; backend: string | null; loaded: boolean } }>('/tracknet/status'),
     enabled: activeTab === 'tracknet',
     refetchInterval: activeTab === 'tracknet' ? 5000 : false,
   })
+  const { data: tracknetStatus } = tracknetQuery
+  // ポーリング中の状態 API は、直近の取得が失敗したら前回値を「現在値」として出さず取得失敗にする
+  const tracknetUnavailable = tracknetQuery.isError
 
   // YOLO モデルステータス取得
-  const { data: yoloStatus } = useQuery({
+  const yoloQuery = useQuery({
     queryKey: ['yolo-status'],
     queryFn: () => apiGet<{ success: boolean; data: { available: boolean; backend: string | null; loaded: boolean; status_code: string; status_message: string | null; install_hint: string | null } }>('/yolo/status'),
     enabled: activeTab === 'tracknet',
     refetchInterval: activeTab === 'tracknet' ? 10000 : false,
   })
+  const { data: yoloStatus } = yoloQuery
+  const yoloUnavailable = yoloQuery.isError
 
   // GPU / コンピュートデバイス検出
-  const { data: computeDevices, refetch: refetchDevices, isFetching: devicesFetching } = useQuery({
+  const devicesQuery = useQuery({
     queryKey: ['compute-devices'],
     queryFn: () => apiGet<{
       success: boolean
@@ -299,16 +333,23 @@ export function SettingsPage() {
     enabled: activeTab === 'tracknet',
     staleTime: 60_000,
   })
+  const { data: computeDevices, refetch: refetchDevices, isFetching: devicesFetching } = devicesQuery
+  // 取得失敗（前回成功データも無い）を「デバイス情報なし」と区別する
+  const devicesUnavailable = devicesQuery.isError && devicesQuery.data === undefined
 
   // R-002: サーバー情報（LAN IP）
-  const { data: serverInfo, refetch: refetchServerInfo } = useQuery({
+  const serverInfoQuery = useQuery({
     queryKey: ['server-my-info'],
     queryFn: () => apiGet<{ success: boolean; data: { lan_ips: string[]; port: number; lan_mode: boolean; accessible: boolean } }>('/sessions/my-info'),
     enabled: activeTab === 'sharing',
   })
+  const { data: serverInfo, refetch: refetchServerInfo } = serverInfoQuery
+  // LAN 状態が未確認（未取得 / 取得失敗）の間は「無効」と見せず、切替操作も送らせない
+  const lanStateUnknown = serverInfo === undefined
+  const lanStateFailed = serverInfoQuery.isError && serverInfoQuery.data === undefined
 
   // Q-002/Q-008: ネットワーク診断
-  const { data: netDiag, isFetching: netDiagFetching, refetch: runDiagnostics } = useQuery({
+  const { data: netDiag, isFetching: netDiagFetching, isError: netDiagError, refetch: runDiagnostics } = useQuery({
     queryKey: ['network-diagnostics'],
     queryFn: () => apiGet<{ success: boolean; data: NetworkDiagnostics }>('/network/diagnostics'),
     enabled: false,
@@ -363,11 +404,27 @@ export function SettingsPage() {
   })
 
   // データ管理: バックアップ一覧
-  const { data: backupsData, refetch: refetchBackups } = useQuery({
+  const backupsQuery = useQuery({
     queryKey: ['sync-backups'],
-    queryFn: () => apiGet<{ success: boolean; data: Array<{ filename: string; size_bytes: number; created_at: string }> }>('/sync/backups'),
-    enabled: activeTab === 'data',
+    queryFn: () => apiGet<{
+      success: boolean
+      data: Array<{ filename: string; size_bytes: number; created_at: string; encrypted?: boolean }>
+      status?: {
+        engine: string
+        supported: boolean
+        reason: string | null
+        backup_dir: string
+        count: number
+        max_generations: number
+        last_success_at: string | null
+        last_encrypted: boolean | null
+      }
+    }>('/sync/backups'),
+    enabled: activeTab === 'data' && role === 'admin',
   })
+  const { data: backupsData, refetch: refetchBackups } = backupsQuery
+  // 状態取得失敗（前回成功データも無い）の間は、対応可否が不明なのでバックアップ実行を止める
+  const backupsUnavailable = backupsQuery.isError && backupsQuery.data === undefined
 
   // データ管理: 試合一覧（エクスポート用）
   const { data: matchesForExport } = useQuery({
@@ -375,14 +432,21 @@ export function SettingsPage() {
     queryFn: () => apiGet<{ data: Array<{ id: number; date: string; tournament: string; result: string }> }>('/matches'),
     enabled: activeTab === 'data',
   })
-  const exportMatchList = matchesForExport?.data ?? []
+  const allExportMatches = matchesForExport?.data ?? []
+  // 検証用・未完了・日付不正は既定で候補に出さない (「すべて選択」でも持ち出さない)
+  const [showExcludedExport, setShowExcludedExport] = useState(false)
+  const excludedExportCount = allExportMatches.filter((m) => classifyExportMatch(m) !== 'valid').length
+  const exportMatchList = showExcludedExport ? allExportMatches : allExportMatches.filter((m) => classifyExportMatch(m) === 'valid')
 
   // 競合レビュー一覧
-  const { data: conflictsData, refetch: refetchConflicts } = useQuery({
+  const conflictsQuery = useQuery({
     queryKey: ['sync-conflicts'],
     queryFn: () => apiGet<{ success: boolean; data: Array<{ id: number; record_table: string; record_uuid: string; import_device: string; import_updated_at: string; local_updated_at: string; reason: string; created_at: string }> }>('/sync/conflicts'),
     enabled: activeTab === 'data',
   })
+  const { data: conflictsData, refetch: refetchConflicts } = conflictsQuery
+  // 取得失敗（前回成功データも無い）を「競合なし」と区別する
+  const conflictsUnavailable = conflictsQuery.isError && conflictsQuery.data === undefined
   const conflicts = conflictsData?.data ?? []
 
   async function _runCvBenchmark() {
@@ -440,10 +504,17 @@ export function SettingsPage() {
     if (jobId) {
       try {
         await cancelJob(jobId)
-      } catch {
-        // キャンセル失敗は無視
+      } catch (e) {
+        // 404 = ジョブは既に無い (終了済み) ので停止扱いでよい。それ以外はサーバ側のジョブが
+        // 動き続けているため、画面だけ停止済みにせず、理由を出して実行中のままにする
+        const status = (e as { status?: number } | null)?.status
+        if (status !== 404) {
+          setBmError(t('benchmark.stop_failed'))
+          return
+        }
       }
     }
+    setBmError(null)
     bmJobIdRef.current = null
     setBmRunning(false)
     setBmJobId(null)
@@ -455,11 +526,18 @@ export function SettingsPage() {
     try {
       const job = await getJob(bmJobId)
       setBmJob(job)
+      bmPollFailRef.current = 0
+      setBmError((prev) => (prev === t('benchmark.poll_stalled') ? null : prev))
       if (job.status === 'done' || job.status === 'failed') {
         setBmRunning(false)
       }
     } catch {
-      // ポーリングエラーは無視して次のポーリングに任せる
+      // 一時的な失敗は直前値を保持し、連続失敗が続いたときだけ「取得不能」を明示する。
+      // 失敗を running=false や done へ勝手に変換しない。
+      bmPollFailRef.current += 1
+      if (bmPollFailRef.current >= 3) {
+        setBmError(t('benchmark.poll_stalled'))
+      }
     }
   }
 
@@ -504,15 +582,20 @@ export function SettingsPage() {
   })
   const [dbMaintRunning, setDbMaintRunning] = useState(false)
   const [dbMaintResult, setDbMaintResult] = useState<{ freed_mb: number; freed_pages: number } | null>(null)
+  // 最適化の実行失敗を「回収対象なし」の正常結果と区別する
+  const [dbMaintFailed, setDbMaintFailed] = useState(false)
   const [dbAvRunning, setDbAvRunning] = useState(false)
   const [dbAvMessage, setDbAvMessage] = useState<string | null>(null)
 
   // クラウドフォルダ内パッケージ一覧
-  const { data: cloudPackagesData, refetch: refetchCloudPackages } = useQuery({
+  const cloudPackagesQuery = useQuery({
     queryKey: ['sync-cloud-packages'],
     queryFn: () => apiGet<{ success: boolean; data: Array<{ filename: string; path: string; size_bytes: number; modified_at: string }>; configured: boolean; folder: string }>('/sync/cloud/packages'),
     enabled: activeTab === 'data',
   })
+  const { data: cloudPackagesData, refetch: refetchCloudPackages } = cloudPackagesQuery
+  // 取得失敗（前回成功データも無い）を「クラウドフォルダ未設定」と区別する
+  const cloudPackagesUnavailable = cloudPackagesQuery.isError && cloudPackagesQuery.data === undefined
   const cloudPackages = cloudPackagesData?.data ?? []
   const cloudFolderConfigured = cloudPackagesData?.configured ?? false
 
@@ -565,12 +648,14 @@ export function SettingsPage() {
   async function handleDbMaintenance() {
     setDbMaintRunning(true)
     setDbMaintResult(null)
+    setDbMaintFailed(false)
     try {
       const res = await runDbMaintenance()
       setDbMaintResult({ freed_mb: (res as { freed_mb?: number }).freed_mb ?? 0, freed_pages: (res as { freed_pages?: number }).freed_pages ?? 0 })
       refetchDbStats()
     } catch {
-      setDbMaintResult({ freed_mb: 0, freed_pages: 0 })
+      // 実行できなかったことを示す。0 件の成功結果には変換しない
+      setDbMaintFailed(true)
     } finally {
       setDbMaintRunning(false)
     }
@@ -615,7 +700,8 @@ export function SettingsPage() {
       form.append('file', importFile)
       const resp = await fetch('/api/sync/import', { method: 'POST', body: form })
       const json = await resp.json()
-      setImportResult(json)
+      // 失敗 (バックアップ失敗・全取り消し) は HTTP エラーで detail に理由が入る。
+      setImportResult(resp.ok ? json : { success: false, error: typeof json.detail === 'string' ? json.detail : undefined })
       queryClient.invalidateQueries()
     } catch {
       setImportResult({ success: false, error: '通信エラー' })
@@ -639,6 +725,19 @@ export function SettingsPage() {
     }
   }
 
+  // 失敗の利用者向け文言。HTTP status・内部フィールド名・backend の detail は出さず、
+  // 原因の種類 (認証切れ / 権限 / 競合 / 入力) だけを伝える。詳細はコンソールへ残す。
+  const userFacingPlayerError = (err: unknown, fallback: string): string => {
+    console.error('[Settings] player request failed', errorStatus(err), errorMessage(err, ''))
+    switch (errorStatus(err)) {
+      case 401: return t('common_ui.error_session_expired')
+      case 403: return t('common_ui.error_forbidden')
+      case 409: return t('common_ui.error_conflict')
+      case 422: return t('common_ui.error_invalid_input')
+      default: return fallback
+    }
+  }
+
   // 選手作成
   const createPlayer = useMutation({
     mutationFn: (body: Record<string, unknown>) => apiPost('/players', body),
@@ -649,19 +748,12 @@ export function SettingsPage() {
     },
     onError: (err: unknown) => {
       // 権限不足 (403) は「Analyst ロールが必要」と具体的に案内する。
-      // それ以外は updatePlayer と同じくサーバ detail を表示する。
-      const status = errorStatus(err)
-      if (status === 403) {
+      // それ以外は安定した利用者向け文言へ変換し、HTTP status・backend detail は出さない。
+      if (errorStatus(err) === 403) {
         alert(t('settings.ui.create_player_require_analyst'))
         return
       }
-      const msg = errorMessage(err)
-      let detail: string
-      try {
-        const parsed = JSON.parse(msg) as { detail?: unknown }
-        detail = typeof parsed?.detail === 'string' ? parsed.detail : ''
-      } catch { detail = msg }
-      alert(`保存に失敗しました (HTTP ${status ?? '?'}):\n${detail || '不明なエラー'}`)
+      alert(userFacingPlayerError(err, t('common_ui.player_save_failed')))
     },
   })
 
@@ -675,13 +767,7 @@ export function SettingsPage() {
       setPlayerForm(defaultPlayerForm())
     },
     onError: (err: unknown) => {
-      const msg = errorMessage(err)
-      let detail: string
-      try {
-        const parsed = JSON.parse(msg) as { detail?: unknown }
-        detail = typeof parsed?.detail === 'string' ? parsed.detail : ''
-      } catch { detail = msg }
-      alert(`保存に失敗しました (HTTP ${errorStatus(err) ?? '?'}):\n${detail || '不明なエラー'}`)
+      alert(userFacingPlayerError(err, t('common_ui.player_save_failed')))
     },
   })
 
@@ -691,19 +777,14 @@ export function SettingsPage() {
       apiDelete(`/players/${id}`, { 'X-Idempotency-Key': newIdempotencyKey() }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['players'] }),
     onError: (err: unknown, playerId: number) => {
-      // err.message はサーバーが返したJSONテキスト ("{"detail":"..."}") or プレーンテキスト
-      const msg = errorMessage(err)
-      let detail: string
-      try {
-        const parsed = JSON.parse(msg) as { detail?: unknown }
-        detail = typeof parsed?.detail === 'string' ? parsed.detail : ''
-      } catch { detail = msg }
-      const isReferenced = errorStatus(err) === 409
-      if (isReferenced) {
-        const go = window.confirm(`${detail}\n\n試合一覧でこの選手の試合を確認しますか？`)
+      console.error('[Settings] player delete failed', errorStatus(err), errorMessage(err, ''))
+      // 409 はこの選手が試合に参照されている。backend detail は出さず利用者向け文言で案内し、
+      // 試合一覧への導線を出す。それ以外は安定した利用者向け文言へ変換する。
+      if (errorStatus(err) === 409) {
+        const go = window.confirm(`${t('common_ui.player_in_use')}\n\n${t('settings.ui.player_delete_open_matches')}`)
         if (go) navigate(`/matches?player_id=${playerId}`)
       } else {
-        alert(`削除できません: ${detail || '不明なエラー'}`)
+        alert(userFacingPlayerError(err, t('common_ui.player_delete_failed')))
       }
     },
   })
@@ -717,13 +798,7 @@ export function SettingsPage() {
       queryClient.invalidateQueries({ queryKey: ['players-needs-review'] })
     },
     onError: (err: unknown) => {
-      const msg = errorMessage(err)
-      let detail: string
-      try {
-        const parsed = JSON.parse(msg) as { detail?: unknown }
-        detail = typeof parsed?.detail === 'string' ? parsed.detail : ''
-      } catch { detail = msg }
-      alert(`確認済み設定に失敗しました: ${detail || '不明なエラー'}`)
+      alert(userFacingPlayerError(err, t('common_ui.player_verify_failed')))
     },
   })
 
@@ -737,7 +812,7 @@ export function SettingsPage() {
       name_en: strOrNull(playerForm.name_en),
       team: strOrNull(playerForm.team),
       nationality: strOrNull(playerForm.nationality),
-      dominant_hand: playerForm.dominant_hand,
+      dominant_hand: playerForm.dominant_hand ? playerForm.dominant_hand : null,
       birth_year: playerForm.birth_year ? Number(playerForm.birth_year) : null,
       world_ranking: playerForm.world_ranking ? Number(playerForm.world_ranking) : null,
       is_target: playerForm.is_target,
@@ -758,7 +833,7 @@ export function SettingsPage() {
       name_en: player.name_en ?? '',
       team: player.team ?? '',
       nationality: player.nationality ?? '',
-      dominant_hand: (player.dominant_hand === 'R' || player.dominant_hand === 'L') ? player.dominant_hand : 'R',
+      dominant_hand: (player.dominant_hand === 'R' || player.dominant_hand === 'L') ? player.dominant_hand : '',
       birth_year: player.birth_year ? String(player.birth_year) : '',
       world_ranking: player.world_ranking ? String(player.world_ranking) : '',
       is_target: player.is_target,
@@ -866,6 +941,11 @@ export function SettingsPage() {
 
   return (
     <div className={`flex flex-col h-full ${bodyBg} text-[var(--ss-t1)]`}>
+      {settingsSaveFailed && (
+        <div role="alert" className="shrink-0 px-4 py-2 text-xs border-b border-red-500/40 bg-red-500/10 text-red-400">
+          {t('settings_general.save_failed')}
+        </div>
+      )}
       {/* CV バッチ fps 確認ダイアログ */}
       {cvBatchConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
@@ -914,12 +994,12 @@ export function SettingsPage() {
               { key: 'players' as const, label: t('auto.SettingsPage.k31') },
               { key: 'review' as const, label: t('review.title'), badge: reviewPlayersData?.data?.length ?? 0 },
             ] : []),
-            ...(role === 'admin' && !isPublicMode ? [
+            ...(adminTabsAllowed ? [
               { key: 'tracknet' as const, label: t('tracknet.tab_label') },
               { key: 'sharing' as const, label: t('sharing.tab_label') },
             ] : []),
             ...(!llmOnly ? [{ key: 'data' as const, label: t('auto.SettingsPage.k32') }] : []),
-            ...(role === 'admin' && !isPublicMode ? [
+            ...(adminTabsAllowed ? [
               { key: 'cluster' as const, label: t('cluster.tab') },
             ] : []),
             { key: 'account' as const, label: t('auto.SettingsPage.k33') },
@@ -1001,8 +1081,12 @@ export function SettingsPage() {
 
               {/* 件数表示 */}
               <span className={`text-xs ${textMuted} ml-auto`}>
-                {filteredPlayers.length}{t('player.count_suffix')}
-                {filteredPlayers.length !== players.length && ` / ${players.length}${t('player.count_suffix')}`}
+                {playersUnavailable ? '—' : (
+                  <>
+                    {filteredPlayers.length}{t('player.count_suffix')}
+                    {filteredPlayers.length !== players.length && ` / ${players.length}${t('player.count_suffix')}`}
+                  </>
+                )}
               </span>
             </div>
 
@@ -1079,6 +1163,7 @@ export function SettingsPage() {
                             onClick={() => copyPlayerName(p)}
                             className="text-left group flex items-center gap-1.5 min-w-0"
                             title={p.name}
+                            aria-label={t('a11yLabels.copy_player_name', { name: p.name })}
                           >
                             <span className="cell-name-clip">{p.name}</span>
                             {copiedPlayerId === p.id ? (
@@ -1137,16 +1222,20 @@ export function SettingsPage() {
                           <div className="flex items-center gap-1">
                             <button
                               onClick={() => openEdit(p)}
+                              aria-label={t('a11yLabels.edit_player', { name: p.name })}
                               className="p-1.5 rounded-ss-sm bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t2)] transition-colors duration-fast ease-out"
                             >
                               <MIcon name="edit" size={12} />
                             </button>
+                            {canRemovePlayers && (
                             <button
                               onClick={() => setDeleteConfirmId(p.id)}
+                              aria-label={t('a11yLabels.delete_player', { name: p.name })}
                               className="p-1.5 rounded-ss-sm bg-[var(--ss-surface-2)] hover:bg-[var(--ss-bad)] hover:text-white text-[var(--ss-bad)] transition-colors duration-fast ease-out"
                             >
                               <MIcon name="delete" size={12} />
                             </button>
+                            )}
                           </div>
                         )}
                       </td>
@@ -1157,7 +1246,8 @@ export function SettingsPage() {
             </div>
 
             {/* 空状態メッセージ */}
-            {players.length === 0 && (
+            {playersUnavailable && <QueryErrorNotice onRetry={() => { void playersQuery.refetch() }} />}
+            {players.length === 0 && !playersUnavailable && (
               <div className="text-center text-[var(--ss-t3)] py-8">
                 {t('settings.ui.no_players')}
               </div>
@@ -1179,7 +1269,9 @@ export function SettingsPage() {
                 <MIcon name="error" size={14} className="text-[var(--ss-warn)]" />
                 {t('review.provisional_players')}
               </h3>
-              {!reviewPlayersData?.data?.length ? (
+              {reviewUnavailable ? (
+                <QueryErrorNotice onRetry={() => { void reviewQuery.refetch() }} />
+              ) : !reviewPlayersData?.data?.length ? (
                 <div className={`text-sm ${textMuted} py-4`}>{t('review.no_items')}</div>
               ) : (
                 <div className="overflow-x-auto -mx-2 sm:mx-0"><table className="w-full text-sm min-w-[480px]">
@@ -1241,7 +1333,7 @@ export function SettingsPage() {
         )}
 
         {/* TrackNet設定タブ */}
-        {activeTab === 'tracknet' && (
+        {activeTab === 'tracknet' && adminTabsAllowed && (
           <div className="space-y-6" data-tutorial="settings.tracknet">
             <h2 className={`text-lg font-medium ${textHeading}`}>{t('tracknet.tab_label')}</h2>
 
@@ -1253,7 +1345,9 @@ export function SettingsPage() {
                 <MIcon name="bolt" size={14} className="text-[var(--ss-warn)]" />
                 {t('tracknet.model_status')}
               </h3>
-              {!tracknetStatus ? (
+              {tracknetUnavailable ? (
+                <QueryErrorNotice onRetry={() => { void tracknetQuery.refetch() }} />
+              ) : !tracknetStatus ? (
                 <p className={`text-sm ${textMuted}`}>{t('tracknet.backend_offline')}</p>
               ) : tracknetStatus.data?.available ? (
                 <div className="flex items-center gap-2">
@@ -1285,7 +1379,7 @@ export function SettingsPage() {
                 <p className="text-sm font-medium text-[var(--ss-t1)]">{t('tracknet.enable_toggle')}</p>
                 <p className="text-xs text-[var(--ss-t3)] mt-0.5">{t('tracknet.enable_description')}</p>
               </div>
-              <button
+              <button role="switch" aria-checked={appSettings.tracknet_enabled} aria-label={t('tracknet.enable_toggle')}
                 onClick={() => updateSettings({ tracknet_enabled: !appSettings.tracknet_enabled })}
                 disabled={settingsLoading}
                 className="flex-shrink-0"
@@ -1359,6 +1453,7 @@ export function SettingsPage() {
               </div>
               <input
                 type="range"
+                aria-label={t('tracknet.cpu_limit_label')}
                 min={10}
                 max={90}
                 step={5}
@@ -1379,7 +1474,7 @@ export function SettingsPage() {
                   <p className="text-sm font-medium text-[var(--ss-t1)]">{t('yolo.enabled')}</p>
                   <p className="text-xs text-[var(--ss-t3)] mt-0.5">{t('yolo.enable_description')}</p>
                 </div>
-                <button
+                <button role="switch" aria-checked={appSettings.yolo_enabled} aria-label={t('yolo.enabled')}
                   onClick={() => updateSettings({ yolo_enabled: !appSettings.yolo_enabled })}
                   disabled={settingsLoading}
                   className="flex-shrink-0"
@@ -1393,7 +1488,9 @@ export function SettingsPage() {
               {/* YOLO モデルステータス */}
               <div className="rounded-ss-md p-2.5 text-xs space-y-1.5 bg-[var(--ss-surface-2)]">
                 <p className="font-medium text-[var(--ss-t2)]">{t('settings.ui.model_state')}</p>
-                {!yoloStatus ? (
+                {yoloUnavailable ? (
+                  <QueryErrorNotice onRetry={() => { void yoloQuery.refetch() }} />
+                ) : !yoloStatus ? (
                   <p className="text-[var(--ss-t3)]">{t('settings.ui.backend_connecting')}</p>
                 ) : (() => {
                   const sc = yoloStatus.data?.status_code
@@ -1553,7 +1650,8 @@ export function SettingsPage() {
                 </div>
               )}
 
-              {!computeDevices && !devicesFetching && (
+              {devicesUnavailable && <QueryErrorNotice onRetry={() => { void refetchDevices() }} />}
+              {!computeDevices && !devicesFetching && !devicesUnavailable && (
                 <p className="text-xs text-[var(--ss-t3)]">{t('auto.SettingsPage.k6')}</p>
               )}
             </div>
@@ -1613,6 +1711,14 @@ export function SettingsPage() {
                 )}
               </button>
 
+              {/* 実行できない理由（実行中は表示しない） */}
+              {!bmRunning && bmSelectedDevices.length === 0 && (
+                <p className="text-xs text-[var(--ss-t3)]">{t('opsHints.benchmark_need_device')}</p>
+              )}
+              {!bmRunning && bmSelectedDevices.length > 0 && bmTargets.length === 0 && (
+                <p className="text-xs text-[var(--ss-t3)]">{t('opsHints.benchmark_need_target')}</p>
+              )}
+
               {/* 停止ボタン（実行中のみ表示） */}
               {bmRunning && (
                 <button
@@ -1646,7 +1752,7 @@ export function SettingsPage() {
         )}
 
         {/* 共有設定タブ (R-001/R-002/Q-002/Q-008) */}
-        {activeTab === 'sharing' && (
+        {activeTab === 'sharing' && adminTabsAllowed && (
           <div className="space-y-6">
             <h2 className={`text-lg font-medium ${textHeading}`}>{t('sharing.tab_label')}</h2>
 
@@ -1668,16 +1774,22 @@ export function SettingsPage() {
                   <p className="text-sm font-medium text-[var(--ss-t1)]">{t('sharing.lan_mode_label')}</p>
                   <p className="text-xs text-[var(--ss-t3)] mt-0.5">{t('sharing.lan_mode_description')}</p>
                 </div>
-                <button
+                <button role="switch" aria-checked={!!serverInfo?.data?.lan_mode} aria-label={t('sharing.lan_mode_label')}
                   onClick={() => toggleLanMode.mutate(!serverInfo?.data?.lan_mode)}
-                  className="flex-shrink-0"
+                  disabled={lanStateUnknown}
+                  className="flex-shrink-0 disabled:opacity-50"
                 >
                   {serverInfo?.data?.lan_mode
                     ? <MIcon name="toggle_on" size={32} className="text-[var(--ss-brand)]" />
                     : <MIcon name="toggle_off" size={32} className="text-[var(--ss-t3)]" />}
                 </button>
               </div>
-              {serverInfo?.data?.lan_mode && serverInfo.data.lan_ips.length > 0 ? (
+              {toggleLanMode.isError && (
+                <p role="alert" className="text-xs text-[var(--ss-bad)] mb-2">{t('sharing.action_failed')}</p>
+              )}
+              {lanStateFailed ? (
+                <QueryErrorNotice onRetry={() => { void refetchServerInfo() }} />
+              ) : lanStateUnknown ? null : serverInfo?.data?.lan_mode && serverInfo.data.lan_ips.length > 0 ? (
                 <div className="bg-[var(--ss-surface-2)] rounded-ss-md p-3 space-y-3">
                   {serverInfo.data.lan_ips.map((ip) => {
                     const appUrl = `http://${ip}:${serverInfo.data.port}/`
@@ -1788,8 +1900,8 @@ export function SettingsPage() {
                       </div>
                       <div className="mt-1 text-[var(--ss-brand)]">
                         {tunnelStatus.data.providers.cloudflare.named_ready
-                          ? 'named tunnel 設定を検出しました。Cloudflare 選択時は固定ドメインを優先します。'
-                          : 'named tunnel 設定は未完了です。repo外の Desktop\\cloudflare-shuttle-scope または ~/.cloudflared を使う想定です。'}
+                          ? t('auto.SettingsPage.cloudflare_named_tunnel_ready')
+                          : t('auto.SettingsPage.cloudflare_named_tunnel_not_ready')}
                       </div>
                       {tunnelStatus.data.providers.cloudflare.config_path && (
                         <div className="mt-1 break-all text-[var(--ss-brand)]">
@@ -1832,6 +1944,9 @@ export function SettingsPage() {
                           <MIcon name="power_off" size={12} />
                           {t('sharing.tunnel_stop')}
                         </button>
+                      )}
+                      {(tunnelStart.isError || tunnelStop.isError) && (
+                        <span role="alert" className="self-center text-xs text-[var(--ss-bad)]">{t('sharing.action_failed')}</span>
                       )}
                     </div>
                   </div>
@@ -1882,7 +1997,7 @@ export function SettingsPage() {
                       <p className={`text-xs font-medium ${textSecondary}`}>{t('sharing.turn_enable_label')}</p>
                       <p className="text-xs mt-0.5 text-[var(--ss-t3)]">{t('sharing.turn_description')}</p>
                     </div>
-                    <button onClick={() => updateSettings({ turn_enabled: !appSettings.turn_enabled })}>
+                    <button role="switch" aria-checked={appSettings.turn_enabled} aria-label={t('sharing.turn_enable_label')} onClick={() => updateSettings({ turn_enabled: !appSettings.turn_enabled })}>
                       {appSettings.turn_enabled
                         ? <MIcon name="toggle_on" size={28} className="text-[var(--ss-brand)]" />
                         : <MIcon name="toggle_off" size={28} className="text-[var(--ss-t3)]" />}
@@ -1974,6 +2089,11 @@ export function SettingsPage() {
                             }
                           </span>
                         )}
+                        {turnTest.isError && (
+                          <span role="alert" className="text-xs flex items-center gap-1 text-[var(--ss-bad)]">
+                            <MIcon name="error" size={11} />{t('sharing.action_failed')}
+                          </span>
+                        )}
                       </div>
                     </div>
                   )}
@@ -2007,7 +2127,7 @@ export function SettingsPage() {
                   disabled={netDiagFetching}
                   className="px-3 py-1 text-xs rounded-ss-md disabled:opacity-50 bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t2)] transition-colors duration-fast ease-out"
                 >
-                  {netDiagFetching ? '診断中...' : t('sharing.run_diagnostics')}
+                  {netDiagFetching ? t('opsHints.diag_running') : t('sharing.run_diagnostics')}
                 </button>
               </div>
 
@@ -2028,7 +2148,9 @@ export function SettingsPage() {
                         unknown: '不明',
                       }[netDiag.data.environment] ?? netDiag.data.environment}
                     </span>
-                    <span className="text-xs text-[var(--ss-t3)] ml-auto ss-num">{netDiag.data.probe_duration_ms}ms</span>
+                    <span className="text-xs text-[var(--ss-t3)] ml-auto ss-num">
+                      {t('opsHints.diag_duration')}: {netDiag.data.probe_duration_ms}ms
+                    </span>
                   </div>
 
                   {/* capabilities */}
@@ -2061,7 +2183,10 @@ export function SettingsPage() {
                 </div>
               )}
 
-              {!netDiag && !netDiagFetching && (
+              {netDiagError && !netDiagFetching && (
+                <p role="alert" className="text-xs text-[var(--ss-bad)]">{t('sharing.diag_failed')}</p>
+              )}
+              {!netDiag && !netDiagFetching && !netDiagError && (
                 <p className="text-xs text-[var(--ss-t3)]">{t('sharing.diag_not_run')}</p>
               )}
             </div>
@@ -2080,9 +2205,10 @@ export function SettingsPage() {
               </div>
               <div className="space-y-3">
                 <div>
-                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('auto.SettingsPage.k8')}</label>
+                  <label htmlFor="settings-sync-device-id" className={`block text-sm ${textSecondary} mb-1`}>{t('auto.SettingsPage.k8')}</label>
                   <div className="flex gap-2">
                     <input
+                      id="settings-sync-device-id"
                       type="text"
                       value={appSettings.sync_device_id}
                       onChange={(e) => updateSettings({ sync_device_id: e.target.value })}
@@ -2093,8 +2219,9 @@ export function SettingsPage() {
                   <p className="text-[11px] text-[var(--ss-t3)] mt-0.5">{t('auto.SettingsPage.k9')}</p>
                 </div>
                 <div>
-                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('auto.SettingsPage.k10')}</label>
+                  <label htmlFor="settings-sync-folder-path" className={`block text-sm ${textSecondary} mb-1`}>{t('auto.SettingsPage.k10')}</label>
                   <input
+                    id="settings-sync-folder-path"
                     type="text"
                     value={appSettings.sync_folder_path}
                     onChange={(e) => updateSettings({ sync_folder_path: e.target.value })}
@@ -2102,6 +2229,7 @@ export function SettingsPage() {
                     className={`w-full ${inputClass} font-mono`}
                   />
                   <p className="text-[11px] text-[var(--ss-t3)] mt-0.5">{t('auto.SettingsPage.k11')}</p>
+                  <p className="text-[11px] text-[var(--ss-t3)] mt-0.5">{t('opsHints.sync_autosave')}</p>
                 </div>
               </div>
             </section>}
@@ -2168,7 +2296,8 @@ export function SettingsPage() {
               </section>
             )}
 
-            {/* ── エクスポート ──────────────────────────────── */}
+            {/* ── エクスポート (analyst / admin のみ: backend require_analyst と一致) ── */}
+            {canSyncData && (
             <section className="bg-[var(--ss-surface-1)] rounded-ss-lg p-5 space-y-4 border border-[var(--ss-border)] shadow-card" data-tutorial="settings.export">
               <div className="flex items-center gap-2">
                 <MIcon name="download" size={16} className="text-[var(--ss-brand)]" />
@@ -2214,6 +2343,27 @@ export function SettingsPage() {
                       </button>
                     )}
                   </div>
+                  {excludedExportCount > 0 && (
+                    <div className="mb-2 space-y-0.5">
+                      <label className="flex items-center gap-1.5 text-xs text-[var(--ss-t2)]">
+                        <input
+                          type="checkbox"
+                          checked={showExcludedExport}
+                          onChange={(e) => {
+                            const on = e.target.checked
+                            setShowExcludedExport(on)
+                            if (!on) {
+                              // 隠れる試合は選択からも外す
+                              const keep = new Set(allExportMatches.filter((m) => classifyExportMatch(m) === 'valid').map((m) => String(m.id)))
+                              setExportMatchIds(exportMatchIds.split(',').map((x: string) => x.trim()).filter((x: string) => keep.has(x)).join(', '))
+                            }
+                          }}
+                        />
+                        {t('auto.SettingsPage.export_show_excluded', { count: excludedExportCount })}
+                      </label>
+                      {!showExcludedExport && <p className="text-[11px] text-[var(--ss-t3)]">{t('auto.SettingsPage.export_excluded_hint')}</p>}
+                    </div>
+                  )}
                   <div className="flex gap-2 items-start">
                     <div className="flex-1">
                       <input
@@ -2239,7 +2389,14 @@ export function SettingsPage() {
                                   ? 'bg-[var(--ss-brand-tint)] text-[var(--ss-brand)]' : 'text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]'
                               }`}
                             >
-                              <span className="ss-num">[{m.id}] {m.date} {m.tournament}</span>
+                              <span className="ss-num">
+                                [{m.id}] {m.date} {m.tournament}
+                                {classifyExportMatch(m) !== 'valid' && (
+                                  <span className="ml-1.5 text-[10px] text-[var(--ss-warn)]">
+                                    {t(`auto.SettingsPage.export_kind_${classifyExportMatch(m)}`)}
+                                  </span>
+                                )}
+                              </span>
                               <span className={`text-[10px] ${m.result === 'win' ? 'text-[var(--ss-success)]' : 'text-[var(--ss-bad)]'}`}>
                                 {m.result === 'win' ? '勝' : m.result === 'loss' ? '敗' : m.result}
                               </span>
@@ -2281,8 +2438,10 @@ export function SettingsPage() {
                 </div>
               )}
             </section>
+            )}
 
-            {/* ── インポート ────────────────────────────────── */}
+            {/* ── インポート (analyst / admin のみ: backend require_analyst と一致) ── */}
+            {canSyncData && (
             <section className="bg-[var(--ss-surface-1)] rounded-ss-lg p-5 space-y-4 border border-[var(--ss-border)] shadow-card" data-tutorial="settings.import">
               <div className="flex items-center gap-2">
                 <MIcon name="upload" size={16} className="text-[var(--ss-success)]" />
@@ -2366,6 +2525,12 @@ export function SettingsPage() {
                       <p className="text-xs text-[var(--ss-t2)]">
                         {t('auto.SettingsPage.import_result_summary', { added: importResult.data?.added, updated: importResult.data?.updated, kept: importResult.data?.kept, conflicts: importResult.data?.conflicts })}
                       </p>
+                      {importResult.data?.backup_taken === true && (
+                        <p className="text-xs text-[var(--ss-t3)] mt-1">{t('auto.SettingsPage.import_backup_taken')}</p>
+                      )}
+                      {importResult.data?.backup_skipped === true && (
+                        <p className="text-xs text-[var(--ss-warn)] mt-1">{t('auto.SettingsPage.import_backup_skipped')}</p>
+                      )}
                     </>
                   ) : (
                     <p className="text-[var(--ss-bad)]">{importResult.error ?? 'インポートエラー'}</p>
@@ -2373,6 +2538,7 @@ export function SettingsPage() {
                 </div>
               )}
             </section>
+            )}
 
             {/* ── バックアップ (admin only) ──────────────────────────────── */}
             {role === 'admin' && <section className="bg-[var(--ss-surface-1)] rounded-ss-lg p-5 space-y-4 border border-[var(--ss-border)] shadow-card">
@@ -2384,10 +2550,40 @@ export function SettingsPage() {
                 {t('auto.SettingsPage.backup_desc')}
               </p>
 
+              {backupsUnavailable && <QueryErrorNotice onRetry={() => { void refetchBackups() }} />}
+              {backupsData?.status && (
+                <div className="text-xs text-[var(--ss-t2)] space-y-0.5">
+                  <p>
+                    <span className="text-[var(--ss-t3)]">{t('auto.SettingsPage.backup_last_success')}: </span>
+                    {backupsData.status.last_success_at
+                      ? <span className="ss-num">{formatJST(backupsData.status.last_success_at)}</span>
+                      : <span className="text-[var(--ss-warn)]">{t('auto.SettingsPage.backup_never')}</span>}
+                    {backupsData.status.last_encrypted !== null && (
+                      <span className="ml-2 text-[var(--ss-t3)]">
+                        {backupsData.status.last_encrypted ? t('auto.SettingsPage.backup_encrypted') : t('auto.SettingsPage.backup_plain')}
+                      </span>
+                    )}
+                  </p>
+                  <p className="ss-num">{t('auto.SettingsPage.backup_generations', { count: backupsData.status.count, max: backupsData.status.max_generations })}</p>
+                  <p className="truncate" title={backupsData.status.backup_dir}>
+                    <span className="text-[var(--ss-t3)]">{t('auto.SettingsPage.backup_location')}: </span>
+                    <span className="font-mono">{backupsData.status.backup_dir}</span>
+                  </p>
+                  {!backupsData.status.supported && (
+                    <p className="text-[var(--ss-warn)]">
+                      {backupsData.status.reason === 'pg_dump_missing'
+                        ? t('auto.SettingsPage.backup_unsupported_pg')
+                        : t('auto.SettingsPage.backup_unsupported_other')}
+                    </p>
+                  )}
+                  <p className="text-[var(--ss-t3)]">{t('auto.SettingsPage.backup_restore_note')}</p>
+                </div>
+              )}
+
               <div className="flex items-center gap-3">
                 <button
                   onClick={handleBackup}
-                  disabled={backupRunning}
+                  disabled={backupRunning || backupsUnavailable || backupsData?.status?.supported === false}
                   className="flex items-center gap-1.5 px-4 py-2 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-40 rounded-ss-md text-sm font-medium transition-colors duration-fast ease-out text-white"
                 >
                   <MIcon name="folder_zip" size={14} />
@@ -2406,6 +2602,7 @@ export function SettingsPage() {
                     {backupsData!.data.map((b) => (
                       <div key={b.filename} className="flex items-center justify-between px-3 py-2 text-xs text-[var(--ss-t2)] gap-2">
                         <span className="truncate font-mono flex-1 min-w-0" title={b.filename}>{b.filename}</span>
+                        <span className="text-[var(--ss-t3)] shrink-0 ss-num">{formatJST(b.created_at)}</span>
                         <span className="text-[var(--ss-t3)] shrink-0 ss-num">{(b.size_bytes / 1024).toFixed(0)} KB</span>
                       </div>
                     ))}
@@ -2415,6 +2612,11 @@ export function SettingsPage() {
             </section>}
 
             {/* ── クラウドフォルダ候補 ─────────────────────── */}
+            {cloudPackagesUnavailable && (
+              <section className="bg-[var(--ss-surface-1)] rounded-ss-lg p-5 border border-[var(--ss-border)] shadow-card">
+                <QueryErrorNotice onRetry={() => { void refetchCloudPackages() }} />
+              </section>
+            )}
             {cloudFolderConfigured && (
               <section className="bg-[var(--ss-surface-1)] rounded-ss-lg p-5 space-y-4 border border-[var(--ss-border)] shadow-card">
                 <div className="flex items-center justify-between">
@@ -2438,12 +2640,43 @@ export function SettingsPage() {
                         </div>
                         <button
                           onClick={async () => {
-                            const resp = await fetch(`/api/sync/cloud/import_from_path?path=${encodeURIComponent(pkg.path)}&dry_run=false`, { method: 'POST' })
-                            const json = await resp.json()
-                            alert(json.success
-                              ? `完了: 追加${json.data.added} / 更新${json.data.updated} / 競合${json.data.conflicts}`
-                              : `エラー: ${json.detail}`)
-                            if (json.success) queryClient.invalidateQueries()
+                            // 確認なしで実取り込みしない: 先に dry_run=true で件数と競合を出し、
+                            // 利用者が了承したときだけ実行する。
+                            const base = `/api/sync/cloud/import_from_path?path=${encodeURIComponent(pkg.path)}`
+                            const detailOf = (j: { detail?: unknown }) => (typeof j.detail === 'string' ? j.detail : '')
+                            try {
+                              const preResp = await fetch(`${base}&dry_run=true`, { method: 'POST' })
+                              const pre = await preResp.json()
+                              if (!preResp.ok || !pre.success) {
+                                alert(t('settings.ui.cloud_import_preview_failed', { detail: detailOf(pre) }))
+                                return
+                              }
+                              const p = pre.data
+                              const ok = window.confirm(t('settings.ui.cloud_import_confirm', {
+                                name: pkg.filename,
+                                added: p.added,
+                                updated: p.updated,
+                                kept: p.kept,
+                                deleted: p.deleted,
+                                conflicts: p.conflicts,
+                              }))
+                              if (!ok) return
+                              const resp = await fetch(`${base}&dry_run=false`, { method: 'POST' })
+                              const json = await resp.json()
+                              if (!resp.ok || !json.success) {
+                                alert(t('settings.ui.cloud_import_failed', { detail: detailOf(json) }))
+                                return
+                              }
+                              alert(t('auto.SettingsPage.import_result_summary', {
+                                added: json.data.added,
+                                updated: json.data.updated,
+                                kept: json.data.kept,
+                                conflicts: json.data.conflicts,
+                              }))
+                              queryClient.invalidateQueries()
+                            } catch {
+                              alert(t('settings.ui.cloud_import_failed', { detail: '' }))
+                            }
                           }}
                           className="flex items-center gap-1 px-2.5 py-1.5 bg-[var(--ss-success)] hover:opacity-90 rounded-ss-sm text-white whitespace-nowrap shrink-0 transition-opacity duration-fast ease-out"
                         >
@@ -2458,6 +2691,11 @@ export function SettingsPage() {
             )}
 
             {/* ── 競合レビュー ─────────────────────────────── */}
+            {conflictsUnavailable && (
+              <section className="bg-[var(--ss-surface-1)] rounded-ss-lg p-5 border border-[var(--ss-border)] shadow-card">
+                <QueryErrorNotice onRetry={() => { void refetchConflicts() }} />
+              </section>
+            )}
             {conflicts.length > 0 && (
               <section className="bg-[var(--ss-surface-1)] rounded-ss-lg p-5 space-y-4 border border-[var(--ss-border)] shadow-card">
                 <div className="flex items-center justify-between">
@@ -2506,7 +2744,8 @@ export function SettingsPage() {
               </section>
             )}
 
-            {/* ── JSON パッケージ インポート ──────────────────────── */}
+            {/* ── JSON パッケージ インポート (analyst / admin のみ: backend require_analyst と一致) ── */}
+            {canSyncData && (
             <section>
               <h2 className="text-base font-semibold text-[var(--ss-t1)]">{t('settings.ui.json_package_import')}</h2>
               <p className={`text-xs ${textMuted} mt-1 mb-3`}>
@@ -2551,6 +2790,7 @@ export function SettingsPage() {
                 )}
               </div>
             </section>
+            )}
 
             {/* ── DB メンテナンス (admin only) ──────────────────────────────────── */}
             {role === 'admin' && <section className="bg-[var(--ss-surface-1)] rounded-ss-lg p-5 space-y-4 border border-[var(--ss-border)] shadow-card">
@@ -2580,7 +2820,7 @@ export function SettingsPage() {
                     <span className={textSecondary}>{t('auto.SettingsPage.auto_vacuum_label')}</span>
                     <div className="flex items-center gap-2">
                       <span className={`font-mono text-xs ${dbStats.auto_vacuum === 2 ? 'text-[var(--ss-success)]' : 'text-[var(--ss-warn)]'}`}>
-                        {dbStats.auto_vacuum === 0 ? 'OFF' : dbStats.auto_vacuum === 1 ? 'FULL' : 'INCREMENTAL'}
+                        {dbStats.auto_vacuum === 0 ? t('auto.SettingsPage.av_mode_off') : dbStats.auto_vacuum === 1 ? t('auto.SettingsPage.av_mode_full') : t('auto.SettingsPage.av_mode_incremental')}
                       </span>
                       {/* トグルボタン */}
                       {dbStats.auto_vacuum !== 2 ? (
@@ -2590,7 +2830,7 @@ export function SettingsPage() {
                           title={t('auto.SettingsPage.k24')}
                           className="text-[10px] px-2 py-0.5 rounded-ss-sm bg-[var(--ss-warn)] hover:opacity-90 text-white disabled:opacity-40 transition-opacity duration-fast ease-out"
                         >
-                          {dbAvRunning ? <MIcon name="restart_alt" size={10} className="animate-spin inline" /> : 'INCREMENTAL に変更'}
+                          {dbAvRunning ? <MIcon name="restart_alt" size={10} className="animate-spin inline" /> : t('auto.SettingsPage.av_to_incremental')}
                         </button>
                       ) : (
                         <button
@@ -2599,7 +2839,7 @@ export function SettingsPage() {
                           title={t('auto.SettingsPage.k25')}
                           className="text-[10px] px-2 py-0.5 rounded-ss-sm bg-[var(--ss-t2)] hover:opacity-90 text-white disabled:opacity-40 transition-opacity duration-fast ease-out"
                         >
-                          {dbAvRunning ? <MIcon name="restart_alt" size={10} className="animate-spin inline" /> : 'OFF に戻す'}
+                          {dbAvRunning ? <MIcon name="restart_alt" size={10} className="animate-spin inline" /> : t('auto.SettingsPage.av_to_off')}
                         </button>
                       )}
                     </div>
@@ -2617,6 +2857,22 @@ export function SettingsPage() {
                 <span className="font-medium text-[var(--ss-t2)]">{t('auto.SettingsPage.k17')}</span>
                 {t('auto.SettingsPage.db_optimize_desc')}
               </p>
+              {dbStats?.supported ? (
+                <p className="text-xs text-[var(--ss-t2)] ss-num">
+                  {t('auto.SettingsPage.db_optimize_estimate', {
+                    mb: ((dbStats.freelist_count * dbStats.page_size) / 1_048_576).toFixed(2),
+                    pages: dbStats.freelist_count,
+                  })}
+                </p>
+              ) : (
+                dbStats && <p className="text-xs text-[var(--ss-warn)]">{t('auto.SettingsPage.db_optimize_unsupported')}</p>
+              )}
+
+              {dbMaintFailed && (
+                <div role="alert" className="text-xs rounded-ss-sm px-3 py-2 bg-[var(--ss-surface-2)] text-[var(--ss-bad)]">
+                  {t('common_ui.db_maint_failed')}
+                </div>
+              )}
 
               {dbMaintResult && (
                 <div className={`text-xs rounded-ss-sm px-3 py-2 ${
@@ -2632,9 +2888,9 @@ export function SettingsPage() {
 
               <button
                 onClick={handleDbMaintenance}
-                disabled={dbMaintRunning || dbAvRunning}
+                disabled={dbMaintRunning || dbAvRunning || dbStats?.supported !== true}
                 className={`flex items-center gap-2 px-4 py-2 rounded-ss-md text-sm font-medium transition-colors duration-fast ease-out ${
-                  dbMaintRunning || dbAvRunning
+                  dbMaintRunning || dbAvRunning || dbStats?.supported !== true
                     ? 'bg-[var(--ss-surface-2)] text-[var(--ss-t3)] cursor-not-allowed'
                     : 'bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white'
                 }`}
@@ -2650,7 +2906,7 @@ export function SettingsPage() {
         )}
 
         {/* クラスタタブ */}
-        {activeTab === 'cluster' && (
+        {activeTab === 'cluster' && adminTabsAllowed && (
           <div className="space-y-6">
             <ClusterSettingsPanel />
           </div>
@@ -2723,13 +2979,14 @@ export function SettingsPage() {
               <p className={`text-xs ${textMuted} mb-3`}>
                 {t('auto.SettingsPage.account_role_note')}
               </p>
+              {meUnavailable && <QueryErrorNotice onRetry={() => { void meQuery.refetch() }} />}
               <div className={`rounded-lg border p-4 space-y-2 ${isLight ? 'border-gray-300 bg-white' : 'border-gray-600 bg-gray-800'}`}>
                 {/* "Display name" と "User ID" が両方 displayName を出していた
                    copy-paste bug の修正。User ID は /auth/me の username (= ログ
                    イン ID) と useAuth の userId (= 数値 PK) を併記する。 */}
-                <div className={`text-sm ${textSecondary}`}>{t('auto.SettingsPage.display_name_label')}<span className={textHeading}>{effectiveDisplayName ?? t('auto.SettingsPage.unset')}</span></div>
+                <div className={`text-sm ${textSecondary}`}>{t('auto.SettingsPage.display_name_label')}<span className={textHeading}>{meUnavailable ? '—' : (effectiveDisplayName ?? t('auto.SettingsPage.unset'))}</span></div>
                 <div className={`text-sm ${textSecondary}`}>{t('auto.SettingsPage.role_label')}<span className={textHeading}>{role ? t(`auth.role.${role}`) : t('auto.SettingsPage.not_logged_in')}</span></div>
-                <div className={`text-sm ${textSecondary}`}>{t('auto.SettingsPage.username_label')}<span className={textHeading}>{loginUsername ?? '-'}</span>{userId != null && <span className={`${textMuted} ml-2`}>(#{userId})</span>}</div>
+                <div className={`text-sm ${textSecondary}`}>{t('auto.SettingsPage.username_label')}<span className={textHeading}>{meUnavailable ? '—' : (loginUsername ?? '-')}</span>{userId != null && <span className={`${textMuted} ml-2`}>(#{userId})</span>}</div>
                 <div className={`text-sm ${textSecondary}`}>{t('auto.SettingsPage.team_label')}<span className={textHeading}>{teamName ?? '-'}</span></div>
               </div>
               <div className="mt-4 flex flex-col gap-3">
@@ -2761,8 +3018,20 @@ export function SettingsPage() {
                 <p className={`text-xs ${textMuted} mb-3`}>
                   {t('auto.SettingsPage.restart_desc')}
                 </p>
+                <p
+                  className={`text-xs mb-3 ${unsavedAnnotationCount > 0 ? 'text-amber-500 font-medium' : textMuted}`}
+                  role="status"
+                >
+                  {unsavedAnnotationCount > 0
+                    ? t('settings_general.restart_unsaved', { count: unsavedAnnotationCount })
+                    : t('settings_general.restart_no_unsaved')}
+                </p>
                 <button
                   onClick={() => {
+                    const msg = unsavedAnnotationCount > 0
+                      ? t('settings_general.restart_confirm_unsaved', { count: unsavedAnnotationCount })
+                      : t('settings.ui.restart_app_confirm')
+                    if (!window.confirm(msg)) return
                     if (window.shuttlescope?.restartApp) {
                       window.shuttlescope.restartApp()
                     } else {
@@ -2796,7 +3065,7 @@ export function SettingsPage() {
           <div className={`${card} rounded-lg w-full max-w-lg max-h-[90dvh] overflow-y-auto`}>
             <div className={`flex items-center justify-between px-4 sm:px-6 py-4 border-b ${borderLine}`}>
               <h2 className={`text-lg font-semibold ${textHeading}`}>{editingPlayer ? '選手編集' : '選手追加'}</h2>
-              <button onClick={() => { setShowPlayerForm(false); setEditingPlayer(null) }} className={`${textMuted} ${isLight ? 'hover:text-gray-900' : 'hover:text-white'}`}><MIcon name="close" size={14} /></button>
+              <button aria-label={t('app.close')} onClick={() => { setShowPlayerForm(false); setEditingPlayer(null) }} className={`${textMuted} ${isLight ? 'hover:text-gray-900' : 'hover:text-white'}`}><MIcon name="close" size={14} /></button>
             </div>
             <form onSubmit={handlePlayerSubmit} className="p-4 sm:p-6 flex flex-col gap-3">
               <div>
@@ -2854,9 +3123,10 @@ export function SettingsPage() {
                   <label className={`block text-sm ${textSecondary} mb-1`}>{t('player.dominant_hand')}</label>
                   <select
                     value={playerForm.dominant_hand}
-                    onChange={(e) => setPlayerForm({ ...playerForm, dominant_hand: e.target.value as 'R' | 'L' })}
+                    onChange={(e) => setPlayerForm({ ...playerForm, dominant_hand: e.target.value as 'R' | 'L' | '' })}
                     className={`w-full ${inputClass}`}
                   >
+                    <option value="">{t('settings.ui.not_set_hand')}</option>
                     <option value="R">{t('settings.ui.right_handed')}</option>
                     <option value="L">{t('settings.ui.left_handed')}</option>
                   </select>
@@ -2943,9 +3213,11 @@ function BackendConsole({
   // 初回開いたときにバッファを取得
   useEffect(() => {
     if (!open) return
+    let active = true
     if (window.shuttlescope?.getBackendLog) {
-      window.shuttlescope.getBackendLog().then(setLines).catch(() => {})
+      window.shuttlescope.getBackendLog().then((v) => { if (active) setLines(v) }).catch(() => {})
     }
+    return () => { active = false }
   }, [open])
 
   // リアルタイム受信
@@ -3015,7 +3287,8 @@ function BackendConsole({
 function TutorialReplaySection({ card }: { card: string }) {
   const { t } = useTranslation()
 
-  const { state, loading, refresh } = useTutorialState()
+  const { state, loading, refresh, loadError } = useTutorialState()
+  const [replaySyncFailed, setReplaySyncFailed] = useState(false)
   return (
     <section className={`${card} rounded-lg p-5 space-y-3`} data-tutorial="settings.tutorialReplay">
       <div className="flex items-center gap-2">
@@ -3025,6 +3298,11 @@ function TutorialReplaySection({ card }: { card: string }) {
       <p className="text-xs text-gray-400">
         {t('auto.SettingsPage.tutorial_desc')}
       </p>
+      {(loadError || replaySyncFailed) && (
+        <div role="alert" className="text-xs text-red-400">
+          {loadError ? t('auto.SettingsPage.tutorial_state_failed') : t('auto.SettingsPage.tutorial_sync_failed')}
+        </div>
+      )}
       {loading ? (
         <div className="text-xs text-gray-500">{t('auto.SettingsPage.k43')}</div>
       ) : (
@@ -3037,16 +3315,20 @@ function TutorialReplaySection({ card }: { card: string }) {
                 className="flex flex-wrap items-center justify-between gap-2 border border-gray-700 rounded p-2"
               >
                 <div className="min-w-0">
-                  <div className="text-sm font-medium truncate">{tut.title}</div>
+                  <div className="text-sm font-medium truncate">{tut.titleKey ? t(tut.titleKey) : (tut.title ?? tut.id)}</div>
                   <div className="text-xs text-gray-400">
                     {t('auto.SettingsPage.step_count', { n: tut.steps.length })}
                     {rec && (
-                      <> {t('auto.SettingsPage.k44')} <span className="text-gray-200">{rec.status}</span>{t('auto.SettingsPage.replay_count', { n: rec.replay_count })}</>
+                      <> {t('auto.SettingsPage.k44')} <span className="text-gray-200">{t(`auto.SettingsPage.tutorial_status_${rec.status}`)}</span>{t('auto.SettingsPage.replay_count', { n: rec.replay_count })}</>
                     )}
                   </div>
                 </div>
                 <button
-                  onClick={async () => { await replayTutorial(tut.id); void refresh() }}
+                  onClick={async () => {
+                    const recorded = await replayTutorial(tut.id)
+                    setReplaySyncFailed(!recorded)
+                    void refresh()
+                  }}
                   // Design Language §2.7: primary CTA は bg-blue-600 + text-white (確実な
                   // AAA コントラスト)。bg-sky-* は明るすぎて mode によって白文字が読めない
                   // ケースが起きていたため変更 (2026-05-19)。

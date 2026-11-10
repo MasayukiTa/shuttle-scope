@@ -40,8 +40,11 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      # 版を固定する。未固定だと 1.0.90 → 1.0.100 (2026-09-29) が黙って入り、
+      # 「絶対に一致しなかった規則を直した」変更で、触っていないファイルに新しい alert が出た。
+      # 上げる時は版を変えて、出た alert を確認してから main に入れる。
       - name: Install DevSkim CLI
-        run: dotnet tool install --global Microsoft.CST.DevSkim.CLI
+        run: dotnet tool install --global Microsoft.CST.DevSkim.CLI --version 1.0.100
 
       - name: Run DevSkim scanner
         # 検出があっても CI は失敗させず、SARIF を Security tab に upload して

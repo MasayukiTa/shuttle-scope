@@ -2,9 +2,11 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
-import { apiGet, API_BASE_URL } from '@/api/client'
+import { apiGet } from '@/api/client'
+import { downloadReport } from '@/utils/downloadReport'
 import { Player, AnalysisFilters } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
+import { canViewResearch } from '@/utils/researchAccess'
 import { useTheme } from '@/hooks/useTheme'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { DashboardTopNav } from '@/components/dashboard/DashboardTopNav'
@@ -20,18 +22,26 @@ import { DashboardResearchPage } from './DashboardResearchPage'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { DateRangeSlider } from '@/components/common/DateRangeSlider'
 import { MIcon } from '@/components/common/MIcon'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
+import { fmtPct } from '@/utils/format'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
 interface DescriptiveSummary {
   total_matches: number
   total_rallies: number
-  win_rate: number
-  avg_rally_length: number
+  // ラリー 0 件 / サーブ(レシーブ)側 0 件の率は null (0% ではない)
+  win_rate: number | null
+  avg_rally_length: number | null
   end_type_distribution: Record<string, number>
   rally_length_histogram: { length: number; count: number }[]
   win_by_end_type: Record<string, { wins: number; total: number }>
-  server_win_rate: { as_server: number; as_receiver: number }
+  server_win_rate: {
+    as_server: number | null
+    as_receiver: number | null
+    server_count?: number
+    receiver_count?: number
+  }
 }
 
 interface SetScore {
@@ -56,8 +66,8 @@ export interface MatchSummary {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function pct(value: number) {
-  return `${(value * 100).toFixed(1)}%`
+function pct(value: number | null | undefined) {
+  return fmtPct(value)
 }
 
 function StatCard({
@@ -65,17 +75,22 @@ function StatCard({
   label,
   value,
   sampleSize,
+  sampleUnit = 'rallies',
 }: {
   icon: React.ReactNode
   label: string
   value: string | number | undefined
   sampleSize?: number
+  // 標本単位: 勝率は試合単位 (= matches)、ラリー由来の指標は rallies。
+  // 監査 #224: 勝率の下に N=ラリー数 を出すと確からしさを過大表示するため分ける。
+  sampleUnit?: 'rallies' | 'matches'
 }) {
   const { t } = useTranslation()
   // 旧版は bg-gray-800 を完全ハードコードしていてライトモードでも濃紺カード
   // のままになっていた (2026-05-19 修正)。
   const isLight = useIsLightMode()
-  const starsFilled = sampleSize === undefined ? null
+  // 星は rally 件数向けに調整された閾値。試合単位では意味が変わるため付けない。
+  const starsFilled = sampleSize === undefined || sampleUnit !== 'rallies' ? null
     : sampleSize < 500 ? 1
     : sampleSize < 2000 ? 2
     : 3
@@ -111,19 +126,14 @@ function StatCard({
                 {Array.from({ length: 3 }, (_, i) => <MIcon key={i} name={i < starsFilled ? 'star' : 'star_border'} size={10} />)}
               </span>
             )}
-            {t('auto.DashboardShell.k_n_rallies', { n: sampleSize.toLocaleString() })}
+            {sampleUnit === 'matches'
+              ? t('auto.DashboardShell.k_n_matches', { n: sampleSize.toLocaleString() })
+              : t('auto.DashboardShell.k_n_rallies', { n: sampleSize.toLocaleString() })}
           </p>
         )}
       </div>
     </div>
   )
-}
-
-const ROLE_LABELS: Record<string, string> = {
-  admin: '管理者',
-  analyst: 'アナリスト',
-  coach: 'コーチ',
-  player: '選手',
 }
 
 // ロールバッジ: 元はダーク基調しか想定していなかった hardcoded 色。
@@ -160,19 +170,12 @@ export function DashboardShell() {
   // 表示する。weakness 系 (review) や信頼性低 (advanced / research) は
   // DashboardTopNav と route 側で個別に gate するため、ここでは redirect しない。
 
+  const [downloadError, setDownloadError] = useState<string | null>(null)
   const dlReport = (path: string, filename: string) => {
-    const token = sessionStorage.getItem('shuttlescope_token')
-    const fullUrl = API_BASE_URL + path.replace(/^\/api/, '')
-    fetch(fullUrl, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
-      .then((r) => r.blob())
-      .then((blob) => {
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = filename
-        a.click()
-        URL.revokeObjectURL(url)
-      })
+    setDownloadError(null)
+    downloadReport(path, filename).catch(() => {
+      setDownloadError(t('common.download_failed'))
+    })
   }
 
   // ── 共有状態 ──
@@ -199,7 +202,7 @@ export function DashboardShell() {
   // 選手が切り替わったらフィルターリセット不要だが、試合選択は各サブページで管理
 
   // ── Players ──
-  const { data: playersResp, isLoading: loadingPlayers } = useQuery({
+  const { data: playersResp, isLoading: loadingPlayers, isError: playersError, refetch: refetchPlayers } = useQuery({
     queryKey: ['players'],
     queryFn: () => apiGet<{ success: boolean; data: Player[] }>('/players'),
   })
@@ -225,7 +228,7 @@ export function DashboardShell() {
   const descriptive = descriptiveResp?.data ?? null
 
   // ── Matches（複数サブページで共有） ──
-  const { data: matchesResp, isLoading: loadingMatches } = useQuery({
+  const { data: matchesResp, isLoading: loadingMatches, isError: matchesError, refetch: refetchMatches } = useQuery({
     queryKey: ['analysis-matches-summary', selectedPlayerId],
     queryFn: () =>
       apiGet<{ success: boolean; data: MatchSummary[] }>(
@@ -258,6 +261,15 @@ export function DashboardShell() {
     setFilterDateFrom(null)
     setFilterDateTo(null)
   }, [selectedPlayerId])
+
+  // player ロールは自分の 1 プロフィールしか見られない。選手が 1 人に確定したら
+  // 毎回「選手を選択してください」で止めず自動選択する (監査 #611)。
+  // 複数候補がある場合や他ロールでは従来どおり手動選択を維持する。
+  useEffect(() => {
+    if (role === 'player' && selectedPlayerId == null && sortedPlayers.length === 1) {
+      setSelectedPlayerId(sortedPlayers[0].id)
+    }
+  }, [role, selectedPlayerId, sortedPlayers])
 
   const cardBg = isLight ? 'bg-gray-50' : 'bg-gray-900'
   const borderColor = isLight ? 'border-gray-200' : 'border-gray-800'
@@ -299,7 +311,7 @@ export function DashboardShell() {
             </span>
             {role && (
               <span className={`${ROLE_BADGE_SHAPE} text-[10px] ${(isLight ? ROLE_BADGE_CLASS_LIGHT : ROLE_BADGE_CLASS_DARK)[role] ?? (isLight ? 'bg-white border-gray-300 text-gray-700' : 'bg-gray-800 border-gray-600 text-gray-200')}`}>
-                {ROLE_LABELS[role] ?? role}
+                {t('roles.' + role, role)}
               </span>
             )}
           </div>
@@ -313,7 +325,7 @@ export function DashboardShell() {
             <h1 className="text-xl font-semibold">{t('nav.dashboard_title', 'ダッシュボード')}</h1>
             {role && (
               <span className={`${ROLE_BADGE_SHAPE} ${(isLight ? ROLE_BADGE_CLASS_LIGHT : ROLE_BADGE_CLASS_DARK)[role] ?? (isLight ? 'bg-white border-gray-300 text-gray-700' : 'bg-gray-800 border-gray-600 text-gray-200')}`}>
-                {ROLE_LABELS[role] ?? role}
+                {t('roles.' + role, role)}
               </span>
             )}
           </div>
@@ -342,7 +354,11 @@ export function DashboardShell() {
           </div>
         </div>
 
-        {!selectedPlayerId ? (
+        {playersError ? (
+          <div className="flex min-h-[40vh] items-center justify-center">
+            <QueryErrorNotice onRetry={() => refetchPlayers()} />
+          </div>
+        ) : !selectedPlayerId ? (
           <div className="flex min-h-[40vh] items-center justify-center text-gray-500 text-sm">
             {t('common.please_select_player', '選手を選択してください')}
           </div>
@@ -391,22 +407,34 @@ export function DashboardShell() {
                   </button>
                 )}
               </div>
+              {downloadError && (
+                <div
+                  role="alert"
+                  className="mt-2 text-sm text-[var(--ss-bad)] bg-[var(--ss-danger-tint)] border border-[var(--ss-danger-border)] rounded-ss-md px-3 py-2"
+                >
+                  {downloadError}
+                </div>
+              )}
             </div>
 
             <div className={`px-6 pt-3 pb-3 border-b ${borderColor}`}>
               <div className="grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-4 gap-3">
                 <StatCard icon={<MIcon name="emoji_events" size={18} />} label="試合数" value={descriptive?.total_matches} />
-                <StatCard icon={<MIcon name="monitor_heart" size={18} />} label="ラリー数" value={descriptive?.total_rallies} sampleSize={descriptive?.total_rallies} />
-                <StatCard
-                  icon={<MIcon name="trending_up" size={18} />}
-                  label="勝率"
-                  value={descriptive?.win_rate !== undefined ? pct(descriptive.win_rate) : undefined}
-                  sampleSize={descriptive?.total_rallies}
-                />
+                <StatCard icon={<MIcon name="monitor_heart" size={18} />} label="ラリー数" value={descriptive?.total_rallies} />
+                {/* 生の勝率は player に見せない (製品ルール)。analyst / coach / admin のみ */}
+                {role !== 'player' && (
+                  <StatCard
+                    icon={<MIcon name="trending_up" size={18} />}
+                    label={t('auto.DashboardShell.k_rally_win_rate')}
+                    value={descriptive?.win_rate !== undefined ? pct(descriptive.win_rate) : undefined}
+                    sampleSize={descriptive?.total_matches}
+                    sampleUnit="matches"
+                  />
+                )}
                 <StatCard
                   icon={<MIcon name="crisis_alert" size={18} />}
                   label="平均ラリー長"
-                  value={descriptive?.avg_rally_length !== undefined ? descriptive.avg_rally_length.toFixed(1) : undefined}
+                  value={typeof descriptive?.avg_rally_length === 'number' ? descriptive.avg_rally_length.toFixed(1) : undefined}
                   sampleSize={descriptive?.total_rallies}
                 />
               </div>
@@ -414,17 +442,29 @@ export function DashboardShell() {
 
             <div className={`px-6 py-2 border-b ${borderColor}`} data-tutorial="dashboard.matchPicker">
               <div className={`flex gap-2 flex-wrap items-center rounded-ss-lg px-3 py-2 ${isLight ? 'bg-gray-100' : 'bg-gray-800/50'}`}>
-                <span className={`text-xs ${textMuted} shrink-0`}>{t('analysis.filter.result')}:</span>
-                <select
-                  className={`border text-xs rounded-ss-md px-2 py-1 focus:outline-none ${isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-700 border-gray-600 text-white'}`}
-                  value={filterResult}
-                  onChange={(e) => setFilterResult(e.target.value as 'all' | 'win' | 'loss')}
-                >
-                  <option value="all">{t('analysis.filter.all')}</option>
-                  <option value="win">{t('analysis.filter.win')}</option>
-                  <option value="loss">{t('analysis.filter.loss')}</option>
-                </select>
-                <span className={`text-xs ${textMuted} shrink-0 ml-2`}>{t('analysis.filter.level')}:</span>
+                {/* 勝敗フィルタは個別試合の勝敗を選手に列挙させるため player には出さない */}
+                {role !== 'player' && (
+                  <>
+                    <span className={`text-xs ${textMuted} shrink-0`}>{t('analysis.filter.result')}:</span>
+                    <select
+                      className={`border text-xs rounded-ss-md px-2 py-1 focus:outline-none ${isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-700 border-gray-600 text-white'}`}
+                      title={t('analysis.filter.loss_definition')}
+                      aria-label={t('analysis.filter.result')}
+                      value={filterResult}
+                      onChange={(e) => setFilterResult(e.target.value as 'all' | 'win' | 'loss')}
+                    >
+                      <option value="all">{t('analysis.filter.all')}</option>
+                      <option value="win">{t('analysis.filter.win')}</option>
+                      <option value="loss" title={t('analysis.filter.loss_definition')}>{t('analysis.filter.loss')}</option>
+                    </select>
+                    {filterResult === 'loss' && (
+                      <span className={`text-[10px] ${textMuted}`} data-testid="loss-filter-definition">
+                        {t('analysis.filter.loss_definition')}
+                      </span>
+                    )}
+                  </>
+                )}
+                <span className={`text-xs ${textMuted} shrink-0 ${role !== 'player' ? 'ml-2' : ''}`}>{t('analysis.filter.level')}:</span>
                 <select
                   className={`border text-xs rounded-ss-md px-2 py-1 focus:outline-none ${isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-700 border-gray-600 text-white'}`}
                   value={filterLevel ?? ''}
@@ -449,15 +489,20 @@ export function DashboardShell() {
                   value={filterDateTo ?? ''}
                   onChange={(e) => setFilterDateTo(e.target.value || null)}
                 />
-                <DateRangeSlider
-                  from={filterDateFrom}
-                  to={filterDateTo}
-                  minDate={sliderMin}
-                  maxDate={sliderMax}
-                  densityDates={matchDates}
-                  onChange={(f, t) => { setFilterDateFrom(f); setFilterDateTo(t) }}
-                  isLight={isLight}
-                />
+                {matchesError ? (
+                  // 試合サマリ取得失敗を「試合 0 件」の日付範囲へ変換しない (監査 #723)
+                  <QueryErrorNotice className="py-0" onRetry={() => { void refetchMatches() }} />
+                ) : (
+                  <DateRangeSlider
+                    from={filterDateFrom}
+                    to={filterDateTo}
+                    minDate={sliderMin}
+                    maxDate={sliderMax}
+                    densityDates={matchDates}
+                    onChange={(f, t) => { setFilterDateFrom(f); setFilterDateTo(t) }}
+                    isLight={isLight}
+                  />
+                )}
                 {(filterResult !== 'all' || filterLevel || filterDateFrom || filterDateTo) && (
                   <button
                     className="text-xs ml-1 transition-colors duration-base ease-out"
@@ -529,11 +574,13 @@ export function DashboardShell() {
                   <Route
                     path="growth"
                     element={
-                      <DashboardGrowthPage
-                        playerId={selectedPlayerId}
-                        filters={filters}
-                        sortedPlayers={sortedPlayers}
-                      />
+                      role === 'player'
+                        ? <Navigate to="/dashboard/overview" replace />
+                        : <DashboardGrowthPage
+                            playerId={selectedPlayerId}
+                            filters={filters}
+                            sortedPlayers={sortedPlayers}
+                          />
                     }
                   />
                   <Route
@@ -552,7 +599,7 @@ export function DashboardShell() {
                   <Route
                     path="research"
                     element={
-                      role === 'player'
+                      !canViewResearch(role)
                         ? <Navigate to="/dashboard/overview" replace />
                         : <DashboardResearchPage
                             playerId={selectedPlayerId}

@@ -95,6 +95,45 @@ export function AttributePanel({ attributes, onChange, disabled = false }: Attri
           )
         })}
       </div>
+
+      {/* 打球の高さ（任意 4 段階）: 仙台大要望。未選択のままでも記録でき、
+          選択中のボタンを再タップすると未選択へ戻せる（1 タップ入力）。 */}
+      <div
+        className="flex items-center gap-1.5 md:gap-1"
+        role="radiogroup"
+        aria-label={t('annotator.hit_height_aria')}
+      >
+        <span className="text-[var(--ss-t3)] text-xs" title={t('annotator.hit_height_hint')}>
+          {t('annotator.hit_height_label')}
+        </span>
+        {[
+          { value: 0, label: t('annotator.hit_height_above_net') },
+          { value: 1, label: t('annotator.hit_height_slightly_above') },
+          { value: 2, label: t('annotator.hit_height_slightly_below') },
+          { value: 3, label: t('annotator.hit_height_below') },
+        ].map(({ value, label }) => {
+          const selected = attributes.hit_height === value
+          return (
+            <button
+              key={value}
+              onClick={() => toggle('hit_height', selected ? undefined : value)}
+              disabled={disabled}
+              role="radio"
+              aria-checked={selected}
+              aria-disabled={disabled || undefined}
+              data-testid={`hit-height-${value}`}
+              className={
+                (selected
+                  ? 'px-3 py-2 md:px-2 md:py-0.5 rounded-ss-md bg-[var(--ss-brand)] text-white text-xs transition-colors duration-fast ease-out'
+                  : 'px-3 py-2 md:px-2 md:py-0.5 rounded-ss-md bg-[var(--ss-surface-1)] border border-[var(--ss-border-strong)] text-[var(--ss-t2)] text-xs hover:bg-[var(--ss-surface-3)] transition-colors duration-fast ease-out')
+                + (disabled ? ' opacity-40 cursor-not-allowed' : '')
+              }
+            >
+              {label}
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }

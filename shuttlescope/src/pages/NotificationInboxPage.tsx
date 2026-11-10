@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { Link } from 'react-router-dom'
 
 import {
   publicInquiryBulkDelete,
@@ -9,6 +10,7 @@ import {
   publicInquiryUpdate,
   type PublicInquiryRow,
 } from '@/api/client'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { useAuth } from '@/hooks/useAuth'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 
@@ -17,6 +19,9 @@ const STATUS_LABELS: Record<PublicInquiryRow['status'], string> = {
   reviewed: '確認中',
   resolved: '対応済み',
 }
+
+// 連絡手段がメールアドレスの形のときだけ返信リンクを出す
+const EMAIL_RE = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/
 
 export function NotificationInboxPage() {
   const { t } = useTranslation()
@@ -29,6 +34,7 @@ export function NotificationInboxPage() {
 
   // 折りたたみ・選択モード状態
   const [listCollapsed, setListCollapsed] = useState(false)
+  const [manageOpen, setManageOpen] = useState(false)
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [dateModalOpen, setDateModalOpen] = useState(false)
@@ -65,6 +71,9 @@ export function NotificationInboxPage() {
     mutationFn: ({ inquiryId, status, admin_note }: { inquiryId: number; status: PublicInquiryRow['status']; admin_note?: string | null }) =>
       publicInquiryUpdate(inquiryId, { status, admin_note }),
     onSuccess: invalidateAll,
+    onError: () => {
+      window.alert(t('auto.NotificationInboxPage.mutation_failed'))
+    },
   })
 
   const deleteMutation = useMutation({
@@ -72,6 +81,9 @@ export function NotificationInboxPage() {
     onSuccess: async (_r, id) => {
       if (selectedId === id) setSelectedId(null)
       await invalidateAll()
+    },
+    onError: () => {
+      window.alert(t('auto.NotificationInboxPage.mutation_failed'))
     },
   })
 
@@ -83,10 +95,18 @@ export function NotificationInboxPage() {
       if (selectedId != null && deletedIds.has(selectedId)) setSelectedId(null)
       setSelectedIds(new Set())
       setSelectionMode(false)
+      // 期間指定削除の入力条件とモーダルは、API 成功後にのみ閉じて消す
+      setDateModalOpen(false)
+      setDateFrom('')
+      setDateTo('')
       await invalidateAll()
       // 件数フィードバック（通知方式はプロジェクト内の toast/alert を使用）
       // 今は最小限で alert に寄せる
       window.alert(t('auto.NotificationInboxPage.k32', { n: resp.data?.deleted ?? 0 }))
+    },
+    onError: () => {
+      // 失敗時は入力条件・選択状態を保持したままエラーを明示する
+      window.alert(t('auto.NotificationInboxPage.mutation_failed'))
     },
   })
 
@@ -140,9 +160,6 @@ export function NotificationInboxPage() {
     if (dateFrom) body.created_after = new Date(dateFrom).toISOString()
     if (dateTo) body.created_before = new Date(dateTo).toISOString()
     bulkDeleteMutation.mutate(body)
-    setDateModalOpen(false)
-    setDateFrom('')
-    setDateTo('')
   }
 
   // ── レイアウト用フラグ ──────────────────────────────────────
@@ -185,34 +202,50 @@ export function NotificationInboxPage() {
 
         {!listCollapsed && (
           <>
-            {/* 操作バー */}
+            {/* 管理メニュー（削除系の操作は通常閉じておく） */}
             <div className={`px-3 py-2 border-b ${border} flex flex-wrap gap-1.5 text-xs`}>
               <button
                 type="button"
                 onClick={() => {
-                  setSelectionMode((v) => !v)
+                  setManageOpen((v) => !v)
+                  setSelectionMode(false)
                   setSelectedIds(new Set())
                 }}
-                className={`px-2.5 py-1.5 rounded-ss-md ${selectionMode ? 'bg-[var(--ss-brand)] text-white border-[var(--ss-brand)] border' : btnSecondary}`}
-              >
-                {selectionMode
-                  ? t('auto.NotificationInboxPage.k14')
-                  : t('auto.NotificationInboxPage.k13')}
-              </button>
-              <button
-                type="button"
-                onClick={handleBulkDeleteResolved}
+                aria-expanded={manageOpen}
                 className={`px-2.5 py-1.5 rounded-ss-md ${btnSecondary}`}
               >
-                {t('auto.NotificationInboxPage.k21')}
+                {manageOpen ? t('auto.NotificationInboxPage.manage_close') : t('auto.NotificationInboxPage.manage_open')}
               </button>
-              <button
-                type="button"
-                onClick={() => setDateModalOpen(true)}
-                className={`px-2.5 py-1.5 rounded-ss-md ${btnSecondary}`}
-              >
-                {t('auto.NotificationInboxPage.k22')}
-              </button>
+              {manageOpen && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectionMode((v) => !v)
+                      setSelectedIds(new Set())
+                    }}
+                    className={`px-2.5 py-1.5 rounded-ss-md ${selectionMode ? 'bg-[var(--ss-brand)] text-white border-[var(--ss-brand)] border' : btnSecondary}`}
+                  >
+                    {selectionMode
+                      ? t('auto.NotificationInboxPage.k14')
+                      : t('auto.NotificationInboxPage.k13')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleBulkDeleteResolved}
+                    className={`px-2.5 py-1.5 rounded-ss-md ${btnSecondary}`}
+                  >
+                    {t('auto.NotificationInboxPage.k21')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDateModalOpen(true)}
+                    className={`px-2.5 py-1.5 rounded-ss-md ${btnSecondary}`}
+                  >
+                    {t('auto.NotificationInboxPage.k22')}
+                  </button>
+                </>
+              )}
             </div>
 
             {/* 一覧 */}
@@ -247,7 +280,18 @@ export function NotificationInboxPage() {
                         }
                         setSelectedId(item.id)
                         setDraftNote(item.admin_note ?? '')
+                        // #651: 項目を開いた時点で未読(new)なら確認中(reviewed)へ遷移させ、
+                        // Sidebar の未読バッジと実際の既読状態を同期させる。
+                        // admin_note は現在値を渡し、閲覧だけで上書き消去されないようにする。
+                        if (item.status === 'new') {
+                          updateMutation.mutate({ inquiryId: item.id, status: 'reviewed', admin_note: item.admin_note })
+                        }
                       }}
+                      aria-label={[
+                        item.name,
+                        STATUS_LABELS[item.status],
+                        new Date(item.created_at).toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo' }),
+                      ].join(' / ')}
                       className={`flex-1 text-left px-4 md:px-5 py-3 md:py-4 ${rowHover}`}
                     >
                       <div className="flex items-center justify-between gap-3">
@@ -282,24 +326,13 @@ export function NotificationInboxPage() {
                         {new Date(item.created_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}
                       </div>
                     </button>
-                    {!selectionMode && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleDeleteOne(item.id)
-                        }}
-                        className={`px-3 text-[var(--ss-danger-text)] hover:bg-[var(--ss-danger-bg)]`}
-                        title={t('auto.NotificationInboxPage.k12')}
-                        aria-label={t('auto.NotificationInboxPage.k12')}
-                      >
-                        {t('auto.NotificationInboxPage.trash_icon')}
-                      </button>
-                    )}
                   </div>
                 )
               })}
-              {items.length === 0 && (
+              {inquiriesQuery.isError && (
+                <QueryErrorNotice onRetry={() => { void inquiriesQuery.refetch() }} />
+              )}
+              {items.length === 0 && !inquiriesQuery.isError && !inquiriesQuery.isLoading && (
                 <div className={`px-5 py-6 text-sm ${textMuted}`}>
                   {t('auto.NotificationInboxPage.k4')}
                 </div>
@@ -348,7 +381,8 @@ export function NotificationInboxPage() {
                       key={status}
                       type="button"
                       onClick={() => updateMutation.mutate({ inquiryId: selected.id, status, admin_note: draftNote })}
-                      className={`px-3 py-2 rounded-ss-md text-sm font-medium border ${
+                      disabled={updateMutation.isPending}
+                      className={`px-3 py-2 rounded-ss-md text-sm font-medium border disabled:opacity-50 disabled:cursor-not-allowed ${
                         selected.status === status
                           ? 'bg-[var(--ss-brand)] text-white border-[var(--ss-brand)]'
                           : 'bg-[var(--ss-surface-2)] text-[var(--ss-t1)] border-[var(--ss-border)]'
@@ -357,13 +391,6 @@ export function NotificationInboxPage() {
                       {STATUS_LABELS[status]}
                     </button>
                   ))}
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteOne(selected.id)}
-                    className="px-3 py-2 rounded-ss-md text-sm font-medium border bg-[var(--ss-bad)] hover:opacity-90 duration-base ease-out text-white border-[var(--ss-bad)]"
-                  >
-                    {t('auto.NotificationInboxPage.k12')}
-                  </button>
                 </div>
               </div>
 
@@ -379,6 +406,19 @@ export function NotificationInboxPage() {
                 <div className="md:col-span-2">
                   <div className={`text-xs uppercase tracking-wide ${textMuted}`}>{t('auto.NotificationInboxPage.k7')}</div>
                   <div className={`text-sm mt-1 ${textMain} break-all`}>{selected.contact_reference || '未記入'}</div>
+                  {selected.contact_reference && EMAIL_RE.test(selected.contact_reference.trim()) && (
+                    <a
+                      href={`mailto:${selected.contact_reference.trim()}?subject=${encodeURIComponent('Re: ' + selected.name)}`}
+                      className="inline-block mt-2 text-sm text-[var(--ss-brand)] underline"
+                    >
+                      {t('auto.NotificationInboxPage.reply_mail')}
+                    </a>
+                  )}
+                  {selected.pending_user_id ? (
+                    <Link to="/users/pending" className="block mt-2 text-sm text-[var(--ss-brand)] underline">
+                      {t('pendingUsers.inquiry_has_registration')}
+                    </Link>
+                  ) : null}
                 </div>
               </div>
 
@@ -410,6 +450,19 @@ export function NotificationInboxPage() {
                     {t('auto.NotificationInboxPage.k30')}
                   </button>
                 </div>
+              </div>
+
+              <div className={`mt-6 pt-4 border-t ${border}`}>
+                <details>
+                  <summary className={`text-xs cursor-pointer ${textMuted}`}>{t('auto.NotificationInboxPage.danger_zone')}</summary>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteOne(selected.id)}
+                    className="mt-2 px-3 py-2 rounded-ss-md text-sm font-medium border bg-[var(--ss-bad)] hover:opacity-90 duration-base ease-out text-white border-[var(--ss-bad)]"
+                  >
+                    {t('auto.NotificationInboxPage.k12')}
+                  </button>
+                </details>
               </div>
             </div>
           </div>

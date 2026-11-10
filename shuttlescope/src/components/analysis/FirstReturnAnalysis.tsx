@@ -4,9 +4,14 @@ import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 import { perfColor, lightSafe, BAR } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { hasSufficientSample } from '@/utils/sampleGate'
+
+/** これ未満のリターン数では結果を出さない (監査 #438)。 */
+const FIRST_RETURN_MIN_SAMPLES = 5
 
 interface FirstReturnAnalysisProps {
   playerId: number
@@ -16,7 +21,8 @@ interface FirstReturnAnalysisProps {
 interface ZoneData {
   zone: string
   count: number
-  win_rate: number
+  /** player ロールでは backend が返さない (生の勝率は見せない)。無いときは列ごと出さない。 */
+  win_rate?: number
   freq_rate: number
 }
 
@@ -40,7 +46,7 @@ export function FirstReturnAnalysis({ playerId, filters = DEFAULT_FILTERS }: Fir
     ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
     ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
   }
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError, refetch } = useQuery({
     queryKey: ['analysis-first-return', playerId, filters],
     queryFn: () =>
       apiGet<FirstReturnResponse>('/analysis/first_return_analysis', { player_id: playerId, ...fp }),
@@ -51,12 +57,19 @@ export function FirstReturnAnalysis({ playerId, filters = DEFAULT_FILTERS }: Fir
     return <div className="text-[var(--ss-t3)] text-sm py-4 text-center">{t('analysis.loading')}</div>
   }
 
+  // A failed fetch must not fall through to NoDataMessage (success-empty);
+  // surface an explicit error with retry instead of masking it as no data.
+  if (isError) {
+    return <QueryErrorNotice onRetry={() => { void refetch() }} />
+  }
+
   const zones = resp?.data?.zones ?? []
   const topZones = resp?.data?.top_zones ?? []
   const sampleSize = resp?.meta?.sample_size ?? 0
+  const showWinRate = zones.some((z) => typeof z.win_rate === 'number')
 
-  if (zones.length === 0 || sampleSize === 0) {
-    return <NoDataMessage sampleSize={sampleSize} minRequired={5} unit="リターン" />
+  if (zones.length === 0 || !hasSufficientSample(sampleSize, FIRST_RETURN_MIN_SAMPLES)) {
+    return <NoDataMessage sampleSize={sampleSize} minRequired={FIRST_RETURN_MIN_SAMPLES} unit="リターン" />
   }
 
   return (
@@ -79,7 +92,9 @@ export function FirstReturnAnalysis({ playerId, filters = DEFAULT_FILTERS }: Fir
               <th className="text-left py-1.5 pr-3">{t('analysis.first_return.zone')}</th>
               <th className="text-center py-1.5 pr-3">{t('auto.FirstReturnAnalysis.k1')}</th>
               <th className="text-center py-1.5 pr-3">{t('analysis.first_return.freq_rate')}</th>
-              <th className="text-right py-1.5 pr-2">{t('analysis.first_return.win_rate')}</th>
+              {showWinRate && (
+                <th className="text-right py-1.5 pr-2">{t('analysis.first_return.win_rate')}</th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -94,14 +109,18 @@ export function FirstReturnAnalysis({ playerId, filters = DEFAULT_FILTERS }: Fir
                   <td className="py-1.5 pr-3 text-center text-[var(--ss-t2)] num-cell ss-num">
                     {(z.freq_rate * 100).toFixed(1)}%
                   </td>
-                  <td className="py-1.5 pr-2 text-right num-cell ss-num">
-                    <span
-                      className="font-semibold"
-                      style={{ color: lightSafe(perfColor(z.win_rate), !isLight) }}
-                    >
-                      {(z.win_rate * 100).toFixed(1)}%
-                    </span>
-                  </td>
+                  {showWinRate && (
+                    <td className="py-1.5 pr-2 text-right num-cell ss-num">
+                      {typeof z.win_rate === 'number' && (
+                        <span
+                          className="font-semibold"
+                          style={{ color: lightSafe(perfColor(z.win_rate), !isLight) }}
+                        >
+                          {(z.win_rate * 100).toFixed(1)}%
+                        </span>
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))}
           </tbody>

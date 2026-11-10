@@ -1,0 +1,23 @@
+# CI test manifest (方針C)
+# このリストに挻げた vitest テストは、vitest.config.ts の include
+# (src/**/__tests__/**/*.test.{ts,tsx}) に必ず合致し、CI の
+# `npx vitest run` で確実に収集・実行されることを
+# scripts/check_ci_test_manifest.py が検査する。
+# パスは shuttlescope/ からの相対 (src/ 始まり)。
+# 新しいテストはこのファイルを編集せず、ci_test_manifest.d/<テスト名>.txt を 1 ファイル 1 行で追加する。
+# check_ci_test_manifest.py はこのファイルと ci_test_manifest.d/*.txt の両方を読み、重複行は 1 回にまとめる。
+src/api/__tests__/proactiveRefresh.test.ts
+src/api/__tests__/client.refreshRetry.test.ts
+src/api/__tests__/authStorage.crossTab.test.ts
+src/utils/__tests__/strokeDraftDurability.test.ts
+src/i18n/__tests__/contactHeightLabels.t003.test.ts
+src/utils/__tests__/syncStatus.test.ts
+src/utils/__tests__/offlineStrokeQueue.resync.test.ts
+src/i18n/__tests__/hitZonePadLabels.t003.test.ts
+src/store/__tests__/annotationStore.strokeEnrichmentAt.t003.test.ts
+src/utils/__tests__/draftAgeLabel.test.ts
+src/api/__tests__/appAuthReaders.test.ts
+src/utils/__tests__/cameraWs.test.ts
+src/hooks/__tests__/useServerSideRecording.order.test.ts
+src/hooks/__tests__/useServerSideRecording.timeout.h14.test.ts
+src/components/video/__tests__/authTokenReaders.test.tsx

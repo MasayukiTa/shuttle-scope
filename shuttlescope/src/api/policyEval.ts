@@ -1,6 +1,7 @@
 // DR-OPE ポリシー評価 API クライアント
 import { apiGet } from '@/api/client'
-import type { SampleUnit } from '@/types'
+import type { AnalysisFilters, SampleUnit } from '@/types'
+import { toFilterApiParams, type FilterScopeMeta } from '@/utils/analysisFilterParams'
 
 // ── 型定義 ──────────────────────────────────────────────────────────────────
 
@@ -31,10 +32,13 @@ export interface PolicyEvalSummary {
   states_analyzed: number
   states_insufficient: number
   mean_uplift: number
-  best_state: { state_key: string; uplift: number } | null
+  /** CI が支持する場合のみ返る (最大 uplift かつ ci_low > value_behavior) */
+  best_state: { state_key: string; uplift: number; n: number } | null
+  /** 最大点推定の候補。best_state が null のときは不確実として表示する */
+  top_candidate: { state_key: string; uplift: number; n: number } | null
 }
 
-export interface PolicyEvalMeta {
+export interface PolicyEvalMeta extends FilterScopeMeta {
   sample_size: number
   sample_unit?: SampleUnit | null
   confidence: Record<string, unknown>
@@ -63,9 +67,11 @@ export interface PolicyEvalResponse {
 export function fetchPolicyEval(
   playerId: number,
   temp?: number,
+  filters?: AnalysisFilters,
 ): Promise<PolicyEvalResponse> {
   return apiGet<PolicyEvalResponse>('/analysis/policy_eval', {
     player_id: playerId,
     ...(temp !== undefined ? { temp } : {}),
+    ...(filters ? toFilterApiParams(filters) : {}),
   })
 }

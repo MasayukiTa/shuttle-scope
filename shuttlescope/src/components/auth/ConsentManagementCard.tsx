@@ -4,6 +4,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getMyConsents, withdrawConsent, submitConsents, type ConsentType } from '@/api/client'
 import { MIcon } from '@/components/common/MIcon'
 
+// 同意項目 → 適用中の文書 (backend/routers/legal_docs.py の /legal/<slug>)。
+// 同意状態画面から、同意した内容をいつでも読み直せるようにする。
+const CONSENT_DOC_SLUG: Partial<Record<string, string>> = {
+  service_delivery: 'privacy',
+  beta_agreement: 'beta_agreement',
+  ai_training: 'ai_training',
+  research_participation: 'research',
+}
+
 /**
  * ユーザが任意同意を撤回できる UI。GDPR Article 7(3) /
  * APPI 第18条 4 項の「同意取得と同じくらい容易に撤回可能」要件を満たすため
@@ -16,7 +25,7 @@ import { MIcon } from '@/components/common/MIcon'
  * は撤回ボタン押下 → 確認ダイアログ → DELETE /api/auth/consents/{type}。
  */
 export function ConsentManagementCard({ isLight }: { isLight: boolean }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const qc = useQueryClient()
   const [pending, setPending] = useState<ConsentType | null>(null)
 
@@ -68,7 +77,24 @@ export function ConsentManagementCard({ isLight }: { isLight: boolean }) {
   }
 
   if (consentQuery.error || !consentQuery.data) {
-    return null
+    // 取得失敗でセクションごと消さない (消すと「同意項目が無い」ように見え、撤回の入口も失われる)
+    return (
+      <section>
+        <h2 className={`text-lg font-medium mb-1 text-[var(--ss-t1)]`}>
+          {t('settings.consent.title')}
+        </h2>
+        <div role="alert" className="flex items-center gap-2 text-sm text-[var(--ss-danger-text)] mt-2">
+          <span>{t('common_ui.consent_load_failed')}</span>
+          <button
+            type="button"
+            onClick={() => consentQuery.refetch()}
+            className="underline"
+          >
+            {t('annotator.ui.retry')}
+          </button>
+        </div>
+      </section>
+    )
   }
 
   const data = consentQuery.data.data
@@ -136,14 +162,20 @@ export function ConsentManagementCard({ isLight }: { isLight: boolean }) {
                         className="text-[10px] font-bold tracking-wider px-2 py-0.5 rounded"
                         style={{ background: '#6b7280', color: '#fff' }}
                       >
-                        {t('settings.consent.status_off', 'NOT GRANTED')}
+                        {isRequired
+                          ? t('settings.consent.required_status_off', '未取得')
+                          : rec
+                            ? t('settings.consent.status_off', 'NOT GRANTED')
+                            : t('settings.consent.status_none', '未回答')}
                       </span>
                     ) : (
                       <span
                         className="text-[10px] font-bold tracking-wider px-2 py-0.5 rounded"
                         style={{ background: '#3b4cc0', color: '#fff' }}
                       >
-                        {t('settings.consent.status_on', 'GRANTED')}
+                        {isRequired
+                          ? t('settings.consent.required_status_on', '確認済み')
+                          : t('settings.consent.status_on', 'GRANTED')}
                       </span>
                     )}
                     <span className={`text-sm font-medium text-[var(--ss-t1)]`}>
@@ -169,15 +201,37 @@ export function ConsentManagementCard({ isLight }: { isLight: boolean }) {
                       {t('settings.consent.withdrawn_label', '撤回済み')}: {new Date(rec.withdrawn_at).toLocaleDateString()}
                     </div>
                   )}
+                  {CONSENT_DOC_SLUG[type] && (
+                    <a
+                      href={`${i18n.language?.startsWith('en') ? '/en' : ''}/legal/${CONSENT_DOC_SLUG[type]}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs mt-1 inline-block underline text-[var(--ss-brand)]"
+                    >
+                      {t('settings.consent.view_doc', '文書の内容を確認')}
+                    </a>
+                  )}
                 </div>
 
                 <div className="flex items-center">
                   {isRequired ? (
                     <span
-                      className={`flex items-center gap-1 text-xs text-[var(--ss-t3)]`}
+                      className={`flex flex-col items-end gap-1 text-xs text-[var(--ss-t3)]`}
                     >
-                      <MIcon name="error" size={12} />
-                      {t('settings.consent.required_note', '撤回不可')}
+                      <span className="flex items-center gap-1">
+                        <MIcon name="error" size={12} />
+                        {t('settings.consent.required_note', '撤回不可')}
+                      </span>
+                      {/* #530: 「撤回にはアカウント削除が必要」とだけ案内して導線が無く、
+                          利用者が削除/退会先を見つけられない状態を解消する。自己削除機能は
+                          未提供のため、具体的な申請先 (contact) をその場に示す。法的文言は変更しない。 */}
+                      <a
+                        href="mailto:contact@shuttle-scope.com"
+                        className="inline-flex items-center gap-1 underline text-[var(--ss-brand)]"
+                      >
+                        <MIcon name="mail" size={12} />
+                        {t('settings.consent.account_deletion_contact')}
+                      </a>
                     </span>
                   ) : isWithdrawn ? (
                     // 撤回後の再承認ボタン (一方向ではなく双方向に修正、2026-05-19)
@@ -217,6 +271,11 @@ export function ConsentManagementCard({ isLight }: { isLight: boolean }) {
         {withdrawMutation.isError && (
           <div className="mt-3 text-xs text-[var(--ss-danger-text)]">
             {t('settings.consent.error', '撤回に失敗しました。再試行してください。')}
+          </div>
+        )}
+        {regrantMutation.isError && (
+          <div role="alert" className="mt-3 text-xs text-[var(--ss-danger-text)]">
+            {t('common_ui.consent_regrant_failed')}
           </div>
         )}
       </div>

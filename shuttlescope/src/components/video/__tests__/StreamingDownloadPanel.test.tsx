@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 
 import { StreamingDownloadPanel } from '../StreamingDownloadPanel'
 import * as apiClient from '@/api/client'
@@ -152,5 +152,48 @@ describe('StreamingDownloadPanel', () => {
     await waitFor(() => {
       expect(screen.queryByText(/ffmpegが未インストール/)).not.toBeInTheDocument()
     })
+  })
+
+  it('shows a status-lost warning after repeated polling failures and does not present stale progress as current', async () => {
+    vi.useFakeTimers()
+    try {
+      let statusCalls = 0
+      vi.mocked(apiClient.apiGet).mockImplementation((path: string) => {
+        if (path === '/system/capabilities') {
+          return Promise.resolve({ success: true, data: { yt_dlp: true, ffmpeg: true } })
+        }
+        if (path.endsWith('/download/status')) {
+          statusCalls += 1
+          // First poll succeeds with real progress; every later poll fails.
+          if (statusCalls === 1) {
+            return Promise.resolve({
+              success: true,
+              data: { status: 'downloading', percent: '70%', speed: '1MB/s', eta: '10s' },
+            })
+          }
+          return Promise.reject(new Error('network error'))
+        }
+        return Promise.reject(new Error(`unexpected GET ${path}`))
+      })
+      vi.mocked(apiClient.apiPost).mockResolvedValueOnce({ success: true, data: { job_id: 'job-xyz' } })
+
+      render(<StreamingDownloadPanel {...defaultProps} />)
+      await act(async () => { await Promise.resolve() })
+      fireEvent.click(screen.getByRole('button', { name: /ダウンロードして再生/ }))
+
+      // First poll (success): progress becomes 70%.
+      await act(async () => { await vi.advanceTimersByTimeAsync(1500) })
+
+      // Three subsequent polls fail -> status becomes unknown (>= 3 failures).
+      await act(async () => { await vi.advanceTimersByTimeAsync(15000) })
+
+      // An explicit status-lost alert is shown, so the stale progress is no longer
+      // presented as the current, live value without any caveat.
+      const alert = screen.getByText(/進捗を取得できません/)
+      expect(alert).toBeInTheDocument()
+      expect(alert.getAttribute('role')).toBe('alert')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

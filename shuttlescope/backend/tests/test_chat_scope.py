@@ -11,6 +11,7 @@ from backend.main import app
 from backend.db import database as _db_module
 from backend.db.database import Base
 from backend.utils.auth import AuthCtx, get_auth
+from backend.utils.jwt_utils import create_access_token
 from backend.analysis.insights.safety import reset_for_test as reset_budget
 from backend.routers import insights_chat as chat_router_mod
 
@@ -30,8 +31,11 @@ def _fresh_state():
     Base.metadata.drop_all(_db_module.engine)
     Base.metadata.create_all(_db_module.engine)
     app.dependency_overrides[get_auth] = lambda: _ctx()
+    token = create_access_token(user_id=300, role="coach", minutes=10)
+    _CLIENT.headers["Authorization"] = f"Bearer {token}"
     yield
     app.dependency_overrides.pop(get_auth, None)
+    _CLIENT.headers.pop("Authorization", None)
 
 
 def _new_session() -> int:

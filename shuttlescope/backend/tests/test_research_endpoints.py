@@ -178,6 +178,72 @@ class TestPairSynergy:
         assert resp.status_code == 200
 
 
+class TestPairSynergyConfidencePopulation:
+    """監査 #136: ペアシナジーの信頼度はダブルス対象試合数で判定する。
+    全試合数 (シングルス含む) を信頼度の母集団に使わない。"""
+
+    def _build(self, db):
+        from backend.db.models import Match
+        pa = _make_player(db, "P136_A")
+        partner = _make_player(db, "P136_PT")
+        opp = _make_player(db, "P136_OP")
+        opp2 = _make_player(db, "P136_OP2")
+        # シングルス 3 試合 (ダブルス母集団には入らない)
+        for i, res in enumerate(["win", "loss", "win"]):
+            ms = _make_match(db, pa, opp, result=res, match_date=date(2025, 1, 10 + i))
+            _make_rallies(db, ms, n=12, avg_len=6)
+        # ダブルス 2 試合 (同一パートナー)
+        for i, res in enumerate(["win", "loss"]):
+            md = _make_match(db, pa, opp2, result=res, partner_a=partner,
+                             match_date=date(2025, 2, 10 + i))
+            md.format = "womens_doubles"
+            db.add(md)
+            _make_rallies(db, md, n=12, avg_len=6)
+        db.commit()
+        return pa, partner
+
+    def test_meta_reports_doubles_sample_size_not_all_matches(self, db_session):
+        pa, _partner = self._build(db_session)
+        app.dependency_overrides[get_db] = lambda: db_session
+        app.dependency_overrides[get_auth] = _admin_auth_ctx
+        app.dependency_overrides[require_admin_or_analyst] = _admin_auth_ctx
+        app.dependency_overrides[require_non_player] = _admin_auth_ctx
+        try:
+            client = TestClient(app)
+            body = client.get(f"/api/analysis/pair_synergy?player_id={pa.id}").json()
+        finally:
+            app.dependency_overrides.clear()
+        meta = body["meta"]
+        # 全試合数は 5 (シングルス 3 + ダブルス 2) のまま後方互換で残す
+        assert meta["sample_size"] == 5
+        # ペア推定に寄与するダブルス対象試合数は 2
+        assert meta["doubles_sample_size"] == 2
+        # 信頼度はダブルス母集団 (2) 基準。全試合 5 ではない
+        assert meta["confidence"]["n_used"] == 2
+        # research tier かつ低 N なので実用レベルを名乗らない
+        assert meta["confidence"]["level"] == "low"
+
+    def test_pair_confidence_uses_pair_n_within_doubles_population(self, db_session):
+        pa, partner = self._build(db_session)
+        app.dependency_overrides[get_db] = lambda: db_session
+        app.dependency_overrides[get_auth] = _admin_auth_ctx
+        app.dependency_overrides[require_admin_or_analyst] = _admin_auth_ctx
+        app.dependency_overrides[require_non_player] = _admin_auth_ctx
+        try:
+            client = TestClient(app)
+            body = client.get(f"/api/analysis/pair_synergy?player_id={pa.id}").json()
+        finally:
+            app.dependency_overrides.clear()
+        pairs = body["data"]["pairs"]
+        assert len(pairs) == 1
+        pair = pairs[0]
+        assert pair["partner_id"] == partner.id
+        assert pair["match_count"] == 2
+        # ペア自身の試合数 (2) で判定される
+        assert pair["confidence"]["n_used"] == 2
+        assert pair["confidence"]["level"] == "low"
+
+
 class TestOpponentAdaptiveShots:
     def test_returns_200(self, research_client):
         client, pid, _, opp_id, *_ = research_client
@@ -247,3 +313,74 @@ class TestSpatialDensity:
         assert "grid" in data
         assert "grid_width" in data
         assert "grid_height" in data
+
+
+class TestRallySequenceCountsRallies:
+    """監査 #40: 3連パターンの件数は「そのパターンを含むラリー数」で、同一ラリーの重複を数えない。"""
+
+    def _client_with_repeating_rallies(self, db_session, n_rallies):
+        pa = _make_player(db_session, "連打選手")
+        opp = _make_player(db_session, "連打相手")
+        m = _make_match(db_session, pa, opp, result="win")
+        gs = GameSet(match_id=m.id, set_num=1, winner="player_a", score_a=21, score_b=10)
+        db_session.add(gs)
+        db_session.flush()
+        for i in range(1, n_rallies + 1):
+            r = Rally(set_id=gs.id, rally_num=i, server="player_a", winner="player_a",
+                      end_type="forced_error", rally_length=12,
+                      score_a_after=i, score_b_after=0)
+            db_session.add(r)
+            db_session.flush()
+            # 自分(player_a)は 6 球すべて clear: (clear, clear, clear) が 1 ラリー内に 4 回出る
+            for j in range(1, 13):
+                db_session.add(Stroke(
+                    rally_id=r.id, stroke_num=j,
+                    player="player_a" if j % 2 == 1 else "player_b",
+                    shot_type="clear", hit_zone="BC", land_zone="NL",
+                ))
+        db_session.commit()
+        app.dependency_overrides[get_db] = lambda: db_session
+        app.dependency_overrides[get_auth] = _admin_auth_ctx
+        app.dependency_overrides[require_admin_or_analyst] = _admin_auth_ctx
+        app.dependency_overrides[require_non_player] = _admin_auth_ctx
+        return TestClient(app), pa.id
+
+    def test_repeated_sequence_in_one_rally_counts_once(self, db_session):
+        client, pid = self._client_with_repeating_rallies(db_session, 6)
+        try:
+            data = client.get(f"/api/analysis/rally_sequence_patterns?player_id={pid}").json()["data"]
+        finally:
+            app.dependency_overrides.clear()
+        entries = data["win_sequences"] + data["loss_sequences"]
+        assert len(entries) == 1
+        assert entries[0]["sequence"] == ["clear", "clear", "clear"]
+        assert entries[0]["count"] == 6  # 24 ではなくラリー数
+        assert data["eligible_rallies"] == 6
+        assert data["baseline_win_rate"] == 1.0
+
+    def test_entries_carry_interval_and_n(self, research_client):
+        client, pid, *_ = research_client
+        data = client.get(f"/api/analysis/rally_sequence_patterns?player_id={pid}").json()["data"]
+        for e in data["win_sequences"] + data["loss_sequences"]:
+            assert e["win_count"] <= e["count"] <= data["eligible_rallies"]
+            assert e["ci_low"] <= e["win_rate"] <= e["ci_high"]
+
+
+class TestWinRateFieldsAreNamedByMeaning:
+    """監査 #156: shot_types と shot_win_loss の win_rate は別の指標。意味の分かる名前でも返す。"""
+
+    def test_shot_types_has_winner_end_fields(self, research_client):
+        client, pid, *_ = research_client
+        rows = client.get(f"/api/analysis/shot_types?player_id={pid}").json()["data"]
+        assert rows
+        for r in rows:
+            assert r["winner_end_rate"] == r["win_rate"]
+            assert r["winner_end_count"] <= r["count"]
+
+    def test_shot_win_loss_has_rally_win_rate(self, research_client):
+        client, pid, *_ = research_client
+        rows = client.get(f"/api/analysis/shot_win_loss?player_id={pid}").json()["data"]
+        assert rows
+        for r in rows:
+            assert r["rally_win_rate"] == r["win_rate"]
+            assert r["win_count"] <= r["total"]

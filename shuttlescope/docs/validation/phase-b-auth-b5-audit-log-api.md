@@ -53,3 +53,13 @@ Date: 2026-04-23
 ## 今後
 - Frontend: admin 設定画面に監査ログタブを追加し、action / user_id / 期間で絞り込み表示。
 - B-6 以降: ログ保持期間 (例: 90 日で自動削除) ジョブ、export (CSV) 機能。
+
+
+## 2026-09-29 後続設計の明確化
+
+この文書作成時の「90 日で自動削除」は、その後の設計で採用しなかった。
+migration 0026 / 0028 により `access_logs` は HMAC chain 付き append-only 監査証跡となったため、
+既存行の `user_id` を NULL 化・削除すると canonical row bytes が変わって chain を壊す。
+ユーザー削除後も immutable な actor id として orphan integer reference を保持する。
+有限retentionが必要になった場合は、生行DELETEではなくchain segmentのseal/checkpoint/exportと
+検証可能なarchiveを先に設計し、Privacy Policy Article VIIのaudit/security retention例外と整合させる。

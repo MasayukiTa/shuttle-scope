@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 import { publicSiteUrl } from '@/utils/publicUrl'
 import {
+  authLogout,
   ConsentRecord,
   ConsentStateDTO,
   ConsentType,
@@ -21,6 +22,9 @@ import {
 } from '@/api/client'
 import { MIcon } from '@/components/common/MIcon'
 import { useAuth } from '@/hooks/useAuth'
+import { clearOptionalConsentDeferral, deferOptionalConsent } from '@/utils/consentDeferral'
+import { removeAuthItem } from '@/api/authStorage'
+import { tOr } from '@/utils/i18nFallback'
 
 // 必須項目は GDPR Article 6(1)(b) (契約履行) / APPI 第18条 を法的根拠とし、
 // 「同意」ではなく「契約条項の確認」として扱う。撤回はサービス利用終了と等価。
@@ -30,7 +34,8 @@ const REQUIRED: ConsentType[] = ['service_delivery', 'beta_agreement']
 // cross_border_transfer は EU-Japan 十分性認定 (2019-01) により追加同意不要のため
 // UI 提示しない (CONSENT_UI_LEGAL_ANALYSIS §2.5 選択肢 A 採用)。
 // body_disclose_to_analyst / body_disclose_to_coach: 体組成データ (Tier 3) の
-// 開示先制御。default 表示は ON (β期間運用ポリシー)、設定でいつでも変更可。
+// 開示先制御。任意同意は GDPR Art.6(1)(a) の同意なので初期値は常に未チェック
+// (明示 opt-in)。設定でいつでも変更・撤回可。
 const OPTIONAL: ConsentType[] = [
   'ai_training',
   'research_participation',
@@ -52,7 +57,7 @@ export default function OnboardingConsentPage({
   onCompleted, optionalOnly, onDeferred,
 }: OnboardingConsentPageProps) {
   const { t, i18n } = useTranslation()
-  const { role } = useAuth()
+  const { role, userId } = useAuth()
   // role='llm' (汎用 LLM チャット専用) は badminton 機能を持たないため、
   // badminton 固有の任意同意 (体組成開示 / AI 学習 / 学術研究 等 = OPTIONAL) を
   // 一切提示・送信しない。必須同意 (service_delivery / beta_agreement) のみ取得する。
@@ -85,17 +90,16 @@ export default function OnboardingConsentPage({
     // 必須 (契約履行) — ユーザに明示 check させるため initial=false。
     service_delivery: false,
     beta_agreement: false,
-    // 任意同意 — β期間 opt-out モデル: initial=true。
-    // ユーザは見て自分でチェックを外せばその場で「同意しない」記録になる。
-    // (利用には影響しない設計)
-    ai_training: true,
-    research_participation: true,
-    // cross_border_transfer は UI に出さないが backend 側の互換のため keep。
-    // EU-Japan 十分性認定済みなので default=true でも問題なし。
-    cross_border_transfer: true,
-    // 体組成データの開示: β期間 default ON。
-    body_disclose_to_analyst: true,
-    body_disclose_to_coach: true,
+    // 任意同意 — 明示 opt-in: initial=false。事前チェック済みの同意は
+    // GDPR Art.7 / APPI 上の有効な同意にならないため、ユーザが自分でチェック
+    // した項目だけが「同意」として記録される (利用には影響しない)。
+    ai_training: false,
+    research_participation: false,
+    // cross_border_transfer は UI に出さず送信もしない (backend 互換のためキーのみ保持)。
+    cross_border_transfer: false,
+    // 体組成データの開示 (要配慮な健康情報): 明示 opt-in。
+    body_disclose_to_analyst: false,
+    body_disclose_to_coach: false,
   })
 
   useEffect(() => {
@@ -108,16 +112,35 @@ export default function OnboardingConsentPage({
         if (r.data?.viewer_is_minor) {
           setGiven((g) => ({ ...g, ai_training: false }))
         }
-        // 既存 consent record の反映ポリシー:
-        //   - 現行 terms_version ('1.3' 等) の record のみ尊重する。
-        //   - 旧 version の record は文書改定で stale になっているため
-        //     opt-out default (= initial true) に戻す。
-        //   - ユーザが現行版で意図的に外した record (consent_given=false) は
-        //     そのまま尊重 (GDPR Article 7(3) withdraw)。
+        // 既存 consent record の反映ポリシー (owner 方針 2026-10-31):
+        //   文書が改定されたとき、再同意を求めるのは「改定された文書に紐づく
+        //   同意」だけで、改定されていない文書に紐づく同意は過去の回答を保持する。
+        //   しかし任意同意の所属文書は一意に定まらない (各補足規約は Privacy /
+        //   Terms / Data Contribution すべてに従属し、かつ同意レコードが保持する
+        //   バージョンは privacy_policy_version と terms_version の 2 つのみで、
+        //   補足規約・Data Contribution の個別版は記録されない)。所属文書が
+        //   不明瞭なので、ここでは保守側に倒す = 「記録が付随する privacy_policy /
+        //   terms の両方が現行版と一致する record だけ」prefill 対象とし、
+        //   いずれかが改定 (= 現行版と不一致) されていれば再回答扱い (未チェック)。
+        //   version が欠落している record も「一致を確認できない」= 未回答扱い。
+        //   現行版で意図的に外した record (consent_given=false) はそのまま尊重
+        //   (GDPR Article 7(3) withdraw)。
+        const currentPrivacy = r.data.current_versions?.privacy_policy
         const currentTerms = r.data.current_versions?.terms
+        // record の付随バージョンがすべて現行版と一致するか (= その同意が依拠した
+        // どの文書も改定されていない) を判定。欠落は不一致扱い。
+        const allDocsUnchanged = (c: ConsentRecord): boolean => {
+          if (!currentPrivacy || !c.privacy_policy_version || c.privacy_policy_version !== currentPrivacy) {
+            return false
+          }
+          if (!currentTerms || !c.terms_version || c.terms_version !== currentTerms) {
+            return false
+          }
+          return true
+        }
         const existing: Record<string, ConsentRecord> = {}
         for (const c of r.data.consents) {
-          if (!currentTerms || c.terms_version === currentTerms) {
+          if (allDocsUnchanged(c)) {
             existing[c.consent_type] = c
           }
         }
@@ -128,7 +151,7 @@ export default function OnboardingConsentPage({
             if (rec) {
               next[t] = !!rec.consent_given
             }
-            // rec 無し / stale 版のみ → initial (opt-out true) を保持
+            // rec 無し / いずれかの文書が改定された版のみ → initial (未チェック) を保持
           }
           return next
         })
@@ -170,6 +193,8 @@ export default function OnboardingConsentPage({
         privacy_policy_version: state.current_versions.privacy_policy,
         terms_version: state.current_versions.terms,
       })
+      // 任意項目に回答した → 「後で」の記憶は不要。
+      if (!llmOnly) clearOptionalConsentDeferral(userId)
       onCompleted()
     } catch (e) {
       setError((e as Error).message || t('onboarding.consent.error_submit') || '同意送信に失敗しました')
@@ -239,8 +264,11 @@ export default function OnboardingConsentPage({
              ヘッダの top 一括ボタンは削除した (UX 集約)。 */}
         </header>
 
-        {/* optionalOnly mode では必須セクションを丸ごと hide。次回ログイン時に
-           任意同意の再確認だけしたい人 (「あとで」を押した人) 用。 */}
+        {/* optionalOnly mode では必須セクションを丸ごと hide。必須 (契約履行) は
+           初回ログインの mode (optionalOnly=false) で取得済み = backend の
+           consent_required=false で証明される。ここに出るのは任意同意の再確認
+           だけしたい人 (「あとで」を押した人) で、必須行は状態として不可視・
+           disabled・未チェックのまま (取得済みなので問題なし。設定>同意状態に表示)。 */}
         <section className={`space-y-4 ${optionalOnly ? 'hidden' : ''}`}>
           <h2 className="text-lg font-semibold text-[var(--ss-t1)]">
             {t('onboarding.consent.required_section') || '必須確認事項（契約履行に基づく処理）'}
@@ -252,7 +280,7 @@ export default function OnboardingConsentPage({
 
           {/* 必須 checkbox 各々に inline で「文書を読む」ボタンを並置。
              - service_delivery: Privacy + Terms 両方の読了で enable
-             - beta_agreement: Terms の読了で enable (= §14 を参照)
+             - beta_agreement: Terms の読了で enable (= §9 を参照)
              各 docs ボタンは「未読/読了」を色 + check で表示。 */}
 
           <ConsentCheckbox
@@ -287,10 +315,10 @@ export default function OnboardingConsentPage({
           <ConsentCheckbox
             checked={given.beta_agreement}
             onChange={(v) => setGiven((g) => ({ ...g, beta_agreement: v }))}
-            label={t('onboarding.consent.beta_agreement_label') || 'β版データ取り扱い説明書（Terms of Service Section 14）の内容を確認しました'}
+            label={t('onboarding.consent.beta_agreement_label') || 'β版データ取り扱い説明書（Terms of Service Section 9）の内容を確認しました'}
             description={
               t('onboarding.consent.beta_agreement_desc') ||
-              'β期間中のデータ利用範囲、目的、保管期間、第三者提供の有無について記載された文書を読了したことを表明します。Terms of Service Section 14.5 の規定により、β期間中のデータ利用への異議申立ては問い合わせフォーム経由で随時受け付けます。'
+              'β期間中のデータ利用範囲、目的、保管期間、第三者提供の有無について記載された文書を読了したことを表明します。Terms of Service Section 9 の Opt-Out の規定により、β期間中のデータ利用への異議申立ては問い合わせフォーム経由で随時受け付けます。'
             }
             required
             requiredMarker={t('onboarding.consent.required_marker') || '契約履行（必須）'}
@@ -369,7 +397,7 @@ export default function OnboardingConsentPage({
             label={t('onboarding.consent.body_disclose_to_analyst_label') || '体組成データをアナリストに開示します'}
             description={
               t('onboarding.consent.body_disclose_to_analyst_desc') ||
-              '体重・体脂肪率・筋肉量等のデータをチーム解析担当 (analyst) に開示します。default は ON ですが、いつでも設定画面 (体調タブ) からトグルで変更できます。'
+              '体重・体脂肪率・筋肉量等のデータをチーム解析担当 (analyst) に開示します。いつでも設定画面 (体調タブ) からトグルで変更できます。'
             }
             docButtons={
               <div className="mt-2 flex flex-wrap gap-2">
@@ -384,7 +412,7 @@ export default function OnboardingConsentPage({
             label={t('onboarding.consent.body_disclose_to_coach_label') || '体組成データをコーチに開示します'}
             description={
               t('onboarding.consent.body_disclose_to_coach_desc') ||
-              '体重・体脂肪率・筋肉量等のデータをコーチに開示します。default は ON ですが、いつでも設定画面 (体調タブ) からトグルで変更できます。'
+              '体重・体脂肪率・筋肉量等のデータをコーチに開示します。いつでも設定画面 (体調タブ) からトグルで変更できます。'
             }
             docButtons={
               <div className="mt-2 flex flex-wrap gap-2">
@@ -412,7 +440,8 @@ export default function OnboardingConsentPage({
               disabled={submitting}
               onClick={async () => {
                 if (optionalOnly) {
-                  // 何も書き込まず popup を閉じる
+                  // 何も書き込まず popup を閉じる。一定期間は再表示しない。
+                  deferOptionalConsent(userId)
                   onDeferred?.()
                   return
                 }
@@ -434,6 +463,8 @@ export default function OnboardingConsentPage({
                     privacy_policy_version: state.current_versions.privacy_policy,
                     terms_version: state.current_versions.terms,
                   })
+                  // 任意は未回答 (= 未同意) のまま。一定期間は再表示しない。
+                  deferOptionalConsent(userId)
                   onCompleted()
                 } catch (e) {
                   setError((e as Error).message || t('onboarding.consent.error_submit') || '同意送信に失敗しました')
@@ -472,28 +503,36 @@ export default function OnboardingConsentPage({
            にする。 */}
         <footer className="pt-3 mt-2 border-t border-[var(--ss-border)] flex flex-wrap items-center justify-between gap-2 text-xs">
           <span className="text-[var(--ss-t3)]">
-            {t('onboarding.consent.exit_hint') || '同意せずに離れる場合:'}
+            {tOr(t, 'onboarding.consent.exit_hint', '同意せずに離れる場合:')}
           </span>
           <div className="flex flex-wrap items-center gap-3">
             <a
               href={publicSiteUrl('/', i18n.language)}
               className="underline text-[var(--ss-t2)] hover:text-[var(--ss-t1)]"
             >
-              {t('onboarding.consent.back_to_site') || 'shuttle-scope.com に戻る'}
+              {tOr(t, 'onboarding.consent.back_to_site', 'shuttle-scope.com に戻る')}
             </a>
             <span aria-hidden="true" className="text-[var(--ss-t3)]">{t('auto.OnboardingConsentPage.dot')}</span>
             <button
               type="button"
-              onClick={() => {
+              onClick={async () => {
+                // 通常のログアウトと同じく、まずサーバ側で refresh token を失効させる。
+                // 失敗・無応答でも離脱は妨げないよう、待つのは最大 3 秒とする。
+                try {
+                  await Promise.race([
+                    authLogout(),
+                    new Promise<void>((resolve) => setTimeout(resolve, 3000)),
+                  ])
+                } catch { /* server revoke に失敗してもローカルの認証情報は必ず消す */ }
                 // セッションをクリアしてログイン画面に戻す
                 try {
-                  sessionStorage.removeItem('shuttlescope_token')
-                  sessionStorage.removeItem('shuttlescope_refresh_token')
-                  sessionStorage.removeItem('shuttlescope_role')
-                  sessionStorage.removeItem('shuttlescope_user_id')
-                  sessionStorage.removeItem('shuttlescope_display_name')
-                  sessionStorage.removeItem('shuttlescope_player_id')
-                  sessionStorage.removeItem('shuttlescope_team_name')
+                  removeAuthItem('shuttlescope_token')
+                  removeAuthItem('shuttlescope_refresh_token')
+                  removeAuthItem('shuttlescope_role')
+                  removeAuthItem('shuttlescope_user_id')
+                  removeAuthItem('shuttlescope_display_name')
+                  removeAuthItem('shuttlescope_player_id')
+                  removeAuthItem('shuttlescope_team_name')
                 } catch { /* ignore */ }
                 // フルリロード (App ルートが /login へ誘導)
                 window.location.href = '/#/'
@@ -501,7 +540,7 @@ export default function OnboardingConsentPage({
               }}
               className="underline text-[var(--ss-t2)] hover:text-[var(--ss-t1)]"
             >
-              {t('onboarding.consent.back_to_login') || 'ログイン画面に戻る'}
+              {tOr(t, 'onboarding.consent.back_to_login', 'ログイン画面に戻る')}
             </button>
           </div>
         </footer>
@@ -522,7 +561,7 @@ export default function OnboardingConsentPage({
               <div className="text-sm font-semibold text-[var(--ss-t1)]">
                 {t('onboarding.consent.other_docs_title') || 'その他の規約・契約書類'}
               </div>
-              <button
+              <button aria-label={t('app.close')}
                 type="button"
                 onClick={() => setOtherDocsOpen(false)}
                 className="text-sm px-2 py-1 rounded-ss-sm hover:bg-[var(--ss-surface-2)] text-[var(--ss-t2)] transition-colors duration-fast ease-out"
@@ -839,7 +878,7 @@ function DocModal({
             >
               {t('onboarding.consent.print') || '印刷'}
             </button>
-            <button
+            <button aria-label={t('app.close')}
               type="button"
               onClick={onClose}
               className="text-sm px-2 py-1 rounded-ss-sm hover:bg-[var(--ss-surface-2)] text-[var(--ss-t2)] transition-colors duration-fast ease-out"

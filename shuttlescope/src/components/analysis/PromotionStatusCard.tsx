@@ -71,12 +71,6 @@ interface Props {
   filters: AnalysisFilters
 }
 
-const TIER_LABELS: Record<string, string> = {
-  research: 'Research',
-  advanced: 'Advanced',
-  stable: 'Stable',
-}
-
 const OVERRIDE_STATUS_OPTIONS = [
   { value: 'promotion_ready', label: i18n.t('auto.PromotionStatusCard.k6') },
   { value: 'requires_review', label: i18n.t('auto.PromotionStatusCard.k7') },
@@ -153,7 +147,12 @@ const ACTION_LABEL: Record<string, string> = {
 }
 
 function ChecklistBullet({ item, isLight }: { item: ChecklistItem; isLight: boolean }) {
-
+  const { t } = useTranslation()
+  // 合否は色とアイコンだけで伝えない。「合格 / 不合格 / 未評価」を文字でも出す
+  const stateLabel =
+    item.met === true ? t('auto.PromotionStatusCard.check_met')
+    : item.met === false ? t('auto.PromotionStatusCard.check_unmet')
+    : t('auto.PromotionStatusCard.check_unknown')
   const iconName = item.met === true ? 'check' : item.met === false ? 'close' : 'radio_button_unchecked'
   const color =
     item.met === true ? (isLight ? 'text-emerald-600' : 'text-emerald-400') :
@@ -164,10 +163,13 @@ function ChecklistBullet({ item, isLight }: { item: ChecklistItem; isLight: bool
   return (
     <li className="flex items-start gap-1.5 text-[10px]">
       <span className={`${color} shrink-0 font-bold mt-px`}><MIcon name={iconName} size={11} /></span>
+      <span className={`${color} shrink-0`}>{stateLabel}</span>
       <span className={textColor}>{item.item}</span>
-      {item.current !== null && (
-        <span className={`${subColor} ml-auto shrink-0 ss-num`}>{item.current} / {item.required}</span>
-      )}
+      <span className={`${subColor} ml-auto shrink-0 ss-num`}>
+        {item.current !== null
+          ? t('auto.PromotionStatusCard.check_value', { current: item.current, required: item.required ?? '-' })
+          : (item.required !== null ? t('auto.PromotionStatusCard.check_required', { required: item.required }) : '')}
+      </span>
     </li>
   )
 }
@@ -190,6 +192,7 @@ function OverrideForm({
   const [status, setStatus] = useState(currentOverride?.status ?? 'requires_review')
   const [note, setNote] = useState(currentOverride?.note ?? '')
   const [saving, setSaving] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
   const holdNoteRequired = status === 'hold' && note.trim() === ''
 
   const inputClass = isLight
@@ -205,6 +208,7 @@ function OverrideForm({
 
   const handleSave = async () => {
     setSaving(true)
+    setActionError(null)
     try {
       await apiPost('/analysis/meta/promotion_override', {
         analysis_type: analysisType,
@@ -214,17 +218,25 @@ function OverrideForm({
       })
       await qc.invalidateQueries({ queryKey: ['promotion-overrides'] })
       onClose()
+    } catch {
+      setActionError(t('auto.PromotionStatusCard.save_failed'))
     } finally {
       setSaving(false)
     }
   }
 
   const handleDelete = async () => {
+    // Override は昇格/保留の判断記録なので、誤クリックで消えないよう確認する
+    const analysisName = t(`auto.PromotionStatusCard.names.${analysisType}`, { defaultValue: analysisType })
+    if (!window.confirm(t('auto.PromotionStatusCard.delete_confirm', { analysis: analysisName, note: currentOverride?.note ?? '' }))) return
     setSaving(true)
+    setActionError(null)
     try {
       await apiDelete(`/analysis/meta/promotion_override/${analysisType}`, { 'X-Idempotency-Key': newIdempotencyKey() })
       await qc.invalidateQueries({ queryKey: ['promotion-overrides'] })
       onClose()
+    } catch {
+      setActionError(t('auto.PromotionStatusCard.delete_failed'))
     } finally {
       setSaving(false)
     }
@@ -259,6 +271,11 @@ function OverrideForm({
           </p>
         )}
       </div>
+      {actionError && (
+        <p role="alert" className={`text-[10px] ${isLight ? 'text-red-600' : 'text-red-400'}`}>
+          {actionError}
+        </p>
+      )}
       <div className="flex items-center gap-2 justify-end">
         {currentOverride && (
           <button
@@ -292,15 +309,27 @@ function OverrideForm({
 function EvaluationRow({
   entry,
   override,
-  isAnalyst,
+  canOverride,
+  overridesUnavailable,
   theme,
 }: {
   entry: EvaluationEntry
   override: OverrideEntry | undefined
-  isAnalyst: boolean
+  canOverride: boolean
+  /** 現行 Override 一覧を取得できていない。既存判断が見えないまま書込みを開放しない。 */
+  overridesUnavailable: boolean
   theme: ThemeProps
 }) {
   const { t } = useTranslation()
+  // 内部の分析 ID や段階名 (research / advanced) をそのまま出さず、利用者向けの名前に直す。
+  // 辞書に無い ID は ID のまま出す (欠落を隠さない)。
+  const analysisLabel = (id: string) => t(`auto.PromotionStatusCard.names.${id}`, { defaultValue: id })
+  const tierLabel = (tier: string) => t(`auto.PromotionStatusCard.tier_${tier}`, { defaultValue: tier })
+  const statusLabel = (st: string | null) => {
+    if (!st) return ''
+    const cfg = getStatusConfig(false)[st as keyof ReturnType<typeof getStatusConfig>]
+    return cfg ? cfg.label : st
+  }
 
   const { isLight, textHeading, textMuted, textFaint, border } = theme
   const statusConfig = getStatusConfig(isLight)
@@ -321,18 +350,18 @@ function EvaluationRow({
         onClick={() => setExpanded((v) => !v)}
       >
         <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusCfg.dot}`} />
-        <span className={`text-xs flex-1 text-left ${textHeading}`}>{entry.analysis_type}</span>
+        <span className={`text-xs flex-1 text-left ${textHeading}`}>{analysisLabel(entry.analysis_type)}</span>
         {override && (
           <span className={`text-[9px] px-1 py-0.5 rounded-ss-sm ${isLight ? 'bg-white text-blue-700 border border-gray-200' : 'bg-gray-800 text-blue-300 border border-gray-700'}`}>
             {t('auto.PromotionStatusCard.override_label')}
           </span>
         )}
         <span className={`text-[9px] border rounded-ss-sm px-1 py-0.5 shrink-0 ${tierColors[entry.from_tier] ?? (isLight ? 'text-gray-500 border-gray-300' : 'text-gray-500 border-gray-600')}`}>
-          {TIER_LABELS[entry.from_tier] ?? entry.from_tier}
+          {tierLabel(entry.from_tier)}
         </span>
         <span className={`text-[10px] ${textFaint}`}>→</span>
         <span className={`text-[9px] border rounded-ss-sm px-1 py-0.5 shrink-0 ${tierColors[entry.to_tier] ?? (isLight ? 'text-gray-500 border-gray-300' : 'text-gray-500 border-gray-600')}`}>
-          {TIER_LABELS[entry.to_tier] ?? entry.to_tier}
+          {tierLabel(entry.to_tier)}
         </span>
         <span className={`text-[10px] font-medium shrink-0 ${statusCfg.color}`}>{statusCfg.label}</span>
         <span className={`text-[10px] shrink-0 ${textFaint}`}>{expanded ? '▲' : '▼'}</span>
@@ -342,7 +371,12 @@ function EvaluationRow({
         <div className={`px-3 pb-3 pt-1 ${expandedBorder} space-y-2`}>
           <div className={`flex items-center gap-2 text-[10px] ${textMuted}`}>
             <span>{t('auto.PromotionStatusCard.sample_count', { n: entry.sample_count })}</span>
-            <span>{t('auto.PromotionStatusCard.check_count', { met: entry.met_count, total: entry.total_count })}</span>
+            <span>{t('auto.PromotionStatusCard.check_count', {
+              met: entry.met_count,
+              total: entry.total_count,
+              failed: entry.checklist.filter((c) => c.met === false).length,
+              unknown: entry.checklist.filter((c) => c.met === null).length,
+            })}</span>
           </div>
           <ul className="space-y-0.5">
             {entry.checklist.map((item, i) => (
@@ -355,7 +389,7 @@ function EvaluationRow({
           {override && (
             <div className={`text-[10px] space-y-1`}>
               <div className={`${isLight ? 'text-blue-700' : 'text-blue-400'}`}>
-                <p className="font-medium">{t('auto.PromotionStatusCard.override_set', { status: override.status })}</p>
+                <p className="font-medium">{t('auto.PromotionStatusCard.override_set', { status: statusLabel(override.status) })}</p>
                 {override.note && <p className={textMuted}>{override.note}</p>}
                 <p className={textFaint}>{t('auto.PromotionStatusCard.override_by', { ts: override.updated_at ? formatTs(override.updated_at) : '', analyst: override.analyst })}</p>
               </div>
@@ -368,8 +402,8 @@ function EvaluationRow({
                       {formatTs(log.timestamp)}&nbsp;
                       <span className={textMuted}>[{log.analyst}]</span>&nbsp;
                       {ACTION_LABEL[log.action] ?? log.action}&nbsp;
-                      {log.old_status && <span>{log.old_status} → </span>}
-                      {log.new_status && <span className={isLight ? 'text-blue-600' : 'text-blue-400'}>{log.new_status}</span>}
+                      {log.old_status && <span>{statusLabel(log.old_status)} → </span>}
+                      {log.new_status && <span className={isLight ? 'text-blue-600' : 'text-blue-400'}>{statusLabel(log.new_status)}</span>}
                       {log.note && <span className={textMuted}> 「{log.note.slice(0, 30)}{log.note.length > 30 ? '…' : ''}」</span>}
                     </div>
                   ))}
@@ -377,13 +411,17 @@ function EvaluationRow({
               )}
             </div>
           )}
-          {isAnalyst && (
+          {canOverride && overridesUnavailable && (
+            <p role="alert" className={`text-[10px] ${textFaint}`}>{t('auto.PromotionStatusCard.overrides_unavailable')}</p>
+          )}
+          {canOverride && !overridesUnavailable && (
             <>
+              <p className={`text-[10px] ${textFaint}`}>{t('auto.PromotionStatusCard.override_note')}</p>
               <button
                 className={`text-[10px] underline transition-colors duration-fast ${isLight ? 'text-gray-500 hover:text-gray-700' : 'text-gray-500 hover:text-gray-300'}`}
                 onClick={() => setShowOverride((v) => !v)}
               >
-                {showOverride ? 'Override フォームを閉じる' : (override ? 'Override を編集' : '+ Override を追加')}
+                {showOverride ? t('auto.PromotionStatusCard.override_close') : (override ? t('auto.PromotionStatusCard.override_edit') : t('auto.PromotionStatusCard.override_add'))}
               </button>
               {showOverride && (
                 <OverrideForm
@@ -406,7 +444,8 @@ export function PromotionStatusCard({ playerId, filters }: Props) {
 
   const { card, cardInner, cardInnerAlt, textHeading, textSecondary, textMuted, textFaint, border, loading, badge, isLight } = useCardTheme()
   const { role } = useAuth()
-  const isAnalyst = role === 'analyst' || role === 'admin'
+  // 昇格の手動上書きを書き込めるのは admin だけ (POST/DELETE /analysis/meta/promotion_override は admin 限定)
+  const canOverride = role === 'admin'
   const [showDemotion, setShowDemotion] = useState(false)
 
   const filterApiParams = {
@@ -416,7 +455,7 @@ export function PromotionStatusCard({ playerId, filters }: Props) {
     ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
   }
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError: evalError, refetch: refetchEval } = useQuery({
     queryKey: ['promotion-evaluation', playerId, filters],
     queryFn: () =>
       apiGet<{ success: boolean; data: EvaluationData }>(
@@ -426,7 +465,7 @@ export function PromotionStatusCard({ playerId, filters }: Props) {
     staleTime: 5 * 60 * 1000,
   })
 
-  const { data: overridesResp } = useQuery({
+  const { data: overridesResp, isError: overridesError, refetch: refetchOverrides } = useQuery({
     queryKey: ['promotion-overrides'],
     queryFn: () => apiGet<{ success: boolean; data: Record<string, OverrideEntry> }>('/analysis/meta/promotion_overrides'),
     staleTime: 30 * 1000,
@@ -448,11 +487,18 @@ export function PromotionStatusCard({ playerId, filters }: Props) {
 
       <p className={`text-[10px] ${textMuted}`}>
         {t('auto.PromotionStatusCard.desc')}
-        {isAnalyst && t('auto.PromotionStatusCard.desc_analyst')}
+        {canOverride && t('auto.PromotionStatusCard.desc_analyst')}
       </p>
 
       {isLoading ? (
         <p className={`text-sm text-center py-4 ${loading}`}>{t('auto.PromotionStatusCard.k5')}</p>
+      ) : evalError && !data ? (
+        <div role="alert" className={`text-sm text-center py-4 space-y-2 ${loading}`}>
+          <p>{t('auto.PromotionStatusCard.eval_load_failed')}</p>
+          <button className="text-xs underline" onClick={() => { void refetchEval() }}>
+            {t('auto.PromotionStatusCard.retry')}
+          </button>
+        </div>
       ) : (
         <div className="space-y-3">
           {/* サマリー */}
@@ -477,6 +523,15 @@ export function PromotionStatusCard({ playerId, filters }: Props) {
             {summary && t('auto.PromotionStatusCard.summary_counts', { rallies: summary.n_rallies, matches: summary.n_matches, opponents: summary.n_opponents })}
           </div>
 
+          {canOverride && overridesError && !overridesResp && (
+            <div role="alert" className={`text-[10px] ${textFaint}`}>
+              <span>{t('auto.PromotionStatusCard.overrides_unavailable')}</span>{' '}
+              <button className="underline" onClick={() => { void refetchOverrides() }}>
+                {t('auto.PromotionStatusCard.retry')}
+              </button>
+            </div>
+          )}
+
           {/* 評価リスト */}
           <div className="space-y-1.5">
             {evaluations.map((entry) => (
@@ -484,7 +539,8 @@ export function PromotionStatusCard({ playerId, filters }: Props) {
                 key={`${entry.analysis_type}-${entry.from_tier}`}
                 entry={entry}
                 override={overrides[entry.analysis_type]}
-                isAnalyst={isAnalyst}
+                canOverride={canOverride}
+                overridesUnavailable={overridesError && !overridesResp}
                 theme={theme}
               />
             ))}

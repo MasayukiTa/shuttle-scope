@@ -15,6 +15,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { apiGet, apiPost } from '@/api/client'
+import i18n from '@/i18n'
 
 // ── 型定義 ───────────────────────────────────────────────────────────────────
 
@@ -54,6 +55,8 @@ interface TunnelData {
 interface Options {
   matchId: string | undefined
   tunnelProvider: string  // appSettings.tunnel_provider
+  /** 共有セッションの作成・取得に失敗したときの通知先 */
+  onError?: (message: string) => void
 }
 
 export interface SessionSharingResult {
@@ -70,8 +73,12 @@ export interface SessionSharingResult {
   tunnelToggle: ReturnType<typeof useMutation<unknown, Error, void, unknown>>
   tunnelBase: string | null
   tunnelPending: boolean
+  /** トンネル状態の取得が未確定（ロード中/失敗）。true の間はトグルを無効化する */
+  tunnelUnconfirmed: boolean
   tunnelLastError: string | null
   rebaseUrl: (url: string) => string
+  /** 画面を開いている公開 HTTPS オリジン (localhost / LAN IP でない https)。無ければ null */
+  publicOrigin: string | null
   // リモートストリーム
   remoteStream: MediaStream | null
   setRemoteStream: React.Dispatch<React.SetStateAction<MediaStream | null>>
@@ -90,6 +97,7 @@ export interface SessionSharingResult {
 export function useSessionSharing({
   matchId,
   tunnelProvider,
+  onError,
 }: Options): SessionSharingResult {
 
   // ── セッション ────────────────────────────────────────────────────────────
@@ -117,24 +125,43 @@ export function useSessionSharing({
           camera_sender_urls: res.data.camera_sender_urls,
           session_password: res.data.session_password,
         })
+      } else {
+        onError?.(i18n.t('common_ui.share_create_failed'))
       }
-    } catch { /* ignore */ }
-  }, [matchId])
+    } catch {
+      // 通信断・認証切れ・サーバ障害で作成できなかったことを利用者へ知らせる
+      onError?.(i18n.t('common_ui.share_create_failed'))
+    }
+  }, [matchId, onError])
 
   // ── トンネル ──────────────────────────────────────────────────────────────
 
-  const { data: tunnelStatus, refetch: refetchTunnel } = useQuery({
+  const {
+    data: tunnelStatus,
+    refetch: refetchTunnel,
+    isError: tunnelStatusError,
+    isLoading: tunnelStatusLoading,
+  } = useQuery({
     queryKey: ['tunnel-status'],
     queryFn: () =>
       apiGet<{ success: boolean; data: TunnelData }>('/tunnel/status'),
     refetchInterval: 5000,
   })
 
+  // 状態取得が未確定（初回ロード中 or 失敗）の間は running を判断できない。
+  // false(=停止) と誤認して /tunnel/start を再送すると二重起動になるため、トグルを止める。
+  const tunnelUnconfirmed = tunnelStatusLoading || tunnelStatusError || tunnelStatus === undefined
+
   const tunnelToggle = useMutation({
-    mutationFn: () =>
-      tunnelStatus?.data?.running
+    mutationFn: () => {
+      // 状態未確定のまま start/stop を送らない（停止と誤認した再送を防ぐ）
+      if (tunnelUnconfirmed) {
+        return Promise.reject(new Error('tunnel status unconfirmed'))
+      }
+      return tunnelStatus?.data?.running
         ? apiPost('/tunnel/stop', {})
-        : apiPost(`/tunnel/start?provider=${tunnelProvider}`, {}),
+        : apiPost(`/tunnel/start?provider=${tunnelProvider}`, {})
+    },
     onSuccess: () => { refetchTunnel() },
   })
 
@@ -191,6 +218,25 @@ export function useSessionSharing({
     } catch { return url }
   }, [tunnelBase])
 
+  // 画面を開いている公開 HTTPS オリジン。app.shuttle-scope.com のような公開ドメインで
+  // 開いている場合、backend が LAN IP / localhost の URL しか返さなくても、別ネットワーク
+  // (携帯回線など) の端末が開ける URL を組み立てるために使う。
+  // https かつ localhost / 127.0.0.1 / プライベート LAN IP でないときのみ採用する。
+  const publicOrigin: string | null = (() => {
+    if (typeof window === 'undefined') return null
+    try {
+      const { protocol, hostname, origin } = window.location
+      if (protocol !== 'https:') return null
+      if (hostname === 'localhost' || hostname === '127.0.0.1') return null
+      // プライベート / リンクローカルな IPv4 は公開オリジンとみなさない。
+      // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16
+      if (/^(10|127)\.|^169\.254\.|^192\.168\.|^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname)) return null
+      return origin
+    } catch {
+      return null
+    }
+  })()
+
   // ── リモートストリーム ────────────────────────────────────────────────────
 
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null)
@@ -231,8 +277,10 @@ export function useSessionSharing({
     tunnelToggle,
     tunnelBase,
     tunnelPending,
+    tunnelUnconfirmed,
     tunnelLastError,
     rebaseUrl,
+    publicOrigin,
     // リモートストリーム
     remoteStream,
     setRemoteStream,

@@ -148,6 +148,9 @@ export function ShotWinLoss({ playerId, filters = DEFAULT_FILTERS }: ShotWinLoss
         </BarChart>
       </ResponsiveContainer>
 
+      {/* ショット効果ではなくラリー結果である旨の定義注記 (監査 #42) */}
+      <p className="text-[11px] text-gray-500 leading-snug">{t('auto.ShotWinLoss.definition_note')}</p>
+
       {/* 勝率リスト */}
       <div className="space-y-1">
         {chartData.map((d) => {

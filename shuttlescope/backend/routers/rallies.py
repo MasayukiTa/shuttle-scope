@@ -1,7 +1,7 @@
 """ラリー管理API（/api/rallies）"""
 from typing import Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -19,7 +19,7 @@ def _rally_require_scope(request: Request, db: Session, set_id: int) -> Match:
     admin 無条件許可、player は参加試合のみ。"""
     gs = db.get(GameSet, set_id)
     if not gs:
-        raise HTTPException(status_code=404, detail="セットが見つかりません")
+        raise HTTPException(status_code=404, detail="ゲームが見つかりません")
     match = db.get(Match, gs.match_id)
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
@@ -45,6 +45,15 @@ class RallyCreate(BaseModel):
     is_deuce: bool = False
     video_timestamp_start: Optional[float] = Field(default=None, ge=0, le=86400)
     video_timestamp_end: Optional[float] = Field(default=None, ge=0, le=86400)
+
+    @model_validator(mode="after")
+    def _start_not_after_end(self) -> "RallyCreate":
+        # 巻き戻した位置で入力すると start > end の逆転区間が保存され、TrackNet の区間走査が
+        # 0 回になり、レビューは対象ラリーより後ろから再生していた (監査 #783)。
+        s, e = self.video_timestamp_start, self.video_timestamp_end
+        if s is not None and e is not None and s > e:
+            raise ValueError("video_timestamp_start must be <= video_timestamp_end")
+        return self
 
 
 class RallyUpdate(BaseModel):
@@ -80,6 +89,32 @@ def rally_to_dict(r: Rally) -> dict:
         "video_timestamp_start": r.video_timestamp_start,
         "video_timestamp_end": r.video_timestamp_end,
     }
+
+
+# 「同じラリー」かどうかの判定に使う項目。得点推移・サーブ権・次ラリーのサーバを
+# 決める値だけを見る。end_type / rally_length / timestamp は後から Pass2 等が
+# PUT で更新するため、期限切れ後の再送が誤って競合にならないよう比較から外す。
+_CONFLICT_FIELDS = ("server", "winner", "score_a_after", "score_b_after")
+
+
+def _raise_if_conflicting(existing: Rally, body: RallyCreate) -> None:
+    """既存行と送信内容の核心項目が違えば 409。同じ内容(再送)なら何もしない。"""
+    submitted = body.model_dump()
+    diff = {
+        f: {"existing": getattr(existing, f), "submitted": submitted[f]}
+        for f in _CONFLICT_FIELDS
+        if getattr(existing, f) != submitted[f]
+    }
+    if diff:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "RALLY_CONFLICT",
+                "message": "同じラリー番号に異なる内容が既に保存されています",
+                "differences": diff,
+                "existing": rally_to_dict(existing),
+            },
+        )
 
 
 @router.post("/rallies", status_code=201)
@@ -124,6 +159,9 @@ def create_rally(
         Rally.deleted_at.is_(None),
     ).first()
     if existing:
+        # 同じ番号でも中身(得点・勝者・サーバ)が違えば再送ではなく別端末の別入力。
+        # 先勝ちの行を「成功」と返すと、負けた端末の入力が無警告で消える。
+        _raise_if_conflicting(existing, body)
         response = {"success": True, "data": rally_to_dict(existing)}
         if idem_key:
             from backend.utils.idempotency import store
@@ -131,6 +169,16 @@ def create_rally(
         return response
 
     rally = Rally(**body.model_dump())
+    # score_before は client からは受けない (extra='forbid')。同じセットの直前の
+    # 有効ラリーの score_after から必ずサーバ側で決める (POST /strokes/batch と同じ規則)。
+    # 計算しないと 2 ラリー目以降も 0-0 のまま保存され、状態量を使う分析が汚れる。
+    prev_rally = db.query(Rally).filter(
+        Rally.set_id == body.set_id,
+        Rally.rally_num == body.rally_num - 1,
+        Rally.deleted_at.is_(None),
+    ).first()
+    rally.score_a_before = prev_rally.score_a_after if prev_rally else 0
+    rally.score_b_before = prev_rally.score_b_after if prev_rally else 0
     touch(rally)
     db.add(rally)
     try:
@@ -146,6 +194,7 @@ def create_rally(
         ).first()
         if existing is None:
             raise
+        _raise_if_conflicting(existing, body)
         response = {"success": True, "data": rally_to_dict(existing)}
         if idem_key:
             from backend.utils.idempotency import store
@@ -168,7 +217,16 @@ def update_rally(rally_id: int, body: RallyUpdate, request: Request, db: Session
         raise HTTPException(status_code=404, detail="ラリーが見つかりません")
     _rally_require_scope(request, db, rally.set_id)
     from backend.utils.db_update import apply_update
-    apply_update(rally, body.model_dump(exclude_unset=True))
+    changes = body.model_dump(exclude_unset=True)
+    # 片方だけの更新でも、更新後の start <= end を保つ (監査 #783)
+    eff_start = changes.get("video_timestamp_start", rally.video_timestamp_start)
+    eff_end = changes.get("video_timestamp_end", rally.video_timestamp_end)
+    if eff_start is not None and eff_end is not None and eff_start > eff_end:
+        raise HTTPException(
+            status_code=422,
+            detail="video_timestamp_start は video_timestamp_end 以下にしてください",
+        )
+    apply_update(rally, changes)
     touch(rally)
     db.commit()
     # 対象 rally の試合の関与選手のみ無効化

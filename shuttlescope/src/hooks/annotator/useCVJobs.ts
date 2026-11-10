@@ -14,8 +14,12 @@ import i18n from '@/i18n'
 import { apiGet, apiPost, apiDelete } from '@/api/client'
 import type { ShuttleFrame } from '@/components/annotation/ShuttleTrackOverlay'
 import type { Match } from '@/types'
+import { isPlayableVideoUrl } from '@/utils/videoSrc'
 import type { RoiRect } from '@/components/video/RoiRectOverlay'
 import type { TrackFrame, RawDetection } from '@/components/annotation/PlayerTrackingOverlay'
+
+/** status 取得が連続してこの回数失敗したら利用者へ知らせる (2 秒間隔のため約 6 秒、一過性の 1 回では鳴らさない)。 */
+const STATUS_POLL_FAIL_NOTIFY_AT = 3
 
 /** ROI を backend へ送る形に正規化 (extra=forbid 対策で `corners` を落とす)。
  *
@@ -101,6 +105,8 @@ interface Options {
   videoRef: RefObject<HTMLVideoElement>
   /** TrackNet / YOLO の解析対象エリア（正規化 0-1）。未設定なら動画全体 */
   roiRect?: RoiRect | null
+  /** 停止・リセット失敗など、利用者へ知らせるべき失敗の通知先。未指定なら alert */
+  onError?: (message: string) => void
 }
 
 // ── 公開型 ───────────────────────────────────────────────────────────────────
@@ -148,9 +154,11 @@ export interface CVJobsResult {
     seedTs: number,
     assignments: { detection_index: number; player_key: string; bbox?: [number, number, number, number] | null; hist?: number[] | null }[],
     extraSeeds?: { timestamp_sec: number; assignments: { detection_index: number; player_key: string; bbox?: [number, number, number, number] | null; hist?: number[] | null }[] }[]
-  ) => Promise<void>
+  ) => Promise<boolean>
   frameDetectLoading: boolean
   trackingLoading: boolean
+  /** CV 状態の取得に失敗したか (取得失敗を未実行と見分けるための表示用) */
+  cvStatusUnknown: boolean
   /** フレーム検出エラー（APIエラー時の詳細メッセージ。nullなら正常） */
   frameDetectError: string | null
   /** フレーム検出デバッグ情報（検出ゼロ時の診断用） */
@@ -183,7 +191,30 @@ export function useCVJobs({
   t: _t,
   videoRef,
   roiRect,
+  onError,
 }: Options): CVJobsResult {
+  const notifyError = useCallback((message: string) => {
+    if (onError) onError(message)
+    else alert(message)
+  }, [onError])
+
+  // status ポーリングの連続失敗を数え、3 回目で 1 度だけ「状態確認不能」を通知する。
+  // 成功で数え直す。画面の進捗が古いままなのを正常値として見せ続けないため。
+  const notifyErrorRef = useRef(notifyError)
+  notifyErrorRef.current = notifyError
+  const pollFailuresRef = useRef({ tracknet: 0, yolo: 0 })
+  const notePollResult = useCallback((kind: 'tracknet' | 'yolo', ok: boolean) => {
+    if (ok) {
+      pollFailuresRef.current[kind] = 0
+      return
+    }
+    const n = ++pollFailuresRef.current[kind]
+    if (n === STATUS_POLL_FAIL_NOTIFY_AT) {
+      notifyErrorRef.current(
+        i18n.t(kind === 'tracknet' ? 'common_ui.tracknet_status_unreachable' : 'common_ui.yolo_status_unreachable'),
+      )
+    }
+  }, [])
 
   // ── TrackNet ──────────────────────────────────────────────────────────────
 
@@ -204,6 +235,8 @@ export function useCVJobs({
   const [yoloOverlayVisible, setYoloOverlayVisible] = useState(false)
   const [yoloArtifactMeta, setYoloArtifactMeta] = useState<CVArtifactMeta | null>(null)
   const [yoloArtifactExists, setYoloArtifactExists] = useState(false)
+  // #596: 取得障害(通信/401/403/5xx)を「成果物なし」と区別するフラグ。
+  const [cvStatusUnknown, setCvStatusUnknown] = useState(false)
 
   // 前回実行時の ROI（localStorage per matchId）
   const [yoloLastRoi, setYoloLastRoi] = useState<RoiRect | null>(() => {
@@ -259,8 +292,10 @@ export function useCVJobs({
     seedTs: number,
     assignments: { detection_index: number; player_key: string; bbox?: [number, number, number, number] | null; hist?: number[] | null }[],
     extraSeeds?: { timestamp_sec: number; assignments: { detection_index: number; player_key: string; bbox?: [number, number, number, number] | null; hist?: number[] | null }[] }[]
-  ) => {
-    if (!matchId) return
+  ): Promise<boolean> => {
+    // #594: assign の保存と結果 readback を分け、POST が失敗したら
+    // false を返して呼出側が入力を破棄しないようにする。
+    if (!matchId) return false
     setTrackingLoading(true)
     try {
       await apiPost(`/yolo/assign_and_track/${matchId}`, {
@@ -270,20 +305,27 @@ export function useCVJobs({
         // コート ROI を送って、追跡時にコート外候補（観客等）を reject する
         court_roi: _normalizeRoiForApi(roiRect),
       })
-      // 保存後すぐ取得
+    } catch {
+      // POST 自体の失敗: 追跡は保存されていない。呼出側で入力を保持させる。
+      setTrackingLoading(false)
+      return false
+    }
+    try {
+      // 保存後すぐ取得（readback 失敗は POST 成功を覆さない）
       const res = await apiGet<{ success: boolean; data: TrackFrame[] }>(
         `/yolo/identity_track/${matchId}`
       )
       if (res.success && res.data.length > 0) {
         setTrackFrames(res.data)
       }
-      // 識別確定後は常にトラック表示ON（データがなくても表示状態にしておく）
+      // 識別確定後は常にトラック表示ＯＮ（データがなくても表示状態にしておく）
       setTrackingVisible(true)
       // 移動距離カードのキャッシュを無効化して即時再取得
       queryClient.invalidateQueries({ queryKey: ['movement-stats', matchId] })
-    } catch { /* 追跡失敗は無視 */ } finally {
+    } catch { /* readback のみ失敗: 追跡は受理済。結果は後で再取得できる */ } finally {
       setTrackingLoading(false)
     }
+    return true
   }, [matchId, queryClient, roiRect])
 
   // マウント時: 保存済みトラックを取得
@@ -318,6 +360,7 @@ export function useCVJobs({
     setYoloArtifactExists(false)
     setTracknetArtifactExists(false)
     setShuttleFrames([])
+    setCvStatusUnknown(false)
 
     apiGet<{ success: boolean; data: CVArtifactMeta | null }>(`/yolo/results/${matchId}`)
       .then(res => {
@@ -325,7 +368,8 @@ export function useCVJobs({
         setYoloArtifactExists(!!(res.success && res.data))
         if (res.success && res.data) setYoloArtifactMeta(res.data)
       })
-      .catch(() => {})
+      // #596: 取得失敗は「未解析」と断定せず、状態未確認として扱う。
+      .catch(() => { if (!cancelled) setCvStatusUnknown(true) })
     // shuttle_track を優先確認。なければ tracknet_resume_check（ストロークに land_zone が
     // 設定済みかどうか）で判定する。これにより旧バージョンで shuttle_track が保存されていない
     // 場合でも「再開」ボタンを表示できる。
@@ -344,10 +388,11 @@ export function useCVJobs({
             `/tracknet/resume_check/${matchId}`
           ).then(r => {
             if (!cancelled && r.success && r.data?.has_land_zone) setTracknetArtifactExists(true)
-          }).catch(() => {})
+          }).catch(() => { if (!cancelled) setCvStatusUnknown(true) })
         }
       })
-      .catch(() => {})
+      // #596: 取得失敗は「未解析」と断定せず、状態未確認として扱う。
+      .catch(() => { if (!cancelled) setCvStatusUnknown(true) })
     return () => { cancelled = true }
   }, [matchId])
 
@@ -358,7 +403,7 @@ export function useCVJobs({
     prevRoi?: RoiRect | null
   } = {}) => {
     if (!matchId) return
-    const hasVideo = !!(match?.video_token || match?.video_url || match?.has_video_local)
+    const hasVideo = !!(match?.video_token || isPlayableVideoUrl(match?.video_url) || match?.has_video_local)
     if (!hasVideo) {
       alert(i18n.t('tracknet.batch_no_video'))
       return
@@ -406,8 +451,11 @@ export function useCVJobs({
     try {
       await apiPost(`/tracknet/batch/${tracknetJobId}/stop`, {})
       setTracknetArtifactExists(true)  // 停止後すぐに「再開」ボタンを表示
-    } catch { /* 停止失敗は無視 */ }
-  }, [tracknetJobId])
+    } catch {
+      // 停止要求が通っていないので、ジョブは走り続けている可能性がある
+      notifyError(i18n.t('common_ui.tracknet_stop_failed'))
+    }
+  }, [tracknetJobId, notifyError])
 
   // ── P3: TrackNet ポーリング ───────────────────────────────────────────────
 
@@ -418,6 +466,7 @@ export function useCVJobs({
         const res = await apiGet<{ success: boolean; data: TracknetJob | null }>(
           `/tracknet/batch/${tracknetJobId}/status`
         )
+        notePollResult('tracknet', true)
         if (res.success && res.data) {
           setTracknetJob(res.data)
           if (res.data?.status === 'complete' || res.data?.status === 'stopped') {
@@ -448,10 +497,10 @@ export function useCVJobs({
             }
           }
         }
-      } catch { /* ポーリング失敗は無視 */ }
+      } catch { notePollResult('tracknet', false) }
     }, 2000)
     return () => clearInterval(id)
-  }, [tracknetJobId, tracknetJob?.status, queryClient, matchId])
+  }, [tracknetJobId, tracknetJob?.status, queryClient, matchId, notePollResult])
 
   // ── P4: YOLO バッチ起動（内部共通ハンドラ） ──────────────────────────────
 
@@ -460,7 +509,7 @@ export function useCVJobs({
     prevRoi?: RoiRect | null
   } = {}) => {
     if (!matchId) return
-    const hasVideo = !!(match?.video_token || match?.video_url || match?.has_video_local)
+    const hasVideo = !!(match?.video_token || isPlayableVideoUrl(match?.video_url) || match?.has_video_local)
     if (!hasVideo) {
       alert(i18n.t('yolo.batch_no_video'))
       return
@@ -511,8 +560,11 @@ export function useCVJobs({
     try {
       await apiPost(`/yolo/batch/${yoloJobId}/stop`, {})
       setYoloArtifactExists(true)  // 停止後すぐに「再開」ボタンを表示
-    } catch { /* 停止失敗は無視 */ }
-  }, [yoloJobId])
+    } catch {
+      // 停止要求が通っていないので、ジョブは走り続けている可能性がある
+      notifyError(i18n.t('common_ui.yolo_stop_failed'))
+    }
+  }, [yoloJobId, notifyError])
   const handleYoloBatchDiff = useCallback(
     () => _startYoloBatch({ prevRoi: yoloLastRoi }),
     [_startYoloBatch, yoloLastRoi]
@@ -539,16 +591,13 @@ export function useCVJobs({
       queryClient.invalidateQueries({ queryKey: ['cv-candidates', matchId] })
       queryClient.invalidateQueries({ queryKey: ['cv-review-queue', matchId] })
     } catch (err) {
+      // 内部の status / 例外詳細は利用者へ出さずログへ残す
       const status = (err as { status?: number })?.status
       const msg = err instanceof Error ? err.message : String(err)
       console.error('[YoloReset] delete failed', status, msg)
-      alert(
-        `YOLO 結果の削除に失敗しました (status=${status ?? '?'}).\n` +
-        `バックエンドが新しい DELETE エンドポイントを認識していない可能性があります。\n` +
-        `アプリを再起動してください。\n\n詳細: ${msg}`
-      )
+      notifyError(i18n.t('common_ui.yolo_reset_failed'))
     }
-  }, [matchId, yoloJobId, yoloJob, queryClient])
+  }, [matchId, yoloJobId, yoloJob, queryClient, notifyError])
 
   // ── P4: YOLO ポーリング ───────────────────────────────────────────────────
 
@@ -559,6 +608,7 @@ export function useCVJobs({
         const res = await apiGet<{ success: boolean; data: YoloJob | null }>(
           `/yolo/batch/${yoloJobId}/status`
         )
+        notePollResult('yolo', true)
         if (res.success && res.data) {
           setYoloJob(res.data)
           const st = res.data?.status
@@ -601,10 +651,10 @@ export function useCVJobs({
             } catch { /* meta 取得失敗は無視 */ }
           }
         }
-      } catch { /* ポーリング失敗は無視 */ }
+      } catch { notePollResult('yolo', false) }
     }, 2000)
     return () => clearInterval(id)
-  }, [yoloJobId, yoloJob?.status, matchId, queryClient])
+  }, [yoloJobId, yoloJob?.status, matchId, queryClient, notePollResult])
 
   // ── P4: 動画再生位置の追跡（オーバーレイ同期） ───────────────────────────
   //
@@ -652,6 +702,8 @@ export function useCVJobs({
     handleTracknetBatchResume,
     handleTracknetBatchStop,
     tracknetArtifactExists,
+    // #596: CV成果物の状態を確認できなかった(未解析とは別)
+    cvStatusUnknown,
     // YOLO
     yoloJobId,
     yoloJob,

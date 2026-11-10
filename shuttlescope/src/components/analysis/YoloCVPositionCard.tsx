@@ -22,6 +22,7 @@ import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { AnalysisFilters } from '@/types'
 import { useTranslation } from 'react-i18next'
+import { fmtPct as pct } from '@/utils/format'
 
 interface Props {
   playerId: number
@@ -84,10 +85,6 @@ const FORMATION_LABELS: Record<string, string> = {
   parallel: '平行陣',
   mixed: '混合',
   unknown: '不明',
-}
-
-function pct(v: number) {
-  return `${(v * 100).toFixed(1)}%`
 }
 
 function FormationBar({ breakdown }: { breakdown: Record<string, FormationBreakdown> }) {

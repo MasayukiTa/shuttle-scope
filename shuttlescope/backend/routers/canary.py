@@ -51,6 +51,23 @@ _recent_bans_lock = threading.Lock()
 _BAN_DEDUP_WINDOW_SEC = 600  # 10 分
 
 
+def _cf_tls_verify() -> "bool | str":
+    """Cloudflare 管理 API 呼び出しの TLS 検証設定を返す (常に検証する)。
+
+    防ぐ事象 (監査 #794): 管理 Bearer トークンを送る通信で TLS 検証を無効にしていたため、
+    経路上の MITM がトークンを奪えた。既定は requests 標準の信頼ストア (True)。
+    企業 CA が必要な環境だけ、環境変数 SS_CF_CA_BUNDLE に CA bundle (PEM) のパスを
+    明示する。パスが存在しない場合は検証を緩めず ValueError を投げる
+    (呼び出し側の try/except が握り、API は呼ばれない = fail-closed)。
+    """
+    path = (os.environ.get("SS_CF_CA_BUNDLE") or "").strip()
+    if not path:
+        return True
+    if not os.path.isfile(path):
+        raise ValueError("SS_CF_CA_BUNDLE is not a file")
+    return path
+
+
 # ─── Tarpit delay range (random 化で adaptive scanner を検知困難に) ──────────
 # Codex policy では 1-5s 推奨だが、自陣 self-DoS が起きない範囲で長めに置く方が
 # scanner のスループットを落とせる。代わりに同時実行数を semaphore で cap して
@@ -149,8 +166,6 @@ def _trigger_cf_auto_ban(ip: str, reason: str, *, confidence: str = "medium",
     def _do_ban():
         try:
             import requests  # type: ignore
-            import urllib3
-            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
             r = requests.post(
                 f"https://api.cloudflare.com/client/v4/zones/{zone}/firewall/access_rules/rules",
                 headers={
@@ -167,7 +182,7 @@ def _trigger_cf_auto_ban(ip: str, reason: str, *, confidence: str = "medium",
                     ),
                 },
                 timeout=10,
-                verify=False,  # 企業 MITM 対応
+                verify=_cf_tls_verify(),
             )
             if r.status_code in (200, 201):
                 rule_id = ""
@@ -202,14 +217,12 @@ def _do_cf_unban_by_id(rule_id: str, ip: str) -> None:
         return
     try:
         import requests  # type: ignore
-        import urllib3
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         r = requests.delete(
             f"https://api.cloudflare.com/client/v4/zones/{zone}"
             f"/firewall/access_rules/rules/{rule_id}",
             headers={"Authorization": f"Bearer {token}"},
             timeout=10,
-            verify=False,
+            verify=_cf_tls_verify(),
         )
         logger.warning(
             "[canary] CF auto-unban: ip=%s rule_id=%s status=%s",
@@ -231,6 +244,14 @@ async def _canary_response(request: Request, path: str) -> JSONResponse:
     method = request.method
     referer = request.headers.get("referer", "")[:200]
     country = request.headers.get("cf-ipcountry", "?")
+    # A crawler that wandered onto a canary path is not an attacker: record it
+    # (once per day) and answer 404, with no audit hit, tarpit, escalation or ban.
+    from backend.utils import crawler_policy as _cp
+    request.state.is_decoy = True
+    if _cp.is_crawler(ip, ua_raw):
+        request.state.is_crawler = True
+        _cp.record_crawler_decoy_visit(ip, path, ua_raw, method)
+        return JSONResponse({"detail": "Not Found"}, status_code=404)
 
     # ─── audit log (HMAC chain で改ざん不可) ────────────────────────────
     # Codex policy 準拠 schema: severity / reason_code / action_taken / risk_score

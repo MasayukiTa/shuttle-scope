@@ -136,13 +136,13 @@ class OpenVINOTrackNet(TrackNetInferencer):
     ) -> List[ShuttleSample]:
         """フレームのリストを推論してチャンク分の ShuttleSample を返す。
 
-        predict_frames() が返す frame_idx は「チャンク内での中間フレーム番号」
+        predict_frames() が返す frame_idx は「3フレーム窓の末尾（予測対象）フレーム番号」
         なので、global_offset を加算してビデオ全体での絶対フレーム番号に変換する。
         """
         raw = self._impl.predict_frames(frames)
         chunk_samples: List[ShuttleSample] = []
         for r in raw:
-            # frame_idx はチャンク内座標（1-based, 3フレームスタックの中間）
+            # frame_idx はチャンク内座標（0-based, 3フレーム窓の末尾=予測対象）
             local_idx = int(r.get("frame_idx") or 0)
             abs_idx = global_offset + local_idx
             chunk_samples.append(

@@ -13,6 +13,7 @@ from backend.analysis.router_helpers import (
     _player_role_in_match, _get_player_matches, _fetch_matches_sets_rallies,
 )
 from backend.routers.analysis_stable import router as stable_router
+from backend.routers.analysis_simple import router as simple_router
 from backend.routers.analysis_advanced import router as advanced_router
 from backend.routers.analysis_research import router as research_router
 from backend.routers.analysis_spine import router as spine_router
@@ -21,6 +22,7 @@ from backend.routers.peer_comparison import router as peer_comparison_router
 
 router = APIRouter()
 router.include_router(stable_router)
+router.include_router(simple_router)
 router.include_router(advanced_router)
 router.include_router(research_router)
 router.include_router(spine_router)

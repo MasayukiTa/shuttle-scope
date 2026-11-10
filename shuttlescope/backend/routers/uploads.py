@@ -31,12 +31,18 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import StreamingResponse, Response
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
-from backend.db.models import Match, SharedSession, SessionParticipant, UploadSession
+from backend.db.models import (
+    Match,
+    ServerVideoArtifact,
+    SharedSession,
+    SessionParticipant,
+    UploadSession,
+)
 from backend.utils.auth import AuthCtx, get_auth
 from backend.utils.safe_path import safe_path
 
@@ -132,6 +138,133 @@ def _final_path(upload_id: str, filename: str) -> Path:
     if ext not in {".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi", ".mpg", ".mpeg"}:
         ext = ".mp4"
     return safe_path(UPLOAD_DIR, f"{safe_upload_id}{ext}")
+
+
+_STREAM_QUALITY_MAP = {
+    "source": "source",
+    "src": "source",
+    "play": "play",
+    "uhd": "uhd",
+    "fhd": "fhd",
+    "hd": "hd",
+}
+
+_SERVER_VIDEO_EXTENSIONS = (
+    ".mp4",
+    ".mov",
+    ".m4v",
+    ".webm",
+    ".mkv",
+    ".avi",
+    ".mpg",
+    ".mpeg",
+)
+
+
+def _normalize_stream_quality(raw: Optional[str]) -> Optional[str]:
+    """Map request quality to fixed literals before it can influence a path."""
+    q = (raw or "").strip().lower()
+    if not q:
+        return None
+    normalized = _STREAM_QUALITY_MAP.get(q)
+    if normalized is None:
+        raise HTTPException(status_code=400, detail=f"unknown quality: {q}")
+    return normalized
+
+
+def _trusted_server_video_source(
+    db: Session,
+    *,
+    match_id: int,
+    raw_ref: str,
+) -> tuple[str, Path]:
+    """Resolve a server-owned upload without trusting Match.video_local_path as a path.
+
+    Match.video_local_path is only used as a logical selector. The filesystem
+    filename is rebuilt from a server-owned ServerVideoArtifact.upload_id plus a
+    fixed extension allowlist. This keeps user-editable DB text out of filesystem
+    sinks and binds a video to the match that owns the artifact.
+    """
+    from backend.utils.server_video_ref import parse_server_video_ref
+
+    try:
+        parsed = parse_server_video_ref(raw_ref)
+        requested_uuid = uuid.UUID(parsed.upload_id)
+    except (ValueError, AttributeError) as exc:
+        raise HTTPException(status_code=404, detail="動画ファイル参照が不正です") from exc
+
+    uuid_aliases = (str(requested_uuid), requested_uuid.hex)
+    artifact = (
+        db.query(ServerVideoArtifact)
+        .filter(
+            ServerVideoArtifact.match_id == match_id,
+            ServerVideoArtifact.upload_id.in_(uuid_aliases),
+        )
+        .order_by(ServerVideoArtifact.id.desc())
+        .first()
+    )
+    if artifact is None or not artifact.upload_id:
+        raise HTTPException(status_code=404, detail="信頼済み動画参照が見つかりません")
+
+    try:
+        trusted_uuid = uuid.UUID(str(artifact.upload_id))
+    except (ValueError, AttributeError) as exc:
+        raise HTTPException(status_code=404, detail="信頼済み動画参照が不正です") from exc
+    if trusted_uuid != requested_uuid:
+        raise HTTPException(status_code=404, detail="動画参照が一致しません")
+
+    candidates: list[tuple[str, Path]] = []
+    for trusted_id in (str(trusted_uuid), trusted_uuid.hex):
+        for ext in _SERVER_VIDEO_EXTENSIONS:
+            candidate = safe_path(UPLOAD_DIR, f"{trusted_id}{ext}")
+            if candidate.is_file():
+                candidates.append((trusted_id, candidate))
+
+    unique: dict[str, tuple[str, Path]] = {
+        str(path.resolve()).lower(): (trusted_id, path)
+        for trusted_id, path in candidates
+    }
+    if not unique:
+        raise HTTPException(status_code=404, detail="動画ファイルが見つかりません")
+    if len(unique) != 1:
+        raise HTTPException(status_code=409, detail="動画ファイル参照が曖昧です")
+    trusted_id, path = next(iter(unique.values()))
+    return trusted_id, path
+
+
+def _upsert_server_video_artifact(
+    db: Session,
+    *,
+    session: UploadSession,
+    final: Path,
+    sender_user_id: Optional[int],
+) -> ServerVideoArtifact:
+    """Persist the server-owned trust record in the same transaction as finalize."""
+    artifact = (
+        db.query(ServerVideoArtifact)
+        .filter(ServerVideoArtifact.upload_id == session.id)
+        .order_by(ServerVideoArtifact.id.desc())
+        .first()
+    )
+    if artifact is None:
+        artifact = ServerVideoArtifact(
+            upload_id=session.id,
+            started_at=session.created_at,
+            file_path=str(final.resolve()),
+        )
+        db.add(artifact)
+
+    artifact.match_id = session.match_id
+    artifact.sender_user_id = sender_user_id
+    artifact.file_path = str(final.resolve())
+    file_size = final.stat().st_size
+    # ServerVideoArtifact.file_size_bytes is still int4 while uploads can exceed
+    # 2 GiB. Size is metadata, not part of the trust decision, so keep finalize
+    # working for large files instead of overflowing PostgreSQL.
+    artifact.file_size_bytes = file_size if file_size <= 2**31 - 1 else None
+    artifact.mime_type = session.mime_type
+    artifact.finalized_at = datetime.utcnow()
+    return artifact
 
 
 def _require_writer(ctx: AuthCtx) -> None:
@@ -360,6 +493,11 @@ def init_upload(
         m = db.get(Match, body.match_id)
         if m is None:
             raise HTTPException(status_code=404, detail="試合が見つかりません")
+        # JWT 書き込みロールは対象試合の team scope 内に限る (他チームの試合の動画差し替え防止)。
+        # QR 参加者は上の participant_match_id 検査で session -> match 束縛済み。
+        if actor.participant_id is None:
+            from backend.utils.auth import require_match_scope as _require_match_scope
+            _require_match_scope(request, m, db)
 
     # ディスク空き容量チェック
     try:
@@ -780,6 +918,13 @@ async def finalize_upload(
         if session is None:
             raise HTTPException(status_code=404, detail="アップロードセッションが見つかりません")
         _require_upload_owner(actor, session)
+        # 作成者本人でも、upload が指す試合へ今この呼び出し元が書けることを再確認する。
+        # (動画差し替えと CV 成果物の無効化が起きるのは finalize。QR 参加者は init で束縛済み)
+        if actor.participant_id is None and session.match_id is not None:
+            _fin_match = db.get(Match, session.match_id)
+            if _fin_match is not None:
+                from backend.utils.auth import require_match_scope as _require_match_scope_fin
+                _require_match_scope_fin(request, _fin_match, db)
 
         if session.status == "completed":
             # R39 fix (F-005): 絶対 path は返さない (basename だけ)
@@ -939,24 +1084,15 @@ async def finalize_upload(
                     if not getattr(m, "video_token", None):
                         m.video_token = _new_video_token()
 
-        # R-1: ServerVideoArtifact を生成 (Sender からの自動録画ストリームの記録)
-        try:
-            from backend.db.models import ServerVideoArtifact as _SVA
-            file_size = final.stat().st_size if final.exists() else None
-            artifact = _SVA(
-                match_id=session.match_id,
-                upload_id=upload_id,
-                sender_user_id=ctx.user_id,
-                file_path=str(final.resolve()),
-                file_size_bytes=file_size,
-                mime_type=session.mime_type,
-                started_at=session.created_at,
-                finalized_at=datetime.utcnow(),
-            )
-            db.add(artifact)
-        except Exception as exc:
-            import logging as _lg
-            _lg.getLogger(__name__).warning("[uploads] artifact create failed: %s", exc)
+        # ServerVideoArtifact is the trust record used by the HTTP streaming path.
+        # It must commit atomically with the match/session update; a best-effort
+        # artifact would reopen a confused-deputy path after finalize.
+        _upsert_server_video_artifact(
+            db,
+            session=session,
+            final=final,
+            sender_user_id=actor.user_id,
+        )
 
         db.commit()
 
@@ -1057,97 +1193,63 @@ def stream_video_for_match(
     vlp = m.video_local_path or ""
     file: Optional[Path] = None
     if vlp.startswith("server://"):
-        # server://{upload_id}{ext} → UPLOAD_DIR 配下に解決
-        rest = vlp[len("server://"):]
-        # quality 指定があり、対応 variant が存在すれば variant ファイルを返す。
-        # 未指定 / "source" / variant 不在 → source ファイルを返す。
-        # quality は service の variant_specs キーのみ許可 (= 任意文字列でファイル
-        # 名走査されないように厳格に validate)。
-        if quality:
-            from backend.services.video_variants import variant_specs, variant_path
-            q = quality.strip().lower()
-            if q not in ("source", "src", ""):
-                if q not in variant_specs():
-                    raise HTTPException(status_code=400, detail=f"unknown quality: {q}")
-                upload_id = rest.rsplit(".", 1)[0] if "." in rest else rest
-                # upload_id は UUID (uuid.uuid4) のはずだが、DB 由来文字列のため
-                # path traversal セーフのため安全側で jail する。defensive 二重チェック。
-                if "/" in upload_id or "\\" in upload_id or ".." in upload_id:
-                    raise HTTPException(status_code=400, detail="不正な upload_id 形式")
-                vpath = variant_path(UPLOAD_DIR, upload_id, q)
-                # safe_path で UPLOAD_DIR/variants/ 配下に jail 済かを resolve 後に検証
-                try:
-                    vpath_safe = safe_path(UPLOAD_DIR, str(vpath.relative_to(Path(UPLOAD_DIR).resolve())))
-                except (ValueError, HTTPException):
-                    vpath_safe = None
-                if vpath_safe is not None and vpath_safe.exists() and vpath_safe.stat().st_size > 0:
-                    file = vpath_safe
+        trusted_upload_id, source_path = _trusted_server_video_source(
+            db,
+            match_id=m.id,
+            raw_ref=vlp,
+        )
+        normalized_quality = _normalize_stream_quality(quality)
+
+        from backend.services.video_variants import (
+            PLAYBACK_QUALITY,
+            playback_variant_file,
+            variant_path,
+        )
+
+        if normalized_quality in ("uhd", "fhd", "hd", PLAYBACK_QUALITY):
+            variant = variant_path(
+                UPLOAD_DIR,
+                trusted_upload_id,
+                normalized_quality,
+            )
+            if variant.is_file() and variant.stat().st_size > 0:
+                file = variant
+            elif normalized_quality == PLAYBACK_QUALITY:
+                raise HTTPException(
+                    status_code=409,
+                    detail="再生互換版を変換中です",
+                )
+
+        if file is None and normalized_quality != "source":
+            file = playback_variant_file(
+                Path(UPLOAD_DIR),
+                trusted_upload_id,
+            )
         if file is None:
-            file = safe_path(UPLOAD_DIR, rest)
+            file = source_path
     elif vlp.startswith("localfile:///"):
-        # 24h 経過アーカイブ移動後の絶対パス。path_jail で
-        # ss_live_archive_root / ss_video_extra_roots 内であることを確認。
-        from backend.utils.path_jail import normalize_match_local_path, assert_allowed_video_path
-        try:
-            candidate = normalize_match_local_path(vlp)
-            if candidate is None:
-                raise HTTPException(status_code=404, detail="動画パスを解決できません")
-            file = assert_allowed_video_path(candidate)
-        except ValueError as exc:
-            raise HTTPException(status_code=403, detail=str(exc))
+        # localfile:// is an Electron/server-internal persistence format, not a
+        # public HTTP streaming capability. Serving an arbitrary allowed-root
+        # file through a match token would create a cross-match confused deputy.
+        raise HTTPException(
+            status_code=404,
+            detail="ローカル動画はこの配信経路の対象外です",
+        )
     else:
         raise HTTPException(status_code=404, detail="サーバ保管動画が設定されていません")
     if file is None or not file.exists():
         raise HTTPException(status_code=404, detail="動画ファイルが見つかりません")
 
-    total = file.stat().st_size
-    range_header = request.headers.get("range") or request.headers.get("Range")
-    start, end = 0, total - 1
-    status_code = 200
-    if range_header and range_header.startswith("bytes="):
-        try:
-            part = range_header[6:].split(",")[0]
-            s, e = part.split("-")
-            if s.strip():
-                start = int(s)
-            if e.strip():
-                end = int(e)
-            if start < 0 or end >= total or start > end:
-                raise ValueError
-            status_code = 206
-        except ValueError:
-            raise HTTPException(status_code=416, detail="Range ヘッダが不正")
-
-    length = end - start + 1
-    chunk_read = 256 * 1024  # 256KB ずつ送出
-
-    def iter_file():
-        with open(file, "rb") as f:
-            f.seek(start)
-            remaining = length
-            while remaining > 0:
-                buf = f.read(min(chunk_read, remaining))
-                if not buf:
-                    break
-                remaining -= len(buf)
-                yield buf
-
-    # 拡張子から Content-Type 推定
+    # Starlette FileResponse handles HTTP Range requests natively. Keeping file
+    # opening inside the framework removes the user-influenced manual open()
+    # sink while preserving the path-jail validation above.
     ext = file.suffix.lower()
     ct_map = {
         ".mp4": "video/mp4", ".mov": "video/quicktime", ".m4v": "video/x-m4v",
         ".webm": "video/webm", ".mkv": "video/x-matroska",
     }
     content_type = ct_map.get(ext, "application/octet-stream")
-
-    headers = {
-        "Accept-Ranges": "bytes",
-        "Content-Length": str(length),
-        "Content-Type": content_type,
-    }
-    if status_code == 206:
-        headers["Content-Range"] = f"bytes {start}-{end}/{total}"
-    return StreamingResponse(iter_file(), status_code=status_code, headers=headers, media_type=content_type)
+    return FileResponse(path=file, media_type=content_type)
 
 
 # ─── バックグラウンド GC ─────────────────────────────────────────────────────

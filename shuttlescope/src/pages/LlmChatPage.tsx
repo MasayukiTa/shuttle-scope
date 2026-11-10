@@ -2,6 +2,7 @@
 // 会話はユーザごとに分離 (backend で所有者強制)。メモリ=各会話のターン履歴 (SSE ストリーミング)。
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { useTranslation } from 'react-i18next'
+import i18n from '@/i18n'
 import { MIcon } from '../components/common/MIcon'
 import { ChatMarkdown } from '../components/common/ChatMarkdown'
 import {
@@ -11,6 +12,7 @@ import {
   getLlmModels,
   getMessages,
   listConversations,
+  llmStreamErrorKey,
   renameConversation,
   streamMessage,
   type LlmConfig,
@@ -105,6 +107,8 @@ export default function LlmChatPage() {
   const [drawerOpen, setDrawerOpen] = useState(false) // モバイル会話ドロワー (<md)
   const [convListCollapsed, setConvListCollapsed] = useState(readConvListCollapsed) // デスクトップ会話リスト折りたたみ (md+, localStorage 永続)
   const [messagesLoading, setMessagesLoading] = useState(false) // 会話切替時のメッセージ取得中
+  // 履歴の取得失敗を「空の会話」と区別する (空の会話の案内を出さず、失敗として示す)
+  const [messagesFailed, setMessagesFailed] = useState(false)
   const [showScrollDown, setShowScrollDown] = useState(false) // 上にスクロール中の「最新へ」ボタン
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null) // 削除確認中の会話
   const [images, setImages] = useState<AttachedImage[]>([]) // 送信前の添付画像 (data URL)
@@ -133,26 +137,42 @@ export default function LlmChatPage() {
       setConversations(r.conversations || [])
       return r.conversations || []
     } catch {
+      // 一覧は取得済みの内容を残す (会話が無いように見せない)。失敗を知らせる
+      setError(i18n.t('common_ui.llm_list_failed'))
       return []
     }
   }, [])
 
   useEffect(() => {
-    getLlmConfig().then(setConfig).catch(() => setConfig(null))
+    // 設定 / モデル一覧の取得失敗は黙って握り潰さず利用者へ知らせる (モデル未選択のまま
+    // backend 既定へ暗黙送信される状態に気付けるようにする)。
+    // アンマウント後の setState (teardown 済み環境) を中断フラグで抑止。
+    let active = true
+    getLlmConfig().then((v) => { if (active) setConfig(v) }).catch(() => {
+      if (!active) return
+      setConfig(null)
+      setError(i18n.t('llm.error.bootstrap_failed'))
+    })
     refreshConversations()
     // モデル一覧を取得し、選択中モデルを決める:
     // localStorage の値が allowlist 内ならそれを、無ければ backend 既定を使う。
     getLlmModels()
       .then(({ models: list, default: def }) => {
+        if (!active) return
         setModels(list)
         const saved = readModelPref()
         const valid = saved && list.some((m) => m.id === saved) ? saved : def
         setSelectedModel(valid)
       })
       .catch(() => {
+        if (!active) return
         setModels([])
         setSelectedModel('')
+        setError(i18n.t('llm.error.bootstrap_failed'))
       })
+    return () => {
+      active = false
+    }
   }, [refreshConversations])
 
   // 選択中モデルを localStorage に永続化 (未確定の空文字は保存しない)。
@@ -174,11 +194,42 @@ export default function LlmChatPage() {
     }
   }, [convListCollapsed])
 
+  // activeId の会話履歴を取得する。取得失敗は空会話へ変換せず error state (messagesFailed)
+  // として示し、再読込導線 (reloadMessages) から再試行できるようにする。401/403 は共通層
+  // (client.ts) が session-expired 処理へ接続する。
+  const loadMessages = useCallback((id: number) => {
+    let cancelled = false
+    setMessagesLoading(true)
+    setMessagesFailed(false)
+    getMessages(id)
+      .then((r) => { if (!cancelled) { setMessages(r.messages || []); setMessagesFailed(false) } })
+      .catch(() => {
+        if (cancelled) return
+        // 履歴を読めなかった。別会話の内容を残さないよう空にした上で、失敗として示す。
+        // 空会話UI (スターター質問) は messagesFailed で抑止され、代わりに再試行導線を出す。
+        setMessages([])
+        setMessagesFailed(true)
+        setError(i18n.t('common_ui.llm_messages_failed'))
+      })
+      .finally(() => { if (!cancelled) setMessagesLoading(false) })
+    return () => { cancelled = true }
+  }, [])
+
+  // 履歴取得失敗時の再読込。現在の activeId に対してもう一度 getMessages を試みる。
+  const reloadMessages = useCallback(() => {
+    if (activeId == null) return
+    setError(null)
+    forceScrollRef.current = true
+    stickToBottomRef.current = true
+    loadMessages(activeId)
+  }, [activeId, loadMessages])
+
   useEffect(() => {
     forceScrollRef.current = true // 会話を切り替えたら次回描画で最下部へ
     stickToBottomRef.current = true // 切替直後は最下部追従を有効化
     if (activeId == null) {
       setMessages([])
+      setMessagesFailed(false)
       return
     }
     // onSend が今作ったばかりの空の会話なら再取得しない (空配列で楽観表示の
@@ -187,14 +238,8 @@ export default function LlmChatPage() {
       skipNextFetchRef.current = null
       return
     }
-    let cancelled = false
-    setMessagesLoading(true)
-    getMessages(activeId)
-      .then((r) => { if (!cancelled) setMessages(r.messages || []) })
-      .catch(() => { if (!cancelled) setMessages([]) })
-      .finally(() => { if (!cancelled) setMessagesLoading(false) })
-    return () => { cancelled = true }
-  }, [activeId])
+    return loadMessages(activeId)
+  }, [activeId, loadMessages])
 
   // 自動スクロール: ユーザが最下部付近にいるとき (stickToBottomRef) だけ追従。
   // ただし会話切替/送信直後 (forceScrollRef) は無条件で最下部へ。
@@ -418,7 +463,12 @@ export default function LlmChatPage() {
           errored = true
           setStreaming(false)
           // ミッドストリームエラー: 既出のストリームテキストは消さず確定バブル + エラー注記にする。
-          setError(e.message || t('llm.error.generate'))
+          // backend の安定コード (budget_exceeded / provider_*) は翻訳文言へ。それ以外は従来どおり。
+          const errKey = llmStreamErrorKey(e.message)
+          setError(errKey ? t(errKey) : e.message || t('llm.error.generate'))
+          // 生成失敗 (provider/SSE エラー): 失敗プロンプトを再試行可能にする (#695)。
+          // user turn は既に保存済みなので再送は同内容の再生成で、重複は履歴で許容する。
+          setRetryPrompt(content)
         }
       }, controller.signal, useModel, sendImages)
     } catch {
@@ -429,6 +479,8 @@ export default function LlmChatPage() {
       } else {
         errored = true
         setError(t('llm.error.generate'))
+        // ストリーム reject 時も再試行導線を出す (#695)。
+        setRetryPrompt(content)
       }
     }
 
@@ -748,12 +800,47 @@ export default function LlmChatPage() {
                 <p className="text-sm">{t('llm.loading')}</p>
               </div>
             ) : (
-              messages.length === 0 && !streamText && !streaming && (
+              messages.length === 0 && !streamText && !streaming && !messagesFailed && (
                 <div className="flex h-full flex-col items-center justify-center text-center text-[var(--ss-t3)]">
                   <MIcon name="smart_toy" size={40} ariaHidden className="mb-2" />
                   <p className="text-sm">{t('llm.empty')}</p>
+                  {/* ShuttleScope の分析に沿った質問の入口。押すと入力欄に入るだけで、送信は利用者が行う。 */}
+                  <p className="mt-4 text-xs">{t('llm.starters_title')}</p>
+                  <div className="mt-2 flex flex-wrap justify-center gap-2">
+                    {(['starter_turning_point', 'starter_opponent_trend', 'starter_practice'] as const).map((k) => (
+                      <button
+                        key={k}
+                        type="button"
+                        disabled={composerDisabled}
+                        onClick={() => {
+                          setInput(t(`llm.${k}`))
+                          taRef.current?.focus()
+                        }}
+                        className="min-h-[36px] rounded-full border border-[var(--ss-border)] bg-[var(--ss-surface-2)] px-3 py-1.5 text-xs text-[var(--ss-t1)] hover:bg-[var(--ss-surface-3)] disabled:opacity-50"
+                      >
+                        {t(`llm.${k}`)}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )
+            )}
+            {/* 履歴取得失敗: 空会話UIへ変換せず、明示的なエラー状態 + 再読込導線を出す。
+                401/403 は共通層 (client.ts) が session-expired 処理へ接続するため、ここへは
+                到達しない (到達する場合は通信/サーバ障害)。 */}
+            {messagesFailed && !messagesLoading && (
+              <div role="alert" className="flex h-full flex-col items-center justify-center text-center text-[var(--ss-t3)]">
+                <MIcon name="error_outline" size={40} ariaHidden className="mb-2 text-[var(--ss-danger)]" />
+                <p className="text-sm text-[var(--ss-t2)]">{t('common_ui.llm_messages_failed')}</p>
+                <button
+                  type="button"
+                  onClick={reloadMessages}
+                  className="mt-3 inline-flex min-h-[36px] items-center gap-1 rounded-full border border-[var(--ss-border)] bg-[var(--ss-surface-2)] px-3 py-1.5 text-xs font-medium text-[var(--ss-t1)] hover:bg-[var(--ss-surface-3)]"
+                >
+                  <MIcon name="refresh" size={16} ariaHidden />
+                  {t('common_ui.query_retry')}
+                </button>
+              </div>
             )}
             {messages.map((m) => (
               <Bubble key={m.id} role={m.role} content={m.content} images={m.images ?? undefined} />
@@ -886,13 +973,15 @@ export default function LlmChatPage() {
             >
               <MIcon name="add_photo_alternate" size={20} ariaHidden />
             </button>
-            {/* マイクボタン: Web Speech API 対応時のみ表示。録音中は色を変えて状態を示す。 */}
+            {/* マイクボタン: Web Speech API 対応時のみ表示。録音中は色を変えて状態を示す。
+                状態は aria-label (開始 / 停止) の切り替えで伝える。aria-pressed を付けると
+                UI Automation ではトグルボタン (TogglePattern) になり、他のボタンと違って
+                Invoke 操作が使えなくなるため付けない。 */}
             {voiceSupported && (
               <button
                 type="button"
                 onClick={onToggleVoice}
                 disabled={composerDisabled}
-                aria-pressed={listening}
                 className={`shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-[var(--r-md)] disabled:opacity-40 ${
                   listening
                     ? 'bg-[var(--ss-danger)] text-white hover:opacity-90 animate-pulse'
@@ -996,6 +1085,16 @@ function ConversationList({
                 : 'hover:bg-[var(--ss-surface-2)]'
             }`}
             onClick={() => { if (renamingId !== c.id) onSelectConversation(c.id) }}
+            role={renamingId === c.id ? undefined : 'button'}
+            tabIndex={renamingId === c.id ? undefined : 0}
+            aria-current={c.id === activeId ? 'true' : undefined}
+            onKeyDown={(e) => {
+              if (renamingId === c.id) return
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onSelectConversation(c.id)
+              }
+            }}
           >
             <MIcon name="forum" size={16} ariaHidden className="text-[var(--ss-t3)] shrink-0" />
             {renamingId === c.id ? (
@@ -1078,6 +1177,7 @@ function ConversationList({
 function Bubble({ role, content, images, pending }: { role: string; content: string; images?: string[]; pending?: boolean }) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
+  const [copyFailed, setCopyFailed] = useState(false)
   const isUser = role === 'user'
   if (isUser) {
     return (
@@ -1105,12 +1205,20 @@ function Bubble({ role, content, images, pending }: { role: string; content: str
       </div>
     )
   }
-  const onCopy = () => {
+  const onCopy = async () => {
+    // 成功表示は writeText の Promise が解決してからだけ出す。
+    // 非対応環境 (http 等) / 権限拒否 (reject) は「コピーできませんでした」を出す。
     try {
-      navigator.clipboard?.writeText(content)
+      if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable')
+      await navigator.clipboard.writeText(content)
+      setCopyFailed(false)
       setCopied(true)
       window.setTimeout(() => setCopied(false), 1500)
-    } catch { /* clipboard 非対応環境 (http 等) は無視 */ }
+    } catch {
+      setCopied(false)
+      setCopyFailed(true)
+      window.setTimeout(() => setCopyFailed(false), 3000)
+    }
   }
   // assistant: Markdown 描画 (コードブロック/箇条書き等)。ChatMarkdown は未閉鎖フェンスも許容するため
   // ストリーミング中 (pending) も Markdown 描画し、確定時の再レイアウトちらつきを無くす。
@@ -1128,12 +1236,12 @@ function Bubble({ role, content, images, pending }: { role: string; content: str
           title={t('llm.copy')}
         >
           <MIcon name={copied ? 'check' : 'content_copy'} size={14} ariaHidden />
-          {copied ? t('llm.copied') : t('llm.copy')}
+          {copied ? t('llm.copied') : copyFailed ? t('llm.copy_failed') : t('llm.copy')}
         </button>
       )}
-      {/* コピー成功をスクリーンリーダーへ通知 (視覚表示はボタン側ラベルで実施)。 */}
+      {/* コピー結果をスクリーンリーダーへ通知 (視覚表示はボタン側ラベルで実施)。 */}
       <span role="status" aria-live="polite" className="sr-only">
-        {copied ? t('llm.copied') : ''}
+        {copied ? t('llm.copied') : copyFailed ? t('llm.copy_failed') : ''}
       </span>
     </div>
   )

@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { AnalysisFilters } from '@/types'
-import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
+import { ResearchNotice, ResearchNoticeSuppress } from '@/components/dashboard/ResearchNotice'
 import { PeerComparisonCard } from '@/components/dashboard/PeerComparisonCard'
 import { AdviceChatPanel } from '@/components/dashboard/advice_chat/AdviceChatPanel'
 import { useAuth } from '@/hooks/useAuth'
@@ -75,7 +75,12 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
         promotionCriteria="各項目が実用移行するには、十分なサンプルサイズ・CI品質・コーチ有用性の確認が必要です。"
       />
       </div>
+      <p className={`text-[11px] px-1 ${textMuted}`} data-testid="research-dependence-note">
+        {t('auto.DashboardResearchPage.dependence_note')}
+      </p>
 
+      {/* 以降のカードでは警告の見出しを繰り返さない。カード固有の注意・前提・昇格条件は小さく残す */}
+      <ResearchNoticeSuppress>
       {/* admin-only コミュニティ peer 比較 (research / experimental) */}
       <ErrorBoundary>
         <PeerComparisonCard />
@@ -93,11 +98,6 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
                 recommendationAllowed={false}
               />
             </div>
-            <ResearchNotice
-              caution={epvMeta?.caution ?? 'EPVはMarkovモデルに基づく探索的指標です。'}
-              assumptions={epvMeta?.assumptions ?? '定常マルコフ過程・独立ラリー仮定'}
-              promotionCriteria={epvMeta?.promotion_criteria ?? undefined}
-            />
             <MarkovEPV playerId={playerId} filters={filters} />
           </div>
         </RoleGuard>
@@ -212,35 +212,35 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
       {/* ── Research Spine: 搾取可能性 / ナッシュ均衡 ── */}
       <ErrorBoundary>
         <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
-          <ExploitabilityCard playerId={playerId} />
+          <ExploitabilityCard playerId={playerId} filters={filters} />
         </RoleGuard>
       </ErrorBoundary>
 
       {/* ── Research Spine: コンフォーマル予測（分布フリーカバレッジ保証） ── */}
       <ErrorBoundary>
         <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
-          <ConformalCard playerId={playerId} />
+          <ConformalCard playerId={playerId} filters={filters} />
         </RoleGuard>
       </ErrorBoundary>
 
       {/* ── DR-OPE ポリシー評価 ── */}
       <ErrorBoundary>
         <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
-          <PolicyEvalCard playerId={playerId} />
+          <PolicyEvalCard playerId={playerId} filters={filters} />
         </RoleGuard>
       </ErrorBoundary>
 
       {/* ── スタイル距離（最適輸送） ── */}
       <ErrorBoundary>
         <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
-          <StyleDistanceCard playerId={playerId} />
+          <StyleDistanceCard playerId={playerId} filters={filters} />
         </RoleGuard>
       </ErrorBoundary>
 
       {/* ── 対戦予測（階層ベイズ） ── */}
       <ErrorBoundary>
         <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
-          <MatchupForecastCard playerId={playerId} />
+          <MatchupForecastCard playerId={playerId} filters={filters} />
         </RoleGuard>
       </ErrorBoundary>
 
@@ -250,6 +250,7 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
           <PromotionStatusCard playerId={playerId} filters={filters} />
         </RoleGuard>
       </ErrorBoundary>
+      </ResearchNoticeSuppress>
     </div>
     </ResearchBundleProvider>
   )

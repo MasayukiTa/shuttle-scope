@@ -154,6 +154,8 @@ def add_columns_if_missing(eng) -> None:
         # G2: 返球品質・打点高さ（ストローク確定後オプション入力）
         ("strokes", "return_quality",            "TEXT"),
         ("strokes", "contact_height",            "TEXT"),
+        # 要望8 (SD-08): 打球の高さ（ネット基準の4段階、任意入力）。hit_zone(位置)とは別概念。
+        ("strokes", "hit_height",                "TEXT"),
         # 移動系コンテキスト（4.1 Movement Features）
         ("strokes", "contact_zone",              "TEXT"),
         ("strokes", "movement_burden",           "TEXT"),
@@ -166,6 +168,9 @@ def add_columns_if_missing(eng) -> None:
         ("rallies", "review_status",             "TEXT"),
         # 入力ソース
         ("strokes", "source_method",             "TEXT"),
+        # 要望6: ショットの意図メモ（選択式タグ + 短い自由記述）
+        ("strokes", "intent_tag",                "TEXT"),
+        ("strokes", "intent_note",               "TEXT"),
         # LAN セッション認証・デバイス制御 (migration 0003)
         ("shared_sessions",    "password_hash",           "TEXT"),
         ("session_participants", "device_type",           "TEXT"),
@@ -428,30 +433,41 @@ def _ensure_analytics_indexes(eng) -> None:
                     conn.rollback()
 
 
-def run_db_migrations() -> None:
-    """Alembic migration を実行する（upgrade head）。
-
-    - インメモリ DB（テスト用）はスキップする
-    - migration ファイルは backend/db/migrations/versions/ に配置
-    - 失敗しても WARNING のみ（起動を止めない）
-    """
-    if ":memory:" in settings.DATABASE_URL:
-        return
-    try:
-        import pathlib
-        from alembic.config import Config
-        from alembic import command
-
-        alembic_ini = pathlib.Path(__file__).parent / "alembic.ini"
-        alembic_cfg = Config(str(alembic_ini))
-        command.upgrade(alembic_cfg, "head")
-    except Exception as e:
-        print(f"[migration] WARNING: Alembic migration failed: {e}")
-
 
 def _table_names(eng) -> set[str]:
     """Return the current table names in the bound database."""
     return set(inspect(eng).get_table_names())
+
+
+def _database_is_at_alembic_head(eng) -> bool:
+    """Return True when the runtime DB revision already matches repository head.
+
+    This check intentionally uses the runtime engine only. It lets a production
+    process that is already schema-current avoid opening the privileged
+    SS_DB_MIGRATION_URL connection on every restart. If the preflight cannot
+    prove equivalence, return False and fall back to the normal Alembic path.
+    """
+    try:
+        import pathlib
+        from alembic.config import Config
+        from alembic.runtime.migration import MigrationContext
+        from alembic.script import ScriptDirectory
+
+        alembic_ini = pathlib.Path(__file__).parent / "alembic.ini"
+        alembic_cfg = Config(str(alembic_ini))
+        script_heads = set(ScriptDirectory.from_config(alembic_cfg).get_heads())
+        if not script_heads:
+            return False
+
+        with eng.connect() as conn:
+            db_heads = set(MigrationContext.configure(conn).get_current_heads())
+        return db_heads == script_heads
+    except Exception as exc:
+        logger.warning(
+            "Alembic head preflight failed; privileged migration path will run: %s",
+            exc,
+        )
+        return False
 
 
 def stamp_db_head(db_url: str | None = None) -> None:
@@ -472,8 +488,16 @@ def stamp_db_head(db_url: str | None = None) -> None:
         print(f"[migration] WARNING: Alembic stamp failed: {e}")
 
 
-def run_db_migrations(db_url: str | None = None) -> None:
-    """Apply Alembic revisions up to head for file-backed databases."""
+def run_db_migrations(
+    db_url: str | None = None,
+    *,
+    fail_on_error: bool = False,
+) -> None:
+    """Apply Alembic revisions up to head.
+
+    PostgreSQL production uses SS_DB_MIGRATION_URL inside migrations/env.py so
+    DDL runs as the dedicated migration role rather than the runtime role.
+    """
     url = db_url or settings.DATABASE_URL
     if ":memory:" in url:
         return
@@ -488,6 +512,8 @@ def run_db_migrations(db_url: str | None = None) -> None:
         command.upgrade(alembic_cfg, "head")
     except Exception as e:
         print(f"[migration] WARNING: Alembic migration failed: {e}")
+        if fail_on_error:
+            raise
 
 
 def get_db_stats(eng=None) -> dict:
@@ -674,8 +700,18 @@ def _ensure_auto_vacuum_incremental(eng) -> None:
         logger.warning("_ensure_auto_vacuum_incremental: 失敗（無視）: %s", exc)
 
 
-def bootstrap_database(eng=None, db_url: str | None = None) -> None:
-    """Initialize the database safely across fresh, legacy, and versioned states."""
+def bootstrap_database(
+    eng=None,
+    db_url: str | None = None,
+    *,
+    fail_on_migration_error: bool = False,
+) -> None:
+    """Initialize fresh, legacy, and versioned databases safely.
+
+    SQLite keeps the historical create_all/index compatibility path. PostgreSQL
+    DDL is Alembic-only so the runtime role never needs table ownership or
+    CREATE privileges after role lockdown.
+    """
     bind = eng or engine
     url = db_url or settings.DATABASE_URL
     is_sqlite = "sqlite" in url
@@ -688,30 +724,40 @@ def bootstrap_database(eng=None, db_url: str | None = None) -> None:
     has_version_table = "alembic_version" in before_tables
     has_app_tables = bool(before_tables - {"alembic_version"})
 
+    if not is_sqlite:
+        if has_app_tables and not has_version_table:
+            raise RuntimeError(
+                "PostgreSQL schema contains application tables but no alembic_version. "
+                "Refusing automatic stamp/DDL; repair the migration state explicitly."
+            )
+        if has_version_table and _database_is_at_alembic_head(bind):
+            logger.info(
+                "PostgreSQL schema already at Alembic head; "
+                "skipping privileged migration connection"
+            )
+            return
+        run_db_migrations(url, fail_on_error=fail_on_migration_error)
+        return
+
     if not has_app_tables and not has_version_table:
         create_tables(bind)
         _ensure_unique_indexes(bind)
         _ensure_analytics_indexes(bind)
         stamp_db_head(url)
-        if is_sqlite:
-            _ensure_auto_vacuum_incremental(bind)
+        _ensure_auto_vacuum_incremental(bind)
         return
 
     if has_version_table:
         create_tables(bind)
-        run_db_migrations(url)
+        run_db_migrations(url, fail_on_error=fail_on_migration_error)
         _ensure_unique_indexes(bind)
         _ensure_analytics_indexes(bind)
-        if is_sqlite:
-            _ensure_auto_vacuum_incremental(bind)
+        _ensure_auto_vacuum_incremental(bind)
         return
 
     create_tables(bind)
-    # add_columns_if_missing は SQLite の type-loose ALTER 前提のため SQLite 限定
-    if is_sqlite:
-        add_columns_if_missing(bind)
-    run_db_migrations(url)
+    add_columns_if_missing(bind)
+    run_db_migrations(url, fail_on_error=fail_on_migration_error)
     _ensure_unique_indexes(bind)
     _ensure_analytics_indexes(bind)
-    if is_sqlite:
-        _ensure_auto_vacuum_incremental(bind)
+    _ensure_auto_vacuum_incremental(bind)

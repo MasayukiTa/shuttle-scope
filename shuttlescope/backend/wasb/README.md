@@ -3,7 +3,7 @@
 HRNet-based shuttlecock detector ported from
 [nttcom/WASB-SBDT](https://github.com/nttcom/WASB-SBDT) (MIT license).
 
-Used as an alternative to TrackNetV3 for high-FPS / wide-angle footage where
+Used as an alternative to the current TrackNet-family detector (`backend/tracknet`; an unofficial ResNet+U-Net TF2 implementation, not TrackNet V3) for high-FPS / wide-angle footage where
 TrackNet collapses (see benchmark in
 `docs/research/2026-05-24_wasb_vs_tracknet_player_a.md` —
 0% -> 30.9% detection on 1080p 60fps doubles).
@@ -50,7 +50,7 @@ Selected via `cv.factory.get_shuttle_detector()` using the env switch:
 
 ```
 SS_SHUTTLE_IMPL=wasb       # use HRNet WASB
-SS_SHUTTLE_IMPL=tracknet   # default, keep TrackNetV3
+SS_SHUTTLE_IMPL=tracknet   # default: the current TrackNet-family detector
 ```
 
 ### Production wiring (2026-05-24)
@@ -71,7 +71,7 @@ drop-in replacement for `TrackNetInferencer`.
 
 - WASB: ~60+ FPS, **39.3%** shuttle detection rate (with optimizations:
   TRT EP, IOBinding, GPU preprocess, sigmoid, temporal smoothing).
-- TrackNetV3: **0%** detection rate on the same footage (well-known
+- current TrackNet-family detector: **0%** detection rate on the same footage (well-known
   collapse on wide-angle / high-fps doubles).
 - Benchmark: `docs/research/2026-05-24_wasb_vs_tracknet_player_a.md`.
 

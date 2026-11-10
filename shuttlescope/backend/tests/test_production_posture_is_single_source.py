@@ -189,6 +189,74 @@ def _csp_for(host: str) -> str:
     return res.headers.get("Content-Security-Policy", "")
 
 
+def _csp_directive_tokens(csp: str, name: str) -> tuple[str, ...]:
+    """Return one CSP directive as exact source-expression tokens."""
+    prefix = f"{name} "
+    for directive in csp.split(";"):
+        directive = directive.strip()
+        if directive.startswith(prefix):
+            return tuple(directive[len(prefix):].split())
+    return ()
+
+
+def _script_src_directive(csp: str) -> str:
+    return " ".join(_csp_directive_tokens(csp, "script-src"))
+
+
+@_NEEDS_MAIN
+def test_app_csp_uses_unique_nonce_without_unsafe_inline(real_production_shape):
+    """Cloudflare JSD 用に nonce を許すが SPA 全体の inline script は許可しない。"""
+    csp1 = _csp_for("app.shuttle-scope.com")
+    csp2 = _csp_for("app.shuttle-scope.com")
+    script1 = _script_src_directive(csp1)
+    script2 = _script_src_directive(csp2)
+
+    assert script1.startswith("'self' 'nonce-"), script1
+    assert "'unsafe-inline'" not in script1, script1
+    assert script2.startswith("'self' 'nonce-"), script2
+    assert script1 != script2, "CSP nonce must be fresh for every HTML response"
+
+
+@_NEEDS_MAIN
+def test_public_lp_keeps_existing_inline_policy_without_nonce(real_production_shape):
+    """公開 LP は inline UI + Cloudflare Analytics の限定許可だけを持つ。"""
+    script = _script_src_directive(_csp_for("shuttle-scope.com"))
+    assert script == (
+        "'self' 'unsafe-inline' https://static.cloudflareinsights.com"
+    ), script
+    assert "'nonce-" not in script, script
+
+
+@_NEEDS_MAIN
+def test_cloudflare_analytics_allowlist_is_public_lp_only(real_production_shape):
+    """Cloudflare Analytics の外向き許可を authenticated SPA へ波及させない。"""
+    public_csp = _csp_for("shuttle-scope.com")
+    app_csp = _csp_for("app.shuttle-scope.com")
+
+    public_script = _csp_directive_tokens(public_csp, "script-src")
+    public_connect = _csp_directive_tokens(public_csp, "connect-src")
+    app_script = _csp_directive_tokens(app_csp, "script-src")
+    app_connect = _csp_directive_tokens(app_csp, "connect-src")
+
+    assert any(
+        token == "https://static.cloudflareinsights.com"
+        for token in public_script
+    )
+    assert any(
+        token == "https://cloudflareinsights.com"
+        for token in public_connect
+    )
+
+    assert all(
+        token != "https://static.cloudflareinsights.com"
+        for token in app_script
+    )
+    assert all(
+        token != "https://cloudflareinsights.com"
+        for token in app_connect
+    )
+
+
 @_NEEDS_MAIN
 def test_csp_connect_src_is_tight_in_real_production_shape(real_production_shape):
     """CSP の `connect-src` を姿勢で決める。

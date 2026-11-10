@@ -91,6 +91,72 @@ class TestRefreshRotation:
         assert after.status_code == 401
 
 
+class TestRotationIdempotency:
+    """fix/auth-session-persist: rotation の冪等化。
+
+    ネットワーク断で応答を取りこぼしたクライアントが同じ旧 refresh を再送したり、
+    タブ複製で二重に rotation が走ったりしても、猶予窓 (REFRESH_ROTATION_GRACE_SECONDS)
+    の内側なら chain を壊さず同じ後継 refresh を返す。窓を過ぎた再提示は従来どおり
+    reuse 扱いで一族を revoke する。
+
+    冪等化は後継 refresh の平文を Fernet 暗号化して保存できる場合のみ有効。テスト環境は
+    既定で鍵未設定なので、このクラスでは局所的に鍵を設定し field_crypto キャッシュを
+    リセットする。
+    """
+
+    @pytest.fixture()
+    def _field_key(self, monkeypatch):
+        from cryptography.fernet import Fernet
+        key = Fernet.generate_key().decode("ascii")
+        monkeypatch.setenv("SS_FIELD_ENCRYPTION_KEY", key)
+        from backend.config import settings
+        monkeypatch.setattr(settings, "ss_field_encryption_key", key, raising=False)
+        import backend.utils.field_crypto as fc
+        # モジュール内キャッシュをリセットして、設定した鍵が確実に使われるようにする。
+        monkeypatch.setattr(fc, "_fernet_cache", None, raising=False)
+        monkeypatch.setattr(fc, "_warned_no_key", False, raising=False)
+        yield key
+        monkeypatch.setattr(fc, "_fernet_cache", None, raising=False)
+
+    def test_within_grace_replays_same_successor(self, client, _field_key):
+        """猶予窓内に旧 refresh を再送すると、chain を壊さず同じ後継を返す。"""
+        data = _login(client)
+        rt1 = data["refresh_token"]
+        r = client.post("/api/auth/refresh", json={"refresh_token": rt1})
+        assert r.status_code == 200, r.text
+        rt2 = r.json()["refresh_token"]
+
+        # 旧 refresh (rt1) を猶予窓内に再提示 → reuse ではなく冪等 replay。
+        replay = client.post("/api/auth/refresh", json={"refresh_token": rt1})
+        assert replay.status_code == 200, replay.text
+        # 返ってくる後継は 1 回目の rotation と同じ token (冪等)。
+        assert replay.json()["refresh_token"] == rt2
+
+        # chain は壊れていないので、後継 rt2 は引き続き rotate できる。
+        r3 = client.post("/api/auth/refresh", json={"refresh_token": rt2})
+        assert r3.status_code == 200, r3.text
+        assert r3.json()["refresh_token"] != rt2
+
+    def test_past_grace_revokes_chain(self, client, _field_key, monkeypatch):
+        """猶予を過ぎた再提示は従来どおり reuse 扱いで chain を revoke する。"""
+        import backend.utils.jwt_utils as ju
+        # 猶予窓を 0 秒にして、どんな再提示も「猶予外」とみなさせる。
+        monkeypatch.setattr(ju, "REFRESH_ROTATION_GRACE_SECONDS", 0, raising=False)
+
+        data = _login(client)
+        rt1 = data["refresh_token"]
+        r = client.post("/api/auth/refresh", json={"refresh_token": rt1})
+        assert r.status_code == 200, r.text
+        rt2 = r.json()["refresh_token"]
+
+        # 猶予外の再提示 → reuse 扱いで 401。
+        reuse = client.post("/api/auth/refresh", json={"refresh_token": rt1})
+        assert reuse.status_code == 401
+        # chain 全体が revoke されるので、後継 rt2 も無効。
+        after = client.post("/api/auth/refresh", json={"refresh_token": rt2})
+        assert after.status_code == 401
+
+
 class TestLogoutRevokesRefresh:
     def test_logout_revokes_refresh_token(self, client):
         data = _login(client)

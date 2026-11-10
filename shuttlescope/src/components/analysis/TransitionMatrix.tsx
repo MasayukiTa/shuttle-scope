@@ -36,6 +36,8 @@ interface MatrixData {
   shot_keys: string[]         // 英語キー
   raw_counts: number[][]      // 実件数
   total_transitions: number
+  rallies_in_scope?: number
+  rallies_total?: number
   top_sequences: TopSequence[]
 }
 
@@ -292,6 +294,18 @@ export function TransitionMatrix({ playerId, filters = DEFAULT_FILTERS }: Transi
         <span className="text-xs text-[var(--ss-t3)] ss-num">
           {t('auto.TransitionMatrix.total_transitions', { n: matrixData.total_transitions.toLocaleString() })}
         </span>
+        {typeof matrixData.rallies_in_scope === 'number' && typeof matrixData.rallies_total === 'number' && matrixData.rallies_total > 0 && (
+          <span
+            className="text-xs text-[var(--ss-t3)] ss-num"
+            title={t('auto.TransitionMatrix.coverage_tip')}
+          >
+            {t('auto.TransitionMatrix.coverage', {
+              inScope: matrixData.rallies_in_scope.toLocaleString(),
+              total: matrixData.rallies_total.toLocaleString(),
+              pct: ((matrixData.rallies_in_scope / matrixData.rallies_total) * 100).toFixed(1),
+            })}
+          </span>
+        )}
       </div>
 
       {/* ── モバイル: 上位10サマリー ────────────────────────────────── */}
@@ -345,6 +359,11 @@ export function TransitionMatrix({ playerId, filters = DEFAULT_FILTERS }: Transi
           <span>{t('auto.TransitionMatrix.k4')}</span>
           <span className="ml-2 text-[var(--ss-t3)] hidden md:inline">{t('auto.TransitionMatrix.k5')}</span>
         </div>
+
+        {/* 186/185: 対角線（同一ショット連続）をマスクしている理由を明示 */}
+        <p className="text-xs text-[var(--ss-t3)] mt-1">
+          {t('auto.TransitionMatrix.diagonal_note')}
+        </p>
       </div>
 
       {/* デスクトップ用: 主要遷移パターン Top 5 */}

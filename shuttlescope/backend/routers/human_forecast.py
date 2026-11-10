@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from backend.analysis.role_view import opposing_ids
 from backend.db.database import get_db
 from backend.db.models import HumanForecast, Match, Player
 from backend.utils.auth import get_auth, AuthCtx, require_non_player
@@ -82,10 +83,14 @@ def create_human_forecast(
     from backend.utils.auth import user_can_access_match
     if not user_can_access_match(ctx, m):
         raise HTTPException(status_code=404, detail="Match not found")
+    # 予測者ロールは自己申告ではなくログイン中のロールで確定する。
+    # coach / analyst は自分のロールに固定され、body の値は使わない。
+    # admin だけが代理入力として body の値を選べる。
+    forecaster_role = ctx.role if ctx.role in ("coach", "analyst") else body.forecaster_role
     forecast = HumanForecast(
         match_id=body.match_id,
         player_id=body.player_id,
-        forecaster_role=body.forecaster_role,
+        forecaster_role=forecaster_role,
         forecaster_name=body.forecaster_name,
         predicted_outcome=body.predicted_outcome,
         predicted_set_path=body.predicted_set_path,
@@ -93,6 +98,8 @@ def create_human_forecast(
         confidence_level=body.confidence_level,
         notes=body.notes,
         team_id=ctx.team_id,
+        # G5 item #687: 認証済みユーザを作成者として記録する。削除可否の判定に使う。
+        creator_user_id=ctx.user_id,
     )
     db.add(forecast)
     payload = {
@@ -120,6 +127,12 @@ def get_human_forecasts(
 ):
     """特定試合の人間予測一覧を返す"""
     ctx = get_auth(request)
+    # 試合そのもののアクセス権を先に確認する (team_id=NULL の旧行が他チーム試合で見えるのを防ぐ)。
+    # 存在しない試合と権限のない試合は同じ 404 にして、試合の存在を漏らさない。
+    from backend.utils.auth import user_can_access_match
+    match = db.get(Match, match_id)
+    if match is None or not user_can_access_match(ctx, match):
+        raise HTTPException(status_code=404, detail="Match not found")
     q = db.query(HumanForecast).filter(HumanForecast.match_id == match_id, HumanForecast.deleted_at.is_(None))
     if not ctx.is_admin:
         q = q.filter(or_(HumanForecast.team_id.is_(None), HumanForecast.team_id == ctx.team_id))
@@ -157,6 +170,16 @@ def delete_human_forecast(
         from backend.utils.auth import user_can_access_match
         if not user_can_access_match(ctx, m):
             raise HTTPException(status_code=404, detail="Forecast not found")
+        # G5 item #687 (option A): admin 以外は「自分が作成した予測」だけ削除できる。
+        # creator_user_id が NULL の旧行は作成者を特定できないため admin 専用。
+        # チーム境界を越えた行は上で 404 済み。ここに来るのは同チーム (または
+        # team_id=NULL の旧行) だけで、その予測は既に一覧に見えている。存在を隠す意味が
+        # 無いので 404 ではなく 403 (forbidden) を返し、削除権限が無いことを明示する。
+        if f.creator_user_id is None or ctx.user_id is None or f.creator_user_id != ctx.user_id:
+            raise HTTPException(
+                status_code=403,
+                detail="この予測を削除できるのは作成者または管理者のみです",
+            )
     # Round 258 R8 P1 fix (deep audit V-3):
     # 旧コードは f.deleted_at を **設定せず** に touch_sync_metadata + commit して
     # success を返していた。結果として:
@@ -197,6 +220,19 @@ def get_prediction_benchmark(
     if not _auth.is_admin:
         q = q.filter(_or_hf(HumanForecast.team_id.is_(None), HumanForecast.team_id == _auth.team_id))
     forecasts = q.all()
+    if not _auth.is_admin and forecasts:
+        # team_id が NULL の旧予想行は所有チームを持たないため、行の team_id だけでは
+        # 他チームの試合結果 (match_id / 日付 / 勝敗) が見えてしまう。
+        # 試合単位の閲覧権限 (他の試合読み取りと同じ user_can_access_match) で絞る。
+        from backend.utils.auth import user_can_access_match as _can_match_hf
+        _scope_matches = {
+            m.id: m
+            for m in db.query(Match).filter(Match.id.in_({f.match_id for f in forecasts})).all()
+        }
+        forecasts = [
+            f for f in forecasts
+            if f.match_id in _scope_matches and _can_match_hf(_auth, _scope_matches[f.match_id])
+        ]
     if not forecasts:
         return {
             "success": True,
@@ -235,13 +271,15 @@ def get_prediction_benchmark(
         # モデル予測: この試合を除いた上での勝率
         prior_matches = [x for x in all_player_matches if x.id != m.id]
         recent = compute_recent_form(prior_matches, player_id)
+        # この試合の相手 (ダブルスなら相手の 2 人) と対戦したことのある試合
+        _opp_now = opposing_ids(m, player_id)
         h2h_m = [x for x in prior_matches
-                 if (x.player_a_id == player_id and x.player_b_id in (m.player_a_id, m.player_b_id)
-                     and x.id != m.id)
-                 or (x.player_b_id == player_id and x.player_a_id in (m.player_a_id, m.player_b_id)
-                     and x.id != m.id)]
+                 if x.id != m.id and opposing_ids(x, player_id) & _opp_now]
         obs = get_observation_context(db, player_id, match_id=m.id)
         model_prob, _ = compute_feature_win_prob(prior_matches, player_id, h2h_m, recent, obs)
+        # この試合より前の実績が 0 件ならモデル予測は定義できない (0.5 を予測として比較しない)
+        if model_prob is None:
+            continue
         model_predicted = 'win' if model_prob >= 0.5 else 'loss'
         model_correct = (model_predicted == actual_outcome)
 
@@ -331,4 +369,6 @@ def _forecast_to_dict(f: HumanForecast) -> dict:
         'confidence_level': f.confidence_level,
         'notes': f.notes,
         'created_at': f.created_at.isoformat() if f.created_at else None,
+        # G5 item #687: UI が「削除ボタンを出すか」を判定するために作成者 id を返す。
+        'creator_user_id': f.creator_user_id,
     }

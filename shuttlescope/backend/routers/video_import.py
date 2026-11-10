@@ -17,14 +17,18 @@ from __future__ import annotations
 
 import logging
 import os
+import queue
 import re
+import threading
 import time
 import uuid
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
+from backend.db.database import get_db
 from backend.utils.auth import get_auth
 from backend.utils.control_plane import allow_local_file_control
 
@@ -119,12 +123,26 @@ class PathImportRequest(BaseModel):
 
 
 @router.post("/video_import/path")
-def import_from_path(body: PathImportRequest, background_tasks: BackgroundTasks, request: Request):
+def import_from_path(body: PathImportRequest, background_tasks: BackgroundTasks, request: Request,
+                     db: Session = Depends(get_db)):
     """試合動画のローカルパスと match_id を指定してバックグラウンド解析を開始。
     試合終了後に自動呼び出しされる想定。
     """
     if not allow_local_file_control(request):
         raise HTTPException(status_code=403, detail="ローカルファイル操作はローカルからのみ実行できます")
+    # 接続元が loopback / 信頼サブネットであることは «誰として» 呼んだかの代わりにならない
+    # (cloudflared 等が同居すると外部のユーザも loopback から来る)。解析結果は match_id の
+    # MatchCVArtifact に書かれるので、運用ロールであること + その試合のチーム scope を要求する。
+    _ctx_gate = get_auth(request)
+    if not (_ctx_gate.is_admin or _ctx_gate.is_analyst or _ctx_gate.is_coach):
+        raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
+    if body.match_id is not None:
+        from backend.db.models import Match as _Match
+        from backend.utils.auth import require_match_scope as _require_match_scope
+        _m = db.get(_Match, body.match_id)
+        if _m is None:
+            raise HTTPException(status_code=404, detail="試合が見つかりません")
+        _require_match_scope(request, _m, db)
     # URLスキームを持つパスを拒否（SSRF防止 — OpenCV は rtsp:// / http:// を直接開けるため）
     raw_video_path = body.video_path.strip()
     if re.match(r'^[a-zA-Z][a-zA-Z0-9+\-.]*://', raw_video_path):
@@ -180,6 +198,106 @@ def import_from_path(body: PathImportRequest, background_tasks: BackgroundTasks,
     job = _new_job(
         str(path),
         body.match_id,
+        owner_user_id=_ctx_imp.user_id,
+        owner_team_name=(_ctx_imp.team_name or None),
+    )
+    job["job_id"] = job_id
+    _jobs[job_id] = job
+
+    background_tasks.add_task(_run_pipeline, job_id)
+    return {"success": True, "data": {"job_id": job_id}}
+
+
+@router.post("/video_import/by_match/{match_id}")
+def import_from_match(match_id: int, background_tasks: BackgroundTasks, request: Request,
+                      db: Session = Depends(get_db)):
+    """match_id だけを受け取り、サーバ側で試合レコードから動画パスを解決して
+    バックグラウンド解析を開始する (item #690 案 A)。
+
+    クライアントは生の filesystem パスも表示用ストリーム URL も送らない
+    (video_local_path は内部専用で API レスポンスに露出しない)。ロール・
+    match-scope・許可ルートのチェックは /video_import/path と同一に保つ。
+    サーバに動画が無い試合では **自動で何も始めず**、明確なエラーコードを返す。
+    """
+    if not allow_local_file_control(request):
+        raise HTTPException(status_code=403, detail="ローカルファイル操作はローカルからのみ実行できます")
+    # /video_import/path と同じく、接続元が loopback であることは «誰として» 呼んだかの
+    # 代わりにならない。運用ロール + その試合のチーム scope を要求する。
+    _ctx_gate = get_auth(request)
+    if not (_ctx_gate.is_admin or _ctx_gate.is_analyst or _ctx_gate.is_coach):
+        raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
+
+    from backend.db.models import Match as _Match
+    from backend.utils.auth import require_match_scope as _require_match_scope
+    _m = db.get(_Match, match_id)
+    if _m is None:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    _require_match_scope(request, _m, db)
+
+    # 試合レコードから動画の保存場所を解決する。無ければ自動開始しない。
+    stored = (_m.video_local_path or "").strip()
+    if not stored:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "no_video_on_server",
+                    "message": "この試合にはサーバ上の動画がありません"},
+        )
+    # 旧データに URL (http:// / mailto: 等) が残っていることがある。パス扱いしない。
+    if re.match(r'^[a-zA-Z][a-zA-Z0-9+\-.]*://', stored):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "no_video_on_server",
+                    "message": "保存された動画の場所がローカルファイルではありません"},
+        )
+    if any(ch in stored for ch in ("\x00", "\r", "\n")):
+        raise HTTPException(status_code=400, detail="保存された動画パスに不正な文字が含まれています")
+
+    ALLOWED_VIDEO_EXTS = {'.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.m4v', '.webm', '.ts', '.mts'}
+    if Path(stored).suffix.lower() not in ALLOWED_VIDEO_EXTS:
+        raise HTTPException(status_code=400, detail="動画ファイル以外は処理できません")
+    path = Path(stored).resolve()
+    if path.suffix.lower() not in ALLOWED_VIDEO_EXTS:
+        raise HTTPException(status_code=400, detail="動画ファイル以外は処理できません")
+
+    # path_jail を存在/種別チェックより前に実行する (CodeQL py/path-injection 対策)。
+    from backend.utils.path_jail import is_allowed_video_path, allowed_video_roots
+    if not is_allowed_video_path(path):
+        roots = [str(r) for r in allowed_video_roots()]
+        raise HTTPException(
+            status_code=403,
+            detail=f"動画パスが許可ルート外です。許可ルート: {roots}",
+        )
+    if not path.exists():
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "no_video_on_server",
+                    "message": "保存された動画ファイルが見つかりません"},
+        )
+    if not path.is_file():
+        raise HTTPException(status_code=400, detail="動画ファイルパスではありません（ディレクトリ）")
+
+    file_size = path.stat().st_size
+    if file_size > _MAX_VIDEO_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"動画ファイルサイズが上限（{_MAX_VIDEO_BYTES // 1024 // 1024 // 1024} GB）を超えています: {file_size / 1024**3:.1f} GB",
+        )
+
+    # 重複開始を防ぐ: 同じ match の未完了ジョブが既にあれば新規投入しない。
+    for _j in _jobs.values():
+        if _j.get("match_id") == match_id and _j.get("phase") not in (Phase.DONE, Phase.ERROR):
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "analysis_already_running",
+                        "message": "この試合の解析は既に実行中です",
+                        "job_id": _j.get("job_id")},
+            )
+
+    job_id = uuid.uuid4().hex[:8]
+    _ctx_imp = get_auth(request)
+    job = _new_job(
+        str(path),
+        match_id,
         owner_user_id=_ctx_imp.user_id,
         owner_team_name=(_ctx_imp.team_name or None),
     )
@@ -248,12 +366,73 @@ def _run_pipeline(job_id: str) -> None:
         logger.exception("job %s pipeline error: %s", job_id, exc)
 
 
+def _iter_video_frames_threaded(cap, queue_size: int = 8):
+    """Decode frames on a producer thread while inference consumes them.
+
+    OpenCV decoding and native GPU inference both spend most of their time in
+    native code, so the two stages can overlap without changing frame order or
+    sampling semantics. The bounded queue prevents unbounded full-resolution
+    frame buffering. The capture is owned and released by the producer thread.
+    """
+    frame_queue: queue.Queue = queue.Queue(maxsize=max(1, int(queue_size)))
+    sentinel = object()
+    stop = threading.Event()
+    errors: list[Exception] = []
+
+    def put_until_stopped(item) -> bool:
+        while not stop.is_set():
+            try:
+                frame_queue.put(item, timeout=0.1)
+                return True
+            except queue.Full:
+                continue
+        return False
+
+    def producer() -> None:
+        try:
+            while not stop.is_set():
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                if not put_until_stopped(frame):
+                    return
+        except Exception as exc:
+            errors.append(exc)
+        finally:
+            try:
+                cap.release()
+            finally:
+                if not stop.is_set():
+                    put_until_stopped(sentinel)
+
+    thread = threading.Thread(
+        target=producer,
+        name="tracknet-video-decode",
+        daemon=True,
+    )
+    thread.start()
+    try:
+        while True:
+            item = frame_queue.get()
+            if item is sentinel:
+                break
+            yield item
+        if errors:
+            raise RuntimeError(f"video decode failed: {errors[0]}") from errors[0]
+    finally:
+        stop.set()
+        thread.join(timeout=5.0)
+        if thread.is_alive():
+            logger.warning("TrackNet video decode thread did not stop within 5s")
+
+
 def _run_tracknet(job: dict, video_path: str) -> None:
     """TrackNet でシャトル軌跡を解析（GPU優先）。コートキャリブレーションが設定済みなら homography でゾーンを精緻化する。"""
     import cv2
     from backend.tracknet.inference import get_inference
     from backend.routers.court_calibration import load_calibration_standalone, pixel_to_court_zone
     from backend.tracknet.zone_mapper import court_to_zone9
+    from backend.tracknet.video_sampling import TrackNetFrameSampler, step_frames_for_fps
 
     # **"auto"**。以前は "openvino" を「GPU優先バックエンドを明示」として
     # 固定していたが、OpenVINO の "GPU" は **Intel の GPU** を指す。
@@ -298,65 +477,55 @@ def _run_tracknet(job: dict, video_path: str) -> None:
     #   30fps -> 36 個                -> 0.81  auto_filled
     # (実際の窓は次ストロークで切られるのでこれより短い = 上の値は上限)
     #
-    # 既定は 15fps。**実測してから決めた** (2026-09-20、本番機・実試合映像)。
+    # 既定は 15fps。正常モデルへ復旧後に本番機で再測定した
+    # (2026-09-29、RTX 5060 Ti、59.94fps 実試合映像、5秒区間×4)。
     #
-    # 10fps だったのは「GPU 時間と相談して」という理由だったが、その GPU 時間は
-    # 上記のとおり **Intel iGPU で推論していたせい**で、NVIDIA のカードでは
-    # 話がまるで違う。60 分の試合 1 本あたりの実測投影:
+    #   sample  mean detection rate  mean realtime factor
+    #   15fps          0.6233                0.693
+    #   20fps          0.6591                0.835
+    #   30fps          0.6359                1.097
     #
-    #   サンプル   推論      デコード   合計      Wilson 下限 (検出 0.92)
-    #   10 fps    9.6 min   6.0 min   15.6 min   0.68  suggested
-    #   15 fps   14.4 min   6.0 min   20.4 min   0.74  auto_filled
-    #   30 fps   28.8 min   6.0 min   34.8 min   0.81  auto_filled
+    # 30fps は検出率が 15fps より平均 +1.26pt に留まる一方、処理は実時間を
+    # 超えた。20fps はこの 59.94fps ソースでは有望だったが、sampler は整数
+    # stride なので 29.97fps ソースで 20fps を指定すると step=1、実効 29.97fps
+    # に量子化される。15fps は 29.97/59.94fps の双方で step=2/4 に安定して割れ、
+    # 上の candidate 判定要件も満たすため既定値として維持する。
     #
-    # (デコードはサンプリング率によらず一定。ループは毎フレーム読むため)
-    #
-    # 15 を選ぶ理由: auto_filled の閾値に届く最小のサンプリング率。
-    # 30 にすると GPU 時間が倍になって Wilson 下限は 0.07 しか上がらない。
-    # 30 でも実時間を下回る (52 分の映像に 35 分) ので、証拠を厚くしたいなら
-    # `CV_TRACKNET_SAMPLE_FPS=30` で足りる。
+    # より高密度に解析する必要がある場合だけ CV_TRACKNET_SAMPLE_FPS を明示指定する。
     _sample_fps = float(os.environ.get("CV_TRACKNET_SAMPLE_FPS", "15"))
     if _sample_fps <= 0:
         _sample_fps = 10.0
     # 元動画より速くはサンプルできない
-    step_frames = max(1, int(round(fps / min(_sample_fps, fps))))
+    step_frames = step_frames_for_fps(fps, _sample_fps)
     logger.info(
         "[video_import] TrackNet サンプリング: %.1ffps 相当 (step_frames=%d, 動画 %.1ffps)",
         min(_sample_fps, fps), step_frames, fps,
     )
     track: list[dict] = []
-    frame_buf: list = []
-    frame_idx = 0
+    sampler = TrackNetFrameSampler(step_frames=step_frames)
 
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
-        frame_buf.append(frame)
-        if len(frame_buf) == 3:
-            results = inf.predict_frames(frame_buf)
+    for frame in _iter_video_frames_threaded(cap):
+        sampled = sampler.push(frame)
+        if sampled is not None:
+            results = inf.predict_frames(sampled.frames)
             if results:
                 r = results[0]
                 track.append({
-                    "frame_idx": frame_idx,
-                    "timestamp_sec": round(frame_idx / fps, 3),
+                    "frame_idx": sampled.target_frame,
+                    "timestamp_sec": round(sampled.target_frame / fps, 3),
                     "zone": r["zone"],
                     "confidence": r["confidence"],
                     "x_norm": r.get("x_norm"),
                     "y_norm": r.get("y_norm"),
                 })
-            frame_buf = frame_buf[step_frames:]   # step_frames ずつスライド
-            frame_idx += step_frames
 
-        # step_frames ごとにフレームを消費
-        for _ in range(step_frames - 1):
-            cap.read()
-            frame_idx += 1
-
-        job["tracknet"]["progress"] = min(frame_idx / total, 1.0)
+        # decoded_frames is the physical source-frame count.  Keep progress and
+        # timestamps tied to that real index rather than a separately advanced
+        # logical counter; otherwise sampling-rate changes distort the timeline.
+        job["tracknet"]["progress"] = min(sampler.decoded_frames / total, 1.0)
         job["progress"] = job["tracknet"]["progress"] * 0.5  # 全体の 0-50%
 
-    cap.release()
+    # cap is released by _iter_video_frames_threaded().
 
     # コートキャリブレーションが設定済みなら homography でゾーンを精緻化
     match_id = job.get("match_id")
@@ -416,11 +585,20 @@ def _run_tracknet(job: dict, video_path: str) -> None:
 
     # DB 保存
     if match_id and track:
-        _save_tracknet_artifact(match_id, track, inf.backend_name())
+        _save_tracknet_artifact(
+            match_id, track, inf.backend_name(),
+            sample_fps=fps / max(1, step_frames),
+        )
 
 
-def _save_tracknet_artifact(match_id: int, track: list[dict], backend: str) -> None:
+def _save_tracknet_artifact(
+    match_id: int, track: list[dict], backend: str, sample_fps: Optional[float] = None,
+) -> None:
     """TrackNet シャトル軌跡を MatchCVArtifact に保存（再実行時は上書き）。
+
+    全体走査なので summary に coverage="full" と sample_fps・覆う時間範囲を残す。
+    ラリー窓だけのバッチ（routers/tracknet.py）の結果は coverage="rally_windows" で、
+    こちらは何が既にあっても置き換えてよい（全体走査が最も広い）。
 
     Canonical artifact_type は tracknet_shuttle_track。
     旧実装で混在した tracknet_track も拾って上書きし、読み出し互換を保つ。
@@ -433,7 +611,14 @@ def _save_tracknet_artifact(match_id: int, track: list[dict], backend: str) -> N
     db = SessionLocal()
     try:
         track_json   = json.dumps(track, ensure_ascii=False)
-        summary_json = json.dumps({"point_count": len(track), "backend": backend}, ensure_ascii=False)
+        from backend.cv.shuttle_track_meta import COVERAGE_FULL, build_track_meta
+        summary_json = json.dumps(
+            {
+                **build_track_meta(track, coverage=COVERAGE_FULL, sample_fps=sample_fps),
+                "backend": backend,
+            },
+            ensure_ascii=False,
+        )
 
         existing = (
             db.query(MatchCVArtifact)

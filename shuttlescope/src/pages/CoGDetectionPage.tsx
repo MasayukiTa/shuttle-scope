@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { apiGet } from '@/api/client'
 import { CoGTimeline, CoGPoint } from '@/components/analysis/CoGTimeline'
 import { MIcon } from '@/components/common/MIcon'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 
 interface MatchSummary {
   match_id: number
@@ -51,6 +52,14 @@ export function CoGDetectionPage({ onBack }: { onBack?: () => void } = {}) {
 
   const clips = clipsQuery.data?.clips ?? []
   const points = cogQuery.data?.points ?? []
+  // サイドフィルタはグラフ・信頼度・サマリーで同一母集団を使う
+  const filteredPoints = side ? points.filter((p) => p.side === side) : points
+
+  // ストローク欄が選べないときの理由（試合未選択 / 取得失敗 / 対象ストロークなし）
+  let strokeUnavailableHint: string | null = null
+  if (!matchId) strokeUnavailableHint = t('cog_detection.hint_select_match')
+  else if (clipsQuery.isError) strokeUnavailableHint = t('cog_detection.hint_clips_error')
+  else if (!clipsQuery.isLoading && clips.length === 0) strokeUnavailableHint = t('cog_detection.hint_no_clips')
 
   return (
     <div className={`h-full w-full overflow-y-auto ${bgBase}`}>
@@ -75,8 +84,9 @@ export function CoGDetectionPage({ onBack }: { onBack?: () => void } = {}) {
           <div className="flex flex-wrap gap-4 items-end">
             {/* 試合選択 */}
             <div>
-              <label className="text-xs font-semibold block mb-1">{t('auto.CoGDetectionPage.k1')}</label>
+              <label htmlFor="cog-match-select" className="text-xs font-semibold block mb-1">{t('auto.CoGDetectionPage.k1')}</label>
               <select
+                id="cog-match-select"
                 className={selectCls}
                 value={matchId ?? ''}
                 onChange={(e) => {
@@ -90,12 +100,25 @@ export function CoGDetectionPage({ onBack }: { onBack?: () => void } = {}) {
                   <option key={m.match_id} value={m.match_id}>{m.title}</option>
                 ))}
               </select>
+              {matchesQuery.isError && (
+                <div className="mt-1">
+                  <p className="text-xs text-red-400" role="alert">{t('cog_detection.hint_matches_error')}</p>
+                  <button
+                    type="button"
+                    onClick={() => matchesQuery.refetch()}
+                    className="mt-1 px-2 py-1 rounded-[5px] border border-[var(--ss-border)] text-xs text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]"
+                  >
+                    {t('common_ui.query_retry')}
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* ストローク選択 */}
             <div>
-              <label className="text-xs font-semibold block mb-1">{t('auto.CoGDetectionPage.k3')}</label>
+              <label htmlFor="cog-stroke-select" className="text-xs font-semibold block mb-1">{t('auto.CoGDetectionPage.k3')}</label>
               <select
+                id="cog-stroke-select"
                 className={selectCls}
                 value={strokeId ?? ''}
                 onChange={(e) => setStrokeId(Number(e.target.value) || null)}
@@ -113,8 +136,9 @@ export function CoGDetectionPage({ onBack }: { onBack?: () => void } = {}) {
 
             {/* サイドフィルタ */}
             <div>
-              <label className="text-xs font-semibold block mb-1">{t('auto.CoGDetectionPage.k5')}</label>
+              <label htmlFor="cog-side-select" className="text-xs font-semibold block mb-1">{t('auto.CoGDetectionPage.k5')}</label>
               <select
+                id="cog-side-select"
                 className={selectCls}
                 value={side ?? ''}
                 onChange={(e) => setSide(e.target.value || undefined)}
@@ -125,6 +149,10 @@ export function CoGDetectionPage({ onBack }: { onBack?: () => void } = {}) {
               </select>
             </div>
           </div>
+          {/* ストロークが選べない理由。disabled のまま理由不明にしない */}
+          {strokeUnavailableHint && (
+            <p className="mt-3 text-xs text-[var(--ss-t2)]" role="status">{strokeUnavailableHint}</p>
+          )}
         </div>
 
         {/* CoG ビジュアライゼーション */}
@@ -139,9 +167,12 @@ export function CoGDetectionPage({ onBack }: { onBack?: () => void } = {}) {
               {t('cog_detection.loading')}
             </div>
           )}
-          {strokeId && !cogQuery.isLoading && (
+          {strokeId && !cogQuery.isLoading && cogQuery.isError && (
+            <QueryErrorNotice onRetry={() => cogQuery.refetch()} className="h-24 flex flex-col items-center justify-center" />
+          )}
+          {strokeId && !cogQuery.isLoading && !cogQuery.isError && (
             <>
-              {points.length < 10 && points.length > 0 && (
+              {filteredPoints.length < 10 && filteredPoints.length > 0 && (
                 <p className="text-xs text-[var(--ss-warn)] mb-2 inline-flex items-center gap-1"><MIcon name="warning" size={12} />{t('cog_detection.sample_warning')}</p>
               )}
               <CoGTimeline
@@ -152,14 +183,14 @@ export function CoGDetectionPage({ onBack }: { onBack?: () => void } = {}) {
                 className="mx-auto"
               />
 
-              {/* 統計サマリ */}
-              {points.length > 0 && (
+              {/* 統計サマリ（グラフと同じ side フィルタ後の母集団で集計） */}
+              {filteredPoints.length > 0 && (
                 <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
                   {[
-                    { label: t('cog_detection.left_weight'),  value: (points.reduce((s, p) => s + p.left_pct, 0) / points.length * 100).toFixed(1) + '%' },
-                    { label: t('cog_detection.right_weight'), value: (points.reduce((s, p) => s + p.right_pct, 0) / points.length * 100).toFixed(1) + '%' },
-                    { label: t('cog_detection.forward_lean'), value: (points.reduce((s, p) => s + p.forward_lean, 0) / points.length).toFixed(3) },
-                    { label: t('cog_detection.stability'),    value: (points.reduce((s, p) => s + p.stability_score, 0) / points.length).toFixed(3) },
+                    { label: t('cog_detection.left_weight'),  value: (filteredPoints.reduce((s, p) => s + p.left_pct, 0) / filteredPoints.length * 100).toFixed(1) + '%' },
+                    { label: t('cog_detection.right_weight'), value: (filteredPoints.reduce((s, p) => s + p.right_pct, 0) / filteredPoints.length * 100).toFixed(1) + '%' },
+                    { label: t('cog_detection.forward_lean'), value: (filteredPoints.reduce((s, p) => s + p.forward_lean, 0) / filteredPoints.length).toFixed(3) },
+                    { label: t('cog_detection.stability'),    value: (filteredPoints.reduce((s, p) => s + p.stability_score, 0) / filteredPoints.length).toFixed(3) },
                   ].map((item) => (
                     <div key={item.label} className="rounded-[5px] border border-[var(--ss-border)] p-3 text-center bg-[var(--ss-surface-2)]">
                       <div className="text-xs text-[var(--ss-t2)] mb-1">{item.label}</div>
@@ -169,7 +200,7 @@ export function CoGDetectionPage({ onBack }: { onBack?: () => void } = {}) {
                 </div>
               )}
 
-              {points.length === 0 && (
+              {filteredPoints.length === 0 && (
                 <div className="flex items-center justify-center h-24 text-sm text-[var(--ss-t3)]">
                   {t('cog_detection.no_data')}
                 </div>

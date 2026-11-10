@@ -7,7 +7,7 @@
  *   既に受領済みチャンクは status エンドポイントからの received_indices でスキップ
  * - onProgress: 0〜1 の進捗
  */
-import { API_BASE_URL, getAuthHeaders } from '@/api/client'
+import { API_BASE_URL, fetchAuthed, getAuthHeaders } from '@/api/client'
 
 export interface ChunkUploadOptions {
   file: File
@@ -29,6 +29,10 @@ export interface ChunkUploadResult {
 const DEFAULT_CHUNK_SIZE = 2 * 1024 * 1024
 const DEFAULT_THROTTLE_MBPS = 16
 const DEFAULT_MAX_RETRIES = 5
+// request 単位の deadline。半断 (応答が返らない) で 1 request に upload 全体が固定されないよう、
+// timeout は通常の retry/backoff 経路 (chunk) または失敗 (init/status/finalize) へ流す。
+const REQUEST_TIMEOUT_MS = 60_000
+const CHUNK_TIMEOUT_MS = 180_000
 
 class NonRetryableUploadError extends Error {}
 
@@ -84,12 +88,13 @@ function inflightKey(file: File, matchId?: number): string {
 }
 
 async function postJson<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
+  // 共通 client 経由: 有限 timeout + 401 時の single-flight refresh と 1 回再送。
+  const res = await fetchAuthed(`${API_BASE_URL}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
     signal,
-  })
+  }, REQUEST_TIMEOUT_MS)
   if (!res.ok) {
     const text = await res.text().catch(() => '')
     throw new Error(`POST ${path} failed: ${res.status} ${text}`)
@@ -98,10 +103,7 @@ async function postJson<T>(path: string, body: unknown, signal?: AbortSignal): P
 }
 
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    headers: getAuthHeaders(),
-    signal,
-  })
+  const res = await fetchAuthed(`${API_BASE_URL}${path}`, { signal }, REQUEST_TIMEOUT_MS)
   if (!res.ok) {
     const text = await res.text().catch(() => '')
     throw new Error(`GET ${path} failed: ${res.status} ${text}`)
@@ -219,12 +221,12 @@ export async function uploadVideoInChunks(opts: ChunkUploadOptions): Promise<Chu
     for (let attempt = 0; attempt < maxRetriesPerChunk; attempt++) {
       try {
         const _chunkStartTs = performance.now()
-        const res = await fetch(`${API_BASE_URL}/v1/uploads/video/chunk`, {
+        // chunk は upload_id + chunk_index で冪等なので、401 refresh 後の同一 chunk 再送は安全。
+        const res = await fetchAuthed(`${API_BASE_URL}/v1/uploads/video/chunk`, {
           method: 'POST',
-          headers: getAuthHeaders(),
           body: form,
           signal,
-        })
+        }, CHUNK_TIMEOUT_MS)
         if (!res.ok) {
           const text = await res.text().catch(() => '')
           // 400-499 は再送無意味（冪等性違反/権限/サイズ）

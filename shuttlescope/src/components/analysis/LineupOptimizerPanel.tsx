@@ -14,6 +14,7 @@ import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { WIN, LOSS } from '@/styles/colors'
 import { MIcon } from '@/components/common/MIcon'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import type { UserRole } from '@/types'
 
 // ── 型定義 ──────────────────────────────────────────────────────────────────
@@ -29,7 +30,10 @@ interface RankedPlayer {
   rank: number
   player_id: number
   player_name: string
-  win_probability: number
+  win_probability: number | null   // 試合 0 件は null
+  // 標本数から出した Wilson 区間。最小標本未満は null (固定の ±幅は使わない)
+  win_probability_ci?: { low: number; high: number; n: number } | null
+  win_probability_reference?: { is_reference: boolean; reason: 'sample' | 'brier' | null; min_sample: number; sample_size: number }
   sample_size: number
   h2h_available: boolean
   level_matches_available: boolean
@@ -70,7 +74,8 @@ function CoachCandidateView({
   const neutral = isLight ? '#334155' : '#d1d5db'
 
   // 上位 3 案のみ表示（順位付けしない = PLAN_LABELS）
-  const candidates = result.ranked_players.slice(0, 3)
+  // 勝率のない (試合 0 件の) 選手は候補に出さない
+  const candidates = result.ranked_players.filter((rp) => rp.win_probability != null).slice(0, 3)
   if (candidates.length === 0) return null
 
   return (
@@ -88,11 +93,12 @@ function CoachCandidateView({
       {/* 候補セット */}
       <div className="grid gap-2">
         {candidates.map((rp, idx) => {
-          const pct = Math.round(rp.win_probability * 100)
-          // 不確実性を加味したレンジ表示（少数サンプルほど広く）
-          const margin = rp.sample_size < 5 ? 15 : rp.sample_size < 10 ? 10 : 7
-          const lo = Math.max(0, pct - margin)
-          const hi = Math.min(100, pct + margin)
+          const pct = Math.round((rp.win_probability ?? 0) * 100)
+          // 不確実性は backend が標本数から出した Wilson 区間。最小標本未満は区間を出さず、点推定を参考値にする
+          const ci = rp.win_probability_ci
+          const rangeText = ci
+            ? `${Math.round(ci.low * 100)}–${Math.round(ci.high * 100)}%`
+            : `${pct}%`
           const stability =
             rp.sample_size >= 10 ? '安定' : rp.sample_size >= 5 ? '中' : '荒れやすい'
           const stabilityColor =
@@ -133,8 +139,13 @@ function CoachCandidateView({
                 <div className="flex items-center gap-1">
                   <span className="text-[10px]" style={{ color: subText }}>{t('auto.LineupOptimizerPanel.k1')}</span>
                   <span className="text-sm font-bold ss-num" style={{ color: neutral }}>
-                    {lo}–{hi}%
+                    {rangeText}
                   </span>
+                  {rp.win_probability_reference?.is_reference && (
+                    <span className="text-[10px]" style={{ color: subText }}>
+                      {t('prediction.reference_value', { n: rp.sample_size })}
+                    </span>
+                  )}
                   {rp.sample_size < 10 && (
                     <span className="text-[10px]" style={{ color: subText }}>
                       {t('lineup.ref_insufficient', '(reference: insufficient data)')}
@@ -184,7 +195,7 @@ function AnalystRankingView({
     .sort((a, b) => a.player_name.localeCompare(b.player_name, 'ja'))
 
   const renderRow = (rp: RankedPlayer, displayRank: number | null) => {
-    const pct = Math.round(rp.win_probability * 100)
+    const pct = rp.win_probability != null ? Math.round(rp.win_probability * 100) : null
     const isTop = displayRank === 1
     return (
       <div
@@ -219,7 +230,7 @@ function AnalystRankingView({
         <span className="hidden sm:inline text-[11px] shrink-0 ss-num" style={{ color: subText }}>
           {rp.sample_size > 0 ? t('lineup.n_matches', { n: rp.sample_size, defaultValue: '{{n}} matches' }) : t('lineup.no_data', 'No data')}
         </span>
-        {rp.sample_size > 0 && (
+        {rp.sample_size > 0 && pct != null && (
           <div className="flex items-center gap-1.5 shrink-0">
             <div className="w-16 h-1.5 bg-[var(--ss-surface-2)] rounded-full overflow-hidden">
               <div
@@ -310,7 +321,7 @@ export function LineupOptimizerPanel({ players, role }: Props) {
   const allFilteredSelected =
     filteredPlayers.length > 0 && filteredPlayers.every((p) => selectedIds.has(p.id))
 
-  const { data: resp, isLoading, isFetching } = useQuery({
+  const { data: resp, isLoading, isFetching, isError, refetch } = useQuery({
     queryKey: ['lineup-optimizer', Array.from(selectedIds).sort().join(','), opponentId, level],
     queryFn: () =>
       apiGet<{ success: boolean; data: LineupResult }>('/prediction/lineup_optimizer', {
@@ -412,7 +423,7 @@ export function LineupOptimizerPanel({ players, role }: Props) {
               className="flex-1 bg-transparent text-xs outline-none min-w-0 text-[var(--ss-t1)]"
             />
             {nameFilter && (
-              <button onClick={() => setNameFilter('')}>
+              <button aria-label={t('settings.ui.clear')} onClick={() => setNameFilter('')}>
                 <MIcon name="close" size={10} style={{ color: subText }} />
               </button>
             )}
@@ -537,8 +548,13 @@ export function LineupOptimizerPanel({ players, role }: Props) {
         </p>
       )}
 
+      {/* 実行したのに結果が出ない状態を作らない: 失敗は明示する */}
+      {isError && !isLoading && !isFetching && (
+        <QueryErrorNotice onRetry={() => { void refetch() }} />
+      )}
+
       {/* 結果: ロール別表示 */}
-      {result && result.ranked_players.length > 0 && (
+      {!isError && result && result.ranked_players.length > 0 && (
         isAnalyst
           ? <AnalystRankingView result={result} isLight={isLight} />
           : <CoachCandidateView result={result} isLight={isLight} />

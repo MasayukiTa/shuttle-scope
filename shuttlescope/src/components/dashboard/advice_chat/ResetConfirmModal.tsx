@@ -4,6 +4,7 @@
  */
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useDialogFocus } from '@/hooks/useDialogFocus'
 
 interface Props {
   open: boolean
@@ -14,6 +15,10 @@ interface Props {
 export function ResetConfirmModal({ open, onCancel, onConfirm }: Props) {
   const { t } = useTranslation()
   const cancelRef = useRef<HTMLButtonElement>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  // Tab をダイアログ内で循環させ、閉じたら開く前のフォーカス位置へ戻す。
+  // 開く前の位置を覚えるため、下の Cancel へのフォーカス移動より先に置く。
+  useDialogFocus(dialogRef, open)
 
   useEffect(() => {
     if (!open) return
@@ -32,6 +37,7 @@ export function ResetConfirmModal({ open, onCancel, onConfirm }: Props) {
 
   return (
     <div
+      ref={dialogRef}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
       role="dialog"
       aria-modal="true"

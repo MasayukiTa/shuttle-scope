@@ -66,7 +66,11 @@ def get_growth_snapshot(
     # 一行に依存した守りなので、ここでも閉じる。
     if ctx.role == "player" and ctx.player_id != player_id:
         raise HTTPException(status_code=403, detail="player can only view own snapshot")
-    if ctx.role in {"coach", "analyst", "admin"} and not can_access_player(ctx, player_id, db):
+    # demo も coach/analyst/admin と同じ所有境界で閉じる。can_access_player は
+    # demo (team_id あり・admin/player いずれでもない) を「自チーム所属 player の
+    # ときだけ True」と判定するので、デモチーム外の player_id は 403 になる。
+    # これを入れる前は demo だけが player_id 境界を検査されず素通りしていた。
+    if ctx.role in {"coach", "analyst", "admin", "demo"} and not can_access_player(ctx, player_id, db):
         raise HTTPException(status_code=403, detail="player is outside your accessible scope")
 
     analytics = _example_analytics()

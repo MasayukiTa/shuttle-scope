@@ -166,6 +166,7 @@ export function VideoOnlyPage() {
             matchId={data.courtGridMatchId}
             containerRef={areaRef}
             visible={data.courtGridVisible}
+            readOnly
           />
         )}
         {data?.roiRect && (
@@ -173,6 +174,7 @@ export function VideoOnlyPage() {
             value={data.roiRect}
             onChange={noop}
             editing={false}
+            readOnly
             containerRef={areaRef}
           />
         )}

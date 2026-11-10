@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.models import Match
 from backend.analysis.router_helpers import _get_player_matches
+from backend.analysis.match_filter import MatchFilter, NO_FILTER
 
 
 def load_match_pairs(
@@ -31,8 +32,9 @@ def load_match_pairs(
     player_id: int,
     *,
     allowed_player_ids: Optional[set[int]] = None,
+    match_filter: MatchFilter = NO_FILTER,
 ) -> tuple[list[int], list[tuple[int, int]]]:
-    """player_id が関与する試合から Bradley-Terry 用ペアリストを構築する。
+    """player_id が関与する試合 (解析母集団 + match_filter) から Bradley-Terry 用ペアリストを構築する。
 
     cohort の選手: player_id 自身 + 対戦相手全員。
     allowed_player_ids が渡された場合は、その集合に含まれる選手のみを cohort に含む。
@@ -61,8 +63,8 @@ def load_match_pairs(
         pid_to_idx = {pid: i for i, pid in enumerate(player_ids)}
         indexed_pairs = [(pid_to_idx[w], pid_to_idx[l]) for w, l in pairs]
     """
-    # player_id が関与する全試合を取得 (フィルタ無し)
-    matches: list[Match] = _get_player_matches(db, player_id)
+    # player_id が関与する試合を取得 (match_filter が無指定なら全試合)
+    matches: list[Match] = _get_player_matches(db, player_id, **match_filter.kwargs())
 
     # 試合から勝者・敗者ペアを抽出し、cohort を収集する
     raw_pairs: list[tuple[int, int]] = []

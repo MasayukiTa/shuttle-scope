@@ -4,7 +4,8 @@ from typing import Optional
 from uuid import uuid4
 from sqlalchemy import (
     BigInteger, Integer, String, Float, Boolean, DateTime, Date,
-    ForeignKey, Text, UniqueConstraint, Index, LargeBinary, func, JSON, text
+    ForeignKey, Text, UniqueConstraint, Index, LargeBinary, func, JSON, text,
+    false as _sa_false
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.db.database import Base
@@ -30,7 +31,7 @@ class Team(Base):
     display_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, unique=True, index=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     short_name: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    is_independent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="false")
+    is_independent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default=_sa_false())
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -269,6 +270,11 @@ class RefreshToken(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     replaced_by_jti: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    # fix/auth-session-persist: rotation 冪等化。rotation 時に発行した後継 refresh の
+    # 平文を Fernet 暗号化して一定の猶予時間 (既定 60s) だけ復元できるようにする。
+    # 平文のまま置くと token_hash (ハッシュのみ保存) 方針を破るので、鍵がある環境でのみ
+    # 暗号文を入れる。鍵が無ければ NULL のままで、冪等再提示は諦めて従来の reuse 判定に倒す。
+    successor_token_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 class PlayerPageAccess(Base):
@@ -396,6 +402,11 @@ class Match(Base):
     partner_b_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("players.id"), nullable=True)
     result: Mapped[str] = mapped_column(String(20), nullable=False)  # win/loss/walkover/unfinished
     final_score: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # "21-15, 18-21, 21-19"
+    # G6 #524: result / final_score の出所。'manual' = 人が入力した確定値 (絶対に
+    # 自動で上書きしない)、'auto' = 完了セットから end_set が自動入力した値。
+    # 既存行は全て人手入力とみなすため migration 0058 で 'manual' を埋める。
+    # early finish / walkover は manual のまま。
+    result_source: Mapped[str] = mapped_column(String(10), nullable=False, server_default="manual", default="manual")
     video_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     # video_local_path: 内部利用のみ。フロント / API レスポンスには露出させないこと。
     # ユーザーへ動画を提供するには video_token を使い /api/videos/{video_token}/stream 経由で配信する。
@@ -438,7 +449,24 @@ class Match(Base):
         Integer, ForeignKey("teams.id"), nullable=True, index=True
     )
     is_public_pool: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False, server_default="false", index=True
+        Boolean, default=False, nullable=False, server_default=_sa_false(), index=True
+    )
+    # is_demo_public: True のときに限り、デモチーム所有の **デモ専用** 試合を
+    # 所有チーム以外のユーザーにも read-only で見せてよい、という明示マーカー。
+    # fail closed: 既定は False、既存行は全て False 扱い。実データ試合には付与しない。
+    # is_public_pool とは独立した別経路（管理者が設定する一般公開プールとは別概念）。
+    # 可視判定は単一の共有ヘルパ (utils.auth.match_is_demo_public) に集約する。
+    is_demo_public: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default=_sa_false(), index=True
+    )
+    # is_synthetic: True のときに限り、この試合を検証用 fixture (BIAS_SEED 等の
+    # 合成データ) とみなす明示マーカー。audit #178: 検証データが通常の成長・対戦相手・
+    # 大会・研究分析へ混入していた。fail closed: 既定は False、既存行は全て False 扱い。
+    # 実データ試合には付与しない。解析母集団からの除外は単一の共有ヘルパ
+    # (analysis.analysis_population.split_analysis_population, 既定で synthetic を除外。
+    # 管理ツールだけが include_synthetic=True で取り込める) に集約する。
+    is_synthetic: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default=_sa_false(), index=True
     )
     home_team_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("teams.id"), nullable=True)
     away_team_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("teams.id"), nullable=True)
@@ -541,6 +569,19 @@ class Stroke(Base):
         Index("ix_strokes_shot_type",           "shot_type"),
         Index("ix_strokes_hit_zone",            "hit_zone"),
         Index("ix_strokes_land_zone",           "land_zone"),
+        # (rally_id, stroke_num) は 1 ラリー内で一意であるべき。以前は Index のみで
+        # 一意制約が無く、Pass2 の再実行や再送で同じ番号の打球が二重に入り、
+        # rally_length と下流のカウントが静かにずれた。rallies の
+        # uq_rallies_set_id_rally_num_active と同じく、論理削除 (deleted_at) された
+        # 行とは衝突させたくないので **active 行だけの部分一意インデックス** にする。
+        # PostgreSQL も SQLite (3.8.0+) も部分インデックスに対応。migration 0064 と対。
+        Index(
+            "uq_strokes_rally_id_stroke_num_active",
+            "rally_id", "stroke_num",
+            unique=True,
+            sqlite_where=text("deleted_at IS NULL"),
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -579,12 +620,21 @@ class Stroke(Base):
     return_target_y:    Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     # ゾーン（集計・フィルタ用）
+    # hit_zone = 打球時の打者の床面位置 Zone9。空中シャトルの3D接触点ではない。
+    # CV自動値は calibrated homography + YOLO foot_point からのみ生成する。
     hit_zone: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)   # BL/BC/BR/ML/MC/MR/NL/NC/NR
     # Phase A: 打点ソース ('cv' = CV 自動値そのまま / 'manual' = 人間 override)
     hit_zone_source: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     # Phase A: CV 元推定値 (override 後も保持してデータ品質計測)
     hit_zone_cv_original: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)
     land_zone: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)  # 同上
+    # land_zone の入力元: 'cv' = CV 自動適用が書いた値 / 'human' = 人が入力した値 /
+    # NULL = 不明 (本列の追加前の既存データ。値があれば人の入力として扱う)。
+    land_zone_source: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    # 要望8 (SD-08): 打球の高さ（ネット基準の相対高さ）。任意入力。
+    # 値: above_net / slightly_above / slightly_below / below（4段階）。
+    # NULL=未入力。hit_zone（打者の床面位置）とは別概念で、識別子も別。
+    hit_height: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
 
     # 打球属性
     is_backhand: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -609,6 +659,13 @@ class Stroke(Base):
 
     # 入力ソース (manual / assisted / corrected)
     source_method: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+
+    # 要望6 (仙台大 2026-11-05): ショットの意図メモ。
+    # ミスや無得点に終わった打球について「何を狙って打ったのか」という人間の推測を残す。
+    # 選択式タグ (deep/net/body/sideline/cross/deception/clear_safe/other) と短い自由記述。
+    # 入力は任意。既存行は NULL のまま (意図メモ未入力として扱う)。
+    intent_tag: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    intent_note: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
 
     # リレーション
     rally: Mapped["Rally"] = relationship("Rally", back_populates="strokes")
@@ -990,6 +1047,12 @@ class HumanForecast(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     # Phase B-7: 書き込みチーム
     team_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("teams.id"), nullable=True, index=True)
+    # G5 item #687: 作成者 (この予測を記録したログインユーザ)。削除可否の判定に使う。
+    # 旧行 (migration 0057 以前に作成) は NULL のまま残り、その場合は admin だけが削除できる。
+    # nullable: 既存行を backfill できない (free-text forecaster_name しか無い) ため。
+    creator_user_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=True, index=True
+    )
 
 
 
@@ -1044,8 +1107,11 @@ class MatchCVArtifact(Base):
     backend_used: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     # summary: コート位置サマリーなど（軽量、常時読み込み）
     summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)   # JSON
-    # data: フレーム別生データ（大容量、オンデマンド読み込み）
-    data: Mapped[Optional[str]] = mapped_column(Text, nullable=True)       # JSON
+    # data: フレーム別生データ（大容量、オンデマンド読み込み）。
+    # PR1: 本番で 1 行あたり約 6GB の TEXT JSON。deferred=True により通常の
+    # db.query(MatchCVArtifact) では data 列を SELECT せず、.data を実際に
+    # アクセスした行だけ個別 SELECT する。data を使う箇所は undefer() を明示する。
+    data: Mapped[Optional[str]] = mapped_column(Text, nullable=True, deferred=True)  # JSON
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
@@ -1149,6 +1215,7 @@ class Condition(Base):
     ccs_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     delta_prev: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     delta_3ma: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # 直近28「回」の記録の平均との差 (28日間ではない)。列名は互換性のため据え置き。
     delta_28ma: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     z_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     validity_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
@@ -1888,6 +1955,54 @@ class ErrorLog(Base):
     internal_code: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
     user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     ip_addr: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+
+
+# ─── 0062: audit_events (データ変更の主体追跡) ────────────────────────────
+class AuditEvent(Base):
+    """データ変更監査ログ。誰(user_id/role/ip)が・いつ(ts)・どの entity
+    (entity_type/entity_id)に・どの操作(action=create/update/delete)を行い、
+    どのフィールドを変えたか(changed_fields=フィールド名の一覧, field_count=件数)
+    を 1 行で残す。request_id で request_logs と相関できる。
+
+    値を保存しない理由(測定つき):
+      - 変更値そのものは選手名・体組成・コンディション等の個人情報を含み、
+        監査テーブルが二次的な個人情報リポジトリになると APPI/GDPR 上の
+        保管義務・漏洩時影響が跳ね上がる。
+      - 値は大容量にもなりうる(stroke batch は 1 リクエストで数百行)。実測で
+        /api/strokes/batch の 1 リクエスト body は中央値 ~8KB・最大 ~180KB
+        (本番 request_logs の bytes_in 分布 2026-11-06 時点)。これを監査に
+        そのまま複製すると書き込み量が request_logs と同オーダーで二重化する。
+      - 代わりに「変更フィールド名の一覧」(どの列が触られたか)と「件数」、そして
+        変更内容の before/after を正規化した SHA-256 ハッシュ(body_hash)だけを
+        残す。ハッシュは 64 hex = 32byte 固定で、値を復元できないが「同じ変更が
+        再適用されたか」「改竄で別物にすり替わっていないか」の照合には使える。
+        フィールド名一覧は列名のみ(値を含まない)なので個人情報ではない。
+    """
+    __tablename__ = "audit_events"
+    __table_args__ = (
+        Index("ix_audit_events_ts", "ts"),
+        Index("ix_audit_events_user_id", "user_id"),
+        Index("ix_audit_events_entity", "entity_type", "entity_id"),
+        Index("ix_audit_events_request_id", "request_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.current_timestamp())
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    role: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    ip_addr: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    request_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    action: Mapped[str] = mapped_column(String(10), nullable=False)          # create/update/delete
+    method: Mapped[str] = mapped_column(String(8), nullable=False)           # POST/PUT/PATCH/DELETE
+    path: Mapped[str] = mapped_column(String(512), nullable=False)
+    status: Mapped[int] = mapped_column(Integer, nullable=False)
+    entity_type: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    entity_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    # 値は保存しない。触れたフィールド名の一覧(カンマ区切り/JSON文字列)のみ。
+    changed_fields: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    field_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # 変更 body を正規化した SHA-256(hex)。値そのものではなく照合用の指紋。
+    body_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
 
 
 # ─── 0035: chat_sessions / chat_messages (Growth Advisor chat) ────────────

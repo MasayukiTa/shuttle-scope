@@ -1,7 +1,8 @@
 /**
  * アプリ設定の読み書きフック。
  * P2/TX-2: まず localStorage に保存し、バックエンドAPIにも同期。
- * バックエンドが未起動の場合は localStorage のみで動作する。
+ * 保存 API が失敗したときは画面の値を直前の値へ戻し、saveFailed を立てる
+ * (画面だけ新しい値のまま、サーバは古い値、という食い違いを残さない)。
  */
 import { useState, useEffect, useCallback } from 'react'
 import { apiGet, apiPut } from '@/api/client'
@@ -58,28 +59,56 @@ const DEFAULTS: AppSettings = {
 
 const LS_KEY = 'shuttlescope.settings'
 
+// ngrok / TURN の資格情報はブラウザの localStorage に残さない。
+// 共有 PC ではログアウト後も次の利用者が読め、XSS の窃取対象にもなるため。
+// 値は admin が /settings から取得した分を画面のメモリ上でだけ持つ。
+const SECRET_KEYS = [
+  'ngrok_authtoken',
+  'turn_url',
+  'turn_username',
+  'turn_credential',
+  'turn_static_auth_secret',
+] as const
+
+function stripSecrets<T extends Partial<AppSettings>>(s: T): T {
+  const out: Record<string, unknown> = { ...s }
+  for (const k of SECRET_KEYS) delete out[k]
+  return out as T
+}
+
 function loadLocal(): AppSettings {
   try {
     const raw = localStorage.getItem(LS_KEY)
-    if (raw) return { ...DEFAULTS, ...JSON.parse(raw) }
+    if (raw) {
+      const stored = JSON.parse(raw) as Partial<AppSettings>
+      // 旧版が保存した資格情報が残っていれば、読み込み時に消す
+      if (SECRET_KEYS.some((k) => k in stored)) {
+        localStorage.setItem(LS_KEY, JSON.stringify(stripSecrets(stored)))
+      }
+      return { ...DEFAULTS, ...stripSecrets(stored) }
+    }
   } catch {}
   return { ...DEFAULTS }
 }
 
 function saveLocal(s: AppSettings) {
   try {
-    localStorage.setItem(LS_KEY, JSON.stringify(s))
+    localStorage.setItem(LS_KEY, JSON.stringify(stripSecrets(s)))
   } catch {}
 }
 
 export function useSettings() {
   const [settings, setSettingsState] = useState<AppSettings>(loadLocal)
   const [loading, setLoading] = useState(false)
+  const [saveFailed, setSaveFailed] = useState(false)
 
   // 初回マウント時にバックエンドから最新設定を取得
   useEffect(() => {
+    // アンマウント後の setState (teardown 済み環境) を中断フラグで抑止。
+    let active = true
     apiGet<{ success: boolean; data: Record<string, unknown> }>('/settings')
       .then((res) => {
+        if (!active) return
         if (res.success) {
           const merged = { ...DEFAULTS, ...(res.data as Partial<AppSettings>) }
           setSettingsState(merged)
@@ -87,21 +116,36 @@ export function useSettings() {
         }
       })
       .catch(() => {/* バックエンド未起動時はlocalStorageで動作 */})
+    return () => {
+      active = false
+    }
   }, [])
 
-  const updateSettings = useCallback(async (partial: Partial<AppSettings>) => {
+  const updateSettings = useCallback(async (partial: Partial<AppSettings>): Promise<boolean> => {
+    const keys = Object.keys(partial) as (keyof AppSettings)[]
+    const previous: Partial<AppSettings> = {}
+    for (const k of keys) (previous as Record<string, unknown>)[k] = settings[k]
     const next = { ...settings, ...partial }
     setSettingsState(next)
     saveLocal(next)
+    setSaveFailed(false)
     setLoading(true)
     try {
       await apiPut('/settings', { settings: partial })
+      return true
     } catch {
-      // バックエンド未起動時はlocalStorageのみで動作
+      // サーバが受け付けなかった設定を画面に残さない。直前の値へ戻す
+      setSettingsState((cur) => {
+        const reverted = { ...cur, ...previous }
+        saveLocal(reverted)
+        return reverted
+      })
+      setSaveFailed(true)
+      return false
     } finally {
       setLoading(false)
     }
   }, [settings])
 
-  return { settings, updateSettings, loading }
+  return { settings, updateSettings, loading, saveFailed }
 }

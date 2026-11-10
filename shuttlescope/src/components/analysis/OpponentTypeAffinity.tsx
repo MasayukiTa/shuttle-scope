@@ -4,6 +4,10 @@ import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
+import { hasSufficientSample } from '@/utils/sampleGate'
+
+/** これ未満の試合数では勝率を出さない (監査 #438)。 */
+const OPPONENT_AFFINITY_MIN_MATCHES = 3
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 import { WIN, LOSS } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
@@ -40,6 +44,7 @@ interface OpponentTypeAffinityResponse {
     affinity: Record<string, AffinityEntry>
     summary: SummaryEntry[]
     axes?: Record<string, AxisEntry[]>
+    unclassified_matches?: number
   }
   meta: { sample_size: number; confidence: { level: string; stars: string; label: string } }
 }
@@ -75,9 +80,10 @@ export function OpponentTypeAffinity({ playerId, filters = DEFAULT_FILTERS }: Op
 
   const sampleSize = resp?.meta?.sample_size ?? 0
   const summary = resp?.data?.summary ?? []
+  const unclassified = resp?.data?.unclassified_matches ?? 0
 
-  if (sampleSize === 0 || summary.length === 0) {
-    return <NoDataMessage sampleSize={sampleSize} minRequired={3} unit="試合" />
+  if (!hasSufficientSample(sampleSize, OPPONENT_AFFINITY_MIN_MATCHES) || summary.length === 0) {
+    return <NoDataMessage sampleSize={sampleSize} minRequired={OPPONENT_AFFINITY_MIN_MATCHES} unit="試合" />
   }
 
   const labelColor = isLight ? '#475569' : '#9ca3af'
@@ -87,7 +93,7 @@ export function OpponentTypeAffinity({ playerId, filters = DEFAULT_FILTERS }: Op
 
   return (
     <div className="space-y-3">
-      <ConfidenceBadge sampleSize={sampleSize} unit="matches" />
+      <ConfidenceBadge sampleSize={sampleSize} tier="research" unit="matches" />
 
       <div className="space-y-2">
         {summary.map((entry) => {
@@ -137,6 +143,11 @@ export function OpponentTypeAffinity({ playerId, filters = DEFAULT_FILTERS }: Op
       <p className="text-[10px]" style={{ color: labelColor }}>
         {t('auto.OpponentTypeAffinity.auto_type_note')}
       </p>
+      {unclassified > 0 && (
+        <p className="text-[10px]" style={{ color: labelColor }}>
+          {t('analysis_scope.unclassified_note', { n: unclassified })}
+        </p>
+      )}
     </div>
   )
 }

@@ -25,6 +25,8 @@ import math
 from collections import defaultdict
 from typing import Optional
 
+from backend.analysis.role_view import perspective
+
 
 # ── Beta パラメータ推定 ───────────────────────────────────────────────────────
 
@@ -137,14 +139,12 @@ def compute_bayes_matchup(
             res = getattr(m, 'result', None)
             if res not in ('win', 'loss'):
                 continue
-            if m.player_a_id == player_id:
-                opp_id = m.player_b_id
-                player_won = res == 'win'
-            elif m.player_b_id == player_id:
-                opp_id = m.player_a_id
-                player_won = res == 'loss'
-            else:
+            view = perspective(m, player_id)
+            if view is None:
                 continue
+            # result は A 側 (player_a と partner_a) から見た勝敗。相方も同じチームの側で判定する
+            opp_id = m.player_b_id if view == 'player_a' else m.player_a_id
+            player_won = (res == 'win') == (view == 'player_a')
         else:
             opp_id = getattr(m, 'opponent_id', 0)
             player_won = getattr(m, 'result', '') == 'win'
@@ -182,7 +182,7 @@ def compute_bayes_matchup(
     if total_matches == 0:
         return {
             "global_prior": {"alpha": 1.0, "beta": 1.0},
-            "global_win_rate": 0.5,
+            "global_win_rate": None,  # 0 試合の全体勝率は偽の 0.5 にしない (統計規則 R1)
             "opponent_estimates": [],
             "total_matches": 0,
         }

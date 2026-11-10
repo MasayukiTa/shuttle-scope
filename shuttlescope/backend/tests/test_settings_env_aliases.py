@@ -29,7 +29,7 @@ BOOL_SWITCHES = [
     ("HIDE_STACK_TRACES", "1", True),
 ]
 
-ALL_ENV_NAMES = [n for n, _, _ in BOOL_SWITCHES] + ["PUBLIC_HOSTNAME"]
+ALL_ENV_NAMES = [n for n, _, _ in BOOL_SWITCHES] + ["PUBLIC_HOSTNAME", "DB_MIGRATION_URL"]
 
 
 @pytest.fixture()
@@ -74,3 +74,20 @@ def test_loopback_switch_defaults_open(clean_env):
     本番はこれを 0 にする手順なので、既定が変わったら手順を見直すこと。"""
     clean_env.setenv("ENVIRONMENT", "development")
     assert Settings().ALLOW_LOOPBACK_NO_AUTH is True
+
+
+@pytest.mark.parametrize("prefix", ["SS_", ""])
+def test_migration_url_alias_is_loaded(clean_env, prefix):
+    clean_env.setenv(prefix + "DB_MIGRATION_URL", "postgresql+psycopg://migration@example/db")
+    s = Settings()
+    assert s.SS_DB_MIGRATION_URL == "postgresql+psycopg://migration@example/db"
+
+
+def test_migration_url_is_loaded_from_env_file(clean_env, tmp_path):
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "SS_DB_MIGRATION_URL=postgresql+psycopg://migration@example/db\n",
+        encoding="utf-8",
+    )
+    s = Settings(_env_file=str(env_file))
+    assert s.SS_DB_MIGRATION_URL == "postgresql+psycopg://migration@example/db"

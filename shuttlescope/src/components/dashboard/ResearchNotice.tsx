@@ -6,8 +6,21 @@
 //   - 新版: bg は常に N_GRAY (theme に追従)、warning の意味は **左罫線でなく**
 //     amber 色の **タイトル文字 + ⚠ アイコン** で示す。
 //     左罫線 縦バー方式は禁止 (詐欺サイト感)。
+import { createContext, useContext, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+import type { FilterScopeMeta } from '@/utils/analysisFilterParams'
+
+// 研究タブのように「ページ先頭に注意バナーを 1 回だけ出す」画面向けのスコープ。
+// この Provider の内側にある ResearchNotice は、見出し (⚠ 研究段階の分析) だけを省く。
+// カード固有の注意・前提・昇格条件は消さず、見出しなしの小さなブロックで残す
+// (防ぐ事象: ページ先頭の共通警告だけでは、カードごとに仮定が違うことが読めない)。
+// Provider の外 (研究タブ以外でカードを表示する場所) では従来どおり各自が見出し付きで表示する。
+const SuppressCtx = createContext(false)
+
+export function ResearchNoticeSuppress({ children }: { children: ReactNode }) {
+  return <SuppressCtx.Provider value={true}>{children}</SuppressCtx.Provider>
+}
 
 interface ResearchNoticeProps {
   assumptions?: string
@@ -26,6 +39,7 @@ export function ResearchNotice({
 }: ResearchNoticeProps) {
   const { t } = useTranslation()
   const isLight = useIsLightMode()
+  const suppressed = useContext(SuppressCtx)
 
   // bg / border は完全に N_GRAY (theme 連動)。
   // warning 意味は タイトル文字色 (amber) で運ぶ。
@@ -38,6 +52,23 @@ export function ResearchNotice({
   const cautionColor = isLight ? '#374151' /* gray-700 */ : '#e2e8f0' /* gray-200 */
   const subColor = isLight ? '#64748b' /* gray-500 */ : '#94a3b8' /* gray-400 */
   const faintColor = isLight ? '#94a3b8' /* gray-400 */ : '#64748b' /* gray-500 */
+
+  if (suppressed) {
+    return (
+      <div className={`px-1 space-y-0.5 ${className}`} data-testid="research-notice-compact">
+        <p className="text-[10px]" style={{ color: cautionColor }}>{caution}</p>
+        {assumptions && (
+          <p className="text-[10px]" style={{ color: subColor }}>{t('auto.ResearchNotice.assumptions', { v: assumptions })}</p>
+        )}
+        {reason && (
+          <p className="text-[10px]" style={{ color: faintColor }}>{t('auto.ResearchNotice.reason', { v: reason })}</p>
+        )}
+        {promotionCriteria && (
+          <p className="text-[10px]" style={{ color: faintColor }}>{t('auto.ResearchNotice.promotion', { v: promotionCriteria })}</p>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className={`rounded-ss-lg px-4 py-3 space-y-1 ${containerClass} ${className}`}>
@@ -55,5 +86,50 @@ export function ResearchNotice({
         <p className="text-[10px]" style={{ color: faintColor }}>{t('auto.ResearchNotice.promotion', { v: promotionCriteria })}</p>
       )}
     </div>
+  )
+}
+
+/**
+ * 上部の絞り込み (結果・大会レベル・期間) がこのカードの母集団に効くかを 1 行で示す。
+ * 表示は backend の応答 meta (filter_scope / population) だけで決まる。
+ * filter_scope は analysis_registry の宣言 (backend/analysis/analysis_registry.py)。
+ * 防ぐ事象: 同じ画面で N が指標ごとに違い、画面のフィルタ状態では読み解けない (監査 #152)。
+ *   - global_only / not_wired: 「絞り込み対象外」を出す
+ *   - filtered で絞り込み中: 絞り込み後の試合数・ラリー数を出す
+ *   - それ以外 (絞り込みなし・meta なし): 何も出さない
+ */
+export function FilterScopeNote({
+  meta,
+  className = '',
+}: {
+  meta?: FilterScopeMeta | null
+  className?: string
+}) {
+  const { t } = useTranslation()
+  const isLight = useIsLightMode()
+  const scope = meta?.filter_scope
+  if (!scope) return null
+
+  let text: string | null = null
+  if (scope === 'global_only') {
+    text = t('auto.ResearchNotice.filter_scope_global_only')
+  } else if (scope === 'not_wired') {
+    text = t('auto.ResearchNotice.filter_scope_not_wired')
+  } else {
+    const pop = meta?.population
+    if (pop?.filter_applied && pop.n_matches != null && pop.n_rallies != null) {
+      text = t('auto.ResearchNotice.population_filtered', { m: pop.n_matches, r: pop.n_rallies })
+    }
+  }
+  if (!text) return null
+
+  return (
+    <p
+      className={`text-[10px] ${className}`}
+      style={{ color: isLight ? '#64748b' : '#94a3b8' }}
+      data-testid="filter-scope-note"
+    >
+      {text}
+    </p>
   )
 }

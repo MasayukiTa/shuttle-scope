@@ -12,7 +12,8 @@ import { AdviceStrip } from '@/components/common/AdviceStrip'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
-import { apiGet, API_BASE_URL } from '@/api/client'
+import { apiGet } from '@/api/client'
+import { downloadReport } from '@/utils/downloadReport'
 import { PredictionPanel } from '@/components/analysis/PredictionPanel'
 import { PairSimulationPanel } from '@/components/analysis/PairSimulationPanel'
 import { LineupOptimizerPanel } from '@/components/analysis/LineupOptimizerPanel'
@@ -23,6 +24,7 @@ import { useCardTheme } from '@/hooks/useCardTheme'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { MIcon } from '@/components/common/MIcon'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 
 interface PlayerSummary {
   id: number
@@ -37,6 +39,8 @@ type SubTab = 'preview' | 'pair' | 'lineup' | 'forecast'
 export function PredictionPage() {
   const { t } = useTranslation()
   const { role } = useAuth()
+  // 監査 #502: player は本人スコープのみ。ペア/編成/人間予測サブタブは出さない。
+  const isPlayer = role === 'player'
   // テレメトリ: page 滞在 dwell 計測 (view_id ベース)
   useEffect(() => analyticsViewLifecycle('prediction.page'), [])
   useCardTheme()
@@ -51,6 +55,9 @@ export function PredictionPage() {
     return pid ? Number(pid) : null
   })
   const [subTab, setSubTab] = useState<SubTab>('preview')
+  useEffect(() => {
+    if (isPlayer && subTab !== 'preview') setSubTab('preview')
+  }, [isPlayer, subTab])
   const [forecastMatchId, setForecastMatchId] = useState<number | null>(null)
   // preview サブタブ用: Page レベルで管理（PredictionPanel へ prop として渡す）
   const [opponentId, setOpponentId] = useState<number | null>(null)
@@ -58,19 +65,12 @@ export function PredictionPage() {
 
   const LEVEL_OPTIONS = ['IC', 'IS', 'SJL', '全日本', '国内', 'その他']
 
+  const [downloadError, setDownloadError] = useState<string | null>(null)
   const dlReport = (path: string, filename: string) => {
-    const token = sessionStorage.getItem('shuttlescope_token')
-    const fullUrl = API_BASE_URL + path.replace(/^\/api/, '')
-    fetch(fullUrl, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
-      .then((r) => r.blob())
-      .then((blob) => {
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = filename
-        a.click()
-        URL.revokeObjectURL(url)
-      })
+    setDownloadError(null)
+    downloadReport(path, filename).catch(() => {
+      setDownloadError(t('common.download_failed'))
+    })
   }
 
   // URL パラメータ変化に追従
@@ -79,7 +79,12 @@ export function PredictionPage() {
     if (pid) setSelectedPlayerId(Number(pid))
   }, [searchParams])
 
-  const { data: matchesResp } = useQuery({
+  const {
+    data: matchesResp,
+    isLoading: loadingForecastMatches,
+    isError: forecastMatchesError,
+    refetch: refetchForecastMatches,
+  } = useQuery({
     queryKey: ['matches-for-forecast', selectedPlayerId],
     queryFn: () =>
       apiGet<{ data: Array<{ id: number; date: string; tournament_level?: string; result?: string }> }>(
@@ -90,7 +95,12 @@ export function PredictionPage() {
   })
   const forecastMatches = matchesResp?.data ?? []
 
-  const { data: playersResp, isLoading: loadingPlayers } = useQuery({
+  const {
+    data: playersResp,
+    isLoading: loadingPlayers,
+    isError: playersError,
+    refetch: refetchPlayers,
+  } = useQuery({
     queryKey: ['players-list'],
     queryFn: () => apiGet<{ data: PlayerSummary[] }>('/players'),
   })
@@ -108,12 +118,6 @@ export function PredictionPage() {
   const tabActive = 'bg-[var(--ss-surface-3)] text-[var(--ss-t1)]'
   const tabInactive = 'text-[var(--ss-t3)] hover:text-[var(--ss-t1)] hover:bg-[var(--ss-surface-2)]'
 
-  const ROLE_LABELS: Record<string, string> = {
-    admin: '管理者',
-    analyst: 'アナリスト',
-    coach: 'コーチ',
-    player: '選手',
-  }
   const ROLE_BADGE_CLASS: Record<string, string> = {
     admin: 'bg-[var(--ss-danger-bg)] border-[var(--ss-danger-border)] text-[var(--ss-danger-text)]',
     analyst: 'bg-[var(--ss-info-bg)] border-[var(--ss-info-border)] text-[var(--ss-info-text)]',
@@ -135,7 +139,7 @@ export function PredictionPage() {
                   ROLE_BADGE_CLASS[role] ?? 'bg-[var(--ss-surface-2)] border-[var(--ss-border)] text-[var(--ss-t2)]'
                 }`}
               >
-                {ROLE_LABELS[role] ?? role}
+                {t('roles.' + role, role)}
               </span>
             )}
           </div>
@@ -160,6 +164,8 @@ export function PredictionPage() {
               loading={loadingPlayers}
               className="min-w-[280px]"
             />
+            {/* 選手一覧の取得失敗を「選手未選択」に見せない (監査 #729) */}
+            {playersError && <QueryErrorNotice className="py-0" onRetry={() => { void refetchPlayers() }} />}
           </div>
 
           {/* 4. Prediction タブ: 実データ起点の advice strip (head-to-head 実績 or 過去 90 日サマリ) */}
@@ -227,7 +233,9 @@ export function PredictionPage() {
               { key: 'lineup' as const, label: t('prediction.lineup_optimizer'), labelShort: t('prediction.lineup_optimizer_short') },
               { key: 'forecast' as const, label: t('prediction.human_forecast'), labelShort: t('prediction.human_forecast_short') },
             ] as const
-          ).map(({ key, label, labelShort }) => (
+          )
+            .filter(({ key }) => !isPlayer || key === 'preview')
+            .map(({ key, label, labelShort }) => (
             <button
               key={key}
               onClick={() => {
@@ -262,6 +270,14 @@ export function PredictionPage() {
             </button>
           </div>
         )}
+        {downloadError && (
+          <div
+            role="alert"
+            className="mx-6 mt-2 text-sm text-[var(--ss-bad)] bg-[var(--ss-danger-tint)] border border-[var(--ss-danger-border)] rounded-ss-md px-3 py-2"
+          >
+            {downloadError}
+          </div>
+        )}
 
         {/* コンテンツ */}
         <div className="flex-1 overflow-y-auto px-6 py-5">
@@ -282,6 +298,10 @@ export function PredictionPage() {
               </div>
               {/* 右パネル（将来的に PrematchStatCard 等を配置） */}
               <div />
+            </div>
+          ) : isPlayer ? (
+            <div className={`flex items-center justify-center h-full ${textMuted} text-sm`}>
+              {t('prediction.player_restricted_note')}
             </div>
           ) : subTab === 'pair' ? (
             <div>
@@ -308,6 +328,7 @@ export function PredictionPage() {
                   options={forecastMatches.map((m) => ({
                     value: m.id,
                     label: `${m.date} ${m.tournament_level ? `[${m.tournament_level}]` : ''}`,
+                    // 製品ルール: player には勝敗を見せない (API も result を返さず、全試合「未確定」になるため出さない)
                     suffix: m.result ? (m.result === 'win' ? 'W' : m.result === 'loss' ? 'L' : m.result) : '未確定',
                     searchText: `${m.date} ${m.tournament_level ?? ''}`,
                   }))}
@@ -315,8 +336,15 @@ export function PredictionPage() {
                   onChange={(v) => setForecastMatchId(v != null ? Number(v) : null)}
                   emptyLabel={t('common.select_match', 'Select match')}
                   placeholder={t('auto.PredictionPage.k7')}
-                  loading={forecastMatches.length === 0 && !!selectedPlayerId}
+                  loading={loadingForecastMatches}
                 />
+                {/* 取得失敗は再試行、成功 0 件は「対象試合なし」と区別する (監査 #728) */}
+                {forecastMatchesError && (
+                  <QueryErrorNotice onRetry={() => { void refetchForecastMatches() }} />
+                )}
+                {!forecastMatchesError && !loadingForecastMatches && matchesResp != null && forecastMatches.length === 0 && (
+                  <p className={`text-xs mt-2 ${textMuted}`}>{t('prediction.no_forecast_matches')}</p>
+                )}
               </div>
 
               {/* 試合前統計予測 */}

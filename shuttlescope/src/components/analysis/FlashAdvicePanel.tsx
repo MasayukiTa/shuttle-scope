@@ -2,7 +2,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
-import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
@@ -28,7 +28,7 @@ interface FlashAdviceResponse {
     item_count: number
     extended_items_included: boolean
   }
-  meta: { sample_size: number; confidence: { level: string; stars: string; label: string } }
+  meta: { sample_size: number; confidence: { level: string; stars: string; label: string; warning?: string | null } }
 }
 
 // カテゴリ別スタイル定義
@@ -134,7 +134,7 @@ export function FlashAdvicePanel({ matchId, asOfSet, asOfRallyNum, playerId }: F
     params.as_of_rally_num = asOfRallyNum
   }
 
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError, refetch } = useQuery({
     queryKey: ['analysis-flash-advice', matchId, asOfSet, asOfRallyNum, playerId],
     queryFn: () => apiGet<FlashAdviceResponse>('/analysis/flash_advice', params),
     enabled: !!matchId && !!asOfSet && !!playerId,
@@ -143,10 +143,15 @@ export function FlashAdvicePanel({ matchId, asOfSet, asOfRallyNum, playerId }: F
   if (isLoading) {
     return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.loading')}</div>
   }
+  // 取得失敗を「0 ラリー / データ不足」へ変換しない (監査 #732)
+  if (isError) {
+    return <QueryErrorNotice onRetry={() => { void refetch() }} />
+  }
 
   const sampleSize = resp?.meta?.sample_size ?? 0
   const items = resp?.data?.items ?? []
   const extended = resp?.data?.extended_items_included ?? false
+  const confidence = resp?.meta?.confidence ?? { level: 'low', stars: '', label: '', warning: null }
 
   if (sampleSize === 0 || items.length === 0) {
     return <NoDataMessage sampleSize={sampleSize} minRequired={1} unit="ラリー" />
@@ -154,12 +159,24 @@ export function FlashAdvicePanel({ matchId, asOfSet, asOfRallyNum, playerId }: F
 
   return (
     <div className="space-y-3">
-      <ConfidenceBadge sampleSize={sampleSize} unit="rallies" />
-
-      {extended && (
-        <div className="text-[10px] text-gray-400 text-right">
-          {t('analysis.flash.extended_label')}
-        </div>
+      {/* 監査#145: 速報ページ内の信頼度は backend の meta.confidence 一本に統一する。
+          以前は ConfidenceBadge が unit="rallies"(閾値60/250)で独自に再計算し、
+          同じ標本で片や「参考値」、片や「星付き(高確信度)の追加示唆」と矛盾していた。
+          拡張項目(trend/fatigue)が付くのは backend が confidence>=medium のときなので、
+          その判定結果(stars/label)をそのまま見せ、断定的な「高確信度」表記はやめる。 */}
+      <div className="flex items-center justify-between gap-2">
+        <span className="inline-flex items-center gap-1 text-xs text-[var(--ss-text-secondary)]">
+          <span aria-hidden="true" className="tabular-nums">{confidence.stars}</span>
+          <span className="truncate">{confidence.label}</span>
+        </span>
+        {extended && (
+          <span className="text-[10px] text-gray-400 text-right shrink-0">
+            {t('analysis.flash.extended_note')}
+          </span>
+        )}
+      </div>
+      {confidence.warning && (
+        <p className="text-[10px] text-[var(--ss-warning-text)]">{confidence.warning}</p>
       )}
 
       {/* analyst / coach: 全カード表示 */}

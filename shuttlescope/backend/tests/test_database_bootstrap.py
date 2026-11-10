@@ -10,13 +10,16 @@ from pathlib import Path
 import pytest
 from sqlalchemy import create_engine, event
 
+import backend.db.database as database_module
 from backend.db.database import (
+    _database_is_at_alembic_head,
     _ensure_analytics_indexes,
     _ensure_unique_indexes,
     _safe_sql_column_list,
     _safe_sql_ident,
     bootstrap_database,
     create_tables,
+    run_db_migrations,
 )
 
 
@@ -147,3 +150,166 @@ def test_bootstrap_sql_identifier_guards_reject_injected_identifiers():
         _safe_sql_ident("matches; DROP TABLE users")
     with pytest.raises(ValueError):
         _safe_sql_column_list("match_id, player_id DESC")
+
+
+def test_run_db_migrations_can_fail_closed(monkeypatch, tmp_path):
+    import alembic.command
+
+    def _boom(*_args, **_kwargs):
+        raise RuntimeError("migration boom")
+
+    monkeypatch.setattr(alembic.command, "upgrade", _boom)
+    db_url = _sqlite_url(str(tmp_path / "fail.db"))
+    with pytest.raises(RuntimeError, match="migration boom"):
+        run_db_migrations(db_url, fail_on_error=True)
+
+
+def test_alembic_head_preflight_matches_runtime_revision():
+    eng = create_engine("sqlite:///:memory:")
+    try:
+        with eng.begin() as conn:
+            conn.exec_driver_sql(
+                "CREATE TABLE alembic_version "
+                "(version_num VARCHAR(32) NOT NULL PRIMARY KEY)"
+            )
+            conn.exec_driver_sql(
+                "INSERT INTO alembic_version(version_num) VALUES (?)",
+                (HEAD,),
+            )
+
+        assert _database_is_at_alembic_head(eng) is True
+
+        with eng.begin() as conn:
+            conn.exec_driver_sql(
+                "UPDATE alembic_version SET version_num = ?",
+                ("0001",),
+            )
+        assert _database_is_at_alembic_head(eng) is False
+    finally:
+        eng.dispose()
+
+
+def test_versioned_postgres_at_head_skips_privileged_migration(monkeypatch):
+    class _Dialect:
+        name = "postgresql"
+
+    class _Engine:
+        dialect = _Dialect()
+
+    monkeypatch.setattr(
+        database_module,
+        "_table_names",
+        lambda _eng: {"alembic_version", "users"},
+    )
+    monkeypatch.setattr(
+        database_module,
+        "_database_is_at_alembic_head",
+        lambda _eng: True,
+    )
+    monkeypatch.setattr(
+        database_module,
+        "run_db_migrations",
+        lambda *_a, **_k: pytest.fail(
+            "schema-current PostgreSQL must not open the privileged migration path"
+        ),
+    )
+
+    bootstrap_database(
+        _Engine(),
+        "postgresql+psycopg://runtime@example/db",
+        fail_on_migration_error=True,
+    )
+
+
+def test_versioned_postgres_behind_head_runs_privileged_migration(monkeypatch):
+    class _Dialect:
+        name = "postgresql"
+
+    class _Engine:
+        dialect = _Dialect()
+
+    calls = []
+    monkeypatch.setattr(
+        database_module,
+        "_table_names",
+        lambda _eng: {"alembic_version", "users"},
+    )
+    monkeypatch.setattr(
+        database_module,
+        "_database_is_at_alembic_head",
+        lambda _eng: False,
+    )
+    monkeypatch.setattr(
+        database_module,
+        "run_db_migrations",
+        lambda url, fail_on_error=False: calls.append((url, fail_on_error)),
+    )
+
+    url = "postgresql+psycopg://runtime@example/db"
+    bootstrap_database(
+        _Engine(),
+        url,
+        fail_on_migration_error=True,
+    )
+    assert calls == [(url, True)]
+
+
+def test_versioned_postgres_uses_alembic_only(monkeypatch):
+    class _Dialect:
+        name = "postgresql"
+
+    class _Engine:
+        dialect = _Dialect()
+
+    calls = []
+
+    monkeypatch.setattr(
+        database_module,
+        "_table_names",
+        lambda _eng: {"alembic_version", "users"},
+    )
+    monkeypatch.setattr(
+        database_module,
+        "_database_is_at_alembic_head",
+        lambda _eng: False,
+    )
+    monkeypatch.setattr(
+        database_module,
+        "run_db_migrations",
+        lambda url, fail_on_error=False: calls.append((url, fail_on_error)),
+    )
+    monkeypatch.setattr(
+        database_module,
+        "create_tables",
+        lambda *_a, **_k: pytest.fail("runtime role must not run create_all on PostgreSQL"),
+    )
+    monkeypatch.setattr(
+        database_module,
+        "_ensure_unique_indexes",
+        lambda *_a, **_k: pytest.fail("runtime role must not create indexes on PostgreSQL"),
+    )
+    monkeypatch.setattr(
+        database_module,
+        "_ensure_analytics_indexes",
+        lambda *_a, **_k: pytest.fail("runtime role must not create indexes on PostgreSQL"),
+    )
+
+    url = "postgresql+psycopg://runtime@example/db"
+    bootstrap_database(
+        _Engine(),
+        url,
+        fail_on_migration_error=True,
+    )
+    assert calls == [(url, True)]
+
+
+def test_legacy_postgres_without_alembic_version_is_rejected(monkeypatch):
+    class _Dialect:
+        name = "postgresql"
+
+    class _Engine:
+        dialect = _Dialect()
+
+    monkeypatch.setattr(database_module, "_table_names", lambda _eng: {"users"})
+    with pytest.raises(RuntimeError, match="no alembic_version"):
+        bootstrap_database(_Engine(), "postgresql+psycopg://runtime@example/db")

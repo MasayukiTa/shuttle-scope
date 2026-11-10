@@ -3,7 +3,7 @@ import hashlib
 import secrets
 import uuid
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import jwt as _pyjwt
@@ -22,6 +22,15 @@ JWT_AUDIENCE = "shuttlescope-api"
 ACCESS_TOKEN_EXPIRE_MINUTES = 15
 ADMIN_TOKEN_EXPIRE_MINUTES = 15
 REFRESH_TOKEN_EXPIRE_DAYS = 7
+
+# fix/auth-session-persist: rotation 冪等化の猶予時間 (秒)。
+# rotation 直後にネットワーク断で応答を受け取れなかったクライアントが、同じ旧 refresh
+# で再試行する / タブ複製で同時に二重 rotation が走る、といったケースで、旧 refresh の
+# 再提示を「reuse 攻撃」ではなく「正当な再送」として扱う窓。この窓の内側なら chain を
+# revoke せず、保存済みの後継 refresh を復元して返す (冪等)。窓を過ぎた再提示は従来どおり
+# reuse 検知で chain 全体を revoke する。
+# 窓を長くすると漏洩 refresh の悪用猶予も伸びるため、ネットワーク再送に十分でかつ短い値にする。
+REFRESH_ROTATION_GRACE_SECONDS = 60
 
 
 def create_access_token(
@@ -99,6 +108,109 @@ def persist_refresh_token(user_id: int, token: str, jti: str, expires_at: dateti
         raise
 
 
+def _predates_mass_revoke(issued_at: Optional[datetime], mass_ts: int) -> bool:
+    """refresh token が一斉失効 (mass_ts, epoch 秒) より前 (同時刻を含む) に発行されたか。
+
+    issued_at は naive UTC (datetime.utcnow)。読み取れないときは「前」とみなして拒否する
+    (fail closed)。DB 障害時の番兵 `_DENY_ALL_TS` は遠い未来なので、全 refresh が拒否される。
+    """
+    if issued_at is None:
+        return True
+    try:
+        issued_ts = issued_at.replace(tzinfo=timezone.utc).timestamp()
+    except Exception:
+        return True
+    return issued_ts <= mass_ts
+
+
+def _encrypt_successor(plaintext_token: str) -> Optional[str]:
+    """後継 refresh の平文を暗号化して返す。鍵が無い / 暗号化無効なら None。
+
+    平文 refresh を DB に平文で置くのは token_hash (ハッシュのみ保存) 方針に反するため、
+    暗号化できる環境でのみ暗号文を保存する。field_crypto は鍵未設定時に平文を返すので、
+    「暗号化が実際に効いた (= v1: プレフィックスが付いた)」場合だけ採用し、それ以外は
+    None を返して冪等化を諦める (安全側: 従来の reuse 判定に倒れる)。
+    """
+    try:
+        from backend.utils.field_crypto import encrypt_field, _KEY_VERSION_PREFIX
+        enc = encrypt_field(plaintext_token)
+        if enc and isinstance(enc, str) and enc.startswith(_KEY_VERSION_PREFIX):
+            return enc
+        return None
+    except Exception as exc:
+        logger.warning("_encrypt_successor failed: %s", exc)
+        return None
+
+
+def _decrypt_successor(ciphertext: Optional[str]) -> Optional[str]:
+    """successor_token_enc を復号して平文 refresh を返す。復号不能なら None。"""
+    if not ciphertext:
+        return None
+    try:
+        from backend.utils.field_crypto import decrypt_field, _KEY_VERSION_PREFIX
+        if not (isinstance(ciphertext, str) and ciphertext.startswith(_KEY_VERSION_PREFIX)):
+            return None
+        plain = decrypt_field(ciphertext)
+        # decrypt_field は失敗時に "[ENCRYPTED:...]" 番兵を返すので弾く。
+        if not plain or not isinstance(plain, str) or plain.startswith("[ENCRYPTED:"):
+            return None
+        return plain
+    except Exception as exc:
+        logger.warning("_decrypt_successor failed: %s", exc)
+        return None
+
+
+def _try_replay_successor(row, now: datetime) -> Optional[dict]:
+    """revoked 済み refresh 行が猶予窓内の再提示なら、保存済み後継を復元して返す。
+
+    冪等化の中核。以下を **すべて** 満たすときのみ replay する:
+      - revoked_at が猶予窓 (REFRESH_ROTATION_GRACE_SECONDS) 内
+      - successor_token_enc が復号できる (鍵があり暗号文が壊れていない)
+      - 復号した後継 refresh が DB に実在し、未失効かつ未期限
+
+    一つでも欠けたら None を返し、呼び出し側は従来どおり reuse 検知で chain を revoke する。
+    これにより「正当な再送」だけを救い、本物の reuse 攻撃 (猶予外・後継が既に失効) は
+    従来どおり厳格に遮断する。
+    """
+    from backend.db.database import SessionLocal
+    from backend.db.models import RefreshToken
+    # 猶予窓の判定。revoked_at が無い (= まだ revoke されていない) 行はここに来ない。
+    if row.revoked_at is None:
+        return None
+    try:
+        age = (now - row.revoked_at).total_seconds()
+    except Exception:
+        return None
+    if age < 0 or age > REFRESH_ROTATION_GRACE_SECONDS:
+        return None
+    successor_plain = _decrypt_successor(getattr(row, "successor_token_enc", None))
+    if successor_plain is None:
+        return None
+    # 後継 refresh が今も有効か確認する (reuse で既に chain ごと失効していれば救わない)。
+    try:
+        with SessionLocal() as db:
+            succ = (
+                db.query(RefreshToken)
+                .filter(RefreshToken.token_hash == _hash_refresh_token(successor_plain))
+                .first()
+            )
+            if succ is None:
+                return None
+            if succ.revoked_at is not None:
+                return None
+            if succ.expires_at <= now:
+                return None
+            return {
+                "user_id": succ.user_id,
+                "new_token": successor_plain,
+                "new_jti": succ.jti,
+                "new_expires_at": succ.expires_at,
+            }
+    except Exception as exc:
+        logger.warning("_try_replay_successor lookup failed: %s", exc)
+        return None
+
+
 def rotate_refresh_token(presented_token: str) -> Optional[dict]:
     """提示された refresh token を検証し、rotation 方式で新 refresh を発行する。
 
@@ -132,16 +244,14 @@ def rotate_refresh_token(presented_token: str) -> Optional[dict]:
             # 旧来は revoke_all_tokens 後でも refresh で新 access が発行可能だった
             # ため、SECRET 漏洩や緊急 incident 時の containment が機能しなかった。
             mass_ts = _get_mass_revoke_timestamp()
-            if mass_ts is not None:
-                # RefreshToken の created_at 列が無い設計のため、jti プレフィクス
-                # に紐付く RevokedToken の created_at で代替判定する代わりに、
-                # mass_revoke 後に発行された refresh は再発行 created_at が
-                # mass_ts より新しい必要がある。`row.id` ベースの簡易判定として
-                # row が mass_ts 以前から存在していれば revoke する。
-                # (より厳密な実装は created_at 追加 + Alembic migration を要するため
-                #  ここでは mass_revoke が active な間は全 refresh を一律拒否する。
-                #  運用上 mass_revoke は緊急時のみ、ユーザは再ログインで新 refresh
-                #  を取得するためダウンタイムは限定的。)
+            # 一斉失効の時刻 (最新の sentinel) より **前に発行された** refresh だけを拒否する。
+            # RefreshToken には issued_at があるので、失効後に再ログインして発行された
+            # refresh は通す。以前は sentinel が一つでも残っていれば全 refresh を一律に
+            # 拒否していたため、一斉失効を一度実行すると (sentinel は消えない) 以後
+            # 全員の refresh が永久に 401 になり、access token の寿命 (admin は 15 分) ごとに
+            # ログイン画面へ戻されていた (2026-10-21 に本番で実測: 4/29 の sentinel が残存し、
+            # 以降に発行された refresh も 15 分後の rotation で全て拒否されていた)。
+            if mass_ts is not None and _predates_mass_revoke(row.issued_at, mass_ts):
                 logger.warning(
                     "refresh blocked by mass_revoke sentinel ts=%s user_id=%s",
                     mass_ts, row.user_id,
@@ -155,6 +265,20 @@ def rotate_refresh_token(presented_token: str) -> Optional[dict]:
                 db.commit()
                 return None
             if row.revoked_at is not None:
+                # fix/auth-session-persist: rotation 冪等化。
+                # 直前に rotate したばかり (revoked_at が猶予窓内) で、かつ後継 refresh の
+                # 暗号文を保存できている行なら、これは「reuse 攻撃」ではなく「応答を取り
+                # こぼしたクライアントの再送」か「タブ複製の二重 rotation」である可能性が
+                # 高い。chain を壊さず、前回発行した後継 refresh をそのまま復元して返す。
+                # こうすると旧 refresh での再送が何度来ても同じ後継に収束し (冪等)、正当な
+                # 利用者が rotation 競合で強制ログアウトされない。
+                replay = _try_replay_successor(row, now)
+                if replay is not None:
+                    logger.info(
+                        "refresh rotation idempotent replay user_id=%s (within grace)",
+                        row.user_id,
+                    )
+                    return replay
                 # reuse 検知: chain 全体を revoke
                 (
                     db.query(RefreshToken)
@@ -199,11 +323,20 @@ def rotate_refresh_token(presented_token: str) -> Optional[dict]:
                 token_hash=_hash_refresh_token(new_raw),
                 expires_at=new_exp,
             ))
+            # fix/auth-session-persist: 冪等化のため、発行した後継 refresh の平文を
+            # 暗号化して旧 (= いま revoke した) 行に保存する。猶予窓内に同じ旧 refresh が
+            # 再提示されたら、この暗号文を復号して同じ後継を返す (chain を壊さない)。
+            # 鍵が無い環境では _encrypt_successor が None を返し、successor_token_enc は
+            # NULL のまま → 冪等再提示は諦めて従来の reuse 判定に倒れる (安全側)。
+            successor_enc = _encrypt_successor(new_raw)
+            update_fields = {"replaced_by_jti": new_jti}
+            if successor_enc is not None:
+                update_fields["successor_token_enc"] = successor_enc
             # replaced_by_jti は既に確定した勝者行へひも付ける
             (
                 db.query(RefreshToken)
                 .filter(RefreshToken.id == row.id)
-                .update({"replaced_by_jti": new_jti}, synchronize_session=False)
+                .update(update_fields, synchronize_session=False)
             )
             db.commit()
             return {

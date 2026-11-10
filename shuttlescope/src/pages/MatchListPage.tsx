@@ -16,11 +16,16 @@ import { PlayerCombobox } from '@/components/matchList/PlayerCombobox'
 import { MatchCard } from '@/components/matchList/MatchCard'
 import { MatchRow } from '@/components/matchList/MatchRow'
 import { MIcon } from '@/components/common/MIcon'
+import { isPlayableVideoUrl } from '@/utils/videoSrc'
+import { isPlayerSearchBlocked } from '@/utils/playerSearchGuard'
+import { canCreatePlayer, canWriteMatch } from '@/utils/roleAccess'
+import { localDateDaysAgo, localDateMonthsAgo, todayLocal } from '@/utils/localDate'
 
 // 試合登録フォーム
 interface MatchFormData {
   tournament: string
-  tournament_level: TournamentLevel
+  // 空文字 = 未選択。もっともらしい既定値を入れると、見落としたときに偽のカテゴリ情報になる
+  tournament_level: TournamentLevel | ''
   round: string
   date: string
   format: MatchFormat
@@ -40,16 +45,17 @@ interface MatchFormData {
 
 const defaultForm = (): MatchFormData => ({
   tournament: '',
-  tournament_level: '国内',
-  round: MATCH_ROUNDS[3],
-  date: new Date().toISOString().split('T')[0],
+  tournament_level: '',
+  round: '',
+  date: todayLocal(),
   format: 'singles',
   player_a_id: '',
   player_b_id: '',
   partner_a_id: '',
   partner_b_id: '',
   initial_server: '',
-  result: 'win',
+  // 結果が決まるまでは未完了。勝ちを既定にすると、登録しただけの試合が勝敗確定として集計される
+  result: 'unfinished',
   final_score: '',
   video_url: '',
   video_local_path: '',
@@ -133,7 +139,7 @@ export function MatchListPage() {
   }
 
   // 試合一覧取得
-  const { data: matchesData, isLoading } = useQuery({
+  const { data: matchesData, isLoading, isError: matchesError, refetch: refetchMatches } = useQuery({
     queryKey: ['matches', filterPlayer, filterLevel, filterIncompleteOnly, role, playerId, teamName],
     queryFn: () => {
       const params: Record<string, string | boolean> = {}
@@ -159,7 +165,7 @@ export function MatchListPage() {
     eta?: string
     error?: string
   }
-  const { data: activeDownloads } = useQuery({
+  const { data: activeDownloads, isError: activeDownloadsError } = useQuery({
     queryKey: ['matches', 'downloads', 'active'],
     queryFn: () => apiGet<{ success: boolean; data: Record<string, DownloadInfo> }>('/matches/downloads/active'),
     refetchInterval: 5000,
@@ -168,33 +174,42 @@ export function MatchListPage() {
   const dlByMatch = activeDownloads?.data ?? {}
 
   // 選手検索（各フィールド）
-  const { data: playerASearchData } = useQuery({
+  const { data: playerASearchData, isError: playerASearchError } = useQuery({
     queryKey: ['players-search-a', playerAQuery],
     queryFn: () => apiGet<{ success: boolean; data: Player[] }>('/players/search', { q: playerAQuery }),
     enabled: playerAQuery.trim().length >= 1 && form.player_a_id === '',
   })
   const playerACandidates = playerASearchData?.data ?? []
 
-  const { data: playerBSearchData } = useQuery({
+  const { data: playerBSearchData, isError: playerBSearchError } = useQuery({
     queryKey: ['players-search-b', playerBQuery],
     queryFn: () => apiGet<{ success: boolean; data: Player[] }>('/players/search', { q: playerBQuery }),
     enabled: playerBQuery.trim().length >= 1 && form.player_b_id === '',
   })
   const playerBCandidates = playerBSearchData?.data ?? []
 
-  const { data: partnerASearchData } = useQuery({
+  const { data: partnerASearchData, isError: partnerASearchError } = useQuery({
     queryKey: ['players-search-partner-a', partnerAQuery],
     queryFn: () => apiGet<{ success: boolean; data: Player[] }>('/players/search', { q: partnerAQuery }),
     enabled: partnerAQuery.trim().length >= 1 && form.partner_a_id === '',
   })
   const partnerACandidates = partnerASearchData?.data ?? []
 
-  const { data: partnerBSearchData } = useQuery({
+  const { data: partnerBSearchData, isError: partnerBSearchError } = useQuery({
     queryKey: ['players-search-partner-b', partnerBQuery],
     queryFn: () => apiGet<{ success: boolean; data: Player[] }>('/players/search', { q: partnerBQuery }),
     enabled: partnerBQuery.trim().length >= 1 && form.partner_b_id === '',
   })
   const partnerBCandidates = partnerBSearchData?.data ?? []
+
+  // 検索 API の失敗を「候補 0 件」と区別する。失敗中に保存すると、既存選手がいても
+  // 入力文字列から暫定選手を新規作成してしまうため、該当欄が失敗していれば保存を止める。
+  const playerSearchFailed = isPlayerSearchBlocked([
+    { id: form.player_a_id, query: playerAQuery, failed: playerASearchError },
+    { id: form.player_b_id, query: playerBQuery, failed: playerBSearchError },
+    { id: form.partner_a_id, query: partnerAQuery, failed: partnerASearchError },
+    { id: form.partner_b_id, query: partnerBQuery, failed: partnerBSearchError },
+  ])
 
   // チーム候補（各側の検索結果からチーム名を抽出）
   const playerATeamSuggestions = [
@@ -208,6 +223,19 @@ export function MatchListPage() {
     ),
   ]
 
+  // 失敗の利用者向け文言。HTTP status・内部フィールド名・backend の detail は出さず、
+  // 原因の種類 (認証切れ / 権限 / 競合 / 入力) だけを伝える。詳細はコンソールへ残す。
+  const userFacingMatchError = (err: unknown, fallback: string): string => {
+    console.error('[MatchList] request failed', errorStatus(err), errorMessage(err, ''))
+    switch (errorStatus(err)) {
+      case 401: return t('common_ui.error_session_expired')
+      case 403: return t('common_ui.error_forbidden')
+      case 409: return t('common_ui.error_conflict')
+      case 422: return t('common_ui.error_invalid_input')
+      default: return fallback
+    }
+  }
+
   // 試合作成
   const createMatch = useMutation({
     mutationFn: (body: Record<string, unknown>) => apiPost('/matches', body),
@@ -218,11 +246,16 @@ export function MatchListPage() {
         localStorage.setItem(`shuttlescope.viewpoint.${newMatchId}`, analystSide)
       }
       queryClient.invalidateQueries({ queryKey: ['matches'] })
+      queryClient.invalidateQueries({ queryKey: ['players'] })
       setShowForm(false)
       setEditingMatchId(null)
       setForm(defaultForm())
       setAnalystSide('bottom')
       resetPlayerFields()
+    },
+    // 入力内容は残したまま、保存できなかったことを知らせる (編集 updateMatch と同じ契約)
+    onError: (err: unknown) => {
+      alert(userFacingMatchError(err, t('common_ui.match_save_failed')))
     },
   })
 
@@ -231,6 +264,7 @@ export function MatchListPage() {
     mutationFn: ({ id, body }: { id: number; body: Record<string, unknown> }) => apiPut(`/matches/${id}`, body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['matches'] })
+      queryClient.invalidateQueries({ queryKey: ['players'] })
       setShowForm(false)
       setEditingMatchId(null)
       setForm(defaultForm())
@@ -238,18 +272,7 @@ export function MatchListPage() {
       resetPlayerFields()
     },
     onError: (err: unknown) => {
-      const msg = errorMessage(err)
-      let detail: string
-      try {
-        const parsed = JSON.parse(msg) as { detail?: unknown }
-        if (Array.isArray(parsed?.detail)) {
-          detail = (parsed.detail as Array<{ loc?: string[]; msg?: string }>)
-            .map((d) => `${d.loc?.join('.')}: ${d.msg}`).join('\n')
-        } else {
-          detail = (typeof parsed?.detail === 'string' ? parsed.detail : msg) || ''
-        }
-      } catch { detail = msg }
-      alert(`保存に失敗しました (HTTP ${errorStatus(err) ?? '?'}):\n${detail || '不明なエラー'}`)
+      alert(userFacingMatchError(err, t('common_ui.match_save_failed')))
     },
   })
 
@@ -259,13 +282,7 @@ export function MatchListPage() {
       apiDelete(`/matches/${id}`, { 'X-Idempotency-Key': newIdempotencyKey() }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['matches'] }),
     onError: (err: unknown) => {
-      const msg = errorMessage(err)
-      let detail: string
-      try {
-        const parsed = JSON.parse(msg) as { detail?: unknown }
-        detail = typeof parsed?.detail === 'string' ? parsed.detail : ''
-      } catch { detail = msg }
-      alert(`削除に失敗しました (HTTP ${errorStatus(err) ?? '?'}):\n${detail || '不明なエラー'}`)
+      alert(userFacingMatchError(err, t('common_ui.match_delete_failed')))
     },
   })
 
@@ -281,22 +298,18 @@ export function MatchListPage() {
     },
   })
 
-  // 選手の暫定作成ヘルパー
-  const createProvisionalPlayer = async (
+  // 未登録の選手は試合と一緒にサーバで作る（POST /matches の *_new）。
+  // 先に POST /players すると、後続の失敗で試合に紐付かない選手が残るため。
+  const provisionalPlayerSpec = (
     name: string,
     opts: { isTarget?: boolean; team?: string } = {}
-  ): Promise<number> => {
-    const resp = await apiPost<{ data?: { id?: number } }>('/players', {
-      name,
-      team: opts.team || undefined,
-      is_target: opts.isTarget ?? false,
-      profile_status: 'provisional',
-      needs_review: true,
-    })
-    const id = resp?.data?.id
-    if (!id) throw new Error('IDが取得できませんでした')
-    return id
-  }
+  ) => ({
+    name,
+    team: opts.team || undefined,
+    is_target: opts.isTarget ?? false,
+    profile_status: 'provisional',
+    needs_review: true,
+  })
 
   // 編集開始: フォームを既存試合データで初期化
   const handleStartEdit = (m: Match) => {
@@ -338,52 +351,54 @@ export function MatchListPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
+    // 大会レベルとラウンドは未選択のまま登録させない (既定値を持たないため)
+    if (!form.tournament_level || !form.round) {
+      alert(t('common.select_placeholder'))
+      return
+    }
+
+    // 動画 URL は http(s) のみ。mailto: 等を保存すると「動画あり」と表示されるのに再生できない。
+    if (form.video_url.trim() && !isPlayableVideoUrl(form.video_url)) {
+      alert(t('match.list.video_url_invalid'))
+      return
+    }
+
+    // 選手検索が失敗している欄がある間は、暫定選手の新規作成へ進ませない
+    if (playerSearchFailed) {
+      alert(t('match.list.player_search_failed_blocked'))
+      return
+    }
+
     const aTeam = playerATeam.trim()
     const bTeam = playerBTeam.trim()
 
     // ── player_a（必須）──
-    let finalPlayerAId = form.player_a_id
+    const finalPlayerAId = form.player_a_id
+    let newPlayerA: ReturnType<typeof provisionalPlayerSpec> | undefined
     if (!finalPlayerAId) {
       const name = playerAQuery.trim()
       if (!name) { alert('対象選手（A）を入力または選択してください'); return }
-      try {
-        finalPlayerAId = await createProvisionalPlayer(name, { isTarget: true, team: aTeam || undefined })
-      } catch (err: unknown) {
-        alert(`対象選手登録エラー: ${errorMessage(err, '不明なエラー')}`); return
-      }
+      newPlayerA = provisionalPlayerSpec(name, { isTarget: true, team: aTeam || undefined })
     }
 
     // ── player_b（必須）──
-    let finalPlayerBId = form.player_b_id
+    const finalPlayerBId = form.player_b_id
+    let newPlayerB: ReturnType<typeof provisionalPlayerSpec> | undefined
     if (!finalPlayerBId) {
       const name = playerBQuery.trim()
       if (!name) { alert('対戦相手（B）を入力または選択してください'); return }
-      try {
-        finalPlayerBId = await createProvisionalPlayer(name, { team: bTeam || undefined })
-      } catch (err: unknown) {
-        alert(`対戦相手登録エラー: ${errorMessage(err, '不明なエラー')}`); return
-      }
+      newPlayerB = provisionalPlayerSpec(name, { team: bTeam || undefined })
     }
 
-    // ── partner_a（任意）──
-    let finalPartnerAId: number | undefined = form.partner_a_id ? Number(form.partner_a_id) : undefined
-    if (!finalPartnerAId && partnerAQuery.trim()) {
-      try {
-        finalPartnerAId = await createProvisionalPlayer(partnerAQuery.trim(), { team: aTeam || undefined })
-      } catch (err: unknown) {
-        alert(`自チーム相方登録エラー: ${errorMessage(err, '不明なエラー')}`); return
-      }
-    }
-
-    // ── partner_b（任意）──
-    let finalPartnerBId: number | undefined = form.partner_b_id ? Number(form.partner_b_id) : undefined
-    if (!finalPartnerBId && partnerBQuery.trim()) {
-      try {
-        finalPartnerBId = await createProvisionalPlayer(partnerBQuery.trim(), { team: bTeam || undefined })
-      } catch (err: unknown) {
-        alert(`相手チーム相方登録エラー: ${errorMessage(err, '不明なエラー')}`); return
-      }
-    }
+    // ── partner_a / partner_b（任意）──
+    const finalPartnerAId: number | undefined = form.partner_a_id ? Number(form.partner_a_id) : undefined
+    const newPartnerA = !finalPartnerAId && partnerAQuery.trim()
+      ? provisionalPlayerSpec(partnerAQuery.trim(), { team: aTeam || undefined })
+      : undefined
+    const finalPartnerBId: number | undefined = form.partner_b_id ? Number(form.partner_b_id) : undefined
+    const newPartnerB = !finalPartnerBId && partnerBQuery.trim()
+      ? provisionalPlayerSpec(partnerBQuery.trim(), { team: bTeam || undefined })
+      : undefined
 
     // undefinedキーはJSON.stringifyで除去される。空文字も数値フィールドには送らない
     const body: Record<string, unknown> = {
@@ -392,12 +407,17 @@ export function MatchListPage() {
       round: form.round,
       date: form.date,
       format: form.format,
+      // player の編集では result を持たない (undefined は JSON から落ち、DB の値を保持する)
       result: form.result,
-      player_a_id: Number(finalPlayerAId),
-      player_b_id: Number(finalPlayerBId),
     }
+    if (finalPlayerAId) body.player_a_id = Number(finalPlayerAId)
+    if (finalPlayerBId) body.player_b_id = Number(finalPlayerBId)
+    if (newPlayerA) body.player_a_new = newPlayerA
+    if (newPlayerB) body.player_b_new = newPlayerB
     if (finalPartnerAId) body.partner_a_id = finalPartnerAId
     if (finalPartnerBId) body.partner_b_id = finalPartnerBId
+    if (newPartnerA) body.partner_a_new = newPartnerA
+    if (newPartnerB) body.partner_b_new = newPartnerB
     if (form.initial_server) body.initial_server = form.initial_server
     if (form.final_score) body.final_score = form.final_score
     if (form.video_url) body.video_url = form.video_url
@@ -440,7 +460,7 @@ export function MatchListPage() {
         alert(t('match.list.fetch_title_empty'))
       }
     } catch (err) {
-      alert(t('match.list.fetch_title_failed') + ': ' + errorMessage(err, ''))
+      alert(userFacingMatchError(err, t('match.list.fetch_title_failed')))
     } finally {
       setFetchingTitle(false)
     }
@@ -510,12 +530,11 @@ export function MatchListPage() {
   // 日付プリセット
   function applyDatePreset(preset: 'week' | 'month' | 'month3') {
     const today = new Date()
-    const to = today.toISOString().split('T')[0]
-    const d = new Date(today)
-    if (preset === 'week') d.setDate(d.getDate() - 7)
-    else if (preset === 'month') d.setMonth(d.getMonth() - 1)
-    else d.setMonth(d.getMonth() - 3)
-    setFilterDateFrom(d.toISOString().split('T')[0])
+    const to = todayLocal(today)
+    const from = preset === 'week'
+      ? localDateDaysAgo(7, today)
+      : localDateMonthsAgo(preset === 'month' ? 1 : 3, today)
+    setFilterDateFrom(from)
     setFilterDateTo(to)
   }
 
@@ -571,14 +590,23 @@ export function MatchListPage() {
     <div className={`h-full overflow-y-auto flex flex-col ${bodyBg} text-[var(--ss-t1)]`}>
       {/* ヘッダー */}
       <div className={`flex items-center justify-between gap-2 flex-wrap px-6 py-4 border-b ${borderLine}`}>
-        <h1 className={`text-xl font-semibold ${textHeading}`}>{t('nav.matches')}</h1>
+        <div className="flex items-baseline gap-2">
+          <h1 className={`text-xl font-semibold ${textHeading}`}>{t('nav.matches')}</h1>
+          {!isLoading && !matchesError && (
+            <span data-testid="match-count" className={`text-sm ${textMuted}`}>{t('match.list.count', { count: matches.length })}</span>
+          )}
+        </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={() => setShowQuickStart(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-[var(--ss-warn)] hover:opacity-90 text-white font-semibold rounded-[var(--r-md)] text-sm"
-          >
-            {t('quick_start.button')}
-          </button>
+          {/* backend の POST /matches/quick-start は player を 403 で拒否するため player には出さない */}
+          {canWriteMatch(role) && (
+            <button
+              onClick={() => setShowQuickStart(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-[var(--ss-warn)] hover:opacity-90 text-white font-semibold rounded-[var(--r-md)] text-sm"
+            >
+              {t('quick_start.button')}
+            </button>
+          )}
+          {canWriteMatch(role) && (
           <button
             onClick={() => { setEditingMatchId(null); setForm(defaultForm()); resetPlayerFields(); setShowForm(true) }}
             className="flex items-center gap-2 px-4 py-2 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white rounded-[var(--r-md)] text-sm"
@@ -586,8 +614,16 @@ export function MatchListPage() {
             <MIcon name="add" size={16} />
             {t('auto.MatchListPage.k29')}
           </button>
+          )}
         </div>
       </div>
+
+      {/* DL 状態の取得失敗は「ジョブなし」ではなく状態不明として示す (直前の成功値は react-query が保持) */}
+      {activeDownloadsError && (
+        <p role="status" className="px-6 py-1 text-xs text-[var(--ss-warn)]">
+          {t('match.list.downloads_unknown')}
+        </p>
+      )}
 
       {/* フィルター（モバイルではスクロール内へ移動するため hidden md:flex） */}
       <div className={`hidden md:flex flex-col gap-2 px-6 py-3 border-b ${borderLine} text-sm bg-[var(--ss-surface-2)]`}>
@@ -602,7 +638,7 @@ export function MatchListPage() {
             className="w-full pl-8 pr-8 py-1.5 rounded-[var(--r-md)] border border-[var(--ss-border-strong)] text-sm bg-[var(--ss-surface-1)] text-[var(--ss-t1)] placeholder-[var(--ss-t3)]"
           />
           {filterText && (
-            <button
+            <button aria-label={t('settings.ui.clear')}
               onClick={() => setFilterText('')}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--ss-t3)] hover:text-[var(--ss-t1)]"
             >
@@ -622,6 +658,7 @@ export function MatchListPage() {
           />
           <select
             value={filterLevel}
+            aria-label={t('a11yLabels.match_level')}
             onChange={(e) => setFilterLevel(e.target.value)}
             className="border rounded-[var(--r-md)] px-2 py-1.5 text-sm bg-[var(--ss-surface-1)] border-[var(--ss-border-strong)] text-[var(--ss-t1)]"
           >
@@ -638,11 +675,16 @@ export function MatchListPage() {
             />
             <span className={textSecondary}>{t('match.list.only_unfinished')}</span>
           </label>
-          <div className={`ml-auto flex items-center gap-2 text-sm ${textMuted}`}>
-            <MIcon name="download" size={13} />
+          <details className="ml-auto">
+            <summary className={`flex items-center gap-1 text-sm cursor-pointer select-none ${textMuted}`}>
+              <MIcon name="download" size={13} />
+              <span>{t('match.list.download_settings')}</span>
+            </summary>
+            <div className={`flex items-center gap-2 text-sm mt-2 ${textMuted}`}>
             <span>{t('match.list.quality')}</span>
             <select
               value={downloadQuality}
+              aria-label={t('a11yLabels.video_quality')}
               onChange={(e) => setDownloadQuality(e.target.value)}
               className="border rounded-[var(--r-md)] px-2 py-1 text-sm bg-[var(--ss-surface-1)] border-[var(--ss-border-strong)] text-[var(--ss-t1)]"
             >
@@ -667,7 +709,8 @@ export function MatchListPage() {
               <option value="vivaldi">{t('auto.MatchListPage.k61')}</option>
               <option value="chromium">{t('auto.MatchListPage.k62')}</option>
             </select>
-          </div>
+            </div>
+          </details>
         </div>
         {/* 期間フィルター */}
         <div className="flex items-center gap-3 flex-wrap">
@@ -744,7 +787,7 @@ export function MatchListPage() {
               className="w-full pl-8 pr-8 py-1.5 rounded-[var(--r-md)] border border-[var(--ss-border-strong)] text-sm bg-[var(--ss-surface-1)] text-[var(--ss-t1)] placeholder-[var(--ss-t3)]"
             />
             {filterText && (
-              <button
+              <button aria-label={t('settings.ui.clear')}
                 onClick={() => setFilterText('')}
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--ss-t3)] hover:text-[var(--ss-t1)]"
               >
@@ -764,6 +807,7 @@ export function MatchListPage() {
             />
             <select
               value={filterLevel}
+              aria-label={t('a11yLabels.match_level')}
               onChange={(e) => setFilterLevel(e.target.value)}
               className="border rounded-[var(--r-md)] px-2 py-1.5 text-sm bg-[var(--ss-surface-1)] border-[var(--ss-border-strong)] text-[var(--ss-t1)]"
             >
@@ -808,6 +852,18 @@ export function MatchListPage() {
         </div>
         {isLoading ? (
           <div className={`text-center ${textMuted} py-8`}>{t('app.loading')}</div>
+        ) : matchesError ? (
+          <div role="alert" className={`text-center ${textMuted} py-10`}>
+            <p className="mb-1 font-medium">{t('auto.MatchListPage.k64')}</p>
+            <p className="mb-4">{t('auto.MatchListPage.k65')}</p>
+            <button
+              onClick={() => { void refetchMatches() }}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white rounded-[var(--r-md)] text-sm"
+            >
+              <MIcon name="refresh" size={16} />
+              {t('auto.MatchListPage.k66')}
+            </button>
+          </div>
         ) : matches.length === 0 ? (
           <div className={`text-center ${textMuted} py-10`}>
             <p className="mb-4">{t('auto.MatchListPage.k37')}</p>
@@ -878,7 +934,8 @@ export function MatchListPage() {
                   <th className="text-left py-2 pr-4">{t('match.list.col_level')}</th>
                   <th className="text-left py-2 pr-4">{t('match.list.col_format')}</th>
                   <th className="text-left py-2 pr-4">{t('match.list.col_opponent')}</th>
-                  {/* ソート可能: 結果 */}
+                  {/* ソート可能: 結果 (製品ルール: player には勝敗の列・ソートを出さない) */}
+                  {role !== 'player' && (
                   <th
                     className="text-left py-2 pr-4 cursor-pointer select-none hover:opacity-80 whitespace-nowrap"
                     onClick={() => handleMatchSort('result')}
@@ -890,6 +947,7 @@ export function MatchListPage() {
                         : <MIcon name="unfold_more" size={12} className="opacity-30" />}
                     </span>
                   </th>
+                  )}
                   <th className="text-left py-2 pr-4 whitespace-nowrap">
                     <div className="relative inline-block" ref={statusDropdownRef}>
                       <button
@@ -974,14 +1032,15 @@ export function MatchListPage() {
           <div className={`${card} rounded-[var(--r-lg)] w-full max-w-2xl max-h-[90dvh] overflow-y-auto`}>
             <div className={`flex items-center justify-between px-6 py-4 border-b ${borderLine}`}>
               <h2 className={`text-lg font-semibold ${textHeading}`}>{editingMatchId !== null ? t('auto.MatchListPage.k42') : t('auto.MatchListPage.k29')}</h2>
-              <button onClick={() => { setShowForm(false); setEditingMatchId(null); setForm(defaultForm()); resetPlayerFields() }} className={`${textMuted} hover:text-[var(--ss-t1)]`}><MIcon name="close" size={12} /></button>
+              <button aria-label={t('app.close')} onClick={() => { setShowForm(false); setEditingMatchId(null); setForm(defaultForm()); resetPlayerFields() }} className={`${textMuted} hover:text-[var(--ss-t1)]`}><MIcon name="close" size={12} /></button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 flex flex-col gap-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* 大会名 */}
                 <div className="col-span-1 sm:col-span-2">
-                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.tournament')} *</label>
+                  <label htmlFor="match-form-tournament" className={`block text-sm ${textSecondary} mb-1`}>{t('match.tournament')} *</label>
                   <input
+                    id="match-form-tournament"
                     value={form.tournament}
                     onChange={(e) => setForm({ ...form, tournament: e.target.value })}
                     required
@@ -992,24 +1051,30 @@ export function MatchListPage() {
 
                 {/* レベル / ラウンド */}
                 <div>
-                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.tournament_level')}</label>
+                  <label htmlFor="match-form-level" className={`block text-sm ${textSecondary} mb-1`}>{t('match.tournament_level')}</label>
                   <select
+                    id="match-form-level"
                     value={form.tournament_level}
                     onChange={(e) => setForm({ ...form, tournament_level: e.target.value as TournamentLevel })}
                     className={`w-full ${inputClass}`}
+                    required
                   >
+                    <option value="" disabled>{t('common.select_placeholder')}</option>
                     {['IC', 'IS', 'SJL', '全日本', '国内', 'その他'].map((l) => (
                       <option key={l} value={l}>{l}</option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.round')}</label>
+                  <label htmlFor="match-form-round" className={`block text-sm ${textSecondary} mb-1`}>{t('match.round')}</label>
                   <select
+                    id="match-form-round"
                     value={form.round}
                     onChange={(e) => setForm({ ...form, round: e.target.value })}
                     className={`w-full ${inputClass}`}
+                    required
                   >
+                    <option value="" disabled>{t('common.select_placeholder')}</option>
                     {MATCH_ROUNDS.map((r) => (
                       <option key={r} value={r}>{r}</option>
                     ))}
@@ -1018,8 +1083,9 @@ export function MatchListPage() {
 
                 {/* 日付 / 形式 */}
                 <div>
-                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.date')} *</label>
+                  <label htmlFor="match-form-date" className={`block text-sm ${textSecondary} mb-1`}>{t('match.date')} *</label>
                   <input
+                    id="match-form-date"
                     type="date"
                     value={form.date}
                     onChange={(e) => setForm({ ...form, date: e.target.value })}
@@ -1028,10 +1094,20 @@ export function MatchListPage() {
                   />
                 </div>
                 <div>
-                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.format')}</label>
+                  <label htmlFor="match-form-format" className={`block text-sm ${textSecondary} mb-1`}>{t('match.format')}</label>
                   <select
+                    id="match-form-format"
                     value={form.format}
-                    onChange={(e) => setForm({ ...form, format: e.target.value as MatchFormat })}
+                    onChange={(e) => {
+                      const nextFormat = e.target.value as MatchFormat
+                      if (nextFormat === 'singles') {
+                        setForm({ ...form, format: nextFormat, partner_a_id: '', partner_b_id: '' })
+                        setPartnerAQuery('')
+                        setPartnerBQuery('')
+                      } else {
+                        setForm({ ...form, format: nextFormat })
+                      }
+                    }}
                     className={`w-full ${inputClass}`}
                   >
                     <option value="singles">{t('match.list.format_singles')}</option>
@@ -1053,6 +1129,7 @@ export function MatchListPage() {
                   isLight={isLight}
                   textSecondary={textSecondary}
                   placeholder={t('auto.MatchListPage.k16')}
+                  canCreate={canCreatePlayer(role)}
                 />
                 <PlayerCombobox
                   label={t('auto.MatchListPage.k44')}
@@ -1065,7 +1142,14 @@ export function MatchListPage() {
                   isLight={isLight}
                   textSecondary={textSecondary}
                   placeholder={t('auto.MatchListPage.k16')}
+                  canCreate={canCreatePlayer(role)}
                 />
+
+                {playerSearchFailed && (
+                  <p role="alert" className="text-sm text-red-500">
+                    {t('match.list.player_search_failed')}
+                  </p>
+                )}
 
                 {/* ダブルス: 相方欄（自チーム左・相手チーム右） */}
                 {isDoubles && (
@@ -1080,6 +1164,7 @@ export function MatchListPage() {
                       isLight={isLight}
                       textSecondary={textSecondary}
                       placeholder={t('auto.MatchListPage.k16')}
+                      canCreate={canCreatePlayer(role)}
                     />
                     <PlayerCombobox
                       label={t('auto.MatchListPage.k46')}
@@ -1091,6 +1176,7 @@ export function MatchListPage() {
                       isLight={isLight}
                       textSecondary={textSecondary}
                       placeholder={t('auto.MatchListPage.k16')}
+                      canCreate={canCreatePlayer(role)}
                     />
                   </>
                 )}
@@ -1147,10 +1233,14 @@ export function MatchListPage() {
                   </div>
                 )}
 
-                {/* 結果 / スコア */}
+                {/* 結果 / スコア。player の編集では API が result / final_score を返さず、
+                    空の選択肢が「勝ち」に見えて誤入力を誘うため出さない (PUT にも含めない)。 */}
+                {!(role === 'player' && editingMatchId !== null) && (
+                <>
                 <div>
-                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.result')}</label>
+                  <label htmlFor="match-form-result" className={`block text-sm ${textSecondary} mb-1`}>{t('match.result')}</label>
                   <select
+                    id="match-form-result"
                     value={form.result}
                     onChange={(e) => setForm({ ...form, result: e.target.value as MatchResult })}
                     className={`w-full ${inputClass}`}
@@ -1160,16 +1250,24 @@ export function MatchListPage() {
                     <option value="walkover">{t('match.list.result_walkover')}</option>
                     <option value="unfinished">{t('match.list.result_unfinished')}</option>
                   </select>
+                  {/* G6 #524: 結果が完了セットから自動入力された試合では、手動で上書きできる旨を知らせる。 */}
+                  {editingMatchId !== null
+                    && matches.find((x) => x.id === editingMatchId)?.result_source === 'auto' && (
+                    <p className="text-[11px] text-blue-400 mt-0.5">{t('match.result_auto_generated')}</p>
+                  )}
                 </div>
                 <div>
-                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.score')}</label>
+                  <label htmlFor="match-form-score" className={`block text-sm ${textSecondary} mb-1`}>{t('match.score')}</label>
                   <input
+                    id="match-form-score"
                     value={form.final_score}
                     onChange={(e) => setForm({ ...form, final_score: e.target.value })}
                     className={`w-full ${inputClass}`}
                     placeholder={t('auto.MatchListPage.k18')}
                   />
                 </div>
+                </>
+                )}
 
                 {/* 動画 */}
                 <div className="col-span-1 sm:col-span-2">
@@ -1367,8 +1465,9 @@ export function MatchListPage() {
 
                 {/* メモ */}
                 <div className="col-span-1 sm:col-span-2">
-                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.notes')}</label>
+                  <label htmlFor="match-form-notes" className={`block text-sm ${textSecondary} mb-1`}>{t('match.notes')}</label>
                   <textarea
+                    id="match-form-notes"
                     value={form.notes}
                     onChange={(e) => setForm({ ...form, notes: e.target.value })}
                     rows={2}
@@ -1378,16 +1477,22 @@ export function MatchListPage() {
 
                 {/* Phase B-13: 公開プール（admin 限定）— 全チーム閲覧可能 */}
                 {role === 'admin' && (
-                  <div className="col-span-1 sm:col-span-2">
+                  <fieldset className="col-span-1 sm:col-span-2 rounded-[var(--r-md)] border border-red-500/40 p-3">
+                    <legend className="px-1 text-sm font-medium text-red-400">{t('match.list.public_pool_section')}</legend>
+                    <p className={`text-xs ${textSecondary} mb-2`}>{t('match.list.public_pool_warning')}</p>
                     <label className="flex items-center gap-2 text-sm">
                       <input
                         type="checkbox"
                         checked={form.is_public_pool}
-                        onChange={(e) => setForm({ ...form, is_public_pool: e.target.checked })}
+                        onChange={(e) => {
+                          // 公開範囲が最も広い設定なので、ON にするときだけ確認する
+                          if (e.target.checked && !window.confirm(t('match.list.public_pool_enable_confirm'))) return
+                          setForm({ ...form, is_public_pool: e.target.checked })
+                        }}
                       />
                       <span>{t('auto.MatchListPage.k28')}</span>
                     </label>
-                  </div>
+                  </fieldset>
                 )}
               </div>
               <div className="flex gap-3 pt-2">

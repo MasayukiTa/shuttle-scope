@@ -5,17 +5,22 @@ import re
 import unicodedata
 import uuid
 from datetime import date as _date
+from pathlib import Path
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from backend.analysis.player_context import involves_player
 from backend.db.database import get_db
 from backend.db.models import Match, Player, GameSet, Rally, MatchCVArtifact
+from backend.routers.players import PlayerCreate
 from backend.utils.video_downloader import video_downloader
 from backend.utils import response_cache
 from backend.utils.sync_meta import touch
+from backend.utils.match_score import score_consistency_error, set_count_consistency_error
+from backend.utils.text_sanitize import reject_bidi_only, reject_ctrl_and_bidi
 from backend.utils.auth import (
     get_auth,
     apply_match_team_scope,
@@ -35,10 +40,17 @@ class MatchCreate(BaseModel):
     date: _date
     venue: Optional[str] = None
     format: str
-    player_a_id: int
-    player_b_id: int
+    # 既存選手は *_id で指定する。未登録の選手は *_new で渡すと、試合と同じ
+    # トランザクションで作る（試合の登録が失敗したら選手も残らない）。
+    # 同じ枠に *_id と *_new を同時に渡すことはできない。
+    player_a_id: Optional[int] = None
+    player_b_id: Optional[int] = None
     partner_a_id: Optional[int] = None
     partner_b_id: Optional[int] = None
+    player_a_new: Optional[PlayerCreate] = None
+    player_b_new: Optional[PlayerCreate] = None
+    partner_a_new: Optional[PlayerCreate] = None
+    partner_b_new: Optional[PlayerCreate] = None
     result: str
     final_score: Optional[str] = None
     video_url: Optional[str] = None
@@ -74,6 +86,11 @@ class MatchUpdate(BaseModel):
     player_b_id: Optional[int] = None
     partner_a_id: Optional[int] = None
     partner_b_id: Optional[int] = None
+    # 未登録の選手を差し替え先にするとき（MatchCreate と同じ。*_id との併用は不可）
+    player_a_new: Optional[PlayerCreate] = None
+    player_b_new: Optional[PlayerCreate] = None
+    partner_a_new: Optional[PlayerCreate] = None
+    partner_b_new: Optional[PlayerCreate] = None
     result: Optional[str] = None
     final_score: Optional[str] = None
     video_url: Optional[str] = None
@@ -95,10 +112,50 @@ class MatchUpdate(BaseModel):
 
 
 # ビジネスロジック用 enum (config.py で定義された値と一致)
-_MATCH_RESULT_ALLOWED = {"win", "loss", "draw", "unknown"}
-_MATCH_FORMAT_ALLOWED = {"singles", "doubles", "mixed"}
+# "retired" は Annotator の「途中終了」(AnnotatorPage.handleException) が送る値。
+# analysis_population.is_decided_result は win/loss だけを確定扱いにするため、
+# retired の試合は勝率の母集団に入らない。
+_MATCH_RESULT_ALLOWED = {"win", "loss", "draw", "unknown", "retired", "unfinished", "walkover"}
+_MATCH_FORMAT_ALLOWED = {"singles", "doubles", "mixed", "mens_doubles", "womens_doubles", "mixed_doubles"}
 _MATCH_TOURNAMENT_LEVELS = {"IC", "IS", "SJL", "全日本", "国内", "その他"}
 _MATCH_ANNOTATION_STATUS = {"not_started", "in_progress", "complete", "reviewed"}
+
+
+# 試合の選手枠 → 未登録選手の指定フィールド
+_NEW_PLAYER_FIELDS = {
+    "player_a_id": "player_a_new",
+    "player_b_id": "player_b_new",
+    "partner_a_id": "partner_a_new",
+    "partner_b_id": "partner_b_new",
+}
+
+
+def _create_new_players_for_match(
+    body: "MatchCreate | MatchUpdate", request: Request, ctx, db: Session, *, require_both: bool = True
+) -> None:
+    """*_new で渡された未登録の選手を作り、対応する *_id に入れる（commit しない）。
+
+    選手の検証と作成は POST /players と同じ add_player_row を通す。
+    """
+    from backend.routers.players import add_player_row
+
+    wants_new = any(getattr(body, nf) is not None for nf in _NEW_PLAYER_FIELDS.values())
+    if wants_new and not (ctx.is_analyst or ctx.is_admin):
+        raise HTTPException(status_code=403, detail="選手を登録する権限がありません")
+    for id_field, new_field in _NEW_PLAYER_FIELDS.items():
+        spec = getattr(body, new_field)
+        if spec is None:
+            continue
+        if getattr(body, id_field) is not None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{id_field} and {new_field} are mutually exclusive",
+            )
+        player, _payload = add_player_row(spec, request, db)
+        setattr(body, id_field, player.id)
+    for required in ("player_a_id", "player_b_id") if require_both else ():
+        if getattr(body, required) is None:
+            raise HTTPException(status_code=422, detail=f"{required} is required")
 
 
 def _validate_match_player_refs(body: "MatchUpdate | MatchCreate", db: Session, *, match: Optional[Match] = None) -> None:
@@ -179,14 +236,8 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
     # 制御文字の拒否。null byte / CRLF はログ偽装・DB 処理バグ。BIDI override
     # (U+202E 等) と zero-width 系は表示偽装 (homograph 攻撃) の経路で、
     # round167 X5 で tournament 名に保存して GET で raw 反射されることが発覚。
-    import re as _re_ctl
     # tournament / round は業務上必須 (空/空白のみ禁止)。無意味な DB 肥大を防ぐ。
     _non_empty_required = {"tournament", "round"}
-    _BIDI_FORMAT_CHARS = (
-        "​‌‍  "        # ZWSP/ZWNJ/ZWJ/LS/PS
-        "‪‫‬‭‮"        # LRE/RLE/PDF/LRO/RLO
-        "⁦⁧⁨⁩﻿"        # LRI/RLI/FSI/PDI/BOM
-    )
     for fname, maxlen in (
         ("tournament", 200), ("tournament_grade", 100), ("round", 100),
         ("venue", 200), ("notes", 5000), ("final_score", 200),
@@ -199,16 +250,9 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
             continue
         if not isinstance(v, str):
             continue
-        if len(v) > maxlen:
-            raise HTTPException(status_code=422, detail=f"{fname} too long (max {maxlen})")
-        if _re_ctl.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", v):
-            raise HTTPException(status_code=422, detail=f"{fname} contains control characters")
-        for _ch in v:
-            if _ch in _BIDI_FORMAT_CHARS:
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"{fname} contains disallowed format character (U+{ord(_ch):04X})",
-                )
+        # 長さ・制御文字・不可視/双方向制御文字の検証は text_sanitize に一本化。
+        # 自由記述 (notes 等) の改行 / タブは許可する版を使う。
+        reject_bidi_only(v, fname, max_len=maxlen)
         if fname in _non_empty_required and not v.strip():
             raise HTTPException(status_code=422, detail=f"{fname} must not be empty or whitespace only")
     # C-8: 語彙を固定する。CV がこれを見てラベルを人物へ対応付けるので、
@@ -234,12 +278,7 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
         if vu.strip() != vu:
             raise HTTPException(status_code=422, detail="video_url must not have leading/trailing whitespace")
         # round179 N5 finding: format char (ZWSP/RTLO 等) は URL 内でも UI deception を起こすため拒否
-        for _ch in vu:
-            if _ch in _BIDI_FORMAT_CHARS:
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"video_url contains disallowed format character (U+{ord(_ch):04X})",
-                )
+        reject_ctrl_and_bidi(vu, "video_url", max_len=500)
         # URL スキーム検証: javascript: / data: / about: / mailto: / file: / ftp:
         # 等の stored XSS 経路や SSRF 原資を PUT/POST 時点で拒否する。
         # validate_external_url は download 時のみ呼ばれるため、DB には格納されてしまう。
@@ -345,8 +384,16 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
                 status_code=422,
                 detail="video_local_path は空文字 または localfile:// のみ受理されます",
             )
-        # localfile:// は path_jail 許可ルート内に限定
+        # localfile:// is meaningful only for the desktop/server-internal
+        # workflows. On a public server, allowing an API caller to point a match
+        # at any file inside an allowed root creates a cross-match confused deputy.
         if vlp.startswith("localfile://"):
+            from backend.config import settings as _settings
+            if _settings.is_production_posture:
+                raise HTTPException(
+                    status_code=403,
+                    detail="公開環境では video_local_path の直接指定はできません",
+                )
             from backend.utils.path_jail import is_allowed_video_path, allowed_video_roots
             from pathlib import Path as _P
             _raw = vlp[len("localfile:///"):]
@@ -379,6 +426,13 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
                 raise HTTPException(status_code=422, detail=f"{fname} contains line breaks (disallowed)")
             if _CTRL_RE.search(v):
                 raise HTTPException(status_code=422, detail=f"{fname} contains control characters")
+
+
+def _validate_score_consistency(final_score: Optional[str], result: Optional[str]) -> None:
+    """final_score と result の食い違い・成立しないセット数を 422 で拒否する (新しい書き込みだけ)。"""
+    err = score_consistency_error(final_score, result)
+    if err:
+        raise HTTPException(status_code=422, detail=err)
 
 
 def _video_filename(m: Match) -> Optional[str]:
@@ -428,30 +482,42 @@ def _compute_available_qualities(m: Match) -> list:
     """match レスポンス用の available_qualities リストを生成する。
 
     server:// 経路のサーバ保管動画のみ post-process 対象。それ以外 (localfile / 外部
-    URL) は ["source"] のみ返す。
+    URL) は ["source"] のみ返す。localfile:/// 等は HTTP stream
+    (/uploads/video/by_match/{id}/stream) が必ず 404 で拒否するため、ready=False にして
+    「再生可能」と広告しない (ready=True のまま 404 になる状態を作らない)。
 
     各要素は {"quality":"source|fhd|hd", "height": int, "ready": bool}。
     upscale 不要 (source.height <= target_h) のターゲットはリストに含めない。
     """
     vlp = (m.video_local_path or "")
     if not vlp.startswith("server://"):
-        return [{"quality": "source", "height": 0, "ready": bool(vlp)}]
-    rest = vlp[len("server://"):]
-    upload_id = rest.rsplit(".", 1)[0] if "." in rest else rest
+        return [{"quality": "source", "height": 0, "ready": False}]
     try:
         from backend.services.video_variants import (
-            list_available_qualities, probe_source,
+            decide_playback,
+            list_available_qualities,
+            probe_source,
         )
         from backend.routers.uploads import UPLOAD_DIR
-        from backend.utils.safe_path import safe_path
+        from backend.utils.server_video_ref import resolve_server_video_path
 
-        src = safe_path(UPLOAD_DIR, rest)
+        server_ref, src = resolve_server_video_path(Path(UPLOAD_DIR), vlp)
+        upload_id = server_ref.upload_id
         h = 0
+        playback_h = 0
         if src is not None and src.exists():
             pr = probe_source(src)
             if pr:
                 h = pr.height
-        return list_available_qualities(UPLOAD_DIR, upload_id, h)
+                playback_plan = decide_playback(pr)
+                if playback_plan is not None:
+                    playback_h = playback_plan.target_h
+        return list_available_qualities(
+            UPLOAD_DIR,
+            upload_id,
+            h,
+            playback_height=playback_h or None,
+        )
     except Exception:
         # 失敗時は source のみ
         return [{"quality": "source", "height": 0, "ready": True}]
@@ -481,6 +547,9 @@ def match_to_dict(
         "partner_b_id": m.partner_b_id,
         "result": m.result,
         "final_score": m.final_score,
+        # G6 #524: 'manual' (人が入力) / 'auto' (完了セットから end_set が自動入力)。
+        # player 応答では player_privacy が result / final_score と一緒に落とす。
+        "result_source": m.result_source,
         "video_url": m.video_url,
         # 生のローカルパスは API レスポンスに含めない（Phase 1 セキュリティ要件）。
         # 再生は video_token を使い /api/videos/{token}/stream か app://video/{token} 経由で行う。
@@ -506,6 +575,8 @@ def match_to_dict(
         # Phase B: チーム境界情報
         "owner_team_id": m.owner_team_id,
         "is_public_pool": bool(getattr(m, "is_public_pool", False)),
+        # g26b: デモ公開マーカー。フロントの一覧ラベル表示に使う read-only の真偽値。
+        "is_demo_public": bool(getattr(m, "is_demo_public", False)),
         "home_team_id": getattr(m, "home_team_id", None),
         "away_team_id": getattr(m, "away_team_id", None),
     }
@@ -584,9 +655,8 @@ def list_matches(
     query = apply_match_team_scope(query, ctx)
 
     if player_id and not ctx.is_player:
-        query = query.filter(
-            (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
-        )
+        # 選手としても、ダブルスの相方としても出ている試合 (選手ロールの一覧と同じ範囲)
+        query = query.filter(involves_player(player_id))
     if tournament_level:
         query = query.filter(Match.tournament_level == tournament_level)
     if year:
@@ -612,6 +682,46 @@ def list_matches(
     return {"success": True, "data": result}
 
 
+def _require_own_or_scouted_player(ctx, request: Request, db: Session, player_ids) -> None:
+    """admin 以外が試合を作るとき、自チーム選手 (または自チームが登録した外部選手) が
+    最低 1 人含まれることを要求する (他チームの選手だけで試合を作って、その選手の
+    試合一覧・解析に偽の試合を紛れ込ませる cross-team 汚染の防止)。
+    POST /matches と POST /matches/quick-start で共有する。"""
+    if ctx.is_admin:
+        return
+    team = (ctx.team_name or "").strip()
+    if not team:
+        from backend.utils.control_plane import allow_legacy_header_auth
+        if not allow_legacy_header_auth(request):
+            raise HTTPException(status_code=403, detail="team_name 未設定")
+        return
+    pids = [p for p in player_ids if p]
+    if not pids:
+        return
+    team_players = db.query(Player).filter(Player.id.in_(pids)).all()
+    own_roster = any((p.team or "").strip() == team for p in team_players)
+    # 0051: スカウティング用の外部選手を自チームが登録している場合、
+    # 自チーム選手が1人も出ない試合 (相手 X 対 無関係 Y) を作れる必要がある。
+    # これが無いと「一週間前に発表された相手の過去映像を解析する」が
+    # admin 以外で成立しない。所属ではなく登録主体で許可する。
+    # 可視性は resolve_owner_team_for_match_create が
+    # owner_team_id を自チームに固定することで保たれる。
+    from backend.utils.auth import can_see_scouting_players
+    own_scouting = (
+        can_see_scouting_players(ctx)
+        and ctx.team_id is not None
+        and any(p.scouting_owner_team_id == ctx.team_id for p in team_players)
+    )
+    if not (own_roster or own_scouting):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"自チーム ({team}) の選手も、自チームが登録した外部選手も "
+                "含まれない試合は作成できません"
+            ),
+        )
+
+
 @router.post("/matches", status_code=201)
 def create_match(body: MatchCreate, request: Request, db: Session = Depends(get_db)):
     """試合登録
@@ -623,44 +733,20 @@ def create_match(body: MatchCreate, request: Request, db: Session = Depends(get_
     if ctx.is_player:
         raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
     _validate_match_enums(body)
-    _validate_match_player_refs(body, db)
-    # analyst/coach は自チーム選手が含まれる試合のみ作成可能 (cross-team データ汚染防止)
-    if not ctx.is_admin:
-        team = (ctx.team_name or "").strip()
-        if not team:
-            from backend.utils.control_plane import allow_legacy_header_auth
-            if not allow_legacy_header_auth(request):
-                raise HTTPException(status_code=403, detail="team_name 未設定")
-        else:
-            pids = [p for p in (body.player_a_id, body.player_b_id,
-                                getattr(body, "partner_a_id", None),
-                                getattr(body, "partner_b_id", None)) if p]
-            if pids:
-                team_players = db.query(Player).filter(Player.id.in_(pids)).all()
-                own_roster = any((p.team or "").strip() == team for p in team_players)
-                # 0051: スカウティング用の外部選手を自チームが登録している場合、
-                # 自チーム選手が1人も出ない試合 (相手 X 対 無関係 Y) を作れる必要がある。
-                # これが無いと「一週間前に発表された相手の過去映像を解析する」が
-                # admin 以外で成立しない。所属ではなく登録主体で許可する。
-                # 可視性は下の resolve_owner_team_for_match_create が
-                # owner_team_id を自チームに固定することで保たれる。
-                from backend.utils.auth import can_see_scouting_players
-                own_scouting = (
-                    can_see_scouting_players(ctx)
-                    and ctx.team_id is not None
-                    and any(
-                        p.scouting_owner_team_id == ctx.team_id
-                        for p in team_players
-                    )
-                )
-                if not (own_roster or own_scouting):
-                    raise HTTPException(
-                        status_code=403,
-                        detail=(
-                            f"自チーム ({team}) の選手も、自チームが登録した外部選手も "
-                            "含まれない試合は作成できません"
-                        ),
-                    )
+    _validate_score_consistency(body.final_score, body.result)
+    # 未登録の選手は、試合と同じトランザクションで作る。後続の検証や試合の保存が
+    # 失敗したら全部巻き戻し、試合に紐付かない選手を残さない。
+    try:
+        _create_new_players_for_match(body, request, ctx, db)
+        _validate_match_player_refs(body, db)
+        # analyst/coach は自チーム選手が含まれる試合のみ作成可能 (cross-team データ汚染防止)
+        _require_own_or_scouted_player(ctx, request, db, [
+            body.player_a_id, body.player_b_id,
+            getattr(body, "partner_a_id", None), getattr(body, "partner_b_id", None),
+        ])
+    except Exception:
+        db.rollback()
+        raise
     # Phase B-5: owner_team_id / is_public_pool を解決
     owner_id, is_public = resolve_owner_team_for_match_create(
         ctx,
@@ -668,7 +754,7 @@ def create_match(body: MatchCreate, request: Request, db: Session = Depends(get_
         requested_is_public_pool=body.is_public_pool,
         db=db,
     )
-    payload = body.model_dump()
+    payload = body.model_dump(exclude=set(_NEW_PLAYER_FIELDS.values()))
     payload["owner_team_id"] = owner_id
     payload["is_public_pool"] = is_public
     match = Match(**payload)
@@ -678,12 +764,19 @@ def create_match(body: MatchCreate, request: Request, db: Session = Depends(get_
         match.video_token = _new_video_token()
     touch(match)
     db.add(match)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     # 関与選手4枠のキャッシュのみ無効化（他選手の解析キャッシュは生かす）
     response_cache.bump_players([
         body.player_a_id, body.player_b_id,
         getattr(body, "partner_a_id", None), getattr(body, "partner_b_id", None),
     ])
+    if any(getattr(body, nf) is not None for nf in _NEW_PLAYER_FIELDS.values()):
+        # 新規選手の登録はチーム可視範囲に影響し得るため POST /players と同じく全体を無効化
+        response_cache.bump_version()
     return {"success": True, "data": match_to_dict(match, include_players=True, db=db)}
 
 
@@ -743,9 +836,51 @@ def update_match(match_id: int, body: MatchUpdate, request: Request, db: Session
     # analyst/coach は自チーム scope のみ更新可 (cross-team 改竄防止)
     from backend.utils.auth import require_match_scope as _rms
     _rms(request, match, db)
-    _validate_match_player_refs(body, db, match=match)
+    # final_score / result のどちらかを書き換えるときだけ、反映後の組み合わせを検査する。
+    # 既存の矛盾した行を、別の項目の更新で巻き込んで拒否しない (データは書き換えない: 監査 #179)。
+    if "final_score" in body.model_fields_set or "result" in body.model_fields_set:
+        _validate_score_consistency(
+            body.final_score if "final_score" in body.model_fields_set else match.final_score,
+            body.result if "result" in body.model_fields_set else match.result,
+        )
+        # 監査 #155: final_score のセット数が、実際に記録済みの GameSet 数を
+        # 超えていないかを検査する (0-ラリーの「勝ち」を fail closed で拒否)。
+        # 記録セットが 0 の段階は判定しない (クイック入力を壊さない)。
+        _eff_final = body.final_score if "final_score" in body.model_fields_set else match.final_score
+        _eff_result = body.result if "result" in body.model_fields_set else match.result
+        _recorded_sets = (
+            db.query(GameSet.id).filter(GameSet.match_id == match.id).count()
+        )
+        _sc_err = set_count_consistency_error(_eff_final, _recorded_sets, _eff_result)
+        if _sc_err:
+            raise HTTPException(status_code=422, detail=_sc_err)
+    # 未登録の選手は試合の更新と同じトランザクションで作る（失敗したら残さない）
+    try:
+        _create_new_players_for_match(body, request, ctx, db, require_both=False)
+        _validate_match_player_refs(body, db, match=match)
+    except Exception:
+        db.rollback()
+        raise
+    # 記録済みのセットがある試合で選手 (player_a_id / player_b_id) を差し替えると、
+    # 旧選手で記録した set / rally / stroke が新選手の成績に誤って帰属する (rvm1-03)。
+    # _create_new_players_for_match で *_new は既に *_id に解決済みなので、解決後の
+    # 値を保存値と比較する。実際に A 側か B 側の選手が変わり、かつ当該 match に
+    # GameSet 行が 1 件でもあれば 409 で拒否する。選手以外の項目 (大会名など) の
+    # 変更だけなら従来どおり通す。
+    new_a = getattr(body, "player_a_id", None)
+    new_b = getattr(body, "player_b_id", None)
+    player_changed = (new_a is not None and new_a != match.player_a_id) or (
+        new_b is not None and new_b != match.player_b_id
+    )
+    if player_changed:
+        has_set = db.query(GameSet.id).filter(GameSet.match_id == match.id).first() is not None
+        if has_set:
+            raise HTTPException(
+                status_code=409,
+                detail="試合に記録済みのゲームがあるため選手は変更できません",
+            )
     # Phase B-5: owner / public / home / away の変更は admin のみ
-    payload = body.model_dump(exclude_unset=True)
+    payload = body.model_dump(exclude_unset=True, exclude=set(_NEW_PLAYER_FIELDS.values()))
     privileged_keys = {"owner_team_id", "is_public_pool", "home_team_id", "away_team_id"}
     if any(k in payload for k in privileged_keys) and not ctx.is_admin:
         for k in list(privileged_keys):
@@ -820,6 +955,8 @@ def update_match(match_id: int, body: MatchUpdate, request: Request, db: Session
     db.commit()
     post_players = [match.player_a_id, match.player_b_id, match.partner_a_id, match.partner_b_id]
     response_cache.bump_players(pre_players + post_players)
+    if any(getattr(body, nf) is not None for nf in _NEW_PLAYER_FIELDS.values()):
+        response_cache.bump_version()
     return {"success": True, "data": match_to_dict(match, include_players=True, db=db)}
 
 
@@ -911,11 +1048,14 @@ def delete_match(match_id: int, request: Request, db: Session = Depends(get_db))
     deleted_files: list[str] = []
     deletion_errors: list[str] = []
 
+    # 物理ファイルの削除は DB commit が成功してから行う (commit 失敗で rollback
+    # しても unlink は戻せないため)。ここでは削除候補を貯めるだけ。
+    pending_unlinks: list = []
+
     def _try_unlink(p) -> None:
         try:
             if p.exists() and p.is_file():
-                p.unlink()
-                deleted_files.append(str(p))
+                pending_unlinks.append(p)
         except Exception as exc:
             deletion_errors.append(f"unlink {p}: {type(exc).__name__}")
 
@@ -1022,6 +1162,36 @@ def delete_match(match_id: int, request: Request, db: Session = Depends(get_db))
     except Exception as exc:
         deletion_errors.append(f"cm_branch: {type(exc).__name__}: {str(exc)[:80]}")
 
+    # 2.6) SharedSession の cascade (rvm1-04)。
+    #
+    # SharedSession.match_id は FK matches.id かつ nullable=False / ondelete 未設定。
+    # comments と同じく Match の relationship には cascade が無いため、共有セッション
+    # を持つ試合を削除すると PostgreSQL では ForeignKeyViolation で commit が失敗し
+    # 500 になる (SQLite では孤児が残る)。shared_sessions の子 (session_participants,
+    # live_sources) も FK のみで DB レベルの cascade が無いので、子から順に Core SQL
+    # で消す。comments.session_id は 2.5) の comments 全削除で既に消えている。
+    try:
+        from sqlalchemy import text as _sa_text_ss
+        _sess_subq = "SELECT id FROM shared_sessions WHERE match_id = :mid"
+        for table_name, where_sql in (
+            ("live_sources", f"session_id IN ({_sess_subq})"),
+            ("session_participants", f"session_id IN ({_sess_subq})"),
+            ("shared_sessions", "match_id = :mid"),
+        ):
+            try:
+                result_ss = db.execute(
+                    _sa_text_ss(f"DELETE FROM {table_name} WHERE {where_sql}"),
+                    {"mid": match_id},
+                )
+                n_ss = getattr(result_ss, "rowcount", 0) or 0
+                if n_ss:
+                    deleted_files.append(f"{table_name}: {n_ss} rows")
+            except Exception as exc:
+                deletion_errors.append(f"{table_name}_cascade: {type(exc).__name__}: {str(exc)[:80]}")
+        db.flush()
+    except Exception as exc:
+        deletion_errors.append(f"ss_branch: {type(exc).__name__}: {str(exc)[:80]}")
+
     # 3) match 自身の削除を queue → 全てを 1 commit で flush
     db.delete(match)
     try:
@@ -1054,6 +1224,15 @@ def delete_match(match_id: int, request: Request, db: Session = Depends(get_db))
         # HTTP body にスタックトレース要素を返すのは avoid し、詳細は server log
         # からのみ追跡できるようにする。
         raise HTTPException(status_code=500, detail="試合削除に失敗しました")
+
+    # 3.5) DB の削除が確定したので、貯めておいた物理ファイルを消す
+    for _p in pending_unlinks:
+        try:
+            if _p.exists() and _p.is_file():
+                _p.unlink()
+                deleted_files.append(str(_p))
+        except Exception as exc:
+            deletion_errors.append(f"unlink {_p}: {type(exc).__name__}")
 
     # 4) commit 成功後に audit log 2 件を書く (log_access は内部で別 commit するので順次)
     try:
@@ -1103,6 +1282,9 @@ def _normalize_name(name: str) -> str:
 def quick_start_match(body: QuickStartBody, request: Request, db: Session = Depends(get_db)):
     """クイックスタート: 相手選手auto-create + 試合作成を一括実行（V4）"""
     ctx = get_auth(request)
+    # opponent_name は下で Player.name としてそのまま保存される。不可視 / 双方向制御文字を 422 にする。
+    reject_ctrl_and_bidi(body.opponent_name, "opponent_name", max_len=100)
+    reject_ctrl_and_bidi(body.opponent_team, "opponent_team", max_len=100)
     if ctx.is_player:
         raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
     owner_id, is_public = resolve_owner_team_for_match_create(ctx)
@@ -1110,6 +1292,8 @@ def quick_start_match(body: QuickStartBody, request: Request, db: Session = Depe
     player_a = db.get(Player, body.player_a_id)
     if not player_a:
         raise HTTPException(status_code=404, detail="自チーム選手が見つかりません")
+    # 他チームの選手 (player_a_id / opponent_id) だけで試合を作らせない。POST /matches と同じ規則。
+    _require_own_or_scouted_player(ctx, request, db, [body.player_a_id, body.opponent_id])
 
     # 相手選手の解決
     if body.opponent_id:
@@ -1119,10 +1303,19 @@ def quick_start_match(body: QuickStartBody, request: Request, db: Session = Depe
     else:
         # 相手選手を暫定作成（provisional）
         name_normalized = _normalize_name(body.opponent_name)
+        # Player.team は team_id から解決する読み取り専用の property で、代入できない。
+        # 自由入力の相手チーム名で既存チームの名簿に加えると他チームを汚染するため、
+        # 所属(team_id)は付けず、登録主体(scouting_owner_team_id)を自チームにして
+        # 作成者のチームだけに見えるスカウティング用選手として作る。
+        # チーム名は同姓同名の識別用に notes へ残す。
+        from backend.utils.auth import can_see_scouting_players
+        scouting_owner = ctx.team_id if (ctx.team_id is not None and can_see_scouting_players(ctx)) else None
+        opp_team = (body.opponent_team or "").strip()
         player_b = Player(
             name=body.opponent_name,
             name_normalized=name_normalized,
-            team=body.opponent_team or None,    # チーム名（同姓同名識別用）
+            scouting_owner_team_id=scouting_owner,
+            notes=f"相手チーム: {opp_team}" if opp_team else None,
             is_target=False,
             dominant_hand="unknown",
             profile_status="provisional",
@@ -1264,7 +1457,8 @@ async def probe_video_url(body: ProbeUrlRequest, request: Request):
     - 多言語タイトルは Unicode のまま JSON で返す（UTF-8 一貫で文字化けしない）。
     """
     ctx = get_auth(request)
-    if ctx.role is None or ctx.is_player:
+    # demo / llm も不可 (サーバから外部へ取りに行く操作なので運用ロールに限る)
+    if not (ctx.is_admin or ctx.is_analyst or ctx.is_coach):
         raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
 
     from backend.utils.safe_path import validate_external_url

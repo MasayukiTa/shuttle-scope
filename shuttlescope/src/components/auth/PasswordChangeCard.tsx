@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useNavigate } from 'react-router-dom'
 import { authChangePassword } from '@/api/client'
+import { useAuth } from '@/hooks/useAuth'
 import { MIcon } from '@/components/common/MIcon'
 
 interface Props {
@@ -9,6 +11,13 @@ interface Props {
 
 export function PasswordChangeCard({ isLight }: Props) {
   const { t } = useTranslation()
+  const { clearRole } = useAuth()
+  const navigate = useNavigate()
+  // ラベルと入力欄を結ぶ id (支援技術が入力欄の名前を読めるようにする)
+  const uid = useId()
+  const currentId = `${uid}-current`
+  const nextId = `${uid}-new`
+  const confirmId = `${uid}-confirm`
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -36,6 +45,11 @@ export function PasswordChangeCard({ isLight }: Props) {
       setCurrent('')
       setNext('')
       setConfirm('')
+      // サーバは成功時に現在の refresh / access token も含めて全セッションを失効させる。
+      // 失効済みの認証状態を画面に残すと、次の API 操作で突然ログアウトされるため、
+      // ここでローカルの認証状態を破棄し、案内付きでログイン画面へ戻す。
+      clearRole()
+      navigate('/login?password_changed=1', { replace: true })
     } catch (err) {
       const e = err as Error & { status?: number }
       setError(e.message || 'error')
@@ -52,8 +66,9 @@ export function PasswordChangeCard({ isLight }: Props) {
       </h2>
       <p className={`text-xs ${textMuted} mb-3`}>{t('auth.password_change.hint')}</p>
       <form onSubmit={submit} className="flex flex-col gap-2">
-        <label className={`text-sm ${textSecondary}`}>{t('auth.password_change.current')}</label>
+        <label htmlFor={currentId} className={`text-sm ${textSecondary}`}>{t('auth.password_change.current')}</label>
         <input
+          id={currentId}
           type="password"
           value={current}
           onChange={(e) => setCurrent(e.target.value)}
@@ -61,8 +76,9 @@ export function PasswordChangeCard({ isLight }: Props) {
           className={inputCls}
           autoComplete="current-password"
         />
-        <label className={`text-sm ${textSecondary} mt-2`}>{t('auth.password_change.new')}</label>
+        <label htmlFor={nextId} className={`text-sm ${textSecondary} mt-2`}>{t('auth.password_change.new')}</label>
         <input
+          id={nextId}
           type="password"
           value={next}
           onChange={(e) => setNext(e.target.value)}
@@ -70,8 +86,9 @@ export function PasswordChangeCard({ isLight }: Props) {
           className={inputCls}
           autoComplete="new-password"
         />
-        <label className={`text-sm ${textSecondary} mt-2`}>{t('auth.password_change.confirm')}</label>
+        <label htmlFor={confirmId} className={`text-sm ${textSecondary} mt-2`}>{t('auth.password_change.confirm')}</label>
         <input
+          id={confirmId}
           type="password"
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}

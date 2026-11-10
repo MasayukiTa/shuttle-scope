@@ -74,6 +74,25 @@ function _RoleBadge({ role }: { role: string }) {
   )
 }
 
+// device_type -> i18n key。pending 承認枠の「端末の種類」表示に使う。
+function deviceTypeLabelKey(type: DeviceType | null): string {
+  switch (type) {
+    case 'iphone': return 'device_approval.dtype_iphone'
+    case 'ipad': return 'device_approval.dtype_ipad'
+    case 'pc': return 'device_approval.dtype_pc'
+    case 'usb_camera':
+    case 'builtin_camera': return 'device_approval.dtype_camera'
+    default: return 'device_approval.dtype_unknown'
+  }
+}
+
+// 参加時刻を短い現地時刻で。無効値は空文字。
+function formatJoinedAt(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString()
+}
+
 function ApprovalBadge({ status }: { status: string }) {
   const { t } = useTranslation()
   if (status === 'approved') return (
@@ -116,18 +135,17 @@ function CameraThumb({ stream }: { stream: MediaStream }) {
 
 // ─── ローカルカメラ列挙 ───────────────────────────────────────────────────────
 
+// 列挙そのものが失敗した場合は reject する（「カメラ 0 台」の空配列と区別するため）。
 async function enumerateLocalCameras(): Promise<LocalCameraSource[]> {
-  try {
-    const devices = await navigator.mediaDevices.enumerateDevices()
-    return devices.filter((d) => d.kind === 'videoinput').map((d) => ({
-      deviceId: d.deviceId,
-      label: d.label || `カメラ ${d.deviceId.slice(0, 6)}`,
-      kind: 'videoinput' as const,
-      type: d.label.toLowerCase().includes('usb') ? 'usb'
-        : d.label.toLowerCase().includes('facetime') || d.label.toLowerCase().includes('built') ? 'builtin'
-        : 'unknown',
-    }))
-  } catch { return [] }
+  const devices = await navigator.mediaDevices.enumerateDevices()
+  return devices.filter((d) => d.kind === 'videoinput').map((d) => ({
+    deviceId: d.deviceId,
+    label: d.label || `カメラ ${d.deviceId.slice(0, 6)}`,
+    kind: 'videoinput' as const,
+    type: d.label.toLowerCase().includes('usb') ? 'usb'
+      : d.label.toLowerCase().includes('facetime') || d.label.toLowerCase().includes('built') ? 'builtin'
+      : 'unknown',
+  }))
 }
 
 // ─── デバイス行コンポーネント ─────────────────────────────────────────────────
@@ -147,7 +165,7 @@ interface DeviceRowProps {
   onAllowVideo: (p: SessionParticipant) => void
   onBlockVideo: (p: SessionParticipant) => void
   onDeleteDevice: (p: SessionParticipant) => void
-  t: (key: string) => string
+  t: (key: string, opts?: Record<string, unknown>) => string
 }
 
 function DeviceRow({ p, isLight: _isLight, titleColor, subColor, rowBg, onApprove, onReject, onActivateCamera, onDeactivate, onRequestCamera, onMakeCandidate, onAllowVideo, onBlockVideo, onDeleteDevice, t }: DeviceRowProps) {
@@ -255,18 +273,38 @@ function DeviceRow({ p, isLight: _isLight, titleColor, subColor, rowBg, onApprov
             )
           )}
           {p.device_class === 'phone' && (
-            <span className="text-[9px] text-[var(--ss-t3)]">{t('viewer_relay.phone_blocked')}</span>
+            <span className="text-xs text-[var(--ss-t3)]">{t('viewer_relay.phone_blocked')}</span>
           )}
         </div>
       )}
       {p.approval_status === 'pending' && (
-        <div className="flex gap-1.5 mt-2">
-          <button onClick={() => onApprove(p)} className="text-[10px] px-2 py-0.5 rounded-ss-sm bg-[var(--ss-success)] hover:opacity-90 transition-colors duration-base ease-out text-white flex items-center gap-0.5">
-            <MIcon name="check_circle" size={10} />{t('device_approval.approve')}
-          </button>
-          <button onClick={() => onReject(p)} className="text-[10px] px-2 py-0.5 rounded-ss-sm bg-[var(--ss-bad)] hover:opacity-90 transition-colors duration-base ease-out text-white flex items-center gap-0.5">
-            <MIcon name="cancel" size={10} />{t('device_approval.reject')}
-          </button>
+        <div data-testid="pending-approval-box" className="mt-2 rounded-ss-md border border-[var(--ss-warning-border)] bg-[var(--ss-warn-tint)] p-2.5">
+          <p className="text-xs font-semibold text-[var(--ss-warn)] mb-1.5 flex items-center gap-1">
+            <MIcon name="warning" size={12} />{t('device_approval.stage_pending')}
+          </p>
+          <dl className="text-[11px] text-[var(--ss-t2)] space-y-0.5 mb-2">
+            <div className="flex gap-1">
+              <dt className="text-[var(--ss-t3)] w-16 shrink-0">{p.device_name ?? `#${p.id}`}</dt>
+            </div>
+            <div className="flex gap-1">
+              <dt className="text-[var(--ss-t3)] w-16 shrink-0">{t('device_approval.device_type_label')}</dt>
+              <dd>{t(deviceTypeLabelKey(p.device_type))}</dd>
+            </div>
+            {formatJoinedAt(p.joined_at) && (
+              <div className="flex gap-1">
+                <dt className="text-[var(--ss-t3)] w-16 shrink-0">{t('device_approval.joined_at')}</dt>
+                <dd>{formatJoinedAt(p.joined_at)}</dd>
+              </div>
+            )}
+          </dl>
+          <div className="flex gap-2">
+            <button data-testid="approve-btn" onClick={() => onApprove(p)} className="flex-1 py-1.5 rounded-ss-md bg-[var(--ss-success)] hover:opacity-90 transition-colors duration-base ease-out text-white text-xs font-medium flex items-center justify-center gap-1">
+              <MIcon name="check_circle" size={14} />{t('device_approval.approve')}
+            </button>
+            <button data-testid="reject-btn" onClick={() => onReject(p)} className="flex-1 py-1.5 rounded-ss-md bg-[var(--ss-bad)] hover:opacity-90 transition-colors duration-base ease-out text-white text-xs font-medium flex items-center justify-center gap-1">
+              <MIcon name="cancel" size={14} />{t('device_approval.reject')}
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -345,18 +383,26 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
   const [localActiveId, setLocalActiveId] = useState<string | null>(null)
   const [localCameraError, setLocalCameraError] = useState<string | null>(null)
+  // カメラ一覧の列挙失敗（権限・ブラウザ制約等）。「カメラ 0 台」とは区別する
+  const [localEnumFailed, setLocalEnumFailed] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'devices' | 'sources'>('devices')
   // handoff confirmation: participant waiting to be activated
   const [handoffTarget, setHandoffTarget] = useState<SessionParticipant | null>(null)
   // local-over-remote confirmation
   const [localSwitchPending, setLocalSwitchPending] = useState<LocalCameraSource | null>(null)
+  // 一覧取得 (10秒 polling) の失敗と最終成功時刻。古い一覧を最新状態として見せないため
+  const [devicesFetchFailed, setDevicesFetchFailed] = useState(false)
+  const [devicesUpdatedAt, setDevicesUpdatedAt] = useState<number | null>(null)
+  // 承認・拒否・カメラ切替・権限変更など操作系の失敗
+  const [deviceActionFailed, setDeviceActionFailed] = useState(false)
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
 
   const {
     streams, wsConnected, reconnecting: wsReconnecting, reconnectCount: wsReconnectCount,
-    connectionStates, iceGatheringStates, turnInUse, connect, requestCamera, sendMessage,
+    connectionStates, iceGatheringStates, deviceNames, turnInUse, connect, requestCamera, sendMessage,
   } = useCameraHub(sessionCode)
 
   // 主表示にするカメラ。未選択なら最初に届いたもの。
@@ -370,6 +416,16 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
   const activeParticipantId = primary?.participantId ?? null
   const connectionState = primary ? (connectionStates[primary.streamId] ?? null) : null
   const iceGatheringState = primary ? (iceGatheringStates[primary.streamId] ?? null) : null
+
+  // h12b: 端末が自分で付け替えた名前は `device_list_update` 通知で先に届く。
+  // REST 一覧 (10 秒 polling) より新しい device_name があればそれを優先して表示する。
+  const displayParticipants = useMemo(
+    () => participants.map((p) => {
+      const fresh = deviceNames[String(p.id)]
+      return fresh && fresh !== p.device_name ? { ...p, device_name: fresh } : p
+    }),
+    [participants, deviceNames],
+  )
 
   // リアルタイム YOLO トグル（オペレーター PC 側のみ。ViewerPage では使わない）
   const [realtimeYoloOn, setRealtimeYoloOn] = useState(false)
@@ -393,36 +449,76 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
     setLoading(true)
     try {
       const res = await apiGet<{ success: boolean; data: SessionParticipant[] }>(`/sessions/${sessionCode}/devices`)
-      if (res.success) setParticipants(res.data)
-    } catch { } finally { setLoading(false) }
+      if (res.success) {
+        setParticipants(res.data)
+        setDevicesUpdatedAt(Date.now())
+        setDevicesFetchFailed(false)
+      } else {
+        setDevicesFetchFailed(true)
+      }
+    } catch {
+      setDevicesFetchFailed(true)
+    } finally { setLoading(false) }
   }, [sessionCode])
 
   useEffect(() => {
     fetchDevices()
-    const id = setInterval(fetchDevices, 10_000)
+    const id = setInterval(fetchDevices, 3_000)
     return () => clearInterval(id)
   }, [fetchDevices])
 
-  useEffect(() => { enumerateLocalCameras().then(setLocalSources) }, [])
+  const reloadLocalSources = useCallback((isActive?: () => boolean) => {
+    enumerateLocalCameras()
+      .then((s) => { if (!isActive || isActive()) { setLocalSources(s); setLocalEnumFailed(false) } })
+      .catch(() => { if (!isActive || isActive()) { setLocalSources([]); setLocalEnumFailed(true) } })
+  }, [])
+  useEffect(() => {
+    let active = true
+    reloadLocalSources(() => active)
+    return () => { active = false }
+  }, [reloadLocalSources])
 
   // ─── アクションハンドラー ───────────────────────────────────────────────
 
-  const post = async (path: string, body: object = {}) => {
-    await apiPost(`/sessions/${sessionCode}${path}`, body)
-    fetchDevices()
+  // 成功なら true。失敗時は利用者へ知らせ、後続の処理 (カメラ要求等) を止めるため false を返す
+  const post = async (path: string, body: object = {}): Promise<boolean> => {
+    setDeviceActionFailed(false)
+    try {
+      await apiPost(`/sessions/${sessionCode}${path}`, body)
+      fetchDevices()
+      return true
+    } catch {
+      setDeviceActionFailed(true)
+      // 途中失敗で部分適用になり得るため、現在の状態を取り直す
+      fetchDevices()
+      return false
+    }
   }
 
   const handlePurgeDisconnected = async () => {
+    const count = participants.filter((x) => !x.is_connected).length
+    if (!window.confirm(t('auto.DeviceManagerPanel.purge_confirm', { count }))) return
+    setActionError(null)
     try {
       await apiDelete(`/sessions/${sessionCode}/devices`, { 'X-Idempotency-Key': newIdempotencyKey() })
-    } catch { /* 失敗は無視 */ }
+    } catch {
+      setActionError(t('auto.DeviceManagerPanel.purge_failed'))
+    }
     fetchDevices()
   }
 
   const handleDeleteDevice = async (p: SessionParticipant) => {
+    // 接続中の端末は映像を送受信している可能性があるため、削除前に確認する
+    if (p.is_connected) {
+      const name = p.device_name ?? String(p.id)
+      if (!window.confirm(t('auto.DeviceManagerPanel.delete_connected_confirm', { name }))) return
+    }
+    setActionError(null)
     try {
       await apiDelete(`/sessions/${sessionCode}/devices/${p.id}`, { 'X-Idempotency-Key': newIdempotencyKey() })
-    } catch { /* 失敗は無視 */ }
+    } catch {
+      setActionError(t('auto.DeviceManagerPanel.delete_failed'))
+    }
     fetchDevices()
   }
 
@@ -437,7 +533,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
       setHandoffTarget(p)  // 上限超過時のみ確認ダイアログ（降格先を選ぶ）
       return
     }
-    await post(`/devices/${p.id}/activate-camera`)
+    if (!(await post(`/devices/${p.id}/activate-camera`))) return
     requestCamera(p.id)
   }
 
@@ -448,15 +544,15 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
     if (actives.length >= MAX_ACTIVE_CAMERAS) {
       // 最初の active を降格
       const oldest = actives[0]
-      await post(`/devices/${oldest.id}/deactivate-camera`)
+      if (!(await post(`/devices/${oldest.id}/deactivate-camera`))) return
       sendMessage({ type: 'camera_deactivate', target_participant_id: oldest.id })
     }
-    await post(`/devices/${handoffTarget.id}/activate-camera`)
+    if (!(await post(`/devices/${handoffTarget.id}/activate-camera`))) return
     requestCamera(handoffTarget.id)
     setHandoffTarget(null)
   }
   const handleDeactivate = async (p: SessionParticipant) => {
-    await post(`/devices/${p.id}/deactivate-camera`)
+    if (!(await post(`/devices/${p.id}/deactivate-camera`))) return
     sendMessage({ type: 'camera_deactivate', target_participant_id: p.id })
   }
   const handleMakeCandidate  = (p: SessionParticipant) => post(`/devices/${p.id}/set-role`, { connection_role: 'camera_candidate' })
@@ -475,7 +571,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
       setLocalStream(s)
       setLocalActiveId(src.deviceId)
       // 権限取得後にデバイス一覧を再取得してラベル・ID を正確にする
-      enumerateLocalCameras().then(setLocalSources)
+      reloadLocalSources()
     } catch {
       setLocalCameraError('カメラを起動できませんでした。OS設定でカメラへのアクセスを許可してください。')
     }
@@ -495,7 +591,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
     if (!localSwitchPending) return
     const activeRemote = participants.find((x) => x.connection_role === 'active_camera')
     if (activeRemote) {
-      await post(`/devices/${activeRemote.id}/deactivate-camera`)
+      if (!(await post(`/devices/${activeRemote.id}/deactivate-camera`))) return
       sendMessage({ type: 'camera_deactivate', target_participant_id: activeRemote.id })
     }
     await doSelectLocalSource(localSwitchPending)
@@ -534,12 +630,17 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
           >
             <MIcon name="delete" size={14} />
           </button>
-          <button onClick={fetchDevices} className={`${subColor}`}>
+          <button onClick={fetchDevices} aria-label={t('common_ui.refresh')} className={`${subColor}`}>
             <MIcon name="refresh" size={14} className={loading ? 'animate-spin' : ''} />
           </button>
-          <button onClick={onClose} className={`${subColor}`}><MIcon name="close" size={16} /></button>
+          <button onClick={onClose} aria-label={t('app.close')} className={`${subColor}`}><MIcon name="close" size={16} /></button>
         </div>
       </div>
+      {actionError && (
+        <p role="alert" className="text-[10px] text-[var(--ss-bad)] mb-2 flex items-center gap-1">
+          <MIcon name="cancel" size={10} />{actionError}
+        </p>
+      )}
 
       {/* タブ */}
       <div className={`flex border-b mb-4 ${divider}`}>
@@ -556,6 +657,26 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
         ))}
       </div>
 
+      {(devicesFetchFailed || deviceActionFailed) && (
+        <div role="alert" className="mb-3 px-3 py-2 rounded-ss-md border border-[var(--ss-warning-border)] bg-[var(--ss-warn-tint)] text-xs text-[var(--ss-warn)] space-y-1">
+          {deviceActionFailed && <p>{t('common_ui.device_action_failed')}</p>}
+          {devicesFetchFailed && (
+            <p>
+              {devicesUpdatedAt == null
+                ? t('common_ui.device_list_unavailable')
+                : t('common_ui.device_list_stale', { time: new Date(devicesUpdatedAt).toLocaleTimeString() })}
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={fetchDevices}
+            className="px-2 py-0.5 rounded-ss-sm border border-[var(--ss-warning-border)] hover:bg-[var(--ss-surface-3)]"
+          >
+            {t('annotator.ui.retry')}
+          </button>
+        </div>
+      )}
+
       {/* ─── リモート診断パネル ── */}
       <div className="mb-3 rounded-ss-md px-3 py-2 space-y-1 text-[10px] bg-[var(--ss-surface-2)] border border-[var(--ss-border)]">
         <p className="text-[9px] font-semibold uppercase tracking-wider mb-1.5 text-[var(--ss-t3)]">{t('auto.DeviceManagerPanel.k3')}</p>
@@ -568,6 +689,15 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
             {wsConnected ? '接続中' : wsReconnecting ? `再接続中 (${wsReconnectCount} 回目)` : '未接続'}
           </span>
         </div>
+
+        {/* シグナリング未接続の原因を 1 行で示す（WS 失敗か入場券拒否か） */}
+        {!wsConnected && !wsReconnecting && (
+          <p data-testid="signal-cause" className="text-[9px] text-[var(--ss-warn)] ml-3">
+            {participants.some((p) => p.approval_status === 'pending')
+              ? t('device_approval.signal_cause_ticket')
+              : t('device_approval.signal_cause_ws')}
+          </p>
+        )}
 
         {/* P2P (WebRTC) */}
         <div className="flex items-center gap-1.5">
@@ -643,7 +773,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
               sessionCode={sessionCode}
               className="absolute inset-0"
             />
-            {realtimeYoloOn && (
+            {realtimeYoloOn && realtimeYolo.connected && (
               <RealtimeYoloOverlay
                 videoRef={remoteVideoRef}
                 boxes={realtimeYolo.boxes}
@@ -719,10 +849,12 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
 
           {/* グループ別デバイス一覧 */}
           {participants.length === 0 ? (
-            <p className={`text-xs text-center py-4 ${subColor}`}>{t('lan_session.no_devices')}</p>
+            devicesFetchFailed ? null : (
+              <p className={`text-xs text-center py-4 ${subColor}`}>{t('lan_session.no_devices')}</p>
+            )
           ) : (
             <DeviceGroupedList
-              participants={participants}
+              participants={displayParticipants}
               isLight={isLight}
               titleColor={titleColor}
               subColor={subColor}
@@ -742,9 +874,18 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
           )}
 
           {/* ローカルカメラソース */}
-          {localSources.length > 0 && (
+          {(localSources.length > 0 || localEnumFailed) && (
             <div className={`border-t pt-3 mt-3 ${divider}`}>
               <p className={`text-xs font-medium mb-2 ${titleColor}`}>{t('lan_session.local_sources_label')}</p>
+              {localEnumFailed && (
+                <div role="alert" className="text-[10px] text-[var(--ss-bad)] mb-2 flex items-center gap-2">
+                  <span>{t('lan_session.local_sources_failed')}</span>
+                  <button type="button" onClick={() => reloadLocalSources()}
+                    className="px-2 py-0.5 rounded-ss-sm border border-[var(--ss-border)] text-[var(--ss-t2)]">
+                    {t('common_ui.query_retry')}
+                  </button>
+                </div>
+              )}
               {localCameraError && (
                 <p className="text-[10px] text-[var(--ss-bad)] mb-2 flex items-center gap-1">
                   <MIcon name="cancel" size={10} />{localCameraError}

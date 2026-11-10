@@ -6,6 +6,7 @@ import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { perfColor, WIN, LOSS } from '@/styles/colors'
 import { useTranslation } from 'react-i18next'
+import { fmtPct } from '@/utils/format'
 
 interface PairSynergyCardProps {
   playerId: number
@@ -17,14 +18,14 @@ interface PairEntry {
   match_count: number
   win_rate: number
   synergy_score: number
-  avg_rally_length: number
-  stroke_share: number
+  avg_rally_length: number | null
+  stroke_share: number | null
 }
 
 interface Response {
   success: boolean
   data: {
-    player_avg_win_rate: number
+    player_avg_win_rate: number | null
     pairs: PairEntry[]
   }
   meta: { sample_size: number; confidence: { level: string; stars: string; label: string } }
@@ -72,7 +73,7 @@ function Inner({ playerId }: { playerId: number }) {
   }
 
   const pairs = resp?.data?.pairs ?? []
-  const avgWr = resp?.data?.player_avg_win_rate ?? 0
+  const avgWr = resp?.data?.player_avg_win_rate ?? null
   const sampleSize = resp?.meta?.sample_size ?? 0
 
   if (pairs.length === 0) {
@@ -81,9 +82,8 @@ function Inner({ playerId }: { playerId: number }) {
 
   return (
     <div className="space-y-3">
-      <ConfidenceBadge sampleSize={sampleSize} unit="matches" />
       <p className="text-xs text-gray-400">
-        {t('auto.PairSynergyCard.avg_wr')} <span className="font-mono ss-num text-gray-200">{Math.round(avgWr * 100)}%</span>
+        {t('auto.PairSynergyCard.avg_wr')} <span className="font-mono ss-num text-gray-200">{fmtPct(avgWr, 0)}</span>
       </p>
 
       <div className="space-y-2">
@@ -91,7 +91,11 @@ function Inner({ playerId }: { playerId: number }) {
           <div key={p.partner_id} className="bg-gray-750 rounded-ss-md p-3 border border-gray-700">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-gray-200">{p.partner_name}</span>
-              <span className="text-xs text-gray-400 ss-num">{t('auto.PairSynergyCard.n_matches', { n: p.match_count })}</span>
+              <span className="flex items-center gap-2">
+                <span className="text-xs text-gray-400 ss-num">{t('auto.PairSynergyCard.n_matches', { n: p.match_count })}</span>
+                {/* 信頼度はそのペアの試合数で判定する。全体の試合数(下の見出し)を流用しない */}
+                <ConfidenceBadge sampleSize={p.match_count} tier="research" unit="matches" compact />
+              </span>
             </div>
             <div className="flex items-center gap-3 text-xs">
               <div className="flex items-center gap-1">
@@ -110,13 +114,13 @@ function Inner({ playerId }: { playerId: number }) {
                   className="font-mono text-xs ss-num"
                   style={{ color: p.synergy_score >= 0 ? WIN : LOSS }}
                 >
-                  {p.synergy_score >= 0 ? '+' : ''}{Math.round(p.synergy_score * 100)}%
+                  {p.synergy_score >= 0 ? '+' : ''}{Math.round(p.synergy_score * 100)}pt
                 </span>
               </div>
             </div>
             <div className="flex gap-4 mt-1.5 text-xs text-gray-500 ss-num">
-              <span>{t('auto.PairSynergyCard.avg_rally', { n: p.avg_rally_length })}</span>
-              <span>{t('auto.PairSynergyCard.stroke_share', { n: Math.round(p.stroke_share * 100) })}</span>
+              {p.avg_rally_length != null && <span>{t('auto.PairSynergyCard.avg_rally', { n: p.avg_rally_length })}</span>}
+              {p.stroke_share != null && <span>{t('auto.PairSynergyCard.stroke_share', { n: Math.round(p.stroke_share * 100) })}</span>}
             </div>
           </div>
         ))}
@@ -129,7 +133,7 @@ export function PairSynergyCard({ playerId }: PairSynergyCardProps) {
   const { t } = useTranslation()
 
   return (
-    <RoleGuard allowedRoles={['analyst', 'coach']}>
+    <RoleGuard allowedRoles={['analyst']}>
       <div className="bg-gray-800 rounded-ss-lg shadow-card p-4">
         <h3 className="text-sm font-semibold text-gray-200 mb-3">{t('auto.PairSynergyCard.k4')}</h3>
         <Inner playerId={playerId} />

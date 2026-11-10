@@ -27,6 +27,7 @@ import argparse
 import random
 import sys
 from datetime import date, datetime, timedelta
+from typing import Optional
 
 # backend パッケージ import パスを確保
 import os
@@ -124,16 +125,57 @@ def _make_players(db, team_id: int, rng: random.Random, n: int) -> list[Player]:
     return players
 
 
-def _make_strokes(rng: random.Random, rally: Rally, length: int) -> list[Stroke]:
+# 打球の高さ（ネット基準の4段階）。簡易分析「打球の高さ差」(SD-08) が
+# デモでも中身を持つように、攻撃系は上め・守備系は下めへ緩く寄せて付ける。
+# 一部は未入力（None）にして「片方欠けの組は数えない」挙動も再現する。
+HEIGHTS = ("above_net", "slightly_above", "slightly_below", "below")
+_ATTACK_SHOTS = frozenset({
+    "smash", "half_smash", "push_rush", "drive", "clear", "around_head",
+})
+_DEFENSE_SHOTS = frozenset({
+    "defensive", "block", "net_shot", "drop", "lob", "slice", "cross_net",
+})
+
+
+def _rand_hit_height(rng: random.Random, shot_type: str) -> Optional[str]:
+    """打球種別に応じて高さを緩く割り当てる。約 12% は未入力 (None)。"""
+    if rng.random() < 0.12:
+        return None
+    if shot_type in _ATTACK_SHOTS:
+        weights = (0.45, 0.35, 0.15, 0.05)  # 上寄り
+    elif shot_type in _DEFENSE_SHOTS:
+        weights = (0.05, 0.15, 0.35, 0.45)  # 下寄り
+    else:
+        weights = (0.25, 0.25, 0.25, 0.25)  # サーブ等は一様
+    return rng.choices(HEIGHTS, weights=weights, k=1)[0]
+
+
+def _make_strokes(rng: random.Random, rally: Rally, length: int,
+                  roles: Optional[list[str]] = None) -> list[Stroke]:
+    """1 ラリー分の打球列を作る。
+
+    roles を渡すとダブルス（4 枠）として生成する:
+      奇数ストローク = A 側ペア（roles[0] / roles[2]）、
+      偶数ストローク = B 側ペア（roles[1] / roles[3]）をペア内でランダムに選ぶ。
+    roles 省略時はシングルス（player_a / player_b 交互）。
+    """
     strokes = []
     for n in range(length):
-        who = "player_a" if n % 2 == 0 else "player_b"
+        if roles is None:
+            who = "player_a" if n % 2 == 0 else "player_b"
+        else:
+            # n は 0 始まり。stroke_num=n+1 の奇数(=n 偶数)が A 側ペア。
+            if n % 2 == 0:
+                who = roles[0] if rng.random() < 0.55 else roles[2]
+            else:
+                who = roles[1] if rng.random() < 0.55 else roles[3]
         st = "short_service" if n == 0 else rng.choice(SHOT_TYPES[2:])
         strokes.append(Stroke(
             rally_id=rally.id,
             stroke_num=n + 1,
             player=who,
             shot_type=st,
+            hit_height=_rand_hit_height(rng, st),
             hit_zone=rng.choice(ZONES),
             land_zone=rng.choice(ZONES),
             hit_x=round(rng.random(), 3),
@@ -149,7 +191,10 @@ def _make_strokes(rng: random.Random, rally: Rally, length: int) -> list[Stroke]
 
 
 def _make_match(db, team_id: int, rng: random.Random, pa: Player, pb: Player,
-                idx: int) -> Match:
+                idx: int, fmt: str = "singles",
+                partner_a: Optional[Player] = None,
+                partner_b: Optional[Player] = None) -> Match:
+    is_doubles = fmt != "singles"
     d = date(2025, 1, 1) + timedelta(days=rng.randint(0, 300))
     m = Match(
         tournament=f"デモ大会 {idx + 1}",
@@ -157,9 +202,11 @@ def _make_match(db, team_id: int, rng: random.Random, pa: Player, pb: Player,
         round=rng.choice(["R32", "R16", "QF", "SF", "F"]),
         date=d,
         venue="デモ体育館",
-        format="singles",
+        format=fmt,
         player_a_id=pa.id,
         player_b_id=pb.id,
+        partner_a_id=partner_a.id if partner_a else None,
+        partner_b_id=partner_b.id if partner_b else None,
         result=rng.choice(["win", "loss"]),
         annotation_status="complete",
         annotation_progress=1.0,
@@ -170,6 +217,8 @@ def _make_match(db, team_id: int, rng: random.Random, pa: Player, pb: Player,
     )
     db.add(m)
     db.flush()
+
+    roles = ["player_a", "player_b", "partner_a", "partner_b"] if is_doubles else None
 
     n_sets = rng.choice([2, 3])
     for s_num in range(1, n_sets + 1):
@@ -199,7 +248,7 @@ def _make_match(db, team_id: int, rng: random.Random, pa: Player, pb: Player,
             )
             db.add(rally)
             db.flush()
-            for stk in _make_strokes(rng, rally, length):
+            for stk in _make_strokes(rng, rally, length, roles):
                 db.add(stk)
         gs.winner = "player_a" if score_a > score_b else "player_b"
         gs.score_a = score_a
@@ -286,11 +335,26 @@ def main():
 
         players = _make_players(db, team.id, rng, args.players)
 
+        # 解析対象 (players[0]) のダブルス相方は players[1] に固定する。
+        # 簡易分析「打球の高さ差」(SD-08) はダブルス向けの要望なので、
+        # 相手ペアを組める人数 (>=4) がある時は約半数をダブルスにする。
+        can_doubles = len(players) >= 4
+        n_doubles = 0
         for idx in range(args.matches):
             pa = players[0]  # 解析対象は常に demo player A
-            pb = rng.choice(players[1:])
-            _make_match(db, team.id, rng, pa, pb, idx)
-        print(f"  [+] デモ試合 {args.matches} 件作成")
+            make_doubles = can_doubles and (idx % 2 == 1)
+            if make_doubles:
+                partner_a = players[1]
+                pb, partner_b = rng.sample(players[2:], 2)
+                fmt = rng.choice(["womens_doubles", "mixed_doubles"])
+                _make_match(db, team.id, rng, pa, pb, idx, fmt=fmt,
+                            partner_a=partner_a, partner_b=partner_b)
+                n_doubles += 1
+            else:
+                pb = rng.choice(players[1:])
+                _make_match(db, team.id, rng, pa, pb, idx)
+        print(f"  [+] デモ試合 {args.matches} 件作成"
+              f"（うちダブルス {n_doubles} 件 / 全打球に高さを付与）")
 
         # コンディションは解析対象選手中心に
         _make_conditions(db, rng, players[0], 16)

@@ -5,12 +5,14 @@
  * - type='effective': 自分が飛ばしたゾーン詳細（ショット種別・打点）
  * - type='vulnerability': 相手に食らったゾーン詳細（ショット種別・打点）
  */
-import { useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { WIN, LOSS } from '@/styles/colors'
 import { useCardTheme } from '@/hooks/useCardTheme'
+import { useAuth } from '@/hooks/useAuth'
 import { AnalysisFilters } from '@/types'
 import { MIcon } from '@/components/common/MIcon'
 
@@ -101,7 +103,21 @@ export function ZoneMapModal({
   const { t } = useTranslation()
 
   const { card, textHeading, textMuted, textFaint, isLight } = useCardTheme()
+  // 製品ルール: player には勝率 / 有効度 / 得点数を見せない (API も返さない)。件数ベースに切り替える。
+  const { role } = useAuth()
+  const isPlayer = role === 'player'
   const [selectedZone, setSelectedZone] = useState<string | null>(initialZone)
+
+  // dialog として公開する: 開いたらフォーカスを移し、閉じたら起動元へ戻す (#545)
+  const titleId = useId()
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    dialogRef.current?.focus()
+    return () => {
+      opener?.focus()
+    }
+  }, [])
 
   const accentColor = type === 'effective' ? WIN : LOSS
   const highlightZones = type === 'effective' ? topZones : dangerZones
@@ -116,7 +132,7 @@ export function ZoneMapModal({
   }
 
   // ゾーン詳細クエリ（クリック時のみ）
-  const { data: effectiveDetail, isLoading: loadingEff } = useQuery({
+  const { data: effectiveDetail, isLoading: loadingEff, isError: errorEff, refetch: refetchEff } = useQuery({
     queryKey: ['effective-zone-detail', playerId, selectedZone, filters],
     queryFn: () =>
       apiGet<EffectiveZoneDetailResponse>('/analysis/effective_distribution_map/zone_detail', {
@@ -127,7 +143,7 @@ export function ZoneMapModal({
     enabled: type === 'effective' && selectedZone != null,
   })
 
-  const { data: vulnDetail, isLoading: loadingVuln } = useQuery({
+  const { data: vulnDetail, isLoading: loadingVuln, isError: errorVuln, refetch: refetchVuln } = useQuery({
     queryKey: ['vuln-zone-detail', playerId, selectedZone, filters],
     queryFn: () =>
       apiGet<VulnZoneDetailResponse>('/analysis/received_vulnerability/zone_detail', {
@@ -140,14 +156,17 @@ export function ZoneMapModal({
 
   const detailData = type === 'effective' ? effectiveDetail?.data : vulnDetail?.data
   const loadingDetail = type === 'effective' ? loadingEff : loadingVuln
+  const detailError = type === 'effective' ? errorEff : errorVuln
+  const refetchDetail = type === 'effective' ? refetchEff : refetchVuln
 
   // ゾーンの intensity 計算
   function getIntensity(zone: string): number {
     if (type === 'effective') {
       const d = effectiveZoneData[zone]
       if (!d) return 0
-      const maxEff = Math.max(...Object.values(effectiveZoneData).map((z) => z.effectiveness), 0.001)
-      return d.effectiveness / maxEff
+      const pick = (z: Partial<ZoneEffectiveness>) => (isPlayer ? z.total_count : z.effectiveness) ?? 0
+      const maxEff = Math.max(...Object.values(effectiveZoneData).map((z) => pick(z)), 0.001)
+      return pick(d) / maxEff
     } else {
       const d = vulnZoneData[zone]
       if (!d) return 0
@@ -169,6 +188,11 @@ export function ZoneMapModal({
     if (type === 'effective') {
       const d = effectiveZoneData[zone]
       if (!d) return <span className="text-[10px]" style={{ color: isLight ? '#94a3b8' : '#6b7280' }}>—</span>
+      if (isPlayer) {
+        return (
+          <p className="font-bold text-sm" style={{ color: WIN }}>{t('analysis.effective_map.count_short', { n: d.total_count ?? 0 })}</p>
+        )
+      }
       return (
         <>
           <p className="font-bold text-sm" style={{ color: WIN }}>{(d.win_rate * 100).toFixed(0)}%</p>
@@ -188,17 +212,31 @@ export function ZoneMapModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/85 flex flex-col">
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      tabIndex={-1}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.stopPropagation()
+          onClose()
+        }
+      }}
+      className="fixed inset-0 z-50 bg-black/85 flex flex-col focus:outline-none"
+    >
       {/* ヘッダー */}
       <div className={`flex items-center justify-between px-6 py-3 border-b shrink-0 bg-[var(--ss-surface-1)] border-[var(--ss-border)]`}>
         <div>
-          <span className={`font-semibold text-base ${textHeading}`}>{title}</span>
+          <span id={titleId} className={`font-semibold text-base ${textHeading}`}>{title}</span>
           <span className={`ml-3 text-xs ${textMuted}`}>{t('auto.ZoneMapModal.n_only', { n: sampleSize })}</span>
         </div>
         <button
           onClick={onClose}
           className="p-1.5 rounded-ss-md duration-base ease-out text-[var(--ss-t3)] hover:bg-[var(--ss-surface-2)] hover:text-[var(--ss-t1)]"
           title={t('auto.ZoneMapModal.k5')}
+          aria-label={t('auto.ZoneMapModal.k5')}
         >
           <MIcon name="close" size={18} />
         </button>
@@ -220,6 +258,7 @@ export function ZoneMapModal({
                     return (
                       <button
                         key={zone}
+                        aria-pressed={isSelected}
                         onClick={() => setSelectedZone(zone === selectedZone ? null : zone)}
                         className="flex-1 rounded-ss-md p-2 text-center duration-base ease-out cursor-pointer focus:outline-none"
                         style={{
@@ -261,11 +300,16 @@ export function ZoneMapModal({
               <div className="flex items-center justify-center h-full min-h-[200px] rounded-ss-md bg-[var(--ss-surface-2)]">
                 <p className={`text-sm ${textMuted}`}>{t('auto.ZoneMapModal.k2')}</p>
               </div>
+            ) : detailError ? (
+              <div className="flex items-center justify-center h-full min-h-[200px] rounded-ss-md bg-[var(--ss-surface-2)]">
+                <QueryErrorNotice onRetry={() => { void refetchDetail() }} />
+              </div>
             ) : detailData ? (
               <ZoneDetailPanel
                 type={type}
                 data={detailData as ZoneDetailPanelProps['data']}
                 isLight={isLight}
+                hideOutcome={isPlayer && type === 'effective'}
                 card={card}
                 textHeading={textHeading}
                 textMuted={textMuted}
@@ -295,13 +339,15 @@ interface ZoneDetailPanelProps {
     hit_zones: { zone: string; count: number }[]
   }
   isLight: boolean
+  /** true: 得点率・得点数を描かない (player ロール) */
+  hideOutcome?: boolean
   card: string
   textHeading: string
   textMuted: string
   textFaint: string
 }
 
-function ZoneDetailPanel({ type, data, isLight, card, textHeading, textMuted, textFaint }: ZoneDetailPanelProps) {
+function ZoneDetailPanel({ type, data, isLight, hideOutcome = false, card, textHeading, textMuted, textFaint }: ZoneDetailPanelProps) {
   const { t } = useTranslation()
   const zoneName = ZONE_LABELS[data.zone] ?? data.zone
   const accentColor = type === 'effective' ? WIN : LOSS
@@ -325,21 +371,25 @@ function ZoneDetailPanel({ type, data, isLight, card, textHeading, textMuted, te
           <span className={`text-lg font-bold ${textHeading}`}>{zoneName}</span>
           <span className={`text-sm font-mono ${textMuted}`}>({data.zone})</span>
         </div>
-        <div className="grid grid-cols-3 gap-3 text-center">
+        <div className={hideOutcome ? 'grid grid-cols-1 gap-3 text-center' : 'grid grid-cols-3 gap-3 text-center'}>
           <div>
             <p className={`text-2xl font-bold ss-num ${textHeading}`}>{data.total_count}</p>
             <p className={`text-[11px] ${textMuted}`}>{t('auto.ZoneMapModal.k3')}</p>
           </div>
-          <div>
-            <p className="text-2xl font-bold ss-num" style={{ color: accentColor }}>
-              {rateValue != null ? `${(rateValue * 100).toFixed(0)}%` : '—'}
-            </p>
-            <p className={`text-[11px] ${textMuted}`}>{rateLabel}</p>
-          </div>
-          <div>
-            <p className="text-2xl font-bold ss-num" style={{ color: accentColor }}>{countValue ?? 0}</p>
-            <p className={`text-[11px] ${textMuted}`}>{countLabel}</p>
-          </div>
+          {!hideOutcome && (
+            <>
+              <div>
+                <p className="text-2xl font-bold ss-num" style={{ color: accentColor }}>
+                  {rateValue != null ? `${(rateValue * 100).toFixed(0)}%` : '—'}
+                </p>
+                <p className={`text-[11px] ${textMuted}`}>{rateLabel}</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold ss-num" style={{ color: accentColor }}>{countValue ?? 0}</p>
+                <p className={`text-[11px] ${textMuted}`}>{countLabel}</p>
+              </div>
+            </>
+          )}
         </div>
       </div>
 

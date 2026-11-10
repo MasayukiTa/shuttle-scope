@@ -1,17 +1,22 @@
 // Phase 2: ペア別勝率推移タイムライン
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { matchOutcomeLabelKey } from '@/utils/matchResult'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts'
 import { apiGet } from '@/api/client'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 
 interface PartnerTimelineProps {
   playerId: number
   partnerId: number
   partnerName?: string
+  /** 同じ画面の絞り込み。上段のペア統計と同じ試合集合にそろえる (監査 #741) */
+  filters?: AnalysisFilters
 }
 
 interface TimelinePoint {
@@ -31,22 +36,30 @@ interface PartnerTimelineResponse {
   meta: { sample_size: number; confidence: { level: string; stars: string; label: string } }
 }
 
-export function PartnerTimeline({ playerId, partnerId, partnerName }: PartnerTimelineProps) {
+export function PartnerTimeline({ playerId, partnerId, partnerName, filters = DEFAULT_FILTERS }: PartnerTimelineProps) {
   const { t } = useTranslation()
   const isLight = useIsLightMode()
 
-  const { data: resp, isLoading } = useQuery({
-    queryKey: ['analysis-partner-timeline', playerId, partnerId],
+  const { data: resp, isLoading, isError, refetch } = useQuery({
+    queryKey: ['analysis-partner-timeline', playerId, partnerId, filters],
     queryFn: () =>
       apiGet<PartnerTimelineResponse>('/analysis/partner_timeline', {
         player_id: playerId,
         partner_id: partnerId,
+        ...(filters.result !== 'all' ? { result: filters.result } : {}),
+        ...(filters.tournamentLevel ? { tournament_level: filters.tournamentLevel } : {}),
+        ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
+        ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
       }),
     enabled: !!playerId && !!partnerId,
   })
 
   if (isLoading) {
     return <div className="text-[var(--ss-t3)] text-sm py-4 text-center">{t('analysis.loading')}</div>
+  }
+  // timeline だけの部分障害を「データなし」にしない (監査 #737)
+  if (isError) {
+    return <QueryErrorNotice onRetry={() => { void refetch() }} />
   }
 
   const sampleSize = resp?.meta?.sample_size ?? 0
@@ -121,9 +134,9 @@ export function PartnerTimeline({ playerId, partnerId, partnerName }: PartnerTim
         {points.map((p) => (
           <div
             key={p.match_id}
-            title={`${p.date} ${p.tournament} ${p.result === 'win' ? '勝' : '負'}`}
+            title={`${p.date} ${p.tournament} ${t(matchOutcomeLabelKey(p.result))}`}
             className="w-2.5 h-2.5 rounded-ss-sm"
-            style={{ backgroundColor: p.result === 'win' ? 'var(--ss-good)' : 'var(--ss-bad)', opacity: 0.8 }}
+            style={{ backgroundColor: p.result === 'win' ? 'var(--ss-good)' : p.result === 'loss' ? 'var(--ss-bad)' : '#9ca3af', opacity: 0.8 }}
           />
         ))}
       </div>

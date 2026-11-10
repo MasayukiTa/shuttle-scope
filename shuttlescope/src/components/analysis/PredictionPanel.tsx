@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
 import { SetDistributionBar } from '@/components/analysis/SetDistributionBar'
 import { MatchScoreBand } from '@/components/analysis/MatchScoreBand'
 import { ScorelineHistogram } from '@/components/analysis/ScorelineHistogram'
@@ -26,6 +27,7 @@ import { WIN, LOSS } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useAuth } from '@/hooks/useAuth'
 import { MIcon } from '@/components/common/MIcon'
+import type { WinProbabilityInterval, WinProbabilityReference } from './winProbabilityReference'
 
 interface PlayerSummary {
   id: number
@@ -35,13 +37,19 @@ interface PlayerSummary {
 }
 
 interface PredictionData {
-  win_probability: number
+  // 試合 0 件のとき backend は null を返す (偽の 50% を出さない)
+  win_probability: number | null
   set_distribution: { '2-0': number; '2-1': number; '1-2': number; '0-2': number }
   score_bands: Record<string, { my_low: number; my_high: number; opp_low: number; opp_high: number; sample: number }>
-  win_probability_v2?: number
+  // win_probability が最終の 1 つ。直接対戦だけの Laplace 値は h2h_win_rate / h2h_n (別名)
+  win_probability_ci?: WinProbabilityInterval | null
+  win_probability_reference?: WinProbabilityReference
+  h2h_win_rate?: number | null
+  h2h_n?: number
+  brier_score?: { score: number | null; sample: number; grade: 'good' | 'fair' | 'poor' | null } | null
   feature_breakdown?: {
     base_wr: number
-    recent_wr: number
+    recent_wr: number | null
     h2h_wr: number | null
     weights: Record<string, number>
     obs_modifier: number
@@ -49,11 +57,11 @@ interface PredictionData {
     final: number
   }
   recent_form?: {
-    win_rate: number
+    win_rate: number | null
     sample: number
-    trend: 'improving' | 'declining' | 'stable'
+    trend: 'improving' | 'declining' | 'stable' | null
     results: string[]
-    overall_wr: number
+    overall_wr: number | null
   }
   set_model_type?: 'observed' | 'momentum'
   score_volatility?: {
@@ -67,7 +75,7 @@ interface PredictionData {
   most_likely_scorelines: Array<{
     outcome: string
     probability: number
-    set1_score?: string
+    set1_score?: string | null
     set2_score?: string
     set3_score?: string
   }>
@@ -147,7 +155,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
   const [showLayerB, setShowLayerB] = useState(!isCoach)
   const [showLayerC, setShowLayerC] = useState(!isCoach)
 
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError, refetch } = useQuery({
     queryKey: ['prediction-match-preview', playerId, opponentId, tournamentLevel],
     queryFn: () =>
       apiGet<PredictionResponse>('/prediction/match_preview', {
@@ -191,7 +199,12 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
     )
   }
 
-  if (!d || d.sample_size === 0) {
+  // 取得失敗は「サンプル0件」ではなく通信・処理の失敗として示す (NoDataMessage は成功応答の少標本だけ)。
+  if (isError) {
+    return <QueryErrorNotice onRetry={() => { void refetch() }} />
+  }
+
+  if (!d || d.sample_size === 0 || d.win_probability == null) {
     return (
       <div className="space-y-4">
         <NoDataMessage sampleSize={0} minRequired={1} unit="試合" />
@@ -200,6 +213,8 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
   }
 
   const winPct = Math.round(d.win_probability * 100)
+  const winRef = d.win_probability_reference
+  const isRef = winRef?.is_reference ?? false
   const topOutcome = Object.entries(d.set_distribution).sort((a, b) => b[1] - a[1])[0]
   const fatigueBreakdown = fatigueResp?.data?.breakdown ?? null
 
@@ -207,7 +222,8 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
     <div className="space-y-4">
       {/* CoachSummaryStrip — 常時表示（折りたたみなし） */}
       <CoachSummaryStrip
-        winProbability={d.win_probability_v2 ?? d.win_probability}
+        winProbability={d.win_probability}
+        isReference={isRef}
         confidenceStars={meta?.confidence.stars ?? ''}
         setDistribution={d.set_distribution}
         cautionFlags={d.caution_flags}
@@ -234,7 +250,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
         <div className="grid grid-cols-3 gap-4 text-center">
           <div>
             <p
-              className="text-4xl font-bold ss-num"
+              className={isRef ? 'text-2xl font-semibold ss-num' : 'text-4xl font-bold ss-num'}
               style={{ color: winProbColor(d.win_probability, isLight) }}
             >
               {winPct}%
@@ -242,6 +258,20 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
             <p className="text-[11px] mt-1" style={{ color: subText }}>
               {t('prediction.win_probability')}
             </p>
+            {isRef && (
+              <p className="text-[11px] mt-0.5 ss-num" style={{ color: subText }}>
+                {t('prediction.reference_value', { n: d.sample_size })}
+              </p>
+            )}
+            {d.win_probability_ci && (
+              <p className="text-[10px] mt-0.5 ss-num" style={{ color: subText }}>
+                {t('prediction.win_probability_ci', {
+                  low: Math.round(d.win_probability_ci.low * 100),
+                  high: Math.round(d.win_probability_ci.high * 100),
+                  n: d.win_probability_ci.n,
+                })}
+              </p>
+            )}
           </div>
           <div>
             <p className="text-2xl font-bold ss-num" style={{ color: neutral }}>
@@ -268,6 +298,16 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
             )}
           </div>
         </div>
+
+        {isRef && winRef && (
+          <p className="text-xs" style={{ color: subText }}>
+            {winRef.reason === 'brier'
+              ? t('prediction.reference_reason_brier', {
+                  score: d.brier_score?.score != null ? d.brier_score.score.toFixed(3) : '',
+                })
+              : t('prediction.reference_reason_sample', { min: winRef.min_sample })}
+          </p>
+        )}
 
         {/* スコアボラティリティ */}
         {d.score_volatility && d.score_volatility.sample >= 3 && (
@@ -314,7 +354,11 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
             </p>
             <div className="space-y-1">
               {d.most_likely_scorelines.map((sl, i) => {
-                const scoreText = [sl.set1_score, sl.set2_score, sl.set3_score].filter(Boolean).join(' / ')
+                // データ無しは null。過去にキャッシュされた '21-??' 形式は「?」を含むので同様に除く。
+                const scoreText =
+                  [sl.set1_score, sl.set2_score, sl.set3_score]
+                    .filter((s): s is string => !!s && !s.includes('?'))
+                    .join(' / ') || t('prediction.scoreline_no_data')
                 return (
                   <div key={i} className="flex items-center gap-2 text-xs">
                     <span

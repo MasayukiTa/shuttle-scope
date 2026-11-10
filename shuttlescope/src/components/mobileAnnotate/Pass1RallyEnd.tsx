@@ -46,6 +46,15 @@ interface Props {
   currentSet: SetInfo
   /** 既存ラリー (最新が末尾) — サーバ取得済 + ローカル追加分の合算 */
   rallies: RallyLite[]
+  /**
+   * このラリーのサーバ。前ラリーの勝者 / 前セットの勝者 / 試合の initial_server から
+   * 親が決める。決められない (null) ときは入力者に選んでもらい、player_a を仮定しない。
+   */
+  nextServer: 'player_a' | 'player_b' | null
+  /** 次セット作成中 (二重に押させない) */
+  setEndBusy?: boolean
+  /** 次セット作成の失敗メッセージ (あれば表示し、同じボタンで再試行できる) */
+  setEndError?: string | null
   /** 動画 pause 位置 (= rally end timestamp) */
   pausedAtSec: number
   /** ラリー追加時に親に通知 (UI 反映用) */
@@ -69,6 +78,9 @@ export function Pass1RallyEnd({
   matchId,
   currentSet,
   rallies,
+  nextServer: resolvedServer,
+  setEndBusy = false,
+  setEndError = null,
   pausedAtSec,
   onRallyAdded,
   onCancel,
@@ -84,6 +96,8 @@ export function Pass1RallyEnd({
   // state の方はボタンの disabled 表示に要るので両方持つ。
   const busyRef = useRef(false)
   const [busy, setBusy] = useState(false)
+  // enqueue (送信キューへの積み込み) が失敗したときのエラー文言。空なら非表示 (監査 #623)。
+  const [enqueueError, setEnqueueError] = useState<string>('')
   // テレメトリ: pass 開始時刻と直前入力時刻
   const passStartRef = useRef<number>(performance.now())
   const lastInputRef = useRef<number>(performance.now())
@@ -117,23 +131,36 @@ export function Pass1RallyEnd({
     }
   }, [rallies, currentSet.id])
 
-  // サーブ権 (= 直前のラリーの winner、初回は player_a 既定)
-  const nextServer: 'player_a' | 'player_b' = lastRally?.winner ?? 'player_a'
+  // サーブ権: 親が決めた値。無ければ入力者が選んだ値 (暗黙の player_a は使わない)。
+  const [pickedServer, setPickedServer] = useState<'player_a' | 'player_b' | null>(null)
+  const nextServer = resolvedServer ?? pickedServer
 
   // 共通ルール util を使って厳密判定 (PC と一致)
   const setEndingSoon = setWinner({ scoreA, scoreB }) !== null
   const setPoint = isSetPoint({ scoreA, scoreB })
   const deuceFlag = isDeuce({ scoreA, scoreB })
   const goldenFlag = isGoldenPoint({ scoreA, scoreB })
+  // CV が出す値は「直前に打った人」の認識結果とその確信度であり、ラリーの勝者や
+  // 勝者である確率ではない (ミスで終わるラリーでは最後に打った側が敗者になる)。
+  // 意味を限定した文言にして、A/B 得点ボタン上の数値が勝者の確率に見えないようにする。
+  const cvHitterLabel = cvHint?.confidence
+    ? t('auto.Pass1RallyEnd.cv_last_hitter_pct', { pct: Math.round(cvHint.confidence * 100) })
+    : t('auto.Pass1RallyEnd.cv_last_hitter')
 
   const submit = async (winner: 'player_a' | 'player_b') => {
     if (busyRef.current) return
+    if (!nextServer) return
+    // セットの勝敗が成立した後は得点を積まない (22-10 のような不可能なスコアを作らない)。
+    if (setEndingSoon) return
     busyRef.current = true
     setBusy(true)
+    setEnqueueError('')
     try {
       const newA = scoreA + (winner === 'player_a' ? 1 : 0)
       const newB = scoreB + (winner === 'player_b' ? 1 : 0)
       const rallyNum = (lastRally?.rally_num ?? 0) + 1
+      const prevEnd = lastRally?.video_timestamp_end
+      const videoStart = typeof prevEnd === 'number' && prevEnd <= pausedAtSec ? prevEnd : null
       // backend RallyCreate schema (`extra='forbid'`) に合わせる:
       // score_a_before/b_before, annotation_mode は schema 非対応のため body に含めない
       // (DB model 側で default=0 / NULL に倒れる)。
@@ -147,7 +174,9 @@ export function Pass1RallyEnd({
         score_a_after: newA,
         score_b_after: newB,
         video_timestamp_end: pausedAtSec,
-        video_timestamp_start: lastRally?.video_timestamp_end ?? null,
+        // 巻き戻した位置で入力すると前ラリーの end が現在位置より後ろになり、
+        // start > end の逆転区間が保存される。その場合は欠測 (null) にする (監査 #783)。
+        video_timestamp_start: videoStart,
         is_deuce: isDeuce({ scoreA: newA, scoreB: newB }),  // 表示と同じ正準ルールで保存
       }
       const { clientUuid } = await enqueue('POST /api/rallies', body)
@@ -170,6 +199,11 @@ export function Pass1RallyEnd({
       lastInputRef.current = now
       inputCountRef.current += 1
       lastInputTypeRef.current = `rally_winner_${winner}`
+    } catch (e: unknown) {
+      // enqueue が投げた = この得点はローカルにも積めていない。onRallyAdded を呼ばず
+      // (= 幻のラリーを画面に出さず)、ユーザーに失敗を伝えて再入力を促す (監査 #623)。
+      const detail = e instanceof Error && e.message ? e.message : String(e)
+      setEnqueueError(`${t('auto.Pass1RallyEnd.enqueue_failed')} (${detail})`.slice(0, 200))
     } finally {
       busyRef.current = false
       setBusy(false)
@@ -192,9 +226,27 @@ export function Pass1RallyEnd({
           <span className="text-pink-400">{scoreB}</span>
         </div>
         <div className="font-mono text-[10px] text-gray-500">
-          @{pausedAtSec.toFixed(1)}s
+          {t('auto.Pass1RallyEnd.video_sec', { sec: pausedAtSec.toFixed(1) })}
         </div>
       </div>
+
+      {/* enqueue 失敗バナー: 得点がキューに積めず静かに失われるのを防ぐ (監査 #623) */}
+      {enqueueError && (
+        <div
+          role="alert"
+          className="px-3 py-2 bg-red-900/90 text-red-100 text-xs flex items-center gap-2 border-b border-red-700"
+        >
+          <MIcon name="error" size={14} />
+          <span className="flex-1">{enqueueError}</span>
+          <button
+            type="button"
+            onClick={() => setEnqueueError('')}
+            className="px-2 py-1 rounded bg-red-800 text-red-50"
+          >
+            {t('auto.Pass1RallyEnd.dismiss')}
+          </button>
+        </div>
+      )}
 
       {/* ルール状態バナー (deuce / golden / setPoint / setEnding) */}
       {setEndingSoon ? (
@@ -215,11 +267,36 @@ export function Pass1RallyEnd({
         </div>
       ) : null}
 
+      {!nextServer && (
+        <div className="bg-black/90 border-b border-gray-800 px-3 py-2 flex items-center gap-2 text-xs text-white">
+          <span className="flex-1">{t('auto.Pass1RallyEnd.choose_server')}</span>
+          <button
+            type="button"
+            onClick={() => setPickedServer('player_a')}
+            className="px-3 py-2 rounded bg-blue-700 text-white"
+          >
+            {t('auto.Pass1RallyEnd.server_a')}
+          </button>
+          <button
+            type="button"
+            onClick={() => setPickedServer('player_b')}
+            className="px-3 py-2 rounded bg-pink-700 text-white"
+          >
+            {t('auto.Pass1RallyEnd.server_b')}
+          </button>
+        </div>
+      )}
+      {setEndError && (
+        <div className="bg-red-900/70 border-b border-red-600/60 text-red-100 text-xs px-3 py-1.5 text-center">
+          {t('auto.Pass1RallyEnd.set_end_failed', { reason: setEndError })}
+        </div>
+      )}
+
       {/* 2 ボタン: CV 推奨側は左上に「CV 推奨」バッジ */}
       <div className="flex-1 flex">
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || !nextServer || setEndingSoon}
           onClick={() => submit('player_a')}
           data-tutorial="mobileAnnotate.scoreA"
           className="flex-1 flex flex-col items-center justify-center gap-2 m-2 rounded-2xl bg-blue-700 active:bg-blue-600 disabled:opacity-50 border-2 border-blue-400 relative"
@@ -229,7 +306,7 @@ export function Pass1RallyEnd({
               className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-mono"
               style={{ backgroundColor: 'rgba(245,158,11,0.95)', color: '#ffffff' }}
             >
-              CV {cvHint.confidence ? `${Math.round(cvHint.confidence * 100)}%` : ''}
+              {cvHitterLabel}
             </span>
           )}
           <div className="text-5xl font-bold text-white">A</div>
@@ -240,7 +317,7 @@ export function Pass1RallyEnd({
         </button>
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || !nextServer || setEndingSoon}
           onClick={() => submit('player_b')}
           data-tutorial="mobileAnnotate.scoreB"
           className="flex-1 flex flex-col items-center justify-center gap-2 m-2 rounded-2xl bg-pink-700 active:bg-pink-600 disabled:opacity-50 border-2 border-pink-400 relative"
@@ -250,7 +327,7 @@ export function Pass1RallyEnd({
               className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-mono"
               style={{ backgroundColor: 'rgba(245,158,11,0.95)', color: '#ffffff' }}
             >
-              CV {cvHint.confidence ? `${Math.round(cvHint.confidence * 100)}%` : ''}
+              {cvHitterLabel}
             </span>
           )}
           <div className="text-5xl font-bold text-white">B</div>
@@ -276,11 +353,11 @@ export function Pass1RallyEnd({
         <button
           type="button"
           onClick={onSetEnded}
-          disabled={!onSetEnded || !setEndingSoon}
+          disabled={!onSetEnded || !setEndingSoon || setEndBusy}
           data-tutorial="mobileAnnotate.setEnd"
           className="px-3 py-2 rounded bg-amber-700 text-white disabled:opacity-30"
         >
-          {t('auto.Pass1RallyEnd.set_end')}
+          {setEndBusy ? t('auto.Pass1RallyEnd.set_end_busy') : setEndError ? t('auto.Pass1RallyEnd.set_end_retry') : t('auto.Pass1RallyEnd.set_end')}
         </button>
         <div className="flex-1" />
         <button

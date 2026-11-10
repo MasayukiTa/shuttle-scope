@@ -4,6 +4,7 @@ import { authAuditLogs, authAuditLogActions, AuditLogEntry, AuditLogActionItem, 
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useAuth } from '@/hooks/useAuth'
 import { MIcon } from '@/components/common/MIcon'
+import { auditActionLabel } from '@/utils/adminLabels'
 
 type SortKey = 'created_at' | 'action' | 'user' | 'ip_addr'
 type SortDir = 'asc' | 'desc'
@@ -35,6 +36,8 @@ export function AuditLogPage() {
   const [limit, setLimit] = useState(500)
   // action 名一覧 (dropdown 用)。backend で count desc に並べたものをそのまま表示。
   const [actionOptions, setActionOptions] = useState<AuditLogActionItem[]>([])
+  // 候補 API の失敗は「action が 0 種類」と区別して示す (主ログ一覧の取得状態とは分離)
+  const [actionOptionsFailed, setActionOptionsFailed] = useState(false)
   // ソート状態
   const [sortKey, setSortKey] = useState<SortKey>('created_at')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
@@ -83,13 +86,20 @@ export function AuditLogPage() {
     }
   }
 
+  const loadActionOptions = (isActive?: () => boolean) => {
+    setActionOptionsFailed(false)
+    authAuditLogActions()
+      .then((r) => { if (!isActive || isActive()) setActionOptions(r.data || []) })
+      .catch(() => { if (!isActive || isActive()) { setActionOptions([]); setActionOptionsFailed(true) } })
+  }
+
   useEffect(() => {
+    let active = true
     if (role === 'admin') {
       load()
-      authAuditLogActions()
-        .then((r) => setActionOptions(r.data || []))
-        .catch(() => { /* noop */ })
+      loadActionOptions(() => active)
     }
+    return () => { active = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role, tab])
 
@@ -167,7 +177,7 @@ export function AuditLogPage() {
 
   if (role !== 'admin') {
     return (
-      <div className={`p-6 ${textSecondary}`}>admin 権限が必要です</div>
+      <div className={`p-6 ${textSecondary}`}>{t('auth.audit_log.admin_required')}</div>
     )
   }
 
@@ -191,19 +201,32 @@ export function AuditLogPage() {
           <label className={`block text-xs mb-1 ${textMuted}`}>{t('auth.audit_log.filter_action')}</label>
           {/* dropdown: distinct action 一覧。空 = フィルタなし。typo 防止と
              どの action が存在するかの可視化を兼ねる。dropdown 不可時の保険として
-             /audit-logs/actions が失敗したら空配列のまま (action filter 無効化)。 */}
+             /audit-logs/actions が失敗したら select を無効化し、理由と再試行を示す。 */}
           <select
             value={actionFilter}
             onChange={(e) => setActionFilter(e.target.value)}
+            disabled={actionOptionsFailed}
             className={`${inputCls} min-w-[180px]`}
           >
-            <option value="">— すべて —</option>
+            <option value="">{t('auth.audit_log.filter_all')}</option>
             {actionOptions.map((o) => (
               <option key={o.action} value={o.action}>
-                {o.action} ({o.count})
+                {auditActionLabel(t, o.action)} ({o.count})
               </option>
             ))}
           </select>
+          {actionOptionsFailed && (
+            <div role="alert" className="mt-1 flex items-center gap-2 text-xs text-[var(--ss-bad)]">
+              <span>{t('auth.audit_log.actions_failed')}</span>
+              <button
+                type="button"
+                onClick={() => loadActionOptions()}
+                className="px-2 py-0.5 rounded-ss-sm border border-[var(--ss-border)] text-[var(--ss-t2)]"
+              >
+                {t('common_ui.query_retry')}
+              </button>
+            </div>
+          )}
         </div>
         <div>
           <label className={`block text-xs mb-1 ${textMuted}`}>{t('auth.audit_log.filter_user')}</label>
@@ -211,7 +234,7 @@ export function AuditLogPage() {
             value={userFilter}
             onChange={(e) => setUserFilter(e.target.value)}
             className={inputCls}
-            placeholder="数値 user_id (例: 123)"
+            placeholder={t('auth.audit_log.filter_user_placeholder')}
             inputMode="numeric"
           />
         </div>
@@ -301,11 +324,11 @@ export function AuditLogPage() {
           onClick={exportCsv}
           disabled={loading || rows.length === 0}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-ss-md bg-[var(--ss-success)] text-white hover:opacity-90 duration-base ease-out text-sm disabled:opacity-50`}
-          title="現在の表示順で CSV ダウンロード"
+          title={t('auth.audit_log.csv_title')}
         >
           <MIcon name="download" size={14} /> CSV
         </button>
-        <span className={`text-xs ${textMuted}`}>表示: {tab === 'audit' ? sortedRows.length : tab === 'request' ? reqRows.length : secRows.length} 件</span>
+        <span className={`text-xs ${textMuted}`}>{t('auth.audit_log.shown_count', { n: tab === 'audit' ? sortedRows.length : tab === 'request' ? reqRows.length : secRows.length })}</span>
       </div>
 
       {error && <div className="text-sm text-[var(--ss-danger-text)] flex-shrink-0">{error}</div>}
@@ -455,7 +478,8 @@ export function AuditLogPage() {
                       return r.created_at.replace('T', ' ').slice(0, 19)
                     })()}
                   </td>
-                  <td className={`px-3 py-2 whitespace-nowrap ${textHeading}`}>{r.action}</td>
+                  {/* 内部コードは日本語ラベルにし、元のコードはホバーで確認できるようにする */}
+                  <td className={`px-3 py-2 whitespace-nowrap ${textHeading}`} title={r.action}>{auditActionLabel(t, r.action)}</td>
                   <td className={`px-3 py-2 whitespace-nowrap ${textSecondary}`}>
                     {r.username ? `${r.username} (#${r.user_id})` : (r.user_id ? `#${r.user_id}` : '—')}
                   </td>

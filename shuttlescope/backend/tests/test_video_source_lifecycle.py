@@ -113,6 +113,15 @@ def test_update_match_video_replacement_invalidates_cv_artifacts(
     import backend.routers.matches as matches_mod
     import backend.utils.access_log as access_log_mod
     import backend.utils.auth as auth_mod
+    from backend.config import settings
+
+    # This test exercises the desktop/dev localfile replacement lifecycle.
+    # Production posture intentionally rejects client-supplied localfile:// paths.
+    monkeypatch.setattr(settings, "PUBLIC_MODE", False)
+    monkeypatch.setattr(settings, "HIDE_API_DOCS", False)
+    monkeypatch.setattr(settings, "HIDE_STACK_TRACES", False)
+    monkeypatch.setattr(settings, "ENVIRONMENT", "development")
+    monkeypatch.setattr(settings, "PUBLIC_HOSTNAME", "")
 
     _add_artifacts(db_session, match.id)
     monkeypatch.setattr(

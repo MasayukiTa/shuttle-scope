@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, listTeams, newIdempotencyKey, type TeamDTO } from '@/api/client'
 import { errorMessage } from '@/utils/errors'
+import { formatJST } from '@/utils/datetime'
 
 type AssignableRole = 'player' | 'coach' | 'analyst'
 
@@ -15,6 +17,14 @@ interface PendingUser {
   created_at: string | null
   admin_notify_status: 'delivered' | 'unconfigured' | 'invalid_url' | 'failed' | 'unknown'
   admin_notify_at: string | null
+  /** 同じメールの問い合わせがあるとき。希望は候補であり、自動では付与しない */
+  inquiry?: {
+    id: number
+    count: number
+    role_text: string | null
+    requested_role: AssignableRole | null
+    created_at: string | null
+  } | null
 }
 
 interface PendingListResp {
@@ -32,7 +42,11 @@ export default function PendingUsersPage() {
   })
 
   // 既存チーム一覧を取得して datalist に使用する
-  const { data: teamsData } = useQuery({
+  const {
+    data: teamsData,
+    isError: teamsError,
+    refetch: refetchTeams,
+  } = useQuery({
     queryKey: ['teams_list'],
     queryFn: () => listTeams(),
   })
@@ -71,6 +85,8 @@ export default function PendingUsersPage() {
             key={u.id}
             user={u}
             teams={teams}
+            teamsError={teamsError}
+            onRetryTeams={() => refetchTeams()}
             onChange={() => qc.invalidateQueries({ queryKey: ['pending_users'] })}
           />
         ))}
@@ -82,10 +98,14 @@ export default function PendingUsersPage() {
 function PendingUserRow({
   user,
   teams,
+  teamsError,
+  onRetryTeams,
   onChange,
 }: {
   user: PendingUser
   teams: TeamDTO[]
+  teamsError: boolean
+  onRetryTeams: () => void
   onChange: () => void
 }) {
   const { t } = useTranslation()
@@ -157,7 +177,29 @@ function PendingUserRow({
               <span className="ml-2 text-[var(--ss-warn)]">{t('auto.PendingUsersPage.unverified')}</span>
             )}
           </div>
-          <div className="text-[10px] text-[var(--ss-t3)] ss-num">{user.created_at}</div>
+          <div className="text-[10px] text-[var(--ss-t3)] ss-num">{formatJST(user.created_at)}</div>
+          {user.inquiry ? (
+            <div className="mt-1 text-xs text-[var(--ss-t2)]">
+              {t('pendingUsers.inquiry_found')}
+              {user.inquiry.role_text
+                ? ` ${t('pendingUsers.inquiry_role', { role: user.inquiry.role_text })}`
+                : ''}{' '}
+              <Link to="/notifications" className="underline text-[var(--ss-brand)]">
+                {t('pendingUsers.inquiry_open')}
+              </Link>
+              {user.inquiry.requested_role && user.inquiry.requested_role !== role ? (
+                <button
+                  type="button"
+                  onClick={() => setRole(user.inquiry!.requested_role as AssignableRole)}
+                  className="ml-2 underline text-[var(--ss-brand)]"
+                >
+                  {t('pendingUsers.inquiry_use_role', {
+                    role: t(`pendingUsers.role.${user.inquiry.requested_role}`),
+                  })}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           <div className="mt-1">
             {user.admin_notify_status === 'delivered' ? (
               <span className="text-[10px] text-[var(--ss-success)]">
@@ -217,6 +259,21 @@ function PendingUserRow({
           <p className="mt-1 text-[10px] text-[var(--ss-t3)]">
             {t('pendingUsers.team_name_hint')}
           </p>
+          {/* チーム一覧の取得失敗を「候補0件」と区別する。沈黙すると表記揺れ・重複チーム作成を誘発する。 */}
+          {teamsError && (
+            <div className="mt-1" role="alert">
+              <p className="text-[10px] text-[var(--ss-danger-text)]">
+                {t('pendingUsers.team_fetch_error')}
+              </p>
+              <button
+                type="button"
+                onClick={onRetryTeams}
+                className="mt-1 px-2 py-0.5 rounded-ss-md border border-[var(--ss-border)] text-[10px] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]"
+              >
+                {t('common_ui.query_retry')}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

@@ -41,13 +41,14 @@ import secrets
 import socket
 import struct
 import sys
+import time
 from typing import Optional
 
 MAGIC = 0x2112A442
 ALLOCATE_REQ, ALLOCATE_OK = 0x0003, 0x0103
 CREATEPERM_REQ, CREATEPERM_OK, CREATEPERM_ERR = 0x0008, 0x0108, 0x0118
 CHANNELBIND_REQ, CHANNELBIND_OK, CHANNELBIND_ERR = 0x0009, 0x0109, 0x0119
-SEND_IND = 0x0016
+SEND_IND, DATA_IND = 0x0016, 0x0017
 A_USERNAME, A_MI, A_ERR = 0x0006, 0x0008, 0x0009
 A_REALM, A_NONCE = 0x0014, 0x0015
 A_XOR_PEER, A_DATA, A_CHANNEL = 0x0012, 0x0013, 0x000C
@@ -112,10 +113,24 @@ def _err_code(a: dict[int, bytes]) -> int:
 
 class Turn:
     def __init__(self, host: str, port: int, user: str, password: str) -> None:
-        self.dst, self.user, self.password = (host, port), user, password
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        # Do not force AF_INET. A TURN control endpoint may be IPv6-only, and a
+        # hostname can resolve to either family. Resolve once and bind the socket
+        # family to the selected destination.
+        infos = socket.getaddrinfo(
+            host, port, socket.AF_UNSPEC, socket.SOCK_DGRAM
+        )
+        if not infos:
+            raise OSError(f"TURN host could not be resolved: {host!r}")
+        family, socktype, proto, _canonname, sockaddr = infos[0]
+        self.dst, self.user, self.password = sockaddr, user, password
+        self.sock = socket.socket(family, socktype, proto)
         self.sock.settimeout(5)
         self.key, self.realm, self.nonce = b"", "", b""
+        self.last_error_code = 0
+        # RFC 5766 channel numbers are 0x4000..0x7FFF. Reusing one number for
+        # a different peer makes coturn reject the second bind before peer ACL
+        # evaluation, which used to create a false "BLOCKED" result.
+        self._next_channel = 0x4000
 
     def close(self) -> None:
         self.sock.close()
@@ -142,32 +157,47 @@ class Turn:
             _build(ALLOCATE_REQ, secrets.token_bytes(12), rt + self._auth(), self.key),
             self.dst)
         mt, a = _parse(self.sock.recvfrom(2048)[0])
+        self.last_error_code = 0 if mt == ALLOCATE_OK else _err_code(a)
         return (True, "OK") if mt == ALLOCATE_OK else (False, _errtext(a))
 
-    def create_permission(self, ip: str, port: int) -> tuple[str, str]:
+    def create_permission_only(self, ip: str, port: int) -> tuple[bool, str]:
+        """Create a peer permission without sending application data."""
         tid = secrets.token_bytes(12)
         attrs = _attr(A_XOR_PEER, _xor_peer(ip, port, tid)) + self._auth()
         self.sock.sendto(_build(CREATEPERM_REQ, tid, attrs, self.key), self.dst)
         mt, a = _parse(self.sock.recvfrom(2048)[0])
-        if mt == CREATEPERM_OK:
-            tid2 = secrets.token_bytes(12)
-            self.sock.sendto(
-                _build(SEND_IND, tid2,
-                       _attr(A_XOR_PEER, _xor_peer(ip, port, tid2))
-                       + _attr(A_DATA, b"TURN-HARDENING-PROBE"), None), self.dst)
+        self.last_error_code = 0 if mt == CREATEPERM_OK else _err_code(a)
+        return ((True, "OK") if mt == CREATEPERM_OK
+                else (False, _errtext(a)))
+
+    def send_indication(self, ip: str, port: int, payload: bytes) -> None:
+        tid = secrets.token_bytes(12)
+        attrs = (_attr(A_XOR_PEER, _xor_peer(ip, port, tid))
+                 + _attr(A_DATA, payload))
+        self.sock.sendto(_build(SEND_IND, tid, attrs, None), self.dst)
+
+    def create_permission(self, ip: str, port: int) -> tuple[str, str]:
+        ok, detail = self.create_permission_only(ip, port)
+        if ok:
+            self.send_indication(ip, port, b"TURN-HARDENING-PROBE")
             return "RELAYED", "許可された"
-        if _err_code(a) == 443:
-            return "UNTESTED", _errtext(a)
-        return "BLOCKED", _errtext(a)
+        if self.last_error_code == 443:
+            return "UNTESTED", detail
+        return "BLOCKED", detail
 
     def channel_bind(self, ip: str, port: int) -> tuple[str, str]:
+        if self._next_channel > 0x7FFF:
+            return "UNTESTED", "channel number space exhausted"
+        channel = self._next_channel
+        self._next_channel += 1
+
         tid = secrets.token_bytes(12)
-        attrs = (_attr(A_CHANNEL, struct.pack("!HH", 0x4000, 0))
+        attrs = (_attr(A_CHANNEL, struct.pack("!HH", channel, 0))
                  + _attr(A_XOR_PEER, _xor_peer(ip, port, tid)) + self._auth())
         self.sock.sendto(_build(CHANNELBIND_REQ, tid, attrs, self.key), self.dst)
         mt, a = _parse(self.sock.recvfrom(2048)[0])
         if mt == CHANNELBIND_OK:
-            self.sock.sendto(struct.pack("!HH", 0x4000, 20) + b"TURN-HARDENING-PROBE",
+            self.sock.sendto(struct.pack("!HH", channel, 20) + b"TURN-HARDENING-PROBE",
                              self.dst)
             return "RELAYED", "許可された"
         if _err_code(a) == 443:
@@ -176,22 +206,139 @@ class Turn:
 
 
 def _v4_in_v6_notations(v4: str) -> list[tuple[str, str]]:
-    """IPv4 アドレスを IPv6 の中に埋め込む書き方を並べる。
+    """IPv4 アドレスを IPv6 の中に埋め込む代表表記を並べる。
 
-    denylist は表記ごとに書かないと効かない。`::ffff:` だけ塞いだ状態で
-    6to4 と NAT64 が ACL を通過することを実測している。
+    ACL が prefix ごとに書かれている以上、検証側も各 prefix へ実際に
+    XOR-PEER-ADDRESS を投げる必要がある。IPv4-compatible は IPv6Address
+    として構築し、Teredo は RFC 4380 の field layout を使う。
     """
-    n = int(ipaddress.ip_address(v4))
+    v4_addr = ipaddress.IPv4Address(v4)
+    n = int(v4_addr)
     hi, lo = (n >> 16) & 0xFFFF, n & 0xFFFF
+
+    # Teredo:
+    # 2001:0000:<server-v4>:<flags>:<obfuscated-port>:<obfuscated-client-v4>
+    # server には documentation prefix 192.0.2.1、port 0 の one's-complement
+    # 0xffff を使う。ACL 検査に必要なのは 2001::/32 へ到達すること。
+    teredo_prefix = int(ipaddress.IPv6Address("2001::"))
+    teredo_server = int(ipaddress.IPv4Address("192.0.2.1"))
+    obfuscated_client = (~n) & 0xFFFFFFFF
+    teredo = ipaddress.IPv6Address(
+        teredo_prefix
+        | (teredo_server << 64)
+        | (0xFFFF << 32)
+        | obfuscated_client
+    )
+
     return [
         (f"::ffff:{v4}", "IPv4-mapped ::ffff:"),
-        (str(ipaddress.ip_address(n)), "IPv4-compatible ::x.x.x.x"),
+        (str(ipaddress.IPv6Address(n)), "IPv4-compatible ::x.x.x.x"),
         (f"2002:{hi:x}:{lo:x}::1", "6to4 2002::/16"),
-        (str(ipaddress.ip_address(int(ipaddress.ip_address("64:ff9b::")) | n)),
+        (str(ipaddress.IPv6Address(int(ipaddress.IPv6Address("64:ff9b::")) | n)),
          "NAT64 well-known prefix"),
-        (str(ipaddress.ip_address(int(ipaddress.ip_address("64:ff9b:1::")) | n)),
+        (str(ipaddress.IPv6Address(int(ipaddress.IPv6Address("64:ff9b:1::")) | n)),
          "NAT64 local-use prefix"),
+        (str(teredo), "Teredo 2001::/32"),
     ]
+
+
+def _positive_dns_relay(
+    host: str,
+    port: int,
+    user: str,
+    password: str,
+    peer: str = "1.1.1.1",
+    peer_port: int = 53,
+    qname: str = "example.com",
+) -> tuple[bool, str]:
+    """Prove that an allowed peer can relay real application data.
+
+    Negative-only checks can falsely pass a broken server that rejects every
+    peer. Send a DNS query through an allowed peer and require a matching
+    DATA indication back.
+    """
+    peer_addr = ipaddress.ip_address(peer)
+    family = FAMILY_V6 if peer_addr.version == 6 else FAMILY_V4
+    t = Turn(host, port, user, password)
+    try:
+        ok, detail = t.allocate(TRANSPORT_UDP, family)
+        if not ok:
+            return False, f"Allocate failed: {detail}"
+        ok, detail = t.create_permission_only(peer, peer_port)
+        if not ok:
+            return False, f"CreatePermission failed: {detail}"
+
+        labels = qname.rstrip(".").split(".")
+        encoded_labels = [x.encode() for x in labels]
+        if not labels or any(not x or len(x) > 63 for x in encoded_labels):
+            return False, f"invalid DNS name: {qname!r}"
+        dns_id = secrets.randbelow(65536)
+        encoded_name = (
+            b"".join(bytes([len(x)]) + x for x in encoded_labels) + b"\x00"
+        )
+        query = (
+            struct.pack("!HHHHHH", dns_id, 0x0100, 1, 0, 0, 0)
+            + encoded_name
+            + struct.pack("!HH", 1, 1)
+        )
+        t.send_indication(peer, peer_port, query)
+
+        deadline = time.monotonic() + 8.0
+        while time.monotonic() < deadline:
+            try:
+                packet = t.sock.recvfrom(8192)[0]
+            except socket.timeout:
+                return False, "DNS relay response timed out"
+            try:
+                mt, attrs = _parse(packet)
+            except Exception:
+                continue
+            if mt != DATA_IND or A_DATA not in attrs:
+                continue
+            reply = attrs[A_DATA]
+            if len(reply) < 12:
+                continue
+            rid, flags, _qd, answers, _ns, _ar = struct.unpack(
+                "!HHHHHH", reply[:12]
+            )
+            if rid != dns_id:
+                continue
+            if not (flags & 0x8000):
+                return False, "relayed DNS packet was not a response"
+            rcode = flags & 0x000F
+            if rcode != 0:
+                return False, f"relayed DNS response rcode={rcode}"
+            return True, (
+                f"peer={peer}:{peer_port} dns_answers={answers} "
+                f"response_bytes={len(reply)}"
+            )
+        return False, "matching DNS DATA indication not received"
+    except Exception as exc:
+        return False, f"{type(exc).__name__}: {exc}"
+    finally:
+        t.close()
+
+
+def _resolve_host_ips(host: str, port: int) -> list[str]:
+    """Resolve TURN's own host to concrete peer addresses for self-relay probes."""
+    out: list[str] = []
+    seen: set[str] = set()
+    try:
+        infos = socket.getaddrinfo(
+            host, port, socket.AF_UNSPEC, socket.SOCK_DGRAM
+        )
+    except socket.gaierror:
+        return out
+    for _family, _socktype, _proto, _canonname, sockaddr in infos:
+        raw = str(sockaddr[0]).split("%", 1)[0]
+        try:
+            addr = str(ipaddress.ip_address(raw))
+        except ValueError:
+            continue
+        if addr not in seen:
+            seen.add(addr)
+            out.append(addr)
+    return out
 
 
 class _SessionPool:
@@ -206,6 +353,7 @@ class _SessionPool:
         self._args = (host, port, user, pw)
         self._sessions: dict[int, Optional[Turn]] = {}
         self._errors: dict[int, str] = {}
+        self._explicitly_unavailable: dict[int, str] = {}
 
     def get(self, family: int) -> tuple[Optional[Turn], str]:
         if family in self._sessions:
@@ -214,7 +362,11 @@ class _SessionPool:
         try:
             ok, detail = t.allocate(TRANSPORT_UDP, family)
             if not ok and family == FAMILY_V6:
-                # v6 の割当を持たないサーバもある。その場合は検査不能と記録する
+                # RFC 6156 440 explicitly says this server cannot allocate the
+                # requested address family. That attack path is blocked by
+                # capability, not merely untested. Other failures stay untested.
+                if t.last_error_code == 440:
+                    self._explicitly_unavailable[family] = detail
                 t.close()
                 self._sessions[family] = None
                 self._errors[family] = detail
@@ -244,6 +396,12 @@ def _probe(pool: "_SessionPool", peer: str, peer_port: int,
     family = FAMILY_V6 if ipaddress.ip_address(peer).version == 6 else FAMILY_V4
     t, err = pool.get(family)
     if t is None:
+        if family in pool._explicitly_unavailable:
+            return (
+                "BLOCKED",
+                "address family explicitly unsupported "
+                f"({pool._explicitly_unavailable[family]})",
+            )
         return "UNTESTED", f"allocate 不可 ({err})"
     try:
         return (t.create_permission(peer, peer_port) if method == "perm"
@@ -263,6 +421,16 @@ def main() -> int:
     p.add_argument("--peer", action="append", required=True,
                    help="中継を試みる内部アドレス (IPv4/IPv6)。複数指定可")
     p.add_argument("--peer-port", type=int, default=5432)
+    p.add_argument(
+        "--positive-dns-peer", default="1.1.1.1",
+        help="許可される外部DNS peer。実データrelayのpositive controlに使う",
+    )
+    p.add_argument("--positive-dns-port", type=int, default=53)
+    p.add_argument("--positive-dns-name", default="example.com")
+    p.add_argument(
+        "--skip-positive-control", action="store_true",
+        help="ACL単体試験用。運用判定では指定しないこと",
+    )
     args = p.parse_args()
 
     relayed: list[str] = []
@@ -279,10 +447,19 @@ def main() -> int:
         if mt == ALLOCATE_OK:
             print("  [危険] 認証なしで Allocate できました")
             relayed.append("unauthenticated-allocate")
+        elif _err_code(a) == 401:
+            print(f"  [良] 認証なしの Allocate は 401 で拒否 ({_errtext(a)})")
         else:
-            print(f"  [良] 認証なしの Allocate は拒否 ({_errtext(a)})")
+            print(
+                "  [未検証] 認証なし Allocate は拒否されたが 401 ではありません "
+                f"({_errtext(a)})"
+            )
+            untested.append("unauthenticated-allocate")
     except socket.timeout:
         print("  [?] 認証なし Allocate が無応答")
+        untested.append("unauthenticated-allocate")
+    except Exception as exc:  # noqa: BLE001
+        print(f"  [未検証] 認証なし Allocate の応答を検証できません: {exc}")
         untested.append("unauthenticated-allocate")
     finally:
         t.close()
@@ -295,14 +472,40 @@ def main() -> int:
             print("  [危険] TCP リレーが有効です。内部へ TCP 接続を張られます")
             print("         no-tcp-relay を設定してください")
             relayed.append("tcp-relay")
+        elif t.last_error_code in (400, 403, 442):
+            print(f"  [良] TCP リレーは明示的に拒否 ({detail})")
         else:
-            print(f"  [良] TCP リレーは無効 ({detail})")
+            print(
+                "  [未検証] TCP Allocate は失敗したが no-tcp-relay の証明に "
+                f"ならない応答です ({detail})"
+            )
+            untested.append("tcp-relay")
     except socket.timeout:
         print("  [?] TCP allocate が無応答")
+        untested.append("tcp-relay")
+    except Exception as exc:  # noqa: BLE001
+        print(f"  [未検証] TCP allocate を検証できません: {exc}")
         untested.append("tcp-relay")
     finally:
         t.close()
     print()
+
+    # Positive control: rejecting every destination is not a working TURN
+    # server and must not pass a production hardening check.
+    if args.skip_positive_control:
+        print("[注意] positive relay control を明示的にスキップしました")
+    else:
+        ok, detail = _positive_dns_relay(
+            args.host, args.port, args.user, args.password,
+            args.positive_dns_peer, args.positive_dns_port,
+            args.positive_dns_name,
+        )
+        if ok:
+            print(f"  [良] 外向き positive relay 成功 ({detail})")
+        else:
+            print(f"  [未検証] 外向き positive relay 失敗 ({detail})")
+            untested.append("positive-relay")
+        print()
 
     # 内部アドレスへの中継。IPv4 は「IPv6 の中に埋め込む」表記を全て試す。
     # ::ffff: だけ塞いでも 6to4 / NAT64 / Teredo / IPv4-compatible は
@@ -314,8 +517,17 @@ def main() -> int:
             for notation, label in _v4_in_v6_notations(peer):
                 targets.append((notation, f"{peer} ({label})"))
     # 中継を試みる「宛先」であって待受アドレスではない (bind していない)
-    for extra in ("255.255.255.255", "0.0.0.0", args.host):  # nosec B104
+    for extra in ("255.255.255.255", "0.0.0.0"):  # nosec B104
         targets.append((extra, extra))
+
+    # TURN 自身への relay を DNS 名のまま ipaddress() へ渡してはいけない。
+    # A/AAAA を具体IPへ解決して両familyを検査する。
+    self_ips = _resolve_host_ips(args.host, args.port)
+    if not self_ips:
+        print(f"[未検証] TURN host {args.host!r} を自己中継probe用IPへ解決できません")
+        untested.append("turn-self-resolution")
+    for self_ip in self_ips:
+        targets.append((self_ip, f"{args.host} (TURN self {self_ip})"))
 
     pool = _SessionPool(args.host, args.port, args.user, args.password)
     for addr, label in targets:

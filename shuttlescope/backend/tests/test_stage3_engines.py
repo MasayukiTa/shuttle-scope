@@ -165,6 +165,32 @@ class TestCounterfactualEngine:
         assert result[0]["recommended"] == "clear"
         assert result[0]["lift"] > 0
 
+    def test_build_comparisons_small_sample_is_not_supported(self):
+        # N=10 の 9 勝 vs N=17 の 10 勝: 差は大きいが 95% 区間が重なる → 推奨を裏づけない
+        from backend.analysis.counterfactual_engine import build_comparisons
+        stats = {
+            ("smash",): {
+                "lob": {"count": 10, "wins": 9},
+                "smash": {"count": 17, "wins": 10},
+            },
+        }
+        result = build_comparisons(stats, {}, min_obs=5, min_lift=0.05, top_n=5)
+        assert len(result) == 1
+        assert result[0]["recommendation_supported"] is False
+        assert all("ci_low" in c and "ci_high" in c for c in result[0]["choices"])
+        assert "n=10" in result[0]["interpretation"]
+
+    def test_build_comparisons_large_gap_is_supported(self):
+        from backend.analysis.counterfactual_engine import build_comparisons
+        stats = {
+            ("smash",): {
+                "clear": {"count": 200, "wins": 160},
+                "lob": {"count": 200, "wins": 80},
+            },
+        }
+        result = build_comparisons(stats, {}, min_obs=5, min_lift=0.05, top_n=5)
+        assert result[0]["recommendation_supported"] is True
+
     def test_build_comparisons_no_lift(self):
         from backend.analysis.counterfactual_engine import build_comparisons
         stats = {

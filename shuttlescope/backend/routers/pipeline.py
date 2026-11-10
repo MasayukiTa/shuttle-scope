@@ -19,7 +19,12 @@ from sqlalchemy.orm import Session
 from backend.db.database import get_db
 from backend.db.models import AnalysisJob, Match
 from backend.pipeline.jobs import enqueue
-from backend.utils.auth import AuthCtx, get_auth
+from backend.utils.auth import (
+    AuthCtx,
+    apply_match_team_scope,
+    get_auth,
+    user_can_access_match,
+)
 
 
 router = APIRouter(prefix="/v1/pipeline", tags=["pipeline"])
@@ -31,6 +36,19 @@ def _require_analyst_or_coach(ctx: AuthCtx = Depends(get_auth)) -> AuthCtx:
     if ctx.role not in ALLOWED_ROLES:
         raise HTTPException(status_code=403, detail="analyst/coach のみアクセス可能")
     return ctx
+
+
+def _visible_match_or_404(db: Session, match_id: int, ctx: AuthCtx) -> Match:
+    """Return a match only when the authenticated analyst/coach may see it.
+
+    Pipeline job IDs are enumerable and job payloads include operational
+    metadata (worker_host/error). Cross-team denial therefore uses 404 so the
+    endpoint does not become an object-existence oracle.
+    """
+    match = db.get(Match, match_id)
+    if match is None or not user_can_access_match(ctx, match):
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    return match
 
 
 # ─── スキーマ ────────────────────────────────────────────────────────────────
@@ -111,8 +129,7 @@ def run_pipeline_endpoint(
                     detail=f"パイプライン実行は {_PIPELINE_WINDOW_SEC // 60} 分に {_PIPELINE_MAX_JOBS_PER_WINDOW} 件までです",
                 )
             ts_list.append(now)
-    if not db.get(Match, body.match_id):
-        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    match = _visible_match_or_404(db, body.match_id, _ctx)
     # GDPR Article 25 (Privacy by Design) / APPI 第20条 (適正取得) 準拠:
     # コート ROI (court_calibration) 未設定の試合は解析開始を拒否する。
     # ROI なしの解析は観客・審判席など競技者外の領域も処理対象に含める可能性があり、
@@ -166,7 +183,10 @@ def list_jobs(
     # 権限が無い閲覧者には空配列を返す（試合一覧バッジ等、全行で叩く用途のため 403 を大量発生させない）
     if ctx.role not in ALLOWED_ROLES:
         return []
-    q = db.query(AnalysisJob)
+    # AnalysisJob has no team_id of its own. Join through Match and apply the
+    # same owner/public/participant-team policy used by the rest of the app.
+    q = db.query(AnalysisJob).join(Match, Match.id == AnalysisJob.match_id)
+    q = apply_match_team_scope(q, ctx)
     if match_id is not None:
         q = q.filter(AnalysisJob.match_id == match_id)
     if status:
@@ -187,26 +207,7 @@ def get_job(
     j = db.get(AnalysisJob, job_id)
     if j is None:
         raise HTTPException(status_code=404, detail="ジョブが見つかりません")
-    # coach は自チーム match のジョブのみ閲覧可能 (BOLA/IDOR 防御)
-    if ctx.role == "coach":
-        match = db.get(Match, j.match_id)
-        if match is not None:
-            from backend.utils.auth import require_match_scope
-            try:
-                require_match_scope(None, match, db) if False else None  # noqa
-                # 実コールは下で
-            except Exception:
-                pass
-        # coach の場合は match 経由でスコープチェック
-        from backend.db.models import Player as _P
-        if match is not None:
-            team = (ctx.team_name or "").strip()
-            pids = {match.player_a_id, match.player_b_id, match.partner_a_id, match.partner_b_id}
-            pids.discard(None)
-            if team and pids:
-                players = db.query(_P).filter(_P.id.in_(pids)).all()
-                if not any((p.team or "").strip() == team for p in players):
-                    raise HTTPException(status_code=404, detail="ジョブが見つかりません")
-            else:
-                raise HTTPException(status_code=404, detail="ジョブが見つかりません")
+    match = db.get(Match, j.match_id)
+    if match is None or not user_can_access_match(ctx, match):
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません")
     return _to_out(j)

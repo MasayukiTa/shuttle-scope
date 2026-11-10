@@ -10,7 +10,9 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { fetchConformal, ConformalGroup } from '@/api/conformal'
 import { EvidenceBadge } from '@/components/dashboard/EvidenceBadge'
-import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
+import { ResearchNotice, FilterScopeNote } from '@/components/dashboard/ResearchNotice'
+import { DEFAULT_FILTERS, type AnalysisFilters } from '@/types'
+import { toFilterApiParams } from '@/utils/analysisFilterParams'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { MIcon } from '@/components/common/MIcon'
 import { useCardTheme } from '@/hooks/useCardTheme'
@@ -19,6 +21,8 @@ import { useCardTheme } from '@/hooks/useCardTheme'
 
 interface Props {
   playerId: number
+  /** 画面上部の絞り込み。省略時は絞り込みなし */
+  filters?: AnalysisFilters
 }
 
 // ── 定数: alpha 選択肢 ───────────────────────────────────────────────────────
@@ -186,6 +190,9 @@ function GroupRow({
   textFaint: string
   cardInner: string
 }) {
+  // n が少ないグループは勝率も勝敗チップも出さない（全体の被覆保証はグループ別を保証しない）
+  const insufficient = row.insufficient === true || row.p_win == null || row.prediction_set == null
+
   return (
     <div className={`rounded-ss-md p-2.5 border ${border} ${cardInner}`}>
       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -204,9 +211,13 @@ function GroupRow({
 
         {/* 右側: p_win + N */}
         <div className="flex items-center gap-3">
-          <span className={`text-[11px] font-mono font-semibold ss-num ${textMuted}`}>
-            {pct1(row.p_win)}
-          </span>
+          {insufficient ? (
+            <span className={`text-[11px] ${textFaint}`}>{t('auto.ConformalCard.group_insufficient')}</span>
+          ) : (
+            <span className={`text-[11px] font-mono font-semibold ss-num ${textMuted}`}>
+              {pct1(row.p_win as number)}
+            </span>
+          )}
           <span className={`text-[10px] ss-num ${textFaint}`}>
             {t('auto.ConformalCard.n_only', { n: row.n })}
           </span>
@@ -214,9 +225,11 @@ function GroupRow({
       </div>
 
       {/* 予測セットチップ */}
-      <div className="mt-1.5">
-        <PredictionSetChips predictionSet={row.prediction_set} t={t} />
-      </div>
+      {!insufficient && (
+        <div className="mt-1.5">
+          <PredictionSetChips predictionSet={row.prediction_set as Array<'win' | 'loss'>} t={t} />
+        </div>
+      )}
     </div>
   )
 }
@@ -253,8 +266,9 @@ function AlphaToggle({
 
 // ── メインコンポーネント ───────────────────────────────────────────────────────
 
-export function ConformalCard({ playerId }: Props) {
+export function ConformalCard({ playerId, filters = DEFAULT_FILTERS }: Props) {
   const { t } = useTranslation()
+  const filterApiParams = toFilterApiParams(filters)
   const {
     card,
     textHeading,
@@ -299,8 +313,8 @@ export function ConformalCard({ playerId }: Props) {
   )
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['conformal', playerId, alpha],
-    queryFn: () => fetchConformal(playerId, alpha),
+    queryKey: ['conformal', playerId, alpha, filterApiParams],
+    queryFn: () => fetchConformal(playerId, alpha, filters),
     enabled: !!playerId,
   })
 
@@ -337,6 +351,7 @@ export function ConformalCard({ playerId }: Props) {
         assumptions={t('auto.ConformalCard.assumptions')}
         promotionCriteria={t('auto.ConformalCard.promotion_criteria')}
       />
+      <FilterScopeNote meta={data?.meta} />
 
       {/* ─ alpha トグル ── */}
       <div className="flex items-center gap-2 flex-wrap">
@@ -401,7 +416,7 @@ export function ConformalCard({ playerId }: Props) {
                       test: confData!.n_test,
                     })}
                   </span>
-                  <ConfidenceBadge sampleSize={meta?.sample_size ?? 0} unit={meta?.sample_unit ?? undefined} compact />
+                  <ConfidenceBadge sampleSize={meta?.sample_size ?? 0} unit={meta?.sample_unit ?? undefined} tier={meta?.tier} evidenceLevel={meta?.evidence_level} compact />
                 </div>
               </div>
 

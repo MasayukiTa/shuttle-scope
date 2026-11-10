@@ -277,6 +277,7 @@ def _player_view(c: Condition) -> dict:
     """
     # Condition モデルには mean_28/sd_28 列は保存していないため、
     # ccs_score / delta_28ma / z_score から逆算する。
+    # (mean_28/sd_28 は「直近28回の記録」の平均/SD。28日間ではない。件数は n_28)
     mean_28 = None
     sd_28 = None
     if c.ccs_score is not None and c.delta_28ma is not None:
@@ -337,6 +338,9 @@ def _player_view(c: Condition) -> dict:
         # 医療・自由記述 (本人=○)
         "injury_notes": c.injury_notes,
         "general_comment": c.general_comment,
+        # 質問票の原回答 (本人=○ per 同意書 第5条)。
+        # 本人が自身の入力済み回答を履歴で読み返せるよう含める (監査 #654)。
+        "questionnaire_json": c.questionnaire_json,
         # 妥当性: 同意書 5条で本人=× → 含めない（呼び出し側 fields に含めない）
     }
 
@@ -398,6 +402,37 @@ def _get_owner_body_consents(db: Session, player_id: int) -> dict[str, bool]:
     return result
 
 
+def _count_28_basis(db: Optional[Session], c: Condition) -> Optional[int]:
+    """delta_28ma / mean_28 / sd_28 の基準に使われた記録の件数 (7..28)。
+
+    「28」は日数ではなく**直近 28 件の記録**。件数は DB に保存していないため、
+    提出時と同じ条件 (同一選手・weekly・ccs あり・measured_at がこの測定より前) で
+    数え直して 28 で頭打ちにする。delta_28ma が無い (= 算出されなかった) 場合は
+    None を返し、0 にはしない。過去日付の記録を後から追加した場合は、提出時の
+    件数と食い違うことがある。
+    """
+    if db is None or c.delta_28ma is None or c.condition_type != "weekly":
+        return None
+    n = (
+        db.query(Condition)
+        .filter(
+            Condition.player_id == c.player_id,
+            Condition.condition_type == "weekly",
+            Condition.ccs_score.isnot(None),
+            Condition.measured_at < c.measured_at,
+        )
+        .count()
+    )
+    return min(int(n), 28) if n > 0 else None
+
+
+def _with_n_28(out: dict, n_28: Optional[int]) -> dict:
+    """delta_28ma を含む出力にだけ n_28 (平均した記録の件数) を添える。"""
+    if "delta_28ma" in out:
+        out["n_28"] = n_28
+    return out
+
+
 def _serialize(c: Condition, role: str, db: Optional[Session] = None) -> dict:
     """同意書 第5条 アライメント。
 
@@ -406,16 +441,36 @@ def _serialize(c: Condition, role: str, db: Optional[Session] = None) -> dict:
     - coach / analyst: filter_condition_fields() で Tier 1 まで縮約が default。
       ただし当該 player が 'body_disclose_to_analyst' / 'body_disclose_to_coach'
       を明示同意していれば、対応ロールには Tier 3 (体組成) まで開放。
+
+    delta_28ma / mean_28 / sd_28 は「直近28回の記録」基準。n_28 に実際の件数を添える。
     """
+    n_28 = _count_28_basis(db, c)
     if role == "player":
-        return _player_view(c)
+        return _with_n_28(_player_view(c), n_28)
     if role == "admin":
-        return _full_dict(c)
+        return _with_n_28(_full_dict(c), n_28)
     owner_consents = _get_owner_body_consents(db, c.player_id) if db is not None else None
-    return filter_condition_fields(_full_dict(c), role, owner_consents)
+    return _with_n_28(filter_condition_fields(_full_dict(c), role, owner_consents), n_28)
 
 
 # ─── マスター ────────────────────────────────────────────────────────────────
+
+def _require_player_in_match(match: Match, player_id: int) -> None:
+    """condition に結び付ける試合は、その選手が出場した試合に限る。
+
+    cross-team の可否 (user_can_access_match) とは別に、同一チーム内でも
+    無関係な選手と試合の組み合わせを保存させない (監査 #518)。
+    """
+    participants = {
+        match.player_a_id, match.player_b_id,
+        match.partner_a_id, match.partner_b_id,
+    }
+    if player_id not in participants:
+        raise HTTPException(
+            status_code=422,
+            detail="この選手は指定された試合に出場していません",
+        )
+
 
 @router.get("/master")
 def get_questionnaire_master(
@@ -471,6 +526,7 @@ def submit_questionnaire(body: QuestionnaireSubmit, request: Request, db: Sessio
         from backend.utils.auth import user_can_access_match as _ucam_q
         if _ctx_q.role is not None and not _ucam_q(_ctx_q, _m_q):
             raise HTTPException(status_code=403, detail="この試合へのアクセス権限がありません")
+        _require_player_in_match(_m_q, body.player_id)
 
     # 採点
     if body.condition_type == "weekly":
@@ -484,13 +540,16 @@ def submit_questionnaire(body: QuestionnaireSubmit, request: Request, db: Sessio
             "ccs_score": None,
         }
 
-    # 履歴（同 player の既存 weekly CCS を古→新）
+    # 履歴（同 player の、この測定より前の weekly CCS を古→新）。
+    # 日付をさかのぼって入力した時に、未来の測定値との差や急変を計算しないよう、
+    # measured_at がこの測定より前のものだけを使う。
     history_rows = (
         db.query(Condition)
         .filter(
             Condition.player_id == body.player_id,
             Condition.condition_type == "weekly",
             Condition.ccs_score.isnot(None),
+            Condition.measured_at < body.measured_at,
         )
         .order_by(Condition.measured_at.asc(), Condition.id.asc())
         .all()
@@ -506,7 +565,7 @@ def submit_questionnaire(body: QuestionnaireSubmit, request: Request, db: Sessio
         dev = calc_deviation(float(scores["ccs_score"]), history_ccs)
     else:
         dev = {"delta_prev": None, "delta_3ma": None, "delta_28ma": None,
-               "z_score": None, "mean_28": None, "sd_28": None}
+               "z_score": None, "mean_28": None, "sd_28": None, "n_28": None}
 
     aux = body.auxiliary or AuxiliaryInput()
 
@@ -539,7 +598,22 @@ def submit_questionnaire(body: QuestionnaireSubmit, request: Request, db: Sessio
     # 同意書 第5条: 提出した本人 (player) と admin のみ生データ可。
     # coach/analyst が代理提出した場合は ROLE_MAX_TIER に従って自動マスクされる。
     owner_consents = _get_owner_body_consents(db, cond.player_id)
-    return {"success": True, "data": filter_condition_fields(_full_dict(cond), _ctx_q.role, owner_consents)}
+    # 結果カード用の平常レンジ / 因子ラベル (GET の _player_view と同じ算出)。
+    # field_sensitivity で Tier 2 に登録済みなので、filter を通すと Tier 2 を見られない
+    # ロール (coach/analyst) には出ない。
+    submit_out = _full_dict(cond)
+    if dev["mean_28"] is not None and dev["sd_28"] is not None and dev["sd_28"] > 0:
+        submit_out["personal_range"] = {
+            "low": dev["mean_28"] - dev["sd_28"],
+            "high": dev["mean_28"] + dev["sd_28"],
+        }
+    else:
+        submit_out["personal_range"] = None
+    submit_out["factor_labels"] = _factor_labels_from_cond(cond)
+    # n_28 は提出時に実際に平均した記録の件数 (厳密値)。名前の 28 は日数ではなく件数。
+    return {"success": True, "data": _with_n_28(
+        filter_condition_fields(submit_out, _ctx_q.role, owner_consents), dev["n_28"]
+    )}
 
 
 # ─── 直接入力 CRUD ───────────────────────────────────────────────────────────
@@ -619,6 +693,7 @@ def create_condition(body: ConditionCreate, request: Request, db: Session = Depe
             from backend.utils.auth import user_can_access_match as _ucam_cc
             if not _ucam_cc(ctx, _m_cc):
                 raise HTTPException(status_code=403, detail="この試合へのアクセス権限がありません")
+        _require_player_in_match(_m_cc, body.player_id)
 
     data = body.model_dump()
     cond = Condition(**data)
@@ -713,8 +788,16 @@ def update_condition(condition_id: int, body: ConditionUpdate, request: Request,
         pass
     data = body.model_dump(exclude_unset=True)
     if "match_id" in data and data["match_id"] is not None:
-        if not db.get(Match, data["match_id"]):
+        _m_upd = db.get(Match, data["match_id"])
+        if not _m_upd:
             raise HTTPException(status_code=404, detail="試合が見つかりません")
+        # POST /conditions と同じ規則: 自分が見られない試合には結び付けない
+        # (他チームの試合に自チーム選手の健康記録を紛れ込ませない)
+        from backend.utils.auth import get_auth as _ga_m, user_can_access_match as _ucam_upd
+        _ctx_m = _ga_m(request)
+        if _ctx_m.role is not None and not _ctx_m.is_admin and not _ucam_upd(_ctx_m, _m_upd):
+            raise HTTPException(status_code=403, detail="この試合へのアクセス権限がありません")
+        _require_player_in_match(_m_upd, cond.player_id)
     from backend.utils.db_update import apply_update
     apply_update(cond, data)
     _recompute(cond)

@@ -21,6 +21,8 @@ interface Overview {
   total_events_7d: number
   wau_by_role: Record<string, number>
   wau_by_platform: Record<string, number>
+  total_events_all: number
+  last_event_at: string | null
   as_of: string
 }
 
@@ -40,6 +42,25 @@ interface ConditionItem { question_id: string; n: number; avg_ms: number; avg_ch
 
 export default function AdminAnalyticsPage() {
   const { t } = useTranslation()
+
+  // 画面 ID (dashboard.overview など) を画面名にする。未登録の ID は元の文字列を出す
+  const viewLabel = (viewId: string): string => {
+    const key = `admin.analytics.view_names.${viewId.replace(/\./g, '_')}`
+    const v = t(key)
+    return !v || v === key ? viewId : v
+  }
+  // 不正・未parse の日時文字列を toLocaleString() に渡すと 'Invalid Date' が出る。
+  // parse 可能なものだけ整形し、失敗時は利用者に意味のある代替文言を出す。
+  // 監査 #77: as_of 等の集計時刻はタイムゾーン指定子のない UTC naive 文字列で返ることがあり、
+  // そのまま new Date() に渡すとローカル解釈され、UTC の壁時計がそのまま出て「端末の時刻」ラベルと矛盾する。
+  // ゾーン指定子 (Z または ±HH:MM) がなければ UTC とみなして Z を補い、端末ローカルに換算する。
+  const fmtDateTime = (value: string | null | undefined): string => {
+    if (!value) return t('admin.analytics.invalid_datetime')
+    const hasTz = /[zZ]$|[+-]\d{2}:?\d{2}$/.test(value.trim())
+    const normalized = hasTz ? value : `${value.trim()}Z`
+    const d = new Date(normalized)
+    return isNaN(d.getTime()) ? t('admin.analytics.invalid_datetime') : d.toLocaleString()
+  }
   const [overview, setOverview] = useState<Overview | null>(null)
   const [funnel, setFunnel] = useState<FunnelData | null>(null)
   const [dwell, setDwell] = useState<DwellItem[]>([])
@@ -53,18 +74,24 @@ export default function AdminAnalyticsPage() {
     setLoading(true)
     setErr(null)
     try {
-      const [ov, fn, dw, lr, cq] = await Promise.all([
+      // 監査 #746: 1 本の失敗で他の成功分まで旧期間の値に固定しない。
+      // 期間に依存する funnel / dwell / condition は、失敗時に旧期間の値を残さず空にする。
+      const [ov, fn, dw, lr, cq] = await Promise.allSettled([
         apiGet<{ data: Overview }>('/admin/analytics/overview'),
         apiGet<{ data: FunnelData }>(`/admin/analytics/funnel?days=${days}`),
         apiGet<{ data: { items: DwellItem[] } }>(`/admin/analytics/dwell?days=${days}&limit=30`),
         apiGet<{ data: { series: LearningSeries } }>('/admin/analytics/learning?weeks=8'),
         apiGet<{ data: { items: ConditionItem[] } }>(`/admin/analytics/condition_quality?days=${days}`),
       ])
-      setOverview(ov.data)
-      setFunnel(fn.data)
-      setDwell(dw.data.items)
-      setLearning(lr.data.series)
-      setCondition(cq.data.items)
+      if (ov.status === 'fulfilled') setOverview(ov.value.data)
+      setFunnel(fn.status === 'fulfilled' ? fn.value.data : null)
+      setDwell(dw.status === 'fulfilled' ? dw.value.data.items : [])
+      if (lr.status === 'fulfilled') setLearning(lr.value.data.series)
+      setCondition(cq.status === 'fulfilled' ? cq.value.data.items : [])
+      const failed = [ov, fn, dw, lr, cq].find((r) => r.status === 'rejected')
+      if (failed && failed.status === 'rejected') {
+        setErr((failed.reason as Error)?.message ?? String(failed.reason))
+      }
     } catch (e) {
       setErr((e as Error).message)
     } finally {
@@ -79,7 +106,7 @@ export default function AdminAnalyticsPage() {
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-[var(--ss-t1)] inline-flex items-center gap-2">
           <MIcon name="analytics" size={26} />
-          Product Analytics
+          {t('admin.analytics.title')}
         </h1>
         <div className="flex items-center gap-2 text-sm">
           <label className="text-[var(--ss-t2)]">{t('admin.analytics.period')}</label>
@@ -117,7 +144,18 @@ export default function AdminAnalyticsPage() {
             <Stat label={t('admin.analytics.stat_wau')} value={overview.wau} />
             <Stat label={t('admin.analytics.stat_mau')} value={overview.mau} />
             <Stat label={t('admin.analytics.stat_events_7d')} value={overview.total_events_7d} />
-            <Stat label={t('admin.analytics.stat_as_of')} value={new Date(overview.as_of).toLocaleString('ja-JP')} small />
+            <Stat label={t('admin.analytics.stat_as_of')} value={fmtDateTime(overview.as_of)} small />
+          </div>
+          <div className="mt-3 text-xs text-[var(--ss-t2)] space-y-1">
+            <p>{t('admin.analytics.scope_note')}</p>
+            <p>
+              {overview.total_events_all === 0 || !overview.last_event_at
+                ? t('admin.analytics.no_events_recorded')
+                : t('admin.analytics.last_event', {
+                    time: fmtDateTime(overview.last_event_at),
+                    total: overview.total_events_all,
+                  })}
+            </p>
           </div>
           <div className="mt-4 grid sm:grid-cols-2 gap-4">
             <Kv title={t('admin.analytics.kv_wau_role')} data={overview.wau_by_role} />
@@ -200,7 +238,7 @@ export default function AdminAnalyticsPage() {
             <tbody className="text-[var(--ss-t1)]">
               {dwell.map((d) => (
                 <tr key={d.view_id} className="border-t border-[var(--ss-border)]">
-                  <td className="py-1">{d.view_id}</td>
+                  <td className="py-1" title={d.view_id}>{viewLabel(d.view_id)}</td>
                   <td className="text-right">{d.view_count}</td>
                   <td className="text-right">{d.unique_users}</td>
                   <td className="text-right">{Math.round(d.avg_dwell_ms / 1000)}s</td>

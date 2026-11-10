@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 import json
+from backend.analysis.player_context import opponent_player_id
 from backend.db.database import get_db
 from backend.utils.auth import require_non_player, get_auth, require_query_scope
 from backend.db.models import Player, Match, PrematchPrediction
@@ -27,7 +28,9 @@ from backend.analysis.prediction_engine import (
     compute_growth_trend,
     compute_feature_win_prob,
     compute_set_model_v2,
-    compute_brier_score,
+    compute_brier_score_blended,
+    reference_status,
+    win_probability_interval,
     find_nearest_matches,
     # Phase S3/S4
     compute_score_volatility,
@@ -83,8 +86,10 @@ def get_match_preview(
     else:
         primary = all_matches
 
-    # v1: 既存 Laplace 勝率（後方互換）
+    # 試合数・0 件判定用の Laplace 勝率 (primary の件数)。画面に出す勝率はこれではなく下の win_prob_v2
     win_prob, sample_size = compute_win_probability(primary, player_id)
+    # 直接対戦だけの Laplace 勝率。最終勝率とは別物なので別名 (h2h_win_rate / h2h_n) で返す
+    h2h_win_rate, h2h_n = compute_win_probability(h2h_matches, player_id)
 
     # Phase S4: スコアボラティリティ
     score_volatility = compute_score_volatility(primary, player_id)
@@ -93,6 +98,43 @@ def get_match_preview(
     win_prob_v2, feature_breakdown = compute_feature_win_prob(
         all_matches, player_id, h2h_matches, recent_form, obs_context
     )
+
+    # 試合 0 件: 勝率・セット分布・スコア予測はいずれも定義できない。
+    # 事前分布 (0.5) から作った偽の予測を返さず、全て null + insufficient_data にする。
+    if win_prob is None or win_prob_v2 is None:
+        _conf0 = compute_confidence_score(0, len(h2h_matches))
+        return {
+            "success": True,
+            "data": {
+                "win_probability": None,
+                "win_probability_ci": None,
+                "win_probability_reference": reference_status(0),
+                "h2h_win_rate": h2h_win_rate,
+                "h2h_n": h2h_n,
+                "brier_score": None,
+                "insufficient_data": True,
+                "feature_breakdown": feature_breakdown,
+                "recent_form": recent_form,
+                "set_distribution": None,
+                "set_model_type": None,
+                "score_bands": None,
+                "most_likely_scorelines": [],
+                "confidence": _conf0,
+                "sample_size": 0,
+                "similar_matches": len(h2h_matches),
+                "observation_context": obs_context,
+                "tactical_notes": [],
+                "caution_flags": [],
+                "calibrated_scorelines": [],
+                "prediction_drivers": [],
+                "score_volatility": score_volatility,
+                "match_narrative": None,
+            },
+            "meta": {
+                "sample_size": 0,
+                "confidence": confidence_meta(_conf0, 0),
+            },
+        }
 
     # Phase 1: モメンタムセットモデル
     # 実測 ≥5 試合ある場合は observed を渡す
@@ -123,6 +165,10 @@ def get_match_preview(
     similar_count = len(h2h_matches)
     confidence = compute_confidence_score(sample_size, similar_count)
 
+    # 表示する勝率 (win_prob_v2) そのものの Brier。Laplace 勝率の Brier ではない
+    brier_score = compute_brier_score_blended(all_matches, player_id, h2h_matches)
+    win_reference = reference_status(sample_size, brier_score)
+
     # 試合前サマリーナレーション（決め手・ぐだり局面・スコア予測を統合）
     player_obj = db.get(Player, player_id)
     match_narrative = compute_match_narrative(
@@ -142,9 +188,15 @@ def get_match_preview(
     return {
         "success": True,
         "data": {
-            # 後方互換: v1 勝率を win_probability として維持
-            "win_probability": win_prob,
-            "win_probability_v2": win_prob_v2,
+            # 最終勝率はこの 1 つだけ (全体・直近・直接対戦の混合)。画面の数字はすべてこれを読む
+            # 試合 0 件の勝率は偽の 0.5 ではなく None (統計規則 R1)。sample_size を併記
+            "win_probability": win_prob_v2 if sample_size > 0 else None,
+            "win_probability_ci": win_probability_interval(win_prob_v2, sample_size),
+            "win_probability_reference": win_reference,
+            # 直接対戦だけの Laplace 勝率 (最終勝率の入力の 1 つ)。件数 h2h_n と一緒に読む
+            "h2h_win_rate": h2h_win_rate,
+            "h2h_n": h2h_n,
+            "brier_score": brier_score,
             "feature_breakdown": feature_breakdown,
             "recent_form": recent_form,
             "set_distribution": set_dist,
@@ -204,7 +256,11 @@ def get_lineup_optimizer(
             "ranked_players": ranked,
             "opponent_id": opponent_id,
             "tournament_level": tournament_level,
-            "recommendation": ranked[0]['player_name'] if ranked else None,
+            # 勝率のない (試合 0 件の) 選手は推奨しない
+            "recommendation": (
+                ranked[0]['player_name']
+                if ranked and ranked[0]['win_probability'] is not None else None
+            ),
         },
     }
 
@@ -242,14 +298,22 @@ def get_analyst_depth(
 
     recent_form = compute_recent_form(all_matches, player_id)
     growth_trend = compute_growth_trend(all_matches, player_id)
-    brier_score = compute_brier_score(all_matches, player_id)
+    brier_score = compute_brier_score_blended(all_matches, player_id, h2h_matches)
+    # 対象選手の最頻フォーマットを観測試合から導出し、類似度のフォーマット加点に使う
+    _fmt_counts: dict[str, int] = {}
+    for _m in all_matches:
+        _f = getattr(_m, 'format', None)
+        if _f:
+            _fmt_counts[_f] = _fmt_counts.get(_f, 0) + 1
+    _current_format = max(_fmt_counts, key=_fmt_counts.get) if _fmt_counts else None
     nearest_evidence = find_nearest_matches(
         all_matches, player_id,
         current_level=tournament_level or '',
         n=5,
+        current_format=_current_format,
     )
 
-    win_prob_v1, _ = compute_win_probability(all_matches, player_id)
+    win_prob_v1, n_v1 = compute_win_probability(all_matches, player_id)
     win_prob_v2, feature_breakdown = compute_feature_win_prob(
         all_matches, player_id, h2h_matches, recent_form, obs_context
     )
@@ -273,8 +337,9 @@ def get_analyst_depth(
             "nearest_match_evidence": nearest_evidence,
             "set_model_type": set_model_type,
             "feature_breakdown": feature_breakdown,
-            "win_prob_v1": win_prob_v1,
-            "win_prob_v2": win_prob_v2,
+            # 試合 0 件では偽の 0.5 を返さない (統計規則 R1)
+            "win_prob_v1": win_prob_v1 if n_v1 > 0 else None,
+            "win_prob_v2": win_prob_v2 if n_v1 > 0 else None,
         },
     }
 
@@ -330,11 +395,8 @@ def get_prematch_by_match(
         return {"success": False, "error": "Match not found"}
 
     # 対戦相手を確定
-    if match.player_a_id == player_id:
-        opponent_id = match.player_b_id
-    elif match.player_b_id == player_id:
-        opponent_id = match.player_a_id
-    else:
+    opponent_id = opponent_player_id(match, player_id)
+    if opponent_id is None:
         return {"success": False, "error": "Player not in this match"}
 
     # ── DB キャッシュ確認 ──────────────────────────────────────────────────────
@@ -560,7 +622,10 @@ def get_pair_ranking(
     # 他チーム所有 match を含む集計を返していた。
     from backend.utils.auth import get_auth as _ga_pr
     _ctx_pr = _ga_pr(request)
-    all_players = db.query(Player).order_by(Player.name).all()
+    from backend.routers.players import exclude_unapproved_registrants
+    all_players = exclude_unapproved_registrants(
+        db.query(Player), _ctx_pr
+    ).order_by(Player.name).all()
     anchor = db.get(Player, anchor_player_id)
 
     # Perf: anchor を含むペア試合を一括取得し、候補 partner_id でグルーピング。
@@ -614,14 +679,19 @@ def get_pair_ranking(
             "partner_id": candidate.id,
             "partner_name": candidate.name,
             "partner_team": getattr(candidate, "team", None),
-            "win_probability": win_prob,
+            # 対戦実績 0 件のペアに偽の 0.5 を付けて順位づけしない (統計規則 R1)
+            "win_probability": win_prob if sample_size > 0 else None,
             "sample_size": sample_size,
             "confidence": confidence,
             "confidence_meta": confidence_meta(confidence, sample_size),
         })
 
     # 勝率降順 → サンプル数降順でソート
-    results.sort(key=lambda x: (-x["win_probability"], -x["sample_size"]))
+    results.sort(key=lambda x: (
+        x["win_probability"] is None,
+        -(x["win_probability"] if x["win_probability"] is not None else 0.0),
+        -x["sample_size"],
+    ))
     for i, r in enumerate(results):
         r["rank"] = i + 1
 
@@ -659,7 +729,11 @@ def get_pair_simulation(
     )
 
     win_prob, sample_size = compute_win_probability(pair_matches, player_id_1)
-    set_dist = compute_set_distribution(pair_matches, player_id_1, win_prob)
+    # ペアの試合 0 件ではセット分布も定義できない (事前分布の 0.5 から作らない)
+    set_dist = (
+        compute_set_distribution(pair_matches, player_id_1, win_prob)
+        if win_prob is not None else None
+    )
     score_bands = compute_score_bands(pair_matches, player_id_1)
 
     confidence = compute_confidence_score(sample_size, sample_size)
@@ -674,14 +748,16 @@ def get_pair_simulation(
         cautions.append('ペアとしての対戦データなし — 個人成績から予測できません')
     elif sample_size < 5:
         cautions.append(f'少数サンプル（{sample_size}試合） — 推定精度が低め')
-    if win_prob >= 0.60 and sample_size >= 3:
+    if win_prob is not None and win_prob >= 0.60 and sample_size >= 3:
         strengths.append(f'このペアの過去勝率は {int(win_prob * 100)}%（{sample_size}試合）')
 
     return {
         "success": True,
         "data": {
             "pair_name": pair_name,
-            "win_probability": win_prob,
+            "win_probability": win_prob if sample_size > 0 else None,
+            "win_probability_ci": win_probability_interval(win_prob, sample_size),
+            "win_probability_reference": reference_status(sample_size),
             "set_distribution": set_dist,
             "score_bands": score_bands,
             "pair_strengths": strengths,

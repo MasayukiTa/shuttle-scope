@@ -37,6 +37,7 @@ interface EPVResponse {
     // registry の caution をサーバが返すようになったので必ず描く。
     caution?: string | null
     assumptions?: string | null
+    promotion_criteria?: string | null
   }
 }
 
@@ -117,7 +118,7 @@ export function MarkovEPV({ playerId, filters = DEFAULT_FILTERS }: MarkovEPVProp
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-3">
-        <ConfidenceBadge sampleSize={sampleSize} unit="strokes" />
+        <ConfidenceBadge sampleSize={sampleSize} tier="research" unit="strokes" />
         <span className="text-[11px] text-[var(--ss-t3)]">
           {t('auto.MarkovEPV.epv_def')}
         </span>
@@ -127,7 +128,8 @@ export function MarkovEPV({ playerId, filters = DEFAULT_FILTERS }: MarkovEPVProp
           兄弟の StateEPVCard と同じ ResearchNotice を使う。 */}
       <ResearchNotice
         caution={resp?.meta?.caution ?? t('analysis.epv.caution_fallback')}
-        assumptions={resp?.meta?.assumptions ?? undefined}
+        assumptions={resp?.meta?.assumptions ?? t('analysis.epv.assumptions_fallback')}
+        promotionCriteria={resp?.meta?.promotion_criteria ?? undefined}
       />
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">

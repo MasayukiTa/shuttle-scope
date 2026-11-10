@@ -74,6 +74,9 @@ def create_comment(body: CommentCreate, request: Request, db: Session = Depends(
     from backend.utils.auth import user_can_access_match
     if not user_can_access_match(ctx, match):
         raise HTTPException(status_code=404, detail="試合が見つかりません")
+    # 本文の set/rally/stroke が URL ではなく本文の match_id の試合に属することを検証
+    from backend.utils.match_refs import require_refs_in_match
+    require_refs_in_match(db, body.match_id, set_id=body.set_id, rally_id=body.rally_id, stroke_id=body.stroke_id)
     # DoS 対策: user あたり 60 秒に 20 comment 上限
     if ctx.user_id:
         now = _t_c.time()

@@ -33,6 +33,7 @@ _BACKEND_ROOT = _THIS.parent.parent.parent  # shuttlescope/
 sys.path.insert(0, str(_BACKEND_ROOT))
 
 from backend.utils.security_log import emit_security_event, emit_request_log  # noqa: E402
+from backend.utils.security_detectors import record_secret_path_response  # noqa: E402
 
 # nginx ログの場所 (本番固定。環境変数で上書き可)
 NGINX_LOG_DIR = Path(os.environ.get("SS_NGINX_LOG_DIR", r"C:\tools\nginx-1.31.0\logs"))
@@ -192,6 +193,18 @@ def _split_uri(uri: str):
     return uri, None
 
 
+def _nginx_answered_itself(d: dict) -> bool:
+    """True when the log line proves nginx did not forward the request.
+
+    Needs the "up" field ($upstream_status, added to log_format ss_main). It is
+    "-" or empty when no upstream was contacted. Lines written before that field
+    existed have no "up" key; they cannot be judged and are treated as proxied
+    (the backend middleware saw them), never as a leak."""
+    if "up" not in d:
+        return False
+    return str(d.get("up") or "-").strip() in ("-", "")
+
+
 def _ship_access_log(state: dict) -> tuple[int, int]:
     """ss_access.log 全行を request_logs(source='nginx') に取り込む。
     backend RequestLogMiddleware の source='backend' 行とは区別される
@@ -231,6 +244,17 @@ def _ship_access_log(state: dict) -> tuple[int, int]:
             ts=ts,  # None なら emit 側が now() にフォールバック
         )
         n += 1
+        if status == 200 and _nginx_answered_itself(d):
+            # Secret-path 200 that nginx produced without asking the backend
+            # (e.g. static file serving). The backend cannot see these, so this
+            # is the only place that can raise secret_path_200 for them. There
+            # is no decoy at this layer, hence is_decoy=False. Requests that
+            # were proxied are judged by the backend middleware instead.
+            record_secret_path_response(
+                path=path, status=status, is_decoy=False,
+                ip=d.get("cf") or d.get("remote"), method=d.get("method"),
+                ua=d.get("ua"), country=d.get("country"), source="nginx", ts=ts,
+            )
         if status == 429:
             emit_security_event(
                 "nginx_rate_limit",

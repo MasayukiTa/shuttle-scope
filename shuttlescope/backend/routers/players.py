@@ -5,13 +5,14 @@ import unicodedata
 from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import or_
+from sqlalchemy import or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
-from backend.db.models import Player, Match
+from backend.db.models import Player, Match, User
 from backend.utils.auth import get_auth, require_analyst, AuthCtx
-from backend.utils.text_sanitize import reject_ctrl_and_bidi
+from backend.utils.text_sanitize import reject_ctrl_and_bidi, strip_invisible_format_chars
 from fastapi import HTTPException as _HTTPException
 
 
@@ -183,9 +184,11 @@ def _parse_json_list(raw: Optional[str]) -> list:
 def player_to_dict(p: Player, match_count: int = 0) -> dict:
     return {
         "id": p.id,
-        "name": p.name,
-        "name_en": p.name_en,
-        "team": p.team,
+        # 検証を入れる前に保存された名前に不可視・双方向制御文字が残っていても、
+        # 応答では取り除く (保存値は書き換えない。監査 #10)。
+        "name": strip_invisible_format_chars(p.name),
+        "name_en": strip_invisible_format_chars(p.name_en),
+        "team": strip_invisible_format_chars(p.team),
         "nationality": p.nationality,
         "dominant_hand": p.dominant_hand,
         "birth_year": p.birth_year,
@@ -275,6 +278,25 @@ def _own_team_or_scouting_filter(db: Session, team_name: str, ctx):
     return cond
 
 
+def exclude_unapproved_registrants(query, ctx):
+    """管理者の承認待ちユーザに紐づく Player を、選手の選択肢から外す。
+
+    自己登録は Player を先に作る (player_id が無いと全 API が 401 になるため)。
+    承認前の登録者は誰でもない人なので、候補として他人に見せない。
+    印 (profile_status) ではなく user の状態で判定する: 印が付く前に作られた
+    行も同じ規則で隠れ、承認で awaiting_admin_approval が False になれば
+    自動で戻る。選手本人は自分の行しか見ない枝なので影響しない。
+    クイックスタートの暫定相手はどの user にも紐づかないので対象外。
+    """
+    if ctx.is_player:
+        return query
+    pending_ids = (
+        select(User.player_id)
+        .where(User.awaiting_admin_approval.is_(True), User.player_id.isnot(None))
+    )
+    return query.filter(Player.id.notin_(pending_ids))
+
+
 @router.get("/players")
 def list_players(request: Request, db: Session = Depends(get_db),
                  _auth: AuthCtx = Depends(_require_auth)):
@@ -306,7 +328,8 @@ def list_players(request: Request, db: Session = Depends(get_db),
         # なので、`llm` と `demo` はどの枝にも入らず**全選手を取得できていた**。
         # ロールを足すたびに黙って漏れる形なので、既定を拒否にする。
         return {"success": True, "data": []}
-    # admin は全選手
+    # admin は全選手 (承認待ちの登録者を除く)
+    query = exclude_unapproved_registrants(query, ctx)
 
     players = query.all()
     counts = _match_counts(db, players)
@@ -326,6 +349,10 @@ def _scoped_player_query(db: Session, request: Request):
     """
     from backend.utils.auth import get_auth
     ctx = get_auth(request)
+    return exclude_unapproved_registrants(_scoped_player_query_raw(db, request, ctx), ctx)
+
+
+def _scoped_player_query_raw(db: Session, request: Request, ctx):
     query = db.query(Player)
     if ctx.is_admin:
         return query
@@ -450,6 +477,22 @@ def create_player(
     _ctx=Depends(require_analyst),
 ):
     """選手登録"""
+    player, payload = add_player_row(body, request, db)
+    new_player_id = player.id
+    db.commit()
+    # 新規選手の登録はチーム可視範囲に影響し得るためグローバル無効化も実施
+    response_cache.bump_players([new_player_id])
+    response_cache.bump_version()
+    return {"success": True, "data": payload}
+
+
+def add_player_row(body: PlayerCreate, request: Request, db: Session):
+    """選手の検証と追加を行い、flush までで止める（commit しない）。
+
+    POST /players と POST /matches（暫定選手を試合と同じトランザクションで作る）が
+    同じ規則を共有するための入口。呼び出し側が commit か rollback を決める。
+    戻り値は (Player, 応答用 dict)。
+    """
     from backend.utils.auth import can_see_scouting_players, get_auth as _ga
     _actor = _ga(request)
 
@@ -585,11 +628,7 @@ def create_player(
     # `InvalidRequestError: Could not refresh instance` で 500 になる
     # (CI で実際に観測)。flush 済みの属性は既に揃っているので refresh は要らない。
     payload = player_to_dict(player)
-    db.commit()
-    # 新規選手の登録はチーム可視範囲に影響し得るためグローバル無効化も実施
-    response_cache.bump_players([new_player_id])
-    response_cache.bump_version()
-    return {"success": True, "data": payload}
+    return player, payload
 
 
 def _log_scope_denial(request: Request, ctx, player, *, status: int, reason: str) -> None:
@@ -730,7 +769,10 @@ def update_player(player_id: Annotated[int, Path(ge=1, le=2_147_483_647)], body:
     # team 変更時: 旧チームを team_history に自動追記
     # Phase B-15+: team 文字列カラム撤去後は team_id 経由で名前を解決。
     # PlayerUpdate.team は文字列入力 → team_id へ翻訳して書き込む。
+    team_sent = "team" in data  # 明示 null (= 所属解除) と「未指定」を区別する
     new_team_str = data.pop("team", None)  # data から消す（Player に直接 setattr しない）
+    if team_sent and new_team_str is None:
+        new_team_str = ""  # 明示 null は空文字と同じく所属解除として扱う
     old_team = player.team  # @property 経由で teams.name を返す
     if new_team_str is not None and old_team and old_team != new_team_str:
         history = _parse_json_list(player.team_history)
@@ -803,6 +845,27 @@ def update_player(player_id: Annotated[int, Path(ge=1, le=2_147_483_647)], body:
     return {"success": True, "data": player_to_dict(player)}
 
 
+def _player_non_match_references(db: Session, player_id: int) -> list[tuple[str, int]]:
+    """Match 以外で players.id を直接参照する行の件数 (0 件の表は返さない)。
+
+    Condition / ConditionTag は Player.conditions / condition_tags の
+    ORM cascade (all, delete-orphan) で一緒に消えるので、ここには含めない。
+    """
+    from backend.db.models import HumanForecast, PreMatchObservation, PrematchPrediction
+    checks = [
+        ("アカウント", User, [User.player_id]),
+        ("試合前観察", PreMatchObservation, [PreMatchObservation.player_id]),
+        ("人手予測", HumanForecast, [HumanForecast.player_id]),
+        ("試合前予測", PrematchPrediction, [PrematchPrediction.player_id, PrematchPrediction.opponent_id]),
+    ]
+    found: list[tuple[str, int]] = []
+    for label, model, cols in checks:
+        n = db.query(model).filter(or_(*[c == player_id for c in cols])).count()
+        if n > 0:
+            found.append((label, n))
+    return found
+
+
 @router.delete("/players/{player_id}")
 def delete_player(
     player_id: Annotated[int, Path(ge=1, le=2_147_483_647)],
@@ -828,8 +891,32 @@ def delete_player(
             status_code=409,
             detail=f"この選手は {ref_count} 件の試合に紐づいているため削除できません。先に試合を削除してください。"
         )
-    db.delete(player)
-    db.commit()
+    # 試合以外の直接参照 (予測 / コンディション / アカウント等)。
+    # 残っていると DELETE が FK 違反になり 500 になるため、先に 409 で止める。
+    other_refs = _player_non_match_references(db, player_id)
+    if other_refs:
+        summary = "、".join(f"{label} {n} 件" for label, n in other_refs)
+        raise HTTPException(
+            status_code=409,
+            detail=f"この選手は他のデータ ({summary}) から参照されているため削除できません。先に関連データを整理してください。"
+        )
+    try:
+        db.delete(player)
+        db.commit()
+    except IntegrityError:
+        # 事前確認の後に参照が増えた場合の保険。500 ではなく 409 を返す。
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="この選手は他のデータから参照されているため削除できません。"
+        )
+    # 監査ログ: 誰がどの選手を削除したか。個人情報は残さず id のみ。
+    from backend.utils.access_log import log_admin_action
+    log_admin_action(
+        db, request, "player_deleted",
+        resource_type="player", resource_id=player_id,
+        details={"deleted_player_id": player_id},
+    )
     # 削除は全選手への可視範囲影響もあるためグローバル + 自身の両方無効化
     response_cache.bump_players([player_id])
     response_cache.bump_version()
@@ -855,8 +942,9 @@ def get_player_matches(player_id: Annotated[int, Path(ge=1, le=2_147_483_647)], 
             raise HTTPException(status_code=404, detail="選手が見つかりません")
     else:
         _player_scope_check(request, player)
+    from backend.analysis.player_context import involves_player
     matches = db.query(Match).filter(
-        (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
+        involves_player(player_id)
     ).order_by(Match.date.desc()).all()
     return {"success": True, "data": [
         {
@@ -890,16 +978,18 @@ def get_player_stats(player_id: Annotated[int, Path(ge=1, le=2_147_483_647)], re
             raise HTTPException(status_code=404, detail="選手が見つかりません")
     else:
         _player_scope_check(request, player)
-    total_matches = db.query(Match).filter(
-        (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
-    ).count()
-    wins = db.query(Match).filter(
-        Match.player_a_id == player_id, Match.result == "win"
-    ).count()
+    # 参加者の定義は 4 スロット (player_a/b + partner_a/b) で統一する。
+    # Match.result は A 側から見た勝敗なので、B 側の選手は反転して数える。
+    from backend.analysis.player_context import involves_player, player_result_filter
+    total_matches = db.query(Match).filter(involves_player(player_id)).count()
+    wins = db.query(Match).filter(player_result_filter(player_id, "win")).count()
+    losses = db.query(Match).filter(player_result_filter(player_id, "loss")).count()
     return {
         "success": True,
         "data": {
             "total_matches": total_matches,
             "wins": wins,
+            # 勝率の分母 (勝敗確定試合数)。未完了・不戦勝などは含めない。
+            "decided_matches": wins + losses,
         }
     }

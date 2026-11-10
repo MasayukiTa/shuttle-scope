@@ -3,6 +3,11 @@ import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
+import { QueryErrorNotice } from '@/components/common/QueryErrorNotice'
+import { hasSufficientSample } from '@/utils/sampleGate'
+
+/** これ未満のストローク数では密度マップを出さない (監査 #438)。 */
+const SPATIAL_DENSITY_MIN_STROKES = 5
 import { seqBlue } from '@/styles/colors'
 import { useTranslation } from 'react-i18next'
 
@@ -28,7 +33,7 @@ const SVG_H = 360
 export function SpatialDensityMap({ playerId }: SpatialDensityMapProps) {
   const { t } = useTranslation()
 
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError, refetch } = useQuery({
     queryKey: ['analysis-spatial-density', playerId],
     queryFn: () => apiGet<Response>('/analysis/spatial_density', { player_id: playerId }),
     enabled: !!playerId,
@@ -43,14 +48,25 @@ export function SpatialDensityMap({ playerId }: SpatialDensityMapProps) {
     )
   }
 
-  const d = resp?.data
-  const sampleSize = resp?.meta?.sample_size ?? 0
-
-  if (!d || sampleSize === 0) {
+  // A failed fetch must not fall through to NoDataMessage (success-empty);
+  // surface an explicit error with retry instead of masking it as no data.
+  if (isError) {
     return (
       <div className="bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-lg p-4">
         <h3 className="text-sm font-semibold text-[var(--ss-t1)] mb-3">{t('auto.SpatialDensityMap.k1')}</h3>
-        <NoDataMessage sampleSize={sampleSize} minRequired={5} unit="ストローク" />
+        <QueryErrorNotice onRetry={() => { void refetch() }} />
+      </div>
+    )
+  }
+
+  const d = resp?.data
+  const sampleSize = resp?.meta?.sample_size ?? 0
+
+  if (!d || !hasSufficientSample(sampleSize, SPATIAL_DENSITY_MIN_STROKES)) {
+    return (
+      <div className="bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-lg p-4">
+        <h3 className="text-sm font-semibold text-[var(--ss-t1)] mb-3">{t('auto.SpatialDensityMap.k1')}</h3>
+        <NoDataMessage sampleSize={sampleSize} minRequired={SPATIAL_DENSITY_MIN_STROKES} unit="ストローク" />
       </div>
     )
   }
@@ -75,7 +91,7 @@ export function SpatialDensityMap({ playerId }: SpatialDensityMapProps) {
   return (
     <div className="bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-lg p-4">
       <h3 className="text-sm font-semibold text-[var(--ss-t1)] mb-3">{t('auto.SpatialDensityMap.k1')}</h3>
-      <ConfidenceBadge sampleSize={sampleSize} unit="strokes" />
+      <ConfidenceBadge sampleSize={sampleSize} tier="research" unit="strokes" />
 
       <div className="mt-3 flex gap-4 items-start">
         {/* SVGコート */}

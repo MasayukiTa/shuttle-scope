@@ -12,7 +12,10 @@
  * Disclosed in PRIVACY.md §テレメトリ. No popup consent; Art 21 objection
  * via contact@shuttle-scope.com.
  */
-import { API_BASE_URL, getAuthHeaders } from '@/api/client'
+import { API_BASE_URL, fetchWithTimeout, getAuthHeaders } from '@/api/client'
+
+/** telemetry 送信の timeout (ms)。flush ロックを無期限に握らないための上限。 */
+const FLUSH_TIMEOUT_MS = 15_000
 
 // ─── event taxonomy (server-side allowlist と同期させること) ────────────
 export type EventType =
@@ -32,17 +35,25 @@ export type EventType =
   | 'network_slow'
   | 'ui_event'
 
-interface PendingEvent {
+export interface PendingEvent {
   event_id: string
   event_type: EventType
   props: Record<string, unknown>
   client_ts: number  // ms epoch
+  /** 記録時のログイン利用者 (sessionStorage の user_id)。未ログイン時・旧データは無し。送信 payload には含めない。 */
+  owner?: string | null
 }
 
 const DB_NAME = 'shuttlescope_telemetry'
 const STORE = 'events'
 const FLUSH_INTERVAL_MS = 30_000
 const BATCH_SIZE = 100
+/** 未送信キューの最大件数。送信が止まっても IndexedDB が増え続けないための上限。 */
+export const MAX_QUEUED_EVENTS = 5000
+/** 未送信イベントの保持期限 (ms)。7 日以上前の利用記録は送っても分析価値が低く、端末に残す理由も無い。 */
+export const QUEUE_TTL_MS = 7 * 24 * 60 * 60 * 1000
+/** TTL 掃除の最小間隔 (ms)。件数超過は毎回確認する。 */
+const PRUNE_INTERVAL_MS = 60 * 60 * 1000
 const APP_VERSION =
   (typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : null) ||
   (typeof window !== 'undefined'
@@ -131,18 +142,96 @@ async function enqueue(ev: PendingEvent): Promise<void> {
   }
 }
 
-async function drain(limit: number): Promise<PendingEvent[]> {
+/** キュー全体を読む (上限 MAX_QUEUED_EVENTS 程度なので全件でよい)。 */
+async function readAll(): Promise<PendingEvent[]> {
   try {
     const db = await openDB()
     return await new Promise<PendingEvent[]>((resolve, reject) => {
       const tx = db.transaction(STORE, 'readonly')
-      const req = tx.objectStore(STORE).getAll(undefined, limit)
+      const req = tx.objectStore(STORE).getAll()
       req.onsuccess = () => resolve(req.result as PendingEvent[])
       req.onerror = () => reject(req.error)
     })
   } catch {
     return []
   }
+}
+
+/** 現在ログイン中の利用者 (未ログインは null)。 */
+function currentOwner(): string | null {
+  try {
+    return sessionStorage.getItem('shuttlescope_user_id') || null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 期限切れ (TTL 超過) と、件数上限を超えた古いものの event_id を返す。
+ * 上限を超えた場合は client_ts の古い順に捨てる。
+ */
+export function pickPruneIds(
+  events: ReadonlyArray<Pick<PendingEvent, 'event_id' | 'client_ts'>>,
+  now: number,
+  ttlMs: number = QUEUE_TTL_MS,
+  maxCount: number = MAX_QUEUED_EVENTS,
+): string[] {
+  const drop = new Set<string>()
+  const live: Array<Pick<PendingEvent, 'event_id' | 'client_ts'>> = []
+  for (const e of events) {
+    if (now - e.client_ts > ttlMs) drop.add(e.event_id)
+    else live.push(e)
+  }
+  if (live.length > maxCount) {
+    live.sort((a, b) => a.client_ts - b.client_ts)
+    for (const e of live.slice(0, live.length - maxCount)) drop.add(e.event_id)
+  }
+  return Array.from(drop)
+}
+
+/**
+ * 今送るイベントを決める。
+ *
+ * offlineStrokeQueue の所有者境界と同じ不変条件を適用する:
+ *   - owner が現在の認証主体と一致するイベントだけを送る。
+ *   - 別の利用者 (owner が現在と異なる) のイベントは、現在の名義で
+ *     決して送らない。かつ捨てない (dropIds にも入れない)。
+ *     その所有者のために残し、後で本人が再ログインしたときに本人の
+ *     owner で送る (offlineStrokeQueue の listPendingForMatch / deletePendingForUser が
+ *     他人の行を除外するだけで削除しないのと同じ)。
+ *   - owner 無し (未ログイン中・旧データ) は従来どおり送る。
+ *   - 現在が未ログインなら owner 付きは送れないので保持し、owner 無しだけ送る。
+ *
+ * dropIds はここでは常に空 (別 owner を理由に捨てない)。機能超過・TTL による
+ * 削除は pickPruneIds / pruneQueue が別途行う。
+ */
+export function planFlush<T extends Pick<PendingEvent, 'event_id' | 'owner'>>(
+  events: ReadonlyArray<T>,
+  owner: string | null,
+  batchSize: number = BATCH_SIZE,
+): { send: T[]; dropIds: string[] } {
+  const send: T[] = []
+  for (const e of events) {
+    if (send.length >= batchSize) break
+    // owner 付きイベントは、現在の認証主体と一致するときだけ送る。
+    // 別 owner のイベントは送らず捨てず保持する (その owner のために残す)。
+    if (e.owner && e.owner !== owner) continue
+    send.push(e)
+  }
+  // 別 owner 起因の破棄はしない。dropIds は prune 専用。
+  return { send, dropIds: [] }
+}
+
+let _lastPruneAt = 0
+async function pruneQueue(events: PendingEvent[]): Promise<PendingEvent[]> {
+  const now = Date.now()
+  if (events.length <= MAX_QUEUED_EVENTS && now - _lastPruneAt < PRUNE_INTERVAL_MS) return events
+  _lastPruneAt = now
+  const ids = pickPruneIds(events, now)
+  if (!ids.length) return events
+  await removeIds(ids)
+  const gone = new Set(ids)
+  return events.filter(e => !gone.has(e.event_id))
 }
 
 async function removeIds(ids: string[]): Promise<void> {
@@ -169,7 +258,14 @@ export function track(eventType: EventType, props: Record<string, unknown> = {})
     event_type: eventType,
     props,
     client_ts: Date.now(),
+    owner: currentOwner(),
   })
+}
+
+/** /_telemetry/ingest の応答が「未ログインのため 0 件処理」を示すか。 */
+export function wasSkippedForNoUser(body: unknown): boolean {
+  if (!body || typeof body !== 'object') return false
+  return (body as { skipped?: unknown }).skipped === 'no_user'
 }
 
 let _flushing = false
@@ -177,7 +273,11 @@ export async function flushNow(): Promise<void> {
   if (_flushing) return
   _flushing = true
   try {
-    const events = await drain(BATCH_SIZE)
+    const queued = await pruneQueue(await readAll())
+    const plan = planFlush(queued, currentOwner())
+    if (plan.dropIds.length) await removeIds(plan.dropIds)
+    // owner は端末内の境界確認用。サーバへは送らない。
+    const events = plan.send.map(({ owner: _owner, ...rest }) => rest)
     if (!events.length) return
     const body = JSON.stringify({
       events,
@@ -191,14 +291,23 @@ export async function flushNow(): Promise<void> {
     let ok = false
     try {
       // sendBeacon は認証ヘッダ送れないので fetch を使う
-      const r = await fetch(`${API_BASE_URL}/_telemetry/ingest`, {
+      // 応答しない半断で _flushing が永久に固定されないよう有限 timeout を掛ける。
+      const r = await fetchWithTimeout(`${API_BASE_URL}/_telemetry/ingest`, {
         method: 'POST',
         headers,
         body,
         // credentials は同一オリジン default。CORS の場合は backend が許可。
         keepalive: true,
-      })
+      }, FLUSH_TIMEOUT_MS)
       ok = r.ok
+      if (ok) {
+        // 未ログインで受け取られなかった (inserted 0 / skipped no_user) 場合は、
+        // 消さずに残す。消すと、ログイン前に積んだ session_start が失われ、
+        // 直近の利用者数が 0 のままになる。
+        let parsed: unknown = null
+        try { parsed = await r.json() } catch { parsed = null }
+        if (wasSkippedForNoUser(parsed)) ok = false
+      }
     } catch {
       ok = false
     }

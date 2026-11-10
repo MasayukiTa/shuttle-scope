@@ -9,13 +9,14 @@ import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, Request
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, undefer
 
 import json
 
 from backend.db.database import get_db, SessionLocal
 from backend.db.models import Match, GameSet, Rally, Stroke, MatchCVArtifact
 from backend.tracknet.inference import get_inference
+from backend.utils.auth import require_match_operator_scope, require_match_scope_dep
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -56,37 +57,72 @@ def _require_job_scope(request: Request, job_id: str, db: Session) -> dict:
 
 
 def _load_setting_int(db, key: str, default: int) -> int:
-    """app_settings テーブルから整数設定値を読み込む"""
+    """app_settings テーブルから整数設定値を読み込む。
+
+    2026-11-06 idle-in-transaction 修正:
+    この関数は autocommit=False のセッションで SELECT を実行する。呼び出し元の
+    ``_run_batch`` は ``SessionLocal()`` を動画 1 本の処理が終わるまで (数分〜数時間)
+    閉じないため、ここで commit/rollback しないと app_settings の SELECT が
+    「最後の文」のまま接続が ``idle in transaction`` に居座る。本番で最長 1 日 20 時間
+    残っていた接続の正体がこれ。読み終えたら必ずトランザクションを閉じる。
+    値は app_settings_cache に短期キャッシュして、バッチが同じ鍵を何度も読んでも
+    読み取りトランザクションを開き直さないようにする。
+    """
     import json as _json
     from sqlalchemy import text as _text
-    try:
-        row = db.execute(_text("SELECT value FROM app_settings WHERE key = :k"), {"k": key}).fetchone()
-        if row:
-            return int(_json.loads(row[0]))
-    except Exception:
-        pass
-    return default
+    from backend.db import app_settings_cache
+
+    def _loader():
+        try:
+            row = db.execute(_text("SELECT value FROM app_settings WHERE key = :k"), {"k": key}).fetchone()
+            if row:
+                return int(_json.loads(row[0]))
+        except Exception:
+            pass
+        finally:
+            # read-only: 開いた暗黙トランザクションを即解放する。
+            try:
+                db.rollback()
+            except Exception:
+                pass
+        return default
+
+    return app_settings_cache.get_or_load(f"int:{key}", _loader)
 
 
 def _load_device_settings(db) -> tuple[int, str]:
-    """DB から cuda_device_index / openvino_device を読み込む"""
+    """DB から cuda_device_index / openvino_device を読み込む。
+
+    ``_load_setting_int`` と同じ idle-in-transaction 対策を施す
+    (読み終えたら rollback し、短期キャッシュを経由する)。
+    """
     import json as _json
     from sqlalchemy import text as _text
-    cuda_idx = 0
-    ov_device = "GPU"
-    try:
-        rows = db.execute(
-            _text("SELECT key, value FROM app_settings WHERE key IN ('cuda_device_index','openvino_device')")
-        ).fetchall()
-        for k, v in rows:
-            val = _json.loads(v)
-            if k == "cuda_device_index":
-                cuda_idx = int(val)
-            elif k == "openvino_device":
-                ov_device = str(val)
-    except Exception:
-        pass
-    return cuda_idx, ov_device
+    from backend.db import app_settings_cache
+
+    def _loader():
+        cuda_idx = 0
+        ov_device = "GPU"
+        try:
+            rows = db.execute(
+                _text("SELECT key, value FROM app_settings WHERE key IN ('cuda_device_index','openvino_device')")
+            ).fetchall()
+            for k, v in rows:
+                val = _json.loads(v)
+                if k == "cuda_device_index":
+                    cuda_idx = int(val)
+                elif k == "openvino_device":
+                    ov_device = str(val)
+        except Exception:
+            pass
+        finally:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+        return (cuda_idx, ov_device)
+
+    return app_settings_cache.get_or_load("device_settings", _loader)
 
 
 class BatchJobStatus:
@@ -100,13 +136,14 @@ class BatchJobStatus:
 # /api/tracknet/status — モデルステータス確認
 # ────────────────────────────────────────────────────────────────────
 
-@router.get("/tracknet/shuttle_track/{match_id}")
+@router.get("/tracknet/shuttle_track/{match_id}", dependencies=[Depends(require_match_scope_dep)])
 def get_shuttle_track(match_id: int, db: Session = Depends(get_db)):
     """TrackNet バッチで保存したシャトル軌跡アーティファクトを返す。
     フロントエンドの ShuttleTrackOverlay が参照する。
     """
     artifact = (
         db.query(MatchCVArtifact)
+        .options(undefer(MatchCVArtifact.data))
         .filter(
             MatchCVArtifact.match_id == match_id,
             MatchCVArtifact.artifact_type == "tracknet_shuttle_track",
@@ -125,7 +162,7 @@ def get_shuttle_track(match_id: int, db: Session = Depends(get_db)):
     return {"success": True, "data": json.loads(artifact.data), "meta": meta}
 
 
-@router.get("/tracknet/resume_check/{match_id}")
+@router.get("/tracknet/resume_check/{match_id}", dependencies=[Depends(require_match_scope_dep)])
 def tracknet_resume_check(match_id: int, db: Session = Depends(get_db)):
     """TrackNet 再開ボタン表示用: ストロークに land_zone が 1 件以上あるか確認する。
     shuttle_track アーティファクトが存在しない旧バージョンのデータに対してもフォールバックとして機能する。
@@ -190,7 +227,7 @@ class BatchRequest(BaseModel):
     resume: bool = False                       # True: 解析済みラリーをスキップして途中再開
     prev_roi: Optional[RoiRectModel] = None   # 直前の ROI（ROI 拡張時に再処理強制）
 
-@router.post("/tracknet/batch/{match_id}")
+@router.post("/tracknet/batch/{match_id}", dependencies=[Depends(require_match_operator_scope)])
 def start_batch(
     match_id: int,
     body: BatchRequest,
@@ -246,7 +283,13 @@ def start_batch(
         "processed_rallies": 0,
         "total_rallies": 0,
         "updated_strokes": 0,
+        # 解析対象外（video_timestamp_start 未入力）で飛ばしたラリー数。
+        # 「解析済み」と区別するためのカウンタ（progress の分子には数えない）。
+        "skipped_no_timestamp": 0,
         "error": None,
+        # S-4: 処理を飛ばした / 書かなかった理由（人が読む文）。無ければ None。
+        "message": None,
+        "shuttle_track_write": None,
     }
 
     roi = body.roi_rect.model_dump() if body.roi_rect else None
@@ -494,18 +537,43 @@ def _run_batch(
         _jobs[job_id]["total_rallies"] = len(rallies)
         updated = 0
 
+        # S-4 step 8: 全ラリーの video_timestamp_start が同一値（例: 全て 0.0）なら、
+        # それは「未入力の既定値」であって本当の開始時刻ではない。処理すると動画の
+        # 同じ先頭 5 フレームを全ラリーに当て、land_zone が空のストロークへ同じ値を
+        # 書いてしまう。何も書かずに理由を残して終える（人の入力値には触れない）。
+        _starts = [r.video_timestamp_start for r in rallies if r.video_timestamp_start is not None]
+        if len(_starts) >= 2 and len(set(_starts)) == 1:
+            msg = (
+                f"全 {len(_starts)} ラリーの video_timestamp_start が同一値 ({_starts[0]}) "
+                "のため処理しませんでした。ラリーごとの開始時刻を入力してから再実行してください。"
+            )
+            logger.warning("TrackNet batch skipped: match=%d %s", match_id, msg)
+            _jobs[job_id]["message"] = msg
+            _jobs[job_id]["skipped_reason"] = "identical_rally_timestamps"
+            _jobs[job_id]["processed_rallies"] = len(rallies)
+            _jobs[job_id]["progress"] = 1.0
+            _jobs[job_id]["shuttle_track_write"] = "skipped_identical_rally_timestamps"
+            _jobs[job_id]["status"] = BatchJobStatus.COMPLETE
+            return
+
         # resume モード: 解析済みラリー数を事前にカウントして進捗の初期値を設定
         if resume and not roi_widened and rallies:
             pre_done = 0
+            pre_skipped = 0
             for rally in rallies:
                 if rally.video_timestamp_start is None:
-                    pre_done += 1
+                    # タイムスタンプ未入力のラリーは CV 解析できない。これは
+                    # 「解析済み」ではなく「解析対象外」なので done には数えない。
+                    pre_skipped += 1
                     continue
                 strokes_check = db.query(Stroke).filter(Stroke.rally_id == rally.id).all()
                 if strokes_check and all(s.land_zone for s in strokes_check):
                     pre_done += 1
-            _jobs[job_id]["processed_rallies"] = pre_done
-            _jobs[job_id]["progress"] = pre_done / max(len(rallies), 1)
+            # 進捗バーが止まって見えないよう、解析対象外 (pre_skipped) も初期進捗の
+            # 分子には含める。skipped_no_timestamp は本処理ループ側で計上するため、
+            # ここでは設定しない（二重計上を避ける）。
+            _jobs[job_id]["processed_rallies"] = pre_done + pre_skipped
+            _jobs[job_id]["progress"] = (pre_done + pre_skipped) / max(len(rallies), 1)
 
         for i, rally in enumerate(rallies):
             # 停止リクエスト確認（ユーザーが「停止」ボタンを押した場合）
@@ -520,6 +588,10 @@ def _run_batch(
 
             # タイムスタンプが設定されているラリーのみ解析
             if rally.video_timestamp_start is None:
+                # 解析対象外。進捗は進めるが「解析済み」とは別カウンタに積む。
+                _jobs[job_id]["skipped_no_timestamp"] = (
+                    _jobs[job_id].get("skipped_no_timestamp", 0) + 1
+                )
                 _jobs[job_id]["processed_rallies"] = i + 1
                 _jobs[job_id]["progress"] = (i + 1) / max(len(rallies), 1)
                 continue
@@ -565,9 +637,10 @@ def _run_batch(
                 for j, stroke in enumerate(strokes):
                     res = results[j] if j < len(results) else last
                     if res["confidence"] >= threshold and res["zone"]:
-                        # ROI拡張時は既存 land_zone を上書き（より広い範囲で再解析）
-                        if not stroke.land_zone or roi_widened:
+                        # ROI拡張時は CV 自身が書いた land_zone だけ上書きする（人の入力・出所不明の値は残す）
+                        if not stroke.land_zone or (roi_widened and stroke.land_zone_source == "cv"):
                             stroke.land_zone = res["zone"]
+                            stroke.land_zone_source = "cv"
                             updated += 1
 
                 db.commit()
@@ -594,8 +667,34 @@ def _run_batch(
             )
             .first()
         )
-        skip_shuttle_build = resume and existing_shuttle_art and existing_shuttle_art.data
-        if skip_shuttle_build:
+        # PR1: data 列は deferred（本番で約 6GB/行）。ここは「既存の軌跡があるか」を
+        # 見たいだけなので、6GB を遅延ロードする .data ではなく frame_count
+        # （保存時に必ず設定）で存在判定する。
+        skip_shuttle_build = bool(
+            resume and existing_shuttle_art and (existing_shuttle_art.frame_count or 0) > 0
+        )
+        # S-4 step 1: 動画全体を走査した成果物 (coverage=full) をラリー窓だけの結果で
+        # 置き換えない。ここで作る軌跡は Rally の窓（数十秒分）に過ぎない。
+        from backend.cv.shuttle_track_meta import (
+            COVERAGE_FULL,
+            COVERAGE_RALLY_WINDOWS,
+            build_track_meta,
+            existing_coverage,
+            merge_summary,
+        )
+        keep_full_artifact = bool(
+            existing_shuttle_art
+            and existing_coverage(existing_shuttle_art.summary, existing_shuttle_art.data) == COVERAGE_FULL
+        )
+        if keep_full_artifact and not skip_shuttle_build:
+            msg = (
+                "既存の tracknet_shuttle_track は動画全体の走査結果 (coverage=full, "
+                f"{existing_shuttle_art.frame_count} 点) のため、ラリー窓の結果で上書きしませんでした。"
+            )
+            logger.info("TrackNet shuttle_track write skipped: match=%d %s", match_id, msg)
+            _jobs[job_id]["shuttle_track_write"] = "skipped_existing_full"
+            _jobs[job_id]["message"] = msg
+        elif skip_shuttle_build:
             logger.info("TrackNet resume: shuttle_track rebuild skipped (existing artifact reused)")
         else:
             batch_fps = _load_setting_int(db, "tracknet_batch_fps", 10)
@@ -604,8 +703,12 @@ def _run_batch(
             shuttle_track = _build_shuttle_track(rallies, db, inf, threshold, video_path, roi, step=shuttle_step)
             if shuttle_track:
                 track_json = json.dumps(shuttle_track, ensure_ascii=False)
+                meta = build_track_meta(
+                    shuttle_track, coverage=COVERAGE_RALLY_WINDOWS, sample_fps=batch_fps,
+                )
                 if existing_shuttle_art:
                     existing_shuttle_art.data = track_json
+                    existing_shuttle_art.summary = merge_summary(existing_shuttle_art.summary, meta)
                     existing_shuttle_art.frame_count = len(shuttle_track)
                     existing_shuttle_art.updated_at = _dt.datetime.utcnow()
                 else:
@@ -614,9 +717,11 @@ def _run_batch(
                         artifact_type="tracknet_shuttle_track",
                         frame_count=len(shuttle_track),
                         backend_used=inf.backend_name(),
+                        summary=merge_summary(None, meta),
                         data=track_json,
                     ))
                 db.commit()
+                _jobs[job_id]["shuttle_track_write"] = "written_rally_windows"
                 logger.info("TrackNet shuttle_track saved: match=%d, points=%d", match_id, len(shuttle_track))
 
         # shuttle_track 保存完了後に status を COMPLETE に設定

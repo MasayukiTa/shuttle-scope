@@ -1,3 +1,30 @@
+import { storeReturnContext } from '@/utils/returnPath'
+import {
+  AUTH_CHANGED_EVENT,
+  TOKEN_KEY,
+  REFRESH_KEY,
+  ROLE_KEY,
+  PLAYER_ID_KEY,
+  TEAM_NAME_KEY,
+  USER_ID_KEY,
+  DISPLAY_NAME_KEY,
+  PAGE_ACCESS_KEY,
+  getAuthItem,
+  setAuthItem,
+  removeAuthItem,
+  migrateSessionToLocal,
+  installCrossTabAuthSync,
+  broadcastAuthChange,
+  withRefreshLock,
+} from '@/api/authStorage'
+
+// fix/auth-session-persist: 認証情報を localStorage に移し、全タブで共有する。
+// 旧 sessionStorage の値は初回に localStorage へ移行し、他タブの変化 (ログイン・
+// refresh・ログアウト) は storage イベントで受けて同期する。モジュール読み込み時に
+// 一度だけ実行する (副作用は冪等)。
+migrateSessionToLocal()
+installCrossTabAuthSync()
+
 const BASE_URL = (() => {
   if (
     typeof window !== 'undefined' &&
@@ -7,10 +34,6 @@ const BASE_URL = (() => {
   }
   return 'http://localhost:8765/api'
 })()
-
-const TOKEN_KEY = 'shuttlescope_token'
-const REFRESH_KEY = 'shuttlescope_refresh_token'
-const AUTH_CHANGED_EVENT = 'shuttlescope:auth-changed'
 
 export const API_BASE_URL = BASE_URL
 
@@ -32,13 +55,13 @@ export function getAuthHeaders(): Record<string, string> {
 function authHeaders(): Record<string, string> {
   const h: Record<string, string> = {}
   try {
-    const token = sessionStorage.getItem(TOKEN_KEY)
+    const token = getAuthItem(TOKEN_KEY)
     if (token) {
       h['Authorization'] = `Bearer ${token}`
     } else {
-      const role = sessionStorage.getItem('shuttlescope_role')
-      const pid = sessionStorage.getItem('shuttlescope_player_id')
-      const team = sessionStorage.getItem('shuttlescope_team_name')
+      const role = getAuthItem(ROLE_KEY)
+      const pid = getAuthItem(PLAYER_ID_KEY)
+      const team = getAuthItem(TEAM_NAME_KEY)
       if (role) h['X-Role'] = role
       if (pid) h['X-Player-Id'] = pid
       if (team) h['X-Team-Name'] = encodeURIComponent(team)
@@ -62,48 +85,132 @@ function httpError(status: number, text: string): Error {
 //   'transient' … 429/503/5xx/network/timeout 等の一過性失敗。トークンは温存し、
 //                 ログアウトしない (次回呼び出しで同じ refresh token を再利用)。
 // App.tsx の authMe ガードと同じ非対称性をここでも担保する。
-type RefreshResult = 'ok' | 'invalid' | 'transient'
-let _refreshInflight: Promise<RefreshResult> | null = null
+type RefreshResult = 'ok' | 'invalid' | 'transient' | 'superseded'
+type RefreshFlight = { refreshToken: string; promise: Promise<RefreshResult> }
+let _refreshInflight: RefreshFlight | null = null
+
+/** /auth/refresh 専用の timeout (ms)。通常 API の 60s より短くし、refresh を待つ全 API を長く止めない。 */
+export const REFRESH_TIMEOUT_MS = 15_000
+
+/** 起動時 /health の timeout (ms)。応答しない半断で起動画面が固定されるのを防ぐ。 */
+export const HEALTH_TIMEOUT_MS = 5_000
+
+/** transient の refresh 失敗を短い待機のあと 1 回だけ再試行する際の待ち時間 (ms)。
+ *  fix/auth-session-persist: refresh 応答が通信で失われた (network error) とき、
+ *  サーバ側は猚予時間内の再提示を冪等化しているので、同じ refresh token でもう一度
+ *  試すと同じ後継を受け取れる。ログアウトを回避する。 */
+export const REFRESH_RETRY_DELAY_MS = 150
+
+type RefreshOnce = RefreshResult | 'retryable'
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/** refresh を 1 回だけ試す。network error (fetch 自体の reject) は 'retryable' を返し、
+ *  timeout / 5xx / 429 は 'transient'、401/403 は 'invalid'、成功は 'ok' 。 */
+async function _doRefreshOnce(rt: string): Promise<RefreshOnce> {
+  let res: Response
+  let timedOut = false
+  try {
+    // 半断 (TCP 接続のみ成立し応答しない) で single-flight 全体が固定されないよう、
+    // refresh 自体にも有限 timeout を掛ける。
+    res = await fetchWithTimeout(
+      `${BASE_URL}/auth/refresh`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: rt }),
+      },
+      REFRESH_TIMEOUT_MS,
+    )
+  } catch (e) {
+    // timeout (ApiTimeoutError) は再試行しない (応答が常に遅いサーバを 2 回待たない)。
+    // それ以外の network error (fetch の TypeError 等) は応答が通信で失われたケースとして
+    // retryable 扱いにする。どちらも有効な refresh token は決して捨てない。
+    timedOut = e instanceof ApiTimeoutError
+    return timedOut ? 'transient' : 'retryable'
+  }
+
+  if (res.ok) {
+    const data: { access_token: string; refresh_token: string } = await res.json()
+    // The user may have logged out or switched accounts while this refresh
+    // request was in flight. Never let an old session's delayed response
+    // overwrite the newer authentication generation.
+    if (getAuthItem(REFRESH_KEY) !== rt) {
+      return 'superseded'
+    }
+    setAuthItem(TOKEN_KEY, data.access_token)
+    setAuthItem(REFRESH_KEY, data.refresh_token)
+    broadcastAuthChange()
+    return 'ok'
+  }
+
+  if (res.status === 401 || res.status === 403) {
+    // A stale refresh failure must not log out a newer user/session.
+    if (getAuthItem(REFRESH_KEY) !== rt) {
+      return 'superseded'
+    }
+    removeAuthItem(TOKEN_KEY)
+    removeAuthItem(REFRESH_KEY)
+    broadcastAuthChange()
+    return 'invalid'
+  }
+
+  // 429 / 503 / other 5xx are transient.
+  return 'transient'
+}
 
 async function tryRefreshToken(): Promise<RefreshResult> {
-  if (_refreshInflight) return _refreshInflight
-  _refreshInflight = (async () => {
+  const rt = getAuthItem(REFRESH_KEY)
+  if (!rt) return 'invalid'
+
+  // Single-flight only within the same auth generation. If user B logs in while
+  // user A's refresh is still pending, B must not wait on A's promise.
+  if (_refreshInflight?.refreshToken === rt) return _refreshInflight.promise
+
+  const flight = {} as RefreshFlight
+  // navigator.locks で全タブを通じて refresh を 1 本に束ねる (非対応ブラウザは
+  // 下の module-level single-flight が同一タブ内の多重 refresh を 1 本にまとめる)。
+  const promise = withRefreshLock(async (): Promise<RefreshResult> => {
     try {
-      const rt = sessionStorage.getItem(REFRESH_KEY)
-      if (!rt) return 'invalid'
-      let res: Response
-      try {
-        res = await fetch(`${BASE_URL}/auth/refresh`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refresh_token: rt }),
-        })
-      } catch {
-        // network / timeout = 一過性。有効な refresh token を捨てない。
-        return 'transient'
+      let outcome = await _doRefreshOnce(rt)
+      if (outcome === 'retryable') {
+        // 応答が通信で失われた。セッションが切り替わっていなければ、短い待機のあと
+        // 同じ refresh token で 1 回だけ再試行する (サーバが猚予内なら同じ後継を返す)。
+        if (getAuthItem(REFRESH_KEY) !== rt) return 'superseded'
+        await sleep(REFRESH_RETRY_DELAY_MS)
+        if (getAuthItem(REFRESH_KEY) !== rt) return 'superseded'
+        outcome = await _doRefreshOnce(rt)
+        // 2 回目も network error で失敗したら、有効な refresh token は捨てず transient 扱いにする。
+        if (outcome === 'retryable') {
+          outcome = getAuthItem(REFRESH_KEY) === rt ? 'transient' : 'superseded'
+        }
       }
-      if (res.ok) {
-        const data: { access_token: string; refresh_token: string } = await res.json()
-        sessionStorage.setItem(TOKEN_KEY, data.access_token)
-        sessionStorage.setItem(REFRESH_KEY, data.refresh_token)
-        try { window.dispatchEvent(new Event(AUTH_CHANGED_EVENT)) } catch {}
-        return 'ok'
+      // transient でも、待ち時間中にユーザが切り替わっていたら superseded 扱いにする。
+      if (outcome === 'transient' && getAuthItem(REFRESH_KEY) !== rt) {
+        return 'superseded'
       }
-      // 401/403 のみ「refresh token 失効 = 本当の失効」とみなしクリアする。
-      if (res.status === 401 || res.status === 403) {
-        sessionStorage.removeItem(TOKEN_KEY)
-        sessionStorage.removeItem(REFRESH_KEY)
-        try { window.dispatchEvent(new Event(AUTH_CHANGED_EVENT)) } catch {}
-        return 'invalid'
-      }
-      // 429 / 503 / その他 5xx = 一過性。トークン温存。
-      return 'transient'
+      return outcome
     } finally {
-      // 次の 401 バッチに備えて解放（成功時の値は短命キャッシュしない）
-      setTimeout(() => { _refreshInflight = null }, 0)
+      // Clear only the flight that is actually finishing. A newer auth
+      // generation may already have installed its own in-flight refresh.
+      setTimeout(() => {
+        if (_refreshInflight === flight) _refreshInflight = null
+      }, 0)
     }
-  })()
-  return _refreshInflight
+  })
+
+  flight.refreshToken = rt
+  flight.promise = promise
+  _refreshInflight = flight
+  return promise
+}
+
+/** 共通の single-flight token refresh を、独自の送信経路 (オフラインキュー等) から使う。
+ *  結果の意味は tryRefreshToken と同じ ('ok' なら sessionStorage の token が更新済み)。 */
+export function refreshAccessToken(): Promise<'ok' | 'invalid' | 'transient' | 'superseded'> {
+  return tryRefreshToken()
 }
 
 // セッション完全失効時に画面リダイレクトするためのフラグ (連続 401 で多重発火しないよう保護)
@@ -130,23 +237,36 @@ function _handleSessionExpired(): void {
   let _hadAnyToken = false
   try {
     _hadAnyToken =
-      !!sessionStorage.getItem('shuttlescope_token') ||
-      !!sessionStorage.getItem(REFRESH_KEY)
+      !!getAuthItem(TOKEN_KEY) ||
+      !!getAuthItem(REFRESH_KEY)
+  } catch {
+    /* noop */
+  }
+
+  // G4 #715: セッション失効時に、今いた in-app パスとユーザー識別子を
+  // 保存しておく (再ログイン後に同一ユーザーなら戻る)。storage を消す
+  // 前に読む必要がある。許可ルートでなければ storeReturnContext が何もしない。
+  try {
+    const uid = getAuthItem(USER_ID_KEY)
+    const rawHash = (window.location.hash || '').replace(/^#/, '')
+    if (uid && rawHash) storeReturnContext(uid, rawHash)
   } catch {
     /* noop */
   }
   try {
-    sessionStorage.removeItem('shuttlescope_token')
-    sessionStorage.removeItem(REFRESH_KEY)
-    sessionStorage.removeItem('shuttlescope_role')
-    sessionStorage.removeItem('shuttlescope_player_id')
-    sessionStorage.removeItem('shuttlescope_team_name')
+    // removeAuthItem は localStorage と sessionStorage の両方から消す。localStorage から
+    // 消えることで他タブに storage イベントが届き、ログアウトが全タブに伝わる。
+    removeAuthItem(TOKEN_KEY)
+    removeAuthItem(REFRESH_KEY)
+    removeAuthItem(ROLE_KEY)
+    removeAuthItem(PLAYER_ID_KEY)
+    removeAuthItem(TEAM_NAME_KEY)
     // 残りの auth 関連 storage も全て掃除する。掃除漏れがあると `useAuth` の
     // 内部 state が "token は null だが userId/displayName は残っている" 状態
     // になり、リログイン後の表示が一貫しない。
-    sessionStorage.removeItem('shuttlescope_user_id')
-    sessionStorage.removeItem('shuttlescope_display_name')
-    sessionStorage.removeItem('shuttlescope_page_access')
+    removeAuthItem(USER_ID_KEY)
+    removeAuthItem(DISPLAY_NAME_KEY)
+    removeAuthItem(PAGE_ACCESS_KEY)
   } catch {
     /* noop */
   }
@@ -155,9 +275,7 @@ function _handleSessionExpired(): void {
   // 残った状態で `<ProtectedMainRoute>` の `token != null` チェックを通過し続け、
   // hash が `/login?session_expired=1` に変わっても <LoginPage /> がレンダーされなかった
   // (2026-05-07 報告)。
-  try {
-    window.dispatchEvent(new Event(AUTH_CHANGED_EVENT))
-  } catch { /* noop */ }
+  broadcastAuthChange()
   // 既に未認証ページにいるならリダイレクト不要
   const currentHash = (window.location.hash || '').slice(1).split('?')[0]
   const SKIP_PATHS = [
@@ -217,15 +335,52 @@ function _withDefaultTimeout(
   }
 }
 
-async function fetchWithAutoRefresh(input: string, init: RequestInit): Promise<Response> {
-  const wrap = _withDefaultTimeout(input, init)
+/** fetchWithTimeout がタイムアウトで中断したときに投げるエラー。
+ *  通常の通信断 (TypeError) と区別して「応答がない」を利用者に示すために使う。 */
+export class ApiTimeoutError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options)
+    this.name = 'ApiTimeoutError'
+  }
+}
+
+/** token refresh を伴わない fetch に、共通クライアントと同じタイムアウトを掛ける。
+ *  ログイン前 (401 が資格情報の誤りを意味する) や、呼び出し側が自前で認証・再送を
+ *  持つ経路 (オフラインキュー、録画アップロード) 向け。 */
+export async function fetchWithTimeout(
+  input: string,
+  init: RequestInit = {},
+  timeoutMs: number = DEFAULT_API_TIMEOUT_MS,
+): Promise<Response> {
+  const wrap = _withDefaultTimeout(input, init, timeoutMs)
+  try {
+    return await fetch(input, wrap.init)
+  } catch (e) {
+    if (wrap.isTimeout()) {
+      throw new ApiTimeoutError(`API timeout (${timeoutMs}ms): ${input}`, { cause: e })
+    }
+    throw e
+  } finally {
+    wrap.cleanup()
+  }
+}
+
+// POST /sessions/{code}/devices/{pid}/heartbeat (参加者トークン認証)
+const PARTICIPANT_HEARTBEAT_RE = /\/sessions\/[^/?#]+\/devices\/[^/?#]+\/heartbeat(?:[?#]|$)/
+
+async function fetchWithAutoRefresh(
+  input: string,
+  init: RequestInit,
+  timeoutMs: number = DEFAULT_API_TIMEOUT_MS,
+): Promise<Response> {
+  const wrap = _withDefaultTimeout(input, init, timeoutMs)
   let res: Response
   try {
     res = await fetch(input, wrap.init)
   } catch (e) {
     wrap.cleanup()
     if (wrap.isTimeout()) {
-      throw new Error(`API timeout (${DEFAULT_API_TIMEOUT_MS}ms): ${input}`, { cause: e })
+      throw new Error(`API timeout (${timeoutMs}ms): ${input}`, { cause: e })
     }
     throw e
   } finally {
@@ -239,6 +394,10 @@ async function fetchWithAutoRefresh(input: string, init: RequestInit): Promise<R
   // 「アプリのログインが切れた」ではない。素通ししないと、スマホでコードを
   // 打ち間違えただけでトークン更新が走り、失敗すればログアウトさせられる。
   if (input.includes('/join') || input.includes('/ws-ticket')) return res
+  // 参加者ハートビートも同様: 本文の participant_token で認証され、削除済み参加者 /
+  // 終了済みセッションは汎用 401 で返る。電話端末は JWT を持たないので、ここで
+  // refresh / 全体ログアウトに流してはならない (呼び出し側が removed として扱う)。
+  if (PARTICIPANT_HEARTBEAT_RE.test(input)) return res
   const refresh = await tryRefreshToken()
   if (refresh === 'invalid') {
     // refresh token も失効 = 完全失効 → 自動でログイン画面へ
@@ -251,11 +410,17 @@ async function fetchWithAutoRefresh(input: string, init: RequestInit): Promise<R
     // 同じ refresh token を使って再試行できる)。login-bounce を防ぐ。
     return res
   }
+  if (refresh === 'superseded') {
+    // Auth generation changed while the old request was waiting. Do not replay
+    // that request under the new user's credentials and do not log the new user
+    // out because of the old session's refresh result.
+    return res
+  }
   // refresh === 'ok' → 新 access token で再送 (再送にもタイムアウトを掛ける)
   const wrap2 = _withDefaultTimeout(input, {
     ...init,
     headers: { ...(init.headers as Record<string, string>), ...authHeaders() },
-  })
+  }, timeoutMs)
   try {
     const retryRes = await fetch(input, wrap2.init)
     // refresh 直後の再送がなお 401/403 = role 剥奪 / 新トークン拒否 → 失効扱い。
@@ -265,12 +430,27 @@ async function fetchWithAutoRefresh(input: string, init: RequestInit): Promise<R
     return retryRes
   } catch (e) {
     if (wrap2.isTimeout()) {
-      throw new Error(`API timeout (${DEFAULT_API_TIMEOUT_MS}ms after refresh): ${input}`, { cause: e })
+      throw new Error(`API timeout (${timeoutMs}ms after refresh): ${input}`, { cause: e })
     }
     throw e
   } finally {
     wrap2.cleanup()
   }
+}
+
+/** 401 時に共通の single-flight refresh を通して 1 回だけ再送する生 fetch。
+ *  SSE ストリーム (LLM) / chunk upload / コート補正保存のように、Response をそのまま
+ *  扱いたい経路向け。timeout はヘッダ受信までに掛かり、本文ストリームは打ち切らない。 */
+export function fetchAuthed(
+  input: string,
+  init: RequestInit = {},
+  timeoutMs: number = DEFAULT_API_TIMEOUT_MS,
+): Promise<Response> {
+  return fetchWithAutoRefresh(
+    input,
+    { ...init, headers: { ...authHeaders(), ...((init.headers as Record<string, string> | undefined) ?? {}) } },
+    timeoutMs,
+  )
 }
 
 export async function getParticipantIceConfig(
@@ -323,6 +503,17 @@ export async function apiGet<T>(
     throw httpError(res.status, text)
   }
   return res.json()
+}
+
+// ファイル出力 (PDF / JSON レポート) 用。認証・401 refresh・タイムアウトは他の API と同じ
+// 経路を通し、HTTP 失敗は例外にする (失敗本文を正常ファイルとして保存させない)。
+export async function apiGetReportBlob(path: string): Promise<Blob> {
+  const res = await fetchWithAutoRefresh(BASE_URL + path, { headers: authHeaders() })
+  if (!res.ok) {
+    const text = await res.text()
+    throw httpError(res.status, text)
+  }
+  return res.blob()
 }
 
 export async function apiPost<T>(path: string, body: unknown, extraHeaders?: Record<string, string>): Promise<T> {
@@ -390,6 +581,48 @@ export async function apiDelete<T>(path: string, extraHeaders?: Record<string, s
     throw httpError(res.status, text)
   }
   return res.json()
+}
+
+/** Content-Disposition からファイル名を取り出す。無い・読めないときは null。 */
+export function filenameFromContentDisposition(header: string | null | undefined): string | null {
+  if (!header) return null
+  const star = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(header)
+  if (star) {
+    try {
+      return decodeURIComponent(star[1].trim())
+    } catch {
+      // 壊れたエンコードは通常の filename= へ進む
+    }
+  }
+  const plain = /filename\s*=\s*"([^"]*)"/i.exec(header) ?? /filename\s*=\s*([^;]+)/i.exec(header)
+  const name = plain ? plain[1].trim() : ''
+  return name || null
+}
+
+/**
+ * 認証付きでファイルを取得して Blob で返す (ダウンロードリンク用)。
+ * `<a href>` の直接ダウンロードは Authorization ヘッダを付けられず 401 になるため、
+ * 他の API と同じ経路 (Bearer 付与 + 401 時の自動更新) を通す。
+ * HTTP 失敗時は Blob にせず status 付きの Error を投げる。
+ */
+export async function apiGetBlob(
+  path: string,
+  params?: Record<string, string | number | boolean | null | undefined>,
+): Promise<{ blob: Blob; filename: string | null }> {
+  const url = new URL(BASE_URL + path)
+  if (params) {
+    Object.entries(params).forEach(([k, v]) => {
+      if (v === undefined || v === null) return
+      url.searchParams.set(k, String(v))
+    })
+  }
+  const res = await fetchWithAutoRefresh(url.toString(), { headers: authHeaders() })
+  if (!res.ok) {
+    const text = await res.text()
+    throw httpError(res.status, text)
+  }
+  const blob = await res.blob()
+  return { blob, filename: filenameFromContentDisposition(res.headers.get('Content-Disposition')) }
 }
 
 export interface AuthMeDTO {
@@ -592,6 +825,58 @@ export function authSecurityEvents(params?: {
   return apiGet('/auth/audit-logs/security', p)
 }
 
+export interface SecurityEventGroup {
+  ip_addr: string | null
+  event_type: string
+  severity: string | null
+  count: number
+  first_ts: string
+  last_ts: string
+  last_id: number
+  distinct_paths: number
+  sample_paths: string[]
+}
+
+export function authSecurityEventGroups(params?: {
+  event_type?: string
+  severity?: string
+  ip?: string
+  limit?: number
+}): Promise<{ success: boolean; data: SecurityEventGroup[] }> {
+  const p: Record<string, string | number> = {}
+  if (params?.event_type) p.event_type = params.event_type
+  if (params?.severity) p.severity = params.severity
+  if (params?.ip) p.ip = params.ip
+  if (params?.limit != null) p.limit = params.limit
+  return apiGet('/auth/audit-logs/security/groups', p)
+}
+
+export interface ErrorLogGroup {
+  fingerprint: string
+  exc_type: string | null
+  method: string | null
+  path: string | null
+  status: number | null
+  summary: string | null
+  count: number
+  first_ts: string
+  last_ts: string
+  last_id: number
+  last_request_id: string | null
+}
+
+export function authErrorLogGroups(params?: {
+  exc_type?: string
+  path_prefix?: string
+  limit?: number
+}): Promise<{ success: boolean; data: ErrorLogGroup[] }> {
+  const p: Record<string, string | number> = {}
+  if (params?.exc_type) p.exc_type = params.exc_type
+  if (params?.path_prefix) p.path_prefix = params.path_prefix
+  if (params?.limit != null) p.limit = params.limit
+  return apiGet('/auth/audit-logs/errors/groups', p)
+}
+
 export interface ErrorLogEntry {
   id: number
   ts: string
@@ -601,6 +886,8 @@ export interface ErrorLogEntry {
   status: number | null
   exc_type: string | null
   message: string | null
+  // 主表示用の要約 (生 SQL や案内リンクを除いたもの)
+  summary?: string | null
   traceback: string | null
   input_repr: string | null
   internal_code: string | null
@@ -622,6 +909,23 @@ export function authErrorLogs(params?: {
   return apiGet('/auth/audit-logs/errors', p)
 }
 
+/** 各ログ表の記録件数と最新・最古の時刻。0 件のとき時刻は null。 */
+export interface AuditLogSourceSummary {
+  total: number
+  latest_ts: string | null
+  oldest_ts: string | null
+}
+
+export interface AuditLogStatus {
+  request: AuditLogSourceSummary
+  security: AuditLogSourceSummary
+  error: AuditLogSourceSummary
+}
+
+export function authAuditLogStatus(): Promise<{ success: boolean; data: AuditLogStatus }> {
+  return apiGet('/auth/audit-logs/status')
+}
+
 export interface AuditLogActionItem {
   action: string
   count: number
@@ -632,7 +936,7 @@ export function authAuditLogActions(): Promise<{ success: boolean; data: AuditLo
 }
 
 export function authLogout(): Promise<{ success: boolean }> {
-  const rt = (() => { try { return sessionStorage.getItem(REFRESH_KEY) } catch { return null } })()
+  const rt = getAuthItem(REFRESH_KEY)
   return apiPost<{ success: boolean }>('/auth/logout', rt ? { refresh_token: rt } : {})
 }
 
@@ -716,6 +1020,8 @@ export interface PublicInquiryRow {
   /** R42: 問い合わせ種別。"general" / "ban_appeal" 等。
    *  ban_appeal は WAF 誤 ban 申し立てチャネルからの投稿で UI で目立つ表示にする。 */
   category?: string
+  /** 同じメールで登録申請（承認待ち）が出ているときのユーザID */
+  pending_user_id?: number | null
 }
 
 export function publicInquiryUnreadCount(): Promise<{ success: boolean; data: { count: number } }> {
@@ -779,7 +1085,9 @@ export function pipelineJob(job_id: number): Promise<AnalysisJobDTO> {
 
 export async function checkHealth(): Promise<boolean> {
   try {
-    const res = await fetch(`${BASE_URL}/health`)
+    // 起動時の入口。応答しない半断で 1 回の await から戻らないよう短い timeout を掛け、
+    // timeout は false (未起動) として呼び出し側の poll 継続へ戻す。
+    const res = await fetchWithTimeout(`${BASE_URL}/health`, {}, HEALTH_TIMEOUT_MS)
     return res.ok
   } catch {
     return false

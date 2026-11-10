@@ -2,9 +2,14 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { apiGet, apiPost, API_BASE_URL } from '@/api/client'
+import { apiGet, apiPost } from '@/api/client'
+import { downloadExpertExport } from '@/utils/expertExport'
 import { useAuth } from '@/hooks/useAuth'
 import { useTheme } from '@/hooks/useTheme'
+import {
+  buildExpertLabelRequest,
+  type ExpertLabelFormValues,
+} from '@/utils/expertLabelPayload'
 
 // ─── 型定義 ───────────────────────────────────────────
 type PostureCollapse = 'none' | 'minor' | 'major'
@@ -31,7 +36,7 @@ interface ExpertClip {
   frame_index: number
   clip_start_frame: number
   clip_end_frame: number
-  clip_url: string
+  clip_url: string | null
   shot_type?: string
   miss_type?: string
 }
@@ -42,9 +47,6 @@ interface ClipsResponse {
 
 interface ExpertLabel {
   stroke_id: number
-  frame_index: number
-  clip_start_frame: number
-  clip_end_frame: number
   posture_collapse: PostureCollapse
   weight_distribution: WeightDistribution
   shot_timing: ShotTiming
@@ -199,22 +201,12 @@ function AnnotateContent() {
 
   // 保存
   const saveMutation = useMutation({
-    mutationFn: async (opts: { skip?: boolean }) => {
+    mutationFn: async (values: ExpertLabelFormValues) => {
       if (!currentClip || !matchId) throw new Error('no clip')
-      const payload = {
-        match_id: matchId,
-        stroke_id: currentClip.stroke_id,
-        frame_index: currentClip.frame_index,
-        clip_start_frame: currentClip.clip_start_frame,
-        clip_end_frame: currentClip.clip_end_frame,
-        posture_collapse: opts.skip ? 'skipped' : form.posture_collapse,
-        weight_distribution: opts.skip ? 'skipped' : form.weight_distribution,
-        shot_timing: opts.skip ? 'skipped' : form.shot_timing,
-        confidence: form.confidence,
-        comment: form.comment,
-        annotator_role: annotatorRole,
-      }
-      return apiPost('/v1/expert/labels', payload)
+      return apiPost(
+        '/v1/expert/labels',
+        buildExpertLabelRequest(matchId, currentClip.stroke_id, annotatorRole, values),
+      )
     },
     onSuccess: () => {
       setToast(t('expert_labeler.saved'))
@@ -229,6 +221,16 @@ function AnnotateContent() {
       window.setTimeout(() => setToast(null), 2000)
     },
   })
+
+  // JSON / CSV は Bearer 付きで取得して保存する (生リンクは 401 になる)
+  const handleExport = async (path: string, fmt: 'json' | 'csv') => {
+    if (!matchId) return
+    const r = await downloadExpertExport(path, { match_id: matchId, fmt }, `expert_${matchId}.${fmt}`)
+    if (r !== 'ok') {
+      setToast(t(r === 'denied' ? 'expert_labeler.export_denied' : 'expert_labeler.export_failed'))
+      window.setTimeout(() => setToast(null), 2000)
+    }
+  }
 
   // ショット種別アノテーション保存
   const saveShotMutation = useMutation({
@@ -255,34 +257,54 @@ function AnnotateContent() {
     },
   })
 
+  // 既存ラベルを取得できていない間は、未ラベルとして上書き保存しない
+  // (保存は同じ stroke / 役割の既存ラベルを置き換える UPSERT のため)。
+  const labelsUnavailable = labelsQuery.isError || labelsQuery.isPending
+  const shotLabelsUnavailable = role === 'admin' && (shotLabelsQuery.isError || shotLabelsQuery.isPending)
+
   const handleSave = useCallback(() => {
+    if (labelsUnavailable) {
+      setToast(t('expert_labeler.labels_load_failed'))
+      window.setTimeout(() => setToast(null), 2500)
+      return
+    }
     // 必須項目未選択時は保存不可
     if (!form.posture_collapse || !form.weight_distribution || !form.shot_timing) {
       setToast(t('expert_labeler.required_fields'))
       window.setTimeout(() => setToast(null), 1500)
       return
     }
-    saveMutation.mutate({ skip: false })
-  }, [form, saveMutation, t])
+    saveMutation.mutate({
+      posture_collapse: form.posture_collapse,
+      weight_distribution: form.weight_distribution,
+      shot_timing: form.shot_timing,
+      confidence: form.confidence,
+      comment: form.comment,
+    })
+  }, [form, saveMutation, t, labelsUnavailable])
 
   const handleSaveShot = useCallback(() => {
+    if (shotLabelsUnavailable) {
+      setToast(t('expert_labeler.labels_load_failed'))
+      window.setTimeout(() => setToast(null), 2500)
+      return
+    }
     if (!shotAnnotation.shot_type) {
       setToast(t('expert_labeler.shot_type_required'))
       window.setTimeout(() => setToast(null), 1500)
       return
     }
     saveShotMutation.mutate()
-  }, [shotAnnotation, saveShotMutation, t])
-
-  const handleSkip = useCallback(() => {
-    saveMutation.mutate({ skip: true })
-  }, [saveMutation])
+  }, [shotAnnotation, saveShotMutation, t, shotLabelsUnavailable])
 
   const goPrev = useCallback(() => setIndex((i) => Math.max(0, i - 1)), [])
   const goNext = useCallback(
     () => setIndex((i) => Math.min(clips.length - 1, i + 1)),
     [clips.length]
   )
+
+  // スキップはラベルを保存しない。次のクリップへ進むだけ（未ラベルのまま残り、再開時に最初に出る）。
+  const handleSkip = goNext
 
   const togglePlay = useCallback(() => {
     const v = videoRef.current
@@ -397,6 +419,31 @@ function AnnotateContent() {
     )
   }
 
+  // 取得失敗は「対象クリップなし」と区別して見せる (0 件は 200 の空配列のときだけ)
+  if (clipsQuery.isError) {
+    return (
+      <div className={`h-full flex flex-col items-center justify-center gap-3 ${bgBase}`}>
+        <div role="alert">{t('expert_labeler.clips_load_failed')}</div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            className={`${btnLarge} ${btnPrimary}`}
+            onClick={() => void clipsQuery.refetch()}
+          >
+            {t('expert_labeler.retry')}
+          </button>
+          <button
+            type="button"
+            className={`${btnLarge} ${btnSecondary}`}
+            onClick={() => navigate('/expert-labeler')}
+          >
+            {t('expert_labeler.back_to_list')}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   if (clips.length === 0) {
     return (
       <div className={`h-full flex flex-col items-center justify-center gap-3 ${bgBase}`}>
@@ -428,22 +475,20 @@ function AnnotateContent() {
           </div>
           {/* エクスポート */}
           <div className="flex gap-2 ml-auto">
-            <a
-              href={`${API_BASE_URL}/v1/expert/export?match_id=${matchId}&fmt=json`}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              type="button"
+              onClick={() => void handleExport('/v1/expert/export', 'json')}
               className="text-xs px-3 py-2 rounded-ss-md border transition-colors duration-base ease-out border-[var(--ss-border-strong)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]"
             >
               {t('auto.ExpertLabelerAnnotatePage.json')}
-            </a>
-            <a
-              href={`${API_BASE_URL}/v1/expert/export?match_id=${matchId}&fmt=csv`}
-              target="_blank"
-              rel="noopener noreferrer"
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleExport('/v1/expert/export', 'csv')}
               className="text-xs px-3 py-2 rounded-ss-md border transition-colors duration-base ease-out border-[var(--ss-border-strong)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)]"
             >
               {t('auto.ExpertLabelerAnnotatePage.csv')}
-            </a>
+            </button>
           </div>
         </header>
 
@@ -453,6 +498,25 @@ function AnnotateContent() {
             style={{ width: `${((index + 1) / clips.length) * 100}%` }}
           />
         </div>
+
+        {(labelsQuery.isError || (role === 'admin' && shotLabelsQuery.isError)) && (
+          <div
+            role="alert"
+            className="mb-4 flex flex-wrap items-center gap-3 rounded-ss-md border p-3 text-sm border-[var(--ss-border-strong)] text-[var(--ss-danger-text)]"
+          >
+            <span className="flex-1">{t('expert_labeler.labels_load_failed')}</span>
+            <button
+              type="button"
+              className="px-3 py-1 rounded-ss-md border border-[var(--ss-border-strong)] text-[var(--ss-t1)]"
+              onClick={() => {
+                if (labelsQuery.isError) void labelsQuery.refetch()
+                if (role === 'admin' && shotLabelsQuery.isError) void shotLabelsQuery.refetch()
+              }}
+            >
+              {t('expert_labeler.retry')}
+            </button>
+          </div>
+        )}
 
         {/* タブ切替（admin のみ「アノテーション改善」タブを表示） */}
         {role === 'admin' && (
@@ -480,16 +544,25 @@ function AnnotateContent() {
           <div className={`rounded-ss-lg border p-3 ${panelBg}`}>
             {currentClip && (
               <>
-                <video
-                  ref={videoRef}
-                  key={currentClip.stroke_id}
-                  src={currentClip.clip_url}
-                  controls
-                  autoPlay
-                  playsInline
-                  className="w-full rounded-ss-md bg-black"
-                  style={{ aspectRatio: '16 / 9', maxHeight: '60vh' }}
-                />
+                {currentClip.clip_url ? (
+                  <video
+                    ref={videoRef}
+                    key={currentClip.stroke_id}
+                    src={currentClip.clip_url}
+                    controls
+                    autoPlay
+                    playsInline
+                    className="w-full rounded-ss-md bg-black"
+                    style={{ aspectRatio: '16 / 9', maxHeight: '60vh' }}
+                  />
+                ) : (
+                  <div
+                    className="w-full rounded-ss-md bg-black flex items-center justify-center text-sm text-white/80"
+                    style={{ aspectRatio: '16 / 9', maxHeight: '60vh' }}
+                  >
+                    {t('expert_labeler.clip_not_generated')}
+                  </div>
+                )}
                 <div className="mt-2 text-xs text-[var(--ss-t3)]">
                   {t('auto.ExpertLabelerAnnotatePage.stroke_id', { n: currentClip.stroke_id })}
                   {currentClip.shot_type ? ` / ${currentClip.shot_type}` : ''}
@@ -711,15 +784,14 @@ function AnnotateContent() {
               </button>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <a
-                href={`/api/v1/expert/shot_labels/export?match_id=${matchId}&fmt=csv`}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                type="button"
+                onClick={() => void handleExport('/v1/expert/shot_labels/export', 'csv')}
                 className={`flex items-center justify-center ${btnLarge} border border-[var(--ss-border-strong)] text-[var(--ss-t2)] hover:bg-[var(--ss-surface-2)] transition-colors duration-base ease-out`}
                 style={{ minHeight: '56px' }}
               >
                 {t('auto.ExpertLabelerAnnotatePage.csv')}
-              </a>
+              </button>
               <button
                 className={`${btnLarge} bg-[var(--ss-success)] hover:brightness-95 text-white`}
                 onClick={handleSaveShot}

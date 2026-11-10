@@ -24,11 +24,12 @@ function setLocation(protocol: string, host: string): void {
 afterEach(() => {
   vi.unstubAllGlobals()
   sessionStorage.clear()
+  localStorage.clear()
 })
 
 describe('cameraWsUrl', () => {
   it('https では wss + ホストのポート無しで組み立て、token を載せる', () => {
-    sessionStorage.setItem('shuttlescope_token', TOKEN)
+    localStorage.setItem('shuttlescope_token', TOKEN)
     setLocation('https:', 'app.shuttle-scope.com')
 
     const url = new URL(cameraWsUrl('ABC123', { role: 'operator' }))
@@ -41,7 +42,7 @@ describe('cameraWsUrl', () => {
   })
 
   it('Electron (file:) でも token を載せる — 載せないと operator が 4403 で閉じられる', () => {
-    sessionStorage.setItem('shuttlescope_token', TOKEN)
+    localStorage.setItem('shuttlescope_token', TOKEN)
     setLocation('file:', '')
 
     const url = new URL(cameraWsUrl('ABC123', { role: 'operator' }))
@@ -52,7 +53,7 @@ describe('cameraWsUrl', () => {
   })
 
   it('localhost 宛の平文でも token を載せる（端末内で完結し露出しない）', () => {
-    sessionStorage.setItem('shuttlescope_token', TOKEN)
+    localStorage.setItem('shuttlescope_token', TOKEN)
     setLocation('http:', 'localhost:5173')
 
     const url = new URL(cameraWsUrl('ABC123', { participant_id: 42 }))
@@ -64,7 +65,7 @@ describe('cameraWsUrl', () => {
 
   // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
   it('LAN 平文 (ws スキーム) には token を載せない', () => {
-    sessionStorage.setItem('shuttlescope_token', TOKEN)
+    localStorage.setItem('shuttlescope_token', TOKEN)
     setLocation('http:', '192.168.1.20:5173')
 
     const url = new URL(cameraWsUrl('ABC123', { participant_id: 42 }))
@@ -93,7 +94,7 @@ describe('cameraWsUrl', () => {
   it('入場券を使うときは JWT を URL に出さない', () => {
     // 入場券だけで認証が完結するのに JWT まで載せると、URL がログや Referer に
     // 残ったときの被害が入場券方式にした意味ごと消える。
-    sessionStorage.setItem('shuttlescope_token', TOKEN)
+    localStorage.setItem('shuttlescope_token', TOKEN)
     setLocation('https:', 'app.shuttle-scope.com')
 
     const url = new URL(cameraWsUrl('ABC123', { ticket: 'tkt-xyz' }))

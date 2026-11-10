@@ -90,12 +90,16 @@ def _reset_idempotency_cache():
     try:
         from backend.utils import idempotency as _idem
         _idem._records.clear()
+        # 予約テーブルも in-memory でプロセス全体に 1 つ。残骸が後続テストの
+        # 同一キー予約を IN_PROGRESS で弾かないよう、_records と一緒にクリアする。
+        _idem._reservations.clear()
     except Exception:
         pass
     yield
     try:
         from backend.utils import idempotency as _idem
         _idem._records.clear()
+        _idem._reservations.clear()
     except Exception:
         pass
 
@@ -238,3 +242,29 @@ def reset_response_cache(db_session, monkeypatch, request):
     response_cache.MEMORY_CACHE.clear()
     response_cache.PLAYER_VERSION.clear()
     response_cache.DATA_VERSION = 0
+
+
+# ─── ディスク空き容量ガードの決定論化 ───────────────────────────────────────────
+# init_upload の 507 ガードは shutil.disk_usage(UPLOAD_DIR).free — 即ちテストを走らせる
+# 実機の実空き容量 — に左右される。CI / 開発機の空きが 10GB を割ると、
+# コード変更と無関係に init が 507 を返して test_cross_team_write_scope 等が
+# 間欠失敗する。この autouse fixture は shutil.disk_usage の free だけを
+# 十分大きな固定値に差し替え、実機依存を断つ。MIN_FREE_DISK_BYTES
+# や required_free 計算・507 分岐は本番のままなので、ガードの振舞い自体は
+# 本番と同一コードパスで検証される（閾値 0 化と違い 507 分岐を潰さない）。
+# 個別に free 不足を検証したいテストは monkeypatch で再度上書きできる。
+@pytest.fixture(autouse=True)
+def _deterministic_upload_disk_free(monkeypatch):
+    import collections
+    from backend.routers import uploads as _uploads
+
+    # free は required_free (max(MIN_FREE_DISK_BYTES, total_size*2), total_size<=50GB)
+    # を常に上回るよう 1PB とする。total/used は形式を満たすダミー。
+    _FREE = 1024 ** 5  # 1 PiB
+    _DU = collections.namedtuple("usage", "total used free")
+
+    def _fake_disk_usage(_path):
+        return _DU(total=_FREE, used=0, free=_FREE)
+
+    monkeypatch.setattr(_uploads.shutil, "disk_usage", _fake_disk_usage)
+    yield

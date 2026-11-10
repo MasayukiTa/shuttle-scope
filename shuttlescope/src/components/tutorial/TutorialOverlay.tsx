@@ -15,7 +15,7 @@
  *   'skipped'    = 次回は表示しない (再表示しない)
  *   'aborted'    = 今回だけ閉じる (次回また自動表示される)
  */
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { apiPost } from '@/api/client'
 import { MIcon } from '@/components/common/MIcon'
@@ -68,6 +68,8 @@ export function TutorialOverlay({ tutorial, onClose, startStep = 0 }: Props) {
   const last = idx === tutorial.steps.length - 1
   const [geom, setGeom] = useState<TargetGeom | null>(null)
   const demoActive = useDemoModeStore((s) => s.active)
+  // 直前の移動方向 (対象要素が画面に無いステップを自動スキップする向き)
+  const dirRef = useRef<1 | -1>(1)
 
   const tutorialTitle = useMemo(
     () => resolveText(t, tutorial.titleKey, tutorial.title) || tutorial.id,
@@ -81,22 +83,60 @@ export function TutorialOverlay({ tutorial, onClose, startStep = 0 }: Props) {
     const el = document.querySelector(step.target) as HTMLElement | null
     if (!el) { setGeom(null); return }
     const r = el.getBoundingClientRect()
-    const rect = { top: r.top - PAD, left: r.left - PAD, width: r.width + PAD * 2, height: r.height + PAD * 2 }
-    const belowTop = r.bottom + 12
-    const aboveTop = r.top - 12 - TIP_H_EST
-    let top: number
-    let arrow: 'up' | 'down' | 'left' | 'right' = 'up'
-    if (belowTop + TIP_H_EST <= window.innerHeight) {
-      top = belowTop
-      arrow = 'up' // 吹き出しは target の下 → 矢印は上向き
-    } else if (aboveTop >= 8) {
-      top = aboveTop
-      arrow = 'down' // 吹き出しは target の上 → 矢印は下向き
-    } else {
-      top = Math.max(8, Math.min(window.innerHeight - TIP_H_EST - 8, r.top))
-      arrow = r.left > window.innerWidth / 2 ? 'right' : 'left'
+    // スポットライト矩形: target の周囲に PAD 分だけ余白を足して切り抜く。
+    // 画面内にクランプして、丸角の切り抜き (box-shadow) がはみ出さないようにする。
+    const VW = window.innerWidth
+    const VH = window.innerHeight
+    const rectTop = Math.max(0, r.top - PAD)
+    const rectLeft = Math.max(0, r.left - PAD)
+    const rectBottom = Math.min(VH, r.bottom + PAD)
+    const rectRight = Math.min(VW, r.right + PAD)
+    const rect = {
+      top: rectTop,
+      left: rectLeft,
+      width: Math.max(0, rectRight - rectLeft),
+      height: Math.max(0, rectBottom - rectTop),
     }
-    const left = Math.max(8, Math.min(window.innerWidth - TIP_W - 8, r.left + r.width / 2 - TIP_W / 2))
+    // 吹き出しは「対象の隣」に置き、対象の切り抜きには決して重ねない。
+    // 下 → 上 → 右 → 左 の順に、対象の外側へ収まる空きを探す。
+    const GAP = 14 // 対象と吹き出しの間隔
+    let top: number
+    let left: number
+    let arrow: 'up' | 'down' | 'left' | 'right'
+    const spaceBelow = VH - rectBottom
+    const spaceAbove = rectTop
+    const spaceRight = VW - rectRight
+    const spaceLeft = rectLeft
+    if (spaceBelow >= TIP_H_EST + GAP) {
+      // 対象の下
+      top = rectBottom + GAP
+      left = rect.left + rect.width / 2 - TIP_W / 2
+      arrow = 'up' // 矢印は上 (対象の方) を指す
+    } else if (spaceAbove >= TIP_H_EST + GAP) {
+      // 対象の上
+      top = rectTop - GAP - TIP_H_EST
+      left = rect.left + rect.width / 2 - TIP_W / 2
+      arrow = 'down'
+    } else if (spaceRight >= TIP_W + GAP) {
+      // 対象の右
+      left = rectRight + GAP
+      top = rect.top + rect.height / 2 - TIP_H_EST / 2
+      arrow = 'left'
+    } else if (spaceLeft >= TIP_W + GAP) {
+      // 対象の左
+      left = rectLeft - GAP - TIP_W
+      top = rect.top + rect.height / 2 - TIP_H_EST / 2
+      arrow = 'right'
+    } else {
+      // どの辺にも収まらない大きな対象: 下に重ねず、画面下端に寄せて置く。
+      // 矢印は対象中心の向きに合わせる。
+      top = VH - TIP_H_EST - 8
+      left = rect.left + rect.width / 2 - TIP_W / 2
+      arrow = 'up'
+    }
+    // 画面内にクランプ (対象の隣という原則は保ちつつ、端で見切れないようにする)
+    top = Math.max(8, Math.min(VH - TIP_H_EST - 8, top))
+    left = Math.max(8, Math.min(VW - TIP_W - 8, left))
     setGeom({ rect, tip: { top, left }, arrow })
   }, [step])
 
@@ -107,7 +147,16 @@ export function TutorialOverlay({ tutorial, onClose, startStep = 0 }: Props) {
       const el = document.querySelector(step.target) as HTMLElement | null
       try { el?.scrollIntoView({ behavior: 'smooth', block: 'center' }) } catch { /* ignore */ }
       const tm = window.setTimeout(recompute, 320)
-      return () => window.clearTimeout(tm)
+      // A-19: 対象要素が今の画面状態に存在しない (例: ラリー待機中は打点ゾーン/ショット種別が
+      // 未表示) ステップは、見えない物の説明になるので移動方向にスキップする。
+      // 遅れて現れる要素に備え、少し待って再確認してから判断する。
+      // 移動先が無い (先頭/末尾) ときは中央モーダルのまま表示する。
+      const skipTm = window.setTimeout(() => {
+        if (document.querySelector(step.target as string)) return
+        const nextIdx = idx + dirRef.current
+        if (nextIdx >= 0 && nextIdx < tutorial.steps.length) setIdx(nextIdx)
+      }, 900)
+      return () => { window.clearTimeout(tm); window.clearTimeout(skipTm) }
     }
     setGeom(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -137,10 +186,11 @@ export function TutorialOverlay({ tutorial, onClose, startStep = 0 }: Props) {
 
   const goNext = useCallback(() => {
     if (last) void finish('completed')
-    else setIdx((i) => i + 1)
+    else { dirRef.current = 1; setIdx((i) => i + 1) }
   }, [last, finish])
 
   const goPrev = useCallback(() => {
+    dirRef.current = -1
     setIdx((i) => Math.max(0, i - 1))
   }, [])
 
@@ -198,63 +248,21 @@ export function TutorialOverlay({ tutorial, onClose, startStep = 0 }: Props) {
   }
 
   // スポットライト + 吹き出し
-  //   注意誘導を最大化:
-  //   - 暗幕は 0.78 まで濃く（周辺視を遮断）
-  //   - 暗幕は pointer-events: auto で外側クリックを吸収（ユーザは強制的に target / 説明を見るしかない）
-  //   - target 自体は元の操作を残すため、spotlight 矩形の上にだけ pointer-events:none の透明窓を被せる
-  //   - 赤パルスリング + 外側へ拡大するリップル + target 上に浮遊する「↓」バウンスポインタ
-  //   - tooltip は周辺視で気付かせる微小揺れ (うるさくない 6 秒周期)
-  const arrowClass = `tutorial-tooltip-arrow tutorial-tooltip-arrow-${geom.arrow}`
-  // 「ここを見て」ポインタの位置: target の上端中央から 32px 上に浮かせる
-  const pointerTop = Math.max(8, geom.rect.top - 32)
-  const pointerLeft = geom.rect.left + geom.rect.width / 2
+  //   方針 (仙台大 要望3):
+  //   - 対象は「切り抜いて明るいまま」見せる。暗幕は 1 枚の全面オーバーレイに
+  //     box-shadow で対象の形の穴を開けて作る (4 枠方式の隙間・丸角ずれ・発光被りを排除)。
+  //   - 吹き出しは対象の「隣」に置き、対象には決して重ねない (recompute で配置)。
+  //   - 暗幕は外側クリックを吸収するが、切り抜き窓 (対象) 上はクリックを素通しして
+  //     元の操作を残す。穴の内側には発光や吹き出しを被せない。
   return (
     <div className="fixed inset-0 z-[300]">
-      {/* 1) 暗幕を 4 枠で target を囲む = 外側クリック吸収（強制注意）+ target 内は素通し */}
-      {(() => {
-        const dark = 'rgba(0,0,0,0.78)'
-        const absorb = (e: React.MouseEvent) => e.stopPropagation()
-        const VW = window.innerWidth, VH = window.innerHeight
-        const T = Math.max(0, geom.rect.top)
-        const L = Math.max(0, geom.rect.left)
-        const B = Math.min(VH, geom.rect.top + geom.rect.height)
-        const R = Math.min(VW, geom.rect.left + geom.rect.width)
-        return (
-          <>
-            {/* 上 */}
-            <div onClick={absorb} className="fixed" style={{ top: 0, left: 0, width: '100%', height: T, background: dark, zIndex: 300 }} />
-            {/* 下 */}
-            <div onClick={absorb} className="fixed" style={{ top: B, left: 0, width: '100%', height: Math.max(0, VH - B), background: dark, zIndex: 300 }} />
-            {/* 左 */}
-            <div onClick={absorb} className="fixed" style={{ top: T, left: 0, width: L, height: Math.max(0, B - T), background: dark, zIndex: 300 }} />
-            {/* 右 */}
-            <div onClick={absorb} className="fixed" style={{ top: T, left: R, width: Math.max(0, VW - R), height: Math.max(0, B - T), background: dark, zIndex: 300 }} />
-          </>
-        )
-      })()}
-      {/* 2) 赤パルスリング (1 重目) */}
-      <div
-        className="tutorial-ring"
-        style={{ top: geom.rect.top, left: geom.rect.left, width: geom.rect.width, height: geom.rect.height }}
-      />
-      {/* 3) 外側に拡がるリップル (2 重発信で視野の周辺視に強く訴える) */}
-      <div
-        className="tutorial-ring-ripple"
-        style={{ top: geom.rect.top, left: geom.rect.left, width: geom.rect.width, height: geom.rect.height }}
-        aria-hidden
-      />
-      {/* 4) 「ここを見て」浮遊矢印 (バウンス) — Material Symbols ではなく文字で軽量 */}
-      <div
-        className="tutorial-here-pointer"
-        style={{ top: pointerTop, left: pointerLeft }}
-        aria-hidden
-      >▼</div>
-      {/* 5) 吹き出し: 矢印 + 注意揺れ */}
+      <Spotlight geom={geom} />
+      {/* 吹き出し: 対象の隣。矢印 + 注意揺れ */}
       <div
         className="fixed w-80 bg-white dark:bg-gray-800 rounded-lg shadow-2xl p-4 border-2 border-red-500/70 dark:border-red-400/60 z-[302] relative tutorial-tooltip-attention"
         style={{ top: geom.tip.top, left: geom.tip.left }}
       >
-        <span className={arrowClass} aria-hidden />
+        <span className={`tutorial-tooltip-arrow tutorial-tooltip-arrow-${geom.arrow}`} aria-hidden />
         {/* ステップ番号バッジ (右上) — 一目で進捗が分かる */}
         <div
           className="absolute -top-3 -right-3 flex items-center justify-center w-9 h-9 rounded-full bg-red-600 text-white text-xs font-bold shadow-md ring-2 ring-white dark:ring-gray-800"
@@ -270,6 +278,42 @@ export function TutorialOverlay({ tutorial, onClose, startStep = 0 }: Props) {
         {controls}
       </div>
     </div>
+  )
+}
+
+/**
+ * スポットライト: 対象を切り抜いて明るく見せる暗幕 + 外側クリック吸収枠 +
+ * 対象外周の赤リング/リップル + 「ここを見て」矢印。穴の内側には何も被せない。
+ */
+function Spotlight({ geom }: { geom: TargetGeom }) {
+  const absorb = (e: React.MouseEvent) => e.stopPropagation()
+  const { rect } = geom
+  const VW = window.innerWidth, VH = window.innerHeight
+  const T = rect.top
+  const L = rect.left
+  const B = rect.top + rect.height
+  const R = rect.left + rect.width
+  const z = 300
+  // 「ここを見て」矢印は対象の上端中央の少し上 (穴の外) に浮かせる。
+  const pointerTop = Math.max(8, rect.top - 30)
+  const pointerLeft = rect.left + rect.width / 2
+  const boxStyle = { top: rect.top, left: rect.left, width: rect.width, height: rect.height }
+  return (
+    <>
+      {/* 暗幕 = 全面 1 枚。box-shadow で対象の形に穴を開けて切り抜く。
+          穴の内側 (対象) は明るいまま、クリックも下の UI に届く (pointer-events:none)。 */}
+      <div className="tutorial-spotlight-hole fixed" style={boxStyle} aria-hidden />
+      {/* 暗幕の外側クリックを吸収する 4 枠。穴の上には置かないので対象は操作できる。 */}
+      <div onClick={absorb} className="fixed" style={{ top: 0, left: 0, width: '100%', height: Math.max(0, T), zIndex: z }} />
+      <div onClick={absorb} className="fixed" style={{ top: B, left: 0, width: '100%', height: Math.max(0, VH - B), zIndex: z }} />
+      <div onClick={absorb} className="fixed" style={{ top: T, left: 0, width: Math.max(0, L), height: Math.max(0, B - T), zIndex: z }} />
+      <div onClick={absorb} className="fixed" style={{ top: T, left: R, width: Math.max(0, VW - R), height: Math.max(0, B - T), zIndex: z }} />
+      {/* 対象の外周だけを縁取る赤リング + 外へ拡がるリップル (内側は覆わない)。 */}
+      <div className="tutorial-ring" style={boxStyle} aria-hidden />
+      <div className="tutorial-ring-ripple" style={boxStyle} aria-hidden />
+      {/* 「ここを見て」浮遊矢印 (対象の外に置く)。 */}
+      <div className="tutorial-here-pointer" style={{ top: pointerTop, left: pointerLeft }} aria-hidden>▼</div>
+    </>
   )
 }
 

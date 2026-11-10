@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { analyticsViewLifecycle } from '@/utils/analytics'
 import { useTranslation } from 'react-i18next'
+import { matchOutcomeLabelKey } from '@/utils/matchResult'
 import { apiGet } from '@/api/client'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
+import { RoleGuard } from '@/components/common/RoleGuard'
 import { AnalysisFilters } from '@/types'
 import { FlashAdvicePanel } from '@/components/analysis/FlashAdvicePanel'
 import { IntervalReport } from '@/components/analysis/IntervalReport'
@@ -56,6 +58,8 @@ export function DashboardLivePage({ playerId, matches }: Props) {
   const isLight = useIsLightMode()
   const { role } = useAuth()
   const isCoachish = role === 'coach' || role === 'analyst' || role === 'admin'
+  // 製品ルール: player には試合の勝敗・スコア・勝率推定を見せない
+  const isPlayer = role === 'player'
   const [benchMode, setBenchMode] = useBenchMode()
 
   // 速報用ステート
@@ -74,11 +78,13 @@ export function DashboardLivePage({ playerId, matches }: Props) {
   // セット間解析モーダル用ステート
   const [intervalSummarySetId, setIntervalSummarySetIdValue] = useState<number | null>(null)
   const [showIntervalSummary, setShowIntervalSummary] = useState(false)
+  // #597: セット詳細を開けなかったとき（取得失敗/該当なし）のエラー文。
+  const [setDetailError, setSetDetailError] = useState<string | null>(null)
 
   const matchOptions = matches.map((m) => ({
     value: m.match_id,
     label: `${m.date ?? t('common.unknown_date', 'Date unknown')} vs ${m.opponent}`,
-    suffix: m.result === 'win' ? t('common.win_short', 'W') : t('common.lose_short', 'L'),
+    suffix: isPlayer ? undefined : t(matchOutcomeLabelKey(m.result)),
     searchText: `${m.date ?? ''} ${m.opponent} ${m.tournament} ${m.tournament_level}`,
   }))
 
@@ -131,13 +137,16 @@ export function DashboardLivePage({ playerId, matches }: Props) {
                     return {
                       value: m.match_id,
                       label: `${m.date} vs ${m.opponent}`,
-                      suffix: scoreStr || (m.result === 'win' ? t('common.win_short', 'W') : t('common.lose_short', 'L')),
+                      suffix: isPlayer ? undefined : (scoreStr || t(matchOutcomeLabelKey(m.result))),
                       searchText: `${m.date} ${m.opponent} ${m.tournament}`,
                     }
                   })}
                   value={flashMatchId}
                   onChange={(v) => {
-                    setFlashMatchId(v != null ? Number(v) : null)
+                    const picked = v != null ? Number(v) : null
+                    setFlashMatchId(picked)
+                    // 下のセット間速報レポートにも同じ試合を引き継ぐ (二重に選ばせない)
+                    setSelectedMatchId(picked)
                     setFlashSet(1)
                     setFlashRallyNum('')
                   }}
@@ -164,6 +173,8 @@ export function DashboardLivePage({ playerId, matches }: Props) {
                 </div>
               </div>
 
+              {/* 地点 (ラリー) ピッカーは点差推移グラフ = 勝敗そのもの。player には出さない */}
+              {!isPlayer && (
               <div className="flex flex-col gap-1">
                 <label className={`text-xs ${textMuted}`}>{t('analysis.flash.rally_select')}</label>
                 <button
@@ -175,6 +186,7 @@ export function DashboardLivePage({ playerId, matches }: Props) {
                   {flashRallyNum ? `Set ${flashSet} — R.${flashRallyNum}` : t('live.all_rallies_pick_from_chart', 'All rallies (pick from chart)')}
                 </button>
               </div>
+              )}
             </div>
           </div>
 
@@ -189,7 +201,7 @@ export function DashboardLivePage({ playerId, matches }: Props) {
             />
           )}
 
-          {flashMatchId ? (
+          {flashMatchId && !isPlayer ? (
             <div className={`${card} rounded-ss-lg shadow-card p-4`}>
               <FlashAdvicePanel
                 matchId={flashMatchId}
@@ -205,9 +217,19 @@ export function DashboardLivePage({ playerId, matches }: Props) {
           )}
 
           {/* 推奨アドバイスランキング (ベンチモード時は非表示で集中度UP) */}
-          {!benchMode && <RecommendationRanking playerId={playerId} />}
+          {/* research 層の解析なので player には出さない。
+              選択中の試合ではなく選手の全期間の記録から出すので、速報と取り違えないよう
+              注記と区切り線で分ける。 */}
+          {!benchMode && (
+            <RoleGuard allowedRoles={['analyst', 'coach']} fallback={null}>
+              <div className={`space-y-2 border-t pt-4 ${isLight ? 'border-gray-200' : 'border-gray-700'}`}>
+                <p className={`text-xs ${textMuted}`}>{t('live.overall_trend_note')}</p>
+                <RecommendationRanking playerId={playerId} />
+              </div>
+            </RoleGuard>
+          )}
 
-          {showRallyPicker && flashMatchId && (
+          {!isPlayer && showRallyPicker && flashMatchId && (
             <RallyPickerModal
               matchId={flashMatchId}
               matchLabel={(() => {
@@ -227,8 +249,9 @@ export function DashboardLivePage({ playerId, matches }: Props) {
         </div>
       </ErrorBoundary>
 
-      {/* インターバルレポート (ベンチモード時は非表示) */}
-      {!benchMode && (
+      {/* インターバルレポート (ベンチモード時は非表示)。
+          セット別の推定勝率・勝ちラリー数 = 勝敗そのものなので player には出さない */}
+      {!benchMode && !isPlayer && (
       <ErrorBoundary>
         <div className={`${card} rounded-ss-lg shadow-card p-4`}>
           <div className="flex items-center justify-between mb-3">
@@ -252,6 +275,8 @@ export function DashboardLivePage({ playerId, matches }: Props) {
               completedSet={intervalSet}
               onSetClick={async (setNum) => {
                 if (!selectedMatchId) return
+                // #597: クリックごとに前回エラーをクリアする。
+                setSetDetailError(null)
                 try {
                   // match の sets 一覧から set_num に対応する set_id を解決
                   const resp = await apiGet<{ success: boolean; data: Array<{ id: number; set_num: number }> }>(
@@ -261,14 +286,21 @@ export function DashboardLivePage({ playerId, matches }: Props) {
                   if (found) {
                     setIntervalSummarySetIdValue(found.id)
                     setShowIntervalSummary(true)
+                  } else {
+                    // #597: 該当セットが解決できないときは無反応にせず明示する。
+                    setSetDetailError(t('auto.DashboardLivePage.set_detail_error'))
                   }
                 } catch {
-                  /* 失敗時は静かに無視 (ユーザに虚偽情報を出さない) */
+                  // #597: 取得失敗を沈黙させず、再試行を促すエラーを出す。
+                  setSetDetailError(t('auto.DashboardLivePage.set_detail_error'))
                 }
               }}
             />
           ) : (
             <p className={`text-sm text-center py-6 ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>{t('auto.DashboardLivePage.k3')}</p>
+          )}
+          {setDetailError && (
+            <p className="text-sm text-center py-2 text-red-500" role="alert">{setDetailError}</p>
           )}
         </div>
       </ErrorBoundary>

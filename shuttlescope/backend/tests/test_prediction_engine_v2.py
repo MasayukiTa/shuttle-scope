@@ -13,8 +13,14 @@ from backend.analysis.prediction_engine import (
     compute_feature_win_prob,
     compute_set_model_v2,
     compute_brier_score,
+    compute_brier_score_blended,
+    build_caution_flags,
+    compute_match_narrative,
+    reference_status,
+    win_probability_interval,
     find_nearest_matches,
 )
+from backend.utils.confidence import VERDICT_MIN_SAMPLE
 
 
 # ── テスト用ヘルパー ────────────────────────────────────────────────────────
@@ -50,11 +56,13 @@ def _losses(player_id: int, n: int, level: str = 'IC') -> list[MagicMock]:
 # ── compute_recent_form ───────────────────────────────────────────────────────
 
 class TestComputeRecentForm:
-    def test_empty_returns_stable(self):
+    def test_empty_returns_no_verdict(self):
+        # 試合 0 件: 偽の 50% / 「安定」を返さず null + sample=0
         r = compute_recent_form([], 1)
-        assert r['trend'] == 'stable'
+        assert r['trend'] is None
         assert r['sample'] == 0
-        assert r['win_rate'] == 0.5
+        assert r['win_rate'] is None
+        assert r['overall_wr'] is None
 
     def test_all_wins_recent_improving(self):
         # 10試合全体5W5L, 直近5はすべて勝利 → improving
@@ -105,12 +113,13 @@ class TestComputeRecentForm:
 class TestComputeGrowthTrend:
     def test_empty_returns_flat(self):
         r = compute_growth_trend([], 1)
-        assert r['direction'] == 'flat'
+        assert r['direction'] is None
+        assert r['slope'] is None
         assert r['buckets'] == []
 
     def test_single_match_returns_flat(self):
         r = compute_growth_trend([_match(1, 'win')], 1)
-        assert r['direction'] == 'flat'
+        assert r['direction'] is None
         assert len(r['buckets']) == 1
 
     def test_improving_trend(self):
@@ -135,6 +144,16 @@ class TestComputeGrowthTrend:
         matches = [_match(1, 'win', date(2024, 1, i + 1)) for i in range(20)]
         r = compute_growth_trend(matches, 1)
         assert len(r['buckets']) <= 6
+
+    def test_buckets_carry_sample_ci_and_dates(self):
+        # 区間ごとの標本数・信頼区間・日付範囲が付く (n を見せずに率だけ並べない)
+        matches = _wins(1, 4) + _losses(1, 4)
+        r = compute_growth_trend(matches, 1)
+        assert sum(b['sample'] for b in r['buckets']) == len(matches)
+        for b in r['buckets']:
+            assert 0 <= b['wins'] <= b['sample']
+            assert 0.0 <= b['ci_low'] <= b['wins'] / b['sample'] <= b['ci_high'] <= 1.0
+            assert b['date_from'] <= b['date_to']
 
     def test_bucket_win_rates_in_range(self):
         matches = _wins(1, 4) + _losses(1, 4)
@@ -331,3 +350,144 @@ class TestFindNearestMatches:
         m = _match(1, 'loss', date(2024, 1, 1), 'IC')
         result = find_nearest_matches([m], 1, 'IC', n=1)
         assert result[0]['result'] == 'loss'
+
+    def test_format_match_adds_one_point(self):
+        # 大会レベル一致(+2) かつ フォーマット一致(+1) => 3点
+        m = _match(1, 'win', date(2024, 1, 1), 'IC', fmt='singles')
+        result = find_nearest_matches(
+            [m], 1, 'IC', n=1, current_format='singles'
+        )
+        assert result[0]['similarity_score'] == 3
+
+    def test_format_mismatch_no_bonus(self):
+        # 大会レベル一致(+2) のみ、フォーマット不一致 => 2点
+        m = _match(1, 'win', date(2024, 1, 1), 'IC', fmt='mens_doubles')
+        result = find_nearest_matches(
+            [m], 1, 'IC', n=1, current_format='singles'
+        )
+        assert result[0]['similarity_score'] == 2
+
+    def test_format_only_match_scores_one(self):
+        # 大会レベル不一致、フォーマットのみ一致 => 1点
+        m = _match(1, 'win', date(2024, 1, 1), 'SJL', fmt='singles')
+        result = find_nearest_matches(
+            [m], 1, 'IC', n=1, current_format='singles'
+        )
+        assert result[0]['similarity_score'] == 1
+
+    def test_no_current_format_is_backward_compatible(self):
+        # current_format 未指定: 従来どおり大会レベルのみ(+2)
+        m = _match(1, 'win', date(2024, 1, 1), 'IC', fmt='singles')
+        result = find_nearest_matches([m], 1, 'IC', n=1)
+        assert result[0]['similarity_score'] == 2
+
+
+# ── 最小標本 VERDICT_MIN_SAMPLE: 方向・注意・成長傾向・勝率の格下げ ───────────────────
+
+class TestVerdictMinSample:
+    def test_minimum_is_the_existing_narrative_rule(self):
+        assert VERDICT_MIN_SAMPLE == 5
+
+    @pytest.mark.parametrize('n', [1, 2, 4])
+    def test_recent_form_has_no_direction_below_minimum(self, n):
+        # n=1 の 1 勝は 直近 1.0 / 全体 0.667 で「上向き」になっていた
+        r = compute_recent_form(_wins(1, n), 1, n=5)
+        assert r['trend'] is None
+        # 数値そのものは残す (n と一緒に参考値として出せる)
+        assert r['sample'] == n
+        assert r['win_rate'] == 1.0
+
+    @pytest.mark.parametrize('n', [1, 2, 4])
+    def test_caution_flag_not_raised_from_few_matches(self, n):
+        # n=1 の 1 敗は (0+1)/(1+2)=0.333 < 0.35 で「戦術の再検討が必要」になっていた
+        assert build_caution_flags(0.333, n, {}) == []
+        assert build_caution_flags(0.80, n, {}) == []
+
+    def test_caution_flag_unchanged_at_minimum(self):
+        n = VERDICT_MIN_SAMPLE
+        assert build_caution_flags(0.30, n, {}) == ['過去の対戦成績が厳しい — 戦術の再検討が必要']
+        assert build_caution_flags(0.75, n, {}) == ['過去の勝率が高いが油断に注意']
+        assert build_caution_flags(0.50, n, {}) == []
+
+    def test_physical_caution_still_flagged_with_few_matches(self):
+        ctx = {'opponent': {'physical_caution': {'value': 'heavy'}}}
+        assert len(build_caution_flags(0.5, 1, ctx)) == 1
+
+    @pytest.mark.parametrize('n', [1, 2, 4])
+    def test_growth_trend_has_no_direction_below_minimum(self, n):
+        matches = [_match(1, 'win' if i == n - 1 else 'loss', date(2024, 1, i + 1)) for i in range(n)]
+        r = compute_growth_trend(matches, 1)
+        assert r['direction'] is None
+        assert r['slope'] is None
+        assert r['sample'] == n
+
+    def test_growth_trend_unchanged_at_minimum(self):
+        matches = _losses(1, 3) + [_match(1, 'win', date(2024, 6, i + 1)) for i in range(3)]
+        r = compute_growth_trend(matches, 1)
+        assert r['direction'] == 'up'
+        assert r['slope'] > 0
+
+    def test_recent_form_unchanged_at_minimum(self):
+        all_matches = (_losses(1, 5) + _wins(1, 5))
+        all_matches.reverse()
+        r = compute_recent_form(all_matches, 1, n=5)
+        assert r['trend'] == 'improving'
+
+    def test_reference_status_by_sample(self):
+        assert reference_status(VERDICT_MIN_SAMPLE - 1)['reason'] == 'sample'
+        assert reference_status(VERDICT_MIN_SAMPLE)['is_reference'] is False
+
+    def test_wilson_interval_replaces_fixed_margin(self):
+        assert win_probability_interval(0.6, VERDICT_MIN_SAMPLE - 1) is None
+        assert win_probability_interval(None, 20) is None
+        small = win_probability_interval(0.6, 5)
+        large = win_probability_interval(0.6, 80)
+        assert small['low'] < 0.6 < small['high']
+        # 標本が多いほど区間は狭い (固定の ±15/10/7 ではない)
+        assert (large['high'] - large['low']) < (small['high'] - small['low'])
+        assert small['n'] == 5
+
+    def test_narrative_sentence_does_not_call_blended_value_head_to_head(self):
+        out = compute_match_narrative(
+            player_name='A', opponent_name='B', win_prob=0.61, sample_size=8,
+            set_distribution={'2-0': 0.3, '2-1': 0.3, '1-2': 0.2, '0-2': 0.2},
+            most_likely_scorelines=[], score_volatility=None, recent_form=None,
+            obs_context={}, h2h_count=4, tournament_level=None,
+        )
+        text = out['deciding_factor']
+        assert '直接対戦での実績' not in text
+        assert '直接対戦4試合を加味した推定勝率61%' in text
+
+
+# ── 表示する予測そのものの Brier ───────────────────────────────────────────────
+
+class TestBlendedBrier:
+    def test_below_five_matches_is_none(self):
+        r = compute_brier_score_blended(_wins(1, 4), 1, [])
+        assert r['score'] is None and r['grade'] is None
+
+    def test_scores_the_blended_prediction_not_the_laplace_one(self):
+        # 直近 5 件が全部負け・その前が全部勝ち: 混合 (直近重み 0.6) は Laplace と別の値を出す
+        matches = _losses(1, 6) + _wins(1, 6)
+        matches.sort(key=lambda m: m.date, reverse=True)
+        laplace = compute_brier_score(matches, 1)
+        blended = compute_brier_score_blended(matches, 1, [])
+        assert laplace['score'] is not None and blended['score'] is not None
+        assert laplace['score'] != blended['score']
+        assert blended['sample'] == len(matches)
+
+    def test_formula_is_unchanged_for_a_custom_predictor(self):
+        # 常に 0.5 と答える予測の Brier は 0.25 ちょうど (コイントス基準)
+        matches = _wins(1, 3) + _losses(1, 3)
+        r = compute_brier_score(matches, 1, predictor=lambda holdout: 0.5)
+        assert r['score'] == 0.25
+        assert r['grade'] == 'fair'
+
+    def test_poor_grade_demotes_to_reference(self):
+        # 常に外す予測 (勝つのに 0.1 と答える) は 0.25 を超えて poor
+        matches = _wins(1, 6)
+        brier = compute_brier_score(matches, 1, predictor=lambda holdout: 0.1)
+        assert brier['grade'] == 'poor'
+        status = reference_status(len(matches), brier)
+        assert status['is_reference'] is True and status['reason'] == 'brier'
+        assert reference_status(len(matches), {'grade': 'good'})['is_reference'] is False

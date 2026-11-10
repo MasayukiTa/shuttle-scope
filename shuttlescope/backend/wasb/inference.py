@@ -1,6 +1,6 @@
 """WASB-SBDT shuttle detection runner.
 
-ONNX Runtime ベースの HRNet バックボーン推論ラッパー。TrackNetV3 と同じ
+ONNX Runtime ベースの HRNet バックボーン推論ラッパー。現行の TrackNet 系検出器 (backend/tracknet) と同じ
 ``predict_frames(frames) -> list[dict]`` インターフェースを実装し、
 ``cv.factory.get_shuttle_detector()`` から env switch で差し替え可能にする。
 

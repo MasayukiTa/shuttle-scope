@@ -22,6 +22,12 @@ import { WIN, LOSS, BAR, perfColor, getTooltipStyle, AXIS_TICK, AXIS_TICK_LIGHT 
 import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import type { AnalysisMeta } from '@/types'
+import { isFiniteNumber } from '@/utils/format'
+
+// 0〜1 の勝率を棒グラフ用の % にする。null (件数 0) は棒を描かない
+function toRatePct(v: number | null | undefined): number | null {
+  return isFiniteNumber(v) ? +(v * 100).toFixed(1) : null
+}
 
 interface MatchItem {
   match_id: number
@@ -45,7 +51,7 @@ interface PartnerItem {
   match_count: number
   win_rate: number
   synergy_score: number
-  avg_rally_length: number
+  avg_rally_length: number | null
 }
 
 function PartnerComparison({ playerId }: { playerId: number }) {
@@ -85,7 +91,11 @@ function PartnerComparison({ playerId }: { playerId: number }) {
           >
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-[var(--ss-t1)]">{p.partner_name}</span>
-              <span className="text-xs text-[var(--ss-t3)]">{t('doubles_analysis.match_count', { n: p.match_count })}</span>
+              <span className="flex items-center gap-2">
+                <span className="text-xs text-[var(--ss-t3)]">{t('doubles_analysis.match_count', { n: p.match_count })}</span>
+                {/* 信頼度はそのパートナーとの試合数で判定する */}
+                <ConfidenceBadge sampleSize={p.match_count} unit="matches" compact />
+              </span>
             </div>
             <div className="grid grid-cols-3 gap-2 text-center">
               <div>
@@ -93,11 +103,11 @@ function PartnerComparison({ playerId }: { playerId: number }) {
                 <p className="text-[10px] text-[var(--ss-t3)]">{t('doubles_analysis.win_rate')}</p>
               </div>
               <div>
-                <p className="ss-num text-lg font-bold text-[var(--ss-emphasis)]">{(p.synergy_score * 100).toFixed(0)}</p>
-                <p className="text-[10px] text-[var(--ss-t3)]">{t('doubles_analysis.synergy')}</p>
+                <p className="ss-num text-lg font-bold text-[var(--ss-emphasis)]">{(p.synergy_score * 100).toFixed(0)}%</p>
+                <p className="text-[10px] text-[var(--ss-t3)]">{t('doubles_analysis.adjusted_win_rate')}</p>
               </div>
               <div>
-                <p className="ss-num text-lg font-bold text-[var(--ss-brand)]">{p.avg_rally_length.toFixed(1)}</p>
+                <p className="ss-num text-lg font-bold text-[var(--ss-brand)]">{isFiniteNumber(p.avg_rally_length) ? p.avg_rally_length.toFixed(1) : '—'}</p>
                 <p className="text-[10px] text-[var(--ss-t3)]">{t('doubles_analysis.avg_rally')}</p>
               </div>
             </div>
@@ -111,8 +121,11 @@ function PartnerComparison({ playerId }: { playerId: number }) {
 // ─── サーブ/レシーブ勝率 (F-003) ────────────────────────────────────────────
 
 interface ServeReceiveData {
-  serve_win_rate: number
-  receive_win_rate: number
+  // サーブ側 / レシーブ側のどちらかが 0 件なら null (0% ではない)
+  serve_win_rate: number | null
+  receive_win_rate: number | null
+  serve_count?: number
+  receive_count?: number
   serve_style: Record<string, number>
   receive_zones: { zone: string; count: number; win_rate: number }[]
 }
@@ -140,8 +153,8 @@ function ServeReceiveStats({ playerId }: { playerId: number }) {
   }
 
   const srData = [
-    { name: t('doubles_analysis.serve_side'), rate: +(d.serve_win_rate * 100).toFixed(1), fill: WIN },
-    { name: t('doubles_analysis.receive_side'), rate: +(d.receive_win_rate * 100).toFixed(1), fill: BAR },
+    { name: t('doubles_analysis.serve_side'), rate: toRatePct(d.serve_win_rate), count: d.serve_count, fill: WIN },
+    { name: t('doubles_analysis.receive_side'), rate: toRatePct(d.receive_win_rate), count: d.receive_count, fill: BAR },
   ]
 
   const serveStyleEntries = Object.entries(d.serve_style)
@@ -159,7 +172,12 @@ function ServeReceiveStats({ playerId }: { playerId: number }) {
           <YAxis type="category" dataKey="name" width={72} tick={{ fill: isLight ? AXIS_TICK_LIGHT : 'var(--ss-t3)', fontSize: 11 }} />
           <Tooltip
             contentStyle={getTooltipStyle(isLight)}
-            formatter={(v: number) => [`${v.toFixed(1)}%`, t('doubles_analysis.win_rate')]}
+            formatter={(v: number, _: string, entry: { payload?: { count?: number } }) => [
+              typeof v === 'number'
+                ? `${v.toFixed(1)}%${typeof entry?.payload?.count === 'number' ? ` (${entry.payload.count}${t('doubles_analysis.rally_suffix')})` : ''}`
+                : '—',
+              t('doubles_analysis.win_rate'),
+            ]}
           />
           <Bar dataKey="rate" radius={[0, 4, 4, 0]}>
             {srData.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
@@ -216,11 +234,12 @@ function ServeReceiveStats({ playerId }: { playerId: number }) {
 // ─── 打球分担 (F-004) ────────────────────────────────────────────────────────
 
 interface StrokeSharingData {
-  balanced_win_rate: number
-  imbalanced_win_rate: number
+  // 件数 0 の側は null (0% ではない)
+  balanced_win_rate: number | null
+  imbalanced_win_rate: number | null
   balanced_count: number
   imbalanced_count: number
-  avg_balance_ratio: number
+  avg_balance_ratio: number | null
 }
 
 function StrokeSharing({ playerId }: { playerId: number }) {
@@ -246,11 +265,11 @@ function StrokeSharing({ playerId }: { playerId: number }) {
   }
 
   const shareData = [
-    { name: t('doubles_analysis.balanced'), rate: +(d.balanced_win_rate * 100).toFixed(1), count: d.balanced_count, fill: WIN },
-    { name: t('doubles_analysis.imbalanced'), rate: +(d.imbalanced_win_rate * 100).toFixed(1), count: d.imbalanced_count, fill: LOSS },
+    { name: t('doubles_analysis.balanced'), rate: toRatePct(d.balanced_win_rate), count: d.balanced_count, fill: WIN },
+    { name: t('doubles_analysis.imbalanced'), rate: toRatePct(d.imbalanced_win_rate), count: d.imbalanced_count, fill: LOSS },
   ]
 
-  const balancePct = Math.round(d.avg_balance_ratio * 100)
+  const balancePct = isFiniteNumber(d.avg_balance_ratio) ? Math.round(d.avg_balance_ratio * 100) : null
 
   return (
     <div className="space-y-3">
@@ -268,10 +287,10 @@ function StrokeSharing({ playerId }: { playerId: number }) {
         <div className="relative h-4 bg-[var(--ss-surface-3)] rounded-ss-full overflow-hidden">
           <div
             className="absolute left-0 top-0 h-full rounded-ss-full bg-gradient-to-r from-orange-500 via-green-400 to-orange-500"
-            style={{ width: `${balancePct}%` }}
+            style={{ width: `${balancePct ?? 0}%` }}
           />
           <div className="absolute inset-0 flex items-center justify-center">
-            <span className="ss-num text-xs font-bold drop-shadow text-white">{balancePct}%</span>
+            <span className="ss-num text-xs font-bold drop-shadow text-white">{balancePct === null ? '—' : `${balancePct}%`}</span>
           </div>
         </div>
         <div className="flex justify-between text-[10px] text-[var(--ss-t3)] mt-0.5">
@@ -287,7 +306,7 @@ function StrokeSharing({ playerId }: { playerId: number }) {
           <Tooltip
             contentStyle={getTooltipStyle(isLight)}
             formatter={(v: number, _: string, entry: { payload?: { count?: number } }) =>
-              [`${v.toFixed(1)}% (${entry?.payload?.count ?? 0}${t('doubles_analysis.rally_suffix')})`, t('doubles_analysis.win_rate')]
+              [typeof v === 'number' ? `${v.toFixed(1)}% (${entry?.payload?.count ?? 0}${t('doubles_analysis.rally_suffix')})` : '—', t('doubles_analysis.win_rate')]
             }
           />
           <Bar dataKey="rate" radius={[0, 4, 4, 0]}>
@@ -301,10 +320,18 @@ function StrokeSharing({ playerId }: { playerId: number }) {
 
 // ─── コートカバレッジ (F-001) ────────────────────────────────────────────────
 
+// ストローク 0 件の選手の各率は null (0% として描かない)
+interface CoverageSide {
+  front_rate: number | null
+  back_rate: number | null
+  mid_rate: number | null
+  total_strokes: number
+}
+
 interface CoverageData {
-  balance_score: number
-  player_a?: { front_rate: number; back_rate: number; mid_rate: number; total_strokes: number }
-  partner_a?: { front_rate: number; back_rate: number; mid_rate: number; total_strokes: number }
+  balance_score: number | null
+  player_a?: CoverageSide
+  partner_a?: CoverageSide
 }
 
 function CourtCoverage({ matchId }: { matchId: number }) {
@@ -328,14 +355,14 @@ function CourtCoverage({ matchId }: { matchId: number }) {
   const players = [
     { label: t('doubles_analysis.self'), data: d.player_a },
     { label: t('doubles_analysis.partner'), data: d.partner_a },
-  ].filter((p) => p.data)
+  ].filter((p) => p.data && isFiniteNumber(p.data.front_rate) && isFiniteNumber(p.data.mid_rate) && isFiniteNumber(p.data.back_rate))
 
   if (players.length === 0) return <p className="text-[var(--ss-t3)] text-sm py-3">{t('doubles_analysis.no_court_data')}</p>
 
   const radarData = [
-    { area: t('doubles_analysis.area_front'), ...Object.fromEntries(players.map((p) => [p.label, +(p.data!.front_rate * 100).toFixed(1)])) },
-    { area: t('doubles_analysis.area_mid'), ...Object.fromEntries(players.map((p) => [p.label, +(p.data!.mid_rate * 100).toFixed(1)])) },
-    { area: t('doubles_analysis.area_back'), ...Object.fromEntries(players.map((p) => [p.label, +(p.data!.back_rate * 100).toFixed(1)])) },
+    { area: t('doubles_analysis.area_front'), ...Object.fromEntries(players.map((p) => [p.label, +((p.data!.front_rate ?? 0) * 100).toFixed(1)])) },
+    { area: t('doubles_analysis.area_mid'), ...Object.fromEntries(players.map((p) => [p.label, +((p.data!.mid_rate ?? 0) * 100).toFixed(1)])) },
+    { area: t('doubles_analysis.area_back'), ...Object.fromEntries(players.map((p) => [p.label, +((p.data!.back_rate ?? 0) * 100).toFixed(1)])) },
   ]
 
   const COLORS = [WIN, BAR]
@@ -347,14 +374,16 @@ function CourtCoverage({ matchId }: { matchId: number }) {
         <span
           className="ss-num text-sm font-bold"
           style={{
-            color: d.balance_score >= 0.8
+            color: !isFiniteNumber(d.balance_score)
+              ? 'var(--ss-t3)'
+              : d.balance_score >= 0.8
               ? 'var(--ss-success)'
               : d.balance_score >= 0.6
               ? 'var(--ss-warn)'
               : 'var(--ss-bad)',
           }}
         >
-          {(d.balance_score * 100).toFixed(0)}
+          {isFiniteNumber(d.balance_score) ? (d.balance_score * 100).toFixed(0) : '—'}
         </span>
       </div>
 

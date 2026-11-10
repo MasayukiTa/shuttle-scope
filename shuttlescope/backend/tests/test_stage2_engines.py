@@ -101,14 +101,20 @@ class TestRecommendationEngine:
         assert item["key"] == "smash"
         assert item["win_rate"] == 0.8
         assert item["delta_from_baseline"] == round(0.8 - 0.5, 3)
-        assert "継続強化" in item["title"]
+        assert "継続強化" not in item["title"]
+        assert "高い傾向" in item["title"]
+        assert "n=50" in item["body"]
+        assert "因果は確認していません" in item["body"]
 
     def test_build_item_below_baseline(self):
         from backend.analysis.recommendation_engine import build_recommendation_item
         item = build_recommendation_item("zone", "NL", "左前エリア", 30, 9, 0.5)
         assert item is not None
         assert item["win_rate"] == 0.3
-        assert "改善余地" in item["title"] or "伸びしろ" in item["body"]
+        assert "改善余地" not in item["title"]
+        assert "伸びしろ" in item["title"]
+        assert "n=30" in item["body"]
+        assert "因果は確認していません" in item["body"]
 
     def test_build_item_confidence_levels(self):
         from backend.analysis.recommendation_engine import build_recommendation_item
@@ -201,7 +207,7 @@ class TestGrowthEngine:
         assert s == 0.6
 
     def test_strength_insufficient_matches(self):
-        """試合数 < 3 のときは 0.5 を返す"""
+        """試合数 < 3 のときは強度を None で返す (偽の中立値 0.5 を強度として出さない)"""
         from backend.analysis.growth_engine import compute_opponent_strength
         db = MagicMock()
         db.get.return_value = self._make_player(world_ranking=None)
@@ -209,7 +215,7 @@ class TestGrowthEngine:
             self._make_match_result(99, 1, "win"),
             self._make_match_result(99, 1, "loss"),
         ]
-        assert compute_opponent_strength(db, 99) == 0.5
+        assert compute_opponent_strength(db, 99) is None
 
     # ── weighted_win_rate ────────────────────────────────────────────────────
 
@@ -440,3 +446,33 @@ class TestOpponentClassifier:
         ]
         result = aggregate_affinity_by_axis("handedness", classified, matches, player_id)
         assert result[0]["win_rate"] >= result[-1]["win_rate"]
+
+    # ── 打球データが無い相手は型に入れない ──────────────────────────────────
+
+    def test_opponent_without_stroke_data_is_unclassified(self):
+        """打球データが1試合も無い相手を「バランス型/medium」に入れない。"""
+        from backend.analysis.opponent_classifier import UNCLASSIFIED, classify_opponent
+        db = MagicMock()
+        db.get.return_value = None
+        result = classify_opponent(db, 2, [], 1)
+        axes = result["axes"]
+        assert axes["style"] == UNCLASSIFIED
+        assert axes["pace"] == UNCLASSIFIED
+        assert axes["rally_length"] == UNCLASSIFIED
+        assert axes["court_zone"] == UNCLASSIFIED
+        assert axes["handedness"] == "unknown"
+
+    def test_aggregate_affinity_skips_unclassified(self):
+        from backend.analysis.opponent_classifier import UNCLASSIFIED, aggregate_affinity_by_axis
+        classified = {
+            2: {"axes": {"style": "攻撃型"}},
+            3: {"axes": {"style": UNCLASSIFIED}},
+        }
+        matches = [
+            self._make_match(1, 2, "win"),
+            self._make_match(1, 3, "win"),
+            self._make_match(1, 3, "loss"),
+        ]
+        result = aggregate_affinity_by_axis("style", classified, matches, 1)
+        assert [r["label"] for r in result] == ["攻撃型"]
+        assert result[0]["match_count"] == 1

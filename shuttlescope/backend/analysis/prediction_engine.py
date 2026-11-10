@@ -12,7 +12,15 @@ from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import or_, and_
 
 from backend.db.models import Match, GameSet, Rally, Player, PreMatchObservation
-from backend.analysis.player_context import player_wins_match as _player_wins_match_ctx
+from backend.analysis.player_context import (
+    head_to_head,
+    involves_player,
+    opponent_player_id,
+    player_wins_match as _player_wins_match_ctx,
+)
+from backend.analysis.role_view import team_side
+from backend.analysis.analysis_config import AnalysisConfig
+from backend.utils.confidence import VERDICT_MIN_SAMPLE, wilson_ci_from_rate
 
 # 大会重要度（TournamentComparison と共通）
 LEVEL_IMPORTANCE: dict[str, float] = {
@@ -21,8 +29,9 @@ LEVEL_IMPORTANCE: dict[str, float] = {
 }
 
 
-def _player_wins_match(match: Match, player_id: int) -> bool:
-    """試合結果をプレイヤー視点の bool に変換（player_context への委譲）"""
+def _player_wins_match(match: Match, player_id: int) -> Optional[bool]:
+    """試合結果をプレイヤー視点の bool に変換（player_context への委譲）。
+    未確定の試合は None。この関数の呼び出し元は win/loss のみを取得済み"""
     return _player_wins_match_ctx(match, player_id)
 
 
@@ -47,9 +56,7 @@ def get_matches_for_player(
     q = (
         db.query(Match)
         .options(selectinload(Match.sets))
-        .filter(
-            or_(Match.player_a_id == player_id, Match.player_b_id == player_id)
-        )
+        .filter(involves_player(player_id))
         .filter(Match.result.in_(['win', 'loss']))
     )
     # R29 P2-3 / R30 P2 fix: admin 以外で ctx_team_id が **明示的に渡された** 場合に
@@ -62,12 +69,7 @@ def get_matches_for_player(
         q = q.filter(or_(Match.is_public_pool.is_(True), Match.owner_team_id == ctx_team_id))
     # else: legacy 呼出 — filter を適用しない (既存挙動を維持; 新規 caller は ctx を渡せ)
     if opponent_id is not None:
-        q = q.filter(
-            or_(
-                and_(Match.player_a_id == player_id, Match.player_b_id == opponent_id),
-                and_(Match.player_b_id == player_id, Match.player_a_id == opponent_id),
-            )
-        )
+        q = q.filter(head_to_head(player_id, opponent_id))
     if tournament_level:
         q = q.filter(Match.tournament_level == tournament_level)
     if before_date is not None:
@@ -117,13 +119,15 @@ def compute_win_probability(
     matches: list[Match],
     player_id: int,
     prior_alpha: float = 2.0,
-) -> tuple[float, int]:
+) -> tuple[Optional[float], int]:
     """
     Laplace 平滑化した勝率を返す。
     Returns: (win_probability, sample_size)
+    試合 0 件では勝率は定義できないので (None, 0)。事前分布の 0.5 を勝率として返さない
+    （呼び出し側は sample_size == 0 を「データ不足」として扱うこと）。
     """
     if not matches:
-        return 0.5, 0
+        return None, 0
     wins = sum(1 for m in matches if _player_wins_match(m, player_id))
     n = len(matches)
     p = (wins + prior_alpha / 2) / (n + prior_alpha)
@@ -144,11 +148,8 @@ def compute_set_distribution(
 
     for m in matches:
         sets = sorted(m.sets or [], key=lambda s: s.set_num)
-        wins_sets = sum(
-            1 for s in sets
-            if (s.winner == 'player_a' and m.player_a_id == player_id)
-            or (s.winner == 'player_b' and m.player_b_id == player_id)
-        )
+        side = team_side(m, player_id)
+        wins_sets = sum(1 for s in sets if s.winner == side)
         total_sets = len(sets)
         if total_sets == 2:
             if wins_sets == 2:
@@ -194,7 +195,7 @@ def compute_score_bands(
         for s in (m.sets or []):
             if s.set_num not in set_scores:
                 continue
-            if m.player_a_id == player_id:
+            if team_side(m, player_id) == 'player_a':
                 set_scores[s.set_num].append((s.score_a, s.score_b))
             else:
                 set_scores[s.set_num].append((s.score_b, s.score_a))
@@ -237,7 +238,7 @@ def compute_most_likely_scorelines(
             opp = s1['opp_low'] if is_win else s1['opp_high']
             item['set1_score'] = f'{my}-{opp}'
         else:
-            item['set1_score'] = '21-??' if is_win else '??-21'
+            item['set1_score'] = None  # データ無しは偽の値でなく null
 
         if outcome in ('2-1', '1-2'):
             if s2:
@@ -264,7 +265,7 @@ def get_observation_context(
     if match_id:
         m = db.get(Match, match_id)
         if m:
-            opponent_actual = m.player_b_id if m.player_a_id == player_id else m.player_a_id
+            opponent_actual = opponent_player_id(m, player_id)
             obs_list = (
                 db.query(PreMatchObservation)
                 .filter(PreMatchObservation.match_id == match_id)
@@ -279,10 +280,7 @@ def get_observation_context(
             db.query(Match)
             .filter(
                 Match.result.in_(['win', 'loss']),
-                or_(
-                    and_(Match.player_a_id == player_id, Match.player_b_id == opponent_id),
-                    and_(Match.player_b_id == player_id, Match.player_a_id == opponent_id),
-                )
+                head_to_head(player_id, opponent_id),
             )
             .order_by(Match.date.desc())
             .first()
@@ -390,9 +388,12 @@ def build_caution_flags(
 ) -> list[str]:
     """注意フラグ（最大2件）"""
     flags: list[str] = []
-    if win_prob < 0.35:
+    # VERDICT_MIN_SAMPLE 未満では勝率が 1 試合で 0.33〜0.83 を飛ぶので、勝率からの注意は出さない
+    if sample_size < VERDICT_MIN_SAMPLE:
+        pass
+    elif win_prob < 0.35:
         flags.append('過去の対戦成績が厳しい — 戦術の再検討が必要')
-    elif win_prob > 0.70 and sample_size >= 5:
+    elif win_prob > 0.70:
         flags.append('過去の勝率が高いが油断に注意')
 
     opp = obs_context.get('opponent', {})
@@ -403,11 +404,41 @@ def build_caution_flags(
     return flags[:2]
 
 
-# D-5: 判定 (勝利有力 / 苦戦が予想 …) を出してよい最低試合数。
-# `backend/utils/confidence.py` の opponent_analysis (30) は解析全体の目安で、
-# 「勝ち負けの言い切り」はそれより慎重でよい。ここを下回るときは
-# 判定を出さず、勝率そのものだけを見せる。
-VERDICT_MIN_SAMPLE = 5
+# D-5: 判定 (勝利有力 / 苦戦が予想 …) を出してよい最低試合数 VERDICT_MIN_SAMPLE は
+# `backend/utils/confidence.py` に 1 つだけ置く (勝率・方向・注意・成長傾向・ペア・
+# ラインナップが同じ値を参照する)。ここを下回るときは判定を出さず、勝率は「参考値」に落とす。
+
+
+def reference_status(sample_size: int, brier: Optional[dict] = None) -> dict:
+    """勝率を通常の数字として前面に出してよいか。
+
+    is_reference=True なら画面は「参考値」(n 付き・小さめ) にする。理由は 2 つ:
+      sample: 試合数が VERDICT_MIN_SAMPLE 未満
+      brier : 表示している勝率そのものの Brier が 0.25 を超える
+              (0.25 は常に 50% と答えるコイントスの Brier。それより悪い = 基準以下)
+    """
+    reason = None
+    if sample_size < VERDICT_MIN_SAMPLE:
+        reason = 'sample'
+    elif brier and brier.get('grade') == 'poor':
+        reason = 'brier'
+    return {
+        'is_reference': reason is not None,
+        'reason': reason,
+        'min_sample': VERDICT_MIN_SAMPLE,
+        'sample_size': sample_size,
+    }
+
+
+def win_probability_interval(p: Optional[float], n: int) -> Optional[dict]:
+    """勝率 p (標本 n) の Wilson 区間。固定の ±幅は使わない。
+
+    p=None と、n が VERDICT_MIN_SAMPLE 未満 (n=0 を含む) は null。区間が広すぎて読み取れない。
+    """
+    if p is None or n < VERDICT_MIN_SAMPLE:
+        return None
+    lo, hi = wilson_ci_from_rate(p, n)
+    return {'low': lo, 'high': hi, 'n': n}
 
 
 def compute_match_narrative(
@@ -470,8 +501,9 @@ def compute_match_narrative(
     # ── 決め手 ─────────────────────────────────────────────────────────────
     deciding_parts: list[str] = []
     if h2h_count >= 3:
-        h2h_wr = round(win_prob * 100)
-        deciding_parts.append(f'直接対戦での実績（{h2h_count}試合 / 推定勝率{h2h_wr}%）')
+        # win_prob は直接対戦だけの勝率ではなく、全体・直近・直接対戦を混ぜた最終の推定値
+        blended_wr = round(win_prob * 100)
+        deciding_parts.append(f'直接対戦{h2h_count}試合を加味した推定勝率{blended_wr}%')
     elif sample_size >= 5:
         deciding_parts.append(f'過去の総合成績（{sample_size}試合ベース）')
 
@@ -482,9 +514,10 @@ def compute_match_narrative(
         deciding_parts.append('直近の調子が下降傾向（要注意）')
 
     sv = score_volatility or {}
-    if sv.get('dominant_match_rate', 0) >= 0.5 and verdict_level == 'win':
+    # 試合 0 件のとき各率は null (None >= 0.5 は TypeError) なので 0 扱いで比較する
+    if (sv.get('dominant_match_rate') or 0) >= 0.5 and verdict_level == 'win':
         deciding_parts.append('ストレート勝ちが多く圧倒しやすい相手')
-    elif sv.get('close_match_rate', 0) >= 0.5:
+    elif (sv.get('close_match_rate') or 0) >= 0.5:
         deciding_parts.append('接戦が多く終盤の集中力が鍵')
 
     opp_obs = obs_context.get('opponent', {})
@@ -501,7 +534,7 @@ def compute_match_narrative(
 
     # ── ぐだりやすい局面 ────────────────────────────────────────────────────
     risk_zones: list[str] = []
-    if sv.get('close_match_rate', 0) >= 0.4:
+    if (sv.get('close_match_rate') or 0) >= 0.4:
         risk_zones.append(f'ファイナルセットに縺れやすい（過去{round(sv["close_match_rate"]*100)}%）')
     if sv.get('typical_margin') is not None and sv['typical_margin'] <= 4 and sv.get('sample', 0) >= 3:
         risk_zones.append('点差が僅差になりやすい（平均得点差{:.1f}点）'.format(sv['typical_margin']))
@@ -675,15 +708,14 @@ def compute_calibrated_scorelines(
             continue
         parts: list[str] = []
         wins_sets = 0
+        side = team_side(m, player_id)
         for s in sets:
-            if m.player_a_id == player_id:
+            if side == 'player_a':
                 parts.append(f"{s.score_a}-{s.score_b}")
-                if s.winner == 'player_a':
-                    wins_sets += 1
             else:
                 parts.append(f"{s.score_b}-{s.score_a}")
-                if s.winner == 'player_b':
-                    wins_sets += 1
+            if s.winner == side:
+                wins_sets += 1
         total_sets = len(sets)
         outcome = f"{wins_sets}-{total_sets - wins_sets}"
         counter[(outcome, ', '.join(parts))] += 1
@@ -727,7 +759,7 @@ def compute_fatigue_risk(
     疲労・崩壊リスク推定 (Phase C)
     3指標の加重平均:
       - temporal_drop  (40%): 序盤(≤8点) vs 終盤(≥20点) の勝率差
-      - long_rally_penalty (30%): 長ラリー(≥7打) 直後の勝率低下
+      - long_rally_penalty (30%): 長ラリー(AnalysisConfig.LONG_RALLY_THRESHOLD 打以上) 直後の勝率低下
       - pressure_drop  (30%): デュース時の勝率低下
 
     Round 258 R32 fix (R30a P2-1 残): caller の team scope を get_matches_for_player に
@@ -765,7 +797,7 @@ def compute_fatigue_risk(
         m = set_to_match.get(r.set_id)
         if not m:
             return False
-        return r.winner == ('player_a' if m.player_a_id == player_id else 'player_b')
+        return r.winner == team_side(m, player_id)
 
     # ── temporal drop ──
     early_w = early_t = late_w = late_t = 0
@@ -786,7 +818,7 @@ def compute_fatigue_risk(
         temporal_drop = max(0.0, early_w / early_t - late_w / late_t)
 
     # ── long rally penalty ──
-    LONG_THRESHOLD = 7
+    LONG_THRESHOLD = AnalysisConfig.LONG_RALLY_THRESHOLD
     rally_lookup = {(r.set_id, r.rally_num): r for r in rallies}
     post_long_w = post_long_t = 0
     for r in rallies:
@@ -877,13 +909,20 @@ def compute_recent_form(
     直近 n 試合の指数重み付き勝率とトレンド方向を返す。
     matches は日付降順（get_matches_for_player の出力）を想定。
     """
+    # 試合 0 件では直近勝率・傾向は定義できない (0.5 / 'stable' は統計ではない)。
+    # 偽の中立値を返さず null + sample=0 にする。
     if not matches:
-        return {'win_rate': 0.5, 'sample': 0, 'trend': 'stable', 'results': [], 'overall_wr': 0.5}
+        return {'win_rate': None, 'sample': 0, 'trend': None, 'results': [], 'overall_wr': None}
 
     overall_wr, _ = compute_win_probability(matches, player_id)
 
     recent = matches[:n]
     sample = len(recent)
+    if sample == 0:
+        return {
+            'win_rate': None, 'sample': 0, 'trend': None, 'results': [],
+            'overall_wr': round(overall_wr, 4),
+        }
 
     # 指数重み: index 0 = 最新, decay = 0.85
     decay = 0.85
@@ -894,13 +933,16 @@ def compute_recent_form(
         weights[i] for i, m in enumerate(recent)
         if _player_wins_match(m, player_id)
     )
-    recent_wr = weighted_wins / w_sum if w_sum > 0 else 0.5
+    recent_wr = weighted_wins / w_sum  # sample>=1 なので w_sum>0 (decay**0 = 1)
 
     # 結果列（古い順）: ['W', 'L', ...]
     results = ['W' if _player_wins_match(m, player_id) else 'L' for m in reversed(recent)]
 
+    # 試合数が VERDICT_MIN_SAMPLE 未満では方向を言わない (n=1 の 1 勝が「上向き」になっていた)
     diff = recent_wr - overall_wr
-    if diff > 0.08:
+    if len(matches) < VERDICT_MIN_SAMPLE:
+        trend = None
+    elif diff > 0.08:
         trend = 'improving'
     elif diff < -0.08:
         trend = 'declining'
@@ -925,7 +967,7 @@ def compute_growth_trend(
     numpy.polyfit による線形回帰でスロープを計算。
     """
     if not matches:
-        return {'buckets': [], 'slope': 0.0, 'direction': 'flat', 'sample': 0}
+        return {'buckets': [], 'slope': None, 'direction': None, 'sample': 0}
 
     # 古い順にソート
     sorted_matches = sorted(matches, key=lambda m: m.date)
@@ -943,7 +985,19 @@ def compute_growth_trend(
         total = len(chunk)
         wr = (wins + 0.5) / (total + 1.0)  # Laplace
         label = chunk[0].date.strftime('%y/%m') if hasattr(chunk[0].date, 'strftime') else str(chunk[0].date)[:7]
-        buckets.append({'label': label, 'win_rate': round(wr, 4), 'sample': total})
+        # 区間ごとの標本数と信頼区間 (生の勝数に対する Wilson 区間)。win_rate は平滑化値なので、
+        # n が小さい区間は区間が広いことを画面で見せる。
+        ci_low, ci_high = wilson_ci_from_rate(wins / total, total)
+        buckets.append({
+            'label': label,
+            'win_rate': round(wr, 4),
+            'sample': total,
+            'wins': wins,
+            'ci_low': ci_low,
+            'ci_high': ci_high,
+            'date_from': str(chunk[0].date),
+            'date_to': str(chunk[-1].date),
+        })
 
     if len(buckets) >= 2:
         x = np.arange(len(buckets), dtype=float)
@@ -951,6 +1005,10 @@ def compute_growth_trend(
         slope = float(np.polyfit(x, y, 1)[0])
     else:
         slope = 0.0
+
+    # 試合数が VERDICT_MIN_SAMPLE 未満では傾きも方向も出さない (2 試合のバケット 2 つの傾きは傾向ではない)
+    if n < VERDICT_MIN_SAMPLE:
+        return {'buckets': buckets, 'slope': None, 'direction': None, 'sample': n}
 
     if slope > 0.02:
         direction = 'up'
@@ -973,15 +1031,29 @@ def compute_feature_win_prob(
     h2h_matches: list[Match],
     recent_form: dict,
     obs_context: dict,
-) -> tuple[float, dict]:
+) -> tuple[Optional[float], dict]:
     """
     多特徴量ブレンドによるキャリブレーション済み勝率。
     base_wr / recent_wr / h2h_wr を適応的な重みで統合し、
     観察コンテキストの修正値を加算する。
+    試合 0 件では (None, 内訳全て None + insufficient_data=True)。
     """
     base_wr, _ = compute_win_probability(matches, player_id)
-    recent_wr = recent_form.get('win_rate', base_wr)
+    if base_wr is None:
+        return None, {
+            'base_wr': None,
+            'recent_wr': None,
+            'h2h_wr': None,
+            'weights': {},
+            'obs_modifier': None,
+            'raw_blend': None,
+            'final': None,
+            'insufficient_data': True,
+        }
+    recent_wr = recent_form.get('win_rate')
     recent_n = recent_form.get('sample', 0)
+    # 直近勝率が無い (null) ときは直近項を使わず base_wr で置く (breakdown には null で出す)
+    recent_wr_used = recent_wr if recent_wr is not None else base_wr
     h2h_n = len(h2h_matches)
 
     h2h_wr: Optional[float] = None
@@ -991,10 +1063,10 @@ def compute_feature_win_prob(
     # 適応的重み選択
     if h2h_wr is not None:
         weights = {'base': 0.25, 'recent': 0.35, 'h2h': 0.40}
-        raw_blend = base_wr * 0.25 + recent_wr * 0.35 + h2h_wr * 0.40
+        raw_blend = base_wr * 0.25 + recent_wr_used * 0.35 + h2h_wr * 0.40
     elif recent_n >= 3:
         weights = {'base': 0.40, 'recent': 0.60}
-        raw_blend = base_wr * 0.40 + recent_wr * 0.60
+        raw_blend = base_wr * 0.40 + recent_wr_used * 0.60
     else:
         weights = {'base': 1.0}
         raw_blend = base_wr
@@ -1014,7 +1086,7 @@ def compute_feature_win_prob(
 
     breakdown = {
         'base_wr': round(base_wr, 4),
-        'recent_wr': round(recent_wr, 4),
+        'recent_wr': round(recent_wr, 4) if recent_wr is not None else None,
         'h2h_wr': round(h2h_wr, 4) if h2h_wr is not None else None,
         'weights': weights,
         'obs_modifier': round(obs_modifier, 4),
@@ -1060,11 +1132,14 @@ def compute_set_model_v2(
 def compute_brier_score(
     matches: list[Match],
     player_id: int,
+    predictor=None,
 ) -> dict:
     """
     Leave-one-out ブライアスコア。予測キャリブレーションの質を示す。
     < 0.20: 良好  /  0.20–0.25: 普通  /  > 0.25: 要注意
     5 試合未満は算出不可（score=None）。
+    predictor: 1 試合を除いた試合リストから予測勝率を返す関数。省略時は Laplace 勝率。
+    画面に出す予測 (混合後の最終勝率) を評価するときは compute_brier_score_blended を使う。
     """
     if len(matches) < 5:
         return {'score': None, 'sample': len(matches), 'grade': None}
@@ -1072,7 +1147,10 @@ def compute_brier_score(
     squared_errors: list[float] = []
     for i, m in enumerate(matches):
         holdout = [x for x in matches if x is not m]
-        pred, _ = compute_win_probability(holdout, player_id)
+        if predictor is None:
+            pred, _ = compute_win_probability(holdout, player_id)
+        else:
+            pred = predictor(holdout)
         actual = 1.0 if _player_wins_match(m, player_id) else 0.0
         squared_errors.append((pred - actual) ** 2)
 
@@ -1085,6 +1163,28 @@ def compute_brier_score(
         grade = 'poor'
 
     return {'score': round(score, 4), 'sample': len(matches), 'grade': grade}
+
+
+def compute_brier_score_blended(
+    matches: list[Match],
+    player_id: int,
+    h2h_matches: list[Match],
+) -> dict:
+    """画面に出している最終勝率 (compute_feature_win_prob) の leave-one-out Brier。
+
+    Brier の式は compute_brier_score と同じ。違うのは評価する予測だけで、
+    全体・直近・直接対戦の混合を、除いた 1 試合なしで作り直して当てる。
+    観察コンテキスト補正は試合ごとの事前入力で過去試合には無いので、ここでは 0 とする。
+    """
+    h2h_ids = {id(x) for x in h2h_matches}
+
+    def _predict(holdout: list[Match]) -> Optional[float]:
+        h2h_holdout = [x for x in holdout if id(x) in h2h_ids]
+        form = compute_recent_form(holdout, player_id)
+        p, _ = compute_feature_win_prob(holdout, player_id, h2h_holdout, form, {})
+        return p
+
+    return compute_brier_score(matches, player_id, predictor=_predict)
 
 
 def compute_score_volatility(
@@ -1100,9 +1200,9 @@ def compute_score_volatility(
     """
     if not matches:
         return {
-            'volatility_score': 0.0,
-            'close_match_rate': 0.0,
-            'dominant_match_rate': 0.0,
+            'volatility_score': None,
+            'close_match_rate': None,
+            'dominant_match_rate': None,
             'typical_margin': None,
             'sample': 0,
         }
@@ -1122,7 +1222,7 @@ def compute_score_volatility(
             dominant += 1
 
         for s in sets:
-            if m.player_a_id == player_id:
+            if team_side(m, player_id) == 'player_a':
                 my, opp = s.score_a, s.score_b
             else:
                 my, opp = s.score_b, s.score_a
@@ -1130,8 +1230,8 @@ def compute_score_volatility(
                 margins.append(abs(my - opp))
 
     n = len(matches)
-    close_rate = round(close / n, 4) if n else 0.0
-    dominant_rate = round(dominant / n, 4) if n else 0.0
+    close_rate = round(close / n, 4)
+    dominant_rate = round(dominant / n, 4)
     typical_margin = round(sum(margins) / len(margins), 2) if margins else None
 
     # ボラティリティ: 接戦率が高いほど不安定
@@ -1173,20 +1273,25 @@ def compute_lineup_scores(
         obs = get_observation_context(db, pid, opponent_id)
         recent = compute_recent_form(all_m, pid)
         win_prob, breakdown = compute_feature_win_prob(all_m, pid, h2h_m, recent, obs)
+        # 試合 0 件の選手には勝率を付けない (None)。sample_size を併記する
         conf = compute_confidence_score(len(all_m), len(h2h_m))
         player = db.get(Player, pid)
         results.append({
             'player_id': pid,
             'player_name': player.name if player else str(pid),
             'win_probability': win_prob,
+            # 固定の ±15/10/7 ではなく標本数から出した Wilson 区間 (VERDICT_MIN_SAMPLE 未満は null)
+            'win_probability_ci': win_probability_interval(win_prob, len(all_m)),
+            'win_probability_reference': reference_status(len(all_m)),
             'confidence': conf,
             'sample_size': len(all_m),
             'h2h_sample': len(h2h_m),
-            'recent_trend': recent.get('trend', 'stable'),
+            'recent_trend': recent.get('trend'),
             'feature_breakdown': breakdown,
         })
 
-    results.sort(key=lambda x: -x['win_probability'])
+    # 勝率なし (None) は末尾へ
+    results.sort(key=lambda x: (x['win_probability'] is None, -(x['win_probability'] or 0.0)))
     return results
 
 
@@ -1195,10 +1300,13 @@ def find_nearest_matches(
     player_id: int,
     current_level: str,
     n: int = 5,
+    current_format: str | None = None,
 ) -> list[dict]:
     """
     特徴量類似度に基づく最近傍試合エビデンスの取得。
     similarity_score: 同大会レベル +2 / 同フォーマット +1
+    current_format が与えられた場合のみフォーマット一致 +1 を加点する
+    （未指定時は後方互換で大会レベルのみ）。
     """
     if not matches:
         return []
@@ -1208,6 +1316,8 @@ def find_nearest_matches(
         score = 0
         if (m.tournament_level or '') == current_level:
             score += 2
+        if current_format and (m.format or '') == current_format:
+            score += 1
         scored.append((score, m))
 
     scored.sort(key=lambda x: -x[0])
@@ -1217,7 +1327,7 @@ def find_nearest_matches(
         # プレイヤー視点のスコアサマリーを構築
         score_parts: list[str] = []
         for s in sorted(m.sets or [], key=lambda s: s.set_num):
-            if m.player_a_id == player_id:
+            if team_side(m, player_id) == 'player_a':
                 score_parts.append(f"{s.score_a}-{s.score_b}")
             else:
                 score_parts.append(f"{s.score_b}-{s.score_a}")

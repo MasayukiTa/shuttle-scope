@@ -20,17 +20,24 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from backend.analysis.player_context import opponent_player_id
 from backend.db.database import get_db
 from backend.db.models import Match, GameSet, Rally, Stroke
 from backend.analysis.router_helpers import (
     _player_role_in_match, _get_player_matches, _fetch_matches_sets_rallies,
 )
+from backend.analysis.light_stroke import load_light_strokes
 from backend.analysis.response_meta import build_input_provenance, build_response_meta
 from backend.analysis.analysis_registry import list_registry_entries, get_tier as _registry_get_tier
 from backend.analysis.analysis_meta import EVIDENCE_META
 from backend.analysis.promotion_rules import all_criteria_as_dict, DEMOTION_CONDITIONS
 from backend.analysis.epv_state_model import compute_rally_state_epv, compute_epv_state_map
-from backend.analysis.q_value_model import compute_q_values, summarize_best_actions
+from backend.analysis.q_value_model import (
+    SELECTION_NOTE_EN,
+    SELECTION_NOTE_JA,
+    compute_q_values,
+    summarize_best_actions,
+)
 from backend.analysis.counterfactual_v2 import compute_counterfactual_v2, compute_counterfactual_cf2, compute_counterfactual_cf3
 from backend.analysis.hazard_fatigue import compute_hazard_model
 from backend.analysis.bayes_matchup import compute_bayes_matchup
@@ -44,11 +51,12 @@ from backend.analysis.shot_influence_v2 import compute_shot_influence_v2
 
 from backend.utils.auth import (
     require_query_scope,  # cross-team IDOR ガード
+    require_non_player,  # research spine は player 不可 (ミドルウェアに頼らずルート自身で拒否)
     require_admin,  # 昇格 override の書込は admin 限定
     require_admin_or_analyst,  # 昇格 override の閲覧は analyst/admin 限定
 )
 
-router = APIRouter(dependencies=[Depends(require_query_scope)])
+router = APIRouter(dependencies=[Depends(require_non_player), Depends(require_query_scope)])
 
 
 def _analysis_meta(
@@ -77,7 +85,9 @@ def _build_aux_maps(db: Session, matches: list, set_ids: list, rally_ids: list) 
     set_num_map = {s.id: s.set_num for s in sets}
     strokes_by_rally: dict[int, list] = {}
     if rally_ids:
-        stks = db.query(Stroke).filter(Stroke.rally_id.in_(rally_ids)).all()
+        # SD-09b 504 fix: full ORM materialize (約2.6s/2.9万件) を避け、Core select +
+        # __slots__ 軽量オブジェクトで読む。出力は full ORM と完全一致 (実測検証済み)。
+        stks = load_light_strokes(db, rally_ids)
         for s in stks:
             strokes_by_rally.setdefault(s.rally_id, []).append(s)
     return set_num_map, strokes_by_rally
@@ -88,11 +98,23 @@ def _build_aux_maps(db: Session, matches: list, set_ids: list, rally_ids: list) 
 # ---------------------------------------------------------------------------
 
 def _load_ctx_or_query(db, player_id, ctx, result, tournament_level, date_from, date_to):
-    """ctx が渡されれば共有データを返し、なければ個別 endpoint と同じ形で取得する。"""
+    """ctx が渡されれば共有データを返し、なければ個別 endpoint と同じ形で取得する。
+
+    #522: スコア補正の擬似ラリー (is_skipped) は実記録ではないので、state / 系列 /
+    反事実などの研究解析の母集団からは一律に除外する。ここは spine 系の共通入力層
+    なので、ctx 経由・直接クエリの両経路でフィルタを強制する。strokes_by_rally も
+    除外後のラリーに対応するものだけ残す (擬似ラリーにストロークは無いが念のため)。
+    """
     if ctx is not None:
+        rallies = [r for r in ctx.rallies if not r.is_skipped]
+        rally_id_set = {r.id for r in rallies}
+        strokes_by_rally = {
+            rid: stks for rid, stks in ctx.strokes_by_rally.items()
+            if rid in rally_id_set
+        }
         return (
             ctx.matches, ctx.role_by_match, ctx.set_to_match,
-            ctx.set_num_map, ctx.rallies, ctx.strokes_by_rally,
+            ctx.set_num_map, rallies, strokes_by_rally,
         )
     matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
     if not matches:
@@ -103,7 +125,12 @@ def _load_ctx_or_query(db, player_id, ctx, result, tournament_level, date_from, 
     set_ids = [s.id for s in sets]
     set_to_match = {s.id: s.match_id for s in sets}
     set_num_map = {s.id: s.set_num for s in sets}
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
+    rallies = (
+        db.query(Rally)
+        .filter(Rally.set_id.in_(set_ids), Rally.is_skipped.is_(False))
+        .all()
+        if set_ids else []
+    )
     rally_ids = [r.id for r in rallies]
     _, strokes_by_rally = _build_aux_maps(db, matches, [], rally_ids)
     return matches, role_by_match, set_to_match, set_num_map, rallies, strokes_by_rally
@@ -130,7 +157,7 @@ def _epv_state_table_impl(db: Session, player_id: int, ctx=None,
         _load_ctx_or_query(db, player_id, ctx, result, tournament_level, date_from, date_to)
     if not matches:
         meta = _analysis_meta("epv_state", 0, rallies=[], strokes_by_rally={})
-        return {"success": True, "data": {"state_table": [], "global_win_rate": 0.5, "total_rallies": 0}, "meta": meta}
+        return {"success": True, "data": {"state_table": [], "global_win_rate": None, "total_rallies": 0}, "meta": meta}
 
     result_data = compute_rally_state_epv(
         rallies=rallies,
@@ -157,21 +184,19 @@ def get_epv_state_map(
     date_to: Optional[DateType] = Query(None),
     db: Session = Depends(get_db),
 ):
-    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+    return _epv_state_map_impl(db, player_id, ctx=None,
+                               result=result, tournament_level=tournament_level,
+                               date_from=date_from, date_to=date_to)
+
+
+def _epv_state_map_impl(db: Session, player_id: int, ctx=None,
+                        result=None, tournament_level=None,
+                        date_from=None, date_to=None):
+    """StateEPVCard が読む形 (状態マップの配列)。個別 endpoint と research bundle が共有する。"""
+    matches, role_by_match, set_to_match, set_num_map, rallies, strokes_by_rally = \
+        _load_ctx_or_query(db, player_id, ctx, result, tournament_level, date_from, date_to)
     if not matches:
         return {"success": True, "data": [], "meta": _analysis_meta("epv_state", 0, rallies=[], strokes_by_rally={})}
-
-    match_ids = [m.id for m in matches]
-    role_by_match = {m.id: _player_role_in_match(m, player_id) for m in matches}
-
-    sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
-    set_ids = [s.id for s in sets]
-    set_to_match = {s.id: s.match_id for s in sets}
-    set_num_map = {s.id: s.set_num for s in sets}
-
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
-    rally_ids = [r.id for r in rallies]
-    _, strokes_by_rally = _build_aux_maps(db, matches, [], rally_ids)
 
     state_result = compute_rally_state_epv(
         rallies=rallies,
@@ -209,7 +234,7 @@ def _state_action_values_impl(db: Session, player_id: int, ctx=None,
     matches, role_by_match, set_to_match, set_num_map, rallies, strokes_by_rally = \
         _load_ctx_or_query(db, player_id, ctx, result, tournament_level, date_from, date_to)
     if not matches:
-        return {"success": True, "data": {"q_table": [], "best_actions": {}, "total_states": 0, "total_reliable_cells": 0}, "meta": _analysis_meta("state_action", 0, rallies=[], strokes_by_rally={})}
+        return {"success": True, "data": {"q_table": [], "best_actions": {}, "total_states": 0, "total_reliable_cells": 0, "selection_note": SELECTION_NOTE_JA, "selection_note_en": SELECTION_NOTE_EN}, "meta": _analysis_meta("state_action", 0, rallies=[], strokes_by_rally={})}
 
     result_data = compute_q_values(
         rallies=rallies,
@@ -235,21 +260,19 @@ def get_state_best_actions(
     date_to: Optional[DateType] = Query(None),
     db: Session = Depends(get_db),
 ):
-    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+    return _state_best_actions_impl(db, player_id, ctx=None,
+                                    result=result, tournament_level=tournament_level,
+                                    date_from=date_from, date_to=date_to)
+
+
+def _state_best_actions_impl(db: Session, player_id: int, ctx=None,
+                             result=None, tournament_level=None,
+                             date_from=None, date_to=None):
+    """StateActionValueCard が読む形 (最善手の配列)。個別 endpoint と research bundle が共有する。"""
+    matches, role_by_match, set_to_match, set_num_map, rallies, strokes_by_rally = \
+        _load_ctx_or_query(db, player_id, ctx, result, tournament_level, date_from, date_to)
     if not matches:
-        return {"success": True, "data": [], "meta": _analysis_meta("state_action", 0, rallies=[], strokes_by_rally={})}
-
-    match_ids = [m.id for m in matches]
-    role_by_match = {m.id: _player_role_in_match(m, player_id) for m in matches}
-
-    sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
-    set_to_match = {s.id: s.match_id for s in sets}
-    set_num_map = {s.id: s.set_num for s in sets}
-    set_ids = [s.id for s in sets]
-
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
-    rally_ids = [r.id for r in rallies]
-    _, strokes_by_rally = _build_aux_maps(db, matches, [], rally_ids)
+        return {"success": True, "data": [], "selection_note": SELECTION_NOTE_JA, "selection_note_en": SELECTION_NOTE_EN, "meta": _analysis_meta("state_action", 0, rallies=[], strokes_by_rally={})}
 
     result_data = compute_q_values(
         rallies=rallies,
@@ -260,7 +283,14 @@ def get_state_best_actions(
     )
     best_list = summarize_best_actions(result_data["best_actions"])
     meta = _analysis_meta("state_action", len(rallies), rallies=rallies, strokes_by_rally=strokes_by_rally)
-    return {"success": True, "data": best_list, "meta": meta}
+    # 最善手は多重比較補正なしの最大値 (選択バイアスで楽観側) — 注意書きを同梱する
+    return {
+        "success": True,
+        "data": best_list,
+        "selection_note": SELECTION_NOTE_JA,
+        "selection_note_en": SELECTION_NOTE_EN,
+        "meta": meta,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -365,6 +395,15 @@ def _bayes_matchup_impl(db: Session, player_id: int, ctx=None, format_filter=Non
         player_id=player_id,
         format_filter=format_filter,
     )
+    # 画面は相手名を表示する。compute_bayes_matchup は ID のみ返すので、ここで解決する
+    # (解決できない相手は opponent_name=None → フロントが「相手不明」を表示する)。
+    from backend.db.models import Player
+    opp_ids = [e["opponent_id"] for e in result_data.get("opponent_estimates", []) if e.get("opponent_id")]
+    name_by_id = {}
+    if opp_ids:
+        name_by_id = {p.id: p.name for p in db.query(Player).filter(Player.id.in_(opp_ids)).all()}
+    for e in result_data.get("opponent_estimates", []):
+        e["opponent_name"] = name_by_id.get(e.get("opponent_id"))
     meta = build_response_meta("bayes_matchup", result_data.get("total_matches", 0))
     return {"success": True, "data": result_data, "meta": meta}
 
@@ -424,6 +463,20 @@ def get_doubles_role(
                               date_from=date_from, date_to=date_to)
 
 
+# ダブルス試合が無いときの応答。フロントは front/back/neutral_ratio を必ず読むので、
+# キーを欠かさず 0 件の形で返す (欠落すると画面に NaN% が出ていた)。
+_EMPTY_DOUBLES_ROLE = {
+    "inferred_role": "unknown",
+    "confidence_score": None,
+    "front_ratio": None,
+    "back_ratio": None,
+    "neutral_ratio": None,
+    "total_shots": 0,
+    "phase_breakdown": [],
+    "note": None,
+}
+
+
 def _doubles_role_impl(db: Session, player_id: int, ctx=None,
                        result=None, tournament_level=None,
                        date_from=None, date_to=None):
@@ -446,7 +499,7 @@ def _doubles_role_impl(db: Session, player_id: int, ctx=None,
         matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
         doubles_matches = [m for m in matches if getattr(m, 'format', None) in ('womens_doubles', 'mixed_doubles')]
         if not doubles_matches:
-            return {"success": True, "data": {"inferred_role": "unknown", "confidence_score": 0.0, "total_shots": 0}, "meta": _analysis_meta("doubles_role", 0, rallies=[], strokes_by_rally={})}
+            return {"success": True, "data": dict(_EMPTY_DOUBLES_ROLE), "meta": _analysis_meta("doubles_role", 0, rallies=[], strokes_by_rally={})}
         match_ids = [m.id for m in doubles_matches]
         role_by_match = {m.id: _player_role_in_match(m, player_id) for m in doubles_matches}
         sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
@@ -457,7 +510,7 @@ def _doubles_role_impl(db: Session, player_id: int, ctx=None,
         _, strokes_by_rally = _build_aux_maps(db, doubles_matches, [], rally_ids)
 
     if not doubles_matches:
-        return {"success": True, "data": {"inferred_role": "unknown", "confidence_score": 0.0, "total_shots": 0}, "meta": _analysis_meta("doubles_role", 0, rallies=[], strokes_by_rally={})}
+        return {"success": True, "data": dict(_EMPTY_DOUBLES_ROLE), "meta": _analysis_meta("doubles_role", 0, rallies=[], strokes_by_rally={})}
 
     result_data = compute_doubles_role_inference(
         rallies=rallies,
@@ -492,7 +545,7 @@ def get_doubles_role_db2(
 
     if not doubles_matches:
         meta = _analysis_meta("doubles_role", 0, rallies=[], strokes_by_rally={})
-        return {"success": True, "data": {"inferred_role": "unknown", "confidence_score": 0.0, "total_shots": 0, "db_phase": "db2"}, "meta": meta}
+        return {"success": True, "data": {"inferred_role": "unknown", "confidence_score": None, "total_shots": 0, "db_phase": "db2"}, "meta": meta}
 
     match_ids = [m.id for m in doubles_matches]
     role_by_match = {m.id: _player_role_in_match(m, player_id) for m in doubles_matches}
@@ -596,11 +649,7 @@ def get_counterfactual_cf3(
     # match_id → opponent_type マッピング
     opponent_type_by_match: dict[int, str] = {}
     for m in matches:
-        opp_id = None
-        if hasattr(m, 'player_a_id') and m.player_a_id == player_id:
-            opp_id = getattr(m, 'player_b_id', None)
-        elif hasattr(m, 'player_b_id') and m.player_b_id == player_id:
-            opp_id = getattr(m, 'player_a_id', None)
+        opp_id = opponent_player_id(m, player_id) if hasattr(m, 'player_a_id') else None
         if opp_id is not None:
             opponent_type_by_match[m.id] = opponent_type_by_opponent.get(opp_id, "all")
 
@@ -675,17 +724,23 @@ def get_evidence_meta():
     レジストリが全 analysis_type の正規ソースとなっているため、
     以前の EVIDENCE_META / _infer_tier() ベースの実装を置き換えた。
     """
+    # 昇格 override の status だけを各分析に添える (note / 操作者は governance 情報なので出さない)。
+    # 画面側はここを唯一の参照元にして、hold の分析を「利用停止中」に置き換える。
+    from backend.analysis.promotion_override_store import load_all_overrides
+    overrides = load_all_overrides()
     entries = [
         {
             "analysis_type": e["analysis_type"],
             "tier": e["tier"],
             "evidence_level": e["evidence_level"],
             "min_recommended_sample": e["min_recommended_sample"],
+            "filter_scope": e["filter_scope"],
             "caution": e["caution"],
             "assumptions": e["assumptions"],
             "promotion_criteria": e["promotion_criteria"],
             "page": e["page"],
             "section": e["section"],
+            "override_status": (overrides.get(e["analysis_type"]) or {}).get("status"),
         }
         for e in list_registry_entries()
     ]
@@ -749,10 +804,9 @@ def get_promotion_evaluation(
     # 対戦相手数
     opponents: set = set()
     for m in matches:
-        if hasattr(m, 'player_a_id') and m.player_a_id != player_id:
-            opponents.add(m.player_a_id)
-        if hasattr(m, 'player_b_id') and m.player_b_id != player_id:
-            opponents.add(m.player_b_id)
+        opp = opponent_player_id(m, player_id) if hasattr(m, 'player_a_id') else None
+        if opp is not None:
+            opponents.add(opp)
     n_opponents = len(opponents)
 
     def _get_sample_count(analysis_type: str) -> int:
@@ -873,7 +927,7 @@ def get_doubles_role_stability(
         return {
             "success": True,
             "data": {
-                "role_stability_score": 0.0,
+                "role_stability_score": None,
                 "dominant_role": "unknown",
                 "n_matches_analyzed": 0,
                 "per_match_roles": [],
@@ -927,23 +981,32 @@ def get_promotion_overrides():
 @router.post("/analysis/meta/promotion_override", dependencies=[Depends(require_admin)])
 def set_promotion_override(body: PromotionOverrideBody):
     """昇格 override を保存する（既存は上書き）。tier 昇格の統治操作のため admin 限定。"""
-    from backend.analysis.promotion_override_store import save_override, VALID_STATUSES
+    from backend.analysis.promotion_override_store import (
+        save_override, VALID_STATUSES, StoreCorruptError,
+    )
     if body.status not in VALID_STATUSES:
         raise HTTPException(status_code=400, detail=f"Invalid status: {body.status}")
-    entry = save_override(
-        analysis_type=body.analysis_type,
-        status=body.status,
-        note=body.note,
-        analyst=body.analyst,
-    )
+    try:
+        entry = save_override(
+            analysis_type=body.analysis_type,
+            status=body.status,
+            note=body.note,
+            analyst=body.analyst,
+        )
+    except StoreCorruptError:
+        # 保存ファイルが壊れている。上書きせず、管理者の確認を待つ
+        raise HTTPException(status_code=503, detail="override の保存ファイルが壊れているため保存できません。管理者に連絡してください")
     return {"success": True, "data": entry}
 
 
 @router.delete("/analysis/meta/promotion_override/{analysis_type}", dependencies=[Depends(require_admin)])
 def delete_promotion_override(analysis_type: str, analyst: str = Query(default="analyst")):
     """昇格 override を削除する。tier 統治操作のため admin 限定。analyst パラメータで操作者を記録。"""
-    from backend.analysis.promotion_override_store import delete_override
-    deleted = delete_override(analysis_type, analyst=analyst)
+    from backend.analysis.promotion_override_store import delete_override, StoreCorruptError
+    try:
+        deleted = delete_override(analysis_type, analyst=analyst)
+    except StoreCorruptError:
+        raise HTTPException(status_code=503, detail="override の保存ファイルが壊れているため削除できません。管理者に連絡してください")
     return {"success": True, "deleted": deleted}
 
 

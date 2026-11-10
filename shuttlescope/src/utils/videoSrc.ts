@@ -10,6 +10,16 @@ import { API_BASE_URL } from '@/api/client'
  *   3. video_url (YouTube などの外部 URL)
  *   4. 空文字
  */
+/**
+ * 再生できる外部動画 URL か (http / https のみ)。
+ * 保存時にバックエンドが http(s) 以外を拒否するが、それ以前に保存された値
+ * (mailto: など) が DB に残っていると、「動画あり」と判定されて再生だけが失敗する。
+ * 読み出し側でも同じ基準で弾く。
+ */
+export function isPlayableVideoUrl(url?: string | null): boolean {
+  return typeof url === 'string' && /^https?:\/\//i.test(url.trim())
+}
+
 function _isElectron(): boolean {
   if (typeof navigator === 'undefined') return false
   return navigator.userAgent.toLowerCase().includes('electron')
@@ -35,7 +45,7 @@ export function getVideoSrc(match?: {
     return `app://video/${match.video_token}`
   }
 
-  if (match.video_url) return match.video_url
+  if (match.video_url && isPlayableVideoUrl(match.video_url)) return match.video_url
   return ''
 }
 
@@ -51,6 +61,32 @@ export function getVideoSrc(match?: {
  * has_video_local が False でも token があれば試行する (= サーバに動画ファイル
  * があれば再生、無ければ <video onError> で 404 を可視化)。
  */
+export type MobileVideoQuality = 'source' | 'play' | 'uhd' | 'fhd' | 'hd'
+
+export type MobileQualityOption = {
+  quality: MobileVideoQuality
+  height: number
+  ready: boolean
+}
+
+export function chooseMobileVideoQuality(
+  options: MobileQualityOption[],
+  requested: MobileVideoQuality,
+): MobileVideoQuality {
+  const requestedOption = options.find((q) => q.quality === requested)
+  if (requestedOption?.ready) return requested
+
+  const play = options.find((q) => q.quality === 'play' && q.ready)
+  if (play) return 'play'
+
+  const readyVariant = options.find((q) => q.quality !== 'source' && q.ready)
+  if (readyVariant) return readyVariant.quality
+
+  const source = options.find((q) => q.quality === 'source' && q.ready)
+  return source?.quality ?? 'source'
+}
+
+
 export function getMobileVideoSrc(
   match?: {
     id?: number
@@ -58,21 +94,54 @@ export function getMobileVideoSrc(
     video_url?: string | null
     has_video_local?: boolean | null
   } | null,
-  quality?: 'source' | 'uhd' | 'fhd' | 'hd' | null,
+  quality?: MobileVideoQuality | null,
+  availableQualities?: readonly MobileQualityOption[] | null,
 ): string {
   if (!match) return ''
-  if (match.id && match.video_token) {
+  // backend が「どの画質も再生可能ではない」と返している (localfile:/// は HTTP stream が
+  // 必ず 404 で拒否する) 場合は stream URL を作らない。作ると MediaError だけが見える。
+  const streamable =
+    !availableQualities || availableQualities.length === 0 || availableQualities.some((q) => q.ready)
+  if (streamable && match.id && match.video_token) {
     const base = `/api/v1/uploads/video/by_match/${match.id}/stream?token=${encodeURIComponent(match.video_token)}`
-    // quality 未指定 / "source" は base のまま (backend が source ファイルを返す)
-    if (quality && quality !== 'source') {
+    // undefined/null = backend auto selection. Once the UI names a quality,
+    // including "source", encode it explicitly so the chip label matches
+    // the bytes served.
+    if (quality) {
       return `${base}&quality=${encodeURIComponent(quality)}`
     }
     return base
   }
-  if (match.video_url) return match.video_url
+  if (match.video_url && isPlayableVideoUrl(match.video_url)) return match.video_url
   return ''
 }
 
+
+/**
+ * ローカル専用動画か (= この試合はローカルファイルとして登録済みだが、Web/モバイルの
+ * HTTP stream 経路では再生できない) を判定する。
+ *
+ * backend は localfile:/// 動画を `available_qualities` の全要素 `ready=false` で返し、
+ * HTTP stream endpoint は `localfile:///` を必ず 404 で拒否する (設計どおり)。この状態で
+ * stream URL を作っても <video> は MediaError になるだけなので、UI は「デスクトップアプリで
+ * 再生」と案内する必要がある。
+ *
+ * 条件: has_video_local=true かつ 再生可能な画質が一つも無く、かつ再生可能な外部 URL も無い。
+ * 外部 URL (YouTube など) があればそちらで再生できるので local-only ではない。
+ */
+export function isLocalOnlyVideo(
+  match?: {
+    video_url?: string | null
+    has_video_local?: boolean | null
+  } | null,
+  availableQualities?: readonly MobileQualityOption[] | null,
+): boolean {
+  if (!match) return false
+  if (!match.has_video_local) return false
+  if (match.video_url && isPlayableVideoUrl(match.video_url)) return false
+  const anyReady = !!availableQualities && availableQualities.some((q) => q.ready)
+  return !anyReady
+}
 
 /**
  * 動画が登録されているかを判定する。
@@ -83,11 +152,22 @@ export function hasVideo(match?: {
   has_video_local?: boolean | null
 } | null): boolean {
   if (!match) return false
-  return !!(match.video_token || match.video_url || match.has_video_local)
+  return !!(match.video_token || isPlayableVideoUrl(match.video_url) || match.has_video_local)
+}
+
+const UUID_FILENAME_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\.[A-Za-z0-9]+)?$/i
+
+/**
+ * サーバー保管時に付く内部名 (UUID.拡張子) かどうか。
+ * 利用者が付けた名前ではなく、見せても動画の識別に役立たない。
+ */
+export function isInternalVideoFilename(name?: string | null): boolean {
+  return !!name && UUID_FILENAME_RE.test(name.trim())
 }
 
 /**
  * 表示用のファイル名（パスを含まない）。video_filename 優先。
+ * 内部名 (UUID) のときはファイル名を出さず「動画登録済み」にする。
  */
 export function getVideoLabel(match?: {
   video_filename?: string | null
@@ -95,9 +175,11 @@ export function getVideoLabel(match?: {
   has_video_local?: boolean | null
 } | null): string {
   if (!match) return ''
-  if (match.video_filename) return `📁 ${match.video_filename}`
-  if (match.video_url) return `🔗 ${match.video_url}`
-  if (match.has_video_local) return '📁 (動画登録済み)'
+  if (match.video_filename && !isInternalVideoFilename(match.video_filename)) {
+    return `📁 ${match.video_filename}`
+  }
+  if (isPlayableVideoUrl(match.video_url)) return `🔗 ${match.video_url}`
+  if (match.video_filename || match.has_video_local) return '📁 (動画登録済み)'
   return ''
 }
 
