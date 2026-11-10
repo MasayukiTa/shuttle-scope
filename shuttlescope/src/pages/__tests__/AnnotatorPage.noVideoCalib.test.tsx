@@ -29,6 +29,10 @@ vi.mock('@/api/client', () => ({
   API_BASE_URL: '',
 }))
 
+// CourtGridOverlay はコンテナサイズ監視に ResizeObserver を使うが jsdom には無い。
+// 既存テスト(PlayMode.videoError 等)と同じ流儀でグローバルにスタブする。
+vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} })
+
 import { NoVideoCalibCanvas } from '../AnnotatorPage'
 
 function renderCanvas(onClose = vi.fn()) {
