@@ -3011,6 +3011,11 @@ export function SettingsPage() {
             {/* 同意管理 (Round 231 R231 #13: GDPR Article 7(3) 撤回 UI) */}
             <ConsentManagementCard isLight={isLight} />
 
+            {/* チュートリアル再生 (全ロール: アカウントタブから常に到達できる) */}
+            <section className="md:col-span-2">
+              <TutorialReplaySection card={card} />
+            </section>
+
             {/* アプリ再起動 (admin only) */}
             {role === 'admin' && (
               <section>
