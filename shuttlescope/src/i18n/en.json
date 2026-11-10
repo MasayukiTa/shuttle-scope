@@ -2768,6 +2768,7 @@
     "password_regenerate": "Regenerate",
     "password_regenerate_done": "A new password has been issued.",
     "password_regenerate_failed": "Could not regenerate the password. The previous password has not been changed. Please try again.",
+    "join_pending_cap": "This session has too many devices waiting for approval. Please wait for the operator to approve or clear them, then try again.",
     "camera_sender_url_label": "Camera sender URL",
     "device_manager_title": "Connected device manager",
     "device_type_iphone": "iPhone",

@@ -518,6 +518,90 @@ _JOIN_DENIED_DETAIL = "セッションコードまたはパスワードが正し
 _PARTICIPANT_DENIED_DETAIL = "参加資格を確認できません"
 
 
+# ─── 承認待ち participant の氾濫防止 (W63 所見1) ────────────────────────────
+# join は GlobalAuthMiddleware の例外で、正しいセッションパスワードさえ通れば
+# 誰でも pending の participant 行を作れる。パスワードを一度知った相手(あるいは
+# 共有リンクを拾った相手)が device_uid を変えながら叩くと、承認待ち行が無限に
+# 積もり、operator のデバイス一覧を埋め尽くして承認運用を妨害できる
+# (approval DoS) うえ、DB も単調増加する (CWE-770)。そこで三段で抑える:
+#   1. 同じ device_uid の pending 行は 1 本に合流させる (トークン無しの再試行でも
+#      新規行を作らない)。承認は引き継がない (pending のまま)。
+#   2. pending 行には TTL を課し、join / デバイス一覧取得のたびに期限切れを掃除する。
+#   3. 生きている pending 行数に上限を課し、超えたら 429 を返す。
+# さらに「成功した join」自体にも送信元 IP 単位のレート制限を併置する
+# (失敗カウンタは誤パスワードしか数えないため、正しいパスワードでの連打を
+#  素通ししてしまう)。
+_MAX_PENDING_PARTICIPANTS = 20          # 1 セッションあたりの同時 pending 上限
+_PENDING_TTL = timedelta(minutes=15)    # pending 行の寿命 (最後の生存確認から)
+_JOIN_SUCCESS_IP_FAILURES: dict[str, list[float]] = {}
+_JOIN_SUCCESS_IP_LIMIT = 10             # 同一 IP からの 60 秒以内 10 成功 join で拒否
+_JOIN_PENDING_CAP_DETAIL = (
+    "このセッションの承認待ちデバイスが上限に達しています。"
+    "オペレーターが承認・整理するまでお待ちください。"
+)
+
+
+def _prune_stale_pending(session_id: int, db: Session) -> int:
+    """TTL を過ぎた pending 行を削除する。削除件数を返す (commit は呼び出し側)。
+
+    生存確認は last_heartbeat を優先し、無ければ authenticated_at / joined_at を見る。
+    approved / rejected 行は触らない (承認済みデバイスを TTL で切らない)。
+    """
+    cutoff = datetime.utcnow() - _PENDING_TTL
+    stale = (
+        db.query(SessionParticipant)
+        .filter(
+            SessionParticipant.session_id == session_id,
+            SessionParticipant.approval_status == "pending",
+        )
+        .all()
+    )
+    removed = 0
+    for p in stale:
+        last_seen = p.last_heartbeat or p.authenticated_at or p.joined_at
+        if last_seen is not None and last_seen < cutoff:
+            _revoke_participant_token(p)
+            db.delete(p)
+            removed += 1
+    return removed
+
+
+def _count_pending(session_id: int, db: Session) -> int:
+    return (
+        db.query(SessionParticipant)
+        .filter(
+            SessionParticipant.session_id == session_id,
+            SessionParticipant.approval_status == "pending",
+        )
+        .count()
+    )
+
+
+def _check_join_success_rate_limit(request: Optional[Request]) -> None:
+    """成功 join の送信元 IP レート制限。失敗カウンタ(誤パスワード)とは別系統。"""
+    ip = _join_client_ip(request)
+    if not ip:
+        return
+    cutoff = _time.time() - _JOIN_RATE_WINDOW
+    with _JOIN_RATE_LOCK:
+        blocked = _window_count(_JOIN_SUCCESS_IP_FAILURES, ip, cutoff) >= _JOIN_SUCCESS_IP_LIMIT
+    if blocked:
+        raise HTTPException(
+            status_code=429,
+            detail=f"参加要求が多すぎます。{_JOIN_RATE_WINDOW}秒後に再試行してください。",
+        )
+
+
+def _record_join_success(request: Optional[Request]) -> None:
+    ip = _join_client_ip(request)
+    if not ip:
+        return
+    now = _time.time()
+    cutoff = now - _JOIN_RATE_WINDOW
+    with _JOIN_RATE_LOCK:
+        _window_append(_JOIN_SUCCESS_IP_FAILURES, ip, now, cutoff)
+
+
 @router.post("/sessions/{code}/join")
 def join_session(
     code: str,
@@ -562,6 +646,16 @@ def join_session(
                    "オペレーターがパスワードを再生成してください。",
         )
 
+    # パスワード検証を通った「成功 join」は IP 単位でもレート制限する。
+    # _record_join_failure 系は誤パスワードしか数えないため、正しいパスワードを
+    # 握った相手の連打 (approval DoS / 行の氾濫) をここで止める (W63 所見1)。
+    _check_join_success_rate_limit(request)
+
+    # 期限切れの pending 行をこの join のたびに掃除してから上限を評価する。
+    pruned = _prune_stale_pending(session.id, db)
+    if pruned:
+        db.commit()
+
     # デバイスタイプから source_capability / device_class を推定
     source_cap = "none"
     dev_class = "pc"
@@ -602,6 +696,7 @@ def join_session(
         # 再接続でも新しい資格情報を出す（旧トークンはこの時点で無効になる）
         ws_token = _issue_participant_token(existing)
         db.commit()
+        _record_join_success(request)
         return {
             "success": True,
             "data": {
@@ -614,6 +709,49 @@ def join_session(
                 "participant_token": ws_token,
             },
         }
+
+    # 有効な participant_token を伴わない再試行でも、同じ device_uid の pending 行が
+    # すでにあればそれに合流させ、新しい行を増やさない (W63 所見1-b)。承認は引き継が
+    # ない: approved 行はここに来ない (上の token 必須経路でしか再利用されない) ので、
+    # 合流先は必ず pending のまま。これにより「device_uid を変えずリロードし続ける」
+    # 正規端末が pending を量産しない。
+    if body.device_uid and existing is None:
+        pending_same_uid = (
+            db.query(SessionParticipant)
+            .filter(
+                SessionParticipant.session_id == session.id,
+                SessionParticipant.device_uid == body.device_uid,
+                SessionParticipant.approval_status == "pending",
+            )
+            .order_by(SessionParticipant.id.desc())
+            .first()
+        )
+        if pending_same_uid is not None:
+            pending_same_uid.is_connected = True
+            pending_same_uid.authenticated_at = datetime.utcnow()
+            pending_same_uid.last_heartbeat = datetime.utcnow()
+            if body.device_name:
+                pending_same_uid.device_name = body.device_name
+            ws_token = _issue_participant_token(pending_same_uid)
+            db.commit()
+            _record_join_success(request)
+            return {
+                "success": True,
+                "data": {
+                    "participant_id": pending_same_uid.id,
+                    "session_code": code,
+                    "role": pending_same_uid.role,
+                    "connection_role": pending_same_uid.connection_role,
+                    "reconnected": True,
+                    "match_id": session.match_id,
+                    "participant_token": ws_token,
+                },
+            }
+
+    # 新規 pending 行を作る前に、生きている pending 数の上限を課す (W63 所見1-a)。
+    # 掃除後にまだ上限に達しているなら、承認運用が追いつくまで受け付けない。
+    if _count_pending(session.id, db) >= _MAX_PENDING_PARTICIPANTS:
+        raise HTTPException(status_code=429, detail=_JOIN_PENDING_CAP_DETAIL)
 
     participant = SessionParticipant(
         session_id=session.id,
@@ -636,6 +774,7 @@ def join_session(
     db.flush()          # participant.id を確定させてからトークンを載せる
     ws_token = _issue_participant_token(participant)
     db.commit()
+    _record_join_success(request)
     return {
         "success": True,
         "data": {
@@ -797,6 +936,10 @@ def list_devices(code: str, request: Request, db: Session = Depends(get_db)):
     _require_session_scope(request, session, db)
 
     _release_stale_active_cameras(session.id, db)
+    # 一覧取得のたびに期限切れの承認待ち行も掃除する (W63 所見1-c)。
+    # これで operator の画面が放置された pending のゴーストで溢れない。
+    if _prune_stale_pending(session.id, db):
+        db.commit()
 
     participants = (
         db.query(SessionParticipant)

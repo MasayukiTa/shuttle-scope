@@ -2776,6 +2776,7 @@
     "password_regenerate": "再生成",
     "password_regenerate_done": "新しいパスワードを発行しました。",
     "password_regenerate_failed": "パスワードを再生成できませんでした。以前のパスワードは変更されていません。もう一度お試しください。",
+    "join_pending_cap": "承認待ちのデバイスが上限に達しています。オペレーターが承認・整理するまで少し待ってから再試行してください。",
     "camera_sender_url_label": "カメラ送信URL",
     "device_manager_title": "接続デバイス管理",
     "device_type_iphone": "iPhone",

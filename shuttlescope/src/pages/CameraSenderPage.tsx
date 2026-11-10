@@ -420,6 +420,9 @@ export function CameraSenderPage() {
         setErrorMsg(t('camera_sender.join_error_invalid'))
       } else if (status === 404) {
         setErrorMsg('セッションが見つかりません。コードを確認してください。')
+      } else if (status === 429) {
+        // 承認待ちが上限、または参加要求が多すぎる (W63)。少し待てば回復する。
+        setErrorMsg(t('lan_session.join_pending_cap'))
       } else {
         setErrorMsg(t('camera_sender.join_error_network'))
       }
