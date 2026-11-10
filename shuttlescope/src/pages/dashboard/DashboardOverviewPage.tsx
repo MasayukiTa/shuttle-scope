@@ -18,6 +18,7 @@ import { BAR, TOOLTIP_STYLE as _CW_TOOLTIP, getTooltipStyle, AXIS_TICK_LIGHT } f
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { ScoreProgression, type RallyPoint } from '@/components/analysis/ScoreProgression'
 import { IntervalReport } from '@/components/analysis/IntervalReport'
+import { SimpleHeightDiffCard } from '@/components/analysis/SimpleHeightDiffCard'
 import { ConfidenceCalibration } from '@/components/analysis/ConfidenceCalibration'
 import { ChartModal } from '@/components/common/ChartModal'
 import { CourtHeatModal } from '@/components/analysis/CourtHeatModal'
@@ -518,6 +519,11 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
           <p className={`${textMuted} text-sm text-center py-6`}>{t('auto.DashboardOverviewPage.k14')}</p>
         )}
       </div>
+
+      {/* 簡易分析: 打球の高さ差 (SD-08) */}
+      {selectedMatchId && (
+        <SimpleHeightDiffCard matchId={selectedMatchId} />
+      )}
       </>
       )}
 

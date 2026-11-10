@@ -590,7 +590,12 @@ export function MatchListPage() {
     <div className={`h-full overflow-y-auto flex flex-col ${bodyBg} text-[var(--ss-t1)]`}>
       {/* ヘッダー */}
       <div className={`flex items-center justify-between gap-2 flex-wrap px-6 py-4 border-b ${borderLine}`}>
-        <h1 className={`text-xl font-semibold ${textHeading}`}>{t('nav.matches')}</h1>
+        <div className="flex items-baseline gap-2">
+          <h1 className={`text-xl font-semibold ${textHeading}`}>{t('nav.matches')}</h1>
+          {!isLoading && !matchesError && (
+            <span data-testid="match-count" className={`text-sm ${textMuted}`}>{t('match.list.count', { count: matches.length })}</span>
+          )}
+        </div>
         <div className="flex items-center gap-2 flex-wrap">
           {/* backend の POST /matches/quick-start は player を 403 で拒否するため player には出さない */}
           {canWriteMatch(role) && (

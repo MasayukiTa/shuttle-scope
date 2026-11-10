@@ -47,12 +47,30 @@ export function offlineStrokeIdempotencyKey(
   return `offline-${ownerUserId}-${matchId}-${setId}-${rallyNum}`
 }
 
+/**
+ * 自動再送の対象外にすべきキー判定。
+ *
+ * draft/ 行は入力途中の下書き (snapshot だけで payload が無く、winner / endType も
+ * 未確定なためサーバーに送れない)。unowned/ 行は所有者不明で、本人の明示操作でしか
+ * 送らない。どちらも owned な確定ラリーと同じ ObjectStore に別 prefix で入るため、
+ * ownerUserId を持つ draft/ 行が所有権フィルタを素通りすると、本文の無い送信が
+ * /strokes/batch に出て 422 になり、保存機構が壊れる (muse 実機: draft/2/6/15/29)。
+ */
+export function isNonSendableKey(key: string | undefined): boolean {
+  return (
+    typeof key === 'string' &&
+    (key.startsWith('draft/') || key.startsWith('unowned/'))
+  )
+}
+
 export function pendingRallyBelongsTo(
   item: StoredPendingRally,
   ownerUserId: number,
   matchId: number,
 ): item is PendingRally {
   return (
+    !isNonSendableKey(item.key) &&
+    item.payload != null &&
     Number.isInteger(item.ownerUserId) &&
     Number(item.ownerUserId) === ownerUserId &&
     Number(item.matchId) === matchId &&
@@ -547,4 +565,38 @@ export async function getDraftRally(
     if (typeof console !== 'undefined') console.warn('[offline] draft get failed:', err)
     return null
   }
+}
+
+/**
+ * 復元ダイアログが出ている間、その (match/set/rally) の自動再送を保留するレジストリ。
+ *
+ * 背景 (muse 実機 13:08):
+ *   入力途中のラリーで「前回の未保存データを復元」ダイアログが出ている状態で
+ *   通信を黄断→復帰すると、online イベント起点の自動再送が、復元/破棄が
+ *   決まる前にそのラリーの owned 行を送ろうとして失敗扱いされ、「保存失敗 1 件」が
+ *   出る (その後ラリーを終了すると実際には保存成功する)。
+ *
+ * 復元ダイアログが出ている間は、その (match/set/rally) の owned 行を再送対象から
+ * 外すことで、復元か破棄が決まるまで送信を待たせる。キーは owner を含まない
+ * (match/set/rally だけ) — 復元ダイアログは現在のユーザー本人の入力にしか出ないため。
+ */
+const heldResendKeys = new Set<string>()
+
+function resendHoldKey(matchId: number, setId: number, rallyNum: number): string {
+  return `${matchId}/${setId}/${rallyNum}`
+}
+
+/** 復元ダイアログ表示中: この (match/set/rally) の自動再送を保留する。 */
+export function holdResendForRally(matchId: number, setId: number, rallyNum: number): void {
+  heldResendKeys.add(resendHoldKey(matchId, setId, rallyNum))
+}
+
+/** 復元または破棄が決まった: 保留を解除する (次回の sync で送られる)。 */
+export function releaseResendForRally(matchId: number, setId: number, rallyNum: number): void {
+  heldResendKeys.delete(resendHoldKey(matchId, setId, rallyNum))
+}
+
+/** この (match/set/rally) の再送が保留中か。useOfflineSync の送信ループが読む。 */
+export function isResendHeld(matchId: number, setId: number, rallyNum: number): boolean {
+  return heldResendKeys.has(resendHoldKey(matchId, setId, rallyNum))
 }

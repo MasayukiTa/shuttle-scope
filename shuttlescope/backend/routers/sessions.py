@@ -249,7 +249,7 @@ def create_session(body: SessionCreate, request: Request, db: Session = Depends(
         .first()
     )
     if existing:
-        return {"success": True, "data": _session_to_dict(existing, db)}
+        return {"success": True, "data": _session_to_dict(existing, db, request)}
 
     # 新規作成（コード重複回避）
     for _ in range(10):
@@ -274,7 +274,7 @@ def create_session(body: SessionCreate, request: Request, db: Session = Depends(
     op_token = _generate_operator_token()
     _operator_tokens[code] = op_token
 
-    data = _session_to_dict(session, db)
+    data = _session_to_dict(session, db, request)
     data["session_password"] = plain_password  # 初回のみ平文で返す
     data["operator_token"] = op_token           # 初回のみ返す（ローカル保存を推奨）
     return {"success": True, "data": data}
@@ -312,7 +312,7 @@ def sessions_for_match(match_id: int, request: Request, db: Session = Depends(ge
         .filter(SharedSession.match_id == match_id, SharedSession.is_active.is_(True))
         .all()
     )
-    return {"success": True, "data": [_session_to_dict(s, db) for s in sessions]}
+    return {"success": True, "data": [_session_to_dict(s, db, request) for s in sessions]}
 
 
 @router.get("/sessions/{code}")
@@ -322,7 +322,7 @@ def get_session(code: str, request: Request, db: Session = Depends(get_db)):
     if not session:
         raise HTTPException(status_code=404, detail="セッションが見つかりません")
     _require_session_scope(request, session, db)
-    return {"success": True, "data": _session_to_dict(session, db)}
+    return {"success": True, "data": _session_to_dict(session, db, request)}
 
 
 @router.get("/sessions/{code}/state")
@@ -695,7 +695,10 @@ def issue_camera_ws_ticket(
     # これを見ないと、映像を受けるだけの端末が「カメラです」と名乗って
     # operator に offer を投げられる。
     if participant.approval_status == "rejected":
-        raise HTTPException(status_code=403, detail="このデバイスは拒否されています")
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "device_rejected", "message": "このデバイスは拒否されています"},
+        )
     if body.role == "device":
         # `source_capability` は join 時に **クライアントが申告した device_type**
         # からしか決まらない (`"iphone"` と名乗れば "camera" になる)。
@@ -711,7 +714,11 @@ def issue_camera_ws_ticket(
         # 設計はもともと承認を前提にしている。
         if participant.approval_status != "approved":
             raise HTTPException(
-                status_code=403, detail="このデバイスはまだ承認されていません"
+                status_code=403,
+                detail={
+                    "code": "device_not_approved",
+                    "message": "このデバイスはまだ承認されていません",
+                },
             )
         if participant.source_capability != "camera":
             raise HTTPException(
@@ -723,7 +730,11 @@ def issue_camera_ws_ticket(
         # (operator UI は join 済みの viewer 全員へ自動で offer する)。
         if participant.approval_status != "approved":
             raise HTTPException(
-                status_code=403, detail="このデバイスはまだ承認されていません"
+                status_code=403,
+                detail={
+                    "code": "device_not_approved",
+                    "message": "このデバイスはまだ承認されていません",
+                },
             )
         if participant.viewer_permission == "blocked":
             raise HTTPException(status_code=403, detail="この端末の映像受信は停止されています")
@@ -1367,7 +1378,44 @@ def _named_tunnel_url() -> Optional[str]:
     return None
 
 
-def _session_to_dict(session: SharedSession, db: Session) -> dict:
+def _public_https_origin(request: Optional[Request]) -> Optional[str]:
+    """Return "https://<host>" when the request arrived over a public HTTPS domain.
+
+    Criteria:
+      - scheme is https (prefer X-Forwarded-Proto, else request.url.scheme)
+      - Host (prefer X-Forwarded-Host) is not localhost / 127.0.0.1 / a private IPv4.
+    Returns None if the conditions are not met.
+    """
+    if request is None:
+        return None
+    try:
+        import ipaddress
+        headers = request.headers
+        proto = (headers.get("x-forwarded-proto") or request.url.scheme or "").split(",")[0].strip().lower()
+        if proto != "https":
+            return None
+        host_header = (headers.get("x-forwarded-host") or headers.get("host") or "").split(",")[0].strip()
+        if not host_header:
+            return None
+        # Extract hostname (keep port in the origin). Only split when a single colon is present (host:port).
+        hostname = host_header.rsplit(":", 1)[0] if host_header.count(":") == 1 else host_header
+        hl = hostname.lower()
+        if hl in ("localhost", "127.0.0.1", "::1"):
+            return None
+        # Reject private / loopback / link-local IPv4 literals.
+        try:
+            ip = ipaddress.ip_address(hl)
+            if ip.is_private or ip.is_loopback or ip.is_link_local:
+                return None
+        except ValueError:
+            # Not an IP = a domain name. Treat as a public origin.
+            pass
+        return f"https://{host_header}"
+    except Exception:
+        return None
+
+
+def _session_to_dict(session: SharedSession, db: Session, request: Optional[Request] = None) -> dict:
     from backend.ws.live import manager
     lan_ips = _get_lan_ips()
     port = settings.API_PORT
@@ -1387,6 +1435,16 @@ def _session_to_dict(session: SharedSession, db: Session) -> dict:
         camera_sender_urls.append(f"{tunnel_url}/#/camera/{session.session_code}")
         # WSS は Cloudflare が自動 upgrade、ポート不要
         wss_host = tunnel_url.replace("https://", "")
+        ws_templates.append(f"wss://{wss_host}/ws/live/{session.session_code}")
+
+    # named tunnel が無いが、リクエストが公開 HTTPS ドメイン経由の場合
+    # (リバースプロキシ等)、その origin を LAN IP より優先して先頭に追加する。
+    # 別ネットワーク(携帯回線)の端末でも開ける URL になる。
+    public_origin = _public_https_origin(request) if (request is not None and not tunnel_url) else None
+    if public_origin:
+        coach_urls.append(f"{public_origin}/#/annotator/{session.match_id}")
+        camera_sender_urls.append(f"{public_origin}/#/camera/{session.session_code}")
+        wss_host = public_origin.replace("https://", "")
         ws_templates.append(f"wss://{wss_host}/ws/live/{session.session_code}")
 
     if lan_mode and lan_ips:
@@ -1415,5 +1473,6 @@ def _session_to_dict(session: SharedSession, db: Session) -> dict:
         "has_password": session.password_hash is not None,
         # named tunnel が起動していれば true。フロント UI が「外部公開済」表示に使う
         "named_tunnel_active": tunnel_url is not None,
+        "public_origin_active": public_origin is not None,
         "named_tunnel_url": tunnel_url,
     }
