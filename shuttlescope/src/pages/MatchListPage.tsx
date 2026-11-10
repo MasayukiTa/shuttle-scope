@@ -518,6 +518,22 @@ export function MatchListPage() {
     })
   }, [allMatches, filterDateFrom, filterDateTo, filterText, matchSortKey, matchSortDir, statusSortTarget])
 
+  // 絞り込み中かどうか。サーバ側フィルタ (player/level/incomplete) は allMatches 自体を絞るため、
+  // クライアント側フィルタ (text/date) と合わせてここで一括判定する。
+  // 1 つでも有効なら 0 件は「条件に合う試合が無い」であって「未登録」ではない。
+  const anyFilterActive =
+    !!filterPlayer || !!filterLevel || filterIncompleteOnly ||
+    filterText.trim() !== '' || !!filterDateFrom || !!filterDateTo
+
+  const clearAllFilters = () => {
+    setFilterPlayer('')
+    setFilterLevel('')
+    setFilterIncompleteOnly(false)
+    setFilterText('')
+    setFilterDateFrom(null)
+    setFilterDateTo(null)
+  }
+
   function handleMatchSort(key: MatchSortKey) {
     if (matchSortKey === key) {
       setMatchSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
@@ -864,8 +880,19 @@ export function MatchListPage() {
               {t('auto.MatchListPage.k66')}
             </button>
           </div>
+        ) : matches.length === 0 && anyFilterActive ? (
+          <div data-testid="match-empty-filtered" className={`text-center ${textMuted} py-10`}>
+            <p className="mb-4">{t('match.list.empty_filtered')}</p>
+            <button
+              onClick={clearAllFilters}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white rounded-[var(--r-md)] text-sm"
+            >
+              <MIcon name="filter_alt_off" size={16} />
+              {t('match.list.clear_filters')}
+            </button>
+          </div>
         ) : matches.length === 0 ? (
-          <div className={`text-center ${textMuted} py-10`}>
+          <div data-testid="match-empty-unregistered" className={`text-center ${textMuted} py-10`}>
             <p className="mb-4">{t('auto.MatchListPage.k37')}</p>
             <button
               onClick={() => navigate('/getting-started')}

@@ -1324,6 +1324,8 @@
       "downloads_unknown": "動画ダウンロードの状況を更新できません。表示は最後に確認できた状態です。",
       "delete_confirm": "削除",
       "cancel_short": "取消",
+      "empty_filtered": "条件に合う試合がありません。条件を変えてください。",
+      "clear_filters": "絞り込みを解除",
       "public_pool_badge": "共有",
       "public_pool_title": "全チームから閲覧可能な公開プール試合",
       "demo_public_badge": "デモ",
