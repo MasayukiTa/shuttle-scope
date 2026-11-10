@@ -32,6 +32,9 @@ if hasattr(sys.stdout, "buffer"):
 
 ROOT = Path(__file__).resolve().parent.parent  # shuttlescope/
 MANIFEST = ROOT / "scripts" / "ci_test_manifest.txt"
+# Drop-in directory: each new test registers itself as one *.txt file here so
+# that parallel PRs no longer collide on the single ci_test_manifest.txt tail.
+MANIFEST_DIR = ROOT / "scripts" / "ci_test_manifest.d"
 VITEST_CONFIG = ROOT / "vitest.config.ts"
 
 
@@ -84,13 +87,39 @@ def _glob_to_regex(glob: str) -> re.Pattern[str]:
     return re.compile("".join(out))
 
 
-def _read_manifest() -> list[str]:
-    entries = []
-    for raw in MANIFEST.read_text(encoding="utf-8").splitlines():
+def _read_manifest_file(path: Path) -> list[str]:
+    out = []
+    for raw in path.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
-        entries.append(line)
+        out.append(line)
+    return out
+
+
+def _read_manifest() -> list[str]:
+    """Collect manifest entries from the legacy single file AND the drop-in
+    directory scripts/ci_test_manifest.d/*.txt.
+
+    Both sources are read; duplicate entries are collapsed to one while
+    preserving first-seen order (legacy file first, then *.d files sorted by
+    name). The *.d layout lets each new test register itself in its own file
+    so concurrent PRs do not conflict on a shared tail line.
+    """
+    sources: list[Path] = []
+    if MANIFEST.is_file():
+        sources.append(MANIFEST)
+    if MANIFEST_DIR.is_dir():
+        sources.extend(sorted(MANIFEST_DIR.glob("*.txt")))
+
+    seen: set[str] = set()
+    entries: list[str] = []
+    for src in sources:
+        for line in _read_manifest_file(src):
+            if line in seen:
+                continue
+            seen.add(line)
+            entries.append(line)
     return entries
 
 
