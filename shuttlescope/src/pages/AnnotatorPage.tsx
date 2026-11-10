@@ -3197,7 +3197,7 @@ export function AnnotatorPage() {
         </div>
 
         {/* モバイル: 進捗 + メニューボタン */}
-        <div className="flex md:hidden items-center gap-2 shrink-0">
+        <div className="flex md:hidden items-center gap-2 flex-wrap justify-end ml-auto min-w-0">
           {store.pendingSaveCount > 0 && (
             <span className="text-yellow-400 font-medium text-[10px]">
               {store.pendingSaveCount}
