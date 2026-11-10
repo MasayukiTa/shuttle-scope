@@ -15,3 +15,7 @@ src/i18n/__tests__/hitZonePadLabels.t003.test.ts
 src/store/__tests__/annotationStore.strokeEnrichmentAt.t003.test.ts
 src/utils/__tests__/draftAgeLabel.test.ts
 src/api/__tests__/appAuthReaders.test.ts
+src/utils/__tests__/cameraWs.test.ts
+src/hooks/__tests__/useServerSideRecording.order.test.ts
+src/hooks/__tests__/useServerSideRecording.timeout.h14.test.ts
+src/components/video/__tests__/authTokenReaders.test.tsx

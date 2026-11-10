@@ -23,6 +23,7 @@ import {
 import { MIcon } from '@/components/common/MIcon'
 import { useAuth } from '@/hooks/useAuth'
 import { clearOptionalConsentDeferral, deferOptionalConsent } from '@/utils/consentDeferral'
+import { removeAuthItem } from '@/api/authStorage'
 import { tOr } from '@/utils/i18nFallback'
 
 // 必須項目は GDPR Article 6(1)(b) (契約履行) / APPI 第18条 を法的根拠とし、
@@ -525,13 +526,13 @@ export default function OnboardingConsentPage({
                 } catch { /* server revoke に失敗してもローカルの認証情報は必ず消す */ }
                 // セッションをクリアしてログイン画面に戻す
                 try {
-                  sessionStorage.removeItem('shuttlescope_token')
-                  sessionStorage.removeItem('shuttlescope_refresh_token')
-                  sessionStorage.removeItem('shuttlescope_role')
-                  sessionStorage.removeItem('shuttlescope_user_id')
-                  sessionStorage.removeItem('shuttlescope_display_name')
-                  sessionStorage.removeItem('shuttlescope_player_id')
-                  sessionStorage.removeItem('shuttlescope_team_name')
+                  removeAuthItem('shuttlescope_token')
+                  removeAuthItem('shuttlescope_refresh_token')
+                  removeAuthItem('shuttlescope_role')
+                  removeAuthItem('shuttlescope_user_id')
+                  removeAuthItem('shuttlescope_display_name')
+                  removeAuthItem('shuttlescope_player_id')
+                  removeAuthItem('shuttlescope_team_name')
                 } catch { /* ignore */ }
                 // フルリロード (App ルートが /login へ誘導)
                 window.location.href = '/#/'

@@ -49,11 +49,13 @@ describe('useServerSideRecording #662 timeouts', () => {
       constructor(s: unknown, o: unknown) { super(s, o); recorder = this as unknown as FakeMediaRecorder }
     })
     vi.stubGlobal('sessionStorage', { getItem: () => 'token', setItem: () => {}, removeItem: () => {} })
+    localStorage.setItem('shuttlescope_token', 'token')
   })
 
   afterEach(() => {
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
+    localStorage.clear()
   })
 
   function timeoutArgFor(suffix: string): number | undefined {

@@ -98,11 +98,13 @@ describe('useServerSideRecording — streaming upload ordering', () => {
     vi.stubGlobal('sessionStorage', {
       getItem: () => 'token', setItem: () => {}, removeItem: () => {},
     })
+    localStorage.setItem('shuttlescope_token', 'token')
   })
 
   afterEach(() => {
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
+    localStorage.clear()
   })
 
   async function recordChunks(
