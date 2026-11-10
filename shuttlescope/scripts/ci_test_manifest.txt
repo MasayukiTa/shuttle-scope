@@ -14,3 +14,4 @@ src/utils/__tests__/offlineStrokeQueue.resync.test.ts
 src/i18n/__tests__/hitZonePadLabels.t003.test.ts
 src/store/__tests__/annotationStore.strokeEnrichmentAt.t003.test.ts
 src/utils/__tests__/draftAgeLabel.test.ts
+src/components/session/__tests__/YouTubeLivePanel.authToken.test.tsx

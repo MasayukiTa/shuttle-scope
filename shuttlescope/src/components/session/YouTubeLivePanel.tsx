@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { apiPost, apiGet } from '../../api/client'
+import { getAuthItem, TOKEN_KEY } from '../../api/authStorage'
 import { errorMessage } from '@/utils/errors'
 
 interface JobStatus {
@@ -90,7 +91,7 @@ export function YouTubeLivePanel({ matchId }: { matchId?: number } = {}) {
           setLoading(false)
           return
         }
-        const token = sessionStorage.getItem('shuttlescope_token') ?? ''
+        const token = getAuthItem(TOKEN_KEY) ?? ''
         await drmStart(url.trim(), result.job_id, token)
         setJob({ ...result, method: 'drm', status: 'recording' })
       }
