@@ -55,6 +55,7 @@ import { TeamManagementPage } from '@/pages/TeamManagementPage'
 import { useTheme } from '@/hooks/useTheme'
 import { authLogout, authMe, checkHealth, publicInquiryUnreadCount } from '@/api/client'
 import { apiPost } from '@/api/client'
+import { getAuthItem, TOKEN_KEY, ROLE_KEY, USER_ID_KEY } from '@/api/authStorage'
 import { PendingLogoutDialog } from '@/components/auth/PendingLogoutDialog'
 import { IdleWarningDialog } from '@/components/auth/IdleWarningDialog'
 import { AUTOSAVE_FLUSH_EVENT } from '@/utils/annotatorAutosave'
@@ -113,8 +114,8 @@ const queryClient = new QueryClient({
 // 共有ブラウザで次のユーザへ見えるのを防ぐ。token の更新 (同一ユーザ) では消さない。
 function readAuthSubject(): string {
   try {
-    if (!sessionStorage.getItem('shuttlescope_token')) return ''
-    return `user:${sessionStorage.getItem('shuttlescope_user_id') ?? ''}`
+    if (!getAuthItem(TOKEN_KEY)) return ''
+    return `user:${getAuthItem(USER_ID_KEY) ?? ''}`
   } catch {
     return ''
   }
@@ -950,8 +951,8 @@ function ProtectedMainRoute() {
       let currentUserId: string | null = null
       let currentRole: string | null = null
       try {
-        currentRole = sessionStorage.getItem('shuttlescope_role')
-        currentUserId = sessionStorage.getItem('shuttlescope_user_id')
+        currentRole = getAuthItem(ROLE_KEY)
+        currentUserId = getAuthItem(USER_ID_KEY)
         if (currentRole && !['admin', 'analyst', 'coach', 'player', 'demo'].includes(currentRole)) dest = '/llm'
       } catch { /* ignore */ }
 
