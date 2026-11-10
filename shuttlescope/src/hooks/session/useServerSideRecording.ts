@@ -30,6 +30,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { resolveBaseUrl } from '@/utils/preferredEndpoint'
 import { errorMessage } from '@/utils/errors'
 import { fetchWithTimeout } from '@/api/client'
+import { getAuthItem } from '@/api/authStorage'
 
 // 半断 (TCP は繋がったまま応答が来ない) で fetch が永久に pending になると、直列 pump と
 // stop() の finalize 待ちが止まり、録画の確定まで届かない。用途別に上限を設ける (#662)。
@@ -223,7 +224,7 @@ export function useServerSideRecording(
         'X-Participant-Id': String(participantId),
       }
     }
-    const token = sessionStorage.getItem('shuttlescope_token') ?? ''
+    const token = getAuthItem('shuttlescope_token') ?? ''
     return token ? { Authorization: 'Bearer ' + token } : {}
   }, [participantId, participantToken, sessionCode])
 
