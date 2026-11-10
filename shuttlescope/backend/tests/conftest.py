@@ -104,6 +104,34 @@ def _reset_idempotency_cache():
         pass
 
 
+@pytest.fixture(autouse=True)
+def _reset_join_rate_limiters():
+    """Clear join-endpoint rate-limiter state between tests.
+
+    The join limiters in backend/routers/sessions.py keep global module
+    state (per (code, IP) / per code / per IP failures, plus the success-join
+    per-IP counter added on this branch). Nothing reset them between tests, so
+    the TestClient single loopback IP tripped the 10-successful-joins/60s limit
+    and later joins (and anything depending on them) returned 429. Reset all of
+    them, mirroring the other autouse _reset_* fixtures here.
+    """
+    try:
+        from backend.routers import sessions as _sessions
+
+        def _clear():
+            with _sessions._JOIN_RATE_LOCK:
+                _sessions._JOIN_FAILURES.clear()
+                _sessions._JOIN_IP_FAILURES.clear()
+                _sessions._JOIN_CODE_FAILURES.clear()
+                _sessions._JOIN_SUCCESS_IP_FAILURES.clear()
+    except Exception:
+        def _clear():
+            return None
+    _clear()
+    yield
+    _clear()
+
+
 @pytest.fixture(scope="session")
 def test_engine(tmp_path_factory):
     """Create one SQLite engine shared by every session in this pytest worker.
