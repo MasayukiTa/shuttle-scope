@@ -94,8 +94,9 @@ class TestSessionToDictPublicOrigin:
         assert resp.status_code == 201, resp.text
         return resp.json()["data"]
 
-    def test_public_host_prepends_https_camera_url(self, client_and_match):
+    def test_public_host_prepends_https_camera_url(self, client_and_match, monkeypatch):
         client, match_id = client_and_match
+        monkeypatch.setattr("backend.routers.sessions._named_tunnel_url", lambda: None)
         data = self._create(client, match_id, {
             "host": "app.shuttle-scope.com",
             "x-forwarded-proto": "https",
@@ -106,8 +107,9 @@ class TestSessionToDictPublicOrigin:
         assert "/camera/" in cam[0]
         assert data.get("public_origin_active") is True
 
-    def test_public_host_prepends_https_coach_url(self, client_and_match):
+    def test_public_host_prepends_https_coach_url(self, client_and_match, monkeypatch):
         client, match_id = client_and_match
+        monkeypatch.setattr("backend.routers.sessions._named_tunnel_url", lambda: None)
         data = self._create(client, match_id, {
             "host": "app.shuttle-scope.com",
             "x-forwarded-proto": "https",
@@ -115,8 +117,9 @@ class TestSessionToDictPublicOrigin:
         coach = data["coach_urls"]
         assert coach[0].startswith("https://app.shuttle-scope.com/")
 
-    def test_localhost_host_keeps_legacy_urls(self, client_and_match):
+    def test_localhost_host_keeps_legacy_urls(self, client_and_match, monkeypatch):
         client, match_id = client_and_match
+        monkeypatch.setattr("backend.routers.sessions._named_tunnel_url", lambda: None)
         data = self._create(client, match_id, {
             "host": "localhost:8765",
             "x-forwarded-proto": "http",
@@ -125,8 +128,9 @@ class TestSessionToDictPublicOrigin:
         assert not any(urlparse(u).hostname == "app.shuttle-scope.com" for u in cam)
         assert data.get("public_origin_active") is False
 
-    def test_password_never_in_urls(self, client_and_match):
+    def test_password_never_in_urls(self, client_and_match, monkeypatch):
         client, match_id = client_and_match
+        monkeypatch.setattr("backend.routers.sessions._named_tunnel_url", lambda: None)
         data = self._create(client, match_id, {
             "host": "app.shuttle-scope.com",
             "x-forwarded-proto": "https",
