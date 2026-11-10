@@ -73,7 +73,7 @@ import { CVScanPanel } from '@/components/annotation/CVScanPanel'
 import { ReviewQueuePanel as CVReviewQueuePanel } from '@/components/annotation/ReviewQueuePanel'
 import { PlayerMovementCard } from '@/components/analysis/PlayerMovementCard'
 import { uploadVideoInChunks, abortChunkUpload } from '@/utils/chunkUpload'
-import { buildAutosaveKey, isAutosaveOwnedBy, AUTOSAVE_FLUSH_EVENT } from '@/utils/annotatorAutosave'
+import { buildAutosaveKey, isAutosaveOwnedBy, AUTOSAVE_FLUSH_EVENT, resolveDraftFirstInputAt, draftAgeMinutes } from '@/utils/annotatorAutosave'
 
 // ─── 配信URL検出 ──────────────────────────────────────────────────────────────
 // Electron では配信サービスの動画を直接再生できないため、yt-dlp でダウンロードする。
@@ -1162,6 +1162,19 @@ export function AnnotatorPage() {
     const hasPending = !!s.pendingStroke.shot_type
     if (s.currentStrokes.length === 0 && !hasPending) return
     const now = Date.now()
+    // 最初に入力した時刻。前回保存があればその firstInputAt を引き継ぎ、
+    // 無ければ今回を始点にする。flush (PR 243) や IndexedDB 退避 (PR 250) の
+    // たびに now へ更新される savedAt とは別に持ち、復元ダイアログの
+    // 「約 N 分前」はこれから数える。
+    let prevFirstInputAt: number | undefined
+    try {
+      const prevRaw = localStorage.getItem(autoSaveKey)
+      if (prevRaw) {
+        const prev = JSON.parse(prevRaw) as { firstInputAt?: number }
+        if (typeof prev.firstInputAt === 'number') prevFirstInputAt = prev.firstInputAt
+      }
+    } catch { /* 読めなければ now を始点にする */ }
+    const firstInputAt = resolveDraftFirstInputAt(prevFirstInputAt, now)
     const data = {
       setId: s.currentSetId,
       rallyNum: s.currentRallyNum,
@@ -1177,6 +1190,7 @@ export function AnnotatorPage() {
       currentHitter: s.currentHitter,
       videoTimestamp: videoRef.current?.currentTime ?? null,
       savedAt: now,
+      firstInputAt,
       ownerUserId: userId,
     }
     // localStorage への同期退避を試みる。失敗 (容量超過・プライベートモード) しても
@@ -1287,7 +1301,7 @@ export function AnnotatorPage() {
       const saved = JSON.parse(raw) as {
         setId: number; rallyNum: number; strokes: Array<Record<string, unknown>>
         pendingStroke?: Record<string, unknown>; inputStep?: string
-        savedAt: number; videoTimestamp?: number
+        savedAt: number; firstInputAt?: number; videoTimestamp?: number
         rallyStartTimestamp?: number | null
         currentPlayer?: 'player_a' | 'player_b'
         currentHitter?: string
@@ -1304,7 +1318,10 @@ export function AnnotatorPage() {
         saved.setId === store.currentSetId &&
         saved.rallyNum === store.currentRallyNum
       ) {
-        const age = Math.round((Date.now() - saved.savedAt) / 60000)
+        // 「約 N 分前」は最初に入力した時刻 (firstInputAt) から数える。
+        // flush/復元で更新される savedAt を使うと 「約 0 分前」に見えるため。
+        // 既存の下書き (firstInputAt 無し) は draftAgeMinutes 内で savedAt にフォールバック。
+        const age = draftAgeMinutes(saved, Date.now())
         const strokeDesc = saved.strokes.length > 0
           ? t('annotator.ui.restore_dialog_strokes_count', { defaultValue: '{{n}}本確定', n: saved.strokes.length })
           : t('annotator.ui.restore_dialog_shot_typing', { defaultValue: 'ショット種別入力中' })
@@ -5062,6 +5079,15 @@ export function AnnotatorPage() {
                 <button
                   onClick={() => {
                     const now = Date.now()
+                    // 手動保存でも firstInputAt は引き継ぐ (書き出しのたびに更新しない)。
+                    let prevFirstInputAt: number | undefined
+                    try {
+                      const prevRaw = localStorage.getItem(autoSaveKey!)
+                      if (prevRaw) {
+                        const prev = JSON.parse(prevRaw) as { firstInputAt?: number }
+                        if (typeof prev.firstInputAt === 'number') prevFirstInputAt = prev.firstInputAt
+                      }
+                    } catch { /* 読めなければ now を始点にする */ }
                     const data = {
                       setId: store.currentSetId,
                       rallyNum: store.currentRallyNum,
@@ -5070,6 +5096,7 @@ export function AnnotatorPage() {
                       inputStep: store.inputStep,
                       videoTimestamp: videoRef.current?.currentTime ?? null,
                       savedAt: now,
+                      firstInputAt: resolveDraftFirstInputAt(prevFirstInputAt, now),
                       ownerUserId: userId,
                     }
                     // 自動保存と同じく try/catch で quota/private-mode 失敗を握り、

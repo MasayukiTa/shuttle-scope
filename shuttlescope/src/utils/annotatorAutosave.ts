@@ -101,3 +101,37 @@ export function planSessionTeardown(reason: SessionEndReason): SessionTeardownPl
       return { flushAutosaveBeforeTeardown: false, keepAutosave: true }
   }
 }
+
+/**
+ * 下書きの「最初に入力した時刻」(firstInputAt) を決める。
+ *
+ * 復元ダイアログの「約 N 分前」は、実際に入力が始まった時刻から数えるべき。
+ * savedAt は flush (PR 243) や IndexedDB 退避 (PR 250) のたびに now へ更新されるため、
+ * それを使うと「約 0 分前」に見える。最初の保存で firstInputAt を立て、
+ * 以降の保存では引き継ぐ (flush/復元では更新しない)。
+ *
+ * @param prev 前回保存済みの firstInputAt (無ければ undefined)。
+ * @param now  今回の保存時刻。
+ */
+export function resolveDraftFirstInputAt(
+  prev: number | null | undefined,
+  now: number,
+): number {
+  return typeof prev === 'number' && Number.isFinite(prev) ? prev : now
+}
+
+/**
+ * 復元ダイアログの「約 N 分前」の N を返す。
+ *
+ * firstInputAt (最初の入力時刻) があればそれを、無ければ旧形式の savedAt を使う。
+ * 既存の下書き (firstInputAt が無いもの) は従来通り savedAt から表示する。
+ */
+export function draftAgeMinutes(
+  saved: { firstInputAt?: number | null; savedAt: number },
+  now: number,
+): number {
+  const base = typeof saved.firstInputAt === 'number' && Number.isFinite(saved.firstInputAt)
+    ? saved.firstInputAt
+    : saved.savedAt
+  return Math.round((now - base) / 60000)
+}
