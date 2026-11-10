@@ -5605,7 +5605,10 @@
       "queue_storage_error": "この端末の保存領域に書き込めません。未送信の入力が失われるおそれがあります。",
       "queue_storage_error_short": "保存エラー",
       "pass3_checking_existing": "入力済みの打球を確認しています ...",
-      "pass3_strokes_fetch_failed": "入力済みの打球を取得できませんでした。もう一度お試しください。"
+      "pass3_strokes_fetch_failed": "入力済みの打球を取得できませんでした。もう一度お試しください。",
+      "menu": "メニュー",
+      "tutorial_replay": "チュートリアルをもう一度見る",
+      "tutorial_replay_unrecorded": "チュートリアルを開始しました。再生回数はまだ記録に反映されていません。"
     },
     "OnboardingConsentPage": {
       "k1": "日本語",
