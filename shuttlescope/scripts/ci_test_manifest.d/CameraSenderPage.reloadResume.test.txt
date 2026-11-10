@@ -1,0 +1,1 @@
+src/pages/__tests__/CameraSenderPage.reloadResume.test.tsx

@@ -495,13 +495,25 @@ export function CameraSenderPage() {
   // URL からセッションコードが渡された場合は直接参加試行
   useEffect(() => {
     if (paramCode && senderState === 'connecting') {
-      if (pwdParam) {
+      // 再読み込み時の再開: 同一タブ（sessionStorage）に保存済みの参加者トークンが
+      // あれば、パスワードを聞かずに再開する。joinSession が device_uid と併せて
+      // participant_token を再提示し、サーバが受理すれば承認状態を引き継ぐ。
+      // 失効・拒否・セッション終了は joinSession / connectWs 側の分岐で
+      // 参加し直し（rejoin_required）へ案内される。
+      const savedRejoinToken = getParticipantRejoinToken(paramCode, getDeviceUid())
+      if (savedRejoinToken) {
+        if (pwdParam) {
+          // URL にパスワードが残っていても履歴・共有に残さない。
+          navigate({ pathname, search: '' }, { replace: true })
+        }
+        joinSession(paramCode, '', localStorage.getItem(DEVICE_NAME_KEY) || getDeviceTypeLabel())
+      } else if (pwdParam) {
         // ?pwd= パラメータがあれば自動入力してパスワードフォームをスキップ（保存済み端末名を使用）
         // 参加に使ったら URL からパスワードを消す（履歴・アドレスバー・共有に残さない）
         navigate({ pathname, search: '' }, { replace: true })
         joinSession(paramCode, pwdParam, localStorage.getItem(DEVICE_NAME_KEY) || getDeviceTypeLabel())
       } else {
-        // 旧 QR コード（パスワードなし URL）→ フォームに誘導
+        // 保存済みトークンも ?pwd= も無い → パスワードフォームに誘導
         setErrorMsg(t('lan_session.join_password_required'))
         setSenderState('join')
       }
