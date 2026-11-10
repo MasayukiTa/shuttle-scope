@@ -548,3 +548,37 @@ export async function getDraftRally(
     return null
   }
 }
+
+/**
+ * 復元ダイアログが出ている間、その (match/set/rally) の自動再送を保留するレジストリ。
+ *
+ * 背景 (muse 実機 13:08):
+ *   入力途中のラリーで「前回の未保存データを復元」ダイアログが出ている状態で
+ *   通信を黄断→復帰すると、online イベント起点の自動再送が、復元/破棄が
+ *   決まる前にそのラリーの owned 行を送ろうとして失敗扱いされ、「保存失敗 1 件」が
+ *   出る (その後ラリーを終了すると実際には保存成功する)。
+ *
+ * 復元ダイアログが出ている間は、その (match/set/rally) の owned 行を再送対象から
+ * 外すことで、復元か破棄が決まるまで送信を待たせる。キーは owner を含まない
+ * (match/set/rally だけ) — 復元ダイアログは現在のユーザー本人の入力にしか出ないため。
+ */
+const heldResendKeys = new Set<string>()
+
+function resendHoldKey(matchId: number, setId: number, rallyNum: number): string {
+  return `${matchId}/${setId}/${rallyNum}`
+}
+
+/** 復元ダイアログ表示中: この (match/set/rally) の自動再送を保留する。 */
+export function holdResendForRally(matchId: number, setId: number, rallyNum: number): void {
+  heldResendKeys.add(resendHoldKey(matchId, setId, rallyNum))
+}
+
+/** 復元または破棄が決まった: 保留を解除する (次回の sync で送られる)。 */
+export function releaseResendForRally(matchId: number, setId: number, rallyNum: number): void {
+  heldResendKeys.delete(resendHoldKey(matchId, setId, rallyNum))
+}
+
+/** この (match/set/rally) の再送が保留中か。useOfflineSync の送信ループが読む。 */
+export function isResendHeld(matchId: number, setId: number, rallyNum: number): boolean {
+  return heldResendKeys.has(resendHoldKey(matchId, setId, rallyNum))
+}
