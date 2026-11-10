@@ -1281,6 +1281,7 @@
       "col_format": "形式",
       "col_opponent": "対戦相手",
       "col_actions": "操作",
+      "count": "{{count}} 件",
       "format_singles": "シングルス",
       "format_mens_doubles": "男子ダブルス",
       "format_womens_doubles": "女子ダブルス",
