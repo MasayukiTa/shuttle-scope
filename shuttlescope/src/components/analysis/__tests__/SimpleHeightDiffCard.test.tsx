@@ -1,9 +1,10 @@
 /**
- * 簡易分析「打球の高さ差」(要望8 / SD-08) の最小表示を固定する。
+ * 簡易分析「打球の高さ差」(要望8 / SD-08) の表示を固定する。
  *
  * - 見出し・説明が t() 経由で出る（英語 UI で日本語が残らない）
- * - pairs>0 のとき 平均 / 内訳（差0〜3）が出る
- * - pairs===0 のとき no_data 文言が出る
+ * - props で pairsDetail を渡すとペアごとの平均と内訳が出る
+ * - props が無い・空でも落ちない（.length の TypeError を防ぐ）
+ * - matchId モード：pairs>0 / pairs===0 / 取得失敗
  * - 使う i18n キーが ja / en 両方に存在する
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -43,7 +44,41 @@ beforeEach(() => {
 })
 
 describe('SimpleHeightDiffCard (SD-08)', () => {
-  it('pairs>0 で平均と内訳を t() 経由（英語）で表示する', async () => {
+  it('props が無いときでも落ちず見出しを出す', () => {
+    const { container } = render(<SimpleHeightDiffCard />)
+    expect(container.textContent).toContain('Shot-height difference (simple analysis)')
+  })
+
+  it('pairsDetail が空配列でも落ちない', () => {
+    const { container } = render(<SimpleHeightDiffCard pairsDetail={[]} />)
+    expect(container.textContent).toContain('Shot-height difference (simple analysis)')
+  })
+
+  it('pairsDetail でペアごとの平均と内訳を出す', () => {
+    const { container } = render(
+      <SimpleHeightDiffCard
+        pairsDetail={[
+          { name: 'A/B', meanDiff: 1.0, distribution: { '0': 1, '1': 0, '2': 1, '3': 0 } },
+          { name: 'C/D', meanDiff: 2.0, distribution: { '0': 0, '1': 0, '2': 0, '3': 2 } },
+        ]}
+      />,
+    )
+    expect(container.textContent).toContain('A/B')
+    expect(container.textContent).toContain('C/D')
+    expect(container.textContent).toContain('1.00')
+    expect(container.textContent).toContain('2.00')
+    expect(container.textContent).toContain('Difference breakdown')
+    expect(container.textContent).not.toContain('打球の高さ差')
+  })
+
+  it('distribution が無いペアでも .length で落ちない', () => {
+    const { container } = render(
+      <SimpleHeightDiffCard pairsDetail={[{ name: 'X/Y', meanDiff: null }]} />,
+    )
+    expect(container.textContent).toContain('X/Y')
+  })
+
+  it('matchId モード pairs>0 で平均と内訳を t() 経由（英語）で表示する', async () => {
     mockFetch.mockResolvedValue({
       success: true,
       data: {
@@ -58,14 +93,12 @@ describe('SimpleHeightDiffCard (SD-08)', () => {
     await waitFor(() =>
       expect(container.textContent).toContain('Shot-height difference (simple analysis)'),
     )
-    // 平均 1.00 と 内訳見出しが出る
     expect(container.textContent).toContain('1.00')
     expect(container.textContent).toContain('Difference breakdown')
-    // 日本語が英語 UI に残らない
     expect(container.textContent).not.toContain('打球の高さ差')
   })
 
-  it('pairs===0 で no_data 文言を出す', async () => {
+  it('matchId モード pairs===0 で no_data 文言を出す', async () => {
     mockFetch.mockResolvedValue({
       success: true,
       data: {
@@ -82,7 +115,7 @@ describe('SimpleHeightDiffCard (SD-08)', () => {
     )
   })
 
-  it('取得失敗で error 文言を出す', async () => {
+  it('matchId モード 取得失敗で error 文言を出す', async () => {
     mockFetch.mockRejectedValue(new Error('boom'))
     const { container } = render(<SimpleHeightDiffCard matchId={1} />)
     await waitFor(() =>
@@ -100,6 +133,7 @@ describe('SimpleHeightDiffCard (SD-08)', () => {
       'simple_analysis.diff_bucket',
       'simple_analysis.no_data',
       'simple_analysis.error',
+      'simple_analysis.pair_label',
     ]
     for (const dict of [ja, en] as Dict[]) {
       for (const k of keys) {
