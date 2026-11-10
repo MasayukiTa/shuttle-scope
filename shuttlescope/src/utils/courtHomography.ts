@@ -286,3 +286,117 @@ export function inferCourtHalfFromCalibPoints(pts: unknown): CourtHalf {
   // ネットが重心より下 (y 大) = 手前に写っている → near。
   return netCy > cornerCy ? 'near' : 'far'
 }
+
+// ─── コート向き (撮影方向) ─────────────────────────────────────
+//
+// 撮影方向は人によって異なる。キャリブ 4 点から自動推定できるのは near/far だけで、
+// 左右/上下の向き (A 面/B 面、左右) は 4 点からは定まらない。そこで
+// 試合ごとに H 反転 / V 反転 / near↔far 入れ替えを設定で持ち、自動推定の
+// 上に重ねて適用する。既定 (全 false) は従来の振る舞いと完全に一致するため、
+// 既存試合は影響を受けない。
+
+export interface CourtOrientation {
+  /** 左右を反転 (col → 2-col)。 */
+  flipH: boolean
+  /** 上下を反転 (row → 2-row)。 */
+  flipV: boolean
+  /** 手前と奥 (near/far) を入れ替える。 */
+  swapHalf: boolean
+}
+
+/** 既定の向き = 従来振る舞い (何も変換しない)。 */
+export const DEFAULT_ORIENTATION: CourtOrientation = { flipH: false, flipV: false, swapHalf: false }
+
+/** 任意の部分オブジェクトを CourtOrientation に正規化する (欠落/不正値は false)。 */
+export function normalizeOrientation(o: unknown): CourtOrientation {
+  const r = (o ?? {}) as Record<string, unknown>
+  return {
+    flipH: r.flipH === true,
+    flipV: r.flipV === true,
+    swapHalf: r.swapHalf === true,
+  }
+}
+
+/**
+ * 自動推定した half に swapHalf を適用した「実効 half」を返す。
+ * near/far はキャリブ 4 点 + ネット 2 点から自動決定されるが、ネット 2 点が
+ * 無い/壊れている場合は推定が far に固定されるため、手動の swapHalf で補う。
+ */
+export function effectiveHalf(autoHalf: CourtHalf, o: CourtOrientation): CourtHalf {
+  if (!o.swapHalf) return autoHalf
+  return autoHalf === 'near' ? 'far' : 'near'
+}
+
+/**
+ * 画面上のセル (row/col, 0..2) に H/V 反転を適用する。swapHalf は half 側で
+ * 処理するためここでは扱わない。純関数 (テスト容易)。
+ */
+export function applyOrientationToCell(
+  cell: { row: number; col: number }, o: CourtOrientation,
+): { row: number; col: number } {
+  return {
+    row: o.flipV ? 2 - cell.row : cell.row,
+    col: o.flipH ? 2 - cell.col : cell.col,
+  }
+}
+
+const ORIENT_KEY = (matchId: string) => `court-orient-${matchId}`
+
+/** 試合ごとの向きを localStorage から読む。未保存/壊れていれば既定 (従来) 。 */
+export function loadCourtOrientation(matchId: string | null | undefined): CourtOrientation {
+  if (!matchId) return { ...DEFAULT_ORIENTATION }
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(ORIENT_KEY(matchId)) : null
+    if (!raw) return { ...DEFAULT_ORIENTATION }
+    return normalizeOrientation(JSON.parse(raw))
+  } catch {
+    return { ...DEFAULT_ORIENTATION }
+  }
+}
+
+/** 試合ごとの向きを localStorage に保存する。 */
+export function saveCourtOrientation(matchId: string | null | undefined, o: CourtOrientation): void {
+  if (!matchId) return
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(ORIENT_KEY(matchId), JSON.stringify(normalizeOrientation(o)))
+    }
+  } catch { /* ignore */ }
+}
+
+// ─── タップの 《枠外丸め》検出 ──────────────────────────────────
+//
+// fallbackTapToCell / calibratedTapToCell は 《死角を作らない》 ため枠外タップを
+// 端マスへ丸める。ただし 《丸めた》 事実をユーザに示さないと、コート外を押したのに
+// 端マスが黙って選ばれ 《なぜそのマス?》 と戸惑う。ここでは丸めが起きたか (clamped)
+// を併せて返し、UI 側が 《端に寄せました》 の注記を出せるようにする。
+
+export interface CellPick {
+  row: number
+  col: number
+  /** 枠外を端マスへ丸めたら true。*/
+  clamped: boolean
+}
+
+/** fallbackTapToCell の clamped 併記版。(nx,ny) が [0,1] 外なら clamped=true。*/
+export function fallbackTapToCellClamped(nx: number, ny: number): CellPick {
+  const { row, col } = fallbackTapToCell(nx, ny)
+  const clamped = nx < 0 || nx > 1 || ny < 0 || ny > 1
+  return { row, col, clamped }
+}
+
+/**
+ * calibratedTapToCell の clamped 併記版。半面内再正規化後の (u, vLocal) が [0,1] 外
+ * なら clamped=true。退化四角形で逆写像できないときは null (呼び出し側は fallback)。
+ */
+export function calibratedTapToCellClamped(
+  quad: Quad, px: number, py: number, half: CourtHalf,
+): CellPick | null {
+  const uv = quadToUnit(quad, px, py)
+  if (!uv) return null
+  const vLocal = half === 'far' ? uv.v / 0.5 : (uv.v - 0.5) / 0.5
+  const col = Math.min(2, Math.max(0, Math.floor(uv.u * 3)))
+  const row = Math.min(2, Math.max(0, Math.floor(vLocal * 3)))
+  const clamped = uv.u < 0 || uv.u > 1 || vLocal < 0 || vLocal > 1
+  return { row, col, clamped }
+}

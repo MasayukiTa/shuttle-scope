@@ -17,6 +17,7 @@ import { HitZoneSelector } from '@/components/annotation/HitZoneSelector'
 // U1/U2 (UX redesign): 上バー圧縮用ドロップダウン menu + 大型 Score 表示 + モードタブ
 import { TopBarMenu, TopBarMenuSection } from '@/components/annotator/TopBarMenu'
 import { ScoreboardCompact } from '@/components/annotator/ScoreboardCompact'
+import { MobileShareButton } from '@/components/annotator/MobileShareButton'
 import { ShortcutLegend } from '@/components/annotator/ShortcutLegend'
 import { TopBarScore } from '@/components/annotator/TopBarScore'
 import { ModeTabs } from '@/components/annotator/ModeTabs'
@@ -76,6 +77,8 @@ import { ReviewQueuePanel as CVReviewQueuePanel } from '@/components/annotation/
 import { PlayerMovementCard } from '@/components/analysis/PlayerMovementCard'
 import { uploadVideoInChunks, abortChunkUpload } from '@/utils/chunkUpload'
 import { buildAutosaveKey, isAutosaveOwnedBy, AUTOSAVE_FLUSH_EVENT, resolveDraftFirstInputAt, draftAgeMinutes } from '@/utils/annotatorAutosave'
+import { useSessionPendingDevices } from '@/hooks/session/useSessionPendingDevices'
+import { PendingDeviceBadge } from '@/components/session/PendingDeviceBadge'
 
 // ─── 配信URL検出 ──────────────────────────────────────────────────────────────
 // Electron では配信サービスの動画を直接再生できないため、yt-dlp でダウンロードする。
@@ -1643,7 +1646,7 @@ export function AnnotatorPage() {
     showSessionModal, setShowSessionModal,
     showDeviceManager, setShowDeviceManager,
     handleCreateOrGetSession,
-    tunnelStatus, tunnelToggle, tunnelBase: _tunnelBase, tunnelPending, tunnelLastError, rebaseUrl,
+    tunnelStatus, tunnelToggle, tunnelBase: _tunnelBase, tunnelPending, tunnelLastError, rebaseUrl, publicOrigin,
     remoteStream, setRemoteStream,
     remoteStreamVideoRef,
     localCamStream, setLocalCamStream,
@@ -1654,6 +1657,18 @@ export function AnnotatorPage() {
     tunnelProvider: appSettings.tunnel_provider,
     onError: showError,
   })
+
+  // 承認待ちデバイス監視（DeviceManagerPanel が閉じていてもヘッダーにバッジを出す）。
+  // パネルとは独立に 3 秒間隔で取得する。
+  const { count: pendingDeviceCount } = useSessionPendingDevices(activeSession?.session_code ?? null)
+  // 0→検知 の立ち上がりで一度だけトーストを出す（毎 poll では出さない）。
+  const prevPendingDeviceCount = useRef(0)
+  useEffect(() => {
+    if (pendingDeviceCount > prevPendingDeviceCount.current) {
+      setNotice({ kind: 'warn', message: t('device_approval.toast_new_pending', { count: pendingDeviceCount }) })
+    }
+    prevPendingDeviceCount.current = pendingDeviceCount
+  }, [pendingDeviceCount, t])
 
   // CV補助アノテーション候補
   const {
@@ -2259,7 +2274,7 @@ export function AnnotatorPage() {
   return (
     <div className="flex flex-col h-screen bg-[var(--ss-bg-app)] text-[var(--ss-t1)] overflow-hidden">
       {/* ヘッダー */}
-      <div className="flex items-center justify-between px-3 md:px-4 py-2 bg-[var(--ss-surface-1)] border-b border-[var(--ss-border)] shrink-0">
+      <div className="flex flex-wrap items-center justify-between gap-y-1 px-3 md:px-4 py-2 bg-[var(--ss-surface-1)] border-b border-[var(--ss-border)] shrink-0">
         <button
           onClick={handleLeaveMatch}
           aria-label={t('annotator.ui.back')}
@@ -3117,6 +3132,13 @@ export function AnnotatorPage() {
               {t('sharing.share')}
             </button>
           )}
+          {/* 承認待ちデバイスのバッジ（パネルが閉じていても出す。クリックで開く） */}
+          {activeSession && (
+            <PendingDeviceBadge
+              count={pendingDeviceCount}
+              onClick={() => setShowDeviceManager(true)}
+            />
+          )}
           {/* デバイス管理ボタン */}
           {activeSession && (
             <button
@@ -3188,6 +3210,14 @@ export function AnnotatorPage() {
             />
           </div>
           <span className="text-[10px] text-[var(--ss-t2)] ss-num">{Math.round((match?.annotation_progress ?? 0) * 100)}%</span>
+          {/* 狭幅でも ⋮ に依存せず共有へ届くよう、常時可視の共有ボタンを置く (本番 307px 幅での切れ対策) */}
+          <MobileShareButton
+            activeSessionCode={activeSession ? activeSession.session_code : null}
+            onOpenShare={() => {
+              if (activeSession) setShowSessionModal(true)
+              else handleCreateOrGetSession()
+            }}
+          />
           <button aria-label={t('common_ui.menu')}
             onClick={() => setShowMobileMenu((v) => !v)}
             className="p-1.5 rounded-ss-sm text-[var(--ss-t2)] hover:text-[var(--ss-t1)] hover:bg-[var(--ss-surface-3)] transition-colors"
@@ -5504,6 +5534,7 @@ export function AnnotatorPage() {
           coachUrls={(activeSession.coach_urls ?? []).map(rebaseUrl)}
           cameraSenderUrls={(activeSession.camera_sender_urls ?? []).map(rebaseUrl)}
           viewerUrls={(activeSession.camera_sender_urls ?? []).map((u) => rebaseUrl(u.replace('/camera/', '/viewer/')))}
+          publicOrigin={publicOrigin}
           sessionPassword={activeSession.session_password}
           onClose={() => setShowSessionModal(false)}
         />
