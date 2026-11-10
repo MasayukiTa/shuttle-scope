@@ -13,6 +13,8 @@ interface Props {
   coachUrls: string[]
   cameraSenderUrls?: string[]
   viewerUrls?: string[]
+  /** 画面を開いている公開 HTTPS オリジン。あればこれを使って別ネットワーク可の URL を QR にする */
+  publicOrigin?: string | null
   sessionPassword?: string
   onClose: () => void
 }
@@ -22,6 +24,7 @@ export function SessionShareModal({
   coachUrls,
   cameraSenderUrls = [],
   viewerUrls = [],
+  publicOrigin = null,
   sessionPassword: initialPassword,
   onClose,
 }: Props) {
@@ -43,15 +46,31 @@ export function SessionShareModal({
   const [regenerateStatus, setRegenerateStatus] = useState<'ok' | 'failed' | null>(null)
   const isLight = useIsLightMode()
 
-  // LAN IP URL（QRコード・他デバイス用）と localhost URL（同一PC用）を分離
+  // localhost URL（同一PC用）と LAN IP URL（同一ネットワーク用）を分離する
   const isLocalhost = (u: string) => /localhost|127\.0\.0\.1/.test(u)
-  const lanCoachUrls = coachUrls.filter(u => !isLocalhost(u))
+  // 公開 HTTPS オリジンで開いている場合、LAN URL のパス（hash 含む）を流用して
+  // オリジンだけを公開ドメインに差し替えた URL を返す。別ネットワーク（携帯回線）の
+  // 端末でも開ける。origin が無い / 組み立て失敗時は null。
+  const toPublic = (u: string): string | null => {
+    if (!publicOrigin) return null
+    try {
+      const parsed = new URL(u)
+      return publicOrigin + parsed.pathname + parsed.search + parsed.hash
+    } catch {
+      return null
+    }
+  }
+  // 各種の LAN IP URL（localhost を除いた先頭）と localhost URL
+  const lanCoachUrl = coachUrls.filter(u => !isLocalhost(u))[0] ?? ''
   const localCoachUrl = coachUrls.find(isLocalhost) ?? ''
-  const coachUrl = lanCoachUrls[0] ?? localCoachUrl  // LAN IP 優先、なければ localhost
-  const cameraUrl = cameraSenderUrls.filter(u => !isLocalhost(u))[0]
-    ?? cameraSenderUrls.find(isLocalhost) ?? ''
-  const viewerUrl = viewerUrls.filter(u => !isLocalhost(u))[0]
-    ?? viewerUrls.find(isLocalhost) ?? ''
+  const lanCameraUrl = cameraSenderUrls.filter(u => !isLocalhost(u))[0] ?? ''
+  const lanViewerUrl = viewerUrls.filter(u => !isLocalhost(u))[0] ?? ''
+  // QR に使う URL：公開 origin があれば公開 URL、無ければ従来通り LAN→localhost の順
+  const coachUrl = toPublic(lanCoachUrl || localCoachUrl) || lanCoachUrl || localCoachUrl
+  const cameraUrl = toPublic(lanCameraUrl) || lanCameraUrl || (cameraSenderUrls.find(isLocalhost) ?? '')
+  const viewerUrl = toPublic(lanViewerUrl) || lanViewerUrl || (viewerUrls.find(isLocalhost) ?? '')
+  // 公開 URL を QR に使っているか（「同じネットワーク用」の LAN URL を別表示するかの判定）
+  const usingPublicOrigin = !!publicOrigin && !!toPublic(lanCoachUrl || localCoachUrl)
   // セッションパスワードは URL / QR に埋め込まない。URL は履歴・共有・画面撮影に残るため、
   // 参加側が参加画面でパスワードを入力する。
 
@@ -198,6 +217,9 @@ export function SessionShareModal({
 
         {/* ─── コーチ URL / QR ─────────────────── */}
         <p className={`text-xs mb-2 ${sectionTitle}`}>{t('lan_session.share_modal_coach_view')}</p>
+        {usingPublicOrigin && coachUrl && (
+          <p className={`text-[10px] mb-2 ${noteColor}`}>{t('lan_session.share_modal_public_url_label')}</p>
+        )}
         {coachUrl ? (
           <>
             <div className="flex justify-center mb-3 bg-[var(--ss-surface-2)] rounded-ss-md p-2">
@@ -225,6 +247,19 @@ export function SessionShareModal({
           </div>
         )}
         {/* 同一PC用 localhost URL（他デバイスへの QR とは別に常に表示） */}
+        {usingPublicOrigin && lanCoachUrl && (
+          <div className="flex items-center gap-1.5 mb-2">
+            <p className={`text-[10px] ${noteColor} whitespace-nowrap`}>{t('lan_session.share_modal_lan_url_label')}</p>
+            <a
+              href={lanCoachUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`flex-1 text-[10px] font-mono truncate rounded-ss-sm px-2 py-1 ${urlBg} text-[var(--ss-brand)] hover:text-[var(--ss-brand-hover)] transition-colors duration-fast ease-out`}
+            >
+              {lanCoachUrl}
+            </a>
+          </div>
+        )}
         {localCoachUrl && (
           <div className="flex items-center gap-1.5 mb-4">
             <p className={`text-[10px] ${noteColor} whitespace-nowrap`}>{t('lan_session.share_modal_same_pc_label')}</p>
@@ -300,6 +335,9 @@ export function SessionShareModal({
               <MIcon name="photo_camera" size={12} className={subColor} />
               <p className={`text-xs ${sectionTitle}`}>{t('lan_session.camera_sender_url_label')}</p>
             </div>
+            {usingPublicOrigin && (
+              <p className={`text-[10px] ${noteColor}`}>{t('lan_session.share_modal_public_url_label')}</p>
+            )}
             <div className="flex justify-center mb-3 bg-[var(--ss-surface-2)] rounded-ss-md p-2">
               <canvas ref={cameraCanvasRef} />
             </div>
@@ -321,6 +359,12 @@ export function SessionShareModal({
             <p className={`text-[10px] text-center mt-2 ${noteColor}`}>
               {t('lan_session.share_modal_camera_qr_hint')}
             </p>
+            {usingPublicOrigin && lanCameraUrl && (
+              <div className="flex items-center gap-1.5 mt-2">
+                <p className={`text-[10px] ${noteColor} whitespace-nowrap`}>{t('lan_session.share_modal_lan_url_label')}</p>
+                <p className={`flex-1 text-[10px] font-mono truncate rounded-ss-sm px-2 py-1 ${urlBg} ${urlColor}`}>{lanCameraUrl}</p>
+              </div>
+            )}
           </div>
         )}
 
@@ -331,6 +375,9 @@ export function SessionShareModal({
               <MIcon name="monitor" size={12} className={subColor} />
               <p className={`text-xs ${sectionTitle}`}>{t('sharing.viewer_url_label')}</p>
             </div>
+            {usingPublicOrigin && (
+              <p className={`text-[10px] ${noteColor}`}>{t('lan_session.share_modal_public_url_label')}</p>
+            )}
             <div className="flex justify-center mb-3 bg-[var(--ss-surface-2)] rounded-ss-md p-2">
               <canvas ref={viewerCanvasRef} />
             </div>
@@ -352,6 +399,12 @@ export function SessionShareModal({
             <p className={`text-[10px] text-center mt-2 ${noteColor}`}>
               {t('lan_session.share_modal_viewer_qr_hint')}
             </p>
+            {usingPublicOrigin && lanViewerUrl && (
+              <div className="flex items-center gap-1.5 mt-2">
+                <p className={`text-[10px] ${noteColor} whitespace-nowrap`}>{t('lan_session.share_modal_lan_url_label')}</p>
+                <p className={`flex-1 text-[10px] font-mono truncate rounded-ss-sm px-2 py-1 ${urlBg} ${urlColor}`}>{lanViewerUrl}</p>
+              </div>
+            )}
           </div>
         )}
       </div>
