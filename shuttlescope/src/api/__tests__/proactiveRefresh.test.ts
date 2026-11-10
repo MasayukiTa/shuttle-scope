@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { startProactiveRefresh, REFRESH_SKEW_MS } from '@/api/proactiveRefresh'
+import { TOKEN_KEY } from '@/api/authStorage'
 
 // base64url でエンコードした、exp を持つダミー JWT を作る。署名は検証しないので適当でよい。
 function makeToken(expEpochSec: number): string {
@@ -121,5 +122,45 @@ describe('proactive refresh scheduler (方針C)', () => {
     expect(refresh).not.toHaveBeenCalled()
 
     handle.stop()
+  })
+
+  it('reads the token from localStorage (authStorage) and schedules a refresh 2 minutes before expiry', () => {
+    const nowMs = 1_000_000_000_000
+    const expMs = nowMs + 15 * 60_000 // 15 分後に失効
+    const token = makeToken(Math.floor(expMs / 1000))
+    // PR 258 以降、認証の保存先は localStorage。getToken を渡さず実 readToken (=getAuthItem) 経由で読めることを確かめる。
+    localStorage.clear()
+    sessionStorage.clear()
+    localStorage.setItem(TOKEN_KEY, token)
+
+    const refresh = vi.fn().mockResolvedValue('ok')
+    const timers: Array<{ cb: () => void; at: number }> = []
+    let clock = nowMs
+
+    const handle = startProactiveRefresh({
+      // getToken は渡さない — 本番の readToken が localStorage を読むことを検証する。
+      refresh,
+      now: () => clock,
+      setTimer: (cb, ms) => {
+        timers.push({ cb, at: clock + ms })
+        return timers.length - 1
+      },
+      clearTimer: () => {},
+      addVisibilityListener: () => () => {},
+      isHidden: () => false,
+    })
+
+    // localStorage のトークンを読んで 1 本予約し、発火予定は exp の 2 分前。
+    expect(timers).toHaveLength(1)
+    expect(timers[0].at).toBe(expMs - REFRESH_SKEW_MS)
+    expect(refresh).not.toHaveBeenCalled()
+
+    // 失効の 2 分前に進めてタイマーを発火させる。
+    clock = expMs - REFRESH_SKEW_MS
+    timers[0].cb()
+    expect(refresh).toHaveBeenCalledTimes(1)
+
+    handle.stop()
+    localStorage.clear()
   })
 })
