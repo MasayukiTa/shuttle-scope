@@ -2855,6 +2855,8 @@
     "join_connecting": "接続中...",
     "join_error_invalid": "コードまたはパスワードが正しくありません",
     "join_error_network": "接続に失敗しました",
+    "slow_connection": "接続に時間がかかっています。電波の状態を確認してください。",
+    "join_error_help": "パスワードは PC の画面に出ている共有パスワードです。電波の状態を確認して、もう一度お試しください。",
     "auth_required": "セッションコードとパスワードが必要です",
     "session_label": "セッション",
     "status_connected": "接続済み",

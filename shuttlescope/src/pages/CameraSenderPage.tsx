@@ -142,6 +142,8 @@ export function CameraSenderPage() {
   // error 画面で Wi-Fi 確認の案内を出すかどうか。通信エラー起因の失敗のときだけ true。
   // 承認待ち・拒否・再参加要求は通信の問題ではないので Wi-Fi 案内を出さない。
   const [showWifiHint, setShowWifiHint] = useState(false)
+  // 接続(connecting)が 5 秒を超えたら電波確認の案内を出すフラグ。
+  const [slowConnection, setSlowConnection] = useState(false)
   // 端末名インライン編集用
   const [editingName, setEditingName] = useState(false)
   const [nameInput, setNameInput] = useState('')
@@ -184,6 +186,17 @@ export function CameraSenderPage() {
   const disposedRef = useRef(false)
 
   useEffect(() => { senderStateRef.current = senderState }, [senderState])
+
+  // 接続待ちが 5 秒を超えたら『時間がかかっています』の案内を出す。
+  // connecting を抜けたら必ず false に戻す (待機/エラー/フォームに残さない)。
+  useEffect(() => {
+    if (senderState !== 'connecting') {
+      setSlowConnection(false)
+      return
+    }
+    const timer = setTimeout(() => setSlowConnection(true), 5_000)
+    return () => clearTimeout(timer)
+  }, [senderState])
 
   // server 側で参加者が削除されたとき (heartbeat が 404/410/401) の処理。
   // 最新の state / ref を使うため ref 経由で呼ぶ (フックへ渡す関数の同一性を保つ)。
@@ -842,6 +855,11 @@ export function CameraSenderPage() {
               ? `${t('camera_sender.reconnecting')} (${reconnectCount}/${MAX_RECONNECT}${t('camera_sender.reconnect_attempt')})`
               : t('camera_sender.join_connecting')}
           </p>
+          {slowConnection && (
+            <p className="mt-3 text-xs text-[var(--ss-warn)] max-w-xs mx-auto">
+              {t('camera_sender.slow_connection')}
+            </p>
+          )}
         </div>
       )}
 
@@ -1007,6 +1025,10 @@ export function CameraSenderPage() {
                 {t('auto.CameraSenderPage.k_wifi_check')}
               </p>
             )}
+            {/* 失敗時の次の手: パスワードの確認先 (PC 画面の共有パスワード)・電波確認・再試行 */}
+            <p className="text-xs text-[var(--ss-t3)] mb-4">
+              {t('camera_sender.join_error_help')}
+            </p>
             <div className={`flex gap-2 justify-center${showWifiHint ? '' : ' mt-4'}`}>
               <button
                 onClick={() => {

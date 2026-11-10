@@ -2847,6 +2847,8 @@
     "join_connecting": "Connecting...",
     "join_error_invalid": "Invalid code or password",
     "join_error_network": "Connection failed",
+    "slow_connection": "Connection is taking a while. Please check your signal.",
+    "join_error_help": "The password is the sharing password shown on the PC screen. Check your signal and try again.",
     "auth_required": "Session code and password are required",
     "session_label": "Session",
     "status_connected": "Connected",
