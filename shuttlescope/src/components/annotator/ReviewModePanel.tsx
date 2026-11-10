@@ -316,7 +316,7 @@ function StrokeEditor({
           className="w-full bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-sm px-1 py-0.5"
         >
           <option value="">—</option>
-          {CONTACT_HEIGHTS.map((v) => <option key={v} value={v}>{v}</option>)}
+          {CONTACT_HEIGHTS.map((v) => <option key={v} value={v}>{t(`enrichment.contact_height_${v}`)}</option>)}
         </select>
       </label>
       <label className="block">
