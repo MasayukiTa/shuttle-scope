@@ -3415,20 +3415,6 @@ export function AnnotatorPage() {
             // 別モニタ表示中はメイン側を非表示（video-only ウィンドウで再生中）
             if (videoSourceMode === 'none') {
               // T003-05: 映像なしモードでもキャリブレーションを機能させる。
-              if (courtGridVisible && matchId && !videoWindowOpen) {
-                return (
-                  <NoVideoCalibCanvas
-                    matchId={matchId}
-                    containerRef={noVideoCalibRef}
-                    onClose={() => setCourtGridVisible(false)}
-                    onCalibrationSaved={() => {
-                      queryClient.invalidateQueries({ queryKey: ['movement-stats', matchId] })
-                    }}
-                    onCalibSourceChange={setCalibSource}
-                    t={t}
-                  />
-                )
-              }
               return (
                 <div className="flex items-center justify-center bg-[var(--ss-surface-2)] rounded-ss-lg text-[var(--ss-t3)] text-xs border border-dashed border-[var(--ss-border)] py-6 px-3 text-center">
                   {videoWindowOpen
@@ -5669,6 +5655,29 @@ export function AnnotatorPage() {
         })}
       />
       <ConfirmDialog pending={pendingConfirm} onClose={() => setPendingConfirm(null)} />
+      {/* T003-05: in no-video mode the left panel is display:none in match-day/mobile,
+          so the court calibration must render as a top-level full-screen overlay. The
+          Settings tab's 'Open calibration' sets courtGridVisible; here we draw a 16:9
+          black canvas (NoVideoCalibCanvas) on top so 4 points can be placed and saved. */}
+      {videoSourceMode === 'none' && courtGridVisible && matchId && !videoWindowOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          data-testid="no-video-calib-overlay"
+        >
+          <div className="w-full max-w-3xl">
+            <NoVideoCalibCanvas
+              matchId={matchId}
+              containerRef={noVideoCalibRef}
+              onClose={() => setCourtGridVisible(false)}
+              onCalibrationSaved={() => {
+                queryClient.invalidateQueries({ queryKey: ['movement-stats', matchId] })
+              }}
+              onCalibSourceChange={setCalibSource}
+              t={t}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -5685,7 +5694,7 @@ interface NoVideoCalibCanvasProps {
   t: (key: string, opts?: Record<string, unknown>) => string
 }
 
-function NoVideoCalibCanvas({
+export function NoVideoCalibCanvas({
   matchId,
   containerRef,
   onClose,
