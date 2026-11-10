@@ -24,6 +24,12 @@ export interface BuildBatchPayloadArgs {
   rallyStartTimestamp: number | null
   /** true = 基本 (manual_record / manual)、false = 詳細 (assisted_record / assisted) */
   isBasicMode: boolean
+  /**
+   * 同期端末識別子 (settings.sync_device_id)。サーバーの replace_strokes 置き換え時の
+   * 所有者ガードに使う。別端末が作ったラリーを上書きしないため、送信端末を rally に刻む。
+   * 未設定なら省略され、サーバーは同じ試合 (match scope) を根拠に置き換えを許可する。
+   */
+  sourceDeviceId?: string | null
 }
 
 export interface BatchStrokePayload {
@@ -61,11 +67,18 @@ export interface BatchRallyPayload {
   is_deuce: boolean
   video_timestamp_start?: number
   annotation_mode: 'manual_record' | 'assisted_record'
+  // 送信端末 (settings.sync_device_id)。replace_strokes 置き換え時の所有者ガード用。
+  source_device_id?: string
 }
 
 export interface BatchPayload {
   rally: BatchRallyPayload
   strokes: BatchStrokePayload[]
+  // 途中保存 (mid-rally autosave) 対応。既存ラリーがあるとき already_saved で捨てず、
+  // 既存の非削除ストロークを置き換える。final=false は途中保存 (確定後に縮めない)。
+  // 省略時サーバー既定は replace_strokes=false / final=true (従来動作)。
+  replace_strokes?: boolean
+  final?: boolean
 }
 
 // ─── スキップラリー / スコア補正用バリアント ─────────────────────────────────
@@ -131,6 +144,7 @@ export function buildBatchPayload(args: BuildBatchPayloadArgs): BatchPayload {
     scoreBAfter,
     rallyStartTimestamp,
     isBasicMode,
+    sourceDeviceId,
   } = args
 
   return {
@@ -146,7 +160,14 @@ export function buildBatchPayload(args: BuildBatchPayloadArgs): BatchPayload {
       is_deuce: scoreAAfter >= 20 && scoreBAfter >= 20,
       video_timestamp_start: rallyStartTimestamp ?? undefined,
       annotation_mode: isBasicMode ? 'manual_record' : 'assisted_record',
+      // 送信端末を刻む (置き換え時の所有者ガード用)。未設定なら省略。
+      ...(sourceDeviceId ? { source_device_id: sourceDeviceId } : {}),
     },
+    // ラリー確定時の最終保存。途中保存 (final=false) が先に入っていても、確定時に
+    // 全ストロークへ置き換える。replace_strokes=true でサーバーは already_saved で
+    // 捨てず既存ラリーの打球を入れ直す。
+    replace_strokes: true,
+    final: true,
     strokes: strokes.map((st) => ({
       stroke_num: st.stroke_num,
       player: st.player,
@@ -173,4 +194,18 @@ export function buildBatchPayload(args: BuildBatchPayloadArgs): BatchPayload {
       source_method: isBasicMode ? 'manual' : 'assisted',
     })),
   }
+}
+
+/**
+ * 途中保存 (mid-rally autosave) 用ペイロード。
+ *
+ * buildBatchPayload と同じ本体を作り、final=false に上書きするだけ。確定前の
+ * 現ラリーの打球を定期送信するために使う。winner / end_type は確定時に決まるが、
+ * 途中では暫定値 (呼び出し側が渡した winner / endType) を入れる。サーバーは
+ * replace_strokes=true の既存ラリー置き換えで、final=false のとき既存の非削除
+ * ストローク数より少ない送信を無視する (確定後に縮めない)。
+ */
+export function buildMidRallyPayload(args: BuildBatchPayloadArgs): BatchPayload {
+  const base = buildBatchPayload(args)
+  return { ...base, replace_strokes: true, final: false }
 }
