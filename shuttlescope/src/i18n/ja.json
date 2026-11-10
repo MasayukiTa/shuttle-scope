@@ -2520,7 +2520,7 @@
     "contact_height_scoop": "ネットより下",
     "skip": "スキップ",
     "expires_hint": "次のショット入力で消えます",
-    "contact_zone": "打点位置",
+    "contact_zone": "打球位置",
     "contact_zone_front": "前衛",
     "contact_zone_mid": "中陣",
     "contact_zone_rear": "後衛",
@@ -3330,7 +3330,7 @@
     "title": "コートヒートマップ",
     "back_to_dashboard": "ダッシュボードへ戻る",
     "close_esc": "閉じる (Esc)",
-    "tab_hit": "打点",
+    "tab_hit": "打球位置",
     "tab_land": "着地点",
     "tab_composite": "合成",
     "composite_note": "着地点はネット中心で点対称変換し、自コート座標に重ね合わせています。タイルをクリックして打点・着地点の詳細を確認できます。",
@@ -3346,13 +3346,13 @@
     "loading": "読み込み中...",
     "no_data": "対象期間にストロークデータがありません",
     "no_data_hint": "試合のアノテーションが完了するとヒートマップが表示されます",
-    "legend_hit": "打点",
+    "legend_hit": "打球位置",
     "legend_land_transformed": "着地点（変換済み）",
     "click_zone_hint": "ゾーンをクリックすると詳細を表示",
     "click_zone_detail": "左のコート図のゾーンをクリックすると\n詳細な分析が表示されます",
-    "header_hit": "打点",
+    "header_hit": "打球位置",
     "header_land_transformed": "着地点（変換済み）",
-    "zone_mode_hit": "打点",
+    "zone_mode_hit": "打球位置",
     "zone_mode_land": "着地点",
     "stat_strokes": "ストローク数",
     "stat_win_rate": "得点率",
@@ -5846,7 +5846,7 @@
     "shots": "打数"
   },
   "shotmap": {
-    "hit_point": "打点",
+    "hit_point": "打球位置",
     "land_point": "着地点"
   },
   "stats": {

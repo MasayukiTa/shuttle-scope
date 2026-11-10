@@ -2512,7 +2512,7 @@
     "contact_height_scoop": "Below the net",
     "skip": "Skip",
     "expires_hint": "Clears on next shot input",
-    "contact_zone": "Contact zone",
+    "contact_zone": "Shot location",
     "contact_zone_front": "Front",
     "contact_zone_mid": "Mid",
     "contact_zone_rear": "Rear",
@@ -3322,7 +3322,7 @@
     "title": "Court heatmap",
     "back_to_dashboard": "Back to dashboard",
     "close_esc": "Close (Esc)",
-    "tab_hit": "Hit point",
+    "tab_hit": "Shot location",
     "tab_land": "Landing point",
     "tab_composite": "Composite",
     "composite_note": "Landing points are point-symmetrically mapped around the net and overlaid on the home-court coordinates. Click a tile for hit- and landing-point details.",
@@ -3338,13 +3338,13 @@
     "loading": "Loading...",
     "no_data": "No stroke data for the period",
     "no_data_hint": "Heatmap appears once match annotation is completed",
-    "legend_hit": "Hit point",
+    "legend_hit": "Shot location",
     "legend_land_transformed": "Landing point (transformed)",
     "click_zone_hint": "Click a zone for details",
     "click_zone_detail": "Click a zone on the court diagram\nto see detailed analysis",
-    "header_hit": "Hit point",
+    "header_hit": "Shot location",
     "header_land_transformed": "Landing point (transformed)",
-    "zone_mode_hit": "Hit point",
+    "zone_mode_hit": "Shot location",
     "zone_mode_land": "Landing point",
     "stat_strokes": "Strokes",
     "stat_win_rate": "Point-won rate",
@@ -5778,7 +5778,7 @@
     "shots": "Shots"
   },
   "shotmap": {
-    "hit_point": "Hit point",
+    "hit_point": "Shot location",
     "land_point": "Land point"
   },
   "stats": {
