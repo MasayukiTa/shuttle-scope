@@ -47,12 +47,30 @@ export function offlineStrokeIdempotencyKey(
   return `offline-${ownerUserId}-${matchId}-${setId}-${rallyNum}`
 }
 
+/**
+ * 自動再送の対象外にすべきキー判定。
+ *
+ * draft/ 行は入力途中の下書き (snapshot だけで payload が無く、winner / endType も
+ * 未確定なためサーバーに送れない)。unowned/ 行は所有者不明で、本人の明示操作でしか
+ * 送らない。どちらも owned な確定ラリーと同じ ObjectStore に別 prefix で入るため、
+ * ownerUserId を持つ draft/ 行が所有権フィルタを素通りすると、本文の無い送信が
+ * /strokes/batch に出て 422 になり、保存機構が壊れる (muse 実機: draft/2/6/15/29)。
+ */
+export function isNonSendableKey(key: string | undefined): boolean {
+  return (
+    typeof key === 'string' &&
+    (key.startsWith('draft/') || key.startsWith('unowned/'))
+  )
+}
+
 export function pendingRallyBelongsTo(
   item: StoredPendingRally,
   ownerUserId: number,
   matchId: number,
 ): item is PendingRally {
   return (
+    !isNonSendableKey(item.key) &&
+    item.payload != null &&
     Number.isInteger(item.ownerUserId) &&
     Number(item.ownerUserId) === ownerUserId &&
     Number(item.matchId) === matchId &&
