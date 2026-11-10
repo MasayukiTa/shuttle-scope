@@ -50,11 +50,11 @@ vi.mock('@/store/annotationStore', () => ({ useAnnotationStore: () => 0 }))
 // 実コンポーネント検証: useTutorial はモックせず実物を使う。
 // replayTutorial は apiPost('/tutorials/{id}/replay') を呼ぶので、
 // apiPost の呼び出しで「再生が始まった」ことを確かめる。
-const apiPostMock = vi.fn(async () => ({ success: true, data: {} }))
-const apiGetMock = vi.fn(async () => ({ success: true, data: [] }))
+const apiPostMock = vi.fn(async (..._a: unknown[]) => ({ success: true, data: {} }))
+const apiGetMock = vi.fn(async (..._a: unknown[]) => ({ success: true, data: [] }))
 vi.mock('@/api/client', () => ({
-  apiGet: (...a: unknown[]) => apiGetMock(...(a as [])),
-  apiPost: (...a: unknown[]) => apiPostMock(...(a as [])),
+  apiGet: (...a: unknown[]) => apiGetMock(...a),
+  apiPost: (...a: unknown[]) => apiPostMock(...a),
   apiPut: vi.fn(async () => ({ success: true, data: {} })),
   apiDelete: vi.fn(async () => ({ success: true, data: {} })),
   newIdempotencyKey: () => 'test-key',
