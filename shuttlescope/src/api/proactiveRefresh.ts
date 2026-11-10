@@ -1,4 +1,5 @@
 import { refreshAccessToken } from './client'
+import { getAuthItem, TOKEN_KEY } from './authStorage'
 
 // 方針C: アクセストークンの先行リフレッシュ。
 //
@@ -13,8 +14,6 @@ import { refreshAccessToken } from './client'
 //
 // アクセストークン 15 分・refresh 7 日の寿命は変更しない。ここで触るのは「いつ refresh を
 // 呼ぶか」だけである。
-
-const TOKEN_KEY = 'shuttlescope_token'
 
 /** 失効の何ミリ秒前に先行 refresh するか。15 分トークンに対し 2 分前。 */
 export const REFRESH_SKEW_MS = 2 * 60_000
@@ -43,7 +42,7 @@ export function tokenExpiryMs(token: string | null | undefined): number | null {
 
 function readToken(): string | null {
   try {
-    return sessionStorage.getItem(TOKEN_KEY)
+    return getAuthItem(TOKEN_KEY)
   } catch {
     return null
   }
