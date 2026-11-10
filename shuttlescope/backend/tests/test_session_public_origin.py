@@ -6,6 +6,7 @@ _session_to_dict が LAN IP / localhost の URL しか返さず、別ネット�
  X-Forwarded-Proto が公開 HTTPS なら、その origin を先頭に足す。
 """
 from datetime import date
+from urllib.parse import urlparse
 
 import pytest
 from fastapi.testclient import TestClient
@@ -121,7 +122,7 @@ class TestSessionToDictPublicOrigin:
             "x-forwarded-proto": "http",
         })
         cam = data["camera_sender_urls"]
-        assert not any("app.shuttle-scope.com" in u for u in cam)
+        assert not any(urlparse(u).hostname == "app.shuttle-scope.com" for u in cam)
         assert data.get("public_origin_active") is False
 
     def test_password_never_in_urls(self, client_and_match):
