@@ -106,6 +106,8 @@ interface AnnotationState {
   decrementPending: () => void
   addSaveError: (err: SaveError) => void
   clearSaveErrors: () => void
+  /** 同じラリーの保存が成功したら、そのラリーの失敗記録だけを消す。 */
+  clearSaveErrorForRally: (rallyNum: number) => void
   // unsent-indicator: 未送信件数と送信状態を更新する (useOfflineSync が呼ぶ)。
   setSyncStatus: (unsentCount: number, syncState: SyncState) => void
 
@@ -253,6 +255,8 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
   decrementPending: () => set((s) => ({ pendingSaveCount: Math.max(0, s.pendingSaveCount - 1) })),
   addSaveError: (err) => set((s) => ({ saveErrors: [...s.saveErrors, err] })),
   clearSaveErrors: () => set({ saveErrors: [] }),
+  clearSaveErrorForRally: (rallyNum) =>
+    set((s) => ({ saveErrors: s.saveErrors.filter((e) => e.rallyNum !== rallyNum) })),
   setSyncStatus: (unsentCount, syncState) =>
     set({ unsentCount: Math.max(0, Math.floor(unsentCount)), syncState }),
 
