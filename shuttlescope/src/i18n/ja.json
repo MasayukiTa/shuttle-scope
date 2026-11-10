@@ -1330,6 +1330,8 @@
       "public_pool_title": "全チームから閲覧可能な公開プール試合",
       "demo_public_badge": "デモ",
       "demo_public_title": "デモ用の試合で、他チームからも閲覧のみ可能です。",
+      "empty_filtered": "条件に合う試合がありません。条件を変えてください",
+      "clear_filters": "絞り込みを解除",
       "create_tentative": "「{{name}}」を暫定登録して作成",
       "create_tentative_requires_analyst": "暇定登録には Analyst（アナリスト）または管理者権限が必要です。登録は管理者またはアナリストにご依頼ください。"
     }

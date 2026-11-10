@@ -1311,6 +1311,8 @@
       "public_pool_title": "Public-pool match visible to all teams",
       "demo_public_badge": "Demo",
       "demo_public_title": "Demo match visible read-only to other teams",
+      "empty_filtered": "No matches fit the current filters. Try changing the conditions.",
+      "clear_filters": "Clear filters",
       "create_tentative": "Create \"{{name}}\" as tentative",
       "create_tentative_requires_analyst": "Adding a tentative player requires the Analyst or Admin role. Please ask an administrator or analyst to register the player.",
       "reissue_video_token": "Reissue video link",
