@@ -14,6 +14,7 @@ import { useEffect, useRef } from 'react'
 import { apiPost } from '@/api/client'
 import {
   countPendingForUserStrict,
+  isResendHeld,
   listPendingForMatch,
   offlineStrokeIdempotencyKey,
   removePending,
@@ -64,6 +65,11 @@ export function useOfflineSync(matchId: number | null, ownerUserId: number | nul
       try {
         const items = await listPendingForMatch(matchId, ownerUserId)
         for (const it of items) {
+          // \u5fa9\u5143\u30c0\u30a4\u30a2\u30ed\u30b0\u304c\u51fa\u3066\u3044\u308b\u30e9\u30ea\u30fc\u306f\u3001\u5fa9\u5143\u304b\u7834\u68c4\u304c\u6c7a\u307e\u308b\u307e\u3067
+          // \u9001\u3089\u306a\u3044\u3002\u3053\u3053\u3067\u9001\u308b\u3068\u3001\u307e\u3060\u5fa9\u5143\u5f85\u3061\u306e\u30e9\u30ea\u30fc\u306e owned \u884c\u304c
+          // online \u5fa9\u5e30\u76f4\u5f8c\u306b\u518d\u9001\u3055\u308c\u3001\u5931\u6557\u6271\u3044\u3055\u308c\u3066\u300c\u4fdd\u5b58\u5931\u6557\u300d\u304c\u51fa\u308b
+          // (muse \u5b9f\u6a5f 13:08)\u3002sendFailed \u306f\u7acb\u3066\u305a\u3001\u5f8c\u7d9a\u306f\u901a\u5e38\u901a\u308a\u51e6\u7406\u3059\u308b\u3002
+          if (isResendHeld(it.matchId, it.setId, it.rallyNum)) continue
           try {
             // apiPost は既定で**毎回新しい** idempotency key を作る。再送のたびに
             // キーが変わると、サーバが「処理済みだが応答を失った」最初の送信と

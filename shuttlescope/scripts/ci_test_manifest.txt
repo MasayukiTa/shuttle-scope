@@ -4,6 +4,8 @@
 # `npx vitest run` で確実に収集・実行されることを
 # scripts/check_ci_test_manifest.py が検査する。
 # パスは shuttlescope/ からの相対 (src/ 始まり)。
+# 新しいテストはこのファイルを編集せず、ci_test_manifest.d/<テスト名>.txt を 1 ファイル 1 行で追加する。
+# check_ci_test_manifest.py はこのファイルと ci_test_manifest.d/*.txt の両方を読み、重複行は 1 回にまとめる。
 src/api/__tests__/proactiveRefresh.test.ts
 src/api/__tests__/client.refreshRetry.test.ts
 src/api/__tests__/authStorage.crossTab.test.ts
