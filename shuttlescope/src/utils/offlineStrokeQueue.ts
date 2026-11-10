@@ -57,7 +57,11 @@ export function pendingRallyBelongsTo(
     Number(item.ownerUserId) === ownerUserId &&
     Number(item.matchId) === matchId &&
     Number.isFinite(Number(item.setId)) &&
-    Number.isFinite(Number(item.rallyNum))
+    Number.isFinite(Number(item.rallyNum)) &&
+    // draft/ 行は入力中（ラリー未確定）の snapshot だけを持ち payload が無い。
+    // payload 無しを送ると body 空で 422 になり保存が延々失敗する。送信対象から
+    // 外し、IndexedDB には残す（確定時に AnnotatorPage が owned 枠へ payload 付きで送る）。
+    item.payload !== undefined
   )
 }
 
