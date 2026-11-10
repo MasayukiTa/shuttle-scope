@@ -142,6 +142,9 @@ export function CameraSenderPage() {
   // error 画面で Wi-Fi 確認の案内を出すかどうか。通信エラー起因の失敗のときだけ true。
   // 承認待ち・拒否・再参加要求は通信の問題ではないので Wi-Fi 案内を出さない。
   const [showWifiHint, setShowWifiHint] = useState(false)
+  // 接続確認が 5 秒を超えたら『時間がかかっています』の案内を出す。
+  // connecting の間だけタイマーを張り、connecting を抜けたら消す。
+  const [connectingSlow, setConnectingSlow] = useState(false)
   // 端末名インライン編集用
   const [editingName, setEditingName] = useState(false)
   const [nameInput, setNameInput] = useState('')
@@ -184,6 +187,20 @@ export function CameraSenderPage() {
   const disposedRef = useRef(false)
 
   useEffect(() => { senderStateRef.current = senderState }, [senderState])
+
+  // ─── 接続が遅いときの案内 ─────────────────────────────────────────────────
+  // connecting に入ってから 5 秒を超えても接続が終わらなければ、
+  // 『接続に時間がかかっています。電波の状態を確認してください』を出す。
+  // connecting を抜けたら案内を消し、タイマーも片付ける。
+  const SLOW_CONNECT_MS = 5_000
+  useEffect(() => {
+    if (senderState !== 'connecting') {
+      setConnectingSlow(false)
+      return
+    }
+    const id = setTimeout(() => setConnectingSlow(true), SLOW_CONNECT_MS)
+    return () => clearTimeout(id)
+  }, [senderState])
 
   // server 側で参加者が削除されたとき (heartbeat が 404/410/401) の処理。
   // 最新の state / ref を使うため ref 経由で呼ぶ (フックへ渡す関数の同一性を保つ)。
@@ -779,7 +796,10 @@ export function CameraSenderPage() {
       <RecordingProblemNotice state={serverRecorder.state} errorMsg={serverRecorder.errorMsg} />
 
       {/* ─── State: join ────────────────── */}
-      {(senderState === 'join' || (senderState === 'connecting' && !paramCode)) && (
+      {/* 参加フォームは通信の確認(経路選択・join・入場券取得)を待たずに先に出す。
+          QR から来た connecting の間もフォームを描画し、裏で接続を進める。
+          接続中はコード/パスワード欄を薄く無効化し、下に状況と遅延案内を出す。 */}
+      {(senderState === 'join' || senderState === 'connecting') && (
         <div className="w-full max-w-sm bg-[var(--ss-surface-1)] rounded-[6px] p-5 border border-[var(--ss-border)] shadow-[0_1px_2px_rgba(16,24,40,.06)]">
           <div className="space-y-3">
             <div>
@@ -833,15 +853,22 @@ export function CameraSenderPage() {
         </div>
       )}
 
-      {/* ─── State: connecting ──────────── */}
-      {senderState === 'connecting' && paramCode && (
-        <div className="text-center">
-          <MIcon name="progress_activity" size={40} className="animate-spin text-[var(--ss-brand)] mx-auto mb-3" />
-          <p className="text-[var(--ss-t2)] text-sm">
-            {reconnectCount > 0
-              ? `${t('camera_sender.reconnecting')} (${reconnectCount}/${MAX_RECONNECT}${t('camera_sender.reconnect_attempt')})`
-              : t('camera_sender.join_connecting')}
-          </p>
+      {/* ─── 接続中の状況表示（フォームの下に出す。フォーム自体は上で先に描画済み） ── */}
+      {senderState === 'connecting' && (
+        <div className="w-full max-w-sm text-center mt-3">
+          <div className="flex items-center justify-center gap-2 text-[var(--ss-t2)] text-sm">
+            <MIcon name="progress_activity" size={18} className="animate-spin text-[var(--ss-brand)]" />
+            <span>
+              {reconnectCount > 0
+                ? `${t('camera_sender.reconnecting')} (${reconnectCount}/${MAX_RECONNECT}${t('camera_sender.reconnect_attempt')})`
+                : t('camera_sender.join_connecting')}
+            </span>
+          </div>
+          {connectingSlow && (
+            <p className="mt-2 text-xs text-[var(--ss-warn)]">
+              {t('camera_sender.slow_connecting')}
+            </p>
+          )}
         </div>
       )}
 

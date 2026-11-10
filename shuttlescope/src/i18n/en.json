@@ -2845,6 +2845,7 @@
     "join_device_label": "Device name",
     "join_button": "Join",
     "join_connecting": "Connecting...",
+    "slow_connecting": "This is taking longer than usual. Please check your signal.",
     "join_error_invalid": "Invalid code or password",
     "join_error_network": "Connection failed",
     "auth_required": "Session code and password are required",
