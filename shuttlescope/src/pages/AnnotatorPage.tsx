@@ -17,6 +17,7 @@ import { HitZoneSelector } from '@/components/annotation/HitZoneSelector'
 // U1/U2 (UX redesign): 上バー圧縮用ドロップダウン menu + 大型 Score 表示 + モードタブ
 import { TopBarMenu, TopBarMenuSection } from '@/components/annotator/TopBarMenu'
 import { ScoreboardCompact } from '@/components/annotator/ScoreboardCompact'
+import { MobileShareButton } from '@/components/annotator/MobileShareButton'
 import { ShortcutLegend } from '@/components/annotator/ShortcutLegend'
 import { TopBarScore } from '@/components/annotator/TopBarScore'
 import { ModeTabs } from '@/components/annotator/ModeTabs'
@@ -2259,7 +2260,7 @@ export function AnnotatorPage() {
   return (
     <div className="flex flex-col h-screen bg-[var(--ss-bg-app)] text-[var(--ss-t1)] overflow-hidden">
       {/* ヘッダー */}
-      <div className="flex items-center justify-between px-3 md:px-4 py-2 bg-[var(--ss-surface-1)] border-b border-[var(--ss-border)] shrink-0">
+      <div className="flex flex-wrap items-center justify-between gap-y-1 px-3 md:px-4 py-2 bg-[var(--ss-surface-1)] border-b border-[var(--ss-border)] shrink-0">
         <button
           onClick={handleLeaveMatch}
           aria-label={t('annotator.ui.back')}
@@ -3188,6 +3189,14 @@ export function AnnotatorPage() {
             />
           </div>
           <span className="text-[10px] text-[var(--ss-t2)] ss-num">{Math.round((match?.annotation_progress ?? 0) * 100)}%</span>
+          {/* 狭幅でも ⋮ に依存せず共有へ届くよう、常時可視の共有ボタンを置く (本番 307px 幅での切れ対策) */}
+          <MobileShareButton
+            activeSessionCode={activeSession ? activeSession.session_code : null}
+            onOpenShare={() => {
+              if (activeSession) setShowSessionModal(true)
+              else handleCreateOrGetSession()
+            }}
+          />
           <button aria-label={t('common_ui.menu')}
             onClick={() => setShowMobileMenu((v) => !v)}
             className="p-1.5 rounded-ss-sm text-[var(--ss-t2)] hover:text-[var(--ss-t1)] hover:bg-[var(--ss-surface-3)] transition-colors"
