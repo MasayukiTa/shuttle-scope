@@ -5362,6 +5362,11 @@
       "partner_b": "B パートナー"
     },
     "Pass3ShotDetail": {
+      "suggest_title": "次のショット候補",
+      "suggest_badge": "候補（未確定）",
+      "tier_auto_filled": "確度高",
+      "tier_suggested": "確度中",
+      "tier_review_required": "要確認",
       "k1": "スマッシュ",
       "k2": "クリア",
       "k3": "ドロップ",

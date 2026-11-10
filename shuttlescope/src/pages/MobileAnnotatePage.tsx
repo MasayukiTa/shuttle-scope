@@ -99,6 +99,8 @@ import {
 } from '@/utils/mobileAnnotateRallies'
 import { setWinner, matchWinner } from '@/utils/badmintonRules'
 import { buildLandZoneSuggestions } from '@/utils/mobileAnnotateCvSuggest'
+import { buildShotTypeSuggestions, canSuggestShotType, type ShotSuggestion } from '@/utils/mobileAnnotateShotSuggest'
+import { useAuth } from '@/hooks/useAuth'
 
 type ScreenMode = 'play' | 'annotate'
 
@@ -233,6 +235,7 @@ function LandscapeGuard({ children }: { children: React.ReactNode }) {
 export function MobileAnnotatePage() {
   const { t } = useTranslation()
   const { matchId } = useParams<{ matchId: string }>()
+  const { role } = useAuth()
   const navigate = useNavigate()
   // 初回 mount でモバイルアノテーションのチュートリアル自動起動 (未完なら)。
   // A-21: 縦向きでは回転ガードが全面を覆い、ツアーが指すボタンも見えないため、
@@ -424,6 +427,35 @@ export function MobileAnnotatePage() {
     enabled: !!matchId,
     staleTime: 5_000,
   })
+
+  // v2 AI input assist: next shot_type candidates. Build the markov transition row on the
+  // client from this match's already-recorded strokes (one aggregate fetch, not per-stroke).
+  // Only for operator roles (analyst/coach); players never see suggestions. Gated + empty on
+  // insufficient support so sparse matches fall back to the full 18-chip grid.
+  const canSuggest = canSuggestShotType(role)
+  const matchRallyIds = useMemo(
+    () => (ralliesQuery.data?.data ?? []).map((r) => r.id).filter((id): id is number => typeof id === 'number'),
+    [ralliesQuery.data],
+  )
+  const shotSuggestQuery = useQuery({
+    queryKey: ['mobile-shot-suggest-strokes', matchId, matchRallyIds],
+    queryFn: async () => {
+      const results = await Promise.all(
+        matchRallyIds.map((rid) =>
+          apiGet<{ data: Array<{ stroke_num: number; shot_type: string }> }>(`/strokes?rally_id=${rid}`)
+            .then((res) => ({ strokes: res.data ?? [] }))
+            .catch(() => ({ strokes: [] as Array<{ stroke_num: number; shot_type: string }> })),
+        ),
+      )
+      return results
+    },
+    enabled: !!matchId && canSuggest && matchRallyIds.length > 0,
+    staleTime: 60_000,
+  })
+  const shotTypeSuggestions = useMemo(
+    () => (canSuggest ? buildShotTypeSuggestions(shotSuggestQuery.data) : null),
+    [canSuggest, shotSuggestQuery.data],
+  )
 
   const [currentSetIdx, setCurrentSetIdx] = useState<number>(0)
 
@@ -1007,6 +1039,7 @@ export function MobileAnnotatePage() {
                 courtQuad={courtCalib.quad}
                 courtHalf={courtCalib.half}
                 cvRallies={cvCandidatesQuery.data?.rallies}
+                shotTypeSuggestions={shotTypeSuggestions}
                 onCancel={() => setScreen('play')}
               />
             </div>
@@ -1441,6 +1474,7 @@ function Pass3RallyPicker({
   courtQuad,
   courtHalf,
   cvRallies,
+  shotTypeSuggestions,
   onCancel,
 }: {
   doubles: boolean
@@ -1452,6 +1486,8 @@ function Pass3RallyPicker({
   /** 校正を使うとき、入力片面が画面の near/far どちらに写っているか。 */
   courtHalf: CourtHalf
   /** CV 候補 (cv_candidates の rallies)。未取得・未校正・モデル無しのときは undefined で、補助は出さない。 */
+  /** v2: prev shot_type -> top-3 next shot_type candidates. null when disabled (player role) or insufficient data. */
+  shotTypeSuggestions?: ReadonlyMap<string, ShotSuggestion[]> | null
   cvRallies?: Record<string, CvRally>
   onCancel: () => void
 }) {
@@ -1583,6 +1619,7 @@ function Pass3RallyPicker({
         courtQuad={courtQuad}
         courtHalf={courtHalf}
         landZoneSuggestions={landZoneSuggestions}
+        shotTypeSuggestions={shotTypeSuggestions}
         onNeedCalibration={onCancel}
         onStrokeAdded={(s) => {
           setLocalStrokes((prev) => [...prev, { ...s, rally_id: selected.id! }])

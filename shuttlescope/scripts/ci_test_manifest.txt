@@ -21,3 +21,4 @@ src/utils/__tests__/cameraWs.test.ts
 src/hooks/__tests__/useServerSideRecording.order.test.ts
 src/hooks/__tests__/useServerSideRecording.timeout.h14.test.ts
 src/components/video/__tests__/authTokenReaders.test.tsx
+src/hooks/__tests__/useOfflineSync.resendHold.test.ts
