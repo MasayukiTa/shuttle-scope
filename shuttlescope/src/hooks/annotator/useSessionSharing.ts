@@ -77,6 +77,8 @@ export interface SessionSharingResult {
   tunnelUnconfirmed: boolean
   tunnelLastError: string | null
   rebaseUrl: (url: string) => string
+  /** 画面を開いている公開 HTTPS オリジン (localhost / LAN IP でない https)。無ければ null */
+  publicOrigin: string | null
   // リモートストリーム
   remoteStream: MediaStream | null
   setRemoteStream: React.Dispatch<React.SetStateAction<MediaStream | null>>
@@ -216,6 +218,25 @@ export function useSessionSharing({
     } catch { return url }
   }, [tunnelBase])
 
+  // 画面を開いている公開 HTTPS オリジン。app.shuttle-scope.com のような公開ドメインで
+  // 開いている場合、backend が LAN IP / localhost の URL しか返さなくても、別ネットワーク
+  // (携帯回線など) の端末が開ける URL を組み立てるために使う。
+  // https かつ localhost / 127.0.0.1 / プライベート LAN IP でないときのみ採用する。
+  const publicOrigin: string | null = (() => {
+    if (typeof window === 'undefined') return null
+    try {
+      const { protocol, hostname, origin } = window.location
+      if (protocol !== 'https:') return null
+      if (hostname === 'localhost' || hostname === '127.0.0.1') return null
+      // プライベート / リンクローカルな IPv4 は公開オリジンとみなさない。
+      // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16
+      if (/^(10|127)\.|^169\.254\.|^192\.168\.|^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname)) return null
+      return origin
+    } catch {
+      return null
+    }
+  })()
+
   // ── リモートストリーム ────────────────────────────────────────────────────
 
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null)
@@ -259,6 +280,7 @@ export function useSessionSharing({
     tunnelUnconfirmed,
     tunnelLastError,
     rebaseUrl,
+    publicOrigin,
     // リモートストリーム
     remoteStream,
     setRemoteStream,

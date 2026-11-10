@@ -1643,7 +1643,7 @@ export function AnnotatorPage() {
     showSessionModal, setShowSessionModal,
     showDeviceManager, setShowDeviceManager,
     handleCreateOrGetSession,
-    tunnelStatus, tunnelToggle, tunnelBase: _tunnelBase, tunnelPending, tunnelLastError, rebaseUrl,
+    tunnelStatus, tunnelToggle, tunnelBase: _tunnelBase, tunnelPending, tunnelLastError, rebaseUrl, publicOrigin,
     remoteStream, setRemoteStream,
     remoteStreamVideoRef,
     localCamStream, setLocalCamStream,
@@ -5504,6 +5504,7 @@ export function AnnotatorPage() {
           coachUrls={(activeSession.coach_urls ?? []).map(rebaseUrl)}
           cameraSenderUrls={(activeSession.camera_sender_urls ?? []).map(rebaseUrl)}
           viewerUrls={(activeSession.camera_sender_urls ?? []).map((u) => rebaseUrl(u.replace('/camera/', '/viewer/')))}
+          publicOrigin={publicOrigin}
           sessionPassword={activeSession.session_password}
           onClose={() => setShowSessionModal(false)}
         />
