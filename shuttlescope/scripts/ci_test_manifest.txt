@@ -18,3 +18,4 @@ src/api/__tests__/appAuthReaders.test.ts
 src/utils/__tests__/cameraWs.test.ts
 src/hooks/__tests__/useServerSideRecording.order.test.ts
 src/hooks/__tests__/useServerSideRecording.timeout.h14.test.ts
+src/components/video/__tests__/webViewPlayerAuthReader.test.ts

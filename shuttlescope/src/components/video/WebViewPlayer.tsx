@@ -21,6 +21,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { apiPost, apiGet } from '@/api/client'
+import { getAuthItem, TOKEN_KEY } from '@/api/authStorage'
 import { errorMessage } from '@/utils/errors'
 import { MIcon } from '@/components/common/MIcon'
 
@@ -45,7 +46,7 @@ interface ScreenCaptureApi {
 // session storage の JWT を取得 (api/client 内部の TOKEN_KEY と一致)
 function getStoredAuthToken(): string {
   try {
-    return sessionStorage.getItem('shuttlescope_token') ?? ''
+    return getAuthItem(TOKEN_KEY) ?? ''
   } catch {
     return ''
   }
