@@ -5566,6 +5566,15 @@ export function AnnotatorPage() {
                 if (stream) setVideoSourceMode('webview')
               }}
               onHealthChange={setRemoteHealth}
+              onEnded={() => {
+                // Session ended on the server: drop local share state and close related panels.
+                setShowSessionModal(false)
+                setShowDeviceManager(false)
+                setRemoteStream(null)
+                setLocalCamStream(null)
+                setRemoteHealth(null)
+                setActiveSession(null)
+              }}
             />
           </div>
         </div>
