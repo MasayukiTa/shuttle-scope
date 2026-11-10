@@ -440,7 +440,7 @@ def batch_save_rally(
         reserved_key = idem_key
 
     try:
-        return _batch_save_rally_body(
+        response = _batch_save_rally_body(
             body, request, db, idem_key, endpoint_id, ctx_for_idem
         )
     except Exception:
@@ -451,6 +451,19 @@ def batch_save_rally(
             from backend.utils.idempotency import release
             release(reserved_key, ctx_for_idem.user_id, endpoint_id)
         raise
+    # 1 リクエスト = 1 行の結果ログ (通常のアプリログ)。識別子 (set_id/rally_num) と
+    # 件数・区分だけを出し、個人情報・トークン・リクエストボディは出さない。失敗経路は
+    # 既存の logger.exception が担うので、ここは成功応答 (201) に限り重複させない。
+    data = response.get("data", {})
+    logger.info(
+        "strokes/batch result: status=201 already_saved=%s replaced=%s saved_strokes=%s set_id=%s rally_num=%s",
+        bool(data.get("already_saved", False)),
+        bool(data.get("replaced", False)),
+        data.get("stroke_count"),
+        body.rally.set_id,
+        body.rally.rally_num,
+    )
+    return response
 
 
 def _batch_save_rally_body(
