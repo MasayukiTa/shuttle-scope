@@ -2826,7 +2826,11 @@
     "share_modal_password_note": "参加デバイスはセッションコードとパスワードの両方が必要です",
     "share_modal_camera_qr_hint": "iPhoneでQRを読み取り、参加画面でセッションパスワードを入力してください",
     "share_modal_viewer_qr_hint": "PC・タブレットでQRを読み取り、参加画面でセッションパスワードを入力すると映像を受信できます",
-    "join_password_required": "参加画面でセッションパスワードを入力してください。パスワードは共有画面で確認できます。"
+    "join_password_required": "参加画面でセッションパスワードを入力してください。パスワードは共有画面で確認できます。",
+    "session_end": "セッションを終了",
+    "session_end_confirm": "このセッションを終了しますか？終了すると、接続中のすべてのデバイスが切断され、新しい参加・映像受信ができなくなります。この操作は取り消せません。",
+    "session_end_done": "セッションを終了しました。",
+    "session_end_failed": "セッションを終了できませんでした。通信状況を確認して、もう一度お試しください。"
   },
   "player_tracking": {
     "bbox_cycle_title": "クリックで役割切り替え",
