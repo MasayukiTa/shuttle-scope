@@ -19,6 +19,10 @@ vi.mock('@/utils/mobileAnnotateQueue', () => ({
   getStatus: vi.fn().mockResolvedValue({ pending: 0, failed: 0, manual: 0 }),
   retryAllManual: vi.fn(),
   enqueue: vi.fn(),
+  discardLegacyManual: vi.fn(),
+  cancelQueued: vi.fn(),
+  flushNow: vi.fn(),
+  tokenUserId: vi.fn().mockReturnValue(null),
 }))
 vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} })
 
