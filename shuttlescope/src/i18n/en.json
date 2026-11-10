@@ -5350,6 +5350,11 @@
       "partner_b": "B partner"
     },
     "Pass3ShotDetail": {
+      "suggest_title": "Next shot candidates",
+      "suggest_badge": "suggestion (unconfirmed)",
+      "tier_auto_filled": "high",
+      "tier_suggested": "medium",
+      "tier_review_required": "review",
       "k1": "Smash",
       "k2": "Clear",
       "k3": "Drop",

@@ -39,6 +39,7 @@ import { MIcon } from '@/components/common/MIcon'
 import { normalizeStrikerTeam, nextStrikingTeam, teamLetter } from '@/utils/players'
 import { resolveHitter, slotsOfTeam, type HitterSlot } from '@/utils/mobileAnnotateDoubles'
 import { SERVICE_TYPES, asZoneCode, isServeDowngrade, strokeValidationError } from '@/utils/mobileStrokeValidation'
+import { isShotKey, type ShotSuggestion } from '@/utils/mobileAnnotateShotSuggest'
 
 // Build inside the component via useMemo so t() is bound to the current
 // i18next instance. Defining this at module scope crashes the minified
@@ -100,6 +101,12 @@ interface Props {
    * 未校正・モデル無しで null / 空のときは従来どおり初期選択なし。
    */
   landZoneSuggestions?: ReadonlyMap<number, ZoneCode> | null
+  /**
+   * v2: next shot_type candidates keyed by the PREVIOUS stroke shot_type. When adding a stroke,
+   * the top-3 for the previous shot are surfaced as the first chips (never pre-selected).
+   * null / empty (insufficient data, or player role) => full 18-chip grid as before.
+   */
+  shotTypeSuggestions?: ReadonlyMap<string, ShotSuggestion[]> | null
   onStrokeAdded: (s: StrokeLite) => void
   onStrokeUpdated: (s: StrokeLite) => void
   onClose: () => void
@@ -113,6 +120,7 @@ export function Pass3ShotDetail({
   courtHalf = 'near',
   onNeedCalibration,
   landZoneSuggestions = null,
+  shotTypeSuggestions = null,
   onStrokeAdded,
   onStrokeUpdated,
   onClose,
@@ -135,6 +143,18 @@ export function Pass3ShotDetail({
     OTHER_SHOTS.forEach((c) => map.set(c.key, c.label))
     return map
   }, [COMMON_SHOTS, OTHER_SHOTS])
+
+  // v2: resolve top-3 next shot_type candidates for a given previous shot_type into
+  // label-carrying, badge-ready chip options. Returns [] when there is no suggestion
+  // (insufficient support, out-of-vocab prev, or suggestions disabled for the role).
+  const shotSuggestFor = (prevShot: string | null | undefined): Array<{ key: ShotKey | 'other'; label: string; tier: string }> => {
+    if (!shotTypeSuggestions || !isShotKey(prevShot)) return []
+    const cands = shotTypeSuggestions.get(prevShot)
+    if (!cands || cands.length === 0) return []
+    return cands
+      .filter((c) => labelForShot.has(c.shot_type))
+      .map((c) => ({ key: c.shot_type as ShotKey | 'other', label: labelForShot.get(c.shot_type) ?? c.shot_type, tier: c.decision_mode }))
+  }
   const sorted = useMemo(
     () => [...strokes].sort((a, b) => a.stroke_num - b.stroke_num),
     [strokes],
@@ -413,6 +433,7 @@ export function Pass3ShotDetail({
     return (
       <ShotChipPicker
         title={t('auto.Pass3ShotDetail.pick_title', { n: nextStrokeNum, player: nextPlayer === 'player_a' ? 'A' : 'B' })}
+        suggestions={shotSuggestFor(intermediates[intermediates.length - 1]?.shot_type)}
         commonShots={COMMON_SHOTS}
         otherShots={OTHER_SHOTS}
         allowServices={nextStrokeNum === 1}
@@ -576,6 +597,7 @@ interface ShotOption {
 
 function ShotChipPicker({
   title,
+  suggestions = [],
   commonShots,
   otherShots,
   allowServices,
@@ -593,6 +615,8 @@ function ShotChipPicker({
   /** 1球目のサーブを編集中: サーブ種別だけ選べる (非サーブへの変更を UI で出さない, 監査 #795)。 */
   serviceOnly?: boolean
   onPick: (key: ShotKey | 'other') => void
+  /** v2: next shot_type candidates to surface at the FRONT (already label-resolved). Empty = none. */
+  suggestions?: Array<{ key: ShotKey | 'other'; label: string; tier: string }>
   onCancel: () => void
 }) {
   const { t } = useTranslation()
@@ -609,6 +633,35 @@ function ShotChipPicker({
         {title}
       </div>
       <div className="flex-1 overflow-y-auto p-3 content-start">
+        {/* v2 next-shot candidates: top-3 surfaced at the FRONT. Never pre-selected;
+            always marked as "candidate" with a confidence badge so a wrong one is noticed.
+            Tapping confirms via the same onPick as a manual chip (no silent difference). */}
+        {suggestions.length > 0 && (
+          <div className="mb-3">
+            <div className="text-[10px] text-sky-300 font-bold mb-1 flex items-center gap-1">
+              <MIcon name="auto_awesome" size={12} />
+              <span>{t('auto.Pass3ShotDetail.suggest_title')}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2" data-testid="shot-suggestions">
+              {suggestions.map((sg) => (
+                <button
+                  key={`sg-${sg.key}`}
+                  type="button"
+                  onClick={() => onPick(sg.key)}
+                  data-suggested="true"
+                  className="relative px-3 py-3 rounded-lg bg-sky-900/40 border border-sky-500 text-sky-50 text-sm font-medium text-left"
+                  style={{ minHeight: '52px' }}
+                >
+                  <span className="absolute top-1 right-1 text-[9px] px-1 rounded bg-sky-700 text-sky-50">
+                    {t(`auto.Pass3ShotDetail.tier_${sg.tier}`)}
+                  </span>
+                  <span className="block">{sg.label}</span>
+                  <span className="block text-[9px] text-sky-300">{t('auto.Pass3ShotDetail.suggest_badge')}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {/* 固定 8 種: 誤タップ回避で 52px 高・2 カラム */}
         <div className="grid grid-cols-2 gap-2">
           {visibleCommon.map((c) => (
