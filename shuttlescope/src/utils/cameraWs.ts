@@ -17,6 +17,7 @@
  */
 
 import { apiPost } from '@/api/client'
+import { getAuthItem } from '@/api/authStorage'
 
 const TOKEN_KEY = 'shuttlescope_token'
 
@@ -53,7 +54,7 @@ export function cameraWsUrl(
   const isLoopbackTarget = isElectron || LOOPBACK_HOSTS.has(hostname)
   // 入場券を使う場合は JWT を URL に出さない (入場券だけで認証が完結する)
   const token = !query.has('ticket') && (isHttps || isLoopbackTarget)
-    ? (sessionStorage.getItem(TOKEN_KEY) ?? '')
+    ? (getAuthItem(TOKEN_KEY) ?? '')
     : ''
   if (token) query.set('token', token)
 
