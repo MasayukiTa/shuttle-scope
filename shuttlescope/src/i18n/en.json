@@ -2809,6 +2809,8 @@
     "share_modal_coach_view": "Coach view",
     "share_modal_no_url": "No URL",
     "share_modal_copied": "Copied",
+    "share_modal_public_url_label": "Public URL (works off this network)",
+    "share_modal_lan_url_label": "Same network:",
     "share_modal_same_pc_label": "Same PC:",
     "share_modal_password_unset": "Not set",
     "share_modal_password_note": "Joining devices need both the session code and password",
