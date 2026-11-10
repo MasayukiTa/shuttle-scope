@@ -15,10 +15,13 @@ import { apiPost } from '@/api/client'
 import {
   countPendingForUserStrict,
   isResendHeld,
+  listDraftsForMatch,
   listPendingForMatch,
   offlineStrokeIdempotencyKey,
+  removeDraftRally,
   removePending,
 } from '@/utils/offlineStrokeQueue'
+import { buildBatchPayloadFromDraftSnapshot } from '@/utils/annotationPayload'
 import { deriveSyncStatus } from '@/utils/syncStatus'
 import { useAnnotationStore } from '@/store/annotationStore'
 // hook の外では useTranslation の t が束縛されない。CLAUDE.md の規約どおり
@@ -126,6 +129,47 @@ export function useOfflineSync(matchId: number | null, ownerUserId: number | nul
             }
             // 再試行で直る種類 (ネットワーク / 5xx / 429 / 408)。未送信が残るので
             // 表示を failed にする。次回の online / ポーリングで再送される。
+            sendFailed = true
+            break
+          }
+        }
+        // draft/ 行: snapshot から本文を組み立てて送る。payload を持たない draft 行は
+        // 確定済み (winner / endType / スコアが揃う) のときだけ buildBatchPayloadFromDraftSnapshot が
+        // 本文を返す。未確定 (入力途中) なら null が返り、送らず snapshot のまま残す
+        // (未確定ラリーを虚偽の winner で送らない)。
+        const drafts = await listDraftsForMatch(matchId, ownerUserId)
+        for (const d of drafts) {
+          if (isResendHeld(d.matchId, d.setId, d.rallyNum)) continue
+          const payload = buildBatchPayloadFromDraftSnapshot(d.snapshot)
+          if (payload == null) continue
+          try {
+            const stableKey = offlineStrokeIdempotencyKey(
+              ownerUserId,
+              d.matchId,
+              d.setId,
+              d.rallyNum,
+            )
+            const res = await apiPost<BatchResult>('/strokes/batch', payload, {
+              'X-Idempotency-Key': stableKey,
+            })
+            if (res?.success) {
+              await removeDraftRally(ownerUserId, d.matchId, d.setId, d.rallyNum)
+            }
+          } catch (e) {
+            // 再試行で直る種類 (ネットワーク / 5xx / 429 / 408) だけ中断する。
+            // 恒久的な 4xx は snapshot を捨てず残して次へ進む (注釈データを黙って消さない)。
+            const status = (e as { status?: number } | null)?.status
+            const permanent =
+              typeof status === 'number' &&
+              status >= 400 && status < 500 &&
+              status !== 408 && status !== 429
+            if (permanent) {
+              console.warn(
+                `[offline-sync] draft rally ${d.setId}/${d.rallyNum} は ${status} で` +
+                  ' 恒久的に拒否されました。後続を処理するため飛ばします。',
+              )
+              continue
+            }
             sendFailed = true
             break
           }

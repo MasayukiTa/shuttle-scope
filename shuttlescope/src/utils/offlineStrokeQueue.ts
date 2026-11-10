@@ -600,3 +600,49 @@ export function releaseResendForRally(matchId: number, setId: number, rallyNum: 
 export function isResendHeld(matchId: number, setId: number, rallyNum: number): boolean {
   return heldResendKeys.has(resendHoldKey(matchId, setId, rallyNum))
 }
+
+/**
+ * ある試合・本人の draft/ 行を (snapshot 付きで) 列挙する。
+ *
+ * 自動再送 (useOfflineSync) は、payload 付きの owned 行 (listPendingForMatch) に加えて
+ * この draft/ 行も読み、snapshot から buildBatchPayloadFromDraftSnapshot で本文を
+ * 組み立てて送る。組み立てられない (未確定) 行は snapshot を持ったまま残る。
+ * owner 付きの draft 行だけを対象にし、他人の下書きは読まない。
+ */
+export async function listDraftsForMatch(
+  matchId: number,
+  ownerUserId: number,
+): Promise<DraftRally[]> {
+  if (!Number.isInteger(ownerUserId) || ownerUserId <= 0) return []
+  try {
+    const db = await openDb()
+    const items = await new Promise<StoredPendingRally[]>((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readonly')
+      const req = tx.objectStore(STORE).getAll()
+      req.onsuccess = () => resolve((req.result ?? []) as StoredPendingRally[])
+      req.onerror = () => reject(req.error ?? new Error('list draft error'))
+    })
+    db.close()
+    const prefix = `${DRAFT_PREFIX}${ownerUserId}/${matchId}/`
+    return items
+      .filter((it): it is StoredPendingRally & DraftRally =>
+        typeof it.key === 'string' &&
+        it.key.startsWith(prefix) &&
+        Number(it.ownerUserId) === ownerUserId &&
+        Number(it.matchId) === matchId &&
+        Number.isFinite(Number(it.setId)) &&
+        Number.isFinite(Number(it.rallyNum)),
+      )
+      .map((it) => ({
+        ownerUserId,
+        matchId,
+        setId: Number(it.setId),
+        rallyNum: Number(it.rallyNum),
+        snapshot: (it as unknown as DraftRally).snapshot,
+        updated_at: String((it as unknown as DraftRally).updated_at ?? ''),
+      }))
+  } catch (err) {
+    if (typeof console !== 'undefined') console.warn('[offline] list drafts failed:', err)
+    return []
+  }
+}
