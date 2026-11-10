@@ -74,6 +74,25 @@ function _RoleBadge({ role }: { role: string }) {
   )
 }
 
+// device_type -> i18n key。pending 承認枠の「端末の種類」表示に使う。
+function deviceTypeLabelKey(type: DeviceType | null): string {
+  switch (type) {
+    case 'iphone': return 'device_approval.dtype_iphone'
+    case 'ipad': return 'device_approval.dtype_ipad'
+    case 'pc': return 'device_approval.dtype_pc'
+    case 'usb_camera':
+    case 'builtin_camera': return 'device_approval.dtype_camera'
+    default: return 'device_approval.dtype_unknown'
+  }
+}
+
+// 参加時刻を短い現地時刻で。無効値は空文字。
+function formatJoinedAt(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString()
+}
+
 function ApprovalBadge({ status }: { status: string }) {
   const { t } = useTranslation()
   if (status === 'approved') return (
@@ -146,7 +165,7 @@ interface DeviceRowProps {
   onAllowVideo: (p: SessionParticipant) => void
   onBlockVideo: (p: SessionParticipant) => void
   onDeleteDevice: (p: SessionParticipant) => void
-  t: (key: string) => string
+  t: (key: string, opts?: Record<string, unknown>) => string
 }
 
 function DeviceRow({ p, isLight: _isLight, titleColor, subColor, rowBg, onApprove, onReject, onActivateCamera, onDeactivate, onRequestCamera, onMakeCandidate, onAllowVideo, onBlockVideo, onDeleteDevice, t }: DeviceRowProps) {
@@ -259,13 +278,33 @@ function DeviceRow({ p, isLight: _isLight, titleColor, subColor, rowBg, onApprov
         </div>
       )}
       {p.approval_status === 'pending' && (
-        <div className="flex gap-1.5 mt-2">
-          <button onClick={() => onApprove(p)} className="text-[10px] px-2 py-0.5 rounded-ss-sm bg-[var(--ss-success)] hover:opacity-90 transition-colors duration-base ease-out text-white flex items-center gap-0.5">
-            <MIcon name="check_circle" size={10} />{t('device_approval.approve')}
-          </button>
-          <button onClick={() => onReject(p)} className="text-[10px] px-2 py-0.5 rounded-ss-sm bg-[var(--ss-bad)] hover:opacity-90 transition-colors duration-base ease-out text-white flex items-center gap-0.5">
-            <MIcon name="cancel" size={10} />{t('device_approval.reject')}
-          </button>
+        <div data-testid="pending-approval-box" className="mt-2 rounded-ss-md border border-[var(--ss-warning-border)] bg-[var(--ss-warn-tint)] p-2.5">
+          <p className="text-xs font-semibold text-[var(--ss-warn)] mb-1.5 flex items-center gap-1">
+            <MIcon name="warning" size={12} />{t('device_approval.stage_pending')}
+          </p>
+          <dl className="text-[11px] text-[var(--ss-t2)] space-y-0.5 mb-2">
+            <div className="flex gap-1">
+              <dt className="text-[var(--ss-t3)] w-16 shrink-0">{p.device_name ?? `#${p.id}`}</dt>
+            </div>
+            <div className="flex gap-1">
+              <dt className="text-[var(--ss-t3)] w-16 shrink-0">{t('device_approval.device_type_label')}</dt>
+              <dd>{t(deviceTypeLabelKey(p.device_type))}</dd>
+            </div>
+            {formatJoinedAt(p.joined_at) && (
+              <div className="flex gap-1">
+                <dt className="text-[var(--ss-t3)] w-16 shrink-0">{t('device_approval.joined_at')}</dt>
+                <dd>{formatJoinedAt(p.joined_at)}</dd>
+              </div>
+            )}
+          </dl>
+          <div className="flex gap-2">
+            <button data-testid="approve-btn" onClick={() => onApprove(p)} className="flex-1 py-1.5 rounded-ss-md bg-[var(--ss-success)] hover:opacity-90 transition-colors duration-base ease-out text-white text-xs font-medium flex items-center justify-center gap-1">
+              <MIcon name="check_circle" size={14} />{t('device_approval.approve')}
+            </button>
+            <button data-testid="reject-btn" onClick={() => onReject(p)} className="flex-1 py-1.5 rounded-ss-md bg-[var(--ss-bad)] hover:opacity-90 transition-colors duration-base ease-out text-white text-xs font-medium flex items-center justify-center gap-1">
+              <MIcon name="cancel" size={14} />{t('device_approval.reject')}
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -424,7 +463,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
 
   useEffect(() => {
     fetchDevices()
-    const id = setInterval(fetchDevices, 10_000)
+    const id = setInterval(fetchDevices, 3_000)
     return () => clearInterval(id)
   }, [fetchDevices])
 
@@ -650,6 +689,15 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
             {wsConnected ? '接続中' : wsReconnecting ? `再接続中 (${wsReconnectCount} 回目)` : '未接続'}
           </span>
         </div>
+
+        {/* シグナリング未接続の原因を 1 行で示す（WS 失敗か入場券拒否か） */}
+        {!wsConnected && !wsReconnecting && (
+          <p data-testid="signal-cause" className="text-[9px] text-[var(--ss-warn)] ml-3">
+            {participants.some((p) => p.approval_status === 'pending')
+              ? t('device_approval.signal_cause_ticket')
+              : t('device_approval.signal_cause_ws')}
+          </p>
+        )}
 
         {/* P2P (WebRTC) */}
         <div className="flex items-center gap-1.5">

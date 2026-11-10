@@ -76,6 +76,8 @@ import { ReviewQueuePanel as CVReviewQueuePanel } from '@/components/annotation/
 import { PlayerMovementCard } from '@/components/analysis/PlayerMovementCard'
 import { uploadVideoInChunks, abortChunkUpload } from '@/utils/chunkUpload'
 import { buildAutosaveKey, isAutosaveOwnedBy, AUTOSAVE_FLUSH_EVENT, resolveDraftFirstInputAt, draftAgeMinutes } from '@/utils/annotatorAutosave'
+import { useSessionPendingDevices } from '@/hooks/session/useSessionPendingDevices'
+import { PendingDeviceBadge } from '@/components/session/PendingDeviceBadge'
 
 // ─── 配信URL検出 ──────────────────────────────────────────────────────────────
 // Electron では配信サービスの動画を直接再生できないため、yt-dlp でダウンロードする。
@@ -1655,6 +1657,18 @@ export function AnnotatorPage() {
     onError: showError,
   })
 
+  // 承認待ちデバイス監視（DeviceManagerPanel が閉じていてもヘッダーにバッジを出す）。
+  // パネルとは独立に 3 秒間隔で取得する。
+  const { count: pendingDeviceCount } = useSessionPendingDevices(activeSession?.session_code ?? null)
+  // 0→検知 の立ち上がりで一度だけトーストを出す（毎 poll では出さない）。
+  const prevPendingDeviceCount = useRef(0)
+  useEffect(() => {
+    if (pendingDeviceCount > prevPendingDeviceCount.current) {
+      setNotice({ kind: 'warn', message: t('device_approval.toast_new_pending', { count: pendingDeviceCount }) })
+    }
+    prevPendingDeviceCount.current = pendingDeviceCount
+  }, [pendingDeviceCount, t])
+
   // CV補助アノテーション候補
   const {
     candidatesData,
@@ -3116,6 +3130,13 @@ export function AnnotatorPage() {
               <MIcon name="share" size={12} />
               {t('sharing.share')}
             </button>
+          )}
+          {/* 承認待ちデバイスのバッジ（パネルが閉じていても出す。クリックで開く） */}
+          {activeSession && (
+            <PendingDeviceBadge
+              count={pendingDeviceCount}
+              onClick={() => setShowDeviceManager(true)}
+            />
           )}
           {/* デバイス管理ボタン */}
           {activeSession && (
