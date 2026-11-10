@@ -24,7 +24,7 @@ import { useQuery } from '@tanstack/react-query'
 // CLAUDE.md / メモリ規約: 新規 UI は Material Symbols (MIcon)。lucide は段階廃止。
 import { MIcon } from '@/components/common/MIcon'
 import { apiGet, apiPost } from '@/api/client'
-import { useAutoTutorial } from '@/components/tutorial/useTutorial'
+import { useAutoTutorial, replayTutorial } from '@/components/tutorial/useTutorial'
 import { AdviceStrip } from '@/components/common/AdviceStrip'
 import {
   chooseMobileVideoQuality,
@@ -247,6 +247,10 @@ export function MobileAnnotatePage() {
   const [level, setLevelState] = useState<AnnotateLevel>(() => loadLevel(matchId))
   // 「レベル選択 picker を開いているか」。初回 mount で開いて軽い体験を案内する。
   const [levelPickerOpen, setLevelPickerOpen] = useState(false)
+  // 操作メニュー (⋮): チュートリアル再生など。初回自動表示を終えた後でも、ここからチュートリアルを何度でも見直せる。
+  const [menuOpen, setMenuOpen] = useState(false)
+  // 再生は開始するが replay 記録がサーバに残らなかったときだけ通知する。
+  const [replayNotice, setReplayNotice] = useState(false)
   const visiblePasses = useMemo(() => PASSES_FOR_LEVEL[level], [level])
   // Pass ラベルは t() で解決 (言語切替に追従)。module-scope では t() を呼べないため component 内で。
   const PASS_LABELS = useMemo<Record<AnnotatePass, string>>(() => ({
@@ -1136,6 +1140,16 @@ export function MobileAnnotatePage() {
               {t('auto.MobileAnnotatePage.queue_storage_error_short')}
             </span>
           )}
+          {/* 操作メニュー (⋮): チュートリアルを何度でも見直せる入口。 */}
+          <button
+            type="button"
+            onClick={() => setMenuOpen(true)}
+            className="p-2 rounded shadow ss-overlay-chip"
+            aria-label={t('auto.MobileAnnotatePage.menu')}
+            title={t('auto.MobileAnnotatePage.menu')}
+          >
+            <MIcon name="more_vert" size={16} />
+          </button>
         </div>
         )}
 
@@ -1227,6 +1241,51 @@ export function MobileAnnotatePage() {
                 </span>
               </button>
             </div>
+          </div>
+        )}
+        {/* 操作メニュー本体: ⋮ ボタンから開くドロップダウン。
+            初回自動表示を終えたアカウントでも、ここからチュートリアルを再生できる。 */}
+        {menuOpen && (
+          <div
+            className="absolute inset-0 flex items-start justify-start"
+            style={{ zIndex: 60, background: 'rgba(0,0,0,0.35)' }}
+            onClick={() => setMenuOpen(false)}
+            role="presentation"
+          >
+            <div
+              className="m-3 min-w-[220px] rounded-lg shadow-lg ss-overlay-panel"
+              onClick={(e) => e.stopPropagation()}
+              role="menu"
+              aria-label={t('auto.MobileAnnotatePage.menu')}
+            >
+              <button
+                type="button"
+                role="menuitem"
+                className="w-full text-left px-4 py-3 flex items-center gap-2"
+                onClick={async () => {
+                  setMenuOpen(false)
+                  // replay 記録がサーバに残らなくてもチュートリアル自体は始まる。
+                  const recorded = await replayTutorial('mobile_annotate_pass')
+                  if (!recorded) {
+                    setReplayNotice(true)
+                    window.setTimeout(() => setReplayNotice(false), 4000)
+                  }
+                }}
+              >
+                <MIcon name="replay" size={16} />
+                {t('auto.MobileAnnotatePage.tutorial_replay')}
+              </button>
+            </div>
+          </div>
+        )}
+        {/* replay 記録が残らなかったときだけの軽い通知。 */}
+        {replayNotice && (
+          <div
+            className="absolute left-1/2 top-3 -translate-x-1/2 px-3 py-2 rounded shadow text-[12px] ss-overlay-chip"
+            style={{ zIndex: 61 }}
+            role="status"
+          >
+            {t('auto.MobileAnnotatePage.tutorial_replay_unrecorded')}
           </div>
         )}
       </div>
