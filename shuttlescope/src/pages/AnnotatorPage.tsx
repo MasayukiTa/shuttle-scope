@@ -729,6 +729,8 @@ export function AnnotatorPage() {
         stableIdempotencyKey ? { 'X-Idempotency-Key': stableIdempotencyKey } : undefined,
       ).then((res) => {
         useAnnotationStore.getState().decrementPending()
+        // このラリーの保存が成功したので、以前の失敗表示（赤い「保存失敗」）を消す。
+        useAnnotationStore.getState().clearSaveErrorForRally(rallyNum)
         queryClient.invalidateQueries({ queryKey: ['annotation-state', matchId] })
         queryClient.invalidateQueries({ queryKey: ['sets', matchId] })
         // annotation_progress は ['match'] クエリ由来。これも invalidate しないと
@@ -1834,6 +1836,8 @@ export function AnnotatorPage() {
       isBasicMode,
     })).then(() => {
       useAnnotationStore.getState().decrementPending()
+      // 同じラリーの保存が成功したので、以前の失敗表示を消す。
+      useAnnotationStore.getState().clearSaveErrorForRally(rallyNum)
       queryClient.invalidateQueries({ queryKey: ['annotation-state', matchId] })
     }).catch((err: unknown) => {
       useAnnotationStore.getState().decrementPending()
