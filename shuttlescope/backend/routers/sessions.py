@@ -695,7 +695,10 @@ def issue_camera_ws_ticket(
     # これを見ないと、映像を受けるだけの端末が「カメラです」と名乗って
     # operator に offer を投げられる。
     if participant.approval_status == "rejected":
-        raise HTTPException(status_code=403, detail="このデバイスは拒否されています")
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "device_rejected", "message": "このデバイスは拒否されています"},
+        )
     if body.role == "device":
         # `source_capability` は join 時に **クライアントが申告した device_type**
         # からしか決まらない (`"iphone"` と名乗れば "camera" になる)。
@@ -711,7 +714,11 @@ def issue_camera_ws_ticket(
         # 設計はもともと承認を前提にしている。
         if participant.approval_status != "approved":
             raise HTTPException(
-                status_code=403, detail="このデバイスはまだ承認されていません"
+                status_code=403,
+                detail={
+                    "code": "device_not_approved",
+                    "message": "このデバイスはまだ承認されていません",
+                },
             )
         if participant.source_capability != "camera":
             raise HTTPException(
@@ -723,7 +730,11 @@ def issue_camera_ws_ticket(
         # (operator UI は join 済みの viewer 全員へ自動で offer する)。
         if participant.approval_status != "approved":
             raise HTTPException(
-                status_code=403, detail="このデバイスはまだ承認されていません"
+                status_code=403,
+                detail={
+                    "code": "device_not_approved",
+                    "message": "このデバイスはまだ承認されていません",
+                },
             )
         if participant.viewer_permission == "blocked":
             raise HTTPException(status_code=403, detail="この端末の映像受信は停止されています")

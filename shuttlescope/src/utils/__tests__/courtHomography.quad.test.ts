@@ -1,9 +1,12 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeAll } from 'vitest'
 import {
   quadToUnit, unitToCell, isInsideQuad,
   fallbackTapToCell, calibratedTapToCell,
   courtQuadFromCalibPoints, inferCourtHalfFromCalibPoints,
-  type Quad,
+  fallbackTapToCellClamped, calibratedTapToCellClamped,
+  normalizeOrientation, effectiveHalf, applyOrientationToCell,
+  DEFAULT_ORIENTATION, loadCourtOrientation, saveCourtOrientation,
+  type Quad, type CourtOrientation,
 } from '@/utils/courtHomography'
 
 // 単位正方形 (= 軸平行・歪みなし) の四角形。TL,TR,BR,BL の順。
@@ -309,4 +312,169 @@ describe('calibratedTapToCell — 撮影 4 方向で中央と左右端を拾う'
       expect(calibratedTapToCell(quad, right.x, right.y, 'far')!.col).toBe(2)
     })
   }
+})
+
+// ─── fallbackTapToCellClamped / calibratedTapToCellClamped — 丸め検出 ─────────
+describe('clamped 併記版 — 枠外を端マスへ丸めた事実を返す', () => {
+  it('fallback: 枠内は clamped=false、枠外は clamped=true', () => {
+    expect(fallbackTapToCellClamped(0.5, 0.5)).toEqual({ row: 1, col: 1, clamped: false })
+    expect(fallbackTapToCellClamped(-0.3, 0.5)).toEqual({ row: 1, col: 0, clamped: true })
+    expect(fallbackTapToCellClamped(0.5, 1.4)).toEqual({ row: 2, col: 1, clamped: true })
+  })
+
+  const trapezoid: Quad = [
+    { x: 0.30, y: 0.20 }, { x: 0.70, y: 0.20 },
+    { x: 0.90, y: 0.80 }, { x: 0.10, y: 0.80 },
+  ]
+
+  it('calibrated: コート中央は clamped=false', () => {
+    const r = calibratedTapToCellClamped(trapezoid, 0.5, 0.65, 'near')!
+    expect(r.clamped).toBe(false)
+    expect(r.col).toBe(1)
+  })
+
+  it('calibrated: コートのずっと外側は clamped=true (端マスへ丸め)', () => {
+    // 台形の左外 (u<0) を狙う。左辺より左の点。
+    const r = calibratedTapToCellClamped(trapezoid, 0.02, 0.5, 'near')
+    expect(r).not.toBeNull()
+    expect(r!.clamped).toBe(true)
+    expect(r!.col).toBe(0)
+  })
+
+  it('calibrated: 退化四角形は null', () => {
+    const degenerate: Quad = [
+      { x: 0, y: 0 }, { x: 0.5, y: 0 }, { x: 1, y: 0 }, { x: 0.5, y: 0 },
+    ]
+    expect(calibratedTapToCellClamped(degenerate, 0.5, 0.5, 'near')).toBeNull()
+  })
+})
+
+// ─── CourtOrientation — 向きの手動選択・反転・半面入替 ─────────────────
+describe('normalizeOrientation / DEFAULT_ORIENTATION', () => {
+  it('既定は全 false (従来の向き)', () => {
+    expect(DEFAULT_ORIENTATION).toEqual({ flipH: false, flipV: false, swapHalf: false })
+  })
+  it('欠落/不正値は false に正規化', () => {
+    expect(normalizeOrientation(null)).toEqual(DEFAULT_ORIENTATION)
+    expect(normalizeOrientation({})).toEqual(DEFAULT_ORIENTATION)
+    expect(normalizeOrientation({ flipH: 'yes', flipV: 1, swapHalf: true }))
+      .toEqual({ flipH: false, flipV: false, swapHalf: true })
+  })
+})
+
+describe('effectiveHalf — swapHalf で near/far を入替', () => {
+  it('swapHalf=false は自動値そのまま', () => {
+    expect(effectiveHalf('far', { flipH: false, flipV: false, swapHalf: false })).toBe('far')
+    expect(effectiveHalf('near', { flipH: false, flipV: false, swapHalf: false })).toBe('near')
+  })
+  it('swapHalf=true で near↔far', () => {
+    expect(effectiveHalf('far', { flipH: false, flipV: false, swapHalf: true })).toBe('near')
+    expect(effectiveHalf('near', { flipH: false, flipV: false, swapHalf: true })).toBe('far')
+  })
+})
+
+describe('applyOrientationToCell — 左右/上下の反転', () => {
+  const o = (flipH: boolean, flipV: boolean) => ({ flipH, flipV, swapHalf: false })
+  it('無変換はそのまま', () => {
+    expect(applyOrientationToCell({ row: 0, col: 0 }, o(false, false))).toEqual({ row: 0, col: 0 })
+    expect(applyOrientationToCell({ row: 2, col: 2 }, o(false, false))).toEqual({ row: 2, col: 2 })
+  })
+  it('flipH で列を左右反転 (col→ 2-col)', () => {
+    expect(applyOrientationToCell({ row: 1, col: 0 }, o(true, false))).toEqual({ row: 1, col: 2 })
+    expect(applyOrientationToCell({ row: 1, col: 2 }, o(true, false))).toEqual({ row: 1, col: 0 })
+  })
+  it('flipV で行を上下反転 (row→ 2-row)', () => {
+    expect(applyOrientationToCell({ row: 0, col: 1 }, o(false, true))).toEqual({ row: 2, col: 1 })
+    expect(applyOrientationToCell({ row: 2, col: 1 }, o(false, true))).toEqual({ row: 0, col: 1 })
+  })
+  it('flipH+flipV で点対称', () => {
+    expect(applyOrientationToCell({ row: 0, col: 0 }, o(true, true))).toEqual({ row: 2, col: 2 })
+  })
+})
+
+// ─── 縦長/横長の中央タップが正しいゼーンに入る (アスペクト比依存なし) ─────
+// quadToUnit はコンテナ正規座標 (0..1) で動くため、動画が縦長(9:16)でも横長(16:9)でも
+// 「コート 4 隅の正規座標」さえ正しければ中央タップは中央マスに入る。
+describe('縦長/横長どちらでもコート中央タップは中央マス', () => {
+  // 縦長 9:16 を想定: コートが縦に長く写る (y 方向に広い台形)。
+  const portrait: Quad = [
+    { x: 0.25, y: 0.12 }, { x: 0.75, y: 0.12 },
+    { x: 0.88, y: 0.88 }, { x: 0.12, y: 0.88 },
+  ]
+  // 横長 16:9 を想定: コートが横に平たく写る (y 範囲が狭い)。
+  const landscape: Quad = [
+    { x: 0.20, y: 0.35 }, { x: 0.80, y: 0.35 },
+    { x: 0.92, y: 0.65 }, { x: 0.08, y: 0.65 },
+  ]
+  const bilerp = (q: Quad, u: number, v: number) => {
+    const top = { x: q[0].x + (q[1].x - q[0].x) * u, y: q[0].y + (q[1].y - q[0].y) * u }
+    const bot = { x: q[3].x + (q[2].x - q[3].x) * u, y: q[3].y + (q[2].y - q[3].y) * u }
+    return { x: top.x + (bot.x - top.x) * v, y: top.y + (bot.y - top.y) * v }
+  }
+  for (const [name, quad] of [['縦長', portrait], ['横長', landscape]] as Array<[string, Quad]>) {
+    it(name + ': far 半面の中央タップは (row1,col1) で clamped=false', () => {
+      const p = bilerp(quad, 0.5, 0.25)
+      const r = calibratedTapToCellClamped(quad, p.x, p.y, 'far')!
+      expect(r.row).toBe(1)
+      expect(r.col).toBe(1)
+      expect(r.clamped).toBe(false)
+    })
+    it(name + ': near 半面の中央タップは (row1,col1)', () => {
+      const p = bilerp(quad, 0.5, 0.75)
+      const r = calibratedTapToCellClamped(quad, p.x, p.y, 'near')!
+      expect(r.row).toBe(1)
+      expect(r.col).toBe(1)
+    })
+  }
+})
+
+// ─── 向きの切替で A/B・手前/奥・左右の割当が入替わる (セル→向き適用の組合せ) ───
+describe('向き切替でゼーン割当が入替わる', () => {
+  const quad: Quad = [
+    { x: 0.30, y: 0.20 }, { x: 0.70, y: 0.20 },
+    { x: 0.90, y: 0.80 }, { x: 0.10, y: 0.80 },
+  ]
+  it('flipH で左端タップが右列に回る', () => {
+    const r = calibratedTapToCellClamped(quad, 0.33, 0.22, 'far')!
+    expect(r.col).toBe(0)
+    const flipped = applyOrientationToCell(r, { flipH: true, flipV: false, swapHalf: false })
+    expect(flipped.col).toBe(2)
+  })
+  it('swapHalf で near/far が入替わる (実効 half)', () => {
+    const autoHalf = inferCourtHalfFromCalibPoints([
+      { x: 0.30, y: 0.20 }, { x: 0.70, y: 0.20 }, { x: 0.90, y: 0.80 }, { x: 0.10, y: 0.80 },
+      { x: 0.25, y: 0.45 }, { x: 0.75, y: 0.45 },
+    ])
+    expect(autoHalf).toBe('far')
+    expect(effectiveHalf(autoHalf, { flipH: false, flipV: false, swapHalf: true })).toBe('near')
+  })
+})
+
+// ─── load/saveCourtOrientation — 試合ごと保存、既存試合は従来の向き ─────────
+describe('load/saveCourtOrientation — 試合ごと保存', () => {
+  const store: Record<string, string> = {}
+  const g = globalThis as unknown as { localStorage?: Storage }
+  beforeAll(() => {
+    g.localStorage = {
+      getItem: (k: string) => (k in store ? store[k] : null),
+      setItem: (k: string, v: string) => { store[k] = v },
+      removeItem: (k: string) => { delete store[k] },
+      clear: () => { for (const k of Object.keys(store)) delete store[k] },
+      key: () => null, length: 0,
+    } as unknown as Storage
+  })
+  it('未保存の試合は既定 (従来の向き)', () => {
+    expect(loadCourtOrientation('match-none')).toEqual(DEFAULT_ORIENTATION)
+  })
+  it('保存→読込で同じ向きが戻る、matchId ごとに独立', () => {
+    const o: CourtOrientation = { flipH: true, flipV: false, swapHalf: true }
+    saveCourtOrientation('match-1', o)
+    expect(loadCourtOrientation('match-1')).toEqual(o)
+    // 別試合は影響を受けない
+    expect(loadCourtOrientation('match-2')).toEqual(DEFAULT_ORIENTATION)
+  })
+  it('matchId が null なら保存しない・既定を返す', () => {
+    saveCourtOrientation(null, { flipH: true, flipV: true, swapHalf: true })
+    expect(loadCourtOrientation(null)).toEqual(DEFAULT_ORIENTATION)
+  })
 })
