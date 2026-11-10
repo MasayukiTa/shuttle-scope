@@ -1274,6 +1274,7 @@
       "col_format": "Format",
       "col_opponent": "Opponent",
       "col_actions": "Actions",
+      "count": "{{count}} matches",
       "format_singles": "Singles",
       "format_mens_doubles": "Men's doubles",
       "format_womens_doubles": "Women's doubles",
