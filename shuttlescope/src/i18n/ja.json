@@ -1739,8 +1739,8 @@
       "sc_player_toggle": "プレイヤー切替",
       "sc_hitter": "ダブルス打者選択",
       "sc_land_zone": "着地点入力",
-      "sc_hit_zone": "打点を修正",
-      "sc_hit_zone_doubles": "打点を修正（ダブルス時）",
+      "sc_hit_zone": "打球位置を修正",
+      "sc_hit_zone_doubles": "打球位置を修正（ダブルス時）",
       "sc_command_palette": "コマンドパレット",
       "sc_show_all": "すべてのキーを見る",
       "sc_show_essential": "主なキーだけ見る",
@@ -1873,8 +1873,8 @@
       "cv_apply_high": "高確信度適用",
       "cv_apply_land_only": "着地のみ",
       "cv_apply_hitter_only": "打者のみ",
-      "cv_apply_hit_only": "打点のみ",
-      "cv_apply_hit_only_title": "高確信度の打点ゾーン（打者の床面位置）のみ適用",
+      "cv_apply_hit_only": "打球位置のみ",
+      "cv_apply_hit_only_title": "高確信度の打球位置ゾーン（打者の床面位置）のみ適用",
       "cv_apply_with_candidates": "候補も含む",
       "cv_detail_label": "CV詳細",
       "cv_apply_result": "{{n}}件適用",
@@ -5355,7 +5355,7 @@
       "err_finalize_failed": "最終打の番号と本数を端末に保存できませんでした。もう一度「閉じる」を押してください",
       "edit_title": "#{{n}} のショット種別を変更",
       "final_unclassified": "(決定打: 未分類)",
-      "prompt_hit_zone": "#{{n}} ({{shot}}) — 打点を選択",
+      "prompt_hit_zone": "#{{n}} ({{shot}}) — 打球位置を選択",
       "prompt_land_zone": "#{{n}} ({{shot}}) — 着地点を選択",
       "next": "次へ",
       "save": "保存",
@@ -6095,8 +6095,8 @@
         "body": "赤枠で現在のスコアを確認し、ラリーが終わったら「得点者 × 終了種別」を選んで確定します。スコアとサーブ権は自動計算されます。"
       },
       "hitZone": {
-        "title": "打点ゾーンを入力",
-        "body": "赤枠で打点がコートのどこか (9 マス) を選びます。CV (画像解析) が候補を出してくれることもあり、その時はクリックだけで確定できます。"
+        "title": "打球位置ゾーンを入力",
+        "body": "赤枠で打球位置がコートのどこか (9 マス) を選びます。CV (画像解析) が候補を出してくれることもあり、その時はクリックだけで確定できます。"
       },
       "shotTypes": {
         "title": "ショット種別を記録",

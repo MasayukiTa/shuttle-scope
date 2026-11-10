@@ -1622,8 +1622,8 @@
       "sc_player_toggle": "Toggle player",
       "sc_hitter": "Doubles hitter selector",
       "sc_land_zone": "Landing input",
-      "sc_hit_zone": "Correct hit zone",
-      "sc_hit_zone_doubles": "Correct hit zone (doubles)",
+      "sc_hit_zone": "Correct shot location",
+      "sc_hit_zone_doubles": "Correct shot location (doubles)",
       "sc_command_palette": "Command palette",
       "sc_show_all": "Show all keys",
       "sc_show_essential": "Show main keys only",
@@ -1743,8 +1743,8 @@
       "cv_apply_high": "Apply high-confidence",
       "cv_apply_land_only": "Landing only",
       "cv_apply_hitter_only": "Hitter only",
-      "cv_apply_hit_only": "Hit zone only",
-      "cv_apply_hit_only_title": "Apply only high-confidence hit zones (hitter floor position)",
+      "cv_apply_hit_only": "Shot location only",
+      "cv_apply_hit_only_title": "Apply only high-confidence shot locations (hitter floor position)",
       "cv_apply_with_candidates": "Include candidates",
       "cv_detail_label": "CV detail",
       "cv_apply_result": "{{n}} applied",
@@ -5343,7 +5343,7 @@
       "err_finalize_failed": "Could not save the final stroke number and rally length on this device. Press Close again to retry",
       "edit_title": "Change shot type for #{{n}}",
       "final_unclassified": "(Finisher: unclassified)",
-      "prompt_hit_zone": "#{{n}} ({{shot}}) — Select hit point",
+      "prompt_hit_zone": "#{{n}} ({{shot}}) — Select shot location",
       "prompt_land_zone": "#{{n}} ({{shot}}) — Select landing point",
       "next": "Next",
       "save": "Save",
@@ -6089,7 +6089,7 @@
         "body": "Check the current score in the red box. When a rally ends, pick scorer and end type to confirm it. Score and serve side update automatically."
       },
       "hitZone": {
-        "title": "Pick the hit zone",
+        "title": "Pick the shot location",
         "body": "Choose where on the court the shot was hit, using the 9 zones in the red box. If CV suggests one, just click to confirm."
       },
       "shotTypes": {
