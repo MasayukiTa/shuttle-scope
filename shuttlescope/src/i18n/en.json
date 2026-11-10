@@ -2817,7 +2817,11 @@
     "share_modal_password_note": "Joining devices need both the session code and password",
     "share_modal_camera_qr_hint": "Scan the QR on iPhone, then enter the session password on the join screen",
     "share_modal_viewer_qr_hint": "Scan the QR on a PC or tablet, then enter the session password on the join screen to receive video",
-    "join_password_required": "Enter the session password on the join screen. You can find it on the share screen."
+    "join_password_required": "Enter the session password on the join screen. You can find it on the share screen.",
+    "session_end": "End session",
+    "session_end_confirm": "End this session? All connected devices will be disconnected, and no one will be able to join or receive video. This cannot be undone.",
+    "session_end_done": "The session has ended.",
+    "session_end_failed": "Could not end the session. Check your connection and try again."
   },
   "player_tracking": {
     "bbox_cycle_title": "Click to cycle roles",

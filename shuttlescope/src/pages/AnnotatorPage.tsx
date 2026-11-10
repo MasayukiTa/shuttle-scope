@@ -1643,6 +1643,7 @@ export function AnnotatorPage() {
   // R-001/R-002: セッション共有フック
   const {
     activeSession,
+    setActiveSession,
     showSessionModal, setShowSessionModal,
     showDeviceManager, setShowDeviceManager,
     handleCreateOrGetSession,
@@ -5537,6 +5538,15 @@ export function AnnotatorPage() {
           publicOrigin={publicOrigin}
           sessionPassword={activeSession.session_password}
           onClose={() => setShowSessionModal(false)}
+          onEnded={() => {
+            // Session ended on the server: drop local share state and close related panels.
+            setShowSessionModal(false)
+            setShowDeviceManager(false)
+            setRemoteStream(null)
+            setLocalCamStream(null)
+            setRemoteHealth(null)
+            setActiveSession(null)
+          }}
         />
       )}
 
