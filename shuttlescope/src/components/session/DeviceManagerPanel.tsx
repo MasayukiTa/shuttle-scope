@@ -498,13 +498,13 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
   }
 
   const handleEndSession = async () => {
-    if (!window.confirm(t('session_end_confirm'))) return
+    if (!window.confirm(t('lan_session.session_end_confirm'))) return
     setActionError(null)
     try {
       await apiPost(`/sessions/${sessionCode}/end`, {})
       onEnded?.()
     } catch {
-      setActionError(t('session_end_failed'))
+      setActionError(t('lan_session.session_end_failed'))
     }
   }
 
@@ -653,7 +653,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
         onClick={handleEndSession}
         className="w-full mb-3 py-1.5 rounded-ss-md bg-[var(--ss-bad)] hover:opacity-90 transition-colors duration-base ease-out text-white text-xs font-medium flex items-center justify-center gap-1"
       >
-        <MIcon name="cancel" size={14} />{t('session_end')}
+        <MIcon name="cancel" size={14} />{t('lan_session.session_end')}
       </button>
       {actionError && (
         <p role="alert" className="text-[10px] text-[var(--ss-bad)] mb-2 flex items-center gap-1">
