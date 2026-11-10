@@ -257,6 +257,7 @@ export function AnnotatorPage() {
   // 映像なしモードでも「キャリブレーションを開く」が機能するよう、空の校正
   // キャンバスに CourtGridOverlay を乗せるためのコンテナ ref (T003-05)。
   const noVideoCalibRef = useRef<HTMLDivElement>(null)
+  const noVideoCalibModalRef = useRef<HTMLDivElement>(null)
   const { playbackRate, setPlaybackRate } = useVideo(videoRef)
 
   const store = useAnnotationStore()
@@ -5598,6 +5599,26 @@ export function AnnotatorPage() {
       {/* U6: Ctrl+K コマンドパレット */}
       <CommandPalette commands={paletteCommands} />
 
+
+      {/* F-T003-05: 映像なしモードで試合中(matchDay)/モバイル時は左パネルが非表示になるため、
+          設定タブの「キャリブレーションを開く」を押しても左パネル内の NoVideoCalibCanvas が DOM に出ない。
+          その場合だけ、ルート直下のフルスクリーンモーダルで校正画面を出す。 */}
+      {videoSourceMode === 'none' && courtGridVisible && matchId && !videoWindowOpen && (isMatchDayMode || isMobile) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" data-testid="no-video-calib-modal">
+          <div className="w-full max-w-3xl">
+            <NoVideoCalibCanvas
+              matchId={matchId}
+              containerRef={noVideoCalibModalRef}
+              onClose={() => setCourtGridVisible(false)}
+              onCalibrationSaved={() => {
+                queryClient.invalidateQueries({ queryKey: ['movement-stats', matchId] })
+              }}
+              onCalibSourceChange={setCalibSource}
+              t={t}
+            />
+          </div>
+        </div>
+      )}
       {/* UX-R4: モバイル + 非 input モード時に BottomSheet で右パネルを呼び出す */}
       {isMobile && annotatorMode !== 'input' && (
         <BottomSheet
@@ -5685,7 +5706,7 @@ interface NoVideoCalibCanvasProps {
   t: (key: string, opts?: Record<string, unknown>) => string
 }
 
-function NoVideoCalibCanvas({
+export function NoVideoCalibCanvas({
   matchId,
   containerRef,
   onClose,
