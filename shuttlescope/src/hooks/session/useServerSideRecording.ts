@@ -31,6 +31,7 @@ import { resolveBaseUrl } from '@/utils/preferredEndpoint'
 import { errorMessage } from '@/utils/errors'
 import { fetchWithTimeout } from '@/api/client'
 import { getAuthItem } from '@/api/authStorage'
+import i18n from '@/i18n'
 
 // 半断 (TCP は繋がったまま応答が来ない) で fetch が永久に pending になると、直列 pump と
 // stop() の finalize 待ちが止まり、録画の確定まで届かない。用途別に上限を設ける (#662)。
@@ -157,6 +158,8 @@ export function useServerSideRecording(
   const [state, setState] = useState<ServerRecordingState>('idle')
   const [uploadedChunks, setUploadedChunks] = useState(0)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  // 利用者向けの成功メッセージ。errorMsg は失敗専用のため成功は別フィールドで表す。
+  const [successMsg, setSuccessMsg] = useState<string | null>(null)
 
   // Round 258 R16 P0 fix (deep audit F-2): 旧バージョンが localStorage に
   // 残した base64 chunk を起動時に削除する。
@@ -347,6 +350,7 @@ export function useServerSideRecording(
     }
     setState('initializing')
     setErrorMsg(null)
+    setSuccessMsg(null)
     setUploadedChunks(0)
 
     try {
@@ -491,14 +495,22 @@ export function useServerSideRecording(
         body: '{}',
       }, UPLOAD_FINALIZE_TIMEOUT_MS)
       if (res.ok) {
+        // 利用者に分かる完了文言を出す（開発者向けの生ステータスは出さない）。
+        setSuccessMsg(i18n.t('camera_sender.recording_saved'))
         setState('completed')
       } else {
-        const body = await res.text()
-        setErrorMsg(`finalize 失敗: ${res.status} ${body.slice(0, 100)}`)
+        // 認証起因(401)は原因が分かる専用文言、それ以外は汎用の保存失敗文言。
+        // サーバ返却の生ステータス/本文は利用者には出さない。
+        await res.text().catch(() => '')
+        setErrorMsg(
+          res.status === 401
+            ? i18n.t('camera_sender.recording_auth_failed')
+            : i18n.t('camera_sender.recording_save_failed'),
+        )
         setState('error')
       }
-    } catch (err: unknown) {
-      setErrorMsg(`finalize エラー: ${errorMessage(err)}`)
+    } catch {
+      setErrorMsg(i18n.t('camera_sender.recording_save_failed'))
       setState('error')
     }
   }, [pump, getUploadAuthHeaders])
@@ -508,5 +520,5 @@ export function useServerSideRecording(
     return () => { void stop() }
   }, [stop])
 
-  return { state, start, stop, uploadedChunks, errorMsg }
+  return { state, start, stop, uploadedChunks, errorMsg, successMsg }
 }
