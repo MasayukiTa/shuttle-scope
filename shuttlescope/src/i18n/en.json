@@ -1923,6 +1923,7 @@
     "hit_zone_aria": "Shot-location zone selector",
     "hit_zone_cell": "Zone {{zone}}",
     "hit_zone_cv_label": "CV estimate: zone {{zone}}",
+    "shot_suggestion_top": "Most frequent next shot this rally",
     "shot_color_legend": "Color legend",
     "land_zone_label_with_dir": "Landing zone (own court {{dir}})",
     "land_zone_hint_mobile": "Tap to select",

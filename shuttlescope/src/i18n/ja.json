@@ -1617,6 +1617,7 @@
     "hit_zone_aria": "打球位置ゾーン選択",
     "hit_zone_cell": "ゾーン {{zone}}",
     "hit_zone_cv_label": "CV推定: ゾーン {{zone}}",
+    "shot_suggestion_top": "このラリーで最も多い次打",
     "shot_color_legend": "色凡例",
     "land_zone": "落点",
     "land_zone_label_with_dir": "着地ゾーン（自コート{{dir}}）",
