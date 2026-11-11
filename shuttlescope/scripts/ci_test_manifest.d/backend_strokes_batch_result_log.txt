@@ -1,0 +1,9 @@
+# backend/tests/test_strokes_batch_result_log.py (pytest / backend)
+#
+# Registered here so this drop-in directory records the strokes/batch result-log
+# test. It is kept as a COMMENT (no bare entry line) on purpose: entries in this
+# manifest must match the vitest include glob src/**/__tests__/**/*.test.{ts,tsx}
+# (enforced by scripts/check_ci_test_manifest.py), and a backend/*.py path never
+# matches it -- adding it as a bare line would fail CI. The Python test is
+# collected by pytest (pytest.ini: testpaths=backend/tests) and runs in CI's
+# Backend tests step. See PR description for the full rationale.
