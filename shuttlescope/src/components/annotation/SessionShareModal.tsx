@@ -16,6 +16,8 @@ interface Props {
   /** 画面を開いている公開 HTTPS オリジン。あればこれを使って別ネットワーク可の URL を QR にする */
   publicOrigin?: string | null
   sessionPassword?: string
+  /** session end (server /end) success callback; parent drops its share state */
+  onEnded?: () => void
   onClose: () => void
 }
 
@@ -26,6 +28,7 @@ export function SessionShareModal({
   viewerUrls = [],
   publicOrigin = null,
   sessionPassword: initialPassword,
+  onEnded,
   onClose,
 }: Props) {
   const { t } = useTranslation()
@@ -44,6 +47,8 @@ export function SessionShareModal({
   const [sessionPassword, setSessionPassword] = useState(initialPassword ?? '')
   const [regenerating, setRegenerating] = useState(false)
   const [regenerateStatus, setRegenerateStatus] = useState<'ok' | 'failed' | null>(null)
+  const [ending, setEnding] = useState(false)
+  const [endFailed, setEndFailed] = useState(false)
   const isLight = useIsLightMode()
 
   // localhost URL（同一PC用）と LAN IP URL（同一ネットワーク用）を分離する
@@ -165,6 +170,25 @@ export function SessionShareModal({
       setRegenerateStatus('failed')
     } finally {
       setRegenerating(false)
+    }
+  }
+
+  const handleEndSession = async () => {
+    if (!window.confirm(t('lan_session.session_end_confirm'))) return
+    setEnding(true)
+    setEndFailed(false)
+    try {
+      const res = await apiPost<{ success: boolean }>(`/sessions/${sessionCode}/end`, {})
+      if (res.success) {
+        onEnded?.()
+        onClose()
+      } else {
+        setEndFailed(true)
+      }
+    } catch {
+      setEndFailed(true)
+    } finally {
+      setEnding(false)
     }
   }
 
@@ -407,6 +431,23 @@ export function SessionShareModal({
             )}
           </div>
         )}
+
+        <div className={`border-t pt-4 mt-4 ${dividerColor}`}>
+          <button
+            type="button"
+            onClick={handleEndSession}
+            disabled={ending}
+            className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-ss-md text-xs font-medium bg-[var(--ss-bad)] hover:opacity-90 text-white whitespace-nowrap disabled:opacity-50 transition-opacity duration-fast ease-out"
+          >
+            <MIcon name="stop_circle" size={14} className={ending ? 'animate-spin' : ''} />
+            {t('lan_session.session_end')}
+          </button>
+          {endFailed && (
+            <p role="alert" className="text-[10px] mt-1 text-[var(--ss-bad)]">
+              {t('lan_session.session_end_failed')}
+            </p>
+          )}
+        </div>
       </div>
     </div>
   )
