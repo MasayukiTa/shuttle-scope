@@ -2825,6 +2825,8 @@
     "share_modal_lan_url_label": "同じネットワーク用:",
     "share_modal_same_pc_label": "同一PC用:",
     "share_modal_password_unset": "未設定",
+    "share_modal_password_set": "設定済み（再表示はできません。必要なら再生成してください）",
+    "share_modal_password_regenerated_warning": "このパスワードは再表示できません。閉じる前に控えてください。",
     "share_modal_password_note": "参加デバイスはセッションコードとパスワードの両方が必要です",
     "share_modal_camera_qr_hint": "iPhoneでQRを読み取り、参加画面でセッションパスワードを入力してください",
     "share_modal_viewer_qr_hint": "PC・タブレットでQRを読み取り、参加画面でセッションパスワードを入力すると映像を受信できます",

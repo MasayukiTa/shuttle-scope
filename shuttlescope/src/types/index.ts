@@ -384,6 +384,8 @@ export interface SharedSession {
   camera_sender_urls: string[]
   ws_url_template: string
   has_password: boolean
+  /** サーバにパスワードが設定済みか。平文は含まず、再読み後も「設定済み」表示の根拠にする */
+  password_set: boolean
   /** 作成時・再生成時のみ含まれる */
   session_password?: string
 }
