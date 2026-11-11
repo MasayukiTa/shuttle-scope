@@ -68,8 +68,8 @@ describe('MidRallyAutosaver', () => {
 
   it('(1) 入力から 5 秒後に replace_strokes=true / final=false で送信する', async () => {
     const timers = makeTimerHarness()
-    const stashSpy = vi.spyOn(offlineQueue, 'stashRallyBeforeSave').mockResolvedValue('owned')
-    const removeSpy = vi.spyOn(offlineQueue, 'removeRallyAfterSave').mockResolvedValue()
+    const stashSpy = vi.spyOn(offlineQueue, 'stashMidRally').mockResolvedValue(true)
+    const removeSpy = vi.spyOn(offlineQueue, 'removeMidRally').mockResolvedValue()
     const post = vi.fn().mockResolvedValue({ success: true })
     const onSent = vi.fn()
 
@@ -95,15 +95,18 @@ describe('MidRallyAutosaver', () => {
     expect(path).toBe('/strokes/batch')
     expect((body as { replace_strokes?: boolean }).replace_strokes).toBe(true)
     expect((body as { final?: boolean }).final).toBe(false)
-    expect(headers).toBeUndefined() // makeIdempotencyKey 未注入なのでヘッダー無し
+    // mid-rally は確定とは別の冪等キー (offline-mid-...) を必ず付ける。
+    // これが確定ラリーの冪等キー (offline-...) を先取りしないことを保証する。
+    expect((headers as Record<string, string>)['X-Idempotency-Key']).toBe('offline-mid-42-7-3-11')
+    expect((headers as Record<string, string>)['X-Idempotency-Key']).not.toBe('offline-42-7-3-11')
     expect(removeSpy).toHaveBeenCalledTimes(1)
     expect(onSent).toHaveBeenCalledTimes(1)
   })
 
   it('連続入力は最後の入力から 5 秒後に 1 回だけ送る (デバウンス)', async () => {
     const timers = makeTimerHarness()
-    vi.spyOn(offlineQueue, 'stashRallyBeforeSave').mockResolvedValue('owned')
-    vi.spyOn(offlineQueue, 'removeRallyAfterSave').mockResolvedValue()
+    vi.spyOn(offlineQueue, 'stashMidRally').mockResolvedValue(true)
+    vi.spyOn(offlineQueue, 'removeMidRally').mockResolvedValue()
     const post = vi.fn().mockResolvedValue({ success: true })
 
     const saver = new MidRallyAutosaver({
@@ -126,8 +129,8 @@ describe('MidRallyAutosaver', () => {
 
   it('(3) 送信失敗時は退避を消さず、30 秒後の再試行をスケジュールする', async () => {
     const timers = makeTimerHarness()
-    const stashSpy = vi.spyOn(offlineQueue, 'stashRallyBeforeSave').mockResolvedValue('owned')
-    const removeSpy = vi.spyOn(offlineQueue, 'removeRallyAfterSave').mockResolvedValue()
+    const stashSpy = vi.spyOn(offlineQueue, 'stashMidRally').mockResolvedValue(true)
+    const removeSpy = vi.spyOn(offlineQueue, 'removeMidRally').mockResolvedValue()
     const post = vi.fn().mockRejectedValue(new Error('network down'))
     const onError = vi.fn()
 
@@ -154,7 +157,7 @@ describe('MidRallyAutosaver', () => {
 
   it('送るストロークが無ければ何もしない', async () => {
     const timers = makeTimerHarness()
-    const stashSpy = vi.spyOn(offlineQueue, 'stashRallyBeforeSave').mockResolvedValue('owned')
+    const stashSpy = vi.spyOn(offlineQueue, 'stashMidRally').mockResolvedValue(true)
     const post = vi.fn().mockResolvedValue({ success: true })
 
     const saver = new MidRallyAutosaver({
