@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import ja from '../ja.json'
 import en from '../en.json'
 
-// Sendai University request #8 (follow-up to PR #263): "打点" names a HEIGHT,
+// customer request #8 (follow-up to PR #263): "打点" names a HEIGHT,
 // not a place. PR #263 fixed the detail-input row and the analysis heatmap tab,
 // and hitPositionLabels.test.ts pins those. This file pins the REMAINING
 // location labels that still read "打点" / "hit point" / "hit zone" so they use

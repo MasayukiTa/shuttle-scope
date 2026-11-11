@@ -60,7 +60,7 @@ export function StrokeHistory({ strokes, playerAName = 'A', playerBName = 'B', p
         const hitLabel = stroke.hit_zone ? `(${stroke.hit_zone})` : ''
         const num = circledNumbers[(stroke.stroke_num - 1) % 10]
         const isLatest = idx === recent.length - 1
-        // 仙台大要望: 打球の高さ 4 段階 (0..3) を一覧でも確認できるようにする。
+        // 顧客要望: 打球の高さ 4 段階 (0..3) を一覧でも確認できるようにする。
         const HIT_HEIGHT_KEYS = [
           'hit_height_above_net',
           'hit_height_slightly_above',

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import ja from '../ja.json'
 import en from '../en.json'
 
-// Sendai University request #8: "打点" (contact height) names a HEIGHT, not a
+// customer request #8: "打点" (contact height) names a HEIGHT, not a
 // place, so it must not label where a shot was played from. PR #263 fixed the
 // landing/hit-zone pad headings, but the detail-input row still read
 // "打点位置:" and the analysis heatmap tab still read "打点" (observed on the

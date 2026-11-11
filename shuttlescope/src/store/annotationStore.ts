@@ -18,7 +18,7 @@ export interface PendingStroke {
   is_backhand: boolean
   is_around_head: boolean
   above_net?: boolean
-  /** 仙台大要望: 打球の高さ 4 段階 (0..3)。任意。未選択なら undefined。 */
+  /** 顧客要望: 打球の高さ 4 段階 (0..3)。任意。未選択なら undefined。 */
   hit_height?: number
   timestamp_sec?: number
 }
