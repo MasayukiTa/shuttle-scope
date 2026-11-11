@@ -66,4 +66,50 @@ describe('F-T004-02 映像なしキャリブレーションのモーダル表示
       shouldShowNoVideoCalibModal({ ...base, isMatchDayMode: false, isMobile: false }),
     ).toBe(false)
   })
+
+  // ─── 分岐順序を固定する境界回帰 (customer request #4-4 スマホ映像/映像なし校正) ───
+
+  it('webview は再生可能映像が無くてもモーダルを出さない (webview 判定が優先)', () => {
+    expect(
+      shouldShowNoVideoCalibModal({
+        ...base,
+        videoSourceMode: 'webview',
+        hasPlayableVideo: false,
+      }),
+    ).toBe(false)
+  })
+
+  it('モバイル + videoSourceMode=none (明示映像なし) でもモーダルを出す', () => {
+    expect(
+      shouldShowNoVideoCalibModal({
+        ...base,
+        isMatchDayMode: false,
+        isMobile: true,
+        videoSourceMode: 'none',
+      }),
+    ).toBe(true)
+  })
+
+  it('PC 詳細モードは videoSourceMode=none でもモーダルを出さない (左パネル分岐が先)', () => {
+    expect(
+      shouldShowNoVideoCalibModal({
+        ...base,
+        isMatchDayMode: false,
+        isMobile: false,
+        videoSourceMode: 'none',
+      }),
+    ).toBe(false)
+  })
+
+  it('モバイル + webview は再生可能映像が無くてもモーダルを出さない', () => {
+    expect(
+      shouldShowNoVideoCalibModal({
+        ...base,
+        isMatchDayMode: false,
+        isMobile: true,
+        videoSourceMode: 'webview',
+        hasPlayableVideo: false,
+      }),
+    ).toBe(false)
+  })
 })
