@@ -1224,6 +1224,8 @@
     "tournament": "Tournament",
     "tournament_level": "Tournament level",
     "round": "Round",
+    "tournament_level_required": "Please select a tournament level",
+    "round_required": "Please select a round",
     "date": "Date",
     "venue": "Venue",
     "format": "Format",
