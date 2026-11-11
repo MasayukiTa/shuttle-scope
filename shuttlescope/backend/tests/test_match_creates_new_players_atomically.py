@@ -209,3 +209,33 @@ def test_update_can_swap_in_a_new_player_and_rolls_back_on_failure(client, world
     }, headers=_h(tok))
     assert bad.status_code == 403, bad.text
     assert "Upd Orphan" not in _names(client, world["admin"])
+
+
+def _new_no_team(name: str, **extra) -> dict:
+    """provisional new-player spec with the team field omitted.
+
+    Team name is optional on the match-registration form: a provisional
+    opponent is not owned by any team, so the backend must accept an
+    empty/omitted team (see players.add_player_row).
+    """
+    return {"name": name, "dominant_hand": "R",
+            "profile_status": "provisional", "needs_review": True, **extra}
+
+
+def test_new_players_without_a_team_are_accepted(client, world):
+    """An analyst may register provisional players with no team name.
+
+    Regression for match-registration hints: the team field is optional
+    for provisional players and an empty value must not return 422
+    "team must not be empty or whitespace only".
+    """
+    tok = world["analyst_a"]
+    r = client.post("/api/matches", json=_body(
+        player_a_new=_new_no_team("NoTeam A", is_target=True),
+        player_b_new=_new("NoTeam B", ""),
+    ), headers=_h(tok))
+    assert r.status_code == 201, r.text
+    data = r.json()["data"]
+    assert data["player_a_id"] and data["player_b_id"]
+    names = _names(client, world["admin"])
+    assert "NoTeam A" in names and "NoTeam B" in names

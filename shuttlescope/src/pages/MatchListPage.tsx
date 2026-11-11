@@ -7,7 +7,7 @@ import { Match, Player, TournamentLevel, MatchFormat, MatchResult, MATCH_ROUNDS 
 import { QuickStartModal } from '@/components/annotation/QuickStartModal'
 import { SearchableSelect, SearchableOption } from '@/components/common/SearchableSelect'
 import { DateRangeFilter } from '@/components/common/DateRangeFilter'
-import { errorMessage, errorStatus } from '@/utils/errors'
+import { errorBody, errorMessage, errorStatus } from '@/utils/errors'
 import { DateRangeSlider } from '@/components/common/DateRangeSlider'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { useAuth } from '@/hooks/useAuth'
@@ -231,7 +231,15 @@ export function MatchListPage() {
       case 401: return t('common_ui.error_session_expired')
       case 403: return t('common_ui.error_forbidden')
       case 409: return t('common_ui.error_conflict')
-      case 422: return t('common_ui.error_invalid_input')
+      case 422: {
+        // サーバが返す detail を見て、その欄向けの日本語メッセージに変換する。
+        // 具体理由が不明なときだけ汎用の「入力内容を確認」に落とす。
+        const detail = (errorMessage(err, '') + ' ' + errorBody(err)).toLowerCase()
+        if (detail.includes('team must not be empty')) return t('common_ui.error_team_required')
+        if (detail.includes('tournament must not be empty')) return t('common_ui.error_tournament_required')
+        if (detail.includes('round must not be empty')) return t('common_ui.error_round_required')
+        return t('common_ui.error_invalid_input')
+      }
       default: return fallback
     }
   }
@@ -351,9 +359,14 @@ export function MatchListPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    // 大会レベルとラウンドは未選択のまま登録させない (既定値を持たないため)
-    if (!form.tournament_level || !form.round) {
-      alert(t('common.select_placeholder'))
+    // 大会レベルとラウンドは必須 (既定値を持たないため、未選択のまま登録させない)。
+    // どの欄が未選択かが分かるよう、欄ごとに案内する。
+    if (!form.tournament_level) {
+      alert(t('common_ui.error_level_required'))
+      return
+    }
+    if (!form.round) {
+      alert(t('common_ui.error_round_required'))
       return
     }
 
@@ -1078,7 +1091,7 @@ export function MatchListPage() {
 
                 {/* レベル / ラウンド */}
                 <div>
-                  <label htmlFor="match-form-level" className={`block text-sm ${textSecondary} mb-1`}>{t('match.tournament_level')}</label>
+                  <label htmlFor="match-form-level" className={`block text-sm ${textSecondary} mb-1`}>{t('match.tournament_level')} *</label>
                   <select
                     id="match-form-level"
                     value={form.tournament_level}
@@ -1093,7 +1106,7 @@ export function MatchListPage() {
                   </select>
                 </div>
                 <div>
-                  <label htmlFor="match-form-round" className={`block text-sm ${textSecondary} mb-1`}>{t('match.round')}</label>
+                  <label htmlFor="match-form-round" className={`block text-sm ${textSecondary} mb-1`}>{t('match.round')} *</label>
                   <select
                     id="match-form-round"
                     value={form.round}

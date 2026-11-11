@@ -532,14 +532,26 @@ def add_player_row(body: PlayerCreate, request: Request, db: Session):
                 from backend.utils.control_plane import allow_legacy_header_auth
                 if not allow_legacy_header_auth(request):
                     raise HTTPException(status_code=403, detail="team_name 未設定")
+            elif (body.profile_status or "") == "provisional":
+                # 試合登録時の暂定選手 (相手選手) は自チームに属さない。
+                # team 空は許容し、入力がある場合のみ自チーム一致を要求する。
+                if body_team and body_team != actor_team:
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"自チーム ({actor_team}) 以外の選手は登録できません",
+                    )
             elif not body_team or body_team != actor_team:
                 raise HTTPException(
                     status_code=403,
                     detail=f"自チーム ({actor_team}) 以外の選手は登録できません",
                 )
-        # team 必須 (空文字/whitespace 拒否)
-        if not body.team or not body.team.strip():
-            raise HTTPException(status_code=422, detail="team must not be empty or whitespace only")
+        # team は通常の登録では必須 (空文字/whitespace 拒否)。
+        # ただし試合登録時に作る暫定選手 (profile_status == "provisional") は
+        # チーム名が未入力のままでも登録できる (DB 列 team_id は NULL 可、
+        # 後から補完できる)。UI でもチーム名欄は任意扱い。
+        if (body.profile_status or "") != "provisional":
+            if not body.team or not body.team.strip():
+                raise HTTPException(status_code=422, detail="team must not be empty or whitespace only")
     # HTML タグ / 制御文字 / BIDI override の注入を拒否 (stored XSS 対策・多層防御)
     _reject_html_in_field(body.name, "name", require_non_empty=True)
     _reject_html_in_field(body.name_en, "name_en")
