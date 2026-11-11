@@ -1,6 +1,6 @@
 /**
- * match-registration-ux: 「暗定登録して作成」ボタンの意味が画面から分からない問題への対応。
- * 未発見の名前を入力して暗定登録 CTA が出たとき、その直下に短い説明文を表示することを検証する。
+ * match-registration-ux: 「暫定登録して作成」ボタンの意味が画面から分からない問題への対応。
+ * 未発見の名前を入力して暫定登録 CTA が出たとき、その直下に短い説明文を表示することを検証する。
  */
 import type React from 'react'
 import { describe, it, expect, vi } from 'vitest'
@@ -29,8 +29,8 @@ describe('PlayerCombobox tentative-registration hint', () => {
     renderCombobox()
     // ドロップダウンを開く (query が 1 文字以上で input focus)
     fireEvent.focus(screen.getByPlaceholderText('名前を入力して検索...'))
-    // 暗定登録 CTA が出ている
-    expect(screen.getByText(/暗定登録して作成/)).toBeInTheDocument()
+    // 暫定登録 CTA が出ている
+    expect(screen.getByText(/暫定登録して作成/)).toBeInTheDocument()
     // その直下の説明文が表示されている
     expect(
       screen.getByText(/選手情報を補えます/),
