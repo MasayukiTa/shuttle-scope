@@ -12,7 +12,7 @@ from backend.analysis.player_context import (
     perspective as _perspective_ctx,
     player_result_filter as _player_result_filter,
 )
-from backend.analysis.analysis_population import split_analysis_population
+from backend.analysis.analysis_population import split_analysis_population, active_rally_predicates
 from backend.analysis.shot_taxonomy import SHOT_TYPE_JA as _SHOT_TYPE_JA_TAXONOMY, CANONICAL_SHOTS, canonicalize as _canonicalize_shot
 
 SHOT_TYPE_JA = _SHOT_TYPE_JA_TAXONOMY
@@ -103,9 +103,10 @@ def _fetch_matches_sets_rallies(
     set_ids = [s.id for s in sets]
     set_to_match = {s.id: s.match_id for s in sets}
     if set_ids:
-        q = db.query(Rally).filter(Rally.set_id.in_(set_ids))
-        if not include_skipped:
-            q = q.filter(Rally.is_skipped == False)  # noqa: E712
+        q = db.query(Rally).filter(
+            Rally.set_id.in_(set_ids),
+            *active_rally_predicates(include_skipped=include_skipped),
+        )
         rallies = q.all()
     else:
         rallies = []

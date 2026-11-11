@@ -1321,6 +1321,11 @@
       "reissue_video_token_hint": "Replaces the video URL (app://video/...) with a new UUID",
       "reissue_video_token_hint_short": "Any leaked URL is invalidated immediately",
       "public_pool_section": "Visibility (admin only)",
+      "owner_team_label": "Owning team (admin only)",
+      "owner_team_hint": "Choose which team this match belongs to. Leave unset to use your own team.",
+      "owner_team_default": "My team",
+      "owner_team_required": "Select an owning team (you are not assigned to a team, so an admin must specify the owning team).",
+      "owner_team_none": "No teams exist yet. Create a team first.",
       "public_pool_warning": "Turning this on makes this match and its data visible to every team. Use it only for matches that are fine to publish.",
       "public_pool_enable_confirm": "This match will be visible to all teams. Have you confirmed that the video and player information may be shared?",
       "reissue_video_token_confirm": "Reissue the video link? If you shared the old URL, it will immediately stop playing. Continue?",
@@ -1756,7 +1761,7 @@
       "cv_detail_label": "CV detail",
       "cv_apply_result": "{{n}} applied",
       "cv_apply_result_land": " (landing {{n}})",
-      "cv_apply_result_hit": " (hit zone {{n}})",
+      "cv_apply_result_hit": " (shot location {{n}})",
       "cv_apply_result_hitter": " (hitter {{n}})",
       "cv_apply_result_preserved": " · {{n}} differing from your entries left unchanged",
       "cv_apply_error": "Apply failed",
@@ -2821,6 +2826,8 @@
     "share_modal_lan_url_label": "Same network:",
     "share_modal_same_pc_label": "Same PC:",
     "share_modal_password_unset": "Not set",
+    "share_modal_password_set": "Set (cannot be shown again — regenerate if needed)",
+    "share_modal_password_reveal_warning": "This password is shown only now. It cannot be shown again after you close this dialog — be sure to copy it.",
     "share_modal_password_note": "Joining devices need both the session code and password",
     "share_modal_camera_qr_hint": "Scan the QR on iPhone, then enter the session password on the join screen",
     "share_modal_viewer_qr_hint": "Scan the QR on a PC or tablet, then enter the session password on the join screen to receive video",
@@ -2839,6 +2846,11 @@
     "lost_suffix": "(lost)"
   },
   "camera_sender": {
+    "slow_connect_hint": "Connecting is taking a while. Please check your signal.",
+    "error_next_steps_title": "Try these next",
+    "error_step_password": "For the password, check the shared password shown on the PC screen.",
+    "error_step_wifi": "Check your Wi-Fi signal.",
+    "error_step_retry": "Try again.",
     "removed_by_operator": "The operator ended this connection. To join again, enter the session code once more.",
     "state_a_title": "Waiting for start command from the PC",
     "state_a_hint": "This device is registered as a camera candidate",
@@ -2849,10 +2861,14 @@
     "state_c_stop": "Stop broadcast",
     "recording_problem_title": "There is a problem with the recording",
     "recording_problem_hint": "The recording may not have been saved to the server. Broadcasting can continue, but please check the recording.",
+    "recording_saved": "Recording saved.",
+    "recording_save_failed": "Failed to save the recording. Please try again or contact the PC operator.",
+    "recording_auth_failed": "Could not verify permission to save the recording (authentication error). Please rejoin the session or contact the PC operator.",
     "state_c_hint": "Streaming video to the PC",
     "join_title": "ShuttleScope camera sender",
     "join_code_label": "Session code",
     "join_password_label": "Password",
+    "join_password_hint": "Enter the password shown on the PC's session-share screen",
     "join_device_label": "Device name",
     "join_button": "Join",
     "join_connecting": "Connecting...",
@@ -2965,6 +2981,7 @@
     "confirm_ok": "Switch",
     "confirm_cancel": "Cancel",
     "stale_rerequest": "Re-request",
+    "request_video_start": "Start video",
     "stale_warning": "The camera is not responding",
     "local_switch_confirm": "Switch to the local camera. Stop the remote camera?",
     "local_switch_ok": "Stop and switch",
@@ -3366,8 +3383,8 @@
     "tab_hit": "Shot location",
     "tab_land": "Landing point",
     "tab_composite": "Composite",
-    "composite_note": "Landing points are point-symmetrically mapped around the net and overlaid on the home-court coordinates. Click a tile for hit- and landing-point details.",
-    "missingness_hit": "{{missing}} shots have no recorded hit point (of {{land}} landing points; {{pct}} missing). The hit-point heatmap excludes them.",
+    "composite_note": "Landing points are point-symmetrically mapped around the net and overlaid on the home-court coordinates. Click a tile for shot-location and landing-point details.",
+    "missingness_hit": "{{missing}} shots have no recorded shot location (of {{land}} landing points; {{pct}} missing). The shot-location heatmap excludes them.",
     "period_all": "All time",
     "period_last_n": "Last {{n}} matches",
     "match_select_empty": "Select a match (individual)",
@@ -3722,7 +3739,7 @@
     },
     "EffectiveDistributionMap": {
       "k1": "Opponent court (landing point)",
-      "own_court": "Own court (hit point) ",
+      "own_court": "Own court (shot location) ",
       "k2": "Click a zone for details",
       "k3": "Points won",
       "k4": "Maximize for details"
@@ -4061,7 +4078,7 @@
       "reference_hint": "Fewer than {{n}} occurrences, so the interval is wide and this win rate is only indicative. The section-level confidence does not apply to individual patterns."
     },
     "ReceivedVulnerabilityMap": {
-      "k1": "Opponent court (hit point) → Home court (landing)",
+      "k1": "Opponent court (shot location) → Home court (landing)",
       "k2": "Click a zone for details",
       "k3": "Points lost",
       "k4": "Shots received",
@@ -4444,7 +4461,7 @@
       "k1": "Opponent court (landing point)",
       "k2": "Composite view (home-court perspective)",
       "k3": "Net",
-      "k4": "Home court (hit point)"
+      "k4": "Home court (shot location)"
     },
     "EvidenceBadge": {
       "k1": "Not recommended",
@@ -4480,6 +4497,8 @@
       "approved": "Approved",
       "rejected": "Rejected",
       "pending": "Pending",
+      "connected": "Connected",
+      "disconnected": "Disconnected",
       "sending": "Sending",
       "receiving": "Receiving",
       "remote_receiving": "Remote receiving (participant #{{id}})",
@@ -4606,10 +4625,10 @@
       "k13": "Skip this sample",
       "k14": "Cancel identification",
       "k15": "Toggle persons and tracks together",
-      "k16": "Apply high-confidence (auto_filled) landing zone, hit zone, and hitter",
+      "k16": "Apply high-confidence (auto_filled) landing zone, shot-location zone, and hitter",
       "k17": "Apply high-confidence landing zone only",
       "k18": "Apply high-confidence hitter only",
-      "k19": "Apply landing, hit-zone, and hitter high-confidence + suggested candidates",
+      "k19": "Apply landing, shot-location zone, and hitter high-confidence + suggested candidates",
       "k20": "Show CV assist panel",
       "k21": "Show CV rallies needing review",
       "k22": "Remote connection status (click to open device manager)",
@@ -5340,9 +5359,9 @@
       "outcome_opponent_error": "Opponent error",
       "serve_only": "Rally ended on the serve (1 stroke)",
       "saving": "Saving ...",
-      "prompt_serve_hit": "Select the serve hit point",
+      "prompt_serve_hit": "Select the serve shot location",
       "prompt_serve_land": "Select the serve landing point",
-      "prompt_final_hit": "Select the hit point of the deciding shot",
+      "prompt_final_hit": "Select the shot location of the deciding shot",
       "prompt_final_land": "Select the landing point of the deciding shot",
       "primary_next": "Next",
       "primary_submit": "Submit",
@@ -6077,7 +6096,7 @@
       },
       "pass2_intro": {
         "title": "Serve and finishing shot",
-        "body": "This step adds the serve hit/land zones and the finishing shot's hit/land zones for each rally — four taps per rally."
+        "body": "This step adds the serve shot-location/landing zones and the finishing shot's shot-location/landing zones for each rally — four taps per rally."
       },
       "zonePicker": {
         "title": "Pick a court zone",
@@ -6093,7 +6112,7 @@
       },
       "addStroke": {
         "title": "Add a stroke",
-        "body": "Inserts a new stroke into the rally: pick a shot type, then tap the hit zone and the landing zone."
+        "body": "Inserts a new stroke into the rally: pick a shot type, then tap the shot location and the landing zone."
       },
       "offline": {
         "title": "Safe offline",

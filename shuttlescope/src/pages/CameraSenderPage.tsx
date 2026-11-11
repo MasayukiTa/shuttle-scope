@@ -161,6 +161,8 @@ export function CameraSenderPage() {
   const [battery, setBattery] = useState<{ level: number; charging: boolean } | null>(null)
   const [rttMs, setRttMs] = useState<number | null>(null)
   const [startingCamera, setStartingCamera] = useState(false)
+  // 接続に時間がかかっているときの案内 (5 秒超)。paramCode 自動参加で connecting が長引く症状 (T011) 向け。
+  const [slowConnect, setSlowConnect] = useState(false)
 
   const wsRef = useRef<WebSocket | null>(null)
   const pcRef = useRef<RTCPeerConnection | null>(null)
@@ -184,6 +186,19 @@ export function CameraSenderPage() {
   const disposedRef = useRef(false)
 
   useEffect(() => { senderStateRef.current = senderState }, [senderState])
+
+  // ─── 接続遅延の案内 (T011) ───────────────────────────────────────────────
+  // connecting のまま 5 秒を超えたら『時間がかかっています』を出す。接続成功・
+  // 失敗・他状態への遷移でタイマーを畳み、案内も消す (通信エラーの案内は error 画面側)。
+  useEffect(() => {
+    if (senderState !== 'connecting') {
+      setSlowConnect(false)
+      return
+    }
+    setSlowConnect(false)
+    const timer = setTimeout(() => setSlowConnect(true), 5_000)
+    return () => clearTimeout(timer)
+  }, [senderState])
 
   // server 側で参加者が削除されたとき (heartbeat が 404/410/401) の処理。
   // 最新の state / ref を使うため ref 経由で呼ぶ (フックへ渡す関数の同一性を保つ)。
@@ -498,13 +513,25 @@ export function CameraSenderPage() {
   // URL からセッションコードが渡された場合は直接参加試行
   useEffect(() => {
     if (paramCode && senderState === 'connecting') {
-      if (pwdParam) {
+      // 再読み込み時の再開: 同一タブ（sessionStorage）に保存済みの参加者トークンが
+      // あれば、パスワードを聞かずに再開する。joinSession が device_uid と併せて
+      // participant_token を再提示し、サーバが受理すれば承認状態を引き継ぐ。
+      // 失効・拒否・セッション終了は joinSession / connectWs 側の分岐で
+      // 参加し直し（rejoin_required）へ案内される。
+      const savedRejoinToken = getParticipantRejoinToken(paramCode, getDeviceUid())
+      if (savedRejoinToken) {
+        if (pwdParam) {
+          // URL にパスワードが残っていても履歴・共有に残さない。
+          navigate({ pathname, search: '' }, { replace: true })
+        }
+        joinSession(paramCode, '', localStorage.getItem(DEVICE_NAME_KEY) || getDeviceTypeLabel())
+      } else if (pwdParam) {
         // ?pwd= パラメータがあれば自動入力してパスワードフォームをスキップ（保存済み端末名を使用）
         // 参加に使ったら URL からパスワードを消す（履歴・アドレスバー・共有に残さない）
         navigate({ pathname, search: '' }, { replace: true })
         joinSession(paramCode, pwdParam, localStorage.getItem(DEVICE_NAME_KEY) || getDeviceTypeLabel())
       } else {
-        // 旧 QR コード（パスワードなし URL）→ フォームに誘導
+        // 保存済みトークンも ?pwd= も無い → パスワードフォームに誘導
         setErrorMsg(t('lan_session.join_password_required'))
         setSenderState('join')
       }
@@ -780,9 +807,21 @@ export function CameraSenderPage() {
         <p className="text-[var(--ss-t2)] text-sm">{t('camera_sender.join_title')}</p>
       </div>
       <RecordingProblemNotice state={serverRecorder.state} errorMsg={serverRecorder.errorMsg} />
+      {serverRecorder.state === 'completed' && serverRecorder.successMsg && (
+        <div
+          role="status"
+          className="w-full max-w-sm mb-3 flex items-start gap-1.5 text-[var(--ss-good)] text-xs bg-[rgba(46,160,67,0.08)] rounded-[5px] p-2 border border-[var(--ss-border)]"
+        >
+          <MIcon name="check_circle" size={14} className="shrink-0 mt-0.5" />
+          <p className="break-words">{serverRecorder.successMsg}</p>
+        </div>
+      )}
 
       {/* ─── State: join ────────────────── */}
-      {(senderState === 'join' || (senderState === 'connecting' && !paramCode)) && (
+      {/* connecting 中は paramCode の有無に関わらずフォームを先出しする。
+         pwd 付き URL (#/camera/<コード>?pwd=) で自動参加中もスピナーだけにせず、
+         コード・パスワード・端末名の入力欄を即時に見せる (T011)。 */}
+      {(senderState === 'join' || senderState === 'connecting') && (
         <div className="w-full max-w-sm bg-[var(--ss-surface-1)] rounded-[6px] p-5 border border-[var(--ss-border)] shadow-[0_1px_2px_rgba(16,24,40,.06)]">
           <div className="space-y-3">
             <div>
@@ -799,7 +838,9 @@ export function CameraSenderPage() {
             </div>
             <div>
               <label htmlFor="cs-join-password" className="block text-xs text-[var(--ss-t2)] mb-1">{t('camera_sender.join_password_label')}</label>
+              <p id="cs-join-password-hint" className="text-[11px] text-[var(--ss-t3)] mb-1">{t('camera_sender.join_password_hint')}</p>
               <input
+                aria-describedby="cs-join-password-hint"
                 id="cs-join-password"
                 type="password"
                 value={form.password}
@@ -824,27 +865,24 @@ export function CameraSenderPage() {
                 {errorMsg}
               </div>
             )}
+            {senderState === 'connecting' && slowConnect && (
+              <p className="text-[var(--ss-warn)] text-xs leading-relaxed">
+                {t('camera_sender.slow_connect_hint')}
+              </p>
+            )}
             <button
               onClick={() => joinSession(form.sessionCode, form.password, form.deviceName)}
               disabled={!form.sessionCode || !form.password || senderState === 'connecting'}
               className="w-full py-2.5 rounded-[5px] bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium text-white inline-flex items-center justify-center gap-2"
             >
               {senderState === 'connecting' && <MIcon name="progress_activity" size={14} className="animate-spin" />}
-              {senderState === 'connecting' ? '接続中…' : t('camera_sender.join_button')}
+              {senderState === 'connecting'
+                ? reconnectCount > 0
+                  ? `${t('camera_sender.reconnecting')} (${reconnectCount}/${MAX_RECONNECT}${t('camera_sender.reconnect_attempt')})`
+                  : t('camera_sender.join_connecting')
+                : t('camera_sender.join_button')}
             </button>
           </div>
-        </div>
-      )}
-
-      {/* ─── State: connecting ──────────── */}
-      {senderState === 'connecting' && paramCode && (
-        <div className="text-center">
-          <MIcon name="progress_activity" size={40} className="animate-spin text-[var(--ss-brand)] mx-auto mb-3" />
-          <p className="text-[var(--ss-t2)] text-sm">
-            {reconnectCount > 0
-              ? `${t('camera_sender.reconnecting')} (${reconnectCount}/${MAX_RECONNECT}${t('camera_sender.reconnect_attempt')})`
-              : t('camera_sender.join_connecting')}
-          </p>
         </div>
       )}
 
@@ -1010,6 +1048,14 @@ export function CameraSenderPage() {
                 {t('auto.CameraSenderPage.k_wifi_check')}
               </p>
             )}
+            <div className="text-left text-xs text-[var(--ss-t3)] mb-4 mt-1 space-y-1">
+              <p className="font-semibold text-[var(--ss-t2)]">{t('camera_sender.error_next_steps_title')}</p>
+              <ul className="list-disc list-inside space-y-0.5">
+                <li>{t('camera_sender.error_step_password')}</li>
+                <li>{t('camera_sender.error_step_wifi')}</li>
+                <li>{t('camera_sender.error_step_retry')}</li>
+              </ul>
+            </div>
             <div className={`flex gap-2 justify-center${showWifiHint ? '' : ' mt-4'}`}>
               <button
                 onClick={() => {

@@ -128,15 +128,33 @@ export function TutorialOverlay({ tutorial, onClose, startStep = 0 }: Props) {
       top = rect.top + rect.height / 2 - TIP_H_EST / 2
       arrow = 'right'
     } else {
-      // どの辺にも収まらない大きな対象: 下に重ねず、画面下端に寄せて置く。
-      // 矢印は対象中心の向きに合わせる。
-      top = VH - TIP_H_EST - 8
+      // どの辺にも完全には収まらない対象 (例: 横画面で画面高が低い):
+      // 対象の上下で空きが広い方に出し、対象には決して重ねない。
+      // 入りきらない分は吹き出し本体の max-h+スクロールで吸収する。
       left = rect.left + rect.width / 2 - TIP_W / 2
-      arrow = 'up'
+      if (spaceBelow >= spaceAbove) {
+        // 下側の空きに出す (上端を対象の下端に揃え、対象を覆わない)
+        top = rectBottom + GAP
+        arrow = 'up'
+      } else {
+        // 上側の空きに出す (下端を対象の上端に揃え、対象を覆わない)
+        top = rectTop - GAP - TIP_H_EST
+        arrow = 'down'
+      }
     }
-    // 画面内にクランプ (対象の隣という原則は保ちつつ、端で見切れないようにする)
-    top = Math.max(8, Math.min(VH - TIP_H_EST - 8, top))
+    // 横方向は常に画面内にクランプする。
     left = Math.max(8, Math.min(VW - TIP_W - 8, left))
+    // 縦方向: 対象の「隣」という原則を崩さずクランプする。
+    // arrow が 'up' なら対象は吹き出しの上 = top は rectBottom 以上を保つ。
+    // arrow が 'down' なら対象は下 = top+TIP_H_EST は rectTop 以下を保つ。
+    if (arrow === 'up') {
+      top = Math.max(rectBottom + GAP, Math.min(VH - 8 - TIP_H_EST, top))
+      if (top < rectBottom) top = rectBottom + GAP
+    } else if (arrow === 'down') {
+      top = Math.min(rectTop - GAP - TIP_H_EST, Math.max(8, top))
+    } else {
+      top = Math.max(8, Math.min(VH - TIP_H_EST - 8, top))
+    }
     setGeom({ rect, tip: { top, left }, arrow })
   }, [step])
 

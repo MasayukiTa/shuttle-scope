@@ -114,13 +114,30 @@ function ApprovalBadge({ status }: { status: string }) {
   )
 }
 
-function HeartbeatBadge({ lastHeartbeat }: { lastHeartbeat: string | null }) {
-  if (!lastHeartbeat) return null
+// Presence is derived on the client as a single source of truth per row:
+// a device counts as connected only when the PC's own WebSocket is up AND its
+// last heartbeat is recent. We intentionally ignore the server is_connected
+// flag, which could be stale and produce contradictory 接続/応答なし at once.
+const DEVICE_HEARTBEAT_TTL_SEC = 30
+
+export function computeDeviceConnected(
+  p: Pick<SessionParticipant, 'last_heartbeat'>,
+  wsConnected: boolean,
+): boolean {
+  if (!wsConnected) return false
+  if (!p.last_heartbeat) return false
+  const diffSec = (Date.now() - new Date(p.last_heartbeat).getTime()) / 1000
+  return diffSec <= DEVICE_HEARTBEAT_TTL_SEC
+}
+
+// Only renders the "Ns ago" freshness hint, and only while the row is connected.
+// The disconnected state is shown by the single row status label, not here.
+function HeartbeatBadge({ lastHeartbeat, connected }: { lastHeartbeat: string | null; connected: boolean }) {
+  if (!connected || !lastHeartbeat) return null
   const diffSec = (Date.now() - new Date(lastHeartbeat).getTime()) / 1000
-  const stale = diffSec > 60
   return (
-    <span className={`text-[9px] inline-flex items-center gap-0.5 ${stale ? 'text-[var(--ss-bad)]' : 'text-[var(--ss-t3)]'}`}>
-      {stale ? <><MIcon name="warning" size={9} />応答なし</> : `${Math.round(diffSec)}s前`}
+    <span className="text-[9px] inline-flex items-center gap-0.5 text-[var(--ss-t3)]">
+      {`${Math.round(diffSec)}s前`}
     </span>
   )
 }
@@ -167,10 +184,12 @@ interface DeviceRowProps {
   onAllowVideo: (p: SessionParticipant) => void
   onBlockVideo: (p: SessionParticipant) => void
   onDeleteDevice: (p: SessionParticipant) => void
+  wsConnected: boolean
   t: (key: string, opts?: Record<string, unknown>) => string
 }
 
-function DeviceRow({ p, isLight: _isLight, titleColor, subColor, rowBg, onApprove, onReject, onActivateCamera, onDeactivate, onRequestCamera, onMakeCandidate, onAllowVideo, onBlockVideo, onDeleteDevice, t }: DeviceRowProps) {
+function DeviceRow({ p, isLight: _isLight, titleColor, subColor, rowBg, onApprove, onReject, onActivateCamera, onDeactivate, onRequestCamera, onMakeCandidate, onAllowVideo, onBlockVideo, onDeleteDevice, wsConnected, t }: DeviceRowProps) {
+  const connected = computeDeviceConnected(p, wsConnected)
 
   const isStaleCamera = p.connection_role === 'active_camera' && p.last_heartbeat
     ? (Date.now() - new Date(p.last_heartbeat).getTime()) / 1000 > 60
@@ -209,22 +228,22 @@ function DeviceRow({ p, isLight: _isLight, titleColor, subColor, rowBg, onApprov
       </div>
       <div className="ml-6 mt-0.5">
         <div className={`flex items-center gap-2 text-[10px] ${subColor}`}>
-          <span className={`flex items-center gap-0.5 ${p.is_connected ? 'text-[var(--ss-success)]' : 'text-[var(--ss-t3)]'}`}>
-            <span className={`w-1 h-1 rounded-full ${p.is_connected ? 'bg-[var(--ss-success)]' : 'bg-[var(--ss-t3)]'}`} />
-            {p.is_connected ? '接続' : '切断'}
+          <span className={`flex items-center gap-0.5 ${connected ? 'text-[var(--ss-success)]' : 'text-[var(--ss-t3)]'}`}>
+            <span className={`w-1 h-1 rounded-full ${connected ? 'bg-[var(--ss-success)]' : 'bg-[var(--ss-t3)]'}`} />
+            {connected ? t('auto.DeviceManagerPanel.connected') : t('auto.DeviceManagerPanel.disconnected')}
           </span>
-          {p.connection_state === 'sending_video' && (
+          {connected && p.connection_state === 'sending_video' && (
             <span className="text-[var(--ss-bad)] flex items-center gap-0.5">
               <MIcon name="videocam" size={10} />{t('auto.DeviceManagerPanel.sending')}
             </span>
           )}
-          {p.connection_state === 'receiving_video' && (
+          {connected && p.connection_state === 'receiving_video' && (
             <span className="text-[var(--ss-brand)] flex items-center gap-0.5">
               <MIcon name="videocam" size={10} />{t('auto.DeviceManagerPanel.receiving')}
             </span>
           )}
           {p.device_class && <span>{p.device_class}</span>}
-          <HeartbeatBadge lastHeartbeat={p.last_heartbeat} />
+          <HeartbeatBadge lastHeartbeat={p.last_heartbeat} connected={connected} />
           {p.viewer_permission !== 'default' && (
             <span className={p.viewer_permission === 'allowed' ? 'text-[var(--ss-success)]' : 'text-[var(--ss-bad)]'}>
               {p.viewer_permission === 'allowed' ? '映像受信許可' : '映像受信停止'}
@@ -252,7 +271,7 @@ function DeviceRow({ p, isLight: _isLight, titleColor, subColor, rowBg, onApprov
             <>
               <button onClick={() => onRequestCamera(p)}
                 className="text-[10px] px-2 py-1 rounded-ss-sm bg-[var(--ss-bad)] hover:opacity-90 transition-colors duration-base ease-out text-white flex items-center gap-0.5">
-                <MIcon name="videocam" size={9} />{isStaleCamera ? t('handoff.stale_rerequest') : 'カメラ再リクエスト'}
+                <MIcon name="videocam" size={9} />{t('handoff.request_video_start')}
               </button>
               <button onClick={() => onDeactivate(p)}
                 className="text-[10px] px-2 py-1 rounded-ss-sm bg-[var(--ss-t2)] hover:opacity-90 transition-colors duration-base ease-out text-white">
@@ -879,6 +898,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
               subColor={subColor}
               rowBg={rowBg}
               divider={divider}
+              wsConnected={wsConnected}
               onApprove={handleApprove}
               onReject={handleReject}
               onActivateCamera={handleActivateCamera}

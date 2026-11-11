@@ -19,6 +19,7 @@ import { MIcon } from '@/components/common/MIcon'
 import { isPlayableVideoUrl } from '@/utils/videoSrc'
 import { isPlayerSearchBlocked } from '@/utils/playerSearchGuard'
 import { canCreatePlayer, canWriteMatch } from '@/utils/roleAccess'
+import { listTeams, TeamDTO } from '@/api/client'
 import { localDateDaysAgo, localDateMonthsAgo, todayLocal } from '@/utils/localDate'
 
 // 試合登録フォーム
@@ -81,6 +82,10 @@ export function MatchListPage() {
   const [showQuickStart, setShowQuickStart] = useState(false)
   const [editingMatchId, setEditingMatchId] = useState<number | null>(null)
   const [form, setForm] = useState<MatchFormData>(defaultForm())
+  // 保存前の入力検証メッセージ（従来は alert のみで、閉じると何も残らなかった）
+  const [formError, setFormError] = useState<string | null>(null)
+  // Phase: admin が所有チームを明示指定するための選択（空 = 自チーム）。
+  const [ownerTeamId, setOwnerTeamId] = useState<number | ''>('')
   // Phase 1: 編集モードで既存動画のファイル名のみ表示する（パスは露出しない）
   const [editingVideoFilename, setEditingVideoFilename] = useState<string>('')
   const [analystSide, setAnalystSide] = useState<'top' | 'bottom'>('bottom')
@@ -136,6 +141,8 @@ export function MatchListPage() {
     setPlayerBTeam('')
     setPartnerAQuery('')
     setPartnerBQuery('')
+    setFormError(null)
+    setOwnerTeamId('')
   }
 
   // 試合一覧取得
@@ -155,6 +162,21 @@ export function MatchListPage() {
     queryKey: ['players'],
     queryFn: () => apiGet<{ success: boolean; data: Player[] }>('/players'),
   })
+
+  // チーム一覧（admin のみ所有チームを選べるようにする）。admin 以外では取得しない。
+  const { data: teamsData } = useQuery({
+    queryKey: ['teams'],
+    queryFn: () => listTeams(),
+    enabled: role === 'admin',
+  })
+  const teams: TeamDTO[] = teamsData?.data ?? []
+
+  // チームが 1 つだけなら既定で選ぶ（チーム未所属 admin が毎回選ばずに済むように）。
+  useEffect(() => {
+    if (role === 'admin' && !teamName && showForm && ownerTeamId === '' && teams.length === 1) {
+      setOwnerTeamId(teams[0].id)
+    }
+  }, [role, teamName, showForm, ownerTeamId, teams])
 
   // 動画 DL ジョブ一覧 (5 秒間隔 polling) — 試合一覧で「DL 中」バッジを表示するため
   type DownloadInfo = {
@@ -263,7 +285,7 @@ export function MatchListPage() {
     },
     // 入力内容は残したまま、保存できなかったことを知らせる (編集 updateMatch と同じ契約)
     onError: (err: unknown) => {
-      alert(userFacingMatchError(err, t('common_ui.match_save_failed')))
+      setFormError(userFacingMatchError(err, t('common_ui.match_save_failed')))
     },
   })
 
@@ -280,7 +302,7 @@ export function MatchListPage() {
       resetPlayerFields()
     },
     onError: (err: unknown) => {
-      alert(userFacingMatchError(err, t('common_ui.match_save_failed')))
+      setFormError(userFacingMatchError(err, t('common_ui.match_save_failed')))
     },
   })
 
@@ -352,33 +374,43 @@ export function MatchListPage() {
     setPlayerBTeam(m.player_b?.team ?? '')
     setPartnerAQuery(m.partner_a?.name ?? '')
     setPartnerBQuery(m.partner_b?.name ?? '')
+    setOwnerTeamId(m.owner_team_id ?? '')
+    setFormError(null)
     setEditingMatchId(m.id)
     setShowForm(true)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    // 前回の検証メッセージを消す（閉じて何も残らない挙動を避け、毎回出し直す）
+    setFormError(null)
 
     // 大会レベルとラウンドは必須 (既定値を持たないため、未選択のまま登録させない)。
     // どの欄が未選択かが分かるよう、欄ごとに案内する。
     if (!form.tournament_level) {
-      alert(t('common_ui.error_level_required'))
+      setFormError(t('common_ui.error_level_required'))
       return
     }
     if (!form.round) {
-      alert(t('common_ui.error_round_required'))
+      setFormError(t('common_ui.error_round_required'))
       return
     }
 
     // 動画 URL は http(s) のみ。mailto: 等を保存すると「動画あり」と表示されるのに再生できない。
     if (form.video_url.trim() && !isPlayableVideoUrl(form.video_url)) {
-      alert(t('match.list.video_url_invalid'))
+      setFormError(t('match.list.video_url_invalid'))
       return
     }
 
     // 選手検索が失敗している欄がある間は、暫定選手の新規作成へ進ませない
     if (playerSearchFailed) {
-      alert(t('match.list.player_search_failed_blocked'))
+      setFormError(t('match.list.player_search_failed_blocked'))
+      return
+    }
+
+    // admin がチーム未所属で、かつ所有チーム未選択だとサーバが 422 を返すため、ここで止めて案内する。
+    if (role === 'admin' && !teamName && ownerTeamId === '') {
+      setFormError(t('match.list.owner_team_required'))
       return
     }
 
@@ -390,7 +422,7 @@ export function MatchListPage() {
     let newPlayerA: ReturnType<typeof provisionalPlayerSpec> | undefined
     if (!finalPlayerAId) {
       const name = playerAQuery.trim()
-      if (!name) { alert('対象選手（A）を入力または選択してください'); return }
+      if (!name) { setFormError('対象選手（A）を入力または選択してください'); return }
       newPlayerA = provisionalPlayerSpec(name, { isTarget: true, team: aTeam || undefined })
     }
 
@@ -399,7 +431,7 @@ export function MatchListPage() {
     let newPlayerB: ReturnType<typeof provisionalPlayerSpec> | undefined
     if (!finalPlayerBId) {
       const name = playerBQuery.trim()
-      if (!name) { alert('対戦相手（B）を入力または選択してください'); return }
+      if (!name) { setFormError('対戦相手（B）を入力または選択してください'); return }
       newPlayerB = provisionalPlayerSpec(name, { team: bTeam || undefined })
     }
 
@@ -438,6 +470,8 @@ export function MatchListPage() {
     if (form.notes) body.notes = form.notes
     // Phase B-13: 公開プール（admin 限定）。サーバ側でも admin 以外の指定は無視される
     if (form.is_public_pool) body.is_public_pool = true
+    // 所有チーム（admin 限定）。選択時のみ送る。サーバ側でも admin 以外の指定は無視される
+    if (role === 'admin' && ownerTeamId !== '') body.owner_team_id = Number(ownerTeamId)
 
     if (editingMatchId !== null) {
       updateMatch.mutate({ id: editingMatchId, body })
@@ -1534,7 +1568,38 @@ export function MatchListPage() {
                     </label>
                   </fieldset>
                 )}
+
+                {/* 所有チーム（admin 限定）。未選択なら自チーム。チーム未所属 admin はここで指定が必要。 */}
+                {role === 'admin' && (
+                  <fieldset className="col-span-1 sm:col-span-2 rounded-[var(--r-md)] border border-[var(--ss-border)] p-3">
+                    <legend className="px-1 text-sm font-medium">{t('match.list.owner_team_label')}</legend>
+                    <p className={`text-xs ${textSecondary} mb-2`}>{t('match.list.owner_team_hint')}</p>
+                    <select
+                      aria-label={t('match.list.owner_team_label')}
+                      value={ownerTeamId === '' ? '' : String(ownerTeamId)}
+                      onChange={(e) => setOwnerTeamId(e.target.value === '' ? '' : Number(e.target.value))}
+                      className={`w-full ${inputClass}`}
+                    >
+                      <option value="">{teamName ? t('match.list.owner_team_default') : t('common.select_placeholder')}</option>
+                      {teams.map((tm) => (
+                        <option key={tm.id} value={String(tm.id)}>
+                          {tm.name}{tm.display_id ? ` (${tm.display_id})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {teams.length === 0 && (
+                      <p role="note" className={`text-xs mt-2 ${textSecondary}`}>
+                        {t('match.list.owner_team_none')}
+                      </p>
+                    )}
+                  </fieldset>
+                )}
               </div>
+              {formError && (
+                <p role="alert" className="text-sm text-[var(--ss-danger,#dc2626)]">
+                  {formError}
+                </p>
+              )}
               <div className="flex gap-3 pt-2">
                 <button
                   type="submit"
