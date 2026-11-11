@@ -7,21 +7,25 @@
   - 再送 (同じ set_id, rally_num) で already_saved=True の 1 行が出る
   - その 1 行に個人情報 / トークン / リクエストボディの値が含まれない
 を確かめる。失敗経路は既存の logger.exception が担うので本テストの対象外。
+
+logger の捕捉について: caplog はロガーのレベル / propagate / ハンドラ構成に
+左右され、手元では通るが CI のフルスイート xdist 実行では同一ワーカーの
+別テストが logger 構成を変えた後に records が空になり落ちる。ここで確かめたい
+のは「logger.info へ所定の 1 行を渡しているか」なので、test_error_detail_redaction.py と
+同じく logger.info の呼び出しそのものを monkeypatch で捕捉して環境非依存にする。
 """
 from __future__ import annotations
 
-import logging
 from datetime import date
 
 import pytest
 from fastapi.testclient import TestClient
 
 from backend.db.database import get_db
-from backend.db.models import GameSet, Match, Player, Rally, Stroke, User
+from backend.db.models import GameSet, Match, Player, User
 from backend.main import app
+from backend.routers import strokes as strokes_mod
 from backend.utils.jwt_utils import create_access_token
-
-LOGGER_NAME = "backend.routers.strokes"
 
 
 @pytest.fixture()
@@ -82,6 +86,26 @@ def client(db_session, game_set, secret_username):
     app.dependency_overrides.clear()
 
 
+def _spy_info(monkeypatch) -> list[str]:
+    """backend.routers.strokes.logger.info の呼び出し内容を捕捉する。
+
+    caplog の propagate / ハンドラ依存を避け、xdist フルスイートでも
+    環境非依存に「所定の 1 行を logger.info へ渡しているか」を検証する。
+    """
+    calls: list[str] = []
+    real_info = strokes_mod.logger.info
+
+    def _spy(fmt, *args, **kwargs):
+        try:
+            calls.append(str(fmt) % args if args else str(fmt))
+        except Exception:  # noqa: BLE001 - 整形失敗時も原文を残す
+            calls.append(str(fmt))
+        return real_info(fmt, *args, **kwargs)
+
+    monkeypatch.setattr(strokes_mod.logger, "info", _spy)
+    return calls
+
+
 def _body(set_id: int) -> dict:
     return {
         "rally": {
@@ -108,22 +132,18 @@ def _body(set_id: int) -> dict:
     }
 
 
-def _result_lines(caplog) -> list[logging.LogRecord]:
-    return [
-        r
-        for r in caplog.records
-        if r.name == LOGGER_NAME and "strokes/batch saved" in r.getMessage()
-    ]
+def _result_lines(calls: list[str]) -> list[str]:
+    return [m for m in calls if "strokes/batch saved" in m]
 
 
-def test_first_save_logs_one_line_already_saved_false(client, game_set, caplog):
-    with caplog.at_level(logging.INFO, logger=LOGGER_NAME):
-        resp = client.post("/api/strokes/batch", json=_body(game_set.id))
+def test_first_save_logs_one_line_already_saved_false(client, game_set, monkeypatch):
+    calls = _spy_info(monkeypatch)
+    resp = client.post("/api/strokes/batch", json=_body(game_set.id))
     assert resp.status_code in (200, 201), resp.text
 
-    lines = _result_lines(caplog)
-    assert len(lines) == 1, [r.getMessage() for r in lines]
-    msg = lines[0].getMessage()
+    lines = _result_lines(calls)
+    assert len(lines) == 1, lines
+    msg = lines[0]
     assert "status=201" in msg
     assert "already_saved=False" in msg
     assert "stroke_count=1" in msg
@@ -131,32 +151,29 @@ def test_first_save_logs_one_line_already_saved_false(client, game_set, caplog):
     assert "rally_num=1" in msg
 
 
-def test_resend_logs_already_saved_true(client, game_set, caplog):
+def test_resend_logs_already_saved_true(client, game_set, monkeypatch):
+    # 1 回目の保存は計測外 (spy を張る前に打つ)。
     client.post("/api/strokes/batch", json=_body(game_set.id))
-    with caplog.at_level(logging.INFO, logger=LOGGER_NAME):
-        # 1 回目の保存で出た already_saved=False の行を計測から除く。
-        # caplog は at_level ブロックの外で出たレコードも records に溜め続けるため、
-        # 再送分だけを見るには 2 回目の直前でクリアする。
-        caplog.clear()
-        resp = client.post("/api/strokes/batch", json=_body(game_set.id))
+    calls = _spy_info(monkeypatch)
+    resp = client.post("/api/strokes/batch", json=_body(game_set.id))
     assert resp.status_code in (200, 201), resp.text
 
-    lines = _result_lines(caplog)
-    assert len(lines) == 1, [r.getMessage() for r in lines]
-    msg = lines[0].getMessage()
+    lines = _result_lines(calls)
+    assert len(lines) == 1, lines
+    msg = lines[0]
     assert "already_saved=True" in msg
     assert "stroke_count=1" in msg
 
 
 def test_result_line_has_no_pii_token_or_body(
-    client, game_set, secret_username, caplog
+    client, game_set, secret_username, monkeypatch
 ):
-    with caplog.at_level(logging.INFO, logger=LOGGER_NAME):
-        client.post("/api/strokes/batch", json=_body(game_set.id))
+    calls = _spy_info(monkeypatch)
+    client.post("/api/strokes/batch", json=_body(game_set.id))
 
-    lines = _result_lines(caplog)
+    lines = _result_lines(calls)
     assert len(lines) == 1
-    msg = lines[0].getMessage()
+    msg = lines[0]
     # 個人識別子 (ユーザー名) を出さない
     assert secret_username not in msg
     # アクセストークンを出さない
