@@ -16,6 +16,8 @@ interface Props {
   /** 画面を開いている公開 HTTPS オリジン。あればこれを使って別ネットワーク可の URL を QR にする */
   publicOrigin?: string | null
   sessionPassword?: string
+  /** パスワードが設定済みか。平文が無くても「設定済み」を出すために使う（再読み込み後） */
+  passwordSet?: boolean
   /** session end (server /end) success callback; parent drops its share state */
   onEnded?: () => void
   onClose: () => void
@@ -28,6 +30,7 @@ export function SessionShareModal({
   viewerUrls = [],
   publicOrigin = null,
   sessionPassword: initialPassword,
+  passwordSet = false,
   onEnded,
   onClose,
 }: Props) {
@@ -45,6 +48,8 @@ export function SessionShareModal({
   const titleId = useId()
   const [showPassword, setShowPassword] = useState(false)
   const [sessionPassword, setSessionPassword] = useState(initialPassword ?? '')
+  // 平文を今まさに表示しているか（作成直後 or 再生成直後）。閉じると二度と再表示できない。
+  const [justRevealed, setJustRevealed] = useState(!!initialPassword)
   const [regenerating, setRegenerating] = useState(false)
   const [regenerateStatus, setRegenerateStatus] = useState<'ok' | 'failed' | null>(null)
   const [ending, setEnding] = useState(false)
@@ -161,6 +166,7 @@ export function SessionShareModal({
       )
       if (res.success) {
         setSessionPassword(res.data.session_password)
+        setJustRevealed(true)
         setRegenerateStatus('ok')
       } else {
         setRegenerateStatus('failed')
@@ -306,7 +312,9 @@ export function SessionShareModal({
               <span className={`flex-1 text-xs font-mono ${urlColor}`}>
                 {sessionPassword
                   ? showPassword ? sessionPassword : '••••••••'
-                  : <span className={noteColor}>{t('lan_session.share_modal_password_unset')}</span>
+                  : passwordSet
+                    ? <span className={noteColor}>{t('lan_session.share_modal_password_set')}</span>
+                    : <span className={noteColor}>{t('lan_session.share_modal_password_unset')}</span>
                 }
               </span>
               {sessionPassword && (
@@ -346,6 +354,16 @@ export function SessionShareModal({
                 ? t('lan_session.password_regenerate_failed')
                 : t('lan_session.password_regenerate_done')}
             </p>
+          )}
+          {justRevealed && sessionPassword && (
+            <div className="mt-2 rounded-ss-sm px-2 py-2 bg-[var(--ss-surface-2)] border border-[var(--ss-warn)]">
+              <p role="alert" className="text-[11px] font-semibold text-[var(--ss-warn)]">
+                {t('lan_session.share_modal_password_reveal_warning')}
+              </p>
+              <p data-testid="revealed-password" className={`mt-1 text-center text-xl font-mono font-bold tracking-widest ${urlColor}`}>
+                {sessionPassword}
+              </p>
+            </div>
           )}
           <p className={`text-[10px] mt-1 ${noteColor}`}>
             {t('lan_session.share_modal_password_note')}
