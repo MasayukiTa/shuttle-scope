@@ -61,3 +61,13 @@ def test_other_team_cannot_use_foreign_player_a(client, db_session):
     assert r.status_code in (403, 404), r.text
     assert db_session.query(M.Player).count() == before
     assert TB != TA
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_blank_opponent_team_is_allowed(client, db_session, blank):
+    # 症状2 回帰: 相手チーム名は任意。空文字空白のみでも 422 にせず 201。
+    r = _post(client, "aA", opponent_team=blank)
+    assert r.status_code == 201, r.text
+    p = db_session.get(M.Player, r.json()["data"]["match"]["player_b_id"])
+    assert p.team_id is None
+    assert p.notes is None
