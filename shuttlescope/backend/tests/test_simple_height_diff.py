@@ -13,6 +13,7 @@ from backend.utils.validators import (
     hit_height_level,
     validate_stroke,
 )
+from backend.analysis.role_view import stroke_side
 from backend.analysis.simple_height_diff import (
     height_diff,
     rally_height_diffs,
@@ -115,6 +116,56 @@ class TestSummary:
         assert out["pairs"] == 0
         assert out["mean_diff"] is None
         assert out["distribution"] == {"0": 0, "1": 0, "2": 0, "3": 0}
+
+
+class TestDoublesReturnPairing:
+    """要望8 (SD-08) の回帰: ダブルスで «相方» を相手扱いせず、相手チームの
+    相方 (partner) 同士の返球も高さ差として正しく数えることを固定する。
+    role_view.stroke_side が 4 つの個人枠を正しいチーム側へ写すことに依存する。
+    """
+
+    def test_partner_vs_opposing_partner_is_a_return(self):
+        # partner_a が打ち、相手チームの partner_b が受ける → 返球関係として数える。
+        strokes = [
+            {"stroke_num": 1, "player": "partner_a", "hit_height": "above_net"},
+            {"stroke_num": 2, "player": "partner_b", "hit_height": "below"},
+        ]
+        # 別チーム同士 |0-3|=3
+        assert rally_height_diffs(strokes) == [3]
+
+    def test_doubles_rally_counts_only_cross_team_consecutive_pairs(self):
+        # player_a → partner_a (同チームの繋ぎ, skip) → player_b (返球) →
+        # partner_b (player_b と同チームの繋ぎ, skip) の 4 球。
+        # 別チーム同士で «連続する» のは 2->3 のみ。味方への繋ぎは前後どちらも数えない。
+        strokes = [
+            {"stroke_num": 1, "player": "player_a", "hit_height": "above_net"},
+            {"stroke_num": 2, "player": "partner_a", "hit_height": "slightly_above"},
+            {"stroke_num": 3, "player": "player_b", "hit_height": "slightly_below"},
+            {"stroke_num": 4, "player": "partner_b", "hit_height": "below"},
+        ]
+        # 1->2 同チーム(skip), 2->3 別チーム |1-2|=1, 3->4 同チーム(skip)
+        assert rally_height_diffs(strokes) == [1]
+
+    def test_doubles_full_exchange_both_sides_alternate(self):
+        # 相手と相方が交互に打ち合い、連続球が毎回別チームになる並び。
+        # partner_a → player_b → partner_b は無く、A と B が 1 球ずつ交互になる形。
+        strokes = [
+            {"stroke_num": 1, "player": "partner_a", "hit_height": "above_net"},
+            {"stroke_num": 2, "player": "player_b", "hit_height": "slightly_above"},
+            {"stroke_num": 3, "player": "player_a", "hit_height": "slightly_below"},
+            {"stroke_num": 4, "player": "partner_b", "hit_height": "below"},
+        ]
+        # 1->2 |0-1|=1, 2->3 |1-2|=1, 3->4 |2-3|=1 (すべて別チーム)
+        assert rally_height_diffs(strokes) == [1, 1, 1]
+
+    def test_all_four_slots_map_to_their_team_side(self):
+        # 相方 (partner_a/partner_b) が相手扱いされない不変条件を直接固定する。
+        assert stroke_side("player_a") == "player_a"
+        assert stroke_side("partner_a") == "player_a"
+        assert stroke_side("player_b") == "player_b"
+        assert stroke_side("partner_b") == "player_b"
+        assert stroke_side(None) is None
+        assert stroke_side("unknown_slot") is None
 
 
 class TestValidatorAcceptsHeight:
