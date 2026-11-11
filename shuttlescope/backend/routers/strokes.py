@@ -440,9 +440,21 @@ def batch_save_rally(
         reserved_key = idem_key
 
     try:
-        return _batch_save_rally_body(
+        result = _batch_save_rally_body(
             body, request, db, idem_key, endpoint_id, ctx_for_idem
         )
+        # 各リクエストの結果を 1 行で通常ログに残す。日時は logging の formatter が
+        # 付与する。個人情報・トークン・ボディ・ID は出さず、結果メタだけを記録する。
+        # already_saved / replaced の無い初回保存は新規保存 (already_saved=False)。
+        # 例外経路は既存の logger.exception が担うので、ここは成功経路のみで重複しない。
+        _data = result.get("data", {}) if isinstance(result, dict) else {}
+        logger.info(
+            "strokes/batch result: http_status=%s already_saved=%s stroke_count=%s",
+            201,
+            bool(_data.get("already_saved", False)),
+            _data.get("stroke_count"),
+        )
+        return result
     except Exception:
         # commit 前に失敗した (DB 一時エラーの 503、バリデーション 422、
         # scope 404/403、予期せぬ例外)。予約を解放して再送を許す。成功経路は
