@@ -37,6 +37,11 @@ interface BatchResult {
 
 export function useOfflineSync(matchId: number | null, ownerUserId: number | null): void {
   const inflightRef = useRef(false)
+  // sync 実行中に来た再実行要求 (online / ポーリング / 起動) を取りこぼさない。
+  // 実行中なら「終わったらもう一度」を立て、完了後にもう一度だけ流す。これが無いと
+  // 起動時 sync が IndexedDB 待ちで in-flight の間に online イベントが来た場合、その
+  // 1 回が握り潰され、次の送信は 30 秒後のポーリングまで来ない (Windows CI で顕著)。
+  const rerunRef = useRef(false)
 
   useEffect(() => {
     if (matchId == null || ownerUserId == null) return
@@ -57,7 +62,11 @@ export function useOfflineSync(matchId: number | null, ownerUserId: number | nul
     }
 
     const sync = async () => {
-      if (inflightRef.current) return
+      // 既に実行中なら、取りこぼさないよう再実行を予約して戻る。完了後に一度流す。
+      if (inflightRef.current) {
+        rerunRef.current = true
+        return
+      }
       // オフラインでも未送信件数・状態は常時更新する (表示を出し続ける)。
       if (typeof navigator !== 'undefined' && navigator.onLine === false) {
         await refreshStatus(false)
@@ -177,6 +186,11 @@ export function useOfflineSync(matchId: number | null, ownerUserId: number | nul
       } finally {
         inflightRef.current = false
         await refreshStatus(sendFailed)
+      }
+      // 実行中に来ていた再実行要求を 1 回だけ消化する (online を握り潰さない)。
+      if (rerunRef.current) {
+        rerunRef.current = false
+        await sync()
       }
     }
 
