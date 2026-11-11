@@ -582,7 +582,7 @@ def batch_save_rally(
         reserved_key = idem_key
 
     try:
-        return _batch_save_rally_body(
+        result = _batch_save_rally_body(
             body, request, db, idem_key, endpoint_id, ctx_for_idem
         )
     except Exception:
@@ -593,6 +593,24 @@ def batch_save_rally(
             from backend.utils.idempotency import release
             release(reserved_key, ctx_for_idem.user_id, endpoint_id)
         raise
+
+    # Emit one INFO line per successful POST /api/strokes/batch (HTTP 201).
+    # All success paths (new save, already_saved resend, replaced mid/final
+    # save) funnel through this single point, so lines are not duplicated.
+    # Failure paths re-raise above and are covered by the existing
+    # logger.exception / _raise_batch_db_error, so no duplicate line is emitted
+    # here. No PII, tokens, or request body are logged: only the
+    # non-identifying set_id / rally_num plus the batch result.
+    data = result.get("data", {}) if isinstance(result, dict) else {}
+    logger.info(
+        "strokes/batch saved: status=%s set_id=%s rally_num=%s already_saved=%s stroke_count=%s",
+        201,
+        body.rally.set_id,
+        body.rally.rally_num,
+        bool(data.get("already_saved", False)),
+        data.get("stroke_count"),
+    )
+    return result
 
 
 def _batch_save_rally_body(
