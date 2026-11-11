@@ -16,6 +16,7 @@
 import { useTranslation } from 'react-i18next'
 import { clsx } from 'clsx'
 import { ShotType } from '@/types'
+import { MIcon } from '@/components/common/MIcon'
 import { getStyleForShot } from '@/constants/shotTypeColors'
 import {
   MAJOR_SHOTS,
@@ -242,11 +243,13 @@ export function ShotTypePanel({ selected, onSelect, disabled = false, strokeNum,
                   <span className={clsx('absolute top-0.5 right-1 text-[9px] ss-num opacity-60 font-mono', forceShowKeyHints ? 'inline' : 'hidden md:inline')}>{key.toUpperCase()}</span>
                   <span className="absolute top-0.5 left-1 text-[10px] opacity-80" aria-hidden>{style.icon}</span>
                   {isTop && (
-                    <span
-                      className="absolute bottom-0.5 right-1 text-[10px] leading-none text-[var(--ss-warn)]"
-                      aria-label={t('annotator.shot_suggestion_top')}
-                      title={t('annotator.shot_suggestion_top')}
-                    >★</span>
+                    <MIcon
+                      name="star"
+                      fill={1}
+                      size={10}
+                      className="absolute bottom-0.5 right-1 leading-none text-[var(--ss-warn)]"
+                      ariaLabel={t('annotator.shot_suggestion_top')}
+                    />
                   )}
                   <span className="block text-center leading-tight">{t(`shot_types.${type}`)}</span>
                 </button>
