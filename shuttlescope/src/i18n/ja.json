@@ -2843,6 +2843,11 @@
     "lost_suffix": "(ロスト)"
   },
   "camera_sender": {
+    "slow_connect_hint": "接続に時間がかかっています。電波の状態を確認してください。",
+    "error_next_steps_title": "次の手をお試しください",
+    "error_step_password": "パスワードは、PC の画面に表示されている共有パスワードを確認してください。",
+    "error_step_wifi": "電波（Wi-Fi）の状態を確認してください。",
+    "error_step_retry": "もう一度お試しください。",
     "removed_by_operator": "オペレーターにより接続が終了されました。もう一度参加するには、セッションコードを入力し直してください。",
     "state_a_title": "PCから開始指示を待っています",
     "state_a_hint": "この端末はカメラ候補として登録されています",

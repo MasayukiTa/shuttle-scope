@@ -161,6 +161,8 @@ export function CameraSenderPage() {
   const [battery, setBattery] = useState<{ level: number; charging: boolean } | null>(null)
   const [rttMs, setRttMs] = useState<number | null>(null)
   const [startingCamera, setStartingCamera] = useState(false)
+  // 接続に時間がかかっているときの案内 (5 秒超)。paramCode 自動参加で connecting が長引く症状 (T011) 向け。
+  const [slowConnect, setSlowConnect] = useState(false)
 
   const wsRef = useRef<WebSocket | null>(null)
   const pcRef = useRef<RTCPeerConnection | null>(null)
@@ -184,6 +186,19 @@ export function CameraSenderPage() {
   const disposedRef = useRef(false)
 
   useEffect(() => { senderStateRef.current = senderState }, [senderState])
+
+  // ─── 接続遅延の案内 (T011) ───────────────────────────────────────────────
+  // connecting のまま 5 秒を超えたら『時間がかかっています』を出す。接続成功・
+  // 失敗・他状態への遷移でタイマーを畳み、案内も消す (通信エラーの案内は error 画面側)。
+  useEffect(() => {
+    if (senderState !== 'connecting') {
+      setSlowConnect(false)
+      return
+    }
+    setSlowConnect(false)
+    const timer = setTimeout(() => setSlowConnect(true), 5_000)
+    return () => clearTimeout(timer)
+  }, [senderState])
 
   // server 側で参加者が削除されたとき (heartbeat が 404/410/401) の処理。
   // 最新の state / ref を使うため ref 経由で呼ぶ (フックへ渡す関数の同一性を保つ)。
@@ -845,6 +860,11 @@ export function CameraSenderPage() {
               ? `${t('camera_sender.reconnecting')} (${reconnectCount}/${MAX_RECONNECT}${t('camera_sender.reconnect_attempt')})`
               : t('camera_sender.join_connecting')}
           </p>
+          {slowConnect && (
+            <p className="text-[var(--ss-warn)] text-xs mt-2 max-w-xs mx-auto leading-relaxed">
+              {t('camera_sender.slow_connect_hint')}
+            </p>
+          )}
         </div>
       )}
 
@@ -1010,6 +1030,14 @@ export function CameraSenderPage() {
                 {t('auto.CameraSenderPage.k_wifi_check')}
               </p>
             )}
+            <div className="text-left text-xs text-[var(--ss-t3)] mb-4 mt-1 space-y-1">
+              <p className="font-semibold text-[var(--ss-t2)]">{t('camera_sender.error_next_steps_title')}</p>
+              <ul className="list-disc list-inside space-y-0.5">
+                <li>{t('camera_sender.error_step_password')}</li>
+                <li>{t('camera_sender.error_step_wifi')}</li>
+                <li>{t('camera_sender.error_step_retry')}</li>
+              </ul>
+            </div>
             <div className={`flex gap-2 justify-center${showWifiHint ? '' : ' mt-4'}`}>
               <button
                 onClick={() => {
