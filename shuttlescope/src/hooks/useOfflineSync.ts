@@ -15,10 +15,13 @@ import { apiPost } from '@/api/client'
 import {
   countPendingForUserStrict,
   isResendHeld,
+  listDraftsForMatch,
   listPendingForMatch,
   offlineStrokeIdempotencyKey,
+  removeDraftRally,
   removePending,
 } from '@/utils/offlineStrokeQueue'
+import { buildBatchPayloadFromDraftSnapshot } from '@/utils/annotationPayload'
 import { deriveSyncStatus } from '@/utils/syncStatus'
 import { useAnnotationStore } from '@/store/annotationStore'
 // hook の外では useTranslation の t が束縛されない。CLAUDE.md の規約どおり
@@ -34,6 +37,11 @@ interface BatchResult {
 
 export function useOfflineSync(matchId: number | null, ownerUserId: number | null): void {
   const inflightRef = useRef(false)
+  // sync 実行中に来た再実行要求 (online / ポーリング / 起動) を取りこぼさない。
+  // 実行中なら「終わったらもう一度」を立て、完了後にもう一度だけ流す。これが無いと
+  // 起動時 sync が IndexedDB 待ちで in-flight の間に online イベントが来た場合、その
+  // 1 回が握り潰され、次の送信は 30 秒後のポーリングまで来ない (Windows CI で顕著)。
+  const rerunRef = useRef(false)
 
   useEffect(() => {
     if (matchId == null || ownerUserId == null) return
@@ -54,7 +62,11 @@ export function useOfflineSync(matchId: number | null, ownerUserId: number | nul
     }
 
     const sync = async () => {
-      if (inflightRef.current) return
+      // 既に実行中なら、取りこぼさないよう再実行を予約して戻る。完了後に一度流す。
+      if (inflightRef.current) {
+        rerunRef.current = true
+        return
+      }
       // オフラインでも未送信件数・状態は常時更新する (表示を出し続ける)。
       if (typeof navigator !== 'undefined' && navigator.onLine === false) {
         await refreshStatus(false)
@@ -130,9 +142,55 @@ export function useOfflineSync(matchId: number | null, ownerUserId: number | nul
             break
           }
         }
+        // draft/ 行: snapshot から本文を組み立てて送る。payload を持たない draft 行は
+        // 確定済み (winner / endType / スコアが揃う) のときだけ buildBatchPayloadFromDraftSnapshot が
+        // 本文を返す。未確定 (入力途中) なら null が返り、送らず snapshot のまま残す
+        // (未確定ラリーを虚偽の winner で送らない)。
+        const drafts = await listDraftsForMatch(matchId, ownerUserId)
+        for (const d of drafts) {
+          if (isResendHeld(d.matchId, d.setId, d.rallyNum)) continue
+          const payload = buildBatchPayloadFromDraftSnapshot(d.snapshot)
+          if (payload == null) continue
+          try {
+            const stableKey = offlineStrokeIdempotencyKey(
+              ownerUserId,
+              d.matchId,
+              d.setId,
+              d.rallyNum,
+            )
+            const res = await apiPost<BatchResult>('/strokes/batch', payload, {
+              'X-Idempotency-Key': stableKey,
+            })
+            if (res?.success) {
+              await removeDraftRally(ownerUserId, d.matchId, d.setId, d.rallyNum)
+            }
+          } catch (e) {
+            // 再試行で直る種類 (ネットワーク / 5xx / 429 / 408) だけ中断する。
+            // 恒久的な 4xx は snapshot を捨てず残して次へ進む (注釈データを黙って消さない)。
+            const status = (e as { status?: number } | null)?.status
+            const permanent =
+              typeof status === 'number' &&
+              status >= 400 && status < 500 &&
+              status !== 408 && status !== 429
+            if (permanent) {
+              console.warn(
+                `[offline-sync] draft rally ${d.setId}/${d.rallyNum} は ${status} で` +
+                  ' 恒久的に拒否されました。後続を処理するため飛ばします。',
+              )
+              continue
+            }
+            sendFailed = true
+            break
+          }
+        }
       } finally {
         inflightRef.current = false
         await refreshStatus(sendFailed)
+      }
+      // 実行中に来ていた再実行要求を 1 回だけ消化する (online を握り潰さない)。
+      if (rerunRef.current) {
+        rerunRef.current = false
+        await sync()
       }
     }
 

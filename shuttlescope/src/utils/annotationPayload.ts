@@ -184,6 +184,59 @@ export function buildBatchPayload(args: BuildBatchPayloadArgs): BatchPayload {
     })),
   }
 }
+
+// ─── draft snapshot からの payload 組み立て ────────────────────────────────
+//
+// IndexedDB の draft/ 行は snapshot だけを持ち、payload を持たない。自動再送が
+// snapshot から /strokes/batch 本文を組み立てられるのは、その snapshot が確定済み
+// ラリーと同じ必須フィールド (winner / endType / スコア) を備えている場合に限る。
+// 未確定 (入力途中) の snapshot は winner がなく、省略値で埋めると虚偽のラリーを
+// 保存することになるため、その場合は null を返して「送れない」ことを呼び出し側に伝える。
+interface DraftSnapshotShape {
+  setId?: unknown
+  rallyNum?: unknown
+  strokes?: unknown
+  winner?: unknown
+  endType?: unknown
+  scoreAAfter?: unknown
+  scoreBAfter?: unknown
+  rallyStartTimestamp?: unknown
+  isBasicMode?: unknown
+}
+
+function isFiniteNumber(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v)
+}
+
+/**
+ * draft/ 行の snapshot から /strokes/batch 本文を組み立てる。
+ * 確定ラリーと同じ必須入力 (set_id / rally_num / winner / end_type /
+ * score_a_after / score_b_after / strokes) が揃っているときだけ BatchPayload を
+ * 返す。揃わない (入力途中の未確定 snapshot) ときは null を返し、呼び出し側は
+ * その行を送らずキューに残す。
+ */
+export function buildBatchPayloadFromDraftSnapshot(snapshot: unknown): BatchPayload | null {
+  if (snapshot == null || typeof snapshot !== 'object') return null
+  const s = snapshot as DraftSnapshotShape
+  const winner = s.winner
+  if (winner !== 'player_a' && winner !== 'player_b') return null
+  if (typeof s.endType !== 'string' || s.endType.length === 0) return null
+  if (!isFiniteNumber(s.setId) || !isFiniteNumber(s.rallyNum)) return null
+  if (!isFiniteNumber(s.scoreAAfter) || !isFiniteNumber(s.scoreBAfter)) return null
+  if (!Array.isArray(s.strokes)) return null
+  return buildBatchPayload({
+    setId: s.setId,
+    rallyNum: s.rallyNum,
+    winner,
+    endType: s.endType,
+    strokes: s.strokes as StrokeInput[],
+    scoreAAfter: s.scoreAAfter,
+    scoreBAfter: s.scoreBAfter,
+    rallyStartTimestamp: isFiniteNumber(s.rallyStartTimestamp) ? s.rallyStartTimestamp : null,
+    isBasicMode: s.isBasicMode === true,
+  })
+}
+
 /**
  * 途中保存 (mid-rally autosave) 用ペイロード。
  *
