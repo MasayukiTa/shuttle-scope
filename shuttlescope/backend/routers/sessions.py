@@ -1614,6 +1614,11 @@ def _session_to_dict(session: SharedSession, db: Session, request: Optional[Requ
         "ws_url_template": ws_templates[0],
         "ws_url_templates": ws_templates,
         "has_password": session.password_hash is not None,
+        # password_set: whether the server holds a password hash for this session.
+        # The plaintext is returned only once (on create / regenerate); on later
+        # GETs the client cannot see it. The UI uses this flag to tell "no password"
+        # apart from "a password exists but cannot be shown again".
+        "password_set": session.password_hash is not None,
         # named tunnel が起動していれば true。フロント UI が「外部公開済」表示に使う
         "named_tunnel_active": tunnel_url is not None,
         "public_origin_active": public_origin is not None,

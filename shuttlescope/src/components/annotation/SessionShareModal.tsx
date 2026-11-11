@@ -16,6 +16,8 @@ interface Props {
   /** 画面を開いている公開 HTTPS オリジン。あればこれを使って別ネットワーク可の URL を QR にする */
   publicOrigin?: string | null
   sessionPassword?: string
+  /** server holds a password hash (GET /sessions returns password_set). plaintext is not re-shown */
+  passwordSet?: boolean
   /** session end (server /end) success callback; parent drops its share state */
   onEnded?: () => void
   onClose: () => void
@@ -28,6 +30,7 @@ export function SessionShareModal({
   viewerUrls = [],
   publicOrigin = null,
   sessionPassword: initialPassword,
+  passwordSet = false,
   onEnded,
   onClose,
 }: Props) {
@@ -45,6 +48,9 @@ export function SessionShareModal({
   const titleId = useId()
   const [showPassword, setShowPassword] = useState(false)
   const [sessionPassword, setSessionPassword] = useState(initialPassword ?? '')
+  // パスワードの平文をこの画面で持っているか（発行直後のみ true）。
+  // リロード後は props で平文が来ないので false になり、再表示はできない。
+  const [passwordJustIssued, setPasswordJustIssued] = useState(!!initialPassword)
   const [regenerating, setRegenerating] = useState(false)
   const [regenerateStatus, setRegenerateStatus] = useState<'ok' | 'failed' | null>(null)
   const [ending, setEnding] = useState(false)
