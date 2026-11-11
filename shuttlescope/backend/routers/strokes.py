@@ -440,17 +440,32 @@ def batch_save_rally(
         reserved_key = idem_key
 
     try:
-        return _batch_save_rally_body(
+        result = _batch_save_rally_body(
             body, request, db, idem_key, endpoint_id, ctx_for_idem
         )
     except Exception:
         # commit 前に失敗した (DB 一時エラーの 503、バリデーション 422、
         # scope 404/403、予期せぬ例外)。予約を解放して再送を許す。成功経路は
         # store() が予約を完了へ昇格済みなので、ここには到達しない。
+        # 失敗側のログは _raise_batch_db_error / flush・commit の logger.exception が
+        # 既に出しているので、ここでは重ねて出さない。
         if reserved_key is not None:
             from backend.utils.idempotency import release
             release(reserved_key, ctx_for_idem.user_id, endpoint_id)
         raise
+
+    # 各 batch リクエストの結果を通常のアプリログに 1 行だけ残す。
+    # 成功レスポンス (status 201) のみここに到達する。個人情報・トークン・
+    # リクエストボディは出さず、冪等再送だったか (already_saved) と保存した
+    # 打球数だけを記録する。これにより再送・二重保存の兆候を追跡できる。
+    _data = result.get("data", {}) if isinstance(result, dict) else {}
+    logger.info(
+        "strokes/batch result: status=%s already_saved=%s stroke_count=%s",
+        201,
+        bool(_data.get("already_saved", False)),
+        _data.get("stroke_count"),
+    )
+    return result
 
 
 def _batch_save_rally_body(
