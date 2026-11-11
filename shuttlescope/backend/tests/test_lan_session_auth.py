@@ -76,6 +76,53 @@ class TestSessionCreation:
         assert len(data["session_password"]) >= 8
         assert data["has_password"] is True
 
+    def test_session_created_sets_password_set_flag(self, lan_client, db_session):
+        """作成時 password_set=True（平文も同時に返る）"""
+        match = _make_match(db_session)
+        db_session.commit()
+
+        resp = lan_client.post("/api/sessions", json={"match_id": match.id})
+        assert resp.status_code == 201
+        data = resp.json()["data"]
+        assert data["password_set"] is True
+
+    def test_password_set_true_but_plaintext_absent_on_reload(self, lan_client, db_session):
+        """再読み込み(GET /sessions/{code})では password_set=True を返すが平文は含めない。
+
+        作成直後のレスポンスにだけ平文が載り、以後の取得では二度と出さない
+        という仕様の回帰防止。フロントはこのフラグで「設定済み」を表示する。
+        """
+        match = _make_match(db_session)
+        db_session.commit()
+
+        created = lan_client.post("/api/sessions", json={"match_id": match.id}).json()["data"]
+        code = created["session_code"]
+
+        resp = lan_client.get(f"/api/sessions/{code}")
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["password_set"] is True
+        assert data["has_password"] is True
+        # 平文は再取得レスポンスに絶対に含まれない
+        assert not data.get("session_password")
+
+    def test_generated_password_excludes_ambiguous_chars(self, lan_client, db_session):
+        """生成パスワードに紛らわしい文字 (0 O o 1 l I) が含まれない"""
+        ambiguous = set("0Oo1lI")
+        match = _make_match(db_session)
+        db_session.commit()
+        # 1回では引き当てられない可能性があるため再生成を複数回まわす
+        created = lan_client.post("/api/sessions", json={"match_id": match.id}).json()["data"]
+        code = created["session_code"]
+        samples = [created["session_password"]]
+        for _ in range(30):
+            r = lan_client.post(f"/api/sessions/{code}/regenerate-password")
+            assert r.status_code == 200
+            samples.append(r.json()["data"]["session_password"])
+        for pw in samples:
+            assert pw
+            assert not (set(pw) & ambiguous), f"ambiguous char in {pw!r}"
+
     def test_session_has_camera_sender_url(self, lan_client, db_session):
         """作成セッションに camera_sender_urls が含まれる"""
         match = _make_match(db_session)

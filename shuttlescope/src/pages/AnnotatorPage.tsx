@@ -44,6 +44,7 @@ import { useUnownedRallies } from '@/hooks/useUnownedRallies'
 import { UnownedRallyBanner } from '@/components/annotator/UnownedRallyBanner'
 import { buildBatchPayload, buildSkippedRallyPayload } from '@/utils/annotationPayload'
 import { useOfflineSync } from '@/hooks/useOfflineSync'
+import { useMidRallyAutosave, type MidRallySnapshot } from '@/utils/midRallyAutosave'
 import { useAuth } from '@/hooks/useAuth'
 import { useHapticFeedback } from '@/hooks/useHapticFeedback'
 import { StrokeHistory } from '@/components/annotation/StrokeHistory'
@@ -768,6 +769,35 @@ export function AnnotatorPage() {
     [matchId, queryClient, isBasicMode, autoSaveKey, t, userId, refreshUnowned]
   )
 
+  // 途中保存 (mid-rally autosave): 入力から 5 秒後に現ラリーの未保存ストロークを
+  // replace_strokes=true / final=false で送る。確定時の handleConfirmRally (final=true) とは
+  // 別の冒等キーを使う (確定送信が重複扱いされないよう)。
+  useMidRallyAutosave({
+    inputSignal: store.currentStrokes.length,
+    enabled: store.isRallyActive && store.inputStep !== 'rally_end' && store.currentStrokes.length > 0,
+    getSnapshot: (): MidRallySnapshot | null => {
+      const s = useAnnotationStore.getState()
+      if (!s.isRallyActive || s.currentSetId == null || s.currentStrokes.length === 0) return null
+      return {
+        matchId: Number(matchId),
+        payloadArgs: {
+          setId: s.currentSetId,
+          rallyNum: s.currentRallyNum,
+          winner: 'player_a',
+          endType: 'in_progress',
+          strokes: [...s.currentStrokes],
+          scoreAAfter: s.scoreA,
+          scoreBAfter: s.scoreB,
+          rallyStartTimestamp: s.rallyStartTimestamp,
+          isBasicMode,
+        },
+      }
+    },
+    getOwnerUserId: () => (userId != null ? userId : null),
+    post: (path, body, headers) => apiPost(path, body, headers),
+    makeIdempotencyKey: (o, m, sId, r) => 'midrally-' + offlineStrokeIdempotencyKey(o, m, sId, r),
+  })
+
   // --- セット終了 → 次のセット作成 (K-003: サマリーモーダル表示) ---
   const handleNextSet = useCallback(async () => {
     const s = useAnnotationStore.getState()
@@ -1410,6 +1440,8 @@ export function AnnotatorPage() {
     : playableRecordings.find((recording) => recording.id === selectedRecordingId) ?? null
   const selectedRecordingSrc = getRecordingVideoSrc(selectedRecording)
   const activeVideoRawSrc = selectedRecordingSrc || getVideoSrc(match)
+  // F-T004-02: 実際に再生可能な映像があるか。normalizeVideoPath は空入力なら空を返す。
+  const hasPlayableVideo = !!normalizeVideoPath(activeVideoRawSrc, matchId)
 
   useEffect(() => {
     setSelectedRecordingId(null)
@@ -5538,6 +5570,7 @@ export function AnnotatorPage() {
           viewerUrls={(activeSession.camera_sender_urls ?? []).map((u) => rebaseUrl(u.replace('/camera/', '/viewer/')))}
           publicOrigin={publicOrigin}
           sessionPassword={activeSession.session_password}
+          passwordSet={activeSession.password_set}
           onClose={() => setShowSessionModal(false)}
           onEnded={() => {
             // Session ended on the server: drop local share state and close related panels.
@@ -5622,7 +5655,10 @@ export function AnnotatorPage() {
       {/* F-T003-05: 映像なしモードで試合中(matchDay)/モバイル時は左パネルが非表示になるため、
           設定タブの「キャリブレーションを開く」を押しても左パネル内の NoVideoCalibCanvas が DOM に出ない。
           その場合だけ、ルート直下のフルスクリーンモーダルで校正画面を出す。 */}
-      {videoSourceMode === 'none' && courtGridVisible && matchId && !videoWindowOpen && (isMatchDayMode || isMobile) && (
+      {shouldShowNoVideoCalibModal({
+        courtGridVisible, matchId, videoWindowOpen,
+        isMatchDayMode, isMobile, hasPlayableVideo, videoSourceMode,
+      }) && matchId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" data-testid="no-video-calib-modal">
           <div className="w-full max-w-3xl">
             <NoVideoCalibCanvas
@@ -5711,6 +5747,38 @@ export function AnnotatorPage() {
       <ConfirmDialog pending={pendingConfirm} onClose={() => setPendingConfirm(null)} />
     </div>
   )
+}
+
+// ─── F-T004-02: 映像なしキャリブレーションのフルスクリーンモーダル表示条件 ───
+// 監査 T004 項目13: 「映像なしモードで『キャリブレーションを開く』を押しても何も
+// 起きない」。#314 でモーダルは入ったが条件が videoSourceMode==='none' 限定で、
+// videoSourceMode の既定 'local' のまま実ソースが無いケース (video_url が
+// isPlayableVideoUrl で弾かれて空、または明示的に local を選んだがソース未設定) を
+// 取りこぼしていた。matchDay/モバイルでは左パネルが非表示なため、どこにも校正
+// 画面が出なくなる。判定を「再生可能な映像が無い (hasPlayableVideo=false)」へ広げる。
+// webview (カメラ/WebRTC 待機) は映像取得の正規経路なのでモーダルは出さない。
+export function shouldShowNoVideoCalibModal(args: {
+  courtGridVisible: boolean
+  matchId: string | null | undefined
+  videoWindowOpen: boolean
+  isMatchDayMode: boolean
+  isMobile: boolean
+  hasPlayableVideo: boolean
+  videoSourceMode: 'local' | 'webview' | 'none'
+}): boolean {
+  const {
+    courtGridVisible, matchId, videoWindowOpen,
+    isMatchDayMode, isMobile, hasPlayableVideo, videoSourceMode,
+  } = args
+  if (!courtGridVisible || !matchId || videoWindowOpen) return false
+  // 左パネルが非表示になる (= 左パネル経由では校正が出ない) のは matchDay/モバイルのみ。
+  // PC 詳細モードは左パネルに NoVideoCalibCanvas が出るので、モーダルは不要。
+  if (!isMatchDayMode && !isMobile) return false
+  // webview はカメラ/WebRTC の映像を取りに行く正規経路。モーダルは出さない。
+  if (videoSourceMode === 'webview') return false
+  // 再生可能な映像があるなら通常のプレーヤー/グリッドに任せる。
+  if (hasPlayableVideo) return false
+  return true
 }
 
 // ─── NoVideoCalibCanvas ───────────────────────────────────

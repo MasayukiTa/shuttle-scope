@@ -24,6 +24,8 @@ interface ActiveSession {
   coach_urls: string[]
   camera_sender_urls?: string[]
   session_password?: string
+  /** パスワードが設定済みか。再読み込み後も「設定済み」を出すために使う */
+  password_set?: boolean
 }
 
 interface RemoteHealth {
@@ -116,6 +118,7 @@ export function useSessionSharing({
           coach_urls: string[]
           camera_sender_urls?: string[]
           session_password?: string
+          password_set?: boolean
         }
       }>('/sessions', { match_id: Number(matchId) })
       if (res.success) {
@@ -124,6 +127,7 @@ export function useSessionSharing({
           coach_urls: res.data.coach_urls,
           camera_sender_urls: res.data.camera_sender_urls,
           session_password: res.data.session_password,
+          password_set: res.data.password_set,
         })
       } else {
         onError?.(i18n.t('common_ui.share_create_failed'))

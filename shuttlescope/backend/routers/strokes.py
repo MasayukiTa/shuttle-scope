@@ -13,6 +13,7 @@ from backend.utils.sync_meta import touch
 from backend.analysis.shot_taxonomy import canonicalize as canonicalize_shot
 from backend.utils import response_cache
 from backend.utils.match_players import players_for_match, players_for_rally
+from backend.analysis.analysis_population import IN_PROGRESS_END_TYPE
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -349,6 +350,11 @@ def _batch_replace_existing(
 
     response_cache.bump_players(players_for_match(db, game_set.match_id))
 
+    # 確定送信 (final=true) のときだけ共有セッションへブロードキャストする。
+    # 途中保存 (final=false) では未確定ラリーを観戦ビューへ流さない。
+    if body.final:
+        _broadcast_rally_saved(db, game_set.match_id, existing)
+
     response = {
         "success": True,
         "data": {
@@ -356,6 +362,70 @@ def _batch_replace_existing(
             "stroke_count": len(saved),
             "replaced": True,
             "final": body.final,
+        },
+    }
+    if idem_key:
+        from backend.utils.idempotency import store
+        store(idem_key, user_id, endpoint_id, response, status_code=201)
+    return response
+
+
+def _finalize_existing_in_progress_rally(
+    db: Session,
+    existing: Rally,
+    body: BatchSaveRequest,
+    game_set: GameSet,
+    idem_key: Optional[str],
+    user_id,
+    endpoint_id: str,
+) -> dict:
+    """replace_strokes=False の確定送信 (final=true) で、既存の途中保存ラリーを確定する。
+
+    既存ラリーが end_type=in_progress (途中保存) のとき、winner / end_type / score 等の
+    確定項目を送信内容で必ず上書きする (打球本数が同じでも上書きされる)。打球自体は
+    足し直さない (replace_strokes=False)。別端末が作ったラリーは上書きしない
+    (_batch_replace_existing と同じ所有者ガード)。確定したので共有セッションへ
+    ブロードキャストする。
+    """
+    # 所有者ガード: 別端末 (= 別ユーザー) が作ったラリーを上書きしない。
+    # 既存と今回の device が両方わかっていて食い違う場合だけ拒否する。
+    incoming_device = body.rally.source_device_id
+    if (
+        existing.source_device_id
+        and incoming_device
+        and existing.source_device_id != incoming_device
+    ):
+        return _batch_existing_response(db, existing, idem_key, user_id, endpoint_id)
+
+    _finalize_rally_fields(existing, body)
+    if incoming_device:
+        existing.source_device_id = incoming_device
+
+    stroke_count = (
+        db.query(Stroke)
+        .filter(Stroke.rally_id == existing.id, Stroke.deleted_at.is_(None))
+        .count()
+    )
+    _update_annotation_progress(game_set.match_id, db)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        _raise_batch_db_error(db, body, exc, "commit")
+    except (DBAPIError, DisconnectionError) as exc:
+        _raise_batch_db_error(db, body, exc, "commit")
+
+    response_cache.bump_players(players_for_match(db, game_set.match_id))
+
+    # 確定したので共有セッションへブロードキャストする (途中保存では送っていない)。
+    _broadcast_rally_saved(db, game_set.match_id, existing)
+
+    response = {
+        "success": True,
+        "data": {
+            "rally_id": existing.id,
+            "stroke_count": stroke_count,
+            "finalized": True,
+            "final": True,
         },
     }
     if idem_key:
@@ -391,6 +461,78 @@ def _raise_batch_db_error(db: Session, body: BatchSaveRequest, exc: Exception, p
             "saved": {"rally": False, "strokes": 0},
         },
     ) from exc
+
+
+def _is_in_progress_rally(rally: Rally) -> bool:
+    """途中保存 (final=false) で作られた未確定ラリーか。
+
+    判定は end_type だけで足りる (専用フラグ列は増やさない)。共通の定数
+    IN_PROGRESS_END_TYPE (analysis_population) を使い、得点・解析の集計と
+    同じ語彙で「未確定」を識別する。
+    """
+    return rally.end_type == IN_PROGRESS_END_TYPE
+
+
+def _broadcast_rally_saved(db: Session, match_id: int, rally: Rally) -> None:
+    """確定ラリーのスコア更新を共有セッションへブロードキャストする (非同期)。
+
+    途中保存 (final=false) の未確定ラリーでは呼ばない。確定 (final=true) 時だけ
+    呼び、観戦側の共有ビューに「確定したラリー」だけが流れるようにする。
+    """
+    import asyncio
+    from backend.ws.live import manager
+    from backend.db.models import SharedSession
+    sessions = (
+        db.query(SharedSession)
+        .filter(SharedSession.match_id == match_id, SharedSession.is_active.is_(True))
+        .all()
+    )
+    if not sessions:
+        return
+    payload = {
+        "type": "rally_saved",
+        "data": {
+            "rally_num": rally.rally_num,
+            "winner": rally.winner,
+            "end_type": rally.end_type,
+            "score_a": rally.score_a_after,
+            "score_b": rally.score_b_after,
+            "rally_length": rally.rally_length,
+            "is_skipped": rally.is_skipped,
+        },
+    }
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            for sess in sessions:
+                asyncio.ensure_future(manager.broadcast(sess.session_code, payload))
+    except Exception:
+        pass
+
+
+def _finalize_rally_fields(existing: Rally, body: "BatchSaveRequest") -> None:
+    """final=true の確定送信で、既存ラリーの確定項目を送信内容で必ず上書きする。
+
+    winner / end_type / score を含む確定項目を無条件に上書きする。途中保存で仮値
+    (winner=player_a, end_type=in_progress) が入っていても、本数が同じでも、確定内容で
+    置き換える。score_a_before / score_b_before は初回保存時に前ラリー依存で計算済みの
+    ため保持する。
+    """
+    existing.server = body.rally.server
+    existing.winner = body.rally.winner
+    existing.end_type = body.rally.end_type
+    existing.rally_length = body.rally.rally_length
+    existing.duration_sec = body.rally.duration_sec
+    existing.score_a_after = body.rally.score_a_after
+    existing.score_b_after = body.rally.score_b_after
+    existing.is_deuce = body.rally.is_deuce
+    existing.video_timestamp_start = body.rally.video_timestamp_start
+    existing.video_timestamp_end = body.rally.video_timestamp_end
+    existing.is_skipped = body.rally.is_skipped
+    if body.rally.annotation_mode is not None:
+        existing.annotation_mode = body.rally.annotation_mode
+    if body.rally.review_status is not None:
+        existing.review_status = body.rally.review_status
 
 
 @router.post("/strokes/batch", status_code=201)
@@ -529,6 +671,16 @@ def _batch_save_rally_body(
                 db, existing, body, game_set, idem_key,
                 ctx_for_idem.user_id, endpoint_id,
             )
+        # replace_strokes=False でも、既存が途中保存 (in_progress) のラリーで、
+        # 今回が確定送信 (final=true) なら、winner / end_type / score を確定内容で
+        # 必ず上書きする (打球本数が同じでも上書きする)。打球は足し直さない
+        # (replace_strokes=False なので既存のまま)。確定したので共有セッションへ
+        # ブロードキャストする。
+        if body.final and _is_in_progress_rally(existing):
+            return _finalize_existing_in_progress_rally(
+                db, existing, body, game_set, idem_key,
+                ctx_for_idem.user_id, endpoint_id,
+            )
         return _batch_existing_response(
             db, existing, idem_key, ctx_for_idem.user_id, endpoint_id
         )
@@ -645,35 +797,13 @@ def _batch_save_rally_body(
     # 試合の関与選手のみキャッシュ無効化（他選手の解析結果は保持）
     response_cache.bump_players(players_for_match(db, game_set.match_id))
 
-    # S-001: アクティブセッションへスコア更新をブロードキャスト（非同期）
-    import asyncio
-    from backend.ws.live import manager
-    from backend.db.models import SharedSession
-    sessions = (
-        db.query(SharedSession)
-        .filter(SharedSession.match_id == game_set.match_id, SharedSession.is_active.is_(True))
-        .all()
-    )
-    if sessions:
-        payload = {
-            "type": "rally_saved",
-            "data": {
-                "rally_num": rally.rally_num,
-                "winner": rally.winner,
-                "end_type": rally.end_type,
-                "score_a": rally.score_a_after,
-                "score_b": rally.score_b_after,
-                "rally_length": rally.rally_length,
-                "is_skipped": rally.is_skipped,
-            },
-        }
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                for s in sessions:
-                    asyncio.ensure_future(manager.broadcast(s.session_code, payload))
-        except Exception:
-            pass
+    # S-001: アクティブセッションへスコア更新をブロードキャスト（非同期）。
+    # 途中保存 (final=false) で作られた未確定ラリーはブロードキャストしない。
+    # これにより observer の共有ビューには「確定したラリー」だけが流れる。確定
+    # (final=true) は後から同じラリーへ確定送信が来たとき _batch_replace_existing /
+    # finalize 経路でブロードキャストされる。
+    if body.final:
+        _broadcast_rally_saved(db, game_set.match_id, rally)
 
     response = {
         "success": True,
