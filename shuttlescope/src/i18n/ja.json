@@ -2963,6 +2963,7 @@
     "confirm_ok": "切り替える",
     "confirm_cancel": "キャンセル",
     "stale_rerequest": "再リクエスト",
+    "request_video_start": "映像の開始を指示",
     "stale_warning": "カメラが応答していません",
     "local_switch_confirm": "ローカルカメラに切り替えます。リモートカメラを停止しますか？",
     "local_switch_ok": "停止して切り替え",

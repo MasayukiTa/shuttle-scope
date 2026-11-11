@@ -250,7 +250,7 @@ function DeviceRow({ p, isLight: _isLight, titleColor, subColor, rowBg, onApprov
             <>
               <button onClick={() => onRequestCamera(p)}
                 className="text-[10px] px-2 py-1 rounded-ss-sm bg-[var(--ss-bad)] hover:opacity-90 transition-colors duration-base ease-out text-white flex items-center gap-0.5">
-                <MIcon name="videocam" size={9} />{isStaleCamera ? t('handoff.stale_rerequest') : 'カメラ再リクエスト'}
+                <MIcon name="videocam" size={9} />{t('handoff.request_video_start')}
               </button>
               <button onClick={() => onDeactivate(p)}
                 className="text-[10px] px-2 py-1 rounded-ss-sm bg-[var(--ss-t2)] hover:opacity-90 transition-colors duration-base ease-out text-white">

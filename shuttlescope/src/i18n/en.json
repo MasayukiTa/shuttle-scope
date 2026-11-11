@@ -2955,6 +2955,7 @@
     "confirm_ok": "Switch",
     "confirm_cancel": "Cancel",
     "stale_rerequest": "Re-request",
+    "request_video_start": "Start video",
     "stale_warning": "The camera is not responding",
     "local_switch_confirm": "Switch to the local camera. Stop the remote camera?",
     "local_switch_ok": "Stop and switch",
