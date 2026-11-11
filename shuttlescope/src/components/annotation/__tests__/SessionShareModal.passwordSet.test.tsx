@@ -3,14 +3,23 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 
 import { SessionShareModal } from '../SessionShareModal'
 import { apiPost } from '@/api/client'
+import ja from '@/i18n/ja.json'
 
 vi.mock('@/api/client', () => ({
   apiPost: vi.fn(),
 }))
-// jsdom ã«ã¯ canvas ãç¡ãã®ã§ QR çæã¯ã¢ãã¯ãã
+// jsdom has no canvas; make QR generation resolve to a no-op.
 vi.mock('qrcode', () => ({
   default: { toCanvas: vi.fn(() => Promise.resolve()) },
 }))
+
+// Pull the exact UI strings from the dictionary so the test has no
+// hand-typed multibyte literals (which can corrupt on write).
+const L = (ja as { lan_session: Record<string, string> }).lan_session
+const SET_LABEL = L.share_modal_password_set
+const UNSET_LABEL = L.share_modal_password_unset
+const REGEN_WARNING = L.share_modal_password_regenerated_warning
+const REGEN_BTN = L.password_regenerate
 
 const baseProps = {
   sessionCode: 'ABC123',
@@ -25,27 +34,26 @@ describe('SessionShareModal password-set flag', () => {
     vi.clearAllMocks()
   })
 
-  it('å¹³æãç¡ãã¦ã passwordSet ãçãªããè¨­å®æ¸ã¿ããåºããæªè¨­å®ããåºããªã', () => {
+  it('shows the set label (not the unset label) when passwordSet is true and no plaintext', () => {
     render(<SessionShareModal {...baseProps} passwordSet={true} />)
-    expect(screen.getByText(/è¨­å®æ¸ã¿/)).toBeInTheDocument()
-    expect(screen.queryByText('æªè¨­å®')).not.toBeInTheDocument()
+    expect(screen.getByText(SET_LABEL)).toBeInTheDocument()
+    expect(screen.queryByText(UNSET_LABEL)).not.toBeInTheDocument()
   })
 
-  it('å¹³æãç¡ã passwordSet ãå½ãªããæªè¨­å®ããåºã', () => {
+  it('shows the unset label when passwordSet is false and no plaintext', () => {
     render(<SessionShareModal {...baseProps} passwordSet={false} />)
-    expect(screen.getByText('æªè¨­å®')).toBeInTheDocument()
+    expect(screen.getByText(UNSET_LABEL)).toBeInTheDocument()
   })
 
-  it('åçææåå¾ã«æ°ãã¹ã¯ã¼ãã¨åè¡¨ç¤ºä¸å¯ã®è­¦åãè¡¨ç¤ºãã', async () => {
+  it('after a successful regenerate, shows the new password and the cannot-be-shown-again warning', async () => {
     vi.mocked(apiPost).mockResolvedValueOnce({
       success: true,
       data: { session_password: 'NewPass42' },
     })
     render(<SessionShareModal {...baseProps} passwordSet={true} />)
-    fireEvent.click(screen.getByRole('button', { name: /åçæ/ }))
+    fireEvent.click(screen.getByRole('button', { name: REGEN_BTN }))
     await waitFor(() => expect(screen.getByText('NewPass42')).toBeInTheDocument())
-    // åè¡¨ç¤ºä¸å¯ã®è­¦å (role=alert) ãåºã
     const alerts = screen.getAllByRole('alert')
-    expect(alerts.some((el) => /åè¡¨ç¤ºã§ãã¾ãã/.test(el.textContent || ''))).toBe(true)
+    expect(alerts.some((el) => (el.textContent || '').includes(REGEN_WARNING))).toBe(true)
   })
 })
