@@ -4466,6 +4466,8 @@
       "approved": "承認済み",
       "rejected": "拒否",
       "pending": "承認待ち",
+      "connected": "接続",
+      "disconnected": "切断",
       "sending": "送信中",
       "receiving": "受信中",
       "remote_receiving": "リモート受信中（参加者 #{{id}}）",

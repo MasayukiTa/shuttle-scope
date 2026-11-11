@@ -4471,6 +4471,8 @@
       "approved": "Approved",
       "rejected": "Rejected",
       "pending": "Pending",
+      "connected": "Connected",
+      "disconnected": "Disconnected",
       "sending": "Sending",
       "receiving": "Receiving",
       "remote_receiving": "Remote receiving (participant #{{id}})",
