@@ -60,10 +60,13 @@ describe('useOfflineSync resend hold during restore dialog', () => {
 
     // \u5fa9\u5143 / \u7834\u68c4\u304c\u6c7a\u307e\u3063\u305f: \u4fdd\u7559\u3092\u89e3\u304f\u3002online \u30a4\u30d9\u30f3\u30c8\u3067 sync \u3092\u518d\u8d77\u52d5\u3002
     releaseResendForRally(MATCH, 1, 3)
-    window.dispatchEvent(new Event('online'))
+    // Re-fire the online event inside waitFor to avoid a listener-registration timing race on slow CI.
 
     // 1 \u56de\u3060\u3051\u9001\u3089\u308c\u3001\u5b89\u5b9a\u51aa\u7b49\u30ad\u30fc\u304c\u4ed8\u304f\u3002
-    await waitFor(() => expect(apiPost).toHaveBeenCalledTimes(1), { timeout: 15000 })
+    await waitFor(() => {
+      window.dispatchEvent(new Event('online'))
+      expect(apiPost).toHaveBeenCalledTimes(1)
+    }, { timeout: 15000 })
     const [path, , headers] = apiPost.mock.calls[0]
     expect(path).toBe('/strokes/batch')
     expect((headers as Record<string, string>)['X-Idempotency-Key']).toBe('offline-42-7-1-3')
