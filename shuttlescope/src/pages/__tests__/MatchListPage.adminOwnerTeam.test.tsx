@@ -118,7 +118,7 @@ describe('MatchListPage: admin 所有チーム指定', () => {
     const sel = getByLabelText('所有チーム（管理者のみ）') as HTMLSelectElement
     await waitFor(() => expect(sel.value).toBe('5'))
 
-    fireEvent.click(getByText('登録'))
+    fireEvent.submit(container.querySelector('form') as HTMLFormElement)
     await waitFor(() => expect(apiPost).toHaveBeenCalled())
     const call = apiPost.mock.calls.find((c) => c[0] === '/matches')
     expect(call).toBeTruthy()
@@ -133,7 +133,7 @@ describe('MatchListPage: admin 所有チーム指定', () => {
     // 0 件案内が出る
     expect(await findByText('チームがありません。先にチームを作成してください。')).toBeTruthy()
 
-    fireEvent.click(getByText('登録'))
+    fireEvent.submit(container.querySelector('form') as HTMLFormElement)
     // 必須メッセージが出て、/matches への POST は発生しない
     expect(await findByText(/所有チームを選択してください/)).toBeTruthy()
     expect(apiPost.mock.calls.some((c) => c[0] === '/matches')).toBe(false)
@@ -158,7 +158,7 @@ describe('MatchListPage: admin 所有チーム指定', () => {
     const sel = getByLabelText('所有チーム（管理者のみ）') as HTMLSelectElement
     fireEvent.change(sel, { target: { value: '2' } })
 
-    fireEvent.click(getByText('登録'))
+    fireEvent.submit(container.querySelector('form') as HTMLFormElement)
     const alert = await findByRole('alert')
     expect(alert.textContent).toContain('入力内容を確認してください。')
     // フォームは閉じない (所有チーム欄が残っている)
@@ -167,12 +167,13 @@ describe('MatchListPage: admin 所有チーム指定', () => {
 
   it('大会レベル / ラウンド未選択は必須メッセージで止める', async () => {
     h.state.teamRows = [{ id: 5, uuid: 'u5', display_id: 'T5', name: 'チーム五', short_name: null, is_independent: false, notes: null, created_at: null, updated_at: null }]
-    const { getByText, container, findByText } = renderPage()
+    const { getByText, container, findByRole } = renderPage()
     fireEvent.click(getByText('試合登録'))
     await waitFor(() => expect(container.querySelector('#match-form-level')).not.toBeNull())
     // レベル / ラウンド未選択のまま送信
-    fireEvent.click(getByText('登録'))
-    expect(await findByText('— 選択 —')).toBeTruthy()
+    fireEvent.submit(container.querySelector('form') as HTMLFormElement)
+    const alert = await findByRole('alert')
+    expect(alert.textContent).toContain('— 選択 —')
     expect(apiPost.mock.calls.some((c) => c[0] === '/matches')).toBe(false)
   })
 
