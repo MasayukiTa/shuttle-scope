@@ -335,7 +335,7 @@ export function AnnotatorPage() {
     try { localStorage.setItem('ss_show_key_hints_mobile', v ? '1' : '0') } catch { /* private mode */ }
     setForceShowKeyHintsState(v)
   }, [])
-  // 簡易ショット入力モード（9 大分類）。仙台大学 2026-11-05 の要望5。
+  // 簡易ショット入力モード（9 大分類）。顧客 2026-11-05 の要望5。
   // 従来の 18 小分類は残し、入力時だけ 9 大分類に畳んで代表小分類を保存する。
   // localStorage 永続化 + ?simpleShots=true URL パラメータで自動有効化。
   const [simpleShotMode, setSimpleShotModeState] = useState<boolean>(() => {

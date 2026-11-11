@@ -114,7 +114,7 @@ describe('buildBatchPayload', () => {
     })
   })
 
-  it('仙台大要望: hit_height (打球の高さ) を取りこぼさない', () => {
+  it('顧客要望: hit_height (打球の高さ) を取りこぼさない', () => {
     const withHeight: StrokeInput = { ...baseStroke, hit_height: 2 }
     const payload = buildBatchPayload({ ...baseArgs, strokes: [withHeight] })
     expect(payload.strokes[0].hit_height).toBe(2)

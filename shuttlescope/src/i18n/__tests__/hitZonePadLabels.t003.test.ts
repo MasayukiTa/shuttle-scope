@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import ja from '../ja.json'
 import en from '../en.json'
 
-// F-T003-06 (part 2): Sendai University request #8 states that "打点"
+// F-T003-06 (part 2): customer request #8 states that "打点"
 // (contact height) describes a height, not a place, and must not be used to
 // label where a shot happened. The hit-zone keypad pad headings used to read
 // "打点: トップ行" / "Hit zone:". Those pads let the annotator pick which of

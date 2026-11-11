@@ -96,7 +96,7 @@ export function AttributePanel({ attributes, onChange, disabled = false }: Attri
         })}
       </div>
 
-      {/* 打球の高さ（任意 4 段階）: 仙台大要望。未選択のままでも記録でき、
+      {/* 打球の高さ（任意 4 段階）: 顧客要望。未選択のままでも記録でき、
           選択中のボタンを再タップすると未選択へ戻せる（1 タップ入力）。 */}
       <div
         className="flex items-center gap-1.5 md:gap-1"
