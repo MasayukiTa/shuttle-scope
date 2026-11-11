@@ -170,6 +170,58 @@ describe('authStorage cross-tab sharing', () => {
       window.removeEventListener('shuttlescope:autosave-flush', flush)
     }
   })
+
+  // 回帰 (customer request #1: タイムアウト・別タブのログアウト同期):
+  // 無操作タイムアウト等でセッションが切れると、まず refresh token が localStorage から
+  // 消える経路がある。そのとき別タブにも refresh token の消失が storage イベントで届く。
+  // 期待: TOKEN_KEY のときと同じく、退避イベントが発火し、sessionStorage のミラーが消され、
+  // getAuthItem がミラーから復活しない (authStorage.ts の e.key === REFRESH_KEY 分岐を保護する)。
+  it('cross-tab logout via REFRESH_KEY: refresh token cleared in another tab logs this tab out and flushes', async () => {
+    const { installCrossTabAuthSync, getAuthItem, TOKEN_KEY, REFRESH_KEY } = await import('@/api/authStorage')
+    installCrossTabAuthSync()
+
+    localStorage.setItem(TOKEN_KEY, 'access-A')
+    localStorage.setItem(REFRESH_KEY, 'refresh-A')
+    sessionStorage.setItem(TOKEN_KEY, 'stale-mirror-A')
+    sessionStorage.setItem(REFRESH_KEY, 'stale-mirror-refresh-A')
+
+    const flush = vi.fn()
+    window.addEventListener('shuttlescope:autosave-flush', flush)
+
+    try {
+      // 別タブでセッション終了 = refresh token が localStorage から消える (newValue=null)。
+      localStorage.removeItem(REFRESH_KEY)
+      window.dispatchEvent(new StorageEvent('storage', { key: REFRESH_KEY, newValue: null }))
+
+      // 退避イベントが発火している (入力中ラリーの書き出し)。
+      expect(flush).toHaveBeenCalled()
+      // sessionStorage のミラーは両キーとも消され、復活しない。
+      expect(sessionStorage.getItem(TOKEN_KEY)).toBeNull()
+      expect(sessionStorage.getItem(REFRESH_KEY)).toBeNull()
+      expect(getAuthItem(REFRESH_KEY)).toBeNull()
+    } finally {
+      window.removeEventListener('shuttlescope:autosave-flush', flush)
+    }
+  })
+
+  // 回帰 (customer request #1): ログアウトでない通常の refresh (token 更新) は storage イベントで
+  // 届いても、入力中ラリーの退避 (autosave-flush) は起こさない。別タブのトークン更新で
+  // 不要な flush を誘発しないことを守る (newValue != null は loggedOut 条件に該当しない)。
+  it('cross-tab token refresh (non-null) does not trigger autosave-flush', async () => {
+    const { installCrossTabAuthSync, TOKEN_KEY } = await import('@/api/authStorage')
+    installCrossTabAuthSync()
+
+    const flush = vi.fn()
+    window.addEventListener('shuttlescope:autosave-flush', flush)
+
+    try {
+      // 別タブが token を新しい値に更新しただけ (ログアウトではない)。
+      window.dispatchEvent(new StorageEvent('storage', { key: TOKEN_KEY, newValue: 'refreshed-access' }))
+      expect(flush).not.toHaveBeenCalled()
+    } finally {
+      window.removeEventListener('shuttlescope:autosave-flush', flush)
+    }
+  })
 })
 
 describe('authStorage refresh single-flight lock', () => {
