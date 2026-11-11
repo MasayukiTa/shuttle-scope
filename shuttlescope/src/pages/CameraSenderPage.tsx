@@ -797,7 +797,10 @@ export function CameraSenderPage() {
       <RecordingProblemNotice state={serverRecorder.state} errorMsg={serverRecorder.errorMsg} />
 
       {/* ─── State: join ────────────────── */}
-      {(senderState === 'join' || (senderState === 'connecting' && !paramCode)) && (
+      {/* connecting 中は paramCode の有無に関わらずフォームを先出しする。
+         pwd 付き URL (#/camera/<コード>?pwd=) で自動参加中もスピナーだけにせず、
+         コード・パスワード・端末名の入力欄を即時に見せる (T011)。 */}
+      {(senderState === 'join' || senderState === 'connecting') && (
         <div className="w-full max-w-sm bg-[var(--ss-surface-1)] rounded-[6px] p-5 border border-[var(--ss-border)] shadow-[0_1px_2px_rgba(16,24,40,.06)]">
           <div className="space-y-3">
             <div>
@@ -839,32 +842,24 @@ export function CameraSenderPage() {
                 {errorMsg}
               </div>
             )}
+            {senderState === 'connecting' && slowConnect && (
+              <p className="text-[var(--ss-warn)] text-xs leading-relaxed">
+                {t('camera_sender.slow_connect_hint')}
+              </p>
+            )}
             <button
               onClick={() => joinSession(form.sessionCode, form.password, form.deviceName)}
               disabled={!form.sessionCode || !form.password || senderState === 'connecting'}
               className="w-full py-2.5 rounded-[5px] bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium text-white inline-flex items-center justify-center gap-2"
             >
               {senderState === 'connecting' && <MIcon name="progress_activity" size={14} className="animate-spin" />}
-              {senderState === 'connecting' ? '接続中…' : t('camera_sender.join_button')}
+              {senderState === 'connecting'
+                ? reconnectCount > 0
+                  ? `${t('camera_sender.reconnecting')} (${reconnectCount}/${MAX_RECONNECT}${t('camera_sender.reconnect_attempt')})`
+                  : t('camera_sender.join_connecting')
+                : t('camera_sender.join_button')}
             </button>
           </div>
-        </div>
-      )}
-
-      {/* ─── State: connecting ──────────── */}
-      {senderState === 'connecting' && paramCode && (
-        <div className="text-center">
-          <MIcon name="progress_activity" size={40} className="animate-spin text-[var(--ss-brand)] mx-auto mb-3" />
-          <p className="text-[var(--ss-t2)] text-sm">
-            {reconnectCount > 0
-              ? `${t('camera_sender.reconnecting')} (${reconnectCount}/${MAX_RECONNECT}${t('camera_sender.reconnect_attempt')})`
-              : t('camera_sender.join_connecting')}
-          </p>
-          {slowConnect && (
-            <p className="text-[var(--ss-warn)] text-xs mt-2 max-w-xs mx-auto leading-relaxed">
-              {t('camera_sender.slow_connect_hint')}
-            </p>
-          )}
         </div>
       )}
 

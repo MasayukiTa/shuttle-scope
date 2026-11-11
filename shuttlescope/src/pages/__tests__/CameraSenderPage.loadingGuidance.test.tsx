@@ -99,6 +99,18 @@ describe('CameraSenderPage loading guidance (T011)', () => {
     expect(screen.getByText(i18n.t('camera_sender.join_password_label'))).toBeTruthy()
   })
 
+  it('paramCode 付き URL (症状の主対象) でも、参加フォームは通信の確認を待たずに即時に出る', async () => {
+    // ws-ticket を永遠に保留 → connecting のまま。スピナーだけでフォームが隠れてはいけない。
+    wsUrlMock.mockReturnValue(new Promise<string>(() => {}))
+    renderWithCode()
+    // join の await (microtask) を消化して connecting に入れる。
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(screen.getByText(i18n.t('camera_sender.join_code_label'))).toBeTruthy()
+    expect(screen.getByText(i18n.t('camera_sender.join_password_label'))).toBeTruthy()
+  })
+
   it('connecting が 5 秒を超えたら「時間がかかっています」の案内を出す', async () => {
     vi.useFakeTimers()
     // ws-ticket を永遠に保留 → connecting のままにする。
