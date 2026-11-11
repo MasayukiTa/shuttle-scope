@@ -1231,6 +1231,8 @@
     "tournament": "大会名",
     "tournament_level": "大会レベル",
     "round": "ラウンド",
+    "tournament_level_required": "大会レベルを選択してください",
+    "round_required": "ラウンドを選択してください",
     "date": "日付",
     "venue": "会場",
     "format": "形式",

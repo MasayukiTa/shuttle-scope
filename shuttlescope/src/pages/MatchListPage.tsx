@@ -86,6 +86,8 @@ export function MatchListPage() {
   const [formError, setFormError] = useState<string | null>(null)
   // Phase: admin が所有チームを明示指定するための選択（空 = 自チーム）。
   const [ownerTeamId, setOwnerTeamId] = useState<number | ''>('')
+  // 送信を試みたら true。必須の未選択欄にインライン案内を出すために使う
+  const [submitAttempted, setSubmitAttempted] = useState(false)
   // Phase 1: 編集モードで既存動画のファイル名のみ表示する（パスは露出しない）
   const [editingVideoFilename, setEditingVideoFilename] = useState<string>('')
   const [analystSide, setAnalystSide] = useState<'top' | 'bottom'>('bottom')
@@ -245,15 +247,31 @@ export function MatchListPage() {
     ),
   ]
 
-  // 失敗の利用者向け文言。HTTP status・内部フィールド名・backend の detail は出さず、
-  // 原因の種類 (認証切れ / 権限 / 競合 / 入力) だけを伝える。詳細はコンソールへ残す。
+  // 失敗の利用者向け文言。HTTP status や内部フィールド名は出さない。401/403/409 は
+  // 原因の種類 (認証切れ / 権限 / 競合) だけを伝え、詳細はコンソールへ残す。422 だけは
+  // サーバが利用者向けに日本語で用意した入力エラー理由 (チーム名が空など) を表示する。
+  // サーバが detail に入れた理由 (日本語) を取り出す。本文は JSON 文字列
+  // ({"detail":"..."}) で届くため、まず JSON として読み、detail が文字列なら使う。
+  // detail が配列 (FastAPI の RequestValidationError) や取り出せない形のときは null。
+  const serverDetail = (err: unknown): string | null => {
+    const raw = errorMessage(err, '')
+    if (!raw) return null
+    try {
+      const parsed = JSON.parse(raw) as { detail?: unknown }
+      if (typeof parsed.detail === 'string' && parsed.detail.trim()) return parsed.detail
+    } catch { /* raw が JSON でなければ下へ */ }
+    return null
+  }
+
   const userFacingMatchError = (err: unknown, fallback: string): string => {
     console.error('[MatchList] request failed', errorStatus(err), errorMessage(err, ''))
     switch (errorStatus(err)) {
       case 401: return t('common_ui.error_session_expired')
       case 403: return t('common_ui.error_forbidden')
       case 409: return t('common_ui.error_conflict')
-      case 422: return t('common_ui.error_invalid_input')
+      // 422 はサーバが欄ごとの日本語理由を detail に入れている (チーム名が空など)。
+      // 取り出せたらその理由を、だめなら従来の汎用文言を出す。
+      case 422: return serverDetail(err) ?? t('common_ui.error_invalid_input')
       default: return fallback
     }
   }
@@ -272,6 +290,7 @@ export function MatchListPage() {
       setShowForm(false)
       setEditingMatchId(null)
       setForm(defaultForm())
+      setSubmitAttempted(false)
       setAnalystSide('bottom')
       resetPlayerFields()
     },
@@ -290,6 +309,7 @@ export function MatchListPage() {
       setShowForm(false)
       setEditingMatchId(null)
       setForm(defaultForm())
+      setSubmitAttempted(false)
       setAnalystSide('bottom')
       resetPlayerFields()
     },
@@ -376,8 +396,12 @@ export function MatchListPage() {
     e.preventDefault()
     // 前回の検証メッセージを消す（閉じて何も残らない挙動を避け、毎回出し直す）
     setFormError(null)
+    setSubmitAttempted(true)
 
-    // 大会レベルとラウンドは未選択のまま登録させない (既定値を持たないため)
+    // 大会レベルとラウンドは未選択のまま登録させない (既定値を持たないため)。
+    // 該当欄の直下に日本語のインライン案内 (submitAttempted) を出すのに加え、
+    // フォーム上部にも汎用の必須メッセージ (role=alert) を出す。未選択が画面外に
+    // あっても気づけるようにし、既存の必須メッセージ契約も維持する。
     if (!form.tournament_level || !form.round) {
       setFormError(t('common.select_placeholder'))
       return
@@ -658,7 +682,7 @@ export function MatchListPage() {
           )}
           {canWriteMatch(role) && (
           <button
-            onClick={() => { setEditingMatchId(null); setForm(defaultForm()); resetPlayerFields(); setShowForm(true) }}
+            onClick={() => { setEditingMatchId(null); setForm(defaultForm()); setSubmitAttempted(false); resetPlayerFields(); setShowForm(true) }}
             className="flex items-center gap-2 px-4 py-2 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white rounded-[var(--r-md)] text-sm"
           >
             <MIcon name="add" size={16} />
@@ -1093,7 +1117,7 @@ export function MatchListPage() {
           <div className={`${card} rounded-[var(--r-lg)] w-full max-w-2xl max-h-[90dvh] overflow-y-auto`}>
             <div className={`flex items-center justify-between px-6 py-4 border-b ${borderLine}`}>
               <h2 className={`text-lg font-semibold ${textHeading}`}>{editingMatchId !== null ? t('auto.MatchListPage.k42') : t('auto.MatchListPage.k29')}</h2>
-              <button aria-label={t('app.close')} onClick={() => { setShowForm(false); setEditingMatchId(null); setForm(defaultForm()); resetPlayerFields() }} className={`${textMuted} hover:text-[var(--ss-t1)]`}><MIcon name="close" size={12} /></button>
+              <button aria-label={t('app.close')} onClick={() => { setShowForm(false); setEditingMatchId(null); setForm(defaultForm()); setSubmitAttempted(false); resetPlayerFields() }} className={`${textMuted} hover:text-[var(--ss-t1)]`}><MIcon name="close" size={12} /></button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 flex flex-col gap-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1112,7 +1136,7 @@ export function MatchListPage() {
 
                 {/* レベル / ラウンド */}
                 <div>
-                  <label htmlFor="match-form-level" className={`block text-sm ${textSecondary} mb-1`}>{t('match.tournament_level')}</label>
+                  <label htmlFor="match-form-level" className={`block text-sm ${textSecondary} mb-1`}>{t('match.tournament_level')} *</label>
                   <select
                     id="match-form-level"
                     value={form.tournament_level}
@@ -1125,9 +1149,12 @@ export function MatchListPage() {
                       <option key={l} value={l}>{l}</option>
                     ))}
                   </select>
+                  {submitAttempted && !form.tournament_level && (
+                    <p className="text-xs text-[var(--ss-danger)] mt-1">{t('match.tournament_level_required')}</p>
+                  )}
                 </div>
                 <div>
-                  <label htmlFor="match-form-round" className={`block text-sm ${textSecondary} mb-1`}>{t('match.round')}</label>
+                  <label htmlFor="match-form-round" className={`block text-sm ${textSecondary} mb-1`}>{t('match.round')} *</label>
                   <select
                     id="match-form-round"
                     value={form.round}
@@ -1140,6 +1167,9 @@ export function MatchListPage() {
                       <option key={r} value={r}>{r}</option>
                     ))}
                   </select>
+                  {submitAttempted && !form.round && (
+                    <p className="text-xs text-[var(--ss-danger)] mt-1">{t('match.round_required')}</p>
+                  )}
                 </div>
 
                 {/* 日付 / 形式 */}
@@ -1599,7 +1629,7 @@ export function MatchListPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setShowForm(false); setEditingMatchId(null); setForm(defaultForm()); resetPlayerFields() }}
+                  onClick={() => { setShowForm(false); setEditingMatchId(null); setForm(defaultForm()); setSubmitAttempted(false); resetPlayerFields() }}
                   className="flex-1 py-2 bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t1)] rounded-[var(--r-md)] text-sm"
                 >
                   {t('app.cancel')}
