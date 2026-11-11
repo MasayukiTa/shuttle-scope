@@ -66,6 +66,11 @@ export interface BatchRallyPayload {
 export interface BatchPayload {
   rally: BatchRallyPayload
   strokes: BatchStrokePayload[]
+  // 途中保存 (mid-rally autosave) 対応。既存ラリーがあると already_saved で捨てず、
+  // 既存の非削除ストロークを置き換える。final=false は途中保存 (確定後に縮めない)。
+  // 省略時サーバーの既定は replace_strokes=false / final=true (従来動作)。
+  replace_strokes?: boolean
+  final?: boolean
 }
 
 // ─── スキップラリー / スコア補正用バリアント ─────────────────────────────────
@@ -147,6 +152,11 @@ export function buildBatchPayload(args: BuildBatchPayloadArgs): BatchPayload {
       video_timestamp_start: rallyStartTimestamp ?? undefined,
       annotation_mode: isBasicMode ? 'manual_record' : 'assisted_record',
     },
+    // ラリー確定時の最終保存。途中保存 (final=false) が先に入っていても、確定時に
+    // 全ストロークへ置き換える。replace_strokes=true でサーバーは already_saved で
+    // 捨てず既存ラリーのストロークを入れ替える。
+    replace_strokes: true,
+    final: true,
     strokes: strokes.map((st) => ({
       stroke_num: st.stroke_num,
       player: st.player,
@@ -225,4 +235,18 @@ export function buildBatchPayloadFromDraftSnapshot(snapshot: unknown): BatchPayl
     rallyStartTimestamp: isFiniteNumber(s.rallyStartTimestamp) ? s.rallyStartTimestamp : null,
     isBasicMode: s.isBasicMode === true,
   })
+}
+
+/**
+ * 途中保存 (mid-rally autosave) 用ペイロード。
+ *
+ * buildBatchPayload と同じ本体を作り、final=false に上書きするだけ。確定前の
+ * 現ラリーのストロークを定期送信するために使う。winner / end_type は確定時に決まるが、
+ * 途中では暗定値 (呼び出し側が渡した値) を入れる。サーバーは replace_strokes=true の
+ * 既存ラリー置き換えで、final=false のとき既存の非削除ストローク数より少ない
+ * 送信を無視する (確定後に縮めない)。
+ */
+export function buildMidRallyPayload(args: BuildBatchPayloadArgs): BatchPayload {
+  const base = buildBatchPayload(args)
+  return { ...base, replace_strokes: true, final: false }
 }
