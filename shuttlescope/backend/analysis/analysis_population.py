@@ -28,6 +28,32 @@ DECIDED_RESULTS = ("win", "loss")
 EXCLUDED_UNFINISHED = "unfinished"
 EXCLUDED_ZERO_RALLY = "zero_rally"
 
+# 途中保存 (mid-rally autosave) ラリーの end_type。POST /api/strokes/batch を
+# final=false で送ると、まだ確定していないラリーが end_type="in_progress" /
+# winner=仮 (player_a) で保存される。これは確定ラリーではないので、解析母集団・
+# 有効ラリー数・各種集計から一貫して除外する。識別は end_type 列だけで足りる
+# (専用フラグ列は増やさない = スキーマ変更なし)。
+IN_PROGRESS_END_TYPE = "in_progress"
+
+
+def active_rally_predicates(include_skipped: bool = False) -> list:
+    """確定ラリーだけを引くための SQLAlchemy フィルタ条件のリスト。
+
+    query(Rally)... に *args 展開して使う。全集計で同じ定義を使うためここに集約する。
+    除外するもの:
+      - 論理削除済み (deleted_at IS NOT NULL)
+      - 途中保存 (end_type == IN_PROGRESS_END_TYPE)
+      - 見逃しラリー (is_skipped) ※ include_skipped=True のときは残す
+    """
+    # 遅延 import 回避のためモジュール先頭の Rally を使う
+    preds = [
+        Rally.deleted_at.is_(None),
+        Rally.end_type != IN_PROGRESS_END_TYPE,
+    ]
+    if not include_skipped:
+        preds.append(Rally.is_skipped == False)  # noqa: E712
+    return preds
+
 
 def is_decided_result(result: Optional[str]) -> bool:
     """勝敗が確定した結果 (win / loss) か。walkover / unfinished / None は False。"""
@@ -65,6 +91,7 @@ def rally_counts_by_match(db: Session, match_ids: Iterable[int]) -> dict[int, in
         .join(Rally, Rally.set_id == GameSet.id)
         .filter(
             GameSet.match_id.in_(ids),
+            Rally.end_type != IN_PROGRESS_END_TYPE,
             Rally.is_skipped == False,  # noqa: E712
             Rally.deleted_at.is_(None),
         )
