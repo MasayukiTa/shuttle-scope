@@ -1,5 +1,6 @@
 """ストローク管理API（/api/strokes）"""
 import logging
+from datetime import datetime, timezone
 from typing import Literal, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -286,7 +287,6 @@ def _batch_replace_existing(
     require_match_scope を通過した同じ試合の同じユーザーの書き込みに限る (呼び出し元で
     検証済み)。Rally に作成者列が無いため、これがスコープ上の作成者一致にあたる。
     """
-    from datetime import datetime
     # 所有者ガード: 別端末 (= 別ユーザー) が作ったラリーを上書きしない。
     # Rally に作成者 (user_id) 列が無いため source_device_id を代理キーとする。
     # 既存と今回の device が両方わかっていて食い違う場合だけ拒否する。どちらかが
@@ -582,9 +582,22 @@ def batch_save_rally(
         reserved_key = idem_key
 
     try:
-        return _batch_save_rally_body(
+        result = _batch_save_rally_body(
             body, request, db, idem_key, endpoint_id, ctx_for_idem
         )
+        # 成功した batch 保存の結果を 1 行で記録する (障害調査・再送率の把握用)。
+        # 既存の flush/commit 失敗の logger.exception とは別経路 (成功時のみ) で
+        # 重複しない。個人情報・トークン・リクエストボディは出さず、HTTP status・
+        # already_saved か否か・保存した stroke 数と UTC 時刻だけを残す。
+        _data = result.get("data", {}) if isinstance(result, dict) else {}
+        logger.info(
+            "strokes/batch result: ts=%s status=%d already_saved=%s stroke_count=%s",
+            datetime.now(timezone.utc).isoformat(),
+            201,
+            bool(_data.get("already_saved", False)),
+            _data.get("stroke_count"),
+        )
+        return result
     except Exception:
         # commit 前に失敗した (DB 一時エラーの 503、バリデーション 422、
         # scope 404/403、予期せぬ例外)。予約を解放して再送を許す。成功経路は
