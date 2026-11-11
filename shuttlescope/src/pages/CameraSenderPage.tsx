@@ -133,6 +133,8 @@ export function CameraSenderPage() {
   const { t } = useTranslation()
 
   const [senderState, setSenderState] = useState<SenderState>(paramCode ? 'connecting' : 'join')
+  // 接続中 (connecting) が 5 秒を超えたら『時間がかかっています』の案内を出すフラグ。電波が弱い/経路選択が遅い間、利用者に次の手を示す。
+  const [slowConnect, setSlowConnect] = useState(false)
   const [form, setForm] = useState<JoinForm>({
     sessionCode: paramCode ?? '',
     password: '',
@@ -511,6 +513,17 @@ export function CameraSenderPage() {
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // connecting が 5 秒を超えたら slowConnect を true に。connecting を抜けたら必ず false に戻す。
+  useEffect(() => {
+    if (senderState !== 'connecting') {
+      setSlowConnect(false)
+      return
+    }
+    setSlowConnect(false)
+    const timer = window.setTimeout(() => setSlowConnect(true), 5000)
+    return () => window.clearTimeout(timer)
+  }, [senderState])
+
   // ─── カメラ起動 & WebRTC offer ────────────────────────────────────────────
   const startCamera = useCallback(async () => {
     // iOS Safari は HTTP（非セキュアコンテキスト）では mediaDevices が undefined になる
@@ -782,7 +795,7 @@ export function CameraSenderPage() {
       <RecordingProblemNotice state={serverRecorder.state} errorMsg={serverRecorder.errorMsg} />
 
       {/* ─── State: join ────────────────── */}
-      {(senderState === 'join' || (senderState === 'connecting' && !paramCode)) && (
+      {(senderState === 'join' || (senderState === 'connecting' && (!paramCode || !pwdParam))) && (
         <div className="w-full max-w-sm bg-[var(--ss-surface-1)] rounded-[6px] p-5 border border-[var(--ss-border)] shadow-[0_1px_2px_rgba(16,24,40,.06)]">
           <div className="space-y-3">
             <div>
@@ -845,6 +858,11 @@ export function CameraSenderPage() {
               ? `${t('camera_sender.reconnecting')} (${reconnectCount}/${MAX_RECONNECT}${t('camera_sender.reconnect_attempt')})`
               : t('camera_sender.join_connecting')}
           </p>
+          {slowConnect && (
+            <p className="text-[var(--ss-warn)] text-xs mt-2">
+              {t('camera_sender.connecting_slow')}
+            </p>
+          )}
         </div>
       )}
 
@@ -1010,6 +1028,10 @@ export function CameraSenderPage() {
                 {t('auto.CameraSenderPage.k_wifi_check')}
               </p>
             )}
+            {/* 失敗時は原因と次の手を常に示す: 共有パスワードはPC画面・電波の確認・もう一度 */}
+            <p className="text-xs text-[var(--ss-t3)] mb-4">
+              {t('camera_sender.error_help_password')}
+            </p>
             <div className={`flex gap-2 justify-center${showWifiHint ? '' : ' mt-4'}`}>
               <button
                 onClick={() => {

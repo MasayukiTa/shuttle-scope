@@ -2873,7 +2873,9 @@
     "camera_error_generic": "Could not start the camera. Please try again.",
     "connect_error": "The camera started, but the broadcast connection failed. Check your network and try again.",
     "rejoin_required": "Your session access is no longer valid. Please rejoin the session.",
-    "session_gone": "This session has ended. Check the session code and rejoin."
+    "session_gone": "This session has ended. Check the session code and rejoin.",
+    "connecting_slow": "This is taking longer than usual. Please check your network signal.",
+    "error_help_password": "The shared password is shown on the PC screen. Check your network signal and try again."
   },
   "live_source": {
     "title": "Live source",
