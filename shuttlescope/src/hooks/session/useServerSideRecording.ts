@@ -103,6 +103,7 @@ interface UseServerSideRecordingReturn {
   stop: () => Promise<void>
   uploadedChunks: number
   errorMsg: string | null
+  successMsg: string | null
 }
 
 const DEFAULT_AUTO_RECORD =

@@ -32,19 +32,19 @@ function installFetch(finalizeStatus: number) {
   return vi.fn(async (url: unknown, init?: { headers?: unknown }) => {
     const u = String(url)
     if (u.includes('/uploads/video/init')) {
-      return { ok: true, status: 200, json: async () => ({ success: true, data: { upload_id: 'u1', chunk_size: 8, total_chunks: 0 } }), text: async () => '' }
+      return { ok: true, status: 200, json: async () => ({ success: true, data: { upload_id: 'u1', chunk_size: 8, total_chunks: 0 } }), text: async (): Promise<string> => '' }
     }
     if (u.includes('/uploads/video/chunk')) {
-      return { ok: true, status: 200, json: async () => ({}), text: async () => '' }
+      return { ok: true, status: 200, json: async () => ({}), text: async (): Promise<string> => '' }
     }
     if (u.includes('/finalize')) {
       void init
       if (finalizeStatus === 200) {
-        return { ok: true, status: 200, json: async () => ({ success: true }), text: async () => '' }
+        return { ok: true, status: 200, json: async () => ({ success: true }), text: async (): Promise<string> => '' }
       }
-      return { ok: false, status: finalizeStatus, text: async () => 'detail: authentication required' }
+      return { ok: false, status: finalizeStatus, text: async (): Promise<string> => 'detail: authentication required' }
     }
-    return { ok: true, status: 200, json: async () => ({}), text: async () => '' }
+    return { ok: true, status: 200, json: async () => ({}), text: async (): Promise<string> => '' }
   })
 }
 
