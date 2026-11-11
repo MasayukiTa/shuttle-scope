@@ -552,6 +552,14 @@ def add_player_row(body: PlayerCreate, request: Request, db: Session):
         if (body.profile_status or "") != "provisional":
             if not body.team or not body.team.strip():
                 raise HTTPException(status_code=422, detail="team must not be empty or whitespace only")
+        else:
+            # 試合登録時の暫定相手選手は所属 (team_id) を持たない。所属ではなく
+            # 「自チームが登録した」ことで可視性と試合作成権限を決めるため、登録主体を
+            # scouting_owner_team_id に刻む (quick-start の相手 auto-create と同じ扱い)。
+            # これが無いと、両者チーム無しの暫定選手だけの試合が
+            # _require_own_or_scouted_player で 403 になる。
+            if scouting_owner_team_id is None and can_see_scouting_players(_actor) and _actor.team_id is not None:
+                scouting_owner_team_id = _actor.team_id
     # HTML タグ / 制御文字 / BIDI override の注入を拒否 (stored XSS 対策・多層防御)
     _reject_html_in_field(body.name, "name", require_non_empty=True)
     _reject_html_in_field(body.name_en, "name_en")

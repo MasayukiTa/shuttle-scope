@@ -173,7 +173,7 @@ describe('MatchListPage: admin 所有チーム指定', () => {
     // レベル / ラウンド未選択のまま送信
     fireEvent.submit(container.querySelector('form') as HTMLFormElement)
     const alert = await findByRole('alert')
-    expect(alert.textContent).toContain('— 選択 —')
+    expect(alert.textContent).toContain('大会レベルを選択してください。')
     expect(apiPost.mock.calls.some((c) => c[0] === '/matches')).toBe(false)
   })
 
