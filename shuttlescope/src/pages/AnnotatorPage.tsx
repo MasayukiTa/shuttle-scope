@@ -5536,6 +5536,7 @@ export function AnnotatorPage() {
           viewerUrls={(activeSession.camera_sender_urls ?? []).map((u) => rebaseUrl(u.replace('/camera/', '/viewer/')))}
           publicOrigin={publicOrigin}
           sessionPassword={activeSession.session_password}
+          passwordSet={activeSession.password_set}
           onClose={() => setShowSessionModal(false)}
         />
       )}

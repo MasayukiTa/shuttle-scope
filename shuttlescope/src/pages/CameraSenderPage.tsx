@@ -796,7 +796,9 @@ export function CameraSenderPage() {
             </div>
             <div>
               <label htmlFor="cs-join-password" className="block text-xs text-[var(--ss-t2)] mb-1">{t('camera_sender.join_password_label')}</label>
+              <p id="cs-join-password-hint" className="text-[11px] text-[var(--ss-t3)] mb-1">{t('camera_sender.join_password_hint')}</p>
               <input
+                aria-describedby="cs-join-password-hint"
                 id="cs-join-password"
                 type="password"
                 value={form.password}
