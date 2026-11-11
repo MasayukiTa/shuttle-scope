@@ -57,8 +57,12 @@ def _require_session_scope(request: Request, session: SharedSession, db: Session
 # ─── パスワードユーティリティ ────────────────────────────────────────────────
 
 def _generate_password(length: int = 8) -> str:
-    """ランダムな英数字パスワードを生成"""
-    chars = string.ascii_letters + string.digits
+    """ランダムな英数字パスワードを生成。
+
+    紛らわしい文字 (0 O o 1 l I) は読み上げ・手入力の誤りを招くため除外する。
+    """
+    ambiguous = set("0Oo1lI")
+    chars = "".join(c for c in (string.ascii_letters + string.digits) if c not in ambiguous)
     return "".join(secrets.choice(chars) for _ in range(length))
 
 
@@ -1614,6 +1618,9 @@ def _session_to_dict(session: SharedSession, db: Session, request: Optional[Requ
         "ws_url_template": ws_templates[0],
         "ws_url_templates": ws_templates,
         "has_password": session.password_hash is not None,
+        # password_set: パスワードが設定済みか (真偽)。平文は含めない。
+        # 再読み込み後も「設定済み」を正しく出すために必要 (平文は再表示できない)。
+        "password_set": session.password_hash is not None,
         # named tunnel が起動していれば true。フロント UI が「外部公開済」表示に使う
         "named_tunnel_active": tunnel_url is not None,
         "public_origin_active": public_origin is not None,
