@@ -1321,6 +1321,7 @@
       "owner_team_hint": "Choose which team this match belongs to. Leave unset to use your own team.",
       "owner_team_default": "My team",
       "owner_team_required": "Select an owning team (you are not assigned to a team, so an admin must specify the owning team).",
+      "owner_team_none": "No teams exist yet. Create a team first.",
       "public_pool_warning": "Turning this on makes this match and its data visible to every team. Use it only for matches that are fine to publish.",
       "public_pool_enable_confirm": "This match will be visible to all teams. Have you confirmed that the video and player information may be shared?",
       "reissue_video_token_confirm": "Reissue the video link? If you shared the old URL, it will immediately stop playing. Continue?",

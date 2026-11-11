@@ -171,6 +171,13 @@ export function MatchListPage() {
   })
   const teams: TeamDTO[] = teamsData?.data ?? []
 
+  // チームが 1 つだけなら既定で選ぶ（チーム未所属 admin が毎回選ばずに済むように）。
+  useEffect(() => {
+    if (role === 'admin' && !teamName && showForm && ownerTeamId === '' && teams.length === 1) {
+      setOwnerTeamId(teams[0].id)
+    }
+  }, [role, teamName, showForm, ownerTeamId, teams])
+
   // 動画 DL ジョブ一覧 (5 秒間隔 polling) — 試合一覧で「DL 中」バッジを表示するため
   type DownloadInfo = {
     job_id: string
@@ -1567,6 +1574,11 @@ export function MatchListPage() {
                         </option>
                       ))}
                     </select>
+                    {teams.length === 0 && (
+                      <p role="note" className={`text-xs mt-2 ${textSecondary}`}>
+                        {t('match.list.owner_team_none')}
+                      </p>
+                    )}
                   </fieldset>
                 )}
               </div>
