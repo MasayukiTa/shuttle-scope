@@ -22,8 +22,9 @@ import { useEffect, useRef } from 'react'
 
 import { buildMidRallyPayload, type BuildBatchPayloadArgs, type BatchPayload } from '@/utils/annotationPayload'
 import {
-  stashRallyBeforeSave,
-  removeRallyAfterSave,
+  stashMidRally,
+  removeMidRally,
+  midRallyIdempotencyKey,
   type UnownedPendingRally,
 } from '@/utils/offlineStrokeQueue'
 
@@ -79,6 +80,10 @@ export class MidRallyAutosaver {
   private timer: ReturnType<typeof setTimeout> | null = null
   private inFlight = false
   private disposed = false
+  // 確定 (ラリー保存) の stash/送信が始まったら true。以後の mid-rally flush を
+  // 無効化し、飛行中だった flush の成功後処理 (mid 枠削除) も抑止する。確定ラリーの
+  // 退避・送信と mid-rally autosave が競合して確定内容を上書きするのを防ぐ。
+  private suspended = false
 
   constructor(private readonly deps: MidRallyAutosaverDeps) {
     this.debounceMs = deps.debounceMs ?? 5000
@@ -103,7 +108,7 @@ export class MidRallyAutosaver {
 
   /** タイマー発火時または明示呼び出しで、現ラリーの未保存ストロークを送る。 */
   async flush(): Promise<void> {
-    if (this.disposed || this.inFlight) return
+    if (this.disposed || this.suspended || this.inFlight) return
     const snapshot = this.deps.getSnapshot()
     if (!snapshot) return
     const { matchId, payloadArgs } = snapshot
@@ -124,15 +129,29 @@ export class MidRallyAutosaver {
       payload,
       queued_at: new Date().toISOString(),
     }
+    // 確定が割り込んできたら中間保存はやめる (退避も送信もしない)。
+    if (this.suspended) {
+      this.inFlight = false
+      return
+    }
     try {
-      await stashRallyBeforeSave(ownerUserId, pending)
+      // mid-rally は確定 owned 枠とは別 prefix (mid/) に退避する。確定ラリーの
+      // 退避行を中間 payload で上書きしない。
+      await stashMidRally(ownerUserId, pending)
     } catch {
       /* 退避自体の失敗は握りつぶさず送信は試みる (本送避キューと同様) */
     }
 
+    // mid-rally は確定とは別の冪等キー (offline-mid-...) を使い、中間保存の応答が
+    // 確定ラリーの冪等キー (offline-...) を先取りしないようにする。テストで差し替え
+    // 可能なよう makeIdempotencyKey があればそれを優先する。
     const headers =
-      ownerUserId != null && this.deps.makeIdempotencyKey
-        ? { 'X-Idempotency-Key': this.deps.makeIdempotencyKey(ownerUserId, matchId, setId, rallyNum) }
+      ownerUserId != null
+        ? {
+            'X-Idempotency-Key': this.deps.makeIdempotencyKey
+              ? this.deps.makeIdempotencyKey(ownerUserId, matchId, setId, rallyNum)
+              : midRallyIdempotencyKey(ownerUserId, matchId, setId, rallyNum),
+          }
         : undefined
 
     try {
@@ -140,10 +159,13 @@ export class MidRallyAutosaver {
       if (!res?.success) {
         throw new Error('mid-rally autosave: send did not succeed')
       }
-      // 成功: 退避を消し、PR 260 の未送信数から外す。
-      await removeRallyAfterSave(ownerUserId, matchId, setId, rallyNum)
+      // 成功: mid 枠の退避だけを消す。確定が割り込んでいたら mid 枠も触らず、
+      // 削除は確定経路に委ねる (確定 owned 行は別 prefix なので元々消えない)。
+      if (!this.suspended) {
+        await removeMidRally(ownerUserId, matchId, setId, rallyNum)
+      }
       this.inFlight = false
-      if (!this.disposed) this.deps.onSent?.(snapshot)
+      if (!this.disposed && !this.suspended) this.deps.onSent?.(snapshot)
     } catch (err) {
       // 失敗: 退避は残したまま。retryMs 後に再試行 (次の notifyInput でも再試行される)。
       this.inFlight = false
@@ -152,6 +174,16 @@ export class MidRallyAutosaver {
         this.schedule(this.retryMs)
       }
     }
+  }
+
+  /**
+   * 確定 (ラリー保存) の stash/送信が始まったことを知らせる。以後の mid-rally flush を
+   * 無効化し、飛行中だった flush の成功後処理 (mid 枠削除・onSent) も抑止する。
+   * ページ側は確定保存を呼ぶ直前にこれを呼ぶ。タイマーも止める。
+   */
+  suspend(): void {
+    this.suspended = true
+    this.cancel()
   }
 
   /** タイマーを止める (ラリー確定時など、mid-rally 送信を不要にしたいとき)。 */
