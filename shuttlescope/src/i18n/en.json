@@ -1757,7 +1757,7 @@
       "cv_detail_label": "CV detail",
       "cv_apply_result": "{{n}} applied",
       "cv_apply_result_land": " (landing {{n}})",
-      "cv_apply_result_hit": " (hit zone {{n}})",
+      "cv_apply_result_hit": " (shot location {{n}})",
       "cv_apply_result_hitter": " (hitter {{n}})",
       "cv_apply_result_preserved": " · {{n}} differing from your entries left unchanged",
       "cv_apply_error": "Apply failed",
@@ -3379,8 +3379,8 @@
     "tab_hit": "Shot location",
     "tab_land": "Landing point",
     "tab_composite": "Composite",
-    "composite_note": "Landing points are point-symmetrically mapped around the net and overlaid on the home-court coordinates. Click a tile for hit- and landing-point details.",
-    "missingness_hit": "{{missing}} shots have no recorded hit point (of {{land}} landing points; {{pct}} missing). The hit-point heatmap excludes them.",
+    "composite_note": "Landing points are point-symmetrically mapped around the net and overlaid on the home-court coordinates. Click a tile for shot-location and landing-point details.",
+    "missingness_hit": "{{missing}} shots have no recorded shot location (of {{land}} landing points; {{pct}} missing). The shot-location heatmap excludes them.",
     "period_all": "All time",
     "period_last_n": "Last {{n}} matches",
     "match_select_empty": "Select a match (individual)",
@@ -3735,7 +3735,7 @@
     },
     "EffectiveDistributionMap": {
       "k1": "Opponent court (landing point)",
-      "own_court": "Own court (hit point) ",
+      "own_court": "Own court (shot location) ",
       "k2": "Click a zone for details",
       "k3": "Points won",
       "k4": "Maximize for details"
@@ -4074,7 +4074,7 @@
       "reference_hint": "Fewer than {{n}} occurrences, so the interval is wide and this win rate is only indicative. The section-level confidence does not apply to individual patterns."
     },
     "ReceivedVulnerabilityMap": {
-      "k1": "Opponent court (hit point) → Home court (landing)",
+      "k1": "Opponent court (shot location) → Home court (landing)",
       "k2": "Click a zone for details",
       "k3": "Points lost",
       "k4": "Shots received",
@@ -4457,7 +4457,7 @@
       "k1": "Opponent court (landing point)",
       "k2": "Composite view (home-court perspective)",
       "k3": "Net",
-      "k4": "Home court (hit point)"
+      "k4": "Home court (shot location)"
     },
     "EvidenceBadge": {
       "k1": "Not recommended",
@@ -4621,10 +4621,10 @@
       "k13": "Skip this sample",
       "k14": "Cancel identification",
       "k15": "Toggle persons and tracks together",
-      "k16": "Apply high-confidence (auto_filled) landing zone, hit zone, and hitter",
+      "k16": "Apply high-confidence (auto_filled) landing zone, shot-location zone, and hitter",
       "k17": "Apply high-confidence landing zone only",
       "k18": "Apply high-confidence hitter only",
-      "k19": "Apply landing, hit-zone, and hitter high-confidence + suggested candidates",
+      "k19": "Apply landing, shot-location zone, and hitter high-confidence + suggested candidates",
       "k20": "Show CV assist panel",
       "k21": "Show CV rallies needing review",
       "k22": "Remote connection status (click to open device manager)",
@@ -5355,9 +5355,9 @@
       "outcome_opponent_error": "Opponent error",
       "serve_only": "Rally ended on the serve (1 stroke)",
       "saving": "Saving ...",
-      "prompt_serve_hit": "Select the serve hit point",
+      "prompt_serve_hit": "Select the serve shot location",
       "prompt_serve_land": "Select the serve landing point",
-      "prompt_final_hit": "Select the hit point of the deciding shot",
+      "prompt_final_hit": "Select the shot location of the deciding shot",
       "prompt_final_land": "Select the landing point of the deciding shot",
       "primary_next": "Next",
       "primary_submit": "Submit",
@@ -6092,7 +6092,7 @@
       },
       "pass2_intro": {
         "title": "Serve and finishing shot",
-        "body": "This step adds the serve hit/land zones and the finishing shot's hit/land zones for each rally — four taps per rally."
+        "body": "This step adds the serve shot-location/landing zones and the finishing shot's shot-location/landing zones for each rally — four taps per rally."
       },
       "zonePicker": {
         "title": "Pick a court zone",
@@ -6108,7 +6108,7 @@
       },
       "addStroke": {
         "title": "Add a stroke",
-        "body": "Inserts a new stroke into the rally: pick a shot type, then tap the hit zone and the landing zone."
+        "body": "Inserts a new stroke into the rally: pick a shot type, then tap the shot location and the landing zone."
       },
       "offline": {
         "title": "Safe offline",
