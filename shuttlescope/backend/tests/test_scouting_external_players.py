@@ -159,20 +159,31 @@ def test_external_player_cannot_carry_a_team(client, world):
     assert r.status_code == 422, r.text
 
 
-def test_team_is_still_required_for_a_normal_player(client, world):
-    """既存の不変則を壊していないこと。
+def test_team_is_optional_for_a_normal_player(client, world):
+    """team は任意。空でも「所属チーム未設定」の選手として登録できる。
 
-    analyst は自チーム検査(403)のほうが先に効き、team 未指定の 422 までは
-    到達しない。両方の枝が生きていることを、2 つのロールで確かめる。
+    背景: 試合登録フォームのチーム名欄は任意として提示されているのに、以前は
+    サーバが team 未指定を 422 で拒否していた (UI とサーバの契約の食い違い)。
+    Player.team_name / team_id は DB 上 nullable なので、空でも整合する。
+    cross-team 防御は「team が指定されたとき自チーム以外か」だけに限定したため、
+    team 未指定は analyst でも admin でも作成できる。
     """
     as_analyst = client.post("/api/players", json={"name": "Normal", "dominant_hand": "R"},
                              headers=_h(world["analyst_a"]))
-    assert as_analyst.status_code == 403, as_analyst.text
+    assert as_analyst.status_code == 201, as_analyst.text
+    assert not as_analyst.json()["data"].get("team"), "team 未指定なのに所属が付いている"
 
-    # admin は自チーム検査を通るので、team 必須の 422 に到達する
     as_admin = client.post("/api/players", json={"name": "Normal2", "dominant_hand": "R"},
                            headers=_h(world["admin"]))
-    assert as_admin.status_code == 422, as_admin.text
+    assert as_admin.status_code == 201, as_admin.text
+
+
+def test_analyst_still_cannot_register_another_teams_player(client, world):
+    """team を指定した場合の cross-team 防御は維持する (他チーム名は 403)。"""
+    r = client.post("/api/players", json={
+        "name": "Other Team Player", "dominant_hand": "R", "team": "ScoutTeamB",
+    }, headers=_h(world["analyst_a"]))
+    assert r.status_code == 403, r.text
 
 
 # ── 見える範囲 ──────────────────────────────────────────────────────────────
