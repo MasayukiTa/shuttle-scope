@@ -525,21 +525,21 @@ def add_player_row(body: PlayerCreate, request: Request, db: Session):
     else:
         # analyst は自チーム以外の選手を登録不可 (cross-team データ汚染防止)。
         # 外部選手は上の分岐で扱うので、ここは従来どおり所属チームの話に限る。
+        # team は任意。空のときは「所属チーム未設定」の選手として作る (Player.team_name /
+        # team_id は DB 上 nullable で、空でも整合する)。team が指定された場合のみ、
+        # それが自チームと一致するかを検証する (指定された他チーム名での汚染を防ぐ)。
         if _actor.is_analyst and not _actor.is_admin:
             actor_team = (_actor.team_name or "").strip()
             body_team = (body.team or "").strip()
             if not actor_team:
                 from backend.utils.control_plane import allow_legacy_header_auth
                 if not allow_legacy_header_auth(request):
-                    raise HTTPException(status_code=403, detail="team_name 未設定")
-            elif not body_team or body_team != actor_team:
+                    raise HTTPException(status_code=403, detail="team_name が未設定です")
+            elif body_team and body_team != actor_team:
                 raise HTTPException(
                     status_code=403,
-                    detail=f"自チーム ({actor_team}) 以外の選手は登録できません",
+                    detail=f"自チーム ({actor_team}) 以外のチーム名は指定できません",
                 )
-        # team 必須 (空文字/whitespace 拒否)
-        if not body.team or not body.team.strip():
-            raise HTTPException(status_code=422, detail="team must not be empty or whitespace only")
     # HTML タグ / 制御文字 / BIDI override の注入を拒否 (stored XSS 対策・多層防御)
     _reject_html_in_field(body.name, "name", require_non_empty=True)
     _reject_html_in_field(body.name_en, "name_en")
