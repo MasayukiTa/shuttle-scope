@@ -27,6 +27,13 @@ interface HitZoneSelectorProps {
   onZoneSelect: (zone: Zone9) => void
   /** 人間が override したかどうか（border 強調用） */
   isOverridden: boolean
+  /**
+   * タップが枠間（hit-test ギャップ）やコート外に落ち、最近傍ゾーンへ
+   * 自動補正（snap/clamp）されたか。courtHomography の clamped フラグを
+   * UI に伝搬する。true のとき「最寄に補正」バッジを出し、なぜその
+   * マスが選ばれたかをユーザに明示する。
+   */
+  snapped?: boolean
   /** 入力不可状態 */
   disabled?: boolean
   /** タイル一辺サイズ (px)。デフォルト 60 */
@@ -50,6 +57,7 @@ export function HitZoneSelector({
   selectedZone,
   onZoneSelect,
   isOverridden,
+  snapped = false,
   disabled = false,
   cellSize = 60,
 }: HitZoneSelectorProps) {
@@ -69,9 +77,21 @@ export function HitZoneSelector({
             <MIcon name="edit" size={11} aria-hidden /> {t('annotator.hit_zone_overridden')}
           </span>
         )}
+        {snapped && (
+          // 枠間/コート外タップを最近傍ゾーンへ自動補正したことの可視表示。
+          // 「なぜこのマス？」という戸惑いを防ぐ (overridden バッジと同様の
+          // text-xs + 丸枠で WCAG AA を満たす)。
+          <span
+            data-testid="hit-zone-snapped-badge"
+            className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded-ss-sm border border-[var(--ss-border)] bg-[var(--ss-surface-2)] text-xs text-[var(--ss-t2)] font-semibold leading-none"
+            aria-label={t('annotator.hit_zone_snapped')}
+          >
+            <MIcon name="adjust" size={11} aria-hidden /> {t('annotator.hit_zone_snapped')}
+          </span>
+        )}
       </div>
       <div
-        className="grid grid-cols-3 gap-1.5"
+        className="grid grid-cols-3 gap-0"
         role="grid"
         aria-label={t('annotator.hit_zone_aria')}
       >
@@ -82,16 +102,25 @@ export function HitZoneSelector({
           const isCvMatch = isSelected && !isOverridden && isCv
 
           return (
-            <button
+            // タイル間の hit-test ギャップ消去: 透明の padding ラッパで視覚間隔を
+            // 保ちつつ、クリック領域を隣接セルと密着させる (grid 自体は gap-0)。
+            // タップ動作はラッパ側に一本化し、隙間を押してもそのセルの
+            // ゾーンが選ばれるようにする。
+            <div
               key={zone}
+              className={clsx('p-[3px] flex', disabled ? 'cursor-not-allowed' : 'cursor-pointer')}
+              onClick={() => !disabled && onZoneSelect(zone)}
+              data-testid={`hit-zone-cell-${idx + 1}`}
+            >
+            <button
               type="button"
               data-tile="hit-zone"
-              onClick={() => !disabled && onZoneSelect(zone)}
+              tabIndex={-1}
               disabled={disabled}
               aria-pressed={isSelected}
               aria-label={t('annotator.hit_zone_cell', { zone: idx + 1 })}
               className={clsx(
-                'relative flex items-center justify-center rounded-ss-md font-mono ss-num text-base font-bold',
+                'relative flex w-full items-center justify-center rounded-ss-md font-mono ss-num text-base font-bold',
                 'transition-colors duration-100 select-none',
                 isManualPick
                   ? 'bg-[var(--ss-emphasis)] text-white border-2 border-[var(--ss-emphasis)]'
@@ -119,6 +148,7 @@ export function HitZoneSelector({
                 />
               )}
             </button>
+            </div>
           )
         })}
       </div>
