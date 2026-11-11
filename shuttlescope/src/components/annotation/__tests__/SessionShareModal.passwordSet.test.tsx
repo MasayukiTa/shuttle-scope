@@ -52,7 +52,9 @@ describe('SessionShareModal password-set flag', () => {
     })
     render(<SessionShareModal {...baseProps} passwordSet={true} />)
     fireEvent.click(screen.getByRole('button', { name: REGEN_BTN }))
-    await waitFor(() => expect(screen.getByText('NewPass42')).toBeInTheDocument())
+    // The new password appears both in the password field and in the regenerated
+    // notice block, so there can be more than one match.
+    await waitFor(() => expect(screen.getAllByText('NewPass42').length).toBeGreaterThan(0))
     const alerts = screen.getAllByRole('alert')
     expect(alerts.some((el) => (el.textContent || '').includes(REGEN_WARNING))).toBe(true)
   })
