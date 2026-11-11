@@ -6,10 +6,19 @@
   - 個人情報・トークン・リクエストボディは出さない (set_id / rally_num / player 名 /
     Authorization ヘッダ値などがログ本文に混ざらないこと)。
   - 既存の例外ログと重複しない (正常終了では ERROR/例外ログが出ない)。
+
+捕捉方法について:
+  caplog はロガーのレベル / propagate / ハンドラ構成に左右され、手元では通るが
+  CI (全スイートを -n auto --dist loadfile で実行) では空になった。原因は
+  backend/main.py が module ロード時に `logging.basicConfig(force=True)` を呼び、
+  root のハンドラ (caplog の LogCaptureHandler を含む) を消すため。単体ファイル
+  実行では import 順序が違うので通るが、全スイート順では caplog が壊れる。
+  test_error_detail_redaction.py と同じく、logger.info の呼び出しそのものを
+  monkeypatch で捕捉して環境非依存にする。検証内容 (1 行・status・already_saved・
+  stroke 数・非 PII) は一切緩めない。
 """
 from __future__ import annotations
 
-import logging
 from datetime import date
 
 import pytest
@@ -18,9 +27,8 @@ from fastapi.testclient import TestClient
 from backend.db.database import get_db
 from backend.db.models import GameSet, Match, Player, User
 from backend.main import app
+from backend.routers import strokes as strokes_router
 from backend.utils.jwt_utils import create_access_token
-
-LOGGER_NAME = "backend.routers.strokes"
 
 
 @pytest.fixture()
@@ -73,6 +81,54 @@ def client(db_session, game_set):
     app.dependency_overrides.clear()
 
 
+@pytest.fixture()
+def info_calls(monkeypatch):
+    """strokes ルータの logger.info 呼び出しを捕捉する (環境非依存)。
+
+    caplog は CI で basicConfig(force=True) により root ハンドラが消えて空に
+    なるため、呼び出し自体を spy する。整形済みメッセージ文字列を返す。
+    """
+    calls: list[str] = []
+    real_info = strokes_router.logger.info
+
+    def _spy(fmt, *args, **kwargs):
+        try:
+            calls.append(str(fmt) % args if args else str(fmt))
+        except Exception:  # noqa: BLE001 - 整形失敗時も原文を残す
+            calls.append(str(fmt))
+        return real_info(fmt, *args, **kwargs)
+
+    monkeypatch.setattr(strokes_router.logger, "info", _spy)
+    return calls
+
+
+@pytest.fixture()
+def error_calls(monkeypatch):
+    """strokes ルータの logger.error / logger.exception 呼び出しを捕捉する。"""
+    calls: list[str] = []
+
+    def _make_spy(real):
+        def _spy(fmt, *args, **kwargs):
+            try:
+                calls.append(str(fmt) % args if args else str(fmt))
+            except Exception:  # noqa: BLE001
+                calls.append(str(fmt))
+            return real(fmt, *args, **kwargs)
+        return _spy
+
+    monkeypatch.setattr(
+        strokes_router.logger, "error", _make_spy(strokes_router.logger.error)
+    )
+    monkeypatch.setattr(
+        strokes_router.logger, "exception", _make_spy(strokes_router.logger.exception)
+    )
+    return calls
+
+
+def _batch_log_lines(calls: list[str]) -> list[str]:
+    return [m for m in calls if "strokes/batch ok" in m]
+
+
 def _body(set_id: int) -> dict:
     return {
         "rally": {
@@ -104,58 +160,47 @@ def _body(set_id: int) -> dict:
     }
 
 
-def _batch_log_records(caplog):
-    return [
-        r for r in caplog.records
-        if r.name == LOGGER_NAME and "strokes/batch ok" in r.getMessage()
-    ]
-
-
 def test_first_save_emits_one_info_line_with_status_and_counts(
-    client, game_set, caplog
+    client, game_set, info_calls
 ):
-    with caplog.at_level(logging.INFO, logger=LOGGER_NAME):
-        resp = client.post("/api/strokes/batch", json=_body(game_set.id))
+    resp = client.post("/api/strokes/batch", json=_body(game_set.id))
     assert resp.status_code in (200, 201), resp.text
 
-    records = _batch_log_records(caplog)
-    assert len(records) == 1, [r.getMessage() for r in records]
-    msg = records[0].getMessage()
-    assert records[0].levelno == logging.INFO
+    lines = _batch_log_lines(info_calls)
+    assert len(lines) == 1, info_calls
+    msg = lines[0]
     assert "status=201" in msg
     assert "already_saved=False" in msg
     # 保存した stroke 数 (2) が出る。
     assert "saved_strokes=2" in msg
 
 
-def test_resend_logs_already_saved_true(client, game_set, caplog):
+def test_resend_logs_already_saved_true(client, game_set, info_calls):
     first = client.post("/api/strokes/batch", json=_body(game_set.id))
     assert first.status_code in (200, 201), first.text
 
-    with caplog.at_level(logging.INFO, logger=LOGGER_NAME):
-        # 初回保存のログを除外し、再送 1 回分だけを測る。
-        caplog.clear()
-        second = client.post("/api/strokes/batch", json=_body(game_set.id))
+    # 初回保存のログを除外し、再送 1 回分だけを測る。
+    info_calls.clear()
+    second = client.post("/api/strokes/batch", json=_body(game_set.id))
     assert second.status_code in (200, 201), second.text
 
-    records = _batch_log_records(caplog)
+    lines = _batch_log_lines(info_calls)
     # 再送 1 回につき 1 行。
-    assert len(records) == 1, [r.getMessage() for r in records]
-    msg = records[0].getMessage()
+    assert len(lines) == 1, info_calls
+    msg = lines[0]
     assert "already_saved=True" in msg
     assert "status=201" in msg
     # 既存の非削除 stroke 数 (2) を返す。
     assert "saved_strokes=2" in msg
 
 
-def test_log_line_has_no_pii_or_body_or_token(client, game_set, caplog):
-    with caplog.at_level(logging.INFO, logger=LOGGER_NAME):
-        resp = client.post("/api/strokes/batch", json=_body(game_set.id))
+def test_log_line_has_no_pii_or_body_or_token(client, game_set, info_calls):
+    resp = client.post("/api/strokes/batch", json=_body(game_set.id))
     assert resp.status_code in (200, 201), resp.text
 
-    records = _batch_log_records(caplog)
-    assert len(records) == 1
-    msg = records[0].getMessage()
+    lines = _batch_log_lines(info_calls)
+    assert len(lines) == 1, info_calls
+    msg = lines[0]
     # リクエストボディ由来の値・個人情報・トークンが本文に出ないこと。
     for forbidden in (
         "player_a", "player_b", "short_service", "clear",
@@ -164,14 +209,9 @@ def test_log_line_has_no_pii_or_body_or_token(client, game_set, caplog):
         assert forbidden not in msg, f"log leaks {forbidden!r}: {msg}"
 
 
-def test_successful_save_emits_no_error_log(client, game_set, caplog):
-    with caplog.at_level(logging.INFO, logger=LOGGER_NAME):
-        resp = client.post("/api/strokes/batch", json=_body(game_set.id))
+def test_successful_save_emits_no_error_log(client, game_set, error_calls):
+    resp = client.post("/api/strokes/batch", json=_body(game_set.id))
     assert resp.status_code in (200, 201), resp.text
 
-    # 正常終了では既存の例外ログ (ERROR 以上) と重複しない。
-    errors = [
-        r for r in caplog.records
-        if r.name == LOGGER_NAME and r.levelno >= logging.ERROR
-    ]
-    assert errors == [], [r.getMessage() for r in errors]
+    # 正常終了では既存の例外ログ (error/exception) と重複しない。
+    assert error_calls == [], error_calls
