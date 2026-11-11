@@ -360,7 +360,7 @@ export function SessionShareModal({
               <p role="alert" className="text-[11px] font-semibold text-[var(--ss-warn)]">
                 {t('lan_session.share_modal_password_reveal_warning')}
               </p>
-              <p className={`mt-1 text-center text-xl font-mono font-bold tracking-widest ${urlColor}`}>
+              <p data-testid="revealed-password" className={`mt-1 text-center text-xl font-mono font-bold tracking-widest ${urlColor}`}>
                 {sessionPassword}
               </p>
             </div>

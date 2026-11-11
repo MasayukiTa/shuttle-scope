@@ -42,7 +42,7 @@ describe('SessionShareModal does not put the session password in URLs', () => {
 
   it('shows plain join URLs as text', () => {
     const { container } = render(<SessionShareModal {...props} />)
-    const urlTexts = Array.from(container.querySelectorAll('p.font-mono')).map((p) => p.textContent ?? '')
+    const urlTexts = Array.from(container.querySelectorAll('p.font-mono.truncate')).map((p) => p.textContent ?? '')
     expect(urlTexts.length).toBeGreaterThanOrEqual(2)
     for (const text of urlTexts) {
       expect(text).not.toContain(PASSWORD)
