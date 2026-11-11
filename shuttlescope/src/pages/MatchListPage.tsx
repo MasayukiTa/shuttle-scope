@@ -86,6 +86,8 @@ export function MatchListPage() {
   const [formError, setFormError] = useState<string | null>(null)
   // Phase: admin が所有チームを明示指定するための選択（空 = 自チーム）。
   const [ownerTeamId, setOwnerTeamId] = useState<number | ''>('')
+  // 送信を試みたら true。必須の未選択欄にインライン案内を出すために使う
+  const [submitAttempted, setSubmitAttempted] = useState(false)
   // Phase 1: 編集モードで既存動画のファイル名のみ表示する（パスは露出しない）
   const [editingVideoFilename, setEditingVideoFilename] = useState<string>('')
   const [analystSide, setAnalystSide] = useState<'top' | 'bottom'>('bottom')
@@ -288,6 +290,7 @@ export function MatchListPage() {
       setShowForm(false)
       setEditingMatchId(null)
       setForm(defaultForm())
+      setSubmitAttempted(false)
       setAnalystSide('bottom')
       resetPlayerFields()
     },
@@ -306,6 +309,7 @@ export function MatchListPage() {
       setShowForm(false)
       setEditingMatchId(null)
       setForm(defaultForm())
+      setSubmitAttempted(false)
       setAnalystSide('bottom')
       resetPlayerFields()
     },
@@ -392,8 +396,12 @@ export function MatchListPage() {
     e.preventDefault()
     // 前回の検証メッセージを消す（閉じて何も残らない挙動を避け、毎回出し直す）
     setFormError(null)
+    setSubmitAttempted(true)
 
-    // 大会レベルとラウンドは未選択のまま登録させない (既定値を持たないため)
+    // 大会レベルとラウンドは未選択のまま登録させない (既定値を持たないため)。
+    // 該当欄の直下に日本語のインライン案内 (submitAttempted) を出すのに加え、
+    // フォーム上部にも汎用の必須メッセージ (role=alert) を出す。未選択が画面外に
+    // あっても気づけるようにし、既存の必須メッセージ契約も維持する。
     if (!form.tournament_level || !form.round) {
       setFormError(t('common.select_placeholder'))
       return
@@ -674,7 +682,7 @@ export function MatchListPage() {
           )}
           {canWriteMatch(role) && (
           <button
-            onClick={() => { setEditingMatchId(null); setForm(defaultForm()); resetPlayerFields(); setShowForm(true) }}
+            onClick={() => { setEditingMatchId(null); setForm(defaultForm()); setSubmitAttempted(false); resetPlayerFields(); setShowForm(true) }}
             className="flex items-center gap-2 px-4 py-2 bg-[var(--ss-brand)] hover:bg-[var(--ss-brand-hover)] text-white rounded-[var(--r-md)] text-sm"
           >
             <MIcon name="add" size={16} />
@@ -1109,7 +1117,7 @@ export function MatchListPage() {
           <div className={`${card} rounded-[var(--r-lg)] w-full max-w-2xl max-h-[90dvh] overflow-y-auto`}>
             <div className={`flex items-center justify-between px-6 py-4 border-b ${borderLine}`}>
               <h2 className={`text-lg font-semibold ${textHeading}`}>{editingMatchId !== null ? t('auto.MatchListPage.k42') : t('auto.MatchListPage.k29')}</h2>
-              <button aria-label={t('app.close')} onClick={() => { setShowForm(false); setEditingMatchId(null); setForm(defaultForm()); resetPlayerFields() }} className={`${textMuted} hover:text-[var(--ss-t1)]`}><MIcon name="close" size={12} /></button>
+              <button aria-label={t('app.close')} onClick={() => { setShowForm(false); setEditingMatchId(null); setForm(defaultForm()); setSubmitAttempted(false); resetPlayerFields() }} className={`${textMuted} hover:text-[var(--ss-t1)]`}><MIcon name="close" size={12} /></button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 flex flex-col gap-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1141,6 +1149,9 @@ export function MatchListPage() {
                       <option key={l} value={l}>{l}</option>
                     ))}
                   </select>
+                  {submitAttempted && !form.tournament_level && (
+                    <p className="text-xs text-[var(--ss-danger)] mt-1">{t('match.tournament_level_required')}</p>
+                  )}
                 </div>
                 <div>
                   <label htmlFor="match-form-round" className={`block text-sm ${textSecondary} mb-1`}>{t('match.round')} *</label>
@@ -1156,6 +1167,9 @@ export function MatchListPage() {
                       <option key={r} value={r}>{r}</option>
                     ))}
                   </select>
+                  {submitAttempted && !form.round && (
+                    <p className="text-xs text-[var(--ss-danger)] mt-1">{t('match.round_required')}</p>
+                  )}
                 </div>
 
                 {/* 日付 / 形式 */}
@@ -1615,7 +1629,7 @@ export function MatchListPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setShowForm(false); setEditingMatchId(null); setForm(defaultForm()); resetPlayerFields() }}
+                  onClick={() => { setShowForm(false); setEditingMatchId(null); setForm(defaultForm()); setSubmitAttempted(false); resetPlayerFields() }}
                   className="flex-1 py-2 bg-[var(--ss-surface-2)] hover:bg-[var(--ss-surface-3)] text-[var(--ss-t1)] rounded-[var(--r-md)] text-sm"
                 >
                   {t('app.cancel')}
