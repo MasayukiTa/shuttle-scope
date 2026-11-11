@@ -74,6 +74,16 @@ describe('要望7 「セット」→「ゲーム」 is unified on every screen (
     expect(offenders).toEqual([])
   })
 
+  it('ja: no user-facing value uses the English sport-period wording (Set N / Set braces)', () => {
+    const offenders: string[] = []
+    for (const [key, val] of leaves(ja)) {
+      if (EN_PERIOD_PATTERNS.some((re) => re.test(val))) {
+        offenders.push(`${key} = ${JSON.stringify(val)}`)
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+
   it('en: no user-facing value uses "set" as the sport period', () => {
     const offenders: string[] = []
     for (const [key, val] of leaves(en)) {
