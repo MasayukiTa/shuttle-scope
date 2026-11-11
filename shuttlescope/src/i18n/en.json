@@ -2840,6 +2840,11 @@
     "lost_suffix": "(lost)"
   },
   "camera_sender": {
+    "slow_connect_hint": "Connecting is taking a while. Please check your signal.",
+    "error_next_steps_title": "Try these next",
+    "error_step_password": "For the password, check the shared password shown on the PC screen.",
+    "error_step_wifi": "Check your Wi-Fi signal.",
+    "error_step_retry": "Try again.",
     "removed_by_operator": "The operator ended this connection. To join again, enter the session code once more.",
     "state_a_title": "Waiting for start command from the PC",
     "state_a_hint": "This device is registered as a camera candidate",
