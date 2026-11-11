@@ -24,6 +24,8 @@ interface ActiveSession {
   coach_urls: string[]
   camera_sender_urls?: string[]
   session_password?: string
+  /** サーバに保存済みの共有パスワードがあるか (has_password)。再利用時は平文なしでこれだけが返る */
+  has_password?: boolean
 }
 
 interface RemoteHealth {
@@ -116,6 +118,7 @@ export function useSessionSharing({
           coach_urls: string[]
           camera_sender_urls?: string[]
           session_password?: string
+          has_password?: boolean
         }
       }>('/sessions', { match_id: Number(matchId) })
       if (res.success) {
@@ -124,6 +127,7 @@ export function useSessionSharing({
           coach_urls: res.data.coach_urls,
           camera_sender_urls: res.data.camera_sender_urls,
           session_password: res.data.session_password,
+          has_password: res.data.has_password,
         })
       } else {
         onError?.(i18n.t('common_ui.share_create_failed'))

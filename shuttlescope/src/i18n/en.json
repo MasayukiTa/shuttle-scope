@@ -2867,6 +2867,7 @@
     "join_connecting": "Connecting...",
     "join_error_invalid": "Invalid code or password",
     "join_error_network": "Connection failed",
+    "join_error_no_password": "This session has no password set. Ask the person at the PC to issue a share password.",
     "auth_required": "Session code and password are required",
     "session_label": "Session",
     "status_connected": "Connected",

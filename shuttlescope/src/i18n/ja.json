@@ -2875,6 +2875,7 @@
     "join_connecting": "接続中...",
     "join_error_invalid": "コードまたはパスワードが正しくありません",
     "join_error_network": "接続に失敗しました",
+    "join_error_no_password": "このセッションにはパスワードが設定されていません。PC の担当者に、共有パスワードを発行してもらってください",
     "auth_required": "セッションコードとパスワードが必要です",
     "session_label": "セッション",
     "status_connected": "接続済み",

@@ -5568,6 +5568,7 @@ export function AnnotatorPage() {
           viewerUrls={(activeSession.camera_sender_urls ?? []).map((u) => rebaseUrl(u.replace('/camera/', '/viewer/')))}
           publicOrigin={publicOrigin}
           sessionPassword={activeSession.session_password}
+          hasPassword={activeSession.has_password}
           onClose={() => setShowSessionModal(false)}
           onEnded={() => {
             // Session ended on the server: drop local share state and close related panels.

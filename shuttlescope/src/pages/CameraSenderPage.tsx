@@ -498,6 +498,10 @@ export function CameraSenderPage() {
       const status = errorStatus(err)
       if (status === 401) {
         setErrorMsg(t('camera_sender.join_error_invalid'))
+      } else if (status === 403) {
+        // サーバーはパスワード未設定のセッションへの参加を 403 で拒む
+        // (backend/routers/sessions.py join_session)。原因の分かる文言を出す。
+        setErrorMsg(t('camera_sender.join_error_no_password'))
       } else if (status === 404) {
         setErrorMsg('セッションが見つかりません。コードを確認してください。')
       } else if (status === 429) {

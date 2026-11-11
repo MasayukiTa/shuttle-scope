@@ -16,6 +16,8 @@ interface Props {
   /** 画面を開いている公開 HTTPS オリジン。あればこれを使って別ネットワーク可の URL を QR にする */
   publicOrigin?: string | null
   sessionPassword?: string
+  /** サーバに保存済みのパスワードが存在するか (has_password)。false かつ平文未取得なら初回表示で1回だけ自動生成する */
+  hasPassword?: boolean
   /** session end (server /end) success callback; parent drops its share state */
   onEnded?: () => void
   onClose: () => void
@@ -28,6 +30,7 @@ export function SessionShareModal({
   viewerUrls = [],
   publicOrigin = null,
   sessionPassword: initialPassword,
+  hasPassword,
   onEnded,
   onClose,
 }: Props) {
@@ -173,6 +176,28 @@ export function SessionShareModal({
     }
   }
 
+  // 既存セッションでサーバにパスワードが保存されていない (has_password=false) 場合、
+  // モーダルを開いた時点で 1 回だけ自動生成する。利用者が「再生成」を押さなくても
+  // 参加用パスワードが用意され、『未設定』が表示されない。平文を既に受け取って
+  // いる (作成直後) 場合や、保存済み (hasPassword=true) の場合は何もしない。
+  // QR にパスワードは入れない設計 (上記 55-56 行) は維持する。
+  const autoGenTriedRef = useRef(false)
+  useEffect(() => {
+    if (autoGenTriedRef.current) return
+    if (sessionPassword) return            // 作成直後に平文を受領済み
+    if (hasPassword !== false) return      // 保存済み / 不明なら自動生成しない
+    autoGenTriedRef.current = true
+    let active = true
+    apiPost<{ success: boolean; data: { session_password: string } }>(
+      `/sessions/${sessionCode}/regenerate-password`, {}
+    ).then((res) => {
+      if (active && res.success) setSessionPassword(res.data.session_password)
+    }).catch(() => { /* 失敗時は『再生成』ボタンから手動で発行できる */ })
+    return () => { active = false }
+    // sessionCode / hasPassword が変わらない限り一度だけ試行する
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionCode, hasPassword])
+
   const handleEndSession = async () => {
     if (!window.confirm(t('lan_session.session_end_confirm'))) return
     setEnding(true)
@@ -303,21 +328,17 @@ export function SessionShareModal({
           <p className={`text-xs mb-2 ${sectionTitle}`}>{t('lan_session.password_label')}</p>
           <div className="flex items-center gap-1.5">
             <div className={`flex-1 flex items-center gap-1 rounded-ss-sm px-2 py-1 ${urlBg}`}>
-              <span className={`flex-1 text-xs font-mono ${urlColor}`}>
-                {sessionPassword
-                  ? showPassword ? sessionPassword : '••••••••'
-                  : <span className={noteColor}>{t('lan_session.share_modal_password_unset')}</span>
-                }
+              <span className={`flex-1 text-xs font-mono ${sessionPassword ? urlColor : noteColor}`}>
+                {showPassword && sessionPassword ? sessionPassword : '••••••••'}
               </span>
-              {sessionPassword && (
-                <button
-                  onClick={() => setShowPassword((v) => !v)}
-                  aria-label={showPassword ? t('lan_session.password_hide') : t('lan_session.password_show')}
-                  className={`${subColor} hover:text-[var(--ss-t1)] transition-colors duration-fast ease-out`}
-                >
-                  {showPassword ? <MIcon name="visibility_off" size={12} /> : <MIcon name="visibility" size={12} />}
-                </button>
-              )}
+              <button
+                onClick={() => setShowPassword((v) => !v)}
+                disabled={!sessionPassword}
+                aria-label={showPassword ? t('lan_session.password_hide') : t('lan_session.password_show')}
+                className={`${subColor} hover:text-[var(--ss-t1)] disabled:opacity-40 transition-colors duration-fast ease-out`}
+              >
+                {showPassword ? <MIcon name="visibility_off" size={12} /> : <MIcon name="visibility" size={12} />}
+              </button>
             </div>
             {sessionPassword && (
               <button
