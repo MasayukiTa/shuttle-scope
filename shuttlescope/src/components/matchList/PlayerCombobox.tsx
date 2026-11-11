@@ -92,17 +92,22 @@ export function PlayerCombobox({
             </button>
           ))}
           {canCreate ? (
-            <button
-              type="button"
-              onClick={() => {
-                setValue('')
-                setShowDropdown(false)
-              }}
-              className={`w-full text-left px-3 py-2 hover:bg-blue-500/10 text-sm flex items-center gap-2 text-blue-400 border-t ${isLight ? 'border-gray-200' : 'border-gray-600'}`}
-            >
-              <MIcon name="person_add" size={12} className="shrink-0" />
-              <span>{t('match.list.create_tentative', { name: query.trim(), defaultValue: 'Create "{{name}}" as tentative' })}</span>
-            </button>
+            <div className={`border-t ${isLight ? 'border-gray-200' : 'border-gray-600'}`}>
+              <button
+                type="button"
+                onClick={() => {
+                  setValue('')
+                  setShowDropdown(false)
+                }}
+                className="w-full text-left px-3 py-2 hover:bg-blue-500/10 text-sm flex items-center gap-2 text-blue-400"
+              >
+                <MIcon name="person_add" size={12} className="shrink-0" />
+                <span>{t('match.list.create_tentative', { name: query.trim(), defaultValue: 'Create "{{name}}" as tentative' })}</span>
+              </button>
+              <p className="px-3 pb-2 -mt-1 text-xs text-gray-400">
+                {t('match.list.create_tentative_hint')}
+              </p>
+            </div>
           ) : (
             <p className={`px-3 py-2 text-xs text-gray-400 border-t ${isLight ? 'border-gray-200' : 'border-gray-600'}`}>
               {t('match.list.create_tentative_requires_analyst')}

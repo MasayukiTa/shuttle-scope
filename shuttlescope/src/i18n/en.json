@@ -1314,6 +1314,7 @@
       "demo_public_badge": "Demo",
       "demo_public_title": "Demo match visible read-only to other teams",
       "create_tentative": "Create \"{{name}}\" as tentative",
+      "create_tentative_hint": "Tentative registration adds the player by name only; you can fill in the rest of their details later.",
       "create_tentative_requires_analyst": "Adding a tentative player requires the Analyst or Admin role. Please ask an administrator or analyst to register the player.",
       "reissue_video_token": "Reissue video link",
       "reissue_video_token_hint": "Replaces the video URL (app://video/...) with a new UUID",
