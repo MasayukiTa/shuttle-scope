@@ -20,17 +20,17 @@ type Dict = Record<string, Record<string, string>>
 
 describe('DeviceManagerPanel handoff button labels', () => {
   it('ja: アクティブカメラ行の2ボタン文言が正しい', () => {
-    expect((ja as Dict).handoff.request_video_start).toBe('映像の開始を指示')
-    expect((ja as Dict).lan_session.action_deactivate).toBe('待機に戻す')
+    expect((ja as unknown as Dict).handoff.request_video_start).toBe('映像の開始を指示')
+    expect((ja as unknown as Dict).lan_session.action_deactivate).toBe('待機に戻す')
   })
 
   it('en: 同じキーが翻訳されている（未翻訳・日本語混入なし）', () => {
-    expect((en as Dict).handoff.request_video_start).toBe('Start video')
-    expect((en as Dict).lan_session.action_deactivate).toBe('Back to idle')
+    expect((en as unknown as Dict).handoff.request_video_start).toBe('Start video')
+    expect((en as unknown as Dict).lan_session.action_deactivate).toBe('Back to idle')
   })
 
   it('request_video_start は両ロケールに存在する', () => {
-    expect((ja as Dict).handoff).toHaveProperty('request_video_start')
-    expect((en as Dict).handoff).toHaveProperty('request_video_start')
+    expect((ja as unknown as Dict).handoff).toHaveProperty('request_video_start')
+    expect((en as unknown as Dict).handoff).toHaveProperty('request_video_start')
   })
 })
