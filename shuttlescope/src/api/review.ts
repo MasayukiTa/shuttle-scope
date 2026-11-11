@@ -74,7 +74,7 @@ export function getQuickSummary(
 // ---------------------------------------------------------------------------
 // 確認モード（U3 Review）: 保存済みラリーとストロークの実データ閲覧・編集。
 //
-// F-T003-03 (muse T003 / 仙台大 E-90e8cfaa2891): 確認タブが実データ未接続だった。
+// F-T003-03 (muse T003 / E-90e8cfaa2891): 確認タブが実データ未接続だった。
 // ラリー一覧は既存の `GET /rallies/match/{match_id}` を、ストローク一覧は編集に
 // 必要な全フィールドと id を返す `GET /rallies/{rally_id}/strokes` を使う。編集は
 // 既存の `PUT /strokes/{stroke_id}` を叩く。権限はいずれも match scope に従う。

@@ -1,4 +1,4 @@
-"""strokes.intent_tag / intent_note: human intent memo for a shot (要望6, 仙台大 2026-11-05).
+"""strokes.intent_tag / intent_note: human intent memo for a shot (customer request #6, 2026-11-05).
 
 Why these columns exist
 -----------------------

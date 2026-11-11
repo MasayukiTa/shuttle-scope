@@ -1,5 +1,5 @@
 /**
- * F-T003-06 / 仙台大学 要望#8: 確認タブの編集欄で「打点の高さ」の
+ * F-T003-06 / 顧客 要望#8: 確認タブの編集欄で「打点の高さ」の
  * 選択肢が、入力画面と同じ i18n キー (enrichment.contact_height_*) の
  * 訳語 (ネットより上 / やや上 / やや下 / 下) で表示されることを検証する。
  * 保存値 (option の value: overhead/side/underhand/scoop) は内部値のまま不変。
@@ -84,7 +84,7 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 
-describe('確認タブの打点の高さの選択肢 (F-T003-06, 仙台大 要望#8)', () => {
+describe('確認タブの打点の高さの選択肢 (F-T003-06, 顧客 要望#8)', () => {
   it('4つの選択肢の表示名が入力画面と同じ訳語になる', async () => {
     const select = await openHeightSelect()
     const options = within(select).getAllByRole('option') as HTMLOptionElement[]

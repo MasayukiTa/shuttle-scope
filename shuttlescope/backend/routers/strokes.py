@@ -57,7 +57,7 @@ def _human_land_zone_source(land_zone: Optional[str]) -> Optional[str]:
     return "human" if land_zone else None
 
 
-# 要望6 (仙台大 2026-11-05): ショットの意図タグの固定語彙。
+# 要望6 (customer request #6, 2026-11-05): ショットの意図タグの固定語彙。
 # shot_type / hit_zone_source と同じ思想で、自由文字列を DB に素通しさせない
 # (任意のクライアントが綴り違いや未知の値を保存でき、後の集計・AI 分析が壊れる)。
 # 未知の非空値は 'other' に寄せる。空・None は「意図未入力」として NULL のまま。

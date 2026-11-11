@@ -1,4 +1,4 @@
-"""ショットの意図メモ (要望6, 仙台大 2026-11-05) のテスト。
+"""ショットの意図メモ (customer request #6, 2026-11-05) のテスト。
 
 対象:
 - Stroke.intent_tag / intent_note カラム (ORM 保存)

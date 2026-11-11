@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import ja from '@/i18n/ja.json'
 import en from '@/i18n/en.json'
 
-// F-T003-06: Sendai University request #8 asked that contact-height labels
+// F-T003-06: customer request #8 asked that contact-height labels
 // describe the shuttle height relative to the net (above / slightly above /
 // slightly below / below) instead of stroke-technique names (overhead /
 // shoulder / underhand / scoop). The stored enum values
