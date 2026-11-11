@@ -69,6 +69,11 @@ class TestSessionCreation:
         match = _make_match(db_session)
         db_session.commit()
 
+        resp = lan_client.post("/api/sessions", json={"match_id": match.id})
+        assert resp.status_code == 201
+        data = resp.json()["data"]
+        assert "session_password" in data
+        assert len(data["session_password"]) >= 8
         assert data["has_password"] is True
 
     def test_session_created_sets_password_set_flag(self, lan_client, db_session):
