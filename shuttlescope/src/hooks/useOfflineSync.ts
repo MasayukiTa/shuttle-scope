@@ -112,7 +112,13 @@ export function useOfflineSync(matchId: number | null, ownerUserId: number | nul
             const permanent =
               typeof status === 'number' &&
               status >= 400 && status < 500 &&
-              status !== 408 && status !== 429
+              // 401/403 は「壊れたペイロードの恒久拒否」ではなく、online 復帰直後の
+              // 認証更新 (refresh) がまだ解決していない一過性の失敗。client.ts の
+              // 401 自動再送は refresh が ok 以外なら 401 を throw するため、ここまで
+              // 届く。恒久拒否扱いすると終了ラリーが再送されず永久に失われるので
+              // (muse 実機: ラリー 29 がサーバーに残らない)、再試行対象として扱う。
+              status !== 408 && status !== 429 &&
+              status !== 401 && status !== 403
             if (permanent) {
               // 何度送っても通らない 1 件。**キューからは外さない** —
               // 注釈データを黙って捨てるのは、この機構が防ごうとしている
