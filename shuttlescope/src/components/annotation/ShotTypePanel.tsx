@@ -16,6 +16,7 @@
 import { useTranslation } from 'react-i18next'
 import { clsx } from 'clsx'
 import { ShotType } from '@/types'
+import { MIcon } from '@/components/common/MIcon'
 import { getStyleForShot } from '@/constants/shotTypeColors'
 import {
   MAJOR_SHOTS,
@@ -24,6 +25,7 @@ import {
   representativeOf,
   type MajorShot,
 } from '@/constants/shotMajorCategories'
+import { rankShotGroups, type ShotTypeRecord } from './shotSuggestion'
 
 interface ShotTypePanelProps {
   selected: ShotType | null
@@ -33,6 +35,13 @@ interface ShotTypePanelProps {
   strokeNum: number
   /** 直前に確定したショット種別（最初のストロークは null） */
   lastShotType: ShotType | null
+  /**
+   * 現在入力中のラリーのストローク列（省略可）。渡された場合、直前ショット
+   * 種別の「次」に実際に選ばれた頻度でグループ内のタイル順を並べ替え、最多候補
+   * に★印を付ける。省略時は従来どおり固定順（後方互換）。集計はこの配列のみ
+   * を用い、外部送信や推論モデルは使わない。
+   */
+  strokes?: ReadonlyArray<ShotTypeRecord>
   /** K-001: 試合中モード — 2カラム・大きめボタン */
   isMatchDayMode?: boolean
   /** モバイルでも常にキーヒントを表示する (BT keyboard 接続の iPad 等) */
@@ -150,7 +159,7 @@ function buildGroups(context: ShotContext): ShotGroup[] {
 
 // ─── コンポーネント ──────────────────────────────────────────────────────────
 
-export function ShotTypePanel({ selected, onSelect, disabled = false, strokeNum, lastShotType, isMatchDayMode = false, forceShowKeyHints = false, simpleMode = false }: ShotTypePanelProps) {
+export function ShotTypePanel({ selected, onSelect, disabled = false, strokeNum, lastShotType, strokes, isMatchDayMode = false, forceShowKeyHints = false, simpleMode = false }: ShotTypePanelProps) {
   const { t } = useTranslation()
 
   // 簡易モード: 9 大分類タイル。選ぶと代表 canonical 小分類を onSelect に渡す。
@@ -197,7 +206,10 @@ export function ShotTypePanel({ selected, onSelect, disabled = false, strokeNum,
   }
 
   const context = getShotContext(strokeNum, lastShotType)
-  const groups = buildGroups(context)
+  // 現ラリー履歴 (strokes) が渡された場合のみ、直前ショット種別の「次」に実際に
+  // 選ばれた頻度でグループ内の順序を並べ替え、最多候補に★印を付ける。省略時は
+  // topSuggestion=null・順序不変で従来挙動を維持する。
+  const { groups, topSuggestion } = rankShotGroups(buildGroups(context), strokes ?? [], lastShotType)
 
   return (
     <div className="flex flex-col gap-2" data-tutorial="annotator.shotTypes">
@@ -210,10 +222,12 @@ export function ShotTypePanel({ selected, onSelect, disabled = false, strokeNum,
               // Phase B: ショット種別ごとに固定カテゴリ色を適用
               const style = getStyleForShot(type)
               const isSelected = selected === type
+              const isTop = topSuggestion === type
               return (
                 <button
                   key={type}
                   data-tile="true"
+                  data-top-suggestion={isTop ? 'true' : undefined}
                   onClick={() => !disabled && onSelect(type)}
                   disabled={disabled}
                   aria-pressed={isSelected}
@@ -224,10 +238,19 @@ export function ShotTypePanel({ selected, onSelect, disabled = false, strokeNum,
                     isSelected && style.ringSelected,
                     disabled && 'opacity-40 cursor-not-allowed'
                   )}
-                  title={`${t(`shot_types.${type}`)} (${key.toUpperCase()})`}
+                  title={`${t(`shot_types.${type}`)} (${key.toUpperCase()})${isTop ? ` — ${t('annotator.shot_suggestion_top')}` : ''}`}
                 >
                   <span className={clsx('absolute top-0.5 right-1 text-[9px] ss-num opacity-60 font-mono', forceShowKeyHints ? 'inline' : 'hidden md:inline')}>{key.toUpperCase()}</span>
                   <span className="absolute top-0.5 left-1 text-[10px] opacity-80" aria-hidden>{style.icon}</span>
+                  {isTop && (
+                    <MIcon
+                      name="star"
+                      fill={1}
+                      size={10}
+                      className="absolute bottom-0.5 right-1 leading-none text-[var(--ss-warn)]"
+                      ariaLabel={t('annotator.shot_suggestion_top')}
+                    />
+                  )}
                   <span className="block text-center leading-tight">{t(`shot_types.${type}`)}</span>
                 </button>
               )
