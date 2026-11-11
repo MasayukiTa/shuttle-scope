@@ -245,15 +245,31 @@ export function MatchListPage() {
     ),
   ]
 
-  // 失敗の利用者向け文言。HTTP status・内部フィールド名・backend の detail は出さず、
-  // 原因の種類 (認証切れ / 権限 / 競合 / 入力) だけを伝える。詳細はコンソールへ残す。
+  // 失敗の利用者向け文言。HTTP status や内部フィールド名は出さない。401/403/409 は
+  // 原因の種類 (認証切れ / 権限 / 競合) だけを伝え、詳細はコンソールへ残す。422 だけは
+  // サーバが利用者向けに日本語で用意した入力エラー理由 (チーム名が空など) を表示する。
+  // サーバが detail に入れた理由 (日本語) を取り出す。本文は JSON 文字列
+  // ({"detail":"..."}) で届くため、まず JSON として読み、detail が文字列なら使う。
+  // detail が配列 (FastAPI の RequestValidationError) や取り出せない形のときは null。
+  const serverDetail = (err: unknown): string | null => {
+    const raw = errorMessage(err, '')
+    if (!raw) return null
+    try {
+      const parsed = JSON.parse(raw) as { detail?: unknown }
+      if (typeof parsed.detail === 'string' && parsed.detail.trim()) return parsed.detail
+    } catch { /* raw が JSON でなければ下へ */ }
+    return null
+  }
+
   const userFacingMatchError = (err: unknown, fallback: string): string => {
     console.error('[MatchList] request failed', errorStatus(err), errorMessage(err, ''))
     switch (errorStatus(err)) {
       case 401: return t('common_ui.error_session_expired')
       case 403: return t('common_ui.error_forbidden')
       case 409: return t('common_ui.error_conflict')
-      case 422: return t('common_ui.error_invalid_input')
+      // 422 はサーバが欄ごとの日本語理由を detail に入れている (チーム名が空など)。
+      // 取り出せたらその理由を、だめなら従来の汎用文言を出す。
+      case 422: return serverDetail(err) ?? t('common_ui.error_invalid_input')
       default: return fallback
     }
   }
@@ -1112,7 +1128,7 @@ export function MatchListPage() {
 
                 {/* レベル / ラウンド */}
                 <div>
-                  <label htmlFor="match-form-level" className={`block text-sm ${textSecondary} mb-1`}>{t('match.tournament_level')}</label>
+                  <label htmlFor="match-form-level" className={`block text-sm ${textSecondary} mb-1`}>{t('match.tournament_level')} *</label>
                   <select
                     id="match-form-level"
                     value={form.tournament_level}
@@ -1127,7 +1143,7 @@ export function MatchListPage() {
                   </select>
                 </div>
                 <div>
-                  <label htmlFor="match-form-round" className={`block text-sm ${textSecondary} mb-1`}>{t('match.round')}</label>
+                  <label htmlFor="match-form-round" className={`block text-sm ${textSecondary} mb-1`}>{t('match.round')} *</label>
                   <select
                     id="match-form-round"
                     value={form.round}
