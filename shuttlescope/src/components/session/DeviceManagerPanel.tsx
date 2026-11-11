@@ -36,6 +36,8 @@ interface Props {
   onRemoteStream?: (stream: MediaStream | null) => void
   onLocalStream?: (stream: MediaStream | null) => void
   onHealthChange?: (health: RemoteHealth) => void
+  /** Called after the session is ended on the server via POST /sessions/{code}/end. */
+  onEnded?: () => void
 }
 
 // ─── ヘルパーコンポーネント ───────────────────────────────────────────────────
@@ -394,7 +396,7 @@ function DeviceGroupedList({ participants, isLight, titleColor, subColor, rowBg,
 
 // ─── メインコンポーネント ─────────────────────────────────────────────────────
 
-export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLocalStream, onHealthChange }: Props) {
+export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLocalStream, onHealthChange, onEnded }: Props) {
   const { t } = useTranslation()
   const isLight = useIsLightMode()
   const [participants, setParticipants] = useState<SessionParticipant[]>([])
@@ -511,6 +513,17 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
       // 途中失敗で部分適用になり得るため、現在の状態を取り直す
       fetchDevices()
       return false
+    }
+  }
+
+  const handleEndSession = async () => {
+    if (!window.confirm(t('lan_session.session_end_confirm'))) return
+    setActionError(null)
+    try {
+      await apiPost(`/sessions/${sessionCode}/end`, {})
+      onEnded?.()
+    } catch {
+      setActionError(t('lan_session.session_end_failed'))
     }
   }
 
@@ -655,6 +668,12 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
           <button onClick={onClose} aria-label={t('app.close')} className={`${subColor}`}><MIcon name="close" size={16} /></button>
         </div>
       </div>
+      <button
+        onClick={handleEndSession}
+        className="w-full mb-3 py-1.5 rounded-ss-md bg-[var(--ss-bad)] hover:opacity-90 transition-colors duration-base ease-out text-white text-xs font-medium flex items-center justify-center gap-1"
+      >
+        <MIcon name="cancel" size={14} />{t('lan_session.session_end')}
+      </button>
       {actionError && (
         <p role="alert" className="text-[10px] text-[var(--ss-bad)] mb-2 flex items-center gap-1">
           <MIcon name="cancel" size={10} />{actionError}

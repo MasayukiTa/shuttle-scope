@@ -44,6 +44,7 @@ import { useUnownedRallies } from '@/hooks/useUnownedRallies'
 import { UnownedRallyBanner } from '@/components/annotator/UnownedRallyBanner'
 import { buildBatchPayload, buildSkippedRallyPayload } from '@/utils/annotationPayload'
 import { useOfflineSync } from '@/hooks/useOfflineSync'
+import { useMidRallyAutosave, type MidRallySnapshot } from '@/utils/midRallyAutosave'
 import { useAuth } from '@/hooks/useAuth'
 import { useHapticFeedback } from '@/hooks/useHapticFeedback'
 import { StrokeHistory } from '@/components/annotation/StrokeHistory'
@@ -767,6 +768,35 @@ export function AnnotatorPage() {
     // ref 経由で読むため deps 不要。
     [matchId, queryClient, isBasicMode, autoSaveKey, t, userId, refreshUnowned]
   )
+
+  // 途中保存 (mid-rally autosave): 入力から 5 秒後に現ラリーの未保存ストロークを
+  // replace_strokes=true / final=false で送る。確定時の handleConfirmRally (final=true) とは
+  // 別の冒等キーを使う (確定送信が重複扱いされないよう)。
+  useMidRallyAutosave({
+    inputSignal: store.currentStrokes.length,
+    enabled: store.isRallyActive && store.inputStep !== 'rally_end' && store.currentStrokes.length > 0,
+    getSnapshot: (): MidRallySnapshot | null => {
+      const s = useAnnotationStore.getState()
+      if (!s.isRallyActive || s.currentSetId == null || s.currentStrokes.length === 0) return null
+      return {
+        matchId: Number(matchId),
+        payloadArgs: {
+          setId: s.currentSetId,
+          rallyNum: s.currentRallyNum,
+          winner: 'player_a',
+          endType: 'in_progress',
+          strokes: [...s.currentStrokes],
+          scoreAAfter: s.scoreA,
+          scoreBAfter: s.scoreB,
+          rallyStartTimestamp: s.rallyStartTimestamp,
+          isBasicMode,
+        },
+      }
+    },
+    getOwnerUserId: () => (userId != null ? userId : null),
+    post: (path, body, headers) => apiPost(path, body, headers),
+    makeIdempotencyKey: (o, m, sId, r) => 'midrally-' + offlineStrokeIdempotencyKey(o, m, sId, r),
+  })
 
   // --- セット終了 → 次のセット作成 (K-003: サマリーモーダル表示) ---
   const handleNextSet = useCallback(async () => {
@@ -1644,6 +1674,7 @@ export function AnnotatorPage() {
   // R-001/R-002: セッション共有フック
   const {
     activeSession,
+    setActiveSession,
     showSessionModal, setShowSessionModal,
     showDeviceManager, setShowDeviceManager,
     handleCreateOrGetSession,
@@ -5538,6 +5569,15 @@ export function AnnotatorPage() {
           publicOrigin={publicOrigin}
           sessionPassword={activeSession.session_password}
           onClose={() => setShowSessionModal(false)}
+          onEnded={() => {
+            // Session ended on the server: drop local share state and close related panels.
+            setShowSessionModal(false)
+            setShowDeviceManager(false)
+            setRemoteStream(null)
+            setLocalCamStream(null)
+            setRemoteHealth(null)
+            setActiveSession(null)
+          }}
         />
       )}
 
@@ -5557,6 +5597,15 @@ export function AnnotatorPage() {
                 if (stream) setVideoSourceMode('webview')
               }}
               onHealthChange={setRemoteHealth}
+              onEnded={() => {
+                // Session ended on the server: drop local share state and close related panels.
+                setShowSessionModal(false)
+                setShowDeviceManager(false)
+                setRemoteStream(null)
+                setLocalCamStream(null)
+                setRemoteHealth(null)
+                setActiveSession(null)
+              }}
             />
           </div>
         </div>
