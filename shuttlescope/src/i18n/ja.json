@@ -1338,6 +1338,7 @@
       "demo_public_badge": "デモ",
       "demo_public_title": "デモ用の試合で、他チームからも閲覧のみ可能です。",
       "create_tentative": "「{{name}}」を暫定登録して作成",
+      "create_tentative_hint": "暫定登録とは、まず名前だけで登録し、あとで選手情報を補えます。",
       "create_tentative_requires_analyst": "暇定登録には Analyst（アナリスト）または管理者権限が必要です。登録は管理者またはアナリストにご依頼ください。"
     }
   },
