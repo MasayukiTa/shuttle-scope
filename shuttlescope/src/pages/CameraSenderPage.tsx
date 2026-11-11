@@ -780,6 +780,15 @@ export function CameraSenderPage() {
         <p className="text-[var(--ss-t2)] text-sm">{t('camera_sender.join_title')}</p>
       </div>
       <RecordingProblemNotice state={serverRecorder.state} errorMsg={serverRecorder.errorMsg} />
+      {serverRecorder.state === 'completed' && serverRecorder.successMsg && (
+        <div
+          role="status"
+          className="w-full max-w-sm mb-3 flex items-start gap-1.5 text-[var(--ss-good)] text-xs bg-[rgba(46,160,67,0.08)] rounded-[5px] p-2 border border-[var(--ss-border)]"
+        >
+          <MIcon name="check_circle" size={14} className="shrink-0 mt-0.5" />
+          <p className="break-words">{serverRecorder.successMsg}</p>
+        </div>
+      )}
 
       {/* ─── State: join ────────────────── */}
       {(senderState === 'join' || (senderState === 'connecting' && !paramCode)) && (
