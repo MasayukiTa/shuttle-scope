@@ -1,0 +1,1 @@
+src/i18n/__tests__/gameWordingUnified.t010.test.ts
