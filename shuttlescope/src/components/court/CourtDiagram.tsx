@@ -1,3 +1,4 @@
+import { useRef, useCallback, type MouseEvent as ReactMouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { clsx } from 'clsx'
 import { Zone9, ZoneOOB, ZoneNet, LandZone } from '@/types'
@@ -156,6 +157,27 @@ function getHeatmapColor(value: number, max: number): string {
   return seqBlue(ratio)
 }
 
+/**
+ * アクティブ半面内の SVG 座標 (x: 0..SVG_WIDTH, y: 半面の範囲) を
+ * 3×3 の {row, col} へ割り当てる。セル間の hit-test ギャップを
+ * 消すためのヘルパ: 各ゾーン rect は表示上 1px インセットされて
+ * おり、onClick をその rect に付けると隣接ゾーンの間にクリック
+ * が落ちる死角ができる。半面全体を覆う透明オーバーレイで
+ * この関数を使えば、半面内の全座標が必ずいずれかのセルへ
+ * 属し (最近傍へ snap)、境界線上や枠間をタップしても選択が派生する。
+ *
+ * halfTop/halfHeight はその半面の SVG y 範囲。x はコート幅全体。
+ */
+export function svgPointToCell(
+  x: number, y: number, halfTop: number, halfHeight: number,
+): { row: number; col: number } {
+  const u = x / SVG_WIDTH
+  const v = (y - halfTop) / halfHeight
+  const col = Math.min(2, Math.max(0, Math.floor(u * 3)))
+  const row = Math.min(2, Math.max(0, Math.floor(v * 3)))
+  return { row, col }
+}
+
 export function CourtDiagram({
   mode,
   selectedZone,
@@ -176,11 +198,38 @@ export function CourtDiagram({
   snapped = false,
 }: CourtDiagramProps) {
   const { t } = useTranslation()
+  const svgRef = useRef<SVGSVGElement | null>(null)
 
   const isComposite = mode === 'composite'
   // composite: 自コート（下）がアクティブ（hit相当）
   const _activeZones = mode === 'land' ? OPPONENT_ZONES : OWN_ZONES
   const _inactiveZones = mode === 'land' ? OWN_ZONES : OPPONENT_ZONES
+
+  // アクティブ半面の SVG y 範囲。land=上半面 (0..200)、hit/composite=下半面 (200..400)。
+  const activeHalfTop = mode === 'land' ? 0 : 200
+  const activeHalfHeight = 200
+
+  // セル間の hit-test ギャップを消す透明オーバーレイのクリックハンドラ。
+  // クリック座標を SVG 座標へ変換し、svgPointToCell で最近傍セルへ snap して
+  // 対応ゾーンを選ぶ。これにより枠線上やセル間をタップしても必ず
+  // いずれかのゾーンが選ばれる (死角なし)。
+  const handleOverlayClick = useCallback(
+    (e: ReactMouseEvent<SVGRectElement>) => {
+      const svg = svgRef.current
+      if (!svg) return
+      const pt = svg.createSVGPoint()
+      pt.x = e.clientX
+      pt.y = e.clientY
+      const ctm = svg.getScreenCTM()
+      if (!ctm) return
+      const loc = pt.matrixTransform(ctm.inverse())
+      const { row, col } = svgPointToCell(loc.x, loc.y, activeHalfTop, activeHalfHeight)
+      const zones = mode === 'land' ? OPPONENT_ZONES : OWN_ZONES
+      const target = zones[row * 3 + col]
+      if (target) onZoneSelect(target.zone)
+    },
+    [mode, activeHalfTop, activeHalfHeight, onZoneSelect],
+  )
 
   const heatmapMax = heatmapData
     ? Math.max(...Object.values(heatmapData), 1)
@@ -444,6 +493,7 @@ export function CourtDiagram({
       {!showOOB && !isComposite && <span className="text-[10px] text-[var(--ss-t3)]">{t('auto.CourtDiagram.k1')}</span>}
       {isComposite && <span className="text-[10px] text-[var(--ss-t3)]">{t('auto.CourtDiagram.k2')}</span>}
       <svg
+        ref={svgRef}
         viewBox={`${vbLeft} ${vbTop} ${vbWidth} ${vbHeight}`}
         style={
           maxHeight
@@ -470,6 +520,24 @@ export function CourtDiagram({
             <rect x={0} y={0} width={SVG_WIDTH} height={200} fill={halfFill('top')} pointerEvents="none" />
             <rect x={0} y={200} width={SVG_WIDTH} height={200} fill={halfFill('bottom')} pointerEvents="none" />
           </>
+        )}
+
+        {/* セル間の hit-test ギャップを消す透明オーバーレイ。アクティブ半面全体を
+            覆い、ゾーン rect のインセットによる隣接間の死角を背面から拾って
+            最近傍ゾーンへ snap する。ゾーン rect 本体はこの上に描かれ onClick を
+            そのまま持つため、通常タップは従来通り・隙間タップのみ補正される。
+            合成/ヒートマップ表示時は入力用途ではないので敷かない。 */}
+        {interactive && !isComposite && !heatmapData && (
+          <rect
+            data-testid="court-diagram-hit-overlay"
+            x={0}
+            y={activeHalfTop}
+            width={SVG_WIDTH}
+            height={activeHalfHeight}
+            fill="transparent"
+            className="cursor-pointer"
+            onClick={handleOverlayClick}
+          />
         )}
 
         {/* 相手コートゾーン（上半分） */}
