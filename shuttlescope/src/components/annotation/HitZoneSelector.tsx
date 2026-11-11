@@ -27,6 +27,13 @@ interface HitZoneSelectorProps {
   onZoneSelect: (zone: Zone9) => void
   /** 人間が override したかどうか（border 強調用） */
   isOverridden: boolean
+  /**
+   * タップが枠間（hit-test ギャップ）やコート外に落ち、最近傍ゾーンへ
+   * 自動補正（snap/clamp）されたか。courtHomography の clamped フラグを
+   * UI に伝搬する。true のとき「最寄に補正」バッジを出し、なぜその
+   * マスが選ばれたかをユーザに明示する。
+   */
+  snapped?: boolean
   /** 入力不可状態 */
   disabled?: boolean
   /** タイル一辺サイズ (px)。デフォルト 60 */
@@ -50,6 +57,7 @@ export function HitZoneSelector({
   selectedZone,
   onZoneSelect,
   isOverridden,
+  snapped = false,
   disabled = false,
   cellSize = 60,
 }: HitZoneSelectorProps) {
@@ -67,6 +75,18 @@ export function HitZoneSelector({
             aria-label={t('annotator.hit_zone_overridden')}
           >
             <MIcon name="edit" size={11} aria-hidden /> {t('annotator.hit_zone_overridden')}
+          </span>
+        )}
+        {snapped && (
+          // 枠間/コート外タップを最近傍ゾーンへ自動補正したことの可視表示。
+          // 「なぜこのマス？」という戸惑いを防ぐ (overridden バッジと同様の
+          // text-xs + 丸枠で WCAG AA を満たす)。
+          <span
+            data-testid="hit-zone-snapped-badge"
+            className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded-ss-sm border border-[var(--ss-border)] bg-[var(--ss-surface-2)] text-xs text-[var(--ss-t2)] font-semibold leading-none"
+            aria-label={t('annotator.hit_zone_snapped')}
+          >
+            <MIcon name="adjust" size={11} aria-hidden /> {t('annotator.hit_zone_snapped')}
           </span>
         )}
       </div>

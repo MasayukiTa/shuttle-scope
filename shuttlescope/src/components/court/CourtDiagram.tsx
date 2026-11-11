@@ -142,6 +142,12 @@ interface CourtDiagramProps {
   showOOB?: boolean
   playerSides?: { top: 'a' | 'b'; bottom: 'a' | 'b' }
   activePlayer?: 'a' | 'b'
+  /**
+   * 選択されたゾーンが、枠間 (hit-test ギャップ) やコート外タップを
+   * 最近傍ゾーンへ自動補正 (snap/clamp) した結果か。true のとき
+   * 「最寄に補正」バッジを図の上に表示する。
+   */
+  snapped?: boolean
 }
 
 function getHeatmapColor(value: number, max: number): string {
@@ -167,6 +173,7 @@ export function CourtDiagram({
   showOOB = false,
   playerSides,
   activePlayer,
+  snapped = false,
 }: CourtDiagramProps) {
   const { t } = useTranslation()
 
@@ -423,6 +430,16 @@ export function CourtDiagram({
     <div className="flex flex-col items-center gap-1">
       {label && (
         <span className="text-xs text-[var(--ss-t3)]">{label}</span>
+      )}
+      {snapped && (
+        // タップが枠間/コート外だったため最近傍ゾーンへ補正した旨の可視表示。
+        <span
+          data-testid="court-diagram-snapped-badge"
+          className="inline-flex items-center px-1 py-0.5 rounded-ss-sm border border-[var(--ss-border)] bg-[var(--ss-surface-2)] text-[10px] text-[var(--ss-t2)] font-semibold leading-none"
+          aria-label={t('annotator.hit_zone_snapped')}
+        >
+          {t('annotator.hit_zone_snapped')}
+        </span>
       )}
       {!showOOB && !isComposite && <span className="text-[10px] text-[var(--ss-t3)]">{t('auto.CourtDiagram.k1')}</span>}
       {isComposite && <span className="text-[10px] text-[var(--ss-t3)]">{t('auto.CourtDiagram.k2')}</span>}

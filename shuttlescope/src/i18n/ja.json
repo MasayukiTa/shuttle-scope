@@ -1614,6 +1614,7 @@
     "timestamp": "タイムスタンプ記録",
     "hit_zone": "打球位置",
     "hit_zone_overridden": "手動",
+    "hit_zone_snapped": "最寄のゾーンに補正",
     "hit_zone_aria": "打球位置ゾーン選択",
     "hit_zone_cell": "ゾーン {{zone}}",
     "hit_zone_cv_label": "CV推定: ゾーン {{zone}}",

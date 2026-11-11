@@ -1920,6 +1920,7 @@
       "settings_simple_shots_hint": "Record with 9 broad categories (Serve/Net/Drop/Clear/Smash/Drive/Lob/Defensive/Other) instead of fine-grained types. Saved as the representative detailed type, so it stays consistent with existing analysis."
     },
     "hit_zone_overridden": "Manual",
+    "hit_zone_snapped": "Snapped to nearest zone",
     "hit_zone_aria": "Shot-location zone selector",
     "hit_zone_cell": "Zone {{zone}}",
     "hit_zone_cv_label": "CV estimate: zone {{zone}}",
