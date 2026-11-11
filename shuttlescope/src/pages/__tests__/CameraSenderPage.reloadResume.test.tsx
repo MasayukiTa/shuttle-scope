@@ -94,6 +94,8 @@ describe('CameraSenderPage reload resume', () => {
     vi.stubGlobal('WebSocket', FakeWebSocket as unknown as typeof WebSocket)
     installFetch()
     wsUrlMock.mockReset()
+    // テスト用モック値であり実接続ではない。既存の cameraWs.ts と同じ流儀で抑止する。
+    // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
     wsUrlMock.mockResolvedValue('ws://test/ok')
     lastJoinBody = null
     try {
