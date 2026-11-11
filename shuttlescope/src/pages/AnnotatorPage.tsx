@@ -4448,6 +4448,7 @@ export function AnnotatorPage() {
                       ? store.currentStrokes[store.currentStrokes.length - 1].shot_type
                       : null
                   }
+                  strokes={store.currentStrokes}
                   isMatchDayMode={useLargeTouch}
                   forceShowKeyHints={forceShowKeyHints}
                   simpleMode={simpleShotMode}
