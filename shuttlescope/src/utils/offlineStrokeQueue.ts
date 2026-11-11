@@ -15,6 +15,24 @@ const DB_NAME = 'shuttlescope_offline'
 const STORE = 'pending_rallies'
 const DB_VERSION = 1
 
+/**
+ * mid-rally autosave (ラリー確定前の中間保存) の退避行に使う prefix。
+ *
+ * 確定ラリーは owned 枠 (offlineStrokeQueueKey = `<owner>/<match>/<set>/<rally>`) に
+ * payload (final=true 相当) で入る。mid-rally autosave も同じ (match/set/rally) を
+ * 持つため、同じ owned 枠に入れると「確定ラリーの退避行」を final=false の中間
+ * payload で上書きし、useOfflineSync がそれを確定として送ってしまう。さらに
+ * mid-rally 送信成功後の removeRallyAfterSave が同じ owned キーを消すため、先に
+ * 退避してあった確定ラリーの行まで消える。
+ *
+ * これを避けるため mid-rally は **別 prefix** `mid/` の行に退避する。isNonSendableKey
+ * が mid/ を非送信扱いにするので、listPendingForMatch / listPendingForUserStrict /
+ * countPendingForUserStrict / useOfflineSync の再送対象から自動的に外れる。
+ * 中間保存の送信は専用の冪等キー (offline-mid-...) を使い、確定の冪等キー
+ * (offline-...) を先取りしない。
+ */
+const MID_RALLY_PREFIX = 'mid/'
+
 export interface PendingRally {
   ownerUserId: number
   matchId: number
@@ -47,12 +65,32 @@ export function offlineStrokeIdempotencyKey(
   return `offline-${ownerUserId}-${matchId}-${setId}-${rallyNum}`
 }
 
+/**
+ * 自動再送の対象外にすべきキー判定。
+ *
+ * draft/ 行は入力途中の下書き (snapshot だけで payload が無く、winner / endType も
+ * 未確定なためサーバーに送れない)。unowned/ 行は所有者不明で、本人の明示操作でしか
+ * 送らない。どちらも owned な確定ラリーと同じ ObjectStore に別 prefix で入るため、
+ * ownerUserId を持つ draft/ 行が所有権フィルタを素通りすると、本文の無い送信が
+ * /strokes/batch に出て 422 になり、保存機構が壊れる (muse 実機: draft/2/6/15/29)。
+ */
+export function isNonSendableKey(key: string | undefined): boolean {
+  return (
+    typeof key === 'string' &&
+    (key.startsWith('draft/') ||
+      key.startsWith('unowned/') ||
+      key.startsWith(MID_RALLY_PREFIX))
+  )
+}
+
 export function pendingRallyBelongsTo(
   item: StoredPendingRally,
   ownerUserId: number,
   matchId: number,
 ): item is PendingRally {
   return (
+    !isNonSendableKey(item.key) &&
+    item.payload != null &&
     Number.isInteger(item.ownerUserId) &&
     Number(item.ownerUserId) === ownerUserId &&
     Number(item.matchId) === matchId &&
@@ -334,6 +372,96 @@ export async function removeRallyAfterSave(
   else await removeUnowned(matchId, setId, rallyNum)
 }
 
+/* ------------------------------------------------------------------ *
+ * mid-rally autosave (ラリー確定前の中間保存) 専用の退避枠。
+ *
+ * 確定ラリーの owned 枠とは別 prefix (mid/) に入れる。これにより:
+ *   - 中間 payload (final=false) が確定ラリーの owned 行を上書きしない。
+ *   - 中間保存の送信成功後の削除が、確定ラリーの owned 行を消さない
+ *     (消すのは mid/ 行だけ)。
+ *   - isNonSendableKey(mid/...) = true なので、自動再送 (listPendingForMatch /
+ *     listPendingForUserStrict / countPendingForUserStrict / useOfflineSync) は
+ *     mid/ 行を一切拾わない。中間保存の送信は MidRallyAutosaver が自分で行う。
+ * ------------------------------------------------------------------ */
+
+/** mid-rally autosave 退避行のキー。owner を含み、確定 owned キーと別 prefix。 */
+export function midRallyQueueKey(
+  ownerUserId: number,
+  matchId: number,
+  setId: number,
+  rallyNum: number,
+): string {
+  return `${MID_RALLY_PREFIX}${ownerUserId}/${matchId}/${setId}/${rallyNum}`
+}
+
+/**
+ * mid-rally autosave の冪等キー。確定ラリーの冪等キー (offline-...) とは別にして、
+ * 中間保存の応答が確定ラリーの冪等キーを **先取り** しないようにする
+ * (サーバが中間保存を見て確定を「処理済み」と誤判定するのを防ぐ)。
+ */
+export function midRallyIdempotencyKey(
+  ownerUserId: number,
+  matchId: number,
+  setId: number,
+  rallyNum: number,
+): string {
+  return `offline-mid-${ownerUserId}-${matchId}-${setId}-${rallyNum}`
+}
+
+/**
+ * mid-rally autosave の退避。owner 不明 (null) のときは退避しない
+ * (中間保存は本人が入力中のときにしか起きず、所有者不明の確定ラリーとは別物。
+ *  共有端末で他人に中間データを残さない)。書けたかどうかを返す。
+ */
+export async function stashMidRally(
+  ownerUserId: number | null,
+  p: UnownedPendingRally,
+): Promise<boolean> {
+  if (!Number.isInteger(ownerUserId as number) || (ownerUserId as number) <= 0) return false
+  try {
+    const db = await openDb()
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite')
+      tx.objectStore(STORE).put({
+        key: midRallyQueueKey(ownerUserId as number, p.matchId, p.setId, p.rallyNum),
+        ...p,
+        ownerUserId: ownerUserId as number,
+      })
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error ?? new Error('mid stash error'))
+    })
+    db.close()
+    return true
+  } catch (err) {
+    if (typeof console !== 'undefined') console.warn('[offline] mid-rally stash failed:', err)
+    return false
+  }
+}
+
+/** mid-rally autosave の退避を消す。mid/ 行だけを消し、確定 owned 行には触れない。 */
+export async function removeMidRally(
+  ownerUserId: number | null,
+  matchId: number,
+  setId: number,
+  rallyNum: number,
+): Promise<void> {
+  if (!Number.isInteger(ownerUserId as number) || (ownerUserId as number) <= 0) return
+  try {
+    const db = await openDb()
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite')
+      tx.objectStore(STORE).delete(
+        midRallyQueueKey(ownerUserId as number, matchId, setId, rallyNum),
+      )
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error ?? new Error('mid remove error'))
+    })
+    db.close()
+  } catch (err) {
+    if (typeof console !== 'undefined') console.warn('[offline] mid-rally remove failed:', err)
+  }
+}
+
 /**
  * 現在のユーザー本人の未送信ラリーを、試合をまたいで全件返す。
  *
@@ -356,6 +484,10 @@ export async function listPendingForUserStrict(
     })
     return items
       .filter((it): it is PendingRally =>
+        // draft/ unowned/ mid/ 行は本人の未送信「確定ラリー」ではない。
+        // ログアウト確認・未送信件数の対象から外す (payload も必須)。
+        !isNonSendableKey(it.key) &&
+        it.payload != null &&
         Number.isInteger(it.ownerUserId) &&
         Number(it.ownerUserId) === ownerUserId &&
         Number.isFinite(Number(it.matchId)) &&

@@ -1302,6 +1302,11 @@
       "reissue_video_token_hint": "動画 URL（app://video/...）を新しい UUID に置換します",
       "reissue_video_token_hint_short": "漏洩した URL は即座に無効化されます",
       "public_pool_section": "公開範囲（管理者のみ）",
+      "owner_team_label": "所有チーム（管理者のみ）",
+      "owner_team_hint": "この試合をどのチームの試合として登録するかを選びます。未選択なら自分のチームになります。",
+      "owner_team_default": "自分のチーム",
+      "owner_team_required": "所有チームを選択してください（あなたはチームに所属していないため、管理者として所有チームの指定が必要です）。",
+      "owner_team_none": "チームがありません。先にチームを作成してください。",
       "public_pool_warning": "ここをオンにすると、この試合とそのデータが全チームから見えるようになります。公開してよい試合だけに使ってください。",
       "public_pool_enable_confirm": "この試合を全チームに公開します。動画や選手の情報を公開してよいことを確認しましたか？",
       "reissue_video_token_confirm": "動画リンクを再発行します。旧 URL を共有していた場合、それらは即座に再生不可になります。続行しますか？",
@@ -1324,6 +1329,8 @@
       "downloads_unknown": "動画ダウンロードの状況を更新できません。表示は最後に確認できた状態です。",
       "delete_confirm": "削除",
       "cancel_short": "取消",
+      "empty_filtered": "条件に合う試合がありません。条件を変えてください。",
+      "clear_filters": "絞り込みを解除",
       "public_pool_badge": "共有",
       "public_pool_title": "全チームから閲覧可能な公開プール試合",
       "demo_public_badge": "デモ",
@@ -2777,6 +2784,7 @@
     "password_regenerate": "再生成",
     "password_regenerate_done": "新しいパスワードを発行しました。",
     "password_regenerate_failed": "パスワードを再生成できませんでした。以前のパスワードは変更されていません。もう一度お試しください。",
+    "join_pending_cap": "承認待ちのデバイスが上限に達しています。オペレーターが承認・整理するまで少し待ってから再試行してください。",
     "camera_sender_url_label": "カメラ送信URL",
     "device_manager_title": "接続デバイス管理",
     "device_type_iphone": "iPhone",
@@ -2825,7 +2833,11 @@
     "share_modal_password_note": "参加デバイスはセッションコードとパスワードの両方が必要です",
     "share_modal_camera_qr_hint": "iPhoneでQRを読み取り、参加画面でセッションパスワードを入力してください",
     "share_modal_viewer_qr_hint": "PC・タブレットでQRを読み取り、参加画面でセッションパスワードを入力すると映像を受信できます",
-    "join_password_required": "参加画面でセッションパスワードを入力してください。パスワードは共有画面で確認できます。"
+    "join_password_required": "参加画面でセッションパスワードを入力してください。パスワードは共有画面で確認できます。",
+    "session_end": "セッションを終了",
+    "session_end_confirm": "このセッションを終了しますか？終了すると、接続中のすべてのデバイスが切断され、新しい参加・映像受信ができなくなります。この操作は取り消せません。",
+    "session_end_done": "セッションを終了しました。",
+    "session_end_failed": "セッションを終了できませんでした。通信状況を確認して、もう一度お試しください。"
   },
   "player_tracking": {
     "bbox_cycle_title": "クリックで役割切り替え",
@@ -2836,6 +2848,11 @@
     "lost_suffix": "(ロスト)"
   },
   "camera_sender": {
+    "slow_connect_hint": "接続に時間がかかっています。電波の状態を確認してください。",
+    "error_next_steps_title": "次の手をお試しください",
+    "error_step_password": "パスワードは、PC の画面に表示されている共有パスワードを確認してください。",
+    "error_step_wifi": "電波（Wi-Fi）の状態を確認してください。",
+    "error_step_retry": "もう一度お試しください。",
     "removed_by_operator": "オペレーターにより接続が終了されました。もう一度参加するには、セッションコードを入力し直してください。",
     "state_a_title": "PCから開始指示を待っています",
     "state_a_hint": "この端末はカメラ候補として登録されています",
@@ -2846,6 +2863,9 @@
     "state_c_stop": "配信停止",
     "recording_problem_title": "録画に問題があります",
     "recording_problem_hint": "サーバへの録画保存が完了していない可能性があります。配信は続けられますが、録画を確認してください。",
+    "recording_saved": "録画を保存しました",
+    "recording_save_failed": "録画の保存に失敗しました。もう一度試すか、PC の担当者に連絡してください。",
+    "recording_auth_failed": "録画を保存する権限が確認できませんでした（認証エラー）。セッションに参加し直すか、PC の担当者に連絡してください。",
     "state_c_hint": "PCに映像を送信しています",
     "join_title": "ShuttleScope カメラ送信",
     "join_code_label": "セッションコード",
@@ -5362,6 +5382,11 @@
       "partner_b": "B パートナー"
     },
     "Pass3ShotDetail": {
+      "suggest_title": "次のショット候補",
+      "suggest_badge": "候補（未確定）",
+      "tier_auto_filled": "確度高",
+      "tier_suggested": "確度中",
+      "tier_review_required": "要確認",
       "k1": "スマッシュ",
       "k2": "クリア",
       "k3": "ドロップ",
@@ -5605,7 +5630,10 @@
       "queue_storage_error": "この端末の保存領域に書き込めません。未送信の入力が失われるおそれがあります。",
       "queue_storage_error_short": "保存エラー",
       "pass3_checking_existing": "入力済みの打球を確認しています ...",
-      "pass3_strokes_fetch_failed": "入力済みの打球を取得できませんでした。もう一度お試しください。"
+      "pass3_strokes_fetch_failed": "入力済みの打球を取得できませんでした。もう一度お試しください。",
+      "menu": "メニュー",
+      "tutorial_replay": "チュートリアルをもう一度見る",
+      "tutorial_replay_unrecorded": "チュートリアルを開始しました。再生回数はまだ記録に反映されていません。"
     },
     "OnboardingConsentPage": {
       "k1": "日本語",

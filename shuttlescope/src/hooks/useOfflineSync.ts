@@ -70,6 +70,10 @@ export function useOfflineSync(matchId: number | null, ownerUserId: number | nul
           // online \u5fa9\u5e30\u76f4\u5f8c\u306b\u518d\u9001\u3055\u308c\u3001\u5931\u6557\u6271\u3044\u3055\u308c\u3066\u300c\u4fdd\u5b58\u5931\u6557\u300d\u304c\u51fa\u308b
           // (muse \u5b9f\u6a5f 13:08)\u3002sendFailed \u306f\u7acb\u3066\u305a\u3001\u5f8c\u7d9a\u306f\u901a\u5e38\u901a\u308a\u51e6\u7406\u3059\u308b\u3002
           if (isResendHeld(it.matchId, it.setId, it.rallyNum)) continue
+          // 本文 (payload) の無い行は送らない。draft 行などが所有権フィルタを
+          // すり抜けても、ここで本文空の POST /strokes/batch (422) を出さずに残す。
+          // (listPendingForMatch は既に payload 欠落を除外するが、二重の防御。)
+          if (it.payload == null) continue
           try {
             // apiPost は既定で**毎回新しい** idempotency key を作る。再送のたびに
             // キーが変わると、サーバが「処理済みだが応答を失った」最初の送信と

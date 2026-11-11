@@ -50,6 +50,13 @@ _PATTERNS: list[tuple[re.Pattern, str]] = [
     # チーム管理(auth router /teams CRUD)。team エンティティとして監査する。
     (re.compile(r"^/(?:api/)?auth/teams/(?P<id>[^/]+)(?:/.*)?$"), "team"),
     (re.compile(r"^/(?:api/)?auth/teams/?$"), "team"),
+    # 共有セッション(/sessions)。承認/拒否/ロール変更/カメラ昇降/参加/終了/
+    # パスワード再生成が配信・権限状態を変えるため監査する(W63 所見2)。
+    # devices/{pid}/* は participant 、それ以外の /sessions/* は session 。具体的な devices を先に判定する。
+    (re.compile(r"^/(?:api/)?sessions/[^/]+/devices/(?P<id>[^/]+)(?:/.*)?$"), "participant"),
+    (re.compile(r"^/(?:api/)?sessions/[^/]+/devices/?$"), "participant"),
+    (re.compile(r"^/(?:api/)?sessions/(?P<id>[^/]+)(?:/.*)?$"), "session"),
+    (re.compile(r"^/(?:api/)?sessions/?$"), "session"),
 ]
 
 _METHOD_ACTION = {
@@ -108,27 +115,65 @@ def _collect_field_names(obj: Any, out: set[str], depth: int = 0) -> None:
             _collect_field_names(item, out, depth + 1)
 
 
+# -- 監査に値を残してはいけない秘密フィールド --
+# join の session_password / participant_token は低エントロピーで、生 body の
+# SHA-256 はオフライン総当たりの oracle になる(CWE-916)。値を抜いてから
+# ハッシュすれば、キーの指紋は保ちつつ値は復元不能にできる。
+_SECRET_FIELD_NAMES = frozenset({
+    "session_password",
+    "participant_token",
+    "operator_token",
+    "session_token",
+    "ws_token",
+    "password",
+    "new_password",
+    "current_password",
+    "old_password",
+    "token",
+})
+_REDACTED = "***"
+
+
+def _is_secret_key(key: Any) -> bool:
+    return isinstance(key, str) and key.lower() in _SECRET_FIELD_NAMES
+
+
+def _redact_secrets(obj: Any, depth: int = 0) -> Any:
+    """秘密キーの値を再帰的に \"***\" へ置換した新しい構造を返す(元は変えない)。"""
+    if depth > 3:
+        return obj
+    if isinstance(obj, dict):
+        return {
+            k: (_REDACTED if _is_secret_key(k) else _redact_secrets(v, depth + 1))
+            for k, v in obj.items()
+        }
+    if isinstance(obj, list):
+        return [_redact_secrets(item, depth + 1) for item in obj]
+    return obj
+
+
 def summarize_body(raw: Optional[bytes]) -> tuple[Optional[list[str]], Optional[int], Optional[str]]:
     """リクエスト body(bytes)を (changed_fields, field_count, body_hash) に要約。
 
-    - changed_fields: JSON body のキー名の一覧(値は含めない)。JSON でない/空なら None。
-    - field_count:    changed_fields の件数(JSON でなくても body があれば 0 ではなく
-                      None を返し、ハッシュだけ残す)。
-    - body_hash:      body 全体の SHA-256(hex)。値は復元できないが照合に使える。
+    秘密キー(_SECRET_FIELD_NAMES)はキー名ごと除外し、body_hash は値を
+    \"***\" に潰した正規化 JSON のハッシュ。JSON でない body は生 raw をハッシュ。
     """
     if not raw:
         return None, None, None
-    body_hash = hashlib.sha256(raw).hexdigest()
     fields: Optional[list[str]] = None
     count: Optional[int] = None
     try:
         parsed = json.loads(raw.decode("utf-8"))
-        names: set[str] = set()
-        _collect_field_names(parsed, names)
-        if names:
-            fields = sorted(names)
-            count = len(fields)
     except Exception:
-        # JSON でない(multipart の動画アップロード等)。ハッシュのみ残す。
-        pass
+        return None, None, hashlib.sha256(raw).hexdigest()
+
+    names: set[str] = set()
+    _collect_field_names(parsed, names)
+    names = {n for n in names if n.lower() not in _SECRET_FIELD_NAMES}
+    if names:
+        fields = sorted(names)
+        count = len(fields)
+    redacted = _redact_secrets(parsed)
+    canonical = json.dumps(redacted, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    body_hash = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     return fields, count, body_hash

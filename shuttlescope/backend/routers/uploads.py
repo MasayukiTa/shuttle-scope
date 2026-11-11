@@ -329,6 +329,13 @@ def _resolve_upload_actor(request: Request, db: Session, ctx: AuthCtx) -> _Uploa
         raise HTTPException(status_code=403, detail="このデバイスはまだ承認されていません")
     if participant.source_capability != "camera":
         raise HTTPException(status_code=403, detail="このデバイスはカメラとして登録されていません")
+    # source_capability だけでは不十分: それは join 時に申告した device_type から
+    # 決まるだけで、"iphone" と名乗れば誰でも "camera" になる (test_a_non_camera_
+    # participant_cannot_claim_the_device_role の注記参照)。録画アップロードを許す
+    # のは operator が activate-camera で明示昇格した active_camera だけに限る。
+    # camera_candidate (未昇格) や降格済みの端末はここで弾く (fail closed)。
+    if participant.connection_role != "active_camera":
+        raise HTTPException(status_code=403, detail="このデバイスはアクティブカメラとして昇格されていません")
 
     return _UploadActor(
         user_id=None,

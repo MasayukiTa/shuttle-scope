@@ -285,6 +285,7 @@ export function ViewerPage() {
       const status = errorStatus(err)
       if (status === 401) setErrorMsg('セッションコードまたはパスワードが正しくありません。')
       else if (status === 404) setErrorMsg('セッションが見つかりません。コードを確認してください。')
+      else if (status === 429) setErrorMsg(t('lan_session.join_pending_cap'))
       else setErrorMsg('接続に失敗しました。ネットワークを確認してください。')
       setViewerState('join')
     }
