@@ -676,6 +676,7 @@ export function LiveInputPage() {
               onSelect={handleShot}
               strokeNum={store.currentStrokeNum}
               lastShotType={store.currentStrokes[store.currentStrokes.length - 1]?.shot_type ?? null}
+              strokes={store.currentStrokes}
               isMatchDayMode  // LiveInputPage は常に試合中モード = 大きめタイル
             />
           </div>
