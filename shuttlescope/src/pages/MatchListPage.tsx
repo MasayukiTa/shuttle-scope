@@ -399,9 +399,11 @@ export function MatchListPage() {
     setSubmitAttempted(true)
 
     // 大会レベルとラウンドは未選択のまま登録させない (既定値を持たないため)。
-    // 汎用 alert ではなく、該当欄の直下に日本語のインライン案内を出す。
+    // 該当欄の直下に日本語のインライン案内 (submitAttempted) を出すのに加え、
+    // フォーム上部にも汎用の必須メッセージ (role=alert) を出す。未選択が画面外に
+    // あっても気づけるようにし、既存の必須メッセージ契約も維持する。
     if (!form.tournament_level || !form.round) {
-      // 欄ごとのインライン案内（submitAttempted）に委ねるので、ここでは formError は出さない
+      setFormError(t('common.select_placeholder'))
       return
     }
 
