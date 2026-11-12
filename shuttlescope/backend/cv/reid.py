@@ -21,7 +21,24 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
-import cv2
+
+
+# Lazy cv2 import: opencv is heavy and only needed by the HSV/ONNX embedding
+# paths below. Importing it at module top forces opencv into every importer of
+# this module (e.g. backend.routers.yolo -> backend.cv.reid), blocking a lean,
+# CV-free startup. This proxy imports the real cv2 on first attribute access
+# and caches it, so all existing `cv2.X` call sites keep working unchanged.
+class _LazyCv2:
+    _mod = None
+
+    def __getattr__(self, name):
+        if _LazyCv2._mod is None:
+            import cv2 as _real_cv2
+            _LazyCv2._mod = _real_cv2
+        return getattr(_LazyCv2._mod, name)
+
+
+cv2 = _LazyCv2()
 
 logger = logging.getLogger(__name__)
 
