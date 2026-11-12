@@ -12,7 +12,22 @@ import logging
 import uuid
 from typing import Optional
 
-import cv2
+# Lazy cv2 import: opencv is heavy and only needed for the YOLO/CV code
+# paths below. Importing it at module top forces opencv into every process
+# that imports this router (e.g. main.py include_router), blocking a lean,
+# CV-free startup. This proxy imports the real cv2 on first attribute
+# access and caches it, so all existing `cv2.X` call sites keep working.
+class _LazyCv2:
+    _mod = None
+
+    def __getattr__(self, name):
+        if _LazyCv2._mod is None:
+            import cv2 as _real_cv2
+            _LazyCv2._mod = _real_cv2
+        return getattr(_LazyCv2._mod, name)
+
+
+cv2 = _LazyCv2()
 
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, Request
 from pydantic import BaseModel, Field
