@@ -3872,7 +3872,7 @@ export function AnnotatorPage() {
                     <div key={sn} className={`text-xs flex items-center gap-1.5 ${isCurrent ? 'text-[var(--ss-warn)] font-medium' : 'text-[var(--ss-t3)]'}`}>
                       <span className={`w-2 h-2 rounded-full inline-block shrink-0 ${isCurrent ? 'bg-[var(--ss-warn)]' : 'bg-[var(--ss-surface-3)]'}`} />
                       <span>{t('annotator.ui.set_a_position', {
-                        defaultValue: 'Set {{set}}: A={{pos}}',
+                        defaultValue: 'Game {{set}}: A={{pos}}',
                         set: sn,
                         pos: aPos === 'top' ? t('annotator.ui.side_arrow_top', { defaultValue: '↑上' }) : t('annotator.ui.side_arrow_bottom', { defaultValue: '↓下' }),
                       })}</span>
@@ -4076,7 +4076,7 @@ export function AnnotatorPage() {
                           <div key={sn} className={`text-xs flex items-center gap-1.5 ${isCurrent ? 'text-[var(--ss-warn)] font-medium' : 'text-[var(--ss-t3)]'}`}>
                             <span className={`w-2 h-2 rounded-full inline-block shrink-0 ${isCurrent ? 'bg-[var(--ss-warn)]' : 'bg-[var(--ss-surface-3)]'}`} />
                             <span>{t('annotator.ui.set_a_position', {
-                              defaultValue: 'Set {{set}}: A={{pos}}',
+                              defaultValue: 'Game {{set}}: A={{pos}}',
                               set: sn,
                               pos: aPos === 'top' ? t('annotator.ui.side_arrow_top', { defaultValue: '↑上' }) : t('annotator.ui.side_arrow_bottom', { defaultValue: '↓下' }),
                             })}</span>
@@ -5232,7 +5232,7 @@ export function AnnotatorPage() {
                     <p className="text-yellow-400 text-[11px] mb-2">
                       {setNavConfirm.direction === 'next'
                         ? t('annotator.ui.set_transition_to_next', {
-                            defaultValue: 'Set {{from}} を終了して Set {{to}} へ移行しますか？',
+                            defaultValue: 'Game {{from}} を終了して Game {{to}} へ移行しますか？',
                             from: store.currentSetNum,
                             to: store.currentSetNum + 1,
                           })
