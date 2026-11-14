@@ -104,3 +104,65 @@ def test_backend_major_of_unknown_is_other():
 def test_nine_majors():
     assert len(MAJOR_SHOTS) == 9
     assert len(set(MAJOR_SHOTS)) == 9
+
+
+# ── 派生細分類 derive_fine_label（保存しない解析時導出）────────────────────────
+
+def test_derive_fine_label_rear_smash_from_back_zone():
+    from backend.analysis.shot_taxonomy import derive_fine_label
+    for zone in ("BL", "BC", "BR"):
+        assert derive_fine_label("smash", zone, "above_net") == "rear_smash"
+        assert derive_fine_label("smash", zone, "below") == "rear_smash"
+
+
+def test_derive_fine_label_frontal_smash_from_front_high():
+    from backend.analysis.shot_taxonomy import derive_fine_label
+    for zone in ("NL", "NC", "NR", "ML", "MC", "MR"):
+        assert derive_fine_label("smash", zone, "above_net") == "frontal_smash"
+        assert derive_fine_label("smash", zone, "slightly_above") == "frontal_smash"
+
+
+def test_derive_fine_label_front_low_is_generic_smash():
+    from backend.analysis.shot_taxonomy import derive_fine_label
+    # ネット前〜ミッドでも打点が低ければフロントスマッシュとは呼ばない。
+    for zone in ("NC", "MC"):
+        assert derive_fine_label("smash", zone, "slightly_below") == "smash"
+        assert derive_fine_label("smash", zone, "below") == "smash"
+
+
+def test_derive_fine_label_missing_zone_or_height_is_generic_smash():
+    from backend.analysis.shot_taxonomy import derive_fine_label
+    assert derive_fine_label("smash", None, None) == "smash"
+    assert derive_fine_label("smash", "", "") == "smash"
+    assert derive_fine_label("smash", "ZZ", "above_net") == "smash"
+
+
+def test_derive_fine_label_case_insensitive():
+    from backend.analysis.shot_taxonomy import derive_fine_label
+    assert derive_fine_label("SMASH", "nc", "ABOVE_NET") == "frontal_smash"
+    assert derive_fine_label(" smash ", "bc", "below") == "rear_smash"
+
+
+def test_derive_fine_label_non_smash_majors_pass_through():
+    from backend.analysis.shot_taxonomy import derive_fine_label
+    for m in MAJOR_SHOTS:
+        if m == "smash":
+            continue
+        # 攻撃系以外は細分化せず大分類をそのまま返す（ゾーン/高さは無視）。
+        assert derive_fine_label(m, "NC", "above_net") == m
+        assert derive_fine_label(m, None, None) == m
+
+
+def test_derive_fine_label_unknown_major_is_other():
+    from backend.analysis.shot_taxonomy import derive_fine_label
+    assert derive_fine_label("nonexistent_major", "NC", "above_net") == "other"
+
+
+def test_derive_fine_label_does_not_add_canonical_or_shottype():
+    # 派生ラベルは ShotType/canonical を増やさないことの明示（保存しない契約）。
+    from backend.analysis.shot_taxonomy import derive_fine_label
+    assert "frontal_smash" not in CANONICAL_SHOTS
+    assert "rear_smash" not in CANONICAL_SHOTS
+    # smash major の代表保存値は従来どおり canonical "smash"。
+    assert representative_of("smash") == "smash"
+    assert derive_fine_label("smash", "BC", "below") not in CANONICAL_SHOTS

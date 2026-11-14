@@ -18,17 +18,22 @@
  *   - 既存 stroke タップで 球種 → 打点 → 着地点 を既存値入りで修正可
  *     (球種だけ・ゾーンだけの変更は、該当ステップで既存値のまま確定する)。
  *
- * 注: shot_type 18 分類フル対応は backend / 既存 UI と整合する必要がある。
- *     スマホでは chip が多すぎると誤タップ多発するため、よく使う 8 種を
- *     上部に固定表示し、残り (全 18 種のうちの 10 種) は「その他」折り畳みで
- *     展開表示する。誤タップ回避のためタッチターゲットは 44px 以上を維持。
+ * 注: 保存は backend の canonical ShotType 値で行う。スマホでは chip が多すぎると
+ *     誤タップ多発するため、よく使う 8 種を上部に固定表示し、残りは「その他」
+ *     折り畳みで展開表示する。誤タップ回避のためタッチターゲットは 44px 以上を維持。
  *
  *   - 固定 8 種: smash / clear / drop / net / push / drive / lift / cross
  *     (既存の保存値をそのまま踏襲。ラベルは auto.Pass3ShotDetail.k1..k8)
- *   - 折り畳み 10 種: short_service / long_service / defensive / slice /
- *     around_head / cant_reach / flick / half_smash / block / other
+ *   - 折り畳み 7 種: short_service / long_service / defensive / slice /
+ *     cant_reach / flick / block
  *     (ShotType 正規値。ラベルは既存 shot_types.* を流用)
  *     ※ other は「後で詳細入力」ボタンとして提供 (保存値 'other')
+ *
+ *   スマッシュ統合 (2026-11): 以前は around_head / half_smash も折り畳みに出して
+ *     いたが、入力では smash に一本化し選択肢から外した。これら canonical 値は
+ *     既存行・解析のため温存され、保存は canonical "smash" になる。around_head は
+ *     is_around_head 属性で別途記録できる。既存行が持つ around_head / half_smash は
+ *     一覧チップのラベル表示のみ labelForShot に残して壊さない。
  */
 import { useMemo, useState } from 'react'
 import { AnnotateOverlay, ZoneCode } from './AnnotateOverlay'
@@ -52,11 +57,16 @@ import { isShotKey, type ShotSuggestion } from '@/utils/mobileAnnotateShotSugges
 const COMMON_SHOT_KEYS = ['smash','clear','drop','net_shot','push_rush','drive','lob','cross_net'] as const
 
 // 「その他」展開で表示する残りの球種 (ShotType 正規値)。other は別途
-// 「後で詳細入力」ボタンで扱うため、グリッドには含めない (= 9 種)。
-// 8(固定) + 9(グリッド) + 1(other ボタン) = 18 種フルカバー。
+// 「後で詳細入力」ボタンで扱うため、グリッドには含めない。
+// スマッシュ統合 (2026-11): 入力では smash 系を COMMON の 'smash' 1 つに束ねる。
+// around_head / half_smash は入力選択肢から外した（canonical 値自体は既存行・
+// 解析のため温存。保存は canonical "smash" 固定）。around_head は is_around_head
+// 属性で別途記録できる。これによりグリッドは 7 種になる。
+// 8(固定) + 7(グリッド) + 1(other ボタン) = 16 入力選択肢。残る canonical
+// (around_head / half_smash) は新規入力では出さないが DB/解析では有効。
 const OTHER_SHOT_KEYS = [
-  'short_service','long_service','defensive','slice','around_head',
-  'cant_reach','flick','half_smash','block',
+  'short_service','long_service','defensive','slice',
+  'cant_reach','flick','block',
 ] as const
 
 type ShotKey = typeof COMMON_SHOT_KEYS[number] | typeof OTHER_SHOT_KEYS[number]
@@ -137,12 +147,31 @@ export function Pass3ShotDetail({
     [t],
   )
   // 一覧表示でラベルを引く用の統合マップ (固定 + 折り畳み)。
+  // スマッシュ統合で入力グリッドからは外した around_head / half_smash も、
+  // 既存行 (old rows) の chip ラベル表示 (下部の labelForShot.get(s.shot_type))
+  // が壊れないよう、表示ラベルだけはここに残す。入力選択肢 (COMMON_SHOTS /
+  // OTHER_SHOTS) には含めないので、新規入力でこれらが選べるわけではない。
   const labelForShot = useMemo(() => {
     const map = new Map<string, string>()
     COMMON_SHOTS.forEach((c) => map.set(c.key, c.label))
     OTHER_SHOTS.forEach((c) => map.set(c.key, c.label))
+    // 旧データ互換の表示専用ラベル（入力には出さない）。
+    for (const legacy of ['around_head', 'half_smash'] as const) {
+      if (!map.has(legacy)) map.set(legacy, t(`shot_types.${legacy}`))
+    }
     return map
-  }, [COMMON_SHOTS, OTHER_SHOTS])
+  }, [COMMON_SHOTS, OTHER_SHOTS, t])
+
+  // 入力で実際に選べる shot_type キー集合（COMMON + OTHER + 'other'）。
+  // 遷移提案 (shotSuggestFor) はこの集合に含まれる候補のみ出す。スマッシュ統合で
+  // 外した around_head / half_smash は labelForShot には表示用に残るが、ここには
+  // 入らないため提案チップには現れない（新規入力は smash に一本化）。
+  const inputableShotKeys = useMemo(() => {
+    const s = new Set<string>(['other'])
+    COMMON_SHOT_KEYS.forEach((k) => s.add(k))
+    OTHER_SHOT_KEYS.forEach((k) => s.add(k))
+    return s
+  }, [])
 
   // v2: resolve top-3 next shot_type candidates for a given previous shot_type into
   // label-carrying, badge-ready chip options. Returns [] when there is no suggestion
@@ -152,7 +181,7 @@ export function Pass3ShotDetail({
     const cands = shotTypeSuggestions.get(prevShot)
     if (!cands || cands.length === 0) return []
     return cands
-      .filter((c) => labelForShot.has(c.shot_type))
+      .filter((c) => inputableShotKeys.has(c.shot_type))
       .map((c) => ({ key: c.shot_type as ShotKey | 'other', label: labelForShot.get(c.shot_type) ?? c.shot_type, tier: c.decision_mode }))
   }
   const sorted = useMemo(
