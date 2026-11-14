@@ -20,6 +20,7 @@ from backend.analysis.role_view import is_opponent_stroke, match_ids_by_slot, ow
 from backend.analysis.player_context import involves_player, player_wins_match
 from backend.analysis.analysis_config import AnalysisConfig
 from backend.analysis.service_shots import is_service_shot
+from backend.analysis.shot_taxonomy import major_of, MAJOR_SHOTS, MAJOR_SHOT_JA
 from backend.analysis.analysis_registry import get_analysis_meta
 from backend.analysis.response_meta import build_input_provenance
 
@@ -594,9 +595,18 @@ def get_shot_types(
             shot_win_last[last.shot_type] += 1
 
     result = []
+    # 9 大分類 (major) 別の全体集計。muse 監査 T004 item 6: 簡易入力 (9 大分類) で
+    # 記録した試合を全体解析で「種別集計」として見られるようにする。18 小分類の集計
+    # (data) はそのまま残し、backend.analysis.shot_taxonomy.major_of で 18->9 に畳んだ
+    # 集計を major_breakdown として併記する (既存集計は非破壊)。
+    major_total: dict[str, int] = defaultdict(int)
+    major_win_last: dict[str, int] = defaultdict(int)
     for shot_type, total in sorted(shot_total.items()):
         wins = shot_win_last.get(shot_type, 0)
         win_rate = round(wins / total, 3) if total else 0.0
+        major = major_of(shot_type)
+        major_total[major] += total
+        major_win_last[major] += wins
         # win_rate は「勝ちラリーの最終打だった割合 (決め球率)」で、shot_win_loss の win_rate
         # (そのショットが出たラリーの勝率) とは別の指標。互換のため win_rate は残し、
         # 同じ値を意味が分かる名前でも返す (監査 #156 / #162)。
@@ -606,9 +616,27 @@ def get_shot_types(
             "win_rate": win_rate,
             "winner_end_count": wins,
             "winner_end_rate": win_rate,
+            "major": major,
         })
 
-    return {"success": True, "data": result}
+    # MAJOR_SHOTS の定義順で、打数が 0 でない大分類だけを返す。
+    major_breakdown = []
+    for major in MAJOR_SHOTS:
+        total = major_total.get(major, 0)
+        if total == 0:
+            continue
+        wins = major_win_last.get(major, 0)
+        win_rate = round(wins / total, 3) if total else 0.0
+        major_breakdown.append({
+            "major": major,
+            "major_ja": MAJOR_SHOT_JA.get(major, "\u305d\u306e\u4ed6"),
+            "count": total,
+            "win_rate": win_rate,
+            "winner_end_count": wins,
+            "winner_end_rate": win_rate,
+        })
+
+    return {"success": True, "data": result, "major_breakdown": major_breakdown}
 
 
 # ---------------------------------------------------------------------------

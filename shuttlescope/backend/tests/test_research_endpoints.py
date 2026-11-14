@@ -384,3 +384,48 @@ class TestWinRateFieldsAreNamedByMeaning:
         for r in rows:
             assert r["rally_win_rate"] == r["win_rate"]
             assert r["win_count"] <= r["total"]
+
+
+class TestShotTypesMajorBreakdown:
+    """muse 監査 T004 item 6: 全体解析のショット種別集計を 9 大分類 (major) でも返す。
+
+    簡易入力 (9 大分類) で記録した試合を全体解析で「種別集計」として見られるようにする。
+    18 小分類の集計 (data) はそのまま残しつつ、major_breakdown を併記する。
+    """
+
+    def test_shot_types_data_entries_carry_major(self, research_client):
+        client, pid, *_ = research_client
+        rows = client.get(f"/api/analysis/shot_types?player_id={pid}").json()["data"]
+        assert rows
+        majors = {
+            "serve", "net", "drop", "clear", "smash",
+            "drive", "lob", "defensive", "other",
+        }
+        for r in rows:
+            assert r["major"] in majors
+
+    def test_major_breakdown_present_and_folds_18_to_9(self, research_client):
+        client, pid, *_ = research_client
+        body = client.get(f"/api/analysis/shot_types?player_id={pid}").json()
+        assert "major_breakdown" in body
+        mb = body["major_breakdown"]
+        assert mb
+        by_major = {e["major"]: e for e in mb}
+        assert "net" in by_major
+        for m in ("clear", "smash", "defensive"):
+            assert m in by_major
+        assert by_major["net"]["major_ja"] == "ネット前"
+
+    def test_major_breakdown_count_equals_sum_of_small_classes(self, research_client):
+        client, pid, *_ = research_client
+        body = client.get(f"/api/analysis/shot_types?player_id={pid}").json()
+        data = body["data"]
+        mb = body["major_breakdown"]
+        small_sum: dict[str, int] = {}
+        for r in data:
+            small_sum[r["major"]] = small_sum.get(r["major"], 0) + r["count"]
+        for e in mb:
+            assert e["count"] == small_sum[e["major"]]
+            assert e["winner_end_count"] <= e["count"]
+            assert e["winner_end_rate"] == e["win_rate"]
+        assert sum(e["count"] for e in mb) == sum(r["count"] for r in data)
