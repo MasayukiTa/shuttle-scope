@@ -22,6 +22,7 @@ from backend.utils.text_sanitize import (
     DISPLAY_NAME_MAX_LENGTH,
     display_name_conforms,
     trim_display_name,
+    validate_admin_display_name,
     validate_display_name,
 )
 
@@ -143,18 +144,54 @@ def test_create_user_accepts_conforming_and_trims(client, db_session):
     assert created.display_name == "\u5c71\u7530\u592a\u90ce\u3055\u3093"  # trim \u6e08\u307f
 
 
-def test_update_user_rejects_non_conforming_display_name(client, db_session):
+def test_update_user_allows_admin_to_set_short_legacy_name(client, db_session):
+    # admin の明示的な rename は 6～24 を課さない。レガシーな短い名 (4 文字)
+    # への変更を admin は行える (200)。登録時の 6～24 ルールとは別。
     target = User(username="target1", role="analyst", display_name="Conforming Name", team_name="T")
     db_session.add(target)
     db_session.commit()
     r = client.put(
         f"/api/auth/users/{target.id}",
-        json={"display_name": "abc"},
+        json={"display_name": "Yuki"},  # 4 文字 (< 6)
+        headers=_admin_headers(),
+    )
+    assert r.status_code == 200, r.text
+    db_session.refresh(target)
+    assert target.display_name == "Yuki"  # admin は短い名を設定できる
+    # この名は 6～24 ルールには非適合なのでマーカーは False。
+    assert display_name_conforms("Yuki") is False
+
+
+def test_update_user_still_rejects_control_chars_on_change(client, db_session):
+    # admin 変更でも技術的に危険な制御 / ゼロ幅文字は 422 のまま。
+    target = User(username="target1b", role="analyst", display_name="Conforming Name", team_name="T")
+    db_session.add(target)
+    db_session.commit()
+    r = client.put(
+        f"/api/auth/users/{target.id}",
+        json={"display_name": "Ab\u200bcd"},  # ZWSP 混入
         headers=_admin_headers(),
     )
     assert r.status_code == 422, r.text
     db_session.refresh(target)
-    assert target.display_name == "Conforming Name"  # \u5909\u66f4\u306a\u3057
+    assert target.display_name == "Conforming Name"  # 変更なし
+
+
+def test_update_user_resend_same_legacy_name_is_ok(client, db_session):
+    # stored がレガシー短名 (3 文字) のユーザーに、同値の display_name を
+    # そのまま再送しても (UI が全 field を PUT するケース) 422 にならず通る。
+    legacy = User(username="legacy_resend", role="analyst", display_name="Bob", team_name="T")
+    db_session.add(legacy)
+    db_session.commit()
+    r = client.put(
+        f"/api/auth/users/{legacy.id}",
+        json={"display_name": "Bob", "team_name": "T2"},
+        headers=_admin_headers(),
+    )
+    assert r.status_code == 200, r.text
+    db_session.refresh(legacy)
+    assert legacy.display_name == "Bob"
+    assert legacy.team_name == "T2"
 
 
 def test_update_user_none_display_name_is_change_nothing(client, db_session):
