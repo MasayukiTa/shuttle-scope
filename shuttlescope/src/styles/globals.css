@@ -501,7 +501,11 @@ html, body {
   /* 親が overflow-x-auto を持っている table は触らない (.scroll-shell)
      その他の生 table は wrap container を持っていないと崩れがちなので
      block 化して横スクロール可能にする。 */
-  table:not(.scroll-shell table) {
+  /* ただし `.hidden` / `[hidden]` を付けて意図的に非表示にした table
+     (例: `hidden md:table` の desktop 専用 table) は除外する。これを
+     除外しないと `display: block` が Tailwind の `.hidden { display: none }`
+     より特異度で勝ってしまい、phone でも table が見えてしまう。 */
+  table:not(.scroll-shell table):not(.hidden):not([hidden]) {
     display: block;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
@@ -509,8 +513,8 @@ html, body {
   }
   /* thead / tbody は table の block 化につられて崩れるので、内側で
      table-layout を維持する。 */
-  table:not(.scroll-shell table) > thead,
-  table:not(.scroll-shell table) > tbody {
+  table:not(.scroll-shell table):not(.hidden):not([hidden]) > thead,
+  table:not(.scroll-shell table):not(.hidden):not([hidden]) > tbody {
     display: table;
     width: 100%;
     table-layout: auto;
