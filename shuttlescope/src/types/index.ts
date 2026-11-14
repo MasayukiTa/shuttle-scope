@@ -139,6 +139,7 @@ export interface Player {
   team?: string
   nationality?: string
   dominant_hand?: DominantHand | null
+  height_cm?: number | null
   birth_year?: number
   world_ranking?: number
   is_target: boolean

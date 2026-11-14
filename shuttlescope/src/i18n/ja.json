@@ -1348,6 +1348,7 @@
     "team": "チーム",
     "nationality": "国籍",
     "dominant_hand": "利き手",
+    "height_cm": "身長 (cm)",
     "birth_year": "生年",
     "world_ranking": "世界ランキング",
     "is_target": "重点選手",

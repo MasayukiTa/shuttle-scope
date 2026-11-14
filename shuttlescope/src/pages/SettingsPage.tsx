@@ -47,6 +47,7 @@ interface PlayerFormData {
   team: string
   nationality: string
   dominant_hand: 'R' | 'L' | ''
+  height_cm: string
   birth_year: string
   world_ranking: string
   is_target: boolean
@@ -59,6 +60,7 @@ const defaultPlayerForm = (): PlayerFormData => ({
   team: '',
   nationality: '',
   dominant_hand: '',
+  height_cm: '',
   birth_year: '',
   world_ranking: '',
   is_target: false,
@@ -813,6 +815,7 @@ export function SettingsPage() {
       team: strOrNull(playerForm.team),
       nationality: strOrNull(playerForm.nationality),
       dominant_hand: playerForm.dominant_hand ? playerForm.dominant_hand : null,
+      height_cm: playerForm.height_cm ? Number(playerForm.height_cm) : null,
       birth_year: playerForm.birth_year ? Number(playerForm.birth_year) : null,
       world_ranking: playerForm.world_ranking ? Number(playerForm.world_ranking) : null,
       is_target: playerForm.is_target,
@@ -834,6 +837,7 @@ export function SettingsPage() {
       team: player.team ?? '',
       nationality: player.nationality ?? '',
       dominant_hand: (player.dominant_hand === 'R' || player.dominant_hand === 'L') ? player.dominant_hand : '',
+      height_cm: player.height_cm ? String(player.height_cm) : '',
       birth_year: player.birth_year ? String(player.birth_year) : '',
       world_ranking: player.world_ranking ? String(player.world_ranking) : '',
       is_target: player.is_target,
@@ -3135,6 +3139,16 @@ export function SettingsPage() {
                     <option value="R">{t('settings.ui.right_handed')}</option>
                     <option value="L">{t('settings.ui.left_handed')}</option>
                   </select>
+                </div>
+                <div>
+                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('player.height_cm')}</label>
+                  <input
+                    type="number"
+                    value={playerForm.height_cm}
+                    onChange={(e) => setPlayerForm({ ...playerForm, height_cm: e.target.value })}
+                    className={`w-full ${inputClass}`}
+                    placeholder="170"
+                  />
                 </div>
                 <div>
                   <label className={`block text-sm ${textSecondary} mb-1`}>{t('player.birth_year')}</label>

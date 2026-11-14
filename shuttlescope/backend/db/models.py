@@ -341,6 +341,11 @@ class Player(Base):
             return None
     nationality: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     dominant_hand: Mapped[Optional[str]] = mapped_column(String(10), nullable=True, default=None)  # R / L / unknown / null
+    # 身長 (cm)。任意・nullable。将来のペア編成/身体差の解析で使う測定前提の属性。
+    # 体組成 (Condition.weight_kg 等, field_sensitivity Tier3) と異なり選手プロフィールの
+    # 基本属性として team スコープ内でのみ扱い、public/shared/export surface には出さない
+    # (data_package._player_dict の allow-list に含めないことで担保)。
+    height_cm: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     birth_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     world_ranking: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 記録時点
     is_target: Mapped[bool] = mapped_column(Boolean, default=False)           # 解析対象フラグ
