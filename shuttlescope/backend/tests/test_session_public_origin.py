@@ -81,6 +81,40 @@ class TestPublicHttpsOriginHelper:
     def test_none_request_returns_none(self):
         assert _public_https_origin(None) is None
 
+    def test_hostile_forwarded_host_is_rejected(self):
+        # SSRF / host-injection: an attacker-controlled X-Forwarded-Host that is
+        # not a configured public host must NOT be reflected into a share URL.
+        req = self._Req({
+            "host": "app.shuttle-scope.com",
+            "x-forwarded-host": "attacker.example",
+            "x-forwarded-proto": "https",
+        })
+        assert _public_https_origin(req) is None
+
+    def test_hostile_host_header_is_rejected(self):
+        req = self._Req({
+            "host": "evil.attacker.test",
+            "x-forwarded-proto": "https",
+        })
+        assert _public_https_origin(req) is None
+
+    def test_lookalike_suffix_host_is_rejected(self):
+        # Not a substring/suffix match: app.shuttle-scope.com.attacker.test
+        # must be rejected even though it contains the real host as a prefix.
+        req = self._Req({
+            "host": "app.shuttle-scope.com.attacker.test",
+            "x-forwarded-proto": "https",
+        })
+        assert _public_https_origin(req) is None
+
+    def test_configured_public_host_still_returns_origin(self):
+        # The normal, allowlisted host still works after the guard is added.
+        req = self._Req({
+            "host": "app.shuttle-scope.com",
+            "x-forwarded-proto": "https",
+        })
+        assert _public_https_origin(req) == "https://app.shuttle-scope.com"
+
 
 class TestSessionToDictPublicOrigin:
     """エンドポイント経由: 公開 Host のとき camera_sender_urls の先頭が公開 https。"""

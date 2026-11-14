@@ -1525,12 +1525,41 @@ def _named_tunnel_url() -> Optional[str]:
     return None
 
 
+def _allowed_public_hosts() -> set[str]:
+    """Lowercased set of hostnames allowed to appear in a public share origin.
+
+    Derived from the same configured public identities main.py uses for its
+    TrustedHost allowlist, so there is a single source of truth:
+      - settings.CLOUDFLARE_TUNNEL_HOSTNAME (the Cloudflare app hostname)
+      - the hostname of settings.ss_app_base_url (verification-mail base URL)
+      - the public apex / www landing-page hosts
+    """
+    hosts: set[str] = set()
+    try:
+        tunnel = (getattr(settings, "CLOUDFLARE_TUNNEL_HOSTNAME", "") or "").strip().lower()
+        if tunnel:
+            hosts.add(tunnel)
+    except Exception:
+        pass
+    try:
+        from urllib.parse import urlparse
+        base = (getattr(settings, "ss_app_base_url", "") or "").strip()
+        base_host = (urlparse(base).hostname or "").lower()
+        if base_host:
+            hosts.add(base_host)
+    except Exception:
+        pass
+    hosts.update({"shuttle-scope.com", "www.shuttle-scope.com"})
+    return hosts
+
+
 def _public_https_origin(request: Optional[Request]) -> Optional[str]:
     """Return "https://<host>" when the request arrived over a public HTTPS domain.
 
     Criteria:
       - scheme is https (prefer X-Forwarded-Proto, else request.url.scheme)
       - Host (prefer X-Forwarded-Host) is not localhost / 127.0.0.1 / a private IPv4.
+      - the hostname is in _allowed_public_hosts() (configured public hosts only).
     Returns None if the conditions are not met.
     """
     if request is None:
@@ -1555,8 +1584,14 @@ def _public_https_origin(request: Optional[Request]) -> Optional[str]:
             if ip.is_private or ip.is_loopback or ip.is_link_local:
                 return None
         except ValueError:
-            # Not an IP = a domain name. Treat as a public origin.
+            # Not an IP = a domain name. Continue to the allowlist check below.
             pass
+        # SSRF / host-injection guard: X-Forwarded-Host / Host are attacker-
+        # controllable. Only emit an origin whose hostname is a configured
+        # public host; otherwise fall back to LAN/localhost URLs. Reuses the
+        # same settings that main.py uses to build its TrustedHost allowlist.
+        if hl not in _allowed_public_hosts():
+            return None
         return f"https://{host_header}"
     except Exception:
         return None
