@@ -256,3 +256,82 @@ def representative_of(major: str) -> str:
 def major_ja_label(major: str) -> str:
     """大分類コードから日本語ラベルを返す。"""
     return MAJOR_SHOT_JA.get(major.strip().lower(), "その他")
+
+
+# ── 派生細分類（保存しない / 解析時に導出する）───────────────────────────────
+#
+# 顧客要望の打合せ (2026-11-05) と、その後のオーナー判断:
+#   - 入力側では攻撃系を細分化しない（9 大分類の simple 入力。smash 系は 1 つの
+#     「スマッシュ」に束ね、保存は canonical "smash"）。
+#   - ただしダブルスでは、コーチが言う「前(まえ)からのスマッシュ＝フロントスマッシュ」
+#     のような細かい差を *後で* 見たい場面がある。
+# そこで「保存はしない」細分類をここで一元的に導出する。入力・DB・集計は一切
+# 変えず、解析レイヤが (大分類, 打点ゾーン, 打点高さ) から派生ラベルを引くだけ。
+#
+# 引数:
+#   major     : major_of(shot_type) が返す大分類コード（例 "smash"）。
+#   hit_zone  : Zone9 の打点ゾーン（BL/BC/BR = バック後方行, ML/MC/MR = ミッド行,
+#               NL/NC/NR = ネット前行）。validators.VALID_HIT_ZONES と同語彙。
+#   hit_height: validators.HIT_HEIGHT_ORDER の4段階
+#               (above_net / slightly_above / slightly_below / below)。
+#
+# 返り値（smash 大分類のときのみ細分化。他は大分類をそのまま返す）:
+#   "rear_smash"    : バック後方行 (B*) から打つ従来のスマッシュ。
+#   "frontal_smash" : ネット前〜ミッド行 (N*/M*) から高い打点 (above_net /
+#                     slightly_above) で打つ、ダブルス前衛の「フロントスマッシュ」。
+#   "smash"         : 上記に当てはめられない（ゾーン/高さ不明など）汎用スマッシュ。
+#
+# これは表示・集計の補助であり、ShotType / canonical には追加しない。保存値は
+# 従来どおり canonical "smash" のまま。
+
+# 打点ゾーン行 → コート上の前後位置。先頭文字で判定する。
+_ZONE_ROW_BACK: frozenset[str] = frozenset({"BL", "BC", "BR"})
+_ZONE_ROW_MID: frozenset[str] = frozenset({"ML", "MC", "MR"})
+_ZONE_ROW_NET: frozenset[str] = frozenset({"NL", "NC", "NR"})
+
+# フロントスマッシュと見なす高い打点（ネット上〜やや上）。
+_FRONTAL_HEIGHTS: frozenset[str] = frozenset({"above_net", "slightly_above"})
+
+
+def derive_fine_label(
+    major: str,
+    hit_zone: str | None = None,
+    hit_height: str | None = None,
+) -> str:
+    """(大分類, 打点ゾーン, 打点高さ) から派生細分類ラベルを返す。保存しない。
+
+    smash 大分類のときだけ rear_smash / frontal_smash / smash に分ける。
+    それ以外の大分類は、入力で細分化しない方針に従い、大分類コードをそのまま返す。
+    未知の大分類は 'other'。
+
+    >>> derive_fine_label("smash", "BC", "above_net")
+    'rear_smash'
+    >>> derive_fine_label("smash", "NC", "above_net")
+    'frontal_smash'
+    >>> derive_fine_label("smash", "MC", "slightly_above")
+    'frontal_smash'
+    >>> derive_fine_label("smash", "NC", "below")
+    'smash'
+    >>> derive_fine_label("smash", None, None)
+    'smash'
+    >>> derive_fine_label("net", "NC", "above_net")
+    'net'
+    >>> derive_fine_label("bogus")
+    'other'
+    """
+    m = major.strip().lower()
+    if m not in MAJOR_SET:
+        return "other"
+    if m != "smash":
+        # 攻撃系以外は細分化しない（入力の 9 大分類方針と一致）。
+        return m
+    zone = (hit_zone or "").strip().upper()
+    height = (hit_height or "").strip().lower()
+    if zone in _ZONE_ROW_BACK:
+        return "rear_smash"
+    if zone in _ZONE_ROW_NET or zone in _ZONE_ROW_MID:
+        if height in _FRONTAL_HEIGHTS:
+            return "frontal_smash"
+        return "smash"
+    # ゾーン不明・未知綴りなどは汎用スマッシュに倒す（捏造しない）。
+    return "smash"

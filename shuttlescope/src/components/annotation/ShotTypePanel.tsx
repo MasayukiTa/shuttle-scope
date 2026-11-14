@@ -59,13 +59,19 @@ interface ShotTypePanelProps {
 // around_head は a→ショットキーなし（rally_end の A=勝者と衝突を避けるため）
 // around_head は W キーで is_around_head 属性トグルとして扱う
 // other は G キー（0は落点スキップに使用）
+//
+// スマッシュ統合 (2026-11): 入力では smash 系を 1 つの 's'=smash に束ねる。
+// 以前あった 'h'=half_smash は廃止し、around_head もショット種別としては
+// 選べない（W キーの is_around_head 属性トグルは従来どおり残す）。保存値は
+// canonical "smash" 固定。half_smash / around_head という canonical 値は
+// 既存行・解析のために温存され (shot_taxonomy.py)、新規入力でのみ出なくなる。
 const KEYBOARD_MAP: Record<string, ShotType> = {
   '1': 'short_service', '2': 'long_service',
   'n': 'net_shot',     'c': 'clear',       'p': 'push_rush',
   's': 'smash',        'd': 'defensive',   'v': 'drive',
   'l': 'lob',          'o': 'drop',        'x': 'cross_net',
   'z': 'slice',
-  'f': 'flick',        'h': 'half_smash',  'b': 'block',      'g': 'other',
+  'f': 'flick',        'b': 'block',      'g': 'other',
 }
 
 // ─── コンテキスト判定 ───────────────────────────────────────────────────────
@@ -75,7 +81,9 @@ const NET_ZONE_SHOTS = new Set<ShotType>([
   'net_shot', 'cross_net', 'push_rush', 'flick', 'block', 'drop',
 ])
 
-/** バック後方の攻撃ショット（速い／沈む系） */
+/** バック後方の攻撃ショット（速い／沈む系）。
+ *  入力からは smash に統合したが、既存行の lastShotType には half_smash /
+ *  around_head が残り得るため、文脈判定ではそれらも後方攻撃として受理する。 */
 const BACK_ATTACK_SHOTS = new Set<ShotType>([
   'smash', 'half_smash', 'around_head',
 ])
@@ -123,7 +131,7 @@ function buildGroups(context: ShotContext): ShotGroup[] {
       // 非表示: clear, around_head, slice（バック後方ポジション必須）
       return [
         { labelKey: 'shot_categories.net',        shots: ['net_shot', 'push_rush', 'cross_net', 'flick', 'block'] },
-        { labelKey: 'shot_categories.attack_lob',  shots: ['smash', 'half_smash', 'lob', 'drive', 'defensive'] },
+        { labelKey: 'shot_categories.attack_lob',  shots: ['smash', 'lob', 'drive', 'defensive'] },
         { labelKey: 'shot_categories.special',     shots: ['other'] },
       ]
 
@@ -132,14 +140,14 @@ function buildGroups(context: ShotContext): ShotGroup[] {
       return [
         { labelKey: 'shot_categories.defend',      shots: ['defensive', 'lob', 'drive', 'clear', 'block'] },
         { labelKey: 'shot_categories.net',         shots: ['net_shot', 'push_rush', 'cross_net', 'flick'] },
-        { labelKey: 'shot_categories.back',        shots: ['smash', 'half_smash', 'drop', 'around_head', 'slice'] },
+        { labelKey: 'shot_categories.back',        shots: ['smash', 'drop', 'slice'] },
         { labelKey: 'shot_categories.special',     shots: ['other'] },
       ]
 
     case 'after_back_neutral':
       // クリア/ロブ/スライス後。バック系攻撃が最有力。
       return [
-        { labelKey: 'shot_categories.back_attack', shots: ['smash', 'half_smash', 'drop', 'around_head', 'clear', 'slice'] },
+        { labelKey: 'shot_categories.back_attack', shots: ['smash', 'drop', 'clear', 'slice'] },
         { labelKey: 'shot_categories.drive_defend',shots: ['drive', 'lob', 'defensive', 'block'] },
         { labelKey: 'shot_categories.net',         shots: ['net_shot', 'push_rush', 'cross_net', 'flick'] },
         { labelKey: 'shot_categories.special',     shots: ['other'] },
@@ -150,7 +158,7 @@ function buildGroups(context: ShotContext): ShotGroup[] {
       // ドライブ/守備/その他、または初期状態
       return [
         { labelKey: 'shot_categories.net',  shots: ['net_shot', 'push_rush', 'cross_net', 'flick', 'block'] },
-        { labelKey: 'shot_categories.back', shots: ['smash', 'half_smash', 'clear', 'drop', 'around_head', 'slice'] },
+        { labelKey: 'shot_categories.back', shots: ['smash', 'clear', 'drop', 'slice'] },
         { labelKey: 'shot_categories.mid',  shots: ['drive', 'lob', 'defensive'] },
         { labelKey: 'shot_categories.special', shots: ['other'] },
       ]
