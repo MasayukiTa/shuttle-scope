@@ -257,7 +257,7 @@ function StrokeEditor({
           <div className="text-[10px] text-[var(--ss-t3)] space-x-2">
             <span>{t('annotator.ux.review_f_land')}: {stroke.land_zone ?? '—'}</span>
             <span>{t('annotator.ux.review_f_height')}: {stroke.contact_height ?? '—'}</span>
-            <span>{t('annotator.ux.review_f_intent')}: {stroke.intent_tag ?? '—'}</span>
+            <span>{t('annotator.ux.review_f_intent')}: {stroke.intent_tag ? t(`enrichment.intent_tag_${stroke.intent_tag}`) : '—'}</span>
           </div>
           {stroke.intent_note && (
             <div className="text-[10px] text-[var(--ss-t3)] truncate">
@@ -327,7 +327,7 @@ function StrokeEditor({
           className="w-full bg-[var(--ss-surface-1)] border border-[var(--ss-border)] rounded-ss-sm px-1 py-0.5"
         >
           <option value="">—</option>
-          {INTENT_TAGS.map((v) => <option key={v} value={v}>{v}</option>)}
+          {INTENT_TAGS.map((v) => <option key={v} value={v}>{t(`enrichment.intent_tag_${v}`)}</option>)}
         </select>
       </label>
       <label className="block">
