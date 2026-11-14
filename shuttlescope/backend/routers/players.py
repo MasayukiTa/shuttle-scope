@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import Player, Match, User
-from backend.utils.auth import get_auth, require_analyst, AuthCtx
+from backend.utils.auth import get_auth, require_analyst, require_admin, AuthCtx
 from backend.utils.text_sanitize import reject_ctrl_and_bidi, strip_invisible_format_chars
 from fastapi import HTTPException as _HTTPException
 
@@ -172,6 +172,39 @@ def normalize_name(name: str) -> str:
     return normalized
 
 
+# ---- Admin cross-team name exposure masking (owner default, revertible) ----
+# For an admin, players of the admin's own team and players with no team are shown
+# normally. Players that belong to or were registered by ANOTHER team are shown with
+# a masked name (first char + fixed-length mask) plus team label + internal id, and
+# every identifying field is omitted. Coach/analyst/player scoping is unchanged.
+_MASK_BODY = "\u25cf" * 5  # fixed-length mask, independent of real name length
+
+
+def _mask_name(name: Optional[str]) -> str:
+    """First character preserved, rest replaced by a fixed-length mask.
+
+    Fixed length avoids leaking the real name length. Empty/None -> mask only.
+    """
+    s = (name or "").strip()
+    first = s[0] if s else ""
+    return f"{first}{_MASK_BODY}"
+
+
+def _admin_should_mask(ctx, p: "Player") -> bool:
+    """True when an ADMIN is looking at a player that belongs to / was registered by
+    ANOTHER team. Own-team players and players with no team are never masked.
+
+    Only applies to admins; non-admin scoping already restricts visibility elsewhere,
+    so this returns False for them (their rows are their own team by construction).
+    """
+    if not getattr(ctx, "is_admin", False):
+        return False
+    owner_team = p.team_id if p.team_id is not None else p.scouting_owner_team_id
+    if owner_team is None:
+        return False  # no team -> shown normally
+    return owner_team != getattr(ctx, "team_id", None)
+
+
 def _parse_json_list(raw: Optional[str]) -> list:
     if not raw:
         return []
@@ -181,7 +214,35 @@ def _parse_json_list(raw: Optional[str]) -> list:
         return []
 
 
-def player_to_dict(p: Player, match_count: int = 0) -> dict:
+def player_to_dict(p: Player, match_count: int = 0, *, mask: bool = False) -> dict:
+    if mask:
+        # Other-team player seen by an admin: identity fields omitted, name masked.
+        # Team label and internal id are retained so the admin can still reason about
+        # the record (and reveal it one-at-a-time from the merge screen in PR 2).
+        return {
+            "id": p.id,
+            "name": _mask_name(p.name),
+            "name_en": None,
+            "team": strip_invisible_format_chars(p.team),
+            "nationality": None,
+            "dominant_hand": p.dominant_hand,
+            "birth_year": None,
+            "world_ranking": p.world_ranking,
+            "is_target": p.is_target,
+            "match_count": match_count,
+            "notes": None,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+            "profile_status": p.profile_status or "verified",
+            "needs_review": bool(p.needs_review),
+            "created_via_quick_start": bool(p.created_via_quick_start),
+            "organization": None,
+            "aliases": [],
+            "name_normalized": None,
+            "scouting_notes": None,
+            "is_scouting": p.scouting_owner_team_id is not None,
+            "team_history": [],
+            "masked": True,
+        }
     return {
         "id": p.id,
         # 検証を入れる前に保存された名前に不可視・双方向制御文字が残っていても、
@@ -211,6 +272,7 @@ def player_to_dict(p: Player, match_count: int = 0) -> dict:
         "is_scouting": p.scouting_owner_team_id is not None,
         # 所属履歴
         "team_history": _parse_json_list(p.team_history),
+        "masked": False,
     }
 
 
@@ -333,7 +395,10 @@ def list_players(request: Request, db: Session = Depends(get_db),
 
     players = query.all()
     counts = _match_counts(db, players)
-    result = [player_to_dict(p, match_count=counts.get(p.id, 0)) for p in players]
+    result = [
+        player_to_dict(p, match_count=counts.get(p.id, 0), mask=_admin_should_mask(ctx, p))
+        for p in players
+    ]
     return {"success": True, "data": result}
 
 
@@ -426,7 +491,11 @@ def search_players(request: Request, q: str = Query(default="", max_length=100),
             seen.add(p.id)
             unique.append(p)
     counts = _match_counts(db, unique)
-    result = [player_to_dict(p, match_count=counts.get(p.id, 0)) for p in unique]
+    _ctx = get_auth(request)
+    result = [
+        player_to_dict(p, match_count=counts.get(p.id, 0), mask=_admin_should_mask(_ctx, p))
+        for p in unique
+    ]
 
     return {"success": True, "data": result}
 
@@ -440,8 +509,49 @@ def list_needs_review(request: Request, db: Session = Depends(get_db),
         Player.needs_review == True  # noqa: E712
     ).order_by(Player.created_at.desc()).all()
     counts = _match_counts(db, players)
-    result = [player_to_dict(p, match_count=counts.get(p.id, 0)) for p in players]
+    _ctx = get_auth(request)
+    result = [
+        player_to_dict(p, match_count=counts.get(p.id, 0), mask=_admin_should_mask(_ctx, p))
+        for p in players
+    ]
     return {"success": True, "data": result}
+
+
+class RevealRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+    confirm: bool = False
+    reason: Optional[str] = Field(default="merge review", max_length=200)
+
+
+@router.post("/players/{player_id}/reveal")
+def reveal_player(
+    player_id: Annotated[int, Path(ge=1, le=2_147_483_647)],
+    body: RevealRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    _ctx: AuthCtx = Depends(require_admin),
+):
+    """Admin-only, one-player-at-a-time reveal of an otherwise-masked other-team player.
+
+    Used ONLY from the merge screen (PR 2) to decide whether two records are the same
+    person. Requires an explicit confirm and writes an audit event (who, which player
+    id, when, reason) via the existing hash-chained audit mechanism. Returns the real
+    identifying fields for this single player.
+    """
+    if not body.confirm:
+        raise HTTPException(status_code=400, detail="confirm is required to reveal a masked player")
+    player = db.get(Player, player_id)
+    if not player:
+        raise HTTPException(status_code=404, detail="選手が見つかりません")
+    from backend.utils.access_log import log_admin_action
+    log_admin_action(
+        db, request, "player_name_revealed",
+        resource_type="player", resource_id=player_id,
+        details={"player_id": player_id, "reason": (body.reason or "merge review")},
+    )
+    db.commit()
+    # Unmasked single-player view (identity fields included).
+    return {"success": True, "data": player_to_dict(player, mask=False)}
 
 
 @router.get("/players/teams")
