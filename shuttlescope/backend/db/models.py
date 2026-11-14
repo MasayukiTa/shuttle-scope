@@ -635,6 +635,13 @@ class Stroke(Base):
     # 値: above_net / slightly_above / slightly_below / below（4段階）。
     # NULL=未入力。hit_zone（打者の床面位置）とは別概念で、識別子も別。
     hit_height: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    # Coach + university request: official attack/defence height classification input.
+    # Body-relative rule: wrist AT OR ABOVE racket height = attack, BELOW = defence.
+    # Values: at_or_above / below. NULL = not recorded (classification unknown).
+    # This is NOT the same as hit_height (net-relative), contact_height (swing form)
+    # or above_net (shuttle vs net). The attack/defence label is derived in one place
+    # in backend.analysis.attack_defence from this raw observation; it is not stored.
+    wrist_vs_racket: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
 
     # 打球属性
     is_backhand: Mapped[bool] = mapped_column(Boolean, default=False)
