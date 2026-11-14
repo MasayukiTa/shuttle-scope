@@ -43,8 +43,8 @@ def world(db_session):
     team = Team(id=_TEAM_ID, display_id="T-1", name="T")
     db.add(team)
     db.flush()
-    own = Player(name="Own Player", name_normalized="own", team_id=team.id)
-    opp = Player(name="Opp Player", name_normalized="opp", nationality="JPN", birth_year=1999)
+    own = Player(name="Own Player", name_normalized="own", team_id=team.id, height_cm=182)
+    opp = Player(name="Opp Player", name_normalized="opp", nationality="JPN", birth_year=1999, height_cm=175)
     db.add_all([own, opp])
     db.flush()
     db.add(User(
@@ -396,6 +396,59 @@ class TestAnalysisForbiddenDefinition:
         for route in routes:
             deps = [d.call for d in route.dependant.dependencies]
             assert require_non_player in deps
+
+
+# ─── (e) height_cm: export surface に出さない / team スコープ内の /players には出る ──
+
+
+def _json_has_key(o, key) -> bool:
+    """JSON 木のどこかに key という名のキーが存在すれば True。"""
+    if isinstance(o, dict):
+        for k, v in o.items():
+            if k == key:
+                return True
+            if _json_has_key(v, key):
+                return True
+    elif isinstance(o, list):
+        for x in o:
+            if _json_has_key(x, key):
+                return True
+    return False
+
+
+class TestHeightExportSurface:
+    """height_cm は team スコープ内の選手プロフィール属性。
+    public/shared/export (data_package._player_dict の allow-list) には出さない。
+    birth_year と違い export の _player_dict にはそもそも含めていないので、
+    player だけでなく coach/analyst/admin のパッケージにも現れない。"""
+
+    @pytest.mark.parametrize("role", ("player", "coach", "analyst", "admin"))
+    def test_height_cm_absent_from_export_package(self, world, client, role, monkeypatch):
+        from backend.config import settings
+        monkeypatch.setattr(settings, "ss_export_signing_key", "k" * 40, raising=False)
+        w = world
+        headers = _player_h(w) if role == "player" else _headers(role)
+        r = client.get(f"/api/export/package?match_id={w['match'].id}", headers=headers)
+        assert r.status_code == 200, r.text
+        body = r.json()
+        # players[] に height_cm キーが無い (allow-list 非含)。
+        assert not _json_has_key(body.get("players", []), "height_cm")
+        # 値 (182 / 175) も構造化 JSON のどこにも現れない。
+        assert not _json_has_key(body, "height_cm")
+
+    def test_height_cm_present_in_players_list_within_team(self, world, client):
+        """team スコープ内の /api/players には height_cm が返る (coach)。
+        opp は無所属 (team_id なし) のため coach の scope 外。その height 非出力は
+        export 側 (TestHeightExportSurface) で担保するので、ここでは own だけ検証する。"""
+        w = world
+        r = client.get("/api/players", headers=_headers("coach"))
+        assert r.status_code == 200, r.text
+        rows = r.json()["data"]
+        by_id = {p["id"]: p for p in rows}
+        assert w["own"].id in by_id, "自チームの選手は返る"
+        assert by_id[w["own"].id]["height_cm"] == 182
+        # キー自体が応答に存在する (null でなく値が乗る) ことも確かめる。
+        assert "height_cm" in by_id[w["own"].id]
 
 
 def test_json_privacy_helpers_detect_planted_values():

@@ -109,6 +109,8 @@ class PlayerCreate(BaseModel):
     team: Optional[str] = Field(default=None, max_length=100)
     nationality: Optional[str] = Field(default=None, max_length=50)
     dominant_hand: Optional[str] = "unknown"
+    # 身長 (cm)。任意。現実的な範囲に validator を掛ける (100-250cm)。
+    height_cm: Optional[int] = Field(default=None, ge=100, le=250)
     birth_year: Optional[int] = Field(default=None, ge=1900, le=2100)
     world_ranking: Optional[int] = Field(default=None, ge=1, le=99999)
     is_target: bool = False
@@ -144,6 +146,7 @@ class PlayerUpdate(BaseModel):
     team: Optional[str] = Field(default=None, max_length=100)
     nationality: Optional[str] = Field(default=None, max_length=50)
     dominant_hand: Optional[str] = None
+    height_cm: Optional[int] = Field(default=None, ge=100, le=250)
     birth_year: Optional[int] = Field(default=None, ge=1900, le=2100)
     world_ranking: Optional[int] = Field(default=None, ge=1, le=99999)
     is_target: Optional[bool] = None
@@ -191,6 +194,9 @@ def player_to_dict(p: Player, match_count: int = 0) -> dict:
         "team": strip_invisible_format_chars(p.team),
         "nationality": p.nationality,
         "dominant_hand": p.dominant_hand,
+        # 身長 (cm)。team スコープ内のプロフィール応答にのみ含める。
+        # export (data_package._player_dict) には意図的に含めない。
+        "height_cm": p.height_cm,
         "birth_year": p.birth_year,
         "world_ranking": p.world_ranking,
         "is_target": p.is_target,

@@ -1341,6 +1341,7 @@
     "team": "Team",
     "nationality": "Nationality",
     "dominant_hand": "Dominant hand",
+    "height_cm": "Height (cm)",
     "birth_year": "Birth year",
     "world_ranking": "World ranking",
     "is_target": "Priority player",
