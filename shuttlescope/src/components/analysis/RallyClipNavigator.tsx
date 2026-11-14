@@ -192,7 +192,7 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
               >
                 <option value="">{t('auto.RallyClipNavigator.k6')}</option>
                 {setNums.map((n) => (
-                  <option key={n} value={String(n)}>{t('rally.set_n', { n, defaultValue: 'Set {{n}}' })}</option>
+                  <option key={n} value={String(n)}>{t('rally.set_n', { n, defaultValue: 'Game {{n}}' })}</option>
                 ))}
               </select>
             </div>
@@ -216,7 +216,7 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
         const r = rallies.find((x) => x.id === currentRallyId)
         return r ? (
           <div className={`px-4 pt-3 pb-1 text-[11px] ${textMuted}`}>
-            {t('rally.selected', { set: r.set_num, rally: r.rally_num, a: r.score_a_before, b: r.score_b_before, defaultValue: 'Selected: Set {{set}} R.{{rally}} ({{a}}–{{b}})' })}
+            {t('rally.selected', { set: r.set_num, rally: r.rally_num, a: r.score_a_before, b: r.score_b_before, defaultValue: 'Selected: Game {{set}} R.{{rally}} ({{a}}–{{b}})' })}
             {r.video_timestamp_start != null && t('rally.click_popup', ' — click to play in popup')}
           </div>
         ) : null
@@ -334,7 +334,7 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
           >
             <div className="flex items-center justify-between px-3 py-2 bg-gray-900 text-gray-100">
               <span className="text-sm font-medium">
-                {t('rally.popup_title', { set: popupRally.set_num, rally: popupRally.rally_num, a: popupRally.score_a_before, b: popupRally.score_b_before, defaultValue: 'Set {{set}} — R.{{rally}} ({{a}}–{{b}})' })}
+                {t('rally.popup_title', { set: popupRally.set_num, rally: popupRally.rally_num, a: popupRally.score_a_before, b: popupRally.score_b_before, defaultValue: 'Game {{set}} — R.{{rally}} ({{a}}–{{b}})' })}
               </span>
               <div className="flex items-center gap-1">
                 <button
