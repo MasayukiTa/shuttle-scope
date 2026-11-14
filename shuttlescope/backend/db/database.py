@@ -156,6 +156,8 @@ def add_columns_if_missing(eng) -> None:
         ("strokes", "contact_height",            "TEXT"),
         # 要望8 (SD-08): 打球の高さ（ネット基準の4段階、任意入力）。hit_zone(位置)とは別概念。
         ("strokes", "hit_height",                "TEXT"),
+        # Coach + university: official attack/defence input (wrist vs racket height; migration 0066).
+        ("strokes", "wrist_vs_racket",           "TEXT"),
         # 移動系コンテキスト（4.1 Movement Features）
         ("strokes", "contact_zone",              "TEXT"),
         ("strokes", "movement_burden",           "TEXT"),

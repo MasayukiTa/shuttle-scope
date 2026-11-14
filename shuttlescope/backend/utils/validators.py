@@ -73,6 +73,16 @@ def hit_height_level(value: Optional[str]) -> Optional[int]:
     return HIT_HEIGHT_LEVEL.get(value)
 
 
+# ── 公式の打点高さ分類の入力語彙（コーチ + 大学グループ要望）──────────────────
+# 手首がラケット高さ «以上» か «未満» かという身体基準の観測。これだけが
+# attack/defence の公式分類に使われる（派生は backend.analysis.attack_defence の
+# 1 箇所のみ）。hit_height（ネット基準）・contact_height（打撃フォーム）・
+# above_net（シャトルのネット上下）とは別概念。任意入力なので NULL を許す。
+#   at_or_above = 手首がラケット高さ以上  → attack
+#   below       = 手首がラケット高さ未満  → defence
+VALID_WRIST_VS_RACKET = frozenset({"at_or_above", "below"})
+
+
 def validate_stroke(stroke_data: dict) -> tuple[bool, Optional[str]]:
     """
     ストロークの整合性チェック。
