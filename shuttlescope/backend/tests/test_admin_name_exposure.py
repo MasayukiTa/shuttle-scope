@@ -1,11 +1,11 @@
 """Admin cross-team name-exposure masking + one-at-a-time reveal (PR: exposure).
 
 Uses TestClient + temp SQLite (db_session fixture) with synthetic names only.
-Proves:
-  * admin list masks OTHER-team names and omits identifying fields;
-  * admin own-team (and no-team) names are unmasked;
-  * reveal writes an audit row and returns the real name;
-  * a non-admin caller cannot reveal (403).
+Admin/analyst identity is injected by monkeypatching backend.utils.auth.get_auth
+(and the players router alias) to return an AuthCtx with admin_mfa_ok=True, so the
+require_admin gate is satisfied without a DB TOTP enrolment. The endpoints call
+get_auth(request) directly in their bodies, so FastAPI dependency_overrides do not
+reach them; patching the module attribute does.
 """
 from __future__ import annotations
 
@@ -15,26 +15,26 @@ from fastapi.testclient import TestClient
 from backend.db.database import get_db
 from backend.db.models import Player, Team
 from backend.main import app
-from backend.utils.jwt_utils import create_access_token
+from backend.utils.auth import AuthCtx
 
 _ADMIN_TEAM_ID = 7001
 _OTHER_TEAM_ID = 7002
 
 
-def _admin_headers() -> dict:
-    tok = create_access_token(
-        user_id=501, role="admin", player_id=None,
-        team_name="AdminTeam", team_id=_ADMIN_TEAM_ID,
-    )
-    return {"Authorization": f"Bearer {tok}"}
+def _admin_ctx(*_a, **_k) -> AuthCtx:
+    return AuthCtx(role="admin", player_id=None, user_id=None,
+                   team_name="AdminTeam", team_id=_ADMIN_TEAM_ID,
+                   admin_mfa_ok=True)
 
 
-def _analyst_headers() -> dict:
-    tok = create_access_token(
-        user_id=502, role="analyst", player_id=None,
-        team_name="AdminTeam", team_id=_ADMIN_TEAM_ID,
-    )
-    return {"Authorization": f"Bearer {tok}"}
+def _analyst_ctx(*_a, **_k) -> AuthCtx:
+    return AuthCtx(role="analyst", player_id=None, user_id=502,
+                   team_name="AdminTeam", team_id=_ADMIN_TEAM_ID)
+
+
+def _patch_auth(monkeypatch, factory):
+    monkeypatch.setattr("backend.utils.auth.get_auth", factory)
+    monkeypatch.setattr("backend.routers.players.get_auth", factory)
 
 
 @pytest.fixture
@@ -73,8 +73,9 @@ def _by_id(rows, pid):
     return next(r for r in rows if r["id"] == pid)
 
 
-def test_admin_list_masks_other_team_and_omits_identity(world, client):
-    r = client.get("/api/players", headers=_admin_headers())
+def test_admin_list_masks_other_team_and_omits_identity(world, client, monkeypatch):
+    _patch_auth(monkeypatch, _admin_ctx)
+    r = client.get("/api/players")
     assert r.status_code == 200, r.text
     rows = r.json()["data"]
     other = _by_id(rows, world["other"].id)
@@ -89,8 +90,9 @@ def test_admin_list_masks_other_team_and_omits_identity(world, client):
     assert other["id"] == world["other"].id
 
 
-def test_admin_own_team_and_no_team_unmasked(world, client):
-    r = client.get("/api/players", headers=_admin_headers())
+def test_admin_own_team_and_no_team_unmasked(world, client, monkeypatch):
+    _patch_auth(monkeypatch, _admin_ctx)
+    r = client.get("/api/players")
     rows = r.json()["data"]
     own = _by_id(rows, world["own"].id)
     free = _by_id(rows, world["noteam"].id)
@@ -101,14 +103,14 @@ def test_admin_own_team_and_no_team_unmasked(world, client):
     assert free["name"] == "Charlie Free"
 
 
-def test_reveal_writes_audit_and_returns_name(world, client):
+def test_reveal_writes_audit_and_returns_name(world, client, monkeypatch):
+    _patch_auth(monkeypatch, _admin_ctx)
     db = world["db"]
     from backend.db.models import AccessLog
     before = db.query(AccessLog).count()
     pid = world["other"].id
     r = client.post(
         f"/api/players/{pid}/reveal",
-        headers=_admin_headers(),
         json={"confirm": True, "reason": "merge review"},
     )
     assert r.status_code == 200, r.text
@@ -119,21 +121,21 @@ def test_reveal_writes_audit_and_returns_name(world, client):
     assert after == before + 1
 
 
-def test_reveal_requires_confirm(world, client):
+def test_reveal_requires_confirm(world, client, monkeypatch):
+    _patch_auth(monkeypatch, _admin_ctx)
     pid = world["other"].id
     r = client.post(
         f"/api/players/{pid}/reveal",
-        headers=_admin_headers(),
         json={"confirm": False},
     )
     assert r.status_code == 400, r.text
 
 
-def test_non_admin_cannot_reveal(world, client):
+def test_non_admin_cannot_reveal(world, client, monkeypatch):
+    _patch_auth(monkeypatch, _analyst_ctx)
     pid = world["other"].id
     r = client.post(
         f"/api/players/{pid}/reveal",
-        headers=_analyst_headers(),
         json={"confirm": True},
     )
     assert r.status_code == 403, r.text
