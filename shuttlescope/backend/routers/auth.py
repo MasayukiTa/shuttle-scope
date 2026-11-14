@@ -557,7 +557,13 @@ def _get_page_access(user_id: int, user: User, db: Session) -> list[str]:
 
 
 from backend.utils.access_log import log_access, log_admin_action
-from backend.utils.text_sanitize import reject_ctrl_and_bidi
+from backend.utils.text_sanitize import (
+    reject_ctrl_and_bidi,
+    validate_display_name,
+    display_name_conforms,
+    DISPLAY_NAME_MIN_LENGTH,
+    DISPLAY_NAME_MAX_LENGTH,
+)
 from backend.utils.jwt_utils import (
     create_access_token,
     create_refresh_token,
@@ -1779,6 +1785,10 @@ def _user_to_dict(user: User, db: Session, *, for_admin: bool = False) -> dict:
         "awaiting_admin_approval": bool(getattr(user, "awaiting_admin_approval", False)),
         # 検証用ユーザフラグ (True=削除可 / False=実ユーザで削除保護)。admin UI で表示・切替。
         "is_test": bool(getattr(user, "is_test", False)),
+        # 表示名が 6〜24 文字ルールに適合するか。admin UI が非適合ユーザーを
+        # マーカー表示するためのフラグ。ルール導入前の既存ユーザーは
+        # None / 短すぎる名のまま保存されていることがあり、False になる。
+        "display_name_conforms": display_name_conforms(user.display_name),
     }
     if for_admin:
         out["team_display_id"] = team.display_id if team else None
@@ -2051,14 +2061,12 @@ def create_user(body: UserCreate, request: Request, db: Session = Depends(get_db
     # DB 列長 (User.display_name VARCHAR(100), team_name VARCHAR(100)) と一致させる。
     # 旧 max_len=120/80 では 101-120 char が DB INSERT で 500 に抜けていた
     # (round 205 V3, round 200 Q6-B 系)。
-    _reject_control_chars(body.display_name, "display_name", max_len=100)
     _reject_control_chars(body.team_name, "team_name", max_len=100)
-    # display_name 空文字/空白のみ拒否 + HTML タグ拒否 (stored XSS 対策)
-    if not body.display_name or not body.display_name.strip():
-        raise HTTPException(status_code=422, detail="display_name must not be empty or whitespace only")
-    import re as _re_dn
-    if _re_dn.search(r"</?(script|iframe|object|embed|svg|style|link|meta|form|img)[\s>/]", body.display_name, _re_dn.IGNORECASE):
-        raise HTTPException(status_code=422, detail="display_name contains disallowed HTML tags")
+    # display_name: 6〜24 文字ルールを text_sanitize に一本化して強制する。
+    # 制御 / BIDI / ゼロ幅文字拒否、空/空白のみ拒否、長さ下限/上限を含む。
+    # trim 済みの値を DB に保存する (前後の空白を残さない)。
+    # HTML タグは < > が残るが stored XSS は出力側のエスケープで防ぐ。
+    body.display_name = validate_display_name(body.display_name, "display_name")
     # analyst は admin / analyst アカウントを作成できない（権限昇格防止）
     if ctx.is_analyst and body.role in ("admin", "analyst", "demo"):
         raise HTTPException(status_code=403, detail="admin/analyst/demo アカウントは admin のみ作成できます")
@@ -2290,20 +2298,20 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
     _snapshot_username = user.username
     _snapshot_credential = user.hashed_credential
 
-    # display_name / team_name の制御文字 / BIDI override を拒否
-    _reject_control_chars(body.display_name, "display_name", max_len=100)
+    # team_name の制御文字 / BIDI override を拒否
     _reject_control_chars(body.team_name, "team_name", max_len=100)
-    # display_name / team_name HTML タグ拒否 (stored XSS 対策)
+    # team_name の HTML タグ拒否 (stored XSS 対策)。display_name は
+    # validate_display_name 側で < > を含む制御/不可視文字を扱うが、
+    # team_name は従来通りこの regex でタグを 422 にする。
     _HTML_TAG_RE = _re.compile(
         r"</?(script|iframe|object|embed|svg|style|link|meta|form|img)[\s>/]",
         _re.IGNORECASE,
     )
+    # display_name: 指定がある場合のみ 6〜24 文字ルール (text_sanitize に一本化) を強制。
+    # UserUpdate.display_name は Optional なので None は「変更なし」として通す。
+    # trim 済みの値を保存する。
     if body.display_name is not None:
-        if not body.display_name.strip():
-            raise HTTPException(status_code=422, detail="display_name must not be empty or whitespace only")
-        if _HTML_TAG_RE.search(body.display_name):
-            raise HTTPException(status_code=422, detail="display_name contains disallowed HTML tags")
-        user.display_name = body.display_name
+        user.display_name = validate_display_name(body.display_name, "display_name")
     if body.username is not None and (ctx.is_admin or ctx.is_analyst):
         login_id = _validate_login_id(body.username)
         existing = db.query(User).filter(User.username == login_id, User.id != target_id).first()

@@ -140,3 +140,103 @@ def reject_bidi_only(
                 ),
             )
     return value
+
+
+
+# ── 表示名 (display_name) の長さルール ───────────────────────────────────────
+# 表示名の文字数ルールを **バックエンドで唯一化** する。各エントリポイント
+# (admin create / admin update / 公開登録 / 招待受諾) がこの関数を
+# 呼ぶことで、長さルールが一箇所でしか定義されない。
+#
+# 文字数は前後の空白を除いた後の Unicode コードポイント数で数える。
+# 全角文字も 1 文字として数える (len() がコードポイント数)。
+DISPLAY_NAME_MIN_LENGTH = 6
+DISPLAY_NAME_MAX_LENGTH = 24
+
+# 前後の trim は ASCII whitespace に加えて一般的な Unicode whitespace
+# (U+3000 表意空白等) も前後から除く。内部の空白は残す。
+_DISPLAY_NAME_TRIM_WS = frozenset(
+    [chr(i) for i in range(0x21)] + [  # 0x00-0x20 (ASCII whitespace/control incl. space)
+        "\x7f", "\u0085", "\u00a0", "\u1680",
+        "\u2000", "\u2001", "\u2002", "\u2003", "\u2004", "\u2005",
+        "\u2006", "\u2007", "\u2008", "\u2009", "\u200a",
+        "\u2028", "\u2029", "\u202f", "\u205f", "\u3000", "\ufeff",
+    ]
+)
+
+
+def trim_display_name(value: str) -> str:
+    """表示名の前後の空白 (ASCII + 主要な Unicode whitespace) を除く。"""
+    chars = list(value)
+    start = 0
+    end = len(chars)
+    while start < end and chars[start] in _DISPLAY_NAME_TRIM_WS:
+        start += 1
+    while end > start and chars[end - 1] in _DISPLAY_NAME_TRIM_WS:
+        end -= 1
+    return "".join(chars[start:end])
+
+
+def display_name_length(value: str) -> int:
+    """trim 後の Unicode コードポイント数 (全角 = 1)。"""
+    return len(trim_display_name(value))
+
+
+def display_name_conforms(value: Optional[str]) -> bool:
+    """表示名が 6〜24 文字ルールを満たすか (制御文字等は含まない)。
+
+    レガシーユーザーの非適合名を一覧でマーカー表示するための判定。
+    例外を送出せず bool を返す (ログインや表示をブロックしない)。
+    None / 空 / 長さ外 / 不可視文字混入はすべて False。
+    """
+    if value is None:
+        return False
+    trimmed = trim_display_name(value)
+    if not (DISPLAY_NAME_MIN_LENGTH <= len(trimmed) <= DISPLAY_NAME_MAX_LENGTH):
+        return False
+    for ch in trimmed:
+        if ch in _C0_ALL or is_invisible_format_char(ch):
+            return False
+    return True
+
+
+def validate_display_name(value: Optional[str], field_name: str = "display_name") -> str:
+    """表示名を検証し、trim 済みの値を返す。違反時は 422。
+
+    - 制御文字 / BIDI / ゼロ幅文字を拒否 (reject_ctrl_and_bidi と同じ文字集合)。
+    - 前後の空白を trim した上で Unicode コードポイント数で 6〜24 を強制 (全角 = 1)。
+    - メッセージは日本語 + 英語で許容長を明示する。
+    """
+    if value is None or not isinstance(value, str):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"{field_name} は必須です。"
+                f"{DISPLAY_NAME_MIN_LENGTH}〜{DISPLAY_NAME_MAX_LENGTH}文字で入力してください。 / "
+                f"{field_name} is required and must be "
+                f"{DISPLAY_NAME_MIN_LENGTH}-{DISPLAY_NAME_MAX_LENGTH} characters."
+            ),
+        )
+    # 制御 / BIDI / ゼロ幅文字は trim 前に全体を検査して拒否する。
+    for ch in value:
+        if ch in _C0_ALL or is_invisible_format_char(ch):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"{field_name} contains disallowed control/format "
+                    f"character (U+{ord(ch):04X})"
+                ),
+            )
+    trimmed = trim_display_name(value)
+    n = len(trimmed)
+    if not (DISPLAY_NAME_MIN_LENGTH <= n <= DISPLAY_NAME_MAX_LENGTH):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"{field_name} は{DISPLAY_NAME_MIN_LENGTH}〜{DISPLAY_NAME_MAX_LENGTH}文字で入力してください"
+                f"（前後の空白を除き、全角文字も1文字として数えます。現在 {n} 文字）。 / "
+                f"{field_name} must be {DISPLAY_NAME_MIN_LENGTH}-{DISPLAY_NAME_MAX_LENGTH} characters "
+                f"(after trimming surrounding whitespace; full-width characters count as 1; got {n})."
+            ),
+        )
+    return trimmed
