@@ -240,3 +240,46 @@ def validate_display_name(value: Optional[str], field_name: str = "display_name"
             ),
         )
     return trimmed
+
+
+def validate_admin_display_name(
+    value: Optional[str], field_name: str = "display_name"
+) -> str:
+    """admin による既存ユーザーの表示名変更用の検証。6〜24 文字ルールは課さない。
+
+    admin が既存ユーザーの表示名を明示的に変更するときだけ呼ぶ。登録 (create_user /
+    公開登録 / 招待受諾) と本人のプロフィール編集は validate_display_name (6〜24) を使う。
+    ここでは技術的な安全チェックのみ行う:
+      - None / 非 str は拒否 (422)
+      - 制御文字 / BIDI / ゼロ幅文字を拒否 (validate_display_name と同じ文字集合)
+      - 前後の空白を trim した後に空でないこと
+      - trim 後の上限 100 文字 (DB 列長 VARCHAR(100) に合わせる)
+    長さの下限 (6) は課さないので、4 文字等のレガシー名も admin なら設定できる。
+    trim 済みの値を返す。
+    """
+    if value is None or not isinstance(value, str):
+        raise HTTPException(
+            status_code=422,
+            detail=f"{field_name} must be a string",
+        )
+    for ch in value:
+        if ch in _C0_ALL or is_invisible_format_char(ch):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"{field_name} contains disallowed control/format "
+                    f"character (U+{ord(ch):04X})"
+                ),
+            )
+    trimmed = trim_display_name(value)
+    if not trimmed:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{field_name} must not be empty",
+        )
+    if len(trimmed) > 100:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{field_name} too long (max 100)",
+        )
+    return trimmed
