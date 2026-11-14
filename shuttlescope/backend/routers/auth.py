@@ -560,6 +560,7 @@ from backend.utils.access_log import log_access, log_admin_action
 from backend.utils.text_sanitize import (
     reject_ctrl_and_bidi,
     validate_display_name,
+    validate_admin_display_name,
     display_name_conforms,
     DISPLAY_NAME_MIN_LENGTH,
     DISPLAY_NAME_MAX_LENGTH,
@@ -2307,11 +2308,28 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
         r"</?(script|iframe|object|embed|svg|style|link|meta|form|img)[\s>/]",
         _re.IGNORECASE,
     )
-    # display_name: 指定がある場合のみ 6〜24 文字ルール (text_sanitize に一本化) を強制。
-    # UserUpdate.display_name は Optional なので None は「変更なし」として通す。
-    # trim 済みの値を保存する。
+    # display_name: admin の既存ユーザー編集では、**実際に表示名を変更するときだけ**
+    # 検証する。かつ admin が起こす変更には 6〜24 の長さルールを課さず、
+    # 技術的な安全チェック (非空 / 上限100 / 制御・ゼロ幅文字拒否) のみ行う。
+    # これにより、stored display_name がレガシー (例: 4 文字) のユーザーに対して
+    # team / role / active / パスワードリセット等を変更する際、display_name を送らない
+    # か同値を送っても 6〜24 ルールで 422 にならない。
+    # 登録 (create_user / 公開登録 / 招待受諾) と本人のプロフィール編集は
+    # 引き続き validate_display_name (6〜24) を使う。
     if body.display_name is not None:
-        user.display_name = validate_display_name(body.display_name, "display_name")
+        _stored_dn = user.display_name
+        _incoming_dn = body.display_name
+        # 変更なし (stored と同値の再送) は常に通す。
+        _same_as_stored = (
+            _stored_dn is not None
+            and isinstance(_incoming_dn, str)
+            and _incoming_dn == _stored_dn
+        )
+        if not _same_as_stored:
+            # admin が実際に変更する場合だけ検証。admin 変更は 6〜24 を課さない。
+            user.display_name = validate_admin_display_name(
+                body.display_name, "display_name"
+            )
     if body.username is not None and (ctx.is_admin or ctx.is_analyst):
         login_id = _validate_login_id(body.username)
         existing = db.query(User).filter(User.username == login_id, User.id != target_id).first()
